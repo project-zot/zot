@@ -11,7 +11,7 @@ TOOLSDIR := $(shell pwd)/hack/tools
 PATH := bin:$(TOOLSDIR)/bin:$(PATH)
 STACKER := $(shell which stacker)
 GOLINTER := $(TOOLSDIR)/bin/golangci-lint
-GOLINTER_VERSION := v2.1.0
+GOLINTER_VERSION := v2.6.2
 NOTATION := $(TOOLSDIR)/bin/notation
 NOTATION_VERSION := 1.3.2
 COSIGN := $(TOOLSDIR)/bin/cosign
@@ -323,10 +323,14 @@ covhtml:
 	gocovmerge coverage*.txt > coverage.txt
 	go tool cover -html=coverage.txt -o coverage.html
 
-$(GOLINTER):
+$(GOLINTER): $(TOOLSDIR)/.golangci-lint-$(GOLINTER_VERSION)
+
+$(TOOLSDIR)/.golangci-lint-$(GOLINTER_VERSION):
 	mkdir -p $(TOOLSDIR)/bin
+	rm -f $(TOOLSDIR)/.golangci-lint-*
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(TOOLSDIR)/bin $(GOLINTER_VERSION)
 	$(GOLINTER) version
+	touch $@
 
 .PHONY: check-logs
 check-logs:
@@ -334,13 +338,13 @@ check-logs:
 
 .PHONY: check
 check: $(if $(findstring ui,$(BUILD_LABELS)), ui)
-check: ./golangcilint.yaml $(GOLINTER)
+check: ./.golangci.yaml $(GOLINTER)
 	mkdir -p pkg/extensions/build; touch pkg/extensions/build/.empty
-	$(GOLINTER) --config ./golangcilint.yaml run --output.text.colors --build-tags ./...
-	$(GOLINTER) --config ./golangcilint.yaml run --output.text.colors --build-tags $(BUILD_LABELS)  ./...
-	$(GOLINTER) --config ./golangcilint.yaml run --output.text.colors --build-tags debug  ./pkg/debug/swagger/ ./pkg/debug/gqlplayground
-	$(GOLINTER) --config ./golangcilint.yaml run --output.text.colors --build-tags dev ./pkg/test/inject/
-	$(GOLINTER) --config ./golangcilint.yaml run --output.text.colors --build-tags stress ./pkg/cli/server/
+	$(GOLINTER) run --output.text.colors --build-tags ./...
+	$(GOLINTER) run --output.text.colors --build-tags $(BUILD_LABELS)  ./...
+	$(GOLINTER) run --output.text.colors --build-tags debug  ./pkg/debug/swagger/ ./pkg/debug/gqlplayground
+	$(GOLINTER) run --output.text.colors --build-tags dev ./pkg/test/inject/
+	$(GOLINTER) run --output.text.colors --build-tags stress ./pkg/cli/server/
 	rm pkg/extensions/build/.empty
 
 .PHONY: swagger
