@@ -413,7 +413,8 @@
     "zot": {
       "begin": 11440,
       "end": 11449
-    },
+    }
+  },
   "blackbox/openid_claim_mapping.bats": {
     "dex": {
       "begin": 11450,
