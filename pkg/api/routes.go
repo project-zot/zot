@@ -1134,32 +1134,67 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 	var blen, bsize int64
 
+	// No stream cache for partial requests (for now)
 	if partial {
 		repo, blen, bsize, err = imgStore.GetBlobPartial(name, digest, mediaType, from, to)
+		if err != nil {
+			details := zerr.GetDetails(err)
+			if errors.Is(err, zerr.ErrBadBlobDigest) {
+				details["digest"] = digest.String()
+				e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
+				zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+			} else if errors.Is(err, zerr.ErrRepoNotFound) {
+				details["name"] = name
+				e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+				zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
+			} else if errors.Is(err, zerr.ErrBlobNotFound) {
+				details["digest"] = digest.String()
+				e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(details)
+				zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
+			} else {
+				rh.c.Log.Error().Err(err).Msg("unexpected error")
+				response.WriteHeader(http.StatusInternalServerError)
+			}
+			return
+		}
 	} else {
+		// Prüfe erst lokalen Storage
 		repo, blen, err = imgStore.GetBlob(name, digest, mediaType)
-	}
 
-	if err != nil {
-		details := zerr.GetDetails(err)
-		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
-			details["digest"] = digest.String()
-			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrRepoNotFound) {
-			details["name"] = name
-			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrBlobNotFound) {
-			details["digest"] = digest.String()
-			e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
-		} else {
-			rh.c.Log.Error().Err(err).Msg("unexpected error")
-			response.WriteHeader(http.StatusInternalServerError)
+		// Bei Blob-Not-Found: Versuche Stream-Cache BEVOR normales Sync
+		if err != nil && errors.Is(err, zerr.ErrBlobNotFound) {
+			// Stream-Cache hat Priorität - verhindert Blocking durch normales Sync
+			if rh.tryStreamProxy(response, request, name, digest, mediaType) {
+				rh.c.Log.Info().
+					Str("digest", digest.String()).
+					Str("repo", name).
+					Msg("blob served via stream proxy")
+				return
+			}
+			// Wenn Stream-Cache nicht verfügbar/erfolgreich: normale Fehlerbehandlung
 		}
 
-		return
+		if err != nil {
+			details := zerr.GetDetails(err)
+			if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
+				details["digest"] = digest.String()
+				e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
+				zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+			} else if errors.Is(err, zerr.ErrRepoNotFound) {
+				details["name"] = name
+				e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+				zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
+			} else if errors.Is(err, zerr.ErrBlobNotFound) {
+				details["digest"] = digest.String()
+				e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(details)
+				zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
+			} else {
+				rh.c.Log.Error().Err(err).Msg("unexpected error")
+				response.WriteHeader(http.StatusInternalServerError)
+			}
+
+			return
+		}
 	}
 
 	defer repo.Close()
@@ -2106,22 +2141,184 @@ func (rh *RouteHandler) getImageStore(name string) storageTypes.ImageStore {
 	return rh.c.StoreController.GetImageStore(name)
 }
 
+// tryStreamProxy attempts to load a blob via the stream proxy
+func (rh *RouteHandler) tryStreamProxy(response http.ResponseWriter, request *http.Request,
+	repo string, digest godigest.Digest, mediaType string) bool {
+	// Check if StreamProxyManager is available
+	if rh.c.StreamProxyMgr == nil {
+		return false
+	}
+
+	cache := rh.c.StreamProxyMgr.GetCache()
+	if cache == nil {
+		return false
+	}
+
+	// Check cache first
+	if hasBlob, _ := cache.HasBlob(digest); hasBlob {
+		rh.c.Log.Info().
+			Str("digest", digest.String()).
+			Str("repo", repo).
+			Msg("serving blob from stream cache")
+
+		reader, size, err := cache.GetBlob(digest)
+		if err != nil {
+			rh.c.Log.Error().Err(err).Msg("failed to get blob from cache")
+			return false
+		}
+		defer reader.Close()
+
+		response.Header().Set("Content-Type", mediaType)
+		response.Header().Set("Content-Length", fmt.Sprintf("%d", size))
+		response.Header().Set(constants.DistContentDigestKey, digest.String())
+		response.WriteHeader(http.StatusOK)
+
+		_, err = io.Copy(response, reader)
+		if err != nil {
+			rh.c.Log.Error().Err(err).Msg("failed to copy from cache to client")
+			return false
+		}
+
+		// Start asynchronous import
+		go func() {
+			imgStore := rh.getImageStore(repo)
+			ctx := context.Background()
+			err := cache.ImportToStorage(ctx, digest, repo, imgStore)
+			if err != nil {
+				rh.c.Log.Error().Err(err).
+					Str("digest", digest.String()).
+					Str("repo", repo).
+					Msg("failed to import blob from cache")
+			}
+		}()
+
+		return true
+	}
+
+	// Not in cache - check if stream proxy is configured for registry
+	// Get first available proxy (simplified - in production should be chosen based on repo)
+	var firstProxy interface{}
+	rh.c.StreamProxyMgr.mu.RLock()
+	for url := range rh.c.StreamProxyMgr.proxies {
+		proxy, exists := rh.c.StreamProxyMgr.GetProxy(url)
+		if exists {
+			firstProxy = proxy
+			break
+		}
+	}
+	rh.c.StreamProxyMgr.mu.RUnlock()
+
+	if firstProxy == nil {
+		return false
+	}
+
+	// Type assertion for StreamProxy
+	streamProxy, ok := firstProxy.(interface {
+		ProxyBlob(ctx context.Context, repo string, digest godigest.Digest, mediaType string, response http.ResponseWriter) (int64, error)
+	})
+	if !ok {
+		return false
+	}
+
+	// Attempt to load blob via proxy
+	ctx := request.Context()
+	_, err := streamProxy.ProxyBlob(ctx, repo, digest, mediaType, response)
+	if err != nil {
+		rh.c.Log.Error().Err(err).
+			Str("digest", digest.String()).
+			Str("repo", repo).
+			Msg("failed to proxy blob")
+		return false
+	}
+
+	return true
+}
+
 // will sync on demand if an image is not found, in case sync extensions is enabled.
 func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore storageTypes.ImageStore, name,
 	reference string,
 ) ([]byte, godigest.Digest, string, error) {
 	syncEnabled := isSyncOnDemandEnabled(*routeHandler.c)
+	streamCacheEnabled := routeHandler.c.StreamProxyMgr != nil && routeHandler.c.StreamProxyMgr.IsEnabled()
 
-	_, digestErr := godigest.Parse(reference)
-	if digestErr == nil {
-		// if it's a digest then return local cached image, if not found and sync enabled, then try to sync
-		content, digest, mediaType, err := imgStore.GetImageManifest(name, reference)
-		if err == nil || !syncEnabled {
-			return content, digest, mediaType, err
+	// Try to load from local storage first
+	content, digest, mediaType, err := imgStore.GetImageManifest(name, reference)
+	if err == nil {
+		// Manifest found, return it
+		return content, digest, mediaType, nil
+	}
+
+	// Manifest not available locally
+	// With stream cache: Load manifest directly from remote (WITHOUT full sync)
+	if streamCacheEnabled && (errors.Is(err, zerr.ErrManifestNotFound) || errors.Is(err, zerr.ErrRepoNotFound)) {
+		routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
+			Msg("stream cache mode - fetching manifest directly from remote, blobs will be streamed on-demand")
+
+		// Get first available proxy
+		var proxy interface{}
+		routeHandler.c.StreamProxyMgr.mu.RLock()
+		for url := range routeHandler.c.StreamProxyMgr.proxies {
+			p, exists := routeHandler.c.StreamProxyMgr.GetProxy(url)
+			if exists {
+				proxy = p
+				break
+			}
+		}
+		routeHandler.c.StreamProxyMgr.mu.RUnlock()
+
+		if proxy != nil {
+			// Type assertion for manifest fetch
+			type ManifestFetcher interface {
+				FetchManifestFromRemote(ctx context.Context, repo, ref string) ([]byte, godigest.Digest, string, error)
+				StoreManifest(ctx context.Context, repo, ref, mediaType string, data []byte) error
+			}
+
+			if fetcher, ok := proxy.(ManifestFetcher); ok {
+				// Load manifest from remote
+				manifestBytes, manifestDigest, manifestMediaType, fetchErr := fetcher.FetchManifestFromRemote(ctx, name, reference)
+				if fetchErr != nil {
+					routeHandler.c.Log.Error().Err(fetchErr).
+						Str("repo", name).
+						Str("ref", reference).
+						Msg("failed to fetch manifest from remote")
+					// Return original error
+					return nil, "", "", err
+				}
+
+				routeHandler.c.Log.Info().
+					Str("repo", name).
+					Str("ref", reference).
+					Str("digest", manifestDigest.String()).
+					Msg("successfully fetched manifest from remote via stream cache")
+
+				// Store manifest locally (asynchronously in background)
+				go func() {
+					storeErr := fetcher.StoreManifest(context.Background(), name, reference, manifestMediaType, manifestBytes)
+					if storeErr != nil {
+						routeHandler.c.Log.Error().Err(storeErr).
+							Str("repo", name).
+							Str("ref", reference).
+							Msg("failed to store manifest locally")
+					} else {
+						routeHandler.c.Log.Info().
+							Str("repo", name).
+							Str("ref", reference).
+							Msg("manifest stored locally in background")
+					}
+				}()
+
+				// Return manifest immediately
+				return manifestBytes, manifestDigest, manifestMediaType, nil
+			}
+
+			routeHandler.c.Log.Warn().Msg("proxy does not support manifest fetching")
+		} else {
+			routeHandler.c.Log.Warn().Msg("no stream proxy available")
 		}
 	}
 
-	if syncEnabled {
+	// Normal sync (only if stream cache is NOT active or as fallback)
+	if syncEnabled && !streamCacheEnabled {
 		routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
 			Msg("trying to get updated image by syncing on demand")
 
@@ -2129,9 +2326,13 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 			routeHandler.c.Log.Err(errSync).Str("repository", name).Str("reference", reference).
 				Msg("failed to sync image")
 		}
+
+		// Try again after sync
+		return imgStore.GetImageManifest(name, reference)
 	}
 
-	return imgStore.GetImageManifest(name, reference)
+	// No sync possible, return error
+	return nil, "", "", err
 }
 
 type APIKeyPayload struct { //nolint:revive

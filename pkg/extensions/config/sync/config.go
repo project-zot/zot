@@ -33,7 +33,14 @@ type RegistryConfig struct {
 	RetryDelay       *time.Duration
 	OnlySigned       *bool
 	CredentialHelper string
-	PreserveDigest   bool // sync without converting
+	PreserveDigest   bool               // sync without converting
+	StreamCache      *StreamCacheConfig `mapstructure:",omitempty"`
+}
+
+type StreamCacheConfig struct {
+	Enable   *bool
+	CacheDir string
+	MaxSize  int64 // Maximum cache size in bytes (0 = unlimited)
 }
 
 type Content struct {

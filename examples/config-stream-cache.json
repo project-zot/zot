@@ -1,0 +1,40 @@
+{
+  "distSpecVersion": "1.1.0",
+  "storage": {
+    "rootDirectory": "./tmp/zot"
+  },
+  "http": {
+    "address": "0.0.0.0",
+    "port": "8080"
+  },
+  "log": {
+    "level": "debug"
+  },
+  "extensions": {
+    "sync": {
+      "enable": true,
+      "registries": [
+        {
+          "urls": [
+            "https://registry.access.redhat.com"
+          ],
+          "onDemand": true,
+          "maxRetries": 3,
+          "retryDelay": "5m",
+          "tlsVerify": true,
+          "streamCache": {
+            "enable": true,
+            "cacheDir": "./tmp/cache/zot",
+            "maxSize": 10737418240
+          },
+          "content": [
+            {
+              "prefix": "**"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+
