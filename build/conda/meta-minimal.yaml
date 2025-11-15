@@ -1,0 +1,52 @@
+{% set name = "zot-minimal" %}
+{% set version = environ.get('RELEASE_TAG', 'dev').lstrip('v') %}
+{% set commit = environ.get('COMMIT', 'unknown') %}
+{% set go_version = environ.get('GO_VERSION', 'unknown') %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  path: ../..
+
+build:
+  number: 0
+  script:
+    - export CGO_ENABLED=0
+    - export GOOS={{ environ.get('GOOS', target_platform.split('-')[0]) }}
+    - export GOARCH={{ environ.get('GOARCH', target_platform.split('-')[1]) }}
+    # Build zot-minimal binary (no extensions)
+    - |
+      go build \
+        -trimpath \
+        -ldflags "-X github.com/project-zot/zot/pkg/api/config.ReleaseTag={{ version }} -X github.com/project-zot/zot/pkg/api/config.Commit={{ commit }} -X github.com/project-zot/zot/pkg/api/config.BinaryType=minimal -X github.com/project-zot/zot/pkg/api/config.GoVersion={{ go_version }} -s -w" \
+        -o $PREFIX/bin/zot{{ '.exe' if target_platform.startswith('win') else '' }} \
+        ./cmd/zot
+
+requirements:
+  build:
+    - {{ compiler('go') }}
+    - go >=1.22
+  run:
+
+test:
+  commands:
+    - zot --help
+
+about:
+  home: https://zotregistry.io
+  license: Apache-2.0
+  license_family: Apache
+  license_file: LICENSE
+  summary: A production-ready vendor-neutral OCI image registry (minimal build)
+  description: |
+    zot-minimal is a minimal build of the zot OCI image registry 
+    with no extensions enabled. This provides a lightweight registry 
+    with just the core functionality.
+  doc_url: https://zotregistry.io/latest/
+  dev_url: https://github.com/project-zot/zot
+
+extra:
+  recipe-maintainers:
+    - project-zot
