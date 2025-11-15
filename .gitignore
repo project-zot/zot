@@ -33,3 +33,9 @@ vendor/
 examples/config-sync-localhost.json
 node_modules
 zot-test
+
+# Nix build artifacts
+result
+result-*
+nix-result-*
+.direnv/
