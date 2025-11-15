@@ -182,10 +182,53 @@ binary-minimal: EXTENSIONS=
 binary-minimal: modcheck build-metadata
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-minimal$(BIN_EXT) $(BUILDMODE_FLAGS) -v -trimpath -ldflags "-X $(CONFIG_RELEASE_TAG)=${RELEASE_TAG} -X $(CONFIG_COMMIT)=${COMMIT} -X $(CONFIG_BINARY_TYPE)=minimal -X $(CONFIG_GO_VERSION)=${GO_VERSION} -s -w" ./cmd/zot
 
+.PHONY: binary-nixos-minimal
+binary-nixos-minimal: check-nix
+	@echo "Building zot-minimal with Nix..."
+	cd build/nixos && \
+	RELEASE_TAG=$(RELEASE_TAG) COMMIT=$(COMMIT) GO_VERSION=$(GO_VERSION) \
+	nix --extra-experimental-features 'nix-command flakes' build .#zot-minimal --out-link $(TOP_LEVEL)/bin/nix-result-zot-minimal
+	@if [ -e bin/nix-result-zot-minimal/bin/zot ]; then \
+		cp bin/nix-result-zot-minimal/bin/zot bin/zot-$(OS)-$(ARCH)-minimal-nixos$(BIN_EXT); \
+		echo "zot-minimal binary built: bin/zot-$(OS)-$(ARCH)-minimal-nixos$(BIN_EXT)"; \
+	fi
+
 .PHONY: binary
 binary: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 binary: modcheck build-metadata
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)$(BIN_EXT) $(BUILDMODE_FLAGS) $(GO_CMD_TAGS) -v -trimpath -ldflags "-X $(CONFIG_RELEASE_TAG)=${RELEASE_TAG} -X $(CONFIG_COMMIT)=${COMMIT} -X $(CONFIG_BINARY_TYPE)=$(extended-name) -X $(CONFIG_GO_VERSION)=${GO_VERSION} -s -w" ./cmd/zot
+
+.PHONY: check-nix
+check-nix:
+	@if ! command -v nix >/dev/null 2>&1; then \
+		echo "Error: nix is not installed. Please install Nix first."; \
+		echo "Visit: https://nixos.org/download.html"; \
+		exit 1; \
+	fi
+	@if [ -e /nix/var/nix/daemon-socket/socket ] && ! test -r /nix/var/nix/daemon-socket/socket 2>/dev/null; then \
+		echo "Error: Cannot access Nix daemon socket. This usually means:"; \
+		echo "  1. You're not in the 'nix-users' group"; \
+		echo "  2. The nix-daemon is not running"; \
+		echo ""; \
+		echo "Try these solutions:"; \
+		echo "  - Add yourself to nix-users: sudo usermod -aG nix-users \$$USER"; \
+		echo "  - Start the daemon: sudo systemctl start nix-daemon"; \
+		echo "  - Then log out and log back in"; \
+		echo ""; \
+		echo "See build/nixos/README.md for more details."; \
+		exit 1; \
+	fi
+
+.PHONY: binary-nixos
+binary-nixos: check-nix
+	@echo "Building zot with Nix..."
+	cd build/nixos && \
+	RELEASE_TAG=$(RELEASE_TAG) COMMIT=$(COMMIT) GO_VERSION=$(GO_VERSION) BUILD_LABELS=$(BUILD_LABELS) \
+	nix --extra-experimental-features 'nix-command flakes' build .#zot --out-link $(TOP_LEVEL)/bin/nix-result-zot
+	@if [ -e bin/nix-result-zot/bin/zot ]; then \
+		cp bin/nix-result-zot/bin/zot bin/zot-$(OS)-$(ARCH)-nixos$(BIN_EXT); \
+		echo "zot binary built: bin/zot-$(OS)-$(ARCH)-nixos$(BIN_EXT)"; \
+	fi
 
 .PHONY: binary-debug
 binary-debug: $(if $(findstring ui,$(BUILD_LABELS)), ui)
@@ -196,9 +239,31 @@ binary-debug: modcheck swaggercheck build-metadata
 cli: modcheck build-metadata
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zli-$(OS)-$(ARCH)$(BIN_EXT) $(BUILDMODE_FLAGS) -tags $(BUILD_LABELS),search -v -trimpath -ldflags "-X $(CONFIG_COMMIT)=${COMMIT} -X $(CONFIG_BINARY_TYPE)=$(extended-name) -X $(CONFIG_GO_VERSION)=${GO_VERSION} -s -w" ./cmd/zli
 
+.PHONY: cli-nixos
+cli-nixos: check-nix
+	@echo "Building zli with Nix..."
+	cd build/nixos && \
+	RELEASE_TAG=$(RELEASE_TAG) COMMIT=$(COMMIT) GO_VERSION=$(GO_VERSION) BUILD_LABELS=$(BUILD_LABELS) \
+	nix --extra-experimental-features 'nix-command flakes' build .#zli --out-link $(TOP_LEVEL)/bin/nix-result-zli
+	@if [ -e bin/nix-result-zli/bin/zli ]; then \
+		cp bin/nix-result-zli/bin/zli bin/zli-$(OS)-$(ARCH)-nixos$(BIN_EXT); \
+		echo "zli binary built: bin/zli-$(OS)-$(ARCH)-nixos$(BIN_EXT)"; \
+	fi
+
 .PHONY: bench
 bench: modcheck build-metadata
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zb-$(OS)-$(ARCH)$(BIN_EXT) $(BUILDMODE_FLAGS) $(GO_CMD_TAGS) -v -trimpath -ldflags "-X $(CONFIG_COMMIT)=${COMMIT} -X $(CONFIG_BINARY_TYPE)=$(extended-name) -X $(CONFIG_GO_VERSION)=${GO_VERSION} -s -w" ./cmd/zb
+
+.PHONY: bench-nixos
+bench-nixos: check-nix
+	@echo "Building zb with Nix..."
+	cd build/nixos && \
+	RELEASE_TAG=$(RELEASE_TAG) COMMIT=$(COMMIT) GO_VERSION=$(GO_VERSION) BUILD_LABELS=$(BUILD_LABELS) \
+	nix --extra-experimental-features 'nix-command flakes' build .#zb --out-link $(TOP_LEVEL)/bin/nix-result-zb
+	@if [ -e bin/nix-result-zb/bin/zb ]; then \
+		cp bin/nix-result-zb/bin/zb bin/zb-$(OS)-$(ARCH)-nixos$(BIN_EXT); \
+		echo "zb binary built: bin/zb-$(OS)-$(ARCH)-nixos$(BIN_EXT)"; \
+	fi
 
 .PHONY: exporter-minimal
 exporter-minimal: EXTENSIONS=
@@ -396,6 +461,7 @@ check-licenses:
 .PHONY: clean
 clean:
 	rm -f bin/z*
+	rm -f bin/nix-result-*
 	rm -rf hack
 	rm -rf test/data/zot-test
 	rm -rf test/data/zot-cve-test
