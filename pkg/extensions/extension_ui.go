@@ -50,7 +50,7 @@ func addUISecurityHeaders(h http.Handler) http.HandlerFunc { //nolint:varnamelen
 			"style-src 'self' 'unsafe-inline'",
 			"font-src 'self'",
 			"connect-src 'self'",
-			"img-src 'self'",
+			"img-src 'self' data:",
 			"manifest-src 'self'",
 			"base-uri 'self'",
 		}
