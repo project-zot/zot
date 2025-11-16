@@ -33,6 +33,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/api/constants"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/compat"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	cveinfo "zotregistry.dev/zot/v2/pkg/extensions/search/cve"
@@ -5333,6 +5334,7 @@ func TestMetaDBIndexOperations(t *testing.T) {
 		baseURL := GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
+		conf.HTTP.Compat = []compat.MediaCompatibility{compat.DockerManifestV2SchemaV2}
 		conf.Storage.RootDirectory = dir
 		conf.Storage.GC = false
 		defaultVal := true
@@ -5431,7 +5433,219 @@ func RunMetaDBIndexTests(baseURL, port string) {
 		responseImage = responseImages[0]
 
 		So(responseImage.IsSigned, ShouldBeFalse)
+		// Download count is 1 because SignImageUsingCosign fetches the manifest to sign it
+		So(responseImage.DownloadCount, ShouldEqual, 1)
+
+		// Get initial repository download count - query repository separately
+		repoQuery := `
+			{
+				GlobalSearch(query:"repo"){
+					Repos {
+						Name DownloadCount
+					}
+				}
+			}`
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(repoQuery))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		repoResponseStruct := &zcommon.GlobalSearchResultResp{}
+		err = json.Unmarshal(resp.Body(), repoResponseStruct)
+		So(err, ShouldBeNil)
+		repos := repoResponseStruct.GlobalSearchResult.GlobalSearch.Repos
+		So(repos, ShouldNotBeEmpty)
+		initialRepoDownloadCount := repos[0].DownloadCount
+
+		// Test download count - download the index manifest 3 times
+		resp, err = resty.R().Get(baseURL + "/v2/" + repo + "/manifests/" + "tag1")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		resp, err = resty.R().Get(baseURL + "/v2/" + repo + "/manifests/" + "tag1")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		resp, err = resty.R().Get(baseURL + "/v2/" + repo + "/manifests/" + "tag1")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// Verify download count increased at both image and repository level
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		responseStruct = &zcommon.GlobalSearchResultResp{}
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+		responseImages = responseStruct.GlobalSearchResult.GlobalSearch.Images
+		So(responseImages, ShouldNotBeEmpty)
+		responseImage = responseImages[0]
+		// Started with 1 (from cosign signing), added 3 more downloads = 4 total
+		So(responseImage.DownloadCount, ShouldEqual, 4)
+
+		// Verify repository-level download count also increased - query repository separately
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(repoQuery))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		repoResponseStruct = &zcommon.GlobalSearchResultResp{}
+		err = json.Unmarshal(resp.Body(), repoResponseStruct)
+		So(err, ShouldBeNil)
+		repos = repoResponseStruct.GlobalSearchResult.GlobalSearch.Repos
+		So(repos, ShouldNotBeEmpty)
+		So(repos[0].DownloadCount, ShouldEqual, initialRepoDownloadCount+3)
 	})
+
+	Convey("Push test index with Docker media types", func() {
+		const repo = "repo-docker"
+
+		multiarchImage := CreateRandomMultiarch().AsDockerImage()
+
+		err := UploadMultiarchImage(multiarchImage, baseURL, repo, "tag1")
+		So(err, ShouldBeNil)
+
+		query := `
+			{
+				GlobalSearch(query:"repo-docker:tag1"){
+					Images {
+						RepoName Tag DownloadCount
+						IsSigned
+						Manifests {
+							Digest
+							ConfigDigest
+							Platform {Os Arch}
+							Layers {Size Digest}
+							LastUpdated
+							Size
+						}
+					}
+				}
+			}`
+
+		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		responseStruct := &zcommon.GlobalSearchResultResp{}
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+
+		responseImages := responseStruct.GlobalSearchResult.GlobalSearch.Images
+		So(responseImages, ShouldNotBeEmpty)
+		responseImage := responseImages[0]
+		So(len(responseImage.Manifests), ShouldEqual, 3)
+
+		err = signature.SignImageUsingCosign("repo-docker@"+multiarchImage.DigestStr(), port, false)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		responseStruct = &zcommon.GlobalSearchResultResp{}
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+
+		responseImages = responseStruct.GlobalSearchResult.GlobalSearch.Images
+		So(responseImages, ShouldNotBeEmpty)
+		responseImage = responseImages[0]
+
+		So(responseImage.IsSigned, ShouldBeTrue)
+
+		// remove signature
+		cosignTag := "sha256-" + multiarchImage.Digest().Encoded() + ".sig"
+		_, err = resty.R().Delete(baseURL + "/v2/" + repo + "/manifests/" + cosignTag)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		responseStruct = &zcommon.GlobalSearchResultResp{}
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+
+		responseImages = responseStruct.GlobalSearchResult.GlobalSearch.Images
+		So(responseImages, ShouldNotBeEmpty)
+		responseImage = responseImages[0]
+
+		So(responseImage.IsSigned, ShouldBeFalse)
+		// Download count is 1 because SignImageUsingCosign fetches the manifest to sign it
+		initialDownloadCount := responseImage.DownloadCount
+		So(initialDownloadCount, ShouldEqual, 1)
+
+		// Get initial repository download count - query repository separately
+		repoQuery := `
+			{
+				GlobalSearch(query:"repo-docker"){
+					Repos {
+						Name DownloadCount
+					}
+				}
+			}`
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(repoQuery))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		repoResponseStruct := &zcommon.GlobalSearchResultResp{}
+		err = json.Unmarshal(resp.Body(), repoResponseStruct)
+		So(err, ShouldBeNil)
+		repos := repoResponseStruct.GlobalSearchResult.GlobalSearch.Repos
+		So(repos, ShouldNotBeEmpty)
+		initialRepoDownloadCount := repos[0].DownloadCount
+
+		// Test download count - download the index manifest 3 times
+		resp, err = resty.R().Get(baseURL + "/v2/" + repo + "/manifests/" + "tag1")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		resp, err = resty.R().Get(baseURL + "/v2/" + repo + "/manifests/" + "tag1")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		resp, err = resty.R().Get(baseURL + "/v2/" + repo + "/manifests/" + "tag1")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// Verify download count increased at both image and repository level
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		responseStruct = &zcommon.GlobalSearchResultResp{}
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+		responseImages = responseStruct.GlobalSearchResult.GlobalSearch.Images
+		So(responseImages, ShouldNotBeEmpty)
+		responseImage = responseImages[0]
+		// Started with initialDownloadCount of 1 (from SignImageUsingCosign), added 3 more downloads
+		So(responseImage.DownloadCount, ShouldEqual, initialDownloadCount+3)
+
+		// Verify repository-level download count also increased - query repository separately
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(repoQuery))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		repoResponseStruct = &zcommon.GlobalSearchResultResp{}
+		err = json.Unmarshal(resp.Body(), repoResponseStruct)
+		So(err, ShouldBeNil)
+		repos = repoResponseStruct.GlobalSearchResult.GlobalSearch.Repos
+		So(repos, ShouldNotBeEmpty)
+		So(repos[0].DownloadCount, ShouldEqual, initialRepoDownloadCount+3)
+	})
+
 	Convey("Index base images", func() {
 		// ---------------- BASE IMAGE -------------------
 		imageAMD64 := CreateImageWith().LayerBlobs([][]byte{
@@ -5916,6 +6130,26 @@ func TestMetaDBWhenReadingImages(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(responseStruct.Images, ShouldNotBeEmpty)
 			So(responseStruct.Images[0].DownloadCount, ShouldEqual, 3)
+
+			// Verify repository-level download count also increased - query repository separately
+			repoQuery := `
+			{
+				GlobalSearch(query:"repo1"){
+					Repos {
+						Name DownloadCount
+					}
+				}
+			}`
+			resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(repoQuery))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			repoResponseStruct := &zcommon.GlobalSearchResultResp{}
+			err = json.Unmarshal(resp.Body(), repoResponseStruct)
+			So(err, ShouldBeNil)
+			So(repoResponseStruct.Repos, ShouldNotBeEmpty)
+			So(repoResponseStruct.Repos[0].DownloadCount, ShouldEqual, 3)
 		})
 
 		Convey("Error when incrementing", func() {
@@ -5928,6 +6162,87 @@ func TestMetaDBWhenReadingImages(t *testing.T) {
 			resp, err := resty.R().Get(baseURL + "/v2/" + "repo1" + "/manifests/" + "1.0.1")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+		})
+	})
+
+	Convey("Push test image with Docker media types", t, func() {
+		dir := t.TempDir()
+
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.HTTP.Compat = []compat.MediaCompatibility{compat.DockerManifestV2SchemaV2}
+		conf.Storage.RootDirectory = dir
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+		}
+
+		ctlr := api.NewController(conf)
+
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
+
+		image := CreateImageWith().RandomLayers(1, 100).DefaultConfig().Build().AsDockerImage()
+
+		err := UploadImage(image, baseURL, "repo2", "2.0.1")
+		So(err, ShouldBeNil)
+
+		Convey("Download 3 times", func() {
+			resp, err := resty.R().Get(baseURL + "/v2/" + "repo2" + "/manifests/" + "2.0.1")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().Get(baseURL + "/v2/" + "repo2" + "/manifests/" + "2.0.1")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().Get(baseURL + "/v2/" + "repo2" + "/manifests/" + "2.0.1")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			query := `
+			{
+				GlobalSearch(query:"repo2:2.0"){
+					Images {
+						RepoName Tag DownloadCount
+					}
+				}
+			}`
+
+			resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			responseStruct := &zcommon.GlobalSearchResultResp{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+			So(responseStruct.Images, ShouldNotBeEmpty)
+			So(responseStruct.Images[0].DownloadCount, ShouldEqual, 3)
+
+			// Verify repository-level download count also increased - query repository separately
+			repoQuery := `
+			{
+				GlobalSearch(query:"repo2"){
+					Repos {
+						Name DownloadCount
+					}
+				}
+			}`
+			resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(repoQuery))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			repoResponseStruct := &zcommon.GlobalSearchResultResp{}
+			err = json.Unmarshal(resp.Body(), repoResponseStruct)
+			So(err, ShouldBeNil)
+			So(repoResponseStruct.Repos, ShouldNotBeEmpty)
+			So(repoResponseStruct.Repos[0].DownloadCount, ShouldEqual, 3)
 		})
 	})
 }
