@@ -861,8 +861,8 @@ github.com/aws/aws-sdk-go-v2/config v1.31.18 h1:RouG3AcF2fLFhw+Z0qbnuIl9HZ0Kh4E/
 github.com/aws/aws-sdk-go-v2/config v1.31.18/go.mod h1:aXZ13mSQC8S2VEHwGfL1COMuJ1Zty6pX5xU7hyqjvCg=
 github.com/aws/aws-sdk-go-v2/credentials v1.18.22 h1:hyIVGBHhQPaNP9D4BaVRwpjLMCwMMdAkHqB3gGMiykU=
 github.com/aws/aws-sdk-go-v2/credentials v1.18.22/go.mod h1:B9E2qHs3/YGfeQZ4jrIE/nPvqxtyafZrJ5EQiZBG6pk=
-github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.20.21 h1:aRtF5c9+yTd5ws8Z251wNt01tuR4/FjJd5uEL392ZTQ=
-github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.20.21/go.mod h1:VqA+2/pVVPe5RRRJCWsetKmfRipvLPoZhfajj/F1XM8=
+github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.20.23 h1:lbCh6aGAGHC/tZn30uaB5C1Txr5nRMr86ObRrDRZTYU=
+github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.20.23/go.mod h1:JX1mhxc+O8hXWVVoA+gh9Y2iDLEY3AQQ2/Ix6dQKnQQ=
 github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.13 h1:T1brd5dR3/fzNFAQch/iBKeX07/ffu/cLu+q+RuzEWk=
 github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.13/go.mod h1:Peg/GBAQ6JDt+RoBf4meB1wylmAipb7Kg2ZFakZTlwk=
 github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.13 h1:a+8/MLcWlIxo1lF9xaGt3J/u3yOZx+CdSveSNwjhD40=
@@ -871,10 +871,10 @@ github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.13 h1:HBSI2kDkMdWz4ZM7Fj
 github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.13/go.mod h1:YE94ZoDArI7awZqJzBAZ3PDD2zSfuP7w6P2knOzIn8M=
 github.com/aws/aws-sdk-go-v2/internal/ini v1.8.4 h1:WKuaxf++XKWlHWu9ECbMlha8WOEGm0OUEZqm4K/Gcfk=
 github.com/aws/aws-sdk-go-v2/internal/ini v1.8.4/go.mod h1:ZWy7j6v1vWGmPReu0iSGvRiise4YI5SkR3OHKTZ6Wuc=
-github.com/aws/aws-sdk-go-v2/service/dynamodb v1.52.4 h1:5nhomXR6eve564BfKNb/2wvBJGicjXHOFW9++Y6jwRg=
-github.com/aws/aws-sdk-go-v2/service/dynamodb v1.52.4/go.mod h1:6eUUnWOJ8sucL5Uk8rPkFo8FYioM0CTNGHga8hwzXVc=
-github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.32.2 h1:0V0Nqc3FG2pr59K/NHqOXYJ/gDSAtuRYdp0r6DW16I8=
-github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.32.2/go.mod h1:nZ9KOFbkwpJtaM4VaBI+Jh6b3QrAyRX/k2hcNogeUZc=
+github.com/aws/aws-sdk-go-v2/service/dynamodb v1.52.6 h1:jlPkBSbMSpqVk47u9kqblihtXlmzYv3ZFXtuNKUNwDc=
+github.com/aws/aws-sdk-go-v2/service/dynamodb v1.52.6/go.mod h1:6eUUnWOJ8sucL5Uk8rPkFo8FYioM0CTNGHga8hwzXVc=
+github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.32.4 h1:/uHlzAMroQ8CDKyCxC0sTgZKQNZUoG9USaWQ8PT3fG4=
+github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.32.4/go.mod h1:nZ9KOFbkwpJtaM4VaBI+Jh6b3QrAyRX/k2hcNogeUZc=
 github.com/aws/aws-sdk-go-v2/service/ebs v1.25.3 h1:0Z1Oz8bRQJ1I/kDmTbISFxKwptaJoghfjh4QrKmXzE0=
 github.com/aws/aws-sdk-go-v2/service/ebs v1.25.3/go.mod h1:qIEaYAxM0l8/Tq5XtqCgc4Zs1a14JXoO2wU+LcCQDVk=
 github.com/aws/aws-sdk-go-v2/service/ec2 v1.234.0 h1:CwPCXL7/lBUFtgm+8P3V/eRi25Gu8UuvCrevjxJJrNI=

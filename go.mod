@@ -12,8 +12,8 @@ require (
 	github.com/aws/aws-sdk-go v1.55.8
 	github.com/aws/aws-sdk-go-v2 v1.39.6
 	github.com/aws/aws-sdk-go-v2/config v1.31.18
-	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.20.21
-	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.52.4
+	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.20.23
+	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.52.6
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.51.2
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.39.10
 	github.com/aws/aws-secretsmanager-caching-go v1.2.0
@@ -170,7 +170,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.13 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.13 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.4 // indirect
-	github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.32.2 // indirect
+	github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.32.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ebs v1.25.3 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.234.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ecrpublic v1.31.2 // indirect
