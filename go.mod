@@ -75,7 +75,7 @@ require (
 	github.com/vektah/gqlparser/v2 v2.5.31
 	github.com/zitadel/oidc/v3 v3.45.0
 	go.etcd.io/bbolt v1.4.3
-	golang.org/x/crypto v0.43.0
+	golang.org/x/crypto v0.44.0
 	golang.org/x/oauth2 v0.33.0
 	google.golang.org/protobuf v1.36.10
 	gopkg.in/resty.v1 v1.12.0
@@ -523,8 +523,8 @@ require (
 	golang.org/x/net v0.46.0 // indirect
 	golang.org/x/sync v0.18.0 // indirect
 	golang.org/x/sys v0.38.0 // indirect
-	golang.org/x/term v0.36.0 // indirect
-	golang.org/x/text v0.30.0 // indirect
+	golang.org/x/term v0.37.0 // indirect
+	golang.org/x/text v0.31.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	golang.org/x/tools v0.38.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240716161551-93cc26a95ae9 // indirect
