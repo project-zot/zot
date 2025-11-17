@@ -15,7 +15,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.20.21
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.52.4
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.51.2
-	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.39.10
+	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.39.13
 	github.com/aws/aws-secretsmanager-caching-go v1.2.0
 	github.com/aws/smithy-go v1.23.2
 	github.com/bmatcuk/doublestar/v4 v4.9.1
