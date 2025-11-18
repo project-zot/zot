@@ -334,6 +334,74 @@ func TestWrapperErrors(t *testing.T) {
 				err = dynamoWrapper.UpdateStatsOnDownload("repo", godigest.FromString("not-found").String()) //nolint: contextcheck
 				So(err, ShouldNotBeNil)
 			})
+
+			Convey("statistics entry missing but digest exists in tags - should create and increment", func() {
+				// Set repo reference to create tag
+				err := dynamoWrapper.SetRepoReference(ctx, "repo", "tag", imageMeta)
+				So(err, ShouldBeNil)
+
+				// Manually remove Statistics entry to simulate missing Statistics
+				repoMeta, err := dynamoWrapper.GetRepoMeta(ctx, "repo")
+				So(err, ShouldBeNil)
+				delete(repoMeta.Statistics, imageMeta.Digest.String())
+
+				// Set repo meta back without Statistics
+				err = dynamoWrapper.SetRepoMeta("repo", repoMeta)
+				So(err, ShouldBeNil)
+
+				// Verify Statistics entry doesn't exist
+				repoMeta, err = dynamoWrapper.GetRepoMeta(ctx, "repo")
+				So(err, ShouldBeNil)
+				_, exists := repoMeta.Statistics[imageMeta.Digest.String()]
+				So(exists, ShouldBeFalse)
+
+				// Update stats - should create Statistics entry and increment
+				err = dynamoWrapper.UpdateStatsOnDownload("repo", "tag") //nolint: contextcheck
+				So(err, ShouldBeNil)
+
+				// Verify Statistics entry was created and incremented
+				repoMeta, err = dynamoWrapper.GetRepoMeta(ctx, "repo")
+				So(err, ShouldBeNil)
+				stats, exists := repoMeta.Statistics[imageMeta.Digest.String()]
+				So(exists, ShouldBeTrue)
+				So(stats.DownloadCount, ShouldEqual, 1)
+
+				// Update stats again - should increment existing entry
+				err = dynamoWrapper.UpdateStatsOnDownload("repo", "tag") //nolint: contextcheck
+				So(err, ShouldBeNil)
+
+				repoMeta, err = dynamoWrapper.GetRepoMeta(ctx, "repo")
+				So(err, ShouldBeNil)
+				stats, exists = repoMeta.Statistics[imageMeta.Digest.String()]
+				So(exists, ShouldBeTrue)
+				So(stats.DownloadCount, ShouldEqual, 2)
+			})
+
+			Convey("statistics entry missing but digest exists in tags - using digest reference", func() {
+				// Set repo reference to create tag
+				err := dynamoWrapper.SetRepoReference(ctx, "repo", "tag", imageMeta)
+				So(err, ShouldBeNil)
+
+				// Manually remove Statistics entry
+				repoMeta, err := dynamoWrapper.GetRepoMeta(ctx, "repo")
+				So(err, ShouldBeNil)
+				delete(repoMeta.Statistics, imageMeta.Digest.String())
+
+				// Set repo meta back without Statistics
+				err = dynamoWrapper.SetRepoMeta("repo", repoMeta)
+				So(err, ShouldBeNil)
+
+				// Update stats using digest directly
+				err = dynamoWrapper.UpdateStatsOnDownload("repo", imageMeta.Digest.String()) //nolint: contextcheck
+				So(err, ShouldBeNil)
+
+				// Verify Statistics entry was created
+				repoMeta, err = dynamoWrapper.GetRepoMeta(ctx, "repo")
+				So(err, ShouldBeNil)
+				stats, exists := repoMeta.Statistics[imageMeta.Digest.String()]
+				So(exists, ShouldBeTrue)
+				So(stats.DownloadCount, ShouldEqual, 1)
+			})
 		})
 		Convey("GetReferrersInfo", func() {
 			Convey("unmarshalProtoRepoMeta error", func() {

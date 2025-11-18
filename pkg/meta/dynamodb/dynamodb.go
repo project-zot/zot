@@ -425,15 +425,25 @@ func (dwr *DynamoDB) SetRepoReference(ctx context.Context, repo string, referenc
 		}
 	}
 
-	if _, ok := repoMeta.Statistics[imageMeta.Digest.String()]; !ok {
-		repoMeta.Statistics[imageMeta.Digest.String()] = &proto_go.DescriptorStatistics{
+	digestStr := imageMeta.Digest.String()
+	stats, ok := repoMeta.Statistics[digestStr]
+
+	if !ok {
+		stats = &proto_go.DescriptorStatistics{
 			DownloadCount:     0,
 			LastPullTimestamp: &timestamppb.Timestamp{},
 			PushTimestamp:     timestamppb.Now(),
 			PushedBy:          userid,
 		}
-	} else if repoMeta.Statistics[imageMeta.Digest.String()].PushTimestamp.AsTime().IsZero() {
-		repoMeta.Statistics[imageMeta.Digest.String()].PushTimestamp = timestamppb.Now()
+		repoMeta.Statistics[digestStr] = stats
+	} else {
+		if stats.PushTimestamp.AsTime().IsZero() {
+			stats.PushTimestamp = timestamppb.Now()
+		}
+
+		if userid != "" && stats.PushedBy == "" {
+			stats.PushedBy = userid
+		}
 	}
 
 	if _, ok := repoMeta.Signatures[imageMeta.Digest.String()]; !ok {
@@ -1157,7 +1167,30 @@ func (dwr *DynamoDB) UpdateStatsOnDownload(repo string, reference string) error 
 
 	manifestStatistics, ok := repoMeta.Statistics[descriptorDigest]
 	if !ok {
-		return zerr.ErrImageMetaNotFound
+		// Statistics entry doesn't exist - validate digest exists in this repository before creating it
+		// Check if digest is referenced in any tag for this repository
+		digestExists := false
+
+		for _, tagDescriptor := range repoMeta.Tags {
+			if tagDescriptor.Digest == descriptorDigest {
+				digestExists = true
+
+				break
+			}
+		}
+
+		if !digestExists {
+			return zerr.ErrImageMetaNotFound
+		}
+
+		// Statistics entry doesn't exist - create it
+		// This can happen if SetRepoReference failed or wasn't called
+		manifestStatistics = &proto_go.DescriptorStatistics{
+			DownloadCount:     0,
+			LastPullTimestamp: &timestamppb.Timestamp{},
+			PushTimestamp:     &timestamppb.Timestamp{}, // Unknown push time
+			PushedBy:          "",                       // Unknown pusher
+		}
 	}
 
 	manifestStatistics.DownloadCount++

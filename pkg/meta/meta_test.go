@@ -847,6 +847,103 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				So(err, ShouldBeNil)
 				So(*repoMeta.LastUpdatedImage.LastUpdated, ShouldEqual, time.Date(2011, 3, 1, 12, 0, 0, 0, time.UTC))
 			})
+
+			Convey("PushedBy field behavior", func() {
+				userAc := reqCtx.NewUserAccessControl()
+				userAc.SetUsername("test-user")
+				ctxWithUser := userAc.DeriveContext(context.Background())
+
+				emptyCtx := context.Background()
+
+				Convey("PushedBy is set when userid provided and PushedBy is empty", func() {
+					// Set repo reference with userid
+					err := metaDB.SetRepoReference(ctxWithUser, repo1, tag1, imgData1)
+					So(err, ShouldBeNil)
+
+					// Verify PushedBy is set
+					repoMeta, err := metaDB.GetRepoMeta(ctxWithUser, repo1)
+					So(err, ShouldBeNil)
+					stats, exists := repoMeta.Statistics[imgData1.Digest.String()]
+					So(exists, ShouldBeTrue)
+					So(stats.PushedBy, ShouldEqual, "test-user")
+				})
+
+				Convey("PushedBy is NOT overwritten when it already has a value", func() {
+					// Set repo reference with first user
+					err := metaDB.SetRepoReference(ctxWithUser, repo1, tag1, imgData1)
+					So(err, ShouldBeNil)
+
+					// Verify PushedBy is set
+					repoMeta, err := metaDB.GetRepoMeta(ctxWithUser, repo1)
+					So(err, ShouldBeNil)
+					stats, exists := repoMeta.Statistics[imgData1.Digest.String()]
+					So(exists, ShouldBeTrue)
+					So(stats.PushedBy, ShouldEqual, "test-user")
+
+					// Try to set repo reference again with different userid
+					userAc2 := reqCtx.NewUserAccessControl()
+					userAc2.SetUsername("different-user")
+					ctx2 := userAc2.DeriveContext(context.Background())
+
+					err = metaDB.SetRepoReference(ctx2, repo1, tag1, imgData1)
+					So(err, ShouldBeNil)
+
+					// Verify PushedBy is NOT overwritten
+					repoMeta, err = metaDB.GetRepoMeta(ctxWithUser, repo1)
+					So(err, ShouldBeNil)
+					stats, exists = repoMeta.Statistics[imgData1.Digest.String()]
+					So(exists, ShouldBeTrue)
+					So(stats.PushedBy, ShouldEqual, "test-user") // Still the original value
+				})
+
+				Convey("PushedBy is set when Statistics entry exists but PushedBy is empty", func() {
+					// Create repo reference without userid (empty context)
+					err := metaDB.SetRepoReference(emptyCtx, repo1, tag1, imgData1)
+					So(err, ShouldBeNil)
+
+					// Verify PushedBy is empty
+					repoMeta, err := metaDB.GetRepoMeta(ctxWithUser, repo1)
+					So(err, ShouldBeNil)
+					stats, exists := repoMeta.Statistics[imgData1.Digest.String()]
+					So(exists, ShouldBeTrue)
+					So(stats.PushedBy, ShouldEqual, "")
+
+					// Set repo reference again with userid
+					err = metaDB.SetRepoReference(ctxWithUser, repo1, tag1, imgData1)
+					So(err, ShouldBeNil)
+
+					// Verify PushedBy is now set
+					repoMeta, err = metaDB.GetRepoMeta(ctxWithUser, repo1)
+					So(err, ShouldBeNil)
+					stats, exists = repoMeta.Statistics[imgData1.Digest.String()]
+					So(exists, ShouldBeTrue)
+					So(stats.PushedBy, ShouldEqual, "test-user")
+				})
+
+				Convey("PushedBy is NOT set when userid is empty", func() {
+					// Set repo reference without userid (empty context)
+					err := metaDB.SetRepoReference(emptyCtx, repo1, tag1, imgData1)
+					So(err, ShouldBeNil)
+
+					// Verify PushedBy is empty
+					repoMeta, err := metaDB.GetRepoMeta(ctxWithUser, repo1)
+					So(err, ShouldBeNil)
+					stats, exists := repoMeta.Statistics[imgData1.Digest.String()]
+					So(exists, ShouldBeTrue)
+					So(stats.PushedBy, ShouldEqual, "")
+
+					// Set repo reference again without userid
+					err = metaDB.SetRepoReference(emptyCtx, repo1, tag1, imgData1)
+					So(err, ShouldBeNil)
+
+					// Verify PushedBy is still empty
+					repoMeta, err = metaDB.GetRepoMeta(ctxWithUser, repo1)
+					So(err, ShouldBeNil)
+					stats, exists = repoMeta.Statistics[imgData1.Digest.String()]
+					So(exists, ShouldBeTrue)
+					So(stats.PushedBy, ShouldEqual, "")
+				})
+			})
 		})
 
 		Convey("Test RemoveRepoReference", func() {

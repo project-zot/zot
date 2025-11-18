@@ -717,6 +717,87 @@ func TestWrapperErrors(t *testing.T) {
 				err = metaDB.UpdateStatsOnDownload("repo", godigest.FromString("not-found").String())
 				So(err, ShouldNotBeNil)
 			})
+
+			Convey("statistics entry missing but digest exists in tags - should create and increment", func() {
+				// Set repo reference to create tag
+				err := metaDB.SetRepoReference(ctx, "repo", "tag", imageMeta)
+				So(err, ShouldBeNil)
+
+				// Manually remove Statistics entry to simulate missing Statistics
+				// Get proto blob directly from Redis
+				key := keyPrefix + ":" + redis.RepoMetaBucket
+				repoMetaBlob, err := client.HGet(ctx, key, "repo").Bytes()
+				So(err, ShouldBeNil)
+
+				var protoRepoMeta proto_go.RepoMeta
+				err = proto.Unmarshal(repoMetaBlob, &protoRepoMeta)
+				So(err, ShouldBeNil)
+				delete(protoRepoMeta.Statistics, imageMeta.Digest.String())
+
+				repoMetaBlob, err = proto.Marshal(&protoRepoMeta)
+				So(err, ShouldBeNil)
+				err = setRepoMeta("repo", repoMetaBlob, client)
+				So(err, ShouldBeNil)
+
+				// Verify Statistics entry doesn't exist
+				repoMeta, err := metaDB.GetRepoMeta(ctx, "repo")
+				So(err, ShouldBeNil)
+				_, exists := repoMeta.Statistics[imageMeta.Digest.String()]
+				So(exists, ShouldBeFalse)
+
+				// Update stats - should create Statistics entry and increment
+				err = metaDB.UpdateStatsOnDownload("repo", "tag")
+				So(err, ShouldBeNil)
+
+				// Verify Statistics entry was created and incremented
+				repoMeta, err = metaDB.GetRepoMeta(ctx, "repo")
+				So(err, ShouldBeNil)
+				stats, exists := repoMeta.Statistics[imageMeta.Digest.String()]
+				So(exists, ShouldBeTrue)
+				So(stats.DownloadCount, ShouldEqual, 1)
+
+				// Update stats again - should increment existing entry
+				err = metaDB.UpdateStatsOnDownload("repo", "tag")
+				So(err, ShouldBeNil)
+
+				repoMeta, err = metaDB.GetRepoMeta(ctx, "repo")
+				So(err, ShouldBeNil)
+				stats, exists = repoMeta.Statistics[imageMeta.Digest.String()]
+				So(exists, ShouldBeTrue)
+				So(stats.DownloadCount, ShouldEqual, 2)
+			})
+
+			Convey("statistics entry missing but digest exists in tags - using digest reference", func() {
+				// Set repo reference to create tag
+				err := metaDB.SetRepoReference(ctx, "repo", "tag", imageMeta)
+				So(err, ShouldBeNil)
+
+				// Manually remove Statistics entry
+				key := keyPrefix + ":" + redis.RepoMetaBucket
+				repoMetaBlob, err := client.HGet(ctx, key, "repo").Bytes()
+				So(err, ShouldBeNil)
+
+				var protoRepoMeta proto_go.RepoMeta
+				err = proto.Unmarshal(repoMetaBlob, &protoRepoMeta)
+				So(err, ShouldBeNil)
+				delete(protoRepoMeta.Statistics, imageMeta.Digest.String())
+
+				repoMetaBlob, err = proto.Marshal(&protoRepoMeta)
+				So(err, ShouldBeNil)
+				err = setRepoMeta("repo", repoMetaBlob, client)
+				So(err, ShouldBeNil)
+
+				// Update stats using digest directly
+				err = metaDB.UpdateStatsOnDownload("repo", imageMeta.Digest.String())
+				So(err, ShouldBeNil)
+
+				// Verify Statistics entry was created
+				repoMeta, err := metaDB.GetRepoMeta(ctx, "repo")
+				So(err, ShouldBeNil)
+				stats, exists := repoMeta.Statistics[imageMeta.Digest.String()]
+				So(exists, ShouldBeTrue)
+				So(stats.DownloadCount, ShouldEqual, 1)
+			})
 		})
 
 		Convey("GetReferrersInfo", func() {

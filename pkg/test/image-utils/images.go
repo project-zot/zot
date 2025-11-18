@@ -193,7 +193,7 @@ func (img Image) AsDockerImage() Image {
 	}
 
 	img.ManifestDescriptor = ispec.Descriptor{
-		MediaType: docker.MediaTypeImageConfig,
+		MediaType: docker.MediaTypeManifest,
 		Digest:    img.digestAlgorithm.FromBytes(manifestBlob),
 		Size:      int64(len(manifestBlob)),
 		Data:      manifestBlob,

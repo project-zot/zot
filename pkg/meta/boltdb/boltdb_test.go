@@ -190,6 +190,111 @@ func TestWrapperErrors(t *testing.T) {
 				err = boltdbWrapper.UpdateStatsOnDownload("repo", godigest.FromString("not-found").String())
 				So(err, ShouldNotBeNil)
 			})
+
+			Convey("statistics entry missing but digest exists in tags - should create and increment", func() {
+				// Set repo reference to create tag
+				err := boltdbWrapper.SetRepoReference(ctx, "repo", "tag", imageMeta)
+				So(err, ShouldBeNil)
+
+				// Manually remove Statistics entry to simulate missing Statistics
+				err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
+					repoMetaBuck := tx.Bucket([]byte(boltdb.RepoMetaBuck))
+					repoMetaBlob := repoMetaBuck.Get([]byte("repo"))
+
+					if len(repoMetaBlob) == 0 {
+						return zerr.ErrRepoMetaNotFound
+					}
+
+					var protoRepoMeta proto_go.RepoMeta
+
+					err := proto.Unmarshal(repoMetaBlob, &protoRepoMeta)
+					if err != nil {
+						return err
+					}
+
+					// Remove Statistics entry for the digest
+					delete(protoRepoMeta.Statistics, imageMeta.Digest.String())
+
+					repoMetaBlob, err = proto.Marshal(&protoRepoMeta)
+					if err != nil {
+						return err
+					}
+
+					return repoMetaBuck.Put([]byte("repo"), repoMetaBlob)
+				})
+				So(err, ShouldBeNil)
+
+				// Verify Statistics entry doesn't exist
+				repoMeta, err := boltdbWrapper.GetRepoMeta(ctx, "repo")
+				So(err, ShouldBeNil)
+				_, exists := repoMeta.Statistics[imageMeta.Digest.String()]
+				So(exists, ShouldBeFalse)
+
+				// Update stats - should create Statistics entry and increment
+				err = boltdbWrapper.UpdateStatsOnDownload("repo", "tag")
+				So(err, ShouldBeNil)
+
+				// Verify Statistics entry was created and incremented
+				repoMeta, err = boltdbWrapper.GetRepoMeta(ctx, "repo")
+				So(err, ShouldBeNil)
+				stats, exists := repoMeta.Statistics[imageMeta.Digest.String()]
+				So(exists, ShouldBeTrue)
+				So(stats.DownloadCount, ShouldEqual, 1)
+
+				// Update stats again - should increment existing entry
+				err = boltdbWrapper.UpdateStatsOnDownload("repo", "tag")
+				So(err, ShouldBeNil)
+
+				repoMeta, err = boltdbWrapper.GetRepoMeta(ctx, "repo")
+				So(err, ShouldBeNil)
+				stats, exists = repoMeta.Statistics[imageMeta.Digest.String()]
+				So(exists, ShouldBeTrue)
+				So(stats.DownloadCount, ShouldEqual, 2)
+			})
+
+			Convey("statistics entry missing but digest exists in tags - using digest reference", func() {
+				// Set repo reference to create tag
+				err := boltdbWrapper.SetRepoReference(ctx, "repo", "tag", imageMeta)
+				So(err, ShouldBeNil)
+
+				// Manually remove Statistics entry
+				err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
+					repoMetaBuck := tx.Bucket([]byte(boltdb.RepoMetaBuck))
+					repoMetaBlob := repoMetaBuck.Get([]byte("repo"))
+
+					if len(repoMetaBlob) == 0 {
+						return zerr.ErrRepoMetaNotFound
+					}
+
+					var protoRepoMeta proto_go.RepoMeta
+
+					err := proto.Unmarshal(repoMetaBlob, &protoRepoMeta)
+					if err != nil {
+						return err
+					}
+
+					delete(protoRepoMeta.Statistics, imageMeta.Digest.String())
+
+					repoMetaBlob, err = proto.Marshal(&protoRepoMeta)
+					if err != nil {
+						return err
+					}
+
+					return repoMetaBuck.Put([]byte("repo"), repoMetaBlob)
+				})
+				So(err, ShouldBeNil)
+
+				// Update stats using digest directly
+				err = boltdbWrapper.UpdateStatsOnDownload("repo", imageMeta.Digest.String())
+				So(err, ShouldBeNil)
+
+				// Verify Statistics entry was created
+				repoMeta, err := boltdbWrapper.GetRepoMeta(ctx, "repo")
+				So(err, ShouldBeNil)
+				stats, exists := repoMeta.Statistics[imageMeta.Digest.String()]
+				So(exists, ShouldBeTrue)
+				So(stats.DownloadCount, ShouldEqual, 1)
+			})
 		})
 
 		Convey("GetReferrersInfo", func() {

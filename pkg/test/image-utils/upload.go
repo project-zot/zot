@@ -118,8 +118,19 @@ func UploadImage(img Image, baseURL, repo, ref string) error {
 		}
 	}
 
+	// Use the media type from ManifestDescriptor, or fall back to Manifest.MediaType, or default to OCI
+	mediaType := img.ManifestDescriptor.MediaType
+
+	if mediaType == "" {
+		mediaType = img.Manifest.MediaType
+	}
+
+	if mediaType == "" {
+		mediaType = ispec.MediaTypeImageManifest
+	}
+
 	resp, err = resty.R().
-		SetHeader("Content-type", ispec.MediaTypeImageManifest).
+		SetHeader("Content-type", mediaType).
 		SetBody(manifestBlob).
 		Put(baseURL + "/v2/" + repo + "/manifests/" + ref)
 
@@ -216,9 +227,20 @@ func UploadImageWithBasicAuth(img Image, baseURL, repo, ref, user, password stri
 		return err
 	}
 
+	// Use the media type from ManifestDescriptor, or fall back to Manifest.MediaType, or default to OCI
+	mediaType := img.ManifestDescriptor.MediaType
+
+	if mediaType == "" {
+		mediaType = img.Manifest.MediaType
+	}
+
+	if mediaType == "" {
+		mediaType = ispec.MediaTypeImageManifest
+	}
+
 	_, err = resty.R().
 		SetBasicAuth(user, password).
-		SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
+		SetHeader("Content-type", mediaType).
 		SetBody(manifestBlob).
 		Put(baseURL + "/v2/" + repo + "/manifests/" + ref)
 
@@ -245,8 +267,19 @@ func UploadMultiarchImage(multiImage MultiarchImage, baseURL string, repo, ref s
 		}
 	}
 
+	// Use the media type from IndexDescriptor, or fall back to Index.MediaType, or default to OCI
+	mediaType := multiImage.IndexDescriptor.MediaType
+
+	if mediaType == "" {
+		mediaType = multiImage.Index.MediaType
+	}
+
+	if mediaType == "" {
+		mediaType = ispec.MediaTypeImageIndex
+	}
+
 	resp, err := resty.R().
-		SetHeader("Content-type", ispec.MediaTypeImageIndex).
+		SetHeader("Content-type", mediaType).
 		SetBody(indexBlob).
 		Put(baseURL + "/v2/" + repo + "/manifests/" + ref)
 
