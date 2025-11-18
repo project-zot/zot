@@ -2006,7 +2006,9 @@ func (rh *RouteHandler) OpenIDCodeExchangeCallback() rp.CodeExchangeUserinfoCall
 	return rh.OpenIDCodeExchangeCallbackWithProvider("")
 }
 
-// Openid CodeExchange callback with provider name for claim mapping support.
+// OpenIDCodeExchangeCallbackWithProvider is the OIDC CodeExchange callback that supports configurable claim mapping.
+// The providerName parameter is used to lookup provider-specific claim mapping configuration.
+// This differs from the legacy version by allowing per-provider claim mapping based on the providerName.
 func (rh *RouteHandler) OpenIDCodeExchangeCallbackWithProvider(providerName string) rp.CodeExchangeUserinfoCallback[
 	*oidc.IDTokenClaims,
 	*oidc.UserInfo,

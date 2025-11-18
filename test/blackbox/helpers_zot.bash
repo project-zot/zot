@@ -65,6 +65,6 @@ function zb_run() {
 }
 
 function log_output() {
-    local zot_log_file=${BATS_FILE_TMPDIR}/zot/zot-log.json
+    local zot_log_file=${1:-${BATS_FILE_TMPDIR}/zot/zot-log.json}
     cat ${zot_log_file} | jq ' .["message"] '
 }

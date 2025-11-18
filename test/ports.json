@@ -416,7 +416,7 @@
     }
   },
   "blackbox/openid_claim_mapping.bats": {
-    "dex": {
+    "idp": {
       "begin": 11450,
       "end": 11459
     },
