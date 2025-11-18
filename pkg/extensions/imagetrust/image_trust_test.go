@@ -28,9 +28,9 @@ import (
 	"github.com/notaryproject/notation-go/verifier/trustpolicy"
 	"github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/sigstore/cosign/v2/cmd/cosign/cli/generate"
-	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
-	"github.com/sigstore/cosign/v2/cmd/cosign/cli/sign"
+	"github.com/sigstore/cosign/v3/cmd/cosign/cli/generate"
+	"github.com/sigstore/cosign/v3/cmd/cosign/cli/options"
+	"github.com/sigstore/cosign/v3/cmd/cosign/cli/sign"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 

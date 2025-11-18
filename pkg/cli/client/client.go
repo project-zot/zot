@@ -17,7 +17,7 @@ import (
 	"time"
 
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/sigstore/cosign/v2/pkg/oci/remote"
+	"github.com/sigstore/cosign/v3/pkg/oci/remote"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/common"
