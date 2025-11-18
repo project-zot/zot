@@ -83,7 +83,7 @@ var (
 	ErrConfigNotFound                   = errors.New("config with the given name does not exist")
 	ErrNoURLProvided                    = errors.New("no URL provided")
 	ErrIllegalConfigKey                 = errors.New("given config key is not allowed")
-	ErrScanNotSupported                 = errors.New("scanning is not supported for given image media type")
+	ErrScanNotSupported                 = errors.New("scanning is not supported for given media type")
 	ErrCLITimeout                       = errors.New("query timed out while waiting for results")
 	ErrDuplicateConfigName              = errors.New("cli config name already added")
 	ErrInvalidRoute                     = errors.New("invalid route prefix")

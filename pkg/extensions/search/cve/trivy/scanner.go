@@ -282,7 +282,7 @@ func (scanner Scanner) isManifestScanable(digestStr string) (bool, error) {
 		case ispec.MediaTypeImageLayerGzip, ispec.MediaTypeImageLayer, string(regTypes.DockerLayer):
 			continue
 		default:
-			return false, zerr.ErrScanNotSupported
+			return false, fmt.Errorf("%w: layer media type '%s'", zerr.ErrScanNotSupported, imageLayer.MediaType)
 		}
 	}
 
@@ -299,7 +299,7 @@ func (scanner Scanner) isManifestDataScannable(manifestData mTypes.ManifestMeta)
 		case ispec.MediaTypeImageLayerGzip, ispec.MediaTypeImageLayer, string(regTypes.DockerLayer):
 			continue
 		default:
-			return false, zerr.ErrScanNotSupported
+			return false, fmt.Errorf("%w: layer media type '%s'", zerr.ErrScanNotSupported, imageLayer.MediaType)
 		}
 	}
 
