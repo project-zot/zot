@@ -30,6 +30,9 @@ const (
 	// reason used: to reduce zot minimal binary size (otherwise adds oras.land/oras-go/v2 deps).
 	ArtifactTypeNotation = "application/vnd.cncf.notary.signature"
 	ArtifactTypeCosign   = "application/vnd.dev.cosign.artifact.sig.v1+json"
+	// CosignSignatureTagSuffix is the suffix used for cosign signature tags (e.g., "sha256-digest.sig")
+	// Using constant to avoid pulling in cosign dependency
+	CosignSignatureTagSuffix = "sig"
 )
 
 var cosignSignatureTagRule = regexp.MustCompile(`sha256\-.+\.sig`)
