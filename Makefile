@@ -211,20 +211,20 @@ test-prereq: check-skopeo $(TESTDATA) $(ORAS)
 .PHONY: test-extended
 test-extended: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 test-extended: test-prereq
-	go test -failfast $(GO_CMD_TAGS) -trimpath -race -timeout 20m -cover -coverpkg ./... -coverprofile=coverage-extended.txt -covermode=atomic ./...
+	go test -failfast -tags internal_test,$(BUILD_LABELS) -trimpath -race -timeout 20m -cover -coverpkg ./... -coverprofile=coverage-extended.txt -covermode=atomic ./...
 	rm -rf /tmp/getter*; rm -rf /tmp/trivy*
 
 .PHONY: test-minimal
 test-minimal: test-prereq
-	go test -failfast -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-minimal.txt -covermode=atomic ./...
+	go test -failfast -tags internal_test -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-minimal.txt -covermode=atomic ./...
 	rm -rf /tmp/getter*; rm -rf /tmp/trivy*
 
 .PHONY: test-devmode
 test-devmode: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 test-devmode: test-prereq
-	go test -failfast -tags dev,$(BUILD_LABELS) -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-dev-extended.txt -covermode=atomic ./pkg/test/... ./pkg/api/... ./pkg/storage/... ./pkg/extensions/sync/... -run ^TestInject
+	go test -failfast -tags dev,internal_test,$(BUILD_LABELS) -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-dev-extended.txt -covermode=atomic ./pkg/test/... ./pkg/api/... ./pkg/storage/... ./pkg/extensions/sync/... -run ^TestInject
 	rm -rf /tmp/getter*; rm -rf /tmp/trivy*
-	go test -failfast -tags dev -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-dev-minimal.txt -covermode=atomic ./pkg/test/... ./pkg/storage/... ./pkg/extensions/sync/... -run ^TestInject
+	go test -failfast -tags dev,internal_test -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-dev-minimal.txt -covermode=atomic ./pkg/test/... ./pkg/storage/... ./pkg/extensions/sync/... -run ^TestInject
 	rm -rf /tmp/getter*; rm -rf /tmp/trivy*
 	go test -failfast -tags stress,$(BUILD_LABELS) -trimpath -race -timeout 15m ./pkg/cli/server/stress_test.go
 
@@ -235,7 +235,7 @@ test: test-extended test-minimal test-devmode
 .PHONY: privileged-test
 privileged-test: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 privileged-test: check-skopeo $(TESTDATA)
-	go test -failfast -tags needprivileges,$(BUILD_LABELS) -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-dev-needprivileges.txt -covermode=atomic ./pkg/storage/local/... ./pkg/cli/client/... -run ^TestElevatedPrivileges
+	go test -failfast -tags needprivileges,internal_test,$(BUILD_LABELS) -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-dev-needprivileges.txt -covermode=atomic ./pkg/storage/local/... ./pkg/cli/client/... -run ^TestElevatedPrivileges
 
 $(TESTDATA): check-skopeo
 	mkdir -p ${TESTDATA}; \
@@ -338,6 +338,7 @@ check: ./golangcilint.yaml $(GOLINTER)
 	mkdir -p pkg/extensions/build; touch pkg/extensions/build/.empty
 	$(GOLINTER) --config ./golangcilint.yaml run --output.text.colors --build-tags ./...
 	$(GOLINTER) --config ./golangcilint.yaml run --output.text.colors --build-tags $(BUILD_LABELS)  ./...
+	$(GOLINTER) --config ./golangcilint.yaml run --output.text.colors --build-tags internal_test,$(BUILD_LABELS)  ./...
 	$(GOLINTER) --config ./golangcilint.yaml run --output.text.colors --build-tags debug  ./pkg/debug/swagger/ ./pkg/debug/gqlplayground
 	$(GOLINTER) --config ./golangcilint.yaml run --output.text.colors --build-tags dev ./pkg/test/inject/
 	$(GOLINTER) --config ./golangcilint.yaml run --output.text.colors --build-tags stress ./pkg/cli/server/

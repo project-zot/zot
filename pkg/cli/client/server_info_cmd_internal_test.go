@@ -1,5 +1,5 @@
-//go:build search
-// +build search
+//go:build search && internal_test
+// +build search,internal_test
 
 package client //nolint:testpackage
 
