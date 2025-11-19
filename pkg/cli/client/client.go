@@ -17,7 +17,6 @@ import (
 	"time"
 
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/sigstore/cosign/v2/pkg/oci/remote"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/common"
@@ -520,7 +519,7 @@ func isCosignSigned(ctx context.Context, repo, digestStr string, searchConf Sear
 	username, password string,
 ) bool {
 	var result interface{}
-	cosignTag := strings.Replace(digestStr, ":", "-", 1) + "." + remote.SignatureTagSuffix
+	cosignTag := strings.Replace(digestStr, ":", "-", 1) + "." + common.CosignSignatureTagSuffix
 
 	URL := fmt.Sprintf("%s/v2/%s/manifests/%s", searchConf.ServURL, repo, cosignTag)
 

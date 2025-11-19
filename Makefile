@@ -221,7 +221,7 @@ test-minimal: test-prereq
 
 .PHONY: test-devmode
 test-devmode: $(if $(findstring ui,$(BUILD_LABELS)), ui)
-test-devmode: test-prereq
+test-devmode: testdata-certs
 	go test -failfast -tags dev,$(BUILD_LABELS) -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-dev-extended.txt -covermode=atomic ./pkg/test/... ./pkg/api/... ./pkg/storage/... ./pkg/extensions/sync/... -run ^TestInject
 	rm -rf /tmp/getter*; rm -rf /tmp/trivy*
 	go test -failfast -tags dev -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-dev-minimal.txt -covermode=atomic ./pkg/test/... ./pkg/storage/... ./pkg/extensions/sync/... -run ^TestInject
@@ -234,13 +234,19 @@ test: test-extended test-minimal test-devmode
 
 .PHONY: privileged-test
 privileged-test: $(if $(findstring ui,$(BUILD_LABELS)), ui)
-privileged-test: check-skopeo $(TESTDATA)
+privileged-test: testdata-certs
 	go test -failfast -tags needprivileges,$(BUILD_LABELS) -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-dev-needprivileges.txt -covermode=atomic ./pkg/storage/local/... ./pkg/cli/client/... -run ^TestElevatedPrivileges
 
-$(TESTDATA): check-skopeo
+.PHONY: testdata-certs
+testdata-certs:
 	mkdir -p ${TESTDATA}; \
 	cd ${TESTDATA}; ../scripts/gen_certs.sh; \
 	mkdir -p noidentity; cd ${TESTDATA}/noidentity; ../../scripts/gen_nameless_certs.sh; \
+	chmod -R a=rwx ${TESTDATA}
+
+.PHONY: testdata-images
+testdata-images: check-skopeo
+	mkdir -p ${TESTDATA}; \
 	cd ${TOP_LEVEL}; \
 	skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:7 oci:${TESTDATA}/zot-test:0.0.1; \
 	skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:8 oci:${TESTDATA}/zot-cve-test:0.0.1; \
@@ -248,6 +254,8 @@ $(TESTDATA): check-skopeo
 	skopeo --insecure-policy copy -q docker://ghcr.io/project-zot/test-images/alpine:3.17.3 oci:${TESTDATA}/alpine:3.17.3; \
 	skopeo --insecure-policy copy -q docker://ghcr.io/project-zot/test-images/spring-web:5.3.31 oci:${TESTDATA}/spring-web:5.3.31; \
 	chmod -R a=rwx ${TESTDATA}
+
+$(TESTDATA): testdata-certs testdata-images
 	ls -R -l ${TESTDATA}
 
 .PHONY: run-bench
