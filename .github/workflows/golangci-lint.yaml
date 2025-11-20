@@ -42,6 +42,8 @@ jobs:
 
           # Optional: if set to true then the action don't cache or restore ~/.cache/go-build.
           # skip-build-cache: true
+        env:
+          GOEXPERIMENT: jsonv2
       - name: Run linter from make target
         run: |
           make check

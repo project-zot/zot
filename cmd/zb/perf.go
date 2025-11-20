@@ -733,18 +733,17 @@ func Perf(
 
 		for range concurrency {
 			// parallelize with clients
-			wg.Go(
-				func() {
-					httpClient, err := getRandomClientIPs(auth, url, ips)
-					if err != nil {
-						fatalWithCleanup(err)
-					}
+			wg.Go(func() {
+				httpClient, err := getRandomClientIPs(auth, url, ips)
+				if err != nil {
+					fatalWithCleanup(err)
+				}
 
-					err = tconfig.tfunc(workdir, url, repo, requests/concurrency, tconfig, statsCh, httpClient, skipCleanup)
-					if err != nil {
-						fatalWithCleanup(err)
-					}
-				})
+				err = tconfig.tfunc(workdir, url, repo, requests/concurrency, tconfig, statsCh, httpClient, skipCleanup)
+				if err != nil {
+					fatalWithCleanup(err)
+				}
+			})
 		}
 
 		wg.Wait()
