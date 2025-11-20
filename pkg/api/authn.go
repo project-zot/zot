@@ -567,7 +567,7 @@ func (rh *RouteHandler) AuthURLHandler() http.HandlerFunc {
 		callback ui where we will redirect after openid/oauth2 logic is completed*/
 		session, _ := rh.c.CookieStore.Get(r, "statecookie")
 
-		session.Options.Secure = true
+		session.Options.Secure = rh.c.Config.UseSecureSession()
 		session.Options.HttpOnly = true
 		session.Options.SameSite = http.SameSiteDefaultMode
 		session.Options.Path = constants.CallbackBasePath
