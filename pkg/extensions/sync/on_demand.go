@@ -114,6 +114,7 @@ func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDi
 			if errors.Is(err, zerr.ErrManifestNotFound) ||
 				errors.Is(err, zerr.ErrSyncImageFilteredOut) ||
 				errors.Is(err, zerr.ErrSyncImageNotSigned) ||
+				errors.Is(err, zerr.ErrRepoNotFound) ||
 				// some public registries may return 401 for not found.
 				errors.Is(err, zerr.ErrUnauthorizedAccess) {
 				continue
@@ -170,6 +171,7 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference str
 			if errors.Is(err, zerr.ErrManifestNotFound) ||
 				errors.Is(err, zerr.ErrSyncImageFilteredOut) ||
 				errors.Is(err, zerr.ErrSyncImageNotSigned) ||
+				errors.Is(err, zerr.ErrRepoNotFound) ||
 				// some public registries may return 401 for not found.
 				errors.Is(err, zerr.ErrUnauthorizedAccess) {
 				continue
