@@ -2043,11 +2043,13 @@ func (rh *RouteHandler) OpenIDCodeExchangeCallbackWithProvider(providerName stri
 						}
 					}
 
-					rh.c.Log.Debug().
-						Str("provider", providerName).
-						Str("claim", claimName).
-						Str("username", username).
-						Msg("extracted username from configured claim")
+					if username != "" {
+						rh.c.Log.Debug().
+							Str("provider", providerName).
+							Str("claim", claimName).
+							Str("username", username).
+							Msg("extracted username from configured claim")
+					}
 				}
 			}
 		}

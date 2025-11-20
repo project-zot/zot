@@ -56,14 +56,14 @@ jobs:
           sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
           sudo apt update
           sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+          # install nodejs deps (for oidc claim mapping support)
+          sudo npm install -g oidc-provider express
           # install dex
           git clone https://github.com/dexidp/dex.git
           cd dex/
           git checkout v2.39.1
           make bin/dex
           ./bin/dex serve $GITHUB_WORKSPACE/test/dex/config-dev.yaml &
-          # install nodejs deps (for oidc preferred_username claim support)
-          sudo npm install -g oidc-provider express
           # Prepare for stacker run on Ubuntu 24
           cd $GITHUB_WORKSPACE
           sudo ./scripts/enable_userns.sh

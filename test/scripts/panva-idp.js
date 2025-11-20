@@ -55,7 +55,7 @@ const configuration = {
   clients: [{
     client_id: 'zot-client',
     client_secret: 'ZXhhbXBsZS1hcHAtc2VjcmV0',
-    redirect_uris: ['http://dummy'], // Will be overridden dynamically
+    redirect_uris: [cb_url], // Will be overridden dynamically
     response_types: ["code"],
     grant_types: ["authorization_code"],
     token_endpoint_auth_method: "client_secret_basic",
@@ -180,4 +180,3 @@ app.use(provider.callback());
 app.listen(port, () => {
   console.log(`OIDC Provider listening at ${issuer}`);
 });
-

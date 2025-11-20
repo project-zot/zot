@@ -64,7 +64,7 @@ function setup_file() {
 
 function teardown_file() {
     zot_stop_all
-    kill ${IDP_PID}
+    kill ${IDP_PID} 2>/dev/null || true
     if [ -f "${BATS_FILE_TMPDIR}/idp.log" ]; then
         echo "--- IDP LOG ---"
         cat ${BATS_FILE_TMPDIR}/idp.log
@@ -175,7 +175,7 @@ EOF
     
     # Verify that the log contains the preferred_username claim being used
     log_output ${BATS_FILE_TMPDIR}/zot-preferred-username.log | jq 'contains("extracted username from configured claim")' | grep true
-    log_output ${BATS_FILE_TMPDIR}/zot-preferred-username.log | jq 'contains("using email as username (fallback)") | not' | grep true
+    ! log_output ${BATS_FILE_TMPDIR}/zot-preferred-username.log | grep -q "using email as username (fallback)"
 }
 
 @test "test OIDC claim mapping with email" {
@@ -250,8 +250,8 @@ EOF
     echo "$output"
     
     # Verify that the log contains email claim being used
-    log_output ${BATS_FILE_TMPDIR}/zot-email.log | jq 'contains("extracted username from configured claim")' | grep true
-    log_output ${BATS_FILE_TMPDIR}/zot-email.log | jq 'contains("using email as username (fallback)") | not' | grep true
+    grep -q "extracted username from configured claim" ${BATS_FILE_TMPDIR}/zot-email.log
+	! grep -q "using email as username (fallback)" ${BATS_FILE_TMPDIR}/zot-email.log
 }
 
 @test "test OIDC claim mapping with sub" {
@@ -321,7 +321,7 @@ EOF
     
     # Verify that the log contains sub claim being used
     log_output ${BATS_FILE_TMPDIR}/zot-sub.log | jq 'contains("extracted username from configured claim")' | grep true
-    log_output ${BATS_FILE_TMPDIR}/zot-sub.log | jq 'contains("using email as username (fallback)") | not' | grep true
+    ! log_output ${BATS_FILE_TMPDIR}/zot-sub.log | grep -q "using email as username (fallback)"
 }
 
 @test "test OIDC with no claim mapping (default to email)" {
@@ -395,5 +395,5 @@ EOF
     echo "$output"
     
     # Verify that the log contains email claim being used (default behavior)
-    log_output ${BATS_FILE_TMPDIR}/zot-default.log | jq 'contains("using email as username (fallback)")' | grep true
+    log_output ${ZOT_LOG_FILE} | jq 'contains("using email as username (fallback)")' | grep true
 }
