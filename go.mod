@@ -75,7 +75,7 @@ require (
 	github.com/vektah/gqlparser/v2 v2.5.31
 	github.com/zitadel/oidc/v3 v3.45.0
 	go.etcd.io/bbolt v1.4.3
-	golang.org/x/crypto v0.44.0
+	golang.org/x/crypto v0.45.0
 	golang.org/x/oauth2 v0.33.0
 	google.golang.org/protobuf v1.36.10
 	gopkg.in/resty.v1 v1.12.0
