@@ -438,8 +438,10 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 			if errors.Is(err, zerr.ErrSyncImageNotSigned) ||
 				errors.Is(err, zerr.ErrUnauthorizedAccess) ||
 				errors.Is(err, zerr.ErrMediaTypeNotSupported) ||
-				errors.Is(err, zerr.ErrManifestNotFound) {
-				// skip unsigned images or unsupported image mediatype
+				errors.Is(err, zerr.ErrManifestNotFound) ||
+				errors.Is(err, zerr.ErrRepoNotFound) {
+				// skip unsigned images, unsupported image mediatype, or temp sync dir issues
+				// ErrRepoNotFound from temp sync dir is skippable since each tag uses a different temp directory
 				continue
 			}
 
@@ -645,6 +647,8 @@ func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo
 	if err != nil {
 		service.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", localRepo).
 			Err(err).Msg("failed to commit image")
+
+		return err
 	}
 
 	service.log.Info().Str("repo", localRepo).Str("reference", tag).Msg("successfully synced image")
