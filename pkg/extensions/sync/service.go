@@ -209,6 +209,14 @@ func (service *BaseService) CanRetryOnError() bool {
 	return false
 }
 
+func (service *BaseService) GetSyncTimeout() time.Duration {
+	if service.config.SyncTimeout == 0 {
+		return 3 * time.Hour // default timeout
+	}
+
+	return service.config.SyncTimeout
+}
+
 func (service *BaseService) getNextRepoFromCatalog(lastRepo string) string {
 	var found bool
 

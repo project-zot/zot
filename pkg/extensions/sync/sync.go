@@ -35,6 +35,8 @@ type Service interface {
 	/* Returns if service has retry option set.
 	Is used by ondemand to decide if it retries pulling an image in background or not. */
 	CanRetryOnError() bool // used by sync on demand to retry in background
+	// Get the sync timeout configured for this service
+	GetSyncTimeout() time.Duration
 }
 
 // Local and remote registries must implement this interface.
