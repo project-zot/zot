@@ -23,18 +23,19 @@ type Config struct {
 }
 
 type RegistryConfig struct {
-	URLs             []string
-	PollInterval     time.Duration
-	Content          []Content
-	TLSVerify        *bool
-	OnDemand         bool
-	CertDir          string
-	MaxRetries       *int
-	RetryDelay       *time.Duration
-	OnlySigned       *bool
-	CredentialHelper string
-	PreserveDigest   bool          // sync without converting
-	SyncTimeout      time.Duration // timeout for on-demand sync operations; if zero or unset, defaults to 3 hours
+	URLs                  []string
+	PollInterval          time.Duration
+	Content               []Content
+	TLSVerify             *bool
+	OnDemand              bool
+	CertDir               string
+	MaxRetries            *int
+	RetryDelay            *time.Duration
+	OnlySigned            *bool
+	CredentialHelper      string
+	PreserveDigest        bool          // sync without converting
+	SyncTimeout           time.Duration // overall HTTP client timeout for all sync operations
+	ResponseHeaderTimeout time.Duration `yaml:"-"` // response header timeout; set in root.go
 }
 
 type Content struct {
