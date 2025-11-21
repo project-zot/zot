@@ -37,7 +37,7 @@
                     ],
                     "onDemand": false,
                     "tlsVerify": false,
-                    "PollInterval": "30m",
+                    "pollInterval": "30m",
                     "content": [
                         {
                             "prefix": "**"

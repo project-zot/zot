@@ -25,7 +25,8 @@
                     "onDemand": true,
                     "tlsVerify": true,
                     "retryDelay": "5m",
-                    "preserveDigest": true
+                    "preserveDigest": true,
+                    "syncTimeout": "10m"
                 }
             ]
         }
