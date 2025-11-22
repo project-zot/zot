@@ -1,5 +1,4 @@
 //go:build !userprefs
-// +build !userprefs
 
 package extensions
 

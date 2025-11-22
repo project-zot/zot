@@ -136,7 +136,7 @@ func ImgSortByRelevance(pageBuffer []*gql_gen.ImageSummary) func(i, j int) bool 
 	}
 }
 
-// SortByUpdateTime sorting descending by time.
+// ImgSortByUpdateTime sorts descending by time.
 func ImgSortByUpdateTime(pageBuffer []*gql_gen.ImageSummary) func(i, j int) bool {
 	repos2LastUpdated := map[string]time.Time{}
 
@@ -156,7 +156,7 @@ func ImgSortByUpdateTime(pageBuffer []*gql_gen.ImageSummary) func(i, j int) bool
 	}
 }
 
-// SortByDownloads returns a comparison function for descendant sorting by downloads.
+// ImgSortByDownloads returns a comparison function for descendant sorting by downloads.
 func ImgSortByDownloads(pageBuffer []*gql_gen.ImageSummary) func(i, j int) bool {
 	return func(i, j int) bool {
 		return *pageBuffer[i].DownloadCount > *pageBuffer[j].DownloadCount

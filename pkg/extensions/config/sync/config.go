@@ -4,7 +4,7 @@ import (
 	"time"
 )
 
-// key is registry address.
+// CredentialsFile is a map where key is registry address.
 type CredentialsFile map[string]Credentials
 
 type Credentials struct {

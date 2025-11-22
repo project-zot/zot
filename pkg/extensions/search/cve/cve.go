@@ -436,7 +436,6 @@ func (cveinfo BaseCveInfo) GetCVEDiffListForImages(ctx context.Context, minuend,
 	subtrahendCVEMap := map[string]cvemodel.CVE{}
 
 	for _, cve := range subtrahendCVEList {
-		cve := cve
 		subtrahendCVEMap[cve.ID] = cve
 	}
 

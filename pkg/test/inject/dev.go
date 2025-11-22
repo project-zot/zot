@@ -1,5 +1,4 @@
 //go:build dev
-// +build dev
 
 // This file should be linked only in **development** mode.
 
@@ -37,7 +36,7 @@ func Error(err error) error {
 	return nil
 }
 
-// Used to inject error status codes for coverage purposes.
+// ErrStatusCode is used to inject error status codes for coverage purposes.
 // -1 will be returned in case of successful failure injection.
 func ErrStatusCode(status int) int {
 	if !injectedFailure() {

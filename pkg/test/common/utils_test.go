@@ -16,6 +16,7 @@ import (
 func TestWaitTillTrivyDBDownloadStarted(t *testing.T) {
 	Convey("finishes successfully", t, func() {
 		tempDir := t.TempDir()
+
 		go func() {
 			tcommon.WaitTillTrivyDBDownloadStarted(tempDir)
 		}()
@@ -149,7 +150,7 @@ func TestWaitForLogMessages(t *testing.T) {
 
 			// Simulate concurrent writes
 			go func() {
-				for i := 0; i < 5; i++ {
+				for range 5 {
 					_, _ = logBuffer.Write([]byte("Starting server\n"))
 
 					time.Sleep(5 * time.Millisecond)

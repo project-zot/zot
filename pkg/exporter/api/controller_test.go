@@ -1,5 +1,4 @@
 //go:build !metrics
-// +build !metrics
 
 package api_test
 
@@ -53,6 +52,7 @@ func TestNew(t *testing.T) {
 
 func isChannelDrained(ch chan prometheus.Metric) bool {
 	time.Sleep(SleepTime)
+
 	select {
 	case <-ch:
 		return false
@@ -230,7 +230,7 @@ func TestNewExporter(t *testing.T) {
 					}
 
 					reqsSize := int(nBig.Int64())
-					for i := 0; i < reqsSize; i++ {
+					for range reqsSize {
 						monitoring.IncDownloadCounter(serverController.Metrics, "dummyrepo")
 					}
 
@@ -317,7 +317,7 @@ func TestNewExporter(t *testing.T) {
 					}
 
 					reqsSize := int(nBig.Int64())
-					for i := 0; i < reqsSize; i++ {
+					for range reqsSize {
 						latency := getRandomLatency()
 						latencySum += latency.Seconds()
 						monitoring.ObserveHTTPRepoLatency(serverController.Metrics, "/v2/dummyrepo/manifests/testreference", latency)
@@ -505,7 +505,7 @@ func TestNewExporter(t *testing.T) {
 					}
 
 					workersSize := int(nBig.Int64())
-					for i := 0; i < workersSize; i++ {
+					for range workersSize {
 						wg.Add(1)
 
 						go func() {

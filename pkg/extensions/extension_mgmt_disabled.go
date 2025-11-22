@@ -1,5 +1,4 @@
 //go:build !mgmt
-// +build !mgmt
 
 package extensions
 

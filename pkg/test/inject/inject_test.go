@@ -1,5 +1,4 @@
 //go:build dev
-// +build dev
 
 // This file should be linked only in **development** mode.
 

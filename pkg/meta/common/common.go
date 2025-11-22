@@ -1,6 +1,7 @@
 package common
 
 import (
+	"slices"
 	"strings"
 	"time"
 
@@ -15,23 +16,15 @@ import (
 )
 
 func SignatureAlreadyExists(signatureSlice []mTypes.SignatureInfo, sm mTypes.SignatureMetadata) bool {
-	for _, sigInfo := range signatureSlice {
-		if sm.SignatureDigest == sigInfo.SignatureManifestDigest {
-			return true
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(signatureSlice, func(sigInfo mTypes.SignatureInfo) bool {
+		return sm.SignatureDigest == sigInfo.SignatureManifestDigest
+	})
 }
 
 func ProtoSignatureAlreadyExists(signatureSlice []*proto_go.SignatureInfo, sm mTypes.SignatureMetadata) bool {
-	for _, sigInfo := range signatureSlice {
-		if sm.SignatureDigest == sigInfo.SignatureManifestDigest {
-			return true
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(signatureSlice, func(sigInfo *proto_go.SignatureInfo) bool {
+		return sm.SignatureDigest == sigInfo.SignatureManifestDigest
+	})
 }
 
 func ReferenceIsDigest(reference string) bool {
@@ -159,19 +152,9 @@ func MatchesArtifactTypes(descriptorMediaType string, artifactTypes []string) bo
 		return true
 	}
 
-	found := false
-
-	for _, artifactType := range artifactTypes {
-		if artifactType != "" && descriptorMediaType != artifactType {
-			continue
-		}
-
-		found = true
-
-		break
-	}
-
-	return found
+	return slices.ContainsFunc(artifactTypes, func(artifactType string) bool {
+		return artifactType == "" || descriptorMediaType == artifactType
+	})
 }
 
 // CheckImageLastUpdated check if the given image is updated earlier than the current repoLastUpdated value

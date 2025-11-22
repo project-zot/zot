@@ -1,5 +1,4 @@
 //go:build !metrics
-// +build !metrics
 
 package extensions
 

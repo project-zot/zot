@@ -1,5 +1,4 @@
 //go:build search && needprivileges
-// +build search,needprivileges
 
 package client_test
 
@@ -25,6 +24,7 @@ import (
 
 func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 	Convey("Privileged certs - Make a new controller", t, func() {
+		//nolint: noctx // old code, no context available
 		cmd := exec.Command("mkdir", "-p", "/etc/containers/certs.d/127.0.0.1:8089/") //nolint: gosec
 
 		_, err := cmd.Output()
@@ -32,6 +32,7 @@ func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 			panic(err)
 		}
 
+		//nolint: noctx // old code, no context available
 		defer exec.Command("rm", "-rf", "/etc/containers/certs.d/127.0.0.1:8089/")
 
 		workDir, _ := os.Getwd()
@@ -41,6 +42,7 @@ func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 		caGlob, _ := filepath.Glob("ca.*")
 
 		for _, file := range clientGlob {
+			//nolint: noctx // old code, no context available
 			cmd = exec.Command("cp", file, "/etc/containers/certs.d/127.0.0.1:8089/")
 
 			res, err := cmd.CombinedOutput()
@@ -50,6 +52,7 @@ func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 		}
 
 		for _, file := range caGlob {
+			//nolint: noctx // old code, no context available
 			cmd = exec.Command("cp", file, "/etc/containers/certs.d/127.0.0.1:8089/")
 
 			res, err := cmd.CombinedOutput()
@@ -61,6 +64,7 @@ func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 		allGlob, _ := filepath.Glob("/etc/containers/certs.d/127.0.0.1:8089/*.key")
 
 		for _, file := range allGlob {
+			//nolint: noctx // old code, no context available
 			cmd = exec.Command("chmod", "a=rwx", file)
 
 			res, err := cmd.CombinedOutput()

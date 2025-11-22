@@ -1,5 +1,4 @@
 //go:build sync
-// +build sync
 
 package sync
 
@@ -195,7 +194,7 @@ func (registry *RemoteRegistry) GetDigest(ctx context.Context, repo, tag string,
 	return man.GetDescriptor().Digest, err
 }
 
-// returns OCI remote digest, original remote digest (unconverted), if it was converted.
+// GetOCIDigest returns OCI remote digest, original remote digest (unconverted), if it was converted.
 func (registry *RemoteRegistry) GetOCIDigest(ctx context.Context, repo, tag string,
 ) (godigest.Digest, godigest.Digest, bool, error) {
 	var isConverted bool

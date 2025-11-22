@@ -15,7 +15,7 @@ type DBDriverParameters struct {
 
 func GetDynamoClient(params DBDriverParameters) (*dynamodb.Client, error) {
 	customResolver := aws.EndpointResolverWithOptionsFunc( //nolint: staticcheck
-		func(service, region string, options ...interface{}) (aws.Endpoint, error) {
+		func(service, region string, options ...any) (aws.Endpoint, error) {
 			return aws.Endpoint{ //nolint: staticcheck
 				PartitionID:   "aws",
 				URL:           params.Endpoint,

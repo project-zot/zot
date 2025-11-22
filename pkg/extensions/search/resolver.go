@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -236,8 +237,6 @@ func getCVEListForImage(
 		pkgList := make([]*gql_generated.PackageInfo, 0)
 
 		for _, pkg := range cveDetail.PackageList {
-			pkg := pkg
-
 			pkgList = append(pkgList,
 				&gql_generated.PackageInfo{
 					Name:             &pkg.Name,
@@ -386,8 +385,6 @@ func getCVEDiffListForImages(
 		pkgList := make([]*gql_generated.PackageInfo, 0)
 
 		for _, pkg := range cveDetail.PackageList {
-			pkg := pkg
-
 			pkgList = append(pkgList,
 				&gql_generated.PackageInfo{
 					Name:             &pkg.Name,
@@ -805,7 +802,7 @@ func getBookmarkedRepos(
 	}
 
 	filterByName := func(repo string) bool {
-		return zcommon.Contains(bookmarkedRepos, repo)
+		return slices.Contains(bookmarkedRepos, repo)
 	}
 
 	return getFilteredPaginatedRepos(ctx, cveInfo, filterByName, log, requestedPage, metaDB)
@@ -824,7 +821,7 @@ func getStarredRepos(
 	}
 
 	filterFn := func(repo string) bool {
-		return zcommon.Contains(starredRepos, repo)
+		return slices.Contains(starredRepos, repo)
 	}
 
 	return getFilteredPaginatedRepos(ctx, cveInfo, filterFn, log, requestedPage, metaDB)
@@ -1445,7 +1442,7 @@ func expandedRepoInfo(ctx context.Context, repo string, metaDB mTypes.MetaDB, cv
 
 		digest := repoMeta.Tags[i].Digest
 
-		if !zcommon.Contains(tagsDigests, digest) {
+		if !slices.Contains(tagsDigests, digest) {
 			tagsDigests = append(tagsDigests, digest)
 		}
 	}
@@ -1582,8 +1579,6 @@ func getReferrers(metaDB mTypes.MetaDB, repo string, referredDigest string, arti
 	results := make([]*gql_generated.Referrer, 0, len(referrers))
 
 	for _, referrer := range referrers {
-		referrer := referrer
-
 		results = append(results, &gql_generated.Referrer{
 			MediaType:    &referrer.MediaType,
 			ArtifactType: &referrer.ArtifactType,

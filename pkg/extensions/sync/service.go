@@ -1,5 +1,4 @@
 //go:build sync
-// +build sync
 
 package sync
 
@@ -9,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -397,7 +397,7 @@ func (service *BaseService) SyncReferrers(ctx context.Context, repo string,
 	return nil
 }
 
-// sync repo periodically.
+// SyncRepo syncs repo periodically.
 func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 	service.log.Info().Str("repo", repo).Str("registry", service.remote.GetHostName()).
 		Msg("sync: syncing repo")
@@ -590,7 +590,7 @@ func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo
 		}
 
 		// verify repo contains a cosign signature for this manifest
-		hasCosignSignature := common.Contains(repoTags, fmt.Sprintf("%s-%s.sig", remoteDigest.Algorithm(),
+		hasCosignSignature := slices.Contains(repoTags, fmt.Sprintf("%s-%s.sig", remoteDigest.Algorithm(),
 			remoteDigest.Encoded()))
 
 		isSigned := hasSignatureReferrers(referrers) || hasCosignSignature
@@ -721,7 +721,7 @@ func (service *BaseService) syncReferrers(ctx context.Context, tags []string, lo
 		}
 
 		// is seen
-		if common.Contains(seen, remoteDigest.String()) {
+		if slices.Contains(seen, remoteDigest.String()) {
 			return nil
 		}
 

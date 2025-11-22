@@ -1,5 +1,4 @@
 //go:build scrub
-// +build scrub
 
 package scrub_test
 

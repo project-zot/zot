@@ -25,7 +25,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/common"
 )
 
-func makeHTTPGetRequest(url string, resultPtr interface{}, client *resty.Client) (http.Header, error) {
+func makeHTTPGetRequest(url string, resultPtr any, client *resty.Client) (http.Header, error) {
 	resp, err := client.R().Get(url)
 	if err != nil {
 		return http.Header{}, err

@@ -26,7 +26,9 @@ const (
 	colStatusIndex
 	colAffectedBlobIndex
 	colErrorIndex
+)
 
+const (
 	imageNameWidth    = 32
 	tagWidth          = 24
 	statusWidth       = 8

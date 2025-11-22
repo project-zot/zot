@@ -143,13 +143,14 @@ func GetDefaultVulnConfig() ispec.Image {
 	}
 }
 
+// RandomString generates a random string.
 // Adapted from https://gist.github.com/dopey/c69559607800d2f2f90b1b1ed4e550fb
 func RandomString(n int) string {
 	const letters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-"
 
 	ret := make([]byte, n)
 
-	for count := 0; count < n; count++ {
+	for count := range n {
 		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
 		if err != nil {
 			panic(err)

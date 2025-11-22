@@ -77,7 +77,7 @@ func TestCache(t *testing.T) {
 		log := log.NewTestLogger()
 		So(log, ShouldNotBeNil)
 
-		cacheDriver, err := storage.Create("sometype", map[string]interface{}{}, log)
+		cacheDriver, err := storage.Create("sometype", map[string]any{}, log)
 		So(err, ShouldEqual, errors.ErrBadConfig)
 		So(cacheDriver, ShouldBeNil)
 	})

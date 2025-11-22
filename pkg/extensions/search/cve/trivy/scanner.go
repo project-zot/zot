@@ -3,6 +3,7 @@ package trivy
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path"
 	"strconv"
@@ -537,9 +538,7 @@ func (scanner Scanner) scanIndex(ctx context.Context, repo, digest string) (map[
 				return nil, err
 			}
 
-			for vulnerabilityID, CVE := range manifestCveIDMap {
-				indexCveIDMap[vulnerabilityID] = CVE
-			}
+			maps.Copy(indexCveIDMap, manifestCveIDMap)
 		}
 	}
 

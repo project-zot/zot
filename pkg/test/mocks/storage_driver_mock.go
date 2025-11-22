@@ -100,7 +100,7 @@ func (s *StorageDriverMock) Delete(ctx context.Context, path string) error {
 	return nil
 }
 
-func (s *StorageDriverMock) URLFor(ctx context.Context, path string, options map[string]interface{}) (string, error) {
+func (s *StorageDriverMock) URLFor(ctx context.Context, path string, options map[string]any) (string, error) {
 	return "", nil
 }
 

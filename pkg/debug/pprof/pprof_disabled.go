@@ -1,5 +1,4 @@
 //go:build !profile
-// +build !profile
 
 package pprof
 

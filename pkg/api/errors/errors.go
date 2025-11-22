@@ -1,6 +1,8 @@
 package errors
 
 import (
+	"maps"
+
 	"zotregistry.dev/zot/v2/errors"
 )
 
@@ -156,9 +158,7 @@ func NewError(code ErrorCode) *Error {
 }
 
 func (err *Error) AddDetail(m map[string]string) *Error {
-	for k, v := range m {
-		err.Detail[k] = v
-	}
+	maps.Copy(err.Detail, m)
 
 	return err
 }

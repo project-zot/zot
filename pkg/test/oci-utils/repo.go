@@ -3,6 +3,7 @@ package ociutils
 import (
 	"context"
 	"fmt"
+	"maps"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
@@ -12,12 +13,14 @@ import (
 
 type RepoImage struct {
 	imageUtil.Image
+
 	Reference  string
 	Statistics mTypes.DescriptorStatistics
 }
 
 type RepoMultiArchImage struct {
 	imageUtil.MultiarchImage
+
 	ImageStatistics map[mTypes.ImageDigest]mTypes.DescriptorStatistics
 	Reference       string
 }
@@ -83,14 +86,10 @@ func InitializeTestMetaDB(ctx context.Context, metaDB mTypes.MetaDB, repos ...Re
 		repoMeta.IsBookmarked = repo.IsBookmarked
 
 		// updateStatistics
-		for key, value := range statistics {
-			repoMeta.Statistics[key] = value
-		}
+		maps.Copy(repoMeta.Statistics, statistics)
 
 		// update signatures?
-		for key, value := range repo.Signatures {
-			repoMeta.Signatures[key] = value
-		}
+		maps.Copy(repoMeta.Signatures, repo.Signatures)
 
 		err = metaDB.SetRepoMeta(repo.Name, repoMeta)
 		if err != nil {

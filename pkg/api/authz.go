@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"slices"
 
 	glob "github.com/bmatcuk/doublestar/v4"
 	"github.com/gorilla/mux"
@@ -67,19 +68,19 @@ func (ac *AccessController) getGlobPatterns(username string, groups []string, ac
 	for pattern, policyGroup := range ac.Config.Repositories {
 		if username == "" {
 			// check anonymous policy
-			if common.Contains(policyGroup.AnonymousPolicy, action) {
+			if slices.Contains(policyGroup.AnonymousPolicy, action) {
 				globPatterns[pattern] = true
 			}
 		} else {
 			// check default policy (authenticated user)
-			if common.Contains(policyGroup.DefaultPolicy, action) {
+			if slices.Contains(policyGroup.DefaultPolicy, action) {
 				globPatterns[pattern] = true
 			}
 		}
 
 		// check user based policy
 		for _, p := range policyGroup.Policies {
-			if common.Contains(p.Users, username) && common.Contains(p.Actions, action) {
+			if slices.Contains(p.Users, username) && slices.Contains(p.Actions, action) {
 				globPatterns[pattern] = true
 			}
 		}
@@ -87,7 +88,7 @@ func (ac *AccessController) getGlobPatterns(username string, groups []string, ac
 		// check group based policy
 		for _, group := range groups {
 			for _, p := range policyGroup.Policies {
-				if common.Contains(p.Groups, group) && common.Contains(p.Actions, action) {
+				if slices.Contains(p.Groups, group) && slices.Contains(p.Actions, action) {
 					globPatterns[pattern] = true
 				}
 			}
@@ -131,7 +132,7 @@ func (ac *AccessController) can(userAc *reqCtx.UserAccessControl, action, reposi
 	// check admins based policy
 	if !can {
 		adminPolicy := ac.Config.GetAdminPolicy()
-		if ac.isAdmin(username, userGroups) && common.Contains(adminPolicy.Actions, action) {
+		if ac.isAdmin(username, userGroups) && slices.Contains(adminPolicy.Actions, action) {
 			can = true
 		}
 	}
@@ -142,7 +143,7 @@ func (ac *AccessController) can(userAc *reqCtx.UserAccessControl, action, reposi
 // isAdmin .
 func (ac *AccessController) isAdmin(username string, userGroups []string) bool {
 	adminPolicy := ac.Config.GetAdminPolicy()
-	if common.Contains(adminPolicy.Users, username) || ac.isAnyGroupInAdminPolicy(userGroups) {
+	if slices.Contains(adminPolicy.Users, username) || ac.isAnyGroupInAdminPolicy(userGroups) {
 		return true
 	}
 
@@ -151,13 +152,10 @@ func (ac *AccessController) isAdmin(username string, userGroups []string) bool {
 
 func (ac *AccessController) isAnyGroupInAdminPolicy(userGroups []string) bool {
 	adminPolicy := ac.Config.GetAdminPolicy()
-	for _, group := range userGroups {
-		if common.Contains(adminPolicy.Groups, group) {
-			return true
-		}
-	}
 
-	return false
+	return slices.ContainsFunc(userGroups, func(group string) bool {
+		return slices.Contains(adminPolicy.Groups, group)
+	})
 }
 
 func (ac *AccessController) getUserGroups(username string) []string {
@@ -218,16 +216,16 @@ func (ac *AccessController) isPermitted(userGroups []string, username, action st
 ) bool {
 	// check repo/system based policies
 	for _, p := range policyGroup.Policies {
-		if common.Contains(p.Users, username) && common.Contains(p.Actions, action) {
+		if slices.Contains(p.Users, username) && slices.Contains(p.Actions, action) {
 			return true
 		}
 	}
 
 	if userGroups != nil {
 		for _, p := range policyGroup.Policies {
-			if common.Contains(p.Actions, action) {
+			if slices.Contains(p.Actions, action) {
 				for _, group := range p.Groups {
-					if common.Contains(userGroups, group) {
+					if slices.Contains(userGroups, group) {
 						return true
 					}
 				}
@@ -236,12 +234,12 @@ func (ac *AccessController) isPermitted(userGroups []string, username, action st
 	}
 
 	// check defaultPolicy
-	if common.Contains(policyGroup.DefaultPolicy, action) && username != "" {
+	if slices.Contains(policyGroup.DefaultPolicy, action) && username != "" {
 		return true
 	}
 
 	// check anonymousPolicy
-	if common.Contains(policyGroup.AnonymousPolicy, action) && username == "" {
+	if slices.Contains(policyGroup.AnonymousPolicy, action) && username == "" {
 		return true
 	}
 
@@ -348,7 +346,7 @@ func DistSpecAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 					is := ctlr.StoreController.GetImageStore(resource)
 
 					tags, err := is.GetImageTags(resource)
-					if err == nil && common.Contains(tags, reference) && reference != "latest" {
+					if err == nil && slices.Contains(tags, reference) && reference != "latest" {
 						// if repo exists and request's tag exists then action is UPDATE
 						action = constants.UpdatePermission
 					}
@@ -404,7 +402,7 @@ func MetricsAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			}
 
 			username := userAc.GetUsername()
-			if !common.Contains(metricsConfig.Users, username) {
+			if !slices.Contains(metricsConfig.Users, username) {
 				common.AuthzFail(response, request, username, realm, failDelay)
 
 				return

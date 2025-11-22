@@ -1,5 +1,4 @@
 //go:build sync
-// +build sync
 
 package sync_test
 
@@ -5638,7 +5637,7 @@ func TestOnDemandMultipleImage(t *testing.T) {
 		defer dcm.StopServer()
 
 		callsNo := 5
-		for i := 0; i < callsNo; i++ {
+		for range callsNo {
 			_, _ = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		}
 
@@ -5801,7 +5800,7 @@ func TestOnDemandPullsReferrersOnce(t *testing.T) {
 
 		targetURL := destBaseURL + "/v2/" + testImage + "/referrers/" + digest
 
-		for i := 0; i < numConcurrentRequests; i++ {
+		for i := range numConcurrentRequests {
 			go func(routineID int) {
 				defer wg.Done()
 				t.Logf("Goroutine %d: Sending request to %s", routineID, targetURL)
@@ -5928,7 +5927,7 @@ func TestOnDemandPullsOnce(t *testing.T) {
 
 		targetURL := destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag
 
-		for i := 0; i < numConcurrentRequests; i++ {
+		for i := range numConcurrentRequests {
 			go func(routineID int) {
 				defer wg.Done()
 				t.Logf("Goroutine %d: Sending request to %s", routineID, targetURL)

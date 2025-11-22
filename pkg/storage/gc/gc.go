@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -418,7 +419,7 @@ func (gc GarbageCollect) removeTagsPerRetentionPolicy(ctx context.Context, repo 
 
 		// check tag
 		tag, ok := getDescriptorTag(desc)
-		if ok && !zcommon.Contains(retainTags, tag) {
+		if ok && !slices.Contains(retainTags, tag) {
 			// remove tags which should not be retained
 			_, err := gc.removeManifest(repo, index, desc, tag, "", "")
 			if err != nil && !errors.Is(err, zerr.ErrManifestNotFound) {
@@ -859,12 +860,9 @@ func getDescriptorTag(desc ispec.Descriptor) (string, bool) {
 	return tag, ok
 }
 
-/*
-	GCTaskGenerator takes all repositories found in the storage.imagestore
-
-and it will execute garbage collection for each repository by creating a task
-for each repository and pushing it to the task scheduler.
-*/
+// GCTaskGenerator takes all repositories found in the storage.imagestore
+// and it will execute garbage collection for each repository by creating a task
+// for each repository and pushing it to the task scheduler.
 type GCTaskGenerator struct {
 	imgStore       types.ImageStore
 	gc             GarbageCollect

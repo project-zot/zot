@@ -1,5 +1,4 @@
 //go:build !search
-// +build !search
 
 package extensions
 
@@ -13,7 +12,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage"
 )
 
-type CveScanner interface{}
+type CveScanner any
 
 func GetCveScanner(config *config.Config, storeController storage.StoreController,
 	metaDB mTypes.MetaDB, log log.Logger,

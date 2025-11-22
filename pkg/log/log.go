@@ -162,14 +162,14 @@ func (e *Event) Err(err error) *Event {
 }
 
 // Interface adds any interface field to the event.
-func (e *Event) Interface(key string, val interface{}) *Event {
+func (e *Event) Interface(key string, val any) *Event {
 	e.attrs = append(e.attrs, slog.Any(key, val))
 
 	return e
 }
 
 // Any adds any interface field to the event (alias for Interface).
-func (e *Event) Any(key string, val interface{}) *Event {
+func (e *Event) Any(key string, val any) *Event {
 	return e.Interface(key, val)
 }
 
@@ -181,7 +181,7 @@ func (e *Event) Strs(key string, vals []string) *Event {
 }
 
 // IPAddr adds an IP address field to the event.
-func (e *Event) IPAddr(key string, ip interface{}) *Event {
+func (e *Event) IPAddr(key string, ip any) *Event {
 	e.attrs = append(e.attrs, slog.String(key, fmt.Sprintf("%v", ip)))
 
 	return e
@@ -214,7 +214,7 @@ func NewTestLoggerPtr() *Logger {
 }
 
 // Msgf logs the event with a formatted message.
-func (e *Event) Msgf(format string, args ...interface{}) {
+func (e *Event) Msgf(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 
 	// Create a new slice to avoid modifying the original

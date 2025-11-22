@@ -1,5 +1,4 @@
 //go:build sync
-// +build sync
 
 package sync
 
@@ -225,7 +224,7 @@ func TestService(t *testing.T) {
 
 		// Step 1: Verify empty requestStore initially
 		initialImageCount := 0
-		onDemand.requestStore.Range(func(key, value interface{}) bool {
+		onDemand.requestStore.Range(func(key, value any) bool {
 			initialImageCount++
 			return true
 		})
@@ -242,7 +241,7 @@ func TestService(t *testing.T) {
 
 		// Step 3: Verify we now have 1 request
 		preImageCount := 0
-		onDemand.requestStore.Range(func(key, value interface{}) bool {
+		onDemand.requestStore.Range(func(key, value any) bool {
 			preImageCount++
 			return true
 		})
@@ -254,7 +253,7 @@ func TestService(t *testing.T) {
 
 		// Step 5: Verify CONTINUE PATH EXECUTED - no new requests created
 		postImageCount := 0
-		onDemand.requestStore.Range(func(key, value interface{}) bool {
+		onDemand.requestStore.Range(func(key, value any) bool {
 			postImageCount++
 			return true
 		})
@@ -267,7 +266,7 @@ func TestService(t *testing.T) {
 
 		// Step 7: Verify current state before referrer test - we should have 1 request
 		initialReferrerCount := 0
-		onDemand.requestStore.Range(func(key, value interface{}) bool {
+		onDemand.requestStore.Range(func(key, value any) bool {
 			initialReferrerCount++
 			return true
 		})
@@ -284,7 +283,7 @@ func TestService(t *testing.T) {
 
 		// Step 9: Verify we now have 2 requests (image + referrer)
 		preReferrerCount := 0
-		onDemand.requestStore.Range(func(key, value interface{}) bool {
+		onDemand.requestStore.Range(func(key, value any) bool {
 			preReferrerCount++
 			return true
 		})
@@ -296,7 +295,7 @@ func TestService(t *testing.T) {
 
 		// Step 11: Verify CONTINUE PATH EXECUTED - no new referrer requests created
 		postReferrerCount := 0
-		onDemand.requestStore.Range(func(key, value interface{}) bool {
+		onDemand.requestStore.Range(func(key, value any) bool {
 			postReferrerCount++
 			return true
 		})
@@ -309,7 +308,7 @@ func TestService(t *testing.T) {
 
 		// Step 13: Final verification - exactly 2 requests total (both pre-populated, none deleted)
 		finalCount := 0
-		onDemand.requestStore.Range(func(key, value interface{}) bool {
+		onDemand.requestStore.Range(func(key, value any) bool {
 			finalCount++
 			return true
 		})
@@ -434,7 +433,7 @@ func TestService(t *testing.T) {
 
 			// Verify initial requestStore is empty
 			initialCount := 0
-			onDemand.requestStore.Range(func(key, value interface{}) bool {
+			onDemand.requestStore.Range(func(key, value any) bool {
 				initialCount++
 				return true
 			})
@@ -475,7 +474,7 @@ func TestService(t *testing.T) {
 
 			// Verify initial requestStore is empty
 			initialCount := 0
-			onDemand.requestStore.Range(func(key, value interface{}) bool {
+			onDemand.requestStore.Range(func(key, value any) bool {
 				initialCount++
 				return true
 			})

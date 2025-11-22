@@ -20,11 +20,11 @@ type RedisLogger struct {
 	Log log.Logger
 }
 
-func (r RedisLogger) Printf(ctx context.Context, format string, v ...interface{}) {
+func (r RedisLogger) Printf(ctx context.Context, format string, v ...any) {
 	r.Log.Debug().Msgf(format, v...)
 }
 
-func GetRedisClient(redisConfig map[string]interface{}, log log.Logger) (redis.UniversalClient, error) {
+func GetRedisClient(redisConfig map[string]any, log log.Logger) (redis.UniversalClient, error) {
 	once.Do(func() { redis.SetLogger(RedisLogger{log}) }) // call redis.SetLogger only once
 
 	// go-redis supports connecting via the redis uri specification (more convenient than parameter parsing)
@@ -59,11 +59,11 @@ func GetRedisClient(redisConfig map[string]interface{}, log log.Logger) (redis.U
 	return redis.NewUniversalClient(opts), nil
 }
 
-func ParseRedisUniversalOptions(redisConfig map[string]interface{}, //nolint: gocyclo
+func ParseRedisUniversalOptions(redisConfig map[string]any, //nolint: gocyclo
 	log log.Logger,
 ) *redis.UniversalOptions {
 	opts := redis.UniversalOptions{}
-	sanitizedConfig := map[string]interface{}{}
+	sanitizedConfig := map[string]any{}
 
 	for key, val := range redisConfig {
 		if key == "password" || key == "sentinel_password" {
@@ -206,7 +206,7 @@ func ParseRedisUniversalOptions(redisConfig map[string]interface{}, //nolint: go
 	return &opts
 }
 
-func logCastWarning(key string, value interface{}, hideValue bool, log log.Logger) {
+func logCastWarning(key string, value any, hideValue bool, log log.Logger) {
 	if hideValue {
 		log.Warn().Str("key", key).Msg("failed to cast parameter to intended type")
 	} else {
@@ -214,7 +214,7 @@ func logCastWarning(key string, value interface{}, hideValue bool, log log.Logge
 	}
 }
 
-func getBool(dict map[string]interface{}, key string, log log.Logger) (bool, bool) {
+func getBool(dict map[string]any, key string, log log.Logger) (bool, bool) {
 	value, ok := dict[key]
 	if !ok {
 		return false, false
@@ -230,7 +230,7 @@ func getBool(dict map[string]interface{}, key string, log log.Logger) (bool, boo
 	return ret, true
 }
 
-func getInt(dict map[string]interface{}, key string, log log.Logger) (int, bool) {
+func getInt(dict map[string]any, key string, log log.Logger) (int, bool) {
 	value, ok := dict[key]
 	if !ok {
 		return 0, false
@@ -246,7 +246,7 @@ func getInt(dict map[string]interface{}, key string, log log.Logger) (int, bool)
 	return ret, true
 }
 
-func GetString(dict map[string]interface{}, key string, hideValue bool, log log.Logger) (string, bool) {
+func GetString(dict map[string]any, key string, hideValue bool, log log.Logger) (string, bool) {
 	value, ok := dict[key]
 	if !ok {
 		return "", false
@@ -262,7 +262,7 @@ func GetString(dict map[string]interface{}, key string, hideValue bool, log log.
 	return ret, true
 }
 
-func getStringSlice(dict map[string]interface{}, key string, log log.Logger) ([]string, bool) {
+func getStringSlice(dict map[string]any, key string, log log.Logger) ([]string, bool) {
 	value, ok := dict[key]
 	if !ok {
 		return []string{}, false
@@ -278,7 +278,7 @@ func getStringSlice(dict map[string]interface{}, key string, log log.Logger) ([]
 	return ret, true
 }
 
-func getDuration(dict map[string]interface{}, key string, log log.Logger) (time.Duration, bool) {
+func getDuration(dict map[string]any, key string, log log.Logger) (time.Duration, bool) {
 	value, ok := dict[key]
 	if !ok {
 		return 0, false

@@ -1,5 +1,4 @@
 //go:build !metrics
-// +build !metrics
 
 //nolint:varnamelen
 package api
@@ -30,14 +29,14 @@ type Collector struct {
 	invalidChars *regexp.Regexp
 }
 
-// Implements prometheus.Collector interface.
+// Describe implements prometheus.Collector interface.
 func (zc Collector) Describe(ch chan<- *prometheus.Desc) {
 	for _, metricDescription := range zc.MetricsDesc {
 		ch <- metricDescription
 	}
 }
 
-// Implements prometheus.Collector interface.
+// Collect implements prometheus.Collector interface.
 func (zc Collector) Collect(ch chan<- prometheus.Metric) {
 	metrics, err := zc.Client.GetMetrics()
 	if err != nil {

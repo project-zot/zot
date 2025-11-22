@@ -1,5 +1,4 @@
 //go:build events
-// +build events
 
 package events
 
@@ -18,6 +17,7 @@ import (
 
 type HTTPSink struct {
 	cloudevents.Client
+
 	config eventsconf.SinkConfig
 }
 
@@ -133,7 +133,7 @@ func GetHTTPClientForConfig(config eventsconf.SinkConfig) (*http.Client, error) 
 	}, nil
 }
 
-// Helper function for basic auth encoding.
+// BasicAuth is a helper function for basic auth encoding.
 func BasicAuth(username, password string) string {
 	auth := username + ":" + password
 

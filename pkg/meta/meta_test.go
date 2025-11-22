@@ -1,5 +1,4 @@
 //go:build imagetrust
-// +build imagetrust
 
 package meta_test
 
@@ -9,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"slices"
 	"testing"
 	"time"
 
@@ -178,7 +178,7 @@ func TestRedisDB(t *testing.T) {
 		log := log.NewTestLogger()
 
 		params := redis.DBDriverParameters{KeyPrefix: "zot"}
-		driverConfig := map[string]interface{}{"url": "redis://" + miniRedis.Addr()}
+		driverConfig := map[string]any{"url": "redis://" + miniRedis.Addr()}
 
 		redisDriver, err := rediscfg.GetRedisClient(driverConfig, log)
 		So(err, ShouldBeNil)
@@ -2312,13 +2312,13 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 					}
 				}
 
-				So(zcommon.Contains(tags, "0.0.1"), ShouldBeTrue)
-				So(zcommon.Contains(tags, "0.0.2"), ShouldBeTrue)
-				So(zcommon.Contains(tags, "0.1.0"), ShouldBeTrue)
-				So(zcommon.Contains(tags, "1.0.0"), ShouldBeTrue)
-				So(zcommon.Contains(tags, "1.0.1"), ShouldBeTrue)
-				So(zcommon.Contains(tags, "2.0.0"), ShouldBeTrue)
-				So(zcommon.Contains(tags, "0.0.1"), ShouldBeTrue)
+				So(slices.Contains(tags, "0.0.1"), ShouldBeTrue)
+				So(slices.Contains(tags, "0.0.2"), ShouldBeTrue)
+				So(slices.Contains(tags, "0.1.0"), ShouldBeTrue)
+				So(slices.Contains(tags, "1.0.0"), ShouldBeTrue)
+				So(slices.Contains(tags, "1.0.1"), ShouldBeTrue)
+				So(slices.Contains(tags, "2.0.0"), ShouldBeTrue)
+				So(slices.Contains(tags, "0.0.1"), ShouldBeTrue)
 
 				So(indexImage.Digest.String(), ShouldResemble, multiarch.DigestStr())
 
@@ -3120,16 +3120,16 @@ func TestCreateBoltDB(t *testing.T) {
 		So(log, ShouldNotBeNil)
 
 		Convey("Test New() with unspecified driver", func() {
-			conf.Storage.CacheDriver = map[string]interface{}{}
+			conf.Storage.CacheDriver = map[string]any{}
 		})
 
 		Convey("Test New() with bad driver", func() {
 			// we default to bolt in case of misconfiguration
-			conf.Storage.CacheDriver = map[string]interface{}{"name": "somedriver"}
+			conf.Storage.CacheDriver = map[string]any{"name": "somedriver"}
 		})
 
 		Convey("Test New() with specified driver", func() {
-			conf.Storage.CacheDriver = map[string]interface{}{"name": "cache"}
+			conf.Storage.CacheDriver = map[string]any{"name": "cache"}
 		})
 
 		repoDBPath := path.Join(rootDir, "meta.db")
@@ -3162,7 +3162,7 @@ func TestCreateRedisDB(t *testing.T) {
 		Convey("Succeeds with default key prefix", func() {
 			miniRedis := miniredis.RunT(t)
 
-			cacheDriverParams := map[string]interface{}{
+			cacheDriverParams := map[string]any{
 				"name": "redis",
 				"url":  "redis://" + miniRedis.Addr(),
 			}
@@ -3177,7 +3177,7 @@ func TestCreateRedisDB(t *testing.T) {
 		Convey("Succeeds with specific key prefix", func() {
 			miniRedis := miniredis.RunT(t)
 
-			cacheDriverParams := map[string]interface{}{
+			cacheDriverParams := map[string]any{
 				"name": "redis",
 				"url":  "redis://" + miniRedis.Addr(),
 				"key":  "keyPrefix",
@@ -3192,7 +3192,7 @@ func TestCreateRedisDB(t *testing.T) {
 
 		Convey("Fails on Ping()", func() {
 			// Redis client will not be responding
-			cacheDriverParams := map[string]interface{}{
+			cacheDriverParams := map[string]any{
 				"name": "redis",
 				"url":  "redis://127.0.0.1:" + tCommon.GetFreePort(),
 			}
@@ -3205,7 +3205,7 @@ func TestCreateRedisDB(t *testing.T) {
 
 		Convey("Fail on invalid parameters", func() {
 			// Bad key types
-			cacheDriverParams := map[string]interface{}{
+			cacheDriverParams := map[string]any{
 				"name":      "redis",
 				"url":       "redis://127.0.0.1:" + tCommon.GetFreePort(),
 				"keyprefix": true,
@@ -3216,7 +3216,7 @@ func TestCreateRedisDB(t *testing.T) {
 			testFunc := func() { _, _ = meta.New(conf.Storage.StorageConfig, log) }
 			So(testFunc, ShouldPanic)
 
-			cacheDriverParams = map[string]interface{}{
+			cacheDriverParams = map[string]any{
 				"name":      "redis",
 				"url":       "redis://127.0.0.1:" + tCommon.GetFreePort(),
 				"keyprefix": "",
@@ -3227,7 +3227,7 @@ func TestCreateRedisDB(t *testing.T) {
 			testFunc = func() { _, _ = meta.New(conf.Storage.StorageConfig, log) }
 			So(testFunc, ShouldPanic)
 
-			cacheDriverParams = map[string]interface{}{
+			cacheDriverParams = map[string]any{
 				"name":      "redis",
 				"url":       false,
 				"keyprefix": "zot",

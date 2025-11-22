@@ -178,7 +178,7 @@ func (c *Controller) Run() error {
 	c.Server = server
 
 	// Create the listener
-	listener, err := net.Listen("tcp", addr)
+	listener, err := net.Listen("tcp", addr) //nolint: noctx
 	if err != nil {
 		return err
 	}
@@ -457,7 +457,7 @@ func (c *Controller) Shutdown() {
 	}
 }
 
-// Will stop scheduler and wait for all tasks to finish their work.
+// StopBackgroundTasks will stop scheduler and wait for all tasks to finish their work.
 func (c *Controller) StopBackgroundTasks() {
 	if c.taskScheduler != nil {
 		c.taskScheduler.Shutdown()

@@ -1,5 +1,4 @@
 //go:build search
-// +build search
 
 package client
 
@@ -8,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -41,6 +41,7 @@ func NewConfigCommand() *cobra.Command {
 			}
 
 			configPath := path.Join(home, "/.zot")
+
 			switch len(args) {
 			case noArgs:
 				if isListing { // zot config -l
@@ -162,7 +163,7 @@ func NewConfigRemoveCommand() *cobra.Command {
 	return configRemoveCmd
 }
 
-func getConfigMapFromFile(filePath string) ([]interface{}, error) {
+func getConfigMapFromFile(filePath string) ([]any, error) {
 	file, err := os.OpenFile(filePath, os.O_RDONLY|os.O_CREATE, defaultConfigPerms)
 	if err != nil {
 		return nil, err
@@ -175,7 +176,7 @@ func getConfigMapFromFile(filePath string) ([]interface{}, error) {
 		return nil, err
 	}
 
-	var jsonMap map[string]interface{}
+	var jsonMap map[string]any
 
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
 
@@ -185,7 +186,7 @@ func getConfigMapFromFile(filePath string) ([]interface{}, error) {
 		return nil, zerr.ErrEmptyJSON
 	}
 
-	configs, ok := jsonMap["configs"].([]interface{})
+	configs, ok := jsonMap["configs"].([]any)
 	if !ok {
 		return nil, zerr.ErrCliBadConfig
 	}
@@ -193,10 +194,10 @@ func getConfigMapFromFile(filePath string) ([]interface{}, error) {
 	return configs, nil
 }
 
-func saveConfigMapToFile(filePath string, configMap []interface{}) error {
+func saveConfigMapToFile(filePath string, configMap []any) error {
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
 
-	listMap := make(map[string]interface{})
+	listMap := make(map[string]any)
 	listMap["configs"] = configMap
 
 	marshalled, err := json.MarshalIndent(&listMap, "", "  ")
@@ -226,7 +227,7 @@ func getConfigNames(configPath string) (string, error) {
 	writer := tabwriter.NewWriter(&builder, 0, 8, 1, '\t', tabwriter.AlignRight) //nolint:mnd
 
 	for _, val := range configs {
-		configMap, ok := val.(map[string]interface{})
+		configMap, ok := val.(map[string]any)
 		if !ok {
 			return "", zerr.ErrBadConfig
 		}
@@ -256,7 +257,7 @@ func addConfig(configPath, configName, url string) error {
 		return zerr.ErrDuplicateConfigName
 	}
 
-	configMap := make(map[string]interface{})
+	configMap := make(map[string]any)
 	configMap["url"] = url
 	configMap[nameKey] = configName
 	addDefaultConfigs(configMap)
@@ -277,7 +278,7 @@ func removeConfig(configPath, configName string) error {
 	}
 
 	for i, val := range configs {
-		configMap, ok := val.(map[string]interface{})
+		configMap, ok := val.(map[string]any)
 		if !ok {
 			return zerr.ErrBadConfig
 		}
@@ -302,7 +303,7 @@ func removeConfig(configPath, configName string) error {
 	return zerr.ErrConfigNotFound
 }
 
-func addDefaultConfigs(config map[string]interface{}) {
+func addDefaultConfigs(config map[string]any) {
 	if _, ok := config[showspinnerConfig]; !ok {
 		config[showspinnerConfig] = true
 	}
@@ -323,7 +324,7 @@ func getConfigValue(configPath, configName, key string) (string, error) {
 	}
 
 	for _, val := range configs {
-		configMap, ok := val.(map[string]interface{})
+		configMap, ok := val.(map[string]any)
 		if !ok {
 			return "", zerr.ErrBadConfig
 		}
@@ -358,7 +359,7 @@ func resetConfigValue(configPath, configName, key string) error {
 	}
 
 	for _, val := range configs {
-		configMap, ok := val.(map[string]interface{})
+		configMap, ok := val.(map[string]any)
 		if !ok {
 			return zerr.ErrBadConfig
 		}
@@ -396,7 +397,7 @@ func setConfigValue(configPath, configName, key, value string) error {
 	}
 
 	for _, val := range configs {
-		configMap, ok := val.(map[string]interface{})
+		configMap, ok := val.(map[string]any)
 		if !ok {
 			return zerr.ErrBadConfig
 		}
@@ -437,7 +438,7 @@ func getAllConfig(configPath, configName string) (string, error) {
 	var builder strings.Builder
 
 	for _, value := range configs {
-		configMap, ok := value.(map[string]interface{})
+		configMap, ok := value.(map[string]any)
 		if !ok {
 			return "", zerr.ErrBadConfig
 		}
@@ -461,19 +462,15 @@ func getAllConfig(configPath, configName string) (string, error) {
 	return "", zerr.ErrConfigNotFound
 }
 
-func configNameExists(configs []interface{}, configName string) bool {
-	for _, val := range configs {
-		configMap, ok := val.(map[string]interface{})
+func configNameExists(configs []any, configName string) bool {
+	return slices.ContainsFunc(configs, func(val any) bool {
+		configMap, ok := val.(map[string]any)
 		if !ok {
 			return false
 		}
 
-		if configMap[nameKey] == configName {
-			return true
-		}
-	}
-
-	return false
+		return configMap[nameKey] == configName
+	})
 }
 
 const (

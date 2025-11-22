@@ -16,6 +16,7 @@ import (
 
 type statusWriter struct {
 	http.ResponseWriter
+
 	status int
 	length int
 }

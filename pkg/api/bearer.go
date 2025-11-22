@@ -31,8 +31,9 @@ type ResourceAction struct {
 // authentication specification, in addition to the standard registered claims.
 // https://distribution.github.io/distribution/spec/auth/jwt/
 type ClaimsWithAccess struct {
-	Access []ResourceAccess `json:"access"`
 	jwt.RegisteredClaims
+
+	Access []ResourceAccess `json:"access"`
 }
 
 type AuthChallengeError struct {
@@ -91,7 +92,7 @@ func (a *BearerAuthorizer) Authorize(header string, requested *ResourceAction) e
 
 	signedString := bearerTokenMatch.ReplaceAllString(header, "$1")
 
-	token, err := jwt.ParseWithClaims(signedString, &ClaimsWithAccess{}, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(signedString, &ClaimsWithAccess{}, func(token *jwt.Token) (any, error) {
 		return a.key, nil
 	}, jwt.WithValidMethods(a.allowedSigningAlgorithms()), jwt.WithIssuedAt())
 	if err != nil {

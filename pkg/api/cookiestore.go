@@ -26,9 +26,10 @@ import (
 const cookiesMaxAge = 7200 // 2h
 
 type CookieStore struct {
+	sessions.Store
+
 	needsCleanup bool // if store should be periodically cleaned
 	rootDir      string
-	sessions.Store
 }
 
 func (c *CookieStore) RunSessionCleaner(sch *scheduler.Scheduler) {
@@ -48,7 +49,7 @@ func NewCookieStore(
 ) (*CookieStore, error) {
 	// To store custom types in our cookies
 	// we must first register them using gob.Register
-	gob.Register(map[string]interface{}{})
+	gob.Register(map[string]any{})
 
 	var store sessions.Store
 

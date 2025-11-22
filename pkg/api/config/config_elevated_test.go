@@ -1,5 +1,4 @@
 //go:build needprivileges
-// +build needprivileges
 
 package config_test
 

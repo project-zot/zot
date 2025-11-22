@@ -80,7 +80,7 @@ func TestRetentionCheckNegative(t *testing.T) {
 		logFile := path.Join(testDir, "retention-check.log")
 		port := GetFreePort()
 
-		content := []byte(fmt.Sprintf(`{
+		content := fmt.Appendf([]byte{}, `{
 			"distSpecVersion": "1.1.1",
 			"storage": {
 				"rootDirectory": "%s",
@@ -90,7 +90,7 @@ func TestRetentionCheckNegative(t *testing.T) {
 				"address": "127.0.0.1",
 				"port": "%s"
 			}
-		}`, testDir, port))
+		}`, testDir, port)
 		err := os.WriteFile(configFile, content, 0o600)
 		So(err, ShouldBeNil)
 
@@ -128,7 +128,7 @@ func TestRetentionCheckNegative(t *testing.T) {
 
 		defer ctrlManager.StopServer()
 
-		content := []byte(fmt.Sprintf(`{
+		content := fmt.Appendf([]byte{}, `{
 			"storage": {
 				"rootDirectory": "%s",
 				"gc": true,
@@ -154,7 +154,7 @@ func TestRetentionCheckNegative(t *testing.T) {
 				"level": "debug"
 			}
 		}
-		`, storageDir, port))
+		`, storageDir, port)
 		err := os.WriteFile(configFile, content, 0o600)
 		So(err, ShouldBeNil)
 
@@ -187,7 +187,7 @@ func TestRetentionCheckNegative(t *testing.T) {
 				configFile := path.Join(testDir, "zot-config.json")
 				port := GetFreePort()
 
-				content := []byte(fmt.Sprintf(`{
+				content := fmt.Appendf([]byte{}, `{
 					"distSpecVersion": "1.1.1",
 					"storage": {
 						"rootDirectory": "%s",
@@ -197,7 +197,7 @@ func TestRetentionCheckNegative(t *testing.T) {
 						"address": "127.0.0.1",
 						"port": "%s"
 					}
-				}`, testDir, port))
+				}`, testDir, port)
 				err := os.WriteFile(configFile, content, 0o600)
 				So(err, ShouldBeNil)
 
@@ -227,7 +227,7 @@ func TestRetentionCheckNegative(t *testing.T) {
 				logFile := path.Join(testDir, "retention-check.log")
 				port := GetFreePort()
 
-				content := []byte(fmt.Sprintf(`{
+				content := fmt.Appendf([]byte{}, `{
 					"distSpecVersion": "1.1.1",
 					"storage": {
 						"rootDirectory": "%s",
@@ -237,7 +237,7 @@ func TestRetentionCheckNegative(t *testing.T) {
 						"address": "127.0.0.1",
 						"port": "%s"
 					}
-				}`, testDir, port))
+				}`, testDir, port)
 				err := os.WriteFile(configFile, content, 0o600)
 				So(err, ShouldBeNil)
 
@@ -275,7 +275,7 @@ func TestRetentionCheckWithRetentionEnabledAndRedisDriver(t *testing.T) {
 		configFile := path.Join(testDir, "zot-config.json")
 		logFile := path.Join(testDir, "retention-check.log")
 
-		content := []byte(fmt.Sprintf(`{
+		content := fmt.Appendf([]byte{}, `{
 			"distSpecVersion": "1.1.1",
 			"storage": {
 				"rootDirectory": "%s",
@@ -310,7 +310,7 @@ func TestRetentionCheckWithRetentionEnabledAndRedisDriver(t *testing.T) {
 				"level": "debug"
 			}
 		}
-		`, storageDir, testGCDelay, miniRedis.Addr(), port))
+		`, storageDir, testGCDelay, miniRedis.Addr(), port)
 		err := os.WriteFile(configFile, content, 0o600)
 		So(err, ShouldBeNil)
 
@@ -513,7 +513,7 @@ func TestRetentionCheckWithRetentionEnabled(t *testing.T) {
 		configFile := path.Join(testDir, "zot-config.json")
 		logFile := path.Join(testDir, "retention-check.log")
 
-		content := []byte(fmt.Sprintf(`{
+		content := fmt.Appendf([]byte{}, `{
 			"distSpecVersion": "1.1.1",
 			"storage": {
 				"rootDirectory": "%s",
@@ -543,7 +543,7 @@ func TestRetentionCheckWithRetentionEnabled(t *testing.T) {
 				"level": "debug"
 			}
 		}
-		`, storageDir, testGCDelay, port))
+		`, storageDir, testGCDelay, port)
 		err := os.WriteFile(configFile, content, 0o600)
 		So(err, ShouldBeNil)
 
@@ -804,7 +804,7 @@ func TestRetentionCheckWithDeleteReferrers(t *testing.T) {
 		configFile := path.Join(testDir, "zot-config.json")
 		logFile := path.Join(testDir, "retention-check.log")
 
-		content := []byte(fmt.Sprintf(`{
+		content := fmt.Appendf([]byte{}, `{
 			"distSpecVersion": "1.1.1",
 			"storage": {
 				"rootDirectory": "%s",
@@ -835,7 +835,7 @@ func TestRetentionCheckWithDeleteReferrers(t *testing.T) {
 				"level": "debug"
 			}
 		}
-		`, storageDir, testGCDelay, port))
+		`, storageDir, testGCDelay, port)
 		err := os.WriteFile(configFile, content, 0o600)
 		So(err, ShouldBeNil)
 
@@ -985,7 +985,7 @@ func TestRetentionCheckWithRetentionDisabled(t *testing.T) {
 		configFile := path.Join(testDir, "zot-config.json")
 		logFile := path.Join(testDir, "retention-check.log")
 
-		content := []byte(fmt.Sprintf(`{
+		content := fmt.Appendf([]byte{}, `{
 			"distSpecVersion": "1.1.1",
 			"storage": {
 				"rootDirectory": "%s",
@@ -1001,7 +1001,7 @@ func TestRetentionCheckWithRetentionDisabled(t *testing.T) {
 				"level": "debug"
 			}
 		}
-		`, storageDir, testGCDelay, port))
+		`, storageDir, testGCDelay, port)
 		err := os.WriteFile(configFile, content, 0o600)
 		So(err, ShouldBeNil)
 
@@ -1141,7 +1141,7 @@ func TestRetentionCheckWithSubpaths(t *testing.T) {
 		configFile := path.Join(testDir, "zot-config.json")
 		logFile := path.Join(testDir, "retention-check.log")
 
-		content := []byte(fmt.Sprintf(`{
+		content := fmt.Appendf([]byte{}, `{
 			"distSpecVersion": "1.1.1",
 			"storage": {
 				"rootDirectory": "%s",
@@ -1195,7 +1195,7 @@ func TestRetentionCheckWithSubpaths(t *testing.T) {
 				"level": "debug"
 			}
 		}
-		`, storageDir, testGCDelay, storageDir, testGCDelay, port))
+		`, storageDir, testGCDelay, storageDir, testGCDelay, port)
 		err := os.WriteFile(configFile, content, 0o600)
 		So(err, ShouldBeNil)
 
@@ -1442,7 +1442,7 @@ func TestRetentionCheckWithGCIntervalOverride(t *testing.T) {
 		logFile := path.Join(testDir, "retention-check.log")
 		port := GetFreePort()
 
-		content := []byte(fmt.Sprintf(`{
+		content := fmt.Appendf([]byte{}, `{
 			"distSpecVersion": "1.1.1",
 			"storage": {
 				"rootDirectory": "%s",
@@ -1466,7 +1466,7 @@ func TestRetentionCheckWithGCIntervalOverride(t *testing.T) {
 				"level": "debug"
 			}
 		}
-		`, storageDir, testGCDelay, storageDir, testGCDelay, port))
+		`, storageDir, testGCDelay, storageDir, testGCDelay, port)
 		err := os.WriteFile(configFile, content, 0o600)
 		So(err, ShouldBeNil)
 
@@ -1506,10 +1506,10 @@ func TestRetentionCheckWithGCIntervalOverride(t *testing.T) {
 		//nolint:tagliatelle // JSON field names match Go struct names
 		type ConfigParams struct {
 			Storage struct {
-				GCInterval          int64                  `json:"GCInterval"`
-				GCDelay             int64                  `json:"GCDelay"`
-				GCMaxSchedulerDelay int64                  `json:"GCMaxSchedulerDelay"`
-				SubPaths            map[string]interface{} `json:"SubPaths"`
+				GCInterval          int64          `json:"GCInterval"`
+				GCDelay             int64          `json:"GCDelay"`
+				GCMaxSchedulerDelay int64          `json:"GCMaxSchedulerDelay"`
+				SubPaths            map[string]any `json:"SubPaths"`
 			} `json:"Storage"`
 		}
 

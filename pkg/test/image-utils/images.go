@@ -312,7 +312,7 @@ func (ib *BaseImageBuilder) EmptyLayer() ConfigBuilder {
 }
 
 func (ib *BaseImageBuilder) RandomLayers(count, size int) ConfigBuilder {
-	for i := 0; i < count; i++ {
+	for range count {
 		layer := make([]byte, size)
 
 		_, err := rand.Read(layer)

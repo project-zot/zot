@@ -1,6 +1,9 @@
 package regexp
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+)
 
 //nolint:gochecknoglobals
 var (
@@ -52,12 +55,12 @@ func literal(s string) *regexp.Regexp {
 // expression defines a full expression, where each regular expression must
 // follow the previous.
 func expression(res ...*regexp.Regexp) *regexp.Regexp {
-	var s string
+	var s strings.Builder
 	for _, re := range res {
-		s += re.String()
+		s.WriteString(re.String())
 	}
 
-	return match(s)
+	return match(s.String())
 }
 
 // optional wraps the expression in a non-capturing group and makes the

@@ -27,8 +27,9 @@ type ExtensionConfig struct {
 
 type ImageTrustConfig struct {
 	BaseConfig `mapstructure:",squash"`
-	Cosign     bool
-	Notation   bool
+
+	Cosign   bool
+	Notation bool
 }
 
 type APIKeyConfig struct {
@@ -40,13 +41,15 @@ type MgmtConfig struct {
 }
 
 type LintConfig struct {
-	BaseConfig           `mapstructure:",squash"`
+	BaseConfig `mapstructure:",squash"`
+
 	MandatoryAnnotations []string
 }
 
 type SearchConfig struct {
 	BaseConfig `mapstructure:",squash"`
-	CVE        *CVEConfig
+
+	CVE *CVEConfig
 }
 
 type CVEConfig struct {
@@ -61,6 +64,7 @@ type TrivyConfig struct {
 
 type MetricsConfig struct {
 	BaseConfig `mapstructure:",squash"`
+
 	Prometheus *PrometheusConfig
 }
 
@@ -70,7 +74,8 @@ type PrometheusConfig struct {
 
 type ScrubConfig struct {
 	BaseConfig `mapstructure:",squash"`
-	Interval   time.Duration
+
+	Interval time.Duration
 }
 
 type UIConfig struct {

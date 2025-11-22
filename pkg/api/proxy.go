@@ -215,11 +215,11 @@ func copyHeader(dst, src http.Header) {
 	}
 }
 
-// identifies and returns the cluster socket and index.
-// this is the socket which the scale out cluster members will use for
+// GetLocalMemberClusterSocket identifies and returns the cluster socket and index.
+// This is the socket which the scale out cluster members will use for
 // proxying and communication among each other.
-// returns index, socket, error.
-// returns an empty string and index value -1 if the cluster socket is not found.
+// Returns index, socket, error.
+// Returns an empty string and index value -1 if the cluster socket is not found.
 func GetLocalMemberClusterSocket(members []string, localSockets []string) (int, string, error) {
 	for memberIdx, member := range members {
 		// for each member, get the full list of sockets, including DNS resolution

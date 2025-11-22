@@ -1297,7 +1297,7 @@ func TestDedupeLinks(t *testing.T) {
 				})
 
 				Convey("Intrerrupt rebuilding and restart, checking idempotency", func() {
-					for i := 0; i < 10; i++ {
+					for i := range 10 {
 						taskScheduler := runAndGetScheduler()
 						defer taskScheduler.Shutdown()
 
@@ -1860,7 +1860,7 @@ func TestNegativeCases(t *testing.T) {
 
 	Convey("DirExists call with name too long as argument", t, func(c C) {
 		var builder strings.Builder
-		for i := 0; i < 1025; i++ {
+		for range 1025 {
 			_, err := builder.WriteString("0")
 			if err != nil {
 				t.Fatal(err)
@@ -2444,7 +2444,7 @@ func TestGarbageCollectErrors(t *testing.T) {
 			index.SchemaVersion = 2
 			index.MediaType = ispec.MediaTypeImageIndex
 
-			for i := 0; i < 4; i++ {
+			for range 4 {
 				// upload image config blob
 				upload, err = imgStore.NewBlobUpload(repoName)
 				So(err, ShouldBeNil)

@@ -32,7 +32,7 @@ func (t *task) DoWork(ctx context.Context) error {
 		return errInternal
 	}
 
-	for idx := 0; idx < 5; idx++ {
+	for range 5 {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -243,7 +243,7 @@ func TestScheduler(t *testing.T) {
 		lastPriority := "medium"
 		lastMediumGenerator := "1"
 
-		for _, line := range strings.Split(strings.TrimSuffix(string(data), "\n"), "\n") {
+		for line := range strings.SplitSeq(strings.TrimSuffix(string(data), "\n"), "\n") {
 			if !strings.Contains(line, "priority task; index: ") {
 				continue
 			}

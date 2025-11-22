@@ -1,5 +1,4 @@
 //go:build scrub
-// +build scrub
 
 package scrub
 
@@ -13,7 +12,7 @@ import (
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
-// Scrub Extension for repo...
+// RunScrubRepo runs the scrub extension for a repository.
 func RunScrubRepo(ctx context.Context, imgStore storageTypes.ImageStore, repo string, log log.Logger) error {
 	execMsg := "executing scrub to check manifest/blob integrity for " + path.Join(imgStore.RootDir(), repo)
 	log.Info().Msg(execMsg)

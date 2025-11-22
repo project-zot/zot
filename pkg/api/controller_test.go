@@ -1,5 +1,4 @@
 //go:build sync && scrub && metrics && search && lint && userprefs && mgmt && imagetrust && ui
-// +build sync,scrub,metrics,search,lint,userprefs,mgmt,imagetrust,ui
 
 package api_test
 
@@ -176,7 +175,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 		conf.Storage.RemoteCache = true
 
 		// test error on invalid redis client config
-		conf.Storage.CacheDriver = map[string]interface{}{
+		conf.Storage.CacheDriver = map[string]any{
 			"name": "redis",
 			"url":  false,
 		}
@@ -186,13 +185,13 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 		So(driver, ShouldBeNil)
 
 		// test valid redis client config
-		conf.Storage.CacheDriver = map[string]interface{}{
+		conf.Storage.CacheDriver = map[string]any{
 			"name": "redis",
 			"url":  "redis://" + miniRedis.Addr(),
 		}
 
 		// test initialization for S3 storage
-		conf.Storage.StorageDriver = map[string]interface{}{
+		conf.Storage.StorageDriver = map[string]any{
 			"name":          "s3",
 			"rootdirectory": "/zot",
 			"url":           "us-east-2",
@@ -223,7 +222,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 		conf.Storage.RootDirectory = dir
 		conf.Storage.Dedupe = true
 		conf.Storage.RemoteCache = true
-		conf.Storage.StorageDriver = map[string]interface{}{
+		conf.Storage.StorageDriver = map[string]any{
 			"name":          "s3",
 			"rootdirectory": "/zot",
 			"region":        "us-east-2",
@@ -235,7 +234,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 		endpoint := os.Getenv("DYNAMODBMOCK_ENDPOINT")
 
 		// missing cachetablename key
-		conf.Storage.CacheDriver = map[string]interface{}{
+		conf.Storage.CacheDriver = map[string]any{
 			"name":     "dynamodb",
 			"endpoint": endpoint,
 			"region":   "us-east-2",
@@ -246,7 +245,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 		So(driver, ShouldBeNil)
 
 		// invalid cachetablename type
-		conf.Storage.CacheDriver = map[string]interface{}{
+		conf.Storage.CacheDriver = map[string]any{
 			"name":           "dynamodb",
 			"endpoint":       endpoint,
 			"region":         "us-east-2",
@@ -257,7 +256,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(driver, ShouldBeNil)
 
-		conf.Storage.CacheDriver = map[string]interface{}{
+		conf.Storage.CacheDriver = map[string]any{
 			"name":                   "dynamodb",
 			"endpoint":               endpoint,
 			"region":                 "us-east-2",
@@ -275,7 +274,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 
 		// negative test cases
 
-		conf.Storage.CacheDriver = map[string]interface{}{
+		conf.Storage.CacheDriver = map[string]any{
 			"endpoint":               endpoint,
 			"region":                 "us-east-2",
 			"cachetablename":         "BlobTable",
@@ -290,7 +289,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(driver, ShouldBeNil)
 
-		conf.Storage.CacheDriver = map[string]interface{}{
+		conf.Storage.CacheDriver = map[string]any{
 			"name":                   "dummy",
 			"endpoint":               endpoint,
 			"region":                 "us-east-2",
@@ -316,7 +315,7 @@ func TestCreateMetaDBDriver(t *testing.T) {
 		conf.Storage.RootDirectory = dir
 		conf.Storage.Dedupe = true
 		conf.Storage.RemoteCache = true
-		conf.Storage.StorageDriver = map[string]interface{}{
+		conf.Storage.StorageDriver = map[string]any{
 			"name":          "s3",
 			"rootdirectory": "/zot",
 			"region":        "us-east-2",
@@ -325,7 +324,7 @@ func TestCreateMetaDBDriver(t *testing.T) {
 			"skipverify":    false,
 		}
 
-		conf.Storage.CacheDriver = map[string]interface{}{
+		conf.Storage.CacheDriver = map[string]any{
 			"name":                   "dummy",
 			"endpoint":               "http://localhost:4566",
 			"region":                 "us-east-2",
@@ -340,7 +339,7 @@ func TestCreateMetaDBDriver(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(metaDB, ShouldBeNil)
 
-		conf.Storage.CacheDriver = map[string]interface{}{
+		conf.Storage.CacheDriver = map[string]any{
 			"name":                   "dynamodb",
 			"endpoint":               "http://localhost:4566",
 			"region":                 "us-east-2",
@@ -354,7 +353,7 @@ func TestCreateMetaDBDriver(t *testing.T) {
 		testFunc := func() { _, _ = meta.New(conf.Storage.StorageConfig, log) }
 		So(testFunc, ShouldPanic)
 
-		conf.Storage.CacheDriver = map[string]interface{}{
+		conf.Storage.CacheDriver = map[string]any{
 			"name":                   "dynamodb",
 			"endpoint":               "http://localhost:4566",
 			"region":                 "us-east-2",
@@ -369,7 +368,7 @@ func TestCreateMetaDBDriver(t *testing.T) {
 		testFunc = func() { _, _ = meta.New(conf.Storage.StorageConfig, log) }
 		So(testFunc, ShouldPanic)
 
-		conf.Storage.CacheDriver = map[string]interface{}{
+		conf.Storage.CacheDriver = map[string]any{
 			"name":                   "dynamodb",
 			"endpoint":               "http://localhost:4566",
 			"region":                 "us-east-2",
@@ -395,7 +394,7 @@ func TestCreateMetaDBDriver(t *testing.T) {
 		conf.Storage.RootDirectory = dir
 		conf.Storage.Dedupe = true
 		conf.Storage.RemoteCache = true
-		conf.Storage.StorageDriver = map[string]interface{}{
+		conf.Storage.StorageDriver = map[string]any{
 			"name":          "s3",
 			"rootdirectory": "/zot",
 			"region":        "us-east-2",
@@ -404,7 +403,7 @@ func TestCreateMetaDBDriver(t *testing.T) {
 			"skipverify":    false,
 		}
 
-		conf.Storage.CacheDriver = map[string]interface{}{
+		conf.Storage.CacheDriver = map[string]any{
 			"name": "dummy",
 		}
 
@@ -412,7 +411,7 @@ func TestCreateMetaDBDriver(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(metaDB, ShouldBeNil)
 
-		conf.Storage.CacheDriver = map[string]interface{}{
+		conf.Storage.CacheDriver = map[string]any{
 			"name": "redis",
 		}
 
@@ -420,7 +419,7 @@ func TestCreateMetaDBDriver(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(metaDB, ShouldBeNil)
 
-		conf.Storage.CacheDriver = map[string]interface{}{
+		conf.Storage.CacheDriver = map[string]any{
 			"name": "redis",
 			"url":  "url",
 		}
@@ -429,7 +428,7 @@ func TestCreateMetaDBDriver(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(metaDB, ShouldBeNil)
 
-		conf.Storage.CacheDriver = map[string]interface{}{
+		conf.Storage.CacheDriver = map[string]any{
 			"name": "redis",
 			"url":  "redis://" + miniRedis.Addr(),
 		}
@@ -559,7 +558,7 @@ func TestObjectStorageController(t *testing.T) {
 		conf.HTTP.Port = port
 		tmp := t.TempDir()
 
-		storageDriverParams := map[string]interface{}{
+		storageDriverParams := map[string]any{
 			"rootdirectory": tmp,
 			"name":          storageConstants.S3StorageDriverName,
 		}
@@ -579,7 +578,7 @@ func TestObjectStorageController(t *testing.T) {
 		endpoint := os.Getenv("S3MOCK_ENDPOINT")
 		tmp := t.TempDir()
 
-		storageDriverParams := map[string]interface{}{
+		storageDriverParams := map[string]any{
 			"rootdirectory":  tmp,
 			"name":           storageConstants.S3StorageDriverName,
 			"region":         "us-east-2",
@@ -606,7 +605,7 @@ func TestObjectStorageController(t *testing.T) {
 
 		endpoint := os.Getenv("S3MOCK_ENDPOINT")
 
-		storageDriverParams := map[string]interface{}{
+		storageDriverParams := map[string]any{
 			"rootdirectory":  "/zot",
 			"name":           storageConstants.S3StorageDriverName,
 			"region":         "us-east-2",
@@ -618,7 +617,7 @@ func TestObjectStorageController(t *testing.T) {
 		conf.Storage.RemoteCache = true
 		conf.Storage.StorageDriver = storageDriverParams
 
-		conf.Storage.CacheDriver = map[string]interface{}{
+		conf.Storage.CacheDriver = map[string]any{
 			"name":                   "dynamodb",
 			"endpoint":               os.Getenv("DYNAMODBMOCK_ENDPOINT"),
 			"region":                 "us-east-2",
@@ -688,7 +687,7 @@ func TestObjectStorageControllerSubPaths(t *testing.T) {
 		endpoint := os.Getenv("S3MOCK_ENDPOINT")
 		tmp := t.TempDir()
 
-		storageDriverParams := map[string]interface{}{
+		storageDriverParams := map[string]any{
 			"rootdirectory":  tmp,
 			"name":           storageConstants.S3StorageDriverName,
 			"region":         "us-east-2",
@@ -1286,7 +1285,7 @@ func TestScaleOutRequestProxy(t *testing.T) {
 
 		clusterMembers := make([]string, numMembers)
 
-		for idx := 0; idx < numMembers; idx++ {
+		for idx := range numMembers {
 			port := test.GetFreePort()
 			ports[idx] = port
 			clusterMembers[idx] = "127.0.0.1:" + port
@@ -1357,7 +1356,7 @@ func TestScaleOutRequestProxy(t *testing.T) {
 
 		clusterMembers := make([]string, numMembers)
 
-		for idx := 0; idx < numMembers; idx++ {
+		for idx := range numMembers {
 			port := test.GetFreePort()
 			ports[idx] = port
 			clusterMembers[idx] = "127.0.0.1:" + port
@@ -1457,7 +1456,7 @@ func TestScaleOutRequestProxy(t *testing.T) {
 
 		clusterMembers := make([]string, numMembers)
 
-		for idx := 0; idx < numMembers; idx++ {
+		for idx := range numMembers {
 			port := test.GetFreePort()
 			ports[idx] = port
 			clusterMembers[idx] = "127.0.0.1:" + port
@@ -1521,7 +1520,7 @@ func TestScaleOutRequestProxy(t *testing.T) {
 
 		clusterMembers := make([]string, numMembers)
 
-		for idx := 0; idx < numMembers; idx++ {
+		for idx := range numMembers {
 			port := test.GetFreePort()
 			ports[idx] = port
 			clusterMembers[idx] = "127.0.0.1:" + port
@@ -1587,7 +1586,7 @@ func TestScaleOutRequestProxy(t *testing.T) {
 
 		clusterMembers := make([]string, numMembers)
 
-		for idx := 0; idx < numMembers; idx++ {
+		for idx := range numMembers {
 			port := test.GetFreePort()
 			ports[idx] = port
 			clusterMembers[idx] = "127.0.0.1:" + port
@@ -1724,7 +1723,7 @@ func TestInterruptedBlobUpload(t *testing.T) {
 
 			// patch blob
 			go func(ctx context.Context) {
-				for i := 0; i < 3; i++ {
+				for range 3 {
 					_, _ = client.R().
 						SetHeader("Content-Length", strconv.Itoa(len(blob))).
 						SetHeader("Content-Type", "application/octet-stream").
@@ -1780,7 +1779,7 @@ func TestInterruptedBlobUpload(t *testing.T) {
 
 			// patch blob
 			go func(ctx context.Context) {
-				for i := 0; i < 3; i++ {
+				for range 3 {
 					_, _ = client.R().
 						SetHeader("Content-Length", strconv.Itoa(len(blob))).
 						SetHeader("Content-Type", "application/octet-stream").
@@ -1839,7 +1838,7 @@ func TestInterruptedBlobUpload(t *testing.T) {
 
 			// put blob
 			go func(ctx context.Context) {
-				for i := 0; i < 3; i++ {
+				for range 3 {
 					_, _ = client.R().
 						SetHeader("Content-Length", strconv.Itoa(len(blob))).
 						SetHeader("Content-Type", "application/octet-stream").
@@ -1895,7 +1894,7 @@ func TestInterruptedBlobUpload(t *testing.T) {
 
 			// push blob
 			go func(ctx context.Context) {
-				for i := 0; i < 3; i++ {
+				for range 3 {
 					_, _ = client.R().
 						SetHeader("Content-Length", strconv.Itoa(len(blob))).
 						SetHeader("Content-Type", "application/octet-stream").
@@ -2672,6 +2671,7 @@ func TestTSLFailedReadingOfCACert(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		errChan := make(chan error, 1)
+
 		go func() {
 			err = ctlr.Run()
 			errChan <- err
@@ -2714,6 +2714,7 @@ func TestTSLFailedReadingOfCACert(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		errChan := make(chan error, 1)
+
 		go func() {
 			err = ctlr.Run()
 			errChan <- err
@@ -3028,7 +3029,7 @@ func newTestLDAPServer() *testLDAPServer {
 }
 
 func (l *testLDAPServer) Start(port int) {
-	addr := fmt.Sprintf("%s:%d", LDAPAddress, port)
+	addr := net.JoinHostPort(LDAPAddress, strconv.Itoa(port))
 
 	go func() {
 		if err := l.server.ListenAndServe(addr); err != nil {
@@ -3037,7 +3038,7 @@ func (l *testLDAPServer) Start(port int) {
 	}()
 
 	for {
-		_, err := net.Dial("tcp", addr)
+		_, err := net.Dial("tcp", addr) //nolint: noctx
 		if err == nil {
 			break
 		}
@@ -3250,7 +3251,7 @@ func TestBasicAuthWithReloadedCredentials(t *testing.T) {
 		err = os.WriteFile(ldapConfigPath, []byte(newLdapConfigContent), 0o600)
 		So(err, ShouldBeNil)
 
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			// test if the credentials don't work
 			resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL + "/v2/")
 			So(resp, ShouldNotBeNil)
@@ -3267,7 +3268,7 @@ func TestBasicAuthWithReloadedCredentials(t *testing.T) {
 		err = os.WriteFile(ldapConfigPath, []byte(ldapConfigContent), 0o600)
 		So(err, ShouldBeNil)
 
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			// test if the credentials don't work
 			resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL + "/v2/")
 			So(resp, ShouldNotBeNil)
@@ -3294,7 +3295,7 @@ func TestBasicAuthWithReloadedCredentials(t *testing.T) {
 		err = os.WriteFile(configPath, []byte(configStr), 0o600)
 		So(err, ShouldBeNil)
 
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			// test if the credentials don't work
 			resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL + "/v2/")
 			So(resp, ShouldNotBeNil)
@@ -3311,7 +3312,7 @@ func TestBasicAuthWithReloadedCredentials(t *testing.T) {
 		err = os.WriteFile(changedLdapConfigPath, []byte(ldapConfigContent), 0o600)
 		So(err, ShouldBeNil)
 
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			// test if the credentials don't work
 			resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL + "/v2/")
 			So(resp, ShouldNotBeNil)
@@ -3340,7 +3341,7 @@ func TestBasicAuthWithReloadedCredentials(t *testing.T) {
 		// Loading the config should fail because the file doesn't exist so the old credentials
 		// are still up and working fine.
 
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			// test if the credentials don't work
 			resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL + "/v2/")
 			So(resp, ShouldNotBeNil)
@@ -7458,7 +7459,6 @@ func TestParallelRequests(t *testing.T) {
 
 	// without creds, should get access error
 	for i, testcase := range testCases {
-		testcase := testcase
 		run := i
 
 		t.Run(testcase.testCaseName, func(t *testing.T) {
@@ -12187,7 +12187,7 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 			index.MediaType = ispec.MediaTypeImageIndex
 
 			// upload multiple manifests
-			for i := 0; i < 4; i++ {
+			for i := range 4 {
 				img := CreateImageWith().RandomLayers(1, 1000+i).DefaultConfig().Build()
 
 				manifestDigest := img.ManifestDescriptor.Digest

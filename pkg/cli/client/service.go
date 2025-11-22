@@ -1,5 +1,4 @@
 //go:build search
-// +build search
 
 package client
 
@@ -687,7 +686,7 @@ func (service searchService) getImagesByDigest(ctx context.Context, config Searc
 // errors are returned in the stringResult channel, the unmarshalled payload is in resultPtr.
 func (service searchService) makeGraphQLQuery(ctx context.Context,
 	config SearchConfig, username, password, query string,
-	resultPtr interface{},
+	resultPtr any,
 ) error {
 	endPoint, err := combineServerAndEndpointURL(config.ServURL, constants.FullSearchPrefix)
 	if err != nil {

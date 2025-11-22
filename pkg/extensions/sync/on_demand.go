@@ -1,5 +1,4 @@
 //go:build sync
-// +build sync
 
 package sync
 
@@ -23,9 +22,9 @@ type request struct {
 }
 
 /*
-	a request can be an image/signature/sbom
+BaseOnDemand tracks requests that can be an image/signature/sbom.
 
-keep track of all parallel requests, if two requests of same image/signature/sbom comes at the same time,
+It keeps track of all parallel requests, if two requests of same image/signature/sbom comes at the same time,
 process just the first one, also keep track of all background retrying routines.
 */
 type BaseOnDemand struct {

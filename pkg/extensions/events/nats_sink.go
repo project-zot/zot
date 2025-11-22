@@ -1,5 +1,4 @@
 //go:build events
-// +build events
 
 package events
 
@@ -18,6 +17,7 @@ import (
 // NATSSink implements a CloudEvents sink that publishes to NATS.
 type NATSSink struct {
 	cloudevents.Client
+
 	conn   *nats.Conn
 	config eventsconf.SinkConfig
 }

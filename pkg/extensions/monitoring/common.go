@@ -9,10 +9,10 @@ import (
 var re = regexp.MustCompile(`\/v2\/(.*?)\/(blobs|tags|manifests)\/(.*)$`)
 
 type MetricServer interface {
-	SendMetric(interface{})
+	SendMetric(any)
 	// works like SendMetric, but adds the metric regardless of the value of 'enabled' field for MetricServer
-	ForceSendMetric(interface{})
-	ReceiveMetrics() interface{}
+	ForceSendMetric(any)
+	ReceiveMetrics() any
 	IsEnabled() bool
 	// Stop gracefully shuts down the metrics server
 	Stop()

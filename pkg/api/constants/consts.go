@@ -23,17 +23,19 @@ const (
 	APIKeysPrefix                = "zak_"
 	CallbackUIQueryParam         = "callback_ui"
 	APIKeyTimeFormat             = time.RFC3339
-	// authz permissions.
-	// method actions.
+	// CreatePermission is an authz permission for create actions.
 	CreatePermission = "create"
-	ReadPermission   = "read"
+	// ReadPermission is an authz permission for read actions.
+	ReadPermission = "read"
+	// UpdatePermission is an authz permission for update actions.
 	UpdatePermission = "update"
+	// DeletePermission is an authz permission for delete actions.
 	DeletePermission = "delete"
-	// behaviour actions.
+	// DetectManifestCollisionPermission is a behaviour action.
 	DetectManifestCollisionPermission = "detectManifestCollision"
-	// zot scale-out hop count header.
+	// ScaleOutHopCountHeader is the zot scale-out hop count header.
 	ScaleOutHopCountHeader = "X-Zot-Cluster-Hop-Count"
-	// log string keys.
-	// these can be used together with the logger to add context to a log message.
+	// RepositoryLogKey is a log string key.
+	// These can be used together with the logger to add context to a log message.
 	RepositoryLogKey = "repository"
 )

@@ -1,6 +1,8 @@
 package compat
 
 import (
+	"slices"
+
 	dockerList "github.com/distribution/distribution/v3/manifest/manifestlist"
 	docker "github.com/distribution/distribution/v3/manifest/schema2"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
@@ -22,13 +24,7 @@ func CompatibleManifestMediaTypes() []string {
 }
 
 func IsCompatibleManifestMediaType(mediatype string) bool {
-	for _, mt := range CompatibleManifestMediaTypes() {
-		if mt == mediatype {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(CompatibleManifestMediaTypes(), mediatype)
 }
 
 func CompatibleManifestListMediaTypes() []string {
@@ -36,13 +32,7 @@ func CompatibleManifestListMediaTypes() []string {
 }
 
 func IsCompatibleManifestListMediaType(mediatype string) bool {
-	for _, mt := range CompatibleManifestListMediaTypes() {
-		if mt == mediatype {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(CompatibleManifestListMediaTypes(), mediatype)
 }
 
 func CompatibleConfigMediaTypes() []string {
@@ -50,13 +40,7 @@ func CompatibleConfigMediaTypes() []string {
 }
 
 func IsCompatibleConfigMediaType(mediatype string) bool {
-	for _, mt := range CompatibleConfigMediaTypes() {
-		if mt == mediatype {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(CompatibleConfigMediaTypes(), mediatype)
 }
 
 func Validate(body []byte, mediaType string) ([]v1.Descriptor, error) {

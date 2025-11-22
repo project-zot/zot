@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -635,8 +636,8 @@ func (dwr *DynamoDB) SearchRepos(ctx context.Context, searchText string) ([]mTyp
 		}
 
 		protoRepoMeta.Rank = int32(rank) //nolint:gosec // ignore overflow
-		protoRepoMeta.IsStarred = zcommon.Contains(userStars, protoRepoMeta.Name)
-		protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, protoRepoMeta.Name)
+		protoRepoMeta.IsStarred = slices.Contains(userStars, protoRepoMeta.Name)
+		protoRepoMeta.IsBookmarked = slices.Contains(userBookmarks, protoRepoMeta.Name)
 
 		repos = append(repos, mConvert.GetRepoMeta(protoRepoMeta))
 	}
@@ -670,8 +671,8 @@ func (dwr *DynamoDB) SearchTags(ctx context.Context, searchText string) ([]mType
 
 	delete(protoRepoMeta.Tags, "")
 
-	protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, searchedRepo)
-	protoRepoMeta.IsStarred = zcommon.Contains(userStars, searchedRepo)
+	protoRepoMeta.IsBookmarked = slices.Contains(userBookmarks, searchedRepo)
+	protoRepoMeta.IsStarred = slices.Contains(userStars, searchedRepo)
 
 	for tag, descriptor := range protoRepoMeta.Tags {
 		if !strings.HasPrefix(tag, searchedTag) {
@@ -754,8 +755,8 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterRepoTag mTypes.Filter
 			continue
 		}
 
-		protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, protoRepoMeta.Name)
-		protoRepoMeta.IsStarred = zcommon.Contains(userStars, protoRepoMeta.Name)
+		protoRepoMeta.IsBookmarked = slices.Contains(userBookmarks, protoRepoMeta.Name)
+		protoRepoMeta.IsStarred = slices.Contains(userStars, protoRepoMeta.Name)
 		repoMeta := mConvert.GetRepoMeta(protoRepoMeta)
 
 		for tag, descriptor := range repoMeta.Tags {
@@ -890,8 +891,8 @@ func (dwr *DynamoDB) GetRepoMeta(ctx context.Context, repo string) (mTypes.RepoM
 	userBookmarks := getUserBookmarks(ctx, dwr)
 	userStars := getUserStars(ctx, dwr)
 
-	protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repo)
-	protoRepoMeta.IsStarred = zcommon.Contains(userStars, repo)
+	protoRepoMeta.IsBookmarked = slices.Contains(userBookmarks, repo)
+	protoRepoMeta.IsStarred = slices.Contains(userStars, repo)
 
 	return mConvert.GetRepoMeta(protoRepoMeta), nil
 }
@@ -906,8 +907,8 @@ func (dwr *DynamoDB) GetFullImageMeta(ctx context.Context, repo string, tag stri
 
 	bookmarks, stars := dwr.getUserBookmarksAndStars(ctx)
 
-	protoRepoMeta.IsBookmarked = zcommon.Contains(bookmarks, repo)
-	protoRepoMeta.IsStarred = zcommon.Contains(stars, repo)
+	protoRepoMeta.IsBookmarked = slices.Contains(bookmarks, repo)
+	protoRepoMeta.IsStarred = slices.Contains(stars, repo)
 
 	descriptor, ok := protoRepoMeta.Tags[tag]
 	if !ok {
@@ -1040,8 +1041,8 @@ func (dwr *DynamoDB) FilterRepos(ctx context.Context, acceptName mTypes.FilterRe
 			continue
 		}
 
-		protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, protoRepoMeta.Name)
-		protoRepoMeta.IsStarred = zcommon.Contains(userStars, protoRepoMeta.Name)
+		protoRepoMeta.IsBookmarked = slices.Contains(userBookmarks, protoRepoMeta.Name)
+		protoRepoMeta.IsStarred = slices.Contains(userStars, protoRepoMeta.Name)
 
 		fullRepoMeta := mConvert.GetRepoMeta(protoRepoMeta)
 
@@ -1574,7 +1575,7 @@ func (dwr *DynamoDB) ToggleBookmarkRepo(ctx context.Context, repo string) (
 		return res, err
 	}
 
-	if !zcommon.Contains(userData.BookmarkedRepos, repo) {
+	if !slices.Contains(userData.BookmarkedRepos, repo) {
 		userData.BookmarkedRepos = append(userData.BookmarkedRepos, repo)
 		res = mTypes.Added
 	} else {
@@ -1625,7 +1626,7 @@ func (dwr *DynamoDB) ToggleStarRepo(ctx context.Context, repo string) (
 		return res, err
 	}
 
-	if !zcommon.Contains(userData.StarredRepos, repo) {
+	if !slices.Contains(userData.StarredRepos, repo) {
 		userData.StarredRepos = append(userData.StarredRepos, repo)
 		res = mTypes.Added
 	} else {

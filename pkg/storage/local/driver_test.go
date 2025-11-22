@@ -700,6 +700,7 @@ var (
 // mockFile implements FileInterface for testing sync behavior.
 type mockFile struct {
 	*os.File
+
 	syncCalled bool
 	syncError  error
 	closeError error

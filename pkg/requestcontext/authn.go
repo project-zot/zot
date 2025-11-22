@@ -9,7 +9,7 @@ import (
 // request-local context key.
 var amwCtxKey = Key(1) //nolint: gochecknoglobals
 
-// pointer needed for use in context.WithValue.
+// GetAuthnMiddlewareCtxKey returns a pointer needed for use in context.WithValue.
 func GetAuthnMiddlewareCtxKey() *Key {
 	return &amwCtxKey
 }

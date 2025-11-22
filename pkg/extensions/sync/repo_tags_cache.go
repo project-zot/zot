@@ -1,5 +1,4 @@
 //go:build sync
-// +build sync
 
 package sync
 
@@ -27,7 +26,7 @@ func newTagsCache(expireAfter time.Duration) *tagsCache {
 	}
 }
 
-// returns true if still valid (not expired) and tags list.
+// Get returns true if still valid (not expired) and tags list.
 func (c *tagsCache) Get(repo string) (bool, []string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

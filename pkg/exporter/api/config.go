@@ -1,9 +1,8 @@
 //go:build !metrics
-// +build !metrics
 
 package api
 
-// We export below types in order for cli package to be able to read it from configuration file.
+// LogConfig and the other types below are exported so the cli package can read them from configuration file.
 type LogConfig struct {
 	Level  string
 	Output string

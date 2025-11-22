@@ -1,5 +1,4 @@
 //go:build search
-// +build search
 
 package client_test
 
@@ -1131,10 +1130,8 @@ func getMockCveScanner(metaDB mTypes.MetaDB) cveinfo.Scanner {
 			for _, imageLayer := range manifestData.Manifests[0].Manifest.Layers {
 				switch imageLayer.MediaType {
 				case ispec.MediaTypeImageLayerGzip, ispec.MediaTypeImageLayer, string(regTypes.DockerLayer):
-
 					return true, nil
 				default:
-
 					return false, zerr.ErrScanNotSupported
 				}
 			}

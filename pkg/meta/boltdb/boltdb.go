@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -464,8 +465,8 @@ func (bdw *BoltDB) SearchRepos(ctx context.Context, searchText string,
 			}
 
 			protoRepoMeta.Rank = int32(rank) //nolint:gosec // ignore overflow
-			protoRepoMeta.IsStarred = zcommon.Contains(userStars, protoRepoMeta.Name)
-			protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, protoRepoMeta.Name)
+			protoRepoMeta.IsStarred = slices.Contains(userStars, protoRepoMeta.Name)
+			protoRepoMeta.IsBookmarked = slices.Contains(userBookmarks, protoRepoMeta.Name)
 
 			repos = append(repos, mConvert.GetRepoMeta(protoRepoMeta))
 		}
@@ -574,8 +575,8 @@ func (bdw *BoltDB) SearchTags(ctx context.Context, searchText string,
 
 		delete(protoRepoMeta.Tags, "")
 
-		protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, protoRepoMeta.Name)
-		protoRepoMeta.IsStarred = zcommon.Contains(userStars, protoRepoMeta.Name)
+		protoRepoMeta.IsBookmarked = slices.Contains(userBookmarks, protoRepoMeta.Name)
+		protoRepoMeta.IsStarred = slices.Contains(userStars, protoRepoMeta.Name)
 
 		for tag, descriptor := range protoRepoMeta.Tags {
 			if !strings.HasPrefix(tag, searchedTag) || tag == "" {
@@ -658,8 +659,8 @@ func (bdw *BoltDB) FilterTags(ctx context.Context, filterRepoTag mTypes.FilterRe
 			}
 
 			delete(protoRepoMeta.Tags, "")
-			protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, protoRepoMeta.Name)
-			protoRepoMeta.IsStarred = zcommon.Contains(userStars, protoRepoMeta.Name)
+			protoRepoMeta.IsBookmarked = slices.Contains(userBookmarks, protoRepoMeta.Name)
+			protoRepoMeta.IsStarred = slices.Contains(userStars, protoRepoMeta.Name)
 			repoMeta := mConvert.GetRepoMeta(protoRepoMeta)
 
 			for tag, descriptor := range protoRepoMeta.Tags {
@@ -759,8 +760,8 @@ func (bdw *BoltDB) FilterRepos(ctx context.Context, acceptName mTypes.FilterRepo
 				return err
 			}
 
-			repoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repoMeta.Name)
-			repoMeta.IsStarred = zcommon.Contains(userStars, repoMeta.Name)
+			repoMeta.IsBookmarked = slices.Contains(userBookmarks, repoMeta.Name)
+			repoMeta.IsStarred = slices.Contains(userStars, repoMeta.Name)
 
 			fullRepoMeta := mConvert.GetRepoMeta(repoMeta)
 
@@ -796,8 +797,8 @@ func (bdw *BoltDB) GetRepoMeta(ctx context.Context, repo string) (mTypes.RepoMet
 		}
 
 		delete(protoRepoMeta.Tags, "")
-		protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repo)
-		protoRepoMeta.IsStarred = zcommon.Contains(userStars, repo)
+		protoRepoMeta.IsBookmarked = slices.Contains(userBookmarks, repo)
+		protoRepoMeta.IsStarred = slices.Contains(userStars, repo)
 
 		return nil
 	})
@@ -830,8 +831,8 @@ func (bdw *BoltDB) GetFullImageMeta(ctx context.Context, repo string, tag string
 		}
 
 		delete(protoRepoMeta.Tags, "")
-		protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repo)
-		protoRepoMeta.IsStarred = zcommon.Contains(userStars, repo)
+		protoRepoMeta.IsBookmarked = slices.Contains(userBookmarks, repo)
+		protoRepoMeta.IsStarred = slices.Contains(userStars, repo)
 
 		descriptor, ok := protoRepoMeta.Tags[tag]
 		if !ok {
@@ -1518,7 +1519,7 @@ func (bdw *BoltDB) ToggleStarRepo(ctx context.Context, repo string) (mTypes.Togg
 			return err
 		}
 
-		isRepoStarred := zcommon.Contains(userData.StarredRepos, repo)
+		isRepoStarred := slices.Contains(userData.StarredRepos, repo)
 
 		if isRepoStarred {
 			res = mTypes.Removed
@@ -1591,7 +1592,7 @@ func (bdw *BoltDB) ToggleBookmarkRepo(ctx context.Context, repo string) (mTypes.
 			return err
 		}
 
-		isRepoBookmarked := zcommon.Contains(userData.BookmarkedRepos, repo)
+		isRepoBookmarked := slices.Contains(userData.BookmarkedRepos, repo)
 
 		if isRepoBookmarked {
 			res = mTypes.Removed

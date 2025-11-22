@@ -42,38 +42,38 @@ func TestRedisOptions(t *testing.T) {
 
 		Convey("Test redis url parsing", func() {
 			// Errors
-			config := map[string]interface{}{"url": false}
+			config := map[string]any{"url": false}
 
 			clientIntf, err := rediscfg.GetRedisClient(config, log)
 			So(err, ShouldNotBeNil)
 			So(clientIntf, ShouldBeNil)
 
-			config = map[string]interface{}{"url": ""}
+			config = map[string]any{"url": ""}
 
 			clientIntf, err = rediscfg.GetRedisClient(config, log)
 			So(err, ShouldNotBeNil)
 			So(clientIntf, ShouldBeNil)
 
-			config = map[string]interface{}{"url": "qwerty@localhost:6379/1?dial_timeout=5s"}
+			config = map[string]any{"url": "qwerty@localhost:6379/1?dial_timeout=5s"}
 
 			clientIntf, err = rediscfg.GetRedisClient(config, log)
 			So(err, ShouldNotBeNil)
 			So(clientIntf, ShouldBeNil)
 
-			config = map[string]interface{}{"url": "http://:qwerty@localhost:6379/1?dial_timeout=5s"}
+			config = map[string]any{"url": "http://:qwerty@localhost:6379/1?dial_timeout=5s"}
 
 			clientIntf, err = rediscfg.GetRedisClient(config, log)
 			So(err, ShouldNotBeNil)
 			So(clientIntf, ShouldBeNil)
 
-			config = map[string]interface{}{"url": "http://localhost:6379/1?addr=host2:6379&addr=host1:6379"}
+			config = map[string]any{"url": "http://localhost:6379/1?addr=host2:6379&addr=host1:6379"}
 
 			clientIntf, err = rediscfg.GetRedisClient(config, log)
 			So(err, ShouldNotBeNil)
 			So(clientIntf, ShouldBeNil)
 
 			// Success
-			config = map[string]interface{}{"url": "redis://user:password@localhost:6379/1?dial_timeout=5s"}
+			config = map[string]any{"url": "redis://user:password@localhost:6379/1?dial_timeout=5s"}
 
 			clientIntf, err = rediscfg.GetRedisClient(config, log)
 			So(err, ShouldBeNil)
@@ -82,7 +82,7 @@ func TestRedisOptions(t *testing.T) {
 			_, ok := clientIntf.(*redis.Client)
 			So(ok, ShouldBeTrue)
 
-			config = map[string]interface{}{"url": "redis://user:password@host1:6379?addr=host2:6379&addr=host1:6379"}
+			config = map[string]any{"url": "redis://user:password@host1:6379?addr=host2:6379&addr=host1:6379"}
 
 			clientIntf, err = rediscfg.GetRedisClient(config, log)
 			So(err, ShouldBeNil)
@@ -93,7 +93,7 @@ func TestRedisOptions(t *testing.T) {
 		})
 
 		Convey("Test empty redis options from struct successfully", func() {
-			config := map[string]interface{}{}
+			config := map[string]any{}
 
 			// All attributes will have zero values
 			options := rediscfg.ParseRedisUniversalOptions(config, log)
@@ -139,7 +139,7 @@ func TestRedisOptions(t *testing.T) {
 		})
 
 		Convey("Test redis options from struct successfully", func() {
-			config := map[string]interface{}{
+			config := map[string]any{
 				"addr": []string{
 					"a.repo:26379",
 					"b.repo:26379",
@@ -221,7 +221,7 @@ func TestRedisOptions(t *testing.T) {
 		})
 
 		Convey("Test redis options from struct with warnings", func() {
-			config := map[string]interface{}{
+			config := map[string]any{
 				"addr":                    map[string]int{},
 				"db":                      "somestring",
 				"master_name":             map[string]int{},

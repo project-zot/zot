@@ -1,5 +1,4 @@
 //go:build search
-// +build search
 
 package search_test
 
@@ -340,10 +339,8 @@ func getMockCveScanner(metaDB mTypes.MetaDB) cveinfo.Scanner {
 			for _, imageLayer := range manifestData.Manifests[0].Manifest.Layers {
 				switch imageLayer.MediaType {
 				case ispec.MediaTypeImageLayerGzip, ispec.MediaTypeImageLayer, string(regTypes.DockerLayer):
-
 					return true, nil
 				default:
-
 					return false, zerr.ErrScanNotSupported
 				}
 			}
@@ -3496,8 +3493,6 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		So(newestImageMap["repo2"].LastUpdated, ShouldEqual, time.Date(2009, 2, 1, 12, 0, 0, 0, time.UTC))
 
 		for repoName, repoSummary := range actualRepoMap {
-			repoSummary := repoSummary
-
 			// Check if data in NewestImage is consistent with the data in RepoSummary
 			So(repoName, ShouldEqual, repoSummary.NewestImage.RepoName)
 			So(repoSummary.Name, ShouldEqual, repoSummary.NewestImage.RepoName)
@@ -3841,8 +3836,6 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		So(newestImageMap["repo2"].LastUpdated, ShouldEqual, time.Date(2009, 2, 1, 12, 0, 0, 0, time.UTC))
 
 		for repoName, repoSummary := range actualRepoMap {
-			repoSummary := repoSummary
-
 			// Check if data in NewestImage is consistent with the data in RepoSummary
 			So(repoName, ShouldEqual, repoSummary.NewestImage.RepoName)
 			So(repoSummary.Name, ShouldEqual, repoSummary.NewestImage.RepoName)
@@ -4174,7 +4167,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		Convey("test with redis", func() {
 			miniRedis := miniredis.RunT(t)
 
-			conf.Storage.CacheDriver = map[string]interface{}{
+			conf.Storage.CacheDriver = map[string]any{
 				"name": "redis",
 				"url":  "redis://" + miniRedis.Addr(),
 			}
@@ -4337,7 +4330,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		Convey("test with redis", func() {
 			miniRedis := miniredis.RunT(t)
 
-			conf.Storage.CacheDriver = map[string]interface{}{
+			conf.Storage.CacheDriver = map[string]any{
 				"name": "redis",
 				"url":  "redis://" + miniRedis.Addr(),
 			}
@@ -4900,7 +4893,7 @@ func TestGlobalSearchPagination(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			image := CreateImageWith().RandomLayers(1, 10).DefaultConfig().Build()
 
 			err := UploadImage(image, baseURL, fmt.Sprintf("repo%d", i), "0.0.1")
@@ -7432,7 +7425,7 @@ func TestReadUploadDeleteDynamoDB(t *testing.T) {
 	imageMetaTablename := "ImageMeta" + uuid.String()
 	repoBlobsTablename := "RepoBlobs" + uuid.String()
 
-	cacheDriverParams := map[string]interface{}{
+	cacheDriverParams := map[string]any{
 		"name":                   "dynamodb",
 		"endpoint":               os.Getenv("DYNAMODBMOCK_ENDPOINT"),
 		"region":                 "us-east-2",
@@ -7557,7 +7550,7 @@ func RunReadUploadDeleteTests(t *testing.T, baseURL string) {
 				})
 			})
 			Convey("Delete the image pushed multiple times", func() {
-				for i := 0; i < 3; i++ {
+				for range 3 {
 					status, err := DeleteImage(repo1, tag1, baseURL)
 					So(status, ShouldBeIn, []int{http.StatusAccepted, http.StatusNotFound, http.StatusBadRequest})
 					So(err, ShouldBeNil)
@@ -7567,7 +7560,7 @@ func RunReadUploadDeleteTests(t *testing.T, baseURL string) {
 				}
 			})
 			Convey("Upload same image multiple times", func() {
-				for i := 0; i < 3; i++ {
+				for range 3 {
 					err := UploadImage(image, baseURL, repo1, tag1)
 					So(err, ShouldBeNil)
 				}

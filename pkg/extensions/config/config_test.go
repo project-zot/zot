@@ -216,7 +216,7 @@ func testConcurrentAccessWithConfig(
 		done := make(chan bool, 10)
 		errors := make(chan error, 10)
 
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			go func() {
 				defer func() {
 					if r := recover(); r != nil {
@@ -229,7 +229,7 @@ func testConcurrentAccessWithConfig(
 					done <- true
 				}()
 
-				for j := 0; j < 100; j++ {
+				for range 100 {
 					result := testFunc(extensionConfig)
 					if !result {
 						errors <- expectedError
@@ -241,7 +241,7 @@ func testConcurrentAccessWithConfig(
 		}
 
 		// Wait for all goroutines to complete
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			<-done
 		}
 
@@ -448,7 +448,7 @@ func TestExtensionConfig(t *testing.T) {
 			errors := make(chan error, 15)
 
 			// Launch goroutines for each method
-			for i := 0; i < 5; i++ {
+			for range 5 {
 				go func() {
 					defer func() {
 						if r := recover(); r != nil {
@@ -461,7 +461,7 @@ func TestExtensionConfig(t *testing.T) {
 						done <- true
 					}()
 
-					for j := 0; j < 50; j++ {
+					for range 50 {
 						result := extensionConfig.IsSearchEnabled()
 						if !result {
 							errors <- errIsSearchEnabledExpectedTrue
@@ -472,7 +472,7 @@ func TestExtensionConfig(t *testing.T) {
 				}()
 			}
 
-			for i := 0; i < 5; i++ {
+			for range 5 {
 				go func() {
 					defer func() {
 						if r := recover(); r != nil {
@@ -485,7 +485,7 @@ func TestExtensionConfig(t *testing.T) {
 						done <- true
 					}()
 
-					for j := 0; j < 50; j++ {
+					for range 50 {
 						result := extensionConfig.IsUIEnabled()
 						if !result {
 							errors <- errIsUIEnabledExpectedTrue
@@ -496,7 +496,7 @@ func TestExtensionConfig(t *testing.T) {
 				}()
 			}
 
-			for i := 0; i < 5; i++ {
+			for range 5 {
 				go func() {
 					defer func() {
 						if r := recover(); r != nil {
@@ -509,7 +509,7 @@ func TestExtensionConfig(t *testing.T) {
 						done <- true
 					}()
 
-					for j := 0; j < 50; j++ {
+					for range 50 {
 						result := extensionConfig.AreUserPrefsEnabled()
 						if !result {
 							errors <- errAreUserPrefsEnabledExpectedTrue
@@ -521,7 +521,7 @@ func TestExtensionConfig(t *testing.T) {
 			}
 
 			// Wait for all goroutines to complete
-			for i := 0; i < 15; i++ {
+			for range 15 {
 				<-done
 			}
 

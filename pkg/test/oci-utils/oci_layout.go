@@ -1,5 +1,4 @@
 //go:build sync && scrub && metrics && search
-// +build sync,scrub,metrics,search
 
 package ociutils
 
@@ -41,7 +40,7 @@ type OciUtils interface { //nolint: interfacebloat
 		*ispec.Manifest, *ispec.Image, error)
 }
 
-// OciLayoutInfo ...
+// BaseOciLayoutUtils provides OCI layout utilities.
 type BaseOciLayoutUtils struct {
 	Log             log.Logger
 	StoreController stypes.StoreController
@@ -74,7 +73,7 @@ func (olu BaseOciLayoutUtils) GetImageManifest(repo string, reference string) (i
 	return manifest, digest, nil
 }
 
-// Provide a list of repositories from all the available image stores.
+// GetRepositories provides a list of repositories from all the available image stores.
 func (olu BaseOciLayoutUtils) GetRepositories() ([]string, error) {
 	defaultStore := olu.StoreController.GetDefaultImageStore()
 	substores := olu.StoreController.GetImageSubStores()
@@ -96,7 +95,7 @@ func (olu BaseOciLayoutUtils) GetRepositories() ([]string, error) {
 	return repoList, nil
 }
 
-// Below method will return image path including root dir, root dir is determined by splitting.
+// GetImageManifests returns image path including root dir, root dir is determined by splitting.
 func (olu BaseOciLayoutUtils) GetImageManifests(repo string) ([]ispec.Descriptor, error) {
 	var lockLatency time.Time
 
@@ -287,9 +286,9 @@ func (olu BaseOciLayoutUtils) checkCosignSignature(name string, digest godigest.
 	return true
 }
 
-// checks if manifest is signed or not
-// checks for notary or cosign signature
-// if cosign signature found it does not looks for notary signature.
+// CheckManifestSignature checks if manifest is signed or not.
+// It checks for notary or cosign signature.
+// If cosign signature found it does not look for notary signature.
 func (olu BaseOciLayoutUtils) CheckManifestSignature(name string, digest godigest.Digest) bool {
 	if !olu.checkCosignSignature(name, digest) {
 		return olu.checkNotarySignature(name, digest)
@@ -556,7 +555,6 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(repoName string) (common.RepoI
 	repoVendors := make([]string, 0, len(repoVendorsSet))
 
 	for vendor := range repoVendorsSet {
-		vendor := vendor
 		repoVendors = append(repoVendors, vendor)
 	}
 

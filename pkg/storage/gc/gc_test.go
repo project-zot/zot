@@ -68,7 +68,6 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 	trueVal := true
 
 	for _, testcase := range testCases {
-		testcase := testcase
 		t.Run(testcase.testCaseName, func(t *testing.T) {
 			var imgStore storageTypes.ImageStore
 
@@ -89,7 +88,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 
 				bucket := "zot-storage-test"
 
-				storageDriverParams := map[string]interface{}{
+				storageDriverParams := map[string]any{
 					"rootDir":        rootDir,
 					"name":           "s3",
 					"region":         region,
@@ -1762,7 +1761,6 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 	trueVal := true
 
 	for _, testcase := range testCases {
-		testcase := testcase
 		t.Run(testcase.testCaseName, func(t *testing.T) {
 			var imgStore storageTypes.ImageStore
 
@@ -1783,7 +1781,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 
 				bucket := "zot-storage-test"
 
-				storageDriverParams := map[string]interface{}{
+				storageDriverParams := map[string]any{
 					"rootDir":        rootDir,
 					"name":           "s3",
 					"region":         region,
@@ -2197,13 +2195,12 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 						t.Logf("index %d, repo '%s'", i, repo)
 						So(err, ShouldBeNil)
 
-						if i >= 5 {
+						if i >= len(expectedRepos) {
 							So(repo, ShouldEqual, "")
 
 							continue
-						} else {
-							So(repo, ShouldEqual, expectedRepos[i])
 						}
+						So(repo, ShouldEqual, expectedRepos[i])
 
 						processedRepos[repo] = struct{}{}
 

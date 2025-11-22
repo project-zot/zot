@@ -1,5 +1,4 @@
 //go:build search
-// +build search
 
 package cveinfo_test
 
@@ -8,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
@@ -249,7 +249,7 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 					return result, nil
 				}
 
-				if repo == repo1 && zcommon.Contains([]string{image12Digest, image21Digest}, ref) {
+				if repo == repo1 && slices.Contains([]string{image12Digest, image21Digest}, ref) {
 					result := map[string]cvemodel.CVE{
 						"CVE1": {
 							ID:          "CVE1",
@@ -392,10 +392,8 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 				for _, imageLayer := range manifestData.Manifests[0].Manifest.Layers {
 					switch imageLayer.MediaType {
 					case ispec.MediaTypeImageLayerGzip, ispec.MediaTypeImageLayer, string(regTypes.DockerLayer):
-
 						return true, nil
 					default:
-
 						return false, zerr.ErrScanNotSupported
 					}
 				}

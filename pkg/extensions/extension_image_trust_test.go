@@ -1,5 +1,4 @@
 //go:build search && imagetrust
-// +build search,imagetrust
 
 package extensions_test
 
@@ -118,7 +117,7 @@ func TestSignaturesAllowedMethodsHeader(t *testing.T) {
 
 func TestSignatureUploadAndVerificationLocal(t *testing.T) {
 	Convey("test with local storage", t, func() {
-		var cacheDriverParams map[string]interface{}
+		var cacheDriverParams map[string]any
 
 		RunSignatureUploadAndVerificationTests(t, cacheDriverParams)
 	})
@@ -128,7 +127,7 @@ func TestSignatureUploadAndVerificationRedis(t *testing.T) {
 	Convey("test with local storage and redis metadb", t, func() {
 		miniRedis := miniredis.RunT(t)
 
-		cacheDriverParams := map[string]interface{}{
+		cacheDriverParams := map[string]any{
 			"name": "redis",
 			"url":  "redis://" + miniRedis.Addr(),
 		}
@@ -152,7 +151,7 @@ func TestSignatureUploadAndVerificationAWS(t *testing.T) {
 		imageMetaTablename := "imageMetaTable" + uuid.String()
 		repoBlobsInfoTablename := "repoBlobsInfoTable" + uuid.String()
 
-		cacheDriverParams := map[string]interface{}{
+		cacheDriverParams := map[string]any{
 			"name":                   "dynamodb",
 			"endpoint":               os.Getenv("DYNAMODBMOCK_ENDPOINT"),
 			"region":                 "us-east-2",
@@ -171,7 +170,7 @@ func TestSignatureUploadAndVerificationAWS(t *testing.T) {
 	})
 }
 
-func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[string]interface{}) { //nolint: thelper
+func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[string]any) { //nolint: thelper
 	repo := "repo"
 	tag := "0.0.1"
 	certName := "test"

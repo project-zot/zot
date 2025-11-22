@@ -1265,10 +1265,10 @@ func TestConfig(t *testing.T) {
 									},
 								},
 							},
-							StorageDriver: map[string]interface{}{
+							StorageDriver: map[string]any{
 								"type": "filesystem",
 							},
-							CacheDriver: map[string]interface{}{
+							CacheDriver: map[string]any{
 								"type": "redis",
 							},
 						},
@@ -1282,7 +1282,7 @@ func TestConfig(t *testing.T) {
 										},
 									},
 								},
-								StorageDriver: map[string]interface{}{
+								StorageDriver: map[string]any{
 									"type": "s3",
 								},
 							},

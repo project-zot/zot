@@ -1,5 +1,4 @@
 //go:build mgmt
-// +build mgmt
 
 package api_test
 
@@ -52,6 +51,7 @@ const (
 type (
 	apiKeyResponse struct {
 		mTypes.APIKeyDetails
+
 		APIKey string `json:"apiKey"`
 	}
 )
@@ -1398,6 +1398,7 @@ func TestRedisCookieStore(t *testing.T) {
 
 type mockUUIDGenerator struct {
 	guuid.Generator
+
 	succeedAttempts int
 	attemptCount    int
 }

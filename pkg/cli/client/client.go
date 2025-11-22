@@ -1,5 +1,4 @@
 //go:build search
-// +build search
 
 package client
 
@@ -28,7 +27,7 @@ var (
 )
 
 func makeGETRequest(ctx context.Context, url, username, password string,
-	verifyTLS bool, debug bool, resultsPtr interface{}, configWriter io.Writer,
+	verifyTLS bool, debug bool, resultsPtr any, configWriter io.Writer,
 ) (http.Header, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -54,7 +53,7 @@ func makeHEADRequest(ctx context.Context, url, username, password string, verify
 }
 
 func makeGraphQLRequest(ctx context.Context, url, query, username,
-	password string, verifyTLS bool, debug bool, resultsPtr interface{}, configWriter io.Writer,
+	password string, verifyTLS bool, debug bool, resultsPtr any, configWriter io.Writer,
 ) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, bytes.NewBufferString(query))
 	if err != nil {
@@ -78,7 +77,7 @@ func makeGraphQLRequest(ctx context.Context, url, query, username,
 }
 
 func doHTTPRequest(req *http.Request, verifyTLS bool, debug bool,
-	resultsPtr interface{}, configWriter io.Writer,
+	resultsPtr any, configWriter io.Writer,
 ) (http.Header, error) {
 	var httpClient *http.Client
 
@@ -518,14 +517,13 @@ func isNotationSigned(ctx context.Context, repo, digestStr string, searchConf Se
 func isCosignSigned(ctx context.Context, repo, digestStr string, searchConf SearchConfig,
 	username, password string,
 ) bool {
-	var result interface{}
+	var result any
 	cosignTag := strings.Replace(digestStr, ":", "-", 1) + "." + common.CosignSignatureTagSuffix
 
 	URL := fmt.Sprintf("%s/v2/%s/manifests/%s", searchConf.ServURL, repo, cosignTag)
 
 	_, err := makeGETRequest(ctx, URL, username, password, searchConf.VerifyTLS,
 		searchConf.Debug, &result, searchConf.ResultWriter)
-
 	if err == nil {
 		return true
 	}

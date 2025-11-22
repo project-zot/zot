@@ -273,7 +273,7 @@ func TestGetBcryptCredString(t *testing.T) {
 		passwordSize := 100
 		pass := make([]byte, passwordSize)
 
-		for i := 0; i < passwordSize; i++ {
+		for i := range passwordSize {
 			pass[i] = 'Y'
 		}
 

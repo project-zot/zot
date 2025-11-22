@@ -1,5 +1,4 @@
 //go:build sync
-// +build sync
 
 package sync_test //nolint: testpackage
 

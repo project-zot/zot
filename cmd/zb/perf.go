@@ -196,10 +196,10 @@ func updateStats(summary *statsSummary, record statsRecord) {
 }
 
 type cicdTestSummary struct {
-	Name  string      `json:"name"`
-	Unit  string      `json:"unit"`
-	Value interface{} `json:"value"`
-	Range string      `json:"range,omitempty"`
+	Name  string `json:"name"`
+	Unit  string `json:"unit"`
+	Value any    `json:"value"`
+	Range string `json:"range,omitempty"`
 }
 
 type manifestStruct struct {
@@ -299,7 +299,7 @@ func GetCatalog(
 
 	statusRequests = sync.Map{}
 
-	for count := 0; count < requests; count++ {
+	for range requests {
 		// Push random blob
 		_, repos, err = pushMonolithImage(workdir, url, repo, repos, config, client)
 		if err != nil {
@@ -307,7 +307,7 @@ func GetCatalog(
 		}
 	}
 
-	for count := 0; count < requests; count++ {
+	for range requests {
 		func() {
 			start := time.Now()
 
@@ -376,7 +376,7 @@ func PushMonolithStreamed(
 		statusRequests = sync.Map{}
 	}
 
-	for count := 0; count < requests; count++ {
+	for count := range requests {
 		repos = pushMonolithAndCollect(workdir, url, trepo, count,
 			repos, config, client, statsCh)
 	}
@@ -406,7 +406,7 @@ func PushChunkStreamed(
 		statusRequests = sync.Map{}
 	}
 
-	for count := 0; count < requests; count++ {
+	for count := range requests {
 		repos = pushChunkAndCollect(workdir, url, trepo, count,
 			repos, config, client, statsCh)
 	}
@@ -493,7 +493,7 @@ func Pull(
 	}
 
 	// download image
-	for count := 0; count < requests; count++ {
+	for range requests {
 		repos = pullAndCollect(url, repos, manifestItem, config, client, statsCh)
 	}
 
@@ -530,7 +530,7 @@ func MixedPullAndPush(
 		manifestHash: manifestHash,
 	}
 
-	for count := 0; count < requests; count++ {
+	for count := range requests {
 		idx := flipFunc(config.probabilityRange)
 
 		readTestIdx := 0
@@ -667,6 +667,16 @@ func Perf(
 	outFmt string, srcIPs string, srcCIDR string, skipCleanup bool,
 ) {
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
+
+	// fatalWithCleanup calls teardown then logs fatal, ensuring cleanup happens before exit.
+	// Uses sync.Once to ensure teardown is only called once, even from goroutines.
+	var teardownOnce sync.Once
+	fatalWithCleanup := func(err error) {
+		teardownOnce.Do(func() {
+			teardown(workdir)
+		})
+		log.Fatal(err)
+	}
 	// logging
 	log.SetFlags(0)
 	log.SetOutput(tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.TabIndent))
@@ -694,7 +704,6 @@ func Perf(
 	log.Printf("Preparing test data ...\n")
 
 	setup(workdir)
-	defer teardown(workdir)
 
 	log.Printf("Starting tests ...\n")
 
@@ -709,7 +718,7 @@ func Perf(
 	} else if len(srcCIDR) > 0 {
 		ips, err = getIPsFromCIDR(srcCIDR, maxSourceIPs)
 		if err != nil {
-			log.Fatal(err) //nolint: gocritic
+			fatalWithCleanup(err)
 		}
 	}
 
@@ -722,7 +731,7 @@ func Perf(
 
 		start := time.Now()
 
-		for c := 0; c < concurrency; c++ {
+		for range concurrency {
 			// parallelize with clients
 			wg.Add(1)
 
@@ -731,12 +740,12 @@ func Perf(
 
 				httpClient, err := getRandomClientIPs(auth, url, ips)
 				if err != nil {
-					log.Fatal(err)
+					fatalWithCleanup(err)
 				}
 
 				err = tconfig.tfunc(workdir, url, repo, requests/concurrency, tconfig, statsCh, httpClient, skipCleanup)
 				if err != nil {
-					log.Fatal(err)
+					fatalWithCleanup(err)
 				}
 			}()
 		}
@@ -754,7 +763,7 @@ func Perf(
 			summary.mixedType = true
 		}
 
-		for count := 0; count < requests; count++ {
+		for range requests {
 			record := <-statsCh
 			updateStats(&summary, record)
 		}
@@ -771,13 +780,18 @@ func Perf(
 	if outFmt == cicdFmt {
 		jsonOut, err := json.Marshal(cicdSummary)
 		if err != nil {
-			log.Fatal(err) // file closed on exit
+			fatalWithCleanup(err)
 		}
 
 		if err := os.WriteFile(outFmt+".json", jsonOut, defaultFilePerms); err != nil {
-			log.Fatal(err)
+			fatalWithCleanup(err)
 		}
 	}
+
+	// Cleanup before exit (sync.Once ensures it only runs once, even if fatalWithCleanup was called)
+	teardownOnce.Do(func() {
+		teardown(workdir)
+	})
 
 	if zbError {
 		os.Exit(1)
