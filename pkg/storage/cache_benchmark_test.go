@@ -3,6 +3,7 @@ package storage_test
 import (
 	"math/rand"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,16 +28,21 @@ func generateData() map[godigest.Digest]string {
 	//nolint: gosec
 	seededRand := rand.New(rand.NewSource(time.Now().UnixNano()))
 
-	for i := 0; i < datasetSize; i++ {
+	for range datasetSize {
 		randomString, _ := test.GenerateRandomString()
 		counter := 0
 
+		var randomStringBuilder strings.Builder
+		randomStringBuilder.WriteString(randomString)
+
 		for seededRand.Float32() < 0.5 && counter < 5 {
 			counter++
-			randomString += "/"
+
+			randomStringBuilder.WriteString("/")
 			rs, _ := test.GenerateRandomString()
-			randomString += rs
+			randomStringBuilder.WriteString(rs)
 		}
+		randomString = randomStringBuilder.String()
 
 		digest := godigest.FromString(randomString)
 		dataMap[digest] = randomString
@@ -71,7 +77,7 @@ func helperGetAll(cache storageTypes.Cache, testData map[godigest.Digest]string)
 
 func helperMix(cache storageTypes.Cache, testData map[godigest.Digest]string, digestSlice []godigest.Digest) {
 	// The test data contains datasetSize entries by default, and each set of operations uses 5 entries
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		_ = cache.PutBlob(digestSlice[i*5], testData[digestSlice[i*5]])
 		_ = cache.PutBlob(digestSlice[i*5+1], testData[digestSlice[i*5+1]])
 		_ = cache.PutBlob(digestSlice[i*5+2], testData[digestSlice[i*5+2]])
@@ -204,7 +210,8 @@ func BenchmarkPutLocalstack(b *testing.B) {
 	log.Info().Int64("seed", seed).Msg("random seed for tableName")
 
 	// Create Table
-	_, err := exec.Command("aws", "dynamodb", "--region", region, "--endpoint-url", localEndpoint, "create-table",
+	_, err := exec.Command( //nolint: noctx
+		"aws", "dynamodb", "--region", region, "--endpoint-url", localEndpoint, "create-table",
 		"--table-name", tableName, "--attribute-definitions", "AttributeName=Digest,AttributeType=S",
 		"--key-schema", "AttributeName=Digest,KeyType=HASH",
 		"--billing-mode", "PAY_PER_REQUEST").Output()
@@ -230,7 +237,8 @@ func BenchmarkDeleteLocalstack(b *testing.B) {
 	log.Info().Int64("seed", seed).Msg("random seed for tableName")
 
 	// Create Table
-	_, err := exec.Command("aws", "dynamodb", "--region", region, "--endpoint-url", localEndpoint, "create-table",
+	_, err := exec.Command( //nolint: noctx
+		"aws", "dynamodb", "--region", region, "--endpoint-url", localEndpoint, "create-table",
 		"--table-name", tableName, "--attribute-definitions", "AttributeName=Digest,AttributeType=S",
 		"--key-schema", "AttributeName=Digest,KeyType=HASH",
 		"--billing-mode", "PAY_PER_REQUEST").Output()
@@ -260,7 +268,8 @@ func BenchmarkHasLocalstack(b *testing.B) {
 	log.Info().Int64("seed", seed).Msg("random seed for tableName")
 
 	// Create Table
-	_, err := exec.Command("aws", "dynamodb", "--region", region, "--endpoint-url", localEndpoint, "create-table",
+	_, err := exec.Command( //nolint: noctx
+		"aws", "dynamodb", "--region", region, "--endpoint-url", localEndpoint, "create-table",
 		"--table-name", tableName, "--attribute-definitions", "AttributeName=Digest,AttributeType=S",
 		"--key-schema", "AttributeName=Digest,KeyType=HASH",
 		"--billing-mode", "PAY_PER_REQUEST").Output()
@@ -290,7 +299,8 @@ func BenchmarkGetLocalstack(b *testing.B) {
 	log.Info().Int64("seed", seed).Msg("random seed for tableName")
 
 	// Create Table
-	_, err := exec.Command("aws", "dynamodb", "--region", region, "--endpoint-url", localEndpoint, "create-table",
+	_, err := exec.Command( //nolint: noctx
+		"aws", "dynamodb", "--region", region, "--endpoint-url", localEndpoint, "create-table",
 		"--table-name", tableName, "--attribute-definitions", "AttributeName=Digest,AttributeType=S",
 		"--key-schema", "AttributeName=Digest,KeyType=HASH",
 		"--billing-mode", "PAY_PER_REQUEST").Output()
@@ -330,7 +340,8 @@ func BenchmarkMixLocalstack(b *testing.B) {
 	log.Info().Int64("seed", seed).Msg("random seed for tableName")
 
 	// Create Table
-	_, err := exec.Command("aws", "dynamodb", "--region", region, "--endpoint-url", localEndpoint, "create-table",
+	_, err := exec.Command( //nolint: noctx
+		"aws", "dynamodb", "--region", region, "--endpoint-url", localEndpoint, "create-table",
 		"--table-name", tableName, "--attribute-definitions", "AttributeName=Digest,AttributeType=S",
 		"--key-schema", "AttributeName=Digest,KeyType=HASH",
 		"--billing-mode", "PAY_PER_REQUEST").Output()
@@ -367,7 +378,8 @@ func BenchmarkPutAWS(b *testing.B) {
 	log.Info().Int64("seed", seed).Msg("random seed for tableName")
 
 	// Create Table
-	_, err := exec.Command("aws", "dynamodb", "--region", region, "--endpoint-url", awsEndpoint, "create-table",
+	_, err := exec.Command( //nolint: noctx
+		"aws", "dynamodb", "--region", region, "--endpoint-url", awsEndpoint, "create-table",
 		"--table-name", tableName, "--attribute-definitions", "AttributeName=Digest,AttributeType=S",
 		"--key-schema", "AttributeName=Digest,KeyType=HASH",
 		"--billing-mode", "PAY_PER_REQUEST").Output()
@@ -393,7 +405,8 @@ func BenchmarkDeleteAWS(b *testing.B) {
 	log.Info().Int64("seed", seed).Msg("random seed for tableName")
 
 	// Create Table
-	_, err := exec.Command("aws", "dynamodb", "--region", region, "--endpoint-url", awsEndpoint, "create-table",
+	_, err := exec.Command( //nolint: noctx
+		"aws", "dynamodb", "--region", region, "--endpoint-url", awsEndpoint, "create-table",
 		"--table-name", tableName, "--attribute-definitions", "AttributeName=Digest,AttributeType=S",
 		"--key-schema", "AttributeName=Digest,KeyType=HASH",
 		"--billing-mode", "PAY_PER_REQUEST").Output()
@@ -423,7 +436,8 @@ func BenchmarkHasAWS(b *testing.B) {
 	log.Info().Int64("seed", seed).Msg("random seed for tableName")
 
 	// Create Table
-	_, err := exec.Command("aws", "dynamodb", "--region", region, "--endpoint-url", awsEndpoint, "create-table",
+	_, err := exec.Command( //nolint: noctx
+		"aws", "dynamodb", "--region", region, "--endpoint-url", awsEndpoint, "create-table",
 		"--table-name", tableName, "--attribute-definitions", "AttributeName=Digest,AttributeType=S",
 		"--key-schema", "AttributeName=Digest,KeyType=HASH",
 		"--billing-mode", "PAY_PER_REQUEST").Output()
@@ -453,7 +467,8 @@ func BenchmarkGetAWS(b *testing.B) {
 	log.Info().Int64("seed", seed).Msg("random seed for tableName")
 
 	// Create Table
-	_, err := exec.Command("aws", "dynamodb", "--region", region, "--endpoint-url", awsEndpoint, "create-table",
+	_, err := exec.Command( //nolint: noctx
+		"aws", "dynamodb", "--region", region, "--endpoint-url", awsEndpoint, "create-table",
 		"--table-name", tableName, "--attribute-definitions", "AttributeName=Digest,AttributeType=S",
 		"--key-schema", "AttributeName=Digest,KeyType=HASH",
 		"--billing-mode", "PAY_PER_REQUEST").Output()
@@ -493,7 +508,8 @@ func BenchmarkMixAWS(b *testing.B) {
 	log.Info().Int64("seed", seed).Msg("random seed for tableName")
 
 	// Create Table
-	_, err := exec.Command("aws", "dynamodb", "--region", region, "--endpoint-url", awsEndpoint, "create-table",
+	_, err := exec.Command( //nolint: noctx
+		"aws", "dynamodb", "--region", region, "--endpoint-url", awsEndpoint, "create-table",
 		"--table-name", tableName, "--attribute-definitions", "AttributeName=Digest,AttributeType=S",
 		"--key-schema", "AttributeName=Digest,KeyType=HASH",
 		"--billing-mode", "PAY_PER_REQUEST").Output()

@@ -1,5 +1,4 @@
 //go:build needprivileges
-// +build needprivileges
 
 package local_test
 
@@ -81,6 +80,7 @@ func TestElevatedPrivilegesInvalidDedupe(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
 
+		//nolint: noctx // old code, no context available
 		cmd := exec.Command("chattr", "+i", path.Join(dir, "dedupe2", "blobs/sha256", blobDigest1)) //nolint: gosec
 
 		_, err = cmd.Output()
@@ -92,6 +92,7 @@ func TestElevatedPrivilegesInvalidDedupe(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(blob, ShouldEqual, buflen)
 
+		//nolint: noctx // old code, no context available
 		cmd = exec.Command("chattr", "-i", path.Join(dir, "dedupe2", "blobs/sha256", blobDigest1)) //nolint: gosec
 
 		_, err = cmd.Output()

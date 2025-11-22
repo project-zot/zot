@@ -7,6 +7,7 @@ import (
 )
 
 const (
+	// AnnotationLabels is used for OCI annotation/label with backwards compatibility.
 	// See https://github.com/opencontainers/image-spec/blob/main/annotations.md#back-compatibility-with-label-schema
 	AnnotationLabels             = "org.label-schema.labels"
 	LabelAnnotationCreated       = "org.label-schema.build-date"
@@ -30,12 +31,9 @@ type ImageAnnotations struct {
 	Authors       string
 }
 
-/*
-	OCI annotation/label with backwards compatibility
-
-arg can be either labels or annotations
-https://github.com/opencontainers/image-spec/blob/main/annotations.md.
-*/
+// GetAnnotationValue handles OCI annotation/label with backwards compatibility.
+// Arg can be either labels or annotations.
+// https://github.com/opencontainers/image-spec/blob/main/annotations.md.
 func GetAnnotationValue(annotations map[string]string, annotationKey, labelKey string) string {
 	value, ok := annotations[annotationKey]
 	if !ok || value == "" {

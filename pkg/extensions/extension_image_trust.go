@@ -1,5 +1,4 @@
 //go:build imagetrust
-// +build imagetrust
 
 package extensions
 
@@ -74,7 +73,7 @@ type ImageTrust struct {
 	Log             log.Logger
 }
 
-// Cosign handler godoc
+// HandleCosignPublicKeyUpload godoc
 // @Summary Upload cosign public keys for verifying signatures
 // @Description Upload cosign public keys for verifying signatures
 // @Router   /v2/_zot/ext/cosign [post]
@@ -108,7 +107,7 @@ func (trust *ImageTrust) HandleCosignPublicKeyUpload(response http.ResponseWrite
 	response.WriteHeader(http.StatusOK)
 }
 
-// Notation handler godoc
+// HandleNotationCertificateUpload godoc
 // @Summary Upload notation certificates for verifying signatures
 // @Description Upload notation certificates for verifying signatures
 // @Router  /v2/_zot/ext/notation [post]

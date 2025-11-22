@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"sync"
 	"time"
@@ -34,8 +35,8 @@ type StorageConfig struct {
 	GCDelay       time.Duration // applied for blobs
 	GCInterval    time.Duration
 	Retention     ImageRetention
-	StorageDriver map[string]interface{} `mapstructure:",omitempty"`
-	CacheDriver   map[string]interface{} `mapstructure:",omitempty"`
+	StorageDriver map[string]any `mapstructure:",omitempty"`
+	CacheDriver   map[string]any `mapstructure:",omitempty"`
 
 	// GCMaxSchedulerDelay is the maximum random delay for GC task scheduling
 	// This field is not configurable by the end user
@@ -210,7 +211,7 @@ type SchedulerConfig struct {
 	NumWorkers int
 }
 
-// contains the scale-out configuration which is identical for all zot replicas.
+// ClusterConfig contains the scale-out configuration which is identical for all zot replicas.
 type ClusterConfig struct {
 	// contains the "host:port" of all the zot instances participating
 	// in the cluster.
@@ -305,7 +306,8 @@ type LogConfig struct {
 
 type GlobalStorageConfig struct {
 	StorageConfig `mapstructure:",squash"`
-	SubPaths      map[string]StorageConfig
+
+	SubPaths map[string]StorageConfig
 }
 
 type AccessControlConfig struct {
@@ -377,9 +379,7 @@ func (config *AccessControlConfig) GetRepositories() Repositories {
 
 	// Return a copy to avoid race conditions
 	reposCopy := make(Repositories)
-	for k, v := range config.Repositories {
-		reposCopy[k] = v
-	}
+	maps.Copy(reposCopy, config.Repositories)
 
 	return reposCopy
 }
@@ -410,9 +410,7 @@ func (config *AccessControlConfig) GetGroups() Groups {
 
 	// Return a copy to avoid race conditions
 	groupsCopy := make(Groups)
-	for k, v := range config.Groups {
-		groupsCopy[k] = v
-	}
+	maps.Copy(groupsCopy, config.Groups)
 
 	return groupsCopy
 }
@@ -1101,7 +1099,7 @@ func SameFile(str1, str2 string) (bool, error) {
 }
 
 // DeepCopy performs a deep copy of src into dst using JSON marshaling/unmarshaling.
-func DeepCopy(src, dst interface{}) error {
+func DeepCopy(src, dst any) error {
 	bytes, err := json.Marshal(src)
 	if err != nil {
 		return err

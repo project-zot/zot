@@ -1,5 +1,4 @@
 //go:build stress
-// +build stress
 
 package server_test
 
@@ -64,6 +63,7 @@ func TestStressTooManyOpenFiles(t *testing.T) {
 
 		defer func() {
 			// list the content of the directory (useful in case of test fail)
+			//nolint: noctx // old code, no context available
 			out, err := exec.Command("du", "-ab", dir).Output()
 			if err != nil {
 				t.Logf("error when listing storage files:\n%s\n", err)
@@ -108,6 +108,7 @@ func TestStressTooManyOpenFiles(t *testing.T) {
 			"docker://public.ecr.aws/zomato/alpine:3.11.3", fmt.Sprintf("oci:%s:alpine", dir),
 		}
 
+		//nolint: noctx // old code, no context available
 		out, err := exec.Command("skopeo", skopeoArgs...).Output()
 		if err != nil {
 			t.Logf("\nerror on skopeo copy:\n%s\n", err)
@@ -178,6 +179,7 @@ func worker(id int, zotPort, rootDir string) {
 			sourceImg, destImg,
 		}
 
+		//nolint: noctx // old code, no context available
 		err := exec.Command("skopeo", skopeoArgs...).Run()
 		if err != nil { //nolint: wsl
 			continue // we expect clients to receive errors due to FD limit reached on server

@@ -1,5 +1,4 @@
 //go:build sync
-// +build sync
 
 package extensions
 
@@ -140,7 +139,7 @@ func removeSelfURLs(httpAddress, httpPort string, registryConfig *syncconf.Regis
 		}
 
 		// check dns
-		ips, err := net.LookupIP(url.Hostname())
+		ips, err := net.LookupIP(url.Hostname()) //nolint: noctx
 		if err != nil {
 			// will not remove, maybe it will get resolved later after multiple retries
 			log.Warn().Str("url", registryURL).Msg("failed to lookup sync registry url's hostname")

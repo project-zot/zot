@@ -1,5 +1,4 @@
 //go:build metrics
-// +build metrics
 
 package monitoring
 
@@ -157,8 +156,8 @@ func NewMetricsServer(enabled bool, log log.Logger) MetricServer {
 	}
 }
 
-// implementing the MetricServer interface.
-func (ms *metricServer) SendMetric(mfunc interface{}) {
+// SendMetric implements the MetricServer interface.
+func (ms *metricServer) SendMetric(mfunc any) {
 	if ms.enabled {
 		mfn, ok := mfunc.(func())
 		if !ok {
@@ -172,7 +171,7 @@ func (ms *metricServer) SendMetric(mfunc interface{}) {
 	}
 }
 
-func (ms *metricServer) ForceSendMetric(mfunc interface{}) {
+func (ms *metricServer) ForceSendMetric(mfunc any) {
 	mfn, ok := mfunc.(func())
 	if !ok {
 		ms.log.Error().Err(errors.ErrInvalidMetric).
@@ -184,7 +183,7 @@ func (ms *metricServer) ForceSendMetric(mfunc interface{}) {
 	mfn()
 }
 
-func (ms *metricServer) ReceiveMetrics() interface{} {
+func (ms *metricServer) ReceiveMetrics() any {
 	return nil
 }
 

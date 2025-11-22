@@ -3,6 +3,7 @@ package common_test
 import (
 	"os"
 	"path"
+	"slices"
 	"strings"
 	"testing"
 
@@ -16,9 +17,9 @@ import (
 func TestCommon(t *testing.T) {
 	Convey("test Contains()", t, func() {
 		first := []string{"apple", "biscuit"}
-		So(common.Contains(first, "apple"), ShouldBeTrue)
-		So(common.Contains(first, "peach"), ShouldBeFalse)
-		So(common.Contains([]string{}, "apple"), ShouldBeFalse)
+		So(slices.Contains(first, "apple"), ShouldBeTrue)
+		So(slices.Contains(first, "peach"), ShouldBeFalse)
+		So(slices.Contains([]string{}, "apple"), ShouldBeFalse)
 	})
 
 	Convey("test MarshalThroughStruct()", t, func() {
@@ -54,11 +55,6 @@ func TestCommon(t *testing.T) {
 
 		isDir := common.DirExists(file.Name())
 		So(isDir, ShouldBeFalse)
-	})
-
-	Convey("Index func", t, func() {
-		So(common.Index([]string{"a", "b"}, "b"), ShouldEqual, 1)
-		So(common.Index([]string{"a", "b"}, "c"), ShouldEqual, -1)
 	})
 
 	Convey("Test ArtifactTypeNotation const has same value as in notaryproject", t, func() {

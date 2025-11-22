@@ -2,8 +2,8 @@ package cluster
 
 import "github.com/dchest/siphash"
 
-// computes the target member using siphash and returns the index and the member
-// siphash was chosen to prevent against hash attacks where an attacker
+// ComputeTargetMember computes the target member using SipHash and returns the index and the member.
+// SipHash was chosen to prevent against hash attacks where an attacker
 // can target all requests to one given instance instead of balancing across the cluster
 // resulting in a Denial-of-Service (DOS).
 // ref: https://en.wikipedia.org/wiki/SipHash

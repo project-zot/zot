@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -24,7 +25,6 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/api/constants"
-	"zotregistry.dev/zot/v2/pkg/common"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	eventsconf "zotregistry.dev/zot/v2/pkg/extensions/config/events"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
@@ -203,7 +203,7 @@ func newVerifyFeatureCmd(conf *config.Config) *cobra.Command {
 	return verifyFeatureCmd
 }
 
-// "zot" - registry server.
+// NewServerRootCmd creates a "zot" registry server command.
 func NewServerRootCmd() *cobra.Command {
 	showVersion := false
 	conf := config.New()
@@ -908,7 +908,7 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 
 	/* if file extension is not supported, try everything
 	it's also possible that the filename is starting with a dot eg: ".config". */
-	if !common.Contains(viper.SupportedExts, ext) {
+	if !slices.Contains(viper.SupportedExts, ext) {
 		ext = ""
 	}
 

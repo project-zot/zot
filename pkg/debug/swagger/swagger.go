@@ -1,5 +1,4 @@
 //go:build debug
-// +build debug
 
 // @contact.name API Support
 // @contact.url http://www.swagger.io/support
@@ -7,12 +6,14 @@
 
 package debug
 
+//nolint:gci // import order required by swaggo
 import (
 	"github.com/gorilla/mux"
 	httpSwagger "github.com/swaggo/http-swagger"
 
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/log" //nolint:goimports
+
 	// as required by swaggo.
 	_ "zotregistry.dev/zot/v2/swagger"
 )

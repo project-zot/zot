@@ -1,5 +1,4 @@
 //go:build userprefs
-// +build userprefs
 
 package extensions
 
@@ -49,7 +48,7 @@ func SetupUserPreferencesRoutes(conf *config.Config, router *mux.Router,
 	log.Info().Msg("finished setting up user preferences routes")
 }
 
-// Repo preferences godoc
+// HandleUserPrefs godoc
 // @Summary Add bookmarks/stars info
 // @Description Add bookmarks/stars info
 // @Router  /v2/_zot/ext/userprefs [put]

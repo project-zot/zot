@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -657,7 +658,7 @@ func getRelyingPartyArgs(cfg *config.Config, provider string, hashKey, encryptKe
 
 	scopes := providerConfig.Scopes
 	// openid scope must be the first one in list
-	if !zcommon.Contains(scopes, oidc.ScopeOpenID) && config.IsOpenIDSupported(provider) {
+	if !slices.Contains(scopes, oidc.ScopeOpenID) && config.IsOpenIDSupported(provider) {
 		scopes = append([]string{oidc.ScopeOpenID}, scopes...)
 	}
 

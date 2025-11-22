@@ -213,8 +213,6 @@ func getProtoManifestLayers(layers []ispec.Descriptor) []*proto_go.Descriptor {
 	protoLayers := []*proto_go.Descriptor{}
 
 	for _, layer := range layers {
-		layer := layer
-
 		protoLayers = append(protoLayers, getProtoDesc(&layer))
 	}
 
@@ -275,8 +273,6 @@ func getProtoHistory(historySlice []ispec.History) []*proto_go.History {
 	protoHistory := []*proto_go.History{}
 
 	for _, history := range historySlice {
-		history := history
-
 		protoHistory = append(protoHistory, &proto_go.History{
 			Created:    GetProtoTime(history.Created),
 			CreatedBy:  &history.CreatedBy,

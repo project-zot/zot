@@ -3,6 +3,7 @@ package uac
 import (
 	"context"
 	"net/http"
+	"slices"
 
 	glob "github.com/bmatcuk/doublestar/v4" //nolint:gci
 
@@ -15,7 +16,7 @@ type Key int
 // request-local context key.
 var uacCtxKey = Key(0) //nolint: gochecknoglobals
 
-// pointer needed for use in context.WithValue.
+// GetContextKey returns a pointer needed for use in context.WithValue.
 func GetContextKey() *Key {
 	return &uacCtxKey
 }
@@ -116,15 +117,11 @@ func (uac *UserAccessControl) SetIsAdmin(isAdmin bool) {
 	uac.authzInfo.isAdmin = isAdmin
 }
 
-/*
-	UserAcFromContext returns an UserAccessControl struct made available on all http requests
-	(using context.Context values) by authz and authn middlewares.
-
-	If no UserAccessControl is found on context, it will return an empty one.
-
-its methods and attributes can be used in http.Handlers to get user info for that specific request
-(username, groups, if it's an admin, if it can access certain resources).
-*/
+// UserAcFromContext returns an UserAccessControl struct made available on all http requests
+// (using context.Context values) by authz and authn middlewares.
+// If no UserAccessControl is found on context, it will return an empty one.
+// Its methods and attributes can be used in http.Handlers to get user info for that specific request
+// (username, groups, if it's an admin, if it can access certain resources).
 func UserAcFromContext(ctx context.Context) (*UserAccessControl, error) {
 	if uacValue := ctx.Value(GetContextKey()); uacValue != nil {
 		uac, ok := uacValue.(UserAccessControl)
@@ -172,23 +169,11 @@ func (uac *UserAccessControl) Can(action, repository string) bool {
 }
 
 func (uac *UserAccessControl) isBehaviourAction(action string) bool {
-	for _, behaviourAction := range uac.behaviourActions {
-		if action == behaviourAction {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(uac.behaviourActions, action)
 }
 
 func (uac *UserAccessControl) isMethodAction(action string) bool {
-	for _, methodAction := range uac.methodActions {
-		if action == methodAction {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(uac.methodActions, action)
 }
 
 // returns whether or not glob patterns have been set in authz.go.
@@ -220,22 +205,16 @@ func (uac *UserAccessControl) matchesRepo(globPatterns map[string]bool, reposito
 	return allowed
 }
 
-/*
-	SaveOnRequest saves UserAccessControl on the request's context.
-
-Later UserAcFromContext(request.Context()) can be used to obtain UserAccessControl that was saved on it.
-*/
+// SaveOnRequest saves UserAccessControl on the request's context.
+// Later UserAcFromContext(request.Context()) can be used to obtain UserAccessControl that was saved on it.
 func (uac *UserAccessControl) SaveOnRequest(request *http.Request) {
 	uacContext := context.WithValue(request.Context(), GetContextKey(), *uac)
 
 	*request = *request.WithContext(uacContext)
 }
 
-/*
-	DeriveContext takes a context(parent) and returns a derived context(child) containing this UserAccessControl.
-
-Later UserAcFromContext(ctx context.Context) can be used to obtain the UserAccessControl that was added on it.
-*/
+// DeriveContext takes a context(parent) and returns a derived context(child) containing this UserAccessControl.
+// Later UserAcFromContext(ctx context.Context) can be used to obtain the UserAccessControl that was added on it.
 func (uac *UserAccessControl) DeriveContext(ctx context.Context) context.Context {
 	return context.WithValue(ctx, GetContextKey(), *uac)
 }

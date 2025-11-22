@@ -45,8 +45,6 @@ func getReferrers(referrersInfo []mTypes.ReferrerInfo) []*gql_generated.Referrer
 	referrers := make([]*gql_generated.Referrer, 0, len(referrersInfo))
 
 	for _, referrerInfo := range referrersInfo {
-		referrerInfo := referrerInfo
-
 		referrers = append(referrers, &gql_generated.Referrer{
 			MediaType:    &referrerInfo.MediaType,
 			ArtifactType: &referrerInfo.ArtifactType,
@@ -63,9 +61,6 @@ func getAnnotationsFromMap(annotationsMap map[string]string) []*gql_generated.An
 	annotations := make([]*gql_generated.Annotation, 0, len(annotationsMap))
 
 	for key, value := range annotationsMap {
-		key := key
-		value := value
-
 		annotations = append(annotations, &gql_generated.Annotation{
 			Key:   &key,
 			Value: &value,
@@ -199,9 +194,6 @@ func StringMap2Annotations(strMap map[string]string) []*gql_generated.Annotation
 	annotations := make([]*gql_generated.Annotation, 0, len(strMap))
 
 	for key, value := range strMap {
-		key := key
-		value := value
-
 		annotations = append(annotations, &gql_generated.Annotation{
 			Key:   &key,
 			Value: &value,

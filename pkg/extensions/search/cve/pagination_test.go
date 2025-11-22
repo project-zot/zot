@@ -1,5 +1,4 @@
 //go:build search
-// +build search
 
 package cveinfo_test
 
@@ -77,7 +76,7 @@ func TestCVEPagination(t *testing.T) {
 				cveMap := map[string]cvemodel.CVE{}
 
 				if image == "repo1:0.1.0" {
-					for i := 0; i < 5; i++ {
+					for i := range 5 {
 						cveMap[fmt.Sprintf("CVE%d", i)] = cvemodel.CVE{
 							ID:          fmt.Sprintf("CVE%d", i),
 							Severity:    intToSeverity[i%5],
@@ -88,7 +87,7 @@ func TestCVEPagination(t *testing.T) {
 				}
 
 				if image == "repo1:1.0.0" {
-					for i := 0; i < 30; i++ {
+					for i := range 30 {
 						cveMap[fmt.Sprintf("CVE%d", i)] = cvemodel.CVE{
 							ID:          fmt.Sprintf("CVE%d", i),
 							Severity:    intToSeverity[i%5],
@@ -183,7 +182,7 @@ func TestCVEPagination(t *testing.T) {
 
 			Convey("no limit or offset", func() {
 				cveIds := []string{}
-				for i := 0; i < 30; i++ {
+				for i := range 30 {
 					cveIds = append(cveIds, fmt.Sprintf("CVE%d", i))
 				}
 
@@ -266,7 +265,7 @@ func TestCVEPagination(t *testing.T) {
 
 			Convey("limit < len(cves)", func() {
 				cveIds := []string{}
-				for i := 0; i < 30; i++ {
+				for i := range 30 {
 					cveIds = append(cveIds, fmt.Sprintf("CVE%d", i))
 				}
 

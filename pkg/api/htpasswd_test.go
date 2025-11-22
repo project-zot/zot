@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -274,11 +275,14 @@ func TestHTPasswdWatcher(t *testing.T) {
 			So(test.WaitForLogMessages(logBuffer, "htpasswd watcher terminating...", 1, 5*time.Second), ShouldBeTrue)
 
 			// Test with very long file path
-			longPath := "/tmp/"
-			for i := 0; i < 100; i++ {
-				longPath += "verylongdirname"
+			var longPathBuilder strings.Builder
+			longPathBuilder.WriteString("/tmp/")
+
+			for range 100 {
+				longPathBuilder.WriteString("verylongdirname")
 			}
-			longPath += "/htpasswd"
+			longPathBuilder.WriteString("/htpasswd")
+			longPath := longPathBuilder.String()
 			htw3, err := api.NewHTPasswdWatcher(htp, longPath)
 			So(err, ShouldBeNil)
 			So(func() { htw3.Run() }, ShouldNotPanic)
@@ -315,14 +319,14 @@ func TestHTPasswdWatcher(t *testing.T) {
 
 			// Test concurrent Run() and Close()
 			go func() {
-				for i := 0; i < 5; i++ {
+				for range 5 {
 					htw.Run()
 					time.Sleep(1 * time.Millisecond)
 				}
 			}()
 
 			go func() {
-				for i := 0; i < 5; i++ {
+				for range 5 {
 					htw.Close()
 					time.Sleep(1 * time.Millisecond)
 				}
@@ -337,7 +341,7 @@ func TestHTPasswdWatcher(t *testing.T) {
 			defer htw.Close()
 
 			go func() {
-				for i := 0; i < 3; i++ {
+				for range 3 {
 					_ = htw.ChangeFile(htpasswdPath1)
 
 					time.Sleep(1 * time.Millisecond)
@@ -345,7 +349,7 @@ func TestHTPasswdWatcher(t *testing.T) {
 			}()
 
 			go func() {
-				for i := 0; i < 3; i++ {
+				for range 3 {
 					_ = htw.ChangeFile(htpasswdPath2)
 
 					time.Sleep(1 * time.Millisecond)
@@ -383,7 +387,7 @@ func TestHTPasswdWatcher(t *testing.T) {
 			So(test.WaitForLogMessages(logBuffer, "htpasswd watcher terminating...", 1, 5*time.Second), ShouldBeTrue)
 
 			// Test multiple Run/Close cycles
-			for i := 0; i < 3; i++ {
+			for range 3 {
 				htw2.Run()
 				time.Sleep(10 * time.Millisecond)
 				So(htw2.Close(), ShouldBeNil)
@@ -432,7 +436,7 @@ func TestHTPasswdWatcher(t *testing.T) {
 			So(test.WaitForLogMessages(logBuffer, "htpasswd watcher terminating...", 2, 5*time.Second), ShouldBeTrue)
 
 			// Test 3: Multiple termination cycles with file watching
-			for i := 0; i < 3; i++ {
+			for range 3 {
 				htw2.Run()
 				time.Sleep(10 * time.Millisecond)
 				So(htw2.Close(), ShouldBeNil)
@@ -443,7 +447,7 @@ func TestHTPasswdWatcher(t *testing.T) {
 			So(test.WaitForLogMessages(logBuffer, "htpasswd watcher terminating...", 3, 5*time.Second), ShouldBeTrue)
 
 			// Test 4: Stress test with rapid cycles
-			for i := 0; i < 5; i++ {
+			for range 5 {
 				htw2.Run()
 				time.Sleep(5 * time.Millisecond)
 				So(htw2.Close(), ShouldBeNil)

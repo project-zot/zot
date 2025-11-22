@@ -56,14 +56,14 @@ func loadPerHostCerts(caCertPool *x509.CertPool, host string) *tls.Config {
 	return nil
 }
 
-// Holds certificate options for an HTTP client.
+// HTTPClientCertOptions holds certificate options for an HTTP client.
 type HTTPClientCertOptions struct {
 	ClientCertFile string // Holds the path to the client certificate file. Mandatory if ClientKeyFile is present.
 	ClientKeyFile  string // Holds the path to the client key file. Mandatory if ClientCertFile is present.
 	RootCaCertFile string // Optional. Holds the path to the custom Root CA cert file.
 }
 
-// Holds client options for creating an HTTP client.
+// HTTPClientOptions holds client options for creating an HTTP client.
 type HTTPClientOptions struct {
 	// Results in a client with TLS config if true.
 	TLSEnabled bool

@@ -1,5 +1,4 @@
 //go:build sync && scrub && metrics && search
-// +build sync,scrub,metrics,search
 
 package ociutils_test
 

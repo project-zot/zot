@@ -901,7 +901,7 @@ func outputJSONExit() {
 }
 
 func validateMinifyRawJSON(rawJSON string) string {
-	var jsonData interface{}
+	var jsonData any
 
 	err := json.Unmarshal([]byte(rawJSON), &jsonData)
 	if err != nil {

@@ -3,6 +3,7 @@ package retention
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	glob "github.com/bmatcuk/doublestar/v4"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -115,7 +116,7 @@ func (p policyManager) GetRetainedTagsFromIndex(ctx context.Context, repo string
 
 		for _, retainCandidate := range candidates.candidates {
 			// there may be duplicates
-			if !zcommon.Contains(retainTags, retainCandidate.Tag) {
+			if !slices.Contains(retainTags, retainCandidate.Tag) {
 				reason := fmt.Sprintf(retainedStrFormat, retainCandidate.RetainedBy)
 
 				logAction(repo, "keep", reason, retainCandidate, p.config.DryRun, &p.log)
@@ -127,7 +128,7 @@ func (p policyManager) GetRetainedTagsFromIndex(ctx context.Context, repo string
 
 	// log tags which will be removed
 	for _, candidate := range candidates {
-		if !zcommon.Contains(retainTags, candidate.Tag) {
+		if !slices.Contains(retainTags, candidate.Tag) {
 			logAction(repo, "delete", filteredByTagNames, candidate, p.config.DryRun, &p.log)
 
 			if p.auditLog != nil {
@@ -207,7 +208,7 @@ func (p policyManager) GetRetainedTagsFromMetaDB(ctx context.Context, repoMeta m
 
 		for _, retainCandidate := range retainCandidates {
 			// there may be duplicates
-			if !zcommon.Contains(retainTags, retainCandidate.Tag) {
+			if !slices.Contains(retainTags, retainCandidate.Tag) {
 				// format reason log msg
 				reason := fmt.Sprintf(retainedStrFormat, retainCandidate.RetainedBy)
 
@@ -220,9 +221,9 @@ func (p policyManager) GetRetainedTagsFromMetaDB(ctx context.Context, repoMeta m
 
 	// log tags which will be removed
 	for _, candidateInfo := range candidates {
-		if !zcommon.Contains(retainTags, candidateInfo.Tag) {
+		if !slices.Contains(retainTags, candidateInfo.Tag) {
 			var reason string
-			if zcommon.Contains(matchedByName, candidateInfo.Tag) {
+			if slices.Contains(matchedByName, candidateInfo.Tag) {
 				reason = filteredByTagRules
 			} else {
 				reason = filteredByTagNames

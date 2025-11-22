@@ -353,6 +353,7 @@ check: ./.golangci.yaml $(GOLINTER)
 	$(GOLINTER) run --output.text.colors --build-tags debug  ./pkg/debug/swagger/ ./pkg/debug/gqlplayground
 	$(GOLINTER) run --output.text.colors --build-tags dev ./pkg/test/inject/
 	$(GOLINTER) run --output.text.colors --build-tags stress ./pkg/cli/server/
+	$(GOLINTER) run --output.text.colors --build-tags needprivileges,$(BUILD_LABELS) ./pkg/cli/client/ ./pkg/storage/local/ ./pkg/api/config/
 	rm pkg/extensions/build/.empty
 
 .PHONY: swagger

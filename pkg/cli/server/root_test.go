@@ -668,7 +668,7 @@ storage:
 			},
 			{
 				"Should fail verify if session driver is enabled and sessionKeysFile present",
-				[]byte(fmt.Sprintf(`{
+				fmt.Appendf([]byte{}, `{
 					"storage":{
 						"rootDirectory":"/tmp/zot"
 					},
@@ -698,7 +698,7 @@ storage:
 							"enable": true
 						}
 					}
-				}`, tmpSessionKeysFile.Name())),
+				}`, tmpSessionKeysFile.Name()),
 				false,
 				zerr.ErrBadConfig.Error() + ": session keys not supported when redis session driver is used!",
 			},
@@ -1562,12 +1562,12 @@ storage:
 		err = tmpCredsFile.Close()
 		So(err, ShouldBeNil)
 
-		content = []byte(fmt.Sprintf(`{"distSpecVersion":"1.1.1","storage":{"rootDirectory":"/tmp/zot"},
+		content = fmt.Appendf([]byte{}, `{"distSpecVersion":"1.1.1","storage":{"rootDirectory":"/tmp/zot"},
 			"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 			"auth":{"openid":{"providers":{"oidc":{"issuer":"http://127.0.0.1:5556/dex",
 			"credentialsFile":"%s","scopes":["openid"]}}}}},
 			"log":{"level":"debug"}}`,
-			tmpCredsFile.Name()),
+			tmpCredsFile.Name(),
 		)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
@@ -1677,11 +1677,11 @@ storage:
 		err = tmpCredsFile.Close()
 		So(err, ShouldBeNil)
 
-		content = []byte(fmt.Sprintf(`{ "distSpecVersion": "1.1.1",
+		content = fmt.Appendf([]byte{}, `{ "distSpecVersion": "1.1.1",
 			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080", 
 			"auth":{"htpasswd":{"path":"test/data/htpasswd"}, "sessionKeysFile": "%s", 
 			"failDelay": 5 } }, "log": { "level": "debug" } }`,
-			tmpCredsFile.Name()),
+			tmpCredsFile.Name(),
 		)
 
 		_, err = tmpFile.Write(content)
@@ -1712,11 +1712,11 @@ storage:
 		err = tmpCredsFile.Close()
 		So(err, ShouldBeNil)
 
-		content = []byte(fmt.Sprintf(`{ "distSpecVersion": "1.1.1",
+		content = fmt.Appendf([]byte{}, `{ "distSpecVersion": "1.1.1",
 			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080", 
 			"auth":{"htpasswd":{"path":"test/data/htpasswd"}, "sessionKeysFile": "%s", 
 			"failDelay": 5 } }, "log": { "level": "debug" } }`,
-			tmpCredsFile.Name()),
+			tmpCredsFile.Name(),
 		)
 
 		_, err = tmpFile.Write(content)
@@ -1748,13 +1748,13 @@ storage:
 		err = tmpCredsFile.Close()
 		So(err, ShouldBeNil)
 
-		content = []byte(fmt.Sprintf(`{ "distSpecVersion": "1.1.1",
+		content = fmt.Appendf([]byte{}, `{ "distSpecVersion": "1.1.1",
 			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080", 
 			"auth": { "ldap": { "credentialsFile": "%v", "address": "ldap.example.org", "port": 389, 
 			"startTLS": false, "baseDN": "ou=Users,dc=example,dc=org", 
 			"userAttribute": "uid", "userGroupAttribute": "memberOf", "skipVerify": true, "subtreeSearch": true }, 
 			"failDelay": 5 } }, "log": { "level": "debug" } }`,
-			tmpCredsFile.Name()),
+			tmpCredsFile.Name(),
 		)
 
 		_, err = tmpFile.Write(content)
@@ -1786,13 +1786,13 @@ storage:
 		err = tmpCredsFile.Close()
 		So(err, ShouldBeNil)
 
-		content = []byte(fmt.Sprintf(`{ "distSpecVersion": "1.1.1",
+		content = fmt.Appendf([]byte{}, `{ "distSpecVersion": "1.1.1",
 			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080", 
 			"auth": { "ldap": { "credentialsFile": "%v", "address": "ldap.example.org", "port": 389, 
 			"startTLS": false, "baseDN": "ou=Users,dc=example,dc=org", 
 			"userAttribute": "uid", "userGroupAttribute": "memberOf", "skipVerify": true, "subtreeSearch": true }, 
 			"failDelay": 5 } }, "log": { "level": "debug" } }`,
-			tmpCredsFile.Name()),
+			tmpCredsFile.Name(),
 		)
 
 		_, err = tmpFile.Write(content)
@@ -1826,13 +1826,13 @@ storage:
 		err = tmpCredsFile.Close()
 		So(err, ShouldBeNil)
 
-		content = []byte(fmt.Sprintf(`{ "distSpecVersion": "1.1.1",
+		content = fmt.Appendf([]byte{}, `{ "distSpecVersion": "1.1.1",
 			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080", 
 			"auth": { "ldap": { "credentialsFile": "%v", "address": "ldap.example.org", "port": 389, 
 			"startTLS": false, "baseDN": "ou=Users,dc=example,dc=org", 
 			"userAttribute": "uid", "userGroupAttribute": "memberOf", "skipVerify": true, "subtreeSearch": true }, 
 			"failDelay": 5 } }, "log": { "level": "debug" } }`,
-			tmpCredsFile.Name()),
+			tmpCredsFile.Name(),
 		)
 
 		_, err = tmpFile.Write(content)
@@ -1863,13 +1863,13 @@ storage:
 		err = tmpCredsFile.Close()
 		So(err, ShouldBeNil)
 
-		content = []byte(fmt.Sprintf(`{ "distSpecVersion": "1.1.1",
+		content = fmt.Appendf([]byte{}, `{ "distSpecVersion": "1.1.1",
 			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080", 
 			"auth": { "ldap": { "credentialsFile": "%v", "address": "ldap.example.org", "port": 389, 
 			"startTLS": false, "baseDN": "ou=Users,dc=example,dc=org", 
 			"userAttribute": "uid", "userGroupAttribute": "memberOf", "skipVerify": true, "subtreeSearch": true }, 
 			"failDelay": 5 } }, "log": { "level": "debug" } }`,
-			tmpCredsFile.Name()),
+			tmpCredsFile.Name(),
 		)
 
 		_, err = tmpFile.Write(content)
@@ -1900,13 +1900,13 @@ storage:
 		err = tmpCredsFile.Close()
 		So(err, ShouldBeNil)
 
-		content = []byte(fmt.Sprintf(`{ "distSpecVersion": "1.1.1",
+		content = fmt.Appendf([]byte{}, `{ "distSpecVersion": "1.1.1",
 			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080", 
 			"auth": { "ldap": { "credentialsFile": "%v", "address": "ldap.example.org", "port": 389, 
 			"startTLS": false, "baseDN": "ou=Users,dc=example,dc=org", 
 			"userAttribute": "uid", "userGroupAttribute": "memberOf", "skipVerify": true, "subtreeSearch": true }, 
 			"failDelay": 5 } }, "log": { "level": "debug" } }`,
-			tmpCredsFile.Name()),
+			tmpCredsFile.Name(),
 		)
 
 		_, err = tmpFile.Write(content)
@@ -1945,12 +1945,12 @@ func TestApiKeyConfig(t *testing.T) {
 
 		defer os.Remove(tmpfile.Name())
 
-		content = []byte(fmt.Sprintf(`{"distSpecVersion":"1.1.1","storage":{"rootDirectory":"/tmp/zot"},
+		content = fmt.Appendf([]byte{}, `{"distSpecVersion":"1.1.1","storage":{"rootDirectory":"/tmp/zot"},
 			"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 			"auth":{"openid":{"providers":{"oidc":{"issuer":"http://127.0.0.1:5556/dex",
 			"credentialsFile":"%s","scopes":["openid"]}}}}},
 			"log":{"level":"debug"}}`,
-			tmpCredsFile.Name()),
+			tmpCredsFile.Name(),
 		)
 
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
@@ -2349,7 +2349,7 @@ func TestScrub(t *testing.T) {
 
 			defer os.Remove(tmpfile.Name()) // clean up
 
-			content := []byte(fmt.Sprintf(`{
+			content := fmt.Appendf([]byte{}, `{
 				"storage": {
 					"rootDirectory": "%s"
 				},
@@ -2360,7 +2360,7 @@ func TestScrub(t *testing.T) {
 					"level": "debug"
 				}
 			}
-			`, dir, port))
+			`, dir, port)
 			_, err = tmpfile.Write(content)
 			So(err, ShouldBeNil)
 			err = tmpfile.Close()
@@ -2381,7 +2381,7 @@ func TestScrub(t *testing.T) {
 
 			defer os.Remove(tmpfile.Name()) // clean up
 
-			content := []byte(fmt.Sprintf(`{
+			content := fmt.Appendf([]byte{}, `{
 				"storage": {
 					"rootDirectory": ""
 				},
@@ -2392,7 +2392,7 @@ func TestScrub(t *testing.T) {
 					"level": "debug"
 				}
 			}
-			`, port))
+			`, port)
 			_, err = tmpfile.Write(content)
 			So(err, ShouldBeNil)
 			err = tmpfile.Close()
@@ -2438,7 +2438,7 @@ func TestScrub(t *testing.T) {
 
 			defer os.Remove(tmpfile.Name()) // clean up
 
-			content := []byte(fmt.Sprintf(`{
+			content := fmt.Appendf([]byte{}, `{
 				"storage": {
 					"rootDirectory": "%s"
 				},
@@ -2449,7 +2449,7 @@ func TestScrub(t *testing.T) {
 					"level": "debug"
 				}
 			}
-			`, dir, port))
+			`, dir, port)
 			_, err = tmpfile.Write(content)
 			So(err, ShouldBeNil)
 			err = tmpfile.Close()
@@ -2548,7 +2548,7 @@ func TestClusterConfig(t *testing.T) {
 	baseExamplePath := "../../../examples/scale-out-cluster-cloud/"
 
 	Convey("Should successfully load example configs for cloud", t, func() {
-		for memberIdx := 0; memberIdx < 3; memberIdx++ {
+		for memberIdx := range 3 {
 			cfgFileToLoad := fmt.Sprintf("%s/config-cluster-member%d.json", baseExamplePath, memberIdx)
 			cfg := config.New()
 			err := cli.LoadConfiguration(cfg, cfgFileToLoad)
@@ -2557,7 +2557,7 @@ func TestClusterConfig(t *testing.T) {
 	})
 
 	Convey("Should successfully load example TLS configs for cloud", t, func() {
-		for memberIdx := 0; memberIdx < 3; memberIdx++ {
+		for memberIdx := range 3 {
 			cfgFileToLoad := fmt.Sprintf("%s/tls/config-cluster-member%d.json", baseExamplePath, memberIdx)
 			cfg := config.New()
 			err := cli.LoadConfiguration(cfg, cfgFileToLoad)
@@ -2719,6 +2719,7 @@ func runCLIWithConfig(tempDir string, config string) (string, error) {
 
 	// Run CLI in a goroutine, but handle errors via a channel
 	errCh := make(chan error, 1)
+
 	go func() {
 		errCh <- cli.NewServerRootCmd().Execute()
 	}()

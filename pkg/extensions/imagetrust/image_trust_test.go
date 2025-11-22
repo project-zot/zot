@@ -1,5 +1,4 @@
 //go:build imagetrust
-// +build imagetrust
 
 package imagetrust_test
 
@@ -648,7 +647,7 @@ func TestLocalTrustStore(t *testing.T) {
 		imageTrustStore, err := imagetrust.NewLocalImageTrustStore(rootDir)
 		So(err, ShouldBeNil)
 
-		var dbDriverParams map[string]interface{}
+		var dbDriverParams map[string]any
 
 		RunUploadTests(t, *imageTrustStore)
 		RunVerificationTests(t, dbDriverParams)
@@ -664,7 +663,7 @@ func TestLocalTrustStoreRedis(t *testing.T) {
 		imageTrustStore, err := imagetrust.NewLocalImageTrustStore(rootDir)
 		So(err, ShouldBeNil)
 
-		dbDriverParams := map[string]interface{}{
+		dbDriverParams := map[string]any{
 			"name": "redis",
 			"url":  "redis://" + miniRedis.Addr(),
 		}
@@ -1094,7 +1093,7 @@ func TestAWSTrustStore(t *testing.T) {
 		imageMetaTablename := "imageMetaTable" + uuid.String()
 		repoBlobsInfoTablename := "repoBlobsInfoTable" + uuid.String()
 
-		dynamoDBDriverParams := map[string]interface{}{
+		dynamoDBDriverParams := map[string]any{
 			"name":                   "dynamodb",
 			"endpoint":               os.Getenv("DYNAMODBMOCK_ENDPOINT"),
 			"region":                 "us-east-2",
@@ -1205,7 +1204,7 @@ func RunUploadTests(t *testing.T, imageTrustStore imagetrust.ImageTrustStore) { 
 	})
 }
 
-func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) { //nolint: thelper
+func RunVerificationTests(t *testing.T, dbDriverParams map[string]any) { //nolint: thelper
 	Convey("verify signatures are trusted", func() {
 		defaultValue := true
 		rootDir := t.TempDir()

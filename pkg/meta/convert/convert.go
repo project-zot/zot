@@ -1,6 +1,7 @@
 package convert
 
 import (
+	"slices"
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
@@ -8,7 +9,6 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/compat"
 	proto_go "zotregistry.dev/zot/v2/pkg/meta/proto/gen"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
@@ -497,18 +497,14 @@ func AddProtoPlatforms(platforms []*proto_go.Platform, newPlatforms []*proto_go.
 }
 
 func ContainsProtoPlatform(platforms []*proto_go.Platform, platform *proto_go.Platform) bool {
-	for i := range platforms {
-		if platforms[i].GetOS() == platform.GetOS() && platforms[i].GetArchitecture() == platform.GetArchitecture() {
-			return true
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(platforms, func(p *proto_go.Platform) bool {
+		return p.GetOS() == platform.GetOS() && p.GetArchitecture() == platform.GetArchitecture()
+	})
 }
 
 func AddVendors(vendors []string, newVendors []string) []string {
 	for _, newVendor := range newVendors {
-		if !common.Contains(vendors, newVendor) {
+		if !slices.Contains(vendors, newVendor) {
 			vendors = append(vendors, newVendor)
 		}
 	}

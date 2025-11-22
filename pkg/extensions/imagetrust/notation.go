@@ -1,5 +1,4 @@
 //go:build imagetrust
-// +build imagetrust
 
 package imagetrust
 
@@ -211,7 +210,7 @@ func (cloud *CertificateAWSStorage) recreateSecret(secretInputParam *secretsmana
 
 	var err error
 
-	for i := 0; i < maxAttempts; i++ {
+	for range maxAttempts {
 		_, err = cloud.secretsManagerClient.CreateSecret(context.Background(), secretInputParam)
 		if err == nil {
 			return nil
@@ -286,7 +285,8 @@ func (cloud *CertificateAWSStorage) GetCertificates(
 	return certificates, nil
 }
 
-// Equivalent function for trustpolicy.LoadDocument() but using a specific SysFS not the one returned by ConfigFS().
+// LoadTrustPolicyDocument is equivalent to trustpolicy.LoadDocument() but using a specific SysFS
+// not the one returned by ConfigFS().
 func (local *CertificateLocalStorage) LoadTrustPolicyDocument() (*trustpolicy.Document, error) {
 	notationDir, err := local.GetNotationDirPath()
 	if err != nil {

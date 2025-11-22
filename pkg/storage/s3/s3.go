@@ -15,7 +15,7 @@ import (
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
-// NewObjectStorage returns a new image store backed by cloud storages.
+// NewImageStore returns a new image store backed by cloud storages.
 // see https://github.com/docker/docker.github.io/tree/master/registry/storage-drivers
 // Use the last argument to properly set a cache database, or it will default to boltDB local storage.
 func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlog.Logger,

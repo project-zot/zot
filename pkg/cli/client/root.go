@@ -1,5 +1,4 @@
 //go:build search
-// +build search
 
 package client
 
@@ -11,7 +10,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
-// "zli" - client-side cli.
+// NewCliRootCmd creates the root command for "zli" - client-side cli.
 func NewCliRootCmd() *cobra.Command {
 	showVersion := false
 

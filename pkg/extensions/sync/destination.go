@@ -1,5 +1,4 @@
 //go:build sync
-// +build sync
 
 package sync
 
@@ -10,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/distribution/distribution/v3/registry/storage/driver"
@@ -53,7 +53,7 @@ func NewDestinationRegistry(
 	}
 }
 
-// Check if image is already synced.
+// CanSkipImage checks if image is already synced.
 func (registry *DestinationRegistry) CanSkipImage(repo, tag string, digest godigest.Digest) (bool, error) {
 	// check image already synced
 	imageStore := registry.storeController.GetImageStore(repo)
@@ -86,7 +86,7 @@ func (registry *DestinationRegistry) GetImageReference(repo, reference string) (
 	return registry.tempStorage.GetImageReference(repo, reference)
 }
 
-// finalize a syncing image.
+// CommitAll finalizes a syncing image.
 func (registry *DestinationRegistry) CommitAll(repo string, imageReference ref.Ref) error {
 	tempImageStore := getImageStoreFromImageReference(repo, imageReference, registry.log)
 
@@ -145,7 +145,7 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 	var err error
 
 	// seen
-	if common.Contains(*seen, desc.Digest) {
+	if slices.Contains(*seen, desc.Digest) {
 		return nil
 	}
 

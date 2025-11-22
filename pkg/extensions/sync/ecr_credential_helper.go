@@ -1,5 +1,4 @@
 //go:build sync
-// +build sync
 
 package sync
 
@@ -73,7 +72,7 @@ func extractAccountAndRegion(url string) (string, string, error) {
 	return accountID, region, nil
 }
 
-// getMockECRCredentials provides mock credentials for testing purposes.
+// GetMockECRCredentials provides mock credentials for testing purposes.
 func GetMockECRCredentials(remoteAddress string) (ecrCredential, error) {
 	// Extract account ID and region from the URL.
 	accountID, region, err := extractAccountAndRegion(remoteAddress)
@@ -91,7 +90,7 @@ func GetMockECRCredentials(remoteAddress string) (ecrCredential, error) {
 	}, nil
 }
 
-// getECRCredentials retrieves actual ECR credentials using AWS SDK.
+// GetECRCredentials retrieves actual ECR credentials using AWS SDK.
 func GetECRCredentials(remoteAddress string) (ecrCredential, error) {
 	// Extract account ID and region from the URL.
 	accountID, region, err := extractAccountAndRegion(remoteAddress)
@@ -137,7 +136,7 @@ func GetECRCredentials(remoteAddress string) (ecrCredential, error) {
 	return ecrCredential{username: username, password: password, expiry: expiry, account: accountID, region: region}, nil
 }
 
-// GetECRCredentials retrieves the ECR credentials (username and password) from AWS ECR.
+// GetCredentials retrieves the ECR credentials (username and password) from AWS ECR.
 func (credHelper *ecrCredentialsHelper) GetCredentials(urls []string) (syncconf.CredentialsFile, error) {
 	ecrCredentials := make(syncconf.CredentialsFile)
 

@@ -28,7 +28,7 @@ type BoltDBDriverParameters struct {
 	UseRelPaths bool
 }
 
-func NewBoltDBCache(parameters interface{}, log zlog.Logger) (*BoltDBDriver, error) {
+func NewBoltDBCache(parameters any, log zlog.Logger) (*BoltDBDriver, error) {
 	properParameters, ok := parameters.(BoltDBDriverParameters)
 	if !ok {
 		log.Error().Err(zerr.ErrTypeAssertionFailed).Msgf("failed to cast type, expected type '%T' but got '%T'",

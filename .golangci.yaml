@@ -19,6 +19,7 @@ linters:
     - maintidx
     - mnd
     - musttag
+    - noinlineerr
     - paralleltest
     - promlinter
     - protogetter
@@ -77,6 +78,12 @@ linters:
         - err
       disable:
         - assign
+        - defer
+        - if
+        - send
+        - expr
+        - select
+        - switch
   exclusions:
     generated: lax
     presets:

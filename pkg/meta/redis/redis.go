@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -141,7 +142,7 @@ func (rc *RedisDB) ToggleStarRepo(ctx context.Context, repo string) (mTypes.Togg
 			return err
 		}
 
-		isRepoStarred := zcommon.Contains(userData.StarredRepos, repo)
+		isRepoStarred := slices.Contains(userData.StarredRepos, repo)
 
 		if isRepoStarred {
 			res = mTypes.Removed
@@ -228,7 +229,7 @@ func (rc *RedisDB) ToggleBookmarkRepo(ctx context.Context, repo string) (mTypes.
 			return err
 		}
 
-		isRepoBookmarked := zcommon.Contains(userData.BookmarkedRepos, repo)
+		isRepoBookmarked := slices.Contains(userData.BookmarkedRepos, repo)
 
 		if isRepoBookmarked {
 			res = mTypes.Removed
@@ -263,7 +264,6 @@ func (rc *RedisDB) ToggleBookmarkRepo(ctx context.Context, repo string) (mTypes.
 	return res, err
 }
 
-// UserDB profile/api key CRUD.
 func (rc *RedisDB) GetUserData(ctx context.Context) (mTypes.UserData, error) {
 	userData := mTypes.UserData{}
 	userData.APIKeys = make(map[string]mTypes.APIKeyDetails)
@@ -943,8 +943,8 @@ func (rc *RedisDB) SearchRepos(ctx context.Context, searchText string) ([]mTypes
 		}
 
 		protoRepoMeta.Rank = int32(rank) //nolint:gosec // ignore overflow
-		protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, protoRepoMeta.Name)
-		protoRepoMeta.IsStarred = zcommon.Contains(userStars, protoRepoMeta.Name)
+		protoRepoMeta.IsBookmarked = slices.Contains(userBookmarks, protoRepoMeta.Name)
+		protoRepoMeta.IsStarred = slices.Contains(userStars, protoRepoMeta.Name)
 
 		repoMeta := mConvert.GetRepoMeta(protoRepoMeta)
 		foundRepos = append(foundRepos, repoMeta)
@@ -987,8 +987,8 @@ func (rc *RedisDB) SearchTags(ctx context.Context, searchText string) ([]mTypes.
 
 		delete(protoRepoMeta.Tags, "")
 
-		protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, protoRepoMeta.Name)
-		protoRepoMeta.IsStarred = zcommon.Contains(userStars, protoRepoMeta.Name)
+		protoRepoMeta.IsBookmarked = slices.Contains(userBookmarks, protoRepoMeta.Name)
+		protoRepoMeta.IsStarred = slices.Contains(userStars, protoRepoMeta.Name)
 
 		for tag, descriptor := range protoRepoMeta.Tags {
 			if !strings.HasPrefix(tag, searchedTag) || tag == "" {
@@ -1069,8 +1069,8 @@ func (rc *RedisDB) FilterTags(ctx context.Context, filterRepoTag mTypes.FilterRe
 		}
 
 		delete(protoRepoMeta.Tags, "")
-		protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, protoRepoMeta.Name)
-		protoRepoMeta.IsStarred = zcommon.Contains(userStars, protoRepoMeta.Name)
+		protoRepoMeta.IsBookmarked = slices.Contains(userBookmarks, protoRepoMeta.Name)
+		protoRepoMeta.IsStarred = slices.Contains(userStars, protoRepoMeta.Name)
 		repoMeta := mConvert.GetRepoMeta(protoRepoMeta)
 
 		for tag, descriptor := range protoRepoMeta.Tags {
@@ -1170,8 +1170,8 @@ func (rc *RedisDB) FilterRepos(ctx context.Context, acceptName mTypes.FilterRepo
 			return []mTypes.RepoMeta{}, err
 		}
 
-		protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, protoRepoMeta.Name)
-		protoRepoMeta.IsStarred = zcommon.Contains(userStars, protoRepoMeta.Name)
+		protoRepoMeta.IsBookmarked = slices.Contains(userBookmarks, protoRepoMeta.Name)
+		protoRepoMeta.IsStarred = slices.Contains(userStars, protoRepoMeta.Name)
 
 		repoMeta := mConvert.GetRepoMeta(protoRepoMeta)
 
@@ -1193,8 +1193,8 @@ func (rc *RedisDB) GetRepoMeta(ctx context.Context, repo string) (mTypes.RepoMet
 	userBookmarks, userStars := rc.getUserBookmarksAndStarsNoError(ctx)
 
 	delete(protoRepoMeta.Tags, "")
-	protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repo)
-	protoRepoMeta.IsStarred = zcommon.Contains(userStars, repo)
+	protoRepoMeta.IsBookmarked = slices.Contains(userBookmarks, repo)
+	protoRepoMeta.IsStarred = slices.Contains(userStars, repo)
 
 	return mConvert.GetRepoMeta(protoRepoMeta), err
 }
@@ -1211,8 +1211,8 @@ func (rc *RedisDB) GetFullImageMeta(ctx context.Context, repo string, tag string
 	userBookmarks, userStars := rc.getUserBookmarksAndStarsNoError(ctx)
 
 	delete(protoRepoMeta.Tags, "")
-	protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repo)
-	protoRepoMeta.IsStarred = zcommon.Contains(userStars, repo)
+	protoRepoMeta.IsBookmarked = slices.Contains(userBookmarks, repo)
+	protoRepoMeta.IsStarred = slices.Contains(userStars, repo)
 
 	descriptor, ok := protoRepoMeta.Tags[tag]
 	if !ok {
@@ -1840,14 +1840,11 @@ func (rc *RedisDB) FilterImageMeta(ctx context.Context,
 	return imageMetaMap, nil
 }
 
-/*
-	RemoveRepoReference removes the tag from RepoMetadata if the reference is a tag,
-
-it also removes its corresponding digest from Statistics, Signatures and Referrers if there are no tags
-pointing to it.
-If the reference is a digest then it will remove the digest from Statistics, Signatures and Referrers only
-if there are no tags pointing to the digest, otherwise it's noop.
-*/
+// RemoveRepoReference removes the tag from RepoMetadata if the reference is a tag.
+// It also removes its corresponding digest from Statistics, Signatures and Referrers if there are no tags
+// pointing to it.
+// If the reference is a digest then it will remove the digest from Statistics, Signatures and Referrers only
+// if there are no tags pointing to the digest, otherwise it's noop.
 func (rc *RedisDB) RemoveRepoReference(repo, reference string, manifestDigest godigest.Digest) error {
 	ctx := context.Background()
 

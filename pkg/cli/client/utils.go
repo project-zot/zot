@@ -1,5 +1,4 @@
 //go:build search
-// +build search
 
 package client
 
@@ -251,9 +250,9 @@ func printReferrersTableHeader(config SearchConfig, writer io.Writer, maxArtifac
 
 	if maxArtifactTypeLen > len("ARTIFACT TYPE") {
 		offset = strings.Repeat(" ", maxArtifactTypeLen-len("ARTIFACT TYPE"))
-		row[refArtifactTypeIndex] = "ARTIFACT TYPE" + offset
+		row[refArtifactTypeIndex] = "ARTIFACT TYPE" + offset //nolint: gosec
 	} else {
-		row[refArtifactTypeIndex] = "ARTIFACT TYPE"
+		row[refArtifactTypeIndex] = "ARTIFACT TYPE" //nolint: gosec
 	}
 
 	row[refDigestIndex] = "DIGEST"
@@ -290,9 +289,9 @@ func printRepoTableHeader(writer io.Writer, repoMaxLen, maxTimeLen int, verbose 
 
 	if repoMaxLen > len("LAST UPDATED") {
 		offset = strings.Repeat(" ", repoMaxLen-len("LAST UPDATED"))
-		row[repoLastUpdatedIndex] = "LAST UPDATED" + offset
+		row[repoLastUpdatedIndex] = "LAST UPDATED" + offset //nolint: gosec
 	} else {
-		row[repoLastUpdatedIndex] = "LAST UPDATED"
+		row[repoLastUpdatedIndex] = "LAST UPDATED" //nolint: gosec
 	}
 
 	row[repoSizeIndex] = sizeColumn

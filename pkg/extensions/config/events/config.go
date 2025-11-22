@@ -35,6 +35,7 @@ type Config struct {
 type SinkConfig struct {
 	*Credentials
 	*TLSConfig
+
 	Type    SinkType
 	Address string
 	Channel string

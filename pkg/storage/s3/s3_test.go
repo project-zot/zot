@@ -93,7 +93,7 @@ func createMockStorageWithMockCache(rootDir string, dedupe bool, store driver.St
 func createStoreDriver(rootDir string) driver.StorageDriver {
 	bucket := zotStorageTest
 	endpoint := os.Getenv("S3MOCK_ENDPOINT")
-	storageDriverParams := map[string]interface{}{
+	storageDriverParams := map[string]any{
 		"rootDir":        rootDir,
 		"name":           "s3",
 		"region":         s3Region,
@@ -368,7 +368,7 @@ func (s *StorageDriverMock) Delete(ctx context.Context, path string) error {
 	return nil
 }
 
-func (s *StorageDriverMock) URLFor(ctx context.Context, path string, options map[string]interface{}) (string, error) {
+func (s *StorageDriverMock) URLFor(ctx context.Context, path string, options map[string]any) (string, error) {
 	return "", nil
 }
 
@@ -683,7 +683,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 					"/a": {
 						Dedupe:        true,
 						RootDirectory: t.TempDir(),
-						StorageDriver: map[string]interface{}{
+						StorageDriver: map[string]any{
 							"rootDir":        "/a",
 							"name":           "s3",
 							"region":         s3Region,
@@ -2018,7 +2018,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 		So(configFi2.Size(), ShouldEqual, 0)
 
 		Convey("Intrerrupt rebuilding and restart, checking idempotency", func() {
-			for i := 0; i < 10; i++ {
+			for i := range 10 {
 				log := log.NewTestLogger()
 				metrics := monitoring.NewMetricsServer(false, log)
 				taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
@@ -2060,7 +2060,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			So(configFi2.Size(), ShouldEqual, configFi1.Size())
 
 			// now from dedupe false to true
-			for i := 0; i < 10; i++ {
+			for i := range 10 {
 				log := log.NewTestLogger()
 				metrics := monitoring.NewMetricsServer(false, log)
 				taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -178,9 +179,7 @@ func CustomRedirectPolicy(noOfRedirect int) resty.RedirectPolicy {
 			return fmt.Errorf("stopped after %d redirects", noOfRedirect) //nolint: err113
 		}
 
-		for key, val := range via[len(via)-1].Header {
-			req.Header[key] = val
-		}
+		maps.Copy(req.Header, via[len(via)-1].Header)
 
 		respCookies := req.Response.Cookies()
 		for _, cookie := range respCookies {
@@ -191,7 +190,7 @@ func CustomRedirectPolicy(noOfRedirect int) resty.RedirectPolicy {
 	})
 }
 
-// Generates a random string with length 10 from lower case & upper case characters and
+// GenerateRandomString generates a random string with length 10 from lower case & upper case characters and
 // a seed that can be logged in tests (if test fails, you can reconstruct random string).
 func GenerateRandomString() (string, int64) {
 	seed := time.Now().UnixNano()
@@ -207,7 +206,7 @@ func GenerateRandomString() (string, int64) {
 	return string(randomBytes), seed
 }
 
-// Generates a random string with length 10 from lower case characters and digits and
+// GenerateRandomName generates a random string with length 10 from lower case characters and digits and
 // a seed that can be logged in tests (if test fails, you can reconstruct random string).
 func GenerateRandomName() (string, int64) {
 	seed := time.Now().UnixNano()

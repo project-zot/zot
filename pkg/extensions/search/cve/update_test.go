@@ -1,5 +1,4 @@
 //go:build search
-// +build search
 
 package cveinfo_test
 

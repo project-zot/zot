@@ -1,5 +1,4 @@
 //go:build imagetrust
-// +build imagetrust
 
 package imagetrust
 
@@ -92,7 +91,7 @@ func NewAWSImageTrustStore(region, endpoint string) (*ImageTrustStore, error) {
 
 func GetSecretsManagerClient(region, endpoint string) (*secretsmanager.Client, error) {
 	customResolver := aws.EndpointResolverWithOptionsFunc( //nolint: staticcheck
-		func(service, region string, options ...interface{}) (aws.Endpoint, error) { //nolint: staticcheck
+		func(service, region string, options ...any) (aws.Endpoint, error) { //nolint: staticcheck
 			return aws.Endpoint{ //nolint: staticcheck
 				PartitionID:   "aws",
 				URL:           endpoint,

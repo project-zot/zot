@@ -129,7 +129,7 @@ func AuthzFail(w http.ResponseWriter, r *http.Request, identity, realm string, d
 	}
 }
 
-func WriteJSON(response http.ResponseWriter, status int, data interface{}) {
+func WriteJSON(response http.ResponseWriter, status int, data any) {
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
 
 	body, err := json.Marshal(data)

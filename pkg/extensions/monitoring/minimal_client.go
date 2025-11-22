@@ -1,5 +1,4 @@
 //go:build !metrics
-// +build !metrics
 
 package monitoring
 
@@ -47,8 +46,8 @@ func newHTTPMetricsClient() *http.Client {
 	}
 }
 
-// Creates a MetricsClient that can be used to retrieve in memory metrics
-// The new MetricsClient retrieved must be cached  and reused by the Node Exporter
+// NewMetricsClient creates a MetricsClient that can be used to retrieve in memory metrics.
+// The new MetricsClient retrieved must be cached and reused by the Node Exporter
 // in order to prevent concurrent memory leaks.
 func NewMetricsClient(config *MetricsConfig, logger log.Logger) *MetricsClient {
 	if config.HTTPClient == nil {
@@ -67,7 +66,7 @@ func (mc *MetricsClient) GetMetrics() (*MetricsInfo, error) {
 	return metrics, nil
 }
 
-func (mc *MetricsClient) makeGETRequest(url string, resultsPtr interface{}) (http.Header, error) {
+func (mc *MetricsClient) makeGETRequest(url string, resultsPtr any) (http.Header, error) {
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("metric scraping failed: %w", err)

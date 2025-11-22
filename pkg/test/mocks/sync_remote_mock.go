@@ -18,6 +18,7 @@ type SyncRemoteMock struct {
 }
 
 // Methods required by sync Remote interface.
+
 func (remote SyncRemoteMock) GetHostName() string {
 	if remote.GetHostNameFn != nil {
 		return remote.GetHostNameFn()
@@ -77,6 +78,7 @@ type SyncDestinationMock struct {
 }
 
 // Methods required by sync Destination interface.
+
 func (dest SyncDestinationMock) GetImageReference(repo string, tag string) (ref.Ref, error) {
 	if dest.GetImageReferenceFn != nil {
 		return dest.GetImageReferenceFn(repo, tag)

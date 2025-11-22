@@ -319,6 +319,7 @@ func (driver *Driver) formatErr(err error) error {
 
 type fileInfo struct {
 	os.FileInfo
+
 	path string
 }
 
