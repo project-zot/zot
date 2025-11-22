@@ -93,9 +93,9 @@ func collectResults(config SearchConfig, wg *sync.WaitGroup, imageErr chan strin
 
 func getUsernameAndPassword(user string) (string, string) {
 	if strings.Contains(user, ":") {
-		split := strings.Split(user, ":")
+		username, password, _ := strings.Cut(user, ":")
 
-		return split[0], split[1]
+		return username, password
 	}
 
 	return "", ""

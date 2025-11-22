@@ -1,4 +1,4 @@
-//go:build sync && scrub && metrics && search
+//go:build search
 
 package ociutils
 

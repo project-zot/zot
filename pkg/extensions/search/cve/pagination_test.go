@@ -443,3 +443,63 @@ func TestCVEPagination(t *testing.T) {
 		})
 	})
 }
+
+func TestCvePageFinderUnit(t *testing.T) {
+	Convey("CvePageFinder unit tests", t, func() {
+		Convey("tie-breaking when IDs match", func() {
+			// Test tie-breaking for AlphabeticAsc - when IDs are equal, should return 0
+			// and maintain stable order (first added stays first)
+			paginator, err := cveinfo.NewCvePageFinder(10, 0, cveinfo.AlphabeticAsc)
+			So(err, ShouldBeNil)
+
+			// Add CVEs with same ID but different severities to verify stable sort
+			cve1 := cvemodel.CVE{ID: "CVE-2024-0001", Severity: "HIGH"}
+			cve2 := cvemodel.CVE{ID: "CVE-2024-0001", Severity: "MEDIUM"}
+			paginator.Add(cve1)
+			paginator.Add(cve2)
+
+			result, _ := paginator.Page()
+			// When IDs are equal, sort is stable - first added (cve1) stays first
+			So(len(result), ShouldEqual, 2)
+			So(result[0].ID, ShouldEqual, "CVE-2024-0001")
+			So(result[0].Severity, ShouldEqual, "HIGH") // First added
+			So(result[1].ID, ShouldEqual, "CVE-2024-0001")
+			So(result[1].Severity, ShouldEqual, "MEDIUM") // Second added
+
+			// Test tie-breaking for AlphabeticDsc - when IDs are equal, should return 0
+			// and maintain stable order (first added stays first)
+			paginator, err = cveinfo.NewCvePageFinder(10, 0, cveinfo.AlphabeticDsc)
+			So(err, ShouldBeNil)
+
+			paginator.Add(cve1)
+			paginator.Add(cve2)
+
+			result, _ = paginator.Page()
+			// When IDs are equal, sort is stable - first added (cve1) stays first
+			So(len(result), ShouldEqual, 2)
+			So(result[0].ID, ShouldEqual, "CVE-2024-0001")
+			So(result[0].Severity, ShouldEqual, "HIGH") // First added
+			So(result[1].ID, ShouldEqual, "CVE-2024-0001")
+			So(result[1].Severity, ShouldEqual, "MEDIUM") // Second added
+
+			// Test tie-breaking for SeverityDsc - when severities are equal, sort by ID ascending
+			paginator, err = cveinfo.NewCvePageFinder(10, 0, cveinfo.SeverityDsc)
+			So(err, ShouldBeNil)
+
+			// Add CVEs with same severity but different IDs
+			cve3 := cvemodel.CVE{ID: "CVE-2024-0003", Severity: "HIGH"}
+			cve4 := cvemodel.CVE{ID: "CVE-2024-0001", Severity: "HIGH"}
+			cve5 := cvemodel.CVE{ID: "CVE-2024-0002", Severity: "HIGH"}
+			paginator.Add(cve3)
+			paginator.Add(cve4)
+			paginator.Add(cve5)
+
+			result, _ = paginator.Page()
+			// All have same severity, so should be sorted by ID ascending
+			So(len(result), ShouldEqual, 3)
+			So(result[0].ID, ShouldEqual, "CVE-2024-0001")
+			So(result[1].ID, ShouldEqual, "CVE-2024-0002")
+			So(result[2].ID, ShouldEqual, "CVE-2024-0003")
+		})
+	})
+}

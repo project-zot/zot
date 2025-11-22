@@ -2,7 +2,8 @@ package cveinfo
 
 import (
 	"fmt"
-	"sort"
+	"slices"
+	"sync"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/common"
@@ -15,34 +16,68 @@ const (
 	SeverityDsc   = cvemodel.SortCriteria("SEVERITY")
 )
 
-func SortFunctions() map[cvemodel.SortCriteria]func(pageBuffer []cvemodel.CVE) func(i, j int) bool {
-	return map[cvemodel.SortCriteria]func(pageBuffer []cvemodel.CVE) func(i, j int) bool{
-		AlphabeticAsc: SortByAlphabeticAsc,
-		AlphabeticDsc: SortByAlphabeticDsc,
-		SeverityDsc:   SortBySeverity,
-	}
-}
+var (
+	//nolint:gochecknoglobals // lazy initialization with sync.Once to avoid reallocation
+	sortFunctionsOnce sync.Once
+	//nolint:gochecknoglobals // cached map initialized once, effectively immutable
+	sortFunctions map[cvemodel.SortCriteria]func(a, b cvemodel.CVE) int
+)
 
-func SortByAlphabeticAsc(pageBuffer []cvemodel.CVE) func(i, j int) bool {
-	return func(i, j int) bool {
-		return pageBuffer[i].ID < pageBuffer[j].ID
-	}
-}
-
-func SortByAlphabeticDsc(pageBuffer []cvemodel.CVE) func(i, j int) bool {
-	return func(i, j int) bool {
-		return pageBuffer[i].ID > pageBuffer[j].ID
-	}
-}
-
-func SortBySeverity(pageBuffer []cvemodel.CVE) func(i, j int) bool {
-	return func(i, j int) bool {
-		if cvemodel.CompareSeverities(pageBuffer[i].Severity, pageBuffer[j].Severity) == 0 {
-			return pageBuffer[i].ID < pageBuffer[j].ID
+// getSortFunctions returns a cached map of sort criteria to comparison functions.
+// Using slices.SortFunc which expects func(a, b cvemodel.CVE) int.
+// The map is initialized once using sync.Once to avoid reallocation.
+func getSortFunctions() map[cvemodel.SortCriteria]func(a, b cvemodel.CVE) int {
+	sortFunctionsOnce.Do(func() {
+		sortFunctions = map[cvemodel.SortCriteria]func(a, b cvemodel.CVE) int{
+			AlphabeticAsc: sortCVEByAlphabeticAsc,
+			AlphabeticDsc: sortCVEByAlphabeticDsc,
+			SeverityDsc:   sortCVEBySeverityDsc,
 		}
+	})
 
-		return cvemodel.CompareSeverities(pageBuffer[i].Severity, pageBuffer[j].Severity) < 0
+	return sortFunctions
+}
+
+//nolint:varnamelen // standard comparison function signature
+func sortCVEByAlphabeticAsc(a, b cvemodel.CVE) int {
+	if a.ID < b.ID {
+		return -1
 	}
+	if a.ID > b.ID {
+		return 1
+	}
+
+	return 0
+}
+
+//nolint:varnamelen // standard comparison function signature
+func sortCVEByAlphabeticDsc(a, b cvemodel.CVE) int {
+	if a.ID > b.ID {
+		return -1
+	}
+	if a.ID < b.ID {
+		return 1
+	}
+
+	return 0
+}
+
+//nolint:varnamelen // standard comparison function signature
+func sortCVEBySeverityDsc(a, b cvemodel.CVE) int {
+	severityCmp := cvemodel.CompareSeverities(a.Severity, b.Severity)
+	if severityCmp != 0 {
+		return severityCmp
+	}
+
+	// If severities are equal, sort by ID ascending
+	if a.ID < b.ID {
+		return -1
+	}
+	if a.ID > b.ID {
+		return 1
+	}
+
+	return 0
 }
 
 // PageFinder permits keeping a pool of objects using Add
@@ -81,7 +116,8 @@ func NewCvePageFinder(limit, offset int, sortBy cvemodel.SortCriteria) (*CvePage
 		return nil, zerr.ErrOffsetIsNegative
 	}
 
-	if _, found := SortFunctions()[sortBy]; !found {
+	sortFuncs := getSortFunctions()
+	if _, found := sortFuncs[sortBy]; !found {
 		return nil, fmt.Errorf("sorting CVEs by '%s' is not supported %w", sortBy, zerr.ErrSortCriteriaNotSupported)
 	}
 
@@ -89,12 +125,13 @@ func NewCvePageFinder(limit, offset int, sortBy cvemodel.SortCriteria) (*CvePage
 		limit:      limit,
 		offset:     offset,
 		sortBy:     sortBy,
-		pageBuffer: make([]cvemodel.CVE, 0, limit),
+		pageBuffer: make([]cvemodel.CVE, 0),
 	}, nil
 }
 
 func (bpt *CvePageFinder) Reset() {
-	bpt.pageBuffer = []cvemodel.CVE{}
+	// Preserve capacity to avoid reallocation
+	bpt.pageBuffer = bpt.pageBuffer[:0]
 }
 
 func (bpt *CvePageFinder) Add(cve cvemodel.CVE) {
@@ -108,7 +145,14 @@ func (bpt *CvePageFinder) Page() ([]cvemodel.CVE, common.PageInfo) {
 
 	pageInfo := &common.PageInfo{}
 
-	sort.Slice(bpt.pageBuffer, SortFunctions()[bpt.sortBy](bpt.pageBuffer))
+	// Use slices.SortFunc with cached comparison function
+	sortFuncs := getSortFunctions()
+	sortFn, ok := sortFuncs[bpt.sortBy]
+	if !ok {
+		// Fallback to default (should not happen due to validation in NewCvePageFinder)
+		sortFn = sortFuncs[SeverityDsc]
+	}
+	slices.SortFunc(bpt.pageBuffer, sortFn)
 
 	// the offset and limit are calculated in terms of CVEs counted
 	start := bpt.offset

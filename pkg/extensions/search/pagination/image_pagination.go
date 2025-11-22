@@ -2,12 +2,19 @@ package pagination
 
 import (
 	"fmt"
-	"sort"
-	"time"
+	"slices"
+	"sync"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	gql_gen "zotregistry.dev/zot/v2/pkg/extensions/search/gql_generated"
+)
+
+var (
+	//nolint:gochecknoglobals // lazy initialization with sync.Once to avoid reallocation
+	imgSortFunctionsOnce sync.Once
+	//nolint:gochecknoglobals // cached map of static sort functions, effectively immutable
+	imgSortFunctions map[SortCriteria]func(a, b *gql_gen.ImageSummary) int
 )
 
 type ImageSummariesPageFinder struct {
@@ -30,7 +37,8 @@ func NewImgSumPageFinder(limit, offset int, sortBy SortCriteria) (*ImageSummarie
 		return nil, zerr.ErrOffsetIsNegative
 	}
 
-	if _, found := ImgSumSortFuncs()[sortBy]; !found {
+	// Validate sortBy
+	if _, found := getImgSortFunctions()[sortBy]; !found {
 		return nil, fmt.Errorf("sorting repos by '%s' is not supported %w",
 			sortBy, zerr.ErrSortCriteriaNotSupported)
 	}
@@ -39,7 +47,7 @@ func NewImgSumPageFinder(limit, offset int, sortBy SortCriteria) (*ImageSummarie
 		limit:      limit,
 		offset:     offset,
 		sortBy:     sortBy,
-		pageBuffer: []*gql_gen.ImageSummary{},
+		pageBuffer: make([]*gql_gen.ImageSummary, 0),
 	}, nil
 }
 
@@ -54,7 +62,7 @@ func (pf *ImageSummariesPageFinder) Page() ([]*gql_gen.ImageSummary, zcommon.Pag
 
 	pageInfo := zcommon.PageInfo{}
 
-	sort.Slice(pf.pageBuffer, ImgSumSortFuncs()[pf.sortBy](pf.pageBuffer))
+	slices.SortFunc(pf.pageBuffer, getImgSortFunctions()[pf.sortBy])
 
 	// the offset and limit are calculated in terms of repos counted
 	start := pf.offset
@@ -84,81 +92,109 @@ func (pf *ImageSummariesPageFinder) Page() ([]*gql_gen.ImageSummary, zcommon.Pag
 	return page, pageInfo
 }
 
-func ImgSumSortFuncs() map[SortCriteria]func(pageBuffer []*gql_gen.ImageSummary) func(i, j int) bool {
-	return map[SortCriteria]func(pageBuffer []*gql_gen.ImageSummary) func(i, j int) bool{
-		AlphabeticAsc: ImgSortByAlphabeticAsc,
-		AlphabeticDsc: ImgSortByAlphabeticDsc,
-		UpdateTime:    ImgSortByUpdateTime,
-		Relevance:     ImgSortByRelevance,
-		Downloads:     ImgSortByDownloads,
-	}
+// getImgSortFunctions returns a cached map of sort functions.
+func getImgSortFunctions() map[SortCriteria]func(a, b *gql_gen.ImageSummary) int {
+	imgSortFunctionsOnce.Do(func() {
+		imgSortFunctions = map[SortCriteria]func(a, b *gql_gen.ImageSummary) int{
+			AlphabeticAsc: ImgSortByAlphabeticAsc,
+			AlphabeticDsc: ImgSortByAlphabeticDsc,
+			Relevance:     ImgSortByRelevance,
+			UpdateTime:    ImgSortByUpdateTime,
+			Downloads:     ImgSortByDownloads,
+		}
+	})
+
+	return imgSortFunctions
 }
 
-func ImgSortByAlphabeticAsc(pageBuffer []*gql_gen.ImageSummary) func(i, j int) bool {
-	return func(i, j int) bool { //nolint: varnamelen
-		if *pageBuffer[i].RepoName < *pageBuffer[j].RepoName {
-			return true
-		}
-
-		if *pageBuffer[i].RepoName == *pageBuffer[j].RepoName {
-			return *pageBuffer[i].Tag < *pageBuffer[j].Tag
-		}
-
-		return false
+// ImgSortByAlphabeticAsc sorts alphabetically ascending.
+func ImgSortByAlphabeticAsc(a, b *gql_gen.ImageSummary) int { //nolint:varnamelen // standard comparison func signature
+	if *a.RepoName < *b.RepoName {
+		return -1
 	}
+
+	if *a.RepoName == *b.RepoName {
+		if *a.Tag < *b.Tag {
+			return -1
+		}
+		if *a.Tag == *b.Tag {
+			return 0
+		}
+	}
+
+	return 1
 }
 
-func ImgSortByAlphabeticDsc(pageBuffer []*gql_gen.ImageSummary) func(i, j int) bool {
-	return func(i, j int) bool { //nolint: varnamelen
-		if *pageBuffer[i].RepoName > *pageBuffer[j].RepoName {
-			return true
-		}
-
-		if *pageBuffer[i].RepoName == *pageBuffer[j].RepoName {
-			return *pageBuffer[i].Tag > *pageBuffer[j].Tag
-		}
-
-		return false
+// ImgSortByAlphabeticDsc sorts alphabetically descending.
+func ImgSortByAlphabeticDsc(a, b *gql_gen.ImageSummary) int { //nolint:varnamelen // standard comparison func signature
+	if *a.RepoName > *b.RepoName {
+		return -1
 	}
+
+	if *a.RepoName == *b.RepoName {
+		if *a.Tag > *b.Tag {
+			return -1
+		}
+		if *a.Tag == *b.Tag {
+			return 0
+		}
+	}
+
+	return 1
 }
 
-func ImgSortByRelevance(pageBuffer []*gql_gen.ImageSummary) func(i, j int) bool {
-	return func(i, j int) bool { //nolint: varnamelen
-		if *pageBuffer[i].RepoName < *pageBuffer[j].RepoName {
-			return true
-		}
-
-		if *pageBuffer[i].RepoName == *pageBuffer[j].RepoName {
-			return *pageBuffer[i].Tag < *pageBuffer[j].Tag
-		}
-
-		return false
+// ImgSortByRelevance sorts by relevance.
+func ImgSortByRelevance(a, b *gql_gen.ImageSummary) int { //nolint:varnamelen // standard comparison func signature
+	if *a.RepoName < *b.RepoName {
+		return -1
 	}
+
+	if *a.RepoName == *b.RepoName {
+		if *a.Tag < *b.Tag {
+			return -1
+		}
+		if *a.Tag == *b.Tag {
+			return 0
+		}
+	}
+
+	return 1
 }
 
-// ImgSortByUpdateTime sorts descending by time.
-func ImgSortByUpdateTime(pageBuffer []*gql_gen.ImageSummary) func(i, j int) bool {
-	repos2LastUpdated := map[string]time.Time{}
-
-	for _, img := range pageBuffer {
-		lastUpdated, ok := repos2LastUpdated[*img.RepoName]
-
-		if !ok || lastUpdated.Before(*img.LastUpdated) {
-			repos2LastUpdated[*img.RepoName] = *img.LastUpdated
-		}
+// ImgSortByUpdateTime sorts descending by image update time.
+func ImgSortByUpdateTime(a, b *gql_gen.ImageSummary) int { //nolint:varnamelen // standard comparison func signature
+	// Handle nil cases: nil values are treated as oldest (come last in descending sort)
+	if a.LastUpdated == nil && b.LastUpdated == nil {
+		return 0
 	}
 
-	return func(i, j int) bool {
-		iRepoTime, jRepoTime := repos2LastUpdated[*pageBuffer[i].RepoName], repos2LastUpdated[*pageBuffer[j].RepoName]
-
-		return (iRepoTime.After(jRepoTime) || iRepoTime.Equal(jRepoTime)) &&
-			pageBuffer[i].LastUpdated.After(*pageBuffer[j].LastUpdated)
+	if a.LastUpdated == nil {
+		return 1 // a is nil, b is not - a comes after b
 	}
+
+	if b.LastUpdated == nil {
+		return -1 // b is nil, a is not - a comes before b
+	}
+
+	if a.LastUpdated.After(*b.LastUpdated) {
+		return -1
+	}
+
+	if a.LastUpdated.Equal(*b.LastUpdated) {
+		return 0
+	}
+
+	return 1
 }
 
 // ImgSortByDownloads returns a comparison function for descendant sorting by downloads.
-func ImgSortByDownloads(pageBuffer []*gql_gen.ImageSummary) func(i, j int) bool {
-	return func(i, j int) bool {
-		return *pageBuffer[i].DownloadCount > *pageBuffer[j].DownloadCount
+func ImgSortByDownloads(a, b *gql_gen.ImageSummary) int {
+	if *a.DownloadCount > *b.DownloadCount {
+		return -1
 	}
+	if *a.DownloadCount == *b.DownloadCount {
+		return 0
+	}
+
+	return 1
 }

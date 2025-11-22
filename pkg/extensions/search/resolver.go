@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 
 	godigest "github.com/opencontainers/go-digest"
@@ -102,13 +101,9 @@ func FilterByDigest(digest string) mTypes.FilterFunc {
 
 		// Check to see if the individual layers in the oci image manifest match the digest
 		// These are blobs with mediaType application/vnd.oci.image.layer.v1.tar+gzip
-		for _, layer := range manifest.Manifest.Layers {
-			if strings.Contains(layer.Digest.String(), lookupDigest) {
-				return true
-			}
-		}
-
-		return false
+		return slices.ContainsFunc(manifest.Manifest.Layers, func(layer ispec.Descriptor) bool {
+			return strings.Contains(layer.Digest.String(), lookupDigest)
+		})
 	}
 }
 
@@ -1113,45 +1108,43 @@ func derivedImageList(ctx context.Context, image string, digest *string, metaDB 
 	}, nil
 }
 
-func filterDerivedImages(image *gql_generated.ImageSummary) mTypes.FilterFunc {
+func filterDerivedImages(baseImage *gql_generated.ImageSummary) mTypes.FilterFunc {
 	return func(repoMeta mTypes.RepoMeta, imageMeta mTypes.ImageMeta) bool {
-		var addImageToList bool
+		if len(imageMeta.Manifests) == 0 {
+			return false
+		}
 
-		imageManifest := imageMeta.Manifests[0]
+		derivedManifest := imageMeta.Manifests[0]
 
-		for i := range image.Manifests {
-			manifestDigest := imageManifest.Digest.String()
-			if manifestDigest == *image.Manifests[i].Digest {
+		return slices.ContainsFunc(baseImage.Manifests, func(baseManifest *gql_generated.ManifestSummary) bool {
+			if baseManifest == nil || baseManifest.Digest == nil {
 				return false
 			}
 
-			imageLayers := image.Manifests[i].Layers
+			derivedDigest := derivedManifest.Digest.String()
+			if derivedDigest == *baseManifest.Digest {
+				return false
+			}
 
-			addImageToList = false
-			layers := imageManifest.Manifest.Layers
+			baseLayers := baseManifest.Layers
+			derivedLayers := derivedManifest.Manifest.Layers
 
-			sameLayer := 0
+			// Check if 'baseLayers' is a prefix of 'derivedLayers'.
+			// This means ALL layers of 'baseLayers' must be present at the start of 'derivedLayers'.
+			if len(baseLayers) == 0 || len(baseLayers) > len(derivedLayers) {
+				return false
+			}
 
-			for _, l := range imageLayers {
-				for _, k := range layers {
-					if k.Digest.String() == *l.Digest {
-						sameLayer++
+			return slices.EqualFunc(baseLayers, derivedLayers[:len(baseLayers)],
+				func(l *gql_generated.LayerSummary, k ispec.Descriptor) bool {
+					if l == nil || l.Digest == nil {
+						return false
 					}
-				}
-			}
 
-			// if all layers are the same
-			if sameLayer == len(imageLayers) {
-				// it's a derived image
-				addImageToList = true
-			}
-
-			if addImageToList {
-				return true
-			}
-		}
-
-		return false
+					return *l.Digest == k.Digest.String()
+				},
+			)
+		})
 	}
 }
 
@@ -1215,44 +1208,43 @@ func baseImageList(ctx context.Context, image string, digest *string, metaDB mTy
 	}, nil
 }
 
-func filterBaseImages(image *gql_generated.ImageSummary) mTypes.FilterFunc {
+func filterBaseImages(derivedImage *gql_generated.ImageSummary) mTypes.FilterFunc {
 	return func(repoMeta mTypes.RepoMeta, imageMeta mTypes.ImageMeta) bool {
-		var addImageToList bool
+		if len(imageMeta.Manifests) == 0 {
+			return false
+		}
 
-		manifest := imageMeta.Manifests[0]
+		baseManifest := imageMeta.Manifests[0]
 
-		for i := range image.Manifests {
-			manifestDigest := manifest.Digest.String()
-			if manifestDigest == *image.Manifests[i].Digest {
+		return slices.ContainsFunc(derivedImage.Manifests, func(derivedManifest *gql_generated.ManifestSummary) bool {
+			if derivedManifest == nil || derivedManifest.Digest == nil {
 				return false
 			}
 
-			addImageToList = true
+			baseDigest := baseManifest.Digest.String()
+			if baseDigest == *derivedManifest.Digest {
+				return false
+			}
 
-			for _, l := range manifest.Manifest.Layers {
-				foundLayer := false
+			// Check if 'baseManifest' is a base image for 'derivedManifest'.
+			// This means ALL layers of 'baseManifest' must be present in 'derivedManifest' as a prefix.
+			baseLayers := baseManifest.Manifest.Layers
+			derivedLayers := derivedManifest.Layers
 
-				for _, k := range image.Manifests[i].Layers {
-					if l.Digest.String() == *k.Digest {
-						foundLayer = true
+			if len(baseLayers) == 0 || len(baseLayers) > len(derivedLayers) {
+				return false
+			}
 
-						break
+			return slices.EqualFunc(baseLayers, derivedLayers[:len(baseLayers)],
+				func(l ispec.Descriptor, k *gql_generated.LayerSummary) bool {
+					if k == nil || k.Digest == nil {
+						return false
 					}
-				}
 
-				if !foundLayer {
-					addImageToList = false
-
-					break
-				}
-			}
-
-			if addImageToList {
-				return true
-			}
-		}
-
-		return false
+					return l.Digest.String() == *k.Digest
+				},
+			)
+		})
 	}
 }
 
@@ -1377,7 +1369,9 @@ func cleanFilter(filter *gql_generated.Filter) *gql_generated.Filter {
 			*filter.Arch[i] = strings.TrimSpace(*filter.Arch[i])
 		}
 
-		filter.Arch = deleteEmptyElements(filter.Arch)
+		filter.Arch = slices.DeleteFunc(filter.Arch, func(s *string) bool {
+			return *s == ""
+		})
 	}
 
 	if filter.Os != nil {
@@ -1386,34 +1380,12 @@ func cleanFilter(filter *gql_generated.Filter) *gql_generated.Filter {
 			*filter.Os[i] = strings.TrimSpace(*filter.Os[i])
 		}
 
-		filter.Os = deleteEmptyElements(filter.Os)
+		filter.Os = slices.DeleteFunc(filter.Os, func(s *string) bool {
+			return *s == ""
+		})
 	}
 
 	return filter
-}
-
-func deleteEmptyElements(slice []*string) []*string {
-	i := 0
-	for i < len(slice) {
-		if elementIsEmpty(*slice[i]) {
-			slice = deleteElementAt(slice, i)
-		} else {
-			i++
-		}
-	}
-
-	return slice
-}
-
-func elementIsEmpty(s string) bool {
-	return s == ""
-}
-
-func deleteElementAt(slice []*string, i int) []*string {
-	slice[i] = slice[len(slice)-1]
-	slice = slice[:len(slice)-1]
-
-	return slice
 }
 
 func expandedRepoInfo(ctx context.Context, repo string, metaDB mTypes.MetaDB, cveInfo cveinfo.CveInfo, log log.Logger,
@@ -1463,28 +1435,38 @@ func expandedRepoInfo(ctx context.Context, repo string, metaDB mTypes.MetaDB, cv
 	repoSummary, imageSummaries := convert.RepoMeta2ExpandedRepoInfo(ctx, repoMeta, imageMetaMap,
 		skip, cveInfo, log)
 
-	dateSortedImages := make(timeSlice, 0, len(imageSummaries))
+	dateSortedImages := make([]*gql_generated.ImageSummary, 0, len(imageSummaries))
 	for _, imgSummary := range imageSummaries {
 		dateSortedImages = append(dateSortedImages, imgSummary)
 	}
 
-	sort.Sort(dateSortedImages)
+	//nolint:varnamelen // standard comparison func signature
+	slices.SortFunc(dateSortedImages, func(a, b *gql_generated.ImageSummary) int {
+		// Handle nil cases: nil values are treated as oldest (come last in descending sort)
+		if a.LastUpdated == nil && b.LastUpdated == nil {
+			return 0
+		}
+
+		if a.LastUpdated == nil {
+			return 1 // a is nil, b is not - a comes after b
+		}
+
+		if b.LastUpdated == nil {
+			return -1 // b is nil, a is not - a comes before b
+		}
+
+		if a.LastUpdated.After(*b.LastUpdated) {
+			return -1
+		}
+
+		if a.LastUpdated.Equal(*b.LastUpdated) {
+			return 0
+		}
+
+		return 1
+	})
 
 	return &gql_generated.RepoInfo{Summary: repoSummary, Images: dateSortedImages}, nil
-}
-
-type timeSlice []*gql_generated.ImageSummary
-
-func (p timeSlice) Len() int {
-	return len(p)
-}
-
-func (p timeSlice) Less(i, j int) bool {
-	return p[i].LastUpdated.After(*p[j].LastUpdated)
-}
-
-func (p timeSlice) Swap(i, j int) {
-	p[i], p[j] = p[j], p[i]
 }
 
 // dderef is a default deref.

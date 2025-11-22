@@ -46,7 +46,7 @@ func parseReference(reference string) (digest.Digest, bool) {
 
 // Given a list of registry string URLs parse them and return *url.URLs slice.
 func parseRegistryURLs(rawURLs []string) ([]*url.URL, error) {
-	urls := make([]*url.URL, 0)
+	urls := make([]*url.URL, 0, len(rawURLs))
 
 	for _, rawURL := range rawURLs {
 		u, err := url.Parse(rawURL)
