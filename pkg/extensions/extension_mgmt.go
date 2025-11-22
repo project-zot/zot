@@ -1,5 +1,4 @@
 //go:build mgmt
-// +build mgmt
 
 package extensions
 
@@ -113,7 +112,7 @@ type Mgmt struct {
 	Log  log.Logger
 }
 
-// mgmtHandler godoc
+// HandleGetConfig godoc
 // @Summary Get current server configuration
 // @Description Get current server configuration
 // @Router  /v2/_zot/ext/mgmt [get]

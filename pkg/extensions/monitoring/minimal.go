@@ -1,5 +1,4 @@
 //go:build !metrics
-// +build !metrics
 
 //nolint:varnamelen,forcetypeassert
 package monitoring
@@ -43,7 +42,7 @@ const (
 type metricServer struct {
 	enabled    bool
 	lastCheck  time.Time
-	reqChan    chan interface{}
+	reqChan    chan any
 	cache      *MetricsInfo
 	cacheChan  chan MetricsCopy
 	bucketsF2S map[float64]string // float64 to string conversion of buckets label
@@ -110,8 +109,8 @@ func GetStorageLatencyBuckets() []float64 {
 	return []float64{.001, .01, 0.1, 1, 5, 10, 15, 30, 60, math.MaxFloat64}
 }
 
-// implements the MetricServer interface.
-func (ms *metricServer) SendMetric(metric interface{}) {
+// SendMetric implements the MetricServer interface.
+func (ms *metricServer) SendMetric(metric any) {
 	ms.lock.RLock()
 	if ms.enabled {
 		ms.lock.RUnlock()
@@ -121,11 +120,11 @@ func (ms *metricServer) SendMetric(metric interface{}) {
 	}
 }
 
-func (ms *metricServer) ForceSendMetric(metric interface{}) {
+func (ms *metricServer) ForceSendMetric(metric any) {
 	ms.reqChan <- metric
 }
 
-func (ms *metricServer) ReceiveMetrics() interface{} {
+func (ms *metricServer) ReceiveMetrics() any {
 	ms.lock.Lock()
 	if !ms.enabled {
 		ms.enabled = true
@@ -250,7 +249,7 @@ func NewMetricsServer(enabled bool, log log.Logger) MetricServer {
 
 	ms := &metricServer{
 		enabled:    enabled,
-		reqChan:    make(chan interface{}),
+		reqChan:    make(chan any),
 		cacheChan:  make(chan MetricsCopy),
 		cache:      mi,
 		bucketsF2S: bucketsFloat2String,
@@ -264,7 +263,7 @@ func NewMetricsServer(enabled bool, log log.Logger) MetricServer {
 	return ms
 }
 
-// contains a map with key=CounterName and value=CounterLabels.
+// GetCounters contains a map with key=CounterName and value=CounterLabels.
 func GetCounters() map[string][]string {
 	return map[string][]string{
 		httpConnRequests:    {"method", "code"},

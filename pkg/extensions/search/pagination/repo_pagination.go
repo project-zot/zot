@@ -111,14 +111,14 @@ func RepoSortByRelevance(pageBuffer []*gql_gen.RepoSummary) func(i, j int) bool 
 	}
 }
 
-// SortByUpdateTime sorting descending by time.
+// RepoSortByUpdateTime sorts descending by time.
 func RepoSortByUpdateTime(pageBuffer []*gql_gen.RepoSummary) func(i, j int) bool {
 	return func(i, j int) bool {
 		return pageBuffer[i].LastUpdated.After(*pageBuffer[j].LastUpdated)
 	}
 }
 
-// SortByDownloads returns a comparison function for descendant sorting by downloads.
+// RepoSortByDownloads returns a comparison function for descendant sorting by downloads.
 func RepoSortByDownloads(pageBuffer []*gql_gen.RepoSummary) func(i, j int) bool {
 	return func(i, j int) bool {
 		return *pageBuffer[i].DownloadCount > *pageBuffer[j].DownloadCount

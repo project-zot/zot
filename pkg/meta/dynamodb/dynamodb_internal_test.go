@@ -38,7 +38,7 @@ func TestWrapperErrors(t *testing.T) {
 		badEndpoint := endpoint + "1"
 
 		customResolver := aws.EndpointResolverWithOptionsFunc( //nolint: staticcheck
-			func(service, region string, options ...interface{}) (aws.Endpoint, error) {
+			func(service, region string, options ...any) (aws.Endpoint, error) {
 				return aws.Endpoint{ //nolint: staticcheck
 					PartitionID:   "aws",
 					URL:           badEndpoint,
@@ -74,7 +74,7 @@ func TestWrapperErrors(t *testing.T) {
 
 	Convey("Delete table errors", t, func() {
 		customResolver := aws.EndpointResolverWithOptionsFunc( //nolint: staticcheck
-			func(service, region string, options ...interface{}) (aws.Endpoint, error) {
+			func(service, region string, options ...any) (aws.Endpoint, error) {
 				return aws.Endpoint{ //nolint: staticcheck
 					PartitionID:   "aws",
 					URL:           endpoint,

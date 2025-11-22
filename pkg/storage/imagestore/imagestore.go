@@ -9,6 +9,7 @@ import (
 	"io"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -1315,11 +1316,8 @@ func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]str
 	return repos, nil
 }
 
-/*
-	CheckBlob verifies a blob and returns true if the blob is correct
-
-If the blob is not found but it's found in cache then it will be copied over.
-*/
+// CheckBlob verifies a blob and returns true if the blob is correct.
+// If the blob is not found but it's found in cache then it will be copied over.
 func (is *ImageStore) CheckBlob(repo string, digest godigest.Digest) (bool, int64, error) {
 	var lockLatency time.Time
 
@@ -1918,7 +1916,7 @@ func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []g
 		if fileInfo.IsDir() {
 			// skip repositories not found in repos
 			baseName := path.Base(fileInfo.Path())
-			if zcommon.Contains(repos, baseName) || baseName == ispec.ImageBlobsDir {
+			if slices.Contains(repos, baseName) || baseName == ispec.ImageBlobsDir {
 				return nil
 			}
 
@@ -1934,7 +1932,7 @@ func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []g
 		baseName := path.Base(fileInfo.Path())
 
 		skippedFiles := []string{ispec.ImageLayoutFile, ispec.ImageIndexFile, "meta.db", "cache.db"}
-		if zcommon.Contains(skippedFiles, baseName) {
+		if slices.Contains(skippedFiles, baseName) {
 			return nil
 		}
 
@@ -1950,7 +1948,7 @@ func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []g
 			return nil //nolint: nilerr // ignore files which are not blobs
 		}
 
-		if digest == "" && !zcommon.Contains(lastDigests, blobDigest) {
+		if digest == "" && !slices.Contains(lastDigests, blobDigest) {
 			digest = blobDigest
 		}
 

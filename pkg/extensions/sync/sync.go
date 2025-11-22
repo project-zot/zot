@@ -1,5 +1,4 @@
 //go:build sync
-// +build sync
 
 package sync
 
@@ -20,7 +19,7 @@ import (
 // below types are used by regclient to copy images
 // ref.Ref- describes a registry/repo:tag
 
-// Sync general functionalities, one service per registry config.
+// Service provides sync general functionalities, one service per registry config.
 type Service interface {
 	// Get next repo from remote /v2/_catalog, will return empty string when there is no repo left.
 	GetNextRepo(lastRepo string) (string, error) // used by task scheduler
@@ -39,7 +38,7 @@ type Service interface {
 	GetSyncTimeout() time.Duration
 }
 
-// Local and remote registries must implement this interface.
+// Registry interface must be implemented by local and remote registries.
 type Registry interface {
 	// Get temporary ImageReference, is used by functions in regclient package
 	GetImageReference(repo string, tag string) (ref.Ref, error)
@@ -62,7 +61,7 @@ type CredentialHelper interface {
 }
 
 /*
-Temporary oci layout, sync first pulls an image to this oci layout (using oci:// transport)
+OciLayoutStorage is a temporary oci layout, sync first pulls an image to this oci layout (using oci:// transport)
 then moves them into ImageStore.
 */
 type OciLayoutStorage interface {
@@ -85,7 +84,7 @@ type Remote interface {
 	GetDigest(ctx context.Context, repo, tag string) (godigest.Digest, error)
 }
 
-// Local registry.
+// Destination is a local registry.
 type Destination interface {
 	Registry
 	// Check if descriptors are already synced

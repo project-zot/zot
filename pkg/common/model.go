@@ -137,8 +137,9 @@ type Annotation struct {
 }
 
 type ImageListWithCVEFixedResponse struct {
-	Errors                []ErrorGQL `json:"errors"`
 	ImageListWithCVEFixed `json:"data"`
+
+	Errors []ErrorGQL `json:"errors"`
 }
 
 type ImageListWithCVEFixed struct {
@@ -146,8 +147,9 @@ type ImageListWithCVEFixed struct {
 }
 
 type ImagesForCve struct {
-	Errors           []ErrorGQL `json:"errors"`
 	ImagesForCVEList `json:"data"`
+
+	Errors []ErrorGQL `json:"errors"`
 }
 
 type ImagesForCVEList struct {
@@ -155,8 +157,9 @@ type ImagesForCVEList struct {
 }
 
 type ImagesForDigest struct {
-	Errors              []ErrorGQL `json:"errors"`
 	ImagesForDigestList `json:"data"`
+
+	Errors []ErrorGQL `json:"errors"`
 }
 
 type ImagesForDigestList struct {
@@ -165,17 +168,20 @@ type ImagesForDigestList struct {
 
 type RepoWithNewestImageResponse struct {
 	RepoListWithNewestImage `json:"data"`
-	Errors                  []ErrorGQL `json:"errors"`
+
+	Errors []ErrorGQL `json:"errors"`
 }
 
 type DerivedImageListResponse struct {
 	DerivedImageList `json:"data"`
-	Errors           []ErrorGQL `json:"errors"`
+
+	Errors []ErrorGQL `json:"errors"`
 }
 
 type BaseImageListResponse struct {
 	BaseImageList `json:"data"`
-	Errors        []ErrorGQL `json:"errors"`
+
+	Errors []ErrorGQL `json:"errors"`
 }
 
 type DerivedImageList struct {
@@ -188,7 +194,8 @@ type BaseImageList struct {
 
 type ImageListResponse struct {
 	ImageList `json:"data"`
-	Errors    []ErrorGQL `json:"errors"`
+
+	Errors []ErrorGQL `json:"errors"`
 }
 
 type ImageList struct {
@@ -197,12 +204,14 @@ type ImageList struct {
 
 type ExpandedRepoInfoResp struct {
 	ExpandedRepoInfo `json:"data"`
-	Errors           []ErrorGQL `json:"errors"`
+
+	Errors []ErrorGQL `json:"errors"`
 }
 
 type ReferrersResp struct {
 	ReferrersResult `json:"data"`
-	Errors          []ErrorGQL `json:"errors"`
+
+	Errors []ErrorGQL `json:"errors"`
 }
 
 type ReferrersResult struct {
@@ -210,7 +219,8 @@ type ReferrersResult struct {
 }
 type GlobalSearchResultResp struct {
 	GlobalSearchResult `json:"data"`
-	Errors             []ErrorGQL `json:"errors"`
+
+	Errors []ErrorGQL `json:"errors"`
 }
 
 type GlobalSearchResult struct {
@@ -248,7 +258,8 @@ type SingleImageSummary struct {
 }
 type ImageSummaryResult struct {
 	SingleImageSummary `json:"data"`
-	Errors             []ErrorGQL `json:"errors"`
+
+	Errors []ErrorGQL `json:"errors"`
 }
 
 //nolint:tagliatelle // graphQL schema
@@ -263,12 +274,14 @@ type BookmarkedRepos struct {
 
 type StarredReposResponse struct {
 	StarredRepos `json:"data"`
-	Errors       []ErrorGQL `json:"errors"`
+
+	Errors []ErrorGQL `json:"errors"`
 }
 
 type BookmarkedReposResponse struct {
 	BookmarkedRepos `json:"data"`
-	Errors          []ErrorGQL `json:"errors"`
+
+	Errors []ErrorGQL `json:"errors"`
 }
 
 type ImageTags struct {

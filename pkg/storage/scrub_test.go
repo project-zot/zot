@@ -68,7 +68,7 @@ func TestRedisCheckAllBlobsIntegrity(t *testing.T) {
 
 		metrics := monitoring.NewMetricsServer(false, log)
 
-		client, _ := rediscfg.GetRedisClient(map[string]interface{}{"url": "redis://" + miniRedis.Addr()}, log)
+		client, _ := rediscfg.GetRedisClient(map[string]any{"url": "redis://" + miniRedis.Addr()}, log)
 
 		cacheDriver, _ := storage.Create("redis", cache.RedisDriverParameters{
 			Client:      client,

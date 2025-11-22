@@ -113,6 +113,7 @@ func newVerifyFeatureRetentionCmd(conf *config.Config) *cobra.Command {
 
 			// Initialize MetaDB only if retention policies are configured
 			var metaDB mTypes.MetaDB
+
 			if conf.IsRetentionEnabled() {
 				// Enable retention dry-run mode only when retention is enabled
 				conf.Storage.Retention.DryRun = true
@@ -164,8 +165,10 @@ func newVerifyFeatureRetentionCmd(conf *config.Config) *cobra.Command {
 				return fmt.Errorf("failed to get timeout flag: %w", err)
 			}
 
-			var waitCtx context.Context
-			var cancel context.CancelFunc
+			var (
+				waitCtx context.Context
+				cancel  context.CancelFunc
+			)
 
 			if timeout > 0 {
 				logger.Info().Dur("timeout", timeout).Msg("waiting for garbage collection tasks to complete...")

@@ -1,5 +1,4 @@
 //go:build sync && scrub && metrics && search && lint && mgmt
-// +build sync,scrub,metrics,search,lint,mgmt
 
 package api_test
 
@@ -127,7 +126,7 @@ func TestRoutes(t *testing.T) {
 			tokens := &oidc.Tokens[*oidc.IDTokenClaims]{
 				IDTokenClaims: &oidc.IDTokenClaims{
 					Claims: map[string]any{
-						"groups": []interface{}{"group1", "group3"},
+						"groups": []any{"group1", "group3"},
 					},
 				},
 			}
@@ -138,7 +137,7 @@ func TestRoutes(t *testing.T) {
 				Subject: "sub",
 				Claims: map[string]any{
 					"email":  "test@test.com",
-					"groups": []interface{}{"group1", "group2"},
+					"groups": []any{"group1", "group2"},
 				},
 				UserInfoEmail: oidc.UserInfoEmail{Email: "test@test.com"},
 			}

@@ -10,7 +10,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
-// "zb" - performance benchmark and stress.
+// NewPerfRootCmd creates the root command for "zb" - performance benchmark and stress.
 func NewPerfRootCmd() *cobra.Command {
 	showVersion := false
 

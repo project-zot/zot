@@ -60,7 +60,7 @@ func New(storageConfig config.StorageConfig, log log.Logger) (mTypes.MetaDB, err
 	return boltdb.New(driver, log) //nolint:contextcheck
 }
 
-func getDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) mdynamodb.DBDriverParameters {
+func getDynamoParams(cacheDriverConfig map[string]any, log log.Logger) mdynamodb.DBDriverParameters {
 	allParametersOk := true
 
 	endpoint, ok := toStringIfOk(cacheDriverConfig, "endpoint", "", log)
@@ -103,7 +103,7 @@ func getDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) m
 	}
 }
 
-func getRedisParams(cacheDriverConfig map[string]interface{}, log log.Logger) redis.DBDriverParameters {
+func getRedisParams(cacheDriverConfig map[string]any, log log.Logger) redis.DBDriverParameters {
 	keyPrefix, ok := toStringIfOk(cacheDriverConfig, "keyprefix", "zot", log)
 	if !ok {
 		log.Panic().Msg("redis parameters are not specified correctly, can't proceed")
@@ -114,7 +114,7 @@ func getRedisParams(cacheDriverConfig map[string]interface{}, log log.Logger) re
 	}
 }
 
-func toStringIfOk(cacheDriverConfig map[string]interface{},
+func toStringIfOk(cacheDriverConfig map[string]any,
 	param string,
 	defaultVal string,
 	log log.Logger,

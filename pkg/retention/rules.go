@@ -93,10 +93,7 @@ func (lp latestPull) Perform(candidates []*types.Candidate) []*types.Candidate {
 	})
 
 	// take top count candidates
-	upper := lp.count
-	if lp.count > len(candidates) {
-		upper = len(candidates)
-	}
+	upper := min(lp.count, len(candidates))
 
 	candidates = candidates[:upper]
 
@@ -125,10 +122,7 @@ func (lp latestPush) Perform(candidates []*types.Candidate) []*types.Candidate {
 	})
 
 	// take top count candidates
-	upper := lp.count
-	if lp.count > len(candidates) {
-		upper = len(candidates)
-	}
+	upper := min(lp.count, len(candidates))
 
 	candidates = candidates[:upper]
 

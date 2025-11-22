@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -61,7 +62,7 @@ func (d *DynamoDBDriver) NewTable(tableName string) error {
 	return nil
 }
 
-func NewDynamoDBCache(parameters interface{}, log zlog.Logger) (*DynamoDBDriver, error) {
+func NewDynamoDBCache(parameters any, log zlog.Logger) (*DynamoDBDriver, error) {
 	properParameters, ok := parameters.(DynamoDBDriverParameters)
 	if !ok {
 		log.Error().Err(zerr.ErrTypeAssertionFailed).Msgf("failed to cast type, expected type '%T' but got '%T'",
@@ -72,7 +73,7 @@ func NewDynamoDBCache(parameters interface{}, log zlog.Logger) (*DynamoDBDriver,
 
 	// custom endpoint resolver to point to localhost
 	customResolver := aws.EndpointResolverWithOptionsFunc( //nolint: staticcheck
-		func(service, region string, options ...interface{}) (aws.Endpoint, error) {
+		func(service, region string, options ...any) (aws.Endpoint, error) {
 			return aws.Endpoint{ //nolint: staticcheck
 				PartitionID:   "aws",
 				URL:           properParameters.Endpoint,
@@ -116,7 +117,7 @@ func (d *DynamoDBDriver) Name() string {
 	return "dynamodb"
 }
 
-// Returns the original blob.
+// GetBlob returns the original blob.
 func (d *DynamoDBDriver) GetBlob(digest godigest.Digest) (string, error) {
 	resp, err := d.client.GetItem(context.TODO(), &dynamodb.GetItemInput{
 		TableName: aws.String(d.tableName),
@@ -231,10 +232,8 @@ func (d *DynamoDBDriver) HasBlob(digest godigest.Digest, path string) bool {
 		return true
 	}
 
-	for _, item := range out.DuplicateBlobPath {
-		if item == path {
-			return true
-		}
+	if slices.Contains(out.DuplicateBlobPath, path) {
+		return true
 	}
 
 	d.log.Debug().Err(zerr.ErrCacheMiss).Str("digest", string(digest)).Msg("failed to find blob in cache")
@@ -243,7 +242,7 @@ func (d *DynamoDBDriver) HasBlob(digest godigest.Digest, path string) bool {
 }
 
 func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
-	marshaledKey, _ := attributevalue.MarshalMap(map[string]interface{}{"Digest": digest.String()})
+	marshaledKey, _ := attributevalue.MarshalMap(map[string]any{"Digest": digest.String()})
 
 	expression := "DELETE DuplicateBlobPath :i"
 	attrPath := types.AttributeValueMemberSS{Value: []string{path}}
@@ -322,7 +321,7 @@ func (d *DynamoDBDriver) putOriginBlob(digest godigest.Digest, path string) erro
 func (d *DynamoDBDriver) updateItem(digest godigest.Digest, expression string,
 	expressionAttVals map[string]types.AttributeValue,
 ) error {
-	marshaledKey, _ := attributevalue.MarshalMap(map[string]interface{}{"Digest": digest.String()})
+	marshaledKey, _ := attributevalue.MarshalMap(map[string]any{"Digest": digest.String()})
 
 	_, err := d.client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
 		Key:                       marshaledKey,

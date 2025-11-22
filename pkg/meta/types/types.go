@@ -8,7 +8,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
-// Used to model changes to an object after a call to the DB.
+// ToggleState is used to model changes to an object after a call to the DB.
 type ToggleState int
 
 const (
@@ -18,6 +18,7 @@ const (
 )
 
 type (
+	// FilterFunc is a filter function.
 	// Currently imageMeta applied for indexes is applied for each manifest individually so imageMeta.manifests
 	// contains just 1 manifest.
 	FilterFunc         func(repoMeta RepoMeta, imageMeta ImageMeta) bool
@@ -284,6 +285,7 @@ type FullManifestMeta struct {
 
 type LastUpdatedImage struct {
 	Descriptor
+
 	Tag         string
 	LastUpdated *time.Time
 }

@@ -1722,6 +1722,7 @@ finish:
 				rh.c.Log.Error().Err(err).Str("blobUpload", sessionID).Str("repository", name).
 					Msg("failed to remove blobUpload in repo")
 			}
+
 			response.WriteHeader(http.StatusInternalServerError)
 		}
 
@@ -1963,7 +1964,7 @@ func (rh *RouteHandler) Logout(response http.ResponseWriter, request *http.Reque
 	response.WriteHeader(http.StatusOK)
 }
 
-// github Oauth2 CodeExchange callback.
+// GithubCodeExchangeCallback is a github Oauth2 CodeExchange callback.
 func (rh *RouteHandler) GithubCodeExchangeCallback() rp.CodeExchangeCallback[*oidc.IDTokenClaims] {
 	return func(w http.ResponseWriter, r *http.Request,
 		tokens *oidc.Tokens[*oidc.IDTokenClaims], state string, relyingParty rp.RelyingParty,
@@ -1998,7 +1999,7 @@ func (rh *RouteHandler) GithubCodeExchangeCallback() rp.CodeExchangeCallback[*oi
 	}
 }
 
-// Openid CodeExchange callback (legacy, kept for compatibility).
+// OpenIDCodeExchangeCallback is an Openid CodeExchange callback (legacy, kept for compatibility).
 func (rh *RouteHandler) OpenIDCodeExchangeCallback() rp.CodeExchangeUserinfoCallback[
 	*oidc.IDTokenClaims,
 	*oidc.UserInfo,
@@ -2072,7 +2073,7 @@ func (rh *RouteHandler) OpenIDCodeExchangeCallbackWithProvider(providerName stri
 
 		var groups []string
 
-		val, ok := info.Claims["groups"].([]interface{})
+		val, ok := info.Claims["groups"].([]any)
 		if !ok {
 			rh.c.Log.Info().Msgf("failed to find any 'groups' claim for user %s in UserInfo", username)
 		}
@@ -2081,7 +2082,7 @@ func (rh *RouteHandler) OpenIDCodeExchangeCallbackWithProvider(providerName stri
 			groups = append(groups, fmt.Sprint(group))
 		}
 
-		val, ok = tokens.IDTokenClaims.Claims["groups"].([]interface{})
+		val, ok = tokens.IDTokenClaims.Claims["groups"].([]any)
 		if !ok {
 			rh.c.Log.Info().Msgf("failed to find any 'groups' claim for user %s in IDTokenClaimsToken", username)
 		}
@@ -2316,6 +2317,7 @@ func (rh *RouteHandler) CreateAPIKey(resp http.ResponseWriter, req *http.Request
 
 	apiKeyResponse := struct {
 		mTypes.APIKeyDetails
+
 		APIKey string `json:"apiKey"`
 	}{
 		APIKey:        fmt.Sprintf("%s%s", constants.APIKeysPrefix, apiKey),

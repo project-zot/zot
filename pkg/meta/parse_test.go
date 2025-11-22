@@ -379,7 +379,7 @@ func TestParseStorageWithRedisDB(t *testing.T) {
 		log := log.NewTestLogger()
 
 		params := redis.DBDriverParameters{KeyPrefix: "zot"}
-		driverConfig := map[string]interface{}{"url": "redis://" + miniRedis.Addr()}
+		driverConfig := map[string]any{"url": "redis://" + miniRedis.Addr()}
 
 		redisDriver, err := rediscfg.GetRedisClient(driverConfig, log)
 		So(err, ShouldBeNil)
@@ -439,7 +439,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) 
 		storeController := storage.StoreController{DefaultStore: imageStore}
 		manifests := []ispec.Manifest{}
 
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			image := CreateRandomImage() //nolint:staticcheck
 
 			manifests = append(manifests, image.Manifest)

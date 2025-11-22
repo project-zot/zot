@@ -1,5 +1,4 @@
 //go:build sync && scrub && metrics && search && lint && userprefs && mgmt && imagetrust && ui
-// +build sync,scrub,metrics,search,lint,userprefs,mgmt,imagetrust,ui
 
 package api_test
 

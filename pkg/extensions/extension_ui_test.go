@@ -1,5 +1,4 @@
 //go:build search && ui
-// +build search,ui
 
 package extensions_test
 

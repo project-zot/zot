@@ -67,7 +67,7 @@ func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log zlog.Logg
 	return nil, nil //nolint:nilnil
 }
 
-func Create(dbtype string, parameters interface{}, log zlog.Logger) (storageTypes.Cache, error) {
+func Create(dbtype string, parameters any, log zlog.Logger) (storageTypes.Cache, error) {
 	switch dbtype {
 	case "boltdb":
 		{

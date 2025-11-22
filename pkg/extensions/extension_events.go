@@ -1,5 +1,4 @@
 //go:build events
-// +build events
 
 package extensions
 

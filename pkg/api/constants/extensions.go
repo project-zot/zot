@@ -7,21 +7,21 @@ const (
 
 	BaseExtension = "_zot"
 
-	// zot specific extensions.
+	// BasePrefix is a zot specific extension.
 	BasePrefix = "/_zot"
 	ExtPrefix  = BasePrefix + "/ext"
 
-	// search extension.
+	// ExtSearch is the search extension.
 	ExtSearch        = "/search"
 	ExtSearchPrefix  = ExtPrefix + ExtSearch
 	FullSearchPrefix = RoutePrefix + ExtSearchPrefix
 
-	// mgmt extension.
+	// Mgmt is the mgmt extension.
 	Mgmt     = "/mgmt"
 	ExtMgmt  = ExtPrefix + Mgmt
 	FullMgmt = RoutePrefix + ExtMgmt
 
-	// signatures extension.
+	// Notation is the signatures extension.
 	Notation     = "/notation"
 	ExtNotation  = ExtPrefix + Notation
 	FullNotation = RoutePrefix + ExtNotation
@@ -29,7 +29,7 @@ const (
 	ExtCosign    = ExtPrefix + Cosign
 	FullCosign   = RoutePrefix + ExtCosign
 
-	// user preferences extension.
+	// UserPrefs is the user preferences extension.
 	UserPrefs     = "/userprefs"
 	ExtUserPrefs  = ExtPrefix + UserPrefs
 	FullUserPrefs = RoutePrefix + ExtUserPrefs

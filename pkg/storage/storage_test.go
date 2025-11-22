@@ -87,7 +87,7 @@ func createObjectsStore(options createObjectStoreOpts) (
 	}
 
 	if options.cacheType == storageConstants.RedisDriverName {
-		client, _ := rediscfg.GetRedisClient(map[string]interface{}{"url": options.miniRedisAddr}, log)
+		client, _ := rediscfg.GetRedisClient(map[string]any{"url": options.miniRedisAddr}, log)
 
 		cacheDriver, _ = storage.Create("redis", cache.RedisDriverParameters{
 			Client:      client,
@@ -115,7 +115,7 @@ func createObjectsStore(options createObjectStoreOpts) (
 
 	bucket := "zot-storage-test"
 	endpoint := os.Getenv("S3MOCK_ENDPOINT")
-	storageDriverParams := map[string]interface{}{
+	storageDriverParams := map[string]any{
 		"rootDir":        options.rootDir,
 		"name":           "s3",
 		"region":         "us-east-2",
@@ -180,7 +180,7 @@ func TestStorageNew(t *testing.T) {
 		// store name is wrong
 		conf := config.New()
 		conf.Storage.RootDirectory = "dir"
-		conf.Storage.StorageDriver = map[string]interface{}{}
+		conf.Storage.StorageDriver = map[string]any{}
 
 		_, err := storage.New(conf, nil, nil, zlog.NewTestLogger(), nil)
 		So(err, ShouldNotBeNil)
@@ -189,7 +189,6 @@ func TestStorageNew(t *testing.T) {
 
 func TestGetAllDedupeReposCandidates(t *testing.T) {
 	for _, testcase := range testCases {
-		testcase := testcase
 		t.Run(testcase.testCaseName, func(t *testing.T) {
 			var imgStore storageTypes.ImageStore
 
@@ -262,7 +261,6 @@ func TestGetAllDedupeReposCandidates(t *testing.T) {
 
 func TestStorageAPIs(t *testing.T) {
 	for _, testcase := range testCases {
-		testcase := testcase
 		t.Run(testcase.testCaseName, func(t *testing.T) {
 			var imgStore storageTypes.ImageStore
 
@@ -975,7 +973,7 @@ func TestStorageAPIs(t *testing.T) {
 				Convey("Locks", func() {
 					// in parallel, a mix of read and write locks - mainly for coverage
 					var wg sync.WaitGroup
-					for i := 0; i < 1000; i++ {
+					for range 1000 {
 						wg.Add(2)
 
 						go func() {
@@ -1005,7 +1003,6 @@ func TestStorageAPIs(t *testing.T) {
 
 func TestMandatoryAnnotations(t *testing.T) {
 	for _, testcase := range testCases {
-		testcase := testcase
 		t.Run(testcase.testCaseName, func(t *testing.T) {
 			var (
 				imgStore storageTypes.ImageStore
@@ -1163,7 +1160,7 @@ func TestStorageSubpaths(t *testing.T) {
 					"a/": {
 						RootDirectory: tmpDirSubpath,
 						RemoteCache:   true,
-						StorageDriver: map[string]interface{}{},
+						StorageDriver: map[string]any{},
 						Dedupe:        true,
 					},
 				},
@@ -1191,7 +1188,7 @@ func TestStorageSubpaths(t *testing.T) {
 					"a/": {
 						RootDirectory: tmpDirSubpath,
 						RemoteCache:   true,
-						StorageDriver: map[string]interface{}{
+						StorageDriver: map[string]any{
 							"name": "bad-name",
 						},
 					},
@@ -1206,7 +1203,6 @@ func TestStorageSubpaths(t *testing.T) {
 
 func TestDeleteBlobsInUse(t *testing.T) {
 	for _, testcase := range testCases {
-		testcase := testcase
 		t.Run(testcase.testCaseName, func(t *testing.T) {
 			var imgStore storageTypes.ImageStore
 
@@ -1379,7 +1375,7 @@ func TestDeleteBlobsInUse(t *testing.T) {
 				var cblob []byte
 
 				//nolint: dupl
-				for i := 0; i < 4; i++ {
+				for range 4 {
 					// upload image config blob
 					upload, err = imgStore.NewBlobUpload(repoName)
 					So(err, ShouldBeNil)
@@ -1515,7 +1511,6 @@ func TestDeleteBlobsInUse(t *testing.T) {
 
 func TestReuploadCorruptedBlob(t *testing.T) {
 	for _, testcase := range testCases {
-		testcase := testcase
 		t.Run(testcase.testCaseName, func(t *testing.T) {
 			var (
 				imgStore storageTypes.ImageStore
@@ -1650,7 +1645,6 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 
 func TestStorageHandler(t *testing.T) {
 	for _, testcase := range testCases {
-		testcase := testcase
 		t.Run(testcase.testCaseName, func(t *testing.T) {
 			var (
 				firstStore    storageTypes.ImageStore
@@ -1764,7 +1758,6 @@ func TestRoutePrefix(t *testing.T) {
 
 func TestGarbageCollectImageManifest(t *testing.T) {
 	for _, testcase := range testCases {
-		testcase := testcase
 		t.Run(testcase.testCaseName, func(t *testing.T) {
 			log := zlog.NewTestLogger()
 			audit := zlog.NewAuditLogger("debug", "")
@@ -2448,7 +2441,6 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 func TestGarbageCollectImageIndex(t *testing.T) {
 	for _, testcase := range testCases {
-		testcase := testcase
 		t.Run(testcase.testCaseName, func(t *testing.T) {
 			log := zlog.NewTestLogger()
 			audit := zlog.NewAuditLogger("debug", "")
@@ -2856,7 +2848,6 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 
 func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 	for _, testcase := range testCases {
-		testcase := testcase
 		t.Run(testcase.testCaseName, func(t *testing.T) {
 			log := zlog.NewTestLogger()
 			audit := zlog.NewAuditLogger("debug", "")
@@ -2960,7 +2951,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 
 				var digest godigest.Digest
 
-				for i := 0; i < 4; i++ { //nolint: dupl
+				for range 4 { //nolint: dupl
 					// upload image config blob
 					upload, err := imgStore.NewBlobUpload(repoName)
 					So(err, ShouldBeNil)
@@ -3043,7 +3034,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 				innerIndex.SchemaVersion = 2
 				innerIndex.MediaType = ispec.MediaTypeImageIndex
 
-				for i := 0; i < 3; i++ { //nolint: dupl
+				for range 3 { //nolint: dupl
 					// upload image config blob
 					upload, err := imgStore.NewBlobUpload(repoName)
 					So(err, ShouldBeNil)
@@ -3349,7 +3340,7 @@ func pushRandomImageIndex(imgStore storageTypes.ImageStore, repoName string,
 
 	var digest godigest.Digest
 
-	for i := 0; i < 4; i++ { //nolint: dupl
+	for range 4 { //nolint: dupl
 		// upload image config blob
 		upload, err := imgStore.NewBlobUpload(repoName)
 		So(err, ShouldBeNil)

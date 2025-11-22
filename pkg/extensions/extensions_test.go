@@ -1,5 +1,4 @@
 //go:build sync && metrics && mgmt && userprefs && search
-// +build sync,metrics,mgmt,userprefs,search
 
 package extensions_test
 

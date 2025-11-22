@@ -1,5 +1,4 @@
 //go:build sync && scrub && metrics && search && userprefs && mgmt && imagetrust && events
-// +build sync,scrub,metrics,search,userprefs,mgmt,imagetrust,events
 
 package server_test
 

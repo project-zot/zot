@@ -1,14 +1,13 @@
 //go:build search
-// +build search
 
 package client
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	zerr "zotregistry.dev/zot/v2/errors"
-	"zotregistry.dev/zot/v2/pkg/common"
 )
 
 const (
@@ -91,7 +90,7 @@ func (e *CVEListSortFlag) String() string {
 }
 
 func (e *CVEListSortFlag) Set(val string) error {
-	if !common.Contains(CVEListSortOptions(), val) {
+	if !slices.Contains(CVEListSortOptions(), val) {
 		return fmt.Errorf("%w %s", zerr.ErrFlagValueUnsupported, CVEListSortOptionsStr())
 	}
 
@@ -111,7 +110,7 @@ func (e *ImageListSortFlag) String() string {
 }
 
 func (e *ImageListSortFlag) Set(val string) error {
-	if !common.Contains(ImageListSortOptions(), val) {
+	if !slices.Contains(ImageListSortOptions(), val) {
 		return fmt.Errorf("%w %s", zerr.ErrFlagValueUnsupported, ImageListSortOptionsStr())
 	}
 
@@ -131,7 +130,7 @@ func (e *ImageSearchSortFlag) String() string {
 }
 
 func (e *ImageSearchSortFlag) Set(val string) error {
-	if !common.Contains(ImageSearchSortOptions(), val) {
+	if !slices.Contains(ImageSearchSortOptions(), val) {
 		return fmt.Errorf("%w %s", zerr.ErrFlagValueUnsupported, ImageSearchSortOptionsStr())
 	}
 
@@ -151,7 +150,7 @@ func (e *RepoListSortFlag) String() string {
 }
 
 func (e *RepoListSortFlag) Set(val string) error {
-	if !common.Contains(RepoListSortOptions(), val) {
+	if !slices.Contains(RepoListSortOptions(), val) {
 		return fmt.Errorf("%w %s", zerr.ErrFlagValueUnsupported, RepoListSortOptionsStr())
 	}
 

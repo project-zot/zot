@@ -1,5 +1,4 @@
 //go:build imagetrust
-// +build imagetrust
 
 package imagetrust
 
@@ -117,7 +116,6 @@ func VerifyCosignSignature(
 
 		err = verifier.VerifySignature(bytes.NewReader(signature), bytes.NewReader(payload),
 			options.WithContext(context.Background()))
-
 		if err == nil {
 			return string(pubKeyContent), true, nil
 		}

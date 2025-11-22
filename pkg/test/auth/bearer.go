@@ -147,7 +147,7 @@ func ParseBearerAuthHeader(authHeaderRaw string) *AuthHeader {
 	matches := re.FindAllStringSubmatch(authHeaderRaw, -1)
 	matchmap := make(map[string]string)
 
-	for i := 0; i < len(matches); i++ {
+	for i := range matches {
 		matchmap[matches[i][1]] = matches[i][2]
 	}
 

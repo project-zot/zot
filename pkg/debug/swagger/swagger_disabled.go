@@ -1,5 +1,4 @@
 //go:build !debug
-// +build !debug
 
 // @contact.name API Support
 // @contact.url http://www.swagger.io/support
