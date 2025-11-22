@@ -28,6 +28,7 @@ import (
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	eventsconf "zotregistry.dev/zot/v2/pkg/extensions/config/events"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
+	syncConstants "zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 )
@@ -663,15 +664,18 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, logge
 				config.Extensions.Sync.Enable = &defaultVal
 			}
 
-			defaultSyncTimeout := 3 * time.Hour
-
-			for idx, regCfg := range config.Extensions.Sync.Registries {
+			for idx := range config.Extensions.Sync.Registries {
+				regCfg := &config.Extensions.Sync.Registries[idx]
 				if regCfg.TLSVerify == nil {
-					config.Extensions.Sync.Registries[idx].TLSVerify = &defaultVal
+					regCfg.TLSVerify = &defaultVal
 				}
 
-				if config.Extensions.Sync.Registries[idx].SyncTimeout == 0 {
-					config.Extensions.Sync.Registries[idx].SyncTimeout = defaultSyncTimeout
+				if regCfg.SyncTimeout == 0 {
+					regCfg.SyncTimeout = syncConstants.DefaultSyncTimeout
+				}
+
+				if regCfg.ResponseHeaderTimeout == 0 {
+					regCfg.ResponseHeaderTimeout = syncConstants.DefaultResponseHeaderTimeout
 				}
 			}
 		}

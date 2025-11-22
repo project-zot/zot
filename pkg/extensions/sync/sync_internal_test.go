@@ -9,7 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,6 +26,7 @@ import (
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
 	"zotregistry.dev/zot/v2/pkg/extensions/lint"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
+	syncConstants "zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/storage"
@@ -991,6 +995,114 @@ func TestDestinationRegistry(t *testing.T) {
 				err = registry.CommitAll(repoName, imageReference)
 				So(err, ShouldBeNil)
 			})
+		})
+	})
+}
+
+// TestNewClientTimeoutBehavior verifies that newClient creates a client that respects timeouts.
+func TestNewClientTimeoutBehavior(t *testing.T) {
+	Convey("Test newClient timeout behavior", t, func() {
+		logger := log.NewTestLogger()
+		zeroRetries := 0
+		retryDelay := 1 * time.Millisecond
+
+		Convey("Client respects ResponseHeaderTimeout from config", func() {
+			// Server delay - must be longer than ResponseHeaderTimeout to trigger timeout
+			serverDelay := 1 * time.Second
+
+			// Create a test server that accepts connections but delays sending headers
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Sleep longer than the timeout to simulate a server that connects
+				// but doesn't send headers quickly
+				time.Sleep(serverDelay)
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+
+			host := strings.TrimPrefix(server.URL, "http://")
+
+			// Create sync config with short ResponseHeaderTimeout
+			opts := syncconf.RegistryConfig{
+				URLs:                  []string{server.URL},
+				SyncTimeout:           syncConstants.DefaultSyncTimeout,
+				ResponseHeaderTimeout: 10 * time.Millisecond,
+				MaxRetries:            &zeroRetries,
+				RetryDelay:            &retryDelay,
+			}
+
+			// Create the client using the actual production function
+			client, _, err := newClient(opts, syncconf.CredentialsFile{}, logger)
+			So(err, ShouldBeNil)
+
+			// Create a reference to the test server
+			r, err := ref.New(host + "/repo:tag")
+			So(err, ShouldBeNil)
+
+			// Make a request - it should timeout quickly due to ResponseHeaderTimeout
+			start := time.Now()
+			// Use ManifestHead as a lightweight operation to trigger the HTTP request
+			_, err = client.ManifestHead(context.Background(), r)
+			elapsed := time.Since(start)
+
+			// Should timeout quickly (approx 10ms * retries + overhead)
+			// With 1ms retry delay and 10ms timeout, retries add overhead but should still be < serverDelay
+			So(err, ShouldNotBeNil)
+			// Allow small tolerance for timing variability (5ms)
+			So(elapsed, ShouldBeGreaterThanOrEqualTo, opts.ResponseHeaderTimeout-5*time.Millisecond)
+			So(elapsed, ShouldBeLessThan, serverDelay)
+		})
+
+		Convey("Client respects SyncTimeout (overall) from config", func() {
+			// Server delay - must be longer than SyncTimeout to trigger timeout
+			serverDelay := 1 * time.Second
+
+			// Create a test server that sends headers quickly but delays body transfer
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Send headers immediately with Content-Length to bypass ResponseHeaderTimeout
+				// but indicate there's a body coming
+				w.Header().Set("Content-Length", "100")
+				w.WriteHeader(http.StatusOK)
+				// Flush headers to ensure they're sent
+				if flusher, ok := w.(http.Flusher); ok {
+					flusher.Flush()
+				}
+				// Delay sending body data - this will trigger SyncTimeout (overall client timeout)
+				time.Sleep(serverDelay)
+				// Write body data (client should timeout before this completes)
+				w.Write(make([]byte, 100))
+			}))
+			defer server.Close()
+
+			host := strings.TrimPrefix(server.URL, "http://")
+
+			// Create sync config with short SyncTimeout
+			opts := syncconf.RegistryConfig{
+				URLs:                  []string{server.URL},
+				SyncTimeout:           10 * time.Millisecond,
+				ResponseHeaderTimeout: syncConstants.DefaultResponseHeaderTimeout,
+				MaxRetries:            &zeroRetries,
+				RetryDelay:            &retryDelay,
+			}
+
+			// Create the client using the actual production function
+			client, _, err := newClient(opts, syncconf.CredentialsFile{}, logger)
+			So(err, ShouldBeNil)
+
+			r, err := ref.New(host + "/repo:tag")
+			So(err, ShouldBeNil)
+
+			// Make a request - it should timeout due to overall SyncTimeout
+			// Use ManifestGet (not ManifestHead) to test body transfer timeout
+			start := time.Now()
+			_, err = client.ManifestGet(context.Background(), r)
+			elapsed := time.Since(start)
+
+			// Should timeout within the SyncTimeout period (+ retries)
+			// Elapsed should be >= SyncTimeout (since that's when it times out) and < serverDelay
+			So(err, ShouldNotBeNil)
+			// Allow small tolerance for timing variability (5ms)
+			So(elapsed, ShouldBeGreaterThanOrEqualTo, opts.SyncTimeout-5*time.Millisecond)
+			So(elapsed, ShouldBeLessThan, serverDelay)
 		})
 	})
 }
