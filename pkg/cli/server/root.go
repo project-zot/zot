@@ -602,8 +602,9 @@ func validateAuthzPolicies(config *config.Config, logger zlog.Logger) error {
 
 	logger.Info().Msg("checking if anonymous authorization is the only type of authorization policy configured")
 
-	if !authConfig.IsBasicAuthnEnabled() && !accessControlConfig.ContainsOnlyAnonymousPolicy() {
-		msg := "access control config requires one of httpasswd, ldap or openid authentication " +
+	if !authConfig.IsBasicAuthnEnabled() && !config.IsMTLSAuthEnabled() &&
+		!accessControlConfig.ContainsOnlyAnonymousPolicy() {
+		msg := "access control config requires one of htpasswd, ldap, openid or mTLS authentication " +
 			"or using only 'anonymousPolicy' policies"
 		logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 

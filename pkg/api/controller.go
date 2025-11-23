@@ -240,11 +240,6 @@ func (c *Controller) Run() error {
 		}
 
 		if tlsConfig.CACert != "" {
-			clientAuth := tls.VerifyClientCertIfGiven
-			if c.Config.IsMTLSAuthEnabled() {
-				clientAuth = tls.RequireAndVerifyClientCert
-			}
-
 			caCert, err := os.ReadFile(tlsConfig.CACert)
 			if err != nil {
 				c.Log.Error().Err(err).Str("caCert", tlsConfig.CACert).Msg("failed to read file")
@@ -260,7 +255,9 @@ func (c *Controller) Run() error {
 				return errors.ErrBadCACert
 			}
 
-			server.TLSConfig.ClientAuth = clientAuth
+			// Use VerifyClientCertIfGiven even if mTLS is enabled: clients without cert will be treated as anonymous
+			// You can control permissions for mTLS anonymous requests via accessControl policies
+			server.TLSConfig.ClientAuth = tls.VerifyClientCertIfGiven
 			server.TLSConfig.ClientCAs = caCertPool
 		}
 
