@@ -73,7 +73,8 @@ func getAnnotationsFromMap(annotationsMap map[string]string) []*gql_generated.An
 func getImageBlobsInfo(manifestDigest string, manifestSize int64, configDigest string, configSize int64,
 	layers []ispec.Descriptor,
 ) (int64, map[string]int64) {
-	imageBlobsMap := map[string]int64{}
+	// Pre-allocate map with known size: config + manifest + layers
+	imageBlobsMap := make(map[string]int64, 2+len(layers))
 	imageSize := int64(0)
 
 	// add config size
