@@ -4855,7 +4855,18 @@ func TestSignatures(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		So(len(index.Manifests), ShouldEqual, 2)
-		So(index.Manifests[1].Digest, ShouldEqual, ociRefDigest)
+
+		foundOCIRef := false
+
+		for _, manifest := range index.Manifests {
+			if manifest.Digest == ociRefDigest {
+				foundOCIRef = true
+
+				break
+			}
+		}
+
+		So(foundOCIRef, ShouldBeTrue)
 
 		// test negative cases (trigger errors)
 		// test notary signatures errors
