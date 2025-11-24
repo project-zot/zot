@@ -126,7 +126,8 @@ func (e *ExtensionConfig) IsSyncEnabled() bool {
 	// 1. Explicitly enabled (Enable == true), OR
 	// 2. There are registries configured (enabled by default when registries exist)
 	// This matches the behavior in root.go where Sync.Enable defaults to true when registries are present
-	return e.Sync != nil && ((e.Sync.Enable != nil && *e.Sync.Enable) || len(e.Sync.Registries) > 0)
+	return e.Sync != nil && ((e.Sync.Enable != nil && *e.Sync.Enable) ||
+		(e.Sync.Enable == nil && len(e.Sync.Registries) > 0))
 }
 
 // IsScrubEnabled checks if scrub is enabled in this extensions config.

@@ -57,6 +57,11 @@ func buildSyncConfig(enabled bool) *config.ExtensionConfig {
 	ext := &config.ExtensionConfig{}
 	ext.Sync = &sync.Config{
 		Enable: &enabled,
+		Registries: []sync.RegistryConfig{
+			{
+				URLs: []string{"localhost"},
+			},
+		},
 	}
 
 	return ext
