@@ -1329,54 +1329,48 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 
 	for _, testCase := range testCases {
 		Convey("Verify docker images are skipped when they are already synced, preserveDigest: "+testCase.name, t, func() {
-			updateDuration, _ := time.ParseDuration("30m")
-
-			sctlr, srcBaseURL, srcDir, _, _ := makeUpstreamServer(t, false, false)
-
-			scm := test.NewControllerManager(sctlr)
-			scm.StartAndWait(sctlr.Config.HTTP.Port)
-
-			defer scm.StopServer()
-
-			var tlsVerify bool
-
-			maxRetries := 1
-			delay := 1 * time.Second
-
-			indexRepoName := "index"
-
-			syncRegistryConfig := syncconf.RegistryConfig{
-				Content: []syncconf.Content{
-					{
-						Prefix: testImage,
-					},
-					{
-						Prefix: indexRepoName,
-					},
-				},
-				URLs:           []string{srcBaseURL},
-				PollInterval:   updateDuration,
-				TLSVerify:      &tlsVerify,
-				CertDir:        "",
-				MaxRetries:     &maxRetries,
-				OnDemand:       true,
-				RetryDelay:     &delay,
-				PreserveDigest: testCase.preserveDigest,
-			}
-
-			defaultVal := true
-			syncConfig := &syncconf.Config{
-				Enable:     &defaultVal,
-				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
-			}
-
-			dctlr, destBaseURL, destDir, _ := makeDownstreamServer(t, false, syncConfig)
-
-			if testCase.preserveDigest {
-				dctlr.Config.HTTP.Compat = append(dctlr.Config.HTTP.Compat, "docker2s2")
-			}
-
 			Convey("skipping already synced docker image", func() {
+				updateDuration, _ := time.ParseDuration("30m")
+
+				sctlr, srcBaseURL, srcDir, _, _ := makeUpstreamServer(t, false, false)
+
+				scm := test.NewControllerManager(sctlr)
+				scm.StartAndWait(sctlr.Config.HTTP.Port)
+
+				defer scm.StopServer()
+
+				var tlsVerify bool
+
+				maxRetries := 1
+				delay := 1 * time.Second
+
+				syncRegistryConfig := syncconf.RegistryConfig{
+					Content: []syncconf.Content{
+						{
+							Prefix: testImage,
+						},
+					},
+					URLs:           []string{srcBaseURL},
+					PollInterval:   updateDuration,
+					TLSVerify:      &tlsVerify,
+					CertDir:        "",
+					MaxRetries:     &maxRetries,
+					OnDemand:       true,
+					RetryDelay:     &delay,
+					PreserveDigest: testCase.preserveDigest,
+				}
+
+				defaultVal := true
+				syncConfig := &syncconf.Config{
+					Enable:     &defaultVal,
+					Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+				}
+
+				dctlr, destBaseURL, destDir, _ := makeDownstreamServer(t, false, syncConfig)
+
+				if testCase.preserveDigest {
+					dctlr.Config.HTTP.Compat = append(dctlr.Config.HTTP.Compat, "docker2s2")
+				}
 				// because we can not store images in docker format, modify the test image so that it has docker mediatype
 				indexContent, err := os.ReadFile(path.Join(srcDir, testImage, "index.json"))
 				So(err, ShouldBeNil)
@@ -1480,6 +1474,50 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 			})
 
 			Convey("skipping already synced multiarch docker image", func() {
+				updateDuration, _ := time.ParseDuration("30m")
+
+				sctlr, srcBaseURL, srcDir, _, _ := makeUpstreamServer(t, false, false)
+
+				scm := test.NewControllerManager(sctlr)
+				scm.StartAndWait(sctlr.Config.HTTP.Port)
+
+				defer scm.StopServer()
+
+				var tlsVerify bool
+
+				maxRetries := 1
+				delay := 1 * time.Second
+
+				indexRepoName := "index"
+
+				syncRegistryConfig := syncconf.RegistryConfig{
+					Content: []syncconf.Content{
+						{
+							Prefix: indexRepoName,
+						},
+					},
+					URLs:           []string{srcBaseURL},
+					PollInterval:   updateDuration,
+					TLSVerify:      &tlsVerify,
+					CertDir:        "",
+					MaxRetries:     &maxRetries,
+					OnDemand:       true,
+					RetryDelay:     &delay,
+					PreserveDigest: testCase.preserveDigest,
+				}
+
+				defaultVal := true
+				syncConfig := &syncconf.Config{
+					Enable:     &defaultVal,
+					Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+				}
+
+				dctlr, destBaseURL, destDir, _ := makeDownstreamServer(t, false, syncConfig)
+
+				if testCase.preserveDigest {
+					dctlr.Config.HTTP.Compat = append(dctlr.Config.HTTP.Compat, "docker2s2")
+				}
+
 				// create an image index on upstream
 				multiarchImage := CreateMultiarchWith().Images(
 					[]Image{
