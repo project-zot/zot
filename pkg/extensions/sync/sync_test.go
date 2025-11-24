@@ -1461,18 +1461,22 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-				Convey("trigger config blob upstream error", func() {
-					// remove synced image
-					err := os.RemoveAll(path.Join(destDir, testImage))
-					So(err, ShouldBeNil)
+				// trigger config blob upstream error
+				// remove synced image
+				err = os.RemoveAll(path.Join(destDir, testImage))
+				So(err, ShouldBeNil)
 
-					err = os.Chmod(path.Join(srcDir, testImage, "blobs/sha256", configBlobDigest.Encoded()), 0o000)
-					So(err, ShouldBeNil)
+				configBlobPath := path.Join(srcDir, testImage, "blobs/sha256", configBlobDigest.Encoded())
+				err = os.Chmod(configBlobPath, 0o000)
+				So(err, ShouldBeNil)
 
-					resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
-					So(err, ShouldBeNil)
-					So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-				})
+				defer func() {
+					_ = os.Chmod(configBlobPath, storageConstants.DefaultFilePerms)
+				}()
+
+				resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 			})
 
 			Convey("skipping already synced multiarch docker image", func() {
@@ -1627,18 +1631,22 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-				Convey("trigger config blob upstream error", func() {
-					// remove synced image
-					err := os.RemoveAll(path.Join(destDir, indexRepoName))
-					So(err, ShouldBeNil)
+				// trigger config blob upstream error
+				// remove synced image
+				err = os.RemoveAll(path.Join(destDir, indexRepoName))
+				So(err, ShouldBeNil)
 
-					err = os.Chmod(path.Join(srcDir, indexRepoName, "blobs/sha256", configBlobDigest.Encoded()), 0o000)
-					So(err, ShouldBeNil)
+				configBlobPath := path.Join(srcDir, indexRepoName, "blobs/sha256", configBlobDigest.Encoded())
+				err = os.Chmod(configBlobPath, 0o000)
+				So(err, ShouldBeNil)
 
-					resp, err = resty.R().Get(destBaseURL + "/v2/" + indexRepoName + "/manifests/" + "latest")
-					So(err, ShouldBeNil)
-					So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-				})
+				defer func() {
+					_ = os.Chmod(configBlobPath, storageConstants.DefaultFilePerms)
+				}()
+
+				resp, err = resty.R().Get(destBaseURL + "/v2/" + indexRepoName + "/manifests/" + "latest")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 			})
 		})
 	}
