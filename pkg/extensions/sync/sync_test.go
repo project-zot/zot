@@ -1456,7 +1456,30 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 
 			// trigger config blob upstream error
 			// remove synced image
-			err = os.RemoveAll(path.Join(destDir, testImage))
+			destImagePath := path.Join(destDir, testImage)
+			// Log directory contents before removal for debugging
+			if entries, listErr := os.ReadDir(destImagePath); listErr == nil {
+				t.Logf("Directory contents before removal (%s):", destImagePath)
+				for _, entry := range entries {
+					info, _ := entry.Info()
+					if info != nil {
+						t.Logf("  %s (dir=%v, size=%d, mode=%s)", entry.Name(), entry.IsDir(), info.Size(), info.Mode())
+					} else {
+						t.Logf("  %s (dir=%v)", entry.Name(), entry.IsDir())
+					}
+				}
+			}
+			err = os.RemoveAll(destImagePath)
+			if err != nil {
+				t.Logf("Failed to remove %s: %v", destImagePath, err)
+				// Try to list contents again after failure
+				if entries, listErr := os.ReadDir(destImagePath); listErr == nil {
+					t.Logf("Directory contents after failed removal (%s):", destImagePath)
+					for _, entry := range entries {
+						t.Logf("  %s (dir=%v)", entry.Name(), entry.IsDir())
+					}
+				}
+			}
 			So(err, ShouldBeNil)
 
 			configBlobPath := path.Join(srcDir, testImage, "blobs/sha256", configBlobDigest.Encoded())
@@ -1670,7 +1693,30 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 
 			// trigger config blob upstream error
 			// remove synced image
-			err = os.RemoveAll(path.Join(destDir, indexRepoName))
+			destRepoPath := path.Join(destDir, indexRepoName)
+			// Log directory contents before removal for debugging
+			if entries, listErr := os.ReadDir(destRepoPath); listErr == nil {
+				t.Logf("Directory contents before removal (%s):", destRepoPath)
+				for _, entry := range entries {
+					info, _ := entry.Info()
+					if info != nil {
+						t.Logf("  %s (dir=%v, size=%d, mode=%s)", entry.Name(), entry.IsDir(), info.Size(), info.Mode())
+					} else {
+						t.Logf("  %s (dir=%v)", entry.Name(), entry.IsDir())
+					}
+				}
+			}
+			err = os.RemoveAll(destRepoPath)
+			if err != nil {
+				t.Logf("Failed to remove %s: %v", destRepoPath, err)
+				// Try to list contents again after failure
+				if entries, listErr := os.ReadDir(destRepoPath); listErr == nil {
+					t.Logf("Directory contents after failed removal (%s):", destRepoPath)
+					for _, entry := range entries {
+						t.Logf("  %s (dir=%v)", entry.Name(), entry.IsDir())
+					}
+				}
+			}
 			So(err, ShouldBeNil)
 
 			configBlobPath := path.Join(srcDir, indexRepoName, "blobs/sha256", configBlobDigest.Encoded())
