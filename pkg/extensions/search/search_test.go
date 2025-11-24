@@ -2169,8 +2169,8 @@ func TestDerivedImageList(t *testing.T) {
 		layers = [][]byte{
 			{10, 11, 10, 11},
 			{11, 11, 11, 11},
-			{10, 10, 10, 10},
 			{10, 10, 10, 11},
+			{10, 10, 10, 10},
 			{11, 11, 10, 10},
 			{11, 10, 10, 10},
 		}
@@ -2613,7 +2613,7 @@ func TestBaseImageList(t *testing.T) {
 		// create image with less layers than the given image, but which are in the given image
 		layers = [][]byte{
 			{10, 11, 10, 11},
-			{10, 10, 10, 11},
+			{11, 11, 11, 11},
 		}
 
 		manifest = ispec.Manifest{

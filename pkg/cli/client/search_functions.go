@@ -51,7 +51,8 @@ func SearchAllImagesGQL(config SearchConfig) error {
 		return err
 	}
 
-	imageListData := []imageStruct{}
+	// Pre-allocate slice with known capacity
+	imageListData := make([]imageStruct, 0, len(imageList.Results))
 
 	for _, image := range imageList.Results {
 		imageListData = append(imageListData, imageStruct(image))
@@ -103,7 +104,8 @@ func SearchImageByNameGQL(config SearchConfig, imageName string) error {
 		return err
 	}
 
-	imageListData := []imageStruct{}
+	// Pre-allocate slice with known capacity (may be filtered, but worst case is all results)
+	imageListData := make([]imageStruct, 0, len(imageList.Results))
 
 	for _, image := range imageList.Results {
 		if tag == "" || image.Tag == tag {
@@ -152,7 +154,8 @@ func SearchDerivedImageListGQL(config SearchConfig, derivedImage string) error {
 		return err
 	}
 
-	imageListData := []imageStruct{}
+	// Pre-allocate slice with known capacity
+	imageListData := make([]imageStruct, 0, len(imageList.DerivedImageList.Results))
 
 	for _, image := range imageList.DerivedImageList.Results {
 		imageListData = append(imageListData, imageStruct(image))
@@ -173,7 +176,8 @@ func SearchBaseImageListGQL(config SearchConfig, baseImage string) error {
 		return err
 	}
 
-	imageListData := []imageStruct{}
+	// Pre-allocate slice with known capacity
+	imageListData := make([]imageStruct, 0, len(imageList.BaseImageList.Results))
 
 	for _, image := range imageList.BaseImageList.Results {
 		imageListData = append(imageListData, imageStruct(image))
@@ -193,7 +197,8 @@ func SearchImagesForDigestGQL(config SearchConfig, digest string) error {
 		return err
 	}
 
-	imageListData := []imageStruct{}
+	// Pre-allocate slice with known capacity
+	imageListData := make([]imageStruct, 0, len(imageList.Results))
 
 	for _, image := range imageList.Results {
 		imageListData = append(imageListData, imageStruct(image))
@@ -344,7 +349,8 @@ func SearchImagesByCVEIDGQL(config SearchConfig, repo, cveid string) error {
 		return err
 	}
 
-	imageListData := []imageStruct{}
+	// Pre-allocate slice with known capacity
+	imageListData := make([]imageStruct, 0, len(imageList.Results))
 
 	for _, image := range imageList.Results {
 		imageListData = append(imageListData, imageStruct(image))
@@ -403,13 +409,14 @@ func GlobalSearchGQL(config SearchConfig, query string) error {
 		return err
 	}
 
-	imagesList := []imageStruct{}
+	// Pre-allocate slices with known capacity
+	imagesList := make([]imageStruct, 0, len(globalSearchResult.Images))
 
 	for _, image := range globalSearchResult.Images {
 		imagesList = append(imagesList, imageStruct(image))
 	}
 
-	reposList := []repoStruct{}
+	reposList := make([]repoStruct, 0, len(globalSearchResult.Repos))
 
 	for _, repo := range globalSearchResult.Repos {
 		reposList = append(reposList, repoStruct(repo))

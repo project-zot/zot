@@ -445,7 +445,8 @@ func fetchManifestStruct(ctx context.Context, repo, manifestReference string, se
 	imageSize += manifestResp.Config.Size
 	imageSize += manifestSize
 
-	layers := []common.LayerSummary{}
+	// Pre-allocate slice with known capacity
+	layers := make([]common.LayerSummary, 0, len(manifestResp.Layers))
 
 	for _, entry := range manifestResp.Layers {
 		imageSize += entry.Size

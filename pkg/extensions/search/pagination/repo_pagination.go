@@ -2,11 +2,19 @@ package pagination
 
 import (
 	"fmt"
-	"sort"
+	"slices"
+	"sync"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	gql_gen "zotregistry.dev/zot/v2/pkg/extensions/search/gql_generated"
+)
+
+var (
+	//nolint:gochecknoglobals // lazy initialization with sync.Once to avoid reallocation
+	repoSortFunctionsOnce sync.Once
+	//nolint:gochecknoglobals // cached map initialized once, effectively immutable
+	repoSortFunctions map[SortCriteria]func(a, b *gql_gen.RepoSummary) int
 )
 
 type RepoSummariesPageFinder struct {
@@ -29,7 +37,8 @@ func NewRepoSumPageFinder(limit, offset int, sortBy SortCriteria) (*RepoSummarie
 		return nil, zerr.ErrOffsetIsNegative
 	}
 
-	if _, found := RepoSumSortFuncs()[sortBy]; !found {
+	sortFuncs := getRepoSortFunctions()
+	if _, found := sortFuncs[sortBy]; !found {
 		return nil, fmt.Errorf("sorting repos by '%s' is not supported %w",
 			sortBy, zerr.ErrSortCriteriaNotSupported)
 	}
@@ -38,7 +47,7 @@ func NewRepoSumPageFinder(limit, offset int, sortBy SortCriteria) (*RepoSummarie
 		limit:      limit,
 		offset:     offset,
 		sortBy:     sortBy,
-		pageBuffer: []*gql_gen.RepoSummary{},
+		pageBuffer: make([]*gql_gen.RepoSummary, 0),
 	}, nil
 }
 
@@ -53,7 +62,13 @@ func (pf *RepoSummariesPageFinder) Page() ([]*gql_gen.RepoSummary, zcommon.PageI
 
 	pageInfo := zcommon.PageInfo{}
 
-	sort.Slice(pf.pageBuffer, RepoSumSortFuncs()[pf.sortBy](pf.pageBuffer))
+	sortFuncs := getRepoSortFunctions()
+	sortFn, ok := sortFuncs[pf.sortBy]
+	if !ok {
+		// Fallback to default (should not happen due to validation in NewRepoSumPageFinder)
+		sortFn = sortFuncs[AlphabeticAsc]
+	}
+	slices.SortFunc(pf.pageBuffer, sortFn)
 
 	// the offset and limit are calculated in terms of repos counted
 	start := pf.offset
@@ -83,44 +98,95 @@ func (pf *RepoSummariesPageFinder) Page() ([]*gql_gen.RepoSummary, zcommon.PageI
 	return page, pageInfo
 }
 
-func RepoSumSortFuncs() map[SortCriteria]func(pageBuffer []*gql_gen.RepoSummary) func(i, j int) bool {
-	return map[SortCriteria]func(pageBuffer []*gql_gen.RepoSummary) func(i, j int) bool{
-		AlphabeticAsc: RepoSortByAlphabeticAsc,
-		AlphabeticDsc: RepoSortByAlphabeticDsc,
-		Relevance:     RepoSortByRelevance,
-		UpdateTime:    RepoSortByUpdateTime,
-		Downloads:     RepoSortByDownloads,
-	}
+// getRepoSortFunctions returns a cached map of sort functions.
+// The map is initialized once using sync.Once to avoid reallocation.
+func getRepoSortFunctions() map[SortCriteria]func(a, b *gql_gen.RepoSummary) int {
+	repoSortFunctionsOnce.Do(func() {
+		repoSortFunctions = map[SortCriteria]func(a, b *gql_gen.RepoSummary) int{
+			AlphabeticAsc: RepoSortByAlphabeticAsc,
+			AlphabeticDsc: RepoSortByAlphabeticDsc,
+			Relevance:     RepoSortByRelevance,
+			UpdateTime:    RepoSortByUpdateTime,
+			Downloads:     RepoSortByDownloads,
+		}
+	})
+
+	return repoSortFunctions
 }
 
-func RepoSortByAlphabeticAsc(pageBuffer []*gql_gen.RepoSummary) func(i, j int) bool {
-	return func(i, j int) bool {
-		return *pageBuffer[i].Name < *pageBuffer[j].Name
+// RepoSortByAlphabeticAsc sorts alphabetically ascending.
+func RepoSortByAlphabeticAsc(a, b *gql_gen.RepoSummary) int {
+	if *a.Name < *b.Name {
+		return -1
 	}
+	if *a.Name == *b.Name {
+		return 0
+	}
+
+	return 1
 }
 
-func RepoSortByAlphabeticDsc(pageBuffer []*gql_gen.RepoSummary) func(i, j int) bool {
-	return func(i, j int) bool {
-		return *pageBuffer[i].Name > *pageBuffer[j].Name
+// RepoSortByAlphabeticDsc sorts alphabetically descending.
+func RepoSortByAlphabeticDsc(a, b *gql_gen.RepoSummary) int {
+	if *a.Name > *b.Name {
+		return -1
 	}
+	if *a.Name == *b.Name {
+		return 0
+	}
+
+	return 1
 }
 
-func RepoSortByRelevance(pageBuffer []*gql_gen.RepoSummary) func(i, j int) bool {
-	return func(i, j int) bool {
-		return *pageBuffer[i].Rank < *pageBuffer[j].Rank
+// RepoSortByRelevance sorts by relevance.
+func RepoSortByRelevance(a, b *gql_gen.RepoSummary) int {
+	if *a.Rank < *b.Rank {
+		return -1
 	}
+	if *a.Rank == *b.Rank {
+		return 0
+	}
+
+	return 1
 }
 
 // RepoSortByUpdateTime sorts descending by time.
-func RepoSortByUpdateTime(pageBuffer []*gql_gen.RepoSummary) func(i, j int) bool {
-	return func(i, j int) bool {
-		return pageBuffer[i].LastUpdated.After(*pageBuffer[j].LastUpdated)
+func RepoSortByUpdateTime(a, b *gql_gen.RepoSummary) int { //nolint:varnamelen // standard comparison func signature
+	// Handle nil and zero time cases: both are treated as oldest (come last in descending sort)
+	aIsZero := a.LastUpdated == nil || (a.LastUpdated != nil && a.LastUpdated.IsZero())
+	bIsZero := b.LastUpdated == nil || (b.LastUpdated != nil && b.LastUpdated.IsZero())
+
+	if aIsZero && bIsZero {
+		return 0
 	}
+
+	if aIsZero {
+		return 1 // a is zero/nil, b is not - a comes after b
+	}
+
+	if bIsZero {
+		return -1 // b is zero/nil, a is not - a comes before b
+	}
+
+	if a.LastUpdated.After(*b.LastUpdated) {
+		return -1
+	}
+
+	if a.LastUpdated.Equal(*b.LastUpdated) {
+		return 0
+	}
+
+	return 1
 }
 
 // RepoSortByDownloads returns a comparison function for descendant sorting by downloads.
-func RepoSortByDownloads(pageBuffer []*gql_gen.RepoSummary) func(i, j int) bool {
-	return func(i, j int) bool {
-		return *pageBuffer[i].DownloadCount > *pageBuffer[j].DownloadCount
+func RepoSortByDownloads(a, b *gql_gen.RepoSummary) int {
+	if *a.DownloadCount > *b.DownloadCount {
+		return -1
 	}
+	if *a.DownloadCount == *b.DownloadCount {
+		return 0
+	}
+
+	return 1
 }

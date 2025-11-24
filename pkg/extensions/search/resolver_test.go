@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 	"testing"
 	"time"
 
@@ -2396,6 +2395,144 @@ func TestMockedDerivedImageList(t *testing.T) {
 			So(images.Results, ShouldNotBeEmpty)
 			So(len(images.Results), ShouldEqual, 1)
 		})
+
+		Convey("filterDerivedImages edge cases", func() {
+			// Create base image with layers
+			baseLayer1 := []byte{10, 11, 10, 11}
+			baseLayer2 := []byte{11, 11, 11, 11}
+			baseImage := CreateImageWith().
+				LayerBlobs([][]byte{baseLayer1, baseLayer2}).
+				DefaultConfig().Build()
+
+			baseImageMeta := baseImage.AsImageMeta()
+
+			// Create base ImageSummary for filterDerivedImages
+			baseImageSummary := &gql_generated.ImageSummary{
+				Manifests: []*gql_generated.ManifestSummary{
+					{
+						Digest: ref(baseImage.DigestStr()),
+						Layers: []*gql_generated.LayerSummary{
+							{Digest: ref(godigest.FromBytes(baseLayer1).String())},
+							{Digest: ref(godigest.FromBytes(baseLayer2).String())},
+						},
+					},
+				},
+			}
+
+			// Test case 1: imageMeta with empty Manifests
+			emptyManifestsMeta := mTypes.ImageMeta{
+				Manifests: []mTypes.ManifestMeta{},
+			}
+			filterFunc := filterDerivedImages(baseImageSummary)
+			result := filterFunc(mTypes.RepoMeta{}, emptyManifestsMeta)
+			So(result, ShouldBeFalse)
+
+			// Test case 2: baseImage with nil manifest
+			nilManifestBaseImage := &gql_generated.ImageSummary{
+				Manifests: []*gql_generated.ManifestSummary{nil},
+			}
+			filterFunc = filterDerivedImages(nilManifestBaseImage)
+			derivedMeta := baseImageMeta
+			result = filterFunc(mTypes.RepoMeta{}, derivedMeta)
+			So(result, ShouldBeFalse)
+
+			// Test case 3: baseImage with manifest but nil Digest
+			nilDigestBaseImage := &gql_generated.ImageSummary{
+				Manifests: []*gql_generated.ManifestSummary{
+					{
+						Digest: nil,
+						Layers: []*gql_generated.LayerSummary{
+							{Digest: ref(godigest.FromBytes(baseLayer1).String())},
+						},
+					},
+				},
+			}
+			filterFunc = filterDerivedImages(nilDigestBaseImage)
+			result = filterFunc(mTypes.RepoMeta{}, derivedMeta)
+			So(result, ShouldBeFalse)
+
+			// Test case 4: same image (derivedDigest == baseManifest.Digest) - not derived
+			sameImageMeta := baseImageMeta
+			filterFunc = filterDerivedImages(baseImageSummary)
+			result = filterFunc(mTypes.RepoMeta{}, sameImageMeta)
+			So(result, ShouldBeFalse)
+
+			// Test case 5: baseImage with no layers (len(baseLayers) == 0)
+			noLayersBaseImage := &gql_generated.ImageSummary{
+				Manifests: []*gql_generated.ManifestSummary{
+					{
+						Digest: ref(baseImage.DigestStr()),
+						Layers: []*gql_generated.LayerSummary{},
+					},
+				},
+			}
+			derivedLayer := []byte{20, 21, 22, 23}
+			derivedImg := CreateImageWith().
+				LayerBlobs([][]byte{derivedLayer}).
+				DefaultConfig().Build()
+			derivedImgMeta := derivedImg.AsImageMeta()
+			filterFunc = filterDerivedImages(noLayersBaseImage)
+			result = filterFunc(mTypes.RepoMeta{}, derivedImgMeta)
+			So(result, ShouldBeFalse)
+
+			// Test case 6: baseLayers longer than derivedLayers
+			longBaseLayersImage := &gql_generated.ImageSummary{
+				Manifests: []*gql_generated.ManifestSummary{
+					{
+						Digest: ref(baseImage.DigestStr()),
+						Layers: []*gql_generated.LayerSummary{
+							{Digest: ref(godigest.FromBytes(baseLayer1).String())},
+							{Digest: ref(godigest.FromBytes(baseLayer2).String())},
+							{Digest: ref(godigest.FromBytes([]byte{99, 99, 99}).String())},
+						},
+					},
+				},
+			}
+			shortDerivedImg := CreateImageWith().
+				LayerBlobs([][]byte{baseLayer1}).
+				DefaultConfig().Build()
+			shortDerivedMeta := shortDerivedImg.AsImageMeta()
+			filterFunc = filterDerivedImages(longBaseLayersImage)
+			result = filterFunc(mTypes.RepoMeta{}, shortDerivedMeta)
+			So(result, ShouldBeFalse)
+
+			// Test case 7: nil layer in baseLayers
+			nilLayerBaseImage := &gql_generated.ImageSummary{
+				Manifests: []*gql_generated.ManifestSummary{
+					{
+						Digest: ref(baseImage.DigestStr()),
+						Layers: []*gql_generated.LayerSummary{
+							nil,
+							{Digest: ref(godigest.FromBytes(baseLayer2).String())},
+						},
+					},
+				},
+			}
+			// Create derived image that would match if layer wasn't nil
+			matchingDerivedImg := CreateImageWith().
+				LayerBlobs([][]byte{baseLayer1, baseLayer2, {99}}).
+				DefaultConfig().Build()
+			matchingDerivedMeta := matchingDerivedImg.AsImageMeta()
+			filterFunc = filterDerivedImages(nilLayerBaseImage)
+			result = filterFunc(mTypes.RepoMeta{}, matchingDerivedMeta)
+			So(result, ShouldBeFalse)
+
+			// Test case 8: layer with nil Digest in baseLayers
+			nilDigestLayerBaseImage := &gql_generated.ImageSummary{
+				Manifests: []*gql_generated.ManifestSummary{
+					{
+						Digest: ref(baseImage.DigestStr()),
+						Layers: []*gql_generated.LayerSummary{
+							{Digest: nil},
+							{Digest: ref(godigest.FromBytes(baseLayer2).String())},
+						},
+					},
+				},
+			}
+			filterFunc = filterDerivedImages(nilDigestLayerBaseImage)
+			result = filterFunc(mTypes.RepoMeta{}, matchingDerivedMeta)
+			So(result, ShouldBeFalse)
+		})
 	})
 }
 
@@ -2646,6 +2783,139 @@ func TestMockedBaseImageList(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(images.Results, ShouldBeEmpty)
 	})
+
+	Convey("filterBaseImages edge cases", t, func() {
+		// Create base and derived images with layers
+		baseLayer1 := []byte{10, 11, 10, 11}
+		baseLayer2 := []byte{11, 11, 11, 11}
+		baseImage := CreateImageWith().
+			LayerBlobs([][]byte{baseLayer1, baseLayer2}).
+			DefaultConfig().Build()
+
+		derivedLayer3 := []byte{20, 21, 22, 23}
+		derivedImage := CreateImageWith().
+			LayerBlobs([][]byte{baseLayer1, baseLayer2, derivedLayer3}).
+			DefaultConfig().Build()
+
+		baseImageMeta := baseImage.AsImageMeta()
+		derivedImageMeta := derivedImage.AsImageMeta()
+
+		// Create derived ImageSummary for filterBaseImages
+		derivedImageSummary := &gql_generated.ImageSummary{
+			Manifests: []*gql_generated.ManifestSummary{
+				{
+					Digest: ref(derivedImage.DigestStr()),
+					Layers: []*gql_generated.LayerSummary{
+						{Digest: ref(godigest.FromBytes(baseLayer1).String())},
+						{Digest: ref(godigest.FromBytes(baseLayer2).String())},
+						{Digest: ref(godigest.FromBytes(derivedLayer3).String())},
+					},
+				},
+			},
+		}
+
+		// Test case 1: imageMeta with empty Manifests
+		emptyManifestsMeta := mTypes.ImageMeta{
+			Manifests: []mTypes.ManifestMeta{},
+		}
+		filterFunc := filterBaseImages(derivedImageSummary)
+		result := filterFunc(mTypes.RepoMeta{}, emptyManifestsMeta)
+		So(result, ShouldBeFalse)
+
+		// Test case 2: derivedImage with nil manifest
+		nilManifestDerivedImage := &gql_generated.ImageSummary{
+			Manifests: []*gql_generated.ManifestSummary{nil},
+		}
+		filterFunc = filterBaseImages(nilManifestDerivedImage)
+		result = filterFunc(mTypes.RepoMeta{}, baseImageMeta)
+		So(result, ShouldBeFalse)
+
+		// Test case 3: derivedImage with manifest but nil Digest
+		nilDigestDerivedImage := &gql_generated.ImageSummary{
+			Manifests: []*gql_generated.ManifestSummary{
+				{
+					Digest: nil,
+					Layers: []*gql_generated.LayerSummary{
+						{Digest: ref(godigest.FromBytes(baseLayer1).String())},
+					},
+				},
+			},
+		}
+		filterFunc = filterBaseImages(nilDigestDerivedImage)
+		result = filterFunc(mTypes.RepoMeta{}, baseImageMeta)
+		So(result, ShouldBeFalse)
+
+		// Test case 4: same image (baseDigest == derivedManifest.Digest) - not a base
+		sameImageMeta := derivedImageMeta
+		filterFunc = filterBaseImages(derivedImageSummary)
+		result = filterFunc(mTypes.RepoMeta{}, sameImageMeta)
+		So(result, ShouldBeFalse)
+
+		// Test case 5: baseImage with no layers (len(baseLayers) == 0)
+		noLayersBaseImg := CreateImageWith().
+			LayerBlobs([][]byte{}).
+			DefaultConfig().Build()
+		noLayersBaseMeta := noLayersBaseImg.AsImageMeta()
+		filterFunc = filterBaseImages(derivedImageSummary)
+		result = filterFunc(mTypes.RepoMeta{}, noLayersBaseMeta)
+		So(result, ShouldBeFalse)
+
+		// Test case 6: baseLayers longer than derivedLayers
+		longBaseImg := CreateImageWith().
+			LayerBlobs([][]byte{baseLayer1, baseLayer2, {99, 99, 99}}).
+			DefaultConfig().Build()
+		longBaseMeta := longBaseImg.AsImageMeta()
+		shortDerivedImageSummary := &gql_generated.ImageSummary{
+			Manifests: []*gql_generated.ManifestSummary{
+				{
+					Digest: ref(derivedImage.DigestStr()),
+					Layers: []*gql_generated.LayerSummary{
+						{Digest: ref(godigest.FromBytes(baseLayer1).String())},
+					},
+				},
+			},
+		}
+		filterFunc = filterBaseImages(shortDerivedImageSummary)
+		result = filterFunc(mTypes.RepoMeta{}, longBaseMeta)
+		So(result, ShouldBeFalse)
+
+		// Test case 7: nil layer in derivedLayers
+		nilLayerDerivedImage := &gql_generated.ImageSummary{
+			Manifests: []*gql_generated.ManifestSummary{
+				{
+					Digest: ref(derivedImage.DigestStr()),
+					Layers: []*gql_generated.LayerSummary{
+						nil,
+						{Digest: ref(godigest.FromBytes(baseLayer2).String())},
+					},
+				},
+			},
+		}
+		// Create base image that would match if layer wasn't nil
+		matchingBaseImg := CreateImageWith().
+			LayerBlobs([][]byte{baseLayer1, baseLayer2}).
+			DefaultConfig().Build()
+		matchingBaseMeta := matchingBaseImg.AsImageMeta()
+		filterFunc = filterBaseImages(nilLayerDerivedImage)
+		result = filterFunc(mTypes.RepoMeta{}, matchingBaseMeta)
+		So(result, ShouldBeFalse)
+
+		// Test case 8: layer with nil Digest in derivedLayers
+		nilDigestLayerDerivedImage := &gql_generated.ImageSummary{
+			Manifests: []*gql_generated.ManifestSummary{
+				{
+					Digest: ref(derivedImage.DigestStr()),
+					Layers: []*gql_generated.LayerSummary{
+						{Digest: nil},
+						{Digest: ref(godigest.FromBytes(baseLayer2).String())},
+					},
+				},
+			},
+		}
+		filterFunc = filterBaseImages(nilDigestLayerDerivedImage)
+		result = filterFunc(mTypes.RepoMeta{}, matchingBaseMeta)
+		So(result, ShouldBeFalse)
+	})
 }
 
 func TestExpandedRepoInfoErrors(t *testing.T) {
@@ -2665,135 +2935,6 @@ func TestExpandedRepoInfoErrors(t *testing.T) {
 
 		_, err := expandedRepoInfo(responseContext, "repo", mocks.MetaDBMock{}, mocks.CveInfoMock{}, log)
 		So(err, ShouldBeNil)
-	})
-}
-
-func TestImageSummarySort(t *testing.T) {
-	Convey("Test sorting ImageSummary", t, func() {
-		Convey("Swap elements at valid indices", func() {
-			// Create test data with different timestamps
-			time1 := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
-			time2 := time.Date(2023, 1, 2, 12, 0, 0, 0, time.UTC)
-			time3 := time.Date(2023, 1, 3, 12, 0, 0, 0, time.UTC)
-
-			image1 := &gql_generated.ImageSummary{
-				Tag:         ref("tag1"),
-				LastUpdated: &time1,
-			}
-			image2 := &gql_generated.ImageSummary{
-				Tag:         ref("tag2"),
-				LastUpdated: &time2,
-			}
-			image3 := &gql_generated.ImageSummary{
-				Tag:         ref("tag3"),
-				LastUpdated: &time3,
-			}
-
-			// Create timeSlice with test data
-			timeSliceData := timeSlice{image1, image2, image3}
-
-			// Verify initial order
-			So(*timeSliceData[0].Tag, ShouldEqual, "tag1")
-			So(*timeSliceData[1].Tag, ShouldEqual, "tag2")
-			So(*timeSliceData[2].Tag, ShouldEqual, "tag3")
-
-			// Swap elements at indices 0 and 2
-			timeSliceData.Swap(0, 2)
-
-			// Verify elements are swapped
-			So(*timeSliceData[0].Tag, ShouldEqual, "tag3")
-			So(*timeSliceData[1].Tag, ShouldEqual, "tag2")
-			So(*timeSliceData[2].Tag, ShouldEqual, "tag1")
-
-			// Swap elements at indices 1 and 2
-			timeSliceData.Swap(1, 2)
-
-			// Verify elements are swapped again
-			So(*timeSliceData[0].Tag, ShouldEqual, "tag3")
-			So(*timeSliceData[1].Tag, ShouldEqual, "tag1")
-			So(*timeSliceData[2].Tag, ShouldEqual, "tag2")
-		})
-
-		Convey("Swap elements at same index (no-op)", func() {
-			time1 := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
-			time2 := time.Date(2023, 1, 2, 12, 0, 0, 0, time.UTC)
-
-			image1 := &gql_generated.ImageSummary{
-				Tag:         ref("tag1"),
-				LastUpdated: &time1,
-			}
-			image2 := &gql_generated.ImageSummary{
-				Tag:         ref("tag2"),
-				LastUpdated: &time2,
-			}
-
-			timeSliceData := timeSlice{image1, image2}
-
-			// Swap element with itself
-			timeSliceData.Swap(0, 0)
-
-			// Verify no change
-			So(*timeSliceData[0].Tag, ShouldEqual, "tag1")
-			So(*timeSliceData[1].Tag, ShouldEqual, "tag2")
-		})
-
-		Convey("Swap with single element slice", func() {
-			time1 := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
-
-			image1 := &gql_generated.ImageSummary{
-				Tag:         ref("tag1"),
-				LastUpdated: &time1,
-			}
-
-			timeSliceData := timeSlice{image1}
-
-			// Swap single element with itself
-			timeSliceData.Swap(0, 0)
-
-			// Verify no change
-			So(*timeSliceData[0].Tag, ShouldEqual, "tag1")
-		})
-
-		Convey("Swap with empty slice", func() {
-			timeSliceData := timeSlice{}
-
-			// Verify slice is empty
-			// Note: Calling Swap on empty slice would panic, which is expected behavior
-			// The Swap method doesn't check bounds, so it's the caller's responsibility
-			// to ensure valid indices. This is consistent with Go's standard library behavior.
-			So(len(timeSliceData), ShouldEqual, 0)
-		})
-
-		Convey("Integration test with sort.Sort", func() {
-			// Create test data with unsorted timestamps
-			time1 := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
-			time2 := time.Date(2023, 1, 3, 12, 0, 0, 0, time.UTC) // Latest
-			time3 := time.Date(2023, 1, 2, 12, 0, 0, 0, time.UTC)
-
-			image1 := &gql_generated.ImageSummary{
-				Tag:         ref("tag1"),
-				LastUpdated: &time1,
-			}
-			image2 := &gql_generated.ImageSummary{
-				Tag:         ref("tag2"),
-				LastUpdated: &time2,
-			}
-			image3 := &gql_generated.ImageSummary{
-				Tag:         ref("tag3"),
-				LastUpdated: &time3,
-			}
-
-			// Create timeSlice with unsorted data
-			timeSliceData := timeSlice{image1, image2, image3}
-
-			// Sort using sort.Sort (which will call Swap internally)
-			sort.Sort(timeSliceData)
-
-			// Verify sorted order (newest first due to Less implementation)
-			So(*timeSliceData[0].Tag, ShouldEqual, "tag2") // Latest time
-			So(*timeSliceData[1].Tag, ShouldEqual, "tag3") // Middle time
-			So(*timeSliceData[2].Tag, ShouldEqual, "tag1") // Oldest time
-		})
 	})
 }
 

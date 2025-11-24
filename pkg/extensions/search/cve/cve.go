@@ -2,7 +2,7 @@ package cveinfo
 
 import (
 	"context"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -528,8 +528,15 @@ func (cveinfo BaseCveInfo) GetCVESummaryForImageMedia(ctx context.Context, repo,
 }
 
 func GetFixedTags(allTags, vulnerableTags []cvemodel.TagInfo) []cvemodel.TagInfo {
-	sort.Slice(allTags, func(i, j int) bool {
-		return allTags[i].Timestamp.Before(allTags[j].Timestamp)
+	slices.SortFunc(allTags, func(a, b cvemodel.TagInfo) int {
+		if a.Timestamp.Before(b.Timestamp) {
+			return -1
+		}
+		if a.Timestamp.Equal(b.Timestamp) {
+			return 0
+		}
+
+		return 1
 	})
 
 	earliestVulnerable := vulnerableTags[0]
@@ -597,7 +604,10 @@ func GetFixedTags(allTags, vulnerableTags []cvemodel.TagInfo) []cvemodel.TagInfo
 				}
 
 				// check if the current manifest doesn't have the vulnerability
-				if !indexHasVulnerableManifest || !containsDescriptorInfo(vulnTagInfo.Manifests, manifestDesc) {
+				if !indexHasVulnerableManifest ||
+					!slices.ContainsFunc(vulnTagInfo.Manifests, func(di cvemodel.DescriptorInfo) bool {
+						return di.Digest == manifestDesc.Digest
+					}) {
 					fixedManifests = append(fixedManifests, manifestDesc)
 				}
 			}
@@ -614,16 +624,6 @@ func GetFixedTags(allTags, vulnerableTags []cvemodel.TagInfo) []cvemodel.TagInfo
 	}
 
 	return fixedTags
-}
-
-func containsDescriptorInfo(slice []cvemodel.DescriptorInfo, descriptorInfo cvemodel.DescriptorInfo) bool {
-	for _, di := range slice {
-		if di.Digest == descriptorInfo.Digest {
-			return true
-		}
-	}
-
-	return false
 }
 
 func initCVESummaryFromCVEMap(cveMap map[string]cvemodel.CVE) cvemodel.ImageCVESummary {

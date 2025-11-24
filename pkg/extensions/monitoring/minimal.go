@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"path"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -236,9 +237,12 @@ func NewMetricsServer(enabled bool, log log.Logger) MetricServer {
 		Histograms: make([]*HistogramValue, 0),
 	}
 	// convert to a map for returning easily the string corresponding to a bucket
-	bucketsFloat2String := map[float64]string{}
+	// Pre-allocate with known size: default buckets + storage latency buckets
+	defaultBuckets := GetDefaultBuckets()
+	storageBuckets := GetStorageLatencyBuckets()
+	bucketsFloat2String := make(map[float64]string, len(defaultBuckets)+len(storageBuckets))
 
-	for _, fvalue := range append(GetDefaultBuckets(), GetStorageLatencyBuckets()...) {
+	for _, fvalue := range append(defaultBuckets, storageBuckets...) {
 		if fvalue == math.MaxFloat64 {
 			bucketsFloat2String[fvalue] = "+Inf"
 		} else {
@@ -314,54 +318,38 @@ func isMetricMatch(lValues, metricValues []string) bool {
 
 // returns {-1, false} in case metric was not found in the slice.
 func findCounterValueIndex(metricSlice []*CounterValue, name string, labelValues []string) (int, bool) {
-	for i, m := range metricSlice {
-		if m.Name == name {
-			if isMetricMatch(labelValues, m.LabelValues) {
-				return i, true
-			}
-		}
-	}
+	idx := slices.IndexFunc(metricSlice, func(m *CounterValue) bool {
+		return m.Name == name && isMetricMatch(labelValues, m.LabelValues)
+	})
 
-	return -1, false
+	return idx, idx != -1
 }
 
 // returns {-1, false} in case metric was not found in the slice.
 func findGaugeValueIndex(metricSlice []*GaugeValue, name string, labelValues []string) (int, bool) {
-	for i, m := range metricSlice {
-		if m.Name == name {
-			if isMetricMatch(labelValues, m.LabelValues) {
-				return i, true
-			}
-		}
-	}
+	idx := slices.IndexFunc(metricSlice, func(m *GaugeValue) bool {
+		return m.Name == name && isMetricMatch(labelValues, m.LabelValues)
+	})
 
-	return -1, false
+	return idx, idx != -1
 }
 
 // returns {-1, false} in case metric was not found in the slice.
 func findSummaryValueIndex(metricSlice []*SummaryValue, name string, labelValues []string) (int, bool) {
-	for i, m := range metricSlice {
-		if m.Name == name {
-			if isMetricMatch(labelValues, m.LabelValues) {
-				return i, true
-			}
-		}
-	}
+	idx := slices.IndexFunc(metricSlice, func(m *SummaryValue) bool {
+		return m.Name == name && isMetricMatch(labelValues, m.LabelValues)
+	})
 
-	return -1, false
+	return idx, idx != -1
 }
 
 // returns {-1, false} in case metric was not found in the slice.
 func findHistogramValueIndex(metricSlice []*HistogramValue, name string, labelValues []string) (int, bool) {
-	for i, m := range metricSlice {
-		if m.Name == name {
-			if isMetricMatch(labelValues, m.LabelValues) {
-				return i, true
-			}
-		}
-	}
+	idx := slices.IndexFunc(metricSlice, func(m *HistogramValue) bool {
+		return m.Name == name && isMetricMatch(labelValues, m.LabelValues)
+	})
 
-	return -1, false
+	return idx, idx != -1
 }
 
 func (ms *metricServer) CounterInc(cv *CounterValue) {

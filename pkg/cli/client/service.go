@@ -403,7 +403,9 @@ func (service searchService) getTagsForCVEGQL(ctx context.Context, config Search
 		return result, nil
 	}
 
+	// Pre-allocate filtered results slice with estimated capacity
 	filteredResults := &common.ImagesForCve{}
+	filteredResults.Results = make([]common.ImageSummary, 0, len(result.Results))
 
 	for _, image := range result.Results {
 		if image.RepoName == repo {
@@ -476,7 +478,8 @@ func (service searchService) getReferrers(ctx context.Context, config SearchConf
 		return referrersResult{}, err
 	}
 
-	referrersList := referrersResult{}
+	// Pre-allocate referrers list with known capacity
+	referrersList := make(referrersResult, 0, len(referrerResp.Manifests))
 
 	for _, referrer := range referrerResp.Manifests {
 		referrersList = append(referrersList, common.Referrer{
@@ -954,7 +957,8 @@ func (ref referrersResult) stringPlainText(maxArtifactTypeLen int) (string, erro
 	var builder strings.Builder
 
 	maxDigestWidth := digestWidth
-	rows := [][]string{}
+	// Pre-allocate rows slice with known capacity
+	rows := make([][]string, 0, len(ref))
 
 	for _, referrer := range ref {
 		artifactType := ellipsize(referrer.ArtifactType, maxArtifactTypeLen, ellipsis)
@@ -1390,12 +1394,14 @@ func (service searchService) getRepos(ctx context.Context, config SearchConfig, 
 	fmt.Fprintln(config.ResultWriter, "\nREPOSITORY NAME")
 
 	if config.SortBy == SortByAlphabeticAsc {
-		for i := 0; i < len(catalog.Repositories); i++ {
-			fmt.Fprintln(config.ResultWriter, catalog.Repositories[i])
+		for _, repo := range catalog.Repositories {
+			fmt.Fprintln(config.ResultWriter, repo)
 		}
 	} else {
-		for i := len(catalog.Repositories) - 1; i >= 0; i-- {
-			fmt.Fprintln(config.ResultWriter, catalog.Repositories[i])
+		// Iterate in reverse order
+		repos := catalog.Repositories
+		for i := len(repos) - 1; i >= 0; i-- {
+			fmt.Fprintln(config.ResultWriter, repos[i])
 		}
 	}
 }
