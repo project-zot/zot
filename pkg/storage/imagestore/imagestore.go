@@ -1936,8 +1936,22 @@ func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []g
 			return nil
 		}
 
+		// Verify path structure follows standard OCI: rootDir/repo/blobs/algorithm/digest
+		parentDir := path.Clean(path.Dir(fileInfo.Path()))
+		grandparentDir := path.Clean(path.Dir(parentDir))
+
+		// Require grandparent directory to be ImageBlobsDir (standard OCI structure)
+		if path.Base(grandparentDir) != ispec.ImageBlobsDir {
+			return nil
+		}
+
+		// Verify parent directory is a valid digest algorithm (e.g., sha256, sha512)
+		digestAlgorithm := godigest.Algorithm(path.Base(parentDir))
+		if !digestAlgorithm.Available() {
+			return nil
+		}
+
 		digestHash := baseName
-		digestAlgorithm := godigest.Algorithm(path.Base(path.Dir(fileInfo.Path())))
 
 		blobDigest := godigest.NewDigestFromEncoded(digestAlgorithm, digestHash)
 		if err := blobDigest.Validate(); err != nil { //nolint: nilerr

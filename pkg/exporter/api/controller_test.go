@@ -94,8 +94,9 @@ func TestNewExporter(t *testing.T) {
 		exporterConfig := api.DefaultConfig()
 		So(exporterConfig, ShouldNotBeNil)
 
-		exporterPort := GetFreePort()
-		serverPort := GetFreePort()
+		ports := GetFreePorts(2)
+		exporterPort := ports[0]
+		serverPort := ports[1]
 		exporterConfig.Exporter.Port = exporterPort
 		exporterConfig.Exporter.Metrics.Path = strings.TrimPrefix(t.TempDir(), "/tmp/")
 		exporterConfig.Server.Port = serverPort
