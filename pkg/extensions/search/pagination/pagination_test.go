@@ -49,13 +49,24 @@ func TestImgSumPagination(t *testing.T) {
 			So(pagination.ImgSortByRelevance(image1, image2), ShouldEqual, -1)
 		})
 
-		Convey("ImgSortByUpdateTime with nil LastUpdated", func() {
+		Convey("ImgSortByUpdateTime with nil and zero LastUpdated", func() {
 			time1 := time.Date(2020, 1, 1, 1, 1, 1, 1, time.UTC)
 			time2 := time.Date(2010, 1, 1, 1, 1, 1, 1, time.UTC)
+			zeroTime := time.Time{}
 
 			// Both nil - should be equal
 			image1 := &gql_generated.ImageSummary{RepoName: ref("repo1"), Tag: ref("tag1"), LastUpdated: nil}
 			image2 := &gql_generated.ImageSummary{RepoName: ref("repo2"), Tag: ref("tag2"), LastUpdated: nil}
+			So(pagination.ImgSortByUpdateTime(image1, image2), ShouldEqual, 0)
+
+			// Both zero time - should be equal (treated same as nil)
+			image1.LastUpdated = &zeroTime
+			image2.LastUpdated = &zeroTime
+			So(pagination.ImgSortByUpdateTime(image1, image2), ShouldEqual, 0)
+
+			// a is nil, b is zero - should be equal (both treated as oldest)
+			image1.LastUpdated = nil
+			image2.LastUpdated = &zeroTime
 			So(pagination.ImgSortByUpdateTime(image1, image2), ShouldEqual, 0)
 
 			// a is nil, b is not - a should come after b (return 1)
@@ -63,9 +74,19 @@ func TestImgSumPagination(t *testing.T) {
 			image2.LastUpdated = &time1
 			So(pagination.ImgSortByUpdateTime(image1, image2), ShouldEqual, 1)
 
+			// a is zero, b is not - a should come after b (return 1)
+			image1.LastUpdated = &zeroTime
+			image2.LastUpdated = &time1
+			So(pagination.ImgSortByUpdateTime(image1, image2), ShouldEqual, 1)
+
 			// b is nil, a is not - a should come before b (return -1)
 			image1.LastUpdated = &time1
 			image2.LastUpdated = nil
+			So(pagination.ImgSortByUpdateTime(image1, image2), ShouldEqual, -1)
+
+			// b is zero, a is not - a should come before b (return -1)
+			image1.LastUpdated = &time1
+			image2.LastUpdated = &zeroTime
 			So(pagination.ImgSortByUpdateTime(image1, image2), ShouldEqual, -1)
 
 			// Both non-nil - normal comparison (a is newer, should come first in descending sort)
@@ -393,13 +414,24 @@ func TestPagination(t *testing.T) {
 				So(pagination.RepoSortByDownloads(repo1, repo1), ShouldEqual, 0)
 			})
 
-			Convey("RepoSortByUpdateTime with nil LastUpdated", func() {
+			Convey("RepoSortByUpdateTime with nil and zero LastUpdated", func() {
 				time1 := time.Date(2020, 1, 1, 1, 1, 1, 1, time.UTC)
 				time2 := time.Date(2010, 1, 1, 1, 1, 1, 1, time.UTC)
+				zeroTime := time.Time{}
 
 				// Both nil - should be equal
 				repo1 := &gql_generated.RepoSummary{Name: ref("repo1"), LastUpdated: nil}
 				repo2 := &gql_generated.RepoSummary{Name: ref("repo2"), LastUpdated: nil}
+				So(pagination.RepoSortByUpdateTime(repo1, repo2), ShouldEqual, 0)
+
+				// Both zero time - should be equal (treated same as nil)
+				repo1.LastUpdated = &zeroTime
+				repo2.LastUpdated = &zeroTime
+				So(pagination.RepoSortByUpdateTime(repo1, repo2), ShouldEqual, 0)
+
+				// a is nil, b is zero - should be equal (both treated as oldest)
+				repo1.LastUpdated = nil
+				repo2.LastUpdated = &zeroTime
 				So(pagination.RepoSortByUpdateTime(repo1, repo2), ShouldEqual, 0)
 
 				// a is nil, b is not - a should come after b (return 1)
@@ -407,9 +439,19 @@ func TestPagination(t *testing.T) {
 				repo2.LastUpdated = &time1
 				So(pagination.RepoSortByUpdateTime(repo1, repo2), ShouldEqual, 1)
 
+				// a is zero, b is not - a should come after b (return 1)
+				repo1.LastUpdated = &zeroTime
+				repo2.LastUpdated = &time1
+				So(pagination.RepoSortByUpdateTime(repo1, repo2), ShouldEqual, 1)
+
 				// b is nil, a is not - a should come before b (return -1)
 				repo1.LastUpdated = &time1
 				repo2.LastUpdated = nil
+				So(pagination.RepoSortByUpdateTime(repo1, repo2), ShouldEqual, -1)
+
+				// b is zero, a is not - a should come before b (return -1)
+				repo1.LastUpdated = &time1
+				repo2.LastUpdated = &zeroTime
 				So(pagination.RepoSortByUpdateTime(repo1, repo2), ShouldEqual, -1)
 
 				// Both non-nil - normal comparison (a is newer, should come first in descending sort)

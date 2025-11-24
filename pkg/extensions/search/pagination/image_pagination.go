@@ -163,17 +163,20 @@ func ImgSortByRelevance(a, b *gql_gen.ImageSummary) int { //nolint:varnamelen //
 
 // ImgSortByUpdateTime sorts descending by image update time.
 func ImgSortByUpdateTime(a, b *gql_gen.ImageSummary) int { //nolint:varnamelen // standard comparison func signature
-	// Handle nil cases: nil values are treated as oldest (come last in descending sort)
-	if a.LastUpdated == nil && b.LastUpdated == nil {
+	// Handle nil and zero time cases: both are treated as oldest (come last in descending sort)
+	aIsZero := a.LastUpdated == nil || (a.LastUpdated != nil && a.LastUpdated.IsZero())
+	bIsZero := b.LastUpdated == nil || (b.LastUpdated != nil && b.LastUpdated.IsZero())
+
+	if aIsZero && bIsZero {
 		return 0
 	}
 
-	if a.LastUpdated == nil {
-		return 1 // a is nil, b is not - a comes after b
+	if aIsZero {
+		return 1 // a is zero/nil, b is not - a comes after b
 	}
 
-	if b.LastUpdated == nil {
-		return -1 // b is nil, a is not - a comes before b
+	if bIsZero {
+		return -1 // b is zero/nil, a is not - a comes before b
 	}
 
 	if a.LastUpdated.After(*b.LastUpdated) {
