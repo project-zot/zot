@@ -110,7 +110,7 @@ jobs:
                 --health-cmd "curl http://localhost:9000/minio/health/live" \
                 minio/minio:RELEASE.2024-07-16T23-46-41Z server /data
       - name: Install py minio
-        run: pip3 install minio
+        run: pip3 install minio==7.2.18
 
       - name: Wait for minio to come up
         run: |
@@ -194,7 +194,7 @@ jobs:
                 --health-cmd "curl http://localhost:9000/minio/health/live" \
                 minio/minio:RELEASE.2024-07-16T23-46-41Z server /data
       - name: Install py minio
-        run: pip3 install minio
+        run: pip3 install minio==7.2.18
 
       - name: Wait for minio to come up
         run: |
