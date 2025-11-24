@@ -1296,7 +1296,7 @@ func (rc *RedisDB) GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta
 		}
 	}
 
-	return foundRepos, err
+	return foundRepos, nil
 }
 
 // AddManifestSignature adds signature metadata to a given manifest in the database.

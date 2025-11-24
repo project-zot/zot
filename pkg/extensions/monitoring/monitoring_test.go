@@ -453,16 +453,16 @@ func TestPopulateStorageMetrics(t *testing.T) {
 		So(ctlr, ShouldNotBeNil)
 		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
 
-		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
-		defer cm.StopServer()
-
-		// write a couple of images
+		// Write images before starting controller to avoid race condition with garbage collection
 		srcStorageCtlr := ociutils.GetDefaultStoreController(rootDir, ctlr.Log)
 		err = WriteImageToFileSystem(CreateDefaultImage(), "alpine", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 		err = WriteImageToFileSystem(CreateDefaultImage(), "busybox", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
+
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
 
 		metrics := monitoring.NewMetricsServer(true, ctlr.Log)
 		sch := scheduler.NewScheduler(conf, metrics, ctlr.Log)
