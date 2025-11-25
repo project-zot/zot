@@ -3260,9 +3260,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		subpath := "/a"
 
 		dir := t.TempDir()
-		subDir := t.TempDir()
-
-		subRootDir := path.Join(subDir, subpath)
+		subRootDir := t.TempDir()
 
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
@@ -3592,9 +3590,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		subpath := "/a"
 
 		dir := t.TempDir()
-		subDir := t.TempDir()
-
-		subRootDir := path.Join(subDir, subpath)
+		subRootDir := t.TempDir()
 
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
@@ -5060,9 +5056,7 @@ func TestMetaDBWhenSigningImages(t *testing.T) {
 		subpath := "/a"
 
 		dir := t.TempDir()
-		subDir := t.TempDir()
-
-		subRootDir := path.Join(subDir, subpath)
+		subRootDir := t.TempDir()
 
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)

@@ -721,6 +721,72 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) 
 		So(repoMeta.Tags, ShouldContainKey, tag)
 		So(repoMeta.Tags, ShouldNotContainKey, tag2)
 	})
+
+	Convey("Test no duplicate repos with substores and nested repo names", func() {
+		// Create nested directories - substore is a subdirectory of default store
+		defaultStoreDir := rootDir
+		substoreDir := filepath.Join(rootDir, "a")
+
+		defaultStore := local.NewImageStore(defaultStoreDir, false, false,
+			log, monitoring.NewMetricsServer(false, log), nil, nil, nil, nil)
+		substore := local.NewImageStore(substoreDir, false, false,
+			log, monitoring.NewMetricsServer(false, log), nil, nil, nil, nil)
+
+		storeController := storage.StoreController{
+			DefaultStore: defaultStore,
+			SubStore: map[string]storageTypes.ImageStore{
+				"/a": substore,
+			},
+		}
+
+		// Create a repo in default store (regular repo name, no route prefix)
+		defaultRepo := "repo-in-default"
+		image1 := CreateRandomImage()
+		err := WriteImageToFileSystem(image1, defaultRepo, "tag1", storeController)
+		So(err, ShouldBeNil)
+
+		// Create repos in substore (these will be returned by substore.GetRepositories())
+		// Repos in substore should have the "a" prefix to match the substore route
+		substoreRepo1 := "a/repo-in-substore-1"
+		substoreRepo2 := "a/repo-in-substore-2"
+		image2 := CreateRandomImage()
+		err = WriteImageToFileSystem(image2, substoreRepo1, "tag1", storeController)
+		So(err, ShouldBeNil)
+		image3 := CreateRandomImage()
+		err = WriteImageToFileSystem(image3, substoreRepo2, "tag1", storeController)
+		So(err, ShouldBeNil)
+
+		// Parse storage
+		err = meta.ParseStorage(metaDB, storeController, log)
+		So(err, ShouldBeNil)
+
+		// Get all repos from metaDB
+		repoMetaList, err := metaDB.SearchRepos(ctx, "")
+		So(err, ShouldBeNil)
+
+		// Collect all repo names and count occurrences
+		repoNames := make(map[string]int)
+		for _, repoMeta := range repoMetaList {
+			repoNames[repoMeta.Name]++
+		}
+
+		// Verify expected repos are present
+		// Substore repos are processed first (with "a/" prefix), then default store repos
+		expectedRepos := []string{substoreRepo1, substoreRepo2, defaultRepo}
+		for _, expectedRepo := range expectedRepos {
+			So(repoNames, ShouldContainKey, expectedRepo)
+		}
+
+		// Verify no duplicates - each repo should appear exactly once
+		for _, count := range repoNames {
+			So(count, ShouldEqual, 1)
+		}
+
+		// Verify total count - should be 3 repos:
+		// - substoreRepo1, substoreRepo2 (from substore with "a/" prefix)
+		// - defaultRepo (from default store, no prefix)
+		So(len(repoMetaList), ShouldEqual, 3)
+	})
 }
 
 func TestGetSignatureLayersInfo(t *testing.T) {
