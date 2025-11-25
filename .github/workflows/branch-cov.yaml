@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     name: coverage
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
           cache: false
