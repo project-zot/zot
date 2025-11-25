@@ -27,7 +27,7 @@ jobs:
             echo "BASE_IMAGE=gcr.io/distroless/base-debian12:latest-${ARCH}" >> "$GITHUB_ENV"
           fi
       - name: Check out the repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Log in to GitHub Docker Registry
         uses: docker/login-action@v3
         with:
@@ -112,7 +112,7 @@ jobs:
         image: [zot, zot-minimal, zxp, zb]
     steps:
       - name: Check out the repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Log in to GitHub Docker Registry
         uses: docker/login-action@v3
         with:
@@ -303,13 +303,13 @@ jobs:
       packages: write
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: main
           fetch-depth: '0'
 
       - name: Checkout project-zot/helm-charts
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: project-zot/helm-charts
           ref: main

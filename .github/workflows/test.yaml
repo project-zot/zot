@@ -16,7 +16,7 @@ jobs:
     name: Running zot without extensions tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install go
         uses: actions/setup-go@v6
         with:
@@ -56,7 +56,7 @@ jobs:
     name: Run zot with extensions tests
     runs-on: oracle-vm-16cpu-64gb-x86-64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
           cache: false
@@ -95,7 +95,7 @@ jobs:
     name: Running privileged tests on Linux
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
           cache: false
@@ -129,7 +129,7 @@ jobs:
     if: always()
     needs: [test-run-minimal,test-run-extensions,test-run-devmode]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
           cache: false
