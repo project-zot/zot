@@ -11,7 +11,7 @@ ARG BASE_IMAGE
 # ---
 # Stage 1: Install certs, build binary, create default config file
 # ---
-FROM --platform=$BUILDPLATFORM ghcr.io/project-zot/golang:1.24 AS builder
+FROM --platform=$BUILDPLATFORM ghcr.io/project-zot/golang:1.25 AS builder
 
 ARG TARGETOS
 ARG TARGETARCH
