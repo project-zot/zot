@@ -16,11 +16,11 @@ jobs:
     name: Stateless zot with minio and boltdb
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
           cache: false
-          go-version: 1.24.x
+          go-version: 1.25.x
       - name: Install dependencies
         run: |
           cd $GITHUB_WORKSPACE
@@ -271,11 +271,11 @@ jobs:
     name: Stateless zot with minio and redis
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
           cache: false
-          go-version: 1.24.x
+          go-version: 1.25.x
       - name: Install dependencies
         run: |
           cd $GITHUB_WORKSPACE

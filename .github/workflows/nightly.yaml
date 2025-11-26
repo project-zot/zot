@@ -18,10 +18,10 @@ jobs:
     name: Dedupe/restore blobs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: 1.24.x
+          go-version: 1.25.x
       - name: Install dependencies
         run: |
           cd $GITHUB_WORKSPACE
@@ -69,10 +69,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out source code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: 1.24.x
+          go-version: 1.25.x
       - name: Install dependencies
         run: |
           cd $GITHUB_WORKSPACE
@@ -86,11 +86,11 @@ jobs:
     name: GC(with referrers) on S3(localstack) with short interval
     runs-on: oracle-vm-16cpu-64gb-x86-64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
           cache: false
-          go-version: 1.24.x
+          go-version: 1.25.x
       - uses: ./.github/actions/setup-localstack
 
       - name: Run zb
@@ -123,11 +123,11 @@ jobs:
     name: GC(without referrers) on S3(localstack) with short interval
     runs-on: oracle-vm-16cpu-64gb-x86-64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
           cache: false
-          go-version: 1.24.x
+          go-version: 1.25.x
       - uses: ./.github/actions/setup-localstack
 
       - name: Run zb
@@ -160,9 +160,9 @@ jobs:
     name: Build docker image (for users still using Docker environments)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Check out source code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - uses: ./.github/actions/clean-runner
       - name: Build image
         run: |
@@ -172,10 +172,10 @@ jobs:
     name: Prometheus setup
     runs-on: oracle-vm-8cpu-32gb-x86-64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: 1.24.x
+          go-version: 1.25.x
       - name: Install dependencies
         run: |
           cd $GITHUB_WORKSPACE
@@ -203,11 +203,11 @@ jobs:
     name: s3+dynamodb scale-out
     runs-on: oracle-vm-16cpu-64gb-x86-64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
           cache: false
-          go-version: 1.24.x
+          go-version: 1.25.x
       - name: Install dependencies
         run: |
           cd $GITHUB_WORKSPACE
@@ -289,11 +289,11 @@ jobs:
     name: s3+redis scale-out
     runs-on: oracle-vm-16cpu-64gb-x86-64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
           cache: false
-          go-version: 1.24.x
+          go-version: 1.25.x
       - name: Install dependencies
         run: |
           cd $GITHUB_WORKSPACE

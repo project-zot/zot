@@ -16,11 +16,11 @@ jobs:
     name: GC(with referrers) on filesystem with short interval
     runs-on: oracle-vm-8cpu-32gb-x86-64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
           cache: false
-          go-version: 1.24.x
+          go-version: 1.25.x
 
       - name: Run zb
         id: bench
@@ -55,11 +55,11 @@ jobs:
     name: GC(without referrers) on filesystem with short interval
     runs-on: oracle-vm-8cpu-32gb-x86-64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
           cache: false
-          go-version: 1.24.x
+          go-version: 1.25.x
 
       - name: Run zb
         id: bench
@@ -94,11 +94,11 @@ jobs:
     name: GC(with referrers) on S3(minio) with short interval
     runs-on: oracle-vm-8cpu-32gb-x86-64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
           cache: false
-          go-version: 1.24.x
+          go-version: 1.25.x
       - uses: ./.github/actions/setup-localstack
       - name: Setup minio service
         run: |
@@ -178,11 +178,11 @@ jobs:
     name: GC(without referrers) on S3(minio) with short interval
     runs-on: oracle-vm-8cpu-32gb-x86-64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
           cache: false
-          go-version: 1.24.x
+          go-version: 1.25.x
       - uses: ./.github/actions/setup-localstack
       - name: Setup minio service
         run: |

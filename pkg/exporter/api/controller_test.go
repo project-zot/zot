@@ -507,19 +507,16 @@ func TestNewExporter(t *testing.T) {
 
 					workersSize := int(nBig.Int64())
 					for range workersSize {
-						wg.Add(1)
+						wg.Go(
+							func() {
+								m := serverController.Metrics.ReceiveMetrics()
+								json := jsoniter.ConfigCompatibleWithStandardLibrary
 
-						go func() {
-							defer wg.Done()
-
-							m := serverController.Metrics.ReceiveMetrics()
-							json := jsoniter.ConfigCompatibleWithStandardLibrary
-
-							_, err := json.Marshal(m)
-							if err != nil {
-								exporterController.Log.Error().Err(err).Msg("Concurrent metrics scrape fail")
-							}
-						}()
+								_, err := json.Marshal(m)
+								if err != nil {
+									exporterController.Log.Error().Err(err).Msg("Concurrent metrics scrape fail")
+								}
+							})
 					}
 
 					wg.Wait()
