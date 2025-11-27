@@ -26,10 +26,6 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 	defer func() { os.Args = oldArgs }()
 
 	Convey("Test verify CVE warn for remote storage", t, func(c C) {
-		tmpfile, err := os.CreateTemp("", "zot-test*.json")
-		So(err, ShouldBeNil)
-		defer os.Remove(tmpfile.Name()) // clean up
-
 		content := fmt.Sprintf(`{
 			"storage":{
 				"rootDirectory":"%s",
@@ -58,10 +54,9 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 			}
 		}`, t.TempDir())
 
-		err = os.WriteFile(tmpfile.Name(), []byte(content), 0o0600)
-		So(err, ShouldBeNil)
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
 
-		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		os.Args = []string{"cli_test", "verify", tmpfile}
 
 		So(cli.NewServerRootCmd().Execute(), ShouldNotBeNil)
 
@@ -98,149 +93,99 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 				}
 			}
 		}`, t.TempDir(), t.TempDir())
-		err = os.WriteFile(tmpfile.Name(), []byte(content), 0o0600)
-		So(err, ShouldBeNil)
+		tmpfile = MakeTempFileWithContent(t, "zot-test.json", content)
 
-		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		os.Args = []string{"cli_test", "verify", tmpfile}
 
 		So(cli.NewServerRootCmd().Execute(), ShouldNotBeNil)
 	})
 
 	Convey("Test verify w/ sync and w/o filesystem storage", t, func(c C) {
-		tmpfile, err := os.CreateTemp("", "zot-test*.json")
-		So(err, ShouldBeNil)
-		defer os.Remove(tmpfile.Name()) // clean up
-
 		content := fmt.Sprintf(`{"storage":{"rootDirectory":"%s", "storageDriver": {"name": "s3"}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
 							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
 							"maxRetries": 1, "retryDelay": "10s"}]}}}`, t.TempDir())
-		_, err = tmpfile.WriteString(content)
-		So(err, ShouldBeNil)
-		err = tmpfile.Close()
-		So(err, ShouldBeNil)
-		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+		os.Args = []string{"cli_test", "verify", tmpfile}
 
 		So(cli.NewServerRootCmd().Execute(), ShouldNotBeNil)
 	})
 
 	Convey("Test verify w/ sync and w/ filesystem storage", t, func(c C) {
-		tmpfile, err := os.CreateTemp("", "zot-test*.json")
-		So(err, ShouldBeNil)
-		defer os.Remove(tmpfile.Name()) // clean up
-
 		content := fmt.Sprintf(`{"storage":{"rootDirectory":"%s"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
 							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
 							"maxRetries": 1, "retryDelay": "10s"}]}}}`, t.TempDir())
-		_, err = tmpfile.WriteString(content)
-		So(err, ShouldBeNil)
-		err = tmpfile.Close()
-		So(err, ShouldBeNil)
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
 
-		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		os.Args = []string{"cli_test", "verify", tmpfile}
 
 		So(cli.NewServerRootCmd().Execute(), ShouldBeNil)
 	})
 
 	Convey("Test verify with bad sync prefixes", t, func(c C) {
-		tmpfile, err := os.CreateTemp("", "zot-test*.json")
-		So(err, ShouldBeNil)
-		defer os.Remove(tmpfile.Name()) // clean up
-
 		content := fmt.Sprintf(`{"storage":{"rootDirectory":"%s"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
 							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
 							"maxRetries": 1, "retryDelay": "10s",
 							"content": [{"prefix":"[repo^&["}]}]}}}`, t.TempDir())
-		_, err = tmpfile.WriteString(content)
-		So(err, ShouldBeNil)
-		err = tmpfile.Close()
-		So(err, ShouldBeNil)
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
 
-		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		os.Args = []string{"cli_test", "verify", tmpfile}
 
 		So(cli.NewServerRootCmd().Execute(), ShouldNotBeNil)
 	})
 
 	Convey("Test verify with bad sync content config", t, func(c C) {
-		tmpfile, err := os.CreateTemp("", "zot-test*.json")
-		So(err, ShouldBeNil)
-		defer os.Remove(tmpfile.Name()) // clean up
-
 		content := fmt.Sprintf(`{"storage":{"rootDirectory":"%s"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
 							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
 							"maxRetries": 1, "retryDelay": "10s",
 							"content": [{"prefix":"zot-repo","stripPrefix":true,"destination":"/"}]}]}}}`, t.TempDir())
-		_, err = tmpfile.WriteString(content)
-		So(err, ShouldBeNil)
-		err = tmpfile.Close()
-		So(err, ShouldBeNil)
-		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+		os.Args = []string{"cli_test", "verify", tmpfile}
 
 		So(cli.NewServerRootCmd().Execute(), ShouldNotBeNil)
 	})
 
 	Convey("Test verify with good sync content config", t, func(c C) {
-		tmpfile, err := os.CreateTemp("", "zot-test*.json")
-		So(err, ShouldBeNil)
-		defer os.Remove(tmpfile.Name()) // clean up
-
 		content := fmt.Sprintf(`{"storage":{"rootDirectory":"%s"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
 							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
 							"maxRetries": 1, "retryDelay": "10s",
 							"content": [{"prefix":"zot-repo/*","stripPrefix":true,"destination":"/"}]}]}}}`, t.TempDir())
-		_, err = tmpfile.WriteString(content)
-		So(err, ShouldBeNil)
-		err = tmpfile.Close()
-		So(err, ShouldBeNil)
-		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		err = cli.NewServerRootCmd().Execute()
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+		os.Args = []string{"cli_test", "verify", tmpfile}
+		err := cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
 	})
 
 	Convey("Test verify sync config default tls value", t, func(c C) {
-		tmpfile, err := os.CreateTemp("", "zot-test*.json")
-		So(err, ShouldBeNil)
-		defer os.Remove(tmpfile.Name()) // clean up
-
 		content := fmt.Sprintf(`{"storage":{"rootDirectory":"%s"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
 							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
 							"maxRetries": 1, "retryDelay": "10s",
 							"content": [{"prefix":"repo**"}]}]}}}`, t.TempDir())
-		_, err = tmpfile.WriteString(content)
-		So(err, ShouldBeNil)
-		err = tmpfile.Close()
-		So(err, ShouldBeNil)
-		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		err = cli.NewServerRootCmd().Execute()
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+		os.Args = []string{"cli_test", "verify", tmpfile}
+		err := cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
 	})
 
 	Convey("Test verify sync without retry options", t, func(c C) {
-		tmpfile, err := os.CreateTemp("", "zot-test*.json")
-		So(err, ShouldBeNil)
-		defer os.Remove(tmpfile.Name()) // clean up
-
 		content := fmt.Sprintf(`{"storage":{"rootDirectory":"%s"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
 							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
 							"maxRetries": 10, "content": [{"prefix":"repo**"}]}]}}}`, t.TempDir())
-		_, err = tmpfile.WriteString(content)
-		So(err, ShouldBeNil)
-		err = tmpfile.Close()
-		So(err, ShouldBeNil)
-		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+		os.Args = []string{"cli_test", "verify", tmpfile}
 
 		So(cli.NewServerRootCmd().Execute(), ShouldNotBeNil)
 	})
@@ -249,12 +194,8 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 func TestValidateExtensionsConfig(t *testing.T) {
 	Convey("Legacy extensions should not error", t, func(c C) {
 		config := config.New()
-		tmpfile, err := os.CreateTemp("", "zot-test*.json")
-		So(err, ShouldBeNil)
 
-		defer os.Remove(tmpfile.Name())
-
-		content := []byte(`{
+		content := `{
 			"storage": {
 				"rootDirectory": "%/tmp/zot"
 			},
@@ -273,22 +214,16 @@ func TestValidateExtensionsConfig(t *testing.T) {
 					"enable": "true"
 				}
 			}
-		}`)
-		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
-		So(err, ShouldBeNil)
-		err = cli.LoadConfiguration(config, tmpfile.Name())
+		}`
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+		err := cli.LoadConfiguration(config, tmpfile)
 		So(err, ShouldBeNil)
 	})
 
 	Convey("Test missing extensions for UI to work", t, func(c C) {
 		config := config.New()
 
-		tmpfile, err := os.CreateTemp("", "zot-test*.json")
-		So(err, ShouldBeNil)
-
-		defer os.Remove(tmpfile.Name())
-
-		content := []byte(`{
+		content := `{
 			"storage": {
 				"rootDirectory": "%/tmp/zot"
 			},
@@ -304,21 +239,15 @@ func TestValidateExtensionsConfig(t *testing.T) {
 					"enable": "true"
 				}
 			}
-		}`)
-		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
-		So(err, ShouldBeNil)
-		err = cli.LoadConfiguration(config, tmpfile.Name())
+		}`
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+		err := cli.LoadConfiguration(config, tmpfile)
 		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Test enabling UI extension with all prerequisites", t, func(c C) {
 		config := config.New()
-		tmpfile, err := os.CreateTemp("", "zot-test*.json")
-		So(err, ShouldBeNil)
-
-		defer os.Remove(tmpfile.Name())
-
-		content := []byte(`{
+		content := `{
 			"storage": {
 				"rootDirectory": "%/tmp/zot"
 			},
@@ -337,21 +266,15 @@ func TestValidateExtensionsConfig(t *testing.T) {
 					"enable": "true"
 				}
 			}
-		}`)
-		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
-		So(err, ShouldBeNil)
-		err = cli.LoadConfiguration(config, tmpfile.Name())
+		}`
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+		err := cli.LoadConfiguration(config, tmpfile)
 		So(err, ShouldBeNil)
 	})
 
 	Convey("Test extension are implicitly enabled", t, func(c C) {
 		config := config.New()
-		tmpfile, err := os.CreateTemp("", "zot-test*.json")
-		So(err, ShouldBeNil)
-
-		defer os.Remove(tmpfile.Name())
-
-		content := []byte(`{
+		content := `{
 			"storage": {
 				"rootDirectory": "%/tmp/zot"
 			},
@@ -369,10 +292,9 @@ func TestValidateExtensionsConfig(t *testing.T) {
 				"trust": {},
 				"scrub": {}
 			}
-		}`)
-		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
-		So(err, ShouldBeNil)
-		err = cli.LoadConfiguration(config, tmpfile.Name())
+		}`
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+		err := cli.LoadConfiguration(config, tmpfile)
 		So(err, ShouldBeNil)
 		So(config.Extensions.UI, ShouldNotBeNil)
 		So(*config.Extensions.UI.Enable, ShouldBeTrue)
@@ -395,10 +317,7 @@ func TestServeExtensions(t *testing.T) {
 	Convey("config file with no extensions", t, func(c C) {
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
-
-		defer os.Remove(logFile.Name()) // clean up
+		logPath := MakeTempFilePath(t, "zot-log.txt")
 
 		tmpFile := t.TempDir()
 
@@ -414,29 +333,22 @@ func TestServeExtensions(t *testing.T) {
 				"level": "debug",
 				"output": "%s"
 			}
-		}`, tmpFile, port, logFile.Name())
+		}`, tmpFile, port, logPath)
 
-		cfgfile, err := os.CreateTemp("", "zot-test*.json")
-		So(err, ShouldBeNil)
-		defer os.Remove(cfgfile.Name()) // clean up
+		cfgfile := MakeTempFileWithContent(t, "zot-test.json", content)
 
-		_, err = cfgfile.WriteString(content)
-		So(err, ShouldBeNil)
-		err = cfgfile.Close()
-		So(err, ShouldBeNil)
-
-		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
+		os.Args = []string{"cli_test", "serve", cfgfile}
 
 		go func() {
 			Convey("run", t, func() {
-				err = cli.NewServerRootCmd().Execute()
+				err := cli.NewServerRootCmd().Execute()
 				So(err, ShouldBeNil)
 			})
 		}()
 
 		WaitTillServerReady(baseURL)
 
-		data, err := os.ReadFile(logFile.Name())
+		data, err := os.ReadFile(logPath)
 
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring, "\"Extensions\":null")
@@ -445,10 +357,7 @@ func TestServeExtensions(t *testing.T) {
 	Convey("config file with empty extensions", t, func(c C) {
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
-
-		defer os.Remove(logFile.Name()) // clean up
+		logPath := MakeTempFilePath(t, "zot-log.txt")
 
 		tmpFile := t.TempDir()
 
@@ -466,28 +375,21 @@ func TestServeExtensions(t *testing.T) {
 			},
 			"extensions": {
 			}
-		}`, tmpFile, port, logFile.Name())
+		}`, tmpFile, port, logPath)
 
-		cfgfile, err := os.CreateTemp("", "zot-test*.json")
-		So(err, ShouldBeNil)
-		defer os.Remove(cfgfile.Name()) // clean up
+		cfgfile := MakeTempFileWithContent(t, "zot-test.json", content)
 
-		_, err = cfgfile.WriteString(content)
-		So(err, ShouldBeNil)
-		err = cfgfile.Close()
-		So(err, ShouldBeNil)
-
-		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
+		os.Args = []string{"cli_test", "serve", cfgfile}
 
 		go func() {
 			Convey("run", t, func() {
-				err = cli.NewServerRootCmd().Execute()
+				err := cli.NewServerRootCmd().Execute()
 				So(err, ShouldBeNil)
 			})
 		}()
 
 		WaitTillServerReady(baseURL)
-		data, err := os.ReadFile(logFile.Name())
+		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring,
 			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null,\"UI\":null,\"Mgmt\":null") //nolint:lll // gofumpt conflicts with lll
@@ -498,27 +400,16 @@ func testWithMetricsEnabled(t *testing.T, rootDir string, cfgContentFormat strin
 	t.Helper()
 	port := GetFreePort()
 	baseURL := GetBaseURL(port)
-	logFile, err := os.CreateTemp("", "zot-log*.txt")
-	So(err, ShouldBeNil)
+	logPath := MakeTempFilePath(t, "zot-log.txt")
 
-	defer os.Remove(logFile.Name()) // clean up
+	content := fmt.Sprintf(cfgContentFormat, rootDir, port, logPath)
+	cfgfile := MakeTempFileWithContent(t, "zot-test.json", content)
 
-	content := fmt.Sprintf(cfgContentFormat, rootDir, port, logFile.Name())
-	cfgfile, err := os.CreateTemp("", "zot-test*.json")
-	So(err, ShouldBeNil)
-
-	defer os.Remove(cfgfile.Name()) // clean up
-
-	_, err = cfgfile.WriteString(content)
-	So(err, ShouldBeNil)
-	err = cfgfile.Close()
-	So(err, ShouldBeNil)
-
-	os.Args = []string{"cli_test", "serve", cfgfile.Name()}
+	os.Args = []string{"cli_test", "serve", cfgfile}
 
 	go func() {
 		Convey("run", t, func() {
-			err = cli.NewServerRootCmd().Execute()
+			err := cli.NewServerRootCmd().Execute()
 			So(err, ShouldBeNil)
 		})
 	}()
@@ -532,7 +423,7 @@ func testWithMetricsEnabled(t *testing.T, rootDir string, cfgContentFormat strin
 	respStr := string(resp.Body())
 	So(respStr, ShouldContainSubstring, "zot_info")
 
-	data, err := os.ReadFile(logFile.Name())
+	data, err := os.ReadFile(logPath)
 	So(err, ShouldBeNil)
 	So(string(data), ShouldContainSubstring,
 		"\"Metrics\":{\"Enable\":true,\"Prometheus\":{\"Path\":\"/metrics\"}}")
@@ -619,11 +510,9 @@ func TestServeMetricsExtension(t *testing.T) {
 	Convey("with explicit disable", t, func(c C) {
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
-		tmpFile := t.TempDir()
+		logPath := MakeTempFilePath(t, "zot-log.txt")
 
-		defer os.Remove(logFile.Name()) // clean up
+		tmpFile := t.TempDir()
 
 		content := fmt.Sprintf(`{
 					"storage": {
@@ -642,22 +531,15 @@ func TestServeMetricsExtension(t *testing.T) {
 							"enable": false
 						}
 					}
-				}`, tmpFile, port, logFile.Name())
+				}`, tmpFile, port, logPath)
 
-		cfgfile, err := os.CreateTemp("", "zot-test*.json")
-		So(err, ShouldBeNil)
-		defer os.Remove(cfgfile.Name()) // clean up
+		cfgfile := MakeTempFileWithContent(t, "zot-test.json", content)
 
-		_, err = cfgfile.WriteString(content)
-		So(err, ShouldBeNil)
-		err = cfgfile.Close()
-		So(err, ShouldBeNil)
-
-		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
+		os.Args = []string{"cli_test", "serve", cfgfile}
 
 		go func() {
 			Convey("run", t, func() {
-				err = cli.NewServerRootCmd().Execute()
+				err := cli.NewServerRootCmd().Execute()
 				So(err, ShouldBeNil)
 			})
 		}()
@@ -669,7 +551,7 @@ func TestServeMetricsExtension(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-		data, err := os.ReadFile(logFile.Name())
+		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring,
 			"\"Metrics\":{\"Enable\":false,\"Prometheus\":{\"Path\":\"/metrics\"}}") //nolint:lll // gofumpt conflicts with lll
@@ -717,12 +599,10 @@ func TestServeSyncExtension(t *testing.T) {
 				}
 			}`
 
-		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, _, err := runCLIWithConfig(t, content)
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
-
-		defer os.Remove(logPath) // clean up
 
 		So(string(data), ShouldContainSubstring,
 			"\"Extensions\":{\"Search\":null,\"Sync\":{\"Enable\":true")
@@ -765,12 +645,10 @@ func TestServeSyncExtension(t *testing.T) {
 				}
 			}`
 
-		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, _, err := runCLIWithConfig(t, content)
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
-
-		defer os.Remove(logPath) // clean up
 
 		So(string(data), ShouldContainSubstring,
 			"\"Extensions\":{\"Search\":null,\"Sync\":{\"Enable\":true")
@@ -803,12 +681,10 @@ func TestServeSyncExtension(t *testing.T) {
 				}
 			}`
 
-		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, _, err := runCLIWithConfig(t, content)
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
-
-		defer os.Remove(logPath) // clean up
 
 		So(string(data), ShouldContainSubstring,
 			"\"Extensions\":{\"Search\":null,\"Sync\":{\"Enable\":false")
@@ -839,12 +715,10 @@ func TestServeScrubExtension(t *testing.T) {
 					}
 				}`
 
-		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, _, err := runCLIWithConfig(t, content)
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
-
-		defer os.Remove(logPath) // clean up
 
 		dataStr := string(data)
 		So(dataStr, ShouldContainSubstring,
@@ -873,12 +747,10 @@ func TestServeScrubExtension(t *testing.T) {
 					}
 				}`
 
-		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, _, err := runCLIWithConfig(t, content)
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
-
-		defer os.Remove(logPath) // clean up
 
 		// Even if in config we specified scrub interval=1h, the minimum interval is 2h
 		dataStr := string(data)
@@ -907,12 +779,10 @@ func TestServeScrubExtension(t *testing.T) {
 					}
 				}`
 
-		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, _, err := runCLIWithConfig(t, content)
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
-
-		defer os.Remove(logPath) // clean up
 
 		dataStr := string(data)
 		So(dataStr, ShouldContainSubstring,
@@ -941,12 +811,10 @@ func TestServeScrubExtension(t *testing.T) {
 				}
 			}`
 
-		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, _, err := runCLIWithConfig(t, content)
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
-
-		defer os.Remove(logPath) // clean up
 
 		dataStr := string(data)
 		So(dataStr, ShouldContainSubstring, "\"Scrub\":{\"Enable\":false,\"Interval\":86400000000000}")
@@ -982,12 +850,10 @@ func TestServeLintExtension(t *testing.T) {
 					}
 				}`
 
-		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, _, err := runCLIWithConfig(t, content)
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
-
-		defer os.Remove(logPath) // clean up
 
 		So(string(data), ShouldContainSubstring,
 			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":{\"Enable\":true,\"MandatoryAnnotations\":") //nolint:lll // gofumpt conflicts with lll
@@ -1013,12 +879,10 @@ func TestServeLintExtension(t *testing.T) {
 					}
 				}`
 
-		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, _, err := runCLIWithConfig(t, content)
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
-
-		defer os.Remove(logPath) // clean up
 
 		So(string(data), ShouldContainSubstring,
 			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":{\"Enable\":false,\"MandatoryAnnotations\":null}") //nolint:lll // gofumpt conflicts with lll
@@ -1049,11 +913,9 @@ func TestServeSearchEnabled(t *testing.T) {
 					}
 				}`
 
-		tempDir := t.TempDir()
-		logPath, err := runCLIWithConfig(tempDir, content)
+		logPath, _, err := runCLIWithConfig(t, content)
 		So(err, ShouldBeNil)
 		// to avoid data race when multiple go routines write to trivy DB instance.
-		defer os.Remove(logPath) // clean up
 
 		substring := `"Extensions":{"Search":{"Enable":true,"CVE":null}`
 
@@ -1097,14 +959,11 @@ func TestServeSearchEnabledDefaultCVEDB(t *testing.T) {
 					}
 				}`
 
-		tempDir := t.TempDir()
-		logPath, err := runCLIWithConfig(tempDir, content)
+		logPath, rootDir, err := runCLIWithConfig(t, content)
 		So(err, ShouldBeNil)
 
-		defer os.Remove(logPath) // clean up
-
 		// to avoid data race when multiple go routines write to trivy DB instance.
-		WaitTillTrivyDBDownloadStarted(tempDir)
+		WaitTillTrivyDBDownloadStarted(rootDir)
 
 		// The default config handling logic will convert the 1h interval to a 2h interval
 		substring := "\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":7200000000000,\"Trivy\":" +
@@ -1154,11 +1013,8 @@ func TestServeSearchEnabledNoCVE(t *testing.T) {
 				}
 			}`
 
-		tempDir := t.TempDir()
-		logPath, err := runCLIWithConfig(tempDir, content)
+		logPath, _, err := runCLIWithConfig(t, content)
 		So(err, ShouldBeNil)
-
-		defer os.Remove(logPath) // clean up
 
 		substring := `"Extensions":{"Search":{"Enable":true,"CVE":null}` //nolint:lll // gofumpt conflicts with lll
 		found, err := ReadLogFileAndSearchString(logPath, substring, readLogFileTimeout)
@@ -1202,12 +1058,10 @@ func TestServeSearchDisabled(t *testing.T) {
 				}
 			}`
 
-		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, _, err := runCLIWithConfig(t, content)
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
-
-		defer os.Remove(logPath) // clean up
 
 		dataStr := string(data)
 		So(dataStr, ShouldContainSubstring,
@@ -1243,9 +1097,8 @@ func TestServeMgmtExtension(t *testing.T) {
 					}
 				}`
 
-		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, _, err := runCLIWithConfig(t, content)
 		So(err, ShouldBeNil)
-		defer os.Remove(logPath) // clean up
 
 		found, err := ReadLogFileAndSearchString(logPath, "setting up mgmt routes", 10*time.Second)
 
@@ -1276,9 +1129,8 @@ func TestServeMgmtExtension(t *testing.T) {
 					}
 				}`
 
-		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, _, err := runCLIWithConfig(t, content)
 		So(err, ShouldBeNil)
-		defer os.Remove(logPath) // clean up
 
 		found, err := ReadLogFileAndSearchString(logPath,
 			"skip enabling the mgmt route as the config prerequisites are not met", 10*time.Second)
@@ -1308,9 +1160,8 @@ func TestServeMgmtExtension(t *testing.T) {
 					}
 				}`
 
-		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, _, err := runCLIWithConfig(t, content)
 		So(err, ShouldBeNil)
-		defer os.Remove(logPath) // clean up
 
 		found, err := ReadLogFileAndSearchString(logPath,
 			"skip enabling the mgmt route as the config prerequisites are not met", 10*time.Second)
@@ -1351,9 +1202,8 @@ func TestServeImageTrustExtension(t *testing.T) {
 					}
 				}`
 
-		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, _, err := runCLIWithConfig(t, content)
 		So(err, ShouldBeNil)
-		defer os.Remove(logPath) // clean up
 
 		found, err := ReadLogFileAndSearchString(logPath,
 			"skip enabling the image trust routes as the config prerequisites are not met", 10*time.Second)
@@ -1388,9 +1238,8 @@ func TestServeImageTrustExtension(t *testing.T) {
 					}
 				}`
 
-		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, _, err := runCLIWithConfig(t, content)
 		So(err, ShouldBeNil)
-		defer os.Remove(logPath) // clean up
 
 		found, err := ReadLogFileAndSearchString(logPath,
 			"skip enabling the image trust routes as the config prerequisites are not met", 10*time.Second)
@@ -1427,9 +1276,8 @@ func TestServeImageTrustExtension(t *testing.T) {
 					}
 				}`
 
-		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, _, err := runCLIWithConfig(t, content)
 		So(err, ShouldBeNil)
-		defer os.Remove(logPath) // clean up
 
 		found, err := ReadLogFileAndSearchString(logPath,
 			"setting up image trust routes", 10*time.Second)
@@ -1463,10 +1311,6 @@ func TestOverlappingSyncRetentionConfig(t *testing.T) {
 	defer func() { os.Args = oldArgs }()
 
 	Convey("Test verify without overlapping sync and retention", t, func(c C) {
-		tmpfile, err := os.CreateTemp("", "zot-test*.json")
-		So(err, ShouldBeNil)
-		defer os.Remove(tmpfile.Name()) // clean up
-
 		content := `{
 			"distSpecVersion": "1.1.1",
 			"storage": {
@@ -1521,21 +1365,15 @@ func TestOverlappingSyncRetentionConfig(t *testing.T) {
 			}
 		}`
 
-		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, _, err := runCLIWithConfig(t, content)
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
-
-		defer os.Remove(logPath) // clean up
 
 		So(string(data), ShouldNotContainSubstring, "overlapping sync content")
 	})
 
 	Convey("Test verify with overlapping sync and retention - retention would remove v4 tags", t, func(c C) {
-		tmpfile, err := os.CreateTemp("", "zot-test*.json")
-		So(err, ShouldBeNil)
-		defer os.Remove(tmpfile.Name()) // clean up
-
 		content := `{
 			"distSpecVersion": "1.1.1",
 			"storage": {
@@ -1588,21 +1426,15 @@ func TestOverlappingSyncRetentionConfig(t *testing.T) {
 			}
 		}`
 
-		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, _, err := runCLIWithConfig(t, content)
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
-
-		defer os.Remove(logPath) // clean up
 
 		So(string(data), ShouldContainSubstring, "overlapping sync content\":{\"Prefix\":\"infra/*")
 	})
 
 	Convey("Test verify with overlapping sync and retention - retention would remove tags from repo", t, func(c C) {
-		tmpfile, err := os.CreateTemp("", "zot-test*.json")
-		So(err, ShouldBeNil)
-		defer os.Remove(tmpfile.Name()) // clean up
-
 		content := `{
 			"distSpecVersion": "1.1.1",
 			"storage": {
@@ -1653,21 +1485,15 @@ func TestOverlappingSyncRetentionConfig(t *testing.T) {
 		}
 		`
 
-		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, _, err := runCLIWithConfig(t, content)
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
-
-		defer os.Remove(logPath) // clean up
 
 		So(string(data), ShouldContainSubstring, "overlapping sync content\":{\"Prefix\":\"**")
 	})
 
 	Convey("Test verify with overlapping sync and retention - retention would remove tags from subpath", t, func(c C) {
-		tmpfile, err := os.CreateTemp("", "zot-test*.json")
-		So(err, ShouldBeNil)
-		defer os.Remove(tmpfile.Name()) // clean up
-
 		content := `{
 			"distSpecVersion": "1.1.1",
 			"storage": {
@@ -1721,12 +1547,10 @@ func TestOverlappingSyncRetentionConfig(t *testing.T) {
 		}
 		`
 
-		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, _, err := runCLIWithConfig(t, content)
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
-
-		defer os.Remove(logPath) // clean up
 
 		So(string(data), ShouldContainSubstring, "overlapping sync content\":{\"Prefix\":\"prod/*")
 	})
@@ -1738,10 +1562,6 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 	defer func() { os.Args = oldArgs }()
 
 	Convey("Test verify sync with remote storage works if sync.tmpdir is provided", t, func(c C) {
-		tmpfile, err := os.CreateTemp("", "zot-test*.json")
-		So(err, ShouldBeNil)
-		defer os.Remove(tmpfile.Name()) // clean up
-
 		content := `{
 			"distSpecVersion": "1.1.1",
 			"storage": {
@@ -1787,13 +1607,11 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 			}
 		}`
 
-		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, _, err := runCLIWithConfig(t, content)
 		So(err, ShouldBeNil)
 
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
-
-		defer os.Remove(logPath) // clean up
 
 		So(string(data), ShouldNotContainSubstring,
 			"using both sync and remote storage features needs config.Extensions.Sync.DownloadDir to be specified")
@@ -1801,15 +1619,7 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 
 	Convey("Test verify sync with remote storage panics if sync.tmpdir is not provided", t, func(c C) {
 		port := GetFreePort()
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
-
-		defer os.Remove(logFile.Name()) // clean up
-
-		tmpfile, err := os.CreateTemp("", "zot-test*.json")
-		So(err, ShouldBeNil)
-
-		defer os.Remove(tmpfile.Name()) // clean up
+		logPath := MakeTempFilePath(t, "zot-log.txt")
 
 		content := fmt.Sprintf(`{
 			"distSpecVersion": "1.1.1",
@@ -1853,19 +1663,16 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 					]
 				}
 			}
-		}`, t.TempDir(), port, logFile.Name())
+		}`, t.TempDir(), port, logPath)
 
-		err = os.WriteFile(tmpfile.Name(), []byte(content), 0o0600)
-		So(err, ShouldBeNil)
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
 
-		os.Args = []string{"cli_test", "serve", tmpfile.Name()}
-		err = cli.NewServerRootCmd().Execute()
+		os.Args = []string{"cli_test", "serve", tmpfile}
+		err := cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
 
-		data, err := os.ReadFile(logFile.Name())
+		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
-
-		defer os.Remove(logFile.Name()) // clean up
 
 		So(string(data), ShouldContainSubstring,
 			"using both sync and remote storage features needs config.Extensions.Sync.DownloadDir to be specified")
@@ -1873,15 +1680,7 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 
 	Convey("Test verify sync with remote storage on subpath panics if sync.tmpdir is not provided", t, func(c C) {
 		port := GetFreePort()
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
-
-		defer os.Remove(logFile.Name()) // clean up
-
-		tmpfile, err := os.CreateTemp("", "zot-test*.json")
-		So(err, ShouldBeNil)
-
-		defer os.Remove(tmpfile.Name()) // clean up
+		logPath := MakeTempFilePath(t, "zot-log.txt")
 
 		content := fmt.Sprintf(`{
 			"distSpecVersion": "1.1.1",
@@ -1929,18 +1728,16 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 					]
 				}
 			}
-		}`, t.TempDir(), t.TempDir(), port, logFile.Name())
+		}`, t.TempDir(), t.TempDir(), port, logPath)
 
-		err = os.WriteFile(tmpfile.Name(), []byte(content), 0o0600)
-		So(err, ShouldBeNil)
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
 
-		os.Args = []string{"cli_test", "serve", tmpfile.Name()}
-		err = cli.NewServerRootCmd().Execute()
+		os.Args = []string{"cli_test", "serve", tmpfile}
+		err := cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
 
-		data, err := os.ReadFile(logFile.Name())
+		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
-		defer os.Remove(logFile.Name()) // clean up
 
 		So(string(data), ShouldContainSubstring,
 			"using both sync and remote storage features needs config.Extensions.Sync.DownloadDir to be specified")
@@ -1972,9 +1769,8 @@ func TestEventsExtension(t *testing.T) {
 				}
 			}`
 
-		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, _, err := runCLIWithConfig(t, content)
 		So(err, ShouldBeNil)
-		defer os.Remove(logPath) // clean up
 
 		found, err := ReadLogFileAndSearchString(logPath,
 			"events disabled in configuration", 10*time.Second)
@@ -2012,12 +1808,7 @@ func TestEventsExtension(t *testing.T) {
 					}
 				}`
 
-		logPath, err := runCLIWithConfig(t.TempDir(), content)
-		defer func(p string) {
-			if p != "" {
-				os.Remove(p)
-			}
-		}(logPath) // clean up
+		_, _, err := runCLIWithConfig(t, content)
 		So(err, ShouldNotBeNil)
 		So(err.Error(), ShouldContainSubstring, zerr.ErrUnsupportedEventSink.Error())
 	})

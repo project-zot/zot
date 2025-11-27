@@ -1208,11 +1208,8 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]any) { //nolin
 	Convey("verify signatures are trusted", func() {
 		defaultValue := true
 		rootDir := t.TempDir()
-		logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
-		So(err, ShouldBeNil)
-
-		logPath := logFile.Name()
-		defer os.Remove(logPath)
+		logFile := test.MakeTempFile(t, "zot-log.txt")
+		defer logFile.Close()
 
 		writers := io.MultiWriter(os.Stdout, logFile)
 
@@ -1247,14 +1244,14 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]any) { //nolin
 		Convey("verify running an image trust with context done", func() {
 			image := CreateRandomImage()
 
-			err = UploadImage(image, baseURL, repo, tag)
+			err := UploadImage(image, baseURL, repo, tag)
 			So(err, ShouldBeNil)
 		})
 
 		Convey("verify cosign signature is trusted", func() {
 			image := CreateRandomImage()
 
-			err = UploadImage(image, baseURL, repo, tag)
+			err := UploadImage(image, baseURL, repo, tag)
 			So(err, ShouldBeNil)
 
 			cwd, err := os.Getwd()
@@ -1347,7 +1344,7 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]any) { //nolin
 		Convey("verify notation signature is trusted", func() {
 			image := CreateRandomImage()
 
-			err = UploadImage(image, baseURL, repo, tag)
+			err := UploadImage(image, baseURL, repo, tag)
 			So(err, ShouldBeNil)
 
 			notationDir := t.TempDir()

@@ -369,8 +369,7 @@ func TestOutputFormatGQL(t *testing.T) {
 			t.Logf("%s", ctlr.Config.Storage.RootDirectory)
 			args := []string{"name", "repo7", "--config", "imagetest", "-f", "json"}
 
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-			defer os.Remove(configPath)
+			_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 
 			cmd := client.NewImageCommand(client.NewSearchService())
 			buff := bytes.NewBufferString("")
@@ -417,8 +416,7 @@ func TestOutputFormatGQL(t *testing.T) {
 		Convey("Test yaml", func() {
 			args := []string{"name", "repo7", "--config", "imagetest", "-f", "yaml"}
 
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-			defer os.Remove(configPath)
+			_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 
 			cmd := client.NewImageCommand(client.NewSearchService())
 			buff := bytes.NewBufferString("")
@@ -468,8 +466,7 @@ func TestOutputFormatGQL(t *testing.T) {
 		Convey("Test yml", func() {
 			args := []string{"name", "repo7", "--config", "imagetest", "-f", "yml"}
 
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-			defer os.Remove(configPath)
+			_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 
 			cmd := client.NewImageCommand(client.NewSearchService())
 			buff := bytes.NewBufferString("")
@@ -519,8 +516,7 @@ func TestOutputFormatGQL(t *testing.T) {
 		Convey("Test invalid", func() {
 			args := []string{"name", "repo7", "--config", "imagetest", "-f", "random"}
 
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-			defer os.Remove(configPath)
+			_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 
 			cmd := client.NewImageCommand(client.NewSearchService())
 			buff := bytes.NewBufferString("")
@@ -560,8 +556,7 @@ func TestServerResponseGQL(t *testing.T) {
 			t.Logf("%s", ctlr.Config.Storage.RootDirectory)
 			args := []string{"list", "--config", "imagetest"}
 
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-			defer os.Remove(configPath)
+			_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 
 			cmd := client.NewImageCommand(client.NewSearchService())
 			buff := &bytes.Buffer{}
@@ -579,8 +574,7 @@ func TestServerResponseGQL(t *testing.T) {
 			Convey("Test all images invalid output format", func() {
 				args := []string{"list", "--config", "imagetest", "-f", "random"}
 
-				configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-				defer os.Remove(configPath)
+				_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 
 				cmd := client.NewImageCommand(client.NewSearchService())
 				buff := bytes.NewBufferString("")
@@ -596,8 +590,7 @@ func TestServerResponseGQL(t *testing.T) {
 		Convey("Test all images verbose", func() {
 			args := []string{"list", "--config", "imagetest", "--verbose"}
 
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-			defer os.Remove(configPath)
+			_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 
 			cmd := client.NewImageCommand(client.NewSearchService())
 			buff := bytes.NewBufferString("")
@@ -623,8 +616,7 @@ func TestServerResponseGQL(t *testing.T) {
 		Convey("Test all images with debug flag", func() {
 			args := []string{"list", "--config", "imagetest", "--debug"}
 
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-			defer os.Remove(configPath)
+			_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 
 			cmd := client.NewImageCommand(client.NewSearchService())
 			buff := bytes.NewBufferString("")
@@ -648,8 +640,7 @@ func TestServerResponseGQL(t *testing.T) {
 		Convey("Test image by name config url", func() {
 			args := []string{"name", "repo7", "--config", "imagetest"}
 
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-			defer os.Remove(configPath)
+			_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 
 			cmd := client.NewImageCommand(client.NewSearchService())
 			buff := bytes.NewBufferString("")
@@ -671,8 +662,7 @@ func TestServerResponseGQL(t *testing.T) {
 			Convey("invalid output format", func() {
 				args := []string{"name", "repo7", "--config", "imagetest", "-f", "random"}
 
-				configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-				defer os.Remove(configPath)
+				_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 
 				cmd := client.NewImageCommand(client.NewSearchService())
 				buff := bytes.NewBufferString("")
@@ -688,8 +678,7 @@ func TestServerResponseGQL(t *testing.T) {
 		Convey("Test image by digest", func() {
 			args := []string{"digest", "51e18f50", "--config", "imagetest"}
 
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-			defer os.Remove(configPath)
+			_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 
 			cmd := client.NewImageCommand(client.NewSearchService())
 			buff := bytes.NewBufferString("")
@@ -712,8 +701,7 @@ func TestServerResponseGQL(t *testing.T) {
 			Convey("nonexistent digest", func() {
 				args := []string{"digest", "d1g35t", "--config", "imagetest"}
 
-				configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-				defer os.Remove(configPath)
+				_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 
 				cmd := client.NewImageCommand(client.NewSearchService())
 				buff := bytes.NewBufferString("")
@@ -728,8 +716,7 @@ func TestServerResponseGQL(t *testing.T) {
 			Convey("invalid output format", func() {
 				args := []string{"digest", "51e18f50", "--config", "imagetest", "-f", "random"}
 
-				configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-				defer os.Remove(configPath)
+				_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 
 				cmd := client.NewImageCommand(client.NewSearchService())
 				buff := bytes.NewBufferString("")
@@ -745,8 +732,7 @@ func TestServerResponseGQL(t *testing.T) {
 		Convey("Test image by name nonexistent name", func() {
 			args := []string{"name", "repo777", "--config", "imagetest"}
 
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-			defer os.Remove(configPath)
+			_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 
 			cmd := client.NewImageCommand(client.NewSearchService())
 			buff := bytes.NewBufferString("")
@@ -761,9 +747,8 @@ func TestServerResponseGQL(t *testing.T) {
 		Convey("Test list repos error", func() {
 			args := []string{"list", "--config", "config-test"}
 
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"config-test",
+			_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"config-test",
             "url":"%s","showspinner":false}]}`, url))
-			defer os.Remove(configPath)
 
 			cmd := client.NewRepoCommand(client.NewSearchService())
 			buff := &bytes.Buffer{}

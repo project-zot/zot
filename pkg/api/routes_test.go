@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/google/uuid"
@@ -45,9 +44,7 @@ func TestRoutes(t *testing.T) {
 
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
-
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 		mockOIDCServer, err := mockoidc.Run()
 		if err != nil {

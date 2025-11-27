@@ -15,12 +15,13 @@ import (
 	rediscfg "zotregistry.dev/zot/v2/pkg/api/config/redis"
 	"zotregistry.dev/zot/v2/pkg/cli/server"
 	"zotregistry.dev/zot/v2/pkg/log"
+	test "zotregistry.dev/zot/v2/pkg/test/common"
 )
 
 func TestRedisLogger(t *testing.T) {
 	Convey("Print using Redis logger", t, func() {
-		logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
-		So(err, ShouldBeNil)
+		logFile := test.MakeTempFile(t, "zot-log.txt")
+		defer logFile.Close()
 
 		writers := io.MultiWriter(os.Stdout, logFile)
 		logger := log.NewLoggerWithWriter("debug", writers)

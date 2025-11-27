@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"testing"
@@ -43,20 +44,19 @@ func TestStressTooManyOpenFiles(t *testing.T) {
 		conf.Storage.Dedupe = false
 		conf.Storage.GC = true
 
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
+		tempDir := t.TempDir()
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		defer func() {
-			data, err := os.ReadFile(logFile.Name())
+			data, err := os.ReadFile(logPath)
 			if err != nil {
 				t.Logf("error when reading zot log file:\n%s\n", err)
 			}
 
 			t.Logf("\n\n Zot log file content:\n%s\n", string(data))
-			os.Remove(logFile.Name())
 		}()
-		t.Log("Log file is: ", logFile.Name())
-		conf.Log.Output = logFile.Name()
+		t.Log("Log file is: ", logPath)
+		conf.Log.Output = logPath
 
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
@@ -92,16 +92,9 @@ func TestStressTooManyOpenFiles(t *testing.T) {
 					"level": "debug",
 					"output": "%s"
 				}
-			}`, dir, conf.Storage.Dedupe, conf.Storage.GC, port, logFile.Name())
+			}`, dir, conf.Storage.Dedupe, conf.Storage.GC, port, logPath)
 
-		cfgfile, err := os.CreateTemp("", "zot-test*.json")
-		So(err, ShouldBeNil)
-
-		defer os.Remove(cfgfile.Name()) // clean up
-		_, err = cfgfile.WriteString(content)
-		So(err, ShouldBeNil)
-		err = cfgfile.Close()
-		So(err, ShouldBeNil)
+		cfgfile := test.MakeTempFileWithContent(t, "zot-test.json", content)
 
 		skopeoArgs := []string{
 			"copy", "--format=oci", "--insecure-policy", "--dest-tls-verify=false",
@@ -134,14 +127,14 @@ func TestStressTooManyOpenFiles(t *testing.T) {
 		_, err = setMaxOpenFilesLimit(initialLimit)
 		So(err, ShouldBeNil)
 
-		data, err := os.ReadFile(logFile.Name())
+		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring, "too many open files")
 
 		ctrlManager.StopServer()
 		time.Sleep(2 * time.Second)
 
-		scrubFile, err := os.CreateTemp("", "zot-scrub*.txt")
+		scrubFile, err := os.Create(filepath.Join(tempDir, "zot-scrub.txt"))
 		So(err, ShouldBeNil)
 
 		defer func() {
@@ -151,11 +144,10 @@ func TestStressTooManyOpenFiles(t *testing.T) {
 			}
 
 			t.Logf("\n\n Zot scrub file content:\n%s\n", string(data))
-			os.Remove(scrubFile.Name())
 		}()
 		t.Log("Scrub file is: ", scrubFile.Name())
 
-		os.Args = []string{"cli_test", "scrub", cfgfile.Name()}
+		os.Args = []string{"cli_test", "scrub", cfgfile}
 		cobraCmd := cli.NewServerRootCmd()
 		cobraCmd.SetOut(scrubFile)
 		err = cobraCmd.Execute()

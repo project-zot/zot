@@ -4,7 +4,6 @@ package pprof_test
 
 import (
 	"net/http"
-	"os"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -29,9 +28,7 @@ func TestProfilingAuthz(t *testing.T) {
 
 		testCreds := test.GetBcryptCredString(adminUsername, adminPassword) +
 			test.GetBcryptCredString(username, password)
-		htpasswdPath := test.MakeHtpasswdFileFromString(testCreds)
-
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, testCreds)
 
 		conf := config.New()
 		conf.HTTP.Port = port

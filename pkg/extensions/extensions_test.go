@@ -46,12 +46,9 @@ func TestEnableExtension(t *testing.T) {
 		conf.Extensions.Sync = syncConfig
 		conf.HTTP.Port = port
 
-		logFile, err := os.CreateTemp(globalDir, "zot-log*.txt")
-		So(err, ShouldBeNil)
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 		conf.Log.Level = "info"
-		conf.Log.Output = logFile.Name()
-
-		defer os.Remove(logFile.Name()) // cleanup
+		conf.Log.Output = logPath
 
 		ctlr := api.NewController(conf)
 		ctlrManager := test.NewControllerManager(ctlr)
@@ -62,7 +59,7 @@ func TestEnableExtension(t *testing.T) {
 
 		ctlrManager.StartAndWait(port)
 
-		data, err := os.ReadFile(logFile.Name())
+		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring,
 			"sync config not provided or disabled, so not enabling sync")
@@ -76,8 +73,7 @@ func TestMetricsExtension(t *testing.T) {
 		port := test.GetFreePort()
 		conf.HTTP.Port = port
 
-		logFile, err := os.CreateTemp(globalDir, "zot-log*.txt")
-		So(err, ShouldBeNil)
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 		defaultValue := true
 
 		conf.Extensions = &extconf.ExtensionConfig{}
@@ -86,9 +82,7 @@ func TestMetricsExtension(t *testing.T) {
 			Prometheus: &extconf.PrometheusConfig{},
 		}
 		conf.Log.Level = "info"
-		conf.Log.Output = logFile.Name()
-
-		defer os.Remove(logFile.Name()) // cleanup
+		conf.Log.Output = logPath
 
 		ctlr := api.NewController(conf)
 		ctlrManager := test.NewControllerManager(ctlr)
@@ -104,7 +98,7 @@ func TestMetricsExtension(t *testing.T) {
 
 		ctlrManager.StartAndWait(port)
 
-		data, _ := os.ReadFile(logFile.Name())
+		data, _ := os.ReadFile(logPath)
 
 		So(string(data), ShouldContainSubstring, "metrics extension enabled")
 	})
@@ -116,11 +110,6 @@ func TestMgmtExtension(t *testing.T) {
 	port := test.GetFreePort()
 	conf.HTTP.Port = port
 	baseURL := test.GetBaseURL(port)
-
-	logFile, err := os.CreateTemp(globalDir, "zot-log*.txt")
-	if err != nil {
-		panic(err)
-	}
 	mgmtReadyTimeout := 5 * time.Second
 
 	defaultValue := true
@@ -142,12 +131,10 @@ func TestMgmtExtension(t *testing.T) {
 	Convey("Verify mgmt auth info route enabled with htpasswd", t, func() {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 		defer func() {
 			conf.HTTP.Auth.HTPasswd.Path = ""
-
-			os.Remove(htpasswdPath)
 		}()
 
 		conf.HTTP.Auth.HTPasswd.Path = htpasswdPath
@@ -159,8 +146,8 @@ func TestMgmtExtension(t *testing.T) {
 		conf.Extensions.UI = &extconf.UIConfig{}
 		conf.Extensions.UI.Enable = &defaultValue
 
-		conf.Log.Output = logFile.Name()
-		defer os.Remove(logFile.Name()) // cleanup
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
+		conf.Log.Output = logPath
 
 		ctlr := api.NewController(conf)
 		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
@@ -175,13 +162,13 @@ func TestMgmtExtension(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		found, err := test.ReadLogFileAndSearchString(logFile.Name(),
+		found, err := test.ReadLogFileAndSearchString(logPath,
 			"setting up mgmt routes", mgmtReadyTimeout)
 		So(err, ShouldBeNil)
 
 		defer func() {
 			if !found {
-				data, err := os.ReadFile(logFile.Name())
+				data, err := os.ReadFile(logPath)
 				So(err, ShouldBeNil)
 				t.Log(string(data))
 			}
@@ -189,7 +176,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(),
+		found, err = test.ReadLogFileAndSearchString(logPath,
 			"finished setting up mgmt routes", mgmtReadyTimeout)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
@@ -246,8 +233,8 @@ func TestMgmtExtension(t *testing.T) {
 		conf.Extensions.UI = &extconf.UIConfig{}
 		conf.Extensions.UI.Enable = &defaultValue
 
-		conf.Log.Output = logFile.Name()
-		defer os.Remove(logFile.Name()) // cleanup
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
+		conf.Log.Output = logPath
 
 		ctlr := api.NewController(conf)
 
@@ -261,11 +248,11 @@ func TestMgmtExtension(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		found, err := test.ReadLogFileAndSearchString(logFile.Name(),
+		found, err := test.ReadLogFileAndSearchString(logPath,
 			"setting up mgmt routes", mgmtReadyTimeout)
 		defer func() {
 			if !found {
-				data, err := os.ReadFile(logFile.Name())
+				data, err := os.ReadFile(logPath)
 				So(err, ShouldBeNil)
 				t.Log(string(data))
 			}
@@ -273,7 +260,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(),
+		found, err = test.ReadLogFileAndSearchString(logPath,
 			"finished setting up mgmt routes", mgmtReadyTimeout)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
@@ -311,8 +298,8 @@ func TestMgmtExtension(t *testing.T) {
 		conf.Extensions.UI = &extconf.UIConfig{}
 		conf.Extensions.UI.Enable = &defaultValue
 
-		conf.Log.Output = logFile.Name()
-		defer os.Remove(logFile.Name()) // cleanup
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
+		conf.Log.Output = logPath
 
 		ctlr := api.NewController(conf)
 
@@ -326,11 +313,11 @@ func TestMgmtExtension(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		found, err := test.ReadLogFileAndSearchString(logFile.Name(),
+		found, err := test.ReadLogFileAndSearchString(logPath,
 			"setting up mgmt routes", mgmtReadyTimeout)
 		defer func() {
 			if !found {
-				data, err := os.ReadFile(logFile.Name())
+				data, err := os.ReadFile(logPath)
 				So(err, ShouldBeNil)
 				t.Log(string(data))
 			}
@@ -338,7 +325,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(),
+		found, err = test.ReadLogFileAndSearchString(logPath,
 			"finished setting up mgmt routes", mgmtReadyTimeout)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
@@ -361,12 +348,10 @@ func TestMgmtExtension(t *testing.T) {
 	Convey("Verify mgmt auth info route enabled with htpasswd + ldap", t, func() {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 		defer func() {
 			conf.HTTP.Auth.HTPasswd.Path = ""
-
-			os.Remove(htpasswdPath)
 		}()
 
 		conf.HTTP.Auth.HTPasswd.Path = htpasswdPath
@@ -382,8 +367,8 @@ func TestMgmtExtension(t *testing.T) {
 		conf.Extensions.UI = &extconf.UIConfig{}
 		conf.Extensions.UI.Enable = &defaultValue
 
-		conf.Log.Output = logFile.Name()
-		defer os.Remove(logFile.Name()) // cleanup
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
+		conf.Log.Output = logPath
 
 		ctlr := api.NewController(conf)
 		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
@@ -398,11 +383,11 @@ func TestMgmtExtension(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		found, err := test.ReadLogFileAndSearchString(logFile.Name(),
+		found, err := test.ReadLogFileAndSearchString(logPath,
 			"setting up mgmt routes", mgmtReadyTimeout)
 		defer func() {
 			if !found {
-				data, err := os.ReadFile(logFile.Name())
+				data, err := os.ReadFile(logPath)
 				So(err, ShouldBeNil)
 				t.Log(string(data))
 			}
@@ -410,7 +395,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(),
+		found, err = test.ReadLogFileAndSearchString(logPath,
 			"finished setting up mgmt routes", mgmtReadyTimeout)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
@@ -447,12 +432,10 @@ func TestMgmtExtension(t *testing.T) {
 	Convey("Verify mgmt auth info route enabled with htpasswd + ldap + bearer", t, func() {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 		defer func() {
 			conf.HTTP.Auth.HTPasswd.Path = ""
-
-			os.Remove(htpasswdPath)
 		}()
 
 		conf.HTTP.Auth.HTPasswd.Path = htpasswdPath
@@ -473,8 +456,8 @@ func TestMgmtExtension(t *testing.T) {
 		conf.Extensions.UI = &extconf.UIConfig{}
 		conf.Extensions.UI.Enable = &defaultValue
 
-		conf.Log.Output = logFile.Name()
-		defer os.Remove(logFile.Name()) // cleanup
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
+		conf.Log.Output = logPath
 
 		ctlr := api.NewController(conf)
 		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
@@ -485,11 +468,11 @@ func TestMgmtExtension(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		found, err := test.ReadLogFileAndSearchString(logFile.Name(),
+		found, err := test.ReadLogFileAndSearchString(logPath,
 			"setting up mgmt routes", mgmtReadyTimeout)
 		defer func() {
 			if !found {
-				data, err := os.ReadFile(logFile.Name())
+				data, err := os.ReadFile(logPath)
 				So(err, ShouldBeNil)
 				t.Log(string(data))
 			}
@@ -497,7 +480,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(),
+		found, err = test.ReadLogFileAndSearchString(logPath,
 			"finished setting up mgmt routes", mgmtReadyTimeout)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
@@ -554,8 +537,8 @@ func TestMgmtExtension(t *testing.T) {
 		conf.Extensions.UI = &extconf.UIConfig{}
 		conf.Extensions.UI.Enable = &defaultValue
 
-		conf.Log.Output = logFile.Name()
-		defer os.Remove(logFile.Name()) // cleanup
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
+		conf.Log.Output = logPath
 
 		ctlr := api.NewController(conf)
 
@@ -569,11 +552,11 @@ func TestMgmtExtension(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		found, err := test.ReadLogFileAndSearchString(logFile.Name(),
+		found, err := test.ReadLogFileAndSearchString(logPath,
 			"setting up mgmt routes", mgmtReadyTimeout)
 		defer func() {
 			if !found {
-				data, err := os.ReadFile(logFile.Name())
+				data, err := os.ReadFile(logPath)
 				So(err, ShouldBeNil)
 				t.Log(string(data))
 			}
@@ -581,7 +564,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(),
+		found, err = test.ReadLogFileAndSearchString(logPath,
 			"finished setting up mgmt routes", mgmtReadyTimeout)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
@@ -618,8 +601,8 @@ func TestMgmtExtension(t *testing.T) {
 		conf.Extensions.UI = &extconf.UIConfig{}
 		conf.Extensions.UI.Enable = &defaultValue
 
-		conf.Log.Output = logFile.Name()
-		defer os.Remove(logFile.Name()) // cleanup
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
+		conf.Log.Output = logPath
 
 		ctlr := api.NewController(conf)
 
@@ -629,11 +612,11 @@ func TestMgmtExtension(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		found, err := test.ReadLogFileAndSearchString(logFile.Name(),
+		found, err := test.ReadLogFileAndSearchString(logPath,
 			"setting up mgmt routes", mgmtReadyTimeout)
 		defer func() {
 			if !found {
-				data, err := os.ReadFile(logFile.Name())
+				data, err := os.ReadFile(logPath)
 				So(err, ShouldBeNil)
 				t.Log(string(data))
 			}
@@ -641,7 +624,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(),
+		found, err = test.ReadLogFileAndSearchString(logPath,
 			"finished setting up mgmt routes", mgmtReadyTimeout)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
@@ -685,8 +668,8 @@ func TestMgmtExtension(t *testing.T) {
 		conf.Extensions.UI = &extconf.UIConfig{}
 		conf.Extensions.UI.Enable = &defaultValue
 
-		conf.Log.Output = logFile.Name()
-		defer os.Remove(logFile.Name()) // cleanup
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
+		conf.Log.Output = logPath
 
 		ctlr := api.NewController(conf)
 
@@ -696,11 +679,11 @@ func TestMgmtExtension(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		found, err := test.ReadLogFileAndSearchString(logFile.Name(),
+		found, err := test.ReadLogFileAndSearchString(logPath,
 			"setting up mgmt routes", mgmtReadyTimeout)
 		defer func() {
 			if !found {
-				data, err := os.ReadFile(logFile.Name())
+				data, err := os.ReadFile(logPath)
 				So(err, ShouldBeNil)
 				t.Log(string(data))
 			}
@@ -708,7 +691,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(),
+		found, err = test.ReadLogFileAndSearchString(logPath,
 			"finished setting up mgmt routes", mgmtReadyTimeout)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
@@ -733,12 +716,10 @@ func TestMgmtExtension(t *testing.T) {
 	Convey("Verify mgmt auth info route enabled with empty openID provider list", t, func() {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 		defer func() {
 			conf.HTTP.Auth.HTPasswd.Path = ""
-
-			os.Remove(htpasswdPath)
 		}()
 
 		conf.HTTP.Auth.HTPasswd.Path = htpasswdPath
@@ -758,8 +739,8 @@ func TestMgmtExtension(t *testing.T) {
 		conf.Extensions.UI = &extconf.UIConfig{}
 		conf.Extensions.UI.Enable = &defaultValue
 
-		conf.Log.Output = logFile.Name()
-		defer os.Remove(logFile.Name()) // cleanup
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
+		conf.Log.Output = logPath
 
 		ctlr := api.NewController(conf)
 		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
@@ -770,11 +751,11 @@ func TestMgmtExtension(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		found, err := test.ReadLogFileAndSearchString(logFile.Name(),
+		found, err := test.ReadLogFileAndSearchString(logPath,
 			"setting up mgmt routes", mgmtReadyTimeout)
 		defer func() {
 			if !found {
-				data, err := os.ReadFile(logFile.Name())
+				data, err := os.ReadFile(logPath)
 				So(err, ShouldBeNil)
 				t.Log(string(data))
 			}
@@ -782,7 +763,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(),
+		found, err = test.ReadLogFileAndSearchString(logPath,
 			"finished setting up mgmt routes", mgmtReadyTimeout)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
@@ -804,14 +785,12 @@ func TestMgmtExtension(t *testing.T) {
 	})
 
 	Convey("Verify mgmt auth info route enabled without any auth", t, func() {
-		globalDir := t.TempDir()
 		conf := config.New()
 		port := test.GetFreePort()
 		conf.HTTP.Port = port
 		baseURL := test.GetBaseURL(port)
 
-		logFile, err := os.CreateTemp(globalDir, "zot-log*.txt")
-		So(err, ShouldBeNil)
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 		defaultValue := true
 
 		conf.Commit = "v1.0.0"
@@ -823,8 +802,7 @@ func TestMgmtExtension(t *testing.T) {
 		conf.Extensions.UI = &extconf.UIConfig{}
 		conf.Extensions.UI.Enable = &defaultValue
 
-		conf.Log.Output = logFile.Name()
-		defer os.Remove(logFile.Name()) // cleanup
+		conf.Log.Output = logPath
 
 		ctlr := api.NewController(conf)
 
@@ -847,11 +825,11 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
 		So(mgmtResp.HTTP.Auth.APIKey, ShouldBeFalse)
 
-		found, err := test.ReadLogFileAndSearchString(logFile.Name(),
+		found, err := test.ReadLogFileAndSearchString(logPath,
 			"setting up mgmt routes", mgmtReadyTimeout)
 		defer func() {
 			if !found {
-				data, err := os.ReadFile(logFile.Name())
+				data, err := os.ReadFile(logPath)
 				So(err, ShouldBeNil)
 				t.Log(string(data))
 			}
@@ -859,7 +837,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(),
+		found, err = test.ReadLogFileAndSearchString(logPath,
 			"finished setting up mgmt routes", mgmtReadyTimeout)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)

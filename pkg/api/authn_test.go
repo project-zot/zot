@@ -99,9 +99,7 @@ func TestAPIKeys(t *testing.T) {
 
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
-
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 		mockOIDCServer, err := authutils.MockOIDCRun()
 		if err != nil {
@@ -871,9 +869,7 @@ func TestAPIKeysOpenDBError(t *testing.T) {
 		conf := config.New()
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
-
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 		mockOIDCServer, err := authutils.MockOIDCRun()
 		if err != nil {
@@ -1154,9 +1150,7 @@ func TestCookieSecureFlag(t *testing.T) {
 
 		username, _ := test.GenerateRandomString()
 		password, _ := test.GenerateRandomString()
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
-
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 		mockOIDCConfig := mockOIDCServer.Config()
 		defaultVal := true

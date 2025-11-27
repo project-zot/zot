@@ -493,12 +493,10 @@ func TestAutoPortSelection(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = "0"
 
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
+		logFile := test.MakeTempFile(t, "zot-log.txt")
+		defer logFile.Close()
 
 		conf.Log.Output = logFile.Name()
-
-		defer os.Remove(logFile.Name()) // clean up
 
 		ctlr := makeController(conf, t.TempDir())
 
@@ -508,12 +506,7 @@ func TestAutoPortSelection(t *testing.T) {
 
 		defer cm.StopServer()
 
-		file, err := os.Open(logFile.Name())
-		So(err, ShouldBeNil)
-
-		defer file.Close()
-
-		scanner := bufio.NewScanner(file)
+		scanner := bufio.NewScanner(logFile)
 
 		var contents bytes.Buffer
 
@@ -736,8 +729,7 @@ func TestHtpasswdSingleCred(t *testing.T) {
 					conf := config.New()
 					conf.HTTP.Port = port
 
-					htpasswdPath := test.MakeHtpasswdFileFromString(testString)
-					defer os.Remove(htpasswdPath)
+					htpasswdPath := test.MakeHtpasswdFileFromString(t, testString)
 					conf.HTTP.Auth = &config.AuthConfig{
 						HTPasswd: config.AuthHTPasswd{
 							Path: htpasswdPath,
@@ -790,9 +782,7 @@ func TestAllowMethodsHeader(t *testing.T) {
 
 		simpleUser := "simpleUser"
 		simpleUserPassword := "simpleUserPass"
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(simpleUser, simpleUserPassword))
-
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(simpleUser, simpleUserPassword))
 
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
@@ -883,8 +873,7 @@ func TestHtpasswdTwoCreds(t *testing.T) {
 				conf := config.New()
 				conf.HTTP.Port = port
 
-				htpasswdPath := test.MakeHtpasswdFileFromString(testString)
-				defer os.Remove(htpasswdPath)
+				htpasswdPath := test.MakeHtpasswdFileFromString(t, testString)
 
 				conf.HTTP.Auth = &config.AuthConfig{
 					HTPasswd: config.AuthHTPasswd{
@@ -935,9 +924,7 @@ func TestHtpasswdFiveCreds(t *testing.T) {
 			baseURL := test.GetBaseURL(port)
 			conf := config.New()
 			conf.HTTP.Port = port
-			htpasswdPath := test.MakeHtpasswdFileFromString(credString.String())
-
-			defer os.Remove(htpasswdPath)
+			htpasswdPath := test.MakeHtpasswdFileFromString(t, credString.String())
 			conf.HTTP.Auth = &config.AuthConfig{
 				HTPasswd: config.AuthHTPasswd{
 					Path: htpasswdPath,
@@ -1081,9 +1068,7 @@ func TestBasicAuth(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
-
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
@@ -1370,9 +1355,7 @@ func TestScaleOutRequestProxy(t *testing.T) {
 
 		username, _ := test.GenerateRandomString()
 		password, _ := test.GenerateRandomString()
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
-
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 
@@ -1655,12 +1638,10 @@ func TestPrintTracebackOnPanic(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
+		logFile := test.MakeTempFile(t, "zot-log.txt")
+		defer logFile.Close()
 
 		conf.Log.Output = logFile.Name()
-
-		defer os.Remove(logFile.Name()) // clean up
 
 		ctlr := makeController(conf, t.TempDir())
 		cm := test.NewControllerManager(ctlr)
@@ -1942,9 +1923,7 @@ func TestMultipleInstance(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
-
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
@@ -1986,9 +1965,7 @@ func TestMultipleInstance(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
-
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
@@ -2036,9 +2013,7 @@ func TestMultipleInstance(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
-
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
@@ -2090,9 +2065,7 @@ func TestTLSWithBasicAuth(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
-
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
@@ -2161,9 +2134,7 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
-
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
@@ -2835,9 +2806,7 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
-
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
@@ -2922,9 +2891,7 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
-
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
@@ -4588,9 +4555,7 @@ func TestOpenIDMiddleware(t *testing.T) {
 	// need a username different than ldap one, to test both logic
 	htpasswdUsername, seedUser := test.GenerateRandomString()
 	htpasswdPassword, seedPass := test.GenerateRandomString()
-	htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(htpasswdUsername, htpasswdPassword))
-
-	defer os.Remove(htpasswdPath)
+	htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(htpasswdUsername, htpasswdPassword))
 
 	ldapServer := newTestLDAPServer()
 	port = test.GetFreePort()
@@ -5004,9 +4969,7 @@ func TestOpenIDMiddlewareWithRedisSessionDriver(t *testing.T) {
 	// need a username different than ldap one, to test both logic
 	htpasswdUsername, seedUser := test.GenerateRandomString()
 	htpasswdPassword, seedPass := test.GenerateRandomString()
-	htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(htpasswdUsername, htpasswdPassword))
-
-	defer os.Remove(htpasswdPath)
+	htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(htpasswdUsername, htpasswdPassword))
 
 	ldapServer := newTestLDAPServer()
 	port = test.GetFreePort()
@@ -5490,9 +5453,7 @@ func TestAuthnSessionErrors(t *testing.T) {
 		htpasswdUsername, seedUser := test.GenerateRandomString()
 		htpasswdPassword, seedPass := test.GenerateRandomString()
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(htpasswdUsername, htpasswdPassword))
-
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(htpasswdUsername, htpasswdPassword))
 
 		ldapServer := newTestLDAPServer()
 		port = test.GetFreePort()
@@ -5895,9 +5856,7 @@ func TestAuthnMetaDBErrors(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
-
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 		mockOIDCServer, err := authutils.MockOIDCRun()
 		if err != nil {
@@ -6008,9 +5967,7 @@ func TestAuthorization(t *testing.T) {
 		conf.HTTP.Port = port
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
-
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
@@ -6128,9 +6085,7 @@ func TestGetUsername(t *testing.T) {
 
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
-
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 		conf := config.New()
 		conf.HTTP.Port = port
@@ -6201,9 +6156,7 @@ func TestAuthorizationMountBlob(t *testing.T) {
 
 		content := test.GetBcryptCredString(username1, password1) + test.GetBcryptCredString(username2, password2)
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(content)
-
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, content)
 
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
@@ -6557,9 +6510,7 @@ func TestAuthorizationWithAnonymousPolicyBasicAuthAndSessionHeader(t *testing.T)
 		badpassphrase := "bad"
 		htpasswdUsername, seedUser := test.GenerateRandomString()
 		htpasswdPassword, seedPass := test.GenerateRandomString()
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(htpasswdUsername, htpasswdPassword))
-
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(htpasswdUsername, htpasswdPassword))
 
 		img := CreateRandomImage()
 		tagAnonymous := "1.0-anon"
@@ -6769,9 +6720,7 @@ func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 		password2, seedPass2 := test.GenerateRandomString()
 		content := test.GetBcryptCredString(username1, password1) + test.GetBcryptCredString(username2, password2)
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(content)
-
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, content)
 
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
@@ -6926,9 +6875,7 @@ func TestInvalidCases(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
-
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
@@ -7005,8 +6952,7 @@ func TestHTTPReadOnly(t *testing.T) {
 					},
 				}
 
-				htpasswdPath := test.MakeHtpasswdFileFromString(testString)
-				defer os.Remove(htpasswdPath)
+				htpasswdPath := test.MakeHtpasswdFileFromString(t, testString)
 				conf.HTTP.Auth = &config.AuthConfig{
 					HTPasswd: config.AuthHTPasswd{
 						Path: htpasswdPath,
@@ -7057,9 +7003,7 @@ func TestCrossRepoMount(t *testing.T) {
 		conf.HTTP.Port = port
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
-
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
@@ -7272,9 +7216,7 @@ func TestCrossRepoMount(t *testing.T) {
 
 		conf := config.New()
 		conf.HTTP.Port = port
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
-
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
@@ -7416,11 +7358,7 @@ func TestParallelRequests(t *testing.T) {
 	conf.HTTP.Port = port
 	username, seedUser := test.GenerateRandomString()
 	password, seedPass := test.GenerateRandomString()
-	htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
-
-	t.Cleanup(func() {
-		os.Remove(htpasswdPath)
-	})
+	htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 	conf.HTTP.Auth = &config.AuthConfig{
 		HTPasswd: config.AuthHTPasswd{
@@ -8979,9 +8917,7 @@ func TestPagedRepositoriesWithAuthorization(t *testing.T) {
 	conf.HTTP.Port = port
 	username, _ := test.GenerateRandomString()
 	password, _ := test.GenerateRandomString()
-	htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
-
-	defer os.Remove(htpasswdPath)
+	htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 	conf.HTTP.Auth = &config.AuthConfig{
 		HTPasswd: config.AuthHTPasswd{
@@ -11882,11 +11818,8 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 			baseURL := test.GetBaseURL(port)
 			conf := config.New()
 			conf.HTTP.Port = port
-
-			logFile, err := os.CreateTemp("", "zot-log*.txt")
-			So(err, ShouldBeNil)
-
-			conf.Log.Audit = logFile.Name()
+			conf.Log.Output = test.MakeTempFilePath(t, "zot-log.txt")
+			conf.Log.Audit = test.MakeTempFilePath(t, "zot-audit.log")
 
 			value := true
 			searchConfig := &extconf.SearchConfig{
@@ -11898,10 +11831,8 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 				Search: searchConfig,
 			}
 
-			ctlr := makeController(conf, t.TempDir())
-
 			dir := t.TempDir()
-			ctlr.Config.Storage.RootDirectory = dir
+			ctlr := makeController(conf, dir)
 			ctlr.Config.Storage.GC = true
 			ctlr.Config.Storage.GCDelay = 1 * time.Millisecond
 			ctlr.Config.Storage.Retention = config.ImageRetention{
@@ -11930,7 +11861,7 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 
 			img := CreateDefaultImage()
 
-			err = UploadImage(img, baseURL, repoName, tag)
+			err := UploadImage(img, baseURL, repoName, tag)
 			So(err, ShouldBeNil)
 
 			gc := gc.NewGarbageCollect(ctlr.StoreController.DefaultStore, ctlr.MetaDB,
@@ -12143,10 +12074,8 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 			conf := config.New()
 			conf.HTTP.Port = port
 
-			ctlr := makeController(conf, t.TempDir())
-
 			dir := t.TempDir()
-			ctlr.Config.Storage.RootDirectory = dir
+			ctlr := makeController(conf, dir)
 			ctlr.Config.Storage.GC = true
 			ctlr.Config.Storage.GCDelay = 1 * time.Second
 			ctlr.Config.Storage.Retention = config.ImageRetention{
@@ -12244,12 +12173,8 @@ func TestPeriodicGC(t *testing.T) {
 		conf.HTTP.Port = port
 		conf.Storage.RemoteCache = false
 
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
-
-		conf.Log.Output = logFile.Name()
-
-		defer os.Remove(logFile.Name()) // clean up
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
+		conf.Log.Output = logPath
 
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
@@ -12259,7 +12184,7 @@ func TestPeriodicGC(t *testing.T) {
 		ctlr.Config.Storage.GCInterval = 1 * time.Hour
 		ctlr.Config.Storage.GCDelay = 1 * time.Second
 
-		err = WriteImageToFileSystem(CreateDefaultImage(), repoName, "0.0.1",
+		err := WriteImageToFileSystem(CreateDefaultImage(), repoName, "0.0.1",
 			ociutils.GetDefaultStoreController(dir, ctlr.Log))
 		So(err, ShouldBeNil)
 
@@ -12270,7 +12195,7 @@ func TestPeriodicGC(t *testing.T) {
 
 		time.Sleep(5000 * time.Millisecond)
 
-		data, err := os.ReadFile(logFile.Name())
+		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring,
 			"\"GC\":true,\"Commit\":false,\"GCDelay\":1000000000,\"GCInterval\":3600000000000")
@@ -12285,12 +12210,8 @@ func TestPeriodicGC(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
-
-		conf.Log.Output = logFile.Name()
-
-		defer os.Remove(logFile.Name()) // clean up
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
+		conf.Log.Output = logPath
 
 		dir := t.TempDir()
 		ctlr := makeController(conf, dir)
@@ -12314,7 +12235,7 @@ func TestPeriodicGC(t *testing.T) {
 
 		defer cm.StopServer()
 
-		data, err := os.ReadFile(logFile.Name())
+		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 
 		// periodic GC is enabled by default for default store with a default interval
@@ -12334,12 +12255,8 @@ func TestPeriodicGC(t *testing.T) {
 		conf.HTTP.Port = port
 		conf.Storage.RemoteCache = false
 
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
-
-		conf.Log.Output = logFile.Name()
-
-		defer os.Remove(logFile.Name()) // clean up
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
+		conf.Log.Output = logPath
 
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
@@ -12350,7 +12267,7 @@ func TestPeriodicGC(t *testing.T) {
 		ctlr.Config.Storage.GCInterval = 1 * time.Hour
 		ctlr.Config.Storage.GCDelay = 1 * time.Second
 
-		err = WriteImageToFileSystem(CreateDefaultImage(), repoName, "0.0.1",
+		err := WriteImageToFileSystem(CreateDefaultImage(), repoName, "0.0.1",
 			ociutils.GetDefaultStoreController(dir, ctlr.Log))
 		So(err, ShouldBeNil)
 
@@ -12367,7 +12284,7 @@ func TestPeriodicGC(t *testing.T) {
 
 		time.Sleep(5000 * time.Millisecond)
 
-		data, err := os.ReadFile(logFile.Name())
+		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring,
 			"\"GC\":true,\"Commit\":false,\"GCDelay\":1000000000,\"GCInterval\":3600000000000")
@@ -12390,9 +12307,7 @@ func TestSearchRoutes(t *testing.T) {
 			password1 := "test"
 			testString1 := test.GetBcryptCredString(user1, password1)
 
-			htpasswdPath := test.MakeHtpasswdFileFromString(testString1)
-
-			defer os.Remove(htpasswdPath)
+			htpasswdPath := test.MakeHtpasswdFileFromString(t, testString1)
 
 			conf.HTTP.Auth = &config.AuthConfig{
 				HTPasswd: config.AuthHTPasswd{
@@ -12533,9 +12448,7 @@ func TestSearchRoutes(t *testing.T) {
 			group1 := "testgroup3"
 			testString1 := test.GetBcryptCredString(user1, password1)
 
-			htpasswdPath := test.MakeHtpasswdFileFromString(testString1)
-
-			defer os.Remove(htpasswdPath)
+			htpasswdPath := test.MakeHtpasswdFileFromString(t, testString1)
 
 			conf.HTTP.Auth = &config.AuthConfig{
 				HTPasswd: config.AuthHTPasswd{
@@ -12620,9 +12533,7 @@ func TestSearchRoutes(t *testing.T) {
 			group1 := "testgroup1"
 			group2 := "secondtestgroup"
 			testString1 := test.GetBcryptCredString(user1, password1)
-			htpasswdPath := test.MakeHtpasswdFileFromString(testString1)
-
-			defer os.Remove(htpasswdPath)
+			htpasswdPath := test.MakeHtpasswdFileFromString(t, testString1)
 			conf.HTTP.Auth = &config.AuthConfig{
 				HTPasswd: config.AuthHTPasswd{
 					Path: htpasswdPath,
@@ -12690,9 +12601,7 @@ func TestSearchRoutes(t *testing.T) {
 			password1 := "test3"
 			group1 := "testgroup"
 			testString1 := test.GetBcryptCredString(user1, password1)
-			htpasswdPath := test.MakeHtpasswdFileFromString(testString1)
-
-			defer os.Remove(htpasswdPath)
+			htpasswdPath := test.MakeHtpasswdFileFromString(t, testString1)
 			conf.HTTP.Auth = &config.AuthConfig{
 				HTPasswd: config.AuthHTPasswd{
 					Path: htpasswdPath,
@@ -12761,9 +12670,7 @@ func TestSearchRoutes(t *testing.T) {
 			group1 := "testgroup1"
 			testString1 := test.GetBcryptCredString(user1, password1)
 
-			htpasswdPath := test.MakeHtpasswdFileFromString(testString1)
-
-			defer os.Remove(htpasswdPath)
+			htpasswdPath := test.MakeHtpasswdFileFromString(t, testString1)
 
 			conf.HTTP.Auth = &config.AuthConfig{
 				HTPasswd: config.AuthHTPasswd{
@@ -12832,9 +12739,7 @@ func TestSearchRoutes(t *testing.T) {
 			password1 := "test5"
 			group1 := "testgroup2"
 			testString1 := test.GetBcryptCredString(user1, password1)
-			htpasswdPath := test.MakeHtpasswdFileFromString(testString1)
-
-			defer os.Remove(htpasswdPath)
+			htpasswdPath := test.MakeHtpasswdFileFromString(t, testString1)
 			conf.HTTP.Auth = &config.AuthConfig{
 				HTPasswd: config.AuthHTPasswd{
 					Path: htpasswdPath,
@@ -12891,8 +12796,8 @@ func TestSearchRoutes(t *testing.T) {
 			user1, seedUser1 := test.GenerateRandomString()
 			password1, seedPass1 := test.GenerateRandomString()
 
-			htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(user1, password1))
-			defer os.Remove(htpasswdPath)
+			tempDir := t.TempDir()
+			htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(user1, password1))
 
 			conf.HTTP.Auth = &config.AuthConfig{
 				HTPasswd: config.AuthHTPasswd{
@@ -12955,6 +12860,7 @@ func TestDistSpecExtensions(t *testing.T) {
 		baseURL := test.GetBaseURL(port)
 
 		conf.HTTP.Port = port
+		conf.Log.Output = test.MakeTempFilePath(t, "zot-log.txt")
 
 		defaultVal := true
 
@@ -12968,13 +12874,6 @@ func TestDistSpecExtensions(t *testing.T) {
 		conf.Extensions.Trust.Enable = &defaultVal
 		conf.Extensions.Trust.Cosign = defaultVal
 		conf.Extensions.Trust.Notation = defaultVal
-
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
-
-		conf.Log.Output = logFile.Name()
-
-		defer os.Remove(logFile.Name()) // clean up
 
 		ctlr := makeController(conf, t.TempDir())
 
@@ -13019,13 +12918,7 @@ func TestDistSpecExtensions(t *testing.T) {
 		conf.Extensions = &extconf.ExtensionConfig{}
 		conf.Extensions.Search = &extconf.SearchConfig{}
 		conf.Extensions.Search.Enable = &defaultVal
-
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
-
-		conf.Log.Output = logFile.Name()
-
-		defer os.Remove(logFile.Name()) // clean up
+		conf.Log.Output = test.MakeTempFilePath(t, "zot-log.txt")
 
 		ctlr := makeController(conf, t.TempDir())
 
@@ -13067,12 +12960,7 @@ func TestDistSpecExtensions(t *testing.T) {
 
 		conf.HTTP.Port = port
 
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
-
-		conf.Log.Output = logFile.Name()
-
-		defer os.Remove(logFile.Name()) // clean up
+		conf.Log.Output = test.MakeTempFilePath(t, "zot-log.txt")
 
 		ctlr := makeController(conf, t.TempDir())
 
@@ -13100,13 +12988,7 @@ func TestDistSpecExtensions(t *testing.T) {
 		baseURL := test.GetBaseURL(port)
 
 		conf.HTTP.Port = port
-
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
-
-		conf.Log.Output = logFile.Name()
-
-		defer os.Remove(logFile.Name()) // clean up
+		conf.Log.Output = test.MakeTempFilePath(t, "zot-log.txt")
 
 		ctlr := makeController(conf, t.TempDir())
 
