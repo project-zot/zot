@@ -1138,6 +1138,7 @@ func TestRetentionCheckWithSubpaths(t *testing.T) {
 		port := GetFreePort()
 		testDir := t.TempDir()
 		storageDir := path.Join(testDir, "storage")
+		subpathStoreDir := path.Join(testDir, "storage2")
 		configFile := path.Join(testDir, "zot-config.json")
 		logFile := path.Join(testDir, "retention-check.log")
 
@@ -1165,7 +1166,7 @@ func TestRetentionCheckWithSubpaths(t *testing.T) {
 			},
 				"subPaths": {
 					"/a": {
-						"rootDirectory": "%s/a",
+						"rootDirectory": "%s",
 						"gc": true,
 						"gcDelay": %q,
 					"gcInterval": "1m",
@@ -1195,7 +1196,7 @@ func TestRetentionCheckWithSubpaths(t *testing.T) {
 				"level": "debug"
 			}
 		}
-		`, storageDir, testGCDelay, storageDir, testGCDelay, port)
+		`, storageDir, testGCDelay, subpathStoreDir, testGCDelay, port)
 		err := os.WriteFile(configFile, content, 0o600)
 		So(err, ShouldBeNil)
 
@@ -1208,7 +1209,7 @@ func TestRetentionCheckWithSubpaths(t *testing.T) {
 		metricsServer := monitoring.NewMetricsServer(false, zlog.NewLogger("info", ""))
 		imgStore := local.NewImageStore(storageDir, false, false, zlog.NewLogger("info", ""), metricsServer,
 			nil, nil, nil, nil)
-		subpathStore := local.NewImageStore(path.Join(storageDir, "a"), false, false,
+		subpathStore := local.NewImageStore(subpathStoreDir, false, false,
 			zlog.NewLogger("info", ""), metricsServer, nil, nil, nil, nil)
 		params := boltdb.DBParameters{
 			RootDir: storageDir,
@@ -1438,6 +1439,7 @@ func TestRetentionCheckWithGCIntervalOverride(t *testing.T) {
 	Convey("config with gc-interval override", t, func(c C) {
 		testDir := t.TempDir()
 		storageDir := path.Join(testDir, "storage")
+		subpathStoreDir := path.Join(testDir, "storage2")
 		configFile := path.Join(testDir, "zot-config.json")
 		logFile := path.Join(testDir, "retention-check.log")
 		port := GetFreePort()
@@ -1451,7 +1453,7 @@ func TestRetentionCheckWithGCIntervalOverride(t *testing.T) {
 				"gcInterval": "1m",
 				"subPaths": {
 					"/a": {
-						"rootDirectory": "%s/a",
+						"rootDirectory": "%s",
 						"gc": true,
 						"gcDelay": %q,
 						"gcInterval": "1m"
@@ -1466,7 +1468,7 @@ func TestRetentionCheckWithGCIntervalOverride(t *testing.T) {
 				"level": "debug"
 			}
 		}
-		`, storageDir, testGCDelay, storageDir, testGCDelay, port)
+		`, storageDir, testGCDelay, subpathStoreDir, testGCDelay, port)
 		err := os.WriteFile(configFile, content, 0o600)
 		So(err, ShouldBeNil)
 

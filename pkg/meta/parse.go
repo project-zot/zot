@@ -181,14 +181,10 @@ func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController stypes.StoreCo
 }
 
 func getAllRepos(storeController stypes.StoreController, log log.Logger) ([]string, error) {
-	allRepos, err := storeController.GetDefaultImageStore().GetRepositories()
-	if err != nil {
-		log.Error().Err(err).Str("rootDir", storeController.GetDefaultImageStore().RootDir()).
-			Msg("failed to get all repo names present under rootDir")
+	allRepos := make([]string, 0)
+	repoSet := make(map[string]struct{})
 
-		return nil, err
-	}
-
+	// Process substores first
 	if storeController.GetImageSubStores() != nil {
 		for _, store := range storeController.GetImageSubStores() {
 			substoreRepos, err := store.GetRepositories()
@@ -199,7 +195,28 @@ func getAllRepos(storeController stypes.StoreController, log log.Logger) ([]stri
 				return nil, err
 			}
 
-			allRepos = append(allRepos, substoreRepos...)
+			for _, repo := range substoreRepos {
+				if _, exists := repoSet[repo]; !exists {
+					allRepos = append(allRepos, repo)
+					repoSet[repo] = struct{}{}
+				}
+			}
+		}
+	}
+
+	// Process default store, skipping repos already in the set
+	defaultRepos, err := storeController.GetDefaultImageStore().GetRepositories()
+	if err != nil {
+		log.Error().Err(err).Str("rootDir", storeController.GetDefaultImageStore().RootDir()).
+			Msg("failed to get all repo names present under rootDir")
+
+		return nil, err
+	}
+
+	for _, repo := range defaultRepos {
+		if _, exists := repoSet[repo]; !exists {
+			allRepos = append(allRepos, repo)
+			repoSet[repo] = struct{}{}
 		}
 	}
 
