@@ -1076,7 +1076,11 @@ storage:
 
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
-		So(err, ShouldBeNil)
+		// Two substores of the same type cannot use the same root directory
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring, "cannot use the same root directory")
+		So(err.Error(), ShouldContainSubstring, "substore (route: /a)")
+		So(err.Error(), ShouldContainSubstring, "substore (route: /b)")
 
 		// sub paths that point to same directory should have same storage config.
 		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
@@ -1090,6 +1094,10 @@ storage:
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
+		// Two substores of the same type cannot use the same root directory
+		So(err.Error(), ShouldContainSubstring, "cannot use the same root directory")
+		So(err.Error(), ShouldContainSubstring, "substore (route: /a)")
+		So(err.Error(), ShouldContainSubstring, "substore (route: /b)")
 
 		// sub paths that point to default root directory should not be allowed.
 		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
@@ -1150,6 +1158,189 @@ storage:
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Test verify storage config with different storage types", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+
+		defer os.Remove(tmpfile.Name()) // clean up
+
+		// Local and S3 stores with same rootDir should be allowed (different storage types)
+		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot",
+							"subPaths": {"/a": {"rootDirectory": "/tmp/zot",
+							"storageDriver":{"name":"s3","rootdirectory":"/tmp/zot","region":"us-east-2",
+							"bucket":"zot-storage","secure":true,"skipverify":false}}}},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldBeNil)
+
+		// Two local stores with same rootDir should be rejected (same storage type)
+		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
+							"subPaths": {"/a": {"rootDirectory": "/tmp/zot"}}},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+		// Two stores of the same type cannot use the same root directory
+		So(err.Error(), ShouldContainSubstring, "cannot use the same root directory")
+		So(err.Error(), ShouldContainSubstring, "default storage")
+		So(err.Error(), ShouldContainSubstring, "substore (route: /a)")
+
+		// Two S3 stores with same rootDir should be rejected (same storage type)
+		content = []byte(`{"storage":{"rootDirectory":"/zot",
+							"storageDriver":{"name":"s3","rootdirectory":"/zot","region":"us-east-2",
+							"bucket":"zot-storage","secure":true,"skipverify":false},
+							"dedupe":false,
+							"subPaths": {"/a": {"rootDirectory": "/zot",
+							"storageDriver":{"name":"s3","rootdirectory":"/zot","region":"us-east-2",
+							"bucket":"zot-storage","secure":true,"skipverify":false},
+							"dedupe":false}}},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+		// Two stores of the same type cannot use the same root directory
+		So(err.Error(), ShouldContainSubstring, "cannot use the same root directory")
+		So(err.Error(), ShouldContainSubstring, "default storage")
+		So(err.Error(), ShouldContainSubstring, "substore (route: /a)")
+
+		// Local store with nested path inside default local store should be rejected
+		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
+							"subPaths": {"/a": {"rootDirectory": "/tmp/zot/subdir"}}},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring,
+			"invalid storage config, substore (route: /a) root directory cannot be inside default storage root directory")
+
+		// S3 store with nested path inside default S3 store should be rejected
+		content = []byte(`{"storage":{"rootDirectory":"/zot",
+							"storageDriver":{"name":"s3","rootdirectory":"/zot","region":"us-east-2",
+							"bucket":"zot-storage","secure":true,"skipverify":false},
+							"dedupe":false,
+							"subPaths": {"/a": {"rootDirectory": "/zot/subdir",
+							"storageDriver":{"name":"s3","rootdirectory":"/zot/subdir","region":"us-east-2",
+							"bucket":"zot-storage","secure":true,"skipverify":false},
+							"dedupe":false}}},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring,
+			"invalid storage config, substore (route: /a) root directory cannot be inside default storage root directory")
+
+		// Local store with nested path inside S3 store should be allowed (different storage types)
+		content = []byte(`{"storage":{"rootDirectory":"/zot",
+							"storageDriver":{"name":"s3","rootdirectory":"/zot","region":"us-east-2",
+							"bucket":"zot-storage","secure":true,"skipverify":false},
+							"dedupe":false,
+							"subPaths": {"/a": {"rootDirectory": "/zot/subdir"}}},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldBeNil)
+
+		// S3 store with nested path inside local store should be allowed (different storage types)
+		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
+							"subPaths": {"/a": {"rootDirectory": "/tmp/zot/subdir",
+							"storageDriver":{"name":"s3","rootdirectory":"/tmp/zot/subdir","region":"us-east-2",
+							"bucket":"zot-storage","secure":true,"skipverify":false},
+							"dedupe":false}}},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldBeNil)
+
+		// Two local substores with nested paths should be rejected
+		// /a is at /tmp/zot-a (not nested in default), /b is nested inside /a
+		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
+							"subPaths": {"/a": {"rootDirectory": "/tmp/zot-a"},
+							"/b": {"rootDirectory": "/tmp/zot-a/subdir"}}},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+		// /b is nested inside /a, validation reports this conflict
+		So(err.Error(), ShouldContainSubstring,
+			"invalid storage config, substore (route: /b) root directory cannot be inside substore (route: /a) root directory")
+
+		// Two S3 substores with nested paths should be rejected
+		// /a is at /zot-a (not nested in default), /b is nested inside /a
+		content = []byte(`{"storage":{"rootDirectory":"/zot",
+							"storageDriver":{"name":"s3","rootdirectory":"/zot","region":"us-east-2",
+							"bucket":"zot-storage","secure":true,"skipverify":false},
+							"dedupe":false,
+							"subPaths": {"/a": {"rootDirectory": "/zot-a",
+							"storageDriver":{"name":"s3","rootdirectory":"/zot-a","region":"us-east-2",
+							"bucket":"zot-storage","secure":true,"skipverify":false},
+							"dedupe":false},
+							"/b": {"rootDirectory": "/zot-a/subdir",
+							"storageDriver":{"name":"s3","rootdirectory":"/zot-a/subdir","region":"us-east-2",
+							"bucket":"zot-storage","secure":true,"skipverify":false},
+							"dedupe":false}}},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+		// /b is nested inside /a, validation reports this conflict
+		So(err.Error(), ShouldContainSubstring,
+			"invalid storage config, substore (route: /b) root directory cannot be inside substore (route: /a) root directory")
+
+		// Local and S3 substores with nested paths should be allowed (different storage types)
+		// /a is local at /tmp/zot-a (not nested in default), /b is S3 nested inside /a
+		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
+							"subPaths": {"/a": {"rootDirectory": "/tmp/zot-a"},
+							"/b": {"rootDirectory": "/tmp/zot-a/subdir",
+							"storageDriver":{"name":"s3","rootdirectory":"/tmp/zot-a/subdir","region":"us-east-2",
+							"bucket":"zot-storage","secure":true,"skipverify":false},
+							"dedupe":false}}},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldBeNil)
 	})
 
 	Convey("Test verify w/ authorization and w/o authentication", t, func(c C) {
@@ -2202,7 +2393,11 @@ func TestLoadConfig(t *testing.T) {
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
 		err = cli.LoadConfiguration(config, tmpfile.Name())
-		So(err, ShouldBeNil)
+		// Two substores of the same type cannot use the same root directory
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring, "cannot use the same root directory")
+		So(err.Error(), ShouldContainSubstring, "substore (route: /a)")
+		So(err.Error(), ShouldContainSubstring, "substore (route: /b)")
 	})
 
 	Convey("Test HTTP port", t, func() {
@@ -2214,7 +2409,7 @@ func TestLoadConfig(t *testing.T) {
 
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot",
 							"subPaths": {"/a": {"rootDirectory": "/zot-a","dedupe":"true"},
-							"/b": {"rootDirectory": "/zot-a","dedupe":"true"}}},
+							"/b": {"rootDirectory": "/zot-b","dedupe":"true"}}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
@@ -2224,7 +2419,7 @@ func TestLoadConfig(t *testing.T) {
 
 		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
 							"subPaths": {"/a": {"rootDirectory": "/zot-a","dedupe":"true"},
-							"/b": {"rootDirectory": "/zot-a","dedupe":"true"}}},
+							"/b": {"rootDirectory": "/zot-b","dedupe":"true"}}},
 							"http":{"address":"127.0.0.1","port":"-1","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
