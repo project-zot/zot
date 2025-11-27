@@ -950,7 +950,7 @@ func (rc *RedisDB) SearchRepos(ctx context.Context, searchText string) ([]mTypes
 		foundRepos = append(foundRepos, repoMeta)
 	}
 
-	return foundRepos, err
+	return foundRepos, nil
 }
 
 // SearchTags searches for images(repo:tag) given a search string.
@@ -1036,7 +1036,7 @@ func (rc *RedisDB) SearchTags(ctx context.Context, searchText string) ([]mTypes.
 		}
 	}
 
-	return images, err
+	return images, nil
 }
 
 // FilterTags filters for images given a filter function.
@@ -1196,7 +1196,7 @@ func (rc *RedisDB) GetRepoMeta(ctx context.Context, repo string) (mTypes.RepoMet
 	protoRepoMeta.IsBookmarked = slices.Contains(userBookmarks, repo)
 	protoRepoMeta.IsStarred = slices.Contains(userStars, repo)
 
-	return mConvert.GetRepoMeta(protoRepoMeta), err
+	return mConvert.GetRepoMeta(protoRepoMeta), nil
 }
 
 // GetFullImageMeta returns the full information about an image.
@@ -1260,7 +1260,7 @@ func (rc *RedisDB) GetImageMeta(digest godigest.Digest) (mTypes.ImageMeta, error
 
 	imageMeta = mConvert.GetImageMeta(protoImageMeta)
 
-	return imageMeta, err
+	return imageMeta, nil
 }
 
 // GetMultipleRepoMeta returns a list of all repos that match the given filter function.
@@ -1736,7 +1736,7 @@ func (rc *RedisDB) GetReferrersInfo(repo string, referredDigest godigest.Digest,
 		})
 	}
 
-	return referrersInfoResult, err
+	return referrersInfoResult, nil
 }
 
 // UpdateStatsOnDownload adds 1 to the download count of an image and sets the timestamp of download.
