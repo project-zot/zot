@@ -283,6 +283,15 @@ func (c *Controller) Init() error {
 	// print the current configuration, but strip secrets
 	c.Log.Info().Interface("params", c.Config.Sanitize()).Msg("configuration settings")
 
+	// log authentication methods status
+	authConfig := c.Config.CopyAuthConfig()
+	c.Log.Info().Bool("enabled", authConfig.IsBearerAuthEnabled()).Msg("bearer authentication")
+	c.Log.Info().Bool("enabled", authConfig.IsHtpasswdAuthEnabled()).Msg("basic authentication (htpasswd)")
+	c.Log.Info().Bool("enabled", authConfig.IsLdapAuthEnabled()).Msg("basic authentication (LDAP)")
+	c.Log.Info().Bool("enabled", authConfig.IsAPIKeyEnabled()).Msg("basic authentication (API key)")
+	c.Log.Info().Bool("enabled", authConfig.IsOpenIDAuthEnabled()).Msg("OpenID authentication")
+	c.Log.Info().Bool("enabled", c.Config.IsMTLSAuthEnabled()).Msg("mutual TLS authentication")
+
 	// print the current runtime environment
 	DumpRuntimeParams(c.Log)
 
@@ -310,8 +319,6 @@ func (c *Controller) Init() error {
 	c.InitCVEInfo()
 	c.Healthz.Started()
 
-	// Get auth config safely
-	authConfig := c.Config.CopyAuthConfig()
 	if authConfig.IsHtpasswdAuthEnabled() {
 		err := c.HTPasswdWatcher.ChangeFile(authConfig.HTPasswd.Path)
 		if err != nil {
@@ -435,6 +442,14 @@ func (c *Controller) LoadNewConfig(newConfig *config.Config) {
 
 	c.Log.Info().Interface("reloaded params", c.Config.Sanitize()).
 		Msg("loaded new configuration settings")
+
+	// log authentication methods status
+	c.Log.Info().Bool("enabled", authConfig.IsBearerAuthEnabled()).Msg("bearer authentication")
+	c.Log.Info().Bool("enabled", authConfig.IsHtpasswdAuthEnabled()).Msg("basic authentication (htpasswd)")
+	c.Log.Info().Bool("enabled", authConfig.IsLdapAuthEnabled()).Msg("basic authentication (LDAP)")
+	c.Log.Info().Bool("enabled", authConfig.IsAPIKeyEnabled()).Msg("basic authentication (API key)")
+	c.Log.Info().Bool("enabled", authConfig.IsOpenIDAuthEnabled()).Msg("OpenID authentication")
+	c.Log.Info().Bool("enabled", c.Config.IsMTLSAuthEnabled()).Msg("mutual TLS authentication")
 }
 
 func (c *Controller) Shutdown() {

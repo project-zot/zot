@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,6 +19,53 @@ import (
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	. "zotregistry.dev/zot/v2/pkg/test/common"
 )
+
+// checkAuthLogEntry checks if a log entry with the given message has the expected enabled value.
+func checkAuthLogEntry(logData []byte, message string, expectedEnabled bool) bool {
+	//nolint:modernize // strings.Split is compatible with older Go versions
+	for _, line := range strings.Split(string(logData), "\n") {
+		if line == "" {
+			continue
+		}
+
+		var logEntry map[string]any
+		if err := json.Unmarshal([]byte(line), &logEntry); err != nil {
+			continue
+		}
+
+		if msg, ok := logEntry["message"].(string); ok && msg == message {
+			if enabled, ok := logEntry["enabled"].(bool); ok {
+				return enabled == expectedEnabled
+			}
+		}
+	}
+
+	return false
+}
+
+// verifyAuthenticationLogs verifies that all authentication method log messages are present
+// and that each method has the expected enabled status.
+// expectedAuth maps authentication method names to their expected enabled status (true/false).
+func verifyAuthenticationLogs(data []byte, expectedAuth map[string]bool) {
+	authMethods := []string{
+		"bearer authentication",
+		"basic authentication (htpasswd)",
+		"basic authentication (LDAP)",
+		"basic authentication (API key)",
+		"OpenID authentication",
+		"mutual TLS authentication",
+	}
+
+	// Verify all authentication method messages are present
+	for _, method := range authMethods {
+		So(string(data), ShouldContainSubstring, method)
+	}
+
+	// Verify each authentication method has the expected enabled status
+	for method, expectedEnabled := range expectedAuth {
+		So(checkAuthLogEntry(data, method, expectedEnabled), ShouldBeTrue)
+	}
+}
 
 func TestServerUsage(t *testing.T) {
 	oldArgs := os.Args
@@ -2031,6 +2079,17 @@ func TestServeAPIKey(t *testing.T) {
 
 		defer os.Remove(logPath) // clean up
 		So(string(data), ShouldContainSubstring, "\"APIKey\":true")
+		// verify configuration settings message is present
+		So(string(data), ShouldContainSubstring, "configuration settings")
+		// verify authentication methods status messages are present
+		verifyAuthenticationLogs(data, map[string]bool{
+			"bearer authentication":           false,
+			"basic authentication (htpasswd)": false,
+			"basic authentication (LDAP)":     false,
+			"basic authentication (API key)":  true,
+			"OpenID authentication":           false,
+			"mutual TLS authentication":       false,
+		})
 	})
 
 	Convey("apikey disabled", t, func(c C) {
@@ -2058,6 +2117,17 @@ func TestServeAPIKey(t *testing.T) {
 
 		defer os.Remove(logPath) // clean up
 		So(string(data), ShouldContainSubstring, "\"APIKey\":false")
+		// verify configuration settings message is present
+		So(string(data), ShouldContainSubstring, "configuration settings")
+		// verify authentication methods status messages are present
+		verifyAuthenticationLogs(data, map[string]bool{
+			"bearer authentication":           false,
+			"basic authentication (htpasswd)": false,
+			"basic authentication (LDAP)":     false,
+			"basic authentication (API key)":  false,
+			"OpenID authentication":           false,
+			"mutual TLS authentication":       false,
+		})
 	})
 }
 

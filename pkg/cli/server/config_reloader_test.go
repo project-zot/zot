@@ -94,6 +94,20 @@ func TestConfigReloader(t *testing.T) {
 
 		test.WaitTillServerReady(baseURL)
 
+		// verify initial startup authentication logs
+		initialData, err := os.ReadFile(logFile.Name())
+		So(err, ShouldBeNil)
+		So(string(initialData), ShouldContainSubstring, "configuration settings")
+		// verify authentication methods status messages are present in initial startup
+		verifyAuthenticationLogs(initialData, map[string]bool{
+			"bearer authentication":           false,
+			"basic authentication (htpasswd)": true,
+			"basic authentication (LDAP)":     false,
+			"basic authentication (API key)":  false,
+			"OpenID authentication":           false,
+			"mutual TLS authentication":       false,
+		})
+
 		content = fmt.Sprintf(`{
 			"distSpecVersion": "1.1.1",
 			"storage": {
@@ -156,6 +170,15 @@ func TestConfigReloader(t *testing.T) {
 		So(string(data), ShouldContainSubstring, "loaded new configuration settings")
 		So(string(data), ShouldContainSubstring, "\"Users\":[\"alice\"]")
 		So(string(data), ShouldContainSubstring, "\"Actions\":[\"read\",\"create\",\"update\",\"delete\"]")
+		// verify authentication methods status messages are present
+		verifyAuthenticationLogs(data, map[string]bool{
+			"bearer authentication":           false,
+			"basic authentication (htpasswd)": true,
+			"basic authentication (LDAP)":     false,
+			"basic authentication (API key)":  false,
+			"OpenID authentication":           false,
+			"mutual TLS authentication":       false,
+		})
 	})
 
 	Convey("reload gc config", t, func(c C) {
@@ -211,6 +234,20 @@ func TestConfigReloader(t *testing.T) {
 
 		test.WaitTillServerReady(baseURL)
 
+		// verify initial startup authentication logs (no auth configured)
+		initialData, err := os.ReadFile(logFile.Name())
+		So(err, ShouldBeNil)
+		So(string(initialData), ShouldContainSubstring, "configuration settings")
+		// verify authentication methods status messages are present in initial startup
+		verifyAuthenticationLogs(initialData, map[string]bool{
+			"bearer authentication":           false,
+			"basic authentication (htpasswd)": false,
+			"basic authentication (LDAP)":     false,
+			"basic authentication (API key)":  false,
+			"OpenID authentication":           false,
+			"mutual TLS authentication":       false,
+		})
+
 		content = fmt.Sprintf(`{
 			"distSpecVersion": "1.1.1",
 			"storage": {
@@ -263,6 +300,15 @@ func TestConfigReloader(t *testing.T) {
 		So(string(data), ShouldContainSubstring, "\"Dedupe\":true")
 		So(string(data), ShouldNotContainSubstring, "\"GC\":false")
 		So(string(data), ShouldNotContainSubstring, "\"Dedupe\":false")
+		// verify authentication methods status messages are present
+		verifyAuthenticationLogs(data, map[string]bool{
+			"bearer authentication":           false,
+			"basic authentication (htpasswd)": false,
+			"basic authentication (LDAP)":     false,
+			"basic authentication (API key)":  false,
+			"OpenID authentication":           false,
+			"mutual TLS authentication":       false,
+		})
 	})
 
 	Convey("reload sync config", t, func(c C) {
@@ -330,6 +376,20 @@ func TestConfigReloader(t *testing.T) {
 
 		test.WaitTillServerReady(baseURL)
 
+		// verify initial startup authentication logs (no auth configured)
+		initialData, err := os.ReadFile(logFile.Name())
+		So(err, ShouldBeNil)
+		So(string(initialData), ShouldContainSubstring, "configuration settings")
+		// verify authentication methods status messages are present in initial startup
+		verifyAuthenticationLogs(initialData, map[string]bool{
+			"bearer authentication":           false,
+			"basic authentication (htpasswd)": false,
+			"basic authentication (LDAP)":     false,
+			"basic authentication (API key)":  false,
+			"OpenID authentication":           false,
+			"mutual TLS authentication":       false,
+		})
+
 		content = fmt.Sprintf(`{
 			"distSpecVersion": "1.1.1",
 			"storage": {
@@ -396,6 +456,15 @@ func TestConfigReloader(t *testing.T) {
 		So(string(data), ShouldContainSubstring, "\"Prefix\":\"zot-cve-test\"")
 		So(string(data), ShouldContainSubstring, "\"Regex\":\"tag\"")
 		So(string(data), ShouldContainSubstring, "\"Semver\":false")
+		// verify authentication methods status messages are present
+		verifyAuthenticationLogs(data, map[string]bool{
+			"bearer authentication":           false,
+			"basic authentication (htpasswd)": false,
+			"basic authentication (LDAP)":     false,
+			"basic authentication (API key)":  false,
+			"OpenID authentication":           false,
+			"mutual TLS authentication":       false,
+		})
 	})
 
 	Convey("reload scrub and CVE config", t, func(c C) {
@@ -453,6 +522,20 @@ func TestConfigReloader(t *testing.T) {
 
 		test.WaitTillServerReady(baseURL)
 
+		// verify initial startup authentication logs (no auth configured)
+		initialData, err := os.ReadFile(logFile.Name())
+		So(err, ShouldBeNil)
+		So(string(initialData), ShouldContainSubstring, "configuration settings")
+		// verify authentication methods status messages are present in initial startup
+		verifyAuthenticationLogs(initialData, map[string]bool{
+			"bearer authentication":           false,
+			"basic authentication (htpasswd)": false,
+			"basic authentication (LDAP)":     false,
+			"basic authentication (API key)":  false,
+			"OpenID authentication":           false,
+			"mutual TLS authentication":       false,
+		})
+
 		content = fmt.Sprintf(`{
 			"distSpecVersion": "1.1.1",
 			"storage": {
@@ -509,6 +592,15 @@ func TestConfigReloader(t *testing.T) {
 		So(string(data), ShouldContainSubstring, "\"UpdateInterval\":18000000000000")
 		So(string(data), ShouldContainSubstring, "\"Scrub\":null")
 		So(string(data), ShouldContainSubstring, "\"DBRepository\":\"another/unreachable/trivy/url2\"")
+		// verify authentication methods status messages are present
+		verifyAuthenticationLogs(data, map[string]bool{
+			"bearer authentication":           false,
+			"basic authentication (htpasswd)": false,
+			"basic authentication (LDAP)":     false,
+			"basic authentication (API key)":  false,
+			"OpenID authentication":           false,
+			"mutual TLS authentication":       false,
+		})
 
 		// Just verify the new URL appears in the logs to confirm config reload worked and ignore
 		// the order of json message formatting that can change independent of this functional
