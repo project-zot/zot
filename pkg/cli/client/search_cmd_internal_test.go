@@ -5,7 +5,6 @@ package client
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -40,9 +39,8 @@ func TestSearchCommandGQL(t *testing.T) {
 	defer cm.StopServer()
 
 	Convey("commands without gql", t, func() {
-		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"searchtest","url":"%s","showspinner":false}]}`,
+		_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"searchtest","url":"%s","showspinner":false}]}`,
 			baseURL))
-		defer os.Remove(configPath)
 
 		Convey("query", func() {
 			args := []string{"query", "repo/al", "--config", "searchtest"}
@@ -120,9 +118,8 @@ func TestSearchCommandREST(t *testing.T) {
 	defer cm.StopServer()
 
 	Convey("commands without gql", t, func() {
-		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"searchtest","url":"%s","showspinner":false}]}`,
+		_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"searchtest","url":"%s","showspinner":false}]}`,
 			baseURL))
-		defer os.Remove(configPath)
 
 		Convey("query", func() {
 			args := []string{"query", "repo/al", "--config", "searchtest"}

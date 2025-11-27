@@ -5,7 +5,6 @@ package client_test
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -38,9 +37,8 @@ func TestReposCommand(t *testing.T) {
 		err = UploadImage(CreateRandomImage(), baseURL, "repo2", "tag2")
 		So(err, ShouldBeNil)
 
-		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"repostest","url":"%s","showspinner":false}]}`,
+		_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"repostest","url":"%s","showspinner":false}]}`,
 			baseURL))
-		defer os.Remove(configPath)
 
 		args := []string{"list", "--config", "repostest"}
 		cmd := client.NewRepoCommand(client.NewSearchService())

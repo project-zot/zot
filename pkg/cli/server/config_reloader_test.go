@@ -24,16 +24,12 @@ func TestConfigReloader(t *testing.T) {
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
 
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		username := "alice"
 		password := "alice"
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
-		defer os.Remove(htpasswdPath)
-
-		defer os.Remove(logFile.Name()) // clean up
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 		content := fmt.Sprintf(`{
 			"distSpecVersion": "1.1.1",
@@ -72,18 +68,12 @@ func TestConfigReloader(t *testing.T) {
 			  "level": "debug",
 			  "output": "%s"
 			}
-		  }`, t.TempDir(), port, htpasswdPath, logFile.Name())
+		  }`, t.TempDir(), port, htpasswdPath, logPath)
 
-		cfgfile, err := os.CreateTemp("", "zot-test*.json")
+		cfgfile := test.MakeTempFile(t, "zot-test.json")
+		defer cfgfile.Close()
+		_, err := cfgfile.WriteString(content)
 		So(err, ShouldBeNil)
-
-		defer os.Remove(cfgfile.Name()) // clean up
-
-		_, err = cfgfile.WriteString(content)
-		So(err, ShouldBeNil)
-
-		// err = cfgfile.Close()
-		// So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
 
@@ -95,7 +85,7 @@ func TestConfigReloader(t *testing.T) {
 		test.WaitTillServerReady(baseURL)
 
 		// verify initial startup authentication logs
-		initialData, err := os.ReadFile(logFile.Name())
+		initialData, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		So(string(initialData), ShouldContainSubstring, "configuration settings")
 		// verify authentication methods status messages are present in initial startup
@@ -145,7 +135,7 @@ func TestConfigReloader(t *testing.T) {
 			  "level": "debug",
 			  "output": "%s"
 			}
-		}`, t.TempDir(), port, htpasswdPath, logFile.Name())
+		}`, t.TempDir(), port, htpasswdPath, logPath)
 
 		err = cfgfile.Truncate(0)
 		So(err, ShouldBeNil)
@@ -162,7 +152,7 @@ func TestConfigReloader(t *testing.T) {
 		// wait for config reload
 		time.Sleep(2 * time.Second)
 
-		data, err := os.ReadFile(logFile.Name())
+		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 
 		t.Logf("log file: %s", data)
@@ -185,10 +175,8 @@ func TestConfigReloader(t *testing.T) {
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
 
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
-
-		defer os.Remove(logFile.Name()) // clean up
+		logFile := test.MakeTempFile(t, "zot-log.txt")
+		defer logFile.Close()
 
 		content := fmt.Sprintf(`{
 				"distSpecVersion": "1.1.1",
@@ -214,16 +202,11 @@ func TestConfigReloader(t *testing.T) {
 				}
 			}`, t.TempDir(), t.TempDir(), port, logFile.Name())
 
-		cfgfile, err := os.CreateTemp("", "zot-test*.json")
+		cfgfile := test.MakeTempFile(t, "zot-test.json")
+		defer cfgfile.Close()
+
+		_, err := cfgfile.WriteString(content)
 		So(err, ShouldBeNil)
-
-		defer os.Remove(cfgfile.Name()) // clean up
-
-		_, err = cfgfile.WriteString(content)
-		So(err, ShouldBeNil)
-
-		// err = cfgfile.Close()
-		// So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
 
@@ -280,6 +263,8 @@ func TestConfigReloader(t *testing.T) {
 
 		// truncate log before changing config, for the ShouldNotContainString
 		So(logFile.Truncate(0), ShouldBeNil)
+		err = logFile.Close()
+		So(err, ShouldBeNil)
 
 		_, err = cfgfile.WriteString(content)
 		So(err, ShouldBeNil)
@@ -315,10 +300,7 @@ func TestConfigReloader(t *testing.T) {
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
 
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
-
-		defer os.Remove(logFile.Name()) // clean up
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		content := fmt.Sprintf(`{
 				"distSpecVersion": "1.1.1",
@@ -354,18 +336,13 @@ func TestConfigReloader(t *testing.T) {
 						}]
 					}
 				}
-			}`, t.TempDir(), port, logFile.Name())
+			}`, t.TempDir(), port, logPath)
 
-		cfgfile, err := os.CreateTemp("", "zot-test*.json")
+		cfgfile := test.MakeTempFile(t, "zot-test.json")
+		defer cfgfile.Close()
+
+		_, err := cfgfile.WriteString(content)
 		So(err, ShouldBeNil)
-
-		defer os.Remove(cfgfile.Name()) // clean up
-
-		_, err = cfgfile.WriteString(content)
-		So(err, ShouldBeNil)
-
-		// err = cfgfile.Close()
-		// So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
 
@@ -377,7 +354,7 @@ func TestConfigReloader(t *testing.T) {
 		test.WaitTillServerReady(baseURL)
 
 		// verify initial startup authentication logs (no auth configured)
-		initialData, err := os.ReadFile(logFile.Name())
+		initialData, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		So(string(initialData), ShouldContainSubstring, "configuration settings")
 		// verify authentication methods status messages are present in initial startup
@@ -424,7 +401,7 @@ func TestConfigReloader(t *testing.T) {
 					}]
 				}
 			}
-		}`, t.TempDir(), port, logFile.Name())
+		}`, t.TempDir(), port, logPath)
 
 		err = cfgfile.Truncate(0)
 		So(err, ShouldBeNil)
@@ -441,7 +418,7 @@ func TestConfigReloader(t *testing.T) {
 		// wait for config reload
 		time.Sleep(2 * time.Second)
 
-		data, err := os.ReadFile(logFile.Name())
+		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		t.Logf("log file: %s", data)
 
@@ -471,10 +448,7 @@ func TestConfigReloader(t *testing.T) {
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
 
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
-
-		defer os.Remove(logFile.Name()) // clean up
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		content := fmt.Sprintf(`{
 				"distSpecVersion": "1.1.1",
@@ -503,14 +477,12 @@ func TestConfigReloader(t *testing.T) {
 						"interval": "24h"
 					}
 				}
-			}`, t.TempDir(), port, logFile.Name())
+			}`, t.TempDir(), port, logPath)
 
-		cfgfile, err := os.CreateTemp("", "zot-test*.json")
-		So(err, ShouldBeNil)
+		cfgfile := test.MakeTempFile(t, "zot-test.json")
+		defer cfgfile.Close()
 
-		defer os.Remove(cfgfile.Name()) // clean up
-
-		_, err = cfgfile.WriteString(content)
+		_, err := cfgfile.WriteString(content)
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
@@ -523,7 +495,7 @@ func TestConfigReloader(t *testing.T) {
 		test.WaitTillServerReady(baseURL)
 
 		// verify initial startup authentication logs (no auth configured)
-		initialData, err := os.ReadFile(logFile.Name())
+		initialData, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		So(string(initialData), ShouldContainSubstring, "configuration settings")
 		// verify authentication methods status messages are present in initial startup
@@ -559,7 +531,7 @@ func TestConfigReloader(t *testing.T) {
 					}
 				}
 			}
-		}`, t.TempDir(), port, logFile.Name())
+		}`, t.TempDir(), port, logPath)
 
 		err = cfgfile.Truncate(0)
 		So(err, ShouldBeNil)
@@ -577,13 +549,13 @@ func TestConfigReloader(t *testing.T) {
 		time.Sleep(5 * time.Second)
 
 		// Wait for the async trivy download to fail and log the error
-		found, err := test.ReadLogFileAndSearchString(logFile.Name(),
+		found, err := test.ReadLogFileAndSearchString(logPath,
 			"failed to download trivy-db to destination dir", 30*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
 		// Now read the file once and check all the expected log content
-		data, err := os.ReadFile(logFile.Name())
+		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		t.Logf("log file: %s", data)
 
@@ -605,7 +577,7 @@ func TestConfigReloader(t *testing.T) {
 		// Just verify the new URL appears in the logs to confirm config reload worked and ignore
 		// the order of json message formatting that can change independent of this functional
 		// test.
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(),
+		found, err = test.ReadLogFileAndSearchString(logPath,
 			"index.docker.io/another/unreachable/trivy/url2", 1*time.Minute)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
@@ -615,10 +587,7 @@ func TestConfigReloader(t *testing.T) {
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
 
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
-
-		defer os.Remove(logFile.Name()) // clean up
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		content := fmt.Sprintf(`{
 				"distSpecVersion": "1.1.1",
@@ -654,18 +623,13 @@ func TestConfigReloader(t *testing.T) {
 						}]
 					}
 				}
-			}`, t.TempDir(), port, logFile.Name())
+			}`, t.TempDir(), port, logPath)
 
-		cfgfile, err := os.CreateTemp("", "zot-test*.json")
+		cfgfile := test.MakeTempFile(t, "zot-test.json")
+		defer cfgfile.Close()
+
+		_, err := cfgfile.WriteString(content)
 		So(err, ShouldBeNil)
-
-		defer os.Remove(cfgfile.Name()) // clean up
-
-		_, err = cfgfile.WriteString(content)
-		So(err, ShouldBeNil)
-
-		// err = cfgfile.Close()
-		// So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
 
@@ -693,7 +657,7 @@ func TestConfigReloader(t *testing.T) {
 		// wait for config reload
 		time.Sleep(2 * time.Second)
 
-		data, err := os.ReadFile(logFile.Name())
+		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		t.Logf("log file: %s", data)
 

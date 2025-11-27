@@ -12,6 +12,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/GehirnInc/crypt"
@@ -308,8 +309,41 @@ func GetSHA512CredString(username, password string) string {
 	return usernameAndHash
 }
 
-func MakeHtpasswdFileFromString(fileContent string) string {
-	htpasswdFile, err := os.CreateTemp("", "htpasswd-")
+func MakeTempFile(tb testing.TB, filename string) *os.File {
+	tb.Helper()
+	tempDir := tb.TempDir()
+	file, err := os.Create(filepath.Join(tempDir, filename))
+	if err != nil {
+		panic(err)
+	}
+
+	return file
+}
+
+// MakeTempFilePath creates an empty temporary file and returns its path.
+func MakeTempFilePath(tb testing.TB, filename string) string {
+	tb.Helper()
+
+	return filepath.Join(tb.TempDir(), filename)
+}
+
+// MakeTempFileWithContent creates a temporary file with the given filename and content, and returns its path.
+func MakeTempFileWithContent(tb testing.TB, filename, content string) string {
+	tb.Helper()
+	tmpfile := MakeTempFile(tb, filename)
+	path := tmpfile.Name()
+	tmpfile.Close() // Close immediately, we'll write using os.WriteFile
+	if err := os.WriteFile(path, []byte(content), 0o0600); err != nil {
+		panic(err)
+	}
+
+	return path
+}
+
+func MakeHtpasswdFileFromString(tb testing.TB, fileContent string) string {
+	tb.Helper()
+	tempDir := tb.TempDir()
+	htpasswdFile, err := os.Create(filepath.Join(tempDir, "htpasswd"))
 	if err != nil {
 		panic(err)
 	}

@@ -45,12 +45,10 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 		repo1 := "repo1"
 		repoIndex := "repoIndex"
 
-		logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
+		logFile := test.MakeTempFile(t, "zot-log.txt")
+		defer logFile.Close()
+
 		logPath := logFile.Name()
-
-		So(err, ShouldBeNil)
-
-		defer os.Remove(logFile.Name()) // clean up
 
 		writers := io.MultiWriter(os.Stdout, logFile)
 		logger := log.NewLoggerWithWriter("debug", writers)
@@ -485,12 +483,10 @@ func TestScanGeneratorWithRealData(t *testing.T) {
 	Convey("Test CVE scanning task scheduler real data", t, func() {
 		rootDir := t.TempDir()
 
-		logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
+		logFile := test.MakeTempFile(t, "zot-log.txt")
+		defer logFile.Close()
+
 		logPath := logFile.Name()
-
-		So(err, ShouldBeNil)
-
-		defer os.Remove(logFile.Name()) // clean up
 
 		writers := io.MultiWriter(os.Stdout, logFile)
 		logger := log.NewLoggerWithWriter("debug", writers)

@@ -33,10 +33,7 @@ func TestScrubExtension(t *testing.T) {
 	Convey("Blobs integrity not affected", t, func(c C) {
 		port := test.GetFreePort()
 
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
-
-		defer os.Remove(logFile.Name()) // clean up
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		conf := config.New()
 		conf.HTTP.Port = port
@@ -50,7 +47,7 @@ func TestScrubExtension(t *testing.T) {
 
 		substore := config.StorageConfig{RootDirectory: subdir}
 		conf.Storage.SubPaths = map[string]config.StorageConfig{"/a": substore}
-		conf.Log.Output = logFile.Name()
+		conf.Log.Output = logPath
 		trueValue := true
 		scrubConfig := &extconf.ScrubConfig{
 			BaseConfig: extconf.BaseConfig{Enable: &trueValue},
@@ -63,14 +60,14 @@ func TestScrubExtension(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		srcStorageCtlr := ociutils.GetDefaultStoreController(dir, log.NewTestLogger())
-		err = WriteImageToFileSystem(CreateDefaultVulnerableImage(), repoName, "0.0.1", srcStorageCtlr)
+		err := WriteImageToFileSystem(CreateDefaultVulnerableImage(), repoName, "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
 		defer cm.StopServer()
 
-		found, err := test.ReadLogFileAndSearchString(logFile.Name(), "blobs/manifest ok", 60*time.Second)
+		found, err := test.ReadLogFileAndSearchString(logPath, "blobs/manifest ok", 60*time.Second)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 	})
@@ -78,10 +75,7 @@ func TestScrubExtension(t *testing.T) {
 	Convey("Blobs integrity affected", t, func(c C) {
 		port := test.GetFreePort()
 
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
-
-		defer os.Remove(logFile.Name()) // clean up
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		conf := config.New()
 		conf.HTTP.Port = port
@@ -92,7 +86,7 @@ func TestScrubExtension(t *testing.T) {
 		conf.Storage.Dedupe = false
 		conf.Storage.GC = false
 
-		conf.Log.Output = logFile.Name()
+		conf.Log.Output = logPath
 		trueValue := true
 		scrubConfig := &extconf.ScrubConfig{
 			BaseConfig: extconf.BaseConfig{Enable: &trueValue},
@@ -106,7 +100,7 @@ func TestScrubExtension(t *testing.T) {
 
 		srcStorageCtlr := ociutils.GetDefaultStoreController(dir, log.NewTestLogger())
 		image := CreateDefaultVulnerableImage()
-		err = WriteImageToFileSystem(image, repoName, "0.0.1", srcStorageCtlr)
+		err := WriteImageToFileSystem(image, repoName, "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
 		layerDigest := image.Manifest.Layers[0].Digest
@@ -120,7 +114,7 @@ func TestScrubExtension(t *testing.T) {
 		cm.StartAndWait(port)
 		defer cm.StopServer()
 
-		found, err := test.ReadLogFileAndSearchString(logFile.Name(), "blobs/manifest affected", 60*time.Second)
+		found, err := test.ReadLogFileAndSearchString(logPath, "blobs/manifest affected", 60*time.Second)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 	})
@@ -128,10 +122,7 @@ func TestScrubExtension(t *testing.T) {
 	Convey("Generator error - not enough permissions to access root directory", t, func(c C) {
 		port := test.GetFreePort()
 
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
-
-		defer os.Remove(logFile.Name()) // clean up
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		conf := config.New()
 		conf.HTTP.Port = port
@@ -142,7 +133,7 @@ func TestScrubExtension(t *testing.T) {
 		conf.Storage.Dedupe = false
 		conf.Storage.GC = false
 
-		conf.Log.Output = logFile.Name()
+		conf.Log.Output = logPath
 		trueValue := true
 		scrubConfig := &extconf.ScrubConfig{
 			BaseConfig: extconf.BaseConfig{Enable: &trueValue},
@@ -157,7 +148,7 @@ func TestScrubExtension(t *testing.T) {
 		srcStorageCtlr := ociutils.GetDefaultStoreController(dir, log.NewTestLogger())
 		image := CreateDefaultVulnerableImage()
 
-		err = WriteImageToFileSystem(image, repoName, "0.0.1", srcStorageCtlr)
+		err := WriteImageToFileSystem(image, repoName, "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
 		So(os.Chmod(path.Join(dir, repoName), 0o000), ShouldBeNil)
@@ -166,7 +157,7 @@ func TestScrubExtension(t *testing.T) {
 		cm.StartAndWait(port)
 		defer cm.StopServer()
 
-		found, err := test.ReadLogFileAndSearchString(logFile.Name(), "failed to execute generator", 60*time.Second)
+		found, err := test.ReadLogFileAndSearchString(logPath, "failed to execute generator", 60*time.Second)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
@@ -176,17 +167,14 @@ func TestScrubExtension(t *testing.T) {
 
 func TestRunScrubRepo(t *testing.T) {
 	Convey("Blobs integrity not affected", t, func(c C) {
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
-
-		defer os.Remove(logFile.Name()) // clean up
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		conf := config.New()
 		conf.Extensions = &extconf.ExtensionConfig{}
 		conf.Extensions.Lint = &extconf.LintConfig{}
 
 		dir := t.TempDir()
-		log := log.NewLogger("debug", logFile.Name())
+		log := log.NewLogger("debug", logPath)
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
@@ -199,22 +187,19 @@ func TestRunScrubRepo(t *testing.T) {
 		srcStorageCtlr := ociutils.GetDefaultStoreController(dir, log)
 		image := CreateDefaultVulnerableImage()
 
-		err = WriteImageToFileSystem(image, repoName, "0.0.1", srcStorageCtlr)
+		err := WriteImageToFileSystem(image, repoName, "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
 		err = scrub.RunScrubRepo(context.Background(), imgStore, repoName, log)
 		So(err, ShouldBeNil)
 
-		data, err := os.ReadFile(logFile.Name())
+		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring, "blobs/manifest ok")
 	})
 
 	Convey("Blobs integrity affected", t, func(c C) {
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
-
-		defer os.Remove(logFile.Name()) // clean up
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		conf := config.New()
 
@@ -222,7 +207,7 @@ func TestRunScrubRepo(t *testing.T) {
 		conf.Extensions.Lint = &extconf.LintConfig{}
 
 		dir := t.TempDir()
-		log := log.NewLogger("debug", logFile.Name())
+		log := log.NewLogger("debug", logPath)
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
@@ -235,7 +220,7 @@ func TestRunScrubRepo(t *testing.T) {
 		srcStorageCtlr := ociutils.GetDefaultStoreController(dir, log)
 		image := CreateDefaultVulnerableImage()
 
-		err = WriteImageToFileSystem(image, repoName, "0.0.1", srcStorageCtlr)
+		err := WriteImageToFileSystem(image, repoName, "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
 		layerDigest := image.Manifest.Layers[0].Digest
@@ -248,23 +233,20 @@ func TestRunScrubRepo(t *testing.T) {
 		err = scrub.RunScrubRepo(context.Background(), imgStore, repoName, log)
 		So(err, ShouldBeNil)
 
-		data, err := os.ReadFile(logFile.Name())
+		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring, "blobs/manifest affected")
 	})
 
 	Convey("CheckRepo error - not enough permissions to access root directory", t, func(c C) {
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
-
-		defer os.Remove(logFile.Name()) // clean up
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		conf := config.New()
 		conf.Extensions = &extconf.ExtensionConfig{}
 		conf.Extensions.Lint = &extconf.LintConfig{}
 
 		dir := t.TempDir()
-		log := log.NewLogger("debug", logFile.Name())
+		log := log.NewLogger("debug", logPath)
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
@@ -276,7 +258,7 @@ func TestRunScrubRepo(t *testing.T) {
 		srcStorageCtlr := ociutils.GetDefaultStoreController(dir, log)
 		image := CreateDefaultVulnerableImage()
 
-		err = WriteImageToFileSystem(image, repoName, "0.0.1", srcStorageCtlr)
+		err := WriteImageToFileSystem(image, repoName, "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
 		So(os.Chmod(path.Join(dir, repoName), 0o000), ShouldBeNil)
@@ -284,7 +266,7 @@ func TestRunScrubRepo(t *testing.T) {
 		err = scrub.RunScrubRepo(context.Background(), imgStore, repoName, log)
 		So(err, ShouldNotBeNil)
 
-		data, err := os.ReadFile(logFile.Name())
+		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring,
 			"failed to run scrub for "+imgStore.RootDir())

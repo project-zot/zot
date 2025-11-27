@@ -40,9 +40,8 @@ func TestServerStatusCommand(t *testing.T) {
 		cm.StartAndWait(conf.HTTP.Port)
 		defer cm.StopServer()
 
-		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"status-test","url":"%s","showspinner":false}]}`,
+		_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"status-test","url":"%s","showspinner":false}]}`,
 			baseURL))
-		defer os.Remove(configPath)
 
 		args := []string{"status", "--config", "status-test"}
 		cmd := NewCliRootCmd()

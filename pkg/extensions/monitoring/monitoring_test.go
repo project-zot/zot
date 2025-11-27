@@ -172,8 +172,7 @@ func TestMetricsAuthentication(t *testing.T) {
 		metricspass := generateRandomString()
 		content := test.GetBcryptCredString(username, password) + "\n" + test.GetBcryptCredString(metricsuser, metricspass)
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(content)
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, content)
 
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
@@ -237,8 +236,7 @@ func TestMetricsAuthorization(t *testing.T) {
 		metricspass := generateRandomString()
 		content := test.GetBcryptCredString(username, password) + "\n" + test.GetBcryptCredString(metricsuser, metricspass)
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(content)
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, content)
 
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
@@ -439,13 +437,10 @@ func TestPopulateStorageMetrics(t *testing.T) {
 			Prometheus: &extconf.PrometheusConfig{Path: "/metrics"},
 		}
 
-		logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
-		if err != nil {
-			panic(err)
-		}
+		logFile := test.MakeTempFile(t, "zot-log.txt")
+		defer logFile.Close()
 
 		logPath := logFile.Name()
-		defer os.Remove(logPath)
 
 		writers := io.MultiWriter(os.Stdout, logFile)
 
@@ -455,7 +450,7 @@ func TestPopulateStorageMetrics(t *testing.T) {
 
 		// Write images before starting controller to avoid race condition with garbage collection
 		srcStorageCtlr := ociutils.GetDefaultStoreController(rootDir, ctlr.Log)
-		err = WriteImageToFileSystem(CreateDefaultImage(), "alpine", "0.0.1", srcStorageCtlr)
+		err := WriteImageToFileSystem(CreateDefaultImage(), "alpine", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 		err = WriteImageToFileSystem(CreateDefaultImage(), "busybox", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)

@@ -35,6 +35,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage/gc"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
+	test "zotregistry.dev/zot/v2/pkg/test/common"
 	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 	"zotregistry.dev/zot/v2/pkg/test/signature"
@@ -1970,11 +1971,9 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 		ctx := context.Background()
 
 		Convey("Garbage collect continues when manifest blob is missing", func() {
-			logFile, _ := os.CreateTemp("", "zot-log*.txt")
+			logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
-			defer os.Remove(logFile.Name()) // clean up
-
-			log := zlog.NewLogger("debug", logFile.Name())
+			log := zlog.NewLogger("debug", logPath)
 			audit := zlog.NewAuditLogger("debug", "")
 
 			metrics := monitoring.NewMetricsServer(false, log)
@@ -2013,7 +2012,7 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 
 			time.Sleep(500 * time.Millisecond)
 
-			data, err := os.ReadFile(logFile.Name())
+			data, err := os.ReadFile(logPath)
 			So(err, ShouldBeNil)
 			// Verify that GC logged a warning about skipping the missing manifest
 			So(string(data), ShouldContainSubstring, "skipping missing")
@@ -2021,11 +2020,9 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 		})
 
 		Convey("Garbage collect error - not enough permissions to access index.json", func() {
-			logFile, _ := os.CreateTemp("", "zot-log*.txt")
+			logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
-			defer os.Remove(logFile.Name()) // clean up
-
-			log := zlog.NewLogger("debug", logFile.Name())
+			log := zlog.NewLogger("debug", logPath)
 			audit := zlog.NewAuditLogger("debug", "")
 
 			metrics := monitoring.NewMetricsServer(false, log)
@@ -2056,7 +2053,7 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 
 			time.Sleep(500 * time.Millisecond)
 
-			data, err := os.ReadFile(logFile.Name())
+			data, err := os.ReadFile(logPath)
 			So(err, ShouldBeNil)
 			So(string(data), ShouldContainSubstring,
 				"failed to run GC for "+path.Join(imgStore.RootDir(), repoName))
@@ -2137,11 +2134,9 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 		})
 
 		Convey("Garbage collect error - not enough permissions to access blob upload", func() {
-			logFile, _ := os.CreateTemp("", "zot-log*.txt")
+			logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
-			defer os.Remove(logFile.Name()) // clean up
-
-			log := zlog.NewLogger("debug", logFile.Name())
+			log := zlog.NewLogger("debug", logPath)
 			audit := zlog.NewAuditLogger("debug", "")
 
 			metrics := monitoring.NewMetricsServer(false, log)
@@ -2202,7 +2197,7 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(isPresent, ShouldBeFalse)
 
-			data, err := os.ReadFile(logFile.Name())
+			data, err := os.ReadFile(logPath)
 			So(err, ShouldBeNil)
 			So(string(data), ShouldContainSubstring,
 				"failed to run GC for "+path.Join(imgStore.RootDir(), repoName))

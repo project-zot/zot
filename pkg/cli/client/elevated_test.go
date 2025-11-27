@@ -101,11 +101,9 @@ func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 		defer cm.StopServer()
 
 		Convey("Certs in privileged path", func() {
-			configPath := makeConfigFile(
+			_ = makeConfigFile(t,
 				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s%s%s","showspinner":false}]}`,
 					BaseSecureURL2, constants.RoutePrefix, constants.ExtCatalogPrefix))
-
-			defer os.Remove(configPath)
 
 			args := []string{"list", "--config", "imagetest"}
 			imageCmd := client.NewImageCommand(client.NewSearchService())

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -43,11 +42,11 @@ func TestUserData(t *testing.T) {
 		content := test.GetBcryptCredString(adminUser, adminPassword) +
 			test.GetBcryptCredString(simpleUser, simpleUserPassword)
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(content)
-		defer os.Remove(htpasswdPath)
+		tempDir := t.TempDir()
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, content)
 
 		conf := config.New()
-		conf.Storage.RootDirectory = t.TempDir()
+		conf.Storage.RootDirectory = tempDir
 		conf.HTTP.Port = port
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
@@ -455,11 +454,11 @@ func TestChangingRepoState(t *testing.T) {
 	forbiddenRepo := "forbidden"
 	accesibleRepo := "accesible"
 
-	htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(simpleUser, simpleUserPassword))
-	defer os.Remove(htpasswdPath)
+	tempDir := t.TempDir()
+	htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(simpleUser, simpleUserPassword))
 
 	conf := config.New()
-	conf.Storage.RootDirectory = t.TempDir()
+	conf.Storage.RootDirectory = tempDir
 	conf.HTTP.Port = port
 	conf.HTTP.Auth = &config.AuthConfig{
 		HTPasswd: config.AuthHTPasswd{
@@ -606,8 +605,7 @@ func TestGlobalSearchWithUserPrefFiltering(t *testing.T) {
 		simpleUser := "simpleUser"
 		simpleUserPassword := "simpleUserPass"
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(simpleUser, simpleUserPassword))
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(simpleUser, simpleUserPassword))
 
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
@@ -801,8 +799,7 @@ func TestExpandedRepoInfoWithUserPrefs(t *testing.T) {
 		simpleUser := "simpleUser"
 		simpleUserPassword := "simpleUserPass"
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(simpleUser, simpleUserPassword))
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(simpleUser, simpleUserPassword))
 
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{

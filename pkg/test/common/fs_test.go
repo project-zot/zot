@@ -20,7 +20,7 @@ var ErrTestError = errors.New("ErrTestError")
 
 func TestCopyFiles(t *testing.T) {
 	Convey("sourceDir does not exist", t, func() {
-		err := tcommon.CopyFiles("/path/to/some/unexisting/directory", os.TempDir())
+		err := tcommon.CopyFiles("/path/to/some/unexisting/directory", t.TempDir())
 		So(err, ShouldNotBeNil)
 	})
 	Convey("destDir is a file", t, func() {
@@ -38,7 +38,7 @@ func TestCopyFiles(t *testing.T) {
 		err := os.Chmod(dir, 0o300)
 		So(err, ShouldBeNil)
 
-		err = tcommon.CopyFiles(dir, os.TempDir())
+		err = tcommon.CopyFiles(dir, t.TempDir())
 		So(err, ShouldNotBeNil)
 	})
 	Convey("sourceDir has a subfolder that does not have read permissions", t, func() {
@@ -48,7 +48,7 @@ func TestCopyFiles(t *testing.T) {
 		err := os.Mkdir(path.Join(dir, sdir), 0o300)
 		So(err, ShouldBeNil)
 
-		err = tcommon.CopyFiles(dir, os.TempDir())
+		err = tcommon.CopyFiles(dir, t.TempDir())
 		So(err, ShouldNotBeNil)
 	})
 	Convey("sourceDir has a file that does not have read permissions", t, func() {
@@ -64,7 +64,7 @@ func TestCopyFiles(t *testing.T) {
 		err = os.Chmod(filePath, 0o300)
 		So(err, ShouldBeNil)
 
-		err = tcommon.CopyFiles(dir, os.TempDir())
+		err = tcommon.CopyFiles(dir, t.TempDir())
 		So(err, ShouldNotBeNil)
 	})
 	Convey("sourceDir contains a folder starting with invalid characters", t, func() {
@@ -125,21 +125,22 @@ func TestCopyFile(t *testing.T) {
 }
 
 func TestReadLogFileAndSearchString(t *testing.T) {
-	logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
-	if err != nil {
-		panic(err)
-	}
-
-	logPath := logFile.Name()
-	defer os.Remove(logPath)
+	logPath := tcommon.MakeTempFilePath(t, "zot-log.txt")
 
 	Convey("Invalid path", t, func() {
-		_, err = tcommon.ReadLogFileAndSearchString("invalidPath",
+		_, err := tcommon.ReadLogFileAndSearchString("invalidPath",
 			"cve-db update completed, next update scheduled after interval", 1*time.Second)
 		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Time too short", t, func() {
+		// Create an empty file so ReadLogFileAndSearchString can read it
+		file, err := os.Create(logPath)
+		if err != nil {
+			panic(err)
+		}
+		file.Close()
+
 		ok, err := tcommon.ReadLogFileAndSearchString(logPath, "invalid string", time.Microsecond)
 		So(err, ShouldBeNil)
 		So(ok, ShouldBeFalse)
@@ -147,18 +148,15 @@ func TestReadLogFileAndSearchString(t *testing.T) {
 }
 
 func TestReadLogFileAndCountStringOccurence(t *testing.T) {
-	logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
-	if err != nil {
-		panic(err)
-	}
+	logFile := tcommon.MakeTempFile(t, "zot-log.txt")
+	defer logFile.Close()
 
-	_, err = logFile.WriteString("line1\n line2\n line3 line1 line2\n line1")
+	_, err := logFile.WriteString("line1\n line2\n line3 line1 line2\n line1")
 	if err != nil {
 		panic(err)
 	}
 
 	logPath := logFile.Name()
-	defer os.Remove(logPath)
 
 	Convey("Invalid path", t, func() {
 		_, err = tcommon.ReadLogFileAndCountStringOccurence("invalidPath",
@@ -239,9 +237,10 @@ func TestCopyTestKeysAndCerts(t *testing.T) {
 		So(err.Error(), ShouldContainSubstring, "CopyFiles os.Stat failed")
 
 		// --- GetProjectRootDir call fails -----
-		err = os.Chdir(os.TempDir())
+		tempDir := t.TempDir()
+		err = os.Chdir(tempDir)
 		So(err, ShouldBeNil)
-		err = tcommon.CopyTestKeysAndCerts(os.TempDir())
+		err = tcommon.CopyTestKeysAndCerts(tempDir)
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, tcommon.ErrNoGoModFileFound)
 	})
@@ -259,7 +258,8 @@ func TestGetProjectRootDir(t *testing.T) {
 
 		defer func() { _ = os.Chdir(workDir) }()
 
-		err = os.Chdir(os.TempDir())
+		tempDir := t.TempDir()
+		err = os.Chdir(tempDir)
 		So(err, ShouldBeNil)
 		path, err := tcommon.GetProjectRootDir()
 		So(err, ShouldNotBeNil)

@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -859,24 +858,22 @@ func TestUtils(t *testing.T) {
 		So(verifyTLS, ShouldBeFalse)
 
 		// bad showspinner
-		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":"bad", "verify-tls": false}]}`)
+		_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest","showspinner":"bad", "verify-tls": false}]}`)
 		cmd = &cobra.Command{}
 		cmd.Flags().String(ConfigFlag, "imagetest", "")
 		isSpinner, verifyTLS, err = GetCliConfigOptions(cmd)
 		So(err, ShouldNotBeNil)
 		So(isSpinner, ShouldBeFalse)
 		So(verifyTLS, ShouldBeFalse)
-		os.Remove(configPath)
 
 		// bad verify-tls
-		configPath = makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false, "verify-tls": "bad"}]}`)
+		_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest","showspinner":false, "verify-tls": "bad"}]}`)
 		cmd = &cobra.Command{}
 		cmd.Flags().String(ConfigFlag, "imagetest", "")
 		isSpinner, verifyTLS, err = GetCliConfigOptions(cmd)
 		So(err, ShouldNotBeNil)
 		So(isSpinner, ShouldBeFalse)
 		So(verifyTLS, ShouldBeFalse)
-		os.Remove(configPath)
 	})
 
 	Convey("GetServerURLFromFlags", t, func() {
@@ -893,22 +890,20 @@ func TestUtils(t *testing.T) {
 		So(err, ShouldNotBeNil)
 
 		// err ulr from config is empty
-		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest"}]}`)
+		_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest"}]}`)
 		cmd = &cobra.Command{}
 		cmd.Flags().String(ConfigFlag, "imagetest", "")
 		url, err = GetServerURLFromFlags(cmd)
 		So(url, ShouldResemble, "")
 		So(err, ShouldNotBeNil)
-		os.Remove(configPath)
 
 		// err reading the server url from config
-		configPath = makeConfigFile("{}")
+		_ = makeConfigFile(t, "{}")
 		cmd = &cobra.Command{}
 		cmd.Flags().String(ConfigFlag, "imagetest", "")
 		url, err = GetServerURLFromFlags(cmd)
 		So(url, ShouldResemble, "")
 		So(err, ShouldNotBeNil)
-		os.Remove(configPath)
 	})
 
 	Convey("CheckExtEndPointQuery", t, func() {

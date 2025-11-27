@@ -5,7 +5,6 @@ package client_test
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -83,9 +82,8 @@ func TestReferrerCLI(t *testing.T) {
 
 		args := []string{"subject", repo + "@" + image.DigestStr(), "--config", "reftest"}
 
-		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
+		_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
 			baseURL))
-		defer os.Remove(configPath)
 
 		cmd := client.NewSearchCommand(client.NewSearchService())
 
@@ -104,13 +102,10 @@ func TestReferrerCLI(t *testing.T) {
 
 		fmt.Println(buff.String())
 
-		os.Remove(configPath)
-
 		args = []string{"subject", repo + ":" + "tag", "--config", "reftest"}
 
-		configPath = makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
+		_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
 			baseURL))
-		defer os.Remove(configPath)
 
 		cmd = client.NewSearchCommand(client.NewSearchService())
 
@@ -182,7 +177,7 @@ func TestReferrerCLI(t *testing.T) {
 		// get referrers by digest
 		args := []string{"subject", repo + "@" + image.DigestStr(), "--config", "reftest"}
 
-		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
+		_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
 			baseURL))
 
 		cmd := client.NewSearchCommand(client.NewSearchService())
@@ -201,13 +196,10 @@ func TestReferrerCLI(t *testing.T) {
 		So(str, ShouldContainSubstring, "custom.art.type.v2 611 B "+ref3.DigestStr())
 		fmt.Println(buff.String())
 
-		os.Remove(configPath)
-
 		args = []string{"subject", repo + ":" + "tag", "--config", "reftest"}
 
-		configPath = makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
+		_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
 			baseURL))
-		defer os.Remove(configPath)
 
 		buff = &bytes.Buffer{}
 		cmd.SetOut(buff)
@@ -279,10 +271,8 @@ func TestFormatsReferrersCLI(t *testing.T) {
 		Convey("JSON format", func() {
 			args := []string{"subject", repo + "@" + image.DigestStr(), "--format", "json", "--config", "reftest"}
 
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
+			_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
 				baseURL))
-
-			defer os.Remove(configPath)
 
 			cmd := client.NewSearchCommand(client.NewSearchService())
 
@@ -297,10 +287,8 @@ func TestFormatsReferrersCLI(t *testing.T) {
 		Convey("YAML format", func() {
 			args := []string{"subject", repo + "@" + image.DigestStr(), "--format", "yaml", "--config", "reftest"}
 
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
+			_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
 				baseURL))
-
-			defer os.Remove(configPath)
 
 			cmd := client.NewSearchCommand(client.NewSearchService())
 
@@ -315,10 +303,8 @@ func TestFormatsReferrersCLI(t *testing.T) {
 		Convey("Invalid format", func() {
 			args := []string{"subject", repo + "@" + image.DigestStr(), "--format", "invalid_format", "--config", "reftest"}
 
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
+			_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
 				baseURL))
-
-			defer os.Remove(configPath)
 
 			cmd := client.NewSearchCommand(client.NewSearchService())
 
@@ -339,9 +325,7 @@ func TestReferrersCLIErrors(t *testing.T) {
 		Convey("no url provided", func() {
 			args := []string{"query", "repo/alpine", "--format", "invalid", "--config", "reftest"}
 
-			configPath := makeConfigFile(`{"configs":[{"_name":"reftest","showspinner":false}]}`)
-
-			defer os.Remove(configPath)
+			_ = makeConfigFile(t, `{"configs":[{"_name":"reftest","showspinner":false}]}`)
 
 			buff := &bytes.Buffer{}
 			cmd.SetOut(buff)
@@ -354,9 +338,7 @@ func TestReferrersCLIErrors(t *testing.T) {
 		Convey("getConfigValue", func() {
 			args := []string{"subject", "repo/alpine", "--config", "reftest"}
 
-			configPath := makeConfigFile(`bad-json`)
-
-			defer os.Remove(configPath)
+			_ = makeConfigFile(t, `bad-json`)
 
 			buff := &bytes.Buffer{}
 			cmd.SetOut(buff)
@@ -369,9 +351,7 @@ func TestReferrersCLIErrors(t *testing.T) {
 		Convey("bad showspinnerConfig ", func() {
 			args := []string{"query", "repo", "--config", "reftest"}
 
-			configPath := makeConfigFile(`{"configs":[{"_name":"reftest", "url":"http://127.0.0.1:8080", "showspinner":"bad"}]}`)
-
-			defer os.Remove(configPath)
+			_ = makeConfigFile(t, `{"configs":[{"_name":"reftest", "url":"http://127.0.0.1:8080", "showspinner":"bad"}]}`)
 
 			buff := &bytes.Buffer{}
 			cmd.SetOut(buff)
@@ -384,10 +364,8 @@ func TestReferrersCLIErrors(t *testing.T) {
 		Convey("bad verifyTLSConfig ", func() {
 			args := []string{"query", "repo", "reftest"}
 
-			configPath := makeConfigFile(
+			_ = makeConfigFile(t,
 				`{"configs":[{"_name":"reftest", "url":"http://127.0.0.1:8080", "showspinner":false, "verify-tls": "bad"}]}`)
-
-			defer os.Remove(configPath)
 
 			buff := &bytes.Buffer{}
 			cmd.SetOut(buff)
@@ -400,9 +378,7 @@ func TestReferrersCLIErrors(t *testing.T) {
 		Convey("url from config is empty", func() {
 			args := []string{"subject", "repo/alpine", "--config", "reftest"}
 
-			configPath := makeConfigFile(`{"configs":[{"_name":"reftest", "url":"", "showspinner":false}]}`)
-
-			defer os.Remove(configPath)
+			_ = makeConfigFile(t, `{"configs":[{"_name":"reftest", "url":"", "showspinner":false}]}`)
 
 			buff := &bytes.Buffer{}
 			cmd.SetOut(buff)
@@ -415,9 +391,7 @@ func TestReferrersCLIErrors(t *testing.T) {
 		Convey("bad params combination", func() {
 			args := []string{"query", "repo", "reftest"}
 
-			configPath := makeConfigFile(`{"configs":[{"_name":"reftest", "url":"http://127.0.0.1:8080", "showspinner":false}]}`)
-
-			defer os.Remove(configPath)
+			_ = makeConfigFile(t, `{"configs":[{"_name":"reftest", "url":"http://127.0.0.1:8080", "showspinner":false}]}`)
 
 			buff := &bytes.Buffer{}
 			cmd.SetOut(buff)
@@ -497,9 +471,8 @@ func TestSearchCLI(t *testing.T) {
 
 		args := []string{"query", "test/alpin", "--verbose", "--config", "searchtest"}
 
-		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"searchtest","url":"%s","showspinner":false}]}`,
+		_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"searchtest","url":"%s","showspinner":false}]}`,
 			baseURL))
-		defer os.Remove(configPath)
 
 		cmd := client.NewSearchCommand(client.NewSearchService())
 
@@ -518,16 +491,12 @@ func TestSearchCLI(t *testing.T) {
 
 		fmt.Println("\n", buff.String())
 
-		os.Remove(configPath)
-
 		cmd = client.NewSearchCommand(client.NewSearchService())
 
 		args = []string{"query", "repo/alpine:", "--config", "searchtest"}
 
-		configPath = makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"searchtest","url":"%s","showspinner":false}]}`,
+		_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"searchtest","url":"%s","showspinner":false}]}`,
 			baseURL))
-
-		defer os.Remove(configPath)
 
 		buff = &bytes.Buffer{}
 		cmd.SetOut(buff)
@@ -601,10 +570,8 @@ func TestFormatsSearchCLI(t *testing.T) {
 		Convey("JSON format", func() {
 			args := []string{"query", "repo/alpine", "--format", "json", "--config", "searchtest"}
 
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"searchtest","url":"%s","showspinner":false}]}`,
+			_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"searchtest","url":"%s","showspinner":false}]}`,
 				baseURL))
-
-			defer os.Remove(configPath)
 
 			buff := &bytes.Buffer{}
 			cmd.SetOut(buff)
@@ -618,10 +585,8 @@ func TestFormatsSearchCLI(t *testing.T) {
 		Convey("YAML format", func() {
 			args := []string{"query", "repo/alpine", "--format", "yaml", "--config", "searchtest"}
 
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"searchtest","url":"%s","showspinner":false}]}`,
+			_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"searchtest","url":"%s","showspinner":false}]}`,
 				baseURL))
-
-			defer os.Remove(configPath)
 
 			buff := &bytes.Buffer{}
 			cmd.SetOut(buff)
@@ -635,10 +600,8 @@ func TestFormatsSearchCLI(t *testing.T) {
 		Convey("Invalid format", func() {
 			args := []string{"query", "repo/alpine", "--format", "invalid", "--config", "searchtest"}
 
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"searchtest","url":"%s","showspinner":false}]}`,
+			_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"searchtest","url":"%s","showspinner":false}]}`,
 				baseURL))
-
-			defer os.Remove(configPath)
 
 			buff := &bytes.Buffer{}
 			cmd.SetOut(buff)
@@ -657,9 +620,7 @@ func TestSearchCLIErrors(t *testing.T) {
 		Convey("no url provided", func() {
 			args := []string{"query", "repo/alpine", "--format", "invalid", "--config", "searchtest"}
 
-			configPath := makeConfigFile(`{"configs":[{"_name":"searchtest","showspinner":false}]}`)
-
-			defer os.Remove(configPath)
+			_ = makeConfigFile(t, `{"configs":[{"_name":"searchtest","showspinner":false}]}`)
 
 			buff := &bytes.Buffer{}
 			cmd.SetOut(buff)
@@ -672,9 +633,7 @@ func TestSearchCLIErrors(t *testing.T) {
 		Convey("getConfigValue", func() {
 			args := []string{"query", "repo/alpine", "--format", "invalid", "--config", "searchtest"}
 
-			configPath := makeConfigFile(`bad-json`)
-
-			defer os.Remove(configPath)
+			_ = makeConfigFile(t, `bad-json`)
 
 			buff := &bytes.Buffer{}
 			cmd.SetOut(buff)
@@ -687,10 +646,8 @@ func TestSearchCLIErrors(t *testing.T) {
 		Convey("bad showspinnerConfig ", func() {
 			args := []string{"query", "repo/alpine", "--config", "searchtest"}
 
-			configPath := makeConfigFile(
+			_ = makeConfigFile(t,
 				`{"configs":[{"_name":"searchtest", "url":"http://127.0.0.1:8080", "showspinner":"bad"}]}`)
-
-			defer os.Remove(configPath)
 
 			buff := &bytes.Buffer{}
 			cmd.SetOut(buff)
@@ -703,10 +660,8 @@ func TestSearchCLIErrors(t *testing.T) {
 		Convey("bad verifyTLSConfig ", func() {
 			args := []string{"query", "repo/alpine", "--config", "searchtest"}
 
-			configPath := makeConfigFile(
+			_ = makeConfigFile(t,
 				`{"configs":[{"_name":"searchtest", "url":"http://127.0.0.1:8080", "showspinner":false, "verify-tls": "bad"}]}`)
-
-			defer os.Remove(configPath)
 
 			buff := &bytes.Buffer{}
 			cmd.SetOut(buff)
@@ -719,9 +674,7 @@ func TestSearchCLIErrors(t *testing.T) {
 		Convey("url from config is empty", func() {
 			args := []string{"query", "repo/alpine", "--format", "invalid", "--config", "searchtest"}
 
-			configPath := makeConfigFile(`{"configs":[{"_name":"searchtest", "url":"", "showspinner":false}]}`)
-
-			defer os.Remove(configPath)
+			_ = makeConfigFile(t, `{"configs":[{"_name":"searchtest", "url":"", "showspinner":false}]}`)
 
 			buff := &bytes.Buffer{}
 			cmd.SetOut(buff)
