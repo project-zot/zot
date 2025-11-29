@@ -65,7 +65,8 @@ func TestCache(t *testing.T) {
 		So(err, ShouldEqual, errors.ErrCacheMiss)
 
 		err = cacheDriver.DeleteBlob("key", "bogusValue")
-		So(err, ShouldBeNil)
+		//So(err, ShouldBeNil)
+		So(err, ShouldEqual, errors.ErrCacheMiss)
 
 		// try to insert empty path
 		err = cacheDriver.PutBlob("key", "")
