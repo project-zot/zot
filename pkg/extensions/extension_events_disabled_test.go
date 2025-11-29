@@ -23,9 +23,7 @@ func TestEventsExtension(t *testing.T) {
 		globalDir := t.TempDir()
 		defaultValue := true
 
-		logFile, err := os.CreateTemp(globalDir, "zot-log*.txt")
-		So(err, ShouldBeNil)
-		defer os.Remove(logFile.Name())
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		conf.HTTP.Port = port
 		conf.Storage.RootDirectory = globalDir
@@ -35,7 +33,7 @@ func TestEventsExtension(t *testing.T) {
 			Enable: &defaultValue,
 		}
 		conf.Log.Level = "warn"
-		conf.Log.Output = logFile.Name()
+		conf.Log.Output = logPath
 
 		ctlr := api.NewController(conf)
 		ctlrManager := test.NewControllerManager(ctlr)
@@ -43,7 +41,7 @@ func TestEventsExtension(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		data, err := os.ReadFile(logFile.Name())
+		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 
 		So(string(data), ShouldContainSubstring,

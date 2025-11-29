@@ -4,7 +4,6 @@ package extensions_test
 
 import (
 	"encoding/json"
-	"os"
 	"testing"
 
 	distext "github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
@@ -35,12 +34,9 @@ func TestGetExensionsDisabled(t *testing.T) {
 		conf.Extensions.UI = &extconf.UIConfig{}
 		conf.Extensions.UI.Enable = &defaultVal
 
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
-		conf.Log.Output = logFile.Name()
-
-		defer os.Remove(logFile.Name()) // clean up
+		conf.Log.Output = logPath
 
 		ctlr := makeController(conf, t.TempDir())
 

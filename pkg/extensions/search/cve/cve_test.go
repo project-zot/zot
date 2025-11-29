@@ -424,8 +424,7 @@ func TestCVESearchDisabled(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
@@ -444,13 +443,10 @@ func TestCVESearchDisabled(t *testing.T) {
 			Search: searchConfig,
 		}
 
-		logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
-		if err != nil {
-			panic(err)
-		}
+		logFile := test.MakeTempFile(t, "zot-log.txt")
+		defer logFile.Close()
 
 		logPath := logFile.Name()
-		defer os.Remove(logPath)
 
 		writers := io.MultiWriter(os.Stdout, logFile)
 
@@ -493,8 +489,7 @@ func TestCVESearch(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 		dbDir, err := testSetup(t)
 		So(err, ShouldBeNil)
@@ -523,13 +518,10 @@ func TestCVESearch(t *testing.T) {
 			Search: searchConfig,
 		}
 
-		logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
-		if err != nil {
-			panic(err)
-		}
+		logFile := test.MakeTempFile(t, "zot-log.txt")
+		defer logFile.Close()
 
 		logPath := logFile.Name()
-		defer os.Remove(logPath)
 
 		writers := io.MultiWriter(os.Stdout, logFile)
 
@@ -1753,11 +1745,10 @@ func TestFixedTagsWithIndex(t *testing.T) {
 			},
 		}
 
-		logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
-		So(err, ShouldBeNil)
+		logFile := test.MakeTempFile(t, "zot-log.txt")
+		defer logFile.Close()
 
 		logPath := logFile.Name()
-		defer os.Remove(logPath)
 
 		writers := io.MultiWriter(os.Stdout, logFile)
 
@@ -1782,7 +1773,7 @@ func TestFixedTagsWithIndex(t *testing.T) {
 
 		multiArchImage := CreateMultiarchWith().Images([]Image{vulnSingleArchImage, fixedSingleArchImage}).Build()
 
-		err = UploadMultiarchImage(multiArchImage, baseURL, "repo", "multi-arch-tag")
+		err := UploadMultiarchImage(multiArchImage, baseURL, "repo", "multi-arch-tag")
 		So(err, ShouldBeNil)
 
 		// oldest vulnerability

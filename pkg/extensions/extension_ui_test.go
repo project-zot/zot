@@ -29,11 +29,10 @@ func TestUIExtension(t *testing.T) {
 
 		// we won't use the logging config feature as we want logs in both
 		// stdout and a file
-		logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
-		So(err, ShouldBeNil)
+		logFile := test.MakeTempFile(t, "zot-log.txt")
+		defer logFile.Close()
 
 		logPath := logFile.Name()
-		defer os.Remove(logPath)
 
 		writers := io.MultiWriter(os.Stdout, logFile)
 
