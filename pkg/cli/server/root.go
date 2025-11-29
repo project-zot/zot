@@ -242,31 +242,137 @@ func NewServerRootCmd() *cobra.Command {
 	return rootCmd
 }
 
-func validateStorageConfig(cfg *config.Config, logger zlog.Logger) error {
-	expConfigMap := make(map[string]config.StorageConfig, 0)
+// isPathInside checks if path1 is inside path2 (path1 is a subdirectory of path2)
+// This function is platform-agnostic and handles Windows drive letters, UNC paths, and symlinks.
+func isPathInside(path1, path2 string) bool {
+	// Normalize paths to absolute paths (handles platform-specific separators and symlinks)
+	abs1, err1 := filepath.Abs(path1)
+	abs2, err2 := filepath.Abs(path2)
 
+	if err1 != nil || err2 != nil {
+		return false
+	}
+
+	// On Windows, if paths are on different drives, filepath.Rel returns an error
+	// which we handle by returning false (paths on different drives are not nested)
+	rel, err := filepath.Rel(abs2, abs1)
+	if err != nil {
+		return false
+	}
+
+	// If the relative path doesn't start with "..", then path1 is inside path2
+	// Also check that it's not "." (same directory) or empty (same path)
+	// On Windows, filepath.Rel uses backslashes, but strings.HasPrefix works with any separator
+	return rel != "." && rel != "" && !strings.HasPrefix(rel, "..")
+}
+
+// pathsConflict checks if two paths conflict (identical or nested) and returns:
+// - 0: no conflict
+// - 1: paths are identical
+// - 2: path1 is inside path2
+// - 3: path2 is inside path1.
+func pathsConflict(path1, path2 string) int {
+	if strings.EqualFold(path1, path2) {
+		return 1
+	}
+
+	if isPathInside(path1, path2) {
+		return 2
+	}
+
+	if isPathInside(path2, path1) {
+		return 3
+	}
+
+	return 0
+}
+
+// getStorageType returns the storage driver type name.
+// Returns "local" if StorageDriver is nil, otherwise extracts the name from StorageDriver["name"].
+func getStorageType(storageDriver map[string]any) string {
+	if storageDriver == nil {
+		return storageConstants.LocalStorageDriverName
+	}
+
+	storeName := fmt.Sprintf("%v", storageDriver["name"])
+	if storeName == storageConstants.S3StorageDriverName {
+		return storageConstants.S3StorageDriverName
+	}
+
+	return storeName
+}
+
+func validateStorageConfig(cfg *config.Config, logger zlog.Logger) error {
 	storageConfig := cfg.CopyStorageConfig()
 	defaultRootDir := storageConfig.RootDirectory
+	defaultStorageType := getStorageType(storageConfig.StorageDriver)
 
-	for _, subStorageConfig := range storageConfig.SubPaths {
-		if strings.EqualFold(defaultRootDir, subStorageConfig.RootDirectory) {
-			msg := "invalid storage config, storage subpaths cannot use default storage root directory"
-			logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
+	// Collect all store root directories (default + substores) for nested path checking
+	type storeInfo struct {
+		route       string // empty for default store
+		rootDir     string
+		storageType string
+	}
+	allStores := make([]storeInfo, 0, 1+len(storageConfig.SubPaths))
+
+	allStores = append(allStores, storeInfo{route: "", rootDir: defaultRootDir, storageType: defaultStorageType})
+	for route, subStorageConfig := range storageConfig.SubPaths {
+		allStores = append(allStores, storeInfo{
+			route:       route,
+			rootDir:     subStorageConfig.RootDirectory,
+			storageType: getStorageType(subStorageConfig.StorageDriver),
+		})
+	}
+
+	// Validate each store
+	for _, store := range allStores {
+		route := store.route
+		rootDir := store.rootDir
+		storageType := store.storageType
+
+		// Check if this store conflicts with any other store of the same type (identical or nested paths)
+		conflictingIdx := slices.IndexFunc(allStores, func(other storeInfo) bool {
+			return other.route != route &&
+				other.storageType == storageType &&
+				pathsConflict(rootDir, other.rootDir) != 0
+		})
+
+		if conflictingIdx >= 0 {
+			other := allStores[conflictingIdx]
+			conflictType := pathsConflict(rootDir, other.rootDir)
+
+			var storeName, otherStoreName string
+			if route == "" {
+				storeName = "default storage"
+			} else {
+				storeName = fmt.Sprintf("substore (route: %s)", route)
+			}
+			if other.route == "" {
+				otherStoreName = "default storage"
+			} else {
+				otherStoreName = fmt.Sprintf("substore (route: %s)", other.route)
+			}
+
+			var msg string
+			switch conflictType {
+			case 1: // identical
+				msg = fmt.Sprintf("invalid storage config, %s and %s cannot use the same root directory", storeName, otherStoreName)
+			case 2: // rootDir is inside other.rootDir
+				msg = fmt.Sprintf("invalid storage config, %s root directory cannot be inside %s root directory",
+					storeName, otherStoreName)
+			case 3: // other.rootDir is inside rootDir
+				msg = fmt.Sprintf("invalid storage config, %s root directory cannot be inside %s root directory",
+					otherStoreName, storeName)
+			}
+
+			logger.Error().Err(zerr.ErrBadConfig).
+				Str("rootDir", rootDir).
+				Str("otherRootDir", other.rootDir).
+				Str("route", route).
+				Str("otherRoute", other.route).
+				Msg(msg)
 
 			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
-		}
-
-		expConfig, ok := expConfigMap[subStorageConfig.RootDirectory]
-		if ok {
-			equal := expConfig.ParamsEqual(subStorageConfig)
-			if !equal {
-				msg := "invalid storage config, storage config with same root directory should have same parameters"
-				logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
-
-				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
-			}
-		} else {
-			expConfigMap[subStorageConfig.RootDirectory] = subStorageConfig
 		}
 	}
 
