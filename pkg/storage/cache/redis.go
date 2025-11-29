@@ -145,7 +145,28 @@ func (d *RedisDriver) PutBlob(digest godigest.Digest, path string) error {
 
 				return err
 			}
+
+			d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("inserted in original bucket")
+
+			return nil
 		}
+		ctx := context.TODO()
+		// see if we are in the set
+		exists, err := d.db.SIsMember(ctx, d.join(constants.BlobsCache, constants.OriginalBucket,
+			digest.String()), path).Result()
+		if err != nil {
+			d.log.Error().Err(err).Str("sismember", d.join(constants.BlobsCache, constants.DuplicatesBucket, digest.String())).
+				Str("digest", digest.String()).Msg("unable to get record")
+
+			return err
+		}
+
+		if exists {
+			d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("inserted same key in original bucket")
+
+			return nil
+		}
+
 		// add path to the set of paths which the digest represents
 		if err := txrp.SAdd(ctx, d.join(constants.BlobsCache, constants.DuplicatesBucket,
 			digest.String()), path).Err(); err != nil {
@@ -234,8 +255,9 @@ func (d *RedisDriver) HasBlob(digest godigest.Digest, path string) bool {
 	}
 
 	ctx := context.TODO()
+
 	// see if we are in the set
-	exists, err := d.db.SIsMember(ctx, d.join(constants.BlobsCache, constants.DuplicatesBucket,
+	exists, err := d.db.SIsMember(ctx, d.join(constants.BlobsCache, constants.OriginalBucket,
 		digest.String()), path).Result()
 	if err != nil {
 		d.log.Error().Err(err).Str("sismember", d.join(constants.BlobsCache, constants.DuplicatesBucket, digest.String())).
@@ -248,13 +270,13 @@ func (d *RedisDriver) HasBlob(digest godigest.Digest, path string) bool {
 		return false
 	}
 
-	// see if the path entry exists. is this actually needed? i guess it doesn't really hurt (it is fast)
-	exists, err = d.db.HExists(ctx, d.join(constants.BlobsCache, constants.OriginalBucket), digest.String()).Result()
-
-	d.log.Error().Err(err).Str("hexists", d.join(constants.BlobsCache, constants.OriginalBucket)).
-		Str("digest", digest.String()).Msg("unable to get record")
-
+	// see if we are in the set
+	exists, err = d.db.SIsMember(ctx, d.join(constants.BlobsCache, constants.DuplicatesBucket,
+		digest.String()), path).Result()
 	if err != nil {
+		d.log.Error().Err(err).Str("sismember", d.join(constants.BlobsCache, constants.DuplicatesBucket, digest.String())).
+			Str("digest", digest.String()).Msg("unable to get record")
+
 		return false
 	}
 
