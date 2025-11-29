@@ -73,6 +73,7 @@ type SyncDestinationMock struct {
 	// Methods required by sync Destination interface.
 	GetImageReferenceFn func(repo string, tag string) (ref.Ref, error)
 	CanSkipImageFn      func(repo string, tag string, digest digest.Digest) (bool, error)
+	InitTempRepoFn      func(repo string, imageReference ref.Ref) error
 	CommitAllFn         func(repo string, imageReference ref.Ref) error
 	CleanupImageFn      func(imageReference ref.Ref, repo string) error
 }
@@ -93,6 +94,14 @@ func (dest SyncDestinationMock) CanSkipImage(repo string, tag string, digest dig
 	}
 
 	return false, nil
+}
+
+func (dest SyncDestinationMock) InitTempRepo(repo string, imageReference ref.Ref) error {
+	if dest.InitTempRepoFn != nil {
+		return dest.InitTempRepoFn(repo, imageReference)
+	}
+
+	return nil
 }
 
 func (dest SyncDestinationMock) CommitAll(repo string, imageReference ref.Ref) error {
