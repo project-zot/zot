@@ -14,6 +14,7 @@ import (
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/storage/constants"
 )
 
 type DynamoDBDriver struct {
@@ -186,11 +187,22 @@ func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
 		return zerr.ErrEmptyValue
 	}
 
-	if originBlob, _ := d.GetBlob(digest); originBlob == "" {
+	originBlob, _ := d.GetBlob(digest)
+	if originBlob == "" {
 		// first entry, so add original blob
 		if err := d.putOriginBlob(digest, path); err != nil {
+			d.log.Error().Err(err).Str("bucket", constants.OriginalBucket).Str("value", path).Msg("failed to put record")
+
 			return err
 		}
+
+		d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("inserted in original bucket")
+
+		return nil
+	} else if originBlob == path { // idempotent
+		d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("inserted same key in original bucket")
+
+		return nil
 	}
 
 	expression := "ADD DuplicateBlobPath :i"
@@ -201,6 +213,8 @@ func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
 
 		return err
 	}
+
+	d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("inserted in duplicates bucket")
 
 	return nil
 }
@@ -244,17 +258,21 @@ func (d *DynamoDBDriver) HasBlob(digest godigest.Digest, path string) bool {
 func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 	marshaledKey, _ := attributevalue.MarshalMap(map[string]any{"Digest": digest.String()})
 
-	expression := "DELETE DuplicateBlobPath :i"
-	attrPath := types.AttributeValueMemberSS{Value: []string{path}}
-
-	if err := d.updateItem(digest, expression, map[string]types.AttributeValue{":i": &attrPath}); err != nil {
-		d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("failed to delete")
-
-		return err
-	}
-
+	// look first in the duplicates bucket
 	originBlob, _ := d.GetDuplicateBlob(digest)
 	if originBlob != "" {
+
+		expression := "DELETE DuplicateBlobPath :i"
+		attrPath := types.AttributeValueMemberSS{Value: []string{path}}
+
+		if err := d.updateItem(digest, expression, map[string]types.AttributeValue{":i": &attrPath}); err != nil {
+			d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("failed to delete")
+
+			return err
+		}
+
+		d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("deleted from dedupe bucket")
+
 		return nil
 	}
 
@@ -264,9 +282,14 @@ func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 		// move duplicate blob to original, storage will move content here
 		originBlob, _ = d.GetDuplicateBlob(digest)
 		if originBlob != "" {
-			if err := d.putOriginBlob(digest, originBlob); err != nil {
-				return err
-			}
+			d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("more in dedupe bucket, leaving original alone")
+
+			return nil
+			/*
+				if err := d.putOriginBlob(digest, originBlob); err != nil {
+					return err
+				}
+			*/
 		}
 	}
 
