@@ -114,6 +114,10 @@ func (d *BoltDBDriver) PutBlob(digest godigest.Digest, path string) error {
 		}
 	}
 
+	if len(path) == 0 {
+		return zerr.ErrEmptyValue
+	}
+
 	if err := d.db.Update(func(tx *bbolt.Tx) error {
 		root := tx.Bucket([]byte(constants.BlobsCache))
 		if root == nil {
