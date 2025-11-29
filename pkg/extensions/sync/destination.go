@@ -86,6 +86,14 @@ func (registry *DestinationRegistry) GetImageReference(repo, reference string) (
 	return registry.tempStorage.GetImageReference(repo, reference)
 }
 
+// InitTempRepo initializes the temporary repository before ImageCopy is called.
+// This ensures index.json exists so ImageCopy can properly update it.
+func (registry *DestinationRegistry) InitTempRepo(repo string, imageReference ref.Ref) error {
+	tempImageStore := getImageStoreFromImageReference(repo, imageReference, registry.log)
+
+	return tempImageStore.InitRepo(repo)
+}
+
 // CommitAll finalizes a syncing image.
 func (registry *DestinationRegistry) CommitAll(repo string, imageReference ref.Ref) error {
 	tempImageStore := getImageStoreFromImageReference(repo, imageReference, registry.log)

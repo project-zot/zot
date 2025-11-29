@@ -491,6 +491,13 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 		service.log.Info().Str("remote image", remoteImageRef.CommonName()).
 			Str("local image", fmt.Sprintf("%s:%s", localRepo, remoteImageRef.Tag)).Msg("syncing image")
 
+		// Initialize the temp repository before ImageCopy to ensure index.json exists.
+		// This prevents issues where ImageCopy writes blobs but index.json doesn't exist yet.
+		if initErr := service.destination.InitTempRepo(localRepo, localImageRef); initErr != nil {
+			service.log.Warn().Err(initErr).Str("repo", localRepo).
+				Msg("failed to initialize temp repo before ImageCopy, will continue anyway")
+		}
+
 		err = service.rc.ImageCopy(ctx, remoteImageRef, localImageRef, copyOpts...)
 		if err != nil {
 			service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
@@ -615,6 +622,13 @@ func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo
 
 	// just in case there is an error before commit() which cleans up.
 	defer service.destination.CleanupImage(localImageRef, localRepo) //nolint: errcheck
+
+	// Initialize the temp repository before ImageCopy to ensure index.json exists.
+	// This prevents issues where ImageCopy writes blobs but index.json doesn't exist yet.
+	if initErr := service.destination.InitTempRepo(localRepo, localImageRef); initErr != nil {
+		service.log.Warn().Err(initErr).Str("repo", localRepo).
+			Msg("failed to initialize temp repo before ImageCopy, will continue anyway")
+	}
 
 	// first sync image
 	err = service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, localDigest, false)
