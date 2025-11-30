@@ -79,7 +79,7 @@ func TestMultipleStoragePath(t *testing.T) {
 		metaDB, err := boltdb.New(boltDriver, log)
 		So(err, ShouldBeNil)
 
-		scanner := NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", log)
+		scanner := NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", true, log)
 
 		So(scanner.storeController.DefaultStore, ShouldNotBeNil)
 		So(scanner.storeController.SubStore, ShouldNotBeNil)
@@ -195,7 +195,7 @@ func TestTrivyLibraryErrors(t *testing.T) {
 		img := "zot-test:0.0.1" //nolint:goconst
 
 		// Download DB fails for invalid DB url
-		scanner := NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-not-db", "", log)
+		scanner := NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-not-db", "", true, log)
 
 		ctx := context.Background()
 
@@ -210,14 +210,14 @@ func TestTrivyLibraryErrors(t *testing.T) {
 
 		// Download DB fails for invalid Java DB
 		scanner = NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db",
-			"ghcr.io/project-zot/trivy-not-db", log)
+			"ghcr.io/project-zot/trivy-not-db", true, log)
 
 		err = scanner.UpdateDB(ctx)
 		So(err, ShouldNotBeNil)
 
 		// Download DB passes for valid Trivy DB url, and missing Trivy Java DB url
 		// Download DB is necessary since DB download on scan is disabled
-		scanner = NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", log)
+		scanner = NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", true, log)
 
 		// UpdateDB with good ctx
 		err = scanner.UpdateDB(ctx)
@@ -318,7 +318,7 @@ func TestImageScannable(t *testing.T) {
 	storeController.DefaultStore = store
 
 	scanner := NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db",
-		"ghcr.io/project-zot/trivy-java-db", log)
+		"ghcr.io/project-zot/trivy-java-db", true, log)
 
 	Convey("Valid image should be scannable", t, func() {
 		result, err := scanner.IsImageFormatScannable("repo1", "valid")
@@ -388,7 +388,7 @@ func TestTrivyDBUrl(t *testing.T) {
 		// But we are getting `response status code 429: toomanyrequests` from
 		// `ghcr.io/aquasecurity/trivy-db` and `ghcr.io/aquasecurity/trivy-java-db`
 		scanner := NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db",
-			"ghcr.io/project-zot/trivy-java-db", log)
+			"ghcr.io/project-zot/trivy-java-db", true, log)
 
 		ctx := context.Background()
 

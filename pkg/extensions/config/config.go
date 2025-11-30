@@ -60,6 +60,11 @@ type CVEConfig struct {
 type TrivyConfig struct {
 	DBRepository     string // default is "ghcr.io/aquasecurity/trivy-db"
 	JavaDBRepository string // default is "ghcr.io/aquasecurity/trivy-java-db"
+	// OverrideTmpDir controls whether to override TMPDIR and clean up temporary files.
+	// When true, TMPDIR is overridden to cacheDir/tmp and temp files are cleaned up during DB updates.
+	// When false, TMPDIR is not modified and temp files are not cleaned up.
+	// Default is false to preserve old behavior (backward compatibility).
+	OverrideTmpDir bool `mapstructure:",omitempty"`
 }
 
 type MetricsConfig struct {

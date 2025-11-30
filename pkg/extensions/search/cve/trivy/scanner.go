@@ -35,7 +35,11 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage"
 )
 
-const cacheSize = 1000000
+const (
+	cacheSize       = 1000000
+	trivyDirName    = "_trivy"
+	trivyTmpDirName = "tmp"
+)
 
 // getNewScanOptions sets trivy configuration values for our scans and returns them as
 // a trivy Options structure.
@@ -89,10 +93,11 @@ type Scanner struct {
 	cache               *cvecache.CveCache
 	dbRepositoryRef     name.Reference
 	javaDBRepositoryRef name.Reference
+	overrideTmpDir      bool
 }
 
 func NewScanner(storeController storage.StoreController,
-	metaDB mTypes.MetaDB, dbRepository, javaDBRepository string, log log.Logger,
+	metaDB mTypes.MetaDB, dbRepository, javaDBRepository string, overrideTmpDir bool, log log.Logger,
 ) *Scanner {
 	// The logic to set defaults is similar to what trivy itself uses:
 	// https://github.com/aquasecurity/trivy/blob/v0.51.4/pkg/flag/db_flags.go#L152
@@ -130,7 +135,7 @@ func NewScanner(storeController storage.StoreController,
 
 		rootDir := imageStore.RootDir()
 
-		cacheDir := path.Join(rootDir, "_trivy")
+		cacheDir := path.Join(rootDir, trivyDirName)
 		opts := getNewScanOptions(cacheDir, dbRepositoryRef, javaDBRepositoryRef)
 
 		cveController.DefaultCveConfig = opts
@@ -140,7 +145,7 @@ func NewScanner(storeController storage.StoreController,
 		for route, storage := range storeController.SubStore {
 			rootDir := storage.RootDir()
 
-			cacheDir := path.Join(rootDir, "_trivy")
+			cacheDir := path.Join(rootDir, trivyDirName)
 			opts := getNewScanOptions(cacheDir, dbRepositoryRef, javaDBRepositoryRef)
 
 			subCveConfig[route] = opts
@@ -157,6 +162,7 @@ func NewScanner(storeController storage.StoreController,
 		dbLock:              &sync.Mutex{},
 		cache:               cvecache.NewCveCache(cacheSize, log),
 		dbRepositoryRef:     dbRepositoryRef,
+		overrideTmpDir:      overrideTmpDir,
 		javaDBRepositoryRef: javaDBRepositoryRef,
 	}
 }
@@ -197,6 +203,34 @@ func (scanner Scanner) runTrivy(ctx context.Context, opts flag.Options) (types.R
 	err := scanner.checkDBPresence()
 	if err != nil {
 		return types.Report{}, err
+	}
+
+	// Override TMPDIR to use tmp folder inside the cache directory
+	// to prevent temporary files from accumulating in /tmp/
+	// Only if overrideTmpDir is enabled
+	var originalTmpDir string
+	if scanner.overrideTmpDir {
+		originalTmpDir = os.Getenv("TMPDIR")
+		tmpDir := path.Join(opts.CacheDir, trivyTmpDirName)
+		if err := os.MkdirAll(tmpDir, 0o755); err != nil {
+			scanner.log.Warn().Err(err).Str("tmpDir", tmpDir).Msg("failed to create trivy tmp directory, using system default")
+		} else {
+			// Set TMPDIR environment variable for this process and child processes
+			if err := os.Setenv("TMPDIR", tmpDir); err != nil {
+				scanner.log.Warn().Err(err).Str("tmpDir", tmpDir).Msg("failed to set TMPDIR environment variable")
+			}
+		}
+
+		// Restore original TMPDIR after the scan completes
+		defer func() {
+			if originalTmpDir == "" {
+				// If TMPDIR was not set originally, unset it
+				os.Unsetenv("TMPDIR")
+			} else {
+				// Restore the original value
+				os.Setenv("TMPDIR", originalTmpDir)
+			}
+		}()
 	}
 
 	runner, err := artifact.NewRunner(ctx, opts, artifact.TargetContainerImage)
@@ -556,7 +590,7 @@ func (scanner Scanner) UpdateDB(ctx context.Context) error {
 	defer scanner.dbLock.Unlock()
 
 	if scanner.storeController.DefaultStore != nil {
-		dbDir := path.Join(scanner.storeController.DefaultStore.RootDir(), "_trivy")
+		dbDir := path.Join(scanner.storeController.DefaultStore.RootDir(), trivyDirName)
 
 		err := scanner.updateDB(ctx, dbDir)
 		if err != nil {
@@ -566,13 +600,18 @@ func (scanner Scanner) UpdateDB(ctx context.Context) error {
 
 	if scanner.storeController.SubStore != nil {
 		for _, storage := range scanner.storeController.SubStore {
-			dbDir := path.Join(storage.RootDir(), "_trivy")
+			dbDir := path.Join(storage.RootDir(), trivyDirName)
 
 			err := scanner.updateDB(ctx, dbDir)
 			if err != nil {
 				return err
 			}
 		}
+	}
+
+	// Clean up old temporary directories (only if overrideTmpDir is enabled)
+	if scanner.overrideTmpDir {
+		scanner.cleanupTempDirs()
 	}
 
 	scanner.cache.Purge()
@@ -621,7 +660,7 @@ func (scanner Scanner) checkDBPresence() error {
 	result := true
 
 	if scanner.storeController.DefaultStore != nil {
-		dbDir := path.Join(scanner.storeController.DefaultStore.RootDir(), "_trivy", "db")
+		dbDir := path.Join(scanner.storeController.DefaultStore.RootDir(), trivyDirName, "db")
 		if _, err := os.Stat(metadata.Path(dbDir)); err != nil {
 			result = false
 		}
@@ -629,7 +668,7 @@ func (scanner Scanner) checkDBPresence() error {
 
 	if scanner.storeController.SubStore != nil {
 		for _, storage := range scanner.storeController.SubStore {
-			dbDir := path.Join(storage.RootDir(), "_trivy", "db")
+			dbDir := path.Join(storage.RootDir(), trivyDirName, "db")
 
 			if _, err := os.Stat(metadata.Path(dbDir)); err != nil {
 				result = false
@@ -642,6 +681,56 @@ func (scanner Scanner) checkDBPresence() error {
 	}
 
 	return nil
+}
+
+// cleanupTempDirs removes all temporary files and directories from the tmp folder
+// under the cache directory for all stores.
+// Note: This only cleans up the cache directory's tmp folder, not user-set TMPDIR locations.
+func (scanner Scanner) cleanupTempDirs() {
+	if scanner.storeController.DefaultStore != nil {
+		cacheDir := path.Join(scanner.storeController.DefaultStore.RootDir(), trivyDirName)
+		tmpDir := path.Join(cacheDir, trivyTmpDirName)
+		scanner.cleanupTempDir(tmpDir)
+	}
+
+	if scanner.storeController.SubStore != nil {
+		for _, storage := range scanner.storeController.SubStore {
+			cacheDir := path.Join(storage.RootDir(), trivyDirName)
+			tmpDir := path.Join(cacheDir, trivyTmpDirName)
+			scanner.cleanupTempDir(tmpDir)
+		}
+	}
+}
+
+// cleanupTempDir removes all contents from the specified tmp directory.
+func (scanner Scanner) cleanupTempDir(tmpDir string) {
+	// Check if the tmp directory exists
+	entries, err := os.ReadDir(tmpDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Directory doesn't exist, nothing to clean up
+			return
+		}
+		// Some other error occurred
+		scanner.log.Debug().Err(err).Str("tmpDir", tmpDir).Msg("failed to read tmp directory for cleanup")
+
+		return
+	}
+
+	removedCount := 0
+
+	for _, entry := range entries {
+		entryPath := path.Join(tmpDir, entry.Name())
+		if err := os.RemoveAll(entryPath); err != nil {
+			scanner.log.Warn().Err(err).Str("path", entryPath).Msg("failed to remove temp directory/file")
+		} else {
+			removedCount++
+		}
+	}
+
+	if removedCount > 0 {
+		scanner.log.Info().Int("count", removedCount).Str("tmpDir", tmpDir).Msg("cleaned up trivy temp directory")
+	}
 }
 
 func getImageDescriptor(ctx context.Context, metaDB mTypes.MetaDB, repo, tag string) (mTypes.Descriptor, error) {

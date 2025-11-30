@@ -57,7 +57,7 @@ func TestCVEDBGenerator(t *testing.T) {
 			},
 		}
 
-		cveScanner := cveinfo.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", logger)
+		cveScanner := cveinfo.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", true, logger)
 		generator := cveinfo.NewDBUpdateTaskGenerator(time.Minute, cveScanner, logger)
 
 		sch.SubmitGenerator(generator, 12000*time.Millisecond, scheduler.HighPriority)

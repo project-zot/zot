@@ -704,7 +704,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		defer ctlr.Shutdown()
 
 		substring := "{\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":3600000000000," +
-			"\"Trivy\":{\"DBRepository\":\"ghcr.io/project-zot/trivy-db\",\"JavaDBRepository\":\"\"}}}"
+			"\"Trivy\":{\"DBRepository\":\"ghcr.io/project-zot/trivy-db\",\"JavaDBRepository\":\"\",\"OverrideTmpDir\":false}}}"
 		found, err := readFileAndSearchString(logPath, substring, 2*time.Minute)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
@@ -3646,7 +3646,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 
 		// Wait for trivy db to download
 		substring := "{\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":3600000000000," +
-			"\"Trivy\":{\"DBRepository\":\"ghcr.io/project-zot/trivy-db\",\"JavaDBRepository\":\"\"}}}"
+			"\"Trivy\":{\"DBRepository\":\"ghcr.io/project-zot/trivy-db\",\"JavaDBRepository\":\"\",\"OverrideTmpDir\":false}}}"
 		found, err := readFileAndSearchString(logPath, substring, 2*time.Minute)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)

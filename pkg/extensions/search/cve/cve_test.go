@@ -334,7 +334,7 @@ func TestImageFormat(t *testing.T) {
 		err = meta.ParseStorage(metaDB, storeController, log)
 		So(err, ShouldBeNil)
 
-		scanner := cveinfo.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", log)
+		scanner := cveinfo.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", true, log)
 
 		isValidImage, err := scanner.IsImageFormatScannable("zot-test", "")
 		So(err, ShouldNotBeNil)
@@ -407,7 +407,7 @@ func TestImageFormat(t *testing.T) {
 			DefaultStore: mocks.MockedImageStore{},
 		}
 
-		scanner := cveinfo.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", log)
+		scanner := cveinfo.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", true, log)
 
 		isScanable, err := scanner.IsImageFormatScannable("repo", "tag")
 		So(err, ShouldBeNil)

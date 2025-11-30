@@ -517,7 +517,7 @@ func TestScanGeneratorWithRealData(t *testing.T) {
 		err = meta.ParseStorage(metaDB, storeController, logger)
 		So(err, ShouldBeNil)
 
-		scanner := cveinfo.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", logger)
+		scanner := cveinfo.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", true, logger)
 		err = scanner.UpdateDB(context.Background())
 		So(err, ShouldBeNil)
 
