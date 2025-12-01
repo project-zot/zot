@@ -2119,8 +2119,8 @@ github.com/theupdateframework/go-tuf/v2 v2.2.0 h1:Hmb+Azgd7IKOZeNJFT2C91y+YZ+F+T
 github.com/theupdateframework/go-tuf/v2 v2.2.0/go.mod h1:CubcJiJlBHQ2YkA5j9hlBO4B+tHFlLjRbWCJCT7EIKU=
 github.com/theupdateframework/notary v0.7.0 h1:QyagRZ7wlSpjT5N2qQAh/pN+DVqgekv4DzbAiAiEL3c=
 github.com/theupdateframework/notary v0.7.0/go.mod h1:c9DRxcmhHmVLDay4/2fUYdISnHqbFDGRSlXPO0AhYWw=
-github.com/tiendc/go-deepcopy v1.7.1 h1:LnubftI6nYaaMOcaz0LphzwraqN8jiWTwm416sitff4=
-github.com/tiendc/go-deepcopy v1.7.1/go.mod h1:4bKjNC2r7boYOkD2IOuZpYjmlDdzjbpTRyCx+goBCJQ=
+github.com/tiendc/go-deepcopy v1.7.2 h1:Ut2yYR7W9tWjTQitganoIue4UGxZwCcJy3orjrrIj44=
+github.com/tiendc/go-deepcopy v1.7.2/go.mod h1:4bKjNC2r7boYOkD2IOuZpYjmlDdzjbpTRyCx+goBCJQ=
 github.com/tink-crypto/tink-go-awskms/v2 v2.1.0 h1:N9UxlsOzu5mttdjhxkDLbzwtEecuXmlxZVo/ds7JKJI=
 github.com/tink-crypto/tink-go-awskms/v2 v2.1.0/go.mod h1:PxSp9GlOkKL9rlybW804uspnHuO9nbD98V/fDX4uSis=
 github.com/tink-crypto/tink-go-gcpkms/v2 v2.2.0 h1:3B9i6XBXNTRspfkTC0asN5W0K6GhOSgcujNiECNRNb0=
