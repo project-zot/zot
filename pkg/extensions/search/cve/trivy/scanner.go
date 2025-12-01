@@ -19,6 +19,7 @@ import (
 	"github.com/aquasecurity/trivy/pkg/flag"
 	"github.com/aquasecurity/trivy/pkg/javadb"
 	"github.com/aquasecurity/trivy/pkg/types"
+	xos "github.com/aquasecurity/trivy/pkg/x/os"
 	"github.com/google/go-containerregistry/pkg/name"
 	regTypes "github.com/google/go-containerregistry/pkg/v1/types"
 	godigest "github.com/opencontainers/go-digest"
@@ -193,29 +194,54 @@ func (scanner Scanner) getTrivyOptions(image string) flag.Options {
 	return opts
 }
 
+// withTempDir creates a temporary directory using xos.TempDir(), executes the provided function,
+// and then calls xos.Cleanup() to clean up Trivy's process-specific temp directory.
+func (scanner Scanner) withTempDir(wrappedFunc func() error) error {
+	// Ensure Trivy's process-specific temp directory is initialized,
+	// call TempDir() to get the path, then create it if it doesn't exist with MkdirAll.
+	tempDir := xos.TempDir()
+
+	if err := os.MkdirAll(tempDir, 0o755); err != nil {
+		scanner.log.Error().Err(err).Str("tempDir", tempDir).Msg("failed to create Trivy temp directory")
+
+		return err
+	}
+
+	defer func() {
+		// Clean up Trivy's process-specific temp directory (includes our tmpDir)
+		if err := xos.Cleanup(); err != nil {
+			scanner.log.Warn().Err(err).Str("tempDir", tempDir).Msg("failed to cleanup Trivy temp directory")
+		}
+	}()
+
+	return wrappedFunc()
+}
+
 func (scanner Scanner) runTrivy(ctx context.Context, opts flag.Options) (types.Report, error) {
 	err := scanner.checkDBPresence()
 	if err != nil {
 		return types.Report{}, err
 	}
 
-	runner, err := artifact.NewRunner(ctx, opts, artifact.TargetContainerImage)
-	if err != nil {
-		return types.Report{}, err
-	}
-	defer runner.Close(ctx)
+	report := types.Report{}
+	err = scanner.withTempDir(func() error {
+		runner, err := artifact.NewRunner(ctx, opts, artifact.TargetContainerImage)
+		if err != nil {
+			return err
+		}
+		defer runner.Close(ctx)
 
-	report, err := runner.ScanImage(ctx, opts)
-	if err != nil {
-		return types.Report{}, err
-	}
+		report, err = runner.ScanImage(ctx, opts)
+		if err != nil {
+			return err
+		}
 
-	report, err = runner.Filter(ctx, opts, report)
-	if err != nil {
-		return types.Report{}, err
-	}
+		report, err = runner.Filter(ctx, opts, report)
 
-	return report, nil
+		return err
+	})
+
+	return report, err
 }
 
 func (scanner Scanner) IsImageFormatScannable(repo, ref string) (bool, error) {
@@ -581,6 +607,12 @@ func (scanner Scanner) UpdateDB(ctx context.Context) error {
 }
 
 func (scanner Scanner) updateDB(ctx context.Context, dbDir string) error {
+	return scanner.withTempDir(func() error {
+		return scanner.updateDBInternal(ctx, dbDir)
+	})
+}
+
+func (scanner Scanner) updateDBInternal(ctx context.Context, dbDir string) error {
 	scanner.log.Debug().Str("dbDir", dbDir).Msg("download Trivy DB to destination dir")
 
 	registryOpts := fanalTypes.RegistryOptions{Insecure: false}
