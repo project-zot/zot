@@ -5,10 +5,12 @@ package trivy_test
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	xos "github.com/aquasecurity/trivy/pkg/x/os"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
@@ -284,6 +286,131 @@ func TestVulnerableLayer(t *testing.T) {
 		So(vulnerableSpringWebPackage.InstalledVersion, ShouldEqual, "5.3.31")
 		So(vulnerableSpringWebPackage.FixedVersion, ShouldEqual, "6.0.0")
 		So(vulnerableSpringWebPackage.PackagePath, ShouldEqual, "usr/local/artifacts/spring-web-5.3.31.jar")
+	})
+}
+
+func TestWithTempDirErrorHandling(t *testing.T) {
+	Convey("Temp Dir error handling", t, func() {
+		vulnerableLayer, err := GetLayerWithVulnerability()
+		So(err, ShouldBeNil)
+
+		created, err := time.Parse(time.RFC3339, "2023-03-29T18:19:24Z")
+		So(err, ShouldBeNil)
+
+		config := ispec.Image{
+			Created: &created,
+			Platform: ispec.Platform{
+				Architecture: "amd64",
+				OS:           "linux",
+			},
+			Config: ispec.ImageConfig{
+				Env: []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"},
+				Cmd: []string{"/bin/sh"},
+			},
+			RootFS: ispec.RootFS{
+				Type:    "layers",
+				DiffIDs: []godigest.Digest{"sha256:f1417ff83b319fbdae6dd9cd6d8c9c88002dcd75ecf6ec201c8c6894681cf2b5"},
+			},
+		}
+
+		img := CreateImageWith().
+			LayerBlobs([][]byte{vulnerableLayer}).
+			ImageConfig(config).
+			Build()
+
+		tempDir := t.TempDir()
+
+		log := log.NewTestLogger()
+		imageStore := local.NewImageStore(tempDir, false, false,
+			log, monitoring.NewMetricsServer(false, log), nil, nil, nil, nil)
+
+		storeController := storage.StoreController{
+			DefaultStore: imageStore,
+		}
+
+		err = WriteImageToFileSystem(img, "repo", img.DigestStr(), storeController)
+		So(err, ShouldBeNil)
+
+		params := boltdb.DBParameters{
+			RootDir: tempDir,
+		}
+		boltDriver, err := boltdb.GetBoltDriver(params)
+		So(err, ShouldBeNil)
+
+		metaDB, err := boltdb.New(boltDriver, log)
+		So(err, ShouldBeNil)
+
+		err = meta.ParseStorage(metaDB, storeController, log)
+		So(err, ShouldBeNil)
+
+		scanner := trivy.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", log)
+
+		// Clean up any existing temp directory first
+		_ = xos.Cleanup()
+
+		// Get temp directory path (xos.TempDir() uses sync.OnceValues, so it won't recreate after cleanup)
+		tempDirPath := xos.TempDir()
+		// Manually create the directory since xos.Cleanup() removed it
+		err = os.MkdirAll(tempDirPath, 0o755)
+		So(err, ShouldBeNil)
+
+		// Change permissions to 0o000 to test error handling
+		err = os.Chmod(tempDirPath, 0o000)
+		So(err, ShouldBeNil)
+
+		defer func() {
+			// Clean up in case test fails
+			// Note: directory may have been cleaned up by withTempDir, so we just call xos.Cleanup()
+			_ = os.Chmod(tempDirPath, 0o755)
+			_ = xos.Cleanup()
+		}()
+
+		err = scanner.UpdateDB(context.Background())
+		So(err, ShouldNotBeNil)
+
+		// Verify temp directory no longer exists
+		_, err = os.Stat(tempDirPath)
+		So(err, ShouldNotBeNil)
+
+		err = scanner.UpdateDB(context.Background())
+		So(err, ShouldBeNil)
+
+		// Verify temp directory no longer exists
+		_, err = os.Stat(tempDirPath)
+		So(err, ShouldNotBeNil)
+
+		// Test scan with no permissions on temp directory
+		// Ensure directory exists again after cleanup (xos.Cleanup() removed it)
+		tempDirPath = xos.TempDir()
+		err = os.MkdirAll(tempDirPath, 0o755)
+		So(err, ShouldBeNil)
+
+		err = os.Chmod(tempDirPath, 0o000)
+		So(err, ShouldBeNil)
+
+		_, err = scanner.ScanImage(context.Background(), "repo@"+img.DigestStr())
+		So(err, ShouldNotBeNil)
+
+		// Verify temp directory no longer exists
+		_, err = os.Stat(tempDirPath)
+		So(err, ShouldNotBeNil)
+
+		cveMap, err := scanner.ScanImage(context.Background(), "repo@"+img.DigestStr())
+		So(err, ShouldBeNil)
+		t.Logf("cveMap: %v", cveMap)
+		// As of September 17 2023 there are 5 CVEs:
+		// CVE-2023-1255, CVE-2023-2650, CVE-2023-2975, CVE-2023-3817, CVE-2023-3446
+		// There may be more discovered in the future
+		So(len(cveMap), ShouldBeGreaterThanOrEqualTo, 5)
+		So(cveMap, ShouldContainKey, "CVE-2023-1255")
+		So(cveMap, ShouldContainKey, "CVE-2023-2650")
+		So(cveMap, ShouldContainKey, "CVE-2023-2975")
+		So(cveMap, ShouldContainKey, "CVE-2023-3817")
+		So(cveMap, ShouldContainKey, "CVE-2023-3446")
+
+		// Verify temp directory no longer exists
+		_, err = os.Stat(tempDirPath)
+		So(err, ShouldNotBeNil)
 	})
 }
 
