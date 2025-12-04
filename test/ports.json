@@ -436,5 +436,17 @@
       "begin": 11490,
       "end": 11499
     }
+  },
+  "blackbox/upgrade.bats": {
+    "zot": {
+      "begin": 11500,
+      "end": 11509
+    }
+  },
+  "blackbox/upgrade_minimal.bats": {
+    "zot": {
+      "begin": 11510,
+      "end": 11519
+    }
   }
 }
