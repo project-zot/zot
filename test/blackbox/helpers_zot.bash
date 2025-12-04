@@ -28,6 +28,46 @@ function zot_serve() {
     echo -n "$! " >> ${BATS_FILE_TMPDIR}/zot.pid
 }
 
+function zot_rel_serve() {
+    local config_file
+    if [ -n "${2}" ]; then
+        config_file=${2}
+    else
+        config_file=${1}
+    fi
+
+    local zot_path=${BATS_FILE_TMPDIR}/zot-rel-${OS}-${ARCH}
+
+    if [ ! -f "${zot_path}" ]; then
+        curl -L -o "${zot_path}" https://github.com/project-zot/zot/releases/latest/download/zot-${OS}-${ARCH}
+        chmod +x "${zot_path}"
+    fi
+
+    ${zot_path} serve ${config_file} &
+    # zot.pid file keeps a list of zot server PIDs (in case multiple zot servers are started)
+    echo -n "$! " >> ${BATS_FILE_TMPDIR}/zot.pid
+}
+
+function zot_rel_min_serve() {
+    local config_file
+    if [ -n "${2}" ]; then
+        config_file=${2}
+    else
+        config_file=${1}
+    fi
+
+    local zot_path=${BATS_FILE_TMPDIR}/zot-rel-${OS}-${ARCH}-minimal
+
+    if [ ! -f "${zot_path}" ]; then
+        curl -L -o "${zot_path}" https://github.com/project-zot/zot/releases/latest/download/zot-${OS}-${ARCH}-minimal
+        chmod +x "${zot_path}"
+    fi
+
+    ${zot_path} serve ${config_file} &
+    # zot.pid file keeps a list of zot server PIDs (in case multiple zot servers are started)
+    echo -n "$! " >> ${BATS_FILE_TMPDIR}/zot.pid
+}
+
 # stops all zot instances started by the test
 function zot_stop_all() {
     if [ -f "${BATS_FILE_TMPDIR}/zot.pid" ]; then
