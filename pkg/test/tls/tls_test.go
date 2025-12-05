@@ -45,7 +45,10 @@ func TestGenerateServerCert(t *testing.T) {
 
 		Convey("With hostname", func() {
 			hostname := "localhost"
-			certPEM, keyPEM, err := tls.GenerateServerCert(hostname, caCertPEM, caKeyPEM)
+			opts := &tls.CertificateOptions{
+				Hostname: hostname,
+			}
+			certPEM, keyPEM, err := tls.GenerateServerCert(caCertPEM, caKeyPEM, opts)
 			So(err, ShouldBeNil)
 
 			certBlock, _ := pem.Decode(certPEM)
@@ -62,7 +65,10 @@ func TestGenerateServerCert(t *testing.T) {
 
 		Convey("With IP address", func() {
 			ipaddr := "127.0.0.1"
-			certPEM, _, err := tls.GenerateServerCert(ipaddr, caCertPEM, caKeyPEM)
+			opts := &tls.CertificateOptions{
+				Hostname: ipaddr,
+			}
+			certPEM, _, err := tls.GenerateServerCert(caCertPEM, caKeyPEM, opts)
 			So(err, ShouldBeNil)
 
 			certBlock, _ := pem.Decode(certPEM)
@@ -74,7 +80,10 @@ func TestGenerateServerCert(t *testing.T) {
 
 		Convey("With invalid CA PEM", func() {
 			invalidPEM := []byte("invalid pem")
-			_, _, err := tls.GenerateServerCert("localhost", invalidPEM, invalidPEM)
+			opts := &tls.CertificateOptions{
+				Hostname: "localhost",
+			}
+			_, _, err := tls.GenerateServerCert(invalidPEM, invalidPEM, opts)
 			So(err, ShouldEqual, tls.ErrDecodeCAPEM)
 		})
 	})
@@ -86,7 +95,10 @@ func TestGenerateCertWithCN(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		commonName := "test-client"
-		certPEM, keyPEM, err := tls.GenerateCertWithCN(commonName, caCertPEM, caKeyPEM)
+		opts := &tls.CertificateOptions{
+			CommonName: commonName,
+		}
+		certPEM, keyPEM, err := tls.GenerateClientCert(caCertPEM, caKeyPEM, opts)
 		So(err, ShouldBeNil)
 
 		Convey("Certificate should have correct properties", func() {
@@ -109,7 +121,10 @@ func TestGenerateCertWithCN(t *testing.T) {
 func TestGenerateSelfSignedCertWithCN(t *testing.T) {
 	Convey("Generate self-signed certificate with CN", t, func() {
 		commonName := "self-signed-client"
-		certPEM, keyPEM, err := tls.GenerateSelfSignedCertWithCN(commonName)
+		opts := &tls.CertificateOptions{
+			CommonName: commonName,
+		}
+		certPEM, keyPEM, err := tls.GenerateClientSelfSignedCert(opts)
 		So(err, ShouldBeNil)
 
 		Convey("Certificate should be self-signed", func() {

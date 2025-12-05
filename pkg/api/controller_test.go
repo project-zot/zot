@@ -2559,10 +2559,6 @@ func TestTLSMutualAuth(t *testing.T) {
 		baseURL := test.GetBaseURL(port)
 		secureBaseURL := test.GetSecureBaseURL(port)
 
-		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
-
-		defer func() { resty.SetTLSClientConfig(nil) }()
-
 		conf := config.New()
 		conf.HTTP.Port = port
 		conf.HTTP.TLS = &config.TLSConfig{
@@ -2578,31 +2574,58 @@ func TestTLSMutualAuth(t *testing.T) {
 
 		defer cm.StopServer()
 
+		// access without any certificate settings
+		client := resty.New()
+
 		// accessing insecure HTTP site should fail
-		resp, err := resty.R().Get(baseURL)
+		resp, err := client.R().Get(baseURL)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 
-		// without client certs and creds, should pass auth and get expected 404 code on non-protected endpoint
-		resp, err = resty.R().Get(secureBaseURL)
+		// without client certs and creds, should get certificate verification error
+		_, err = client.R().Get(secureBaseURL)
+		So(err, ShouldNotBeNil)
+
+		// without client certs should fail auth
+		_, err = client.R().Get(secureBaseURL + "/v2/")
+		So(err, ShouldNotBeNil)
+
+		// Use resty client with certificates,
+		client = resty.New().SetTLSClientConfig(&tls.Config{
+			RootCAs:    caCertPool,
+			MinVersion: tls.VersionTLS12,
+		})
+
+		// without client certs should fail auth
+		resp, err = client.R().Get(secureBaseURL)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+		// without client certs should fail auth
+		resp, _ = client.R().Get(secureBaseURL + "/v2/")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
-		// with invalid creds and without certs, should pass auth and get expected 404 code on non-protected endpoint
-		resp, err = resty.R().SetBasicAuth(username, password).Get(secureBaseURL)
+
+		resp, err = client.R().SetBasicAuth(username, password).Get(secureBaseURL)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+		// with only creds, should get 401 because basic auth is disabled
+		// (Authorization header should be rejected when the auth method is disabled, regardless of mTLS)
+		resp, _ = client.R().SetBasicAuth(username, password).Get(secureBaseURL + "/v2/")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		// setup TLS mutual auth
 		cert, err := tls.LoadX509KeyPair("../../test/data/client.cert", "../../test/data/client.key")
 		So(err, ShouldBeNil)
 
-		// Use separate resty client with certificates, because we cannot perform cleanup with resty.SetCertificates()
-		client := resty.New().SetTLSClientConfig(&tls.Config{
+		client = resty.New().SetTLSClientConfig(&tls.Config{
 			RootCAs:      caCertPool,
 			MinVersion:   tls.VersionTLS12,
 			Certificates: []tls.Certificate{cert},
@@ -2614,15 +2637,15 @@ func TestTLSMutualAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-		// with client certs and creds, should get expected status code (because password auth not enabled)
 		resp, _ = client.R().SetBasicAuth(username, password).Get(secureBaseURL)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-		// with client certs, creds shouldn't matter (because password auth not enabled)
+		// with client certs and creds, should get 401 because basic auth is disabled
+		// (Authorization header should be rejected when the auth method is disabled, regardless of mTLS)
 		resp, _ = client.R().SetBasicAuth(username, password).Get(secureBaseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 	})
 }
 
@@ -2729,9 +2752,11 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		baseURL := test.GetBaseURL(port)
 		secureBaseURL := test.GetSecureBaseURL(port)
 
-		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
-
-		defer func() { resty.SetTLSClientConfig(nil) }()
+		// Use resty client with certificates,
+		client := resty.New().SetTLSClientConfig(&tls.Config{
+			RootCAs:    caCertPool,
+			MinVersion: tls.VersionTLS12,
+		})
 
 		conf := config.New()
 		conf.HTTP.Port = port
@@ -2757,26 +2782,28 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		defer cm.StopServer()
 
 		// accessing insecure HTTP site should fail
-		resp, err := resty.R().Get(baseURL)
+		resp, err := client.R().Get(baseURL)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 
 		// without client certs and creds, reads are allowed
-		resp, err = resty.R().Get(secureBaseURL + "/v2/")
+		resp, err = client.R().Get(secureBaseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
+
 		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
-		// with creds but without certs, reads are allowed
-		resp, err = resty.R().SetBasicAuth(username, password).Get(secureBaseURL + "/v2/")
+		// with creds but without certs, reads are not allowed as server does not use basic auth
+		// and basic auth headers are expected to contain valid credentials
+		resp, err = client.R().SetBasicAuth(username, password).Get(secureBaseURL + "/v2/")
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		// without creds, writes should fail
-		resp, err = resty.R().Post(secureBaseURL + "/v2/repo/blobs/uploads/")
+		resp, err = client.R().Post(secureBaseURL + "/v2/repo/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
@@ -2785,11 +2812,16 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// Use separate resty client with certificates, because we cannot perform cleanup with resty.SetCertificates()
-		client := resty.New().SetTLSClientConfig(&tls.Config{
+		client = resty.New().SetTLSClientConfig(&tls.Config{
 			RootCAs:      caCertPool,
 			MinVersion:   tls.VersionTLS12,
 			Certificates: []tls.Certificate{cert},
 		})
+
+		// with client certs but without creds, should succeed
+		resp, _ = client.R().Get(secureBaseURL)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 		// with client certs but without creds, should succeed
 		resp, err = client.R().Get(secureBaseURL + "/v2/")
@@ -2797,15 +2829,16 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-		// with client certs and creds, should get expected status code
+		// with client certs and creds, reads are not allowed as server does not use basic auth
+		// and basic auth headers are expected to contain valid credentials
 		resp, _ = client.R().SetBasicAuth(username, password).Get(secureBaseURL)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-		// with client certs, creds shouldn't matter
+		// with client certs, reads are not allowed as server does not use basic auth
 		resp, _ = client.R().SetBasicAuth(username, password).Get(secureBaseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 	})
 }
 

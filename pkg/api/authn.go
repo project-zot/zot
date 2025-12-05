@@ -91,6 +91,11 @@ func (amw *AuthnMiddleware) sessionAuthn(ctlr *Controller, userAc *reqCtx.UserAc
 	if err != nil {
 		ctlr.Log.Err(err).Str("identity", identity).Msg("failed to get user profile in DB")
 
+		if errors.Is(err, zerr.ErrUserDataNotFound) {
+			// we handle this case as an authentication failure, not an internal server error
+			err = nil
+		}
+
 		return false, err
 	}
 
@@ -117,39 +122,38 @@ func (amw *AuthnMiddleware) mTLSAuthn(ctlr *Controller, userAc *reqCtx.UserAcces
 	}
 
 	// Extract identity from certificate
-	for _, cert := range request.TLS.PeerCertificates {
-		identity := cert.Subject.CommonName
-		if identity == "" { // Skip certificates in chain with empty identity
-			continue
-		}
-		// Process request with mTLS identity
-		var groups []string
+	leafCert := request.TLS.PeerCertificates[0]
 
-		accessControl := ctlr.Config.CopyAccessControlConfig()
-		if accessControl != nil {
-			ac := NewAccessController(ctlr.Config)
-			groups = ac.getUserGroups(identity)
-		}
-
-		userAc.SetUsername(identity)
-		userAc.AddGroups(groups)
-		userAc.SaveOnRequest(request)
-
-		// Update user groups in MetaDB if available
-		if ctlr.MetaDB != nil {
-			if err := ctlr.MetaDB.SetUserGroups(request.Context(), groups); err != nil {
-				ctlr.Log.Error().Err(err).Str("identity", identity).Msg("failed to update user profile")
-
-				return false, err
-			}
-		}
-
-		ctlr.Log.Debug().Str("identity", identity).Msg("mTLS authentication successful")
-
-		return true, nil
+	identity := leafCert.Subject.CommonName
+	if identity == "" {
+		return false, nil
 	}
 
-	return false, nil
+	// Process request with mTLS identity
+	var groups []string
+
+	accessControl := ctlr.Config.CopyAccessControlConfig()
+	if accessControl != nil {
+		ac := NewAccessController(ctlr.Config)
+		groups = ac.getUserGroups(identity)
+	}
+
+	userAc.SetUsername(identity)
+	userAc.AddGroups(groups)
+	userAc.SaveOnRequest(request)
+
+	// Update user groups in MetaDB if available
+	if ctlr.MetaDB != nil {
+		if err := ctlr.MetaDB.SetUserGroups(request.Context(), groups); err != nil {
+			ctlr.Log.Error().Err(err).Str("identity", identity).Msg("failed to update user profile")
+
+			return false, err
+		}
+	}
+
+	ctlr.Log.Debug().Str("identity", identity).Msg("mTLS authentication successful")
+
+	return true, nil
 }
 
 func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAccessControl,
@@ -421,32 +425,32 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 
 			// Switch authentication methods based on provided request context
 			switch {
-			// if no auth methods enabled at all - then just authenticate anything
-			case !authConfig.IsBasicAuthnEnabled() && !ctlr.Config.IsMTLSAuthEnabled():
-				authenticated = true
-
-			// try basic auth if authorization header is given
-			case authConfig.IsBasicAuthnEnabled() && !isAuthorizationHeaderEmpty(request):
+			// The authorization header presence is an explicit attempt to use basic authentication
+			case !isAuthorizationHeaderEmpty(request) && authConfig.IsBasicAuthnEnabled():
 				authenticated, err = amw.basicAuthn(ctlr, userAc, response, request)
 
-			// try session auth
+			// The authorization header is given but basic auth is not enabled
+			case !isAuthorizationHeaderEmpty(request) && !authConfig.IsBasicAuthnEnabled():
+				authenticated = false
+
+			// The session header is an explicit attempt to use session authentication
 			case hasSessionHeader(request):
 				authenticated, err = amw.sessionAuthn(ctlr, userAc, response, request)
-				// for session auth error zerr.ErrUserDataNotFound means 401 instead of 500
-				if err != nil && errors.Is(err, zerr.ErrUserDataNotFound) {
-					err = nil
-					authenticated = false
+				if err != nil {
+					break
 				}
 				// the session header can be present also for anonymous calls - then we should pass
-				if allowAnonymous || isMgmtRequested {
-					authenticated = true
-				}
+				authenticated = authenticated || allowAnonymous || isMgmtRequested
 
-			// try mTLS authentication if client certificates are present
+			// Try mTLS authentication if client certificates are present
 			case ctlr.Config.IsMTLSAuthEnabled() && request.TLS != nil && len(request.TLS.PeerCertificates) > 0:
 				authenticated, err = amw.mTLSAuthn(ctlr, userAc, request)
 
-			// if no credentials provided - check for anonymous / mgmt requests
+			// If no auth methods enabled at all - then just authenticate anything
+			case !authConfig.IsBasicAuthnEnabled() && !ctlr.Config.IsMTLSAuthEnabled():
+				authenticated = true
+
+			// If no credentials provided - check for anonymous / mgmt requests
 			case allowAnonymous || isMgmtRequested:
 				authenticated = true
 			}
