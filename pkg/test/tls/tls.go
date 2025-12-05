@@ -8,322 +8,400 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"math/big"
 	"net"
 	"os"
 	"time"
 )
 
-var ErrDecodeCAPEM = errors.New("failed to decode CA certificate PEM")
+var (
+	ErrDecodeCAPEM                = errors.New("failed to decode CA certificate PEM")
+	ErrInvalidCertificateType     = errors.New("invalid certificate type")
+	ErrCertificateOptionsRequired = errors.New("CertificateOptions is required")
+	ErrHostnameRequired           = errors.New("Hostname is required in CertificateOptions")
+	ErrNoCertificatesProvided     = errors.New("at least one certificate is required")
+)
 
-// GenerateCACert generates a CA certificate and private key.
-func GenerateCACert() ([]byte, []byte, error) {
-	// Generate private key for CA
-	caPrivKey, err := rsa.GenerateKey(rand.Reader, 2048)
+const (
+	certTypeCA     = "CA"
+	certTypeServer = "Server"
+	certTypeClient = "Client"
+)
+
+// CertificateOptions contains optional settings for certificate generation.
+// If a field is nil or zero, default values will be used.
+type CertificateOptions struct {
+	// NotBefore is the certificate validity start time.
+	// If zero, defaults to time.Now().
+	NotBefore time.Time
+
+	// NotAfter is the certificate validity end time.
+	// If zero, defaults will be used based on certificate type.
+	NotAfter time.Time
+
+	// DNSNames contains the DNS names for the Subject Alternative Name extension.
+	// If nil, default values may be used based on certificate type.
+	DNSNames []string
+
+	// IPAddresses contains the IP addresses for the Subject Alternative Name extension.
+	// If nil, default values may be used based on certificate type.
+	IPAddresses []net.IP
+
+	// EmailAddresses contains the email addresses for the Subject Alternative Name extension.
+	// If nil, no email addresses will be included.
+	EmailAddresses []string
+
+	// Hostname is the hostname or IP address for server certificates.
+	// For server certificates, this is required and will be added to DNSNames or IPAddresses
+	// based on whether it's a valid IP address or a DNS name.
+	Hostname string
+
+	// CommonName is the CommonName (CN) for client certificates.
+	// For client certificates, this is optional - if not provided, the certificate will not have a CN.
+	CommonName string
+}
+
+// generateCertificate is a helper function that generates a certificate and private key.
+// If signerCert and signerKey are nil, the certificate will be self-signed.
+func generateCertificate(
+	certType string,
+	opts *CertificateOptions,
+	signerCert *x509.Certificate,
+	signerKey *rsa.PrivateKey,
+) ([]byte, []byte, error) {
+	// Generate private key
+	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to generate CA private key: %w", err)
+		return nil, nil, fmt.Errorf("failed to generate private key: %w", err)
 	}
 
-	// Create CA certificate template
-	caTemplate := x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject: pkix.Name{
+	// Initialize certificate template
+	template, err := initializeTemplate(certType)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Apply options
+	applyOptions(template, opts, certType)
+
+	// Determine signer (self-signed if signerCert is nil)
+	var issuerCert *x509.Certificate
+
+	var issuerKey *rsa.PrivateKey
+	if signerCert == nil {
+		// Self-signed
+		issuerCert = template
+		issuerKey = privKey
+	} else {
+		// Signed by CA
+		issuerCert = signerCert
+		issuerKey = signerKey
+	}
+
+	// Create the certificate
+	certDER, err := x509.CreateCertificate(rand.Reader, template, issuerCert, &privKey.PublicKey, issuerKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create certificate: %w", err)
+	}
+
+	// Encode certificate to PEM
+	certPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: certDER,
+	})
+
+	// Encode private key to PEM
+	keyPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(privKey),
+	})
+
+	return certPEM, keyPEM, nil
+}
+
+// parseCA parses CA certificate and private key from PEM format.
+func parseCA(caCertPEM, caKeyPEM []byte) (*x509.Certificate, *rsa.PrivateKey, error) {
+	// Parse CA certificate
+	caCertBlock, _ := pem.Decode(caCertPEM)
+	if caCertBlock == nil {
+		return nil, nil, ErrDecodeCAPEM
+	}
+
+	caCert, err := x509.ParseCertificate(caCertBlock.Bytes)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to parse CA certificate: %w", err)
+	}
+
+	// Parse CA private key
+	caKeyBlock, _ := pem.Decode(caKeyPEM)
+	if caKeyBlock == nil {
+		return nil, nil, ErrDecodeCAPEM
+	}
+
+	caPrivKey, err := x509.ParsePKCS1PrivateKey(caKeyBlock.Bytes)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to parse CA private key: %w", err)
+	}
+
+	return caCert, caPrivKey, nil
+}
+
+// initializeTemplate creates and initializes a certificate template based on the certificate type.
+// certType can be "CA", "Server", or "Client".
+func initializeTemplate(certType string) (*x509.Certificate, error) {
+	template := &x509.Certificate{}
+
+	// Initialize certificate type-specific fields and defaults
+	switch certType {
+	case certTypeCA:
+		template.IsCA = true
+		template.ExtKeyUsage = []x509.ExtKeyUsage{}
+		template.KeyUsage = x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign
+		template.BasicConstraintsValid = true
+		template.Subject = pkix.Name{
 			Organization:  []string{"Test CA"},
 			Country:       []string{"US"},
 			Province:      []string{""},
 			Locality:      []string{"San Francisco"},
 			StreetAddress: []string{""},
 			PostalCode:    []string{""},
-		},
-		NotBefore:             time.Now(),
-		NotAfter:              time.Now().AddDate(10, 0, 0), // Valid for 10 years
-		IsCA:                  true,
-		ExtKeyUsage:           []x509.ExtKeyUsage{},
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-		BasicConstraintsValid: true,
-	}
-
-	// Create the CA certificate
-	caCertDER, err := x509.CreateCertificate(rand.Reader, &caTemplate, &caTemplate, &caPrivKey.PublicKey, caPrivKey)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create CA certificate: %w", err)
-	}
-
-	// Encode CA certificate to PEM
-	caCertPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: caCertDER,
-	})
-
-	// Encode CA private key to PEM
-	caKeyPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: x509.MarshalPKCS1PrivateKey(caPrivKey),
-	})
-
-	return caCertPEM, caKeyPEM, nil
-}
-
-// GenerateServerCert generates a server certificate signed by the provided CA.
-func GenerateServerCert(hostname string, caCertPEM, caKeyPEM []byte) ([]byte, []byte, error) {
-	// Parse CA certificate
-	caCertBlock, _ := pem.Decode(caCertPEM)
-	if caCertBlock == nil {
-		return nil, nil, ErrDecodeCAPEM
-	}
-
-	caCert, err := x509.ParseCertificate(caCertBlock.Bytes)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse CA certificate: %w", err)
-	}
-
-	// Parse CA private key
-	caKeyBlock, _ := pem.Decode(caKeyPEM)
-	if caKeyBlock == nil {
-		return nil, nil, ErrDecodeCAPEM
-	}
-
-	caPrivKey, err := x509.ParsePKCS1PrivateKey(caKeyBlock.Bytes)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse CA private key: %w", err)
-	}
-
-	// Generate private key for server
-	serverPrivKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to generate server private key: %w", err)
-	}
-
-	// Create server certificate template
-	serverTemplate := x509.Certificate{
-		SerialNumber: big.NewInt(2),
-		Subject: pkix.Name{
+		}
+		template.NotBefore = time.Now()
+		template.NotAfter = time.Now().AddDate(10, 0, 0) // 10 years for CA
+	case certTypeServer:
+		template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
+		template.KeyUsage = x509.KeyUsageDigitalSignature
+		template.Subject = pkix.Name{
 			Organization:  []string{"Test Server"},
 			Country:       []string{"US"},
 			Province:      []string{""},
 			Locality:      []string{"San Francisco"},
 			StreetAddress: []string{""},
 			PostalCode:    []string{""},
-		},
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().AddDate(1, 0, 0), // Valid for 1 year
-		SubjectKeyId: []byte{1, 2, 3, 4, 6},
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		KeyUsage:     x509.KeyUsageDigitalSignature,
-		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
+		}
+		template.NotBefore = time.Now()
+		template.NotAfter = time.Now().AddDate(1, 0, 0)           // 1 year for server
+		template.IPAddresses = []net.IP{net.ParseIP("127.0.0.1")} // Default IP for Server
+	case certTypeClient:
+		template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}
+		template.KeyUsage = x509.KeyUsageDigitalSignature
+		template.Subject = pkix.Name{
+			Organization:  []string{"Test Client"},
+			Country:       []string{"US"},
+			Province:      []string{""},
+			Locality:      []string{"San Francisco"},
+			StreetAddress: []string{""},
+			PostalCode:    []string{""},
+		}
+		template.NotBefore = time.Now()
+		template.NotAfter = time.Now().AddDate(1, 0, 0) // 1 year for client
+	default:
+		return nil, fmt.Errorf("%w: %s", ErrInvalidCertificateType, certType)
 	}
 
-	// Add hostname to certificate
-	if ip := net.ParseIP(hostname); ip != nil {
-		serverTemplate.IPAddresses = []net.IP{ip}
+	return template, nil
+}
+
+// applyOptions applies options to the certificate template, using defaults when options are not provided.
+// certType can be "CA", "Server", or "Client".
+func applyOptions(template *x509.Certificate, opts *CertificateOptions, certType string) {
+	if opts == nil {
+		opts = &CertificateOptions{}
+	}
+
+	// Apply NotBefore if provided in options
+	if !opts.NotBefore.IsZero() {
+		template.NotBefore = opts.NotBefore
+	}
+
+	// Apply NotAfter if provided in options
+	if !opts.NotAfter.IsZero() {
+		template.NotAfter = opts.NotAfter
+	}
+
+	// Apply SAN (Subject Alternative Name) - handle IPAddresses
+	// Priority: 1) opts.IPAddresses, 2) hostname if IP, 3) keep default from initializeTemplate
+	if opts.IPAddresses != nil {
+		template.IPAddresses = opts.IPAddresses
+	} else if certType == certTypeServer && opts.Hostname != "" {
+		if ip := net.ParseIP(opts.Hostname); ip != nil {
+			// Hostname is an IP address, use it
+			template.IPAddresses = []net.IP{ip}
+		}
+		// If hostname is DNS name, keep default IP from initializeTemplate
+	}
+
+	// Apply SAN (Subject Alternative Name) - handle DNSNames
+	// Priority: 1) opts.DNSNames, 2) hostname if DNS name
+	if opts.DNSNames != nil {
+		template.DNSNames = opts.DNSNames
+	} else if certType == certTypeServer && opts.Hostname != "" {
+		if ip := net.ParseIP(opts.Hostname); ip == nil {
+			// Hostname is a DNS name, use it
+			template.DNSNames = []string{opts.Hostname}
+		}
+	}
+
+	// Apply email addresses
+	if opts.EmailAddresses != nil {
+		template.EmailAddresses = opts.EmailAddresses
+	}
+
+	// Apply CommonName - explicitly set to empty string if not provided to ensure it's empty
+	if opts.CommonName != "" {
+		template.Subject.CommonName = opts.CommonName
 	} else {
-		serverTemplate.DNSNames = []string{hostname}
+		template.Subject.CommonName = ""
+	}
+}
+
+// GenerateCACert generates a CA certificate and private key.
+// opts is optional and can be used to customize certificate settings.
+func GenerateCACert(opts ...*CertificateOptions) ([]byte, []byte, error) {
+	var options *CertificateOptions
+	if len(opts) > 0 && opts[0] != nil {
+		options = opts[0]
 	}
 
-	// Create the server certificate
-	serverCertDER, err := x509.CreateCertificate(rand.Reader, &serverTemplate, caCert, &serverPrivKey.PublicKey, caPrivKey)
+	// Self-signed certificate (signerCert and signerKey are nil)
+	return generateCertificate(certTypeCA, options, nil, nil)
+}
+
+// GenerateIntermediateCACert generates an intermediate CA certificate signed by the provided parent CA.
+// opts is optional and can be used to customize certificate settings, including CommonName.
+func GenerateIntermediateCACert(
+	parentCACertPEM,
+	parentCAKeyPEM []byte,
+	opts ...*CertificateOptions,
+) ([]byte, []byte, error) {
+	var options *CertificateOptions
+	if len(opts) > 0 && opts[0] != nil {
+		options = opts[0]
+	} else {
+		options = &CertificateOptions{}
+	}
+
+	// Parse parent CA certificate and key
+	parentCACert, parentCAPrivKey, err := parseCA(parentCACertPEM, parentCAKeyPEM)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create server certificate: %w", err)
+		return nil, nil, err
 	}
 
-	// Encode server certificate to PEM
-	serverCertPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: serverCertDER,
-	})
+	// Generate intermediate CA certificate signed by parent CA
+	return generateCertificate(certTypeCA, options, parentCACert, parentCAPrivKey)
+}
 
-	// Encode server private key to PEM
-	serverKeyPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: x509.MarshalPKCS1PrivateKey(serverPrivKey),
-	})
+// writeCertAndKeyToFile writes certificate and key bytes to their respective files.
+func writeCertAndKeyToFile(certPath, keyPath string, certBytes, keyBytes []byte) error {
+	err := os.WriteFile(certPath, certBytes, 0o600)
+	if err != nil {
+		return err
+	}
 
-	return serverCertPEM, serverKeyPEM, nil
+	return os.WriteFile(keyPath, keyBytes, 0o600)
+}
+
+// WriteCertificateChainToFile writes a certificate chain to a file.
+// The certificates should be provided in order: leaf certificate first, followed by intermediate CAs.
+// All certificates should be in PEM format.
+func WriteCertificateChainToFile(certChainPath string, certs ...[]byte) error {
+	if len(certs) == 0 {
+		return ErrNoCertificatesProvided
+	}
+
+	// Calculate total size for pre-allocation
+	totalSize := 0
+	for _, cert := range certs {
+		totalSize += len(cert)
+	}
+
+	// Concatenate all certificates
+	chainPEM := make([]byte, 0, totalSize)
+	for _, cert := range certs {
+		chainPEM = append(chainPEM, cert...)
+	}
+
+	// Write to file
+	err := os.WriteFile(certChainPath, chainPEM, 0o600)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// GenerateServerCert generates a server certificate signed by the provided CA.
+// opts is required and must contain a Hostname field.
+func GenerateServerCert(caCertPEM, caKeyPEM []byte, opts *CertificateOptions) ([]byte, []byte, error) {
+	if opts == nil || opts.Hostname == "" {
+		return nil, nil, ErrHostnameRequired
+	}
+
+	// Parse CA certificate and key
+	caCert, caPrivKey, err := parseCA(caCertPEM, caKeyPEM)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Generate certificate signed by CA
+	return generateCertificate(certTypeServer, opts, caCert, caPrivKey)
 }
 
 // GenerateServerCertToFile generates a server certificate signed by the provided CA
 // and writes generated key and cert to files.
-func GenerateServerCertToFile(hostname string, caCertPEM, caKeyPEM []byte, certOutputPath, keyOutputPath string) error {
-	serverCertBytes, serverKeyBytes, err := GenerateServerCert(hostname, caCertPEM, caKeyPEM)
+// opts is required and must contain a Hostname field.
+func GenerateServerCertToFile(
+	caCertPEM, caKeyPEM []byte,
+	certOutputPath, keyOutputPath string,
+	opts *CertificateOptions,
+) error {
+	serverCertBytes, serverKeyBytes, err := GenerateServerCert(caCertPEM, caKeyPEM, opts)
 	if err != nil {
 		return err
 	}
 
-	err = os.WriteFile(certOutputPath, serverCertBytes, 0o600)
-	if err != nil {
-		return err
-	}
-
-	err = os.WriteFile(keyOutputPath, serverKeyBytes, 0o600)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return writeCertAndKeyToFile(certOutputPath, keyOutputPath, serverCertBytes, serverKeyBytes)
 }
 
-// GenerateCertWithCN generates a client certificate with a specific CommonName signed by the provided CA.
-func GenerateCertWithCN(commonName string, caCertPEM, caKeyPEM []byte) ([]byte, []byte, error) {
-	// Parse CA certificate
-	caCertBlock, _ := pem.Decode(caCertPEM)
-	if caCertBlock == nil {
-		return nil, nil, ErrDecodeCAPEM
-	}
-
-	caCert, err := x509.ParseCertificate(caCertBlock.Bytes)
+// GenerateClientCert generates a client certificate signed by the provided CA.
+// opts is optional. CommonName is optional - if not provided, the certificate will not have a CN.
+func GenerateClientCert(caCertPEM, caKeyPEM []byte, opts *CertificateOptions) ([]byte, []byte, error) {
+	// Parse CA certificate and key
+	caCert, caPrivKey, err := parseCA(caCertPEM, caKeyPEM)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse CA certificate: %w", err)
+		return nil, nil, err
 	}
 
-	// Parse CA private key
-	caKeyBlock, _ := pem.Decode(caKeyPEM)
-	if caKeyBlock == nil {
-		return nil, nil, ErrDecodeCAPEM
-	}
-
-	caPrivKey, err := x509.ParsePKCS1PrivateKey(caKeyBlock.Bytes)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse CA private key: %w", err)
-	}
-
-	// Generate private key for client
-	clientPrivKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to generate client private key: %w", err)
-	}
-
-	// Create client certificate template
-	clientTemplate := x509.Certificate{
-		SerialNumber: big.NewInt(3),
-		Subject: pkix.Name{
-			CommonName:    commonName,
-			Organization:  []string{"Test Client"},
-			Country:       []string{"US"},
-			Province:      []string{""},
-			Locality:      []string{"San Francisco"},
-			StreetAddress: []string{""},
-			PostalCode:    []string{""},
-		},
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().AddDate(1, 0, 0), // Valid for 1 year
-		SubjectKeyId: []byte{1, 2, 3, 4, 5},
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
-		KeyUsage:     x509.KeyUsageDigitalSignature,
-	}
-
-	// Create the client certificate
-	clientCertDER, err := x509.CreateCertificate(rand.Reader, &clientTemplate, caCert, &clientPrivKey.PublicKey, caPrivKey)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create client certificate: %w", err)
-	}
-
-	// Encode client certificate to PEM
-	clientCertPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: clientCertDER,
-	})
-
-	// Encode client private key to PEM
-	clientKeyPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: x509.MarshalPKCS1PrivateKey(clientPrivKey),
-	})
-
-	return clientCertPEM, clientKeyPEM, nil
+	// Generate certificate signed by CA
+	return generateCertificate(certTypeClient, opts, caCert, caPrivKey)
 }
 
-// GenerateCertWithCNToFile generates a client certificate with a specific CommonName signed by the provided CA
+// GenerateClientCertToFile generates a client certificate signed by the provided CA
 // and writes generated key and cert to files.
-func GenerateCertWithCNToFile(commonName string, caCertPEM, caKeyPEM []byte, certPath, keyPath string) error {
-	clientCertBytes, clientKeyBytes, err := GenerateCertWithCN(commonName, caCertPEM, caKeyPEM)
+// opts is optional. CommonName is optional - if not provided, the certificate will not have a CN.
+func GenerateClientCertToFile(caCertPEM, caKeyPEM []byte, certPath, keyPath string, opts *CertificateOptions) error {
+	clientCertBytes, clientKeyBytes, err := GenerateClientCert(caCertPEM, caKeyPEM, opts)
 	if err != nil {
 		return err
 	}
 
-	err = os.WriteFile(certPath, clientCertBytes, 0o600)
-	if err != nil {
-		return err
-	}
-
-	err = os.WriteFile(keyPath, clientKeyBytes, 0o600)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return writeCertAndKeyToFile(certPath, keyPath, clientCertBytes, clientKeyBytes)
 }
 
-// GenerateSelfSignedCertWithCN generates a client certificate with a specific CommonName not signed by any CA.
-func GenerateSelfSignedCertWithCN(commonName string) ([]byte, []byte, error) {
-	// Generate private key for client
-	clientPrivKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to generate client private key: %w", err)
-	}
-
-	// Create client certificate template
-	clientTemplate := x509.Certificate{
-		SerialNumber: big.NewInt(3),
-		Subject: pkix.Name{
-			CommonName:    commonName,
-			Organization:  []string{"Test Client"},
-			Country:       []string{"US"},
-			Province:      []string{""},
-			Locality:      []string{"San Francisco"},
-			StreetAddress: []string{""},
-			PostalCode:    []string{""},
-		},
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().AddDate(1, 0, 0), // Valid for 1 year
-		SubjectKeyId: []byte{1, 2, 3, 4, 5},
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
-		KeyUsage:     x509.KeyUsageDigitalSignature,
-	}
-
-	// Create the client certificate
-	clientCertDER, err := x509.CreateCertificate(
-		rand.Reader,
-		&clientTemplate,
-		&clientTemplate,
-		&clientPrivKey.PublicKey,
-		clientPrivKey,
-	)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create client certificate: %w", err)
-	}
-
-	// Encode client certificate to PEM
-	clientCertPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: clientCertDER,
-	})
-
-	// Encode client private key to PEM
-	clientKeyPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: x509.MarshalPKCS1PrivateKey(clientPrivKey),
-	})
-
-	return clientCertPEM, clientKeyPEM, nil
+// GenerateClientSelfSignedCert generates a client certificate not signed by any CA.
+// opts is optional. CommonName is optional - if not provided, the certificate will not have a CN.
+func GenerateClientSelfSignedCert(opts *CertificateOptions) ([]byte, []byte, error) {
+	// Self-signed certificate (signerCert and signerKey are nil)
+	return generateCertificate(certTypeClient, opts, nil, nil)
 }
 
-// GenerateSelfSignedCertWithCNToFile generates a client certificate with a specific CommonName not signed by any CA
+// GenerateClientSelfSignedCertToFile generates a client certificate not signed by any CA
 // and writes generated key and cert to files.
-func GenerateSelfSignedCertWithCNToFile(commonName string, certOutputPath, keyOutputPath string) error {
-	clientCertBytes, clientKeyBytes, err := GenerateSelfSignedCertWithCN(commonName)
+// opts is optional. CommonName is optional - if not provided, the certificate will not have a CN.
+func GenerateClientSelfSignedCertToFile(certOutputPath, keyOutputPath string, opts *CertificateOptions) error {
+	clientCertBytes, clientKeyBytes, err := GenerateClientSelfSignedCert(opts)
 	if err != nil {
 		return err
 	}
 
-	err = os.WriteFile(certOutputPath, clientCertBytes, 0o600)
-	if err != nil {
-		return err
-	}
-
-	err = os.WriteFile(keyOutputPath, clientKeyBytes, 0o600)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return writeCertAndKeyToFile(certOutputPath, keyOutputPath, clientCertBytes, clientKeyBytes)
 }

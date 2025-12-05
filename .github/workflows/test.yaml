@@ -174,7 +174,7 @@ jobs:
           make covhtml
           mkdir unified-coverage
           cp coverage.txt coverage.html unified-coverage/
-      - name: upload html coverage
+      - name: upload unified-coverage as build artifact
         uses: actions/upload-artifact@v5
         with:
           name: unified-coverage

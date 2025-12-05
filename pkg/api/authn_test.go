@@ -883,7 +883,10 @@ func TestMTLSAuthentication(t *testing.T) {
 	// Generate server certificate
 	serverCertPath := path.Join(tempDir, "server.crt")
 	serverKeyPath := path.Join(tempDir, "server.key")
-	err = tlsutils.GenerateServerCertToFile("localhost", caCert, caKey, serverCertPath, serverKeyPath)
+	opts := &tlsutils.CertificateOptions{
+		Hostname: "localhost",
+	}
+	err = tlsutils.GenerateServerCertToFile(caCert, caKey, serverCertPath, serverKeyPath, opts)
 	if err != nil {
 		panic(err)
 	}
@@ -891,7 +894,10 @@ func TestMTLSAuthentication(t *testing.T) {
 	// Generate valid client certificate for "testuser" user
 	clientCertPath := path.Join(tempDir, "client.crt")
 	clientKeyPath := path.Join(tempDir, "client.key")
-	err = tlsutils.GenerateCertWithCNToFile("testuser", caCert, caKey, clientCertPath, clientKeyPath)
+	clientOpts := &tlsutils.CertificateOptions{
+		CommonName: "testuser",
+	}
+	err = tlsutils.GenerateClientCertToFile(caCert, caKey, clientCertPath, clientKeyPath, clientOpts)
 	if err != nil {
 		panic(err)
 	}
@@ -899,13 +905,16 @@ func TestMTLSAuthentication(t *testing.T) {
 	// Generate self-signed client cert for "testuser" user
 	selfSignedClientCertPath := path.Join(tempDir, "client-selfsigned.crt")
 	selfSignedClientKeyPath := path.Join(tempDir, "client-selfsigned.key")
-	err = tlsutils.GenerateSelfSignedCertWithCNToFile("testuser", selfSignedClientCertPath, selfSignedClientKeyPath)
+	selfSignedOpts := &tlsutils.CertificateOptions{
+		CommonName: "testuser",
+	}
+	err = tlsutils.GenerateClientSelfSignedCertToFile(selfSignedClientCertPath, selfSignedClientKeyPath, selfSignedOpts)
 	if err != nil {
 		panic(err)
 	}
 
 	// Create htpasswd file with sample "httpuser"
-	htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString("httpuser", "httppass"))
+	htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString("httpuser", "httppass"))
 	defer os.Remove(htpasswdPath)
 
 	Convey("Test mTLS-only authentication", t, func() {
@@ -1063,7 +1072,7 @@ func TestMTLSAuthentication(t *testing.T) {
 		selfSignedClientCert, err := tls.LoadX509KeyPair(selfSignedClientCertPath, selfSignedClientKeyPath)
 		So(err, ShouldBeNil)
 
-		// Load valid client certificate with CN "test-user"
+		// Load valid client certificate with CN "testuser"
 		clientCert, err := tls.LoadX509KeyPair(clientCertPath, clientKeyPath)
 		So(err, ShouldBeNil)
 
@@ -1124,6 +1133,439 @@ func TestMTLSAuthentication(t *testing.T) {
 		resp, err = client.R().Get(baseURL + "/v2/group-repo/tags/list")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound) // 404 meaning we successfully passed auth
+	})
+}
+
+func TestMTLSAuthenticationWithCertificateChain(t *testing.T) {
+	// Create temporary directory for certificates
+	tempDir := t.TempDir()
+
+	Convey("Test mTLS with certificate chain - uses leaf certificate identity", t, func() {
+		// Create certificate chain: Root CA -> Intermediate CA -> Client Certificate
+		// Generate root CA
+		rootCACert, rootCAKey, err := tlsutils.GenerateCACert()
+		So(err, ShouldBeNil)
+		rootCACertPath := path.Join(tempDir, "root-ca.crt")
+		err = os.WriteFile(rootCACertPath, rootCACert, 0o600)
+		So(err, ShouldBeNil)
+
+		// Generate intermediate CA (signed by root CA)
+		intermediateCAOpts := &tlsutils.CertificateOptions{
+			CommonName: "Intermediate CA",
+		}
+		intermediateCACert, intermediateCAKeyPEM, err := tlsutils.GenerateIntermediateCACert(
+			rootCACert, rootCAKey, intermediateCAOpts)
+		So(err, ShouldBeNil)
+
+		// Generate client certificate with CN signed by intermediate CA
+		clientWithCNOpts := &tlsutils.CertificateOptions{
+			CommonName: "clientuser",
+		}
+		clientCertWithCN, clientKeyWithCN, err := tlsutils.GenerateClientCert(
+			intermediateCACert, intermediateCAKeyPEM, clientWithCNOpts)
+		So(err, ShouldBeNil)
+
+		// Generate client certificate without CN signed by intermediate CA
+		clientWithoutCNOpts := &tlsutils.CertificateOptions{
+			// No CommonName - empty to test that identity is not taken from intermediate CA
+		}
+		clientCertWithoutCN, clientKeyWithoutCNPEM, err := tlsutils.GenerateClientCert(
+			intermediateCACert, intermediateCAKeyPEM, clientWithoutCNOpts)
+		So(err, ShouldBeNil)
+
+		// Generate server certificate signed by root CA for this test
+		serverCertForChainPath := path.Join(tempDir, "server-chain.crt")
+		serverKeyForChainPath := path.Join(tempDir, "server-chain.key")
+		serverOpts := &tlsutils.CertificateOptions{
+			Hostname: "localhost",
+		}
+		err = tlsutils.GenerateServerCertToFile(
+			rootCACert, rootCAKey, serverCertForChainPath, serverKeyForChainPath, serverOpts)
+		So(err, ShouldBeNil)
+
+		// Set up server with root CA
+		conf := config.New()
+		port := test.GetFreePort()
+		baseURL := test.GetSecureBaseURL(port)
+
+		conf.HTTP.Port = port
+		conf.HTTP.TLS = &config.TLSConfig{
+			Cert:   serverCertForChainPath,
+			Key:    serverKeyForChainPath,
+			CACert: rootCACertPath, // Server trusts root CA
+		}
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				"**": config.PolicyGroup{
+					AnonymousPolicy: make([]string, 0),
+					Policies:        make([]config.Policy, 0),
+				},
+				"client-repo": config.PolicyGroup{
+					Policies: []config.Policy{
+						{
+							Users:   []string{"clientuser"},
+							Actions: []string{"read", "create"},
+						},
+					},
+				},
+			},
+		}
+		conf.Storage.RootDirectory = t.TempDir()
+
+		ctlr := api.NewController(conf)
+		cm := test.NewControllerManager(ctlr)
+
+		cm.StartAndWait(port)
+		defer cm.StopServer()
+
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(rootCACert)
+
+		// Test 1: Client cert with CN in chain - should use client cert CN, not intermediate CA CN
+		clientCertWithCNPath := path.Join(tempDir, "client-with-cn.crt")
+		clientKeyWithCNPath := path.Join(tempDir, "client-with-cn.key")
+		err = os.WriteFile(clientCertWithCNPath, clientCertWithCN, 0o600)
+		So(err, ShouldBeNil)
+		err = os.WriteFile(clientKeyWithCNPath, clientKeyWithCN, 0o600)
+		So(err, ShouldBeNil)
+
+		// Create certificate chain file (client cert + intermediate CA)
+		chainCertPath := path.Join(tempDir, "client-with-cn-chain.crt")
+		err = tlsutils.WriteCertificateChainToFile(chainCertPath, clientCertWithCN, intermediateCACert)
+		So(err, ShouldBeNil)
+
+		// Load certificate chain
+		clientCertChain, err := tls.LoadX509KeyPair(chainCertPath, clientKeyWithCNPath)
+		So(err, ShouldBeNil)
+
+		client := resty.New()
+		client.SetTLSClientConfig(&tls.Config{
+			MinVersion:   tls.VersionTLS13,
+			Certificates: []tls.Certificate{clientCertChain},
+			RootCAs:      caCertPool,
+		})
+
+		// Should succeed because client cert has CN "clientuser" which matches policy
+		resp, err := client.R().Get(baseURL + "/v2/client-repo/tags/list")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound) // 404 means auth passed
+
+		// Test 2: Client cert without CN in chain - should fail, not use intermediate CA CN
+		clientCertWithoutCNPath := path.Join(tempDir, "client-without-cn.crt")
+		clientKeyWithoutCNPath := path.Join(tempDir, "client-without-cn.key")
+		err = os.WriteFile(clientCertWithoutCNPath, clientCertWithoutCN, 0o600)
+		So(err, ShouldBeNil)
+		err = os.WriteFile(clientKeyWithoutCNPath, clientKeyWithoutCNPEM, 0o600)
+		So(err, ShouldBeNil)
+
+		// Create certificate chain file (client cert without CN + intermediate CA)
+		chainCertWithoutCNPath := path.Join(tempDir, "client-without-cn-chain.crt")
+		err = tlsutils.WriteCertificateChainToFile(chainCertWithoutCNPath, clientCertWithoutCN, intermediateCACert)
+		So(err, ShouldBeNil)
+
+		// Load certificate chain
+		clientCertChainWithoutCN, err := tls.LoadX509KeyPair(chainCertWithoutCNPath, clientKeyWithoutCNPath)
+		So(err, ShouldBeNil)
+
+		client = resty.New()
+		client.SetTLSClientConfig(&tls.Config{
+			MinVersion:   tls.VersionTLS13,
+			Certificates: []tls.Certificate{clientCertChainWithoutCN},
+			RootCAs:      caCertPool,
+		})
+
+		// Should fail because client cert has no CN, even though intermediate CA has CN
+		resp, err = client.R().Get(baseURL + "/v2/client-repo/tags/list")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+	})
+}
+
+func TestMTLSAuthenticationWithExpiredCertificate(t *testing.T) {
+	// Create temporary directory for certificates
+	tempDir := t.TempDir()
+
+	Convey("Test mTLS authentication with expired certificate", t, func() {
+		// Generate CA certificate
+		caCert, caKey, err := tlsutils.GenerateCACert()
+		So(err, ShouldBeNil)
+		caCertPath := path.Join(tempDir, "ca.crt")
+		err = os.WriteFile(caCertPath, caCert, 0o600)
+		So(err, ShouldBeNil)
+
+		// Generate server certificate
+		serverCertPath := path.Join(tempDir, "server.crt")
+		serverKeyPath := path.Join(tempDir, "server.key")
+		opts := &tlsutils.CertificateOptions{
+			Hostname: "localhost",
+		}
+		err = tlsutils.GenerateServerCertToFile(caCert, caKey, serverCertPath, serverKeyPath, opts)
+		So(err, ShouldBeNil)
+
+		// Generate expired client certificate (NotAfter is in the past)
+		expiredClientCertPath := path.Join(tempDir, "client-expired.crt")
+		expiredClientKeyPath := path.Join(tempDir, "client-expired.key")
+		expiredOpts := &tlsutils.CertificateOptions{
+			CommonName: "testuser",
+			NotBefore:  time.Now().Add(-365 * 24 * time.Hour), // 1 year ago
+			NotAfter:   time.Now().Add(-24 * time.Hour),       // 1 day ago (expired)
+		}
+		err = tlsutils.GenerateClientCertToFile(caCert, caKey, expiredClientCertPath, expiredClientKeyPath, expiredOpts)
+		So(err, ShouldBeNil)
+
+		// Set up server
+		conf := config.New()
+		port := test.GetFreePort()
+		baseURL := test.GetSecureBaseURL(port)
+
+		conf.HTTP.Port = port
+		conf.HTTP.TLS = &config.TLSConfig{
+			Cert:   serverCertPath,
+			Key:    serverKeyPath,
+			CACert: caCertPath,
+		}
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				"**": config.PolicyGroup{
+					AnonymousPolicy: make([]string, 0),
+					Policies:        make([]config.Policy, 0),
+				},
+				"test-repo": config.PolicyGroup{
+					Policies: []config.Policy{
+						{
+							Users:   []string{"testuser"},
+							Actions: []string{"read", "create"},
+						},
+					},
+				},
+			},
+		}
+		conf.Storage.RootDirectory = t.TempDir()
+
+		ctlr := api.NewController(conf)
+		cm := test.NewControllerManager(ctlr)
+
+		cm.StartAndWait(port)
+		defer cm.StopServer()
+
+		// Set up client with expired certificate
+		caCertPEM, err := os.ReadFile(caCertPath)
+		So(err, ShouldBeNil)
+
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCertPEM)
+
+		expiredClientCert, err := tls.LoadX509KeyPair(expiredClientCertPath, expiredClientKeyPath)
+		So(err, ShouldBeNil)
+
+		client := resty.New()
+		client.SetTLSClientConfig(&tls.Config{
+			MinVersion:   tls.VersionTLS13,
+			Certificates: []tls.Certificate{expiredClientCert},
+			RootCAs:      caCertPool,
+		})
+
+		// Expired certificate should be rejected at TLS handshake level
+		// The TLS stack will reject it before it reaches the application layer
+		_, err = client.R().Get(baseURL + "/v2/test-repo/tags/list")
+		// Error is expected - TLS handshake fails with expired certificate
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring, "expired certificate")
+	})
+}
+
+func TestMTLSAuthenticationWithUnknownCA(t *testing.T) {
+	// Create temporary directory for certificates
+	tempDir := t.TempDir()
+
+	Convey("Test mTLS authentication with certificate signed by unknown CA", t, func() {
+		// Generate server CA and certificate
+		serverCACert, serverCAKey, err := tlsutils.GenerateCACert()
+		So(err, ShouldBeNil)
+		serverCACertPath := path.Join(tempDir, "server-ca.crt")
+		err = os.WriteFile(serverCACertPath, serverCACert, 0o600)
+		So(err, ShouldBeNil)
+
+		serverCertPath := path.Join(tempDir, "server.crt")
+		serverKeyPath := path.Join(tempDir, "server.key")
+		opts := &tlsutils.CertificateOptions{
+			Hostname: "localhost",
+		}
+		err = tlsutils.GenerateServerCertToFile(serverCACert, serverCAKey, serverCertPath, serverKeyPath, opts)
+		So(err, ShouldBeNil)
+
+		// Generate a different CA (unknown to the server) and client certificate
+		unknownCACert, unknownCAKey, err := tlsutils.GenerateCACert()
+		So(err, ShouldBeNil)
+
+		unknownClientCertPath := path.Join(tempDir, "client-unknown-ca.crt")
+		unknownClientKeyPath := path.Join(tempDir, "client-unknown-ca.key")
+		clientOpts := &tlsutils.CertificateOptions{
+			CommonName: "testuser",
+		}
+		err = tlsutils.GenerateClientCertToFile(unknownCACert, unknownCAKey, unknownClientCertPath,
+			unknownClientKeyPath, clientOpts)
+		So(err, ShouldBeNil)
+
+		// Set up server with server CA (doesn't know about unknown CA)
+		conf := config.New()
+		port := test.GetFreePort()
+		baseURL := test.GetSecureBaseURL(port)
+
+		conf.HTTP.Port = port
+		conf.HTTP.TLS = &config.TLSConfig{
+			Cert:   serverCertPath,
+			Key:    serverKeyPath,
+			CACert: serverCACertPath, // Server only trusts serverCACert, not unknownCACert
+		}
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				"**": config.PolicyGroup{
+					AnonymousPolicy: make([]string, 0),
+					Policies:        make([]config.Policy, 0),
+				},
+				"test-repo": config.PolicyGroup{
+					Policies: []config.Policy{
+						{
+							Users:   []string{"testuser"},
+							Actions: []string{"read", "create"},
+						},
+					},
+				},
+			},
+		}
+		conf.Storage.RootDirectory = t.TempDir()
+
+		ctlr := api.NewController(conf)
+		cm := test.NewControllerManager(ctlr)
+
+		cm.StartAndWait(port)
+		defer cm.StopServer()
+
+		// Set up client with certificate signed by unknown CA
+		serverCACertPEM, err := os.ReadFile(serverCACertPath)
+		So(err, ShouldBeNil)
+
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(serverCACertPEM)
+
+		unknownClientCert, err := tls.LoadX509KeyPair(unknownClientCertPath, unknownClientKeyPath)
+		So(err, ShouldBeNil)
+
+		client := resty.New()
+		client.SetTLSClientConfig(&tls.Config{
+			MinVersion:   tls.VersionTLS13,
+			Certificates: []tls.Certificate{unknownClientCert},
+			RootCAs:      caCertPool,
+		})
+
+		// Certificate signed by unknown CA should be rejected at TLS handshake level
+		// The TLS stack will reject it before it reaches the application layer
+		_, err = client.R().Get(baseURL + "/v2/test-repo/tags/list")
+		// Error is expected - TLS handshake fails with unknown certificate authority
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring, "unknown certificate authority")
+	})
+}
+
+func TestMTLSAuthenticationWithMetaDBError(t *testing.T) {
+	// Create temporary directory for certificates
+	tempDir := t.TempDir()
+
+	Convey("Test mTLS authentication with MetaDB.SetUserGroups error", t, func() {
+		// Generate CA certificate
+		caCert, caKey, err := tlsutils.GenerateCACert()
+		So(err, ShouldBeNil)
+		caCertPath := path.Join(tempDir, "ca.crt")
+		err = os.WriteFile(caCertPath, caCert, 0o600)
+		So(err, ShouldBeNil)
+
+		// Generate server certificate
+		serverCertPath := path.Join(tempDir, "server.crt")
+		serverKeyPath := path.Join(tempDir, "server.key")
+		opts := &tlsutils.CertificateOptions{
+			Hostname: "localhost",
+		}
+		err = tlsutils.GenerateServerCertToFile(caCert, caKey, serverCertPath, serverKeyPath, opts)
+		So(err, ShouldBeNil)
+
+		// Generate valid client certificate for "testuser" user
+		clientCertPath := path.Join(tempDir, "client.crt")
+		clientKeyPath := path.Join(tempDir, "client.key")
+		clientOpts := &tlsutils.CertificateOptions{
+			CommonName: "testuser",
+		}
+		err = tlsutils.GenerateClientCertToFile(caCert, caKey, clientCertPath, clientKeyPath, clientOpts)
+		So(err, ShouldBeNil)
+
+		// Set up server
+		conf := config.New()
+		port := test.GetFreePort()
+		baseURL := test.GetSecureBaseURL(port)
+
+		conf.HTTP.Port = port
+		conf.HTTP.TLS = &config.TLSConfig{
+			Cert:   serverCertPath,
+			Key:    serverKeyPath,
+			CACert: caCertPath,
+		}
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
+			Groups: config.Groups{
+				"mtls-users": config.Group{
+					Users: []string{"testuser"},
+				},
+			},
+			Repositories: config.Repositories{
+				"**": config.PolicyGroup{
+					AnonymousPolicy: make([]string, 0),
+					Policies:        make([]config.Policy, 0),
+				},
+				"test-repo": config.PolicyGroup{
+					Policies: []config.Policy{
+						{
+							Users:   []string{"testuser"},
+							Actions: []string{"read", "create"},
+						},
+					},
+				},
+			},
+		}
+		conf.Storage.RootDirectory = t.TempDir()
+
+		ctlr := api.NewController(conf)
+		cm := test.NewControllerManager(ctlr)
+
+		cm.StartAndWait(port)
+		defer cm.StopServer()
+
+		// Set up client with valid certificate
+		caCertPEM, err := os.ReadFile(caCertPath)
+		So(err, ShouldBeNil)
+
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCertPEM)
+
+		clientCert, err := tls.LoadX509KeyPair(clientCertPath, clientKeyPath)
+		So(err, ShouldBeNil)
+
+		client := resty.New()
+		client.SetTLSClientConfig(&tls.Config{
+			MinVersion:   tls.VersionTLS13,
+			Certificates: []tls.Certificate{clientCert},
+			RootCAs:      caCertPool,
+		})
+
+		// Mock MetaDB to return error on SetUserGroups
+		ctlr.MetaDB = mocks.MetaDBMock{
+			SetUserGroupsFn: func(ctx context.Context, groups []string) error {
+				return ErrUnexpectedError
+			},
+		}
+
+		// Should return 500 Internal Server Error due to MetaDB error
+		resp, err := client.R().Get(baseURL + "/v2/test-repo/tags/list")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
 	})
 }
 
@@ -1646,7 +2088,7 @@ func TestRedisCookieStore(t *testing.T) {
 				So(cookieStore, ShouldNotBeNil)
 			} else {
 				So(err, ShouldNotBeNil)
-				// So(err.Error(), ShouldEqual, testCase.expectedErrStr)
+				So(err.Error(), ShouldEqual, testCase.expectedErrStr)
 				So(cookieStore, ShouldBeNil)
 			}
 		})
