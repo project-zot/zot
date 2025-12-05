@@ -25,12 +25,10 @@ import (
 
 func TestCVEDBGenerator(t *testing.T) {
 	Convey("Test CVE DB task scheduler reset", t, func() {
-		logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
+		logFile := test.MakeTempFile(t, "zot-log.txt")
+		defer logFile.Close()
+
 		logPath := logFile.Name()
-
-		So(err, ShouldBeNil)
-
-		defer os.Remove(logFile.Name()) // clean up
 
 		writers := io.MultiWriter(os.Stdout, logFile)
 		logger := log.NewLoggerWithWriter("debug", writers)

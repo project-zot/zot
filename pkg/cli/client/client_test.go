@@ -35,7 +35,7 @@ const (
 	ServerKey      = "../../../test/data/server.key"
 	CACert         = "../../../test/data/ca.crt"
 	sourceCertsDir = "../../../test/data"
-	certsDir1      = "/.config/containers/certs.d/127.0.0.1:8088/"
+	certsDir1      = ".config/containers/certs.d/127.0.0.1:8088"
 )
 
 func TestTLSWithAuth(t *testing.T) {
@@ -54,8 +54,7 @@ func TestTLSWithAuth(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
@@ -83,9 +82,9 @@ func TestTLSWithAuth(t *testing.T) {
 		defer cm.StopServer()
 
 		Convey("Test with htpassw auth", func() {
-			configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
-			defer os.Remove(configPath)
+			_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 
+			// Use the HOME that makeConfigFile set (temp directory) for certificates
 			home := os.Getenv("HOME")
 			destCertsDir := filepath.Join(home, certsDir1)
 			err := test.CopyTestKeysAndCerts(destCertsDir)
@@ -105,10 +104,15 @@ func TestTLSWithAuth(t *testing.T) {
 
 			args = []string{"list", "--config", "imagetest"}
 
-			configPath = makeConfigFile(
+			_ = makeConfigFile(t,
 				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s%s%s","showspinner":false}]}`,
 					BaseSecureURL1, constants.RoutePrefix, constants.ExtCatalogPrefix))
-			defer os.Remove(configPath)
+
+			// Ensure certificates are in the HOME directory that makeConfigFile set
+			home = os.Getenv("HOME")
+			destCertsDir = filepath.Join(home, certsDir1)
+			err = test.CopyTestKeysAndCerts(destCertsDir)
+			So(err, ShouldBeNil)
 
 			imageCmd = client.NewImageCommand(client.NewSearchService())
 			imageBuff = bytes.NewBufferString("")
@@ -122,10 +126,9 @@ func TestTLSWithAuth(t *testing.T) {
 			user := fmt.Sprintf("%s:%s", username, password)
 			args = []string{"-u", user, "--config", "imagetest"}
 
-			configPath = makeConfigFile(
+			_ = makeConfigFile(t,
 				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s%s%s","showspinner":false}]}`,
 					BaseSecureURL1, constants.RoutePrefix, constants.ExtCatalogPrefix))
-			defer os.Remove(configPath)
 
 			imageCmd = client.NewImageCommand(client.NewSearchService())
 			imageBuff = bytes.NewBufferString("")
@@ -170,10 +173,9 @@ func TestTLSWithoutAuth(t *testing.T) {
 		defer cm.StopServer()
 
 		Convey("Certs in user's home", func() {
-			configPath := makeConfigFile(
+			_ = makeConfigFile(t,
 				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s%s%s","showspinner":false}]}`,
 					BaseSecureURL1, constants.RoutePrefix, constants.ExtCatalogPrefix))
-			defer os.Remove(configPath)
 
 			home := os.Getenv("HOME")
 			destCertsDir := filepath.Join(home, certsDir1)
@@ -223,10 +225,9 @@ func TestTLSBadCerts(t *testing.T) {
 		defer cm.StopServer()
 
 		Convey("Test with system certs", func() {
-			configPath := makeConfigFile(
+			_ = makeConfigFile(t,
 				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s%s%s","showspinner":false}]}`,
 					BaseSecureURL3, constants.RoutePrefix, constants.ExtCatalogPrefix))
-			defer os.Remove(configPath)
 
 			args := []string{"list", "--config", "imagetest"}
 			imageCmd := client.NewImageCommand(client.NewSearchService())
@@ -241,8 +242,10 @@ func TestTLSBadCerts(t *testing.T) {
 	})
 }
 
-func makeConfigFile(content string) string {
-	os.Setenv("HOME", os.TempDir())
+func makeConfigFile(t *testing.T, content string) string {
+	t.Helper()
+	tempDir := t.TempDir()
+	os.Setenv("HOME", tempDir)
 
 	home, err := os.UserHomeDir()
 	if err != nil {

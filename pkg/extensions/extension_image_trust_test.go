@@ -204,9 +204,8 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 
 		baseURL := test.GetBaseURL(port)
 
-		logFile, err := os.CreateTemp(globalDir, "zot-log*.txt")
-		defer os.Remove(logFile.Name()) // cleanup
-		So(err, ShouldBeNil)
+		logFile := test.MakeTempFile(t, "zot-log.txt")
+		defer logFile.Close()
 
 		writers := io.MultiWriter(os.Stdout, logFile)
 		logger := log.NewLoggerWithWriter("debug", writers)
@@ -219,7 +218,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		}
 
 		image := CreateRandomImage()
-		err = WriteImageToFileSystem(image, repo, tag, storeController)
+		err := WriteImageToFileSystem(image, repo, tag, storeController)
 		So(err, ShouldBeNil)
 
 		ctlr := api.NewController(conf)
@@ -324,9 +323,8 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 
 		baseURL := test.GetBaseURL(port)
 
-		logFile, err := os.CreateTemp(globalDir, "zot-log*.txt")
-		defer os.Remove(logFile.Name()) // cleanup
-		So(err, ShouldBeNil)
+		logFile := test.MakeTempFile(t, "zot-log.txt")
+		defer logFile.Close()
 
 		writers := io.MultiWriter(os.Stdout, logFile)
 		logger := log.NewLoggerWithWriter("debug", writers)
@@ -339,7 +337,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		}
 
 		image := CreateRandomImage()
-		err = WriteImageToFileSystem(image, repo, tag, storeController)
+		err := WriteImageToFileSystem(image, repo, tag, storeController)
 		So(err, ShouldBeNil)
 
 		ctlr := api.NewController(conf)
@@ -431,9 +429,8 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		baseURL := test.GetBaseURL(port)
 		gqlEndpoint := fmt.Sprintf("%s%s?query=", baseURL, constants.FullSearchPrefix)
 
-		logFile, err := os.CreateTemp(globalDir, "zot-log*.txt")
-		defer os.Remove(logFile.Name()) // cleanup
-		So(err, ShouldBeNil)
+		logFile := test.MakeTempFile(t, "zot-log.txt")
+		defer logFile.Close()
 
 		writers := io.MultiWriter(os.Stdout, logFile)
 		logger := log.NewLoggerWithWriter("debug", writers)
@@ -446,7 +443,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		}
 
 		image := CreateRandomImage()
-		err = WriteImageToFileSystem(image, repo, tag, storeController)
+		err := WriteImageToFileSystem(image, repo, tag, storeController)
 		So(err, ShouldBeNil)
 
 		ctlr := api.NewController(conf)
@@ -593,9 +590,8 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		baseURL := test.GetBaseURL(port)
 		gqlEndpoint := fmt.Sprintf("%s%s?query=", baseURL, constants.FullSearchPrefix)
 
-		logFile, err := os.CreateTemp(globalDir, "zot-log*.txt")
-		defer os.Remove(logFile.Name()) // cleanup
-		So(err, ShouldBeNil)
+		logFile := test.MakeTempFile(t, "zot-log.txt")
+		defer logFile.Close()
 
 		writers := io.MultiWriter(os.Stdout, logFile)
 		logger := log.NewLoggerWithWriter("debug", writers)
@@ -608,7 +604,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		}
 
 		image := CreateRandomImage()
-		err = WriteImageToFileSystem(image, repo, tag, storeController)
+		err := WriteImageToFileSystem(image, repo, tag, storeController)
 		So(err, ShouldBeNil)
 
 		ctlr := api.NewController(conf)
@@ -744,8 +740,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		port := test.GetFreePort()
 		testCreds := test.GetBcryptCredString("admin", "admin") + "\n" + test.GetBcryptCredString("test", "test")
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(testCreds)
-		defer os.Remove(htpasswdPath)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, testCreds)
 
 		conf := config.New()
 		conf.HTTP.Port = port
@@ -770,9 +765,8 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 
 		baseURL := test.GetBaseURL(port)
 
-		logFile, err := os.CreateTemp(globalDir, "zot-log*.txt")
-		defer os.Remove(logFile.Name()) // cleanup
-		So(err, ShouldBeNil)
+		logFile := test.MakeTempFile(t, "zot-log.txt")
+		defer logFile.Close()
 
 		writers := io.MultiWriter(os.Stdout, logFile)
 
@@ -854,9 +848,8 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		baseURL := test.GetBaseURL(port)
 		gqlEndpoint := fmt.Sprintf("%s%s?query=", baseURL, constants.FullSearchPrefix)
 
-		logFile, err := os.CreateTemp(globalDir, "zot-log*.txt")
-		defer os.Remove(logFile.Name()) // cleanup
-		So(err, ShouldBeNil)
+		logFile := test.MakeTempFile(t, "zot-log.txt")
+		defer logFile.Close()
 
 		writers := io.MultiWriter(os.Stdout, logFile)
 		logger := log.NewLoggerWithWriter("debug", writers)
@@ -871,7 +864,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		// Write image
 		image := CreateRandomImage()
 
-		err = WriteImageToFileSystem(image, repo, tag, storeController)
+		err := WriteImageToFileSystem(image, repo, tag, storeController)
 		So(err, ShouldBeNil)
 
 		// Write signature

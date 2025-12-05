@@ -22,9 +22,7 @@ func TestImageTrustExtension(t *testing.T) {
 		globalDir := t.TempDir()
 		defaultValue := true
 
-		logFile, err := os.CreateTemp(globalDir, "zot-log*.txt")
-		So(err, ShouldBeNil)
-		defer os.Remove(logFile.Name())
+		logFile := test.MakeTempFile(t, "zot-log.txt")
 
 		conf.HTTP.Port = port
 		conf.Storage.RootDirectory = globalDir

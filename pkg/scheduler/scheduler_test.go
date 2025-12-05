@@ -16,6 +16,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/scheduler"
+	test "zotregistry.dev/zot/v2/pkg/test/common"
 )
 
 type task struct {
@@ -137,12 +138,9 @@ func (g *shortGenerator) Reset() {
 
 func TestScheduler(t *testing.T) {
 	Convey("Test active to waiting periodic generator", t, func() {
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
-		defer os.Remove(logFile.Name()) // clean up
-
-		logger := log.NewLogger("debug", logFile.Name())
+		logger := log.NewLogger("debug", logPath)
 		metrics := monitoring.NewMetricsServer(true, logger)
 		sch := scheduler.NewScheduler(config.New(), metrics, logger)
 
@@ -154,18 +152,15 @@ func TestScheduler(t *testing.T) {
 		time.Sleep(2 * time.Second)
 		sch.Shutdown()
 
-		data, err := os.ReadFile(logFile.Name())
+		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring, "waiting generator is ready, pushing to ready generators")
 	})
 
 	Convey("Test order of generators in queue", t, func() {
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
-		defer os.Remove(logFile.Name()) // clean up
-
-		logger := log.NewLogger("debug", logFile.Name())
+		logger := log.NewLogger("debug", logPath)
 		cfg := config.New()
 		cfg.Scheduler = &config.SchedulerConfig{NumWorkers: 3}
 		metrics := monitoring.NewMetricsServer(true, logger)
@@ -185,7 +180,7 @@ func TestScheduler(t *testing.T) {
 		time.Sleep(4 * time.Second)
 		sch.Shutdown()
 
-		data, err := os.ReadFile(logFile.Name())
+		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 
 		So(string(data), ShouldContainSubstring, "executing high priority task; index: 1")
@@ -195,12 +190,9 @@ func TestScheduler(t *testing.T) {
 	})
 
 	Convey("Test reordering of generators in queue", t, func() {
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
-		defer os.Remove(logFile.Name()) // clean up
-
-		logger := log.NewLogger("debug", logFile.Name())
+		logger := log.NewLogger("debug", logPath)
 		cfg := config.New()
 		cfg.Scheduler = &config.SchedulerConfig{NumWorkers: 3}
 		metrics := monitoring.NewMetricsServer(true, logger)
@@ -223,7 +215,7 @@ func TestScheduler(t *testing.T) {
 		time.Sleep(2 * time.Second) // Increased from 1 second to 2 seconds for stability
 		sch.Shutdown()
 
-		data, err := os.ReadFile(logFile.Name())
+		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 
 		// Check all tasks show up in the logs
@@ -298,12 +290,9 @@ func TestScheduler(t *testing.T) {
 	})
 
 	Convey("Test task returning an error", t, func() {
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
-		defer os.Remove(logFile.Name()) // clean up
-
-		logger := log.NewLogger("debug", logFile.Name())
+		logger := log.NewLogger("debug", logPath)
 		metrics := monitoring.NewMetricsServer(true, logger)
 		sch := scheduler.NewScheduler(config.New(), metrics, logger)
 
@@ -314,19 +303,16 @@ func TestScheduler(t *testing.T) {
 		time.Sleep(500 * time.Millisecond)
 		sch.Shutdown()
 
-		data, err := os.ReadFile(logFile.Name())
+		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring, "adding a new task")
 		So(string(data), ShouldContainSubstring, "failed to execute task")
 	})
 
 	Convey("Test resubmit generator", t, func() {
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
-		defer os.Remove(logFile.Name()) // clean up
-
-		logger := log.NewLogger("debug", logFile.Name())
+		logger := log.NewLogger("debug", logPath)
 		metrics := monitoring.NewMetricsServer(true, logger)
 		sch := scheduler.NewScheduler(config.New(), metrics, logger)
 
@@ -337,37 +323,31 @@ func TestScheduler(t *testing.T) {
 		time.Sleep(1 * time.Second)
 		sch.Shutdown()
 
-		data, err := os.ReadFile(logFile.Name())
+		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring, "executing low priority task; index: 1")
 		So(string(data), ShouldContainSubstring, "executing low priority task; index: 2")
 	})
 
 	Convey("Try to add a task with wrong priority", t, func() {
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
-		defer os.Remove(logFile.Name()) // clean up
-
-		logger := log.NewLogger("debug", logFile.Name())
+		logger := log.NewLogger("debug", logPath)
 		metrics := monitoring.NewMetricsServer(true, logger)
 		sch := scheduler.NewScheduler(config.New(), metrics, logger)
 
 		t := &task{log: logger, msg: "", err: false}
 		sch.SubmitTask(t, -1)
 
-		data, err := os.ReadFile(logFile.Name())
+		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		So(string(data), ShouldNotContainSubstring, "adding a new task")
 	})
 
 	Convey("Test adding a new task when context is done", t, func() {
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
-		defer os.Remove(logFile.Name()) // clean up
-
-		logger := log.NewLogger("debug", logFile.Name())
+		logger := log.NewLogger("debug", logPath)
 		metrics := monitoring.NewMetricsServer(true, logger)
 		sch := scheduler.NewScheduler(config.New(), metrics, logger)
 
@@ -378,18 +358,15 @@ func TestScheduler(t *testing.T) {
 		t := &task{log: logger, msg: "", err: false}
 		sch.SubmitTask(t, scheduler.LowPriority)
 
-		data, err := os.ReadFile(logFile.Name())
+		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		So(string(data), ShouldNotContainSubstring, "adding a new task")
 	})
 
 	Convey("Test stopping scheduler by calling Shutdown()", t, func() {
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
-		defer os.Remove(logFile.Name()) // clean up
-
-		logger := log.NewLogger("debug", logFile.Name())
+		logger := log.NewLogger("debug", logPath)
 		metrics := monitoring.NewMetricsServer(true, logger)
 		sch := scheduler.NewScheduler(config.New(), metrics, logger)
 
@@ -400,7 +377,7 @@ func TestScheduler(t *testing.T) {
 		time.Sleep(1 * time.Second)
 		sch.Shutdown()
 
-		data, err := os.ReadFile(logFile.Name())
+		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring, "executing medium priority task; index: 1")
 		So(string(data), ShouldContainSubstring, "executing medium priority task; index: 2")
@@ -436,22 +413,23 @@ func TestScheduler(t *testing.T) {
 
 func TestGetNumWorkers(t *testing.T) {
 	Convey("Test setting the number of workers - default value", t, func() {
-		logger := log.NewLogger("debug", "logFile")
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
+		logger := log.NewLogger("debug", logPath)
+
 		metrics := monitoring.NewMetricsServer(true, logger)
 		sch := scheduler.NewScheduler(config.New(), metrics, logger)
 
-		defer os.Remove("logFile")
 		So(sch.NumWorkers, ShouldEqual, runtime.NumCPU()*4)
 	})
 
 	Convey("Test setting the number of workers - getting the value from config", t, func() {
 		cfg := config.New()
 		cfg.Scheduler = &config.SchedulerConfig{NumWorkers: 3}
-		logger := log.NewLogger("debug", "logFile")
+		logPath := test.MakeTempFilePath(t, "zot-log.txt")
+		logger := log.NewLogger("debug", logPath)
 		metrics := monitoring.NewMetricsServer(true, logger)
 		sch := scheduler.NewScheduler(cfg, metrics, logger)
 
-		defer os.Remove("logFile")
 		So(sch.NumWorkers, ShouldEqual, 3)
 	})
 }
