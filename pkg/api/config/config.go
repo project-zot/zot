@@ -524,57 +524,6 @@ func (c *Config) isTagsRetentionEnabled(tagRetentionPolicy KeepTagsPolicy) bool 
 	return false
 }
 
-// isBasicAuthnEnabled checks if any basic authentication method is enabled (internal, no locking).
-func (c *Config) isBasicAuthnEnabled() bool {
-	if c == nil {
-		return false
-	}
-
-	// Check HTPasswd
-	if c.HTTP.Auth != nil && c.HTTP.Auth.HTPasswd.Path != "" {
-		return true
-	}
-
-	// Check LDAP
-	if c.HTTP.Auth != nil && c.HTTP.Auth.LDAP != nil {
-		return true
-	}
-
-	// Check API Key
-	if c.HTTP.Auth != nil && c.HTTP.Auth.APIKey {
-		return true
-	}
-
-	// Check OpenID
-	if c.HTTP.Auth != nil && c.HTTP.Auth.OpenID != nil {
-		for provider := range c.HTTP.Auth.OpenID.Providers {
-			if isOpenIDAuthProviderEnabled(c, provider) {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
-// isOpenIDAuthProviderEnabled checks if a specific OpenID provider is enabled (internal use only).
-func isOpenIDAuthProviderEnabled(config *Config, provider string) bool {
-	if providerConfig, ok := config.HTTP.Auth.OpenID.Providers[provider]; ok {
-		if IsOpenIDSupported(provider) {
-			if providerConfig.ClientID != "" || providerConfig.Issuer != "" ||
-				len(providerConfig.Scopes) > 0 {
-				return true
-			}
-		} else if IsOauth2Supported(provider) {
-			if providerConfig.ClientID != "" || len(providerConfig.Scopes) > 0 {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
 // Sanitize makes a sanitized copy of the config removing any secrets.
 func (c *Config) Sanitize() *Config {
 	if c == nil {
@@ -999,12 +948,11 @@ func (c *Config) IsMTLSAuthEnabled() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
+	// mTLS is enabled if TLS is configured with client CA certificates
 	if c.HTTP.TLS != nil &&
 		c.HTTP.TLS.Key != "" &&
 		c.HTTP.TLS.Cert != "" &&
-		c.HTTP.TLS.CACert != "" &&
-		!c.isBasicAuthnEnabled() &&
-		!c.HTTP.AccessControl.AnonymousPolicyExists() {
+		c.HTTP.TLS.CACert != "" {
 		return true
 	}
 

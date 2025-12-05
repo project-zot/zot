@@ -100,6 +100,58 @@ func (amw *AuthnMiddleware) sessionAuthn(ctlr *Controller, userAc *reqCtx.UserAc
 	return true, nil
 }
 
+func (amw *AuthnMiddleware) mTLSAuthn(ctlr *Controller, userAc *reqCtx.UserAccessControl,
+	request *http.Request,
+) (bool, error) {
+	// Check if mTLS is configured and client certificates are present
+	if request.TLS == nil || len(request.TLS.PeerCertificates) == 0 {
+		return false, nil
+	}
+
+	// Check if client certificate has verified chain
+	verifiedChains := request.TLS.VerifiedChains
+	if len(verifiedChains) == 0 || len(verifiedChains[0]) == 0 {
+		ctlr.Log.Debug().Msg("mTLS authentication failed - user provided certificate not signed by CA")
+
+		return false, nil
+	}
+
+	// Extract identity from certificate
+	for _, cert := range request.TLS.PeerCertificates {
+		identity := cert.Subject.CommonName
+		if identity == "" { // Skip certificates in chain with empty identity
+			continue
+		}
+		// Process request with mTLS identity
+		var groups []string
+
+		accessControl := ctlr.Config.CopyAccessControlConfig()
+		if accessControl != nil {
+			ac := NewAccessController(ctlr.Config)
+			groups = ac.getUserGroups(identity)
+		}
+
+		userAc.SetUsername(identity)
+		userAc.AddGroups(groups)
+		userAc.SaveOnRequest(request)
+
+		// Update user groups in MetaDB if available
+		if ctlr.MetaDB != nil {
+			if err := ctlr.MetaDB.SetUserGroups(request.Context(), groups); err != nil {
+				ctlr.Log.Error().Err(err).Str("identity", identity).Msg("failed to update user profile")
+
+				return false, err
+			}
+		}
+
+		ctlr.Log.Debug().Str("identity", identity).Msg("mTLS authentication successful")
+
+		return true, nil
+	}
+
+	return false, nil
+}
+
 func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAccessControl,
 	response http.ResponseWriter, request *http.Request,
 ) (bool, error) {
@@ -263,14 +315,6 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 	// Get auth config once to avoid multiple calls
 	authConfig := ctlr.Config.CopyAuthConfig()
 
-	// no password based authN, if neither LDAP nor HTTP BASIC is enabled
-	if !authConfig.IsBasicAuthnEnabled() {
-		return noPasswdAuth(ctlr)
-	}
-
-	delay := authConfig.GetFailDelay()
-	realm := ctlr.Config.GetRealm()
-
 	// ldap and htpasswd based authN
 	if authConfig.IsLdapAuthEnabled() {
 		ldapConfig := authConfig.LDAP
@@ -357,6 +401,11 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 
 			isMgmtRequested := request.RequestURI == constants.FullMgmt
 
+			// Get auth config safely
+			authConfig := ctlr.Config.CopyAuthConfig()
+			delay := authConfig.GetFailDelay()
+			realm := ctlr.Config.GetRealm()
+
 			// Get access control config safely
 			accessControlConfig := ctlr.Config.CopyAccessControlConfig()
 			allowAnonymous := accessControlConfig != nil && accessControlConfig.AnonymousPolicyExists()
@@ -366,57 +415,54 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 			// if it will not be populated by authn handlers, this represents an anonymous user
 			userAc.SaveOnRequest(request)
 
+			authenticated := false
+
+			var err error
+
+			// Switch authentication methods based on provided request context
+			switch {
+			// if no auth methods enabled at all - then just authenticate anything
+			case !authConfig.IsBasicAuthnEnabled() && !ctlr.Config.IsMTLSAuthEnabled():
+				authenticated = true
+
 			// try basic auth if authorization header is given
-			if !isAuthorizationHeaderEmpty(request) { //nolint: gocritic
-				//nolint: contextcheck
-				authenticated, err := amw.basicAuthn(ctlr, userAc, response, request)
-				if err != nil {
-					response.WriteHeader(http.StatusInternalServerError)
+			case authConfig.IsBasicAuthnEnabled() && !isAuthorizationHeaderEmpty(request):
+				authenticated, err = amw.basicAuthn(ctlr, userAc, response, request)
 
-					return
+			// try session auth
+			case hasSessionHeader(request):
+				authenticated, err = amw.sessionAuthn(ctlr, userAc, response, request)
+				// for session auth error zerr.ErrUserDataNotFound means 401 instead of 500
+				if err != nil && errors.Is(err, zerr.ErrUserDataNotFound) {
+					err = nil
+					authenticated = false
 				}
-
-				if authenticated {
-					next.ServeHTTP(response, request)
-
-					return
-				}
-			} else if hasSessionHeader(request) {
-				// try session auth
-				//nolint: contextcheck
-				authenticated, err := amw.sessionAuthn(ctlr, userAc, response, request)
-				if err != nil {
-					if errors.Is(err, zerr.ErrUserDataNotFound) {
-						ctlr.Log.Err(err).Msg("failed to find user profile in DB")
-
-						authFail(response, request, realm, delay)
-					}
-
-					response.WriteHeader(http.StatusInternalServerError)
-
-					return
-				}
-
-				if authenticated {
-					next.ServeHTTP(response, request)
-
-					return
-				}
-
-				// the session header can be present also for anonymous calls
+				// the session header can be present also for anonymous calls - then we should pass
 				if allowAnonymous || isMgmtRequested {
-					next.ServeHTTP(response, request)
-
-					return
+					authenticated = true
 				}
-			} else if allowAnonymous || isMgmtRequested {
-				// try anonymous auth only if basic auth/session was not given
-				next.ServeHTTP(response, request)
+
+			// try mTLS authentication if client certificates are present
+			case ctlr.Config.IsMTLSAuthEnabled() && request.TLS != nil && len(request.TLS.PeerCertificates) > 0:
+				authenticated, err = amw.mTLSAuthn(ctlr, userAc, request)
+
+			// if no credentials provided - check for anonymous / mgmt requests
+			case allowAnonymous || isMgmtRequested:
+				authenticated = true
+			}
+
+			// If error occurred during authn process - return 500 error
+			if err != nil {
+				response.WriteHeader(http.StatusInternalServerError)
 
 				return
 			}
 
-			authFail(response, request, realm, delay)
+			if authenticated {
+				next.ServeHTTP(response, request)
+			} else {
+				authFail(response, request, realm, delay)
+			}
 		})
 	}
 }
@@ -500,50 +546,6 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			amCtx := acCtrlr.getAuthnMiddlewareContext(BEARER, request)
 			next.ServeHTTP(response, request.WithContext(amCtx)) //nolint:contextcheck
-		})
-	}
-}
-
-func noPasswdAuth(ctlr *Controller) mux.MiddlewareFunc {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-			if request.Method == http.MethodOptions {
-				next.ServeHTTP(response, request)
-				response.WriteHeader(http.StatusNoContent)
-
-				return
-			}
-
-			userAc := reqCtx.NewUserAccessControl()
-
-			// if no basic auth enabled then try to get identity from mTLS auth
-			if request.TLS != nil {
-				verifiedChains := request.TLS.VerifiedChains
-				if len(verifiedChains) > 0 && len(verifiedChains[0]) > 0 {
-					for _, cert := range request.TLS.PeerCertificates {
-						identity := cert.Subject.CommonName
-						if identity != "" {
-							// assign identity to authz context, needed for extensions
-							userAc.SetUsername(identity)
-						}
-					}
-				}
-			}
-
-			if ctlr.Config.IsMTLSAuthEnabled() && userAc.IsAnonymous() {
-				authConfig := ctlr.Config.CopyAuthConfig()
-				failDelay := authConfig.GetFailDelay()
-				realm := ctlr.Config.GetRealm()
-
-				authFail(response, request, realm, failDelay)
-
-				return
-			}
-
-			userAc.SaveOnRequest(request)
-
-			// Process request
-			next.ServeHTTP(response, request)
 		})
 	}
 }
