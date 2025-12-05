@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path"
 	"strings"
 	"testing"
 	"time"
@@ -994,6 +995,87 @@ func TestDestinationRegistry(t *testing.T) {
 				err = registry.CommitAll(repoName, imageReference)
 				So(err, ShouldBeNil)
 			})
+		})
+
+		Convey("CommitAll with non-existent directory", func() {
+			// Create a registry and get an image reference
+			registry := NewDestinationRegistry(storeController, storeController, nil, log)
+			imageReference, err := registry.GetImageReference("nonexistent-repo", "1.0")
+			So(err, ShouldBeNil)
+
+			// Remove the directory to simulate it not existing
+			tempImageStore := getImageStoreFromImageReference("nonexistent-repo", imageReference, log)
+			repoDir := path.Join(tempImageStore.RootDir(), "nonexistent-repo")
+			err = os.RemoveAll(repoDir)
+			So(err, ShouldBeNil)
+
+			// CommitAll should return nil when directory doesn't exist (image was skipped)
+			err = registry.CommitAll("nonexistent-repo", imageReference)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("CommitAll with empty directory", func() {
+			// Create a registry and get an image reference
+			registry := NewDestinationRegistry(storeController, storeController, nil, log)
+			imageReference, err := registry.GetImageReference("empty-repo", "1.0")
+			So(err, ShouldBeNil)
+
+			// Create an empty directory (no index.json, no blobs)
+			tempImageStore := getImageStoreFromImageReference("empty-repo", imageReference, log)
+			repoDir := path.Join(tempImageStore.RootDir(), "empty-repo")
+			err = os.MkdirAll(repoDir, 0o755)
+			So(err, ShouldBeNil)
+
+			// CommitAll should return nil when directory is empty (image was skipped)
+			err = registry.CommitAll("empty-repo", imageReference)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("CommitAll with directory containing files but no index.json", func() {
+			// Create a registry and get an image reference
+			registry := NewDestinationRegistry(storeController, storeController, nil, log)
+			imageReference, err := registry.GetImageReference("inconsistent-repo", "1.0")
+			So(err, ShouldBeNil)
+
+			// Create a directory with some files but no index.json (inconsistent state)
+			tempImageStore := getImageStoreFromImageReference("inconsistent-repo", imageReference, log)
+			repoDir := path.Join(tempImageStore.RootDir(), "inconsistent-repo")
+			err = os.MkdirAll(repoDir, 0o755)
+			So(err, ShouldBeNil)
+
+			// Create a dummy file to make directory non-empty
+			dummyFile := path.Join(repoDir, "dummy.txt")
+			err = os.WriteFile(dummyFile, []byte("dummy"), 0o644)
+			So(err, ShouldBeNil)
+
+			// CommitAll should return an error when directory is not empty but index.json is missing
+			err = registry.CommitAll("inconsistent-repo", imageReference)
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrRepoNotFound), ShouldBeTrue)
+		})
+
+		Convey("CommitAll with ReadDir error (non-ErrNotExist)", func() {
+			// Create a registry and get an image reference
+			registry := NewDestinationRegistry(storeController, storeController, nil, log)
+			imageReference, err := registry.GetImageReference("error-repo", "1.0")
+			So(err, ShouldBeNil)
+
+			// Get the repo directory path
+			tempImageStore := getImageStoreFromImageReference("error-repo", imageReference, log)
+			repoDir := path.Join(tempImageStore.RootDir(), "error-repo")
+
+			// Create a file at the repoDir path instead of a directory
+			// This will cause os.ReadDir to fail with an error that is NOT os.ErrNotExist
+			err = os.MkdirAll(path.Dir(repoDir), 0o755)
+			So(err, ShouldBeNil)
+
+			err = os.WriteFile(repoDir, []byte("not a directory"), 0o644)
+			So(err, ShouldBeNil)
+
+			// CommitAll should return the ReadDir error (not ErrNotExist)
+			err = registry.CommitAll("error-repo", imageReference)
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, os.ErrNotExist), ShouldBeFalse)
 		})
 	})
 }
