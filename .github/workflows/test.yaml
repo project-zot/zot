@@ -92,7 +92,7 @@ jobs:
           path: coverage-extended.txt
       - uses: ./.github/actions/teardown-localstack
   test-run-devmode:
-    name: Running privileged tests on Linux
+    name: Running development-mode tests on Linux
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -116,18 +116,46 @@ jobs:
             go mod download
       - name: run zot development-mode unit tests (possibly using failure injection)
         run: make test-devmode
-      - name: run zot privileged tests
-        run: sudo env "PATH=$PATH" make privileged-test
       - name: upload coverage
         uses: actions/upload-artifact@v5
         with:
           name: coverage-devmode
           path: coverage-dev-*.txt
+  test-run-privileged:
+    name: Running privileged tests on Linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          cache: false
+          go-version: 1.25.x
+      - name: Cache go dependencies
+        id: cache-go-dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-mod-
+      - name: Install go dependencies
+        if: steps.cache-go-dependencies.outputs.cache-hit != 'true'
+        run: |
+            cd $GITHUB_WORKSPACE
+            go mod download
+      - name: run zot privileged tests
+        run: sudo env "PATH=$PATH" make privileged-test
+      - name: upload coverage
+        uses: actions/upload-artifact@v5
+        with:
+          name: coverage-needprivileges
+          path: coverage-needprivileges.txt
   test-coverage:
     name: Collect all test coverage
     runs-on: ubuntu-latest
     if: always()
-    needs: [test-run-minimal,test-run-extensions,test-run-devmode]
+    needs: [test-run-minimal,test-run-extensions,test-run-devmode,test-run-privileged]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
@@ -142,6 +170,7 @@ jobs:
           cp coverage-minimal/* .
           cp coverage-extended/* .
           cp coverage-devmode/* .
+          cp coverage-needprivileges/* .
           make covhtml
       - name: upload code coverage
         uses: codecov/codecov-action@v5
