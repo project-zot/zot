@@ -172,6 +172,13 @@ jobs:
           cp coverage-devmode/* .
           cp coverage-needprivileges/* .
           make covhtml
+          mkdir unified-coverage
+          cp coverage.txt coverage.html unified-coverage/
+      - name: upload html coverage
+        uses: actions/upload-artifact@v5
+        with:
+          name: unified-coverage
+          path: unified-coverage/*
       - name: upload code coverage
         uses: codecov/codecov-action@v5
         with:
