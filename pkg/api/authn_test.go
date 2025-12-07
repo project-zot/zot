@@ -6,7 +6,9 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"io/fs"
 	"net/http"
@@ -18,6 +20,7 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	guuid "github.com/gofrs/uuid"
+	"github.com/golang-jwt/jwt/v5"
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/project-zot/mockoidc"
 	. "github.com/smartystreets/goconvey/convey"
@@ -1465,6 +1468,266 @@ func TestMTLSAuthenticationWithUnknownCA(t *testing.T) {
 		// Error is expected - TLS handshake fails with unknown certificate authority
 		So(err, ShouldNotBeNil)
 		So(err.Error(), ShouldContainSubstring, "unknown certificate authority")
+	})
+}
+
+func TestMultipleAuthorizationHeaders(t *testing.T) {
+	Convey("Test rejection of multiple Authorization headers", t, func() {
+		Convey("Test multiple and single Authorization headers in basic auth handler", func() {
+			conf := config.New()
+			port := test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
+
+			username, _ := test.GenerateRandomString()
+			password, _ := test.GenerateRandomString()
+
+			htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
+
+			conf.HTTP.Port = port
+			conf.HTTP.Auth = &config.AuthConfig{
+				HTPasswd: config.AuthHTPasswd{
+					Path: htpasswdPath,
+				},
+			}
+			conf.Storage.RootDirectory = t.TempDir()
+
+			ctlr := api.NewController(conf)
+			cm := test.NewControllerManager(ctlr)
+
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			Convey("Multiple Authorization headers should be rejected - basic first", func() {
+				// Create a request with multiple Authorization headers
+				req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, baseURL+"/v2/_catalog", nil)
+				So(err, ShouldBeNil)
+
+				// Add multiple Authorization headers
+				basicAuth := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+				req.Header.Add("Authorization", "Basic "+basicAuth)
+				req.Header.Add("Authorization", "Bearer token123")
+
+				client := &http.Client{}
+				resp, err := client.Do(req)
+				So(err, ShouldBeNil)
+				defer resp.Body.Close()
+
+				// Should be rejected with 401 Unauthorized
+				So(resp.StatusCode, ShouldEqual, http.StatusUnauthorized)
+			})
+
+			Convey("Multiple Authorization headers should be rejected - bearer first", func() {
+				// Create a request with multiple Authorization headers
+				req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, baseURL+"/v2/_catalog", nil)
+				So(err, ShouldBeNil)
+
+				// Add multiple Authorization headers
+				req.Header.Add("Authorization", "Bearer token123")
+				basicAuth := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+				req.Header.Add("Authorization", "Basic "+basicAuth)
+
+				client := &http.Client{}
+				resp, err := client.Do(req)
+				So(err, ShouldBeNil)
+				defer resp.Body.Close()
+
+				// Should be rejected with 401 Unauthorized
+				So(resp.StatusCode, ShouldEqual, http.StatusUnauthorized)
+			})
+
+			Convey("Multiple Authorization headers should be rejected - basic twice", func() {
+				// Create a request with multiple Authorization headers
+				req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, baseURL+"/v2/_catalog", nil)
+				So(err, ShouldBeNil)
+
+				// Add multiple Authorization headers with correct values
+				basicAuth := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+				req.Header.Add("Authorization", "Basic "+basicAuth)
+				req.Header.Add("Authorization", "Basic "+basicAuth)
+
+				client := &http.Client{}
+				resp, err := client.Do(req)
+				So(err, ShouldBeNil)
+				defer resp.Body.Close()
+
+				// Should be rejected with 401 Unauthorized
+				So(resp.StatusCode, ShouldEqual, http.StatusUnauthorized)
+			})
+
+			Convey("Single Authorization header should work", func() {
+				// Create a request with single Authorization header
+				req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, baseURL+"/v2/_catalog", nil)
+				So(err, ShouldBeNil)
+
+				// Add single Authorization header
+				basicAuth := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+				req.Header.Add("Authorization", "Basic "+basicAuth)
+
+				client := &http.Client{}
+				resp, err := client.Do(req)
+				So(err, ShouldBeNil)
+				defer resp.Body.Close()
+
+				// Should succeed
+				So(resp.StatusCode, ShouldEqual, http.StatusOK)
+			})
+		})
+
+		Convey("Test multiple Authorization headers in bearer auth handler", func() {
+			tempDir := t.TempDir()
+
+			// Generate CA certificate
+			caCert, caKey, err := tlsutils.GenerateCACert()
+			So(err, ShouldBeNil)
+
+			// Generate server certificate for bearer auth
+			serverCertPath := path.Join(tempDir, "server.cert")
+			serverKeyPath := path.Join(tempDir, "server.key")
+			opts := &tlsutils.CertificateOptions{
+				Hostname: "localhost",
+			}
+			err = tlsutils.GenerateServerCertToFile(caCert, caKey, serverCertPath, serverKeyPath, opts)
+			So(err, ShouldBeNil)
+
+			conf := config.New()
+			port := test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
+
+			conf.HTTP.Port = port
+			conf.HTTP.Auth = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					Cert:    serverCertPath,
+					Realm:   "test-realm",
+					Service: "test-service",
+				},
+			}
+			conf.Storage.RootDirectory = t.TempDir()
+
+			ctlr := api.NewController(conf)
+			cm := test.NewControllerManager(ctlr)
+
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			// Load the private key to sign the token
+			keyBytes, err := os.ReadFile(serverKeyPath)
+			So(err, ShouldBeNil)
+
+			keyBlock, _ := pem.Decode(keyBytes)
+			So(keyBlock, ShouldNotBeNil)
+
+			privateKey, err := x509.ParsePKCS1PrivateKey(keyBlock.Bytes)
+			So(err, ShouldBeNil)
+
+			// Create a valid JWT token with proper claims
+			// For /v2/_catalog, the requestedAccess will have Name="" (no repository name in URL)
+			// So we need to provide access to repository with empty name or use wildcard
+			claims := &api.ClaimsWithAccess{
+				RegisteredClaims: jwt.RegisteredClaims{
+					IssuedAt:  jwt.NewNumericDate(time.Now()),
+					ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+				},
+				Access: []api.ResourceAccess{
+					{
+						Type:    "repository",
+						Name:    "", // Empty name matches /v2/_catalog
+						Actions: []string{"pull"},
+					},
+				},
+			}
+
+			token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+			validTokenString, err := token.SignedString(privateKey)
+			So(err, ShouldBeNil)
+
+			Convey("Multiple Authorization headers should be rejected - bearer and basic - bearer first", func() {
+				// Create a request with multiple Authorization headers
+				req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, baseURL+"/v2/_catalog", nil)
+				So(err, ShouldBeNil)
+
+				// Add multiple Authorization headers
+				req.Header.Add("Authorization", "Bearer "+validTokenString)
+				req.Header.Add("Authorization", "Basic dXNlcjpwYXNz")
+
+				client := &http.Client{}
+				resp, err := client.Do(req)
+				So(err, ShouldBeNil)
+				defer resp.Body.Close()
+
+				// Should be rejected with 401 Unauthorized
+				So(resp.StatusCode, ShouldEqual, http.StatusUnauthorized)
+			})
+
+			Convey("Multiple Authorization headers should be rejected - bearer and basic - basic first", func() {
+				// Create a request with multiple Authorization headers
+				req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, baseURL+"/v2/_catalog", nil)
+				So(err, ShouldBeNil)
+
+				// Add multiple Authorization headers
+				req.Header.Add("Authorization", "Basic dXNlcjpwYXNz")
+				req.Header.Add("Authorization", "Bearer "+validTokenString)
+
+				client := &http.Client{}
+				resp, err := client.Do(req)
+				So(err, ShouldBeNil)
+				defer resp.Body.Close()
+
+				// Should be rejected with 401 Unauthorized
+				So(resp.StatusCode, ShouldEqual, http.StatusUnauthorized)
+			})
+
+			Convey("Multiple Authorization headers should be rejected - two bearer headers", func() {
+				// Create a request with multiple Authorization headers
+				req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, baseURL+"/v2/_catalog", nil)
+				So(err, ShouldBeNil)
+
+				// Add multiple bearer Authorization headers
+				req.Header.Add("Authorization", "Bearer "+validTokenString)
+				req.Header.Add("Authorization", "Bearer "+validTokenString)
+
+				client := &http.Client{}
+				resp, err := client.Do(req)
+				So(err, ShouldBeNil)
+				defer resp.Body.Close()
+
+				// Should be rejected with 401 Unauthorized
+				So(resp.StatusCode, ShouldEqual, http.StatusUnauthorized)
+			})
+
+			Convey("Single Authorization header should work - invalid token", func() {
+				// Create a request with single Authorization header
+				req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, baseURL+"/v2/_catalog", nil)
+				So(err, ShouldBeNil)
+
+				// Add single bearer Authorization header with invalid token
+				req.Header.Add("Authorization", "Bearer token123")
+
+				client := &http.Client{}
+				resp, err := client.Do(req)
+				So(err, ShouldBeNil)
+				defer resp.Body.Close()
+
+				// The token is invalid, so we expect 401, but not due to multiple headers
+				So(resp.StatusCode, ShouldEqual, http.StatusUnauthorized)
+			})
+
+			Convey("Single Authorization header should work - correct bearer token", func() {
+				// Create a request with single Authorization header
+				req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, baseURL+"/v2/_catalog", nil)
+				So(err, ShouldBeNil)
+
+				// Add single bearer Authorization header with valid token
+				req.Header.Add("Authorization", "Bearer "+validTokenString)
+
+				client := &http.Client{}
+				resp, err := client.Do(req)
+				So(err, ShouldBeNil)
+				defer resp.Body.Close()
+
+				// Should succeed with valid token
+				So(resp.StatusCode, ShouldEqual, http.StatusOK)
+			})
+		})
 	})
 }
 

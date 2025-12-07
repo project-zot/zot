@@ -425,6 +425,10 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 
 			// Switch authentication methods based on provided request context
 			switch {
+			// Reject requests with multiple Authorization headers as a security measure
+			case hasMultipleAuthorizationHeaders(request):
+				authenticated = false
+
 			// The authorization header presence is an explicit attempt to use basic authentication
 			case !isAuthorizationHeaderEmpty(request) && authConfig.IsBasicAuthnEnabled():
 				authenticated, err = amw.basicAuthn(ctlr, userAc, response, request)
@@ -439,7 +443,10 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 				if err != nil {
 					break
 				}
-				// the session header can be present also for anonymous calls - then we should pass
+
+				// If session authentication fails, but anonymous or management access is allowed,
+				// treat the request as authenticated. This fallback is necessary because the session
+				// header may be present for anonymous or management requests.
 				authenticated = authenticated || allowAnonymous || isMgmtRequested
 
 			// Try mTLS authentication if client certificates are present
@@ -493,6 +500,15 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 			if request.Method == http.MethodOptions {
 				next.ServeHTTP(response, request)
 				response.WriteHeader(http.StatusNoContent)
+
+				return
+			}
+
+			// Reject requests with multiple Authorization headers as a security measure
+			if hasMultipleAuthorizationHeaders(request) {
+				ctlr.Log.Error().Msg("failed to parse Authorization header: multiple Authorization headers detected")
+				response.Header().Set("Content-Type", "application/json")
+				zcommon.WriteJSON(response, http.StatusUnauthorized, apiErr.NewError(apiErr.UNSUPPORTED))
 
 				return
 			}
@@ -736,6 +752,14 @@ func isAuthorizationHeaderEmpty(request *http.Request) bool {
 	}
 
 	return false
+}
+
+// hasMultipleAuthorizationHeaders checks if the request has multiple Authorization headers.
+// This is a security concern as it could be used to bypass authentication or cause confusion.
+func hasMultipleAuthorizationHeaders(request *http.Request) bool {
+	authHeaders := request.Header.Values("Authorization")
+
+	return len(authHeaders) > 1
 }
 
 func hasSessionHeader(request *http.Request) bool {
