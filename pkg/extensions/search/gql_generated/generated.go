@@ -10425,7 +10425,7 @@ func (ec *executionContext) marshalNBoolean2bool(ctx context.Context, sel ast.Se
 	res := graphql.MarshalBoolean(v)
 	if res == graphql.Null {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
-			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
 		}
 	}
 	return res
@@ -10438,7 +10438,7 @@ func (ec *executionContext) marshalNCVEDiffResult2zotregistryᚗdevᚋzotᚋv2�
 func (ec *executionContext) marshalNCVEDiffResult2ᚖzotregistryᚗdevᚋzotᚋv2ᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐCVEDiffResult(ctx context.Context, sel ast.SelectionSet, v *CVEDiffResult) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
-			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
 		}
 		return graphql.Null
 	}
@@ -10452,7 +10452,7 @@ func (ec *executionContext) marshalNCVEResultForImage2zotregistryᚗdevᚋzotᚋ
 func (ec *executionContext) marshalNCVEResultForImage2ᚖzotregistryᚗdevᚋzotᚋv2ᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐCVEResultForImage(ctx context.Context, sel ast.SelectionSet, v *CVEResultForImage) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
-			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
 		}
 		return graphql.Null
 	}
@@ -10466,7 +10466,7 @@ func (ec *executionContext) marshalNGlobalSearchResult2zotregistryᚗdevᚋzot�
 func (ec *executionContext) marshalNGlobalSearchResult2ᚖzotregistryᚗdevᚋzotᚋv2ᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐGlobalSearchResult(ctx context.Context, sel ast.SelectionSet, v *GlobalSearchResult) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
-			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
 		}
 		return graphql.Null
 	}
@@ -10476,7 +10476,7 @@ func (ec *executionContext) marshalNGlobalSearchResult2ᚖzotregistryᚗdevᚋzo
 func (ec *executionContext) marshalNImageIdentifier2ᚖzotregistryᚗdevᚋzotᚋv2ᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageIdentifier(ctx context.Context, sel ast.SelectionSet, v *ImageIdentifier) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
-			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
 		}
 		return graphql.Null
 	}
@@ -10539,7 +10539,7 @@ func (ec *executionContext) marshalNImageSummary2ᚕᚖzotregistryᚗdevᚋzot�
 func (ec *executionContext) marshalNImageSummary2ᚖzotregistryᚗdevᚋzotᚋv2ᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummary(ctx context.Context, sel ast.SelectionSet, v *ImageSummary) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
-			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
 		}
 		return graphql.Null
 	}
@@ -10556,7 +10556,7 @@ func (ec *executionContext) marshalNInt2int(ctx context.Context, sel ast.Selecti
 	res := graphql.MarshalInt(v)
 	if res == graphql.Null {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
-			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
 		}
 	}
 	return res
@@ -10569,7 +10569,7 @@ func (ec *executionContext) marshalNPaginatedImagesResult2zotregistryᚗdevᚋzo
 func (ec *executionContext) marshalNPaginatedImagesResult2ᚖzotregistryᚗdevᚋzotᚋv2ᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedImagesResult(ctx context.Context, sel ast.SelectionSet, v *PaginatedImagesResult) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
-			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
 		}
 		return graphql.Null
 	}
@@ -10583,7 +10583,7 @@ func (ec *executionContext) marshalNPaginatedReposResult2zotregistryᚗdevᚋzot
 func (ec *executionContext) marshalNPaginatedReposResult2ᚖzotregistryᚗdevᚋzotᚋv2ᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedReposResult(ctx context.Context, sel ast.SelectionSet, v *PaginatedReposResult) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
-			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
 		}
 		return graphql.Null
 	}
@@ -10635,7 +10635,7 @@ func (ec *executionContext) marshalNRepoInfo2zotregistryᚗdevᚋzotᚋv2ᚋpkg�
 func (ec *executionContext) marshalNRepoInfo2ᚖzotregistryᚗdevᚋzotᚋv2ᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoInfo(ctx context.Context, sel ast.SelectionSet, v *RepoInfo) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
-			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
 		}
 		return graphql.Null
 	}
@@ -10689,7 +10689,7 @@ func (ec *executionContext) marshalNRepoSummary2ᚕᚖzotregistryᚗdevᚋzotᚋ
 func (ec *executionContext) marshalNRepoSummary2ᚖzotregistryᚗdevᚋzotᚋv2ᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoSummary(ctx context.Context, sel ast.SelectionSet, v *RepoSummary) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
-			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
 		}
 		return graphql.Null
 	}
@@ -10706,7 +10706,7 @@ func (ec *executionContext) marshalNString2string(ctx context.Context, sel ast.S
 	res := graphql.MarshalString(v)
 	if res == graphql.Null {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
-			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
 		}
 	}
 	return res
@@ -10770,7 +10770,7 @@ func (ec *executionContext) marshalN__DirectiveLocation2string(ctx context.Conte
 	res := graphql.MarshalString(v)
 	if res == graphql.Null {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
-			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
 		}
 	}
 	return res
@@ -10942,7 +10942,7 @@ func (ec *executionContext) marshalN__Type2ᚕgithubᚗcomᚋ99designsᚋgqlgen�
 func (ec *executionContext) marshalN__Type2ᚖgithubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐType(ctx context.Context, sel ast.SelectionSet, v *introspection.Type) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
-			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
 		}
 		return graphql.Null
 	}
@@ -10959,7 +10959,7 @@ func (ec *executionContext) marshalN__TypeKind2string(ctx context.Context, sel a
 	res := graphql.MarshalString(v)
 	if res == graphql.Null {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
-			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
 		}
 	}
 	return res
