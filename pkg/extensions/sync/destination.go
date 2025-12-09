@@ -92,13 +92,36 @@ func (registry *DestinationRegistry) CommitAll(repo string, imageReference ref.R
 
 	defer os.RemoveAll(tempImageStore.RootDir())
 
-	registry.log.Info().Str("syncTempDir", path.Join(tempImageStore.RootDir(), repo)).Str("repository", repo).
+	repoDir := path.Join(tempImageStore.RootDir(), repo)
+
+	// Check if directory is empty before attempting to get index
+	entries, err := os.ReadDir(repoDir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			// Directory doesn't exist - nothing to commit (image was skipped)
+			return nil
+		}
+
+		// Other directory read errors should be reported
+		registry.log.Error().Str("errorType", common.TypeOf(err)).
+			Err(err).Str("dir", repoDir).Str("repo", repo).
+			Msg("failed to read temp sync dir")
+
+		return err
+	}
+
+	// If directory is empty, nothing was synced (e.g., image was skipped)
+	if len(entries) == 0 {
+		return nil
+	}
+
+	registry.log.Info().Str("syncTempDir", repoDir).Str("repository", repo).
 		Msg("pushing synced local image to local registry")
 
 	index, err := storageCommon.GetIndex(tempImageStore, repo, registry.log)
 	if err != nil {
 		registry.log.Error().Str("errorType", common.TypeOf(err)).
-			Err(err).Str("dir", path.Join(tempImageStore.RootDir(), repo)).Str("repo", repo).
+			Err(err).Str("dir", repoDir).Str("repo", repo).
 			Msg("failed to get repo index from temp sync dir")
 
 		return err
