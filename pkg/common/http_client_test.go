@@ -6,12 +6,47 @@ import (
 	"os"
 	"path"
 	"testing"
+	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.dev/zot/v2/pkg/common"
-	test "zotregistry.dev/zot/v2/pkg/test/common"
+	tlsutils "zotregistry.dev/zot/v2/pkg/test/tls"
 )
+
+// setupTestCerts generates CA and client certificates for testing.
+func setupTestCerts(t *testing.T, tempDir string) {
+	t.Helper()
+
+	// Generate CA certificate
+	caOpts := &tlsutils.CertificateOptions{
+		CommonName: "*",
+		NotAfter:   time.Now().AddDate(10, 0, 0),
+	}
+	caCertPEM, caKeyPEM, err := tlsutils.GenerateCACert(caOpts)
+	if err != nil {
+		t.Fatalf("Failed to generate CA cert: %v", err)
+	}
+
+	caCertPath := path.Join(tempDir, "ca.crt")
+	err = os.WriteFile(caCertPath, caCertPEM, 0o600)
+	if err != nil {
+		t.Fatalf("Failed to write CA cert: %v", err)
+	}
+
+	// Generate client certificate
+	clientCertPath := path.Join(tempDir, "client.cert")
+	clientKeyPath := path.Join(tempDir, "client.key")
+	clientOpts := &tlsutils.CertificateOptions{
+		CommonName:         "testclient",
+		OrganizationalUnit: "TestClient",
+		NotAfter:           time.Now().AddDate(10, 0, 0),
+	}
+	err = tlsutils.GenerateClientCertToFile(caCertPEM, caKeyPEM, clientCertPath, clientKeyPath, clientOpts)
+	if err != nil {
+		t.Fatalf("Failed to generate client cert: %v", err)
+	}
+}
 
 func TestHTTPClient(t *testing.T) {
 	Convey("test getTLSConfig()", t, func() {
@@ -21,8 +56,7 @@ func TestHTTPClient(t *testing.T) {
 		So(err, ShouldNotBeNil)
 
 		tempDir := t.TempDir()
-		err = test.CopyTestKeysAndCerts(tempDir)
-		So(err, ShouldBeNil)
+		setupTestCerts(t, tempDir)
 		err = os.Chmod(path.Join(tempDir, "ca.crt"), 0o000)
 		So(err, ShouldBeNil)
 		_, err = common.GetTLSConfig(tempDir, caCertPool)
@@ -31,9 +65,8 @@ func TestHTTPClient(t *testing.T) {
 
 	Convey("test CreateHTTPClient() no permissions on certificate", t, func() {
 		tempDir := t.TempDir()
-		err := test.CopyTestKeysAndCerts(tempDir)
-		So(err, ShouldBeNil)
-		err = os.Chmod(path.Join(tempDir, "ca.crt"), 0o000)
+		setupTestCerts(t, tempDir)
+		err := os.Chmod(path.Join(tempDir, "ca.crt"), 0o000)
 		So(err, ShouldBeNil)
 
 		_, err = common.CreateHTTPClient(&common.HTTPClientOptions{
@@ -51,9 +84,8 @@ func TestHTTPClient(t *testing.T) {
 
 	Convey("test CreateHTTPClient() no permissions on key", t, func() {
 		tempDir := t.TempDir()
-		err := test.CopyTestKeysAndCerts(tempDir)
-		So(err, ShouldBeNil)
-		err = os.Chmod(path.Join(tempDir, "client.key"), 0o000)
+		setupTestCerts(t, tempDir)
+		err := os.Chmod(path.Join(tempDir, "client.key"), 0o000)
 		So(err, ShouldBeNil)
 
 		_, err = common.CreateHTTPClient(&common.HTTPClientOptions{
@@ -76,10 +108,9 @@ func TestHTTPClient(t *testing.T) {
 
 	Convey("test CreateHTTPClient() with only client cert configured", t, func() {
 		tempDir := t.TempDir()
-		err := test.CopyTestKeysAndCerts(tempDir)
-		So(err, ShouldBeNil)
+		setupTestCerts(t, tempDir)
 
-		_, err = common.CreateHTTPClient(&common.HTTPClientOptions{
+		_, err := common.CreateHTTPClient(&common.HTTPClientOptions{
 			TLSEnabled: true,
 			VerifyTLS:  true,
 			Host:       "localhost",
@@ -92,10 +123,9 @@ func TestHTTPClient(t *testing.T) {
 
 	Convey("test CreateHTTPClient() with only client key configured", t, func() {
 		tempDir := t.TempDir()
-		err := test.CopyTestKeysAndCerts(tempDir)
-		So(err, ShouldBeNil)
+		setupTestCerts(t, tempDir)
 
-		_, err = common.CreateHTTPClient(&common.HTTPClientOptions{
+		_, err := common.CreateHTTPClient(&common.HTTPClientOptions{
 			TLSEnabled: true,
 			VerifyTLS:  true,
 			Host:       "localhost",
@@ -108,8 +138,7 @@ func TestHTTPClient(t *testing.T) {
 
 	Convey("test CreateHTTPClient() with full certificate config", t, func() {
 		tempDir := t.TempDir()
-		err := test.CopyTestKeysAndCerts(tempDir)
-		So(err, ShouldBeNil)
+		setupTestCerts(t, tempDir)
 
 		client, err := common.CreateHTTPClient(&common.HTTPClientOptions{
 			TLSEnabled: true,
@@ -131,8 +160,7 @@ func TestHTTPClient(t *testing.T) {
 
 	Convey("test CreateHTTPClient() with no TLS verify", t, func() {
 		tempDir := t.TempDir()
-		err := test.CopyTestKeysAndCerts(tempDir)
-		So(err, ShouldBeNil)
+		setupTestCerts(t, tempDir)
 
 		client, err := common.CreateHTTPClient(&common.HTTPClientOptions{
 			TLSEnabled: true,
@@ -155,8 +183,7 @@ func TestHTTPClient(t *testing.T) {
 
 	Convey("test CreateHTTPClient() with no TLS, but TLS verify enabled", t, func() {
 		tempDir := t.TempDir()
-		err := test.CopyTestKeysAndCerts(tempDir)
-		So(err, ShouldBeNil)
+		setupTestCerts(t, tempDir)
 
 		client, err := common.CreateHTTPClient(&common.HTTPClientOptions{
 			TLSEnabled: false,

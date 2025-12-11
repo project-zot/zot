@@ -26,12 +26,13 @@ func getDefaultSearchConf(baseURL string) SearchConfig {
 	outputFormat := "text"
 
 	return SearchConfig{
-		ServURL:      baseURL,
-		ResultWriter: io.Discard,
-		VerifyTLS:    verifyTLS,
-		Debug:        debug,
-		Verbose:      verbose,
-		OutputFormat: outputFormat,
+		ServURL:       baseURL,
+		ResultWriter:  io.Discard,
+		VerifyTLS:     verifyTLS,
+		Debug:         debug,
+		Verbose:       verbose,
+		OutputFormat:  outputFormat,
+		SearchService: NewSearchService(),
 	}
 }
 
@@ -88,7 +89,8 @@ func TestDoHTTPRequest(t *testing.T) {
 		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, nil)
 		So(err, ShouldBeNil)
 
-		So(func() { _, _ = doHTTPRequest(req, false, false, nil, io.Discard) }, ShouldNotPanic)
+		httpClient := NewHTTPClient()
+		So(func() { _, _ = httpClient.doHTTPRequest(req, false, false, nil, io.Discard) }, ShouldNotPanic)
 	})
 
 	Convey("doHTTPRequest bad return json", t, func() {
@@ -112,21 +114,25 @@ func TestDoHTTPRequest(t *testing.T) {
 		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 		So(err, ShouldBeNil)
 
-		So(func() { _, _ = doHTTPRequest(req, false, false, &ispec.Manifest{}, io.Discard) }, ShouldNotPanic)
+		httpClient := NewHTTPClient()
+		So(func() { _, _ = httpClient.doHTTPRequest(req, false, false, &ispec.Manifest{}, io.Discard) }, ShouldNotPanic)
 	})
 
 	Convey("makeGraphQLRequest bad request context", t, func() {
-		err := makeGraphQLRequest(nil, "", "", "", "", false, false, nil, io.Discard) //nolint:staticcheck
+		httpClient := NewHTTPClient()
+		err := httpClient.makeGraphQLRequest(nil, "", "", "", "", false, false, nil, io.Discard) //nolint:staticcheck
 		So(err, ShouldNotBeNil)
 	})
 
 	Convey("makeHEADRequest bad request context", t, func() {
-		_, err := makeHEADRequest(nil, "", "", "", false, false) //nolint:staticcheck
+		httpClient := NewHTTPClient()
+		_, err := httpClient.makeHEADRequest(nil, "", "", "", false, false) //nolint:staticcheck
 		So(err, ShouldNotBeNil)
 	})
 
 	Convey("makeGETRequest bad request context", t, func() {
-		_, err := makeGETRequest(nil, "", "", "", false, false, nil, io.Discard) //nolint:staticcheck
+		httpClient := NewHTTPClient()
+		_, err := httpClient.makeGETRequest(nil, "", "", "", false, false, nil, io.Discard) //nolint:staticcheck
 		So(err, ShouldNotBeNil)
 	})
 

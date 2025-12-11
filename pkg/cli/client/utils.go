@@ -37,7 +37,8 @@ func fetchImageDigest(repo, ref, username, password string, config SearchConfig)
 		return "", err
 	}
 
-	res, err := makeHEADRequest(context.Background(), url, username, password, config.VerifyTLS, false)
+	res, err := config.SearchService.getHTTPClient().makeHEADRequest(
+		context.Background(), url, username, password, config.VerifyTLS, false)
 
 	digestStr := res.Get(constants.DistContentDigestKey)
 

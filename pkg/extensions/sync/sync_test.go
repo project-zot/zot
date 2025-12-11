@@ -53,6 +53,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 	ociutils "zotregistry.dev/zot/v2/pkg/test/oci-utils"
 	"zotregistry.dev/zot/v2/pkg/test/signature"
+	tlsutils "zotregistry.dev/zot/v2/pkg/test/tls"
 )
 
 const (
@@ -60,11 +61,6 @@ const (
 	dockerIndexManifestMediaType  = "application/vnd.docker.distribution.manifest.list.v2+json"
 	dockerManifestConfigMediaType = "application/vnd.docker.container.image.v1+json"
 	dockerLayerMediaType          = "application/vnd.docker.image.rootfs.diff.tar.gzip"
-	ServerCert                    = "../../../test/data/server.cert"
-	ServerKey                     = "../../../test/data/server.key"
-	CACert                        = "../../../test/data/ca.crt"
-	ClientCert                    = "../../../test/data/client.cert"
-	ClientKey                     = "../../../test/data/client.key"
 
 	testImage    = "zot-test"
 	testImageTag = "0.0.1"
@@ -96,8 +92,62 @@ type catalog struct {
 	Repositories []string `json:"repositories"`
 }
 
-func makeUpstreamServer(
-	t *testing.T, secure, basicAuth bool,
+// setupTestCertsForSync generates certificates for sync tests that need file paths.
+func setupTestCertsForSync(t *testing.T, tempDir string) (
+	string, string, string, string, string, []byte,
+) {
+	t.Helper()
+
+	// Generate CA certificate
+	caOpts := &tlsutils.CertificateOptions{
+		CommonName: "*",
+	}
+	caCertPEM, caKeyPEM, err := tlsutils.GenerateCACert(caOpts)
+	if err != nil {
+		t.Fatalf("Failed to generate CA cert: %v", err)
+	}
+
+	caCertPath := path.Join(tempDir, "ca.crt")
+	caKeyPath := path.Join(tempDir, "ca.key")
+	err = os.WriteFile(caCertPath, caCertPEM, 0o600)
+	if err != nil {
+		t.Fatalf("Failed to write CA cert: %v", err)
+	}
+	_ = os.WriteFile(caKeyPath, caKeyPEM, 0o600)
+
+	// Generate server certificate (10 years validity, matching gen_certs.sh)
+	serverCertPath := path.Join(tempDir, "server.cert")
+	serverKeyPath := path.Join(tempDir, "server.key")
+	serverOpts := &tlsutils.CertificateOptions{
+		Hostname:           "127.0.0.1",
+		CommonName:         "*",
+		OrganizationalUnit: "TestServer",
+		NotAfter:           time.Now().AddDate(10, 0, 0),
+	}
+	err = tlsutils.GenerateServerCertToFile(caCertPEM, caKeyPEM, serverCertPath, serverKeyPath, serverOpts)
+	if err != nil {
+		t.Fatalf("Failed to generate server cert: %v", err)
+	}
+
+	// Generate client certificate (10 years validity, matching gen_certs.sh)
+	clientCertPath := path.Join(tempDir, "client.cert")
+	clientKeyPath := path.Join(tempDir, "client.key")
+	clientOpts := &tlsutils.CertificateOptions{
+		CommonName:         "testclient",
+		OrganizationalUnit: "TestClient",
+		NotAfter:           time.Now().AddDate(10, 0, 0),
+	}
+	err = tlsutils.GenerateClientCertToFile(caCertPEM, caKeyPEM, clientCertPath, clientKeyPath, clientOpts)
+	if err != nil {
+		t.Fatalf("Failed to generate client cert: %v", err)
+	}
+
+	return caCertPath, serverCertPath, serverKeyPath, clientCertPath, clientKeyPath, caCertPEM
+}
+
+// makeUpstreamServerWithCerts creates an upstream server using shared certificates.
+func makeUpstreamServerWithCerts(
+	t *testing.T, secure, basicAuth bool, certDir string, caCertPEM []byte,
 ) (*api.Controller, string, string, *resty.Client) {
 	t.Helper()
 
@@ -109,25 +159,27 @@ func makeUpstreamServer(
 	if secure {
 		srcBaseURL = test.GetSecureBaseURL(srcPort)
 
-		srcConfig.HTTP.TLS = &config.TLSConfig{
-			Cert:   ServerCert,
-			Key:    ServerKey,
-			CACert: CACert,
-		}
+		// Use shared certificates
+		caCertPath := path.Join(certDir, "ca.crt")
+		serverCertPath := path.Join(certDir, "server.cert")
+		serverKeyPath := path.Join(certDir, "server.key")
+		clientCertPath := path.Join(certDir, "client.cert")
+		clientKeyPath := path.Join(certDir, "client.key")
 
-		caCert, err := os.ReadFile(CACert)
-		if err != nil {
-			panic(err)
+		srcConfig.HTTP.TLS = &config.TLSConfig{
+			Cert:   serverCertPath,
+			Key:    serverKeyPath,
+			CACert: caCertPath,
 		}
 
 		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
+		caCertPool.AppendCertsFromPEM(caCertPEM)
 
 		client.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 
-		cert, err := tls.LoadX509KeyPair(ClientCert, ClientKey)
+		cert, err := tls.LoadX509KeyPair(clientCertPath, clientKeyPath)
 		if err != nil {
-			panic(err)
+			t.Fatalf("Failed to load client cert for upstream test client: %v", err)
 		}
 
 		client.SetCertificates(cert)
@@ -174,8 +226,25 @@ func makeUpstreamServer(
 	return sctlr, srcBaseURL, srcDir, client
 }
 
-func makeDownstreamServer(
-	t *testing.T, secure bool, syncConfig *syncconf.Config,
+func makeUpstreamServer(
+	t *testing.T, secure, basicAuth bool,
+) (*api.Controller, string, string, *resty.Client) {
+	t.Helper()
+
+	// Generate certificates and delegate to makeUpstreamServerWithCerts
+	if secure {
+		tempDir := t.TempDir()
+		_, _, _, _, _, caCertPEM := setupTestCertsForSync(t, tempDir)
+
+		return makeUpstreamServerWithCerts(t, secure, basicAuth, tempDir, caCertPEM)
+	}
+
+	return makeUpstreamServerWithCerts(t, secure, basicAuth, "", nil)
+}
+
+// makeDownstreamServerWithCerts creates a downstream server using shared certificates.
+func makeDownstreamServerWithCerts(
+	t *testing.T, secure bool, syncConfig *syncconf.Config, certDir string, caCertPEM []byte,
 ) (*api.Controller, string, string, *resty.Client) {
 	t.Helper()
 
@@ -187,25 +256,27 @@ func makeDownstreamServer(
 	if secure {
 		destBaseURL = test.GetSecureBaseURL(destPort)
 
-		destConfig.HTTP.TLS = &config.TLSConfig{
-			Cert:   ServerCert,
-			Key:    ServerKey,
-			CACert: CACert,
-		}
+		// Use shared certificates (same CA as upstream)
+		caCertPath := path.Join(certDir, "ca.crt")
+		serverCertPath := path.Join(certDir, "server.cert")
+		serverKeyPath := path.Join(certDir, "server.key")
+		clientCertPath := path.Join(certDir, "client.cert")
+		clientKeyPath := path.Join(certDir, "client.key")
 
-		caCert, err := os.ReadFile(CACert)
-		if err != nil {
-			panic(err)
+		destConfig.HTTP.TLS = &config.TLSConfig{
+			Cert:   serverCertPath,
+			Key:    serverKeyPath,
+			CACert: caCertPath,
 		}
 
 		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
+		caCertPool.AppendCertsFromPEM(caCertPEM)
 
 		client.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 
-		cert, err := tls.LoadX509KeyPair(ClientCert, ClientKey)
+		cert, err := tls.LoadX509KeyPair(clientCertPath, clientKeyPath)
 		if err != nil {
-			panic(err)
+			t.Fatalf("Failed to load client cert for downstream test client: %v", err)
 		}
 
 		client.SetCertificates(cert)
@@ -233,6 +304,22 @@ func makeDownstreamServer(
 	dctlr := api.NewController(destConfig)
 
 	return dctlr, destBaseURL, destDir, client
+}
+
+func makeDownstreamServer(
+	t *testing.T, secure bool, syncConfig *syncconf.Config,
+) (*api.Controller, string, string, *resty.Client) {
+	t.Helper()
+
+	// Generate certificates and delegate to makeDownstreamServerWithCerts
+	if secure {
+		tempDir := t.TempDir()
+		_, _, _, _, _, caCertPEM := setupTestCertsForSync(t, tempDir)
+
+		return makeDownstreamServerWithCerts(t, secure, syncConfig, tempDir, caCertPEM)
+	}
+
+	return makeDownstreamServerWithCerts(t, secure, syncConfig, "", nil)
 }
 
 func makeInsecureDownstreamServerFixedPort(
@@ -2027,6 +2114,13 @@ func TestPermsDenied(t *testing.T) {
 		err = os.Chmod(syncSubDir, 0o000)
 		So(err, ShouldBeNil)
 
+		// Ensure permissions are restored on cleanup to allow temp directory removal
+		defer func() {
+			_ = os.Chmod(syncSubDir, 0o755)
+			// Also restore permissions on parent directory in case it was affected
+			_ = os.Chmod(path.Join(destDir, testImage), 0o755)
+		}()
+
 		dcm.StartAndWait(destPort)
 
 		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
@@ -2500,7 +2594,13 @@ func TestTLS(t *testing.T) {
 	Convey("Verify sync TLS feature", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
 
-		sctlr, srcBaseURL, srcDir, _ := makeUpstreamServer(t, true, false)
+		// Generate shared CA and certificates BEFORE creating servers
+		// This ensures all certificates are signed by the same CA
+		sharedCertDir := t.TempDir()
+		caCertPath, _, _, clientCertPath, clientKeyPath, caCertPEM := setupTestCertsForSync(t, sharedCertDir)
+
+		// Create upstream server with shared certificates
+		sctlr, srcBaseURL, srcDir, _ := makeUpstreamServerWithCerts(t, true, false, sharedCertDir, caCertPEM)
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
@@ -2521,28 +2621,37 @@ func TestTLS(t *testing.T) {
 			panic(err)
 		}
 
-		// copy upstream client certs, use them in sync config
+		// Use the same client certificates for sync (signed by the same CA as upstream server)
 		destClientCertDir := t.TempDir()
+		// Copy client cert and key to sync config directory
+		destClientCertPath := path.Join(destClientCertDir, "client.cert")
+		destClientKeyPath := path.Join(destClientCertDir, "client.key")
+		destCACertPath := path.Join(destClientCertDir, "ca.crt")
 
-		destFilePath := path.Join(destClientCertDir, "ca.crt")
-
-		err = test.CopyFile(CACert, destFilePath)
+		clientCertData, err := os.ReadFile(clientCertPath)
 		if err != nil {
-			panic(err)
+			t.Fatalf("Failed to read client cert: %v", err)
+		}
+		clientKeyData, err := os.ReadFile(clientKeyPath)
+		if err != nil {
+			t.Fatalf("Failed to read client key: %v", err)
+		}
+		caCertData, err := os.ReadFile(caCertPath)
+		if err != nil {
+			t.Fatalf("Failed to read CA cert: %v", err)
 		}
 
-		destFilePath = path.Join(destClientCertDir, "client.cert")
-
-		err = test.CopyFile(ClientCert, destFilePath)
+		err = os.WriteFile(destClientCertPath, clientCertData, 0o600)
 		if err != nil {
-			panic(err)
+			t.Fatalf("Failed to write client cert: %v", err)
 		}
-
-		destFilePath = path.Join(destClientCertDir, "client.key")
-
-		err = test.CopyFile(ClientKey, destFilePath)
+		err = os.WriteFile(destClientKeyPath, clientKeyData, 0o600)
 		if err != nil {
-			panic(err)
+			t.Fatalf("Failed to write client key: %v", err)
+		}
+		err = os.WriteFile(destCACertPath, caCertData, 0o600)
+		if err != nil {
+			t.Fatalf("Failed to write CA cert: %v", err)
 		}
 
 		regex := ".*"
@@ -2574,7 +2683,9 @@ func TestTLS(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, destDir, destClient := makeDownstreamServer(t, true, syncConfig)
+		// Create downstream server with shared certificates (same CA as upstream)
+		dctlr, destBaseURL, destDir, destClient := makeDownstreamServerWithCerts(
+			t, true, syncConfig, sharedCertDir, caCertPEM)
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
@@ -2634,11 +2745,15 @@ func TestBearerAuth(t *testing.T) {
 			// a repo for which clients do not have access, sync shouldn't be able to sync it
 			unauthorizedNamespace := testCveImage
 
+			// Generate certificates for bearer auth
+			tempDir := t.TempDir()
+			_, serverCertPath, serverKeyPath, _, _, _ := setupTestCertsForSync(t, tempDir)
+
 			var authTestServer *httptest.Server
 			if testCase.useLegacyAuthTestServer {
-				authTestServer = authutils.MakeAuthTestServerLegacy(ServerKey, unauthorizedNamespace)
+				authTestServer = authutils.MakeAuthTestServerLegacy(serverKeyPath, unauthorizedNamespace)
 			} else {
-				authTestServer = authutils.MakeAuthTestServer(ServerKey, "RS256", unauthorizedNamespace)
+				authTestServer = authutils.MakeAuthTestServer(serverKeyPath, "RS256", unauthorizedNamespace)
 			}
 			defer authTestServer.Close()
 
@@ -2649,7 +2764,7 @@ func TestBearerAuth(t *testing.T) {
 
 			sctlr.Config.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
-					Cert:    ServerCert,
+					Cert:    serverCertPath,
 					Realm:   authTestServer.URL + "/auth/token",
 					Service: aurl.Host,
 				},
@@ -2788,11 +2903,15 @@ func TestBearerAuth(t *testing.T) {
 			// a repo for which clients do not have access, sync shouldn't be able to sync it
 			unauthorizedNamespace := testCveImage
 
+			// Generate certificates for bearer auth
+			tempDir := t.TempDir()
+			_, serverCertPath, serverKeyPath, _, _, _ := setupTestCertsForSync(t, tempDir)
+
 			var authTestServer *httptest.Server
 			if testCase.useLegacyAuthTestServer {
-				authTestServer = authutils.MakeAuthTestServerLegacy(ServerKey, unauthorizedNamespace)
+				authTestServer = authutils.MakeAuthTestServerLegacy(serverKeyPath, unauthorizedNamespace)
 			} else {
-				authTestServer = authutils.MakeAuthTestServer(ServerKey, "RS256", unauthorizedNamespace)
+				authTestServer = authutils.MakeAuthTestServer(serverKeyPath, "RS256", unauthorizedNamespace)
 			}
 			defer authTestServer.Close()
 
@@ -2803,7 +2922,7 @@ func TestBearerAuth(t *testing.T) {
 
 			sctlr.Config.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
-					Cert:    ServerCert,
+					Cert:    serverCertPath,
 					Realm:   authTestServer.URL + "/auth/token",
 					Service: aurl.Host,
 				},
@@ -3557,14 +3676,11 @@ func TestInvalidCerts(t *testing.T) {
 		// copy client certs, use them in sync config
 		clientCertDir := t.TempDir()
 
-		destFilePath := path.Join(clientCertDir, "ca.crt")
+		// Generate certificates
+		caCertPath, _, _, _, _, _ := setupTestCertsForSync(t, clientCertDir)
 
-		err := test.CopyFile(CACert, destFilePath)
-		if err != nil {
-			panic(err)
-		}
-
-		dstfile, err := os.OpenFile(destFilePath, os.O_TRUNC|os.O_WRONLY|os.O_CREATE, 0o600)
+		// Modify the CA cert file to add invalid text for testing
+		dstfile, err := os.OpenFile(caCertPath, os.O_TRUNC|os.O_WRONLY|os.O_CREATE, 0o600)
 		if err != nil {
 			panic(err)
 		}
@@ -3572,20 +3688,6 @@ func TestInvalidCerts(t *testing.T) {
 		defer dstfile.Close()
 
 		if _, err = dstfile.WriteString("Add Invalid Text In Cert"); err != nil {
-			panic(err)
-		}
-
-		destFilePath = path.Join(clientCertDir, "client.cert")
-
-		err = test.CopyFile(ClientCert, destFilePath)
-		if err != nil {
-			panic(err)
-		}
-
-		destFilePath = path.Join(clientCertDir, "client.key")
-
-		err = test.CopyFile(ClientKey, destFilePath)
-		if err != nil {
 			panic(err)
 		}
 
@@ -3626,32 +3728,14 @@ func TestInvalidCerts(t *testing.T) {
 func TestCertsWithWrongPerms(t *testing.T) {
 	Convey("Verify sync with wrong permissions on certs", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
-		// copy client certs, use them in sync config
+		// Generate certificates and copy them to sync config directory
 		clientCertDir := t.TempDir()
 
-		destFilePath := path.Join(clientCertDir, "ca.crt")
+		caCertPath, _, _, _, _, _ := setupTestCertsForSync(t, clientCertDir)
 
-		err := test.CopyFile(CACert, destFilePath)
-		if err != nil {
-			panic(err)
-		}
-
-		err = os.Chmod(destFilePath, 0o000)
+		// Change permissions on CA cert for testing
+		err := os.Chmod(caCertPath, 0o000)
 		So(err, ShouldBeNil)
-
-		destFilePath = path.Join(clientCertDir, "client.cert")
-
-		err = test.CopyFile(ClientCert, destFilePath)
-		if err != nil {
-			panic(err)
-		}
-
-		destFilePath = path.Join(clientCertDir, "client.key")
-
-		err = test.CopyFile(ClientKey, destFilePath)
-		if err != nil {
-			panic(err)
-		}
 
 		tlsVerify := true
 

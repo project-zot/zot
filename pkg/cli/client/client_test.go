@@ -11,6 +11,7 @@ import (
 	"path"
 	"path/filepath"
 	"testing"
+	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
@@ -21,6 +22,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/cli/client"
 	extConf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	test "zotregistry.dev/zot/v2/pkg/test/common"
+	tlsutils "zotregistry.dev/zot/v2/pkg/test/tls"
 )
 
 const (
@@ -31,19 +33,40 @@ const (
 	SecurePort2    = "8089"
 	BaseSecureURL3 = "https://127.0.0.1:8090"
 	SecurePort3    = "8090"
-	ServerCert     = "../../../test/data/server.cert"
-	ServerKey      = "../../../test/data/server.key"
-	CACert         = "../../../test/data/ca.crt"
-	sourceCertsDir = "../../../test/data"
 	certsDir1      = ".config/containers/certs.d/127.0.0.1:8088"
 )
 
 func TestTLSWithAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		caCert, err := os.ReadFile(CACert)
+		// Generate certificates using tls library
+		tempDir := t.TempDir()
+		caOpts := &tlsutils.CertificateOptions{
+			CommonName: "*",
+			NotAfter:   time.Now().AddDate(10, 0, 0),
+		}
+		caCertPEM, caKeyPEM, err := tlsutils.GenerateCACert(caOpts)
 		So(err, ShouldBeNil)
+
+		caCertPath := path.Join(tempDir, "ca.crt")
+		caKeyPath := path.Join(tempDir, "ca.key")
+		err = os.WriteFile(caCertPath, caCertPEM, 0o600)
+		So(err, ShouldBeNil)
+		err = os.WriteFile(caKeyPath, caKeyPEM, 0o600)
+		So(err, ShouldBeNil)
+
+		serverCertPath := path.Join(tempDir, "server.cert")
+		serverKeyPath := path.Join(tempDir, "server.key")
+		serverOpts := &tlsutils.CertificateOptions{
+			Hostname:           "127.0.0.1",
+			CommonName:         "*",
+			OrganizationalUnit: "TestServer",
+			NotAfter:           time.Now().AddDate(10, 0, 0),
+		}
+		err = tlsutils.GenerateServerCertToFile(caCertPEM, caKeyPEM, serverCertPath, serverKeyPath, serverOpts)
+		So(err, ShouldBeNil)
+
 		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
+		caCertPool.AppendCertsFromPEM(caCertPEM)
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 
@@ -63,9 +86,9 @@ func TestTLSWithAuth(t *testing.T) {
 		}
 
 		conf.HTTP.TLS = &config.TLSConfig{
-			Cert:   ServerCert,
-			Key:    ServerKey,
-			CACert: CACert,
+			Cert:   serverCertPath,
+			Key:    serverKeyPath,
+			CACert: caCertPath,
 		}
 
 		enable := true
@@ -87,7 +110,22 @@ func TestTLSWithAuth(t *testing.T) {
 			// Use the HOME that makeConfigFile set (temp directory) for certificates
 			home := os.Getenv("HOME")
 			destCertsDir := filepath.Join(home, certsDir1)
-			err := test.CopyTestKeysAndCerts(destCertsDir)
+			err := os.MkdirAll(destCertsDir, 0o755)
+			So(err, ShouldBeNil)
+
+			// Write CA certificate to client certs directory (needed for server verification)
+			err = os.WriteFile(filepath.Join(destCertsDir, "ca.crt"), caCertPEM, 0o600)
+			So(err, ShouldBeNil)
+
+			// Generate and write client certificate and key (needed for mTLS client authentication)
+			clientCertPath := filepath.Join(destCertsDir, "client.cert")
+			clientKeyPath := filepath.Join(destCertsDir, "client.key")
+			clientOpts := &tlsutils.CertificateOptions{
+				CommonName:         "testclient",
+				OrganizationalUnit: "TestClient",
+				NotAfter:           time.Now().AddDate(10, 0, 0),
+			}
+			err = tlsutils.GenerateClientCertToFile(caCertPEM, caKeyPEM, clientCertPath, clientKeyPath, clientOpts)
 			So(err, ShouldBeNil)
 
 			defer os.RemoveAll(destCertsDir)
@@ -112,7 +150,20 @@ func TestTLSWithAuth(t *testing.T) {
 			// Ensure certificates are in the HOME directory that makeConfigFile set
 			home = os.Getenv("HOME")
 			destCertsDir = filepath.Join(home, certsDir1)
-			err = test.CopyTestKeysAndCerts(destCertsDir)
+			err = os.MkdirAll(destCertsDir, 0o755)
+			So(err, ShouldBeNil)
+
+			// Write CA certificate to client certs directory (needed for server verification)
+			err = os.WriteFile(filepath.Join(destCertsDir, "ca.crt"), caCertPEM, 0o600)
+			So(err, ShouldBeNil)
+
+			// Generate and write client certificate and key (needed for mTLS client authentication)
+			clientCertPath = filepath.Join(destCertsDir, "client.cert")
+			clientKeyPath = filepath.Join(destCertsDir, "client.key")
+			clientOpts = &tlsutils.CertificateOptions{
+				CommonName: "testclient",
+			}
+			err = tlsutils.GenerateClientCertToFile(caCertPEM, caKeyPEM, clientCertPath, clientKeyPath, clientOpts)
 			So(err, ShouldBeNil)
 
 			imageCmd = client.NewImageCommand(client.NewSearchService())
@@ -144,10 +195,35 @@ func TestTLSWithAuth(t *testing.T) {
 
 func TestTLSWithoutAuth(t *testing.T) {
 	Convey("Home certs - Make a new controller", t, func() {
-		caCert, err := os.ReadFile(CACert)
+		// Generate certificates using tls library
+		tempDir := t.TempDir()
+		caOpts := &tlsutils.CertificateOptions{
+			CommonName: "*",
+			NotAfter:   time.Now().AddDate(10, 0, 0),
+		}
+		caCertPEM, caKeyPEM, err := tlsutils.GenerateCACert(caOpts)
 		So(err, ShouldBeNil)
+
+		caCertPath := path.Join(tempDir, "ca.crt")
+		caKeyPath := path.Join(tempDir, "ca.key")
+		err = os.WriteFile(caCertPath, caCertPEM, 0o600)
+		So(err, ShouldBeNil)
+		err = os.WriteFile(caKeyPath, caKeyPEM, 0o600)
+		So(err, ShouldBeNil)
+
+		serverCertPath := path.Join(tempDir, "server.cert")
+		serverKeyPath := path.Join(tempDir, "server.key")
+		serverOpts := &tlsutils.CertificateOptions{
+			Hostname:           "127.0.0.1",
+			CommonName:         "*",
+			OrganizationalUnit: "TestServer",
+			NotAfter:           time.Now().AddDate(10, 0, 0),
+		}
+		err = tlsutils.GenerateServerCertToFile(caCertPEM, caKeyPEM, serverCertPath, serverKeyPath, serverOpts)
+		So(err, ShouldBeNil)
+
 		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
+		caCertPool.AppendCertsFromPEM(caCertPEM)
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 
@@ -156,9 +232,9 @@ func TestTLSWithoutAuth(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = SecurePort1
 		conf.HTTP.TLS = &config.TLSConfig{
-			Cert:   ServerCert,
-			Key:    ServerKey,
-			CACert: CACert,
+			Cert:   serverCertPath,
+			Key:    serverKeyPath,
+			CACert: caCertPath,
 		}
 
 		enable := true
@@ -181,7 +257,22 @@ func TestTLSWithoutAuth(t *testing.T) {
 			home := os.Getenv("HOME")
 			destCertsDir := filepath.Join(home, certsDir1)
 
-			err := test.CopyFiles(sourceCertsDir, destCertsDir)
+			err := os.MkdirAll(destCertsDir, 0o755)
+			So(err, ShouldBeNil)
+
+			// Write CA certificate to client certs directory (needed for server verification)
+			err = os.WriteFile(filepath.Join(destCertsDir, "ca.crt"), caCertPEM, 0o600)
+			So(err, ShouldBeNil)
+
+			// Generate and write client certificate and key (needed for mTLS client authentication)
+			clientCertPath := filepath.Join(destCertsDir, "client.cert")
+			clientKeyPath := filepath.Join(destCertsDir, "client.key")
+			clientOpts := &tlsutils.CertificateOptions{
+				CommonName:         "testclient",
+				OrganizationalUnit: "TestClient",
+				NotAfter:           time.Now().AddDate(10, 0, 0),
+			}
+			err = tlsutils.GenerateClientCertToFile(caCertPEM, caKeyPEM, clientCertPath, clientKeyPath, clientOpts)
 			So(err, ShouldBeNil)
 
 			defer os.RemoveAll(destCertsDir)
@@ -200,22 +291,53 @@ func TestTLSWithoutAuth(t *testing.T) {
 
 func TestTLSBadCerts(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		caCert, err := os.ReadFile(CACert)
+		// Generate certificates using tls library
+		tempDir := t.TempDir()
+		caOpts := &tlsutils.CertificateOptions{
+			CommonName: "*",
+			NotAfter:   time.Now().AddDate(10, 0, 0),
+		}
+		caCertPEM, caKeyPEM, err := tlsutils.GenerateCACert(caOpts)
 		So(err, ShouldBeNil)
 
-		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
+		caCertPath := path.Join(tempDir, "ca.crt")
+		caKeyPath := path.Join(tempDir, "ca.key")
+		err = os.WriteFile(caCertPath, caCertPEM, 0o600)
+		So(err, ShouldBeNil)
+		err = os.WriteFile(caKeyPath, caKeyPEM, 0o600)
+		So(err, ShouldBeNil)
 
-		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
+		serverCertPath := path.Join(tempDir, "server.cert")
+		serverKeyPath := path.Join(tempDir, "server.key")
+		serverOpts := &tlsutils.CertificateOptions{
+			Hostname:           "127.0.0.1",
+			CommonName:         "*",
+			OrganizationalUnit: "TestServer",
+			NotAfter:           time.Now().AddDate(10, 0, 0),
+		}
+		err = tlsutils.GenerateServerCertToFile(caCertPEM, caKeyPEM, serverCertPath, serverKeyPath, serverOpts)
+		So(err, ShouldBeNil)
+
+		// Use a different CA for the client to simulate bad certs
+		badCAOpts := &tlsutils.CertificateOptions{
+			CommonName: "*",
+		}
+		badCACertPEM, _, err := tlsutils.GenerateCACert(badCAOpts)
+		So(err, ShouldBeNil)
+
+		badCACertPool := x509.NewCertPool()
+		badCACertPool.AppendCertsFromPEM(badCACertPEM)
+
+		resty.SetTLSClientConfig(&tls.Config{RootCAs: badCACertPool, MinVersion: tls.VersionTLS12})
 
 		defer func() { resty.SetTLSClientConfig(nil) }()
 
 		conf := config.New()
 		conf.HTTP.Port = SecurePort3
 		conf.HTTP.TLS = &config.TLSConfig{
-			Cert:   ServerCert,
-			Key:    ServerKey,
-			CACert: CACert,
+			Cert:   serverCertPath,
+			Key:    serverKeyPath,
+			CACert: caCertPath,
 		}
 
 		ctlr := api.NewController(conf)

@@ -58,7 +58,8 @@ func GetServerStatus(config SearchConfig) error {
 		return err
 	}
 
-	_, err = makeGETRequest(ctx, checkAPISupportEndpoint, username, password, config.VerifyTLS, config.Debug,
+	_, err = config.SearchService.getHTTPClient().makeGETRequest(
+		ctx, checkAPISupportEndpoint, username, password, config.VerifyTLS, config.Debug,
 		nil, config.ResultWriter)
 	if err != nil {
 		serverInfo := ServerInfo{}
@@ -87,7 +88,8 @@ func GetServerStatus(config SearchConfig) error {
 
 	serverInfo := ServerInfo{}
 
-	_, err = makeGETRequest(ctx, mgmtEndpoint, username, password, config.VerifyTLS, config.Debug,
+	_, err = config.SearchService.getHTTPClient().makeGETRequest(
+		ctx, mgmtEndpoint, username, password, config.VerifyTLS, config.Debug,
 		&serverInfo, config.ResultWriter)
 
 	switch {

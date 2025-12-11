@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path"
 	"testing"
 	"time"
 
@@ -22,12 +23,41 @@ import (
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
 	authutils "zotregistry.dev/zot/v2/pkg/test/auth"
 	test "zotregistry.dev/zot/v2/pkg/test/common"
+	tlsutils "zotregistry.dev/zot/v2/pkg/test/tls"
 )
 
-const (
-	ServerCert = "../../test/data/server.cert"
-	ServerKey  = "../../test/data/server.key"
-)
+// setupTestServerCerts generates CA and server certificates for testing.
+// Returns paths to server certificate and key files.
+func setupTestServerCerts(t *testing.T) (string, string) {
+	t.Helper()
+	tempDir := t.TempDir()
+
+	// Generate CA certificate
+	caOpts := &tlsutils.CertificateOptions{
+		CommonName: "*",
+		NotAfter:   time.Now().AddDate(10, 0, 0),
+	}
+	caCertPEM, caKeyPEM, err := tlsutils.GenerateCACert(caOpts)
+	if err != nil {
+		t.Fatalf("Failed to generate CA cert: %v", err)
+	}
+
+	// Generate server certificate
+	serverCertPath := path.Join(tempDir, "server.cert")
+	serverKeyPath := path.Join(tempDir, "server.key")
+	serverOpts := &tlsutils.CertificateOptions{
+		Hostname:           "127.0.0.1",
+		CommonName:         "*",
+		OrganizationalUnit: "TestServer",
+		NotAfter:           time.Now().AddDate(10, 0, 0),
+	}
+	err = tlsutils.GenerateServerCertToFile(caCertPEM, caKeyPEM, serverCertPath, serverKeyPath, serverOpts)
+	if err != nil {
+		t.Fatalf("Failed to generate server cert: %v", err)
+	}
+
+	return serverCertPath, serverKeyPath
+}
 
 func TestEnableExtension(t *testing.T) {
 	Convey("Verify log if sync disabled in config", t, func() {
@@ -861,14 +891,17 @@ func TestMgmtWithBearer(t *testing.T) {
 
 	for _, testCase := range testCases {
 		Convey("Make a new controller with "+testCase.name, t, func() {
+			// Generate certificates dynamically for the test
+			serverCertPath, serverKeyPath := setupTestServerCerts(t)
+
 			authorizedNamespace := "allowedrepo"
 			unauthorizedNamespace := "notallowedrepo"
 
 			var authTestServer *httptest.Server
 			if testCase.useLegacyAuthTestServer {
-				authTestServer = authutils.MakeAuthTestServerLegacy(ServerKey, unauthorizedNamespace)
+				authTestServer = authutils.MakeAuthTestServerLegacy(serverKeyPath, unauthorizedNamespace)
 			} else {
-				authTestServer = authutils.MakeAuthTestServer(ServerKey, "RS256", unauthorizedNamespace)
+				authTestServer = authutils.MakeAuthTestServer(serverKeyPath, "RS256", unauthorizedNamespace)
 			}
 			defer authTestServer.Close()
 
@@ -883,7 +916,7 @@ func TestMgmtWithBearer(t *testing.T) {
 
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
-					Cert:    ServerCert,
+					Cert:    serverCertPath,
 					Realm:   authTestServer.URL + "/auth/token",
 					Service: aurl.Host,
 				},

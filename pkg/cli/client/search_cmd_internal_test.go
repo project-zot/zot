@@ -44,7 +44,7 @@ func TestSearchCommandGQL(t *testing.T) {
 
 		Convey("query", func() {
 			args := []string{"query", "repo/al", "--config", "searchtest"}
-			cmd := NewSearchCommand(mockService{})
+			cmd := NewSearchCommand(newMockService())
 
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
@@ -62,7 +62,7 @@ func TestSearchCommandGQL(t *testing.T) {
 		Convey("query command errors", func() {
 			// no url
 			args := []string{"repo/al", "--config", "searchtest"}
-			cmd := NewSearchQueryCommand(mockService{})
+			cmd := NewSearchQueryCommand(newMockService())
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -76,7 +76,7 @@ func TestSearchCommandGQL(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			args := []string{"subject", "repo:tag", "--config", "searchtest"}
-			cmd := NewSearchCommand(mockService{})
+			cmd := NewSearchCommand(newMockService())
 
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
@@ -93,7 +93,7 @@ func TestSearchCommandGQL(t *testing.T) {
 		Convey("subject command errors", func() {
 			// no url
 			args := []string{"repo:tag", "--config", "searchtest"}
-			cmd := NewSearchSubjectCommand(mockService{})
+			cmd := NewSearchSubjectCommand(newMockService())
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -123,7 +123,7 @@ func TestSearchCommandREST(t *testing.T) {
 
 		Convey("query", func() {
 			args := []string{"query", "repo/al", "--config", "searchtest"}
-			cmd := NewSearchCommand(mockService{})
+			cmd := NewSearchCommand(newMockService())
 
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
@@ -138,7 +138,7 @@ func TestSearchCommandREST(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			args := []string{"subject", "repo:tag", "--config", "searchtest"}
-			cmd := NewSearchCommand(mockService{})
+			cmd := NewSearchCommand(newMockService())
 
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)

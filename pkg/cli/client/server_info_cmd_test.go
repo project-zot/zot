@@ -112,15 +112,17 @@ func TestServerStatusCommandErrors(t *testing.T) {
 
 		// invalid URL
 		err = GetServerStatus(SearchConfig{
-			ServURL:      "a: ds",
-			ResultWriter: os.Stdout,
+			ServURL:       "a: ds",
+			ResultWriter:  os.Stdout,
+			SearchService: NewSearchService(),
 		})
 		So(err, ShouldNotBeNil)
 
 		// fail Get request
 		err = GetServerStatus(SearchConfig{
-			ServURL:      "http://127.0.0.1:8000",
-			ResultWriter: os.Stdout,
+			ServURL:       "http://127.0.0.1:8000",
+			ResultWriter:  os.Stdout,
+			SearchService: NewSearchService(),
 		})
 		So(err, ShouldBeNil)
 	})
@@ -129,7 +131,7 @@ func TestServerStatusCommandErrors(t *testing.T) {
 		port := test.GetFreePort()
 		result := bytes.NewBuffer([]byte{})
 		searchConfig := SearchConfig{
-			SearchService: mockService{},
+			SearchService: newMockService(),
 			ServURL:       fmt.Sprintf("http://127.0.0.1:%v", port),
 			User:          "",
 			OutputFormat:  "text",

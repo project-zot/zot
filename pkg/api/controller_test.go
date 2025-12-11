@@ -71,20 +71,10 @@ import (
 	ociutils "zotregistry.dev/zot/v2/pkg/test/oci-utils"
 	"zotregistry.dev/zot/v2/pkg/test/signature"
 	tskip "zotregistry.dev/zot/v2/pkg/test/skip"
+	tlsutils "zotregistry.dev/zot/v2/pkg/test/tls"
 )
 
 const (
-	ServerCert             = "../../test/data/server.cert"
-	ServerKey              = "../../test/data/server.key"
-	ServerPublicKey        = "../../test/data/server-public.key"
-	ServerPublicKeyPKCS1   = "../../test/data/server-public-pkcs1.key"
-	CACert                 = "../../test/data/ca.crt"
-	ServerCertECDSA        = "../../test/data/server-ecdsa.cert"
-	ServerKeyECDSA         = "../../test/data/server-ecdsa.key"
-	ServerPublicKeyECDSA   = "../../test/data/server-public-ecdsa.key"
-	ServerCertED25519      = "../../test/data/server-ed25519.cert"
-	ServerKeyED25519       = "../../test/data/server-ed25519.key"
-	ServerPublicKeyED25519 = "../../test/data/server-public-ed25519.key"
 	UnauthorizedNamespace  = "fortknox/notallowed"
 	AuthorizationNamespace = "authz/image"
 	LDAPAddress            = "127.0.0.1"
@@ -99,6 +89,149 @@ var (
 	LDAPBindPassword = "ldappass"                //nolint: gochecknoglobals
 	LDAPUserAttr     = "uid"                     //nolint: gochecknoglobals
 )
+
+// setupTestCerts generates CA, server, and client certificates for testing.
+// Returns paths to certificate files and PEM data for CA cert.
+func setupTestCerts(t *testing.T) (
+	string, string, string, string, string, []byte,
+) {
+	t.Helper()
+	tempDir := t.TempDir()
+
+	// Generate CA certificate (10 years validity, matching gen_certs.sh)
+	caOpts := &tlsutils.CertificateOptions{
+		CommonName: "*",
+		NotAfter:   time.Now().AddDate(10, 0, 0),
+	}
+	caCertPEM, caKeyPEM, err := tlsutils.GenerateCACert(caOpts)
+	if err != nil {
+		t.Fatalf("Failed to generate CA cert: %v", err)
+	}
+
+	caCertPath := path.Join(tempDir, "ca.crt")
+	caKeyPath := path.Join(tempDir, "ca.key")
+	err = os.WriteFile(caCertPath, caCertPEM, 0o600)
+	if err != nil {
+		t.Fatalf("Failed to write CA cert: %v", err)
+	}
+	_ = os.WriteFile(caKeyPath, caKeyPEM, 0o600)
+
+	// Generate server certificate
+	serverCertPath := path.Join(tempDir, "server.cert")
+	serverKeyPath := path.Join(tempDir, "server.key")
+	serverOpts := &tlsutils.CertificateOptions{
+		Hostname:           "127.0.0.1",
+		CommonName:         "*",
+		OrganizationalUnit: "TestServer",
+		NotAfter:           time.Now().AddDate(10, 0, 0),
+	}
+	err = tlsutils.GenerateServerCertToFile(caCertPEM, caKeyPEM, serverCertPath, serverKeyPath, serverOpts)
+	if err != nil {
+		t.Fatalf("Failed to generate server cert: %v", err)
+	}
+
+	// Generate client certificate (10 years validity, matching gen_certs.sh)
+	clientCertPath := path.Join(tempDir, "client.cert")
+	clientKeyPath := path.Join(tempDir, "client.key")
+	clientOpts := &tlsutils.CertificateOptions{
+		CommonName:         "testclient",
+		OrganizationalUnit: "TestClient",
+		NotAfter:           time.Now().AddDate(10, 0, 0),
+	}
+	err = tlsutils.GenerateClientCertToFile(caCertPEM, caKeyPEM, clientCertPath, clientKeyPath, clientOpts)
+	if err != nil {
+		t.Fatalf("Failed to generate client cert: %v", err)
+	}
+
+	return caCertPath, serverCertPath, serverKeyPath, clientCertPath, clientKeyPath, caCertPEM
+}
+
+// setupBearerAuthServerCerts generates CA and server certificates for bearer auth server testing
+// with a specific key type. Returns paths to server certificate, key, and public key files.
+func setupBearerAuthServerCerts(t *testing.T, keyType tlsutils.KeyType) (
+	string, string, string, string,
+) {
+	t.Helper()
+	tempDir := t.TempDir()
+
+	// Generate CA certificate with specified key type
+	caOpts := &tlsutils.CertificateOptions{
+		CommonName: "*",
+		NotAfter:   time.Now().AddDate(10, 0, 0),
+		KeyType:    keyType,
+	}
+	caCertPEM, caKeyPEM, err := tlsutils.GenerateCACert(caOpts)
+	if err != nil {
+		t.Fatalf("Failed to generate CA cert: %v", err)
+	}
+
+	// Generate server certificate with specified key type
+	serverCertPath := path.Join(tempDir, "server.cert")
+	serverKeyPath := path.Join(tempDir, "server.key")
+	serverOpts := &tlsutils.CertificateOptions{
+		Hostname:           "127.0.0.1",
+		CommonName:         "*",
+		OrganizationalUnit: "TestServer",
+		NotAfter:           time.Now().AddDate(10, 0, 0),
+		KeyType:            keyType,
+	}
+	err = tlsutils.GenerateServerCertToFile(caCertPEM, caKeyPEM, serverCertPath, serverKeyPath, serverOpts)
+	if err != nil {
+		t.Fatalf("Failed to generate server cert: %v", err)
+	}
+
+	// Extract public keys from server certificate/key
+	serverCertBytes, err := os.ReadFile(serverCertPath)
+	if err != nil {
+		t.Fatalf("Failed to read server cert: %v", err)
+	}
+
+	serverPublicKeyPath := path.Join(tempDir, "server-public.key")
+
+	var serverPublicKeyPKCS1Path string
+
+	if keyType == tlsutils.KeyTypeRSA {
+		// For RSA, also generate PKCS1 format public key
+		serverKeyBytes, err := os.ReadFile(serverKeyPath)
+		if err != nil {
+			t.Fatalf("Failed to read server key: %v", err)
+		}
+
+		// Extract PKIX format public key (from cert)
+		publicKeyPKIX, err := tlsutils.ExtractPublicKeyFromCert(serverCertBytes)
+		if err != nil {
+			t.Fatalf("Failed to extract public key from cert: %v", err)
+		}
+		err = os.WriteFile(serverPublicKeyPath, publicKeyPKIX, 0o600)
+		if err != nil {
+			t.Fatalf("Failed to write server public key: %v", err)
+		}
+
+		// Extract PKCS1 format public key (from private key)
+		serverPublicKeyPKCS1Path = path.Join(tempDir, "server-public-pkcs1.key")
+		publicKeyPKCS1, err := tlsutils.ExtractRSAPublicKeyPKCS1(serverKeyBytes)
+		if err != nil {
+			t.Fatalf("Failed to extract PKCS1 public key: %v", err)
+		}
+		err = os.WriteFile(serverPublicKeyPKCS1Path, publicKeyPKCS1, 0o600)
+		if err != nil {
+			t.Fatalf("Failed to write server PKCS1 public key: %v", err)
+		}
+	} else {
+		// For ECDSA and ED25519, extract PKIX format public key
+		publicKeyPKIX, err := tlsutils.ExtractPublicKeyFromCert(serverCertBytes)
+		if err != nil {
+			t.Fatalf("Failed to extract public key from cert: %v", err)
+		}
+		err = os.WriteFile(serverPublicKeyPath, publicKeyPKIX, 0o600)
+		if err != nil {
+			t.Fatalf("Failed to write server public key: %v", err)
+		}
+		serverPublicKeyPKCS1Path = "" // Not applicable for non-RSA keys
+	}
+
+	return serverCertPath, serverKeyPath, serverPublicKeyPath, serverPublicKeyPKCS1Path
+}
 
 func TestNew(t *testing.T) {
 	Convey("Make a new controller", t, func() {
@@ -1347,11 +1480,10 @@ func TestScaleOutRequestProxy(t *testing.T) {
 			clusterMembers[idx] = "127.0.0.1:" + port
 		}
 
-		caCert, err := os.ReadFile(CACert)
-		So(err, ShouldBeNil)
+		caCertPath, serverCertPath, serverKeyPath, _, _, caCertPEM := setupTestCerts(t)
 
 		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
+		caCertPool.AppendCertsFromPEM(caCertPEM)
 
 		username, _ := test.GenerateRandomString()
 		password, _ := test.GenerateRandomString()
@@ -1365,8 +1497,8 @@ func TestScaleOutRequestProxy(t *testing.T) {
 			conf := config.New()
 			conf.HTTP.Port = port
 			conf.HTTP.TLS = &config.TLSConfig{
-				Cert: ServerCert,
-				Key:  ServerKey,
+				Cert: serverCertPath,
+				Key:  serverKeyPath,
 			}
 			conf.HTTP.Auth = &config.AuthConfig{
 				HTPasswd: config.AuthHTPasswd{
@@ -1377,7 +1509,7 @@ func TestScaleOutRequestProxy(t *testing.T) {
 				Members: clusterMembers,
 				HashKey: "loremipsumdolors",
 				TLS: &config.TLSConfig{
-					CACert: CACert,
+					CACert: caCertPath,
 				},
 			}
 
@@ -1445,12 +1577,14 @@ func TestScaleOutRequestProxy(t *testing.T) {
 			clusterMembers[idx] = "127.0.0.1:" + port
 		}
 
+		_, serverCertPath, serverKeyPath, _, _, caCertPEM := setupTestCerts(t)
+
 		for _, port := range ports {
 			conf := config.New()
 			conf.HTTP.Port = port
 			conf.HTTP.TLS = &config.TLSConfig{
-				Cert: ServerCert,
-				Key:  ServerKey,
+				Cert: serverCertPath,
+				Key:  serverKeyPath,
 			}
 			conf.Cluster = &config.ClusterConfig{
 				Members: clusterMembers,
@@ -1469,11 +1603,8 @@ func TestScaleOutRequestProxy(t *testing.T) {
 			}(cm)
 		}
 
-		caCert, err := os.ReadFile(CACert)
-		So(err, ShouldBeNil)
-
 		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
+		caCertPool.AppendCertsFromPEM(caCertPEM)
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 
 		defer func() { resty.SetTLSClientConfig(nil) }()
@@ -1509,18 +1640,21 @@ func TestScaleOutRequestProxy(t *testing.T) {
 			clusterMembers[idx] = "127.0.0.1:" + port
 		}
 
+		// Generate certificates dynamically for the test
+		caCertPath, serverCertPath, serverKeyPath, _, _, caCertPEM := setupTestCerts(t)
+
 		for _, port := range ports {
 			conf := config.New()
 			conf.HTTP.Port = port
 			conf.HTTP.TLS = &config.TLSConfig{
-				Cert: ServerCert,
-				Key:  ServerKey,
+				Cert: serverCertPath,
+				Key:  serverKeyPath,
 			}
 			conf.Cluster = &config.ClusterConfig{
 				Members: clusterMembers,
 				HashKey: "loremipsumdolors",
 				TLS: &config.TLSConfig{
-					CACert: CACert,
+					CACert: caCertPath,
 					Cert:   "/tmp/does-not-exist.crt",
 				},
 			}
@@ -1535,11 +1669,8 @@ func TestScaleOutRequestProxy(t *testing.T) {
 			}(cm)
 		}
 
-		caCert, err := os.ReadFile(CACert)
-		So(err, ShouldBeNil)
-
 		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
+		caCertPool.AppendCertsFromPEM(caCertPEM)
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 
 		defer func() { resty.SetTLSClientConfig(nil) }()
@@ -1575,19 +1706,21 @@ func TestScaleOutRequestProxy(t *testing.T) {
 			clusterMembers[idx] = "127.0.0.1:" + port
 		}
 
+		caCertPath, serverCertPath, serverKeyPath, _, _, caCertPEM := setupTestCerts(t)
+
 		for _, port := range ports {
 			conf := config.New()
 			conf.HTTP.Port = port
 			conf.HTTP.TLS = &config.TLSConfig{
-				Cert: ServerCert,
-				Key:  ServerKey,
+				Cert: serverCertPath,
+				Key:  serverKeyPath,
 			}
 			conf.Cluster = &config.ClusterConfig{
 				Members: clusterMembers,
 				HashKey: "loremipsumdolors",
 				TLS: &config.TLSConfig{
-					CACert: CACert,
-					Cert:   ServerCert,
+					CACert: caCertPath,
+					Cert:   serverCertPath,
 					Key:    "/tmp/does-not-exist.crt",
 				},
 			}
@@ -1602,11 +1735,8 @@ func TestScaleOutRequestProxy(t *testing.T) {
 			}(cm)
 		}
 
-		caCert, err := os.ReadFile(CACert)
-		So(err, ShouldBeNil)
-
 		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
+		caCertPool.AppendCertsFromPEM(caCertPEM)
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 
 		defer func() { resty.SetTLSClientConfig(nil) }()
@@ -2056,11 +2186,10 @@ func TestMultipleInstance(t *testing.T) {
 
 func TestTLSWithBasicAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		caCert, err := os.ReadFile(CACert)
-		So(err, ShouldBeNil)
+		_, serverCertPath, serverKeyPath, _, _, caCertPEM := setupTestCerts(t)
 
 		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
+		caCertPool.AppendCertsFromPEM(caCertPEM)
 
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
@@ -2078,8 +2207,8 @@ func TestTLSWithBasicAuth(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 		conf.HTTP.TLS = &config.TLSConfig{
-			Cert: ServerCert,
-			Key:  ServerKey,
+			Cert: serverCertPath,
+			Key:  serverKeyPath,
 		}
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
@@ -2125,11 +2254,11 @@ func TestTLSWithBasicAuth(t *testing.T) {
 
 func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		caCert, err := os.ReadFile(CACert)
-		So(err, ShouldBeNil)
+		// Generate certificates dynamically for the test
+		_, serverCertPath, serverKeyPath, _, _, caCertPEM := setupTestCerts(t)
 
 		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
+		caCertPool.AppendCertsFromPEM(caCertPEM)
 
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
@@ -2152,8 +2281,8 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 			},
 		}
 		conf.HTTP.TLS = &config.TLSConfig{
-			Cert: ServerCert,
-			Key:  ServerKey,
+			Cert: serverCertPath,
+			Key:  serverKeyPath,
 		}
 
 		conf.HTTP.AccessControl = &config.AccessControlConfig{
@@ -2201,11 +2330,10 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 
 func TestMutualTLSAuthWithUserPermissions(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		caCert, err := os.ReadFile(CACert)
-		So(err, ShouldBeNil)
+		caCertPath, serverCertPath, serverKeyPath, clientCertPath, clientKeyPath, caCertPEM := setupTestCerts(t)
 
 		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
+		caCertPool.AppendCertsFromPEM(caCertPEM)
 
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
@@ -2219,9 +2347,9 @@ func TestMutualTLSAuthWithUserPermissions(t *testing.T) {
 		conf.HTTP.Port = port
 
 		conf.HTTP.TLS = &config.TLSConfig{
-			Cert:   ServerCert,
-			Key:    ServerKey,
-			CACert: CACert,
+			Cert:   serverCertPath,
+			Key:    serverKeyPath,
+			CACert: caCertPath,
 		}
 
 		conf.HTTP.AccessControl = &config.AccessControlConfig{
@@ -2229,7 +2357,7 @@ func TestMutualTLSAuthWithUserPermissions(t *testing.T) {
 				test.AuthorizationAllRepos: config.PolicyGroup{
 					Policies: []config.Policy{
 						{
-							Users:   []string{"*"},
+							Users:   []string{"testclient"},
 							Actions: []string{"read"},
 						},
 					},
@@ -2252,7 +2380,7 @@ func TestMutualTLSAuthWithUserPermissions(t *testing.T) {
 		repoPolicy := conf.HTTP.AccessControl.Repositories[test.AuthorizationAllRepos]
 
 		// setup TLS mutual auth
-		cert, err := tls.LoadX509KeyPair("../../test/data/client.cert", "../../test/data/client.key")
+		cert, err := tls.LoadX509KeyPair(clientCertPath, clientKeyPath)
 		So(err, ShouldBeNil)
 
 		// Use separate resty client with certificates, because we cannot perform cleanup with resty.SetCertificates()
@@ -2361,6 +2489,8 @@ func TestAuthnErrors(t *testing.T) {
 		port := test.GetFreePort()
 		conf := config.New()
 		conf.HTTP.Port = port
+		// Generate certificates dynamically for the test
+		caCertPath, _, _, _, _, _ := setupTestCerts(t)
 
 		conf.HTTP.Auth.LDAP = (&config.LDAPConfig{
 			Insecure:      true,
@@ -2368,7 +2498,7 @@ func TestAuthnErrors(t *testing.T) {
 			Port:          9000,
 			BaseDN:        LDAPBaseDN,
 			UserAttribute: "uid",
-			CACert:        CACert,
+			CACert:        caCertPath,
 		}).SetBindDN(LDAPBindDN).SetBindPassword(LDAPBindPassword)
 
 		ctlr := makeController(conf, t.TempDir())
@@ -2488,11 +2618,42 @@ func TestAuthnErrors(t *testing.T) {
 
 func TestMutualTLSAuthWithoutCN(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		caCert, err := os.ReadFile("../../test/data/noidentity/ca.crt")
+		// Generate certificates without CommonName for client
+		tempDir := t.TempDir()
+		caOpts := &tlsutils.CertificateOptions{
+			CommonName: "*",
+			NotAfter:   time.Now().AddDate(10, 0, 0),
+		}
+		caCertPEM, caKeyPEM, err := tlsutils.GenerateCACert(caOpts)
+		So(err, ShouldBeNil)
+
+		caCertPath := path.Join(tempDir, "ca.crt")
+		err = os.WriteFile(caCertPath, caCertPEM, 0o600)
+		So(err, ShouldBeNil)
+
+		serverCertPath := path.Join(tempDir, "server.cert")
+		serverKeyPath := path.Join(tempDir, "server.key")
+		serverOpts := &tlsutils.CertificateOptions{
+			Hostname:           "127.0.0.1",
+			CommonName:         "*",
+			OrganizationalUnit: "TestServer",
+			NotAfter:           time.Now().AddDate(10, 0, 0),
+		}
+		err = tlsutils.GenerateServerCertToFile(caCertPEM, caKeyPEM, serverCertPath, serverKeyPath, serverOpts)
+		So(err, ShouldBeNil)
+
+		// Generate client certificate without CommonName (10 years validity, matching gen_certs.sh)
+		clientCertPath := path.Join(tempDir, "client.cert")
+		clientKeyPath := path.Join(tempDir, "client.key")
+		clientOpts := &tlsutils.CertificateOptions{
+			// CommonName intentionally not set
+			NotAfter: time.Now().AddDate(10, 0, 0),
+		}
+		err = tlsutils.GenerateClientCertToFile(caCertPEM, caKeyPEM, clientCertPath, clientKeyPath, clientOpts)
 		So(err, ShouldBeNil)
 
 		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
+		caCertPool.AppendCertsFromPEM(caCertPEM)
 
 		port := test.GetFreePort()
 		secureBaseURL := test.GetSecureBaseURL(port)
@@ -2505,9 +2666,9 @@ func TestMutualTLSAuthWithoutCN(t *testing.T) {
 		conf.HTTP.Port = port
 
 		conf.HTTP.TLS = &config.TLSConfig{
-			Cert:   "../../test/data/noidentity/server.cert",
-			Key:    "../../test/data/noidentity/server.key",
-			CACert: "../../test/data/noidentity/ca.crt",
+			Cert:   serverCertPath,
+			Key:    serverKeyPath,
+			CACert: caCertPath,
 		}
 
 		conf.HTTP.AccessControl = &config.AccessControlConfig{
@@ -2531,7 +2692,7 @@ func TestMutualTLSAuthWithoutCN(t *testing.T) {
 		defer cm.StopServer()
 
 		// setup TLS mutual auth
-		cert, err := tls.LoadX509KeyPair("../../test/data/noidentity/client.cert", "../../test/data/noidentity/client.key")
+		cert, err := tls.LoadX509KeyPair(clientCertPath, clientKeyPath)
 		So(err, ShouldBeNil)
 
 		// Use separate resty client with certificates, because we cannot perform cleanup with resty.SetCertificates()
@@ -2549,11 +2710,10 @@ func TestMutualTLSAuthWithoutCN(t *testing.T) {
 
 func TestTLSMutualAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		caCert, err := os.ReadFile(CACert)
-		So(err, ShouldBeNil)
+		caCertPath, serverCertPath, serverKeyPath, clientCertPath, clientKeyPath, caCertPEM := setupTestCerts(t)
 
 		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
+		caCertPool.AppendCertsFromPEM(caCertPEM)
 
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
@@ -2562,9 +2722,9 @@ func TestTLSMutualAuth(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 		conf.HTTP.TLS = &config.TLSConfig{
-			Cert:   ServerCert,
-			Key:    ServerKey,
-			CACert: CACert,
+			Cert:   serverCertPath,
+			Key:    serverKeyPath,
+			CACert: caCertPath,
 		}
 
 		ctlr := makeController(conf, t.TempDir())
@@ -2622,7 +2782,7 @@ func TestTLSMutualAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		// setup TLS mutual auth
-		cert, err := tls.LoadX509KeyPair("../../test/data/client.cert", "../../test/data/client.key")
+		cert, err := tls.LoadX509KeyPair(clientCertPath, clientKeyPath)
 		So(err, ShouldBeNil)
 
 		client = resty.New().SetTLSClientConfig(&tls.Config{
@@ -2651,18 +2811,19 @@ func TestTLSMutualAuth(t *testing.T) {
 
 func TestTSLFailedReadingOfCACert(t *testing.T) {
 	Convey("no permissions", t, func() {
+		caCertPath, serverCertPath, serverKeyPath, _, _, _ := setupTestCerts(t)
 		port := test.GetFreePort()
 		conf := config.New()
 		conf.HTTP.Port = port
 		conf.HTTP.TLS = &config.TLSConfig{
-			Cert:   ServerCert,
-			Key:    ServerKey,
-			CACert: CACert,
+			Cert:   serverCertPath,
+			Key:    serverKeyPath,
+			CACert: caCertPath,
 		}
 
-		err := os.Chmod(CACert, 0o000)
+		err := os.Chmod(caCertPath, 0o000)
 		defer func() {
-			err := os.Chmod(CACert, 0o644)
+			err := os.Chmod(caCertPath, 0o644)
 			So(err, ShouldBeNil)
 		}()
 		So(err, ShouldBeNil)
@@ -2701,12 +2862,13 @@ func TestTSLFailedReadingOfCACert(t *testing.T) {
 		err := os.WriteFile(badCACert, []byte(""), 0o600)
 		So(err, ShouldBeNil)
 
+		_, serverCertPath, serverKeyPath, _, _, _ := setupTestCerts(t)
 		port := test.GetFreePort()
 		conf := config.New()
 		conf.HTTP.Port = port
 		conf.HTTP.TLS = &config.TLSConfig{
-			Cert:   ServerCert,
-			Key:    ServerKey,
+			Cert:   serverCertPath,
+			Key:    serverKeyPath,
 			CACert: badCACert,
 		}
 
@@ -2742,11 +2904,10 @@ func TestTSLFailedReadingOfCACert(t *testing.T) {
 
 func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		caCert, err := os.ReadFile(CACert)
-		So(err, ShouldBeNil)
+		caCertPath, serverCertPath, serverKeyPath, clientCertPath, clientKeyPath, caCertPEM := setupTestCerts(t)
 
 		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
+		caCertPool.AppendCertsFromPEM(caCertPEM)
 
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
@@ -2761,9 +2922,9 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 		conf.HTTP.TLS = &config.TLSConfig{
-			Cert:   ServerCert,
-			Key:    ServerKey,
-			CACert: CACert,
+			Cert:   serverCertPath,
+			Key:    serverKeyPath,
+			CACert: caCertPath,
 		}
 
 		conf.HTTP.AccessControl = &config.AccessControlConfig{
@@ -2808,7 +2969,7 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		// setup TLS mutual auth
-		cert, err := tls.LoadX509KeyPair("../../test/data/client.cert", "../../test/data/client.key")
+		cert, err := tls.LoadX509KeyPair(clientCertPath, clientKeyPath)
 		So(err, ShouldBeNil)
 
 		// Use separate resty client with certificates, because we cannot perform cleanup with resty.SetCertificates()
@@ -2844,11 +3005,10 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 
 func TestTLSMutualAndBasicAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		caCert, err := os.ReadFile(CACert)
-		So(err, ShouldBeNil)
+		caCertPath, serverCertPath, serverKeyPath, clientCertPath, clientKeyPath, caCertPEM := setupTestCerts(t)
 
 		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
+		caCertPool.AppendCertsFromPEM(caCertPEM)
 
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
@@ -2871,9 +3031,9 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 			},
 		}
 		conf.HTTP.TLS = &config.TLSConfig{
-			Cert:   ServerCert,
-			Key:    ServerKey,
-			CACert: CACert,
+			Cert:   serverCertPath,
+			Key:    serverKeyPath,
+			CACert: caCertPath,
 		}
 
 		ctlr := makeController(conf, t.TempDir())
@@ -2903,7 +3063,7 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 
 		// setup TLS mutual auth
-		cert, err := tls.LoadX509KeyPair("../../test/data/client.cert", "../../test/data/client.key")
+		cert, err := tls.LoadX509KeyPair(clientCertPath, clientKeyPath)
 		So(err, ShouldBeNil)
 
 		// Use separate resty client with certificates, because we cannot perform cleanup with resty.SetCertificates()
@@ -2932,11 +3092,10 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 
 func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		caCert, err := os.ReadFile(CACert)
-		So(err, ShouldBeNil)
+		caCertPath, serverCertPath, serverKeyPath, clientCertPath, clientKeyPath, caCertPEM := setupTestCerts(t)
 
 		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
+		caCertPool.AppendCertsFromPEM(caCertPEM)
 
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
@@ -2959,9 +3118,9 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 			},
 		}
 		conf.HTTP.TLS = &config.TLSConfig{
-			Cert:   ServerCert,
-			Key:    ServerKey,
-			CACert: CACert,
+			Cert:   serverCertPath,
+			Key:    serverKeyPath,
+			CACert: caCertPath,
 		}
 
 		conf.HTTP.AccessControl = &config.AccessControlConfig{
@@ -2999,7 +3158,7 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 
 		// setup TLS mutual auth
-		cert, err := tls.LoadX509KeyPair("../../test/data/client.cert", "../../test/data/client.key")
+		cert, err := tls.LoadX509KeyPair(clientCertPath, clientKeyPath)
 		So(err, ShouldBeNil)
 
 		// Use separate resty client with certificates, because we cannot perform cleanup with resty.SetCertificates()
@@ -3965,58 +4124,79 @@ func TestLDAPClient(t *testing.T) {
 
 func TestBearerAuthMultipleAlgorithms(t *testing.T) {
 	testCases := []struct {
-		name string
-		key  string
-		cert string
-		alg  string
+		name    string
+		keyType tlsutils.KeyType
+		certUse string // "certificate" or "publickey" or "publickey-pkcs1" (RSA only)
+		alg     string
 	}{
 		{
 			"RSA signing key using certificate",
-			ServerKey,
-			ServerCert,
+			tlsutils.KeyTypeRSA,
+			"certificate",
 			"RS256",
 		},
 		{
 			"RSA signing key using public key",
-			ServerKey,
-			ServerPublicKey,
+			tlsutils.KeyTypeRSA,
+			"publickey",
 			"RS256",
 		},
 		{
 			"RSA signing key using public key in PKCS1 format",
-			ServerKey,
-			ServerPublicKeyPKCS1,
+			tlsutils.KeyTypeRSA,
+			"publickey-pkcs1",
 			"RS256",
 		},
 		{
 			"ECDSA signing key using certificate",
-			ServerKeyECDSA,
-			ServerCertECDSA,
+			tlsutils.KeyTypeECDSA,
+			"certificate",
 			"ES256",
 		},
 		{
 			"ECDSA signing key using public key",
-			ServerKeyECDSA,
-			ServerPublicKeyECDSA,
+			tlsutils.KeyTypeECDSA,
+			"publickey",
 			"ES256",
 		},
 		{
 			"ED25519 signing key using certificate",
-			ServerKeyED25519,
-			ServerCertED25519,
+			tlsutils.KeyTypeED25519,
+			"certificate",
 			"EdDSA",
 		},
 		{
 			"ED25519 signing key using public key",
-			ServerKeyED25519,
-			ServerPublicKeyED25519,
+			tlsutils.KeyTypeED25519,
+			"publickey",
 			"EdDSA",
 		},
 	}
 
 	for _, testCase := range testCases {
 		Convey("Make a new controller with "+testCase.name, t, func() {
-			authTestServer := authutils.MakeAuthTestServer(testCase.key, testCase.alg, UnauthorizedNamespace)
+			// Generate certificates dynamically for the test
+			serverCertPath, serverKeyPath, serverPublicKeyPath, serverPublicKeyPKCS1Path := setupBearerAuthServerCerts(
+				t, testCase.keyType)
+
+			// Determine which cert/key to use based on test case
+			var keyPath, certPath string
+			switch testCase.certUse {
+			case "certificate":
+				certPath = serverCertPath
+			case "publickey":
+				certPath = serverPublicKeyPath
+			case "publickey-pkcs1":
+				if testCase.keyType != tlsutils.KeyTypeRSA {
+					t.Fatalf("PKCS1 format only supported for RSA keys")
+				}
+				certPath = serverPublicKeyPKCS1Path
+			default:
+				t.Fatalf("Unknown cert use: %s", testCase.certUse)
+			}
+			keyPath = serverKeyPath
+
+			authTestServer := authutils.MakeAuthTestServer(keyPath, testCase.alg, UnauthorizedNamespace)
 			defer authTestServer.Close()
 
 			port := test.GetFreePort()
@@ -4030,7 +4210,7 @@ func TestBearerAuthMultipleAlgorithms(t *testing.T) {
 
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
-					Cert:    testCase.cert,
+					Cert:    certPath,
 					Realm:   authTestServer.URL + "/auth/token",
 					Service: aurl.Host,
 				},
@@ -4087,11 +4267,14 @@ func TestBearerAuth(t *testing.T) {
 
 	for _, testCase := range testCases {
 		Convey("Make a new controller with "+testCase.name, t, func() {
+			// Generate certificates dynamically for the test
+			serverCertPath, serverKeyPath, _, _ := setupBearerAuthServerCerts(t, tlsutils.KeyTypeRSA)
+
 			var authTestServer *httptest.Server
 			if testCase.useLegacyAuthTestServer {
-				authTestServer = authutils.MakeAuthTestServerLegacy(ServerKey, UnauthorizedNamespace)
+				authTestServer = authutils.MakeAuthTestServerLegacy(serverKeyPath, UnauthorizedNamespace)
 			} else {
-				authTestServer = authutils.MakeAuthTestServer(ServerKey, "RS256", UnauthorizedNamespace)
+				authTestServer = authutils.MakeAuthTestServer(serverKeyPath, "RS256", UnauthorizedNamespace)
 			}
 			defer authTestServer.Close()
 
@@ -4106,7 +4289,7 @@ func TestBearerAuth(t *testing.T) {
 
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
-					Cert:    ServerCert,
+					Cert:    serverCertPath,
 					Realm:   authTestServer.URL + "/auth/token",
 					Service: aurl.Host,
 				},
@@ -4315,11 +4498,14 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 
 	for _, testCase := range testCases {
 		Convey("Make a new controller with"+testCase.name, t, func() {
+			// Generate certificates dynamically for the test
+			serverCertPath, serverKeyPath, _, _ := setupBearerAuthServerCerts(t, tlsutils.KeyTypeRSA)
+
 			var authTestServer *httptest.Server
 			if testCase.useLegacyAuthTestServer {
-				authTestServer = authutils.MakeAuthTestServerLegacy(ServerKey, UnauthorizedNamespace)
+				authTestServer = authutils.MakeAuthTestServerLegacy(serverKeyPath, UnauthorizedNamespace)
 			} else {
-				authTestServer = authutils.MakeAuthTestServer(ServerKey, "RS256", UnauthorizedNamespace)
+				authTestServer = authutils.MakeAuthTestServer(serverKeyPath, "RS256", UnauthorizedNamespace)
 			}
 			defer authTestServer.Close()
 
@@ -4334,7 +4520,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
-					Cert:    ServerCert,
+					Cert:    serverCertPath,
 					Realm:   authTestServer.URL + "/auth/token",
 					Service: aurl.Host,
 				},
@@ -4545,9 +4731,11 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 		})
 
 		Convey("https callback", func() {
+			// Generate certificates dynamically for the test
+			_, serverCertPath, serverKeyPath, _, _, _ := setupTestCerts(t)
 			conf.HTTP.TLS = &config.TLSConfig{
-				Cert: ServerCert,
-				Key:  ServerKey,
+				Cert: serverCertPath,
+				Key:  serverKeyPath,
 			}
 
 			rp := api.NewRelyingPartyOIDC(ctx, conf, "oidc", nil, nil, log.NewTestLogger())

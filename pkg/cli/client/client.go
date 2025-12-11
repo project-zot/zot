@@ -21,12 +21,20 @@ import (
 	"zotregistry.dev/zot/v2/pkg/common"
 )
 
-var (
-	httpClientsMap = make(map[string]*http.Client) //nolint: gochecknoglobals
-	httpClientLock sync.Mutex                      //nolint: gochecknoglobals
-)
+// HTTPClient manages HTTP clients with TLS support and caching.
+type HTTPClient struct {
+	clients map[string]*http.Client
+	mu      sync.Mutex
+}
 
-func makeGETRequest(ctx context.Context, url, username, password string,
+// NewHTTPClient creates a new HTTPClient instance.
+func NewHTTPClient() *HTTPClient {
+	return &HTTPClient{
+		clients: make(map[string]*http.Client),
+	}
+}
+
+func (c *HTTPClient) makeGETRequest(ctx context.Context, url, username, password string,
 	verifyTLS bool, debug bool, resultsPtr any, configWriter io.Writer,
 ) (http.Header, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -36,10 +44,10 @@ func makeGETRequest(ctx context.Context, url, username, password string,
 
 	req.SetBasicAuth(username, password)
 
-	return doHTTPRequest(req, verifyTLS, debug, resultsPtr, configWriter)
+	return c.doHTTPRequest(req, verifyTLS, debug, resultsPtr, configWriter)
 }
 
-func makeHEADRequest(ctx context.Context, url, username, password string, verifyTLS bool,
+func (c *HTTPClient) makeHEADRequest(ctx context.Context, url, username, password string, verifyTLS bool,
 	debug bool,
 ) (http.Header, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
@@ -49,10 +57,10 @@ func makeHEADRequest(ctx context.Context, url, username, password string, verify
 
 	req.SetBasicAuth(username, password)
 
-	return doHTTPRequest(req, verifyTLS, debug, nil, io.Discard)
+	return c.doHTTPRequest(req, verifyTLS, debug, nil, io.Discard)
 }
 
-func makeGraphQLRequest(ctx context.Context, url, query, username,
+func (c *HTTPClient) makeGraphQLRequest(ctx context.Context, url, query, username,
 	password string, verifyTLS bool, debug bool, resultsPtr any, configWriter io.Writer,
 ) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, bytes.NewBufferString(query))
@@ -68,7 +76,7 @@ func makeGraphQLRequest(ctx context.Context, url, query, username,
 	req.SetBasicAuth(username, password)
 	req.Header.Add("Content-Type", "application/json")
 
-	_, err = doHTTPRequest(req, verifyTLS, debug, resultsPtr, configWriter)
+	_, err = c.doHTTPRequest(req, verifyTLS, debug, resultsPtr, configWriter)
 	if err != nil {
 		return err
 	}
@@ -76,7 +84,7 @@ func makeGraphQLRequest(ctx context.Context, url, query, username,
 	return nil
 }
 
-func doHTTPRequest(req *http.Request, verifyTLS bool, debug bool,
+func (c *HTTPClient) doHTTPRequest(req *http.Request, verifyTLS bool, debug bool,
 	resultsPtr any, configWriter io.Writer,
 ) (http.Header, error) {
 	var httpClient *http.Client
@@ -91,9 +99,9 @@ func doHTTPRequest(req *http.Request, verifyTLS bool, debug bool,
 		enableTLS = true
 	}
 
-	httpClientLock.Lock()
+	c.mu.Lock()
 
-	if httpClientsMap[host] == nil {
+	if c.clients[host] == nil {
 		httpClient, err = common.CreateHTTPClient(&common.HTTPClientOptions{
 			TLSEnabled:  enableTLS,
 			VerifyTLS:   verifyTLS,
@@ -101,15 +109,17 @@ func doHTTPRequest(req *http.Request, verifyTLS bool, debug bool,
 			CertOptions: common.HTTPClientCertOptions{},
 		})
 		if err != nil {
+			c.mu.Unlock()
+
 			return nil, err
 		}
 
-		httpClientsMap[host] = httpClient
+		c.clients[host] = httpClient
 	} else {
-		httpClient = httpClientsMap[host]
+		httpClient = c.clients[host]
 	}
 
-	httpClientLock.Unlock()
+	c.mu.Unlock()
 
 	if debug {
 		fmt.Fprintln(configWriter, "[debug] ", req.Method, " ", req.URL, "[request header] ", req.Header)
@@ -225,7 +235,8 @@ func (p *requestsPool) doJob(ctx context.Context, job *httpJob) {
 	defer p.wtgrp.Done()
 
 	// Check manifest media type
-	header, err := makeHEADRequest(ctx, job.url, job.username, job.password, job.config.VerifyTLS,
+	httpClient := job.config.SearchService.getHTTPClient()
+	header, err := httpClient.makeHEADRequest(ctx, job.url, job.username, job.password, job.config.VerifyTLS,
 		job.config.Debug)
 	if err != nil {
 		if common.IsContextDone(ctx) {
@@ -300,7 +311,8 @@ func (p *requestsPool) doJob(ctx context.Context, job *httpJob) {
 func fetchImageIndexStruct(ctx context.Context, job *httpJob) (*imageStruct, error) {
 	var indexContent ispec.Index
 
-	header, err := makeGETRequest(ctx, job.url, job.username, job.password,
+	httpClient := job.config.SearchService.getHTTPClient()
+	header, err := httpClient.makeGETRequest(ctx, job.url, job.username, job.password,
 		job.config.VerifyTLS, job.config.Debug, &indexContent, job.config.ResultWriter)
 	if err != nil {
 		if common.IsContextDone(ctx) {
@@ -388,10 +400,11 @@ func fetchManifestStruct(ctx context.Context, repo, manifestReference string, se
 ) (common.ManifestSummary, error) {
 	manifestResp := ispec.Manifest{}
 
+	httpClient := searchConf.SearchService.getHTTPClient()
 	URL := fmt.Sprintf("%s/v2/%s/manifests/%s",
 		searchConf.ServURL, repo, manifestReference)
 
-	header, err := makeGETRequest(ctx, URL, username, password,
+	header, err := httpClient.makeGETRequest(ctx, URL, username, password,
 		searchConf.VerifyTLS, searchConf.Debug, &manifestResp, searchConf.ResultWriter)
 	if err != nil {
 		if common.IsContextDone(ctx) {
@@ -478,10 +491,11 @@ func fetchConfig(ctx context.Context, repo, configDigest string, searchConf Sear
 ) (ispec.Image, error) {
 	configContent := ispec.Image{}
 
+	httpClient := searchConf.SearchService.getHTTPClient()
 	URL := fmt.Sprintf("%s/v2/%s/blobs/%s",
 		searchConf.ServURL, repo, configDigest)
 
-	_, err := makeGETRequest(ctx, URL, username, password,
+	_, err := httpClient.makeGETRequest(ctx, URL, username, password,
 		searchConf.VerifyTLS, searchConf.Debug, &configContent, searchConf.ResultWriter)
 	if err != nil {
 		if common.IsContextDone(ctx) {
@@ -499,10 +513,11 @@ func isNotationSigned(ctx context.Context, repo, digestStr string, searchConf Se
 ) bool {
 	var referrers ispec.Index
 
+	httpClient := searchConf.SearchService.getHTTPClient()
 	URL := fmt.Sprintf("%s/v2/%s/referrers/%s?artifactType=%s",
 		searchConf.ServURL, repo, digestStr, common.ArtifactTypeNotation)
 
-	_, err := makeGETRequest(ctx, URL, username, password,
+	_, err := httpClient.makeGETRequest(ctx, URL, username, password,
 		searchConf.VerifyTLS, searchConf.Debug, &referrers, searchConf.ResultWriter)
 	if err != nil {
 		return false
@@ -518,12 +533,14 @@ func isNotationSigned(ctx context.Context, repo, digestStr string, searchConf Se
 func isCosignSigned(ctx context.Context, repo, digestStr string, searchConf SearchConfig,
 	username, password string,
 ) bool {
+	httpClient := searchConf.SearchService.getHTTPClient()
+
 	var result any
 	cosignTag := strings.Replace(digestStr, ":", "-", 1) + "." + common.CosignSignatureTagSuffix
 
 	URL := fmt.Sprintf("%s/v2/%s/manifests/%s", searchConf.ServURL, repo, cosignTag)
 
-	_, err := makeGETRequest(ctx, URL, username, password, searchConf.VerifyTLS,
+	_, err := httpClient.makeGETRequest(ctx, URL, username, password, searchConf.VerifyTLS,
 		searchConf.Debug, &result, searchConf.ResultWriter)
 	if err == nil {
 		return true
@@ -535,7 +552,7 @@ func isCosignSigned(ctx context.Context, repo, digestStr string, searchConf Sear
 	URL = fmt.Sprintf("%s/v2/%s/referrers/%s?artifactType=%s",
 		searchConf.ServURL, repo, digestStr, artifactType)
 
-	_, err = makeGETRequest(ctx, URL, username, password, searchConf.VerifyTLS,
+	_, err = httpClient.makeGETRequest(ctx, URL, username, password, searchConf.VerifyTLS,
 		searchConf.Debug, &referrers, searchConf.ResultWriter)
 	if err != nil {
 		return false

@@ -37,11 +37,12 @@ func TestGQLQueries(t *testing.T) {
 	defer cm.StopServer()
 
 	searchConfig := client.SearchConfig{
-		ServURL:      baseURL,
-		User:         "",
-		VerifyTLS:    false,
-		Debug:        false,
-		ResultWriter: io.Discard,
+		ServURL:       baseURL,
+		User:          "",
+		VerifyTLS:     false,
+		Debug:         false,
+		ResultWriter:  io.Discard,
+		SearchService: client.NewSearchService(),
 	}
 
 	Convey("Make sure the current CLI used the right queries in case they change", t, func() {
