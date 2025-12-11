@@ -102,7 +102,8 @@ func TestTLSWithAuth(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(imageBuff.String(), ShouldContainSubstring, "scheme not provided")
 
-			args = []string{"list", "--config", "imagetest"}
+			invalidUser := fmt.Sprintf("%s:%s", "wrong_username", "wrong_password")
+			args = []string{"-u", invalidUser, "list", "--config", "imagetest"}
 
 			_ = makeConfigFile(t,
 				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s%s%s","showspinner":false}]}`,
