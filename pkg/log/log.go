@@ -258,19 +258,22 @@ func (e *Event) Msg(msg string) {
 	}
 }
 
-// parseLevel converts string level to slog.Level.
-func parseLevel(level string) (slog.Level, error) {
+// ParseLevel converts string level to slog.Level.
+func ParseLevel(level string) (slog.Level, error) {
+	const supportedLevels = "debug, trace, info, warn, warning, error, fatal, panic"
+
 	switch strings.ToLower(level) {
-	case "debug":
+	case "debug", "trace":
 		return slog.LevelDebug, nil
 	case "info":
 		return slog.LevelInfo, nil
 	case "warn", "warning":
 		return slog.LevelWarn, nil
-	case "error":
+	case "error", "fatal", "panic":
 		return slog.LevelError, nil
 	default:
-		return slog.LevelInfo, errors.ErrBadConfig
+		return slog.LevelInfo, fmt.Errorf("%w: invalid log level '%s', supported levels are: %s",
+			errors.ErrBadConfig, level, supportedLevels)
 	}
 }
 
@@ -292,7 +295,7 @@ func NewLogger(level, output string) Logger {
 
 func NewAuditLogger(level, output string) *Logger {
 	// Parse log level
-	lvl, err := parseLevel(level)
+	lvl, err := ParseLevel(level)
 	if err != nil {
 		panic(err)
 	}
@@ -343,7 +346,7 @@ func defaultJSONHandler(lvl slog.Leveler, writer io.Writer) *slog.JSONHandler {
 
 func NewLoggerWithWriter(level string, writer io.Writer) Logger {
 	// Parse log level
-	lvl, err := parseLevel(level)
+	lvl, err := ParseLevel(level)
 	if err != nil {
 		panic(err)
 	}
