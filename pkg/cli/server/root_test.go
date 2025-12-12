@@ -201,6 +201,30 @@ storage:
 		So(err, ShouldBeNil)
 	})
 
+	Convey("Test verify config with invalid log level", t, func(c C) {
+		content := `{"distSpecVersion":"1.1.1","storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot"},
+							"log":{"level":"invalid"}}`
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+		os.Args = []string{"cli_test", "verify", tmpfile}
+		err := cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring, "invalid log level")
+		So(err.Error(), ShouldContainSubstring, "invalid")
+	})
+
+	Convey("Test verify config with valid trace log level", t, func(c C) {
+		content := `{"distSpecVersion":"1.1.1","storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot"},
+							"log":{"level":"trace"}}`
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+		os.Args = []string{"cli_test", "verify", tmpfile}
+		err := cli.NewServerRootCmd().Execute()
+		So(err, ShouldBeNil)
+	})
+
 	Convey("Test verify CVE warn for remote storage", t, func(c C) {
 		content := `{
 			"storage":{

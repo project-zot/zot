@@ -1068,6 +1068,13 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 		return err
 	}
 
+	// Validate log level before creating logger to avoid panic
+	if _, err := zlog.ParseLevel(config.Log.Level); err != nil {
+		logger.Error().Err(zerr.ErrBadConfig).Str("level", config.Log.Level).Msg(err.Error())
+
+		return err
+	}
+
 	log := zlog.NewLogger(config.Log.Level, config.Log.Output)
 
 	if len(metaData.Keys) == 0 {
