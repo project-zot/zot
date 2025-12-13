@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -124,8 +125,14 @@ func (amw *AuthnMiddleware) mTLSAuthn(ctlr *Controller, userAc *reqCtx.UserAcces
 	// Extract identity from certificate
 	leafCert := request.TLS.PeerCertificates[0]
 
-	identity := leafCert.Subject.CommonName
-	if identity == "" {
+	// Get mTLS config from auth config
+	authConfig := ctlr.Config.CopyAuthConfig()
+	mtlsConfig := authConfig.GetMTLSConfig()
+
+	identity, err := extractMTLSIdentity(leafCert, mtlsConfig)
+	if err != nil || identity == "" {
+		ctlr.Log.Debug().Err(err).Msg("mTLS authentication failed - could not extract identity")
+
 		return false, nil
 	}
 
@@ -973,6 +980,106 @@ func GenerateAPIKey(uuidGenerator guuid.Generator, log log.Logger,
 	}
 
 	return apiKey, apiKeyID.String(), err
+}
+
+// extractIdentityFromCertificate attempts to extract identity from a specific identity attribute.
+func extractIdentityFromCertificate(cert *x509.Certificate, identityAttribute string, mtlsConfig *config.MTLSConfig,
+) (string, error) {
+	// Normalize to lowercase for case-insensitive matching
+	normalizedIdentityAttribute := strings.ToLower(strings.TrimSpace(identityAttribute))
+
+	switch normalizedIdentityAttribute {
+	case "commonname", "cn":
+		if cert.Subject.CommonName == "" {
+			return "", zerr.ErrNoIdentityInCommonName
+		}
+
+		return cert.Subject.CommonName, nil
+
+	case "subject", "dn":
+		return cert.Subject.String(), nil
+
+	case "url", "uri":
+		if len(cert.URIs) == 0 {
+			return "", zerr.ErrNoURISANFound
+		}
+		idx := 0
+		if mtlsConfig != nil {
+			idx = mtlsConfig.URISANIndex
+		}
+		if idx < 0 || idx >= len(cert.URIs) {
+			return "", fmt.Errorf("%w: %d", zerr.ErrURISANIndexOutOfRange, idx)
+		}
+		uri := cert.URIs[idx].String()
+
+		// Apply pattern if specified
+		if mtlsConfig != nil && mtlsConfig.URISANPattern != "" {
+			re, err := regexp.Compile(mtlsConfig.URISANPattern)
+			if err != nil {
+				return "", fmt.Errorf("%w: %w", zerr.ErrInvalidURISANPattern, err)
+			}
+			matches := re.FindStringSubmatch(uri)
+			if len(matches) < 2 {
+				return "", fmt.Errorf("%w", zerr.ErrURISANPatternDidNotMatch)
+			}
+
+			return matches[1], nil // Return first capture group
+		}
+
+		return uri, nil
+
+	case "dnsname", "dns":
+		if len(cert.DNSNames) == 0 {
+			return "", zerr.ErrNoDNSANFound
+		}
+		idx := 0
+		if mtlsConfig != nil {
+			idx = mtlsConfig.DNSANIndex
+		}
+		if idx < 0 || idx >= len(cert.DNSNames) {
+			return "", fmt.Errorf("%w: %d", zerr.ErrDNSANIndexOutOfRange, idx)
+		}
+
+		return cert.DNSNames[idx], nil
+
+	case "email", "rfc822name":
+		if len(cert.EmailAddresses) == 0 {
+			return "", zerr.ErrNoEmailSANFound
+		}
+		idx := 0
+		if mtlsConfig != nil {
+			idx = mtlsConfig.EmailSANIndex
+		}
+		if idx < 0 || idx >= len(cert.EmailAddresses) {
+			return "", fmt.Errorf("%w: %d", zerr.ErrEmailSANIndexOutOfRange, idx)
+		}
+
+		return cert.EmailAddresses[idx], nil
+
+	default:
+		return "", fmt.Errorf("%w: %s", zerr.ErrUnsupportedIdentityAttribute, identityAttribute)
+	}
+}
+
+// extractMTLSIdentity extracts identity from certificate using configured soidentity attributes with fallback chain.
+func extractMTLSIdentity(cert *x509.Certificate, mtlsConfig *config.MTLSConfig) (string, error) {
+	identityAttributes := []string{"CommonName"} // Default
+	if mtlsConfig != nil && len(mtlsConfig.IdentityAttibutes) > 0 {
+		identityAttributes = mtlsConfig.IdentityAttibutes
+	}
+
+	var cummulatedErr error
+
+	for _, identityAttribute := range identityAttributes {
+		identity, err := extractIdentityFromCertificate(cert, identityAttribute, mtlsConfig)
+		if err == nil {
+			return identity, nil
+		}
+
+		cummulatedErr = errors.Join(cummulatedErr, err)
+	}
+
+	return "", fmt.Errorf("no identity found in any configured identity attributes: %w", cummulatedErr)
 }
 
 func loadPublicKeyFromFile(path string) (crypto.PublicKey, error) {
