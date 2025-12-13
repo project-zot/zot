@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"time"
 )
@@ -66,6 +67,10 @@ type CertificateOptions struct {
 	// EmailAddresses contains the email addresses for the Subject Alternative Name extension.
 	// If nil, no email addresses will be included.
 	EmailAddresses []string
+
+	// URIs contains the URIs for the Subject Alternative Name extension.
+	// If nil, no URIs will be included.
+	URIs []string
 
 	// Hostname is the hostname or IP address for server certificates.
 	// For server certificates, this is required and will be added to DNSNames or IPAddresses
@@ -402,6 +407,27 @@ func applyOptions(template *x509.Certificate, opts *CertificateOptions, certType
 	// Apply email addresses
 	if opts.EmailAddresses != nil {
 		template.EmailAddresses = opts.EmailAddresses
+	}
+
+	// Apply URIs
+	if opts.URIs != nil {
+		templateURIs := make([]*url.URL, 0, len(opts.URIs))
+		for _, uriStr := range opts.URIs {
+			uri, err := url.Parse(uriStr)
+			if err != nil {
+				// Skip invalid URIs - could log error in production
+				continue
+			}
+
+			// Validate that the URI has a valid scheme (url.Parse accepts URIs without schemes)
+			if uri.Scheme == "" {
+				// Skip URIs without a scheme - could log error in production
+				continue
+			}
+
+			templateURIs = append(templateURIs, uri)
+		}
+		template.URIs = templateURIs
 	}
 
 	// Apply CommonName - if provided, override the default; otherwise keep default from initializeTemplate
