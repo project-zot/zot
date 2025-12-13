@@ -2102,11 +2102,22 @@ func TestCookiestoreCleanup(t *testing.T) {
 
 func TestCookieSecureFlag(t *testing.T) {
 	Convey("Test cookie Secure flag based on configuration", t, func() {
-		const (
-			serverCertPath = "../../test/data/server.cert"
-			serverKeyPath  = "../../test/data/server.key"
-			caCertPath     = "../../test/data/ca.crt"
-		)
+		// Generate certificates dynamically for the test
+		tempDir := t.TempDir()
+		caCert, caKey, err := tlsutils.GenerateCACert()
+		So(err, ShouldBeNil)
+
+		caCertPath := path.Join(tempDir, "ca.crt")
+		err = os.WriteFile(caCertPath, caCert, 0o600)
+		So(err, ShouldBeNil)
+
+		serverCertPath := path.Join(tempDir, "server.crt")
+		serverKeyPath := path.Join(tempDir, "server.key")
+		opts := &tlsutils.CertificateOptions{
+			Hostname: "127.0.0.1",
+		}
+		err = tlsutils.GenerateServerCertToFile(caCert, caKey, serverCertPath, serverKeyPath, opts)
+		So(err, ShouldBeNil)
 
 		mockOIDCServer, err := authutils.MockOIDCRun()
 		So(err, ShouldBeNil)
@@ -2116,11 +2127,12 @@ func TestCookieSecureFlag(t *testing.T) {
 			So(err, ShouldBeNil)
 		}()
 
+		mockOIDCConfig := mockOIDCServer.Config()
+
 		username, _ := test.GenerateRandomString()
 		password, _ := test.GenerateRandomString()
 		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
-		mockOIDCConfig := mockOIDCServer.Config()
 		defaultVal := true
 
 		Convey("Test with TLS configured - cookies should be Secure=true", func() {
@@ -2155,7 +2167,6 @@ func TestCookieSecureFlag(t *testing.T) {
 			ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 			cm := test.NewControllerManager(ctlr)
-
 			cm.StartServer()
 
 			defer cm.StopServer()

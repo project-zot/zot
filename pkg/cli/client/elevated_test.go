@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"testing"
+	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
@@ -20,65 +22,107 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/constants"
 	"zotregistry.dev/zot/v2/pkg/cli/client"
 	test "zotregistry.dev/zot/v2/pkg/test/common"
+	tlsutils "zotregistry.dev/zot/v2/pkg/test/tls"
+)
+
+const (
+	privilegedCertsDir = "/etc/containers/certs.d/127.0.0.1:8089"
 )
 
 func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 	Convey("Privileged certs - Make a new controller", t, func() {
-		//nolint: noctx // old code, no context available
-		cmd := exec.Command("mkdir", "-p", "/etc/containers/certs.d/127.0.0.1:8089/") //nolint: gosec
+		// Generate certificates using tls library
+		tempDir := t.TempDir()
+		caOpts := &tlsutils.CertificateOptions{
+			CommonName: "*",
+			NotAfter:   time.Now().AddDate(10, 0, 0),
+		}
+		caCertPEM, caKeyPEM, err := tlsutils.GenerateCACert(caOpts)
+		So(err, ShouldBeNil)
 
-		_, err := cmd.Output()
+		caCertPath := path.Join(tempDir, "ca.crt")
+		caKeyPath := path.Join(tempDir, "ca.key")
+		err = os.WriteFile(caCertPath, caCertPEM, 0o600)
+		So(err, ShouldBeNil)
+		err = os.WriteFile(caKeyPath, caKeyPEM, 0o600)
+		So(err, ShouldBeNil)
+
+		serverCertPath := path.Join(tempDir, "server.cert")
+		serverKeyPath := path.Join(tempDir, "server.key")
+		serverOpts := &tlsutils.CertificateOptions{
+			Hostname:           "127.0.0.1",
+			CommonName:         "*",
+			OrganizationalUnit: "TestServer",
+			NotAfter:           time.Now().AddDate(10, 0, 0),
+		}
+		err = tlsutils.GenerateServerCertToFile(caCertPEM, caKeyPEM, serverCertPath, serverKeyPath, serverOpts)
+		So(err, ShouldBeNil)
+
+		// Generate client certificate
+		clientCertPath := path.Join(tempDir, "client.cert")
+		clientKeyPath := path.Join(tempDir, "client.key")
+		clientOpts := &tlsutils.CertificateOptions{
+			CommonName:         "testclient",
+			OrganizationalUnit: "TestClient",
+			NotAfter:           time.Now().AddDate(10, 0, 0),
+		}
+		err = tlsutils.GenerateClientCertToFile(caCertPEM, caKeyPEM, clientCertPath, clientKeyPath, clientOpts)
+		So(err, ShouldBeNil)
+
+		//nolint: noctx // old code, no context available
+		cmd := exec.Command("mkdir", "-p", privilegedCertsDir+"/") //nolint: gosec
+
+		_, err = cmd.Output()
 		if err != nil {
 			panic(err)
 		}
 
 		//nolint: noctx // old code, no context available
-		defer exec.Command("rm", "-rf", "/etc/containers/certs.d/127.0.0.1:8089/")
+		defer exec.Command("rm", "-rf", privilegedCertsDir+"/")
 
-		workDir, _ := os.Getwd()
-		_ = os.Chdir("../../../test/data")
-
-		clientGlob, _ := filepath.Glob("client.*")
-		caGlob, _ := filepath.Glob("ca.*")
-
-		for _, file := range clientGlob {
-			//nolint: noctx // old code, no context available
-			cmd = exec.Command("cp", file, "/etc/containers/certs.d/127.0.0.1:8089/")
-
-			res, err := cmd.CombinedOutput()
-			if err != nil {
-				panic(string(res))
-			}
+		// Copy generated certificates to privileged location
+		//nolint: noctx // old code, no context available
+		cmd = exec.Command("cp", clientCertPath, privilegedCertsDir+"/")
+		res, err := cmd.CombinedOutput()
+		if err != nil {
+			panic(string(res))
 		}
 
-		for _, file := range caGlob {
-			//nolint: noctx // old code, no context available
-			cmd = exec.Command("cp", file, "/etc/containers/certs.d/127.0.0.1:8089/")
-
-			res, err := cmd.CombinedOutput()
-			if err != nil {
-				panic(string(res))
-			}
+		//nolint: noctx // old code, no context available
+		cmd = exec.Command("cp", clientKeyPath, privilegedCertsDir+"/")
+		res, err = cmd.CombinedOutput()
+		if err != nil {
+			panic(string(res))
 		}
 
-		allGlob, _ := filepath.Glob("/etc/containers/certs.d/127.0.0.1:8089/*.key")
+		//nolint: noctx // old code, no context available
+		cmd = exec.Command("cp", caCertPath, privilegedCertsDir+"/")
+		res, err = cmd.CombinedOutput()
+		if err != nil {
+			panic(string(res))
+		}
+
+		//nolint: noctx // old code, no context available
+		cmd = exec.Command("cp", caKeyPath, privilegedCertsDir+"/")
+		res, err = cmd.CombinedOutput()
+		if err != nil {
+			panic(string(res))
+		}
+
+		allGlob, _ := filepath.Glob(privilegedCertsDir + "/*.key")
 
 		for _, file := range allGlob {
 			//nolint: noctx // old code, no context available
 			cmd = exec.Command("chmod", "a=rwx", file)
 
-			res, err := cmd.CombinedOutput()
+			res, err = cmd.CombinedOutput()
 			if err != nil {
 				panic(string(res))
 			}
 		}
 
-		_ = os.Chdir(workDir)
-
-		caCert, err := os.ReadFile(CACert)
-		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
+		caCertPool.AppendCertsFromPEM(caCertPEM)
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 
@@ -87,9 +131,9 @@ func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = SecurePort2
 		conf.HTTP.TLS = &config.TLSConfig{
-			Cert:   ServerCert,
-			Key:    ServerKey,
-			CACert: CACert,
+			Cert:   serverCertPath,
+			Key:    serverKeyPath,
+			CACert: caCertPath,
 		}
 
 		ctlr := api.NewController(conf)

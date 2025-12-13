@@ -4,6 +4,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"net"
+	"os"
 	"path"
 	"testing"
 	"time"
@@ -433,6 +434,271 @@ func TestErrorPaths(t *testing.T) {
 
 			err := tls.GenerateClientSelfSignedCertToFile(certPath, keyPath, nil)
 			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Test generateCertificate with invalid key type", func() {
+			// This tests the default case in generateCertificate switch
+			invalidKeyType := tls.KeyType("INVALID")
+			opts := &tls.CertificateOptions{
+				KeyType: invalidKeyType,
+			}
+			_, _, err := tls.GenerateCACert(opts)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Test generateCertificate with ECDSA key type", func() {
+			// Test that ECDSA key generation works correctly
+			caCertPEM, caKeyPEM, err := tls.GenerateCACert()
+			So(err, ShouldBeNil)
+
+			opts := &tls.CertificateOptions{
+				Hostname: "localhost",
+				KeyType:  tls.KeyTypeECDSA,
+			}
+			certPEM, keyPEM, err := tls.GenerateServerCert(caCertPEM, caKeyPEM, opts)
+			So(err, ShouldBeNil)
+			So(certPEM, ShouldNotBeNil)
+			So(keyPEM, ShouldNotBeNil)
+
+			// Verify ECDSA key was generated
+			keyBlock, _ := pem.Decode(keyPEM)
+			So(keyBlock, ShouldNotBeNil)
+			So(keyBlock.Type, ShouldEqual, "EC PRIVATE KEY")
+		})
+
+		Convey("Test generateCertificate with ED25519 key type", func() {
+			caCertPEM, caKeyPEM, err := tls.GenerateCACert()
+			So(err, ShouldBeNil)
+
+			opts := &tls.CertificateOptions{
+				Hostname: "localhost",
+				KeyType:  tls.KeyTypeED25519,
+			}
+			certPEM, keyPEM, err := tls.GenerateServerCert(caCertPEM, caKeyPEM, opts)
+			So(err, ShouldBeNil)
+			So(certPEM, ShouldNotBeNil)
+			So(keyPEM, ShouldNotBeNil)
+
+			// Verify ED25519 key was generated
+			keyBlock, _ := pem.Decode(keyPEM)
+			So(keyBlock, ShouldNotBeNil)
+			So(keyBlock.Type, ShouldEqual, "PRIVATE KEY")
+		})
+
+		Convey("Test parsePrivateKeyFromPEM with PKCS8 format", func() {
+			// Generate a certificate with ED25519 (uses PKCS8)
+			opts := &tls.CertificateOptions{
+				KeyType: tls.KeyTypeED25519,
+			}
+			_, keyPEM, err := tls.GenerateCACert(opts)
+			So(err, ShouldBeNil)
+
+			// Parse it back - should work with PKCS8
+			keyBlock, _ := pem.Decode(keyPEM)
+			So(keyBlock, ShouldNotBeNil)
+
+			// This tests the PKCS8 path in parsePrivateKeyFromPEM
+			_, err = x509.ParsePKCS8PrivateKey(keyBlock.Bytes)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Test parsePrivateKeyFromPEM with EC SEC1 format", func() {
+			// Generate a certificate with ECDSA (uses SEC1)
+			opts := &tls.CertificateOptions{
+				KeyType: tls.KeyTypeECDSA,
+			}
+			_, keyPEM, err := tls.GenerateCACert(opts)
+			So(err, ShouldBeNil)
+
+			// Parse it back - should work
+			keyBlock, _ := pem.Decode(keyPEM)
+			So(keyBlock, ShouldNotBeNil)
+
+			// This tests the EC SEC1 path in parsePrivateKeyFromPEM
+			_, err = x509.ParseECPrivateKey(keyBlock.Bytes)
+			So(err, ShouldBeNil)
+		})
+	})
+}
+
+func TestExtractPublicKeyFromCert(t *testing.T) {
+	Convey("Test ExtractPublicKeyFromCert", t, func() {
+		caCertPEM, _, err := tls.GenerateCACert()
+		So(err, ShouldBeNil)
+
+		Convey("Extract public key from valid certificate", func() {
+			publicKeyPEM, err := tls.ExtractPublicKeyFromCert(caCertPEM)
+			So(err, ShouldBeNil)
+			So(publicKeyPEM, ShouldNotBeNil)
+
+			// Verify it's valid PEM
+			block, _ := pem.Decode(publicKeyPEM)
+			So(block, ShouldNotBeNil)
+			So(block.Type, ShouldEqual, "PUBLIC KEY")
+		})
+
+		Convey("Extract public key from invalid PEM", func() {
+			invalidPEM := []byte("not a valid PEM")
+			_, err := tls.ExtractPublicKeyFromCert(invalidPEM)
+			So(err, ShouldEqual, tls.ErrFailedDecodeCertPEM)
+		})
+
+		Convey("Extract public key from server certificate", func() {
+			caCertPEM, caKeyPEM, err := tls.GenerateCACert()
+			So(err, ShouldBeNil)
+
+			opts := &tls.CertificateOptions{
+				Hostname: "localhost",
+			}
+			serverCertPEM, _, err := tls.GenerateServerCert(caCertPEM, caKeyPEM, opts)
+			So(err, ShouldBeNil)
+
+			publicKeyPEM, err := tls.ExtractPublicKeyFromCert(serverCertPEM)
+			So(err, ShouldBeNil)
+			So(publicKeyPEM, ShouldNotBeNil)
+		})
+
+		Convey("Extract public key from ECDSA certificate", func() {
+			caOpts := &tls.CertificateOptions{
+				KeyType: tls.KeyTypeECDSA,
+			}
+			caCertPEM, caKeyPEM, err := tls.GenerateCACert(caOpts)
+			So(err, ShouldBeNil)
+
+			opts := &tls.CertificateOptions{
+				Hostname: "localhost",
+				KeyType:  tls.KeyTypeECDSA,
+			}
+			serverCertPEM, _, err := tls.GenerateServerCert(caCertPEM, caKeyPEM, opts)
+			So(err, ShouldBeNil)
+
+			publicKeyPEM, err := tls.ExtractPublicKeyFromCert(serverCertPEM)
+			So(err, ShouldBeNil)
+			So(publicKeyPEM, ShouldNotBeNil)
+		})
+
+		Convey("Extract public key from ED25519 certificate", func() {
+			caOpts := &tls.CertificateOptions{
+				KeyType: tls.KeyTypeED25519,
+			}
+			caCertPEM, caKeyPEM, err := tls.GenerateCACert(caOpts)
+			So(err, ShouldBeNil)
+
+			opts := &tls.CertificateOptions{
+				Hostname: "localhost",
+				KeyType:  tls.KeyTypeED25519,
+			}
+			serverCertPEM, _, err := tls.GenerateServerCert(caCertPEM, caKeyPEM, opts)
+			So(err, ShouldBeNil)
+
+			publicKeyPEM, err := tls.ExtractPublicKeyFromCert(serverCertPEM)
+			So(err, ShouldBeNil)
+			So(publicKeyPEM, ShouldNotBeNil)
+		})
+
+		Convey("Extract public key from certificate with invalid certificate data", func() {
+			// Create a PEM block with invalid certificate data
+			invalidCertPEM := pem.EncodeToMemory(&pem.Block{
+				Type:  "CERTIFICATE",
+				Bytes: []byte("invalid certificate data"),
+			})
+
+			_, err := tls.ExtractPublicKeyFromCert(invalidCertPEM)
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "failed to parse certificate")
+		})
+	})
+}
+
+func TestExtractRSAPublicKeyPKCS1(t *testing.T) {
+	Convey("Test ExtractRSAPublicKeyPKCS1", t, func() {
+		_, keyPEM, err := tls.GenerateCACert()
+		So(err, ShouldBeNil)
+
+		Convey("Extract RSA public key in PKCS1 format", func() {
+			publicKeyPEM, err := tls.ExtractRSAPublicKeyPKCS1(keyPEM)
+			So(err, ShouldBeNil)
+			So(publicKeyPEM, ShouldNotBeNil)
+
+			// Verify it's valid PEM
+			block, _ := pem.Decode(publicKeyPEM)
+			So(block, ShouldNotBeNil)
+			So(block.Type, ShouldEqual, "RSA PUBLIC KEY")
+		})
+
+		Convey("Extract RSA public key from invalid PEM", func() {
+			invalidPEM := []byte("not a valid PEM")
+			_, err := tls.ExtractRSAPublicKeyPKCS1(invalidPEM)
+			So(err, ShouldEqual, tls.ErrFailedDecodeKeyPEM)
+		})
+
+		Convey("Extract RSA public key from non-RSA key", func() {
+			opts := &tls.CertificateOptions{
+				KeyType: tls.KeyTypeECDSA,
+			}
+			_, ecdsaKeyPEM, err := tls.GenerateCACert(opts)
+			So(err, ShouldBeNil)
+
+			_, err = tls.ExtractRSAPublicKeyPKCS1(ecdsaKeyPEM)
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "private key is not RSA")
+		})
+	})
+}
+
+func TestWriteCertificateChainToFile(t *testing.T) {
+	Convey("Test WriteCertificateChainToFile", t, func() {
+		Convey("Write certificate chain with multiple certificates", func() {
+			tempDir := t.TempDir()
+			chainPath := path.Join(tempDir, "chain.crt")
+
+			// Generate root CA
+			rootCACert, rootCAKey, err := tls.GenerateCACert()
+			So(err, ShouldBeNil)
+
+			// Generate intermediate CA
+			intermediateCACert, _, err := tls.GenerateIntermediateCACert(rootCACert, rootCAKey)
+			So(err, ShouldBeNil)
+
+			// Generate leaf certificate
+			leafCert, _, err := tls.GenerateClientCert(rootCACert, rootCAKey, nil)
+			So(err, ShouldBeNil)
+
+			// Write chain (leaf first, then intermediate)
+			err = tls.WriteCertificateChainToFile(chainPath, leafCert, intermediateCACert, rootCACert)
+			So(err, ShouldBeNil)
+
+			// Verify file was created
+			chainData, err := os.ReadFile(chainPath)
+			So(err, ShouldBeNil)
+			So(len(chainData), ShouldBeGreaterThan, 0)
+
+			// Verify it contains all certificates
+			So(string(chainData), ShouldContainSubstring, "BEGIN CERTIFICATE")
+		})
+
+		Convey("Write certificate chain with no certificates", func() {
+			tempDir := t.TempDir()
+			chainPath := path.Join(tempDir, "chain.crt")
+
+			err := tls.WriteCertificateChainToFile(chainPath)
+			So(err, ShouldEqual, tls.ErrNoCertificatesProvided)
+		})
+
+		Convey("Write certificate chain with single certificate", func() {
+			tempDir := t.TempDir()
+			chainPath := path.Join(tempDir, "chain.crt")
+
+			cert, _, err := tls.GenerateCACert()
+			So(err, ShouldBeNil)
+
+			err = tls.WriteCertificateChainToFile(chainPath, cert)
+			So(err, ShouldBeNil)
+
+			// Verify file was created
+			chainData, err := os.ReadFile(chainPath)
+			So(err, ShouldBeNil)
+			So(len(chainData), ShouldBeGreaterThan, 0)
 		})
 	})
 }

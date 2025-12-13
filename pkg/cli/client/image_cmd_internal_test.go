@@ -37,7 +37,7 @@ func TestSearchImageCmd(t *testing.T) {
 
 		_ = makeConfigFile(t, "")
 
-		cmd := NewImageCommand(new(mockService))
+		cmd := NewImageCommand(newMockService())
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -52,7 +52,7 @@ func TestSearchImageCmd(t *testing.T) {
 
 			_ = makeConfigFile(t, "")
 
-			cmd := NewImageCommand(new(mockService))
+			cmd := NewImageCommand(newMockService())
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -69,7 +69,7 @@ func TestSearchImageCmd(t *testing.T) {
 
 		_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 
-		cmd := NewImageCommand(new(mockService))
+		cmd := NewImageCommand(newMockService())
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -89,7 +89,7 @@ func TestSearchImageCmd(t *testing.T) {
 			panic(err)
 		}
 
-		cmd := NewImageCommand(new(mockService))
+		cmd := NewImageCommand(newMockService())
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -113,7 +113,7 @@ func TestSearchImageCmd(t *testing.T) {
 
 		_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 
-		cmd := NewImageCommand(new(mockService))
+		cmd := NewImageCommand(newMockService())
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -127,7 +127,7 @@ func TestSearchImageCmd(t *testing.T) {
 
 		_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 
-		cmd := NewImageCommand(new(searchService))
+		cmd := NewImageCommand(NewSearchService())
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -143,7 +143,7 @@ func TestSearchImageCmd(t *testing.T) {
 
 		_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 
-		cmd := NewImageCommand(new(searchService))
+		cmd := NewImageCommand(NewSearchService())
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -157,7 +157,7 @@ func TestSearchImageCmd(t *testing.T) {
 
 			_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 
-			cmd := NewImageCommand(new(searchService))
+			cmd := NewImageCommand(NewSearchService())
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -173,7 +173,7 @@ func TestSearchImageCmd(t *testing.T) {
 
 		_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 
-		cmd := NewImageCommand(new(searchService))
+		cmd := NewImageCommand(NewSearchService())
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -187,7 +187,7 @@ func TestSearchImageCmd(t *testing.T) {
 
 		_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":false}]}`)
 
-		cmd := NewImageCommand(new(mockService))
+		cmd := NewImageCommand(newMockService())
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -205,7 +205,7 @@ func TestSearchImageCmd(t *testing.T) {
 
 		_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 
-		imageCmd := NewImageCommand(new(mockService))
+		imageCmd := NewImageCommand(newMockService())
 		buff := &bytes.Buffer{}
 		imageCmd.SetOut(buff)
 		imageCmd.SetErr(buff)
@@ -219,7 +219,7 @@ func TestSearchImageCmd(t *testing.T) {
 	})
 
 	Convey("Test image by digest", t, func() {
-		searchConfig := getTestSearchConfig("http://127.0.0.1:8080", new(mockService))
+		searchConfig := getTestSearchConfig("http://127.0.0.1:8080", newMockService())
 		buff := &bytes.Buffer{}
 		searchConfig.ResultWriter = buff
 		err := SearchImagesByDigest(searchConfig, "6e2f80bf")
@@ -234,7 +234,7 @@ func TestSearchImageCmd(t *testing.T) {
 }
 
 func TestListRepos(t *testing.T) {
-	searchConfig := getTestSearchConfig("https://test-url.com", new(mockService))
+	searchConfig := getTestSearchConfig("https://test-url.com", newMockService())
 
 	Convey("Test listing repositories", t, func() {
 		buff := &bytes.Buffer{}
@@ -248,7 +248,7 @@ func TestListRepos(t *testing.T) {
 
 		_ = makeConfigFile(t, `{"configs":[{"_name":"config-test","url":"https://test-url.com","showspinner":false}]}`)
 
-		cmd := NewRepoCommand(new(searchService))
+		cmd := NewRepoCommand(NewSearchService())
 
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
@@ -272,7 +272,7 @@ func TestListRepos(t *testing.T) {
 			panic(err)
 		}
 
-		cmd := NewRepoCommand(new(mockService))
+		cmd := NewRepoCommand(newMockService())
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -297,7 +297,7 @@ func TestListRepos(t *testing.T) {
 		_ = makeConfigFile(t, `{"configs":[{"_name":"config-test",
         	"url":"https://invalid.invalid","showspinner":false}]}`)
 
-		cmd := NewRepoCommand(new(searchService))
+		cmd := NewRepoCommand(NewSearchService())
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -311,7 +311,7 @@ func TestListRepos(t *testing.T) {
 
 		_ = makeConfigFile(t, `{"configs":[{"_name":"config-test","url":"https://test-url.com","showspinner":false}]}`)
 
-		cmd := NewRepoCommand(new(mockService))
+		cmd := NewRepoCommand(newMockService())
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -325,7 +325,7 @@ func TestListRepos(t *testing.T) {
 
 		_ = makeConfigFile(t, `{"configs":[{"_name":"config-test","url":"","showspinner":false}]}`)
 
-		cmd := NewRepoCommand(new(mockService))
+		cmd := NewRepoCommand(newMockService())
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -340,7 +340,7 @@ func TestListRepos(t *testing.T) {
 		_ = makeConfigFile(t, `{"configs":[{"_name":"config-test",
        		"url":"https://test-url.com","showspinner":invalid}]}`)
 
-		cmd := NewRepoCommand(new(mockService))
+		cmd := NewRepoCommand(newMockService())
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -355,7 +355,7 @@ func TestListRepos(t *testing.T) {
 		_ = makeConfigFile(t, `{"configs":[{"_name":"config-test",
         	"verify-tls":"invalid", "url":"https://test-url.com","showspinner":false}]}`)
 
-		cmd := NewRepoCommand(new(mockService))
+		cmd := NewRepoCommand(newMockService())
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -371,7 +371,7 @@ func TestOutputFormat(t *testing.T) {
 
 		_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":false}]}`)
 
-		cmd := NewImageCommand(new(mockService))
+		cmd := NewImageCommand(newMockService())
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -389,7 +389,7 @@ func TestOutputFormat(t *testing.T) {
 
 		_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":false}]}`)
 
-		cmd := NewImageCommand(new(mockService))
+		cmd := NewImageCommand(newMockService())
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -419,7 +419,7 @@ func TestOutputFormat(t *testing.T) {
 
 		_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":false}]}`)
 
-		cmd := NewImageCommand(new(mockService))
+		cmd := NewImageCommand(newMockService())
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -457,7 +457,7 @@ func TestOutputFormat(t *testing.T) {
 					`"url":"https://test-url.com","showspinner":false}]}`,
 			)
 
-			cmd := NewImageCommand(new(mockService))
+			cmd := NewImageCommand(newMockService())
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -493,7 +493,7 @@ func TestOutputFormat(t *testing.T) {
 
 		_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":false}]}`)
 
-		cmd := NewImageCommand(new(mockService))
+		cmd := NewImageCommand(newMockService())
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -797,7 +797,7 @@ func TestImagesCommandGQL(t *testing.T) {
 			_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
 				baseURL))
 			args := []string{"cve", "repo:vuln", "--config", "imagetest"}
-			cmd := NewImageCommand(mockService{})
+			cmd := NewImageCommand(newMockService())
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -818,7 +818,8 @@ func TestImagesCommandGQL(t *testing.T) {
 				baseURL))
 
 			args := []string{"cve", "repo:vuln", "--config", "imagetest"}
-			cmd := NewImageCommand(mockService{
+			cmd := NewImageCommand(&mockService{
+				httpClient: NewHTTPClient(),
 				getCveByImageGQLFn: func(ctx context.Context, config SearchConfig, username, password,
 					imageName, searchedCVE string) (*cveResult, error,
 				) {
@@ -895,7 +896,7 @@ func TestImagesCommandGQL(t *testing.T) {
 		So(err, ShouldNotBeNil)
 
 		args = []string{"cve", "repo:vuln"}
-		cmd = NewImageCommand(mockService{})
+		cmd = NewImageCommand(newMockService())
 		buff = bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -1028,7 +1029,7 @@ func TestImageCommandREST(t *testing.T) {
 			_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
 				baseURL))
 
-			cmd := NewImageCommand(mockService{})
+			cmd := NewImageCommand(newMockService())
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -1093,9 +1094,22 @@ type mockService struct {
 	getCVEDiffListGQLFn func(ctx context.Context, config SearchConfig, username, password string,
 		minuend, subtrahend ImageIdentifier,
 	) (*cveDiffListResp, error)
+
+	httpClient *HTTPClient
 }
 
-func (service mockService) getCVEDiffListGQL(ctx context.Context, config SearchConfig, username, password string,
+// newMockService creates a new mockService with httpClient initialized.
+func newMockService() *mockService {
+	return &mockService{
+		httpClient: NewHTTPClient(),
+	}
+}
+
+func (service *mockService) getHTTPClient() *HTTPClient {
+	return service.httpClient
+}
+
+func (service *mockService) getCVEDiffListGQL(ctx context.Context, config SearchConfig, username, password string,
 	minuend, subtrahend ImageIdentifier,
 ) (*cveDiffListResp, error) {
 	if service.getCVEDiffListGQLFn != nil {
@@ -1105,7 +1119,7 @@ func (service mockService) getCVEDiffListGQL(ctx context.Context, config SearchC
 	return &cveDiffListResp{}, nil
 }
 
-func (service mockService) getRepos(ctx context.Context, config SearchConfig, username,
+func (service *mockService) getRepos(ctx context.Context, config SearchConfig, username,
 	password string, channel chan stringResult, wtgrp *sync.WaitGroup,
 ) {
 	defer wtgrp.Done()
@@ -1117,7 +1131,7 @@ func (service mockService) getRepos(ctx context.Context, config SearchConfig, us
 	fmt.Fprintln(config.ResultWriter, "repo2")
 }
 
-func (service mockService) getReferrers(ctx context.Context, config SearchConfig, username, password string,
+func (service *mockService) getReferrers(ctx context.Context, config SearchConfig, username, password string,
 	repo, digest string,
 ) (referrersResult, error) {
 	if service.getReferrersFn != nil {
@@ -1134,7 +1148,7 @@ func (service mockService) getReferrers(ctx context.Context, config SearchConfig
 	}, nil
 }
 
-func (service mockService) globalSearchGQL(ctx context.Context, config SearchConfig, username, password string,
+func (service *mockService) globalSearchGQL(ctx context.Context, config SearchConfig, username, password string,
 	query string,
 ) (*common.GlobalSearch, error) {
 	if service.globalSearchGQLFn != nil {
@@ -1166,7 +1180,7 @@ func (service mockService) globalSearchGQL(ctx context.Context, config SearchCon
 	}, nil
 }
 
-func (service mockService) getReferrersGQL(ctx context.Context, config SearchConfig, username, password string,
+func (service *mockService) getReferrersGQL(ctx context.Context, config SearchConfig, username, password string,
 	repo, digest string,
 ) (*common.ReferrersResp, error) {
 	if service.getReferrersGQLFn != nil {
@@ -1187,7 +1201,7 @@ func (service mockService) getReferrersGQL(ctx context.Context, config SearchCon
 	}, nil
 }
 
-func (service mockService) getDerivedImageListGQL(ctx context.Context, config SearchConfig, username, password string,
+func (service *mockService) getDerivedImageListGQL(ctx context.Context, config SearchConfig, username, password string,
 	derivedImage string,
 ) (*common.DerivedImageListResponse, error) {
 	if service.getDerivedImageListGQLFn != nil {
@@ -1215,7 +1229,7 @@ func (service mockService) getDerivedImageListGQL(ctx context.Context, config Se
 	return imageListGQLResponse, nil
 }
 
-func (service mockService) getBaseImageListGQL(ctx context.Context, config SearchConfig, username, password string,
+func (service *mockService) getBaseImageListGQL(ctx context.Context, config SearchConfig, username, password string,
 	baseImage string,
 ) (*common.BaseImageListResponse, error) {
 	if service.getBaseImageListGQLFn != nil {
@@ -1243,7 +1257,7 @@ func (service mockService) getBaseImageListGQL(ctx context.Context, config Searc
 	return imageListGQLResponse, nil
 }
 
-func (service mockService) getImagesGQL(ctx context.Context, config SearchConfig, username, password string,
+func (service *mockService) getImagesGQL(ctx context.Context, config SearchConfig, username, password string,
 	imageName string,
 ) (*common.ImageListResponse, error) {
 	if service.getImagesGQLFn != nil {
@@ -1273,7 +1287,7 @@ func (service mockService) getImagesGQL(ctx context.Context, config SearchConfig
 	return imageListGQLResponse, nil
 }
 
-func (service mockService) getImagesForDigestGQL(ctx context.Context, config SearchConfig, username, password string,
+func (service *mockService) getImagesForDigestGQL(ctx context.Context, config SearchConfig, username, password string,
 	digest string,
 ) (*common.ImagesForDigest, error) {
 	if service.getImagesForDigestGQLFn != nil {
@@ -1303,7 +1317,7 @@ func (service mockService) getImagesForDigestGQL(ctx context.Context, config Sea
 	return imageListGQLResponse, nil
 }
 
-func (service mockService) getTagsForCVEGQL(ctx context.Context, config SearchConfig, username, password,
+func (service *mockService) getTagsForCVEGQL(ctx context.Context, config SearchConfig, username, password,
 	imageName, cveID string,
 ) (*common.ImagesForCve, error) {
 	if service.getTagsForCVEGQLFn != nil {
@@ -1329,7 +1343,7 @@ func (service mockService) getTagsForCVEGQL(ctx context.Context, config SearchCo
 	return images, nil
 }
 
-func (service mockService) getFixedTagsForCVEGQL(ctx context.Context, config SearchConfig, username, password,
+func (service *mockService) getFixedTagsForCVEGQL(ctx context.Context, config SearchConfig, username, password,
 	imageName, cveID string,
 ) (*common.ImageListWithCVEFixedResponse, error) {
 	if service.getFixedTagsForCVEGQLFn != nil {
@@ -1351,7 +1365,7 @@ func (service mockService) getFixedTagsForCVEGQL(ctx context.Context, config Sea
 	return fixedTags, nil
 }
 
-func (service mockService) getCveByImageGQL(ctx context.Context, config SearchConfig, username, password,
+func (service *mockService) getCveByImageGQL(ctx context.Context, config SearchConfig, username, password,
 	imageName, searchedCVE string,
 ) (*cveResult, error) {
 	if service.getCveByImageGQLFn != nil {
@@ -1411,7 +1425,7 @@ func (service mockService) getMockedImageByName(imageName string) imageStruct {
 	return image
 }
 
-func (service mockService) getAllImages(ctx context.Context, config SearchConfig, username, password string,
+func (service *mockService) getAllImages(ctx context.Context, config SearchConfig, username, password string,
 	channel chan stringResult, wtgrp *sync.WaitGroup,
 ) {
 	defer wtgrp.Done()
@@ -1449,7 +1463,7 @@ func (service mockService) getAllImages(ctx context.Context, config SearchConfig
 	channel <- stringResult{str, nil}
 }
 
-func (service mockService) getImageByName(ctx context.Context, config SearchConfig,
+func (service *mockService) getImageByName(ctx context.Context, config SearchConfig,
 	username, password, imageName string, channel chan stringResult, wtgrp *sync.WaitGroup,
 ) {
 	defer wtgrp.Done()
@@ -1487,7 +1501,7 @@ func (service mockService) getImageByName(ctx context.Context, config SearchConf
 	channel <- stringResult{str, nil}
 }
 
-func (service mockService) getImagesByDigest(ctx context.Context, config SearchConfig, username,
+func (service *mockService) getImagesByDigest(ctx context.Context, config SearchConfig, username,
 	password, digest string, rch chan stringResult, wtgrp *sync.WaitGroup,
 ) {
 	if service.getImagesByDigestFn != nil {

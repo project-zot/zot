@@ -101,7 +101,8 @@ func CheckExtEndPointQuery(config SearchConfig, requiredQueries ...GQLQuery) err
 
 	discoverResponse := &distext.ExtensionList{}
 
-	_, err = makeGETRequest(ctx, discoverEndPoint, username, password, config.VerifyTLS,
+	_, err = config.SearchService.getHTTPClient().makeGETRequest(
+		ctx, discoverEndPoint, username, password, config.VerifyTLS,
 		config.Debug, &discoverResponse, config.ResultWriter)
 	if err != nil {
 		return err
@@ -152,7 +153,8 @@ func CheckExtEndPointQuery(config SearchConfig, requiredQueries ...GQLQuery) err
 
 	queryResponse := &schemaList{}
 
-	err = makeGraphQLRequest(ctx, searchEndPoint, schemaQuery, username, password, config.VerifyTLS,
+	err = config.SearchService.getHTTPClient().makeGraphQLRequest(
+		ctx, searchEndPoint, schemaQuery, username, password, config.VerifyTLS,
 		config.Debug, queryResponse, config.ResultWriter)
 	if err != nil {
 		return fmt.Errorf("gql query failed: %w", err)
