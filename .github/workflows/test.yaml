@@ -47,7 +47,7 @@ jobs:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
       - name: upload coverage
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-minimal
           path: coverage-minimal.txt
@@ -86,7 +86,7 @@ jobs:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
       - name: upload coverage
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-extended
           path: coverage-extended.txt
@@ -117,7 +117,7 @@ jobs:
       - name: run zot development-mode unit tests (possibly using failure injection)
         run: make test-devmode
       - name: upload coverage
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-devmode
           path: coverage-dev-*.txt
@@ -147,7 +147,7 @@ jobs:
       - name: run zot privileged tests
         run: sudo env "PATH=$PATH" make privileged-test
       - name: upload coverage
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-needprivileges
           path: coverage-needprivileges.txt
@@ -175,7 +175,7 @@ jobs:
           mkdir unified-coverage
           cp coverage.txt coverage.html unified-coverage/
       - name: upload unified-coverage as build artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: unified-coverage
           path: unified-coverage/*
