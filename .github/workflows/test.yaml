@@ -163,7 +163,7 @@ jobs:
           cache: false
           go-version: 1.25.x
       - name: download all workflow coverage files
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
       - name: merge code coverage
         run: |
           cd $GITHUB_WORKSPACE
