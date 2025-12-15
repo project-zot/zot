@@ -7869,7 +7869,7 @@ func pushBlob(url string, repoName string, buf []byte) godigest.Digest {
 // this is waiting for generator to finish working, it doesn't mean sync has finished though.
 func waitSyncFinish(logPath string) bool {
 	found, err := test.ReadLogFileAndSearchString(logPath,
-		"finished syncing all repos", 60*time.Second)
+		"finished generating tasks to sync repositories", 60*time.Second)
 	if err != nil {
 		panic(err)
 	}
