@@ -26,6 +26,8 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 	httpPort := config.GetHTTPPort()
 
 	if extensionsConfig.IsSyncEnabled() {
+		log.Info().Msg("sync extension is enabled")
+
 		onDemand := sync.NewOnDemand(log)
 		syncConfig := extensionsConfig.GetSyncConfig()
 

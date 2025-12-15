@@ -60,6 +60,8 @@ func (registry *RemoteRegistry) GetRepositories(ctx context.Context) ([]string, 
 			continue
 		}
 
+		registry.log.Debug().Strs("repoList", repoList).Str("remote", host.Name).Msg("listed repositories in remote registry")
+
 		return repoList, nil
 	}
 

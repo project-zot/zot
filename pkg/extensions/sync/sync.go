@@ -141,7 +141,7 @@ func (gen *TaskGenerator) Next() (scheduler.Task, error) {
 	gen.resetWaitTime()
 
 	if repo == "" {
-		gen.log.Info().Str("component", "sync").Msg("finished syncing all repositories")
+		gen.log.Info().Str("component", "sync").Msg("finished generating tasks to sync repositories")
 		gen.done = true
 
 		return nil, nil //nolint:nilnil
