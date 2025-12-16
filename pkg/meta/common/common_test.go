@@ -195,6 +195,10 @@ func TestUtils(t *testing.T) {
 			resultMeta, resultBlobs := common.RemoveImageFromRepoMeta(repoMeta, repoBlobs, "tag1")
 			So(resultMeta, ShouldNotBeNil)
 			So(resultBlobs, ShouldNotBeNil)
+
+			// Verify tag1 was removed
+			So(resultMeta.Tags["tag1"], ShouldBeNil)
+
 			// After removing tag1, no blobs should remain
 			So(len(resultBlobs.Blobs), ShouldEqual, 0)
 		})
