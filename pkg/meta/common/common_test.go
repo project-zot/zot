@@ -131,10 +131,15 @@ func TestUtils(t *testing.T) {
 
 	Convey("RemoveImageFromRepoMeta", t, func() {
 		Convey("should handle nil blob info for descriptor digest", func() {
+			now := time.Now()
 			repoMeta := &proto_go.RepoMeta{
 				Name: "test-repo",
 				Tags: map[string]*proto_go.TagDescriptor{
 					"tag1": {
+						MediaType: "application/vnd.oci.image.manifest.v1+json",
+						Digest:    "sha256:manifest1",
+					},
+					"tag2": {
 						MediaType: "application/vnd.oci.image.manifest.v1+json",
 						Digest:    "sha256:missing",
 					},
@@ -143,11 +148,23 @@ func TestUtils(t *testing.T) {
 
 			repoBlobs := &proto_go.RepoBlobs{
 				Blobs: map[string]*proto_go.BlobInfo{
-					// Intentionally missing "sha256:missing" to trigger nil check
+					"sha256:manifest1": {
+						Size:        1000,
+						LastUpdated: timestamppb.New(now),
+						SubBlobs:    []string{"sha256:layer1"},
+					},
+					"sha256:layer1": {
+						Size: 500,
+					},
+					// Intentionally missing "sha256:missing" for tag2 to test nil check
+					// while processing remaining tags after tag1 removal
 				},
 			}
 
-			// Should not panic when blob info is nil
+			// Remove tag1 (simulating actual usage pattern)
+			delete(repoMeta.Tags, "tag1")
+
+			// Should not panic when tag2 has missing blob info
 			So(func() {
 				common.RemoveImageFromRepoMeta(repoMeta, repoBlobs, "tag1")
 			}, ShouldNotPanic)
@@ -155,6 +172,10 @@ func TestUtils(t *testing.T) {
 			resultMeta, resultBlobs := common.RemoveImageFromRepoMeta(repoMeta, repoBlobs, "tag1")
 			So(resultMeta, ShouldNotBeNil)
 			So(resultBlobs, ShouldNotBeNil)
+
+			// tag2 remains in metadata but has no blobs (inconsistent state, acceptable in GC scenarios)
+			So(resultMeta.Tags["tag2"], ShouldNotBeNil)
+			So(len(resultBlobs.Blobs), ShouldEqual, 0) // No blobs since tag2's blob info is missing
 			So(resultMeta.LastUpdatedImage, ShouldBeNil)
 		})
 

@@ -275,7 +275,11 @@ func RemoveImageFromRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.Re
 
 		queue := []string{descriptor.Digest}
 
-		// Check if blob info exists before accessing it to prevent nil pointer dereference
+		// Check if blob info exists before accessing it to prevent nil pointer dereference.
+		// When a tag is skipped due to nil blob info, that tag remains in repoMeta.Tags but
+		// won't have any associated blobs in the result, creating metadata inconsistency.
+		// This is acceptable in GC/cleanup scenarios where data may already be inconsistent
+		// due to partial deletions or corruption.
 		descriptorBlobInfo := repoBlobs.Blobs[descriptor.Digest]
 		if descriptorBlobInfo == nil {
 			continue
