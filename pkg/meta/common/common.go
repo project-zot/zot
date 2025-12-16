@@ -275,8 +275,14 @@ func RemoveImageFromRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.Re
 
 		queue := []string{descriptor.Digest}
 
+		// Check if blob info exists before accessing it to prevent nil pointer dereference
+		descriptorBlobInfo := repoBlobs.Blobs[descriptor.Digest]
+		if descriptorBlobInfo == nil {
+			continue
+		}
+
 		updatedLastImage = mConvert.GetProtoEarlierUpdatedImage(updatedLastImage, &proto_go.RepoLastUpdatedImage{
-			LastUpdated: repoBlobs.Blobs[descriptor.Digest].LastUpdated,
+			LastUpdated: descriptorBlobInfo.LastUpdated,
 			MediaType:   descriptor.MediaType,
 			Digest:      descriptor.Digest,
 			Tag:         tag,
@@ -288,6 +294,9 @@ func RemoveImageFromRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.Re
 
 			if _, found := updatedBlobs[currentBlob]; !found {
 				blobInfo := repoBlobs.Blobs[currentBlob]
+				if blobInfo == nil {
+					continue
+				}
 
 				updatedBlobs[currentBlob] = blobInfo
 				updatedSize += blobInfo.Size
