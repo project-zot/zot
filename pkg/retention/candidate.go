@@ -12,19 +12,26 @@ func GetCandidates(repoMeta mTypes.RepoMeta) []*types.Candidate {
 
 	// collect all statistic of repo's manifests
 	for tag, desc := range repoMeta.Tags {
-		for digestStr, stats := range repoMeta.Statistics {
-			if digestStr == desc.Digest {
-				candidate := &types.Candidate{
-					MediaType:     desc.MediaType,
-					DigestStr:     digestStr,
-					Tag:           tag,
-					PushTimestamp: stats.PushTimestamp,
-					PullTimestamp: stats.LastPullTimestamp,
-				}
-
-				candidates = append(candidates, candidate)
-			}
+		// Check if statistics exist for this digest to prevent using zero-value statistics.
+		// When statistics are missing for a tag's digest, we skip creating a candidate for it.
+		// This prevents incorrect retention decisions based on zero-value timestamps (epoch time).
+		// The retention policy manager handles tags without statistics separately by keeping them
+		// (see GetRetainedTagsFromMetaDB in retention.go which explicitly retains tags not found
+		// in candidates list).
+		stats, hasStatistics := repoMeta.Statistics[desc.Digest]
+		if !hasStatistics {
+			continue
 		}
+
+		candidate := &types.Candidate{
+			MediaType:     desc.MediaType,
+			DigestStr:     desc.Digest,
+			Tag:           tag,
+			PushTimestamp: stats.PushTimestamp,
+			PullTimestamp: stats.LastPullTimestamp,
+		}
+
+		candidates = append(candidates, candidate)
 	}
 
 	return candidates
