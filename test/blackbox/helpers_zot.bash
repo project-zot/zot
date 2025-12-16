@@ -29,17 +29,28 @@ function zot_serve() {
 }
 
 function zot_rel_serve() {
-    local config_file
-    if [ -n "${2}" ]; then
-        config_file=${2}
-    else
-        config_file=${1}
-    fi
-
+    local config_file=${1}
     local zot_path=${BATS_FILE_TMPDIR}/zot-rel-${OS}-${ARCH}
 
     if [ ! -f "${zot_path}" ]; then
-        curl -L -o "${zot_path}" https://github.com/project-zot/zot/releases/latest/download/zot-${OS}-${ARCH}
+        if ! curl -f -L -o "${zot_path}" https://github.com/project-zot/zot/releases/latest/download/zot-${OS}-${ARCH}; then 
+            echo "ERROR: Failed to download zot binary from GitHub." >&2
+            return 1
+        fi
+        # Download checksum file and verify integrity
+        checksum_url="https://github.com/project-zot/zot/releases/latest/download/checksums.sha256.txt"
+        checksum_file="${BATS_FILE_TMPDIR}/zot-sha256sums.txt"
+        curl -L -o "${checksum_file}" "${checksum_url}"
+        expected_sum=$(grep "zot-${OS}-${ARCH}$" "${checksum_file}" | awk '{print $1}')
+        if [ -z "${expected_sum}" ]; then
+            echo "ERROR: Could not find checksum for zot-${OS}-${ARCH} in sha256sums.txt"
+            exit 1
+        fi
+        actual_sum=$(sha256sum "${zot_path}" | awk '{print $1}')
+        if [ "${expected_sum}" != "${actual_sum}" ]; then
+            echo "ERROR: Checksum verification failed for zot-${OS}-${ARCH}"
+            exit 1
+        fi
         chmod +x "${zot_path}"
     fi
 
@@ -49,17 +60,28 @@ function zot_rel_serve() {
 }
 
 function zot_rel_min_serve() {
-    local config_file
-    if [ -n "${2}" ]; then
-        config_file=${2}
-    else
-        config_file=${1}
-    fi
-
+    local config_file=${1}
     local zot_path=${BATS_FILE_TMPDIR}/zot-rel-${OS}-${ARCH}-minimal
 
     if [ ! -f "${zot_path}" ]; then
-        curl -L -o "${zot_path}" https://github.com/project-zot/zot/releases/latest/download/zot-${OS}-${ARCH}-minimal
+        if ! curl -f -L -o "${zot_path}" https://github.com/project-zot/zot/releases/latest/download/zot-${OS}-${ARCH}-minimal; then
+            echo "ERROR: Failed to download zot binary from GitHub." >&2
+            return 1
+        fi
+        # Download checksum file and verify integrity
+        checksum_url="https://github.com/project-zot/zot/releases/latest/download/checksums.sha256.txt"
+        checksum_file="${BATS_FILE_TMPDIR}/zot-sha256sums.txt"
+        curl -L -o "${checksum_file}" "${checksum_url}"
+        expected_sum=$(grep "zot-${OS}-${ARCH}-minimal$" "${checksum_file}" | awk '{print $1}')
+        if [ -z "${expected_sum}" ]; then
+            echo "ERROR: Could not find checksum for zot-${OS}-${ARCH}-minimal in sha256sums.txt"
+            exit 1
+        fi
+        actual_sum=$(sha256sum "${zot_path}" | awk '{print $1}')
+        if [ "${expected_sum}" != "${actual_sum}" ]; then
+            echo "ERROR: Checksum verification failed for zot-${OS}-${ARCH}-minimal"
+            exit 1
+        fi
         chmod +x "${zot_path}"
     fi
 

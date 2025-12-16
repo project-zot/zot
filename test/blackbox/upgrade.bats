@@ -47,16 +47,26 @@ function setup_file() {
     "log": {
         "level": "debug",
         "output": "${BATS_FILE_TMPDIR}/zot.log"
+    },
+    "extensions": {
+        "search": {
+            "cve": {
+                "updateInterval": "2h"
+            }
+        },
+        "ui": {
+            "enable": true
+        }
     }
 }
 JSON
     git -C ${BATS_FILE_TMPDIR} clone https://github.com/project-zot/helm-charts.git
-    zot_rel_serve ${ZOT_PATH} ${zot_config_file}
+    zot_rel_serve ${zot_config_file}
     wait_zot_reachable ${zot_port}
 }
 
 function teardown() {
-    # conditionally printing on failure is possible from teardown but not from from teardown_file
+    # conditionally printing on failure is possible from teardown but not from teardown_file
     cat ${BATS_FILE_TMPDIR}/zot.log
 }
 
@@ -393,8 +403,11 @@ DOCKERFILE
     local zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     zot_serve ${ZOT_PATH} ${zot_config_file}
     wait_zot_reachable ${zot_port}
-    sleep 60
+    sleep 10    # zot does additional initialization/verification during startup
 }
+
+# After upgrading to the new binary, expect additional artifacts (a signature
+# and an sbom) that were attached
 
 @test "[new] push image" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
@@ -402,9 +415,14 @@ DOCKERFILE
         oci:${TEST_DATA_DIR}/golang:1.20 \
         docker://127.0.0.1:${zot_port}/golang:1.20
     [ "$status" -eq 0 ]
+    run skopeo --insecure-policy copy --dest-tls-verify=false \
+        docker://ghcr.io/project-zot/test-images/alpine:3.17.3 \
+        docker://127.0.0.1:${zot_port}/alpine:3.17.3
+    [ "$status" -eq 0 ]
     run curl http://127.0.0.1:${zot_port}/v2/_catalog
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq 'any(.repositories[]; . == "golang")') ] 
+    [ $(echo "${lines[-1]}" | jq 'any(.repositories[]; . == "golang")') = true ] 
+    [ $(echo "${lines[-1]}" | jq 'any(.repositories[]; . == "alpine")') = true ] 
     run curl http://127.0.0.1:${zot_port}/v2/golang/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.20"' ]
@@ -432,7 +450,7 @@ DOCKERFILE
     [ "$status" -eq 0 ]
     run curl http://127.0.0.1:${zot_port}/v2/_catalog
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.repositories[2]') = '"busybox"' ]
+    [ $(echo "${lines[-1]}" | jq 'any(.repositories[]; . == "busybox")') = true ] 
     run curl http://127.0.0.1:${zot_port}/v2/busybox/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
@@ -586,8 +604,7 @@ DOCKERFILE
     [ "$status" -eq 0 ]
     echo "$output"
     [ $(echo "$output" | wc -l) -eq 4 ]
-    [ "${lines[-2]}" == "busybox" ]
-    [ "${lines[-1]}" == "golang" ]
+    [ "${lines[-1]}" == "busybox" ]
 
     run regctl repo ls --last busybox --limit 1 localhost:${zot_port}
     [ "$status" -eq 0 ]
