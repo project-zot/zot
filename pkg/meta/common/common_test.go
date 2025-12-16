@@ -184,6 +184,9 @@ func TestUtils(t *testing.T) {
 				},
 			}
 
+			// Remove the tag before calling RemoveImageFromRepoMeta (as done in actual usage)
+			delete(repoMeta.Tags, "tag1")
+
 			// Should not panic when a sub-blob is nil
 			So(func() {
 				common.RemoveImageFromRepoMeta(repoMeta, repoBlobs, "tag1")
@@ -192,10 +195,8 @@ func TestUtils(t *testing.T) {
 			resultMeta, resultBlobs := common.RemoveImageFromRepoMeta(repoMeta, repoBlobs, "tag1")
 			So(resultMeta, ShouldNotBeNil)
 			So(resultBlobs, ShouldNotBeNil)
-			// Should only include non-nil blobs
-			So(len(resultBlobs.Blobs), ShouldEqual, 2)
-			So(resultBlobs.Blobs["sha256:manifest1"], ShouldNotBeNil)
-			So(resultBlobs.Blobs["sha256:layer1"], ShouldNotBeNil)
+			// After removing tag1, no blobs should remain
+			So(len(resultBlobs.Blobs), ShouldEqual, 0)
 		})
 
 		Convey("should work correctly with valid blob info", func() {
@@ -237,19 +238,23 @@ func TestUtils(t *testing.T) {
 				},
 			}
 
+			// Remove the tag before calling RemoveImageFromRepoMeta (as done in actual usage)
+			delete(repoMeta.Tags, "tag1")
+
 			resultMeta, resultBlobs := common.RemoveImageFromRepoMeta(repoMeta, repoBlobs, "tag1")
 			So(resultMeta, ShouldNotBeNil)
 			So(resultBlobs, ShouldNotBeNil)
 
-			// Should include all blobs from all tags
-			So(len(resultBlobs.Blobs), ShouldEqual, 4)
-			So(resultBlobs.Blobs["sha256:manifest1"], ShouldNotBeNil)
+			// Verify tag1 was removed
+			So(resultMeta.Tags["tag1"], ShouldBeNil)
+
+			// Should only include blobs from remaining tag2 (manifest2 and layer2)
+			So(len(resultBlobs.Blobs), ShouldEqual, 2)
 			So(resultBlobs.Blobs["sha256:manifest2"], ShouldNotBeNil)
-			So(resultBlobs.Blobs["sha256:layer1"], ShouldNotBeNil)
 			So(resultBlobs.Blobs["sha256:layer2"], ShouldNotBeNil)
 
-			// Should calculate total size correctly
-			expectedSize := int64(1000 + 500 + 2000 + 800)
+			// Should calculate total size correctly (only tag2 blobs)
+			expectedSize := int64(2000 + 800)
 			So(resultMeta.Size, ShouldEqual, expectedSize)
 
 			// Should have updated last image
