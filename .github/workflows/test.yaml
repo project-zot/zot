@@ -24,7 +24,7 @@ jobs:
           go-version: 1.25.x
       - name: Cache go dependencies
         id: cache-go-dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/go/pkg/mod
@@ -47,7 +47,7 @@ jobs:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
       - name: upload coverage
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-minimal
           path: coverage-minimal.txt
@@ -63,7 +63,7 @@ jobs:
           go-version: 1.25.x
       - name: Cache go dependencies
         id: cache-go-dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/go/pkg/mod
@@ -86,7 +86,7 @@ jobs:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
       - name: upload coverage
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-extended
           path: coverage-extended.txt
@@ -102,7 +102,7 @@ jobs:
           go-version: 1.25.x
       - name: Cache go dependencies
         id: cache-go-dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/go/pkg/mod
@@ -117,7 +117,7 @@ jobs:
       - name: run zot development-mode unit tests (possibly using failure injection)
         run: make test-devmode
       - name: upload coverage
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-devmode
           path: coverage-dev-*.txt
@@ -132,7 +132,7 @@ jobs:
           go-version: 1.25.x
       - name: Cache go dependencies
         id: cache-go-dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/go/pkg/mod
@@ -147,7 +147,7 @@ jobs:
       - name: run zot privileged tests
         run: sudo env "PATH=$PATH" make privileged-test
       - name: upload coverage
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-needprivileges
           path: coverage-needprivileges.txt
@@ -163,7 +163,7 @@ jobs:
           cache: false
           go-version: 1.25.x
       - name: download all workflow coverage files
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
       - name: merge code coverage
         run: |
           cd $GITHUB_WORKSPACE
@@ -175,7 +175,7 @@ jobs:
           mkdir unified-coverage
           cp coverage.txt coverage.html unified-coverage/
       - name: upload unified-coverage as build artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: unified-coverage
           path: unified-coverage/*

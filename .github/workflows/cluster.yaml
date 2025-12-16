@@ -161,7 +161,7 @@ jobs:
             rm /tmp/*.log
 
       - name: Upload zot logs for push-pull tests
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: logs-push-pull-bolt
@@ -203,7 +203,7 @@ jobs:
             rm /tmp/*.log
 
       - name: Upload zot logs for cidr tests
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: logs-src-cidr-bolt
@@ -238,7 +238,7 @@ jobs:
             zip logs-src-ips-bolt.zip /tmp/*.log -r
 
       - name: Upload zot logs for src-ips tests
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: logs-src-ips-bolt
@@ -247,7 +247,7 @@ jobs:
 
       # Download previous benchmark result from cache (if exists)
       - name: Download previous benchmark data
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ./cache
           key: ${{ runner.os }}-gen1-benchmark-stateless-cluster
@@ -425,7 +425,7 @@ jobs:
             rm /tmp/*.log
 
       - name: Upload zot logs for push-pull tests
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: logs-push-pull-redis
@@ -467,7 +467,7 @@ jobs:
             rm /tmp/*.log
 
       - name: Upload zot logs for cidr tests
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: logs-src-cidr-redis
@@ -502,7 +502,7 @@ jobs:
             zip logs-src-ips-redis.zip /tmp/*.log -r
 
       - name: Upload zot logs for src-ips tests
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: logs-src-ips-redis
@@ -511,7 +511,7 @@ jobs:
 
       # Download previous benchmark result from cache (if exists)
       - name: Download previous benchmark data
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ./cache
           key: ${{ runner.os }}-gen1-benchmark-stateless-cluster-redis
