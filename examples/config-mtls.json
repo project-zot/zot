@@ -1,0 +1,35 @@
+{
+  "distSpecVersion": "1.1.1",
+  "storage": {
+    "rootDirectory": "/tmp/zot"
+  },
+  "http": {
+    "address": "127.0.0.1",
+    "port": "8080",
+    "realm": "zot",
+    "tls": {
+      "cert": "test/data/server.cert",
+      "key": "test/data/server.key",
+      "cacert": "test/data/ca.crt"
+    },
+    "auth": {
+      "mtls": {
+        "identityAttributes": ["CommonName"]
+      }
+    },
+    "accessControl": {
+      "repositories": {
+        "**": {
+          "policies": [{
+            "users": ["clientuser"],
+            "actions": ["read", "create"]
+          }],
+          "defaultPolicy": ["read"]
+        }
+      }
+    }
+  },
+  "log": {
+    "level": "debug"
+  }
+}

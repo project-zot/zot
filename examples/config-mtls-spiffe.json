@@ -1,0 +1,37 @@
+{
+  "distSpecVersion": "1.1.1",
+  "storage": {
+    "rootDirectory": "/tmp/zot"
+  },
+  "http": {
+    "address": "127.0.0.1",
+    "port": "8080",
+    "realm": "zot",
+    "tls": {
+      "cert": "test/data/server.cert",
+      "key": "test/data/server.key",
+      "cacert": "test/data/ca.crt"
+    },
+    "auth": {
+      "mtls": {
+        "identityAttributes": ["URI", "CommonName"],
+        "uriSanPattern": "spiffe://example.org/workload/(.*)"
+      }
+    },
+    "accessControl": {
+      "repositories": {
+        "**": {
+          "policies": [{
+            "users": ["testuser"],
+            "actions": ["read", "create"]
+          }],
+          "defaultPolicy": ["read"]
+        }
+      }
+    }
+  },
+  "log": {
+    "level": "debug"
+  }
+}
+

@@ -1769,6 +1769,372 @@ storage:
 		So(err, ShouldNotBeNil)
 		So(err.Error(), ShouldContainSubstring, "invalid server config")
 	})
+
+	Convey("Test verify mTLS config validation", t, func(c C) {
+		Convey("Test valid mTLS config with CommonName", func() {
+			content := `{
+				"distSpecVersion": "1.1.1",
+				"storage": {
+					"rootDirectory": "/tmp/zot"
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "8080",
+					"realm": "zot",
+					"tls": {
+						"cert": "test/data/server.cert",
+						"key": "test/data/server.key",
+						"cacert": "test/data/ca.crt"
+					},
+					"auth": {
+						"mtls": {
+							"identityAttributes": ["CommonName"]
+						}
+					}
+				},
+				"log": {
+					"level": "debug"
+				}
+			}`
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+			os.Args = []string{"cli_test", "verify", tmpfile}
+			err := cli.NewServerRootCmd().Execute()
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Test valid mTLS config with URI and pattern", func() {
+			content := `{
+				"distSpecVersion": "1.1.1",
+				"storage": {
+					"rootDirectory": "/tmp/zot"
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "8080",
+					"realm": "zot",
+					"tls": {
+						"cert": "test/data/server.cert",
+						"key": "test/data/server.key",
+						"cacert": "test/data/ca.crt"
+					},
+					"auth": {
+						"mtls": {
+							"identityAttributes": ["URI", "CommonName"],
+							"uriSanPattern": "spiffe://example.org/workload/(.*)"
+						}
+					}
+				},
+				"log": {
+					"level": "debug"
+				}
+			}`
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+			os.Args = []string{"cli_test", "verify", tmpfile}
+			err := cli.NewServerRootCmd().Execute()
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Test valid mTLS config with all valid identity attributes", func() {
+			content := `{
+				"distSpecVersion": "1.1.1",
+				"storage": {
+					"rootDirectory": "/tmp/zot"
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "8080",
+					"realm": "zot",
+					"tls": {
+						"cert": "test/data/server.cert",
+						"key": "test/data/server.key",
+						"cacert": "test/data/ca.crt"
+					},
+					"auth": {
+						"mtls": {
+							"identityAttributes": ["CommonName", "CN", "Subject", "DN", "Email",
+							"rfc822name", "URI", "URL", "DNSName", "DNS"]
+						}
+					}
+				},
+				"log": {
+					"level": "debug"
+				}
+			}`
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+			os.Args = []string{"cli_test", "verify", tmpfile}
+			err := cli.NewServerRootCmd().Execute()
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Test invalid identity attribute", func() {
+			content := `{
+				"distSpecVersion": "1.1.1",
+				"storage": {
+					"rootDirectory": "/tmp/zot"
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "8080",
+					"realm": "zot",
+					"tls": {
+						"cert": "test/data/server.cert",
+						"key": "test/data/server.key",
+						"cacert": "test/data/ca.crt"
+					},
+					"auth": {
+						"mtls": {
+							"identityAttributes": ["InvalidAttribute"]
+						}
+					}
+				},
+				"log": {
+					"level": "debug"
+				}
+			}`
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+			os.Args = []string{"cli_test", "verify", tmpfile}
+			err := cli.NewServerRootCmd().Execute()
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "unsupported identity attribute")
+			So(err.Error(), ShouldContainSubstring, "InvalidAttribute")
+		})
+
+		Convey("Test DNSANIndex without URI/URL identity attribute", func() {
+			content := `{
+				"distSpecVersion": "1.1.1",
+				"storage": {
+					"rootDirectory": "/tmp/zot"
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "8080",
+					"realm": "zot",
+					"tls": {
+						"cert": "test/data/server.cert",
+						"key": "test/data/server.key",
+						"cacert": "test/data/ca.crt"
+					},
+					"auth": {
+						"mtls": {
+							"identityAttributes": ["CommonName"],
+							"dnsSanIndex": 1
+						}
+					}
+				},
+				"log": {
+					"level": "debug"
+				}
+			}`
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+			os.Args = []string{"cli_test", "verify", tmpfile}
+			err := cli.NewServerRootCmd().Execute()
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "dnsSanIndex is only supported for URI/URL MTLS identity attribute")
+		})
+
+		Convey("Test EmailSANIndex without URI/URL identity attribute", func() {
+			content := `{
+				"distSpecVersion": "1.1.1",
+				"storage": {
+					"rootDirectory": "/tmp/zot"
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "8080",
+					"realm": "zot",
+					"tls": {
+						"cert": "test/data/server.cert",
+						"key": "test/data/server.key",
+						"cacert": "test/data/ca.crt"
+					},
+					"auth": {
+						"mtls": {
+							"identityAttributes": ["CommonName"],
+							"emailSanIndex": 1
+						}
+					}
+				},
+				"log": {
+					"level": "debug"
+				}
+			}`
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+			os.Args = []string{"cli_test", "verify", tmpfile}
+			err := cli.NewServerRootCmd().Execute()
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "emailSanIndex is only supported for URI/URL MTLS identity attribute")
+		})
+
+		Convey("Test URISANIndex without URI/URL identity attribute", func() {
+			content := `{
+				"distSpecVersion": "1.1.1",
+				"storage": {
+					"rootDirectory": "/tmp/zot"
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "8080",
+					"realm": "zot",
+					"tls": {
+						"cert": "test/data/server.cert",
+						"key": "test/data/server.key",
+						"cacert": "test/data/ca.crt"
+					},
+					"auth": {
+						"mtls": {
+							"identityAttributes": ["CommonName"],
+							"uriSanIndex": 1
+						}
+					}
+				},
+				"log": {
+					"level": "debug"
+				}
+			}`
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+			os.Args = []string{"cli_test", "verify", tmpfile}
+			err := cli.NewServerRootCmd().Execute()
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "uriSanIndex is only supported for URI/URL MTLS identity attribute")
+		})
+
+		Convey("Test URISANPattern without URI/URL identity attribute", func() {
+			content := `{
+				"distSpecVersion": "1.1.1",
+				"storage": {
+					"rootDirectory": "/tmp/zot"
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "8080",
+					"realm": "zot",
+					"tls": {
+						"cert": "test/data/server.cert",
+						"key": "test/data/server.key",
+						"cacert": "test/data/ca.crt"
+					},
+					"auth": {
+						"mtls": {
+							"identityAttributes": ["CommonName"],
+							"uriSanPattern": "spiffe://example.org/workload/(.*)"
+						}
+					}
+				},
+				"log": {
+					"level": "debug"
+				}
+			}`
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+			os.Args = []string{"cli_test", "verify", tmpfile}
+			err := cli.NewServerRootCmd().Execute()
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "uriSanPattern is only supported for URI/URL MTLS identity attribute")
+		})
+
+		Convey("Test invalid regex pattern for URISANPattern", func() {
+			content := `{
+				"distSpecVersion": "1.1.1",
+				"storage": {
+					"rootDirectory": "/tmp/zot"
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "8080",
+					"realm": "zot",
+					"tls": {
+						"cert": "test/data/server.cert",
+						"key": "test/data/server.key",
+						"cacert": "test/data/ca.crt"
+					},
+					"auth": {
+						"mtls": {
+							"identityAttributes": ["URI"],
+							"uriSanPattern": "[invalid(regex"
+						}
+					}
+				},
+				"log": {
+					"level": "debug"
+				}
+			}`
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+			os.Args = []string{"cli_test", "verify", tmpfile}
+			err := cli.NewServerRootCmd().Execute()
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "invalid URI SAN pattern")
+		})
+
+		Convey("Test valid mTLS config with URL identity attribute", func() {
+			content := `{
+				"distSpecVersion": "1.1.1",
+				"storage": {
+					"rootDirectory": "/tmp/zot"
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "8080",
+					"realm": "zot",
+					"tls": {
+						"cert": "test/data/server.cert",
+						"key": "test/data/server.key",
+						"cacert": "test/data/ca.crt"
+					},
+					"auth": {
+						"mtls": {
+							"identityAttributes": ["URL"],
+							"uriSanPattern": "spiffe://example.org/workload/(.*)",
+							"uriSanIndex": 0
+						}
+					}
+				},
+				"log": {
+					"level": "debug"
+				}
+			}`
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+			os.Args = []string{"cli_test", "verify", tmpfile}
+			err := cli.NewServerRootCmd().Execute()
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Test mTLS config without TLS (should fail - mTLS requires TLS)", func() {
+			content := `{
+				"distSpecVersion": "1.1.1",
+				"storage": {
+					"rootDirectory": "/tmp/zot"
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "8080",
+					"realm": "zot",
+					"auth": {
+						"mtls": {
+							"identityAttributes": ["CommonName"]
+						}
+					}
+				},
+				"log": {
+					"level": "debug"
+				}
+			}`
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+			os.Args = []string{"cli_test", "verify", tmpfile}
+			err := cli.NewServerRootCmd().Execute()
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "mTLS configuration requires TLS to be enabled with CA certificate")
+		})
+	})
 }
 
 func TestApiKeyConfig(t *testing.T) {

@@ -567,6 +567,10 @@ func validateConfiguration(config *config.Config, logger zlog.Logger) error {
 		return err
 	}
 
+	if err := validateMTLS(config, logger); err != nil {
+		return err
+	}
+
 	if err := validateOpenIDConfig(config, logger); err != nil {
 		return err
 	}
@@ -1262,6 +1266,100 @@ func validateLDAP(config *config.Config, logger zlog.Logger) error {
 			logger.Error().Str("basedn", ldap.BaseDN).Msg(msg)
 
 			return fmt.Errorf("%w: %s", zerr.ErrLDAPConfig, msg)
+		}
+	}
+
+	return nil
+}
+
+// validateMTLS checks if the authentication settings for MTLS are valid.
+func validateMTLS(config *config.Config, logger zlog.Logger) error {
+	mtlsConfig := config.CopyAuthConfig().GetMTLSConfig()
+	if mtlsConfig == nil {
+		return nil
+	}
+
+	// If mTLS config is present, TLS must be properly configured
+	if !config.IsMTLSAuthEnabled() {
+		msg := "mTLS configuration requires TLS to be enabled with CA certificate"
+		logger.Error().Msg(msg)
+
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+	}
+
+	if len(mtlsConfig.IdentityAttibutes) > 0 {
+		validIdentityAttributes := []string{
+			"CommonName", "CN", "Subject", "DN", "Email", "rfc822name", "URI", "URL", "DNSName", "DNS",
+		}
+
+		var unrecognizedIdentityAttributes []string
+
+		for _, source := range mtlsConfig.IdentityAttibutes {
+			idx := slices.IndexFunc(validIdentityAttributes,
+				func(s string) bool {
+					return strings.EqualFold(strings.TrimSpace(source), strings.TrimSpace(s))
+				},
+			)
+
+			if idx < 0 {
+				unrecognizedIdentityAttributes = append(unrecognizedIdentityAttributes, source)
+			}
+		}
+
+		if len(unrecognizedIdentityAttributes) > 0 {
+			logger.Error().Strs("identityAttributes", unrecognizedIdentityAttributes).Msg("unsupported identityAttributes")
+
+			return fmt.Errorf("%w: %s", zerr.ErrUnsupportedIdentityAttribute, strings.Join(unrecognizedIdentityAttributes, ","))
+		}
+	}
+
+	idx := slices.IndexFunc(mtlsConfig.IdentityAttibutes,
+		func(s string) bool {
+			return strings.ToLower(strings.TrimSpace(s)) == "uri" || strings.ToLower(strings.TrimSpace(s)) == "url"
+		},
+	)
+
+	useSan := idx >= 0
+
+	if mtlsConfig.DNSANIndex != 0 && !useSan {
+		logger.Error().Int("dnsSanIndex", mtlsConfig.DNSANIndex).Strs("identityAttributes", mtlsConfig.IdentityAttibutes).
+			Msg("dnsSanIndex is only supported for URI/URL MTLS identity attribute")
+
+		return fmt.Errorf("%w: dnsSanIndex is only supported for URI/URL MTLS identity attribute",
+			zerr.ErrBadConfig)
+	}
+
+	if mtlsConfig.EmailSANIndex != 0 && !useSan {
+		logger.Error().Int("emailSanIndex", mtlsConfig.EmailSANIndex).
+			Strs("identityAttributes", mtlsConfig.IdentityAttibutes).
+			Msg("emailSanIndex is only supported for URI/URL MTLS identity attribute")
+
+		return fmt.Errorf("%w: emailSanIndex is only supported for URI/URL MTLS identity attribute",
+			zerr.ErrBadConfig)
+	}
+
+	if mtlsConfig.URISANIndex != 0 && !useSan {
+		logger.Error().Int("uriSanIndex", mtlsConfig.URISANIndex).Strs("identityAttributes", mtlsConfig.IdentityAttibutes).
+			Msg("uriSanIndex is only supported for URI/URL MTLS identity attribute")
+
+		return fmt.Errorf("%w: uriSanIndex is only supported for URI/URL MTLS identity attribute",
+			zerr.ErrBadConfig)
+	}
+
+	if mtlsConfig.URISANPattern != "" {
+		if !useSan {
+			logger.Error().Str("uriSanPattern", mtlsConfig.URISANPattern).
+				Strs("identityAttributes", mtlsConfig.IdentityAttibutes).
+				Msg("uriSanPattern is only supported for URI/URL MTLS identity attribute")
+
+			return fmt.Errorf("%w: uriSanPattern is only supported for URI/URL MTLS identity attribute",
+				zerr.ErrBadConfig)
+		}
+
+		if _, err := regexp.Compile(mtlsConfig.URISANPattern); err != nil {
+			logger.Error().Str("uriSanPattern", mtlsConfig.URISANPattern).Msg("invalid regex pattern")
+
+			return fmt.Errorf("%w: %s", zerr.ErrInvalidURISANPattern, mtlsConfig.URISANPattern)
 		}
 	}
 

@@ -873,6 +873,31 @@ func TestConfig(t *testing.T) {
 			}
 			So(authConfig.GetFailDelay(), ShouldEqual, 5)
 		})
+
+		Convey("Test GetMTLSConfig()", func() {
+			// Test with nil AuthConfig
+			var authConfig *config.AuthConfig = nil
+
+			So(authConfig.GetMTLSConfig(), ShouldBeNil)
+
+			// Test with AuthConfig but nil MTLS
+			authConfig = &config.AuthConfig{}
+			So(authConfig.GetMTLSConfig(), ShouldBeNil)
+
+			// Test with AuthConfig and MTLS configured
+			authConfig = &config.AuthConfig{
+				MTLS: &config.MTLSConfig{
+					IdentityAttibutes: []string{"CommonName", "URI"},
+					URISANPattern:     "spiffe://example.org/workload/(.*)",
+				},
+			}
+			mtlsConfig := authConfig.GetMTLSConfig()
+			So(mtlsConfig, ShouldNotBeNil)
+			So(len(mtlsConfig.IdentityAttibutes), ShouldEqual, 2)
+			So(mtlsConfig.IdentityAttibutes[0], ShouldEqual, "CommonName")
+			So(mtlsConfig.IdentityAttibutes[1], ShouldEqual, "URI")
+			So(mtlsConfig.URISANPattern, ShouldEqual, "spiffe://example.org/workload/(.*)")
+		})
 	})
 
 	Convey("Test LDAPConfig methods", t, func() {
@@ -1036,6 +1061,10 @@ func TestConfig(t *testing.T) {
 								"type": "redis",
 								"host": "localhost",
 							},
+							MTLS: &config.MTLSConfig{
+								IdentityAttibutes: []string{"CommonName"},
+								URISANPattern:     "spiffe://example.org/workload/(.*)",
+							},
 						},
 					},
 				}
@@ -1049,6 +1078,8 @@ func TestConfig(t *testing.T) {
 				So(authConfig.IsBearerAuthEnabled(), ShouldBeTrue)
 				So(authConfig.IsOpenIDAuthEnabled(), ShouldBeTrue)
 				So(authConfig.IsAPIKeyEnabled(), ShouldBeFalse)
+				So(authConfig.GetMTLSConfig(), ShouldNotBeNil)
+				So(authConfig.GetMTLSConfig().IdentityAttibutes[0], ShouldEqual, "CommonName")
 
 				// Test deep copy isolation by modifying nested structures
 				authConfig.LDAP.Address = "modified-ldap.example.com"
@@ -1056,6 +1087,8 @@ func TestConfig(t *testing.T) {
 				authConfig.OpenID.Providers["google"].Scopes[0] = "modified-scope"
 				authConfig.SessionHashKey[0] = 'M'
 				authConfig.SessionDriver["type"] = "modified-driver"
+				authConfig.MTLS.IdentityAttibutes[0] = "URI"
+				authConfig.MTLS.URISANPattern = "modified-pattern"
 
 				// Verify original is unchanged
 				So(cfg.HTTP.Auth.LDAP.Address, ShouldEqual, "ldap.example.com")
@@ -1063,6 +1096,8 @@ func TestConfig(t *testing.T) {
 				So(cfg.HTTP.Auth.OpenID.Providers["google"].Scopes[0], ShouldEqual, "openid")
 				So(cfg.HTTP.Auth.SessionHashKey[0], ShouldEqual, byte('h'))
 				So(cfg.HTTP.Auth.SessionDriver["type"], ShouldEqual, "redis")
+				So(cfg.HTTP.Auth.MTLS.IdentityAttibutes[0], ShouldEqual, "CommonName")
+				So(cfg.HTTP.Auth.MTLS.URISANPattern, ShouldEqual, "spiffe://example.org/workload/(.*)")
 			})
 
 			Convey("Test that returned AuthConfig is isolated when config is updated via UpdateReloadableConfig", func() {
@@ -2849,6 +2884,109 @@ func TestConfig(t *testing.T) {
 			So(cfg.HTTP.Auth.LDAP, ShouldNotBeNil)
 			So(cfg.HTTP.Auth.LDAP.Address, ShouldEqual, "ldap://new-server:389")
 			So(cfg.HTTP.Auth.LDAP.Port, ShouldEqual, 389)
+		})
+	})
+
+	Convey("Test UpdateReloadableConfig MTLS config updates", t, func() {
+		Convey("Test MTLS config is updated in UpdateReloadableConfig", func() {
+			// Create initial config with MTLS
+			cfg := &config.Config{
+				HTTP: config.HTTPConfig{
+					Auth: &config.AuthConfig{
+						MTLS: &config.MTLSConfig{
+							IdentityAttibutes: []string{"CommonName"},
+							URISANPattern:     "spiffe://old.example.org/workload/(.*)",
+							URISANIndex:       0,
+						},
+					},
+				},
+			}
+
+			// Create new config with updated MTLS
+			newConfig := &config.Config{
+				HTTP: config.HTTPConfig{
+					Auth: &config.AuthConfig{
+						MTLS: &config.MTLSConfig{
+							IdentityAttibutes: []string{"URI", "CommonName"},
+							URISANPattern:     "spiffe://new.example.org/workload/(.*)",
+							URISANIndex:       1,
+							DNSANIndex:        2,
+						},
+					},
+				},
+			}
+
+			// Update the config
+			cfg.UpdateReloadableConfig(newConfig)
+
+			// Verify MTLS config was updated
+			So(cfg.HTTP.Auth.MTLS, ShouldNotBeNil)
+			So(len(cfg.HTTP.Auth.MTLS.IdentityAttibutes), ShouldEqual, 2)
+			So(cfg.HTTP.Auth.MTLS.IdentityAttibutes[0], ShouldEqual, "URI")
+			So(cfg.HTTP.Auth.MTLS.IdentityAttibutes[1], ShouldEqual, "CommonName")
+			So(cfg.HTTP.Auth.MTLS.URISANPattern, ShouldEqual, "spiffe://new.example.org/workload/(.*)")
+			So(cfg.HTTP.Auth.MTLS.URISANIndex, ShouldEqual, 1)
+			So(cfg.HTTP.Auth.MTLS.DNSANIndex, ShouldEqual, 2)
+		})
+
+		Convey("Test MTLS config is set to nil when new config has nil MTLS", func() {
+			// Create initial config with MTLS
+			cfg := &config.Config{
+				HTTP: config.HTTPConfig{
+					Auth: &config.AuthConfig{
+						MTLS: &config.MTLSConfig{
+							IdentityAttibutes: []string{"CommonName"},
+						},
+					},
+				},
+			}
+
+			// Create new config with nil MTLS
+			newConfig := &config.Config{
+				HTTP: config.HTTPConfig{
+					Auth: &config.AuthConfig{
+						MTLS: nil,
+					},
+				},
+			}
+
+			// Update the config
+			cfg.UpdateReloadableConfig(newConfig)
+
+			// Verify MTLS config was set to nil
+			So(cfg.HTTP.Auth.MTLS, ShouldBeNil)
+		})
+
+		Convey("Test MTLS config is created when going from nil to non-nil", func() {
+			// Create initial config with nil MTLS
+			cfg := &config.Config{
+				HTTP: config.HTTPConfig{
+					Auth: &config.AuthConfig{
+						MTLS: nil,
+					},
+				},
+			}
+
+			// Create new config with MTLS
+			newConfig := &config.Config{
+				HTTP: config.HTTPConfig{
+					Auth: &config.AuthConfig{
+						MTLS: &config.MTLSConfig{
+							IdentityAttibutes: []string{"URI"},
+							URISANPattern:     "spiffe://new.example.org/workload/(.*)",
+						},
+					},
+				},
+			}
+
+			// Update the config
+			cfg.UpdateReloadableConfig(newConfig)
+
+			// Verify MTLS config was created
+			So(cfg.HTTP.Auth.MTLS, ShouldNotBeNil)
+			So(len(cfg.HTTP.Auth.MTLS.IdentityAttibutes), ShouldEqual, 1)
+			So(cfg.HTTP.Auth.MTLS.IdentityAttibutes[0], ShouldEqual, "URI")
+			So(cfg.HTTP.Auth.MTLS.URISANPattern, ShouldEqual, "spiffe://new.example.org/workload/(.*)")
 		})
 	})
 

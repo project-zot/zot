@@ -70,6 +70,34 @@ type TLSConfig struct {
 	CACert string
 }
 
+type MTLSConfig struct {
+	// IdentityAttibutes is an ordered list of identity attributes to try
+	// Options: "CommonName", "Subject", "Email", "URI", "DNSName" (case-insensitive)
+	// Default: ["CommonName"] (backward compatible)
+	IdentityAttibutes []string `json:"identityAttributes,omitempty" mapstructure:"identityAttributes,omitempty"`
+
+	// URISANPattern is a regex pattern to extract identity from URI SAN
+	// Only used when IdentityAttibutes contains "URI"
+	// Example: "spiffe://example.org/workload/(.*)" extracts the workload ID
+	// If empty, uses the full URI SAN value
+	URISANPattern string `json:"uriSanPattern,omitempty" mapstructure:"uriSanPattern,omitempty"`
+
+	// URISANIndex specifies which URI SAN to use if multiple exist (0-based)
+	// Maps to cert.URIs[index] - the URIs field is a slice, so index is needed
+	// Default: 0 (first URI)
+	URISANIndex int `json:"uriSanIndex,omitempty" mapstructure:"uriSanIndex,omitempty"`
+
+	// DNSANIndex specifies which DNS SAN to use if multiple exist (0-based)
+	// Maps to cert.DNSNames[index] - the DNSNames field is a slice, so index is needed
+	// Default: 0 (first DNS name)
+	DNSANIndex int `json:"dnsSanIndex,omitempty" mapstructure:"dnsSanIndex,omitempty"`
+
+	// EmailSANIndex specifies which Email SAN to use if multiple exist (0-based)
+	// Maps to cert.EmailAddresses[index] - the EmailAddresses field is a slice, so index is needed
+	// Default: 0 (first email)
+	EmailSANIndex int `json:"emailSanIndex,omitempty" mapstructure:"emailSanIndex,omitempty"`
+}
+
 type AuthHTPasswd struct {
 	Path string
 }
@@ -86,6 +114,7 @@ type AuthConfig struct {
 	SessionEncryptKey []byte         `json:"-"`
 	SessionDriver     map[string]any `mapstructure:",omitempty"`
 	SecureSession     *bool          `json:"secureSession,omitempty" mapstructure:"secureSession,omitempty"`
+	MTLS              *MTLSConfig    `json:"mtls,omitempty"          mapstructure:"mtls,omitempty"`
 }
 
 // IsLdapAuthEnabled checks if LDAP authentication is enabled in this auth config.
@@ -139,6 +168,15 @@ func (a *AuthConfig) GetFailDelay() int {
 	}
 
 	return a.FailDelay
+}
+
+// GetMTLSConfig returns the mTLS configuration if it exists.
+func (a *AuthConfig) GetMTLSConfig() *MTLSConfig {
+	if a == nil {
+		return nil
+	}
+
+	return a.MTLS
 }
 
 type BearerConfig struct {
@@ -638,6 +676,7 @@ func (c *Config) UpdateReloadableConfig(newConfig *Config) {
 		c.HTTP.Auth.APIKey = newConfig.HTTP.Auth.APIKey
 		c.HTTP.Auth.OpenID = newConfig.HTTP.Auth.OpenID
 		c.HTTP.Auth.SecureSession = newConfig.HTTP.Auth.SecureSession
+		c.HTTP.Auth.MTLS = newConfig.HTTP.Auth.MTLS
 	}
 
 	// Initialize and update AccessControlConfig

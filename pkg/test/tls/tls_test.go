@@ -240,6 +240,30 @@ func TestApplyOptionsCoverage(t *testing.T) {
 			So(cert.EmailAddresses, ShouldContain, "admin@example.com")
 		})
 
+		Convey("Test with URIs including invalid URI", func() {
+			// Mix of valid and invalid URIs - invalid ones should be skipped
+			customURIs := []string{
+				"spiffe://example.org/workload/test",
+				"not a valid uri", // Invalid URI - should be skipped
+				"https://example.com",
+				"://invalid", // Invalid URI - should be skipped
+			}
+			opts := &tls.CertificateOptions{
+				Hostname: "localhost",
+				URIs:     customURIs,
+			}
+			certPEM, _, err := tls.GenerateServerCert(caCertPEM, caKeyPEM, opts)
+			So(err, ShouldBeNil)
+
+			certBlock, _ := pem.Decode(certPEM)
+			cert, err := x509.ParseCertificate(certBlock.Bytes)
+			So(err, ShouldBeNil)
+			// Should only contain valid URIs (2 out of 4)
+			So(len(cert.URIs), ShouldEqual, 2)
+			So(cert.URIs[0].String(), ShouldEqual, "spiffe://example.org/workload/test")
+			So(cert.URIs[1].String(), ShouldEqual, "https://example.com")
+		})
+
 		Convey("Test with all options combined", func() {
 			customNotBefore := time.Now().Add(-12 * time.Hour)
 			customNotAfter := time.Now().Add(365 * 24 * time.Hour)

@@ -202,6 +202,52 @@ authentication:
     },
 ```
 
+By default, mTLS authentication extracts the client identity from the certificate's
+Common Name (CN) field. You can configure alternative identity attributes and a fallback
+chain using the `mtls` configuration under `auth`:
+
+```
+"http": {
+    "auth": {
+      "mtls": {
+        "identityAttributes": ["CommonName", "Subject", "Email", "URI", "DNSName"],
+        "uriSanPattern": "spiffe://example.org/workload/(.*)",
+        "uriSanIndex": 0,
+        "dnsSanIndex": 0,
+        "emailSanIndex": 0
+      }
+    }
+}
+```
+
+**Identity Attributes:**
+- `CommonName` or `CN` - Extract identity from the certificate's Common Name (CN) field (default)
+- `Subject` or `DN` - Extract identity from the full Subject Distinguished Name (DN)
+- `Email` or `rfc822name` - Extract identity from Email SAN (Subject Alternative Name)
+- `URI` or `URL` - Extract identity from URI SAN (Subject Alternative Name)
+- `DNSName` or `DNS` - Extract identity from DNS SAN (Subject Alternative Name)
+
+The `identityAttributes` array defines a fallback chain - if the first identity attribute fails to
+extract an identity, the next identity attribute is tried, and so on. All identity attribute
+names are case-insensitive.
+
+**URI SAN Pattern:**
+When using `URI` as an identity attribute, you can specify a regex pattern to extract
+a specific part of the URI. For example, with SPIFFE certificates:
+- URI: `spiffe://example.org/workload/testuser`
+- Pattern: `spiffe://example.org/workload/(.*)`
+- Extracted identity: `testuser`
+
+If no pattern is specified, the full URI value is used as the identity.
+
+**SAN Indexes:**
+When multiple values exist in a SAN field (URI, DNS, or Email), you can specify
+which one to use with the index fields (0-based). Default is 0 (first value).
+
+**Example Configurations:**
+- Basic mTLS with CommonName: `examples/config-mtls.json`
+- SPIFFE with URI SAN pattern: `examples/config-mtls-spiffe.json`
+
 ### Passphrase Authentication
 
 **Local authentication** is supported via htpasswd file with:
