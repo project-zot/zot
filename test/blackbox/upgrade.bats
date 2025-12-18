@@ -20,6 +20,7 @@ function verify_prerequisites {
 }
 
 function setup_file() {
+    export REGISTRY_NAME=main
     # Verify prerequisites are available
     if ! $(verify_prerequisites); then
         exit 1
@@ -401,6 +402,14 @@ DOCKERFILE
     [ "$status" -eq 1 ]
 }
 
+@test "[release] list by image name" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run ${ZLI_PATH} repo list --config ${REGISTRY_NAME}
+    [ "$status" -eq 0 ]
+
+    echo ${lines[@]}
+}
+
 @test "[release] cve by image name and tag" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     run ${ZLI_PATH} cve list golang:1.20 --config ${REGISTRY_NAME}
@@ -759,6 +768,26 @@ DOCKERFILE
     [ "$status" -eq 1 ]
 }
 
+@test "[new] list by image name" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run ${ZLI_PATH} repo list --config ${REGISTRY_NAME}
+    [ "$status" -eq 0 ]
+
+    echo ${lines[@]}
+    found=0
+    for i in "${lines[@]}"
+    do
+        case "$i" in 
+            alpine | busybox | golang)
+                ((++found))
+                ;;
+            *)
+                ;;
+        esac
+    done
+    [ "$found" -eq 3 ]
+}
+
 @test "[new] cve by image name and tag" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     run ${ZLI_PATH} cve list golang:1.20 --config ${REGISTRY_NAME}
@@ -784,8 +813,7 @@ DOCKERFILE
     found=0
     for i in "${lines[@]}"
     do
-
-        if [[ "$i" = *"CVE-2011-4915    LOW      fs/proc/base.c in the Linux kernel through 3..."* ]]; then
+        if [[ "$i" = *"CVE-2025-26519   UNKNOWN  musl libc 0.9.13 through 1.2.5 before 1.2.6 h..."* ]]; then
             found=1
         fi
     done
