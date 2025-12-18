@@ -63,6 +63,10 @@ JSON
     git -C ${BATS_FILE_TMPDIR} clone https://github.com/project-zot/helm-charts.git
     zot_rel_serve ${zot_config_file}
     wait_zot_reachable ${zot_port}
+
+    # setup zli to add zot registry to configs
+    local registry_url="http://127.0.0.1:${zot_port}/"
+    zli_add_config ${REGISTRY_NAME} ${registry_url}
 }
 
 function teardown() {
@@ -395,6 +399,24 @@ DOCKERFILE
     [ "$status" -eq 1 ]
     run docker pull localhost:${zot_port}/test
     [ "$status" -eq 1 ]
+}
+
+@test "[release] cve by image name and tag" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run ${ZLI_PATH} cve list golang:1.20 --config ${REGISTRY_NAME}
+    [ "$status" -eq 0 ]
+
+    echo ${lines[@]}
+
+    found=0
+    for i in "${lines[@]}"
+    do
+
+        if [[ "$i" = *"CVE-2011-4915    LOW      fs/proc/base.c in the Linux kernel through 3..."* ]]; then
+            found=1
+        fi
+    done
+    [ "$found" -eq 1 ]
 }
 
 @test "[upgrade] upgrade to new binary" {
@@ -735,4 +757,37 @@ DOCKERFILE
     [ "$status" -eq 1 ]
     run docker pull localhost:${zot_port}/test
     [ "$status" -eq 1 ]
+}
+
+@test "[new] cve by image name and tag" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run ${ZLI_PATH} cve list golang:1.20 --config ${REGISTRY_NAME}
+    [ "$status" -eq 0 ]
+
+    echo ${lines[@]}
+
+    found=0
+    for i in "${lines[@]}"
+    do
+
+        if [[ "$i" = *"CVE-2011-4915    LOW      fs/proc/base.c in the Linux kernel through 3..."* ]]; then
+            found=1
+        fi
+    done
+    [ "$found" -eq 1 ]
+
+    run ${ZLI_PATH} cve list alpine:3.17.3 --config ${REGISTRY_NAME}
+    [ "$status" -eq 0 ]
+
+    echo ${lines[@]}
+
+    found=0
+    for i in "${lines[@]}"
+    do
+
+        if [[ "$i" = *"CVE-2011-4915    LOW      fs/proc/base.c in the Linux kernel through 3..."* ]]; then
+            found=1
+        fi
+    done
+    [ "$found" -eq 1 ]
 }
