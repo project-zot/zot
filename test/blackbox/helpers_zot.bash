@@ -43,7 +43,7 @@ function zot_rel_serve() {
         curl -L -o "${checksum_file}" "${checksum_url}"
         expected_sum=$(grep "zot-${OS}-${ARCH}$" "${checksum_file}" | awk '{print $1}')
         if [ -z "${expected_sum}" ]; then
-            echo "ERROR: Could not find checksum for zot-${OS}-${ARCH} in sha256sums.txt"
+            echo "ERROR: Could not find checksum for zot-${OS}-${ARCH} in checksums.sha256.txt"
             exit 1
         fi
         actual_sum=$(sha256sum "${zot_path}" | awk '{print $1}')
@@ -74,7 +74,7 @@ function zot_rel_min_serve() {
         curl -L -o "${checksum_file}" "${checksum_url}"
         expected_sum=$(grep "zot-${OS}-${ARCH}-minimal$" "${checksum_file}" | awk '{print $1}')
         if [ -z "${expected_sum}" ]; then
-            echo "ERROR: Could not find checksum for zot-${OS}-${ARCH}-minimal in sha256sums.txt"
+            echo "ERROR: Could not find checksum for zot-${OS}-${ARCH}-minimal in checksums.sha256.txt"
             exit 1
         fi
         actual_sum=$(sha256sum "${zot_path}" | awk '{print $1}')

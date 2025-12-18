@@ -594,6 +594,7 @@ DOCKERFILE
     [ "$status" -eq 0 ]
     echo "$output"
     [ $(echo "$output" | wc -l) -eq 4 ]
+    [ "${lines[0]}" == "alpine" ]
     [ "${lines[-1]}" == "busybox" ]
 
     run regctl repo ls --last busybox --limit 1 localhost:${zot_port}
