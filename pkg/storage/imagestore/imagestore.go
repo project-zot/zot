@@ -994,46 +994,31 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 		return zerr.ErrUploadNotFound
 	}
 
-	// For empty blobs, calculate digest directly without reading from disk
-	// This avoids issues with file synchronization when the file was created by NewBlobUpload
-	fileSize := fileWriter.Size()
-	if fileSize == 0 {
-		// Empty blob - verify the digest matches the canonical empty blob digest
-		emptyHash := dstDigest.Algorithm().Hash()
-		emptyDigest := godigest.NewDigestFromEncoded(dstDigest.Algorithm(), hex.EncodeToString(emptyHash.Sum(nil)))
-		if emptyDigest != dstDigest {
+	// Verify digest for empty blobs before committing
+	if fileWriter.Size() == 0 {
+		if !is.emptyDigestCache.IsEmptyDigest(dstDigest) {
 			_ = fileWriter.Close()
-			is.log.Error().Str("expected", dstDigest.String()).
-				Str("calculated", emptyDigest.String()).Msg("empty blob digest mismatch")
+			is.log.Error().Str("dstDigest", dstDigest.String()).Msg("invalid empty blob digest")
 
 			return zerr.ErrBadBlobDigest
 		}
+	}
 
-		if err := fileWriter.Commit(context.Background()); err != nil {
-			is.log.Error().Err(err).Msg("failed to commit file")
+	// Commit the file
+	if err := fileWriter.Commit(context.Background()); err != nil {
+		is.log.Error().Err(err).Msg("failed to commit file")
 
-			return err
-		}
+		return err
+	}
 
-		if err := fileWriter.Close(); err != nil {
-			is.log.Error().Err(err).Msg("failed to close file")
+	if err := fileWriter.Close(); err != nil {
+		is.log.Error().Err(err).Msg("failed to close file")
 
-			return err
-		}
-	} else {
-		// Non-empty blob - commit and verify digest from file
-		if err := fileWriter.Commit(context.Background()); err != nil {
-			is.log.Error().Err(err).Msg("failed to commit file")
+		return err
+	}
 
-			return err
-		}
-
-		if err := fileWriter.Close(); err != nil {
-			is.log.Error().Err(err).Msg("failed to close file")
-
-			return err
-		}
-
+	// Verify digest for non-empty blobs after committing
+	if fileWriter.Size() != 0 {
 		srcDigest, err := getBlobDigest(is, src, dstDigest.Algorithm())
 		if err != nil {
 			is.log.Error().Err(err).Str("blob", src).Msg("failed to open blob")
@@ -1043,7 +1028,7 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 
 		if srcDigest != dstDigest {
 			is.log.Error().Str("srcDigest", srcDigest.String()).
-				Str("dstDigest", dstDigest.String()).Msg("actual digest not equal to expected digest")
+				Str("dstDigest", dstDigest.String()).Msg("invalid blob digest")
 
 			return zerr.ErrBadBlobDigest
 		}
@@ -1181,6 +1166,13 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, dstDigest godi
 }
 
 func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo string, dst string) error {
+	if dst == "" {
+		is.log.Error().Str("blobPath", dst).Str("component", "dedupe").
+			Msg("failed to dedupe blob: empty destination path")
+
+		return zerr.ErrBadBlobDigest
+	}
+
 	for {
 		is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe begin")
 
@@ -1373,7 +1365,7 @@ func (is *ImageStore) checkBlobInternal(
 		// Blob not found at blob path
 		if checkCacheOnNotFound {
 			// Check cache for deduped blob (for mounting)
-			return is.checkBlobInCache(repo, digest, blobPath)
+			return is.linkBlobFromCache(repo, digest, blobPath)
 		}
 
 		// Do NOT check cache - per spec, blob must exist "in the repository"
@@ -1396,7 +1388,7 @@ func (is *ImageStore) checkBlobInternal(
 		if (is.storeDriver.Name() == storageConstants.S3StorageDriverName) || checkCacheOnNotFound {
 			// S3: get actual blob size from cache
 			dstRecord, err := is.checkCacheBlob(digest)
-			if err == nil && dstRecord != "" && dstRecord != blobPath {
+			if err == nil && dstRecord != blobPath {
 				originalInfo, err := is.storeDriver.Stat(dstRecord)
 				if err == nil {
 					is.log.Debug().Str("blob path", blobPath).Msg("deduped placeholder found, using original blob size")
@@ -1406,9 +1398,9 @@ func (is *ImageStore) checkBlobInternal(
 			}
 		}
 
-		// Deduped placeholder - check cache if allowed (for mounting)
+		// Deduped placeholder - check cache if allowed (for mounting, which copies the blob)
 		if checkCacheOnNotFound {
-			return is.checkBlobInCache(repo, digest, blobPath)
+			return is.linkBlobFromCache(repo, digest, blobPath)
 		}
 
 		// Do NOT check cache - per spec, blob must exist "in the repository"
@@ -1444,8 +1436,9 @@ func (is *ImageStore) CheckBlobForMount(repo string, digest godigest.Digest) (bo
 	return is.checkBlobInternal(repo, digest, true)
 }
 
-// checkBlobInCache checks if the blob exists in cache and copies it if found.
-func (is *ImageStore) checkBlobInCache(repo string, digest godigest.Digest, blobPath string) (bool, int64, error) {
+// linkBlobFromCache attempts to find a deduped blob in cache and link it to the target repository.
+// Returns error if blob is not found in cache.
+func (is *ImageStore) linkBlobFromCache(repo string, digest godigest.Digest, blobPath string) (bool, int64, error) {
 	dstRecord, err := is.checkCacheBlob(digest)
 	if err != nil {
 		is.log.Warn().Err(err).Str("digest", digest.String()).Msg("not found in cache")
@@ -1486,12 +1479,8 @@ func (is *ImageStore) statBlobInRepo(repo string, digest godigest.Digest) (drive
 		return nil, zerr.ErrBlobNotFound
 	}
 
-	if binfo.Size() != 0 {
-		return binfo, nil
-	}
-
-	// If file exists but is empty (size 0), check if it's a valid empty blob or deduped placeholder
-	if is.emptyDigestCache.IsEmptyDigest(digest) {
+	// File exists at blob path - handle deduped placeholders
+	if !is.isDedupeablePlaceholder(digest, binfo.Size()) {
 		return binfo, nil
 	}
 
@@ -1534,33 +1523,42 @@ func (is *ImageStore) checkCacheBlob(digest godigest.Digest) (string, error) {
 		return "", zerr.ErrBlobNotFound
 	}
 
-	dstRecord, err := is.cache.GetBlob(digest)
+	// Try all cache entries until we find one that exists
+	allBlobPaths, err := is.cache.GetAllBlobs(digest)
 	if err != nil {
 		return "", err
 	}
 
-	if is.cache.UsesRelativePaths() {
-		dstRecord = path.Join(is.rootDir, dstRecord)
-	}
-
-	if _, err := is.storeDriver.Stat(dstRecord); err != nil {
-		is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to stat blob")
-
-		// the actual blob on disk may have been removed by GC, so sync the cache
-		if err := is.cache.DeleteBlob(digest, dstRecord); err != nil {
-			is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", dstRecord).
-				Msg("failed to remove blob path from cache")
-
-			return "", err
+	for _, dstRecord := range allBlobPaths {
+		if is.cache.UsesRelativePaths() {
+			dstRecord = path.Join(is.rootDir, dstRecord)
 		}
 
-		return "", zerr.ErrBlobNotFound
+		binfo, statErr := is.storeDriver.Stat(dstRecord)
+		if statErr == nil {
+			// Check if this is a deduped placeholder (empty file that's not the canonical empty blob)
+			if is.isDedupeablePlaceholder(digest, binfo.Size()) {
+				// This is a placeholder, not the original - skip it
+				continue
+			}
+
+			// Found a valid blob with actual content
+			is.log.Debug().Str("digest", digest.String()).Str("dstRecord", dstRecord).Str("component", "cache").
+				Msg("found dedupe record")
+
+			return dstRecord, nil
+		}
+
+		// This entry is stale, remove it
+		is.log.Warn().Str("blob", dstRecord).Msg("removing stale cache entry")
+
+		if err := is.cache.DeleteBlob(digest, dstRecord); err != nil {
+			is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", dstRecord).
+				Msg("failed to remove stale blob path from cache")
+		}
 	}
 
-	is.log.Debug().Str("digest", digest.String()).Str("dstRecord", dstRecord).Str("component", "cache").
-		Msg("found dedupe record")
-
-	return dstRecord, nil
+	return "", zerr.ErrBlobNotFound
 }
 
 func (is *ImageStore) copyBlob(repo string, blobPath, dstRecord string) (int64, error) {
@@ -1646,45 +1644,24 @@ func (is *ImageStore) originalBlobInfo(repo string, digest godigest.Digest) (dri
 	}
 
 	// If it's a deduped placeholder, find the original blob
-	if is.isDedupeablePlaceholder(digest, binfo.Size()) {
-		if originalInfo := is.tryGetOriginalFromCache(digest, binfo.Path()); originalInfo != nil {
-			return originalInfo, nil
+	if is.isDedupeablePlaceholder(digest, binfo.Size()) && is.cache != nil {
+		// For S3, check cache even when dedupe is disabled (for backward compatibility)
+		// For local storage, only check cache when dedupe is enabled
+		if is.dedupe || is.storeDriver.Name() == storageConstants.S3StorageDriverName {
+			dstRecord, err := is.checkCacheBlob(digest)
+			if err != nil {
+				return nil, zerr.ErrBlobNotFound
+			}
+
+			if dstRecord != binfo.Path() {
+				if originalInfo, err := is.storeDriver.Stat(dstRecord); err == nil {
+					return originalInfo, nil
+				}
+			}
 		}
 	}
 
 	return binfo, nil
-}
-
-// tryGetOriginalFromCache attempts to find the original blob location from cache.
-// If excludePath is not empty, only returns cache entry if it points to a different location.
-// For S3, this works even when dedupe is disabled (for backward compatibility with existing deduped blobs).
-func (is *ImageStore) tryGetOriginalFromCache(digest godigest.Digest, excludePath string) driver.FileInfo {
-	if is.cache == nil {
-		return nil
-	}
-
-	// For S3, check cache even when dedupe is disabled (for backward compatibility)
-	// For local storage, only check cache when dedupe is enabled
-	if !is.dedupe && is.storeDriver.Name() != storageConstants.S3StorageDriverName {
-		return nil
-	}
-
-	dstRecord, err := is.checkCacheBlob(digest)
-	if err != nil || dstRecord == "" {
-		return nil
-	}
-
-	// If excludePath is provided and cache points to same location, skip it
-	if excludePath != "" && dstRecord == excludePath {
-		return nil
-	}
-
-	binfo, err := is.storeDriver.Stat(dstRecord)
-	if err != nil {
-		return nil
-	}
-
-	return binfo
 }
 
 // GetBlob returns a stream to read the blob.
