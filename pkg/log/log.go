@@ -378,6 +378,8 @@ func GoroutineID() int {
 }
 
 // CallerHandler adds caller information to log records.
+// This handler captures caller information for all log records, including those
+// from external libraries like regclient that use native slog.Logger.
 type CallerHandler struct {
 	handler slog.Handler
 }
@@ -387,8 +389,32 @@ func (h *CallerHandler) Enabled(ctx context.Context, level slog.Level) bool {
 }
 
 func (h *CallerHandler) Handle(ctx context.Context, record slog.Record) error {
-	// Caller information is now added directly in Event.Msg/Msgf methods
-	// This handler is kept for compatibility but no longer modifies the record
+	// Only add caller info if not already present (to avoid duplicating info from Event.Msg/Msgf)
+	hasCallerAttr := false
+	record.Attrs(func(attr slog.Attr) bool {
+		if attr.Key == "caller" {
+			hasCallerAttr = true
+
+			return false // stop iteration
+		}
+
+		return true
+	})
+
+	if !hasCallerAttr {
+		// This is where we extract caller info in case the 3rd party library uses slog directly.
+		// Get caller information from the PC in the record
+		fs := runtime.CallersFrames([]uintptr{record.PC})
+		f, _ := fs.Next()
+
+		if f.File != "" {
+			record.AddAttrs(
+				slog.String("caller", fmt.Sprintf("%s:%d", f.File, f.Line)),
+				slog.String("func", f.Function),
+			)
+		}
+	}
+
 	return h.handler.Handle(ctx, record)
 }
 
