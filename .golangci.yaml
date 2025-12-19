@@ -84,6 +84,9 @@ linters:
         - expr
         - select
         - switch
+    gomoddirectives:
+      replace-allow-list:
+        - github.com/sigstore/sigstore
   exclusions:
     generated: lax
     presets:
