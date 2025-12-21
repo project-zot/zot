@@ -184,7 +184,7 @@ function teardown_file() {
     run oras repo tags --plain-http --last new 127.0.0.1:${zot_port}/oras-tags
     [ "$status" -eq 0 ]
     echo "$output"
-    [ -z $output ]
+    [ -z "$output" ]
     run oras repo tags --plain-http --last latest 127.0.0.1:${zot_port}/oras-tags
     [ "$status" -eq 0 ]
     echo "$output"
@@ -524,7 +524,7 @@ DOCKERFILE
     run oras repo tags --plain-http --last new 127.0.0.1:${zot_port}/oras-tags
     [ "$status" -eq 0 ]
     echo "$output"
-    [ -z $output ]
+    [ -z "$output" ]
     run oras repo tags --plain-http --last latest 127.0.0.1:${zot_port}/oras-tags
     [ "$status" -eq 0 ]
     echo "$output"
