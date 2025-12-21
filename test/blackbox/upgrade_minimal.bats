@@ -401,6 +401,10 @@ DOCKERFILE
 
 @test "[new] push image" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    # first check existing images
+    run curl http://127.0.0.1:${zot_port}/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq 'any(.repositories[]; . == "golang")') = true ] 
     run skopeo --insecure-policy copy --dest-tls-verify=false \
         oci:${TEST_DATA_DIR}/golang:1.20 \
         docker://127.0.0.1:${zot_port}/golang:1.20
