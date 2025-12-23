@@ -1440,34 +1440,7 @@ func expandedRepoInfo(ctx context.Context, repo string, metaDB mTypes.MetaDB, cv
 		dateSortedImages = append(dateSortedImages, imgSummary)
 	}
 
-	//nolint:varnamelen // standard comparison func signature
-	slices.SortFunc(dateSortedImages, func(a, b *gql_generated.ImageSummary) int {
-		// Handle nil and zero time cases: both are treated as oldest (come last in descending sort)
-		aIsZero := a.LastUpdated == nil || (a.LastUpdated != nil && a.LastUpdated.IsZero())
-		bIsZero := b.LastUpdated == nil || (b.LastUpdated != nil && b.LastUpdated.IsZero())
-
-		if aIsZero && bIsZero {
-			return 0
-		}
-
-		if aIsZero {
-			return 1 // a is zero/nil, b is not - a comes after b
-		}
-
-		if bIsZero {
-			return -1 // b is zero/nil, a is not - a comes before b
-		}
-
-		if a.LastUpdated.After(*b.LastUpdated) {
-			return -1
-		}
-
-		if a.LastUpdated.Equal(*b.LastUpdated) {
-			return 0
-		}
-
-		return 1
-	})
+	slices.SortFunc(dateSortedImages, pagination.ImgSortByUpdateTime)
 
 	return &gql_generated.RepoInfo{Summary: repoSummary, Images: dateSortedImages}, nil
 }

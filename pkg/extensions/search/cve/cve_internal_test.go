@@ -136,5 +136,57 @@ func TestUtils(t *testing.T) {
 				})
 			So(tags, ShouldBeEmpty)
 		})
+
+		Convey("shouldIncludeCVE filtering logic", func() {
+			baseCVE := cvemodel.CVE{
+				ID:          "CVE-2024-0001",
+				Severity:    "HIGH",
+				Title:       "Test CVE 1",
+				Description: "Description contains keyword",
+			}
+
+			Convey("includes CVE when all filters pass", func() {
+				// No filters
+				So(shouldIncludeCVE(baseCVE, "", "", ""), ShouldBeTrue)
+
+				// Matching searchedCVE
+				So(shouldIncludeCVE(baseCVE, "CVE-2024", "", ""), ShouldBeTrue)
+				So(shouldIncludeCVE(baseCVE, "keyword", "", ""), ShouldBeTrue)
+
+				// Matching severity
+				So(shouldIncludeCVE(baseCVE, "", "", "HIGH"), ShouldBeTrue)
+			})
+
+			Convey("excludes CVE when severity doesn't match", func() {
+				So(shouldIncludeCVE(baseCVE, "", "", "LOW"), ShouldBeFalse)
+				So(shouldIncludeCVE(baseCVE, "", "", "MEDIUM"), ShouldBeFalse)
+				So(shouldIncludeCVE(baseCVE, "", "", "CRITICAL"), ShouldBeFalse)
+			})
+
+			Convey("excludes CVE when it contains excluded string", func() {
+				So(shouldIncludeCVE(baseCVE, "", "keyword", ""), ShouldBeFalse)
+				So(shouldIncludeCVE(baseCVE, "", "CVE-2024", ""), ShouldBeFalse)
+				So(shouldIncludeCVE(baseCVE, "", "Test CVE", ""), ShouldBeFalse)
+			})
+
+			Convey("excludes CVE when searchedCVE doesn't match", func() {
+				So(shouldIncludeCVE(baseCVE, "CVE-2023", "", ""), ShouldBeFalse)
+				So(shouldIncludeCVE(baseCVE, "notfound", "", ""), ShouldBeFalse)
+			})
+
+			Convey("handles multiple filters combined", func() {
+				// All filters match - should include
+				So(shouldIncludeCVE(baseCVE, "CVE-2024", "", "HIGH"), ShouldBeTrue)
+
+				// Severity matches but excluded - should exclude
+				So(shouldIncludeCVE(baseCVE, "", "keyword", "HIGH"), ShouldBeFalse)
+
+				// Searched matches but severity doesn't - should exclude
+				So(shouldIncludeCVE(baseCVE, "CVE-2024", "", "LOW"), ShouldBeFalse)
+
+				// Everything matches but excluded - should exclude
+				So(shouldIncludeCVE(baseCVE, "CVE-2024", "Test", "HIGH"), ShouldBeFalse)
+			})
+		})
 	})
 }

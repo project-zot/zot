@@ -538,5 +538,45 @@ func TestHTPasswdWatcher(t *testing.T) {
 			So(ok, ShouldBeTrue)
 			So(present, ShouldBeTrue)
 		})
+
+		Convey("Test htpasswd file with zero users warning", func() {
+			// Create a buffer to capture log output
+			logBuffer, multiWriter := test.CreateLogCapturingWriter(os.Stdout)
+			capturingLogger := log.NewLoggerWithWriter("debug", multiWriter)
+
+			username, _ := test.GenerateRandomString()
+			password, _ := test.GenerateRandomString()
+
+			htp := api.NewHTPasswd(capturingLogger)
+
+			// Create an empty htpasswd file (zero users)
+			emptyPath := test.MakeHtpasswdFileFromString(t, "")
+
+			// Reload the empty file
+			err := htp.Reload(emptyPath)
+			So(err, ShouldBeNil)
+
+			// Verify the warning message is logged
+			So(test.WaitForLogMessages(logBuffer, "loaded htpasswd file appears to have zero users", 1, 5*time.Second),
+				ShouldBeTrue)
+
+			// Verify store is empty
+			_, present := htp.Get(username)
+			So(present, ShouldBeFalse)
+
+			// Now load a file with a user and verify the info message instead
+			userPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
+
+			err = htp.Reload(userPath)
+			So(err, ShouldBeNil)
+
+			// Verify the info message is logged
+			So(test.WaitForLogMessages(logBuffer, "loaded htpasswd file", 1, 5*time.Second), ShouldBeTrue)
+
+			// Verify user is present
+			ok, present := htp.Authenticate(username, password)
+			So(ok, ShouldBeTrue)
+			So(present, ShouldBeTrue)
+		})
 	})
 }

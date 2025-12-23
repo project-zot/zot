@@ -339,21 +339,29 @@ func getConfigAndDigest(metaDB mTypes.MetaDB, manifestDigestStr string) (ispec.I
 	return manifestData.Manifests[0].Config, manifestDigest, err
 }
 
+func shouldIncludeCVE(cve cvemodel.CVE, searchedCVE, excludedCVE, severity string) bool {
+	if severity != "" && (cvemodel.CompareSeverities(cve.Severity, severity) != 0) {
+		return false
+	}
+
+	if excludedCVE != "" && cve.ContainsStr(excludedCVE) {
+		return false
+	}
+
+	if !cve.ContainsStr(searchedCVE) {
+		return false
+	}
+
+	return true
+}
+
 func filterCVEMap(cveMap map[string]cvemodel.CVE, searchedCVE, excludedCVE, severity string,
 	pageFinder *CvePageFinder,
 ) {
 	searchedCVE = strings.ToUpper(searchedCVE)
 
 	for _, cve := range cveMap {
-		if severity != "" && (cvemodel.CompareSeverities(cve.Severity, severity) != 0) {
-			continue
-		}
-
-		if excludedCVE != "" && cve.ContainsStr(excludedCVE) {
-			continue
-		}
-
-		if cve.ContainsStr(searchedCVE) {
+		if shouldIncludeCVE(cve, searchedCVE, excludedCVE, severity) {
 			pageFinder.Add(cve)
 		}
 	}
@@ -363,15 +371,7 @@ func filterCVEList(cveList []cvemodel.CVE, searchedCVE, excludedCVE, severity st
 	searchedCVE = strings.ToUpper(searchedCVE)
 
 	for _, cve := range cveList {
-		if severity != "" && (cvemodel.CompareSeverities(cve.Severity, severity) != 0) {
-			continue
-		}
-
-		if excludedCVE != "" && cve.ContainsStr(excludedCVE) {
-			continue
-		}
-
-		if cve.ContainsStr(searchedCVE) {
+		if shouldIncludeCVE(cve, searchedCVE, excludedCVE, severity) {
 			pageFinder.Add(cve)
 		}
 	}
