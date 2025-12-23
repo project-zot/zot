@@ -440,10 +440,6 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 			case !isAuthorizationHeaderEmpty(request) && authConfig.IsBasicAuthnEnabled():
 				authenticated, err = amw.basicAuthn(ctlr, userAc, response, request)
 
-			// The authorization header is given but basic auth is not enabled
-			case !isAuthorizationHeaderEmpty(request) && !authConfig.IsBasicAuthnEnabled():
-				authenticated = false
-
 			// The session header is an explicit attempt to use session authentication
 			case hasSessionHeader(request):
 				authenticated, err = amw.sessionAuthn(ctlr, userAc, response, request)
