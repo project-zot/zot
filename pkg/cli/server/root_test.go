@@ -1266,6 +1266,44 @@ storage:
 		os.Args = []string{"cli_test", "verify", tmpfile}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
+
+		// Default local store is inside substore (should be rejected)
+		// default is at /tmp/zot-parent/subdir, /a is at /tmp/zot-parent
+		content = `{"storage":{"rootDirectory":"/tmp/zot-parent/subdir",
+							"subPaths": {"/a": {"rootDirectory": "/tmp/zot-parent"}}},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`
+		err = os.WriteFile(tmpfile, []byte(content), 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+		// default storage is inside /a, validation reports this conflict
+		So(err.Error(), ShouldContainSubstring,
+			"invalid storage config, default storage root directory cannot be inside substore (route: /a) root directory")
+
+		// Default S3 store is inside substore, with S3, (should be rejected)
+		// default is at /zot-parent/subdir, /a is at /zot-parent
+		content = `{"storage":{"rootDirectory":"/zot-parent/subdir",
+							"storageDriver":{"name":"s3","rootdirectory":"/zot-parent/subdir","region":"us-east-2",
+							"bucket":"zot-storage","secure":true,"skipverify":false},
+							"dedupe":false,
+							"subPaths": {"/a": {"rootDirectory": "/zot-parent",
+							"storageDriver":{"name":"s3","rootdirectory":"/zot-parent","region":"us-east-2",
+							"bucket":"zot-storage","secure":true,"skipverify":false},
+							"dedupe":false}}},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`
+		err = os.WriteFile(tmpfile, []byte(content), 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+		// default storage is inside /a, validation reports this conflict
+		So(err.Error(), ShouldContainSubstring,
+			"invalid storage config, default storage root directory cannot be inside substore (route: /a) root directory")
 	})
 
 	Convey("Test verify w/ authorization and w/o authentication", t, func(c C) {

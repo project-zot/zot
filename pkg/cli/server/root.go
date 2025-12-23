@@ -324,6 +324,11 @@ func validateStorageConfig(cfg *config.Config, logger zlog.Logger) error {
 		})
 	}
 
+	// Sort stores by route to ensure deterministic ordering
+	slices.SortFunc(allStores, func(a, b storeInfo) int {
+		return strings.Compare(a.route, b.route)
+	})
+
 	// Validate each store
 	for _, store := range allStores {
 		route := store.route
