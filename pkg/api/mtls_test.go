@@ -1440,8 +1440,8 @@ func TestTLSMutualAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-		// with only creds, should get 401 because basic auth is disabled
-		// (Authorization header should be rejected when the auth method is disabled, regardless of mTLS)
+		// with only creds, should get 401 because basic auth is disabled and no client certs are present
+		// (Authorization header is ignored when basic auth is disabled, so auth falls through and fails)
 		resp, _ = client.R().SetBasicAuth(username, password).Get(secureBaseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
@@ -1466,11 +1466,11 @@ func TestTLSMutualAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-		// with client certs and creds, should get 401 because basic auth is disabled
-		// (Authorization header should be rejected when the auth method is disabled, regardless of mTLS)
+		// with client certs and creds, should succeed via mTLS auth
+		// (Authorization header is ignored when basic auth is disabled, so mTLS takes over)
 		resp, _ = client.R().SetBasicAuth(username, password).Get(secureBaseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 	})
 }
 
@@ -1530,11 +1530,11 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		password, seedPass := test.GenerateRandomString()
 
 		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
-		// with creds but without certs, reads are not allowed as server does not use basic auth
-		// and basic auth headers are expected to contain valid credentials
+		// with creds but without certs, reads are allowed via anonymous access
+		// (Authorization header is ignored when basic auth is disabled, so the request succeeds via anonymous policy)
 		resp, err = client.R().SetBasicAuth(username, password).Get(secureBaseURL + "/v2/")
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		// without creds, writes should fail
 		resp, err = client.R().Post(secureBaseURL + "/v2/repo/blobs/uploads/")
@@ -1563,16 +1563,16 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-		// with client certs and creds, reads are not allowed as server does not use basic auth
-		// and basic auth headers are expected to contain valid credentials
+		// with client certs and creds, reads succeed via mTLS
+		// (Authorization header is ignored when basic auth is disabled, so mTLS takes over)
 		resp, _ = client.R().SetBasicAuth(username, password).Get(secureBaseURL)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-		// with client certs, reads are not allowed as server does not use basic auth
+		// with client certs, reads succeed via mTLS
 		resp, _ = client.R().SetBasicAuth(username, password).Get(secureBaseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 	})
 }
 
