@@ -33,3 +33,7 @@ vendor/
 examples/config-sync-localhost.json
 node_modules
 zot-test
+
+# Conda build artifacts
+conda-bld/
+.conda/

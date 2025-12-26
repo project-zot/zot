@@ -1,0 +1,11 @@
+name: zot-build
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - go >=1.22
+  - conda-build
+  - git
+  - make
+  # Optional: for faster builds
+  # - boa

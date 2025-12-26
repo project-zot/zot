@@ -1,0 +1,18 @@
+# Conda build configuration
+# This file specifies the build matrix for different platforms and configurations
+
+# Supported platforms
+target_platform:
+  - linux-64
+  - linux-aarch64
+  - osx-64
+  - osx-arm64
+
+# Go compiler version
+go:
+  - 1.22
+  - 1.23
+
+# Channel priorities
+channel_sources:
+  - conda-forge,defaults
