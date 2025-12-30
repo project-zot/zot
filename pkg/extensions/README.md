@@ -1,7 +1,7 @@
 
 ## Adding new extensions
 
-As new requirements come and build time extensions need to be added, there are a few things that you have to make sure are present before commiting :
+As new requirements come and build time extensions need to be added, there are a few things that you have to make sure are present before committing :
 
 - files that should be included in the binary only with a specific extension must contain the following syntax at the beginning of the file :
 
