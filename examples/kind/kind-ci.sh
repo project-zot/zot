@@ -24,7 +24,7 @@ CLUSTER_NAME=kind
 kind get clusters | grep ${CLUSTER_NAME} &&  kind delete cluster --name ${CLUSTER_NAME}
 
 # create a cluster with the local registry enabled in containerd
-cat <<EOF | kind create cluster --image kindest/node:v1.33.7 --config=-
+cat <<EOF | kind create cluster --image kindest/node:v1.32.11 --config=-
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 containerdConfigPatches:
