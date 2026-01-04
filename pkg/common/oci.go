@@ -1,14 +1,56 @@
 package common
 
 import (
+	"encoding/hex"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/opencontainers/go-digest"
+	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 )
+
+// EmptyDigestCache caches the computed empty blob digest for each algorithm
+// to avoid recomputing it on every call to IsEmptyDigest.
+type EmptyDigestCache struct {
+	mu    sync.RWMutex
+	cache map[string]godigest.Digest
+}
+
+// IsEmptyDigest checks if the given digest is the empty blob digest for its algorithm.
+// It computes and caches the empty digest on first access for each algorithm.
+func (c *EmptyDigestCache) IsEmptyDigest(digest godigest.Digest) bool {
+	algorithm := digest.Algorithm()
+	algorithmStr := algorithm.String()
+
+	c.mu.RLock()
+	emptyDigest, found := c.cache[algorithmStr]
+	c.mu.RUnlock()
+
+	if found {
+		return emptyDigest == digest
+	}
+
+	// Compute the digest of empty content
+	emptyHash := algorithm.Hash()
+	emptyDigest = godigest.NewDigestFromEncoded(algorithm, hex.EncodeToString(emptyHash.Sum(nil)))
+
+	// Cache it for future use
+	c.mu.Lock()
+	c.cache[algorithmStr] = emptyDigest
+	c.mu.Unlock()
+
+	return emptyDigest == digest
+}
+
+// NewEmptyDigestCache creates a new EmptyDigestCache instance.
+func NewEmptyDigestCache() *EmptyDigestCache {
+	return &EmptyDigestCache{
+		cache: make(map[string]godigest.Digest),
+	}
+}
 
 func GetImageDirAndTag(imageName string) (string, string) {
 	var imageDir string
@@ -121,7 +163,7 @@ func GetFullImageName(repo, ref string) string {
 }
 
 func IsDigest(ref string) bool {
-	_, err := digest.Parse(ref)
+	_, err := godigest.Parse(ref)
 
 	return err == nil
 }

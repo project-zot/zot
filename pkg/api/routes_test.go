@@ -499,7 +499,7 @@ func TestRoutes(t *testing.T) {
 			statusCode := testCheckBlob(
 				map[string]string{
 					"name":   "ErrBadBlobDigest",
-					"digest": "1234",
+					"digest": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
 				},
 				&mocks.MockedImageStore{
 					CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
@@ -512,7 +512,7 @@ func TestRoutes(t *testing.T) {
 			statusCode = testCheckBlob(
 				map[string]string{
 					"name":   "ErrRepoNotFound",
-					"digest": "1234",
+					"digest": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
 				},
 				&mocks.MockedImageStore{
 					CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
@@ -525,7 +525,7 @@ func TestRoutes(t *testing.T) {
 			statusCode = testCheckBlob(
 				map[string]string{
 					"name":   "ErrBlobNotFound",
-					"digest": "1234",
+					"digest": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
 				},
 				&mocks.MockedImageStore{
 					CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
@@ -538,7 +538,7 @@ func TestRoutes(t *testing.T) {
 			statusCode = testCheckBlob(
 				map[string]string{
 					"name":   "ErrUnexpectedError",
-					"digest": "1234",
+					"digest": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
 				},
 				&mocks.MockedImageStore{
 					CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
@@ -551,7 +551,7 @@ func TestRoutes(t *testing.T) {
 			statusCode = testCheckBlob(
 				map[string]string{
 					"name":   "Check Blob Not Ok",
-					"digest": "1234",
+					"digest": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
 				},
 				&mocks.MockedImageStore{
 					CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
@@ -646,7 +646,7 @@ func TestRoutes(t *testing.T) {
 					NewBlobUploadFn: func(repo string) (string, error) {
 						return "", zerr.ErrRepoNotFound
 					},
-					CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+					CheckBlobForMountFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
 						return true, 0, zerr.ErrRepoNotFound
 					},
 				})
@@ -663,7 +663,7 @@ func TestRoutes(t *testing.T) {
 					NewBlobUploadFn: func(repo string) (string, error) {
 						return "", zerr.ErrRepoNotFound
 					},
-					CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+					CheckBlobForMountFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
 						return true, 0, zerr.ErrRepoNotFound
 					},
 				})
@@ -681,7 +681,7 @@ func TestRoutes(t *testing.T) {
 					NewBlobUploadFn: func(repo string) (string, error) {
 						return "", zerr.ErrRepoNotFound
 					},
-					CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+					CheckBlobForMountFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
 						return true, 0, zerr.ErrRepoNotFound
 					},
 				})
@@ -701,12 +701,12 @@ func TestRoutes(t *testing.T) {
 						return sessionStr, 0, zerr.ErrBadBlobDigest
 					},
 				})
-			So(statusCode, ShouldEqual, http.StatusInternalServerError)
+			So(statusCode, ShouldEqual, http.StatusBadRequest)
 
 			// digest prezent bad length
 			statusCode = testCreateBlobUpload(
 				[]struct{ k, v string }{
-					{"digest", "1234"},
+					{"digest", "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"},
 				},
 				map[string]string{
 					"Content-Type":   constants.BinaryMediaType,
