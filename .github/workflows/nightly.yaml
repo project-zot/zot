@@ -170,7 +170,8 @@ jobs:
 
   kind-setup:
     name: Prometheus setup
-    runs-on: oracle-vm-8cpu-32gb-x86-64
+    #runs-on: oracle-vm-8cpu-32gb-x86-64
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
@@ -179,6 +180,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd $GITHUB_WORKSPACE
+          make check-blackbox-prerequisites
           go mod download
           sudo apt-get update
           sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config rpm uidmap
