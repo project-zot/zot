@@ -1,6 +1,9 @@
 #!/bin/sh
 set -o errexit
 
+ROOT_DIR=$(git rev-parse --show-toplevel)
+KIND="${ROOT_DIR}"/hack/tools/bin/kind
+
 # Reference: https://kind.sigs.k8s.io/docs/user/local-registry/
 
 # set no_proxy if applicable
@@ -21,12 +24,20 @@ fi
 
 CLUSTER_NAME=kind
 ## Delete the cluster if it already exist
-kind get clusters | grep ${CLUSTER_NAME} &&  kind delete cluster --name ${CLUSTER_NAME}
+"${KIND}" get clusters | grep ${CLUSTER_NAME} && "${KIND}" delete cluster --name ${CLUSTER_NAME}
 
 # create a cluster with the local registry enabled in containerd
-cat <<EOF | kind create cluster --config=-
+cat <<EOF | "${KIND}" create cluster --config=-
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
+kubeadmConfigPatches:
+- |
+  kind: KubeletConfiguration
+  apiVersion: kubelet.config.k8s.io/v1beta1
+  cgroupDriver: systemd
+nodes:
+- role: control-plane
+  image: kindest/node:v1.28.7
 containerdConfigPatches:
 - |-
   [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:${reg_port}"]
