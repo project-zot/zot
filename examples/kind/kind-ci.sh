@@ -30,6 +30,13 @@ CLUSTER_NAME=kind
 cat <<EOF | "${KIND}" create cluster --config=-
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: KubeletConfiguration
+        apiVersion: kubelet.config.k8s.io/v1beta1
+        cgroupDriver: systemd
 containerdConfigPatches:
 - |-
   [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:${reg_port}"]

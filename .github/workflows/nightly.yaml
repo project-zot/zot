@@ -190,6 +190,13 @@ jobs:
           make bin/skopeo
           sudo cp bin/skopeo /usr/bin
           skopeo -v
+      - name: Fix Docker cgroup driver (systemd)
+        run: |
+          docker info
+          sudo cat /etc/docker/daemon.json
+          sudo mkdir -p /etc/docker
+          echo '{"exec-opts": ["native.cgroupdriver=systemd"]}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
       - name: Log in to GitHub Docker Registry
         uses: docker/login-action@v3
         with:
