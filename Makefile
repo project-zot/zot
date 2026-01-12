@@ -34,6 +34,8 @@ ZUI_REPO_NAME := zui
 SWAGGER_VERSION := v1.16.2
 STACKER := $(TOOLSDIR)/bin/stacker
 STACKER_VERSION := v1.1.0-rc3
+KIND := $(TOOLSDIR)/bin/kind
+KIND_VERSION := v0.31.0
 BATS := $(TOOLSDIR)/bin/bats
 TESTDATA := $(TOP_LEVEL)/test/data
 OS ?= $(shell go env GOOS)
@@ -518,7 +520,7 @@ $(BATS):
 	rm -rf bats-core
 
 .PHONY: check-blackbox-prerequisites
-check-blackbox-prerequisites: check-linux check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM) $(CRICTL) $(NOTATION) $(COSIGN) $(STACKER)
+check-blackbox-prerequisites: check-linux check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM) $(CRICTL) $(NOTATION) $(COSIGN) $(STACKER) $(KIND)
 	which skopeo && skopeo --version; \
 	which stacker && stacker --version; \
 	which regctl && regctl version; \
@@ -526,7 +528,8 @@ check-blackbox-prerequisites: check-linux check-skopeo $(BATS) $(REGCLIENT) $(OR
 	which helm && helm version; \
 	which crictl && crictl version; \
 	which notation && notation version; \
-	which cosign && cosign version;
+	which cosign && cosign version; \
+	which kind && kind version;
 
 .PHONY: run-blackbox-tests
 run-blackbox-tests: $(BATS_TEST_FILE_PATH) check-blackbox-prerequisites binary binary-minimal cli bench
@@ -596,6 +599,11 @@ $(STACKER): check-linux
 $(COSIGN):
 	mkdir -p $(TOOLSDIR)/bin
 	curl -fsSL https://github.com/sigstore/cosign/releases/download/v$(COSIGN_VERSION)/cosign-$(OS)-$(ARCH) -o $@; \
+	chmod +x $@
+
+$(KIND): check-linux
+	mkdir -p $(TOOLSDIR)/bin; \
+	curl -fsSL curl -Lo ./kind https://kind.sigs.k8s.io/dl/$(KIND_VERSION)/kind-$(OS)-$(ARCH) -o $@; \
 	chmod +x $@
 
 # set ZUI_VERSION to empty string in order to clone zui locally and build default branch
