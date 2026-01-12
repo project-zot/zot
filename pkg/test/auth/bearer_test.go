@@ -1,6 +1,7 @@
 package auth_test
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -32,6 +33,28 @@ func TestBearerServerLegacy(t *testing.T) {
 	})
 }
 
+// doGet performs an HTTP GET request with context.
+func doGet(url string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return http.DefaultClient.Do(req)
+}
+
+// doPost performs an HTTP POST request with context.
+func doPost(url string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	return http.DefaultClient.Do(req)
+}
+
 func TestLegacyTokenGeneration(t *testing.T) {
 	Convey("test legacy token generation for backward compatibility", t, func() {
 		// Create a temporary directory for test keys
@@ -56,7 +79,7 @@ func TestLegacyTokenGeneration(t *testing.T) {
 			defer server.Close()
 
 			// Request a token with a scope
-			resp, err := http.Get(server.URL + "?scope=repository:test-repo:pull,push")
+			resp, err := doGet(server.URL + "?scope=repository:test-repo:pull,push")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusOK)
 
@@ -68,7 +91,7 @@ func TestLegacyTokenGeneration(t *testing.T) {
 			So(tokenResp.AccessToken, ShouldNotBeEmpty)
 
 			// Parse the token to verify its structure
-			token, err := jwt.Parse(tokenResp.AccessToken, func(token *jwt.Token) (interface{}, error) {
+			token, err := jwt.Parse(tokenResp.AccessToken, func(token *jwt.Token) (any, error) {
 				return &privateKey.PublicKey, nil
 			})
 			So(err, ShouldBeNil)
@@ -104,16 +127,16 @@ func TestLegacyTokenGeneration(t *testing.T) {
 			// Verify access claim structure
 			access, ok := claims["access"]
 			So(ok, ShouldBeTrue)
-			accessList, ok := access.([]interface{})
+			accessList, ok := access.([]any)
 			So(ok, ShouldBeTrue)
 			So(len(accessList), ShouldEqual, 1)
 
-			accessEntry, ok := accessList[0].(map[string]interface{})
+			accessEntry, ok := accessList[0].(map[string]any)
 			So(ok, ShouldBeTrue)
 			So(accessEntry["name"], ShouldEqual, "test-repo")
 			So(accessEntry["type"], ShouldEqual, "repository")
 
-			actions, ok := accessEntry["actions"].([]interface{})
+			actions, ok := accessEntry["actions"].([]any)
 			So(ok, ShouldBeTrue)
 			So(len(actions), ShouldEqual, 2)
 			So(actions[0], ShouldEqual, "pull")
@@ -125,7 +148,7 @@ func TestLegacyTokenGeneration(t *testing.T) {
 			defer server.Close()
 
 			// Request a token with multiple scopes
-			resp, err := http.Get(server.URL + "?scope=repository:repo1:pull&scope=repository:repo2:push")
+			resp, err := doGet(server.URL + "?scope=repository:repo1:pull&scope=repository:repo2:push")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusOK)
 
@@ -136,13 +159,16 @@ func TestLegacyTokenGeneration(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Parse and verify the token has both access entries
-			token, err := jwt.Parse(tokenResp.AccessToken, func(token *jwt.Token) (interface{}, error) {
+			token, err := jwt.Parse(tokenResp.AccessToken, func(token *jwt.Token) (any, error) {
 				return &privateKey.PublicKey, nil
 			})
 			So(err, ShouldBeNil)
 
-			claims := token.Claims.(jwt.MapClaims)
-			access := claims["access"].([]interface{})
+			claims, ok := token.Claims.(jwt.MapClaims)
+			So(ok, ShouldBeTrue)
+
+			access, ok := claims["access"].([]any)
+			So(ok, ShouldBeTrue)
 			So(len(access), ShouldEqual, 2)
 		})
 
@@ -151,7 +177,7 @@ func TestLegacyTokenGeneration(t *testing.T) {
 			defer server.Close()
 
 			// Request a token for the unauthorized namespace
-			resp, err := http.Get(server.URL + "?scope=repository:unauthorized-repo:pull,push")
+			resp, err := doGet(server.URL + "?scope=repository:unauthorized-repo:pull,push")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusOK)
 
@@ -162,17 +188,23 @@ func TestLegacyTokenGeneration(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Parse and verify the token has empty actions for unauthorized repo
-			token, err := jwt.Parse(tokenResp.AccessToken, func(token *jwt.Token) (interface{}, error) {
+			token, err := jwt.Parse(tokenResp.AccessToken, func(token *jwt.Token) (any, error) {
 				return &privateKey.PublicKey, nil
 			})
 			So(err, ShouldBeNil)
 
-			claims := token.Claims.(jwt.MapClaims)
-			access := claims["access"].([]interface{})
+			claims, ok := token.Claims.(jwt.MapClaims)
+			So(ok, ShouldBeTrue)
+
+			access, ok := claims["access"].([]any)
+			So(ok, ShouldBeTrue)
 			So(len(access), ShouldEqual, 1)
 
-			accessEntry := access[0].(map[string]interface{})
-			actions := accessEntry["actions"].([]interface{})
+			accessEntry, ok := access[0].(map[string]any)
+			So(ok, ShouldBeTrue)
+
+			actions, ok := accessEntry["actions"].([]any)
+			So(ok, ShouldBeTrue)
 			So(len(actions), ShouldEqual, 0)
 		})
 
@@ -180,7 +212,7 @@ func TestLegacyTokenGeneration(t *testing.T) {
 			server := auth.MakeAuthTestServerLegacy(keyPath, "unauthorized-repo")
 			defer server.Close()
 
-			resp, err := http.Post(server.URL, "application/json", nil)
+			resp, err := doPost(server.URL)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusMethodNotAllowed)
 			resp.Body.Close()
@@ -216,7 +248,9 @@ func TestNewTokenGeneration(t *testing.T) {
 			NotBefore: time.Now(),
 			NotAfter:  time.Now().Add(time.Hour),
 		}
-		certDER, err := x509.CreateCertificate(rand.Reader, template, template, &privateKey.PublicKey, privateKey)
+		certDER, err := x509.CreateCertificate(
+			rand.Reader, template, template, &privateKey.PublicKey, privateKey,
+		)
 		So(err, ShouldBeNil)
 
 		certPEM := pem.EncodeToMemory(&pem.Block{
@@ -230,7 +264,7 @@ func TestNewTokenGeneration(t *testing.T) {
 			server := auth.MakeAuthTestServer(keyPath, "RS256", "unauthorized-repo")
 			defer server.Close()
 
-			resp, err := http.Get(server.URL + "?scope=repository:test-repo:pull,push")
+			resp, err := doGet(server.URL + "?scope=repository:test-repo:pull,push")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusOK)
 
@@ -242,7 +276,7 @@ func TestNewTokenGeneration(t *testing.T) {
 			So(tokenResp.AccessToken, ShouldNotBeEmpty)
 
 			// Parse and verify the token
-			token, err := jwt.Parse(tokenResp.AccessToken, func(token *jwt.Token) (interface{}, error) {
+			token, err := jwt.Parse(tokenResp.AccessToken, func(token *jwt.Token) (any, error) {
 				return &privateKey.PublicKey, nil
 			})
 			So(err, ShouldBeNil)
@@ -254,7 +288,7 @@ func TestNewTokenGeneration(t *testing.T) {
 			server := auth.MakeAuthTestServer(keyPath, "RS256", "unauthorized-repo")
 			defer server.Close()
 
-			resp, err := http.Post(server.URL, "application/json", nil)
+			resp, err := doPost(server.URL)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusMethodNotAllowed)
 			resp.Body.Close()
@@ -265,7 +299,8 @@ func TestNewTokenGeneration(t *testing.T) {
 func TestParseBearerAuthHeader(t *testing.T) {
 	Convey("test ParseBearerAuthHeader", t, func() {
 		Convey("should parse valid bearer auth header", func() {
-			header := `Bearer realm="https://auth.example.com/token",service="registry.example.com",scope="repository:myrepo:pull"`
+			header := `Bearer realm="https://auth.example.com/token",` +
+				`service="registry.example.com",scope="repository:myrepo:pull"`
 			parsed := auth.ParseBearerAuthHeader(header)
 
 			So(parsed.Realm, ShouldEqual, "https://auth.example.com/token")
@@ -274,7 +309,8 @@ func TestParseBearerAuthHeader(t *testing.T) {
 		})
 
 		Convey("should handle empty scope", func() {
-			header := `Bearer realm="https://auth.example.com/token",service="registry.example.com",scope=""`
+			header := `Bearer realm="https://auth.example.com/token",` +
+				`service="registry.example.com",scope=""`
 			parsed := auth.ParseBearerAuthHeader(header)
 
 			So(parsed.Realm, ShouldEqual, "https://auth.example.com/token")
