@@ -90,25 +90,23 @@ func NewAWSImageTrustStore(region, endpoint string) (*ImageTrustStore, error) {
 }
 
 func GetSecretsManagerClient(region, endpoint string) (*secretsmanager.Client, error) {
-	customResolver := aws.EndpointResolverWithOptionsFunc( //nolint: staticcheck
-		func(service, region string, options ...any) (aws.Endpoint, error) { //nolint: staticcheck
-			return aws.Endpoint{ //nolint: staticcheck
-				PartitionID:   "aws",
-				URL:           endpoint,
-				SigningRegion: region,
-			}, nil
-		})
-
 	// Using the SDK's default configuration, loading additional config
 	// and credentials values from the environment variables, shared
 	// credentials, and shared configuration files
-	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region),
-		config.WithEndpointResolverWithOptions(customResolver)) //nolint: staticcheck
+	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region))
 	if err != nil {
 		return nil, err
 	}
 
-	return secretsmanager.NewFromConfig(cfg), nil
+	// Create Secrets Manager client with custom base endpoint if provided
+	var clientOptions []func(*secretsmanager.Options)
+	if endpoint != "" {
+		clientOptions = append(clientOptions, func(o *secretsmanager.Options) {
+			o.BaseEndpoint = aws.String(endpoint)
+		})
+	}
+
+	return secretsmanager.NewFromConfig(cfg, clientOptions...), nil
 }
 
 func GetSecretsManagerRetrieval(region, endpoint string) *secretcache.Cache {

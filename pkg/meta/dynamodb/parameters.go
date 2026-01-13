@@ -14,23 +14,21 @@ type DBDriverParameters struct {
 }
 
 func GetDynamoClient(params DBDriverParameters) (*dynamodb.Client, error) {
-	customResolver := aws.EndpointResolverWithOptionsFunc( //nolint: staticcheck
-		func(service, region string, options ...any) (aws.Endpoint, error) {
-			return aws.Endpoint{ //nolint: staticcheck
-				PartitionID:   "aws",
-				URL:           params.Endpoint,
-				SigningRegion: region,
-			}, nil
-		})
-
 	// Using the SDK's default configuration, loading additional config
 	// and credentials values from the environment variables, shared
 	// credentials, and shared configuration files
-	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(params.Region),
-		config.WithEndpointResolverWithOptions(customResolver)) //nolint: staticcheck
+	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(params.Region))
 	if err != nil {
 		return nil, err
 	}
 
-	return dynamodb.NewFromConfig(cfg), nil
+	// Create DynamoDB client with custom base endpoint if provided
+	var clientOptions []func(*dynamodb.Options)
+	if params.Endpoint != "" {
+		clientOptions = append(clientOptions, func(o *dynamodb.Options) {
+			o.BaseEndpoint = aws.String(params.Endpoint)
+		})
+	}
+
+	return dynamodb.NewFromConfig(cfg, clientOptions...), nil
 }

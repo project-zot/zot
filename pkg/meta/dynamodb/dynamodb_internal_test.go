@@ -39,22 +39,13 @@ func TestWrapperErrors(t *testing.T) {
 	Convey("Create table errors", t, func() {
 		badEndpoint := endpoint + "1"
 
-		customResolver := aws.EndpointResolverWithOptionsFunc( //nolint: staticcheck
-			func(service, region string, options ...any) (aws.Endpoint, error) {
-				return aws.Endpoint{ //nolint: staticcheck
-					PartitionID:   "aws",
-					URL:           badEndpoint,
-					SigningRegion: region,
-				}, nil
-			},
-		)
-
-		cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region),
-			config.WithEndpointResolverWithOptions(customResolver)) //nolint: staticcheck
+		cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region))
 		So(err, ShouldBeNil)
 
 		dynamoWrapper := DynamoDB{
-			Client:            dynamodb.NewFromConfig(cfg),
+			Client: dynamodb.NewFromConfig(cfg, func(o *dynamodb.Options) {
+				o.BaseEndpoint = aws.String(badEndpoint)
+			}),
 			RepoMetaTablename: repoMetaTablename,
 			VersionTablename:  versionTablename,
 			UserDataTablename: userDataTablename,
@@ -75,22 +66,13 @@ func TestWrapperErrors(t *testing.T) {
 	})
 
 	Convey("Delete table errors", t, func() {
-		customResolver := aws.EndpointResolverWithOptionsFunc( //nolint: staticcheck
-			func(service, region string, options ...any) (aws.Endpoint, error) {
-				return aws.Endpoint{ //nolint: staticcheck
-					PartitionID:   "aws",
-					URL:           endpoint,
-					SigningRegion: region,
-				}, nil
-			},
-		)
-
-		cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region),
-			config.WithEndpointResolverWithOptions(customResolver)) //nolint: staticcheck
+		cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region))
 		So(err, ShouldBeNil)
 
 		dynamoWrapper := DynamoDB{
-			Client:            dynamodb.NewFromConfig(cfg),
+			Client: dynamodb.NewFromConfig(cfg, func(o *dynamodb.Options) {
+				o.BaseEndpoint = aws.String(endpoint)
+			}),
 			RepoMetaTablename: repoMetaTablename,
 			VersionTablename:  versionTablename,
 			UserDataTablename: userDataTablename,
@@ -104,18 +86,7 @@ func TestWrapperErrors(t *testing.T) {
 	})
 
 	Convey("Create version table behavior", t, func() {
-		customResolver := aws.EndpointResolverWithOptionsFunc( //nolint: staticcheck
-			func(service, region string, options ...any) (aws.Endpoint, error) {
-				return aws.Endpoint{ //nolint: staticcheck
-					PartitionID:   "aws",
-					URL:           endpoint,
-					SigningRegion: region,
-				}, nil
-			},
-		)
-
-		cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region),
-			config.WithEndpointResolverWithOptions(customResolver)) //nolint: staticcheck
+		cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region))
 		So(err, ShouldBeNil)
 
 		Convey("createVersionTable sets version for new table", func() {
@@ -124,7 +95,9 @@ func TestWrapperErrors(t *testing.T) {
 			versionTablename := "Version" + uuid.String()
 
 			dynamoWrapper := DynamoDB{
-				Client:           dynamodb.NewFromConfig(cfg),
+				Client: dynamodb.NewFromConfig(cfg, func(o *dynamodb.Options) {
+					o.BaseEndpoint = aws.String(endpoint)
+				}),
 				VersionTablename: versionTablename,
 				Patches:          version.GetDynamoDBPatches(),
 				Log:              log.NewTestLogger(),
@@ -149,7 +122,9 @@ func TestWrapperErrors(t *testing.T) {
 			versionTablename := "Version" + uuid.String()
 
 			dynamoWrapper := DynamoDB{
-				Client:           dynamodb.NewFromConfig(cfg),
+				Client: dynamodb.NewFromConfig(cfg, func(o *dynamodb.Options) {
+					o.BaseEndpoint = aws.String(endpoint)
+				}),
 				VersionTablename: versionTablename,
 				Patches:          version.GetDynamoDBPatches(),
 				Log:              log.NewTestLogger(),
@@ -178,7 +153,9 @@ func TestWrapperErrors(t *testing.T) {
 			versionTablename := "Version" + uuid.String()
 
 			dynamoWrapper := DynamoDB{
-				Client:           dynamodb.NewFromConfig(cfg),
+				Client: dynamodb.NewFromConfig(cfg, func(o *dynamodb.Options) {
+					o.BaseEndpoint = aws.String(endpoint)
+				}),
 				VersionTablename: versionTablename,
 				Patches:          version.GetDynamoDBPatches(),
 				Log:              log.NewTestLogger(),
@@ -216,7 +193,9 @@ func TestWrapperErrors(t *testing.T) {
 			versionTablename := "Version" + uuid.String()
 
 			dynamoWrapper := DynamoDB{
-				Client:           dynamodb.NewFromConfig(cfg),
+				Client: dynamodb.NewFromConfig(cfg, func(o *dynamodb.Options) {
+					o.BaseEndpoint = aws.String(endpoint)
+				}),
 				VersionTablename: versionTablename,
 				Patches:          version.GetDynamoDBPatches(),
 				Log:              log.NewTestLogger(),

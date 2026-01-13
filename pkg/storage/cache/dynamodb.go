@@ -71,28 +71,29 @@ func NewDynamoDBCache(parameters any, log zlog.Logger) (*DynamoDBDriver, error) 
 		return nil, zerr.ErrTypeAssertionFailed
 	}
 
-	// custom endpoint resolver to point to localhost
-	customResolver := aws.EndpointResolverWithOptionsFunc( //nolint: staticcheck
-		func(service, region string, options ...any) (aws.Endpoint, error) {
-			return aws.Endpoint{ //nolint: staticcheck
-				PartitionID:   "aws",
-				URL:           properParameters.Endpoint,
-				SigningRegion: region,
-			}, nil
-		})
-
 	// Using the SDK's default configuration, loading additional config
 	// and credentials values from the environment variables, shared
 	// credentials, and shared configuration files
-	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(properParameters.Region),
-		config.WithEndpointResolverWithOptions(customResolver)) //nolint: staticcheck
+	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(properParameters.Region))
 	if err != nil {
 		log.Error().Err(err).Msg("failed to load AWS SDK config for dynamodb")
 
 		return nil, err
 	}
 
-	driver := &DynamoDBDriver{client: dynamodb.NewFromConfig(cfg), tableName: properParameters.TableName, log: log}
+	// Create DynamoDB client with custom base endpoint if provided
+	var clientOptions []func(*dynamodb.Options)
+	if properParameters.Endpoint != "" {
+		clientOptions = append(clientOptions, func(o *dynamodb.Options) {
+			o.BaseEndpoint = aws.String(properParameters.Endpoint)
+		})
+	}
+
+	driver := &DynamoDBDriver{
+		client:    dynamodb.NewFromConfig(cfg, clientOptions...),
+		tableName: properParameters.TableName,
+		log:       log,
+	}
 
 	err = driver.NewTable(driver.tableName)
 	if err != nil {
