@@ -2267,11 +2267,10 @@ func (dwr *DynamoDB) createVersionTable() error {
 	})
 	if err != nil {
 		inUseException := new(types.ResourceInUseException)
-		if errors.As(err, &inUseException) {
-			return nil
+		if !errors.As(err, &inUseException) {
+			return err
 		}
-
-		return err
+		// Table already exists, continue to ensure version data is set
 	}
 
 	err = dwr.waitTableToBeCreated(dwr.VersionTablename)
@@ -2296,10 +2295,17 @@ func (dwr *DynamoDB) createVersionTable() error {
 				Value: version.DBVersionKey,
 			},
 		},
-		TableName:        aws.String(dwr.VersionTablename),
-		UpdateExpression: aws.String("SET #V = :Version"),
+		TableName:           aws.String(dwr.VersionTablename),
+		UpdateExpression:    aws.String("SET #V = :Version"),
+		ConditionExpression: aws.String("attribute_not_exists(#V)"),
 	})
 	if err != nil {
+		conditionalCheckFailedException := new(types.ConditionalCheckFailedException)
+		if errors.As(err, &conditionalCheckFailedException) {
+			// Version already exists, skip setting it - patches will handle version updates
+			return nil
+		}
+
 		return err
 	}
 
