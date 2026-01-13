@@ -12,11 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
-	aws1 "github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/endpoints"
-	"github.com/aws/aws-sdk-go/aws/session"
-	smanager "github.com/aws/aws-sdk-go/service/secretsmanager"
-	"github.com/aws/aws-secretsmanager-caching-go/secretcache"
+	"github.com/aws/aws-secretsmanager-caching-go/v2/secretcache"
 	"github.com/aws/smithy-go"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -74,7 +70,10 @@ func NewAWSImageTrustStore(region, endpoint string) (*ImageTrustStore, error) {
 		return nil, err
 	}
 
-	secretsManagerCache := GetSecretsManagerRetrieval(region, endpoint)
+	secretsManagerCache, err := GetSecretsManagerRetrieval(region, endpoint)
+	if err != nil {
+		return nil, err
+	}
 
 	publicKeyStorage := NewPublicKeyAWSStorage(secretsManagerClient, secretsManagerCache)
 
@@ -109,35 +108,42 @@ func GetSecretsManagerClient(region, endpoint string) (*secretsmanager.Client, e
 	return secretsmanager.NewFromConfig(cfg, clientOptions...), nil
 }
 
-func GetSecretsManagerRetrieval(region, endpoint string) *secretcache.Cache {
-	endpointFunc := func(service, region string, optFns ...func(*endpoints.Options)) (endpoints.ResolvedEndpoint, error) {
-		return endpoints.ResolvedEndpoint{
-			PartitionID:   "aws",
-			URL:           endpoint,
-			SigningRegion: region,
-		}, nil
+func GetSecretsManagerRetrieval(region, endpoint string) (*secretcache.Cache, error) {
+	// Using the SDK's default configuration, loading additional config
+	// and credentials values from the environment variables, shared
+	// credentials, and shared configuration files
+	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region))
+	if err != nil {
+		return nil, err
 	}
-	customResolver := endpoints.ResolverFunc(endpointFunc)
 
-	cfg := aws1.NewConfig().WithRegion(region).WithEndpointResolver(customResolver)
+	// Create Secrets Manager client with custom base endpoint if provided
+	var clientOptions []func(*secretsmanager.Options)
+	if endpoint != "" {
+		clientOptions = append(clientOptions, func(o *secretsmanager.Options) {
+			o.BaseEndpoint = aws.String(endpoint)
+		})
+	}
 
-	newSession := session.Must(session.NewSession())
+	client := secretsmanager.NewFromConfig(cfg, clientOptions...)
 
-	client := smanager.New(newSession, cfg)
 	// Create a custom CacheConfig struct
-	config := secretcache.CacheConfig{
+	cacheConfig := secretcache.CacheConfig{
 		MaxCacheSize: secretcache.DefaultMaxCacheSize,
 		VersionStage: secretcache.DefaultVersionStage,
 		CacheItemTTL: secretcache.DefaultCacheItemTTL,
 	}
 
-	// Instantiate the cache
-	cache, _ := secretcache.New(
-		func(c *secretcache.Cache) { c.CacheConfig = config },
+	// Instantiate the cache with the v2 client
+	cache, err := secretcache.New(
+		func(c *secretcache.Cache) { c.CacheConfig = cacheConfig },
 		func(c *secretcache.Cache) { c.Client = client },
 	)
+	if err != nil {
+		return nil, err
+	}
 
-	return cache
+	return cache, nil
 }
 
 func IsResourceExistsException(err error) bool {
