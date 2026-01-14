@@ -48,16 +48,11 @@ func NewOIDCBearerAuthorizer(ctx context.Context, oidcConfig *config.BearerOIDCC
 
 	// Configure verifier
 	verifierConfig := &oidc.Config{
-		ClientID:          oidcConfig.Audiences[0], // Primary audience
+		ClientID:          "",                                // We'll check audiences manually
 		SkipIssuerCheck:   oidcConfig.SkipIssuerVerification,
-		SkipClientIDCheck: false,
+		SkipClientIDCheck: true,                              // Check audiences manually to support multiple
 		SkipExpiryCheck:   false,
 		Now:               time.Now,
-	}
-
-	// Support multiple audiences
-	if len(oidcConfig.Audiences) > 1 {
-		verifierConfig.SupportedSigningAlgs = []string{"RS256", "RS384", "RS512", "ES256", "ES384", "ES512", "PS256", "PS384", "PS512", "EdDSA"}
 	}
 
 	verifier := provider.Verifier(verifierConfig)
@@ -95,8 +90,8 @@ func (a *OIDCBearerAuthorizer) Authenticate(ctx context.Context, header string) 
 		return "", nil, fmt.Errorf("%w: %w", zerr.ErrInvalidBearerToken, err)
 	}
 
-	// Verify audience (the verifier checks the first audience, but we need to check all)
-	if !a.skipIssuerCheck && !a.verifyAudience(idToken) {
+	// Verify audience manually (the verifier checks against the first audience only, but we need to check all)
+	if !a.verifyAudience(idToken) {
 		a.log.Debug().Str("token_aud", fmt.Sprintf("%v", idToken.Audience)).
 			Strs("accepted_aud", a.audiences).
 			Msg("token audience not accepted")
