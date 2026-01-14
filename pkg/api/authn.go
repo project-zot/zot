@@ -498,11 +498,11 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 			ctlr.Log.Panic().Err(err).Msg("failed to load public key for bearer authentication")
 		}
 
-		traditionalAuthorizer = &BearerAuthorizer{
-			realm:   authConfig.Bearer.Realm,
-			service: authConfig.Bearer.Service,
-			key:     publicKey,
-		}
+		traditionalAuthorizer = NewBearerAuthorizer(
+			authConfig.Bearer.Realm,
+			authConfig.Bearer.Service,
+			publicKey,
+		)
 	}
 
 	// OIDC bearer auth for workload identity

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
-	"golang.org/x/oauth2"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
@@ -199,22 +198,4 @@ func (a *OIDCBearerAuthorizer) AuthenticateRequest(ctx context.Context, authHead
 	}
 
 	return username, groups, true, nil
-}
-
-// CreateOAuth2Config creates an oauth2.Config for use with the OIDC provider.
-// This is a helper method for testing purposes.
-func CreateOAuth2Config(issuer string, clientID string, clientSecret string, redirectURL string, scopes []string) (*oauth2.Config, error) {
-	ctx := context.Background()
-	provider, err := oidc.NewProvider(ctx, issuer)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create OIDC provider: %w", err)
-	}
-
-	return &oauth2.Config{
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		RedirectURL:  redirectURL,
-		Endpoint:     provider.Endpoint(),
-		Scopes:       scopes,
-	}, nil
 }

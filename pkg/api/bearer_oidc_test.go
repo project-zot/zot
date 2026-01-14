@@ -164,9 +164,6 @@ func TestOIDCBearerAuthorizer(t *testing.T) {
 
 				authHeader := "Bearer " + token
 
-				// Give the server time to be ready
-				time.Sleep(100 * time.Millisecond)
-
 				username, groups, err := authorizer.Authenticate(ctx, authHeader)
 				So(err, ShouldBeNil)
 				So(username, ShouldEqual, subject)
@@ -183,8 +180,6 @@ func TestOIDCBearerAuthorizer(t *testing.T) {
 
 				authHeader := "Bearer " + token
 
-				time.Sleep(100 * time.Millisecond)
-
 				username, extractedGroups, err := authorizer.Authenticate(ctx, authHeader)
 				So(err, ShouldBeNil)
 				So(username, ShouldEqual, subject)
@@ -197,8 +192,6 @@ func TestOIDCBearerAuthorizer(t *testing.T) {
 				So(err, ShouldBeNil)
 
 				authHeader := "Bearer " + token
-
-				time.Sleep(100 * time.Millisecond)
 
 				username, groups, err := authorizer.Authenticate(ctx, authHeader)
 				So(err, ShouldNotBeNil)
@@ -224,8 +217,6 @@ func TestOIDCBearerAuthorizer(t *testing.T) {
 				So(err, ShouldBeNil)
 
 				authHeader := "Bearer " + tokenString
-
-				time.Sleep(100 * time.Millisecond)
 
 				username, groups, err := authorizer.Authenticate(ctx, authHeader)
 				So(err, ShouldNotBeNil)
@@ -259,8 +250,6 @@ func TestOIDCBearerAuthorizer(t *testing.T) {
 
 				authHeader := "Bearer " + token
 
-				time.Sleep(100 * time.Millisecond)
-
 				username, groups, err := authorizer.Authenticate(ctx, authHeader)
 				So(err, ShouldBeNil)
 				So(username, ShouldEqual, customUsername)
@@ -273,8 +262,6 @@ func TestOIDCBearerAuthorizer(t *testing.T) {
 				So(err, ShouldBeNil)
 
 				authHeader := "Bearer " + token
-
-				time.Sleep(100 * time.Millisecond)
 
 				username, groups, err := authorizer.Authenticate(ctx, authHeader)
 				So(err, ShouldBeNil)
@@ -302,8 +289,6 @@ func TestOIDCBearerAuthorizer(t *testing.T) {
 
 				authHeader := "Bearer " + token
 
-				time.Sleep(100 * time.Millisecond)
-
 				username, groups, err := authorizer.Authenticate(ctx, authHeader)
 				So(err, ShouldBeNil)
 				So(username, ShouldEqual, subject)
@@ -316,8 +301,6 @@ func TestOIDCBearerAuthorizer(t *testing.T) {
 				So(err, ShouldBeNil)
 
 				authHeader := "Bearer " + token
-
-				time.Sleep(100 * time.Millisecond)
 
 				username, groups, err := authorizer.Authenticate(ctx, authHeader)
 				So(err, ShouldBeNil)
