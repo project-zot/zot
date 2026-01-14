@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"os"
 	"path"
@@ -2725,311 +2724,129 @@ func TestTLS(t *testing.T) {
 }
 
 func TestBearerAuth(t *testing.T) {
-	testCases := []struct {
-		name                    string
-		useLegacyAuthTestServer bool
-	}{
-		{
-			name:                    "new authentication test server",
-			useLegacyAuthTestServer: false,
-		},
-		{
-			name:                    "legacy authentication test server",
-			useLegacyAuthTestServer: true,
-		},
-	}
+	Convey("Verify periodically sync bearer auth", t, func() {
+		updateDuration, _ := time.ParseDuration("1h")
+		// a repo for which clients do not have access, sync shouldn't be able to sync it
+		unauthorizedNamespace := testCveImage
 
-	for _, testCase := range testCases {
-		Convey("Verify periodically sync bearer auth with "+testCase.name, t, func() {
-			updateDuration, _ := time.ParseDuration("1h")
-			// a repo for which clients do not have access, sync shouldn't be able to sync it
-			unauthorizedNamespace := testCveImage
+		// Generate certificates for bearer auth
+		tempDir := t.TempDir()
+		_, serverCertPath, serverKeyPath, _, _, _ := setupTestCertsForSync(t, tempDir)
 
-			// Generate certificates for bearer auth
-			tempDir := t.TempDir()
-			_, serverCertPath, serverKeyPath, _, _, _ := setupTestCertsForSync(t, tempDir)
+		authTestServer := authutils.MakeAuthTestServer(serverKeyPath, "RS256", unauthorizedNamespace)
+		defer authTestServer.Close()
 
-			var authTestServer *httptest.Server
-			if testCase.useLegacyAuthTestServer {
-				authTestServer = authutils.MakeAuthTestServerLegacy(serverKeyPath, unauthorizedNamespace)
-			} else {
-				authTestServer = authutils.MakeAuthTestServer(serverKeyPath, "RS256", unauthorizedNamespace)
-			}
-			defer authTestServer.Close()
+		sctlr, srcBaseURL, _, srcClient := makeUpstreamServer(t, false, false)
 
-			sctlr, srcBaseURL, _, srcClient := makeUpstreamServer(t, false, false)
+		aurl, err := url.Parse(authTestServer.URL)
+		So(err, ShouldBeNil)
 
-			aurl, err := url.Parse(authTestServer.URL)
-			So(err, ShouldBeNil)
+		sctlr.Config.HTTP.Auth = &config.AuthConfig{
+			Bearer: &config.BearerConfig{
+				Cert:    serverCertPath,
+				Realm:   authTestServer.URL + "/auth/token",
+				Service: aurl.Host,
+			},
+		}
 
-			sctlr.Config.HTTP.Auth = &config.AuthConfig{
-				Bearer: &config.BearerConfig{
-					Cert:    serverCertPath,
-					Realm:   authTestServer.URL + "/auth/token",
-					Service: aurl.Host,
+		scm := test.NewControllerManager(sctlr)
+		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
+		defer scm.StopServer()
+
+		registryName := sync.StripRegistryTransport(srcBaseURL)
+		credentialsFile := makeCredentialsFile(t.TempDir(), fmt.Sprintf(`{"%s":{"username": "%s", "password": "%s"}}`,
+			registryName, username, password))
+
+		var tlsVerify bool
+
+		syncRegistryConfig := syncconf.RegistryConfig{
+			Content: []syncconf.Content{
+				{
+					Prefix: "**", // sync everything
 				},
-			}
+			},
+			URLs:         []string{srcBaseURL},
+			PollInterval: updateDuration,
+			TLSVerify:    &tlsVerify,
+			CertDir:      "",
+			MaxRetries:   &maxRetries,
+		}
 
-			scm := test.NewControllerManager(sctlr)
-			scm.StartAndWait(sctlr.Config.HTTP.Port)
+		defaultVal := true
+		syncConfig := &syncconf.Config{
+			Enable:          &defaultVal,
+			CredentialsFile: credentialsFile,
+			Registries:      []syncconf.RegistryConfig{syncRegistryConfig},
+		}
 
-			defer scm.StopServer()
+		dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
 
-			registryName := sync.StripRegistryTransport(srcBaseURL)
-			credentialsFile := makeCredentialsFile(t.TempDir(), fmt.Sprintf(`{"%s":{"username": "%s", "password": "%s"}}`,
-				registryName, username, password))
+		dcm := test.NewControllerManager(dctlr)
+		dcm.StartAndWait(dctlr.Config.HTTP.Port)
 
-			var tlsVerify bool
+		defer dcm.StopServer()
 
-			syncRegistryConfig := syncconf.RegistryConfig{
-				Content: []syncconf.Content{
-					{
-						Prefix: "**", // sync everything
-					},
-				},
-				URLs:         []string{srcBaseURL},
-				PollInterval: updateDuration,
-				TLSVerify:    &tlsVerify,
-				CertDir:      "",
-				MaxRetries:   &maxRetries,
-			}
+		var (
+			srcTagsList  TagsList
+			destTagsList TagsList
+		)
 
-			defaultVal := true
-			syncConfig := &syncconf.Config{
-				Enable:          &defaultVal,
-				CredentialsFile: credentialsFile,
-				Registries:      []syncconf.RegistryConfig{syncRegistryConfig},
-			}
+		resp, err := srcClient.R().Get(srcBaseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-			dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+		authorizationHeader := authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
+		resp, err = resty.R().
+			SetQueryParam("service", authorizationHeader.Service).
+			Get(authorizationHeader.Realm)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-			dcm := test.NewControllerManager(dctlr)
-			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		var goodToken authutils.AccessTokenResponse
 
-			defer dcm.StopServer()
+		err = json.Unmarshal(resp.Body(), &goodToken)
+		So(err, ShouldBeNil)
 
-			var (
-				srcTagsList  TagsList
-				destTagsList TagsList
-			)
+		resp, err = srcClient.R().
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
+			Get(srcBaseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-			resp, err := srcClient.R().Get(srcBaseURL + "/v2/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		resp, err = srcClient.R().Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-			authorizationHeader := authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
-			resp, err = resty.R().
-				SetQueryParam("service", authorizationHeader.Service).
-				Get(authorizationHeader.Realm)
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
+		resp, err = resty.R().
+			SetQueryParam("service", authorizationHeader.Service).
+			SetQueryParam("scope", authorizationHeader.Scope).
+			Get(authorizationHeader.Realm)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-			var goodToken authutils.AccessTokenResponse
+		goodToken = authutils.AccessTokenResponse{}
+		err = json.Unmarshal(resp.Body(), &goodToken)
+		So(err, ShouldBeNil)
 
-			err = json.Unmarshal(resp.Body(), &goodToken)
-			So(err, ShouldBeNil)
+		resp, err = srcClient.R().SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
+			Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-			resp, err = srcClient.R().
-				SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
-				Get(srcBaseURL + "/v2/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		err = json.Unmarshal(resp.Body(), &srcTagsList)
+		if err != nil {
+			panic(err)
+		}
 
-			resp, err = srcClient.R().Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
-
-			authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
-			resp, err = resty.R().
-				SetQueryParam("service", authorizationHeader.Service).
-				SetQueryParam("scope", authorizationHeader.Scope).
-				Get(authorizationHeader.Realm)
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-			goodToken = authutils.AccessTokenResponse{}
-			err = json.Unmarshal(resp.Body(), &goodToken)
-			So(err, ShouldBeNil)
-
-			resp, err = srcClient.R().SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
-				Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-			err = json.Unmarshal(resp.Body(), &srcTagsList)
-			if err != nil {
-				panic(err)
-			}
-
-			for {
-				resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
-				if err != nil {
-					panic(err)
-				}
-
-				err = json.Unmarshal(resp.Body(), &destTagsList)
-				if err != nil {
-					panic(err)
-				}
-
-				if len(destTagsList.Tags) > 0 {
-					break
-				}
-
-				time.Sleep(500 * time.Millisecond)
-			}
-
-			So(destTagsList, ShouldResemble, srcTagsList)
-
-			waitSyncFinish(dctlr.Config.Log.Output)
-
-			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-			// unauthorized namespace
-			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testCveImage + "/manifests/" + testImageTag)
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-		})
-
-		Convey("Verify ondemand sync bearer auth", t, func() {
-			// a repo for which clients do not have access, sync shouldn't be able to sync it
-			unauthorizedNamespace := testCveImage
-
-			// Generate certificates for bearer auth
-			tempDir := t.TempDir()
-			_, serverCertPath, serverKeyPath, _, _, _ := setupTestCertsForSync(t, tempDir)
-
-			var authTestServer *httptest.Server
-			if testCase.useLegacyAuthTestServer {
-				authTestServer = authutils.MakeAuthTestServerLegacy(serverKeyPath, unauthorizedNamespace)
-			} else {
-				authTestServer = authutils.MakeAuthTestServer(serverKeyPath, "RS256", unauthorizedNamespace)
-			}
-			defer authTestServer.Close()
-
-			sctlr, srcBaseURL, _, srcClient := makeUpstreamServer(t, false, false)
-
-			aurl, err := url.Parse(authTestServer.URL)
-			So(err, ShouldBeNil)
-
-			sctlr.Config.HTTP.Auth = &config.AuthConfig{
-				Bearer: &config.BearerConfig{
-					Cert:    serverCertPath,
-					Realm:   authTestServer.URL + "/auth/token",
-					Service: aurl.Host,
-				},
-			}
-
-			scm := test.NewControllerManager(sctlr)
-			scm.StartAndWait(sctlr.Config.HTTP.Port)
-
-			defer scm.StopServer()
-
-			registryName := sync.StripRegistryTransport(srcBaseURL)
-			credentialsFile := makeCredentialsFile(t.TempDir(), fmt.Sprintf(`{"%s":{"username": "%s", "password": "%s"}}`,
-				registryName, username, password))
-
-			var tlsVerify bool
-
-			syncRegistryConfig := syncconf.RegistryConfig{
-				Content: []syncconf.Content{
-					{
-						Prefix: "**", // sync everything
-					},
-				},
-				URLs:       []string{srcBaseURL},
-				TLSVerify:  &tlsVerify,
-				OnDemand:   true,
-				CertDir:    "",
-				MaxRetries: &maxRetries,
-			}
-
-			defaultVal := true
-			syncConfig := &syncconf.Config{
-				Enable:          &defaultVal,
-				CredentialsFile: credentialsFile,
-				Registries:      []syncconf.RegistryConfig{syncRegistryConfig},
-			}
-
-			dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
-
-			dcm := test.NewControllerManager(dctlr)
-			dcm.StartAndWait(dctlr.Config.HTTP.Port)
-
-			defer dcm.StopServer()
-
-			var (
-				srcTagsList  TagsList
-				destTagsList TagsList
-			)
-
-			resp, err := srcClient.R().Get(srcBaseURL + "/v2/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
-
-			authorizationHeader := authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
-			resp, err = resty.R().
-				SetQueryParam("service", authorizationHeader.Service).
-				Get(authorizationHeader.Realm)
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-			var goodToken authutils.AccessTokenResponse
-
-			err = json.Unmarshal(resp.Body(), &goodToken)
-			So(err, ShouldBeNil)
-
-			resp, err = srcClient.R().
-				SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
-				Get(srcBaseURL + "/v2/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-			resp, err = srcClient.R().Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
-
-			authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
-			resp, err = resty.R().
-				SetQueryParam("service", authorizationHeader.Service).
-				SetQueryParam("scope", authorizationHeader.Scope).
-				Get(authorizationHeader.Realm)
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-			goodToken = authutils.AccessTokenResponse{}
-			err = json.Unmarshal(resp.Body(), &goodToken)
-			So(err, ShouldBeNil)
-
-			resp, err = srcClient.R().SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
-				Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-			err = json.Unmarshal(resp.Body(), &srcTagsList)
-			if err != nil {
-				panic(err)
-			}
-
-			// sync on demand
-			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
+		for {
 			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
 			if err != nil {
 				panic(err)
@@ -3040,14 +2857,170 @@ func TestBearerAuth(t *testing.T) {
 				panic(err)
 			}
 
-			So(destTagsList, ShouldResemble, srcTagsList)
+			if len(destTagsList.Tags) > 0 {
+				break
+			}
 
-			// unauthorized namespace
-			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testCveImage + "/manifests/" + testImageTag)
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-		})
-	}
+			time.Sleep(500 * time.Millisecond)
+		}
+
+		So(destTagsList, ShouldResemble, srcTagsList)
+
+		waitSyncFinish(dctlr.Config.Log.Output)
+
+		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// unauthorized namespace
+		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testCveImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+	})
+
+	Convey("Verify ondemand sync bearer auth", t, func() {
+		// a repo for which clients do not have access, sync shouldn't be able to sync it
+		unauthorizedNamespace := testCveImage
+
+		// Generate certificates for bearer auth
+		tempDir := t.TempDir()
+		_, serverCertPath, serverKeyPath, _, _, _ := setupTestCertsForSync(t, tempDir)
+
+		authTestServer := authutils.MakeAuthTestServer(serverKeyPath, "RS256", unauthorizedNamespace)
+		defer authTestServer.Close()
+
+		sctlr, srcBaseURL, _, srcClient := makeUpstreamServer(t, false, false)
+
+		aurl, err := url.Parse(authTestServer.URL)
+		So(err, ShouldBeNil)
+
+		sctlr.Config.HTTP.Auth = &config.AuthConfig{
+			Bearer: &config.BearerConfig{
+				Cert:    serverCertPath,
+				Realm:   authTestServer.URL + "/auth/token",
+				Service: aurl.Host,
+			},
+		}
+
+		scm := test.NewControllerManager(sctlr)
+		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
+		defer scm.StopServer()
+
+		registryName := sync.StripRegistryTransport(srcBaseURL)
+		credentialsFile := makeCredentialsFile(t.TempDir(), fmt.Sprintf(`{"%s":{"username": "%s", "password": "%s"}}`,
+			registryName, username, password))
+
+		var tlsVerify bool
+
+		syncRegistryConfig := syncconf.RegistryConfig{
+			Content: []syncconf.Content{
+				{
+					Prefix: "**", // sync everything
+				},
+			},
+			URLs:       []string{srcBaseURL},
+			TLSVerify:  &tlsVerify,
+			OnDemand:   true,
+			CertDir:    "",
+			MaxRetries: &maxRetries,
+		}
+
+		defaultVal := true
+		syncConfig := &syncconf.Config{
+			Enable:          &defaultVal,
+			CredentialsFile: credentialsFile,
+			Registries:      []syncconf.RegistryConfig{syncRegistryConfig},
+		}
+
+		dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+
+		dcm := test.NewControllerManager(dctlr)
+		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
+		defer dcm.StopServer()
+
+		var (
+			srcTagsList  TagsList
+			destTagsList TagsList
+		)
+
+		resp, err := srcClient.R().Get(srcBaseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+		authorizationHeader := authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
+		resp, err = resty.R().
+			SetQueryParam("service", authorizationHeader.Service).
+			Get(authorizationHeader.Realm)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		var goodToken authutils.AccessTokenResponse
+
+		err = json.Unmarshal(resp.Body(), &goodToken)
+		So(err, ShouldBeNil)
+
+		resp, err = srcClient.R().
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
+			Get(srcBaseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		resp, err = srcClient.R().Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
+		resp, err = resty.R().
+			SetQueryParam("service", authorizationHeader.Service).
+			SetQueryParam("scope", authorizationHeader.Scope).
+			Get(authorizationHeader.Realm)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		goodToken = authutils.AccessTokenResponse{}
+		err = json.Unmarshal(resp.Body(), &goodToken)
+		So(err, ShouldBeNil)
+
+		resp, err = srcClient.R().SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
+			Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		err = json.Unmarshal(resp.Body(), &srcTagsList)
+		if err != nil {
+			panic(err)
+		}
+
+		// sync on demand
+		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
+		if err != nil {
+			panic(err)
+		}
+
+		err = json.Unmarshal(resp.Body(), &destTagsList)
+		if err != nil {
+			panic(err)
+		}
+
+		So(destTagsList, ShouldResemble, srcTagsList)
+
+		// unauthorized namespace
+		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testCveImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+	})
 }
 
 func TestBasicAuth(t *testing.T) {
