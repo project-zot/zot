@@ -129,7 +129,17 @@ func (a *AuthConfig) IsHtpasswdAuthEnabled() bool {
 
 // IsBearerAuthEnabled checks if Bearer authentication is enabled in this auth config.
 func (a *AuthConfig) IsBearerAuthEnabled() bool {
-	return a != nil && a.Bearer != nil && a.Bearer.Cert != "" && a.Bearer.Realm != "" && a.Bearer.Service != ""
+	if a == nil || a.Bearer == nil {
+		return false
+	}
+
+	// Traditional bearer auth with certificate
+	traditionalBearer := a.Bearer.Cert != "" && a.Bearer.Realm != "" && a.Bearer.Service != ""
+
+	// OIDC bearer auth for workload identity
+	oidcBearer := a.Bearer.OIDC != nil && a.Bearer.OIDC.Issuer != "" && len(a.Bearer.OIDC.Audiences) > 0
+
+	return traditionalBearer || oidcBearer
 }
 
 // IsOpenIDAuthEnabled checks if OpenID authentication is enabled in this auth config.
@@ -183,6 +193,32 @@ type BearerConfig struct {
 	Realm   string
 	Service string
 	Cert    string
+	// OIDC configuration for workload identity authentication
+	OIDC *BearerOIDCConfig `json:"oidc,omitempty" mapstructure:"oidc,omitempty"`
+}
+
+// BearerOIDCConfig configures OIDC token validation for workload identity.
+// This enables workloads to authenticate using OIDC ID tokens in the Authorization header.
+type BearerOIDCConfig struct {
+	// Issuer is the OIDC issuer URL. Required for OIDC workload identity.
+	// Example: "https://kubernetes.default.svc.cluster.local"
+	Issuer string `json:"issuer" mapstructure:"issuer"`
+
+	// Audiences is a list of acceptable audiences for the OIDC token.
+	// At least one audience must be specified.
+	// Example: ["zot", "https://zot.example.com"]
+	Audiences []string `json:"audiences" mapstructure:"audiences"`
+
+	// JWKSDiscoveryURL is the URL to fetch JWKS keys for token validation.
+	// If not provided, it defaults to {Issuer}/.well-known/openid-configuration
+	JWKSDiscoveryURL string `json:"jwksDiscoveryUrl,omitempty" mapstructure:"jwksDiscoveryUrl,omitempty"`
+
+	// ClaimMapping specifies how OIDC claims are mapped to Zot identities.
+	ClaimMapping *ClaimMapping `json:"claimMapping,omitempty" mapstructure:"claimMapping,omitempty"`
+
+	// SkipIssuerVerification skips issuer verification (for testing only).
+	// Default: false
+	SkipIssuerVerification bool `json:"skipIssuerVerification,omitempty" mapstructure:"skipIssuerVerification,omitempty"`
 }
 
 type SessionKeys struct {
