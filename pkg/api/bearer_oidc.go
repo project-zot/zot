@@ -89,7 +89,7 @@ func (a *OIDCBearerAuthorizer) Authenticate(ctx context.Context, header string) 
 		return "", nil, fmt.Errorf("%w: %w", zerr.ErrInvalidBearerToken, err)
 	}
 
-	// Verify audience manually (the verifier checks against the first audience only, but we need to check all)
+	// Additional audience verification to support multiple audiences
 	if !a.verifyAudience(idToken) {
 		a.log.Debug().Str("token_aud", fmt.Sprintf("%v", idToken.Audience)).
 			Strs("accepted_aud", a.audiences).

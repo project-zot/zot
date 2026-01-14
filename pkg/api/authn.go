@@ -624,7 +624,14 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 			}
 
 			// No authentication succeeded
-			ctlr.Log.Error().Msg("bearer authentication failed")
+			if isAuthorizationHeaderEmpty(request) {
+				// No bearer token provided and no authentication method configured
+				ctlr.Log.Debug().Msg("no bearer token provided")
+			} else {
+				// Bearer token provided but authentication failed
+				ctlr.Log.Error().Msg("bearer authentication failed")
+			}
+
 			response.Header().Set("Content-Type", "application/json")
 			zcommon.WriteJSON(response, http.StatusUnauthorized, apiErr.NewError(apiErr.UNAUTHORIZED))
 		})

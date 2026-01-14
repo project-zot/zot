@@ -134,7 +134,7 @@ GitHub Actions can use OIDC tokens to authenticate:
 ```yaml
 - name: Login to Zot
   run: |
-    TOKEN=$(curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+    TOKEN=$(curl -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
       "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=zot" | jq -r .value)
     echo $TOKEN | docker login -u oauth --password-stdin zot.example.com
 ```

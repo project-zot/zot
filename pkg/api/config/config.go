@@ -248,12 +248,12 @@ type OpenIDProviderConfig struct {
 	ClaimMapping    *ClaimMapping `mapstructure:",omitempty"`
 }
 
-// ClaimMapping specifies how OpenID claims are mapped to application fields.
+// ClaimMapping specifies how OIDC claims are mapped to application fields.
 // It allows customization of which claim is used as the username when authenticating users.
 type ClaimMapping struct {
-	// Username specifies which OpenID claim to use as the username for the authenticated user.
+	// ClaimMapping specifies which OIDC claim to use as the username for the authenticated user.
 	// Acceptable values include "preferred_username", "email", "sub", "name", or any custom claim name.
-	// If not configured, the default is "email".
+	// If not configured, the default is "sub".
 	Username string `mapstructure:"username,omitempty"`
 }
 
