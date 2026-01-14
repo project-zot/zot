@@ -3524,213 +3524,192 @@ func TestBearerAuthMultipleAlgorithms(t *testing.T) {
 }
 
 func TestBearerAuth(t *testing.T) {
-	testCases := []struct {
-		name                    string
-		useLegacyAuthTestServer bool
-	}{
-		{
-			name:                    "new authentication test server",
-			useLegacyAuthTestServer: false,
-		},
-		{
-			name:                    "legacy authentication test server",
-			useLegacyAuthTestServer: true,
-		},
-	}
+	Convey("Make a new controller", t, func() {
+		// Generate certificates dynamically for the test
+		serverCertPath, serverKeyPath, _, _ := setupBearerAuthServerCerts(t, tlsutils.KeyTypeRSA)
 
-	for _, testCase := range testCases {
-		Convey("Make a new controller with "+testCase.name, t, func() {
-			// Generate certificates dynamically for the test
-			serverCertPath, serverKeyPath, _, _ := setupBearerAuthServerCerts(t, tlsutils.KeyTypeRSA)
+		authTestServer := authutils.MakeAuthTestServer(serverKeyPath, "RS256", UnauthorizedNamespace)
+		defer authTestServer.Close()
 
-			var authTestServer *httptest.Server
-			if testCase.useLegacyAuthTestServer {
-				authTestServer = authutils.MakeAuthTestServerLegacy(serverKeyPath, UnauthorizedNamespace)
-			} else {
-				authTestServer = authutils.MakeAuthTestServer(serverKeyPath, "RS256", UnauthorizedNamespace)
-			}
-			defer authTestServer.Close()
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 
-			port := test.GetFreePort()
-			baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
 
-			conf := config.New()
-			conf.HTTP.Port = port
+		aurl, err := url.Parse(authTestServer.URL)
+		So(err, ShouldBeNil)
 
-			aurl, err := url.Parse(authTestServer.URL)
-			So(err, ShouldBeNil)
+		conf.HTTP.Auth = &config.AuthConfig{
+			Bearer: &config.BearerConfig{
+				Cert:    serverCertPath,
+				Realm:   authTestServer.URL + "/auth/token",
+				Service: aurl.Host,
+			},
+		}
+		ctlr := makeController(conf, t.TempDir())
 
-			conf.HTTP.Auth = &config.AuthConfig{
-				Bearer: &config.BearerConfig{
-					Cert:    serverCertPath,
-					Realm:   authTestServer.URL + "/auth/token",
-					Service: aurl.Host,
-				},
-			}
-			ctlr := makeController(conf, t.TempDir())
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
 
-			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(port)
+		defer cm.StopServer()
 
-			defer cm.StopServer()
+		blob := []byte("hello, blob!")
+		digest := godigest.FromBytes(blob).String()
 
-			blob := []byte("hello, blob!")
-			digest := godigest.FromBytes(blob).String()
+		resp, err := resty.R().Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-			resp, err := resty.R().Get(baseURL + "/v2/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		authorizationHeader := authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
+		resp, err = resty.R().
+			SetQueryParam("service", authorizationHeader.Service).
+			Get(authorizationHeader.Realm)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-			authorizationHeader := authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
-			resp, err = resty.R().
-				SetQueryParam("service", authorizationHeader.Service).
-				Get(authorizationHeader.Realm)
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		var goodToken authutils.AccessTokenResponse
 
-			var goodToken authutils.AccessTokenResponse
+		err = json.Unmarshal(resp.Body(), &goodToken)
+		So(err, ShouldBeNil)
 
-			err = json.Unmarshal(resp.Body(), &goodToken)
-			So(err, ShouldBeNil)
+		resp, err = resty.R().
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
+			Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-			resp, err = resty.R().
-				SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
-				Get(baseURL + "/v2/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		// trigger decode error
+		resp, err = resty.R().
+			SetHeader("Authorization", "Bearer "+"invalidToken").
+			Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-			// trigger decode error
-			resp, err = resty.R().
-				SetHeader("Authorization", "Bearer "+"invalidToken").
-				Get(baseURL + "/v2/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		resp, err = resty.R().SetHeader("Authorization",
+			"Bearer "+goodToken.AccessToken).Options(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
 
-			resp, err = resty.R().SetHeader("Authorization",
-				"Bearer "+goodToken.AccessToken).Options(baseURL + "/v2/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
+		s1, seed1 := test.GenerateRandomName()
+		s2, seed2 := test.GenerateRandomName()
+		repoName := s1 + "/" + s2
 
-			s1, seed1 := test.GenerateRandomName()
-			s2, seed2 := test.GenerateRandomName()
-			repoName := s1 + "/" + s2
+		ctlr.Log.Info().Int64("seed1", seed1).Int64("seed2", seed2).Msg("random seeds for repoName")
 
-			ctlr.Log.Info().Int64("seed1", seed1).Int64("seed2", seed2).Msg("random seeds for repoName")
+		resp, err = resty.R().Post(baseURL + "/v2/" + repoName + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-			resp, err = resty.R().Post(baseURL + "/v2/" + repoName + "/blobs/uploads/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
+		resp, err = resty.R().
+			SetQueryParam("service", authorizationHeader.Service).
+			SetQueryParam("scope", authorizationHeader.Scope).
+			Get(authorizationHeader.Realm)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		err = json.Unmarshal(resp.Body(), &goodToken)
+		So(err, ShouldBeNil)
 
-			authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
-			resp, err = resty.R().
-				SetQueryParam("service", authorizationHeader.Service).
-				SetQueryParam("scope", authorizationHeader.Scope).
-				Get(authorizationHeader.Realm)
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-			err = json.Unmarshal(resp.Body(), &goodToken)
-			So(err, ShouldBeNil)
+		resp, err = resty.R().
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
+			Post(baseURL + "/v2/" + repoName + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc := resp.Header().Get("Location")
 
-			resp, err = resty.R().
-				SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
-				Post(baseURL + "/v2/" + repoName + "/blobs/uploads/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-			loc := resp.Header().Get("Location")
+		resp, err = resty.R().
+			SetHeader("Content-Length", strconv.Itoa(len(blob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", digest).
+			SetBody(blob).
+			Put(baseURL + loc)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-			resp, err = resty.R().
-				SetHeader("Content-Length", strconv.Itoa(len(blob))).
-				SetHeader("Content-Type", "application/octet-stream").
-				SetQueryParam("digest", digest).
-				SetBody(blob).
-				Put(baseURL + loc)
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
+		resp, err = resty.R().
+			SetQueryParam("service", authorizationHeader.Service).
+			SetQueryParam("scope", authorizationHeader.Scope).
+			Get(authorizationHeader.Realm)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		err = json.Unmarshal(resp.Body(), &goodToken)
+		So(err, ShouldBeNil)
 
-			authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
-			resp, err = resty.R().
-				SetQueryParam("service", authorizationHeader.Service).
-				SetQueryParam("scope", authorizationHeader.Scope).
-				Get(authorizationHeader.Realm)
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-			err = json.Unmarshal(resp.Body(), &goodToken)
-			So(err, ShouldBeNil)
+		resp, err = resty.R().
+			SetHeader("Content-Length", strconv.Itoa(len(blob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
+			SetQueryParam("digest", digest).
+			SetBody(blob).
+			Put(baseURL + loc)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
-			resp, err = resty.R().
-				SetHeader("Content-Length", strconv.Itoa(len(blob))).
-				SetHeader("Content-Type", "application/octet-stream").
-				SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
-				SetQueryParam("digest", digest).
-				SetBody(blob).
-				Put(baseURL + loc)
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+		resp, err = resty.R().
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
+			Get(baseURL + "/v2/" + repoName + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-			resp, err = resty.R().
-				SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
-				Get(baseURL + "/v2/" + repoName + "/tags/list")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
+		resp, err = resty.R().
+			SetQueryParam("service", authorizationHeader.Service).
+			SetQueryParam("scope", authorizationHeader.Scope).
+			Get(authorizationHeader.Realm)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		err = json.Unmarshal(resp.Body(), &goodToken)
+		So(err, ShouldBeNil)
 
-			authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
-			resp, err = resty.R().
-				SetQueryParam("service", authorizationHeader.Service).
-				SetQueryParam("scope", authorizationHeader.Scope).
-				Get(authorizationHeader.Realm)
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-			err = json.Unmarshal(resp.Body(), &goodToken)
-			So(err, ShouldBeNil)
+		resp, err = resty.R().
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
+			Get(baseURL + "/v2/" + repoName + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-			resp, err = resty.R().
-				SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
-				Get(baseURL + "/v2/" + repoName + "/tags/list")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		resp, err = resty.R().
+			Post(baseURL + "/v2/" + UnauthorizedNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-			resp, err = resty.R().
-				Post(baseURL + "/v2/" + UnauthorizedNamespace + "/blobs/uploads/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
+		resp, err = resty.R().
+			SetQueryParam("service", authorizationHeader.Service).
+			SetQueryParam("scope", authorizationHeader.Scope).
+			Get(authorizationHeader.Realm)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-			authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
-			resp, err = resty.R().
-				SetQueryParam("service", authorizationHeader.Service).
-				SetQueryParam("scope", authorizationHeader.Scope).
-				Get(authorizationHeader.Realm)
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		var badToken authutils.AccessTokenResponse
 
-			var badToken authutils.AccessTokenResponse
+		err = json.Unmarshal(resp.Body(), &badToken)
+		So(err, ShouldBeNil)
 
-			err = json.Unmarshal(resp.Body(), &badToken)
-			So(err, ShouldBeNil)
-
-			resp, err = resty.R().
-				SetHeader("Authorization", "Bearer "+badToken.AccessToken).
-				Post(baseURL + "/v2/" + UnauthorizedNamespace + "/blobs/uploads/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
-		})
-	}
+		resp, err = resty.R().
+			SetHeader("Authorization", "Bearer "+badToken.AccessToken).
+			Post(baseURL + "/v2/" + UnauthorizedNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+	})
 }
 
 func TestBearerAuthWrongAuthorizer(t *testing.T) {
@@ -3755,207 +3734,186 @@ func TestBearerAuthWrongAuthorizer(t *testing.T) {
 }
 
 func TestBearerAuthWithAllowReadAccess(t *testing.T) {
-	testCases := []struct {
-		name                    string
-		useLegacyAuthTestServer bool
-	}{
-		{
-			name:                    "new authentication test server",
-			useLegacyAuthTestServer: false,
-		},
-		{
-			name:                    "legacy authentication test server",
-			useLegacyAuthTestServer: true,
-		},
-	}
+	Convey("Make a new controller", t, func() {
+		// Generate certificates dynamically for the test
+		serverCertPath, serverKeyPath, _, _ := setupBearerAuthServerCerts(t, tlsutils.KeyTypeRSA)
 
-	for _, testCase := range testCases {
-		Convey("Make a new controller with"+testCase.name, t, func() {
-			// Generate certificates dynamically for the test
-			serverCertPath, serverKeyPath, _, _ := setupBearerAuthServerCerts(t, tlsutils.KeyTypeRSA)
+		authTestServer := authutils.MakeAuthTestServer(serverKeyPath, "RS256", UnauthorizedNamespace)
+		defer authTestServer.Close()
 
-			var authTestServer *httptest.Server
-			if testCase.useLegacyAuthTestServer {
-				authTestServer = authutils.MakeAuthTestServerLegacy(serverKeyPath, UnauthorizedNamespace)
-			} else {
-				authTestServer = authutils.MakeAuthTestServer(serverKeyPath, "RS256", UnauthorizedNamespace)
-			}
-			defer authTestServer.Close()
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 
-			port := test.GetFreePort()
-			baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
 
-			conf := config.New()
-			conf.HTTP.Port = port
+		aurl, err := url.Parse(authTestServer.URL)
+		So(err, ShouldBeNil)
 
-			aurl, err := url.Parse(authTestServer.URL)
-			So(err, ShouldBeNil)
+		conf.HTTP.Auth = &config.AuthConfig{
+			Bearer: &config.BearerConfig{
+				Cert:    serverCertPath,
+				Realm:   authTestServer.URL + "/auth/token",
+				Service: aurl.Host,
+			},
+		}
+		ctlr := makeController(conf, t.TempDir())
 
-			conf.HTTP.Auth = &config.AuthConfig{
-				Bearer: &config.BearerConfig{
-					Cert:    serverCertPath,
-					Realm:   authTestServer.URL + "/auth/token",
-					Service: aurl.Host,
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				test.AuthorizationAllRepos: config.PolicyGroup{
+					AnonymousPolicy: []string{"read"},
 				},
-			}
-			ctlr := makeController(conf, t.TempDir())
+			},
+		}
 
-			conf.HTTP.AccessControl = &config.AccessControlConfig{
-				Repositories: config.Repositories{
-					test.AuthorizationAllRepos: config.PolicyGroup{
-						AnonymousPolicy: []string{"read"},
-					},
-				},
-			}
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
 
-			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(port)
+		defer cm.StopServer()
 
-			defer cm.StopServer()
+		blob := []byte("hello, blob!")
+		digest := godigest.FromBytes(blob).String()
 
-			blob := []byte("hello, blob!")
-			digest := godigest.FromBytes(blob).String()
+		resp, err := resty.R().Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-			resp, err := resty.R().Get(baseURL + "/v2/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		authorizationHeader := authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
+		resp, err = resty.R().
+			SetQueryParam("service", authorizationHeader.Service).
+			SetQueryParam("scope", authorizationHeader.Scope).
+			Get(authorizationHeader.Realm)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-			authorizationHeader := authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
-			resp, err = resty.R().
-				SetQueryParam("service", authorizationHeader.Service).
-				SetQueryParam("scope", authorizationHeader.Scope).
-				Get(authorizationHeader.Realm)
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		var goodToken authutils.AccessTokenResponse
 
-			var goodToken authutils.AccessTokenResponse
+		err = json.Unmarshal(resp.Body(), &goodToken)
+		So(err, ShouldBeNil)
 
-			err = json.Unmarshal(resp.Body(), &goodToken)
-			So(err, ShouldBeNil)
+		resp, err = resty.R().
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
+			Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-			resp, err = resty.R().
-				SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
-				Get(baseURL + "/v2/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		s1, seed1 := test.GenerateRandomName()
+		s2, seed2 := test.GenerateRandomName()
+		repoName := s1 + "/" + s2
 
-			s1, seed1 := test.GenerateRandomName()
-			s2, seed2 := test.GenerateRandomName()
-			repoName := s1 + "/" + s2
+		ctlr.Log.Info().Int64("seed1", seed1).Int64("seed2", seed2).Msg("random seeds for repoName")
 
-			ctlr.Log.Info().Int64("seed1", seed1).Int64("seed2", seed2).Msg("random seeds for repoName")
+		resp, err = resty.R().Post(baseURL + "/v2/" + repoName + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-			resp, err = resty.R().Post(baseURL + "/v2/" + repoName + "/blobs/uploads/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
+		resp, err = resty.R().
+			SetQueryParam("service", authorizationHeader.Service).
+			SetQueryParam("scope", authorizationHeader.Scope).
+			Get(authorizationHeader.Realm)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		err = json.Unmarshal(resp.Body(), &goodToken)
+		So(err, ShouldBeNil)
 
-			authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
-			resp, err = resty.R().
-				SetQueryParam("service", authorizationHeader.Service).
-				SetQueryParam("scope", authorizationHeader.Scope).
-				Get(authorizationHeader.Realm)
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-			err = json.Unmarshal(resp.Body(), &goodToken)
-			So(err, ShouldBeNil)
+		resp, err = resty.R().
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
+			Post(baseURL + "/v2/" + repoName + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc := resp.Header().Get("Location")
 
-			resp, err = resty.R().
-				SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
-				Post(baseURL + "/v2/" + repoName + "/blobs/uploads/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-			loc := resp.Header().Get("Location")
+		resp, err = resty.R().
+			SetHeader("Content-Length", strconv.Itoa(len(blob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", digest).
+			SetBody(blob).
+			Put(baseURL + loc)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-			resp, err = resty.R().
-				SetHeader("Content-Length", strconv.Itoa(len(blob))).
-				SetHeader("Content-Type", "application/octet-stream").
-				SetQueryParam("digest", digest).
-				SetBody(blob).
-				Put(baseURL + loc)
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
+		resp, err = resty.R().
+			SetQueryParam("service", authorizationHeader.Service).
+			SetQueryParam("scope", authorizationHeader.Scope).
+			Get(authorizationHeader.Realm)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		err = json.Unmarshal(resp.Body(), &goodToken)
+		So(err, ShouldBeNil)
 
-			authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
-			resp, err = resty.R().
-				SetQueryParam("service", authorizationHeader.Service).
-				SetQueryParam("scope", authorizationHeader.Scope).
-				Get(authorizationHeader.Realm)
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-			err = json.Unmarshal(resp.Body(), &goodToken)
-			So(err, ShouldBeNil)
+		resp, err = resty.R().
+			SetHeader("Content-Length", strconv.Itoa(len(blob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
+			SetQueryParam("digest", digest).
+			SetBody(blob).
+			Put(baseURL + loc)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
-			resp, err = resty.R().
-				SetHeader("Content-Length", strconv.Itoa(len(blob))).
-				SetHeader("Content-Type", "application/octet-stream").
-				SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
-				SetQueryParam("digest", digest).
-				SetBody(blob).
-				Put(baseURL + loc)
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+		resp, err = resty.R().
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
+			Get(baseURL + "/v2/" + repoName + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-			resp, err = resty.R().
-				SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
-				Get(baseURL + "/v2/" + repoName + "/tags/list")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
+		resp, err = resty.R().
+			SetQueryParam("service", authorizationHeader.Service).
+			SetQueryParam("scope", authorizationHeader.Scope).
+			Get(authorizationHeader.Realm)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		err = json.Unmarshal(resp.Body(), &goodToken)
+		So(err, ShouldBeNil)
 
-			authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
-			resp, err = resty.R().
-				SetQueryParam("service", authorizationHeader.Service).
-				SetQueryParam("scope", authorizationHeader.Scope).
-				Get(authorizationHeader.Realm)
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-			err = json.Unmarshal(resp.Body(), &goodToken)
-			So(err, ShouldBeNil)
+		resp, err = resty.R().
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
+			Get(baseURL + "/v2/" + repoName + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-			resp, err = resty.R().
-				SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
-				Get(baseURL + "/v2/" + repoName + "/tags/list")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		resp, err = resty.R().
+			Post(baseURL + "/v2/" + UnauthorizedNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-			resp, err = resty.R().
-				Post(baseURL + "/v2/" + UnauthorizedNamespace + "/blobs/uploads/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
+		resp, err = resty.R().
+			SetQueryParam("service", authorizationHeader.Service).
+			SetQueryParam("scope", authorizationHeader.Scope).
+			Get(authorizationHeader.Realm)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-			authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
-			resp, err = resty.R().
-				SetQueryParam("service", authorizationHeader.Service).
-				SetQueryParam("scope", authorizationHeader.Scope).
-				Get(authorizationHeader.Realm)
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		var badToken authutils.AccessTokenResponse
+		err = json.Unmarshal(resp.Body(), &badToken)
+		So(err, ShouldBeNil)
 
-			var badToken authutils.AccessTokenResponse
-			err = json.Unmarshal(resp.Body(), &badToken)
-			So(err, ShouldBeNil)
-
-			resp, err = resty.R().
-				SetHeader("Authorization", "Bearer "+badToken.AccessToken).
-				Post(baseURL + "/v2/" + UnauthorizedNamespace + "/blobs/uploads/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
-		})
-	}
+		resp, err = resty.R().
+			SetHeader("Authorization", "Bearer "+badToken.AccessToken).
+			Post(baseURL + "/v2/" + UnauthorizedNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+	})
 }
 
 func TestNewRelyingPartyOIDC(t *testing.T) {

@@ -5,7 +5,6 @@ package extensions_test
 import (
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"os"
 	"path"
@@ -875,184 +874,163 @@ func TestMgmtExtension(t *testing.T) {
 }
 
 func TestMgmtWithBearer(t *testing.T) {
-	testCases := []struct {
-		name                    string
-		useLegacyAuthTestServer bool
-	}{
-		{
-			name:                    "new authentication test server",
-			useLegacyAuthTestServer: false,
-		},
-		{
-			name:                    "legacy authentication test server",
-			useLegacyAuthTestServer: true,
-		},
-	}
+	Convey("Make a new controller", t, func() {
+		// Generate certificates dynamically for the test
+		serverCertPath, serverKeyPath := setupTestServerCerts(t)
 
-	for _, testCase := range testCases {
-		Convey("Make a new controller with "+testCase.name, t, func() {
-			// Generate certificates dynamically for the test
-			serverCertPath, serverKeyPath := setupTestServerCerts(t)
+		authorizedNamespace := "allowedrepo"
+		unauthorizedNamespace := "notallowedrepo"
 
-			authorizedNamespace := "allowedrepo"
-			unauthorizedNamespace := "notallowedrepo"
+		authTestServer := authutils.MakeAuthTestServer(serverKeyPath, "RS256", unauthorizedNamespace)
+		defer authTestServer.Close()
 
-			var authTestServer *httptest.Server
-			if testCase.useLegacyAuthTestServer {
-				authTestServer = authutils.MakeAuthTestServerLegacy(serverKeyPath, unauthorizedNamespace)
-			} else {
-				authTestServer = authutils.MakeAuthTestServer(serverKeyPath, "RS256", unauthorizedNamespace)
-			}
-			defer authTestServer.Close()
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 
-			port := test.GetFreePort()
-			baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
 
-			conf := config.New()
-			conf.HTTP.Port = port
+		aurl, err := url.Parse(authTestServer.URL)
+		So(err, ShouldBeNil)
 
-			aurl, err := url.Parse(authTestServer.URL)
-			So(err, ShouldBeNil)
+		conf.HTTP.Auth = &config.AuthConfig{
+			Bearer: &config.BearerConfig{
+				Cert:    serverCertPath,
+				Realm:   authTestServer.URL + "/auth/token",
+				Service: aurl.Host,
+			},
+		}
 
-			conf.HTTP.Auth = &config.AuthConfig{
-				Bearer: &config.BearerConfig{
-					Cert:    serverCertPath,
-					Realm:   authTestServer.URL + "/auth/token",
-					Service: aurl.Host,
-				},
-			}
+		defaultValue := true
 
-			defaultValue := true
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Search = &extconf.SearchConfig{}
+		conf.Extensions.Search.Enable = &defaultValue
+		conf.Extensions.Search.CVE = nil
+		conf.Extensions.UI = &extconf.UIConfig{}
+		conf.Extensions.UI.Enable = &defaultValue
 
-			conf.Extensions = &extconf.ExtensionConfig{}
-			conf.Extensions.Search = &extconf.SearchConfig{}
-			conf.Extensions.Search.Enable = &defaultValue
-			conf.Extensions.Search.CVE = nil
-			conf.Extensions.UI = &extconf.UIConfig{}
-			conf.Extensions.UI.Enable = &defaultValue
+		conf.Storage.RootDirectory = t.TempDir()
 
-			conf.Storage.RootDirectory = t.TempDir()
+		ctlr := api.NewController(conf)
 
-			ctlr := api.NewController(conf)
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
 
-			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(port)
-			defer cm.StopServer()
+		resp, err := resty.R().Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-			resp, err := resty.R().Get(baseURL + "/v2/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		authorizationHeader := authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
+		resp, err = resty.R().
+			SetQueryParam("service", authorizationHeader.Service).
+			SetQueryParam("scope", authorizationHeader.Scope).
+			Get(authorizationHeader.Realm)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-			authorizationHeader := authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
-			resp, err = resty.R().
-				SetQueryParam("service", authorizationHeader.Service).
-				SetQueryParam("scope", authorizationHeader.Scope).
-				Get(authorizationHeader.Realm)
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		var goodToken authutils.AccessTokenResponse
 
-			var goodToken authutils.AccessTokenResponse
+		err = json.Unmarshal(resp.Body(), &goodToken)
+		So(err, ShouldBeNil)
 
-			err = json.Unmarshal(resp.Body(), &goodToken)
-			So(err, ShouldBeNil)
+		resp, err = resty.R().
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
+			Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-			resp, err = resty.R().
-				SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
-				Get(baseURL + "/v2/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		resp, err = resty.R().SetHeader("Authorization",
+			"Bearer "+goodToken.AccessToken).Options(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
 
-			resp, err = resty.R().SetHeader("Authorization",
-				"Bearer "+goodToken.AccessToken).Options(baseURL + "/v2/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
+		resp, err = resty.R().Post(baseURL + "/v2/" + authorizedNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-			resp, err = resty.R().Post(baseURL + "/v2/" + authorizedNamespace + "/blobs/uploads/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
+		resp, err = resty.R().
+			SetQueryParam("service", authorizationHeader.Service).
+			SetQueryParam("scope", authorizationHeader.Scope).
+			Get(authorizationHeader.Realm)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		err = json.Unmarshal(resp.Body(), &goodToken)
+		So(err, ShouldBeNil)
 
-			authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
-			resp, err = resty.R().
-				SetQueryParam("service", authorizationHeader.Service).
-				SetQueryParam("scope", authorizationHeader.Scope).
-				Get(authorizationHeader.Realm)
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-			err = json.Unmarshal(resp.Body(), &goodToken)
-			So(err, ShouldBeNil)
+		resp, err = resty.R().
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
+			Post(baseURL + "/v2/" + authorizedNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 
-			resp, err = resty.R().
-				SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
-				Post(baseURL + "/v2/" + authorizedNamespace + "/blobs/uploads/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		resp, err = resty.R().
+			Post(baseURL + "/v2/" + unauthorizedNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-			resp, err = resty.R().
-				Post(baseURL + "/v2/" + unauthorizedNamespace + "/blobs/uploads/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
+		resp, err = resty.R().
+			SetQueryParam("service", authorizationHeader.Service).
+			SetQueryParam("scope", authorizationHeader.Scope).
+			Get(authorizationHeader.Realm)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-			authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
-			resp, err = resty.R().
-				SetQueryParam("service", authorizationHeader.Service).
-				SetQueryParam("scope", authorizationHeader.Scope).
-				Get(authorizationHeader.Realm)
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		var badToken authutils.AccessTokenResponse
 
-			var badToken authutils.AccessTokenResponse
+		err = json.Unmarshal(resp.Body(), &badToken)
+		So(err, ShouldBeNil)
 
-			err = json.Unmarshal(resp.Body(), &badToken)
-			So(err, ShouldBeNil)
+		resp, err = resty.R().
+			SetHeader("Authorization", "Bearer "+badToken.AccessToken).
+			Post(baseURL + "/v2/" + unauthorizedNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-			resp, err = resty.R().
-				SetHeader("Authorization", "Bearer "+badToken.AccessToken).
-				Post(baseURL + "/v2/" + unauthorizedNamespace + "/blobs/uploads/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		// test mgmt route
+		resp, err = resty.R().Get(baseURL + constants.FullMgmt)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-			// test mgmt route
-			resp, err = resty.R().Get(baseURL + constants.FullMgmt)
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		mgmtResp := extensions.StrippedConfig{}
+		err = json.Unmarshal(resp.Body(), &mgmtResp)
+		So(err, ShouldBeNil)
+		So(mgmtResp.DistSpecVersion, ShouldResemble, conf.DistSpecVersion)
+		So(mgmtResp.HTTP.Auth.Bearer, ShouldNotBeNil)
+		So(mgmtResp.HTTP.Auth.Bearer.Realm, ShouldEqual, conf.HTTP.Auth.Bearer.Realm)
+		So(mgmtResp.HTTP.Auth.Bearer.Service, ShouldEqual, conf.HTTP.Auth.Bearer.Service)
+		So(mgmtResp.HTTP.Auth.HTPasswd, ShouldBeNil)
+		So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
+		So(mgmtResp.HTTP.Auth.APIKey, ShouldBeFalse)
 
-			mgmtResp := extensions.StrippedConfig{}
-			err = json.Unmarshal(resp.Body(), &mgmtResp)
-			So(err, ShouldBeNil)
-			So(mgmtResp.DistSpecVersion, ShouldResemble, conf.DistSpecVersion)
-			So(mgmtResp.HTTP.Auth.Bearer, ShouldNotBeNil)
-			So(mgmtResp.HTTP.Auth.Bearer.Realm, ShouldEqual, conf.HTTP.Auth.Bearer.Realm)
-			So(mgmtResp.HTTP.Auth.Bearer.Service, ShouldEqual, conf.HTTP.Auth.Bearer.Service)
-			So(mgmtResp.HTTP.Auth.HTPasswd, ShouldBeNil)
-			So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
-			So(mgmtResp.HTTP.Auth.APIKey, ShouldBeFalse)
+		resp, err = resty.R().SetBasicAuth("", "").Get(baseURL + constants.FullMgmt)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-			resp, err = resty.R().SetBasicAuth("", "").Get(baseURL + constants.FullMgmt)
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-			mgmtResp = extensions.StrippedConfig{}
-			err = json.Unmarshal(resp.Body(), &mgmtResp)
-			So(err, ShouldBeNil)
-			So(mgmtResp.DistSpecVersion, ShouldResemble, conf.DistSpecVersion)
-			So(mgmtResp.HTTP.Auth.Bearer, ShouldNotBeNil)
-			So(mgmtResp.HTTP.Auth.Bearer.Realm, ShouldEqual, conf.HTTP.Auth.Bearer.Realm)
-			So(mgmtResp.HTTP.Auth.Bearer.Service, ShouldEqual, conf.HTTP.Auth.Bearer.Service)
-			So(mgmtResp.HTTP.Auth.HTPasswd, ShouldBeNil)
-			So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
-			So(mgmtResp.HTTP.Auth.APIKey, ShouldBeFalse)
-		})
-	}
+		mgmtResp = extensions.StrippedConfig{}
+		err = json.Unmarshal(resp.Body(), &mgmtResp)
+		So(err, ShouldBeNil)
+		So(mgmtResp.DistSpecVersion, ShouldResemble, conf.DistSpecVersion)
+		So(mgmtResp.HTTP.Auth.Bearer, ShouldNotBeNil)
+		So(mgmtResp.HTTP.Auth.Bearer.Realm, ShouldEqual, conf.HTTP.Auth.Bearer.Realm)
+		So(mgmtResp.HTTP.Auth.Bearer.Service, ShouldEqual, conf.HTTP.Auth.Bearer.Service)
+		So(mgmtResp.HTTP.Auth.HTPasswd, ShouldBeNil)
+		So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
+		So(mgmtResp.HTTP.Auth.APIKey, ShouldBeFalse)
+	})
 }
 
 func TestAllowedMethodsHeaderMgmt(t *testing.T) {

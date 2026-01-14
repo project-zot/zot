@@ -20,7 +20,6 @@ require (
 	github.com/aws/smithy-go v1.24.0
 	github.com/bmatcuk/doublestar/v4 v4.9.1
 	github.com/briandowns/spinner v1.23.2
-	github.com/chartmuseum/auth v0.5.0
 	github.com/cloudevents/sdk-go/protocol/nats/v2 v2.16.2
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/dchest/siphash v1.2.3
@@ -55,7 +54,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/phayes/freeport v0.0.0-20220201140144-74d24b5ae9f5
-	github.com/project-zot/mockoidc v0.0.0-20240610203808-d69d9e02020a
+	github.com/project-zot/mockoidc v0.0.0-20260112114452-7ac7156d2581
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
 	github.com/rbcervilla/redisstore/v9 v9.0.0
@@ -299,7 +298,6 @@ require (
 	github.com/goccy/go-yaml v1.19.1 // indirect
 	github.com/gocsaf/csaf/v3 v3.4.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/golang/snappy v0.0.4 // indirect

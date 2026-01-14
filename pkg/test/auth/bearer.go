@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chartmuseum/auth"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/mitchellh/mapstructure"
 
@@ -81,62 +80,6 @@ func MakeAuthTestServer(serverKey, signAlg string, unauthorizedNamespace string)
 
 		response.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(response, `{"access_token": "%s"}`, signedString)
-	}))
-
-	return authTestServer
-}
-
-// MakeAuthTestServerLegacy makes a test HTTP server to generate bearer tokens using the github.com/chartmuseum/auth
-// package, to verify backward compatibility of the token authentication process with older versions of zot.
-func MakeAuthTestServerLegacy(serverKey string, unauthorizedNamespace string) *httptest.Server {
-	cmTokenGenerator, err := auth.NewTokenGenerator(&auth.TokenGeneratorOptions{
-		PrivateKeyPath: serverKey,
-		Audience:       "Zot Registry",
-		Issuer:         "Zot",
-		AddKIDHeader:   true,
-	})
-	if err != nil {
-		panic(err)
-	}
-
-	authTestServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		if request.Method != http.MethodGet {
-			response.WriteHeader(http.StatusMethodNotAllowed)
-
-			return
-		}
-
-		var access []auth.AccessEntry
-
-		scopes := request.URL.Query()["scope"]
-
-		for _, scope := range scopes {
-			if scope == "" {
-				continue
-			}
-
-			parts := strings.Split(scope, ":")
-			name := parts[1]
-			actions := strings.Split(parts[2], ",")
-
-			if name == unauthorizedNamespace {
-				actions = []string{}
-			}
-
-			access = append(access, auth.AccessEntry{
-				Name:    name,
-				Type:    "repository",
-				Actions: actions,
-			})
-		}
-
-		token, err := cmTokenGenerator.GenerateToken(access, time.Minute*1)
-		if err != nil {
-			panic(err)
-		}
-
-		response.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(response, `{"access_token": "%s"}`, token)
 	}))
 
 	return authTestServer
