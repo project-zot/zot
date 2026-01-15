@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -28,10 +29,12 @@ func mockOIDCServer(t *testing.T, pubKey *rsa.PublicKey) *httptest.Server {
 	// OpenID configuration endpoint
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		config := map[string]interface{}{
+
+		config := map[string]any{
 			"issuer":   "http://" + r.Host,
 			"jwks_uri": "http://" + r.Host + "/jwks",
 		}
+
 		_ = json.NewEncoder(w).Encode(config)
 	})
 
@@ -47,7 +50,7 @@ func mockOIDCServer(t *testing.T, pubKey *rsa.PublicKey) *httptest.Server {
 			Use:       "sig",
 		}
 
-		jwks := map[string]interface{}{
+		jwks := map[string]any{
 			"keys": []jose.JSONWebKey{jwk},
 		}
 
@@ -58,7 +61,9 @@ func mockOIDCServer(t *testing.T, pubKey *rsa.PublicKey) *httptest.Server {
 }
 
 // createTestOIDCToken creates a test OIDC ID token.
-func createTestOIDCToken(privKey *rsa.PrivateKey, issuer, audience, subject string, claims map[string]interface{}) (string, error) {
+func createTestOIDCToken(privKey *rsa.PrivateKey, issuer, audience, subject string,
+	claims map[string]any,
+) (string, error) {
 	now := time.Now()
 
 	tokenClaims := jwt.MapClaims{
@@ -70,9 +75,7 @@ func createTestOIDCToken(privKey *rsa.PrivateKey, issuer, audience, subject stri
 	}
 
 	// Add additional claims
-	for k, v := range claims {
-		tokenClaims[k] = v
-	}
+	maps.Copy(tokenClaims, claims)
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, tokenClaims)
 	token.Header["kid"] = "test-key-id"
@@ -172,9 +175,10 @@ func TestOIDCBearerAuthorizer(t *testing.T) {
 
 			Convey("Valid token with groups", func() {
 				subject := "test-user"
-				groups := []string{"group1", "group2"}
-				token, err := createTestOIDCToken(privKey, issuer, audience, subject, map[string]interface{}{
-					"groups": groups,
+				testGroups := []string{"group1", "group2"}
+
+				token, err := createTestOIDCToken(privKey, issuer, audience, subject, map[string]any{
+					"groups": testGroups,
 				})
 				So(err, ShouldBeNil)
 
@@ -183,7 +187,7 @@ func TestOIDCBearerAuthorizer(t *testing.T) {
 				username, extractedGroups, err := authorizer.Authenticate(ctx, authHeader)
 				So(err, ShouldBeNil)
 				So(username, ShouldEqual, subject)
-				So(extractedGroups, ShouldResemble, groups)
+				So(extractedGroups, ShouldResemble, testGroups)
 			})
 
 			Convey("Token with wrong audience should fail", func() {
@@ -243,7 +247,8 @@ func TestOIDCBearerAuthorizer(t *testing.T) {
 
 			Convey("Extract username from custom claim", func() {
 				subject := "original-sub"
-				token, err := createTestOIDCToken(privKey, issuer, audience, subject, map[string]interface{}{
+
+				token, err := createTestOIDCToken(privKey, issuer, audience, subject, map[string]any{
 					customClaimName: customUsername,
 				})
 				So(err, ShouldBeNil)

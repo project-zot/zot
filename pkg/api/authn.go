@@ -487,6 +487,7 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 	// Initialize authorizers based on configuration
 	var traditionalAuthorizer *BearerAuthorizer
+
 	var oidcAuthorizer *OIDCBearerAuthorizer
 
 	// Traditional bearer auth with public key/certificate
@@ -565,12 +566,15 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 			}
 
 			// Try OIDC authentication first if configured
-			authenticated := false
 			var username string
+
 			var groups []string
 
 			if oidcAuthorizer != nil {
 				var err error
+
+				var authenticated bool
+
 				username, groups, authenticated, err = oidcAuthorizer.AuthenticateRequest(request.Context(), header)
 				if err == nil && authenticated {
 					// OIDC authentication succeeded
@@ -587,12 +591,14 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 						if err := ctlr.MetaDB.SetUserGroups(request.Context(), groups); err != nil {
 							ctlr.Log.Error().Err(err).Str("username", username).Msg("failed to update user profile")
 							response.WriteHeader(http.StatusInternalServerError)
+
 							return
 						}
 					}
 
 					amCtx := acCtrlr.getAuthnMiddlewareContext(BEARER, request)
 					next.ServeHTTP(response, request.WithContext(amCtx)) //nolint:contextcheck
+
 					return
 				}
 			}
@@ -620,6 +626,7 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 				amCtx := acCtrlr.getAuthnMiddlewareContext(BEARER, request)
 				next.ServeHTTP(response, request.WithContext(amCtx)) //nolint:contextcheck
+
 				return
 			}
 
