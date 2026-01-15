@@ -44,6 +44,9 @@ jobs:
           # skip-build-cache: true
         env:
           GOEXPERIMENT: jsonv2
+      - name: Check go.mod and go.sum are up to date
+        run: |
+          make modcheck
       - name: Run linter from make target
         run: |
           make check
