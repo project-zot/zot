@@ -1343,10 +1343,23 @@ func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]str
 	for _, blobPath := range blobsPaths {
 		// these can be both full paths or relative paths depending on the cache options
 		if !is.cache.UsesRelativePaths() && path.IsAbs(blobPath) {
-			blobPath, _ = is.pathRel(is.rootDir, blobPath)
+			relPath, err := is.pathRel(is.rootDir, blobPath)
+			if err != nil {
+				// Skip paths that are not under rootDir - this shouldn't happen but handle it gracefully
+				is.log.Warn().Err(err).Str("blobPath", blobPath).Str("rootDir", is.rootDir).
+					Msg("failed to compute relative path for cached blob, skipping")
+
+				continue
+			}
+
+			blobPath = relPath
 		}
 
 		blobsDirIndex := strings.LastIndex(blobPath, "/blobs/")
+		if blobsDirIndex == -1 {
+			// Skip invalid blob paths
+			continue
+		}
 
 		repos = append(repos, blobPath[:blobsDirIndex])
 	}
