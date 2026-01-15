@@ -9,10 +9,10 @@ import (
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/aws/aws-sdk-go/aws"
 	guuid "github.com/gofrs/uuid"
 	goredis "github.com/redis/go-redis/v9"
 	. "github.com/smartystreets/goconvey/convey"
