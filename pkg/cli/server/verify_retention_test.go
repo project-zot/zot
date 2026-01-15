@@ -154,15 +154,54 @@ func TestRetentionCheckNegative(t *testing.T) {
 		os.Args = []string{"cli_test", "verify-feature", "retention", "-l", logFile, "-t", "30s", configFile}
 		err := cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
-		So(err, ShouldEqual, zerr.ErrServerIsRunning)
+		// Check that error indicates binding failure (server is running)
+		So(err.Error(), ShouldContainSubstring, "failed to bind")
 
-		// Verify warning messages are logged to the log file
+		// Verify warning and error messages are logged to the log file
 		logContent, err := os.ReadFile(logFile)
 		So(err, ShouldBeNil)
 		So(string(logContent), ShouldContainSubstring,
 			"local storage detected - the zot server must be stopped to access the storage database")
 		So(string(logContent), ShouldContainSubstring,
-			"server is running, in order to perform the verify-feature retention command the server should be shut down")
+			"failed to bind")
+	})
+
+	Convey("invalid address format", t, func(c C) {
+		testDir := t.TempDir()
+		logFile := MakeTempFilePath(t, "retention-check.log")
+		port := GetFreePort()
+
+		// Use an invalid IPv6 address format that will pass LoadConfiguration
+		// but fail net.ResolveTCPAddr immediately (syntax error, no DNS lookup)
+		content := fmt.Sprintf(`{
+			"distSpecVersion": "1.1.1",
+			"storage": {
+				"rootDirectory": "%s",
+				"gc": true
+			},
+			"http": {
+				"address": "[invalid:ipv6",
+				"port": "%s"
+			},
+			"log": {
+				"level": "debug"
+			}
+		}`, testDir, port)
+		configFile := MakeTempFileWithContent(t, "zot-config.json", content)
+
+		os.Args = []string{"cli_test", "verify-feature", "retention", "-l", logFile, "-t", "30s", configFile}
+		err := cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+		// Check that error indicates TCP address resolution failure
+		So(err.Error(), ShouldContainSubstring, "failed to resolve TCP address")
+
+		// Verify error message is logged to the log file
+		logContent, err := os.ReadFile(logFile)
+		So(err, ShouldBeNil)
+		So(string(logContent), ShouldContainSubstring,
+			"local storage detected - the zot server must be stopped to access the storage database")
+		So(string(logContent), ShouldContainSubstring,
+			"failed to resolve TCP address")
 	})
 
 	Convey("invalid log-file flag", t, func(c C) {

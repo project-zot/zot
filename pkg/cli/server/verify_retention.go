@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -208,27 +207,24 @@ func newVerifyFeatureRetentionCmd(conf *config.Config) *cobra.Command {
 
 // checkServerRunning checks if a Zot server is already running on the configured address/port.
 func checkServerRunning(conf *config.Config, logger zlog.Logger) error {
-	req, err := http.NewRequestWithContext(context.Background(),
-		http.MethodGet,
-		fmt.Sprintf("http://%s/v2", net.JoinHostPort(conf.HTTP.Address, conf.HTTP.Port)),
-		nil)
+	addr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(conf.HTTP.Address, conf.HTTP.Port))
 	if err != nil {
-		msg := "failed to create http request"
+		msg := "failed to resolve TCP address"
 		logger.Error().Err(err).Msg(msg)
 
 		return fmt.Errorf("%s: %w", msg, err)
 	}
 
-	response, err := http.DefaultClient.Do(req)
-	if err == nil {
-		response.Body.Close()
-		logger.Warn().Err(zerr.ErrServerIsRunning).
-			Msg("server is running, in order to perform the verify-feature retention command the server should be shut down")
+	listener, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		msg := fmt.Sprintf("failed to bind to %s (server may be running or address unavailable)", addr.String())
+		logger.Error().Err(err).Msg(msg)
 
-		return zerr.ErrServerIsRunning
+		return fmt.Errorf("%s: %w", msg, err)
 	}
 
-	return nil
+	// Binding succeeded, server is not running
+	return listener.Close()
 }
 
 // isRemoteCacheEnabled checks if the remote cache is enabled for the global and subpaths storage configs.
