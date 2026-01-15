@@ -80,14 +80,23 @@ func (is *ImageStore) pathRel(basepath, targpath string) (string, error) {
 		basepath = path.Clean(basepath)
 		targpath = path.Clean(targpath)
 
+		// Handle case where paths are equal
+		if basepath == targpath {
+			return ".", nil
+		}
+
+		// Ensure basepath is treated as a directory by adding trailing slash
+		if !strings.HasSuffix(basepath, "/") {
+			basepath += "/"
+		}
+
 		// Check if targpath starts with basepath
 		if !strings.HasPrefix(targpath, basepath) {
 			return "", fmt.Errorf("%w: path %s is not under base path %s", zerr.ErrBadConfig, targpath, basepath)
 		}
 
-		// Remove basepath prefix and leading slash
+		// Remove basepath prefix (which now includes trailing slash)
 		rel := strings.TrimPrefix(targpath, basepath)
-		rel = strings.TrimPrefix(rel, "/")
 
 		return rel, nil
 	}
