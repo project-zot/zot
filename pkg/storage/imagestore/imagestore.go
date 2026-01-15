@@ -67,6 +67,35 @@ func (is *ImageStore) DirExists(d string) bool {
 	return is.storeDriver.DirExists(d)
 }
 
+// pathRel computes the relative path from basepath to targpath.
+// For non-local storage drivers (S3, etc.), it uses forward slashes consistently
+// to avoid Windows path separator issues. For local storage, it uses filepath.Rel.
+func (is *ImageStore) pathRel(basepath, targpath string) (string, error) {
+	// For non-local storage drivers (like S3), paths always use forward slashes
+	// regardless of the OS. On Windows, filepath.Rel expects backslashes, which
+	// causes it to fail when working with S3 paths that use forward slashes.
+	// To fix this, we use path package (which always uses /) for non-local drivers.
+	if is.storeDriver.Name() != storageConstants.LocalStorageDriverName {
+		// Ensure both paths use forward slashes
+		basepath = path.Clean(basepath)
+		targpath = path.Clean(targpath)
+
+		// Check if targpath starts with basepath
+		if !strings.HasPrefix(targpath, basepath) {
+			return "", fmt.Errorf("%w: path %s is not under base path %s", zerr.ErrBadConfig, targpath, basepath)
+		}
+
+		// Remove basepath prefix and leading slash
+		rel := strings.TrimPrefix(targpath, basepath)
+		rel = strings.TrimPrefix(rel, "/")
+
+		return rel, nil
+	}
+
+	// For local storage, use filepath.Rel which is platform-aware
+	return filepath.Rel(basepath, targpath)
+}
+
 // NewImageStore returns a new image store backed by cloud storages.
 // see https://github.com/docker/docker.github.io/tree/master/registry/storage-drivers
 // Use the last argument to properly set a cache database, or it will default to boltDB local storage.
@@ -304,7 +333,7 @@ func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filte
 			return driver.ErrSkipDir
 		}
 
-		rel, err := filepath.Rel(is.rootDir, fileInfo.Path())
+		rel, err := is.pathRel(is.rootDir, fileInfo.Path())
 		if err != nil {
 			return nil //nolint:nilerr // ignore paths that are not under root dir
 		}
@@ -378,7 +407,7 @@ func (is *ImageStore) GetRepositories() ([]string, error) {
 			return driver.ErrSkipDir
 		}
 
-		rel, err := filepath.Rel(is.rootDir, fileInfo.Path())
+		rel, err := is.pathRel(is.rootDir, fileInfo.Path())
 		if err != nil {
 			return nil //nolint:nilerr // ignore paths that are not under root dir
 		}
@@ -429,7 +458,7 @@ func (is *ImageStore) GetNextRepository(processedRepos map[string]struct{}) (str
 			return nil
 		}
 
-		rel, err := filepath.Rel(is.rootDir, fileInfo.Path())
+		rel, err := is.pathRel(is.rootDir, fileInfo.Path())
 		if err != nil {
 			return nil //nolint:nilerr // ignore paths not relative to root dir
 		}
@@ -1305,7 +1334,7 @@ func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]str
 	for _, blobPath := range blobsPaths {
 		// these can be both full paths or relative paths depending on the cache options
 		if !is.cache.UsesRelativePaths() && path.IsAbs(blobPath) {
-			blobPath, _ = filepath.Rel(is.rootDir, blobPath)
+			blobPath, _ = is.pathRel(is.rootDir, blobPath)
 		}
 
 		blobsDirIndex := strings.LastIndex(blobPath, "/blobs/")
