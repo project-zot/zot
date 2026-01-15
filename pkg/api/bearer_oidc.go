@@ -140,7 +140,7 @@ func (a *OIDCBearerAuthorizer) verifyAudience(token *oidc.IDToken) bool {
 // extractUsername extracts the username from token claims based on claim mapping configuration.
 func (a *OIDCBearerAuthorizer) extractUsername(claims map[string]any) string {
 	// Default claim to use for username
-	claimName := "sub"
+	claimName := "sub" //nolint:goconst // "sub" is the standard OIDC claim name
 
 	// Use configured claim mapping if available
 	if a.claimMapping != nil && a.claimMapping.Username != "" {

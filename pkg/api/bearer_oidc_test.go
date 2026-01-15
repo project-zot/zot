@@ -161,7 +161,7 @@ func TestOIDCBearerAuthorizer(t *testing.T) {
 			})
 
 			Convey("Valid token with default claims", func() {
-				subject := "test-user"
+				subject := "test-user" //nolint:goconst // test data
 				token, err := createTestOIDCToken(privKey, issuer, audience, subject, nil)
 				So(err, ShouldBeNil)
 
