@@ -65,8 +65,8 @@ type BearerAuthorizer struct {
 	key     crypto.PublicKey
 }
 
-func NewBearerAuthorizer(realm string, service string, key crypto.PublicKey) BearerAuthorizer {
-	return BearerAuthorizer{
+func NewBearerAuthorizer(realm string, service string, key crypto.PublicKey) *BearerAuthorizer {
+	return &BearerAuthorizer{
 		realm:   realm,
 		service: service,
 		key:     key,
