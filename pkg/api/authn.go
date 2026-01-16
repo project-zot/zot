@@ -636,7 +636,7 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 				ctlr.Log.Debug().Msg("no bearer token provided")
 			} else {
 				// Bearer token provided but authentication failed
-				ctlr.Log.Error().Msg("bearer authentication failed")
+				ctlr.Log.Error().Msg("failed to authenticate with bearer token")
 			}
 
 			response.Header().Set("Content-Type", "application/json")
