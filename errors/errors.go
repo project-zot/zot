@@ -178,6 +178,7 @@ var (
 	ErrReceivedUnexpectedAuthHeader     = errors.New("received unexpected www-authenticate header")
 	ErrNoBearerToken                    = errors.New("no bearer token given")
 	ErrInvalidBearerToken               = errors.New("invalid bearer token given")
+	ErrInvalidOrUnreachableOIDCIssuer   = errors.New("invalid or unreachable oidc issuer")
 	ErrInsufficientScope                = errors.New("bearer token does not have sufficient scope")
 	ErrCouldNotLoadPublicKey            = errors.New("failed to load public key")
 	ErrEventTypeEmpty                   = errors.New("event type empty")

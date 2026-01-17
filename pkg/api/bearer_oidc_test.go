@@ -68,7 +68,7 @@ func createTestOIDCToken(privKey *rsa.PrivateKey, issuer, audience, subject stri
 
 	tokenClaims := jwt.MapClaims{
 		"iss": issuer,
-		"aud": audience,
+		"aud": []string{audience}, // Must be a slice for CEL processing
 		"sub": subject,
 		"exp": now.Add(time.Hour).Unix(),
 		"iat": now.Unix(),
@@ -101,63 +101,64 @@ func TestOIDCBearerAuthorizer(t *testing.T) {
 		logger := log.NewLogger("debug", "")
 
 		Convey("Configuration validation", func() {
-			ctx := context.Background()
-
-			Convey("Nil config should fail", func() {
-				_, err := api.NewOIDCBearerAuthorizer(ctx, nil, logger)
+			Convey("Empty config slice creates authorizer with no providers", func() {
+				authorizer, err := api.NewOIDCBearerAuthorizer([]config.BearerOIDCConfig{}, logger)
+				So(err, ShouldBeNil)
+				So(authorizer, ShouldNotBeNil)
+				// But authentication will always fail
+				result, err := authorizer.Authenticate(context.Background(), "Bearer token")
 				So(err, ShouldNotBeNil)
+				So(result, ShouldBeNil)
 			})
 
 			Convey("Empty issuer should fail", func() {
-				cfg := &config.BearerOIDCConfig{
+				cfg := []config.BearerOIDCConfig{{
 					Audiences: []string{audience},
-				}
-				_, err := api.NewOIDCBearerAuthorizer(ctx, cfg, logger)
+				}}
+				_, err := api.NewOIDCBearerAuthorizer(cfg, logger)
 				So(err, ShouldNotBeNil)
 			})
 
 			Convey("Empty audiences should fail", func() {
-				cfg := &config.BearerOIDCConfig{
+				cfg := []config.BearerOIDCConfig{{
 					Issuer:    issuer,
 					Audiences: []string{},
-				}
-				_, err := api.NewOIDCBearerAuthorizer(ctx, cfg, logger)
+				}}
+				_, err := api.NewOIDCBearerAuthorizer(cfg, logger)
 				So(err, ShouldNotBeNil)
 			})
 
 			Convey("Valid config should succeed", func() {
-				cfg := &config.BearerOIDCConfig{
+				cfg := []config.BearerOIDCConfig{{
 					Issuer:    issuer,
 					Audiences: []string{audience},
-				}
-				authorizer, err := api.NewOIDCBearerAuthorizer(ctx, cfg, logger)
+				}}
+				authorizer, err := api.NewOIDCBearerAuthorizer(cfg, logger)
 				So(err, ShouldBeNil)
 				So(authorizer, ShouldNotBeNil)
 			})
 		})
 
 		Convey("Token authentication", func() {
-			cfg := &config.BearerOIDCConfig{
+			cfg := []config.BearerOIDCConfig{{
 				Issuer:    issuer,
 				Audiences: []string{audience},
-			}
+			}}
 
 			ctx := context.Background()
-			authorizer, err := api.NewOIDCBearerAuthorizer(ctx, cfg, logger)
+			authorizer, err := api.NewOIDCBearerAuthorizer(cfg, logger)
 			So(err, ShouldBeNil)
 
 			Convey("Empty header should fail", func() {
-				username, groups, err := authorizer.Authenticate(ctx, "")
+				result, err := authorizer.Authenticate(ctx, "")
 				So(err, ShouldNotBeNil)
-				So(username, ShouldEqual, "")
-				So(groups, ShouldBeEmpty)
+				So(result, ShouldBeNil)
 			})
 
 			Convey("Invalid token format should fail", func() {
-				username, groups, err := authorizer.Authenticate(ctx, "Bearer invalid-token")
+				result, err := authorizer.Authenticate(ctx, "Bearer invalid-token")
 				So(err, ShouldNotBeNil)
-				So(username, ShouldEqual, "")
-				So(groups, ShouldBeEmpty)
+				So(result, ShouldBeNil)
 			})
 
 			Convey("Valid token with default claims", func() {
@@ -167,15 +168,26 @@ func TestOIDCBearerAuthorizer(t *testing.T) {
 
 				authHeader := "Bearer " + token
 
-				username, groups, err := authorizer.Authenticate(ctx, authHeader)
+				result, err := authorizer.Authenticate(ctx, authHeader)
 				So(err, ShouldBeNil)
-				So(username, ShouldEqual, subject)
-				So(groups, ShouldBeEmpty)
+				So(result, ShouldNotBeNil)
+				So(result.Username, ShouldEqual, issuer+"/"+subject)
+				So(result.Groups, ShouldBeEmpty)
 			})
 
 			Convey("Valid token with groups", func() {
 				subject := "test-user"
 				testGroups := []string{"group1", "group2"}
+
+				cfg := []config.BearerOIDCConfig{{
+					Issuer:    issuer,
+					Audiences: []string{audience},
+					ClaimMapping: &config.CELClaimValidationAndMapping{
+						Groups: "claims.groups",
+					},
+				}}
+				authorizer, err := api.NewOIDCBearerAuthorizer(cfg, logger)
+				So(err, ShouldBeNil)
 
 				token, err := createTestOIDCToken(privKey, issuer, audience, subject, map[string]any{
 					"groups": testGroups,
@@ -184,10 +196,11 @@ func TestOIDCBearerAuthorizer(t *testing.T) {
 
 				authHeader := "Bearer " + token
 
-				username, extractedGroups, err := authorizer.Authenticate(ctx, authHeader)
+				result, err := authorizer.Authenticate(ctx, authHeader)
 				So(err, ShouldBeNil)
-				So(username, ShouldEqual, subject)
-				So(extractedGroups, ShouldResemble, testGroups)
+				So(result, ShouldNotBeNil)
+				So(result.Username, ShouldEqual, issuer+"/"+subject)
+				So(result.Groups, ShouldResemble, testGroups)
 			})
 
 			Convey("Token with wrong audience should fail", func() {
@@ -197,10 +210,9 @@ func TestOIDCBearerAuthorizer(t *testing.T) {
 
 				authHeader := "Bearer " + token
 
-				username, groups, err := authorizer.Authenticate(ctx, authHeader)
+				result, err := authorizer.Authenticate(ctx, authHeader)
 				So(err, ShouldNotBeNil)
-				So(username, ShouldEqual, "")
-				So(groups, ShouldBeEmpty)
+				So(result, ShouldBeNil)
 			})
 
 			Convey("Expired token should fail", func() {
@@ -209,7 +221,7 @@ func TestOIDCBearerAuthorizer(t *testing.T) {
 
 				tokenClaims := jwt.MapClaims{
 					"iss": issuer,
-					"aud": audience,
+					"aud": []string{audience},
 					"sub": subject,
 					"exp": now.Add(-time.Hour).Unix(), // Expired
 					"iat": now.Add(-2 * time.Hour).Unix(),
@@ -222,10 +234,9 @@ func TestOIDCBearerAuthorizer(t *testing.T) {
 
 				authHeader := "Bearer " + tokenString
 
-				username, groups, err := authorizer.Authenticate(ctx, authHeader)
+				result, err := authorizer.Authenticate(ctx, authHeader)
 				So(err, ShouldNotBeNil)
-				So(username, ShouldEqual, "")
-				So(groups, ShouldBeEmpty)
+				So(result, ShouldBeNil)
 			})
 		})
 
@@ -233,16 +244,16 @@ func TestOIDCBearerAuthorizer(t *testing.T) {
 			customClaimName := "preferred_username"
 			customUsername := "custom-user"
 
-			cfg := &config.BearerOIDCConfig{
+			cfg := []config.BearerOIDCConfig{{
 				Issuer:    issuer,
 				Audiences: []string{audience},
-				ClaimMapping: &config.ClaimMapping{
-					Username: customClaimName,
+				ClaimMapping: &config.CELClaimValidationAndMapping{
+					Username: "claims.preferred_username",
 				},
-			}
+			}}
 
 			ctx := context.Background()
-			authorizer, err := api.NewOIDCBearerAuthorizer(ctx, cfg, logger)
+			authorizer, err := api.NewOIDCBearerAuthorizer(cfg, logger)
 			So(err, ShouldBeNil)
 
 			Convey("Extract username from custom claim", func() {
@@ -255,36 +266,37 @@ func TestOIDCBearerAuthorizer(t *testing.T) {
 
 				authHeader := "Bearer " + token
 
-				username, groups, err := authorizer.Authenticate(ctx, authHeader)
+				result, err := authorizer.Authenticate(ctx, authHeader)
 				So(err, ShouldBeNil)
-				So(username, ShouldEqual, customUsername)
-				So(groups, ShouldBeEmpty)
+				So(result, ShouldNotBeNil)
+				So(result.Username, ShouldEqual, customUsername)
+				So(result.Groups, ShouldBeEmpty)
 			})
 
-			Convey("Fallback to sub when custom claim missing", func() {
+			Convey("Error when custom claim missing (no fallback)", func() {
 				subject := "fallback-user"
 				token, err := createTestOIDCToken(privKey, issuer, audience, subject, nil)
 				So(err, ShouldBeNil)
 
 				authHeader := "Bearer " + token
 
-				username, groups, err := authorizer.Authenticate(ctx, authHeader)
-				So(err, ShouldBeNil)
-				So(username, ShouldEqual, subject)
-				So(groups, ShouldBeEmpty)
+				// With CEL expressions, missing claims cause an error (no automatic fallback)
+				result, err := authorizer.Authenticate(ctx, authHeader)
+				So(err, ShouldNotBeNil)
+				So(result, ShouldBeNil)
 			})
 		})
 
 		Convey("Multiple audiences", func() {
 			audiences := []string{"audience1", "audience2", "audience3"}
 
-			cfg := &config.BearerOIDCConfig{
+			cfg := []config.BearerOIDCConfig{{
 				Issuer:    issuer,
 				Audiences: audiences,
-			}
+			}}
 
 			ctx := context.Background()
-			authorizer, err := api.NewOIDCBearerAuthorizer(ctx, cfg, logger)
+			authorizer, err := api.NewOIDCBearerAuthorizer(cfg, logger)
 			So(err, ShouldBeNil)
 
 			Convey("Token with first audience should work", func() {
@@ -294,10 +306,11 @@ func TestOIDCBearerAuthorizer(t *testing.T) {
 
 				authHeader := "Bearer " + token
 
-				username, groups, err := authorizer.Authenticate(ctx, authHeader)
+				result, err := authorizer.Authenticate(ctx, authHeader)
 				So(err, ShouldBeNil)
-				So(username, ShouldEqual, subject)
-				So(groups, ShouldBeEmpty)
+				So(result, ShouldNotBeNil)
+				So(result.Username, ShouldEqual, issuer+"/"+subject)
+				So(result.Groups, ShouldBeEmpty)
 			})
 
 			Convey("Token with second audience should work", func() {
@@ -307,10 +320,248 @@ func TestOIDCBearerAuthorizer(t *testing.T) {
 
 				authHeader := "Bearer " + token
 
-				username, groups, err := authorizer.Authenticate(ctx, authHeader)
+				result, err := authorizer.Authenticate(ctx, authHeader)
 				So(err, ShouldBeNil)
-				So(username, ShouldEqual, subject)
+				So(result, ShouldNotBeNil)
+				So(result.Username, ShouldEqual, issuer+"/"+subject)
+				So(result.Groups, ShouldBeEmpty)
+			})
+		})
+
+		Convey("Multiple OIDC providers", func() {
+			ctx := context.Background()
+
+			// Create a second mock server with a different key
+			privKey2, err := rsa.GenerateKey(rand.Reader, 2048)
+			So(err, ShouldBeNil)
+			pubKey2 := &privKey2.PublicKey
+			server2 := mockOIDCServer(t, pubKey2)
+			defer server2.Close()
+
+			issuer2 := server2.URL
+			audience2 := "test-zot-2"
+
+			Convey("Token valid for second provider succeeds", func() {
+				// Configure two providers - token is only valid for the second one
+				cfg := []config.BearerOIDCConfig{
+					{
+						Issuer:    issuer,
+						Audiences: []string{audience},
+					},
+					{
+						Issuer:    issuer2,
+						Audiences: []string{audience2},
+					},
+				}
+
+				authorizer, err := api.NewOIDCBearerAuthorizer(cfg, logger)
+				So(err, ShouldBeNil)
+
+				// Create token for second provider
+				subject := "test-user"
+				token, err := createTestOIDCToken(privKey2, issuer2, audience2, subject, nil)
+				So(err, ShouldBeNil)
+
+				authHeader := "Bearer " + token
+
+				result, err := authorizer.Authenticate(ctx, authHeader)
+				So(err, ShouldBeNil)
+				So(result, ShouldNotBeNil)
+				So(result.Username, ShouldEqual, issuer2+"/"+subject)
+			})
+
+			Convey("Token valid for first provider succeeds immediately", func() {
+				cfg := []config.BearerOIDCConfig{
+					{
+						Issuer:    issuer,
+						Audiences: []string{audience},
+					},
+					{
+						Issuer:    issuer2,
+						Audiences: []string{audience2},
+					},
+				}
+
+				authorizer, err := api.NewOIDCBearerAuthorizer(cfg, logger)
+				So(err, ShouldBeNil)
+
+				// Create token for first provider
+				subject := "test-user"
+				token, err := createTestOIDCToken(privKey, issuer, audience, subject, nil)
+				So(err, ShouldBeNil)
+
+				authHeader := "Bearer " + token
+
+				result, err := authorizer.Authenticate(ctx, authHeader)
+				So(err, ShouldBeNil)
+				So(result, ShouldNotBeNil)
+				So(result.Username, ShouldEqual, issuer+"/"+subject)
+			})
+
+			Convey("Token invalid for all providers returns aggregated errors", func() {
+				cfg := []config.BearerOIDCConfig{
+					{
+						Issuer:    issuer,
+						Audiences: []string{audience},
+					},
+					{
+						Issuer:    issuer2,
+						Audiences: []string{audience2},
+					},
+				}
+
+				authorizer, err := api.NewOIDCBearerAuthorizer(cfg, logger)
+				So(err, ShouldBeNil)
+
+				// Create token with wrong audience for both providers
+				subject := "test-user"
+				token, err := createTestOIDCToken(privKey, issuer, "wrong-audience", subject, nil)
+				So(err, ShouldBeNil)
+
+				authHeader := "Bearer " + token
+
+				result, err := authorizer.Authenticate(ctx, authHeader)
+				So(err, ShouldNotBeNil)
+				So(result, ShouldBeNil)
+				// Error should contain information from both providers
+				So(err.Error(), ShouldContainSubstring, "invalid bearer token")
+			})
+		})
+
+		Convey("AuthenticateRequest convenience method", func() {
+			cfg := []config.BearerOIDCConfig{{
+				Issuer:    issuer,
+				Audiences: []string{audience},
+			}}
+
+			ctx := context.Background()
+			authorizer, err := api.NewOIDCBearerAuthorizer(cfg, logger)
+			So(err, ShouldBeNil)
+
+			Convey("Successful authentication returns username, groups, and true", func() {
+				subject := "test-user"
+				token, err := createTestOIDCToken(privKey, issuer, audience, subject, nil)
+				So(err, ShouldBeNil)
+
+				authHeader := "Bearer " + token
+
+				username, groups, ok, err := authorizer.AuthenticateRequest(ctx, authHeader)
+				So(err, ShouldBeNil)
+				So(ok, ShouldBeTrue)
+				So(username, ShouldEqual, issuer+"/"+subject)
 				So(groups, ShouldBeEmpty)
+			})
+
+			Convey("Failed authentication returns false and error", func() {
+				result, groups, ok, err := authorizer.AuthenticateRequest(ctx, "Bearer invalid-token")
+				So(err, ShouldNotBeNil)
+				So(ok, ShouldBeFalse)
+				So(result, ShouldBeEmpty)
+				So(groups, ShouldBeEmpty)
+			})
+		})
+
+		Convey("CEL validations", func() {
+			ctx := context.Background()
+
+			Convey("Validation passes when expression is true", func() {
+				cfg := []config.BearerOIDCConfig{{
+					Issuer:    issuer,
+					Audiences: []string{audience},
+					ClaimMapping: &config.CELClaimValidationAndMapping{
+						Validations: []config.CELValidation{
+							{
+								Expression: "claims.email_verified == true",
+								Message:    "email must be verified",
+							},
+						},
+					},
+				}}
+
+				authorizer, err := api.NewOIDCBearerAuthorizer(cfg, logger)
+				So(err, ShouldBeNil)
+
+				subject := "test-user"
+				token, err := createTestOIDCToken(privKey, issuer, audience, subject, map[string]any{
+					"email_verified": true,
+				})
+				So(err, ShouldBeNil)
+
+				authHeader := "Bearer " + token
+
+				result, err := authorizer.Authenticate(ctx, authHeader)
+				So(err, ShouldBeNil)
+				So(result, ShouldNotBeNil)
+				So(result.Username, ShouldEqual, issuer+"/"+subject)
+			})
+
+			Convey("Validation fails when expression is false", func() {
+				cfg := []config.BearerOIDCConfig{{
+					Issuer:    issuer,
+					Audiences: []string{audience},
+					ClaimMapping: &config.CELClaimValidationAndMapping{
+						Validations: []config.CELValidation{
+							{
+								Expression: "claims.email_verified == true",
+								Message:    "email must be verified",
+							},
+						},
+					},
+				}}
+
+				authorizer, err := api.NewOIDCBearerAuthorizer(cfg, logger)
+				So(err, ShouldBeNil)
+
+				subject := "test-user"
+				token, err := createTestOIDCToken(privKey, issuer, audience, subject, map[string]any{
+					"email_verified": false,
+				})
+				So(err, ShouldBeNil)
+
+				authHeader := "Bearer " + token
+
+				result, err := authorizer.Authenticate(ctx, authHeader)
+				So(err, ShouldNotBeNil)
+				So(result, ShouldBeNil)
+				So(err.Error(), ShouldContainSubstring, "email must be verified")
+			})
+
+			Convey("CEL variables can be used in validations and username", func() {
+				cfg := []config.BearerOIDCConfig{{
+					Issuer:    issuer,
+					Audiences: []string{audience},
+					ClaimMapping: &config.CELClaimValidationAndMapping{
+						Variables: []config.CELVariable{
+							{
+								Name:       "org",
+								Expression: "claims.organization",
+							},
+						},
+						Validations: []config.CELValidation{
+							{
+								Expression: "vars.org in ['allowed-org', 'another-org']",
+								Message:    "organization not allowed",
+							},
+						},
+						Username: "vars.org + '/' + claims.sub",
+					},
+				}}
+
+				authorizer, err := api.NewOIDCBearerAuthorizer(cfg, logger)
+				So(err, ShouldBeNil)
+
+				subject := "test-user"
+				token, err := createTestOIDCToken(privKey, issuer, audience, subject, map[string]any{
+					"organization": "allowed-org",
+				})
+				So(err, ShouldBeNil)
+
+				authHeader := "Bearer " + token
+
+				result, err := authorizer.Authenticate(ctx, authHeader)
+				So(err, ShouldBeNil)
+				So(result, ShouldNotBeNil)
+				So(result.Username, ShouldEqual, "allowed-org/test-user")
 			})
 		})
 	})
@@ -321,10 +572,10 @@ func TestBearerOIDCConfig(t *testing.T) {
 		Convey("IsBearerAuthEnabled with OIDC config", func() {
 			authConfig := &config.AuthConfig{
 				Bearer: &config.BearerConfig{
-					OIDC: &config.BearerOIDCConfig{
+					OIDC: []config.BearerOIDCConfig{{
 						Issuer:    "https://issuer.example.com",
 						Audiences: []string{"zot"},
-					},
+					}},
 				},
 			}
 
@@ -349,10 +600,10 @@ func TestBearerOIDCConfig(t *testing.T) {
 					Realm:   "zot",
 					Service: "zot-service",
 					Cert:    "/path/to/cert",
-					OIDC: &config.BearerOIDCConfig{
+					OIDC: []config.BearerOIDCConfig{{
 						Issuer:    "https://issuer.example.com",
 						Audiences: []string{"zot"},
-					},
+					}},
 				},
 			}
 
@@ -362,10 +613,10 @@ func TestBearerOIDCConfig(t *testing.T) {
 		Convey("IsBearerAuthEnabled without proper config", func() {
 			authConfig := &config.AuthConfig{
 				Bearer: &config.BearerConfig{
-					OIDC: &config.BearerOIDCConfig{
+					OIDC: []config.BearerOIDCConfig{{
 						Issuer: "https://issuer.example.com",
 						// Missing audiences
-					},
+					}},
 				},
 			}
 

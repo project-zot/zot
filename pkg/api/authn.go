@@ -507,9 +507,9 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 	}
 
 	// OIDC bearer auth for workload identity
-	if authConfig.Bearer.OIDC != nil {
+	if len(authConfig.Bearer.OIDC) > 0 {
 		var err error
-		oidcAuthorizer, err = NewOIDCBearerAuthorizer(context.Background(), authConfig.Bearer.OIDC, ctlr.Log)
+		oidcAuthorizer, err = NewOIDCBearerAuthorizer(authConfig.Bearer.OIDC, ctlr.Log)
 		if err != nil {
 			ctlr.Log.Panic().Err(err).Msg("failed to initialize OIDC bearer authorizer")
 		}

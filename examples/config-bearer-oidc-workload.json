@@ -10,13 +10,15 @@
       "bearer": {
         "realm": "zot",
         "service": "zot-service",
-        "oidc": {
-          "issuer": "https://kubernetes.default.svc.cluster.local",
-          "audiences": ["zot", "https://zot.example.com"],
-          "claimMapping": {
-            "username": "sub"
+        "oidc": [
+          {
+            "issuer": "https://kubernetes.default.svc.cluster.local",
+            "audiences": ["zot", "https://zot.example.com"],
+            "claimMapping": {
+              "username": "claims.sub"
+            }
           }
-        }
+        ]
       }
     },
     "accessControl": {
@@ -24,7 +26,7 @@
         "**": {
           "policies": [
             {
-              "users": ["system:serviceaccount:default:flux-controller"],
+              "users": ["system:serviceaccount:flux-system:source-controller"],
               "actions": ["read", "create", "update", "delete"]
             }
           ]
