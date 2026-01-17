@@ -123,8 +123,6 @@ function teardown_file() {
     run cat ${BATS_FILE_TMPDIR}/oci/busybox/index.json
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.manifests[].annotations."org.opencontainers.image.ref.name"') = '"latest"' ]
-    run curl -X DELETE http://127.0.0.1:${zot_port}/v2/busybox/manifests/latest
-    [ "$status" -eq 0 ]
 }
 
 @test "[release] push oras artifact" {
@@ -398,6 +396,45 @@ DOCKERFILE
 
 # After upgrading to the new binary, expect additional artifacts (a signature
 # and an sbom) that were attached
+
+@test "[new] existing pull image" {
+    local oci_data_dir=${BATS_FILE_TMPDIR}/oci
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run skopeo --insecure-policy copy --src-tls-verify=false \
+        docker://127.0.0.1:${zot_port}/golang:1.20 \
+        oci:${oci_data_dir}/golang:1.20
+    [ "$status" -eq 0 ]
+    run cat ${BATS_FILE_TMPDIR}/oci/golang/index.json
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.manifests[].annotations."org.opencontainers.image.ref.name"') = '"1.20"' ]
+}
+
+@test "[new] existing pull image index" {
+    local oci_data_dir=${BATS_FILE_TMPDIR}/oci
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run skopeo --insecure-policy copy --src-tls-verify=false --multi-arch=all \
+        docker://127.0.0.1:${zot_port}/busybox:latest \
+        oci:${oci_data_dir}/busybox:latest
+    [ "$status" -eq 0 ]
+    run cat ${BATS_FILE_TMPDIR}/oci/busybox/index.json
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.manifests[].annotations."org.opencontainers.image.ref.name"') = '"latest"' ]
+    run skopeo --insecure-policy --override-arch=arm64 --override-os=linux copy --src-tls-verify=false --multi-arch=all \
+        docker://127.0.0.1:${zot_port}/busybox:latest \
+        oci:${oci_data_dir}/busybox:latest
+    [ "$status" -eq 0 ]
+    run cat ${BATS_FILE_TMPDIR}/oci/busybox/index.json
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.manifests[].annotations."org.opencontainers.image.ref.name"') = '"latest"' ]
+}
+
+@test "[new] existing pull oras artifact" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run oras pull --plain-http 127.0.0.1:${zot_port}/hello-artifact:v2 -d -v
+    [ "$status" -eq 0 ]
+    grep -q "hello world" artifact.txt
+    rm -f artifact.txt
+}
 
 @test "[new] push image" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
