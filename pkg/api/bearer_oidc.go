@@ -2,193 +2,65 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
-	"slices"
+	"sync"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 
 	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/internal/cel"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/log"
 )
+
+// oidcProviderRefreshInterval defines how often to refresh the OIDC provider configuration.
+// With 1 minute interval, even if there are too many API calls authenticating via OIDC
+// bearer tokens at once, we will only refresh the provider at most once per minute (safe).
+const oidcProviderRefreshInterval = 1 * time.Minute
 
 var bearerOIDCTokenMatch = regexp.MustCompile("(?i)bearer (.*)")
 
 // OIDCBearerAuthorizer validates OIDC ID tokens for workload identity authentication.
 type OIDCBearerAuthorizer struct {
+	providers []*oidcProvider
+}
+
+// oidcProvider validates OIDC ID tokens for workload identity authentication.
+// It holds the configuration for a single OIDC issuer.
+type oidcProvider struct {
 	issuer          string
 	audiences       []string
-	claimMapping    *config.ClaimMapping
-	verifier        *oidc.IDTokenVerifier
+	claimProcessor  *cel.ClaimProcessor
 	skipIssuerCheck bool
 	log             log.Logger
+
+	// The *oidc.IDTokenVerifier is created lazily to avoid network calls during initialization.
+	// We really don't want to block startup if the OIDC issuer is temporarily unreachable.
+	// Also, we periodically refresh the provider to pick up any changes in the issuer's configuration.
+	verifier         *oidc.IDTokenVerifier
+	verifierMu       sync.RWMutex
+	verifierDeadline time.Time
 }
 
 // NewOIDCBearerAuthorizer creates a new OIDC bearer token authorizer.
-func NewOIDCBearerAuthorizer(ctx context.Context, oidcConfig *config.BearerOIDCConfig,
-	log log.Logger,
-) (*OIDCBearerAuthorizer, error) {
-	if oidcConfig == nil {
-		return nil, fmt.Errorf("%w: OIDC config is nil", zerr.ErrBadConfig)
+func NewOIDCBearerAuthorizer(oidcConfig []config.BearerOIDCConfig, log log.Logger) (*OIDCBearerAuthorizer, error) {
+	providers := make([]*oidcProvider, 0, len(oidcConfig))
+
+	for i := range oidcConfig {
+		conf := &oidcConfig[i]
+		provider, err := newOIDCProvider(conf, log)
+		if err != nil {
+			return nil, fmt.Errorf("%w: failed to create OIDC bearer provider[%d]: %w", zerr.ErrBadConfig, i, err)
+		}
+		providers = append(providers, provider)
 	}
-
-	if oidcConfig.Issuer == "" {
-		return nil, fmt.Errorf("%w: issuer is required", zerr.ErrBadConfig)
-	}
-
-	if len(oidcConfig.Audiences) == 0 {
-		return nil, fmt.Errorf("%w: at least one audience is required", zerr.ErrBadConfig)
-	}
-
-	// Create OIDC provider
-	provider, err := oidc.NewProvider(ctx, oidcConfig.Issuer)
-	if err != nil {
-		return nil, fmt.Errorf("%w: failed to create OIDC provider: %w", zerr.ErrBadConfig, err)
-	}
-
-	// Configure verifier
-	verifierConfig := &oidc.Config{
-		ClientID:          "", // We'll check audiences manually
-		SkipIssuerCheck:   oidcConfig.SkipIssuerVerification,
-		SkipClientIDCheck: true, // Check audiences manually to support multiple
-		SkipExpiryCheck:   false,
-		Now:               time.Now,
-	}
-
-	verifier := provider.Verifier(verifierConfig)
-
-	log.Info().Str("issuer", oidcConfig.Issuer).Strs("audiences", oidcConfig.Audiences).
-		Msg("OIDC workload identity authentication enabled")
 
 	return &OIDCBearerAuthorizer{
-		issuer:          oidcConfig.Issuer,
-		audiences:       oidcConfig.Audiences,
-		claimMapping:    oidcConfig.ClaimMapping,
-		verifier:        verifier,
-		skipIssuerCheck: oidcConfig.SkipIssuerVerification,
-		log:             log,
+		providers: providers,
 	}, nil
-}
-
-// Authenticate validates an OIDC token and extracts the identity.
-// Returns the username and groups extracted from the token claims.
-func (a *OIDCBearerAuthorizer) Authenticate(ctx context.Context, header string) (string, []string, error) {
-	if header == "" {
-		return "", nil, zerr.ErrNoBearerToken
-	}
-
-	// Extract token from Authorization header
-	tokenString := bearerOIDCTokenMatch.ReplaceAllString(header, "$1")
-	if tokenString == "" || tokenString == header {
-		return "", nil, zerr.ErrInvalidBearerToken
-	}
-
-	// Verify the token
-	idToken, err := a.verifier.Verify(ctx, tokenString)
-	if err != nil {
-		a.log.Debug().Err(err).Msg("OIDC token verification failed")
-
-		return "", nil, fmt.Errorf("%w: %w", zerr.ErrInvalidBearerToken, err)
-	}
-
-	// Additional audience verification to support multiple audiences
-	if !a.verifyAudience(idToken) {
-		a.log.Debug().Str("token_aud", fmt.Sprintf("%v", idToken.Audience)).
-			Strs("accepted_aud", a.audiences).
-			Msg("token audience not accepted")
-
-		return "", nil, fmt.Errorf("%w: audience not accepted", zerr.ErrInvalidBearerToken)
-	}
-
-	// Extract claims
-	var claims map[string]any
-	if err := idToken.Claims(&claims); err != nil {
-		return "", nil, fmt.Errorf("%w: failed to extract claims: %w", zerr.ErrInvalidBearerToken, err)
-	}
-
-	// Extract username from configured claim
-	username := a.extractUsername(claims)
-	if username == "" {
-		a.log.Debug().Interface("claims", claims).Msg("failed to extract username from token")
-
-		return "", nil, fmt.Errorf("%w: no username found in token", zerr.ErrInvalidBearerToken)
-	}
-
-	// Extract groups if present
-	groups := a.extractGroups(claims)
-
-	a.log.Debug().Str("username", username).Strs("groups", groups).Msg("OIDC token authenticated")
-
-	return username, groups, nil
-}
-
-// verifyAudience checks if the token's audience matches any of the accepted audiences.
-func (a *OIDCBearerAuthorizer) verifyAudience(token *oidc.IDToken) bool {
-	tokenAudiences := token.Audience
-
-	for _, tokenAud := range tokenAudiences {
-		if slices.Contains(a.audiences, tokenAud) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// extractUsername extracts the username from token claims based on claim mapping configuration.
-func (a *OIDCBearerAuthorizer) extractUsername(claims map[string]any) string {
-	// Default claim to use for username
-	claimName := "sub" //nolint:goconst
-
-	// Use configured claim mapping if available
-	if a.claimMapping != nil && a.claimMapping.Username != "" {
-		claimName = a.claimMapping.Username
-	}
-
-	// Try to get the claim value
-	if val, ok := claims[claimName]; ok {
-		if strVal, ok := val.(string); ok {
-			return strVal
-		}
-	}
-
-	// Fallback: try "sub" if configured claim didn't work and wasn't "sub"
-	if claimName != "sub" {
-		if val, ok := claims["sub"]; ok {
-			if strVal, ok := val.(string); ok {
-				return strVal
-			}
-		}
-	}
-
-	return ""
-}
-
-// extractGroups extracts groups from token claims.
-// It looks for "groups" claim as an array of strings.
-func (a *OIDCBearerAuthorizer) extractGroups(claims map[string]any) []string {
-	groups := []string{}
-
-	// Try to extract groups from "groups" claim
-	if groupsClaim, ok := claims["groups"]; ok {
-		switch groupsValue := groupsClaim.(type) {
-		case []any:
-			for _, g := range groupsValue {
-				if str, ok := g.(string); ok {
-					groups = append(groups, str)
-				}
-			}
-		case []string:
-			groups = groupsValue
-		case string:
-			// Single group as string
-			groups = append(groups, groupsValue)
-		}
-	}
-
-	return groups
 }
 
 // AuthenticateRequest is a convenience method that handles the full authentication flow
@@ -196,14 +68,132 @@ func (a *OIDCBearerAuthorizer) extractGroups(claims map[string]any) []string {
 func (a *OIDCBearerAuthorizer) AuthenticateRequest(ctx context.Context,
 	authHeader string,
 ) (string, []string, bool, error) {
-	username, groups, err := a.Authenticate(ctx, authHeader)
+	res, err := a.Authenticate(ctx, authHeader)
 	if err != nil {
 		return "", nil, false, err
 	}
 
-	if username == "" {
+	if res.Username == "" {
 		return "", nil, false, fmt.Errorf("%w: empty username", zerr.ErrInvalidBearerToken)
 	}
 
-	return username, groups, true, nil
+	return res.Username, res.Groups, true, nil
+}
+
+// Authenticate validates an OIDC token and extracts the identity.
+// Returns the username and groups extracted from the token claims.
+func (a *OIDCBearerAuthorizer) Authenticate(ctx context.Context, header string) (*cel.ClaimResult, error) {
+	var errs []error
+	for _, provider := range a.providers {
+		res, err := provider.authenticate(ctx, header)
+		if err == nil {
+			return res, nil
+		}
+		errs = append(errs, err)
+	}
+	switch len(errs) {
+	case 0:
+		return nil, zerr.ErrInvalidBearerToken
+	case 1:
+		return nil, errs[0]
+	default:
+		return nil, errors.Join(errs...)
+	}
+}
+
+// newOIDCProvider creates a new OIDC provider based on the given configuration.
+func newOIDCProvider(oidcConfig *config.BearerOIDCConfig, log log.Logger) (*oidcProvider, error) {
+	// Validate configuration
+	if oidcConfig.Issuer == "" {
+		return nil, fmt.Errorf("issuer is required")
+	}
+	claimProcessor, err := cel.NewClaimProcessor(oidcConfig.Audiences, oidcConfig.ClaimMapping)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create claim processor: %w", err)
+	}
+
+	log.Info().Str("issuer", oidcConfig.Issuer).Strs("audiences", oidcConfig.Audiences).
+		Msg("OIDC workload identity authentication enabled")
+
+	return &oidcProvider{
+		issuer:          oidcConfig.Issuer,
+		audiences:       oidcConfig.Audiences,
+		claimProcessor:  claimProcessor,
+		skipIssuerCheck: oidcConfig.SkipIssuerVerification,
+		log:             log,
+	}, nil
+}
+
+func (a *oidcProvider) authenticate(ctx context.Context, header string) (*cel.ClaimResult, error) {
+	if header == "" {
+		return nil, zerr.ErrNoBearerToken
+	}
+
+	// Extract token from Authorization header
+	tokenString := bearerOIDCTokenMatch.ReplaceAllString(header, "$1")
+	if tokenString == "" || tokenString == header {
+		return nil, zerr.ErrInvalidBearerToken
+	}
+
+	// Get verifier.
+	verifier, err := a.getVerifier(ctx)
+	if err != nil {
+		a.log.Err(err).Msg("failed to get OIDC token verifier")
+		return nil, fmt.Errorf("%w: %w", zerr.ErrInvalidOrUnreachableOIDCIssuer, err)
+	}
+
+	// Verify the token
+	idToken, err := verifier.Verify(ctx, tokenString)
+	if err != nil {
+		a.log.Debug().Err(err).Msg("OIDC token verification failed")
+		return nil, fmt.Errorf("%w: %w", zerr.ErrInvalidBearerToken, err)
+	}
+
+	// Extract claims
+	var claims map[string]any
+	if err := idToken.Claims(&claims); err != nil {
+		return nil, fmt.Errorf("%w: failed to extract claims: %w", zerr.ErrInvalidBearerToken, err)
+	}
+
+	// Process claims to extract username and groups.
+	res, err := a.claimProcessor.Process(ctx, claims)
+	if err != nil {
+		a.log.Debug().Err(err).Msg("OIDC token claim processing failed")
+		return nil, fmt.Errorf("%w: failed to process claims: %w", zerr.ErrInvalidBearerToken, err)
+	}
+
+	a.log.Debug().Str("username", res.Username).Strs("groups", res.Groups).Msg("OIDC token authenticated")
+	return res, nil
+}
+
+// getVerifier retrieves or refreshes the oidc.IDTokenVerifier as needed.
+func (o *oidcProvider) getVerifier(ctx context.Context) (*oidc.IDTokenVerifier, error) {
+	// If the verifier is still fresh, return it.
+	o.verifierMu.RLock()
+	v, deadline := o.verifier, o.verifierDeadline
+	o.verifierMu.RUnlock()
+	if v != nil && time.Now().Before(deadline) {
+		return v, nil
+	}
+
+	// Time to refresh the verifier.
+	p, err := oidc.NewProvider(ctx, o.issuer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to refresh OIDC provider from issuer %s: %w", o.issuer, err)
+	}
+	v = p.Verifier(&oidc.Config{
+		ClientID:          "", // We'll check audiences manually
+		SkipIssuerCheck:   o.skipIssuerCheck,
+		SkipClientIDCheck: true, // Check audiences manually to support multiple
+		SkipExpiryCheck:   false,
+		Now:               time.Now,
+	})
+
+	// Update the verifier and deadline.
+	o.verifierMu.Lock()
+	o.verifier = v
+	o.verifierDeadline = time.Now().Add(oidcProviderRefreshInterval)
+	o.verifierMu.Unlock()
+
+	return o.verifier, nil
 }

@@ -10,15 +10,16 @@ OIDC Workload Identity authentication allows workloads (e.g., Kubernetes pods, C
 
 - **Secret-less Authentication**: No need to manage static credentials
 - **Automatic Credential Rotation**: Tokens are short-lived and automatically rotated
-- **Fine-grained Access Control**: Map OIDC claims to Zot identities and groups
+- **Fine-grained Access Control**: Map OIDC claims to Zot identities and groups using CEL expressions
 - **Kubernetes Native**: Works seamlessly with Kubernetes ServiceAccount tokens
+- **Multi-Provider Support**: Configure multiple OIDC issuers for different workload types (e.g. multiple clusters)
 - **Standards-based**: Uses standard OIDC protocols
 
 ## Configuration
 
 ### Basic Configuration
 
-Add OIDC workload identity configuration to your bearer authentication settings:
+Add OIDC workload identity configuration to your bearer authentication settings. The `oidc` field accepts an array of provider configurations:
 
 ```json
 {
@@ -27,10 +28,12 @@ Add OIDC workload identity configuration to your bearer authentication settings:
       "bearer": {
         "realm": "zot",
         "service": "zot-service",
-        "oidc": {
-          "issuer": "https://kubernetes.default.svc.cluster.local",
-          "audiences": ["zot"]
-        }
+        "oidc": [
+          {
+            "issuer": "https://kubernetes.default.svc.cluster.local",
+            "audiences": ["zot"]
+          }
+        ]
       }
     }
   }
@@ -46,15 +49,40 @@ Add OIDC workload identity configuration to your bearer authentication settings:
 - **`audiences`** (required): List of acceptable audiences for the OIDC token. At least one must be specified.
   - Example: `["zot", "https://zot.example.com"]`
 
-- **`claimMapping.username`** (optional): Which OIDC claim to use as the username. Defaults to `"sub"`.
-  - Acceptable values: `"sub"`, `"email"`, `"preferred_username"`, `"name"`, or any custom claim
-  - Example: `"preferred_username"`
-
-- **`jwksDiscoveryUrl`** (optional): Override the JWKS discovery URL. If not provided, it defaults to `{issuer}/.well-known/openid-configuration`.
+- **`claimMapping`** (optional): CEL-based configuration for validating and mapping OIDC claims.
+  - **`variables`**: List of variables to extract from claims using CEL expressions
+  - **`validations`**: List of validation rules with CEL expressions
+  - **`username`**: CEL expression to extract the username. Default: `"claims.iss + '/' + claims.sub"`
+  - **`groups`**: CEL expression to extract groups. Default: none (no groups extracted)
 
 - **`skipIssuerVerification`** (optional): Skip issuer verification (for testing only). Default: `false`.
 
+### CEL Expressions
+
+Zot uses [Common Expression Language (CEL)](https://github.com/google/cel-go) for flexible claim validation and mapping. CEL expressions have access to:
+
+- **`claims`**: The OIDC token claims as a map (e.g., `claims.sub`, `claims.email`)
+- **`vars`**: Previously extracted variables (for use in validations and username/groups expressions)
+
+#### Example CEL Expressions
+
+| Expression | Description |
+|------------|-------------|
+| `claims.sub` | Extract the subject claim |
+| `claims.email` | Extract the email claim |
+| `claims.groups` | Extract the groups claim |
+| `claims['kubernetes.io/serviceaccount/namespace']` | Extract claims with special characters |
+| `claims.repository_owner + '/' + claims.sub` | Concatenate multiple claims |
+| `claims.email.split('@')[0]` | Extract username from email |
+| `claims.org in ['allowed-org-1', 'allowed-org-2']` | Check if org is in allowed list |
+| `claims.email_verified == true` | Validate email is verified |
+
 ### Complete Example
+
+In the example below, the username is mapped from both the issuer and subject
+claims to uniquely identify Kubernetes ServiceAccounts across different clusters.
+Note that `claims.iss + '/' + claims.sub` is the default username mapping if none
+is specified (so the whole `claimMapping` section could be omitted in this example).
 
 ```json
 {
@@ -69,13 +97,15 @@ Add OIDC workload identity configuration to your bearer authentication settings:
       "bearer": {
         "realm": "zot",
         "service": "zot-service",
-        "oidc": {
-          "issuer": "https://kubernetes.default.svc.cluster.local",
-          "audiences": ["zot", "https://zot.example.com"],
-          "claimMapping": {
-            "username": "sub"
+        "oidc": [
+          {
+            "issuer": "https://kubernetes.default.svc.cluster.local",
+            "audiences": ["zot", "https://zot.example.com"],
+            "claimMapping": {
+              "username": "claims.iss + '/' + claims.sub"
+            }
           }
-        }
+        ]
       }
     },
     "accessControl": {
@@ -83,7 +113,7 @@ Add OIDC workload identity configuration to your bearer authentication settings:
         "**": {
           "policies": [
             {
-              "users": ["system:serviceaccount:default:flux-controller"],
+              "users": ["https://kubernetes.default.svc.cluster.local/system:serviceaccount:flux-system:source-controller"],
               "actions": ["read", "create", "update", "delete"]
             }
           ]
@@ -93,6 +123,94 @@ Add OIDC workload identity configuration to your bearer authentication settings:
   },
   "log": {
     "level": "info"
+  }
+}
+```
+
+### Advanced Configuration with CEL Validations
+
+Use CEL expressions to validate claims and extract complex usernames:
+
+```json
+{
+  "http": {
+    "auth": {
+      "bearer": {
+        "oidc": [
+          {
+            "issuer": "https://token.actions.githubusercontent.com",
+            "audiences": ["zot"],
+            "claimMapping": {
+              "variables": [
+                {
+                  "name": "repo",
+                  "expression": "claims.repository"
+                },
+                {
+                  "name": "owner",
+                  "expression": "claims.repository_owner"
+                }
+              ],
+              "validations": [
+                {
+                  "expression": "vars.owner == 'my-org'",
+                  "message": "only my-org repositories are allowed"
+                },
+                {
+                  "expression": "claims.ref.startsWith('refs/heads/')",
+                  "message": "must be a branch reference"
+                }
+              ],
+              "username": "vars.repo",
+              "groups": "['github-actions', 'ci']"
+            }
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+### Multiple OIDC Providers
+
+Configure multiple OIDC providers to support different identity sources. Zot will try each provider in order until one successfully authenticates the token:
+
+```json
+{
+  "http": {
+    "auth": {
+      "bearer": {
+        "oidc": [
+          {
+            "issuer": "https://kubernetes.default.svc.cluster.local",
+            "audiences": ["zot"],
+            "claimMapping": {
+              "variables": [
+                {
+                  "name": "ns",
+                  "expression": "claims['kubernetes.io/serviceaccount/namespace']"
+                },
+                {
+                  "name": "sa",
+                  "expression": "claims['kubernetes.io/serviceaccount/service-account.name']"
+                }
+              ],
+              "username": "vars.ns + ':' + vars.sa",
+              "groups": "['k8s-workloads']"
+            }
+          },
+          {
+            "issuer": "https://token.actions.githubusercontent.com",
+            "audiences": ["zot"],
+            "claimMapping": {
+              "username": "claims.repository",
+              "groups": "['github-actions']"
+            }
+          }
+        ]
+      }
+    }
   }
 }
 ```
@@ -111,21 +229,25 @@ TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
 curl -H "Authorization: Bearer $TOKEN" https://zot.example.com/v2/_catalog
 ```
 
-### Flux CD Integration
+### Flux Integration
 
-Flux CD can use OIDC workload identity to authenticate to Zot without storing credentials:
+Flux can use Kubernetes ServiceAccount tokens to authenticate to Zot without secrets:
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
+kind: OCIRepository
 metadata:
   name: zot-repo
   namespace: flux-system
 spec:
-  url: https://zot.example.com/v2/
-  type: oci
-  provider: generic
+  url: oci://zot.example.com/v2/manifests
+  credentials: ServiceAccountToken
+  serviceAccountName: my-tenant-sa # optional. if omitted, defaults to the source-controller ServiceAccount
 ```
+
+Note: The configuration above is currently a proposal from the Flux maintainers
+and may change until officially released. For more details, see this
+[RFC](https://github.com/fluxcd/flux2/issues/5681).
 
 ### GitHub Actions
 
@@ -151,21 +273,22 @@ GitHub Actions can use OIDC tokens to authenticate:
 
 ### Optional Claims
 
-- **`groups`**: Array of group names for authorization
-- **`preferred_username`**: Can be used as username with claim mapping
-- **`email`**: Can be used as username with claim mapping
-- **`name`**: Can be used as username with claim mapping
+- **`groups`**: Array of group names for authorization (requires CEL `groups` expression)
+- **`preferred_username`**: Can be used as username with CEL expression
+- **`email`**: Can be used as username with CEL expression
+- **`name`**: Can be used as username with CEL expression
 
 ### Example Token Payload
 
 ```json
 {
   "iss": "https://kubernetes.default.svc.cluster.local",
-  "aud": "zot",
-  "sub": "system:serviceaccount:default:flux-controller",
+  "aud": ["zot"],
+  "sub": "system:serviceaccount:flux-system:source-controller",
   "exp": 1705258800,
   "iat": 1705255200,
-  "groups": ["system:serviceaccounts", "system:authenticated"]
+  "kubernetes.io/serviceaccount/namespace": "flux-system",
+  "kubernetes.io/serviceaccount/service-account.name": "source-controller"
 }
 ```
 
@@ -213,10 +336,12 @@ OIDC workload identity can coexist with traditional bearer authentication. If bo
         "realm": "https://auth.myreg.io/auth/token",
         "service": "myauth",
         "cert": "/etc/zot/auth.crt",
-        "oidc": {
-          "issuer": "https://kubernetes.default.svc.cluster.local",
-          "audiences": ["zot"]
-        }
+        "oidc": [
+          {
+            "issuer": "https://kubernetes.default.svc.cluster.local",
+            "audiences": ["zot"]
+          }
+        ]
       }
     }
   }
@@ -249,9 +374,13 @@ Set log level to `debug` to see detailed authentication logs:
 
 3. **Token expired**: OIDC tokens are typically short-lived. Ensure your workload is obtaining fresh tokens.
 
-4. **No username found**: Check the claim mapping configuration and ensure the specified claim exists in the token.
+4. **CEL expression error**: Check the CEL expression syntax. Use `claims.field` for simple fields or `claims['field-name']` for fields with special characters.
 
-5. **JWKS endpoint not reachable**: Verify network connectivity to the OIDC issuer's JWKS endpoint.
+5. **Validation failed**: Check that your token claims satisfy all configured validation expressions.
+
+6. **JWKS endpoint not reachable**: Verify network connectivity to the OIDC issuer's JWKS endpoint. Note: Zot lazily initializes the OIDC provider on first authentication, so startup won't fail if the issuer is temporarily unreachable.
+
+7. **No username found**: Ensure the CEL expression for username evaluates to a non-empty string. Check that the required claims exist in the token.
 
 ## Security Considerations
 
@@ -265,8 +394,12 @@ Set log level to `debug` to see detailed authentication logs:
 
 5. **Access Control**: Always configure access control policies to limit what authenticated workloads can do.
 
+6. **CEL Validations**: Use CEL validations to enforce additional security constraints (e.g., require email verification, restrict to specific organizations).
+
 ## References
 
 - [OIDC Specification](https://openid.net/specs/openid-connect-core-1_0.html)
+- [CEL Language Definition](https://github.com/google/cel-spec)
 - [Kubernetes OIDC Authentication](https://kubernetes.io/docs/reference/access-authn-authz/authentication/#openid-connect-tokens)
 - [Flux Workload Identity RFC](https://github.com/fluxcd/flux2/tree/main/rfcs/0010-multi-tenant-workload-identity)
+- [GitHub Actions OIDC](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/about-security-hardening-with-openid-connect)
