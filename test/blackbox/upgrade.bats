@@ -138,8 +138,6 @@ function teardown_file() {
     run cat ${BATS_FILE_TMPDIR}/oci/busybox/index.json
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.manifests[].annotations."org.opencontainers.image.ref.name"') = '"latest"' ]
-    run curl -X DELETE http://127.0.0.1:${zot_port}/v2/busybox/manifests/latest
-    [ "$status" -eq 0 ]
 }
 
 @test "[release] push oras artifact" {
@@ -440,12 +438,118 @@ DOCKERFILE
 # After upgrading to the new binary, expect additional artifacts (a signature
 # and an sbom) that were attached
 
-@test "[new] push image" {
+@test "[new] existing list by image name" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run ${ZLI_PATH} repo list --config ${REGISTRY_NAME}
+    [ "$status" -eq 0 ]
+
+    echo ${lines[@]}
+    found=0
+    for i in "${lines[@]}"
+    do
+        case "$i" in 
+            busybox | golang)
+                ((++found))
+                ;;
+            *)
+                ;;
+        esac
+    done
+    [ "$found" -eq 2 ]
+}
+
+@test "[new] existing cve by image name and tag" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run ${ZLI_PATH} cve list golang:1.20 --config ${REGISTRY_NAME}
+    [ "$status" -eq 0 ]
+
+    echo ${lines[@]}
+
+    found=0
+    for i in "${lines[@]}"
+    do
+
+        if [[ "$i" = *"CVE-2011-4915    LOW      fs/proc/base.c in the Linux kernel through 3..."* ]]; then
+            found=1
+        fi
+    done
+    [ "$found" -eq 1 ]
+}
+
+@test "[new] existing pull image" {
+    local oci_data_dir=${BATS_FILE_TMPDIR}/oci
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     # first check existing images
     run curl http://127.0.0.1:${zot_port}/v2/_catalog
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq 'any(.repositories[]; . == "golang")') = true ] 
+    run skopeo --insecure-policy copy --src-tls-verify=false \
+        docker://127.0.0.1:${zot_port}/golang:1.20 \
+        oci:${oci_data_dir}/golang:1.20
+    [ "$status" -eq 0 ]
+    run cat ${BATS_FILE_TMPDIR}/oci/golang/index.json
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.manifests[].annotations."org.opencontainers.image.ref.name"') = '"1.20"' ]
+}
+
+@test "[new] existing pull image index" {
+    local oci_data_dir=${BATS_FILE_TMPDIR}/oci
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run skopeo --insecure-policy copy --src-tls-verify=false --multi-arch=all \
+        docker://127.0.0.1:${zot_port}/busybox:latest \
+        oci:${oci_data_dir}/busybox:latest
+    [ "$status" -eq 0 ]
+    run cat ${BATS_FILE_TMPDIR}/oci/busybox/index.json
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.manifests[].annotations."org.opencontainers.image.ref.name"') = '"latest"' ]
+    run skopeo --insecure-policy --override-arch=arm64 --override-os=linux copy --src-tls-verify=false --multi-arch=all \
+        docker://127.0.0.1:${zot_port}/busybox:latest \
+        oci:${oci_data_dir}/busybox:latest
+    [ "$status" -eq 0 ]
+    run cat ${BATS_FILE_TMPDIR}/oci/busybox/index.json
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.manifests[].annotations."org.opencontainers.image.ref.name"') = '"latest"' ]
+}
+
+@test "[new] existing pull oras artifact" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run oras pull --plain-http 127.0.0.1:${zot_port}/hello-artifact:v2 -d -v
+    [ "$status" -eq 0 ]
+    grep -q "hello world" artifact.txt
+    rm -f artifact.txt
+}
+
+@test "[new] existing list repositories with regclient" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run regctl repo ls localhost:${zot_port}
+    [ "$status" -eq 0 ]
+
+    found=0
+    for i in "${lines[@]}"
+    do
+
+        if [ "$i" = 'test-regclient' ]; then
+            found=1
+        fi
+    done
+    [ "$found" -eq 1 ]
+
+    run regctl repo ls --limit 4 localhost:${zot_port}
+    [ "$status" -eq 0 ]
+    echo "$output"
+    [ $(echo "$output" | wc -l) -eq 4 ]
+    [ "${lines[-2]}" == "busybox" ]
+    [ "${lines[-1]}" == "golang" ]
+
+    run regctl repo ls --last busybox --limit 1 localhost:${zot_port}
+    [ "$status" -eq 0 ]
+    echo "$output"
+    [ $(echo "$output" | wc -l) -eq 1 ]
+    [ "${lines[-1]}" == "golang" ]
+}
+
+@test "[new] push image" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     run skopeo --insecure-policy copy --dest-tls-verify=false \
         oci:${TEST_DATA_DIR}/golang:1.20 \
         docker://127.0.0.1:${zot_port}/golang:1.20
