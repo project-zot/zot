@@ -67,7 +67,7 @@
       import 'graphiql/setup-workers/esm.sh';
 
       const fetcher = createGraphiQLFetcher({
-        url: 'https://countries.trevorblades.com',
+        url: '{{.Target}}',
       });
       const plugins = [HISTORY_PLUGIN, explorerPlugin()];
 
