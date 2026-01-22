@@ -838,8 +838,7 @@ func newClient(opts syncconf.RegistryConfig, credentials syncconf.CredentialsFil
 		hostConfig.RegCert = regCert
 	}
 
-	if mainHost == regclient.DockerRegistryAuth ||
-		mainHost == regclient.DockerRegistryDNS ||
+	if mainHost == regclient.DockerRegistryDNS ||
 		mainHost == regclient.DockerRegistry ||
 		mainHost == "index.docker.io" {
 		hostConfig.Name = regclient.DockerRegistry
