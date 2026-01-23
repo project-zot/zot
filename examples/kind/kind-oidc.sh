@@ -88,14 +88,21 @@ docker run -d --name dex-server \
 
 # Wait for Dex to start
 echo "Waiting for Dex to be ready..."
+DEX_READY=false
 for i in $(seq 1 30); do
   if docker exec dex-server wget -qO- --no-check-certificate https://localhost:10443/dex/.well-known/openid-configuration > /dev/null 2>&1; then
     echo "Dex is ready"
+    DEX_READY=true
     break
   fi
   echo "Waiting for Dex... ($i/30)"
   sleep 2
 done
+
+if [ "$DEX_READY" = false ]; then
+  echo "ERROR: Dex failed to become ready within timeout"
+  exit 1
+fi
 
 # create registry container unless it already exists
 reg_name='kind-registry'

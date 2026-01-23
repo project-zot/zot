@@ -69,7 +69,8 @@ The script will:
 3. Create a kind cluster with OIDC configuration
 4. Deploy zot with OIDC authentication enabled
 5. Configure RBAC for OIDC users
-6. Wait for user input before cleanup
+6. In interactive mode: Wait for user input before cleanup
+   In non-interactive mode: Automatically cleanup after validation
 
 #### OIDC Configuration Details
 
