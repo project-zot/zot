@@ -189,8 +189,19 @@ COMMIT_HASH=$(git describe --always --tags --long)
 echo "Deploying zot-build:${COMMIT_HASH} image to local registry"
 skopeo copy --format=oci --dest-tls-verify=false oci:oci docker://localhost:5001/zot-build:${COMMIT_HASH}
 
-# Create ConfigMap with zot OIDC configuration
-kubectl --context kind-kind-oidc create configmap zot-oidc-config --from-literal=config.json='
+# Create a temporary directory for zot config and credentials
+mkdir -p /tmp/kind-oidc/zot-config
+
+# Create the credentials file for zot
+cat > /tmp/kind-oidc/zot-config/dex-credentials.json <<EOF
+{
+    "clientid": "kubernetes",
+    "clientsecret": "kubernetes-client-secret"
+}
+EOF
+
+# Create the zot configuration
+cat > /tmp/kind-oidc/zot-config/config.json <<EOF
 {
   "distSpecVersion":"1.1.1",
   "storage": {
@@ -203,9 +214,10 @@ kubectl --context kind-kind-oidc create configmap zot-oidc-config --from-literal
           "openid": {
               "providers": {
                   "dex": {
+                      "name": "Dex OIDC",
                       "issuer": "https://dex-server:10443/dex",
-                      "clientid": "kubernetes",
-                      "clientsecret": "kubernetes-client-secret",
+                      "credentialsFile": "/etc/zot/dex-credentials.json",
+                      "keypath": "/etc/zot/dex-ca.crt",
                       "scopes": ["openid", "email", "groups"]
                   }
               }
@@ -229,7 +241,14 @@ kubectl --context kind-kind-oidc create configmap zot-oidc-config --from-literal
       "level": "debug"
   }
 }
-' --dry-run=client -o yaml | kubectl --context kind-kind-oidc apply -f -
+EOF
+
+# Create ConfigMap with zot OIDC configuration
+kubectl --context kind-kind-oidc create configmap zot-oidc-config \
+  --from-file=config.json=/tmp/kind-oidc/zot-config/config.json \
+  --from-file=dex-credentials.json=/tmp/kind-oidc/zot-config/dex-credentials.json \
+  --from-file=dex-ca.crt=/tmp/kind-oidc/dex-ca.crt \
+  --dry-run=client -o yaml | kubectl --context kind-kind-oidc apply -f -
 
 # Deploy zot
 kubectl --context kind-kind-oidc apply -f - <<EOF
