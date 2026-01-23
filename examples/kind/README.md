@@ -56,7 +56,11 @@ This test validates that:
 #### Usage
 
 ```bash
+# Run in non-interactive mode (default, suitable for CI)
 ./kind-oidc.sh
+
+# Run in interactive mode (keeps cluster running until you press Enter)
+./kind-oidc.sh --interactive
 ```
 
 The script will:

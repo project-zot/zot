@@ -7,6 +7,12 @@ KIND="${ROOT_DIR}"/hack/tools/bin/kind
 # Reference: https://github.com/int128/kind-oidc
 # This test validates Kubernetes OIDC authentication with zot registry
 
+# Parse command-line arguments
+INTERACTIVE=false
+if [ "$1" = "--interactive" ]; then
+  INTERACTIVE=true
+fi
+
 # set no_proxy if applicable
 if [ ! -z "${no_proxy}" ]; then
   echo "Updating no_proxy env var";
@@ -343,11 +349,13 @@ echo "=========================================="
 echo "Test completed successfully!"
 echo "=========================================="
 echo ""
-echo "Note: This test creates a kind cluster with OIDC authentication enabled."
-echo "The cluster will be deleted when the script exits."
-echo "Press Ctrl+C to cleanup and exit, or the cleanup will happen automatically."
-echo ""
 
-# Keep the script running so user can interact with the cluster
-echo "Press Enter to cleanup and exit..."
-read
+if [ "$INTERACTIVE" = true ]; then
+  echo "Note: This test created a kind cluster with OIDC authentication enabled."
+  echo "The cluster will be deleted when the script exits."
+  echo "Press Enter to cleanup and exit..."
+  read
+else
+  echo "Note: Running in non-interactive mode. Cleaning up automatically..."
+  sleep 2
+fi
