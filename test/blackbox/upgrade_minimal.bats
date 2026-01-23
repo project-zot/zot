@@ -42,6 +42,10 @@ JSON
     wait_zot_reachable ${zot_port}
 }
 
+# ==============================================================================
+# RELEASE TESTS - Test released version before upgrade
+# ==============================================================================
+
 @test "[release] push image" {
     test_release_push_image
 }
@@ -138,17 +142,24 @@ JSON
     test_release_push_docker_image
 }
 
+# ==============================================================================
+# UPGRADE - Switch to new binary
+# ==============================================================================
+
 @test "[upgrade] upgrade to new binary" {
     zot_stop_all
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
-    local zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    local zot_port=$(get_zot_port)
     zot_serve ${ZOT_MINIMAL_PATH} ${zot_config_file}
     wait_zot_reachable ${zot_port}
     sleep 60    # zot does additional initialization/verification during startup
 }
 
+# ==============================================================================
+# NEW TESTS - Test new version after upgrade
 # After upgrading to the new binary, expect additional artifacts (a signature
 # and an sbom) that were attached
+# ==============================================================================
 
 @test "[new] existing pull image" {
     test_new_existing_pull_image

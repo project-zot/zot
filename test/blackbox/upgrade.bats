@@ -57,6 +57,10 @@ JSON
     zli_add_config ${REGISTRY_NAME} ${registry_url}
 }
 
+# ==============================================================================
+# RELEASE TESTS - Test released version before upgrade
+# ==============================================================================
+
 @test "[release] push image" {
     test_release_push_image
 }
@@ -154,7 +158,7 @@ JSON
 }
 
 @test "[release] list by image name" {
-    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    zot_port=$(get_zot_port)
     run ${ZLI_PATH} repo list --config ${REGISTRY_NAME}
     [ "$status" -eq 0 ]
 
@@ -162,7 +166,7 @@ JSON
 }
 
 @test "[release] cve by image name and tag" {
-    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    zot_port=$(get_zot_port)
     run ${ZLI_PATH} cve list golang:1.20 --config ${REGISTRY_NAME}
     [ "$status" -eq 0 ]
 
@@ -171,7 +175,6 @@ JSON
     found=0
     for i in "${lines[@]}"
     do
-
         if [[ "$i" = *"CVE-2011-4915    LOW      fs/proc/base.c in the Linux kernel through 3..."* ]]; then
             found=1
         fi
@@ -179,20 +182,27 @@ JSON
     [ "$found" -eq 1 ]
 }
 
+# ==============================================================================
+# UPGRADE - Switch to new binary
+# ==============================================================================
+
 @test "[upgrade] upgrade to new binary" {
     zot_stop_all
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
-    local zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    local zot_port=$(get_zot_port)
     zot_serve ${ZOT_PATH} ${zot_config_file}
     wait_zot_reachable ${zot_port}
     sleep 60    # zot does additional initialization/verification during startup
 }
 
+# ==============================================================================
+# NEW TESTS - Test new version after upgrade
 # After upgrading to the new binary, expect additional artifacts (a signature
 # and an sbom) that were attached
+# ==============================================================================
 
 @test "[new] existing list by image name" {
-    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    zot_port=$(get_zot_port)
     run ${ZLI_PATH} repo list --config ${REGISTRY_NAME}
     [ "$status" -eq 0 ]
 
@@ -212,7 +222,7 @@ JSON
 }
 
 @test "[new] existing cve by image name and tag" {
-    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    zot_port=$(get_zot_port)
     run ${ZLI_PATH} cve list golang:1.20 --config ${REGISTRY_NAME}
     [ "$status" -eq 0 ]
 
@@ -221,7 +231,6 @@ JSON
     found=0
     for i in "${lines[@]}"
     do
-
         if [[ "$i" = *"CVE-2011-4915    LOW      fs/proc/base.c in the Linux kernel through 3..."* ]]; then
             found=1
         fi
@@ -230,19 +239,7 @@ JSON
 }
 
 @test "[new] existing pull image" {
-    local oci_data_dir=${BATS_FILE_TMPDIR}/oci
-    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
-    # first check existing images
-    run curl http://127.0.0.1:${zot_port}/v2/_catalog
-    [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq 'any(.repositories[]; . == "golang")') = true ] 
-    run skopeo --insecure-policy copy --src-tls-verify=false \
-        docker://127.0.0.1:${zot_port}/golang:1.20 \
-        oci:${oci_data_dir}/golang:1.20
-    [ "$status" -eq 0 ]
-    run cat ${BATS_FILE_TMPDIR}/oci/golang/index.json
-    [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.manifests[].annotations."org.opencontainers.image.ref.name"') = '"1.20"' ]
+    test_new_existing_pull_image
 }
 
 @test "[new] existing pull image index" {
@@ -254,14 +251,13 @@ JSON
 }
 
 @test "[new] existing list repositories with regclient" {
-    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    zot_port=$(get_zot_port)
     run regctl repo ls localhost:${zot_port}
     [ "$status" -eq 0 ]
 
     found=0
     for i in "${lines[@]}"
     do
-
         if [ "$i" = 'test-regclient' ]; then
             found=1
         fi
@@ -283,22 +279,7 @@ JSON
 }
 
 @test "[new] push image" {
-    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
-    run skopeo --insecure-policy copy --dest-tls-verify=false \
-        oci:${TEST_DATA_DIR}/golang:1.20 \
-        docker://127.0.0.1:${zot_port}/golang:1.20
-    [ "$status" -eq 0 ]
-    run skopeo --insecure-policy copy --dest-tls-verify=false \
-        docker://ghcr.io/project-zot/test-images/alpine:3.17.3 \
-        docker://127.0.0.1:${zot_port}/alpine:3.17.3
-    [ "$status" -eq 0 ]
-    run curl http://127.0.0.1:${zot_port}/v2/_catalog
-    [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq 'any(.repositories[]; . == "golang")') = true ] 
-    [ $(echo "${lines[-1]}" | jq 'any(.repositories[]; . == "alpine")') = true ] 
-    run curl http://127.0.0.1:${zot_port}/v2/golang/tags/list
-    [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.20"' ]
+    test_new_push_image
 }
 
 @test "[new] pull image" {
@@ -394,7 +375,7 @@ JSON
 }
 
 @test "[new] list by image name" {
-    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    zot_port=$(get_zot_port)
     run ${ZLI_PATH} repo list --config ${REGISTRY_NAME}
     [ "$status" -eq 0 ]
 
@@ -414,7 +395,7 @@ JSON
 }
 
 @test "[new] cve by image name and tag" {
-    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    zot_port=$(get_zot_port)
     run ${ZLI_PATH} cve list golang:1.20 --config ${REGISTRY_NAME}
     [ "$status" -eq 0 ]
 
@@ -423,7 +404,6 @@ JSON
     found=0
     for i in "${lines[@]}"
     do
-
         if [[ "$i" = *"CVE-2011-4915    LOW      fs/proc/base.c in the Linux kernel through 3..."* ]]; then
             found=1
         fi
