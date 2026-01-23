@@ -202,6 +202,32 @@ jobs:
             sudo ./scripts/enable_userns.sh
             ./examples/kind/kind-ci.sh
 
+  oidc-workload-identity:
+    name: OIDC Workload Identity E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: 1.25.x
+      - name: Install dependencies
+        run: |
+          cd $GITHUB_WORKSPACE
+          make check-blackbox-prerequisites
+          go mod download
+          sudo apt-get update
+          sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config rpm uidmap jq
+      - name: Log in to GitHub Docker Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Run OIDC workload identity tests
+        run: |
+            sudo ./scripts/enable_userns.sh
+            ./examples/kind/kind-oidc-workload-identity.sh
+
   cloud-scale-out:
     name: s3+dynamodb scale-out
     runs-on: oracle-vm-16cpu-64gb-x86-64

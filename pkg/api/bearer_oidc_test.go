@@ -4,10 +4,17 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
+	"errors"
 	"maps"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -631,4 +638,146 @@ func TestBearerOIDCConfig(t *testing.T) {
 			So(authConfig.IsBearerAuthEnabled(), ShouldBeFalse)
 		})
 	})
+}
+
+func TestGetBearerOIDCTestHTTPClient(t *testing.T) {
+	Convey("Test GetBearerOIDCTestHTTPClient", t, func() {
+		// Save original env var and restore after test
+		originalEnv := os.Getenv("ZOT_BEARER_OIDC_TEST_CA_FILE")
+		Reset(func() {
+			os.Setenv("ZOT_BEARER_OIDC_TEST_CA_FILE", originalEnv)
+		})
+
+		Convey("Returns nil when env var is empty", func() {
+			os.Unsetenv("ZOT_BEARER_OIDC_TEST_CA_FILE")
+
+			client := api.GetBearerOIDCTestHTTPClient()
+			So(client, ShouldBeNil)
+		})
+
+		Convey("Returns nil when CA file does not exist", func() {
+			os.Setenv("ZOT_BEARER_OIDC_TEST_CA_FILE", "/nonexistent/path/to/ca.crt")
+
+			client := api.GetBearerOIDCTestHTTPClient()
+			So(client, ShouldBeNil)
+		})
+
+		Convey("Returns nil when CA file contains invalid PEM data", func() {
+			tmpDir := t.TempDir()
+			caFile := filepath.Join(tmpDir, "invalid-ca.crt")
+
+			err := os.WriteFile(caFile, []byte("not a valid PEM certificate"), 0o600)
+			So(err, ShouldBeNil)
+
+			os.Setenv("ZOT_BEARER_OIDC_TEST_CA_FILE", caFile)
+
+			client := api.GetBearerOIDCTestHTTPClient()
+			So(client, ShouldBeNil)
+		})
+
+		Convey("Returns nil when CA file contains valid PEM but not a certificate", func() {
+			tmpDir := t.TempDir()
+			caFile := filepath.Join(tmpDir, "not-a-cert.pem")
+
+			// Create a valid PEM block but with wrong type
+			pemBlock := &pem.Block{
+				Type:  "PRIVATE KEY",
+				Bytes: []byte("fake key data"),
+			}
+			pemData := pem.EncodeToMemory(pemBlock)
+
+			err := os.WriteFile(caFile, pemData, 0o600)
+			So(err, ShouldBeNil)
+
+			os.Setenv("ZOT_BEARER_OIDC_TEST_CA_FILE", caFile)
+
+			client := api.GetBearerOIDCTestHTTPClient()
+			So(client, ShouldBeNil)
+		})
+
+		Convey("Returns configured HTTP client with valid CA file", func() {
+			tmpDir := t.TempDir()
+			caFile := filepath.Join(tmpDir, "ca.crt")
+
+			// Generate a self-signed CA certificate
+			caCert := createTestCACertificate(t)
+
+			err := os.WriteFile(caFile, caCert, 0o600)
+			So(err, ShouldBeNil)
+
+			os.Setenv("ZOT_BEARER_OIDC_TEST_CA_FILE", caFile)
+
+			client := api.GetBearerOIDCTestHTTPClient()
+			So(client, ShouldNotBeNil)
+			So(client.Transport, ShouldNotBeNil)
+		})
+
+		Convey("Returns nil when http.DefaultTransport is not *http.Transport", func() {
+			tmpDir := t.TempDir()
+			caFile := filepath.Join(tmpDir, "ca.crt")
+
+			// Generate a valid CA certificate
+			caCert := createTestCACertificate(t)
+
+			err := os.WriteFile(caFile, caCert, 0o600)
+			So(err, ShouldBeNil)
+
+			os.Setenv("ZOT_BEARER_OIDC_TEST_CA_FILE", caFile)
+
+			// Save the original DefaultTransport and restore after test
+			originalTransport := http.DefaultTransport
+			defer func() {
+				http.DefaultTransport = originalTransport
+			}()
+
+			// Replace with a custom RoundTripper that is not *http.Transport
+			http.DefaultTransport = &customRoundTripper{}
+
+			client := api.GetBearerOIDCTestHTTPClient()
+			So(client, ShouldBeNil)
+		})
+	})
+}
+
+// customRoundTripper is a mock RoundTripper that is not *http.Transport.
+type customRoundTripper struct{}
+
+var errNotImplemented = errors.New("not implemented")
+
+func (c *customRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errNotImplemented
+}
+
+// createTestCACertificate generates a self-signed CA certificate for testing.
+func createTestCACertificate(t *testing.T) []byte {
+	t.Helper()
+
+	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("failed to generate private key: %v", err)
+	}
+
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			Organization: []string{"Test CA"},
+		},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(time.Hour),
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &privKey.PublicKey, privKey)
+	if err != nil {
+		t.Fatalf("failed to create certificate: %v", err)
+	}
+
+	certPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: certDER,
+	})
+
+	return certPEM
 }

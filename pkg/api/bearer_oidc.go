@@ -2,8 +2,12 @@ package api
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
+	"net/http"
+	"os"
 	"regexp"
 	"sync"
 	"time"
@@ -184,6 +188,9 @@ func (o *oidcProvider) getVerifier(ctx context.Context) (*oidc.IDTokenVerifier, 
 	}
 
 	// Time to refresh the verifier.
+	if hc := GetBearerOIDCTestHTTPClient(); hc != nil {
+		ctx = oidc.ClientContext(ctx, hc)
+	}
 	p, err := oidc.NewProvider(ctx, o.issuer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to refresh OIDC provider from issuer %s: %w", o.issuer, err)
@@ -203,4 +210,35 @@ func (o *oidcProvider) getVerifier(ctx context.Context) (*oidc.IDTokenVerifier, 
 	o.verifierMu.Unlock()
 
 	return o.verifier, nil
+}
+
+// GetBearerOIDCTestHTTPClient returns an HTTP client for testing purposes.
+// It looks up a test environment variable pointing to a PEM-encoded
+// CA certificate to trust when making requests to the OIDC issuer.
+// If no such variable is set, it returns nil. This environment variable
+// is not meant for production use.
+func GetBearerOIDCTestHTTPClient() *http.Client {
+	caFile := os.Getenv("ZOT_BEARER_OIDC_TEST_CA_FILE")
+	if caFile == "" {
+		return nil
+	}
+	caCert, err := os.ReadFile(caFile)
+	if err != nil {
+		return nil
+	}
+	certPool := x509.NewCertPool()
+	if !certPool.AppendCertsFromPEM(caCert) {
+		return nil
+	}
+	defaultTransport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return nil
+	}
+	testTransport := defaultTransport.Clone()
+	testTransport.TLSClientConfig = &tls.Config{
+		RootCAs:    certPool,
+		MinVersion: tls.VersionTLS12,
+	}
+
+	return &http.Client{Transport: testTransport}
 }
