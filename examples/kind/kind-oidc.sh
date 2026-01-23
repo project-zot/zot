@@ -3,6 +3,7 @@ set -o errexit
 
 ROOT_DIR=$(git rev-parse --show-toplevel)
 KIND="${ROOT_DIR}"/hack/tools/bin/kind
+DEX_VERSION="v2.41.1"
 
 # Reference: https://github.com/int128/kind-oidc
 # This test validates Kubernetes OIDC authentication with zot registry
@@ -14,7 +15,7 @@ if [ "$1" = "--interactive" ]; then
 fi
 
 # set no_proxy if applicable
-if [ ! -z "${no_proxy}" ]; then
+if [ -n "${no_proxy}" ]; then
   echo "Updating no_proxy env var";
   export no_proxy=${no_proxy},dex-server,kind-registry;
   export NO_PROXY=${no_proxy};
@@ -83,7 +84,7 @@ docker run -d --name dex-server \
   -v /tmp/kind-oidc/dex-config.yaml:/dex-config.yaml:ro \
   -v /tmp/kind-oidc/dex-server.crt:/dex-server.crt:ro \
   -v /tmp/kind-oidc/dex-server.key:/dex-server.key:ro \
-  ghcr.io/dexidp/dex:v2.41.1 \
+  ghcr.io/dexidp/dex:${DEX_VERSION} \
   serve /dex-config.yaml
 
 # Wait for Dex to start
@@ -115,7 +116,7 @@ fi
 
 CLUSTER_NAME=kind-oidc
 # Delete the cluster if it already exists
-"${KIND}" get clusters | grep ${CLUSTER_NAME} && "${KIND}" delete cluster --name ${CLUSTER_NAME}
+"${KIND}" get clusters | grep "${CLUSTER_NAME}" && "${KIND}" delete cluster --name "${CLUSTER_NAME}"
 
 # Get Dex server IP address
 DEX_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' dex-server)
