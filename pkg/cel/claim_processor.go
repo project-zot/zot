@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
@@ -13,27 +14,27 @@ import (
 // defaultUsernameExpr is the default CEL expression for extracting the username from OIDC claims.
 const defaultUsernameExpr = "claims.iss + '/' + claims.sub"
 
-// getAudiencesExpr returns the CEL expression for extracting the audiences from OIDC claims.
+// audiencesExpr is the lazily-initialized CEL expression for extracting audiences from OIDC claims.
 //
 //nolint:gochecknoglobals
-var getAudiencesExpr = func() func() *Expression {
-	var expr *Expression
+var (
+	audiencesExpr     *Expression
+	audiencesExprOnce sync.Once
+)
 
-	return func() *Expression {
-		if expr != nil {
-			return expr
-		}
-
+// getAudiencesExpr returns the CEL expression for extracting the audiences from OIDC claims.
+func getAudiencesExpr() *Expression {
+	audiencesExprOnce.Do(func() {
 		var err error
 
-		expr, err = NewExpression("claims.aud")
+		audiencesExpr, err = NewExpression("claims.aud")
 		if err != nil {
 			panic(fmt.Sprintf("failed to parse default audiences expression: %v", err))
 		}
+	})
 
-		return expr
-	}
-}()
+	return audiencesExpr
+}
 
 // ClaimResult holds the result of processing OIDC claims.
 type ClaimResult struct {
