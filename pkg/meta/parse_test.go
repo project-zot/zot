@@ -143,7 +143,7 @@ func TestParseStorageErrors(t *testing.T) {
 			imageStore.GetIndexContentFn = func(repo string) ([]byte, error) {
 				return []byte("{}"), nil
 			}
-			metaDB.ResetRepoReferencesFn = func(repo string) error { return ErrTestError }
+			metaDB.ResetRepoReferencesFn = func(repo string, tagsToKeep map[string]bool) error { return ErrTestError }
 			err := meta.ParseRepo("repo", metaDB, storeController, log)
 			So(err, ShouldNotBeNil)
 		})
@@ -590,6 +590,51 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) 
 
 		So(repoMeta.Statistics[image.DigestStr()].DownloadCount, ShouldEqual, 3)
 		So(repoMeta.StarCount, ShouldEqual, 1)
+	})
+
+	Convey("preserve TaggedTimestamp during ParseRepo", func() {
+		imageStore := local.NewImageStore(rootDir, false, false,
+			log, monitoring.NewMetricsServer(false, log), nil, nil, nil, nil)
+
+		storeController := storage.StoreController{DefaultStore: imageStore}
+
+		// Create images with tags
+		for i := range 2 {
+			image := CreateRandomImage() //nolint:staticcheck
+
+			err := WriteImageToFileSystem(
+				image, repo, fmt.Sprintf("tag%d", i), storeController)
+			So(err, ShouldBeNil)
+		}
+
+		// Initial parse to set up metadata
+		err := meta.ParseStorage(metaDB, storeController, log) //nolint: contextcheck
+		So(err, ShouldBeNil)
+
+		// Get initial TaggedTimestamp values
+		repoMeta, err := metaDB.GetRepoMeta(ctx, repo)
+		So(err, ShouldBeNil)
+		So(repoMeta.Tags, ShouldContainKey, "tag0")
+		So(repoMeta.Tags, ShouldContainKey, "tag1")
+
+		tag0Timestamp := repoMeta.Tags["tag0"].TaggedTimestamp
+		tag1Timestamp := repoMeta.Tags["tag1"].TaggedTimestamp
+
+		// Verify timestamps are not zero
+		So(tag0Timestamp.IsZero(), ShouldBeFalse)
+		So(tag1Timestamp.IsZero(), ShouldBeFalse)
+
+		// Re-parse the storage (simulating service restart)
+		err = meta.ParseStorage(metaDB, storeController, log) //nolint: contextcheck
+		So(err, ShouldBeNil)
+
+		// Verify TaggedTimestamp values are preserved
+		repoMeta, err = metaDB.GetRepoMeta(ctx, repo)
+		So(err, ShouldBeNil)
+		So(repoMeta.Tags, ShouldContainKey, "tag0")
+		So(repoMeta.Tags, ShouldContainKey, "tag1")
+		So(repoMeta.Tags["tag0"].TaggedTimestamp, ShouldEqual, tag0Timestamp)
+		So(repoMeta.Tags["tag1"].TaggedTimestamp, ShouldEqual, tag1Timestamp)
 	})
 
 	// make sure pushTimestamp is always populated to not interfere with retention logic

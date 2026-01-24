@@ -209,9 +209,13 @@ type ImageSummary {
     """
     LastPullTimestamp: Time
     """
-	Timestamp when the image was pushed to the registry
+    Timestamp when the image was pushed to the registry
     """
     PushTimestamp: Time
+    """
+    Timestamp when the image manifest was tagged (if the data is unavailable it falls back to when the image was pushed to the registry)
+    """
+    TaggedTimestamp: Time
     """
     Timestamp of the last modification done to the image (from config or the last updated layer)
     """

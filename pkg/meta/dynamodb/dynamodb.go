@@ -420,9 +420,23 @@ func (dwr *DynamoDB) SetRepoReference(ctx context.Context, repo string, referenc
 
 	// 3. Update tag
 	if !common.ReferenceIsDigest(reference) {
+		// Set TaggedTimestamp to now if this is a new tag, otherwise preserve existing timestamp
+		// For old data without TaggedTimestamp, leave it nil so it falls back to PushTimestamp
+		var taggedTimestamp *timestamppb.Timestamp
+		if existingTag, exists := repoMeta.Tags[reference]; exists {
+			// Tag exists - preserve TaggedTimestamp if present, otherwise leave nil (old data)
+			if existingTag.GetTaggedTimestamp() != nil {
+				taggedTimestamp = existingTag.GetTaggedTimestamp()
+			}
+			// else leave taggedTimestamp as nil (old data without TaggedTimestamp)
+		} else {
+			// New tag - set timestamp to now
+			taggedTimestamp = timestamppb.Now()
+		}
 		repoMeta.Tags[reference] = &proto_go.TagDescriptor{
-			Digest:    imageMeta.Digest.String(),
-			MediaType: imageMeta.MediaType,
+			Digest:          imageMeta.Digest.String(),
+			MediaType:       imageMeta.MediaType,
+			TaggedTimestamp: taggedTimestamp,
 		}
 	}
 
@@ -864,17 +878,32 @@ func getProtoImageMetaFromAttribute(imageMetaAttribute types.AttributeValue) (*p
 	return protoImageMeta, nil
 }
 
-func (dwr *DynamoDB) ResetRepoReferences(repo string) error {
+func (dwr *DynamoDB) ResetRepoReferences(repo string, tagsToKeep map[string]bool) error {
 	protoRepoMeta, err := dwr.getProtoRepoMeta(context.Background(), repo)
 	if err != nil {
 		return err
+	}
+
+	// Preserve tags that are in tagsToKeep, remove others
+	preservedTags := make(map[string]*proto_go.TagDescriptor)
+	if tagsToKeep != nil {
+		for tag, descriptor := range protoRepoMeta.Tags {
+			// Keep the tag if it's in tagsToKeep, or if it's the empty key (internal use)
+			if tag == "" || tagsToKeep[tag] {
+				preservedTags[tag] = descriptor
+			}
+		}
+	}
+	// Ensure empty key exists for internal use
+	if _, exists := preservedTags[""]; !exists {
+		preservedTags[""] = &proto_go.TagDescriptor{}
 	}
 
 	return dwr.setProtoRepoMeta(repo, &proto_go.RepoMeta{
 		Name:       repo,
 		Statistics: protoRepoMeta.Statistics,
 		Stars:      protoRepoMeta.Stars,
-		Tags:       map[string]*proto_go.TagDescriptor{"": {}},
+		Tags:       preservedTags,
 		Referrers:  map[string]*proto_go.ReferrersInfo{"": {}},
 		Signatures: map[string]*proto_go.ManifestSignatures{"": {Map: map[string]*proto_go.SignaturesInfo{"": {}}}},
 	})

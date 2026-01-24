@@ -242,9 +242,23 @@ func (bdw *BoltDB) SetRepoReference(ctx context.Context, repo string, reference 
 
 		// 3. Update tag
 		if !common.ReferenceIsDigest(reference) {
+			// Set TaggedTimestamp to now if this is a new tag, otherwise preserve existing timestamp
+			// For old data without TaggedTimestamp, leave it nil so it falls back to PushTimestamp
+			var taggedTimestamp *timestamppb.Timestamp
+			if existingTag, exists := protoRepoMeta.Tags[reference]; exists {
+				// Tag exists - preserve TaggedTimestamp if present, otherwise leave nil (old data)
+				if existingTag.GetTaggedTimestamp() != nil {
+					taggedTimestamp = existingTag.GetTaggedTimestamp()
+				}
+				// else leave taggedTimestamp as nil (old data without TaggedTimestamp)
+			} else {
+				// New tag - set timestamp to now
+				taggedTimestamp = timestamppb.Now()
+			}
 			protoRepoMeta.Tags[reference] = &proto_go.TagDescriptor{
-				Digest:    imageMeta.Digest.String(),
-				MediaType: imageMeta.MediaType,
+				Digest:          imageMeta.Digest.String(),
+				MediaType:       imageMeta.MediaType,
+				TaggedTimestamp: taggedTimestamp,
 			}
 		}
 
@@ -1161,7 +1175,7 @@ func (bdw *BoltDB) DeleteRepoMeta(repo string) error {
 	return err
 }
 
-func (bdw *BoltDB) ResetRepoReferences(repo string) error {
+func (bdw *BoltDB) ResetRepoReferences(repo string, tagsToKeep map[string]bool) error {
 	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
 		buck := tx.Bucket([]byte(RepoMetaBuck))
 
@@ -1172,11 +1186,26 @@ func (bdw *BoltDB) ResetRepoReferences(repo string) error {
 			return err
 		}
 
+		// Preserve tags that are in tagsToKeep, remove others
+		preservedTags := make(map[string]*proto_go.TagDescriptor)
+		if tagsToKeep != nil {
+			for tag, descriptor := range protoRepoMeta.Tags {
+				// Keep the tag if it's in tagsToKeep, or if it's the empty key (internal use)
+				if tag == "" || tagsToKeep[tag] {
+					preservedTags[tag] = descriptor
+				}
+			}
+		}
+		// Ensure empty key exists for internal use
+		if _, exists := preservedTags[""]; !exists {
+			preservedTags[""] = &proto_go.TagDescriptor{}
+		}
+
 		repoMetaBlob, err = proto.Marshal(&proto_go.RepoMeta{
 			Name:       repo,
 			Statistics: protoRepoMeta.Statistics,
 			Stars:      protoRepoMeta.Stars,
-			Tags:       map[string]*proto_go.TagDescriptor{"": {}},
+			Tags:       preservedTags,
 			Signatures: map[string]*proto_go.ManifestSignatures{"": {Map: map[string]*proto_go.SignaturesInfo{"": {}}}},
 			Referrers:  map[string]*proto_go.ReferrersInfo{"": {}},
 		})
