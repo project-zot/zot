@@ -596,7 +596,10 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 						}
 					}
 
-					amCtx := acCtrlr.getAuthnMiddlewareContext(BEARER, request)
+					// Use BEARER_OIDC to enable authorization via accessControl config.
+					// Unlike traditional bearer tokens (which contain 'access' claims with permissions),
+					// OIDC tokens contain identity only, so authorization must come from the config.
+					amCtx := acCtrlr.getAuthnMiddlewareContext(BEARER_OIDC, request)
 					next.ServeHTTP(response, request.WithContext(amCtx)) //nolint:contextcheck
 
 					return

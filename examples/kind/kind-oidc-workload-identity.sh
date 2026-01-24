@@ -18,8 +18,8 @@
 # Options:
 #   --skip-setup      Skip cluster creation, image building, and initial setup
 #                     (assumes resources already exist from a previous run)
-#   --only-crane      Only run crane e2e tests (tests 7-10)
-#   --only-curl       Only run curl-based tests (tests 1-6)
+#   --only-crane      Only run crane e2e tests (tests 8-14)
+#   --only-curl       Only run curl-based tests (tests 1-7)
 #   --keep-resources  Don't clean up resources on exit (useful for debugging)
 #   --help            Show this help message
 
@@ -100,9 +100,10 @@ AUDIENCE="zot-registry"
 
 # Pin image versions for reproducibility and to avoid Docker Hub rate limiting issues
 # These versions should be updated periodically
+# Note: BUSYBOX_IMAGE uses gcr.io to avoid Docker Hub rate limits for crane operations
 CURL_IMAGE="curlimages/curl:8.5.0"
 ALPINE_IMAGE="alpine:3.19"
-BUSYBOX_IMAGE="docker.io/library/busybox:1.36"
+BUSYBOX_IMAGE="gcr.io/google-containers/busybox:1.27"
 KIND_NODE_IMAGE="kindest/node:v1.28.7"
 
 # Colors for output
@@ -247,9 +248,12 @@ log_info "Waiting for cluster to be ready..."
 kubectl wait --for=condition=Ready nodes --all --timeout=120s
 
 # Load pre-pulled images into Kind cluster to avoid Docker Hub rate limiting
-# This makes the busybox image available to pods inside the cluster
-log_info "Loading busybox image into Kind cluster..."
-"${KIND}" load docker-image "${BUSYBOX_IMAGE}" --name "${CLUSTER_NAME}" || log_warn "Failed to load busybox image"
+# This makes the images available to pods inside the cluster without pulling from Docker Hub
+log_info "Loading images into Kind cluster..."
+for img in "${CURL_IMAGE}" "${ALPINE_IMAGE}" "${BUSYBOX_IMAGE}"; do
+    log_info "Loading ${img}..."
+    "${KIND}" load docker-image "${img}" --name "${CLUSTER_NAME}" || log_warn "Failed to load ${img}"
+done
 
 # Get the control plane container name and IP
 CONTROL_PLANE_CONTAINER="${CLUSTER_NAME}-control-plane"
@@ -442,7 +446,7 @@ PAYLOAD_PADDED="${PAYLOAD}$(printf '%*s' $((4 - ${#PAYLOAD} % 4)) | tr ' ' '=')"
 echo "${PAYLOAD_PADDED}" | base64 -d 2>/dev/null | jq . || log_warn "Could not decode token (may need jq)"
 
 # =============================================================================
-# CURL-BASED TESTS (Tests 1-6)
+# CURL-BASED TESTS (Tests 1-7)
 # =============================================================================
 if [ "$ONLY_CRANE" = true ]; then
     log_info "Skipping curl-based tests (--only-oras specified)"
@@ -559,8 +563,9 @@ fi
 # Note: Currently, OIDC bearer auth only performs authentication, not repository-level authorization.
 # The BaseAuthzHandler in zot bypasses authorization checks for bearer auth.
 # This test verifies that a different SA with the correct audience CAN authenticate (proving OIDC works)
-# but uses the username derived from the token (which could be used for authorization in future versions).
-log_info "TEST 6: Verifying different ServiceAccount with correct audience is authenticated..."
+# but has NO permissions because it's not in the accessControl config.
+# The username is derived from the token and used for authorization checks.
+log_info "TEST 6: Verifying different ServiceAccount authenticates but has NO permissions..."
 
 # Create a different ServiceAccount
 kubectl create serviceaccount other-sa -n "${TEST_NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
@@ -600,17 +605,33 @@ EOF
     kubectl wait --for=condition=Ready pod/oidc-test-pod-other-sa -n "${TEST_NAMESPACE}" --timeout=60s
 fi
 
-# Verify that another SA with the correct audience can also authenticate
-# This proves the OIDC mechanism works for any valid token with correct audience
-HTTP_CODE=$(kubectl exec -n "${TEST_NAMESPACE}" oidc-test-pod-other-sa -- \
-    sh -c 'TOKEN=$(cat /var/run/secrets/tokens/zot-token); curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TOKEN" "http://${ZOT_REGISTRY}/v2/_catalog"' 2>/dev/null || echo "000")
+# Verify that other-sa can authenticate but sees an EMPTY catalog (no read permissions)
+CATALOG_RESPONSE=$(kubectl exec -n "${TEST_NAMESPACE}" oidc-test-pod-other-sa -- \
+    sh -c 'TOKEN=$(cat /var/run/secrets/tokens/zot-token); curl -s -H "Authorization: Bearer $TOKEN" "http://${ZOT_REGISTRY}/v2/_catalog"' 2>/dev/null || echo "{}")
 
-if [ "$HTTP_CODE" = "200" ]; then
-    log_info "TEST 6 PASSED: Other ServiceAccount with correct audience is authenticated (HTTP $HTTP_CODE)"
-    log_info "Note: Repository-level authorization for OIDC bearer auth is not yet implemented in zot."
+if echo "$CATALOG_RESPONSE" | grep -q '"repositories":\[\]'; then
+    log_info "TEST 6 PASSED: Other ServiceAccount authenticated but has NO permissions (empty catalog)"
     log_info "      The username '${OIDC_ISSUER}/system:serviceaccount:${TEST_NAMESPACE}:other-sa' was extracted from the token."
+    log_info "      Authorization is enforced via accessControl config."
 else
-    log_error "TEST 6 FAILED: Expected 200 for other ServiceAccount with correct audience, got HTTP $HTTP_CODE"
+    log_error "TEST 6 FAILED: Expected empty catalog for other-sa (not in config)"
+    log_error "Got: $CATALOG_RESPONSE"
+    docker logs "${ZOT_REG_NAME}" 2>&1 | tail -30
+    exit 1
+fi
+
+# =============================================================================
+# TEST 7: Verify other-sa gets 403 when trying to write (authorization enforced)
+# =============================================================================
+log_info "TEST 7: Verifying other-sa gets 403 Forbidden when trying to write..."
+
+HTTP_CODE=$(kubectl exec -n "${TEST_NAMESPACE}" oidc-test-pod-other-sa -- \
+    sh -c 'TOKEN=$(cat /var/run/secrets/tokens/zot-token); curl -s -o /dev/null -w "%{http_code}" -X POST -H "Authorization: Bearer $TOKEN" "http://${ZOT_REGISTRY}/v2/unauthorized-repo/blobs/uploads/"' 2>/dev/null || echo "000")
+
+if [ "$HTTP_CODE" = "403" ]; then
+    log_info "TEST 7 PASSED: Other ServiceAccount correctly rejected for write (HTTP 403)"
+else
+    log_error "TEST 7 FAILED: Expected 403 for write operation, got HTTP $HTTP_CODE"
     docker logs "${ZOT_REG_NAME}" 2>&1 | tail -30
     exit 1
 fi
@@ -712,41 +733,47 @@ remove_crane_auth() {
 }
 
 # =============================================================================
-# TEST 7: Copy OCI image using crane WITHOUT auth (should FAIL)
-# =============================================================================
-log_info "TEST 7: Copying OCI image using crane WITHOUT auth (should fail)..."
-remove_crane_auth
-
-PUSH_OUTPUT=$(kubectl exec -n "${TEST_NAMESPACE}" crane-test-pod -- \
-    sh -c "crane copy --insecure ${BUSYBOX_IMAGE} \$ZOT_REGISTRY/crane-noauth:v1 2>&1" || true)
-
-if echo "$PUSH_OUTPUT" | grep -qiE "401|unauthorized|authentication|UNAUTHORIZED"; then
-    log_info "TEST 7 PASSED: crane copy correctly rejected without auth"
-    log_info "Output: $(echo "$PUSH_OUTPUT" | tail -2)"
-else
-    log_error "TEST 7 FAILED: Expected authentication failure"
-    log_error "Output: $PUSH_OUTPUT"
-    docker logs "${ZOT_REG_NAME}" 2>&1 | tail -30
-    exit 1
-fi
-
-# =============================================================================
 # TEST 8: Copy OCI image using crane WITH auth (should SUCCEED)
+# Note: This runs first to populate zot, so subsequent tests don't need Docker Hub
+# We check if the image already exists to avoid Docker Hub rate limiting on reruns
 # =============================================================================
 log_info "TEST 8: Copying OCI image using crane WITH auth (should succeed)..."
 setup_crane_auth
 
-PUSH_OUTPUT=$(kubectl exec -n "${TEST_NAMESPACE}" crane-test-pod -- \
-    sh -c "crane copy --insecure ${BUSYBOX_IMAGE} \$ZOT_REGISTRY/crane-test:v1 2>&1") || true
+# Check if image already exists in zot from a previous run
+IMAGE_EXISTS=$(kubectl exec -n "${TEST_NAMESPACE}" crane-test-pod -- \
+    sh -c 'crane manifest --insecure $ZOT_REGISTRY/crane-test:v1 2>&1 && echo EXISTS' || true)
 
-if echo "$PUSH_OUTPUT" | grep -qiE "pushed|existing|crane-test:v1.*digest"; then
-    log_info "TEST 8 PASSED: crane copy succeeded with auth"
-    log_info "Push output: $(echo "$PUSH_OUTPUT" | tail -3)"
+if echo "$IMAGE_EXISTS" | grep -q "EXISTS"; then
+    log_info "Image crane-test:v1 already exists in zot, skipping Docker Hub pull"
+    # Verify we can still access it with auth (do a copy to v1-test to verify write works)
+    PUSH_OUTPUT=$(kubectl exec -n "${TEST_NAMESPACE}" crane-test-pod -- \
+        sh -c 'crane copy --insecure $ZOT_REGISTRY/crane-test:v1 $ZOT_REGISTRY/crane-test:v1-test 2>&1') || true
+    if echo "$PUSH_OUTPUT" | grep -qiE "pushed|existing|copied|digest"; then
+        log_info "TEST 8 PASSED: crane copy within zot succeeded with auth"
+        log_info "Push output: $(echo "$PUSH_OUTPUT" | tail -2)"
+    else
+        log_error "TEST 8 FAILED: crane copy within zot failed"
+        log_error "Output: $PUSH_OUTPUT"
+        docker logs "${ZOT_REG_NAME}" 2>&1 | tail -50
+        exit 1
+    fi
 else
-    log_error "TEST 8 FAILED: crane copy failed with valid auth"
-    log_error "Output: $PUSH_OUTPUT"
-    docker logs "${ZOT_REG_NAME}" 2>&1 | tail -50
-    exit 1
+    # Image doesn't exist, need to pull from Docker Hub
+    log_info "Image not found in zot, pulling from Docker Hub..."
+    PUSH_OUTPUT=$(kubectl exec -n "${TEST_NAMESPACE}" crane-test-pod -- \
+        sh -c "crane copy --insecure ${BUSYBOX_IMAGE} \$ZOT_REGISTRY/crane-test:v1 2>&1") || true
+
+    if echo "$PUSH_OUTPUT" | grep -qiE "pushed|existing|crane-test:v1.*digest|copied"; then
+        log_info "TEST 8 PASSED: crane copy from Docker Hub succeeded with auth"
+        log_info "Push output: $(echo "$PUSH_OUTPUT" | tail -3)"
+    else
+        log_error "TEST 8 FAILED: crane copy failed with valid auth"
+        log_error "Output: $PUSH_OUTPUT"
+        log_error "Note: If you see rate limit errors, this may be due to Docker Hub throttling"
+        docker logs "${ZOT_REG_NAME}" 2>&1 | tail -50
+        exit 1
+    fi
 fi
 
 # Verify the image was pushed by listing tags
@@ -762,40 +789,195 @@ else
 fi
 
 # =============================================================================
-# TEST 9: List tags using crane WITHOUT auth (should FAIL)
+# TEST 9: Copy OCI image using crane WITHOUT auth (should FAIL)
+# Note: Uses zot-to-zot copy to avoid Docker Hub rate limiting
 # =============================================================================
-log_info "TEST 9: Listing tags using crane WITHOUT auth (should fail)..."
+log_info "TEST 9: Copying OCI image using crane WITHOUT auth (should fail)..."
 remove_crane_auth
+
+COPY_NO_AUTH_OUTPUT=$(kubectl exec -n "${TEST_NAMESPACE}" crane-test-pod -- \
+    sh -c 'crane copy --insecure $ZOT_REGISTRY/crane-test:v1 $ZOT_REGISTRY/crane-test:v2 2>&1' || true)
+
+if echo "$COPY_NO_AUTH_OUTPUT" | grep -qiE "401|unauthorized|UNAUTHORIZED"; then
+    log_info "TEST 9 PASSED: crane copy correctly rejected without auth (401)"
+    log_info "Output: $(echo "$COPY_NO_AUTH_OUTPUT" | tail -2)"
+else
+    log_error "TEST 9 FAILED: Expected 401 authentication failure"
+    log_error "Output: $COPY_NO_AUTH_OUTPUT"
+    docker logs "${ZOT_REG_NAME}" 2>&1 | tail -30
+    exit 1
+fi
+
+# =============================================================================
+# TEST 10: List tags using crane WITHOUT auth (should FAIL)
+# =============================================================================
+log_info "TEST 10: Listing tags using crane WITHOUT auth (should fail)..."
 
 PULL_OUTPUT=$(kubectl exec -n "${TEST_NAMESPACE}" crane-test-pod -- \
     sh -c 'crane ls --insecure $ZOT_REGISTRY/crane-test 2>&1' || true)
 
 if echo "$PULL_OUTPUT" | grep -qiE "401|unauthorized|authentication|UNAUTHORIZED"; then
-    log_info "TEST 9 PASSED: crane ls correctly rejected without auth"
+    log_info "TEST 10 PASSED: crane ls correctly rejected without auth"
     log_info "Output: $(echo "$PULL_OUTPUT" | tail -2)"
 else
-    log_error "TEST 9 FAILED: Expected authentication failure"
+    log_error "TEST 10 FAILED: Expected authentication failure"
     log_error "Output: $PULL_OUTPUT"
     docker logs "${ZOT_REG_NAME}" 2>&1 | tail -30
     exit 1
 fi
 
 # =============================================================================
-# TEST 10: Pull manifest using crane WITH auth (should SUCCEED)
+# TEST 11: Pull manifest using crane WITH auth (should SUCCEED)
 # =============================================================================
-log_info "TEST 10: Pulling manifest using crane WITH auth (should succeed)..."
+log_info "TEST 11: Pulling manifest using crane WITH auth (should succeed)..."
 setup_crane_auth
 
 PULL_OUTPUT=$(kubectl exec -n "${TEST_NAMESPACE}" crane-test-pod -- \
     sh -c 'crane manifest --insecure $ZOT_REGISTRY/crane-test:v1 2>&1') || true
 
 if echo "$PULL_OUTPUT" | grep -qiE "schemaVersion|mediaType|manifests"; then
-    log_info "TEST 10 PASSED: crane manifest succeeded with auth"
+    log_info "TEST 11 PASSED: crane manifest succeeded with auth"
     log_info "Manifest preview: $(echo "$PULL_OUTPUT" | head -5)"
 else
-    log_error "TEST 10 FAILED: crane manifest failed with valid auth"
+    log_error "TEST 11 FAILED: crane manifest failed with valid auth"
     log_error "Output: $PULL_OUTPUT"
     docker logs "${ZOT_REG_NAME}" 2>&1 | tail -50
+    exit 1
+fi
+
+# =============================================================================
+# CRANE TESTS FOR other-sa (NOT in accessControl config)
+# These tests verify that authorization is enforced for real OCI operations
+# =============================================================================
+
+# Create crane pod for other-sa (or reuse existing)
+if ! ensure_pod_ready "crane-other-sa-pod" "${TEST_NAMESPACE}" 120; then
+    log_info "Creating crane pod for other-sa..."
+    cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: crane-other-sa-pod
+  namespace: ${TEST_NAMESPACE}
+spec:
+  serviceAccountName: other-sa
+  initContainers:
+  - name: install-crane
+    image: ${ALPINE_IMAGE}
+    command:
+    - sh
+    - -c
+    - |
+      apk add --no-cache curl
+      curl -sL https://github.com/google/go-containerregistry/releases/download/v0.20.2/go-containerregistry_Linux_x86_64.tar.gz | tar -xzf - -C /tools crane
+      chmod +x /tools/crane
+    volumeMounts:
+    - name: tools
+      mountPath: /tools
+  containers:
+  - name: crane
+    image: ${ALPINE_IMAGE}
+    command: ["sleep", "infinity"]
+    volumeMounts:
+    - name: token
+      mountPath: /var/run/secrets/tokens
+      readOnly: true
+    - name: tools
+      mountPath: /usr/local/bin
+    env:
+    - name: ZOT_REGISTRY
+      value: "${ZOT_REG_NAME}:${ZOT_PORT}"
+  volumes:
+  - name: token
+    projected:
+      sources:
+      - serviceAccountToken:
+          path: zot-token
+          expirationSeconds: 3600
+          audience: ${AUDIENCE}
+  - name: tools
+    emptyDir: {}
+  restartPolicy: Never
+EOF
+    log_info "Waiting for crane-other-sa-pod to be ready..."
+    kubectl wait --for=condition=Ready pod/crane-other-sa-pod -n "${TEST_NAMESPACE}" --timeout=180s
+fi
+
+# Helper to set up auth for other-sa crane pod
+setup_other_sa_crane_auth() {
+    kubectl exec -n "${TEST_NAMESPACE}" crane-other-sa-pod -- sh -c '
+        mkdir -p ~/.docker
+        TOKEN=$(cat /var/run/secrets/tokens/zot-token)
+        cat > ~/.docker/config.json << EOFCONFIG
+{
+  "auths": {
+    "$ZOT_REGISTRY": {
+      "registryToken": "$TOKEN"
+    }
+  }
+}
+EOFCONFIG
+    '
+}
+
+# =============================================================================
+# TEST 12: Copy OCI image using crane with other-sa (should FAIL with 403)
+# Note: Uses zot-to-zot copy to avoid Docker Hub rate limiting
+# =============================================================================
+log_info "TEST 12: Copying OCI image using crane with other-sa (should fail with 403)..."
+setup_other_sa_crane_auth
+
+PUSH_OUTPUT=$(kubectl exec -n "${TEST_NAMESPACE}" crane-other-sa-pod -- \
+    sh -c 'crane copy --insecure $ZOT_REGISTRY/crane-test:v1 $ZOT_REGISTRY/other-sa-crane-test:v1 2>&1' || true)
+
+if echo "$PUSH_OUTPUT" | grep -qiE "403|forbidden|denied"; then
+    log_info "TEST 12 PASSED: crane copy correctly rejected for other-sa (403 Forbidden)"
+    log_info "Output: $(echo "$PUSH_OUTPUT" | tail -2)"
+else
+    log_error "TEST 12 FAILED: Expected 403 for other-sa push"
+    log_error "Output: $PUSH_OUTPUT"
+    docker logs "${ZOT_REG_NAME}" 2>&1 | tail -30
+    exit 1
+fi
+
+# =============================================================================
+# TEST 13: List tags using crane with other-sa (should FAIL with 403)
+# =============================================================================
+log_info "TEST 13: Listing tags using crane with other-sa (should fail with 403)..."
+
+LIST_OUTPUT=$(kubectl exec -n "${TEST_NAMESPACE}" crane-other-sa-pod -- \
+    sh -c 'crane ls --insecure $ZOT_REGISTRY/crane-test 2>&1' || true)
+
+if echo "$LIST_OUTPUT" | grep -qiE "403|forbidden|unauthorized|denied"; then
+    log_info "TEST 13 PASSED: crane ls correctly rejected for other-sa (access denied)"
+    log_info "Output: $(echo "$LIST_OUTPUT" | tail -2)"
+else
+    log_error "TEST 13 FAILED: Expected 403 for other-sa list"
+    log_error "Output: $LIST_OUTPUT"
+    docker logs "${ZOT_REG_NAME}" 2>&1 | tail -30
+    exit 1
+fi
+
+# =============================================================================
+# TEST 14: Crane operation with NO token (should FAIL with 401, not 403)
+# This verifies the difference between authentication failure (401) and
+# authorization failure (403)
+# =============================================================================
+log_info "TEST 14: Crane operation with NO token (should fail with 401)..."
+
+# Remove auth config from other-sa pod
+kubectl exec -n "${TEST_NAMESPACE}" crane-other-sa-pod -- sh -c 'rm -f ~/.docker/config.json' 2>/dev/null || true
+
+NO_TOKEN_OUTPUT=$(kubectl exec -n "${TEST_NAMESPACE}" crane-other-sa-pod -- \
+    sh -c 'crane ls --insecure $ZOT_REGISTRY/crane-test 2>&1' || true)
+
+if echo "$NO_TOKEN_OUTPUT" | grep -qiE "401|unauthorized"; then
+    log_info "TEST 14 PASSED: No token correctly returns 401 Unauthorized"
+    log_info "Output: $(echo "$NO_TOKEN_OUTPUT" | tail -2)"
+else
+    log_error "TEST 14 FAILED: Expected 401 for no token, got different error"
+    log_error "Output: $NO_TOKEN_OUTPUT"
+    docker logs "${ZOT_REG_NAME}" 2>&1 | tail -30
     exit 1
 fi
 
@@ -807,9 +989,9 @@ docker logs "${ZOT_REG_NAME}" 2>&1 | tail -50
 
 log_info "=========================================="
 if [ "$ONLY_CRANE" = true ]; then
-    log_info "Crane e2e tests (7-10) PASSED!"
+    log_info "Crane e2e tests (8-14) PASSED!"
 elif [ "$ONLY_CURL" = true ]; then
-    log_info "Curl-based tests (1-6) PASSED!"
+    log_info "Curl-based tests (1-7) PASSED!"
 else
     log_info "All OIDC Workload Identity tests PASSED!"
 fi
@@ -817,6 +999,6 @@ log_info "=========================================="
 log_info ""
 log_info "Iteration tips:"
 log_info "  --skip-setup     Skip cluster/image/zot setup (reuse existing)"
-log_info "  --only-crane     Run only crane tests (7-10)"
-log_info "  --only-curl      Run only curl tests (1-6)"
+log_info "  --only-crane     Run only crane tests (8-14)"
+log_info "  --only-curl      Run only curl tests (1-7)"
 log_info "  --keep-resources Keep cluster/zot running after exit"

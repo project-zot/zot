@@ -48,7 +48,8 @@ func checkAuthLogEntry(logData []byte, message string, expectedEnabled bool) boo
 // expectedAuth maps authentication method names to their expected enabled status (true/false).
 func verifyAuthenticationLogs(data []byte, expectedAuth map[string]bool) {
 	authMethods := []string{
-		"bearer authentication",
+		"jwt bearer authentication",
+		"oidc bearer authentication",
 		"basic authentication (htpasswd)",
 		"basic authentication (LDAP)",
 		"basic authentication (API key)",
@@ -2261,7 +2262,8 @@ func TestServeAPIKey(t *testing.T) {
 		So(string(data), ShouldContainSubstring, "configuration settings")
 		// verify authentication methods status messages are present
 		verifyAuthenticationLogs(data, map[string]bool{
-			"bearer authentication":           false,
+			"jwt bearer authentication":       false,
+			"oidc bearer authentication":      false,
 			"basic authentication (htpasswd)": false,
 			"basic authentication (LDAP)":     false,
 			"basic authentication (API key)":  true,
@@ -2298,7 +2300,8 @@ func TestServeAPIKey(t *testing.T) {
 		So(string(data), ShouldContainSubstring, "configuration settings")
 		// verify authentication methods status messages are present
 		verifyAuthenticationLogs(data, map[string]bool{
-			"bearer authentication":           false,
+			"jwt bearer authentication":       false,
+			"oidc bearer authentication":      false,
 			"basic authentication (htpasswd)": false,
 			"basic authentication (LDAP)":     false,
 			"basic authentication (API key)":  false,

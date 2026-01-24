@@ -707,6 +707,66 @@ func TestConfig(t *testing.T) {
 			So(authConfig.IsBearerAuthEnabled(), ShouldBeTrue)
 		})
 
+		Convey("Test IsTraditionalBearerAuthEnabled()", func() {
+			// Test with nil AuthConfig
+			var authConfig *config.AuthConfig = nil
+			So(authConfig.IsTraditionalBearerAuthEnabled(), ShouldBeFalse)
+
+			// Test with AuthConfig but nil Bearer
+			authConfig = &config.AuthConfig{}
+			So(authConfig.IsTraditionalBearerAuthEnabled(), ShouldBeFalse)
+
+			// Test with AuthConfig and Bearer configured with all required fields
+			authConfig = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					Cert:    "/path/to/cert.pem",
+					Realm:   "test-realm",
+					Service: "test-service",
+				},
+			}
+			So(authConfig.IsTraditionalBearerAuthEnabled(), ShouldBeTrue)
+
+			// Test with partial config (missing Cert)
+			authConfig = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					Realm:   "test-realm",
+					Service: "test-service",
+				},
+			}
+			So(authConfig.IsTraditionalBearerAuthEnabled(), ShouldBeFalse)
+		})
+
+		Convey("Test IsOIDCBearerAuthEnabled()", func() {
+			// Test with nil AuthConfig
+			var authConfig *config.AuthConfig = nil
+			So(authConfig.IsOIDCBearerAuthEnabled(), ShouldBeFalse)
+
+			// Test with AuthConfig but nil Bearer
+			authConfig = &config.AuthConfig{}
+			So(authConfig.IsOIDCBearerAuthEnabled(), ShouldBeFalse)
+
+			// Test with AuthConfig and OIDC Bearer configured
+			authConfig = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					OIDC: []config.BearerOIDCConfig{{
+						Issuer:    "https://issuer.example.com",
+						Audiences: []string{"zot"},
+					}},
+				},
+			}
+			So(authConfig.IsOIDCBearerAuthEnabled(), ShouldBeTrue)
+
+			// Test with invalid OIDC config (missing audiences)
+			authConfig = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					OIDC: []config.BearerOIDCConfig{{
+						Issuer: "https://issuer.example.com",
+					}},
+				},
+			}
+			So(authConfig.IsOIDCBearerAuthEnabled(), ShouldBeFalse)
+		})
+
 		Convey("Test IsOpenIDAuthEnabled()", func() {
 			// Test with nil AuthConfig
 			var authConfig *config.AuthConfig = nil
@@ -2152,6 +2212,8 @@ func TestConfig(t *testing.T) {
 			So(authConfig.IsLdapAuthEnabled(), ShouldBeFalse)
 			So(authConfig.IsHtpasswdAuthEnabled(), ShouldBeFalse)
 			So(authConfig.IsBearerAuthEnabled(), ShouldBeFalse)
+			So(authConfig.IsTraditionalBearerAuthEnabled(), ShouldBeFalse)
+			So(authConfig.IsOIDCBearerAuthEnabled(), ShouldBeFalse)
 			So(authConfig.IsOpenIDAuthEnabled(), ShouldBeFalse)
 			So(authConfig.IsAPIKeyEnabled(), ShouldBeFalse)
 			So(authConfig.IsBasicAuthnEnabled(), ShouldBeFalse)

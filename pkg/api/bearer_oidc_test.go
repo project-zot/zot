@@ -587,6 +587,8 @@ func TestBearerOIDCConfig(t *testing.T) {
 			}
 
 			So(authConfig.IsBearerAuthEnabled(), ShouldBeTrue)
+			So(authConfig.IsOIDCBearerAuthEnabled(), ShouldBeTrue)
+			So(authConfig.IsTraditionalBearerAuthEnabled(), ShouldBeFalse)
 		})
 
 		Convey("IsBearerAuthEnabled with traditional bearer", func() {
@@ -599,6 +601,8 @@ func TestBearerOIDCConfig(t *testing.T) {
 			}
 
 			So(authConfig.IsBearerAuthEnabled(), ShouldBeTrue)
+			So(authConfig.IsTraditionalBearerAuthEnabled(), ShouldBeTrue)
+			So(authConfig.IsOIDCBearerAuthEnabled(), ShouldBeFalse)
 		})
 
 		Convey("IsBearerAuthEnabled with both", func() {
@@ -615,6 +619,8 @@ func TestBearerOIDCConfig(t *testing.T) {
 			}
 
 			So(authConfig.IsBearerAuthEnabled(), ShouldBeTrue)
+			So(authConfig.IsTraditionalBearerAuthEnabled(), ShouldBeTrue)
+			So(authConfig.IsOIDCBearerAuthEnabled(), ShouldBeTrue)
 		})
 
 		Convey("IsBearerAuthEnabled without proper config", func() {
@@ -628,6 +634,8 @@ func TestBearerOIDCConfig(t *testing.T) {
 			}
 
 			So(authConfig.IsBearerAuthEnabled(), ShouldBeFalse)
+			So(authConfig.IsOIDCBearerAuthEnabled(), ShouldBeFalse)
+			So(authConfig.IsTraditionalBearerAuthEnabled(), ShouldBeFalse)
 		})
 
 		Convey("IsBearerAuthEnabled with nil bearer", func() {
@@ -636,6 +644,49 @@ func TestBearerOIDCConfig(t *testing.T) {
 			}
 
 			So(authConfig.IsBearerAuthEnabled(), ShouldBeFalse)
+			So(authConfig.IsOIDCBearerAuthEnabled(), ShouldBeFalse)
+			So(authConfig.IsTraditionalBearerAuthEnabled(), ShouldBeFalse)
+		})
+
+		Convey("IsOIDCBearerAuthEnabled with nil AuthConfig", func() {
+			var authConfig *config.AuthConfig = nil
+
+			So(authConfig.IsOIDCBearerAuthEnabled(), ShouldBeFalse)
+		})
+
+		Convey("IsTraditionalBearerAuthEnabled with nil AuthConfig", func() {
+			var authConfig *config.AuthConfig = nil
+
+			So(authConfig.IsTraditionalBearerAuthEnabled(), ShouldBeFalse)
+		})
+
+		Convey("IsTraditionalBearerAuthEnabled with partial config", func() {
+			// Missing Cert
+			authConfig := &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					Realm:   "zot",
+					Service: "zot-service",
+				},
+			}
+			So(authConfig.IsTraditionalBearerAuthEnabled(), ShouldBeFalse)
+
+			// Missing Realm
+			authConfig = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					Service: "zot-service",
+					Cert:    "/path/to/cert",
+				},
+			}
+			So(authConfig.IsTraditionalBearerAuthEnabled(), ShouldBeFalse)
+
+			// Missing Service
+			authConfig = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					Realm: "zot",
+					Cert:  "/path/to/cert",
+				},
+			}
+			So(authConfig.IsTraditionalBearerAuthEnabled(), ShouldBeFalse)
 		})
 	})
 }
