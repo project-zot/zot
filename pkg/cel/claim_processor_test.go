@@ -270,7 +270,7 @@ func TestClaimProcessor_Process(t *testing.T) {
 				"sub": "user123",
 				"aud": []string{"other-aud"},
 			},
-			err: "token audience [other-aud] does not match any of the expected audiences [expected-aud]",
+			err: "token audience does not match any of the expected audiences: token=[other-aud], expected=[expected-aud]",
 		},
 		{
 			name:      "audience validation fails - empty token audience",

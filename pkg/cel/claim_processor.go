@@ -2,26 +2,16 @@ package cel
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 )
 
 // defaultUsernameExpr is the default CEL expression for extracting the username from OIDC claims.
 const defaultUsernameExpr = "claims.iss + '/' + claims.sub"
-
-// Static errors for claim processing.
-var (
-	errNoAudiences        = errors.New("at least one audience must be specified")
-	errEmptyAudience      = errors.New("audience is empty")
-	errEmptyVariableName  = errors.New("variable name is empty")
-	errEmptyValidationMsg = errors.New("validation error message is empty")
-	errValidationFailed   = errors.New("OIDC claim validation failed")
-	errAudienceMismatch   = errors.New("token audience does not match any of the expected audiences")
-)
 
 // getAudiencesExpr returns the CEL expression for extracting the audiences from OIDC claims.
 //
@@ -80,13 +70,13 @@ func NewClaimProcessor(audiences []string, conf *config.CELClaimValidationAndMap
 	// Sanitize and validate audiences.
 	audiences = slices.Clone(audiences)
 	if len(audiences) == 0 {
-		return nil, errNoAudiences
+		return nil, zerr.ErrOIDCNoAudiences
 	}
 
 	for i := range audiences {
 		audiences[i] = strings.TrimSpace(audiences[i])
 		if audiences[i] == "" {
-			return nil, fmt.Errorf("audience[%d]: %w", i, errEmptyAudience)
+			return nil, fmt.Errorf("audience[%d]: %w", i, zerr.ErrOIDCEmptyAudience)
 		}
 	}
 
@@ -105,7 +95,7 @@ func NewClaimProcessor(audiences []string, conf *config.CELClaimValidationAndMap
 
 	for i, varConf := range conf.Variables {
 		if varConf.Name == "" {
-			return nil, fmt.Errorf("variable[%d]: %w", i, errEmptyVariableName)
+			return nil, fmt.Errorf("variable[%d]: %w", i, zerr.ErrOIDCEmptyVariableName)
 		}
 
 		expr, err := NewExpression(varConf.Expression)
@@ -125,7 +115,7 @@ func NewClaimProcessor(audiences []string, conf *config.CELClaimValidationAndMap
 
 	for i, valConf := range conf.Validations {
 		if valConf.Message == "" {
-			return nil, fmt.Errorf("validation[%d]: %w", i, errEmptyValidationMsg)
+			return nil, fmt.Errorf("validation[%d]: %w", i, zerr.ErrOIDCEmptyValidationMsg)
 		}
 
 		expr, err := NewExpression(valConf.Expression)
@@ -203,7 +193,7 @@ func (c *ClaimProcessor) Process(ctx context.Context, claims map[string]any) (*C
 		}
 
 		if !val {
-			return nil, fmt.Errorf("%w: %s", errValidationFailed, celVal.msg)
+			return nil, fmt.Errorf("%w: %s", zerr.ErrOIDCValidationFailed, celVal.msg)
 		}
 	}
 
@@ -254,7 +244,7 @@ func (c *ClaimProcessor) validateAudience(ctx context.Context, claims map[string
 	}
 
 	if !hasAudience {
-		return fmt.Errorf("%w: token=%v, expected=%v", errAudienceMismatch, audiences, c.audiences)
+		return fmt.Errorf("%w: token=%v, expected=%v", zerr.ErrOIDCAudienceMismatch, audiences, c.audiences)
 	}
 
 	return nil
