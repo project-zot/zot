@@ -337,10 +337,14 @@ func GetProtoTags(tags map[mTypes.Tag]mTypes.Descriptor) map[mTypes.Tag]*proto_g
 	resultMap := map[mTypes.Tag]*proto_go.TagDescriptor{}
 
 	for tag, tagDescriptor := range tags {
-		resultMap[tag] = &proto_go.TagDescriptor{
+		protoTagDescriptor := &proto_go.TagDescriptor{
 			Digest:    tagDescriptor.Digest,
 			MediaType: tagDescriptor.MediaType,
 		}
+		if !tagDescriptor.TaggedTimestamp.IsZero() {
+			protoTagDescriptor.TaggedTimestamp = timestamppb.New(tagDescriptor.TaggedTimestamp)
+		}
+		resultMap[tag] = protoTagDescriptor
 	}
 
 	return resultMap

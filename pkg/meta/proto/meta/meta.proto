@@ -10,6 +10,7 @@ import "oci/descriptor.proto";
 message TagDescriptor {
     string            MediaType = 1;
     string            Digest    = 2;
+    google.protobuf.Timestamp TaggedTimestamp = 3;
 }
 
 message ImageMeta {
