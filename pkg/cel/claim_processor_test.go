@@ -180,7 +180,7 @@ func TestClaimProcessor_Process(t *testing.T) {
 			claims: map[string]any{
 				"iss": "https://issuer.example.com",
 				"sub": "user123",
-				"aud": []string{"my-audience"},
+				"aud": []any{"my-audience"},
 			},
 			username: "https://issuer.example.com/user123",
 			groups:   nil,
@@ -194,7 +194,7 @@ func TestClaimProcessor_Process(t *testing.T) {
 			claims: map[string]any{
 				"sub":   "user123",
 				"email": "user@example.com",
-				"aud":   []string{"my-audience"},
+				"aud":   []any{"my-audience"},
 			},
 			username: "user@example.com",
 			groups:   nil,
@@ -209,7 +209,7 @@ func TestClaimProcessor_Process(t *testing.T) {
 				"iss":    "https://issuer.example.com",
 				"sub":    "user123",
 				"groups": []string{"admin", "developers"},
-				"aud":    []string{"my-audience"},
+				"aud":    []any{"my-audience"},
 			},
 			username: "https://issuer.example.com/user123",
 			groups:   []string{"admin", "developers"},
@@ -224,7 +224,7 @@ func TestClaimProcessor_Process(t *testing.T) {
 				"iss":    "https://issuer.example.com",
 				"sub":    "user123",
 				"groups": []any{"admin", "developers"},
-				"aud":    []string{"my-audience"},
+				"aud":    []any{"my-audience"},
 			},
 			username: "https://issuer.example.com/user123",
 			groups:   []string{"admin", "developers"},
@@ -236,7 +236,7 @@ func TestClaimProcessor_Process(t *testing.T) {
 			claims: map[string]any{
 				"iss": "https://issuer.example.com",
 				"sub": "user123",
-				"aud": []string{"my-audience"},
+				"aud": []any{"my-audience"},
 			},
 			username: "https://issuer.example.com/user123",
 		},
@@ -247,7 +247,7 @@ func TestClaimProcessor_Process(t *testing.T) {
 			claims: map[string]any{
 				"iss": "https://issuer.example.com",
 				"sub": "user123",
-				"aud": []string{"aud2", "other"},
+				"aud": []any{"aud2", "other"},
 			},
 			username: "https://issuer.example.com/user123",
 		},
@@ -258,9 +258,42 @@ func TestClaimProcessor_Process(t *testing.T) {
 			claims: map[string]any{
 				"iss": "https://issuer.example.com",
 				"sub": "user123",
-				"aud": []string{"aud1", "aud2", "aud3"},
+				"aud": []any{"aud1", "aud2", "aud3"},
 			},
 			username: "https://issuer.example.com/user123",
+		},
+		{
+			name:      "audience validation - single string audience matches",
+			audiences: []string{"my-audience"},
+			conf:      nil,
+			claims: map[string]any{
+				"iss": "https://issuer.example.com",
+				"sub": "user123",
+				"aud": "my-audience",
+			},
+			username: "https://issuer.example.com/user123",
+		},
+		{
+			name:      "audience validation - []string type audience matches",
+			audiences: []string{"my-audience"},
+			conf:      nil,
+			claims: map[string]any{
+				"iss": "https://issuer.example.com",
+				"sub": "user123",
+				"aud": []string{"my-audience", "other-audience"},
+			},
+			username: "https://issuer.example.com/user123",
+		},
+		{
+			name:      "audience validation fails - single string audience no match",
+			audiences: []string{"expected-aud"},
+			conf:      nil,
+			claims: map[string]any{
+				"iss": "https://issuer.example.com",
+				"sub": "user123",
+				"aud": "other-aud",
+			},
+			err: "does not match any of the expected audiences",
 		},
 		{
 			name:      "audience validation fails - no match",
@@ -268,9 +301,9 @@ func TestClaimProcessor_Process(t *testing.T) {
 			conf:      nil,
 			claims: map[string]any{
 				"sub": "user123",
-				"aud": []string{"other-aud"},
+				"aud": []any{"other-aud"},
 			},
-			err: "token audience does not match any of the expected audiences: token=[other-aud], expected=[expected-aud]",
+			err: "token audience does not match any of the expected audiences",
 		},
 		{
 			name:      "audience validation fails - empty token audience",
@@ -278,7 +311,7 @@ func TestClaimProcessor_Process(t *testing.T) {
 			conf:      nil,
 			claims: map[string]any{
 				"sub": "user123",
-				"aud": []string{},
+				"aud": []any{},
 			},
 			err: "does not match any of the expected audiences",
 		},
@@ -293,7 +326,7 @@ func TestClaimProcessor_Process(t *testing.T) {
 			},
 			claims: map[string]any{
 				"sub": "123",
-				"aud": []string{"my-audience"},
+				"aud": []any{"my-audience"},
 			},
 			username: "user-123",
 		},
@@ -309,7 +342,7 @@ func TestClaimProcessor_Process(t *testing.T) {
 			claims: map[string]any{
 				"sub":   "user123",
 				"email": "user@example.com",
-				"aud":   []string{"my-audience"},
+				"aud":   []any{"my-audience"},
 			},
 			username: "example.com/user123",
 		},
@@ -326,7 +359,7 @@ func TestClaimProcessor_Process(t *testing.T) {
 			claims: map[string]any{
 				"sub": "user123",
 				"org": "myorg",
-				"aud": []string{"my-audience"},
+				"aud": []any{"my-audience"},
 			},
 			username: "org-myorg/user123",
 		},
@@ -342,7 +375,7 @@ func TestClaimProcessor_Process(t *testing.T) {
 				"iss":            "https://issuer.example.com",
 				"sub":            "user123",
 				"email_verified": true,
-				"aud":            []string{"my-audience"},
+				"aud":            []any{"my-audience"},
 			},
 			username: "https://issuer.example.com/user123",
 		},
@@ -357,7 +390,7 @@ func TestClaimProcessor_Process(t *testing.T) {
 			claims: map[string]any{
 				"sub":            "user123",
 				"email_verified": false,
-				"aud":            []string{"my-audience"},
+				"aud":            []any{"my-audience"},
 			},
 			err: "OIDC claim validation failed: email must be verified",
 		},
@@ -375,7 +408,7 @@ func TestClaimProcessor_Process(t *testing.T) {
 				"sub":            "user123",
 				"email_verified": true,
 				"org":            "myorg",
-				"aud":            []string{"my-audience"},
+				"aud":            []any{"my-audience"},
 			},
 			username: "https://issuer.example.com/user123",
 		},
@@ -392,7 +425,7 @@ func TestClaimProcessor_Process(t *testing.T) {
 				"sub":            "user123",
 				"email_verified": true,
 				"org":            "otherorg",
-				"aud":            []string{"my-audience"},
+				"aud":            []any{"my-audience"},
 			},
 			err: "OIDC claim validation failed: must be in myorg",
 		},
@@ -411,7 +444,7 @@ func TestClaimProcessor_Process(t *testing.T) {
 				"iss": "https://issuer.example.com",
 				"sub": "user123",
 				"org": "org2",
-				"aud": []string{"my-audience"},
+				"aud": []any{"my-audience"},
 			},
 			username: "https://issuer.example.com/user123",
 		},
@@ -429,7 +462,7 @@ func TestClaimProcessor_Process(t *testing.T) {
 			claims: map[string]any{
 				"sub": "user123",
 				"org": "org4",
-				"aud": []string{"my-audience"},
+				"aud": []any{"my-audience"},
 			},
 			err: "OIDC claim validation failed: organization not allowed",
 		},
@@ -441,7 +474,7 @@ func TestClaimProcessor_Process(t *testing.T) {
 			},
 			claims: map[string]any{
 				"sub": "user123",
-				"aud": []string{"my-audience"},
+				"aud": []any{"my-audience"},
 			},
 			err: "failed to evaluate username expression",
 		},
@@ -454,7 +487,7 @@ func TestClaimProcessor_Process(t *testing.T) {
 			},
 			claims: map[string]any{
 				"sub": "user123",
-				"aud": []string{"my-audience"},
+				"aud": []any{"my-audience"},
 			},
 			err: "failed to evaluate groups expression",
 		},
@@ -468,7 +501,7 @@ func TestClaimProcessor_Process(t *testing.T) {
 			},
 			claims: map[string]any{
 				"sub": "user123",
-				"aud": []string{"my-audience"},
+				"aud": []any{"my-audience"},
 			},
 			err: "failed to evaluate variable 'bad'",
 		},
@@ -492,7 +525,7 @@ func TestClaimProcessor_Process(t *testing.T) {
 				"repository":       "myorg/myrepo",
 				"repository_owner": "myorg",
 				"ref":              "refs/heads/main",
-				"aud":              []string{"zot-registry"},
+				"aud":              []any{"zot-registry"},
 			},
 			username: "myorg/myrepo",
 			groups:   []string{"github-actions", "ci"},
@@ -515,7 +548,7 @@ func TestClaimProcessor_Process(t *testing.T) {
 				"sub":                                    "system:serviceaccount:production:my-app",
 				"kubernetes.io/serviceaccount/namespace": "production",
 				"kubernetes.io/serviceaccount/service-account.name": "my-app",
-				"aud": []string{"zot"},
+				"aud": []any{"zot"},
 			},
 			username: "production:my-app",
 			groups:   []string{"k8s-workloads"},
@@ -555,30 +588,42 @@ func TestClaimProcessor_Process_AudienceEdgeCases(t *testing.T) {
 		err       string
 	}{
 		{
-			name:      "audience as single string converted to slice",
-			audiences: []string{"my-audience"},
-			claims: map[string]any{
-				"sub": "user123",
-				"aud": "my-audience",
-			},
-			err: "failed to extract audiences",
-		},
-		{
 			name:      "missing aud claim",
 			audiences: []string{"my-audience"},
 			claims: map[string]any{
 				"sub": "user123",
 			},
-			err: "failed to extract audiences",
+			err: "missing 'aud' claim",
 		},
 		{
-			name:      "aud claim with wrong type",
+			name:      "aud claim with wrong type (integer)",
 			audiences: []string{"my-audience"},
 			claims: map[string]any{
 				"sub": "user123",
+				"iss": "test-issuer",
 				"aud": 12345,
 			},
-			err: "failed to extract audiences",
+			err: "does not match any of the expected audiences",
+		},
+		{
+			name:      "aud claim with wrong type (map)",
+			audiences: []string{"my-audience"},
+			claims: map[string]any{
+				"sub": "user123",
+				"iss": "test-issuer",
+				"aud": map[string]any{"key": "value"},
+			},
+			err: "does not match any of the expected audiences",
+		},
+		{
+			name:      "aud array contains non-string value",
+			audiences: []string{"my-audience"},
+			claims: map[string]any{
+				"sub": "user123",
+				"iss": "test-issuer",
+				"aud": []any{"valid-aud", 123},
+			},
+			err: "'aud' claim contains non-string value",
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {

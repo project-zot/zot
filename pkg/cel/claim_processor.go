@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"sync"
+
+	"github.com/google/cel-go/common/types"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
@@ -13,28 +14,6 @@ import (
 
 // defaultUsernameExpr is the default CEL expression for extracting the username from OIDC claims.
 const defaultUsernameExpr = "claims.iss + '/' + claims.sub"
-
-// audiencesExpr is the lazily-initialized CEL expression for extracting audiences from OIDC claims.
-//
-//nolint:gochecknoglobals
-var (
-	audiencesExpr     *Expression
-	audiencesExprOnce sync.Once
-)
-
-// getAudiencesExpr returns the CEL expression for extracting the audiences from OIDC claims.
-func getAudiencesExpr() *Expression {
-	audiencesExprOnce.Do(func() {
-		var err error
-
-		audiencesExpr, err = NewExpression("claims.aud")
-		if err != nil {
-			panic(fmt.Sprintf("failed to parse default audiences expression: %v", err))
-		}
-	})
-
-	return audiencesExpr
-}
 
 // ClaimResult holds the result of processing OIDC claims.
 type ClaimResult struct {
@@ -99,7 +78,9 @@ func NewClaimProcessor(audiences []string, conf *config.CELClaimValidationAndMap
 			return nil, fmt.Errorf("variable[%d]: %w", i, zerr.ErrOIDCEmptyVariableName)
 		}
 
-		expr, err := NewExpression(varConf.Expression)
+		expr, err := NewExpression(varConf.Expression,
+			WithCompile(),
+			WithStructVariables("claims", "vars"))
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse CEL expression for variable[%d] (name: %s): %w",
 				i, varConf.Name, err)
@@ -119,7 +100,10 @@ func NewClaimProcessor(audiences []string, conf *config.CELClaimValidationAndMap
 			return nil, fmt.Errorf("validation[%d]: %w", i, zerr.ErrOIDCEmptyValidationMsg)
 		}
 
-		expr, err := NewExpression(valConf.Expression)
+		expr, err := NewExpression(valConf.Expression,
+			WithCompile(),
+			WithStructVariables("claims", "vars"),
+			WithOutputType(types.BoolType))
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse CEL expression for validation[%d]: %w", i, err)
 		}
@@ -131,7 +115,9 @@ func NewClaimProcessor(audiences []string, conf *config.CELClaimValidationAndMap
 	}
 
 	// Parse username expression.
-	username, err := NewExpression(conf.Username)
+	username, err := NewExpression(conf.Username,
+		WithCompile(),
+		WithStructVariables("claims", "vars"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse CEL expression for username: %w", err)
 	}
@@ -139,7 +125,9 @@ func NewClaimProcessor(audiences []string, conf *config.CELClaimValidationAndMap
 	// Parse groups expression if provided.
 	var groups *Expression
 	if conf.Groups != "" {
-		groups, err = NewExpression(conf.Groups)
+		groups, err = NewExpression(conf.Groups,
+			WithCompile(),
+			WithStructVariables("claims", "vars"))
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse CEL expression for groups: %w", err)
 		}
@@ -158,7 +146,7 @@ func NewClaimProcessor(audiences []string, conf *config.CELClaimValidationAndMap
 // and audiences, and returns the mapped username and groups.
 func (c *ClaimProcessor) Process(ctx context.Context, claims map[string]any) (*ClaimResult, error) {
 	// First, validate the audience.
-	if err := c.validateAudience(ctx, claims); err != nil {
+	if err := c.validateAudience(claims); err != nil {
 		return nil, err
 	}
 
@@ -222,22 +210,39 @@ func (c *ClaimProcessor) Process(ctx context.Context, claims map[string]any) (*C
 }
 
 // validateAudience checks if the provided audiences contain at least one of the expected audiences.
-func (c *ClaimProcessor) validateAudience(ctx context.Context, claims map[string]any) error {
-	audiences, err := getAudiencesExpr().EvaluateStringSlice(ctx, map[string]any{"claims": claims})
-	if err != nil {
-		return fmt.Errorf("failed to extract audiences: %w", err)
+func (c *ClaimProcessor) validateAudience(claims map[string]any) error {
+	audiencesValue, ok := claims["aud"]
+	if !ok {
+		return fmt.Errorf("%w: missing 'aud' claim", zerr.ErrOIDCNoAudiences)
 	}
 
-	audiencesMap := make(map[string]struct{}, len(audiences))
+	audiences := make(map[string]struct{})
 
-	for _, aud := range audiences {
-		audiencesMap[aud] = struct{}{}
+	if audiencesAnySlice, ok := audiencesValue.([]any); ok {
+		for _, audValue := range audiencesAnySlice {
+			aud, ok := audValue.(string)
+			if !ok {
+				return fmt.Errorf("%w: 'aud' claim contains non-string value", zerr.ErrOIDCInvalidAudiences)
+			}
+
+			audiences[aud] = struct{}{}
+		}
+	}
+
+	if audiencesStringSlice, ok := audiencesValue.([]string); ok {
+		for _, aud := range audiencesStringSlice {
+			audiences[aud] = struct{}{}
+		}
+	}
+
+	if audiencesString, ok := audiencesValue.(string); ok {
+		audiences[audiencesString] = struct{}{}
 	}
 
 	hasAudience := false
 
 	for _, aud := range c.audiences {
-		if _, ok := audiencesMap[aud]; ok {
+		if _, ok := audiences[aud]; ok {
 			hasAudience = true
 
 			break

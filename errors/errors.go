@@ -198,6 +198,7 @@ var (
 	ErrEmailSANIndexOutOfRange          = errors.New("Email SAN index out of range")
 	ErrUnsupportedIdentityAttribute     = errors.New("unsupported identity attribute")
 	ErrOIDCNoAudiences                  = errors.New("at least one audience must be specified")
+	ErrOIDCInvalidAudiences             = errors.New("invalid audiences claim in token")
 	ErrOIDCEmptyAudience                = errors.New("audience is empty")
 	ErrOIDCEmptyVariableName            = errors.New("variable name is empty")
 	ErrOIDCEmptyValidationMsg           = errors.New("validation error message is empty")
