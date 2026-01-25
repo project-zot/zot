@@ -282,7 +282,8 @@ func (c *Controller) Init() error {
 
 	// log authentication methods status
 	authConfig := c.Config.CopyAuthConfig()
-	c.Log.Info().Bool("enabled", authConfig.IsBearerAuthEnabled()).Msg("bearer authentication")
+	c.Log.Info().Bool("enabled", authConfig.IsTraditionalBearerAuthEnabled()).Msg("jwt bearer authentication")
+	c.Log.Info().Bool("enabled", authConfig.IsOIDCBearerAuthEnabled()).Msg("oidc bearer authentication")
 	c.Log.Info().Bool("enabled", authConfig.IsHtpasswdAuthEnabled()).Msg("basic authentication (htpasswd)")
 	c.Log.Info().Bool("enabled", authConfig.IsLdapAuthEnabled()).Msg("basic authentication (LDAP)")
 	c.Log.Info().Bool("enabled", authConfig.IsAPIKeyEnabled()).Msg("basic authentication (API key)")
@@ -441,7 +442,8 @@ func (c *Controller) LoadNewConfig(newConfig *config.Config) {
 		Msg("loaded new configuration settings")
 
 	// log authentication methods status
-	c.Log.Info().Bool("enabled", authConfig.IsBearerAuthEnabled()).Msg("bearer authentication")
+	c.Log.Info().Bool("enabled", authConfig.IsTraditionalBearerAuthEnabled()).Msg("jwt bearer authentication")
+	c.Log.Info().Bool("enabled", authConfig.IsOIDCBearerAuthEnabled()).Msg("oidc bearer authentication")
 	c.Log.Info().Bool("enabled", authConfig.IsHtpasswdAuthEnabled()).Msg("basic authentication (htpasswd)")
 	c.Log.Info().Bool("enabled", authConfig.IsLdapAuthEnabled()).Msg("basic authentication (LDAP)")
 	c.Log.Info().Bool("enabled", authConfig.IsAPIKeyEnabled()).Msg("basic authentication (API key)")

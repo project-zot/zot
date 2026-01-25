@@ -90,7 +90,8 @@ func TestConfigReloader(t *testing.T) {
 		So(string(initialData), ShouldContainSubstring, "configuration settings")
 		// verify authentication methods status messages are present in initial startup
 		verifyAuthenticationLogs(initialData, map[string]bool{
-			"bearer authentication":           false,
+			"jwt bearer authentication":       false,
+			"oidc bearer authentication":      false,
 			"basic authentication (htpasswd)": true,
 			"basic authentication (LDAP)":     false,
 			"basic authentication (API key)":  false,
@@ -162,7 +163,8 @@ func TestConfigReloader(t *testing.T) {
 		So(string(data), ShouldContainSubstring, "\"Actions\":[\"read\",\"create\",\"update\",\"delete\"]")
 		// verify authentication methods status messages are present
 		verifyAuthenticationLogs(data, map[string]bool{
-			"bearer authentication":           false,
+			"jwt bearer authentication":       false,
+			"oidc bearer authentication":      false,
 			"basic authentication (htpasswd)": true,
 			"basic authentication (LDAP)":     false,
 			"basic authentication (API key)":  false,
@@ -223,7 +225,8 @@ func TestConfigReloader(t *testing.T) {
 		So(string(initialData), ShouldContainSubstring, "configuration settings")
 		// verify authentication methods status messages are present in initial startup
 		verifyAuthenticationLogs(initialData, map[string]bool{
-			"bearer authentication":           false,
+			"jwt bearer authentication":       false,
+			"oidc bearer authentication":      false,
 			"basic authentication (htpasswd)": false,
 			"basic authentication (LDAP)":     false,
 			"basic authentication (API key)":  false,
@@ -287,7 +290,8 @@ func TestConfigReloader(t *testing.T) {
 		So(string(data), ShouldNotContainSubstring, "\"Dedupe\":false")
 		// verify authentication methods status messages are present
 		verifyAuthenticationLogs(data, map[string]bool{
-			"bearer authentication":           false,
+			"jwt bearer authentication":       false,
+			"oidc bearer authentication":      false,
 			"basic authentication (htpasswd)": false,
 			"basic authentication (LDAP)":     false,
 			"basic authentication (API key)":  false,
@@ -359,7 +363,8 @@ func TestConfigReloader(t *testing.T) {
 		So(string(initialData), ShouldContainSubstring, "configuration settings")
 		// verify authentication methods status messages are present in initial startup
 		verifyAuthenticationLogs(initialData, map[string]bool{
-			"bearer authentication":           false,
+			"jwt bearer authentication":       false,
+			"oidc bearer authentication":      false,
 			"basic authentication (htpasswd)": false,
 			"basic authentication (LDAP)":     false,
 			"basic authentication (API key)":  false,
@@ -435,7 +440,8 @@ func TestConfigReloader(t *testing.T) {
 		So(string(data), ShouldContainSubstring, "\"Semver\":false")
 		// verify authentication methods status messages are present
 		verifyAuthenticationLogs(data, map[string]bool{
-			"bearer authentication":           false,
+			"jwt bearer authentication":       false,
+			"oidc bearer authentication":      false,
 			"basic authentication (htpasswd)": false,
 			"basic authentication (LDAP)":     false,
 			"basic authentication (API key)":  false,
@@ -500,7 +506,8 @@ func TestConfigReloader(t *testing.T) {
 		So(string(initialData), ShouldContainSubstring, "configuration settings")
 		// verify authentication methods status messages are present in initial startup
 		verifyAuthenticationLogs(initialData, map[string]bool{
-			"bearer authentication":           false,
+			"jwt bearer authentication":       false,
+			"oidc bearer authentication":      false,
 			"basic authentication (htpasswd)": false,
 			"basic authentication (LDAP)":     false,
 			"basic authentication (API key)":  false,
@@ -566,7 +573,8 @@ func TestConfigReloader(t *testing.T) {
 		So(string(data), ShouldContainSubstring, "\"DBRepository\":\"another/unreachable/trivy/url2\"")
 		// verify authentication methods status messages are present
 		verifyAuthenticationLogs(data, map[string]bool{
-			"bearer authentication":           false,
+			"jwt bearer authentication":       false,
+			"oidc bearer authentication":      false,
 			"basic authentication (htpasswd)": false,
 			"basic authentication (LDAP)":     false,
 			"basic authentication (API key)":  false,

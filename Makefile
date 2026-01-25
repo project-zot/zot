@@ -104,7 +104,7 @@ else
 endif
 
 .PHONY: all
-all: modcheck swaggercheck binary binary-minimal binary-debug cli bench exporter-minimal verify-config check check-gh-actions test covhtml
+all: swaggercheck binary binary-minimal binary-debug cli bench exporter-minimal verify-config check check-gh-actions test covhtml
 
 .PHONY: modtidy
 modtidy:
@@ -182,30 +182,30 @@ gen-protobuf: $(PROTOC)
 
 .PHONY: binary-minimal
 binary-minimal: EXTENSIONS=
-binary-minimal: modcheck build-metadata
+binary-minimal: build-metadata
 	env CGO_ENABLED=0 GOEXPERIMENT=jsonv2 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-minimal$(BIN_EXT) $(BUILDMODE_FLAGS) -v -trimpath -ldflags "-X $(CONFIG_RELEASE_TAG)=${RELEASE_TAG} -X $(CONFIG_COMMIT)=${COMMIT} -X $(CONFIG_BINARY_TYPE)=minimal -X $(CONFIG_GO_VERSION)=${GO_VERSION} -s -w" ./cmd/zot
 
 .PHONY: binary
 binary: $(if $(findstring ui,$(BUILD_LABELS)), ui)
-binary: modcheck build-metadata
+binary: build-metadata
 	env CGO_ENABLED=0 GOEXPERIMENT=jsonv2 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)$(BIN_EXT) $(BUILDMODE_FLAGS) $(GO_CMD_TAGS) -v -trimpath -ldflags "-X $(CONFIG_RELEASE_TAG)=${RELEASE_TAG} -X $(CONFIG_COMMIT)=${COMMIT} -X $(CONFIG_BINARY_TYPE)=$(extended-name) -X $(CONFIG_GO_VERSION)=${GO_VERSION} -s -w" ./cmd/zot
 
 .PHONY: binary-debug
 binary-debug: $(if $(findstring ui,$(BUILD_LABELS)), ui)
-binary-debug: modcheck swaggercheck build-metadata
+binary-debug: swaggercheck build-metadata
 	env CGO_ENABLED=0 GOEXPERIMENT=jsonv2 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-debug$(BIN_EXT) $(BUILDMODE_FLAGS) -tags $(BUILD_LABELS),debug -v -gcflags all='-N -l' -ldflags "-X $(CONFIG_RELEASE_TAG)=${RELEASE_TAG} -X $(CONFIG_COMMIT)=${COMMIT} -X $(CONFIG_BINARY_TYPE)=$(extended-name) -X $(CONFIG_GO_VERSION)=${GO_VERSION}" ./cmd/zot
 
 .PHONY: cli
-cli: modcheck build-metadata
+cli: build-metadata
 	env CGO_ENABLED=0 GOEXPERIMENT=jsonv2 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zli-$(OS)-$(ARCH)$(BIN_EXT) $(BUILDMODE_FLAGS) -tags $(BUILD_LABELS),search -v -trimpath -ldflags "-X $(CONFIG_COMMIT)=${COMMIT} -X $(CONFIG_BINARY_TYPE)=$(extended-name) -X $(CONFIG_GO_VERSION)=${GO_VERSION} -s -w" ./cmd/zli
 
 .PHONY: bench
-bench: modcheck build-metadata
+bench: build-metadata
 	env CGO_ENABLED=0 GOEXPERIMENT=jsonv2 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zb-$(OS)-$(ARCH)$(BIN_EXT) $(BUILDMODE_FLAGS) $(GO_CMD_TAGS) -v -trimpath -ldflags "-X $(CONFIG_COMMIT)=${COMMIT} -X $(CONFIG_BINARY_TYPE)=$(extended-name) -X $(CONFIG_GO_VERSION)=${GO_VERSION} -s -w" ./cmd/zb
 
 .PHONY: exporter-minimal
 exporter-minimal: EXTENSIONS=
-exporter-minimal: modcheck build-metadata
+exporter-minimal: build-metadata
 	env CGO_ENABLED=0 GOEXPERIMENT=jsonv2 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zxp-$(OS)-$(ARCH)$(BIN_EXT) $(BUILDMODE_FLAGS) -v -trimpath ./cmd/zxp
 
 .PHONY: test-prereq

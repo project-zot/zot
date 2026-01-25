@@ -17,9 +17,10 @@ import (
 )
 
 const (
-	BASIC  = "Basic"
-	BEARER = "Bearer"
-	OPENID = "OpenID"
+	BASIC       = "Basic"
+	BEARER      = "Bearer"
+	BEARER_OIDC = "BearerOIDC" // OIDC bearer tokens use accessControl config for authorization
+	OPENID      = "OpenID"
 )
 
 func AuthzFilterFunc(userAc *reqCtx.UserAccessControl) storageTypes.FilterRepoFunc {
@@ -264,7 +265,8 @@ func BaseAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 				return
 			}
 
-			// request comes from bearer authn, bypass it
+			// request comes from bearer authn, bypass it. note: we don't bypass for BEARER_OIDC
+			// tokens since they use accessControl config for authorization
 			authnMwCtx, err := reqCtx.GetAuthnMiddlewareContext(request.Context())
 			if err != nil || (authnMwCtx != nil && authnMwCtx.AuthnType == BEARER) {
 				next.ServeHTTP(response, request)
@@ -311,7 +313,8 @@ func DistSpecAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 				return
 			}
 
-			// request comes from bearer authn, bypass it
+			// request comes from bearer authn, bypass it. note: we don't bypass for BEARER_OIDC
+			// tokens since they use accessControl config for authorization
 			authnMwCtx, err := reqCtx.GetAuthnMiddlewareContext(request.Context())
 			if err != nil || (authnMwCtx != nil && authnMwCtx.AuthnType == BEARER) {
 				next.ServeHTTP(response, request)

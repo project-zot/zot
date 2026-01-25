@@ -4,6 +4,8 @@ package api_test
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
@@ -11,6 +13,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"io/fs"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -48,6 +51,8 @@ import (
 const (
 	sessionCookieName = "session"
 	userCookieName    = "user"
+	testSubject       = "test-user"
+	testKeyID         = "test-key-id"
 )
 
 type (
@@ -1124,6 +1129,578 @@ func TestMultipleAuthorizationHeaders(t *testing.T) {
 			})
 		})
 	})
+}
+
+func TestBearerOIDCWorkloadIdentity(t *testing.T) {
+	Convey("Test bearer auth with OIDC workload identity", t, func() {
+		// Generate test keys for mock OIDC server
+		privKey, err := rsa.GenerateKey(rand.Reader, 2048)
+		So(err, ShouldBeNil)
+		pubKey := &privKey.PublicKey
+
+		// Start mock OIDC server
+		server := mockWorkloadOIDCServer(t, pubKey)
+		defer server.Close()
+
+		issuer := server.URL
+		audience := "test-zot"
+
+		Convey("OIDC authentication success", func() {
+			conf := config.New()
+			port := test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
+
+			conf.HTTP.Port = port
+			conf.HTTP.Auth = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					OIDC: []config.BearerOIDCConfig{{
+						Issuer:    issuer,
+						Audiences: []string{audience},
+					}},
+				},
+			}
+			conf.Storage.RootDirectory = t.TempDir()
+
+			ctlr := api.NewController(conf)
+			cm := test.NewControllerManager(ctlr)
+
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			// Create a valid OIDC token
+			token, err := createWorkloadOIDCToken(privKey, issuer, audience, nil)
+			So(err, ShouldBeNil)
+
+			// Test successful authentication
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, baseURL+"/v2/_catalog", nil)
+			So(err, ShouldBeNil)
+			req.Header.Set("Authorization", "Bearer "+token)
+
+			client := &http.Client{}
+			resp, err := client.Do(req)
+			So(err, ShouldBeNil)
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+		})
+
+		Convey("OIDC authentication success with groups", func() {
+			conf := config.New()
+			port := test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
+
+			conf.HTTP.Port = port
+			conf.HTTP.Auth = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					OIDC: []config.BearerOIDCConfig{{
+						Issuer:    issuer,
+						Audiences: []string{audience},
+						ClaimMapping: &config.CELClaimValidationAndMapping{
+							Groups: "claims.groups",
+						},
+					}},
+				},
+			}
+			conf.Storage.RootDirectory = t.TempDir()
+
+			ctlr := api.NewController(conf)
+			cm := test.NewControllerManager(ctlr)
+
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			// Create a valid OIDC token with groups
+			token, err := createWorkloadOIDCToken(privKey, issuer, audience, map[string]any{
+				"groups": []string{"admin", "developers"},
+			})
+			So(err, ShouldBeNil)
+
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, baseURL+"/v2/_catalog", nil)
+			So(err, ShouldBeNil)
+			req.Header.Set("Authorization", "Bearer "+token)
+
+			client := &http.Client{}
+			resp, err := client.Do(req)
+			So(err, ShouldBeNil)
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+		})
+
+		Convey("OIDC authentication fails with MetaDB error", func() {
+			conf := config.New()
+			port := test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
+
+			conf.HTTP.Port = port
+			conf.HTTP.Auth = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					OIDC: []config.BearerOIDCConfig{{
+						Issuer:    issuer,
+						Audiences: []string{audience},
+					}},
+				},
+			}
+			conf.Storage.RootDirectory = t.TempDir()
+
+			ctlr := api.NewController(conf)
+			cm := test.NewControllerManager(ctlr)
+
+			cm.StartServer()
+			defer cm.StopServer()
+			test.WaitTillServerReady(baseURL)
+
+			// Replace MetaDB with a mock that returns an error
+			ctlr.MetaDB = mocks.MetaDBMock{
+				SetUserGroupsFn: func(ctx context.Context, groups []string) error {
+					return ErrUnexpectedError
+				},
+			}
+
+			// Create a valid OIDC token
+			token, err := createWorkloadOIDCToken(privKey, issuer, audience, nil)
+			So(err, ShouldBeNil)
+
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, baseURL+"/v2/_catalog", nil)
+			So(err, ShouldBeNil)
+			req.Header.Set("Authorization", "Bearer "+token)
+
+			client := &http.Client{}
+			resp, err := client.Do(req)
+			So(err, ShouldBeNil)
+			defer resp.Body.Close()
+
+			// Should fail with internal server error due to MetaDB failure
+			So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+		})
+
+		Convey("OIDC authentication fails, falls back to traditional bearer auth", func() {
+			tempDir := t.TempDir()
+
+			// Generate certificate for traditional bearer auth
+			caCert, caKey, err := tlsutils.GenerateCACert()
+			So(err, ShouldBeNil)
+
+			serverCertPath := path.Join(tempDir, "server.cert")
+			serverKeyPath := path.Join(tempDir, "server.key")
+			opts := &tlsutils.CertificateOptions{
+				Hostname: "localhost",
+			}
+			err = tlsutils.GenerateServerCertToFile(caCert, caKey, serverCertPath, serverKeyPath, opts)
+			So(err, ShouldBeNil)
+
+			conf := config.New()
+			port := test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
+
+			conf.HTTP.Port = port
+			conf.HTTP.Auth = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					Cert:    serverCertPath,
+					Realm:   "test-realm",
+					Service: "test-service",
+					OIDC: []config.BearerOIDCConfig{{
+						Issuer:    issuer,
+						Audiences: []string{audience},
+					}},
+				},
+			}
+			conf.Storage.RootDirectory = t.TempDir()
+
+			ctlr := api.NewController(conf)
+			cm := test.NewControllerManager(ctlr)
+
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			// Load the private key to sign traditional bearer token
+			keyBytes, err := os.ReadFile(serverKeyPath)
+			So(err, ShouldBeNil)
+
+			keyBlock, _ := pem.Decode(keyBytes)
+			So(keyBlock, ShouldNotBeNil)
+
+			privateKey, err := x509.ParsePKCS1PrivateKey(keyBlock.Bytes)
+			So(err, ShouldBeNil)
+
+			// Create a traditional bearer token (not OIDC)
+			claims := &api.ClaimsWithAccess{
+				RegisteredClaims: jwt.RegisteredClaims{
+					IssuedAt:  jwt.NewNumericDate(time.Now()),
+					ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+				},
+				Access: []api.ResourceAccess{
+					{
+						Type:    "repository",
+						Name:    "",
+						Actions: []string{"pull"},
+					},
+				},
+			}
+
+			traditionalToken := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+			traditionalTokenString, err := traditionalToken.SignedString(privateKey)
+			So(err, ShouldBeNil)
+
+			// Request with traditional bearer token should succeed via fallback
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, baseURL+"/v2/_catalog", nil)
+			So(err, ShouldBeNil)
+			req.Header.Set("Authorization", "Bearer "+traditionalTokenString)
+
+			client := &http.Client{}
+			resp, err := client.Do(req)
+			So(err, ShouldBeNil)
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+		})
+
+		Convey("OIDC authentication with invalid token", func() {
+			conf := config.New()
+			port := test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
+
+			conf.HTTP.Port = port
+			conf.HTTP.Auth = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					OIDC: []config.BearerOIDCConfig{{
+						Issuer:    issuer,
+						Audiences: []string{audience},
+					}},
+				},
+			}
+			conf.Storage.RootDirectory = t.TempDir()
+
+			ctlr := api.NewController(conf)
+			cm := test.NewControllerManager(ctlr)
+
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			// Test with invalid token
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, baseURL+"/v2/_catalog", nil)
+			So(err, ShouldBeNil)
+			req.Header.Set("Authorization", "Bearer invalid-token")
+
+			client := &http.Client{}
+			resp, err := client.Do(req)
+			So(err, ShouldBeNil)
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusUnauthorized)
+		})
+
+		Convey("OIDC authentication with no token provided", func() {
+			conf := config.New()
+			port := test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
+
+			conf.HTTP.Port = port
+			conf.HTTP.Auth = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					OIDC: []config.BearerOIDCConfig{{
+						Issuer:    issuer,
+						Audiences: []string{audience},
+					}},
+				},
+			}
+			conf.Storage.RootDirectory = t.TempDir()
+
+			ctlr := api.NewController(conf)
+			cm := test.NewControllerManager(ctlr)
+
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			// Test without any authorization header
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, baseURL+"/v2/_catalog", nil)
+			So(err, ShouldBeNil)
+
+			client := &http.Client{}
+			resp, err := client.Do(req)
+			So(err, ShouldBeNil)
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusUnauthorized)
+		})
+
+		Convey("OIDC authentication with wrong audience", func() {
+			conf := config.New()
+			port := test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
+
+			conf.HTTP.Port = port
+			conf.HTTP.Auth = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					OIDC: []config.BearerOIDCConfig{{
+						Issuer:    issuer,
+						Audiences: []string{audience},
+					}},
+				},
+			}
+			conf.Storage.RootDirectory = t.TempDir()
+
+			ctlr := api.NewController(conf)
+			cm := test.NewControllerManager(ctlr)
+
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			// Create a token with wrong audience
+			token, err := createWorkloadOIDCToken(privKey, issuer, "wrong-audience", nil)
+			So(err, ShouldBeNil)
+
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, baseURL+"/v2/_catalog", nil)
+			So(err, ShouldBeNil)
+			req.Header.Set("Authorization", "Bearer "+token)
+
+			client := &http.Client{}
+			resp, err := client.Do(req)
+			So(err, ShouldBeNil)
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusUnauthorized)
+		})
+
+		Convey("OIDC fails, traditional bearer auth with insufficient scope returns challenge", func() {
+			tempDir := t.TempDir()
+
+			// Generate certificate for traditional bearer auth
+			caCert, caKey, err := tlsutils.GenerateCACert()
+			So(err, ShouldBeNil)
+
+			serverCertPath := path.Join(tempDir, "server.cert")
+			serverKeyPath := path.Join(tempDir, "server.key")
+			opts := &tlsutils.CertificateOptions{
+				Hostname: "localhost",
+			}
+			err = tlsutils.GenerateServerCertToFile(caCert, caKey, serverCertPath, serverKeyPath, opts)
+			So(err, ShouldBeNil)
+
+			conf := config.New()
+			port := test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
+
+			conf.HTTP.Port = port
+			conf.HTTP.Auth = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					Cert:    serverCertPath,
+					Realm:   "test-realm",
+					Service: "test-service",
+					OIDC: []config.BearerOIDCConfig{{
+						Issuer:    issuer,
+						Audiences: []string{audience},
+					}},
+				},
+			}
+			conf.Storage.RootDirectory = t.TempDir()
+
+			ctlr := api.NewController(conf)
+			cm := test.NewControllerManager(ctlr)
+
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			// Load the private key to sign traditional bearer token
+			keyBytes, err := os.ReadFile(serverKeyPath)
+			So(err, ShouldBeNil)
+
+			keyBlock, _ := pem.Decode(keyBytes)
+			So(keyBlock, ShouldNotBeNil)
+
+			privateKey, err := x509.ParsePKCS1PrivateKey(keyBlock.Bytes)
+			So(err, ShouldBeNil)
+
+			// Create a traditional bearer token with access to different repository (insufficient scope)
+			claims := &api.ClaimsWithAccess{
+				RegisteredClaims: jwt.RegisteredClaims{
+					IssuedAt:  jwt.NewNumericDate(time.Now()),
+					ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+				},
+				Access: []api.ResourceAccess{
+					{
+						Type:    "repository",
+						Name:    "other-repo", // Different repo than what we're accessing
+						Actions: []string{"pull"},
+					},
+				},
+			}
+
+			traditionalToken := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+			traditionalTokenString, err := traditionalToken.SignedString(privateKey)
+			So(err, ShouldBeNil)
+
+			// Request access to a different repository than what the token allows
+			// This should fail with AuthChallengeError (insufficient scope)
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, baseURL+"/v2/testrepo/tags/list", nil)
+			So(err, ShouldBeNil)
+			req.Header.Set("Authorization", "Bearer "+traditionalTokenString)
+
+			client := &http.Client{}
+			resp, err := client.Do(req)
+			So(err, ShouldBeNil)
+			defer resp.Body.Close()
+
+			// Should get 401 Unauthorized with WWW-Authenticate challenge header
+			So(resp.StatusCode, ShouldEqual, http.StatusUnauthorized)
+			So(resp.Header.Get("WWW-Authenticate"), ShouldNotBeEmpty)
+		})
+
+		Convey("OIDC authentication with OPTIONS method", func() {
+			conf := config.New()
+			port := test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
+
+			conf.HTTP.Port = port
+			conf.HTTP.Auth = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					OIDC: []config.BearerOIDCConfig{{
+						Issuer:    issuer,
+						Audiences: []string{audience},
+					}},
+				},
+			}
+			conf.Storage.RootDirectory = t.TempDir()
+
+			ctlr := api.NewController(conf)
+			cm := test.NewControllerManager(ctlr)
+
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			// Test OPTIONS method - should be allowed without authentication
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodOptions, baseURL+"/v2/_catalog", nil)
+			So(err, ShouldBeNil)
+
+			client := &http.Client{}
+			resp, err := client.Do(req)
+			So(err, ShouldBeNil)
+			defer resp.Body.Close()
+
+			// OPTIONS requests should be allowed without authentication
+			So(resp.StatusCode, ShouldEqual, http.StatusNoContent)
+		})
+
+		Convey("OIDC authentication with push action", func() {
+			conf := config.New()
+			port := test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
+
+			conf.HTTP.Port = port
+			conf.HTTP.Auth = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					OIDC: []config.BearerOIDCConfig{{
+						Issuer:    issuer,
+						Audiences: []string{audience},
+					}},
+				},
+			}
+			conf.Storage.RootDirectory = t.TempDir()
+
+			ctlr := api.NewController(conf)
+			cm := test.NewControllerManager(ctlr)
+
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			// Create a valid OIDC token
+			token, err := createWorkloadOIDCToken(privKey, issuer, audience, nil)
+			So(err, ShouldBeNil)
+
+			// Test POST method which triggers push action
+			uploadURL := baseURL + "/v2/testrepo/blobs/uploads/"
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, uploadURL, nil)
+			So(err, ShouldBeNil)
+			req.Header.Set("Authorization", "Bearer "+token)
+			req.Header.Set("Content-Type", "application/octet-stream")
+
+			client := &http.Client{}
+			resp, err := client.Do(req)
+			So(err, ShouldBeNil)
+			defer resp.Body.Close()
+
+			// Should be able to authenticate, but may fail with 403 due to no write access configured
+			// The key is that authentication succeeded (not 401)
+			So(resp.StatusCode, ShouldNotEqual, http.StatusUnauthorized)
+		})
+	})
+}
+
+// mockWorkloadOIDCServer creates a mock OIDC provider server for workload identity testing.
+func mockWorkloadOIDCServer(t *testing.T, pubKey *rsa.PublicKey) *httptest.Server {
+	t.Helper()
+
+	mux := http.NewServeMux()
+
+	// OpenID configuration endpoint
+	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		oidcConfig := map[string]any{
+			"issuer":   "http://" + r.Host,
+			"jwks_uri": "http://" + r.Host + "/jwks",
+		}
+
+		_ = json.NewEncoder(w).Encode(oidcConfig)
+	})
+
+	// JWKS endpoint
+	mux.HandleFunc("/jwks", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		// Calculate modulus and exponent for JWK
+		nBytes := pubKey.N.Bytes()
+		eBytes := make([]byte, 4)
+		eBytes[0] = byte(pubKey.E >> 24)
+		eBytes[1] = byte(pubKey.E >> 16)
+		eBytes[2] = byte(pubKey.E >> 8)
+		eBytes[3] = byte(pubKey.E)
+
+		// Trim leading zeros from exponent
+		for len(eBytes) > 1 && eBytes[0] == 0 {
+			eBytes = eBytes[1:]
+		}
+
+		jwks := map[string]any{
+			"keys": []map[string]any{
+				{
+					"kty": "RSA",
+					"kid": testKeyID,
+					"alg": "RS256",
+					"use": "sig",
+					"n":   base64.RawURLEncoding.EncodeToString(nBytes),
+					"e":   base64.RawURLEncoding.EncodeToString(eBytes),
+				},
+			},
+		}
+
+		_ = json.NewEncoder(w).Encode(jwks)
+	})
+
+	return httptest.NewServer(mux)
+}
+
+// createWorkloadOIDCToken creates a test OIDC ID token for workload identity testing.
+func createWorkloadOIDCToken(privKey *rsa.PrivateKey, issuer, audience string,
+	extraClaims map[string]any,
+) (string, error) {
+	now := time.Now()
+
+	tokenClaims := jwt.MapClaims{
+		"iss": issuer,
+		"aud": []string{audience},
+		"sub": testSubject,
+		"exp": now.Add(time.Hour).Unix(),
+		"iat": now.Unix(),
+	}
+
+	// Add extra claims
+	maps.Copy(tokenClaims, extraClaims)
+
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, tokenClaims)
+	token.Header["kid"] = testKeyID
+
+	return token.SignedString(privKey)
 }
 
 func TestAPIKeysOpenDBError(t *testing.T) {

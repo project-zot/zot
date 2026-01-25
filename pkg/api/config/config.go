@@ -129,7 +129,17 @@ func (a *AuthConfig) IsHtpasswdAuthEnabled() bool {
 
 // IsBearerAuthEnabled checks if Bearer authentication is enabled in this auth config.
 func (a *AuthConfig) IsBearerAuthEnabled() bool {
+	return a.IsTraditionalBearerAuthEnabled() || a.IsOIDCBearerAuthEnabled()
+}
+
+// IsTraditionalBearerAuthEnabled checks if traditional Bearer authentication is enabled in this auth config.
+func (a *AuthConfig) IsTraditionalBearerAuthEnabled() bool {
 	return a != nil && a.Bearer != nil && a.Bearer.Cert != "" && a.Bearer.Realm != "" && a.Bearer.Service != ""
+}
+
+// IsOIDCBearerAuthEnabled checks if OIDC Bearer authentication is enabled in this auth config.
+func (a *AuthConfig) IsOIDCBearerAuthEnabled() bool {
+	return a != nil && a.Bearer != nil && a.Bearer.OIDC.IsEnabled()
 }
 
 // IsOpenIDAuthEnabled checks if OpenID authentication is enabled in this auth config.
@@ -183,6 +193,42 @@ type BearerConfig struct {
 	Realm   string
 	Service string
 	Cert    string
+	// OIDC configuration for workload identity authentication
+	OIDC BearerOIDCConfigs `json:"oidc,omitempty" mapstructure:"oidc,omitempty"`
+}
+
+// BearerOIDCConfigs is a slice of BearerOIDCConfig.
+type BearerOIDCConfigs []BearerOIDCConfig
+
+func (b BearerOIDCConfigs) IsEnabled() bool {
+	for i := range b {
+		if b[i].Issuer != "" && len(b[i].Audiences) > 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
+// BearerOIDCConfig configures OIDC token validation for workload identity.
+// This enables workloads to authenticate using OIDC ID tokens in the Authorization header.
+type BearerOIDCConfig struct {
+	// Issuer is the OIDC issuer URL. Required for OIDC workload identity.
+	// Example: "https://kubernetes.default.svc.cluster.local"
+	Issuer string `json:"issuer" mapstructure:"issuer"`
+
+	// Audiences is a list of acceptable audiences for the OIDC token.
+	// At least one audience must be specified.
+	// Example: ["zot", "https://zot.example.com"]
+	Audiences []string `json:"audiences" mapstructure:"audiences"`
+
+	// ClaimMapping specifies how OIDC claims are validated and mapped to Zot identities.
+	// Default: {"username":"claims.iss + '/' + claims.sub"}
+	ClaimMapping *CELClaimValidationAndMapping `json:"claimMapping,omitempty" mapstructure:"claimMapping,omitempty"`
+
+	// SkipIssuerVerification skips issuer verification (for testing only).
+	// Default: false
+	SkipIssuerVerification bool `json:"skipIssuerVerification,omitempty" mapstructure:"skipIssuerVerification,omitempty"`
 }
 
 type SessionKeys struct {
@@ -219,6 +265,46 @@ type ClaimMapping struct {
 	// Acceptable values include "preferred_username", "email", "sub", "name", or any custom claim name.
 	// If not configured, the default is "email".
 	Username string `mapstructure:"username,omitempty"`
+}
+
+// CELClaimValidationAndMapping specifies Common Expression Language (CEL) expressions
+// for validating and mapping OIDC claims.
+type CELClaimValidationAndMapping struct {
+	// Variables is a list of CELVariable definitions used to extract variables from OIDC claims.
+	Variables []CELVariable `mapstructure:"variables,omitempty"`
+
+	// Validations is a list of CELValidation definitions used to validate OIDC claims.
+	Validations []CELValidation `mapstructure:"validations,omitempty"`
+
+	// Username is the CEL expression used to extract the username from OIDC claims.
+	// This expression should evaluate to a string value.
+	// Default: "claims.iss + '/' + claims.sub"
+	Username string `mapstructure:"username,omitempty"`
+
+	// Groups is the CEL expression used to extract groups from OIDC claims.
+	// This expression should evaluate to a list of strings.
+	// Default: "" (no groups extracted)
+	Groups string `mapstructure:"groups,omitempty"`
+}
+
+// CELVariable represents a CEL expression to extract a variable from OIDC claims.
+type CELVariable struct {
+	// Name is the name of the variable to be extracted.
+	Name string `mapstructure:"name"`
+
+	// Expression is the CEL expression that will extract the variable from the OIDC claims.
+	Expression string `mapstructure:"expression"`
+}
+
+// CELValidation represents a CEL expression used for validating OIDC claims.
+type CELValidation struct {
+	// Expression is the CEL expression used for validation. It should evaluate to a boolean value.
+	// If the expression evaluates to false, the validation fails and the associated error message
+	// is returned.
+	Expression string `mapstructure:"expression"`
+
+	// Message is the error message returned if the expression evaluates to false.
+	Message string `mapstructure:"message"`
 }
 
 type MethodRatelimitConfig struct {

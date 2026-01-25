@@ -1,0 +1,40 @@
+{
+  "distSpecVersion": "1.1.1",
+  "storage": {
+    "rootDirectory": "/tmp/zot"
+  },
+  "http": {
+    "address": "127.0.0.1",
+    "port": "8080",
+    "auth": {
+      "bearer": {
+        "realm": "zot",
+        "service": "zot-service",
+        "oidc": [
+          {
+            "issuer": "https://kubernetes.default.svc.cluster.local",
+            "audiences": ["zot", "https://zot.example.com"],
+            "claimMapping": {
+              "username": "claims.sub"
+            }
+          }
+        ]
+      }
+    },
+    "accessControl": {
+      "repositories": {
+        "**": {
+          "policies": [
+            {
+              "users": ["system:serviceaccount:flux-system:source-controller"],
+              "actions": ["read", "create", "update", "delete"]
+            }
+          ]
+        }
+      }
+    }
+  },
+  "log": {
+    "level": "info"
+  }
+}
