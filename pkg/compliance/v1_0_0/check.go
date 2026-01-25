@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -210,6 +211,69 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			resp, err = resty.R().Get(loc)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		})
+
+		Convey("Empty blob upload", func() {
+			_, _ = Print("\nEmpty blob upload")
+			// empty blob digest (sha256 of empty string)
+			emptyDigest := godigest.Canonical.FromBytes([]byte{})
+			So(emptyDigest, ShouldNotBeNil)
+
+			// Test POST with digest and Content-Length: 0 (empty body)
+			resp, err := resty.R().
+				SetQueryParam("digest", emptyDigest.String()).
+				SetHeader("Content-Type", "application/octet-stream").
+				SetHeader("Content-Length", "0").
+				SetBody([]byte{}).
+				Post(baseURL + "/v2/repo2/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+			blobLoc := test.Location(baseURL, resp)
+			So(blobLoc, ShouldNotBeEmpty)
+			So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
+			So(resp.Header().Get(constants.DistContentDigestKey), ShouldEqual, emptyDigest.String())
+
+			// Verify empty blob can be retrieved via GET
+			resp, err = resty.R().Get(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
+			So(len(resp.Body()), ShouldEqual, 0)
+
+			// Verify empty blob can be checked via HEAD
+			resp, err = resty.R().Head(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
+			So(resp.Header().Get(constants.DistContentDigestKey), ShouldEqual, emptyDigest.String())
+
+			// Test PUT with digest and Content-Length: 0 (empty body) via POST+PUT flow
+			resp, err = resty.R().Post(baseURL + "/v2/repo2/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+			loc := test.Location(baseURL, resp)
+			So(loc, ShouldNotBeEmpty)
+
+			// PUT with empty body
+			resp, err = resty.R().
+				SetQueryParam("digest", emptyDigest.String()).
+				SetHeader("Content-Type", "application/octet-stream").
+				SetHeader("Content-Length", "0").
+				SetBody([]byte{}).
+				Put(loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+			blobLoc2 := test.Location(baseURL, resp)
+			So(blobLoc2, ShouldNotBeEmpty)
+			So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
+			So(resp.Header().Get(constants.DistContentDigestKey), ShouldEqual, emptyDigest.String())
+
+			// Verify the blob uploaded via PUT can be retrieved
+			resp, err = resty.R().Get(blobLoc2)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
+			So(len(resp.Body()), ShouldEqual, 0)
 		})
 
 		Convey("Monolithic blob upload with multiple name components", func() {
@@ -458,6 +522,143 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			resp, err := resty.R().Post(baseURL + "/v2/repo6/blobs/uploads/?digest=\"abc\"&&from=\"xyz\"")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldBeIn, []int{http.StatusCreated, http.StatusAccepted, http.StatusMethodNotAllowed})
+		})
+
+		Convey("Blob delete after mount", func() {
+			_, _ = Print("\nBlob delete after mount")
+			content := []byte("this is a blob for mount test")
+			digest := godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+
+			// Upload blob to repo2
+			resp, err := resty.R().Post(baseURL + "/v2/repo2/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+			loc := test.Location(baseURL, resp)
+			So(loc, ShouldNotBeEmpty)
+
+			resp, err = resty.R().SetQueryParam("digest", digest.String()).
+				SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+			blobLocRepo2 := test.Location(baseURL, resp)
+			So(blobLocRepo2, ShouldNotBeEmpty)
+
+			// Verify blob exists in repo2
+			resp, err = resty.R().Head(blobLocRepo2)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// Mount blob from repo2 to repo1
+			resp, err = resty.R().SetQueryParam("mount", digest.String()).
+				SetQueryParam("from", "repo2").
+				Post(baseURL + "/v2/repo1/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+			blobLocRepo1 := test.Location(baseURL, resp)
+			So(blobLocRepo1, ShouldNotBeEmpty)
+
+			// Verify blob exists in repo1
+			resp, err = resty.R().Head(blobLocRepo1)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// Delete blob from repo2
+			resp, err = resty.R().Delete(blobLocRepo2)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			// Verify blob no longer exists in repo2 (should return 404)
+			resp, err = resty.R().Head(blobLocRepo2)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			// Verify blob still exists in repo1 (should return 200)
+			resp, err = resty.R().Head(blobLocRepo1)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		})
+
+		Convey("Bad digest POST only", func() {
+			_, _ = Print("\nBad digest POST only")
+			content := []byte("this is a blob with bad digest")
+			badDigest := "sha256:invalid_digest_format"
+
+			// POST with invalid digest should return 400 Bad Request
+			resp, err := resty.R().
+				SetQueryParam("digest", badDigest).
+				SetHeader("Content-Type", "application/octet-stream").
+				SetHeader("Content-Length", strconv.Itoa(len(content))).
+				SetBody(content).
+				Post(baseURL + "/v2/repo2/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+			// POST with mismatched digest should return 400 Bad Request
+			correctDigest := godigest.FromBytes(content)
+			So(correctDigest, ShouldNotBeNil)
+			// Use a different digest that doesn't match the content
+			wrongDigest := godigest.Canonical.FromBytes([]byte("different content"))
+			So(wrongDigest, ShouldNotBeNil)
+
+			resp, err = resty.R().
+				SetQueryParam("digest", wrongDigest.String()).
+				SetHeader("Content-Type", "application/octet-stream").
+				SetHeader("Content-Length", strconv.Itoa(len(content))).
+				SetBody(content).
+				Post(baseURL + "/v2/repo2/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("Chunked blob upload PUT without Content-Length", func() {
+			_, _ = Print("\nChunked blob upload PUT without Content-Length")
+			// Start chunked upload
+			resp, err := resty.R().Post(baseURL + "/v2/repo3/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+			loc := test.Location(baseURL, resp)
+			So(loc, ShouldNotBeEmpty)
+
+			var buf bytes.Buffer
+			chunk1 := []byte("this is the first chunk")
+			chunk2 := []byte("this is the second chunk")
+			buf.Write(chunk1)
+			buf.Write(chunk2)
+			digest := godigest.FromBytes(buf.Bytes())
+			So(digest, ShouldNotBeNil)
+
+			// Upload first chunk via PATCH
+			contentRange := fmt.Sprintf("%d-%d", 0, len(chunk1)-1)
+			resp, err = resty.R().SetHeader("Content-Type", "application/octet-stream").
+				SetHeader("Content-Range", contentRange).SetBody(chunk1).Patch(loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			// Upload second chunk via PATCH
+			contentRange = fmt.Sprintf("%d-%d", len(chunk1), len(buf.Bytes())-1)
+			resp, err = resty.R().SetHeader("Content-Type", "application/octet-stream").
+				SetHeader("Content-Range", contentRange).SetBody(chunk2).Patch(loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			// Finish upload with PUT - all chunks already uploaded, so Content-Length can be missing
+			// This tests Chunked upload PUT with missing Content-Length
+			resp, err = resty.R().SetQueryParam("digest", digest.String()).
+				SetHeader("Content-Type", "application/octet-stream").
+				// Note: Not setting Content-Length header - this should work per spec
+				Put(loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+			blobLoc := test.Location(baseURL, resp)
+			So(blobLoc, ShouldNotBeEmpty)
+			So(resp.Header().Get(constants.DistContentDigestKey), ShouldEqual, digest.String())
+
+			// Verify blob can be retrieved
+			resp, err = resty.R().Get(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Body(), ShouldResemble, buf.Bytes())
 		})
 
 		Convey("Manifests", func() {

@@ -5711,11 +5711,13 @@ func TestAuthorizationMountBlob(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 
-		/* a HEAD request by user1 on blob digest (found in user1Repo) should return 200
-		because user1 has permission to read user1Repo */
+		/* a HEAD request by user1 on blob digest from user1/mysecondrepo should return 404
+		because the blob doesn't exist in that repository (even though user1 has permission
+		to read user1/myrepo where the blob exists). Per OCI spec, HEAD must check if the
+		blob exists "in the repository" (the specific repository requested). */
 		resp, err = userClient1.R().Head(baseURL + fmt.Sprintf("/v2/%s/blobs/%s", username1+"/"+"mysecondrepo", blobDigest))
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 		// user2 can upload without dedupe
 		err = UploadImageWithBasicAuth(img, baseURL, repoName2, tag, username2, password2)
@@ -5725,6 +5727,32 @@ func TestAuthorizationMountBlob(t *testing.T) {
 		resp, err = userClient2.R().SetQueryParams(params).Post(baseURL + "/v2/" + repoName2 + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// Test cross-repo mount with "from" parameter
+		// user1 tries to mount from repoName1 to a new repo
+		paramsWithFrom := make(map[string]string)
+		paramsWithFrom["mount"] = blobDigest.String()
+		paramsWithFrom["from"] = repoName1
+
+		repoName3 := username1 + "/" + "mythirdrepo"
+		resp, err = userClient1.R().SetQueryParams(paramsWithFrom).Post(baseURL + "/v2/" + repoName3 + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// user2 tries to mount from repoName1 (user1's repo) - should fail due to no permission
+		resp, err = userClient2.R().SetQueryParams(paramsWithFrom).Post(baseURL + "/v2/" + repoName2 + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted) // 202 because no permission to read from repoName1
+
+		// user1 tries to mount a non-existent blob from a non-existent repo - should return 202 (cache won't find it)
+		// Use a blob digest that doesn't exist anywhere in the system
+		nonExistentDigest := godigest.FromBytes([]byte("non-existent-blob-content"))
+		paramsWithFrom["mount"] = nonExistentDigest.String()
+		paramsWithFrom["from"] = username1 + "/nonexistent"
+		repoName4 := username1 + "/" + "myfourthrepo"
+		resp, err = userClient1.R().SetQueryParams(paramsWithFrom).Post(baseURL + "/v2/" + repoName4 + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted) // 202 because blob not found in cache
 	})
 }
 
@@ -6659,10 +6687,34 @@ func TestCrossRepoMount(t *testing.T) {
 
 		So(os.SameFile(cacheFi, linkFi), ShouldEqual, true)
 
+		// Test mounting from zot-d-test (where blob was originally uploaded)
+		params["from"] = "zot-d-test"
+		postResponse, err = client.R().
+			SetBasicAuth(username, password).SetQueryParams(params).
+			Post(baseURL + "/v2/zot-mount2-test/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(postResponse.StatusCode(), ShouldEqual, http.StatusCreated)
+		So(test.Location(baseURL, postResponse), ShouldEqual, fmt.Sprintf("%s%s/zot-mount2-test/%s/%s:%s",
+			baseURL, constants.RoutePrefix, constants.Blobs, godigest.SHA256, blob))
+
+		// Test mounting from non-existent repository with non-existent blob - should return 202 (cache won't find it)
+		// Use a blob digest that doesn't exist anywhere in the system
+		nonExistentDigest := godigest.FromBytes([]byte("non-existent-blob-for-mount-test"))
+		params["mount"] = nonExistentDigest.String()
+		params["from"] = "zot-nonexistent"
+		postResponse, err = client.R().
+			SetBasicAuth(username, password).SetQueryParams(params).
+			Post(baseURL + "/v2/zot-mount3-test/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(postResponse.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+		// HEAD request to zot-cv-test should return 404 because the blob was never mounted to that repository.
+		// Per OCI spec, HEAD must check if the blob exists "in the repository" (the specific repository requested),
+		// not in the cache or other repositories.
 		headResponse, err = client.R().SetBasicAuth(username, password).
 			Head(fmt.Sprintf("%s/v2/zot-cv-test/blobs/%s", baseURL, manifestDigest))
 		So(err, ShouldBeNil)
-		So(headResponse.StatusCode(), ShouldEqual, http.StatusOK)
+		So(headResponse.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 		// Invalid request
 		params = make(map[string]string)
