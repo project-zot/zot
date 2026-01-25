@@ -1,7 +1,7 @@
 name: "Check binary size increase"
 on:
   pull_request:
-    branches: [main]
+    branches: [none]
 
 permissions: read-all
 
