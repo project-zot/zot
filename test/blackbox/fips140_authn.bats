@@ -123,6 +123,11 @@ function verify_auth_and_push() {
     
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
    
+    # Disable TLS for regctl to avoid X25519 issues when regctl runs in FIPS mode
+    # This must be done before regctl registry login, as login automatically pings the registry
+    run regctl registry set localhost:${zot_port} --tls disabled
+    [ "$status" -eq 0 ]
+
     # anonymous authn is set for zot, so all auth is ignored for the /v2/ ping
     run regctl registry login localhost:${zot_port} -u ${user} -p ${pass}
     [ "$status" -eq 0 ]
