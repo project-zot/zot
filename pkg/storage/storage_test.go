@@ -59,7 +59,9 @@ var DeleteReferrers = config.ImageRetention{ //nolint: gochecknoglobals
 }
 
 func cleanupStorage(store storageTypes.Driver, name string) {
-	_ = store.Delete(name)
+	if store != nil {
+		_ = store.Delete(name)
+	}
 }
 
 type createObjectStoreOpts struct {
@@ -207,7 +209,8 @@ func TestGetAllDedupeReposCandidates(t *testing.T) {
 				defer DumpKeys(t, opts.miniRedisAddr)
 			}
 
-			if testcase.storageType == storageConstants.S3StorageDriverName {
+			switch testcase.storageType {
+			case storageConstants.S3StorageDriverName:
 				tskip.SkipS3(t)
 
 				uuid, err := guuid.NewV4()
@@ -219,9 +222,10 @@ func TestGetAllDedupeReposCandidates(t *testing.T) {
 				opts.rootDir = testDir
 
 				var store storageTypes.Driver
+
 				store, imgStore, _, _ = createObjectsStore(opts)
 				defer cleanupStorage(store, testDir)
-			} else {
+			default:
 				_, imgStore, _, _ = createObjectsStore(opts)
 			}
 
@@ -279,7 +283,8 @@ func TestStorageAPIs(t *testing.T) {
 				defer DumpKeys(t, opts.miniRedisAddr)
 			}
 
-			if testcase.storageType == storageConstants.S3StorageDriverName {
+			switch testcase.storageType {
+			case storageConstants.S3StorageDriverName:
 				tskip.SkipS3(t)
 
 				uuid, err := guuid.NewV4()
@@ -291,9 +296,10 @@ func TestStorageAPIs(t *testing.T) {
 				opts.rootDir = testDir
 
 				var store storageTypes.Driver
+
 				store, imgStore, _, _ = createObjectsStore(opts)
 				defer cleanupStorage(store, testDir)
-			} else {
+			default:
 				_, imgStore, _, _ = createObjectsStore(opts)
 			}
 
@@ -1028,7 +1034,8 @@ func TestMandatoryAnnotations(t *testing.T) {
 				defer DumpKeys(t, opts.miniRedisAddr)
 			}
 
-			if testcase.storageType == storageConstants.S3StorageDriverName {
+			switch testcase.storageType {
+			case storageConstants.S3StorageDriverName:
 				tskip.SkipS3(t)
 
 				uuid, err := guuid.NewV4()
@@ -1040,6 +1047,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 				opts.rootDir = testDir
 
 				var cacheDriver storageTypes.Cache
+
 				store, _, cacheDriver, _ = createObjectsStore(opts)
 
 				imgStore = imagestore.NewImageStore(testDir, cacheDir, false, false, log, metrics,
@@ -1050,8 +1058,9 @@ func TestMandatoryAnnotations(t *testing.T) {
 					}, store, cacheDriver, nil, nil)
 
 				defer cleanupStorage(store, testDir)
-			} else {
+			default:
 				var cacheDriver storageTypes.Cache
+
 				store, _, cacheDriver, _ = createObjectsStore(opts)
 
 				imgStore = imagestore.NewImageStore(cacheDir, cacheDir, true, true, log, metrics,
@@ -1115,8 +1124,10 @@ func TestMandatoryAnnotations(t *testing.T) {
 							}, store, nil, nil, nil)
 					} else {
 						var cacheDriver storageTypes.Cache
-						store, _, cacheDriver, _ = createObjectsStore(opts)
-
+						store, _, cacheDriver, err := createObjectsStore(opts)
+						if err != nil {
+							t.Fatal(err)
+						}
 						imgStore = imagestore.NewImageStore(cacheDir, cacheDir, true, true, log, metrics,
 							&mocks.MockedLint{
 								LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storageTypes.ImageStore) (bool, error) {
@@ -1223,7 +1234,8 @@ func TestDeleteBlobsInUse(t *testing.T) {
 				defer DumpKeys(t, opts.miniRedisAddr)
 			}
 
-			if testcase.storageType == storageConstants.S3StorageDriverName {
+			switch testcase.storageType {
+			case storageConstants.S3StorageDriverName:
 				tskip.SkipS3(t)
 
 				uuid, err := guuid.NewV4()
@@ -1238,7 +1250,7 @@ func TestDeleteBlobsInUse(t *testing.T) {
 				store, imgStore, _, _ = createObjectsStore(opts)
 
 				defer cleanupStorage(store, testDir)
-			} else {
+			default:
 				_, imgStore, _, _ = createObjectsStore(opts)
 			}
 
@@ -1532,7 +1544,8 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 				defer DumpKeys(t, opts.miniRedisAddr)
 			}
 
-			if testcase.storageType == storageConstants.S3StorageDriverName {
+			switch testcase.storageType {
+			case storageConstants.S3StorageDriverName:
 				tskip.SkipS3(t)
 
 				uuid, err := guuid.NewV4()
@@ -1545,7 +1558,7 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 
 				driver, imgStore, _, _ = createObjectsStore(opts)
 				defer cleanupStorage(driver, testDir)
-			} else {
+			default:
 				driver, imgStore, _, _ = createObjectsStore(opts)
 			}
 
@@ -1666,7 +1679,8 @@ func TestStorageHandler(t *testing.T) {
 				defer DumpKeys(t, opts.miniRedisAddr)
 			}
 
-			if testcase.storageType == storageConstants.S3StorageDriverName {
+			switch testcase.storageType {
+			case storageConstants.S3StorageDriverName:
 				tskip.SkipS3(t)
 
 				var (
@@ -1695,7 +1709,7 @@ func TestStorageHandler(t *testing.T) {
 
 				thirdStorageDriver, thirdStore, _, _ = createObjectsStore(opts)
 				defer cleanupStorage(thirdStorageDriver, thirdRootDir)
-			} else {
+			default:
 				firstRootDir = t.TempDir()
 				opts.rootDir = firstRootDir
 				opts.cacheDir = firstRootDir
@@ -1784,7 +1798,8 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 				Convey("Garbage collect with default/long delay", func() {
 					var imgStore storageTypes.ImageStore
 
-					if testcase.storageType == storageConstants.S3StorageDriverName {
+					switch testcase.storageType {
+					case storageConstants.S3StorageDriverName:
 						tskip.SkipS3(t)
 
 						uuid, err := guuid.NewV4()
@@ -1796,9 +1811,10 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 						opts.rootDir = testDir
 
 						var store storageTypes.Driver
+
 						store, imgStore, _, _ = createObjectsStore(opts)
 						defer cleanupStorage(store, testDir)
-					} else {
+					default:
 						_, imgStore, _, _ = createObjectsStore(opts)
 					}
 
@@ -1945,7 +1961,8 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 					gcDelay := 1 * time.Second
 
-					if testcase.storageType == storageConstants.S3StorageDriverName {
+					switch testcase.storageType {
+					case storageConstants.S3StorageDriverName:
 						tskip.SkipS3(t)
 
 						uuid, err := guuid.NewV4()
@@ -1957,9 +1974,10 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 						opts.rootDir = testDir
 
 						var store storageTypes.Driver
+
 						store, imgStore, _, _ = createObjectsStore(opts)
 						defer cleanupStorage(store, testDir)
-					} else {
+					default:
 						_, imgStore, _, _ = createObjectsStore(opts)
 					}
 
@@ -2220,7 +2238,8 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 					gcDelay := 3 * time.Second
 
-					if testcase.storageType == storageConstants.S3StorageDriverName {
+					switch testcase.storageType {
+					case storageConstants.S3StorageDriverName:
 						tskip.SkipS3(t)
 
 						uuid, err := guuid.NewV4()
@@ -2232,9 +2251,10 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 						opts.rootDir = testDir
 
 						var store storageTypes.Driver
+
 						store, imgStore, _, _ = createObjectsStore(opts)
 						defer cleanupStorage(store, testDir)
-					} else {
+					default:
 						_, imgStore, _, _ = createObjectsStore(opts)
 					}
 
@@ -2467,7 +2487,8 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 				Convey("Garbage collect with default/long delay", func() {
 					var imgStore storageTypes.ImageStore
 
-					if testcase.storageType == storageConstants.S3StorageDriverName {
+					switch testcase.storageType {
+					case storageConstants.S3StorageDriverName:
 						tskip.SkipS3(t)
 
 						uuid, err := guuid.NewV4()
@@ -2479,9 +2500,10 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 						opts.rootDir = testDir
 
 						var store storageTypes.Driver
+
 						store, imgStore, _, _ = createObjectsStore(opts)
 						defer cleanupStorage(store, testDir)
-					} else {
+					default:
 						_, imgStore, _, _ = createObjectsStore(opts)
 					}
 
@@ -2586,7 +2608,8 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 					gcDelay := 2 * time.Second
 					imageRetentionDelay := 2 * time.Second
 
-					if testcase.storageType == storageConstants.S3StorageDriverName {
+					switch testcase.storageType {
+					case storageConstants.S3StorageDriverName:
 						tskip.SkipS3(t)
 
 						uuid, err := guuid.NewV4()
@@ -2598,9 +2621,10 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 						opts.rootDir = testDir
 
 						var store storageTypes.Driver
+
 						store, imgStore, _, _ = createObjectsStore(opts)
 						defer cleanupStorage(store, testDir)
-					} else {
+					default:
 						_, imgStore, _, _ = createObjectsStore(opts)
 					}
 
@@ -2876,7 +2900,8 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 					defer DumpKeys(t, opts.miniRedisAddr)
 				}
 
-				if testcase.storageType == storageConstants.S3StorageDriverName {
+				switch testcase.storageType {
+				case storageConstants.S3StorageDriverName:
 					tskip.SkipS3(t)
 
 					uuid, err := guuid.NewV4()
@@ -2888,9 +2913,10 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 					opts.rootDir = testDir
 
 					var store storageTypes.Driver
+
 					store, imgStore, _, _ = createObjectsStore(opts)
 					defer cleanupStorage(store, testDir)
-				} else {
+				default:
 					_, imgStore, _, _ = createObjectsStore(opts)
 				}
 

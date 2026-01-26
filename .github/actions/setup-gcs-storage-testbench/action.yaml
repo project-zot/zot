@@ -1,0 +1,10 @@
+name: 'Setup storage-testbench'
+description: 'Download & run Google Cloud Storage testbench container'
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      run: |
+        docker run -d --name storage-testbench -p 9000:9000 -p 9090:9090 ghcr.io/project-zot/ci-images/gcs-storage-testbench:v0.60.0-zot
+        echo "Waiting for storage-testbench..."
+        timeout 30s bash -c 'until curl -s http://localhost:9000/storage/v1/b; do sleep 1; done'

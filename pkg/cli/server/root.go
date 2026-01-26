@@ -299,6 +299,10 @@ func getStorageType(storageDriver map[string]any) string {
 		return storageConstants.S3StorageDriverName
 	}
 
+	if storeName == storageConstants.GCSStorageDriverName {
+		return storageConstants.GCSStorageDriverName
+	}
+
 	return storeName
 }
 
@@ -559,6 +563,57 @@ func validateExtensionsConfig(cfg *config.Config, logger zlog.Logger) error {
 	return nil
 }
 
+func validateStorageConfigSection(
+	cfg *config.Config, logger zlog.Logger, storageConfig config.GlobalStorageConfig,
+) error {
+	if len(storageConfig.StorageDriver) != 0 {
+		// enforce s3/gcs driver in case of using storage driver
+		if storageConfig.StorageDriver["name"] != storageConstants.S3StorageDriverName &&
+			storageConfig.StorageDriver["name"] != storageConstants.GCSStorageDriverName {
+			msg := "unsupported storage driver"
+			logger.Error().Err(zerr.ErrBadConfig).Interface("storageDriver", storageConfig.StorageDriver["name"]).Msg(msg)
+
+			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+		}
+
+		// enforce tmpDir in case sync + s3/gcs
+		extensionsConfig := cfg.CopyExtensionsConfig()
+		if extensionsConfig.IsSyncEnabled() && extensionsConfig.Sync.DownloadDir == "" {
+			msg := "using both sync and remote storage features needs config.Extensions.Sync.DownloadDir to be specified"
+			logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
+
+			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+		}
+	}
+
+	// enforce s3/gcs driver on subpaths in case of using storage driver
+	if len(storageConfig.SubPaths) > 0 {
+		for route, subStorageConfig := range storageConfig.SubPaths {
+			if len(subStorageConfig.StorageDriver) != 0 {
+				if subStorageConfig.StorageDriver["name"] != storageConstants.S3StorageDriverName &&
+					subStorageConfig.StorageDriver["name"] != storageConstants.GCSStorageDriverName {
+					msg := "unsupported storage driver"
+					logger.Error().Err(zerr.ErrBadConfig).Str("subpath", route).Interface("storageDriver",
+						subStorageConfig.StorageDriver["name"]).Msg(msg)
+
+					return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+				}
+
+				// enforce tmpDir in case sync + s3/gcs
+				extensionsConfig := cfg.CopyExtensionsConfig()
+				if extensionsConfig.IsSyncEnabled() && extensionsConfig.Sync.DownloadDir == "" {
+					msg := "using both sync and remote storage features needs config.Extensions.Sync.DownloadDir to be specified"
+					logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
+
+					return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
 func validateConfiguration(config *config.Config, logger zlog.Logger) error {
 	if err := validateHTTP(config, logger); err != nil {
 		return err
@@ -614,51 +669,8 @@ func validateConfiguration(config *config.Config, logger zlog.Logger) error {
 	}
 
 	storageConfig := config.CopyStorageConfig()
-	if len(storageConfig.StorageDriver) != 0 {
-		// enforce s3 driver in case of using storage driver
-		if storageConfig.StorageDriver["name"] != storageConstants.S3StorageDriverName {
-			msg := "unsupported storage driver"
-			logger.Error().Err(zerr.ErrBadConfig).Interface("cacheDriver", storageConfig.StorageDriver["name"]).Msg(msg)
-
-			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
-		}
-
-		// enforce tmpDir in case sync + s3
-		extensionsConfig := config.CopyExtensionsConfig()
-		if extensionsConfig.IsSyncEnabled() && extensionsConfig.Sync.DownloadDir == "" {
-			msg := "using both sync and remote storage features needs config.Extensions.Sync.DownloadDir to be specified"
-			logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
-
-			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
-		}
-	}
-
-	// enforce s3 driver on subpaths in case of using storage driver
-	if storageConfig.SubPaths != nil {
-		if len(storageConfig.SubPaths) > 0 {
-			subPaths := storageConfig.SubPaths
-
-			for route, subStorageConfig := range subPaths {
-				if len(subStorageConfig.StorageDriver) != 0 {
-					if subStorageConfig.StorageDriver["name"] != storageConstants.S3StorageDriverName {
-						msg := "unsupported storage driver"
-						logger.Error().Err(zerr.ErrBadConfig).Str("subpath", route).Interface("storageDriver",
-							subStorageConfig.StorageDriver["name"]).Msg(msg)
-
-						return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
-					}
-
-					// enforce tmpDir in case sync + s3
-					extensionsConfig := config.CopyExtensionsConfig()
-					if extensionsConfig.IsSyncEnabled() && extensionsConfig.Sync.DownloadDir == "" {
-						msg := "using both sync and remote storage features needs config.Extensions.Sync.DownloadDir to be specified"
-						logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
-
-						return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
-					}
-				}
-			}
-		}
+	if err := validateStorageConfigSection(config, logger, storageConfig); err != nil {
+		return err
 	}
 
 	// check glob patterns in authz config are compilable
