@@ -3,6 +3,7 @@ package mocks
 import (
 	"context"
 	"io"
+	"net/http"
 	"strings"
 	"time"
 
@@ -100,11 +101,17 @@ func (s *StorageDriverMock) Delete(ctx context.Context, path string) error {
 	return nil
 }
 
+func (s *StorageDriverMock) RedirectURL(r *http.Request, path string) (string, error) {
+	return "", nil
+}
+
 func (s *StorageDriverMock) URLFor(ctx context.Context, path string, options map[string]any) (string, error) {
 	return "", nil
 }
 
-func (s *StorageDriverMock) Walk(ctx context.Context, path string, f driver.WalkFn) error {
+func (s *StorageDriverMock) Walk(ctx context.Context, path string, f driver.WalkFn,
+	options ...func(*driver.WalkOptions),
+) error {
 	if s != nil && s.WalkFn != nil {
 		return s.WalkFn(ctx, path, f)
 	}
