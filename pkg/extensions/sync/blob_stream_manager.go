@@ -14,6 +14,9 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage"
 )
 
+// Temporary directory for in-progress blob downloads
+const blobSyncTempDir = ".zot-sync-temp"
+
 // BlobDownloadKey uniquely identifies a blob download request.
 type BlobDownloadKey struct {
 	Repo   string
@@ -77,7 +80,7 @@ func (bsm *BlobStreamManager) GetOrCreateStreamer(
 	imgStore := bsm.storeController.GetImageStore(repo)
 
 	// Generate temp and final paths
-	tempPath := filepath.Join(imgStore.RootDir(), ".zot-sync-temp", digest.Encoded()+".tmp")
+	tempPath := filepath.Join(imgStore.RootDir(), blobSyncTempDir, digest.Encoded()+".tmp")
 	finalPath := imgStore.BlobPath(repo, digest)
 
 	streamer = NewBlobStreamer(digest, tempPath, finalPath, blobSize, bsm.log)
@@ -154,15 +157,19 @@ func (bsm *BlobStreamManager) removeDownload(key BlobDownloadKey) {
 
 // verifyBlobDigest verifies that the downloaded blob matches the expected digest.
 func (bsm *BlobStreamManager) verifyBlobDigest(path string, expectedDigest godigest.Digest) error {
-	// For now, we'll rely on the upstream registry providing correct data
-	// A full implementation would compute the digest of the downloaded file
-	// and compare it with expectedDigest
-	
-	// TODO: Implement actual digest verification by computing hash of the file
+	// TODO: Security - Implement digest verification
+	// Currently relying on upstream registry integrity. For production use,
+	// this MUST compute the actual digest of the downloaded file and compare
+	// it with expectedDigest to detect corruption or tampering.
+	// Implementation should:
+	// 1. Open the file and compute its digest using expectedDigest.Algorithm()
+	// 2. Compare computed digest with expectedDigest
+	// 3. Return error if mismatch
+
 	bsm.log.Debug().
 		Str("path", path).
 		Str("expectedDigest", expectedDigest.String()).
-		Msg("blob digest verification (placeholder)")
+		Msg("blob digest verification not yet implemented - relying on upstream integrity")
 
 	return nil
 }

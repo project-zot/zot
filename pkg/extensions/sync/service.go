@@ -951,15 +951,18 @@ func (service *BaseService) SyncBlob(ctx context.Context, repo string, digest go
 	imgStore := service.storeController.GetImageStore(repo)
 
 	// Create remote reference for blob access
-	// Use a dummy tag since we only need the repository reference
-	remoteRef, err := service.remote.GetImageReference(remoteRepo, "dummy")
+	// Note: regclient requires a full reference (repo:tag), but for blob-only operations
+	// the tag value is not actually used by the registry API
+	const dummyTag = "dummy"
+	remoteRef, err := service.remote.GetImageReference(remoteRepo, dummyTag)
 	if err != nil {
 		return err
 	}
 
 	// Create a descriptor for the blob
+	// digest is already godigest.Digest type, just use it directly
 	blobDesc := descriptor.Descriptor{
-		Digest: godigest.Digest(digest.String()),
+		Digest: digest,
 	}
 
 	// Get the actual blob content from upstream

@@ -292,39 +292,39 @@ func (onDemand *BaseOnDemand) syncImage(repo, reference string, syncResult chan 
 }
 
 func (onDemand *BaseOnDemand) syncBlob(repo string, digest godigest.Digest, syncResult chan error) {
-defer close(syncResult)
+	defer close(syncResult)
 
-var err error
+	var err error
 
-for serviceID, service := range onDemand.services {
-timeout := service.GetSyncTimeout()
+	for serviceID, service := range onDemand.services {
+		timeout := service.GetSyncTimeout()
 
-onDemand.log.Debug().
-Str("repo", repo).
-Str("digest", digest.String()).
-Int("serviceID", serviceID).
-Dur("timeout", timeout).
-Msg("starting on-demand blob sync")
+		onDemand.log.Debug().
+			Str("repo", repo).
+			Str("digest", digest.String()).
+			Int("serviceID", serviceID).
+			Dur("timeout", timeout).
+			Msg("starting on-demand blob sync")
 
-// Create a detached context with timeout to ensure sync completes even if HTTP client disconnects.
-syncCtx, cancel := context.WithTimeout(context.Background(), timeout)
-err = service.SyncBlob(syncCtx, repo, digest)
+		// Create a detached context with timeout to ensure sync completes even if HTTP client disconnects.
+		syncCtx, cancel := context.WithTimeout(context.Background(), timeout)
+		err = service.SyncBlob(syncCtx, repo, digest)
 
-cancel()
+		cancel()
 
-if err != nil {
-if errors.Is(err, zerr.ErrBlobNotFound) ||
-errors.Is(err, zerr.ErrRepoNotFound) ||
-errors.Is(err, zerr.ErrUnauthorizedAccess) {
-continue
-}
+		if err != nil {
+			if errors.Is(err, zerr.ErrBlobNotFound) ||
+				errors.Is(err, zerr.ErrRepoNotFound) ||
+				errors.Is(err, zerr.ErrUnauthorizedAccess) {
+				continue
+			}
 
-onDemand.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).Str("digest", digest.String()).
-Err(err).Msg("sync routine: error while syncing blob")
-} else {
-break
-}
-}
+			onDemand.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).Str("digest", digest.String()).
+				Err(err).Msg("sync routine: error while syncing blob")
+		} else {
+			break
+		}
+	}
 
-syncResult <- err
+	syncResult <- err
 }

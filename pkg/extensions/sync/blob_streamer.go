@@ -19,20 +19,20 @@ const defaultChunkSize = 10 * 1024 * 1024 // 10MB default chunk size
 // BlobStreamer manages streaming of a blob from upstream to local storage
 // while serving multiple concurrent clients.
 type BlobStreamer struct {
-	digest         godigest.Digest
-	tempPath       string
-	finalPath      string
-	totalSize      int64
-	chunkSize      int64
-	chunksTotal    int
-	chunksOnDisk   int
-	clients        map[int]chan int
-	clientID       int
-	clientMu       sync.Mutex
-	downloadErr    error
-	downloadDone   bool
-	downloadMu     sync.RWMutex
-	log            log.Logger
+	digest       godigest.Digest
+	tempPath     string
+	finalPath    string
+	totalSize    int64
+	chunkSize    int64
+	chunksTotal  int
+	chunksOnDisk int
+	clients      map[int]chan int
+	clientID     int
+	clientMu     sync.Mutex
+	downloadErr  error
+	downloadDone bool
+	downloadMu   sync.RWMutex
+	log          log.Logger
 }
 
 // NewBlobStreamer creates a new blob streamer instance.
@@ -95,8 +95,8 @@ func (bs *BlobStreamer) Download(ctx context.Context, reader io.Reader) error {
 		Int64("totalSize", bs.totalSize).
 		Msg("starting blob download")
 
-	// Create temp file
-	tempFile, err := os.OpenFile(bs.tempPath, os.O_WRONLY|os.O_CREATE, 0o644)
+	// Create temp file, truncating if it exists to ensure clean state
+	tempFile, err := os.OpenFile(bs.tempPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {
 		bs.setDownloadError(err)
 		return err
@@ -114,22 +114,28 @@ func (bs *BlobStreamer) Download(ctx context.Context, reader io.Reader) error {
 		default:
 		}
 
-		// Read and write one chunk
+		// Calculate bytes to read for this chunk
 		bytesToRead := bs.chunkSize
 		if bs.chunksOnDisk == bs.chunksTotal-1 {
-			// Last chunk might be smaller
+			// Last chunk: read remaining bytes
 			remainder := bs.totalSize % bs.chunkSize
 			if remainder > 0 {
 				bytesToRead = remainder
 			}
 		}
 
-		_, err := io.CopyN(tempFile, reader, bytesToRead)
-		if err != nil {
-			if !errors.Is(err, io.EOF) {
-				bs.setDownloadError(err)
-				return err
-			}
+		n, err := io.CopyN(tempFile, reader, bytesToRead)
+		if err != nil && !errors.Is(err, io.EOF) {
+			// Real error occurred
+			bs.setDownloadError(err)
+			return err
+		}
+
+		// Check if we got fewer bytes than expected (but only if not EOF)
+		if n < bytesToRead && !errors.Is(err, io.EOF) {
+			err := io.ErrUnexpectedEOF
+			bs.setDownloadError(err)
+			return err
 		}
 
 		// Update chunk count and notify clients

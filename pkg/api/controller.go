@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	godigest "github.com/opencontainers/go-digest"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/securecookie"
+	godigest "github.com/opencontainers/go-digest"
 	"github.com/zitadel/oidc/v3/pkg/client/rp"
 
 	"zotregistry.dev/zot/v2/errors"
