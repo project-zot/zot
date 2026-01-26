@@ -52,14 +52,15 @@ func (snr *simulatedNetworkReader) Read(b []byte) (n int, err error) {
 // InFlightImageCopier represents a client that wants to stream an image while it is being written to disk.
 // The data is copied first from disk up to the latest chunk and further copies wait for an announcement
 // over a channel when a new chunk has been written to disk.
+// If the client connection is lost, the channel is de-registered but the BlobStreamer continues.
 type InFlightImageCopier struct {
 	numChunksCopied int
-	source          *ChunkedImageCopier
+	source          *BlobStreamer
 	dest            io.Writer
 	sync.Mutex
 }
 
-func NewInFlightImageCopier(source *ChunkedImageCopier, dest io.Writer) *InFlightImageCopier {
+func NewInFlightImageCopier(source *BlobStreamer, dest io.Writer) *InFlightImageCopier {
 	return &InFlightImageCopier{
 		numChunksCopied: 0,
 		source:          source,
@@ -111,10 +112,12 @@ func (ific *InFlightImageCopier) Copy() (err error) {
 	return nil
 }
 
-// ChunkedImageCopier is a helper that splits an image into chunks based on chunkSize
-// It then copies chunks to disk.
+// BlobStreamer (renamed from ChunkedImageCopier) is a writer to a temp location with many readers (clients).
+// It splits a blob into chunks based on chunkSize and copies chunks to a temporary disk location.
 // The latest chunk number is announced to channels of subscribers.
-type ChunkedImageCopier struct {
+// Multiple clients can read from the temp file as chunks become available.
+// Once fully downloaded and verified, the blob would be copied to actual repository storage.
+type BlobStreamer struct {
 	numChunksTotal  int
 	numChunksOnDisk int
 
@@ -125,8 +128,8 @@ type ChunkedImageCopier struct {
 	numClientsTotal int
 }
 
-func NewChunkedImageCopier(destFilePath string, r io.Reader, numChunksTotal int) *ChunkedImageCopier {
-	return &ChunkedImageCopier{
+func NewBlobStreamer(destFilePath string, r io.Reader, numChunksTotal int) *BlobStreamer {
+	return &BlobStreamer{
 		numChunksTotal: numChunksTotal,
 		onDiskPath:     destFilePath,
 		inFlightReader: r,
@@ -136,34 +139,35 @@ func NewChunkedImageCopier(destFilePath string, r io.Reader, numChunksTotal int)
 
 // Everytime a new client is interested in the current blob, the client would create a subscription
 // here with a channel where latest chunk info is sent.
-func (cic *ChunkedImageCopier) Subscribe(channel chan int) int {
-	cic.clientMu.Lock()
-	defer cic.clientMu.Unlock()
+func (bs *BlobStreamer) Subscribe(channel chan int) int {
+	bs.clientMu.Lock()
+	defer bs.clientMu.Unlock()
 
-	cic.clients[cic.numClientsTotal] = channel
-	chanId := cic.numClientsTotal
-	cic.numClientsTotal++
+	bs.clients[bs.numClientsTotal] = channel
+	chanId := bs.numClientsTotal
+	bs.numClientsTotal++
 
 	// Announce the current number of available chunks
 	// TODO: should probably use a mutex lock here.
 	go func() {
-		channel <- cic.numChunksOnDisk
+		channel <- bs.numChunksOnDisk
 	}()
 
 	return chanId
 }
 
-func (cic *ChunkedImageCopier) Unsubscribe(id int) {
-	cic.clientMu.Lock()
-	defer cic.clientMu.Unlock()
+func (bs *BlobStreamer) Unsubscribe(id int) {
+	bs.clientMu.Lock()
+	defer bs.clientMu.Unlock()
 
-	delete(cic.clients, id)
+	delete(bs.clients, id)
 }
 
 // Starts writing content from inFlightReader to disk while updating clients
-func (cic *ChunkedImageCopier) Transfer() {
+// Continues even if clients disconnect to avoid wasting partial work
+func (bs *BlobStreamer) Transfer() {
 	log.Println("starting writer")
-	outputFile, err := os.OpenFile(cic.onDiskPath, os.O_WRONLY|os.O_CREATE, 0o644)
+	outputFile, err := os.OpenFile(bs.onDiskPath, os.O_WRONLY|os.O_CREATE, 0o644)
 	if err != nil {
 		log.Printf("failed to open write file: %s\n", err.Error())
 		os.Exit(1)
@@ -172,9 +176,9 @@ func (cic *ChunkedImageCopier) Transfer() {
 
 	var wg sync.WaitGroup
 
-	for cic.numChunksOnDisk < cic.numChunksTotal {
+	for bs.numChunksOnDisk < bs.numChunksTotal {
 		// simulates writing network resp body into a blob file with delay
-		_, err = io.CopyN(outputFile, cic.inFlightReader, chunkSizeBytes)
+		_, err = io.CopyN(outputFile, bs.inFlightReader, chunkSizeBytes)
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
 				log.Printf("failed to copy bytes: %s\n", err.Error())
@@ -182,22 +186,26 @@ func (cic *ChunkedImageCopier) Transfer() {
 			}
 		}
 
-		cic.numChunksOnDisk++
-		cic.clientMu.Lock()
+		bs.numChunksOnDisk++
+		bs.clientMu.Lock()
 
 		// Update all clients about the new chunk
 		// Clients always read the chunk from disk
-		for _, c := range cic.clients {
+		for _, c := range bs.clients {
 			wg.Go(func() {
-				c <- cic.numChunksOnDisk
+				c <- bs.numChunksOnDisk
 			})
 		}
 
-		cic.clientMu.Unlock()
+		bs.clientMu.Unlock()
 	}
 
 	wg.Wait()
 	log.Println("closing writer")
+	// In actual implementation, after this point:
+	// 1. Verify blob digest
+	// 2. Copy from temp location to actual repository storage
+	// 3. Clean up temp file
 }
 
 func chunkCountForBuffer(b []byte) int {
@@ -217,7 +225,8 @@ func main() {
 
 	r := NewSimulatedNetworkReader(buff)
 
-	msf := NewChunkedImageCopier("ondiskblob.txt", r, chunkCountForBuffer(buff))
+	// BlobStreamer writes to a temp location (ondiskblob.txt represents temp storage)
+	blobStreamer := NewBlobStreamer("ondiskblob.txt", r, chunkCountForBuffer(buff))
 
 	// client1.txt simulates an HTTP client receiving data over the network
 	client1File, err := os.OpenFile("client1.txt", os.O_WRONLY|os.O_CREATE, 0o644)
@@ -226,15 +235,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	client1 := NewInFlightImageCopier(msf, client1File)
+	client1 := NewInFlightImageCopier(blobStreamer, client1File)
 
 	// stdout is also used as a client and simulates another client interested in the same blob
-	client2 := NewInFlightImageCopier(msf, os.Stdout)
+	client2 := NewInFlightImageCopier(blobStreamer, os.Stdout)
 
 	var wg sync.WaitGroup
 
-	// Simulates the network transfer starting first
-	wg.Go(msf.Transfer)
+	// Simulates the network transfer starting first (BlobStreamer downloading from upstream)
+	wg.Go(blobStreamer.Transfer)
 
 	time.Sleep(10 * time.Millisecond)
 
