@@ -4,7 +4,6 @@ package sync
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"path/filepath"
 	"sync"
