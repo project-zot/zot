@@ -224,8 +224,11 @@ func (c *Controller) Run() error {
 
 		// This is a subset of the default curve preferences in defaultCurvePreferencesFIPS for TLS 1.2
 		// see https://cs.opensource.google/go/go/+/refs/tags/go1.24.9:src/crypto/tls/defaults.go;l=106
+		// P-256, P-384, and P-521 are all FIPS-compliant NIST curves
 		curvePreferences := []tls.CurveID{
 			tls.CurveP256,
+			tls.CurveP384,
+			tls.CurveP521,
 		}
 		if !fips140.Enabled() {
 			// X25519 is not FIPS-compliant
