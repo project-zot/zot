@@ -1,0 +1,18 @@
+{
+  "storage": {
+    "rootDirectory": "/tmp/zot",
+    "dedupe": false,
+    "storageDriver": {
+      "name": "gcs",
+      "bucket": "zot-storage",
+      "credentialsFile": "/path/to/gcs-credentials.json"
+    }
+  },
+  "http": {
+    "address": "127.0.0.1",
+    "port": "8080"
+  },
+  "log": {
+    "level": "debug"
+  }
+}

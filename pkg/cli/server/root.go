@@ -299,6 +299,10 @@ func getStorageType(storageDriver map[string]any) string {
 		return storageConstants.S3StorageDriverName
 	}
 
+	if storeName == storageConstants.GCSStorageDriverName {
+		return storageConstants.GCSStorageDriverName
+	}
+
 	return storeName
 }
 
