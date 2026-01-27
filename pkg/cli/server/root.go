@@ -615,8 +615,9 @@ func validateConfiguration(config *config.Config, logger zlog.Logger) error {
 
 	storageConfig := config.CopyStorageConfig()
 	if len(storageConfig.StorageDriver) != 0 {
-		// enforce s3 driver in case of using storage driver
-		if storageConfig.StorageDriver["name"] != storageConstants.S3StorageDriverName {
+		// enforce s3/gcs driver in case of using storage driver
+		if storageConfig.StorageDriver["name"] != storageConstants.S3StorageDriverName &&
+			storageConfig.StorageDriver["name"] != storageConstants.GCSStorageDriverName {
 			msg := "unsupported storage driver"
 			logger.Error().Err(zerr.ErrBadConfig).Interface("cacheDriver", storageConfig.StorageDriver["name"]).Msg(msg)
 
@@ -640,7 +641,8 @@ func validateConfiguration(config *config.Config, logger zlog.Logger) error {
 
 			for route, subStorageConfig := range subPaths {
 				if len(subStorageConfig.StorageDriver) != 0 {
-					if subStorageConfig.StorageDriver["name"] != storageConstants.S3StorageDriverName {
+					if subStorageConfig.StorageDriver["name"] != storageConstants.S3StorageDriverName &&
+						subStorageConfig.StorageDriver["name"] != storageConstants.GCSStorageDriverName {
 						msg := "unsupported storage driver"
 						logger.Error().Err(zerr.ErrBadConfig).Str("subpath", route).Interface("storageDriver",
 							subStorageConfig.StorageDriver["name"]).Msg(msg)
