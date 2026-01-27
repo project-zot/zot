@@ -30,6 +30,20 @@ import (
 	tskip "zotregistry.dev/zot/v2/pkg/test/skip"
 )
 
+func ensureDummyGCSCreds(t *testing.T) {
+	t.Helper()
+
+	if os.Getenv("GCSMOCK_ENDPOINT") != "" && os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
+		credsFile := path.Join(t.TempDir(), "dummy_creds.json")
+		err := os.WriteFile(credsFile, []byte(`{"type": "service_account", "project_id": "test-project"}`), 0o600)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", credsFile)
+	}
+}
+
 func cleanupStorage(store driver.StorageDriver, name string) {
 	_ = store.Delete(context.Background(), name)
 }
@@ -76,6 +90,7 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 
 func TestGCSDriver(t *testing.T) {
 	tskip.SkipGCS(t)
+	ensureDummyGCSCreds(t)
 
 	uuid, err := guuid.NewV4()
 	if err != nil {

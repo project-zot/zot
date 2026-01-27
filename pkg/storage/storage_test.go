@@ -3653,12 +3653,27 @@ func DumpKeys(t *testing.T, redisURL string) {
 	}
 }
 
+func ensureDummyGCSCreds(t *testing.T) {
+	t.Helper()
+
+	if os.Getenv("GCSMOCK_ENDPOINT") != "" && os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
+		credsFile := path.Join(t.TempDir(), "dummy_creds.json")
+		err := os.WriteFile(credsFile, []byte(`{"type": "service_account", "project_id": "test-project"}`), 0o600)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", credsFile)
+	}
+}
+
 func setupGCS(t *testing.T, opts createObjectStoreOpts) (storageTypes.Driver, storageTypes.ImageStore,
 	string,
 ) {
 	t.Helper()
 
 	tskip.SkipGCS(t)
+	ensureDummyGCSCreds(t)
 
 	uuid, err := guuid.NewV4()
 	if err != nil {
