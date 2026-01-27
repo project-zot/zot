@@ -60,7 +60,9 @@ var DeleteReferrers = config.ImageRetention{ //nolint: gochecknoglobals
 }
 
 func cleanupStorage(store storageTypes.Driver, name string) {
-	_ = store.Delete(name)
+	if store != nil {
+		_ = store.Delete(name)
+	}
 }
 
 type createObjectStoreOpts struct {
@@ -3666,7 +3668,10 @@ func setupGCS(t *testing.T, opts createObjectStoreOpts) (storageTypes.Driver, st
 	testDir := path.Join("/oci-repo-test", uuid.String())
 	opts.rootDir = testDir
 
-	store, imgStore, _, _ := createObjectsStore(opts)
+	store, imgStore, _, err := createObjectsStore(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	return store, imgStore, testDir
 }

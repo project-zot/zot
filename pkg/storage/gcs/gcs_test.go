@@ -154,12 +154,14 @@ func TestGCSDriver(t *testing.T) {
 			image := CreateDefaultImage()
 			cblob, _ := json.Marshal(image.Config)
 			cdigest := godigest.FromBytes(cblob)
-			imgStore.FullBlobUpload(repoName, bytes.NewBuffer(cblob), cdigest)
-			
-			mblob, _ := json.Marshal(image.Manifest)
-			imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageManifest, mblob)
+			_, _, err := imgStore.FullBlobUpload(repoName, bytes.NewBuffer(cblob), cdigest)
+			So(err, ShouldBeNil)
 
-			err := imgStore.DeleteImageManifest(repoName, "1.0", false)
+			mblob, _ := json.Marshal(image.Manifest)
+			_, _, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageManifest, mblob)
+			So(err, ShouldBeNil)
+
+			err = imgStore.DeleteImageManifest(repoName, "1.0", false)
 			So(err, ShouldBeNil)
 
 			_, _, _, err = imgStore.GetImageManifest(repoName, "1.0")
