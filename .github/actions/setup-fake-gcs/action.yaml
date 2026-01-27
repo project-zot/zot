@@ -1,0 +1,10 @@
+name: 'Setup fake-gcs-server'
+description: 'Download & run fake-gcs-server container'
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      run: |
+        docker run -d --name fake-gcs-server -p 4443:4443 -v ${{ github.workspace }}/examples/gcs-data:/data fsouza/fake-gcs-server -scheme http
+        echo "Waiting for fake-gcs-server..."
+        sleep 5

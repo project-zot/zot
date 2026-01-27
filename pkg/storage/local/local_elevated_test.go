@@ -1,4 +1,4 @@
-//go:build needprivileges
+//go:build needprivileges && linux
 
 package local_test
 

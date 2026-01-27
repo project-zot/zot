@@ -37,6 +37,7 @@ jobs:
           cd $GITHUB_WORKSPACE
           go mod download
       - uses: ./.github/actions/setup-localstack
+      - uses: ./.github/actions/setup-fake-gcs
       - name: run zot minimal tests
         run: |
           cd $GITHUB_WORKSPACE
@@ -46,12 +47,15 @@ jobs:
           DYNAMODBMOCK_ENDPOINT: http://localhost:4566
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
+          GCSMOCK_ENDPOINT: http://localhost:4443/storage/v1/
+          STORAGE_EMULATOR_HOST: localhost:4443
       - name: upload coverage
         uses: actions/upload-artifact@v6
         with:
           name: coverage-minimal
           path: coverage-minimal.txt
       - uses: ./.github/actions/teardown-localstack
+      - uses: ./.github/actions/teardown-fake-gcs
   test-run-extensions:
     name: Run zot with extensions tests
     runs-on: oracle-vm-16cpu-64gb-x86-64
@@ -76,6 +80,7 @@ jobs:
           cd $GITHUB_WORKSPACE
           go mod download
       - uses: ./.github/actions/setup-localstack
+      - uses: ./.github/actions/setup-fake-gcs
       - name: run zot extended tests
         run: |
           cd $GITHUB_WORKSPACE
@@ -85,12 +90,15 @@ jobs:
           DYNAMODBMOCK_ENDPOINT: http://localhost:4566
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
+          GCSMOCK_ENDPOINT: http://localhost:4443/storage/v1/
+          STORAGE_EMULATOR_HOST: localhost:4443
       - name: upload coverage
         uses: actions/upload-artifact@v6
         with:
           name: coverage-extended
           path: coverage-extended.txt
       - uses: ./.github/actions/teardown-localstack
+      - uses: ./.github/actions/teardown-fake-gcs
   test-run-devmode:
     name: Running development-mode tests on Linux
     runs-on: ubuntu-latest
