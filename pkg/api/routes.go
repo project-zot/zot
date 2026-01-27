@@ -1151,6 +1151,46 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrBlobNotFound) {
+			// Try on-demand sync if blob not found and sync is enabled
+			if isSyncOnDemandEnabled(*rh.c) {
+				rh.c.Log.Info().Str("repository", name).Str("digest", digest.String()).
+					Msg("trying to sync blob on demand")
+
+				if errSync := rh.c.SyncOnDemand.SyncBlob(request.Context(), name, digest); errSync != nil {
+					rh.c.Log.Err(errSync).Str("repository", name).Str("digest", digest.String()).
+						Msg("failed to sync blob")
+				} else {
+					// Retry getting the blob after sync
+					if partial {
+						repo, blen, bsize, err = imgStore.GetBlobPartial(name, digest, mediaType, from, to)
+					} else {
+						repo, blen, err = imgStore.GetBlob(name, digest, mediaType)
+					}
+
+					// If successful after sync, continue with normal flow
+					if err == nil {
+						defer repo.Close()
+
+						response.Header().Set("Content-Length", strconv.FormatInt(blen, 10))
+
+						status := http.StatusOK
+
+						if partial {
+							status = http.StatusPartialContent
+
+							response.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", from, from+blen-1, bsize))
+						} else {
+							response.Header().Set(constants.DistContentDigestKey, digest.String())
+						}
+
+						// return the blob data
+						WriteDataFromReader(response, status, blen, mediaType, repo, rh.c.Log)
+
+						return
+					}
+				}
+			}
+
 			details["digest"] = digest.String()
 			e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
