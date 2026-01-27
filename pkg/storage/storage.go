@@ -95,10 +95,12 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 		//nolint: typecheck,contextcheck
 		if storeName == constants.S3StorageDriverName {
 			defaultStore = s3.NewImageStore(rootDir, config.Storage.RootDirectory,
-				config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, store, cacheDriver, config.HTTP.Compat, recorder)
+				config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, store, cacheDriver,
+				config.HTTP.Compat, recorder)
 		} else {
 			defaultStore = gcs.NewImageStore(rootDir, config.Storage.RootDirectory,
-				config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, store, cacheDriver, config.HTTP.Compat, recorder)
+				config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, store, cacheDriver,
+				config.HTTP.Compat, recorder)
 		}
 	}
 

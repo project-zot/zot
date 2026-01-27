@@ -24,7 +24,7 @@ func SkipDynamo(t *testing.T) {
 func SkipGCS(t *testing.T) {
 	t.Helper()
 
-	if os.Getenv("GCS_CREDENTIALS_FILE") == "" {
-		t.Skip("Skipping testing without GCS credentials")
+	if os.Getenv("GCSMOCK_ENDPOINT") == "" {
+		t.Skip("Skipping testing without GCS mock server")
 	}
 }

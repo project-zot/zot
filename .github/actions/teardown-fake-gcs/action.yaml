@@ -1,0 +1,7 @@
+name: 'Teardown fake-gcs-server'
+description: 'Stop & remove fake-gcs-server container'
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      run: docker rm -f fake-gcs-server || true
