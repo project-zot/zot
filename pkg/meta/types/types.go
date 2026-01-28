@@ -270,9 +270,10 @@ type FullImageMeta struct {
 	IsStarred    bool
 	IsBookmarked bool
 
-	Referrers  []ReferrerInfo
-	Statistics DescriptorStatistics
-	Signatures ManifestSignatures
+	Referrers       []ReferrerInfo
+	Statistics      DescriptorStatistics
+	Signatures      ManifestSignatures
+	TaggedTimestamp time.Time
 }
 
 type FullManifestMeta struct {
@@ -300,8 +301,9 @@ type ReferrerInfo struct {
 
 // Descriptor represents an image. Multiple images might have the same digests but different tags.
 type Descriptor struct {
-	Digest    string
-	MediaType string
+	Digest          string
+	MediaType       string
+	TaggedTimestamp time.Time
 }
 
 type DescriptorStatistics struct {

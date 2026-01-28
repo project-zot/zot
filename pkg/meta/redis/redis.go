@@ -728,6 +728,8 @@ func (rc *RedisDB) SetImageMeta(digest godigest.Digest, imageMeta mTypes.ImageMe
 }
 
 // SetRepoReference sets the given image data to the repo metadata.
+//
+//nolint:gocyclo // Complex function handling multiple metadata updates (referrers, tags, statistics, signatures, blobs)
 func (rc *RedisDB) SetRepoReference(ctx context.Context, repo string,
 	reference string, imageMeta mTypes.ImageMeta,
 ) error {
@@ -805,9 +807,23 @@ func (rc *RedisDB) SetRepoReference(ctx context.Context, repo string,
 
 		// 3. Update tag
 		if !common.ReferenceIsDigest(reference) {
+			// Set TaggedTimestamp to now if this is a new tag, otherwise preserve existing timestamp
+			// For old data without TaggedTimestamp, leave it nil so it falls back to PushTimestamp
+			var taggedTimestamp *timestamppb.Timestamp
+			if existingTag, exists := protoRepoMeta.Tags[reference]; exists {
+				// Tag exists - preserve TaggedTimestamp if present, otherwise leave nil (old data)
+				if existingTag.GetTaggedTimestamp() != nil {
+					taggedTimestamp = existingTag.GetTaggedTimestamp()
+				}
+				// else leave taggedTimestamp as nil (old data without TaggedTimestamp)
+			} else {
+				// New tag - set timestamp to now
+				taggedTimestamp = timestamppb.Now()
+			}
 			protoRepoMeta.Tags[reference] = &proto_go.TagDescriptor{
-				Digest:    imageMeta.Digest.String(),
-				MediaType: imageMeta.MediaType,
+				Digest:          imageMeta.Digest.String(),
+				MediaType:       imageMeta.MediaType,
+				TaggedTimestamp: taggedTimestamp,
 			}
 		}
 
