@@ -838,8 +838,7 @@ func newClient(opts syncconf.RegistryConfig, credentials syncconf.CredentialsFil
 		hostConfig.RegCert = regCert
 	}
 
-	if mainHost == regclient.DockerRegistryAuth ||
-		mainHost == regclient.DockerRegistryDNS ||
+	if mainHost == regclient.DockerRegistryDNS ||
 		mainHost == regclient.DockerRegistry ||
 		mainHost == "index.docker.io" {
 		hostConfig.Name = regclient.DockerRegistry
@@ -857,17 +856,17 @@ func newClient(opts syncconf.RegistryConfig, credentials syncconf.CredentialsFil
 	hostConfigOpts = append(hostConfigOpts, hostConfig)
 
 	for _, mirror := range mirrorsHosts {
-		mirroHostConfig := hostConfig
-		mirroHostConfig.Name = mirror
-		mirroHostConfig.Hostname = mirror
+		mirrorHostConfig := hostConfig
+		mirrorHostConfig.Name = mirror
+		mirrorHostConfig.Hostname = mirror
 
 		creds, ok := credentials[mirror]
 		if ok {
-			mirroHostConfig.User = creds.Username
-			mirroHostConfig.Pass = creds.Password
+			mirrorHostConfig.User = creds.Username
+			mirrorHostConfig.Pass = creds.Password
 		}
 
-		hostConfigOpts = append(hostConfigOpts, mirroHostConfig)
+		hostConfigOpts = append(hostConfigOpts, mirrorHostConfig)
 	}
 
 	regOpts := []reg.Opts{}
