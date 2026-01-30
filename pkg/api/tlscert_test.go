@@ -193,5 +193,131 @@ func TestCertReloaderDirectly(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(cert, ShouldNotBeNil)
 		})
+
+		Convey("GetCertificateFunc should handle only cert file modification", func() {
+			reloader, err := api.NewCertReloader(certPath, keyPath)
+			So(err, ShouldBeNil)
+
+			getCert := reloader.GetCertificateFunc()
+			initialCert, err := getCert(nil)
+			So(err, ShouldBeNil)
+			So(initialCert, ShouldNotBeNil)
+
+			// Wait to ensure modification time will be different
+			time.Sleep(2 * time.Second)
+
+			// Modify only the cert file (touch it to update mtime)
+			// Generate new cert with same key
+			newServerOpts := &tlsutils.CertificateOptions{
+				Hostname:   "127.0.0.1",
+				CommonName: "Updated Cert Only",
+				NotAfter:   time.Now().AddDate(1, 0, 0),
+			}
+			// Read the existing key
+			keyData, err := os.ReadFile(keyPath)
+			So(err, ShouldBeNil)
+
+			// Generate new cert using the existing key
+			err = tlsutils.GenerateServerCertToFile(caCertPEM, caKeyPEM, certPath, keyPath, newServerOpts)
+			So(err, ShouldBeNil)
+
+			// Restore original key
+			err = os.WriteFile(keyPath, keyData, 0o600)
+			So(err, ShouldBeNil)
+
+			// Get certificate again - should reload
+			updatedCert, err := getCert(nil)
+			So(err, ShouldBeNil)
+			So(updatedCert, ShouldNotBeNil)
+		})
+
+		Convey("GetCertificateFunc should handle concurrent access", func() {
+			reloader, err := api.NewCertReloader(certPath, keyPath)
+			So(err, ShouldBeNil)
+
+			getCert := reloader.GetCertificateFunc()
+
+			// Launch multiple goroutines to access certificate concurrently
+			done := make(chan error, 10)
+			for i := 0; i < 10; i++ {
+				go func() {
+					var lastErr error
+					for j := 0; j < 100; j++ {
+						cert, err := getCert(nil)
+						if err != nil || cert == nil {
+							lastErr = err
+							break
+						}
+					}
+					done <- lastErr
+				}()
+			}
+
+			// Wait for all goroutines to complete and check for errors
+			for i := 0; i < 10; i++ {
+				err := <-done
+				So(err, ShouldBeNil)
+			}
+		})
+
+		Convey("GetCertificateFunc should not reload if files haven't changed", func() {
+			reloader, err := api.NewCertReloader(certPath, keyPath)
+			So(err, ShouldBeNil)
+
+			getCert := reloader.GetCertificateFunc()
+
+			// Get certificate multiple times
+			cert1, err := getCert(nil)
+			So(err, ShouldBeNil)
+			So(cert1, ShouldNotBeNil)
+
+			cert2, err := getCert(nil)
+			So(err, ShouldBeNil)
+			So(cert2, ShouldNotBeNil)
+
+			cert3, err := getCert(nil)
+			So(err, ShouldBeNil)
+			So(cert3, ShouldNotBeNil)
+
+			// All should return the same certificate instance (pointer equality)
+			So(cert1, ShouldEqual, cert2)
+			So(cert2, ShouldEqual, cert3)
+		})
+
+		Convey("GetCertificateFunc should reload when key file changes", func() {
+			reloader, err := api.NewCertReloader(certPath, keyPath)
+			So(err, ShouldBeNil)
+
+			getCert := reloader.GetCertificateFunc()
+			initialCert, err := getCert(nil)
+			So(err, ShouldBeNil)
+			So(initialCert, ShouldNotBeNil)
+
+			// Wait to ensure modification time will be different
+			time.Sleep(2 * time.Second)
+
+			// Generate completely new cert and key
+			newServerOpts := &tlsutils.CertificateOptions{
+				Hostname:   "127.0.0.1",
+				CommonName: "New Key Cert",
+				NotAfter:   time.Now().AddDate(1, 0, 0),
+			}
+			err = tlsutils.GenerateServerCertToFile(caCertPEM, caKeyPEM, certPath, keyPath, newServerOpts)
+			So(err, ShouldBeNil)
+
+			// Get certificate again - should reload due to key change
+			updatedCert, err := getCert(nil)
+			So(err, ShouldBeNil)
+			So(updatedCert, ShouldNotBeNil)
+
+			// Verify certificates are different
+			initialLeaf, err := x509.ParseCertificate(initialCert.Certificate[0])
+			So(err, ShouldBeNil)
+			updatedLeaf, err := x509.ParseCertificate(updatedCert.Certificate[0])
+			So(err, ShouldBeNil)
+
+			So(initialLeaf.Subject.CommonName, ShouldEqual, "Initial Cert")
+			So(updatedLeaf.Subject.CommonName, ShouldEqual, "New Key Cert")
+		})
 	})
 }
