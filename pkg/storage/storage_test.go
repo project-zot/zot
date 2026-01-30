@@ -3,8 +3,12 @@ package storage_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	_ "crypto/sha256"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -169,6 +173,18 @@ func createObjectsStore(options createObjectStoreOpts) (
 		gcsDriver, err := factory.Create(context.Background(), storeName, storageDriverParams)
 		if err != nil {
 			return nil, nil, nil, err
+		}
+
+		if endpoint := os.Getenv("GCSMOCK_ENDPOINT"); endpoint != "" {
+			url := fmt.Sprintf("%s/storage/v1/b?project=test-project", endpoint)
+			body := fmt.Sprintf(`{"name": "%s"}`, bucket)
+			_, err := resty.R().
+				SetHeader("Content-Type", "application/json").
+				SetBody(body).
+				Post(url)
+			if err != nil {
+				panic(err)
+			}
 		}
 
 		imgStore := gcs.NewImageStore(options.rootDir, options.cacheDir, true, false, log,
@@ -3658,7 +3674,24 @@ func ensureDummyGCSCreds(t *testing.T) {
 
 	if os.Getenv("GCSMOCK_ENDPOINT") != "" && os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
 		credsFile := path.Join(t.TempDir(), "dummy_creds.json")
-		err := os.WriteFile(credsFile, []byte(`{"type": "service_account", "project_id": "test-project"}`), 0o600)
+
+		priv, err := rsa.GenerateKey(rand.Reader, 2048)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		privBytes, err := x509.MarshalPKCS8PrivateKey(priv)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		privPEM := pem.EncodeToMemory(&pem.Block{
+			Type:  "PRIVATE KEY",
+			Bytes: privBytes,
+		})
+
+		content := fmt.Sprintf(`{"type": "service_account", "project_id": "test-project", "client_email": "test@test.com", "private_key": %q}`, string(privPEM))
+		err = os.WriteFile(credsFile, []byte(content), 0o600)
 		if err != nil {
 			t.Fatal(err)
 		}

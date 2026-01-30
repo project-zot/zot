@@ -5,6 +5,6 @@ runs:
   steps:
     - shell: bash
       run: |
-        docker run -d --name fake-gcs-server -p 4443:4443 -v ${{ github.workspace }}/examples/gcs-data:/data fsouza/fake-gcs-server -scheme http
+        docker run -d --name fake-gcs-server -p 4443:4443 -v ${{ github.workspace }}/examples/gcs-data:/data fsouza/fake-gcs-server:1.52.1 -scheme http
         echo "Waiting for fake-gcs-server..."
-        sleep 5
+        timeout 30s bash -c 'until curl -s http://localhost:4443/storage/v1/b; do sleep 1; done'
