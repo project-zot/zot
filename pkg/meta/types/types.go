@@ -141,9 +141,11 @@ type MetaDB interface { //nolint:interfacebloat
 	*/
 	RemoveRepoReference(repo, reference string, manifestDigest godigest.Digest) error
 
-	// ResetRepoReferences resets all layout specific data (tags, signatures, referrers, etc.) but keep user and image
-	// specific metadata such as star count, downloads other statistics
-	ResetRepoReferences(repo string) error
+	// ResetRepoReferences resets layout specific data (tags, signatures, referrers, etc.) but keep user and image
+	// specific metadata such as star count, downloads other statistics.
+	// tagsToKeep is a set of tag names that should be preserved (tags that exist in storage).
+	// Tags not in tagsToKeep will be removed.
+	ResetRepoReferences(repo string, tagsToKeep map[string]bool) error
 
 	GetRepoLastUpdated(repo string) time.Time
 
@@ -270,9 +272,10 @@ type FullImageMeta struct {
 	IsStarred    bool
 	IsBookmarked bool
 
-	Referrers  []ReferrerInfo
-	Statistics DescriptorStatistics
-	Signatures ManifestSignatures
+	Referrers       []ReferrerInfo
+	Statistics      DescriptorStatistics
+	Signatures      ManifestSignatures
+	TaggedTimestamp time.Time
 }
 
 type FullManifestMeta struct {
@@ -300,8 +303,9 @@ type ReferrerInfo struct {
 
 // Descriptor represents an image. Multiple images might have the same digests but different tags.
 type Descriptor struct {
-	Digest    string
-	MediaType string
+	Digest          string
+	MediaType       string
+	TaggedTimestamp time.Time
 }
 
 type DescriptorStatistics struct {

@@ -178,6 +178,16 @@ func AddImageMetaToRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.Rep
 ) (*proto_go.RepoMeta, *proto_go.RepoBlobs) {
 	switch imageMeta.MediaType {
 	case ispec.MediaTypeImageManifest:
+		if len(imageMeta.Manifests) == 0 {
+			// Empty manifests is an invalid state for ImageManifest, but we still add basic blob info
+			// to avoid skipping all metadata processing (e.g., LastUpdatedImage update)
+			repoBlobs.Blobs[imageMeta.Digest.String()] = &proto_go.BlobInfo{
+				Size: imageMeta.Size,
+			}
+
+			break
+		}
+
 		manifestData := imageMeta.Manifests[0]
 
 		vendor := GetVendor(manifestData.Manifest.Annotations)

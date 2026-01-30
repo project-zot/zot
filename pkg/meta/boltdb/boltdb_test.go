@@ -312,8 +312,45 @@ func TestWrapperErrors(t *testing.T) {
 				err := setRepoMeta("repo", badProtoBlob, boltdbWrapper.DB)
 				So(err, ShouldBeNil)
 
-				err = boltdbWrapper.ResetRepoReferences("repo")
+				err = boltdbWrapper.ResetRepoReferences("repo", nil)
 				So(err, ShouldNotBeNil)
+			})
+
+			Convey("preserve tags in tagsToKeep", func() {
+				ctx := context.Background()
+
+				// Create repo with multiple tags
+				image1 := CreateRandomImage()
+				image2 := CreateRandomImage()
+
+				err := boltdbWrapper.SetRepoReference(ctx, "repo", "tag1", image1.AsImageMeta())
+				So(err, ShouldBeNil)
+
+				// Wait a bit to ensure different timestamps
+				time.Sleep(10 * time.Millisecond)
+
+				err = boltdbWrapper.SetRepoReference(ctx, "repo", "tag2", image2.AsImageMeta())
+				So(err, ShouldBeNil)
+
+				// Get repo meta to capture TaggedTimestamp
+				repoMeta, err := boltdbWrapper.GetRepoMeta(ctx, "repo")
+				So(err, ShouldBeNil)
+				So(repoMeta.Tags, ShouldContainKey, "tag1")
+				So(repoMeta.Tags, ShouldContainKey, "tag2")
+
+				tag1Timestamp := repoMeta.Tags["tag1"].TaggedTimestamp
+
+				// Reset with only tag1 in tagsToKeep
+				tagsToKeep := map[string]bool{"tag1": true}
+				err = boltdbWrapper.ResetRepoReferences("repo", tagsToKeep)
+				So(err, ShouldBeNil)
+
+				// Verify tag1 is preserved with its timestamp
+				repoMeta, err = boltdbWrapper.GetRepoMeta(ctx, "repo")
+				So(err, ShouldBeNil)
+				So(repoMeta.Tags, ShouldContainKey, "tag1")
+				So(repoMeta.Tags, ShouldNotContainKey, "tag2")
+				So(repoMeta.Tags["tag1"].TaggedTimestamp, ShouldEqual, tag1Timestamp)
 			})
 		})
 

@@ -362,9 +362,14 @@ func GetTags(tags map[mTypes.Tag]*proto_go.TagDescriptor) map[mTypes.Tag]mTypes.
 	resultMap := map[mTypes.Tag]mTypes.Descriptor{}
 
 	for tag, tagDescriptor := range tags {
+		taggedTimestamp := time.Time{}
+		if tagDescriptor.GetTaggedTimestamp() != nil {
+			taggedTimestamp = tagDescriptor.GetTaggedTimestamp().AsTime()
+		}
 		resultMap[tag] = mTypes.Descriptor{
-			Digest:    tagDescriptor.GetDigest(),
-			MediaType: tagDescriptor.GetMediaType(),
+			Digest:          tagDescriptor.GetDigest(),
+			MediaType:       tagDescriptor.GetMediaType(),
+			TaggedTimestamp: taggedTimestamp,
 		}
 	}
 
@@ -408,16 +413,22 @@ func GetFullImageMetaFromProto(tag string, protoRepoMeta *proto_go.RepoMeta, pro
 	imageMeta := GetImageMeta(protoImageMeta)
 	imageDigest := imageMeta.Digest.String()
 
+	taggedTimestamp := time.Time{}
+	if tagDescriptor, ok := protoRepoMeta.GetTags()[tag]; ok && tagDescriptor.GetTaggedTimestamp() != nil {
+		taggedTimestamp = tagDescriptor.GetTaggedTimestamp().AsTime()
+	}
+
 	return mTypes.FullImageMeta{
-		Repo:         protoRepoMeta.GetName(),
-		Tag:          tag,
-		MediaType:    imageMeta.MediaType,
-		Digest:       imageMeta.Digest,
-		Size:         imageMeta.Size,
-		Index:        imageMeta.Index,
-		Manifests:    GetFullManifestData(protoRepoMeta, imageMeta.Manifests),
-		IsStarred:    protoRepoMeta.GetIsStarred(),
-		IsBookmarked: protoRepoMeta.GetIsBookmarked(),
+		Repo:            protoRepoMeta.GetName(),
+		Tag:             tag,
+		MediaType:       imageMeta.MediaType,
+		Digest:          imageMeta.Digest,
+		Size:            imageMeta.Size,
+		Index:           imageMeta.Index,
+		Manifests:       GetFullManifestData(protoRepoMeta, imageMeta.Manifests),
+		IsStarred:       protoRepoMeta.GetIsStarred(),
+		IsBookmarked:    protoRepoMeta.GetIsBookmarked(),
+		TaggedTimestamp: taggedTimestamp,
 
 		Referrers:  GetImageReferrers(protoRepoMeta.GetReferrers()[imageDigest]),
 		Statistics: GetImageStatistics(protoRepoMeta.GetStatistics()[imageDigest]),

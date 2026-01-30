@@ -493,7 +493,7 @@ func TestRedisUnreachable(t *testing.T) {
 		err = metaDB.RemoveRepoReference(repo, reference, digest)
 		So(err, ShouldNotBeNil)
 
-		err = metaDB.ResetRepoReferences(repo)
+		err = metaDB.ResetRepoReferences(repo, nil)
 		So(err, ShouldNotBeNil)
 
 		t := metaDB.GetRepoLastUpdated(repo)
@@ -815,8 +815,95 @@ func TestWrapperErrors(t *testing.T) {
 				err := setRepoMeta("repo", badProtoBlob, client)
 				So(err, ShouldBeNil)
 
-				err = metaDB.ResetRepoReferences("repo")
+				err = metaDB.ResetRepoReferences("repo", nil)
 				So(err, ShouldNotBeNil)
+			})
+
+			Convey("preserve tags in tagsToKeep", func() {
+				// Create repo with multiple tags
+				image1 := CreateRandomImage()
+				image2 := CreateRandomImage()
+
+				err := metaDB.SetRepoReference(ctx, "repo", "tag1", image1.AsImageMeta())
+				So(err, ShouldBeNil)
+
+				// Wait a bit to ensure different timestamps
+				time.Sleep(10 * time.Millisecond)
+
+				err = metaDB.SetRepoReference(ctx, "repo", "tag2", image2.AsImageMeta())
+				So(err, ShouldBeNil)
+
+				// Get repo meta to capture TaggedTimestamp
+				repoMeta, err := metaDB.GetRepoMeta(ctx, "repo")
+				So(err, ShouldBeNil)
+				So(repoMeta.Tags, ShouldContainKey, "tag1")
+				So(repoMeta.Tags, ShouldContainKey, "tag2")
+
+				tag1Timestamp := repoMeta.Tags["tag1"].TaggedTimestamp
+
+				// Reset with only tag1 in tagsToKeep
+				tagsToKeep := map[string]bool{"tag1": true}
+				err = metaDB.ResetRepoReferences("repo", tagsToKeep)
+				So(err, ShouldBeNil)
+
+				// Verify tag1 is preserved with its timestamp
+				repoMeta, err = metaDB.GetRepoMeta(ctx, "repo")
+				So(err, ShouldBeNil)
+				So(repoMeta.Tags, ShouldContainKey, "tag1")
+				So(repoMeta.Tags, ShouldNotContainKey, "tag2")
+				So(repoMeta.Tags["tag1"].TaggedTimestamp, ShouldEqual, tag1Timestamp)
+			})
+
+			Convey("remove tags not in tagsToKeep", func() {
+				// Create repo with multiple tags
+				image1 := CreateRandomImage()
+				image2 := CreateRandomImage()
+				image3 := CreateRandomImage()
+
+				err := metaDB.SetRepoReference(ctx, "repo", "tag1", image1.AsImageMeta())
+				So(err, ShouldBeNil)
+
+				err = metaDB.SetRepoReference(ctx, "repo", "tag2", image2.AsImageMeta())
+				So(err, ShouldBeNil)
+
+				err = metaDB.SetRepoReference(ctx, "repo", "tag3", image3.AsImageMeta())
+				So(err, ShouldBeNil)
+
+				// Reset with tag1 and tag2 in tagsToKeep
+				tagsToKeep := map[string]bool{"tag1": true, "tag2": true}
+				err = metaDB.ResetRepoReferences("repo", tagsToKeep)
+				So(err, ShouldBeNil)
+
+				// Verify only tag1 and tag2 are preserved
+				repoMeta, err := metaDB.GetRepoMeta(ctx, "repo")
+				So(err, ShouldBeNil)
+				So(repoMeta.Tags, ShouldContainKey, "tag1")
+				So(repoMeta.Tags, ShouldContainKey, "tag2")
+				So(repoMeta.Tags, ShouldNotContainKey, "tag3")
+			})
+
+			Convey("preserve statistics and stars", func() {
+				image := CreateRandomImage()
+
+				err := metaDB.SetRepoReference(ctx, "repo", "tag1", image.AsImageMeta())
+				So(err, ShouldBeNil)
+
+				err = metaDB.IncrementRepoStars("repo")
+				So(err, ShouldBeNil)
+
+				// Get original stats
+				repoMeta, err := metaDB.GetRepoMeta(ctx, "repo")
+				So(err, ShouldBeNil)
+				originalStars := repoMeta.StarCount
+
+				// Reset with empty tagsToKeep
+				err = metaDB.ResetRepoReferences("repo", map[string]bool{})
+				So(err, ShouldBeNil)
+
+				// Verify statistics and stars are preserved
+				repoMeta, err = metaDB.GetRepoMeta(ctx, "repo")
+				So(err, ShouldBeNil)
+				So(repoMeta.StarCount, ShouldEqual, originalStars)
 			})
 		})
 

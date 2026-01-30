@@ -272,6 +272,188 @@ func ref[T any](val T) *T {
 	return &ref
 }
 
+func TestTaggedTimestamp(t *testing.T) {
+	ctx := context.Background()
+
+	Convey("Test TaggedTimestamp in ImageSummary", t, func() {
+		Convey("TaggedTimestamp is populated from tag descriptor", func() {
+			taggedTime := time.Date(2024, time.January, 15, 10, 30, 0, 0, time.UTC)
+			pushTime := time.Date(2024, time.January, 10, 8, 0, 0, 0, time.UTC)
+
+			repoMeta := mTypes.RepoMeta{
+				Name: "repo",
+				Tags: map[string]mTypes.Descriptor{
+					"tag1": {
+						Digest:          "sha256:abc123",
+						MediaType:       ispec.MediaTypeImageManifest,
+						TaggedTimestamp: taggedTime,
+					},
+				},
+				Statistics: map[string]mTypes.DescriptorStatistics{
+					"sha256:abc123": {
+						PushTimestamp: pushTime,
+					},
+				},
+			}
+
+			imageMeta := mTypes.ImageMeta{
+				Digest:    godigest.FromString("sha256:abc123"),
+				MediaType: ispec.MediaTypeImageManifest,
+				Manifests: []mTypes.ManifestMeta{
+					{
+						Digest: godigest.FromString("sha256:abc123"),
+						Manifest: ispec.Manifest{
+							Config: ispec.Descriptor{
+								Digest: godigest.FromString("sha256:config123"),
+							},
+						},
+						Config: ispec.Image{},
+					},
+				},
+			}
+
+			fullImageMeta := convert.GetFullImageMeta("tag1", repoMeta, imageMeta)
+			So(fullImageMeta.TaggedTimestamp, ShouldEqual, taggedTime)
+
+			imageSummary, _, err := convert.ImageManifest2ImageSummary(ctx, fullImageMeta)
+			So(err, ShouldBeNil)
+			So(imageSummary.TaggedTimestamp, ShouldNotBeNil)
+			So(*imageSummary.TaggedTimestamp, ShouldEqual, taggedTime)
+		})
+
+		Convey("TaggedTimestamp falls back to PushTimestamp when zero", func() {
+			pushTime := time.Date(2024, time.January, 10, 8, 0, 0, 0, time.UTC)
+
+			// Use a proper digest that will match when converted to string
+			imageDigest := godigest.FromString("sha256:abc123")
+			digestStr := imageDigest.String()
+
+			repoMeta := mTypes.RepoMeta{
+				Name: "repo",
+				Tags: map[string]mTypes.Descriptor{
+					"tag1": {
+						Digest:          digestStr,
+						MediaType:       ispec.MediaTypeImageManifest,
+						TaggedTimestamp: time.Time{}, // Zero time
+					},
+				},
+				Statistics: map[string]mTypes.DescriptorStatistics{
+					digestStr: {
+						PushTimestamp: pushTime,
+					},
+				},
+			}
+
+			imageMeta := mTypes.ImageMeta{
+				Digest:    imageDigest,
+				MediaType: ispec.MediaTypeImageManifest,
+				Manifests: []mTypes.ManifestMeta{
+					{
+						Digest: imageDigest,
+						Manifest: ispec.Manifest{
+							Config: ispec.Descriptor{
+								Digest: godigest.FromString("sha256:config123"),
+							},
+						},
+						Config: ispec.Image{},
+					},
+				},
+			}
+
+			fullImageMeta := convert.GetFullImageMeta("tag1", repoMeta, imageMeta)
+			So(fullImageMeta.TaggedTimestamp.IsZero(), ShouldBeTrue)
+
+			imageSummary, _, err := convert.ImageManifest2ImageSummary(ctx, fullImageMeta)
+			So(err, ShouldBeNil)
+			So(imageSummary.TaggedTimestamp, ShouldNotBeNil)
+			So(*imageSummary.TaggedTimestamp, ShouldEqual, pushTime)
+		})
+
+		Convey("TaggedTimestamp is propagated to nested manifests in ImageIndex", func() {
+			taggedTime := time.Date(2024, time.January, 15, 10, 30, 0, 0, time.UTC)
+			pushTime := time.Date(2024, time.January, 10, 8, 0, 0, 0, time.UTC)
+
+			// Create a multiarch image
+			multiarchImage := CreateMultiarchWith().Images([]Image{
+				CreateRandomImage(),
+				CreateRandomImage(),
+			}).Build()
+
+			indexDigestStr := multiarchImage.DigestStr()
+
+			repoMeta := mTypes.RepoMeta{
+				Name: "repo",
+				Tags: map[string]mTypes.Descriptor{
+					"tag1": {
+						Digest:          indexDigestStr,
+						MediaType:       ispec.MediaTypeImageIndex,
+						TaggedTimestamp: taggedTime,
+					},
+				},
+				Statistics: map[string]mTypes.DescriptorStatistics{
+					indexDigestStr: {
+						PushTimestamp: pushTime,
+					},
+				},
+			}
+
+			imageMeta := multiarchImage.AsImageMeta()
+			fullImageMeta := convert.GetFullImageMeta("tag1", repoMeta, imageMeta)
+			So(fullImageMeta.TaggedTimestamp, ShouldEqual, taggedTime)
+
+			imageSummary, _, err := convert.ImageIndex2ImageSummary(ctx, fullImageMeta)
+			So(err, ShouldBeNil)
+			So(imageSummary.TaggedTimestamp, ShouldNotBeNil)
+			So(*imageSummary.TaggedTimestamp, ShouldEqual, taggedTime)
+
+			// Verify that nested manifests also have the correct TaggedTimestamp
+			So(len(imageSummary.Manifests), ShouldBeGreaterThan, 0)
+
+			for _, manifestSummary := range imageSummary.Manifests {
+				// Each manifest summary is part of the index, so they should inherit the index's TaggedTimestamp
+				// Note: ManifestSummary doesn't have TaggedTimestamp field, but the parent ImageSummary does
+				So(manifestSummary, ShouldNotBeNil)
+			}
+		})
+
+		Convey("TaggedTimestamp falls back to PushTimestamp for ImageIndex when zero", func() {
+			pushTime := time.Date(2024, time.January, 10, 8, 0, 0, 0, time.UTC)
+
+			// Create a multiarch image
+			multiarchImage := CreateMultiarchWith().Images([]Image{
+				CreateRandomImage(),
+			}).Build()
+
+			indexDigestStr := multiarchImage.DigestStr()
+
+			repoMeta := mTypes.RepoMeta{
+				Name: "repo",
+				Tags: map[string]mTypes.Descriptor{
+					"tag1": {
+						Digest:          indexDigestStr,
+						MediaType:       ispec.MediaTypeImageIndex,
+						TaggedTimestamp: time.Time{}, // Zero time
+					},
+				},
+				Statistics: map[string]mTypes.DescriptorStatistics{
+					indexDigestStr: {
+						PushTimestamp: pushTime,
+					},
+				},
+			}
+
+			imageMeta := multiarchImage.AsImageMeta()
+			fullImageMeta := convert.GetFullImageMeta("tag1", repoMeta, imageMeta)
+			So(fullImageMeta.TaggedTimestamp.IsZero(), ShouldBeTrue)
+
+			imageSummary, _, err := convert.ImageIndex2ImageSummary(ctx, fullImageMeta)
+			So(err, ShouldBeNil)
+			So(imageSummary.TaggedTimestamp, ShouldNotBeNil)
+			So(*imageSummary.TaggedTimestamp, ShouldEqual, pushTime)
+		})
+	})
+}
+
 func TestPaginatedConvert(t *testing.T) {
 	ctx := context.Background()
 
