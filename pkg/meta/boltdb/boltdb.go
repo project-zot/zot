@@ -1182,7 +1182,12 @@ func (bdw *BoltDB) ResetRepoReferences(repo string, tagsToKeep map[string]bool) 
 		repoMetaBlob := buck.Get([]byte(repo))
 
 		protoRepoMeta, err := unmarshalProtoRepoMeta(repo, repoMetaBlob)
-		if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
+		if err != nil {
+			if errors.Is(err, zerr.ErrRepoMetaNotFound) {
+				// Repo doesn't exist, nothing to reset
+				return nil
+			}
+
 			return err
 		}
 

@@ -16,6 +16,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"google.golang.org/protobuf/proto"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/log"
 	proto_go "zotregistry.dev/zot/v2/pkg/meta/proto/gen"
 	"zotregistry.dev/zot/v2/pkg/meta/redis"
@@ -811,6 +812,39 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("ResetRepoReferences", func() {
+			Convey("repo doesn't exist - returns early without error", func() {
+				// Verify repo doesn't exist
+				_, err := metaDB.GetRepoMeta(ctx, "nonexistent-repo")
+				So(err, ShouldNotBeNil)
+				So(errors.Is(err, zerr.ErrRepoMetaNotFound), ShouldBeTrue)
+
+				// ResetRepoReferences should return early without error
+				err = metaDB.ResetRepoReferences("nonexistent-repo", nil)
+				So(err, ShouldBeNil)
+
+				// Verify repo still doesn't exist
+				_, err = metaDB.GetRepoMeta(ctx, "nonexistent-repo")
+				So(err, ShouldNotBeNil)
+				So(errors.Is(err, zerr.ErrRepoMetaNotFound), ShouldBeTrue)
+			})
+
+			Convey("repo doesn't exist with tagsToKeep - returns early without error", func() {
+				// Verify repo doesn't exist
+				_, err := metaDB.GetRepoMeta(ctx, "nonexistent-repo2")
+				So(err, ShouldNotBeNil)
+				So(errors.Is(err, zerr.ErrRepoMetaNotFound), ShouldBeTrue)
+
+				// ResetRepoReferences should return early without error even with tagsToKeep
+				tagsToKeep := map[string]bool{"tag1": true}
+				err = metaDB.ResetRepoReferences("nonexistent-repo2", tagsToKeep)
+				So(err, ShouldBeNil)
+
+				// Verify repo still doesn't exist
+				_, err = metaDB.GetRepoMeta(ctx, "nonexistent-repo2")
+				So(err, ShouldNotBeNil)
+				So(errors.Is(err, zerr.ErrRepoMetaNotFound), ShouldBeTrue)
+			})
+
 			Convey("unmarshalProtoRepoMeta error", func() {
 				err := setRepoMeta("repo", badProtoBlob, client)
 				So(err, ShouldBeNil)

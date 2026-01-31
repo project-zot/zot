@@ -3493,7 +3493,13 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 			// Check if data in NewestImage is consistent with the data in RepoSummary
 			So(repoName, ShouldEqual, repoSummary.NewestImage.RepoName)
 			So(repoSummary.Name, ShouldEqual, repoSummary.NewestImage.RepoName)
-			So(repoSummary.LastUpdated, ShouldEqual, repoSummary.NewestImage.LastUpdated)
+			// RepoSummary.LastUpdated uses the newer of LastUpdated or TaggedTimestamp from the GraphQL layer
+			expectedLastUpdated := repoSummary.NewestImage.LastUpdated
+			if !repoSummary.NewestImage.TaggedTimestamp.IsZero() &&
+				repoSummary.NewestImage.TaggedTimestamp.After(repoSummary.NewestImage.LastUpdated) {
+				expectedLastUpdated = repoSummary.NewestImage.TaggedTimestamp
+			}
+			So(repoSummary.LastUpdated, ShouldEqual, expectedLastUpdated)
 
 			// The data in the RepoSummary returned from the request matches the data returned from the disk
 			repoInfo := allExpectedRepoInfoMap[repoName]
@@ -3833,7 +3839,13 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 			// Check if data in NewestImage is consistent with the data in RepoSummary
 			So(repoName, ShouldEqual, repoSummary.NewestImage.RepoName)
 			So(repoSummary.Name, ShouldEqual, repoSummary.NewestImage.RepoName)
-			So(repoSummary.LastUpdated, ShouldEqual, repoSummary.NewestImage.LastUpdated)
+			// RepoSummary.LastUpdated uses the newer of LastUpdated or TaggedTimestamp from the GraphQL layer
+			expectedLastUpdated := repoSummary.NewestImage.LastUpdated
+			if !repoSummary.NewestImage.TaggedTimestamp.IsZero() &&
+				repoSummary.NewestImage.TaggedTimestamp.After(repoSummary.NewestImage.LastUpdated) {
+				expectedLastUpdated = repoSummary.NewestImage.TaggedTimestamp
+			}
+			So(repoSummary.LastUpdated, ShouldEqual, expectedLastUpdated)
 
 			// The data in the RepoSummary returned from the request matches the data returned from the disk
 			repoInfo := allExpectedRepoInfoMap[repoName]
