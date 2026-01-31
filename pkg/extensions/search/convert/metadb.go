@@ -324,23 +324,37 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta mTypes.RepoMeta,
 	imageMetaMap map[string]mTypes.ImageMeta,
 ) *gql_generated.RepoSummary {
 	var (
-		repoName                 = repoMeta.Name
-		lastUpdatedImage         = deref(repoMeta.LastUpdatedImage, mTypes.LastUpdatedImage{})
-		lastUpdatedImageMeta     = imageMetaMap[lastUpdatedImage.Digest]
-		lastUpdatedTag           = lastUpdatedImage.Tag
-		repoLastUpdatedTimestamp = lastUpdatedImage.LastUpdated
-		repoPlatforms            = repoMeta.Platforms
-		repoVendors              = repoMeta.Vendors
-		repoDownloadCount        = repoMeta.DownloadCount
-		repoStarCount            = repoMeta.StarCount
-		repoIsUserStarred        = repoMeta.IsStarred    // value specific to the current user
-		repoIsUserBookMarked     = repoMeta.IsBookmarked // value specific to the current user
-		repoSize                 = repoMeta.Size
+		repoName             = repoMeta.Name
+		lastUpdatedImage     = deref(repoMeta.LastUpdatedImage, mTypes.LastUpdatedImage{})
+		lastUpdatedImageMeta = imageMetaMap[lastUpdatedImage.Digest]
+		lastUpdatedTag       = lastUpdatedImage.Tag
+		repoPlatforms        = repoMeta.Platforms
+		repoVendors          = repoMeta.Vendors
+		repoDownloadCount    = repoMeta.DownloadCount
+		repoStarCount        = repoMeta.StarCount
+		repoIsUserStarred    = repoMeta.IsStarred    // value specific to the current user
+		repoIsUserBookMarked = repoMeta.IsBookmarked // value specific to the current user
+		repoSize             = repoMeta.Size
 	)
 
-	if repoLastUpdatedTimestamp == nil {
-		repoLastUpdatedTimestamp = &time.Time{}
+	// Compute LastUpdated as the latest of:
+	// 1. The LastUpdated timestamp of the last updated image
+	// 2. All TaggedTimestamp values of all tags in the repository
+	var maxTimestamp time.Time
+
+	// Start with the LastUpdated from the last updated image
+	if lastUpdatedImage.LastUpdated != nil {
+		maxTimestamp = *lastUpdatedImage.LastUpdated
 	}
+
+	// Check all TaggedTimestamp values from all tags
+	for _, descriptor := range repoMeta.Tags {
+		if !descriptor.TaggedTimestamp.IsZero() && descriptor.TaggedTimestamp.After(maxTimestamp) {
+			maxTimestamp = descriptor.TaggedTimestamp
+		}
+	}
+
+	repoLastUpdatedTimestamp := &maxTimestamp
 
 	imageSummary, _, err := FullImageMeta2ImageSummary(ctx, GetFullImageMeta(lastUpdatedTag, repoMeta,
 		lastUpdatedImageMeta))

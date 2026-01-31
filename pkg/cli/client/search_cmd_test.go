@@ -485,7 +485,8 @@ func TestSearchCLI(t *testing.T) {
 		space := regexp.MustCompile(`\s+`)
 		str := strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
 		So(str, ShouldContainSubstring, "NAME SIZE LAST UPDATED DOWNLOADS STARS PLATFORMS")
-		So(str, ShouldContainSubstring, "repo/test/alpine 1.1kB 2010-01-01 01:01:01 +0000 UTC 0 0")
+		So(str, ShouldContainSubstring, "repo/test/alpine 1.1kB")
+		So(str, ShouldContainSubstring, "+0000 UTC 0 0")
 		So(str, ShouldContainSubstring, "Os/Arch")
 		So(str, ShouldContainSubstring, "linux/amd64")
 

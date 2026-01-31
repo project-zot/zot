@@ -407,7 +407,8 @@ func TestOutputFormat(t *testing.T) {
 			`"score":0}],"history":null,"vulnerabilities":{"maxSeverity":"","unknownCount":0,"lowCount":0,`+
 			`"mediumCount":0,"highCount":0,"criticalCount":0,"count":0},`+
 			`"referrers":null,"artifactType":"","signatureInfo":null}],"size":"123445",`+
-			`"downloadCount":0,"lastUpdated":"0001-01-01T00:00:00Z","description":"","isSigned":false,"licenses":"",`+
+			`"downloadCount":0,"lastUpdated":"0001-01-01T00:00:00Z","lastPullTimestamp":"0001-01-01T00:00:00Z",`+
+			`"pushTimestamp":"0001-01-01T00:00:00Z","taggedTimestamp":"0001-01-01T00:00:00Z","description":"","isSigned":false,"licenses":"",`+
 			`"labels":"","title":"","source":"","documentation":"","authors":"","vendor":"",`+
 			`"vulnerabilities":{"maxSeverity":"","unknownCount":0,"lowCount":0,"mediumCount":0,"highCount":0,`+
 			`"criticalCount":0,"count":0},"referrers":null,"signatureInfo":null}`+"\n")
@@ -442,7 +443,9 @@ func TestOutputFormat(t *testing.T) {
 				`unknowncount: 0 lowcount: 0 mediumcount: 0 highcount: 0 criticalcount: 0 count: 0 `+
 				`referrers: [] artifacttype: "" `+
 				`signatureinfo: [] size: "123445" downloadcount: 0 `+
-				`lastupdated: 0001-01-01T00:00:00Z description: "" issigned: false licenses: "" labels: "" `+
+				`lastupdated: 0001-01-01T00:00:00Z lastpulltimestamp: 0001-01-01T00:00:00Z `+
+				`pushtimestamp: 0001-01-01T00:00:00Z taggedtimestamp: 0001-01-01T00:00:00Z `+
+				`description: "" issigned: false licenses: "" labels: "" `+
 				`title: "" source: "" documentation: "" authors: "" vendor: "" vulnerabilities: maxseverity: "" `+
 				`unknowncount: 0 lowcount: 0 mediumcount: 0 highcount: 0 criticalcount: 0 `+
 				`count: 0 referrers: [] signatureinfo: []`,
@@ -479,7 +482,9 @@ func TestOutputFormat(t *testing.T) {
 					`history: [] vulnerabilities: maxseverity: "" unknowncount: 0 lowcount: 0 mediumcount: 0 `+
 					`highcount: 0 criticalcount: 0 count: 0 referrers: [] artifacttype: "" `+
 					`signatureinfo: [] size: "123445" downloadcount: 0 `+
-					`lastupdated: 0001-01-01T00:00:00Z description: "" issigned: false licenses: "" labels: "" `+
+					`lastupdated: 0001-01-01T00:00:00Z lastpulltimestamp: 0001-01-01T00:00:00Z `+
+					`pushtimestamp: 0001-01-01T00:00:00Z taggedtimestamp: 0001-01-01T00:00:00Z `+
+					`description: "" issigned: false licenses: "" labels: "" `+
 					`title: "" source: "" documentation: "" authors: "" vendor: "" vulnerabilities: maxseverity: "" `+
 					`unknowncount: 0 lowcount: 0 mediumcount: 0 highcount: 0 criticalcount: 0 `+
 					`count: 0 referrers: [] signatureinfo: []`,

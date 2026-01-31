@@ -308,6 +308,43 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("ResetRepoReferences", func() {
+			Convey("repo doesn't exist - returns early without error", func() {
+				ctx := context.Background()
+
+				// Verify repo doesn't exist
+				_, err := boltdbWrapper.GetRepoMeta(ctx, "nonexistent-repo")
+				So(err, ShouldNotBeNil)
+				So(errors.Is(err, zerr.ErrRepoMetaNotFound), ShouldBeTrue)
+
+				// ResetRepoReferences should return early without error
+				err = boltdbWrapper.ResetRepoReferences("nonexistent-repo", nil)
+				So(err, ShouldBeNil)
+
+				// Verify repo still doesn't exist
+				_, err = boltdbWrapper.GetRepoMeta(ctx, "nonexistent-repo")
+				So(err, ShouldNotBeNil)
+				So(errors.Is(err, zerr.ErrRepoMetaNotFound), ShouldBeTrue)
+			})
+
+			Convey("repo doesn't exist with tagsToKeep - returns early without error", func() {
+				ctx := context.Background()
+
+				// Verify repo doesn't exist
+				_, err := boltdbWrapper.GetRepoMeta(ctx, "nonexistent-repo2")
+				So(err, ShouldNotBeNil)
+				So(errors.Is(err, zerr.ErrRepoMetaNotFound), ShouldBeTrue)
+
+				// ResetRepoReferences should return early without error even with tagsToKeep
+				tagsToKeep := map[string]bool{"tag1": true}
+				err = boltdbWrapper.ResetRepoReferences("nonexistent-repo2", tagsToKeep)
+				So(err, ShouldBeNil)
+
+				// Verify repo still doesn't exist
+				_, err = boltdbWrapper.GetRepoMeta(ctx, "nonexistent-repo2")
+				So(err, ShouldNotBeNil)
+				So(errors.Is(err, zerr.ErrRepoMetaNotFound), ShouldBeTrue)
+			})
+
 			Convey("unmarshalProtoRepoMeta error", func() {
 				err := setRepoMeta("repo", badProtoBlob, boltdbWrapper.DB)
 				So(err, ShouldBeNil)

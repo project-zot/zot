@@ -1020,6 +1020,160 @@ func TestIndexAnnotations(t *testing.T) {
 	})
 }
 
+func TestRepoMeta2RepoSummary(t *testing.T) {
+	ctx := context.Background()
+
+	Convey("Test RepoMeta2RepoSummary LastUpdated with TaggedTimestamp", t, func() {
+		now := time.Now()
+		olderTime := now.Add(-2 * time.Hour)
+		newerTime := now.Add(-1 * time.Hour)
+		newestTime := now
+		futureTime := now.Add(1 * time.Hour)
+
+		// Create a repo with multiple tags having different TaggedTimestamp values
+		repoMeta := mTypes.RepoMeta{
+			Name: "test-repo",
+			Tags: map[mTypes.Tag]mTypes.Descriptor{
+				"tag1": {
+					Digest:          "sha256:digest1",
+					MediaType:       "application/vnd.oci.image.manifest.v1+json",
+					TaggedTimestamp: olderTime,
+				},
+				"tag2": {
+					Digest:          "sha256:digest2",
+					MediaType:       "application/vnd.oci.image.manifest.v1+json",
+					TaggedTimestamp: newerTime,
+				},
+				"tag3": {
+					Digest:          "sha256:digest3",
+					MediaType:       "application/vnd.oci.image.manifest.v1+json",
+					TaggedTimestamp: futureTime, // This is the newest TaggedTimestamp
+				},
+			},
+			LastUpdatedImage: &mTypes.LastUpdatedImage{
+				Descriptor: mTypes.Descriptor{
+					Digest:    "sha256:digest2",
+					MediaType: "application/vnd.oci.image.manifest.v1+json",
+				},
+				Tag:         "tag2",
+				LastUpdated: &newestTime, // This is newer than olderTime and newerTime, but older than futureTime
+			},
+		}
+
+		imageMetaMap := map[string]mTypes.ImageMeta{
+			"sha256:digest2": {
+				Digest:    godigest.FromString("sha256:digest2"),
+				MediaType: "application/vnd.oci.image.manifest.v1+json",
+				Manifests: []mTypes.ManifestMeta{
+					{
+						Digest: godigest.FromString("sha256:digest2"),
+						Config: ispec.Image{
+							Created: &newestTime,
+						},
+					},
+				},
+			},
+		}
+
+		repoSummary := convert.RepoMeta2RepoSummary(ctx, repoMeta, imageMetaMap)
+
+		// LastUpdated should be futureTime (the maximum of all TaggedTimestamp values and LastUpdatedImage.LastUpdated)
+		So(repoSummary, ShouldNotBeNil)
+		So(repoSummary.LastUpdated, ShouldNotBeNil)
+		So(*repoSummary.LastUpdated, ShouldEqual, futureTime)
+	})
+
+	Convey("Test RepoMeta2RepoSummary LastUpdated when TaggedTimestamp is older than LastUpdated", t, func() {
+		now := time.Now()
+		olderTime := now.Add(-2 * time.Hour)
+		newestTime := now
+
+		repoMeta := mTypes.RepoMeta{
+			Name: "test-repo",
+			Tags: map[mTypes.Tag]mTypes.Descriptor{
+				"tag1": {
+					Digest:          "sha256:digest1",
+					MediaType:       "application/vnd.oci.image.manifest.v1+json",
+					TaggedTimestamp: olderTime, // Older than LastUpdated
+				},
+			},
+			LastUpdatedImage: &mTypes.LastUpdatedImage{
+				Descriptor: mTypes.Descriptor{
+					Digest:    "sha256:digest1",
+					MediaType: "application/vnd.oci.image.manifest.v1+json",
+				},
+				Tag:         "tag1",
+				LastUpdated: &newestTime,
+			},
+		}
+
+		imageMetaMap := map[string]mTypes.ImageMeta{
+			"sha256:digest1": {
+				Digest:    godigest.FromString("sha256:digest1"),
+				MediaType: "application/vnd.oci.image.manifest.v1+json",
+				Manifests: []mTypes.ManifestMeta{
+					{
+						Digest: godigest.FromString("sha256:digest1"),
+						Config: ispec.Image{
+							Created: &newestTime,
+						},
+					},
+				},
+			},
+		}
+
+		repoSummary := convert.RepoMeta2RepoSummary(ctx, repoMeta, imageMetaMap)
+
+		// LastUpdated should be newestTime (the LastUpdatedImage.LastUpdated, which is newer than TaggedTimestamp)
+		So(repoSummary, ShouldNotBeNil)
+		So(repoSummary.LastUpdated, ShouldNotBeNil)
+		So(*repoSummary.LastUpdated, ShouldEqual, newestTime)
+	})
+
+	Convey("Test RepoMeta2RepoSummary LastUpdated with zero timestamps", t, func() {
+		zeroTime := time.Time{}
+
+		repoMeta := mTypes.RepoMeta{
+			Name: "test-repo",
+			Tags: map[mTypes.Tag]mTypes.Descriptor{
+				"tag1": {
+					Digest:          "sha256:digest1",
+					MediaType:       "application/vnd.oci.image.manifest.v1+json",
+					TaggedTimestamp: zeroTime,
+				},
+			},
+			LastUpdatedImage: &mTypes.LastUpdatedImage{
+				Descriptor: mTypes.Descriptor{
+					Digest:    "sha256:digest1",
+					MediaType: "application/vnd.oci.image.manifest.v1+json",
+				},
+				Tag:         "tag1",
+				LastUpdated: nil,
+			},
+		}
+
+		imageMetaMap := map[string]mTypes.ImageMeta{
+			"sha256:digest1": {
+				Digest:    godigest.FromString("sha256:digest1"),
+				MediaType: "application/vnd.oci.image.manifest.v1+json",
+				Manifests: []mTypes.ManifestMeta{
+					{
+						Digest: godigest.FromString("sha256:digest1"),
+						Config: ispec.Image{},
+					},
+				},
+			},
+		}
+
+		repoSummary := convert.RepoMeta2RepoSummary(ctx, repoMeta, imageMetaMap)
+
+		// LastUpdated should be zero time when all timestamps are zero
+		So(repoSummary, ShouldNotBeNil)
+		So(repoSummary.LastUpdated, ShouldNotBeNil)
+		So(*repoSummary.LastUpdated, ShouldEqual, zeroTime)
+	})
+}
+
 func TestConvertErrors(t *testing.T) {
 	ctx := context.Background()
 	log := log.NewTestLogger()

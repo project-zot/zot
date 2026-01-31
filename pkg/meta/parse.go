@@ -69,7 +69,9 @@ func ParseStorage(metaDB mTypes.MetaDB, storeController stypes.StoreController, 
 
 		metaLastUpdated := metaDB.GetRepoLastUpdated(repo)
 
-		if storageLastUpdated.Before(metaLastUpdated) {
+		// If repo metadata doesn't exist (zero time), always parse it
+		// Otherwise, only parse if storage is newer than metadata
+		if !metaLastUpdated.IsZero() && storageLastUpdated.Before(metaLastUpdated) {
 			continue
 		}
 
