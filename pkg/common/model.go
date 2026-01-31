@@ -33,26 +33,29 @@ type PaginatedImagesResult struct {
 }
 
 type ImageSummary struct {
-	RepoName        string                    `json:"repoName"`
-	Tag             string                    `json:"tag"`
-	Digest          string                    `json:"digest"`
-	MediaType       string                    `json:"mediaType"`
-	Manifests       []ManifestSummary         `json:"manifests"`
-	Size            string                    `json:"size"`
-	DownloadCount   int                       `json:"downloadCount"`
-	LastUpdated     time.Time                 `json:"lastUpdated"`
-	Description     string                    `json:"description"`
-	IsSigned        bool                      `json:"isSigned"`
-	Licenses        string                    `json:"licenses"`
-	Labels          string                    `json:"labels"`
-	Title           string                    `json:"title"`
-	Source          string                    `json:"source"`
-	Documentation   string                    `json:"documentation"`
-	Authors         string                    `json:"authors"`
-	Vendor          string                    `json:"vendor"`
-	Vulnerabilities ImageVulnerabilitySummary `json:"vulnerabilities"`
-	Referrers       []Referrer                `json:"referrers"`
-	SignatureInfo   []SignatureSummary        `json:"signatureInfo"`
+	RepoName          string                    `json:"repoName"`
+	Tag               string                    `json:"tag"`
+	Digest            string                    `json:"digest"`
+	MediaType         string                    `json:"mediaType"`
+	Manifests         []ManifestSummary         `json:"manifests"`
+	Size              string                    `json:"size"`
+	DownloadCount     int                       `json:"downloadCount"`
+	LastUpdated       time.Time                 `json:"lastUpdated"`
+	LastPullTimestamp time.Time                 `json:"lastPullTimestamp"`
+	PushTimestamp     time.Time                 `json:"pushTimestamp"`
+	TaggedTimestamp   time.Time                 `json:"taggedTimestamp"`
+	Description       string                    `json:"description"`
+	IsSigned          bool                      `json:"isSigned"`
+	Licenses          string                    `json:"licenses"`
+	Labels            string                    `json:"labels"`
+	Title             string                    `json:"title"`
+	Source            string                    `json:"source"`
+	Documentation     string                    `json:"documentation"`
+	Authors           string                    `json:"authors"`
+	Vendor            string                    `json:"vendor"`
+	Vulnerabilities   ImageVulnerabilitySummary `json:"vulnerabilities"`
+	Referrers         []Referrer                `json:"referrers"`
+	SignatureInfo     []SignatureSummary        `json:"signatureInfo"`
 }
 
 type ManifestSummary struct {

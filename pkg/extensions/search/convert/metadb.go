@@ -324,22 +324,33 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta mTypes.RepoMeta,
 	imageMetaMap map[string]mTypes.ImageMeta,
 ) *gql_generated.RepoSummary {
 	var (
-		repoName                 = repoMeta.Name
-		lastUpdatedImage         = deref(repoMeta.LastUpdatedImage, mTypes.LastUpdatedImage{})
-		lastUpdatedImageMeta     = imageMetaMap[lastUpdatedImage.Digest]
-		lastUpdatedTag           = lastUpdatedImage.Tag
-		repoLastUpdatedTimestamp = lastUpdatedImage.LastUpdated
-		repoPlatforms            = repoMeta.Platforms
-		repoVendors              = repoMeta.Vendors
-		repoDownloadCount        = repoMeta.DownloadCount
-		repoStarCount            = repoMeta.StarCount
-		repoIsUserStarred        = repoMeta.IsStarred    // value specific to the current user
-		repoIsUserBookMarked     = repoMeta.IsBookmarked // value specific to the current user
-		repoSize                 = repoMeta.Size
+		repoName             = repoMeta.Name
+		lastUpdatedImage     = deref(repoMeta.LastUpdatedImage, mTypes.LastUpdatedImage{})
+		lastUpdatedImageMeta = imageMetaMap[lastUpdatedImage.Digest]
+		lastUpdatedTag       = lastUpdatedImage.Tag
+		repoPlatforms        = repoMeta.Platforms
+		repoVendors          = repoMeta.Vendors
+		repoDownloadCount    = repoMeta.DownloadCount
+		repoStarCount        = repoMeta.StarCount
+		repoIsUserStarred    = repoMeta.IsStarred    // value specific to the current user
+		repoIsUserBookMarked = repoMeta.IsBookmarked // value specific to the current user
+		repoSize             = repoMeta.Size
 	)
 
-	if repoLastUpdatedTimestamp == nil {
+	// Use the newer of LastUpdated or TaggedTimestamp
+	var lastUpdatedTime time.Time
+	if lastUpdatedImage.LastUpdated != nil {
+		lastUpdatedTime = *lastUpdatedImage.LastUpdated
+	}
+
+	var repoLastUpdatedTimestamp *time.Time
+	switch {
+	case lastUpdatedTime.IsZero() && lastUpdatedImage.TaggedTimestamp.IsZero():
 		repoLastUpdatedTimestamp = &time.Time{}
+	case lastUpdatedTime.IsZero() || lastUpdatedImage.TaggedTimestamp.After(lastUpdatedTime):
+		repoLastUpdatedTimestamp = &lastUpdatedImage.TaggedTimestamp
+	default:
+		repoLastUpdatedTimestamp = &lastUpdatedTime
 	}
 
 	imageSummary, _, err := FullImageMeta2ImageSummary(ctx, GetFullImageMeta(lastUpdatedTag, repoMeta,

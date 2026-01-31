@@ -3,6 +3,7 @@ package meta_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -831,6 +832,54 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) 
 		// - substoreRepo1, substoreRepo2 (from substore with "a/" prefix)
 		// - defaultRepo (from default store, no prefix)
 		So(len(repoMetaList), ShouldEqual, 3)
+	})
+
+	Convey("ParseStorage should parse repos without metadata", func() {
+		imageStore := local.NewImageStore(rootDir, false, false,
+			log, monitoring.NewMetricsServer(false, log), nil, nil, nil, nil)
+
+		storeController := storage.StoreController{DefaultStore: imageStore}
+
+		// Create a repo in storage
+		testRepo := "repo-without-metadata"
+
+		// Ensure repo doesn't exist in metadata (clean up from previous test runs if needed)
+		err := metaDB.DeleteRepoMeta(testRepo)
+		So(err, ShouldBeNil)
+
+		// Verify GetRepoLastUpdated returns zero (repo doesn't exist in metadata)
+		metaLastUpdated := metaDB.GetRepoLastUpdated(testRepo)
+		So(metaLastUpdated.IsZero(), ShouldBeTrue)
+
+		image := CreateRandomImage()
+
+		err = WriteImageToFileSystem(image, testRepo, "tag1", storeController)
+		So(err, ShouldBeNil)
+
+		// Verify repo still doesn't exist in metadata (GetRepoMeta should return ErrRepoMetaNotFound)
+		_, err = metaDB.GetRepoMeta(ctx, testRepo)
+		So(err, ShouldNotBeNil)
+		So(errors.Is(err, zerr.ErrRepoMetaNotFound), ShouldBeTrue)
+
+		// Verify GetRepoLastUpdated still returns zero
+		metaLastUpdated = metaDB.GetRepoLastUpdated(testRepo)
+		So(metaLastUpdated.IsZero(), ShouldBeTrue)
+
+		// Parse storage - repos without metadata (zero time) are always parsed
+		// Note: This behavior is the same with or without the !metaLastUpdated.IsZero() guard
+		// because storageLastUpdated.Before(time.Time{}) is always false for valid timestamps
+		err = meta.ParseStorage(metaDB, storeController, log) //nolint: contextcheck
+		So(err, ShouldBeNil)
+
+		// Verify repo metadata was created
+		repoMeta, err := metaDB.GetRepoMeta(ctx, testRepo)
+		So(err, ShouldBeNil)
+		So(repoMeta.Name, ShouldEqual, testRepo)
+		So(repoMeta.Tags, ShouldContainKey, "tag1")
+
+		// Verify GetRepoLastUpdated now returns a non-zero time
+		metaLastUpdated = metaDB.GetRepoLastUpdated(testRepo)
+		So(metaLastUpdated.IsZero(), ShouldBeFalse)
 	})
 }
 

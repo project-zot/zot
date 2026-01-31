@@ -134,6 +134,11 @@ func (dwr *DynamoDB) GetRepoLastUpdated(repo string) time.Time {
 	repoLastUpdatedBlob := []byte{}
 
 	if resp.Item != nil {
+		// Check if RepoLastUpdated attribute exists in the item
+		if _, exists := resp.Item["RepoLastUpdated"]; !exists {
+			return time.Time{}
+		}
+
 		err = attributevalue.Unmarshal(resp.Item["RepoLastUpdated"], &repoLastUpdatedBlob)
 		if err != nil {
 			return time.Time{}
@@ -144,7 +149,18 @@ func (dwr *DynamoDB) GetRepoLastUpdated(repo string) time.Time {
 			if err != nil {
 				return time.Time{}
 			}
+		} else {
+			// Empty blob means no timestamp was set
+			return time.Time{}
 		}
+	} else {
+		// Item doesn't exist, return zero time
+		return time.Time{}
+	}
+
+	// Check if the timestamp is zero before converting
+	if protoRepoLastUpdated.Seconds == 0 && protoRepoLastUpdated.Nanos == 0 {
+		return time.Time{}
 	}
 
 	lastUpdated := *mConvert.GetTime(protoRepoLastUpdated)
@@ -881,6 +897,11 @@ func getProtoImageMetaFromAttribute(imageMetaAttribute types.AttributeValue) (*p
 func (dwr *DynamoDB) ResetRepoReferences(repo string, tagsToKeep map[string]bool) error {
 	protoRepoMeta, err := dwr.getProtoRepoMeta(context.Background(), repo)
 	if err != nil {
+		if errors.Is(err, zerr.ErrRepoMetaNotFound) {
+			// Repo doesn't exist, nothing to reset
+			return nil
+		}
+
 		return err
 	}
 
