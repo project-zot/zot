@@ -204,6 +204,15 @@ func (c *Controller) Run() error {
 
 	tlsConfig := c.Config.CopyTLSConfig()
 	if tlsConfig != nil && tlsConfig.Key != "" && tlsConfig.Cert != "" {
+		// Create certificate reloader for automatic TLS certificate updates
+		certReloader, err := NewCertReloader(tlsConfig.Cert, tlsConfig.Key, c.Log)
+		if err != nil {
+			c.Log.Error().Err(err).Str("cert", tlsConfig.Cert).Str("key", tlsConfig.Key).
+				Msg("failed to load TLS certificates")
+
+			return err
+		}
+
 		// These are the same as the cipher suites in defaultCipherSuitesFIPS for TLS 1.2
 		// see https://cs.opensource.google/go/go/+/refs/tags/go1.24.9:src/crypto/tls/defaults.go;l=123
 		// Note: Order doesn't matter - Go 1.17+ automatically orders cipher suites based on
@@ -239,7 +248,8 @@ func (c *Controller) Run() error {
 			CipherSuites:     cipherSuites,
 			CurvePreferences: curvePreferences,
 			// PreferServerCipherSuites is ignored in Go 1.17+ - Go automatically orders cipher suites
-			MinVersion: tls.VersionTLS12,
+			MinVersion:     tls.VersionTLS12,
+			GetCertificate: certReloader.GetCertificateFunc(),
 		}
 
 		if tlsConfig.CACert != "" {
@@ -266,7 +276,8 @@ func (c *Controller) Run() error {
 
 		c.Healthz.Ready()
 
-		return server.ServeTLS(listener, tlsConfig.Cert, tlsConfig.Key)
+		// Pass empty strings to ServeTLS - certificates will be loaded via GetCertificate callback
+		return server.ServeTLS(listener, "", "")
 	}
 
 	c.Healthz.Ready()
