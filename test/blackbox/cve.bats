@@ -20,7 +20,8 @@ function verify_prerequisites {
 }
 
 function setup_file() {
-    export REGISTRY_NAME=main
+    # Use unique config name based on test file name and test run to avoid conflicts
+    export REGISTRY_NAME=$(basename "${BASH_SOURCE[0]}" .bats)-$(basename "${BATS_FILE_TMPDIR}")
     # Verify prerequisites are available
     if ! $(verify_prerequisites); then
         exit 1
@@ -69,10 +70,14 @@ EOF
 function teardown() {
     # conditionally printing on failure is possible from teardown but not from from teardown_file
     cat ${BATS_FILE_TMPDIR}/zot.log
+    # Show zli config for debugging
+    zli_show_config ${REGISTRY_NAME}
 }
 
 function teardown_file() {
     zot_stop_all
+    # Clean up zli config
+    zli_delete_config ${REGISTRY_NAME}
 }
 
 @test "cve by image name and tag" {

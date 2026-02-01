@@ -121,6 +121,16 @@ function zli_add_config() {
     ${ZLI_PATH} config add ${registry_name} ${registry_url}
 }
 
+function zli_show_config() {
+    local registry_name=${1}
+    ${ZLI_PATH} config ${registry_name} -l || true
+}
+
+function zli_delete_config() {
+    local registry_name=${1}
+    ${ZLI_PATH} config remove ${registry_name} || true
+}
+
 function zb_run() {
     local zot_address=${1}
     ${ZB_PATH} -c 10 -n 30 -o stdout ${zot_address} --skip-cleanup
