@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 
@@ -16,9 +17,18 @@ var bearerTokenMatch = regexp.MustCompile("(?i)bearer (.*)")
 // ResourceAccess is a single entry in the private 'access' claim specified by the distribution token authentication
 // specification.
 type ResourceAccess struct {
+	// Standard claims defined in the Distribution spec:
+	// https://distribution.github.io/distribution/spec/auth/jwt/
+
 	Type    string   `json:"type"`
 	Name    string   `json:"name"`
 	Actions []string `json:"actions"`
+
+	// Zot extensions
+
+	// ExpiresAt is an optional expiration time for this specific resource access entry.
+	// If not set, the overall token expiration time (the standard 'exp' claim) applies.
+	ExpiresAt *jwt.NumericDate `json:"exp,omitempty"`
 }
 
 type ResourceAction struct {
@@ -120,6 +130,10 @@ func (a *BearerAuthorizer) Authorize(header string, requested *ResourceAction) e
 		}
 
 		if !slices.Contains(allowed.Actions, requested.Action) {
+			continue
+		}
+
+		if allowed.ExpiresAt != nil && allowed.ExpiresAt.Time.Before(time.Now()) {
 			continue
 		}
 
