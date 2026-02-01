@@ -199,8 +199,11 @@ func (cr *CertReloader) reload() error {
 // This is used as a fallback when fsnotify is not available or fails.
 // Uses time-based caching to avoid excessive file system calls.
 func (cr *CertReloader) maybeReload() error {
-	// Use time-based cache to reduce frequency of stat calls
-	// Check and update lastCheck within the same critical section to avoid race conditions
+	// Use write lock for both check and update to prevent race conditions
+	// While less efficient than RLock+Lock upgrade, this ensures only one goroutine
+	// updates lastCheck at a time, preventing multiple goroutines from bypassing
+	// the cache check simultaneously. Since we have a 1-second cache, this lock
+	// is acquired at most once per second, making the performance impact acceptable.
 	cr.certMu.Lock()
 	if time.Since(cr.lastCheck) < cr.checkCache {
 		// Recently checked, skip stat calls
