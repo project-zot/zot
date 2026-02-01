@@ -55,6 +55,10 @@ Add OIDC workload identity configuration to your bearer authentication settings.
   - **`username`**: CEL expression to extract the username. Default: `"claims.iss + '/' + claims.sub"`
   - **`groups`**: CEL expression to extract groups. Default: none (no groups extracted)
 
+- **`certificateAuthority`** (optional): PEM-encoded CA certificate to validate the OIDC provider's TLS certificate. Useful when the OIDC issuer uses a private CA (e.g., Kubernetes API server with a self-signed certificate). Mutually exclusive with `certificateAuthorityFile`.
+
+- **`certificateAuthorityFile`** (optional): Path to a PEM-encoded CA certificate file to validate the OIDC provider's TLS certificate. Mutually exclusive with `certificateAuthority`.
+
 - **`skipIssuerVerification`** (optional): Skip issuer verification (for testing only). Default: `false`.
 
 ### CEL Expressions
@@ -123,6 +127,48 @@ is specified (so the whole `claimMapping` section could be omitted in this examp
   },
   "log": {
     "level": "info"
+  }
+}
+```
+
+### Configuration with Custom CA
+
+When the OIDC issuer uses a private CA (e.g., Kubernetes API server), you can configure the CA certificate inline or via a file path:
+
+```json
+{
+  "http": {
+    "auth": {
+      "bearer": {
+        "oidc": [
+          {
+            "issuer": "https://kubernetes.default.svc.cluster.local",
+            "audiences": ["zot"],
+            "certificateAuthorityFile": "/etc/zot/k8s-ca.pem"
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+Alternatively, you can embed the CA certificate directly using `certificateAuthority`:
+
+```json
+{
+  "http": {
+    "auth": {
+      "bearer": {
+        "oidc": [
+          {
+            "issuer": "https://kubernetes.default.svc.cluster.local",
+            "audiences": ["zot"],
+            "certificateAuthority": "-----BEGIN CERTIFICATE-----\nMIIC...\n-----END CERTIFICATE-----"
+          }
+        ]
+      }
+    }
   }
 }
 ```
@@ -378,7 +424,7 @@ Set log level to `debug` to see detailed authentication logs:
 
 5. **Validation failed**: Check that your token claims satisfy all configured validation expressions.
 
-6. **JWKS endpoint not reachable**: Verify network connectivity to the OIDC issuer's JWKS endpoint. Note: Zot lazily initializes the OIDC provider on first authentication, so startup won't fail if the issuer is temporarily unreachable.
+6. **JWKS endpoint not reachable**: Verify network connectivity to the OIDC issuer's JWKS endpoint. Note: Zot lazily initializes the OIDC provider on first authentication, so startup won't fail if the issuer is temporarily unreachable. If the issuer uses a private CA, configure `certificateAuthority` or `certificateAuthorityFile` for the corresponding OIDC provider.
 
 7. **No username found**: Ensure the CEL expression for username evaluates to a non-empty string. Check that the required claims exist in the token.
 
