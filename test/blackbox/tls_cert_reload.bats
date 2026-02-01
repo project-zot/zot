@@ -193,14 +193,15 @@ function teardown_file() {
     cert_subject_before=$(echo | openssl s_client -connect 127.0.0.1:${zot_port} -showcerts 2>/dev/null | \
         openssl x509 -noout -subject 2>/dev/null)
     
-    # Temporarily remove certificate files (will cause reload to fail)
-    # Note: Moving the file won't trigger fsnotify (only Write/Create events are monitored),
-    # so this test relies on the maybeReload() fallback mechanism being triggered during
-    # the TLS handshake when curl connects below. This verifies the server continues
-    # serving with the old certificate when reload fails.
+    # Temporarily remove certificate files to test reload failure handling
+    # Note: Moving the file won't trigger fsnotify (only Write/Create events are monitored).
+    # This test relies on the maybeReload() fallback mechanism being triggered during
+    # the TLS handshake when curl connects below. The maybeReload() will attempt to
+    # reload and detect the missing file, but will fail gracefully. This verifies the
+    # server continues serving with the cached certificate when reload fails.
     mv ${cert_dir}/server.cert ${cert_dir}/server.cert.backup
     
-    # Wait and try to connect - should still work with old certificate
+    # Wait and try to connect - should still work with cached certificate
     # The maybeReload() mechanism will detect the missing file but won't fail the handshake
     sleep 2
     run curl --cacert ${cert_dir}/ca.crt https://127.0.0.1:${zot_port}/v2/

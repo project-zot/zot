@@ -198,7 +198,7 @@ func TestCertReloaderDirectly(t *testing.T) {
 			So(cert, ShouldNotBeNil)
 		})
 
-		Convey("GetCertificateFunc should handle cert file modification", func() {
+		Convey("GetCertificateFunc should handle certificate and key file modification", func() {
 			reloader, err := api.NewCertReloader(certPath, keyPath, log.NewTestLogger())
 			So(err, ShouldBeNil)
 			defer reloader.Close()
