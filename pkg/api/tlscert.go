@@ -12,6 +12,12 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
+const (
+	// certCheckCacheDuration is the minimum time between file stat checks when fsnotify is unavailable.
+	// This prevents excessive file system calls during high TLS handshake rates.
+	certCheckCacheDuration = 1 * time.Second
+)
+
 // CertReloader handles automatic reloading of TLS certificates without downtime.
 // It monitors certificate and key files for changes and reloads them dynamically
 // using a GetCertificate callback in tls.Config.
@@ -37,7 +43,7 @@ func NewCertReloader(certPath, keyPath string, logger log.Logger) (*CertReloader
 		certPath:    certPath,
 		keyPath:     keyPath,
 		log:         logger,
-		checkCache:  1 * time.Second, // Only check file stats at most once per second
+		checkCache:  certCheckCacheDuration,
 		stopWatcher: make(chan struct{}),
 	}
 

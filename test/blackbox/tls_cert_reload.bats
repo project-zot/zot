@@ -2,12 +2,12 @@ load helpers_zot
 load ../port_helper
 
 function verify_prerequisites {
-    if [ ! $(command -v curl) ]; then
+    if ! command -v curl > /dev/null 2>&1; then
         echo "you need to install curl as a prerequisite to running the tests" >&3
         return 1
     fi
 
-    if [ ! $(command -v openssl) ]; then
+    if ! command -v openssl > /dev/null 2>&1; then
         echo "you need to install openssl as a prerequisite to running the tests" >&3
         return 1
     fi
@@ -63,7 +63,7 @@ function regenerate_server_cert() {
 
 function setup_file() {
     # Verify prerequisites are available
-    if ! $(verify_prerequisites); then
+    if ! verify_prerequisites; then
         exit 1
     fi
 
