@@ -198,7 +198,7 @@ func TestCertReloaderDirectly(t *testing.T) {
 			So(cert, ShouldNotBeNil)
 		})
 
-		Convey("GetCertificateFunc should handle only cert file modification", func() {
+		Convey("GetCertificateFunc should handle cert file modification", func() {
 			reloader, err := api.NewCertReloader(certPath, keyPath, log.NewTestLogger())
 			So(err, ShouldBeNil)
 			defer reloader.Close()
@@ -211,29 +211,28 @@ func TestCertReloaderDirectly(t *testing.T) {
 			// Wait to ensure modification time will be different
 			time.Sleep(2 * time.Second)
 
-			// Modify only the cert file (touch it to update mtime)
-			// Generate new cert with same key
+			// Generate new certificate (both cert and key files will be modified)
 			newServerOpts := &tlsutils.CertificateOptions{
 				Hostname:   "127.0.0.1",
-				CommonName: "Updated Cert Only",
+				CommonName: "Updated Cert",
 				NotAfter:   time.Now().AddDate(1, 0, 0),
 			}
-			// Read the existing key
-			keyData, err := os.ReadFile(keyPath)
-			So(err, ShouldBeNil)
-
-			// Generate new cert using the existing key
 			err = tlsutils.GenerateServerCertToFile(caCertPEM, caKeyPEM, certPath, keyPath, newServerOpts)
-			So(err, ShouldBeNil)
-
-			// Restore original key
-			err = os.WriteFile(keyPath, keyData, 0o600)
 			So(err, ShouldBeNil)
 
 			// Get certificate again - should reload
 			updatedCert, err := getCert(nil)
 			So(err, ShouldBeNil)
 			So(updatedCert, ShouldNotBeNil)
+
+			// Verify certificates are different
+			initialLeaf, err := x509.ParseCertificate(initialCert.Certificate[0])
+			So(err, ShouldBeNil)
+			updatedLeaf, err := x509.ParseCertificate(updatedCert.Certificate[0])
+			So(err, ShouldBeNil)
+
+			So(initialLeaf.Subject.CommonName, ShouldEqual, "Initial Cert")
+			So(updatedLeaf.Subject.CommonName, ShouldEqual, "Updated Cert")
 		})
 
 		Convey("GetCertificateFunc should handle concurrent access", func() {

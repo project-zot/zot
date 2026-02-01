@@ -194,9 +194,14 @@ function teardown_file() {
         openssl x509 -noout -subject 2>/dev/null)
     
     # Temporarily remove certificate files (will cause reload to fail)
+    # Note: Moving the file won't trigger fsnotify (only Write/Create events are monitored),
+    # so this test relies on the maybeReload() fallback mechanism being triggered during
+    # the TLS handshake when curl connects below. This verifies the server continues
+    # serving with the old certificate when reload fails.
     mv ${cert_dir}/server.cert ${cert_dir}/server.cert.backup
     
     # Wait and try to connect - should still work with old certificate
+    # The maybeReload() mechanism will detect the missing file but won't fail the handshake
     sleep 2
     run curl --cacert ${cert_dir}/ca.crt https://127.0.0.1:${zot_port}/v2/
     [ "$status" -eq 0 ]
