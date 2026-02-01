@@ -8,7 +8,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
-	"errors"
 	"maps"
 	"math/big"
 	"net/http"
@@ -691,115 +690,7 @@ func TestBearerOIDCConfig(t *testing.T) {
 	})
 }
 
-func TestGetBearerOIDCTestHTTPClient(t *testing.T) {
-	Convey("Test GetBearerOIDCTestHTTPClient", t, func() {
-		// Save original env var and restore after test
-		originalEnv := os.Getenv("ZOT_BEARER_OIDC_TEST_CA_FILE")
-		Reset(func() {
-			os.Setenv("ZOT_BEARER_OIDC_TEST_CA_FILE", originalEnv)
-		})
-
-		Convey("Returns nil when env var is empty", func() {
-			os.Unsetenv("ZOT_BEARER_OIDC_TEST_CA_FILE")
-
-			client := api.GetBearerOIDCTestHTTPClient()
-			So(client, ShouldBeNil)
-		})
-
-		Convey("Returns nil when CA file does not exist", func() {
-			os.Setenv("ZOT_BEARER_OIDC_TEST_CA_FILE", "/nonexistent/path/to/ca.crt")
-
-			client := api.GetBearerOIDCTestHTTPClient()
-			So(client, ShouldBeNil)
-		})
-
-		Convey("Returns nil when CA file contains invalid PEM data", func() {
-			tmpDir := t.TempDir()
-			caFile := filepath.Join(tmpDir, "invalid-ca.crt")
-
-			err := os.WriteFile(caFile, []byte("not a valid PEM certificate"), 0o600)
-			So(err, ShouldBeNil)
-
-			os.Setenv("ZOT_BEARER_OIDC_TEST_CA_FILE", caFile)
-
-			client := api.GetBearerOIDCTestHTTPClient()
-			So(client, ShouldBeNil)
-		})
-
-		Convey("Returns nil when CA file contains valid PEM but not a certificate", func() {
-			tmpDir := t.TempDir()
-			caFile := filepath.Join(tmpDir, "not-a-cert.pem")
-
-			// Create a valid PEM block but with wrong type
-			pemBlock := &pem.Block{
-				Type:  "PRIVATE KEY",
-				Bytes: []byte("fake key data"),
-			}
-			pemData := pem.EncodeToMemory(pemBlock)
-
-			err := os.WriteFile(caFile, pemData, 0o600)
-			So(err, ShouldBeNil)
-
-			os.Setenv("ZOT_BEARER_OIDC_TEST_CA_FILE", caFile)
-
-			client := api.GetBearerOIDCTestHTTPClient()
-			So(client, ShouldBeNil)
-		})
-
-		Convey("Returns configured HTTP client with valid CA file", func() {
-			tmpDir := t.TempDir()
-			caFile := filepath.Join(tmpDir, "ca.crt")
-
-			// Generate a self-signed CA certificate
-			caCert := createTestCACertificate(t)
-
-			err := os.WriteFile(caFile, caCert, 0o600)
-			So(err, ShouldBeNil)
-
-			os.Setenv("ZOT_BEARER_OIDC_TEST_CA_FILE", caFile)
-
-			client := api.GetBearerOIDCTestHTTPClient()
-			So(client, ShouldNotBeNil)
-			So(client.Transport, ShouldNotBeNil)
-		})
-
-		Convey("Returns nil when http.DefaultTransport is not *http.Transport", func() {
-			tmpDir := t.TempDir()
-			caFile := filepath.Join(tmpDir, "ca.crt")
-
-			// Generate a valid CA certificate
-			caCert := createTestCACertificate(t)
-
-			err := os.WriteFile(caFile, caCert, 0o600)
-			So(err, ShouldBeNil)
-
-			os.Setenv("ZOT_BEARER_OIDC_TEST_CA_FILE", caFile)
-
-			// Save the original DefaultTransport and restore after test
-			originalTransport := http.DefaultTransport
-			defer func() {
-				http.DefaultTransport = originalTransport
-			}()
-
-			// Replace with a custom RoundTripper that is not *http.Transport
-			http.DefaultTransport = &customRoundTripper{}
-
-			client := api.GetBearerOIDCTestHTTPClient()
-			So(client, ShouldBeNil)
-		})
-	})
-}
-
-// customRoundTripper is a mock RoundTripper that is not *http.Transport.
-type customRoundTripper struct{}
-
-var errNotImplemented = errors.New("not implemented")
-
-func (c *customRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
-	return nil, errNotImplemented
-}
-
-// createTestCACertificate generates a self-signed CA certificate for testing.
+// createTestCACertificate generates a self-signed CA certificate PEM for testing.
 func createTestCACertificate(t *testing.T) []byte {
 	t.Helper()
 
@@ -825,10 +716,136 @@ func createTestCACertificate(t *testing.T) []byte {
 		t.Fatalf("failed to create certificate: %v", err)
 	}
 
-	certPEM := pem.EncodeToMemory(&pem.Block{
+	return pem.EncodeToMemory(&pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: certDER,
 	})
+}
 
-	return certPEM
+func TestOIDCProviderCertificateAuthority(t *testing.T) {
+	Convey("Test OIDC provider certificate authority configuration", t, func() {
+		logger := log.NewLogger("debug", "")
+
+		Convey("Both certificateAuthority and certificateAuthorityFile set should fail", func() {
+			caPEM := createTestCACertificate(t)
+
+			tmpDir := t.TempDir()
+			caFile := filepath.Join(tmpDir, "ca.crt")
+			err := os.WriteFile(caFile, caPEM, 0o600)
+			So(err, ShouldBeNil)
+
+			cfg := []config.BearerOIDCConfig{{
+				Issuer:                   "https://issuer.example.com",
+				Audiences:                []string{"zot"},
+				CertificateAuthority:     string(caPEM),
+				CertificateAuthorityFile: caFile,
+			}}
+
+			_, err = api.NewOIDCBearerAuthorizer(cfg, logger)
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "only one of certificateAuthority or certificateAuthorityFile can be set")
+		})
+
+		Convey("Valid inline certificateAuthority should succeed", func() {
+			caPEM := createTestCACertificate(t)
+
+			cfg := []config.BearerOIDCConfig{{
+				Issuer:               "https://issuer.example.com",
+				Audiences:            []string{"zot"},
+				CertificateAuthority: string(caPEM),
+			}}
+
+			authorizer, err := api.NewOIDCBearerAuthorizer(cfg, logger)
+			So(err, ShouldBeNil)
+			So(authorizer, ShouldNotBeNil)
+		})
+
+		Convey("Valid certificateAuthorityFile should succeed", func() {
+			caPEM := createTestCACertificate(t)
+
+			tmpDir := t.TempDir()
+			caFile := filepath.Join(tmpDir, "ca.crt")
+			err := os.WriteFile(caFile, caPEM, 0o600)
+			So(err, ShouldBeNil)
+
+			cfg := []config.BearerOIDCConfig{{
+				Issuer:                   "https://issuer.example.com",
+				Audiences:                []string{"zot"},
+				CertificateAuthorityFile: caFile,
+			}}
+
+			authorizer, err := api.NewOIDCBearerAuthorizer(cfg, logger)
+			So(err, ShouldBeNil)
+			So(authorizer, ShouldNotBeNil)
+		})
+
+		Convey("Non-existent certificateAuthorityFile should fail", func() {
+			cfg := []config.BearerOIDCConfig{{
+				Issuer:                   "https://issuer.example.com",
+				Audiences:                []string{"zot"},
+				CertificateAuthorityFile: "/nonexistent/path/to/ca.crt",
+			}}
+
+			_, err := api.NewOIDCBearerAuthorizer(cfg, logger)
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "failed to read certificate authority file")
+		})
+
+		Convey("Invalid PEM in certificateAuthority should fail", func() {
+			cfg := []config.BearerOIDCConfig{{
+				Issuer:               "https://issuer.example.com",
+				Audiences:            []string{"zot"},
+				CertificateAuthority: "not a valid PEM certificate",
+			}}
+
+			_, err := api.NewOIDCBearerAuthorizer(cfg, logger)
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "failed to append certificate authority PEM")
+		})
+
+		Convey("Invalid PEM in certificateAuthorityFile should fail", func() {
+			tmpDir := t.TempDir()
+			caFile := filepath.Join(tmpDir, "invalid-ca.crt")
+			err := os.WriteFile(caFile, []byte("not a valid PEM certificate"), 0o600)
+			So(err, ShouldBeNil)
+
+			cfg := []config.BearerOIDCConfig{{
+				Issuer:                   "https://issuer.example.com",
+				Audiences:                []string{"zot"},
+				CertificateAuthorityFile: caFile,
+			}}
+
+			_, err = api.NewOIDCBearerAuthorizer(cfg, logger)
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "failed to append certificate authority PEM")
+		})
+
+		Convey("PEM block that is not a certificate should fail", func() {
+			pemBlock := pem.EncodeToMemory(&pem.Block{
+				Type:  "PRIVATE KEY",
+				Bytes: []byte("fake key data"),
+			})
+
+			cfg := []config.BearerOIDCConfig{{
+				Issuer:               "https://issuer.example.com",
+				Audiences:            []string{"zot"},
+				CertificateAuthority: string(pemBlock),
+			}}
+
+			_, err := api.NewOIDCBearerAuthorizer(cfg, logger)
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "failed to append certificate authority PEM")
+		})
+
+		Convey("No certificate authority configured should succeed", func() {
+			cfg := []config.BearerOIDCConfig{{
+				Issuer:    "https://issuer.example.com",
+				Audiences: []string{"zot"},
+			}}
+
+			authorizer, err := api.NewOIDCBearerAuthorizer(cfg, logger)
+			So(err, ShouldBeNil)
+			So(authorizer, ShouldNotBeNil)
+		})
+	})
 }

@@ -322,7 +322,8 @@ cat <<EOF > /tmp/zot-oidc-config.json
         "oidc": [
           {
             "issuer": "${OIDC_ISSUER}",
-            "audiences": ["${AUDIENCE}"]
+            "audiences": ["${AUDIENCE}"],
+            "certificateAuthorityFile": "/etc/zot/kind-ca.pem"
           }
         ]
       }
@@ -358,7 +359,6 @@ docker run -d \
     -p "127.0.0.1:${ZOT_PORT}:${ZOT_PORT}" \
     -v /tmp/zot-oidc-config.json:/etc/zot/config.json:ro \
     -v /tmp/kind-ca.pem:/etc/zot/kind-ca.pem:ro \
-    -e ZOT_BEARER_OIDC_TEST_CA_FILE=/etc/zot/kind-ca.pem \
     "${IMAGE_NAME}" \
     serve /etc/zot/config.json
 
