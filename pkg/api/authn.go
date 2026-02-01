@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -19,7 +20,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-jose/go-jose/v4"
 	guuid "github.com/gofrs/uuid"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/go-github/v62/github"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -485,10 +488,7 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 	// Get auth config safely
 	authConfig := ctlr.Config.CopyAuthConfig()
 
-	// Initialize authorizers based on configuration
-	var traditionalAuthorizer *BearerAuthorizer
-
-	var oidcAuthorizer *OIDCBearerAuthorizer
+	var traditionalAuthorizerKeyFunc BearerAuthorizerKeyFunc
 
 	// Traditional bearer auth with public key/certificate
 	if authConfig.Bearer.Cert != "" {
@@ -499,14 +499,33 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 			ctlr.Log.Panic().Err(err).Msg("failed to load public key for bearer authentication")
 		}
 
+		traditionalAuthorizerKeyFunc = func(_ context.Context, token *jwt.Token) (any, error) {
+			return publicKey, nil
+		}
+	}
+
+	// Traditional bearer auth with AWS Secrets Manager
+	if authConfig.Bearer.AWSSecretsManager != nil {
+		asmAuthz, err := NewAWSSecretsManager(
+			authConfig.Bearer.AWSSecretsManager, AWSSecretsManagerProviderImplementation{}, ctlr.Log)
+		if err != nil {
+			ctlr.Log.Panic().Err(err).Msg("failed to create AWS Secrets Manager key function for bearer authentication")
+		}
+		traditionalAuthorizerKeyFunc = asmAuthz.GetPublicKey
+	}
+
+	// Initialize authorizers based on configuration
+	var traditionalAuthorizer *BearerAuthorizer
+	if traditionalAuthorizerKeyFunc != nil {
 		traditionalAuthorizer = NewBearerAuthorizer(
 			authConfig.Bearer.Realm,
 			authConfig.Bearer.Service,
-			publicKey,
+			traditionalAuthorizerKeyFunc,
 		)
 	}
 
 	// OIDC bearer auth for workload identity
+	var oidcAuthorizer *OIDCBearerAuthorizer
 	if len(authConfig.Bearer.OIDC) > 0 {
 		var err error
 		oidcAuthorizer, err = NewOIDCBearerAuthorizer(authConfig.Bearer.OIDC, ctlr.Log)
@@ -608,7 +627,7 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			// Fall back to traditional bearer token auth if OIDC didn't succeed
 			if traditionalAuthorizer != nil {
-				err := traditionalAuthorizer.Authorize(header, requestedAccess)
+				err := traditionalAuthorizer.Authorize(request.Context(), header, requestedAccess)
 				if err != nil {
 					var challenge *AuthChallengeError
 					if errors.As(err, &challenge) {
@@ -1157,6 +1176,19 @@ func loadPublicKeyFromFile(path string) (crypto.PublicKey, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w, path %s", zerr.ErrCouldNotLoadPublicKey, err, path)
+	}
+
+	return loadPublicKeyFromBytes(raw)
+}
+
+func loadPublicKeyFromBytes(raw []byte) (crypto.PublicKey, error) {
+	var keySet jose.JSONWebKeySet
+	if err := json.Unmarshal(raw, &keySet); err == nil {
+		if len(keySet.Keys) != 1 {
+			return nil, fmt.Errorf("%w: expected 1 key in JWKS, found %d", zerr.ErrCouldNotLoadPublicKey, len(keySet.Keys))
+		}
+
+		return keySet.Keys[0].Key, nil
 	}
 
 	block, _ := pem.Decode(raw)

@@ -3079,3 +3079,107 @@ func TestRetentionDelayDefaults(t *testing.T) {
 		})
 	})
 }
+
+func TestBearerASMConfigValidation(t *testing.T) {
+	Convey("Test bearer ASM config validation", t, func() {
+		Convey("Reject both cert and awsSecretsManager", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1", "port": "8080",
+					"auth": {
+						"bearer": {
+							"realm": "test", "service": "test",
+							"cert": "/some/cert.pem",
+							"awsSecretsManager": {"region": "us-east-1", "secretName": "my-secret"}
+						}
+					}
+				}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+		})
+
+		Convey("Reject empty region", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1", "port": "8080",
+					"auth": {
+						"bearer": {
+							"realm": "test", "service": "test",
+							"awsSecretsManager": {"region": "", "secretName": "my-secret"}
+						}
+					}
+				}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+		})
+
+		Convey("Reject empty secretName", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1", "port": "8080",
+					"auth": {
+						"bearer": {
+							"realm": "test", "service": "test",
+							"awsSecretsManager": {"region": "us-east-1", "secretName": ""}
+						}
+					}
+				}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+		})
+
+		Convey("Reject negative refreshInterval", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1", "port": "8080",
+					"auth": {
+						"bearer": {
+							"realm": "test", "service": "test",
+							"awsSecretsManager": {"region": "us-east-1", "secretName": "my-secret", "refreshInterval": "-1s"}
+						}
+					}
+				}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+		})
+
+		Convey("Valid ASM config is accepted", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1", "port": "8080",
+					"auth": {
+						"bearer": {
+							"realm": "test", "service": "test",
+							"awsSecretsManager": {"region": "us-east-1", "secretName": "my-secret"}
+						}
+					}
+				}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldBeNil)
+		})
+	})
+}

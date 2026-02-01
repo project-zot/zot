@@ -228,6 +228,21 @@ jobs:
             sudo ./scripts/enable_userns.sh
             ./examples/kind/kind-oidc-workload-identity.sh
 
+  aws-secrets-manager-bearer:
+    name: AWS Secrets Manager Bearer Auth E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: 1.25.x
+      - name: Install crane
+        run: |
+          go install github.com/google/go-containerregistry/cmd/crane@latest
+      - name: Run AWS Secrets Manager bearer auth tests
+        run: |
+          ./examples/aws-secrets-manager-bearer-auth.sh
+
   cloud-scale-out:
     name: s3+dynamodb scale-out
     runs-on: oracle-vm-16cpu-64gb-x86-64

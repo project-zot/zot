@@ -580,6 +580,10 @@ func validateConfiguration(config *config.Config, logger zlog.Logger) error {
 		return err
 	}
 
+	if err := validateBearerConfig(config, logger); err != nil {
+		return err
+	}
+
 	if err := validateSync(config, logger); err != nil {
 		return err
 	}
@@ -705,6 +709,49 @@ func validateOpenIDConfig(cfg *config.Config, logger zlog.Logger) error {
 
 				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 			}
+		}
+	}
+
+	return nil
+}
+
+func validateBearerConfig(cfg *config.Config, logger zlog.Logger) error {
+	authConfig := cfg.CopyAuthConfig()
+	if authConfig == nil || authConfig.Bearer == nil {
+		return nil
+	}
+
+	bearer := authConfig.Bearer
+
+	if bearer.Cert != "" && bearer.AWSSecretsManager != nil {
+		msg := "cannot configure both cert and awsSecretsManager for bearer authentication"
+		logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
+
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+	}
+
+	if bearer.AWSSecretsManager != nil {
+		asm := bearer.AWSSecretsManager
+
+		if asm.Region == "" {
+			msg := "awsSecretsManager region must be specified"
+			logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
+
+			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+		}
+
+		if asm.SecretName == "" {
+			msg := "awsSecretsManager secretName must be specified"
+			logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
+
+			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+		}
+
+		if asm.RefreshInterval < 0 {
+			msg := "awsSecretsManager refreshInterval must be non-negative"
+			logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
+
+			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 		}
 	}
 

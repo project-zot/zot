@@ -1,7 +1,7 @@
 package api
 
 import (
-	"crypto"
+	"context"
 	"fmt"
 	"regexp"
 	"slices"
@@ -72,21 +72,23 @@ func (c AuthChallengeError) Header() string {
 type BearerAuthorizer struct {
 	realm   string
 	service string
-	key     crypto.PublicKey
+	keyFunc BearerAuthorizerKeyFunc
 }
 
-func NewBearerAuthorizer(realm string, service string, key crypto.PublicKey) *BearerAuthorizer {
+type BearerAuthorizerKeyFunc func(context.Context, *jwt.Token) (any, error)
+
+func NewBearerAuthorizer(realm string, service string, keyFunc BearerAuthorizerKeyFunc) *BearerAuthorizer {
 	return &BearerAuthorizer{
 		realm:   realm,
 		service: service,
-		key:     key,
+		keyFunc: keyFunc,
 	}
 }
 
 // Authorize verifies whether the bearer token in the given Authorization header is valid, and whether it has sufficient
 // scope for the requested resource action. If an authorization error occurs (e.g. no token is given or the token has
 // insufficient scope), an AuthChallengeError is returned as the error.
-func (a *BearerAuthorizer) Authorize(header string, requested *ResourceAction) error {
+func (a *BearerAuthorizer) Authorize(ctx context.Context, header string, requested *ResourceAction) error {
 	challenge := &AuthChallengeError{
 		realm:          a.realm,
 		service:        a.service,
@@ -103,7 +105,7 @@ func (a *BearerAuthorizer) Authorize(header string, requested *ResourceAction) e
 	signedString := bearerTokenMatch.ReplaceAllString(header, "$1")
 
 	token, err := jwt.ParseWithClaims(signedString, &ClaimsWithAccess{}, func(token *jwt.Token) (any, error) {
-		return a.key, nil
+		return a.keyFunc(ctx, token)
 	}, jwt.WithValidMethods(a.allowedSigningAlgorithms()), jwt.WithIssuedAt())
 	if err != nil {
 		return fmt.Errorf("%w: %w", zerr.ErrInvalidBearerToken, err)
