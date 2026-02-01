@@ -34,6 +34,7 @@ type CertReloader struct {
 	lastCheck   time.Time
 	checkCache  time.Duration // Minimum time between file stat checks
 	stopWatcher chan struct{}
+	closeOnce   sync.Once // Ensures Close() can be called multiple times safely
 }
 
 // NewCertReloader creates a new certificate reloader and loads the initial certificate.
@@ -57,20 +58,28 @@ func NewCertReloader(certPath, keyPath string, logger log.Logger) (*CertReloader
 		logger.Warn().Err(err).Msg("failed to start fsnotify watcher, falling back to periodic checking")
 	}
 
+	// NOTE: Do not add initialization that can fail after this point without ensuring
+	// the watcher is stopped (e.g., by calling Close on error), otherwise the
+	// watchLoop goroutine started by startWatcher could be leaked.
+
 	return reloader, nil
 }
 
 // Close stops the file watcher and releases resources.
+// This method is safe to call multiple times.
 func (cr *CertReloader) Close() error {
-	if cr.stopWatcher != nil {
-		close(cr.stopWatcher)
-	}
+	var err error
+	cr.closeOnce.Do(func() {
+		if cr.stopWatcher != nil {
+			close(cr.stopWatcher)
+		}
 
-	if cr.watcher != nil {
-		return cr.watcher.Close()
-	}
+		if cr.watcher != nil {
+			err = cr.watcher.Close()
+		}
+	})
 
-	return nil
+	return err
 }
 
 // startWatcher initializes the fsnotify watcher for certificate files.
@@ -88,12 +97,14 @@ func (cr *CertReloader) startWatcher() error {
 	keyDir := filepath.Dir(cr.keyPath)
 
 	if err := watcher.Add(certDir); err != nil {
+		watcher.Close()
 		return err
 	}
 
 	// If cert and key are in different directories, watch both
 	if certDir != keyDir {
 		if err := watcher.Add(keyDir); err != nil {
+			watcher.Close()
 			return err
 		}
 	}
@@ -189,17 +200,15 @@ func (cr *CertReloader) reload() error {
 // Uses time-based caching to avoid excessive file system calls.
 func (cr *CertReloader) maybeReload() error {
 	// Use time-based cache to reduce frequency of stat calls
-	cr.certMu.RLock()
+	// Check and update lastCheck within the same critical section to avoid race conditions
+	cr.certMu.Lock()
 	if time.Since(cr.lastCheck) < cr.checkCache {
 		// Recently checked, skip stat calls
-		cr.certMu.RUnlock()
+		cr.certMu.Unlock()
 
 		return nil
 	}
-	cr.certMu.RUnlock()
-
-	// Update last check time
-	cr.certMu.Lock()
+	// Update last check time within the same critical section as the cache check
 	cr.lastCheck = time.Now()
 	cr.certMu.Unlock()
 

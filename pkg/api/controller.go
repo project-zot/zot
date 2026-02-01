@@ -54,6 +54,7 @@ type Controller struct {
 	HTPasswd        *HTPasswd
 	HTPasswdWatcher *HTPasswdWatcher
 	LDAPClient      *LDAPClient
+	CertReloader    *CertReloader
 	taskScheduler   *scheduler.Scheduler
 	Healthz         *common.Healthz
 	// runtime params
@@ -212,6 +213,9 @@ func (c *Controller) Run() error {
 
 			return err
 		}
+
+		// Store the CertReloader so it can be closed during shutdown
+		c.CertReloader = certReloader
 
 		// These are the same as the cipher suites in defaultCipherSuitesFIPS for TLS 1.2
 		// see https://cs.opensource.google/go/go/+/refs/tags/go1.24.9:src/crypto/tls/defaults.go;l=123
@@ -494,6 +498,11 @@ func (c *Controller) StopBackgroundTasks() {
 	// Close HTPasswdWatcher to prevent resource leaks
 	if c.HTPasswdWatcher != nil {
 		_ = c.HTPasswdWatcher.Close()
+	}
+
+	// Close CertReloader to prevent resource leaks
+	if c.CertReloader != nil {
+		_ = c.CertReloader.Close()
 	}
 }
 

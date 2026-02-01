@@ -129,6 +129,7 @@ func TestCertReloaderDirectly(t *testing.T) {
 			reloader, err := api.NewCertReloader(certPath, keyPath, log.NewTestLogger())
 			So(err, ShouldBeNil)
 			So(reloader, ShouldNotBeNil)
+			defer reloader.Close()
 
 			// Get certificate via callback
 			getCert := reloader.GetCertificateFunc()
@@ -140,6 +141,7 @@ func TestCertReloaderDirectly(t *testing.T) {
 		Convey("GetCertificateFunc should reload when certificate changes", func() {
 			reloader, err := api.NewCertReloader(certPath, keyPath, log.NewTestLogger())
 			So(err, ShouldBeNil)
+			defer reloader.Close()
 
 			getCert := reloader.GetCertificateFunc()
 			initialCert, err := getCert(nil)
@@ -182,6 +184,7 @@ func TestCertReloaderDirectly(t *testing.T) {
 		Convey("GetCertificateFunc should handle missing files gracefully", func() {
 			reloader, err := api.NewCertReloader(certPath, keyPath, log.NewTestLogger())
 			So(err, ShouldBeNil)
+			defer reloader.Close()
 
 			getCert := reloader.GetCertificateFunc()
 
@@ -198,6 +201,7 @@ func TestCertReloaderDirectly(t *testing.T) {
 		Convey("GetCertificateFunc should handle only cert file modification", func() {
 			reloader, err := api.NewCertReloader(certPath, keyPath, log.NewTestLogger())
 			So(err, ShouldBeNil)
+			defer reloader.Close()
 
 			getCert := reloader.GetCertificateFunc()
 			initialCert, err := getCert(nil)
@@ -235,6 +239,7 @@ func TestCertReloaderDirectly(t *testing.T) {
 		Convey("GetCertificateFunc should handle concurrent access", func() {
 			reloader, err := api.NewCertReloader(certPath, keyPath, log.NewTestLogger())
 			So(err, ShouldBeNil)
+			defer reloader.Close()
 
 			getCert := reloader.GetCertificateFunc()
 
@@ -267,6 +272,7 @@ func TestCertReloaderDirectly(t *testing.T) {
 		Convey("GetCertificateFunc should not reload if files haven't changed", func() {
 			reloader, err := api.NewCertReloader(certPath, keyPath, log.NewTestLogger())
 			So(err, ShouldBeNil)
+			defer reloader.Close()
 
 			getCert := reloader.GetCertificateFunc()
 
@@ -291,6 +297,7 @@ func TestCertReloaderDirectly(t *testing.T) {
 		Convey("GetCertificateFunc should reload when key file changes", func() {
 			reloader, err := api.NewCertReloader(certPath, keyPath, log.NewTestLogger())
 			So(err, ShouldBeNil)
+			defer reloader.Close()
 
 			getCert := reloader.GetCertificateFunc()
 			initialCert, err := getCert(nil)
