@@ -33,7 +33,7 @@ require (
 	github.com/go-redsync/redsync/v4 v4.15.0
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/gofrs/uuid v4.4.0+incompatible
-	github.com/golang-jwt/jwt/v5 v5.3.0
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/cel-go v0.26.1
 	github.com/google/go-containerregistry v0.20.7
 	github.com/google/go-github/v62 v62.0.0
