@@ -176,7 +176,7 @@ func createObjectsStore(options createObjectStoreOpts) (
 		}
 
 		if endpoint := os.Getenv("GCSMOCK_ENDPOINT"); endpoint != "" {
-			url := fmt.Sprintf("%s/storage/v1/b?project=test-project", endpoint)
+			url := endpoint + "/storage/v1/b?project=test-project"
 			body := fmt.Sprintf(`{"name": "%s"}`, bucket)
 			_, err := resty.R().
 				SetHeader("Content-Type", "application/json").
@@ -3690,7 +3690,8 @@ func ensureDummyGCSCreds(t *testing.T) {
 			Bytes: privBytes,
 		})
 
-		content := fmt.Sprintf(`{"type": "service_account", "project_id": "test-project", "client_email": "test@test.com", "private_key": %q}`, string(privPEM))
+		content := fmt.Sprintf(`{"type": "service_account", "project_id": "test-project", `+
+			`"client_email": "test@test.com", "private_key": %q}`, string(privPEM))
 		err = os.WriteFile(credsFile, []byte(content), 0o600)
 		if err != nil {
 			t.Fatal(err)

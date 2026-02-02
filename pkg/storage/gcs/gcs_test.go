@@ -57,7 +57,8 @@ func ensureDummyGCSCreds(t *testing.T) {
 			Bytes: privBytes,
 		})
 
-		content := fmt.Sprintf(`{"type": "service_account", "project_id": "test-project", "client_email": "test@test.com", "private_key": %q}`, string(privPEM))
+		content := fmt.Sprintf(`{"type": "service_account", "project_id": "test-project", `+
+			`"client_email": "test@test.com", "private_key": %q}`, string(privPEM))
 		err = os.WriteFile(credsFile, []byte(content), 0o600)
 		if err != nil {
 			t.Fatal(err)
@@ -79,9 +80,14 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 	bucket := "zot-storage-test"
 
 	if endpoint := os.Getenv("GCSMOCK_ENDPOINT"); endpoint != "" {
-		url := fmt.Sprintf("%s/storage/v1/b?project=test-project", endpoint)
+		url := endpoint + "/storage/v1/b?project=test-project"
 		body := fmt.Sprintf(`{"name": "%s"}`, bucket)
-		resp, err := http.Post(url, "application/json", strings.NewReader(body))
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, strings.NewReader(body))
+		if err != nil {
+			return nil, nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req) //nolint:gosec // G107: Test mock
 		if err != nil {
 			return nil, nil, err
 		}
@@ -430,7 +436,8 @@ func TestGCSPullRange(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// get range
-		blobReadCloser, _, _, err = imgStore.GetBlobPartial("test", digest, "application/vnd.oci.image.layer.v1.tar+gzip", 0, 4)
+		blobReadCloser, _, _, err = imgStore.GetBlobPartial("test", digest,
+			"application/vnd.oci.image.layer.v1.tar+gzip", 0, 4)
 		So(err, ShouldBeNil)
 		buf.Reset()
 		_, err = buf.ReadFrom(blobReadCloser)
@@ -440,7 +447,8 @@ func TestGCSPullRange(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// get range
-		blobReadCloser, _, _, err = imgStore.GetBlobPartial("test", digest, "application/vnd.oci.image.layer.v1.tar+gzip", 4, 5)
+		blobReadCloser, _, _, err = imgStore.GetBlobPartial("test", digest,
+			"application/vnd.oci.image.layer.v1.tar+gzip", 4, 5)
 		So(err, ShouldBeNil)
 		buf.Reset()
 		_, err = buf.ReadFrom(blobReadCloser)
@@ -450,7 +458,8 @@ func TestGCSPullRange(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// get range from negative offset
-		blobReadCloser, _, _, err = imgStore.GetBlobPartial("test", digest, "application/vnd.oci.image.layer.v1.tar+gzip", -4, 4)
+		blobReadCloser, _, _, err = imgStore.GetBlobPartial("test", digest,
+			"application/vnd.oci.image.layer.v1.tar+gzip", -4, 4)
 		So(err, ShouldNotBeNil)
 		So(blobReadCloser, ShouldBeNil)
 	})
