@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	godigest "github.com/opencontainers/go-digest"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -517,6 +519,98 @@ func TestUtils(t *testing.T) {
 
 			// Last updated should be from the most recent valid blob
 			So(resultMeta.LastUpdatedImage, ShouldNotBeNil)
+		})
+	})
+
+	Convey("AddImageMetaToRepoMeta", t, func() {
+		Convey("should handle ImageManifest with empty Manifests slice", func() {
+			repoMeta := &proto_go.RepoMeta{
+				Name: "test-repo",
+				Tags: map[string]*proto_go.TagDescriptor{},
+			}
+
+			repoBlobs := &proto_go.RepoBlobs{
+				Blobs: map[string]*proto_go.BlobInfo{},
+			}
+
+			testDigest := godigest.FromString("sha256:testdigest")
+			imageMeta := mTypes.ImageMeta{
+				MediaType: ispec.MediaTypeImageManifest,
+				Digest:    testDigest,
+				Size:      1000,
+				Manifests: []mTypes.ManifestMeta{}, // Empty Manifests slice
+			}
+
+			// Should not panic
+			So(func() {
+				common.AddImageMetaToRepoMeta(repoMeta, repoBlobs, "tag1", imageMeta)
+			}, ShouldNotPanic)
+
+			resultMeta, resultBlobs := common.AddImageMetaToRepoMeta(repoMeta, repoBlobs, "tag1", imageMeta)
+			So(resultMeta, ShouldNotBeNil)
+			So(resultBlobs, ShouldNotBeNil)
+
+			// Should add basic blob info with just Size
+			digestStr := testDigest.String()
+			So(resultBlobs.Blobs[digestStr], ShouldNotBeNil)
+			So(resultBlobs.Blobs[digestStr].Size, ShouldEqual, 1000)
+			// Should not have SubBlobs, Vendors, Platforms, or LastUpdated since Manifests is empty
+			So(resultBlobs.Blobs[digestStr].SubBlobs, ShouldBeNil)
+			So(resultBlobs.Blobs[digestStr].Vendors, ShouldBeNil)
+			So(resultBlobs.Blobs[digestStr].Platforms, ShouldBeNil)
+			So(resultBlobs.Blobs[digestStr].LastUpdated, ShouldBeNil)
+		})
+
+		Convey("should handle ImageManifest with valid Manifests", func() {
+			repoMeta := &proto_go.RepoMeta{
+				Name: "test-repo",
+				Tags: map[string]*proto_go.TagDescriptor{},
+			}
+
+			repoBlobs := &proto_go.RepoBlobs{
+				Blobs: map[string]*proto_go.BlobInfo{},
+			}
+
+			testDigest := godigest.FromString("sha256:testdigest")
+			configDigest := godigest.FromString("sha256:configdigest")
+			layerDigest := godigest.FromString("sha256:layerdigest")
+
+			imageMeta := mTypes.ImageMeta{
+				MediaType: ispec.MediaTypeImageManifest,
+				Digest:    testDigest,
+				Size:      1000,
+				Manifests: []mTypes.ManifestMeta{
+					{
+						Digest: testDigest,
+						Size:   1000,
+						Manifest: ispec.Manifest{
+							Config: ispec.Descriptor{
+								Digest: configDigest,
+								Size:   500,
+							},
+							Layers: []ispec.Descriptor{
+								{
+									Digest: layerDigest,
+									Size:   300,
+								},
+							},
+						},
+						Config: ispec.Image{},
+					},
+				},
+			}
+
+			resultMeta, resultBlobs := common.AddImageMetaToRepoMeta(repoMeta, repoBlobs, "tag1", imageMeta)
+			So(resultMeta, ShouldNotBeNil)
+			So(resultBlobs, ShouldNotBeNil)
+
+			// Should add full blob info including SubBlobs
+			digestStr := testDigest.String()
+			So(resultBlobs.Blobs[digestStr], ShouldNotBeNil)
+			So(resultBlobs.Blobs[digestStr].Size, ShouldEqual, 1000)
+			So(len(resultBlobs.Blobs[digestStr].SubBlobs), ShouldEqual, 2) // config + layer
+			So(resultBlobs.Blobs[configDigest.String()], ShouldNotBeNil)
+			So(resultBlobs.Blobs[layerDigest.String()], ShouldNotBeNil)
 		})
 	})
 }

@@ -98,7 +98,7 @@ type MetaDBMock struct {
 
 	GetFullImageMetaFn func(ctx context.Context, repo string, tag string) (mTypes.FullImageMeta, error)
 
-	ResetRepoReferencesFn func(repo string) error
+	ResetRepoReferencesFn func(repo string, tagsToKeep map[string]bool) error
 
 	GetAllRepoNamesFn func() ([]string, error)
 
@@ -456,9 +456,9 @@ func (sdm MetaDBMock) GetFullImageMeta(ctx context.Context, repo string, tag str
 	return mTypes.FullImageMeta{}, nil
 }
 
-func (sdm MetaDBMock) ResetRepoReferences(repo string) error {
+func (sdm MetaDBMock) ResetRepoReferences(repo string, tagsToKeep map[string]bool) error {
 	if sdm.ResetRepoReferencesFn != nil {
-		return sdm.ResetRepoReferencesFn(repo)
+		return sdm.ResetRepoReferencesFn(repo, tagsToKeep)
 	}
 
 	return nil

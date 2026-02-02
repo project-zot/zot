@@ -7,7 +7,8 @@ load helpers_upgrade
 load ../port_helper
 
 function setup_file() {
-    export REGISTRY_NAME=main
+    # Use unique config name based on test file name and test run to avoid conflicts
+    export REGISTRY_NAME=$(basename "${BASH_SOURCE[0]}" .bats)-$(basename "${BATS_FILE_TMPDIR}")
     # Verify prerequisites are available
     if ! $(verify_prerequisites); then
         exit 1

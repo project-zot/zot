@@ -111,6 +111,155 @@ func TestBearerAuthorizer(t *testing.T) {
 			})
 		})
 
+		Convey("Access entry with per-entry ExpiresAt", func() {
+			now := time.Now()
+
+			Convey("Authorized when ExpiresAt is in the future", func() {
+				access := []api.ResourceAccess{
+					{
+						Name:      "authorized-repository",
+						Type:      "repository",
+						Actions:   []string{"pull"},
+						ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+					},
+				}
+
+				claims := api.ClaimsWithAccess{
+					Access: access,
+					RegisteredClaims: jwt.RegisteredClaims{
+						ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+						IssuedAt:  jwt.NewNumericDate(now),
+						Issuer:    "Zot",
+						Audience:  []string{"Zot Registry"},
+					},
+				}
+
+				token, err := jwt.NewWithClaims(signingMethod, claims).SignedString(privKey)
+				So(err, ShouldBeNil)
+
+				requested := &api.ResourceAction{
+					Type:   "repository",
+					Name:   "authorized-repository",
+					Action: "pull",
+				}
+
+				err = authorizer.Authorize("Bearer "+token, requested)
+				So(err, ShouldBeNil)
+			})
+
+			Convey("Denied when ExpiresAt is in the past", func() {
+				access := []api.ResourceAccess{
+					{
+						Name:      "authorized-repository",
+						Type:      "repository",
+						Actions:   []string{"pull"},
+						ExpiresAt: jwt.NewNumericDate(now.Add(-time.Hour)),
+					},
+				}
+
+				claims := api.ClaimsWithAccess{
+					Access: access,
+					RegisteredClaims: jwt.RegisteredClaims{
+						ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+						IssuedAt:  jwt.NewNumericDate(now),
+						Issuer:    "Zot",
+						Audience:  []string{"Zot Registry"},
+					},
+				}
+
+				token, err := jwt.NewWithClaims(signingMethod, claims).SignedString(privKey)
+				So(err, ShouldBeNil)
+
+				requested := &api.ResourceAction{
+					Type:   "repository",
+					Name:   "authorized-repository",
+					Action: "pull",
+				}
+
+				err = authorizer.Authorize("Bearer "+token, requested)
+				So(err, ShouldHaveSameTypeAs, &api.AuthChallengeError{})
+				So(err, ShouldBeError, zerr.ErrInsufficientScope)
+			})
+
+			Convey("Only the expired entry is skipped, other entries still work", func() {
+				access := []api.ResourceAccess{
+					{
+						Name:      "authorized-repository",
+						Type:      "repository",
+						Actions:   []string{"pull"},
+						ExpiresAt: jwt.NewNumericDate(now.Add(-time.Hour)),
+					},
+					{
+						Name:    "authorized-repository",
+						Type:    "repository",
+						Actions: []string{"pull", "push"},
+					},
+				}
+
+				claims := api.ClaimsWithAccess{
+					Access: access,
+					RegisteredClaims: jwt.RegisteredClaims{
+						ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+						IssuedAt:  jwt.NewNumericDate(now),
+						Issuer:    "Zot",
+						Audience:  []string{"Zot Registry"},
+					},
+				}
+
+				token, err := jwt.NewWithClaims(signingMethod, claims).SignedString(privKey)
+				So(err, ShouldBeNil)
+
+				requested := &api.ResourceAction{
+					Type:   "repository",
+					Name:   "authorized-repository",
+					Action: "pull",
+				}
+
+				err = authorizer.Authorize("Bearer "+token, requested)
+				So(err, ShouldBeNil)
+			})
+
+			Convey("All entries expired results in insufficient scope", func() {
+				access := []api.ResourceAccess{
+					{
+						Name:      "authorized-repository",
+						Type:      "repository",
+						Actions:   []string{"pull"},
+						ExpiresAt: jwt.NewNumericDate(now.Add(-time.Hour)),
+					},
+					{
+						Name:      "authorized-repository",
+						Type:      "repository",
+						Actions:   []string{"pull"},
+						ExpiresAt: jwt.NewNumericDate(now.Add(-2 * time.Hour)),
+					},
+				}
+
+				claims := api.ClaimsWithAccess{
+					Access: access,
+					RegisteredClaims: jwt.RegisteredClaims{
+						ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+						IssuedAt:  jwt.NewNumericDate(now),
+						Issuer:    "Zot",
+						Audience:  []string{"Zot Registry"},
+					},
+				}
+
+				token, err := jwt.NewWithClaims(signingMethod, claims).SignedString(privKey)
+				So(err, ShouldBeNil)
+
+				requested := &api.ResourceAction{
+					Type:   "repository",
+					Name:   "authorized-repository",
+					Action: "pull",
+				}
+
+				err = authorizer.Authorize("Bearer "+token, requested)
+				So(err, ShouldHaveSameTypeAs, &api.AuthChallengeError{})
+				So(err, ShouldBeError, zerr.ErrInsufficientScope)
+			})
+		})
+
 		Convey("Invalid token", func() {
 			authHeader := "invalid"
 

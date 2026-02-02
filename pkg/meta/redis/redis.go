@@ -728,6 +728,8 @@ func (rc *RedisDB) SetImageMeta(digest godigest.Digest, imageMeta mTypes.ImageMe
 }
 
 // SetRepoReference sets the given image data to the repo metadata.
+//
+//nolint:gocyclo // Complex function handling multiple metadata updates (referrers, tags, statistics, signatures, blobs)
 func (rc *RedisDB) SetRepoReference(ctx context.Context, repo string,
 	reference string, imageMeta mTypes.ImageMeta,
 ) error {
@@ -805,9 +807,23 @@ func (rc *RedisDB) SetRepoReference(ctx context.Context, repo string,
 
 		// 3. Update tag
 		if !common.ReferenceIsDigest(reference) {
+			// Set TaggedTimestamp to now if this is a new tag, otherwise preserve existing timestamp
+			// For old data without TaggedTimestamp, leave it nil so it falls back to PushTimestamp
+			var taggedTimestamp *timestamppb.Timestamp
+			if existingTag, exists := protoRepoMeta.Tags[reference]; exists {
+				// Tag exists - preserve TaggedTimestamp if present, otherwise leave nil (old data)
+				if existingTag.GetTaggedTimestamp() != nil {
+					taggedTimestamp = existingTag.GetTaggedTimestamp()
+				}
+				// else leave taggedTimestamp as nil (old data without TaggedTimestamp)
+			} else {
+				// New tag - set timestamp to now
+				taggedTimestamp = timestamppb.Now()
+			}
 			protoRepoMeta.Tags[reference] = &proto_go.TagDescriptor{
-				Digest:    imageMeta.Digest.String(),
-				MediaType: imageMeta.MediaType,
+				Digest:          imageMeta.Digest.String(),
+				MediaType:       imageMeta.MediaType,
+				TaggedTimestamp: taggedTimestamp,
 			}
 		}
 
@@ -1984,9 +2000,11 @@ func (rc *RedisDB) RemoveRepoReference(repo, reference string, manifestDigest go
 	return err
 }
 
-// ResetRepoReferences resets all layout specific data (tags, signatures, referrers, etc.) but keep user and image
+// ResetRepoReferences resets layout specific data (tags, signatures, referrers, etc.) but keep user and image
 // specific metadata such as star count, downloads other statistics.
-func (rc *RedisDB) ResetRepoReferences(repo string) error {
+// tagsToKeep is a set of tag names that should be preserved (tags that exist in storage).
+// Tags not in tagsToKeep will be removed.
+func (rc *RedisDB) ResetRepoReferences(repo string, tagsToKeep map[string]bool) error {
 	ctx := context.Background()
 
 	err := rc.withRSLocks(ctx, []string{rc.getRepoLockKey(repo)}, func() error {
@@ -1995,11 +2013,27 @@ func (rc *RedisDB) ResetRepoReferences(repo string) error {
 			return err
 		}
 
+		// Preserve tags that are in tagsToKeep, remove others
+		preservedTags := make(map[string]*proto_go.TagDescriptor)
+		if tagsToKeep != nil {
+			for tag, descriptor := range protoRepoMeta.Tags {
+				// Keep the tag if it's in tagsToKeep, or if it's the empty key (internal use)
+				if tag == "" || tagsToKeep[tag] {
+					preservedTags[tag] = descriptor
+				}
+			}
+		}
+
+		// Ensure empty key exists for internal use
+		if _, exists := preservedTags[""]; !exists {
+			preservedTags[""] = &proto_go.TagDescriptor{}
+		}
+
 		repoMetaBlob, err := proto.Marshal(&proto_go.RepoMeta{
 			Name:       repo,
 			Statistics: protoRepoMeta.Statistics,
 			Stars:      protoRepoMeta.Stars,
-			Tags:       map[string]*proto_go.TagDescriptor{"": {}},
+			Tags:       preservedTags,
 			Signatures: map[string]*proto_go.ManifestSignatures{"": {Map: map[string]*proto_go.SignaturesInfo{"": {}}}},
 			Referrers:  map[string]*proto_go.ReferrersInfo{"": {}},
 		})
@@ -2025,8 +2059,11 @@ func (rc *RedisDB) GetRepoLastUpdated(repo string) time.Time {
 
 	lastUpdatedBlob, err := rc.Client.HGet(ctx, rc.RepoLastUpdatedKey, repo).Bytes()
 	if err != nil {
-		rc.Log.Error().Err(err).Str("hget", rc.RepoLastUpdatedKey).Str("repo", repo).
-			Msg("failed to get repo last updated timestamp")
+		// redis.Nil is a normal condition when the key doesn't exist (new repo)
+		if !errors.Is(err, redis.Nil) {
+			rc.Log.Error().Err(err).Str("hget", rc.RepoLastUpdatedKey).Str("repo", repo).
+				Msg("failed to get repo last updated timestamp")
+		}
 
 		return time.Time{}
 	}

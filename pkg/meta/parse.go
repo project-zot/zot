@@ -130,7 +130,17 @@ func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController stypes.StoreCo
 		return err
 	}
 
-	err = metaDB.ResetRepoReferences(repo)
+	// Collect tags that exist in storage to preserve them
+	tagsToKeep := make(map[string]bool)
+
+	for _, manifest := range indexContent.Manifests {
+		tag := manifest.Annotations[ispec.AnnotationRefName]
+		if tag != "" && !zcommon.IsReferrersTag(tag) {
+			tagsToKeep[tag] = true
+		}
+	}
+
+	err = metaDB.ResetRepoReferences(repo, tagsToKeep)
 	if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
 		log.Error().Err(err).Str("repository", repo).Msg("failed to reset tag field in RepoMetadata for repo")
 

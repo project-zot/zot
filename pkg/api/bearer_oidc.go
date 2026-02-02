@@ -39,6 +39,7 @@ type oidcProvider struct {
 	audiences       []string
 	claimProcessor  *cel.ClaimProcessor
 	skipIssuerCheck bool
+	httpClient      *http.Client
 	log             log.Logger
 
 	// The *oidc.IDTokenVerifier is created lazily to avoid network calls during initialization.
@@ -121,12 +122,44 @@ func newOIDCProvider(oidcConfig *config.BearerOIDCConfig, log log.Logger) (*oidc
 	if err != nil {
 		return nil, fmt.Errorf("failed to create claim processor: %w", err)
 	}
+	if oidcConfig.CertificateAuthority != "" && oidcConfig.CertificateAuthorityFile != "" {
+		return nil, fmt.Errorf("%w: only one of certificateAuthority or certificateAuthorityFile can be set",
+			zerr.ErrBadConfig)
+	}
+
+	// Prepare CA.
+	caCert := []byte(oidcConfig.CertificateAuthority)
+	if file := oidcConfig.CertificateAuthorityFile; file != "" {
+		caCert, err = os.ReadFile(file)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read certificate authority file: %w", err)
+		}
+	}
+
+	var httpClient *http.Client
+	if len(caCert) > 0 {
+		certPool := x509.NewCertPool()
+		if !certPool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("%w: failed to append certificate authority PEM", zerr.ErrBadConfig)
+		}
+		defaultTransport, ok := http.DefaultTransport.(*http.Transport)
+		if !ok {
+			return nil, fmt.Errorf("%w: failed to get default HTTP transport", zerr.ErrBadConfig)
+		}
+		testTransport := defaultTransport.Clone()
+		testTransport.TLSClientConfig = &tls.Config{
+			RootCAs:    certPool,
+			MinVersion: tls.VersionTLS12,
+		}
+		httpClient = &http.Client{Transport: testTransport}
+	}
 
 	return &oidcProvider{
 		issuer:          oidcConfig.Issuer,
 		audiences:       oidcConfig.Audiences,
 		claimProcessor:  claimProcessor,
 		skipIssuerCheck: oidcConfig.SkipIssuerVerification,
+		httpClient:      httpClient,
 		log:             log,
 	}, nil
 }
@@ -188,7 +221,7 @@ func (o *oidcProvider) getVerifier(ctx context.Context) (*oidc.IDTokenVerifier, 
 	}
 
 	// Time to refresh the verifier.
-	if hc := GetBearerOIDCTestHTTPClient(); hc != nil {
+	if hc := o.httpClient; hc != nil {
 		ctx = oidc.ClientContext(ctx, hc)
 	}
 	p, err := oidc.NewProvider(ctx, o.issuer)
@@ -209,36 +242,5 @@ func (o *oidcProvider) getVerifier(ctx context.Context) (*oidc.IDTokenVerifier, 
 	o.verifierDeadline = time.Now().Add(oidcProviderRefreshInterval)
 	o.verifierMu.Unlock()
 
-	return o.verifier, nil
-}
-
-// GetBearerOIDCTestHTTPClient returns an HTTP client for testing purposes.
-// It looks up a test environment variable pointing to a PEM-encoded
-// CA certificate to trust when making requests to the OIDC issuer.
-// If no such variable is set, it returns nil. This environment variable
-// is not meant for production use.
-func GetBearerOIDCTestHTTPClient() *http.Client {
-	caFile := os.Getenv("ZOT_BEARER_OIDC_TEST_CA_FILE")
-	if caFile == "" {
-		return nil
-	}
-	caCert, err := os.ReadFile(caFile)
-	if err != nil {
-		return nil
-	}
-	certPool := x509.NewCertPool()
-	if !certPool.AppendCertsFromPEM(caCert) {
-		return nil
-	}
-	defaultTransport, ok := http.DefaultTransport.(*http.Transport)
-	if !ok {
-		return nil
-	}
-	testTransport := defaultTransport.Clone()
-	testTransport.TLSClientConfig = &tls.Config{
-		RootCAs:    certPool,
-		MinVersion: tls.VersionTLS12,
-	}
-
-	return &http.Client{Transport: testTransport}
+	return verifier, nil
 }

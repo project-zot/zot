@@ -226,6 +226,15 @@ type BearerOIDCConfig struct {
 	// Default: {"username":"claims.iss + '/' + claims.sub"}
 	ClaimMapping *CELClaimValidationAndMapping `json:"claimMapping,omitempty" mapstructure:"claimMapping,omitempty"`
 
+	// CertificateAuthority is a PEM-encoded optional CA certificate to validate the OIDC provider's TLS certificate.
+	// Mutually exclusive with CertificateAuthorityFile.
+	CertificateAuthority string `json:"certificateAuthority,omitempty" mapstructure:"certificateAuthority,omitempty"`
+
+	// CertificateAuthorityFile is the path to a PEM-encoded optional CA certificate
+	// to validate the OIDC provider's TLS certificate.
+	// Mutually exclusive with CertificateAuthority.
+	CertificateAuthorityFile string `json:"certificateAuthorityFile,omitempty" mapstructure:"certificateAuthorityFile,omitempty"` //nolint:lll
+
 	// SkipIssuerVerification skips issuer verification (for testing only).
 	// Default: false
 	SkipIssuerVerification bool `json:"skipIssuerVerification,omitempty" mapstructure:"skipIssuerVerification,omitempty"`
