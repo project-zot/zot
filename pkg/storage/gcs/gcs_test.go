@@ -41,7 +41,7 @@ var errGCSMockEndpointNotSet = errors.New("GCSMOCK_ENDPOINT must be set for GCS 
 func ensureDummyGCSCreds(t *testing.T) {
 	t.Helper()
 
-	if os.Getenv("GCSMOCK_ENDPOINT") != "" && os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
+	if os.Getenv("GCSMOCK_ENDPOINT") != "" {
 		credsFile := path.Join(t.TempDir(), "dummy_creds.json")
 
 		priv, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -86,7 +86,7 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 		return nil, nil, errGCSMockEndpointNotSet
 	}
 
-	url := endpoint + "/storage/v1/b?project=test-project"
+	url := strings.TrimSuffix(endpoint, "/") + "/storage/v1/b?project=test-project"
 	body := fmt.Sprintf(`{"name": "%s"}`, bucket)
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, strings.NewReader(body))
 	if err != nil {

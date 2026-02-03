@@ -119,17 +119,23 @@ func TestGCSCheckAllBlobsIntegrity(t *testing.T) {
 		}
 
 		testDir := path.Join("/oci-repo-test", uuid.String())
-		tdir := t.TempDir()
+
 		log := log.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		defer metrics.Stop() // Clean up metrics server to prevent resource leaks
 
 		opts := createObjectStoreOpts{
 			rootDir:     testDir,
-			cacheDir:    tdir,
-			cacheType:   storageConstants.BoltdbName,
+			cacheDir:    t.TempDir(),
 			storageType: storageConstants.GCSStorageDriverName,
+			cacheType:   storageConstants.BoltdbName,
 		}
 
-		driver, imgStore, _, _ := createObjectsStore(opts)
+		driver, imgStore, _, err := createObjectsStore(opts)
+		if err != nil {
+			t.Fatal(err)
+		}
 		defer cleanupStorage(driver, testDir)
 
 		RunCheckAllBlobsIntegrityTests(t, imgStore, driver, log)

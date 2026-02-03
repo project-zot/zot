@@ -168,15 +168,8 @@ func createObjectsStore(options createObjectStoreOpts) (
 			"bucket":  bucket,
 		}
 
-		storeName := fmt.Sprintf("%v", storageDriverParams["name"])
-
-		gcsDriver, err := factory.Create(context.Background(), storeName, storageDriverParams)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-
 		if endpoint := os.Getenv("GCSMOCK_ENDPOINT"); endpoint != "" {
-			url := endpoint + "/storage/v1/b?project=test-project"
+			url := strings.TrimSuffix(endpoint, "/") + "/storage/v1/b?project=test-project"
 			body := fmt.Sprintf(`{"name": "%s"}`, bucket)
 			_, err := resty.R().
 				SetHeader("Content-Type", "application/json").
@@ -185,6 +178,13 @@ func createObjectsStore(options createObjectStoreOpts) (
 			if err != nil {
 				panic(err)
 			}
+		}
+
+		storeName := fmt.Sprintf("%v", storageDriverParams["name"])
+
+		gcsDriver, err := factory.Create(context.Background(), storeName, storageDriverParams)
+		if err != nil {
+			return nil, nil, nil, err
 		}
 
 		imgStore := gcs.NewImageStore(options.rootDir, options.cacheDir, true, false, log,
@@ -3672,7 +3672,7 @@ func DumpKeys(t *testing.T, redisURL string) {
 func ensureDummyGCSCreds(t *testing.T) {
 	t.Helper()
 
-	if os.Getenv("GCSMOCK_ENDPOINT") != "" && os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
+	if os.Getenv("GCSMOCK_ENDPOINT") != "" {
 		credsFile := path.Join(t.TempDir(), "dummy_creds.json")
 
 		priv, err := rsa.GenerateKey(rand.Reader, 2048)
