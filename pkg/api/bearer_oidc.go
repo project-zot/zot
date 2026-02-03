@@ -20,9 +20,9 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
-// oidcProviderRefreshInterval defines how often to refresh the OIDC provider configuration.
-// With 1 minute interval, even if there are too many API calls authenticating via OIDC
-// bearer tokens at once, we will only refresh the provider at most once per minute (safe).
+// oidcProviderRefreshInterval defines the target interval for refreshing the public keys.
+// With a 1 minute interval, repeated calls will generally reuse cached keys and only trigger
+// a refresh roughly once per minute, but this is best-effort and not a strict upper bound.
 const oidcProviderRefreshInterval = 1 * time.Minute
 
 var bearerOIDCTokenMatch = regexp.MustCompile("(?i)bearer (.*)")

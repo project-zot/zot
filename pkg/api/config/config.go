@@ -134,7 +134,20 @@ func (a *AuthConfig) IsBearerAuthEnabled() bool {
 
 // IsTraditionalBearerAuthEnabled checks if traditional Bearer authentication is enabled in this auth config.
 func (a *AuthConfig) IsTraditionalBearerAuthEnabled() bool {
+	return a.IsTraditionalBearerAuthEnabledWithCert() || a.IsTraditionalBearerAuthEnabledWithASM()
+}
+
+// IsTraditionalBearerAuthEnabledWithCert checks if traditional Bearer authentication with a
+// static cert is enabled in this auth config.
+func (a *AuthConfig) IsTraditionalBearerAuthEnabledWithCert() bool {
 	return a != nil && a.Bearer != nil && a.Bearer.Cert != "" && a.Bearer.Realm != "" && a.Bearer.Service != ""
+}
+
+// IsTraditionalBearerAuthEnabledWithASM checks if traditional Bearer authentication with
+// AWS Secrets Manager is enabled in this auth config.
+func (a *AuthConfig) IsTraditionalBearerAuthEnabledWithASM() bool {
+	return a != nil && a.Bearer != nil && a.Bearer.AWSSecretsManager != nil &&
+		a.Bearer.Realm != "" && a.Bearer.Service != ""
 }
 
 // IsOIDCBearerAuthEnabled checks if OIDC Bearer authentication is enabled in this auth config.
@@ -193,8 +206,12 @@ type BearerConfig struct {
 	Realm   string
 	Service string
 	Cert    string
+
 	// OIDC configuration for workload identity authentication
 	OIDC BearerOIDCConfigs `json:"oidc,omitempty" mapstructure:"oidc,omitempty"`
+
+	// AWSSecretsManager configuration for retrieving JWT Bearer verification keys.
+	AWSSecretsManager *AWSSecretsManagerConfig `json:"awsSecretsManager,omitempty" mapstructure:"awsSecretsManager,omitempty"` //nolint:lll
 }
 
 // BearerOIDCConfigs is a slice of BearerOIDCConfig.
@@ -238,6 +255,21 @@ type BearerOIDCConfig struct {
 	// SkipIssuerVerification skips issuer verification (for testing only).
 	// Default: false
 	SkipIssuerVerification bool `json:"skipIssuerVerification,omitempty" mapstructure:"skipIssuerVerification,omitempty"`
+}
+
+// AWSSecretsManagerConfig configures retrieval of JWT verification keys from AWS Secrets Manager.
+// The secret format is expected to be a JSON object where each key is a key ID and the value is
+// the corresponding PEM-or-JWKS-encoded public key.
+type AWSSecretsManagerConfig struct {
+	// Region is the AWS region where the secret is stored.
+	Region string `json:"region" mapstructure:"region"`
+
+	// SecretName is the name of the secret in AWS Secrets Manager.
+	SecretName string `json:"secretName" mapstructure:"secretName"`
+
+	// RefreshInterval specifies how often to refresh the secret from AWS Secrets Manager.
+	// Default: 1 minute.
+	RefreshInterval time.Duration `json:"refreshInterval,omitempty" mapstructure:"refreshInterval,omitempty"`
 }
 
 type SessionKeys struct {
