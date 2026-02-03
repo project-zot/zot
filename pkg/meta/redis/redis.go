@@ -2009,7 +2009,12 @@ func (rc *RedisDB) ResetRepoReferences(repo string, tagsToKeep map[string]bool) 
 
 	err := rc.withRSLocks(ctx, []string{rc.getRepoLockKey(repo)}, func() error {
 		protoRepoMeta, err := rc.getProtoRepoMeta(ctx, repo)
-		if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
+		if err != nil {
+			if errors.Is(err, zerr.ErrRepoMetaNotFound) {
+				// Repo doesn't exist, nothing to reset
+				return nil
+			}
+
 			return err
 		}
 

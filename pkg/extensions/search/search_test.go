@@ -3403,6 +3403,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 
 		allExpectedRepoInfoMap := make(map[string]zcommon.RepoInfo)
 		allExpectedImageSummaryMap := make(map[string]zcommon.ImageSummary)
+		expectedLastUpdatedMap := make(map[string]time.Time)
 
 		for _, repo := range repos {
 			repoInfo, err := olu.GetExpandedRepoInfo(repo)
@@ -3413,6 +3414,23 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 				imageName := fmt.Sprintf("%s:%s", repo, image.Tag)
 				allExpectedImageSummaryMap[imageName] = image
 			}
+
+			// Compute expected LastUpdated as the maximum of:
+			// 1. NewestImage.LastUpdated (from the last updated image)
+			// 2. All TaggedTimestamp values from all tags in the repository
+			repoMeta, err := ctlr.MetaDB.GetRepoMeta(context.Background(), repo)
+			So(err, ShouldBeNil)
+
+			expectedLastUpdated := repoInfo.Summary.NewestImage.LastUpdated
+
+			// Check all TaggedTimestamp values from all tags
+			for _, descriptor := range repoMeta.Tags {
+				if !descriptor.TaggedTimestamp.IsZero() && descriptor.TaggedTimestamp.After(expectedLastUpdated) {
+					expectedLastUpdated = descriptor.TaggedTimestamp
+				}
+			}
+
+			expectedLastUpdatedMap[repo] = expectedLastUpdated
 		}
 
 		query := `
@@ -3493,10 +3511,16 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 			// Check if data in NewestImage is consistent with the data in RepoSummary
 			So(repoName, ShouldEqual, repoSummary.NewestImage.RepoName)
 			So(repoSummary.Name, ShouldEqual, repoSummary.NewestImage.RepoName)
-			So(repoSummary.LastUpdated, ShouldEqual, repoSummary.NewestImage.LastUpdated)
+
+			// Verify the actual LastUpdated matches the computed expected value
+			expectedLastUpdated, exists := expectedLastUpdatedMap[repoName]
+			So(exists, ShouldBeTrue)
+			So(repoSummary.LastUpdated, ShouldEqual, expectedLastUpdated)
 
 			// The data in the RepoSummary returned from the request matches the data returned from the disk
 			repoInfo := allExpectedRepoInfoMap[repoName]
+			// Update the expected LastUpdated to account for TaggedTimestamp (which is not available from disk)
+			repoInfo.Summary.LastUpdated = expectedLastUpdated
 
 			t.Logf("Validate repo summary returned by global search with vulnerability scanning disabled")
 			verifyRepoSummaryFields(t, &repoSummary, &repoInfo.Summary)
@@ -3747,6 +3771,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 
 		allExpectedRepoInfoMap := make(map[string]zcommon.RepoInfo)
 		allExpectedImageSummaryMap := make(map[string]zcommon.ImageSummary)
+		expectedLastUpdatedMap := make(map[string]time.Time)
 
 		for _, repo := range repos {
 			repoInfo, err := olu.GetExpandedRepoInfo(repo)
@@ -3757,6 +3782,23 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 				imageName := fmt.Sprintf("%s:%s", repo, image.Tag)
 				allExpectedImageSummaryMap[imageName] = image
 			}
+
+			// Compute expected LastUpdated as the maximum of:
+			// 1. NewestImage.LastUpdated (from the last updated image)
+			// 2. All TaggedTimestamp values from all tags in the repository
+			repoMeta, err := ctlr.MetaDB.GetRepoMeta(context.Background(), repo)
+			So(err, ShouldBeNil)
+
+			expectedLastUpdated := repoInfo.Summary.NewestImage.LastUpdated
+
+			// Check all TaggedTimestamp values from all tags
+			for _, descriptor := range repoMeta.Tags {
+				if !descriptor.TaggedTimestamp.IsZero() && descriptor.TaggedTimestamp.After(expectedLastUpdated) {
+					expectedLastUpdated = descriptor.TaggedTimestamp
+				}
+			}
+
+			expectedLastUpdatedMap[repo] = expectedLastUpdated
 		}
 
 		query := `
@@ -3833,10 +3875,16 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 			// Check if data in NewestImage is consistent with the data in RepoSummary
 			So(repoName, ShouldEqual, repoSummary.NewestImage.RepoName)
 			So(repoSummary.Name, ShouldEqual, repoSummary.NewestImage.RepoName)
-			So(repoSummary.LastUpdated, ShouldEqual, repoSummary.NewestImage.LastUpdated)
+
+			// Verify the actual LastUpdated matches the computed expected value
+			expectedLastUpdated, exists := expectedLastUpdatedMap[repoName]
+			So(exists, ShouldBeTrue)
+			So(repoSummary.LastUpdated, ShouldEqual, expectedLastUpdated)
 
 			// The data in the RepoSummary returned from the request matches the data returned from the disk
 			repoInfo := allExpectedRepoInfoMap[repoName]
+			// Update the expected LastUpdated to account for TaggedTimestamp (which is not available from disk)
+			repoInfo.Summary.LastUpdated = expectedLastUpdated
 
 			t.Logf("Validate repo summary returned by global search with vulnerability scanning enabled")
 			verifyRepoSummaryFields(t, &repoSummary, &repoInfo.Summary)

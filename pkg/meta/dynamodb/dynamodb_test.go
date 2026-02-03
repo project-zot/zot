@@ -2,6 +2,7 @@ package dynamodb_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -15,10 +16,14 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/extensions/imagetrust"
 	"zotregistry.dev/zot/v2/pkg/log"
 	mdynamodb "zotregistry.dev/zot/v2/pkg/meta/dynamodb"
+	proto_go "zotregistry.dev/zot/v2/pkg/meta/proto/gen"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
 	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
@@ -426,6 +431,39 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("ResetRepoReferences", func() {
+			Convey("repo doesn't exist - returns early without error", func() {
+				// Verify repo doesn't exist
+				_, err := dynamoWrapper.GetRepoMeta(ctx, "nonexistent-repo")
+				So(err, ShouldNotBeNil)
+				So(errors.Is(err, zerr.ErrRepoMetaNotFound), ShouldBeTrue)
+
+				// ResetRepoReferences should return early without error
+				err = dynamoWrapper.ResetRepoReferences("nonexistent-repo", nil)
+				So(err, ShouldBeNil)
+
+				// Verify repo still doesn't exist
+				_, err = dynamoWrapper.GetRepoMeta(ctx, "nonexistent-repo")
+				So(err, ShouldNotBeNil)
+				So(errors.Is(err, zerr.ErrRepoMetaNotFound), ShouldBeTrue)
+			})
+
+			Convey("repo doesn't exist with tagsToKeep - returns early without error", func() {
+				// Verify repo doesn't exist
+				_, err := dynamoWrapper.GetRepoMeta(ctx, "nonexistent-repo2")
+				So(err, ShouldNotBeNil)
+				So(errors.Is(err, zerr.ErrRepoMetaNotFound), ShouldBeTrue)
+
+				// ResetRepoReferences should return early without error even with tagsToKeep
+				tagsToKeep := map[string]bool{"tag1": true}
+				err = dynamoWrapper.ResetRepoReferences("nonexistent-repo2", tagsToKeep)
+				So(err, ShouldBeNil)
+
+				// Verify repo still doesn't exist
+				_, err = dynamoWrapper.GetRepoMeta(ctx, "nonexistent-repo2")
+				So(err, ShouldNotBeNil)
+				So(errors.Is(err, zerr.ErrRepoMetaNotFound), ShouldBeTrue)
+			})
+
 			Convey("unmarshalProtoRepoMeta error", func() {
 				err := setRepoMeta("repo", badProtoBlob, dynamoWrapper)
 				So(err, ShouldBeNil)
@@ -813,6 +851,58 @@ func TestWrapperErrors(t *testing.T) {
 				err := dynamoWrapper.SetRepoReference(ctx, "repo", "tag", image.AsImageMeta())
 				So(err, ShouldNotBeNil)
 			})
+			Convey("setRepoBlobsInfo fails", func() {
+				// First set up image meta and repo meta successfully
+				err := dynamoWrapper.SetImageMeta(imageMeta.Digest, imageMeta) //nolint: contextcheck
+				So(err, ShouldBeNil)
+
+				// Set up repo meta manually so getProtoRepoMeta succeeds
+				err = dynamoWrapper.SetRepoMeta("repo", mTypes.RepoMeta{ //nolint: contextcheck
+					Name: "repo",
+				})
+				So(err, ShouldBeNil)
+
+				// Set up repo blobs manually so getProtoRepoBlobs succeeds
+				repoBlobs := &proto_go.RepoBlobs{
+					Name: "repo",
+				}
+				repoBlobsBytes, err := proto.Marshal(repoBlobs)
+				So(err, ShouldBeNil)
+				err = setRepoBlobInfo("repo", repoBlobsBytes, dynamoWrapper) //nolint: contextcheck
+				So(err, ShouldBeNil)
+
+				// Now set bad table name to cause setRepoBlobsInfo to fail
+				dynamoWrapper.RepoBlobsTablename = badTablename
+
+				err = dynamoWrapper.SetRepoReference(ctx, "repo", "tag", imageMeta)
+				So(err, ShouldNotBeNil)
+			})
+			Convey("setProtoRepoMeta fails", func() {
+				// First set up image meta and repo blobs successfully
+				err := dynamoWrapper.SetImageMeta(imageMeta.Digest, imageMeta) //nolint: contextcheck
+				So(err, ShouldBeNil)
+
+				// Set up repo meta manually so getProtoRepoMeta succeeds
+				err = dynamoWrapper.SetRepoMeta("repo", mTypes.RepoMeta{ //nolint: contextcheck
+					Name: "repo",
+				})
+				So(err, ShouldBeNil)
+
+				// Set up repo blobs manually so getProtoRepoBlobs succeeds
+				repoBlobs := &proto_go.RepoBlobs{
+					Name: "repo",
+				}
+				repoBlobsBytes, err := proto.Marshal(repoBlobs)
+				So(err, ShouldBeNil)
+				err = setRepoBlobInfo("repo", repoBlobsBytes, dynamoWrapper) //nolint: contextcheck
+				So(err, ShouldBeNil)
+
+				// Now set bad table name to cause setProtoRepoMeta to fail
+				dynamoWrapper.RepoMetaTablename = badTablename
+
+				err = dynamoWrapper.SetRepoReference(ctx, "repo", "tag", imageMeta)
+				So(err, ShouldNotBeNil)
+			})
 		})
 
 		Convey("GetProtoImageMeta", func() {
@@ -1087,6 +1177,72 @@ func TestWrapperErrors(t *testing.T) {
 
 				lastUpdated := dynamoWrapper.GetRepoLastUpdated("repo")
 				So(lastUpdated, ShouldEqual, time.Time{})
+			})
+
+			Convey("item doesn't exist", func() {
+				// Delete the repo to ensure item doesn't exist
+				err := dynamoWrapper.DeleteRepoMeta("nonexistent-repo")
+				So(err, ShouldBeNil)
+
+				lastUpdated := dynamoWrapper.GetRepoLastUpdated("nonexistent-repo")
+				So(lastUpdated, ShouldEqual, time.Time{})
+			})
+
+			Convey("item exists but RepoLastUpdated attribute missing", func() {
+				// Create an item in RepoBlobsTablename without RepoLastUpdated attribute
+				// by setting RepoBlobsInfo only
+				repoBlobs := &proto_go.RepoBlobs{
+					Name: "repo-no-timestamp",
+				}
+				repoBlobsBytes, err := proto.Marshal(repoBlobs)
+				So(err, ShouldBeNil)
+
+				err = setRepoBlobInfo("repo-no-timestamp", repoBlobsBytes, dynamoWrapper)
+				So(err, ShouldBeNil)
+
+				lastUpdated := dynamoWrapper.GetRepoLastUpdated("repo-no-timestamp")
+				So(lastUpdated, ShouldEqual, time.Time{})
+			})
+
+			Convey("empty blob", func() {
+				// Set an empty blob for RepoLastUpdated
+				err := setRepoLastUpdated("repo-empty-blob", []byte{}, dynamoWrapper)
+				So(err, ShouldBeNil)
+
+				lastUpdated := dynamoWrapper.GetRepoLastUpdated("repo-empty-blob")
+				So(lastUpdated, ShouldEqual, time.Time{})
+			})
+
+			Convey("zero timestamp", func() {
+				// Set a zero timestamp
+				zeroTime := &timestamppb.Timestamp{
+					Seconds: 0,
+					Nanos:   0,
+				}
+				zeroTimeBlob, err := proto.Marshal(zeroTime)
+				So(err, ShouldBeNil)
+
+				err = setRepoLastUpdated("repo-zero-timestamp", zeroTimeBlob, dynamoWrapper)
+				So(err, ShouldBeNil)
+
+				lastUpdated := dynamoWrapper.GetRepoLastUpdated("repo-zero-timestamp")
+				So(lastUpdated, ShouldEqual, time.Time{})
+			})
+
+			Convey("valid timestamp", func() {
+				// Set a valid timestamp
+				validTime := timestamppb.New(time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC))
+				validTimeBlob, err := proto.Marshal(validTime)
+				So(err, ShouldBeNil)
+
+				err = setRepoLastUpdated("repo-valid-timestamp", validTimeBlob, dynamoWrapper)
+				So(err, ShouldBeNil)
+
+				lastUpdated := dynamoWrapper.GetRepoLastUpdated("repo-valid-timestamp")
+				So(lastUpdated, ShouldNotEqual, time.Time{})
+				So(lastUpdated.Year(), ShouldEqual, 2024)
+				So(lastUpdated.Month(), ShouldEqual, time.January)
+				So(lastUpdated.Day(), ShouldEqual, 1)
 			})
 		})
 

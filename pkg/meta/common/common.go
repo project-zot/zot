@@ -258,6 +258,7 @@ func AddImageMetaToRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.Rep
 	repoMeta.Size = size
 
 	imageBlobInfo := repoBlobs.Blobs[imageMeta.Digest.String()]
+
 	repoMeta.LastUpdatedImage = mConvert.GetProtoEarlierUpdatedImage(repoMeta.LastUpdatedImage,
 		&proto_go.RepoLastUpdatedImage{
 			LastUpdated: imageBlobInfo.LastUpdated,

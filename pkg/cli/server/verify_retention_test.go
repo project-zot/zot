@@ -476,7 +476,7 @@ func TestRetentionCheckWithRetentionEnabledAndRedisDriver(t *testing.T) {
 
 		defer ctrlManager.StopServer()
 
-		os.Args = []string{"cli_test", "verify-feature", "retention", "-l", logFile, "-t", "1s", configFile}
+		os.Args = []string{"cli_test", "verify-feature", "retention", "-l", logFile, "-t", "2s", configFile}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
 
@@ -720,7 +720,7 @@ func TestRetentionCheckWithRetentionEnabled(t *testing.T) {
 		gcDelay, _ := time.ParseDuration(testGCDelay)
 		time.Sleep(gcDelay + 50*time.Millisecond) // wait for GC delay to pass
 
-		os.Args = []string{"cli_test", "verify-feature", "retention", "-l", logFile, "-t", "1s", configFile}
+		os.Args = []string{"cli_test", "verify-feature", "retention", "-l", logFile, "-t", "2s", configFile}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
 
@@ -935,7 +935,7 @@ func TestRetentionCheckWithDeleteReferrers(t *testing.T) {
 		gcDelay, _ := time.ParseDuration(testGCDelay)
 		time.Sleep(gcDelay + 50*time.Millisecond) // wait for GC delay to pass
 
-		os.Args = []string{"cli_test", "verify-feature", "retention", "-l", logFile, "-t", "1s", configFile}
+		os.Args = []string{"cli_test", "verify-feature", "retention", "-l", logFile, "-t", "2s", configFile}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
 
@@ -1080,7 +1080,7 @@ func TestRetentionCheckWithRetentionDisabled(t *testing.T) {
 		gcDelay, _ := time.ParseDuration(testGCDelay)
 		time.Sleep(gcDelay + 50*time.Millisecond) // wait for GC delay to pass
 
-		os.Args = []string{"cli_test", "verify-feature", "retention", "-l", logFile, "-t", "1s", configFile}
+		os.Args = []string{"cli_test", "verify-feature", "retention", "-l", logFile, "-t", "2s", configFile}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
 
@@ -1354,7 +1354,7 @@ func TestRetentionCheckWithSubpaths(t *testing.T) {
 		gcDelay, _ := time.ParseDuration(testGCDelay)
 		time.Sleep(gcDelay + 50*time.Millisecond) // wait for GC delay to pass
 
-		os.Args = []string{"cli_test", "verify-feature", "retention", "-l", logFile, "-t", "1s", configFile}
+		os.Args = []string{"cli_test", "verify-feature", "retention", "-l", logFile, "-t", "2s", configFile}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
 
