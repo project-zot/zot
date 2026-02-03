@@ -36,6 +36,8 @@ import (
 	tskip "zotregistry.dev/zot/v2/pkg/test/skip"
 )
 
+var errGCSMockEndpointNotSet = errors.New("GCSMOCK_ENDPOINT must be set for GCS tests")
+
 func ensureDummyGCSCreds(t *testing.T) {
 	t.Helper()
 
@@ -79,20 +81,23 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 ) {
 	bucket := "zot-storage-test"
 
-	if endpoint := os.Getenv("GCSMOCK_ENDPOINT"); endpoint != "" {
-		url := endpoint + "/storage/v1/b?project=test-project"
-		body := fmt.Sprintf(`{"name": "%s"}`, bucket)
-		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, strings.NewReader(body))
-		if err != nil {
-			return nil, nil, err
-		}
-		req.Header.Set("Content-Type", "application/json")
-		resp, err := http.DefaultClient.Do(req) //nolint:gosec // G107: Test mock
-		if err != nil {
-			return nil, nil, err
-		}
-		resp.Body.Close()
+	endpoint := os.Getenv("GCSMOCK_ENDPOINT")
+	if endpoint == "" {
+		return nil, nil, errGCSMockEndpointNotSet
 	}
+
+	url := endpoint + "/storage/v1/b?project=test-project"
+	body := fmt.Sprintf(`{"name": "%s"}`, bucket)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, strings.NewReader(body))
+	if err != nil {
+		return nil, nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req) //nolint:gosec // G107: Test mock
+	if err != nil {
+		return nil, nil, err
+	}
+	resp.Body.Close()
 
 	storageDriverParams := map[string]any{
 		"rootDir": rootDir,
