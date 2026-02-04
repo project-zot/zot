@@ -1308,6 +1308,7 @@ func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]str
 			blobPath, _ = filepath.Rel(is.rootDir, blobPath)
 		}
 
+		blobPath = filepath.ToSlash(blobPath)
 		blobsDirIndex := strings.LastIndex(blobPath, "/blobs/")
 
 		repos = append(repos, blobPath[:blobsDirIndex])
