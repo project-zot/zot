@@ -19,6 +19,7 @@ import (
 	"github.com/regclient/regclient/config"
 	"github.com/regclient/regclient/mod"
 	"github.com/regclient/regclient/scheme/reg"
+	"github.com/regclient/regclient/types/descriptor"
 	"github.com/regclient/regclient/types/ref"
 
 	zerr "zotregistry.dev/zot/v2/errors"
@@ -918,4 +919,78 @@ func newClient(opts syncconf.RegistryConfig, credentials syncconf.CredentialsFil
 	)
 
 	return client, hostConfigOpts, nil
+}
+
+// SyncBlob syncs a single blob from upstream to local storage.
+func (service *BaseService) SyncBlob(ctx context.Context, repo string, digest godigest.Digest) error {
+	service.log.Info().
+		Str("repo", repo).
+		Str("digest", digest.String()).
+		Msg("sync: syncing blob on demand")
+
+	remoteRepo := repo
+
+	if len(service.config.Content) > 0 {
+		remoteRepo = service.contentManager.GetRepoSource(repo)
+		if remoteRepo == "" {
+			service.log.Info().Str("repo", repo).Str("digest", digest.String()).
+				Msg("will not sync blob, filtered out by content")
+
+			return zerr.ErrSyncImageFilteredOut
+		}
+	}
+
+	if err := service.refreshRegistryTemporaryCredentials(); err != nil {
+		service.log.Error().Err(err).Msg("failed to refresh credentials")
+	}
+
+	service.clientLock.RLock()
+	defer service.clientLock.RUnlock()
+
+	// Get the image store
+	imgStore := service.storeController.GetImageStore(repo)
+
+	// Create remote reference for blob access
+	// Note: regclient requires a full reference (repo:tag), but for blob-only operations
+	// the tag value is not actually used by the registry API
+	const dummyTag = "dummy"
+	remoteRef, err := service.remote.GetImageReference(remoteRepo, dummyTag)
+	if err != nil {
+		return err
+	}
+
+	// Create a descriptor for the blob
+	// digest is already godigest.Digest type, just use it directly
+	blobDesc := descriptor.Descriptor{
+		Digest: digest,
+	}
+
+	// Get the actual blob content from upstream
+	blobReader, err := service.rc.BlobGet(ctx, remoteRef, blobDesc)
+	if err != nil {
+		service.log.Error().Err(err).
+			Str("repo", repo).
+			Str("digest", digest.String()).
+			Msg("failed to get blob from upstream")
+		return err
+	}
+	defer blobReader.Close()
+
+	// For now, use the standard FullBlobUpload method
+	// In a future enhancement, this can be replaced with streaming logic
+	_, _, err = imgStore.FullBlobUpload(repo, blobReader, digest)
+	if err != nil {
+		service.log.Error().Err(err).
+			Str("repo", repo).
+			Str("digest", digest.String()).
+			Msg("failed to upload blob to storage")
+		return err
+	}
+
+	service.log.Info().
+		Str("repo", repo).
+		Str("digest", digest.String()).
+		Msg("sync: blob synced successfully")
+
+	return nil
 }
