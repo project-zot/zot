@@ -18,6 +18,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 	common "zotregistry.dev/zot/v2/pkg/storage/common"
 	"zotregistry.dev/zot/v2/pkg/storage/constants"
+	"zotregistry.dev/zot/v2/pkg/storage/gcs"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
 	"zotregistry.dev/zot/v2/pkg/storage/s3"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
@@ -63,7 +64,7 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 		)
 	} else {
 		storeName := fmt.Sprintf("%v", config.Storage.StorageDriver["name"])
-		if storeName != constants.S3StorageDriverName {
+		if storeName != constants.S3StorageDriverName && storeName != constants.GCSStorageDriverName {
 			log.Error().Err(zerr.ErrBadConfig).Str("storageDriver", storeName).
 				Msg("unsupported storage driver")
 
@@ -92,8 +93,15 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 
 		// false positive lint - linter does not implement Lint method
 		//nolint: typecheck,contextcheck
-		defaultStore = s3.NewImageStore(rootDir, config.Storage.RootDirectory,
-			config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, store, cacheDriver, config.HTTP.Compat, recorder)
+		if storeName == constants.S3StorageDriverName {
+			defaultStore = s3.NewImageStore(rootDir, config.Storage.RootDirectory,
+				config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, store, cacheDriver,
+				config.HTTP.Compat, recorder)
+		} else {
+			defaultStore = gcs.NewImageStore(rootDir, config.Storage.RootDirectory,
+				config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, store, cacheDriver,
+				config.HTTP.Compat, recorder)
+		}
 	}
 
 	storeController.DefaultStore = defaultStore
@@ -178,7 +186,7 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 			}
 		} else {
 			storeName := fmt.Sprintf("%v", storageConfig.StorageDriver["name"])
-			if storeName != constants.S3StorageDriverName {
+			if storeName != constants.S3StorageDriverName && storeName != constants.GCSStorageDriverName {
 				log.Error().Err(zerr.ErrBadConfig).Str("storageDriver", storeName).
 					Msg("unsupported storage driver")
 
@@ -210,9 +218,15 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 
 			// false positive lint - linter does not implement Lint method
 			//nolint: typecheck
-			subImageStore[route] = s3.NewImageStore(rootDir, storageConfig.RootDirectory,
-				storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, store, cacheDriver, cfg.HTTP.Compat, recorder,
-			)
+			if storeName == constants.S3StorageDriverName {
+				subImageStore[route] = s3.NewImageStore(rootDir, storageConfig.RootDirectory,
+					storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, store, cacheDriver, cfg.HTTP.Compat, recorder,
+				)
+			} else {
+				subImageStore[route] = gcs.NewImageStore(rootDir, storageConfig.RootDirectory,
+					storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, store, cacheDriver, cfg.HTTP.Compat, recorder,
+				)
+			}
 		}
 	}
 

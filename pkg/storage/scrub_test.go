@@ -109,6 +109,40 @@ func TestS3CheckAllBlobsIntegrity(t *testing.T) {
 	})
 }
 
+func TestGCSCheckAllBlobsIntegrity(t *testing.T) {
+	tskip.SkipGCS(t)
+	ensureDummyGCSCreds(t)
+
+	Convey("test with GCS storage", t, func() {
+		uuid, err := guuid.NewV4()
+		if err != nil {
+			panic(err)
+		}
+
+		testDir := path.Join("/oci-repo-test", uuid.String())
+
+		log := log.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		defer metrics.Stop() // Clean up metrics server to prevent resource leaks
+
+		opts := createObjectStoreOpts{
+			rootDir:     testDir,
+			cacheDir:    t.TempDir(),
+			storageType: storageConstants.GCSStorageDriverName,
+			cacheType:   storageConstants.BoltdbName,
+		}
+
+		driver, imgStore, _, err := createObjectsStore(opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer cleanupStorage(driver, testDir)
+
+		RunCheckAllBlobsIntegrityTests(t, imgStore, driver, log)
+	})
+}
+
 func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 	t *testing.T, imgStore storageTypes.ImageStore, driver storageTypes.Driver, log log.Logger,
 ) {
