@@ -111,6 +111,7 @@ func TestS3CheckAllBlobsIntegrity(t *testing.T) {
 
 func TestGCSCheckAllBlobsIntegrity(t *testing.T) {
 	tskip.SkipGCS(t)
+	ensureDummyGCSCreds(t)
 
 	Convey("test with GCS storage", t, func() {
 		uuid, err := guuid.NewV4()
