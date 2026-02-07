@@ -56,7 +56,9 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 			// Get cluster config safely
 			clusterConfig := config.CopyClusterConfig()
 
-			service, err := sync.New(registryConfig, credsPath, clusterConfig, tmpDir, storeController, metaDB, log)
+			sm := sync.NewChunkingStreamManager(config, log)
+
+			service, err := sync.New(registryConfig, credsPath, clusterConfig, tmpDir, storeController, sm, metaDB, log)
 			if err != nil {
 				log.Error().Err(err).Msg("failed to initialize sync extension")
 

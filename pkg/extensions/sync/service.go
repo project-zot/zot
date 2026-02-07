@@ -49,6 +49,7 @@ type BaseService struct {
 	rc               *regclient.RegClient
 	hosts            []config.Host
 	tagsCache        *tagsCache
+	streamManager    StreamManager
 
 	clientLock sync.RWMutex
 	log        log.Logger
@@ -60,6 +61,7 @@ func New(
 	clusterConfig *zconfig.ClusterConfig,
 	tmpDir string,
 	storeController storage.StoreController,
+	streamManager StreamManager,
 	metadb mTypes.MetaDB,
 	log log.Logger,
 ) (*BaseService, error) {
@@ -71,6 +73,7 @@ func New(
 	service.contentManager = NewContentManager(config.Content, log)
 	service.storeController = storeController
 	service.tagsCache = newTagsCache(defaultExpireMinutes)
+	service.streamManager = streamManager
 
 	var err error
 
@@ -477,6 +480,7 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 	copyOpts := []regclient.ImageOpts{}
 	if recursive {
 		copyOpts = append(copyOpts, regclient.ImageWithReferrers())
+		copyOpts = append(copyOpts, regclient.ImageWithBlobReaderHook(service.streamManager.StreamingBlobReader))
 	}
 
 	// check if image is already synced
