@@ -32,6 +32,14 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 		onDemand := sync.NewOnDemand(log)
 		syncConfig := extensionsConfig.GetSyncConfig()
 
+		var streamManager sync.StreamManager
+
+		if extensionsConfig.IsStreamingEnabled() {
+			log.Info().Msg("streaming sync enabled. Initializing stream manager.")
+			streamManager = sync.NewChunkingStreamManager(config, log)
+			onDemand.SetStreamManager(streamManager)
+		}
+
 		for _, registryConfig := range syncConfig.Registries {
 			if len(registryConfig.URLs) > 1 {
 				if err := removeSelfURLs(httpAddress, httpPort, &registryConfig, log); err != nil {
@@ -57,7 +65,14 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 			// Get cluster config safely
 			clusterConfig := config.CopyClusterConfig()
 
-			service, err := sync.New(registryConfig, credsPath, clusterConfig, tmpDir, storeController, metaDB, log)
+			// Only pass the stream manager to services that have streaming enabled on their registry config.
+			var svcStreamManager sync.StreamManager
+			if registryConfig.IsStreamEnabled() {
+				svcStreamManager = streamManager
+			}
+
+			service, err := sync.New(
+				registryConfig, credsPath, clusterConfig, tmpDir, storeController, svcStreamManager, metaDB, log)
 			if err != nil {
 				log.Error().Err(err).Msg("failed to initialize sync extension")
 

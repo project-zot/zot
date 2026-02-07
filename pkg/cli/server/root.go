@@ -1662,12 +1662,44 @@ func validateGCRules(retention config.ImageRetention, logger zlog.Logger) error 
 	return nil
 }
 
+func validateRegistryStreamingSyncConfig(regCfg syncconf.RegistryConfig) error {
+	if regCfg.IsStreamEnabled() {
+		msgs := []string{}
+
+		if !regCfg.OnDemand {
+			msgs = append(msgs, "streaming sync requires onDemand to be enabled")
+		}
+
+		if regCfg.MaxRetries != nil {
+			msgs = append(msgs, "maxRetries cannot be used when streaming sync is enabled")
+		}
+
+		if regCfg.RetryDelay != nil {
+			msgs = append(msgs, "retryDelay cannot be used when streaming sync is enabled")
+		}
+
+		if len(msgs) != 0 {
+			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, strings.Join(msgs, ","))
+		}
+	}
+
+	return nil
+}
+
 func validateSync(config *config.Config, logger zlog.Logger) error {
 	// check glob patterns in sync config are compilable
 	extensionsConfig := config.CopyExtensionsConfig()
 	// can't check with IsSyncEnabled(), because it can't test invalid sync configs
 	if extensionsConfig != nil && extensionsConfig.Sync != nil && len(extensionsConfig.Sync.Registries) > 0 {
 		for regID, regCfg := range extensionsConfig.Sync.Registries {
+			streamValidationErr := validateRegistryStreamingSyncConfig(regCfg)
+			if streamValidationErr != nil {
+				logger.Error().Err(streamValidationErr).Int("id", regID).Interface("extensions.sync.registries[id]",
+					extensionsConfig.Sync.Registries[regID]).Msg("invalid config for streaming")
+
+				return streamValidationErr
+			}
+
 			// check retry options are configured for sync
 			if regCfg.MaxRetries != nil && regCfg.RetryDelay == nil {
 				msg := "retryDelay is required when using maxRetries"

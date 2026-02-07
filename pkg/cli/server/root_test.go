@@ -2139,8 +2139,8 @@ storage:
 		tmpCredsFile := MakeTempFileWithContent(t, "zot-cred.json", credsContent)
 
 		configContent := fmt.Sprintf(`{ "distSpecVersion": "1.1.1",
-			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080", 
-			"auth":{"htpasswd":{"path":"test/data/htpasswd"}, "sessionKeysFile": "%s", 
+			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080",
+			"auth":{"htpasswd":{"path":"test/data/htpasswd"}, "sessionKeysFile": "%s",
 			"failDelay": 5 } }, "log": { "level": "debug" } }`,
 			tmpCredsFile,
 		)
@@ -2159,8 +2159,8 @@ storage:
 		tmpCredsFile := MakeTempFileWithContent(t, "zot-cred.json", credsContent)
 
 		configContent := fmt.Sprintf(`{ "distSpecVersion": "1.1.1",
-			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080", 
-			"auth":{"htpasswd":{"path":"test/data/htpasswd"}, "sessionKeysFile": "%s", 
+			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080",
+			"auth":{"htpasswd":{"path":"test/data/htpasswd"}, "sessionKeysFile": "%s",
 			"failDelay": 5 } }, "log": { "level": "debug" } }`,
 			tmpCredsFile,
 		)
@@ -2180,10 +2180,10 @@ storage:
 		tmpCredsFile := MakeTempFileWithContent(t, "zot-cred.json", credsContent)
 
 		configContent := fmt.Sprintf(`{ "distSpecVersion": "1.1.1",
-			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080", 
-			"auth": { "ldap": { "credentialsFile": "%v", "address": "ldap.example.org", "port": 389, 
-			"startTLS": false, "baseDN": "ou=Users,dc=example,dc=org", 
-			"userAttribute": "uid", "userGroupAttribute": "memberOf", "skipVerify": true, "subtreeSearch": true }, 
+			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080",
+			"auth": { "ldap": { "credentialsFile": "%v", "address": "ldap.example.org", "port": 389,
+			"startTLS": false, "baseDN": "ou=Users,dc=example,dc=org",
+			"userAttribute": "uid", "userGroupAttribute": "memberOf", "skipVerify": true, "subtreeSearch": true },
 			"failDelay": 5 } }, "log": { "level": "debug" } }`,
 			tmpCredsFile,
 		)
@@ -2203,10 +2203,10 @@ storage:
 		tmpCredsFile := MakeTempFileWithContent(t, "zot-cred.json", credsContent)
 
 		configContent := fmt.Sprintf(`{ "distSpecVersion": "1.1.1",
-			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080", 
-			"auth": { "ldap": { "credentialsFile": "%v", "address": "ldap.example.org", "port": 389, 
-			"startTLS": false, "baseDN": "ou=Users,dc=example,dc=org", 
-			"userAttribute": "uid", "userGroupAttribute": "memberOf", "skipVerify": true, "subtreeSearch": true }, 
+			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080",
+			"auth": { "ldap": { "credentialsFile": "%v", "address": "ldap.example.org", "port": 389,
+			"startTLS": false, "baseDN": "ou=Users,dc=example,dc=org",
+			"userAttribute": "uid", "userGroupAttribute": "memberOf", "skipVerify": true, "subtreeSearch": true },
 			"failDelay": 5 } }, "log": { "level": "debug" } }`,
 			tmpCredsFile,
 		)
@@ -2228,10 +2228,10 @@ storage:
 		tmpCredsFile := MakeTempFileWithContent(t, "zot-cred.json", credsContent)
 
 		configContent := fmt.Sprintf(`{ "distSpecVersion": "1.1.1",
-			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080", 
-			"auth": { "ldap": { "credentialsFile": "%v", "address": "ldap.example.org", "port": 389, 
-			"startTLS": false, "baseDN": "ou=Users,dc=example,dc=org", 
-			"userAttribute": "uid", "userGroupAttribute": "memberOf", "skipVerify": true, "subtreeSearch": true }, 
+			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080",
+			"auth": { "ldap": { "credentialsFile": "%v", "address": "ldap.example.org", "port": 389,
+			"startTLS": false, "baseDN": "ou=Users,dc=example,dc=org",
+			"userAttribute": "uid", "userGroupAttribute": "memberOf", "skipVerify": true, "subtreeSearch": true },
 			"failDelay": 5 } }, "log": { "level": "debug" } }`,
 			tmpCredsFile,
 		)
@@ -2249,10 +2249,10 @@ storage:
 		tmpCredsFile := MakeTempFileWithContent(t, "zot-cred.json", credsContent)
 
 		configContent := fmt.Sprintf(`{ "distSpecVersion": "1.1.1",
-			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080", 
-			"auth": { "ldap": { "credentialsFile": "%v", "address": "ldap.example.org", "port": 389, 
-			"startTLS": false, "baseDN": "ou=Users,dc=example,dc=org", 
-			"userAttribute": "uid", "userGroupAttribute": "memberOf", "skipVerify": true, "subtreeSearch": true }, 
+			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080",
+			"auth": { "ldap": { "credentialsFile": "%v", "address": "ldap.example.org", "port": 389,
+			"startTLS": false, "baseDN": "ou=Users,dc=example,dc=org",
+			"userAttribute": "uid", "userGroupAttribute": "memberOf", "skipVerify": true, "subtreeSearch": true },
 			"failDelay": 5 } }, "log": { "level": "debug" } }`,
 			tmpCredsFile,
 		)
@@ -2270,10 +2270,10 @@ storage:
 		tmpCredsFile := MakeTempFileWithContent(t, "zot-cred.json", credsContent)
 
 		configContent := fmt.Sprintf(`{ "distSpecVersion": "1.1.1",
-			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080", 
-			"auth": { "ldap": { "credentialsFile": "%v", "address": "ldap.example.org", "port": 389, 
-			"startTLS": false, "baseDN": "ou=Users,dc=example,dc=org", 
-			"userAttribute": "uid", "userGroupAttribute": "memberOf", "skipVerify": true, "subtreeSearch": true }, 
+			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080",
+			"auth": { "ldap": { "credentialsFile": "%v", "address": "ldap.example.org", "port": 389,
+			"startTLS": false, "baseDN": "ou=Users,dc=example,dc=org",
+			"userAttribute": "uid", "userGroupAttribute": "memberOf", "skipVerify": true, "subtreeSearch": true },
 			"failDelay": 5 } }, "log": { "level": "debug" } }`,
 			tmpCredsFile,
 		)
@@ -3966,6 +3966,104 @@ func TestMetricsConfigurationValidation(t *testing.T) {
 					}
 				}
 			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldBeNil)
+		})
+	})
+}
+
+func TestValidateStreamingSync(t *testing.T) {
+	Convey("Test streaming sync config validation", t, func() {
+		Convey("Valid streaming sync with onDemand enabled", func() {
+			content := `{"storage":{"rootDirectory":"/tmp/zot"},
+				"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+				"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+				"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+				"onDemand": true, "stream": true}]}}}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Reject streaming sync when onDemand is false", func() {
+			content := `{"storage":{"rootDirectory":"/tmp/zot"},
+				"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+				"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+				"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+				"onDemand": false, "stream": true}]}}}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err.Error(), ShouldContainSubstring, "streaming sync requires onDemand to be enabled")
+		})
+
+		Convey("Reject streaming sync when maxRetries is set", func() {
+			content := `{"storage":{"rootDirectory":"/tmp/zot"},
+				"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+				"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+				"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+				"onDemand": true, "stream": true, "maxRetries": 3, "retryDelay": "10s"}]}}}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err.Error(), ShouldContainSubstring, "maxRetries cannot be used when streaming sync is enabled")
+		})
+
+		Convey("Reject streaming sync when retryDelay is set without maxRetries", func() {
+			content := `{"storage":{"rootDirectory":"/tmp/zot"},
+				"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+				"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+				"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+				"onDemand": true, "stream": true, "retryDelay": "10s"}]}}}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err.Error(), ShouldContainSubstring, "retryDelay cannot be used when streaming sync is enabled")
+		})
+
+		Convey("Non-streaming sync allows maxRetries with retryDelay", func() {
+			content := `{"storage":{"rootDirectory":"/tmp/zot"},
+				"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+				"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+				"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+				"onDemand": true, "maxRetries": 3, "retryDelay": "10s"}]}}}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Streaming registry and non-streaming registry can coexist", func() {
+			content := `{"storage":{"rootDirectory":"/tmp/zot"},
+				"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+				"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+				"extensions":{"sync": {"registries": [
+					{"urls":["localhost:9999"], "onDemand": true, "stream": true},
+					{"urls":["localhost:9998"], "onDemand": true, "maxRetries": 3, "retryDelay": "10s"}
+				]}}}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Streaming upstream and periodic sync upstreams can coexist", func() {
+			content := `{"storage":{"rootDirectory":"/tmp/zot"},
+				"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+				"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+				"extensions":{"sync": {"registries": [
+					{"urls":["localhost:9999"], "onDemand": true, "stream": true},
+					{"urls":["localhost:9998"], "onDemand": false, "pollInterval": "12h"}
+				]}}}`
 			cfg := config.New()
 			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
 			err := cli.LoadConfiguration(cfg, tmpfile)

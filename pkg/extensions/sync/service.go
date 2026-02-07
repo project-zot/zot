@@ -15,10 +15,12 @@ import (
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/regclient/regclient"
 	"github.com/regclient/regclient/config"
 	"github.com/regclient/regclient/mod"
 	"github.com/regclient/regclient/scheme/reg"
+	"github.com/regclient/regclient/types/manifest"
 	"github.com/regclient/regclient/types/ref"
 
 	zerr "zotregistry.dev/zot/v2/errors"
@@ -49,6 +51,7 @@ type BaseService struct {
 	rc               *regclient.RegClient
 	hosts            []config.Host
 	tagsCache        *tagsCache
+	streamManager    StreamManager
 
 	clientLock sync.RWMutex
 	log        log.Logger
@@ -60,6 +63,7 @@ func New(
 	clusterConfig *zconfig.ClusterConfig,
 	tmpDir string,
 	storeController storage.StoreController,
+	streamManager StreamManager,
 	metadb mTypes.MetaDB,
 	log log.Logger,
 ) (*BaseService, error) {
@@ -71,6 +75,7 @@ func New(
 	service.contentManager = NewContentManager(config.Content, log)
 	service.storeController = storeController
 	service.tagsCache = newTagsCache(defaultExpireMinutes)
+	service.streamManager = streamManager
 
 	var err error
 
@@ -239,6 +244,21 @@ func (service *BaseService) CanRetryOnError() bool {
 	return false
 }
 
+// IsStreamingForRepo returns whether streaming is enabled for the given local repo on this service.
+// Streaming is enabled if the registry config has Stream set to true and the repo matches the content config.
+func (service *BaseService) IsStreamingForRepo(repo string) bool {
+	if !service.config.IsStreamEnabled() {
+		return false
+	}
+
+	// If no content filter is configured, all repos match.
+	if len(service.config.Content) == 0 {
+		return true
+	}
+
+	return service.contentManager.GetContentByLocalRepo(repo) != nil
+}
+
 func (service *BaseService) GetSyncTimeout() time.Duration {
 	if service.config.SyncTimeout == 0 {
 		return syncConstants.DefaultSyncTimeout
@@ -320,6 +340,88 @@ func (service *BaseService) GetNextRepo(lastRepo string) (string, error) {
 	}
 
 	return lastRepo, nil
+}
+
+// FetchManifest on demand.
+func (service *BaseService) FetchManifest(ctx context.Context, repo, reference string) (
+	manifest.Manifest, []manifest.Manifest, error,
+) {
+	remoteRepo := repo
+
+	remoteURL := service.remote.GetHostName()
+
+	if len(service.config.Content) > 0 {
+		remoteRepo = service.contentManager.GetRepoSource(repo)
+		if remoteRepo == "" {
+			service.log.Info().Str("remote", remoteURL).Str("repo", repo).Str("reference", reference).
+				Msg("will not sync image, filtered out by content")
+
+			return nil, nil, zerr.ErrSyncImageFilteredOut
+		}
+	}
+
+	service.log.Info().Str("remote", remoteURL).Str("repo", repo).Str("reference", reference).
+		Msg("sync: fetching manifest")
+
+	if err := service.refreshRegistryTemporaryCredentials(); err != nil {
+		service.log.Error().Err(err).Msg("failed to refresh credentials")
+	}
+
+	artifactRef, err := service.remote.GetImageReference(remoteRepo, reference)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	fetchedManifest, err := service.rc.ManifestGet(ctx, artifactRef)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var childManifests []manifest.Manifest
+
+	// For a manifest list, each individual manifest inside it also needs
+	// to be downloaded.
+	if fetchedManifest.GetDescriptor().MediaType == ispec.MediaTypeImageIndex {
+		indexer, ok := fetchedManifest.(manifest.Indexer)
+		if !ok {
+			service.log.Error().Str("remote", remoteURL).Str("repo", repo).Str("reference", reference).
+				Msg("failed to cast manifest to index")
+
+			return nil, nil, zerr.ErrBadManifest
+		}
+
+		childDescriptors, err := indexer.GetManifestList()
+		if err != nil {
+			service.log.Error().Err(err).Str("remote", remoteURL).Str("repo", repo).
+				Str("reference", reference).Msg("failed to get manifest list")
+
+			return nil, nil, zerr.ErrBadManifest
+		}
+
+		for _, childDesc := range childDescriptors {
+			childRef, err := service.remote.GetImageReference(remoteRepo, childDesc.Digest.String())
+			if err != nil {
+				service.log.Error().Err(err).Str("remote", remoteURL).Str("repo", repo).
+					Str("reference", reference).Str("childDigest", childDesc.Digest.String()).
+					Msg("failed to get image reference for child manifest")
+
+				return nil, nil, err
+			}
+
+			childManifest, err := service.rc.ManifestGet(ctx, childRef)
+			if err != nil {
+				service.log.Error().Err(err).Str("remote", remoteURL).Str("repo", repo).
+					Str("reference", reference).Str("childDigest", childDesc.Digest.String()).
+					Msg("failed to fetch child manifest")
+
+				return nil, nil, err
+			}
+
+			childManifests = append(childManifests, childManifest)
+		}
+	}
+
+	return fetchedManifest, childManifests, nil
 }
 
 // SyncImage on demand.
@@ -508,6 +610,13 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 
 	copyOpts := []regclient.ImageOpts{}
 
+	// When streaming is enabled, all blobs are read through the streaming reader.
+	if service.config.IsStreamEnabled() {
+		service.log.Debug().Str("repo", localRepo).Str("reference", remoteImageRef.Tag).
+			Msg("streaming is enabled. Enabling reader hook")
+		copyOpts = append(copyOpts, regclient.ImageWithBlobReaderHook(service.streamManager.StreamingBlobReader))
+	}
+
 	// check if image is already synced
 	skipImage, err = service.destination.CanSkipImage(localRepo, reference, remoteDigest)
 	if err != nil {
@@ -646,6 +755,15 @@ func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo
 
 	// just in case there is an error before commit() which cleans up.
 	defer service.destination.CleanupImage(localImageRef, localRepo) //nolint: errcheck
+
+	// clears the stream cache after the sync is done in both error as well as committed cases.
+	defer func() {
+		if service.streamManager != nil {
+			service.log.Debug().Str("repo", localRepo).Str("reference", tag).Msg("cleaning up stream cache after sync")
+			// run in a goroutine as the cleanup waits for clients to drain
+			go service.streamManager.RemoveStreamingImage(localRepo, tag)
+		}
+	}()
 
 	// first sync image
 	skipped, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, localDigest)
