@@ -6,6 +6,7 @@ import (
 	"path"
 	"sync"
 
+	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/regclient/regclient/types/blob"
 	"zotregistry.dev/zot/v2/pkg/api/config"
@@ -14,7 +15,7 @@ import (
 )
 
 type StreamManager interface {
-	ConnectClient(blobDigest string, writer io.Writer) error
+	ConnectClient(blobDigest string, writer io.Writer) (*InFlightBlobCopier, error)
 	StreamingBlobReader(reader *blob.BReader) (*blob.BReader, error)
 }
 
@@ -34,7 +35,7 @@ func NewChunkingStreamManager(config *config.Config, logger log.Logger) *Chunkin
 	}
 }
 
-func (sm *ChunkingStreamManager) ConnectClient(blobDigest string, writer io.Writer) error {
+func (sm *ChunkingStreamManager) ConnectClient(blobDigest string, writer io.Writer) (*InFlightBlobCopier, error) {
 	// Creates a new inflight blob copier if the blobDigest is an active stream
 	sm.streamLock.Lock()
 	defer sm.streamLock.Unlock()
@@ -42,17 +43,18 @@ func (sm *ChunkingStreamManager) ConnectClient(blobDigest string, writer io.Writ
 	// TODO: this can result in a race condition if the ImageCopy with Options hasn't triggered the hook yet
 	stream, ok := sm.activeStreams[blobDigest]
 	if !ok {
-		return errors.New("not found")
+		return nil, errors.New("blob not found in active streams")
 	}
 
-	copier := NewInFlightBlobCopier(stream, sm.tempStore.BlobPath(blobDigest), writer, sm.logger)
+	dig, err := godigest.Parse(blobDigest)
+	if err != nil {
+		return nil, err
+	}
+
+	copier := NewInFlightBlobCopier(stream, sm.tempStore.BlobPath(dig), writer, sm.logger)
 	sm.logger.Info().Str("blob", blobDigest).Msg("connected client for blob")
 
-	// Allow the copier to run in the background (TODO: add context)
-	// TODO: this will cause a goroutine leak if the downstream client disconnects. Need to handle this.
-	go copier.Copy()
-
-	return nil
+	return copier, nil
 }
 
 func (sm *ChunkingStreamManager) Manifest(name, ref string) (ispec.Manifest, error) {
@@ -66,7 +68,10 @@ func (sm *ChunkingStreamManager) StreamingBlobReader(reader *blob.BReader) (*blo
 	desc := reader.GetDescriptor()
 	digest := desc.Digest.String()
 	size := desc.Size
-	wrappedReader := NewChunkedBlobReader(reader, chunkCount(size), sm.tempStore.BlobPath(digest), sm.logger)
+	wrappedReader, err := NewChunkedBlobReader(reader, chunkCount(size), sm.tempStore.BlobPath(desc.Digest), sm.logger)
+	if err != nil {
+		return nil, err
+	}
 	sm.logger.Info().Str("blob", digest).Msg("setup chunked blob reader")
 
 	sm.activeStreams[digest] = wrappedReader

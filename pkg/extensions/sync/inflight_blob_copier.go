@@ -15,7 +15,7 @@ import (
 // over a channel when a new chunk is available.
 type InFlightBlobCopier struct {
 	numChunksCopied int64
-	source          *ChunkedBlobReader
+	Source          *ChunkedBlobReader
 	onDiskPath      string
 	dest            io.Writer
 	log             log.Logger
@@ -25,7 +25,7 @@ type InFlightBlobCopier struct {
 func NewInFlightBlobCopier(source *ChunkedBlobReader, onDiskPath string, dest io.Writer, logger log.Logger) *InFlightBlobCopier {
 	return &InFlightBlobCopier{
 		numChunksCopied: 0,
-		source:          source,
+		Source:          source,
 		dest:            dest,
 		onDiskPath:      onDiskPath,
 		log:             logger,
@@ -33,6 +33,8 @@ func NewInFlightBlobCopier(source *ChunkedBlobReader, onDiskPath string, dest io
 }
 
 func (ifbc *InFlightBlobCopier) Copy() (err error) {
+	ifbc.log.Info().Msg("starting inflight copy")
+
 	onDiskFile, err := os.Open(ifbc.onDiskPath)
 	if err != nil {
 		ifbc.log.Error().Err(err).Msg("failed to open on disk path")
@@ -43,7 +45,10 @@ func (ifbc *InFlightBlobCopier) Copy() (err error) {
 	// Register channel for latest chunk count updates
 	chunkChan := make(chan int64, 1)
 
-	id := ifbc.source.Subscribe(chunkChan)
+	id := ifbc.Source.Subscribe(chunkChan)
+
+	defer ifbc.Source.Unsubscribe(id)
+	defer close(chunkChan)
 
 	for {
 		latestChunkNum := <-chunkChan
@@ -57,21 +62,18 @@ func (ifbc *InFlightBlobCopier) Copy() (err error) {
 		_, err = io.CopyN(ifbc.dest, onDiskFile, (int64(latestChunkNum)-int64(ifbc.numChunksCopied))*constants.StreamChunkSizeBytes)
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
-				ifbc.log.Error().Err(err).Msg("failed to read from source")
+				ifbc.log.Error().Err(err).Msg("failed to copy data to downstream client")
 				return err
 			}
 		}
 		ifbc.numChunksCopied = latestChunkNum
 		ifbc.Unlock()
 
-		if latestChunkNum == ifbc.source.numChunksTotal {
+		if latestChunkNum == ifbc.Source.numChunksTotal {
 			// transfer is complete
 			break
 		}
 	}
-
-	ifbc.source.Unsubscribe(id)
-	close(chunkChan)
 
 	return nil
 }

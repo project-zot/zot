@@ -2,17 +2,20 @@ package sync
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path"
 	"sync"
 
+	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 type StreamTempStore interface {
 	Manifest(name, ref string) (ispec.Manifest, error)
 	WriteManifest(name string, ref string, manifest ispec.Manifest) error
-	BlobPath(digest string) string
+	BlobPath(digest godigest.Digest) string
 }
 
 type LocalTempStore struct {
@@ -77,6 +80,15 @@ func (lts *LocalTempStore) WriteManifest(name string, ref string, manifest ispec
 	return nil
 }
 
-func (lts *LocalTempStore) BlobPath(digest string) string {
-	return path.Join(lts.rootPath + digest)
+func (lts *LocalTempStore) BlobPath(digest godigest.Digest) string {
+	parentDir := path.Join(lts.rootPath, digest.Algorithm().String())
+	_, err := os.Stat(parentDir)
+	if err != nil && errors.Is(err, os.ErrNotExist) {
+		err := os.MkdirAll(parentDir, 0o755)
+		if err != nil {
+			fmt.Println("failed to create directory " + err.Error())
+		}
+	}
+
+	return path.Join(parentDir, digest.Encoded())
 }

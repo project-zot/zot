@@ -1,0 +1,31 @@
+{
+	"distSpecVersion": "1.1.1",
+	"storage": {
+		"rootDirectory": "./temp/zotstream"
+	},
+	"http": {
+		"address": "127.0.0.1",
+		"port": "8080"
+	},
+	"log": {
+		"level": "debug"
+	},
+	"extensions": {
+		"sync": {
+			"enable": true,
+			"enableStreaming": true,
+			"registries": [
+				{
+					"urls": [
+						"http://localhost:9000"
+					],
+					"onDemand": true,
+					"tlsVerify": false,
+					"maxRetries": 5,
+					"retryDelay": "30s",
+					"syncTimeout": "10m"
+				}
+			]
+		}
+	}
+}

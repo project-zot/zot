@@ -1142,6 +1142,36 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 	if err != nil {
 		details := zerr.GetDetails(err)
+		extConf := rh.c.Config.CopyExtensionsConfig()
+
+		if extConf.IsStreamingEnabled() {
+			rh.c.Log.Info().Msg("streaming enabled. using stream logic")
+
+			if errors.Is(err, zerr.ErrRepoNotFound) || errors.Is(err, zerr.ErrBlobNotFound) {
+				rh.c.Log.Info().Msg("blob was not found. Connecting client to stream")
+
+				copier, err := rh.c.StreamManager.ConnectClient(digest.String(), response)
+				if err != nil {
+					rh.c.Log.Error().Err(err).Msg("failed to connect client to stream")
+					response.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+
+				// TODO: handle partial
+				response.Header().Set("Content-Length", strconv.FormatInt(copier.Source.InFlightReader.GetDescriptor().Size, 10))
+				response.Header().Set(constants.DistContentDigestKey, digest.String())
+				response.Header().Set("Content-Type", copier.Source.InFlightReader.GetDescriptor().MediaType)
+				response.WriteHeader(http.StatusOK)
+
+				err = copier.Copy()
+				if err != nil {
+					rh.c.Log.Error().Err(err).Msg("unexpected error during stream copy")
+				}
+
+				return
+			}
+		}
+
 		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			details["digest"] = digest.String()
 			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
@@ -2181,6 +2211,37 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 	if syncEnabled {
 		routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
 			Msg("trying to get updated image by syncing on demand")
+
+		extConf := routeHandler.c.Config.CopyExtensionsConfig()
+
+		// if streaming enabled, return manifest immediately, start sync in background
+		if extConf.IsStreamingEnabled() {
+			routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
+				Msg("streaming is enabled. Direct fetching manifest.")
+
+			m, err := routeHandler.c.SyncOnDemand.FetchManifest(ctx, name, reference)
+			if err != nil {
+				routeHandler.c.Log.Err(err).Str("repository", name).Str("reference", reference).
+					Msg("failed to fetch manifest")
+				return imgStore.GetImageManifest(name, reference)
+			}
+
+			content, err := m.RawBody()
+			if err != nil {
+				routeHandler.c.Log.Err(err).Str("repository", name).Str("reference", reference).
+					Msg("failed to read manifest")
+				return imgStore.GetImageManifest(name, reference)
+			}
+
+			go func() {
+				if errSync := routeHandler.c.SyncOnDemand.SyncImage(ctx, name, reference); errSync != nil {
+					routeHandler.c.Log.Err(errSync).Str("repository", name).Str("reference", reference).
+						Msg("failed to sync image")
+				}
+			}()
+
+			return content, m.GetDescriptor().Digest, m.GetDescriptor().MediaType, nil
+		}
 
 		if errSync := routeHandler.c.SyncOnDemand.SyncImage(ctx, name, reference); errSync != nil {
 			routeHandler.c.Log.Err(errSync).Str("repository", name).Str("reference", reference).
