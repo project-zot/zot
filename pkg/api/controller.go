@@ -16,6 +16,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/securecookie"
+	"github.com/regclient/regclient/types/manifest"
 	"github.com/zitadel/oidc/v3/pkg/client/rp"
 
 	"zotregistry.dev/zot/v2/errors"
@@ -24,6 +25,7 @@ import (
 	ext "zotregistry.dev/zot/v2/pkg/extensions"
 	events "zotregistry.dev/zot/v2/pkg/extensions/events"
 	monitoring "zotregistry.dev/zot/v2/pkg/extensions/monitoring"
+	"zotregistry.dev/zot/v2/pkg/extensions/sync"
 	log "zotregistry.dev/zot/v2/pkg/log"
 	meta "zotregistry.dev/zot/v2/pkg/meta"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
@@ -40,6 +42,7 @@ const (
 type Controller struct {
 	Config          *config.Config
 	Router          *mux.Router
+	StreamManager   sync.StreamManager
 	MetaDB          mTypes.MetaDB
 	StoreController storage.StoreController
 	Log             log.Logger
@@ -327,6 +330,12 @@ func (c *Controller) Init() error {
 		}
 	}
 
+	if extensionsConfig.IsStreamingEnabled() {
+		c.Log.Info().Msg("streaming sync enabled")
+		sm := sync.NewChunkingStreamManager(c.Config, c.Log)
+		c.StreamManager = sm
+	}
+
 	return nil
 }
 
@@ -536,7 +545,8 @@ func (c *Controller) StartBackgroundTasks() {
 
 	// Always call EnableSyncExtension to ensure proper logging, even when sync is disabled
 	//nolint: contextcheck
-	syncOnDemand, err := ext.EnableSyncExtension(c.Config, c.MetaDB, c.StoreController, c.taskScheduler, c.Log)
+	syncOnDemand, err := ext.EnableSyncExtension(
+		c.Config, c.MetaDB, c.StoreController, c.taskScheduler, c.StreamManager, c.Log)
 	if err != nil {
 		c.Log.Error().Err(err).Msg("failed to start sync extension")
 	}
@@ -591,4 +601,5 @@ func RunGCTasks(conf *config.Config, storeController storage.StoreController, me
 type SyncOnDemand interface {
 	SyncImage(ctx context.Context, repo, reference string) error
 	SyncReferrers(ctx context.Context, repo string, subjectDigestStr string, referenceTypes []string) error
+	FetchManifest(ctx context.Context, repo, reference string) (manifest.Manifest, error)
 }
