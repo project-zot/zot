@@ -9,7 +9,6 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/regclient/regclient/types/blob"
 	"zotregistry.dev/zot/v2/pkg/api/config"
-	"zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
@@ -20,18 +19,22 @@ type StreamManager interface {
 }
 
 type ChunkingStreamManager struct {
-	tempStore     StreamTempStore
-	activeStreams map[string]*ChunkedBlobReader
-	logger        log.Logger
-	streamLock    sync.Mutex
+	tempStore      StreamTempStore
+	activeStreams  map[string]*ChunkedBlobReader
+	logger         log.Logger
+	streamLock     sync.Mutex
+	chunkSizeBytes int64
 }
 
 func NewChunkingStreamManager(config *config.Config, logger log.Logger) *ChunkingStreamManager {
 	store := NewLocalTempStore(path.Join(config.Storage.RootDirectory, "stream"))
+	extConf := config.CopyExtensionsConfig()
+
 	return &ChunkingStreamManager{
-		tempStore:     store,
-		activeStreams: map[string]*ChunkedBlobReader{},
-		logger:        logger,
+		tempStore:      store,
+		activeStreams:  map[string]*ChunkedBlobReader{},
+		logger:         logger,
+		chunkSizeBytes: *extConf.Sync.StreamChunkSizeBytes,
 	}
 }
 
@@ -51,7 +54,7 @@ func (sm *ChunkingStreamManager) ConnectClient(blobDigest string, writer io.Writ
 		return nil, err
 	}
 
-	copier := NewInFlightBlobCopier(stream, sm.tempStore.BlobPath(dig), writer, sm.logger)
+	copier := NewInFlightBlobCopier(stream, sm.tempStore.BlobPath(dig), writer, sm.chunkSizeBytes, sm.logger)
 	sm.logger.Info().Str("blob", blobDigest).Msg("connected client for blob")
 
 	return copier, nil
@@ -72,15 +75,15 @@ func (sm *ChunkingStreamManager) StreamingBlobReader(reader *blob.BReader) (*blo
 		return nil, errors.New("chunking blob reader not initialized for this blob!")
 	}
 
-	chunkingReader.InitReader(reader, chunkCount(size))
+	chunkingReader.InitReader(reader, chunkCount(size, sm.chunkSizeBytes))
 	sm.logger.Info().Str("blob", digest).Msg("finished init chunked blob reader")
 
 	return chunkingReader.ToBReader(), nil
 }
 
-func chunkCount(blobSize int64) int64 {
-	chunkCount := blobSize / constants.StreamChunkSizeBytes
-	remainder := blobSize % constants.StreamChunkSizeBytes
+func chunkCount(blobSize int64, chunkSizeBytes int64) int64 {
+	chunkCount := blobSize / chunkSizeBytes
+	remainder := blobSize % chunkSizeBytes
 
 	if remainder > 0 {
 		chunkCount++
@@ -99,7 +102,7 @@ func (sm *ChunkingStreamManager) PrepareActiveStreamForBlob(blobDigest godigest.
 		return nil
 	}
 
-	r, err := NewChunkedBlobReader(sm.tempStore.BlobPath(blobDigest), sm.logger)
+	r, err := NewChunkedBlobReader(sm.tempStore.BlobPath(blobDigest), sm.chunkSizeBytes, sm.logger)
 	if err != nil {
 		return err
 	}

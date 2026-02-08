@@ -14,6 +14,7 @@
 		"sync": {
 			"enable": true,
 			"enableStreaming": true,
+			"streamChunkSizeBytes": 32768,
 			"registries": [
 				{
 					"urls": [
