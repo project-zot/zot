@@ -1154,6 +1154,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 				if err != nil {
 					rh.c.Log.Error().Err(err).Msg("failed to connect client to stream")
 					response.WriteHeader(http.StatusInternalServerError)
+
 					return
 				}
 
@@ -2219,17 +2220,19 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 			routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
 				Msg("streaming is enabled. Direct fetching manifest.")
 
-			m, err := routeHandler.c.SyncOnDemand.FetchManifest(ctx, name, reference)
+			fetchedManifest, err := routeHandler.c.SyncOnDemand.FetchManifest(ctx, name, reference)
 			if err != nil {
 				routeHandler.c.Log.Err(err).Str("repository", name).Str("reference", reference).
 					Msg("failed to fetch manifest")
+
 				return imgStore.GetImageManifest(name, reference)
 			}
 
-			content, err := m.RawBody()
+			content, err := fetchedManifest.RawBody()
 			if err != nil {
 				routeHandler.c.Log.Err(err).Str("repository", name).Str("reference", reference).
 					Msg("failed to read manifest")
+
 				return imgStore.GetImageManifest(name, reference)
 			}
 
@@ -2240,7 +2243,7 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 				}
 			}()
 
-			return content, m.GetDescriptor().Digest, m.GetDescriptor().MediaType, nil
+			return content, fetchedManifest.GetDescriptor().Digest, fetchedManifest.GetDescriptor().MediaType, nil
 		}
 
 		if errSync := routeHandler.c.SyncOnDemand.SyncImage(ctx, name, reference); errSync != nil {

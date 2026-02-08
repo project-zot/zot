@@ -588,7 +588,8 @@ func (c *Controller) StartBackgroundTasks() {
 
 	// Always call EnableSyncExtension to ensure proper logging, even when sync is disabled
 	//nolint: contextcheck
-	syncOnDemand, err := ext.EnableSyncExtension(c.Config, c.MetaDB, c.StoreController, c.taskScheduler, c.StreamManager, c.Log)
+	syncOnDemand, err := ext.EnableSyncExtension(
+		c.Config, c.MetaDB, c.StoreController, c.taskScheduler, c.StreamManager, c.Log)
 	if err != nil {
 		c.Log.Error().Err(err).Msg("failed to start sync extension")
 	}

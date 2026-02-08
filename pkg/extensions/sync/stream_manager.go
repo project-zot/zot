@@ -8,6 +8,7 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/regclient/regclient/types/blob"
+
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/log"
 )
@@ -60,7 +61,7 @@ func (sm *ChunkingStreamManager) ConnectClient(blobDigest string, writer io.Writ
 	return copier, nil
 }
 
-// Executed inside regclient as part of the reader hook
+// StreamingBlobReader is executed inside regclient as part of the reader hook.
 func (sm *ChunkingStreamManager) StreamingBlobReader(reader *blob.BReader) (*blob.BReader, error) {
 	sm.streamLock.Lock()
 	defer sm.streamLock.Unlock()
@@ -69,7 +70,8 @@ func (sm *ChunkingStreamManager) StreamingBlobReader(reader *blob.BReader) (*blo
 	digest := desc.Digest.String()
 	size := desc.Size
 
-	// This expects the chunked blob reader to be initialized and ready as the code here only supplies the reader and the chunk count
+	// This expects the chunked blob reader to be initialized and ready
+	// as the code here only supplies the reader and the chunk count
 	chunkingReader, ok := sm.activeStreams[digest]
 	if !ok {
 		return nil, errors.New("chunking blob reader not initialized for this blob!")
@@ -99,6 +101,7 @@ func (sm *ChunkingStreamManager) PrepareActiveStreamForBlob(blobDigest godigest.
 	_, ok := sm.activeStreams[blobDigest.String()]
 	if ok {
 		sm.logger.Warn().Str("blob", blobDigest.String()).Msg("active stream already exists for blob")
+
 		return nil
 	}
 
