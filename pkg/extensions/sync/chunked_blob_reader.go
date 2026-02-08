@@ -30,23 +30,32 @@ type ChunkedBlobReader struct {
 	logger log.Logger
 }
 
-func NewChunkedBlobReader(r *blob.BReader, numChunksTotal int64, onDiskPath string, logger log.Logger) (*ChunkedBlobReader, error) {
+func NewChunkedBlobReader(onDiskPath string, logger log.Logger) (*ChunkedBlobReader, error) {
 	createdFile, err := os.OpenFile(onDiskPath, os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return nil, err
 	}
 
 	return &ChunkedBlobReader{
-		numChunksTotal: numChunksTotal,
-		InFlightReader: r,
-		clients:        make(map[int]chan int64),
-		logger:         logger,
-		onDiskPath:     onDiskPath,
-		onDiskFile:     createdFile,
+		clients:    make(map[int]chan int64),
+		logger:     logger,
+		onDiskPath: onDiskPath,
+		onDiskFile: createdFile,
 	}, nil
 }
 
+func (cbr *ChunkedBlobReader) InitReader(r *blob.BReader, numChunksTotal int64) {
+	if cbr.InFlightReader == nil {
+		cbr.numChunksTotal = numChunksTotal
+		cbr.InFlightReader = r
+	}
+}
+
 func (cbr *ChunkedBlobReader) Read(b []byte) (int, error) {
+	if cbr.InFlightReader == nil {
+		return 0, errors.New("reader not initialized")
+	}
+
 	cbr.chunksMu.Lock()
 
 	// TODO: This is duplicating file IO so that the stream logic can access it easily. It would be more efficient to
@@ -101,13 +110,15 @@ func (cbr *ChunkedBlobReader) Subscribe(channel chan int64) int {
 	chanId := cbr.numClientsTotal
 	cbr.numClientsTotal++
 
-	// Announce the current number of available chunks to the new client
-	cbr.chunksMu.RLock()
-	defer cbr.chunksMu.RUnlock()
+	// Announce the current number of available chunks to the new client only if the reader is initialized
+	if cbr.InFlightReader != nil {
+		cbr.chunksMu.RLock()
+		defer cbr.chunksMu.RUnlock()
 
-	go func() {
-		channel <- cbr.numChunksRead
-	}()
+		go func() {
+			channel <- cbr.numChunksRead
+		}()
+	}
 
 	return chanId
 }
