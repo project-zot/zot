@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/regclient/regclient/types/blob"
-	"zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
@@ -18,6 +17,7 @@ import (
 type ChunkedBlobReader struct {
 	numChunksTotal int64
 	numChunksRead  int64
+	chunkSizeBytes int64
 	onDiskPath     string
 	onDiskFile     *os.File
 
@@ -30,17 +30,18 @@ type ChunkedBlobReader struct {
 	logger log.Logger
 }
 
-func NewChunkedBlobReader(onDiskPath string, logger log.Logger) (*ChunkedBlobReader, error) {
+func NewChunkedBlobReader(onDiskPath string, chunkSizeBytes int64, logger log.Logger) (*ChunkedBlobReader, error) {
 	createdFile, err := os.OpenFile(onDiskPath, os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return nil, err
 	}
 
 	return &ChunkedBlobReader{
-		clients:    make(map[int]chan int64),
-		logger:     logger,
-		onDiskPath: onDiskPath,
-		onDiskFile: createdFile,
+		clients:        make(map[int]chan int64),
+		logger:         logger,
+		onDiskPath:     onDiskPath,
+		onDiskFile:     createdFile,
+		chunkSizeBytes: chunkSizeBytes,
 	}, nil
 }
 
@@ -60,12 +61,12 @@ func (cbr *ChunkedBlobReader) Read(b []byte) (int, error) {
 
 	// TODO: This is duplicating file IO so that the stream logic can access it easily. It would be more efficient to
 	// Access the file that regclient is writing to avoid this extra duplication.
-	var internalBuffBytes []byte = make([]byte, 0, constants.StreamChunkSizeBytes)
+	var internalBuffBytes []byte = make([]byte, 0, cbr.chunkSizeBytes)
 	internalBuff := bytes.NewBuffer(internalBuffBytes)
 
 	multiWriter := io.MultiWriter(cbr.onDiskFile, internalBuff)
 
-	numBytesRead, err := io.CopyN(multiWriter, cbr.InFlightReader, constants.StreamChunkSizeBytes)
+	numBytesRead, err := io.CopyN(multiWriter, cbr.InFlightReader, cbr.chunkSizeBytes)
 	if err != nil {
 		if !errors.Is(err, io.EOF) {
 			cbr.logger.Error().Err(err).Msg("failed to copy from in flight reader")

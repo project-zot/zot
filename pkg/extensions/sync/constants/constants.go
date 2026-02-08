@@ -4,11 +4,10 @@ import "time"
 
 // references type.
 const (
-	Cosign               = "CosignSignature"
-	OCI                  = "OCIReference"
-	Tag                  = "TagReference"
-	SyncBlobUploadDir    = ".sync"
-	StreamChunkSizeBytes = 500 // in stream mode, each chunk will be a max of 500 bytes in size
+	Cosign            = "CosignSignature"
+	OCI               = "OCIReference"
+	Tag               = "TagReference"
+	SyncBlobUploadDir = ".sync"
 )
 
 // Default timeout settings for sync operations.

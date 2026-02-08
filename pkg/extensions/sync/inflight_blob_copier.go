@@ -6,7 +6,6 @@ import (
 	"os"
 	"sync"
 
-	"zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
@@ -19,15 +18,17 @@ type InFlightBlobCopier struct {
 	onDiskPath      string
 	dest            io.Writer
 	log             log.Logger
+	chunkSizeBytes  int64
 	sync.Mutex
 }
 
-func NewInFlightBlobCopier(source *ChunkedBlobReader, onDiskPath string, dest io.Writer, logger log.Logger) *InFlightBlobCopier {
+func NewInFlightBlobCopier(source *ChunkedBlobReader, onDiskPath string, dest io.Writer, chunkSizeBytes int64, logger log.Logger) *InFlightBlobCopier {
 	return &InFlightBlobCopier{
 		numChunksCopied: 0,
 		Source:          source,
 		dest:            dest,
 		onDiskPath:      onDiskPath,
+		chunkSizeBytes:  chunkSizeBytes,
 		log:             logger,
 	}
 }
@@ -59,7 +60,7 @@ func (ifbc *InFlightBlobCopier) Copy() (err error) {
 			continue
 		}
 
-		_, err = io.CopyN(ifbc.dest, onDiskFile, (int64(latestChunkNum)-int64(ifbc.numChunksCopied))*constants.StreamChunkSizeBytes)
+		_, err = io.CopyN(ifbc.dest, onDiskFile, (int64(latestChunkNum)-int64(ifbc.numChunksCopied))*ifbc.chunkSizeBytes)
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
 				ifbc.log.Error().Err(err).Msg("failed to copy data to downstream client")
