@@ -53,9 +53,7 @@ func (onDemand *BaseOnDemand) FetchManifest(ctx context.Context, repo, reference
 			continue
 		}
 		manifest = fetchedManifest
-		if err == nil {
-			break
-		}
+		break
 	}
 
 	if manifest == nil {

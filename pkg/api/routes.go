@@ -1158,15 +1158,15 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 				}
 
 				// TODO: handle partial
-				response.Header().Set("Content-Length", strconv.FormatInt(copier.Source.InFlightReader.GetDescriptor().Size, 10))
-				response.Header().Set(constants.DistContentDigestKey, digest.String())
-				response.Header().Set("Content-Type", copier.Source.InFlightReader.GetDescriptor().MediaType)
-				response.WriteHeader(http.StatusOK)
-
 				err = copier.Copy()
 				if err != nil {
 					rh.c.Log.Error().Err(err).Msg("unexpected error during stream copy")
 				}
+
+				response.Header().Set("Content-Length", strconv.FormatInt(copier.Source.InFlightReader.GetDescriptor().Size, 10))
+				response.Header().Set(constants.DistContentDigestKey, digest.String())
+				response.Header().Set("Content-Type", copier.Source.InFlightReader.GetDescriptor().MediaType)
+				response.WriteHeader(http.StatusOK)
 
 				return
 			}

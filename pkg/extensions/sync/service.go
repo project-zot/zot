@@ -4,6 +4,7 @@ package sync
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/regclient/regclient"
 	"github.com/regclient/regclient/config"
 	"github.com/regclient/regclient/mod"
@@ -326,12 +328,63 @@ func (service *BaseService) FetchManifest(ctx context.Context, repo, reference s
 		return nil, err
 	}
 
-	manifest, err := service.rc.ManifestGet(ctx, artifactRef)
+	m, err := service.rc.ManifestGet(ctx, artifactRef)
 	if err != nil {
 		return nil, err
 	}
 
-	return manifest, nil
+	// if this is being executed, it is for sure part of streaming.
+	// install chunked blob readers for each blob into the stream manager's cache
+	if m != nil {
+		// first for the manifest blob
+		err := service.streamManager.PrepareActiveStreamForBlob(m.GetDescriptor().Digest)
+		if err != nil {
+			return nil, err
+		}
+
+		var contents ispec.Manifest
+		contentBytes, err := m.RawBody()
+		if err != nil {
+			return nil, err
+		}
+
+		err = json.Unmarshal(contentBytes, &contents)
+		if err != nil {
+			return nil, err
+		}
+
+		// imager, ok := orig.(manifest.Imager)
+		// if !ok {
+		// 	return nil, errors.New("failed to convert to imager")
+		// }
+
+		// next, for config
+		// cfg, err := imager.GetConfig()
+		// if err != nil {
+		// 	return nil, err
+		// }
+
+		err = service.streamManager.PrepareActiveStreamForBlob(contents.Config.Digest)
+		if err != nil {
+			return nil, err
+		}
+
+		// finally, for all layers
+		// layers, err := imager.GetLayers()
+		// if err != nil {
+		// 	return nil, err
+		// }
+
+		layers := contents.Layers
+		for _, layer := range layers {
+			err = service.streamManager.PrepareActiveStreamForBlob(layer.Digest)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	return m, nil
 }
 
 // SyncImage on demand.
