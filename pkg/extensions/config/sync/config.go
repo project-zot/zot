@@ -14,6 +14,7 @@ type Credentials struct {
 
 type Config struct {
 	Enable          *bool
+	EnableStreaming *bool
 	CredentialsFile string
 	/* DownloadDir is needed only in case of using cloud based storages
 	it uses regclient to first copy images into this dir (as oci layout)

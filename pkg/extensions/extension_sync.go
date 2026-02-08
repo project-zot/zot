@@ -18,7 +18,7 @@ import (
 )
 
 func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
-	storeController storage.StoreController, sch *scheduler.Scheduler, log log.Logger,
+	storeController storage.StoreController, sch *scheduler.Scheduler, sm sync.StreamManager, log log.Logger,
 ) (*sync.BaseOnDemand, error) {
 	// Get extensions config safely
 	extensionsConfig := config.CopyExtensionsConfig()
@@ -55,8 +55,6 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 			credsPath := syncConfig.CredentialsFile
 			// Get cluster config safely
 			clusterConfig := config.CopyClusterConfig()
-
-			sm := sync.NewChunkingStreamManager(config, log)
 
 			service, err := sync.New(registryConfig, credsPath, clusterConfig, tmpDir, storeController, sm, metaDB, log)
 			if err != nil {

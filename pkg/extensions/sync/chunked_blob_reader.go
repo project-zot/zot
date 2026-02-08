@@ -19,8 +19,9 @@ type ChunkedBlobReader struct {
 	numChunksTotal int64
 	numChunksRead  int64
 	onDiskPath     string
+	onDiskFile     *os.File
 
-	inFlightReader  *blob.BReader
+	InFlightReader  *blob.BReader
 	clientMu        sync.Mutex
 	chunksMu        sync.RWMutex
 	clients         map[int]chan int64
@@ -29,47 +30,49 @@ type ChunkedBlobReader struct {
 	logger log.Logger
 }
 
-func NewChunkedBlobReader(r *blob.BReader, numChunksTotal int64, onDiskPath string, logger log.Logger) *ChunkedBlobReader {
+func NewChunkedBlobReader(r *blob.BReader, numChunksTotal int64, onDiskPath string, logger log.Logger) (*ChunkedBlobReader, error) {
+	createdFile, err := os.OpenFile(onDiskPath, os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return nil, err
+	}
+
 	return &ChunkedBlobReader{
 		numChunksTotal: numChunksTotal,
-		inFlightReader: r,
+		InFlightReader: r,
 		clients:        make(map[int]chan int64),
 		logger:         logger,
 		onDiskPath:     onDiskPath,
-	}
+		onDiskFile:     createdFile,
+	}, nil
 }
 
 func (cbr *ChunkedBlobReader) Read(b []byte) (int, error) {
 	cbr.chunksMu.Lock()
-	var file *os.File
-	if cbr.numChunksRead == 0 {
-		createdFile, err := os.Create(cbr.onDiskPath)
-		if err != nil {
-			return 0, err
-		}
-		file = createdFile
-	} else {
-		openedFile, err := os.OpenFile(cbr.onDiskPath, os.O_APPEND, 0o644)
-		if err != nil {
-			return 0, err
-		}
-		file = openedFile
-	}
-	defer file.Close()
 
 	// TODO: This is duplicating file IO so that the stream logic can access it easily. It would be more efficient to
 	// Access the file that regclient is writing to avoid this extra duplication.
-	multiWriter := io.MultiWriter(file, bytes.NewBuffer(b))
+	var internalBuffBytes []byte = make([]byte, 0, constants.StreamChunkSizeBytes)
+	internalBuff := bytes.NewBuffer(internalBuffBytes)
 
-	numBytesRead, err := io.CopyN(multiWriter, cbr.inFlightReader, constants.StreamChunkSizeBytes)
-	if err != nil && !errors.Is(err, io.EOF) {
-		cbr.logger.Error().Err(err).Msg("failed to copy from in flight reader")
-		// TODO: This means there was an upstream read error. Should the in-progress streams be terminated?
-		cbr.chunksMu.Unlock()
-		return int(numBytesRead), err
+	multiWriter := io.MultiWriter(cbr.onDiskFile, internalBuff)
+
+	numBytesRead, err := io.CopyN(multiWriter, cbr.InFlightReader, constants.StreamChunkSizeBytes)
+	if err != nil {
+		if !errors.Is(err, io.EOF) {
+			cbr.logger.Error().Err(err).Msg("failed to copy from in flight reader")
+			// TODO: This means there was an upstream read error. Should the in-progress streams be terminated?
+			copy(b, internalBuff.Bytes())
+			cbr.chunksMu.Unlock()
+			return int(numBytesRead), err
+		}
 	}
 
+	copy(b, internalBuff.Bytes())
 	cbr.numChunksRead++
+	if cbr.numChunksRead == cbr.numChunksTotal {
+		cbr.onDiskFile.Close()
+	}
+
 	cbr.chunksMu.Unlock()
 
 	cbr.clientMu.Lock()
@@ -118,7 +121,8 @@ func (cbr *ChunkedBlobReader) Unsubscribe(id int) {
 
 func (cbr *ChunkedBlobReader) ToBReader() *blob.BReader {
 	return blob.NewReader(
-		blob.WithDesc(cbr.inFlightReader.GetDescriptor()),
+		blob.WithHeader(cbr.InFlightReader.RawHeaders()),
+		blob.WithDesc(cbr.InFlightReader.GetDescriptor()),
 		blob.WithReader(cbr),
 	)
 }
