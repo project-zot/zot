@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/regclient/regclient/types/blob"
+
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
@@ -52,7 +53,7 @@ func (cbr *ChunkedBlobReader) InitReader(r *blob.BReader, numChunksTotal int64) 
 	}
 }
 
-func (cbr *ChunkedBlobReader) Read(b []byte) (int, error) {
+func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 	if cbr.InFlightReader == nil {
 		return 0, errors.New("reader not initialized")
 	}
@@ -71,13 +72,15 @@ func (cbr *ChunkedBlobReader) Read(b []byte) (int, error) {
 		if !errors.Is(err, io.EOF) {
 			cbr.logger.Error().Err(err).Msg("failed to copy from in flight reader")
 			// TODO: This means there was an upstream read error. Should the in-progress streams be terminated?
-			copy(b, internalBuff.Bytes())
+			copy(buff, internalBuff.Bytes())
 			cbr.chunksMu.Unlock()
+
 			return int(numBytesRead), err
 		}
 	}
 
-	copy(b, internalBuff.Bytes())
+	copy(buff, internalBuff.Bytes())
+
 	cbr.numChunksRead++
 	if cbr.numChunksRead == cbr.numChunksTotal {
 		cbr.onDiskFile.Close()
@@ -101,8 +104,8 @@ func (cbr *ChunkedBlobReader) Read(b []byte) (int, error) {
 	return int(numBytesRead), err
 }
 
-// Everytime a new client is interested in the current blob, the client would create a subscription
-// here with a channel where latest chunk info is sent.
+// Subscribe to the reader each time a new client is interested in the current blob,
+// the client would create a subscription here with a channel where latest chunk info is sent.
 func (cbr *ChunkedBlobReader) Subscribe(channel chan int64) int {
 	cbr.clientMu.Lock()
 	defer cbr.clientMu.Unlock()

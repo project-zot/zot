@@ -13,16 +13,19 @@ import (
 // The data is copied first from disk up to the latest chunk and further copies wait for an announcement
 // over a channel when a new chunk is available.
 type InFlightBlobCopier struct {
+	sync.Mutex
+
 	numChunksCopied int64
 	Source          *ChunkedBlobReader
 	onDiskPath      string
 	dest            io.Writer
 	log             log.Logger
 	chunkSizeBytes  int64
-	sync.Mutex
 }
 
-func NewInFlightBlobCopier(source *ChunkedBlobReader, onDiskPath string, dest io.Writer, chunkSizeBytes int64, logger log.Logger) *InFlightBlobCopier {
+func NewInFlightBlobCopier(
+	source *ChunkedBlobReader, onDiskPath string, dest io.Writer, chunkSizeBytes int64, logger log.Logger,
+) *InFlightBlobCopier {
 	return &InFlightBlobCopier{
 		numChunksCopied: 0,
 		Source:          source,
@@ -33,12 +36,13 @@ func NewInFlightBlobCopier(source *ChunkedBlobReader, onDiskPath string, dest io
 	}
 }
 
-func (ifbc *InFlightBlobCopier) Copy() (err error) {
+func (ifbc *InFlightBlobCopier) Copy() error {
 	ifbc.log.Info().Msg("starting inflight copy")
 
 	onDiskFile, err := os.Open(ifbc.onDiskPath)
 	if err != nil {
 		ifbc.log.Error().Err(err).Msg("failed to open on disk path")
+
 		return err
 	}
 	defer onDiskFile.Close()
@@ -57,13 +61,15 @@ func (ifbc *InFlightBlobCopier) Copy() (err error) {
 		ifbc.Lock()
 		if latestChunkNum <= ifbc.numChunksCopied {
 			ifbc.Unlock()
+
 			continue
 		}
 
-		_, err = io.CopyN(ifbc.dest, onDiskFile, (int64(latestChunkNum)-int64(ifbc.numChunksCopied))*ifbc.chunkSizeBytes)
+		_, err = io.CopyN(ifbc.dest, onDiskFile, (latestChunkNum-ifbc.numChunksCopied)*ifbc.chunkSizeBytes)
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
 				ifbc.log.Error().Err(err).Msg("failed to copy data to downstream client")
+
 				return err
 			}
 		}

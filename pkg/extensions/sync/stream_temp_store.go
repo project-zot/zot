@@ -20,7 +20,14 @@ type LocalTempStore struct {
 func NewLocalTempStore(rootDir string) *LocalTempStore {
 	_, err := os.Stat(rootDir)
 	if err != nil {
-		os.MkdirAll(rootDir, 0o755)
+		if errors.Is(err, os.ErrNotExist) {
+			err := os.MkdirAll(rootDir, 0o755)
+			if err != nil {
+				fmt.Println("failed to create root dir " + err.Error())
+			}
+		} else {
+			fmt.Println("failed to stat root dir " + err.Error())
+		}
 	}
 
 	return &LocalTempStore{
