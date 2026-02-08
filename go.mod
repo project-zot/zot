@@ -584,4 +584,5 @@ require (
 )
 
 replace github.com/sigstore/sigstore => github.com/sigstore/sigstore v1.9.6-0.20250729224751-181c5d3339b3
-replace github.com/regclient/regclient => ../regclient
+
+replace github.com/regclient/regclient => github.com/vrajashkr/regclient v0.11.1-2026
