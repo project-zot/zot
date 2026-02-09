@@ -78,7 +78,7 @@ require (
 	github.com/zitadel/oidc/v3 v3.45.3
 	go.etcd.io/bbolt v1.4.3
 	golang.org/x/crypto v0.47.0
-	golang.org/x/oauth2 v0.34.0
+	golang.org/x/oauth2 v0.35.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/resty.v1 v1.12.0
 	gopkg.in/yaml.v3 v3.0.1
