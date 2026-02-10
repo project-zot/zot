@@ -7543,7 +7543,8 @@ func attachSBOM(tdir, port, repoName string, digest godigest.Digest) {
 func signImage(tdir, port, repoName string, digest godigest.Digest) {
 	// push signatures to upstream server so that we can sync them later
 	// sign the image
-	err := sign.SignCmd(&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
+	err := sign.SignCmd(context.TODO(),
+		&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
 		options.KeyOpts{KeyRef: path.Join(tdir, "cosign.key"), PassFunc: generate.GetPass},
 		options.SignOptions{
 			Registry: options.RegistryOptions{AllowInsecure: true},

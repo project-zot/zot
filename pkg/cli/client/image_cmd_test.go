@@ -80,7 +80,8 @@ func TestSignature(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// sign the image
-		err = sign.SignCmd(&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
+		err = sign.SignCmd(context.TODO(),
+			&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
 			options.KeyOpts{KeyRef: path.Join(currentDir, "cosign.key"), PassFunc: generate.GetPass},
 			options.SignOptions{
 				Registry:          options.RegistryOptions{AllowInsecure: true},
