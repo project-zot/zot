@@ -264,7 +264,8 @@ func TestVerifySignatures(t *testing.T) {
 			_ = os.Chdir(cwd)
 
 			// sign the image
-			err = sign.SignCmd(&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
+			err = sign.SignCmd(context.TODO(),
+				&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
 				options.KeyOpts{KeyRef: path.Join(cosignDir, "cosign.key"), PassFunc: generate.GetPass},
 				options.SignOptions{
 					Registry:          options.RegistryOptions{AllowInsecure: true},
@@ -1268,7 +1269,8 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]any) { //nolin
 			_ = os.Chdir(cwd)
 
 			// sign the image
-			err = sign.SignCmd(&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
+			err = sign.SignCmd(context.TODO(),
+				&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
 				options.KeyOpts{KeyRef: path.Join(keyDir, "cosign.key"), PassFunc: generate.GetPass},
 				options.SignOptions{
 					Registry:          options.RegistryOptions{AllowInsecure: true},

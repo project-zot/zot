@@ -72,7 +72,8 @@ func SignImageUsingCosign(repoTag, port string, withReferrers bool) error {
 	}
 
 	// sign the image
-	return sign.SignCmd(&options.RootOptions{Verbose: true, Timeout: timeoutPeriod * time.Minute},
+	return sign.SignCmd(context.TODO(),
+		&options.RootOptions{Verbose: true, Timeout: timeoutPeriod * time.Minute},
 		options.KeyOpts{KeyRef: path.Join(tdir, "cosign.key"), PassFunc: generate.GetPass},
 		signOpts,
 		[]string{imageURL})
