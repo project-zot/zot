@@ -72,7 +72,7 @@ UI_DEPENDENCIES := search,mgmt,userprefs
 # freebsd is not supported for pie builds if CGO is disabled
 # see supported platforms at https://cs.opensource.google/go/go/+/master:src/internal/platform/supported.go;l=222-231;drc=d7fcb5cf80953f1d63246f1ae9defa60c5ce2d76
 BUILDMODE_FLAGS := -buildmode=pie
-BASE_IMAGE=gcr.io/distroless/base-debian12:latest-$(ARCH)
+BASE_IMAGE=gcr.io/distroless/base-nossl-debian13:latest-$(ARCH)
 ifeq ($(OS),freebsd)
 	BUILDMODE_FLAGS=
 	BASE_IMAGE=freebsd/freebsd-static:14.3
