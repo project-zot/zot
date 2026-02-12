@@ -176,6 +176,9 @@ func (d *DynamoDBDriver) GetAllBlobs(digest godigest.Digest) ([]string, error) {
 		}
 	}
 
+	// Sort to ensure consistent ordering (DynamoDB doesn't guarantee list order)
+	slices.Sort(blobPaths)
+
 	return blobPaths, nil
 }
 
