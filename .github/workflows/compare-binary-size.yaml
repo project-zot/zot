@@ -14,6 +14,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           cache: false
+          check-latest: true
           go-version: 1.25.x
       - name: Checkout zot (main branch)
         run: |
