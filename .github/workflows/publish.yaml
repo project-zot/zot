@@ -24,7 +24,7 @@ jobs:
             echo "BASE_IMAGE=freebsd/freebsd-static:14.3" >> "$GITHUB_ENV"
           else
             ARCH=${{ matrix.arch }}
-            echo "BASE_IMAGE=gcr.io/distroless/base-debian12:latest-${ARCH}" >> "$GITHUB_ENV"
+            echo "BASE_IMAGE=gcr.io/distroless/base-nossl-debian13:latest-${ARCH}" >> "$GITHUB_ENV"
           fi
       - name: Check out the repo
         uses: actions/checkout@v6

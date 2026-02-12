@@ -6,7 +6,7 @@
 #   FROM argument 'BASE_IMAGE' is not declared
 # Podman: Error: determining starting point for build: no FROM statement found
 # ---
-ARG BASE_IMAGE
+ARG BASE_IMAGE=gcr.io/distroless/base-nossl-debian13:latest
 
 # ---
 # Stage 1: Install certs, build binary, create default config file
