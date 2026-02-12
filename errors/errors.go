@@ -204,4 +204,6 @@ var (
 	ErrOIDCEmptyValidationMsg           = errors.New("validation error message is empty")
 	ErrOIDCValidationFailed             = errors.New("OIDC claim validation failed")
 	ErrOIDCAudienceMismatch             = errors.New("token audience does not match any of the expected audiences")
+	ErrCertificateNotLoaded             = errors.New("tls certificate not yet loaded")
+	ErrCertificateWatcherAlreadyRunning = errors.New("certificate watcher is already running")
 )

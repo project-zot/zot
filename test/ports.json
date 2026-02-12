@@ -448,5 +448,11 @@
       "begin": 11510,
       "end": 11519
     }
+  },
+  "blackbox/dynamic_tls.bats": {
+    "zot": {
+      "begin": 11520,
+      "end": 11529
+    }
   }
 }
