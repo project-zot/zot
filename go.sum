@@ -773,8 +773,8 @@ github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79 h1:+ngKgrYPPJr
 github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79/go.mod h1:FecbI9+v66THATjSRHfNgh1IVFe/9kFxbXtjV0ctIMA=
 github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 h1:UH//fgunKIs4JdUbpDl1VZCDaL56wXCB/5+wF6uHfaI=
 github.com/grpc-ecosystem/go-grpc-middleware v1.4.0/go.mod h1:g5qyo/la0ALbONm6Vbp88Yd8NsDy6rZz+RcrMPxvld8=
-github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.3 h1:NmZ1PKzSTQbuGHw9DGPFomqkkLWMC+vZCkfs+FHv1Vg=
-github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.3/go.mod h1:zQrxl1YP88HQlA6i9c63DSVPFklWpGX4OWAc9bFuaH4=
+github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.4 h1:kEISI/Gx67NzH3nJxAmY/dGac80kKZgZt134u7Y/k1s=
+github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.4/go.mod h1:6Nz966r3vQYCqIzWsuEl9d7cf7mRhtDmm++sOxlnfxI=
 github.com/hashicorp/aws-sdk-go-base/v2 v2.0.0-beta.65 h1:81+kWbE1yErFBMjME0I5k3x3kojjKsWtPYHEAutoPow=
 github.com/hashicorp/aws-sdk-go-base/v2 v2.0.0-beta.65/go.mod h1:WtMzv9T++tfWVea+qB2MXoaqxw33S8bpJslzUike2mQ=
 github.com/hashicorp/errwrap v1.0.0/go.mod h1:YH+1FKiLXxHSkmPseP+kNlulaMuP3n2brvKWEqk/Jc4=
@@ -1242,8 +1242,8 @@ github.com/sigstore/cosign/v2 v2.6.2 h1:mi6EAUJoPZ+yuyooU7m06a1DZWJouwYgh9a67L9t
 github.com/sigstore/cosign/v2 v2.6.2/go.mod h1:g+P/LgYyJkC85WGGDho7yySl3C6xTJzzpLm21ZV+E6s=
 github.com/sigstore/cosign/v3 v3.0.4 h1:SuEn9z8V0eyjF0PWxuGgQ7QSPWReNexLJovkZ3wLaf8=
 github.com/sigstore/cosign/v3 v3.0.4/go.mod h1:DJY5LPzHiI6bWpG/Q/NQUTfeASjkN8TDAUx1Nnt3I0I=
-github.com/sigstore/fulcio v1.8.4 h1:awmmItiPwteo8t8sVOoIAPnmbDfLb1JGW0LPY8SNCdY=
-github.com/sigstore/fulcio v1.8.4/go.mod h1:2jh+uWOfWroKHlhUzr81AFqnAYeZiIi3NC/vegCbiYw=
+github.com/sigstore/fulcio v1.8.5 h1:HYTD1/L5wlBp8JxsWxUf8hmfaNBBF/x3r3p5l6tZwbA=
+github.com/sigstore/fulcio v1.8.5/go.mod h1:tSLYK3JsKvJpDW1BsIsVHZgHj+f8TjXARzqIUWSsSPQ=
 github.com/sigstore/protobuf-specs v0.5.0 h1:F8YTI65xOHw70NrvPwJ5PhAzsvTnuJMGLkA4FIkofAY=
 github.com/sigstore/protobuf-specs v0.5.0/go.mod h1:+gXR+38nIa2oEupqDdzg4qSBT0Os+sP7oYv6alWewWc=
 github.com/sigstore/rekor v1.5.0 h1:rL7SghHd5HLCtsCrxw0yQg+NczGvM75EjSPPWuGjaiQ=
@@ -1688,8 +1688,8 @@ google.golang.org/genproto v0.0.0-20190819201941-24fa4b261c55/go.mod h1:DMBHOl98
 google.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013/go.mod h1:NbSheEEYHJ7i3ixzK3sjbqSGDJWnxyFXZblF3eUsNvo=
 google.golang.org/genproto v0.0.0-20251202230838-ff82c1b0f217 h1:GvESR9BIyHUahIb0NcTum6itIWtdoglGX+rnGxm2934=
 google.golang.org/genproto v0.0.0-20251202230838-ff82c1b0f217/go.mod h1:yJ2HH4EHEDTd3JiLmhds6NkJ17ITVYOdV3m3VKOnws0=
-google.golang.org/genproto/googleapis/api v0.0.0-20251202230838-ff82c1b0f217 h1:fCvbg86sFXwdrl5LgVcTEvNC+2txB5mgROGmRL5mrls=
-google.golang.org/genproto/googleapis/api v0.0.0-20251202230838-ff82c1b0f217/go.mod h1:+rXWjjaukWZun3mLfjmVnQi18E1AsFbDN9QdJ5YXLto=
+google.golang.org/genproto/googleapis/api v0.0.0-20251222181119-0a764e51fe1b h1:uA40e2M6fYRBf0+8uN5mLlqUtV192iiksiICIBkYJ1E=
+google.golang.org/genproto/googleapis/api v0.0.0-20251222181119-0a764e51fe1b/go.mod h1:Xa7le7qx2vmqB/SzWUBa7KdMjpdpAHlh5QCSnjessQk=
 google.golang.org/genproto/googleapis/rpc v0.0.0-20251222181119-0a764e51fe1b h1:Mv8VFug0MP9e5vUxfBcE3vUkV6CImK3cMNMIDFjmzxU=
 google.golang.org/genproto/googleapis/rpc v0.0.0-20251222181119-0a764e51fe1b/go.mod h1:j9x/tPzZkyxcgEFkiKEEGxfvyumM01BEtsW8xzOahRQ=
 google.golang.org/grpc v1.19.0/go.mod h1:mqu4LbDTu4XGKhr4mRzUsmM4RtVoemTSY81AxZiDr8c=
