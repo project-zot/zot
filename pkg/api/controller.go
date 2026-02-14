@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -58,6 +59,8 @@ type Controller struct {
 	Healthz         *common.Healthz
 	// runtime params
 	chosenPort int // kernel-chosen port
+	// TLS certificate management
+	TlsWatcher atomic.Pointer[TlsConfigWatcher]
 }
 
 func NewController(appConfig *config.Config) *Controller {
@@ -242,6 +245,12 @@ func (c *Controller) Run() error {
 			MinVersion: tls.VersionTLS12,
 		}
 
+		// Load CA certificate for mTLS client verification
+		// Note: CA certificate is loaded statically. Unlike the server certificate which is reloaded
+		// dynamically through the file watcher, CA certificate changes require a server restart.
+		// If dynamic CA certificate rotation is needed in the future (e.g., for rotating mTLS client certificates),
+		// the TlsConfigWatcher can be extended to also monitor and reload the CA certificate and update
+		// server.TLSConfig.ClientCAs accordingly.
 		if tlsConfig.CACert != "" {
 			caCert, err := os.ReadFile(tlsConfig.CACert)
 			if err != nil {
@@ -264,9 +273,37 @@ func (c *Controller) Run() error {
 			server.TLSConfig.ClientCAs = caCertPool
 		}
 
+		// Store TLS config paths in watcher for dynamic reloading
+		tlsCertPath := tlsConfig.Cert
+		tlsKeyPath := tlsConfig.Key
+
+		// Create and start certificate watcher
+		// Note: The watcher is stored in c.TlsWatcher before calling Start() so it can be properly
+		// cleaned up during Shutdown even if Start fails. The Stop() method gracefully handles
+		// the case where Start() was never called or failed by checking if the done channel is nil.
+		watcher := NewTlsConfigWatcher(tlsCertPath, tlsKeyPath, c.Log)
+		c.TlsWatcher.Store(watcher)
+		defer watcher.Stop()
+
+		// Load initial certificate
+		if err := watcher.ReloadCertificate(); err != nil {
+			c.Log.Error().Err(err).Msg("failed to load initial certificate")
+
+			return err
+		}
+
+		// Start file watching for certificate reloading
+		if err := watcher.Start(); err != nil {
+			c.Log.Warn().Err(err).Msg("failed to start certificate watcher, will use fallback polling")
+		}
+
+		// Set GetCertificate callback for dynamic certificate reloading
+		server.TLSConfig.GetCertificate = watcher.GetCertificate
+
 		c.Healthz.Ready()
 
-		return server.ServeTLS(listener, tlsConfig.Cert, tlsConfig.Key)
+		// Pass empty strings to ServeTLS since GetCertificate handles certificate loading
+		return server.ServeTLS(listener, "", "")
 	}
 
 	c.Healthz.Ready()
@@ -455,6 +492,12 @@ func (c *Controller) LoadNewConfig(newConfig *config.Config) {
 }
 
 func (c *Controller) Shutdown() {
+	// Stop certificate watcher if it's running
+	watcher := c.TlsWatcher.Load()
+	if watcher != nil {
+		watcher.Stop()
+	}
+
 	// stop all background tasks
 	c.StopBackgroundTasks()
 
