@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	godigest "github.com/opencontainers/go-digest"
+
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/log"
@@ -96,6 +98,35 @@ func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 	defer onDemand.requestStore.Delete(req)
 
 	go onDemand.syncReferrers(repo, subjectDigestStr, referenceTypes, syncResult)
+
+	err := <-syncResult
+
+	return err
+}
+
+func (onDemand *BaseOnDemand) SyncBlob(ctx context.Context, repo string, digest godigest.Digest) error {
+	req := request{
+		repo:      repo,
+		reference: digest.String(),
+	}
+
+	syncResult := make(chan error)
+	val, loaded := onDemand.requestStore.LoadOrStore(req, syncResult)
+
+	if loaded {
+		onDemand.log.Info().Str("repo", repo).Str("digest", digest.String()).
+			Msg("blob already demanded, waiting on channel")
+
+		syncResult, _ := val.(chan error)
+
+		err := <-syncResult
+
+		return err
+	}
+
+	defer onDemand.requestStore.Delete(req)
+
+	go onDemand.syncBlob(repo, digest, syncResult)
 
 	err := <-syncResult
 
@@ -252,6 +283,44 @@ func (onDemand *BaseOnDemand) syncImage(repo, reference string, syncResult chan 
 					}
 				}(service, timeout)
 			}
+		} else {
+			break
+		}
+	}
+
+	syncResult <- err
+}
+
+func (onDemand *BaseOnDemand) syncBlob(repo string, digest godigest.Digest, syncResult chan error) {
+	defer close(syncResult)
+
+	var err error
+
+	for serviceID, service := range onDemand.services {
+		timeout := service.GetSyncTimeout()
+
+		onDemand.log.Debug().
+			Str("repo", repo).
+			Str("digest", digest.String()).
+			Int("serviceID", serviceID).
+			Dur("timeout", timeout).
+			Msg("starting on-demand blob sync")
+
+		// Create a detached context with timeout to ensure sync completes even if HTTP client disconnects.
+		syncCtx, cancel := context.WithTimeout(context.Background(), timeout)
+		err = service.SyncBlob(syncCtx, repo, digest)
+
+		cancel()
+
+		if err != nil {
+			if errors.Is(err, zerr.ErrBlobNotFound) ||
+				errors.Is(err, zerr.ErrRepoNotFound) ||
+				errors.Is(err, zerr.ErrUnauthorizedAccess) {
+				continue
+			}
+
+			onDemand.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).Str("digest", digest.String()).
+				Err(err).Msg("sync routine: error while syncing blob")
 		} else {
 			break
 		}
