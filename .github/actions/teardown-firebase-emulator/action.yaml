@@ -1,0 +1,23 @@
+name: 'Teardown Firebase Storage Emulator'
+description: 'Stop Firebase Storage Emulator'
+runs:
+  using: "composite"
+  steps:
+    - if: always()
+      shell: bash
+      run: |
+        # Save the PID file location
+        PID_FILE="${{ github.workspace }}/.firebase-emulator.pid"
+        if [ -f "$PID_FILE" ]; then
+          PID=$(cat "$PID_FILE")
+          if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
+            kill "$PID" || true
+            # Wait a bit for graceful shutdown
+            sleep 2
+            # Force kill if still running
+            if kill -0 "$PID" 2>/dev/null; then
+              kill -9 "$PID" || true
+            fi
+          fi
+          rm -f "$PID_FILE"
+        fi

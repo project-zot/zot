@@ -1,0 +1,38 @@
+name: 'Setup Firebase Storage Emulator'
+description: 'Install and run Firebase Storage Emulator for GCS testing'
+runs:
+  using: "composite"
+  steps:
+    - name: Install Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+    
+    - name: Install Firebase CLI
+      shell: bash
+      run: |
+        npm install -g firebase-tools
+    
+    - name: Start Firebase Storage Emulator
+      shell: bash
+      run: |
+        cd ${{ github.workspace }}
+        # Start emulator in the background and save PID
+        firebase emulators:start --only storage --project demo-test > /tmp/firebase-emulator.log 2>&1 &
+        FIREBASE_PID=$!
+        echo $FIREBASE_PID > ${{ github.workspace }}/.firebase-emulator.pid
+        echo "Firebase emulator started with PID: $FIREBASE_PID"
+        
+        # Wait for emulator to be ready
+        echo "Waiting for Firebase Storage Emulator to be ready..."
+        for i in {1..30}; do
+          if curl -s http://localhost:9199 > /dev/null 2>&1; then
+            echo "Firebase Storage Emulator is ready"
+            exit 0
+          fi
+          sleep 1
+        done
+        
+        echo "Firebase Storage Emulator failed to start within 30 seconds"
+        cat /tmp/firebase-emulator.log
+        exit 1
