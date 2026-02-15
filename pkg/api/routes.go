@@ -588,7 +588,7 @@ func getReferrers(ctx context.Context, routeHandler *RouteHandler,
 	imgStore storageTypes.ImageStore, name string, digest godigest.Digest,
 	artifactTypes []string,
 ) (ispec.Index, error) {
-	if isSyncOnDemandEnabled(*routeHandler.c) {
+	if isSyncOnDemandEnabled(routeHandler.c) {
 		routeHandler.c.Log.Info().Str("repository", name).Str("reference", digest.String()).
 			Msg("trying to get updated referrers by syncing on demand")
 
@@ -2167,7 +2167,7 @@ func (rh *RouteHandler) getImageStore(name string) storageTypes.ImageStore {
 func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore storageTypes.ImageStore, name,
 	reference string,
 ) ([]byte, godigest.Digest, string, error) {
-	syncEnabled := isSyncOnDemandEnabled(*routeHandler.c)
+	syncEnabled := isSyncOnDemandEnabled(routeHandler.c)
 
 	_, digestErr := godigest.Parse(reference)
 	if digestErr == nil {
@@ -2400,7 +2400,11 @@ func getBlobUploadLocation(url *url.URL, name string, digest godigest.Digest) st
 	return url.String()
 }
 
-func isSyncOnDemandEnabled(ctlr Controller) bool {
+func isSyncOnDemandEnabled(ctlr *Controller) bool {
+	if ctlr == nil {
+		return false
+	}
+
 	extensionsConfig := ctlr.Config.CopyExtensionsConfig()
 	if extensionsConfig.IsSyncEnabled() &&
 		fmt.Sprintf("%v", ctlr.SyncOnDemand) != fmt.Sprintf("%v", nil) {

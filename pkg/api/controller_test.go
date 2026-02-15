@@ -13607,3 +13607,163 @@ func readTagsFromStorage(rootDir, repoName string, digest godigest.Digest) ([]st
 
 	return result, nil
 }
+
+var errGetCertificateFailed = goerrors.New("GetCertificate failed")
+
+func TestDynamicTLSCertificateReloading(t *testing.T) {
+	Convey("Test dynamic TLS certificate reloading", t, func() {
+		logger := log.NewLogger("debug", "")
+		tempDir := t.TempDir()
+
+		// Generate initial certificate and key
+		certPath := path.Join(tempDir, "cert.pem")
+		keyPath := path.Join(tempDir, "key.pem")
+
+		caOpts := &tlsutils.CertificateOptions{
+			CommonName: "*",
+			NotAfter:   time.Now().AddDate(10, 0, 0),
+			KeyType:    tlsutils.KeyTypeECDSA,
+		}
+		caCertPEM, caKeyPEM, err := tlsutils.GenerateCACert(caOpts)
+		So(err, ShouldBeNil)
+
+		serverOpts := &tlsutils.CertificateOptions{
+			Hostname:           "127.0.0.1",
+			CommonName:         "*",
+			OrganizationalUnit: "TestServer",
+			NotAfter:           time.Now().AddDate(10, 0, 0),
+			KeyType:            tlsutils.KeyTypeECDSA,
+		}
+		err = tlsutils.GenerateServerCertToFile(caCertPEM, caKeyPEM, certPath, keyPath, serverOpts)
+		So(err, ShouldBeNil)
+
+		// Create a watcher and set certificate paths
+		watcher := api.NewTlsConfigWatcher(certPath, keyPath, logger)
+
+		// Test 1: Load initial certificate
+		Convey("Load initial certificate successfully", func() {
+			err := watcher.ReloadCertificate()
+			So(err, ShouldBeNil)
+
+			cert, err := watcher.GetCertificate(nil)
+			So(err, ShouldBeNil)
+			So(cert, ShouldNotBeNil)
+		})
+
+		// Test 2: GetCertificate returns the loaded certificate
+		Convey("GetCertificate returns the loaded certificate", func() {
+			err := watcher.ReloadCertificate()
+			So(err, ShouldBeNil)
+
+			cert, err := watcher.GetCertificate(nil)
+			So(err, ShouldBeNil)
+			So(cert, ShouldNotBeNil)
+
+			certAgain, err := watcher.GetCertificate(nil)
+			So(err, ShouldBeNil)
+			So(certAgain, ShouldEqual, cert)
+		})
+
+		// Test 3: Certificate change detection via stat-based fallback
+		Convey("Detect certificate change and reload via stat fallback", func() {
+			// Load initial certificate
+			err := watcher.ReloadCertificate()
+			So(err, ShouldBeNil)
+
+			oldCert, err := watcher.GetCertificate(nil)
+			So(err, ShouldBeNil)
+			So(oldCert, ShouldNotBeNil)
+
+			oldLeaf, err := x509.ParseCertificate(oldCert.Certificate[0])
+			So(err, ShouldBeNil)
+			So(oldLeaf, ShouldNotBeNil)
+
+			// Wait long enough to ensure different modification time on coarse timestamp filesystems
+			time.Sleep(1100 * time.Millisecond)
+
+			// Generate a new certificate
+			newServerOpts := &tlsutils.CertificateOptions{
+				Hostname:           "127.0.0.2",
+				CommonName:         "*",
+				OrganizationalUnit: "TestServer-New",
+				NotAfter:           time.Now().AddDate(10, 0, 0),
+				KeyType:            tlsutils.KeyTypeECDSA,
+			}
+			err = tlsutils.GenerateServerCertToFile(caCertPEM, caKeyPEM, certPath, keyPath, newServerOpts)
+			So(err, ShouldBeNil)
+
+			// Call GetCertificate which should trigger reload via stat-based checking
+			cert, err := watcher.GetCertificate(nil)
+			So(err, ShouldBeNil)
+			So(cert, ShouldNotBeNil)
+
+			newLeaf, err := x509.ParseCertificate(cert.Certificate[0])
+			So(err, ShouldBeNil)
+			So(newLeaf, ShouldNotBeNil)
+
+			// Verify that the certificate content was updated
+			So(newLeaf.Subject.OrganizationalUnit, ShouldNotResemble, oldLeaf.Subject.OrganizationalUnit)
+		})
+
+		// Test 4: checkCertificateModTime correctly detects changes
+		Convey("checkCertificateModTime correctly detects file modifications", func() {
+			// Load initial certificate
+			err := watcher.ReloadCertificate()
+			So(err, ShouldBeNil)
+
+			// No changes yet, should return false
+			needsReload := watcher.CheckCertificateModTime()
+			So(needsReload, ShouldBeFalse)
+
+			// Wait and modify certificate file
+			time.Sleep(100 * time.Millisecond)
+			newServerOpts := &tlsutils.CertificateOptions{
+				Hostname:           "test.example.com",
+				CommonName:         "*",
+				OrganizationalUnit: "TestServer-Changed",
+				NotAfter:           time.Now().AddDate(10, 0, 0),
+				KeyType:            tlsutils.KeyTypeECDSA,
+			}
+			err = tlsutils.GenerateServerCertToFile(caCertPEM, caKeyPEM, certPath, keyPath, newServerOpts)
+			So(err, ShouldBeNil)
+
+			// Now should detect the change
+			needsReload = watcher.CheckCertificateModTime()
+			So(needsReload, ShouldBeTrue)
+		})
+
+		// Test 5: LoadX509KeyPair error handling
+		Convey("Handle certificate loading errors gracefully", func() {
+			badWatcher := api.NewTlsConfigWatcher("/nonexistent/cert.pem", "/nonexistent/key.pem", logger)
+
+			err := badWatcher.ReloadCertificate()
+			So(err, ShouldNotBeNil)
+		})
+
+		// Test 6: Concurrent GetCertificate calls with certificate reloading
+		Convey("Handle concurrent GetCertificate calls safely", func() {
+			err := watcher.ReloadCertificate()
+			So(err, ShouldBeNil)
+
+			// Simulate concurrent calls
+			done := make(chan error, 5)
+
+			for range 5 {
+				go func() {
+					cert, err := watcher.GetCertificate(nil)
+					if err != nil || cert == nil {
+						done <- errGetCertificateFailed
+					} else {
+						done <- nil
+					}
+				}()
+			}
+
+			// Wait for all goroutines
+			for range 5 {
+				err := <-done
+				So(err, ShouldBeNil)
+			}
+		})
+	})
+}
