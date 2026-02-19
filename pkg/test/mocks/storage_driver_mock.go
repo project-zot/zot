@@ -3,6 +3,7 @@ package mocks
 import (
 	"context"
 	"io"
+	"net/http"
 	"strings"
 	"time"
 
@@ -10,16 +11,17 @@ import (
 )
 
 type StorageDriverMock struct {
-	NameFn       func() string
-	GetContentFn func(ctx context.Context, path string) ([]byte, error)
-	PutContentFn func(ctx context.Context, path string, content []byte) error
-	ReaderFn     func(ctx context.Context, path string, offset int64) (io.ReadCloser, error)
-	WriterFn     func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error)
-	StatFn       func(ctx context.Context, path string) (driver.FileInfo, error)
-	ListFn       func(ctx context.Context, path string) ([]string, error)
-	MoveFn       func(ctx context.Context, sourcePath, destPath string) error
-	DeleteFn     func(ctx context.Context, path string) error
-	WalkFn       func(ctx context.Context, path string, f driver.WalkFn) error
+	NameFn        func() string
+	GetContentFn  func(ctx context.Context, path string) ([]byte, error)
+	PutContentFn  func(ctx context.Context, path string, content []byte) error
+	ReaderFn      func(ctx context.Context, path string, offset int64) (io.ReadCloser, error)
+	WriterFn      func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error)
+	StatFn        func(ctx context.Context, path string) (driver.FileInfo, error)
+	ListFn        func(ctx context.Context, path string) ([]string, error)
+	MoveFn        func(ctx context.Context, sourcePath, destPath string) error
+	DeleteFn      func(ctx context.Context, path string) error
+	WalkFn        func(ctx context.Context, path string, f driver.WalkFn, options ...func(*driver.WalkOptions)) error
+	RedirectURLFn func(r *http.Request, path string) (string, error)
 }
 
 //nolint:gochecknoglobals
@@ -100,13 +102,23 @@ func (s *StorageDriverMock) Delete(ctx context.Context, path string) error {
 	return nil
 }
 
+func (s *StorageDriverMock) RedirectURL(r *http.Request, path string) (string, error) {
+	if s != nil && s.RedirectURLFn != nil {
+		return s.RedirectURLFn(r, path)
+	}
+
+	return "", nil
+}
+
 func (s *StorageDriverMock) URLFor(ctx context.Context, path string, options map[string]any) (string, error) {
 	return "", nil
 }
 
-func (s *StorageDriverMock) Walk(ctx context.Context, path string, f driver.WalkFn) error {
+func (s *StorageDriverMock) Walk(ctx context.Context, path string, f driver.WalkFn,
+	options ...func(*driver.WalkOptions),
+) error {
 	if s != nil && s.WalkFn != nil {
-		return s.WalkFn(ctx, path, f)
+		return s.WalkFn(ctx, path, f, options...)
 	}
 
 	return nil
@@ -115,9 +127,14 @@ func (s *StorageDriverMock) Walk(ctx context.Context, path string, f driver.Walk
 type FileInfoMock struct {
 	IsDirFn func() bool
 	SizeFn  func() int64
+	PathFn  func() string
 }
 
 func (f *FileInfoMock) Path() string {
+	if f != nil && f.PathFn != nil {
+		return f.PathFn()
+	}
+
 	return ""
 }
 

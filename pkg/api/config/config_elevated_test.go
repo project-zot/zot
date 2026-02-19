@@ -1,4 +1,4 @@
-//go:build needprivileges
+//go:build needprivileges && linux
 
 package config_test
 

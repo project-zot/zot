@@ -148,13 +148,23 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             go mod download
+      - uses: ./.github/actions/setup-gcs-storage-testbench
       - name: run zot privileged tests
-        run: sudo env "PATH=$PATH" make privileged-test
+        run: >
+          sudo env
+          "PATH=$PATH"
+          "GCSMOCK_ENDPOINT=$GCSMOCK_ENDPOINT"
+          "STORAGE_EMULATOR_HOST=$STORAGE_EMULATOR_HOST"
+          make privileged-test
+        env:
+          GCSMOCK_ENDPOINT: http://localhost:9000/
+          STORAGE_EMULATOR_HOST: localhost:9000
       - name: upload coverage
         uses: actions/upload-artifact@v6
         with:
           name: coverage-needprivileges
-          path: coverage-needprivileges.txt
+          path: coverage-needprivileges-*.txt
+      - uses: ./.github/actions/teardown-gcs-storage-testbench
   test-coverage:
     name: Collect all test coverage
     runs-on: ubuntu-latest
