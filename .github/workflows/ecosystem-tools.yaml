@@ -57,6 +57,7 @@ jobs:
           sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
           sudo apt update
           sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+          docker version
           # install nodejs deps (for oidc claim mapping support)
           sudo npm install -g oidc-provider express
           # install dex

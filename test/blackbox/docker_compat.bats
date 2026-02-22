@@ -76,7 +76,10 @@ EOF
     docker build -f Dockerfile . -t localhost:${zot_port}/test:latest
     run docker push localhost:${zot_port}/test:latest
     [ "$status" -eq 0 ]
-    [ $(cat ${zot_root_dir}/test/index.json | jq .manifests[0].mediaType)  = '"application/vnd.docker.distribution.manifest.v2+json"' ]
+    # Docker 29+ may push OCI manifest/index when using default build; accept either format
+    media_type=$(cat ${zot_root_dir}/test/index.json | jq -r .manifests[0].mediaType)
+    echo "$media_type" >&3
+    [ "$media_type" = "application/vnd.docker.distribution.manifest.v2+json" ]
     run docker pull localhost:${zot_port}/test:latest
     [ "$status" -eq 0 ]
     # inspect and trigger a CVE scan

@@ -98,16 +98,64 @@ function zot_stop_all() {
     fi
 }
 
+# Verifies zot is listening and responding with a valid /v2/_catalog.
+# Exits with 1 and a clear message if zot did not start or response is not from zot.
 function wait_zot_reachable() {
     local zot_port=${1}
     local zot_url=http://127.0.0.1:${zot_port}/v2/_catalog
-    curl --connect-timeout 3 \
+
+    # If we have zot PIDs, ensure at least one process is still running (zot didn't exit on startup, e.g. bind failure).
+    # When multiple zots run in the same test (e.g. sync.bats), zot.pid holds all PIDs; we only require one alive here.
+    # The curl below to the given port is what confirms the specific instance for that port is up.
+    if [ -f "${BATS_FILE_TMPDIR}/zot.pid" ]; then
+        local pids
+        read -r pids < "${BATS_FILE_TMPDIR}/zot.pid" || true
+        local one_alive=0
+        for p in $pids; do
+            kill -0 "$p" 2>/dev/null && one_alive=1 && break
+        done
+        if [ "$one_alive" -eq 0 ]; then
+            echo "ERROR: zot process(es) exited before becoming reachable (check bind or config). Port ${zot_port}" >&2
+            exit 1
+        fi
+    fi
+
+    local response
+    response=$(curl -s --connect-timeout 3 \
         --max-time 5 \
         --retry 60 \
         --retry-delay 1 \
         --retry-max-time 180 \
         --retry-connrefused \
-        ${zot_url}
+        -w "\n%{http_code}" \
+        "${zot_url}")
+    local curl_ret=$?
+    if [ $curl_ret -ne 0 ]; then
+        echo "ERROR: zot did not become reachable at ${zot_url}" >&2
+        exit 1
+    fi
+
+    # curl -s -w "\n%{http_code}" appends HTTP code on last line; body is everything else
+    local http_code
+    http_code=$(echo "$response" | tail -n1)
+    response=$(echo "$response" | sed '$d')
+
+    if [ "$http_code" = "401" ]; then
+        # Zot is up but requires auth (e.g. redis_session_store, openid_claim_mapping); treat as reachable
+        echo "$response"
+        return 0
+    fi
+
+    if [ "$http_code" != "200" ]; then
+        echo "ERROR: zot at ${zot_url} returned HTTP ${http_code}" >&2
+        exit 1
+    fi
+
+    if ! echo "$response" | jq -e '.repositories != null' >/dev/null 2>&1; then
+        echo "ERROR: response from ${zot_url} is not a valid zot _catalog response (missing .repositories)" >&2
+        exit 1
+    fi
+    echo "$response"
 }
 
 function zli_add_config() {

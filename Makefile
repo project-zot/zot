@@ -41,6 +41,7 @@ TESTDATA := $(TOP_LEVEL)/test/data
 OS ?= $(shell go env GOOS)
 ARCH ?= $(shell go env GOARCH)
 GREP_BIN_PATH ?= $(shell which grep)
+BLACKBOX_DOCKER_ENV = BUILDX_NO_DEFAULT_ATTESTATIONS=1 DOCKER_DEFAULT_PLATFORM=linux/amd64
 
 MODULE_PATH := $(shell go list -m)
 CONFIG_PACKAGE := $(MODULE_PATH)/pkg/api/config
@@ -535,7 +536,7 @@ check-blackbox-prerequisites: check-linux check-skopeo $(BATS) $(REGCLIENT) $(OR
 .PHONY: run-blackbox-tests
 run-blackbox-tests: $(BATS_TEST_FILE_PATH) check-blackbox-prerequisites binary binary-minimal cli bench
 	echo running bats test "$(BATS_TEST_FILE_PATH)"; \
-	$(BATS) $(BATS_FLAGS) $(BATS_TEST_FILE_PATH)
+	$(BLACKBOX_DOCKER_ENV) $(BATS) $(BATS_FLAGS) $(BATS_TEST_FILE_PATH)
 
 .PHONY: run-cloud-scale-out-tests
 run-cloud-scale-out-tests: check-blackbox-prerequisites check-awslocal binary bench test-prereq
@@ -560,8 +561,8 @@ run-cloud-scale-out-redis-high-scale-tests: check-blackbox-prerequisites check-a
 
 .PHONY: run-blackbox-ci
 run-blackbox-ci: check-blackbox-prerequisites binary binary-minimal cli
-	echo running CI bats tests concurrently
-	BATS_FLAGS="$(BATS_FLAGS)" test/blackbox/ci.sh
+	echo running CI bats tests concurrently; \
+	$(BLACKBOX_DOCKER_ENV) BATS_FLAGS="$(BATS_FLAGS)" test/blackbox/ci.sh
 
 .PHONY: run-blackbox-cloud-ci
 run-blackbox-cloud-ci: check-blackbox-prerequisites check-awslocal binary $(BATS)

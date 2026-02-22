@@ -2,6 +2,10 @@
 
 set -e
 
+# Docker build env: single platform, no attestations (avoids OCI index / attestation manifest list)
+export BUILDX_NO_DEFAULT_ATTESTATIONS=1
+export DOCKER_DEFAULT_PLATFORM=linux/amd64
+
 BATS_FLAGS=${BATS_FLAGS:-"--print-output-on-failure"}
 SCRIPTPATH="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 BATS=${SCRIPTPATH}/../../hack/tools/bin/bats
