@@ -385,7 +385,8 @@ EOF
     FROM ghcr.io/project-zot/test-images/busybox-docker:1.37
     RUN echo "hello world" > /testfile
 EOF
-    docker build -f Dockerfile . -t localhost:${zot_port}/test
+    run sh -c 'unset GODEBUG; docker build -f Dockerfile -t localhost:'${zot_port}'/test .'
+    [ "$status" -eq 0 ]
     run docker push localhost:${zot_port}/test
     [ "$status" -eq 1 ]
     run docker pull localhost:${zot_port}/test
