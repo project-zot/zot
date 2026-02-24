@@ -4,6 +4,7 @@ package sync
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -15,10 +16,12 @@ import (
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/regclient/regclient"
 	"github.com/regclient/regclient/config"
 	"github.com/regclient/regclient/mod"
 	"github.com/regclient/regclient/scheme/reg"
+	"github.com/regclient/regclient/types/manifest"
 	"github.com/regclient/regclient/types/ref"
 
 	zerr "zotregistry.dev/zot/v2/errors"
@@ -49,6 +52,7 @@ type BaseService struct {
 	rc               *regclient.RegClient
 	hosts            []config.Host
 	tagsCache        *tagsCache
+	streamManager    StreamManager
 
 	clientLock sync.RWMutex
 	log        log.Logger
@@ -60,6 +64,7 @@ func New(
 	clusterConfig *zconfig.ClusterConfig,
 	tmpDir string,
 	storeController storage.StoreController,
+	streamManager StreamManager,
 	metadb mTypes.MetaDB,
 	log log.Logger,
 ) (*BaseService, error) {
@@ -71,6 +76,7 @@ func New(
 	service.contentManager = NewContentManager(config.Content, log)
 	service.storeController = storeController
 	service.tagsCache = newTagsCache(defaultExpireMinutes)
+	service.streamManager = streamManager
 
 	var err error
 
@@ -294,6 +300,93 @@ func (service *BaseService) GetNextRepo(lastRepo string) (string, error) {
 	return lastRepo, nil
 }
 
+// FetchManifest on demand.
+func (service *BaseService) FetchManifest(ctx context.Context, repo, reference string) (manifest.Manifest, error) {
+	remoteRepo := repo
+
+	remoteURL := service.remote.GetHostName()
+
+	if len(service.config.Content) > 0 {
+		remoteRepo = service.contentManager.GetRepoSource(repo)
+		if remoteRepo == "" {
+			service.log.Info().Str("remote", remoteURL).Str("repo", repo).Str("reference", reference).
+				Msg("will not sync image, filtered out by content")
+
+			return nil, zerr.ErrSyncImageFilteredOut
+		}
+	}
+
+	service.log.Info().Str("remote", remoteURL).Str("repo", repo).Str("reference", reference).
+		Msg("sync: fetching manifest")
+
+	if err := service.refreshRegistryTemporaryCredentials(); err != nil {
+		service.log.Error().Err(err).Msg("failed to refresh credentials")
+	}
+
+	artifactRef, err := service.remote.GetImageReference(remoteRepo, reference)
+	if err != nil {
+		return nil, err
+	}
+
+	m, err := service.rc.ManifestGet(ctx, artifactRef)
+	if err != nil {
+		return nil, err
+	}
+
+	// if this is being executed, it is for sure part of streaming.
+	// install chunked blob readers for each blob into the stream manager's cache
+	if m != nil {
+		// first for the manifest blob
+		err := service.streamManager.PrepareActiveStreamForBlob(m.GetDescriptor().Digest)
+		if err != nil {
+			return nil, err
+		}
+
+		var contents ispec.Manifest
+		contentBytes, err := m.RawBody()
+		if err != nil {
+			return nil, err
+		}
+
+		err = json.Unmarshal(contentBytes, &contents)
+		if err != nil {
+			return nil, err
+		}
+
+		// imager, ok := orig.(manifest.Imager)
+		// if !ok {
+		// 	return nil, errors.New("failed to convert to imager")
+		// }
+
+		// next, for config
+		// cfg, err := imager.GetConfig()
+		// if err != nil {
+		// 	return nil, err
+		// }
+
+		err = service.streamManager.PrepareActiveStreamForBlob(contents.Config.Digest)
+		if err != nil {
+			return nil, err
+		}
+
+		// finally, for all layers
+		// layers, err := imager.GetLayers()
+		// if err != nil {
+		// 	return nil, err
+		// }
+
+		layers := contents.Layers
+		for _, layer := range layers {
+			err = service.streamManager.PrepareActiveStreamForBlob(layer.Digest)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	return m, nil
+}
+
 // SyncImage on demand.
 func (service *BaseService) SyncImage(ctx context.Context, repo, reference string) error {
 	remoteRepo := repo
@@ -477,6 +570,11 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 	copyOpts := []regclient.ImageOpts{}
 	if recursive {
 		copyOpts = append(copyOpts, regclient.ImageWithReferrers())
+	}
+
+	if service.streamManager != nil {
+		service.log.Info().Str("repo", localRepo).Str("reference", remoteImageRef.Tag).Msg("streaming is enabled. Enabling reader hook")
+		copyOpts = append(copyOpts, regclient.ImageWithBlobReaderHook(service.streamManager.StreamingBlobReader))
 	}
 
 	// check if image is already synced

@@ -13,7 +13,7 @@ import (
 
 // EnableSyncExtension ...
 func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
-	storeController storage.StoreController, sch *scheduler.Scheduler, log log.Logger,
+	storeController storage.StoreController, sch *scheduler.Scheduler, sm sync.StreamManager, log log.Logger,
 ) (*sync.BaseOnDemand, error) {
 	log.Warn().Msg("skipping enabling sync extension because given zot binary doesn't include this feature," +
 		"please build a binary that does so")

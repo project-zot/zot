@@ -18,7 +18,7 @@ import (
 )
 
 func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
-	storeController storage.StoreController, sch *scheduler.Scheduler, log log.Logger,
+	storeController storage.StoreController, sch *scheduler.Scheduler, sm sync.StreamManager, log log.Logger,
 ) (*sync.BaseOnDemand, error) {
 	// Get extensions config safely
 	extensionsConfig := config.CopyExtensionsConfig()
@@ -56,7 +56,7 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 			// Get cluster config safely
 			clusterConfig := config.CopyClusterConfig()
 
-			service, err := sync.New(registryConfig, credsPath, clusterConfig, tmpDir, storeController, metaDB, log)
+			service, err := sync.New(registryConfig, credsPath, clusterConfig, tmpDir, storeController, sm, metaDB, log)
 			if err != nil {
 				log.Error().Err(err).Msg("failed to initialize sync extension")
 
