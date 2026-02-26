@@ -1,0 +1,72 @@
+{% set name = "zot" %}
+{% set version = environ.get('RELEASE_TAG', 'dev').lstrip('v') %}
+{% set commit = environ.get('COMMIT', 'unknown') %}
+{% set go_version = environ.get('GO_VERSION', 'unknown') %}
+{% set build_labels = environ.get('BUILD_LABELS', 'sync,search,scrub,metrics,lint,ui,mgmt,profile,userprefs,imagetrust,events') %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  path: ../..
+
+build:
+  number: 0
+  script:
+    - export CGO_ENABLED=0
+    - export GOOS={{ environ.get('GOOS', target_platform.split('-')[0]) }}
+    - export GOARCH={{ environ.get('GOARCH', target_platform.split('-')[1]) }}
+    # Build zot binary
+    - |
+      go build \
+        -tags {{ build_labels }} \
+        -trimpath \
+        -ldflags "-X github.com/project-zot/zot/pkg/api/config.ReleaseTag={{ version }} -X github.com/project-zot/zot/pkg/api/config.Commit={{ commit }} -X github.com/project-zot/zot/pkg/api/config.BinaryType=-{{ build_labels }} -X github.com/project-zot/zot/pkg/api/config.GoVersion={{ go_version }} -s -w" \
+        -o $PREFIX/bin/zot{{ '.exe' if target_platform.startswith('win') else '' }} \
+        ./cmd/zot
+    # Build zli binary
+    - |
+      go build \
+        -tags {{ build_labels }},search \
+        -trimpath \
+        -ldflags "-X github.com/project-zot/zot/pkg/api/config.Commit={{ commit }} -X github.com/project-zot/zot/pkg/api/config.BinaryType=-{{ build_labels }} -X github.com/project-zot/zot/pkg/api/config.GoVersion={{ go_version }} -s -w" \
+        -o $PREFIX/bin/zli{{ '.exe' if target_platform.startswith('win') else '' }} \
+        ./cmd/zli
+    # Build zb binary
+    - |
+      go build \
+        -tags {{ build_labels }} \
+        -trimpath \
+        -ldflags "-X github.com/project-zot/zot/pkg/api/config.Commit={{ commit }} -X github.com/project-zot/zot/pkg/api/config.BinaryType=-{{ build_labels }} -X github.com/project-zot/zot/pkg/api/config.GoVersion={{ go_version }} -s -w" \
+        -o $PREFIX/bin/zb{{ '.exe' if target_platform.startswith('win') else '' }} \
+        ./cmd/zb
+
+requirements:
+  build:
+    - {{ compiler('go') }}
+    - go >=1.22
+  run:
+
+test:
+  commands:
+    - zot --help
+    - zli --help
+    - zb --help
+
+about:
+  home: https://zotregistry.io
+  license: Apache-2.0
+  license_family: Apache
+  license_file: LICENSE
+  summary: A production-ready vendor-neutral OCI image registry
+  description: |
+    zot is a production-ready vendor-neutral OCI image registry - 
+    a single binary with minimal dependencies. It supports advanced 
+    features like image signing, vulnerability scanning, and more.
+  doc_url: https://zotregistry.io/latest/
+  dev_url: https://github.com/project-zot/zot
+
+extra:
+  recipe-maintainers:
+    - project-zot

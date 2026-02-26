@@ -204,6 +204,50 @@ cli: build-metadata
 bench: build-metadata
 	env CGO_ENABLED=0 GOEXPERIMENT=jsonv2 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zb-$(OS)-$(ARCH)$(BIN_EXT) $(BUILDMODE_FLAGS) $(GO_CMD_TAGS) -v -trimpath -ldflags "-X $(CONFIG_COMMIT)=${COMMIT} -X $(CONFIG_BINARY_TYPE)=$(extended-name) -X $(CONFIG_GO_VERSION)=${GO_VERSION} -s -w" ./cmd/zb
 
+.PHONY: check-conda
+check-conda:
+	@if ! command -v conda >/dev/null 2>&1; then \
+		echo "Error: conda is not installed. Please install Conda or Miniconda first."; \
+		echo "Visit: https://docs.conda.io/en/latest/miniconda.html"; \
+		exit 1; \
+	fi
+	@if ! conda list conda-build >/dev/null 2>&1; then \
+		echo "Error: conda-build is not installed."; \
+		echo "Install it with: conda install conda-build"; \
+		echo "Or for faster builds: conda install -c conda-forge boa"; \
+		exit 1; \
+	fi
+
+.PHONY: binary-conda
+binary-conda: check-conda
+	@echo "Building zot with conda-build..."
+	mkdir -p conda-bld
+	RELEASE_TAG=$(RELEASE_TAG) COMMIT=$(COMMIT) GO_VERSION=$(GO_VERSION) BUILD_LABELS=$(BUILD_LABELS) \
+	conda build build/conda/meta.yaml --output-folder conda-bld/
+	@echo "Conda package built in conda-bld/"
+	@echo "Install with: conda install -c ./conda-bld zot"
+
+.PHONY: binary-conda-minimal
+binary-conda-minimal: check-conda
+	@echo "Building zot-minimal with conda-build..."
+	mkdir -p conda-bld
+	RELEASE_TAG=$(RELEASE_TAG) COMMIT=$(COMMIT) GO_VERSION=$(GO_VERSION) \
+	conda build build/conda/meta-minimal.yaml --output-folder conda-bld/
+	@echo "Conda package built in conda-bld/"
+	@echo "Install with: conda install -c ./conda-bld zot-minimal"
+
+.PHONY: binary-conda-boa
+binary-conda-boa: check-conda
+	@echo "Building zot with boa (mambabuild)..."
+	@if ! command -v conda-mambabuild >/dev/null 2>&1; then \
+		echo "Error: boa is not installed. Install with: conda install -c conda-forge boa"; \
+		exit 1; \
+	fi
+	mkdir -p conda-bld
+	RELEASE_TAG=$(RELEASE_TAG) COMMIT=$(COMMIT) GO_VERSION=$(GO_VERSION) BUILD_LABELS=$(BUILD_LABELS) \
+	conda mambabuild build/conda/meta.yaml --output-folder conda-bld/
+	@echo "Conda package built in conda-bld/"
+
 .PHONY: exporter-minimal
 exporter-minimal: EXTENSIONS=
 exporter-minimal: build-metadata
@@ -419,6 +463,7 @@ clean:
 	rm -rf test/data/zot-cve-test
 	rm -rf test/data/zot-cve-java-test
 	rm -rf pkg/extensions/build
+	rm -rf conda-bld
 
 .PHONY: run
 run: binary
