@@ -64,6 +64,7 @@ const (
 	rateLimit            = 50 * time.Millisecond
 	NumWorkersMultiplier = 4
 	sendMetricsInterval  = 5 * time.Second
+	idleSleepInterval    = 1 * time.Second
 )
 
 type Scheduler struct {
@@ -281,7 +282,9 @@ func (scheduler *Scheduler) RunScheduler() {
 				task := scheduler.getTask()
 
 				if task == nil {
-					<-throttle
+					// No tasks available - sleep longer when idle instead of polling every 50ms
+					// This reduces CPU usage when the system is completely idle
+					time.Sleep(idleSleepInterval)
 
 					continue
 				}
