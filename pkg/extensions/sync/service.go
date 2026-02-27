@@ -461,7 +461,7 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 
 func (service *BaseService) syncRef(ctx context.Context, localRepo string, remoteImageRef, localImageRef ref.Ref,
 	remoteDigest godigest.Digest, recursive bool,
-) error {
+) (bool, error) {
 	var reference string
 
 	var skipImage bool
@@ -498,13 +498,13 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 				Str("local image", fmt.Sprintf("%s:%s", localRepo, remoteImageRef.Tag)).Msg("failed to sync image")
 		}
 
-		return err
+		return false, err
 	}
 
 	service.log.Info().Str("image", remoteImageRef.CommonName()).
 		Msg("skipping image because it's already synced")
 
-	return nil
+	return true, nil
 }
 
 // get "would be" digest of image after synced.
@@ -617,9 +617,13 @@ func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo
 	defer service.destination.CleanupImage(localImageRef, localRepo) //nolint: errcheck
 
 	// first sync image
-	err = service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, localDigest, false)
+	skipped, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, localDigest, false)
 	if err != nil {
 		return err
+	}
+
+	if skipped {
+		return nil
 	}
 
 	if withReferrers {
@@ -737,7 +741,7 @@ func (service *BaseService) syncReferrers(ctx context.Context, tags []string, lo
 
 			localImageRef = localImageRef.SetDigest(desc.Digest.String())
 
-			err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, desc.Digest, false)
+			_, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, desc.Digest, false)
 			if err != nil {
 				service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
 					Str("repo", localRepo).Str("local reference", localImageRef.Tag).
@@ -755,7 +759,7 @@ func (service *BaseService) syncReferrers(ctx context.Context, tags []string, lo
 
 				localImageRef = localImageRef.SetTag(tag)
 
-				err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, remoteDigest, true)
+				_, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, remoteDigest, true)
 				if err != nil {
 					service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
 						Str("repo", localRepo).Str("local reference", localImageRef.Tag).
