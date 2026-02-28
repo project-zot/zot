@@ -127,6 +127,57 @@ func TestService(t *testing.T) {
 		So(panicOccurred, ShouldBeTrue)
 	})
 
+	Convey("test syncImage skips OCI conversion but still commits when image already synced", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs: []string{"http://localhost"},
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		// Mock remote returns isConverted=true so OCI conversion would be attempted if not skipped
+		mockRemote := &mocks.SyncRemoteMock{
+			GetImageReferenceFn: func(repo string, tag string) (ref.Ref, error) {
+				return ref.New("mock-registry/" + repo + ":" + tag)
+			},
+			GetOCIDigestFn: func(ctx context.Context, repo, tag string) (godigest.Digest, godigest.Digest, bool, error) {
+				// isConverted=true means OCI conversion would be attempted
+				return godigest.Digest("sha256:abc123"), godigest.Digest("sha256:def456"), true, nil
+			},
+		}
+		service.remote = mockRemote
+
+		commitAllCalled := false
+
+		// Mock destination returns CanSkipImage=true (already synced)
+		mockDest := &mocks.SyncDestinationMock{
+			GetImageReferenceFn: func(repo string, tag string) (ref.Ref, error) {
+				return ref.New("local/" + repo + ":" + tag)
+			},
+			CanSkipImageFn: func(repo string, tag string, digest godigest.Digest) (bool, error) {
+				return true, nil
+			},
+			CommitAllFn: func(repo string, imageReference ref.Ref) error {
+				commitAllCalled = true
+				return nil
+			},
+			CleanupImageFn: func(imageReference ref.Ref, repo string) error {
+				return nil
+			},
+		}
+		service.destination = mockDest
+
+		ctx := context.Background()
+		err = service.syncImage(ctx, "localrepo", "remoterepo", "tag1", []string{}, false)
+
+		// Should succeed without error
+		So(err, ShouldBeNil)
+		// CommitAll should still be called to persist any new referrers even when image was skipped
+		So(commitAllCalled, ShouldBeTrue)
+		// OCI conversion is NOT called because skipped=true guards it.
+		// If mod.Apply were called, it would fail since service.rc is nil - proving the guard works.
+	})
+
 	Convey("test syncImage ReferrerList error with OnlySigned", t, func() {
 		onlySigned := true
 		conf := syncconf.RegistryConfig{
