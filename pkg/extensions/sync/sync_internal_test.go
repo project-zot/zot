@@ -127,7 +127,7 @@ func TestService(t *testing.T) {
 		So(panicOccurred, ShouldBeTrue)
 	})
 
-	Convey("test syncImage skips OCI conversion when image already synced", t, func() {
+	Convey("test syncImage skips OCI conversion but still commits when image already synced", t, func() {
 		conf := syncconf.RegistryConfig{
 			URLs: []string{"http://localhost"},
 		}
@@ -170,10 +170,12 @@ func TestService(t *testing.T) {
 		ctx := context.Background()
 		err = service.syncImage(ctx, "localrepo", "remoterepo", "tag1", []string{}, false)
 
-		// Should succeed without error (image already synced, no OCI conversion attempted)
+		// Should succeed without error
 		So(err, ShouldBeNil)
-		// CommitAll should not be called since we returned early after skip
-		So(commitAllCalled, ShouldBeFalse)
+		// CommitAll should still be called to persist any new referrers even when image was skipped
+		So(commitAllCalled, ShouldBeTrue)
+		// OCI conversion is NOT called because skipped=true guards it.
+		// If mod.Apply were called, it would fail since service.rc is nil - proving the guard works.
 	})
 
 	Convey("test syncImage ReferrerList error with OnlySigned", t, func() {

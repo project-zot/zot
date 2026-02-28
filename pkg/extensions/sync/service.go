@@ -622,16 +622,12 @@ func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo
 		return err
 	}
 
-	if skipped {
-		return nil
-	}
-
 	if withReferrers {
 		_ = service.syncReferrers(ctx, repoTags, localRepo, remoteRepo, localImageRef, remoteImageRef)
 	}
 
 	// convert image to oci if needed
-	if isConverted && !service.config.PreserveDigest {
+	if !skipped && isConverted && !service.config.PreserveDigest {
 		localImageRef, err = mod.Apply(ctx, service.rc, localImageRef,
 			mod.WithRefTgt(localImageRef),
 			mod.WithManifestToOCI(),
