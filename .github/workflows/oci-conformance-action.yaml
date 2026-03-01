@@ -17,10 +17,11 @@ permissions: read-all
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   run:
+    name: Run official conformance tests
     runs-on: ubuntu-latest
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-    - name: Install go 1.23
+    - name: Install go
       uses: actions/setup-go@v6
       with:
         cache: false
@@ -65,3 +66,111 @@ jobs:
         name: oci-test-results-${{ github.sha }}
         path: .out/
       if: github.event_name == 'push'
+
+  run-v2:
+    name: Run conformance tests (pr-conformance-v2)
+    runs-on: ubuntu-latest
+    steps:
+    - name: Install go
+      uses: actions/setup-go@v6
+      with:
+        cache: false
+        go-version: 1.25.x
+    - name: Checkout this PR
+      uses: actions/checkout@v6
+    - name: Start zot server
+      id: start-server
+      run: |
+          cd $GITHUB_WORKSPACE
+          make binary
+          ./bin/zot-linux-amd64 serve examples/config-conformance.json & echo $! > zot.PID
+          IP=`hostname -I | awk '{print $1}'`
+          # Check if zot server is running
+          cat /proc/$(cat zot.PID)/status | grep State || exit 1
+          curl --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 180 --retry-connrefused http://${IP}:8080/v2/
+    - name: Checkout distribution-spec
+      uses: actions/checkout@v6
+      with:
+        repository: sudo-bmitch/distribution-spec
+        ref: pr-conformance-v2
+        path: distribution-spec-v2
+    - name: Build conformance binary
+      run: |
+        cd distribution-spec-v2/conformance2
+        go build -o conformance .
+        mv conformance $GITHUB_WORKSPACE/
+    - name: Create conformance config
+      run: |
+        IP=`hostname -I | awk '{print $1}'`
+        cat > conformance-config.yaml <<EOF
+        resultsDir: ./results
+        version: "1.1"
+        registry: ${IP}:8080
+        tls: disabled
+        repo1: conformance/repo1
+        repo2: conformance/repo2
+        username: ""
+        password: ""
+        logging: warn
+        apis:
+          pull: true
+          push: true
+          blobs:
+            atomic: true
+            delete: true
+            mountAnonymous: true
+          manifests:
+            atomic: true
+            delete: true
+          tags:
+            atomic: true
+            delete: true
+            list: true
+          referrer: true
+        data:
+          image: true
+          index: true
+          indexList: true
+          sparse: false
+          artifact: true
+          subject: true
+          subjectMissing: true
+          artifactList: true
+          subjectList: true
+          dataField: true
+          nondistributable: true
+          customFields: true
+          emptyBlob: true
+          sha512: true
+        roData:
+          tags: []
+          manifests: []
+          blobs: []
+          referrers: []
+        EOF
+    - name: Run conformance v2
+      env:
+        OCI_CONFIGURATION: conformance-config.yaml
+      run: |
+        ./conformance
+    - name: Collect test results
+      run: |
+        mkdir -p .out-v2/
+        if [ -f results/report.html ]; then
+          mv results/report.html .out-v2/report.html
+        fi
+        if [ -f results/junit.xml ]; then
+          mv results/junit.xml .out-v2/junit.xml
+        fi
+      if: always()
+    - name: Upload test results v2 as build artifact
+      uses: actions/upload-artifact@v5
+      with:
+        name: oci-test-results-v2-${{ github.sha }}
+        path: .out-v2/
+      if: always()
+    - name: Cleanup
+      if: always()
+      run: |
+        cd $GITHUB_WORKSPACE
+        [[ -f zot.PID ]] && kill $(cat zot.PID) 2>/dev/null || true

@@ -40,6 +40,7 @@ type MockedImageStore struct {
 	DeleteBlobUploadFn     func(repo string, uuid string) error
 	BlobPathFn             func(repo string, digest godigest.Digest) string
 	CheckBlobFn            func(repo string, digest godigest.Digest) (bool, int64, error)
+	CheckBlobForMountFn    func(repo string, digest godigest.Digest) (bool, int64, error)
 	StatBlobFn             func(repo string, digest godigest.Digest) (bool, int64, time.Time, error)
 	GetBlobPartialFn       func(repo string, digest godigest.Digest, mediaType string, from, to int64,
 	) (io.ReadCloser, int64, int64, error)
@@ -308,6 +309,14 @@ func (is MockedImageStore) BlobPath(repo string, digest godigest.Digest) string 
 func (is MockedImageStore) CheckBlob(repo string, digest godigest.Digest) (bool, int64, error) {
 	if is.CheckBlobFn != nil {
 		return is.CheckBlobFn(repo, digest)
+	}
+
+	return true, 0, nil
+}
+
+func (is MockedImageStore) CheckBlobForMount(repo string, digest godigest.Digest) (bool, int64, error) {
+	if is.CheckBlobForMountFn != nil {
+		return is.CheckBlobForMountFn(repo, digest)
 	}
 
 	return true, 0, nil

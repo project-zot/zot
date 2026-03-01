@@ -898,26 +898,37 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 
 // canMount checks if a user has read permission on cached blobs with this specific digest.
 // returns true if the user have permission to copy blob from cache.
+// If fromRepo is provided, it checks permissions only for that specific repository.
+// Otherwise, it checks all repositories in the cache that contain the blob.
 func canMount(userAc *reqCtx.UserAccessControl, imgStore storageTypes.ImageStore, digest godigest.Digest,
+	fromRepo string,
 ) (bool, error) {
 	canMount := true
 
 	if userAc != nil {
 		canMount = false
 
-		repos, err := imgStore.GetAllDedupeReposCandidates(digest)
-		if err != nil {
-			return false, err
-		}
-
-		if len(repos) == 0 {
-			canMount = false
-		}
-
-		// check if user can read any repo which contain this blob
-		for _, repo := range repos {
-			if userAc.Can(constants.ReadPermission, repo) {
+		if fromRepo != "" {
+			// Check permissions only for the specified "from" repository
+			if userAc.Can(constants.ReadPermission, fromRepo) {
 				canMount = true
+			}
+		} else {
+			// No "from" specified - check all repositories in cache that contain this blob
+			repos, err := imgStore.GetAllDedupeReposCandidates(digest)
+			if err != nil {
+				return false, err
+			}
+
+			if len(repos) == 0 {
+				canMount = false
+			}
+
+			// check if user can read any repo which contain this blob
+			for _, repo := range repos {
+				if userAc.Can(constants.ReadPermission, repo) {
+					canMount = true
+				}
 			}
 		}
 	}
@@ -957,51 +968,34 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 
 	digest := godigest.Digest(digestStr)
 
-	userAc, err := reqCtx.UserAcFromContext(request.Context())
-	if err != nil {
-		response.WriteHeader(http.StatusInternalServerError)
+	var (
+		blen       int64
+		err        error
+		blobExists bool
+	)
 
-		return
-	}
-
-	userCanMount := true
-	accessControlConfig := rh.c.Config.CopyAccessControlConfig()
-
-	if accessControlConfig.IsAuthzEnabled() {
-		userCanMount, err = canMount(userAc, imgStore, digest)
-		if err != nil {
-			rh.c.Log.Error().Err(err).Msg("unexpected error")
-		}
-	}
-
-	var blen int64
-
-	if userCanMount {
-		ok, blen, err = imgStore.CheckBlob(name, digest)
-	} else {
-		var lockLatency time.Time
-
-		imgStore.RLock(&lockLatency)
-		defer imgStore.RUnlock(&lockLatency)
-
-		ok, blen, _, err = imgStore.StatBlob(name, digest)
-	}
-
+	// For HEAD requests, always check only the specific repository (per OCI spec)
+	// The blob must exist "in the repository", not in other repositories via cache
+	// This ensures that after deleting a blob from a repository, HEAD returns 404
+	// even if the blob exists in another repository via cache
+	blobExists, blen, err = imgStore.CheckBlob(name, digest)
 	if err != nil {
 		details := zerr.GetDetails(err)
-		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic,dupl // errorslint conflicts with gocritic:IfElseChain
+
+		switch {
+		case errors.Is(err, zerr.ErrBadBlobDigest):
 			details["digest"] = digest.String()
 			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrRepoNotFound) {
+		case errors.Is(err, zerr.ErrRepoNotFound):
 			details["name"] = name
 			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrBlobNotFound) {
+		case errors.Is(err, zerr.ErrBlobNotFound):
 			details["digest"] = digest.String()
 			e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
-		} else {
+		default:
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			response.WriteHeader(http.StatusInternalServerError)
 		}
@@ -1009,7 +1003,7 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 		return
 	}
 
-	if !ok {
+	if !blobExists {
 		e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(map[string]string{"digest": digest.String()})
 		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
@@ -1142,19 +1136,21 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 	if err != nil {
 		details := zerr.GetDetails(err)
-		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
+
+		switch {
+		case errors.Is(err, zerr.ErrBadBlobDigest):
 			details["digest"] = digest.String()
 			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrRepoNotFound) {
+		case errors.Is(err, zerr.ErrRepoNotFound):
 			details["name"] = name
 			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrBlobNotFound) {
+		case errors.Is(err, zerr.ErrBlobNotFound):
 			details["digest"] = digest.String()
 			e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
-		} else {
+		default:
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			response.WriteHeader(http.StatusInternalServerError)
 		}
@@ -1213,23 +1209,25 @@ func (rh *RouteHandler) DeleteBlob(response http.ResponseWriter, request *http.R
 	err = imgStore.DeleteBlob(name, digest)
 	if err != nil {
 		details := zerr.GetDetails(err)
-		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
+
+		switch {
+		case errors.Is(err, zerr.ErrBadBlobDigest):
 			details["digest"] = digest.String()
 			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrRepoNotFound) {
+		case errors.Is(err, zerr.ErrRepoNotFound):
 			details["name"] = name
 			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(map[string]string{"name": name})
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrBlobNotFound) {
+		case errors.Is(err, zerr.ErrBlobNotFound):
 			details["digest"] = digest.String()
 			e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrBlobReferenced) {
+		case errors.Is(err, zerr.ErrBlobReferenced):
 			details["digest"] = digest.String()
 			e := apiErr.NewError(apiErr.DENIED).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusMethodNotAllowed, apiErr.NewErrorList(e))
-		} else {
+		default:
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			response.WriteHeader(http.StatusInternalServerError)
 		}
@@ -1265,7 +1263,7 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 
 	imgStore := rh.getImageStore(name)
 
-	// currently zot does not support cross-repository mounting, following dist-spec and returning 202
+	// Handle blob mounting (with or without "from" parameter)
 	if mountDigests, ok := request.URL.Query()["mount"]; ok {
 		if len(mountDigests) != 1 {
 			response.WriteHeader(http.StatusBadRequest)
@@ -1285,18 +1283,34 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 		userCanMount := true
 		accessControlConfig := rh.c.Config.CopyAccessControlConfig()
 
+		// Check if "from" parameter is provided
+		fromRepos, hasFrom := request.URL.Query()["from"]
+
+		var fromRepo string
+
+		if hasFrom {
+			if len(fromRepos) != 1 {
+				response.WriteHeader(http.StatusBadRequest)
+
+				return
+			}
+
+			fromRepo = fromRepos[0]
+		}
+
+		// Check mount permissions (with or without "from" parameter)
 		if accessControlConfig.IsAuthzEnabled() {
-			userCanMount, err = canMount(userAc, imgStore, mountDigest)
+			userCanMount, err = canMount(userAc, imgStore, mountDigest, fromRepo)
 			if err != nil {
 				rh.c.Log.Error().Err(err).Msg("unexpected error")
 			}
 		}
 
-		// zot does not support cross mounting directly and do a workaround creating using hard link.
-		// check blob looks for actual path (name+mountDigests[0]) first then look for cache and
-		// if found in cache, will do hard link and if fails we will start new upload.
+		// Attempt to mount the blob using cache (CheckBlobForMount will check cache)
+		// If "from" is provided and user has permission, this will try to find the blob in cache
+		// If cache retrieval succeeds, mount is successful; otherwise, start new upload
 		if userCanMount {
-			_, _, err = imgStore.CheckBlob(name, mountDigest)
+			_, _, err = imgStore.CheckBlobForMount(name, mountDigest)
 		}
 
 		if err != nil || !userCanMount {
@@ -1328,6 +1342,7 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 		return
 	}
 
+	// "from" parameter can only be used with "mount" parameter
 	if _, ok := request.URL.Query()["from"]; ok {
 		response.WriteHeader(http.StatusMethodNotAllowed)
 
@@ -1352,12 +1367,19 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 
 		digestStr := digests[0]
 
-		digest := godigest.Digest(digestStr)
+		digest, err := godigest.Parse(digestStr)
+		if err != nil {
+			details := map[string]string{"digest": digestStr}
+			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+
+			return
+		}
 
 		var contentLength int64
 
-		contentLength, err := strconv.ParseInt(request.Header.Get("Content-Length"), 10, 64)
-		if err != nil || contentLength <= 0 {
+		contentLength, err = strconv.ParseInt(request.Header.Get("Content-Length"), 10, 64)
+		if err != nil || contentLength < 0 {
 			rh.c.Log.Warn().Str("actual", request.Header.Get("Content-Length")).Msg("invalid content length")
 
 			details := map[string]string{"digest": digest.String()}
@@ -1376,6 +1398,14 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 
 		sessionID, size, err := imgStore.FullBlobUpload(name, request.Body, digest)
 		if err != nil {
+			details := zerr.GetDetails(err)
+			if errors.Is(err, zerr.ErrBadBlobDigest) {
+				details["digest"] = digest.String()
+				e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
+				zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+
+				return
+			}
 			rh.c.Log.Error().Err(err).Int64("actual", size).Int64("expected", contentLength).
 				Msg("failed to full blob upload")
 			response.WriteHeader(http.StatusInternalServerError)
@@ -1392,6 +1422,7 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 
 		response.Header().Set("Location", getBlobUploadLocation(request.URL, name, digest))
 		response.Header().Set(constants.BlobUploadUUID, sessionID)
+		response.Header().Set(constants.DistContentDigestKey, digest.String())
 		response.WriteHeader(http.StatusCreated)
 
 		return
@@ -1577,6 +1608,74 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 	response.WriteHeader(http.StatusAccepted)
 }
 
+// handleBlobUploadError handles errors from blob upload operations and writes appropriate HTTP responses.
+// If digest is provided and the error is ErrBadBlobDigest, it will be included in the error details.
+// Returns true if an error was handled, false if err is nil.
+func (rh *RouteHandler) handleBlobUploadError(
+	err error, name, sessionID string, digest godigest.Digest,
+	response http.ResponseWriter, imgStore storageTypes.ImageStore,
+) bool {
+	if err == nil {
+		return false
+	}
+
+	details := zerr.GetDetails(err)
+	if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
+		if digest != "" {
+			details["digest"] = digest.String()
+		}
+		e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+	} else if errors.Is(err, zerr.ErrBadUploadRange) {
+		details["session_id"] = sessionID
+		e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+	} else if errors.Is(err, zerr.ErrRepoNotFound) {
+		details["name"] = name
+		e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
+	} else if errors.Is(err, zerr.ErrUploadNotFound) {
+		details["session_id"] = sessionID
+		e := apiErr.NewError(apiErr.BLOB_UPLOAD_UNKNOWN).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
+	} else {
+		// could be io.ErrUnexpectedEOF, syscall.EMFILE (Err:0x18 too many opened files), etc
+		rh.c.Log.Error().Err(err).Msg("unexpected error, removing .uploads/ files")
+
+		if err = imgStore.DeleteBlobUpload(name, sessionID); err != nil {
+			rh.c.Log.Error().Err(err).Str("blobUpload", sessionID).Str("repository", name).
+				Msg("failed to remove blobUpload in repo")
+		}
+
+		response.WriteHeader(http.StatusInternalServerError)
+	}
+
+	return true
+}
+
+// checkEmptyBlobUpload checks if this is an empty blob upload and handles it appropriately.
+// Returns true if an error was handled (HTTP response written), false otherwise.
+func (rh *RouteHandler) checkEmptyBlobUpload(
+	name, sessionID string, response http.ResponseWriter, imgStore storageTypes.ImageStore,
+) bool {
+	_, err := imgStore.BlobUploadInfo(name, sessionID)
+	if err == nil {
+		return false
+	}
+
+	details := zerr.GetDetails(err)
+	if errors.Is(err, zerr.ErrUploadNotFound) {
+		details["session_id"] = sessionID
+		e := apiErr.NewError(apiErr.BLOB_UPLOAD_UNKNOWN).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
+	} else {
+		rh.c.Log.Error().Err(err).Msg("unexpected error getting upload info")
+		response.WriteHeader(http.StatusInternalServerError)
+	}
+
+	return true
+}
+
 // UpdateBlobUpload godoc
 // @Summary Update image blob/layer upload
 // @Description Update and finish an image's blob/layer upload given a digest
@@ -1624,109 +1723,99 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 		return
 	}
 
-	contentPresent := true
+	// Parse Content-Length if present (optional per spec, "if present")
+	contentLengthStr := request.Header.Get("Content-Length")
 
-	contentLen, err := strconv.ParseInt(request.Header.Get("Content-Length"), 10, 64)
-	if err != nil {
-		contentPresent = false
+	var contentLen int64
+	hasContentLength := contentLengthStr != ""
+	if hasContentLength {
+		var parseErr error
+		contentLen, parseErr = strconv.ParseInt(contentLengthStr, 10, 64)
+		if parseErr != nil || contentLen < 0 {
+			response.WriteHeader(http.StatusBadRequest)
+
+			return
+		}
 	}
 
-	contentRangePresent := true
+	// Check if Content-Range is present (optional per spec. "if present")
+	contentRangeStr := request.Header.Get("Content-Range")
+	hasContentRange := contentRangeStr != ""
 
-	if request.Header.Get("Content-Range") == "" {
-		contentRangePresent = false
-	}
-
-	// we expect at least one of "Content-Length" or "Content-Range" to be
-	// present
-	if !contentPresent && !contentRangePresent {
+	// Validate: if both headers are explicitly set to empty strings, return bad request
+	// (Empty strings are treated as missing, but explicitly setting both to empty is invalid)
+	if contentLengthStr == "" && contentRangeStr == "" &&
+		len(request.Header.Values("Content-Length")) > 0 && len(request.Header.Values("Content-Range")) > 0 {
 		response.WriteHeader(http.StatusBadRequest)
 
 		return
 	}
 
+	// According to spec, when closing a chunked upload session:
+	// - Content-Length and Content-Range are optional (if final chunk was already uploaded via PATCH)
+	// - If neither is present, all chunks were already uploaded, just finish the upload
+	// - If Content-Range is present, process the final chunk
+	// - If Content-Length is present but no Content-Range, it's a monolithic upload
+
 	var from, to int64
 
-	if contentPresent {
-		contentRange := request.Header.Get("Content-Range")
-		if contentRange == "" { // monolithic upload
-			from = 0
-
-			if contentLen == 0 {
-				goto finish
-			}
-
-			to = contentLen
-		} else if from, to, err = getContentRange(request); err != nil { // finish chunked upload
+	switch {
+	case hasContentRange:
+		// Process final chunk with Content-Range
+		var err error
+		if from, to, err = getContentRange(request); err != nil {
 			response.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
 
 			return
 		}
 
-		_, err = imgStore.PutBlobChunk(name, sessionID, from, to, request.Body)
-		if err != nil { //nolint:dupl
-			details := zerr.GetDetails(err)
-			if errors.Is(err, zerr.ErrBadUploadRange) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
-				details["session_id"] = sessionID
-				e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
-				zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
-			} else if errors.Is(err, zerr.ErrRepoNotFound) {
-				details["name"] = name
-				e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
-				zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
-			} else if errors.Is(err, zerr.ErrUploadNotFound) {
-				details["session_id"] = sessionID
-				e := apiErr.NewError(apiErr.BLOB_UPLOAD_UNKNOWN).AddDetail(details)
-				zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
-			} else {
-				// could be io.ErrUnexpectedEOF, syscall.EMFILE (Err:0x18 too many opened files), etc
-				rh.c.Log.Error().Err(err).Msg("unexpected error, removing .uploads/ files")
+		// If Content-Length is also present, verify it matches the range
+		if hasContentLength {
+			expectedLength := (to - from) + 1
+			if contentLen != expectedLength {
+				response.WriteHeader(http.StatusBadRequest)
 
-				if err = imgStore.DeleteBlobUpload(name, sessionID); err != nil {
-					rh.c.Log.Error().Err(err).Str("blobUpload", sessionID).Str("repository", name).
-						Msg("failed to remove blobUpload in repo")
-				}
-
-				response.WriteHeader(http.StatusInternalServerError)
+				return
 			}
+		}
 
+		_, err = imgStore.PutBlobChunk(name, sessionID, from, to, request.Body)
+		if rh.handleBlobUploadError(err, name, sessionID, "", response, imgStore) {
+			return
+		}
+	case hasContentLength:
+		// Monolithic upload (Content-Length present but no Content-Range)
+		from = 0
+
+		if contentLen == 0 {
+			// Content-Length is 0 with no Content-Range - either:
+			// 1. Empty blob upload (upload file is also empty)
+			// 2. Finishing chunked upload (all chunks already uploaded via PATCH)
+			// In both cases, skip chunk processing and go directly to finish
+			if rh.checkEmptyBlobUpload(name, sessionID, response, imgStore) {
+				return
+			}
+		} else {
+			to = contentLen
+			_, err := imgStore.PutBlobChunk(name, sessionID, from, to, request.Body)
+			if rh.handleBlobUploadError(err, name, sessionID, "", response, imgStore) {
+				return
+			}
+		}
+	default:
+		// If neither Content-Length nor Content-Range is present, all chunks were already uploaded
+		// via PATCH, so we skip chunk processing and go directly to finish
+		// However, we must validate that the upload session exists
+		if rh.checkEmptyBlobUpload(name, sessionID, response, imgStore) {
 			return
 		}
 	}
 
-finish:
 	// blob chunks already transferred, just finish
 	if err := imgStore.FinishBlobUpload(name, sessionID, request.Body, digest); err != nil {
-		details := zerr.GetDetails(err)
-		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
-			details["digest"] = digest.String()
-			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrBadUploadRange) {
-			details["session_id"] = sessionID
-			e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrRepoNotFound) {
-			details["name"] = name
-			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrUploadNotFound) {
-			details["session_id"] = sessionID
-			e := apiErr.NewError(apiErr.BLOB_UPLOAD_UNKNOWN).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
-		} else {
-			// could be io.ErrUnexpectedEOF, syscall.EMFILE (Err:0x18 too many opened files), etc
-			rh.c.Log.Error().Err(err).Msg("unexpected error, removing .uploads/ files")
-
-			if err = imgStore.DeleteBlobUpload(name, sessionID); err != nil {
-				rh.c.Log.Error().Err(err).Str("blobUpload", sessionID).Str("repository", name).
-					Msg("failed to remove blobUpload in repo")
-			}
-
-			response.WriteHeader(http.StatusInternalServerError)
+		if rh.handleBlobUploadError(err, name, sessionID, digest, response, imgStore) {
+			return
 		}
-
-		return
 	}
 
 	response.Header().Set("Location", getBlobUploadLocation(request.URL, name, digest))
