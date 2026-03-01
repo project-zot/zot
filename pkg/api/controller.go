@@ -542,7 +542,7 @@ func (c *Controller) StartBackgroundTasks() {
 	RunGCTasks(c.Config, c.StoreController, c.MetaDB, c.taskScheduler, c.Log, c.Audit)
 
 	// Enable running dedupe blobs both ways (dedupe or restore deduped blobs)
-	c.StoreController.DefaultStore.RunDedupeBlobs(time.Duration(0), c.taskScheduler)
+	//	c.StoreController.DefaultStore.RunDedupeBlobs(time.Duration(0), c.taskScheduler)
 
 	// Always call EnableSearchExtension to ensure proper logging, even when search is disabled
 	ext.EnableSearchExtension(c.Config, c.StoreController, c.MetaDB, c.taskScheduler, c.CveScanner, c.Log)
@@ -565,7 +565,7 @@ func (c *Controller) StartBackgroundTasks() {
 			// Enable running dedupe blobs both ways (dedupe or restore deduped blobs) for subpaths
 			substore := c.StoreController.SubStore[route]
 			if substore != nil {
-				substore.RunDedupeBlobs(time.Duration(0), c.taskScheduler)
+				//substore.RunDedupeBlobs(time.Duration(0), c.taskScheduler)
 
 				if extensionsConfig.IsMetricsEnabled() && storageConfig.StorageDriver == nil {
 					substore.PopulateStorageMetrics(time.Duration(0), c.taskScheduler)
