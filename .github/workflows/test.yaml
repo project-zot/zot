@@ -48,7 +48,7 @@ jobs:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
       - name: upload coverage
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-minimal
           path: coverage-minimal.txt
@@ -88,7 +88,7 @@ jobs:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
       - name: upload coverage
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-extended
           path: coverage-extended.txt
@@ -120,7 +120,7 @@ jobs:
       - name: run zot development-mode unit tests (possibly using failure injection)
         run: make test-devmode
       - name: upload coverage
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-devmode
           path: coverage-dev-*.txt
@@ -160,7 +160,7 @@ jobs:
           GCSMOCK_ENDPOINT: http://localhost:9000/
           STORAGE_EMULATOR_HOST: localhost:9000
       - name: upload coverage
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-needprivileges
           path: coverage-needprivileges-*.txt
@@ -190,7 +190,7 @@ jobs:
           mkdir unified-coverage
           cp coverage.txt coverage.html unified-coverage/
       - name: upload unified-coverage as build artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: unified-coverage
           path: unified-coverage/*
