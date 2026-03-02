@@ -62,7 +62,7 @@ require (
 	github.com/prometheus/client_model v0.6.2
 	github.com/rbcervilla/redisstore/v9 v9.0.0
 	github.com/redis/go-redis/v9 v9.18.0
-	github.com/regclient/regclient v0.11.1
+	github.com/regclient/regclient v0.11.2
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/sigstore/cosign/v3 v3.0.5
 	github.com/sigstore/sigstore v1.10.4
