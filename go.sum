@@ -258,8 +258,8 @@ github.com/aws/aws-sdk-go-v2/config v1.32.10 h1:9DMthfO6XWZYLfzZglAgW5Fyou2nRI5C
 github.com/aws/aws-sdk-go-v2/config v1.32.10/go.mod h1:2rUIOnA2JaiqYmSKYmRJlcMWy6qTj1vuRFscppSBMcw=
 github.com/aws/aws-sdk-go-v2/credentials v1.19.10 h1:EEhmEUFCE1Yhl7vDhNOI5OCL/iKMdkkYFTRpZXNw7m8=
 github.com/aws/aws-sdk-go-v2/credentials v1.19.10/go.mod h1:RnnlFCAlxQCkN2Q379B67USkBMu1PipEEiibzYN5UTE=
-github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.20.32 h1:ojCVN51FD7typ+PtJO2UYo4ssUyItayaSSd+Jgjib0s=
-github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.20.32/go.mod h1:jBYuQT8jjNv4GdWrt5MSAYMQPkULummysVx1zntRqqI=
+github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.20.33 h1:tINq0eg/HSimSYzqEpTRgy1fJr6XEhDALq3yImy1qnQ=
+github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.20.33/go.mod h1:rsl1XAK5eF2eDlMrBNLNhUK0f4Y0RAarD2EtCcQ+blc=
 github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.18 h1:Ii4s+Sq3yDfaMLpjrJsqD6SmG/Wq/P5L/hw2qa78UAY=
 github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.18/go.mod h1:6x81qnY++ovptLE6nWQeWrpXxbnlIex+4H4eYYGcqfc=
 github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.18 h1:F43zk1vemYIqPAwhjTjYIz0irU2EY7sOb/F5eJ3HuyM=
@@ -270,10 +270,10 @@ github.com/aws/aws-sdk-go-v2/internal/ini v1.8.4 h1:WKuaxf++XKWlHWu9ECbMlha8WOEG
 github.com/aws/aws-sdk-go-v2/internal/ini v1.8.4/go.mod h1:ZWy7j6v1vWGmPReu0iSGvRiise4YI5SkR3OHKTZ6Wuc=
 github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.16 h1:CjMzUs78RDDv4ROu3JnJn/Ig1r6ZD7/T2DXLLRpejic=
 github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.16/go.mod h1:uVW4OLBqbJXSHJYA9svT9BluSvvwbzLQ2Crf6UPzR3c=
-github.com/aws/aws-sdk-go-v2/service/dynamodb v1.55.0 h1:CyYoeHWjVSGimzMhlL0Z4l5gLCa++ccnRJKrsaNssxE=
-github.com/aws/aws-sdk-go-v2/service/dynamodb v1.55.0/go.mod h1:ctEsEHY2vFQc6i4KU07q4n68v7BAmTbujv2Y+z8+hQY=
-github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.32.10 h1:NR6jP7HvIfQ15R8MCuxNCm9l2b9AajLsABgV4b1Jz0M=
-github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.32.10/go.mod h1:v5yw5XvpeeVw+QcBlciQYgnnkCOK7ZLj8BiE9Uy5jEE=
+github.com/aws/aws-sdk-go-v2/service/dynamodb v1.56.0 h1:n5BubZVgbYyweQmdqMT+HMhH07wCxmMyBAQy/VhinoU=
+github.com/aws/aws-sdk-go-v2/service/dynamodb v1.56.0/go.mod h1:IFMlDGLL3eM098XqgRk27wateJOnrzp7zz93Wh/F9qk=
+github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.32.11 h1:ydF2yYRyuptemL5HCRDX0sxBWsdsoj6LjgSD1NxdNrQ=
+github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.32.11/go.mod h1:4uexBXnh1dUUAI9jQQ2l0QXW7llreUkzYxisghnH8Ss=
 github.com/aws/aws-sdk-go-v2/service/ebs v1.25.3 h1:0Z1Oz8bRQJ1I/kDmTbISFxKwptaJoghfjh4QrKmXzE0=
 github.com/aws/aws-sdk-go-v2/service/ebs v1.25.3/go.mod h1:qIEaYAxM0l8/Tq5XtqCgc4Zs1a14JXoO2wU+LcCQDVk=
 github.com/aws/aws-sdk-go-v2/service/ec2 v1.278.0 h1:Cx/Rs2zaG30Dn4QMvUGC5rCAZagA8heta0TWAdBE/Xc=
@@ -286,8 +286,8 @@ github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.5 h1:CeY9LUd
 github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.5/go.mod h1:AZLZf2fMaahW5s/wMRciu1sYbdsikT/UHwbUjOdEVTc=
 github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.7 h1:DIBqIrJ7hv+e4CmIk2z3pyKT+3B6qVMgRsawHiR3qso=
 github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.7/go.mod h1:vLm00xmBke75UmpNvOcZQ/Q30ZFjbczeLFqGx5urmGo=
-github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.11.17 h1:Nhx/OYX+ukejm9t/MkWI8sucnsiroNYNGb5ddI9ungQ=
-github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.11.17/go.mod h1:AjmK8JWnlAevq1b1NBtv5oQVG4iqnYXUufdgol+q9wg=
+github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.11.18 h1:J8H6iJPIb40gWCjAHfFCCergiy94TuJ5bFxaF+OGRcY=
+github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.11.18/go.mod h1:59002AlnnGT2qznAiC0Hi+WhheaEWTiWyAeA9DQf0/w=
 github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.18 h1:LTRCYFlnnKFlKsyIQxKhJuDuA3ZkrDQMRYm6rXiHlLY=
 github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.18/go.mod h1:XhwkgGG6bHSd00nO/mexWTcTjgd6PjuvWQMqSn2UaEk=
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.16 h1:NSbvS17MlI2lurYgXnCOLvCFX38sBW4eiVER7+kkgsU=
