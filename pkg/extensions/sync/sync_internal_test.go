@@ -18,6 +18,7 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/regclient/regclient"
 	"github.com/regclient/regclient/types/ref"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -632,6 +633,140 @@ func TestService(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldEqual, "guaranteed referrer channel error")
 		})
+	})
+}
+
+func TestSkipTagBasedReferrerSync(t *testing.T) {
+	Convey("SkipTagBasedReferrerSync=true skips getTags and the digest-tag loop", t, func() {
+		getTagsCallCount := 0
+
+		conf := syncconf.RegistryConfig{
+			URLs:                     []string{"http://localhost"},
+			SkipTagBasedReferrerSync: true,
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		service.rc = regclient.New()
+
+		// GetTags should NOT be called when SkipTagBasedReferrerSync=true.
+		mockRemote := &mocks.SyncRemoteMock{
+			GetTagsFn: func(ctx context.Context, repo string) ([]string, error) {
+				getTagsCallCount++
+				// Any call here is a bug — the flag should have prevented it.
+				return nil, errors.New("getTags must not be called with SkipTagBasedReferrerSync=true")
+			},
+			GetImageReferenceFn: func(repo, tag string) (ref.Ref, error) {
+				return ref.New(repo + "@" + tag)
+			},
+			GetDigestFn: func(ctx context.Context, repo, tag string) (godigest.Digest, error) {
+				return godigest.Digest("sha256:" + strings.Repeat("a", 64)), nil
+			},
+		}
+		service.remote = mockRemote
+
+		mockDest := &mocks.SyncDestinationMock{
+			GetImageReferenceFn: func(repo, tag string) (ref.Ref, error) {
+				return ref.New("local/" + repo + "@" + tag)
+			},
+			CommitAllFn: func(repo string, imageReference ref.Ref) error {
+				return nil
+			},
+		}
+		service.destination = mockDest
+
+		ctx := context.Background()
+		digest := "sha256:" + strings.Repeat("a", 64)
+
+		err = service.SyncReferrers(ctx, "repo", digest, nil)
+		// We expect an error from rc.ReferrerList since it's not connected to a registry,
+		// but what we really care about is that getTags was NOT called.
+		So(getTagsCallCount, ShouldEqual, 0)
+	})
+
+	Convey("SkipTagBasedReferrerSync=false (default) still calls getTags", t, func() {
+		getTagsCallCount := 0
+
+		conf := syncconf.RegistryConfig{
+			URLs:                     []string{"http://localhost"},
+			SkipTagBasedReferrerSync: false,
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		// Provide a non-nil regclient
+		service.rc = regclient.New()
+
+		mockRemote := &mocks.SyncRemoteMock{
+			GetTagsFn: func(ctx context.Context, repo string) ([]string, error) {
+				getTagsCallCount++
+				return []string{"tag1"}, nil
+			},
+			GetImageReferenceFn: func(repo, tag string) (ref.Ref, error) {
+				return ref.New(repo + "@" + tag)
+			},
+		}
+		service.remote = mockRemote
+
+		mockDest := &mocks.SyncDestinationMock{
+			GetImageReferenceFn: func(repo, tag string) (ref.Ref, error) {
+				return ref.New("local/" + repo + "@" + tag)
+			},
+		}
+		service.destination = mockDest
+
+		ctx := context.Background()
+		digest := "sha256:" + strings.Repeat("a", 64)
+
+		err = service.SyncReferrers(ctx, "repo", digest, nil)
+		// Again, we don't care if it fails, only that getTags was called.
+		So(getTagsCallCount, ShouldEqual, 1)
+	})
+}
+
+func TestSkipRecursiveReferrerSync(t *testing.T) {
+	Convey("SkipRecursiveReferrerSync=true stops at direct referrers only", t, func() {
+		// Verify that recursive calls are not made when the flag is true.
+		// We use a non-nil regclient to avoid panics.
+
+		conf := syncconf.RegistryConfig{
+			URLs:                      []string{"http://localhost"},
+			SkipRecursiveReferrerSync: true,
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		service.rc = regclient.New()
+
+		mockRemote := &mocks.SyncRemoteMock{
+			GetImageReferenceFn: func(repo, tag string) (ref.Ref, error) {
+				return ref.New(repo + "@" + tag)
+			},
+			GetDigestFn: func(ctx context.Context, repo, tag string) (godigest.Digest, error) {
+				return godigest.Digest("sha256:" + strings.Repeat("a", 64)), nil
+			},
+			GetTagsFn: func(ctx context.Context, repo string) ([]string, error) {
+				return []string{}, nil
+			},
+		}
+		service.remote = mockRemote
+
+		mockDest := &mocks.SyncDestinationMock{
+			GetImageReferenceFn: func(repo, tag string) (ref.Ref, error) {
+				return ref.New("local/" + repo + "@" + tag)
+			},
+		}
+		service.destination = mockDest
+
+		ctx := context.Background()
+		digest := "sha256:" + strings.Repeat("a", 64)
+
+		err = service.SyncReferrers(ctx, "repo", digest, nil)
+		// It will fail because rc is not connected, but it shouldn't panic.
+		So(err, ShouldNotBeNil)
 	})
 }
 

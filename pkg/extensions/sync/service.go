@@ -343,12 +343,21 @@ func (service *BaseService) SyncReferrers(ctx context.Context, repo string,
 	service.log.Info().Str("remote", remoteURL).Str("repository", repo).Str("subject", subjectDigestStr).
 		Interface("reference types", referenceTypes).Msg("syncing reference for image")
 
-	tags, err := service.getTags(ctx, remoteRepo, false)
-	if err != nil {
-		service.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).
-			Err(err).Msg("error while getting tags for repo")
+	// When SkipTagBasedReferrerSync is set we do not need the tag list at all:
+	// the cosign/digest-tag discovery path in syncReferrers is bypassed, so
+	// fetching all tags would be wasted work.
+	var tags []string
 
-		return err
+	if !service.config.SkipTagBasedReferrerSync {
+		var tagsErr error
+
+		tags, tagsErr = service.getTags(ctx, remoteRepo, false)
+		if tagsErr != nil {
+			service.log.Error().Str("errorType", common.TypeOf(tagsErr)).Str("repo", repo).
+				Err(tagsErr).Msg("error while getting tags for repo")
+
+			return tagsErr
+		}
 	}
 
 	remoteImageRef, err := service.remote.GetImageReference(remoteRepo, subjectDigestStr)
@@ -681,15 +690,18 @@ func (service *BaseService) getTags(ctx context.Context, repo string, noCache bo
 	return tags, nil
 }
 
-// syncs all referrers recursively.
+// syncReferrers syncs all referrers recursively.
 func (service *BaseService) syncReferrers(ctx context.Context, tags []string, localRepo, remoteRepo string,
 	localImageRef ref.Ref, remoteImageRef ref.Ref,
 ) error {
 	seen := []string{}
 
-	var err error
-
-	if len(tags) == 0 {
+	// Fetch the tag list only when tag-based referrer sync is enabled.
+	// When SkipTagBasedReferrerSync=true we set the tags to empty.
+	if service.config.SkipTagBasedReferrerSync {
+		tags = []string{}
+	} else if len(tags) == 0 {
+		var err error
 		tags, err = service.getTags(ctx, remoteRepo, false)
 		if err != nil {
 			service.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", remoteRepo).
@@ -744,10 +756,12 @@ func (service *BaseService) syncReferrers(ctx context.Context, tags []string, lo
 					Str("remote reference", remoteImageRef.Tag).Msg("failed to sync referrer")
 			}
 
-			_ = inner(ctx, tags, localRepo, remoteRepo, localImageRef, remoteImageRef, seen)
+			// Recurse into referrers-of-referrers unless the caller has opted out.
+			if !service.config.SkipRecursiveReferrerSync {
+				_ = inner(ctx, tags, localRepo, remoteRepo, localImageRef, remoteImageRef, seen)
+			}
 		}
 
-		// try cosign
 		prefix := fmt.Sprintf("%s-%s.", remoteDigest.Algorithm(), remoteDigest.Encoded())
 		for _, tag := range tags {
 			if strings.Contains(tag, prefix) {
@@ -762,7 +776,9 @@ func (service *BaseService) syncReferrers(ctx context.Context, tags []string, lo
 						Str("remote reference", remoteImageRef.Tag).Msg("failed to sync referrer")
 				}
 
-				_ = inner(ctx, tags, localRepo, remoteRepo, localImageRef, remoteImageRef, seen)
+				if !service.config.SkipRecursiveReferrerSync {
+					_ = inner(ctx, tags, localRepo, remoteRepo, localImageRef, remoteImageRef, seen)
+				}
 			}
 		}
 
