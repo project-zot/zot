@@ -302,7 +302,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: fake
         continue-on-error: true
       - name: Upload zot logs as build artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: zot-scale-out-dynamodb-logs
@@ -331,7 +331,7 @@ jobs:
           exit 1
       - name: Upload zb test results zip as build artifact
         if: steps.scale.outcome == 'success'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: zb-cloud-scale-out-perf-results-${{ github.sha }}
           path: ./zb-results/
@@ -389,7 +389,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: fake
         continue-on-error: true
       - name: Upload zot logs as build artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: zot-scale-out-redis-logs
@@ -418,7 +418,7 @@ jobs:
           exit 1
       - name: Upload zb test results zip as build artifact
         if: steps.scale.outcome == 'success'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: zb-cloud-scale-out-redis-results-${{ github.sha }}
           path: ./zb-results/
