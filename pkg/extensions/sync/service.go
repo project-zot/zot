@@ -371,7 +371,7 @@ func (service *BaseService) SyncReferrers(ctx context.Context, repo string,
 		return err
 	}
 
-	if err := service.syncReferrers(ctx, tags, repo, remoteRepo, localImageRef, remoteImageRef); err != nil {
+	if err := service.syncReferrers(ctx, tags, repo, remoteRepo, localImageRef, remoteImageRef, false); err != nil {
 		service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
 			Str("repo", repo).Str("reference", subjectDigestStr).Msg("failed to sync referrers")
 
@@ -629,7 +629,7 @@ func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo
 	}
 
 	if withReferrers {
-		_ = service.syncReferrers(ctx, repoTags, localRepo, remoteRepo, localImageRef, remoteImageRef)
+		_ = service.syncReferrers(ctx, repoTags, localRepo, remoteRepo, localImageRef, remoteImageRef, true)
 	}
 
 	// convert image to oci if needed
@@ -687,9 +687,9 @@ func (service *BaseService) getTags(ctx context.Context, repo string, noCache bo
 	return tags, nil
 }
 
-// syncs all referrers recursively.
+// syncs referrers of the given subject, when recursive is true also syncs referrers of those referrers.
 func (service *BaseService) syncReferrers(ctx context.Context, tags []string, localRepo, remoteRepo string,
-	localImageRef ref.Ref, remoteImageRef ref.Ref,
+	localImageRef ref.Ref, remoteImageRef ref.Ref, recursive bool,
 ) error {
 	seen := []string{}
 
@@ -706,11 +706,11 @@ func (service *BaseService) syncReferrers(ctx context.Context, tags []string, lo
 	}
 
 	var inner func(ctx context.Context, tags []string, localRepo, remoteRepo string,
-		localImageRef ref.Ref, remoteImageRef ref.Ref, seen []string,
+		localImageRef ref.Ref, remoteImageRef ref.Ref, seen []string, recursive bool,
 	) error
 
 	inner = func(ctx context.Context, tags []string, localRepo, remoteRepo string,
-		localImageRef ref.Ref, remoteImageRef ref.Ref, seen []string,
+		localImageRef ref.Ref, remoteImageRef ref.Ref, seen []string, recursive bool,
 	) error {
 		var err error
 
@@ -750,7 +750,9 @@ func (service *BaseService) syncReferrers(ctx context.Context, tags []string, lo
 					Str("remote reference", remoteImageRef.Tag).Msg("failed to sync referrer")
 			}
 
-			_ = inner(ctx, tags, localRepo, remoteRepo, localImageRef, remoteImageRef, seen)
+			if recursive {
+				_ = inner(ctx, tags, localRepo, remoteRepo, localImageRef, remoteImageRef, seen, recursive)
+			}
 		}
 
 		if service.config.ShouldSyncLegacyCosignTags() {
@@ -769,7 +771,9 @@ func (service *BaseService) syncReferrers(ctx context.Context, tags []string, lo
 							Str("remote reference", remoteImageRef.Tag).Msg("failed to sync referrer")
 					}
 
-					_ = inner(ctx, tags, localRepo, remoteRepo, localImageRef, remoteImageRef, seen)
+					if recursive {
+						_ = inner(ctx, tags, localRepo, remoteRepo, localImageRef, remoteImageRef, seen, recursive)
+					}
 				}
 			}
 		}
@@ -777,7 +781,7 @@ func (service *BaseService) syncReferrers(ctx context.Context, tags []string, lo
 		return err
 	}
 
-	return inner(ctx, tags, localRepo, remoteRepo, localImageRef, remoteImageRef, seen)
+	return inner(ctx, tags, localRepo, remoteRepo, localImageRef, remoteImageRef, seen, recursive)
 }
 
 func (service *BaseService) ResetCatalog() {

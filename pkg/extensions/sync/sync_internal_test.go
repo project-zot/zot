@@ -93,6 +93,8 @@ func TestService(t *testing.T) {
 	})
 
 	Convey("test SyncReferrers ReferrerList error", t, func() {
+		// SyncReferrers is the on-demand API; it calls syncReferrers(..., recursive=false)
+		// so only direct referrers are synced (no referrers-of-referrers).
 		conf := syncconf.RegistryConfig{
 			URLs: []string{"http://localhost"},
 		}
@@ -250,7 +252,13 @@ func TestService(t *testing.T) {
 		// Create an invalid remote reference that will cause ReferrerList to fail with "ref is not set" error
 		remoteImageRef := ref.Ref{}
 
-		err = service.syncReferrers(ctx, []string{"tag"}, "localrepo", "remoterepo", localImageRef, remoteImageRef)
+		err = service.syncReferrers(ctx, []string{"tag"}, "localrepo", "remoterepo", localImageRef, remoteImageRef, false)
+
+		// The error should be "ref is not set" as defined in regclient ReferrerList function
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring, "ref is not set")
+
+		err = service.syncReferrers(ctx, []string{"tag"}, "localrepo", "remoterepo", localImageRef, remoteImageRef, true)
 
 		// The error should be "ref is not set" as defined in regclient ReferrerList function
 		So(err, ShouldNotBeNil)
