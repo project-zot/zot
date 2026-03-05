@@ -5425,6 +5425,250 @@ func TestSyncedSignaturesMetaDB(t *testing.T) {
 	})
 }
 
+func TestSyncLegacyCosignTags(t *testing.T) {
+	Convey("SyncLegacyCosignTags controls whether legacy cosign/SBOM tags are synced", t, func() {
+		sctlr, srcBaseURL, srcDir, _ := makeUpstreamServer(t, false, false)
+		scm := test.NewControllerManager(sctlr)
+		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		defer scm.StopServer()
+
+		// Get image digest and add legacy SBOM tag on source (sha256-<digest>.sbom)
+		resp, err := resty.R().Get(srcBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		imageDigestStr := resp.Header().Get("Docker-Content-Digest")
+		So(imageDigestStr, ShouldNotBeEmpty)
+		imageDigest, err := godigest.Parse(imageDigestStr)
+		So(err, ShouldBeNil)
+
+		srcPort := getPortFromBaseURL(srcBaseURL)
+		attachSBOM(srcDir, srcPort, testImage, imageDigest)
+
+		legacyTag := imageDigest.Algorithm().String() + "-" + imageDigest.Encoded() + ".sbom"
+
+		tlsVerify := false
+		regex := ".*"
+		semver := false
+
+		Convey("With SyncLegacyCosignTags true (default), legacy tag is synced", func() {
+			syncLegacyTrue := true
+			syncRegistryConfig := syncconf.RegistryConfig{
+				Content: []syncconf.Content{
+					{Prefix: "**", Tags: &syncconf.Tags{Regex: &regex, Semver: &semver}},
+				},
+				URLs:                 []string{srcBaseURL},
+				TLSVerify:            &tlsVerify,
+				OnDemand:             true,
+				SyncLegacyCosignTags: &syncLegacyTrue,
+			}
+			defaultVal := true
+			syncConfig := &syncconf.Config{
+				Enable:     &defaultVal,
+				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+			}
+			dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+			dcm := test.NewControllerManager(dctlr)
+			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			defer dcm.StopServer()
+
+			// Trigger image sync
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			// Trigger referrers sync (pulls legacy tags when SyncLegacyCosignTags is true)
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/referrers/" + imageDigestStr)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// Legacy tag should be present on destination
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + legacyTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		})
+
+		Convey("With SyncLegacyCosignTags false, legacy tag is not synced", func() {
+			syncLegacyFalse := false
+			pollInterval, _ := time.ParseDuration("5s")
+			syncRegistryConfig := syncconf.RegistryConfig{
+				Content: []syncconf.Content{
+					{Prefix: "**", Tags: &syncconf.Tags{Regex: &regex, Semver: &semver}},
+				},
+				URLs:                 []string{srcBaseURL},
+				TLSVerify:            &tlsVerify,
+				OnDemand:             false,
+				PollInterval:         pollInterval,
+				SyncLegacyCosignTags: &syncLegacyFalse,
+			}
+			defaultVal := true
+			syncConfig := &syncconf.Config{
+				Enable:     &defaultVal,
+				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+			}
+			dctlr, destBaseURL, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
+			dcm := test.NewControllerManager(dctlr)
+			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			defer dcm.StopServer()
+
+			// Wait for periodic sync to complete (do not call GET manifest for legacy tag to avoid on-demand sync)
+			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output, "finished syncing repo", 30*time.Second)
+			So(err, ShouldBeNil)
+			So(found, ShouldBeTrue)
+			// Poll until testImage repo exists on destination (periodic sync may sync multiple repos)
+			var resp *resty.Response
+			for start := time.Now(); time.Since(start) < 30*time.Second; time.Sleep(500 * time.Millisecond) {
+				resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
+				if err == nil && resp != nil && resp.StatusCode() == http.StatusOK {
+					break
+				}
+			}
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// Verify via tags/list: legacy tag must not be present
+			var destTags TagsList
+			So(json.Unmarshal(resp.Body(), &destTags), ShouldBeNil)
+			So(destTags.Tags, ShouldNotContain, legacyTag)
+
+			// Verify via storage: index.json must not reference the legacy tag
+			indexPath := path.Join(destDir, testImage, "index.json")
+			indexBuf, err := os.ReadFile(indexPath)
+			So(err, ShouldBeNil)
+
+			var destIndex ispec.Index
+			So(json.Unmarshal(indexBuf, &destIndex), ShouldBeNil)
+
+			for _, desc := range destIndex.Manifests {
+				if tag, ok := desc.Annotations[ispec.AnnotationRefName]; ok && tag == legacyTag {
+					t.Fatalf("legacy tag %q should not be in destination index", legacyTag)
+				}
+			}
+		})
+	})
+}
+
+func TestSyncLegacyCosignTagsWithSignatures(t *testing.T) {
+	Convey("SyncLegacyCosignTags controls whether legacy cosign signature tags (.sig) are synced", t, func() {
+		sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, false)
+		scm := test.NewControllerManager(sctlr)
+		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		defer scm.StopServer()
+
+		// Push image and sign it (adds legacy .sig tag on source)
+		var digest godigest.Digest
+		So(func() { digest = pushRepo(srcBaseURL, testSignedImage) }, ShouldNotPanic)
+		srcPort := getPortFromBaseURL(srcBaseURL)
+		cwd, err := os.Getwd()
+		So(err, ShouldBeNil)
+		defer func() { _ = os.Chdir(cwd) }()
+		tdir := t.TempDir()
+		_ = os.Chdir(tdir)
+		generateKeyPairs(tdir)
+		So(func() { signImage(tdir, srcPort, testSignedImage, digest) }, ShouldNotPanic)
+
+		legacySigTag := digest.Algorithm().String() + "-" + digest.Encoded() + ".sig"
+		imageDigestStr := digest.String()
+		tlsVerify := false
+		regex := ".*"
+		semver := false
+
+		Convey("With SyncLegacyCosignTags true, legacy signature tag is synced", func() {
+			syncLegacyTrue := true
+			syncRegistryConfig := syncconf.RegistryConfig{
+				Content: []syncconf.Content{
+					{Prefix: "**", Tags: &syncconf.Tags{Regex: &regex, Semver: &semver}},
+				},
+				URLs:                 []string{srcBaseURL},
+				TLSVerify:            &tlsVerify,
+				OnDemand:             true,
+				SyncLegacyCosignTags: &syncLegacyTrue,
+			}
+			defaultVal := true
+			syncConfig := &syncconf.Config{
+				Enable:     &defaultVal,
+				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+			}
+			dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+			dcm := test.NewControllerManager(dctlr)
+			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			defer dcm.StopServer()
+
+			// Trigger image sync
+			resp, err := destClient.R().Get(destBaseURL + "/v2/" + testSignedImage + "/manifests/" + testImageTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			// Trigger referrers sync (pulls legacy .sig when SyncLegacyCosignTags is true)
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testSignedImage + "/referrers/" + imageDigestStr)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// Legacy signature tag should be present on destination
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testSignedImage + "/manifests/" + legacySigTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		})
+
+		Convey("With SyncLegacyCosignTags false, legacy signature tag is not synced", func() {
+			syncLegacyFalse := false
+			pollInterval, _ := time.ParseDuration("5s")
+			syncRegistryConfig := syncconf.RegistryConfig{
+				Content: []syncconf.Content{
+					{Prefix: "**", Tags: &syncconf.Tags{Regex: &regex, Semver: &semver}},
+				},
+				URLs:                 []string{srcBaseURL},
+				TLSVerify:            &tlsVerify,
+				OnDemand:             false,
+				PollInterval:         pollInterval,
+				SyncLegacyCosignTags: &syncLegacyFalse,
+			}
+			defaultVal := true
+			syncConfig := &syncconf.Config{
+				Enable:     &defaultVal,
+				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+			}
+			dctlr, destBaseURL, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
+			dcm := test.NewControllerManager(dctlr)
+			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			defer dcm.StopServer()
+
+			// Wait for periodic sync to complete for this repo (do not call GET manifest for legacy tag to avoid on-demand sync)
+			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output, "finished syncing repo", 30*time.Second)
+			So(err, ShouldBeNil)
+			So(found, ShouldBeTrue)
+			// Poll until signed-repo exists on destination (periodic sync may sync multiple repos)
+			var resp *resty.Response
+			for start := time.Now(); time.Since(start) < 30*time.Second; time.Sleep(500 * time.Millisecond) {
+				resp, err = destClient.R().Get(destBaseURL + "/v2/" + testSignedImage + "/tags/list")
+				if err == nil && resp != nil && resp.StatusCode() == http.StatusOK {
+					break
+				}
+			}
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// Verify via tags/list: legacy signature tag must not be present
+			var destTags TagsList
+			So(json.Unmarshal(resp.Body(), &destTags), ShouldBeNil)
+			So(destTags.Tags, ShouldNotContain, legacySigTag)
+
+			// Verify via storage: index.json must not reference the legacy signature tag
+			indexPath := path.Join(destDir, testSignedImage, "index.json")
+			indexBuf, err := os.ReadFile(indexPath)
+			So(err, ShouldBeNil)
+
+			var destIndex ispec.Index
+			So(json.Unmarshal(indexBuf, &destIndex), ShouldBeNil)
+
+			for _, desc := range destIndex.Manifests {
+				if tag, ok := desc.Annotations[ispec.AnnotationRefName]; ok && tag == legacySigTag {
+					t.Fatalf("legacy signature tag %q should not be in destination index", legacySigTag)
+				}
+			}
+		})
+	})
+}
+
 func TestOnDemandRetryGoroutine(t *testing.T) {
 	Convey("Verify ondemand sync retries in background on error", t, func() {
 		srcPort := test.GetFreePort()

@@ -32,10 +32,17 @@ type RegistryConfig struct {
 	MaxRetries            *int
 	RetryDelay            *time.Duration
 	OnlySigned            *bool
+	SyncLegacyCosignTags  *bool // when unset, defaults to true
 	CredentialHelper      string
 	PreserveDigest        bool          // sync without converting
 	SyncTimeout           time.Duration // overall HTTP client timeout for all sync operations
 	ResponseHeaderTimeout time.Duration `yaml:"-"` // response header timeout; set in root.go
+}
+
+// ShouldSyncLegacyCosignTags returns whether to sync legacy cosign tags (e.g. sha256-<digest>.sig/sbom).
+// Default is true when SyncLegacyCosignTags is unset (nil).
+func (r RegistryConfig) ShouldSyncLegacyCosignTags() bool {
+	return r.SyncLegacyCosignTags == nil || *r.SyncLegacyCosignTags
 }
 
 type Content struct {
