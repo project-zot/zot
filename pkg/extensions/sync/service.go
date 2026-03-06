@@ -464,7 +464,7 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 }
 
 func (service *BaseService) syncRef(ctx context.Context, localRepo string, remoteImageRef, localImageRef ref.Ref,
-	remoteDigest godigest.Digest, recursive bool,
+	remoteDigest godigest.Digest,
 ) (bool, error) {
 	var reference string
 
@@ -479,9 +479,6 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 	}
 
 	copyOpts := []regclient.ImageOpts{}
-	if recursive {
-		copyOpts = append(copyOpts, regclient.ImageWithReferrers())
-	}
 
 	// check if image is already synced
 	skipImage, err = service.destination.CanSkipImage(localRepo, reference, remoteDigest)
@@ -623,7 +620,7 @@ func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo
 	defer service.destination.CleanupImage(localImageRef, localRepo) //nolint: errcheck
 
 	// first sync image
-	skipped, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, localDigest, false)
+	skipped, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, localDigest)
 	if err != nil {
 		return err
 	}
@@ -743,7 +740,7 @@ func (service *BaseService) syncReferrers(ctx context.Context, tags []string, lo
 
 			localImageRef = localImageRef.SetDigest(desc.Digest.String())
 
-			_, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, desc.Digest, false)
+			_, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, desc.Digest)
 			if err != nil {
 				service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
 					Str("repo", localRepo).Str("local reference", localImageRef.Tag).
@@ -764,7 +761,7 @@ func (service *BaseService) syncReferrers(ctx context.Context, tags []string, lo
 
 					localImageRef = localImageRef.SetTag(tag)
 
-					_, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, remoteDigest, true)
+					_, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, remoteDigest)
 					if err != nil {
 						service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
 							Str("repo", localRepo).Str("local reference", localImageRef.Tag).
