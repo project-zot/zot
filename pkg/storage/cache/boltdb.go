@@ -114,6 +114,10 @@ func (d *BoltDBDriver) PutBlob(digest godigest.Digest, path string) error {
 		}
 	}
 
+	if len(path) == 0 {
+		return zerr.ErrEmptyValue
+	}
+
 	if err := d.db.Update(func(tx *bbolt.Tx) error {
 		root := tx.Bucket([]byte(constants.BlobsCache))
 		if root == nil {
@@ -128,21 +132,6 @@ func (d *BoltDBDriver) PutBlob(digest godigest.Digest, path string) error {
 		if err != nil {
 			// this is a serious failure
 			d.log.Error().Err(err).Str("bucket", digest.String()).Msg("failed to create a bucket")
-
-			return err
-		}
-
-		// create nested deduped bucket where we store all the deduped blobs + original blob
-		deduped, err := bucket.CreateBucketIfNotExists([]byte(constants.DuplicatesBucket))
-		if err != nil {
-			// this is a serious failure
-			d.log.Error().Err(err).Str("bucket", constants.DuplicatesBucket).Msg("failed to create a bucket")
-
-			return err
-		}
-
-		if err := deduped.Put([]byte(path), nil); err != nil {
-			d.log.Error().Err(err).Str("bucket", constants.DuplicatesBucket).Str("value", path).Msg("failed to put record")
 
 			return err
 		}
@@ -164,7 +153,30 @@ func (d *BoltDBDriver) PutBlob(digest godigest.Digest, path string) error {
 
 				return err
 			}
+			d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("inserted in original bucket")
+
+			return nil
+		} else if origin.Get([]byte(path)) != nil { // idempotent
+			d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("inserted same key in original bucket")
+			return nil
 		}
+
+		// create nested deduped bucket where we store all the deduped blobs + original blob
+		deduped, err := bucket.CreateBucketIfNotExists([]byte(constants.DuplicatesBucket))
+		if err != nil {
+			// this is a serious failure
+			d.log.Error().Err(err).Str("bucket", constants.DuplicatesBucket).Msg("failed to create a bucket")
+
+			return err
+		}
+
+		if err := deduped.Put([]byte(path), nil); err != nil {
+			d.log.Error().Err(err).Str("bucket", constants.DuplicatesBucket).Str("value", path).Msg("failed to put record")
+
+			return err
+		}
+
+		d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("inserted in duplicates bucket")
 
 		return nil
 	}); err != nil {
@@ -255,6 +267,8 @@ func (d *BoltDBDriver) GetBlob(digest godigest.Digest) (string, error) {
 }
 
 func (d *BoltDBDriver) HasBlob(digest godigest.Digest, blob string) bool {
+	d.log.Debug().Str("digest", digest.String()).Str("blob", "blob").Msg("checking blob in cache")
+
 	if err := d.db.View(func(tx *bbolt.Tx) error {
 		root := tx.Bucket([]byte(constants.BlobsCache))
 		if root == nil {
@@ -275,16 +289,21 @@ func (d *BoltDBDriver) HasBlob(digest godigest.Digest, blob string) bool {
 			return zerr.ErrCacheMiss
 		}
 
+		if origin.Get([]byte(blob)) != nil {
+			d.log.Debug().Str("key", blob).Msg("found in original bucket")
+			return nil
+		}
+
 		deduped := bucket.Bucket([]byte(constants.DuplicatesBucket))
 		if deduped == nil {
 			return zerr.ErrCacheMiss
 		}
 
-		if origin.Get([]byte(blob)) == nil {
-			if deduped.Get([]byte(blob)) == nil {
-				return zerr.ErrCacheMiss
-			}
+		if deduped.Get([]byte(blob)) == nil {
+			return zerr.ErrCacheMiss
 		}
+
+		d.log.Debug().Str("key", blob).Msg("found in duplicates bucket")
 
 		return nil
 	}); err != nil {
@@ -330,22 +349,34 @@ func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 			return zerr.ErrCacheMiss
 		}
 
+		// look first in the duplicates bucket
 		deduped := bucket.Bucket([]byte(constants.DuplicatesBucket))
-		if deduped == nil {
-			return zerr.ErrCacheMiss
-		}
+		if deduped != nil {
+			if deduped.Get([]byte(path)) != nil {
+				if err := deduped.Delete([]byte(path)); err != nil {
+					d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", constants.DuplicatesBucket).
+						Str("path", path).Msg("failed to delete")
 
-		if err := deduped.Delete([]byte(path)); err != nil {
-			d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", constants.DuplicatesBucket).
-				Str("path", path).Msg("failed to delete")
+					return err
+				}
 
-			return err
+				d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("deleted from dedupe bucket")
+
+				return nil
+			}
 		}
 
 		origin := bucket.Bucket([]byte(constants.OriginalBucket))
 		if origin != nil {
-			originBlob := d.getOne(origin)
-			if originBlob != nil {
+			if origin.Get([]byte(path)) != nil {
+
+				dedupeBlob := d.getOne(deduped)
+				if dedupeBlob != nil {
+					d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("more in dedupe bucket, leaving original alone")
+
+					return nil
+				}
+
 				if err := origin.Delete([]byte(path)); err != nil {
 					d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", constants.OriginalBucket).
 						Str("path", path).Msg("failed to delete")
@@ -353,16 +384,20 @@ func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 					return err
 				}
 
-				// move next candidate to origin bucket, next GetKey will return this one and storage will move the content here
-				dedupedBlob := d.getOne(deduped)
-				if dedupedBlob != nil {
-					if err := origin.Put(dedupedBlob, nil); err != nil {
-						d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", constants.OriginalBucket).Str("path", path).
-							Msg("failed to put")
+				d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("deleted from original bucket")
 
-						return err
-					}
-				}
+				/*
+					// move next candidate to origin bucket, next GetKey will return this one and storage will move the content here
+					dedupedBlob := d.getOne(deduped)
+					if dedupedBlob != nil {
+						if err := origin.Put(dedupedBlob, nil); err != nil {
+							d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", constants.OriginalBucket).Str("path", path).
+								Msg("failed to put")
+
+							return err
+
+						}
+				*/
 			}
 		}
 
@@ -376,9 +411,11 @@ func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 
 				return err
 			}
+
+			return nil
 		}
 
-		return nil
+		return zerr.ErrCacheMiss
 	}); err != nil {
 		return err
 	}
