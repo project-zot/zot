@@ -5425,6 +5425,304 @@ func TestSyncedSignaturesMetaDB(t *testing.T) {
 	})
 }
 
+func TestSyncLegacyCosignTags(t *testing.T) {
+	Convey("SyncLegacyCosignTags controls whether legacy cosign/SBOM tags are synced", t, func() {
+		sctlr, srcBaseURL, srcDir, _ := makeUpstreamServer(t, false, false)
+		scm := test.NewControllerManager(sctlr)
+		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		defer scm.StopServer()
+
+		// Get image digest and add legacy SBOM tag on source (sha256-<digest>.sbom)
+		resp, err := resty.R().Get(srcBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		imageDigestStr := resp.Header().Get("Docker-Content-Digest")
+		So(imageDigestStr, ShouldNotBeEmpty)
+		imageDigest, err := godigest.Parse(imageDigestStr)
+		So(err, ShouldBeNil)
+
+		srcPort := getPortFromBaseURL(srcBaseURL)
+		attachSBOM(srcDir, srcPort, testImage, imageDigest)
+
+		legacyTag := imageDigest.Algorithm().String() + "-" + imageDigest.Encoded() + ".sbom"
+
+		tlsVerify := false
+		regex := ".*"
+		semver := false
+
+		Convey("With SyncLegacyCosignTags true (default), legacy tag is synced", func() {
+			syncLegacyTrue := true
+			syncRegistryConfig := syncconf.RegistryConfig{
+				Content: []syncconf.Content{
+					{Prefix: "**", Tags: &syncconf.Tags{Regex: &regex, Semver: &semver}},
+				},
+				URLs:                 []string{srcBaseURL},
+				TLSVerify:            &tlsVerify,
+				OnDemand:             true,
+				SyncLegacyCosignTags: &syncLegacyTrue,
+			}
+			defaultVal := true
+			syncConfig := &syncconf.Config{
+				Enable:     &defaultVal,
+				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+			}
+			dctlr, destBaseURL, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
+			dcm := test.NewControllerManager(dctlr)
+			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			defer dcm.StopServer()
+
+			// Trigger image sync
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			// Trigger referrers sync (pulls legacy tags when SyncLegacyCosignTags is true)
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/referrers/" + imageDigestStr)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// Verify via storage (avoid GET manifest for legacy tag, which can trigger on-demand sync)
+			indexPath := path.Join(destDir, testImage, "index.json")
+			found := false
+
+			for start := time.Now(); time.Since(start) < 30*time.Second; time.Sleep(250 * time.Millisecond) {
+				indexBuf, err := os.ReadFile(indexPath)
+				if err != nil {
+					continue
+				}
+
+				var destIndex ispec.Index
+				if json.Unmarshal(indexBuf, &destIndex) != nil {
+					continue
+				}
+
+				for _, desc := range destIndex.Manifests {
+					if tag, ok := desc.Annotations[ispec.AnnotationRefName]; ok && tag == legacyTag {
+						found = true
+
+						break
+					}
+				}
+
+				if found {
+					break
+				}
+			}
+
+			if !found {
+				t.Fatalf("legacy tag %q should be present on destination index", legacyTag)
+			}
+		})
+
+		Convey("With SyncLegacyCosignTags false, legacy tag is not synced", func() {
+			syncLegacyFalse := false
+			pollInterval, _ := time.ParseDuration("5s")
+			syncRegistryConfig := syncconf.RegistryConfig{
+				Content: []syncconf.Content{
+					{Prefix: "**", Tags: &syncconf.Tags{Regex: &regex, Semver: &semver}},
+				},
+				URLs:                 []string{srcBaseURL},
+				TLSVerify:            &tlsVerify,
+				OnDemand:             false,
+				PollInterval:         pollInterval,
+				SyncLegacyCosignTags: &syncLegacyFalse,
+			}
+			defaultVal := true
+			syncConfig := &syncconf.Config{
+				Enable:     &defaultVal,
+				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+			}
+			dctlr, destBaseURL, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
+			dcm := test.NewControllerManager(dctlr)
+			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			defer dcm.StopServer()
+
+			// Wait for periodic sync to complete (do not call GET manifest for legacy tag to avoid on-demand sync)
+			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output, "finished syncing repo", 30*time.Second)
+			So(err, ShouldBeNil)
+			So(found, ShouldBeTrue)
+			// Poll until testImage repo exists on destination (periodic sync may sync multiple repos)
+			var resp *resty.Response
+			for start := time.Now(); time.Since(start) < 30*time.Second; time.Sleep(500 * time.Millisecond) {
+				resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
+				if err == nil && resp != nil && resp.StatusCode() == http.StatusOK {
+					break
+				}
+			}
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// Verify via tags/list: legacy tag must not be present
+			var destTags TagsList
+			So(json.Unmarshal(resp.Body(), &destTags), ShouldBeNil)
+			So(destTags.Tags, ShouldNotContain, legacyTag)
+
+			// Verify via storage: index.json must not reference the legacy tag
+			indexPath := path.Join(destDir, testImage, "index.json")
+			indexBuf, err := os.ReadFile(indexPath)
+			So(err, ShouldBeNil)
+
+			var destIndex ispec.Index
+			So(json.Unmarshal(indexBuf, &destIndex), ShouldBeNil)
+
+			for _, desc := range destIndex.Manifests {
+				if tag, ok := desc.Annotations[ispec.AnnotationRefName]; ok && tag == legacyTag {
+					t.Fatalf("legacy tag %q should not be in destination index", legacyTag)
+				}
+			}
+		})
+	})
+}
+
+func TestSyncLegacyCosignTagsWithSignatures(t *testing.T) {
+	Convey("SyncLegacyCosignTags controls whether legacy cosign signature tags (.sig) are synced", t, func() {
+		sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, false)
+		scm := test.NewControllerManager(sctlr)
+		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		defer scm.StopServer()
+
+		// Push image and sign it (adds legacy .sig tag on source)
+		var digest godigest.Digest
+		So(func() { digest = pushRepo(srcBaseURL, testSignedImage) }, ShouldNotPanic)
+		srcPort := getPortFromBaseURL(srcBaseURL)
+		cwd, err := os.Getwd()
+		So(err, ShouldBeNil)
+		defer func() { _ = os.Chdir(cwd) }()
+		tdir := t.TempDir()
+		_ = os.Chdir(tdir)
+		generateKeyPairs(tdir)
+		So(func() { signImage(tdir, srcPort, testSignedImage, digest) }, ShouldNotPanic)
+
+		legacySigTag := digest.Algorithm().String() + "-" + digest.Encoded() + ".sig"
+		imageDigestStr := digest.String()
+		tlsVerify := false
+		regex := ".*"
+		semver := false
+
+		Convey("With SyncLegacyCosignTags true, legacy signature tag is synced", func() {
+			syncLegacyTrue := true
+			syncRegistryConfig := syncconf.RegistryConfig{
+				Content: []syncconf.Content{
+					{Prefix: "**", Tags: &syncconf.Tags{Regex: &regex, Semver: &semver}},
+				},
+				URLs:                 []string{srcBaseURL},
+				TLSVerify:            &tlsVerify,
+				OnDemand:             true,
+				SyncLegacyCosignTags: &syncLegacyTrue,
+			}
+			defaultVal := true
+			syncConfig := &syncconf.Config{
+				Enable:     &defaultVal,
+				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+			}
+			dctlr, destBaseURL, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
+			dcm := test.NewControllerManager(dctlr)
+			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			defer dcm.StopServer()
+
+			// Trigger image sync
+			resp, err := destClient.R().Get(destBaseURL + "/v2/" + testSignedImage + "/manifests/" + testImageTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			// Trigger referrers sync (pulls legacy .sig when SyncLegacyCosignTags is true)
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testSignedImage + "/referrers/" + imageDigestStr)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// Verify via storage (avoid GET manifest for legacy tag, which can trigger on-demand sync)
+			indexPath := path.Join(destDir, testSignedImage, "index.json")
+			found := false
+
+			for start := time.Now(); time.Since(start) < 30*time.Second; time.Sleep(250 * time.Millisecond) {
+				indexBuf, err := os.ReadFile(indexPath)
+				if err != nil {
+					continue
+				}
+
+				var destIndex ispec.Index
+				if json.Unmarshal(indexBuf, &destIndex) != nil {
+					continue
+				}
+
+				for _, desc := range destIndex.Manifests {
+					if tag, ok := desc.Annotations[ispec.AnnotationRefName]; ok && tag == legacySigTag {
+						found = true
+
+						break
+					}
+				}
+
+				if found {
+					break
+				}
+			}
+
+			if !found {
+				t.Fatalf("legacy signature tag %q should be present on destination index", legacySigTag)
+			}
+		})
+
+		Convey("With SyncLegacyCosignTags false, legacy signature tag is not synced", func() {
+			syncLegacyFalse := false
+			pollInterval, _ := time.ParseDuration("5s")
+			syncRegistryConfig := syncconf.RegistryConfig{
+				Content: []syncconf.Content{
+					{Prefix: "**", Tags: &syncconf.Tags{Regex: &regex, Semver: &semver}},
+				},
+				URLs:                 []string{srcBaseURL},
+				TLSVerify:            &tlsVerify,
+				OnDemand:             false,
+				PollInterval:         pollInterval,
+				SyncLegacyCosignTags: &syncLegacyFalse,
+			}
+			defaultVal := true
+			syncConfig := &syncconf.Config{
+				Enable:     &defaultVal,
+				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+			}
+			dctlr, destBaseURL, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
+			dcm := test.NewControllerManager(dctlr)
+			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			defer dcm.StopServer()
+
+			// Wait for periodic sync to complete for this repo (do not call GET manifest for legacy tag to avoid on-demand sync)
+			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output, "finished syncing repo", 30*time.Second)
+			So(err, ShouldBeNil)
+			So(found, ShouldBeTrue)
+			// Poll until signed-repo exists on destination (periodic sync may sync multiple repos)
+			var resp *resty.Response
+			for start := time.Now(); time.Since(start) < 30*time.Second; time.Sleep(500 * time.Millisecond) {
+				resp, err = destClient.R().Get(destBaseURL + "/v2/" + testSignedImage + "/tags/list")
+				if err == nil && resp != nil && resp.StatusCode() == http.StatusOK {
+					break
+				}
+			}
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// Verify via tags/list: legacy signature tag must not be present
+			var destTags TagsList
+			So(json.Unmarshal(resp.Body(), &destTags), ShouldBeNil)
+			So(destTags.Tags, ShouldNotContain, legacySigTag)
+
+			// Verify via storage: index.json must not reference the legacy signature tag
+			indexPath := path.Join(destDir, testSignedImage, "index.json")
+			indexBuf, err := os.ReadFile(indexPath)
+			So(err, ShouldBeNil)
+
+			var destIndex ispec.Index
+			So(json.Unmarshal(indexBuf, &destIndex), ShouldBeNil)
+
+			for _, desc := range destIndex.Manifests {
+				if tag, ok := desc.Annotations[ispec.AnnotationRefName]; ok && tag == legacySigTag {
+					t.Fatalf("legacy signature tag %q should not be in destination index", legacySigTag)
+				}
+			}
+		})
+	})
+}
+
 func TestOnDemandRetryGoroutine(t *testing.T) {
 	Convey("Verify ondemand sync retries in background on error", t, func() {
 		srcPort := test.GetFreePort()
@@ -7498,6 +7796,343 @@ func TestECRCredentialsHelper(t *testing.T) {
 			_, err := credentialHelper.RefreshCredentials(remoteAddress)
 			So(err, ShouldBeNil)
 		})
+	})
+}
+
+// TestOnDemandReferrerSyncFlags verifies SyncLegacyCosignTags and on-demand
+// non-recursive referrer sync in a full upstream/downstream server setup.
+//
+// Topology pushed to the upstream:
+//
+//	testImage:testImageTag  (base image)
+//	  ├── oci-referrer        (OCI-spec referrer — attached via subject field)
+//	  └── sha256-<hex>.sig    (legacy cosign-style digest-encoded tag)
+//
+// With SyncLegacyCosignTags=false, referrers from the referrers API are synced,
+// but the legacy .sig tag is not; the .sig tag must not appear on the downstream.
+// On-demand SyncReferrers never recurses (only direct referrers are synced);
+// recursive referrer sync is done only in periodic sync.
+func TestOnDemandReferrerSyncFlags(t *testing.T) {
+	Convey("SyncLegacyCosignTags=false syncs OCI referrers but not digest-tag referrers", t, func() {
+		sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, false)
+
+		scm := test.NewControllerManager(sctlr)
+		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
+		defer scm.StopServer()
+
+		// ── 1. Fetch the subject digest ──────────────────────────────────────
+		resp, err := resty.R().Get(srcBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		subjectDigest := resp.Header().Get("Docker-Content-Digest")
+		subjectSize := len(resp.Body())
+
+		// ── 2. Push an OCI referrer (attached via subject field) ─────────────
+		_ = pushBlob(srcBaseURL, testImage, ispec.DescriptorEmptyJSON.Data)
+
+		ociRef := ispec.Manifest{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			Subject: &ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageManifest,
+				Digest:    godigest.Digest(subjectDigest),
+				Size:      int64(subjectSize),
+			},
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeEmptyJSON,
+				Digest:    ispec.DescriptorEmptyJSON.Digest,
+				Size:      2,
+			},
+			Layers: []ispec.Descriptor{{
+				MediaType: ispec.MediaTypeEmptyJSON,
+				Digest:    ispec.DescriptorEmptyJSON.Digest,
+				Size:      2,
+			}},
+			MediaType: ispec.MediaTypeImageManifest,
+		}
+
+		ociRefBlob, err := json.Marshal(ociRef)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().
+			SetHeader("Content-type", ispec.MediaTypeImageManifest).
+			SetBody(ociRefBlob).
+			Put(srcBaseURL + "/v2/" + testImage + "/manifests/oci.ref")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// ── 3. Push a legacy cosign digest-tag referrer (sha256-<hex>.sig) ───
+		sigTag := fmt.Sprintf("%s-%s.sig",
+			godigest.Digest(subjectDigest).Algorithm(),
+			godigest.Digest(subjectDigest).Encoded())
+
+		_ = pushBlob(srcBaseURL, testImage, ispec.DescriptorEmptyJSON.Data)
+
+		sigManifest := ispec.Manifest{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.dev.cosign.simplesigning.v1+json",
+				Digest:    ispec.DescriptorEmptyJSON.Digest,
+				Size:      2,
+			},
+			Layers: []ispec.Descriptor{{
+				MediaType: ispec.MediaTypeEmptyJSON,
+				Digest:    ispec.DescriptorEmptyJSON.Digest,
+				Size:      2,
+			}},
+			MediaType: ispec.MediaTypeImageManifest,
+		}
+
+		sigBlob, err := json.Marshal(sigManifest)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().
+			SetHeader("Content-type", ispec.MediaTypeImageManifest).
+			SetBody(sigBlob).
+			Put(srcBaseURL + "/v2/" + testImage + "/manifests/" + sigTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// Verify upstream has both the OCI referrer and the sig tag.
+		resp, err = resty.R().Get(srcBaseURL + "/v2/" + testImage + "/referrers/" + subjectDigest)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		var upstreamIdx ispec.Index
+
+		So(json.Unmarshal(resp.Body(), &upstreamIdx), ShouldBeNil)
+		So(len(upstreamIdx.Manifests), ShouldEqual, 1) // only OCI referrer in referrers API
+
+		resp, err = resty.R().Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(resp.String(), ShouldContainSubstring, sigTag)
+
+		// ── 4. Start downstream with SyncLegacyCosignTags=false ──────────────
+		var tlsVerify bool
+		syncLegacyFalse := false
+
+		syncRegistryConfig := syncconf.RegistryConfig{
+			Content: []syncconf.Content{{
+				Prefix: testImage,
+			}},
+			URLs:                 []string{srcBaseURL},
+			TLSVerify:            &tlsVerify,
+			OnDemand:             true,
+			SyncLegacyCosignTags: &syncLegacyFalse,
+		}
+
+		defaultVal := true
+		syncConfig := &syncconf.Config{
+			Enable:     &defaultVal,
+			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+		}
+
+		dctlr, destBaseURL, _, _ := makeDownstreamServer(t, false, syncConfig)
+
+		dcm := test.NewControllerManager(dctlr)
+		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
+		defer dcm.StopServer()
+
+		// ── 5. Trigger on-demand sync of the base image ──────────────────────
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// ── 6. Trigger on-demand sync of referrers ───────────────────────────
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/referrers/" + subjectDigest)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		var downstreamIdx ispec.Index
+
+		So(json.Unmarshal(resp.Body(), &downstreamIdx), ShouldBeNil)
+		// OCI referrer must be present.
+		So(len(downstreamIdx.Manifests), ShouldEqual, 1)
+
+		// ── 7. The sig tag must NOT have been synced ──────────────────────────
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(resp.String(), ShouldNotContainSubstring, sigTag)
+	})
+
+	Convey("On-demand SyncReferrers syncs only direct referrers (no recursion)", t, func() {
+		sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, false)
+
+		scm := test.NewControllerManager(sctlr)
+		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
+		defer scm.StopServer()
+
+		// ── 1. Fetch the subject digest ──────────────────────────────────────
+		resp, err := resty.R().Get(srcBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		subjectDigest := resp.Header().Get("Docker-Content-Digest")
+		subjectSize := len(resp.Body())
+
+		// ── 2. Push a direct OCI referrer ────────────────────────────────────
+		_ = pushBlob(srcBaseURL, testImage, ispec.DescriptorEmptyJSON.Data)
+
+		directRef := ispec.Manifest{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			Subject: &ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageManifest,
+				Digest:    godigest.Digest(subjectDigest),
+				Size:      int64(subjectSize),
+			},
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeEmptyJSON,
+				Digest:    ispec.DescriptorEmptyJSON.Digest,
+				Size:      2,
+			},
+			Layers: []ispec.Descriptor{{
+				MediaType: ispec.MediaTypeEmptyJSON,
+				Digest:    ispec.DescriptorEmptyJSON.Digest,
+				Size:      2,
+			}},
+			MediaType:   ispec.MediaTypeImageManifest,
+			Annotations: map[string]string{"level": "direct"},
+		}
+
+		directRefBlob, err := json.Marshal(directRef)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().
+			SetHeader("Content-type", ispec.MediaTypeImageManifest).
+			SetBody(directRefBlob).
+			Put(srcBaseURL + "/v2/" + testImage + "/manifests/direct.ref")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		directRefDigest := resp.Header().Get("Docker-Content-Digest")
+
+		// ── 3. Push a nested referrer (referrer-of-referrer) ─────────────────
+		nestedRef := ispec.Manifest{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			Subject: &ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageManifest,
+				Digest:    godigest.Digest(directRefDigest),
+				Size:      int64(len(directRefBlob)),
+			},
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeEmptyJSON,
+				Digest:    ispec.DescriptorEmptyJSON.Digest,
+				Size:      2,
+			},
+			Layers: []ispec.Descriptor{{
+				MediaType: ispec.MediaTypeEmptyJSON,
+				Digest:    ispec.DescriptorEmptyJSON.Digest,
+				Size:      2,
+			}},
+			MediaType:   ispec.MediaTypeImageManifest,
+			Annotations: map[string]string{"level": "nested"},
+		}
+
+		nestedRefBlob, err := json.Marshal(nestedRef)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().
+			SetHeader("Content-type", ispec.MediaTypeImageManifest).
+			SetBody(nestedRefBlob).
+			Put(srcBaseURL + "/v2/" + testImage + "/manifests/nested.ref")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		_ = resp.Header().Get("Docker-Content-Digest")
+
+		// Verify upstream has the referrer chain in place.
+		resp, err = resty.R().Get(srcBaseURL + "/v2/" + testImage + "/referrers/" + subjectDigest)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		var upstreamDirect ispec.Index
+
+		So(json.Unmarshal(resp.Body(), &upstreamDirect), ShouldBeNil)
+		So(len(upstreamDirect.Manifests), ShouldEqual, 1)
+
+		resp, err = resty.R().Get(srcBaseURL + "/v2/" + testImage + "/referrers/" + directRefDigest)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		var upstreamNested ispec.Index
+
+		So(json.Unmarshal(resp.Body(), &upstreamNested), ShouldBeNil)
+		So(len(upstreamNested.Manifests), ShouldEqual, 1)
+
+		// ── 4. Start downstream with on-demand (referrer sync never recurses) ─
+		var tlsVerify bool
+		syncLegacyFalse := false
+
+		syncRegistryConfig := syncconf.RegistryConfig{
+			Content: []syncconf.Content{{
+				Prefix: testImage,
+			}},
+			URLs:                 []string{srcBaseURL},
+			TLSVerify:            &tlsVerify,
+			OnDemand:             true,
+			SyncLegacyCosignTags: &syncLegacyFalse, // avoid legacy tag listing
+		}
+
+		defaultVal := true
+		syncConfig := &syncconf.Config{
+			Enable:     &defaultVal,
+			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+		}
+
+		dctlr, destBaseURL, _, _ := makeDownstreamServer(t, false, syncConfig)
+
+		dcm := test.NewControllerManager(dctlr)
+		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
+		defer dcm.StopServer()
+
+		// ── 5. Trigger on-demand sync of the base image ──────────────────────
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// ── 6. Trigger on-demand sync of referrers for the base image ────────
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/referrers/" + subjectDigest)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		var downstreamDirect ispec.Index
+
+		So(json.Unmarshal(resp.Body(), &downstreamDirect), ShouldBeNil)
+		// The direct referrer must be synced.
+		So(len(downstreamDirect.Manifests), ShouldEqual, 1)
+
+		// ── 7. Verify the nested referrer is NOT synced ──────────────────────
+		// On-demand SyncReferrers never recurses; only direct referrers of the
+		// requested subject are synced. So syncing referrers for the base image
+		// did not recursively sync referrers of the direct referrer.
+		//
+		// We MUST NOT query the Referrers API on the downstream here, because
+		// that would trigger a second on-demand sync for the direct referrer.
+		// Instead, we check the metaDB to see if any referrers are recorded for
+		// the directRefDigest.
+		refs, err := dctlr.MetaDB.GetReferrersInfo(testImage, godigest.Digest(directRefDigest), nil)
+		So(err, ShouldBeNil)
+		// If recursive sync had happened, this would be 1.
+		So(len(refs), ShouldEqual, 0)
+
+		// ── 8. Verify that nested referrer is synced when explicitly requested
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/referrers/" + directRefDigest)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		var downstreamNested ispec.Index
+
+		So(json.Unmarshal(resp.Body(), &downstreamNested), ShouldBeNil)
+		So(len(downstreamNested.Manifests), ShouldEqual, 1)
+		refs, err = dctlr.MetaDB.GetReferrersInfo(testImage, godigest.Digest(directRefDigest), nil)
+		So(err, ShouldBeNil)
+		So(len(refs), ShouldEqual, 1)
 	})
 }
 

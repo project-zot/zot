@@ -343,12 +343,16 @@ func (service *BaseService) SyncReferrers(ctx context.Context, repo string,
 	service.log.Info().Str("remote", remoteURL).Str("repository", repo).Str("subject", subjectDigestStr).
 		Interface("reference types", referenceTypes).Msg("syncing reference for image")
 
-	tags, err := service.getTags(ctx, remoteRepo, false)
-	if err != nil {
-		service.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).
-			Err(err).Msg("error while getting tags for repo")
+	var tags []string
+	if service.config.ShouldSyncLegacyCosignTags() {
+		var err error
+		tags, err = service.getTags(ctx, remoteRepo, false)
+		if err != nil {
+			service.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).
+				Err(err).Msg("error while getting tags for repo")
 
-		return err
+			return err
+		}
 	}
 
 	remoteImageRef, err := service.remote.GetImageReference(remoteRepo, subjectDigestStr)
@@ -367,7 +371,7 @@ func (service *BaseService) SyncReferrers(ctx context.Context, repo string,
 		return err
 	}
 
-	if err := service.syncReferrers(ctx, tags, repo, remoteRepo, localImageRef, remoteImageRef); err != nil {
+	if err := service.syncReferrers(ctx, tags, repo, remoteRepo, localImageRef, remoteImageRef, false); err != nil {
 		service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
 			Str("repo", repo).Str("reference", subjectDigestStr).Msg("failed to sync referrers")
 
@@ -430,7 +434,7 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 			return ctx.Err()
 		}
 
-		// skip referrers, they are synced in syncTagAndReferrers.
+		// skip referrers tags and cosign tags here; they are synced via syncReferrers in syncImage.
 		if common.IsCosignTag(tag) || common.IsReferrersTag(tag) {
 			continue
 		}
@@ -460,7 +464,7 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 }
 
 func (service *BaseService) syncRef(ctx context.Context, localRepo string, remoteImageRef, localImageRef ref.Ref,
-	remoteDigest godigest.Digest, recursive bool,
+	remoteDigest godigest.Digest,
 ) (bool, error) {
 	var reference string
 
@@ -475,9 +479,6 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 	}
 
 	copyOpts := []regclient.ImageOpts{}
-	if recursive {
-		copyOpts = append(copyOpts, regclient.ImageWithReferrers())
-	}
 
 	// check if image is already synced
 	skipImage, err = service.destination.CanSkipImage(localRepo, reference, remoteDigest)
@@ -570,17 +571,6 @@ func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo
 
 	// if onlySigned flag true in config and the image is not itself a signature
 	if checkIsSigned {
-		// if need tags for checking signature (onlySigned option true) or needs for referrers
-		if len(repoTags) == 0 {
-			repoTags, err = service.getTags(ctx, remoteRepo, false)
-			if err != nil {
-				service.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", remoteRepo).
-					Err(err).Msg("error while getting tags for repo")
-
-				return err
-			}
-		}
-
 		referrers, err := service.rc.ReferrerList(ctx, remoteImageRef)
 		if err != nil {
 			service.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", remoteRepo).
@@ -589,11 +579,24 @@ func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo
 			return err
 		}
 
-		// verify repo contains a cosign signature for this manifest
-		hasCosignSignature := slices.Contains(repoTags, fmt.Sprintf("%s-%s.sig", remoteDigest.Algorithm(),
-			remoteDigest.Encoded()))
+		isSigned := hasSignatureReferrers(referrers)
+		if service.config.ShouldSyncLegacyCosignTags() {
+			// legacy fallback: verify repo contains a cosign signature tag for this manifest
+			if len(repoTags) == 0 {
+				repoTags, err = service.getTags(ctx, remoteRepo, false)
+				if err != nil {
+					service.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", remoteRepo).
+						Err(err).Msg("error while getting tags for repo")
 
-		isSigned := hasSignatureReferrers(referrers) || hasCosignSignature
+					return err
+				}
+			}
+
+			hasCosignSignature := slices.Contains(repoTags, fmt.Sprintf("%s-%s.sig", remoteDigest.Algorithm(),
+				remoteDigest.Encoded()))
+
+			isSigned = isSigned || hasCosignSignature
+		}
 		if !isSigned {
 			// skip unsigned images
 			service.log.Info().Str("image", remoteImageRef.CommonName()).
@@ -617,13 +620,13 @@ func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo
 	defer service.destination.CleanupImage(localImageRef, localRepo) //nolint: errcheck
 
 	// first sync image
-	skipped, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, localDigest, false)
+	skipped, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, localDigest)
 	if err != nil {
 		return err
 	}
 
 	if withReferrers {
-		_ = service.syncReferrers(ctx, repoTags, localRepo, remoteRepo, localImageRef, remoteImageRef)
+		_ = service.syncReferrers(ctx, repoTags, localRepo, remoteRepo, localImageRef, remoteImageRef, true)
 	}
 
 	// convert image to oci if needed
@@ -681,15 +684,15 @@ func (service *BaseService) getTags(ctx context.Context, repo string, noCache bo
 	return tags, nil
 }
 
-// syncs all referrers recursively.
+// syncs referrers of the given subject, when recursive is true also syncs referrers of those referrers.
 func (service *BaseService) syncReferrers(ctx context.Context, tags []string, localRepo, remoteRepo string,
-	localImageRef ref.Ref, remoteImageRef ref.Ref,
+	localImageRef ref.Ref, remoteImageRef ref.Ref, recursive bool,
 ) error {
 	seen := []string{}
 
 	var err error
 
-	if len(tags) == 0 {
+	if service.config.ShouldSyncLegacyCosignTags() && len(tags) == 0 {
 		tags, err = service.getTags(ctx, remoteRepo, false)
 		if err != nil {
 			service.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", remoteRepo).
@@ -700,11 +703,11 @@ func (service *BaseService) syncReferrers(ctx context.Context, tags []string, lo
 	}
 
 	var inner func(ctx context.Context, tags []string, localRepo, remoteRepo string,
-		localImageRef ref.Ref, remoteImageRef ref.Ref, seen []string,
+		localImageRef ref.Ref, remoteImageRef ref.Ref, seen []string, recursive bool,
 	) error
 
 	inner = func(ctx context.Context, tags []string, localRepo, remoteRepo string,
-		localImageRef ref.Ref, remoteImageRef ref.Ref, seen []string,
+		localImageRef ref.Ref, remoteImageRef ref.Ref, seen []string, recursive bool,
 	) error {
 		var err error
 
@@ -737,39 +740,45 @@ func (service *BaseService) syncReferrers(ctx context.Context, tags []string, lo
 
 			localImageRef = localImageRef.SetDigest(desc.Digest.String())
 
-			_, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, desc.Digest, false)
+			_, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, desc.Digest)
 			if err != nil {
 				service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
 					Str("repo", localRepo).Str("local reference", localImageRef.Tag).
 					Str("remote reference", remoteImageRef.Tag).Msg("failed to sync referrer")
 			}
 
-			_ = inner(ctx, tags, localRepo, remoteRepo, localImageRef, remoteImageRef, seen)
+			if recursive {
+				_ = inner(ctx, tags, localRepo, remoteRepo, localImageRef, remoteImageRef, seen, recursive)
+			}
 		}
 
-		// try cosign
-		prefix := fmt.Sprintf("%s-%s.", remoteDigest.Algorithm(), remoteDigest.Encoded())
-		for _, tag := range tags {
-			if strings.Contains(tag, prefix) {
-				remoteImageRef = remoteImageRef.SetTag(tag)
+		if service.config.ShouldSyncLegacyCosignTags() {
+			// try legacy cosign-style tags (sha256-<subjectDigest>.<suffix>)
+			prefix := fmt.Sprintf("%s-%s.", remoteDigest.Algorithm(), remoteDigest.Encoded())
+			for _, tag := range tags {
+				if strings.Contains(tag, prefix) {
+					remoteImageRef = remoteImageRef.SetTag(tag)
 
-				localImageRef = localImageRef.SetTag(tag)
+					localImageRef = localImageRef.SetTag(tag)
 
-				_, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, remoteDigest, true)
-				if err != nil {
-					service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
-						Str("repo", localRepo).Str("local reference", localImageRef.Tag).
-						Str("remote reference", remoteImageRef.Tag).Msg("failed to sync referrer")
+					_, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, remoteDigest)
+					if err != nil {
+						service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
+							Str("repo", localRepo).Str("local reference", localImageRef.Tag).
+							Str("remote reference", remoteImageRef.Tag).Msg("failed to sync referrer")
+					}
+
+					if recursive {
+						_ = inner(ctx, tags, localRepo, remoteRepo, localImageRef, remoteImageRef, seen, recursive)
+					}
 				}
-
-				_ = inner(ctx, tags, localRepo, remoteRepo, localImageRef, remoteImageRef, seen)
 			}
 		}
 
 		return err
 	}
 
-	return inner(ctx, tags, localRepo, remoteRepo, localImageRef, remoteImageRef, seen)
+	return inner(ctx, tags, localRepo, remoteRepo, localImageRef, remoteImageRef, seen, recursive)
 }
 
 func (service *BaseService) ResetCatalog() {
