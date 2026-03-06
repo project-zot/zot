@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"slices"
@@ -667,10 +668,130 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 	}
 }
 
+func canonicalOrigin(parsedURL *url.URL) (string, bool) {
+	if parsedURL == nil {
+		return "", false
+	}
+
+	scheme := strings.ToLower(parsedURL.Scheme)
+	if scheme != constants.SchemeHTTP && scheme != constants.SchemeHTTPS {
+		return "", false
+	}
+
+	host := strings.ToLower(parsedURL.Hostname())
+	if host == "" {
+		return "", false
+	}
+
+	port := parsedURL.Port()
+	if port == "" {
+		if scheme == constants.SchemeHTTP {
+			port = "80"
+		} else {
+			port = "443"
+		}
+	}
+
+	return scheme + "://" + net.JoinHostPort(host, port), true
+}
+
+func canonicalOriginString(raw string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", false
+	}
+
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return "", false
+	}
+
+	// Only accept absolute http(s) URLs for allowlist entries.
+	if parsed.Scheme == "" || parsed.Host == "" {
+		return "", false
+	}
+
+	return canonicalOrigin(parsed)
+}
+
+// ValidateCallbackUI validates the callback_ui parameter used for post-login redirects.
+// - Relative paths (starting with "/") are always allowed.
+// - Absolute http(s) URLs are allowed only when their origin matches allowOrigins.
+// It returns the validated redirect target, or "/" as fallback, or "" if the input is empty.
+func ValidateCallbackUI(callbackUI string, allowOrigins []string) string {
+	if callbackUI == "" {
+		return ""
+	}
+
+	// Prevent header injection.
+	if strings.ContainsAny(callbackUI, "\r\n") {
+		return "/"
+	}
+
+	parsed, err := url.Parse(callbackUI)
+	if err != nil {
+		return "/"
+	}
+
+	// Reject protocol-relative URLs (e.g. //evil.com/path)
+	if strings.HasPrefix(callbackUI, "//") {
+		return "/"
+	}
+
+	// Relative path to root (safe default).
+	if parsed.Scheme == "" && parsed.Host == "" {
+		if !strings.HasPrefix(callbackUI, "/") {
+			return "/"
+		}
+
+		return callbackUI
+	}
+
+	// Absolute URL: only allow http(s) and only when origin is allowlisted.
+	if parsed.Scheme != constants.SchemeHTTP && parsed.Scheme != constants.SchemeHTTPS {
+		return "/"
+	}
+
+	if parsed.Host == "" {
+		return "/"
+	}
+
+	origin, ok := canonicalOrigin(parsed)
+	if !ok {
+		return "/"
+	}
+
+	for _, rawAllowed := range allowOrigins {
+		allowedOrigin, ok := canonicalOriginString(rawAllowed)
+		if !ok {
+			continue
+		}
+
+		if allowedOrigin == origin {
+			return callbackUI
+		}
+	}
+
+	return "/"
+}
+
 func (rh *RouteHandler) AuthURLHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query()
-		callbackUI := query.Get(constants.CallbackUIQueryParam)
+
+		allowOrigins := []string{}
+		if authCfg := rh.c.Config.CopyAuthConfig(); authCfg != nil {
+			if authCfg.OpenID != nil {
+				allowOrigins = append(allowOrigins, authCfg.OpenID.CallbackAllowOrigins...)
+			}
+		}
+
+		// If an ExternalURL is configured, allow redirects back to that origin.
+		if rh.c.Config.HTTP.ExternalURL != "" {
+			allowOrigins = append(allowOrigins, rh.c.Config.HTTP.ExternalURL)
+		}
+
+		callbackUI := ValidateCallbackUI(query.Get(constants.CallbackUIQueryParam), allowOrigins)
 
 		provider := query.Get("provider")
 
@@ -794,9 +915,9 @@ func getRelyingPartyArgs(cfg *config.Config, provider string, hashKey, encryptKe
 		externalURL := strings.TrimSuffix(cfg.HTTP.ExternalURL, "/")
 		redirectURI = fmt.Sprintf("%s%s", externalURL, callback)
 	} else {
-		scheme := "http"
+		scheme := constants.SchemeHTTP
 		if cfg.HTTP.TLS != nil {
-			scheme = "https"
+			scheme = constants.SchemeHTTPS
 		}
 
 		redirectURI = fmt.Sprintf("%s://%s%s", scheme, baseURL, callback)

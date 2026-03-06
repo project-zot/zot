@@ -96,6 +96,61 @@ func TestAllowedMethodsHeaderAPIKey(t *testing.T) {
 	})
 }
 
+func TestValidateCallbackUI(t *testing.T) {
+	tests := []struct {
+		name         string
+		input        string
+		allowOrigins []string
+		expected     string
+	}{
+		{name: "empty", input: "", expected: ""},
+		{name: "relative path", input: "/v2/", expected: "/v2/"},
+		{name: "root path", input: "/", expected: "/"},
+		{name: "relative with path", input: "/zot/auth/login", expected: "/zot/auth/login"},
+		{name: "absolute URL rejected (not allowlisted)", input: "https://evil.com/phish", expected: "/"},
+		{
+			name:         "absolute URL allowed when allowlisted (https default port)",
+			input:        "https://example.com/home",
+			allowOrigins: []string{"https://example.com"},
+			expected:     "https://example.com/home",
+		},
+		{
+			name:         "absolute URL allowed when allowlisted (explicit port)",
+			input:        "http://localhost:3000/home",
+			allowOrigins: []string{"http://localhost:3000"},
+			expected:     "http://localhost:3000/home",
+		},
+		{
+			name:         "absolute URL rejected when port differs",
+			input:        "http://localhost:3001/home",
+			allowOrigins: []string{"http://localhost:3000"},
+			expected:     "/",
+		},
+		{name: "protocol-relative rejected", input: "//evil.com/path", expected: "/"},
+		{name: "no leading slash rejected", input: "v2/", expected: "/"},
+		{name: "relative path without leading slash rejected", input: "path/segment", expected: "/"},
+		{name: "javascript scheme rejected", input: "javascript:alert(1)", expected: "/"},
+		{name: "absolute URL with empty host rejected", input: "http:///path", expected: "/"},
+		{
+			name:         "allowlist entry invalid causes continue then match",
+			input:        "https://example.com/home",
+			allowOrigins: []string{"  \t  ", "https://example.com"},
+			expected:     "https://example.com/home",
+		},
+		{name: "header injection rejected (newline)", input: "/v2/\nSet-Cookie: x=y", expected: "/"},
+		{name: "header injection rejected (carriage return)", input: "/v2/\rSet-Cookie: x=y", expected: "/"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := api.ValidateCallbackUI(tt.input, tt.allowOrigins)
+			if got != tt.expected {
+				t.Errorf("ValidateCallbackUI(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestAPIKeys(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		port := test.GetFreePort()

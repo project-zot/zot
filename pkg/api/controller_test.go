@@ -4208,8 +4208,21 @@ func TestOpenIDMiddleware(t *testing.T) {
 						client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
 						client.SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue)
 
-						Convey("with callback_ui value provided", func() {
-							// first login user
+						Convey("with relative callback_ui value provided", func() {
+							// first login user (callback_ui must be relative path to prevent open redirect)
+							resp, err := client.R().
+								SetQueryParam("provider", "oidc").
+								SetQueryParam("callback_ui", "/v2/").
+								Get(baseURL + constants.LoginPath)
+							So(err, ShouldBeNil)
+							So(resp, ShouldNotBeNil)
+							So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+						})
+
+						Convey("with absolute callback_ui value provided and allowlisted", func() {
+							// allow absolute redirects only to allowlisted UI origins
+							conf.HTTP.Auth.OpenID.CallbackAllowOrigins = []string{baseURL}
+
 							resp, err := client.R().
 								SetQueryParam("provider", "oidc").
 								SetQueryParam("callback_ui", baseURL+"/v2/").
@@ -4217,6 +4230,37 @@ func TestOpenIDMiddleware(t *testing.T) {
 							So(err, ShouldBeNil)
 							So(resp, ShouldNotBeNil)
 							So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+						})
+
+						Convey("with absolute callback_ui value provided and NOT allowlisted", func() {
+							// If an external redirect is attempted, resty would try to connect to this unreachable address.
+							evil := "http://127.0.0.1:1/phished"
+
+							resp, err := client.R().
+								SetQueryParam("provider", "oidc").
+								SetQueryParam("callback_ui", evil).
+								Get(baseURL + constants.LoginPath)
+							So(err, ShouldBeNil)
+							So(resp, ShouldNotBeNil)
+							So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+							So(resp.RawResponse, ShouldNotBeNil)
+							So(resp.RawResponse.Request, ShouldNotBeNil)
+							So(resp.RawResponse.Request.URL.String(), ShouldStartWith, baseURL)
+						})
+
+						Convey("with protocol-relative callback_ui value provided", func() {
+							evil := "//127.0.0.1:1/phished"
+
+							resp, err := client.R().
+								SetQueryParam("provider", "oidc").
+								SetQueryParam("callback_ui", evil).
+								Get(baseURL + constants.LoginPath)
+							So(err, ShouldBeNil)
+							So(resp, ShouldNotBeNil)
+							So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+							So(resp.RawResponse, ShouldNotBeNil)
+							So(resp.RawResponse.Request, ShouldNotBeNil)
+							So(resp.RawResponse.Request.URL.String(), ShouldStartWith, baseURL)
 						})
 
 						// first login user
@@ -4617,8 +4661,21 @@ func TestOpenIDMiddlewareWithRedisSessionDriver(t *testing.T) {
 						client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
 						client.SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue)
 
-						Convey("with callback_ui value provided", func() {
-							// first login user
+						Convey("with relative callback_ui value provided", func() {
+							// first login user (callback_ui must be relative path to prevent open redirect)
+							resp, err := client.R().
+								SetQueryParam("provider", "oidc").
+								SetQueryParam("callback_ui", "/v2/").
+								Get(baseURL + constants.LoginPath)
+							So(err, ShouldBeNil)
+							So(resp, ShouldNotBeNil)
+							So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+						})
+
+						Convey("with absolute callback_ui value provided and allowlisted", func() {
+							// allow absolute redirects only to allowlisted UI origins
+							conf.HTTP.Auth.OpenID.CallbackAllowOrigins = []string{baseURL}
+
 							resp, err := client.R().
 								SetQueryParam("provider", "oidc").
 								SetQueryParam("callback_ui", baseURL+"/v2/").
@@ -4626,6 +4683,37 @@ func TestOpenIDMiddlewareWithRedisSessionDriver(t *testing.T) {
 							So(err, ShouldBeNil)
 							So(resp, ShouldNotBeNil)
 							So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+						})
+
+						Convey("with absolute callback_ui value provided and NOT allowlisted", func() {
+							// If an external redirect is attempted, resty would try to connect to this unreachable address.
+							evil := "http://127.0.0.1:1/phished"
+
+							resp, err := client.R().
+								SetQueryParam("provider", "oidc").
+								SetQueryParam("callback_ui", evil).
+								Get(baseURL + constants.LoginPath)
+							So(err, ShouldBeNil)
+							So(resp, ShouldNotBeNil)
+							So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+							So(resp.RawResponse, ShouldNotBeNil)
+							So(resp.RawResponse.Request, ShouldNotBeNil)
+							So(resp.RawResponse.Request.URL.String(), ShouldStartWith, baseURL)
+						})
+
+						Convey("with protocol-relative callback_ui value provided", func() {
+							evil := "//127.0.0.1:1/phished"
+
+							resp, err := client.R().
+								SetQueryParam("provider", "oidc").
+								SetQueryParam("callback_ui", evil).
+								Get(baseURL + constants.LoginPath)
+							So(err, ShouldBeNil)
+							So(resp, ShouldNotBeNil)
+							So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+							So(resp.RawResponse, ShouldNotBeNil)
+							So(resp.RawResponse.Request, ShouldNotBeNil)
+							So(resp.RawResponse.Request.URL.String(), ShouldStartWith, baseURL)
 						})
 
 						// first login user

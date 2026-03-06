@@ -22,6 +22,8 @@ const (
 	SessionClientHeaderValue     = "zot-ui"
 	APIKeysPrefix                = "zak_"
 	CallbackUIQueryParam         = "callback_ui"
+	SchemeHTTP                   = "http"
+	SchemeHTTPS                  = "https"
 	APIKeyTimeFormat             = time.RFC3339
 	// CreatePermission is an authz permission for create actions.
 	CreatePermission = "create"

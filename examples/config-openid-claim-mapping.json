@@ -12,6 +12,7 @@
     "auth": {
       "sessionKeysFile": "examples/sessionKeys.json",
       "openid": {
+        "callbackAllowOrigins": ["http://127.0.0.1:3000"],
         "providers": {
           "oidc": {
             "name": "Zitadel",

@@ -4,6 +4,7 @@ package api
 
 import (
 	goerrors "errors"
+	"net/url"
 	"os"
 	"path"
 	"sync"
@@ -402,4 +403,68 @@ func TestCertificateWatcherCanRestart(t *testing.T) {
 	}
 
 	watcher.Stop()
+}
+
+func TestCanonicalOrigin(t *testing.T) {
+	tests := []struct {
+		name     string
+		parsed   *url.URL
+		wantOrig string
+		wantOK   bool
+	}{
+		{"nil URL", nil, "", false},
+		{"non-http(s) scheme (ftp)", mustParseURL("ftp://example.com"), "", false},
+		{"non-http(s) scheme (javascript)", mustParseURL("javascript:alert(1)"), "", false},
+		{"empty scheme", mustParseURL("//example.com"), "", false},
+		{"empty hostname (port only)", mustParseURL("http://:8080/"), "", false},
+		{"valid http default port", mustParseURL("http://example.com"), "http://example.com:80", true},
+		{"valid http explicit port", mustParseURL("http://example.com:8080"), "http://example.com:8080", true},
+		{"valid https default port", mustParseURL("https://example.com"), "https://example.com:443", true},
+		{"valid https explicit port", mustParseURL("https://example.com:8443"), "https://example.com:8443", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotOrig, gotOK := canonicalOrigin(tt.parsed)
+			if gotOrig != tt.wantOrig || gotOK != tt.wantOK {
+				t.Errorf("canonicalOrigin() = %q, %v, want %q, %v", gotOrig, gotOK, tt.wantOrig, tt.wantOK)
+			}
+		})
+	}
+}
+
+func TestCanonicalOriginString(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want string
+		ok   bool
+	}{
+		{"empty", "", "", false},
+		{"whitespace only", "  \t  ", "", false},
+		{"relative (no scheme)", "example.com/path", "", false},
+		{"path only", "/v2/", "", false},
+		{"scheme but no host", "http://", "", false},
+		{"non-http(s) URL", "ftp://example.com", "", false},
+		{"empty hostname with port", "http://:80/", "", false},
+		{"invalid host", "http://:/", "", false},
+		{"valid https", "https://example.com", "https://example.com:443", true},
+		{"valid http with port", "http://localhost:3000", "http://localhost:3000", true},
+		{"trimmed", "  https://example.com  ", "https://example.com:443", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := canonicalOriginString(tt.raw)
+			if got != tt.want || ok != tt.ok {
+				t.Errorf("canonicalOriginString(%q) = %q, %v, want %q, %v", tt.raw, got, ok, tt.want, tt.ok)
+			}
+		})
+	}
+}
+
+func mustParseURL(s string) *url.URL {
+	u, err := url.Parse(s)
+	if err != nil {
+		panic(err)
+	}
+	return u
 }
