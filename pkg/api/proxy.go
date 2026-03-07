@@ -123,9 +123,9 @@ func proxyHTTPRequest(ctx context.Context, req *http.Request,
 	// Get HTTP TLS config safely
 	httpTLSConfig := ctrlr.Config.CopyTLSConfig()
 
-	proxyQueryScheme := "http"
+	proxyQueryScheme := constants.SchemeHTTP
 	if httpTLSConfig != nil {
-		proxyQueryScheme = "https"
+		proxyQueryScheme = constants.SchemeHTTPS
 	}
 
 	cloneURL.Scheme = proxyQueryScheme

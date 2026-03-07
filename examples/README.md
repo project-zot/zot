@@ -332,10 +332,26 @@ zot can be configured to use the above providers with:
   }
 ```
 
-To login with either provider use http://127.0.0.1:8080/zot/auth/login?provider=\<provider\>&callback_ui=http://127.0.0.1:8080/home
-for example to login with github use http://127.0.0.1:8080/zot/auth/login?provider=github&callback_ui=http://127.0.0.1:8080/home
+To login with either provider use http://127.0.0.1:8080/zot/auth/login?provider=\<provider\>&callback_ui=/home
+for example to login with github use http://127.0.0.1:8080/zot/auth/login?provider=github&callback_ui=/home
 
 callback_ui query parameter is used by zot to redirect to UI after a successful openid/oauth2 authentication
+
+By default, `callback_ui` must be a relative path (starting with `/`) to prevent open redirects.
+If your UI runs on a different origin (e.g. different port during development), you can allowlist
+absolute redirect origins via:
+
+```
+{
+  "http": {
+    "auth": {
+      "openid": {
+        "callbackAllowOrigins": ["http://127.0.0.1:3000"]
+      }
+    }
+  }
+}
+```
 
 The callback url which should be used when making oauth2 provider setup is http://127.0.0.1:8080/zot/auth/callback/\<provider\>
 for example github callback url would be http://127.0.0.1:8080/zot/auth/callback/github
