@@ -349,7 +349,7 @@ func DistSpecAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 					is := ctlr.StoreController.GetImageStore(resource)
 
 					tags, err := is.GetImageTags(resource)
-					if err == nil && slices.Contains(tags, reference) && reference != "latest" {
+					if err == nil && slices.Contains(tags, reference) {
 						// if repo exists and request's tag exists then action is UPDATE
 						action = constants.UpdatePermission
 					}

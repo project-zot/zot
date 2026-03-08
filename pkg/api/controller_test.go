@@ -5816,6 +5816,181 @@ func TestAuthorizationMountBlob(t *testing.T) {
 	})
 }
 
+func TestAuthorizationForTagUpdate(t *testing.T) {
+	Convey("Test authorization for updating tags including latest", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		username, seedUser := test.GenerateRandomString()
+		password, seedPass := test.GenerateRandomString()
+		username = strings.ToLower(username)
+
+		content := test.GetBcryptCredString(username, password)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, content)
+
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+
+		Convey("Test update permission required for updating existing tags (including latest)", func() {
+			testRepo := "test-repo"
+
+			// Configure access control: user has only read and create permissions (no update)
+			conf.HTTP.AccessControl = &config.AccessControlConfig{
+				Repositories: config.Repositories{
+					testRepo: config.PolicyGroup{
+						Policies: []config.Policy{
+							{
+								Users: []string{username},
+								Actions: []string{
+									constants.ReadPermission,
+									constants.CreatePermission,
+								},
+							},
+						},
+					},
+				},
+			}
+
+			dir := t.TempDir()
+			ctlr := api.NewController(conf)
+			ctlr.Config.Storage.RootDirectory = dir
+
+			cm := test.NewControllerManager(ctlr)
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			userClient := resty.New()
+			userClient.SetBasicAuth(username, password)
+
+			// Create a test image
+			img := CreateImageWith().
+				RandomLayers(1, 10).
+				RandomConfig().
+				Build()
+
+			Convey("Pushing a new tag should succeed with CREATE permission", func() {
+				// Push a new tag (first time) - should succeed with CREATE permission
+				err := UploadImageWithBasicAuth(img, baseURL, testRepo, "v1.0", username, password)
+				So(err, ShouldBeNil)
+
+				// Verify the tag exists
+				resp, err := userClient.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/v1.0", testRepo))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			})
+
+			Convey("Pushing a new 'latest' tag should succeed with CREATE permission", func() {
+				// Push the 'latest' tag (first time) - should succeed with CREATE permission
+				err := UploadImageWithBasicAuth(img, baseURL, testRepo, "latest", username, password)
+				So(err, ShouldBeNil)
+
+				// Verify the latest tag exists
+				resp, err := userClient.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/latest", testRepo))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			})
+
+			Convey("Updating an existing non-latest tag should fail without UPDATE permission", func() {
+				// First, push the v2.0 tag
+				err := UploadImageWithBasicAuth(img, baseURL, testRepo, "v2.0", username, password)
+				So(err, ShouldBeNil)
+
+				// Create a modified image to update the tag
+				imgUpdated := CreateImageWith().
+					RandomLayers(1, 15).
+					RandomConfig().
+					Build()
+
+				// Try to update the existing v2.0 tag - should fail without UPDATE permission
+				manifestBlob, err := json.Marshal(imgUpdated.Manifest)
+				So(err, ShouldBeNil)
+
+				resp, err := userClient.R().
+					SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+					SetBody(manifestBlob).
+					Put(baseURL + fmt.Sprintf("/v2/%s/manifests/v2.0", testRepo))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+			})
+
+			Convey("Updating an existing 'latest' tag should fail without UPDATE permission", func() {
+				// First, push the latest tag
+				err := UploadImageWithBasicAuth(img, baseURL, testRepo, "latest", username, password)
+				So(err, ShouldBeNil)
+
+				// Create a modified image to update the latest tag
+				imgUpdated := CreateImageWith().
+					RandomLayers(1, 20).
+					RandomConfig().
+					Build()
+
+				// Try to update the existing latest tag - should fail without UPDATE permission
+				// This is the key test for the change: latest tag is now treated like any other tag
+				manifestBlob, err := json.Marshal(imgUpdated.Manifest)
+				So(err, ShouldBeNil)
+
+				resp, err := userClient.R().
+					SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+					SetBody(manifestBlob).
+					Put(baseURL + fmt.Sprintf("/v2/%s/manifests/latest", testRepo))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+			})
+
+			Convey("Updating tags should succeed with UPDATE permission", func() {
+				// Add UPDATE permission
+				conf.HTTP.AccessControl.Repositories[testRepo] = config.PolicyGroup{
+					Policies: []config.Policy{
+						{
+							Users: []string{username},
+							Actions: []string{
+								constants.ReadPermission,
+								constants.CreatePermission,
+								constants.UpdatePermission,
+							},
+						},
+					},
+				}
+
+				// First, push the v3.0 tag
+				err := UploadImageWithBasicAuth(img, baseURL, testRepo, "v3.0", username, password)
+				So(err, ShouldBeNil)
+
+				// Create a modified image
+				imgUpdated := CreateImageWith().
+					RandomLayers(1, 25).
+					RandomConfig().
+					Build()
+
+				// Update the existing v3.0 tag - should succeed with UPDATE permission
+				err = UploadImageWithBasicAuth(imgUpdated, baseURL, testRepo, "v3.0", username, password)
+				So(err, ShouldBeNil)
+
+				// Push and update the latest tag - should also succeed
+				err = UploadImageWithBasicAuth(img, baseURL, testRepo, "latest", username, password)
+				So(err, ShouldBeNil)
+
+				imgUpdated2 := CreateImageWith().
+					RandomLayers(1, 30).
+					RandomConfig().
+					Build()
+
+				err = UploadImageWithBasicAuth(imgUpdated2, baseURL, testRepo, "latest", username, password)
+				So(err, ShouldBeNil)
+			})
+
+			So(seedUser, ShouldBeGreaterThan, 0)
+			So(seedPass, ShouldBeGreaterThan, 0)
+		})
+	})
+}
+
 func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		const TestRepo = "my-repos/repo"
