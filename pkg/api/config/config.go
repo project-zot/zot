@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"maps"
 	"os"
+	"slices"
 	"sync"
 	"time"
 
@@ -279,6 +280,11 @@ type SessionKeys struct {
 
 type OpenIDConfig struct {
 	Providers map[string]OpenIDProviderConfig
+	// CallbackAllowOrigins is an allowlist of absolute URL origins that are permitted in the
+	// callback_ui query parameter during the OpenID/OAuth2 login flow. If empty, callback_ui must
+	// be a same-origin relative path (e.g. "/v2/") to prevent open redirects.
+	// Example: ["http://localhost:3000", "https://ui.example.com"]
+	CallbackAllowOrigins []string `mapstructure:"callbackAllowOrigins,omitempty"`
 }
 
 type OpenIDCredentials struct {
@@ -720,7 +726,8 @@ func (c *Config) Sanitize() *Config {
 		// Sanitize OpenID client secrets
 		if c.HTTP.Auth.OpenID != nil {
 			sanitizedConfig.HTTP.Auth.OpenID = &OpenIDConfig{
-				Providers: make(map[string]OpenIDProviderConfig),
+				Providers:            make(map[string]OpenIDProviderConfig),
+				CallbackAllowOrigins: slices.Clone(c.HTTP.Auth.OpenID.CallbackAllowOrigins),
 			}
 
 			for provider, config := range c.HTTP.Auth.OpenID.Providers {
