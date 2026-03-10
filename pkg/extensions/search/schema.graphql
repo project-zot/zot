@@ -213,6 +213,10 @@ type ImageSummary {
     """
     PushTimestamp: Time
     """
+    The user who pushed the image to the registry
+    """
+    PushedBy: String
+    """
     Timestamp when the image manifest was tagged (if the data is unavailable it falls back to when the image was pushed to the registry)
     """
     TaggedTimestamp: Time

@@ -152,6 +152,8 @@ type ImageSummary struct {
 	LastPullTimestamp *time.Time `json:"LastPullTimestamp,omitempty"`
 	// Timestamp when the image was pushed to the registry
 	PushTimestamp *time.Time `json:"PushTimestamp,omitempty"`
+	// The user who pushed the image to the registry
+	PushedBy *string `json:"PushedBy,omitempty"`
 	// Timestamp when the image manifest was tagged (if the data is unavailable it falls back to when the image was pushed to the registry)
 	TaggedTimestamp *time.Time `json:"TaggedTimestamp,omitempty"`
 	// Timestamp of the last modification done to the image (from config or the last updated layer)

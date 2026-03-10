@@ -427,10 +427,12 @@ func ImageIndex2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullImage
 		manifestSummaries   = make([]*gql_generated.ManifestSummary, 0, len(fullImageMeta.Manifests))
 		indexBlobs          = map[string]int64{}
 
-		indexDigestStr  = fullImageMeta.Digest.String()
-		indexMediaType  = ispec.MediaTypeImageIndex
-		pushTimestamp   = fullImageMeta.Statistics.PushTimestamp
-		taggedTimestamp = fullImageMeta.TaggedTimestamp
+		indexDigestStr    = fullImageMeta.Digest.String()
+		indexMediaType    = ispec.MediaTypeImageIndex
+		lastPullTimestamp = fullImageMeta.Statistics.LastPullTimestamp
+		pushTimestamp     = fullImageMeta.Statistics.PushTimestamp
+		pushedBy          = fullImageMeta.Statistics.PushedBy
+		taggedTimestamp   = fullImageMeta.TaggedTimestamp
 	)
 
 	// Fallback to PushTimestamp if TaggedTimestamp is not available
@@ -490,27 +492,29 @@ func ImageIndex2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullImage
 	}
 
 	indexSummary := gql_generated.ImageSummary{
-		RepoName:        &repo,
-		Tag:             &tag,
-		Digest:          &indexDigestStr,
-		MediaType:       &indexMediaType,
-		Manifests:       manifestSummaries,
-		LastUpdated:     imageLastUpdated,
-		IsSigned:        &isSigned,
-		SignatureInfo:   signaturesInfo,
-		Size:            ref(strconv.FormatInt(indexSize, 10)),
-		DownloadCount:   ref(fullImageMeta.Statistics.DownloadCount),
-		PushTimestamp:   &pushTimestamp,
-		TaggedTimestamp: &taggedTimestamp,
-		Description:     &annotations.Description,
-		Title:           &annotations.Title,
-		Documentation:   &annotations.Documentation,
-		Licenses:        &annotations.Licenses,
-		Labels:          &annotations.Labels,
-		Source:          &annotations.Source,
-		Vendor:          &annotations.Vendor,
-		Authors:         &annotations.Authors,
-		Referrers:       getReferrers(fullImageMeta.Referrers),
+		RepoName:          &repo,
+		Tag:               &tag,
+		Digest:            &indexDigestStr,
+		MediaType:         &indexMediaType,
+		Manifests:         manifestSummaries,
+		LastUpdated:       imageLastUpdated,
+		IsSigned:          &isSigned,
+		SignatureInfo:     signaturesInfo,
+		Size:              ref(strconv.FormatInt(indexSize, 10)),
+		DownloadCount:     ref(fullImageMeta.Statistics.DownloadCount),
+		LastPullTimestamp: &lastPullTimestamp,
+		PushTimestamp:     &pushTimestamp,
+		PushedBy:          &pushedBy,
+		TaggedTimestamp:   &taggedTimestamp,
+		Description:       &annotations.Description,
+		Title:             &annotations.Title,
+		Documentation:     &annotations.Documentation,
+		Licenses:          &annotations.Licenses,
+		Labels:            &annotations.Labels,
+		Source:            &annotations.Source,
+		Vendor:            &annotations.Vendor,
+		Authors:           &annotations.Authors,
+		Referrers:         getReferrers(fullImageMeta.Referrers),
 	}
 
 	return &indexSummary, indexBlobs, nil
@@ -534,6 +538,7 @@ func ImageManifest2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullIm
 		isSigned          = isImageSigned(fullImageMeta.Signatures)
 		lastPullTimestamp = fullImageMeta.Statistics.LastPullTimestamp
 		pushTimestamp     = fullImageMeta.Statistics.PushTimestamp
+		pushedBy          = fullImageMeta.Statistics.PushedBy
 		taggedTimestamp   = fullImageMeta.TaggedTimestamp
 	)
 
@@ -594,6 +599,7 @@ func ImageManifest2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullIm
 		DownloadCount:     &downloadCount,
 		LastPullTimestamp: &lastPullTimestamp,
 		PushTimestamp:     &pushTimestamp,
+		PushedBy:          &pushedBy,
 		TaggedTimestamp:   &taggedTimestamp,
 		Description:       &annotations.Description,
 		Title:             &annotations.Title,

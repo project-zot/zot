@@ -100,6 +100,7 @@ type ComplexityRoot struct {
 		Manifests         func(childComplexity int) int
 		MediaType         func(childComplexity int) int
 		PushTimestamp     func(childComplexity int) int
+		PushedBy          func(childComplexity int) int
 		Referrers         func(childComplexity int) int
 		RepoName          func(childComplexity int) int
 		SignatureInfo     func(childComplexity int) int
@@ -530,6 +531,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.ImageSummary.PushTimestamp(childComplexity), true
+	case "ImageSummary.PushedBy":
+		if e.ComplexityRoot.ImageSummary.PushedBy == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ImageSummary.PushedBy(childComplexity), true
 	case "ImageSummary.Referrers":
 		if e.ComplexityRoot.ImageSummary.Referrers == nil {
 			break
@@ -1399,6 +1406,10 @@ type ImageSummary {
     Timestamp when the image was pushed to the registry
     """
     PushTimestamp: Time
+    """
+    The user who pushed the image to the registry
+    """
+    PushedBy: String
     """
     Timestamp when the image manifest was tagged (if the data is unavailable it falls back to when the image was pushed to the registry)
     """
@@ -3106,6 +3117,8 @@ func (ec *executionContext) fieldContext_GlobalSearchResult_Images(_ context.Con
 				return ec.fieldContext_ImageSummary_LastPullTimestamp(ctx, field)
 			case "PushTimestamp":
 				return ec.fieldContext_ImageSummary_PushTimestamp(ctx, field)
+			case "PushedBy":
+				return ec.fieldContext_ImageSummary_PushedBy(ctx, field)
 			case "TaggedTimestamp":
 				return ec.fieldContext_ImageSummary_TaggedTimestamp(ctx, field)
 			case "LastUpdated":
@@ -3782,6 +3795,35 @@ func (ec *executionContext) fieldContext_ImageSummary_PushTimestamp(_ context.Co
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type Time does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ImageSummary_PushedBy(ctx context.Context, field graphql.CollectedField, obj *ImageSummary) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ImageSummary_PushedBy,
+		func(ctx context.Context) (any, error) {
+			return obj.PushedBy, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_ImageSummary_PushedBy(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ImageSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
 		},
 	}
 	return fc, nil
@@ -5277,6 +5319,8 @@ func (ec *executionContext) fieldContext_PaginatedImagesResult_Results(_ context
 				return ec.fieldContext_ImageSummary_LastPullTimestamp(ctx, field)
 			case "PushTimestamp":
 				return ec.fieldContext_ImageSummary_PushTimestamp(ctx, field)
+			case "PushedBy":
+				return ec.fieldContext_ImageSummary_PushedBy(ctx, field)
 			case "TaggedTimestamp":
 				return ec.fieldContext_ImageSummary_TaggedTimestamp(ctx, field)
 			case "LastUpdated":
@@ -6034,6 +6078,8 @@ func (ec *executionContext) fieldContext_Query_Image(ctx context.Context, field 
 				return ec.fieldContext_ImageSummary_LastPullTimestamp(ctx, field)
 			case "PushTimestamp":
 				return ec.fieldContext_ImageSummary_PushTimestamp(ctx, field)
+			case "PushedBy":
+				return ec.fieldContext_ImageSummary_PushedBy(ctx, field)
 			case "TaggedTimestamp":
 				return ec.fieldContext_ImageSummary_TaggedTimestamp(ctx, field)
 			case "LastUpdated":
@@ -6530,6 +6576,8 @@ func (ec *executionContext) fieldContext_RepoInfo_Images(_ context.Context, fiel
 				return ec.fieldContext_ImageSummary_LastPullTimestamp(ctx, field)
 			case "PushTimestamp":
 				return ec.fieldContext_ImageSummary_PushTimestamp(ctx, field)
+			case "PushedBy":
+				return ec.fieldContext_ImageSummary_PushedBy(ctx, field)
 			case "TaggedTimestamp":
 				return ec.fieldContext_ImageSummary_TaggedTimestamp(ctx, field)
 			case "LastUpdated":
@@ -6813,6 +6861,8 @@ func (ec *executionContext) fieldContext_RepoSummary_NewestImage(_ context.Conte
 				return ec.fieldContext_ImageSummary_LastPullTimestamp(ctx, field)
 			case "PushTimestamp":
 				return ec.fieldContext_ImageSummary_PushTimestamp(ctx, field)
+			case "PushedBy":
+				return ec.fieldContext_ImageSummary_PushedBy(ctx, field)
 			case "TaggedTimestamp":
 				return ec.fieldContext_ImageSummary_TaggedTimestamp(ctx, field)
 			case "LastUpdated":
@@ -9065,6 +9115,8 @@ func (ec *executionContext) _ImageSummary(ctx context.Context, sel ast.Selection
 			out.Values[i] = ec._ImageSummary_LastPullTimestamp(ctx, field, obj)
 		case "PushTimestamp":
 			out.Values[i] = ec._ImageSummary_PushTimestamp(ctx, field, obj)
+		case "PushedBy":
+			out.Values[i] = ec._ImageSummary_PushedBy(ctx, field, obj)
 		case "TaggedTimestamp":
 			out.Values[i] = ec._ImageSummary_TaggedTimestamp(ctx, field, obj)
 		case "LastUpdated":

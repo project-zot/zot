@@ -279,19 +279,21 @@ func TestTaggedTimestamp(t *testing.T) {
 		Convey("TaggedTimestamp is populated from tag descriptor", func() {
 			taggedTime := time.Date(2024, time.January, 15, 10, 30, 0, 0, time.UTC)
 			pushTime := time.Date(2024, time.January, 10, 8, 0, 0, 0, time.UTC)
+			digestStr := godigest.FromString("sha256:abc123").String()
 
 			repoMeta := mTypes.RepoMeta{
 				Name: "repo",
 				Tags: map[string]mTypes.Descriptor{
 					"tag1": {
-						Digest:          "sha256:abc123",
+						Digest:          digestStr,
 						MediaType:       ispec.MediaTypeImageManifest,
 						TaggedTimestamp: taggedTime,
 					},
 				},
 				Statistics: map[string]mTypes.DescriptorStatistics{
-					"sha256:abc123": {
+					digestStr: {
 						PushTimestamp: pushTime,
+						PushedBy:      "testuser",
 					},
 				},
 			}
@@ -319,6 +321,8 @@ func TestTaggedTimestamp(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(imageSummary.TaggedTimestamp, ShouldNotBeNil)
 			So(*imageSummary.TaggedTimestamp, ShouldEqual, taggedTime)
+			So(imageSummary.PushedBy, ShouldNotBeNil)
+			So(*imageSummary.PushedBy, ShouldEqual, "testuser")
 		})
 
 		Convey("TaggedTimestamp falls back to PushTimestamp when zero", func() {
@@ -372,6 +376,7 @@ func TestTaggedTimestamp(t *testing.T) {
 		Convey("TaggedTimestamp is propagated to nested manifests in ImageIndex", func() {
 			taggedTime := time.Date(2024, time.January, 15, 10, 30, 0, 0, time.UTC)
 			pushTime := time.Date(2024, time.January, 10, 8, 0, 0, 0, time.UTC)
+			lastPullTime := time.Date(2024, time.February, 1, 12, 0, 0, 0, time.UTC)
 
 			// Create a multiarch image
 			multiarchImage := CreateMultiarchWith().Images([]Image{
@@ -392,7 +397,9 @@ func TestTaggedTimestamp(t *testing.T) {
 				},
 				Statistics: map[string]mTypes.DescriptorStatistics{
 					indexDigestStr: {
-						PushTimestamp: pushTime,
+						PushTimestamp:     pushTime,
+						LastPullTimestamp: lastPullTime,
+						PushedBy:          "indexuser",
 					},
 				},
 			}
@@ -405,6 +412,10 @@ func TestTaggedTimestamp(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(imageSummary.TaggedTimestamp, ShouldNotBeNil)
 			So(*imageSummary.TaggedTimestamp, ShouldEqual, taggedTime)
+			So(imageSummary.LastPullTimestamp, ShouldNotBeNil)
+			So(*imageSummary.LastPullTimestamp, ShouldEqual, lastPullTime)
+			So(imageSummary.PushedBy, ShouldNotBeNil)
+			So(*imageSummary.PushedBy, ShouldEqual, "indexuser")
 
 			// Verify that nested manifests also have the correct TaggedTimestamp
 			So(len(imageSummary.Manifests), ShouldBeGreaterThan, 0)
