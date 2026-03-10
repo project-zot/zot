@@ -358,7 +358,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					err := gc.CleanRepo(ctx, "gc-test1")
 					So(err, ShouldBeNil)
@@ -474,7 +474,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					err := gc.CleanRepo(ctx, "gc-test1")
 					So(err, ShouldBeNil)
@@ -570,7 +570,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					err := gc.CleanRepo(ctx, "gc-test1")
 					So(err, ShouldBeNil)
@@ -618,7 +618,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					err := gc.CleanRepo(ctx, "gc-docker1")
 					So(err, ShouldBeNil)
@@ -660,7 +660,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					processedRepos := make(map[string]struct{})
 					expectedRepos := []string{"gc-docker1", "gc-docker2", "gc-test1", "gc-test2", "gc-test3", "gc-test4", "retention"}
@@ -730,7 +730,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					err := gc.CleanRepo(ctx, "gc-test1")
 					So(err, ShouldBeNil)
@@ -779,7 +779,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					err = gc.CleanRepo(ctx, "retention")
 					So(err, ShouldBeNil)
@@ -840,7 +840,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					err = gc.CleanRepo(ctx, "retention")
 					So(err, ShouldBeNil)
@@ -910,7 +910,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					err = gc.CleanRepo(ctx, "retention")
 					So(err, ShouldBeNil)
@@ -948,7 +948,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					err = gc.CleanRepo(ctx, "retention")
 					So(err, ShouldBeNil)
@@ -986,7 +986,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					err = gc.CleanRepo(ctx, "retention")
 					So(err, ShouldBeNil)
@@ -1025,7 +1025,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					err = gc.CleanRepo(ctx, "retention")
 					So(err, ShouldBeNil)
@@ -1070,7 +1070,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					err = gc.CleanRepo(ctx, "retention")
 					So(err, ShouldBeNil)
@@ -1102,7 +1102,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					err := gc.CleanRepo(ctx, "gc-test1")
 					So(err, ShouldBeNil)
@@ -1148,7 +1148,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					err = gc.CleanRepo(ctx, "retention")
 					So(err, ShouldBeNil)
@@ -1199,7 +1199,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					ctx, cancel := context.WithCancel(ctx)
 					cancel()
@@ -1227,7 +1227,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					blobUploadID, err := imgStore.NewBlobUpload(repoName)
 					So(err, ShouldBeNil)
@@ -1410,7 +1410,7 @@ func TestGarbageCollectDeletion(t *testing.T) {
 							},
 						},
 					},
-				}, audit, log)
+				}, audit, log, metrics)
 
 				err = gc.CleanRepo(ctx, repoName)
 				So(err, ShouldBeNil)
@@ -1479,7 +1479,7 @@ func TestGarbageCollectDeletion(t *testing.T) {
 							},
 						},
 					},
-				}, audit, log)
+				}, audit, log, metrics)
 
 				err = deleteTagInStorage(rootDir, repoName, "topindex")
 
@@ -1552,7 +1552,7 @@ func TestGarbageCollectDeletion(t *testing.T) {
 							},
 						},
 					},
-				}, audit, log)
+				}, audit, log, metrics)
 
 				err = deleteTagInStorage(rootDir, repoName, "topindex")
 
@@ -1630,7 +1630,7 @@ func TestGarbageCollectDeletion(t *testing.T) {
 							},
 						},
 					},
-				}, audit, log)
+				}, audit, log, metrics)
 
 				err = gc.CleanRepo(ctx, repoName)
 				So(err, ShouldBeNil)
@@ -1948,7 +1948,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					err := gc.CleanRepo(ctx, "gc-test1")
 					So(err, ShouldBeNil)
@@ -2052,7 +2052,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					err := gc.CleanRepo(ctx, "gc-test1")
 					So(err, ShouldBeNil)
@@ -2136,7 +2136,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					err := gc.CleanRepo(ctx, "gc-test1")
 					So(err, ShouldBeNil)
@@ -2182,7 +2182,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					processedRepos := make(map[string]struct{})
 					expectedRepos := []string{"gc-test1", "gc-test2", "gc-test3", "gc-test4", "retention"}
@@ -2249,7 +2249,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					err := gc.CleanRepo(ctx, "gc-test1")
 					So(err, ShouldBeNil)
@@ -2296,7 +2296,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					err = gc.CleanRepo(ctx, "retention")
 					So(err, ShouldBeNil)
@@ -2351,7 +2351,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					err = gc.CleanRepo(ctx, "retention")
 					So(err, ShouldBeNil)
@@ -2411,7 +2411,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					err = gc.CleanRepo(ctx, "retention")
 					So(err, ShouldBeNil)
@@ -2451,7 +2451,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					err = gc.CleanRepo(ctx, "retention")
 					So(err, ShouldBeNil)
@@ -2483,7 +2483,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					err := gc.CleanRepo(ctx, "gc-test1")
 					So(err, ShouldBeNil)
@@ -2523,7 +2523,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					ctx, cancel := context.WithCancel(ctx)
 					cancel()
@@ -2551,7 +2551,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					blobUploadID, err := imgStore.NewBlobUpload(repoName)
 					So(err, ShouldBeNil)
