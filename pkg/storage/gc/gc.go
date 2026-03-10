@@ -19,6 +19,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/compat"
+	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/retention"
@@ -52,10 +53,11 @@ type GarbageCollect struct {
 	policyMgr rTypes.PolicyManager
 	auditLog  *zlog.Logger
 	log       zlog.Logger
+	metrics   monitoring.MetricServer
 }
 
 func NewGarbageCollect(imgStore types.ImageStore, metaDB mTypes.MetaDB, opts Options,
-	auditLog *zlog.Logger, log zlog.Logger,
+	auditLog *zlog.Logger, log zlog.Logger, metrics monitoring.MetricServer,
 ) GarbageCollect {
 	return GarbageCollect{
 		imgStore:  imgStore,
@@ -64,6 +66,7 @@ func NewGarbageCollect(imgStore types.ImageStore, metaDB mTypes.MetaDB, opts Opt
 		policyMgr: retention.NewPolicyManager(opts.ImageRetention, log, auditLog),
 		auditLog:  auditLog,
 		log:       log,
+		metrics:   metrics,
 	}
 }
 
@@ -99,7 +102,12 @@ func (gc GarbageCollect) CleanRepo(ctx context.Context, repo string) error {
 	gc.log.Info().Str("module", "gc").
 		Msg("executing gc of orphaned blobs for " + path.Join(gc.imgStore.RootDir(), repo))
 
+	start := time.Now()
+
 	if err := gc.cleanRepo(ctx, repo); err != nil {
+		monitoring.ObserveGCDuration(gc.metrics, time.Since(start))
+		monitoring.IncGCRuns(gc.metrics, true)
+
 		errMessage := "failed to run GC for " + path.Join(gc.imgStore.RootDir(), repo)
 		gc.log.Error().Err(err).Str("module", "gc").Msg(errMessage)
 		gc.log.Info().Str("module", "gc").
@@ -107,6 +115,9 @@ func (gc GarbageCollect) CleanRepo(ctx context.Context, repo string) error {
 
 		return err
 	}
+
+	monitoring.ObserveGCDuration(gc.metrics, time.Since(start))
+	monitoring.IncGCRuns(gc.metrics, false)
 
 	gc.log.Info().Str("module", "gc").
 		Msg("gc successfully completed for " + path.Join(gc.imgStore.RootDir(), repo))
@@ -141,6 +152,8 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 		return err
 	}
 
+	manifestsBefore := len(index.Manifests)
+
 	// apply tags retention
 	if err := gc.removeTagsPerRetentionPolicy(ctx, repo, &index); err != nil {
 		return err
@@ -160,15 +173,23 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 		}
 	}
 
+	manifestsDeleted := manifestsBefore - len(index.Manifests)
+
 	// gc unreferenced blobs
-	if err := gc.removeUnreferencedBlobs(repo, gc.opts.Delay, gc.log); err != nil {
+	blobsDeleted, err := gc.removeUnreferencedBlobs(repo, gc.opts.Delay, gc.log)
+	if err != nil {
 		return err
 	}
 
 	// gc old blob uploads
-	if err := gc.removeBlobUploads(repo, gc.opts.Delay); err != nil {
+	uploadsDeleted, err := gc.removeBlobUploads(repo, gc.opts.Delay)
+	if err != nil {
 		return err
 	}
+
+	monitoring.IncGCDeleted(gc.metrics, "manifest", manifestsDeleted)
+	monitoring.IncGCDeleted(gc.metrics, "blob", blobsDeleted)
+	monitoring.IncGCDeleted(gc.metrics, "upload", uploadsDeleted)
 
 	return nil
 }
@@ -609,22 +630,24 @@ func (gc GarbageCollect) identifyManifestsReferencedInIndex(index ispec.Index, r
 }
 
 // removeBlobUploads gc all temporary uploads which are past their gc delay.
-func (gc GarbageCollect) removeBlobUploads(repo string, delay time.Duration) error {
+func (gc GarbageCollect) removeBlobUploads(repo string, delay time.Duration) (int, error) {
 	gc.log.Debug().Str("module", "gc").Str("repository", repo).Msg("cleaning unclaimed blob uploads")
 
 	if dir := path.Join(gc.imgStore.RootDir(), repo); !gc.imgStore.DirExists(dir) {
 		// The repository was already cleaned up by a different codepath
-		return nil
+		return 0, nil
 	}
 
 	blobUploads, err := gc.imgStore.ListBlobUploads(repo)
 	if err != nil {
 		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Msg("failed to get list of blob uploads")
 
-		return err
+		return 0, err
 	}
 
 	var aggregatedErr error
+
+	deleted := 0
 
 	for _, uuid := range blobUploads {
 		_, size, modtime, err := gc.imgStore.StatBlobUpload(repo, uuid)
@@ -648,15 +671,17 @@ func (gc GarbageCollect) removeBlobUploads(repo string, delay time.Duration) err
 				Str("size", strconv.FormatInt(size, 10)).Str("modified", modtime.String()).Msg("failed to delete blob upload")
 
 			aggregatedErr = errors.Join(aggregatedErr, err)
+		} else {
+			deleted++
 		}
 	}
 
-	return aggregatedErr
+	return deleted, aggregatedErr
 }
 
 // removeUnreferencedBlobs gc all blobs which are not referenced by any manifest found in repo's index.json.
 func (gc GarbageCollect) removeUnreferencedBlobs(repo string, delay time.Duration, log zlog.Logger,
-) error {
+) (int, error) {
 	gc.log.Debug().Str("module", "gc").Str("repository", repo).Msg("cleaning orphan blobs")
 
 	refBlobs := map[string]bool{}
@@ -665,26 +690,26 @@ func (gc GarbageCollect) removeUnreferencedBlobs(repo string, delay time.Duratio
 	if err != nil {
 		log.Error().Err(err).Str("module", "gc").Str("repository", repo).Msg("failed to read index.json in repo")
 
-		return err
+		return 0, err
 	}
 
 	err = gc.addIndexBlobsToReferences(repo, index, refBlobs)
 	if err != nil {
 		log.Error().Err(err).Str("module", "gc").Str("repository", repo).Msg("failed to get referenced blobs in repo")
 
-		return err
+		return 0, err
 	}
 
 	allBlobs, err := gc.imgStore.GetAllBlobs(repo)
 	if err != nil {
 		// /blobs/sha256/ may be empty in the case of s3, no need to return err, we want to skip
 		if errors.As(err, &driver.PathNotFoundError{}) {
-			return nil
+			return 0, nil
 		}
 
 		log.Error().Err(err).Str("module", "gc").Str("repository", repo).Msg("failed to get all blobs")
 
-		return err
+		return 0, err
 	}
 
 	gcBlobs := make([]godigest.Digest, 0)
@@ -694,7 +719,7 @@ func (gc GarbageCollect) removeUnreferencedBlobs(repo string, delay time.Duratio
 			log.Error().Err(err).Str("module", "gc").Str("repository", repo).
 				Str("digest", digest.String()).Msg("failed to parse digest")
 
-			return err
+			return 0, err
 		}
 
 		if _, ok := refBlobs[digest.String()]; !ok {
@@ -703,7 +728,7 @@ func (gc GarbageCollect) removeUnreferencedBlobs(repo string, delay time.Duratio
 				log.Error().Err(err).Str("module", "gc").Str("repository", repo).
 					Str("digest", digest.String()).Msg("failed to determine GC delay")
 
-				return err
+				return 0, err
 			}
 
 			if canGC {
@@ -717,13 +742,13 @@ func (gc GarbageCollect) removeUnreferencedBlobs(repo string, delay time.Duratio
 
 	reaped, err := gc.imgStore.CleanupRepo(repo, gcBlobs, removeRepo)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	log.Info().Str("module", "gc").Str("repository", repo).Int("count", reaped).
 		Msg("garbage collected blobs")
 
-	return nil
+	return reaped, nil
 }
 
 // used by removeUnreferencedBlobs()

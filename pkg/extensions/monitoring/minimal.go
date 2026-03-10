@@ -35,6 +35,10 @@ const (
 	httpMethodLatencySeconds  = metricsNamespace + ".http.method.latency.seconds"
 	storageLockLatencySeconds = metricsNamespace + ".storage.lock.latency.seconds"
 	workersTasksDuration      = metricsNamespace + ".scheduler.workers.tasks.duration.seconds"
+	// GC metrics.
+	gcRuns     = metricsNamespace + ".gc.runs"
+	gcDuration = metricsNamespace + ".gc.duration.seconds"
+	gcDeleted  = metricsNamespace + ".gc.deleted"
 
 	metricsScrapeTimeout       = 2 * time.Minute
 	metricsScrapeCheckInterval = 30 * time.Second
@@ -274,6 +278,8 @@ func GetCounters() map[string][]string {
 		repoDownloads:       {"repo"},
 		repoUploads:         {"repo"},
 		schedulerGenerators: {},
+		gcRuns:              {"error"},
+		gcDeleted:           {"type"},
 	}
 }
 
@@ -291,6 +297,7 @@ func GetGauges() map[string][]string {
 func GetSummaries() map[string][]string {
 	return map[string][]string{
 		httpRepoLatencySeconds: {"repo"},
+		gcDuration:             {},
 	}
 }
 
@@ -641,5 +648,33 @@ func SetSchedulerWorkers(ms MetricServer, w map[string]int) {
 			LabelValues: []string{state},
 		}
 		ms.SendMetric(workers)
+	}
+}
+
+func IncGCRuns(ms MetricServer, hasError bool) {
+	req := CounterValue{
+		Name:        gcRuns,
+		LabelNames:  []string{"error"},
+		LabelValues: []string{strconv.FormatBool(hasError)},
+	}
+	ms.SendMetric(req)
+}
+
+func ObserveGCDuration(ms MetricServer, latency time.Duration) {
+	sv := SummaryValue{
+		Name: gcDuration,
+		Sum:  latency.Seconds(),
+	}
+	ms.SendMetric(sv)
+}
+
+func IncGCDeleted(ms MetricServer, artifactType string, count int) {
+	for range count {
+		req := CounterValue{
+			Name:        gcDeleted,
+			LabelNames:  []string{"type"},
+			LabelValues: []string{artifactType},
+		}
+		ms.SendMetric(req)
 	}
 }

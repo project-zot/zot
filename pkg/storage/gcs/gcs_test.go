@@ -2045,7 +2045,7 @@ func TestGCSGarbageCollectImageManifest(t *testing.T) {
 					},
 				},
 			},
-		}, audit, testLog)
+		}, audit, testLog, metrics)
 
 		// upload orphan blob
 		upload, err := imgStore.NewBlobUpload(repoName)
@@ -2263,7 +2263,7 @@ func TestGCSGarbageCollectImageIndex(t *testing.T) {
 					},
 				},
 			},
-		}, audit, testLog)
+		}, audit, testLog, metrics)
 
 		// upload orphan blob
 		upload, err := imgStore.NewBlobUpload(repoName)
@@ -2415,7 +2415,7 @@ func TestGCSGarbageCollectChainedImageIndexes(t *testing.T) {
 					},
 				},
 			},
-		}, audit, testLog)
+		}, audit, testLog, metrics)
 
 		// upload orphan blob
 		upload, err := imgStore.NewBlobUpload(repoName)

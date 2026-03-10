@@ -156,7 +156,7 @@ func newVerifyFeatureRetentionCmd(conf *config.Config) *cobra.Command {
 			logger.Info().Msg("garbage collection and retention tasks will be submitted to the scheduler")
 
 			// Run GC and retention tasks
-			api.RunGCTasks(conf, storeController, metaDB, taskScheduler, logger, nil)
+			api.RunGCTasks(conf, storeController, metaDB, taskScheduler, logger, nil, metricsServer)
 
 			// Wait for tasks to complete with optional timeout
 			timeout, err := cmd.PersistentFlags().GetDuration("timeout")
