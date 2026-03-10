@@ -37,7 +37,7 @@ jobs:
           sudo cp bin/skopeo /usr/bin
           skopeo -v
       - name: Log in to GitHub Docker Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -195,7 +195,7 @@ jobs:
           sudo cp bin/skopeo /usr/bin
           skopeo -v
       - name: Log in to GitHub Docker Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -224,7 +224,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config rpm uidmap jq
       - name: Log in to GitHub Docker Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -275,7 +275,7 @@ jobs:
           skopeo -v
           cd $GITHUB_WORKSPACE
       - name: Log in to GitHub Docker Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -362,7 +362,7 @@ jobs:
           skopeo -v
           cd $GITHUB_WORKSPACE
       - name: Log in to GitHub Docker Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
