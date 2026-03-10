@@ -2220,6 +2220,7 @@ func TestGCSGarbageCollectImageIndex(t *testing.T) {
 
 	testLog := log.NewTestLogger()
 	audit := log.NewAuditLogger("debug", "")
+	metrics := monitoring.NewMetricsServer(false, testLog)
 
 	ctx := context.Background()
 
@@ -2372,6 +2373,7 @@ func TestGCSGarbageCollectChainedImageIndexes(t *testing.T) {
 
 	testLog := log.NewTestLogger()
 	audit := log.NewAuditLogger("debug", "")
+	metrics := monitoring.NewMetricsServer(false, testLog)
 
 	ctx := context.Background()
 
