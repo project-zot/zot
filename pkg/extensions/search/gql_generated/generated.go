@@ -8530,6 +8530,10 @@ func (ec *executionContext) fieldContext___Type_isOneOf(_ context.Context, field
 
 func (ec *executionContext) unmarshalInputFilter(ctx context.Context, obj any) (Filter, error) {
 	var it Filter
+	if obj == nil {
+		return it, nil
+	}
+
 	asMap := map[string]any{}
 	for k, v := range obj.(map[string]any) {
 		asMap[k] = v
@@ -8584,6 +8588,10 @@ func (ec *executionContext) unmarshalInputFilter(ctx context.Context, obj any) (
 
 func (ec *executionContext) unmarshalInputImageInput(ctx context.Context, obj any) (ImageInput, error) {
 	var it ImageInput
+	if obj == nil {
+		return it, nil
+	}
+
 	asMap := map[string]any{}
 	for k, v := range obj.(map[string]any) {
 		asMap[k] = v
@@ -8631,6 +8639,10 @@ func (ec *executionContext) unmarshalInputImageInput(ctx context.Context, obj an
 
 func (ec *executionContext) unmarshalInputPageInput(ctx context.Context, obj any) (PageInput, error) {
 	var it PageInput
+	if obj == nil {
+		return it, nil
+	}
+
 	asMap := map[string]any{}
 	for k, v := range obj.(map[string]any) {
 		asMap[k] = v
@@ -8671,6 +8683,10 @@ func (ec *executionContext) unmarshalInputPageInput(ctx context.Context, obj any
 
 func (ec *executionContext) unmarshalInputPlatformInput(ctx context.Context, obj any) (PlatformInput, error) {
 	var it PlatformInput
+	if obj == nil {
+		return it, nil
+	}
+
 	asMap := map[string]any{}
 	for k, v := range obj.(map[string]any) {
 		asMap[k] = v
