@@ -502,6 +502,45 @@ func TestPopulateStorageMetrics(t *testing.T) {
 	})
 }
 
+func TestGCMetrics(t *testing.T) {
+	Convey("GC metrics should be emitted after garbage collection", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = t.TempDir()
+		conf.Extensions = &extconf.ExtensionConfig{}
+		enabled := true
+		conf.Extensions.Metrics = &extconf.MetricsConfig{
+			BaseConfig: extconf.BaseConfig{Enable: &enabled},
+			Prometheus: &extconf.PrometheusConfig{Path: "/metrics"},
+		}
+
+		ctlr := api.NewController(conf)
+		So(ctlr, ShouldNotBeNil)
+
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
+
+		monitoring.IncGCRuns(ctlr.Metrics, false)
+		monitoring.ObserveGCDuration(ctlr.Metrics, time.Millisecond)
+		monitoring.IncGCDeleted(ctlr.Metrics, "blob", 1)
+		monitoring.IncGCDeleted(ctlr.Metrics, "manifest", 1)
+		monitoring.IncGCDeleted(ctlr.Metrics, "upload", 1)
+
+		resp, err := resty.R().Get(baseURL + "/metrics")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		respStr := string(resp.Body())
+		So(respStr, ShouldContainSubstring, "zot_gc_runs_total")
+		So(respStr, ShouldContainSubstring, "zot_gc_duration_seconds")
+		So(respStr, ShouldContainSubstring, "zot_gc_deleted_total")
+	})
+}
+
 func generateRandomString() string {
 	//nolint: gosec
 	seededRand := rand.New(rand.NewSource(time.Now().UnixNano()))
