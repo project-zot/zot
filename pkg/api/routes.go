@@ -13,10 +13,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"path"
-	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -55,6 +56,12 @@ import (
 
 type RouteHandler struct {
 	c *Controller
+}
+
+// byteRange: Define a struct to hold the parsed ranges.
+type byteRange struct {
+	From int64
+	To   int64 // -1 means "until the end of the file"
 }
 
 func NewRouteHandler(c *Controller) *RouteHandler {
@@ -1016,57 +1023,59 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 		return
 	}
 
+	// if blob found, return application/octet-stream
+	response.Header().Set("Content-Type", "application/octet-stream")
+
 	response.Header().Set("Content-Length", strconv.FormatInt(blen, 10))
 	response.Header().Set("Accept-Ranges", "bytes")
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
 	response.WriteHeader(http.StatusOK)
 }
 
-/* parseRangeHeader validates the "Range" HTTP header and returns the range. */
-func parseRangeHeader(contentRange string) (int64, int64, error) {
-	/* bytes=<start>- and bytes=<start>-<end> formats are supported */
-	pattern := `bytes=(?P<rangeFrom>\d+)-(?P<rangeTo>\d*$)`
-
-	regex, err := regexp.Compile(pattern)
-	if err != nil {
-		return -1, -1, zerr.ErrParsingHTTPHeader
+// parseRangeHeader now returns a slice of requested byte ranges.
+func parseRangeHeader(contentRange string) ([]byteRange, error) {
+	if !strings.HasPrefix(contentRange, "bytes=") {
+		// invalid range header: missing bytes= prefix
+		return nil, zerr.ErrParsingHTTPHeader
 	}
 
-	match := regex.FindStringSubmatch(contentRange)
+	rangesStr := strings.TrimPrefix(contentRange, "bytes=")
+	rangeParts := strings.Split(rangesStr, ",")
 
-	paramsMap := make(map[string]string)
+	ranges := make([]byteRange, 0, len(rangeParts))
 
-	for i, name := range regex.SubexpNames() {
-		if i > 0 && i <= len(match) {
-			paramsMap[name] = match[i]
-		}
-	}
+	for _, part := range rangeParts {
+		part = strings.TrimSpace(part)
+		bounds := strings.Split(part, "-")
 
-	var from int64
-
-	to := int64(-1)
-
-	rangeFrom := paramsMap["rangeFrom"]
-	if rangeFrom == "" {
-		return -1, -1, zerr.ErrParsingHTTPHeader
-	}
-
-	if from, err = strconv.ParseInt(rangeFrom, 10, 64); err != nil {
-		return -1, -1, zerr.ErrParsingHTTPHeader
-	}
-
-	rangeTo := paramsMap["rangeTo"]
-	if rangeTo != "" {
-		if to, err = strconv.ParseInt(rangeTo, 10, 64); err != nil {
-			return -1, -1, zerr.ErrParsingHTTPHeader
+		if len(bounds) != 2 {
+			// invalid range format
+			return nil, zerr.ErrParsingHTTPHeader
 		}
 
-		if to < from {
-			return -1, -1, zerr.ErrParsingHTTPHeader
+		from, err := strconv.ParseInt(bounds[0], 10, 64)
+		if err != nil {
+			return nil, err
 		}
+
+		// Handle cases where the end is omitted (e.g., "bytes=500-")
+		var to int64 = -1
+		if bounds[1] != "" {
+			to, err = strconv.ParseInt(bounds[1], 10, 64)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		// Sanity check
+		if to != -1 && from > to {
+			return nil, zerr.ErrParsingHTTPHeader // invalid range: from > to
+		}
+
+		ranges = append(ranges, byteRange{From: from, To: to})
 	}
 
-	return from, to, nil
+	return ranges, nil
 }
 
 // GetBlob godoc
@@ -1106,27 +1115,18 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 	/* content range is supported for resumbale pulls */
 	partial := false
 
-	var from, to int64
+	var byteRanges []byteRange
 
 	var err error
-
 	contentRange := request.Header.Get("Range")
 
-	_, ok = request.Header["Range"]
-	if ok && contentRange == "" {
-		response.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
-
-		return
-	}
-
 	if contentRange != "" {
-		from, to, err = parseRangeHeader(contentRange)
-		if err != nil {
+		byteRanges, err = parseRangeHeader(contentRange)
+		if err != nil || len(byteRanges) == 0 {
 			response.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
 
 			return
 		}
-
 		partial = true
 	}
 
@@ -1134,8 +1134,45 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 	var blen, bsize int64
 
+	if partial && len(byteRanges) > 1 {
+		mpWriter := multipart.NewWriter(response)
+		defer func() {
+			if cerr := mpWriter.Close(); cerr != nil {
+				rh.c.Log.Error().Err(cerr).Msg("failed to close multipart writer")
+			}
+		}()
+
+		response.Header().Set("Content-Type", "multipart/byteranges; boundary="+mpWriter.Boundary())
+		response.WriteHeader(http.StatusPartialContent)
+
+		for _, byteRange := range byteRanges {
+			repo, blen, bsize, err := imgStore.GetBlobPartial(name, digest, mediaType, byteRange.From, byteRange.To)
+			if err != nil {
+				rh.c.Log.Error().Err(err).Msg("failed to fetch partial chunk for multipart")
+
+				continue
+			}
+
+			partHeader := make(textproto.MIMEHeader)
+			partHeader.Set("Content-Type", "application/octet-stream")
+			partHeader.Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", byteRange.From, byteRange.From+blen-1, bsize))
+
+			partWriter, err := mpWriter.CreatePart(partHeader)
+			if err == nil {
+				WriteDataFromReader(partWriter, repo, rh.c.Log)
+			} else {
+				rh.c.Log.Error().Err(err).Msg("failed to create multipart boundary")
+			}
+
+			repo.Close()
+		}
+
+		return
+	}
+
 	if partial {
-		repo, blen, bsize, err = imgStore.GetBlobPartial(name, digest, mediaType, from, to)
+		r := byteRanges[0]
+		repo, blen, bsize, err = imgStore.GetBlobPartial(name, digest, mediaType, r.From, r.To)
 	} else {
 		repo, blen, err = imgStore.GetBlob(name, digest, mediaType)
 	}
@@ -1169,15 +1206,28 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 	status := http.StatusOK
 
 	if partial {
+		r := byteRanges[0]
 		status = http.StatusPartialContent
-
-		response.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", from, from+blen-1, bsize))
+		response.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", r.From, r.From+blen-1, bsize))
 	} else {
 		response.Header().Set(constants.DistContentDigestKey, digest.String())
 	}
 
-	// return the blob data
-	WriteDataFromReader(response, status, blen, mediaType, repo, rh.c.Log)
+	// OCI spec requires a single valid media type. If the Accept header was empty,
+	// contained multiple types (comma separated), or was a wildcard, fallback
+	// to application/octet-stream as per the OCI Distribution spec.
+	responseMediaType := mediaType
+	if responseMediaType == "" || strings.Contains(responseMediaType, ",") || responseMediaType == "*/*" {
+		responseMediaType = "application/octet-stream"
+	}
+
+	// Set headers and status
+	response.Header().Set("Content-Type", responseMediaType)
+	response.Header().Set("Content-Length", strconv.FormatInt(blen, 10))
+	response.WriteHeader(status)
+
+	// Return the blob data using the generic writer
+	WriteDataFromReader(response, repo, rh.c.Log)
 }
 
 // DeleteBlob godoc
@@ -1805,7 +1855,7 @@ func (rh *RouteHandler) listStorageRepositories(lastEntry string, maxEntries int
 
 	subStore := rh.c.StoreController.SubStore
 
-	subPaths := make([]string, 0)
+	subPaths := make([]string, 0, len(subStore))
 	for subPath := range subStore {
 		subPaths = append(subPaths, subPath)
 	}
@@ -2136,22 +2186,16 @@ func getContentRange(r *http.Request) (int64 /* from */, int64 /* to */, error) 
 	return rangeStart, rangeEnd, nil
 }
 
-func WriteDataFromReader(response http.ResponseWriter, status int, length int64, mediaType string,
-	reader io.Reader, logger log.Logger,
-) {
-	response.Header().Set("Content-Type", mediaType)
-	response.Header().Set("Content-Length", strconv.FormatInt(length, 10))
-	response.WriteHeader(status)
-
+func WriteDataFromReader(writer io.Writer, reader io.Reader, logger log.Logger) {
 	const maxSize = 10 * 1024 * 1024
 
 	for {
-		_, err := io.CopyN(response, reader, maxSize)
+		_, err := io.CopyN(writer, reader, maxSize)
 		if errors.Is(err, io.EOF) {
 			break
 		} else if err != nil {
 			// other kinds of intermittent errors can occur, e.g, io.ErrShortWrite
-			logger.Error().Err(err).Msg("failed to copy data into http response")
+			logger.Error().Err(err).Msg("failed to copy data")
 
 			return
 		}
