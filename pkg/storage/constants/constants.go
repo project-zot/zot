@@ -26,4 +26,5 @@ const (
 	S3StorageDriverName     = "s3"
 	GCSStorageDriverName    = "gcs"
 	LocalStorageDriverName  = "local"
+	GlobalBlobsRepo         = "_blobstore"
 )
