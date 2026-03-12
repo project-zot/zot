@@ -29,6 +29,8 @@ type Service interface {
 	SyncImage(ctx context.Context, repo, reference string) error // used by sync on demand
 	// Sync referrers for an image (repo:subjectDigestStr) into ImageStore.
 	SyncReferrers(ctx context.Context, repo string, subjectDigestStr string, referenceTypes []string) error
+	// Sync a blob (repo@digest) into ImageStore with streaming support.
+	SyncBlob(ctx context.Context, repo string, digest godigest.Digest) error // used by sync on demand for blobs
 	// Remove all internal catalog entries.
 	ResetCatalog() // used by scheduler to empty out the catalog after a sync periodically roundtrip finishes
 	/* Returns if service has retry option set.
