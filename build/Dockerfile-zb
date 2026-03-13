@@ -6,7 +6,7 @@
 #   FROM argument 'BASE_IMAGE' is not declared
 # Podman: Error: determining starting point for build: no FROM statement found
 # ---
-ARG BASE_IMAGE
+ARG BASE_IMAGE=scratch
 
 # ---
 # Stage 1: Install certs, build binary, create default config file
@@ -25,7 +25,7 @@ RUN make COMMIT=$COMMIT OS=$TARGETOS ARCH=$TARGETARCH clean bench
 # ---
 # Stage 2: Final image with nothing but certs, binary, and default config file
 # ---
-FROM BASE_IMAGE AS final
+FROM $BASE_IMAGE AS final
 ARG TARGETOS
 ARG TARGETARCH
 COPY --from=builder /go/src/github.com/project-zot/zot/bin/zb-$TARGETOS-$TARGETARCH /usr/bin/zb
