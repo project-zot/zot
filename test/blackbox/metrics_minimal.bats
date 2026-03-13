@@ -109,9 +109,10 @@ function teardown_file() {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     run metrics_route_check ${zot_port} "-u ${METRICS_USER}:${METRICS_PASS}" 200
     [ "$status" -eq 0 ]
-# anonymous policy: /v2/ endpoint should be available
-# 200 - http.StatusOK
+# /v2/ challenges unauthenticated requests when HTTP auth is configured,
+# even with anonymous policy (to preserve Docker's auth flow, see #3538)
+# 401 - http.StatusUnauthorized
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
-    run dist_route_check ${zot_port} "" 200
+    run dist_route_check ${zot_port} "" 401
     [ "$status" -eq 0 ]
 }

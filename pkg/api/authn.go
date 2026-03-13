@@ -412,7 +412,20 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 
 			// Get access control config safely
 			accessControlConfig := ctlr.Config.CopyAccessControlConfig()
-			allowAnonymous := accessControlConfig != nil && accessControlConfig.AnonymousPolicyExists()
+			// When an HTTP authentication mechanism is configured (htpasswd, LDAP, Bearer,
+			// OpenID), the /v2/ ping must always challenge unauthenticated clients to preserve
+			// Docker's auth challenge flow. Without this, Docker sees 200 from /v2/ and skips
+			// auth state setup, causing subsequent authenticated endpoints to silently fail.
+			// When no HTTP auth is configured (e.g. mTLS-only), anonymous access on /v2/ is
+			// preserved as before.
+			// See: https://github.com/project-zot/zot/issues/3538
+			isV2PingRequested := request.URL.Path == constants.RoutePrefix+"/"
+			hasHTTPAuth := authConfig.IsBasicAuthnEnabled() ||
+				authConfig.IsBearerAuthEnabled() ||
+				authConfig.IsOpenIDAuthEnabled()
+			allowAnonymous := accessControlConfig != nil &&
+				accessControlConfig.AnonymousPolicyExists() &&
+				!(isV2PingRequested && hasHTTPAuth)
 
 			// build user access control info
 			userAc := reqCtx.NewUserAccessControl()

@@ -162,11 +162,12 @@ func TestProfilingAuthz(t *testing.T) {
 
 			defer cm.StopServer()
 
-			// unauthenticated clients should have access to /v2/
+			// unauthenticated clients should get auth challenge on /v2/
+			// (/v2/ always challenges when HTTP auth is configured, even with anonymous policy)
 			resp, err := resty.R().Get(baseURL + "/v2/")
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 			// unauthenticated clients should not have access to the profiling endpoint
 			resp, err = resty.R().Get(baseURL + constants.RoutePrefix + debugConstants.ProfilingEndpoint + "trace")

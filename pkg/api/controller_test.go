@@ -2307,10 +2307,10 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 
-		// without creds, should still be allowed to access
+		// without creds, should get auth challenge (/v2/ always challenges when HTTP auth is configured)
 		resp, err = resty.R().Get(secureBaseURL + "/v2/")
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		// with creds, should get expected status code
 		resp, _ = resty.R().SetBasicAuth(username, password).Get(secureBaseURL)

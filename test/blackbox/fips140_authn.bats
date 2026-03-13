@@ -123,24 +123,26 @@ function verify_auth_and_push() {
     
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
    
-    # anonymous authn is set for zot, so all auth is ignored for the /v2/ ping
+    # /v2/ challenges unauthenticated requests when HTTP auth is configured,
+    # so regctl login now validates credentials immediately via the auth challenge.
     run regctl registry login localhost:${zot_port} -u ${user} -p ${pass}
-    [ "$status" -eq 0 ]
-    
-    run regctl image copy ocidir://${TEST_DATA_DIR}/busybox:1.36 localhost:${zot_port}/test-${hash_type}
-    
+
     if [ "$should_succeed" = "true" ]; then
         [ "$status" -eq 0 ]
+        run regctl image copy ocidir://${TEST_DATA_DIR}/busybox:1.36 localhost:${zot_port}/test-${hash_type}
+        [ "$status" -eq 0 ]
     else
-        [ "$status" -eq 1 ]
+        # With /v2/ auth challenge, login itself fails for unsupported auth methods
+        # (e.g., bcrypt in FIPS mode). Verify the expected error in zot server logs.
+        [ "$status" -ne 0 ]
         log_output | jq 'contains("htpasswd bcrypt failed since fips140 is enabled")' | grep true
     fi
 }
 
 @test "push image with regclient - setup registry" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
-    run regctl registry set localhost:${zot_port} --tls disabled
-    [ "$status" -eq 0 ]
+    # /v2/ ping may return 401 when HTTP auth is configured, but config is still saved
+    regctl registry set localhost:${zot_port} --tls disabled 2>/dev/null || true
 }
 
 @test "push image with bcrypt auth (should fail in FIPS mode)" {
@@ -165,8 +167,7 @@ function verify_auth_and_push() {
 
 @test "pull image with SHA256 auth" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
-    run regctl registry set localhost:${zot_port} --tls disabled
-    [ "$status" -eq 0 ]
+    regctl registry set localhost:${zot_port} --tls disabled 2>/dev/null || true
     run regctl registry login localhost:${zot_port} -u ${AUTH_USER2} -p ${AUTH_PASS2}
     [ "$status" -eq 0 ]
     run regctl image copy localhost:${zot_port}/test-sha256 ocidir://${TEST_DATA_DIR}/busybox:sha256-pulled
@@ -175,8 +176,7 @@ function verify_auth_and_push() {
 
 @test "pull image with SHA512 auth" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
-    run regctl registry set localhost:${zot_port} --tls disabled
-    [ "$status" -eq 0 ]
+    regctl registry set localhost:${zot_port} --tls disabled 2>/dev/null || true
     run regctl registry login localhost:${zot_port} -u ${AUTH_USER3} -p ${AUTH_PASS3}
     [ "$status" -eq 0 ]
     run regctl image copy localhost:${zot_port}/test-sha512 ocidir://${TEST_DATA_DIR}/busybox:sha512-pulled
@@ -185,8 +185,7 @@ function verify_auth_and_push() {
 
 @test "pull image with SHA256 auth with 0 rounds" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
-    run regctl registry set localhost:${zot_port} --tls disabled
-    [ "$status" -eq 0 ]
+    regctl registry set localhost:${zot_port} --tls disabled 2>/dev/null || true
     run regctl registry login localhost:${zot_port} -u ${AUTH_USER4} -p ${AUTH_PASS4}
     [ "$status" -eq 0 ]
     run regctl image copy localhost:${zot_port}/test-sha256-0rounds ocidir://${TEST_DATA_DIR}/busybox:sha256-0rounds-pulled
@@ -195,8 +194,7 @@ function verify_auth_and_push() {
 
 @test "pull image with SHA512 auth with 0 rounds" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
-    run regctl registry set localhost:${zot_port} --tls disabled
-    [ "$status" -eq 0 ]
+    regctl registry set localhost:${zot_port} --tls disabled 2>/dev/null || true
     run regctl registry login localhost:${zot_port} -u ${AUTH_USER5} -p ${AUTH_PASS5}
     [ "$status" -eq 0 ]
     run regctl image copy localhost:${zot_port}/test-sha512-0rounds ocidir://${TEST_DATA_DIR}/busybox:sha512-0rounds-pulled
@@ -205,8 +203,7 @@ function verify_auth_and_push() {
 
 @test "push OCI artifact with SHA256 auth" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
-    run regctl registry set localhost:${zot_port} --tls disabled
-    [ "$status" -eq 0 ]
+    regctl registry set localhost:${zot_port} --tls disabled 2>/dev/null || true
     run regctl registry login localhost:${zot_port} -u ${AUTH_USER2} -p ${AUTH_PASS2}
     [ "$status" -eq 0 ]
     run regctl artifact put localhost:${zot_port}/artifact-sha256:demo <<EOF
@@ -217,8 +214,7 @@ EOF
 
 @test "push OCI artifact with SHA512 auth" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
-    run regctl registry set localhost:${zot_port} --tls disabled
-    [ "$status" -eq 0 ]
+    regctl registry set localhost:${zot_port} --tls disabled 2>/dev/null || true
     run regctl registry login localhost:${zot_port} -u ${AUTH_USER3} -p ${AUTH_PASS3}
     [ "$status" -eq 0 ]
     run regctl artifact put localhost:${zot_port}/artifact-sha512:demo <<EOF
@@ -229,8 +225,7 @@ EOF
 
 @test "push OCI artifact with SHA256 auth with 0 rounds" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
-    run regctl registry set localhost:${zot_port} --tls disabled
-    [ "$status" -eq 0 ]
+    regctl registry set localhost:${zot_port} --tls disabled 2>/dev/null || true
     run regctl registry login localhost:${zot_port} -u ${AUTH_USER4} -p ${AUTH_PASS4}
     [ "$status" -eq 0 ]
     run regctl artifact put localhost:${zot_port}/artifact-sha256-0rounds:demo <<EOF
@@ -241,8 +236,7 @@ EOF
 
 @test "push OCI artifact with SHA512 auth with 0 rounds" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
-    run regctl registry set localhost:${zot_port} --tls disabled
-    [ "$status" -eq 0 ]
+    regctl registry set localhost:${zot_port} --tls disabled 2>/dev/null || true
     run regctl registry login localhost:${zot_port} -u ${AUTH_USER5} -p ${AUTH_PASS5}
     [ "$status" -eq 0 ]
     run regctl artifact put localhost:${zot_port}/artifact-sha512-0rounds:demo <<EOF
@@ -253,8 +247,7 @@ EOF
 
 @test "pull OCI artifact with SHA256 auth" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
-    run regctl registry set localhost:${zot_port} --tls disabled
-    [ "$status" -eq 0 ]
+    regctl registry set localhost:${zot_port} --tls disabled 2>/dev/null || true
     run regctl registry login localhost:${zot_port} -u ${AUTH_USER2} -p ${AUTH_PASS2}
     [ "$status" -eq 0 ]
     run regctl manifest get localhost:${zot_port}/artifact-sha256:demo
@@ -266,8 +259,7 @@ EOF
 
 @test "pull OCI artifact with SHA512 auth" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
-    run regctl registry set localhost:${zot_port} --tls disabled
-    [ "$status" -eq 0 ]
+    regctl registry set localhost:${zot_port} --tls disabled 2>/dev/null || true
     run regctl registry login localhost:${zot_port} -u ${AUTH_USER3} -p ${AUTH_PASS3}
     [ "$status" -eq 0 ]
     run regctl manifest get localhost:${zot_port}/artifact-sha512:demo
@@ -279,8 +271,7 @@ EOF
 
 @test "pull OCI artifact with SHA256 auth with 0 rounds" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
-    run regctl registry set localhost:${zot_port} --tls disabled
-    [ "$status" -eq 0 ]
+    regctl registry set localhost:${zot_port} --tls disabled 2>/dev/null || true
     run regctl registry login localhost:${zot_port} -u ${AUTH_USER4} -p ${AUTH_PASS4}
     [ "$status" -eq 0 ]
     run regctl manifest get localhost:${zot_port}/artifact-sha256-0rounds:demo
@@ -292,8 +283,7 @@ EOF
 
 @test "pull OCI artifact with SHA512 auth with 0 rounds" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
-    run regctl registry set localhost:${zot_port} --tls disabled
-    [ "$status" -eq 0 ]
+    regctl registry set localhost:${zot_port} --tls disabled 2>/dev/null || true
     run regctl registry login localhost:${zot_port} -u ${AUTH_USER5} -p ${AUTH_PASS5}
     [ "$status" -eq 0 ]
     run regctl manifest get localhost:${zot_port}/artifact-sha512-0rounds:demo
@@ -305,8 +295,7 @@ EOF
 
 @test "push OCI artifact references with regclient" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
-    run regctl registry set localhost:${zot_port} --tls disabled
-    [ "$status" -eq 0 ]
+    regctl registry set localhost:${zot_port} --tls disabled 2>/dev/null || true
     run regctl registry login localhost:${zot_port} -u ${AUTH_USER2} -p ${AUTH_PASS2}
     [ "$status" -eq 0 ]
     run regctl artifact put localhost:${zot_port}/manifest-ref:demo <<EOF
@@ -336,8 +325,7 @@ EOF
 
 @test "list OCI artifact references with regclient" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
-    run regctl registry set localhost:${zot_port} --tls disabled
-    [ "$status" -eq 0 ]
+    regctl registry set localhost:${zot_port} --tls disabled 2>/dev/null || true
     run regctl registry login localhost:${zot_port} -u ${AUTH_USER2} -p ${AUTH_PASS2}
     [ "$status" -eq 0 ]
     run regctl artifact list localhost:${zot_port}/manifest-ref:demo --format raw-body
@@ -363,8 +351,7 @@ EOF
 
 @test "ML artifacts" {
   zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
-  run regctl registry set localhost:${zot_port} --tls disabled
-  [ "$status" -eq 0 ]
+  regctl registry set localhost:${zot_port} --tls disabled 2>/dev/null || true
   # Use SHA512 auth for ML artifacts test
   run regctl registry login localhost:${zot_port} -u ${AUTH_USER3} -p ${AUTH_PASS3}
   [ "$status" -eq 0 ]
