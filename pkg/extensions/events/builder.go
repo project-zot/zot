@@ -34,6 +34,22 @@ func (b *eventBuilder) WithEventType(eventType EventType) *eventBuilder {
 	return b
 }
 
+func (b *eventBuilder) WithEventContext(ectx *EventContext) *eventBuilder {
+	if ectx == nil {
+		return b
+	}
+
+	if ectx.Actor != nil {
+		b.data["actor"] = ectx.Actor
+	}
+
+	if ectx.Request != nil {
+		b.data["request"] = ectx.Request
+	}
+
+	return b
+}
+
 func (b *eventBuilder) Build() (*cloudevents.Event, error) {
 	if b.eventType == "" {
 		return nil, zerr.ErrEventTypeEmpty

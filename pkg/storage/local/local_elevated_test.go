@@ -4,6 +4,7 @@ package local_test
 
 import (
 	"bytes"
+	"context"
 	_ "crypto/sha256"
 	"os"
 	"os/exec"
@@ -55,7 +56,7 @@ func TestElevatedPrivilegesInvalidDedupe(t *testing.T) {
 		So(blob, ShouldEqual, buflen)
 
 		// Create a file at the same place where FinishBlobUpload will create
-		err = imgStore.InitRepo("dedupe2")
+		err = imgStore.InitRepo(context.Background(), "dedupe2")
 		So(err, ShouldBeNil)
 
 		err = os.MkdirAll(path.Join(dir, "dedupe2", "blobs/sha256"), 0o755)
