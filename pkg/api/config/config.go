@@ -104,18 +104,19 @@ type AuthHTPasswd struct {
 }
 
 type AuthConfig struct {
-	FailDelay         int
-	HTPasswd          AuthHTPasswd
-	LDAP              *LDAPConfig
-	Bearer            *BearerConfig
-	OpenID            *OpenIDConfig
-	APIKey            bool
-	SessionKeysFile   string
-	SessionHashKey    []byte         `json:"-"`
-	SessionEncryptKey []byte         `json:"-"`
-	SessionDriver     map[string]any `mapstructure:",omitempty"`
-	SecureSession     *bool          `json:"secureSession,omitempty" mapstructure:"secureSession,omitempty"`
-	MTLS              *MTLSConfig    `json:"mtls,omitempty"          mapstructure:"mtls,omitempty"`
+	FailDelay             int
+	HTPasswd              AuthHTPasswd
+	LDAP                  *LDAPConfig
+	Bearer                *BearerConfig
+	OpenID                *OpenIDConfig
+	APIKey                bool
+	SessionKeysFile       string
+	SessionHashKey        []byte         `json:"-"`
+	SessionEncryptKey     []byte         `json:"-"`
+	SessionDriver         map[string]any `mapstructure:",omitempty"`
+	SecureSession         *bool          `json:"secureSession,omitempty"         mapstructure:"secureSession,omitempty"`
+	MTLS                  *MTLSConfig    `json:"mtls,omitempty"                  mapstructure:"mtls,omitempty"`
+	ForceDockerClientAuth bool           `json:"forceDockerClientAuth,omitempty" mapstructure:"forceDockerClientAuth,omitempty"` //nolint:lll
 }
 
 // IsLdapAuthEnabled checks if LDAP authentication is enabled in this auth config.
