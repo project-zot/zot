@@ -734,7 +734,8 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) 
 		err = WriteImageToFileSystem(image, modifiedAddImageRepo, newTag, storeController)
 		So(err, ShouldBeNil)
 
-		err = storeController.GetDefaultImageStore().DeleteImageManifest(modifiedRemoveImageRepo, tag2, false)
+		err = storeController.GetDefaultImageStore().DeleteImageManifest(
+			context.Background(), modifiedRemoveImageRepo, tag2, false)
 		So(err, ShouldBeNil)
 
 		err = os.RemoveAll(filepath.Join(rootDir, deletedRepo))
