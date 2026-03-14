@@ -415,6 +415,8 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 			}
 
 			isMgmtRequested := request.RequestURI == constants.FullMgmt
+			isV2Requested := strings.TrimSuffix(request.URL.Path, "/") == constants.RoutePrefix
+			isDockerClient := strings.Contains(request.Header.Get("User-Agent"), "Docker-Client")
 
 			// Get auth config safely
 			authConfig := ctlr.Config.CopyAuthConfig()
@@ -466,7 +468,14 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 
 			// If no credentials provided - check for anonymous / mgmt requests
 			case allowAnonymous || isMgmtRequested:
-				authenticated = true
+				// Docker workaround: force 401 on /v2/ to trigger credential sending
+				// Docker doesn't send stored credentials if /v2/ returns 200
+				// See: https://github.com/opencontainers/wg-auth/blob/main/docs/implementations/moby.md
+				if authConfig.ForceDockerClientAuth && isDockerClient && isV2Requested {
+					authenticated = false
+				} else {
+					authenticated = true
+				}
 			}
 
 			// If error occurred during authn process - return 500 error

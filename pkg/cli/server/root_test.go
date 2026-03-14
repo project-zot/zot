@@ -3316,3 +3316,66 @@ func TestBearerASMConfigValidation(t *testing.T) {
 		})
 	})
 }
+
+func TestForceDockerClientAuthConfig(t *testing.T) {
+	Convey("Test forceDockerClientAuth config parsing", t, func() {
+		Convey("forceDockerClientAuth set to true is parsed correctly", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "8080",
+					"auth": {
+						"htpasswd": {"path": "/tmp/htpasswd"},
+						"forceDockerClientAuth": true
+					}
+				}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldBeNil)
+			So(cfg.HTTP.Auth, ShouldNotBeNil)
+			So(cfg.HTTP.Auth.ForceDockerClientAuth, ShouldBeTrue)
+		})
+
+		Convey("forceDockerClientAuth set to false is parsed correctly", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "8080",
+					"auth": {
+						"htpasswd": {"path": "/tmp/htpasswd"},
+						"forceDockerClientAuth": false
+					}
+				}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldBeNil)
+			So(cfg.HTTP.Auth, ShouldNotBeNil)
+			So(cfg.HTTP.Auth.ForceDockerClientAuth, ShouldBeFalse)
+		})
+
+		Convey("forceDockerClientAuth defaults to false when not specified", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "8080",
+					"auth": {
+						"htpasswd": {"path": "/tmp/htpasswd"}
+					}
+				}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldBeNil)
+			So(cfg.HTTP.Auth, ShouldNotBeNil)
+			So(cfg.HTTP.Auth.ForceDockerClientAuth, ShouldBeFalse)
+		})
+	})
+}
