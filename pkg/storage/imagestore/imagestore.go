@@ -131,7 +131,7 @@ func (is *ImageStore) Unlock(lockStart *time.Time) {
 	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), storageConstants.RWLOCK) // histogram
 }
 
-func (is *ImageStore) initRepo(name string) error {
+func (is *ImageStore) initRepo(ctx context.Context, name string) error {
 	repoDir := path.Join(is.rootDir, name)
 
 	if !utf8.ValidString(name) {
@@ -200,7 +200,7 @@ func (is *ImageStore) initRepo(name string) error {
 		}
 
 		if is.events != nil {
-			is.events.RepositoryCreated(name)
+			is.events.RepositoryCreated(name, events.EventContextFromContext(ctx))
 		}
 	}
 
@@ -208,13 +208,13 @@ func (is *ImageStore) initRepo(name string) error {
 }
 
 // InitRepo creates an image repository under this store.
-func (is *ImageStore) InitRepo(name string) error {
+func (is *ImageStore) InitRepo(ctx context.Context, name string) error {
 	var lockLatency time.Time
 
 	is.Lock(&lockLatency)
 	defer is.Unlock(&lockLatency)
 
-	return is.initRepo(name)
+	return is.initRepo(ctx, name)
 }
 
 // ValidateRepo validates that the repository layout is complaint with the OCI repo layout.
@@ -539,10 +539,10 @@ func (is *ImageStore) GetImageManifest(repo, reference string) ([]byte, godigest
 // When extraTags is non-empty, the reference must be a digest; each entry becomes an
 // org.opencontainers.image.ref.name on a separate index descriptor (distribution-spec
 // digest push with tag query params).
-func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //nolint: gocyclo,cyclop
+func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, mediaType string, //nolint: gocyclo,cyclop
 	body []byte, extraTags []string,
 ) (godigest.Digest, godigest.Digest, error) {
-	if err := is.InitRepo(repo); err != nil {
+	if err := is.InitRepo(ctx, repo); err != nil {
 		is.log.Debug().Err(err).Msg("init repo")
 
 		return "", "", err
@@ -647,10 +647,7 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 		}
 	}
 
-	var (
-		lintDesc        ispec.Descriptor
-		commitEventRefs []string
-	)
+	var lintDesc ispec.Descriptor
 
 	if len(extraTags) > 0 {
 		for midx := 0; midx < len(index.Manifests); {
@@ -717,7 +714,6 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 			},
 		}
 
-		commitEventRefs = changedTags
 	} else {
 		updateIndex, oldDgst, err := common.CheckIfIndexNeedsUpdate(&index, &desc, is.log)
 		if err != nil {
@@ -753,7 +749,6 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 		desc.ArtifactType = artifactType
 
 		lintDesc = desc
-		commitEventRefs = []string{reference}
 	}
 
 	pass, err := common.ApplyLinter(is, is.linter, repo, lintDesc)
@@ -762,7 +757,8 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 			Msg("linter didn't pass")
 
 		if is.events != nil {
-			is.events.ImageLintFailed(repo, reference, mDigest.String(), mediaType, string(body))
+			is.events.ImageLintFailed(repo, reference, mDigest.String(), mediaType, string(body),
+				events.EventContextFromContext(ctx))
 		}
 
 		return "", "", err
@@ -773,16 +769,15 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 	}
 
 	if is.events != nil {
-		for _, ref := range commitEventRefs {
-			is.events.ImageUpdated(repo, ref, mDigest.String(), mediaType, string(body))
-		}
+		is.events.ImageUpdated(repo, reference, mDigest.String(), mediaType, string(body),
+			events.EventContextFromContext(ctx))
 	}
 
 	return mDigest, subjectDigest, nil
 }
 
 // DeleteImageManifest deletes the image manifest from the repository.
-func (is *ImageStore) DeleteImageManifest(repo, reference string, detectCollisions bool) error {
+func (is *ImageStore) DeleteImageManifest(ctx context.Context, repo, reference string, detectCollisions bool) error {
 	dir := path.Join(is.rootDir, repo)
 	if fi, err := is.storeDriver.Stat(dir); err != nil || !fi.IsDir() {
 		return zerr.ErrRepoNotFound
@@ -793,7 +788,7 @@ func (is *ImageStore) DeleteImageManifest(repo, reference string, detectCollisio
 	is.Lock(&lockLatency)
 	defer is.Unlock(&lockLatency)
 
-	err := is.deleteImageManifest(repo, reference, detectCollisions)
+	err := is.deleteImageManifest(ctx, repo, reference, detectCollisions)
 	if err != nil {
 		return err
 	}
@@ -801,7 +796,7 @@ func (is *ImageStore) DeleteImageManifest(repo, reference string, detectCollisio
 	return nil
 }
 
-func (is *ImageStore) deleteImageManifest(repo, reference string, detectCollisions bool) error {
+func (is *ImageStore) deleteImageManifest(ctx context.Context, repo, reference string, detectCollisions bool) error {
 	defer func() {
 		if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
 			monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
@@ -876,7 +871,8 @@ func (is *ImageStore) deleteImageManifest(repo, reference string, detectCollisio
 	}
 
 	if is.events != nil {
-		is.events.ImageDeleted(repo, reference, manifestDesc.Digest.String(), manifestDesc.MediaType)
+		is.events.ImageDeleted(repo, reference, manifestDesc.Digest.String(), manifestDesc.MediaType,
+			events.EventContextFromContext(ctx))
 	}
 
 	return nil
@@ -928,7 +924,7 @@ func (is *ImageStore) StatBlobUpload(repo, uuid string) (bool, int64, time.Time,
 
 // NewBlobUpload returns the unique ID for an upload in progress.
 func (is *ImageStore) NewBlobUpload(repo string) (string, error) {
-	if err := is.InitRepo(repo); err != nil {
+	if err := is.InitRepo(context.Background(), repo); err != nil {
 		is.log.Error().Err(err).Msg("failed to initialize repo")
 
 		return "", err
@@ -983,7 +979,7 @@ func (is *ImageStore) GetBlobUpload(repo, uuid string) (int64, error) {
 // PutBlobChunkStreamed appends another chunk of data to the specified blob. It returns
 // the number of actual bytes to the blob.
 func (is *ImageStore) PutBlobChunkStreamed(repo, uuid string, body io.Reader) (int64, error) {
-	if err := is.InitRepo(repo); err != nil {
+	if err := is.InitRepo(context.Background(), repo); err != nil {
 		return -1, err
 	}
 
@@ -1016,7 +1012,7 @@ func (is *ImageStore) PutBlobChunkStreamed(repo, uuid string, body io.Reader) (i
 func (is *ImageStore) PutBlobChunk(repo, uuid string, from, to int64,
 	body io.Reader,
 ) (int64, error) {
-	if err := is.InitRepo(repo); err != nil {
+	if err := is.InitRepo(context.Background(), repo); err != nil {
 		return -1, err
 	}
 
@@ -1151,7 +1147,7 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, dstDigest godi
 		return "", -1, err
 	}
 
-	if err := is.InitRepo(repo); err != nil {
+	if err := is.InitRepo(context.Background(), repo); err != nil {
 		return "", -1, err
 	}
 
@@ -1527,7 +1523,7 @@ func (is *ImageStore) checkCacheBlob(digest godigest.Digest) (string, error) {
 }
 
 func (is *ImageStore) copyBlob(repo string, blobPath, dstRecord string) (int64, error) {
-	if err := is.initRepo(repo); err != nil {
+	if err := is.initRepo(context.Background(), repo); err != nil {
 		is.log.Error().Err(err).Str("repository", repo).Msg("failed to initialize an empty repo")
 
 		return -1, err
@@ -1808,7 +1804,7 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 
 		if err := is.deleteBlob(repo, digest); err != nil {
 			if errors.Is(err, zerr.ErrBlobReferenced) {
-				if err := is.deleteImageManifest(repo, digest.String(), true); err != nil {
+				if err := is.deleteImageManifest(context.Background(), repo, digest.String(), true); err != nil {
 					if errors.Is(err, zerr.ErrManifestConflict) || errors.Is(err, zerr.ErrManifestReferenced) {
 						continue
 					}
