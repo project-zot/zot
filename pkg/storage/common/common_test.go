@@ -2,6 +2,7 @@ package storage_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -59,20 +60,20 @@ func TestValidateManifest(t *testing.T) {
 			body, err := json.Marshal(manifest)
 			So(err, ShouldBeNil)
 
-			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageConfig, body, nil)
-			So(err, ShouldNotBeNil)
+
+			_, _, err = imgStore.PutImageManifest(context.Background(), "test", "1.0", ispec.MediaTypeImageConfig, body, nil)			So(err, ShouldNotBeNil)
 			So(err, ShouldEqual, zerr.ErrBadManifest)
 		})
 
 		Convey("empty manifest with bad media type", func() {
-			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageConfig, []byte(""), nil)
-			So(err, ShouldNotBeNil)
+
+			_, _, err = imgStore.PutImageManifest(context.Background(), "test", "1.0", ispec.MediaTypeImageConfig, []byte(""), nil)			So(err, ShouldNotBeNil)
 			So(err, ShouldEqual, zerr.ErrBadManifest)
 		})
 
 		Convey("empty manifest with correct media type", func() {
-			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, []byte(""), nil)
-			So(err, ShouldNotBeNil)
+
+			_, _, err = imgStore.PutImageManifest(context.Background(), "test", "1.0", ispec.MediaTypeImageManifest, []byte(""), nil)			So(err, ShouldNotBeNil)
 			So(err, ShouldEqual, zerr.ErrBadManifest)
 		})
 
@@ -97,8 +98,8 @@ func TestValidateManifest(t *testing.T) {
 			body, err := json.Marshal(manifest)
 			So(err, ShouldBeNil)
 
-			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, body, nil)
-			So(err, ShouldNotBeNil)
+
+			_, _, err = imgStore.PutImageManifest(context.Background(), "test", "1.0", ispec.MediaTypeImageManifest, body, nil)			So(err, ShouldNotBeNil)
 
 			var internalErr *zerr.Error
 
@@ -134,8 +135,8 @@ func TestValidateManifest(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// this was actually an umoci error on config blob
-			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, body, nil)
-			So(err, ShouldBeNil)
+
+			_, _, err = imgStore.PutImageManifest(context.Background(), "test", "1.0", ispec.MediaTypeImageManifest, body, nil)			So(err, ShouldBeNil)
 		})
 
 		Convey("manifest with non-distributable layers", func() {
@@ -163,8 +164,8 @@ func TestValidateManifest(t *testing.T) {
 			body, err := json.Marshal(manifest)
 			So(err, ShouldBeNil)
 
-			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, body, nil)
-			So(err, ShouldBeNil)
+
+			_, _, err = imgStore.PutImageManifest(context.Background(), "test", "1.0", ispec.MediaTypeImageManifest, body, nil)			So(err, ShouldBeNil)
 		})
 
 		Convey("manifest with empty layers should not error", func() {
@@ -182,8 +183,8 @@ func TestValidateManifest(t *testing.T) {
 			body, err := json.Marshal(manifest)
 			So(err, ShouldBeNil)
 
-			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, body, nil)
-			So(err, ShouldBeNil)
+
+			_, _, err = imgStore.PutImageManifest(context.Background(), "test", "1.0", ispec.MediaTypeImageManifest, body, nil)			So(err, ShouldBeNil)
 		})
 	})
 }

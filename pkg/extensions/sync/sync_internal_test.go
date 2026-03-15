@@ -864,8 +864,9 @@ func TestDestinationRegistry(t *testing.T) {
 			So(err, ShouldBeNil)
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
-			_, _, err = imgStore.PutImageManifest(repoName, digest.String(), ispec.MediaTypeImageManifest, content, nil)
-			So(err, ShouldBeNil)
+
+			_, _, err = imgStore.PutImageManifest(
+				context.Background(), repoName, digest.String(), ispec.MediaTypeImageManifest, content, nil)			So(err, ShouldBeNil)
 
 			index.Manifests = append(index.Manifests, ispec.Descriptor{
 				Digest:    digest,
@@ -880,8 +881,8 @@ func TestDestinationRegistry(t *testing.T) {
 		indexDigest := godigest.FromBytes(indexContent)
 		So(indexDigest, ShouldNotBeNil)
 
-		_, _, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageIndex, indexContent, nil)
-		So(err, ShouldBeNil)
+
+		_, _, err = imgStore.PutImageManifest(context.Background(), repoName, "1.0", ispec.MediaTypeImageIndex, indexContent, nil)		So(err, ShouldBeNil)
 
 		Convey("sync index image", func() {
 			ok, err := registry.CanSkipImage(repoName, "1.0", indexDigest)
@@ -1067,8 +1068,9 @@ func TestDestinationRegistry(t *testing.T) {
 				So(manifestDigest, ShouldNotBeNil)
 
 				// Store the manifest in the temp image store
-				_, _, err = tempImgStore.PutImageManifest(repoName, manifestDigest.String(), ispec.MediaTypeImageManifest, manifestContent, nil)
-				So(err, ShouldBeNil)
+
+				_, _, err = tempImgStore.PutImageManifest(
+					context.Background(), repoName, manifestDigest.String(), ispec.MediaTypeImageManifest, manifestContent, nil)				So(err, ShouldBeNil)
 
 				// Add to index
 				index.Manifests = append(index.Manifests, ispec.Descriptor{
@@ -1085,8 +1087,9 @@ func TestDestinationRegistry(t *testing.T) {
 			So(indexDigest, ShouldNotBeNil)
 
 			// Store the index manifest in the temp image store
-			_, _, err = tempImgStore.PutImageManifest(repoName, indexDigest.String(), ispec.MediaTypeImageIndex, indexContent, nil)
-			So(err, ShouldBeNil)
+
+			_, _, err = tempImgStore.PutImageManifest(
+				context.Background(), repoName, indexDigest.String(), ispec.MediaTypeImageIndex, indexContent, nil)			So(err, ShouldBeNil)
 
 			// Now remove one of the child manifest blobs to trigger the error
 			childManifestDigest := index.Manifests[1].Digest
@@ -1178,8 +1181,8 @@ func TestDestinationRegistry(t *testing.T) {
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 
-			_, _, err = imgStore.PutImageManifest(repoName, "2.0", ispec.MediaTypeImageManifest, content, nil)
-			So(err, ShouldBeNil)
+
+			_, _, err = imgStore.PutImageManifest(context.Background(), repoName, "2.0", ispec.MediaTypeImageManifest, content, nil)			So(err, ShouldBeNil)
 
 			Convey("sync image", func() {
 				ok, err := registry.CanSkipImage(repoName, "2.0", digest)

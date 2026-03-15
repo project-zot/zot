@@ -1,6 +1,7 @@
 package image_test
 
 import (
+	"context"
 	"errors"
 	"io"
 	"testing"
@@ -19,7 +20,7 @@ func TestWriteImageToFileSystem(t *testing.T) {
 	Convey("WriteImageToFileSystem errors", t, func() {
 		err := WriteImageToFileSystem(Image{}, "repo", "dig", storage.StoreController{
 			DefaultStore: mocks.MockedImageStore{
-				InitRepoFn: func(name string) error {
+				InitRepoFn: func(ctx context.Context, name string) error {
 					return ErrTestError
 				},
 			},
@@ -67,8 +68,8 @@ func TestWriteImageToFileSystem(t *testing.T) {
 			"tag",
 			storage.StoreController{
 				DefaultStore: mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte, _ []string,
-					) (godigest.Digest, godigest.Digest, error) {
+
+					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string, body []byte, extraTags []string) (godigest.Digest, godigest.Digest, error) {
 						return "", "", ErrTestError
 					},
 				},
