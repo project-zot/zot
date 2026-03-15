@@ -229,6 +229,125 @@ func TestHTTPSinkEvents(t *testing.T) {
 	})
 }
 
+func TestHTTPSinkEventsWithMetadata(t *testing.T) {
+	Convey("emits events with actor and request metadata to http sink", t, func() {
+		eventChan := make(chan *cloudevents.Event, 1)
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			event, err := cehttp.NewEventFromHTTPRequest(r)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+
+				return
+			}
+
+			eventChan <- event
+
+			w.WriteHeader(http.StatusOK)
+		}))
+
+		defer server.Close()
+
+		config := eventsconf.SinkConfig{
+			Type:    eventsconf.HTTP,
+			Address: server.URL,
+			Timeout: 5 * time.Second,
+		}
+		sink, err := events.NewHTTPSink(config)
+		So(err, ShouldBeNil)
+
+		recorder, err := events.NewRecorder(log.NewTestLogger(), sink)
+		So(err, ShouldBeNil)
+
+		ectx := &events.EventContext{
+			Actor: &events.ActorInfo{Name: "admin"},
+			Request: &events.RequestInfo{
+				Addr:      "10.0.0.1:54321",
+				Method:    "PUT",
+				UserAgent: "skopeo/1.14.0",
+			},
+		}
+
+		Convey("image updated carries actor and request over HTTP", func() {
+			recorder.ImageUpdated("myrepo", "v2.0",
+				"sha256:abcdef", string(types.OCIManifestSchema1), "{}", ectx)
+			ev := getEvent(t, eventChan)
+			So(ev, ShouldNotBeNil)
+			So(ev.Type(), ShouldEqual, events.ImageUpdatedEventType.String())
+
+			var data map[string]any
+			err := ev.DataAs(&data)
+			So(err, ShouldBeNil)
+
+			So(data["name"], ShouldEqual, "myrepo")
+			So(data["reference"], ShouldEqual, "v2.0")
+
+			actor, ok := data["actor"].(map[string]any)
+			So(ok, ShouldBeTrue)
+			So(actor["name"], ShouldEqual, "admin")
+
+			req, ok := data["request"].(map[string]any)
+			So(ok, ShouldBeTrue)
+			So(req["addr"], ShouldEqual, "10.0.0.1:54321")
+			So(req["method"], ShouldEqual, "PUT")
+			So(req["useragent"], ShouldEqual, "skopeo/1.14.0")
+		})
+
+		Convey("image deleted carries actor over HTTP", func() {
+			recorder.ImageDeleted("myrepo", "v1.0",
+				"sha256:123456", string(types.OCIManifestSchema1), ectx)
+			ev := getEvent(t, eventChan)
+			So(ev, ShouldNotBeNil)
+			So(ev.Type(), ShouldEqual, events.ImageDeletedEventType.String())
+
+			var data map[string]any
+			err := ev.DataAs(&data)
+			So(err, ShouldBeNil)
+
+			actor, ok := data["actor"].(map[string]any)
+			So(ok, ShouldBeTrue)
+			So(actor["name"], ShouldEqual, "admin")
+
+			req, ok := data["request"].(map[string]any)
+			So(ok, ShouldBeTrue)
+			So(req["method"], ShouldEqual, "PUT")
+		})
+
+		Convey("repository created carries actor over HTTP", func() {
+			recorder.RepositoryCreated("newrepo", ectx)
+			ev := getEvent(t, eventChan)
+			So(ev, ShouldNotBeNil)
+			So(ev.Type(), ShouldEqual, events.RepositoryCreatedEventType.String())
+
+			var data map[string]any
+			err := ev.DataAs(&data)
+			So(err, ShouldBeNil)
+
+			So(data["name"], ShouldEqual, "newrepo")
+
+			actor, ok := data["actor"].(map[string]any)
+			So(ok, ShouldBeTrue)
+			So(actor["name"], ShouldEqual, "admin")
+		})
+
+		Convey("nil context omits actor and request over HTTP", func() {
+			recorder.ImageUpdated("myrepo", "v3.0",
+				"sha256:fedcba", string(types.OCIManifestSchema1), "{}", nil)
+			ev := getEvent(t, eventChan)
+			So(ev, ShouldNotBeNil)
+
+			var data map[string]any
+			err := ev.DataAs(&data)
+			So(err, ShouldBeNil)
+
+			_, hasActor := data["actor"]
+			So(hasActor, ShouldBeFalse)
+
+			_, hasRequest := data["request"]
+			So(hasRequest, ShouldBeFalse)
+		})
+	})
+}
+
 func TestNATSSinkEvents(t *testing.T) {
 	Convey("emits events to nats sink", t, func() {
 		Convey("repository created", func() {
