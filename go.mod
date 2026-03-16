@@ -9,7 +9,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.37.0
 	github.com/aquasecurity/trivy v0.69.3
 	github.com/aquasecurity/trivy-db v0.0.0-20251222105351-a833f47f8f0d
-	github.com/aws/aws-sdk-go-v2 v1.41.3
+	github.com/aws/aws-sdk-go-v2 v1.41.4
 	github.com/aws/aws-sdk-go-v2/config v1.32.11
 	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.20.34
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.56.1
