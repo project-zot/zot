@@ -2220,6 +2220,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 			log := zlog.NewTestLogger()
 			audit := zlog.NewAuditLogger("debug", "")
 			metrics := monitoring.NewMetricsServer(false, log)
+			defer metrics.Stop()
 
 			ctx := context.Background()
 
@@ -2910,6 +2911,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 			log := zlog.NewTestLogger()
 			audit := zlog.NewAuditLogger("debug", "")
 			metrics := monitoring.NewMetricsServer(false, log)
+			defer metrics.Stop()
 
 			ctx := context.Background()
 
@@ -3322,6 +3324,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 			log := zlog.NewTestLogger()
 			audit := zlog.NewAuditLogger("debug", "")
 			metrics := monitoring.NewMetricsServer(false, log)
+			defer metrics.Stop()
 
 			ctx := context.Background()
 
