@@ -2003,6 +2003,8 @@ func TestGCSGarbageCollectImageManifest(t *testing.T) {
 
 	testLog := log.NewTestLogger()
 	audit := log.NewAuditLogger("debug", "")
+	metrics := monitoring.NewMetricsServer(false, testLog)
+	defer metrics.Stop()
 
 	ctx := context.Background()
 
