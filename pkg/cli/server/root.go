@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -17,6 +18,7 @@ import (
 
 	glob "github.com/bmatcuk/doublestar/v4"
 	"github.com/go-viper/mapstructure/v2"
+	"github.com/invopop/jsonschema"
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -203,6 +205,40 @@ func newVerifyFeatureCmd(conf *config.Config) *cobra.Command {
 	return verifyFeatureCmd
 }
 
+func newSchemaCmd() *cobra.Command {
+	var output string
+
+	schemaCmd := &cobra.Command{
+		Use:   "schema",
+		Short: "`schema` generates the JSON schema for the zot configuration file",
+		Long:  "`schema` generates the JSON schema for the zot configuration file",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if output != "json" {
+				return fmt.Errorf("unsupported output format: %q, supported formats: json", output)
+			}
+
+			cmd.SilenceUsage = true
+
+			r := &jsonschema.Reflector{DoNotReference: true}
+
+			schema := r.Reflect(&config.Config{})
+
+			jsonBytes, err := json.MarshalIndent(schema, "", "  ")
+			if err != nil {
+				return err
+			}
+
+			fmt.Fprintln(cmd.OutOrStdout(), string(jsonBytes))
+
+			return nil
+		},
+	}
+
+	schemaCmd.Flags().StringVarP(&output, "output", "o", "json", "output format (supported: json)")
+
+	return schemaCmd
+}
+
 // NewServerRootCmd creates a "zot" registry server command.
 func NewServerRootCmd() *cobra.Command {
 	showVersion := false
@@ -236,6 +272,8 @@ func NewServerRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newScrubCmd(conf))
 	// "verify-feature"
 	rootCmd.AddCommand(newVerifyFeatureCmd(conf))
+	// "schema"
+	rootCmd.AddCommand(newSchemaCmd())
 	// "version"
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "show the version and exit")
 

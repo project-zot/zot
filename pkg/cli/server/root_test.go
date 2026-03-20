@@ -3183,3 +3183,41 @@ func TestBearerASMConfigValidation(t *testing.T) {
 		})
 	})
 }
+
+func TestSchema(t *testing.T) {
+	oldArgs := os.Args
+
+	defer func() { os.Args = oldArgs }()
+
+	Convey("Test schema help", t, func(c C) {
+		os.Args = []string{"cli_test", "schema", "-h"}
+		err := cli.NewServerRootCmd().Execute()
+		So(err, ShouldBeNil)
+	})
+
+	Convey("Test schema json output", t, func(c C) {
+		var buf strings.Builder
+
+		rootCmd := cli.NewServerRootCmd()
+		rootCmd.SetOut(&buf)
+		rootCmd.SetErr(&buf)
+		os.Args = []string{"cli_test", "schema", "-o", "json"}
+
+		err := rootCmd.Execute()
+		So(err, ShouldBeNil)
+
+		// Validate the output is valid JSON and contains expected schema properties
+		var schemaOutput map[string]any
+		err = json.Unmarshal([]byte(buf.String()), &schemaOutput)
+		So(err, ShouldBeNil)
+		So(schemaOutput, ShouldContainKey, "$schema")
+		So(schemaOutput, ShouldContainKey, "properties")
+	})
+
+	Convey("Test schema unsupported output format", t, func(c C) {
+		os.Args = []string{"cli_test", "schema", "-o", "yaml"}
+		err := cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring, "unsupported output format")
+	})
+}
