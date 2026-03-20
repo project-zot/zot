@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"regexp"
 
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
 	"github.com/spf13/cobra"
@@ -14,11 +15,11 @@ import (
 func NewPerfRootCmd() *cobra.Command {
 	showVersion := false
 
-	var auth, workdir, repo, outFmt, srcIPs, srcCIDR string
+	var auth, workdir, repo, outFmt, srcIPs, srcCIDR, testRegexStr string
 
 	var concurrency, requests int
 
-	var skipCleanup bool
+	var skipCleanup, listTests bool
 
 	rootCmd := &cobra.Command{
 		Use:   "zb <url>",
@@ -43,13 +44,30 @@ func NewPerfRootCmd() *cobra.Command {
 				url = args[0]
 			}
 
+			var err error
+
 			if requests < concurrency {
 				panic("requests cannot be less than concurrency")
 			}
 
+			var testRegex *regexp.Regexp
+
+			if testRegexStr != "" {
+				testRegex, err = regexp.Compile(testRegexStr)
+				if err != nil {
+					panic("Test filter regex was invalid: " + err.Error())
+				}
+			}
+
+			if listTests {
+				ListTests(testRegex)
+
+				return
+			}
+
 			requests = concurrency * (requests / concurrency)
 
-			Perf(workdir, url, auth, repo, concurrency, requests, outFmt, srcIPs, srcCIDR, skipCleanup)
+			Perf(workdir, url, auth, repo, concurrency, requests, outFmt, srcIPs, srcCIDR, skipCleanup, testRegex)
 		},
 	}
 
@@ -70,7 +88,11 @@ func NewPerfRootCmd() *cobra.Command {
 	rootCmd.Flags().StringVarP(&outFmt, "output-format", "o", "",
 		"Output format of test results: stdout (default), json, ci-cd")
 	rootCmd.Flags().BoolVar(&skipCleanup, "skip-cleanup", false,
-		"Clean up pushed repos from remote registry after running benchmark (default true)")
+		"Skip clean up of pushed repos from remote registry after running benchmark (default false)")
+	rootCmd.Flags().StringVarP(&testRegexStr, "test-regex", "t", "",
+		"Optional regex for selectively running tests. If blank, all tests are run by default.")
+	rootCmd.Flags().BoolVarP(&listTests, "list-tests", "l", false,
+		"Print a list of all available tests. When used together with test regex, lists the tests that match the regex.")
 
 	// "version"
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "Show the version and exit")
