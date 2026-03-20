@@ -214,7 +214,7 @@ func newSchemaCmd() *cobra.Command {
 		Long:  "`schema` generates the JSON schema for the zot configuration file",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if output != "json" {
-				return fmt.Errorf("unsupported output format: %q, supported formats: json", output)
+				return fmt.Errorf("%w: %q, supported formats: json", zerr.ErrInvalidOutputFormat, output)
 			}
 
 			cmd.SilenceUsage = true

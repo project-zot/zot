@@ -3218,6 +3218,6 @@ func TestSchema(t *testing.T) {
 		os.Args = []string{"cli_test", "schema", "-o", "yaml"}
 		err := cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
-		So(err.Error(), ShouldContainSubstring, "unsupported output format")
+		So(err.Error(), ShouldContainSubstring, zerr.ErrInvalidOutputFormat.Error())
 	})
 }
