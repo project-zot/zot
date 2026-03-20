@@ -784,5 +784,19 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			// No manifests should be marked as referenced since the nested index is missing
 			So(len(referenced), ShouldEqual, 0)
 		})
+
+		Convey("CleanRepo records error metrics when cleanRepo fails", func() {
+			imgStore := mocks.MockedImageStore{
+				DirExistsFn: func(d string) bool {
+					return false
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			err := gc.CleanRepo(ctx, repoName)
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrRepoNotFound), ShouldBeTrue)
+		})
 	})
 }
