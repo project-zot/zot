@@ -13,6 +13,8 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
+	dbTypes "github.com/aquasecurity/trivy-db/pkg/types"
+
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
@@ -493,5 +495,54 @@ func TestGetCVEReference(t *testing.T) {
 
 		ref = getCVEReference("", []string{"https://nvd.nist.gov/vuln/detail/CVE-2023-2650"})
 		So(ref, ShouldResemble, "https://nvd.nist.gov/vuln/detail/CVE-2023-2650")
+	})
+}
+
+func TestConvertSeverity(t *testing.T) {
+	Convey("convertSeverity", t, func() {
+		Convey("returns correct severity for known primary severity", func() {
+			So(convertSeverity("CRITICAL", nil), ShouldEqual, model.SeverityCritical)
+			So(convertSeverity("HIGH", nil), ShouldEqual, model.SeverityHigh)
+			So(convertSeverity("MEDIUM", nil), ShouldEqual, model.SeverityMedium)
+			So(convertSeverity("LOW", nil), ShouldEqual, model.SeverityLow)
+			So(convertSeverity("UNKNOWN", nil), ShouldEqual, model.SeverityUnknown)
+			So(convertSeverity("", nil), ShouldEqual, model.SeverityUnknown)
+		})
+
+		Convey("falls back to vendor severity when primary is unknown", func() {
+			vendorSev := dbTypes.VendorSeverity{
+				"alpine": dbTypes.SeverityHigh,
+			}
+			So(convertSeverity("UNKNOWN", vendorSev), ShouldEqual, model.SeverityHigh)
+			So(convertSeverity("", vendorSev), ShouldEqual, model.SeverityHigh)
+		})
+
+		Convey("uses highest vendor severity when multiple vendors present", func() {
+			vendorSev := dbTypes.VendorSeverity{
+				"alpine":   dbTypes.SeverityMedium,
+				"redhat":   dbTypes.SeverityCritical,
+				"nvd":      dbTypes.SeverityLow,
+			}
+			So(convertSeverity("UNKNOWN", vendorSev), ShouldEqual, model.SeverityCritical)
+		})
+
+		Convey("does not override known primary severity with vendor severity", func() {
+			vendorSev := dbTypes.VendorSeverity{
+				"alpine": dbTypes.SeverityCritical,
+			}
+			So(convertSeverity("LOW", vendorSev), ShouldEqual, model.SeverityLow)
+		})
+
+		Convey("handles vendor severity with all unknown entries", func() {
+			vendorSev := dbTypes.VendorSeverity{
+				"alpine": dbTypes.SeverityUnknown,
+			}
+			So(convertSeverity("UNKNOWN", vendorSev), ShouldEqual, model.SeverityUnknown)
+		})
+
+		Convey("handles empty vendor severity map", func() {
+			vendorSev := dbTypes.VendorSeverity{}
+			So(convertSeverity("UNKNOWN", vendorSev), ShouldEqual, model.SeverityUnknown)
+		})
 	})
 }

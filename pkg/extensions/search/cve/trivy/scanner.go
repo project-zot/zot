@@ -501,7 +501,7 @@ func (scanner Scanner) scanManifest(ctx context.Context, repo, digest string) (m
 					Title:       vulnerability.Title,
 					Description: vulnerability.Description,
 					Reference:   getCVEReference(vulnerability.PrimaryURL, vulnerability.References),
-					Severity:    convertSeverity(vulnerability.Severity),
+					Severity:    convertSeverity(vulnerability.Severity, vulnerability.VendorSeverity),
 					PackageList: newPkgList,
 				}
 			}
@@ -701,15 +701,32 @@ func findMediaTypeForDigest(metaDB mTypes.MetaDB, digest godigest.Digest) (bool,
 	return false, ""
 }
 
-func convertSeverity(detectedSeverity string) string {
-	trivySeverity, _ := dbTypes.NewSeverity(detectedSeverity)
-
+func convertSeverity(detectedSeverity string, vendorSeverity dbTypes.VendorSeverity) string {
 	sevMap := map[dbTypes.Severity]string{
 		dbTypes.SeverityUnknown:  cvemodel.SeverityUnknown,
 		dbTypes.SeverityLow:      cvemodel.SeverityLow,
 		dbTypes.SeverityMedium:   cvemodel.SeverityMedium,
 		dbTypes.SeverityHigh:     cvemodel.SeverityHigh,
 		dbTypes.SeverityCritical: cvemodel.SeverityCritical,
+	}
+
+	trivySeverity, _ := dbTypes.NewSeverity(detectedSeverity)
+
+	// When the primary severity is unknown (common due to NVD analysis backlog),
+	// fall back to the highest severity reported by any vendor-specific source
+	// (e.g. Alpine, Red Hat, Ubuntu). This matches standalone Trivy's behavior
+	// when using --vuln-severity-source.
+	if trivySeverity == dbTypes.SeverityUnknown && len(vendorSeverity) > 0 {
+		highest := dbTypes.SeverityUnknown
+		for _, sev := range vendorSeverity {
+			if sev > highest {
+				highest = sev
+			}
+		}
+
+		if highest > dbTypes.SeverityUnknown {
+			return sevMap[highest]
+		}
 	}
 
 	return sevMap[trivySeverity]
