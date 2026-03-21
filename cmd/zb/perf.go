@@ -11,6 +11,7 @@ import (
 	urlparser "net/url"
 	"os"
 	"path"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -661,10 +662,26 @@ var testSuite = []testConfig{ //nolint:gochecknoglobals // used only in this tes
 	},
 }
 
+// ListTests logs the available test names with one on each line.
+// When testRegex is not nil, only the tests that match the regex are listed.
+func ListTests(testRegex *regexp.Regexp) {
+	log.SetFlags(0)
+	log.SetOutput(tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.TabIndent))
+
+	for _, tconfig := range testSuite {
+		if testRegex != nil && !testRegex.MatchString(tconfig.name) {
+			continue
+		}
+
+		log.Println(tconfig.name)
+	}
+}
+
 func Perf(
 	workdir, url, auth, repo string,
 	concurrency int, requests int,
 	outFmt string, srcIPs string, srcCIDR string, skipCleanup bool,
+	testRegex *regexp.Regexp,
 ) {
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
 
@@ -723,6 +740,12 @@ func Perf(
 	}
 
 	for _, tconfig := range testSuite {
+		if testRegex != nil && !testRegex.MatchString(tconfig.name) {
+			log.Printf("Skipping test %s\n", tconfig.name)
+
+			continue
+		}
+
 		statsCh := make(chan statsRecord, requests)
 
 		var wg sync.WaitGroup
