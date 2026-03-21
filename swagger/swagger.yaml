@@ -768,7 +768,9 @@ paths:
     put:
       consumes:
       - application/json
-      description: Update an image's manifest given a reference or a digest
+      description: |-
+        Update an image's manifest given a reference or a digest. On digest pushes with `tag=` query
+        parameters, 201 responses repeat the `OCI-Tag` header once per tag value.
       parameters:
       - description: repository name
         in: path
@@ -780,11 +782,24 @@ paths:
         name: reference
         required: true
         type: string
+      - collectionFormat: multi
+        description: additional tag(s) for digest pushes
+        in: query
+        items:
+          type: string
+        name: tag
+        type: array
       produces:
       - application/json
       responses:
         "201":
           description: created
+          headers:
+            constants.DistContentDigestKey:
+              type: object
+            constants.OCITagResponseKey:
+              description: echoed tag= value (one header per query tag)
+              type: string
           schema:
             type: string
         "400":

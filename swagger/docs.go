@@ -712,7 +712,7 @@ const docTemplate = `{
                 }
             },
             "put": {
-                "description": "Update an image's manifest given a reference or a digest",
+                "description": "Update an image's manifest given a reference or a digest. On digest pushes with ` + "`" + `tag=` + "`" + ` query\nparameters, 201 responses repeat the ` + "`" + `OCI-Tag` + "`" + ` header once per tag value.",
                 "consumes": [
                     "application/json"
                 ],
@@ -734,6 +734,16 @@ const docTemplate = `{
                         "name": "reference",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "additional tag(s) for digest pushes",
+                        "name": "tag",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -741,6 +751,15 @@ const docTemplate = `{
                         "description": "created",
                         "schema": {
                             "type": "string"
+                        },
+                        "headers": {
+                            "constants.DistContentDigestKey": {
+                                "type": "object"
+                            },
+                            "constants.OCITagResponseKey": {
+                                "type": "string",
+                                "description": "echoed tag= value (one header per query tag)"
+                            }
                         }
                     },
                     "400": {

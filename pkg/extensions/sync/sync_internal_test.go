@@ -864,7 +864,7 @@ func TestDestinationRegistry(t *testing.T) {
 			So(err, ShouldBeNil)
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
-			_, _, err = imgStore.PutImageManifest(repoName, digest.String(), ispec.MediaTypeImageManifest, content)
+			_, _, err = imgStore.PutImageManifest(repoName, digest.String(), ispec.MediaTypeImageManifest, content, nil)
 			So(err, ShouldBeNil)
 
 			index.Manifests = append(index.Manifests, ispec.Descriptor{
@@ -880,7 +880,7 @@ func TestDestinationRegistry(t *testing.T) {
 		indexDigest := godigest.FromBytes(indexContent)
 		So(indexDigest, ShouldNotBeNil)
 
-		_, _, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageIndex, indexContent)
+		_, _, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageIndex, indexContent, nil)
 		So(err, ShouldBeNil)
 
 		Convey("sync index image", func() {
@@ -1067,7 +1067,7 @@ func TestDestinationRegistry(t *testing.T) {
 				So(manifestDigest, ShouldNotBeNil)
 
 				// Store the manifest in the temp image store
-				_, _, err = tempImgStore.PutImageManifest(repoName, manifestDigest.String(), ispec.MediaTypeImageManifest, manifestContent)
+				_, _, err = tempImgStore.PutImageManifest(repoName, manifestDigest.String(), ispec.MediaTypeImageManifest, manifestContent, nil)
 				So(err, ShouldBeNil)
 
 				// Add to index
@@ -1085,7 +1085,7 @@ func TestDestinationRegistry(t *testing.T) {
 			So(indexDigest, ShouldNotBeNil)
 
 			// Store the index manifest in the temp image store
-			_, _, err = tempImgStore.PutImageManifest(repoName, indexDigest.String(), ispec.MediaTypeImageIndex, indexContent)
+			_, _, err = tempImgStore.PutImageManifest(repoName, indexDigest.String(), ispec.MediaTypeImageIndex, indexContent, nil)
 			So(err, ShouldBeNil)
 
 			// Now remove one of the child manifest blobs to trigger the error
@@ -1178,7 +1178,7 @@ func TestDestinationRegistry(t *testing.T) {
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 
-			_, _, err = imgStore.PutImageManifest(repoName, "2.0", ispec.MediaTypeImageManifest, content)
+			_, _, err = imgStore.PutImageManifest(repoName, "2.0", ispec.MediaTypeImageManifest, content, nil)
 			So(err, ShouldBeNil)
 
 			Convey("sync image", func() {

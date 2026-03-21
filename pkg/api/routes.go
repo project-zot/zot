@@ -676,13 +676,16 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 
 // UpdateManifest godoc
 // @Summary Update image manifest
-// @Description Update an image's manifest given a reference or a digest
+// @Description Update an image's manifest given a reference or a digest. On digest pushes with `tag=` query
+// @Description parameters, 201 responses repeat the `OCI-Tag` header once per tag value.
 // @Accept  json
 // @Produce json
 // @Param   name         path    string     true        "repository name"
 // @Param   reference    path    string     true        "image reference or digest"
-// @Header  201 {object} constants.DistContentDigestKey
+// @Param   tag          query   []string   false       "additional tag(s) for digest pushes" collectionFormat(multi)
 // @Success 201 {string} string "created"
+// @Header  201 {object} constants.DistContentDigestKey
+// @Header  201 {string} constants.OCITagResponseKey "echoed tag= value (one header per query tag)"
 // @Failure 400 {string} string "bad request"
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
@@ -717,6 +720,30 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
+	var digestQueryTags []string
+
+	rawTagQuery := request.URL.Query()["tag"]
+	if len(rawTagQuery) > 0 {
+		if len(rawTagQuery) > constants.MaxManifestDigestQueryTags {
+			e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(map[string]string{
+				"reason": fmt.Sprintf("too many tag query parameters (max %d)", constants.MaxManifestDigestQueryTags),
+			})
+			zcommon.WriteJSON(response, http.StatusRequestURITooLong, apiErr.NewErrorList(e))
+
+			return
+		}
+
+		var normErr error
+
+		digestQueryTags, normErr = normalizeManifestExtraTags(rawTagQuery)
+		if normErr != nil {
+			err := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(map[string]string{"reason": normErr.Error()})
+			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(err))
+
+			return
+		}
+	}
+
 	body, err := io.ReadAll(request.Body)
 	// hard to reach test case, injected error (simulates an interrupted image manifest upload)
 	// err could be io.ErrUnexpectedEOF
@@ -727,7 +754,16 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
-	digest, subjectDigest, err := imgStore.PutImageManifest(name, reference, mediaType, body)
+	if len(digestQueryTags) > 0 && !zcommon.IsDigest(reference) {
+		err := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(map[string]string{
+			"reason": "tag query parameters are only valid when pushing a manifest by digest",
+		})
+		zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(err))
+
+		return
+	}
+
+	digest, subjectDigest, err := imgStore.PutImageManifest(name, reference, mediaType, body, digestQueryTags)
 	if err != nil {
 		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
@@ -769,12 +805,22 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 	}
 
 	if rh.c.MetaDB != nil {
-		err := meta.OnUpdateManifest(request.Context(), name, reference, mediaType,
-			digest, body, rh.c.StoreController, rh.c.MetaDB, rh.c.Log)
-		if err != nil {
-			response.WriteHeader(http.StatusInternalServerError)
+		if len(digestQueryTags) > 0 {
+			err := meta.OnUpdateManifestDigestTags(request.Context(), name, digestQueryTags, mediaType,
+				digest, body, rh.c.StoreController, rh.c.MetaDB, rh.c.Log)
+			if err != nil {
+				response.WriteHeader(http.StatusInternalServerError)
 
-			return
+				return
+			}
+		} else {
+			err := meta.OnUpdateManifest(request.Context(), name, reference, mediaType,
+				digest, body, rh.c.StoreController, rh.c.MetaDB, rh.c.Log)
+			if err != nil {
+				response.WriteHeader(http.StatusInternalServerError)
+
+				return
+			}
 		}
 	}
 
@@ -784,7 +830,40 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 
 	response.Header().Set("Location", fmt.Sprintf("/v2/%s/manifests/%s", name, digest))
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
+
+	for _, tag := range digestQueryTags {
+		response.Header().Add(constants.OCITagResponseKey, tag) //nolint:canonicalheader
+	}
+
 	response.WriteHeader(http.StatusCreated)
+}
+
+// normalizeManifestExtraTags deduplicates tag query values in order, rejects empty components, and
+// requires each value to match the OCI distribution-spec tag grammar (zreg.IsDistributionSpecTag).
+func normalizeManifestExtraTags(raw []string) ([]string, error) {
+	seen := map[string]struct{}{}
+
+	out := make([]string, 0, len(raw))
+
+	for _, rawTag := range raw {
+		cleanedTag := strings.TrimSpace(rawTag)
+		if cleanedTag == "" {
+			return nil, zerr.ErrEmptyManifestTagQuery
+		}
+
+		if !zreg.IsDistributionSpecTag(cleanedTag) {
+			return nil, zerr.ErrInvalidManifestTagQuery
+		}
+
+		if _, ok := seen[cleanedTag]; ok {
+			continue
+		}
+
+		seen[cleanedTag] = struct{}{}
+		out = append(out, cleanedTag)
+	}
+
+	return out, nil
 }
 
 // DeleteManifest godoc
