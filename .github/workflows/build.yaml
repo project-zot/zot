@@ -105,6 +105,93 @@ jobs:
           overwrite: true
           file_glob: true
 
+  submit-schemastore-pr:
+    name: Submit Config Schema to SchemaStore
+    needs: build-arch
+    if: github.event_name == 'release' && github.event.action == 'published' && !contains(github.event.release.tag_name, 'rc')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v6
+      - name: Install go
+        uses: actions/setup-go@v6
+        with:
+          cache: false
+          check-latest: true
+          go-version: 1.25.x
+      - name: Cache go dependencies
+        id: cache-go-dependencies
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-mod-
+      - name: Install go dependencies
+        if: steps.cache-go-dependencies.outputs.cache-hit != 'true'
+        run: go mod download
+      - name: Build zot binary
+        run: make binary
+        env:
+          OS: linux
+          ARCH: amd64
+      - name: Generate Config JSON Schema
+        run: |
+          TAG=${{ github.event.release.tag_name }}
+          VERSION=${TAG#v}
+          bin/zot-linux-amd64 schema -o json > "zot-${VERSION}.json"
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+      - name: Fork, branch, and submit PR to SchemaStore
+        env:
+          GH_TOKEN: ${{ secrets.SCHEMASTORE_PAT }}
+        run: |
+          SCHEMA_FILE="zot-${VERSION}.json"
+          BRANCH="add-zot-schema-${VERSION}"
+
+          # Fork (no-op if already forked) and clone SchemaStore
+          gh repo fork SchemaStore/schemastore --clone
+          cd schemastore
+
+          git config user.name 'github-actions'
+          git config user.email 'github-actions@users.noreply.github.com'
+          git checkout -b "$BRANCH"
+
+          # Copy versioned schema file
+          cp "../${SCHEMA_FILE}" "src/schemas/json/${SCHEMA_FILE}"
+
+          # Add/update the catalog.json entry for zot
+          jq --arg version "$VERSION" \
+             --arg url "https://json.schemastore.org/zot-${VERSION}.json" \
+            'if any(.schemas[]; .name == "zot config") then
+               .schemas |= map(
+                 if .name == "zot config" then
+                   .url = $url |
+                   .versions[$version] = $url
+                 else . end)
+             else
+               .schemas += [{
+                 "name": "zot config",
+                 "description": "Configuration file for the zot OCI container registry",
+                 "fileMatch": ["zot-config.json"],
+                 "url": $url,
+                 "versions": {($version): $url}
+               }]
+             end' \
+            src/api/json/catalog.json > catalog.tmp && mv catalog.tmp src/api/json/catalog.json
+
+          git add "src/schemas/json/${SCHEMA_FILE}" src/api/json/catalog.json
+          git commit -m "Add zot config schema ${VERSION}"
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --repo SchemaStore/schemastore \
+            --title "Add zot config schema ${VERSION}" \
+            --body "Add JSON schema for the [zot](https://github.com/project-zot/zot) OCI container registry configuration, version ${VERSION}." \
+            --head "${GITHUB_REPOSITORY_OWNER}:${BRANCH}"
+
   release-checksums:
     name: Release Artifact Checksums
     needs: build-arch
