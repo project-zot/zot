@@ -1,0 +1,1304 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zotregistry.dev/zot/v2/pkg/api/config/config",
+  "properties": {
+    "distSpecVersion": {
+      "type": "string"
+    },
+    "GoVersion": {
+      "type": "string"
+    },
+    "Commit": {
+      "type": "string"
+    },
+    "ReleaseTag": {
+      "type": "string"
+    },
+    "BinaryType": {
+      "type": "string"
+    },
+    "Storage": {
+      "properties": {
+        "RootDirectory": {
+          "type": "string"
+        },
+        "Dedupe": {
+          "type": "boolean"
+        },
+        "RemoteCache": {
+          "type": "boolean"
+        },
+        "GC": {
+          "type": "boolean"
+        },
+        "Commit": {
+          "type": "boolean"
+        },
+        "GCDelay": {
+          "type": "integer"
+        },
+        "GCInterval": {
+          "type": "integer"
+        },
+        "Retention": {
+          "properties": {
+            "DryRun": {
+              "type": "boolean"
+            },
+            "Delay": {
+              "type": "integer"
+            },
+            "Policies": {
+              "items": {
+                "properties": {
+                  "Repositories": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "DeleteReferrers": {
+                    "type": "boolean"
+                  },
+                  "DeleteUntagged": {
+                    "type": "boolean"
+                  },
+                  "KeepTags": {
+                    "items": {
+                      "properties": {
+                        "Patterns": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "PulledWithin": {
+                          "type": "integer"
+                        },
+                        "PushedWithin": {
+                          "type": "integer"
+                        },
+                        "MostRecentlyPushedCount": {
+                          "type": "integer"
+                        },
+                        "MostRecentlyPulledCount": {
+                          "type": "integer"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "Patterns",
+                        "PulledWithin",
+                        "PushedWithin",
+                        "MostRecentlyPushedCount",
+                        "MostRecentlyPulledCount"
+                      ]
+                    },
+                    "type": "array"
+                  }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "Repositories",
+                  "DeleteReferrers",
+                  "DeleteUntagged",
+                  "KeepTags"
+                ]
+              },
+              "type": "array"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "DryRun",
+            "Delay",
+            "Policies"
+          ]
+        },
+        "StorageDriver": {
+          "type": "object"
+        },
+        "CacheDriver": {
+          "type": "object"
+        },
+        "GCMaxSchedulerDelay": {
+          "type": "integer"
+        },
+        "SubPaths": {
+          "additionalProperties": {
+            "properties": {
+              "RootDirectory": {
+                "type": "string"
+              },
+              "Dedupe": {
+                "type": "boolean"
+              },
+              "RemoteCache": {
+                "type": "boolean"
+              },
+              "GC": {
+                "type": "boolean"
+              },
+              "Commit": {
+                "type": "boolean"
+              },
+              "GCDelay": {
+                "type": "integer"
+              },
+              "GCInterval": {
+                "type": "integer"
+              },
+              "Retention": {
+                "properties": {
+                  "DryRun": {
+                    "type": "boolean"
+                  },
+                  "Delay": {
+                    "type": "integer"
+                  },
+                  "Policies": {
+                    "items": {
+                      "properties": {
+                        "Repositories": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "DeleteReferrers": {
+                          "type": "boolean"
+                        },
+                        "DeleteUntagged": {
+                          "type": "boolean"
+                        },
+                        "KeepTags": {
+                          "items": {
+                            "properties": {
+                              "Patterns": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "PulledWithin": {
+                                "type": "integer"
+                              },
+                              "PushedWithin": {
+                                "type": "integer"
+                              },
+                              "MostRecentlyPushedCount": {
+                                "type": "integer"
+                              },
+                              "MostRecentlyPulledCount": {
+                                "type": "integer"
+                              }
+                            },
+                            "additionalProperties": false,
+                            "type": "object",
+                            "required": [
+                              "Patterns",
+                              "PulledWithin",
+                              "PushedWithin",
+                              "MostRecentlyPushedCount",
+                              "MostRecentlyPulledCount"
+                            ]
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "Repositories",
+                        "DeleteReferrers",
+                        "DeleteUntagged",
+                        "KeepTags"
+                      ]
+                    },
+                    "type": "array"
+                  }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "DryRun",
+                  "Delay",
+                  "Policies"
+                ]
+              },
+              "StorageDriver": {
+                "type": "object"
+              },
+              "CacheDriver": {
+                "type": "object"
+              },
+              "GCMaxSchedulerDelay": {
+                "type": "integer"
+              }
+            },
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "RootDirectory",
+              "Dedupe",
+              "RemoteCache",
+              "GC",
+              "Commit",
+              "GCDelay",
+              "GCInterval",
+              "Retention",
+              "StorageDriver",
+              "CacheDriver",
+              "GCMaxSchedulerDelay"
+            ]
+          },
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "RootDirectory",
+        "Dedupe",
+        "RemoteCache",
+        "GC",
+        "Commit",
+        "GCDelay",
+        "GCInterval",
+        "Retention",
+        "StorageDriver",
+        "CacheDriver",
+        "GCMaxSchedulerDelay",
+        "SubPaths"
+      ]
+    },
+    "HTTP": {
+      "properties": {
+        "Address": {
+          "type": "string"
+        },
+        "ExternalURL": {
+          "type": "string"
+        },
+        "Port": {
+          "type": "string"
+        },
+        "AllowOrigin": {
+          "type": "string"
+        },
+        "TLS": {
+          "properties": {
+            "Cert": {
+              "type": "string"
+            },
+            "Key": {
+              "type": "string"
+            },
+            "CACert": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "Cert",
+            "Key",
+            "CACert"
+          ]
+        },
+        "Auth": {
+          "properties": {
+            "FailDelay": {
+              "type": "integer"
+            },
+            "HTPasswd": {
+              "properties": {
+                "Path": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "Path"
+              ]
+            },
+            "LDAP": {
+              "properties": {
+                "CredentialsFile": {
+                  "type": "string"
+                },
+                "Port": {
+                  "type": "integer"
+                },
+                "Insecure": {
+                  "type": "boolean"
+                },
+                "StartTLS": {
+                  "type": "boolean"
+                },
+                "SkipVerify": {
+                  "type": "boolean"
+                },
+                "SubtreeSearch": {
+                  "type": "boolean"
+                },
+                "Address": {
+                  "type": "string"
+                },
+                "UserGroupAttribute": {
+                  "type": "string"
+                },
+                "BaseDN": {
+                  "type": "string"
+                },
+                "UserAttribute": {
+                  "type": "string"
+                },
+                "UserFilter": {
+                  "type": "string"
+                },
+                "CACert": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "CredentialsFile",
+                "Port",
+                "Insecure",
+                "StartTLS",
+                "SkipVerify",
+                "SubtreeSearch",
+                "Address",
+                "UserGroupAttribute",
+                "BaseDN",
+                "UserAttribute",
+                "UserFilter",
+                "CACert"
+              ]
+            },
+            "Bearer": {
+              "properties": {
+                "Realm": {
+                  "type": "string"
+                },
+                "Service": {
+                  "type": "string"
+                },
+                "Cert": {
+                  "type": "string"
+                },
+                "oidc": {
+                  "items": {
+                    "properties": {
+                      "issuer": {
+                        "type": "string"
+                      },
+                      "audiences": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "claimMapping": {
+                        "properties": {
+                          "Variables": {
+                            "items": {
+                              "properties": {
+                                "Name": {
+                                  "type": "string"
+                                },
+                                "Expression": {
+                                  "type": "string"
+                                }
+                              },
+                              "additionalProperties": false,
+                              "type": "object",
+                              "required": [
+                                "Name",
+                                "Expression"
+                              ]
+                            },
+                            "type": "array"
+                          },
+                          "Validations": {
+                            "items": {
+                              "properties": {
+                                "Expression": {
+                                  "type": "string"
+                                },
+                                "Message": {
+                                  "type": "string"
+                                }
+                              },
+                              "additionalProperties": false,
+                              "type": "object",
+                              "required": [
+                                "Expression",
+                                "Message"
+                              ]
+                            },
+                            "type": "array"
+                          },
+                          "Username": {
+                            "type": "string"
+                          },
+                          "Groups": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "Variables",
+                          "Validations",
+                          "Username",
+                          "Groups"
+                        ]
+                      },
+                      "certificateAuthority": {
+                        "type": "string"
+                      },
+                      "certificateAuthorityFile": {
+                        "type": "string"
+                      },
+                      "skipIssuerVerification": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": false,
+                    "type": "object",
+                    "required": [
+                      "issuer",
+                      "audiences"
+                    ]
+                  },
+                  "type": "array"
+                },
+                "awsSecretsManager": {
+                  "properties": {
+                    "region": {
+                      "type": "string"
+                    },
+                    "secretName": {
+                      "type": "string"
+                    },
+                    "refreshInterval": {
+                      "type": "integer"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "region",
+                    "secretName"
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "Realm",
+                "Service",
+                "Cert"
+              ]
+            },
+            "OpenID": {
+              "properties": {
+                "Providers": {
+                  "additionalProperties": {
+                    "properties": {
+                      "CredentialsFile": {
+                        "type": "string"
+                      },
+                      "Name": {
+                        "type": "string"
+                      },
+                      "ClientID": {
+                        "type": "string"
+                      },
+                      "ClientSecret": {
+                        "type": "string"
+                      },
+                      "KeyPath": {
+                        "type": "string"
+                      },
+                      "Issuer": {
+                        "type": "string"
+                      },
+                      "AuthURL": {
+                        "type": "string"
+                      },
+                      "TokenURL": {
+                        "type": "string"
+                      },
+                      "Scopes": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "ClaimMapping": {
+                        "properties": {
+                          "Username": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "Username"
+                        ]
+                      }
+                    },
+                    "additionalProperties": false,
+                    "type": "object",
+                    "required": [
+                      "CredentialsFile",
+                      "Name",
+                      "ClientID",
+                      "ClientSecret",
+                      "KeyPath",
+                      "Issuer",
+                      "AuthURL",
+                      "TokenURL",
+                      "Scopes",
+                      "ClaimMapping"
+                    ]
+                  },
+                  "type": "object"
+                },
+                "CallbackAllowOrigins": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "Providers",
+                "CallbackAllowOrigins"
+              ]
+            },
+            "APIKey": {
+              "type": "boolean"
+            },
+            "SessionKeysFile": {
+              "type": "string"
+            },
+            "SessionDriver": {
+              "type": "object"
+            },
+            "secureSession": {
+              "type": "boolean"
+            },
+            "mtls": {
+              "properties": {
+                "identityAttributes": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "uriSanPattern": {
+                  "type": "string"
+                },
+                "uriSanIndex": {
+                  "type": "integer"
+                },
+                "dnsSanIndex": {
+                  "type": "integer"
+                },
+                "emailSanIndex": {
+                  "type": "integer"
+                }
+              },
+              "additionalProperties": false,
+              "type": "object"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "FailDelay",
+            "HTPasswd",
+            "LDAP",
+            "Bearer",
+            "OpenID",
+            "APIKey",
+            "SessionKeysFile",
+            "SessionDriver"
+          ]
+        },
+        "AccessControl": {
+          "properties": {
+            "repositories": {
+              "additionalProperties": {
+                "properties": {
+                  "Policies": {
+                    "items": {
+                      "properties": {
+                        "Users": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "Actions": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "Groups": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "Users",
+                        "Actions",
+                        "Groups"
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  "DefaultPolicy": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "AnonymousPolicy": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "Policies",
+                  "DefaultPolicy",
+                  "AnonymousPolicy"
+                ]
+              },
+              "type": "object"
+            },
+            "AdminPolicy": {
+              "properties": {
+                "Users": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "Actions": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "Groups": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "Users",
+                "Actions",
+                "Groups"
+              ]
+            },
+            "Groups": {
+              "additionalProperties": {
+                "properties": {
+                  "Users": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "Users"
+                ]
+              },
+              "type": "object"
+            },
+            "Metrics": {
+              "properties": {
+                "Users": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "Users"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "repositories",
+            "AdminPolicy",
+            "Groups",
+            "Metrics"
+          ]
+        },
+        "Realm": {
+          "type": "string"
+        },
+        "Ratelimit": {
+          "properties": {
+            "Rate": {
+              "type": "integer"
+            },
+            "Methods": {
+              "items": {
+                "properties": {
+                  "Method": {
+                    "type": "string"
+                  },
+                  "Rate": {
+                    "type": "integer"
+                  }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "Method",
+                  "Rate"
+                ]
+              },
+              "type": "array"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "Rate",
+            "Methods"
+          ]
+        },
+        "Compat": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "Address",
+        "ExternalURL",
+        "Port",
+        "AllowOrigin",
+        "TLS",
+        "Auth",
+        "AccessControl",
+        "Realm",
+        "Ratelimit",
+        "Compat"
+      ]
+    },
+    "Log": {
+      "properties": {
+        "Level": {
+          "type": "string"
+        },
+        "Output": {
+          "type": "string"
+        },
+        "Audit": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "Level",
+        "Output",
+        "Audit"
+      ]
+    },
+    "Extensions": {
+      "properties": {
+        "Search": {
+          "properties": {
+            "Enable": {
+              "type": "boolean"
+            },
+            "CVE": {
+              "properties": {
+                "UpdateInterval": {
+                  "type": "integer"
+                },
+                "Trivy": {
+                  "properties": {
+                    "DBRepository": {
+                      "type": "string"
+                    },
+                    "JavaDBRepository": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "DBRepository",
+                    "JavaDBRepository"
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "UpdateInterval",
+                "Trivy"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "Enable",
+            "CVE"
+          ]
+        },
+        "Sync": {
+          "properties": {
+            "Enable": {
+              "type": "boolean"
+            },
+            "CredentialsFile": {
+              "type": "string"
+            },
+            "DownloadDir": {
+              "type": "string"
+            },
+            "Registries": {
+              "items": {
+                "properties": {
+                  "URLs": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "PollInterval": {
+                    "type": "integer"
+                  },
+                  "Content": {
+                    "items": {
+                      "properties": {
+                        "Prefix": {
+                          "type": "string"
+                        },
+                        "Tags": {
+                          "properties": {
+                            "Regex": {
+                              "type": "string"
+                            },
+                            "ExcludeRegex": {
+                              "type": "string"
+                            },
+                            "Semver": {
+                              "type": "boolean"
+                            }
+                          },
+                          "additionalProperties": false,
+                          "type": "object",
+                          "required": [
+                            "Regex",
+                            "ExcludeRegex",
+                            "Semver"
+                          ]
+                        },
+                        "Destination": {
+                          "type": "string"
+                        },
+                        "StripPrefix": {
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "Prefix",
+                        "Tags",
+                        "Destination",
+                        "StripPrefix"
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  "TLSVerify": {
+                    "type": "boolean"
+                  },
+                  "OnDemand": {
+                    "type": "boolean"
+                  },
+                  "CertDir": {
+                    "type": "string"
+                  },
+                  "MaxRetries": {
+                    "type": "integer"
+                  },
+                  "RetryDelay": {
+                    "type": "integer"
+                  },
+                  "OnlySigned": {
+                    "type": "boolean"
+                  },
+                  "SyncLegacyCosignTags": {
+                    "type": "boolean"
+                  },
+                  "CredentialHelper": {
+                    "type": "string"
+                  },
+                  "PreserveDigest": {
+                    "type": "boolean"
+                  },
+                  "SyncTimeout": {
+                    "type": "integer"
+                  },
+                  "ResponseHeaderTimeout": {
+                    "type": "integer"
+                  }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "URLs",
+                  "PollInterval",
+                  "Content",
+                  "TLSVerify",
+                  "OnDemand",
+                  "CertDir",
+                  "MaxRetries",
+                  "RetryDelay",
+                  "OnlySigned",
+                  "SyncLegacyCosignTags",
+                  "CredentialHelper",
+                  "PreserveDigest",
+                  "SyncTimeout",
+                  "ResponseHeaderTimeout"
+                ]
+              },
+              "type": "array"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "Enable",
+            "CredentialsFile",
+            "DownloadDir",
+            "Registries"
+          ]
+        },
+        "Metrics": {
+          "properties": {
+            "Enable": {
+              "type": "boolean"
+            },
+            "Prometheus": {
+              "properties": {
+                "Path": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "Path"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "Enable",
+            "Prometheus"
+          ]
+        },
+        "Scrub": {
+          "properties": {
+            "Enable": {
+              "type": "boolean"
+            },
+            "Interval": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "Enable",
+            "Interval"
+          ]
+        },
+        "Lint": {
+          "properties": {
+            "Enable": {
+              "type": "boolean"
+            },
+            "MandatoryAnnotations": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "Enable",
+            "MandatoryAnnotations"
+          ]
+        },
+        "UI": {
+          "properties": {
+            "Enable": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "Enable"
+          ]
+        },
+        "Mgmt": {
+          "properties": {
+            "Enable": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "Enable"
+          ]
+        },
+        "APIKey": {
+          "properties": {
+            "Enable": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "Enable"
+          ]
+        },
+        "Trust": {
+          "properties": {
+            "Enable": {
+              "type": "boolean"
+            },
+            "Cosign": {
+              "type": "boolean"
+            },
+            "Notation": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "Enable",
+            "Cosign",
+            "Notation"
+          ]
+        },
+        "Events": {
+          "properties": {
+            "Enable": {
+              "type": "boolean"
+            },
+            "Sinks": {
+              "items": {
+                "properties": {
+                  "Username": {
+                    "type": "string"
+                  },
+                  "Password": {
+                    "type": "string"
+                  },
+                  "File": {
+                    "type": "string"
+                  },
+                  "Token": {
+                    "type": "string"
+                  },
+                  "CACertFile": {
+                    "type": "string"
+                  },
+                  "CertFile": {
+                    "type": "string"
+                  },
+                  "KeyFile": {
+                    "type": "string"
+                  },
+                  "Type": {
+                    "type": "string"
+                  },
+                  "Address": {
+                    "type": "string"
+                  },
+                  "Channel": {
+                    "type": "string"
+                  },
+                  "Timeout": {
+                    "type": "integer"
+                  },
+                  "Proxy": {
+                    "type": "string"
+                  },
+                  "Headers": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "Username",
+                  "Password",
+                  "File",
+                  "Token",
+                  "CACertFile",
+                  "CertFile",
+                  "KeyFile",
+                  "Type",
+                  "Address",
+                  "Channel",
+                  "Timeout",
+                  "Proxy",
+                  "Headers"
+                ]
+              },
+              "type": "array"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "Enable",
+            "Sinks"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "Search",
+        "Sync",
+        "Metrics",
+        "Scrub",
+        "Lint",
+        "UI",
+        "Mgmt",
+        "APIKey",
+        "Trust",
+        "Events"
+      ]
+    },
+    "scheduler": {
+      "properties": {
+        "NumWorkers": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "NumWorkers"
+      ]
+    },
+    "cluster": {
+      "properties": {
+        "members": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "hashKey": {
+          "type": "string"
+        },
+        "tls": {
+          "properties": {
+            "Cert": {
+              "type": "string"
+            },
+            "Key": {
+              "type": "string"
+            },
+            "CACert": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "Cert",
+            "Key",
+            "CACert"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "members",
+        "hashKey",
+        "tls"
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "type": "object",
+  "required": [
+    "distSpecVersion",
+    "GoVersion",
+    "Commit",
+    "ReleaseTag",
+    "BinaryType",
+    "Storage",
+    "HTTP",
+    "Log",
+    "Extensions",
+    "scheduler",
+    "cluster"
+  ]
+}

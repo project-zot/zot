@@ -90,7 +90,7 @@ jobs:
           curl -X POST -H "Content-Type: application/json" -d @.pkg/debug/githubWorkflows/introspection-query.json http://localhost:5000/v2/_zot/ext/search | jq > bin/zot-gql-introspection-result.json
           pkill zot
 
-      - name: Generate Config JSON Schema on Release
+      - name: Output Config JSON Schema on Release
         if: github.event_name == 'release' && github.event.action == 'published' && matrix.os == 'linux' && matrix.arch == 'amd64'
         run: |
           bin/zot-linux-amd64 schema -o json > bin/zot-config-schema.json
@@ -138,7 +138,7 @@ jobs:
         env:
           OS: linux
           ARCH: amd64
-      - name: Generate Config JSON Schema
+      - name: Output Config JSON Schema
         run: |
           TAG=${{ github.event.release.tag_name }}
           VERSION=${TAG#v}

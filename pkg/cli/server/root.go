@@ -1,8 +1,9 @@
 package server
 
 import (
+	"bytes"
 	"context"
-	"encoding/json"
+	_ "embed"
 	"errors"
 	"fmt"
 	"net"
@@ -18,8 +19,8 @@ import (
 
 	glob "github.com/bmatcuk/doublestar/v4"
 	"github.com/go-viper/mapstructure/v2"
-	"github.com/invopop/jsonschema"
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
+	"github.com/santhosh-tekuri/jsonschema/v5"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -205,13 +206,16 @@ func newVerifyFeatureCmd(conf *config.Config) *cobra.Command {
 	return verifyFeatureCmd
 }
 
+//go:embed zot-config-schema.json
+var configSchemaJSON []byte
+
 func newSchemaCmd() *cobra.Command {
 	var output string
 
 	schemaCmd := &cobra.Command{
 		Use:   "schema",
-		Short: "`schema` generates the JSON schema for the zot configuration file",
-		Long:  "`schema` generates the JSON schema for the zot configuration file",
+		Short: "`schema` outputs the JSON schema for the zot configuration file",
+		Long:  "`schema` outputs the JSON schema for the zot configuration file",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if output != "json" {
 				return fmt.Errorf("%w: %q, supported formats: json", zerr.ErrInvalidOutputFormat, output)
@@ -219,16 +223,19 @@ func newSchemaCmd() *cobra.Command {
 
 			cmd.SilenceUsage = true
 
-			r := &jsonschema.Reflector{DoNotReference: true}
+			// Validate that the embedded schema is a valid JSON Schema document.
+			compiler := jsonschema.NewCompiler()
+			compiler.Draft = jsonschema.Draft2020
 
-			schema := r.Reflect(&config.Config{})
-
-			jsonBytes, err := json.MarshalIndent(schema, "", "  ")
-			if err != nil {
-				return err
+			if err := compiler.AddResource("zot-config-schema.json", bytes.NewReader(configSchemaJSON)); err != nil {
+				return fmt.Errorf("embedded schema is invalid: %w", err)
 			}
 
-			fmt.Fprintln(cmd.OutOrStdout(), string(jsonBytes))
+			if _, err := compiler.Compile("zot-config-schema.json"); err != nil {
+				return fmt.Errorf("embedded schema failed to compile: %w", err)
+			}
+
+			fmt.Fprintln(cmd.OutOrStdout(), string(configSchemaJSON))
 
 			return nil
 		},
