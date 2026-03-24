@@ -21,6 +21,12 @@ runs:
     - uses: actions/setup-python@v5
       with:
         python-version: '3.11'
+    - name: Conditionally enable debug
+      if: ${{ runner.debug == '1' }}
+      shell: bash
+      run: |
+        echo "DEBUG=1" >> $GITHUB_ENV
+        echo "LS_LOG=debug" >> $GITHUB_ENV
     - shell: bash
       run: |
             pip install localstack==3.3.0                                # Install LocalStack cli
@@ -29,6 +35,7 @@ runs:
             localstack start -d                                          # Start LocalStack in the background
 
             echo "Waiting for LocalStack startup..."                     # Wait 30 seconds for the LocalStack container
+            env | grep 'DEBUG|LS_LOG'
             localstack wait -t 30                                        # to become ready before timing out
             echo "Startup complete"
 
