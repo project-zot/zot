@@ -25,7 +25,7 @@ runs:
       run: |
             pip install --upgrade pyopenssl
             pip install localstack==3.3.0 'awscli-local[ver1]'
-            # Below image was copied manually from localstack/localstack:3.3.0 and uploaded to ghcr
+            # Below image was copied manually from localstack/localstack:community-archive and uploaded to ghcr
             docker pull "$IMAGE_NAME"                   # Make sure to pull a working version of the image
             localstack start -d                         # Start LocalStack in the background
             echo "Waiting for LocalStack startup..."    # Wait 30 seconds for the LocalStack container
@@ -34,4 +34,4 @@ runs:
       env:
         AWS_ACCESS_KEY_ID: fake
         AWS_SECRET_ACCESS_KEY: fake
-        IMAGE_NAME: ghcr.io/project-zot/ci-images/localstack:3.3.0
+        IMAGE_NAME: ghcr.io/project-zot/ci-images/localstack:community-archive
