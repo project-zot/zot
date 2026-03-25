@@ -18,6 +18,7 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
+	_ "github.com/distribution/distribution/v3/registry/storage/driver/gcs"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/s3-aws"
 	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
@@ -1557,6 +1558,32 @@ func TestStorageSubpaths(t *testing.T) {
 
 		_, err := storage.New(config, nil, nil, zlog.NewTestLogger(), nil)
 		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestRootDir(t *testing.T) {
+	Convey("S3 with rootdirectory preserves it for backward compatibility", t, func() {
+		rootDir := storage.RootDir(storageConstants.S3StorageDriverName, map[string]any{
+			"rootdirectory": "/custom-prefix",
+		})
+		So(rootDir, ShouldEqual, "/custom-prefix")
+	})
+
+	Convey("S3 without rootdirectory defaults to /", t, func() {
+		rootDir := storage.RootDir(storageConstants.S3StorageDriverName, map[string]any{})
+		So(rootDir, ShouldEqual, "/")
+	})
+
+	Convey("GCS with rootdirectory uses / to avoid double-prefixing", t, func() {
+		rootDir := storage.RootDir(storageConstants.GCSStorageDriverName, map[string]any{
+			"rootdirectory": "/custom-prefix",
+		})
+		So(rootDir, ShouldEqual, "/")
+	})
+
+	Convey("GCS without rootdirectory defaults to /", t, func() {
+		rootDir := storage.RootDir(storageConstants.GCSStorageDriverName, map[string]any{})
+		So(rootDir, ShouldEqual, "/")
 	})
 }
 
