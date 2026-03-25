@@ -36,25 +36,7 @@ jobs:
           make bin/skopeo
           sudo cp bin/skopeo /usr/bin
           skopeo -v
-      - name: Log in to GitHub Docker Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-      - name: Install localstack
-        run: |
-          pip install --upgrade pyopenssl
-          pip install localstack==3.3.0 awscli-local[ver1] # install LocalStack cli and awslocal
-          docker pull ghcr.io/project-zot/ci-images/localstack:3.3.0 # Make sure to pull the latest version of the image
-          localstack start -d                       # Start LocalStack in the background
-
-          echo "Waiting for LocalStack startup..."  # Wait 30 seconds for the LocalStack container
-          localstack wait -t 30                     # to become ready before timing out
-          echo "Startup complete"
+      - uses: ./.github/actions/setup-localstack
       - name: Run blackbox nightly dedupe tests
         run: |
             # test restoring s3 blobs after cache is deleted
@@ -95,7 +77,13 @@ jobs:
           check-latest: true
           go-version: 1.25.x
       - uses: ./.github/actions/setup-localstack
-
+      - name: Create zot-storage bucket on LocalStack
+        run: |
+          awslocal s3api create-bucket --bucket zot-storage --region us-east-2 \
+            --create-bucket-configuration='{"LocationConstraint": "us-east-2"}'
+        env:
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
       - name: Run zb
         timeout-minutes: 240
         id: bench
@@ -133,7 +121,13 @@ jobs:
           check-latest: true
           go-version: 1.25.x
       - uses: ./.github/actions/setup-localstack
-
+      - name: Create zot-storage bucket on LocalStack
+        run: |
+          awslocal s3api create-bucket --bucket zot-storage --region us-east-2 \
+            --create-bucket-configuration='{"LocationConstraint": "us-east-2"}'
+        env:
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
       - name: Run zb
         timeout-minutes: 240
         id: bench
@@ -274,25 +268,7 @@ jobs:
           sudo cp bin/skopeo /usr/bin
           skopeo -v
           cd $GITHUB_WORKSPACE
-      - name: Log in to GitHub Docker Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-      - name: Install localstack
-        run: |
-          pip install --upgrade pyopenssl
-          pip install localstack==3.3.0 awscli-local[ver1] # install LocalStack cli and awslocal
-          docker pull ghcr.io/project-zot/ci-images/localstack:3.3.0  # Make sure to pull a working version of the image
-          localstack start -d                       # Start LocalStack in the background
-
-          echo "Waiting for LocalStack startup..."  # Wait 30 seconds for the LocalStack container
-          localstack wait -t 30                     # to become ready before timing out
-          echo "Startup complete"
+      - uses: ./.github/actions/setup-localstack
       - name: Run cloud scale-out high scale performance tests
         id: scale
         run: |
@@ -361,25 +337,7 @@ jobs:
           sudo cp bin/skopeo /usr/bin
           skopeo -v
           cd $GITHUB_WORKSPACE
-      - name: Log in to GitHub Docker Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-      - name: Install localstack
-        run: |
-          pip install --upgrade pyopenssl
-          pip install localstack==3.3.0 awscli-local[ver1] # install LocalStack cli and awslocal
-          docker pull ghcr.io/project-zot/ci-images/localstack:3.3.0  # Make sure to pull a working version of the image
-          localstack start -d                       # Start LocalStack in the background
-
-          echo "Waiting for LocalStack startup..."  # Wait 30 seconds for the LocalStack container
-          localstack wait -t 30                     # to become ready before timing out
-          echo "Startup complete"
+      - uses: ./.github/actions/setup-localstack
       - name: Run cloud scale-out Redis tests
         id: scale
         run: |

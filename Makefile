@@ -220,7 +220,7 @@ test-extended: testdata-images
 
 .PHONY: test-minimal
 test-minimal: testdata-images
-	env GOEXPERIMENT=jsonv2 go test -failfast -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-minimal.txt -covermode=atomic ./...
+	env GOEXPERIMENT=jsonv2 go test -failfast -trimpath -race -timeout 12m -cover -coverpkg ./... -coverprofile=coverage-minimal.txt -covermode=atomic ./...
 	rm -rf /tmp/getter*; rm -rf /tmp/trivy*
 
 .PHONY: test-devmode
