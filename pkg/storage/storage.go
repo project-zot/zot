@@ -79,12 +79,7 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 			return storeController, err
 		}
 
-		/* in the case of s3 config.Storage.RootDirectory is used for caching blobs locally and
-		config.Storage.StorageDriver["rootdirectory"] is the actual rootDir in s3 */
-		rootDir := "/"
-		if config.Storage.StorageDriver["rootdirectory"] != nil {
-			rootDir = fmt.Sprintf("%v", config.Storage.StorageDriver["rootdirectory"])
-		}
+		rootDir := RootDir(storeName, config.Storage.StorageDriver)
 
 		cacheDriver, err := CreateCacheDatabaseDriver(config.Storage.StorageConfig, log)
 		if err != nil {
@@ -201,12 +196,7 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 				return nil, err
 			}
 
-			/* in the case of s3 c.Config.Storage.RootDirectory is used for caching blobs locally and
-			c.Config.Storage.StorageDriver["rootdirectory"] is the actual rootDir in s3 */
-			rootDir := "/"
-			if cfg.Storage.StorageDriver["rootdirectory"] != nil {
-				rootDir = fmt.Sprintf("%v", cfg.Storage.StorageDriver["rootdirectory"])
-			}
+			rootDir := RootDir(storeName, storageConfig.StorageDriver)
 
 			cacheDriver, err := CreateCacheDatabaseDriver(storageConfig, log)
 			if err != nil {
@@ -231,6 +221,24 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 	}
 
 	return subImageStore, nil
+}
+
+// RootDir returns the rootDir to use for a remote (S3/GCS) ImageStore.
+//
+// The upstream storage driver receives storageDriver["rootdirectory"] via factory.Create and
+// prefixes it internally (S3: s3Path, GCS: pathToKey). If ImageStore.rootDir also contains
+// the same prefix, every path gets double-prefixed (e.g. "zot/zot/repo/...").
+//
+// For S3: preserve the old behavior for backward compatibility — existing deployments
+// have data stored under double-prefixed keys.
+//
+// For GCS: use "/" to avoid double-prefixing (new driver in 2.1.15, no legacy data).
+func RootDir(storeName string, driverParams map[string]any) string {
+	if storeName == constants.S3StorageDriverName && driverParams["rootdirectory"] != nil {
+		return fmt.Sprintf("%v", driverParams["rootdirectory"])
+	}
+
+	return "/"
 }
 
 func compareImageStore(root1, root2 string) bool {
