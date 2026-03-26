@@ -235,7 +235,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@57a97c7
         with:
           image-ref: 'ghcr.io/${{ github.repository_owner }}/zot-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}'
           format: 'sarif'
@@ -244,7 +244,7 @@ jobs:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
       - name: Run Trivy vulnerability scanner (minimal)
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@57a97c7
         with:
           image-ref: 'ghcr.io/${{ github.repository_owner }}/zot-minimal-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}'
           format: 'sarif'
@@ -272,7 +272,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@57a97c7
         with:
           image-ref: 'ghcr.io/${{ github.repository_owner }}/zot:${{ github.event.release.tag_name }}'
           format: 'sarif'
@@ -281,7 +281,7 @@ jobs:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
       - name: Run Trivy vulnerability scanner (minimal)
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@57a97c7
         with:
           image-ref: 'ghcr.io/${{ github.repository_owner }}/zot-minimal:${{ github.event.release.tag_name }}'
           format: 'sarif'
