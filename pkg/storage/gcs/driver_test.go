@@ -277,11 +277,44 @@ func TestDriver(t *testing.T) {
 		})
 
 		Convey("Walk", func() {
-			storeMock.WalkFn = func(ctx context.Context, path string, f driver.WalkFn, _ ...func(*driver.WalkOptions)) error {
-				return nil
-			}
-			err := gcsDriver.Walk("/test", nil)
-			So(err, ShouldBeNil)
+			Convey("Success", func() {
+				storeMock.WalkFn = func(ctx context.Context, path string, f driver.WalkFn, _ ...func(*driver.WalkOptions)) error {
+					return nil
+				}
+				err := gcsDriver.Walk("/test", nil)
+				So(err, ShouldBeNil)
+			})
+
+			Convey("Direct io.EOF is returned as io.EOF", func() {
+				storeMock.WalkFn = func(ctx context.Context, path string, f driver.WalkFn, _ ...func(*driver.WalkOptions)) error {
+					return io.EOF
+				}
+				err := gcsDriver.Walk("/test", nil)
+				So(errors.Is(err, io.EOF), ShouldBeTrue)
+			})
+
+			Convey("io.EOF wrapped in storagedriver.Error is returned as io.EOF", func() {
+				storeMock.WalkFn = func(ctx context.Context, path string, f driver.WalkFn, _ ...func(*driver.WalkOptions)) error {
+					return driver.Error{
+						DriverName: "gcs",
+						Detail:     io.EOF,
+					}
+				}
+				err := gcsDriver.Walk("/test", nil)
+				So(errors.Is(err, io.EOF), ShouldBeTrue)
+			})
+
+			Convey("Non-EOF error is formatted normally", func() {
+				storeMock.WalkFn = func(ctx context.Context, path string, f driver.WalkFn, _ ...func(*driver.WalkOptions)) error {
+					return errTest
+				}
+				err := gcsDriver.Walk("/test", nil)
+				So(err, ShouldNotBeNil)
+				So(errors.Is(err, io.EOF), ShouldBeFalse)
+
+				var storageErr driver.Error
+				So(errors.As(err, &storageErr), ShouldBeTrue)
+			})
 		})
 
 		Convey("List", func() {
