@@ -1775,6 +1775,8 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 		t.Run(testcase.testCaseName, func(t *testing.T) {
 			log := zlog.NewTestLogger()
 			audit := zlog.NewAuditLogger("debug", "")
+			metrics := monitoring.NewMetricsServer(false, log)
+			defer metrics.Stop()
 
 			ctx := context.Background()
 
@@ -1829,7 +1831,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					repoName := "gc-long"
 
@@ -1993,7 +1995,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					// upload orphan blob
 					upload, err := imgStore.NewBlobUpload(repoName)
@@ -2261,7 +2263,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
 						Delay:          gcDelay,
 						ImageRetention: DeleteReferrers,
-					}, audit, log)
+					}, audit, log, metrics)
 
 					// first upload an image to the first repo and wait for GC timeout
 
@@ -2464,6 +2466,8 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 		t.Run(testcase.testCaseName, func(t *testing.T) {
 			log := zlog.NewTestLogger()
 			audit := zlog.NewAuditLogger("debug", "")
+			metrics := monitoring.NewMetricsServer(false, log)
+			defer metrics.Stop()
 
 			ctx := context.Background()
 
@@ -2510,7 +2514,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 					gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
 						Delay:          storageConstants.DefaultGCDelay,
 						ImageRetention: DeleteReferrers,
-					}, audit, log)
+					}, audit, log, metrics)
 
 					repoName := "gc-long"
 
@@ -2640,7 +2644,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 								},
 							},
 						},
-					}, audit, log)
+					}, audit, log, metrics)
 
 					// upload orphan blob
 					upload, err := imgStore.NewBlobUpload(repoName)
@@ -2875,6 +2879,8 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 		t.Run(testcase.testCaseName, func(t *testing.T) {
 			log := zlog.NewTestLogger()
 			audit := zlog.NewAuditLogger("debug", "")
+			metrics := monitoring.NewMetricsServer(false, log)
+			defer metrics.Stop()
 
 			ctx := context.Background()
 
@@ -2932,7 +2938,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 							},
 						},
 					},
-				}, audit, log)
+				}, audit, log, metrics)
 
 				// upload orphan blob
 				upload, err := imgStore.NewBlobUpload(repoName)
