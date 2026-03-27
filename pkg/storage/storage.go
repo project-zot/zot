@@ -71,6 +71,8 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 			return storeController, fmt.Errorf("storageDriver '%s' unsupported storage driver: %w", storeName, zerr.ErrBadConfig)
 		}
 
+		NormalizeGCSRootDirectory(storeName, config.Storage.StorageDriver)
+
 		// Init a Storager from connection string.
 		store, err := factory.Create(context.Background(), storeName, config.Storage.StorageDriver)
 		if err != nil {
@@ -188,6 +190,8 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 				return nil, fmt.Errorf("storageDriver '%s' unsupported storage driver: %w", storeName, zerr.ErrBadConfig)
 			}
 
+			NormalizeGCSRootDirectory(storeName, storageConfig.StorageDriver)
+
 			// Init a Storager from connection string.
 			store, err := factory.Create(context.Background(), storeName, storageConfig.StorageDriver)
 			if err != nil {
@@ -221,6 +225,21 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 	}
 
 	return subImageStore, nil
+}
+
+// NormalizeGCSRootDirectory ensures the GCS storage driver has a sensible default for rootdirectory.
+// Defaults to "zot" if unset or empty; overrides "/" with "zot" to prevent upstream gcs driver issue.
+// Must be called before factory.Create so the upstream GCS driver receives the correct prefix.
+// Non-GCS drivers are not affected.
+func NormalizeGCSRootDirectory(storeName string, driverParams map[string]any) {
+	if storeName != constants.GCSStorageDriverName {
+		return
+	}
+
+	rd, ok := driverParams["rootdirectory"]
+	if !ok || rd == nil || fmt.Sprintf("%v", rd) == "" || fmt.Sprintf("%v", rd) == "/" {
+		driverParams["rootdirectory"] = "/zot"
+	}
 }
 
 // RootDir returns the rootDir to use for a remote (S3/GCS) ImageStore.

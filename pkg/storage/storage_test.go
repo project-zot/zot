@@ -1587,6 +1587,38 @@ func TestRootDir(t *testing.T) {
 	})
 }
 
+func TestNormalizeGCSRootDirectory(t *testing.T) {
+	Convey("GCS without rootdirectory defaults to zot", t, func() {
+		params := map[string]any{}
+		storage.NormalizeGCSRootDirectory(storageConstants.GCSStorageDriverName, params)
+		So(params["rootdirectory"], ShouldEqual, "/zot")
+	})
+
+	Convey("GCS with rootdirectory / is overwritten to zot", t, func() {
+		params := map[string]any{"rootdirectory": "/"}
+		storage.NormalizeGCSRootDirectory(storageConstants.GCSStorageDriverName, params)
+		So(params["rootdirectory"], ShouldEqual, "/zot")
+	})
+
+	Convey("GCS with empty rootdirectory defaults to zot", t, func() {
+		params := map[string]any{"rootdirectory": ""}
+		storage.NormalizeGCSRootDirectory(storageConstants.GCSStorageDriverName, params)
+		So(params["rootdirectory"], ShouldEqual, "/zot")
+	})
+
+	Convey("GCS with custom rootdirectory is preserved", t, func() {
+		params := map[string]any{"rootdirectory": "my-prefix"}
+		storage.NormalizeGCSRootDirectory(storageConstants.GCSStorageDriverName, params)
+		So(params["rootdirectory"], ShouldEqual, "my-prefix")
+	})
+
+	Convey("S3 params are not affected", t, func() {
+		params := map[string]any{"rootdirectory": "/"}
+		storage.NormalizeGCSRootDirectory(storageConstants.S3StorageDriverName, params)
+		So(params["rootdirectory"], ShouldEqual, "/")
+	})
+}
+
 func TestDeleteBlobsInUse(t *testing.T) {
 	for _, testcase := range testCases {
 		t.Run(testcase.testCaseName, func(t *testing.T) {
