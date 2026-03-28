@@ -89,6 +89,8 @@ var (
 	ErrInvalidRoute                     = errors.New("invalid route prefix")
 	ErrImgStoreNotFound                 = errors.New("image store not found corresponding to given route")
 	ErrLocalImgStoreNotFound            = errors.New("local image store not found corresponding to given route")
+	ErrDefaultImgStoreCreate            = errors.New("failed to create image store for default config")
+	ErrSubpathImgStoreCreate            = errors.New("failed to create image store for subpath")
 	ErrEmptyValue                       = errors.New("empty cache value")
 	ErrEmptyRepoList                    = errors.New("no repository found")
 	ErrCVESearchDisabled                = errors.New("cve search is disabled")
