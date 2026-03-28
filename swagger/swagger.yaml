@@ -256,7 +256,7 @@ paths:
       - application/json
       responses:
         "200":
-          description: ok".
+          description: ok
           schema:
             type: string
       summary: Check API support
@@ -310,11 +310,11 @@ paths:
           schema:
             type: string
         "400":
-          description: bad request".
+          description: bad request
           schema:
             type: string
         "500":
-          description: internal server error".
+          description: internal server error
           schema:
             type: string
       summary: Upload cosign public keys for verifying signatures
@@ -338,7 +338,7 @@ paths:
           schema:
             $ref: '#/definitions/extensions.StrippedConfig'
         "500":
-          description: internal server error".
+          description: internal server error
           schema:
             type: string
       summary: Get current server configuration
@@ -366,11 +366,11 @@ paths:
           schema:
             type: string
         "400":
-          description: bad request".
+          description: bad request
           schema:
             type: string
         "500":
-          description: internal server error".
+          description: internal server error
           schema:
             type: string
       summary: Upload notation certificates for verifying signatures
@@ -438,8 +438,6 @@ paths:
       responses:
         "202":
           description: accepted
-          schema:
-            type: string
       summary: Delete image blob/layer
     get:
       consumes:
@@ -485,8 +483,9 @@ paths:
         "200":
           description: OK
           headers:
-            constants.DistContentDigestKey:
-              type: object
+            Docker-Content-Digest:
+              description: Manifest digest of the content
+              type: string
           schema:
             $ref: '#/definitions/api.ImageManifest'
       summary: Check image blob/layer
@@ -513,8 +512,6 @@ paths:
             Range:
               description: 0-0
               type: string
-          schema:
-            type: string
         "401":
           description: unauthorized
           schema:
@@ -547,10 +544,8 @@ paths:
       produces:
       - application/json
       responses:
-        "200":
-          description: ok
-          schema:
-            type: string
+        "204":
+          description: no content
         "404":
           description: not found
           schema:
@@ -580,6 +575,15 @@ paths:
       responses:
         "204":
           description: no content
+          headers:
+            Location:
+              description: /v2/{name}/blobs/uploads/{session_id}
+              type: string
+            Range:
+              description: 0-128
+              type: string
+        "400":
+          description: bad request
           schema:
             type: string
         "404":
@@ -612,14 +616,15 @@ paths:
         "202":
           description: accepted
           headers:
+            Blob-Upload-UUID:
+              description: Opaque blob upload session identifier
+              type: string
             Location:
               description: /v2/{name}/blobs/uploads/{session_id}
               type: string
             Range:
               description: 0-128
               type: string
-          schema:
-            type: string
         "400":
           description: bad request
           schema:
@@ -662,8 +667,13 @@ paths:
       responses:
         "201":
           description: created
-          schema:
-            type: string
+          headers:
+            Docker-Content-Digest:
+              description: Digest of the committed blob
+              type: string
+            Location:
+              description: /v2/{name}/blobs/{digest}
+              type: string
         "404":
           description: not found
           schema:
@@ -692,8 +702,26 @@ paths:
       produces:
       - application/json
       responses:
-        "200":
-          description: ok
+        "202":
+          description: accepted
+        "400":
+          description: bad request
+          schema:
+            type: string
+        "404":
+          description: not found
+          schema:
+            type: string
+        "405":
+          description: method not allowed
+          schema:
+            type: string
+        "409":
+          description: conflict
+          schema:
+            type: string
+        "500":
+          description: internal server error
           schema:
             type: string
       summary: Delete image manifest
@@ -718,8 +746,9 @@ paths:
         "200":
           description: OK
           headers:
-            constants.DistContentDigestKey:
-              type: object
+            Docker-Content-Digest:
+              description: Manifest digest of the content
+              type: string
           schema:
             $ref: '#/definitions/api.ImageManifest'
         "404":
@@ -752,8 +781,9 @@ paths:
         "200":
           description: ok
           headers:
-            constants.DistContentDigestKey:
-              type: object
+            Docker-Content-Digest:
+              description: Manifest digest of the content
+              type: string
           schema:
             type: string
         "404":
@@ -761,7 +791,7 @@ paths:
           schema:
             type: string
         "500":
-          description: internal server error".
+          description: internal server error
           schema:
             type: string
       summary: Check image manifest
@@ -795,19 +825,23 @@ paths:
         "201":
           description: created
           headers:
-            constants.DistContentDigestKey:
-              type: object
-            constants.OCITagResponseKey:
-              description: echoed tag= value (one header per query tag)
+            Docker-Content-Digest:
+              description: Manifest digest of the uploaded content
               type: string
-          schema:
-            type: string
+            OCI-Tag:
+              description: Echoed tag= value; this header is repeatable (one field
+                per tag= query parameter)
+              type: string
         "400":
           description: bad request
           schema:
             type: string
         "404":
           description: not found
+          schema:
+            type: string
+        "414":
+          description: too many tag query parameters
           schema:
             type: string
         "500":
@@ -880,7 +914,7 @@ paths:
           schema:
             $ref: '#/definitions/common.ImageTags'
         "400":
-          description: bad request".
+          description: bad request
           schema:
             type: string
         "404":
@@ -980,11 +1014,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: ok".
+          description: ok
           schema:
             type: string
         "500":
-          description: internal server error".
+          description: internal server error
           schema:
             type: string
       summary: Logout by removing current session

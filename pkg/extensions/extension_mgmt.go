@@ -120,7 +120,7 @@ type Mgmt struct {
 // @Produce json
 // @Param   resource       query     string   false   "specify resource" Enums(config)
 // @Success 200 {object}   extensions.StrippedConfig
-// @Failure 500 {string}   string   "internal server error".
+// @Failure 500 {string}   string   "internal server error"
 func (mgmt *Mgmt) HandleGetConfig(w http.ResponseWriter, r *http.Request) {
 	sanitizedConfig := mgmt.Conf.Sanitize()
 
