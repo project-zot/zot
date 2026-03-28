@@ -72,6 +72,8 @@ jobs:
           curl -Lo notation.tar.gz https://github.com/notaryproject/notation/releases/download/v1.0.0-rc.4/notation_1.0.0-rc.4_linux_amd64.tar.gz
           sudo tar xvzf notation.tar.gz -C /usr/bin notation
           rm -f notation.tar.gz
+          # pie mode support
+          sudo apt-get install musl-tools mingw-w64 gcc-mingw-w64 g++-mingw-w64
       - name: Run build
         timeout-minutes: 10
         run: |

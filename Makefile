@@ -3,7 +3,8 @@ export GOEXPERIMENT=jsonv2
 SHELL := /bin/bash
 TOP_LEVEL=$(shell git rev-parse --show-toplevel)
 COMMIT_HASH=$(shell git describe --always --tags --long)
-RELEASE_TAG=$(shell git describe --tags --abbrev=0)
+# Repos without annotated/lightweight tags should not fail metadata resolution.
+RELEASE_TAG=$(shell git describe --tags --abbrev=0 2>/dev/null)
 GO_VERSION=$(shell go version | awk '{print $$3}')
 COMMIT ?= $(if $(shell git status --porcelain --untracked-files=no),$(COMMIT_HASH)-dirty,$(COMMIT_HASH))
 CONTAINER_RUNTIME := $(shell command -v podman 2> /dev/null || echo docker)
@@ -70,13 +71,49 @@ BENCH_OUTPUT ?= stdout
 ALL_EXTENSIONS = debug,imagetrust,lint,metrics,mgmt,profile,scrub,search,sync,ui,userprefs,events
 EXTENSIONS ?= sync,search,scrub,metrics,lint,ui,mgmt,profile,userprefs,imagetrust,events
 UI_DEPENDENCIES := search,mgmt,userprefs
-# freebsd is not supported for pie builds if CGO is disabled
+# Linux: static PIE via musl cross-compiler (CGO_ENABLED=1 + -buildmode=pie)
+#        Uses x86_64-linux-musl-gcc with -extldflags "-static" and
+#        osusergo,netgo,static_build tags to avoid dynamic libc dependencies.
+# FreeBSD: PIE via clang cross-compiler + sysroot; set FREEBSD_SYSROOT to a populated FreeBSD base tree
+#          e.g. make binary GOOS=freebsd FREEBSD_SYSROOT=/opt/freebsd-sysroot
+# Windows: static PIE via MinGW cross-compiler (CGO_ENABLED=1 + mingw32 + -buildmode=pie)
+#          Uses x86_64-w64-mingw32-gcc/g++ with -linkmode external for PIE.
+#          osusergo,netgo,static_build tags ensure no dynamic libc deps.
 # see supported platforms at https://cs.opensource.google/go/go/+/master:src/internal/platform/supported.go;l=222-231;drc=d7fcb5cf80953f1d63246f1ae9defa60c5ce2d76
+FREEBSD_SYSROOT ?=
+FREEBSD_VERSION ?= 14.0
 BUILDMODE_FLAGS := -buildmode=pie
-BASE_IMAGE=gcr.io/distroless/base-nossl-debian13:latest-$(ARCH)
+STATIC_LDFLAGS :=
+CGO_FLAGS := CGO_ENABLED=0
+OS_EXTRA_TAGS :=
+BASE_IMAGE=scratch
+ifeq ($(OS),linux)
+	CGO_FLAGS := CGO_ENABLED=1 CC=musl-gcc
+	STATIC_LDFLAGS := -extldflags "-static"
+	OS_EXTRA_TAGS := osusergo,netgo,static_build
+endif
 ifeq ($(OS),freebsd)
-	BUILDMODE_FLAGS=
-	BASE_IMAGE=freebsd/freebsd-static:14.3
+	# FreeBSD PIE requires CGO + a full FreeBSD sysroot for cross-compilation.
+	# If FREEBSD_SYSROOT is provided, use clang with the sysroot to get PIE.
+	# Otherwise fall back to CGO_ENABLED=0 and no PIE (freebsd/amd64 is not in
+	# Go's InternalLinkPIESupported list, so PIE without a C toolchain is impossible).
+	ifneq ($(FREEBSD_SYSROOT),)
+		CGO_FLAGS := CGO_ENABLED=1 CC="clang --target=$(ARCH)-unknown-freebsd$(FREEBSD_VERSION) --sysroot=$(FREEBSD_SYSROOT)"
+	else
+		BUILDMODE_FLAGS=
+		CGO_FLAGS := CGO_ENABLED=0
+	endif
+	STATIC_LDFLAGS :=	
+endif
+ifeq ($(OS),windows)
+	BUILDMODE_FLAGS := -buildmode=pie
+	STATIC_LDFLAGS := -linkmode external -extldflags "-static"
+	ifeq ($(ARCH),arm64)
+		CGO_FLAGS := CGO_ENABLED=1 CC=aarch64-w64-mingw32-gcc CXX=aarch64-w64-mingw32-g++
+	else
+		CGO_FLAGS := CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++
+	endif
+	OS_EXTRA_TAGS := osusergo,netgo,static_build
 endif
 BIN_EXT :=
 ifeq ($(OS),windows)
@@ -92,7 +129,9 @@ filter-valid = $(foreach ext, $(merged-extensions), $(if $(findstring $(ext),$(A
 add-extensions = $(subst $(1),$(2),$(sort $(filter-valid)))
 BUILD_LABELS = $(call add-extensions,$(space),$(comma))
 extended-name = -$(subst $(comma),$(hyphen),$(BUILD_LABELS))
-GO_CMD_TAGS := $(if $(BUILD_LABELS),-tags $(BUILD_LABELS),)
+_all_tags := $(BUILD_LABELS)$(if $(OS_EXTRA_TAGS),$(if $(BUILD_LABELS),$(comma),)$(OS_EXTRA_TAGS),)
+OS_EXTRA_TAGS_FLAGS := $(if $(OS_EXTRA_TAGS),-tags $(OS_EXTRA_TAGS),)
+GO_CMD_TAGS := $(if $(_all_tags),-tags $(_all_tags),)
 
 
 BATS_TEST_FILE_PATH ?= replace_me
@@ -184,30 +223,30 @@ gen-protobuf: $(PROTOC)
 .PHONY: binary-minimal
 binary-minimal: EXTENSIONS=
 binary-minimal: build-metadata
-	env CGO_ENABLED=0 GOEXPERIMENT=jsonv2 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-minimal$(BIN_EXT) $(BUILDMODE_FLAGS) -v -trimpath -ldflags "-X $(CONFIG_RELEASE_TAG)=${RELEASE_TAG} -X $(CONFIG_COMMIT)=${COMMIT} -X $(CONFIG_BINARY_TYPE)=minimal -X $(CONFIG_GO_VERSION)=${GO_VERSION} -s -w" ./cmd/zot
+	env $(CGO_FLAGS) GOEXPERIMENT=jsonv2 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-minimal$(BIN_EXT) $(BUILDMODE_FLAGS) $(OS_EXTRA_TAGS_FLAGS) -v -trimpath -ldflags "-X $(CONFIG_RELEASE_TAG)=${RELEASE_TAG} -X $(CONFIG_COMMIT)=${COMMIT} -X $(CONFIG_BINARY_TYPE)=minimal -X $(CONFIG_GO_VERSION)=${GO_VERSION} -s -w $(STATIC_LDFLAGS)" ./cmd/zot
 
 .PHONY: binary
 binary: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 binary: build-metadata
-	env CGO_ENABLED=0 GOEXPERIMENT=jsonv2 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)$(BIN_EXT) $(BUILDMODE_FLAGS) $(GO_CMD_TAGS) -v -trimpath -ldflags "-X $(CONFIG_RELEASE_TAG)=${RELEASE_TAG} -X $(CONFIG_COMMIT)=${COMMIT} -X $(CONFIG_BINARY_TYPE)=$(extended-name) -X $(CONFIG_GO_VERSION)=${GO_VERSION} -s -w" ./cmd/zot
+	env $(CGO_FLAGS) GOEXPERIMENT=jsonv2 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)$(BIN_EXT) $(BUILDMODE_FLAGS) $(GO_CMD_TAGS) -v -trimpath -ldflags "-X $(CONFIG_RELEASE_TAG)=${RELEASE_TAG} -X $(CONFIG_COMMIT)=${COMMIT} -X $(CONFIG_BINARY_TYPE)=$(extended-name) -X $(CONFIG_GO_VERSION)=${GO_VERSION} -s -w $(STATIC_LDFLAGS)" ./cmd/zot
 
 .PHONY: binary-debug
 binary-debug: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 binary-debug: swaggercheck build-metadata
-	env CGO_ENABLED=0 GOEXPERIMENT=jsonv2 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-debug$(BIN_EXT) $(BUILDMODE_FLAGS) -tags $(BUILD_LABELS),debug -v -gcflags all='-N -l' -ldflags "-X $(CONFIG_RELEASE_TAG)=${RELEASE_TAG} -X $(CONFIG_COMMIT)=${COMMIT} -X $(CONFIG_BINARY_TYPE)=$(extended-name) -X $(CONFIG_GO_VERSION)=${GO_VERSION}" ./cmd/zot
+	env $(CGO_FLAGS) GOEXPERIMENT=jsonv2 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-debug$(BIN_EXT) $(BUILDMODE_FLAGS) -tags $(BUILD_LABELS)$(if $(OS_EXTRA_TAGS),$(comma)$(OS_EXTRA_TAGS),),debug -v -gcflags all='-N -l' -ldflags "-X $(CONFIG_RELEASE_TAG)=${RELEASE_TAG} -X $(CONFIG_COMMIT)=${COMMIT} -X $(CONFIG_BINARY_TYPE)=$(extended-name) -X $(CONFIG_GO_VERSION)=${GO_VERSION} $(STATIC_LDFLAGS)" ./cmd/zot
 
 .PHONY: cli
 cli: build-metadata
-	env CGO_ENABLED=0 GOEXPERIMENT=jsonv2 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zli-$(OS)-$(ARCH)$(BIN_EXT) $(BUILDMODE_FLAGS) -tags $(BUILD_LABELS),search -v -trimpath -ldflags "-X $(CONFIG_COMMIT)=${COMMIT} -X $(CONFIG_BINARY_TYPE)=$(extended-name) -X $(CONFIG_GO_VERSION)=${GO_VERSION} -s -w" ./cmd/zli
+	env $(CGO_FLAGS) GOEXPERIMENT=jsonv2 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zli-$(OS)-$(ARCH)$(BIN_EXT) $(BUILDMODE_FLAGS) -tags $(BUILD_LABELS)$(if $(OS_EXTRA_TAGS),$(comma)$(OS_EXTRA_TAGS),),search -v -trimpath -ldflags "-X $(CONFIG_COMMIT)=${COMMIT} -X $(CONFIG_BINARY_TYPE)=$(extended-name) -X $(CONFIG_GO_VERSION)=${GO_VERSION} -s -w $(STATIC_LDFLAGS)" ./cmd/zli
 
 .PHONY: bench
 bench: build-metadata
-	env CGO_ENABLED=0 GOEXPERIMENT=jsonv2 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zb-$(OS)-$(ARCH)$(BIN_EXT) $(BUILDMODE_FLAGS) $(GO_CMD_TAGS) -v -trimpath -ldflags "-X $(CONFIG_COMMIT)=${COMMIT} -X $(CONFIG_BINARY_TYPE)=$(extended-name) -X $(CONFIG_GO_VERSION)=${GO_VERSION} -s -w" ./cmd/zb
+	env $(CGO_FLAGS) GOEXPERIMENT=jsonv2 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zb-$(OS)-$(ARCH)$(BIN_EXT) $(BUILDMODE_FLAGS) $(GO_CMD_TAGS) -v -trimpath -ldflags "-X $(CONFIG_COMMIT)=${COMMIT} -X $(CONFIG_BINARY_TYPE)=$(extended-name) -X $(CONFIG_GO_VERSION)=${GO_VERSION} -s -w $(STATIC_LDFLAGS)" ./cmd/zb
 
 .PHONY: exporter-minimal
 exporter-minimal: EXTENSIONS=
 exporter-minimal: build-metadata
-	env CGO_ENABLED=0 GOEXPERIMENT=jsonv2 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zxp-$(OS)-$(ARCH)$(BIN_EXT) $(BUILDMODE_FLAGS) -v -trimpath ./cmd/zxp
+	env $(CGO_FLAGS) GOEXPERIMENT=jsonv2 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zxp-$(OS)-$(ARCH)$(BIN_EXT) $(BUILDMODE_FLAGS) $(OS_EXTRA_TAGS_FLAGS) -v -trimpath -ldflags "$(STATIC_LDFLAGS)" ./cmd/zxp
 
 .PHONY: test-prereq
 test-prereq: check-skopeo $(TESTDATA) $(ORAS)
