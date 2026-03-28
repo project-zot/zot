@@ -17,6 +17,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/securecookie"
+	godigest "github.com/opencontainers/go-digest"
 	"github.com/zitadel/oidc/v3/pkg/client/rp"
 
 	"zotregistry.dev/zot/v2/errors"
@@ -634,4 +635,5 @@ func RunGCTasks(conf *config.Config, storeController storage.StoreController, me
 type SyncOnDemand interface {
 	SyncImage(ctx context.Context, repo, reference string) error
 	SyncReferrers(ctx context.Context, repo string, subjectDigestStr string, referenceTypes []string) error
+	SyncBlob(ctx context.Context, repo string, digest godigest.Digest) error
 }
