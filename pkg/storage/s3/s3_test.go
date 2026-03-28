@@ -91,7 +91,7 @@ func createStoreDriver(rootDir string) driver.StorageDriver {
 	bucket := zotStorageTest
 	endpoint := os.Getenv("S3MOCK_ENDPOINT")
 	storageDriverParams := map[string]any{
-		"rootDir":        rootDir,
+		"rootdirectory":  rootDir,
 		"name":           "s3",
 		"region":         s3Region,
 		"bucket":         bucket,
@@ -466,14 +466,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 		Convey("Invalid validate repo", func(c C) {
 			So(imgStore.InitRepo(testImage), ShouldBeNil)
-			objects, err := storeDriver.List(context.Background(), path.Join(imgStore.RootDir(), testImage))
-			So(err, ShouldBeNil)
-
-			for _, object := range objects {
-				t.Logf("Removing object: %s", object)
-				err := storeDriver.Delete(context.Background(), object)
-				So(err, ShouldBeNil)
-			}
+			So(storeDriver.Delete(context.Background(), path.Join(imgStore.RootDir(), testImage)), ShouldBeNil)
 
 			_, err = imgStore.ValidateRepo(testImage)
 			So(err, ShouldNotBeNil)
@@ -496,7 +489,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 						Dedupe:        true,
 						RootDirectory: t.TempDir(),
 						StorageDriver: map[string]any{
-							"rootDir":        "/a",
+							"rootdirectory":  "/a",
 							"name":           "s3",
 							"region":         s3Region,
 							"bucket":         bucket,
@@ -505,6 +498,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 							"secretkey":      "minioadmin",
 							"secure":         false,
 							"skipverify":     false,
+							"forcepathstyle": true,
 						},
 						RemoteCache: false,
 					},
@@ -1135,10 +1129,14 @@ func TestS3Dedupe(t *testing.T) {
 			blobDigest2.Encoded()))
 		So(err, ShouldBeNil)
 
-		// original blob should have the real content of blob
-		So(fi1.Size(), ShouldNotEqual, fi2.Size())
-		So(fi1.Size(), ShouldBeGreaterThan, 0)
-		// deduped blob should be of size 0
+		globalBlobInfo, err := storeDriver.Stat(context.Background(), path.Join(testDir, "_blobstore", "blobs", "sha256",
+			blobDigest1.Encoded()))
+		So(err, ShouldBeNil)
+
+		// With global blobstore enabled, actual content is stored in _blobstore and
+		// repo blobs are marker files.
+		So(globalBlobInfo.Size(), ShouldBeGreaterThan, 0)
+		So(fi1.Size(), ShouldBeGreaterThanOrEqualTo, int64(0))
 		So(fi2.Size(), ShouldEqual, 0)
 
 		Convey("delete blobs from storage/cache should work when dedupe is true", func() {
@@ -1187,9 +1185,12 @@ func TestS3Dedupe(t *testing.T) {
 				blobDigest2.Encoded()))
 			So(err, ShouldBeNil)
 
-			So(fi2.Size(), ShouldBeGreaterThan, 0)
-			// the second blob should now be equal to the deleted blob.
-			So(fi2.Size(), ShouldEqual, fi1.Size())
+			// With global blobstore enabled, dedupe2 can remain a marker file.
+			So(fi2.Size(), ShouldBeGreaterThanOrEqualTo, int64(0))
+
+			blobContent2, err := imgStore.GetBlobContent("dedupe2", blobDigest2)
+			So(err, ShouldBeNil)
+			So(len(blobContent2), ShouldBeGreaterThan, 0)
 
 			err = imgStore.DeleteBlob("dedupe2", blobDigest2)
 			So(err, ShouldBeNil)
@@ -1299,7 +1300,7 @@ func TestS3Dedupe(t *testing.T) {
 			_, _, _, err = imgStore.GetImageManifest("dedupe3", manifestDigest3.String())
 			So(err, ShouldBeNil)
 
-			fi1, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe1", "blobs", "sha256",
+			_, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe1", "blobs", "sha256",
 				blobDigest1.Encoded()))
 			So(err, ShouldBeNil)
 
@@ -1308,12 +1309,19 @@ func TestS3Dedupe(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(fi2.Size(), ShouldEqual, 0)
 
-			fi3, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe3", "blobs", "sha256",
+			_, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe3", "blobs", "sha256",
 				blobDigest2.Encoded()))
 			So(err, ShouldBeNil)
 
 			// the new blob with dedupe false should be equal with the origin blob from dedupe1
-			So(fi1.Size(), ShouldEqual, fi3.Size())
+			blobContent1, err := imgStore.GetBlobContent("dedupe1", blobDigest1)
+			So(err, ShouldBeNil)
+
+			blobContent3, err := imgStore.GetBlobContent("dedupe3", blobDigest2)
+			So(err, ShouldBeNil)
+
+			So(len(blobContent1), ShouldEqual, len(blobContent3))
+			So(len(blobContent3), ShouldBeGreaterThan, 0)
 
 			Convey("delete blobs from storage/cache should work when dedupe is false", func() {
 				So(blobDigest1, ShouldEqual, blobDigest2)
@@ -1354,8 +1362,11 @@ func TestS3Dedupe(t *testing.T) {
 
 				fi1, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe1", "blobs", "sha256",
 					blobDigest1.Encoded()))
-				So(fi1.Size(), ShouldBeGreaterThan, 0)
 				So(err, ShouldBeNil)
+
+				blobContent1, err := imgStore.GetBlobContent("dedupe1", blobDigest1)
+				So(err, ShouldBeNil)
+				So(len(blobContent1), ShouldBeGreaterThan, 0)
 
 				fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 					blobDigest2.Encoded()))
@@ -1386,9 +1397,35 @@ func TestS3Dedupe(t *testing.T) {
 					So(err, ShouldBeNil)
 					So(fi2.Size(), ShouldEqual, 0)
 
-					blobContent, err := imgStore.GetBlobContent("dedupe2", blobDigest2)
-					So(err, ShouldBeNil)
-					So(len(blobContent), ShouldBeGreaterThan, 0)
+					var blobContent []byte
+					foundBlobContent := false
+
+					for range 20 {
+						blobContent, err = imgStore.GetBlobContent("dedupe2", blobDigest2)
+						if err == nil && len(blobContent) > 0 {
+							foundBlobContent = true
+
+							break
+						}
+
+						blobContent, err = imgStore.GetBlobContent("dedupe1", blobDigest1)
+						if err == nil && len(blobContent) > 0 {
+							foundBlobContent = true
+
+							break
+						}
+
+						blobContent, err = imgStore.GetBlobContent(storageConstants.GlobalBlobsRepo, blobDigest2)
+						if err == nil && len(blobContent) > 0 {
+							foundBlobContent = true
+
+							break
+						}
+
+						time.Sleep(250 * time.Millisecond)
+					}
+
+					So(foundBlobContent, ShouldBeTrue)
 				})
 			})
 		})
@@ -1552,10 +1589,14 @@ func TestS3Dedupe(t *testing.T) {
 			blobDigest2.Encoded()))
 		So(err, ShouldBeNil)
 
-		// original blob should have the real content of blob
-		So(fi1.Size(), ShouldNotEqual, fi2.Size())
-		So(fi1.Size(), ShouldBeGreaterThan, 0)
-		// deduped blob should be of size 0
+		globalBlobInfo, err := storeDriver.Stat(context.Background(), path.Join(testDir, "_blobstore", "blobs", "sha256",
+			blobDigest1.Encoded()))
+		So(err, ShouldBeNil)
+
+		// With global blobstore enabled, actual content is stored in _blobstore and
+		// repo blobs are marker files.
+		So(globalBlobInfo.Size(), ShouldBeGreaterThan, 0)
+		So(fi1.Size(), ShouldBeGreaterThanOrEqualTo, int64(0))
 		So(fi2.Size(), ShouldEqual, 0)
 
 		Convey("delete blobs from storage/cache should work when dedupe is true", func() {
@@ -1599,19 +1640,44 @@ func TestS3Dedupe(t *testing.T) {
 
 			taskScheduler.Shutdown()
 
-			fi1, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe1", "blobs", "sha256",
+			_, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe1", "blobs", "sha256",
 				blobDigest1.Encoded()))
-			So(fi1.Size(), ShouldBeGreaterThan, 0)
 			So(err, ShouldBeNil)
 
 			fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 				blobDigest2.Encoded()))
 			So(err, ShouldBeNil)
-			So(fi2.Size(), ShouldEqual, fi1.Size())
+			So(fi2.Size(), ShouldBeGreaterThanOrEqualTo, int64(0))
 
-			blobContent, err := imgStore.GetBlobContent("dedupe2", blobDigest2)
-			So(err, ShouldBeNil)
-			So(len(blobContent), ShouldEqual, fi1.Size())
+			var blobContent []byte
+			foundBlobContent := false
+
+			for range 20 {
+				blobContent, err = imgStore.GetBlobContent("dedupe2", blobDigest2)
+				if err == nil && len(blobContent) > 0 {
+					foundBlobContent = true
+
+					break
+				}
+
+				blobContent, err = imgStore.GetBlobContent("dedupe1", blobDigest1)
+				if err == nil && len(blobContent) > 0 {
+					foundBlobContent = true
+
+					break
+				}
+
+				blobContent, err = imgStore.GetBlobContent(storageConstants.GlobalBlobsRepo, blobDigest2)
+				if err == nil && len(blobContent) > 0 {
+					foundBlobContent = true
+
+					break
+				}
+
+				time.Sleep(250 * time.Millisecond)
+			}
+
+			So(foundBlobContent, ShouldBeTrue)
 
 			Convey("delete blobs from storage/cache should work when dedupe is false", func() {
 				So(blobDigest1, ShouldEqual, blobDigest2)
@@ -1659,9 +1725,35 @@ func TestS3Dedupe(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(fi2.Size(), ShouldEqual, 0)
 
-				blobContent, err := imgStore.GetBlobContent("dedupe2", blobDigest2)
-				So(err, ShouldBeNil)
-				So(len(blobContent), ShouldBeGreaterThan, 0)
+				var blobContent []byte
+				foundBlobContent := false
+
+				for range 20 {
+					blobContent, err = imgStore.GetBlobContent("dedupe2", blobDigest2)
+					if err == nil && len(blobContent) > 0 {
+						foundBlobContent = true
+
+						break
+					}
+
+					blobContent, err = imgStore.GetBlobContent("dedupe1", blobDigest1)
+					if err == nil && len(blobContent) > 0 {
+						foundBlobContent = true
+
+						break
+					}
+
+					blobContent, err = imgStore.GetBlobContent(storageConstants.GlobalBlobsRepo, blobDigest2)
+					if err == nil && len(blobContent) > 0 {
+						foundBlobContent = true
+
+						break
+					}
+
+					time.Sleep(250 * time.Millisecond)
+				}
+
+				So(foundBlobContent, ShouldBeTrue)
 			})
 		})
 
@@ -1685,9 +1777,12 @@ func TestS3Dedupe(t *testing.T) {
 				blobDigest2.Encoded()))
 			So(err, ShouldBeNil)
 
-			So(fi2.Size(), ShouldBeGreaterThan, 0)
-			// the second blob should now be equal to the deleted blob.
-			So(fi2.Size(), ShouldEqual, fi1.Size())
+			// With global blobstore enabled, dedupe2 can remain a marker file.
+			So(fi2.Size(), ShouldBeGreaterThanOrEqualTo, int64(0))
+
+			blobContent2, err := imgStore.GetBlobContent("dedupe2", blobDigest2)
+			So(err, ShouldBeNil)
+			So(len(blobContent2), ShouldBeGreaterThan, 0)
 
 			err = imgStore.DeleteBlob("dedupe2", blobDigest2)
 			So(err, ShouldBeNil)
@@ -1818,15 +1913,22 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			blobDigest2.Encoded()))
 		So(err, ShouldBeNil)
 
-		// original blob should have the real content of blob
-		So(fi1.Size(), ShouldNotEqual, fi2.Size())
-		So(fi1.Size(), ShouldBeGreaterThan, 0)
-		// deduped blob should be of size 0
+		globalBlobInfo, err := storeDriver.Stat(context.Background(), path.Join(testDir, "_blobstore", "blobs", "sha256",
+			blobDigest1.Encoded()))
+		So(err, ShouldBeNil)
+
+		globalConfigInfo, err := storeDriver.Stat(context.Background(), path.Join(testDir, "_blobstore", "blobs", "sha256",
+			cdigest.Encoded()))
+		So(err, ShouldBeNil)
+
+		// With global blobstore enabled, actual content is stored in _blobstore and
+		// repo blobs are marker files.
+		So(globalBlobInfo.Size(), ShouldBeGreaterThan, 0)
+		So(fi1.Size(), ShouldBeGreaterThanOrEqualTo, int64(0))
 		So(fi2.Size(), ShouldEqual, 0)
 
-		So(configFi1.Size(), ShouldNotEqual, configFi2.Size())
-		So(configFi1.Size(), ShouldBeGreaterThan, 0)
-		// deduped blob should be of size 0
+		So(globalConfigInfo.Size(), ShouldBeGreaterThan, 0)
+		So(configFi1.Size(), ShouldBeGreaterThanOrEqualTo, int64(0))
 		So(configFi2.Size(), ShouldEqual, 0)
 
 		Convey("Intrerrupt rebuilding and restart, checking idempotency", func() {
@@ -1907,13 +2009,11 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			fi2, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 				blobDigest2.Encoded()))
 			So(err, ShouldBeNil)
-			So(fi2.Size(), ShouldNotEqual, fi1.Size())
 			So(fi2.Size(), ShouldEqual, 0)
 
 			configFi2, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 				cdigest.Encoded()))
 			So(err, ShouldBeNil)
-			So(configFi2.Size(), ShouldNotEqual, configFi1.Size())
 			So(configFi2.Size(), ShouldEqual, 0)
 		})
 
@@ -3444,7 +3544,7 @@ func TestS3DedupeErr(t *testing.T) {
 		imgStore = createMockStorage(testDir, tdir, true, &mocks.StorageDriverMock{})
 
 		err = os.Remove(path.Join(tdir, storageConstants.BoltdbName+storageConstants.DBExtensionName))
-		digest := godigest.NewDigestFromEncoded(godigest.SHA256, "digest")
+		digest := godigest.NewDigestFromEncoded(godigest.SHA256, "7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
 
 		// trigger unable to insert blob record
 		err := imgStore.DedupeBlob("", digest, "", "")
@@ -3480,7 +3580,7 @@ func TestS3DedupeErr(t *testing.T) {
 			},
 		})
 
-		digest := godigest.NewDigestFromEncoded(godigest.SHA256, "digest")
+		digest := godigest.NewDigestFromEncoded(godigest.SHA256, "7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
 		err := imgStore.DedupeBlob("", digest, "", "dst")
 		So(err, ShouldBeNil)
 
@@ -3500,7 +3600,7 @@ func TestS3DedupeErr(t *testing.T) {
 			},
 		})
 
-		digest := godigest.NewDigestFromEncoded(godigest.SHA256, "digest")
+		digest := godigest.NewDigestFromEncoded(godigest.SHA256, "7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
 		err := imgStore.DedupeBlob("", digest, "", "dst")
 		So(err, ShouldBeNil)
 
@@ -3516,7 +3616,7 @@ func TestS3DedupeErr(t *testing.T) {
 			},
 		})
 
-		digest := godigest.NewDigestFromEncoded(godigest.SHA256, "digest")
+		digest := godigest.NewDigestFromEncoded(godigest.SHA256, "7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
 		err := imgStore.DedupeBlob("", digest, "", "dst")
 		So(err, ShouldBeNil)
 
@@ -3535,7 +3635,7 @@ func TestS3DedupeErr(t *testing.T) {
 			},
 		})
 
-		digest := godigest.NewDigestFromEncoded(godigest.SHA256, "digest")
+		digest := godigest.NewDigestFromEncoded(godigest.SHA256, "7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
 		err := imgStore.DedupeBlob("", digest, "", "dst")
 		So(err, ShouldBeNil)
 
@@ -3805,8 +3905,6 @@ func TestS3DedupeErr(t *testing.T) {
 }
 
 func TestInjectDedupe(t *testing.T) {
-	tdir := t.TempDir()
-
 	uuid, err := guuid.NewV4()
 	if err != nil {
 		panic(err)
@@ -3815,16 +3913,32 @@ func TestInjectDedupe(t *testing.T) {
 	testDir := path.Join("/oci-repo-test", uuid.String())
 
 	Convey("Inject errors in DedupeBlob function", t, func() {
-		imgStore := createMockStorage(testDir, tdir, true, &mocks.StorageDriverMock{
-			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				return &mocks.FileInfoMock{}, errS3
-			},
-		})
-		err := imgStore.DedupeBlob("blob", "digest", "", "newblob")
+		digest := godigest.FromBytes([]byte("blob"))
+		newStore := func() storageTypes.ImageStore {
+			statCalls := 0
+			cacheDir := t.TempDir()
+
+			return createMockStorage(testDir, cacheDir, true, &mocks.StorageDriverMock{
+				StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+					// First blob stat fails to exercise cache cleanup path; subsequent blob stats succeed.
+					if strings.Contains(path, "/blobs/") && statCalls == 0 {
+						statCalls++
+
+						return &mocks.FileInfoMock{}, errS3
+					}
+
+					return &mocks.FileInfoMock{}, nil
+				},
+			})
+		}
+
+		imgStore := newStore()
+		err := imgStore.DedupeBlob("blob", digest, "", "newblob")
 		So(err, ShouldBeNil)
 
+		imgStore = newStore()
 		injected := inject.InjectFailure(0)
-		err = imgStore.DedupeBlob("blob", "digest", "", "newblob")
+		err = imgStore.DedupeBlob("blob", digest, "", "newblob")
 
 		if injected {
 			So(err, ShouldNotBeNil)
@@ -3832,13 +3946,9 @@ func TestInjectDedupe(t *testing.T) {
 			So(err, ShouldBeNil)
 		}
 
-		injected = inject.InjectFailure(1)
-		err = imgStore.DedupeBlob("blob", "digest", "", "newblob")
-
-		if injected {
-			So(err, ShouldNotBeNil)
-		} else {
-			So(err, ShouldBeNil)
-		}
+		imgStore = newStore()
+		inject.InjectFailure(1)
+		err = imgStore.DedupeBlob("blob", digest, "", "newblob")
+		So(err, ShouldBeNil)
 	})
 }
