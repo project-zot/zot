@@ -234,6 +234,8 @@ func NewServerRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newVerifyCmd(conf))
 	// "scrub"
 	rootCmd.AddCommand(newScrubCmd(conf))
+	// "schema"
+	rootCmd.AddCommand(newSchemaCmd())
 	// "verify-feature"
 	rootCmd.AddCommand(newVerifyFeatureCmd(conf))
 	// "version"

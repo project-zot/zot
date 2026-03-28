@@ -1,6 +1,7 @@
 package server_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -84,6 +85,138 @@ func TestServerUsage(t *testing.T) {
 		err := cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
 	})
+}
+
+func TestSchema(t *testing.T) {
+	Convey("Test schema command", t, func(c C) {
+		cmd := cli.NewServerRootCmd()
+		buf := bytes.NewBuffer(nil)
+
+		cmd.SetArgs([]string{"schema"})
+		cmd.SetOut(buf)
+
+		err := cmd.Execute()
+		So(err, ShouldBeNil)
+
+		var schemaDoc map[string]any
+		err = json.Unmarshal(buf.Bytes(), &schemaDoc)
+		So(err, ShouldBeNil)
+
+		So(schemaDoc["$schema"], ShouldEqual, "http://json-schema.org/draft-07/schema#")
+		So(schemaDoc["title"], ShouldEqual, "zot config schema")
+
+		defs, ok := schemaDoc["definitions"].(map[string]any)
+		So(ok, ShouldBeTrue)
+		So(defs, ShouldContainKey, "zotregistry.dev~1zot~1v2~1pkg~1api~1config.Config")
+		So(defs, ShouldContainKey, "zotregistry.dev~1zot~1v2~1pkg~1extensions~1config.ExtensionConfig")
+
+		rootRef, ok := schemaDoc["$ref"].(string)
+		So(ok, ShouldBeTrue)
+		So(rootRef, ShouldEqual, "#/definitions/zotregistry.dev~01zot~01v2~01pkg~01api~01config.Config")
+
+		configSchema, ok := mustResolveSchemaRef(rootRef, defs)
+		So(ok, ShouldBeTrue)
+		configProperties, ok := configSchema["properties"].(map[string]any)
+		So(ok, ShouldBeTrue)
+		So(configProperties, ShouldContainKey, "distSpecVersion")
+		So(configProperties, ShouldContainKey, "storage")
+		So(configProperties, ShouldContainKey, "http")
+		So(configProperties, ShouldContainKey, "extensions")
+		So(configProperties, ShouldNotContainKey, "hTTP")
+
+		storageSchema, ok := mustResolvePropertySchema(configProperties, "storage", defs)
+		So(ok, ShouldBeTrue)
+		storageProperties, ok := storageSchema["properties"].(map[string]any)
+		So(ok, ShouldBeTrue)
+		So(storageProperties, ShouldContainKey, "rootDirectory")
+		So(storageProperties, ShouldContainKey, "gcDelay")
+		So(storageProperties, ShouldContainKey, "gcInterval")
+		So(storageProperties, ShouldContainKey, "subPaths")
+		So(storageProperties, ShouldNotContainKey, "gcMaxSchedulerDelay")
+		So(storageProperties, ShouldNotContainKey, "gCDelay")
+		So(storageProperties, ShouldNotContainKey, "gCInterval")
+
+		httpSchema, ok := mustResolvePropertySchema(configProperties, "http", defs)
+		So(ok, ShouldBeTrue)
+		httpProperties, ok := httpSchema["properties"].(map[string]any)
+		So(ok, ShouldBeTrue)
+		So(httpProperties, ShouldContainKey, "address")
+		So(httpProperties, ShouldContainKey, "port")
+		So(httpProperties, ShouldContainKey, "accessControl")
+
+		extensionsSchema, ok := mustResolvePropertySchema(configProperties, "extensions", defs)
+		So(ok, ShouldBeTrue)
+		extensionsProperties, ok := extensionsSchema["properties"].(map[string]any)
+		So(ok, ShouldBeTrue)
+		So(extensionsProperties, ShouldContainKey, "search")
+		So(extensionsProperties, ShouldContainKey, "sync")
+		So(extensionsProperties, ShouldContainKey, "metrics")
+
+		syncSchema, ok := mustResolvePropertySchema(extensionsProperties, "sync", defs)
+		So(ok, ShouldBeTrue)
+		syncProperties, ok := syncSchema["properties"].(map[string]any)
+		So(ok, ShouldBeTrue)
+		So(syncProperties, ShouldContainKey, "registries")
+
+		registriesSchema, ok := mustResolvePropertySchema(syncProperties, "registries", defs)
+		So(ok, ShouldBeTrue)
+		registriesItemSchema, ok := registriesSchema["items"].(map[string]any)
+		So(ok, ShouldBeTrue)
+
+		registrySchema, ok := mustResolveSchema(registriesItemSchema, defs)
+		So(ok, ShouldBeTrue)
+		registryProperties, ok := registrySchema["properties"].(map[string]any)
+		So(ok, ShouldBeTrue)
+		So(registryProperties, ShouldNotContainKey, "responseHeaderTimeout")
+	})
+}
+
+func mustResolvePropertySchema(properties map[string]any, name string, defs map[string]any) (map[string]any, bool) {
+	schema, ok := properties[name].(map[string]any)
+	if !ok {
+		return nil, false
+	}
+
+	return mustResolveSchema(schema, defs)
+}
+
+func mustResolveSchema(schema map[string]any, defs map[string]any) (map[string]any, bool) {
+	if schema == nil {
+		return nil, false
+	}
+
+	if ref, ok := schema["$ref"].(string); ok {
+		return mustResolveSchemaRef(ref, defs)
+	}
+
+	if anyOf, ok := schema["anyOf"].([]any); ok {
+		for _, option := range anyOf {
+			optionSchema, ok := option.(map[string]any)
+			if !ok {
+				continue
+			}
+
+			if optionType, ok := optionSchema["type"].(string); ok && optionType == "null" {
+				continue
+			}
+
+			return mustResolveSchema(optionSchema, defs)
+		}
+	}
+
+	return schema, true
+}
+
+func mustResolveSchemaRef(ref string, defs map[string]any) (map[string]any, bool) {
+	defKey := strings.TrimPrefix(ref, "#/definitions/")
+	// Decode one JSON Pointer token level to the stored definition key.
+	defKey = strings.NewReplacer("~1", "/", "~0", "~").Replace(defKey)
+	schema, ok := defs[defKey].(map[string]any)
+	if !ok {
+		return nil, false
+	}
+
+	return schema, true
 }
 
 func TestServe(t *testing.T) {

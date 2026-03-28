@@ -19,7 +19,7 @@ import (
 	"github.com/opencontainers/image-spec/schema"
 	imeta "github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/santhosh-tekuri/jsonschema/v5"
+	jsonschemaV5 "github.com/santhosh-tekuri/jsonschema/v5"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
@@ -890,16 +890,12 @@ func ValidateImageIndexSchema(buf []byte) error {
 }
 
 func IsEmptyLayersError(err error) bool {
-	var validationErr *jsonschema.ValidationError
-	if errors.As(err, &validationErr) {
-		if len(validationErr.Causes) == 1 && strings.Contains(err.Error(), manifestWithEmptyLayersErrMsg) {
-			return true
-		} else {
-			return false
-		}
+	var validationErr *jsonschemaV5.ValidationError
+	if !errors.As(err, &validationErr) {
+		return false
 	}
 
-	return false
+	return len(validationErr.Causes) == 1 && strings.Contains(validationErr.Error(), manifestWithEmptyLayersErrMsg)
 }
 
 // DedupeTaskGenerator takes all blobs paths found in the storage.imagestore and groups them by digest.
