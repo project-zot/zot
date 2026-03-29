@@ -1723,6 +1723,13 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 				}
 
 				count++
+			} else if errors.Is(err, zerr.ErrBlobNotFound) {
+				is.log.Info().Str("repository", repo).Str("digest", digest.String()).
+					Msg("blob already absent during GC, skipping")
+
+				count++
+
+				continue
 			} else {
 				is.log.Error().Err(err).Str("repository", repo).Str("digest", digest.String()).Msg("failed to delete blob")
 
@@ -1826,6 +1833,13 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 	}
 
 	if err := is.storeDriver.Delete(blobPath); err != nil {
+		var pathNotFoundErr driver.PathNotFoundError
+		if errors.As(err, &pathNotFoundErr) {
+			is.log.Warn().Str("blobPath", blobPath).Msg("blob already removed from storage, skipping")
+
+			return nil
+		}
+
 		is.log.Error().Err(err).Str("blobPath", blobPath).Msg("failed to remove blob path")
 
 		return err
