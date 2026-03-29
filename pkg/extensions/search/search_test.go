@@ -4271,7 +4271,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		So(err, ShouldBeNil)
 
 		indexMultiArchMiddle1Digest, _, err := storeCtlr.GetDefaultImageStore().PutImageManifest(repoName,
-			"multiArchMiddle1", ispec.MediaTypeImageIndex, indexMultiArchMiddle1Blob)
+			"multiArchMiddle1", ispec.MediaTypeImageIndex, indexMultiArchMiddle1Blob, nil)
 		So(err, ShouldBeNil)
 
 		image211 := CreateRandomImage()
@@ -4296,7 +4296,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		So(err, ShouldBeNil)
 
 		indexMultiArchMiddle2Digest, _, err := storeCtlr.GetDefaultImageStore().PutImageManifest(repoName,
-			"multiArchMiddle2", ispec.MediaTypeImageIndex, indexMultiArchMiddle2Blob)
+			"multiArchMiddle2", ispec.MediaTypeImageIndex, indexMultiArchMiddle2Blob, nil)
 		So(err, ShouldBeNil)
 
 		image31 := CreateRandomImage()
@@ -4331,7 +4331,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		So(err, ShouldBeNil)
 
 		_, _, err = storeCtlr.GetDefaultImageStore().PutImageManifest(repoName, "multiArchTop", ispec.MediaTypeImageIndex,
-			indexMultiArchTopBlob)
+			indexMultiArchTopBlob, nil)
 		So(err, ShouldBeNil)
 
 		ctlrManager.StartAndWait(port)
@@ -4443,7 +4443,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		So(err, ShouldBeNil)
 
 		indexMultiArchMiddle1Digest, _, err := storeCtlr.GetDefaultImageStore().PutImageManifest(repoName,
-			"multiArchMiddle1", ispec.MediaTypeImageIndex, indexMultiArchMiddle1Blob)
+			"multiArchMiddle1", ispec.MediaTypeImageIndex, indexMultiArchMiddle1Blob, nil)
 		So(err, ShouldBeNil)
 
 		image211 := CreateRandomImage()
@@ -4468,7 +4468,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		So(err, ShouldBeNil)
 
 		indexMultiArchMiddle2Digest, _, err := storeCtlr.GetDefaultImageStore().PutImageManifest(repoName,
-			"multiArchMiddle2", ispec.MediaTypeImageIndex, indexMultiArchMiddle2Blob)
+			"multiArchMiddle2", ispec.MediaTypeImageIndex, indexMultiArchMiddle2Blob, nil)
 		So(err, ShouldBeNil)
 
 		image31 := CreateRandomImage()
@@ -4503,7 +4503,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		So(err, ShouldBeNil)
 
 		_, _, err = storeCtlr.GetDefaultImageStore().PutImageManifest(repoName, "multiArchTop", ispec.MediaTypeImageIndex,
-			indexMultiArchTopBlob)
+			indexMultiArchTopBlob, nil)
 		So(err, ShouldBeNil)
 
 		ctlr := api.NewController(conf)
@@ -5229,7 +5229,7 @@ func TestMetaDBWhenSigningImages(t *testing.T) {
 			Convey("imageIsSignature fails", func() {
 				// make image store ignore the wrong format of the input
 				ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte, _ []string) (godigest.Digest,
 						godigest.Digest, error,
 					) {
 						return "", "", nil
@@ -6626,7 +6626,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 
 			Convey("imageIsSignature fails", func() {
 				ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte, _ []string) (godigest.Digest,
 						godigest.Digest, error,
 					) {
 						return "", "", nil
@@ -6652,7 +6652,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 
 						return configBlob, nil
 					},
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte, _ []string) (godigest.Digest,
 						godigest.Digest, error,
 					) {
 						return "", "", nil
@@ -6682,7 +6682,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 
 						return configBlob, nil
 					},
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte, _ []string) (godigest.Digest,
 						godigest.Digest, error,
 					) {
 						return "", "", ErrTestError

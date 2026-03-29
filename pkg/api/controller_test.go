@@ -59,6 +59,7 @@ import (
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/meta"
+	zreg "zotregistry.dev/zot/v2/pkg/regexp"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/gc"
@@ -7804,6 +7805,142 @@ func TestManifestValidation(t *testing.T) {
 				SetBody(indexContent).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/index", repoName))
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+		})
+	})
+}
+
+func TestManifestDigestQueryTags(t *testing.T) {
+	Convey("Manifest PUT with digest ?tag= query parameters", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		dir := t.TempDir()
+		ctlr := makeController(conf, dir)
+		cm := test.NewControllerManager(ctlr)
+		cm.StartServer()
+		time.Sleep(1000 * time.Millisecond)
+
+		defer cm.StopServer()
+
+		repoName := "digest-query-tags"
+		img := CreateRandomImage()
+		manifestBytes := img.ManifestDescriptor.Data
+		manifestDigest := img.ManifestDescriptor.Digest
+
+		err := UploadImage(img, baseURL, repoName, "initial")
+		So(err, ShouldBeNil)
+
+		putManifestByDigest := func(rawQuery string) *resty.Response {
+			t.Helper()
+
+			manifestPutURL, perr := url.Parse(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, manifestDigest.String()))
+			So(perr, ShouldBeNil)
+			manifestPutURL.RawQuery = rawQuery
+
+			resp, rerr := resty.R().
+				SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+				SetBody(manifestBytes).
+				Put(manifestPutURL.String())
+			So(rerr, ShouldBeNil)
+
+			return resp
+		}
+
+		Convey("multiple tag query parameters add tags and return OCI-Tag headers", func() {
+			manifestPutURL, err := url.Parse(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, manifestDigest.String()))
+			So(err, ShouldBeNil)
+
+			q := manifestPutURL.Query()
+			q.Add("tag", "v1.0.0")
+			q.Add("tag", "v1.0")
+			q.Add("tag", "edge")
+			manifestPutURL.RawQuery = q.Encode()
+
+			resp, err := resty.R().
+				SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+				SetBody(manifestBytes).
+				Put(manifestPutURL.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+			So(resp.Header().Get(constants.DistContentDigestKey), ShouldEqual, manifestDigest.String())
+
+			ociTags := resp.Header().Values(constants.OCITagResponseKey)
+			sort.Strings(ociTags)
+			So(ociTags, ShouldResemble, []string{"edge", "v1.0", "v1.0.0"})
+
+			for _, tag := range []string{"v1.0.0", "v1.0", "edge"} {
+				gresp, gerr := resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, tag))
+				So(gerr, ShouldBeNil)
+				So(gresp.StatusCode(), ShouldEqual, http.StatusOK)
+			}
+		})
+
+		Convey("tag query with non-digest path reference returns 400", func() {
+			manifestPutURL, err := url.Parse(baseURL + fmt.Sprintf("/v2/%s/manifests/initial", repoName))
+			So(err, ShouldBeNil)
+			manifestPutURL.RawQuery = "tag=notallowed"
+
+			resp, err := resty.R().
+				SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+				SetBody(manifestBytes).
+				Put(manifestPutURL.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("empty tag query parameter returns 400", func() {
+			resp := putManifestByDigest("tag=")
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("more than max tag query parameters returns 414", func() {
+			q := url.Values{}
+			for i := range constants.MaxManifestDigestQueryTags + 1 {
+				q.Add("tag", fmt.Sprintf("t%d", i))
+			}
+
+			resp := putManifestByDigest(q.Encode())
+			So(resp.StatusCode(), ShouldEqual, http.StatusRequestURITooLong)
+		})
+
+		Convey("more than max raw tag parameters returns 414 even when values are duplicates", func() {
+			q := url.Values{}
+			for range constants.MaxManifestDigestQueryTags + 1 {
+				q.Add("tag", "same")
+			}
+
+			resp := putManifestByDigest(q.Encode())
+			So(resp.StatusCode(), ShouldEqual, http.StatusRequestURITooLong)
+		})
+
+		Convey("invalid tag query value returns 400", func() {
+			q := url.Values{}
+			q.Set("tag", "bad/ref")
+
+			resp := putManifestByDigest(q.Encode())
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("tag query value longer than distribution-spec max length returns 400", func() {
+			longTag := strings.Repeat("a", zreg.TagMaxLen+1)
+			q := url.Values{}
+			q.Set("tag", longTag)
+
+			resp := putManifestByDigest(q.Encode())
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("duplicate tag query values are deduplicated in response headers", func() {
+			q := url.Values{}
+			q.Add("tag", "dup")
+			q.Add("tag", "dup")
+
+			resp := putManifestByDigest(q.Encode())
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+			So(resp.Header().Values(constants.OCITagResponseKey), ShouldResemble, []string{"dup"})
 		})
 	})
 }

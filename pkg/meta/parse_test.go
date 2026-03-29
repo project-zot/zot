@@ -40,13 +40,16 @@ import (
 
 const repo = "repo"
 
+// errMetaTestInjected is returned from mocks in this file to assert error paths in ParseStorage and related tests.
+var errMetaTestInjected = errors.New("injected error for parse_test mocks")
+
 func TestParseStorageErrors(t *testing.T) {
 	ctx := context.Background()
 
 	Convey("ParseStorage", t, func() {
 		imageStore := mocks.MockedImageStore{
 			GetIndexContentFn: func(repo string) ([]byte, error) {
-				return nil, ErrTestError
+				return nil, errMetaTestInjected
 			},
 			GetRepositoriesFn: func() ([]string, error) {
 				return []string{"repo1", "repo2"}, nil
@@ -67,7 +70,7 @@ func TestParseStorageErrors(t *testing.T) {
 			}
 			imageStore2 := mocks.MockedImageStore{
 				GetRepositoriesFn: func() ([]string, error) {
-					return nil, ErrTestError
+					return nil, errMetaTestInjected
 				},
 			}
 			storeController := storage.StoreController{
@@ -82,7 +85,7 @@ func TestParseStorageErrors(t *testing.T) {
 		})
 
 		Convey("metaDB.GetAllRepoNames errors", func() {
-			metaDB.GetAllRepoNamesFn = func() ([]string, error) { return nil, ErrTestError }
+			metaDB.GetAllRepoNamesFn = func() ([]string, error) { return nil, errMetaTestInjected }
 
 			err := meta.ParseStorage(metaDB, storeController, log.NewTestLogger())
 			So(err, ShouldNotBeNil)
@@ -95,7 +98,7 @@ func TestParseStorageErrors(t *testing.T) {
 			storeController := storage.StoreController{DefaultStore: imageStore1}
 
 			metaDB.GetAllRepoNamesFn = func() ([]string, error) { return []string{"deleted"}, nil }
-			metaDB.DeleteRepoMetaFn = func(repo string) error { return ErrTestError }
+			metaDB.DeleteRepoMetaFn = func(repo string) error { return errMetaTestInjected }
 
 			err := meta.ParseStorage(metaDB, storeController, log.NewTestLogger())
 			So(err, ShouldNotBeNil)
@@ -106,7 +109,7 @@ func TestParseStorageErrors(t *testing.T) {
 				GetRepositoriesFn: func() ([]string, error) { return []string{"repo1", "repo2"}, nil },
 			}
 			imageStore1.StatIndexFn = func(repo string) (bool, int64, time.Time, error) {
-				return false, 0, time.Time{}, ErrTestError
+				return false, 0, time.Time{}, errMetaTestInjected
 			}
 
 			storeController := storage.StoreController{DefaultStore: imageStore1}
@@ -124,7 +127,7 @@ func TestParseStorageErrors(t *testing.T) {
 
 		Convey("imageStore.GetIndexContent errors", func() {
 			imageStore.GetIndexContentFn = func(repo string) ([]byte, error) {
-				return nil, ErrTestError
+				return nil, errMetaTestInjected
 			}
 
 			err := meta.ParseRepo("repo", metaDB, storeController, log)
@@ -144,7 +147,7 @@ func TestParseStorageErrors(t *testing.T) {
 			imageStore.GetIndexContentFn = func(repo string) ([]byte, error) {
 				return []byte("{}"), nil
 			}
-			metaDB.ResetRepoReferencesFn = func(repo string, tagsToKeep map[string]bool) error { return ErrTestError }
+			metaDB.ResetRepoReferencesFn = func(repo string, tagsToKeep map[string]bool) error { return errMetaTestInjected }
 			err := meta.ParseRepo("repo", metaDB, storeController, log)
 			So(err, ShouldNotBeNil)
 		})
@@ -184,11 +187,11 @@ func TestParseStorageErrors(t *testing.T) {
 			}
 			imageStore.GetBlobContentFn = func(repo string, digest godigest.Digest) ([]byte, error) {
 				// Return a non-missing error (not ErrBlobNotFound or PathNotFoundError)
-				return nil, ErrTestError
+				return nil, errMetaTestInjected
 			}
 			err := meta.ParseRepo("repo", metaDB, storeController, log)
 			So(err, ShouldNotBeNil)
-			So(err, ShouldEqual, ErrTestError)
+			So(err, ShouldEqual, errMetaTestInjected)
 		})
 
 		Convey("imageStore.GetImageManifest missing blob - graceful handling", func() {
@@ -274,7 +277,7 @@ func TestParseStorageErrors(t *testing.T) {
 
 			Convey("metaDB.SetRepoReference", func() {
 				metaDB.SetRepoReferenceFn = func(ctx context.Context, repo, reference string, imageMeta mTypes.ImageMeta) error {
-					return ErrTestError
+					return errMetaTestInjected
 				}
 
 				err = meta.ParseRepo("repo", metaDB, storeController, log)
@@ -293,7 +296,7 @@ func TestParseStorageErrors(t *testing.T) {
 		Convey("Image Manifest errors", func() {
 			Convey("Get Config blob error", func() {
 				mockImageStore.GetBlobContentFn = func(repo string, digest godigest.Digest) ([]byte, error) {
-					return []byte{}, ErrTestError
+					return []byte{}, errMetaTestInjected
 				}
 
 				err := meta.SetImageMetaFromInput(ctx, "repo", "tag", ispec.MediaTypeImageManifest, image.Digest(),
@@ -326,7 +329,7 @@ func TestParseStorageErrors(t *testing.T) {
 					mockedMetaDB.UpdateSignaturesValidityFn = func(ctx context.Context, repo string,
 						manifestDigest godigest.Digest,
 					) error {
-						return ErrTestError
+						return errMetaTestInjected
 					}
 					err := meta.SetImageMetaFromInput(ctx, "repo", "tag", mediaType, goodNotationSignature.Digest(),
 						goodNotationSignature.ManifestDescriptor.Data, mockImageStore, mockedMetaDB, log)
@@ -907,7 +910,7 @@ func TestGetSignatureLayersInfo(t *testing.T) {
 	Convey("GetBlobContent errors", t, func() {
 		mockImageStore := mocks.MockedImageStore{}
 		mockImageStore.GetBlobContentFn = func(repo string, digest godigest.Digest) ([]byte, error) {
-			return nil, ErrTestError
+			return nil, errMetaTestInjected
 		}
 		image := CreateRandomImage()
 
@@ -930,7 +933,7 @@ func TestGetSignatureLayersInfo(t *testing.T) {
 	Convey("notation GetBlobContent errors", t, func() {
 		mockImageStore := mocks.MockedImageStore{}
 		mockImageStore.GetBlobContentFn = func(repo string, digest godigest.Digest) ([]byte, error) {
-			return nil, ErrTestError
+			return nil, errMetaTestInjected
 		}
 		image := CreateImageWith().RandomLayers(1, 10).RandomConfig().Build()
 

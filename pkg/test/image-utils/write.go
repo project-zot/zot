@@ -51,7 +51,7 @@ func WriteImageToFileSystem(image Image, repoName, ref string, storeController s
 		return err
 	}
 
-	_, _, err = store.PutImageManifest(repoName, ref, image.Manifest.MediaType, manifestBlob)
+	_, _, err = store.PutImageManifest(repoName, ref, image.Manifest.MediaType, manifestBlob, nil)
 	if err != nil {
 		return err
 	}
@@ -82,7 +82,7 @@ func WriteMultiArchImageToFileSystem(multiarchImage MultiarchImage, repoName, re
 	}
 
 	_, _, err = store.PutImageManifest(repoName, ref, multiarchImage.Index.MediaType,
-		indexBlob)
+		indexBlob, nil)
 
 	return err
 }

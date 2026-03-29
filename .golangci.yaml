@@ -93,6 +93,15 @@ linters:
       - std-error-handling
     rules:
       - linters:
+          - godot
+        path: pkg/api/routes.go
+      - linters:
+          - godot
+        path: pkg/extensions/extension_image_trust.go
+      - linters:
+          - godot
+        path: pkg/extensions/extension_mgmt.go
+      - linters:
           - lll
           - varnamelen
         path: pkg/extensions/search/schema.resolvers.go

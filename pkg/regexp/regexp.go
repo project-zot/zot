@@ -1,9 +1,14 @@
 package regexp
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 )
+
+// TagMaxLen is the maximum length of a manifest tag in the OCI Distribution Specification
+// (opencontainers/distribution-spec spec.md, "Pulling manifests").
+const TagMaxLen = 128
 
 //nolint:gochecknoglobals
 var (
@@ -33,7 +38,19 @@ var (
 	// FullNameRegexp is the format which matches the full string of the
 	// name component of reference.
 	FullNameRegexp = expression(match("^"), NameRegexp, match("$"))
+
+	// TagRegexp matches a manifest tag per the OCI Distribution Specification
+	// (opencontainers/distribution-spec spec.md, "Pulling manifests"): a tag MUST be at most
+	// TagMaxLen characters and MUST match
+	// [a-zA-Z0-9_][a-zA-Z0-9._-]* with the suffix length bounded by TagMaxLen (anchored).
+	TagRegexp = match(fmt.Sprintf(`^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,%d}$`, TagMaxLen-1))
 )
+
+// IsDistributionSpecTag reports whether s is a valid distribution-spec tag (same grammar as the
+// <reference> component in GET /v2/<name>/manifests/<reference> when <reference> is a tag).
+func IsDistributionSpecTag(s string) bool {
+	return TagRegexp.MatchString(s)
+}
 
 // match compiles the string to a regular expression.
 //
