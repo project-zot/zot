@@ -3544,7 +3544,8 @@ func TestS3DedupeErr(t *testing.T) {
 		imgStore = createMockStorage(testDir, tdir, true, &mocks.StorageDriverMock{})
 
 		err = os.Remove(path.Join(tdir, storageConstants.BoltdbName+storageConstants.DBExtensionName))
-		digest := godigest.NewDigestFromEncoded(godigest.SHA256, "7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
+		digest := godigest.NewDigestFromEncoded(godigest.SHA256,
+			"7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
 
 		// trigger unable to insert blob record
 		err := imgStore.DedupeBlob("", digest, "", "")
@@ -3580,7 +3581,8 @@ func TestS3DedupeErr(t *testing.T) {
 			},
 		})
 
-		digest := godigest.NewDigestFromEncoded(godigest.SHA256, "7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
+		digest := godigest.NewDigestFromEncoded(godigest.SHA256,
+			"7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
 		err := imgStore.DedupeBlob("", digest, "", "dst")
 		So(err, ShouldBeNil)
 
@@ -3592,15 +3594,22 @@ func TestS3DedupeErr(t *testing.T) {
 	Convey("Test DedupeBlob - error on store.PutContent()", t, func(c C) {
 		tdir := t.TempDir()
 		imgStore = createMockStorage(testDir, tdir, true, &mocks.StorageDriverMock{
+			// Only fail PutContent (i.e. Link) for the second destination path
 			PutContentFn: func(ctx context.Context, path string, content []byte) error {
-				return errS3
+				if strings.HasSuffix(path, "dst2") {
+					return errS3
+				}
+
+				return nil
 			},
+			// Return nil FileInfo so SameFile always returns false, forcing Link to be called
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				return nil, nil //nolint:nilnil
 			},
 		})
 
-		digest := godigest.NewDigestFromEncoded(godigest.SHA256, "7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
+		digest := godigest.NewDigestFromEncoded(godigest.SHA256,
+			"7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
 		err := imgStore.DedupeBlob("", digest, "", "dst")
 		So(err, ShouldBeNil)
 
@@ -3644,65 +3653,79 @@ func TestS3DedupeErr(t *testing.T) {
 	})
 
 	Convey("Test copyBlob() - error on initRepo()", t, func(c C) {
-		tdir := t.TempDir()
-		imgStore = createMockStorage(testDir, tdir, true, &mocks.StorageDriverMock{
-			PutContentFn: func(ctx context.Context, path string, content []byte) error {
-				return errS3
-			},
-			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				return driver.FileInfoInternal{}, errS3
-			},
-			WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
-				return &mocks.FileWriterMock{}, errS3
-			},
-		})
-
 		digest := godigest.NewDigestFromEncoded(godigest.SHA256,
 			"7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
+		gdst := path.Join(testDir, storageConstants.GlobalBlobsRepo, ispec.ImageBlobsDir,
+			digest.Algorithm().String(), digest.Encoded())
 
-		err := imgStore.DedupeBlob("repo", digest, "", "dst")
-		So(err, ShouldBeNil)
+		// Use a mock cache pre-seeded with the blob path so DedupeBlob is not needed.
+		// WriterFn fails for non-_blobstore paths so initRepo("repo") in copyBlob fails.
+		imgStore = createMockStorageWithMockCache(testDir, true, &mocks.StorageDriverMock{
+			StatFn: func(ctx context.Context, p string) (driver.FileInfo, error) {
+				// fail stat for oci-layout in non-_blobstore repos to trigger a write attempt
+				if strings.HasSuffix(p, ispec.ImageLayoutFile) && !strings.Contains(p, storageConstants.GlobalBlobsRepo) {
+					return driver.FileInfoInternal{}, errS3
+				}
 
-		_, _, err = imgStore.CheckBlob("repo", digest)
+				return driver.FileInfoInternal{}, nil
+			},
+			WriterFn: func(ctx context.Context, p string, isAppend bool) (driver.FileWriter, error) {
+				// allow _blobstore writes (for NewImageStore's initRepo) but fail others
+				if !strings.Contains(p, storageConstants.GlobalBlobsRepo) {
+					return &mocks.FileWriterMock{}, errS3
+				}
+
+				return &mocks.FileWriterMock{}, nil
+			},
+		}, &mocks.CacheMock{
+			GetBlobFn: func(d godigest.Digest) (string, error) { return gdst, nil },
+		})
+
+		_, _, err := imgStore.CheckBlob("repo", digest)
 		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Test copyBlob() - error on store.PutContent()", t, func(c C) {
-		tdir := t.TempDir()
-		imgStore = createMockStorage(testDir, tdir, true, &mocks.StorageDriverMock{
+		digest := godigest.NewDigestFromEncoded(godigest.SHA256,
+			"7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
+		gdst := path.Join(testDir, storageConstants.GlobalBlobsRepo, ispec.ImageBlobsDir,
+			digest.Algorithm().String(), digest.Encoded())
+
+		// Use a mock cache pre-seeded with the blob path so DedupeBlob is not needed.
+		// PutContentFn fails so Link (which calls PutContent) in copyBlob fails.
+		imgStore = createMockStorageWithMockCache(testDir, true, &mocks.StorageDriverMock{
 			PutContentFn: func(ctx context.Context, path string, content []byte) error {
 				return errS3
 			},
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				return driver.FileInfoInternal{}, errS3
+				// return success with size 0 so CheckBlob falls through to checkCacheBlob
+				return driver.FileInfoInternal{}, nil
 			},
+		}, &mocks.CacheMock{
+			GetBlobFn: func(d godigest.Digest) (string, error) { return gdst, nil },
 		})
 
-		digest := godigest.NewDigestFromEncoded(godigest.SHA256,
-			"7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
-
-		err := imgStore.DedupeBlob("repo", digest, "", "dst")
-		So(err, ShouldBeNil)
-
-		_, _, err = imgStore.CheckBlob("repo", digest)
+		_, _, err := imgStore.CheckBlob("repo", digest)
 		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Test copyBlob() - error on store.Stat()", t, func(c C) {
-		tdir := t.TempDir()
-		imgStore = createMockStorage(testDir, tdir, true, &mocks.StorageDriverMock{
+		digest := godigest.NewDigestFromEncoded(godigest.SHA256,
+			"7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
+		gdst := path.Join(testDir, storageConstants.GlobalBlobsRepo, ispec.ImageBlobsDir,
+			digest.Algorithm().String(), digest.Encoded())
+
+		// Use a mock cache pre-seeded with the blob path so DedupeBlob is not needed.
+		// StatFn fails so checkCacheBlob returns ErrBlobNotFound.
+		imgStore = createMockStorageWithMockCache(testDir, true, &mocks.StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				return driver.FileInfoInternal{}, errS3
 			},
+		}, &mocks.CacheMock{
+			GetBlobFn: func(d godigest.Digest) (string, error) { return gdst, nil },
 		})
 
-		digest := godigest.NewDigestFromEncoded(godigest.SHA256,
-			"7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
-
-		err := imgStore.DedupeBlob("repo", digest, "", "dst")
-		So(err, ShouldBeNil)
-
-		_, _, err = imgStore.CheckBlob("repo", digest)
+		_, _, err := imgStore.CheckBlob("repo", digest)
 		So(err, ShouldNotBeNil)
 	})
 
