@@ -3874,17 +3874,19 @@ func TestS3DedupeErr(t *testing.T) {
 		digest := godigest.NewDigestFromEncoded(godigest.SHA256, hash)
 
 		blobPath := path.Join(testDir, "repo/blobs/sha256", hash)
+		globalBlobPath := path.Join(testDir, storageConstants.GlobalBlobsRepo, ispec.ImageBlobsDir,
+			digest.Algorithm().String(), digest.Encoded())
 
 		imgStore = createMockStorage(testDir, tdir, true, &mocks.StorageDriverMock{
 			MoveFn: func(ctx context.Context, sourcePath, destPath string) error {
-				if destPath == blobPath {
+				if destPath == blobPath || destPath == globalBlobPath {
 					return nil
 				}
 
 				return errS3
 			},
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				if path != blobPath {
+				if path != blobPath && path != globalBlobPath {
 					return nil, errS3
 				}
 

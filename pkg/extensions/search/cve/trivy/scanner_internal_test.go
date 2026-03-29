@@ -6,6 +6,8 @@ import (
 	"context"
 	"os"
 	"path"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -159,6 +161,56 @@ func TestMultipleStoragePath(t *testing.T) {
 
 		err = os.Chmod(secondRootDir, 0o777)
 		So(err, ShouldBeNil)
+	})
+}
+
+func TestWithTempDirIsSerializedAcrossScanners(t *testing.T) {
+	Convey("withTempDir serializes Trivy operations across scanner instances", t, func() {
+		logger := log.NewTestLogger()
+		scannerOne := Scanner{log: logger}
+		scannerTwo := Scanner{log: logger}
+
+		var current int32
+		var maxConcurrent int32
+
+		start := make(chan struct{})
+		errCh := make(chan error, 2)
+		var wg sync.WaitGroup
+
+		runLockedSection := func(scanner Scanner) {
+			defer wg.Done()
+			<-start
+
+			errCh <- scanner.withTempDir(func() error {
+				concurrent := atomic.AddInt32(&current, 1)
+				defer atomic.AddInt32(&current, -1)
+
+				for {
+					observed := atomic.LoadInt32(&maxConcurrent)
+					if concurrent <= observed || atomic.CompareAndSwapInt32(&maxConcurrent, observed, concurrent) {
+						break
+					}
+				}
+
+				time.Sleep(50 * time.Millisecond)
+
+				return nil
+			})
+		}
+
+		wg.Add(2)
+		go runLockedSection(scannerOne)
+		go runLockedSection(scannerTwo)
+
+		close(start)
+		wg.Wait()
+		close(errCh)
+
+		for err := range errCh {
+			So(err, ShouldBeNil)
+		}
+
+		So(maxConcurrent, ShouldEqual, 1)
 	})
 }
 
