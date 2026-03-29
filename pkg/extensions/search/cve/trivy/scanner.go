@@ -40,6 +40,8 @@ const cacheSize = 1000000
 
 // Trivy uses process-global state for logging, DB internals, and temporary directories.
 // Calls must be serialized across all Scanner instances to avoid data races.
+//
+//nolint:gochecknoglobals
 var trivyOperationLock sync.Mutex
 
 // getNewScanOptions sets trivy configuration values for our scans and returns them as

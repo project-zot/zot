@@ -76,13 +76,13 @@ func createMockStorage(rootDir string, cacheDir string, dedupe bool, store drive
 	return il
 }
 
-func createMockStorageWithMockCache(rootDir string, dedupe bool, store driver.StorageDriver,
+func createMockStorageWithMockCache(rootDir string, store driver.StorageDriver,
 	cacheDriver storageTypes.Cache,
 ) storageTypes.ImageStore {
 	log := log.NewTestLogger()
 	metrics := monitoring.NewMetricsServer(false, log)
 
-	il := s3.NewImageStore(rootDir, "", dedupe, false, log, metrics, nil, store, cacheDriver, nil, nil)
+	il := s3.NewImageStore(rootDir, "", true, false, log, metrics, nil, store, cacheDriver, nil, nil)
 
 	return il
 }
@@ -2681,7 +2681,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 		}
 
 		Convey("on original blob", func() {
-			imgStore := createMockStorageWithMockCache(testDir, true, storageDriverMockIfBranch,
+			imgStore := createMockStorageWithMockCache(testDir, storageDriverMockIfBranch,
 				&mocks.CacheMock{
 					HasBlobFn: func(digest godigest.Digest, path string) bool {
 						return false
@@ -2699,7 +2699,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 		})
 
 		Convey("on dedupe blob", func() {
-			imgStore := createMockStorageWithMockCache(testDir, true, storageDriverMockIfBranch,
+			imgStore := createMockStorageWithMockCache(testDir, storageDriverMockIfBranch,
 				&mocks.CacheMock{
 					HasBlobFn: func(digest godigest.Digest, path string) bool {
 						return false
@@ -2721,7 +2721,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 		})
 
 		Convey("on else branch", func() {
-			imgStore := createMockStorageWithMockCache(testDir, true, storageDriverMockElseBranch,
+			imgStore := createMockStorageWithMockCache(testDir, storageDriverMockElseBranch,
 				&mocks.CacheMock{
 					HasBlobFn: func(digest godigest.Digest, path string) bool {
 						return false
@@ -3625,7 +3625,8 @@ func TestS3DedupeErr(t *testing.T) {
 			},
 		})
 
-		digest := godigest.NewDigestFromEncoded(godigest.SHA256, "7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
+		hash := "7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc" //nolint:gosec
+		digest := godigest.NewDigestFromEncoded(godigest.SHA256, hash)
 		err := imgStore.DedupeBlob("", digest, "", "dst")
 		So(err, ShouldBeNil)
 
@@ -3644,7 +3645,8 @@ func TestS3DedupeErr(t *testing.T) {
 			},
 		})
 
-		digest := godigest.NewDigestFromEncoded(godigest.SHA256, "7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
+		hash := "7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc" //nolint:gosec
+		digest := godigest.NewDigestFromEncoded(godigest.SHA256, hash)
 		err := imgStore.DedupeBlob("", digest, "", "dst")
 		So(err, ShouldBeNil)
 
@@ -3660,7 +3662,7 @@ func TestS3DedupeErr(t *testing.T) {
 
 		// Use a mock cache pre-seeded with the blob path so DedupeBlob is not needed.
 		// WriterFn fails for non-_blobstore paths so initRepo("repo") in copyBlob fails.
-		imgStore = createMockStorageWithMockCache(testDir, true, &mocks.StorageDriverMock{
+		imgStore = createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
 			StatFn: func(ctx context.Context, p string) (driver.FileInfo, error) {
 				// fail stat for oci-layout in non-_blobstore repos to trigger a write attempt
 				if strings.HasSuffix(p, ispec.ImageLayoutFile) && !strings.Contains(p, storageConstants.GlobalBlobsRepo) {
@@ -3693,7 +3695,7 @@ func TestS3DedupeErr(t *testing.T) {
 
 		// Use a mock cache pre-seeded with the blob path so DedupeBlob is not needed.
 		// PutContentFn fails so Link (which calls PutContent) in copyBlob fails.
-		imgStore = createMockStorageWithMockCache(testDir, true, &mocks.StorageDriverMock{
+		imgStore = createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
 			PutContentFn: func(ctx context.Context, path string, content []byte) error {
 				return errS3
 			},
@@ -3717,7 +3719,7 @@ func TestS3DedupeErr(t *testing.T) {
 
 		// Use a mock cache pre-seeded with the blob path so DedupeBlob is not needed.
 		// StatFn fails so checkCacheBlob returns ErrBlobNotFound.
-		imgStore = createMockStorageWithMockCache(testDir, true, &mocks.StorageDriverMock{
+		imgStore = createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				return driver.FileInfoInternal{}, errS3
 			},
@@ -3867,7 +3869,7 @@ func TestS3DedupeErr(t *testing.T) {
 		So(err, ShouldNotBeNil)
 	})
 
-	Convey("Test DeleteBlob() - error on store.Move()", t, func(c C) {
+	Convey("Test DeleteBlob() - error on store.Delete()", t, func(c C) {
 		tdir := t.TempDir()
 		hash := "7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc" // #nosec G101
 
@@ -3891,6 +3893,9 @@ func TestS3DedupeErr(t *testing.T) {
 				}
 
 				return &mocks.FileInfoMock{}, nil
+			},
+			DeleteFn: func(ctx context.Context, path string) error {
+				return errS3
 			},
 		})
 
