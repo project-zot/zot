@@ -38,6 +38,12 @@ import (
 
 const cacheSize = 1000000
 
+// Trivy uses process-global state for logging, DB internals, and temporary directories.
+// Calls must be serialized across all Scanner instances to avoid data races.
+//
+//nolint:gochecknoglobals
+var trivyOperationLock sync.Mutex
+
 // getNewScanOptions sets trivy configuration values for our scans and returns them as
 // a trivy Options structure.
 func getNewScanOptions(dir string, dbRepositoryRef, javaDBRepositoryRef name.Reference) *flag.Options {
@@ -86,7 +92,6 @@ type Scanner struct {
 	cveController       cveTrivyController
 	storeController     storage.StoreController
 	log                 log.Logger
-	dbLock              *sync.Mutex
 	cache               *cvecache.CveCache
 	dbRepositoryRef     name.Reference
 	javaDBRepositoryRef name.Reference
@@ -155,7 +160,6 @@ func NewScanner(storeController storage.StoreController,
 		metaDB:              metaDB,
 		cveController:       cveController,
 		storeController:     storeController,
-		dbLock:              &sync.Mutex{},
 		cache:               cvecache.NewCveCache(cacheSize, log),
 		dbRepositoryRef:     dbRepositoryRef,
 		javaDBRepositoryRef: javaDBRepositoryRef,
@@ -197,6 +201,9 @@ func (scanner Scanner) getTrivyOptions(image string) flag.Options {
 // withTempDir creates a temporary directory using xos.TempDir(), executes the provided function,
 // and then calls xos.Cleanup() to clean up Trivy's process-specific temp directory.
 func (scanner Scanner) withTempDir(wrappedFunc func() error) error {
+	trivyOperationLock.Lock()
+	defer trivyOperationLock.Unlock()
+
 	// Ensure Trivy's process-specific temp directory is initialized,
 	// call TempDir() to get the path, then create it if it doesn't exist with MkdirAll.
 	tempDir := xos.TempDir()
@@ -435,10 +442,8 @@ func (scanner Scanner) scanManifest(ctx context.Context, repo, digest string) (m
 	cveidMap := map[string]cvemodel.CVE{}
 	image := repo + "@" + digest
 
-	scanner.dbLock.Lock()
 	opts := scanner.getTrivyOptions(image)
 	report, err := scanner.runTrivy(ctx, opts)
-	scanner.dbLock.Unlock()
 
 	if err != nil { //nolint: wsl
 		return cveidMap, err
@@ -575,12 +580,6 @@ func (scanner Scanner) scanIndex(ctx context.Context, repo, digest string) (map[
 
 // UpdateDB downloads the Trivy DB / Cache under the store root directory.
 func (scanner Scanner) UpdateDB(ctx context.Context) error {
-	// We need a lock as using multiple substores each with its own DB
-	// can result in a DATARACE because some varibles in trivy-db are global
-	// https://github.com/project-zot/trivy-db/blob/main/pkg/db/db.go#L23
-	scanner.dbLock.Lock()
-	defer scanner.dbLock.Unlock()
-
 	if scanner.storeController.DefaultStore != nil {
 		dbDir := path.Join(scanner.storeController.DefaultStore.RootDir(), "_trivy")
 

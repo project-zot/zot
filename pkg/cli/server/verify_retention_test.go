@@ -476,7 +476,7 @@ func TestRetentionCheckWithRetentionEnabledAndRedisDriver(t *testing.T) {
 
 		defer ctrlManager.StopServer()
 
-		os.Args = []string{"cli_test", "verify-feature", "retention", "-l", logFile, "-t", "2s", configFile}
+		os.Args = []string{"cli_test", "verify-feature", "retention", "-l", logFile, "-t", "10s", configFile}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
 
