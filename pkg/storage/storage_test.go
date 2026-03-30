@@ -18,6 +18,7 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
+	_ "github.com/distribution/distribution/v3/registry/storage/driver/gcs"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/s3-aws"
 	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
@@ -1557,6 +1558,64 @@ func TestStorageSubpaths(t *testing.T) {
 
 		_, err := storage.New(config, nil, nil, zlog.NewTestLogger(), nil)
 		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestRootDir(t *testing.T) {
+	Convey("S3 with rootdirectory preserves it for backward compatibility", t, func() {
+		rootDir := storage.RootDir(storageConstants.S3StorageDriverName, map[string]any{
+			"rootdirectory": "/custom-prefix",
+		})
+		So(rootDir, ShouldEqual, "/custom-prefix")
+	})
+
+	Convey("S3 without rootdirectory defaults to /", t, func() {
+		rootDir := storage.RootDir(storageConstants.S3StorageDriverName, map[string]any{})
+		So(rootDir, ShouldEqual, "/")
+	})
+
+	Convey("GCS with rootdirectory uses / to avoid double-prefixing", t, func() {
+		rootDir := storage.RootDir(storageConstants.GCSStorageDriverName, map[string]any{
+			"rootdirectory": "/custom-prefix",
+		})
+		So(rootDir, ShouldEqual, "/")
+	})
+
+	Convey("GCS without rootdirectory defaults to /", t, func() {
+		rootDir := storage.RootDir(storageConstants.GCSStorageDriverName, map[string]any{})
+		So(rootDir, ShouldEqual, "/")
+	})
+}
+
+func TestNormalizeGCSRootDirectory(t *testing.T) {
+	Convey("GCS without rootdirectory defaults to zot", t, func() {
+		params := map[string]any{}
+		storage.NormalizeGCSRootDirectory(storageConstants.GCSStorageDriverName, params)
+		So(params["rootdirectory"], ShouldEqual, "/zot")
+	})
+
+	Convey("GCS with rootdirectory / is overwritten to zot", t, func() {
+		params := map[string]any{"rootdirectory": "/"}
+		storage.NormalizeGCSRootDirectory(storageConstants.GCSStorageDriverName, params)
+		So(params["rootdirectory"], ShouldEqual, "/zot")
+	})
+
+	Convey("GCS with empty rootdirectory defaults to zot", t, func() {
+		params := map[string]any{"rootdirectory": ""}
+		storage.NormalizeGCSRootDirectory(storageConstants.GCSStorageDriverName, params)
+		So(params["rootdirectory"], ShouldEqual, "/zot")
+	})
+
+	Convey("GCS with custom rootdirectory is preserved", t, func() {
+		params := map[string]any{"rootdirectory": "my-prefix"}
+		storage.NormalizeGCSRootDirectory(storageConstants.GCSStorageDriverName, params)
+		So(params["rootdirectory"], ShouldEqual, "my-prefix")
+	})
+
+	Convey("S3 params are not affected", t, func() {
+		params := map[string]any{"rootdirectory": "/"}
+		storage.NormalizeGCSRootDirectory(storageConstants.S3StorageDriverName, params)
+		So(params["rootdirectory"], ShouldEqual, "/")
 	})
 }
 

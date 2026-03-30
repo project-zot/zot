@@ -4,6 +4,7 @@
     "dedupe": false,
     "storageDriver": {
       "name": "gcs",
+      "rootdirectory": "/zot",
       "bucket": "zot-storage",
       "credentialsFile": "/path/to/gcs-credentials.json"
     }

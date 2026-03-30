@@ -1449,7 +1449,12 @@ func (is *ImageStore) CheckBlob(repo string, digest godigest.Digest) (bool, int6
 	// Check blobs in cache
 	dstRecord, err := is.checkCacheBlob(digest)
 	if err != nil {
-		is.log.Warn().Err(err).Str("digest", digest.String()).Msg("not found in cache")
+		// Cache miss / not-found is a normal condition when the blob truly doesn't exist.
+		if errors.Is(err, zerr.ErrCacheMiss) || errors.Is(err, zerr.ErrBlobNotFound) {
+			is.log.Debug().Err(err).Str("digest", digest.String()).Msg("cache miss for blob")
+		} else {
+			is.log.Warn().Err(err).Str("digest", digest.String()).Msg("failed to lookup blob in cache")
+		}
 
 		return false, -1, zerr.ErrBlobNotFound
 	}
