@@ -13920,6 +13920,47 @@ func TestSupportedDigestAlgorithms(t *testing.T) {
 		verifyReturnedManifestDigest(t, client, baseURL, name,
 			subImage2.ManifestDescriptor.Digest.String(), subImage2.ManifestDescriptor.Digest.String())
 	})
+
+	Convey("Test digest push with multiple tags via UploadImageWithOpts", t, func() {
+		image := CreateImageWithDigestAlgorithm(godigest.SHA512).
+			RandomLayers(1, 13).DefaultConfig().Build()
+
+		name := "multi-tag-digest-push"
+		tagA, tagB, tagC := "mtag-a", "mtag-b", "mtag-c"
+
+		err := UploadImageWithOpts(image, baseURL, name, "", WithExtraTags(tagA, tagB, tagC))
+		So(err, ShouldBeNil)
+
+		client := resty.New()
+
+		// Same digest the uploader puts in PUT .../manifests/{digest}?tag=... (see Image.Digest / digestAlgorithm).
+		manifestDigest := image.Digest()
+		expectedDigestStr := manifestDigest.String()
+
+		for _, tag := range []string{tagA, tagB, tagC} {
+			verifyReturnedManifestDigest(t, client, baseURL, name, tag, expectedDigestStr)
+		}
+
+		verifyReturnedManifestDigest(t, client, baseURL, name, expectedDigestStr, expectedDigestStr)
+
+		tagsFromStore, err := readTagsFromStorage(dir, name, manifestDigest)
+		So(err, ShouldBeNil)
+
+		tagsSeen := map[string]struct{}{}
+
+		for _, refName := range tagsFromStore {
+			if refName != "" {
+				tagsSeen[refName] = struct{}{}
+			}
+		}
+
+		So(len(tagsSeen), ShouldEqual, 3)
+
+		for _, want := range []string{tagA, tagB, tagC} {
+			_, ok := tagsSeen[want]
+			So(ok, ShouldBeTrue)
+		}
+	})
 }
 
 func verifyReturnedManifestDigest(t *testing.T, client *resty.Client, baseURL, repoName,
