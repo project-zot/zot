@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	goerrors "errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	godigest "github.com/opencontainers/go-digest"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/securecookie"
 	"github.com/zitadel/oidc/v3/pkg/client/rp"
@@ -32,6 +34,7 @@ import (
 	scheduler "zotregistry.dev/zot/v2/pkg/scheduler"
 	storage "zotregistry.dev/zot/v2/pkg/storage"
 	gc "zotregistry.dev/zot/v2/pkg/storage/gc"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
 const (
@@ -654,4 +657,8 @@ func RunGCTasks(conf *config.Config, storeController storage.StoreController, me
 type SyncOnDemand interface {
 	SyncImage(ctx context.Context, repo, reference string) error
 	SyncReferrers(ctx context.Context, repo string, subjectDigestStr string, referenceTypes []string) error
+	SyncBlobOnDemand(ctx context.Context, repo string, digest godigest.Digest,
+		imgStore storageTypes.ImageStore) (io.ReadCloser, int64, bool, <-chan struct{}, error)
+	BlobDownloadDone(repo string, digest godigest.Digest, err error)
+	IsStreamEnabled() bool
 }

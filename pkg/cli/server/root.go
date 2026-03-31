@@ -1653,6 +1653,14 @@ func validateSync(config *config.Config, logger zlog.Logger) error {
 				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 			}
 
+			if regCfg.Stream && !regCfg.OnDemand {
+				msg := "stream can be enabled only when onDemand is enabled"
+				logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
+					extensionsConfig.Sync.Registries[regID]).Msg(msg)
+
+				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+			}
+
 			if regCfg.Content != nil {
 				for _, content := range regCfg.Content {
 					ok := glob.ValidatePattern(content.Prefix)

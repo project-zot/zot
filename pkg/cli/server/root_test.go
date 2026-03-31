@@ -217,6 +217,58 @@ func TestLoadConfigurationInjectsHTTPTimeoutDefaults(t *testing.T) {
 	})
 }
 
+func TestLoadConfigurationRequiresOnDemandForStream(t *testing.T) {
+	Convey("load configuration rejects sync stream without onDemand", t, func() {
+		content := `{
+			"storage": {"rootDirectory": "/tmp/zot"},
+			"http": {"address": "127.0.0.1", "port": "8080"},
+			"extensions": {
+				"sync": {
+					"registries": [{
+						"urls": ["localhost:9999"],
+						"stream": true,
+						"content": [{"prefix": "**"}]
+					}]
+				}
+			}
+		}`
+
+		tmpfile := MakeTempFileWithContent(t, "zot-stream-without-demand.json", content)
+		cfg := config.New()
+
+		err := cli.LoadConfiguration(cfg, tmpfile)
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring, "stream can be enabled only when onDemand is enabled")
+	})
+
+	Convey("load configuration allows stream when onDemand is enabled", t, func() {
+		content := `{
+			"storage": {"rootDirectory": "/tmp/zot"},
+			"http": {"address": "127.0.0.1", "port": "8080"},
+			"extensions": {
+				"sync": {
+					"registries": [{
+						"urls": ["localhost:9999"],
+						"onDemand": true,
+						"stream": true,
+						"content": [{"prefix": "**"}]
+					}]
+				}
+			}
+		}`
+
+		tmpfile := MakeTempFileWithContent(t, "zot-stream-with-demand.json", content)
+		cfg := config.New()
+
+		err := cli.LoadConfiguration(cfg, tmpfile)
+		So(err, ShouldBeNil)
+		So(cfg.Extensions.Sync, ShouldNotBeNil)
+		So(len(cfg.Extensions.Sync.Registries), ShouldEqual, 1)
+		So(cfg.Extensions.Sync.Registries[0].OnDemand, ShouldBeTrue)
+		So(cfg.Extensions.Sync.Registries[0].Stream, ShouldBeTrue)
+	})
+}
+
 func TestSchema(t *testing.T) {
 	Convey("Test schema command", t, func(c C) {
 		cmd := cli.NewServerRootCmd()

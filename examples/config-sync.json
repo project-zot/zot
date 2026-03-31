@@ -72,6 +72,7 @@
 						"https://index.docker.io"
 					],
 					"onDemand": true,
+					"stream": true,
 					"tlsVerify": true,
 					"maxRetries": 5,
 					"retryDelay": "30s",

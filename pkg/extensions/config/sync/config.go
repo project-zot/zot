@@ -37,6 +37,7 @@ type RegistryConfig struct {
 	PreserveDigest        bool          // sync without converting
 	SyncTimeout           time.Duration // overall HTTP client timeout for all sync operations
 	ResponseHeaderTimeout time.Duration `yaml:"-"` // response header timeout; set in root.go
+	Stream                bool          // stream blobs to clients while fetching from upstream on-demand
 }
 
 // ShouldSyncLegacyCosignTags returns whether to sync legacy cosign tags (e.g. sha256-<digest>.sig/sbom).
