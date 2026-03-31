@@ -11741,7 +11741,7 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 				gc.Options{
 					Delay:          ctlr.Config.Storage.GCDelay,
 					ImageRetention: ctlr.Config.Storage.Retention,
-				}, ctlr.Audit, ctlr.Log)
+				}, ctlr.Audit, ctlr.Log, ctlr.Metrics)
 
 			resp, err := resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, tag))
 			So(err, ShouldBeNil)
@@ -11975,7 +11975,7 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 				gc.Options{
 					Delay:          ctlr.Config.Storage.GCDelay,
 					ImageRetention: ctlr.Config.Storage.Retention,
-				}, ctlr.Audit, ctlr.Log)
+				}, ctlr.Audit, ctlr.Log, ctlr.Metrics)
 
 			resp, err := resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, tag))
 			So(err, ShouldBeNil)
