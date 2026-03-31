@@ -169,11 +169,11 @@ func (driver *Driver) SameFile(path1, path2 string) bool {
 	return false
 }
 
-// Link puts an empty file that will act like a link between the original file and deduped one.
-// Because gcs doesn't support symlinks, wherever the storage will encounter an empty file, it will get the original one
-// from cache.
+// Link records a dedupe association between src and dest in the cache.
+// Because gcs doesn't support symlinks, no file is created; when the storage
+// encounters a non-existent deduped blob path it will look up the original from cache.
 func (driver *Driver) Link(src, dest string) error {
-	return driver.formatErr(driver.store.PutContent(context.Background(), dest, []byte{}), dest)
+	return nil
 }
 
 // formatErr converts GCS-specific 404/not found errors to PathNotFoundError.
