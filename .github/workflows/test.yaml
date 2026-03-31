@@ -195,7 +195,7 @@ jobs:
           name: unified-coverage
           path: unified-coverage/*
       - name: upload code coverage
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
