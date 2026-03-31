@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"slices"
@@ -19,6 +20,7 @@ import (
 	"github.com/regclient/regclient/config"
 	"github.com/regclient/regclient/mod"
 	"github.com/regclient/regclient/scheme/reg"
+	"github.com/regclient/regclient/types/descriptor"
 	"github.com/regclient/regclient/types/ref"
 
 	zerr "zotregistry.dev/zot/v2/errors"
@@ -318,6 +320,53 @@ func (service *BaseService) SyncImage(ctx context.Context, repo, reference strin
 	}
 
 	return service.syncImage(ctx, repo, remoteRepo, reference, nil, false)
+}
+
+func (service *BaseService) IsStreamEnabled() bool {
+	return service.config.Stream
+}
+
+// GetBlobStream fetches a single blob from the upstream registry and returns a live stream.
+func (service *BaseService) GetBlobStream(ctx context.Context, repo string,
+	digest godigest.Digest,
+) (io.ReadCloser, int64, error) {
+	remoteRepo := repo
+
+	if len(service.config.Content) > 0 {
+		remoteRepo = service.contentManager.GetRepoSource(repo)
+		if remoteRepo == "" {
+			return nil, 0, zerr.ErrSyncImageFilteredOut
+		}
+	}
+
+	service.log.Info().Str("repo", repo).Str("digest", digest.String()).
+		Msg("sync: streaming blob from upstream")
+
+	if err := service.refreshRegistryTemporaryCredentials(); err != nil {
+		service.log.Error().Err(err).Msg("failed to refresh credentials")
+	}
+
+	remoteURL := service.remote.GetHostName()
+
+	remoteRef, err := ref.New(remoteURL + "/" + remoteRepo)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	desc := descriptor.Descriptor{Digest: digest}
+
+	service.clientLock.RLock()
+	rc := service.rc
+	service.clientLock.RUnlock()
+
+	blobReader, err := rc.BlobGet(ctx, remoteRef, desc)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	size := blobReader.GetDescriptor().Size
+
+	return blobReader, size, nil
 }
 
 func (service *BaseService) SyncReferrers(ctx context.Context, repo string,

@@ -1464,6 +1464,14 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrBlobNotFound) {
+			// Try streaming from upstream if sync streaming is enabled (not for range requests)
+			if !rangeHeaderPresent && rh.c.SyncOnDemand != nil && rh.c.SyncOnDemand.IsStreamEnabled() {
+				mediaType := resolveBlobResponseMediaType(imgStore, name, digest, rh.c.Log)
+				if rh.handleBlobStream(response, request, name, digest, mediaType, imgStore) {
+					return
+				}
+			}
+
 			details["digest"] = digest.String()
 			e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
@@ -2597,6 +2605,144 @@ func getContentRange(r *http.Request) (int64 /* from */, int64 /* to */, error) 
 	}
 
 	return rangeStart, rangeEnd, nil
+}
+
+// handleBlobStream attempts to stream a blob from upstream when it's not found locally.
+// Returns true if the request was handled (either streamed or waiting), false to fall through to 404.
+func (rh *RouteHandler) handleBlobStream(response http.ResponseWriter, request *http.Request,
+	repo string, digest godigest.Digest, mediaType string, imgStore storageTypes.ImageStore,
+) bool {
+	upstreamReader, size, isFirstClient, waitCh, err := rh.c.SyncOnDemand.SyncBlobOnDemand(
+		request.Context(), repo, digest, imgStore)
+	if err != nil {
+		return false
+	}
+
+	if isFirstClient {
+		rh.streamBlobFromUpstream(response, repo, digest, mediaType, upstreamReader, size, imgStore)
+
+		return true
+	}
+
+	if waitCh != nil {
+		// Waiting client: flush headers immediately to keep gateway alive, then wait
+		response.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+		response.Header().Set(constants.DistContentDigestKey, digest.String())
+		response.WriteHeader(http.StatusOK)
+
+		if flusher, ok := response.(http.Flusher); ok {
+			flusher.Flush()
+		}
+
+		<-waitCh
+
+		blobReader, blobSize, err := imgStore.GetBlob(repo, digest, mediaType)
+		if err != nil {
+			rh.c.Log.Error().Err(err).Str("repo", repo).Str("digest", digest.String()).
+				Msg("failed to get blob from cache after streaming completed")
+
+			return true // headers already sent, can't change status
+		}
+
+		defer blobReader.Close()
+
+		_, err = io.CopyN(response, blobReader, blobSize)
+		if err != nil {
+			rh.c.Log.Error().Err(err).Msg("failed to copy blob to response after waiting")
+		}
+
+		return true
+	}
+
+	// Blob was found in cache (race resolved) — serve from the returned reader
+	defer upstreamReader.Close()
+
+	response.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+	response.Header().Set(constants.DistContentDigestKey, digest.String())
+	WriteDataFromReader(response, http.StatusOK, size, mediaType, upstreamReader, rh.c.Log)
+
+	return true
+}
+
+// streamBlobFromUpstream streams a blob from upstream to the client while simultaneously caching it locally.
+// The upstream reader is consumed by a copy goroutine that writes to both local storage and the client pipe.
+// If the client disconnects, storage write continues to completion.
+func (rh *RouteHandler) streamBlobFromUpstream(
+	response http.ResponseWriter,
+	repo string, digest godigest.Digest, mediaType string,
+	upstreamReader io.ReadCloser, size int64,
+	imgStore storageTypes.ImageStore,
+) {
+	storagePR, storagePW := io.Pipe()
+	clientPR, clientPW := io.Pipe()
+
+	// Goroutine: write blob to local storage from storage pipe
+	go func() {
+		_, _, err := imgStore.FullBlobUpload(repo, storagePR, digest)
+		if err != nil {
+			rh.c.Log.Error().Err(err).Str("repo", repo).Str("digest", digest.String()).
+				Msg("failed to cache streamed blob to local storage")
+
+			storagePR.CloseWithError(err)
+		}
+	}()
+
+	// Goroutine: read from upstream, write to both pipes
+	go func() {
+		defer upstreamReader.Close()
+
+		clientAlive := true
+
+		var copyErr error
+
+		buf := make([]byte, 32*1024) //nolint:mnd
+
+		for {
+			readN, readErr := upstreamReader.Read(buf)
+			if readN > 0 {
+				// Always write to storage
+				if _, err := storagePW.Write(buf[:readN]); err != nil {
+					copyErr = err
+
+					break
+				}
+
+				// Write to client (tolerate disconnect)
+				if clientAlive {
+					if _, err := clientPW.Write(buf[:readN]); err != nil {
+						clientAlive = false
+						clientPW.CloseWithError(err)
+					}
+				}
+			}
+
+			if readErr != nil {
+				if !errors.Is(readErr, io.EOF) {
+					copyErr = readErr
+				}
+
+				break
+			}
+		}
+
+		storagePW.Close()
+
+		if clientAlive {
+			if copyErr != nil {
+				clientPW.CloseWithError(copyErr)
+			} else {
+				clientPW.Close()
+			}
+		}
+
+		// Signal completion to waiting clients
+		rh.c.SyncOnDemand.BlobDownloadDone(repo, digest, copyErr)
+	}()
+
+	// Stream to client from client pipe
+	response.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+	response.Header().Set(constants.DistContentDigestKey, digest.String())
+	WriteDataFromReader(response, http.StatusOK, size, mediaType, clientPR, rh.c.Log)
 }
 
 func WriteDataFromReader(response http.ResponseWriter, status int, length int64, mediaType string,

@@ -5,12 +5,16 @@ package sync
 import (
 	"context"
 	"errors"
+	"io"
 	"sync"
 	"time"
+
+	godigest "github.com/opencontainers/go-digest"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/log"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
 type request struct {
@@ -19,6 +23,13 @@ type request struct {
 	// used for background retries, at most one background retry per service
 	serviceID    int
 	isBackground bool
+}
+
+// blobInflight tracks a single in-progress blob download from upstream.
+type blobInflight struct {
+	done chan struct{} // closed when download completes
+	err  error        // set before closing done
+	size int64        // blob size from upstream
 }
 
 /*
@@ -30,16 +41,121 @@ process just the first one, also keep track of all background retrying routines.
 type BaseOnDemand struct {
 	services []Service
 	// map[request]chan err
-	requestStore *sync.Map
-	log          log.Logger
+	requestStore   *sync.Map
+	blobInflight   map[string]*blobInflight // key: "repo@digest"
+	blobInflightMu sync.Mutex
+	streamEnabled  bool
+	log            log.Logger
 }
 
 func NewOnDemand(log log.Logger) *BaseOnDemand {
-	return &BaseOnDemand{log: log, requestStore: &sync.Map{}}
+	return &BaseOnDemand{
+		log:          log,
+		requestStore: &sync.Map{},
+		blobInflight: make(map[string]*blobInflight),
+	}
 }
 
 func (onDemand *BaseOnDemand) Add(service Service) {
 	onDemand.services = append(onDemand.services, service)
+
+	if service.IsStreamEnabled() {
+		onDemand.streamEnabled = true
+	}
+}
+
+func (onDemand *BaseOnDemand) IsStreamEnabled() bool {
+	return onDemand.streamEnabled
+}
+
+// SyncBlobOnDemand fetches a blob from upstream for streaming to a client.
+// Returns:
+//   - reader, size: upstream blob stream (only for first client)
+//   - isFirstClient: true if caller should stream from reader; false if blob is already available in cache
+//   - waitCh: non-nil channel for waiting clients (closed when download completes)
+//   - err: non-nil on failure
+func (onDemand *BaseOnDemand) SyncBlobOnDemand(ctx context.Context, repo string,
+	digest godigest.Digest, imgStore storageTypes.ImageStore,
+) (io.ReadCloser, int64, bool, <-chan struct{}, error) {
+	key := repo + "@" + digest.String()
+
+	onDemand.blobInflightMu.Lock()
+
+	// Check if blob arrived in cache while we waited for lock
+	if ok, _, _ := imgStore.CheckBlob(repo, digest); ok {
+		onDemand.blobInflightMu.Unlock()
+
+		reader, size, err := imgStore.GetBlob(repo, digest, "")
+
+		return reader, size, false, nil, err
+	}
+
+	// Check if another client is already downloading this blob
+	if inf, exists := onDemand.blobInflight[key]; exists {
+		onDemand.blobInflightMu.Unlock()
+
+		onDemand.log.Info().Str("repo", repo).Str("digest", digest.String()).
+			Msg("blob already being downloaded, waiting on channel")
+
+		return nil, inf.size, false, inf.done, nil
+	}
+
+	// First client: register inflight and fetch from upstream
+	inf := &blobInflight{done: make(chan struct{})}
+	onDemand.blobInflight[key] = inf
+	onDemand.blobInflightMu.Unlock()
+
+	// Try each streaming-enabled service until one succeeds
+	var upstreamReader io.ReadCloser
+
+	var size int64
+
+	var err error
+
+	for _, service := range onDemand.services {
+		if !service.IsStreamEnabled() {
+			continue
+		}
+
+		timeout := service.GetSyncTimeout()
+
+		syncCtx, cancel := context.WithTimeout(context.Background(), timeout)
+
+		upstreamReader, size, err = service.GetBlobStream(syncCtx, repo, digest)
+		if err == nil {
+			inf.size = size
+			// Context will be cancelled when the copy goroutine finishes (caller's responsibility)
+			_ = cancel
+
+			return upstreamReader, size, true, nil, nil
+		}
+
+		cancel()
+	}
+
+	// All services failed — clean up inflight entry
+	inf.err = err
+	close(inf.done)
+
+	onDemand.blobInflightMu.Lock()
+	delete(onDemand.blobInflight, key)
+	onDemand.blobInflightMu.Unlock()
+
+	return nil, 0, false, nil, err
+}
+
+// BlobDownloadDone is called by the copy goroutine when a blob download completes or fails.
+func (onDemand *BaseOnDemand) BlobDownloadDone(repo string, digest godigest.Digest, err error) {
+	key := repo + "@" + digest.String()
+
+	onDemand.blobInflightMu.Lock()
+	defer onDemand.blobInflightMu.Unlock()
+
+	if inf, exists := onDemand.blobInflight[key]; exists {
+		inf.err = err
+		close(inf.done)
+		delete(onDemand.blobInflight, key)
+	}
 }
 
 func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference string) error {

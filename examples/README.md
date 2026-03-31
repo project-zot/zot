@@ -1266,8 +1266,9 @@ Configure each registry sync:
 				"urls": ["https://index.docker.io"],
 				"onDemand": true,                     # doesn't have content, don't periodically pull, pull just on demand.
 				"tlsVerify": true,
-				"maxRetries": 3,                      
-				"retryDelay": "15m"
+				"maxRetries": 3,
+				"retryDelay": "15m",
+				"stream": true                        # stream blobs to clients while fetching from upstream on-demand (requires onDemand: true)
 			}
 		]
 		}
