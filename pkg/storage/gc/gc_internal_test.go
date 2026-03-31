@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
@@ -782,5 +783,256 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			// No manifests should be marked as referenced since the nested index is missing
 			So(len(referenced), ShouldEqual, 0)
 		})
+
+		Convey("removeStaleManifestEntries removes entries whose blobs are missing", func() {
+			existingDigest := godigest.FromString("existing-blob")
+			missingDigest := godigest.FromString("missing-blob")
+
+			imgStore := mocks.MockedImageStore{
+				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
+					return []godigest.Digest{existingDigest}, nil
+				},
+			}
+
+			removedRef := ""
+			metaDB := mocks.MetaDBMock{
+				RemoveRepoReferenceFn: func(repo, reference string, manifestDigest godigest.Digest) error {
+					removedRef = reference
+					return nil
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, metaDB, gcOptions, audit, log)
+
+			index := &ispec.Index{
+				Manifests: []ispec.Descriptor{
+					{
+						Digest:    existingDigest,
+						MediaType: ispec.MediaTypeImageManifest,
+					},
+					{
+						Digest:    missingDigest,
+						MediaType: ispec.MediaTypeImageManifest,
+					},
+				},
+			}
+
+			err := gc.removeStaleManifestEntries(repoName, index)
+			So(err, ShouldBeNil)
+			So(len(index.Manifests), ShouldEqual, 1)
+			So(index.Manifests[0].Digest, ShouldEqual, existingDigest)
+			So(removedRef, ShouldEqual, missingDigest.String())
+		})
+
+		Convey("removeStaleManifestEntries uses tag as reference when available", func() {
+			existingDigest := godigest.FromString("existing-blob")
+			missingDigest := godigest.FromString("missing-blob")
+
+			imgStore := mocks.MockedImageStore{
+				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
+					return []godigest.Digest{existingDigest}, nil
+				},
+			}
+
+			removedRef := ""
+			metaDB := mocks.MetaDBMock{
+				RemoveRepoReferenceFn: func(repo, reference string, manifestDigest godigest.Digest) error {
+					removedRef = reference
+					return nil
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, metaDB, gcOptions, audit, log)
+
+			index := &ispec.Index{
+				Manifests: []ispec.Descriptor{
+					{
+						Digest:    missingDigest,
+						MediaType: ispec.MediaTypeImageManifest,
+						Annotations: map[string]string{
+							ispec.AnnotationRefName: "v1.0",
+						},
+					},
+				},
+			}
+
+			err := gc.removeStaleManifestEntries(repoName, index)
+			So(err, ShouldBeNil)
+			So(len(index.Manifests), ShouldEqual, 0)
+			So(removedRef, ShouldEqual, "v1.0")
+		})
+
+		Convey("removeStaleManifestEntries skips in DryRun mode", func() {
+			dryRunOptions := Options{
+				Delay: storageConstants.DefaultGCDelay,
+				ImageRetention: config.ImageRetention{
+					DryRun: true,
+					Delay:  storageConstants.DefaultGCDelay,
+				},
+			}
+
+			gc := NewGarbageCollect(mocks.MockedImageStore{}, mocks.MetaDBMock{}, dryRunOptions, audit, log)
+
+			index := &ispec.Index{
+				Manifests: []ispec.Descriptor{
+					{
+						Digest:    godigest.FromString("whatever"),
+						MediaType: ispec.MediaTypeImageManifest,
+					},
+				},
+			}
+
+			err := gc.removeStaleManifestEntries(repoName, index)
+			So(err, ShouldBeNil)
+			So(len(index.Manifests), ShouldEqual, 1)
+		})
+
+		Convey("removeStaleManifestEntries handles GetAllBlobs PathNotFound gracefully", func() {
+			imgStore := mocks.MockedImageStore{
+				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
+					return nil, driver.PathNotFoundError{}
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log)
+
+			index := &ispec.Index{
+				Manifests: []ispec.Descriptor{
+					{
+						Digest:    godigest.FromString("blob"),
+						MediaType: ispec.MediaTypeImageManifest,
+					},
+				},
+			}
+
+			err := gc.removeStaleManifestEntries(repoName, index)
+			So(err, ShouldBeNil)
+			// index should be unchanged — we couldn't check, so don't prune
+			So(len(index.Manifests), ShouldEqual, 1)
+		})
+
+	})
+}
+
+func TestCleanRepoWithStaleManifestEntries(t *testing.T) {
+	ctx := context.Background()
+
+	Convey("cleanRepo end-to-end prunes stale manifest entries", t, func() {
+		log := zlog.NewTestLogger()
+		audit := zlog.NewAuditLogger("debug", "")
+
+		existingDigest := godigest.FromString("existing-blob")
+		missingDigest := godigest.FromString("missing-blob")
+
+		returnedIndex := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{
+					Digest:    existingDigest,
+					MediaType: ispec.MediaTypeImageManifest,
+				},
+				{
+					Digest:    missingDigest,
+					MediaType: ispec.MediaTypeImageManifest,
+				},
+			},
+		}
+
+		returnedIndexBuf, err := json.Marshal(returnedIndex)
+		So(err, ShouldBeNil)
+
+		var savedIndex ispec.Index
+
+		imgStore := mocks.MockedImageStore{
+			GetIndexContentFn: func(repo string) ([]byte, error) {
+				return returnedIndexBuf, nil
+			},
+			GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
+				return []godigest.Digest{existingDigest}, nil
+			},
+			PutIndexContentFn: func(repo string, index ispec.Index) error {
+				savedIndex = index
+				return nil
+			},
+			CleanupRepoFn: func(repo string, blobs []godigest.Digest, removeRepo bool) (int, error) {
+				return 0, nil
+			},
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				if digest == existingDigest {
+					m := ispec.Manifest{}
+					m.SchemaVersion = 2
+					b, _ := json.Marshal(m)
+					return b, nil
+				}
+				return nil, zerr.ErrBlobNotFound
+			},
+			StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+				if digest == existingDigest {
+					return true, 100, time.Now().Add(-time.Hour), nil
+				}
+				return false, 0, time.Time{}, zerr.ErrBlobNotFound
+			},
+			ListBlobUploadsFn: func(repo string) ([]string, error) {
+				return nil, nil
+			},
+		}
+
+		// Disable untagged cleanup so removeManifestsPerRepoPolicy doesn't try
+		// to stat missing blobs before removeStaleManifestEntries can prune them.
+		falseVal := false
+		gcOptions := Options{
+			Delay: storageConstants.DefaultGCDelay,
+			ImageRetention: config.ImageRetention{
+				Delay: storageConstants.DefaultGCDelay,
+				Policies: []config.RetentionPolicy{
+					{
+						Repositories:   []string{"**"},
+						DeleteUntagged: &falseVal,
+					},
+				},
+			},
+		}
+
+		gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log)
+
+		err = gc.cleanRepo(ctx, repoName)
+		So(err, ShouldBeNil)
+		// The stale manifest entry should have been pruned
+		So(len(savedIndex.Manifests), ShouldEqual, 1)
+		So(savedIndex.Manifests[0].Digest, ShouldEqual, existingDigest)
+	})
+}
+
+func TestCleanupRepoMissingBlob(t *testing.T) {
+	Convey("CleanupRepo skips blobs that are already absent", t, func() {
+		dir := t.TempDir()
+
+		log := zlog.NewTestLogger()
+
+		metrics := monitoring.NewMetricsServer(false, log)
+		defer metrics.Stop()
+
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+
+		// Create a repo with a blob, then remove the blob file to simulate S3 disappearance
+		content := []byte("disappearing blob")
+		digest := godigest.FromBytes(content)
+
+		_, _, err := imgStore.FullBlobUpload(repoName, bytes.NewReader(content), digest)
+		So(err, ShouldBeNil)
+
+		// Remove the blob file directly to simulate it being missing on S3
+		blobPath := path.Join(dir, repoName, "blobs", "sha256", digest.Encoded())
+		err = os.Remove(blobPath)
+		So(err, ShouldBeNil)
+
+		// CleanupRepo should skip the missing blob without error
+		count, err := imgStore.CleanupRepo(repoName, []godigest.Digest{digest}, false)
+		So(err, ShouldBeNil)
+		So(count, ShouldEqual, 1)
 	})
 }
