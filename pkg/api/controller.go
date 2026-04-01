@@ -413,7 +413,7 @@ func (c *Controller) InitMetaDB() error {
 	extensionsConfig := c.Config.CopyExtensionsConfig()
 
 	if extensionsConfig.IsSearchEnabled() || authConfig.IsBasicAuthnEnabled() || extensionsConfig.IsImageTrustEnabled() ||
-		c.Config.IsRetentionEnabled() {
+		c.Config.IsRetentionEnabled() || c.Config.IsQuotaEnabled() {
 		// Get storage config safely
 		storageConfig := c.Config.CopyStorageConfig()
 

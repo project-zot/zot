@@ -454,5 +454,11 @@
       "begin": 11520,
       "end": 11529
     }
+  },
+  "blackbox/quota.bats": {
+    "zot": {
+      "begin": 11530,
+      "end": 11539
+    }
   }
 }

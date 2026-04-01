@@ -90,6 +90,16 @@ Orphan blobs are removed if they are older than gcDelay.
         "gcDelay": "2h"
 ```
 
+To limit the maximum number of repositories that can be created, set:
+
+```
+        "maxRepos": 10
+```
+
+When the limit is reached, pushes that would create a new repository are
+rejected with HTTP 429. Pushes to existing repositories are always allowed.
+Setting maxRepos to 0 or omitting it disables enforcement.
+
 It is also possible to store and serve images from multiple filesystems with
 their own repository paths, dedupe and garbage collection settings with:
 
