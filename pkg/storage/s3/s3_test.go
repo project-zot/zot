@@ -1348,8 +1348,6 @@ func TestS3Dedupe(t *testing.T) {
 
 				time.Sleep(10 * time.Second)
 
-				taskScheduler.Shutdown()
-
 				fi1, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe1", "blobs", "sha256",
 					blobDigest1.Encoded()))
 				So(fi1.Size(), ShouldBeGreaterThan, 0)
@@ -1386,8 +1384,6 @@ func TestS3Dedupe(t *testing.T) {
 					// wait until rebuild finishes
 
 					time.Sleep(10 * time.Second)
-
-					taskScheduler.Shutdown()
 
 					_, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 						blobDigest2.Encoded()))
@@ -1612,8 +1608,6 @@ func TestS3Dedupe(t *testing.T) {
 
 			time.Sleep(10 * time.Second)
 
-			taskScheduler.Shutdown()
-
 			fi1, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe1", "blobs", "sha256",
 				blobDigest1.Encoded()))
 			So(fi1.Size(), ShouldBeGreaterThan, 0)
@@ -1676,8 +1670,6 @@ func TestS3Dedupe(t *testing.T) {
 				// wait until rebuild finishes
 
 				time.Sleep(10 * time.Second)
-
-				taskScheduler.Shutdown()
 
 				_, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 					blobDigest2.Encoded()))
