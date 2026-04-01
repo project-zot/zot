@@ -151,6 +151,8 @@ type MetaDB interface { //nolint:interfacebloat
 
 	GetAllRepoNames() ([]string, error)
 
+	CountRepos(ctx context.Context) (int, error)
+
 	// ResetDB will delete all data in the DB
 	ResetDB() error
 
