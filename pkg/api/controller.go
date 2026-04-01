@@ -530,6 +530,10 @@ func (c *Controller) StopBackgroundTasks() {
 }
 
 func (c *Controller) StartBackgroundTasks() {
+	type dedupeUpgradeStore interface {
+		CleanupRemoteEmptyDedupeLinks() error
+	}
+
 	c.taskScheduler = scheduler.NewScheduler(c.Config, c.Metrics, c.Log)
 	c.taskScheduler.RunScheduler()
 
@@ -540,6 +544,12 @@ func (c *Controller) StartBackgroundTasks() {
 
 	// Run GC and retention tasks
 	RunGCTasks(c.Config, c.StoreController, c.MetaDB, c.taskScheduler, c.Log, c.Audit)
+
+	if store, ok := c.StoreController.DefaultStore.(dedupeUpgradeStore); ok {
+		if err := store.CleanupRemoteEmptyDedupeLinks(); err != nil {
+			c.Log.Warn().Err(err).Msg("failed to cleanup legacy dedupe links on default store")
+		}
+	}
 
 	// Enable running dedupe blobs both ways (dedupe or restore deduped blobs)
 	c.StoreController.DefaultStore.RunDedupeBlobs(time.Duration(0), c.taskScheduler)
@@ -565,6 +575,13 @@ func (c *Controller) StartBackgroundTasks() {
 			// Enable running dedupe blobs both ways (dedupe or restore deduped blobs) for subpaths
 			substore := c.StoreController.SubStore[route]
 			if substore != nil {
+				if store, ok := substore.(dedupeUpgradeStore); ok {
+					if err := store.CleanupRemoteEmptyDedupeLinks(); err != nil {
+						c.Log.Warn().Err(err).Str("route", route).
+							Msg("failed to cleanup legacy dedupe links on subpath store")
+					}
+				}
+
 				substore.RunDedupeBlobs(time.Duration(0), c.taskScheduler)
 
 				if extensionsConfig.IsMetricsEnabled() && storageConfig.StorageDriver == nil {

@@ -104,9 +104,10 @@ func (driver *Driver) SameFile(path1, path2 string) bool {
 	return false
 }
 
-// Link records a dedupe association between src and dest in the cache.
-// Because s3 doesn't support symlinks, no file is created; when the storage
-// encounters a non-existent deduped blob path it will look up the original from cache.
+// Link records a dedupe association between src and dest in the storage driver.
+// In S3, since symlinks are not supported, this is a no-op.
+// The storage driver will handle deduplication by looking up the original blob
+// from cache when a non-existent deduped blob path is accessed.
 func (driver *Driver) Link(src, dest string) error {
 	return nil
 }

@@ -1497,33 +1497,39 @@ func (is *ImageStore) checkCacheBlob(digest godigest.Digest) (string, error) {
 		return "", zerr.ErrBlobNotFound
 	}
 
-	dstRecord, err := is.cache.GetBlob(digest)
+	dstRecords, err := is.cache.GetAllBlobs(digest)
 	if err != nil {
 		return "", err
 	}
 
-	if is.cache.UsesRelativePaths() {
-		dstRecord = path.Join(is.rootDir, dstRecord)
-	}
-
-	if _, err := is.storeDriver.Stat(dstRecord); err != nil {
-		is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to stat blob")
-
-		// the actual blob on disk may have been removed by GC, so sync the cache
-		if err := is.cache.DeleteBlob(digest, dstRecord); err != nil {
-			is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", dstRecord).
-				Msg("failed to remove blob path from cache")
-
-			return "", err
+	for _, record := range dstRecords {
+		dstRecord := record
+		if is.cache.UsesRelativePaths() {
+			dstRecord = path.Join(is.rootDir, dstRecord)
 		}
 
-		return "", zerr.ErrBlobNotFound
+		if _, err := is.storeDriver.Stat(dstRecord); err == nil {
+			is.log.Debug().Str("digest", digest.String()).Str("dstRecord", dstRecord).Str("component", "cache").
+				Msg("found dedupe record")
+
+			return dstRecord, nil
+		} else {
+			is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to stat blob")
+
+			// On local storage a missing cached path is stale and should be removed.
+			// On remote storage deduped paths may be intentionally absent.
+			if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
+				if err := is.cache.DeleteBlob(digest, dstRecord); err != nil {
+					is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", dstRecord).
+						Msg("failed to remove blob path from cache")
+
+					return "", err
+				}
+			}
+		}
 	}
 
-	is.log.Debug().Str("digest", digest.String()).Str("dstRecord", dstRecord).Str("component", "cache").
-		Msg("found dedupe record")
-
-	return dstRecord, nil
+	return "", zerr.ErrBlobNotFound
 }
 
 func (is *ImageStore) copyBlob(repo string, blobPath, dstRecord string) (int64, error) {
@@ -2327,6 +2333,24 @@ func (is *ImageStore) restoreDedupedBlobs(ctx context.Context, digest godigest.D
 
 		binfo, err := is.storeDriver.Stat(blobPath)
 		if err != nil {
+			var pathNotFoundErr driver.PathNotFoundError
+			if errors.As(err, &pathNotFoundErr) && is.storeDriver.Name() != storageConstants.LocalStorageDriverName {
+				// Remote deduped blobs may have no placeholder file; recreate them from the original blob.
+				buf, err := is.storeDriver.ReadFile(originalBlob)
+				if err != nil {
+					is.log.Error().Err(err).Str("path", originalBlob).Str("component", "dedupe").
+						Msg("failed to get original blob content")
+
+					return err
+				}
+
+				if _, err := is.storeDriver.WriteFile(blobPath, buf); err != nil {
+					return err
+				}
+
+				continue
+			}
+
 			is.log.Error().Err(err).Str("path", blobPath).Str("component", "dedupe").Msg("failed to stat blob")
 
 			return err
@@ -2369,6 +2393,86 @@ func (is *ImageStore) RunDedupeForDigest(ctx context.Context, digest godigest.Di
 	}
 
 	return is.restoreDedupedBlobs(ctx, digest, duplicateBlobs)
+}
+
+// CleanupRemoteEmptyDedupeLinks removes legacy zero-byte dedupe placeholders on remote
+// stores (s3/gcs) as a startup upgrade path.
+func (is *ImageStore) CleanupRemoteEmptyDedupeLinks() error {
+	if !is.dedupe || fmt.Sprintf("%v", is.cache) == fmt.Sprintf("%v", nil) {
+		return nil
+	}
+
+	if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
+		return nil
+	}
+
+	repos, err := is.GetRepositories()
+	if err != nil {
+		return err
+	}
+
+	removedLinks := 0
+
+	for _, repo := range repos {
+		blobs, err := is.GetAllBlobs(repo)
+		if err != nil {
+			return err
+		}
+
+		for _, digest := range blobs {
+			blobPath := is.BlobPath(repo, digest)
+
+			binfo, err := is.storeDriver.Stat(blobPath)
+			if err != nil {
+				var pathNotFoundErr driver.PathNotFoundError
+				if errors.As(err, &pathNotFoundErr) {
+					continue
+				}
+
+				return err
+			}
+
+			if binfo.Size() > 0 {
+				continue
+			}
+
+			if !is.cache.HasBlob(digest, blobPath) {
+				continue
+			}
+
+			dstRecord, err := is.cache.GetBlob(digest)
+			if err != nil {
+				continue
+			}
+
+			if is.cache.UsesRelativePaths() {
+				dstRecord = path.Join(is.rootDir, dstRecord)
+			}
+
+			// Never remove the primary cache record path.
+			if is.storeDriver.SameFile(blobPath, dstRecord) {
+				continue
+			}
+
+			if err := is.storeDriver.Delete(blobPath); err != nil {
+				var pathNotFoundErr driver.PathNotFoundError
+				if errors.As(err, &pathNotFoundErr) {
+					continue
+				}
+
+				return err
+			}
+
+			removedLinks++
+		}
+	}
+
+	if removedLinks > 0 {
+		is.log.Info().Int("removedLinks", removedLinks).Str("component", "dedupe").
+			Msg("removed legacy empty dedupe links on remote storage")
+	}
+
+	return nil
 }
 
 func (is *ImageStore) RunDedupeBlobs(interval time.Duration, sch *scheduler.Scheduler) {
