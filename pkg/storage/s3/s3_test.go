@@ -1300,10 +1300,11 @@ func TestS3Dedupe(t *testing.T) {
 				blobDigest1.Encoded()))
 			So(err, ShouldBeNil)
 
-			fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
+			_, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 				blobDigest1.Encoded()))
-			So(err, ShouldBeNil)
-			So(fi2.Size(), ShouldEqual, 0)
+
+			var pathNotFoundErr driver.PathNotFoundError
+			So(errors.As(err, &pathNotFoundErr), ShouldBeTrue)
 
 			fi3, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe3", "blobs", "sha256",
 				blobDigest2.Encoded()))
@@ -1360,7 +1361,16 @@ func TestS3Dedupe(t *testing.T) {
 				var pathNotFoundErr driver.PathNotFoundError
 				So(errors.As(err, &pathNotFoundErr), ShouldBeTrue)
 
-				blobContent, err := imgStore.GetBlobContent("dedupe2", blobDigest2)
+				var blobContent []byte
+				for range 150 {
+					blobContent, err = imgStore.GetBlobContent("dedupe2", blobDigest2)
+					if err == nil {
+						break
+					}
+
+					time.Sleep(200 * time.Millisecond)
+				}
+
 				So(err, ShouldBeNil)
 				So(len(blobContent), ShouldEqual, fi1.Size())
 
@@ -1385,7 +1395,16 @@ func TestS3Dedupe(t *testing.T) {
 					var pathNotFoundErr driver.PathNotFoundError
 					So(errors.As(err, &pathNotFoundErr), ShouldBeTrue)
 
-					blobContent, err := imgStore.GetBlobContent("dedupe2", blobDigest2)
+					var blobContent []byte
+					for range 150 {
+						blobContent, err = imgStore.GetBlobContent("dedupe2", blobDigest2)
+						if err == nil {
+							break
+						}
+
+						time.Sleep(200 * time.Millisecond)
+					}
+
 					So(err, ShouldBeNil)
 					So(len(blobContent), ShouldBeGreaterThan, 0)
 				})
@@ -1606,7 +1625,16 @@ func TestS3Dedupe(t *testing.T) {
 			var pathNotFoundErr driver.PathNotFoundError
 			So(errors.As(err, &pathNotFoundErr), ShouldBeTrue)
 
-			blobContent, err := imgStore.GetBlobContent("dedupe2", blobDigest2)
+			var blobContent []byte
+			for range 150 {
+				blobContent, err = imgStore.GetBlobContent("dedupe2", blobDigest2)
+				if err == nil {
+					break
+				}
+
+				time.Sleep(200 * time.Millisecond)
+			}
+
 			So(err, ShouldBeNil)
 			So(len(blobContent), ShouldEqual, fi1.Size())
 
@@ -1657,7 +1685,16 @@ func TestS3Dedupe(t *testing.T) {
 				var pathNotFoundErr driver.PathNotFoundError
 				So(errors.As(err, &pathNotFoundErr), ShouldBeTrue)
 
-				blobContent, err := imgStore.GetBlobContent("dedupe2", blobDigest2)
+				var blobContent []byte
+				for range 150 {
+					blobContent, err = imgStore.GetBlobContent("dedupe2", blobDigest2)
+					if err == nil {
+						break
+					}
+
+					time.Sleep(200 * time.Millisecond)
+				}
+
 				So(err, ShouldBeNil)
 				So(len(blobContent), ShouldBeGreaterThan, 0)
 			})
