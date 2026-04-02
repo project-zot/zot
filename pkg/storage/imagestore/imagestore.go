@@ -2207,6 +2207,26 @@ func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []g
 		return digest, duplicateBlobs, nil
 	}
 
+	// On remote storage with no-op Link, deduped blob paths may not exist on the filesystem.
+	// Augment the discovered paths with those recorded in the cache so that rebuild operations
+	// (dedupe / restore) see all blob copies, not just the physical original.
+	if err == nil && digest != "" && is.isCacheConfigured() &&
+		is.storeDriver.Name() != storageConstants.LocalStorageDriverName {
+		cachedPaths, cacheErr := is.cache.GetAllBlobs(digest)
+		if cacheErr == nil {
+			for _, cachedPath := range cachedPaths {
+				fullPath := cachedPath
+				if is.cache.UsesRelativePaths() {
+					fullPath = path.Join(is.rootDir, cachedPath)
+				}
+
+				if !slices.Contains(duplicateBlobs, fullPath) {
+					duplicateBlobs = append(duplicateBlobs, fullPath)
+				}
+			}
+		}
+	}
+
 	return digest, duplicateBlobs, err
 }
 

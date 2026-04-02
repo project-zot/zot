@@ -1798,7 +1798,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 
 		tdir := t.TempDir()
 
-		storeDriver, imgStore, _ := createObjectsStore(testDir, tdir, true)
+		storeDriver, imgStore, _ := createObjectsStoreDynamo(testDir, tdir, true, tdir)
 		defer cleanupStorage(storeDriver, testDir)
 
 		// push image1
@@ -1922,7 +1922,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 				taskScheduler.RunScheduler()
 				defer taskScheduler.Shutdown()
 
-				storeDriver, imgStore, _ = createObjectsStore(testDir, t.TempDir(), false)
+				storeDriver, imgStore, _ = createObjectsStoreDynamo(testDir, t.TempDir(), false, tdir)
 				defer cleanupStorage(storeDriver, testDir)
 
 				// rebuild with dedupe false, should have all blobs with content
@@ -1964,10 +1964,10 @@ func TestRebuildDedupeIndex(t *testing.T) {
 				taskScheduler.RunScheduler()
 				defer taskScheduler.Shutdown()
 
-				storeDriver, imgStore, _ = createObjectsStore(testDir, t.TempDir(), true)
+				storeDriver, imgStore, _ = createObjectsStoreDynamo(testDir, t.TempDir(), true, tdir)
 				defer cleanupStorage(storeDriver, testDir)
 
-				// rebuild with dedupe false, should have all blobs with content
+				// rebuild with dedupe true, should dedup blobs
 				imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
 				sleepValue := i * 5
@@ -1979,7 +1979,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			taskScheduler = runAndGetScheduler()
 			defer taskScheduler.Shutdown()
 
-			// rebuild with dedupe false, should have all blobs with content
+			// rebuild with dedupe true
 			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
 			// wait until rebuild finishes
@@ -1987,21 +1987,31 @@ func TestRebuildDedupeIndex(t *testing.T) {
 
 			taskScheduler.Shutdown()
 
-			fi2, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
+			// With no-op Link on remote storage, deduped blobs should not exist (no placeholder files).
+			_, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 				blobDigest2.Encoded()))
-			So(err, ShouldBeNil)
-			So(fi2.Size(), ShouldNotEqual, fi1.Size())
-			So(fi2.Size(), ShouldEqual, 0)
 
-			configFi2, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
+			var blobPathNotFoundErr driver.PathNotFoundError
+			So(errors.As(err, &blobPathNotFoundErr), ShouldBeTrue)
+
+			_, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 				cdigest.Encoded()))
-			So(err, ShouldBeNil)
-			So(configFi2.Size(), ShouldNotEqual, configFi1.Size())
-			So(configFi2.Size(), ShouldEqual, 0)
+
+			var configPathNotFoundErr2 driver.PathNotFoundError
+			So(errors.As(err, &configPathNotFoundErr2), ShouldBeTrue)
 		})
 
 		Convey("Trigger ErrDedupeRebuild because cache is nil", func() {
-			storeDriver, imgStore, _ := createObjectsStore(testDir, tdir, true)
+			// Pre-lock a boltdb in a temp dir so the second open fails, yielding a nil cache.
+			lockedCacheDir := t.TempDir()
+
+			_, _ = storage.Create("boltdb", cache.BoltDBDriverParameters{
+				RootDir:     lockedCacheDir,
+				Name:        "cache",
+				UseRelPaths: false,
+			}, log.NewTestLogger())
+
+			storeDriver, imgStore, _ := createObjectsStore(testDir, lockedCacheDir, true)
 			defer cleanupStorage(storeDriver, testDir)
 
 			taskScheduler := runAndGetScheduler()
@@ -2017,7 +2027,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			taskScheduler := runAndGetScheduler()
 			defer taskScheduler.Shutdown()
 
-			storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), true)
+			storeDriver, imgStore, _ := createObjectsStoreDynamo(testDir, t.TempDir(), true, tdir)
 			defer cleanupStorage(storeDriver, testDir)
 
 			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
@@ -2104,7 +2114,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			taskScheduler := runAndGetScheduler()
 			defer taskScheduler.Shutdown()
 
-			storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), false)
+			storeDriver, imgStore, _ := createObjectsStoreDynamo(testDir, t.TempDir(), false, tdir)
 			defer cleanupStorage(storeDriver, testDir)
 
 			// rebuild with dedupe false, should have all blobs with content
