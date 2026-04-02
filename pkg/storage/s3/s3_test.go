@@ -42,14 +42,16 @@ import (
 
 //nolint:gochecknoglobals
 var (
-	testImage                 = "test"
-	errorText                 = "new s3 error"
-	errS3                     = errors.New(errorText)
-	errCache                  = errors.New("new cache error")
-	zotStorageTest            = "zot-storage-test"
-	s3Region                  = "us-east-2"
-	dedupeRebuildWaitTimeout  = 30 * time.Second
-	dedupeRebuildWaitInterval = 100 * time.Millisecond
+	testImage                    = "test"
+	errorText                    = "new s3 error"
+	errS3                        = errors.New(errorText)
+	errCache                     = errors.New("new cache error")
+	zotStorageTest               = "zot-storage-test"
+	s3Region                     = "us-east-2"
+	dedupeRebuildWaitTimeout     = 30 * time.Second
+	dedupeRebuildWaitInterval    = 100 * time.Millisecond
+	errConditionNotMet           = errors.New("condition not met")
+	errDedupePathShouldBeMissing = errors.New("expected deduped blob path to be absent")
 )
 
 func cleanupStorage(store driver.StorageDriver, name string) {
@@ -197,8 +199,9 @@ func runAndGetScheduler() *scheduler.Scheduler {
 }
 
 func waitForCondition(timeout, interval time.Duration, condition func() (bool, error)) error {
-	deadline := time.Now().Add(timeout)
 	var lastErr error
+
+	deadline := time.Now().Add(timeout)
 
 	for time.Now().Before(deadline) {
 		ok, err := condition()
@@ -214,10 +217,10 @@ func waitForCondition(timeout, interval time.Duration, condition func() (bool, e
 	}
 
 	if lastErr != nil {
-		return fmt.Errorf("condition not met within %s: %w", timeout, lastErr)
+		return fmt.Errorf("%w within %s", errors.Join(errConditionNotMet, lastErr), timeout)
 	}
 
-	return fmt.Errorf("condition not met within %s", timeout)
+	return fmt.Errorf("%w within %s", errConditionNotMet, timeout)
 }
 
 func TestStorageDriverStatFunction(t *testing.T) {
@@ -1160,6 +1163,7 @@ func TestS3Dedupe(t *testing.T) {
 		_, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 			blobDigest2.Encoded()))
 		So(err, ShouldNotBeNil)
+
 		var pathNotFoundErr driver.PathNotFoundError
 		So(errors.As(err, &pathNotFoundErr), ShouldBeTrue)
 
@@ -1381,6 +1385,7 @@ func TestS3Dedupe(t *testing.T) {
 				err = waitForCondition(dedupeRebuildWaitTimeout, dedupeRebuildWaitInterval, func() (bool, error) {
 					_, statErr := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 						blobDigest2.Encoded()))
+
 					var pathNotFoundErr driver.PathNotFoundError
 					if errors.As(statErr, &pathNotFoundErr) {
 						return true, nil
@@ -1390,7 +1395,7 @@ func TestS3Dedupe(t *testing.T) {
 						return false, statErr
 					}
 
-					return false, fmt.Errorf("expected deduped blob path to be absent")
+					return false, errDedupePathShouldBeMissing
 				})
 				So(err, ShouldBeNil)
 
@@ -1422,6 +1427,7 @@ func TestS3Dedupe(t *testing.T) {
 					err = waitForCondition(dedupeRebuildWaitTimeout, dedupeRebuildWaitInterval, func() (bool, error) {
 						_, statErr := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 							blobDigest2.Encoded()))
+
 						var pathNotFoundErr driver.PathNotFoundError
 						if errors.As(statErr, &pathNotFoundErr) {
 							return true, nil
@@ -1431,7 +1437,7 @@ func TestS3Dedupe(t *testing.T) {
 							return false, statErr
 						}
 
-						return false, fmt.Errorf("expected deduped blob path to be absent")
+						return false, errDedupePathShouldBeMissing
 					})
 					So(err, ShouldBeNil)
 
@@ -1611,6 +1617,7 @@ func TestS3Dedupe(t *testing.T) {
 		_, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 			blobDigest2.Encoded()))
 		So(err, ShouldNotBeNil)
+
 		var pathNotFoundErr driver.PathNotFoundError
 		So(errors.As(err, &pathNotFoundErr), ShouldBeTrue)
 
@@ -1661,6 +1668,7 @@ func TestS3Dedupe(t *testing.T) {
 			err = waitForCondition(dedupeRebuildWaitTimeout, dedupeRebuildWaitInterval, func() (bool, error) {
 				_, statErr := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 					blobDigest2.Encoded()))
+
 				var pathNotFoundErr driver.PathNotFoundError
 				if errors.As(statErr, &pathNotFoundErr) {
 					return true, nil
@@ -1670,7 +1678,7 @@ func TestS3Dedupe(t *testing.T) {
 					return false, statErr
 				}
 
-				return false, fmt.Errorf("expected deduped blob path to be absent")
+				return false, errDedupePathShouldBeMissing
 			})
 			So(err, ShouldBeNil)
 
@@ -1728,6 +1736,7 @@ func TestS3Dedupe(t *testing.T) {
 				err = waitForCondition(dedupeRebuildWaitTimeout, dedupeRebuildWaitInterval, func() (bool, error) {
 					_, statErr := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 						blobDigest2.Encoded()))
+
 					var pathNotFoundErr driver.PathNotFoundError
 					if errors.As(statErr, &pathNotFoundErr) {
 						return true, nil
@@ -1737,7 +1746,7 @@ func TestS3Dedupe(t *testing.T) {
 						return false, statErr
 					}
 
-					return false, fmt.Errorf("expected deduped blob path to be absent")
+					return false, errDedupePathShouldBeMissing
 				})
 				So(err, ShouldBeNil)
 
@@ -2429,6 +2438,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			PutContentFn: func(ctx context.Context, path string, content []byte) error {
 				// Track that PutContent was called, but don't fail - remote dedupe shouldn't call this
 				putContentCalled = true
+
 				return errS3
 			},
 		})
