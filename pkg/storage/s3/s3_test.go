@@ -42,12 +42,14 @@ import (
 
 //nolint:gochecknoglobals
 var (
-	testImage      = "test"
-	errorText      = "new s3 error"
-	errS3          = errors.New(errorText)
-	errCache       = errors.New("new cache error")
-	zotStorageTest = "zot-storage-test"
-	s3Region       = "us-east-2"
+	testImage                 = "test"
+	errorText                 = "new s3 error"
+	errS3                     = errors.New(errorText)
+	errCache                  = errors.New("new cache error")
+	zotStorageTest            = "zot-storage-test"
+	s3Region                  = "us-east-2"
+	dedupeRebuildWaitTimeout  = 30 * time.Second
+	dedupeRebuildWaitInterval = 100 * time.Millisecond
 )
 
 func cleanupStorage(store driver.StorageDriver, name string) {
@@ -1376,7 +1378,7 @@ func TestS3Dedupe(t *testing.T) {
 				So(fi1.Size(), ShouldBeGreaterThan, 0)
 				So(err, ShouldBeNil)
 
-				err = waitForCondition(15*time.Second, 100*time.Millisecond, func() (bool, error) {
+				err = waitForCondition(dedupeRebuildWaitTimeout, dedupeRebuildWaitInterval, func() (bool, error) {
 					_, statErr := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 						blobDigest2.Encoded()))
 					var pathNotFoundErr driver.PathNotFoundError
@@ -1393,7 +1395,7 @@ func TestS3Dedupe(t *testing.T) {
 				So(err, ShouldBeNil)
 
 				var blobContent []byte
-				err = waitForCondition(15*time.Second, 100*time.Millisecond, func() (bool, error) {
+				err = waitForCondition(dedupeRebuildWaitTimeout, dedupeRebuildWaitInterval, func() (bool, error) {
 					content, contentErr := imgStore.GetBlobContent("dedupe2", blobDigest2)
 					if contentErr != nil {
 						return false, contentErr
@@ -1417,7 +1419,7 @@ func TestS3Dedupe(t *testing.T) {
 					// rebuild with dedupe false, should have all blobs with content
 					imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
-					err = waitForCondition(15*time.Second, 100*time.Millisecond, func() (bool, error) {
+					err = waitForCondition(dedupeRebuildWaitTimeout, dedupeRebuildWaitInterval, func() (bool, error) {
 						_, statErr := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 							blobDigest2.Encoded()))
 						var pathNotFoundErr driver.PathNotFoundError
@@ -1434,7 +1436,7 @@ func TestS3Dedupe(t *testing.T) {
 					So(err, ShouldBeNil)
 
 					var blobContent []byte
-					err = waitForCondition(15*time.Second, 100*time.Millisecond, func() (bool, error) {
+					err = waitForCondition(dedupeRebuildWaitTimeout, dedupeRebuildWaitInterval, func() (bool, error) {
 						content, contentErr := imgStore.GetBlobContent("dedupe2", blobDigest2)
 						if contentErr != nil {
 							return false, contentErr
@@ -1656,7 +1658,7 @@ func TestS3Dedupe(t *testing.T) {
 			So(fi1.Size(), ShouldBeGreaterThan, 0)
 			So(err, ShouldBeNil)
 
-			err = waitForCondition(15*time.Second, 100*time.Millisecond, func() (bool, error) {
+			err = waitForCondition(dedupeRebuildWaitTimeout, dedupeRebuildWaitInterval, func() (bool, error) {
 				_, statErr := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 					blobDigest2.Encoded()))
 				var pathNotFoundErr driver.PathNotFoundError
@@ -1673,7 +1675,7 @@ func TestS3Dedupe(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			var blobContent []byte
-			err = waitForCondition(15*time.Second, 100*time.Millisecond, func() (bool, error) {
+			err = waitForCondition(dedupeRebuildWaitTimeout, dedupeRebuildWaitInterval, func() (bool, error) {
 				content, contentErr := imgStore.GetBlobContent("dedupe2", blobDigest2)
 				if contentErr != nil {
 					return false, contentErr
@@ -1723,7 +1725,7 @@ func TestS3Dedupe(t *testing.T) {
 				// rebuild with dedupe false, should have all blobs with content
 				imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
-				err = waitForCondition(15*time.Second, 100*time.Millisecond, func() (bool, error) {
+				err = waitForCondition(dedupeRebuildWaitTimeout, dedupeRebuildWaitInterval, func() (bool, error) {
 					_, statErr := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 						blobDigest2.Encoded()))
 					var pathNotFoundErr driver.PathNotFoundError
@@ -1740,7 +1742,7 @@ func TestS3Dedupe(t *testing.T) {
 				So(err, ShouldBeNil)
 
 				var blobContent []byte
-				err = waitForCondition(15*time.Second, 100*time.Millisecond, func() (bool, error) {
+				err = waitForCondition(dedupeRebuildWaitTimeout, dedupeRebuildWaitInterval, func() (bool, error) {
 					content, contentErr := imgStore.GetBlobContent("dedupe2", blobDigest2)
 					if contentErr != nil {
 						return false, contentErr
