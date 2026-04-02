@@ -2268,6 +2268,33 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 
 		binfo, err := is.storeDriver.Stat(blobPath)
 		if err != nil {
+			var pathNotFoundErr driver.PathNotFoundError
+			if errors.As(err, &pathNotFoundErr) && is.storeDriver.Name() != storageConstants.LocalStorageDriverName {
+				// Remote dedupe entries may not have placeholder files.
+				if originalBlob == "" {
+					originalBlob, err = is.getOriginalBlob(digest, duplicateBlobs)
+					if err != nil {
+						is.log.Error().Err(err).Str("component", "dedupe").Msg("failed to find original blob")
+
+						return zerr.ErrDedupeRebuild
+					}
+
+					if _, err := is.cache.GetBlob(digest); err != nil {
+						if err := is.cache.PutBlob(digest, originalBlob); err != nil {
+							return err
+						}
+					}
+				}
+
+				if ok := is.cache.HasBlob(digest, blobPath); !ok {
+					if err := is.cache.PutBlob(digest, blobPath); err != nil {
+						return err
+					}
+				}
+
+				continue
+			}
+
 			is.log.Error().Err(err).Str("path", blobPath).Str("component", "dedupe").Msg("failed to stat blob")
 
 			return err
