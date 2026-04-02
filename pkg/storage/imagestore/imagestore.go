@@ -2214,6 +2214,12 @@ func (is *ImageStore) getOriginalBlobFromDisk(duplicateBlobs []string) (string, 
 	for _, blobPath := range duplicateBlobs {
 		binfo, err := is.storeDriver.Stat(blobPath)
 		if err != nil {
+			var pathNotFoundErr driver.PathNotFoundError
+			if errors.As(err, &pathNotFoundErr) && is.storeDriver.Name() != storageConstants.LocalStorageDriverName {
+				// Remote dedupe may not keep placeholder blobs, continue searching for a real blob.
+				continue
+			}
+
 			is.log.Error().Err(err).Str("path", blobPath).Str("component", "storage").Msg("failed to stat blob")
 
 			return "", zerr.ErrBlobNotFound
