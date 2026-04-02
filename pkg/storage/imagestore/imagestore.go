@@ -2334,6 +2334,16 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 
 					return err
 				}
+
+				// On remote storage, delete non-original deduped blobs to enforce no-placeholder semantics.
+				// Local storage relies on hard linking which consumes no additional space.
+				if is.storeDriver.Name() != storageConstants.LocalStorageDriverName {
+					if err := is.storeDriver.Delete(blobPath); err != nil {
+						is.log.Warn().Err(err).Str("path", blobPath).Str("component", "dedupe").
+							Msg("failed to delete non-original deduped blob on remote storage")
+						// Continue; cache mapping is still valid for recovery via GetBlobContent.
+					}
+				}
 			}
 
 			// cache it
