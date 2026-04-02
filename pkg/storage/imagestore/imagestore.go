@@ -8,6 +8,7 @@ import (
 	"io"
 	"path"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -68,7 +69,13 @@ func (is *ImageStore) DirExists(d string) bool {
 
 // isCacheConfigured returns true if a cache driver is configured.
 func (is *ImageStore) isCacheConfigured() bool {
-	return is.cache != nil
+	if is.cache == nil {
+		return false
+	}
+
+	v := reflect.ValueOf(is.cache)
+
+	return !(v.Kind() == reflect.Ptr && v.IsNil())
 }
 
 // NewImageStore returns a new image store backed by cloud storages.
