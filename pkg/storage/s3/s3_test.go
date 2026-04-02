@@ -1371,7 +1371,10 @@ func TestS3Dedupe(t *testing.T) {
 				taskScheduler := runAndGetScheduler()
 				defer taskScheduler.Shutdown()
 
-				storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), false)
+				// Use the same DynamoDB table (tdir) so the rebuild store can access cache entries
+				// for dedupe2, which has no physical S3 file (no-op Link). Without the cache,
+				// GetBlobContent would always return ErrBlobNotFound for dedupe2.
+				storeDriver, imgStore, _ := createObjectsStoreDynamo(testDir, t.TempDir(), false, tdir)
 				defer cleanupStorage(storeDriver, testDir)
 
 				// rebuild with dedupe false, should have all blobs with content
@@ -1727,7 +1730,8 @@ func TestS3Dedupe(t *testing.T) {
 				taskScheduler := runAndGetScheduler()
 				defer taskScheduler.Shutdown()
 
-				storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), true)
+				// Use the same DynamoDB table (tdir) so GetBlobContent can resolve dedupe2 via cache.
+				storeDriver, imgStore, _ := createObjectsStoreDynamo(testDir, t.TempDir(), true, tdir)
 				defer cleanupStorage(storeDriver, testDir)
 
 				// rebuild with dedupe false, should have all blobs with content
