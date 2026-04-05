@@ -23,6 +23,7 @@ type ExtensionConfig struct {
 	APIKey  *APIKeyConfig
 	Trust   *ImageTrustConfig
 	Events  *events.Config
+	Quota   *QuotaConfig
 }
 
 type ImageTrustConfig struct {
