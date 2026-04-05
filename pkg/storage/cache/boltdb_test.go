@@ -55,7 +55,7 @@ func TestBoltDBCache(t *testing.T) {
 		So(err, ShouldEqual, errors.ErrCacheMiss)
 
 		err = cacheDriver.DeleteBlob("key", "bogusValue")
-		So(err, ShouldBeNil)
+		So(err, ShouldEqual, errors.ErrCacheMiss)
 
 		// try to insert empty path
 		err = cacheDriver.PutBlob("key", "")
@@ -85,14 +85,21 @@ func TestBoltDBCache(t *testing.T) {
 		err = cacheDriver.PutBlob("key1", "duplicateBlobPath")
 		So(err, ShouldBeNil)
 
+		// deleting original when duplicates exist should keep the original (no promotion)
 		err = cacheDriver.DeleteBlob("key1", "originalBlobPath")
 		So(err, ShouldBeNil)
 
+		// original should still be "originalBlobPath" since duplicates exist
 		val, err = cacheDriver.GetBlob("key1")
-		So(val, ShouldEqual, "duplicateBlobPath")
+		So(val, ShouldEqual, "originalBlobPath")
 		So(err, ShouldBeNil)
 
+		// now delete the duplicate
 		err = cacheDriver.DeleteBlob("key1", "duplicateBlobPath")
+		So(err, ShouldBeNil)
+
+		// now delete the original (no more duplicates, should clean up)
+		err = cacheDriver.DeleteBlob("key1", "originalBlobPath")
 		So(err, ShouldBeNil)
 
 		// should be empty
@@ -147,15 +154,17 @@ func TestBoltDBCache(t *testing.T) {
 		blobs, err := cacheDriver.GetAllBlobs("digest")
 		So(err, ShouldBeNil)
 
+		// "first" is the original, "second" and "third" are duplicates
 		So(blobs, ShouldResemble, []string{"first", "second", "third"})
 
+		// deleting "first" (original) should keep it since duplicates exist
 		err = cacheDriver.DeleteBlob("digest", "first")
 		So(err, ShouldBeNil)
 
 		blobs, err = cacheDriver.GetAllBlobs("digest")
 		So(err, ShouldBeNil)
 
-		So(blobs, ShouldResemble, []string{"second", "third"})
+		So(blobs, ShouldResemble, []string{"first", "second", "third"})
 
 		err = cacheDriver.DeleteBlob("digest", "third")
 		So(err, ShouldBeNil)
@@ -163,6 +172,6 @@ func TestBoltDBCache(t *testing.T) {
 		blobs, err = cacheDriver.GetAllBlobs("digest")
 		So(err, ShouldBeNil)
 
-		So(blobs, ShouldResemble, []string{"second"})
+		So(blobs, ShouldResemble, []string{"first", "second"})
 	})
 }
