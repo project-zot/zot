@@ -186,6 +186,9 @@ func OnUpdateManifestDigestTags(ctx context.Context, repo string, tags []string,
 
 	priorTagManifests, err := priorTagManifestsFromMetaDB(ctx, metaDB, repo, tags)
 	if err != nil {
+		log.Error().Err(err).Str("repository", repo).
+			Msg("multi-tag digest push: failed to snapshot prior tag state from metadb")
+
 		return err
 	}
 
