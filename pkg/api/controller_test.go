@@ -588,31 +588,17 @@ func TestAutoPortSelection(t *testing.T) {
 
 		defer cm.StopServer()
 
-		scanner := bufio.NewScanner(logFile)
+		found, err := test.ReadLogFileAndSearchString(logFile.Name(), "port is unspecified", 30*time.Second)
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
 
-		var contents bytes.Buffer
-
-		deadline := time.Now().Add(30 * time.Second)
-
-		for scanner.Scan() {
-			text := scanner.Text()
-			contents.WriteString(text)
-
-			if strings.Contains(text, "port is unspecified") {
-				break
-			}
-
-			if time.Now().After(deadline) {
-				t.Fatalf("timed out waiting for kernel-chosen port log line")
-			}
-		}
-
-		So(scanner.Err(), ShouldBeNil)
-		So(contents.String(), ShouldContainSubstring,
+		contents, err := os.ReadFile(logFile.Name())
+		So(err, ShouldBeNil)
+		So(string(contents), ShouldContainSubstring,
 			"port is unspecified, listening on kernel chosen port",
 		)
-		So(contents.String(), ShouldContainSubstring, "\"address\":\"127.0.0.1\"")
-		So(contents.String(), ShouldContainSubstring, "\"port\":")
+		So(string(contents), ShouldContainSubstring, "\"address\":\"127.0.0.1\"")
+		So(string(contents), ShouldContainSubstring, "\"port\":")
 
 		So(ctlr.GetPort(), ShouldBeGreaterThan, 0)
 		So(ctlr.GetPort(), ShouldBeLessThan, 65536)

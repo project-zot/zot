@@ -145,6 +145,25 @@ func TestReadLogFileAndSearchString(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(ok, ShouldBeFalse)
 	})
+
+	Convey("substring appears after append", t, func() {
+		logPath := path.Join(t.TempDir(), "log.txt")
+		So(os.WriteFile(logPath, []byte("header\n"), 0o600), ShouldBeNil)
+
+		go func() {
+			time.Sleep(40 * time.Millisecond)
+			f, err := os.OpenFile(logPath, os.O_APPEND|os.O_WRONLY, 0o600)
+			if err != nil {
+				return
+			}
+			defer f.Close()
+			_, _ = f.WriteString("line with port is unspecified\n")
+		}()
+
+		ok, err := tcommon.ReadLogFileAndSearchString(logPath, "port is unspecified", 500*time.Millisecond)
+		So(err, ShouldBeNil)
+		So(ok, ShouldBeTrue)
+	})
 }
 
 func TestReadLogFileAndCountStringOccurence(t *testing.T) {
