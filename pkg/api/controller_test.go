@@ -592,21 +592,19 @@ func TestAutoPortSelection(t *testing.T) {
 
 		var contents bytes.Buffer
 
-		start := time.Now()
+		deadline := time.Now().Add(30 * time.Second)
 
 		for scanner.Scan() {
-			if time.Since(start) < time.Second*30 {
-				t.Logf("Exhausted: Controller did not print the expected log within 30 seconds")
-			}
-
 			text := scanner.Text()
 			contents.WriteString(text)
 
-			if strings.Contains(text, "Port unspecified") {
+			if strings.Contains(text, "port is unspecified") {
 				break
 			}
 
-			t.Logf("%s", scanner.Text())
+			if time.Now().After(deadline) {
+				t.Fatalf("timed out waiting for kernel-chosen port log line")
+			}
 		}
 
 		So(scanner.Err(), ShouldBeNil)
