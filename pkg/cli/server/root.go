@@ -891,6 +891,14 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, logge
 
 					config.Extensions.Search.CVE.Trivy.JavaDBRepository = defaultJavaDBDownloadURL
 				}
+
+				if len(config.Extensions.Search.CVE.Trivy.VulnSeveritySources) == 0 {
+					defaultVulnSeveritySources := []string{"auto"}
+					logger.Info().Strs("vulnSeveritySources", defaultVulnSeveritySources).Str("component", "config").
+						Msg("using default trivy vulnerability severity sources.")
+
+					config.Extensions.Search.CVE.Trivy.VulnSeveritySources = defaultVulnSeveritySources
+				}
 			}
 		}
 

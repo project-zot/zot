@@ -20,6 +20,7 @@ import (
 	"github.com/aquasecurity/trivy/pkg/javadb"
 	"github.com/aquasecurity/trivy/pkg/types"
 	xos "github.com/aquasecurity/trivy/pkg/x/os"
+	xstrings "github.com/aquasecurity/trivy/pkg/x/strings"
 	"github.com/google/go-containerregistry/pkg/name"
 	regTypes "github.com/google/go-containerregistry/pkg/v1/types"
 	godigest "github.com/opencontainers/go-digest"
@@ -29,6 +30,7 @@ import (
 	zerr "zotregistry.dev/zot/v2/errors"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/compat"
+	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	cvecache "zotregistry.dev/zot/v2/pkg/extensions/search/cve/cache"
 	cvemodel "zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
 	"zotregistry.dev/zot/v2/pkg/log"
@@ -40,7 +42,9 @@ const cacheSize = 1000000
 
 // getNewScanOptions sets trivy configuration values for our scans and returns them as
 // a trivy Options structure.
-func getNewScanOptions(dir string, dbRepositoryRef, javaDBRepositoryRef name.Reference) *flag.Options {
+func getNewScanOptions(dir string, dbRepositoryRef, javaDBRepositoryRef name.Reference,
+	vulnSeveritySources []dbTypes.SourceID,
+) *flag.Options {
 	scanOptions := flag.Options{
 		GlobalOptions: flag.GlobalOptions{
 			CacheDir: dir,
@@ -60,6 +64,9 @@ func getNewScanOptions(dir string, dbRepositoryRef, javaDBRepositoryRef name.Ref
 			JavaDBRepositories: []name.Reference{javaDBRepositoryRef},
 			SkipDBUpdate:       true,
 			SkipJavaDBUpdate:   true,
+		},
+		VulnerabilityOptions: flag.VulnerabilityOptions{
+			VulnSeveritySources: vulnSeveritySources,
 		},
 		ReportOptions: flag.ReportOptions{
 			Format: "table",
@@ -90,11 +97,25 @@ type Scanner struct {
 	cache               *cvecache.CveCache
 	dbRepositoryRef     name.Reference
 	javaDBRepositoryRef name.Reference
+	vulnSeveritySources []dbTypes.SourceID
 }
 
 func NewScanner(storeController storage.StoreController,
-	metaDB mTypes.MetaDB, dbRepository, javaDBRepository string, log log.Logger,
+	metaDB mTypes.MetaDB, cveConfig *extconf.CVEConfig, log log.Logger,
 ) *Scanner {
+	var trivyCfg *extconf.TrivyConfig
+	if cveConfig != nil && cveConfig.Trivy != nil {
+		trivyCfg = cveConfig.Trivy
+	}
+
+	if trivyCfg == nil {
+		trivyCfg = &extconf.TrivyConfig{}
+	}
+
+	dbRepository := trivyCfg.DBRepository
+	javaDBRepository := trivyCfg.JavaDBRepository
+	vulnSeveritySources := trivyCfg.VulnSeveritySources
+
 	// The logic to set defaults is similar to what trivy itself uses:
 	// https://github.com/aquasecurity/trivy/blob/v0.51.4/pkg/flag/db_flags.go#L152
 	var dbRepositoryRef name.Reference
@@ -126,13 +147,18 @@ func NewScanner(storeController storage.StoreController,
 
 	subCveConfig := make(map[string]*flag.Options)
 
+	sevSources := xstrings.ToTSlice[dbTypes.SourceID](vulnSeveritySources)
+	if len(sevSources) == 0 {
+		sevSources = []dbTypes.SourceID{"auto"}
+	}
+
 	if storeController.DefaultStore != nil {
 		imageStore := storeController.DefaultStore
 
 		rootDir := imageStore.RootDir()
 
 		cacheDir := path.Join(rootDir, "_trivy")
-		opts := getNewScanOptions(cacheDir, dbRepositoryRef, javaDBRepositoryRef)
+		opts := getNewScanOptions(cacheDir, dbRepositoryRef, javaDBRepositoryRef, sevSources)
 
 		cveController.DefaultCveConfig = opts
 	}
@@ -142,7 +168,7 @@ func NewScanner(storeController storage.StoreController,
 			rootDir := storage.RootDir()
 
 			cacheDir := path.Join(rootDir, "_trivy")
-			opts := getNewScanOptions(cacheDir, dbRepositoryRef, javaDBRepositoryRef)
+			opts := getNewScanOptions(cacheDir, dbRepositoryRef, javaDBRepositoryRef, sevSources)
 
 			subCveConfig[route] = opts
 		}
@@ -159,6 +185,7 @@ func NewScanner(storeController storage.StoreController,
 		cache:               cvecache.NewCveCache(cacheSize, log),
 		dbRepositoryRef:     dbRepositoryRef,
 		javaDBRepositoryRef: javaDBRepositoryRef,
+		vulnSeveritySources: sevSources,
 	}
 }
 

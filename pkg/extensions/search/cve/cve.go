@@ -12,6 +12,7 @@ import (
 	zerr "zotregistry.dev/zot/v2/errors"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/compat"
+	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	cvemodel "zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
 	"zotregistry.dev/zot/v2/pkg/extensions/search/cve/trivy"
 	"zotregistry.dev/zot/v2/pkg/log"
@@ -45,9 +46,9 @@ type BaseCveInfo struct {
 }
 
 func NewScanner(storeController storage.StoreController, metaDB mTypes.MetaDB,
-	dbRepository, javaDBRepository string, log log.Logger,
+	cveConfig *extconf.CVEConfig, log log.Logger,
 ) Scanner {
-	return trivy.NewScanner(storeController, metaDB, dbRepository, javaDBRepository, log)
+	return trivy.NewScanner(storeController, metaDB, cveConfig, log)
 }
 
 func NewCVEInfo(scanner Scanner, metaDB mTypes.MetaDB, log log.Logger) *BaseCveInfo {
