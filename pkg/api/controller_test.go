@@ -89,6 +89,9 @@ var (
 	LDAPBindDN       = "cn=reader," + LDAPBaseDN //nolint: gochecknoglobals
 	LDAPBindPassword = "ldappass"                //nolint: gochecknoglobals
 	LDAPUserAttr     = "uid"                     //nolint: gochecknoglobals
+
+	errTimedOutWaitingForControllerPort = goerrors.New("timed out waiting for controller port") //nolint: gochecknoglobals
+	errGetCertificateFailed             = goerrors.New("GetCertificate failed")                 //nolint: gochecknoglobals
 )
 
 // setupBearerAuthServerCerts generates CA and server certificates for bearer auth server testing
@@ -580,41 +583,39 @@ func TestAutoPortSelection(t *testing.T) {
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartServer()
-		time.Sleep(1000 * time.Millisecond)
+		So(waitForControllerPort(ctlr, 30*time.Second), ShouldBeNil)
+		cm.WaitServerToBeReady(strconv.Itoa(ctlr.GetPort()))
 
 		defer cm.StopServer()
 
-		scanner := bufio.NewScanner(logFile)
+		found, err := test.ReadLogFileAndSearchString(logFile.Name(), "port is unspecified", 30*time.Second)
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
 
-		var contents bytes.Buffer
-
-		start := time.Now()
-
-		for scanner.Scan() {
-			if time.Since(start) < time.Second*30 {
-				t.Logf("Exhausted: Controller did not print the expected log within 30 seconds")
-			}
-
-			text := scanner.Text()
-			contents.WriteString(text)
-
-			if strings.Contains(text, "Port unspecified") {
-				break
-			}
-
-			t.Logf("%s", scanner.Text())
-		}
-
-		So(scanner.Err(), ShouldBeNil)
-		So(contents.String(), ShouldContainSubstring,
+		contents, err := os.ReadFile(logFile.Name())
+		So(err, ShouldBeNil)
+		So(string(contents), ShouldContainSubstring,
 			"port is unspecified, listening on kernel chosen port",
 		)
-		So(contents.String(), ShouldContainSubstring, "\"address\":\"127.0.0.1\"")
-		So(contents.String(), ShouldContainSubstring, "\"port\":")
+		So(string(contents), ShouldContainSubstring, "\"address\":\"127.0.0.1\"")
+		So(string(contents), ShouldContainSubstring, "\"port\":")
 
 		So(ctlr.GetPort(), ShouldBeGreaterThan, 0)
 		So(ctlr.GetPort(), ShouldBeLessThan, 65536)
 	})
+}
+
+func waitForControllerPort(ctlr interface{ GetPort() int }, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+
+	for time.Now().Before(deadline) {
+		if p := ctlr.GetPort(); p > 0 {
+			return nil
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	return errTimedOutWaitingForControllerPort
 }
 
 func TestObjectStorageController(t *testing.T) {
@@ -7600,9 +7601,7 @@ func TestManifestValidation(t *testing.T) {
 		dir := t.TempDir()
 		ctlr := makeController(conf, dir)
 		cm := test.NewControllerManager(ctlr)
-		// this blocks
-		cm.StartServer()
-		time.Sleep(1000 * time.Millisecond)
+		cm.StartAndWait(port)
 
 		defer cm.StopServer()
 
@@ -7820,8 +7819,7 @@ func TestManifestDigestQueryTags(t *testing.T) {
 		dir := t.TempDir()
 		ctlr := makeController(conf, dir)
 		cm := test.NewControllerManager(ctlr)
-		cm.StartServer()
-		time.Sleep(1000 * time.Millisecond)
+		cm.StartAndWait(port)
 
 		defer cm.StopServer()
 
@@ -7957,9 +7955,7 @@ func TestArtifactReferences(t *testing.T) {
 		dir := t.TempDir()
 		ctlr := makeController(conf, dir)
 		cm := test.NewControllerManager(ctlr)
-		// this blocks
-		cm.StartServer()
-		time.Sleep(1000 * time.Millisecond)
+		cm.StartAndWait(port)
 
 		defer cm.StopServer()
 
@@ -14048,8 +14044,6 @@ func readTagsFromStorage(rootDir, repoName string, digest godigest.Digest) ([]st
 
 	return result, nil
 }
-
-var errGetCertificateFailed = goerrors.New("GetCertificate failed")
 
 func TestDynamicTLSCertificateReloading(t *testing.T) {
 	Convey("Test dynamic TLS certificate reloading", t, func() {

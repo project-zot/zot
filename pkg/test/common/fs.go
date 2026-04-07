@@ -179,19 +179,29 @@ func ReadLogFileAndSearchString(logPath string, stringToMatch string, timeout ti
 	ctx, cancelFunc := context.WithTimeout(context.Background(), timeout)
 	defer cancelFunc()
 
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return false, nil
 		default:
-			content, err := os.ReadFile(logPath)
-			if err != nil {
-				return false, err
-			}
+		}
 
-			if strings.Contains(string(content), stringToMatch) {
-				return true, nil
-			}
+		content, err := os.ReadFile(logPath)
+		if err != nil {
+			return false, err
+		}
+
+		if strings.Contains(string(content), stringToMatch) {
+			return true, nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return false, nil
+		case <-ticker.C:
 		}
 	}
 }
@@ -202,19 +212,29 @@ func ReadLogFileAndCountStringOccurence(logPath string, stringToMatch string,
 	ctx, cancelFunc := context.WithTimeout(context.Background(), timeout)
 	defer cancelFunc()
 
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return false, nil
 		default:
-			content, err := os.ReadFile(logPath)
-			if err != nil {
-				return false, err
-			}
+		}
 
-			if strings.Count(string(content), stringToMatch) >= count {
-				return true, nil
-			}
+		content, err := os.ReadFile(logPath)
+		if err != nil {
+			return false, err
+		}
+
+		if strings.Count(string(content), stringToMatch) >= count {
+			return true, nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return false, nil
+		case <-ticker.C:
 		}
 	}
 }
