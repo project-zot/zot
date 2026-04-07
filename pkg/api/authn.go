@@ -518,8 +518,10 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 	// Initialize authorizers based on configuration
 	var traditionalAuthorizer *BearerAuthorizer
 	if traditionalAuthorizerKeyFunc != nil {
+		tlsEnabled := ctlr.Config.HTTP.TLS != nil
+		realm := NormalizeBearerRealm(authConfig.Bearer.Realm, ctlr.Config.HTTP.Address+":"+ctlr.Config.HTTP.Port, tlsEnabled)
 		traditionalAuthorizer = NewBearerAuthorizer(
-			authConfig.Bearer.Realm,
+			realm,
 			authConfig.Bearer.Service,
 			traditionalAuthorizerKeyFunc,
 		)

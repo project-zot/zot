@@ -393,3 +393,52 @@ func TestBearerAuthorizerJWKSEdDSA(t *testing.T) {
 		})
 	})
 }
+
+func TestNormalizeBearerRealm(t *testing.T) {
+	Convey("NormalizeBearerRealm", t, func() {
+		Convey("Realm with https scheme is returned unchanged", func() {
+			result := api.NormalizeBearerRealm("https://auth.example.com/token", "127.0.0.1:5000", false)
+			So(result, ShouldEqual, "https://auth.example.com/token")
+		})
+
+		Convey("Realm with http scheme is returned unchanged", func() {
+			result := api.NormalizeBearerRealm("http://127.0.0.1:5001/auth", "127.0.0.1:5000", false)
+			So(result, ShouldEqual, "http://127.0.0.1:5001/auth")
+		})
+
+		Convey("Realm without scheme gets http:// prepended", func() {
+			result := api.NormalizeBearerRealm("127.0.0.1:5000/auth", "127.0.0.1:5000", false)
+			So(result, ShouldEqual, "http://127.0.0.1:5000/auth")
+		})
+
+		Convey("Plain word realm without scheme gets http:// prepended", func() {
+			result := api.NormalizeBearerRealm("zot", "127.0.0.1:5000", false)
+			So(result, ShouldEqual, "http://zot")
+		})
+
+		Convey("Realm with leading // gets http:// prepended (no double slash)", func() {
+			result := api.NormalizeBearerRealm("//auth.example.com/token", "127.0.0.1:5000", false)
+			So(result, ShouldEqual, "http://auth.example.com/token")
+		})
+
+		Convey("Empty realm falls back to http when TLS is disabled", func() {
+			result := api.NormalizeBearerRealm("", "127.0.0.1:5000", false)
+			So(result, ShouldEqual, "http://127.0.0.1:5000")
+		})
+
+		Convey("Empty realm falls back to https when TLS is enabled", func() {
+			result := api.NormalizeBearerRealm("", "registry.example.com", true)
+			So(result, ShouldEqual, "https://registry.example.com")
+		})
+
+		Convey("Empty realm with empty host falls back to localhost", func() {
+			result := api.NormalizeBearerRealm("", "", false)
+			So(result, ShouldEqual, "http://localhost")
+		})
+
+		Convey("Whitespace-only realm is treated as empty", func() {
+			result := api.NormalizeBearerRealm("   ", "127.0.0.1:5000", false)
+			So(result, ShouldEqual, "http://127.0.0.1:5000")
+		})
+	})
+}

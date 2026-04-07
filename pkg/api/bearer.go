@@ -3,8 +3,10 @@ package api
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -83,6 +85,40 @@ func NewBearerAuthorizer(realm string, service string, keyFunc BearerAuthorizerK
 		service: service,
 		keyFunc: keyFunc,
 	}
+}
+
+// NormalizeBearerRealm ensures the realm is an absolute URL with a scheme so that OCI clients
+// (e.g. crane) can parse the WWW-Authenticate Bearer challenge header.
+//
+//   - If realm already has an http or https scheme, it is returned unchanged.
+//   - If realm is non-empty but lacks a scheme, "http://" is prepended (suitable for insecure
+//     or local registries).
+//   - If realm is empty, a default realm derived from the request host is returned. When
+//     tlsEnabled is true the scheme is "https", otherwise "http".
+func NormalizeBearerRealm(realm string, requestHost string, tlsEnabled bool) string {
+	realm = strings.TrimSpace(realm)
+	if realm != "" {
+		if u, err := url.Parse(realm); err == nil && u.Scheme != "" {
+			// already has a valid scheme – return as-is
+			return realm
+		}
+
+		// missing scheme: strip any accidental leading "//" and prepend http
+		return "http://" + strings.TrimPrefix(realm, "//")
+	}
+
+	// realm is empty – derive a default from the request host
+	scheme := "http"
+	if tlsEnabled {
+		scheme = "https"
+	}
+
+	host := strings.TrimSpace(requestHost)
+	if host == "" {
+		host = "localhost"
+	}
+
+	return scheme + "://" + host
 }
 
 // Authorize verifies whether the bearer token in the given Authorization header is valid, and whether it has sufficient
