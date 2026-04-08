@@ -967,7 +967,8 @@ func TestServeSearchEnabledDefaultCVEDB(t *testing.T) {
 
 		// The default config handling logic will convert the 1h interval to a 2h interval
 		substring := "\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":7200000000000,\"Trivy\":" +
-			"{\"DBRepository\":\"ghcr.io/aquasecurity/trivy-db\",\"JavaDBRepository\":\"ghcr.io/aquasecurity/trivy-java-db\"}}}"
+			"{\"DBRepository\":\"ghcr.io/aquasecurity/trivy-db\",\"JavaDBRepository\":\"ghcr.io/aquasecurity/trivy-java-db\"," +
+			"\"VulnSeveritySources\":[\"auto\"]}}}"
 
 		found, err := ReadLogFileAndSearchString(logPath, substring, readLogFileTimeout)
 
@@ -985,6 +986,76 @@ func TestServeSearchEnabledDefaultCVEDB(t *testing.T) {
 		found, err = ReadLogFileAndSearchString(logPath, "updating cve-db", readLogFileTimeout)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
+	})
+
+	Convey("VulnSeveritySources defaults to [auto] when trivy block is empty", t, func(c C) {
+		cfg := config.New()
+
+		// mapstructure omits an all-empty CVE; at least updateInterval (or any non-zero cve/trivy
+		// field) must be present for CVE to unmarshal non-nil before defaults run.
+		content := `{
+				"storage": { "rootDirectory": "/tmp/zot" },
+				"http": { "address": "127.0.0.1", "port": "8080" },
+				"extensions": {
+					"search": {
+						"enable": true,
+						"cve": { "updateInterval": "24h", "trivy": { } }
+					}
+				}
+			}`
+		configPath := MakeTempFileWithContent(t, "zot-test.json", content)
+
+		err := cli.LoadConfiguration(cfg, configPath)
+		So(err, ShouldBeNil)
+
+		So(cfg.Extensions, ShouldNotBeNil)
+		So(cfg.Extensions.Search, ShouldNotBeNil)
+		So(cfg.Extensions.Search.CVE, ShouldNotBeNil)
+		So(cfg.Extensions.Search.CVE.Trivy, ShouldNotBeNil)
+		So(cfg.Extensions.Search.CVE.Trivy.VulnSeveritySources, ShouldResemble, []string{"auto"})
+	})
+
+	Convey("VulnSeveritySources respects explicit list", t, func(c C) {
+		cfg := config.New()
+
+		content := `{
+				"storage": { "rootDirectory": "/tmp/zot" },
+				"http": { "address": "127.0.0.1", "port": "8080" },
+				"extensions": {
+					"search": {
+						"enable": true,
+						"cve": { "trivy": { "vulnSeveritySources": ["nvd", "ghsa"] } }
+					}
+				}
+			}`
+		configPath := MakeTempFileWithContent(t, "zot-test.json", content)
+
+		err := cli.LoadConfiguration(cfg, configPath)
+		So(err, ShouldBeNil)
+
+		So(cfg.Extensions.Search.CVE.Trivy.VulnSeveritySources, ShouldResemble, []string{"nvd", "ghsa"})
+	})
+
+	Convey("CVE with only updateInterval (no trivy key) gets VulnSeveritySources [auto]", t, func(c C) {
+		cfg := config.New()
+
+		content := `{
+				"storage": { "rootDirectory": "/tmp/zot" },
+				"http": { "address": "127.0.0.1", "port": "8080" },
+				"extensions": {
+					"search": {
+						"enable": true,
+						"cve": { "updateInterval": "24h" }
+					}
+				}
+			}`
+		configPath := MakeTempFileWithContent(t, "zot-test.json", content)
+
+		err := cli.LoadConfiguration(cfg, configPath)
+		So(err, ShouldBeNil)
+
+		So(cfg.Extensions.Search.CVE.Trivy, ShouldNotBeNil)
+		So(cfg.Extensions.Search.CVE.Trivy.VulnSeveritySources, ShouldResemble, []string{"auto"})
 	})
 }
 

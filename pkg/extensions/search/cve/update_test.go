@@ -13,6 +13,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.dev/zot/v2/pkg/api/config"
+	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	cveinfo "zotregistry.dev/zot/v2/pkg/extensions/search/cve"
 	"zotregistry.dev/zot/v2/pkg/log"
@@ -55,7 +56,11 @@ func TestCVEDBGenerator(t *testing.T) {
 			},
 		}
 
-		cveScanner := cveinfo.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", logger)
+		cveScanner := cveinfo.NewScanner(storeController, metaDB, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository: "ghcr.io/project-zot/trivy-db",
+			},
+		}, logger)
 		generator := cveinfo.NewDBUpdateTaskGenerator(time.Minute, cveScanner, logger)
 
 		sch.SubmitGenerator(generator, 12000*time.Millisecond, scheduler.HighPriority)

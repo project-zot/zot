@@ -61,7 +61,11 @@ func TestScanBigTestFile(t *testing.T) {
 		cm.StartAndWait(port)
 		defer cm.StopServer()
 		// scan
-		scanner := trivy.NewScanner(ctlr.StoreController, ctlr.MetaDB, "ghcr.io/project-zot/trivy-db", "", ctlr.Log)
+		scanner := trivy.NewScanner(ctlr.StoreController, ctlr.MetaDB, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository: "ghcr.io/project-zot/trivy-db",
+			},
+		}, ctlr.Log)
 
 		err = scanner.UpdateDB(context.Background())
 		So(err, ShouldBeNil)
@@ -105,7 +109,11 @@ func TestScanningByDigest(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// scan
-		scanner := trivy.NewScanner(ctlr.StoreController, ctlr.MetaDB, "ghcr.io/project-zot/trivy-db", "", ctlr.Log)
+		scanner := trivy.NewScanner(ctlr.StoreController, ctlr.MetaDB, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository: "ghcr.io/project-zot/trivy-db",
+			},
+		}, ctlr.Log)
 
 		ctx := context.Background()
 
@@ -191,7 +199,11 @@ func TestVulnerableLayer(t *testing.T) {
 		err = meta.ParseStorage(metaDB, storeController, log)
 		So(err, ShouldBeNil)
 
-		scanner := trivy.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", log)
+		scanner := trivy.NewScanner(storeController, metaDB, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository: "ghcr.io/project-zot/trivy-db",
+			},
+		}, log)
 
 		err = scanner.UpdateDB(context.Background())
 		So(err, ShouldBeNil)
@@ -262,8 +274,12 @@ func TestVulnerableLayer(t *testing.T) {
 		err = meta.ParseStorage(metaDB, storeController, log)
 		So(err, ShouldBeNil)
 
-		scanner := trivy.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db",
-			"ghcr.io/project-zot/trivy-java-db", log)
+		scanner := trivy.NewScanner(storeController, metaDB, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository:     "ghcr.io/project-zot/trivy-db",
+				JavaDBRepository: "ghcr.io/project-zot/trivy-java-db",
+			},
+		}, log)
 
 		err = scanner.UpdateDB(context.Background())
 		So(err, ShouldBeNil)
@@ -343,7 +359,11 @@ func TestWithTempDirErrorHandling(t *testing.T) {
 		err = meta.ParseStorage(metaDB, storeController, log)
 		So(err, ShouldBeNil)
 
-		scanner := trivy.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", log)
+		scanner := trivy.NewScanner(storeController, metaDB, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository: "ghcr.io/project-zot/trivy-db",
+			},
+		}, log)
 
 		// Clean up any existing temp directory first
 		_ = xos.Cleanup()
@@ -420,12 +440,20 @@ func TestScannerErrors(t *testing.T) {
 		metaDB := mocks.MetaDBMock{}
 		log := log.NewTestLogger()
 
+		testTrivyCVEConfig := func() *extconf.CVEConfig {
+			return &extconf.CVEConfig{
+				Trivy: &extconf.TrivyConfig{
+					DBRepository: "ghcr.io/project-zot/trivy-db",
+				},
+			}
+		}
+
 		Convey("IsImageFormatScannable", func() {
 			storeController.DefaultStore = mocks.MockedImageStore{}
 			metaDB.GetImageMetaFn = func(digest godigest.Digest) (types.ImageMeta, error) {
 				return types.ImageMeta{}, ErrTestError
 			}
-			scanner := trivy.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", log)
+			scanner := trivy.NewScanner(storeController, metaDB, testTrivyCVEConfig(), log)
 
 			_, err := scanner.IsImageFormatScannable("repo", godigest.FromString("dig").String())
 			So(err, ShouldNotBeNil)
@@ -435,7 +463,7 @@ func TestScannerErrors(t *testing.T) {
 			metaDB.GetImageMetaFn = func(digest godigest.Digest) (types.ImageMeta, error) {
 				return types.ImageMeta{}, ErrTestError
 			}
-			scanner := trivy.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", log)
+			scanner := trivy.NewScanner(storeController, metaDB, testTrivyCVEConfig(), log)
 
 			Convey("Manifest", func() {
 				_, err := scanner.IsImageMediaScannable("repo", godigest.FromString("dig").String(), ispec.MediaTypeImageManifest)
@@ -449,7 +477,7 @@ func TestScannerErrors(t *testing.T) {
 				metaDB.GetImageMetaFn = func(digest godigest.Digest) (types.ImageMeta, error) {
 					return types.ImageMeta{}, nil
 				}
-				scanner := trivy.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", log)
+				scanner := trivy.NewScanner(storeController, metaDB, testTrivyCVEConfig(), log)
 
 				_, err := scanner.IsImageMediaScannable("repo", godigest.FromString("dig").String(), ispec.MediaTypeImageIndex)
 				So(err, ShouldNotBeNil)
@@ -465,7 +493,7 @@ func TestScannerErrors(t *testing.T) {
 						}}},
 					}, nil
 				}
-				scanner := trivy.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", log)
+				scanner := trivy.NewScanner(storeController, metaDB, testTrivyCVEConfig(), log)
 
 				_, err := scanner.IsImageMediaScannable("repo", godigest.FromString("dig").String(), ispec.MediaTypeImageIndex)
 				So(err, ShouldBeNil)
@@ -477,7 +505,7 @@ func TestScannerErrors(t *testing.T) {
 				return types.ImageMeta{}, ErrTestError
 			}
 
-			scanner := trivy.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", log)
+			scanner := trivy.NewScanner(storeController, metaDB, testTrivyCVEConfig(), log)
 
 			_, err := scanner.ScanImage(context.Background(), "image@"+godigest.FromString("digest").String())
 			So(err, ShouldNotBeNil)

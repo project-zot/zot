@@ -32,6 +32,7 @@ Examples of working configurations for various use cases are available [here](..
   - [Storage Drivers](#storage-drivers)
     - [Specifying S3 credentials](#specifying-s3-credentials)
   - [Sync](#sync)
+  - [Search and CVE scanning (Trivy)](#search-and-cve-scanning-trivy)
 
 
 ## Network
@@ -1164,3 +1165,18 @@ sync can also read the certificates directly under certDir:
 ### Sync's credentials
 
 Besides sync-auth.json file, zot also reads and uses docker credentials by default: https://docs.docker.com/reference/cli/docker/login/#description
+
+## Search and CVE scanning (Trivy)
+
+The `search` extension can include a `cve` section so zot downloads the [Trivy](https://github.com/aquasecurity/trivy) vulnerability database and exposes CVE data via the search API (for example GraphQL).
+
+A minimal configuration only sets how often the DB is refreshed; zot applies defaults for Trivy DB locations and severity selection:
+
+- [config-cve.json](config-cve.json) — `updateInterval` only; defaults are applied for the Trivy DB, Java DB (for language packages), and `vulnSeveritySources`.
+
+To set those options explicitly (for example to mirror standalone Trivy’s `--vuln-severity-source` behavior), use a `trivy` object under `cve`:
+
+- [config-cve-trivy.json](config-cve-trivy.json) — shows optional `dbRepository`, `javaDBRepository`, and `vulnSeveritySources`.
+
+`vulnSeveritySources` is a list of source names in priority order (for example `auto`, `nvd`, or vendor IDs such as `redhat`, `alpine`). If omitted, zot defaults it to `["auto"]`, consistent with the Trivy CLI. See [Trivy: severity selection](https://trivy.dev/docs/latest/scanner/vulnerability/#severity-selection).
+

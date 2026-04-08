@@ -702,8 +702,9 @@ func TestRepoListWithNewestImage(t *testing.T) {
 
 		defer ctlr.Shutdown()
 
+		// Match a stable prefix; config logging may include additional Trivy fields (e.g. severity sources).
 		substring := "{\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":3600000000000," +
-			"\"Trivy\":{\"DBRepository\":\"ghcr.io/project-zot/trivy-db\",\"JavaDBRepository\":\"\"}}}"
+			"\"Trivy\":{\"DBRepository\":\"ghcr.io/project-zot/trivy-db\",\"JavaDBRepository\":\"\""
 		found, err := readFileAndSearchString(logPath, substring, 2*time.Minute)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
@@ -3667,8 +3668,9 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		defer ctlr.Shutdown()
 
 		// Wait for trivy db to download
+		// Match a stable prefix; config logging may include additional Trivy fields (e.g. severity sources).
 		substring := "{\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":3600000000000," +
-			"\"Trivy\":{\"DBRepository\":\"ghcr.io/project-zot/trivy-db\",\"JavaDBRepository\":\"\"}}}"
+			"\"Trivy\":{\"DBRepository\":\"ghcr.io/project-zot/trivy-db\",\"JavaDBRepository\":\"\""
 		found, err := readFileAndSearchString(logPath, substring, 2*time.Minute)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
