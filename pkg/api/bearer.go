@@ -98,12 +98,12 @@ func NewBearerAuthorizer(realm string, service string, keyFunc BearerAuthorizerK
 func NormalizeBearerRealm(realm string, requestHost string, tlsEnabled bool) string {
 	realm = strings.TrimSpace(realm)
 	if realm != "" {
-		if u, err := url.Parse(realm); err == nil && u.Scheme != "" {
-			// already has a valid scheme – return as-is
+		if u, err := url.Parse(realm); err == nil && (u.Scheme == "http" || u.Scheme == "https") {
+			// already has a valid http/https scheme – return as-is
 			return realm
 		}
 
-		// missing scheme: strip any accidental leading "//" and prepend http
+		// missing or non-http(s) scheme: strip any accidental leading "//" and prepend http
 		return "http://" + strings.TrimPrefix(realm, "//")
 	}
 

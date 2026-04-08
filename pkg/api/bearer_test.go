@@ -411,6 +411,11 @@ func TestNormalizeBearerRealm(t *testing.T) {
 			So(result, ShouldEqual, "http://127.0.0.1:5000/auth")
 		})
 
+		Convey("Hostname-with-port realm (may be parsed as opaque URL) gets http:// prepended", func() {
+			result := api.NormalizeBearerRealm("auth.example.com:5000/token", "127.0.0.1:5000", false)
+			So(result, ShouldEqual, "http://auth.example.com:5000/token")
+		})
+
 		Convey("Plain word realm without scheme gets http:// prepended", func() {
 			result := api.NormalizeBearerRealm("zot", "127.0.0.1:5000", false)
 			So(result, ShouldEqual, "http://zot")
