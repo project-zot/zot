@@ -519,11 +519,15 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 	var traditionalAuthorizer *BearerAuthorizer
 	if traditionalAuthorizerKeyFunc != nil {
 		tlsEnabled := ctlr.Config.HTTP.TLS != nil
+		requestAddress := ctlr.Config.HTTP.Address
+		if requestAddress == "" {
+			requestAddress = "localhost"
+		}
 		var requestHost string
 		if ctlr.Config.HTTP.Port != "" {
-			requestHost = net.JoinHostPort(ctlr.Config.HTTP.Address, ctlr.Config.HTTP.Port)
+			requestHost = net.JoinHostPort(requestAddress, ctlr.Config.HTTP.Port)
 		} else {
-			requestHost = ctlr.Config.HTTP.Address
+			requestHost = requestAddress
 		}
 		realm := NormalizeBearerRealm(authConfig.Bearer.Realm, requestHost, tlsEnabled)
 		traditionalAuthorizer = NewBearerAuthorizer(
