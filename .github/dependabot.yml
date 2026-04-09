@@ -12,6 +12,10 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+    groups:
+      go-dependencies:
+        patterns:
+          - "*"
   - package-ecosystem: "github-actions"
     directory: "/"
     open-pull-requests-limit: 10
@@ -20,3 +24,7 @@ updates:
       day: "monday"
     cooldown:
       default-days: 14
+    groups:
+      github-actions:
+        patterns:
+          - "*"
