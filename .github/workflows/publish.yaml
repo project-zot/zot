@@ -129,7 +129,7 @@ jobs:
           cd $GITHUB_WORKSPACE
           make check-blackbox-prerequisites
           export PATH=${PATH}:${GITHUB_WORKSPACE}/hack/tools/bin
-          ./scripts/build_multiarch_image.sh --registry ghcr.io/${{ github.repository_owner }} \
+          ./scripts/build_multiarch_image.sh --registry ghcr.io/${GITHUB_REPOSITORY_OWNER} \
             --source-tag ${GITHUB_EVENT_RELEASE_TAG_NAME} \
             --destination-tags "${GITHUB_EVENT_RELEASE_TAG_NAME} latest" \
             --file build/multiarch-${{ matrix.image }}.json
@@ -151,7 +151,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Run zot container image with docker
         run: |
-          docker run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot:${GITHUB_EVENT_RELEASE_TAG_NAME}
+          docker run -d -p 5000:5000 ghcr.io/${GITHUB_REPOSITORY_OWNER}/zot:${GITHUB_EVENT_RELEASE_TAG_NAME}
           sleep 2
           curl --connect-timeout 5 \
             --max-time 10 \
@@ -164,7 +164,7 @@ jobs:
           GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Run zot container image with podman
         run: |
-          podman run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot:${GITHUB_EVENT_RELEASE_TAG_NAME}
+          podman run -d -p 5000:5000 ghcr.io/${GITHUB_REPOSITORY_OWNER}/zot:${GITHUB_EVENT_RELEASE_TAG_NAME}
           sleep 2
           curl --connect-timeout 5 \
             --max-time 10 \
@@ -177,7 +177,7 @@ jobs:
           GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Run zot-minimal container image with docker
         run: |
-          docker run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot-minimal:${GITHUB_EVENT_RELEASE_TAG_NAME}
+          docker run -d -p 5000:5000 ghcr.io/${GITHUB_REPOSITORY_OWNER}/zot-minimal:${GITHUB_EVENT_RELEASE_TAG_NAME}
           sleep 2
           curl --connect-timeout 5 \
             --max-time 10 \
@@ -190,7 +190,7 @@ jobs:
           GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Run zot-minimal container image with podman
         run: |
-          podman run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot-minimal:${GITHUB_EVENT_RELEASE_TAG_NAME}
+          podman run -d -p 5000:5000 ghcr.io/${GITHUB_REPOSITORY_OWNER}/zot-minimal:${GITHUB_EVENT_RELEASE_TAG_NAME}
           sleep 2
           curl --connect-timeout 5 \
             --max-time 10 \
@@ -203,7 +203,7 @@ jobs:
           GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Run zot-exporter container image with docker
         run: |
-          docker run -d -p 5001:5001 ghcr.io/${{ github.repository_owner }}/zxp:${GITHUB_EVENT_RELEASE_TAG_NAME}
+          docker run -d -p 5001:5001 ghcr.io/${GITHUB_REPOSITORY_OWNER}/zxp:${GITHUB_EVENT_RELEASE_TAG_NAME}
           sleep 2
           curl --connect-timeout 5 \
             --max-time 10 \
@@ -216,7 +216,7 @@ jobs:
           GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Run zot-exporter container image with podman
         run: |
-          podman run -d -p 5001:5001 ghcr.io/${{ github.repository_owner }}/zxp:${GITHUB_EVENT_RELEASE_TAG_NAME}
+          podman run -d -p 5001:5001 ghcr.io/${GITHUB_REPOSITORY_OWNER}/zxp:${GITHUB_EVENT_RELEASE_TAG_NAME}
           sleep 2
           curl --connect-timeout 5 \
             --max-time 10 \
@@ -229,12 +229,12 @@ jobs:
           GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Run zb container image with docker
         run: |
-          docker run ghcr.io/${{ github.repository_owner }}/zb:${GITHUB_EVENT_RELEASE_TAG_NAME} --help
+          docker run ghcr.io/${GITHUB_REPOSITORY_OWNER}/zb:${GITHUB_EVENT_RELEASE_TAG_NAME} --help
         env:
           GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Run zb container image with podman
         run: |
-          podman run ghcr.io/${{ github.repository_owner }}/zb:${GITHUB_EVENT_RELEASE_TAG_NAME} --help
+          podman run ghcr.io/${GITHUB_REPOSITORY_OWNER}/zb:${GITHUB_EVENT_RELEASE_TAG_NAME} --help
         env:
           GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
 
@@ -339,7 +339,7 @@ jobs:
           fetch-depth: '0'
           token: ${{ secrets.HELM_PUSH_TOKEN }}
           path: ./helm-charts
-          persist-credentials: false
+          persist-credentials: true
 
       - name: Configure Git
         run: |
