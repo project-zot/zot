@@ -130,9 +130,11 @@ jobs:
           make check-blackbox-prerequisites
           export PATH=${PATH}:${GITHUB_WORKSPACE}/hack/tools/bin
           ./scripts/build_multiarch_image.sh --registry ghcr.io/${{ github.repository_owner }} \
-            --source-tag ${{ github.event.release.tag_name }} \
-            --destination-tags "${{ github.event.release.tag_name }} latest" \
+            --source-tag ${GITHUB_EVENT_RELEASE_TAG_NAME} \
+            --destination-tags "${GITHUB_EVENT_RELEASE_TAG_NAME} latest" \
             --file build/multiarch-${{ matrix.image }}.json
+        env:
+          GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
 
   test-image:
     name: Test OCI images published to GitHub Packages
@@ -149,7 +151,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Run zot container image with docker
         run: |
-          docker run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot:${{ github.event.release.tag_name }}
+          docker run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot:${GITHUB_EVENT_RELEASE_TAG_NAME}
           sleep 2
           curl --connect-timeout 5 \
             --max-time 10 \
@@ -158,9 +160,11 @@ jobs:
             --retry-connrefused \
             'http://localhost:5000/v2/'
           docker kill $(docker ps -q)
+        env:
+          GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Run zot container image with podman
         run: |
-          podman run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot:${{ github.event.release.tag_name }}
+          podman run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot:${GITHUB_EVENT_RELEASE_TAG_NAME}
           sleep 2
           curl --connect-timeout 5 \
             --max-time 10 \
@@ -169,9 +173,11 @@ jobs:
             --retry-connrefused \
             'http://localhost:5000/v2/'
           podman kill --all
+        env:
+          GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Run zot-minimal container image with docker
         run: |
-          docker run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot-minimal:${{ github.event.release.tag_name }}
+          docker run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot-minimal:${GITHUB_EVENT_RELEASE_TAG_NAME}
           sleep 2
           curl --connect-timeout 5 \
             --max-time 10 \
@@ -180,9 +186,11 @@ jobs:
             --retry-connrefused \
             'http://localhost:5000/v2/'
           docker kill $(docker ps -q)
+        env:
+          GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Run zot-minimal container image with podman
         run: |
-          podman run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot-minimal:${{ github.event.release.tag_name }}
+          podman run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot-minimal:${GITHUB_EVENT_RELEASE_TAG_NAME}
           sleep 2
           curl --connect-timeout 5 \
             --max-time 10 \
@@ -191,9 +199,11 @@ jobs:
             --retry-connrefused \
             'http://localhost:5000/v2/'
           podman kill --all
+        env:
+          GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Run zot-exporter container image with docker
         run: |
-          docker run -d -p 5001:5001 ghcr.io/${{ github.repository_owner }}/zxp:${{ github.event.release.tag_name }}
+          docker run -d -p 5001:5001 ghcr.io/${{ github.repository_owner }}/zxp:${GITHUB_EVENT_RELEASE_TAG_NAME}
           sleep 2
           curl --connect-timeout 5 \
             --max-time 10 \
@@ -202,9 +212,11 @@ jobs:
             --retry-connrefused \
             'http://localhost:5001/metrics'
           docker kill $(docker ps -q)
+        env:
+          GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Run zot-exporter container image with podman
         run: |
-          podman run -d -p 5001:5001 ghcr.io/${{ github.repository_owner }}/zxp:${{ github.event.release.tag_name }}
+          podman run -d -p 5001:5001 ghcr.io/${{ github.repository_owner }}/zxp:${GITHUB_EVENT_RELEASE_TAG_NAME}
           sleep 2
           curl --connect-timeout 5 \
             --max-time 10 \
@@ -213,12 +225,18 @@ jobs:
             --retry-connrefused \
             'http://localhost:5001/metrics'
           podman kill --all
+        env:
+          GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Run zb container image with docker
         run: |
-          docker run ghcr.io/${{ github.repository_owner }}/zb:${{ github.event.release.tag_name }} --help
+          docker run ghcr.io/${{ github.repository_owner }}/zb:${GITHUB_EVENT_RELEASE_TAG_NAME} --help
+        env:
+          GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Run zb container image with podman
         run: |
-          podman run ghcr.io/${{ github.repository_owner }}/zb:${{ github.event.release.tag_name }} --help
+          podman run ghcr.io/${{ github.repository_owner }}/zb:${GITHUB_EVENT_RELEASE_TAG_NAME} --help
+        env:
+          GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
 
   scan-image:
     name: Run Trivy scan on OCI images published to GitHub Packages
