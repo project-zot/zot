@@ -27,17 +27,17 @@ jobs:
             echo "BASE_IMAGE=gcr.io/distroless/base-nossl-debian13:latest-${ARCH}" >> "$GITHUB_ENV"
           fi
       - name: Check out the repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
       - name: Log in to GitHub Docker Registry
-        uses: docker/login-action@v4
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push zot container image
-        uses: project-stacker/stacker-build-push-action@main
+        uses: project-stacker/stacker-build-push-action@093acb5ad50bed0012616f46fdba73a8a7169db7 # main
         with:
           version: v1.1.0-rc3
           file: 'build/stacker.yaml'
@@ -53,7 +53,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push zot-minimal container image
-        uses: project-stacker/stacker-build-push-action@main
+        uses: project-stacker/stacker-build-push-action@093acb5ad50bed0012616f46fdba73a8a7169db7 # main
         with:
           version: v1.1.0-rc3
           file: 'build/stacker-minimal.yaml'
@@ -70,7 +70,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push zot-exporter container image
-        uses: project-stacker/stacker-build-push-action@main
+        uses: project-stacker/stacker-build-push-action@093acb5ad50bed0012616f46fdba73a8a7169db7 # main
         with:
           version: v1.1.0-rc3
           file: 'build/stacker-zxp.yaml'
@@ -86,7 +86,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push zb container image
-        uses: project-stacker/stacker-build-push-action@main
+        uses: project-stacker/stacker-build-push-action@093acb5ad50bed0012616f46fdba73a8a7169db7 # main
         with:
           version: v1.1.0-rc3
           file: 'build/stacker-zb.yaml'
@@ -114,11 +114,11 @@ jobs:
         image: [zot, zot-minimal, zxp, zb]
     steps:
       - name: Check out the repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
       - name: Log in to GitHub Docker Registry
-        uses: docker/login-action@v4
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -144,7 +144,7 @@ jobs:
       packages: read
     steps:
       - name: Log in to GitHub Docker Registry
-        uses: docker/login-action@v4
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -251,13 +251,13 @@ jobs:
         arch: [amd64, arm64]
     steps:
       - name: Log in to GitHub Docker Registry
-        uses: docker/login-action@v4
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@57a97c7
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 57a97c7
         with:
           image-ref: 'ghcr.io/${{ github.repository_owner }}/zot-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}'
           format: 'sarif'
@@ -266,7 +266,7 @@ jobs:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
       - name: Run Trivy vulnerability scanner (minimal)
-        uses: aquasecurity/trivy-action@57a97c7
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 57a97c7
         with:
           image-ref: 'ghcr.io/${{ github.repository_owner }}/zot-minimal-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}'
           format: 'sarif'
@@ -275,7 +275,7 @@ jobs:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v4.35.1
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
         with:
           sarif_file: 'trivy-results.sarif'
 
@@ -288,13 +288,13 @@ jobs:
       packages: read
     steps:
       - name: Log in to GitHub Docker Registry
-        uses: docker/login-action@v4
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@57a97c7
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 57a97c7
         with:
           image-ref: 'ghcr.io/${{ github.repository_owner }}/zot:${{ github.event.release.tag_name }}'
           format: 'sarif'
@@ -303,7 +303,7 @@ jobs:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
       - name: Run Trivy vulnerability scanner (minimal)
-        uses: aquasecurity/trivy-action@57a97c7
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 57a97c7
         with:
           image-ref: 'ghcr.io/${{ github.repository_owner }}/zot-minimal:${{ github.event.release.tag_name }}'
           format: 'sarif'
@@ -312,7 +312,7 @@ jobs:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v4.35.1
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
         with:
           sarif_file: 'trivy-results.sarif'
 
@@ -325,14 +325,14 @@ jobs:
       packages: write
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: main
           fetch-depth: '0'
           persist-credentials: false
 
       - name: Checkout project-zot/helm-charts
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: project-zot/helm-charts
           ref: main
@@ -346,13 +346,13 @@ jobs:
           git config --global user.name 'github-actions'
           git config --global user.email 'github-actions@users.noreply.github.com'
       - name: Update appVersion
-        uses: mikefarah/yq@master
+        uses: mikefarah/yq@3b2423e8713e34e93ee68ddc253cea8d040b48ae # master
         with:
           cmd: yq -i '.appVersion = strenv(RELEASE_TAG)' 'helm-charts/charts/zot/Chart.yaml'
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
       - name: Update image tag
-        uses: mikefarah/yq@master
+        uses: mikefarah/yq@3b2423e8713e34e93ee68ddc253cea8d040b48ae # master
         with:
           cmd: |
             yq e '.image.tag = strenv(RELEASE_TAG)' 'helm-charts/charts/zot/values.yaml' > values-updated.yaml

@@ -16,10 +16,10 @@ jobs:
     name: Stateless zot with minio and boltdb
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           cache: false
           check-latest: true
@@ -104,7 +104,7 @@ jobs:
             sed -i 's/\/dev\/null/\/tmp\/zot3.log/g' test/cluster/config-minio3.json
 
       - name: Free up disk space
-        uses: jlumbroso/free-disk-space@main
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # main
         with:
           # This might remove tools that are actually needed, if set to "true" but frees about 6 GB
           tool-cache: true
@@ -164,7 +164,7 @@ jobs:
             rm /tmp/*.log
 
       - name: Upload zot logs for push-pull tests
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
           name: logs-push-pull-bolt
@@ -206,7 +206,7 @@ jobs:
             rm /tmp/*.log
 
       - name: Upload zot logs for cidr tests
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
           name: logs-src-cidr-bolt
@@ -241,7 +241,7 @@ jobs:
             zip logs-src-ips-bolt.zip /tmp/*.log -r
 
       - name: Upload zot logs for src-ips tests
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
           name: logs-src-ips-bolt
@@ -250,13 +250,13 @@ jobs:
 
       # Download previous benchmark result from cache (if exists)
       - name: Download previous benchmark data
-        uses: actions/cache@v5
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: ./cache
           key: ${{ runner.os }}-gen1-benchmark-stateless-cluster
       # Run `github-action-benchmark` action
       - name: Store benchmark result
-        uses: benchmark-action/github-action-benchmark@v1.22.0
+        uses: benchmark-action/github-action-benchmark@a60cea5bc7b49e15c1f58f411161f99e0df48372 # v1.22.0
         with:
           # What benchmark tool the output.txt came from
           tool: 'customBiggerIsBetter'
@@ -274,10 +274,10 @@ jobs:
     name: Stateless zot with minio and redis
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           cache: false
           check-latest: true
@@ -371,7 +371,7 @@ jobs:
             sed -i 's/\/dev\/null/\/tmp\/zot3.log/g' test/cluster/config-minio3.json
 
       - name: Free up disk space
-        uses: jlumbroso/free-disk-space@main
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # main
         with:
           # This might remove tools that are actually needed, if set to "true" but frees about 6 GB
           tool-cache: true
@@ -431,7 +431,7 @@ jobs:
             rm /tmp/*.log
 
       - name: Upload zot logs for push-pull tests
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
           name: logs-push-pull-redis
@@ -473,7 +473,7 @@ jobs:
             rm /tmp/*.log
 
       - name: Upload zot logs for cidr tests
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
           name: logs-src-cidr-redis
@@ -508,7 +508,7 @@ jobs:
             zip logs-src-ips-redis.zip /tmp/*.log -r
 
       - name: Upload zot logs for src-ips tests
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
           name: logs-src-ips-redis
@@ -517,13 +517,13 @@ jobs:
 
       # Download previous benchmark result from cache (if exists)
       - name: Download previous benchmark data
-        uses: actions/cache@v5
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: ./cache
           key: ${{ runner.os }}-gen1-benchmark-stateless-cluster-redis
       # Run `github-action-benchmark` action
       - name: Store benchmark result
-        uses: benchmark-action/github-action-benchmark@v1.22.0
+        uses: benchmark-action/github-action-benchmark@a60cea5bc7b49e15c1f58f411161f99e0df48372 # v1.22.0
         with:
           # What benchmark tool the output.txt came from
           tool: 'customBiggerIsBetter'
