@@ -348,12 +348,16 @@ jobs:
       - name: Update appVersion
         uses: mikefarah/yq@master
         with:
-          cmd: yq -i '.appVersion = "${{ github.event.release.tag_name }}"' 'helm-charts/charts/zot/Chart.yaml'
+          cmd: yq -i '.appVersion = strenv(RELEASE_TAG)' 'helm-charts/charts/zot/Chart.yaml'
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
       - name: Update image tag
         uses: mikefarah/yq@master
         with:
           cmd: |
-            yq e '.image.tag = "${{ github.event.release.tag_name }}"' 'helm-charts/charts/zot/values.yaml' > values-updated.yaml
+            yq e '.image.tag = strenv(RELEASE_TAG)' 'helm-charts/charts/zot/values.yaml' > values-updated.yaml
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
       - name: Patch values.yaml file
         run: |
           diff -b 'helm-charts/charts/zot/values.yaml' values-updated.yaml > values.diff || true
