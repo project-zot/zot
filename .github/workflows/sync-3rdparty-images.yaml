@@ -45,6 +45,7 @@ jobs:
           sparse-checkout: |
             Makefile
           sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Copy trivy-db using oras cli
         run: |
           # setup oras

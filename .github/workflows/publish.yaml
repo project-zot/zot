@@ -28,6 +28,8 @@ jobs:
           fi
       - name: Check out the repo
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Log in to GitHub Docker Registry
         uses: docker/login-action@v4
         with:
@@ -113,6 +115,8 @@ jobs:
     steps:
       - name: Check out the repo
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Log in to GitHub Docker Registry
         uses: docker/login-action@v4
         with:
@@ -307,6 +311,7 @@ jobs:
         with:
           ref: main
           fetch-depth: '0'
+          persist-credentials: false
 
       - name: Checkout project-zot/helm-charts
         uses: actions/checkout@v6
@@ -316,6 +321,7 @@ jobs:
           fetch-depth: '0'
           token: ${{ secrets.HELM_PUSH_TOKEN }}
           path: ./helm-charts
+          persist-credentials: false
 
       - name: Configure Git
         run: |

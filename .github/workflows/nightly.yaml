@@ -19,6 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v6
         with:
           check-latest: true
@@ -53,6 +55,8 @@ jobs:
     steps:
       - name: Check out source code
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v6
         with:
           check-latest: true
@@ -71,6 +75,8 @@ jobs:
     runs-on: oracle-vm-16cpu-64gb-x86-64
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v6
         with:
           cache: false
@@ -115,6 +121,8 @@ jobs:
     runs-on: oracle-vm-16cpu-64gb-x86-64
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v6
         with:
           cache: false
@@ -159,8 +167,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Check out source code
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/clean-runner
       - name: Build image
         run: |
@@ -171,6 +183,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v6
         with:
           check-latest: true
@@ -206,6 +220,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v6
         with:
           check-latest: true
@@ -233,6 +249,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v6
         with:
           check-latest: true
@@ -249,6 +267,8 @@ jobs:
     runs-on: oracle-vm-16cpu-64gb-x86-64
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v6
         with:
           cache: false
@@ -318,6 +338,8 @@ jobs:
     runs-on: oracle-vm-16cpu-64gb-x86-64
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v6
         with:
           cache: false
