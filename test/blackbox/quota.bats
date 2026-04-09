@@ -5,6 +5,11 @@
 load helpers_zot
 load ../port_helper
 
+# Minimal valid OCI manifest used to probe the quota middleware directly via curl.
+# The quota middleware rejects manifest PUTs for new repos before content validation,
+# so the config blob referenced here does not need to exist in the registry.
+MINIMAL_MANIFEST='{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","config":{"mediaType":"application/vnd.oci.image.config.v1+json","digest":"sha256:44136fa355ba77b9ad7b468a8c5e4f9b85d40e49c15ebd6a4e40ac9eb25c6a80","size":2},"layers":[]}'
+
 function verify_prerequisites {
     if [ ! $(command -v curl) ]; then
         echo "you need to install curl as a prerequisite to running the tests" >&3
@@ -89,7 +94,6 @@ function teardown_file() {
 @test "push manifest to new repo3 returns HTTP 429 when quota is reached" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     # Push a minimal OCI manifest; the quota middleware rejects it before content validation
-    MINIMAL_MANIFEST='{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","config":{"mediaType":"application/vnd.oci.image.config.v1+json","digest":"sha256:44136fa355ba77b9ad7b468a8c5e4f9b85d40e49c15ebd6a4e40ac9eb25c6a80","size":2},"layers":[]}'
     run curl -s -o /dev/null -w "%{http_code}" \
         -X PUT \
         -H "Content-Type: application/vnd.oci.image.manifest.v1+json" \
@@ -101,7 +105,6 @@ function teardown_file() {
 
 @test "429 response body contains TOOMANYREQUESTS code and limit detail" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
-    MINIMAL_MANIFEST='{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","config":{"mediaType":"application/vnd.oci.image.config.v1+json","digest":"sha256:44136fa355ba77b9ad7b468a8c5e4f9b85d40e49c15ebd6a4e40ac9eb25c6a80","size":2},"layers":[]}'
     run curl -s \
         -X PUT \
         -H "Content-Type: application/vnd.oci.image.manifest.v1+json" \
