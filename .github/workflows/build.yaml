@@ -122,7 +122,7 @@ jobs:
           tag: ${{ github.ref_name }}
           fileName: "z*"
       - name: Generate checksum
-        uses: jmgilman/actions-generate-checksum@238073f4c02f2810adb91c96bdd1e276a5ae9ed6 # v1
+        uses: jmgilman/actions-generate-checksum@3ea6dc9bf8eecf28e2ecc982fab683484a1a8561 # v1.0.1
         with:
           patterns: z*
           method: sha256

@@ -346,13 +346,13 @@ jobs:
           git config --global user.name 'github-actions'
           git config --global user.email 'github-actions@users.noreply.github.com'
       - name: Update appVersion
-        uses: mikefarah/yq@3b2423e8713e34e93ee68ddc253cea8d040b48ae # master
+        uses: mikefarah/yq@0f4fb8d35ec1a939d78dd6862f494d19ec589f19 # v4.52.5
         with:
           cmd: yq -i '.appVersion = strenv(RELEASE_TAG)' 'helm-charts/charts/zot/Chart.yaml'
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
       - name: Update image tag
-        uses: mikefarah/yq@3b2423e8713e34e93ee68ddc253cea8d040b48ae # master
+        uses: mikefarah/yq@0f4fb8d35ec1a939d78dd6862f494d19ec589f19 # v4.52.5
         with:
           cmd: |
             yq e '.image.tag = strenv(RELEASE_TAG)' 'helm-charts/charts/zot/values.yaml' > values-updated.yaml
