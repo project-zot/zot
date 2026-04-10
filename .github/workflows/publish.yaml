@@ -27,15 +27,17 @@ jobs:
             echo "BASE_IMAGE=gcr.io/distroless/base-nossl-debian13:latest-${ARCH}" >> "$GITHUB_ENV"
           fi
       - name: Check out the repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
       - name: Log in to GitHub Docker Registry
-        uses: docker/login-action@v4
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push zot container image
-        uses: project-stacker/stacker-build-push-action@main
+        uses: project-stacker/stacker-build-push-action@093acb5ad50bed0012616f46fdba73a8a7169db7 # main
         with:
           version: v1.1.0-rc3
           file: 'build/stacker.yaml'
@@ -51,7 +53,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push zot-minimal container image
-        uses: project-stacker/stacker-build-push-action@main
+        uses: project-stacker/stacker-build-push-action@093acb5ad50bed0012616f46fdba73a8a7169db7 # main
         with:
           version: v1.1.0-rc3
           file: 'build/stacker-minimal.yaml'
@@ -68,7 +70,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push zot-exporter container image
-        uses: project-stacker/stacker-build-push-action@main
+        uses: project-stacker/stacker-build-push-action@093acb5ad50bed0012616f46fdba73a8a7169db7 # main
         with:
           version: v1.1.0-rc3
           file: 'build/stacker-zxp.yaml'
@@ -84,7 +86,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push zb container image
-        uses: project-stacker/stacker-build-push-action@main
+        uses: project-stacker/stacker-build-push-action@093acb5ad50bed0012616f46fdba73a8a7169db7 # main
         with:
           version: v1.1.0-rc3
           file: 'build/stacker-zb.yaml'
@@ -112,9 +114,11 @@ jobs:
         image: [zot, zot-minimal, zxp, zb]
     steps:
       - name: Check out the repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
       - name: Log in to GitHub Docker Registry
-        uses: docker/login-action@v4
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -125,10 +129,12 @@ jobs:
           cd $GITHUB_WORKSPACE
           make check-blackbox-prerequisites
           export PATH=${PATH}:${GITHUB_WORKSPACE}/hack/tools/bin
-          ./scripts/build_multiarch_image.sh --registry ghcr.io/${{ github.repository_owner }} \
-            --source-tag ${{ github.event.release.tag_name }} \
-            --destination-tags "${{ github.event.release.tag_name }} latest" \
+          ./scripts/build_multiarch_image.sh --registry ghcr.io/${GITHUB_REPOSITORY_OWNER} \
+            --source-tag ${GITHUB_EVENT_RELEASE_TAG_NAME} \
+            --destination-tags "${GITHUB_EVENT_RELEASE_TAG_NAME} latest" \
             --file build/multiarch-${{ matrix.image }}.json
+        env:
+          GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
 
   test-image:
     name: Test OCI images published to GitHub Packages
@@ -138,14 +144,14 @@ jobs:
       packages: read
     steps:
       - name: Log in to GitHub Docker Registry
-        uses: docker/login-action@v4
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Run zot container image with docker
         run: |
-          docker run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot:${{ github.event.release.tag_name }}
+          docker run -d -p 5000:5000 ghcr.io/${GITHUB_REPOSITORY_OWNER}/zot:${GITHUB_EVENT_RELEASE_TAG_NAME}
           sleep 2
           curl --connect-timeout 5 \
             --max-time 10 \
@@ -154,9 +160,11 @@ jobs:
             --retry-connrefused \
             'http://localhost:5000/v2/'
           docker kill $(docker ps -q)
+        env:
+          GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Run zot container image with podman
         run: |
-          podman run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot:${{ github.event.release.tag_name }}
+          podman run -d -p 5000:5000 ghcr.io/${GITHUB_REPOSITORY_OWNER}/zot:${GITHUB_EVENT_RELEASE_TAG_NAME}
           sleep 2
           curl --connect-timeout 5 \
             --max-time 10 \
@@ -165,9 +173,11 @@ jobs:
             --retry-connrefused \
             'http://localhost:5000/v2/'
           podman kill --all
+        env:
+          GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Run zot-minimal container image with docker
         run: |
-          docker run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot-minimal:${{ github.event.release.tag_name }}
+          docker run -d -p 5000:5000 ghcr.io/${GITHUB_REPOSITORY_OWNER}/zot-minimal:${GITHUB_EVENT_RELEASE_TAG_NAME}
           sleep 2
           curl --connect-timeout 5 \
             --max-time 10 \
@@ -176,9 +186,11 @@ jobs:
             --retry-connrefused \
             'http://localhost:5000/v2/'
           docker kill $(docker ps -q)
+        env:
+          GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Run zot-minimal container image with podman
         run: |
-          podman run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot-minimal:${{ github.event.release.tag_name }}
+          podman run -d -p 5000:5000 ghcr.io/${GITHUB_REPOSITORY_OWNER}/zot-minimal:${GITHUB_EVENT_RELEASE_TAG_NAME}
           sleep 2
           curl --connect-timeout 5 \
             --max-time 10 \
@@ -187,9 +199,11 @@ jobs:
             --retry-connrefused \
             'http://localhost:5000/v2/'
           podman kill --all
+        env:
+          GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Run zot-exporter container image with docker
         run: |
-          docker run -d -p 5001:5001 ghcr.io/${{ github.repository_owner }}/zxp:${{ github.event.release.tag_name }}
+          docker run -d -p 5001:5001 ghcr.io/${GITHUB_REPOSITORY_OWNER}/zxp:${GITHUB_EVENT_RELEASE_TAG_NAME}
           sleep 2
           curl --connect-timeout 5 \
             --max-time 10 \
@@ -198,9 +212,11 @@ jobs:
             --retry-connrefused \
             'http://localhost:5001/metrics'
           docker kill $(docker ps -q)
+        env:
+          GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Run zot-exporter container image with podman
         run: |
-          podman run -d -p 5001:5001 ghcr.io/${{ github.repository_owner }}/zxp:${{ github.event.release.tag_name }}
+          podman run -d -p 5001:5001 ghcr.io/${GITHUB_REPOSITORY_OWNER}/zxp:${GITHUB_EVENT_RELEASE_TAG_NAME}
           sleep 2
           curl --connect-timeout 5 \
             --max-time 10 \
@@ -209,12 +225,18 @@ jobs:
             --retry-connrefused \
             'http://localhost:5001/metrics'
           podman kill --all
+        env:
+          GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Run zb container image with docker
         run: |
-          docker run ghcr.io/${{ github.repository_owner }}/zb:${{ github.event.release.tag_name }} --help
+          docker run ghcr.io/${GITHUB_REPOSITORY_OWNER}/zb:${GITHUB_EVENT_RELEASE_TAG_NAME} --help
+        env:
+          GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Run zb container image with podman
         run: |
-          podman run ghcr.io/${{ github.repository_owner }}/zb:${{ github.event.release.tag_name }} --help
+          podman run ghcr.io/${GITHUB_REPOSITORY_OWNER}/zb:${GITHUB_EVENT_RELEASE_TAG_NAME} --help
+        env:
+          GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
 
   scan-image:
     name: Run Trivy scan on OCI images published to GitHub Packages
@@ -229,13 +251,13 @@ jobs:
         arch: [amd64, arm64]
     steps:
       - name: Log in to GitHub Docker Registry
-        uses: docker/login-action@v4
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@57a97c7
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 57a97c7
         with:
           image-ref: 'ghcr.io/${{ github.repository_owner }}/zot-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}'
           format: 'sarif'
@@ -244,7 +266,7 @@ jobs:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
       - name: Run Trivy vulnerability scanner (minimal)
-        uses: aquasecurity/trivy-action@57a97c7
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 57a97c7
         with:
           image-ref: 'ghcr.io/${{ github.repository_owner }}/zot-minimal-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}'
           format: 'sarif'
@@ -253,7 +275,7 @@ jobs:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v4.35.1
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
         with:
           sarif_file: 'trivy-results.sarif'
 
@@ -266,13 +288,13 @@ jobs:
       packages: read
     steps:
       - name: Log in to GitHub Docker Registry
-        uses: docker/login-action@v4
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@57a97c7
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 57a97c7
         with:
           image-ref: 'ghcr.io/${{ github.repository_owner }}/zot:${{ github.event.release.tag_name }}'
           format: 'sarif'
@@ -281,7 +303,7 @@ jobs:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
       - name: Run Trivy vulnerability scanner (minimal)
-        uses: aquasecurity/trivy-action@57a97c7
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 57a97c7
         with:
           image-ref: 'ghcr.io/${{ github.repository_owner }}/zot-minimal:${{ github.event.release.tag_name }}'
           format: 'sarif'
@@ -290,7 +312,7 @@ jobs:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v4.35.1
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
         with:
           sarif_file: 'trivy-results.sarif'
 
@@ -303,33 +325,39 @@ jobs:
       packages: write
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: main
           fetch-depth: '0'
+          persist-credentials: false
 
       - name: Checkout project-zot/helm-charts
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: project-zot/helm-charts
           ref: main
           fetch-depth: '0'
           token: ${{ secrets.HELM_PUSH_TOKEN }}
           path: ./helm-charts
+          persist-credentials: true
 
       - name: Configure Git
         run: |
           git config --global user.name 'github-actions'
           git config --global user.email 'github-actions@users.noreply.github.com'
       - name: Update appVersion
-        uses: mikefarah/yq@master
+        uses: mikefarah/yq@0f4fb8d35ec1a939d78dd6862f494d19ec589f19 # v4.52.5
         with:
-          cmd: yq -i '.appVersion = "${{ github.event.release.tag_name }}"' 'helm-charts/charts/zot/Chart.yaml'
+          cmd: yq -i '.appVersion = strenv(RELEASE_TAG)' 'helm-charts/charts/zot/Chart.yaml'
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
       - name: Update image tag
-        uses: mikefarah/yq@master
+        uses: mikefarah/yq@0f4fb8d35ec1a939d78dd6862f494d19ec589f19 # v4.52.5
         with:
           cmd: |
-            yq e '.image.tag = "${{ github.event.release.tag_name }}"' 'helm-charts/charts/zot/values.yaml' > values-updated.yaml
+            yq e '.image.tag = strenv(RELEASE_TAG)' 'helm-charts/charts/zot/values.yaml' > values-updated.yaml
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
       - name: Patch values.yaml file
         run: |
           diff -b 'helm-charts/charts/zot/values.yaml' values-updated.yaml > values.diff || true
