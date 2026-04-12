@@ -311,6 +311,10 @@ func TestRedisRepoMeta(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(len(repoNames), ShouldEqual, 5)
 
+			count, err := metaDB.CountRepos(ctx)
+			So(err, ShouldBeNil)
+			So(count, ShouldEqual, 5)
+
 			err = metaDB.DeleteRepoMeta("repo2")
 			So(err, ShouldBeNil)
 
@@ -321,6 +325,10 @@ func TestRedisRepoMeta(t *testing.T) {
 			repoNames, err = metaDB.GetAllRepoNames()
 			So(err, ShouldBeNil)
 			So(len(repoNames), ShouldEqual, 4)
+
+			count, err = metaDB.CountRepos(ctx)
+			So(err, ShouldBeNil)
+			So(count, ShouldEqual, 4)
 
 			repoMetas, err = metaDB.GetMultipleRepoMeta(ctx, func(repoMeta mTypes.RepoMeta) bool { return true })
 			So(err, ShouldBeNil)

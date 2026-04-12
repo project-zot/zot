@@ -2107,6 +2107,15 @@ func (rc *RedisDB) GetAllRepoNames() ([]string, error) {
 	return foundRepos, nil
 }
 
+func (rc *RedisDB) CountRepos(ctx context.Context) (int, error) {
+	count, err := rc.Client.HLen(ctx, rc.RepoMetaKey).Result()
+	if err != nil {
+		return 0, fmt.Errorf("failed to count repos: %w", err)
+	}
+
+	return int(count), nil
+}
+
 // ResetDB will delete all data in the DB.
 // Ideally we would use locks here, but it would require a more complex logic to lock/unlock
 // everything, and this function is only used in testing, so let's not add that complexity.

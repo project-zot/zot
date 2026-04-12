@@ -102,6 +102,8 @@ type MetaDBMock struct {
 
 	GetAllRepoNamesFn func() ([]string, error)
 
+	CountReposFn func(ctx context.Context) (int, error)
+
 	ResetDBFn func() error
 
 	CloseFn func() error
@@ -121,6 +123,14 @@ func (sdm MetaDBMock) GetAllRepoNames() ([]string, error) {
 	}
 
 	return []string{}, nil
+}
+
+func (sdm MetaDBMock) CountRepos(ctx context.Context) (int, error) {
+	if sdm.CountReposFn != nil {
+		return sdm.CountReposFn(ctx)
+	}
+
+	return 0, nil
 }
 
 func (sdm MetaDBMock) GetRepoLastUpdated(repo string) time.Time {
