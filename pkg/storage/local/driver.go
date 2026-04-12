@@ -255,7 +255,9 @@ func (driver *Driver) Move(sourcePath string, destPath string) error {
 		return driver.formatErr(err)
 	}
 
-	return driver.formatErr(os.Rename(sourcePath, destPath))
+	// Use renameReplace so an existing destination is replaced (POSIX rename); on Windows,
+	// os.Rename does not overwrite an existing file — see driver_unix.go / driver_windows.go.
+	return driver.formatErr(renameReplace(driver.commit, sourcePath, destPath))
 }
 
 func (driver *Driver) SameFile(path1, path2 string) bool {
