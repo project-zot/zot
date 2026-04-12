@@ -539,7 +539,7 @@ func (is *ImageStore) GetImageManifest(repo, reference string) ([]byte, godigest
 // When extraTags is non-empty, the reference must be a digest; each entry becomes an
 // org.opencontainers.image.ref.name on a separate index descriptor (distribution-spec
 // digest push with tag query params).
-func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //nolint: gocyclo,cyclop
+func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, mediaType string, //nolint: gocyclo,cyclop
 	body []byte, extraTags []string,
 ) (godigest.Digest, godigest.Digest, error) {
 	if err := is.InitRepo(repo); err != nil {
@@ -762,7 +762,7 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 			Msg("linter didn't pass")
 
 		if is.events != nil {
-			is.events.ImageLintFailed(repo, reference, mDigest.String(), mediaType, string(body))
+			is.events.ImageLintFailed(ctx, repo, reference, mDigest.String(), mediaType, string(body))
 		}
 
 		return "", "", err
@@ -774,7 +774,7 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 
 	if is.events != nil {
 		for _, ref := range commitEventRefs {
-			is.events.ImageUpdated(repo, ref, mDigest.String(), mediaType, string(body))
+			is.events.ImageUpdated(ctx, repo, ref, mDigest.String(), mediaType, string(body))
 		}
 	}
 
@@ -782,7 +782,7 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 }
 
 // DeleteImageManifest deletes the image manifest from the repository.
-func (is *ImageStore) DeleteImageManifest(repo, reference string, detectCollisions bool) error {
+func (is *ImageStore) DeleteImageManifest(ctx context.Context, repo, reference string, detectCollisions bool) error {
 	dir := path.Join(is.rootDir, repo)
 	if fi, err := is.storeDriver.Stat(dir); err != nil || !fi.IsDir() {
 		return zerr.ErrRepoNotFound
@@ -793,7 +793,7 @@ func (is *ImageStore) DeleteImageManifest(repo, reference string, detectCollisio
 	is.Lock(&lockLatency)
 	defer is.Unlock(&lockLatency)
 
-	err := is.deleteImageManifest(repo, reference, detectCollisions)
+	err := is.deleteImageManifest(ctx, repo, reference, detectCollisions)
 	if err != nil {
 		return err
 	}
@@ -801,7 +801,7 @@ func (is *ImageStore) DeleteImageManifest(repo, reference string, detectCollisio
 	return nil
 }
 
-func (is *ImageStore) deleteImageManifest(repo, reference string, detectCollisions bool) error {
+func (is *ImageStore) deleteImageManifest(ctx context.Context, repo, reference string, detectCollisions bool) error {
 	defer func() {
 		if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
 			monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
@@ -876,7 +876,7 @@ func (is *ImageStore) deleteImageManifest(repo, reference string, detectCollisio
 	}
 
 	if is.events != nil {
-		is.events.ImageDeleted(repo, reference, manifestDesc.Digest.String(), manifestDesc.MediaType)
+		is.events.ImageDeleted(ctx, repo, reference, manifestDesc.Digest.String(), manifestDesc.MediaType)
 	}
 
 	return nil
@@ -1808,7 +1808,7 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 
 		if err := is.deleteBlob(repo, digest); err != nil {
 			if errors.Is(err, zerr.ErrBlobReferenced) {
-				if err := is.deleteImageManifest(repo, digest.String(), true); err != nil {
+				if err := is.deleteImageManifest(context.Background(), repo, digest.String(), true); err != nil {
 					if errors.Is(err, zerr.ErrManifestConflict) || errors.Is(err, zerr.ErrManifestReferenced) {
 						continue
 					}

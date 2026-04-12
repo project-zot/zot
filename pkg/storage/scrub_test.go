@@ -490,7 +490,7 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 
 			indexBlob, err := json.Marshal(index)
 			So(err, ShouldBeNil)
-			indexDigest, _, err := imgStore.PutImageManifest(repoName, "", ispec.MediaTypeImageIndex, indexBlob, nil)
+			indexDigest, _, err := imgStore.PutImageManifest(context.Background(), repoName, "", ispec.MediaTypeImageIndex, indexBlob, nil)
 			So(err, ShouldBeNil)
 
 			buff := bytes.NewBufferString("")

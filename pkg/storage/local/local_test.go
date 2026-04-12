@@ -142,7 +142,7 @@ func TestStorageFSAPIs(t *testing.T) {
 				panic(err)
 			}
 
-			_, _, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageManifest, manifestBuf, nil)
+			_, _, err = imgStore.PutImageManifest(context.Background(), repoName, "1.0", ispec.MediaTypeImageManifest, manifestBuf, nil)
 			So(err, ShouldNotBeNil)
 
 			err = os.Chmod(path.Join(imgStore.RootDir(), repoName, "index.json"), 0o755)
@@ -150,7 +150,7 @@ func TestStorageFSAPIs(t *testing.T) {
 				panic(err)
 			}
 
-			_, _, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageManifest, manifestBuf, nil)
+			_, _, err = imgStore.PutImageManifest(context.Background(), repoName, "1.0", ispec.MediaTypeImageManifest, manifestBuf, nil)
 			So(err, ShouldBeNil)
 
 			manifestPath := path.Join(imgStore.RootDir(), repoName, "blobs", digest.Algorithm().String(), digest.Encoded())
@@ -176,7 +176,7 @@ func TestStorageFSAPIs(t *testing.T) {
 				panic(err)
 			}
 
-			_, _, err = imgStore.PutImageManifest(repoName, "2.0", ispec.MediaTypeImageManifest, manifestBuf, nil)
+			_, _, err = imgStore.PutImageManifest(context.Background(), repoName, "2.0", ispec.MediaTypeImageManifest, manifestBuf, nil)
 			So(err, ShouldNotBeNil)
 
 			err = os.Chmod(path.Join(imgStore.RootDir(), repoName), 0o755)
@@ -192,7 +192,7 @@ func TestStorageFSAPIs(t *testing.T) {
 				panic(err)
 			}
 
-			err = imgStore.DeleteImageManifest(repoName, digest.String(), false)
+			err = imgStore.DeleteImageManifest(context.Background(), repoName, digest.String(), false)
 			So(err, ShouldNotBeNil)
 
 			err = os.RemoveAll(path.Join(imgStore.RootDir(), repoName))
@@ -371,7 +371,7 @@ func FuzzTestPutGetImageManifest(f *testing.F) {
 
 		mdigest := godigest.FromBytes(manifestBuf)
 
-		_, _, err = imgStore.PutImageManifest(repoName, mdigest.String(), ispec.MediaTypeImageManifest, manifestBuf, nil)
+		_, _, err = imgStore.PutImageManifest(context.Background(), repoName, mdigest.String(), ispec.MediaTypeImageManifest, manifestBuf, nil)
 		if err != nil && errors.Is(err, zerr.ErrBadManifest) {
 			t.Errorf("the error that occurred is %v \n", err)
 		}
@@ -427,12 +427,12 @@ func FuzzTestPutDeleteImageManifest(f *testing.F) {
 
 		mdigest := godigest.FromBytes(manifestBuf)
 
-		_, _, err = imgStore.PutImageManifest(repoName, mdigest.String(), ispec.MediaTypeImageManifest, manifestBuf, nil)
+		_, _, err = imgStore.PutImageManifest(context.Background(), repoName, mdigest.String(), ispec.MediaTypeImageManifest, manifestBuf, nil)
 		if err != nil && errors.Is(err, zerr.ErrBadManifest) {
 			t.Errorf("the error that occurred is %v \n", err)
 		}
 
-		err = imgStore.DeleteImageManifest(repoName, mdigest.String(), false)
+		err = imgStore.DeleteImageManifest(context.Background(), repoName, mdigest.String(), false)
 		if err != nil {
 			if isKnownErr(err) {
 				return
@@ -464,7 +464,7 @@ func FuzzTestDeleteImageManifest(f *testing.F) {
 			return
 		}
 
-		err = imgStore.DeleteImageManifest(string(data), digest.String(), false)
+		err = imgStore.DeleteImageManifest(context.Background(), string(data), digest.String(), false)
 		if err != nil {
 			if errors.Is(err, zerr.ErrRepoNotFound) || isKnownErr(err) {
 				return
@@ -1177,7 +1177,7 @@ func TestDedupeLinks(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			manifestDigest := godigest.FromBytes(manifestBuf)
-			_, _, err = imgStore.PutImageManifest("dedupe1", manifestDigest.String(),
+			_, _, err = imgStore.PutImageManifest(context.Background(), "dedupe1", manifestDigest.String(),
 				ispec.MediaTypeImageManifest, manifestBuf, nil)
 			So(err, ShouldBeNil)
 
@@ -1240,7 +1240,7 @@ func TestDedupeLinks(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			manifestDigest2 := godigest.FromBytes(manifestBuf)
-			_, _, err = imgStore.PutImageManifest("dedupe2", "1.0", ispec.MediaTypeImageManifest, manifestBuf, nil)
+			_, _, err = imgStore.PutImageManifest(context.Background(), "dedupe2", "1.0", ispec.MediaTypeImageManifest, manifestBuf, nil)
 			So(err, ShouldBeNil)
 
 			_, _, _, err = imgStore.GetImageManifest("dedupe2", manifestDigest2.String())
@@ -1258,10 +1258,10 @@ func TestDedupeLinks(t *testing.T) {
 					So(blobDigest1, ShouldEqual, blobDigest2)
 
 					// to not trigger BlobInUse err, delete manifest first
-					err = imgStore.DeleteImageManifest("dedupe1", manifestDigest.String(), false)
+					err = imgStore.DeleteImageManifest(context.Background(), "dedupe1", manifestDigest.String(), false)
 					So(err, ShouldBeNil)
 
-					err = imgStore.DeleteImageManifest("dedupe2", "1.0", false)
+					err = imgStore.DeleteImageManifest(context.Background(), "dedupe2", "1.0", false)
 					So(err, ShouldBeNil)
 
 					err = imgStore.DeleteBlob("dedupe1", godigest.NewDigestFromEncoded(godigest.SHA256, blobDigest1))
@@ -1272,7 +1272,7 @@ func TestDedupeLinks(t *testing.T) {
 					So(err, ShouldNotBeNil)
 
 					// Delete the manifest
-					err = imgStore.DeleteImageManifest("dedupe2", manifestDigest2.String(), false)
+					err = imgStore.DeleteImageManifest(context.Background(), "dedupe2", manifestDigest2.String(), false)
 					So(err, ShouldBeNil)
 
 					// The call should succeed
@@ -1420,10 +1420,10 @@ func TestDedupeLinks(t *testing.T) {
 				So(blobDigest1, ShouldEqual, blobDigest2)
 
 				// to not trigger BlobInUse err, delete manifest first
-				err = imgStore.DeleteImageManifest("dedupe1", manifestDigest.String(), false)
+				err = imgStore.DeleteImageManifest(context.Background(), "dedupe1", manifestDigest.String(), false)
 				So(err, ShouldBeNil)
 
-				err = imgStore.DeleteImageManifest("dedupe2", "1.0", false)
+				err = imgStore.DeleteImageManifest(context.Background(), "dedupe2", "1.0", false)
 				So(err, ShouldBeNil)
 
 				err = imgStore.DeleteBlob("dedupe1", godigest.NewDigestFromEncoded(godigest.SHA256, blobDigest1))
@@ -1434,7 +1434,7 @@ func TestDedupeLinks(t *testing.T) {
 				So(err, ShouldNotBeNil)
 
 				// Delete the manifest
-				err = imgStore.DeleteImageManifest("dedupe2", manifestDigest2.String(), false)
+				err = imgStore.DeleteImageManifest(context.Background(), "dedupe2", manifestDigest2.String(), false)
 				So(err, ShouldBeNil)
 
 				// The call should succeed
@@ -2350,7 +2350,7 @@ func TestGarbageCollectImageUnknownManifest(t *testing.T) {
 		})
 
 		Convey("Garbage collect - gc repo after manifest delete", func() {
-			err = imgStore.DeleteImageManifest(repoName, img.DigestStr(), true)
+			err = imgStore.DeleteImageManifest(context.Background(), repoName, img.DigestStr(), true)
 			So(err, ShouldBeNil)
 
 			err = gc.CleanRepo(ctx, repoName)
@@ -2477,7 +2477,7 @@ func TestGarbageCollectErrors(t *testing.T) {
 
 				digest = godigest.FromBytes(content)
 				So(digest, ShouldNotBeNil)
-				_, _, err = imgStore.PutImageManifest(repoName, digest.String(), ispec.MediaTypeImageManifest, content, nil)
+				_, _, err = imgStore.PutImageManifest(context.Background(), repoName, digest.String(), ispec.MediaTypeImageManifest, content, nil)
 				So(err, ShouldBeNil)
 
 				index.Manifests = append(index.Manifests, ispec.Descriptor{
@@ -2494,7 +2494,7 @@ func TestGarbageCollectErrors(t *testing.T) {
 			indexDigest := godigest.FromBytes(indexContent)
 			So(indexDigest, ShouldNotBeNil)
 
-			_, _, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageIndex, indexContent, nil)
+			_, _, err = imgStore.PutImageManifest(context.Background(), repoName, "1.0", ispec.MediaTypeImageIndex, indexContent, nil)
 			So(err, ShouldBeNil)
 
 			err = os.Chmod(imgStore.BlobPath(repoName, indexDigest), 0o000)
@@ -2545,7 +2545,7 @@ func TestGarbageCollectErrors(t *testing.T) {
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 
-			_, _, err = imgStore.PutImageManifest(repoName, digest.String(), ispec.MediaTypeImageManifest, content, nil)
+			_, _, err = imgStore.PutImageManifest(context.Background(), repoName, digest.String(), ispec.MediaTypeImageManifest, content, nil)
 			So(err, ShouldBeNil)
 
 			// trigger GetBlobContent error
@@ -2604,10 +2604,10 @@ func TestGarbageCollectErrors(t *testing.T) {
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 
-			_, _, err = imgStore.PutImageManifest(repoName, digest.String(), ispec.MediaTypeImageManifest, content, nil)
+			_, _, err = imgStore.PutImageManifest(context.Background(), repoName, digest.String(), ispec.MediaTypeImageManifest, content, nil)
 			So(err, ShouldBeNil)
 			// upload again same manifest so that we trigger manifest conflict
-			_, _, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageManifest, content, nil)
+			_, _, err = imgStore.PutImageManifest(context.Background(), repoName, "1.0", ispec.MediaTypeImageManifest, content, nil)
 			So(err, ShouldBeNil)
 
 			time.Sleep(500 * time.Millisecond)

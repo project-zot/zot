@@ -1383,7 +1383,7 @@ func TestGarbageCollectDeletion(t *testing.T) {
 			topIndexBlob, err := json.Marshal(topIndex)
 			So(err, ShouldBeNil)
 
-			rootIndexDigest, _, err := imgStore.PutImageManifest(repoName, "topindex", ispec.MediaTypeImageIndex,
+			rootIndexDigest, _, err := imgStore.PutImageManifest(context.Background(), repoName, "topindex", ispec.MediaTypeImageIndex,
 				topIndexBlob, nil)
 			So(err, ShouldBeNil)
 

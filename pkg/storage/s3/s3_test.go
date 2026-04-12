@@ -337,7 +337,7 @@ func TestGetOCIReferrers(t *testing.T) {
 		mbuflen := mbuf.Len()
 		mdigest := godigest.FromBytes(mblob)
 
-		d, _, err := imgStore.PutImageManifest(repo, "1.0", ispec.MediaTypeImageManifest, mbuf.Bytes(), nil)
+		d, _, err := imgStore.PutImageManifest(context.Background(), repo, "1.0", ispec.MediaTypeImageManifest, mbuf.Bytes(), nil)
 		So(d, ShouldEqual, mdigest)
 		So(err, ShouldBeNil)
 
@@ -391,7 +391,7 @@ func TestGetOCIReferrers(t *testing.T) {
 			manBufLen := len(manBuf)
 			manDigest := godigest.FromBytes(manBuf)
 
-			_, _, err = imgStore.PutImageManifest(repo, manDigest.Encoded(), ispec.MediaTypeImageManifest, manBuf, nil)
+			_, _, err = imgStore.PutImageManifest(context.Background(), repo, manDigest.Encoded(), ispec.MediaTypeImageManifest, manBuf, nil)
 			So(err, ShouldBeNil)
 
 			index, err := imgStore.GetReferrers(repo, mdigest, []string{artifactType})
@@ -662,10 +662,10 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 			err = imgStore.DeleteBlobUpload(testImage, upload)
 			So(err, ShouldNotBeNil)
 
-			err = imgStore.DeleteImageManifest(testImage, "1.0", false)
+			err = imgStore.DeleteImageManifest(context.Background(), testImage, "1.0", false)
 			So(err, ShouldNotBeNil)
 
-			_, _, err = imgStore.PutImageManifest(testImage, "1.0", "application/json", []byte{}, nil)
+			_, _, err = imgStore.PutImageManifest(context.Background(), testImage, "1.0", "application/json", []byte{}, nil)
 			So(err, ShouldNotBeNil)
 
 			_, err = imgStore.PutBlobChunkStreamed(testImage, upload, bytes.NewBufferString(testImage))
@@ -711,7 +711,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 					return []byte{}, errS3
 				},
 			})
-			err := imgStore.DeleteImageManifest(testImage, "1.0", false)
+			err := imgStore.DeleteImageManifest(context.Background(), testImage, "1.0", false)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -727,7 +727,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 		Convey("Test DeleteImageManifest2", func(c C) {
 			imgStore = createMockStorage(testDir, tdir, false, &mocks.StorageDriverMock{})
-			err := imgStore.DeleteImageManifest(testImage, "1.0", false)
+			err := imgStore.DeleteImageManifest(context.Background(), testImage, "1.0", false)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -1041,7 +1041,7 @@ func TestS3Dedupe(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		manifestDigest := godigest.FromBytes(manifestBuf)
-		_, _, err = imgStore.PutImageManifest("dedupe1", manifestDigest.String(),
+		_, _, err = imgStore.PutImageManifest(context.Background(), "dedupe1", manifestDigest.String(),
 			ispec.MediaTypeImageManifest, manifestBuf, nil)
 		So(err, ShouldBeNil)
 
@@ -1120,7 +1120,7 @@ func TestS3Dedupe(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		manifestDigest2 := godigest.FromBytes(manifestBuf)
-		_, _, err = imgStore.PutImageManifest("dedupe2", "1.0", ispec.MediaTypeImageManifest,
+		_, _, err = imgStore.PutImageManifest(context.Background(), "dedupe2", "1.0", ispec.MediaTypeImageManifest,
 			manifestBuf, nil)
 		So(err, ShouldBeNil)
 
@@ -1145,11 +1145,11 @@ func TestS3Dedupe(t *testing.T) {
 			So(blobDigest1, ShouldEqual, blobDigest2)
 
 			// to not trigger BlobInUse err, delete manifest first
-			err = imgStore.DeleteImageManifest("dedupe1", manifestDigest.String(), false)
+			err = imgStore.DeleteImageManifest(context.Background(), "dedupe1", manifestDigest.String(), false)
 			So(err, ShouldBeNil)
 
 			// delete tag, but not manifest
-			err = imgStore.DeleteImageManifest("dedupe2", "1.0", false)
+			err = imgStore.DeleteImageManifest(context.Background(), "dedupe2", "1.0", false)
 			So(err, ShouldBeNil)
 
 			// delete should succeed as the manifest was deleted
@@ -1160,7 +1160,7 @@ func TestS3Dedupe(t *testing.T) {
 			err = imgStore.DeleteBlob("dedupe2", blobDigest2)
 			So(err, ShouldEqual, zerr.ErrBlobReferenced)
 
-			err = imgStore.DeleteImageManifest("dedupe2", manifestDigest2.String(), false)
+			err = imgStore.DeleteImageManifest(context.Background(), "dedupe2", manifestDigest2.String(), false)
 			So(err, ShouldBeNil)
 
 			err = imgStore.DeleteBlob("dedupe2", blobDigest2)
@@ -1169,10 +1169,10 @@ func TestS3Dedupe(t *testing.T) {
 
 		Convey("Check that delete blobs moves the real content to the next contenders", func() {
 			// to not trigger BlobInUse err, delete manifest first
-			err = imgStore.DeleteImageManifest("dedupe1", manifestDigest.String(), false)
+			err = imgStore.DeleteImageManifest(context.Background(), "dedupe1", manifestDigest.String(), false)
 			So(err, ShouldBeNil)
 
-			err = imgStore.DeleteImageManifest("dedupe2", manifestDigest2.String(), false)
+			err = imgStore.DeleteImageManifest(context.Background(), "dedupe2", manifestDigest2.String(), false)
 			So(err, ShouldBeNil)
 
 			// if we delete blob1, the content should be moved to blob2
@@ -1292,7 +1292,7 @@ func TestS3Dedupe(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			manifestDigest3 := godigest.FromBytes(manifestBuf)
-			_, _, err = imgStore.PutImageManifest("dedupe3", "1.0", ispec.MediaTypeImageManifest,
+			_, _, err = imgStore.PutImageManifest(context.Background(), "dedupe3", "1.0", ispec.MediaTypeImageManifest,
 				manifestBuf, nil)
 			So(err, ShouldBeNil)
 
@@ -1318,13 +1318,13 @@ func TestS3Dedupe(t *testing.T) {
 			Convey("delete blobs from storage/cache should work when dedupe is false", func() {
 				So(blobDigest1, ShouldEqual, blobDigest2)
 				// to not trigger BlobInUse err, delete manifest first
-				err = imgStore.DeleteImageManifest("dedupe1", manifestDigest.String(), false)
+				err = imgStore.DeleteImageManifest(context.Background(), "dedupe1", manifestDigest.String(), false)
 				So(err, ShouldBeNil)
 
-				err = imgStore.DeleteImageManifest("dedupe2", manifestDigest2.String(), false)
+				err = imgStore.DeleteImageManifest(context.Background(), "dedupe2", manifestDigest2.String(), false)
 				So(err, ShouldBeNil)
 
-				err = imgStore.DeleteImageManifest("dedupe3", manifestDigest3.String(), false)
+				err = imgStore.DeleteImageManifest(context.Background(), "dedupe3", manifestDigest3.String(), false)
 				So(err, ShouldBeNil)
 
 				err = imgStore.DeleteBlob("dedupe1", blobDigest1)
@@ -1467,7 +1467,7 @@ func TestS3Dedupe(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		manifestDigest := godigest.FromBytes(manifestBuf)
-		_, _, err = imgStore.PutImageManifest("dedupe1", manifestDigest.String(),
+		_, _, err = imgStore.PutImageManifest(context.Background(), "dedupe1", manifestDigest.String(),
 			ispec.MediaTypeImageManifest, manifestBuf, nil)
 		So(err, ShouldBeNil)
 
@@ -1537,7 +1537,7 @@ func TestS3Dedupe(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		manifestDigest2 := godigest.FromBytes(manifestBuf)
-		_, _, err = imgStore.PutImageManifest("dedupe2", "1.0", ispec.MediaTypeImageManifest,
+		_, _, err = imgStore.PutImageManifest(context.Background(), "dedupe2", "1.0", ispec.MediaTypeImageManifest,
 			manifestBuf, nil)
 		So(err, ShouldBeNil)
 
@@ -1562,11 +1562,11 @@ func TestS3Dedupe(t *testing.T) {
 			So(blobDigest1, ShouldEqual, blobDigest2)
 
 			// to not trigger BlobInUse err, delete manifest first
-			err = imgStore.DeleteImageManifest("dedupe1", manifestDigest.String(), false)
+			err = imgStore.DeleteImageManifest(context.Background(), "dedupe1", manifestDigest.String(), false)
 			So(err, ShouldBeNil)
 
 			// delete tag, but not manifest
-			err = imgStore.DeleteImageManifest("dedupe2", "1.0", false)
+			err = imgStore.DeleteImageManifest(context.Background(), "dedupe2", "1.0", false)
 			So(err, ShouldBeNil)
 
 			// Delete should succeed as the manifest was deleted
@@ -1577,7 +1577,7 @@ func TestS3Dedupe(t *testing.T) {
 			err = imgStore.DeleteBlob("dedupe2", blobDigest2)
 			So(err, ShouldEqual, zerr.ErrBlobReferenced)
 
-			err = imgStore.DeleteImageManifest("dedupe2", manifestDigest2.String(), false)
+			err = imgStore.DeleteImageManifest(context.Background(), "dedupe2", manifestDigest2.String(), false)
 			So(err, ShouldBeNil)
 
 			err = imgStore.DeleteBlob("dedupe2", blobDigest2)
@@ -1617,11 +1617,11 @@ func TestS3Dedupe(t *testing.T) {
 				So(blobDigest1, ShouldEqual, blobDigest2)
 
 				// to not trigger BlobInUse err, delete manifest first
-				err = imgStore.DeleteImageManifest("dedupe1", manifestDigest.String(), false)
+				err = imgStore.DeleteImageManifest(context.Background(), "dedupe1", manifestDigest.String(), false)
 				So(err, ShouldBeNil)
 
 				// delete tag, but not manifest
-				err = imgStore.DeleteImageManifest("dedupe2", "1.0", false)
+				err = imgStore.DeleteImageManifest(context.Background(), "dedupe2", "1.0", false)
 				So(err, ShouldBeNil)
 
 				// delete should succeed as the manifest was deleted
@@ -1632,7 +1632,7 @@ func TestS3Dedupe(t *testing.T) {
 				err = imgStore.DeleteBlob("dedupe2", blobDigest2)
 				So(err, ShouldEqual, zerr.ErrBlobReferenced)
 
-				err = imgStore.DeleteImageManifest("dedupe2", manifestDigest2.String(), false)
+				err = imgStore.DeleteImageManifest(context.Background(), "dedupe2", manifestDigest2.String(), false)
 				So(err, ShouldBeNil)
 
 				err = imgStore.DeleteBlob("dedupe2", blobDigest2)
@@ -1668,10 +1668,10 @@ func TestS3Dedupe(t *testing.T) {
 		Convey("Check that delete blobs moves the real content to the next contenders", func() {
 			// if we delete blob1, the content should be moved to blob2
 			// to not trigger BlobInUse err, delete manifest first
-			err = imgStore.DeleteImageManifest("dedupe1", manifestDigest.String(), false)
+			err = imgStore.DeleteImageManifest(context.Background(), "dedupe1", manifestDigest.String(), false)
 			So(err, ShouldBeNil)
 
-			err = imgStore.DeleteImageManifest("dedupe2", manifestDigest2.String(), false)
+			err = imgStore.DeleteImageManifest(context.Background(), "dedupe2", manifestDigest2.String(), false)
 			So(err, ShouldBeNil)
 
 			err = imgStore.DeleteBlob("dedupe1", blobDigest1)
@@ -1762,7 +1762,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		digest = godigest.FromBytes(manifestBuf)
-		_, _, err = imgStore.PutImageManifest("dedupe1", digest.String(),
+		_, _, err = imgStore.PutImageManifest(context.Background(), "dedupe1", digest.String(),
 			ispec.MediaTypeImageManifest, manifestBuf, nil)
 		So(err, ShouldBeNil)
 
@@ -1795,7 +1795,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 		So(clen, ShouldEqual, len(cblob))
 
 		digest = godigest.FromBytes(manifestBuf)
-		_, _, err = imgStore.PutImageManifest("dedupe2", digest.String(),
+		_, _, err = imgStore.PutImageManifest(context.Background(), "dedupe2", digest.String(),
 			ispec.MediaTypeImageManifest, manifestBuf, nil)
 		So(err, ShouldBeNil)
 
@@ -2893,7 +2893,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 		So(digest, ShouldNotBeNil)
 
 		m1content := content
-		_, _, err = imgStore.PutImageManifest("index", "test:1.0", ispec.MediaTypeImageManifest, content, nil)
+		_, _, err = imgStore.PutImageManifest(context.Background(), "index", "test:1.0", ispec.MediaTypeImageManifest, content, nil)
 		So(err, ShouldBeNil)
 
 		// create another manifest but upload using its sha256 reference
@@ -2937,7 +2937,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 		So(digest, ShouldNotBeNil)
 		m2dgst := digest
 		m2size := len(content)
-		_, _, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageManifest, content, nil)
+		_, _, err = imgStore.PutImageManifest(context.Background(), "index", digest.String(), ispec.MediaTypeImageManifest, content, nil)
 		So(err, ShouldBeNil)
 
 		Convey("Image index", func() {
@@ -2978,7 +2978,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
-			_, _, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageManifest, content, nil)
+			_, _, err = imgStore.PutImageManifest(context.Background(), "index", digest.String(), ispec.MediaTypeImageManifest, content, nil)
 			So(err, ShouldBeNil)
 
 			var index ispec.Index
@@ -3002,7 +3002,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 			index1dgst := digest
-			_, _, err = imgStore.PutImageManifest("index", "test:index1", ispec.MediaTypeImageIndex, content, nil)
+			_, _, err = imgStore.PutImageManifest(context.Background(), "index", "test:index1", ispec.MediaTypeImageIndex, content, nil)
 			So(err, ShouldBeNil)
 			_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
 			So(err, ShouldBeNil)
@@ -3046,7 +3046,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 			So(digest, ShouldNotBeNil)
 			m4dgst := digest
 			m4size := len(content)
-			_, _, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageManifest, content, nil)
+			_, _, err = imgStore.PutImageManifest(context.Background(), "index", digest.String(), ispec.MediaTypeImageManifest, content, nil)
 			So(err, ShouldBeNil)
 
 			index.SchemaVersion = 2
@@ -3069,7 +3069,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 
-			_, _, err = imgStore.PutImageManifest("index", "test:index2", ispec.MediaTypeImageIndex, content, nil)
+			_, _, err = imgStore.PutImageManifest(context.Background(), "index", "test:index2", ispec.MediaTypeImageIndex, content, nil)
 			So(err, ShouldBeNil)
 			_, _, _, err = imgStore.GetImageManifest("index", "test:index2")
 			So(err, ShouldBeNil)
@@ -3100,7 +3100,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 				digest = godigest.FromBytes(content)
 				So(digest, ShouldNotBeNil)
 
-				_, _, err = imgStore.PutImageManifest("index", "test:index3", ispec.MediaTypeImageIndex, content, nil)
+				_, _, err = imgStore.PutImageManifest(context.Background(), "index", "test:index3", ispec.MediaTypeImageIndex, content, nil)
 				So(err, ShouldBeNil)
 				_, _, _, err = imgStore.GetImageManifest("index", "test:index3")
 				So(err, ShouldBeNil)
@@ -3122,7 +3122,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 
 				digest = godigest.FromBytes(content)
 				So(digest, ShouldNotBeNil)
-				_, _, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageIndex, content, nil)
+				_, _, err = imgStore.PutImageManifest(context.Background(), "index", digest.String(), ispec.MediaTypeImageIndex, content, nil)
 				So(err, ShouldBeNil)
 				_, _, _, err = imgStore.GetImageManifest("index", digest.String())
 				So(err, ShouldBeNil)
@@ -3130,12 +3130,12 @@ func TestS3ManifestImageIndex(t *testing.T) {
 
 			Convey("Deleting an image index", func() {
 				// delete manifest by tag should pass
-				err := imgStore.DeleteImageManifest("index", "test:index3", false)
+				err := imgStore.DeleteImageManifest(context.Background(), "index", "test:index3", false)
 				So(err, ShouldNotBeNil)
 				_, _, _, err = imgStore.GetImageManifest("index", "test:index3")
 				So(err, ShouldNotBeNil)
 
-				err = imgStore.DeleteImageManifest("index", "test:index1", false)
+				err = imgStore.DeleteImageManifest(context.Background(), "index", "test:index1", false)
 				So(err, ShouldBeNil)
 
 				_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
@@ -3147,12 +3147,12 @@ func TestS3ManifestImageIndex(t *testing.T) {
 
 			Convey("Deleting an image index by digest", func() {
 				// delete manifest by tag should pass
-				err := imgStore.DeleteImageManifest("index", "test:index3", false)
+				err := imgStore.DeleteImageManifest(context.Background(), "index", "test:index3", false)
 				So(err, ShouldNotBeNil)
 				_, _, _, err = imgStore.GetImageManifest("index", "test:index3")
 				So(err, ShouldNotBeNil)
 
-				err = imgStore.DeleteImageManifest("index", index1dgst.String(), false)
+				err = imgStore.DeleteImageManifest(context.Background(), "index", index1dgst.String(), false)
 				So(err, ShouldBeNil)
 				_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
 				So(err, ShouldNotBeNil)
@@ -3202,7 +3202,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 
 				digest = godigest.FromBytes(content)
 				So(digest, ShouldNotBeNil)
-				_, _, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageManifest, content, nil)
+				_, _, err = imgStore.PutImageManifest(context.Background(), "index", digest.String(), ispec.MediaTypeImageManifest, content, nil)
 				So(err, ShouldBeNil)
 				_, _, _, err = imgStore.GetImageManifest("index", digest.String())
 				So(err, ShouldBeNil)
@@ -3222,12 +3222,12 @@ func TestS3ManifestImageIndex(t *testing.T) {
 				digest = godigest.FromBytes(content)
 				So(digest, ShouldNotBeNil)
 
-				_, _, err = imgStore.PutImageManifest("index", "test:index1", ispec.MediaTypeImageIndex, content, nil)
+				_, _, err = imgStore.PutImageManifest(context.Background(), "index", "test:index1", ispec.MediaTypeImageIndex, content, nil)
 				So(err, ShouldBeNil)
 				_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
 				So(err, ShouldBeNil)
 
-				err = imgStore.DeleteImageManifest("index", "test:index1", false)
+				err = imgStore.DeleteImageManifest(context.Background(), "index", "test:index1", false)
 				So(err, ShouldBeNil)
 				_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
 				So(err, ShouldNotBeNil)
@@ -3238,7 +3238,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 					cleanupStorage(storeDriver, path.Join(testDir, "index", "blobs",
 						index1dgst.Algorithm().String(), index1dgst.Encoded()))
 
-					err = imgStore.DeleteImageManifest("index", index1dgst.String(), false)
+					err = imgStore.DeleteImageManifest(context.Background(), "index", index1dgst.String(), false)
 					So(err, ShouldNotBeNil)
 					_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
 					So(err, ShouldNotBeNil)
@@ -3254,7 +3254,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 					So(err, ShouldBeNil)
 					wrtr.Close()
 
-					err = imgStore.DeleteImageManifest("index", index1dgst.String(), false)
+					err = imgStore.DeleteImageManifest(context.Background(), "index", index1dgst.String(), false)
 					So(err, ShouldBeNil)
 					_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
 					So(err, ShouldNotBeNil)
@@ -3278,11 +3278,11 @@ func TestS3ManifestImageIndex(t *testing.T) {
 					digest = godigest.FromBytes(content)
 					So(digest, ShouldNotBeNil)
 
-					_, _, err = imgStore.PutImageManifest("index", "test:1.0", ispec.MediaTypeImageIndex, content, nil)
+					_, _, err = imgStore.PutImageManifest(context.Background(), "index", "test:1.0", ispec.MediaTypeImageIndex, content, nil)
 					So(err, ShouldBeNil)
 
 					// previously an image index, try writing a manifest
-					_, _, err = imgStore.PutImageManifest("index", "test:index1", ispec.MediaTypeImageManifest, m1content, nil)
+					_, _, err = imgStore.PutImageManifest(context.Background(), "index", "test:index1", ispec.MediaTypeImageManifest, m1content, nil)
 					So(err, ShouldBeNil)
 				})
 			})
@@ -3351,7 +3351,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 
 		m1size := len(content)
 
-		_, _, err = imgStore.PutImageManifest("index", "test:1.0", ispec.MediaTypeImageManifest, content, nil)
+		_, _, err = imgStore.PutImageManifest(context.Background(), "index", "test:1.0", ispec.MediaTypeImageManifest, content, nil)
 		So(err, ShouldBeNil)
 
 		// second config
@@ -3386,7 +3386,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 		So(m2digest, ShouldNotBeNil)
 
 		m2size := len(content)
-		_, _, err = imgStore.PutImageManifest("index", m2digest.String(), ispec.MediaTypeImageManifest, content, nil)
+		_, _, err = imgStore.PutImageManifest(context.Background(), "index", m2digest.String(), ispec.MediaTypeImageManifest, content, nil)
 		So(err, ShouldBeNil)
 
 		Convey("Put image index with valid subject", func() {
@@ -3412,7 +3412,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 			idigest := godigest.FromBytes(content)
 			So(idigest, ShouldNotBeNil)
 
-			digest1, digest2, err := imgStore.PutImageManifest("index", "test:index1", ispec.MediaTypeImageIndex, content, nil)
+			digest1, digest2, err := imgStore.PutImageManifest(context.Background(), "index", "test:index1", ispec.MediaTypeImageIndex, content, nil)
 			So(err, ShouldBeNil)
 			So(digest1.String(), ShouldEqual, idigest.String())
 			So(digest2.String(), ShouldEqual, m1digest.String())

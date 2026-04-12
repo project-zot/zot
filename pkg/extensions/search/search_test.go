@@ -4272,7 +4272,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		indexMultiArchMiddle1Blob, err := json.Marshal(indexMultiArchMiddle1)
 		So(err, ShouldBeNil)
 
-		indexMultiArchMiddle1Digest, _, err := storeCtlr.GetDefaultImageStore().PutImageManifest(repoName,
+		indexMultiArchMiddle1Digest, _, err := storeCtlr.GetDefaultImageStore().PutImageManifest(context.Background(), repoName,
 			"multiArchMiddle1", ispec.MediaTypeImageIndex, indexMultiArchMiddle1Blob, nil)
 		So(err, ShouldBeNil)
 
@@ -4297,7 +4297,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		indexMultiArchMiddle2Blob, err := json.Marshal(indexMultiArchMiddle2)
 		So(err, ShouldBeNil)
 
-		indexMultiArchMiddle2Digest, _, err := storeCtlr.GetDefaultImageStore().PutImageManifest(repoName,
+		indexMultiArchMiddle2Digest, _, err := storeCtlr.GetDefaultImageStore().PutImageManifest(context.Background(), repoName,
 			"multiArchMiddle2", ispec.MediaTypeImageIndex, indexMultiArchMiddle2Blob, nil)
 		So(err, ShouldBeNil)
 
@@ -4332,7 +4332,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		indexMultiArchTopBlob, err := json.Marshal(indexMultiArchTop)
 		So(err, ShouldBeNil)
 
-		_, _, err = storeCtlr.GetDefaultImageStore().PutImageManifest(repoName, "multiArchTop", ispec.MediaTypeImageIndex,
+		_, _, err = storeCtlr.GetDefaultImageStore().PutImageManifest(context.Background(), repoName, "multiArchTop", ispec.MediaTypeImageIndex,
 			indexMultiArchTopBlob, nil)
 		So(err, ShouldBeNil)
 
@@ -4444,7 +4444,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		indexMultiArchMiddle1Blob, err := json.Marshal(indexMultiArchMiddle1)
 		So(err, ShouldBeNil)
 
-		indexMultiArchMiddle1Digest, _, err := storeCtlr.GetDefaultImageStore().PutImageManifest(repoName,
+		indexMultiArchMiddle1Digest, _, err := storeCtlr.GetDefaultImageStore().PutImageManifest(context.Background(), repoName,
 			"multiArchMiddle1", ispec.MediaTypeImageIndex, indexMultiArchMiddle1Blob, nil)
 		So(err, ShouldBeNil)
 
@@ -4469,7 +4469,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		indexMultiArchMiddle2Blob, err := json.Marshal(indexMultiArchMiddle2)
 		So(err, ShouldBeNil)
 
-		indexMultiArchMiddle2Digest, _, err := storeCtlr.GetDefaultImageStore().PutImageManifest(repoName,
+		indexMultiArchMiddle2Digest, _, err := storeCtlr.GetDefaultImageStore().PutImageManifest(context.Background(), repoName,
 			"multiArchMiddle2", ispec.MediaTypeImageIndex, indexMultiArchMiddle2Blob, nil)
 		So(err, ShouldBeNil)
 
@@ -4504,7 +4504,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		indexMultiArchTopBlob, err := json.Marshal(indexMultiArchTop)
 		So(err, ShouldBeNil)
 
-		_, _, err = storeCtlr.GetDefaultImageStore().PutImageManifest(repoName, "multiArchTop", ispec.MediaTypeImageIndex,
+		_, _, err = storeCtlr.GetDefaultImageStore().PutImageManifest(context.Background(), repoName, "multiArchTop", ispec.MediaTypeImageIndex,
 			indexMultiArchTopBlob, nil)
 		So(err, ShouldBeNil)
 

@@ -1,6 +1,7 @@
 package events
 
 import (
+	"context"
 	"time"
 )
 
@@ -22,11 +23,23 @@ func (e EventType) String() string {
 	return string(e)
 }
 
+// Actor represents the authenticated user who triggered an event.
+type Actor struct {
+	Name string `json:"name"`
+}
+
+// RequestInfo holds metadata about the HTTP request that triggered an event.
+type RequestInfo struct {
+	Addr      string `json:"addr"`
+	Method    string `json:"method"`
+	UserAgent string `json:"useragent"`
+}
+
 type Recorder interface {
 	Close()
 
 	RepositoryCreated(name string)
-	ImageUpdated(name, reference, digest, mediaType, manifest string)
-	ImageDeleted(name, reference, digest, mediaType string)
-	ImageLintFailed(name, reference, digest, mediaType, manifest string)
+	ImageUpdated(ctx context.Context, name, reference, digest, mediaType, manifest string)
+	ImageDeleted(ctx context.Context, name, reference, digest, mediaType string)
+	ImageLintFailed(ctx context.Context, name, reference, digest, mediaType, manifest string)
 }

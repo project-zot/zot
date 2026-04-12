@@ -764,7 +764,13 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
-	digest, subjectDigest, err := imgStore.PutImageManifest(name, reference, mediaType, body, digestQueryTags)
+	digest, subjectDigest, err := imgStore.PutImageManifest(
+		reqCtx.WithRequestInfo(request.Context(), reqCtx.RequestInfo{
+			Addr:      request.RemoteAddr,
+			Method:    request.Method,
+			UserAgent: request.UserAgent(),
+		}),
+		name, reference, mediaType, body, digestQueryTags)
 	if err != nil {
 		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
@@ -791,7 +797,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 			// could be syscall.EMFILE (Err:0x18 too many opened files), etc
 			rh.c.Log.Error().Err(err).Msg("unexpected error, performing cleanup")
 
-			if err = imgStore.DeleteImageManifest(name, reference, false); err != nil {
+			if err = imgStore.DeleteImageManifest(request.Context(), name, reference, false); err != nil {
 				// deletion of image manifest is important, but not critical for image repo consistency
 				// in the worst scenario a partial manifest file written to disk will not affect the repo because
 				// the new manifest was not added to "index.json" file (it is possible that GC will take care of it)
@@ -936,7 +942,13 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
-	err = imgStore.DeleteImageManifest(name, reference, detectCollision)
+	err = imgStore.DeleteImageManifest(
+		reqCtx.WithRequestInfo(request.Context(), reqCtx.RequestInfo{
+			Addr:      request.RemoteAddr,
+			Method:    request.Method,
+			UserAgent: request.UserAgent(),
+		}),
+		name, reference, detectCollision)
 	if err != nil { //nolint: dupl
 		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain

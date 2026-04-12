@@ -3,6 +3,7 @@
 package events_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -21,6 +22,7 @@ import (
 	eventsconf "zotregistry.dev/zot/v2/pkg/extensions/config/events"
 	"zotregistry.dev/zot/v2/pkg/extensions/events"
 	"zotregistry.dev/zot/v2/pkg/log"
+	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
 )
 
 type mockSink struct {
@@ -64,19 +66,89 @@ func TestEvents(t *testing.T) {
 			So(ev.Type(), ShouldEqual, events.RepositoryCreatedEventType.String())
 		})
 		Convey("image updated", func() {
-			recorder.ImageUpdated("test", "v1", "", string(types.OCIManifestSchema1), "")
+			recorder.ImageUpdated(context.Background(), "test", "v1", "", string(types.OCIManifestSchema1), "")
 			ev := <-sink.store
 			So(ev.Type(), ShouldEqual, events.ImageUpdatedEventType.String())
 		})
 		Convey("image deleted", func() {
-			recorder.ImageDeleted("test", "v1", "", string(types.OCIManifestSchema1))
+			recorder.ImageDeleted(context.Background(), "test", "v1", "", string(types.OCIManifestSchema1))
 			ev := <-sink.store
 			So(ev.Type(), ShouldEqual, events.ImageDeletedEventType.String())
 		})
 		Convey("image lint failed", func() {
-			recorder.ImageLintFailed("test", "v1", "", string(types.OCIManifestSchema1), "")
+			recorder.ImageLintFailed(context.Background(), "test", "v1", "", string(types.OCIManifestSchema1), "")
 			ev := <-sink.store
 			So(ev.Type(), ShouldEqual, events.ImageLintFailedEventType.String())
+		})
+	})
+}
+
+func TestEventsWithActorAndRequest(t *testing.T) {
+	Convey("events include actor and request metadata when context is enriched", t, func() {
+		sink := newMockSink()
+		recorder, err := events.NewRecorder(log.NewTestLogger(), sink)
+		So(err, ShouldBeNil)
+
+		uac := reqCtx.NewUserAccessControl()
+		uac.SetUsername("alice")
+		ctx := uac.DeriveContext(context.Background())
+		ctx = reqCtx.WithRequestInfo(ctx, reqCtx.RequestInfo{
+			Addr:      "192.168.1.1:12345",
+			Method:    "PUT",
+			UserAgent: "docker/24.0.5",
+		})
+
+		Convey("image updated carries actor and request", func() {
+			recorder.ImageUpdated(ctx, "myrepo", "v1", "sha256:abc", string(types.OCIManifestSchema1), "")
+			ev := <-sink.store
+			So(ev.Type(), ShouldEqual, events.ImageUpdatedEventType.String())
+
+			var data map[string]any
+			So(ev.DataAs(&data), ShouldBeNil)
+			So(data["name"], ShouldEqual, "myrepo")
+
+			actor, ok := data["actor"].(map[string]any)
+			So(ok, ShouldBeTrue)
+			So(actor["name"], ShouldEqual, "alice")
+
+			request, ok := data["request"].(map[string]any)
+			So(ok, ShouldBeTrue)
+			So(request["addr"], ShouldEqual, "192.168.1.1:12345")
+			So(request["method"], ShouldEqual, "PUT")
+			So(request["useragent"], ShouldEqual, "docker/24.0.5")
+		})
+
+		Convey("image deleted carries actor and request", func() {
+			recorder.ImageDeleted(ctx, "myrepo", "v1", "sha256:abc", string(types.OCIManifestSchema1))
+			ev := <-sink.store
+			So(ev.Type(), ShouldEqual, events.ImageDeletedEventType.String())
+
+			var data map[string]any
+			So(ev.DataAs(&data), ShouldBeNil)
+
+			actor, ok := data["actor"].(map[string]any)
+			So(ok, ShouldBeTrue)
+			So(actor["name"], ShouldEqual, "alice")
+
+			request, ok := data["request"].(map[string]any)
+			So(ok, ShouldBeTrue)
+			So(request["method"], ShouldEqual, "PUT")
+		})
+
+		Convey("events with empty context have empty actor and request", func() {
+			recorder.ImageUpdated(context.Background(), "myrepo", "v1", "sha256:abc", string(types.OCIManifestSchema1), "")
+			ev := <-sink.store
+
+			var data map[string]any
+			So(ev.DataAs(&data), ShouldBeNil)
+
+			actor, ok := data["actor"].(map[string]any)
+			So(ok, ShouldBeTrue)
+			So(actor["name"], ShouldEqual, "")
+
+			request, ok := data["request"].(map[string]any)
+			So(ok, ShouldBeTrue)
+			So(request["addr"], ShouldEqual, "")
 		})
 	})
 }
@@ -118,21 +190,21 @@ func TestHTTPSinkEvents(t *testing.T) {
 		})
 
 		Convey("image updated", func() {
-			recorder.ImageUpdated("test", "v1", "", string(types.OCIManifestSchema1), "")
+			recorder.ImageUpdated(context.Background(), "test", "v1", "", string(types.OCIManifestSchema1), "")
 			e := getEvent(t, eventChan)
 			So(e, ShouldNotBeNil)
 			So(e.Type(), ShouldEqual, events.ImageUpdatedEventType.String())
 		})
 
 		Convey("image deleted", func() {
-			recorder.ImageDeleted("test", "v1", "", string(types.OCIManifestSchema1))
+			recorder.ImageDeleted(context.Background(), "test", "v1", "", string(types.OCIManifestSchema1))
 			e := getEvent(t, eventChan)
 			So(e, ShouldNotBeNil)
 			So(e.Type(), ShouldEqual, events.ImageDeletedEventType.String())
 		})
 
 		Convey("image lint failed", func() {
-			recorder.ImageLintFailed("test", "v1", "", string(types.OCIManifestSchema1), "")
+			recorder.ImageLintFailed(context.Background(), "test", "v1", "", string(types.OCIManifestSchema1), "")
 			e := getEvent(t, eventChan)
 			So(e, ShouldNotBeNil)
 			So(e.Type(), ShouldEqual, events.ImageLintFailedEventType.String())
@@ -181,7 +253,7 @@ func TestNATSSinkEvents(t *testing.T) {
 			defer nc.Close()
 			So(err, ShouldBeNil)
 
-			recorder.ImageUpdated("test", "v1", "", string(types.OCIManifestSchema1), "")
+			recorder.ImageUpdated(context.Background(), "test", "v1", "", string(types.OCIManifestSchema1), "")
 
 			e := getEvent(t, eventChan)
 			So(e, ShouldNotBeNil)
@@ -204,7 +276,7 @@ func TestNATSSinkEvents(t *testing.T) {
 			defer recorder.Close()
 			So(err, ShouldBeNil)
 
-			recorder.ImageDeleted("test", "v1", "", string(types.OCIManifestSchema1))
+			recorder.ImageDeleted(context.Background(), "test", "v1", "", string(types.OCIManifestSchema1))
 
 			e := getEvent(t, eventChan)
 			So(e, ShouldNotBeNil)
@@ -227,7 +299,7 @@ func TestNATSSinkEvents(t *testing.T) {
 			defer nc.Close()
 			So(err, ShouldBeNil)
 
-			recorder.ImageLintFailed("test", "v1", "", string(types.OCIManifestSchema1), "")
+			recorder.ImageLintFailed(context.Background(), "test", "v1", "", string(types.OCIManifestSchema1), "")
 
 			e := getEvent(t, eventChan)
 			So(e, ShouldNotBeNil)

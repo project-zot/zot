@@ -3,6 +3,7 @@
 package events
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -12,6 +13,7 @@ import (
 
 	eventsconf "zotregistry.dev/zot/v2/pkg/extensions/config/events"
 	"zotregistry.dev/zot/v2/pkg/log"
+	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
 )
 
 type eventRecorder struct {
@@ -66,7 +68,8 @@ func (r eventRecorder) RepositoryCreated(name string) {
 	r.publish(event)
 }
 
-func (r eventRecorder) ImageUpdated(name, reference, digest, mediaType, manifest string) {
+func (r eventRecorder) ImageUpdated(ctx context.Context, name, reference, digest, mediaType, manifest string) {
+	actor, requestInfo := actorAndRequestFromContext(ctx)
 	event, err := newEventBuilder().
 		WithEventType(ImageUpdatedEventType).
 		WithDataField("name", name).
@@ -74,6 +77,8 @@ func (r eventRecorder) ImageUpdated(name, reference, digest, mediaType, manifest
 		WithDataField("digest", digest).
 		WithDataField("mediaType", mediaType).
 		WithDataField("manifest", manifest).
+		WithDataField("actor", actor).
+		WithDataField("request", requestInfo).
 		Build()
 	if err != nil {
 		r.log.Warn().Err(err).Msg("failed to create event")
@@ -84,13 +89,16 @@ func (r eventRecorder) ImageUpdated(name, reference, digest, mediaType, manifest
 	r.publish(event)
 }
 
-func (r eventRecorder) ImageDeleted(name, reference, digest, mediaType string) {
+func (r eventRecorder) ImageDeleted(ctx context.Context, name, reference, digest, mediaType string) {
+	actor, requestInfo := actorAndRequestFromContext(ctx)
 	event, err := newEventBuilder().
 		WithEventType(ImageDeletedEventType).
 		WithDataField("name", name).
 		WithDataField("reference", reference).
 		WithDataField("digest", digest).
 		WithDataField("mediaType", mediaType).
+		WithDataField("actor", actor).
+		WithDataField("request", requestInfo).
 		Build()
 	if err != nil {
 		r.log.Warn().Err(err).Msg("failed to create event")
@@ -101,7 +109,8 @@ func (r eventRecorder) ImageDeleted(name, reference, digest, mediaType string) {
 	r.publish(event)
 }
 
-func (r eventRecorder) ImageLintFailed(name, reference, digest, mediaType, manifest string) {
+func (r eventRecorder) ImageLintFailed(ctx context.Context, name, reference, digest, mediaType, manifest string) {
+	actor, requestInfo := actorAndRequestFromContext(ctx)
 	event, err := newEventBuilder().
 		WithEventType(ImageLintFailedEventType).
 		WithDataField("name", name).
@@ -109,6 +118,8 @@ func (r eventRecorder) ImageLintFailed(name, reference, digest, mediaType, manif
 		WithDataField("digest", digest).
 		WithDataField("mediaType", mediaType).
 		WithDataField("manifest", manifest).
+		WithDataField("actor", actor).
+		WithDataField("request", requestInfo).
 		Build()
 	if err != nil {
 		r.log.Warn().Err(err).Msg("failed to create event")
@@ -117,6 +128,27 @@ func (r eventRecorder) ImageLintFailed(name, reference, digest, mediaType, manif
 	}
 
 	r.publish(event)
+}
+
+// actorAndRequestFromContext extracts the actor name and HTTP request metadata
+// from the context. Both fields are optional; they are empty when the operation
+// was not triggered by an authenticated HTTP request (e.g. sync or GC).
+func actorAndRequestFromContext(ctx context.Context) (Actor, RequestInfo) {
+	var actor Actor
+
+	if uac, err := reqCtx.UserAcFromContext(ctx); err == nil && uac != nil {
+		actor.Name = uac.GetUsername()
+	}
+
+	var ri RequestInfo
+
+	if info := reqCtx.RequestInfoFromContext(ctx); info != nil {
+		ri.Addr = info.Addr
+		ri.Method = info.Method
+		ri.UserAgent = info.UserAgent
+	}
+
+	return actor, ri
 }
 
 func getTLSConfig(config eventsconf.SinkConfig) (*tls.Config, error) {
