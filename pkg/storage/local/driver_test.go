@@ -197,23 +197,27 @@ func TestMove(t *testing.T) {
 			So(storageErr.DriverName, ShouldEqual, "local")
 		})
 
-		Convey("Test Move() with os.Rename error to trigger formatErr", func() {
+		Convey("Test Move() replaces an existing destination (atomic replace)", func() {
 			srcFile := path.Join(rootDir, "source.txt")
 			destFile := path.Join(rootDir, "dest.txt")
 
 			// Create source file
-			err := os.WriteFile(srcFile, []byte("test content"), 0o600)
+			err := os.WriteFile(srcFile, []byte("source wins"), 0o600)
 			So(err, ShouldBeNil)
 
 			// Create destination file to cause rename conflict
 			err = os.WriteFile(destFile, []byte("existing content"), 0o600)
 			So(err, ShouldBeNil)
 
-			// Move should return a formatted error (rename conflict)
 			err = driver.Move(srcFile, destFile)
-			// Note: On some systems, os.Rename might succeed by overwriting
-			// So we just verify it doesn't panic and handle the result appropriately
-			_ = err
+			So(err, ShouldBeNil)
+
+			got, err := os.ReadFile(destFile)
+			So(err, ShouldBeNil)
+			So(string(got), ShouldEqual, "source wins")
+
+			_, err = os.Stat(srcFile)
+			So(err, ShouldNotBeNil)
 		})
 	})
 }
