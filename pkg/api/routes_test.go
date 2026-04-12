@@ -267,8 +267,7 @@ func TestRoutes(t *testing.T) {
 				},
 				&mocks.MockedImageStore{
 
-					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string, body []byte) (godigest.Digest,						godigest.Digest, error,
-					) {
+					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string, body []byte, extraTags []string) (godigest.Digest, godigest.Digest, error) {
 						return "", "", zerr.ErrRepoNotFound
 					},
 				})
@@ -282,8 +281,7 @@ func TestRoutes(t *testing.T) {
 
 				&mocks.MockedImageStore{
 
-					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string, body []byte) (godigest.Digest,						godigest.Digest, error,
-					) {
+					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string, body []byte, extraTags []string) (godigest.Digest, godigest.Digest, error) {
 						return "", "", zerr.ErrManifestNotFound
 					},
 				})
@@ -296,8 +294,7 @@ func TestRoutes(t *testing.T) {
 				},
 				&mocks.MockedImageStore{
 
-					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string, body []byte) (godigest.Digest,						godigest.Digest, error,
-					) {
+					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string, body []byte, extraTags []string) (godigest.Digest, godigest.Digest, error) {
 						return "", "", zerr.ErrBadManifest
 					},
 				})
@@ -310,8 +307,7 @@ func TestRoutes(t *testing.T) {
 				},
 				&mocks.MockedImageStore{
 
-					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string, body []byte) (godigest.Digest,						godigest.Digest, error,
-					) {
+					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string, body []byte, extraTags []string) (godigest.Digest, godigest.Digest, error) {
 						return "", "", zerr.ErrBlobNotFound
 					},
 				})
@@ -325,8 +321,7 @@ func TestRoutes(t *testing.T) {
 				},
 				&mocks.MockedImageStore{
 
-					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string, body []byte) (godigest.Digest,						godigest.Digest, error,
-					) {
+					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string, body []byte, extraTags []string) (godigest.Digest, godigest.Digest, error) {
 						return "", "", zerr.ErrRepoBadVersion
 					},
 				})
@@ -358,9 +353,7 @@ func TestRoutes(t *testing.T) {
 			digestRef := manifestDigest.String()
 
 			ism := &mocks.MockedImageStore{
-				PutImageManifestFn: func(repo, reference, mediaType string, body []byte, extraTags []string) (
-					godigest.Digest, godigest.Digest, error,
-				) {
+				PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string, body []byte, extraTags []string) (godigest.Digest, godigest.Digest, error) {
 					So(extraTags, ShouldResemble, []string{"meta-a", "meta-b"})
 					So(string(body), ShouldEqual, string(mcontent))
 

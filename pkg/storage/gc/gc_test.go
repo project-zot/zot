@@ -1385,7 +1385,8 @@ func TestGarbageCollectDeletion(t *testing.T) {
 
 
 			rootIndexDigest, _, err := imgStore.PutImageManifest(context.Background(),
-				repoName, "topindex", ispec.MediaTypeImageIndex, topIndexBlob, nil)			So(err, ShouldBeNil)
+				repoName, "topindex", ispec.MediaTypeImageIndex, topIndexBlob, nil)
+			So(err, ShouldBeNil)
 
 			bottomIndex1Digest := bottomIndex1.IndexDescriptor.Digest
 			bottomIndex2Digest := bottomIndex2.IndexDescriptor.Digest

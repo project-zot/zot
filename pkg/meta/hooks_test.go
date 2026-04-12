@@ -54,7 +54,7 @@ type failDeleteImageStore struct {
 	deleteErr error
 }
 
-func (f *failDeleteImageStore) DeleteImageManifest(repo, reference string, detectCollision bool) error {
+func (f *failDeleteImageStore) DeleteImageManifest(ctx context.Context, repo, reference string, detectCollision bool) error {
 	return f.deleteErr
 }
 
@@ -103,7 +103,7 @@ func TestOnUpdateManifestDigestTags_success(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		imgStore := storeController.GetImageStore("repo")
-		_, _, err = imgStore.PutImageManifest("repo", manifestDigest.String(), mediaType, manifestBody,
+		_, _, err = imgStore.PutImageManifest(context.Background(), "repo", manifestDigest.String(), mediaType, manifestBody,
 			[]string{"ta", "tb"})
 		So(err, ShouldBeNil)
 
@@ -159,7 +159,7 @@ func TestOnUpdateManifestDigestTags_rollbackPartialMeta(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			imgStore := storeController.GetImageStore("repo")
-			_, _, err = imgStore.PutImageManifest("repo", manifestDigest.String(), mediaType, manifestBody,
+			_, _, err = imgStore.PutImageManifest(context.Background(), "repo", manifestDigest.String(), mediaType, manifestBody,
 				[]string{"ta", "tb"})
 			So(err, ShouldBeNil)
 
@@ -245,7 +245,7 @@ func TestOnUpdateManifestDigestTags_rollbackRestoresMovedTag(t *testing.T) {
 
 			imgStore := storeController.GetImageStore("repo")
 
-			_, _, err = imgStore.PutImageManifest("repo", digestB.String(), mediaTypeB, bodyB,
+			_, _, err = imgStore.PutImageManifest(context.Background(), "repo", digestB.String(), mediaTypeB, bodyB,
 				[]string{"movable", "onlyB"})
 			So(err, ShouldBeNil)
 
@@ -321,7 +321,7 @@ func TestOnUpdateManifestDigestTags_whenRepoMetaMissing(t *testing.T) {
 		So(errors.Is(err, zerr.ErrRepoMetaNotFound), ShouldBeTrue)
 
 		imgStore := storeController.GetImageStore("repo")
-		_, _, err = imgStore.PutImageManifest("repo", manifestDigest.String(), mediaType, manifestBody,
+		_, _, err = imgStore.PutImageManifest(context.Background(), "repo", manifestDigest.String(), mediaType, manifestBody,
 			[]string{"ta", "tb"})
 		So(err, ShouldBeNil)
 
