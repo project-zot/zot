@@ -107,6 +107,18 @@ func (bdw *BoltDB) GetAllRepoNames() ([]string, error) {
 	return repoNames, err
 }
 
+func (bdw *BoltDB) CountRepos(_ context.Context) (int, error) {
+	count := 0
+
+	err := bdw.DB.View(func(tx *bbolt.Tx) error {
+		count = tx.Bucket([]byte(RepoMetaBuck)).Stats().KeyN
+
+		return nil
+	})
+
+	return count, err
+}
+
 func (bdw *BoltDB) GetRepoLastUpdated(repo string) time.Time {
 	lastUpdated := time.Time{}
 

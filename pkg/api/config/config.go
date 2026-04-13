@@ -29,6 +29,7 @@ var (
 
 type StorageConfig struct {
 	RootDirectory string
+	MaxRepos      int
 	Dedupe        bool
 	RemoteCache   bool
 	GC            bool
@@ -1142,6 +1143,17 @@ func (c *Config) IsRetentionEnabled() bool {
 	defer c.mu.RUnlock()
 
 	return c.isRetentionEnabledInternal()
+}
+
+func (c *Config) IsQuotaEnabled() bool {
+	if c == nil {
+		return false
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.Storage.MaxRepos > 0
 }
 
 // IsCompatEnabled checks if compatibility mode is enabled.
