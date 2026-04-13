@@ -4272,8 +4272,9 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		indexMultiArchMiddle1Blob, err := json.Marshal(indexMultiArchMiddle1)
 		So(err, ShouldBeNil)
 
-		indexMultiArchMiddle1Digest, _, err := storeCtlr.GetDefaultImageStore().PutImageManifest(repoName,
-			"multiArchMiddle1", ispec.MediaTypeImageIndex, indexMultiArchMiddle1Blob, nil)
+
+		indexMultiArchMiddle1Digest, _, err := storeCtlr.GetDefaultImageStore().PutImageManifest(
+			context.Background(), repoName, "multiArchMiddle1", ispec.MediaTypeImageIndex, indexMultiArchMiddle1Blob, nil)
 		So(err, ShouldBeNil)
 
 		image211 := CreateRandomImage()
@@ -4297,8 +4298,9 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		indexMultiArchMiddle2Blob, err := json.Marshal(indexMultiArchMiddle2)
 		So(err, ShouldBeNil)
 
-		indexMultiArchMiddle2Digest, _, err := storeCtlr.GetDefaultImageStore().PutImageManifest(repoName,
-			"multiArchMiddle2", ispec.MediaTypeImageIndex, indexMultiArchMiddle2Blob, nil)
+
+		indexMultiArchMiddle2Digest, _, err := storeCtlr.GetDefaultImageStore().PutImageManifest(
+			context.Background(), repoName, "multiArchMiddle2", ispec.MediaTypeImageIndex, indexMultiArchMiddle2Blob, nil)
 		So(err, ShouldBeNil)
 
 		image31 := CreateRandomImage()
@@ -4332,8 +4334,9 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		indexMultiArchTopBlob, err := json.Marshal(indexMultiArchTop)
 		So(err, ShouldBeNil)
 
-		_, _, err = storeCtlr.GetDefaultImageStore().PutImageManifest(repoName, "multiArchTop", ispec.MediaTypeImageIndex,
-			indexMultiArchTopBlob, nil)
+
+		_, _, err = storeCtlr.GetDefaultImageStore().PutImageManifest(
+			context.Background(), repoName, "multiArchTop", ispec.MediaTypeImageIndex, indexMultiArchTopBlob, nil)
 		So(err, ShouldBeNil)
 
 		ctlrManager.StartAndWait(port)
@@ -4444,8 +4447,9 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		indexMultiArchMiddle1Blob, err := json.Marshal(indexMultiArchMiddle1)
 		So(err, ShouldBeNil)
 
-		indexMultiArchMiddle1Digest, _, err := storeCtlr.GetDefaultImageStore().PutImageManifest(repoName,
-			"multiArchMiddle1", ispec.MediaTypeImageIndex, indexMultiArchMiddle1Blob, nil)
+
+		indexMultiArchMiddle1Digest, _, err := storeCtlr.GetDefaultImageStore().PutImageManifest(
+			context.Background(), repoName, "multiArchMiddle1", ispec.MediaTypeImageIndex, indexMultiArchMiddle1Blob, nil)
 		So(err, ShouldBeNil)
 
 		image211 := CreateRandomImage()
@@ -4469,8 +4473,9 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		indexMultiArchMiddle2Blob, err := json.Marshal(indexMultiArchMiddle2)
 		So(err, ShouldBeNil)
 
-		indexMultiArchMiddle2Digest, _, err := storeCtlr.GetDefaultImageStore().PutImageManifest(repoName,
-			"multiArchMiddle2", ispec.MediaTypeImageIndex, indexMultiArchMiddle2Blob, nil)
+
+		indexMultiArchMiddle2Digest, _, err := storeCtlr.GetDefaultImageStore().PutImageManifest(
+			context.Background(), repoName, "multiArchMiddle2", ispec.MediaTypeImageIndex, indexMultiArchMiddle2Blob, nil)
 		So(err, ShouldBeNil)
 
 		image31 := CreateRandomImage()
@@ -4504,8 +4509,9 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		indexMultiArchTopBlob, err := json.Marshal(indexMultiArchTop)
 		So(err, ShouldBeNil)
 
-		_, _, err = storeCtlr.GetDefaultImageStore().PutImageManifest(repoName, "multiArchTop", ispec.MediaTypeImageIndex,
-			indexMultiArchTopBlob, nil)
+
+		_, _, err = storeCtlr.GetDefaultImageStore().PutImageManifest(
+			context.Background(), repoName, "multiArchTop", ispec.MediaTypeImageIndex, indexMultiArchTopBlob, nil)
 		So(err, ShouldBeNil)
 
 		ctlr := api.NewController(conf)
@@ -5231,12 +5237,11 @@ func TestMetaDBWhenSigningImages(t *testing.T) {
 			Convey("imageIsSignature fails", func() {
 				// make image store ignore the wrong format of the input
 				ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte, _ []string) (godigest.Digest,
-						godigest.Digest, error,
-					) {
+
+					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string, body []byte, extraTags []string) (godigest.Digest, godigest.Digest, error) {
 						return "", "", nil
 					},
-					DeleteImageManifestFn: func(repo, reference string, dc bool) error {
+					DeleteImageManifestFn: func(ctx context.Context, repo, reference string, dc bool) error {
 						return ErrTestError
 					},
 				}
@@ -6628,12 +6633,11 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 
 			Convey("imageIsSignature fails", func() {
 				ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte, _ []string) (godigest.Digest,
-						godigest.Digest, error,
-					) {
+
+					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string, body []byte, extraTags []string) (godigest.Digest, godigest.Digest, error) {
 						return "", "", nil
 					},
-					DeleteImageManifestFn: func(repo, reference string, dc bool) error {
+					DeleteImageManifestFn: func(ctx context.Context, repo, reference string, dc bool) error {
 						return nil
 					},
 				}
@@ -6654,12 +6658,11 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 
 						return configBlob, nil
 					},
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte, _ []string) (godigest.Digest,
-						godigest.Digest, error,
-					) {
+
+					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string, body []byte, extraTags []string) (godigest.Digest, godigest.Digest, error) {
 						return "", "", nil
 					},
-					DeleteImageManifestFn: func(repo, reference string, dc bool) error {
+					DeleteImageManifestFn: func(ctx context.Context, repo, reference string, dc bool) error {
 						return nil
 					},
 					GetImageManifestFn: func(repo, reference string) ([]byte, godigest.Digest, string, error) {
@@ -6684,12 +6687,11 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 
 						return configBlob, nil
 					},
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte, _ []string) (godigest.Digest,
-						godigest.Digest, error,
-					) {
+
+					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string, body []byte, extraTags []string) (godigest.Digest, godigest.Digest, error) {
 						return "", "", ErrTestError
 					},
-					DeleteImageManifestFn: func(repo, reference string, dc bool) error {
+					DeleteImageManifestFn: func(ctx context.Context, repo, reference string, dc bool) error {
 						return nil
 					},
 					GetImageManifestFn: func(repo, reference string) ([]byte, godigest.Digest, string, error) {

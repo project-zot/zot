@@ -114,7 +114,7 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 ) {
 	Convey("Scrub only one repo", func() {
 		// initialize repo
-		err := imgStore.InitRepo(repoName)
+		err := imgStore.InitRepo(context.Background(), repoName)
 		So(err, ShouldBeNil)
 
 		ok := imgStore.DirExists(path.Join(imgStore.RootDir(), repoName))
@@ -490,8 +490,10 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 
 			indexBlob, err := json.Marshal(index)
 			So(err, ShouldBeNil)
-			indexDigest, _, err := imgStore.PutImageManifest(repoName, "", ispec.MediaTypeImageIndex, indexBlob, nil)
-			So(err, ShouldBeNil)
+
+			indexDigest, _, err := imgStore.PutImageManifest(context.Background(),
+				repoName, "", ispec.MediaTypeImageIndex, indexBlob, nil)
+				So(err, ShouldBeNil)
 
 			buff := bytes.NewBufferString("")
 
