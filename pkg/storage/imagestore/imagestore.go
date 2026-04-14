@@ -1772,8 +1772,31 @@ func (is *ImageStore) PutIndexContent(repo string, index ispec.Index) error {
 		return err
 	}
 
-	if _, err = is.storeDriver.WriteFile(indexPath, buf); err != nil {
-		is.log.Error().Err(err).Str("file", indexPath).Msg("failed to write")
+	// Write to a unique file under .uploads (same layout as blob uploads), then rename into place.
+	// Stale files are picked up by the same blob-upload GC path as ordinary uploads.
+	// This avoids truncating/removing index.json on failure (e.g. ENOSPC) — see local Driver.WriteFile + Cancel.
+	stagingUUID, err := guuid.NewV4()
+	if err != nil {
+		is.log.Error().Err(err).Str("repository", repo).Msg("failed to generate staging UUID")
+
+		return err
+	}
+
+	stagingID := stagingUUID.String()
+	tmpPath := is.BlobUploadPath(repo, stagingID)
+
+	if _, err = is.storeDriver.WriteFile(tmpPath, buf); err != nil {
+		is.log.Error().Err(err).Str("file", tmpPath).Msg("failed to write staging index")
+
+		_ = is.storeDriver.Delete(tmpPath)
+
+		return err
+	}
+
+	if err := is.storeDriver.Move(tmpPath, indexPath); err != nil {
+		is.log.Error().Err(err).Str("from", tmpPath).Str("to", indexPath).Msg("failed to replace index.json")
+
+		_ = is.storeDriver.Delete(tmpPath)
 
 		return err
 	}

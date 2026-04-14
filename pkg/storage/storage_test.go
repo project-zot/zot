@@ -10,9 +10,11 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -174,6 +176,40 @@ func newLocalImageStoreWithEventRecorder(t *testing.T, recorder events.Recorder)
 
 	return imagestore.NewImageStore(rootDir, cacheDir, true, true, log, metrics, nil,
 		storeDriver, cacheDriver, nil, recorder)
+}
+
+// newLocalImageStoreWithDriver builds a filesystem-backed image store for tests with a configurable
+// storage driver (nil means local.New(true)). The returned cleanup stops the metrics server and must be deferred.
+func newLocalImageStoreWithDriver(t *testing.T, storeDriver storageTypes.Driver) (
+	string, storageTypes.ImageStore, func(),
+) {
+	t.Helper()
+
+	rootDir := t.TempDir()
+	log := zlog.NewTestLogger()
+	metrics := monitoring.NewMetricsServer(false, log)
+	cleanup := func() { metrics.Stop() }
+
+	cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+		RootDir:     rootDir,
+		Name:        "cache",
+		UseRelPaths: true,
+	}, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if storeDriver == nil {
+		storeDriver = local.New(true)
+	}
+
+	imgStore := imagestore.NewImageStore(rootDir, rootDir, true, true, log, metrics, nil,
+		storeDriver, cacheDriver, nil, nil)
+	if imgStore == nil {
+		t.Fatal("NewImageStore returned nil")
+	}
+
+	return rootDir, imgStore, cleanup
 }
 
 //nolint:gochecknoglobals
@@ -3900,4 +3936,136 @@ func DumpKeys(t *testing.T, redisURL string) {
 			t.Logf("Key: %s, Type: %s, Value: %s\n", key, keyType, value)
 		}
 	}
+}
+
+// putIndexHookDriver wraps the local driver so PutIndexContent tests can inject WriteFile / Move failures.
+type putIndexHookDriver struct {
+	*local.Driver
+
+	writeFileHook func(filePath string, content []byte) (n int, err error, handled bool)
+	moveHook      func(src, dst string) (err error, handled bool)
+}
+
+func (h *putIndexHookDriver) WriteFile(filePath string, content []byte) (int, error) {
+	if h.writeFileHook != nil {
+		if n, err, ok := h.writeFileHook(filePath, content); ok {
+			return n, err
+		}
+	}
+
+	return h.Driver.WriteFile(filePath, content)
+}
+
+func (h *putIndexHookDriver) Move(src, dst string) error {
+	if h.moveHook != nil {
+		if err, ok := h.moveHook(src, dst); ok {
+			return err
+		}
+	}
+
+	return h.Driver.Move(src, dst)
+}
+
+func TestPutIndexContent_atomicReplace(t *testing.T) {
+	Convey("PutIndexContent stages under .uploads then renames (atomic replace)", t, func() {
+		const repo = "r1"
+
+		Convey("staging WriteFile failure leaves index.json unchanged", func() {
+			hookDriver := &putIndexHookDriver{
+				Driver: local.New(true),
+				writeFileHook: func(filePath string, content []byte) (int, error, bool) {
+					if filepath.Base(filepath.Dir(filePath)) == storageConstants.BlobUploadDir {
+						return -1, syscall.ENOSPC, true
+					}
+
+					return 0, nil, false
+				},
+			}
+
+			root, imgStore, cleanup := newLocalImageStoreWithDriver(t, hookDriver)
+			defer cleanup()
+
+			So(imgStore.InitRepo(repo), ShouldBeNil)
+
+			before, err := os.ReadFile(path.Join(root, repo, ispec.ImageIndexFile))
+			So(err, ShouldBeNil)
+			So(len(before), ShouldBeGreaterThan, 0)
+
+			var idx ispec.Index
+			So(json.Unmarshal(before, &idx), ShouldBeNil)
+			idx.SchemaVersion = 999
+
+			So(imgStore.PutIndexContent(repo, idx), ShouldNotBeNil)
+
+			after, err := os.ReadFile(path.Join(root, repo, ispec.ImageIndexFile))
+			So(err, ShouldBeNil)
+			So(string(after), ShouldEqual, string(before))
+
+			uploadOrphans, err := filepath.Glob(path.Join(root, repo, storageConstants.BlobUploadDir, "*"))
+			So(err, ShouldBeNil)
+			So(uploadOrphans, ShouldBeEmpty)
+		})
+
+		Convey("Move into index.json failure leaves index.json unchanged", func() {
+			hookDriver := &putIndexHookDriver{
+				Driver: local.New(true),
+				moveHook: func(src, dst string) (error, bool) {
+					if filepath.Base(dst) == ispec.ImageIndexFile {
+						//nolint: err113
+						return errors.New("forced move failure"), true
+					}
+
+					return nil, false
+				},
+			}
+
+			root, imgStore, cleanup := newLocalImageStoreWithDriver(t, hookDriver)
+			defer cleanup()
+
+			So(imgStore.InitRepo(repo), ShouldBeNil)
+
+			before, err := os.ReadFile(path.Join(root, repo, ispec.ImageIndexFile))
+			So(err, ShouldBeNil)
+
+			var idx ispec.Index
+			So(json.Unmarshal(before, &idx), ShouldBeNil)
+			idx.SchemaVersion = 42
+
+			So(imgStore.PutIndexContent(repo, idx), ShouldNotBeNil)
+
+			after, err := os.ReadFile(path.Join(root, repo, ispec.ImageIndexFile))
+			So(err, ShouldBeNil)
+			So(string(after), ShouldEqual, string(before))
+
+			uploadOrphans, err := filepath.Glob(path.Join(root, repo, storageConstants.BlobUploadDir, "*"))
+			So(err, ShouldBeNil)
+			So(uploadOrphans, ShouldBeEmpty)
+		})
+
+		Convey("success updates index.json and leaves .uploads empty", func() {
+			root, imgStore, cleanup := newLocalImageStoreWithDriver(t, nil)
+			defer cleanup()
+
+			So(imgStore.InitRepo(repo), ShouldBeNil)
+
+			var idx ispec.Index
+			buf, err := os.ReadFile(path.Join(root, repo, ispec.ImageIndexFile))
+			So(err, ShouldBeNil)
+			So(json.Unmarshal(buf, &idx), ShouldBeNil)
+
+			idx.SchemaVersion = 7
+			So(imgStore.PutIndexContent(repo, idx), ShouldBeNil)
+
+			after, err := os.ReadFile(path.Join(root, repo, ispec.ImageIndexFile))
+			So(err, ShouldBeNil)
+
+			var got ispec.Index
+			So(json.Unmarshal(after, &got), ShouldBeNil)
+			So(got.SchemaVersion, ShouldEqual, 7)
+
+			uploadOrphans, err := filepath.Glob(path.Join(root, repo, storageConstants.BlobUploadDir, "*"))
+			So(err, ShouldBeNil)
+			So(uploadOrphans, ShouldBeEmpty)
+		})
+	})
 }
