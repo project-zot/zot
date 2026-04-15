@@ -182,6 +182,16 @@ func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController stypes.StoreCo
 		err = SetImageMetaFromInput(context.Background(), repo, reference, manifest.MediaType, manifest.Digest, manifestBlob,
 			imageStore, metaDB, log)
 		if err != nil {
+			// Handle missing blobs gracefully - this can happen with deduplicated blobs when the
+			// local blob cache is lost on restart (e.g. with S3/GCS backends and ephemeral local storage).
+			var pathNotFoundErr driver.PathNotFoundError
+			if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
+				log.Warn().Err(err).Str("repository", repo).Str("reference", reference).
+					Msg("skipping manifest metadata due to missing blob, continuing repo parse")
+
+				continue
+			}
+
 			log.Error().Err(err).Str("repository", repo).Str("tag", tag).
 				Msg("failed to set metadata for image")
 

@@ -256,6 +256,70 @@ func TestParseStorageErrors(t *testing.T) {
 			So(setRepoRefCount, ShouldEqual, 1)
 		})
 
+		Convey("SetImageMetaFromInput missing config blob - graceful handling (e.g. deduplicated blobs with lost cache)", func() {
+			// This simulates the case where a manifest blob is found (non-zero size) but its
+			// config blob can't be resolved (e.g. deduplicated blob with lost local cache on restart
+			// when using S3/GCS with local blob cache). The manifest should be skipped gracefully
+			// and other manifests in the same repo should still be indexed.
+			validImage1 := CreateRandomImage()
+			validImage2 := CreateRandomImage()
+
+			manifest1Blob, _ := json.Marshal(validImage1.Manifest)
+			manifest2Blob, _ := json.Marshal(validImage2.Manifest)
+			config2Blob, _ := json.Marshal(validImage2.Config)
+
+			imageStore.GetIndexContentFn = func(repo string) ([]byte, error) {
+				return getIndexBlob(ispec.Index{
+					Manifests: []ispec.Descriptor{
+						{
+							MediaType: ispec.MediaTypeImageManifest,
+							Digest:    validImage1.ManifestDescriptor.Digest,
+							Annotations: map[string]string{
+								ispec.AnnotationRefName: "tag1",
+							},
+						},
+						{
+							MediaType: ispec.MediaTypeImageManifest,
+							Digest:    validImage2.ManifestDescriptor.Digest,
+							Annotations: map[string]string{
+								ispec.AnnotationRefName: "tag2",
+							},
+						},
+					},
+				}), nil
+			}
+
+			setRepoRefCount := 0
+
+			imageStore.GetBlobContentFn = func(repo string, digest godigest.Digest) ([]byte, error) {
+				switch digest {
+				case validImage1.ManifestDescriptor.Digest:
+					return manifest1Blob, nil
+				case validImage1.ConfigDescriptor.Digest:
+					// Config blob for image1 is missing (e.g. deduplicated with lost cache)
+					return nil, zerr.ErrBlobNotFound
+				case validImage2.ManifestDescriptor.Digest:
+					return manifest2Blob, nil
+				case validImage2.ConfigDescriptor.Digest:
+					return config2Blob, nil
+				}
+
+				return nil, zerr.ErrBlobNotFound
+			}
+
+			metaDB.SetRepoReferenceFn = func(ctx context.Context, repo, reference string, imageMeta mTypes.ImageMeta) error {
+				setRepoRefCount++
+
+				return nil
+			}
+
+			// ParseRepo should succeed even though tag1's config blob is missing
+			err := meta.ParseRepo("repo", metaDB, storeController, log)
+			So(err, ShouldBeNil)
+			// Only tag2 should be indexed (tag1 was skipped due to missing config blob)
+			So(setRepoRefCount, ShouldEqual, 1)
+		})
+
 		Convey("manifestMetaIsPresent true", func() {
 			indexContent := ispec.Index{
 				Manifests: []ispec.Descriptor{
