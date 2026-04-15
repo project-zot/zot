@@ -105,19 +105,18 @@ type AuthHTPasswd struct {
 }
 
 type AuthConfig struct {
-	FailDelay             int
-	HTPasswd              AuthHTPasswd
-	LDAP                  *LDAPConfig
-	Bearer                *BearerConfig
-	OpenID                *OpenIDConfig
-	APIKey                bool
-	SessionKeysFile       string
-	SessionHashKey        []byte         `json:"-"`
-	SessionEncryptKey     []byte         `json:"-"`
-	SessionDriver         map[string]any `mapstructure:",omitempty"`
-	SecureSession         *bool          `json:"secureSession,omitempty"         mapstructure:"secureSession,omitempty"`
-	MTLS                  *MTLSConfig    `json:"mtls,omitempty"                  mapstructure:"mtls,omitempty"`
-	ForceDockerClientAuth bool           `json:"forceDockerClientAuth,omitempty" mapstructure:"forceDockerClientAuth,omitempty"` //nolint:lll
+	FailDelay         int
+	HTPasswd          AuthHTPasswd
+	LDAP              *LDAPConfig
+	Bearer            *BearerConfig
+	OpenID            *OpenIDConfig
+	APIKey            bool
+	SessionKeysFile   string
+	SessionHashKey    []byte         `json:"-"`
+	SessionEncryptKey []byte         `json:"-"`
+	SessionDriver     map[string]any `mapstructure:",omitempty"`
+	SecureSession     *bool          `json:"secureSession,omitempty" mapstructure:"secureSession,omitempty"`
+	MTLS              *MTLSConfig    `json:"mtls,omitempty"          mapstructure:"mtls,omitempty"`
 }
 
 // IsLdapAuthEnabled checks if LDAP authentication is enabled in this auth config.
@@ -185,6 +184,15 @@ func (a *AuthConfig) IsBasicAuthnEnabled() bool {
 	}
 
 	return a.IsHtpasswdAuthEnabled() || a.IsLdapAuthEnabled() || a.IsOpenIDAuthEnabled() || a.IsAPIKeyEnabled()
+}
+
+// CanAuthenticateWithBasicCredentials reports whether the server can authenticate a client
+// using HTTP Basic credentials (username/password) in the Authorization header.
+//
+// This is intentionally narrower than IsBasicAuthnEnabled(): OpenID is not a Basic
+// credential flow, while htpasswd/LDAP/API keys are.
+func (a *AuthConfig) CanAuthenticateWithBasicCredentials() bool {
+	return a.IsHtpasswdAuthEnabled() || a.IsLdapAuthEnabled() || a.IsAPIKeyEnabled()
 }
 
 // GetFailDelay returns the configured fail delay for authentication attempts.
@@ -507,6 +515,13 @@ func (config *AccessControlConfig) AnonymousPolicyExists() bool {
 	}
 
 	return false
+}
+
+// HasMixedAnonymousAndAuthenticatedPolicies reports whether the access control configuration contains
+// at least one anonymous repository policy AND at least one authenticated-only policy
+// (default/admin/user-specific).
+func (config *AccessControlConfig) HasMixedAnonymousAndAuthenticatedPolicies() bool {
+	return config != nil && config.AnonymousPolicyExists() && !config.ContainsOnlyAnonymousPolicy()
 }
 
 // ContainsOnlyAnonymousPolicy checks if the access control configuration contains only anonymous policies.

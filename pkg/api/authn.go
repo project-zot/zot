@@ -468,10 +468,12 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 
 			// If no credentials provided - check for anonymous / mgmt requests
 			case allowAnonymous || isMgmtRequested:
-				// Docker workaround: force 401 on /v2/ to trigger credential sending
-				// Docker doesn't send stored credentials if /v2/ returns 200
+				// Docker workaround: force 401 on /v2/ when anonymous policies coexist with
+				// authenticated-only policies. Otherwise Docker treats 200 on /v2/ as "no auth"
+				// and will not send stored credentials for protected repositories.
 				// See: https://github.com/opencontainers/wg-auth/blob/main/docs/implementations/moby.md
-				if authConfig.ForceDockerClientAuth && isDockerClient && isV2Requested {
+				hasMixedPolicy := accessControlConfig.HasMixedAnonymousAndAuthenticatedPolicies()
+				if isDockerClient && isV2Requested && hasMixedPolicy && authConfig.CanAuthenticateWithBasicCredentials() {
 					authenticated = false
 				} else {
 					authenticated = true

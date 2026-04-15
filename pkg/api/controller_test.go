@@ -14212,19 +14212,23 @@ func TestDockerClientV2ChallengeWorkaround(t *testing.T) {
 		htpasswdPassword, seedPass := test.GenerateRandomString()
 		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(htpasswdUsername, htpasswdPassword))
 
-		Convey("With ForceDockerClientAuth enabled", func() {
+		Convey("With mixed anonymous and authenticated repository policies", func() {
 			conf := config.New()
 			conf.HTTP.Port = port
 			conf.HTTP.Auth = &config.AuthConfig{
 				HTPasswd: config.AuthHTPasswd{
 					Path: htpasswdPath,
 				},
-				ForceDockerClientAuth: true,
 			}
 			conf.HTTP.AccessControl = &config.AccessControlConfig{
 				Repositories: config.Repositories{
-					"**": config.PolicyGroup{
+					"public/**": config.PolicyGroup{
 						AnonymousPolicy: []string{"read"},
+					},
+					"private/**": config.PolicyGroup{
+						Policies: []config.Policy{
+							{Actions: []string{"read", "write"}, Users: []string{htpasswdUsername}},
+						},
 					},
 				},
 			}
@@ -14272,14 +14276,13 @@ func TestDockerClientV2ChallengeWorkaround(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		})
 
-		Convey("With ForceDockerClientAuth disabled (default)", func() {
+		Convey("With only anonymous repository policies", func() {
 			conf := config.New()
 			conf.HTTP.Port = port
 			conf.HTTP.Auth = &config.AuthConfig{
 				HTPasswd: config.AuthHTPasswd{
 					Path: htpasswdPath,
 				},
-				ForceDockerClientAuth: false,
 			}
 			conf.HTTP.AccessControl = &config.AccessControlConfig{
 				Repositories: config.Repositories{
@@ -14298,7 +14301,7 @@ func TestDockerClientV2ChallengeWorkaround(t *testing.T) {
 
 			defer cm.StopServer()
 
-			// Docker client without credentials should get 200 (workaround disabled)
+			// Docker client without credentials should get 200 (no mixed policies)
 			resp, err := resty.R().
 				SetHeader("User-Agent", "docker/26.1.3 go/go1.22.2 UpstreamClient(Docker-Client/26.1.3 (linux))").
 				Get(baseURL + "/v2/")
