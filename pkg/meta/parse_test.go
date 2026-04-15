@@ -256,7 +256,7 @@ func TestParseStorageErrors(t *testing.T) {
 			So(setRepoRefCount, ShouldEqual, 1)
 		})
 
-		Convey("SetImageMetaFromInput missing config blob - graceful handling (e.g. deduplicated blobs with lost cache)", func() {
+		Convey("Skips manifest with missing config blob and continues indexing", func() {
 			// This simulates the case where a manifest blob is found (non-zero size) but its
 			// config blob can't be resolved (e.g. deduplicated blob with lost local cache on restart
 			// when using S3/GCS with local blob cache). The manifest should be skipped gracefully
