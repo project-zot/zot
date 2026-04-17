@@ -58,6 +58,8 @@ type blobRange struct {
 	start, length int64
 }
 
+const maxBlobRanges = 16
+
 func (r blobRange) contentRange(size int64) string {
 	return fmt.Sprintf("bytes %d-%d/%d", r.start, r.start+r.length-1, size)
 }
@@ -1145,7 +1147,7 @@ func parseRangeHeader(contentRange string, size int64) ([]blobRange, error) {
 	for part := range strings.SplitSeq(rangeValue, ",") {
 		part = textproto.TrimString(part)
 		if part == "" {
-			continue
+			return nil, zerr.ErrParsingHTTPHeader
 		}
 
 		rangeFrom, rangeTo, ok := strings.Cut(part, "-")
@@ -1164,12 +1166,20 @@ func parseRangeHeader(contentRange string, size int64) ([]blobRange, error) {
 			}
 
 			suffixLength, err := strconv.ParseInt(rangeTo, 10, 64)
-			if err != nil || suffixLength < 0 {
+			if err != nil {
 				return nil, zerr.ErrParsingHTTPHeader
+			}
+
+			if suffixLength <= 0 {
+				return nil, zerr.ErrBadUploadRange
 			}
 
 			if suffixLength > size {
 				suffixLength = size
+			}
+
+			if suffixLength == 0 {
+				return nil, zerr.ErrBadUploadRange
 			}
 
 			current.start = size - suffixLength
@@ -1204,11 +1214,19 @@ func parseRangeHeader(contentRange string, size int64) ([]blobRange, error) {
 			}
 		}
 
+		if len(ranges) == maxBlobRanges {
+			return nil, zerr.ErrBadUploadRange
+		}
+
 		ranges = append(ranges, current)
 	}
 
-	if noOverlap && len(ranges) == 0 {
-		return nil, zerr.ErrBadUploadRange
+	if len(ranges) == 0 {
+		if noOverlap {
+			return nil, zerr.ErrBadUploadRange
+		}
+
+		return nil, zerr.ErrParsingHTTPHeader
 	}
 
 	return ranges, nil
@@ -1241,6 +1259,7 @@ func (writer *countingWriter) Write(p []byte) (int, error) {
 }
 
 func writeMultipartByteRanges(
+	ctx context.Context,
 	response http.ResponseWriter,
 	contentType string,
 	size int64,
@@ -1251,13 +1270,22 @@ func writeMultipartByteRanges(
 	responseLength := rangesMIMESize(ranges, contentType, size)
 	pipeReader, pipeWriter := io.Pipe()
 	multipartWriter := multipart.NewWriter(pipeWriter)
+	writerDone := make(chan struct{})
 
 	response.Header().Set("Content-Length", strconv.FormatInt(responseLength, 10))
 	response.Header().Set("Content-Type", "multipart/byteranges; boundary="+multipartWriter.Boundary())
 	response.WriteHeader(http.StatusPartialContent)
 
 	go func() {
+		defer close(writerDone)
+
 		for _, requestedRange := range ranges {
+			if err := ctx.Err(); err != nil {
+				_ = pipeWriter.CloseWithError(err)
+
+				return
+			}
+
 			partWriter, err := multipartWriter.CreatePart(requestedRange.mimeHeader(contentType, size))
 			if err != nil {
 				_ = pipeWriter.CloseWithError(err)
@@ -1267,6 +1295,13 @@ func writeMultipartByteRanges(
 
 			rangeContent, err := rangeReader(requestedRange)
 			if err != nil {
+				_ = pipeWriter.CloseWithError(err)
+
+				return
+			}
+
+			if err := ctx.Err(); err != nil {
+				_ = rangeContent.Close()
 				_ = pipeWriter.CloseWithError(err)
 
 				return
@@ -1297,8 +1332,12 @@ func writeMultipartByteRanges(
 	}()
 
 	if _, err := io.CopyN(response, pipeReader, responseLength); err != nil {
+		_ = pipeReader.CloseWithError(err)
+		_ = pipeWriter.CloseWithError(err)
 		logger.Error().Err(err).Msg("failed to copy data into http response")
 	}
+
+	<-writerDone
 }
 
 // GetBlob godoc
@@ -1379,6 +1418,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 	if len(ranges) > 1 {
 		writeMultipartByteRanges(
+			request.Context(),
 			response,
 			mediaType,
 			blobSize,

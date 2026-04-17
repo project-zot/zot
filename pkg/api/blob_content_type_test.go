@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -14,6 +15,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/api/constants"
@@ -109,6 +111,14 @@ func descriptorStore(t *testing.T) mocks.MockedImageStore {
 	}
 }
 
+func binaryMediaTypeFallbackStore(store mocks.MockedImageStore) mocks.MockedImageStore {
+	store.GetIndexContentFn = func(repo string) ([]byte, error) {
+		return nil, zerr.ErrRepoNotFound
+	}
+
+	return store
+}
+
 func TestCheckBlobUsesDescriptorContentType(t *testing.T) {
 	store := descriptorStore(t)
 	store.CheckBlobFn = func(repo string, digest godigest.Digest) (bool, int64, error) {
@@ -174,7 +184,7 @@ func TestGetBlobUsesDescriptorContentType(t *testing.T) {
 }
 
 func TestGetBlobPartialFallsBackToBinaryContentType(t *testing.T) {
-	handler := newBlobRouteHandler(mocks.MockedImageStore{
+	handler := newBlobRouteHandler(binaryMediaTypeFallbackStore(mocks.MockedImageStore{
 		CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
 			return true, 4, nil
 		},
@@ -185,7 +195,7 @@ func TestGetBlobPartialFallsBackToBinaryContentType(t *testing.T) {
 
 			return io.NopCloser(strings.NewReader("blob")), 4, nil
 		},
-	})
+	}))
 
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
 	req.Header.Set("Accept", "application/vnd.oci.image.layer.v1.tar+gzip, */*")
@@ -254,7 +264,7 @@ func TestGetBlobPartialUsesDescriptorContentType(t *testing.T) {
 }
 
 func TestGetBlobFallsBackToBinaryContentType(t *testing.T) {
-	handler := newBlobRouteHandler(mocks.MockedImageStore{
+	handler := newBlobRouteHandler(binaryMediaTypeFallbackStore(mocks.MockedImageStore{
 		GetBlobFn: func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error) {
 			if mediaType != constants.BinaryMediaType {
 				t.Fatalf("mediaType = %q, want %q", mediaType, constants.BinaryMediaType)
@@ -262,7 +272,7 @@ func TestGetBlobFallsBackToBinaryContentType(t *testing.T) {
 
 			return io.NopCloser(strings.NewReader("blob")), 4, nil
 		},
-	})
+	}))
 
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
 	req = mux.SetURLVars(req, map[string]string{
@@ -288,7 +298,7 @@ func TestGetBlobFallsBackToBinaryContentType(t *testing.T) {
 func TestGetBlobSupportsMultipleRanges(t *testing.T) {
 	const blob = "0123456789"
 
-	handler := newBlobRouteHandler(mocks.MockedImageStore{
+	handler := newBlobRouteHandler(binaryMediaTypeFallbackStore(mocks.MockedImageStore{
 		CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
 			return true, int64(len(blob)), nil
 		},
@@ -305,7 +315,7 @@ func TestGetBlobSupportsMultipleRanges(t *testing.T) {
 
 			return io.NopCloser(strings.NewReader(blob[from : to+1])), to - from + 1, int64(len(blob)), nil
 		},
-	})
+	}))
 
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
 	req.Header.Set("Range", "bytes=0-1,5-7")
@@ -381,5 +391,165 @@ func TestGetBlobSupportsMultipleRanges(t *testing.T) {
 
 	if _, err := reader.NextPart(); err != io.EOF {
 		t.Fatalf("expected EOF, got %v", err)
+	}
+}
+
+func TestGetBlobRejectsEmptyRangeList(t *testing.T) {
+	handler := newBlobRouteHandler(binaryMediaTypeFallbackStore(mocks.MockedImageStore{
+		CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+			return true, 10, nil
+		},
+		GetBlobFn: func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error) {
+			t.Fatal("GetBlob should not be called for an invalid range header")
+
+			return nil, 0, nil
+		},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req.Header.Set("Range", "bytes=")
+	req = mux.SetURLVars(req, map[string]string{
+		"name":   "test",
+		"digest": testLayerDigest().String(),
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetBlob(rec, req)
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusRequestedRangeNotSatisfiable {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusRequestedRangeNotSatisfiable)
+	}
+}
+
+func TestGetBlobSupportsSuffixRanges(t *testing.T) {
+	const blob = "0123456789"
+
+	handler := newBlobRouteHandler(binaryMediaTypeFallbackStore(mocks.MockedImageStore{
+		CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+			return true, int64(len(blob)), nil
+		},
+		GetBlobPartialFn: func(
+			repo string,
+			digest godigest.Digest,
+			mediaType string,
+			from,
+			to int64,
+		) (io.ReadCloser, int64, int64, error) {
+			if from != 7 || to != 9 {
+				t.Fatalf("range = %d-%d, want 7-9", from, to)
+			}
+
+			return io.NopCloser(strings.NewReader(blob[from : to+1])), to - from + 1, int64(len(blob)), nil
+		},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req.Header.Set("Range", "bytes=-3")
+	req = mux.SetURLVars(req, map[string]string{
+		"name":   "test",
+		"digest": testLayerDigest().String(),
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetBlob(rec, req)
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusPartialContent {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusPartialContent)
+	}
+
+	if got := resp.Header.Get("Content-Range"); got != "bytes 7-9/10" {
+		t.Fatalf("content-range = %q, want %q", got, "bytes 7-9/10")
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+
+	if got := string(body); got != "789" {
+		t.Fatalf("body = %q, want %q", got, "789")
+	}
+}
+
+func TestGetBlobRejectsZeroLengthSuffixRange(t *testing.T) {
+	handler := newBlobRouteHandler(binaryMediaTypeFallbackStore(mocks.MockedImageStore{
+		CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+			return true, 10, nil
+		},
+		GetBlobPartialFn: func(
+			repo string,
+			digest godigest.Digest,
+			mediaType string,
+			from,
+			to int64,
+		) (io.ReadCloser, int64, int64, error) {
+			t.Fatal("GetBlobPartial should not be called for an invalid suffix range")
+
+			return nil, 0, 0, nil
+		},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req.Header.Set("Range", "bytes=-0")
+	req = mux.SetURLVars(req, map[string]string{
+		"name":   "test",
+		"digest": testLayerDigest().String(),
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetBlob(rec, req)
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusRequestedRangeNotSatisfiable {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusRequestedRangeNotSatisfiable)
+	}
+}
+
+func TestGetBlobRejectsTooManyRanges(t *testing.T) {
+	rangeParts := make([]string, 0, 17)
+	for index := range 17 {
+		rangeParts = append(rangeParts, fmt.Sprintf("%d-%d", index, index))
+	}
+
+	handler := newBlobRouteHandler(binaryMediaTypeFallbackStore(mocks.MockedImageStore{
+		CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+			return true, 32, nil
+		},
+		GetBlobPartialFn: func(
+			repo string,
+			digest godigest.Digest,
+			mediaType string,
+			from,
+			to int64,
+		) (io.ReadCloser, int64, int64, error) {
+			t.Fatal("GetBlobPartial should not be called when too many ranges are requested")
+
+			return nil, 0, 0, nil
+		},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req.Header.Set("Range", "bytes="+strings.Join(rangeParts, ","))
+	req = mux.SetURLVars(req, map[string]string{
+		"name":   "test",
+		"digest": testLayerDigest().String(),
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetBlob(rec, req)
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusRequestedRangeNotSatisfiable {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusRequestedRangeNotSatisfiable)
 	}
 }
