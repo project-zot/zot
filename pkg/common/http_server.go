@@ -38,9 +38,11 @@ func ACHeadersMiddleware(config *config.Config, allowedMethods ...string) mux.Mi
 			resp.Header().Set("Access-Control-Allow-Methods", allowedMethodsValue)
 			resp.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type,"+constants.SessionClientHeaderName)
 
-			// Get auth config safely
+			// Access-Control-Allow-Credentials must not be "true" when
+			// Access-Control-Allow-Origin is the wildcard "*" (CORS spec §3.2).
+			// Only advertise credentials support when an explicit origin is set.
 			authConfig := config.CopyAuthConfig()
-			if authConfig.IsBasicAuthnEnabled() {
+			if authConfig.IsBasicAuthnEnabled() && config.GetAllowOrigin() != "" {
 				resp.Header().Set("Access-Control-Allow-Credentials", "true")
 			}
 
