@@ -5,9 +5,12 @@ package monitoring
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"zotregistry.dev/zot/v2/pkg/log"
@@ -17,11 +20,18 @@ const (
 	httpTimeout = 1 * time.Minute
 )
 
+var errNoValidPEMCertificate = errors.New("metrics client: no valid PEM certificate found")
+
 // MetricsConfig is used to configure the creation of a Node Exporter http client
 // that will connect to a particular zot instance.
 type MetricsConfig struct {
 	// Address of the zot http server
 	Address string
+
+	// CACert is an optional path to a PEM-encoded CA certificate file used to
+	// verify the zot server's TLS certificate.  When empty the system cert pool
+	// is used.  Set this when the zot server uses a self-signed or private CA.
+	CACert string
 
 	// Transport to use for the http client.
 	Transport *http.Transport
@@ -36,14 +46,33 @@ type MetricsClient struct {
 	log     log.Logger
 }
 
-func newHTTPMetricsClient() *http.Client {
-	defaultTransport := http.DefaultTransport.(*http.Transport).Clone()      //nolint: forcetypeassert
-	defaultTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint: gosec
+func newHTTPMetricsClient(caCertFile string) (*http.Client, error) {
+	caCertPool, err := x509.SystemCertPool()
+	if err != nil {
+		caCertPool = x509.NewCertPool()
+	}
+
+	if caCertFile != "" {
+		caCert, err := os.ReadFile(caCertFile)
+		if err != nil {
+			return nil, fmt.Errorf("metrics client: failed to read CA cert %s: %w", caCertFile, err)
+		}
+
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("%w: %s", errNoValidPEMCertificate, caCertFile)
+		}
+	}
+
+	transport := http.DefaultTransport.(*http.Transport).Clone() //nolint: forcetypeassert
+	transport.TLSClientConfig = &tls.Config{
+		RootCAs:    caCertPool,
+		MinVersion: tls.VersionTLS12,
+	}
 
 	return &http.Client{
 		Timeout:   httpTimeout,
-		Transport: defaultTransport,
-	}
+		Transport: transport,
+	}, nil
 }
 
 // NewMetricsClient creates a MetricsClient that can be used to retrieve in memory metrics.
@@ -51,7 +80,13 @@ func newHTTPMetricsClient() *http.Client {
 // in order to prevent concurrent memory leaks.
 func NewMetricsClient(config *MetricsConfig, logger log.Logger) *MetricsClient {
 	if config.HTTPClient == nil {
-		config.HTTPClient = newHTTPMetricsClient()
+		client, err := newHTTPMetricsClient(config.CACert)
+		if err != nil {
+			logger.Error().Err(err).Msg("failed to create metrics HTTP client; falling back to default transport")
+			config.HTTPClient = &http.Client{Timeout: httpTimeout}
+		} else {
+			config.HTTPClient = client
+		}
 	}
 
 	return &MetricsClient{config: *config, headers: make(http.Header), log: logger}
