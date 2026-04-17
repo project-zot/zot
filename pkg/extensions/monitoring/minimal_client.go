@@ -33,9 +33,6 @@ type MetricsConfig struct {
 	// is used.  Set this when the zot server uses a self-signed or private CA.
 	CACert string
 
-	// Transport to use for the http client.
-	Transport *http.Transport
-
 	// HTTPClient is the client to use.
 	HTTPClient *http.Client
 }
