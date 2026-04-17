@@ -14202,3 +14202,112 @@ func TestDynamicTLSCertificateReloading(t *testing.T) {
 		})
 	})
 }
+
+func TestDockerClientV2ChallengeWorkaround(t *testing.T) {
+	Convey("Test Docker client /v2/ challenge workaround", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		htpasswdUsername, seedUser := test.GenerateRandomString()
+		htpasswdPassword, seedPass := test.GenerateRandomString()
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(htpasswdUsername, htpasswdPassword))
+
+		Convey("With mixed anonymous and authenticated repository policies", func() {
+			conf := config.New()
+			conf.HTTP.Port = port
+			conf.HTTP.Auth = &config.AuthConfig{
+				HTPasswd: config.AuthHTPasswd{
+					Path: htpasswdPath,
+				},
+			}
+			conf.HTTP.AccessControl = &config.AccessControlConfig{
+				Repositories: config.Repositories{
+					"public/**": config.PolicyGroup{
+						AnonymousPolicy: []string{"read"},
+					},
+					"private/**": config.PolicyGroup{
+						Policies: []config.Policy{
+							{Actions: []string{"read", "write"}, Users: []string{htpasswdUsername}},
+						},
+					},
+				},
+			}
+
+			dir := t.TempDir()
+			ctlr := makeController(conf, dir)
+			ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).
+				Msg("random seed for username & password")
+			cm := test.NewControllerManager(ctlr)
+			cm.StartAndWait(port)
+
+			defer cm.StopServer()
+
+			// Docker client without credentials should get 401
+			resp, err := resty.R().
+				SetHeader("User-Agent", "docker/26.1.3 go/go1.22.2 UpstreamClient(Docker-Client/26.1.3 (linux))").
+				Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			So(resp.Header().Get("WWW-Authenticate"), ShouldContainSubstring, "Basic realm=")
+
+			// Docker client with valid credentials should get 200
+			resp, err = resty.R().
+				SetHeader("User-Agent", "docker/26.1.3 go/go1.22.2 UpstreamClient(Docker-Client/26.1.3 (linux))").
+				SetBasicAuth(htpasswdUsername, htpasswdPassword).
+				Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// Podman client without credentials should get 200 (unaffected by workaround)
+			resp, err = resty.R().
+				SetHeader("User-Agent", "containers/5.33.0 (github.com/containers/image)").
+				Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// Generic client without credentials should get 200 (unaffected)
+			resp, err = resty.R().
+				Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		})
+
+		Convey("With only anonymous repository policies", func() {
+			conf := config.New()
+			conf.HTTP.Port = port
+			conf.HTTP.Auth = &config.AuthConfig{
+				HTPasswd: config.AuthHTPasswd{
+					Path: htpasswdPath,
+				},
+			}
+			conf.HTTP.AccessControl = &config.AccessControlConfig{
+				Repositories: config.Repositories{
+					"**": config.PolicyGroup{
+						AnonymousPolicy: []string{"read"},
+					},
+				},
+			}
+
+			dir := t.TempDir()
+			ctlr := makeController(conf, dir)
+			ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).
+				Msg("random seed for username & password")
+			cm := test.NewControllerManager(ctlr)
+			cm.StartAndWait(port)
+
+			defer cm.StopServer()
+
+			// Docker client without credentials should get 200 (no mixed policies)
+			resp, err := resty.R().
+				SetHeader("User-Agent", "docker/26.1.3 go/go1.22.2 UpstreamClient(Docker-Client/26.1.3 (linux))").
+				Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		})
+	})
+}
