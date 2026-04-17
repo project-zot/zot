@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -14,6 +15,8 @@ import (
 
 	"zotregistry.dev/zot/v2/pkg/log"
 )
+
+var errNoPEMCertFound = errors.New("metrics client: no valid PEM certificate found")
 
 const (
 	httpTimeout = 1 * time.Minute
@@ -56,7 +59,7 @@ func newHTTPMetricsClient(caCertFile string) (*http.Client, error) {
 		}
 
 		if !caCertPool.AppendCertsFromPEM(caCert) {
-			return nil, fmt.Errorf("metrics client: no valid PEM certificate found in %s", caCertFile)
+			return nil, fmt.Errorf("%w: %s", errNoPEMCertFound, caCertFile)
 		}
 	}
 
