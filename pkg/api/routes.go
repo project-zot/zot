@@ -689,6 +689,7 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 // @Header  201 {string} OCI-Tag "Echoed tag= value; this header is repeatable (one field per tag= query parameter)"
 // @Failure 400 {string} string "bad request"
 // @Failure 404 {string} string "not found"
+// @Failure 413 {string} string "request entity too large"
 // @Failure 414 {string} string "too many tag query parameters"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/manifests/{reference} [put].
@@ -746,21 +747,29 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 		}
 	}
 
-	body, err := io.ReadAll(request.Body)
-	// hard to reach test case, injected error (simulates an interrupted image manifest upload)
-	// err could be io.ErrUnexpectedEOF
-	if err := inject.Error(err); err != nil {
-		rh.c.Log.Error().Err(err).Msg("unexpected error")
-		response.WriteHeader(http.StatusInternalServerError)
-
-		return
-	}
-
 	if len(digestQueryTags) > 0 && !zcommon.IsDigest(reference) {
 		err := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(map[string]string{
 			"reason": "tag query parameters are only valid when pushing a manifest by digest",
 		})
 		zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(err))
+
+		return
+	}
+
+	body, err := io.ReadAll(http.MaxBytesReader(response, request.Body, constants.MaxManifestBodySize))
+	// hard to reach test case, injected error (simulates an interrupted image manifest upload)
+	// err could be io.ErrUnexpectedEOF or *http.MaxBytesError
+	if err := inject.Error(err); err != nil {
+		var mbe *http.MaxBytesError
+		if errors.As(err, &mbe) {
+			e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(map[string]string{
+				"reason": fmt.Sprintf("manifest body exceeds maximum allowed size of %d bytes", constants.MaxManifestBodySize),
+			})
+			zcommon.WriteJSON(response, http.StatusRequestEntityTooLarge, apiErr.NewErrorList(e))
+		} else {
+			rh.c.Log.Error().Err(err).Msg("unexpected error")
+			response.WriteHeader(http.StatusInternalServerError)
+		}
 
 		return
 	}

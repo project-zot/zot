@@ -26,6 +26,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/api/constants"
+	apiErr "zotregistry.dev/zot/v2/pkg/api/errors"
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
@@ -259,6 +260,27 @@ func TestRoutes(t *testing.T) {
 
 				return resp.StatusCode
 			}
+
+			Convey("body exceeds MaxManifestBodySize returns 413 with MANIFEST_INVALID error payload", func() {
+				ctlr.StoreController.DefaultStore = &mocks.MockedImageStore{}
+				oversized := make([]byte, constants.MaxManifestBodySize+1)
+				request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL,
+					bytes.NewReader(oversized))
+				request = mux.SetURLVars(request, map[string]string{"name": "test", "reference": "v1"})
+				request.Header.Add("Content-Type", ispec.MediaTypeImageManifest)
+				response := httptest.NewRecorder()
+
+				rthdlr.UpdateManifest(response, request)
+
+				So(response.Code, ShouldEqual, http.StatusRequestEntityTooLarge)
+
+				var errList apiErr.ErrorList
+				err := json.NewDecoder(response.Body).Decode(&errList)
+				So(err, ShouldBeNil)
+				So(errList.Errors, ShouldHaveLength, 1)
+				So(errList.Errors[0].Code, ShouldEqual, apiErr.MANIFEST_INVALID.String())
+				So(errList.Errors[0].Detail["reason"], ShouldContainSubstring, "exceeds maximum allowed size")
+			})
 			// repo not found
 			statusCode := testUpdateManifest(
 				map[string]string{
