@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	godigest "github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/project-zot/mockoidc"
 	. "github.com/smartystreets/goconvey/convey"
@@ -267,7 +268,7 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte, _ []string) (godigest.Digest,
 						godigest.Digest, error,
 					) {
 						return "", "", zerr.ErrRepoNotFound
@@ -282,7 +283,7 @@ func TestRoutes(t *testing.T) {
 				},
 
 				&mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte, _ []string) (godigest.Digest,
 						godigest.Digest, error,
 					) {
 						return "", "", zerr.ErrManifestNotFound
@@ -296,7 +297,7 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte, _ []string) (godigest.Digest,
 						godigest.Digest, error,
 					) {
 						return "", "", zerr.ErrBadManifest
@@ -310,7 +311,7 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte, _ []string) (godigest.Digest,
 						godigest.Digest, error,
 					) {
 						return "", "", zerr.ErrBlobNotFound
@@ -325,13 +326,108 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte, _ []string) (godigest.Digest,
 						godigest.Digest, error,
 					) {
 						return "", "", zerr.ErrRepoBadVersion
 					},
 				})
 			So(statusCode, ShouldEqual, http.StatusInternalServerError)
+		})
+
+		Convey("UpdateManifest digest query tags with MetaDB", func() {
+			defer func() {
+				ctlr.MetaDB = nil
+			}()
+
+			configBlob := []byte(`{"architecture":"amd64","os":"linux"}`)
+			configDigest := godigest.FromBytes(configBlob)
+
+			manifest := ispec.Manifest{
+				Versioned: specs.Versioned{SchemaVersion: 2},
+				Config: ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageConfig,
+					Digest:    configDigest,
+					Size:      int64(len(configBlob)),
+				},
+				Layers: []ispec.Descriptor{},
+			}
+
+			mcontent, mErr := json.Marshal(manifest)
+			So(mErr, ShouldBeNil)
+
+			manifestDigest := godigest.FromBytes(mcontent)
+			digestRef := manifestDigest.String()
+
+			ism := &mocks.MockedImageStore{
+				PutImageManifestFn: func(repo, reference, mediaType string, body []byte, extraTags []string) (
+					godigest.Digest, godigest.Digest, error,
+				) {
+					So(extraTags, ShouldResemble, []string{"meta-a", "meta-b"})
+					So(string(body), ShouldEqual, string(mcontent))
+
+					return manifestDigest, godigest.Digest(""), nil
+				},
+				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+					if digest == configDigest {
+						return configBlob, nil
+					}
+
+					return nil, zerr.ErrBlobNotFound
+				},
+			}
+			ctlr.StoreController.DefaultStore = ism
+
+			runDigestMultiTag := func(metaDB mTypes.MetaDB) *httptest.ResponseRecorder {
+				ctlr.MetaDB = metaDB
+
+				reqURL := baseURL + "?tag=meta-a&tag=meta-b"
+				request, reqErr := http.NewRequestWithContext(context.Background(), http.MethodPut, reqURL,
+					bytes.NewBuffer(mcontent))
+				So(reqErr, ShouldBeNil)
+
+				request = mux.SetURLVars(request, map[string]string{
+					"name":      "test",
+					"reference": digestRef,
+				})
+				request.Header.Add("Content-Type", ispec.MediaTypeImageManifest)
+
+				response := httptest.NewRecorder()
+				rthdlr.UpdateManifest(response, request)
+
+				return response
+			}
+
+			Convey("SetRepoReference succeeds", func() {
+				rec := runDigestMultiTag(mocks.MetaDBMock{
+					SetRepoReferenceFn: func(ctx context.Context, repo, reference string, imageMeta mTypes.ImageMeta) error {
+						return nil
+					},
+				})
+
+				So(rec.Code, ShouldEqual, http.StatusCreated)
+				So(rec.Header().Values(constants.OCITagResponseKey), ShouldResemble, []string{"meta-a", "meta-b"})
+				So(rec.Header().Get(constants.DistContentDigestKey), ShouldEqual, manifestDigest.String())
+			})
+
+			Convey("SetRepoReference fails for a later tag returns 500", func() {
+				var calls int
+
+				rec := runDigestMultiTag(mocks.MetaDBMock{
+					SetRepoReferenceFn: func(ctx context.Context, repo, reference string, imageMeta mTypes.ImageMeta) error {
+						calls++
+
+						if reference == "meta-b" {
+							return ErrUnexpectedError
+						}
+
+						return nil
+					},
+				})
+
+				So(calls, ShouldEqual, 2)
+				So(rec.Code, ShouldEqual, http.StatusInternalServerError)
+			})
 		})
 
 		Convey("DeleteManifest", func() {

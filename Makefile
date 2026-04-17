@@ -28,7 +28,7 @@ CRICTL_VERSION := v1.26.1
 ACTION_VALIDATOR := $(TOOLSDIR)/bin/action-validator
 ACTION_VALIDATOR_VERSION := v0.5.3
 ZUI_BUILD_PATH := ""
-ZUI_VERSION := commit-111cb8e
+ZUI_VERSION := commit-9333420
 ZUI_REPO_OWNER := project-zot
 ZUI_REPO_NAME := zui
 SWAGGER_VERSION := v1.16.2
@@ -220,7 +220,7 @@ test-extended: testdata-images
 
 .PHONY: test-minimal
 test-minimal: testdata-images
-	env GOEXPERIMENT=jsonv2 go test -failfast -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-minimal.txt -covermode=atomic ./...
+	env GOEXPERIMENT=jsonv2 go test -failfast -trimpath -race -timeout 12m -cover -coverpkg ./... -coverprofile=coverage-minimal.txt -covermode=atomic ./...
 	rm -rf /tmp/getter*; rm -rf /tmp/trivy*
 
 .PHONY: test-devmode
@@ -425,7 +425,7 @@ run: binary
 	./bin/zot-$(OS)-$(ARCH) serve examples/config-test.json
 
 .PHONY: verify-config
-verify-config: _verify-config verify-config-warnings verify-config-commited
+verify-config: _verify-config verify-config-warnings verify-config-commited verify-config-schema
 
 .PHONY: _verify-config
 _verify-config: binary
@@ -450,6 +450,15 @@ verify-config-commited: _verify-config
 		echo "Uncommited config files, make sure all config files are commited. Verify might have changed a config file.";\
 		exit 1;\
 	fi; \
+
+.PHONY: check-jsonschema
+check-jsonschema:
+	jsonschema --version || (echo "You need python3-jsonschema to validate config examples against generated schema"; exit 1)
+
+.PHONY: verify-config-schema
+verify-config-schema: binary check-jsonschema
+	./bin/zot-$(OS)-$(ARCH) schema > bin/zot-schema.json
+	for i in $(filter-out $(wildcard examples/config-*-credentials.json), $(wildcard examples/config-*.json)); do echo $$i; jsonschema bin/zot-schema.json -i "$$i" -o pretty; done
 
 .PHONY: gqlgen
 gqlgen:

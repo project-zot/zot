@@ -298,7 +298,7 @@ cat > "${ZOT_CONFIG}" <<EOF
     "compat": ["docker2s2"],
     "auth": {
       "bearer": {
-        "realm": "zot",
+        "realm": "http://zot",
         "service": "zot-service",
         "awsSecretsManager": {
           "region": "${AWS_REGION}",

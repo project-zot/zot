@@ -57,8 +57,8 @@ type Controller struct {
 	LDAPClient      *LDAPClient
 	taskScheduler   *scheduler.Scheduler
 	Healthz         *common.Healthz
-	// runtime params
-	chosenPort int // kernel-chosen port
+	// runtime params (atomic: Run may set the port concurrently with GetPort readers, e.g. tests)
+	chosenPort atomic.Int64
 	// TLS certificate management
 	TlsWatcher atomic.Pointer[TlsConfigWatcher]
 }
@@ -127,7 +127,7 @@ func NewController(appConfig *config.Config) *Controller {
 }
 
 func (c *Controller) GetPort() int {
-	return c.chosenPort
+	return int(c.chosenPort.Load())
 }
 
 func (c *Controller) Run() error {
@@ -186,23 +186,21 @@ func (c *Controller) Run() error {
 		return err
 	}
 
+	// Always derive the bound port from the listener so GetPort matches the actual socket (numeric
+	// config, kernel-chosen :0, or service names like "http" resolved by net.Listen).
+	chosenAddr, ok := listener.Addr().(*net.TCPAddr)
+	if !ok {
+		c.Log.Error().Str("port", port).Msg("invalid addr type")
+
+		return errors.ErrBadType
+	}
+
+	c.chosenPort.Store(int64(chosenAddr.Port))
+
 	if port == "0" || port == "" {
-		chosenAddr, ok := listener.Addr().(*net.TCPAddr)
-		if !ok {
-			c.Log.Error().Str("port", port).Msg("invalid addr type")
-
-			return errors.ErrBadType
-		}
-
-		c.chosenPort = chosenAddr.Port
-
 		c.Log.Info().Int("port", chosenAddr.Port).IPAddr("address", chosenAddr.IP).Msg(
 			"port is unspecified, listening on kernel chosen port",
 		)
-	} else {
-		chosenPort, _ := strconv.ParseInt(port, 10, 32)
-
-		c.chosenPort = int(chosenPort)
 	}
 
 	tlsConfig := c.Config.CopyTLSConfig()
@@ -413,7 +411,7 @@ func (c *Controller) InitMetaDB() error {
 	extensionsConfig := c.Config.CopyExtensionsConfig()
 
 	if extensionsConfig.IsSearchEnabled() || authConfig.IsBasicAuthnEnabled() || extensionsConfig.IsImageTrustEnabled() ||
-		c.Config.IsRetentionEnabled() {
+		c.Config.IsRetentionEnabled() || c.Config.IsQuotaEnabled() {
 		// Get storage config safely
 		storageConfig := c.Config.CopyStorageConfig()
 

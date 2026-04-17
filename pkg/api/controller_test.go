@@ -59,6 +59,7 @@ import (
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/meta"
+	zreg "zotregistry.dev/zot/v2/pkg/regexp"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/gc"
@@ -88,6 +89,9 @@ var (
 	LDAPBindDN       = "cn=reader," + LDAPBaseDN //nolint: gochecknoglobals
 	LDAPBindPassword = "ldappass"                //nolint: gochecknoglobals
 	LDAPUserAttr     = "uid"                     //nolint: gochecknoglobals
+
+	errTimedOutWaitingForControllerPort = goerrors.New("timed out waiting for controller port") //nolint: gochecknoglobals
+	errGetCertificateFailed             = goerrors.New("GetCertificate failed")                 //nolint: gochecknoglobals
 )
 
 // setupBearerAuthServerCerts generates CA and server certificates for bearer auth server testing
@@ -579,41 +583,39 @@ func TestAutoPortSelection(t *testing.T) {
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartServer()
-		time.Sleep(1000 * time.Millisecond)
+		So(waitForControllerPort(ctlr, 30*time.Second), ShouldBeNil)
+		cm.WaitServerToBeReady(strconv.Itoa(ctlr.GetPort()))
 
 		defer cm.StopServer()
 
-		scanner := bufio.NewScanner(logFile)
+		found, err := test.ReadLogFileAndSearchString(logFile.Name(), "port is unspecified", 30*time.Second)
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
 
-		var contents bytes.Buffer
-
-		start := time.Now()
-
-		for scanner.Scan() {
-			if time.Since(start) < time.Second*30 {
-				t.Logf("Exhausted: Controller did not print the expected log within 30 seconds")
-			}
-
-			text := scanner.Text()
-			contents.WriteString(text)
-
-			if strings.Contains(text, "Port unspecified") {
-				break
-			}
-
-			t.Logf("%s", scanner.Text())
-		}
-
-		So(scanner.Err(), ShouldBeNil)
-		So(contents.String(), ShouldContainSubstring,
+		contents, err := os.ReadFile(logFile.Name())
+		So(err, ShouldBeNil)
+		So(string(contents), ShouldContainSubstring,
 			"port is unspecified, listening on kernel chosen port",
 		)
-		So(contents.String(), ShouldContainSubstring, "\"address\":\"127.0.0.1\"")
-		So(contents.String(), ShouldContainSubstring, "\"port\":")
+		So(string(contents), ShouldContainSubstring, "\"address\":\"127.0.0.1\"")
+		So(string(contents), ShouldContainSubstring, "\"port\":")
 
 		So(ctlr.GetPort(), ShouldBeGreaterThan, 0)
 		So(ctlr.GetPort(), ShouldBeLessThan, 65536)
 	})
+}
+
+func waitForControllerPort(ctlr interface{ GetPort() int }, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+
+	for time.Now().Before(deadline) {
+		if p := ctlr.GetPort(); p > 0 {
+			return nil
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	return errTimedOutWaitingForControllerPort
 }
 
 func TestObjectStorageController(t *testing.T) {
@@ -7599,9 +7601,7 @@ func TestManifestValidation(t *testing.T) {
 		dir := t.TempDir()
 		ctlr := makeController(conf, dir)
 		cm := test.NewControllerManager(ctlr)
-		// this blocks
-		cm.StartServer()
-		time.Sleep(1000 * time.Millisecond)
+		cm.StartAndWait(port)
 
 		defer cm.StopServer()
 
@@ -7808,6 +7808,141 @@ func TestManifestValidation(t *testing.T) {
 	})
 }
 
+func TestManifestDigestQueryTags(t *testing.T) {
+	Convey("Manifest PUT with digest ?tag= query parameters", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		dir := t.TempDir()
+		ctlr := makeController(conf, dir)
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+
+		defer cm.StopServer()
+
+		repoName := "digest-query-tags"
+		img := CreateRandomImage()
+		manifestBytes := img.ManifestDescriptor.Data
+		manifestDigest := img.ManifestDescriptor.Digest
+
+		err := UploadImage(img, baseURL, repoName, "initial")
+		So(err, ShouldBeNil)
+
+		putManifestByDigest := func(rawQuery string) *resty.Response {
+			t.Helper()
+
+			manifestPutURL, perr := url.Parse(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, manifestDigest.String()))
+			So(perr, ShouldBeNil)
+			manifestPutURL.RawQuery = rawQuery
+
+			resp, rerr := resty.R().
+				SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+				SetBody(manifestBytes).
+				Put(manifestPutURL.String())
+			So(rerr, ShouldBeNil)
+
+			return resp
+		}
+
+		Convey("multiple tag query parameters add tags and return OCI-Tag headers", func() {
+			manifestPutURL, err := url.Parse(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, manifestDigest.String()))
+			So(err, ShouldBeNil)
+
+			q := manifestPutURL.Query()
+			q.Add("tag", "v1.0.0")
+			q.Add("tag", "v1.0")
+			q.Add("tag", "edge")
+			manifestPutURL.RawQuery = q.Encode()
+
+			resp, err := resty.R().
+				SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+				SetBody(manifestBytes).
+				Put(manifestPutURL.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+			So(resp.Header().Get(constants.DistContentDigestKey), ShouldEqual, manifestDigest.String())
+
+			ociTags := resp.Header().Values(constants.OCITagResponseKey)
+			sort.Strings(ociTags)
+			So(ociTags, ShouldResemble, []string{"edge", "v1.0", "v1.0.0"})
+
+			for _, tag := range []string{"v1.0.0", "v1.0", "edge"} {
+				gresp, gerr := resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, tag))
+				So(gerr, ShouldBeNil)
+				So(gresp.StatusCode(), ShouldEqual, http.StatusOK)
+			}
+		})
+
+		Convey("tag query with non-digest path reference returns 400", func() {
+			manifestPutURL, err := url.Parse(baseURL + fmt.Sprintf("/v2/%s/manifests/initial", repoName))
+			So(err, ShouldBeNil)
+			manifestPutURL.RawQuery = "tag=notallowed"
+
+			resp, err := resty.R().
+				SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+				SetBody(manifestBytes).
+				Put(manifestPutURL.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("empty tag query parameter returns 400", func() {
+			resp := putManifestByDigest("tag=")
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("more than max tag query parameters returns 414", func() {
+			q := url.Values{}
+			for i := range constants.MaxManifestDigestQueryTags + 1 {
+				q.Add("tag", fmt.Sprintf("t%d", i))
+			}
+
+			resp := putManifestByDigest(q.Encode())
+			So(resp.StatusCode(), ShouldEqual, http.StatusRequestURITooLong)
+		})
+
+		Convey("more than max raw tag parameters returns 414 even when values are duplicates", func() {
+			q := url.Values{}
+			for range constants.MaxManifestDigestQueryTags + 1 {
+				q.Add("tag", "same")
+			}
+
+			resp := putManifestByDigest(q.Encode())
+			So(resp.StatusCode(), ShouldEqual, http.StatusRequestURITooLong)
+		})
+
+		Convey("invalid tag query value returns 400", func() {
+			q := url.Values{}
+			q.Set("tag", "bad/ref")
+
+			resp := putManifestByDigest(q.Encode())
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("tag query value longer than distribution-spec max length returns 400", func() {
+			longTag := strings.Repeat("a", zreg.TagMaxLen+1)
+			q := url.Values{}
+			q.Set("tag", longTag)
+
+			resp := putManifestByDigest(q.Encode())
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("duplicate tag query values are deduplicated in response headers", func() {
+			q := url.Values{}
+			q.Add("tag", "dup")
+			q.Add("tag", "dup")
+
+			resp := putManifestByDigest(q.Encode())
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+			So(resp.Header().Values(constants.OCITagResponseKey), ShouldResemble, []string{"dup"})
+		})
+	})
+}
+
 func TestArtifactReferences(t *testing.T) {
 	Convey("Validate Artifact References", t, func() {
 		// start a new server
@@ -7820,9 +7955,7 @@ func TestArtifactReferences(t *testing.T) {
 		dir := t.TempDir()
 		ctlr := makeController(conf, dir)
 		cm := test.NewControllerManager(ctlr)
-		// this blocks
-		cm.StartServer()
-		time.Sleep(1000 * time.Millisecond)
+		cm.StartAndWait(port)
 
 		defer cm.StopServer()
 
@@ -11981,7 +12114,7 @@ func TestPeriodicGC(t *testing.T) {
 
 		// periodic GC is enabled for sub store
 		So(string(data), ShouldContainSubstring,
-			fmt.Sprintf("\"SubPaths\":{\"/a\":{\"RootDirectory\":\"%s\",\"Dedupe\":false,\"RemoteCache\":false,\"GC\":true,\"Commit\":false,\"GCDelay\":1000000000,\"GCInterval\":86400000000000", subDir)) //nolint:lll // gofumpt conflicts with lll
+			fmt.Sprintf("\"SubPaths\":{\"/a\":{\"RootDirectory\":\"%s\",\"MaxRepos\":0,\"Dedupe\":false,\"RemoteCache\":false,\"GC\":true,\"Commit\":false,\"GCDelay\":1000000000,\"GCInterval\":86400000000000", subDir)) //nolint:lll // gofumpt conflicts with lll
 	})
 
 	Convey("Periodic gc error", t, func() {
@@ -13783,6 +13916,47 @@ func TestSupportedDigestAlgorithms(t *testing.T) {
 		verifyReturnedManifestDigest(t, client, baseURL, name,
 			subImage2.ManifestDescriptor.Digest.String(), subImage2.ManifestDescriptor.Digest.String())
 	})
+
+	Convey("Test digest push with multiple tags via UploadImageWithOpts", t, func() {
+		image := CreateImageWithDigestAlgorithm(godigest.SHA512).
+			RandomLayers(1, 13).DefaultConfig().Build()
+
+		name := "multi-tag-digest-push"
+		tagA, tagB, tagC := "mtag-a", "mtag-b", "mtag-c"
+
+		err := UploadImageWithOpts(image, baseURL, name, "", WithExtraTags(tagA, tagB, tagC))
+		So(err, ShouldBeNil)
+
+		client := resty.New()
+
+		// Same digest the uploader puts in PUT .../manifests/{digest}?tag=... (see Image.Digest / digestAlgorithm).
+		manifestDigest := image.Digest()
+		expectedDigestStr := manifestDigest.String()
+
+		for _, tag := range []string{tagA, tagB, tagC} {
+			verifyReturnedManifestDigest(t, client, baseURL, name, tag, expectedDigestStr)
+		}
+
+		verifyReturnedManifestDigest(t, client, baseURL, name, expectedDigestStr, expectedDigestStr)
+
+		tagsFromStore, err := readTagsFromStorage(dir, name, manifestDigest)
+		So(err, ShouldBeNil)
+
+		tagsSeen := map[string]struct{}{}
+
+		for _, refName := range tagsFromStore {
+			if refName != "" {
+				tagsSeen[refName] = struct{}{}
+			}
+		}
+
+		So(len(tagsSeen), ShouldEqual, 3)
+
+		for _, want := range []string{tagA, tagB, tagC} {
+			_, ok := tagsSeen[want]
+			So(ok, ShouldBeTrue)
+		}
+	})
 }
 
 func verifyReturnedManifestDigest(t *testing.T, client *resty.Client, baseURL, repoName,
@@ -13870,8 +14044,6 @@ func readTagsFromStorage(rootDir, repoName string, digest godigest.Digest) ([]st
 
 	return result, nil
 }
-
-var errGetCertificateFailed = goerrors.New("GetCertificate failed")
 
 func TestDynamicTLSCertificateReloading(t *testing.T) {
 	Convey("Test dynamic TLS certificate reloading", t, func() {
@@ -14027,6 +14199,115 @@ func TestDynamicTLSCertificateReloading(t *testing.T) {
 				err := <-done
 				So(err, ShouldBeNil)
 			}
+		})
+	})
+}
+
+func TestDockerClientV2ChallengeWorkaround(t *testing.T) {
+	Convey("Test Docker client /v2/ challenge workaround", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		htpasswdUsername, seedUser := test.GenerateRandomString()
+		htpasswdPassword, seedPass := test.GenerateRandomString()
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(htpasswdUsername, htpasswdPassword))
+
+		Convey("With mixed anonymous and authenticated repository policies", func() {
+			conf := config.New()
+			conf.HTTP.Port = port
+			conf.HTTP.Auth = &config.AuthConfig{
+				HTPasswd: config.AuthHTPasswd{
+					Path: htpasswdPath,
+				},
+			}
+			conf.HTTP.AccessControl = &config.AccessControlConfig{
+				Repositories: config.Repositories{
+					"public/**": config.PolicyGroup{
+						AnonymousPolicy: []string{"read"},
+					},
+					"private/**": config.PolicyGroup{
+						Policies: []config.Policy{
+							{Actions: []string{"read", "write"}, Users: []string{htpasswdUsername}},
+						},
+					},
+				},
+			}
+
+			dir := t.TempDir()
+			ctlr := makeController(conf, dir)
+			ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).
+				Msg("random seed for username & password")
+			cm := test.NewControllerManager(ctlr)
+			cm.StartAndWait(port)
+
+			defer cm.StopServer()
+
+			// Docker client without credentials should get 401
+			resp, err := resty.R().
+				SetHeader("User-Agent", "docker/26.1.3 go/go1.22.2 UpstreamClient(Docker-Client/26.1.3 (linux))").
+				Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			So(resp.Header().Get("WWW-Authenticate"), ShouldContainSubstring, "Basic realm=")
+
+			// Docker client with valid credentials should get 200
+			resp, err = resty.R().
+				SetHeader("User-Agent", "docker/26.1.3 go/go1.22.2 UpstreamClient(Docker-Client/26.1.3 (linux))").
+				SetBasicAuth(htpasswdUsername, htpasswdPassword).
+				Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// Podman client without credentials should get 200 (unaffected by workaround)
+			resp, err = resty.R().
+				SetHeader("User-Agent", "containers/5.33.0 (github.com/containers/image)").
+				Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// Generic client without credentials should get 200 (unaffected)
+			resp, err = resty.R().
+				Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		})
+
+		Convey("With only anonymous repository policies", func() {
+			conf := config.New()
+			conf.HTTP.Port = port
+			conf.HTTP.Auth = &config.AuthConfig{
+				HTPasswd: config.AuthHTPasswd{
+					Path: htpasswdPath,
+				},
+			}
+			conf.HTTP.AccessControl = &config.AccessControlConfig{
+				Repositories: config.Repositories{
+					"**": config.PolicyGroup{
+						AnonymousPolicy: []string{"read"},
+					},
+				},
+			}
+
+			dir := t.TempDir()
+			ctlr := makeController(conf, dir)
+			ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).
+				Msg("random seed for username & password")
+			cm := test.NewControllerManager(ctlr)
+			cm.StartAndWait(port)
+
+			defer cm.StopServer()
+
+			// Docker client without credentials should get 200 (no mixed policies)
+			resp, err := resty.R().
+				SetHeader("User-Agent", "docker/26.1.3 go/go1.22.2 UpstreamClient(Docker-Client/26.1.3 (linux))").
+				Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		})
 	})
 }

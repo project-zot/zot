@@ -118,6 +118,33 @@ func (dwr *DynamoDB) GetAllRepoNames() ([]string, error) {
 	return repoNames, nil
 }
 
+func (dwr *DynamoDB) CountRepos(ctx context.Context) (int, error) {
+	count := int32(0)
+
+	var lastKey map[string]types.AttributeValue
+
+	for {
+		out, err := dwr.Client.Scan(ctx, &dynamodb.ScanInput{
+			TableName:         aws.String(dwr.RepoMetaTablename),
+			Select:            types.SelectCount,
+			ExclusiveStartKey: lastKey,
+		})
+		if err != nil {
+			return 0, err
+		}
+
+		count += out.Count
+
+		if out.LastEvaluatedKey == nil {
+			break
+		}
+
+		lastKey = out.LastEvaluatedKey
+	}
+
+	return int(count), nil
+}
+
 func (dwr *DynamoDB) GetRepoLastUpdated(repo string) time.Time {
 	resp, err := dwr.Client.GetItem(context.Background(), &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.RepoBlobsTablename),

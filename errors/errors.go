@@ -117,6 +117,8 @@ var (
 	ErrEmptyRepoName                    = errors.New("repo name can't be empty string")
 	ErrEmptyTag                         = errors.New("tag can't be empty string")
 	ErrEmptyDigest                      = errors.New("digest can't be empty string")
+	ErrEmptyManifestTagQuery            = errors.New("empty tag query parameter")
+	ErrInvalidManifestTagQuery          = errors.New("invalid tag query parameter: not a valid OCI/Docker tag")
 	ErrInvalidRepoRefFormat             = errors.New("invalid image reference format, use [repo:tag] or [repo@digest]")
 	ErrLimitIsNegative                  = errors.New("pagination limit has negative value")
 	ErrLimitIsExcessive                 = errors.New("pagination limit has excessive value")

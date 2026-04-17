@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Log in to GitHub Docker Registry
-        uses: docker/login-action@v4
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -40,17 +40,21 @@ jobs:
       packages: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           sparse-checkout: |
             Makefile
           sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Copy trivy-db using oras cli
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # setup oras
           make $PWD/hack/tools/bin/oras
           export PATH=$PATH:$PWD/hack/tools/bin
-          oras login -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }} ghcr.io
+          test -n "${GHCR_TOKEN}" || { echo "Missing GHCR token"; exit 1; }
+          echo "${GHCR_TOKEN}" | oras login -u "${GITHUB_ACTOR}" --password-stdin ghcr.io
           oras copy ghcr.io/aquasecurity/trivy-db:2 ghcr.io/${{ github.repository_owner }}/trivy-db:2
           oras copy ghcr.io/aquasecurity/trivy-db:latest ghcr.io/${{ github.repository_owner }}/trivy-db:latest
           oras copy ghcr.io/aquasecurity/trivy-java-db:1 ghcr.io/${{ github.repository_owner }}/trivy-java-db:1
@@ -66,7 +70,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Log in to GitHub Docker Registry
-        uses: docker/login-action@v4
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}

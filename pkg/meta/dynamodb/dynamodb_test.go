@@ -3,6 +3,7 @@ package dynamodb_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -1591,4 +1592,67 @@ func setVersion(client *dynamodb.Client, versionTablename string, version string
 	})
 
 	return err
+}
+
+func TestDynamoDBCountRepos(t *testing.T) {
+	tskip.SkipDynamo(t)
+
+	const region = "us-east-2"
+
+	endpoint := os.Getenv("DYNAMODBMOCK_ENDPOINT")
+
+	uuid, err := guuid.NewV4()
+	if err != nil {
+		panic(err)
+	}
+
+	repoMetaTablename := "RepoMetadataTable" + uuid.String()
+	versionTablename := "Version" + uuid.String()
+	imageMetaTablename := "ImageMeta" + uuid.String()
+	repoBlobsTablename := "RepoBlobs" + uuid.String()
+	userDataTablename := "UserDataTable" + uuid.String()
+	apiKeyTablename := "ApiKeyTable" + uuid.String()
+
+	log := log.NewTestLogger()
+
+	Convey("CountRepos", t, func() {
+		params := mdynamodb.DBDriverParameters{
+			Endpoint:               endpoint,
+			Region:                 region,
+			RepoMetaTablename:      repoMetaTablename,
+			ImageMetaTablename:     imageMetaTablename,
+			RepoBlobsInfoTablename: repoBlobsTablename,
+			VersionTablename:       versionTablename,
+			APIKeyTablename:        apiKeyTablename,
+			UserDataTablename:      userDataTablename,
+		}
+		client, err := mdynamodb.GetDynamoClient(params)
+		So(err, ShouldBeNil)
+
+		dynamoWrapper, err := mdynamodb.New(client, params, log)
+		So(err, ShouldBeNil)
+
+		So(dynamoWrapper.ResetTable(dynamoWrapper.RepoMetaTablename), ShouldBeNil)
+		So(dynamoWrapper.ResetTable(dynamoWrapper.ImageMetaTablename), ShouldBeNil)
+
+		ctx := context.Background()
+
+		Convey("returns 0 on empty table", func() {
+			count, err := dynamoWrapper.CountRepos(ctx)
+			So(err, ShouldBeNil)
+			So(count, ShouldEqual, 0)
+		})
+
+		Convey("returns correct count after adding repos", func() {
+			for i := range 3 {
+				err := dynamoWrapper.SetRepoReference(ctx, fmt.Sprintf("repo%d", i), "tag",
+					CreateRandomImage().AsImageMeta())
+				So(err, ShouldBeNil)
+			}
+
+			count, err := dynamoWrapper.CountRepos(ctx)
+			So(err, ShouldBeNil)
+			So(count, ShouldEqual, 3)
+		})
+	})
 }

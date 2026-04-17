@@ -234,6 +234,8 @@ func NewServerRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newVerifyCmd(conf))
 	// "scrub"
 	rootCmd.AddCommand(newScrubCmd(conf))
+	// "schema"
+	rootCmd.AddCommand(newSchemaCmd())
 	// "verify-feature"
 	rootCmd.AddCommand(newVerifyFeatureCmd(conf))
 	// "version"
@@ -888,6 +890,14 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, logge
 						Msg("using default trivy-java-db download URL.")
 
 					config.Extensions.Search.CVE.Trivy.JavaDBRepository = defaultJavaDBDownloadURL
+				}
+
+				if len(config.Extensions.Search.CVE.Trivy.VulnSeveritySources) == 0 {
+					defaultVulnSeveritySources := []string{"auto"}
+					logger.Info().Strs("vulnSeveritySources", defaultVulnSeveritySources).Str("component", "config").
+						Msg("using default trivy vulnerability severity sources.")
+
+					config.Extensions.Search.CVE.Trivy.VulnSeveritySources = defaultVulnSeveritySources
 				}
 			}
 		}

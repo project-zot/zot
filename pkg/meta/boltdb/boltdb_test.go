@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"math"
 	"testing"
 	"time"
@@ -1181,4 +1182,56 @@ func setRepoBlobInfo(repo string, blob []byte, db *bbolt.DB) error {
 	})
 
 	return err
+}
+
+func TestBoltDBCountRepos(t *testing.T) {
+	Convey("CountRepos", t, func() {
+		tmpDir := t.TempDir()
+		boltDBParams := boltdb.DBParameters{RootDir: tmpDir}
+		boltDriver, err := boltdb.GetBoltDriver(boltDBParams)
+		So(err, ShouldBeNil)
+
+		log := log.NewTestLogger()
+
+		boltdbWrapper, err := boltdb.New(boltDriver, log)
+		So(boltdbWrapper, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+
+		ctx := context.Background()
+
+		Convey("returns 0 on empty DB", func() {
+			count, err := boltdbWrapper.CountRepos(ctx)
+			So(err, ShouldBeNil)
+			So(count, ShouldEqual, 0)
+		})
+
+		Convey("returns correct count after adding repos", func() {
+			for i := range 3 {
+				err := boltdbWrapper.SetRepoMeta(fmt.Sprintf("repo%d", i), mTypes.RepoMeta{
+					Name: fmt.Sprintf("repo%d", i),
+				})
+				So(err, ShouldBeNil)
+			}
+
+			count, err := boltdbWrapper.CountRepos(ctx)
+			So(err, ShouldBeNil)
+			So(count, ShouldEqual, 3)
+		})
+
+		Convey("returns correct count after deleting a repo", func() {
+			for i := range 3 {
+				err := boltdbWrapper.SetRepoMeta(fmt.Sprintf("repo%d", i), mTypes.RepoMeta{
+					Name: fmt.Sprintf("repo%d", i),
+				})
+				So(err, ShouldBeNil)
+			}
+
+			err := boltdbWrapper.DeleteRepoMeta("repo1")
+			So(err, ShouldBeNil)
+
+			count, err := boltdbWrapper.CountRepos(ctx)
+			So(err, ShouldBeNil)
+			So(count, ShouldEqual, 2)
+		})
+	})
 }

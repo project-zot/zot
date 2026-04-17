@@ -482,6 +482,117 @@ func TestUploadMultiarchImage(t *testing.T) {
 	})
 }
 
+func TestUploadImageWithOpts(t *testing.T) {
+	Convey("WithBasicAuth uploads image successfully with valid credentials", t, func() {
+		port := tcommon.GetFreePort()
+		baseURL := tcommon.GetBaseURL(port)
+
+		user := "user"
+		password := "password"
+		testString := tcommon.GetBcryptCredString(user, password)
+
+		htpasswdPath := tcommon.MakeHtpasswdFileFromString(t, testString)
+
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = t.TempDir()
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+
+		ctlr := api.NewController(conf)
+
+		ctlrManager := tcommon.NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
+
+		layerBlob := []byte("test")
+
+		img := Image{
+			Layers: [][]byte{layerBlob},
+			Manifest: ispec.Manifest{
+				Versioned: specs.Versioned{
+					SchemaVersion: 2,
+				},
+				Layers: []ispec.Descriptor{
+					{
+						Digest:    godigest.FromBytes(layerBlob),
+						Size:      int64(len(layerBlob)),
+						MediaType: ispec.MediaTypeImageLayerGzip,
+					},
+				},
+				Config: ispec.DescriptorEmptyJSON,
+			},
+			Config: ispec.Image{},
+		}
+
+		err := UploadImageWithOpts(img, baseURL, "test", "mytag", WithBasicAuth(user, password))
+		So(err, ShouldBeNil)
+	})
+
+	Convey("WithExtraTags exercises tag params path", t, func() {
+		port := tcommon.GetFreePort()
+		baseURL := tcommon.GetBaseURL(port)
+
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = t.TempDir()
+
+		ctlr := api.NewController(conf)
+
+		ctlrManager := tcommon.NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
+
+		layerBlob := []byte("test")
+
+		img := Image{
+			Layers: [][]byte{layerBlob},
+			Manifest: ispec.Manifest{
+				Versioned: specs.Versioned{
+					SchemaVersion: 2,
+				},
+				Layers: []ispec.Descriptor{
+					{
+						Digest:    godigest.FromBytes(layerBlob),
+						Size:      int64(len(layerBlob)),
+						MediaType: ispec.MediaTypeImageLayerGzip,
+					},
+				},
+				Config: ispec.DescriptorEmptyJSON,
+			},
+			Config: ispec.Image{},
+		}
+
+		err := UploadImageWithOpts(img, baseURL, "test", "", WithExtraTags("v1", "v2"))
+		So(err, ShouldBeNil)
+	})
+
+	Convey("WithExtraTags rejects non-digest non-empty ref", t, func() {
+		err := UploadImageWithOpts(
+			Image{Layers: [][]byte{{1, 2, 3}}},
+			"http://127.0.0.1:0",
+			"repo",
+			"latest",
+			WithExtraTags("v1"),
+		)
+		So(err, ShouldEqual, ErrInvalidRefForExtraTags)
+	})
+
+	Convey("UploadMultiarchImageWithOpts rejects non-digest non-empty ref with extra tags", t, func() {
+		err := UploadMultiarchImageWithOpts(
+			MultiarchImage{},
+			"http://127.0.0.1:0",
+			"repo",
+			"latest",
+			WithExtraTags("v1"),
+		)
+		So(err, ShouldEqual, ErrInvalidRefForExtraTags)
+	})
+}
+
 func TestInjectUploadImageWithBasicAuth(t *testing.T) {
 	Convey("Inject failures for unreachable lines", t, func() {
 		port := tcommon.GetFreePort()

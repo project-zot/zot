@@ -31,7 +31,7 @@ const docTemplate = `{
                 "summary": "Check API support",
                 "responses": {
                     "200": {
-                        "description": "ok\".",
+                        "description": "ok",
                         "schema": {
                             "type": "string"
                         }
@@ -114,13 +114,13 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "bad request\".",
+                        "description": "bad request",
                         "schema": {
                             "type": "string"
                         }
                     },
                     "500": {
-                        "description": "internal server error\".",
+                        "description": "internal server error",
                         "schema": {
                             "type": "string"
                         }
@@ -157,7 +157,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "internal server error\".",
+                        "description": "internal server error",
                         "schema": {
                             "type": "string"
                         }
@@ -200,13 +200,13 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "bad request\".",
+                        "description": "bad request",
                         "schema": {
                             "type": "string"
                         }
                     },
                     "500": {
-                        "description": "internal server error\".",
+                        "description": "internal server error",
                         "schema": {
                             "type": "string"
                         }
@@ -300,9 +300,6 @@ const docTemplate = `{
                 "responses": {
                     "202": {
                         "description": "accepted",
-                        "schema": {
-                            "type": "string"
-                        },
                         "headers": {
                             "Location": {
                                 "type": "string",
@@ -364,6 +361,19 @@ const docTemplate = `{
                 "responses": {
                     "204": {
                         "description": "no content",
+                        "headers": {
+                            "Location": {
+                                "type": "string",
+                                "description": "/v2/{name}/blobs/uploads/{session_id}"
+                            },
+                            "Range": {
+                                "type": "string",
+                                "description": "0-128"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "bad request",
                         "schema": {
                             "type": "string"
                         }
@@ -417,8 +427,15 @@ const docTemplate = `{
                 "responses": {
                     "201": {
                         "description": "created",
-                        "schema": {
-                            "type": "string"
+                        "headers": {
+                            "Docker-Content-Digest": {
+                                "type": "string",
+                                "description": "Digest of the committed blob"
+                            },
+                            "Location": {
+                                "type": "string",
+                                "description": "/v2/{name}/blobs/{digest}"
+                            }
                         }
                     },
                     "404": {
@@ -461,11 +478,8 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "ok",
-                        "schema": {
-                            "type": "string"
-                        }
+                    "204": {
+                        "description": "no content"
                     },
                     "404": {
                         "description": "not found",
@@ -509,10 +523,11 @@ const docTemplate = `{
                 "responses": {
                     "202": {
                         "description": "accepted",
-                        "schema": {
-                            "type": "string"
-                        },
                         "headers": {
+                            "Blob-Upload-UUID": {
+                                "type": "string",
+                                "description": "Opaque blob upload session identifier"
+                            },
                             "Location": {
                                 "type": "string",
                                 "description": "/v2/{name}/blobs/uploads/{session_id}"
@@ -612,10 +627,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "202": {
-                        "description": "accepted",
-                        "schema": {
-                            "type": "string"
-                        }
+                        "description": "accepted"
                     }
                 }
             },
@@ -651,8 +663,9 @@ const docTemplate = `{
                             "$ref": "#/definitions/api.ImageManifest"
                         },
                         "headers": {
-                            "constants.DistContentDigestKey": {
-                                "type": "object"
+                            "Docker-Content-Digest": {
+                                "type": "string",
+                                "description": "Manifest digest of the content"
                             }
                         }
                     }
@@ -692,8 +705,9 @@ const docTemplate = `{
                             "$ref": "#/definitions/api.ImageManifest"
                         },
                         "headers": {
-                            "constants.DistContentDigestKey": {
-                                "type": "object"
+                            "Docker-Content-Digest": {
+                                "type": "string",
+                                "description": "Manifest digest of the content"
                             }
                         }
                     },
@@ -712,7 +726,7 @@ const docTemplate = `{
                 }
             },
             "put": {
-                "description": "Update an image's manifest given a reference or a digest",
+                "description": "Update an image's manifest given a reference or a digest. On digest pushes with ` + "`" + `tag=` + "`" + ` query\nparameters, 201 responses repeat the ` + "`" + `OCI-Tag` + "`" + ` header once per tag value.",
                 "consumes": [
                     "application/json"
                 ],
@@ -734,13 +748,30 @@ const docTemplate = `{
                         "name": "reference",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "additional tag(s) for digest pushes",
+                        "name": "tag",
+                        "in": "query"
                     }
                 ],
                 "responses": {
                     "201": {
                         "description": "created",
-                        "schema": {
-                            "type": "string"
+                        "headers": {
+                            "Docker-Content-Digest": {
+                                "type": "string",
+                                "description": "Manifest digest of the uploaded content"
+                            },
+                            "OCI-Tag": {
+                                "type": "string",
+                                "description": "Echoed tag= value; this header is repeatable (one field per tag= query parameter)"
+                            }
                         }
                     },
                     "400": {
@@ -751,6 +782,12 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "414": {
+                        "description": "too many tag query parameters",
                         "schema": {
                             "type": "string"
                         }
@@ -789,8 +826,35 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "ok",
+                    "202": {
+                        "description": "accepted"
+                    },
+                    "400": {
+                        "description": "bad request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "405": {
+                        "description": "method not allowed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "conflict",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "internal server error",
                         "schema": {
                             "type": "string"
                         }
@@ -829,8 +893,9 @@ const docTemplate = `{
                             "type": "string"
                         },
                         "headers": {
-                            "constants.DistContentDigestKey": {
-                                "type": "object"
+                            "Docker-Content-Digest": {
+                                "type": "string",
+                                "description": "Manifest digest of the content"
                             }
                         }
                     },
@@ -841,7 +906,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "internal server error\".",
+                        "description": "internal server error",
                         "schema": {
                             "type": "string"
                         }
@@ -944,7 +1009,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "bad request\".",
+                        "description": "bad request",
                         "schema": {
                             "type": "string"
                         }
@@ -1094,13 +1159,13 @@ const docTemplate = `{
                 "summary": "Logout by removing current session",
                 "responses": {
                     "200": {
-                        "description": "ok\".",
+                        "description": "ok",
                         "schema": {
                             "type": "string"
                         }
                     },
                     "500": {
-                        "description": "internal server error\".",
+                        "description": "internal server error",
                         "schema": {
                             "type": "string"
                         }

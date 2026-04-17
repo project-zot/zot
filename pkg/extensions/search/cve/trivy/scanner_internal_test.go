@@ -9,12 +9,14 @@ import (
 	"testing"
 	"time"
 
+	dbTypes "github.com/aquasecurity/trivy-db/pkg/types"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/common"
+	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	cvecache "zotregistry.dev/zot/v2/pkg/extensions/search/cve/cache"
 	"zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
@@ -79,7 +81,11 @@ func TestMultipleStoragePath(t *testing.T) {
 		metaDB, err := boltdb.New(boltDriver, log)
 		So(err, ShouldBeNil)
 
-		scanner := NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", log)
+		scanner := NewScanner(storeController, metaDB, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository: "ghcr.io/project-zot/trivy-db",
+			},
+		}, log)
 
 		So(scanner.storeController.DefaultStore, ShouldNotBeNil)
 		So(scanner.storeController.SubStore, ShouldNotBeNil)
@@ -195,7 +201,11 @@ func TestTrivyLibraryErrors(t *testing.T) {
 		img := "zot-test:0.0.1" //nolint:goconst
 
 		// Download DB fails for invalid DB url
-		scanner := NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-not-db", "", log)
+		scanner := NewScanner(storeController, metaDB, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository: "ghcr.io/project-zot/trivy-not-db",
+			},
+		}, log)
 
 		ctx := context.Background()
 
@@ -209,15 +219,23 @@ func TestTrivyLibraryErrors(t *testing.T) {
 		So(err, ShouldWrap, zerr.ErrCVEDBNotFound)
 
 		// Download DB fails for invalid Java DB
-		scanner = NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db",
-			"ghcr.io/project-zot/trivy-not-db", log)
+		scanner = NewScanner(storeController, metaDB, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository:     "ghcr.io/project-zot/trivy-db",
+				JavaDBRepository: "ghcr.io/project-zot/trivy-not-db",
+			},
+		}, log)
 
 		err = scanner.UpdateDB(ctx)
 		So(err, ShouldNotBeNil)
 
 		// Download DB passes for valid Trivy DB url, and missing Trivy Java DB url
 		// Download DB is necessary since DB download on scan is disabled
-		scanner = NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", log)
+		scanner = NewScanner(storeController, metaDB, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository: "ghcr.io/project-zot/trivy-db",
+			},
+		}, log)
 
 		// UpdateDB with good ctx
 		err = scanner.UpdateDB(ctx)
@@ -317,8 +335,12 @@ func TestImageScannable(t *testing.T) {
 	storeController := storage.StoreController{}
 	storeController.DefaultStore = store
 
-	scanner := NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db",
-		"ghcr.io/project-zot/trivy-java-db", log)
+	scanner := NewScanner(storeController, metaDB, &extconf.CVEConfig{
+		Trivy: &extconf.TrivyConfig{
+			DBRepository:     "ghcr.io/project-zot/trivy-db",
+			JavaDBRepository: "ghcr.io/project-zot/trivy-java-db",
+		},
+	}, log)
 
 	Convey("Valid image should be scannable", t, func() {
 		result, err := scanner.IsImageFormatScannable("repo1", "valid")
@@ -387,8 +409,12 @@ func TestTrivyDBUrl(t *testing.T) {
 		// Ideally we would want to also test the default urls
 		// But we are getting `response status code 429: toomanyrequests` from
 		// `ghcr.io/aquasecurity/trivy-db` and `ghcr.io/aquasecurity/trivy-java-db`
-		scanner := NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db",
-			"ghcr.io/project-zot/trivy-java-db", log)
+		scanner := NewScanner(storeController, metaDB, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository:     "ghcr.io/project-zot/trivy-db",
+				JavaDBRepository: "ghcr.io/project-zot/trivy-java-db",
+			},
+		}, log)
 
 		ctx := context.Background()
 
@@ -477,6 +503,29 @@ func TestIsIndexScannableErrors(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(ok, ShouldBeFalse)
 		})
+	})
+}
+
+func TestVulnSeveritySourcesDefaulting(t *testing.T) {
+	Convey("NewScanner defaults VulnSeveritySources to auto when empty", t, func() {
+		scanner := NewScanner(storage.StoreController{}, nil, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository: "ghcr.io/project-zot/trivy-db",
+			},
+		}, log.NewTestLogger())
+		So(scanner, ShouldNotBeNil)
+		So(scanner.vulnSeveritySources, ShouldResemble, []dbTypes.SourceID{"auto"})
+	})
+
+	Convey("NewScanner preserves provided VulnSeveritySources", t, func() {
+		scanner := NewScanner(storage.StoreController{}, nil, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository:        "ghcr.io/project-zot/trivy-db",
+				VulnSeveritySources: []string{"nvd", "ghsa"},
+			},
+		}, log.NewTestLogger())
+		So(scanner, ShouldNotBeNil)
+		So(scanner.vulnSeveritySources, ShouldResemble, []dbTypes.SourceID{"nvd", "ghsa"})
 	})
 }
 

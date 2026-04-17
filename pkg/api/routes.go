@@ -231,6 +231,7 @@ func (rh *RouteHandler) SetupRoutes() {
 	ext.SetupImageTrustRoutes(rh.c.Config, prefixedRouter, rh.c.MetaDB, rh.c.Log)
 	ext.SetupMgmtRoutes(rh.c.Config, prefixedRouter, rh.c.Log)
 	ext.SetupUserPreferencesRoutes(rh.c.Config, prefixedRouter, rh.c.MetaDB, rh.c.Log)
+	setupQuotaMiddleware(rh.c.Config, prefixedDistSpecRouter, rh.c.MetaDB, rh.c.Log)
 	// last should always be UI because it will setup a http.FileServer and paths will be resolved by this FileServer.
 	ext.SetupUIRoutes(rh.c.Config, rh.c.Router, rh.c.Log)
 }
@@ -273,7 +274,7 @@ func getUIHeadersHandler(config *config.Config, allowedMethods ...string) func(h
 // @Router  /v2/ [get]
 // @Accept  json
 // @Produce json
-// @Success 200 {string} string "ok".
+// @Success 200 {string} string "ok"
 func (rh *RouteHandler) CheckVersionSupport(response http.ResponseWriter, request *http.Request) {
 	if request.Method == http.MethodOptions {
 		return
@@ -311,7 +312,7 @@ func (rh *RouteHandler) CheckVersionSupport(response http.ResponseWriter, reques
 // @Param   last  query  string   true   "last tag value for pagination"
 // @Success 200 {object}     common.ImageTags
 // @Failure 404 {string}     string                 "not found"
-// @Failure 400 {string}     string                 "bad request".
+// @Failure 400 {string}     string                 "bad request"
 func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Request) {
 	if request.Method == http.MethodOptions {
 		return
@@ -443,9 +444,9 @@ func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Req
 // @Param   name          path    string     true        "repository name"
 // @Param   reference     path    string     true        "image reference or digest"
 // @Success 200 {string} string "ok"
-// @Header  200 {object} constants.DistContentDigestKey
+// @Header  200 {string} Docker-Content-Digest "Manifest digest of the content"
 // @Failure 404 {string} string "not found"
-// @Failure 500 {string} string "internal server error".
+// @Failure 500 {string} string "internal server error"
 func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *http.Request) {
 	if request.Method == http.MethodOptions {
 		return
@@ -516,7 +517,7 @@ type ExtensionList struct {
 // @Param   name         path    string     true        "repository name"
 // @Param   reference    path    string     true        "image reference or digest"
 // @Success 200 {object} api.ImageManifest
-// @Header  200 {object} constants.DistContentDigestKey
+// @Header  200 {string} Docker-Content-Digest "Manifest digest of the content"
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/manifests/{reference} [get].
@@ -683,15 +684,19 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 
 // UpdateManifest godoc
 // @Summary Update image manifest
-// @Description Update an image's manifest given a reference or a digest
+// @Description Update an image's manifest given a reference or a digest. On digest pushes with `tag=` query
+// @Description parameters, 201 responses repeat the `OCI-Tag` header once per tag value.
 // @Accept  json
 // @Produce json
 // @Param   name         path    string     true        "repository name"
 // @Param   reference    path    string     true        "image reference or digest"
-// @Header  201 {object} constants.DistContentDigestKey
-// @Success 201 {string} string "created"
+// @Param   tag          query   []string   false       "additional tag(s) for digest pushes" collectionFormat(multi)
+// @Success 201 "created"
+// @Header  201 {string} Docker-Content-Digest "Manifest digest of the uploaded content"
+// @Header  201 {string} OCI-Tag "Echoed tag= value; this header is repeatable (one field per tag= query parameter)"
 // @Failure 400 {string} string "bad request"
 // @Failure 404 {string} string "not found"
+// @Failure 414 {string} string "too many tag query parameters"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/manifests/{reference} [put].
 func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *http.Request) {
@@ -724,6 +729,30 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
+	var digestQueryTags []string
+
+	rawTagQuery := request.URL.Query()["tag"]
+	if len(rawTagQuery) > 0 {
+		if len(rawTagQuery) > constants.MaxManifestDigestQueryTags {
+			e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(map[string]string{
+				"reason": fmt.Sprintf("too many tag query parameters (max %d)", constants.MaxManifestDigestQueryTags),
+			})
+			zcommon.WriteJSON(response, http.StatusRequestURITooLong, apiErr.NewErrorList(e))
+
+			return
+		}
+
+		var normErr error
+
+		digestQueryTags, normErr = normalizeManifestExtraTags(rawTagQuery)
+		if normErr != nil {
+			err := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(map[string]string{"reason": normErr.Error()})
+			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(err))
+
+			return
+		}
+	}
+
 	body, err := io.ReadAll(request.Body)
 	// hard to reach test case, injected error (simulates an interrupted image manifest upload)
 	// err could be io.ErrUnexpectedEOF
@@ -734,7 +763,16 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
-	digest, subjectDigest, err := imgStore.PutImageManifest(name, reference, mediaType, body)
+	if len(digestQueryTags) > 0 && !zcommon.IsDigest(reference) {
+		err := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(map[string]string{
+			"reason": "tag query parameters are only valid when pushing a manifest by digest",
+		})
+		zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(err))
+
+		return
+	}
+
+	digest, subjectDigest, err := imgStore.PutImageManifest(name, reference, mediaType, body, digestQueryTags)
 	if err != nil {
 		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
@@ -776,12 +814,22 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 	}
 
 	if rh.c.MetaDB != nil {
-		err := meta.OnUpdateManifest(request.Context(), name, reference, mediaType,
-			digest, body, rh.c.StoreController, rh.c.MetaDB, rh.c.Log)
-		if err != nil {
-			response.WriteHeader(http.StatusInternalServerError)
+		if len(digestQueryTags) > 0 {
+			err := meta.OnUpdateManifestDigestTags(request.Context(), name, digestQueryTags, mediaType,
+				digest, body, rh.c.StoreController, rh.c.MetaDB, rh.c.Log)
+			if err != nil {
+				response.WriteHeader(http.StatusInternalServerError)
 
-			return
+				return
+			}
+		} else {
+			err := meta.OnUpdateManifest(request.Context(), name, reference, mediaType,
+				digest, body, rh.c.StoreController, rh.c.MetaDB, rh.c.Log)
+			if err != nil {
+				response.WriteHeader(http.StatusInternalServerError)
+
+				return
+			}
 		}
 	}
 
@@ -791,7 +839,40 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 
 	response.Header().Set("Location", fmt.Sprintf("/v2/%s/manifests/%s", name, digest))
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
+
+	for _, tag := range digestQueryTags {
+		response.Header().Add(constants.OCITagResponseKey, tag) //nolint:canonicalheader
+	}
+
 	response.WriteHeader(http.StatusCreated)
+}
+
+// normalizeManifestExtraTags deduplicates tag query values in order, rejects empty components, and
+// requires each value to match the OCI distribution-spec tag grammar (zreg.IsDistributionSpecTag).
+func normalizeManifestExtraTags(raw []string) ([]string, error) {
+	seen := map[string]struct{}{}
+
+	out := make([]string, 0, len(raw))
+
+	for _, rawTag := range raw {
+		cleanedTag := strings.TrimSpace(rawTag)
+		if cleanedTag == "" {
+			return nil, zerr.ErrEmptyManifestTagQuery
+		}
+
+		if !zreg.IsDistributionSpecTag(cleanedTag) {
+			return nil, zerr.ErrInvalidManifestTagQuery
+		}
+
+		if _, ok := seen[cleanedTag]; ok {
+			continue
+		}
+
+		seen[cleanedTag] = struct{}{}
+		out = append(out, cleanedTag)
+	}
+
+	return out, nil
 }
 
 // DeleteManifest godoc
@@ -801,7 +882,12 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 // @Produce json
 // @Param   name          path    string     true        "repository name"
 // @Param   reference     path    string     true        "image reference or digest"
-// @Success 200 {string} string "ok"
+// @Success 202 "accepted"
+// @Failure 400 {string} string "bad request"
+// @Failure 404 {string} string "not found"
+// @Failure 405 {string} string "method not allowed"
+// @Failure 409 {string} string "conflict"
+// @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/manifests/{reference} [delete].
 func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *http.Request) {
 	vars := mux.Vars(request)
@@ -940,7 +1026,7 @@ func canMount(userAc *reqCtx.UserAccessControl, imgStore storageTypes.ImageStore
 // @Param   name     path    string     true        "repository name"
 // @Param   digest   path    string     true        "blob/layer digest"
 // @Success 200 {object} api.ImageManifest
-// @Header  200 {object} constants.DistContentDigestKey
+// @Header  200 {string} Docker-Content-Digest "Manifest digest of the content"
 // @Router /v2/{name}/blobs/{digest} [head].
 func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Request) {
 	vars := mux.Vars(request)
@@ -1085,7 +1171,7 @@ func parseRangeHeader(contentRange string) ([]byteRange, error) {
 // @Produce application/vnd.oci.image.layer.v1.tar+gzip
 // @Param   name     path    string     true        "repository name"
 // @Param   digest   path    string     true        "blob/layer digest"
-// @Header  200 {object} constants.DistContentDigestKey
+// @Header  200 {string} Docker-Content-Digest "Manifest digest of the content"
 // @Success 200 {object} api.ImageManifest
 // @Router /v2/{name}/blobs/{digest} [get].
 func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Request) {
@@ -1237,7 +1323,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 // @Produce json
 // @Param   name      path    string     true        "repository name"
 // @Param   digest    path    string     true        "blob/layer digest"
-// @Success 202 {string} string "accepted"
+// @Success 202 "accepted"
 // @Router /v2/{name}/blobs/{digest} [delete].
 func (rh *RouteHandler) DeleteBlob(response http.ResponseWriter, request *http.Request) {
 	vars := mux.Vars(request)
@@ -1296,7 +1382,7 @@ func (rh *RouteHandler) DeleteBlob(response http.ResponseWriter, request *http.R
 // @Accept  json
 // @Produce json
 // @Param   name    path    string     true        "repository name"
-// @Success 202 {string} string "accepted"
+// @Success 202 "accepted"
 // @Header  202 {string} Location "/v2/{name}/blobs/uploads/{session_id}"
 // @Header  202 {string} Range "0-0"
 // @Failure 401 {string} string "unauthorized"
@@ -1474,9 +1560,10 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 // @Produce json
 // @Param   name          path    string     true        "repository name"
 // @Param   session_id    path    string     true        "upload session_id"
-// @Success 204 {string} string "no content"
-// @Header  202 {string} Location "/v2/{name}/blobs/uploads/{session_id}"
-// @Header  202 {string} Range "0-128"
+// @Success 204 "no content"
+// @Header  204 {string} Location "/v2/{name}/blobs/uploads/{session_id}"
+// @Header  204 {string} Range "0-128"
+// @Failure 400 {string} string "bad request"
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads/{session_id} [get].
@@ -1535,10 +1622,10 @@ func (rh *RouteHandler) GetBlobUpload(response http.ResponseWriter, request *htt
 // @Produce json
 // @Param   name         path    string     true        "repository name"
 // @Param   session_id   path    string     true        "upload session_id"
-// @Success 202 {string} string "accepted"
+// @Success 202 "accepted"
 // @Header  202 {string} Location "/v2/{name}/blobs/uploads/{session_id}"
 // @Header  202 {string} Range "0-128"
-// @Header  200 {object} api.BlobUploadUUID
+// @Header  202 {string} Blob-Upload-UUID "Opaque blob upload session identifier"
 // @Failure 400 {string} string "bad request"
 // @Failure 404 {string} string "not found"
 // @Failure 416 {string} string "range not satisfiable"
@@ -1635,9 +1722,9 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 // @Param   name         path    string     true        "repository name"
 // @Param   session_id   path    string     true        "upload session_id"
 // @Param   digest       query   string     true        "blob/layer digest"
-// @Success 201 {string} string "created"
-// @Header  202 {string} Location "/v2/{name}/blobs/uploads/{digest}"
-// @Header  200 {object} constants.DistContentDigestKey
+// @Success 201 "created"
+// @Header  201 {string} Location "/v2/{name}/blobs/{digest}"
+// @Header  201 {string} Docker-Content-Digest "Digest of the committed blob"
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads/{session_id} [put].
@@ -1792,7 +1879,7 @@ finish:
 // @Produce json
 // @Param   name         path    string     true        "repository name"
 // @Param   session_id   path    string     true        "upload session_id"
-// @Success 200 {string} string "ok"
+// @Success 204 "no content"
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads/{session_id} [delete].
@@ -1994,8 +2081,8 @@ func (rh *RouteHandler) ListExtensions(w http.ResponseWriter, r *http.Request) {
 // @Router  /zot/auth/logout [post]
 // @Accept  json
 // @Produce json
-// @Success 200 {string} string "ok".
-// @Failure 500 {string} string "internal server error".
+// @Success 200 {string} string "ok"
+// @Failure 500 {string} string "internal server error"
 func (rh *RouteHandler) Logout(response http.ResponseWriter, request *http.Request) {
 	if request.Method == http.MethodOptions {
 		return

@@ -536,8 +536,11 @@ func (is *ImageStore) GetImageManifest(repo, reference string) ([]byte, godigest
 }
 
 // PutImageManifest adds an image manifest to the repository.
-func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //nolint: gocyclo
-	body []byte,
+// When extraTags is non-empty, the reference must be a digest; each entry becomes an
+// org.opencontainers.image.ref.name on a separate index descriptor (distribution-spec
+// digest push with tag query params).
+func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //nolint: gocyclo,cyclop
+	body []byte, extraTags []string,
 ) (godigest.Digest, godigest.Digest, error) {
 	if err := is.InitRepo(repo); err != nil {
 		is.log.Debug().Err(err).Msg("init repo")
@@ -568,6 +571,12 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 	if err != nil {
 		if errors.Is(err, zerr.ErrBadManifest) {
 			return mDigest, "", err
+		}
+
+		// Tag query parameters apply only to digest-addressed pushes (?tag= on PUT .../manifests/<digest>).
+		// If the path reference is not a digest, extraTags must be empty; otherwise the request is invalid.
+		if len(extraTags) > 0 {
+			return "", "", zerr.ErrBadManifest
 		}
 
 		refIsDigest = false
@@ -610,27 +619,18 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 
 		artifactType = zcommon.GetManifestArtifactType(manifest)
 	} else if mediaType == ispec.MediaTypeImageIndex {
-		var index ispec.Index
+		var imgIndex ispec.Index
 
-		err := json.Unmarshal(body, &index)
+		err := json.Unmarshal(body, &imgIndex)
 		if err != nil {
 			return "", "", err
 		}
 
-		if index.Subject != nil {
-			subjectDigest = index.Subject.Digest
+		if imgIndex.Subject != nil {
+			subjectDigest = imgIndex.Subject.Digest
 		}
 
-		artifactType = zcommon.GetIndexArtifactType(index)
-	}
-
-	updateIndex, oldDgst, err := common.CheckIfIndexNeedsUpdate(&index, &desc, is.log)
-	if err != nil {
-		return "", "", err
-	}
-
-	if !updateIndex {
-		return mDigest, subjectDigest, nil
+		artifactType = zcommon.GetIndexArtifactType(imgIndex)
 	}
 
 	// write manifest to "blobs"
@@ -647,27 +647,116 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 		}
 	}
 
-	err = common.UpdateIndexWithPrunedImageManifests(is, &index, repo, desc, oldDgst, is.log)
-	if err != nil {
-		return "", "", err
-	}
+	var (
+		lintDesc        ispec.Descriptor
+		commitEventRefs []string
+	)
 
-	// now update "index.json"
-	for midx, manifest := range index.Manifests {
-		_, ok := manifest.Annotations[ispec.AnnotationRefName]
-		if !ok && manifest.Digest.String() == desc.Digest.String() {
-			// matching descriptor does not have a tag, we need to remove it and add the new descriptor
-			index.Manifests = append(index.Manifests[:midx], index.Manifests[midx+1:]...)
+	if len(extraTags) > 0 {
+		for midx := 0; midx < len(index.Manifests); {
+			manifest := index.Manifests[midx]
+			_, hasTag := manifest.Annotations[ispec.AnnotationRefName]
+			if !hasTag && manifest.Digest.String() == mDigest.String() {
+				index.Manifests = append(index.Manifests[:midx], index.Manifests[midx+1:]...)
+
+				continue
+			}
+
+			midx++
 		}
+
+		anyIndexChange := false
+
+		changedTags := make([]string, 0, len(extraTags))
+
+		var (
+			updateIndex bool
+			oldDgst     godigest.Digest
+		)
+
+		for _, tag := range extraTags {
+			descLocal := ispec.Descriptor{
+				MediaType: mediaType,
+				Size:      desc.Size,
+				Digest:    mDigest,
+				Annotations: map[string]string{
+					ispec.AnnotationRefName: tag,
+				},
+			}
+
+			updateIndex, oldDgst, err = common.CheckIfIndexNeedsUpdate(&index, &descLocal, is.log)
+			if err != nil {
+				return "", "", err
+			}
+
+			if !updateIndex {
+				continue
+			}
+
+			anyIndexChange = true
+
+			if err = common.UpdateIndexWithPrunedImageManifests(is, &index, repo, descLocal, oldDgst, is.log); err != nil {
+				return "", "", err
+			}
+
+			index.Manifests = append(index.Manifests, descLocal)
+			changedTags = append(changedTags, tag)
+		}
+
+		if !anyIndexChange {
+			return mDigest, subjectDigest, nil
+		}
+
+		lintDesc = ispec.Descriptor{
+			MediaType:    mediaType,
+			Size:         desc.Size,
+			Digest:       mDigest,
+			ArtifactType: artifactType,
+			Annotations: map[string]string{
+				ispec.AnnotationRefName: changedTags[0],
+			},
+		}
+
+		commitEventRefs = changedTags
+	} else {
+		updateIndex, oldDgst, err := common.CheckIfIndexNeedsUpdate(&index, &desc, is.log)
+		if err != nil {
+			return "", "", err
+		}
+
+		if !updateIndex {
+			return mDigest, subjectDigest, nil
+		}
+
+		err = common.UpdateIndexWithPrunedImageManifests(is, &index, repo, desc, oldDgst, is.log)
+		if err != nil {
+			return "", "", err
+		}
+
+		// now update "index.json"
+		for midx := 0; midx < len(index.Manifests); {
+			manifest := index.Manifests[midx]
+			_, ok := manifest.Annotations[ispec.AnnotationRefName]
+			if !ok && manifest.Digest.String() == desc.Digest.String() {
+				// matching descriptor does not have a tag, we need to remove it and add the new descriptor
+				index.Manifests = append(index.Manifests[:midx], index.Manifests[midx+1:]...)
+
+				continue
+			}
+
+			midx++
+		}
+
+		index.Manifests = append(index.Manifests, desc)
+
+		// update the descriptors artifact type in order to check for signatures when applying the linter
+		desc.ArtifactType = artifactType
+
+		lintDesc = desc
+		commitEventRefs = []string{reference}
 	}
 
-	index.Manifests = append(index.Manifests, desc)
-
-	// update the descriptors artifact type in order to check for signatures when applying the linter
-	desc.ArtifactType = artifactType
-
-	// apply linter only on images, not signatures
-	pass, err := common.ApplyLinter(is, is.linter, repo, desc)
+	pass, err := common.ApplyLinter(is, is.linter, repo, lintDesc)
 	if !pass {
 		is.log.Error().Err(err).Str("repository", repo).Str("reference", reference).
 			Msg("linter didn't pass")
@@ -684,7 +773,9 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 	}
 
 	if is.events != nil {
-		is.events.ImageUpdated(repo, reference, mDigest.String(), mediaType, string(body))
+		for _, ref := range commitEventRefs {
+			is.events.ImageUpdated(repo, ref, mDigest.String(), mediaType, string(body))
+		}
 	}
 
 	return mDigest, subjectDigest, nil
@@ -1358,7 +1449,12 @@ func (is *ImageStore) CheckBlob(repo string, digest godigest.Digest) (bool, int6
 	// Check blobs in cache
 	dstRecord, err := is.checkCacheBlob(digest)
 	if err != nil {
-		is.log.Warn().Err(err).Str("digest", digest.String()).Msg("not found in cache")
+		// Cache miss / not-found is a normal condition when the blob truly doesn't exist.
+		if errors.Is(err, zerr.ErrCacheMiss) || errors.Is(err, zerr.ErrBlobNotFound) {
+			is.log.Debug().Err(err).Str("digest", digest.String()).Msg("cache miss for blob")
+		} else {
+			is.log.Warn().Err(err).Str("digest", digest.String()).Msg("failed to lookup blob in cache")
+		}
 
 		return false, -1, zerr.ErrBlobNotFound
 	}
@@ -1676,8 +1772,31 @@ func (is *ImageStore) PutIndexContent(repo string, index ispec.Index) error {
 		return err
 	}
 
-	if _, err = is.storeDriver.WriteFile(indexPath, buf); err != nil {
-		is.log.Error().Err(err).Str("file", indexPath).Msg("failed to write")
+	// Write to a unique file under .uploads (same layout as blob uploads), then rename into place.
+	// Stale files are picked up by the same blob-upload GC path as ordinary uploads.
+	// This avoids truncating/removing index.json on failure (e.g. ENOSPC) — see local Driver.WriteFile + Cancel.
+	stagingUUID, err := guuid.NewV4()
+	if err != nil {
+		is.log.Error().Err(err).Str("repository", repo).Msg("failed to generate staging UUID")
+
+		return err
+	}
+
+	stagingID := stagingUUID.String()
+	tmpPath := is.BlobUploadPath(repo, stagingID)
+
+	if _, err = is.storeDriver.WriteFile(tmpPath, buf); err != nil {
+		is.log.Error().Err(err).Str("file", tmpPath).Msg("failed to write staging index")
+
+		_ = is.storeDriver.Delete(tmpPath)
+
+		return err
+	}
+
+	if err := is.storeDriver.Move(tmpPath, indexPath); err != nil {
+		is.log.Error().Err(err).Str("from", tmpPath).Str("to", indexPath).Msg("failed to replace index.json")
+
+		_ = is.storeDriver.Delete(tmpPath)
 
 		return err
 	}

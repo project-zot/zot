@@ -19,6 +19,7 @@ import (
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
+	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	cveinfo "zotregistry.dev/zot/v2/pkg/extensions/search/cve"
 	cvecache "zotregistry.dev/zot/v2/pkg/extensions/search/cve/cache"
@@ -513,7 +514,11 @@ func TestScanGeneratorWithRealData(t *testing.T) {
 		err = meta.ParseStorage(metaDB, storeController, logger)
 		So(err, ShouldBeNil)
 
-		scanner := cveinfo.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", logger)
+		scanner := cveinfo.NewScanner(storeController, metaDB, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository: "ghcr.io/project-zot/trivy-db",
+			},
+		}, logger)
 		err = scanner.UpdateDB(context.Background())
 		So(err, ShouldBeNil)
 

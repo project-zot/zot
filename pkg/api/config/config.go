@@ -29,6 +29,7 @@ var (
 
 type StorageConfig struct {
 	RootDirectory string
+	MaxRepos      int
 	Dedupe        bool
 	RemoteCache   bool
 	GC            bool
@@ -183,6 +184,15 @@ func (a *AuthConfig) IsBasicAuthnEnabled() bool {
 	}
 
 	return a.IsHtpasswdAuthEnabled() || a.IsLdapAuthEnabled() || a.IsOpenIDAuthEnabled() || a.IsAPIKeyEnabled()
+}
+
+// CanAuthenticateWithBasicCredentials reports whether the server can authenticate a client
+// using HTTP Basic credentials (username/password) in the Authorization header.
+//
+// This is intentionally narrower than IsBasicAuthnEnabled(): OpenID is not a Basic
+// credential flow, while htpasswd/LDAP/API keys are.
+func (a *AuthConfig) CanAuthenticateWithBasicCredentials() bool {
+	return a.IsHtpasswdAuthEnabled() || a.IsLdapAuthEnabled() || a.IsAPIKeyEnabled()
 }
 
 // GetFailDelay returns the configured fail delay for authentication attempts.
@@ -505,6 +515,13 @@ func (config *AccessControlConfig) AnonymousPolicyExists() bool {
 	}
 
 	return false
+}
+
+// HasMixedAnonymousAndAuthenticatedPolicies reports whether the access control configuration contains
+// at least one anonymous repository policy AND at least one authenticated-only policy
+// (default/admin/user-specific).
+func (config *AccessControlConfig) HasMixedAnonymousAndAuthenticatedPolicies() bool {
+	return config != nil && config.AnonymousPolicyExists() && !config.ContainsOnlyAnonymousPolicy()
 }
 
 // ContainsOnlyAnonymousPolicy checks if the access control configuration contains only anonymous policies.
@@ -1142,6 +1159,17 @@ func (c *Config) IsRetentionEnabled() bool {
 	defer c.mu.RUnlock()
 
 	return c.isRetentionEnabledInternal()
+}
+
+func (c *Config) IsQuotaEnabled() bool {
+	if c == nil {
+		return false
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.Storage.MaxRepos > 0
 }
 
 // IsCompatEnabled checks if compatibility mode is enabled.

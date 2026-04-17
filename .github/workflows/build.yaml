@@ -25,16 +25,18 @@ jobs:
         arch: [amd64, arm64]
     steps:
       - name: Check out source code
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
       - name: Install go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           cache: false
           check-latest: true
           go-version: 1.25.x
       - name: Cache go dependencies
         id: cache-go-dependencies
-        uses: actions/cache@v5
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: |
             ~/go/pkg/mod
@@ -43,7 +45,7 @@ jobs:
             ${{ runner.os }}-go-mod-
       - name: Cache go build output
         id: cache-go-build
-        uses: actions/cache@v5
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: |
             ~/.cache/go-build
@@ -62,7 +64,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install rpm
           sudo apt-get install snapd
-          sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config
+          sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config python3-jsonschema
           git clone https://github.com/containers/skopeo -b v1.12.0 $GITHUB_WORKSPACE/src/github.com/containers/skopeo
           cd $GITHUB_WORKSPACE/src/github.com/containers/skopeo && \
             make bin/skopeo && \
@@ -90,9 +92,14 @@ jobs:
           curl -X POST -H "Content-Type: application/json" -d @.pkg/debug/githubWorkflows/introspection-query.json http://localhost:5000/v2/_zot/ext/search | jq > bin/zot-gql-introspection-result.json
           pkill zot
 
+      - name: Generate zot config schema on Release
+        if: github.event_name == 'release' && github.event.action == 'published' && matrix.os == 'linux' && matrix.arch == 'amd64'
+        run: |
+          make verify-config-schema
+
       - if: github.event_name == 'release' && github.event.action == 'published'
         name: Publish artifacts on releases
-        uses: svenstaro/upload-release-action@v2
+        uses: svenstaro/upload-release-action@29e53e917877a24fad85510ded594ab3c9ca12de # latest
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: bin/z*
@@ -110,12 +117,12 @@ jobs:
       packages: write
     steps:
       - name: Download Release Artifacts
-        uses: robinraju/release-downloader@v1.12
+        uses: robinraju/release-downloader@daf26c55d821e836577a15f77d86ddc078948b05 # v1
         with:
           tag: ${{ github.ref_name }}
           fileName: "z*"
       - name: Generate checksum
-        uses: jmgilman/actions-generate-checksum@v1
+        uses: jmgilman/actions-generate-checksum@3ea6dc9bf8eecf28e2ecc982fab683484a1a8561 # v1.0.1
         with:
           patterns: z*
           method: sha256
@@ -123,7 +130,7 @@ jobs:
       - name: Add wildcard character prefix to filenames in checksum file
         run: sed -i 's! ! \*!g' checksums.sha256.txt
       - name: Publish checksums on releases
-        uses: svenstaro/upload-release-action@v2
+        uses: svenstaro/upload-release-action@29e53e917877a24fad85510ded594ab3c9ca12de # latest
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: checksums.sha256.txt

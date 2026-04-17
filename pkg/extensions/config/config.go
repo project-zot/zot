@@ -60,6 +60,9 @@ type CVEConfig struct {
 type TrivyConfig struct {
 	DBRepository     string // default is "ghcr.io/aquasecurity/trivy-db"
 	JavaDBRepository string // default is "ghcr.io/aquasecurity/trivy-java-db"
+	// VulnSeveritySources controls Trivy's severity source selection (same as Trivy's --vuln-severity-source).
+	// If empty, zot will default it to ["auto"].
+	VulnSeveritySources []string
 }
 
 type MetricsConfig struct {
