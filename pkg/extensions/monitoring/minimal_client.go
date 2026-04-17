@@ -47,10 +47,7 @@ type MetricsClient struct {
 }
 
 func newHTTPMetricsClient(caCertFile string) (*http.Client, error) {
-	caCertPool, err := x509.SystemCertPool()
-	if err != nil {
-		caCertPool = x509.NewCertPool()
-	}
+	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
 
 	if caCertFile != "" {
 		caCert, err := os.ReadFile(caCertFile)
@@ -58,16 +55,20 @@ func newHTTPMetricsClient(caCertFile string) (*http.Client, error) {
 			return nil, fmt.Errorf("metrics client: failed to read CA cert %s: %w", caCertFile, err)
 		}
 
+		caCertPool, err := x509.SystemCertPool()
+		if err != nil {
+			caCertPool = x509.NewCertPool()
+		}
+
 		if !caCertPool.AppendCertsFromPEM(caCert) {
 			return nil, fmt.Errorf("%w: %s", errNoPEMCertFound, caCertFile)
 		}
+
+		tlsCfg.RootCAs = caCertPool
 	}
 
 	transport := http.DefaultTransport.(*http.Transport).Clone() //nolint: forcetypeassert
-	transport.TLSClientConfig = &tls.Config{
-		RootCAs:    caCertPool,
-		MinVersion: tls.VersionTLS12,
-	}
+	transport.TLSClientConfig = tlsCfg
 
 	return &http.Client{
 		Timeout:   httpTimeout,
