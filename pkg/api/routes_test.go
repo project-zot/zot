@@ -241,6 +241,38 @@ func TestRoutes(t *testing.T) {
 
 			defer resp.Body.Close()
 			So(resp, ShouldNotBeNil)
+			So(resp.Header.Get("Access-Control-Allow-Credentials"), ShouldEqual, "")
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+		})
+
+		Convey("Get manifest with explicit AllowOrigin emits credentials header", func() {
+			ctlr.StoreController.DefaultStore = &mocks.MockedImageStore{
+				GetImageManifestFn: func(repo string, reference string) ([]byte, godigest.Digest, string, error) {
+					return []byte{}, "", "", zerr.ErrRepoBadVersion
+				},
+			}
+
+			originalAllowOrigin := ctlr.Config.HTTP.AllowOrigin
+			ctlr.Config.HTTP.AllowOrigin = "https://example.com"
+
+			defer func() {
+				ctlr.Config.HTTP.AllowOrigin = originalAllowOrigin
+			}()
+
+			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{
+				"name":      "test",
+				"reference": "b8b1231908844a55c251211c7a67ae3c809fb86a081a8eeb4a715e6d7d65625c",
+			})
+			response := httptest.NewRecorder()
+
+			rthdlr.GetManifest(response, request)
+
+			resp := response.Result()
+
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.Header.Get("Access-Control-Allow-Credentials"), ShouldEqual, "true")
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 		})
 
