@@ -1070,7 +1070,7 @@ func saveUserLoggedSession(cookieStore sessions.Store, response http.ResponseWri
 
 	userInfoCookie := sessions.NewCookie("user", identity, &sessions.Options{
 		Secure:   secure,
-		HttpOnly: false,
+		HttpOnly: true,
 		MaxAge:   cookiesMaxAge,
 		SameSite: http.SameSiteDefaultMode,
 		Path:     "/",
