@@ -23,7 +23,9 @@ const (
 	// MaxManifestBodySize is the maximum number of bytes accepted for a manifest PUT request body.
 	// OCI manifest JSON is always small metadata; 4 MiB is well above any realistic manifest.
 	MaxManifestBodySize = 4 * 1024 * 1024
-	BlobUploadUUID      = "Blob-Upload-UUID"
+	// MaxAPIKeyBodySize is the maximum number of bytes accepted for an API-key creation request body.
+	MaxAPIKeyBodySize = 4 * 1024
+	BlobUploadUUID    = "Blob-Upload-UUID"
 	DefaultMediaType             = "application/json"
 	BinaryMediaType              = "application/octet-stream"
 	DefaultMetricsExtensionRoute = "/metrics"
