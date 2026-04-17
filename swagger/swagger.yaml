@@ -83,6 +83,11 @@ definitions:
           manifest forming an association between the image manifest and the other
           manifest.
     type: object
+  api.LogoutResponse:
+    properties:
+      endSessionUrl:
+        type: string
+    type: object
   api.RepositoryList:
     properties:
       repositories:
@@ -1025,14 +1030,18 @@ paths:
     post:
       consumes:
       - application/json
-      description: Logout by removing current session
+      description: |-
+        Logout by removing current session. For OIDC providers that advertise an
+        `end_session_endpoint` in their discovery metadata (OpenID Connect
+        RP-Initiated Logout 1.0), the response body contains an `endSessionUrl`
+        the client should navigate to in order to terminate the session at the IdP.
       produces:
       - application/json
       responses:
         "200":
-          description: ok
+          description: OK
           schema:
-            type: string
+            $ref: '#/definitions/api.LogoutResponse'
         "500":
           description: internal server error
           schema:

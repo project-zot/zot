@@ -155,7 +155,7 @@ func TestRoutes(t *testing.T) {
 			request, _ := http.NewRequestWithContext(ctx, http.MethodGet, baseURL, nil)
 			response := httptest.NewRecorder()
 
-			_, err := api.OAuth2Callback(ctlr, response, request, "state", "email", []string{"group"})
+			_, err := api.OAuth2Callback(ctlr, response, request, "state", "email", "", []string{"group"})
 			So(err, ShouldEqual, zerr.ErrInvalidStateCookie)
 
 			session, _ := ctlr.CookieStore.Get(request, "statecookie")
@@ -172,7 +172,7 @@ func TestRoutes(t *testing.T) {
 			err = session.Save(request, response)
 			So(err, ShouldBeNil)
 
-			_, err = api.OAuth2Callback(ctlr, response, request, "state", "email", []string{"group"})
+			_, err = api.OAuth2Callback(ctlr, response, request, "state", "email", "", []string{"group"})
 			So(err, ShouldEqual, zerr.ErrInvalidStateCookie)
 		})
 

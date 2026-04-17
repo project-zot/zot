@@ -204,7 +204,7 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 		// saved logged session only if the request comes from web (has UI session header value)
 		if hasSessionHeader(request) {
 			secure := ctlr.Config.UseSecureSession()
-			if err := saveUserLoggedSession(cookieStore, response, request, identity, secure, ctlr.Log); err != nil {
+			if err := saveUserLoggedSession(cookieStore, response, request, identity, "", secure, ctlr.Log); err != nil {
 				return false, err
 			}
 		}
@@ -243,7 +243,7 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 			// saved logged session only if the request comes from web (has UI session header value)
 			if hasSessionHeader(request) {
 				secure := ctlr.Config.UseSecureSession()
-				if err := saveUserLoggedSession(cookieStore, response, request, identity, secure, ctlr.Log); err != nil {
+				if err := saveUserLoggedSession(cookieStore, response, request, identity, "", secure, ctlr.Log); err != nil {
 					return false, err
 				}
 			}
@@ -901,6 +901,24 @@ func NewRelyingPartyGithub(config *config.Config, provider string, hashKey, encr
 	return relyingParty
 }
 
+// originFromConfig returns the server's base URL (scheme + host[:port], no trailing
+// slash) used as the origin for OIDC redirect URIs. It prefers ExternalURL; otherwise
+// it derives the origin from cfg.HTTP.Address, cfg.HTTP.Port, and cfg.HTTP.TLS. Using
+// a single source for both the login redirect_uri and the logout
+// post_logout_redirect_uri ensures the IdP sees matching origins.
+func originFromConfig(cfg *config.Config) string {
+	if trimmed := strings.TrimSuffix(cfg.HTTP.ExternalURL, "/"); trimmed != "" {
+		return trimmed
+	}
+
+	scheme := constants.SchemeHTTP
+	if cfg.HTTP.TLS != nil {
+		scheme = constants.SchemeHTTPS
+	}
+
+	return scheme + "://" + net.JoinHostPort(cfg.HTTP.Address, cfg.HTTP.Port)
+}
+
 func getRelyingPartyArgs(cfg *config.Config, provider string, hashKey, encryptKey []byte, log log.Logger) (
 	string, string, string, string, []string, []rp.Option,
 ) {
@@ -918,26 +936,11 @@ func getRelyingPartyArgs(cfg *config.Config, provider string, hashKey, encryptKe
 		scopes = append([]string{oidc.ScopeOpenID}, scopes...)
 	}
 
-	port := cfg.HTTP.Port
 	issuer := providerConfig.Issuer
 	keyPath := providerConfig.KeyPath
-	baseURL := net.JoinHostPort(cfg.HTTP.Address, port)
 
 	callback := constants.CallbackBasePath + "/" + provider
-
-	var redirectURI string
-
-	if cfg.HTTP.ExternalURL != "" {
-		externalURL := strings.TrimSuffix(cfg.HTTP.ExternalURL, "/")
-		redirectURI = fmt.Sprintf("%s%s", externalURL, callback)
-	} else {
-		scheme := constants.SchemeHTTP
-		if cfg.HTTP.TLS != nil {
-			scheme = constants.SchemeHTTPS
-		}
-
-		redirectURI = fmt.Sprintf("%s://%s%s", scheme, baseURL, callback)
-	}
+	redirectURI := originFromConfig(cfg) + callback
 
 	options := []rp.Option{
 		rp.WithVerifierOpts(rp.WithIssuedAtOffset(issuedAtOffset)),
@@ -1066,7 +1069,7 @@ func GetGithubUserInfo(ctx context.Context, client *github.Client, log log.Logge
 }
 
 func saveUserLoggedSession(cookieStore sessions.Store, response http.ResponseWriter,
-	request *http.Request, identity string, secure bool, log log.Logger,
+	request *http.Request, identity, provider string, secure bool, log log.Logger,
 ) error {
 	session, _ := cookieStore.Get(request, "session")
 
@@ -1075,6 +1078,12 @@ func saveUserLoggedSession(cookieStore sessions.Store, response http.ResponseWri
 	session.Options.SameSite = http.SameSiteDefaultMode
 	session.Values["authStatus"] = true
 	session.Values["user"] = identity
+
+	if provider != "" {
+		session.Values["provider"] = provider
+	} else {
+		delete(session.Values, "provider")
+	}
 
 	// let the session set its own id
 	err := session.Save(request, response)
@@ -1098,7 +1107,7 @@ func saveUserLoggedSession(cookieStore sessions.Store, response http.ResponseWri
 }
 
 // OAuth2Callback is the callback logic where openid/oauth2 will redirect back to our app.
-func OAuth2Callback(ctlr *Controller, w http.ResponseWriter, r *http.Request, state, email string,
+func OAuth2Callback(ctlr *Controller, w http.ResponseWriter, r *http.Request, state, email, provider string,
 	groups []string,
 ) (string, error) {
 	stateCookie, _ := ctlr.CookieStore.Get(r, "statecookie")
@@ -1126,7 +1135,7 @@ func OAuth2Callback(ctlr *Controller, w http.ResponseWriter, r *http.Request, st
 	// if this line has been reached, then a new session should be created
 	// if the `session` key is already on the cookie, it's not a valid one
 	secure := ctlr.Config.UseSecureSession()
-	if err := saveUserLoggedSession(ctlr.CookieStore, w, r, email, secure, ctlr.Log); err != nil {
+	if err := saveUserLoggedSession(ctlr.CookieStore, w, r, email, provider, secure, ctlr.Log); err != nil {
 		return "", err
 	}
 
