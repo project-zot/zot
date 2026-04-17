@@ -251,7 +251,8 @@ func getUIHeadersHandler(config *config.Config, allowedMethods ...string) func(h
 			// Access-Control-Allow-Origin is the wildcard "*" (CORS spec §3.2).
 			// Only advertise credentials support when an explicit origin is set.
 			authConfig := config.CopyAuthConfig()
-			if authConfig.IsBasicAuthnEnabled() && config.GetAllowOrigin() != "" {
+			allowOrigin := strings.TrimSpace(config.GetAllowOrigin())
+			if authConfig.IsBasicAuthnEnabled() && allowOrigin != "" && allowOrigin != "*" {
 				response.Header().Set("Access-Control-Allow-Credentials", "true")
 			}
 
