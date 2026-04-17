@@ -259,6 +259,20 @@ func TestRoutes(t *testing.T) {
 
 				return resp.StatusCode
 			}
+
+			Convey("body exceeds MaxManifestBodySize returns 413", func() {
+				ctlr.StoreController.DefaultStore = &mocks.MockedImageStore{}
+				oversized := make([]byte, constants.MaxManifestBodySize+1)
+				request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL,
+					bytes.NewReader(oversized))
+				request = mux.SetURLVars(request, map[string]string{"name": "test", "reference": "v1"})
+				request.Header.Add("Content-Type", ispec.MediaTypeImageManifest)
+				response := httptest.NewRecorder()
+
+				rthdlr.UpdateManifest(response, request)
+
+				So(response.Code, ShouldEqual, http.StatusRequestEntityTooLarge)
+			})
 			// repo not found
 			statusCode := testUpdateManifest(
 				map[string]string{

@@ -745,12 +745,20 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 		}
 	}
 
-	body, err := io.ReadAll(request.Body)
+	body, err := io.ReadAll(http.MaxBytesReader(response, request.Body, constants.MaxManifestBodySize))
 	// hard to reach test case, injected error (simulates an interrupted image manifest upload)
-	// err could be io.ErrUnexpectedEOF
+	// err could be io.ErrUnexpectedEOF or *http.MaxBytesError
 	if err := inject.Error(err); err != nil {
-		rh.c.Log.Error().Err(err).Msg("unexpected error")
-		response.WriteHeader(http.StatusInternalServerError)
+		var mbe *http.MaxBytesError
+		if errors.As(err, &mbe) {
+			e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(map[string]string{
+				"reason": fmt.Sprintf("manifest body exceeds maximum allowed size of %d bytes", constants.MaxManifestBodySize),
+			})
+			zcommon.WriteJSON(response, http.StatusRequestEntityTooLarge, apiErr.NewErrorList(e))
+		} else {
+			rh.c.Log.Error().Err(err).Msg("unexpected error")
+			response.WriteHeader(http.StatusInternalServerError)
+		}
 
 		return
 	}
