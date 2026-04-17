@@ -1,4 +1,4 @@
-package api
+package api_test
 
 import (
 	"encoding/json"
@@ -14,29 +14,24 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
+	"zotregistry.dev/zot/v2/pkg/api"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/api/constants"
-	"zotregistry.dev/zot/v2/pkg/log"
-	"zotregistry.dev/zot/v2/pkg/storage"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
 
-var (
-	testLayerDigest    = godigest.FromString("layer")
-	testManifestDigest = godigest.FromString("manifest")
-	testConfigDigest   = godigest.FromString("config")
-)
+func testLayerDigest() godigest.Digest { return godigest.FromString("layer") }
 
-func newBlobRouteHandler(store mocks.MockedImageStore) *RouteHandler {
-	return &RouteHandler{
-		c: &Controller{
-			Config: config.New(),
-			StoreController: storage.StoreController{
-				DefaultStore: store,
-			},
-			Log: log.NewLogger("debug", ""),
-		},
-	}
+func testManifestDigest() godigest.Digest { return godigest.FromString("manifest") }
+
+func testConfigDigest() godigest.Digest { return godigest.FromString("config") }
+
+func newBlobRouteHandler(store mocks.MockedImageStore) *api.RouteHandler {
+	controller := api.NewController(config.New())
+	controller.Router = mux.NewRouter()
+	controller.StoreController.DefaultStore = store
+
+	return api.NewRouteHandler(controller)
 }
 
 func descriptorFixture(t *testing.T) ([]byte, []byte) {
@@ -45,13 +40,13 @@ func descriptorFixture(t *testing.T) ([]byte, []byte) {
 	manifest := ispec.Manifest{
 		Config: ispec.Descriptor{
 			MediaType: ispec.MediaTypeImageConfig,
-			Digest:    testConfigDigest,
+			Digest:    testConfigDigest(),
 			Size:      1,
 		},
 		Layers: []ispec.Descriptor{
 			{
 				MediaType: ispec.MediaTypeImageLayerGzip,
-				Digest:    testLayerDigest,
+				Digest:    testLayerDigest(),
 				Size:      4,
 			},
 		},
@@ -67,7 +62,7 @@ func descriptorFixture(t *testing.T) ([]byte, []byte) {
 		Manifests: []ispec.Descriptor{
 			{
 				MediaType: ispec.MediaTypeImageManifest,
-				Digest:    testManifestDigest,
+				Digest:    testManifestDigest(),
 				Size:      int64(len(manifestJSON)),
 				Annotations: map[string]string{
 					ispec.AnnotationRefName: "latest",
@@ -93,7 +88,7 @@ func descriptorStore(t *testing.T) mocks.MockedImageStore {
 	return mocks.MockedImageStore{
 		RootDirFn: func() string { return "/tmp" },
 		CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
-			if digest == testLayerDigest {
+			if digest == testLayerDigest() {
 				return true, 4, nil
 			}
 
@@ -103,7 +98,7 @@ func descriptorStore(t *testing.T) mocks.MockedImageStore {
 			return indexJSON, nil
 		},
 		GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
-			if digest == testManifestDigest {
+			if digest == testManifestDigest() {
 				return manifestJSON, nil
 			}
 
@@ -126,7 +121,7 @@ func TestCheckBlobUsesDescriptorContentType(t *testing.T) {
 	req.Header.Set("Accept", "application/vnd.oci.image.layer.v1.tar+gzip, */*")
 	req = mux.SetURLVars(req, map[string]string{
 		"name":   "test",
-		"digest": testLayerDigest.String(),
+		"digest": testLayerDigest().String(),
 	})
 
 	rec := httptest.NewRecorder()
@@ -160,7 +155,7 @@ func TestGetBlobUsesDescriptorContentType(t *testing.T) {
 	req.Header.Set("Accept", "application/vnd.oci.image.layer.v1.tar+gzip, */*")
 	req = mux.SetURLVars(req, map[string]string{
 		"name":   "test",
-		"digest": testLayerDigest.String(),
+		"digest": testLayerDigest().String(),
 	})
 
 	rec := httptest.NewRecorder()
@@ -240,7 +235,7 @@ func TestGetBlobPartialUsesDescriptorContentType(t *testing.T) {
 	req.Header.Set("Range", "bytes=0-1")
 	req = mux.SetURLVars(req, map[string]string{
 		"name":   "test",
-		"digest": testLayerDigest.String(),
+		"digest": testLayerDigest().String(),
 	})
 
 	rec := httptest.NewRecorder()
@@ -272,7 +267,7 @@ func TestGetBlobFallsBackToBinaryContentType(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
 	req = mux.SetURLVars(req, map[string]string{
 		"name":   "test",
-		"digest": testLayerDigest.String(),
+		"digest": testLayerDigest().String(),
 	})
 
 	rec := httptest.NewRecorder()
@@ -316,7 +311,7 @@ func TestGetBlobSupportsMultipleRanges(t *testing.T) {
 	req.Header.Set("Range", "bytes=0-1,5-7")
 	req = mux.SetURLVars(req, map[string]string{
 		"name":   "test",
-		"digest": testLayerDigest.String(),
+		"digest": testLayerDigest().String(),
 	})
 
 	rec := httptest.NewRecorder()

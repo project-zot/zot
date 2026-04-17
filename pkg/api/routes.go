@@ -1137,12 +1137,12 @@ func parseRangeHeader(contentRange string, size int64) ([]blobRange, error) {
 		return nil, zerr.ErrParsingHTTPHeader
 	}
 
-	var (
-		ranges    []blobRange
-		noOverlap bool
-	)
+	rangeValue := contentRange[len(prefix):]
+	ranges := make([]blobRange, 0, strings.Count(rangeValue, ",")+1)
 
-	for _, part := range strings.Split(contentRange[len(prefix):], ",") {
+	var noOverlap bool
+
+	for part := range strings.SplitSeq(rangeValue, ",") {
 		part = textproto.TrimString(part)
 		if part == "" {
 			continue
@@ -1214,25 +1214,28 @@ func parseRangeHeader(contentRange string, size int64) ([]blobRange, error) {
 	return ranges, nil
 }
 
-func rangesMIMESize(ranges []blobRange, contentType string, contentSize int64) (encSize int64) {
-	var w countingWriter
+func rangesMIMESize(ranges []blobRange, contentType string, contentSize int64) int64 {
+	var (
+		encodedSize int64
+		sizeWriter  countingWriter
+	)
 
-	mw := multipart.NewWriter(&w)
-	for _, ra := range ranges {
-		_, _ = mw.CreatePart(ra.mimeHeader(contentType, contentSize))
-		encSize += ra.length
+	multipartWriter := multipart.NewWriter(&sizeWriter)
+	for _, requestedRange := range ranges {
+		_, _ = multipartWriter.CreatePart(requestedRange.mimeHeader(contentType, contentSize))
+		encodedSize += requestedRange.length
 	}
 
-	_ = mw.Close()
-	encSize += int64(w)
+	_ = multipartWriter.Close()
+	encodedSize += int64(sizeWriter)
 
-	return encSize
+	return encodedSize
 }
 
 type countingWriter int64
 
-func (w *countingWriter) Write(p []byte) (n int, err error) {
-	*w += countingWriter(len(p))
+func (writer *countingWriter) Write(p []byte) (int, error) {
+	*writer += countingWriter(len(p))
 
 	return len(p), nil
 }
@@ -1246,54 +1249,54 @@ func writeMultipartByteRanges(
 	logger log.Logger,
 ) {
 	responseLength := rangesMIMESize(ranges, contentType, size)
-	pr, pw := io.Pipe()
-	mw := multipart.NewWriter(pw)
+	pipeReader, pipeWriter := io.Pipe()
+	multipartWriter := multipart.NewWriter(pipeWriter)
 
 	response.Header().Set("Content-Length", strconv.FormatInt(responseLength, 10))
-	response.Header().Set("Content-Type", "multipart/byteranges; boundary="+mw.Boundary())
+	response.Header().Set("Content-Type", "multipart/byteranges; boundary="+multipartWriter.Boundary())
 	response.WriteHeader(http.StatusPartialContent)
 
 	go func() {
-		for _, ra := range ranges {
-			part, err := mw.CreatePart(ra.mimeHeader(contentType, size))
+		for _, requestedRange := range ranges {
+			partWriter, err := multipartWriter.CreatePart(requestedRange.mimeHeader(contentType, size))
 			if err != nil {
-				_ = pw.CloseWithError(err)
+				_ = pipeWriter.CloseWithError(err)
 
 				return
 			}
 
-			reader, err := rangeReader(ra)
+			rangeContent, err := rangeReader(requestedRange)
 			if err != nil {
-				_ = pw.CloseWithError(err)
+				_ = pipeWriter.CloseWithError(err)
 
 				return
 			}
 
-			_, copyErr := io.CopyN(part, reader, ra.length)
-			closeErr := reader.Close()
+			_, copyErr := io.CopyN(partWriter, rangeContent, requestedRange.length)
+			closeErr := rangeContent.Close()
 			if copyErr != nil {
-				_ = pw.CloseWithError(copyErr)
+				_ = pipeWriter.CloseWithError(copyErr)
 
 				return
 			}
 
 			if closeErr != nil {
-				_ = pw.CloseWithError(closeErr)
+				_ = pipeWriter.CloseWithError(closeErr)
 
 				return
 			}
 		}
 
-		if err := mw.Close(); err != nil {
-			_ = pw.CloseWithError(err)
+		if err := multipartWriter.Close(); err != nil {
+			_ = pipeWriter.CloseWithError(err)
 
 			return
 		}
 
-		_ = pw.Close()
+		_ = pipeWriter.Close()
 	}()
 
-	if _, err := io.CopyN(response, pr, responseLength); err != nil {
+	if _, err := io.CopyN(response, pipeReader, responseLength); err != nil {
 		logger.Error().Err(err).Msg("failed to copy data into http response")
 	}
 }
@@ -1380,13 +1383,13 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 			mediaType,
 			blobSize,
 			ranges,
-			func(r blobRange) (io.ReadCloser, error) {
+			func(requestedRange blobRange) (io.ReadCloser, error) {
 				reader, _, _, err := imgStore.GetBlobPartial(
 					name,
 					digest,
 					mediaType,
-					r.start,
-					r.start+r.length-1,
+					requestedRange.start,
+					requestedRange.start+requestedRange.length-1,
 				)
 				if err != nil {
 					return nil, err
