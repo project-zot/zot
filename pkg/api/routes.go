@@ -691,6 +691,7 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 // @Header  201 {string} OCI-Tag "Echoed tag= value; this header is repeatable (one field per tag= query parameter)"
 // @Failure 400 {string} string "bad request"
 // @Failure 404 {string} string "not found"
+// @Failure 413 {string} string "request entity too large"
 // @Failure 414 {string} string "too many tag query parameters"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/manifests/{reference} [put].
