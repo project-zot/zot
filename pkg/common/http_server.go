@@ -42,7 +42,8 @@ func ACHeadersMiddleware(config *config.Config, allowedMethods ...string) mux.Mi
 			// Access-Control-Allow-Origin is the wildcard "*" (CORS spec §3.2).
 			// Only advertise credentials support when an explicit origin is set.
 			authConfig := config.CopyAuthConfig()
-			if authConfig.IsBasicAuthnEnabled() && config.GetAllowOrigin() != "" {
+			allowOrigin := strings.TrimSpace(config.GetAllowOrigin())
+			if authConfig.IsBasicAuthnEnabled() && allowOrigin != "" && allowOrigin != "*" {
 				resp.Header().Set("Access-Control-Allow-Credentials", "true")
 			}
 
