@@ -1093,6 +1093,12 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
+                    "413": {
+                        "description": "request entity too large",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
                     "500": {
                         "description": "internal server error",
                         "schema": {
