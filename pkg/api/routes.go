@@ -2342,15 +2342,21 @@ func (rh *RouteHandler) GetAPIKeys(resp http.ResponseWriter, req *http.Request) 
 // @Success 201 {string} string "created"
 // @Failure 400 {string} string "bad request"
 // @Failure 401 {string} string "unauthorized"
+// @Failure 413 {string} string "request entity too large"
 // @Failure 500 {string} string "internal server error"
 // @Router  /zot/auth/apikey  [post].
 func (rh *RouteHandler) CreateAPIKey(resp http.ResponseWriter, req *http.Request) {
 	var payload APIKeyPayload
 
-	body, err := io.ReadAll(req.Body)
+	body, err := io.ReadAll(http.MaxBytesReader(resp, req.Body, constants.MaxAPIKeyBodySize))
 	if err != nil {
-		rh.c.Log.Error().Msg("failed to read request body")
-		resp.WriteHeader(http.StatusInternalServerError)
+		var mbe *http.MaxBytesError
+		if errors.As(err, &mbe) {
+			resp.WriteHeader(http.StatusRequestEntityTooLarge)
+		} else {
+			rh.c.Log.Error().Msg("failed to read request body")
+			resp.WriteHeader(http.StatusInternalServerError)
+		}
 
 		return
 	}

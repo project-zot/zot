@@ -1604,6 +1604,22 @@ func TestRoutes(t *testing.T) {
 				So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
 			})
 
+			Convey("CreateAPIKey body exceeds MaxAPIKeyBodySize returns 413", func() {
+				userAc := reqCtx.NewUserAccessControl()
+				userAc.SetUsername("test")
+				ctx := userAc.DeriveContext(context.Background())
+
+				oversized := make([]byte, constants.MaxAPIKeyBodySize+1)
+				request, _ := http.NewRequestWithContext(ctx, http.MethodPost, baseURL, bytes.NewReader(oversized))
+				response := httptest.NewRecorder()
+
+				rthdlr.CreateAPIKey(response, request)
+
+				resp := response.Result()
+				defer resp.Body.Close()
+				So(resp.StatusCode, ShouldEqual, http.StatusRequestEntityTooLarge)
+			})
+
 			Convey("CreateAPIKey bad request body", func() {
 				userAc := reqCtx.NewUserAccessControl()
 				userAc.SetUsername("test")
