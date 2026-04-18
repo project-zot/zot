@@ -2,12 +2,14 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"math/rand"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"os"
 	"path"
@@ -126,6 +128,8 @@ func pullAndCollect(url string, repos []string, manifestItem manifestStruct,
 			err               error
 		)
 
+		timings := []perTagTiming{}
+
 		defer func() {
 			// send a stats record
 			statsCh <- statsRecord{
@@ -134,6 +138,7 @@ func pullAndCollect(url string, repos []string, manifestItem manifestStruct,
 				isConnFail: isConnFail,
 				isErr:      isErr,
 				err:        err,
+				timings:    timings,
 			}
 		}()
 
@@ -148,9 +153,21 @@ func pullAndCollect(url string, repos []string, manifestItem manifestStruct,
 
 			var resp *resty.Response
 
+			tagTiming := perTagTiming{}
+
+			var manifestHeadFirstByte time.Time
+			manifestHeadReqStart := time.Now()
+
+			manifestHeadTrace := &httptrace.ClientTrace{
+				GotFirstResponseByte: func() {
+					manifestHeadFirstByte = time.Now()
+				},
+			}
+
 			// check manifest
 			resp, err = client.R().
 				SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+				SetContext(httptrace.WithClientTrace(context.Background(), manifestHeadTrace)).
 				Head(manifestLoc)
 
 			latency = time.Since(start)
@@ -169,9 +186,23 @@ func pullAndCollect(url string, repos []string, manifestItem manifestStruct,
 				return
 			}
 
+			if !manifestHeadFirstByte.IsZero() {
+				tagTiming.manifestHeadTTFB = manifestHeadFirstByte.Sub(manifestHeadReqStart)
+			}
+
+			var manifestGetFirstByte time.Time
+			manifestGetReqStart := time.Now()
+
+			manifestTrace := &httptrace.ClientTrace{
+				GotFirstResponseByte: func() {
+					manifestGetFirstByte = time.Now()
+				},
+			}
+
 			// send request and get the manifest
 			resp, err = client.R().
 				SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+				SetContext(httptrace.WithClientTrace(context.Background(), manifestTrace)).
 				Get(manifestLoc)
 
 			latency = time.Since(start)
@@ -188,6 +219,10 @@ func pullAndCollect(url string, repos []string, manifestItem manifestStruct,
 				isErr = true
 
 				return
+			}
+
+			if !manifestGetFirstByte.IsZero() {
+				tagTiming.manifestGetTTFB = manifestGetFirstByte.Sub(manifestGetReqStart)
 			}
 
 			manifestBody := resp.Body()
@@ -229,8 +264,18 @@ func pullAndCollect(url string, repos []string, manifestItem manifestStruct,
 				return
 			}
 
-			// send request and get the config
-			resp, err = client.R().Get(configLoc)
+			var configFirstByte time.Time
+			configReqStart := time.Now()
+
+			configTrace := &httptrace.ClientTrace{
+				GotFirstResponseByte: func() {
+					configFirstByte = time.Now()
+				},
+			}
+
+			resp, err = client.R().
+				SetContext(httptrace.WithClientTrace(context.Background(), configTrace)).
+				Get(configLoc)
 
 			latency = time.Since(start)
 
@@ -246,6 +291,10 @@ func pullAndCollect(url string, repos []string, manifestItem manifestStruct,
 				isErr = true
 
 				return
+			}
+
+			if !configFirstByte.IsZero() {
+				tagTiming.configTTFB = configFirstByte.Sub(configReqStart)
 			}
 
 			configBody := resp.Body()
@@ -283,8 +332,20 @@ func pullAndCollect(url string, repos []string, manifestItem manifestStruct,
 					return
 				}
 
-				// send request and get response the blob
-				resp, err = client.R().Get(blobLoc)
+				var blobFirstByte time.Time
+				blobReqStart := time.Now()
+
+				blobTrace := &httptrace.ClientTrace{
+					GotFirstResponseByte: func() {
+						blobFirstByte = time.Now()
+					},
+				}
+
+				// send request and stream the blob directly to discard without buffering
+				resp, err = client.R().
+					SetDoNotParseResponse(true).
+					SetContext(httptrace.WithClientTrace(context.Background(), blobTrace)).
+					Get(blobLoc)
 
 				latency = time.Since(start)
 
@@ -298,18 +359,24 @@ func pullAndCollect(url string, repos []string, manifestItem manifestStruct,
 				statusCode = resp.StatusCode()
 				if statusCode != http.StatusOK {
 					isErr = true
+					resp.RawBody().Close()
 
 					return
 				}
 
-				blobBody := resp.Body()
+				if !blobFirstByte.IsZero() {
+					tagTiming.layersTTFB = append(tagTiming.layersTTFB, blobFirstByte.Sub(blobReqStart))
+				}
 
-				// file copy simulation
-				_, err = io.Copy(io.Discard, bytes.NewReader(blobBody))
-				if err != nil {
+				// drain response body without buffering in memory
+				if _, err = io.Copy(io.Discard, resp.RawBody()); err != nil {
 					log.Fatal(err)
 				}
+
+				resp.RawBody().Close()
 			}
+
+			timings = append(timings, tagTiming)
 		}
 	}()
 

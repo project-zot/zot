@@ -15,7 +15,7 @@ import (
 func NewPerfRootCmd() *cobra.Command {
 	showVersion := false
 
-	var auth, workdir, repo, outFmt, srcIPs, srcCIDR, testRegexStr string
+	var auth, workdir, repo, outFmt, srcIPs, srcCIDR, testRegexStr, upstreamServerURL string
 
 	var concurrency, requests int
 
@@ -67,7 +67,10 @@ func NewPerfRootCmd() *cobra.Command {
 
 			requests = concurrency * (requests / concurrency)
 
-			Perf(workdir, url, auth, repo, concurrency, requests, outFmt, srcIPs, srcCIDR, skipCleanup, testRegex)
+			Perf(
+				workdir, url, auth, repo, concurrency, requests, outFmt,
+				srcIPs, srcCIDR, skipCleanup, testRegex, upstreamServerURL,
+			)
 		},
 	}
 
@@ -93,6 +96,8 @@ func NewPerfRootCmd() *cobra.Command {
 		"Optional regex for selectively running tests. If blank, all tests are run by default.")
 	rootCmd.Flags().BoolVarP(&listTests, "list-tests", "l", false,
 		"Print a list of all available tests. When used together with test regex, lists the tests that match the regex.")
+	rootCmd.Flags().StringVarP(&upstreamServerURL, "upstream-server-url", "u", "",
+		"Sets the upstream server URL for sync tests. Must be provided for sync tests.")
 
 	// "version"
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "Show the version and exit")
