@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -631,26 +633,31 @@ func TestRoutes(t *testing.T) {
 
 		// Check Blob
 		Convey("CheckBlob", func() {
-			testCheckBlob := func(urlVars map[string]string, ism *mocks.MockedImageStore) int {
+			testCheckBlob := func(
+				urlVars map[string]string,
+				headers map[string]string,
+				ism *mocks.MockedImageStore,
+			) (int, http.Header) {
 				ctlr.StoreController.DefaultStore = ism
 				request, _ := http.NewRequestWithContext(context.TODO(), http.MethodHead, baseURL, nil)
 				request = mux.SetURLVars(request, urlVars)
+
+				for k, v := range headers {
+					request.Header.Set(k, v)
+				}
+
 				response := httptest.NewRecorder()
-
 				rthdlr.CheckBlob(response, request)
-
 				resp := response.Result()
-				defer resp.Body.Close()
+				resp.Body.Close()
 
-				return resp.StatusCode
+				return resp.StatusCode, resp.Header // Let the caller inspect headers
 			}
 
 			// ErrBadBlobDigest
-			statusCode := testCheckBlob(
-				map[string]string{
-					"name":   "ErrBadBlobDigest",
-					"digest": "1234",
-				},
+			statusCode, _ := testCheckBlob(
+				map[string]string{"name": "ErrBadBlobDigest", "digest": "1234"},
+				nil,
 				&mocks.MockedImageStore{
 					CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
 						return true, 0, zerr.ErrBadBlobDigest
@@ -659,11 +666,9 @@ func TestRoutes(t *testing.T) {
 			So(statusCode, ShouldEqual, http.StatusBadRequest)
 
 			// ErrRepoNotFound
-			statusCode = testCheckBlob(
-				map[string]string{
-					"name":   "ErrRepoNotFound",
-					"digest": "1234",
-				},
+			statusCode, _ = testCheckBlob(
+				map[string]string{"name": "ErrRepoNotFound", "digest": "1234"},
+				nil,
 				&mocks.MockedImageStore{
 					CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
 						return true, 0, zerr.ErrRepoNotFound
@@ -672,11 +677,9 @@ func TestRoutes(t *testing.T) {
 			So(statusCode, ShouldEqual, http.StatusNotFound)
 
 			// ErrBlobNotFound
-			statusCode = testCheckBlob(
-				map[string]string{
-					"name":   "ErrBlobNotFound",
-					"digest": "1234",
-				},
+			statusCode, _ = testCheckBlob(
+				map[string]string{"name": "ErrBlobNotFound", "digest": "1234"},
+				nil,
 				&mocks.MockedImageStore{
 					CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
 						return true, 0, zerr.ErrBlobNotFound
@@ -685,11 +688,9 @@ func TestRoutes(t *testing.T) {
 			So(statusCode, ShouldEqual, http.StatusNotFound)
 
 			// ErrUnexpectedError
-			statusCode = testCheckBlob(
-				map[string]string{
-					"name":   "ErrUnexpectedError",
-					"digest": "1234",
-				},
+			statusCode, _ = testCheckBlob(
+				map[string]string{"name": "ErrUnexpectedError", "digest": "1234"},
+				nil,
 				&mocks.MockedImageStore{
 					CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
 						return true, 0, ErrUnexpectedError
@@ -698,39 +699,77 @@ func TestRoutes(t *testing.T) {
 			So(statusCode, ShouldEqual, http.StatusInternalServerError)
 
 			// Error Check Blob is not ok
-			statusCode = testCheckBlob(
-				map[string]string{
-					"name":   "Check Blob Not Ok",
-					"digest": "1234",
-				},
+			statusCode, _ = testCheckBlob(
+				map[string]string{"name": "Check Blob Not Ok", "digest": "1234"},
+				nil,
 				&mocks.MockedImageStore{
 					CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
 						return false, 0, nil
 					},
 				})
 			So(statusCode, ShouldEqual, http.StatusNotFound)
+
+			// Good Case - Standard Single Accept
+			statusCode, header := testCheckBlob(
+				map[string]string{"name": "GoodRepo", "digest": "1234"},
+				map[string]string{"Accept": "application/vnd.oci.image.layer.v1.tar+gzip"},
+				&mocks.MockedImageStore{
+					CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+						return true, 1024, nil
+					},
+				})
+			So(statusCode, ShouldEqual, http.StatusOK)
+			So(header.Get("Content-Type"), ShouldEqual, "application/octet-stream")
+			So(header.Get("Content-Length"), ShouldEqual, "1024")
+			So(header.Get("Accept-Ranges"), ShouldEqual, "bytes")
+
+			// Good Case - Multiple Accept
+			statusCode, header = testCheckBlob(
+				map[string]string{"name": "GoodRepo", "digest": "1234"},
+				map[string]string{
+					"Accept": "application/vnd.oci.image.layer.v1.tar+gzip, application/vnd.docker.image.rootfs.diff.tar.gzip",
+				},
+				&mocks.MockedImageStore{
+					CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+						return true, 2048, nil
+					},
+				})
+			So(statusCode, ShouldEqual, http.StatusOK)
+			So(header.Get("Content-Type"), ShouldEqual, "application/octet-stream")
+			So(header.Get("Content-Length"), ShouldEqual, "2048")
 		})
 
 		Convey("GetBlob", func() {
-			testGetBlob := func(urlVars map[string]string, ism *mocks.MockedImageStore) int {
+			testGetBlob := func(
+				urlVars map[string]string,
+				headers map[string]string,
+				ism *mocks.MockedImageStore,
+			) (int, http.Header, []byte) {
 				ctlr.StoreController.DefaultStore = ism
 				request, _ := http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 				request = mux.SetURLVars(request, urlVars)
-				response := httptest.NewRecorder()
 
+				for k, v := range headers {
+					request.Header.Set(k, v)
+				}
+
+				response := httptest.NewRecorder()
 				rthdlr.GetBlob(response, request)
 
 				resp := response.Result()
+				bodyBytes, _ := io.ReadAll(resp.Body)
 				defer resp.Body.Close()
 
-				return resp.StatusCode
+				return resp.StatusCode, resp.Header, bodyBytes
 			}
+
 			// ErrRepoNotFound
-			statusCode := testGetBlob(
+			statusCode, _, _ := testGetBlob(
 				map[string]string{
 					"name":   "ErrRepoNotFound",
 					"digest": "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621",
 				},
+				nil,
 				&mocks.MockedImageStore{
 					GetBlobFn: func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error) {
 						return io.NopCloser(bytes.NewBufferString("")), 0, zerr.ErrRepoNotFound
@@ -738,18 +777,99 @@ func TestRoutes(t *testing.T) {
 				})
 			So(statusCode, ShouldEqual, http.StatusNotFound)
 
-			// ErrRepoNotFound
-			statusCode = testGetBlob(
+			// ErrBadBlobDigest
+			statusCode, _, _ = testGetBlob(
 				map[string]string{
-					"name":   "ErrRepoNotFound",
+					"name":   "ErrBadBlobDigest",
 					"digest": "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621",
 				},
+				nil,
 				&mocks.MockedImageStore{
 					GetBlobFn: func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error) {
 						return io.NopCloser(bytes.NewBufferString("")), 0, zerr.ErrBadBlobDigest
 					},
 				})
 			So(statusCode, ShouldEqual, http.StatusBadRequest)
+
+			// Good Case - Full Blob Download
+			statusCode, header, body := testGetBlob(
+				map[string]string{"name": "GoodRepo", "digest": "sha256:dummy"},
+				map[string]string{"Accept": "typeA, typeB"}, // Test the fallback simultaneously
+				&mocks.MockedImageStore{
+					GetBlobFn: func(
+						repo string,
+						digest godigest.Digest,
+						mediaType string,
+					) (io.ReadCloser, int64, error) {
+						return io.NopCloser(bytes.NewBufferString("full_blob_data")), 14, nil
+					},
+				})
+			So(statusCode, ShouldEqual, http.StatusOK)
+			So(header.Get("Content-Type"), ShouldEqual, "application/octet-stream")
+			So(string(body), ShouldEqual, "full_blob_data")
+
+			// Good Case - Single Partial Range
+			statusCode, header, body = testGetBlob(
+				map[string]string{"name": "GoodRepo", "digest": "sha256:dummy"},
+				map[string]string{"Range": "bytes=0-6", "Accept": "application/octet-stream"},
+				&mocks.MockedImageStore{
+					GetBlobPartialFn: func(
+						repo string,
+						digest godigest.Digest,
+						mediaType string,
+						from, to int64,
+					) (io.ReadCloser, int64, int64, error) {
+						return io.NopCloser(bytes.NewBufferString("partial")), 7, 100, nil
+					},
+				})
+			So(statusCode, ShouldEqual, http.StatusPartialContent)
+			So(header.Get("Content-Range"), ShouldEqual, "bytes 0-6/100")
+			So(string(body), ShouldEqual, "partial")
+
+			// Good Case - Multipart Partial Range (eStargz)
+			statusCode, header, body = testGetBlob(
+				map[string]string{"name": "GoodRepo", "digest": "sha256:dummy"},
+				map[string]string{"Range": "bytes=0-3, 10-13", "Accept": "application/octet-stream"},
+				&mocks.MockedImageStore{
+					GetBlobPartialFn: func(
+						repo string,
+						digest godigest.Digest,
+						mediaType string,
+						from, to int64,
+					) (io.ReadCloser, int64, int64, error) {
+						// Mock returning different chunks based on the 'from' offset
+						if from == 0 {
+							return io.NopCloser(bytes.NewBufferString("abcd")), 4, 100, nil
+						}
+
+						return io.NopCloser(bytes.NewBufferString("efgh")), 4, 100, nil
+					},
+				})
+			So(statusCode, ShouldEqual, http.StatusPartialContent)
+
+			// Validate it correctly created a multipart boundary header
+			contentType := header.Get("Content-Type")
+			So(contentType, ShouldStartWith, "multipart/byteranges; boundary=")
+
+			// Parse the multipart body natively
+			_, params, err := mime.ParseMediaType(contentType)
+			So(err, ShouldBeNil)
+
+			multipartReader := multipart.NewReader(bytes.NewReader(body), params["boundary"])
+
+			// Check Part 1
+			part1, err := multipartReader.NextPart()
+			So(err, ShouldBeNil)
+			So(part1.Header.Get("Content-Range"), ShouldEqual, "bytes 0-3/100")
+			p1Data, _ := io.ReadAll(part1)
+			So(string(p1Data), ShouldEqual, "abcd")
+
+			// Check Part 2
+			part2, err := multipartReader.NextPart()
+			So(err, ShouldBeNil)
+			So(part2.Header.Get("Content-Range"), ShouldEqual, "bytes 10-13/100")
+			p2Data, _ := io.ReadAll(part2)
+			So(string(p2Data), ShouldEqual, "efgh")
 		})
 
 		Convey("CreateBlobUpload", func() {
@@ -1826,7 +1946,11 @@ func (r readerThatFails) Read(p []byte) (int, error) {
 func TestWriteDataFromReader(t *testing.T) {
 	Convey("", t, func() {
 		response := httptest.NewRecorder()
-		api.WriteDataFromReader(response, 200, 100, ispec.MediaTypeImageManifest, readerThatFails{},
+		response.Header().Set("Content-Type", ispec.MediaTypeImageManifest)
+		response.Header().Set("Content-Length", 100)
+		response.WriteHeader(200)
+
+		api.WriteDataFromReader(response, readerThatFails{},
 			log.NewTestLogger())
 
 		So(response.Code, ShouldEqual, 200)
