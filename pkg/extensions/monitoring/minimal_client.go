@@ -20,9 +20,7 @@ const (
 	httpTimeout = 1 * time.Minute
 )
 
-var (
-	errInvalidCACert = errors.New("invalid CA certificate")
-)
+var errInvalidCACert = errors.New("invalid CA certificate")
 
 // MetricsConfig is used to configure the creation of a Node Exporter http client
 // that will connect to a particular zot instance.

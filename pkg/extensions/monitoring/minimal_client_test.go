@@ -1,6 +1,6 @@
 //go:build !metrics
 
-package monitoring
+package monitoring_test
 
 import (
 	"context"
