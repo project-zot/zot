@@ -248,9 +248,12 @@ func getUIHeadersHandler(config *config.Config, allowedMethods ...string) func(h
 			response.Header().Set("Access-Control-Allow-Headers",
 				"Authorization,content-type,"+constants.SessionClientHeaderName)
 
-			// Get auth config safely
+			// Access-Control-Allow-Credentials must not be "true" when
+			// Access-Control-Allow-Origin is the wildcard "*" (CORS spec §3.2).
+			// Only advertise credentials support when an explicit origin is set.
 			authConfig := config.CopyAuthConfig()
-			if authConfig.IsBasicAuthnEnabled() {
+			allowOrigin := strings.TrimSpace(config.GetAllowOrigin())
+			if authConfig.IsBasicAuthnEnabled() && allowOrigin != "" && allowOrigin != "*" {
 				response.Header().Set("Access-Control-Allow-Credentials", "true")
 			}
 
@@ -517,7 +520,8 @@ type ExtensionList struct {
 func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.Request) {
 	// Get auth config safely
 	authConfig := rh.c.Config.CopyAuthConfig()
-	if authConfig.IsBasicAuthnEnabled() {
+	allowOrigin := strings.TrimSpace(rh.c.Config.GetAllowOrigin())
+	if authConfig.IsBasicAuthnEnabled() && allowOrigin != "" && allowOrigin != "*" {
 		response.Header().Set("Access-Control-Allow-Credentials", "true")
 	}
 
