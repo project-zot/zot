@@ -1,6 +1,7 @@
 //go:build !metrics
 
-package monitoring_test
+//nolint:testpackage // Tests intentionally cover unexported client construction helpers.
+package monitoring
 
 import (
 	"context"
