@@ -2003,6 +2003,8 @@ func TestGCSGarbageCollectImageManifest(t *testing.T) {
 
 	testLog := log.NewTestLogger()
 	audit := log.NewAuditLogger("debug", "")
+	metrics := monitoring.NewMetricsServer(false, testLog)
+	defer metrics.Stop()
 
 	ctx := context.Background()
 
@@ -2036,7 +2038,7 @@ func TestGCSGarbageCollectImageManifest(t *testing.T) {
 					},
 				},
 			},
-		}, audit, testLog)
+		}, audit, testLog, metrics)
 
 		// upload orphan blob
 		upload, err := imgStore.NewBlobUpload(repoName)
@@ -2220,6 +2222,7 @@ func TestGCSGarbageCollectImageIndex(t *testing.T) {
 
 	testLog := log.NewTestLogger()
 	audit := log.NewAuditLogger("debug", "")
+	metrics := monitoring.NewMetricsServer(false, testLog)
 
 	ctx := context.Background()
 
@@ -2254,7 +2257,7 @@ func TestGCSGarbageCollectImageIndex(t *testing.T) {
 					},
 				},
 			},
-		}, audit, testLog)
+		}, audit, testLog, metrics)
 
 		// upload orphan blob
 		upload, err := imgStore.NewBlobUpload(repoName)
@@ -2372,6 +2375,7 @@ func TestGCSGarbageCollectChainedImageIndexes(t *testing.T) {
 
 	testLog := log.NewTestLogger()
 	audit := log.NewAuditLogger("debug", "")
+	metrics := monitoring.NewMetricsServer(false, testLog)
 
 	ctx := context.Background()
 
@@ -2406,7 +2410,7 @@ func TestGCSGarbageCollectChainedImageIndexes(t *testing.T) {
 					},
 				},
 			},
-		}, audit, testLog)
+		}, audit, testLog, metrics)
 
 		// upload orphan blob
 		upload, err := imgStore.NewBlobUpload(repoName)
