@@ -3,6 +3,7 @@
 package monitoring
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -105,7 +106,12 @@ func TestNewHTTPMetricsClientCustomCAValidatesServer(t *testing.T) {
 		t.Fatalf("expected no error creating client with CA cert, got: %v", err)
 	}
 
-	resp, err := client.Get(srv.URL)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, nil)
+	if err != nil {
+		t.Fatalf("failed to create request: %v", err)
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("expected TLS handshake to succeed with custom CA, got: %v", err)
 	}

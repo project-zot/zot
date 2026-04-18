@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -17,6 +18,10 @@ import (
 
 const (
 	httpTimeout = 1 * time.Minute
+)
+
+var (
+	errInvalidCACert = errors.New("invalid CA certificate")
 )
 
 // MetricsConfig is used to configure the creation of a Node Exporter http client
@@ -57,8 +62,13 @@ func newHTTPMetricsClient(caCertFile string) (*http.Client, error) {
 			return nil, fmt.Errorf("metrics client: failed to read CA cert %s: %w", caCertFile, err)
 		}
 
+		// Ensure caCertPool is not nil before appending (defensive against SystemCertPool returning (nil, nil))
+		if caCertPool == nil {
+			caCertPool = x509.NewCertPool()
+		}
+
 		if !caCertPool.AppendCertsFromPEM(caCert) {
-			return nil, fmt.Errorf("metrics client: no valid PEM certificate found in %s", caCertFile)
+			return nil, fmt.Errorf("metrics client: no valid PEM certificate found in %s: %w", caCertFile, errInvalidCACert)
 		}
 
 		rootCAs = caCertPool
