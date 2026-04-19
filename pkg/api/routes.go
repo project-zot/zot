@@ -1553,7 +1553,7 @@ func (rh *RouteHandler) GetBlobUpload(response http.ResponseWriter, request *htt
 	if err != nil {
 		details := zerr.GetDetails(err)
 		//nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
-		if errors.Is(err, zerr.ErrBadUploadRange) || errors.Is(err, zerr.ErrBadBlobDigest) {
+		if errors.Is(err, zerr.ErrBadBlobDigest) {
 			details["session_id"] = sessionID
 			e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
@@ -1574,7 +1574,13 @@ func (rh *RouteHandler) GetBlobUpload(response http.ResponseWriter, request *htt
 	}
 
 	response.Header().Set("Location", getBlobUploadSessionLocation(request.URL, sessionID))
-	response.Header().Set("Range", fmt.Sprintf("0-%d", size-1))
+	// Match POST new-upload Range for empty progress; otherwise 0..size-1 per dist-spec upload status.
+	rangeEnd := "0-0"
+	if size > 0 {
+		rangeEnd = fmt.Sprintf("0-%d", size-1)
+	}
+
+	response.Header().Set("Range", rangeEnd)
 	response.WriteHeader(http.StatusNoContent)
 }
 
@@ -1688,7 +1694,9 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 // @Success 201 "created"
 // @Header  201 {string} Location "/v2/{name}/blobs/{digest}"
 // @Header  201 {string} Docker-Content-Digest "Digest of the committed blob"
+// @Failure 400 {string} string "bad request"
 // @Failure 404 {string} string "not found"
+// @Failure 416 {string} string "range not satisfiable"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads/{session_id} [put].
 func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *http.Request) {
@@ -1758,7 +1766,10 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 
 			to = contentLen
 		} else if from, to, err = getContentRange(request); err != nil { // finish chunked upload
-			response.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+			details := zerr.GetDetails(err)
+			details["session_id"] = sessionID
+			e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusRequestedRangeNotSatisfiable, apiErr.NewErrorList(e))
 
 			return
 		}
@@ -1769,7 +1780,7 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 			if errors.Is(err, zerr.ErrBadUploadRange) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 				details["session_id"] = sessionID
 				e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
-				zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+				zcommon.WriteJSON(response, http.StatusRequestedRangeNotSatisfiable, apiErr.NewErrorList(e))
 			} else if errors.Is(err, zerr.ErrRepoNotFound) {
 				details["name"] = name
 				e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
@@ -1805,7 +1816,7 @@ finish:
 		} else if errors.Is(err, zerr.ErrBadUploadRange) {
 			details["session_id"] = sessionID
 			e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+			zcommon.WriteJSON(response, http.StatusRequestedRangeNotSatisfiable, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrRepoNotFound) {
 			details["name"] = name
 			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
@@ -2216,15 +2227,28 @@ func (rh *RouteHandler) OpenIDCodeExchangeCallbackWithProvider(providerName stri
 // helper routines
 
 func getContentRange(r *http.Request) (int64 /* from */, int64 /* to */, error) {
-	contentRange := r.Header.Get("Content-Range")
-	tokens := strings.Split(contentRange, "-")
+	contentRange := strings.TrimSpace(r.Header.Get("Content-Range"))
+	if contentRange == "" {
+		return -1, -1, zerr.ErrBadUploadRange
+	}
 
-	rangeStart, err := strconv.ParseInt(tokens[0], 10, 64)
+	startStr, endStr, ok := strings.Cut(contentRange, "-")
+	if !ok {
+		return -1, -1, zerr.ErrBadUploadRange
+	}
+
+	startStr = strings.TrimSpace(startStr)
+	endStr = strings.TrimSpace(endStr)
+	if startStr == "" || endStr == "" {
+		return -1, -1, zerr.ErrBadUploadRange
+	}
+
+	rangeStart, err := strconv.ParseInt(startStr, 10, 64)
 	if err != nil {
 		return -1, -1, zerr.ErrBadUploadRange
 	}
 
-	rangeEnd, err := strconv.ParseInt(tokens[1], 10, 64)
+	rangeEnd, err := strconv.ParseInt(endStr, 10, 64)
 	if err != nil {
 		return -1, -1, zerr.ErrBadUploadRange
 	}
