@@ -2038,13 +2038,30 @@ func (rh *RouteHandler) ListExtensions(w http.ResponseWriter, r *http.Request) {
 
 // The following routes are specific to zot and NOT part of the OCI dist-spec
 
+// errInvalidEndSessionEndpoint is returned by composeEndSessionURL when the URL read
+// from the IdP's discovery document is not a usable absolute http(s) URL — see
+// https://openid.net/specs/openid-connect-rpinitiated-1_0.html#OPMetadata.
+var errInvalidEndSessionEndpoint = errors.New("end_session_endpoint must be an absolute http(s) URL")
+
+// LogoutResponse is returned by POST /zot/auth/logout. When the session was established
+// via an OIDC provider that advertises an `end_session_endpoint` in its discovery
+// metadata, EndSessionURL is set to the URL the client should navigate to in order to
+// terminate the session at the IdP. For local, basic, LDAP, or GitHub OAuth2 sessions
+// the field is omitted from the JSON body.
+type LogoutResponse struct {
+	EndSessionURL string `json:"endSessionUrl,omitempty"`
+}
+
 // Logout godoc
 // @Summary Logout by removing current session
-// @Description Logout by removing current session
+// @Description Logout by removing current session. For OIDC providers that advertise an
+// @Description `end_session_endpoint` in their discovery metadata (OpenID Connect
+// @Description RP-Initiated Logout 1.0), the response body contains an `endSessionUrl`
+// @Description the client should navigate to in order to terminate the session at the IdP.
 // @Router  /zot/auth/logout [post]
 // @Accept  json
 // @Produce json
-// @Success 200 {string} string "ok"
+// @Success 200 {object} api.LogoutResponse
 // @Failure 500 {string} string "internal server error"
 func (rh *RouteHandler) Logout(response http.ResponseWriter, request *http.Request) {
 	if request.Method == http.MethodOptions {
@@ -2052,6 +2069,7 @@ func (rh *RouteHandler) Logout(response http.ResponseWriter, request *http.Reque
 	}
 
 	session, _ := rh.c.CookieStore.Get(request, "session")
+	provider, _ := session.Values["provider"].(string)
 	session.Options.MaxAge = -1
 
 	err := session.Save(request, response)
@@ -2061,7 +2079,100 @@ func (rh *RouteHandler) Logout(response http.ResponseWriter, request *http.Reque
 		return
 	}
 
-	response.WriteHeader(http.StatusOK)
+	zcommon.WriteJSON(response, http.StatusOK, LogoutResponse{
+		EndSessionURL: rh.buildEndSessionURL(request, provider),
+	})
+}
+
+// buildEndSessionURL returns the OIDC provider's RP-Initiated Logout URL for the given
+// provider name, or an empty string if the provider is not OIDC or does not advertise an
+// `end_session_endpoint`. No `id_token_hint` is used — `client_id` identifies the RP per
+// https://openid.net/specs/openid-connect-rpinitiated-1_0.html#RPLogout. The
+// `post_logout_redirect_uri` is resolved by postLogoutRedirectURI, which prefers the
+// configured `http.externalUrl` and falls back to deriving the origin from the incoming
+// request. Whichever value is sent must be pre-registered with the IdP client, otherwise
+// the IdP will ignore the parameter and keep the user on its own "logged out" page.
+func (rh *RouteHandler) buildEndSessionURL(request *http.Request, provider string) string {
+	if provider == "" || !config.IsOpenIDSupported(provider) {
+		return ""
+	}
+
+	relyingParty, ok := rh.c.RelyingParties[provider]
+	if !ok {
+		return ""
+	}
+
+	endSessionURL, err := composeEndSessionURL(
+		relyingParty.GetEndSessionEndpoint(),
+		relyingParty.OAuthConfig().ClientID,
+		postLogoutRedirectURI(rh.c.Config.HTTP.ExternalURL, request),
+	)
+	if err != nil {
+		rh.c.Log.Error().Err(err).Str("provider", provider).
+			Str("endpoint", relyingParty.GetEndSessionEndpoint()).
+			Msg("failed to parse OIDC end_session_endpoint")
+
+		return ""
+	}
+
+	return endSessionURL
+}
+
+// composeEndSessionURL parses `endpoint` and returns it with `client_id` and, if non-empty,
+// `post_logout_redirect_uri` query parameters merged in. An empty endpoint yields an empty
+// URL with no error. Relative URLs or non-http(s) schemes are rejected to prevent a client
+// from being redirected to an unexpected location when the IdP discovery document is
+// malformed.
+func composeEndSessionURL(endpoint, clientID, redirectURI string) (string, error) {
+	if endpoint == "" {
+		return "", nil
+	}
+
+	logoutURL, err := url.Parse(endpoint)
+	if err != nil {
+		return "", err
+	}
+
+	if !logoutURL.IsAbs() || logoutURL.Host == "" ||
+		(logoutURL.Scheme != "http" && logoutURL.Scheme != "https") {
+		return "", fmt.Errorf("%w: got %q", errInvalidEndSessionEndpoint, endpoint)
+	}
+
+	query := logoutURL.Query()
+	query.Set("client_id", clientID)
+
+	if redirectURI != "" {
+		query.Set("post_logout_redirect_uri", redirectURI)
+	}
+
+	logoutURL.RawQuery = query.Encode()
+
+	return logoutURL.String(), nil
+}
+
+// postLogoutRedirectURI returns the URI where the IdP should send the user after logout.
+// It prefers the configured `http.externalUrl` (trimmed of any trailing slash), falling
+// back to deriving the origin from the incoming request's scheme and Host. Deployments
+// behind a reverse proxy should set `externalUrl` because `request.Host` can otherwise
+// differ from the origin registered with the IdP. The resulting URI must be pre-
+// registered with the IdP client; otherwise the IdP will ignore the parameter and keep
+// the user on its own "logged out" page.
+func postLogoutRedirectURI(externalURL string, request *http.Request) string {
+	if trimmed := strings.TrimSuffix(externalURL, "/"); trimmed != "" {
+		return trimmed + "/login"
+	}
+
+	host := request.Host
+	if host == "" {
+		return ""
+	}
+
+	scheme := "http"
+	if request.TLS != nil || strings.EqualFold(request.Header.Get("X-Forwarded-Proto"), "https") {
+		scheme = "https"
+	}
+
+	return scheme + "://" + host + "/login"
 }
 
 // GithubCodeExchangeCallback is a github Oauth2 CodeExchange callback.
@@ -2198,9 +2309,21 @@ func (rh *RouteHandler) OpenIDCodeExchangeCallbackWithProvider(providerName stri
 		if err != nil {
 			if errors.Is(err, zerr.ErrInvalidStateCookie) {
 				w.WriteHeader(http.StatusUnauthorized)
+
+				return
 			}
 
 			w.WriteHeader(http.StatusInternalServerError)
+
+			return
+		}
+
+		// Record the OIDC provider in the session so Logout can look up the right
+		// RelyingParty for RP-Initiated Logout. Failures here are non-fatal — the user
+		// remains logged in; only RP-Initiated Logout will degrade to local-only logout.
+		if err := recordSessionProvider(rh.c, w, r, providerName); err != nil {
+			rh.c.Log.Error().Err(err).Str("provider", providerName).
+				Msg("failed to persist OIDC provider in session")
 		}
 
 		if callbackUI != "" {
@@ -2211,6 +2334,22 @@ func (rh *RouteHandler) OpenIDCodeExchangeCallbackWithProvider(providerName stri
 
 		w.WriteHeader(http.StatusCreated)
 	}
+}
+
+// recordSessionProvider stores the OIDC provider name in the existing user session, used
+// later by Logout to build the RP-Initiated Logout URL. The caller must have established
+// the session via OAuth2Callback in the same request: gorilla/sessions caches the session
+// per request by name, so the Get below returns the same *sessions.Session as the first
+// save, keeping its Secure/HttpOnly/SameSite attributes on the second Save.
+func recordSessionProvider(ctlr *Controller, w http.ResponseWriter, r *http.Request, provider string) error {
+	session, err := ctlr.CookieStore.Get(r, "session")
+	if err != nil {
+		return err
+	}
+
+	session.Values["provider"] = provider
+
+	return session.Save(r, w)
 }
 
 // helper routines
