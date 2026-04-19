@@ -16,6 +16,10 @@ type ServerConfig struct {
 	Protocol string
 	Host     string
 	Port     string
+	// CACert is an optional path to a PEM-encoded CA certificate used to verify
+	// the zot server's TLS certificate.  Required when the server uses a
+	// self-signed or private CA.  Leave empty to use the system cert pool.
+	CACert string
 }
 
 type ExporterConfig struct {

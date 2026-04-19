@@ -160,7 +160,7 @@ func GetCollector(c *Controller) *Collector {
 	// parameters to connect to the zot server
 	serverAddr := fmt.Sprintf("%s://%s:%s", c.Config.Server.Protocol,
 		c.Config.Server.Host, c.Config.Server.Port)
-	cfg := &monitoring.MetricsConfig{Address: serverAddr}
+	cfg := &monitoring.MetricsConfig{Address: serverAddr, CACert: c.Config.Server.CACert}
 
 	return &Collector{
 		Client:       monitoring.NewMetricsClient(cfg, c.Log),
