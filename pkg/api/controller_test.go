@@ -650,14 +650,26 @@ func TestObjectStorageController(t *testing.T) {
 		endpoint := os.Getenv("S3MOCK_ENDPOINT")
 		tmp := t.TempDir()
 
+		// create s3 bucket
+		resp, err := resty.R().Put("http://" + endpoint + "/" + bucket)
+		if err != nil {
+			panic(err)
+		}
+		if resp.StatusCode() != http.StatusOK {
+			panic(fmt.Sprintf("failed to create bucket: %d %s", resp.StatusCode(), resp.String()))
+		}
+
 		storageDriverParams := map[string]any{
 			"rootdirectory":  tmp,
 			"name":           storageConstants.S3StorageDriverName,
 			"region":         "us-east-2",
 			"bucket":         bucket,
 			"regionendpoint": endpoint,
+			"accesskey":      "minioadmin",
+			"secretkey":      "minioadmin",
 			"secure":         false,
 			"skipverify":     false,
+			"forcepathstyle": true,
 		}
 
 		conf.Storage.StorageDriver = storageDriverParams
@@ -683,8 +695,11 @@ func TestObjectStorageController(t *testing.T) {
 			"region":         "us-east-2",
 			"bucket":         bucket,
 			"regionendpoint": endpoint,
+			"accesskey":      "minioadmin",
+			"secretkey":      "minioadmin",
 			"secure":         false,
 			"skipverify":     false,
+			"forcepathstyle": true,
 		}
 		conf.Storage.RemoteCache = true
 		conf.Storage.StorageDriver = storageDriverParams
@@ -731,9 +746,12 @@ func TestObjectStorageController(t *testing.T) {
 		}
 
 		// create s3 bucket
-		_, err = resty.R().Put("http://" + os.Getenv("S3MOCK_ENDPOINT") + "/" + bucket)
+		resp, err := resty.R().Put("http://" + os.Getenv("S3MOCK_ENDPOINT") + "/" + bucket)
 		if err != nil {
 			panic(err)
+		}
+		if resp.StatusCode() != http.StatusOK {
+			panic(fmt.Sprintf("failed to create bucket: %d %s", resp.StatusCode(), resp.String()))
 		}
 
 		ctlr := makeController(conf, "/")
@@ -759,14 +777,26 @@ func TestObjectStorageControllerSubPaths(t *testing.T) {
 		endpoint := os.Getenv("S3MOCK_ENDPOINT")
 		tmp := t.TempDir()
 
+		// create s3 bucket
+		resp, err := resty.R().Put("http://" + endpoint + "/" + bucket)
+		if err != nil {
+			panic(err)
+		}
+		if resp.StatusCode() != http.StatusOK {
+			panic(fmt.Sprintf("failed to create bucket: %d %s", resp.StatusCode(), resp.String()))
+		}
+
 		storageDriverParams := map[string]any{
 			"rootdirectory":  tmp,
 			"name":           storageConstants.S3StorageDriverName,
 			"region":         "us-east-2",
 			"bucket":         bucket,
 			"regionendpoint": endpoint,
+			"accesskey":      "minioadmin",
+			"secretkey":      "minioadmin",
 			"secure":         false,
 			"skipverify":     false,
+			"forcepathstyle": true,
 		}
 		conf.Storage.StorageDriver = storageDriverParams
 		ctlr := makeController(conf, tmp)

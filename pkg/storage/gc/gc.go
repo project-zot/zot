@@ -26,6 +26,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/scheduler"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	common "zotregistry.dev/zot/v2/pkg/storage/common"
+	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
@@ -395,6 +396,11 @@ func (gc GarbageCollect) removeTagsPerRetentionPolicy(ctx context.Context, repo 
 		return nil
 	}
 
+	// skip the global blobs repo - it has no tags to retain
+	if repo == storageConstants.GlobalBlobsRepo {
+		return nil
+	}
+
 	var retainTags []string
 
 	if gc.metaDB != nil {
@@ -439,10 +445,18 @@ func (gc GarbageCollect) gcManifest(repo string, index *ispec.Index, desc ispec.
 
 	canGC, err := isBlobOlderThan(gc.imgStore, repo, desc.Digest, delay, gc.log)
 	if err != nil {
-		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", desc.Digest.String()).
-			Str("delay", delay.String()).Msg("failed to check if blob is older than delay")
+		var pathNotFoundErr driver.PathNotFoundError
+		if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
+			gc.log.Warn().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", desc.Digest.String()).
+				Msg("manifest blob missing during GC, removing stale index entry")
 
-		return false, err
+			canGC = true
+		} else {
+			gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", desc.Digest.String()).
+				Str("delay", delay.String()).Msg("failed to check if blob is older than delay")
+
+			return false, err
+		}
 	}
 
 	if canGC {
