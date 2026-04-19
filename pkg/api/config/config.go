@@ -379,7 +379,9 @@ type HTTPConfig struct {
 	Address       string
 	ExternalURL   string `mapstructure:",omitempty"`
 	Port          string
-	AllowOrigin   string // comma separated
+	AllowOrigin   string         // comma separated
+	ReadTimeout   *time.Duration `mapstructure:"readTimeout,omitempty"`
+	WriteTimeout  *time.Duration `mapstructure:"writeTimeout,omitempty"`
 	TLS           *TLSConfig
 	Auth          *AuthConfig
 	AccessControl *AccessControlConfig `mapstructure:"accessControl,omitempty"`
@@ -661,8 +663,12 @@ func New() *Config {
 				Retention:  ImageRetention{},
 			},
 		},
-		HTTP: HTTPConfig{Address: "127.0.0.1", Port: "8080", Auth: &AuthConfig{FailDelay: 0}},
-		Log:  &LogConfig{Level: "debug"},
+		HTTP: HTTPConfig{
+			Address: "127.0.0.1",
+			Port:    "8080",
+			Auth:    &AuthConfig{FailDelay: 0},
+		},
+		Log: &LogConfig{Level: "debug"},
 	}
 }
 
@@ -1115,6 +1121,38 @@ func (c *Config) GetHTTPPort() string {
 	defer c.mu.RUnlock()
 
 	return c.HTTP.Port
+}
+
+// GetHTTPReadTimeout returns the HTTP server read timeout.
+func (c *Config) GetHTTPReadTimeout() time.Duration {
+	if c == nil {
+		return 0
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.HTTP.ReadTimeout == nil {
+		return 0
+	}
+
+	return *c.HTTP.ReadTimeout
+}
+
+// GetHTTPWriteTimeout returns the HTTP server write timeout.
+func (c *Config) GetHTTPWriteTimeout() time.Duration {
+	if c == nil {
+		return 0
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.HTTP.WriteTimeout == nil {
+		return 0
+	}
+
+	return *c.HTTP.WriteTimeout
 }
 
 // GetAllowOrigin returns the CORS allow origin configuration.

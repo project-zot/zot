@@ -2,6 +2,8 @@
 
 package api
 
+import "time"
+
 // LogConfig and the other types below are exported so the cli package can read them from configuration file.
 type LogConfig struct {
 	Level  string
@@ -23,9 +25,11 @@ type ServerConfig struct {
 }
 
 type ExporterConfig struct {
-	Port    string
-	Log     *LogConfig
-	Metrics *MetricsConfig
+	Port         string
+	ReadTimeout  *time.Duration `mapstructure:"readTimeout,omitempty"`
+	WriteTimeout *time.Duration `mapstructure:"writeTimeout,omitempty"`
+	Log          *LogConfig
+	Metrics      *MetricsConfig
 }
 
 type Config struct {
@@ -34,8 +38,17 @@ type Config struct {
 }
 
 func DefaultConfig() *Config {
+	defaultReadTimeout := 30 * time.Second
+	defaultWriteTimeout := 30 * time.Second
+
 	return &Config{
-		Server:   ServerConfig{Protocol: "http", Host: "localhost", Port: "8080"},
-		Exporter: ExporterConfig{Port: "8081", Log: &LogConfig{Level: "debug"}, Metrics: &MetricsConfig{Path: "/metrics"}},
+		Server: ServerConfig{Protocol: "http", Host: "localhost", Port: "8080"},
+		Exporter: ExporterConfig{
+			Port:         "8081",
+			ReadTimeout:  &defaultReadTimeout,
+			WriteTimeout: &defaultWriteTimeout,
+			Log:          &LogConfig{Level: "debug"},
+			Metrics:      &MetricsConfig{Path: "/metrics"},
+		},
 	}
 }

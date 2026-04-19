@@ -793,6 +793,16 @@ func validateAuthzPolicies(config *config.Config, logger zlog.Logger) error {
 //nolint:gocyclo,cyclop,nestif
 func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, logger zlog.Logger) {
 	defaultVal := true
+	defaultHTTPReadTimeout := 30 * time.Second
+	defaultHTTPWriteTimeout := 30 * time.Second
+
+	if !viperInstance.IsSet("http::readtimeout") {
+		config.HTTP.ReadTimeout = &defaultHTTPReadTimeout
+	}
+
+	if !viperInstance.IsSet("http::writetimeout") {
+		config.HTTP.WriteTimeout = &defaultHTTPWriteTimeout
+	}
 
 	if config.Extensions == nil && viperInstance.Get("extensions") != nil {
 		config.Extensions = &extconf.ExtensionConfig{}

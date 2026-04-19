@@ -19,8 +19,10 @@ import (
 )
 
 const (
-	idleTimeout       = 120 * time.Second
-	readHeaderTimeout = 5 * time.Second
+	idleTimeout         = 120 * time.Second
+	readHeaderTimeout   = 5 * time.Second
+	defaultReadTimeout  = 30 * time.Second
+	defaultWriteTimeout = 30 * time.Second
 )
 
 type Collector struct {
@@ -171,8 +173,20 @@ func GetCollector(c *Controller) *Collector {
 
 func runExporter(c *Controller) {
 	exporterAddr := ":" + c.Config.Exporter.Port
+	readTimeout := defaultReadTimeout
+	if c.Config.Exporter.ReadTimeout != nil {
+		readTimeout = *c.Config.Exporter.ReadTimeout
+	}
+
+	writeTimeout := defaultWriteTimeout
+	if c.Config.Exporter.WriteTimeout != nil {
+		writeTimeout = *c.Config.Exporter.WriteTimeout
+	}
+
 	server := &http.Server{
 		Addr:              exporterAddr,
+		ReadTimeout:       readTimeout,
+		WriteTimeout:      writeTimeout,
 		IdleTimeout:       idleTimeout,
 		ReadHeaderTimeout: readHeaderTimeout,
 	}

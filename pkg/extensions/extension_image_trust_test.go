@@ -3,6 +3,7 @@
 package extensions_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -77,6 +78,32 @@ func TestSignatureHandlers(t *testing.T) {
 		resp := response.Result()
 		defer resp.Body.Close()
 		So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+	})
+
+	Convey("Test cosign upload body over max size returns 413", t, func() {
+		overSizedBody := make([]byte, constants.MaxImageTrustBodySize+1)
+		request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPost,
+			"baseURL", bytes.NewReader(overSizedBody))
+		response := httptest.NewRecorder()
+
+		trust.HandleCosignPublicKeyUpload(response, request)
+
+		resp := response.Result()
+		defer resp.Body.Close()
+		So(resp.StatusCode, ShouldEqual, http.StatusRequestEntityTooLarge)
+	})
+
+	Convey("Test notation upload body over max size returns 413", t, func() {
+		overSizedBody := make([]byte, constants.MaxImageTrustBodySize+1)
+		request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPost,
+			"baseURL", bytes.NewReader(overSizedBody))
+		response := httptest.NewRecorder()
+
+		trust.HandleNotationCertificateUpload(response, request)
+
+		resp := response.Result()
+		defer resp.Body.Close()
+		So(resp.StatusCode, ShouldEqual, http.StatusRequestEntityTooLarge)
 	})
 }
 
