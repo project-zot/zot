@@ -929,23 +929,8 @@ func TestRoutes(t *testing.T) {
 				return resp.StatusCode
 			}
 
-			// ErrBadUploadRange
-			statusCode := testGetBlobUpload(
-				[]struct{ k, v string }{},
-				map[string]string{},
-				map[string]string{
-					"name":       "test",
-					"session_id": "1234",
-				},
-				&mocks.MockedImageStore{
-					GetBlobUploadFn: func(repo, uuid string) (int64, error) {
-						return 0, zerr.ErrBadUploadRange
-					},
-				})
-			So(statusCode, ShouldEqual, http.StatusBadRequest)
-
 			// ErrBadBlobDigest
-			statusCode = testGetBlobUpload(
+			statusCode := testGetBlobUpload(
 				[]struct{ k, v string }{
 					{"mount", "1234"},
 				},
@@ -1195,6 +1180,23 @@ func TestRoutes(t *testing.T) {
 			)
 			So(status, ShouldEqual, http.StatusRequestedRangeNotSatisfiable)
 
+			// Malformed Content-Range (no hyphen): must return 416, not panic.
+			status = testUpdateBlobUpload(
+				[]struct{ k, v string }{
+					{"digest", "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621"},
+				},
+				map[string]string{
+					"Content-Length": "100",
+					"Content-Range":  "100",
+				},
+				map[string]string{
+					"name":       "repo",
+					"session_id": "test",
+				},
+				&mocks.MockedImageStore{},
+			)
+			So(status, ShouldEqual, http.StatusRequestedRangeNotSatisfiable)
+
 			status = testUpdateBlobUpload(
 				[]struct{ k, v string }{
 					{"digest", "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621"},
@@ -1213,7 +1215,7 @@ func TestRoutes(t *testing.T) {
 					},
 				},
 			)
-			So(status, ShouldEqual, http.StatusBadRequest)
+			So(status, ShouldEqual, http.StatusRequestedRangeNotSatisfiable)
 
 			status = testUpdateBlobUpload(
 				[]struct{ k, v string }{
@@ -1316,7 +1318,7 @@ func TestRoutes(t *testing.T) {
 					},
 				},
 			)
-			So(status, ShouldEqual, http.StatusBadRequest)
+			So(status, ShouldEqual, http.StatusRequestedRangeNotSatisfiable)
 
 			status = testUpdateBlobUpload(
 				[]struct{ k, v string }{

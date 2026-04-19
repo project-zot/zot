@@ -438,8 +438,20 @@ const docTemplate = `{
                             }
                         }
                     },
+                    "400": {
+                        "description": "bad request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
                     "404": {
                         "description": "not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "416": {
+                        "description": "range not satisfiable",
                         "schema": {
                             "type": "string"
                         }
