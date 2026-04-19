@@ -142,6 +142,13 @@ func proxyHTTPRequest(ctx context.Context, req *http.Request,
 
 	copyHeader(fwdRequest.Header, req.Header)
 
+	// Preserve ContentLength from original request
+	// This is critical for proxied requests with bodies - without it, the server
+	// may hang waiting for the end of the body
+	if req.ContentLength > 0 {
+		fwdRequest.ContentLength = req.ContentLength
+	}
+
 	// always set hop count to 1 for now.
 	// the handler wrapper above will terminate the process if it sees a request that
 	// already has a hop count but is due for proxying.
