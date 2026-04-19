@@ -20,15 +20,21 @@ func TestProxyHTTPRequestStreamsBodyAndResponse(t *testing.T) {
 		requestPayload := strings.Repeat("payload-", 1024)
 		responsePayload := strings.Repeat("response-", 2048)
 
-		var gotBody string
-		var gotHopCount string
+		type backendResult struct {
+			body     string
+			hopCount string
+			err      error
+		}
+
+		resultCh := make(chan backendResult, 1)
 
 		backend := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 			body, err := io.ReadAll(request.Body)
-			So(err, ShouldBeNil)
-
-			gotBody = string(body)
-			gotHopCount = request.Header.Get(constants.ScaleOutHopCountHeader)
+			resultCh <- backendResult{
+				body:     string(body),
+				hopCount: request.Header.Get(constants.ScaleOutHopCountHeader),
+				err:      err,
+			}
 
 			response.WriteHeader(http.StatusCreated)
 			_, _ = io.WriteString(response, responsePayload)
@@ -44,7 +50,7 @@ func TestProxyHTTPRequestStreamsBodyAndResponse(t *testing.T) {
 		ctrlr := &Controller{Config: conf}
 
 		req, err := http.NewRequestWithContext(context.Background(), http.MethodPut,
-			"http://example.com/v2/repo/manifests/latest", io.NopCloser(strings.NewReader(requestPayload)))
+			"http://example.com/v2/repo/manifests/latest", strings.NewReader(requestPayload))
 		So(err, ShouldBeNil)
 
 		resp, err := proxyHTTPRequest(context.Background(), req, backendURL.Host, ctrlr)
@@ -55,13 +61,16 @@ func TestProxyHTTPRequestStreamsBodyAndResponse(t *testing.T) {
 		respBody, err := io.ReadAll(resp.Body)
 		So(err, ShouldBeNil)
 
+		result := <-resultCh
+		So(result.err, ShouldBeNil)
+
 		remainingReqBody, err := io.ReadAll(req.Body)
 		So(err, ShouldBeNil)
 
 		So(resp.StatusCode, ShouldEqual, http.StatusCreated)
 		So(string(respBody), ShouldEqual, responsePayload)
-		So(gotBody, ShouldEqual, requestPayload)
-		So(gotHopCount, ShouldEqual, "1")
+		So(result.body, ShouldEqual, requestPayload)
+		So(result.hopCount, ShouldEqual, "1")
 		So(len(remainingReqBody), ShouldEqual, 0)
 	})
 }
