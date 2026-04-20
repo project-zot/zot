@@ -11223,6 +11223,7 @@ func TestPullRange(t *testing.T) {
 		resp, err = resty.R().Get(loc)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
+		So(resp.Header().Get("Range"), ShouldEqual, "0-0")
 
 		content := []byte("0123456789")
 		digest := godigest.FromBytes(content)
