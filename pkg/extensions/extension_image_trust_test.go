@@ -57,7 +57,8 @@ func TestSignatureHandlers(t *testing.T) {
 	}
 
 	Convey("Test error handling when Cosign handler reads the request body", t, func() {
-		request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPost, "baseURL", errReader(0))
+		request, err := http.NewRequestWithContext(context.TODO(), http.MethodPost, "http://example.com", errReader(0))
+		So(err, ShouldBeNil)
 		response := httptest.NewRecorder()
 
 		trust.HandleCosignPublicKeyUpload(response, request)
@@ -68,7 +69,8 @@ func TestSignatureHandlers(t *testing.T) {
 	})
 
 	Convey("Test error handling when Notation handler reads the request body", t, func() {
-		request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPost, "baseURL", errReader(0))
+		request, err := http.NewRequestWithContext(context.TODO(), http.MethodPost, "http://example.com", errReader(0))
+		So(err, ShouldBeNil)
 		query := request.URL.Query()
 		request.URL.RawQuery = query.Encode()
 
@@ -82,8 +84,9 @@ func TestSignatureHandlers(t *testing.T) {
 
 	Convey("Test cosign upload body over max size returns 413", t, func() {
 		overSizedBody := make([]byte, constants.MaxImageTrustBodySize+1)
-		request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPost,
-			"baseURL", bytes.NewReader(overSizedBody))
+		request, err := http.NewRequestWithContext(context.TODO(), http.MethodPost,
+			"http://example.com", bytes.NewReader(overSizedBody))
+		So(err, ShouldBeNil)
 		response := httptest.NewRecorder()
 
 		trust.HandleCosignPublicKeyUpload(response, request)
@@ -95,8 +98,9 @@ func TestSignatureHandlers(t *testing.T) {
 
 	Convey("Test notation upload body over max size returns 413", t, func() {
 		overSizedBody := make([]byte, constants.MaxImageTrustBodySize+1)
-		request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPost,
-			"baseURL", bytes.NewReader(overSizedBody))
+		request, err := http.NewRequestWithContext(context.TODO(), http.MethodPost,
+			"http://example.com", bytes.NewReader(overSizedBody))
+		So(err, ShouldBeNil)
 		response := httptest.NewRecorder()
 
 		trust.HandleNotationCertificateUpload(response, request)

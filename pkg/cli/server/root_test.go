@@ -87,6 +87,47 @@ func TestServerUsage(t *testing.T) {
 	})
 }
 
+func TestLoadConfigurationDoesNotInjectHTTPTimeoutDefaults(t *testing.T) {
+	Convey("load config keeps HTTP read/write timeouts unset unless explicitly configured", t, func() {
+		content := `{
+			"storage": {"rootDirectory": "/tmp/zot"},
+			"http": {"address": "127.0.0.1", "port": "8080"}
+		}`
+
+		tmpfile := MakeTempFileWithContent(t, "zot-http-timeouts-unset.json", content)
+		cfg := config.New()
+
+		err := cli.LoadConfiguration(cfg, tmpfile)
+		So(err, ShouldBeNil)
+		So(cfg.HTTP.ReadTimeout, ShouldBeNil)
+		So(cfg.HTTP.WriteTimeout, ShouldBeNil)
+		So(cfg.GetHTTPReadTimeout(), ShouldEqual, 0)
+		So(cfg.GetHTTPWriteTimeout(), ShouldEqual, 0)
+	})
+
+	Convey("load config preserves explicit HTTP read/write timeout values", t, func() {
+		content := `{
+			"storage": {"rootDirectory": "/tmp/zot"},
+			"http": {
+				"address": "127.0.0.1",
+				"port": "8080",
+				"readTimeout": "45s",
+				"writeTimeout": "1m"
+			}
+		}`
+
+		tmpfile := MakeTempFileWithContent(t, "zot-http-timeouts-explicit.json", content)
+		cfg := config.New()
+
+		err := cli.LoadConfiguration(cfg, tmpfile)
+		So(err, ShouldBeNil)
+		So(cfg.HTTP.ReadTimeout, ShouldNotBeNil)
+		So(cfg.HTTP.WriteTimeout, ShouldNotBeNil)
+		So(cfg.GetHTTPReadTimeout(), ShouldEqual, 45*time.Second)
+		So(cfg.GetHTTPWriteTimeout(), ShouldEqual, time.Minute)
+	})
+}
+
 func TestSchema(t *testing.T) {
 	Convey("Test schema command", t, func(c C) {
 		cmd := cli.NewServerRootCmd()
