@@ -376,11 +376,17 @@ type RatelimitConfig struct {
 
 //nolint:maligned
 type HTTPConfig struct {
-	Address       string
-	ExternalURL   string `mapstructure:",omitempty"`
-	Port          string
-	AllowOrigin   string         // comma separated
-	ReadTimeout   *time.Duration `mapstructure:"readTimeout,omitempty"`
+	Address     string
+	ExternalURL string `mapstructure:",omitempty"`
+	Port        string
+	AllowOrigin string // comma separated
+	// ReadTimeout controls maximum duration for reading the entire request (including body).
+	// When unset (nil), server-level defaults may apply. When explicitly set to <= 0,
+	// the HTTP server treats it as no timeout.
+	ReadTimeout *time.Duration `mapstructure:"readTimeout,omitempty"`
+	// WriteTimeout controls maximum duration before timing out response writes.
+	// When unset (nil), server-level defaults may apply. When explicitly set to <= 0,
+	// the HTTP server treats it as no timeout.
 	WriteTimeout  *time.Duration `mapstructure:"writeTimeout,omitempty"`
 	TLS           *TLSConfig
 	Auth          *AuthConfig
@@ -1139,6 +1145,22 @@ func (c *Config) GetHTTPReadTimeout() time.Duration {
 	return *c.HTTP.ReadTimeout
 }
 
+// GetHTTPReadTimeoutWithSet returns the configured HTTP server read timeout and whether it was explicitly set.
+func (c *Config) GetHTTPReadTimeoutWithSet() (time.Duration, bool) {
+	if c == nil {
+		return 0, false
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.HTTP.ReadTimeout == nil {
+		return 0, false
+	}
+
+	return *c.HTTP.ReadTimeout, true
+}
+
 // GetHTTPWriteTimeout returns the HTTP server write timeout.
 func (c *Config) GetHTTPWriteTimeout() time.Duration {
 	if c == nil {
@@ -1153,6 +1175,22 @@ func (c *Config) GetHTTPWriteTimeout() time.Duration {
 	}
 
 	return *c.HTTP.WriteTimeout
+}
+
+// GetHTTPWriteTimeoutWithSet returns the configured HTTP server write timeout and whether it was explicitly set.
+func (c *Config) GetHTTPWriteTimeoutWithSet() (time.Duration, bool) {
+	if c == nil {
+		return 0, false
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.HTTP.WriteTimeout == nil {
+		return 0, false
+	}
+
+	return *c.HTTP.WriteTimeout, true
 }
 
 // GetAllowOrigin returns the CORS allow origin configuration.

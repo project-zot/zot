@@ -38,15 +38,15 @@ type Config struct {
 }
 
 func DefaultConfig() *Config {
-	defaultReadTimeout := 30 * time.Second
-	defaultWriteTimeout := 30 * time.Second
+	readTimeout := defaultReadTimeout
+	writeTimeout := defaultWriteTimeout
 
 	return &Config{
 		Server: ServerConfig{Protocol: "http", Host: "localhost", Port: "8080"},
 		Exporter: ExporterConfig{
 			Port:         "8081",
-			ReadTimeout:  &defaultReadTimeout,
-			WriteTimeout: &defaultWriteTimeout,
+			ReadTimeout:  &readTimeout,
+			WriteTimeout: &writeTimeout,
 			Log:          &LogConfig{Level: "debug"},
 			Metrics:      &MetricsConfig{Path: "/metrics"},
 		},

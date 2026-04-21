@@ -174,13 +174,13 @@ func (c *Controller) Run() error {
 
 	port := c.Config.GetHTTPPort()
 	addr := fmt.Sprintf("%s:%s", c.Config.GetHTTPAddress(), port)
-	readTimeout := c.Config.GetHTTPReadTimeout()
-	if readTimeout <= 0 {
+	readTimeout, readTimeoutSet := c.Config.GetHTTPReadTimeoutWithSet()
+	if !readTimeoutSet {
 		readTimeout = defaultReadTimeout
 	}
 
-	writeTimeout := c.Config.GetHTTPWriteTimeout()
-	if writeTimeout <= 0 {
+	writeTimeout, writeTimeoutSet := c.Config.GetHTTPWriteTimeoutWithSet()
+	if !writeTimeoutSet {
 		writeTimeout = defaultWriteTimeout
 	}
 
