@@ -74,3 +74,40 @@ func TestProxyHTTPRequestStreamsBodyAndResponse(t *testing.T) {
 		So(len(remainingReqBody), ShouldEqual, 0)
 	})
 }
+
+func TestProxyHTTPRequestPreservesExplicitEmptyBody(t *testing.T) {
+	Convey("proxyHTTPRequest preserves explicit zero-length request bodies", t, func() {
+		resultCh := make(chan *http.Request, 1)
+
+		backend := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			resultCh <- request
+			response.WriteHeader(http.StatusNoContent)
+		}))
+		defer backend.Close()
+
+		backendURL, err := url.Parse(backend.URL)
+		So(err, ShouldBeNil)
+
+		conf := config.New()
+		conf.Cluster = &config.ClusterConfig{Members: []string{backendURL.Host}, HashKey: "loremipsumdolors"}
+
+		ctrlr := &Controller{Config: conf}
+
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost,
+			"http://example.com/v2/repo/manifests/latest", http.NoBody)
+		So(err, ShouldBeNil)
+		So(req.ContentLength, ShouldEqual, 0)
+
+		resp, err := proxyHTTPRequest(context.Background(), req, backendURL.Host, ctrlr)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		defer resp.Body.Close()
+
+		backendReq := <-resultCh
+
+		So(resp.StatusCode, ShouldEqual, http.StatusNoContent)
+		So(backendReq.ContentLength, ShouldEqual, 0)
+		So(backendReq.Body, ShouldEqual, http.NoBody)
+		So(backendReq.TransferEncoding, ShouldBeEmpty)
+	})
+}

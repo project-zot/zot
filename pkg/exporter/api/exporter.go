@@ -171,17 +171,18 @@ func GetCollector(c *Controller) *Collector {
 	}
 }
 
-func runExporter(c *Controller) {
-	exporterAddr := ":" + c.Config.Exporter.Port
-	readTimeout := defaultReadTimeout
-	if c.Config.Exporter.ReadTimeout != nil {
-		readTimeout = *c.Config.Exporter.ReadTimeout
+func normalizedTimeout(configured *time.Duration, defaultTimeout time.Duration) time.Duration {
+	if configured == nil || *configured <= 0 {
+		return defaultTimeout
 	}
 
-	writeTimeout := defaultWriteTimeout
-	if c.Config.Exporter.WriteTimeout != nil {
-		writeTimeout = *c.Config.Exporter.WriteTimeout
-	}
+	return *configured
+}
+
+func runExporter(c *Controller) {
+	exporterAddr := ":" + c.Config.Exporter.Port
+	readTimeout := normalizedTimeout(c.Config.Exporter.ReadTimeout, defaultReadTimeout)
+	writeTimeout := normalizedTimeout(c.Config.Exporter.WriteTimeout, defaultWriteTimeout)
 
 	server := &http.Server{
 		Addr:              exporterAddr,
