@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
@@ -783,6 +784,72 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			So(err, ShouldBeNil)
 			// No manifests should be marked as referenced since the nested index is missing
 			So(len(referenced), ShouldEqual, 0)
+		})
+
+		Convey("Error on ListBlobUploads in removeBlobUploads", func() {
+			imgStore := mocks.MockedImageStore{
+				DirExistsFn: func(d string) bool {
+					return true
+				},
+				ListBlobUploadsFn: func(repo string) ([]string, error) {
+					return nil, errGC
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			deleted, err := gc.removeBlobUploads(repoName, time.Hour)
+			So(err, ShouldNotBeNil)
+			So(deleted, ShouldEqual, 0)
+		})
+
+		Convey("Error on addIndexBlobsToReferences in removeUnreferencedBlobs", func() {
+			returnedIndex := ispec.Index{
+				Manifests: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageManifest,
+						Digest:    godigest.FromBytes([]byte("manifest-content")),
+					},
+				},
+			}
+			returnedIndexBuf, err := json.Marshal(returnedIndex)
+			So(err, ShouldBeNil)
+
+			imgStore := mocks.MockedImageStore{
+				GetIndexContentFn: func(repo string) ([]byte, error) {
+					return returnedIndexBuf, nil
+				},
+				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+					return nil, errGC
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			deleted, err := gc.removeUnreferencedBlobs(repoName, time.Hour, log)
+			So(err, ShouldNotBeNil)
+			So(deleted, ShouldEqual, 0)
+		})
+
+		Convey("PathNotFoundError on GetAllBlobs in removeUnreferencedBlobs", func() {
+			returnedIndex := ispec.Index{}
+			returnedIndexBuf, err := json.Marshal(returnedIndex)
+			So(err, ShouldBeNil)
+
+			imgStore := mocks.MockedImageStore{
+				GetIndexContentFn: func(repo string) ([]byte, error) {
+					return returnedIndexBuf, nil
+				},
+				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
+					return nil, driver.PathNotFoundError{Path: "/blobs/sha256", DriverName: "local"}
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			deleted, err := gc.removeUnreferencedBlobs(repoName, time.Hour, log)
+			So(err, ShouldBeNil)
+			So(deleted, ShouldEqual, 0)
 		})
 
 		Convey("CleanRepo records error metrics when cleanRepo fails", func() {
