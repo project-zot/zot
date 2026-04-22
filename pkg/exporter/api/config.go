@@ -38,8 +38,8 @@ type Config struct {
 }
 
 func DefaultConfig() *Config {
-	readTimeout := defaultReadTimeout
-	writeTimeout := defaultWriteTimeout
+	readTimeout := defaultTimeout
+	writeTimeout := defaultTimeout
 
 	return &Config{
 		Server: ServerConfig{Protocol: "http", Host: "localhost", Port: "8080"},

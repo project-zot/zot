@@ -15,9 +15,9 @@ func TestExporterTimeoutSelection(t *testing.T) {
 		zero := time.Duration(0)
 		negative := -5 * time.Second
 
-		So(selectedTimeout(nil, defaultReadTimeout), ShouldEqual, defaultReadTimeout)
-		So(selectedTimeout(&zero, defaultWriteTimeout), ShouldEqual, defaultWriteTimeout)
-		So(selectedTimeout(&negative, defaultWriteTimeout), ShouldEqual, defaultWriteTimeout)
-		So(selectedTimeout(&positive, defaultWriteTimeout), ShouldEqual, positive)
+		So(selectedTimeout(nil), ShouldEqual, defaultTimeout)
+		So(selectedTimeout(&zero), ShouldEqual, defaultTimeout)
+		So(selectedTimeout(&negative), ShouldEqual, defaultTimeout)
+		So(selectedTimeout(&positive), ShouldEqual, positive)
 	})
 }
