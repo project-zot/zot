@@ -36,8 +36,8 @@ import (
 const (
 	idleTimeout         = 120 * time.Second
 	readHeaderTimeout   = 5 * time.Second
-	defaultReadTimeout  = 30 * time.Second
-	defaultWriteTimeout = 30 * time.Second
+	defaultReadTimeout  = 60 * time.Second
+	defaultWriteTimeout = 60 * time.Second
 )
 
 type Controller struct {
