@@ -852,6 +852,102 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			So(deleted, ShouldEqual, 0)
 		})
 
+		Convey("StatBlobUpload error in removeBlobUploads", func() {
+			imgStore := mocks.MockedImageStore{
+				DirExistsFn: func(d string) bool {
+					return true
+				},
+				ListBlobUploadsFn: func(repo string) ([]string, error) {
+					return []string{"upload-1"}, nil
+				},
+				StatBlobUploadFn: func(repo string, uuid string) (bool, int64, time.Time, error) {
+					return false, 0, time.Time{}, errGC
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			deleted, err := gc.removeBlobUploads(repoName, time.Hour)
+			So(err, ShouldNotBeNil)
+			So(deleted, ShouldEqual, 0)
+		})
+
+		Convey("Invalid digest from GetAllBlobs in removeUnreferencedBlobs", func() {
+			returnedIndex := ispec.Index{}
+			returnedIndexBuf, err := json.Marshal(returnedIndex)
+			So(err, ShouldBeNil)
+
+			imgStore := mocks.MockedImageStore{
+				GetIndexContentFn: func(repo string) ([]byte, error) {
+					return returnedIndexBuf, nil
+				},
+				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
+					return []godigest.Digest{godigest.Digest("invalid")}, nil
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			deleted, err := gc.removeUnreferencedBlobs(repoName, time.Hour, log)
+			So(err, ShouldNotBeNil)
+			So(deleted, ShouldEqual, 0)
+		})
+
+		Convey("StatBlob error in removeUnreferencedBlobs", func() {
+			blobDigest := godigest.FromBytes([]byte("blob-content"))
+
+			returnedIndex := ispec.Index{}
+			returnedIndexBuf, err := json.Marshal(returnedIndex)
+			So(err, ShouldBeNil)
+
+			imgStore := mocks.MockedImageStore{
+				GetIndexContentFn: func(repo string) ([]byte, error) {
+					return returnedIndexBuf, nil
+				},
+				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
+					return []godigest.Digest{blobDigest}, nil
+				},
+				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+					return false, 0, time.Time{}, errGC
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			deleted, err := gc.removeUnreferencedBlobs(repoName, time.Hour, log)
+			So(err, ShouldNotBeNil)
+			So(deleted, ShouldEqual, 0)
+		})
+
+		Convey("CleanupRepo error in removeUnreferencedBlobs", func() {
+			blobDigest := godigest.FromBytes([]byte("blob-content"))
+
+			returnedIndex := ispec.Index{}
+			returnedIndexBuf, err := json.Marshal(returnedIndex)
+			So(err, ShouldBeNil)
+
+			imgStore := mocks.MockedImageStore{
+				GetIndexContentFn: func(repo string) ([]byte, error) {
+					return returnedIndexBuf, nil
+				},
+				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
+					return []godigest.Digest{blobDigest}, nil
+				},
+				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+					return true, 100, time.Now().Add(-2 * time.Hour), nil
+				},
+				CleanupRepoFn: func(repo string, blobs []godigest.Digest, removeRepo bool) (int, error) {
+					return 0, errGC
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			deleted, err := gc.removeUnreferencedBlobs(repoName, time.Hour, log)
+			So(err, ShouldNotBeNil)
+			So(deleted, ShouldEqual, 0)
+		})
+
 		Convey("CleanRepo records error metrics when cleanRepo fails", func() {
 			imgStore := mocks.MockedImageStore{
 				DirExistsFn: func(d string) bool {
