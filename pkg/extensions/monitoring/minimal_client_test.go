@@ -143,6 +143,16 @@ func TestNewMetricsClientFallbackKeepsTLSHardening(t *testing.T) {
 	}
 }
 
+func TestSanityChecksLabelNameMismatch(t *testing.T) {
+	t.Parallel()
+
+	err := sanityChecks("test.metric", []string{"method", "code"}, true,
+		[]string{"method", "wrong"}, []string{"GET", "200"})
+	if err == nil {
+		t.Fatal("expected error when label names don't match known labels")
+	}
+}
+
 func generateServerCertificateChain() ([]byte, []byte, []byte, error) {
 	now := time.Now()
 
