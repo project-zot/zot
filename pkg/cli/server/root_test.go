@@ -98,11 +98,15 @@ func TestLoadConfigurationDoesNotInjectHTTPTimeoutDefaults(t *testing.T) {
 		cfg := config.New()
 
 		err := cli.LoadConfiguration(cfg, tmpfile)
+		readTimeout, readTimeoutSet := cfg.GetHTTPReadTimeoutWithSet()
+		writeTimeout, writeTimeoutSet := cfg.GetHTTPWriteTimeoutWithSet()
 		So(err, ShouldBeNil)
 		So(cfg.HTTP.ReadTimeout, ShouldBeNil)
 		So(cfg.HTTP.WriteTimeout, ShouldBeNil)
-		So(cfg.GetHTTPReadTimeout(), ShouldEqual, 0)
-		So(cfg.GetHTTPWriteTimeout(), ShouldEqual, 0)
+		So(readTimeoutSet, ShouldBeFalse)
+		So(writeTimeoutSet, ShouldBeFalse)
+		So(readTimeout, ShouldEqual, 0)
+		So(writeTimeout, ShouldEqual, 0)
 	})
 
 	Convey("load config preserves explicit HTTP read/write timeout values", t, func() {
@@ -120,11 +124,15 @@ func TestLoadConfigurationDoesNotInjectHTTPTimeoutDefaults(t *testing.T) {
 		cfg := config.New()
 
 		err := cli.LoadConfiguration(cfg, tmpfile)
+		readTimeout, readTimeoutSet := cfg.GetHTTPReadTimeoutWithSet()
+		writeTimeout, writeTimeoutSet := cfg.GetHTTPWriteTimeoutWithSet()
 		So(err, ShouldBeNil)
 		So(cfg.HTTP.ReadTimeout, ShouldNotBeNil)
 		So(cfg.HTTP.WriteTimeout, ShouldNotBeNil)
-		So(cfg.GetHTTPReadTimeout(), ShouldEqual, 45*time.Second)
-		So(cfg.GetHTTPWriteTimeout(), ShouldEqual, time.Minute)
+		So(readTimeoutSet, ShouldBeTrue)
+		So(writeTimeoutSet, ShouldBeTrue)
+		So(readTimeout, ShouldEqual, 45*time.Second)
+		So(writeTimeout, ShouldEqual, time.Minute)
 	})
 }
 

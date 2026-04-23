@@ -26,7 +26,7 @@ const (
 	// MaxAPIKeyBodySize is the maximum number of bytes accepted for an API-key creation request body.
 	MaxAPIKeyBodySize = 8 * 1024
 	// MaxImageTrustBodySize is the maximum number of bytes accepted for image-trust key/certificate uploads.
-	MaxImageTrustBodySize        = 4 * 1024 * 1024
+	MaxImageTrustBodySize        = 8 * 1024 * 1024
 	BlobUploadUUID               = "Blob-Upload-UUID"
 	DefaultMediaType             = "application/json"
 	BinaryMediaType              = "application/octet-stream"

@@ -1129,22 +1129,6 @@ func (c *Config) GetHTTPPort() string {
 	return c.HTTP.Port
 }
 
-// GetHTTPReadTimeout returns the HTTP server read timeout.
-func (c *Config) GetHTTPReadTimeout() time.Duration {
-	if c == nil {
-		return 0
-	}
-
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	if c.HTTP.ReadTimeout == nil {
-		return 0
-	}
-
-	return *c.HTTP.ReadTimeout
-}
-
 // GetHTTPReadTimeoutWithSet returns the configured HTTP server read timeout and whether it was explicitly set.
 func (c *Config) GetHTTPReadTimeoutWithSet() (time.Duration, bool) {
 	if c == nil {
@@ -1159,22 +1143,6 @@ func (c *Config) GetHTTPReadTimeoutWithSet() (time.Duration, bool) {
 	}
 
 	return *c.HTTP.ReadTimeout, true
-}
-
-// GetHTTPWriteTimeout returns the HTTP server write timeout.
-func (c *Config) GetHTTPWriteTimeout() time.Duration {
-	if c == nil {
-		return 0
-	}
-
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	if c.HTTP.WriteTimeout == nil {
-		return 0
-	}
-
-	return *c.HTTP.WriteTimeout
 }
 
 // GetHTTPWriteTimeoutWithSet returns the configured HTTP server write timeout and whether it was explicitly set.
