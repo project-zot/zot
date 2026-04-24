@@ -29,13 +29,13 @@ const (
 	KiB                  = 1 * 1024
 	MiB                  = 1 * KiB * 1024
 	GiB                  = 1 * MiB * 1024
-	maxSize              = 1 * GiB // 1GiB
 	defaultDirPerms      = 0o700
 	defaultFilePerms     = 0o600
 	defaultSchemaVersion = 2
 	smallBlob            = 1 * MiB
 	mediumBlob           = 10 * MiB
 	largeBlob            = 100 * MiB
+	superLargeBlob       = 1 * GiB
 	cicdFmt              = "ci-cd"
 	secureProtocol       = "https"
 	httpKeepAlive        = 30 * time.Second
@@ -50,14 +50,12 @@ var blobHash map[string]godigest.Digest = map[string]godigest.Digest{}
 //nolint:gochecknoglobals // used only in this test
 var statusRequests sync.Map
 
-func setup(workingDir string) {
+func setup(workingDir string, sizesToPrepare []int) {
 	_ = os.MkdirAll(workingDir, defaultDirPerms)
-
-	const multiplier = 10
 
 	const rndPageSize = 4 * KiB
 
-	for size := 1 * MiB; size < maxSize; size *= multiplier {
+	for _, size := range sizesToPrepare {
 		fname := path.Join(workingDir, fmt.Sprintf("%d.blob", size))
 
 		fhandle, err := os.OpenFile(fname, os.O_RDWR|os.O_CREATE|os.O_TRUNC, defaultFilePerms)
@@ -129,6 +127,10 @@ type statsSummary struct {
 	mixedSize, mixedType bool
 	errorCount           int
 	errors               map[string]int
+	manifestHeadTTFBs    []time.Duration
+	manifestGetTTFBs     []time.Duration
+	configTTFBs          []time.Duration
+	layerTTFBs           []time.Duration
 }
 
 func newStatsSummary(name string) statsSummary {
@@ -139,9 +141,17 @@ func newStatsSummary(name string) statsSummary {
 		statusHist: make(map[string]int),
 		mixedSize:  false,
 		mixedType:  false,
+		errors:     make(map[string]int),
 	}
 
 	return summary
+}
+
+type perTagTiming struct {
+	manifestHeadTTFB time.Duration
+	manifestGetTTFB  time.Duration
+	configTTFB       time.Duration
+	layersTTFB       []time.Duration
 }
 
 type statsRecord struct {
@@ -150,6 +160,9 @@ type statsRecord struct {
 	isConnFail bool
 	isErr      bool
 	err        error
+
+	// sync test specific items
+	timings []perTagTiming
 }
 
 func updateStats(summary *statsSummary, record statsRecord) {
@@ -194,6 +207,22 @@ func updateStats(summary *statsSummary, record statsRecord) {
 	}
 
 	summary.latencies = append(summary.latencies, record.latency)
+
+	for _, timing := range record.timings {
+		if timing.manifestHeadTTFB > 0 {
+			summary.manifestHeadTTFBs = append(summary.manifestHeadTTFBs, timing.manifestHeadTTFB)
+		}
+
+		if timing.manifestGetTTFB > 0 {
+			summary.manifestGetTTFBs = append(summary.manifestGetTTFBs, timing.manifestGetTTFB)
+		}
+
+		if timing.configTTFB > 0 {
+			summary.configTTFBs = append(summary.configTTFBs, timing.configTTFB)
+		}
+
+		summary.layerTTFBs = append(summary.layerTTFBs, timing.layersTTFB...)
+	}
 }
 
 type cicdTestSummary struct {
@@ -208,10 +237,7 @@ type manifestStruct struct {
 	manifestBySizeHash map[int](map[string]string)
 }
 
-//nolint:gochecknoglobals // used only in this test
-var cicdSummary = []cicdTestSummary{}
-
-func printStats(requests int, summary *statsSummary, outFmt string) {
+func printStats(requests int, summary *statsSummary) {
 	log.Printf("============\n")
 	log.Printf("Test name:\t%s", summary.name)
 	log.Printf("Time taken for tests:\t%v", summary.total)
@@ -253,6 +279,7 @@ func printStats(requests int, summary *statsSummary, outFmt string) {
 	}
 
 	log.Printf("\n")
+	sort.Sort(Durations(summary.latencies))
 	log.Printf("min: %v", summary.min)
 	log.Printf("max: %v", summary.max)
 	log.Printf("%s:\t%v", "p50", summary.latencies[requests/2])
@@ -261,38 +288,62 @@ func printStats(requests int, summary *statsSummary, outFmt string) {
 	log.Printf("%s:\t%v", "p99", summary.latencies[requests*99/100])
 	log.Printf("\n")
 
-	// ci/cd
-	if outFmt == cicdFmt {
-		cicdSummary = append(cicdSummary,
-			cicdTestSummary{
-				Name:  summary.name,
-				Unit:  "requests per sec",
-				Value: summary.rps,
-				Range: "3",
-			},
-		)
+	if len(summary.manifestHeadTTFBs) > 0 {
+		sort.Sort(Durations(summary.manifestHeadTTFBs))
+		n := len(summary.manifestHeadTTFBs)
+		log.Printf("Manifest HEAD TTFB p50:\t%v", summary.manifestHeadTTFBs[n/2])
+		log.Printf("Manifest HEAD TTFB p75:\t%v", summary.manifestHeadTTFBs[n*3/4])
+		log.Printf("Manifest HEAD TTFB p90:\t%v", summary.manifestHeadTTFBs[n*9/10])
+		log.Printf("Manifest HEAD TTFB p99:\t%v", summary.manifestHeadTTFBs[n*99/100])
+		log.Printf("\n")
+	}
+
+	if len(summary.manifestGetTTFBs) > 0 {
+		sort.Sort(Durations(summary.manifestGetTTFBs))
+		n := len(summary.manifestGetTTFBs)
+		log.Printf("Manifest GET TTFB p50:\t%v", summary.manifestGetTTFBs[n/2])
+		log.Printf("Manifest GET TTFB p75:\t%v", summary.manifestGetTTFBs[n*3/4])
+		log.Printf("Manifest GET TTFB p90:\t%v", summary.manifestGetTTFBs[n*9/10])
+		log.Printf("Manifest GET TTFB p99:\t%v", summary.manifestGetTTFBs[n*99/100])
+		log.Printf("\n")
+	}
+
+	if len(summary.configTTFBs) > 0 {
+		sort.Sort(Durations(summary.configTTFBs))
+		n := len(summary.configTTFBs)
+		log.Printf("Config TTFB p50:\t%v", summary.configTTFBs[n/2])
+		log.Printf("Config TTFB p75:\t%v", summary.configTTFBs[n*3/4])
+		log.Printf("Config TTFB p90:\t%v", summary.configTTFBs[n*9/10])
+		log.Printf("Config TTFB p99:\t%v", summary.configTTFBs[n*99/100])
+		log.Printf("\n")
+	}
+
+	if len(summary.layerTTFBs) > 0 {
+		sort.Sort(Durations(summary.layerTTFBs))
+		n := len(summary.layerTTFBs)
+		log.Printf("Layer TTFB p50:\t%v", summary.layerTTFBs[n/2])
+		log.Printf("Layer TTFB p75:\t%v", summary.layerTTFBs[n*3/4])
+		log.Printf("Layer TTFB p90:\t%v", summary.layerTTFBs[n*9/10])
+		log.Printf("Layer TTFB p99:\t%v", summary.layerTTFBs[n*99/100])
+		log.Printf("\n")
 	}
 }
 
 // test suites/funcs.
 
 type testFunc func(
-	workdir, url, repo string,
-	requests int,
 	config testConfig,
+	suiteCfg testSuiteCfg,
 	statsCh chan statsRecord,
 	client *resty.Client,
-	skipCleanup bool,
 ) error
 
 //nolint:gosec
 func GetCatalog(
-	workdir, url, repo string,
-	requests int,
 	config testConfig,
+	suiteCfg testSuiteCfg,
 	statsCh chan statsRecord,
 	client *resty.Client,
-	skipCleanup bool,
 ) error {
 	var repos []string
 
@@ -300,15 +351,15 @@ func GetCatalog(
 
 	statusRequests = sync.Map{}
 
-	for range requests {
+	for range suiteCfg.requests {
 		// Push random blob
-		_, repos, err = pushMonolithImage(workdir, url, repo, repos, config, client)
+		_, repos, err = pushMonolithImage(suiteCfg.workDir, suiteCfg.targetServerURL, suiteCfg.repo, repos, config, client)
 		if err != nil {
 			return err
 		}
 	}
 
-	for range requests {
+	for range suiteCfg.requests {
 		func() {
 			start := time.Now()
 
@@ -332,7 +383,7 @@ func GetCatalog(
 			}()
 
 			// send request and get response
-			resp, err := client.R().Get(url + constants.RoutePrefix + constants.ExtCatalogPrefix)
+			resp, err := client.R().Get(suiteCfg.targetServerURL + constants.RoutePrefix + constants.ExtCatalogPrefix)
 
 			latency = time.Since(start)
 
@@ -353,8 +404,8 @@ func GetCatalog(
 	}
 
 	// clean up
-	if !skipCleanup {
-		err = deleteTestRepo(repos, url, client)
+	if !suiteCfg.skipCleanup {
+		err = deleteTestRepo(repos, suiteCfg.targetServerURL, client)
 		if err != nil {
 			return err
 		}
@@ -364,12 +415,10 @@ func GetCatalog(
 }
 
 func PushMonolithStreamed(
-	workdir, url, trepo string,
-	requests int,
 	config testConfig,
+	suiteCfg testSuiteCfg,
 	statsCh chan statsRecord,
 	client *resty.Client,
-	skipCleanup bool,
 ) error {
 	var repos []string
 
@@ -377,14 +426,14 @@ func PushMonolithStreamed(
 		statusRequests = sync.Map{}
 	}
 
-	for count := range requests {
-		repos = pushMonolithAndCollect(workdir, url, trepo, count,
+	for count := range suiteCfg.requests {
+		repos = pushMonolithAndCollect(suiteCfg.workDir, suiteCfg.targetServerURL, suiteCfg.repo, count,
 			repos, config, client, statsCh)
 	}
 
 	// clean up
-	if !skipCleanup {
-		err := deleteTestRepo(repos, url, client)
+	if !suiteCfg.skipCleanup {
+		err := deleteTestRepo(repos, suiteCfg.targetServerURL, client)
 		if err != nil {
 			return err
 		}
@@ -394,12 +443,10 @@ func PushMonolithStreamed(
 }
 
 func PushChunkStreamed(
-	workdir, url, trepo string,
-	requests int,
 	config testConfig,
+	suiteCfg testSuiteCfg,
 	statsCh chan statsRecord,
 	client *resty.Client,
-	skipCleanup bool,
 ) error {
 	var repos []string
 
@@ -407,14 +454,14 @@ func PushChunkStreamed(
 		statusRequests = sync.Map{}
 	}
 
-	for count := range requests {
-		repos = pushChunkAndCollect(workdir, url, trepo, count,
+	for count := range suiteCfg.requests {
+		repos = pushChunkAndCollect(suiteCfg.workDir, suiteCfg.targetServerURL, suiteCfg.repo, count,
 			repos, config, client, statsCh)
 	}
 
 	// clean up
-	if !skipCleanup {
-		err := deleteTestRepo(repos, url, client)
+	if !suiteCfg.skipCleanup {
+		err := deleteTestRepo(repos, suiteCfg.targetServerURL, client)
 		if err != nil {
 			return err
 		}
@@ -424,12 +471,10 @@ func PushChunkStreamed(
 }
 
 func Pull(
-	workdir, url, trepo string,
-	requests int,
 	config testConfig,
+	suiteCfg testSuiteCfg,
 	statsCh chan statsRecord,
 	client *resty.Client,
-	skipCleanup bool,
 ) error {
 	var repos []string
 
@@ -439,6 +484,12 @@ func Pull(
 
 	if config.mixedSize {
 		statusRequests = sync.Map{}
+	}
+
+	pushTargetURL := suiteCfg.targetServerURL
+
+	if suiteCfg.syncTest {
+		pushTargetURL = suiteCfg.upstreamServerURL
 	}
 
 	if config.mixedSize {
@@ -451,7 +502,8 @@ func Pull(
 		config.size = smallBlob
 
 		// Push small blob
-		manifestBySize, repos, err := pushMonolithImage(workdir, url, trepo, repos, config, client)
+		manifestBySize, repos, err := pushMonolithImage(
+			suiteCfg.workDir, pushTargetURL, suiteCfg.repo, repos, config, client)
 		if err != nil {
 			return err
 		}
@@ -461,7 +513,8 @@ func Pull(
 		config.size = mediumBlob
 
 		// Push medium blob
-		manifestBySize, repos, err = pushMonolithImage(workdir, url, trepo, repos, config, client)
+		manifestBySize, repos, err = pushMonolithImage(
+			suiteCfg.workDir, pushTargetURL, suiteCfg.repo, repos, config, client)
 		if err != nil {
 			return err
 		}
@@ -472,7 +525,8 @@ func Pull(
 
 		// Push large blob
 		//nolint: ineffassign, staticcheck, wastedassign
-		manifestBySize, repos, err = pushMonolithImage(workdir, url, trepo, repos, config, client)
+		manifestBySize, repos, err = pushMonolithImage(
+			suiteCfg.workDir, pushTargetURL, suiteCfg.repo, repos, config, client)
 		if err != nil {
 			return err
 		}
@@ -482,7 +536,8 @@ func Pull(
 		// Push blob given size
 		var err error
 
-		manifestHash, repos, err = pushMonolithImage(workdir, url, trepo, repos, config, client)
+		manifestHash, repos, err = pushMonolithImage(
+			suiteCfg.workDir, pushTargetURL, suiteCfg.repo, repos, config, client)
 		if err != nil {
 			return err
 		}
@@ -494,15 +549,22 @@ func Pull(
 	}
 
 	// download image
-	for range requests {
-		repos = pullAndCollect(url, repos, manifestItem, config, client, statsCh)
+	for range suiteCfg.requests {
+		repos = pullAndCollect(suiteCfg.targetServerURL, repos, manifestItem, config, client, statsCh)
 	}
 
 	// clean up
-	if !skipCleanup {
-		err := deleteTestRepo(repos, url, client)
+	if !suiteCfg.skipCleanup {
+		err := deleteTestRepo(repos, suiteCfg.targetServerURL, client)
 		if err != nil {
 			return err
+		}
+
+		if suiteCfg.syncTest {
+			err := deleteTestRepo(repos, suiteCfg.upstreamServerURL, client)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -510,19 +572,18 @@ func Pull(
 }
 
 func MixedPullAndPush(
-	workdir, url, trepo string,
-	requests int,
 	config testConfig,
+	suiteCfg testSuiteCfg,
 	statsCh chan statsRecord,
 	client *resty.Client,
-	skipCleanup bool,
 ) error {
 	var repos []string
 
 	statusRequests = sync.Map{}
 
 	// Push blob given size
-	manifestHash, repos, err := pushMonolithImage(workdir, url, trepo, repos, config, client)
+	manifestHash, repos, err := pushMonolithImage(
+		suiteCfg.workDir, suiteCfg.targetServerURL, suiteCfg.repo, repos, config, client)
 	if err != nil {
 		return err
 	}
@@ -531,26 +592,28 @@ func MixedPullAndPush(
 		manifestHash: manifestHash,
 	}
 
-	for count := range requests {
+	for count := range suiteCfg.requests {
 		idx := flipFunc(config.probabilityRange)
 
 		readTestIdx := 0
 		writeTestIdx := 1
 
-		if idx == readTestIdx {
-			repos = pullAndCollect(url, repos, manifestItem, config, client, statsCh)
+		switch idx {
+		case readTestIdx:
+			repos = pullAndCollect(suiteCfg.targetServerURL, repos, manifestItem, config, client, statsCh)
 			current := loadOrStore(&statusRequests, "Pull", 0)
 			statusRequests.Store("Pull", current+1)
-		} else if idx == writeTestIdx {
-			repos = pushMonolithAndCollect(workdir, url, trepo, count, repos, config, client, statsCh)
+		case writeTestIdx:
+			repos = pushMonolithAndCollect(
+				suiteCfg.workDir, suiteCfg.targetServerURL, suiteCfg.repo, count, repos, config, client, statsCh)
 			current := loadOrStore(&statusRequests, "Push", 0)
 			statusRequests.Store("Pull", current+1)
 		}
 	}
 
 	// clean up
-	if !skipCleanup {
-		err = deleteTestRepo(repos, url, client)
+	if !suiteCfg.skipCleanup {
+		err = deleteTestRepo(repos, suiteCfg.targetServerURL, client)
 		if err != nil {
 			return err
 		}
@@ -561,6 +624,16 @@ func MixedPullAndPush(
 
 // test driver.
 
+type testSuiteCfg struct {
+	workDir           string
+	targetServerURL   string
+	upstreamServerURL string
+	repo              string
+	requests          int
+	skipCleanup       bool
+	syncTest          bool
+}
+
 type testConfig struct {
 	name  string
 	tfunc testFunc
@@ -568,6 +641,7 @@ type testConfig struct {
 	size                 int
 	probabilityRange     []float64
 	mixedSize, mixedType bool
+	syncTest             bool
 }
 
 var testSuite = []testConfig{ //nolint:gochecknoglobals // used only in this test
@@ -660,6 +734,18 @@ var testSuite = []testConfig{ //nolint:gochecknoglobals // used only in this tes
 		mixedType:        true,
 		probabilityRange: normalizeProbabilityRange([]float64{0.75, 0.25}),
 	},
+	{
+		name:     "On-demand Sync 100MB",
+		tfunc:    Pull,
+		size:     largeBlob,
+		syncTest: true,
+	},
+	{
+		name:     "On-demand Sync 1GB",
+		tfunc:    Pull,
+		size:     superLargeBlob,
+		syncTest: true,
+	},
 }
 
 // ListTests logs the available test names with one on each line.
@@ -677,30 +763,32 @@ func ListTests(testRegex *regexp.Regexp) {
 	}
 }
 
+// fatalWithCleanup calls teardown then logs fatal, ensuring cleanup happens before exit.
+func fatalWithCleanup(syncObj *sync.Once, workdir string, err error) {
+	syncObj.Do(func() {
+		teardown(workdir)
+	})
+	log.Fatal(err)
+}
+
 func Perf(
 	workdir, url, auth, repo string,
 	concurrency int, requests int,
 	outFmt string, srcIPs string, srcCIDR string, skipCleanup bool,
-	testRegex *regexp.Regexp,
+	testRegex *regexp.Regexp, upstreamServerURL string,
 ) {
-	json := jsoniter.ConfigCompatibleWithStandardLibrary
-
-	// fatalWithCleanup calls teardown then logs fatal, ensuring cleanup happens before exit.
-	// Uses sync.Once to ensure teardown is only called once, even from goroutines.
-	var teardownOnce sync.Once
-	fatalWithCleanup := func(err error) {
-		teardownOnce.Do(func() {
-			teardown(workdir)
-		})
-		log.Fatal(err)
-	}
 	// logging
 	log.SetFlags(0)
 	log.SetOutput(tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.TabIndent))
 
+	// teardown sync object to ensure cleanup happens on fatal or at the end of tests
+	var teardownOnce sync.Once
+
 	// common header
-	log.Printf("Registry URL:\t%s", url)
-	log.Printf("\n")
+	log.Printf("Registry URL:\t%s\n", url)
+	if upstreamServerURL != "" {
+		log.Printf("Upstream Registry URL:\t%s\n", upstreamServerURL)
+	}
 	log.Printf("Concurrency Level:\t%v", concurrency)
 	log.Printf("Total requests:\t%v", requests)
 
@@ -717,10 +805,44 @@ func Perf(
 
 	log.Printf("\n")
 
+	// pre-filter tests to know which data to initialize
+	fileSizesMap := map[int]struct{}{}
+	testsToRun := []testConfig{}
+
+	for _, tconfig := range testSuite {
+		if testRegex != nil && !testRegex.MatchString(tconfig.name) {
+			log.Printf("Skipping test %s\n", tconfig.name)
+
+			continue
+		}
+
+		if tconfig.syncTest && upstreamServerURL == "" {
+			log.Printf("Skipping test %s\n", tconfig.name)
+
+			continue
+		}
+
+		testsToRun = append(testsToRun, tconfig)
+
+		if tconfig.size == 0 {
+			sizes := []int{smallBlob, mediumBlob, largeBlob}
+			for _, size := range sizes {
+				fileSizesMap[size] = struct{}{}
+			}
+		} else if tconfig.size != 0 {
+			fileSizesMap[tconfig.size] = struct{}{}
+		}
+	}
+
 	// initialize test data
 	log.Printf("Preparing test data ...\n")
 
-	setup(workdir)
+	sizesToPrepare := []int{}
+	for size := range fileSizesMap {
+		sizesToPrepare = append(sizesToPrepare, size)
+	}
+
+	setup(workdir, sizesToPrepare)
 
 	log.Printf("Starting tests ...\n")
 
@@ -735,17 +857,13 @@ func Perf(
 	} else if len(srcCIDR) > 0 {
 		ips, err = getIPsFromCIDR(srcCIDR, maxSourceIPs)
 		if err != nil {
-			fatalWithCleanup(err)
+			fatalWithCleanup(&teardownOnce, workdir, err)
 		}
 	}
 
-	for _, tconfig := range testSuite {
-		if testRegex != nil && !testRegex.MatchString(tconfig.name) {
-			log.Printf("Skipping test %s\n", tconfig.name)
+	statsSummaries := []statsSummary{}
 
-			continue
-		}
-
+	for _, tconfig := range testsToRun {
 		statsCh := make(chan statsRecord, requests)
 
 		var wg sync.WaitGroup
@@ -759,12 +877,21 @@ func Perf(
 			wg.Go(func() {
 				httpClient, err := getRandomClientIPs(auth, url, ips)
 				if err != nil {
-					fatalWithCleanup(err)
+					fatalWithCleanup(&teardownOnce, workdir, err)
 				}
 
-				err = tconfig.tfunc(workdir, url, repo, requests/concurrency, tconfig, statsCh, httpClient, skipCleanup)
-				if err != nil {
-					fatalWithCleanup(err)
+				suiteConfig := testSuiteCfg{
+					workDir:           workdir,
+					targetServerURL:   url,
+					upstreamServerURL: upstreamServerURL,
+					repo:              repo,
+					requests:          requests / concurrency,
+					skipCleanup:       skipCleanup,
+					syncTest:          tconfig.syncTest,
+				}
+
+				if tFuncErr := tconfig.tfunc(tconfig, suiteConfig, statsCh, httpClient); tFuncErr != nil {
+					fatalWithCleanup(&teardownOnce, workdir, tFuncErr)
 				}
 			})
 		}
@@ -787,24 +914,16 @@ func Perf(
 			updateStats(&summary, record)
 		}
 
-		sort.Sort(Durations(summary.latencies))
-
-		printStats(requests, &summary, outFmt)
+		printStats(requests, &summary)
+		statsSummaries = append(statsSummaries, summary)
 
 		if summary.errorCount != 0 && !zbError {
 			zbError = true
 		}
 	}
 
-	if outFmt == cicdFmt {
-		jsonOut, err := json.Marshal(cicdSummary)
-		if err != nil {
-			fatalWithCleanup(err)
-		}
-
-		if err := os.WriteFile(outFmt+".json", jsonOut, defaultFilePerms); err != nil {
-			fatalWithCleanup(err)
-		}
+	if err = outputTestResults(statsSummaries, outFmt); err != nil {
+		fatalWithCleanup(&teardownOnce, workdir, err)
 	}
 
 	// Cleanup before exit (sync.Once ensures it only runs once, even if fatalWithCleanup was called)
@@ -815,6 +934,38 @@ func Perf(
 	if zbError {
 		os.Exit(1)
 	}
+}
+
+// outputTestResults outputs the test results in the specified format.
+// If the format is "ci-cd", it writes the results to a JSON file.
+func outputTestResults(summary []statsSummary, outFmt string) error {
+	json := jsoniter.ConfigCompatibleWithStandardLibrary
+
+	if outFmt == cicdFmt {
+		cicdSummary := []cicdTestSummary{}
+
+		for _, s := range summary {
+			cicdSummary = append(cicdSummary,
+				cicdTestSummary{
+					Name:  s.name,
+					Unit:  "requests per sec",
+					Value: s.rps,
+					Range: "3",
+				},
+			)
+		}
+
+		jsonOut, err := json.Marshal(cicdSummary)
+		if err != nil {
+			return err
+		}
+
+		if err := os.WriteFile(outFmt+".json", jsonOut, defaultFilePerms); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // getRandomClientIPs returns a resty client with a random bind address from ips slice.
