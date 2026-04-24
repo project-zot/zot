@@ -321,7 +321,7 @@ func (gc GarbageCollect) removeReferrer(repo string, index *ispec.Index, manifes
 		// check if its notation or cosign signature
 		if artifactType == zcommon.ArtifactTypeNotation {
 			signatureType = storage.NotationType
-		} else if artifactType == zcommon.ArtifactTypeCosign {
+		} else if zcommon.IsArtifactTypeCosign(artifactType) {
 			signatureType = storage.CosignType
 		}
 

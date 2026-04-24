@@ -653,7 +653,7 @@ func IsSignature(descriptor ispec.Descriptor) bool {
 		}
 
 		// is cosign signature (OCI 1.1 support)
-		if descriptor.ArtifactType == zcommon.ArtifactTypeCosign {
+		if zcommon.IsArtifactTypeCosign(descriptor.ArtifactType) {
 			return true
 		}
 

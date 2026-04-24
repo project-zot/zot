@@ -439,7 +439,7 @@ func isSignature(reference string, manifestContent ispec.Manifest) (bool, string
 	}
 
 	// check cosign signature
-	if manifestArtifactType == zcommon.ArtifactTypeCosign && manifestContent.Subject != nil {
+	if zcommon.IsArtifactTypeCosign(manifestArtifactType) && manifestContent.Subject != nil {
 		return true, CosignType, manifestContent.Subject.Digest
 	}
 

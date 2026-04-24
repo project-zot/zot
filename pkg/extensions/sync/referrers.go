@@ -26,7 +26,7 @@ func hasSignatureReferrers(refs referrer.ReferrerList) bool {
 			return true
 		}
 
-		if desc.ArtifactType == common.ArtifactTypeCosign {
+		if common.IsArtifactTypeCosign(desc.ArtifactType) {
 			return true
 		}
 	}
