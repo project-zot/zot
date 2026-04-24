@@ -14261,6 +14261,36 @@ func TestDockerClientV2ChallengeWorkaround(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
+			// Docker Compose client without credentials should get 401
+			// (daemon-proxied with compose upstream client, UA starts with "docker/")
+			composeUA := "docker/29.4.0 go/go1.24.2 UpstreamClient(compose/v5.1.2)"
+			resp, err = resty.R().
+				SetHeader("User-Agent", composeUA).
+				Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			So(resp.Header().Get("WWW-Authenticate"), ShouldContainSubstring, "Basic realm=")
+
+			// Docker Compose client with valid credentials should get 200
+			resp, err = resty.R().
+				SetHeader("User-Agent", composeUA).
+				SetBasicAuth(htpasswdUsername, htpasswdPassword).
+				Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// Docker Buildx client without credentials should get 401
+			// (daemon-proxied with buildx upstream client)
+			resp, err = resty.R().
+				SetHeader("User-Agent", "docker/29.4.0 go/go1.24.2 UpstreamClient(buildx/v0.21.2)").
+				Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			So(resp.Header().Get("WWW-Authenticate"), ShouldContainSubstring, "Basic realm=")
+
 			// Podman client without credentials should get 200 (unaffected by workaround)
 			resp, err = resty.R().
 				SetHeader("User-Agent", "containers/5.33.0 (github.com/containers/image)").
@@ -14305,6 +14335,14 @@ func TestDockerClientV2ChallengeWorkaround(t *testing.T) {
 			// Docker client without credentials should get 200 (no mixed policies)
 			resp, err := resty.R().
 				SetHeader("User-Agent", "docker/26.1.3 go/go1.22.2 UpstreamClient(Docker-Client/26.1.3 (linux))").
+				Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// Docker Compose client without credentials should get 200 (no mixed policies)
+			resp, err = resty.R().
+				SetHeader("User-Agent", "docker/29.4.0 go/go1.24.2 UpstreamClient(compose/v5.1.2)").
 				Get(baseURL + "/v2/")
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
