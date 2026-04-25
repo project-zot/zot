@@ -131,10 +131,12 @@ func TestSchema(t *testing.T) {
 		So(storageProperties, ShouldContainKey, "rootDirectory")
 		So(storageProperties, ShouldContainKey, "gcDelay")
 		So(storageProperties, ShouldContainKey, "gcInterval")
+		So(storageProperties, ShouldContainKey, "gcTimeWindow")
 		So(storageProperties, ShouldContainKey, "subPaths")
 		So(storageProperties, ShouldNotContainKey, "gcMaxSchedulerDelay")
 		So(storageProperties, ShouldNotContainKey, "gCDelay")
 		So(storageProperties, ShouldNotContainKey, "gCInterval")
+		So(storageProperties, ShouldNotContainKey, "gCTimeWindow")
 
 		httpSchema, ok := mustResolvePropertySchema(configProperties, "http", defs)
 		So(ok, ShouldBeTrue)
@@ -2629,6 +2631,31 @@ func TestGC(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			file := MakeTempFileWithContent(t, "gc-config.json", string(contents))
+			err = cli.LoadConfiguration(config, file)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GC time window", func() {
+			config := config.New()
+
+			content := `{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot",
+			"gc": true, "gcTimeWindow": "01.00 - 08.00"}, "http": {"address": "127.0.0.1", "port": "8080"},
+			"log": {"level": "debug"}}`
+
+			file := MakeTempFileWithContent(t, "gc-time-window-config.json", content)
+			err = cli.LoadConfiguration(config, file)
+			So(err, ShouldBeNil)
+			So(config.Storage.GCTimeWindow, ShouldEqual, "01.00 - 08.00")
+		})
+
+		Convey("Invalid GC time window", func() {
+			config := config.New()
+
+			content := `{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot",
+			"gc": true, "gcTimeWindow": "24.00 - 08.00"}, "http": {"address": "127.0.0.1", "port": "8080"},
+			"log": {"level": "debug"}}`
+
+			file := MakeTempFileWithContent(t, "bad-gc-time-window-config.json", content)
 			err = cli.LoadConfiguration(config, file)
 			So(err, ShouldNotBeNil)
 		})

@@ -49,6 +49,14 @@ func TestConfig(t *testing.T) {
 
 		So(firstStorageConfig.ParamsEqual(secondStorageConfig), ShouldBeTrue)
 
+		firstStorageConfig.GCTimeWindow = "01.00 - 08.00"
+
+		So(firstStorageConfig.ParamsEqual(secondStorageConfig), ShouldBeFalse)
+
+		secondStorageConfig.GCTimeWindow = "01.00 - 08.00"
+
+		So(firstStorageConfig.ParamsEqual(secondStorageConfig), ShouldBeTrue)
+
 		isSame, err := config.SameFile("test-config", "test")
 		So(err, ShouldNotBeNil)
 		So(isSame, ShouldBeFalse)
@@ -3063,16 +3071,18 @@ func TestConfig(t *testing.T) {
 					},
 					SubPaths: map[string]config.StorageConfig{
 						"/path1": {
-							GC:         true,
-							Dedupe:     false,
-							GCDelay:    time.Hour,
-							GCInterval: time.Hour * 24,
+							GC:           true,
+							Dedupe:       false,
+							GCDelay:      time.Hour,
+							GCInterval:   time.Hour * 24,
+							GCTimeWindow: "01.00 - 02.00",
 						},
 						"/path2": {
-							GC:         false,
-							Dedupe:     true,
-							GCDelay:    time.Hour * 2,
-							GCInterval: time.Hour * 48,
+							GC:           false,
+							Dedupe:       true,
+							GCDelay:      time.Hour * 2,
+							GCInterval:   time.Hour * 48,
+							GCTimeWindow: "02.00 - 03.00",
 						},
 					},
 				},
@@ -3087,16 +3097,18 @@ func TestConfig(t *testing.T) {
 					},
 					SubPaths: map[string]config.StorageConfig{
 						"/path1": {
-							GC:         false,          // Changed
-							Dedupe:     true,           // Changed
-							GCDelay:    time.Hour * 2,  // Changed
-							GCInterval: time.Hour * 12, // Changed
+							GC:           false,          // Changed
+							Dedupe:       true,           // Changed
+							GCDelay:      time.Hour * 2,  // Changed
+							GCInterval:   time.Hour * 12, // Changed
+							GCTimeWindow: "03.00 - 04.00",
 						},
 						"/path2": {
-							GC:         true,           // Changed
-							Dedupe:     false,          // Changed
-							GCDelay:    time.Hour * 3,  // Changed
-							GCInterval: time.Hour * 36, // Changed
+							GC:           true,           // Changed
+							Dedupe:       false,          // Changed
+							GCDelay:      time.Hour * 3,  // Changed
+							GCInterval:   time.Hour * 36, // Changed
+							GCTimeWindow: "04.00 - 05.00",
 						},
 					},
 				},
@@ -3114,6 +3126,7 @@ func TestConfig(t *testing.T) {
 			So(path1Config.Dedupe, ShouldBeTrue)
 			So(path1Config.GCDelay, ShouldEqual, time.Hour*2)
 			So(path1Config.GCInterval, ShouldEqual, time.Hour*12)
+			So(path1Config.GCTimeWindow, ShouldEqual, "03.00 - 04.00")
 
 			// Check /path2
 			path2Config := cfg.Storage.SubPaths["/path2"]
@@ -3121,6 +3134,7 @@ func TestConfig(t *testing.T) {
 			So(path2Config.Dedupe, ShouldBeFalse)
 			So(path2Config.GCDelay, ShouldEqual, time.Hour*3)
 			So(path2Config.GCInterval, ShouldEqual, time.Hour*36)
+			So(path2Config.GCTimeWindow, ShouldEqual, "04.00 - 05.00")
 		})
 
 		Convey("Test new SubPaths are not added (only existing ones are updated)", func() {

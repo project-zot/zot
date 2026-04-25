@@ -34,6 +34,98 @@ var (
 	repoName = "test" //nolint: gochecknoglobals
 )
 
+func TestGCTimeWindow(t *testing.T) {
+	t.Parallel()
+
+	window, err := ParseTimeWindow("01.00 - 08.00")
+	if err != nil {
+		t.Fatalf("ParseTimeWindow() error = %v", err)
+	}
+
+	if window.Start != time.Hour || window.End != 8*time.Hour {
+		t.Fatalf("ParseTimeWindow() = %v, want start %s end %s", window, time.Hour, 8*time.Hour)
+	}
+
+	if !window.Contains(time.Date(2026, 4, 25, 4, 0, 0, 0, time.Local)) {
+		t.Fatal("time window should contain 04:00")
+	}
+
+	if window.Contains(time.Date(2026, 4, 25, 9, 0, 0, 0, time.Local)) {
+		t.Fatal("time window should not contain 09:00")
+	}
+}
+
+func TestGCTimeWindowOvernight(t *testing.T) {
+	t.Parallel()
+
+	window, err := ParseTimeWindow("22:30 - 02:00")
+	if err != nil {
+		t.Fatalf("ParseTimeWindow() error = %v", err)
+	}
+
+	if !window.Contains(time.Date(2026, 4, 25, 23, 0, 0, 0, time.Local)) {
+		t.Fatal("overnight time window should contain 23:00")
+	}
+
+	if !window.Contains(time.Date(2026, 4, 26, 1, 0, 0, 0, time.Local)) {
+		t.Fatal("overnight time window should contain 01:00")
+	}
+
+	if window.Contains(time.Date(2026, 4, 25, 12, 0, 0, 0, time.Local)) {
+		t.Fatal("overnight time window should not contain 12:00")
+	}
+}
+
+func TestGCTimeWindowRejectsInvalidValues(t *testing.T) {
+	t.Parallel()
+
+	tests := []string{
+		"01.00",
+		"24.00 - 08.00",
+		"01.60 - 08.00",
+		"08.00 - 08.00",
+	}
+
+	for _, raw := range tests {
+		t.Run(raw, func(t *testing.T) {
+			t.Parallel()
+
+			if _, err := ParseTimeWindow(raw); err == nil {
+				t.Fatalf("ParseTimeWindow(%q) error = nil, want error", raw)
+			}
+		})
+	}
+}
+
+func TestGCTaskGeneratorIsReadyRespectsTimeWindow(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	insideWindow, err := ParseTimeWindow(formatTimeWindow(now.Add(-time.Hour), now.Add(time.Hour)))
+	if err != nil {
+		t.Fatalf("ParseTimeWindow() error = %v", err)
+	}
+
+	generator := GCTaskGenerator{timeWindow: insideWindow}
+	if !generator.IsReady() {
+		t.Fatal("generator should be ready inside gc time window")
+	}
+
+	outsideWindow, err := ParseTimeWindow(formatTimeWindow(now.Add(time.Hour), now.Add(2*time.Hour)))
+	if err != nil {
+		t.Fatalf("ParseTimeWindow() error = %v", err)
+	}
+
+	generator = GCTaskGenerator{timeWindow: outsideWindow}
+	if generator.IsReady() {
+		t.Fatal("generator should not be ready outside gc time window")
+	}
+}
+
+func formatTimeWindow(start, end time.Time) string {
+	return start.Format(gcTimeOfDayLayout) + " - " + end.Format(gcTimeOfDayLayout)
+}
+
 func TestGarbageCollectManifestErrors(t *testing.T) {
 	Convey("Make imagestore and upload manifest", t, func(c C) {
 		dir := t.TempDir()

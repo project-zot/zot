@@ -31,6 +31,7 @@ import (
 	syncConstants "zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
+	storageGC "zotregistry.dev/zot/v2/pkg/storage/gc"
 )
 
 // metadataConfig reports metadata after parsing, which we use to track
@@ -1473,6 +1474,10 @@ func validateGC(config *config.Config, logger zlog.Logger) error {
 			zerr.ErrBadConfig, storageConfig.GCInterval)
 	}
 
+	if err := validateGCTimeWindow(storageConfig.GCTimeWindow, logger); err != nil {
+		return err
+	}
+
 	if !storageConfig.GC {
 		if storageConfig.GCDelay != 0 {
 			logger.Warn().Err(zerr.ErrBadConfig).
@@ -1483,6 +1488,11 @@ func validateGC(config *config.Config, logger zlog.Logger) error {
 			logger.Warn().Err(zerr.ErrBadConfig).
 				Msg("periodic garbage-collect interval specified without enabling garbage-collect, will be ignored")
 		}
+
+		if storageConfig.GCTimeWindow != "" {
+			logger.Warn().Err(zerr.ErrBadConfig).
+				Msg("garbage-collect time window specified without enabling garbage-collect, will be ignored")
+		}
 	}
 
 	if err := validateGCRules(storageConfig.Retention, logger); err != nil {
@@ -1491,6 +1501,10 @@ func validateGC(config *config.Config, logger zlog.Logger) error {
 
 	// subpaths
 	for name, subPath := range storageConfig.SubPaths {
+		if err := validateGCTimeWindow(subPath.GCTimeWindow, logger); err != nil {
+			return err
+		}
+
 		if subPath.GC && subPath.GCDelay <= 0 {
 			logger.Error().Err(zerr.ErrBadConfig).
 				Str("subPath", name).
@@ -1504,6 +1518,18 @@ func validateGC(config *config.Config, logger zlog.Logger) error {
 		if err := validateGCRules(subPath.Retention, logger); err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+func validateGCTimeWindow(raw string, logger zlog.Logger) error {
+	if _, err := storageGC.ParseTimeWindow(raw); err != nil {
+		logger.Error().Err(zerr.ErrBadConfig).Str("gcTimeWindow", raw).
+			Msg("invalid garbage-collect time window specified")
+
+		return fmt.Errorf("%w: invalid garbage-collect time window specified %q: %w",
+			zerr.ErrBadConfig, raw, err)
 	}
 
 	return nil

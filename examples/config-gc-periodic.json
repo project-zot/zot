@@ -5,12 +5,14 @@
         "gc": true,
         "gcDelay": "1h",
         "gcInterval": "1h",
+        "gcTimeWindow": "01.00 - 08.00",
         "subPaths": {
             "/a": {
                 "rootDirectory": "/tmp/zot1",
                 "gc": true,
                 "gcDelay": "1h",
-                "gcInterval": "1h"
+                "gcInterval": "1h",
+                "gcTimeWindow": "01.00 - 08.00"
             }
         }
     },

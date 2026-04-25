@@ -91,6 +91,13 @@ Orphan blobs are removed if they are older than gcDelay.
         "gcDelay": "2h"
 ```
 
+Periodic garbage collection can be restricted to a server-local time window.
+The window accepts `HH.MM - HH.MM` or `HH:MM - HH:MM` and can cross midnight.
+
+```
+        "gcTimeWindow": "01.00 - 08.00"
+```
+
 To limit the maximum number of repositories that can be created, set:
 
 ```
@@ -1189,4 +1196,3 @@ To set those options explicitly (for example to mirror standalone Trivy’s `--v
 - [config-cve-trivy.json](config-cve-trivy.json) — shows optional `dbRepository`, `javaDBRepository`, and `vulnSeveritySources`.
 
 `vulnSeveritySources` is a list of source names in priority order (for example `auto`, `nvd`, or vendor IDs such as `redhat`, `alpine`). If omitted, zot defaults it to `["auto"]`, consistent with the Trivy CLI. See [Trivy: severity selection](https://trivy.dev/docs/latest/scanner/vulnerability/#severity-selection).
-
