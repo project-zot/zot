@@ -3,6 +3,7 @@
 package extensions_test
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"os"
@@ -26,6 +27,11 @@ func TestUIExtension(t *testing.T) {
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
 		conf.HTTP.Port = port
+		conf.Commit = "abc123"
+		conf.ReleaseTag = "v2.1.0"
+		conf.BinaryType = "server"
+		conf.GoVersion = "go1.24.0"
+		conf.DistSpecVersion = "1.1.1"
 
 		// we won't use the logging config feature as we want logs in both
 		// stdout and a file
@@ -49,6 +55,7 @@ func TestUIExtension(t *testing.T) {
 
 		ctlrManager := test.NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		found, err := test.ReadLogFileAndSearchString(logPath, "\"UI\":{\"Enable\":true}", 2*time.Minute)
 		So(found, ShouldBeTrue)
@@ -71,6 +78,40 @@ func TestUIExtension(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(string(resp.Body()), ShouldContainSubstring, "/assets/zot-version-info.js")
+
+		resp, err = resty.R().Get(baseURL + "/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(string(resp.Body()), ShouldContainSubstring, "/assets/zot-version-info.js")
+
+		resp, err = resty.R().Get(baseURL + "/assets/zot-version-info.js")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(string(resp.Body()), ShouldContainSubstring, "zot-version-info")
+
+		resp, err = resty.R().Get(baseURL + "/assets/zot-version.json")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(resp.Header().Get("Content-Type"), ShouldContainSubstring, "application/json")
+
+		versionInfo := struct {
+			Commit          string `json:"commit"`
+			ReleaseTag      string `json:"releaseTag"`
+			BinaryType      string `json:"binaryType"`
+			GoVersion       string `json:"goVersion"`
+			DistSpecVersion string `json:"distSpecVersion"`
+		}{}
+		err = json.Unmarshal(resp.Body(), &versionInfo)
+		So(err, ShouldBeNil)
+		So(versionInfo.Commit, ShouldEqual, "abc123")
+		So(versionInfo.ReleaseTag, ShouldEqual, "v2.1.0")
+		So(versionInfo.BinaryType, ShouldEqual, "server")
+		So(versionInfo.GoVersion, ShouldEqual, "go1.24.0")
+		So(versionInfo.DistSpecVersion, ShouldEqual, "1.1.1")
 
 		resp, err = resty.R().Get(baseURL + "/image/")
 		So(err, ShouldBeNil)
