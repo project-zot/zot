@@ -50,7 +50,7 @@ func (cm ContentManager) MatchesContent(repo string) bool {
 
 // FilterTags filters a repo tags based on content config rules (semver, regex).
 func (cm ContentManager) FilterTags(repo string, tags []string) ([]string, error) {
-	content := cm.GetContentByLocalRepo(repo)
+	content := cm.getContentByUpstreamRepo(repo)
 
 	var err error
 	// filter based on tags rules

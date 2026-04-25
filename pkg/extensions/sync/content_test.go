@@ -82,6 +82,12 @@ func TestContentManager(t *testing.T) {
 		}
 	})
 
+	Convey("Test GetRepoSource() no match", t, func() {
+		content := syncconf.Content{Prefix: "repo", Destination: "/mirror"}
+		cm := sync.NewContentManager([]syncconf.Content{content}, log.NewTestLogger())
+		So(cm.GetRepoSource("other"), ShouldEqual, "")
+	})
+
 	Convey("Test MatchesContent() error", t, func() {
 		content := syncconf.Content{Prefix: "[repo%^&"}
 		cm := sync.NewContentManager([]syncconf.Content{content}, log.NewTestLogger())
@@ -169,6 +175,8 @@ func TestGetContentByLocalRepo(t *testing.T) {
 
 func TestFilterTags(t *testing.T) {
 	allTagsRegex := ".*"
+	emptyRegex := ""
+	kubeRouterRegex := "1.5.0"
 	badRegex := "[*"
 	excludeArchRegex := ".*(x86_64|aarch64|amd64|arm64)$"
 	semverFalse := false
@@ -217,6 +225,33 @@ func TestFilterTags(t *testing.T) {
 			err:          false,
 		},
 		{
+			repo: "kubernetes/kube-router",
+			content: []syncconf.Content{
+				{
+					Prefix:      "kubernetes/kube-router",
+					Destination: "/mirror",
+					Tags:        &syncconf.Tags{Regex: &kubeRouterRegex, Semver: &semverTrue},
+				},
+			},
+			tags:         []string{"1.5.0", "v2.5.0"},
+			filteredTags: []string{"1.5.0"},
+			err:          false,
+		},
+		{
+			repo: "kubernetes/kube-router",
+			content: []syncconf.Content{
+				{
+					Prefix:      "kubernetes/kube-router",
+					Destination: "/mirror",
+					StripPrefix: true,
+					Tags:        &syncconf.Tags{Regex: &kubeRouterRegex, Semver: &semverTrue},
+				},
+			},
+			tags:         []string{"1.5.0", "v2.5.0"},
+			filteredTags: []string{"1.5.0"},
+			err:          false,
+		},
+		{
 			repo: "repo",
 			content: []syncconf.Content{
 				{Prefix: "repo*", Tags: &syncconf.Tags{Regex: &badRegex}},
@@ -251,6 +286,15 @@ func TestFilterTags(t *testing.T) {
 			},
 			tags:         []string{"v1", "v2-x86_64", "v3-aarch64"},
 			filteredTags: []string{"v1"},
+			err:          false,
+		},
+		{
+			repo: "alpine",
+			content: []syncconf.Content{
+				{Prefix: "**", Tags: &syncconf.Tags{ExcludeRegex: &emptyRegex}},
+			},
+			tags:         []string{"v1", "v2", "v3"},
+			filteredTags: []string{"v1", "v2", "v3"},
 			err:          false,
 		},
 		{
