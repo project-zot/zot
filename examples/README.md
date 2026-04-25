@@ -1151,6 +1151,7 @@ Configure each registry sync:
 				"urls": ["https://registry1:5000"],
 				"onDemand": false,                  # pull any image which the local registry doesn't have
 				"pollInterval": "6h",               # polling interval, if not set then periodically polling will not run
+				"downloadRate": "100mbps",          # optional sync download limit
 				"tlsVerify": true,                  # whether or not to verify tls (default is true)
 				"certDir": "/home/user/certs",      # use certificates at certDir path similar to Docker's /etc/docker/certs.d., if not specified then use the default certs dir,
 				"maxRetries": 5,                    # maxRetries in case of temporary errors (default: no retries)
@@ -1207,6 +1208,9 @@ Configure each registry sync:
 		}
 ```
 Prefixes can be strings that exactly match repositories or they can be [glob](https://en.wikipedia.org/wiki/Glob_(programming)) patterns.
+
+`downloadRate` accepts bit-rate units such as `bps`, `kbps`, `mbps`, and `gbps`.
+It also accepts byte-rate units such as `Bps`, `KBps`, `MBps`, `GBps`, `KiBps`, `MiBps`, and `GiBps`.
 
 ### Sync's certDir option
 

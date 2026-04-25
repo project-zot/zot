@@ -46,6 +46,7 @@ type BaseService struct {
 	storeController  storage.StoreController
 	metaDB           mTypes.MetaDB
 	repositories     []string
+	downloadLimiter  *downloadRateLimiter
 	rc               *regclient.RegClient
 	hosts            []config.Host
 	tagsCache        *tagsCache
@@ -73,6 +74,11 @@ func New(
 	service.tagsCache = newTagsCache(defaultExpireMinutes)
 
 	var err error
+
+	service.downloadLimiter, err = newDownloadRateLimiter(config.DownloadRate)
+	if err != nil {
+		return nil, err
+	}
 
 	var credentialsFile syncconf.CredentialsFile
 
@@ -478,7 +484,7 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 		reference = remoteImageRef.Digest
 	}
 
-	copyOpts := []regclient.ImageOpts{}
+	copyOpts := service.downloadLimiter.imageCopyOptions(ctx)
 
 	// check if image is already synced
 	skipImage, err = service.destination.CanSkipImage(localRepo, reference, remoteDigest)
