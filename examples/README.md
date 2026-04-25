@@ -922,6 +922,7 @@ The following AWS policy is required by zot for push and pull. Make sure to repl
     "storage": {
         "rootDirectory": "/tmp/zot",  # local path used to store dedupe cache database
         "dedupe": true,
+        "redirect": true,
         "storageDriver": {
             "name": "s3",
             "rootdirectory": "/zot",  # this is a prefix that is applied to all S3 keys to allow you to segment data in your bucket if necessary.
@@ -935,6 +936,8 @@ The following AWS policy is required by zot for push and pull. Make sure to repl
         }
     }
 ```
+
+Blob pull redirects are disabled by default. With S3 or GCS storage, set `redirect` to `true` under `storage` or under a `subPaths` entry to return a `307 Temporary Redirect` to the storage driver's signed URL after zot authorization. If the storage driver does not return a redirect URL, zot proxies the blob as before.
 
 There are multiple ways to specify S3 credentials besides config file:
 
@@ -1189,4 +1192,3 @@ To set those options explicitly (for example to mirror standalone Trivy’s `--v
 - [config-cve-trivy.json](config-cve-trivy.json) — shows optional `dbRepository`, `javaDBRepository`, and `vulnSeveritySources`.
 
 `vulnSeveritySources` is a list of source names in priority order (for example `auto`, `nvd`, or vendor IDs such as `redhat`, `alpine`). If omitted, zot defaults it to `["auto"]`, consistent with the Trivy CLI. See [Trivy: severity selection](https://trivy.dev/docs/latest/scanner/vulnerability/#severity-selection).
-
