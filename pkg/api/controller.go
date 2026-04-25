@@ -298,13 +298,13 @@ func (c *Controller) Run() error {
 		// Set GetCertificate callback for dynamic certificate reloading
 		server.TLSConfig.GetCertificate = watcher.GetCertificate
 
-		c.Healthz.Ready()
+		c.markReady()
 
 		// Pass empty strings to ServeTLS since GetCertificate handles certificate loading
 		return server.ServeTLS(listener, "", "")
 	}
 
-	c.Healthz.Ready()
+	c.markReady()
 
 	return server.Serve(listener)
 }
