@@ -31,7 +31,8 @@ const (
 	// (assert by internal test).
 	// reason used: to reduce zot minimal binary size (otherwise adds oras.land/oras-go/v2 deps).
 	ArtifactTypeNotation = "application/vnd.cncf.notary.signature"
-	ArtifactTypeCosign   = "application/vnd.dev.cosign.artifact.sig.v1+json"
+	ArtifactTypeCosign       = "application/vnd.dev.cosign.artifact.sig.v1+json"
+	ArtifactTypeCosignBundle = "application/vnd.dev.sigstore.bundle.v0.3+json"
 	// CosignSignatureTagSuffix is the suffix used for cosign signature tags (e.g., "sha256-digest.sig").
 	// Using constant to avoid pulling in cosign dependency.
 	CosignSignatureTagSuffix = "sig"
@@ -51,6 +52,12 @@ func IsCosignSBOM(tag string) bool {
 
 func IsCosignTag(tag string) bool {
 	return IsCosignSignature(tag) || IsCosignSBOM(tag)
+}
+
+// IsArtifactTypeCosign returns true if the given artifact type corresponds to a cosign signature,
+// covering both the legacy type and the newer sigstore bundle type.
+func IsArtifactTypeCosign(artifactType string) bool {
+	return artifactType == ArtifactTypeCosign || artifactType == ArtifactTypeCosignBundle
 }
 
 // RemoveFrom removes matches of item in [].

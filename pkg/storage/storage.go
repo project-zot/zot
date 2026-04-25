@@ -297,7 +297,7 @@ func CheckIsImageSignature(repoName string, manifestBlob []byte, reference strin
 	}
 
 	// check cosign signature (OCI 1.1 support)
-	if manifestArtifactType == zcommon.ArtifactTypeCosign && manifestContent.Subject != nil {
+	if zcommon.IsArtifactTypeCosign(manifestArtifactType) && manifestContent.Subject != nil {
 		return true, CosignType, manifestContent.Subject.Digest, nil
 	}
 

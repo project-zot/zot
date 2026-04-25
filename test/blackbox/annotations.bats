@@ -169,6 +169,21 @@ function teardown_file() {
     unset COSIGN_EXPERIMENTAL
 }
 
+@test "zot reports IsSigned true for cosign referrer signatures" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses }}}"}' http://localhost:${zot_port}/v2/_zot/ext/search
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].RepoName') = '"annotations"' ]
+
+    run cosign generate-key-pair --output-key-prefix "${BATS_FILE_TMPDIR}/cosign-sign-is-signed"
+    [ "$status" -eq 0 ]
+    run cosign sign --registry-referrers-mode=oci-1-1 --key ${BATS_FILE_TMPDIR}/cosign-sign-is-signed.key --allow-insecure-registry localhost:${zot_port}/annotations:latest --yes
+    [ "$status" -eq 0 ]
+    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ GlobalSearch(query: \"annotations:latest\") { Images { IsSigned } } }" }' http://localhost:${zot_port}/v2/_zot/ext/search
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.data.GlobalSearch.Images[0].IsSigned') = 'true' ]
+}
+
 @test "sign/verify with cosign (tag and referrers)" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses }}}"}' http://localhost:${zot_port}/v2/_zot/ext/search
