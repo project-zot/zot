@@ -1418,6 +1418,19 @@ func writeMultipartRanges(
 	}
 }
 
+func (rh *RouteHandler) isBlobRedirectEnabled(name string) bool {
+	storageConfig := rh.c.Config.CopyStorageConfig()
+	storePath := rh.c.StoreController.GetStorePath(name)
+
+	if storePath != storage.DefaultStorePath {
+		if subPathConfig, ok := storageConfig.SubPaths[storePath]; ok {
+			return subPathConfig.Redirect
+		}
+	}
+
+	return storageConfig.Redirect
+}
+
 // GetBlob godoc
 // @Summary Get image blob/layer
 // @Description Get an image's blob/layer given a digest
@@ -1453,7 +1466,52 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 	contentRange := request.Header.Get("Range")
 	_, rangeHeaderPresent := request.Header["Range"]
 
+<<<<<<< HEAD
 	writeBlobError := func(err error) {
+=======
+	_, ok = request.Header["Range"]
+	if ok && contentRange == "" {
+		response.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+
+		return
+	}
+
+	if contentRange != "" {
+		from, to, err = parseRangeHeader(contentRange)
+		if err != nil {
+			response.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+
+			return
+		}
+
+		partial = true
+	}
+
+	var repo io.ReadCloser
+
+	var blen, bsize int64
+
+	if rh.isBlobRedirectEnabled(name) {
+		redirectURL, redirectErr := imgStore.GetBlobRedirectURL(request, name, digest)
+		if redirectErr != nil {
+			err = redirectErr
+		} else if redirectURL != "" {
+			http.Redirect(response, request, redirectURL, http.StatusTemporaryRedirect)
+
+			return
+		}
+	}
+
+	if err == nil {
+		if partial {
+			repo, blen, bsize, err = imgStore.GetBlobPartial(name, digest, mediaType, from, to)
+		} else {
+			repo, blen, err = imgStore.GetBlob(name, digest, mediaType)
+		}
+	}
+
+	if err != nil {
+>>>>>>> 2e3b4ec2 (feat(storage): redirect blob pulls to backend URLs)
 		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			details["digest"] = digest.String()
