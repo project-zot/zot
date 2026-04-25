@@ -86,6 +86,12 @@ func TestUIExtension(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		So(string(resp.Body()), ShouldContainSubstring, "/assets/zot-version-info.js")
 
+		resp, err = resty.R().Get(baseURL + "/index.html")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(string(resp.Body()), ShouldContainSubstring, "/assets/zot-version-info.js")
+
 		resp, err = resty.R().Get(baseURL + "/assets/zot-version-info.js")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)

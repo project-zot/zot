@@ -128,6 +128,8 @@ func SetupUIRoutes(conf *config.Config, router *mux.Router,
 		Handler(addUISecurityHeaders(uih))
 	router.Path("/").Methods(allowedMethods...).
 		Handler(addUISecurityHeaders(uih))
+	router.Path("/index.html").Methods(allowedMethods...).
+		Handler(addUISecurityHeaders(uih))
 	router.PathPrefix("/").Methods(allowedMethods...).
 		Handler(addUISecurityHeaders(http.FileServer(http.FS(fsub))))
 
