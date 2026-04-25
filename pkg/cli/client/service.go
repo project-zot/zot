@@ -168,8 +168,8 @@ func (service *searchService) getCVEDiffListGQL(ctx context.Context, config Sear
 	query := fmt.Sprintf(`
 		{
 			CVEDiffListForImages( minuend: %s, subtrahend: %s ) {
-				Minuend {Repo Tag}
-				Subtrahend {Repo Tag}
+				Minuend {Repo Tag Digest Platform {Os Arch}}
+				Subtrahend {Repo Tag Digest Platform {Os Arch}}
 				CVEList {
 					Id Title Description Severity Reference 
 					PackageList {Name InstalledVersion FixedVersion}
