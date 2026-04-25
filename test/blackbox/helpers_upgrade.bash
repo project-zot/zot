@@ -1,7 +1,7 @@
-# Common helper functions and test utilities for upgrade tests
-# Used by upgrade.bats and upgrade_minimal.bats
+# Common helper functions and test utilities for blackbox compatibility and upgrade tests.
+# Used by push/pull and upgrade BATS suites.
 
-# Verify prerequisites for upgrade tests
+# Verify prerequisites for shared push/pull helpers.
 function verify_prerequisites {
     if [ ! $(command -v curl) ]; then
         echo "you need to install curl as a prerequisite to running the tests" >&3
@@ -29,7 +29,7 @@ function teardown_file() {
 
 # ==============================================================================
 # COMMON HELPER FUNCTIONS
-# These are the core functions used by both release and new test functions
+# These are the core functions used by push/pull and upgrade test functions
 # ==============================================================================
 
 # Helper: Get the zot port
@@ -111,6 +111,17 @@ function helper_pull_image_index() {
     run cat ${oci_data_dir}/${image_name}/index.json
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq --arg tag "${tag}" '.manifests[].annotations."org.opencontainers.image.ref.name" == $tag') = true ]
+}
+
+# Helper: Pull an image index and remove its tag, preserving legacy standalone suite behavior.
+# Args: $1 = image_name, $2 = tag
+function helper_pull_image_index_and_delete() {
+    local image_name=${1:-busybox}
+    local tag=${2:-latest}
+    local zot_port=$(get_zot_port)
+    helper_pull_image_index "${image_name}" "${tag}"
+    run curl -X DELETE http://127.0.0.1:${zot_port}/v2/${image_name}/manifests/${tag}
+    [ "$status" -eq 0 ]
 }
 
 # Helper: Push an ORAS artifact
@@ -244,16 +255,14 @@ function helper_pull_image_with_regclient() {
 }
 
 # Helper: List repositories with regclient
-# Args: $1 = limit (optional), $2 = expected_first_repos (optional, space separated)
+# Args: $1 = limit (optional)
 function helper_list_repositories_with_regclient() {
     local limit=${1:-2}
-    local first_repo=${2:-busybox}
-    local second_repo=${3:-golang}
     local zot_port=$(get_zot_port)
     run regctl repo ls localhost:${zot_port}
     [ "$status" -eq 0 ]
 
-    found=0
+    local found=0
     for i in "${lines[@]}"
     do
         if [ "$i" = 'test-regclient' ]; then
@@ -268,13 +277,41 @@ function helper_list_repositories_with_regclient() {
     [ $(echo "$output" | wc -l) -eq ${limit} ]
 }
 
+function helper_list_repositories_with_regclient_pagination() {
+    local zot_port=$(get_zot_port)
+    run regctl repo ls localhost:${zot_port}
+    [ "$status" -eq 0 ]
+
+    local found=0
+    for i in "${lines[@]}"
+    do
+        if [ "$i" = 'test-regclient' ]; then
+            found=1
+        fi
+    done
+    [ "$found" -eq 1 ]
+
+    run regctl repo ls --limit 2 localhost:${zot_port}
+    [ "$status" -eq 0 ]
+    echo "$output"
+    [ $(echo "$output" | wc -l) -eq 2 ]
+    [ "${lines[-2]}" == "busybox" ]
+    [ "${lines[-1]}" == "golang" ]
+
+    run regctl repo ls --last busybox --limit 1 localhost:${zot_port}
+    [ "$status" -eq 0 ]
+    echo "$output"
+    [ $(echo "$output" | wc -l) -eq 1 ]
+    [ "${lines[-1]}" == "golang" ]
+}
+
 # Helper: List image tags with regclient
 function helper_list_image_tags_with_regclient() {
     local zot_port=$(get_zot_port)
     run regctl tag ls localhost:${zot_port}/test-regclient
     [ "$status" -eq 0 ]
 
-    found=0
+    local found=0
     for i in "${lines[@]}"
     do
         if [ "$i" = 'latest' ]; then
@@ -397,7 +434,8 @@ function helper_push_docker_image() {
     FROM ghcr.io/project-zot/test-images/busybox-docker:1.37
     RUN echo "hello world" > /testfile
 DOCKERFILE
-    docker build -f Dockerfile . -t localhost:${zot_port}/test
+    run sh -c "unset GODEBUG; docker build -f Dockerfile -t localhost:${zot_port}/test ."
+    [ "$status" -eq 0 ]
     run docker push localhost:${zot_port}/test
     [ "$status" -eq 1 ]
     run docker pull localhost:${zot_port}/test
@@ -410,17 +448,7 @@ DOCKERFILE
 # ==============================================================================
 
 function test_release_push_image() {
-    local zot_port=$(get_zot_port)
-    run skopeo --insecure-policy copy --dest-tls-verify=false \
-        oci:${TEST_DATA_DIR}/golang:1.20 \
-        docker://127.0.0.1:${zot_port}/golang:1.20
-    [ "$status" -eq 0 ]
-    run curl http://127.0.0.1:${zot_port}/v2/_catalog
-    [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"golang"' ]
-    run curl http://127.0.0.1:${zot_port}/v2/golang/tags/list
-    [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.20"' ]
+    helper_push_image golang 1.20
 }
 
 function test_release_pull_image() {
@@ -472,31 +500,7 @@ function test_release_pull_image_with_regclient() {
 }
 
 function test_release_list_repositories_with_regclient() {
-    local zot_port=$(get_zot_port)
-    run regctl repo ls localhost:${zot_port}
-    [ "$status" -eq 0 ]
-
-    found=0
-    for i in "${lines[@]}"
-    do
-        if [ "$i" = 'test-regclient' ]; then
-            found=1
-        fi
-    done
-    [ "$found" -eq 1 ]
-
-    run regctl repo ls --limit 2 localhost:${zot_port}
-    [ "$status" -eq 0 ]
-    echo "$output"
-    [ $(echo "$output" | wc -l) -eq 2 ]
-    [ "${lines[-2]}" == "busybox" ]
-    [ "${lines[-1]}" == "golang" ]
-
-    run regctl repo ls --last busybox --limit 1 localhost:${zot_port}
-    [ "$status" -eq 0 ]
-    echo "$output"
-    [ $(echo "$output" | wc -l) -eq 1 ]
-    [ "${lines[-1]}" == "golang" ]
+    helper_list_repositories_with_regclient_pagination
 }
 
 function test_release_list_image_tags_with_regclient() {
@@ -584,40 +588,11 @@ function test_new_pull_image() {
 }
 
 function test_new_push_image_index() {
-    local zot_port=$(get_zot_port)
-    # --multi-arch below pushes an image index (containing many images) instead
-    # of an image manifest (single image)
-    run skopeo --insecure-policy copy --format=oci --dest-tls-verify=false --multi-arch=all \
-        docker://public.ecr.aws/docker/library/busybox:latest \
-        docker://127.0.0.1:${zot_port}/busybox:latest
-    [ "$status" -eq 0 ]
-    run curl http://127.0.0.1:${zot_port}/v2/_catalog
-    [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq 'any(.repositories[]; . == "busybox")') = true ] 
-    run curl http://127.0.0.1:${zot_port}/v2/busybox/tags/list
-    [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
+    helper_push_image_index docker://public.ecr.aws/docker/library/busybox:latest busybox latest
 }
 
 function test_new_pull_image_index() {
-    local oci_data_dir=${BATS_FILE_TMPDIR}/oci
-    local zot_port=$(get_zot_port)
-    run skopeo --insecure-policy copy --src-tls-verify=false --multi-arch=all \
-        docker://127.0.0.1:${zot_port}/busybox:latest \
-        oci:${oci_data_dir}/busybox:latest
-    [ "$status" -eq 0 ]
-    run cat ${BATS_FILE_TMPDIR}/oci/busybox/index.json
-    [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.manifests[].annotations."org.opencontainers.image.ref.name"') = '"latest"' ]
-    run skopeo --insecure-policy --override-arch=arm64 --override-os=linux copy --src-tls-verify=false --multi-arch=all \
-        docker://127.0.0.1:${zot_port}/busybox:latest \
-        oci:${oci_data_dir}/busybox:latest
-    [ "$status" -eq 0 ]
-    run cat ${BATS_FILE_TMPDIR}/oci/busybox/index.json
-    [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.manifests[].annotations."org.opencontainers.image.ref.name"') = '"latest"' ]
-    run curl -X DELETE http://127.0.0.1:${zot_port}/v2/busybox/manifests/latest
-    [ "$status" -eq 0 ]
+    helper_pull_image_index_and_delete busybox latest
 }
 
 function test_new_push_oras_artifact() {
@@ -663,7 +638,7 @@ function test_new_list_repositories_with_regclient() {
     run regctl repo ls localhost:${zot_port}
     [ "$status" -eq 0 ]
 
-    found=0
+    local found=0
     for i in "${lines[@]}"
     do
         if [ "$i" = 'test-regclient' ]; then
