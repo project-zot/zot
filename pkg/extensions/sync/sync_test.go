@@ -241,6 +241,34 @@ func makeUpstreamServer(
 	return makeUpstreamServerWithCerts(t, secure, basicAuth, "", nil)
 }
 
+func makeReferrerTestUpstreamServer(t *testing.T) (*api.Controller, string) {
+	t.Helper()
+
+	srcPort := test.GetFreePort()
+	srcBaseURL := test.GetBaseURL(srcPort)
+	srcConfig := config.New()
+	srcConfig.HTTP.Port = srcPort
+	srcConfig.Storage.GC = false
+
+	srcDir := t.TempDir()
+	srcStorageCtrl := ociutils.GetDefaultStoreController(srcDir, log.NewTestLogger())
+
+	err := WriteImageToFileSystem(CreateDefaultImage(), testImage, testImageTag, srcStorageCtrl)
+	if err != nil {
+		panic(err)
+	}
+
+	srcConfig.Storage.RootDirectory = srcDir
+
+	defVal := true
+	srcConfig.Extensions = &extconf.ExtensionConfig{}
+	srcConfig.Extensions.Search = &extconf.SearchConfig{
+		BaseConfig: extconf.BaseConfig{Enable: &defVal},
+	}
+
+	return api.NewController(srcConfig), srcBaseURL
+}
+
 // makeDownstreamServerWithCerts creates a downstream server using shared certificates.
 func makeDownstreamServerWithCerts(
 	t *testing.T, secure bool, syncConfig *syncconf.Config, certDir string, caCertPEM []byte,
@@ -8134,6 +8162,126 @@ func TestOnDemandReferrerSyncFlags(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(refs), ShouldEqual, 1)
 	})
+}
+
+func TestPeriodicSyncReferrersRecursiveFlag(t *testing.T) {
+	Convey("syncReferrersRecursive=false keeps periodic sync to direct referrers", t, func() {
+		sctlr, srcBaseURL := makeReferrerTestUpstreamServer(t)
+
+		scm := test.NewControllerManager(sctlr)
+		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
+		defer scm.StopServer()
+
+		resp, err := resty.R().Get(srcBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		subjectDigest := resp.Header().Get("Docker-Content-Digest")
+		subjectSize := len(resp.Body())
+
+		directRefDigest, directRefSize := pushReferrerManifestByDigest(
+			t,
+			srcBaseURL,
+			testImage,
+			godigest.Digest(subjectDigest),
+			int64(subjectSize),
+			map[string]string{"level": "direct"},
+		)
+
+		nestedRefDigest, _ := pushReferrerManifestByDigest(
+			t,
+			srcBaseURL,
+			testImage,
+			directRefDigest,
+			directRefSize,
+			map[string]string{"level": "nested"},
+		)
+
+		resp, err = resty.R().Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(resp.String(), ShouldNotContainSubstring, directRefDigest.String())
+		So(resp.String(), ShouldNotContainSubstring, nestedRefDigest.String())
+
+		dctlr, _, _, _ := makeDownstreamServer(t, false, nil)
+
+		dcm := test.NewControllerManager(dctlr)
+		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
+		defer dcm.StopServer()
+
+		var tlsVerify bool
+		syncLegacyFalse := false
+		syncRecursiveFalse := false
+
+		serviceConfig := syncconf.RegistryConfig{
+			Content: []syncconf.Content{{
+				Prefix: testImage,
+			}},
+			URLs:                   []string{srcBaseURL},
+			TLSVerify:              &tlsVerify,
+			SyncLegacyCosignTags:   &syncLegacyFalse,
+			SyncReferrersRecursive: &syncRecursiveFalse,
+		}
+
+		service, err := sync.New(serviceConfig, "", nil, "", dctlr.StoreController, dctlr.MetaDB, dctlr.Log)
+		So(err, ShouldBeNil)
+
+		err = service.SyncRepo(context.Background(), testImage)
+		So(err, ShouldBeNil)
+
+		directRefs, err := dctlr.MetaDB.GetReferrersInfo(testImage, godigest.Digest(subjectDigest), nil)
+		So(err, ShouldBeNil)
+		So(len(directRefs), ShouldEqual, 1)
+
+		nestedRefs, err := dctlr.MetaDB.GetReferrersInfo(testImage, directRefDigest, nil)
+		So(err, ShouldBeNil)
+		So(len(nestedRefs), ShouldEqual, 0)
+	})
+}
+
+func pushReferrerManifestByDigest(t *testing.T, url, repoName string, subjectDigest godigest.Digest,
+	subjectSize int64, annotations map[string]string,
+) (godigest.Digest, int64) {
+	t.Helper()
+
+	_ = pushBlob(url, repoName, ispec.DescriptorEmptyJSON.Data)
+
+	manifest := ispec.Manifest{
+		Versioned: specs.Versioned{SchemaVersion: 2},
+		Subject: &ispec.Descriptor{
+			MediaType: ispec.MediaTypeImageManifest,
+			Digest:    subjectDigest,
+			Size:      subjectSize,
+		},
+		Config: ispec.Descriptor{
+			MediaType: ispec.MediaTypeEmptyJSON,
+			Digest:    ispec.DescriptorEmptyJSON.Digest,
+			Size:      2,
+		},
+		Layers: []ispec.Descriptor{{
+			MediaType: ispec.MediaTypeEmptyJSON,
+			Digest:    ispec.DescriptorEmptyJSON.Digest,
+			Size:      2,
+		}},
+		MediaType:   ispec.MediaTypeImageManifest,
+		Annotations: annotations,
+	}
+
+	blob, err := json.Marshal(manifest)
+	So(err, ShouldBeNil)
+
+	digest := godigest.FromBytes(blob)
+
+	resp, err := resty.R().
+		SetHeader("Content-type", ispec.MediaTypeImageManifest).
+		SetBody(blob).
+		Put(url + "/v2/" + repoName + "/manifests/" + digest.String())
+	So(err, ShouldBeNil)
+	So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+	return digest, int64(len(blob))
 }
 
 func generateKeyPairs(tdir string) {

@@ -1112,6 +1112,8 @@ Configure each registry sync:
 				"maxRetries": 5,                    # maxRetries in case of temporary errors (default: no retries)
 				"retryDelay": "10m",                # delay between retries, retry options are applied for both on demand and periodically sync and retryDelay is mandatory when using maxRetries.
 				"onlySigned": true,                 # sync only signed images (either notary or cosign)
+				"syncLegacyCosignTags": true,       # sync legacy digest-tag cosign/SBOM referrers (default is true)
+				"syncReferrersRecursive": true,     # recursively sync referrers during polling (default is true)
 				"content":[                         # which content to periodically pull, also it's used for filtering ondemand images, if not set then periodically polling will not run
 					{
 						"prefix":"/repo1/repo",         # pull image repo1/repo
@@ -1189,4 +1191,3 @@ To set those options explicitly (for example to mirror standalone Trivy’s `--v
 - [config-cve-trivy.json](config-cve-trivy.json) — shows optional `dbRepository`, `javaDBRepository`, and `vulnSeveritySources`.
 
 `vulnSeveritySources` is a list of source names in priority order (for example `auto`, `nvd`, or vendor IDs such as `redhat`, `alpine`). If omitted, zot defaults it to `["auto"]`, consistent with the Trivy CLI. See [Trivy: severity selection](https://trivy.dev/docs/latest/scanner/vulnerability/#severity-selection).
-

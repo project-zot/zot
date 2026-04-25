@@ -29,3 +29,25 @@ func TestRegistryConfig_ShouldSyncLegacyCosignTags(t *testing.T) {
 		})
 	})
 }
+
+func TestRegistryConfig_ShouldSyncReferrersRecursively(t *testing.T) {
+	Convey("ShouldSyncReferrersRecursively", t, func() {
+		Convey("returns true when SyncReferrersRecursive is nil (default)", func() {
+			cfg := syncconf.RegistryConfig{}
+			So(cfg.SyncReferrersRecursive, ShouldBeNil)
+			So(cfg.ShouldSyncReferrersRecursively(), ShouldBeTrue)
+		})
+
+		Convey("returns true when SyncReferrersRecursive is true", func() {
+			v := true
+			cfg := syncconf.RegistryConfig{SyncReferrersRecursive: &v}
+			So(cfg.ShouldSyncReferrersRecursively(), ShouldBeTrue)
+		})
+
+		Convey("returns false when SyncReferrersRecursive is false", func() {
+			v := false
+			cfg := syncconf.RegistryConfig{SyncReferrersRecursive: &v}
+			So(cfg.ShouldSyncReferrersRecursively(), ShouldBeFalse)
+		})
+	})
+}

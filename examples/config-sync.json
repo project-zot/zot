@@ -26,6 +26,8 @@
 					"maxRetries": 3,
 					"retryDelay": "5m",
 					"onlySigned": true,
+					"syncLegacyCosignTags": true,
+					"syncReferrersRecursive": true,
 					"content": [
 						{
 							"prefix": "/repo1/repo",
