@@ -106,6 +106,18 @@ func (cm *ControllerManager) WaitServerToBeReady(port string) {
 func (cm *ControllerManager) StartAndWait(port string) {
 	cm.StartServer()
 
+	if port == "0" || port == "" {
+		for {
+			if chosenPort := cm.controller.GetPort(); chosenPort > 0 {
+				port = strconv.Itoa(chosenPort)
+
+				break
+			}
+
+			time.Sleep(SleepTime)
+		}
+	}
+
 	url := GetBaseURL(port)
 	WaitTillServerReady(url)
 }

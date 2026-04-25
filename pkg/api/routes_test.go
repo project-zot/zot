@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/google/uuid"
@@ -39,10 +40,8 @@ const sessionStr = "session"
 
 func TestRoutes(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
@@ -88,9 +87,10 @@ func TestRoutes(t *testing.T) {
 		ctlr.Config.Storage.Commit = true
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
+		cm.StartAndWait(conf.HTTP.Port)
 		defer cm.StopServer()
 
+		baseURL := test.GetBaseURL(strconv.Itoa(ctlr.GetPort()))
 		rthdlr := api.NewRouteHandler(ctlr)
 
 		// NOTE: the url or method itself doesn't matter below since we are calling the handlers directly,
