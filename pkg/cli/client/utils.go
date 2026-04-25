@@ -4,6 +4,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -443,8 +444,12 @@ func defaultIfError[T any](out T, err error) T {
 }
 
 func GetCliConfigOptions(cmd *cobra.Command) (bool, bool, error) {
-	configName, err := cmd.Flags().GetString(ConfigFlag)
+	configName, err := getConfigNameFromFlags(cmd)
 	if err != nil {
+		if errors.Is(err, zerr.ErrConfigNotFound) {
+			return false, false, nil
+		}
+
 		return false, false, err
 	}
 
@@ -478,13 +483,21 @@ func GetServerURLFromFlags(cmd *cobra.Command) (string, error) {
 		return serverURL, nil
 	}
 
-	configName, err := cmd.Flags().GetString(ConfigFlag)
+	configName, err := getConfigNameFromFlags(cmd)
 	if err != nil {
+		if errors.Is(err, zerr.ErrConfigNotFound) {
+			return "", fmt.Errorf(
+				"%w: specify either '--%s' or '--%s' flags, or set a default config with 'zli config <config-name> --%s'",
+				zerr.ErrNoURLProvided, URLFlag, ConfigFlag, setDefaultFlag)
+		}
+
 		return "", err
 	}
 
 	if configName == "" {
-		return "", fmt.Errorf("%w: specify either '--%s' or '--%s' flags", zerr.ErrNoURLProvided, URLFlag, ConfigFlag)
+		return "", fmt.Errorf(
+			"%w: specify either '--%s' or '--%s' flags, or set a default config with 'zli config <config-name> --%s'",
+			zerr.ErrNoURLProvided, URLFlag, ConfigFlag, setDefaultFlag)
 	}
 
 	serverURL, err = ReadServerURLFromConfig(configName)
@@ -501,6 +514,35 @@ func GetServerURLFromFlags(cmd *cobra.Command) (string, error) {
 	}
 
 	return serverURL, nil
+}
+
+func getConfigNameFromFlags(cmd *cobra.Command) (string, error) {
+	configName, err := cmd.Flags().GetString(ConfigFlag)
+	if err != nil {
+		return "", err
+	}
+
+	if configName != "" {
+		return configName, nil
+	}
+
+	serverURL, err := cmd.Flags().GetString(URLFlag)
+	if err == nil && serverURL != "" {
+		return "", nil
+	}
+
+	return ReadDefaultConfigName()
+}
+
+func ReadDefaultConfigName() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+
+	configDir := path.Join(home, "/.zot")
+
+	return getDefaultConfigName(configDir)
 }
 
 func ReadServerURLFromConfig(configName string) (string, error) {
