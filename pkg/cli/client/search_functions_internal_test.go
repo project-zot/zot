@@ -903,6 +903,27 @@ func TestUtils(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(isSpinner, ShouldBeFalse)
 		So(verifyTLS, ShouldBeFalse)
+
+		// default config
+		_ = makeConfigFile(t,
+			`{"configs":[{"_name":"imagetest","url":"https://test-url.com",`+
+				`"showspinner":false,"verify-tls":true,"default":true}]}`)
+		cmd = &cobra.Command{}
+		cmd.Flags().String(URLFlag, "", "")
+		cmd.Flags().String(ConfigFlag, "", "")
+		isSpinner, verifyTLS, err = GetCliConfigOptions(cmd)
+		So(err, ShouldBeNil)
+		So(isSpinner, ShouldBeFalse)
+		So(verifyTLS, ShouldBeTrue)
+
+		// explicit url skips default config options
+		cmd = &cobra.Command{}
+		cmd.Flags().String(URLFlag, "https://override-url.com", "")
+		cmd.Flags().String(ConfigFlag, "", "")
+		isSpinner, verifyTLS, err = GetCliConfigOptions(cmd)
+		So(err, ShouldBeNil)
+		So(isSpinner, ShouldBeFalse)
+		So(verifyTLS, ShouldBeFalse)
 	})
 
 	Convey("GetServerURLFromFlags", t, func() {
@@ -933,6 +954,34 @@ func TestUtils(t *testing.T) {
 		url, err = GetServerURLFromFlags(cmd)
 		So(url, ShouldResemble, "")
 		So(err, ShouldNotBeNil)
+
+		// default config
+		_ = makeConfigFile(t,
+			`{"configs":[{"_name":"imagetest","url":"https://test-url.com",`+
+				`"showspinner":false,"verify-tls":true,"default":true}]}`)
+		cmd = &cobra.Command{}
+		cmd.Flags().String(URLFlag, "", "")
+		cmd.Flags().String(ConfigFlag, "", "")
+		url, err = GetServerURLFromFlags(cmd)
+		So(url, ShouldResemble, "https://test-url.com")
+		So(err, ShouldBeNil)
+
+		// bad default config entry
+		_ = makeConfigFile(t, `{"configs":[{"url":"https://test-url.com","default":true}]}`)
+		cmd = &cobra.Command{}
+		cmd.Flags().String(URLFlag, "", "")
+		cmd.Flags().String(ConfigFlag, "", "")
+		url, err = GetServerURLFromFlags(cmd)
+		So(url, ShouldResemble, "")
+		So(err, ShouldEqual, zerr.ErrBadConfig)
+
+		// explicit url takes precedence over default config
+		cmd = &cobra.Command{}
+		cmd.Flags().String(URLFlag, "https://override-url.com", "")
+		cmd.Flags().String(ConfigFlag, "", "")
+		url, err = GetServerURLFromFlags(cmd)
+		So(url, ShouldResemble, "https://override-url.com")
+		So(err, ShouldBeNil)
 	})
 
 	Convey("CheckExtEndPointQuery", t, func() {

@@ -28,6 +28,8 @@ func NewConfigCommand() *cobra.Command {
 
 	var isReset bool
 
+	var isSetDefault bool
+
 	configCmd := &cobra.Command{
 		Use:     "config <config-name> [variable] [value]",
 		Example: examples,
@@ -42,8 +44,16 @@ func NewConfigCommand() *cobra.Command {
 
 			configPath := path.Join(home, "/.zot")
 
+			if isSetDefault && (isListing || isReset) {
+				return zerr.ErrInvalidArgs
+			}
+
 			switch len(args) {
 			case noArgs:
+				if isSetDefault {
+					return zerr.ErrInvalidArgs
+				}
+
 				if isListing { // zot config -l
 					res, err := getConfigNames(configPath)
 					if err != nil {
@@ -57,6 +67,10 @@ func NewConfigCommand() *cobra.Command {
 
 				return zerr.ErrInvalidArgs
 			case oneArg:
+				if isSetDefault { // zot config <name> --set-default
+					return setDefaultConfig(configPath, args[0])
+				}
+
 				// zot config <name> -l
 				if isListing {
 					res, err := getAllConfig(configPath, args[0])
@@ -71,6 +85,10 @@ func NewConfigCommand() *cobra.Command {
 
 				return zerr.ErrInvalidArgs
 			case twoArgs:
+				if isSetDefault {
+					return zerr.ErrInvalidArgs
+				}
+
 				if isReset { // zot config <name> <key> --reset
 					return resetConfigValue(configPath, args[0], args[1])
 				}
@@ -81,6 +99,10 @@ func NewConfigCommand() *cobra.Command {
 				}
 				fmt.Fprintln(cmd.OutOrStdout(), res)
 			case threeArgs:
+				if isSetDefault {
+					return zerr.ErrInvalidArgs
+				}
+
 				// zot config <name> <key> <value>
 				if err := setConfigValue(configPath, args[0], args[1], args[2]); err != nil {
 					return err
@@ -96,6 +118,7 @@ func NewConfigCommand() *cobra.Command {
 
 	configCmd.Flags().BoolVarP(&isListing, "list", "l", false, "List configurations")
 	configCmd.Flags().BoolVar(&isReset, "reset", false, "Reset a variable value")
+	configCmd.Flags().BoolVar(&isSetDefault, setDefaultFlag, false, "Set configuration as default")
 	configCmd.SetUsageTemplate(configCmd.UsageTemplate() + supportedOptions)
 	configCmd.AddCommand(NewConfigAddCommand())
 	configCmd.AddCommand(NewConfigRemoveCommand())
@@ -313,6 +336,95 @@ func addDefaultConfigs(config map[string]any) {
 	}
 }
 
+func setDefaultConfig(configPath, configName string) error {
+	return updateDefaultConfig(configPath, configName, true)
+}
+
+func unsetDefaultConfig(configPath, configName string) error {
+	return updateDefaultConfig(configPath, configName, false)
+}
+
+func updateDefaultConfig(configPath, configName string, isDefault bool) error {
+	configs, err := getConfigMapFromFile(configPath)
+	if err != nil {
+		if errors.Is(err, zerr.ErrEmptyJSON) {
+			return zerr.ErrConfigNotFound
+		}
+
+		return err
+	}
+
+	found := false
+
+	for _, val := range configs {
+		configMap, ok := val.(map[string]any)
+		if !ok {
+			return zerr.ErrBadConfig
+		}
+
+		if configMap[nameKey] == configName {
+			if isDefault {
+				configMap[defaultConfigKey] = true
+			} else {
+				delete(configMap, defaultConfigKey)
+			}
+
+			found = true
+
+			continue
+		}
+
+		if isDefault {
+			delete(configMap, defaultConfigKey)
+		}
+	}
+
+	if !found {
+		return zerr.ErrConfigNotFound
+	}
+
+	return saveConfigMapToFile(configPath, configs)
+}
+
+func getDefaultConfigName(configPath string) (string, error) {
+	configs, err := getConfigMapFromFile(configPath)
+	if err != nil {
+		if errors.Is(err, zerr.ErrEmptyJSON) {
+			return "", zerr.ErrConfigNotFound
+		}
+
+		return "", err
+	}
+
+	for _, val := range configs {
+		configMap, ok := val.(map[string]any)
+		if !ok {
+			return "", zerr.ErrBadConfig
+		}
+
+		defaultValue, ok := configMap[defaultConfigKey]
+		if !ok {
+			continue
+		}
+
+		isDefault, err := strconv.ParseBool(fmt.Sprintf("%v", defaultValue))
+		if err != nil {
+			return "", err
+		}
+
+		if isDefault {
+			configName, ok := configMap[nameKey].(string)
+			if !ok || configName == "" {
+				return "", zerr.ErrBadConfig
+			}
+
+			return configName, nil
+		}
+	}
+
+	return "", zerr.ErrConfigNotFound
+}
+
 func getConfigValue(configPath, configName, key string) (string, error) {
 	configs, err := getConfigMapFromFile(configPath)
 	if err != nil {
@@ -347,6 +459,10 @@ func getConfigValue(configPath, configName, key string) (string, error) {
 func resetConfigValue(configPath, configName, key string) error {
 	if key == "url" || key == nameKey {
 		return zerr.ErrCannotResetConfigKey
+	}
+
+	if key == defaultConfigKey {
+		return unsetDefaultConfig(configPath, configName)
 	}
 
 	configs, err := getConfigMapFromFile(configPath)
@@ -385,6 +501,19 @@ func resetConfigValue(configPath, configName, key string) error {
 func setConfigValue(configPath, configName, key, value string) error {
 	if key == nameKey {
 		return zerr.ErrIllegalConfigKey
+	}
+
+	if key == defaultConfigKey {
+		isDefault, err := strconv.ParseBool(value)
+		if err != nil {
+			return err
+		}
+
+		if isDefault {
+			return setDefaultConfig(configPath, configName)
+		}
+
+		return unsetDefaultConfig(configPath, configName)
 	}
 
 	configs, err := getConfigMapFromFile(configPath)
@@ -478,6 +607,7 @@ const (
   zli config --list
   zli config main url
   zli config main --list
+  zli config main --set-default
   zli config remove main`
 
 	supportedOptions = `
@@ -485,6 +615,7 @@ Useful variables:
   url		zot server URL
   showspinner	show spinner while loading data [true/false]
   verify-tls	enable TLS certificate verification of the server [default: true]
+  default		mark configuration as default [true/false]
 `
 
 	nameKey = "_name"
@@ -496,4 +627,6 @@ Useful variables:
 
 	showspinnerConfig = "showspinner"
 	verifyTLSConfig   = "verify-tls"
+	defaultConfigKey  = "default"
+	setDefaultFlag    = "set-default"
 )
