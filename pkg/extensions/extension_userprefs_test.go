@@ -4,6 +4,7 @@ package extensions_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -22,6 +23,7 @@ import (
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
+	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
 	test "zotregistry.dev/zot/v2/pkg/test/common"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
@@ -56,6 +58,67 @@ func TestAllowedMethodsHeaderUserPrefs(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "PUT,OPTIONS")
 		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
+
+		resp, _ = resty.R().Options(baseURL + constants.FullUserPrefs + extensions.UserProfilePath)
+		So(resp, ShouldNotBeNil)
+		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "GET,OPTIONS")
+		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
+	})
+}
+
+func TestUserProfileRoute(t *testing.T) {
+	defaultVal := true
+	username := "alice"
+	password := "password"
+	htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
+
+	Convey("Test authenticated user profile response", t, func() {
+		conf := config.New()
+		port := test.GetFreePort()
+		conf.HTTP.Port = port
+		conf.HTTP.Auth.HTPasswd.Path = htpasswdPath
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				"**": config.PolicyGroup{
+					Policies: []config.Policy{
+						{
+							Users:   []string{username},
+							Actions: []string{constants.ReadPermission},
+						},
+					},
+				},
+			},
+			Groups: config.Groups{
+				"release-admins": config.Group{Users: []string{username}},
+				"developers":     config.Group{Users: []string{username}},
+			},
+		}
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Search = &extconf.SearchConfig{}
+		conf.Extensions.Search.Enable = &defaultVal
+		conf.Extensions.Search.CVE = nil
+		conf.Extensions.UI = &extconf.UIConfig{}
+		conf.Extensions.UI.Enable = &defaultVal
+
+		baseURL := test.GetBaseURL(port)
+
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+		ctrlManager := test.NewControllerManager(ctlr)
+		ctrlManager.StartAndWait(port)
+		defer ctrlManager.StopServer()
+
+		resp, err := resty.R().
+			SetBasicAuth(username, password).
+			Get(baseURL + constants.FullUserPrefs + extensions.UserProfilePath)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		var profile extensions.UserProfile
+		So(json.Unmarshal(resp.Body(), &profile), ShouldBeNil)
+		So(profile.Username, ShouldEqual, username)
+		So(profile.Groups, ShouldResemble, []string{"developers", "release-admins"})
 	})
 }
 
@@ -187,5 +250,51 @@ func TestHandlers(t *testing.T) {
 
 			So(res.StatusCode, ShouldEqual, http.StatusInternalServerError)
 		})
+	})
+
+	Convey("Get user profile", t, func() {
+		request := httptest.NewRequest(http.MethodGet, UserprefsBaseURL+extensions.UserProfilePath, nil)
+		userAc := reqCtx.NewUserAccessControl()
+		userAc.SetUsername("alice")
+		userAc.AddGroups([]string{"ops", "dev", "ops"})
+		userAc.SaveOnRequest(request)
+
+		response := httptest.NewRecorder()
+		extensions.HandleUserProfile().ServeHTTP(response, request)
+
+		res := response.Result()
+		defer res.Body.Close()
+
+		So(res.StatusCode, ShouldEqual, http.StatusOK)
+
+		var profile extensions.UserProfile
+		So(json.NewDecoder(res.Body).Decode(&profile), ShouldBeNil)
+		So(profile.Username, ShouldEqual, "alice")
+		So(profile.Groups, ShouldResemble, []string{"dev", "ops"})
+	})
+
+	Convey("Get user profile rejects anonymous user", t, func() {
+		request := httptest.NewRequest(http.MethodGet, UserprefsBaseURL+extensions.UserProfilePath, nil)
+		response := httptest.NewRecorder()
+
+		extensions.HandleUserProfile().ServeHTTP(response, request)
+
+		res := response.Result()
+		defer res.Body.Close()
+
+		So(res.StatusCode, ShouldEqual, http.StatusUnauthorized)
+	})
+
+	Convey("Get user profile rejects bad request context", t, func() {
+		request := httptest.NewRequest(http.MethodGet, UserprefsBaseURL+extensions.UserProfilePath, nil)
+		request = request.WithContext(context.WithValue(request.Context(), reqCtx.GetContextKey(), "bad"))
+		response := httptest.NewRecorder()
+
+		extensions.HandleUserProfile().ServeHTTP(response, request)
+
+		res := response.Result()
+		defer res.Body.Close()
+
+		So(res.StatusCode, ShouldEqual, http.StatusInternalServerError)
 	})
 }
