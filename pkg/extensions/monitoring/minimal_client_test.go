@@ -17,6 +17,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -140,6 +141,27 @@ func TestNewMetricsClientFallbackKeepsTLSHardening(t *testing.T) {
 
 	if transport.TLSClientConfig.MinVersion != tls.VersionTLS12 {
 		t.Fatalf("expected fallback MinVersion TLS1.2, got: %d", transport.TLSClientConfig.MinVersion)
+	}
+}
+
+func TestMetricsClientReturnsErrorForUnexpectedStatus(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	cfg := &MetricsConfig{Address: srv.URL}
+	mc := NewMetricsClient(cfg, log.NewLogger("debug", ""))
+
+	_, err := mc.GetMetrics()
+	if err == nil {
+		t.Fatal("expected error for unauthorized metrics response")
+	}
+
+	if !strings.Contains(err.Error(), "unexpected status code 401") {
+		t.Fatalf("expected status code in error, got: %v", err)
 	}
 }
 

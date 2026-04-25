@@ -21,6 +21,7 @@ import (
 const (
 	idleTimeout       = 120 * time.Second
 	readHeaderTimeout = 5 * time.Second
+	authorization     = "Authorization"
 )
 
 type Collector struct {
@@ -169,20 +170,52 @@ func GetCollector(c *Controller) *Collector {
 	}
 }
 
+func forwardedMetricsHeaders(r *http.Request) http.Header {
+	headers := make(http.Header)
+
+	for _, value := range r.Header.Values(authorization) {
+		headers.Add(authorization, value)
+	}
+
+	return headers
+}
+
+func metricsHandler(c *Controller) http.Handler {
+	collector := GetCollector(c)
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCollector := *collector
+		requestCollector.Client = collector.Client.WithHeaders(forwardedMetricsHeaders(r))
+
+		registry := prometheus.NewRegistry()
+
+		if err := registry.Register(&requestCollector); err != nil {
+			c.Log.Debug().Err(err).Msg("ignoring error")
+		}
+
+		if err := registry.Register(prometheus.NewGoCollector()); err != nil {
+			c.Log.Debug().Err(err).Msg("ignoring error")
+		}
+
+		if err := registry.Register(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{})); err != nil {
+			c.Log.Debug().Err(err).Msg("ignoring error")
+		}
+
+		promhttp.HandlerFor(registry, promhttp.HandlerOpts{}).ServeHTTP(w, r)
+	})
+}
+
 func runExporter(c *Controller) {
 	exporterAddr := ":" + c.Config.Exporter.Port
+	mux := http.NewServeMux()
+	mux.Handle(c.Config.Exporter.Metrics.Path, metricsHandler(c))
+
 	server := &http.Server{
 		Addr:              exporterAddr,
+		Handler:           mux,
 		IdleTimeout:       idleTimeout,
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
-
-	err := prometheus.Register(GetCollector(c))
-	if err != nil {
-		c.Log.Debug().Err(err).Msg("ignoring error")
-	}
-
-	http.Handle(c.Config.Exporter.Metrics.Path, promhttp.Handler())
 	c.Log.Info().Str("addr", exporterAddr).
 		Str("path", c.Config.Exporter.Metrics.Path).
 		Msg("exporter listening")

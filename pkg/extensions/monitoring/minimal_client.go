@@ -38,6 +38,9 @@ type MetricsConfig struct {
 
 	// HTTPClient is the client to use.
 	HTTPClient *http.Client
+
+	// Headers are copied to each metrics scrape request.
+	Headers http.Header
 }
 
 type MetricsClient struct {
@@ -105,7 +108,14 @@ func NewMetricsClient(config *MetricsConfig, logger log.Logger) *MetricsClient {
 		}
 	}
 
-	return &MetricsClient{config: *config, headers: make(http.Header), log: logger}
+	return &MetricsClient{config: *config, headers: config.Headers.Clone(), log: logger}
+}
+
+func (mc *MetricsClient) WithHeaders(headers http.Header) *MetricsClient {
+	clone := *mc
+	clone.headers = headers.Clone()
+
+	return &clone
 }
 
 func (mc *MetricsClient) GetMetrics() (*MetricsInfo, error) {
@@ -123,12 +133,18 @@ func (mc *MetricsClient) makeGETRequest(url string, resultsPtr any) (http.Header
 		return nil, fmt.Errorf("metric scraping failed: %w", err)
 	}
 
+	req.Header = mc.headers.Clone()
+
 	resp, err := mc.config.HTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("metric scraping failed: %w", err)
 	}
 
 	defer resp.Body.Close()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return resp.Header, fmt.Errorf("metric scraping failed: unexpected status code %d", resp.StatusCode)
+	}
 
 	if err := json.NewDecoder(resp.Body).Decode(resultsPtr); err != nil {
 		return nil, fmt.Errorf("metric scraping failed: %w", err)
