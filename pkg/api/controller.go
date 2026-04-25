@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	goerrors "errors"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -172,6 +171,12 @@ func (c *Controller) Run() error {
 
 	port := c.Config.GetHTTPPort()
 	addr := fmt.Sprintf("%s:%s", c.Config.GetHTTPAddress(), port)
+
+	listener, addr, err := c.createListener(addr, port)
+	if err != nil {
+		return err
+	}
+
 	server := &http.Server{
 		Addr:              addr,
 		Handler:           c.Router,
@@ -179,29 +184,6 @@ func (c *Controller) Run() error {
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 	c.Server = server
-
-	// Create the listener
-	listener, err := net.Listen("tcp", addr) //nolint: noctx
-	if err != nil {
-		return err
-	}
-
-	// Always derive the bound port from the listener so GetPort matches the actual socket (numeric
-	// config, kernel-chosen :0, or service names like "http" resolved by net.Listen).
-	chosenAddr, ok := listener.Addr().(*net.TCPAddr)
-	if !ok {
-		c.Log.Error().Str("port", port).Msg("invalid addr type")
-
-		return errors.ErrBadType
-	}
-
-	c.chosenPort.Store(int64(chosenAddr.Port))
-
-	if port == "0" || port == "" {
-		c.Log.Info().Int("port", chosenAddr.Port).IPAddr("address", chosenAddr.IP).Msg(
-			"port is unspecified, listening on kernel chosen port",
-		)
-	}
 
 	tlsConfig := c.Config.CopyTLSConfig()
 	if tlsConfig != nil && tlsConfig.Key != "" && tlsConfig.Cert != "" {
