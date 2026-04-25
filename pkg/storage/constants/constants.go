@@ -27,3 +27,21 @@ const (
 	GCSStorageDriverName    = "gcs"
 	LocalStorageDriverName  = "local"
 )
+
+const (
+	DynamoDBTableNamePrefix  = "tablenameprefix"
+	DynamoDBCacheTableName   = "cachetablename"
+	DynamoDBRepoMetaTable    = "repometatablename"
+	DynamoDBRepoBlobsTable   = "repoblobsinfotablename"
+	DynamoDBImageMetaTable   = "imagemetatablename"
+	DynamoDBUserDataTable    = "userdatatablename"
+	DynamoDBAPIKeyTable      = "apikeytablename"
+	DynamoDBVersionTable     = "versiontablename"
+	DynamoDBCacheTableSuffix = "BlobTable"
+	DynamoDBRepoMetaSuffix   = "RepoMetadataTable"
+	DynamoDBRepoBlobsSuffix  = "RepoBlobsInfoTable"
+	DynamoDBImageMetaSuffix  = "ImageMetaTable"
+	DynamoDBUserDataSuffix   = "UserDataTable"
+	DynamoDBAPIKeySuffix     = "ApiKeyDataTable"
+	DynamoDBVersionSuffix    = "VersionTable"
+)

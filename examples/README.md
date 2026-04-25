@@ -1004,15 +1004,19 @@ To set up a zot with dedupe enabled and dynamodb as a cache driver, "cacheDriver
         "cacheDriver": {
             "name": "dynamodb",  // driver name
             "endpoint": "http://localhost:4566", // aws endpoint
-            "region": "us-east-2" // aws region
-            "cacheTablename": "ZotBlobTable" // table used to store deduped blobs
+            "region": "us-east-2", // aws region
+            "tablenamePrefix": "Zot" // table name prefix
 
         }
     },
 ```
 Like s3 configuration AWS GO SDK will load additional config and credentials values from the environment variables, shared credentials, and shared configuration files
 
-Additionally if search extension is enabled, additional parameters are needed:
+With the `tablenamePrefix` value above, zot uses `ZotBlobTable` for dedupe cache data. When auth or the search
+extension is enabled, zot also uses `ZotUserDataTable`, `ZotApiKeyDataTable`, `ZotRepoMetadataTable`,
+`ZotImageMetaTable`, `ZotRepoBlobsInfoTable`, and `ZotVersionTable`.
+
+Individual table names can still be configured for backward compatibility or to override a derived name:
 
 ```
         "cacheDriver": {
@@ -1032,7 +1036,8 @@ Additionally if search extension is enabled, additional parameters are needed:
 ```
 
 ### DynamoDB permission scopes
-The following AWS policy is required by zot for caching blobs. Make sure to replace DYNAMODB_TABLE with the name of your table which in our case is the value of "cacheTablename" (ZotBlobTable)
+The following AWS policy is required by zot for caching blobs. Make sure to replace DYNAMODB_TABLE with the name of
+your table. When `tablenamePrefix` is used, this includes the generated table names described above.
 
 {
   "Version": "2012-10-17",
@@ -1189,4 +1194,3 @@ To set those options explicitly (for example to mirror standalone Trivy’s `--v
 - [config-cve-trivy.json](config-cve-trivy.json) — shows optional `dbRepository`, `javaDBRepository`, and `vulnSeveritySources`.
 
 `vulnSeveritySources` is a list of source names in priority order (for example `auto`, `nvd`, or vendor IDs such as `redhat`, `alpine`). If omitted, zot defaults it to `["auto"]`, consistent with the Trivy CLI. See [Trivy: severity selection](https://trivy.dev/docs/latest/scanner/vulnerability/#severity-selection).
-
