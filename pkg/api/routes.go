@@ -13,10 +13,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"path"
-	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -1121,51 +1122,168 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 	response.WriteHeader(http.StatusOK)
 }
 
-/* parseRangeHeader validates the "Range" HTTP header and returns the range. */
-func parseRangeHeader(contentRange string) (int64, int64, error) {
-	/* bytes=<start>- and bytes=<start>-<end> formats are supported */
-	pattern := `bytes=(?P<rangeFrom>\d+)-(?P<rangeTo>\d*$)`
+type httpRange struct {
+	start int64
+	end   int64
+}
 
-	regex, err := regexp.Compile(pattern)
-	if err != nil {
-		return -1, -1, zerr.ErrParsingHTTPHeader
+const maxRangeSpecCount = 16
+
+func (r httpRange) length() int64 {
+	return r.end - r.start + 1
+}
+
+type blobRangeReader struct {
+	httpRange
+
+	reader io.ReadCloser
+}
+
+func closeRangeReaders(rangeReaders []blobRangeReader) {
+	for _, rangeReader := range rangeReaders {
+		_ = rangeReader.reader.Close()
+	}
+}
+
+/* parseRangeHeader validates the "Range" HTTP header and returns normalized byte ranges. */
+func parseRangeHeader(contentRange string, size int64) ([]httpRange, error) {
+	if size <= 0 || !strings.HasPrefix(contentRange, "bytes=") {
+		return nil, zerr.ErrParsingHTTPHeader
 	}
 
-	match := regex.FindStringSubmatch(contentRange)
+	rangeSet := strings.TrimPrefix(contentRange, "bytes=")
+	if rangeSet == "" || strings.Count(rangeSet, ",")+1 > maxRangeSpecCount {
+		return nil, zerr.ErrParsingHTTPHeader
+	}
 
-	paramsMap := make(map[string]string)
+	rangeSpecs := strings.Split(rangeSet, ",")
+	ranges := make([]httpRange, 0, len(rangeSpecs))
 
-	for i, name := range regex.SubexpNames() {
-		if i > 0 && i <= len(match) {
-			paramsMap[name] = match[i]
+	for _, rangeSpec := range rangeSpecs {
+		rangeSpec = strings.TrimSpace(rangeSpec)
+		if rangeSpec == "" {
+			return nil, zerr.ErrParsingHTTPHeader
+		}
+
+		startStr, endStr, ok := strings.Cut(rangeSpec, "-")
+		if !ok {
+			return nil, zerr.ErrParsingHTTPHeader
+		}
+
+		var start, end int64
+
+		if startStr == "" {
+			suffixLen, err := strconv.ParseInt(endStr, 10, 64)
+			if err != nil || suffixLen <= 0 {
+				return nil, zerr.ErrParsingHTTPHeader
+			}
+
+			if suffixLen > size {
+				start = 0
+			} else {
+				start = size - suffixLen
+			}
+
+			end = size - 1
+		} else {
+			parsedStart, err := strconv.ParseInt(startStr, 10, 64)
+			if err != nil || parsedStart < 0 {
+				return nil, zerr.ErrParsingHTTPHeader
+			}
+
+			start = parsedStart
+
+			if endStr == "" {
+				end = size - 1
+			} else {
+				parsedEnd, err := strconv.ParseInt(endStr, 10, 64)
+				if err != nil || parsedEnd < start {
+					return nil, zerr.ErrParsingHTTPHeader
+				}
+
+				end = min(parsedEnd, size-1)
+			}
+		}
+
+		if start >= size || start > end {
+			return nil, zerr.ErrParsingHTTPHeader
+		}
+
+		ranges = append(ranges, httpRange{start: start, end: end})
+	}
+
+	if len(ranges) == 0 {
+		return nil, zerr.ErrParsingHTTPHeader
+	}
+
+	return coalesceRanges(ranges), nil
+}
+
+func coalesceRanges(ranges []httpRange) []httpRange {
+	sort.Slice(ranges, func(i, j int) bool {
+		if ranges[i].start == ranges[j].start {
+			return ranges[i].end < ranges[j].end
+		}
+
+		return ranges[i].start < ranges[j].start
+	})
+
+	coalesced := ranges[:0]
+
+	for _, httpRange := range ranges {
+		if len(coalesced) == 0 {
+			coalesced = append(coalesced, httpRange)
+
+			continue
+		}
+
+		lastRange := &coalesced[len(coalesced)-1]
+		if httpRange.start <= lastRange.end+1 {
+			lastRange.end = max(lastRange.end, httpRange.end)
+
+			continue
+		}
+
+		coalesced = append(coalesced, httpRange)
+	}
+
+	return coalesced
+}
+
+func writeMultipartRanges(response http.ResponseWriter, mediaType string, ranges []blobRangeReader, bsize int64,
+	logger log.Logger,
+) {
+	writer := multipart.NewWriter(response)
+	defer func() {
+		if err := writer.Close(); err != nil {
+			logger.Error().Err(err).Msg("failed to close multipart range response")
+		}
+	}()
+
+	response.Header().Set("Content-Type", "multipart/byteranges; boundary="+writer.Boundary())
+	response.WriteHeader(http.StatusPartialContent)
+
+	for _, rangeReader := range ranges {
+		partHeader := textproto.MIMEHeader{}
+		partHeader.Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", rangeReader.start, rangeReader.end, bsize))
+
+		if mediaType != "" {
+			partHeader.Set("Content-Type", mediaType)
+		}
+
+		part, err := writer.CreatePart(partHeader)
+		if err != nil {
+			logger.Error().Err(err).Msg("failed to create multipart range response")
+
+			return
+		}
+
+		if _, err := io.Copy(part, rangeReader.reader); err != nil {
+			logger.Error().Err(err).Msg("failed to copy range into multipart response")
+
+			return
 		}
 	}
-
-	var from int64
-
-	to := int64(-1)
-
-	rangeFrom := paramsMap["rangeFrom"]
-	if rangeFrom == "" {
-		return -1, -1, zerr.ErrParsingHTTPHeader
-	}
-
-	if from, err = strconv.ParseInt(rangeFrom, 10, 64); err != nil {
-		return -1, -1, zerr.ErrParsingHTTPHeader
-	}
-
-	rangeTo := paramsMap["rangeTo"]
-	if rangeTo != "" {
-		if to, err = strconv.ParseInt(rangeTo, 10, 64); err != nil {
-			return -1, -1, zerr.ErrParsingHTTPHeader
-		}
-
-		if to < from {
-			return -1, -1, zerr.ErrParsingHTTPHeader
-		}
-	}
-
-	return from, to, nil
 }
 
 // GetBlob godoc
@@ -1202,44 +1320,10 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 	mediaType := request.Header.Get("Accept")
 
-	/* content range is supported for resumbale pulls */
-	partial := false
-
-	var from, to int64
-
-	var err error
-
 	contentRange := request.Header.Get("Range")
+	_, rangeHeaderPresent := request.Header["Range"]
 
-	_, ok = request.Header["Range"]
-	if ok && contentRange == "" {
-		response.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
-
-		return
-	}
-
-	if contentRange != "" {
-		from, to, err = parseRangeHeader(contentRange)
-		if err != nil {
-			response.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
-
-			return
-		}
-
-		partial = true
-	}
-
-	var repo io.ReadCloser
-
-	var blen, bsize int64
-
-	if partial {
-		repo, blen, bsize, err = imgStore.GetBlobPartial(name, digest, mediaType, from, to)
-	} else {
-		repo, blen, err = imgStore.GetBlob(name, digest, mediaType)
-	}
-
-	if err != nil {
+	writeBlobError := func(err error) {
 		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			details["digest"] = digest.String()
@@ -1257,6 +1341,81 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			response.WriteHeader(http.StatusInternalServerError)
 		}
+	}
+
+	if rangeHeaderPresent {
+		ok, bsize, err := imgStore.CheckBlob(name, digest)
+		if err != nil {
+			writeBlobError(err)
+
+			return
+		}
+
+		if !ok {
+			e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(map[string]string{"digest": digest.String()})
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
+
+			return
+		}
+
+		ranges, err := parseRangeHeader(contentRange, bsize)
+		if err != nil {
+			response.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", bsize))
+			response.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+
+			return
+		}
+
+		rangeReaders := make([]blobRangeReader, 0, len(ranges))
+		defer func() { closeRangeReaders(rangeReaders) }()
+
+		for _, httpRange := range ranges {
+			repo, blen, _, err := imgStore.GetBlobPartial(name, digest, mediaType, httpRange.start, httpRange.end)
+			if err != nil {
+				writeBlobError(err)
+
+				return
+			}
+
+			if blen != httpRange.length() {
+				_ = repo.Close()
+
+				rh.c.Log.Error().
+					Int64("expected", httpRange.length()).
+					Int64("actual", blen).
+					Msg("unexpected partial blob length")
+				response.WriteHeader(http.StatusInternalServerError)
+
+				return
+			}
+
+			rangeReaders = append(rangeReaders, blobRangeReader{httpRange: httpRange, reader: repo})
+		}
+
+		defer closeRangeReaders(rangeReaders)
+
+		if len(rangeReaders) > 1 {
+			writeMultipartRanges(response, mediaType, rangeReaders, bsize, rh.c.Log)
+
+			return
+		}
+
+		rangeReader := rangeReaders[0]
+		response.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", rangeReader.start, rangeReader.end, bsize))
+		WriteDataFromReader(
+			response, http.StatusPartialContent, rangeReader.length(), mediaType, rangeReader.reader, rh.c.Log,
+		)
+
+		return
+	}
+
+	var repo io.ReadCloser
+
+	var blen int64
+
+	repo, blen, err := imgStore.GetBlob(name, digest, mediaType)
+	if err != nil {
+		writeBlobError(err)
 
 		return
 	}
@@ -1264,19 +1423,10 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 	defer repo.Close()
 
 	response.Header().Set("Content-Length", strconv.FormatInt(blen, 10))
-
-	status := http.StatusOK
-
-	if partial {
-		status = http.StatusPartialContent
-
-		response.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", from, from+blen-1, bsize))
-	} else {
-		response.Header().Set(constants.DistContentDigestKey, digest.String())
-	}
+	response.Header().Set(constants.DistContentDigestKey, digest.String())
 
 	// return the blob data
-	WriteDataFromReader(response, status, blen, mediaType, repo, rh.c.Log)
+	WriteDataFromReader(response, http.StatusOK, blen, mediaType, repo, rh.c.Log)
 }
 
 // DeleteBlob godoc

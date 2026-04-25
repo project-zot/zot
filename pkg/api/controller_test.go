@@ -12,6 +12,8 @@ import (
 	goerrors "errors"
 	"fmt"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -11285,6 +11287,54 @@ func TestPullRange(t *testing.T) {
 			So(resp.Body(), ShouldResemble, content[2:4])
 		})
 
+		Convey("Get a suffix range of bytes", func() {
+			resp, err = resty.R().SetHeader("Range", "bytes=-3").Get(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusPartialContent)
+			So(resp.Header().Get("Content-Length"), ShouldEqual, "3")
+			So(resp.Header().Get("Content-Range"), ShouldEqual, "bytes 7-9/10")
+			So(resp.Body(), ShouldResemble, content[7:10])
+
+			resp, err = resty.R().SetHeader("Range", "bytes=-100").Get(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusPartialContent)
+			So(resp.Header().Get("Content-Length"), ShouldEqual, strconv.Itoa(len(content)))
+			So(resp.Header().Get("Content-Range"), ShouldEqual, "bytes 0-9/10")
+			So(resp.Body(), ShouldResemble, content)
+		})
+
+		Convey("Get multiple ranges of bytes", func() {
+			resp, err = resty.R().SetHeader("Range", "bytes=0-1,4-6").Get(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusPartialContent)
+
+			contentType, params, err := mime.ParseMediaType(resp.Header().Get("Content-Type"))
+			So(err, ShouldBeNil)
+			So(contentType, ShouldEqual, "multipart/byteranges")
+			So(params["boundary"], ShouldNotBeEmpty)
+
+			multipartReader := multipart.NewReader(bytes.NewReader(resp.Body()), params["boundary"])
+
+			part, err := multipartReader.NextPart()
+			So(err, ShouldBeNil)
+			So(part.Header.Get("Content-Range"), ShouldEqual, "bytes 0-1/10")
+
+			partBody, err := io.ReadAll(part)
+			So(err, ShouldBeNil)
+			So(partBody, ShouldResemble, content[0:2])
+
+			part, err = multipartReader.NextPart()
+			So(err, ShouldBeNil)
+			So(part.Header.Get("Content-Range"), ShouldEqual, "bytes 4-6/10")
+
+			partBody, err = io.ReadAll(part)
+			So(err, ShouldBeNil)
+			So(partBody, ShouldResemble, content[4:7])
+
+			_, err = multipartReader.NextPart()
+			So(err, ShouldEqual, io.EOF)
+		})
+
 		Convey("Negative cases", func() {
 			resp, err = resty.R().SetHeader("Range", "=0").Get(blobLoc)
 			So(err, ShouldBeNil)
@@ -11353,6 +11403,11 @@ func TestPullRange(t *testing.T) {
 			resp, err = resty.R().SetHeader("Range", "bytes=a-b").Get(blobLoc)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusRequestedRangeNotSatisfiable)
+
+			resp, err = resty.R().SetHeader("Range", "bytes=100-100").Get(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusRequestedRangeNotSatisfiable)
+			So(resp.Header().Get("Content-Range"), ShouldEqual, "bytes */10")
 		})
 	})
 }
