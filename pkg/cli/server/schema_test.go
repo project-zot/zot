@@ -62,10 +62,11 @@ func TestSchemaAllowsNullForPointerFields(t *testing.T) {
 					"enable": nil,
 					"registries": []any{
 						map[string]any{
-							"tlsVerify":            nil,
-							"retryDelay":           nil,
-							"onlySigned":           nil,
-							"syncLegacyCosignTags": nil,
+							"tlsVerify":              nil,
+							"retryDelay":             nil,
+							"onlySigned":             nil,
+							"syncLegacyCosignTags":   nil,
+							"syncReferrersRecursive": nil,
 						},
 					},
 				},
