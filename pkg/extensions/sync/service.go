@@ -31,6 +31,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/storage"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
 const defaultExpireMinutes = 30 * time.Minute
@@ -247,6 +248,67 @@ func (service *BaseService) getNextRepoFromCatalog(lastRepo string) string {
 	return nextRepo
 }
 
+func (service *BaseService) getLocalCatalogRepositories() ([]string, error) {
+	repositories := []string{}
+	seen := map[string]struct{}{}
+
+	addRepositories := func(imgStore storageTypes.ImageStore) error {
+		if imgStore == nil {
+			return nil
+		}
+
+		localRepos, err := imgStore.GetRepositories()
+		if err != nil {
+			return err
+		}
+
+		for _, localRepo := range localRepos {
+			repo := strings.Trim(localRepo, "/")
+			if repo == "" {
+				continue
+			}
+
+			if len(service.config.Content) > 0 {
+				repo = service.contentManager.GetRepoSource(repo)
+				if repo == "" {
+					continue
+				}
+			}
+
+			if _, ok := seen[repo]; ok {
+				continue
+			}
+
+			seen[repo] = struct{}{}
+			repositories = append(repositories, repo)
+		}
+
+		return nil
+	}
+
+	if err := addRepositories(service.storeController.GetDefaultImageStore()); err != nil {
+		return nil, err
+	}
+
+	subStores := service.storeController.GetImageSubStores()
+	subStorePaths := make([]string, 0, len(subStores))
+	for subStorePath := range subStores {
+		subStorePaths = append(subStorePaths, subStorePath)
+	}
+
+	slices.Sort(subStorePaths)
+
+	for _, subStorePath := range subStorePaths {
+		if err := addRepositories(subStores[subStorePath]); err != nil {
+			return nil, err
+		}
+	}
+
+	slices.Sort(repositories)
+
+	return repositories, nil
+}
+
 func (service *BaseService) GetNextRepo(lastRepo string) (string, error) {
 	var err error
 
@@ -259,7 +321,20 @@ func (service *BaseService) GetNextRepo(lastRepo string) (string, error) {
 			service.log.Error().Str("errorType", common.TypeOf(err)).Str("remote registry", service.remote.GetHostName()).
 				Err(err).Msg("error while getting repositories from remote registry")
 
-			return "", err
+			if !service.config.LocalCatalogFallback {
+				return "", err
+			}
+
+			service.repositories, err = service.getLocalCatalogRepositories()
+			if err != nil {
+				service.log.Error().Str("errorType", common.TypeOf(err)).
+					Err(err).Msg("error while getting repositories from local catalog fallback")
+
+				return "", err
+			}
+
+			service.log.Info().Strs("repoList", service.repositories).
+				Msg("using local repositories as sync catalog fallback")
 		}
 	}
 
