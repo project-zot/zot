@@ -19,6 +19,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/compat"
+	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/retention"
@@ -43,12 +44,15 @@ type Options struct {
 	MaxSchedulerDelay time.Duration
 
 	ImageRetention config.ImageRetention
+
+	Metrics monitoring.MetricServer
 }
 
 type GarbageCollect struct {
 	imgStore  types.ImageStore
 	opts      Options
 	metaDB    mTypes.MetaDB
+	metrics   monitoring.MetricServer
 	policyMgr rTypes.PolicyManager
 	auditLog  *zlog.Logger
 	log       zlog.Logger
@@ -60,6 +64,7 @@ func NewGarbageCollect(imgStore types.ImageStore, metaDB mTypes.MetaDB, opts Opt
 	return GarbageCollect{
 		imgStore:  imgStore,
 		metaDB:    metaDB,
+		metrics:   opts.Metrics,
 		opts:      opts,
 		policyMgr: retention.NewPolicyManager(opts.ImageRetention, log, auditLog),
 		auditLog:  auditLog,
@@ -95,11 +100,16 @@ in any manifests referenced in repo's index.json
 It also gc referrers with missing subject if the Referrer Option is enabled
 It also gc untagged manifests.
 */
-func (gc GarbageCollect) CleanRepo(ctx context.Context, repo string) error {
+func (gc GarbageCollect) CleanRepo(ctx context.Context, repo string) (err error) {
+	start := time.Now()
+	defer func() {
+		monitoring.ObserveGCRun(gc.metrics, time.Since(start), err)
+	}()
+
 	gc.log.Info().Str("module", "gc").
 		Msg("executing gc of orphaned blobs for " + path.Join(gc.imgStore.RootDir(), repo))
 
-	if err := gc.cleanRepo(ctx, repo); err != nil {
+	if err = gc.cleanRepo(ctx, repo); err != nil {
 		errMessage := "failed to run GC for " + path.Join(gc.imgStore.RootDir(), repo)
 		gc.log.Error().Err(err).Str("module", "gc").Msg(errMessage)
 		gc.log.Info().Str("module", "gc").
@@ -141,6 +151,8 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 		return err
 	}
 
+	manifestCount := len(index.Manifests)
+
 	// apply tags retention
 	if err := gc.removeTagsPerRetentionPolicy(ctx, repo, &index); err != nil {
 		return err
@@ -158,6 +170,8 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 		if err := gc.imgStore.PutIndexContent(repo, index); err != nil {
 			return err
 		}
+
+		monitoring.AddGCDeleted(gc.metrics, monitoring.GCDeletedManifest, manifestCount-len(index.Manifests))
 	}
 
 	// gc unreferenced blobs
@@ -625,6 +639,7 @@ func (gc GarbageCollect) removeBlobUploads(repo string, delay time.Duration) err
 	}
 
 	var aggregatedErr error
+	deleted := 0
 
 	for _, uuid := range blobUploads {
 		_, size, modtime, err := gc.imgStore.StatBlobUpload(repo, uuid)
@@ -648,8 +663,12 @@ func (gc GarbageCollect) removeBlobUploads(repo string, delay time.Duration) err
 				Str("size", strconv.FormatInt(size, 10)).Str("modified", modtime.String()).Msg("failed to delete blob upload")
 
 			aggregatedErr = errors.Join(aggregatedErr, err)
+		} else {
+			deleted++
 		}
 	}
+
+	monitoring.AddGCDeleted(gc.metrics, monitoring.GCDeletedUpload, deleted)
 
 	return aggregatedErr
 }
@@ -719,6 +738,8 @@ func (gc GarbageCollect) removeUnreferencedBlobs(repo string, delay time.Duratio
 	if err != nil {
 		return err
 	}
+
+	monitoring.AddGCDeleted(gc.metrics, monitoring.GCDeletedBlob, reaped)
 
 	log.Info().Str("module", "gc").Str("repository", repo).Int("count", reaped).
 		Msg("garbage collected blobs")
