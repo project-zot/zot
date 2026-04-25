@@ -416,7 +416,12 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 
 			isMgmtRequested := request.RequestURI == constants.FullMgmt
 			isV2Requested := strings.TrimSuffix(request.URL.Path, "/") == constants.RoutePrefix
-			isDockerClient := strings.Contains(request.Header.Get("User-Agent"), "Docker-Client")
+			// Match Docker daemon-proxied requests regardless of the upstream client tool.
+			// The Docker daemon always prefixes its UA with "docker/<version>" when proxying,
+			// while the upstream tool (docker CLI, compose, buildx, etc.) appears inside
+			// "UpstreamClient(...)". Direct Docker CLI requests use "Docker-Client/...".
+			ua := request.Header.Get("User-Agent")
+			isDockerClient := strings.Contains(ua, "Docker-Client") || strings.HasPrefix(ua, "docker/")
 
 			// Get auth config safely
 			authConfig := ctlr.Config.CopyAuthConfig()
