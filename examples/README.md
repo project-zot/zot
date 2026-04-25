@@ -440,7 +440,11 @@ zot can be configured to use dex with:
             "clientsecret": "ZXhhbXBsZS1hcHAtc2VjcmV0",
             "keypath": "",
             "issuer": "http://127.0.0.1:5556/dex",
-            "scopes": ["openid", "profile", "email", "groups"]
+            "scopes": ["openid", "profile", "email", "groups"],
+            "claimMapping": {
+              "username": "preferred_username",
+              "groups": "groups"
+            }
           }
         }
       }
@@ -449,6 +453,8 @@ zot can be configured to use dex with:
 ```
 
 To login using openid dex provider use http://127.0.0.1:8080/zot/auth/login?provider=oidc
+
+`claimMapping.username` defaults to `email`, and `claimMapping.groups` defaults to `groups`.
 
 NOTE: Social login is not supported by command line tools, or other software responsible for pushing/pulling
 images to/from zot.

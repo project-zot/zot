@@ -20,7 +20,8 @@
             "credentialsFile": "examples/config-openid-oidc-credentials.json",
             "scopes": ["openid", "profile", "email", "groups"],
             "claimMapping": {
-              "username": "preferred_username"
+              "username": "preferred_username",
+              "groups": "groups"
             }
           }
         }
