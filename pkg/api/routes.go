@@ -2049,20 +2049,38 @@ func (rh *RouteHandler) ListExtensions(w http.ResponseWriter, r *http.Request) {
 
 // The following routes are specific to zot and NOT part of the OCI dist-spec
 
+// LogoutResponse is returned by POST /zot/auth/logout. When the session was established
+// via an OIDC provider that advertises an `end_session_endpoint` in its discovery
+// metadata, EndSessionURL is set to the URL the client should navigate to in order to
+// terminate the session at the IdP. For local, basic, LDAP, or GitHub OAuth2 sessions
+// the field is omitted from the JSON body.
+type LogoutResponse struct {
+	EndSessionURL string `json:"endSessionUrl,omitempty"`
+}
+
 // Logout godoc
 // @Summary Logout by removing current session
-// @Description Logout by removing current session
+// @Description Logout by removing current session. For OIDC providers that advertise an
+// @Description `end_session_endpoint` in their discovery metadata (OpenID Connect
+// @Description RP-Initiated Logout 1.0), the response body contains an `endSessionUrl`
+// @Description the client should navigate to in order to terminate the session at the IdP.
 // @Router  /zot/auth/logout [post]
 // @Accept  json
 // @Produce json
-// @Success 200 {string} string "ok"
+// @Success 200 {object} api.LogoutResponse
 // @Failure 500 {string} string "internal server error"
 func (rh *RouteHandler) Logout(response http.ResponseWriter, request *http.Request) {
 	if request.Method == http.MethodOptions {
 		return
 	}
 
-	session, _ := rh.c.CookieStore.Get(request, "session")
+	session, sessionErr := rh.c.CookieStore.Get(request, "session")
+	if sessionErr != nil {
+		rh.c.Log.Warn().Err(sessionErr).
+			Msg("session cookie could not be decoded; falling back to local-only logout")
+	}
+
+	provider, _ := session.Values["provider"].(string)
 	session.Options.MaxAge = -1
 
 	err := session.Save(request, response)
@@ -2072,7 +2090,84 @@ func (rh *RouteHandler) Logout(response http.ResponseWriter, request *http.Reque
 		return
 	}
 
-	response.WriteHeader(http.StatusOK)
+	zcommon.WriteJSON(response, http.StatusOK, LogoutResponse{
+		EndSessionURL: rh.buildEndSessionURL(provider),
+	})
+}
+
+// buildEndSessionURL returns the OIDC provider's RP-Initiated Logout URL for the given
+// provider name, or an empty string if the provider is not OIDC or does not advertise an
+// `end_session_endpoint`. No `id_token_hint` is used — `client_id` identifies the RP per
+// https://openid.net/specs/openid-connect-rpinitiated-1_0.html#RPLogout. The
+// `post_logout_redirect_uri` is resolved by postLogoutRedirectURI and must be pre-
+// registered with the IdP client, otherwise the IdP will ignore the parameter and keep
+// the user on its own "logged out" page.
+func (rh *RouteHandler) buildEndSessionURL(provider string) string {
+	if provider == "" || !config.IsOpenIDSupported(provider) {
+		return ""
+	}
+
+	relyingParty, ok := rh.c.RelyingParties[provider]
+	if !ok {
+		return ""
+	}
+
+	endSessionURL, err := composeEndSessionURL(
+		relyingParty.GetEndSessionEndpoint(),
+		relyingParty.OAuthConfig().ClientID,
+		postLogoutRedirectURI(rh.c.Config),
+	)
+	if err != nil {
+		rh.c.Log.Error().Err(err).Str("provider", provider).
+			Str("endpoint", relyingParty.GetEndSessionEndpoint()).
+			Msg("failed to parse OIDC end_session_endpoint")
+
+		return ""
+	}
+
+	return endSessionURL
+}
+
+// composeEndSessionURL parses `endpoint` and returns it with `client_id` and, if non-empty,
+// `post_logout_redirect_uri` query parameters merged in. An empty endpoint yields an empty
+// URL with no error. Relative URLs or non-http(s) schemes are rejected to prevent a client
+// from being redirected to an unexpected location when the IdP discovery document is
+// malformed.
+func composeEndSessionURL(endpoint, clientID, redirectURI string) (string, error) {
+	if endpoint == "" {
+		return "", nil
+	}
+
+	logoutURL, err := url.Parse(endpoint)
+	if err != nil {
+		return "", err
+	}
+
+	if !logoutURL.IsAbs() || logoutURL.Host == "" ||
+		(logoutURL.Scheme != "http" && logoutURL.Scheme != "https") {
+		return "", fmt.Errorf("%w: got %q", zerr.ErrInvalidEndSessionEndpoint, endpoint)
+	}
+
+	query := logoutURL.Query()
+	query.Set("client_id", clientID)
+
+	if redirectURI != "" {
+		query.Set("post_logout_redirect_uri", redirectURI)
+	}
+
+	logoutURL.RawQuery = query.Encode()
+
+	return logoutURL.String(), nil
+}
+
+// postLogoutRedirectURI returns the URI where the IdP should send the user after logout.
+// It derives the origin from the server configuration via originFromConfig — the same
+// helper used to build the login redirect_uri — so that the IdP sees matching origins
+// for both login and logout. The resulting URI must be pre-registered with the IdP
+// client; otherwise the IdP will ignore the parameter and keep the user on its own
+// "logged out" page.
+func postLogoutRedirectURI(cfg *config.Config) string {
+	return originFromConfig(cfg) + "/login"
 }
 
 // GithubCodeExchangeCallback is a github Oauth2 CodeExchange callback.
@@ -2091,13 +2186,17 @@ func (rh *RouteHandler) GithubCodeExchangeCallback() rp.CodeExchangeCallback[*oi
 			return
 		}
 
-		callbackUI, err := OAuth2Callback(rh.c, w, r, state, email, groups) //nolint: contextcheck
+		callbackUI, err := OAuth2Callback(rh.c, w, r, state, email, "", groups) //nolint: contextcheck
 		if err != nil {
 			if errors.Is(err, zerr.ErrInvalidStateCookie) {
 				w.WriteHeader(http.StatusUnauthorized)
+
+				return
 			}
 
 			w.WriteHeader(http.StatusInternalServerError)
+
+			return
 		}
 
 		if callbackUI != "" {
@@ -2205,13 +2304,17 @@ func (rh *RouteHandler) OpenIDCodeExchangeCallbackWithProvider(providerName stri
 		slices.Sort(groups)
 		groups = slices.Compact(groups)
 
-		callbackUI, err := OAuth2Callback(rh.c, w, r, state, username, groups)
+		callbackUI, err := OAuth2Callback(rh.c, w, r, state, username, providerName, groups)
 		if err != nil {
 			if errors.Is(err, zerr.ErrInvalidStateCookie) {
 				w.WriteHeader(http.StatusUnauthorized)
+
+				return
 			}
 
 			w.WriteHeader(http.StatusInternalServerError)
+
+			return
 		}
 
 		if callbackUI != "" {
