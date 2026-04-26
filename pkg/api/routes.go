@@ -13,10 +13,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"path"
-	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -52,6 +53,23 @@ import (
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 	"zotregistry.dev/zot/v2/pkg/test/inject"
 )
+
+type blobRange struct {
+	start, length int64
+}
+
+const maxBlobRanges = 16
+
+func (r blobRange) contentRange(size int64) string {
+	return fmt.Sprintf("bytes %d-%d/%d", r.start, r.start+r.length-1, size)
+}
+
+func (r blobRange) mimeHeader(contentType string, size int64) textproto.MIMEHeader {
+	return textproto.MIMEHeader{
+		"Content-Range": {r.contentRange(size)},
+		"Content-Type":  {contentType},
+	}
+}
 
 type RouteHandler struct {
 	c *Controller
@@ -1055,6 +1073,7 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 	}
 
 	digest := godigest.Digest(digestStr)
+	mediaType := blobResponseMediaType(imgStore, name, digest, rh.c.Log)
 
 	userAc, err := reqCtx.UserAcFromContext(request.Context())
 	if err != nil {
@@ -1117,55 +1136,221 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 
 	response.Header().Set("Content-Length", strconv.FormatInt(blen, 10))
 	response.Header().Set("Accept-Ranges", "bytes")
+	response.Header().Set("Content-Type", mediaType)
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
 	response.WriteHeader(http.StatusOK)
 }
 
-/* parseRangeHeader validates the "Range" HTTP header and returns the range. */
-func parseRangeHeader(contentRange string) (int64, int64, error) {
-	/* bytes=<start>- and bytes=<start>-<end> formats are supported */
-	pattern := `bytes=(?P<rangeFrom>\d+)-(?P<rangeTo>\d*$)`
-
-	regex, err := regexp.Compile(pattern)
-	if err != nil {
-		return -1, -1, zerr.ErrParsingHTTPHeader
+/* parseRangeHeader validates the "Range" HTTP header and returns the ranges. */
+func parseRangeHeader(contentRange string, size int64) ([]blobRange, error) {
+	if contentRange == "" {
+		return nil, nil
 	}
 
-	match := regex.FindStringSubmatch(contentRange)
-
-	paramsMap := make(map[string]string)
-
-	for i, name := range regex.SubexpNames() {
-		if i > 0 && i <= len(match) {
-			paramsMap[name] = match[i]
-		}
+	const prefix = "bytes="
+	if !strings.HasPrefix(contentRange, prefix) {
+		return nil, zerr.ErrParsingHTTPHeader
 	}
 
-	var from int64
+	rangeValue := contentRange[len(prefix):]
+	ranges := make([]blobRange, 0, strings.Count(rangeValue, ",")+1)
 
-	to := int64(-1)
+	var noOverlap bool
 
-	rangeFrom := paramsMap["rangeFrom"]
-	if rangeFrom == "" {
-		return -1, -1, zerr.ErrParsingHTTPHeader
-	}
-
-	if from, err = strconv.ParseInt(rangeFrom, 10, 64); err != nil {
-		return -1, -1, zerr.ErrParsingHTTPHeader
-	}
-
-	rangeTo := paramsMap["rangeTo"]
-	if rangeTo != "" {
-		if to, err = strconv.ParseInt(rangeTo, 10, 64); err != nil {
-			return -1, -1, zerr.ErrParsingHTTPHeader
+	for part := range strings.SplitSeq(rangeValue, ",") {
+		part = textproto.TrimString(part)
+		if part == "" {
+			return nil, zerr.ErrParsingHTTPHeader
 		}
 
-		if to < from {
-			return -1, -1, zerr.ErrParsingHTTPHeader
+		rangeFrom, rangeTo, ok := strings.Cut(part, "-")
+		if !ok {
+			return nil, zerr.ErrParsingHTTPHeader
 		}
+
+		rangeFrom = textproto.TrimString(rangeFrom)
+		rangeTo = textproto.TrimString(rangeTo)
+
+		var current blobRange
+
+		if rangeFrom == "" {
+			if rangeTo == "" || rangeTo[0] == '-' {
+				return nil, zerr.ErrParsingHTTPHeader
+			}
+
+			suffixLength, err := strconv.ParseInt(rangeTo, 10, 64)
+			if err != nil {
+				return nil, zerr.ErrParsingHTTPHeader
+			}
+
+			if suffixLength <= 0 {
+				return nil, zerr.ErrBadUploadRange
+			}
+
+			if suffixLength > size {
+				suffixLength = size
+			}
+
+			if suffixLength == 0 {
+				return nil, zerr.ErrBadUploadRange
+			}
+
+			current.start = size - suffixLength
+			current.length = size - current.start
+		} else {
+			start, err := strconv.ParseInt(rangeFrom, 10, 64)
+			if err != nil || start < 0 {
+				return nil, zerr.ErrParsingHTTPHeader
+			}
+
+			if start >= size {
+				noOverlap = true
+
+				continue
+			}
+
+			current.start = start
+
+			if rangeTo == "" {
+				current.length = size - current.start
+			} else {
+				end, err := strconv.ParseInt(rangeTo, 10, 64)
+				if err != nil || current.start > end {
+					return nil, zerr.ErrParsingHTTPHeader
+				}
+
+				if end >= size {
+					end = size - 1
+				}
+
+				current.length = end - current.start + 1
+			}
+		}
+
+		if len(ranges) == maxBlobRanges {
+			return nil, zerr.ErrBadUploadRange
+		}
+
+		ranges = append(ranges, current)
 	}
 
-	return from, to, nil
+	if len(ranges) == 0 {
+		if noOverlap {
+			return nil, zerr.ErrBadUploadRange
+		}
+
+		return nil, zerr.ErrParsingHTTPHeader
+	}
+
+	return ranges, nil
+}
+
+func rangesMIMESize(ranges []blobRange, contentType string, contentSize int64) int64 {
+	var (
+		encodedSize int64
+		sizeWriter  countingWriter
+	)
+
+	multipartWriter := multipart.NewWriter(&sizeWriter)
+	for _, requestedRange := range ranges {
+		_, _ = multipartWriter.CreatePart(requestedRange.mimeHeader(contentType, contentSize))
+		encodedSize += requestedRange.length
+	}
+
+	_ = multipartWriter.Close()
+	encodedSize += int64(sizeWriter)
+
+	return encodedSize
+}
+
+type countingWriter int64
+
+func (writer *countingWriter) Write(p []byte) (int, error) {
+	*writer += countingWriter(len(p))
+
+	return len(p), nil
+}
+
+func writeMultipartByteRanges(
+	ctx context.Context,
+	response http.ResponseWriter,
+	contentType string,
+	size int64,
+	ranges []blobRange,
+	rangeReader func(blobRange) (io.ReadCloser, error),
+	logger log.Logger,
+) {
+	responseLength := rangesMIMESize(ranges, contentType, size)
+	pipeReader, pipeWriter := io.Pipe()
+	multipartWriter := multipart.NewWriter(pipeWriter)
+	writerDone := make(chan struct{})
+
+	response.Header().Set("Content-Length", strconv.FormatInt(responseLength, 10))
+	response.Header().Set("Content-Type", "multipart/byteranges; boundary="+multipartWriter.Boundary())
+	response.WriteHeader(http.StatusPartialContent)
+
+	go func() {
+		defer close(writerDone)
+
+		for _, requestedRange := range ranges {
+			if err := ctx.Err(); err != nil {
+				_ = pipeWriter.CloseWithError(err)
+
+				return
+			}
+
+			partWriter, err := multipartWriter.CreatePart(requestedRange.mimeHeader(contentType, size))
+			if err != nil {
+				_ = pipeWriter.CloseWithError(err)
+
+				return
+			}
+
+			rangeContent, err := rangeReader(requestedRange)
+			if err != nil {
+				_ = pipeWriter.CloseWithError(err)
+
+				return
+			}
+
+			if err := ctx.Err(); err != nil {
+				_ = rangeContent.Close()
+				_ = pipeWriter.CloseWithError(err)
+
+				return
+			}
+
+			_, copyErr := io.CopyN(partWriter, rangeContent, requestedRange.length)
+			closeErr := rangeContent.Close()
+			if copyErr != nil {
+				_ = pipeWriter.CloseWithError(copyErr)
+
+				return
+			}
+
+			if closeErr != nil {
+				_ = pipeWriter.CloseWithError(closeErr)
+
+				return
+			}
+		}
+
+		if err := multipartWriter.Close(); err != nil {
+			_ = pipeWriter.CloseWithError(err)
+
+			return
+		}
+
+		_ = pipeWriter.Close()
+	}()
+
+	if _, err := io.CopyN(response, pipeReader, responseLength); err != nil {
+		_ = pipeReader.CloseWithError(err)
+		_ = pipeWriter.CloseWithError(err)
+		logger.Error().Err(err).Msg("failed to copy data into http response")
+	}
+
+	<-writerDone
 }
 
 // GetBlob godoc
@@ -1200,14 +1385,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 	digest := godigest.Digest(digestStr)
 
-	mediaType := request.Header.Get("Accept")
-
-	/* content range is supported for resumbale pulls */
-	partial := false
-
-	var from, to int64
-
-	var err error
+	mediaType := blobResponseMediaType(imgStore, name, digest, rh.c.Log)
 
 	contentRange := request.Header.Get("Range")
 
@@ -1218,25 +1396,81 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 		return
 	}
 
+	var (
+		ranges   []blobRange
+		blobSize int64
+		err      error
+	)
+
 	if contentRange != "" {
-		from, to, err = parseRangeHeader(contentRange)
+		exists, size, checkErr := imgStore.CheckBlob(name, digest)
+		if checkErr != nil {
+			rh.c.Log.Error().Err(checkErr).Msg("unexpected error")
+			response.WriteHeader(http.StatusInternalServerError)
+
+			return
+		}
+
+		if !exists {
+			details := zerr.GetDetails(zerr.ErrBlobNotFound)
+			details["digest"] = digest.String()
+			e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
+
+			return
+		}
+
+		blobSize = size
+		ranges, err = parseRangeHeader(contentRange, size)
 		if err != nil {
 			response.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
 
 			return
 		}
+	}
 
-		partial = true
+	if len(ranges) > 1 {
+		writeMultipartByteRanges(
+			request.Context(),
+			response,
+			mediaType,
+			blobSize,
+			ranges,
+			func(requestedRange blobRange) (io.ReadCloser, error) {
+				reader, _, _, err := imgStore.GetBlobPartial(
+					name,
+					digest,
+					mediaType,
+					requestedRange.start,
+					requestedRange.start+requestedRange.length-1,
+				)
+				if err != nil {
+					return nil, err
+				}
+
+				return reader, nil
+			},
+			rh.c.Log,
+		)
+
+		return
 	}
 
 	var repo io.ReadCloser
 
 	var blen, bsize int64
 
-	if partial {
-		repo, blen, bsize, err = imgStore.GetBlobPartial(name, digest, mediaType, from, to)
-	} else {
+	if len(ranges) == 0 {
 		repo, blen, err = imgStore.GetBlob(name, digest, mediaType)
+	} else if len(ranges) == 1 {
+		singleRange := ranges[0]
+		repo, blen, bsize, err = imgStore.GetBlobPartial(
+			name,
+			digest,
+			mediaType,
+			singleRange.start,
+			singleRange.start+singleRange.length-1,
+		)
 	}
 
 	if err != nil {
@@ -1267,16 +1501,29 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 	status := http.StatusOK
 
-	if partial {
+	if len(ranges) == 1 {
 		status = http.StatusPartialContent
-
-		response.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", from, from+blen-1, bsize))
+		response.Header().Set("Content-Range", ranges[0].contentRange(bsize))
 	} else {
 		response.Header().Set(constants.DistContentDigestKey, digest.String())
 	}
 
 	// return the blob data
 	WriteDataFromReader(response, status, blen, mediaType, repo, rh.c.Log)
+}
+
+func blobResponseMediaType(
+	imgStore storageTypes.ImageStore,
+	repo string,
+	digest godigest.Digest,
+	logger log.Logger,
+) string {
+	desc, err := storageCommon.GetBlobDescriptorFromRepo(imgStore, repo, digest, logger)
+	if err == nil && desc.MediaType != "" {
+		return desc.MediaType
+	}
+
+	return constants.BinaryMediaType
 }
 
 // DeleteBlob godoc
