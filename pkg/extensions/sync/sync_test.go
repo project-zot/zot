@@ -1720,7 +1720,16 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 
 				// trigger config blob upstream error
 				// remove synced image
-				err = os.RemoveAll(path.Join(destDir, indexRepoName))
+				dstRepoPath := path.Join(destDir, indexRepoName)
+				for range 5 {
+					err = os.RemoveAll(dstRepoPath)
+					if err == nil {
+						break
+					}
+
+					time.Sleep(100 * time.Millisecond)
+				}
+
 				So(err, ShouldBeNil)
 
 				configBlobPath := path.Join(srcDir, indexRepoName, "blobs/sha256", configBlobDigest.Encoded())
