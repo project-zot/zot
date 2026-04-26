@@ -87,8 +87,8 @@ func TestServerUsage(t *testing.T) {
 	})
 }
 
-func TestLoadConfigurationDoesNotInjectHTTPTimeoutDefaults(t *testing.T) {
-	Convey("load config keeps HTTP read/write timeouts unset unless explicitly configured", t, func() {
+func TestLoadConfigurationInjectsHTTPTimeoutDefaults(t *testing.T) {
+	Convey("load config sets HTTP read/write timeout defaults when not explicitly configured", t, func() {
 		content := `{
 			"storage": {"rootDirectory": "/tmp/zot"},
 			"http": {"address": "127.0.0.1", "port": "8080"}
@@ -98,15 +98,11 @@ func TestLoadConfigurationDoesNotInjectHTTPTimeoutDefaults(t *testing.T) {
 		cfg := config.New()
 
 		err := cli.LoadConfiguration(cfg, tmpfile)
-		readTimeout, readTimeoutSet := cfg.GetHTTPReadTimeoutWithSet()
-		writeTimeout, writeTimeoutSet := cfg.GetHTTPWriteTimeoutWithSet()
 		So(err, ShouldBeNil)
-		So(cfg.HTTP.ReadTimeout, ShouldBeNil)
-		So(cfg.HTTP.WriteTimeout, ShouldBeNil)
-		So(readTimeoutSet, ShouldBeFalse)
-		So(writeTimeoutSet, ShouldBeFalse)
-		So(readTimeout, ShouldEqual, 0)
-		So(writeTimeout, ShouldEqual, 0)
+		So(cfg.HTTP.ReadTimeout, ShouldNotBeNil)
+		So(cfg.HTTP.WriteTimeout, ShouldNotBeNil)
+		So(cfg.GetHTTPReadTimeout(), ShouldEqual, 60*time.Second)
+		So(cfg.GetHTTPWriteTimeout(), ShouldEqual, 60*time.Second)
 	})
 
 	Convey("load config preserves explicit HTTP read/write timeout values", t, func() {
@@ -124,15 +120,11 @@ func TestLoadConfigurationDoesNotInjectHTTPTimeoutDefaults(t *testing.T) {
 		cfg := config.New()
 
 		err := cli.LoadConfiguration(cfg, tmpfile)
-		readTimeout, readTimeoutSet := cfg.GetHTTPReadTimeoutWithSet()
-		writeTimeout, writeTimeoutSet := cfg.GetHTTPWriteTimeoutWithSet()
 		So(err, ShouldBeNil)
 		So(cfg.HTTP.ReadTimeout, ShouldNotBeNil)
 		So(cfg.HTTP.WriteTimeout, ShouldNotBeNil)
-		So(readTimeoutSet, ShouldBeTrue)
-		So(writeTimeoutSet, ShouldBeTrue)
-		So(readTimeout, ShouldEqual, 45*time.Second)
-		So(writeTimeout, ShouldEqual, time.Minute)
+		So(cfg.GetHTTPReadTimeout(), ShouldEqual, 45*time.Second)
+		So(cfg.GetHTTPWriteTimeout(), ShouldEqual, time.Minute)
 	})
 }
 

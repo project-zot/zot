@@ -34,10 +34,8 @@ import (
 )
 
 const (
-	idleTimeout         = 120 * time.Second
-	readHeaderTimeout   = 5 * time.Second
-	defaultReadTimeout  = 60 * time.Second
-	defaultWriteTimeout = 60 * time.Second
+	idleTimeout       = 120 * time.Second
+	readHeaderTimeout = 5 * time.Second
 )
 
 type Controller struct {
@@ -174,21 +172,12 @@ func (c *Controller) Run() error {
 
 	port := c.Config.GetHTTPPort()
 	addr := fmt.Sprintf("%s:%s", c.Config.GetHTTPAddress(), port)
-	readTimeout, readTimeoutSet := c.Config.GetHTTPReadTimeoutWithSet()
-	if !readTimeoutSet {
-		readTimeout = defaultReadTimeout
-	}
-
-	writeTimeout, writeTimeoutSet := c.Config.GetHTTPWriteTimeoutWithSet()
-	if !writeTimeoutSet {
-		writeTimeout = defaultWriteTimeout
-	}
 
 	server := &http.Server{
 		Addr:              addr,
 		Handler:           c.Router,
-		ReadTimeout:       readTimeout,
-		WriteTimeout:      writeTimeout,
+		ReadTimeout:       c.Config.GetHTTPReadTimeout(),
+		WriteTimeout:      c.Config.GetHTTPWriteTimeout(),
 		IdleTimeout:       idleTimeout,
 		ReadHeaderTimeout: readHeaderTimeout,
 	}

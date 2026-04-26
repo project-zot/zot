@@ -33,6 +33,11 @@ import (
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 )
 
+const (
+	defaultReadTimeout  = 60 * time.Second
+	defaultWriteTimeout = 60 * time.Second
+)
+
 // metadataConfig reports metadata after parsing, which we use to track
 // errors.
 func metadataConfig(md *mapstructure.Metadata) viper.DecoderConfigOption {
@@ -1061,6 +1066,16 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, logge
 		}
 
 		config.Storage.SubPaths[name] = storageConfig
+	}
+
+	if config.HTTP.ReadTimeout == nil {
+		readTimeout := defaultReadTimeout
+		config.HTTP.ReadTimeout = &readTimeout
+	}
+
+	if config.HTTP.WriteTimeout == nil {
+		writeTimeout := defaultWriteTimeout
+		config.HTTP.WriteTimeout = &writeTimeout
 	}
 
 	// if OpenID authentication is enabled,

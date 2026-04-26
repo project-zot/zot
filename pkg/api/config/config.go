@@ -1129,36 +1129,36 @@ func (c *Config) GetHTTPPort() string {
 	return c.HTTP.Port
 }
 
-// GetHTTPReadTimeoutWithSet returns the configured HTTP server read timeout and whether it was explicitly set.
-func (c *Config) GetHTTPReadTimeoutWithSet() (time.Duration, bool) {
+// GetHTTPReadTimeout returns the configured HTTP server read timeout.
+func (c *Config) GetHTTPReadTimeout() time.Duration {
 	if c == nil {
-		return 0, false
+		return 0
 	}
 
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	if c.HTTP.ReadTimeout == nil {
-		return 0, false
+		return 0
 	}
 
-	return *c.HTTP.ReadTimeout, true
+	return *c.HTTP.ReadTimeout
 }
 
-// GetHTTPWriteTimeoutWithSet returns the configured HTTP server write timeout and whether it was explicitly set.
-func (c *Config) GetHTTPWriteTimeoutWithSet() (time.Duration, bool) {
+// GetHTTPWriteTimeout returns the configured HTTP server write timeout.
+func (c *Config) GetHTTPWriteTimeout() time.Duration {
 	if c == nil {
-		return 0, false
+		return 0
 	}
 
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	if c.HTTP.WriteTimeout == nil {
-		return 0, false
+		return 0
 	}
 
-	return *c.HTTP.WriteTimeout, true
+	return *c.HTTP.WriteTimeout
 }
 
 // GetAllowOrigin returns the CORS allow origin configuration.
