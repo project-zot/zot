@@ -29,6 +29,13 @@ type Collector struct {
 	invalidChars *regexp.Regexp
 }
 
+func (zc *Collector) WithHeaders(headers http.Header) *Collector {
+	clone := *zc
+	clone.Client = zc.Client.WithHeaders(headers)
+
+	return &clone
+}
+
 // Describe implements prometheus.Collector interface.
 func (zc Collector) Describe(ch chan<- *prometheus.Desc) {
 	for _, metricDescription := range zc.MetricsDesc {
@@ -169,20 +176,43 @@ func GetCollector(c *Controller) *Collector {
 	}
 }
 
+func metricsHeaders(headers http.Header) http.Header {
+	forwardedHeaders := make(http.Header)
+
+	for _, authHeader := range headers.Values("Authorization") {
+		forwardedHeaders.Add("Authorization", authHeader)
+	}
+
+	return forwardedHeaders
+}
+
+func newMetricsHandler(collector *Collector) http.Handler {
+	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		registry := prometheus.NewRegistry()
+		if err := registry.Register(collector.WithHeaders(metricsHeaders(request.Header))); err != nil {
+			http.Error(response, err.Error(), http.StatusInternalServerError)
+
+			return
+		}
+
+		promhttp.HandlerFor(prometheus.Gatherers{prometheus.DefaultGatherer, registry}, promhttp.HandlerOpts{}).ServeHTTP(
+			response, request,
+		)
+	})
+}
+
 func runExporter(c *Controller) {
 	exporterAddr := ":" + c.Config.Exporter.Port
+	router := http.NewServeMux()
+	collector := GetCollector(c)
 	server := &http.Server{
 		Addr:              exporterAddr,
+		Handler:           router,
 		IdleTimeout:       idleTimeout,
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 
-	err := prometheus.Register(GetCollector(c))
-	if err != nil {
-		c.Log.Debug().Err(err).Msg("ignoring error")
-	}
-
-	http.Handle(c.Config.Exporter.Metrics.Path, promhttp.Handler())
+	router.Handle(c.Config.Exporter.Metrics.Path, newMetricsHandler(collector))
 	c.Log.Info().Str("addr", exporterAddr).
 		Str("path", c.Config.Exporter.Metrics.Path).
 		Msg("exporter listening")
