@@ -104,9 +104,10 @@ func (driver *Driver) SameFile(path1, path2 string) bool {
 	return false
 }
 
-// Link puts an empty file that will act like a link between the original file and deduped one.
-// Because s3 doesn't support symlinks, wherever the storage will encounter an empty file, it will get the original one
-// from cache.
+// Link records a dedupe association between src and dest in the storage driver.
+// In S3, since symlinks are not supported, this is a no-op.
+// The storage driver will handle deduplication by looking up the original blob
+// from cache when a non-existent deduped blob path is accessed.
 func (driver *Driver) Link(src, dest string) error {
-	return driver.store.PutContent(context.Background(), dest, []byte{})
+	return nil
 }
