@@ -42,6 +42,9 @@ type Options struct {
 	// Defaults to 30 seconds if not specified
 	MaxSchedulerDelay time.Duration
 
+	// TimeWindow limits scheduled garbage collection to a configured local time range.
+	TimeWindow TimeWindow
+
 	ImageRetention config.ImageRetention
 }
 
@@ -84,6 +87,7 @@ func (gc GarbageCollect) CleanImageStorePeriodically(interval time.Duration, sch
 		gc:             gc,
 		processedRepos: processedRepos,
 		maxDelay:       maxDelay,
+		timeWindow:     gc.opts.TimeWindow,
 	}
 
 	sch.SubmitGenerator(generator, interval, scheduler.MediumPriority)
@@ -871,6 +875,7 @@ type GCTaskGenerator struct {
 	done           bool
 	rand           *rand.Rand
 	maxDelay       time.Duration
+	timeWindow     TimeWindow
 }
 
 func (gen *GCTaskGenerator) getRandomDelay() time.Duration {
@@ -919,7 +924,15 @@ func (gen *GCTaskGenerator) IsDone() bool {
 }
 
 func (gen *GCTaskGenerator) IsReady() bool {
-	return time.Now().After(gen.nextRun)
+	return gen.isReadyAt(time.Now())
+}
+
+func (gen *GCTaskGenerator) isReadyAt(now time.Time) bool {
+	if !gen.timeWindow.Contains(now) {
+		return false
+	}
+
+	return now.After(gen.nextRun)
 }
 
 func (gen *GCTaskGenerator) Reset() {

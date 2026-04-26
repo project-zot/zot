@@ -91,6 +91,14 @@ Orphan blobs are removed if they are older than gcDelay.
         "gcDelay": "2h"
 ```
 
+Periodic garbage collection can also be limited to a local time window to avoid
+running during active usage hours. The window accepts `HH.MM - HH.MM` or
+`HH:MM - HH:MM` and can cross midnight.
+
+```
+        "gcTimeWindow": "01.00 - 08.00"
+```
+
 To limit the maximum number of repositories that can be created, set:
 
 ```

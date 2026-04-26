@@ -602,13 +602,20 @@ func RunGCTasks(conf *config.Config, storeController storage.StoreController, me
 	// Enable running garbage-collect periodically for DefaultStore
 	storageConfig := conf.CopyStorageConfig()
 	if storageConfig.GC {
-		gc := gc.NewGarbageCollect(storeController.DefaultStore, metaDB, gc.Options{
-			Delay:             storageConfig.GCDelay,
-			ImageRetention:    storageConfig.Retention,
-			MaxSchedulerDelay: storageConfig.GCMaxSchedulerDelay,
-		}, audit, logger)
+		gcTimeWindow, err := gc.ParseTimeWindow(storageConfig.GCTimeWindow)
+		if err != nil {
+			logger.Error().Err(err).Str("gcTimeWindow", storageConfig.GCTimeWindow).
+				Msg("invalid garbage-collect time window, skipping scheduled garbage collection")
+		} else {
+			garbageCollect := gc.NewGarbageCollect(storeController.DefaultStore, metaDB, gc.Options{
+				Delay:             storageConfig.GCDelay,
+				ImageRetention:    storageConfig.Retention,
+				MaxSchedulerDelay: storageConfig.GCMaxSchedulerDelay,
+				TimeWindow:        gcTimeWindow,
+			}, audit, logger)
 
-		gc.CleanImageStorePeriodically(storageConfig.GCInterval, taskScheduler)
+			garbageCollect.CleanImageStorePeriodically(storageConfig.GCInterval, taskScheduler)
+		}
 	}
 
 	// Handle subpaths
@@ -616,14 +623,23 @@ func RunGCTasks(conf *config.Config, storeController storage.StoreController, me
 		for route, subStorageConfig := range storageConfig.SubPaths {
 			// Enable running garbage-collect periodically for subImageStore
 			if subStorageConfig.GC {
-				gc := gc.NewGarbageCollect(storeController.SubStore[route], metaDB,
+				gcTimeWindow, err := gc.ParseTimeWindow(subStorageConfig.GCTimeWindow)
+				if err != nil {
+					logger.Error().Err(err).Str("subPath", route).Str("gcTimeWindow", subStorageConfig.GCTimeWindow).
+						Msg("invalid garbage-collect time window, skipping scheduled garbage collection")
+
+					continue
+				}
+
+				garbageCollect := gc.NewGarbageCollect(storeController.SubStore[route], metaDB,
 					gc.Options{
 						Delay:             subStorageConfig.GCDelay,
 						ImageRetention:    subStorageConfig.Retention,
 						MaxSchedulerDelay: subStorageConfig.GCMaxSchedulerDelay,
+						TimeWindow:        gcTimeWindow,
 					}, audit, logger)
 
-				gc.CleanImageStorePeriodically(subStorageConfig.GCInterval, taskScheduler)
+				garbageCollect.CleanImageStorePeriodically(subStorageConfig.GCInterval, taskScheduler)
 			}
 		}
 	}
