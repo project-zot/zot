@@ -17,6 +17,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -140,6 +141,50 @@ func TestNewMetricsClientFallbackKeepsTLSHardening(t *testing.T) {
 
 	if transport.TLSClientConfig.MinVersion != tls.VersionTLS12 {
 		t.Fatalf("expected fallback MinVersion TLS1.2, got: %d", transport.TLSClientConfig.MinVersion)
+	}
+}
+
+func TestMetricsClientForwardsHeadersAndRejectsNonSuccessStatus(t *testing.T) {
+	t.Parallel()
+
+	const authorizationHeader = "Basic b2JzZXJ2YWJpbGl0eTpwYXNzd29yZA=="
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != authorizationHeader {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"errors":[{"code":"UNAUTHORIZED"}]}`))
+
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"Counters":[],"Gauges":[],"Summaries":[],"Histograms":[]}`))
+	}))
+	defer server.Close()
+
+	client := NewMetricsClient(
+		&MetricsConfig{Address: server.URL, HTTPClient: server.Client()},
+		log.NewLogger("debug", ""),
+	)
+
+	_, err := client.GetMetrics()
+	if err == nil {
+		t.Fatal("expected unauthenticated scrape to fail")
+	}
+
+	if !strings.Contains(err.Error(), "unexpected status code 401") {
+		t.Fatalf("expected 401 status error, got: %v", err)
+	}
+
+	authorizedClient := client.WithHeaders(http.Header{"Authorization": []string{authorizationHeader}})
+
+	metrics, err := authorizedClient.GetMetrics()
+	if err != nil {
+		t.Fatalf("expected scrape with forwarded authorization header to succeed, got: %v", err)
+	}
+
+	if metrics == nil {
+		t.Fatal("expected metrics response")
 	}
 }
 
