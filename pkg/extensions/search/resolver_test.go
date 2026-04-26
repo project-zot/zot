@@ -2248,8 +2248,6 @@ func TestFormatImageInputForError(t *testing.T) {
 		}
 
 		for _, testCase := range testCases {
-			testCase := testCase
-
 			Convey(testCase.name, func() {
 				So(formatImageInputForError(testCase.image), ShouldEqual, testCase.expected)
 			})
