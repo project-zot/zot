@@ -320,9 +320,9 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte, _ []string) (godigest.Digest,
-						godigest.Digest, error,
-					) {
+					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string,
+						body []byte, extraTags []string,
+					) (godigest.Digest, godigest.Digest, error) {
 						return "", "", zerr.ErrRepoNotFound
 					},
 				})
@@ -335,9 +335,9 @@ func TestRoutes(t *testing.T) {
 				},
 
 				&mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte, _ []string) (godigest.Digest,
-						godigest.Digest, error,
-					) {
+					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string,
+						body []byte, extraTags []string,
+					) (godigest.Digest, godigest.Digest, error) {
 						return "", "", zerr.ErrManifestNotFound
 					},
 				})
@@ -349,9 +349,9 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte, _ []string) (godigest.Digest,
-						godigest.Digest, error,
-					) {
+					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string,
+						body []byte, extraTags []string,
+					) (godigest.Digest, godigest.Digest, error) {
 						return "", "", zerr.ErrBadManifest
 					},
 				})
@@ -363,9 +363,9 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte, _ []string) (godigest.Digest,
-						godigest.Digest, error,
-					) {
+					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string,
+						body []byte, extraTags []string,
+					) (godigest.Digest, godigest.Digest, error) {
 						return "", "", zerr.ErrBlobNotFound
 					},
 				})
@@ -378,9 +378,9 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte, _ []string) (godigest.Digest,
-						godigest.Digest, error,
-					) {
+					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string,
+						body []byte, extraTags []string,
+					) (godigest.Digest, godigest.Digest, error) {
 						return "", "", zerr.ErrRepoBadVersion
 					},
 				})
@@ -412,9 +412,9 @@ func TestRoutes(t *testing.T) {
 			digestRef := manifestDigest.String()
 
 			ism := &mocks.MockedImageStore{
-				PutImageManifestFn: func(repo, reference, mediaType string, body []byte, extraTags []string) (
-					godigest.Digest, godigest.Digest, error,
-				) {
+				PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string,
+					body []byte, extraTags []string,
+				) (godigest.Digest, godigest.Digest, error) {
 					So(extraTags, ShouldResemble, []string{"meta-a", "meta-b"})
 					So(string(body), ShouldEqual, string(mcontent))
 
@@ -509,7 +509,7 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					DeleteImageManifestFn: func(repo, reference string, detectCollision bool) error {
+					DeleteImageManifestFn: func(ctx context.Context, repo, reference string, detectCollision bool) error {
 						return zerr.ErrRepoNotFound
 					},
 				},
@@ -524,7 +524,7 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					DeleteImageManifestFn: func(repo, reference string, detectCollision bool) error {
+					DeleteImageManifestFn: func(ctx context.Context, repo, reference string, detectCollision bool) error {
 						return zerr.ErrManifestNotFound
 					},
 				},
@@ -539,7 +539,7 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					DeleteImageManifestFn: func(repo, reference string, detectCollision bool) error {
+					DeleteImageManifestFn: func(ctx context.Context, repo, reference string, detectCollision bool) error {
 						return ErrUnexpectedError
 					},
 				},
@@ -554,7 +554,7 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					DeleteImageManifestFn: func(repo, reference string, detectCollision bool) error {
+					DeleteImageManifestFn: func(ctx context.Context, repo, reference string, detectCollision bool) error {
 						return zerr.ErrBadManifest
 					},
 				},

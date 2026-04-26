@@ -90,7 +90,7 @@ func rollbackDigestManifestTags(ctx context.Context, repo string, tags, appliedM
 
 	for i := len(tags) - 1; i >= 0; i-- {
 		refTag := tags[i]
-		if delErr := imgStore.DeleteImageManifest(repo, refTag, false); delErr != nil &&
+		if delErr := imgStore.DeleteImageManifest(context.Background(), repo, refTag, false); delErr != nil &&
 			!errors.Is(delErr, zerr.ErrManifestNotFound) {
 			log.Error().Err(delErr).Str("repository", repo).Str("tag", refTag).
 				Msg("multi-tag digest push: rollback DeleteImageManifest failed")
@@ -125,8 +125,8 @@ func rollbackDigestManifestTags(ctx context.Context, repo string, tags, appliedM
 			continue
 		}
 
-		if _, _, putErr := imgStore.PutImageManifest(repo, prior.digest.String(), prior.mediaType, restoreBody,
-			[]string{refTag}); putErr != nil {
+		if _, _, putErr := imgStore.PutImageManifest(context.Background(), repo, prior.digest.String(), prior.mediaType,
+			restoreBody, []string{refTag}); putErr != nil {
 			log.Error().Err(putErr).Str("repository", repo).Str("tag", refTag).
 				Msg("multi-tag digest push: rollback restore prior manifest in store failed")
 
@@ -158,7 +158,7 @@ func OnUpdateManifest(ctx context.Context, repo, reference, mediaType string, di
 	if err != nil {
 		log.Info().Str("tag", reference).Str("repository", repo).Msg("uploading image meta was unsuccessful for tag in repo")
 
-		if err := imgStore.DeleteImageManifest(repo, reference, false); err != nil {
+		if err := imgStore.DeleteImageManifest(ctx, repo, reference, false); err != nil {
 			log.Error().Err(err).Str("reference", reference).Str("repository", repo).
 				Msg("failed to remove image manifest in repo")
 
@@ -250,7 +250,7 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 			log.Info().Str("component", "metadb").Msg("restoring image store")
 
 			// restore image store
-			_, _, err := imgStore.PutImageManifest(repo, reference, mediaType, manifestBlob, nil)
+			_, _, err := imgStore.PutImageManifest(context.Background(), repo, reference, mediaType, manifestBlob, nil)
 			if err != nil {
 				log.Error().Err(err).Str("component", "metadb").
 					Msg("failed to restore manifest to image store, database is not consistent")
