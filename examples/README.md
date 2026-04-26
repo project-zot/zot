@@ -14,11 +14,25 @@ zot verify <config-file>
 
 ```
 
+The complete machine-readable configuration reference can be generated from the
+same binary:
+
+```
+zot schema > zot-config-schema.json
+
+```
+
+The generated schema is JSON Schema draft 7. It is built from the same
+configuration model used by `zot verify`, so it is the preferred reference for
+editor integration, CI validation, and checking accepted field names.
+
 Examples of working configurations for various use cases are available [here](../examples/)
 
 # Configuration Parameters
 
 - [Configuration Parameters](#configuration-parameters)
+  - [Generated JSON Schema](#generated-json-schema)
+  - [Top-level Configuration Map](#top-level-configuration-map)
   - [Network](#network)
   - [Storage](#storage)
   - [Authentication](#authentication)
@@ -34,6 +48,36 @@ Examples of working configurations for various use cases are available [here](..
   - [Sync](#sync)
   - [Search and CVE scanning (Trivy)](#search-and-cve-scanning-trivy)
 
+## Generated JSON Schema
+
+Use `zot schema` when you need a complete field-level reference instead of a
+scenario-specific example file.
+
+```
+zot schema > zot-config-schema.json
+zot verify config.json
+
+```
+
+The schema output includes nested options for storage drivers, authentication,
+authorization, extensions, sync, events, retention, and clustering. It also
+includes supported field aliases where the config loader accepts them.
+
+## Top-level Configuration Map
+
+| Key | Type | Purpose |
+| --- | --- | --- |
+| `distSpecVersion` | string | Distribution spec version declared by the config. zot warns if it differs from the supported version and then uses the supported version. |
+| `storage` | object | Registry storage root, dedupe, garbage collection, retention, storage drivers, cache drivers, and repository subpaths. |
+| `http` | object | Listener address and port, TLS, authentication, authorization, CORS, rate limits, realm, and client compatibility settings. |
+| `log` | object | Log level, primary log output, and audit log output. |
+| `extensions` | object | Optional sync, search, UI, metrics, scrub, lint, image trust, API key, management, and event-recorder settings. |
+| `scheduler` | object | Background task scheduler settings such as worker count. |
+| `cluster` | object | Scale-out members, cluster hash key, and cluster TLS settings. |
+| `goVersion`, `commit`, `releaseTag`, `binaryType` | string | Build metadata fields populated by zot; they are not normally set in user configuration files. |
+
+The sections below describe the most common settings and point to working
+example files for complete configurations.
 
 ## Network
 
@@ -1189,4 +1233,3 @@ To set those options explicitly (for example to mirror standalone Trivy’s `--v
 - [config-cve-trivy.json](config-cve-trivy.json) — shows optional `dbRepository`, `javaDBRepository`, and `vulnSeveritySources`.
 
 `vulnSeveritySources` is a list of source names in priority order (for example `auto`, `nvd`, or vendor IDs such as `redhat`, `alpine`). If omitted, zot defaults it to `["auto"]`, consistent with the Trivy CLI. See [Trivy: severity selection](https://trivy.dev/docs/latest/scanner/vulnerability/#severity-selection).
-
