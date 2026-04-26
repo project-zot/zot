@@ -284,27 +284,30 @@ func getCVEDiffListForImages(
 	excludedCVE string,
 	log log.Logger, //nolint:unparam // may be used by devs for debugging
 ) (*gql_generated.CVEDiffResult, error) {
-	minuend, err := resolveImageData(ctx, minuend, metaDB)
+	resolvedMinuend, err := resolveImageData(ctx, minuend, metaDB)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("minuend image %s: %w", formatImageInputForError(minuend), err)
 	}
 
+	minuend = resolvedMinuend
 	resultMinuend := getImageIdentifier(minuend)
 	resultSubtrahend := gql_generated.ImageIdentifier{}
 
 	if subtrahend.Repo != "" {
-		subtrahend, err = resolveImageData(ctx, subtrahend, metaDB)
+		resolvedSubtrahend, err := resolveImageData(ctx, subtrahend, metaDB)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("subtrahend image %s: %w", formatImageInputForError(subtrahend), err)
 		}
 
+		subtrahend = resolvedSubtrahend
 		resultSubtrahend = getImageIdentifier(subtrahend)
 	} else {
 		// search for base images
 		// get minuend image meta
 		minuendSummary, err := metaDB.GetImageMeta(godigest.Digest(deref(minuend.Digest, "")))
 		if err != nil {
-			return &gql_generated.CVEDiffResult{}, err
+			return &gql_generated.CVEDiffResult{},
+				fmt.Errorf("minuend image %s: %w", formatImageInputForError(minuend), err)
 		}
 
 		// get the base images for the minuend
@@ -493,6 +496,25 @@ func resolveImageData(ctx context.Context, imageInput gql_generated.ImageInput, 
 	}
 
 	return imageInput, nil
+}
+
+func formatImageInputForError(image gql_generated.ImageInput) string {
+	name := image.Repo
+	if name == "" {
+		name = "<empty>"
+	}
+
+	if image.Tag != "" {
+		name += ":" + image.Tag
+	} else if dderef(image.Digest) != "" {
+		name += "@" + dderef(image.Digest)
+	}
+
+	if isPlatformSpecified(image.Platform) {
+		name += fmt.Sprintf(" (%s/%s)", dderef(image.Platform.Os), dderef(image.Platform.Arch))
+	}
+
+	return name
 }
 
 func isPlatformSpecified(platformInput *gql_generated.PlatformInput) bool {

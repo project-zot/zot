@@ -2200,6 +2200,61 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 	})
 }
 
+func TestFormatImageInputForError(t *testing.T) {
+	Convey("Format image input for errors", t, func() {
+		testCases := []struct {
+			name     string
+			image    gql_generated.ImageInput
+			expected string
+		}{
+			{
+				name:     "empty image",
+				image:    gql_generated.ImageInput{},
+				expected: "<empty>",
+			},
+			{
+				name:     "tag reference",
+				image:    gql_generated.ImageInput{Repo: "repo", Tag: "tag"},
+				expected: "repo:tag",
+			},
+			{
+				name:     "digest reference",
+				image:    gql_generated.ImageInput{Repo: "repo", Digest: ref("sha256:123")},
+				expected: "repo@sha256:123",
+			},
+			{
+				name: "tag reference with platform",
+				image: gql_generated.ImageInput{
+					Repo: "repo",
+					Tag:  "tag",
+					Platform: &gql_generated.PlatformInput{
+						Os:   ref("linux"),
+						Arch: ref("amd64"),
+					},
+				},
+				expected: "repo:tag (linux/amd64)",
+			},
+			{
+				name: "partial platform is omitted",
+				image: gql_generated.ImageInput{
+					Repo: "repo",
+					Tag:  "tag",
+					Platform: &gql_generated.PlatformInput{
+						Os: ref("linux"),
+					},
+				},
+				expected: "repo:tag",
+			},
+		}
+
+		for _, testCase := range testCases {
+			Convey(testCase.name, func() {
+				So(formatImageInputForError(testCase.image), ShouldEqual, testCase.expected)
+			})
+		}
+	})
+}
+
 func TestMockedDerivedImageList(t *testing.T) {
 	Convey("MetaDB FilterTags error", t, func() {
 		log := log.NewLogger("debug", "/dev/null")

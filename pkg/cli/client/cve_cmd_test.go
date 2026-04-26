@@ -386,6 +386,7 @@ func TestCVEDiffList(t *testing.T) {
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
 		str = strings.TrimSpace(str)
+		So(str, ShouldContainSubstring, "CVEs in image repo:image that are not in image repo:base-image")
 		So(str, ShouldContainSubstring, "CVE3")
 		So(str, ShouldNotContainSubstring, "CVE1")
 		So(str, ShouldNotContainSubstring, "CVE2")
@@ -405,6 +406,22 @@ func TestCVEDiffList(t *testing.T) {
 			args := []string{"diff", "bad-input", "repo:base-image", "--config", "cvetest"}
 			cveCmd.SetArgs(args)
 			So(cveCmd.Execute(), ShouldNotBeNil)
+		})
+		Convey("Minuend image not found includes image name", func() {
+			args := []string{"diff", "repo:missing-image", "repo:base-image", "--config", "cvetest"}
+			cveCmd.SetArgs(args)
+			err := cveCmd.Execute()
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "minuend image repo:missing-image")
+			So(err.Error(), ShouldContainSubstring, "image not found")
+		})
+		Convey("Subtrahend image not found includes image name", func() {
+			args := []string{"diff", "repo:image", "repo:missing-base", "--config", "cvetest"}
+			cveCmd.SetArgs(args)
+			err := cveCmd.Execute()
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "subtrahend image repo:missing-base")
+			So(err.Error(), ShouldContainSubstring, "image not found")
 		})
 		Convey("Second input is arch but not enough args", func() {
 			args := []string{"diff", "repo:base-image", "linux/amd64", "--config", "cvetest"}

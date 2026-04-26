@@ -561,6 +561,58 @@ func TestSearchCVEForImageGQL(t *testing.T) {
 	})
 }
 
+func TestFormatImageIdentifier(t *testing.T) {
+	Convey("Format image identifier", t, func() {
+		testCases := []struct {
+			name     string
+			image    ImageIdentifier
+			expected string
+		}{
+			{
+				name:     "unknown image",
+				image:    ImageIdentifier{},
+				expected: "unknown image",
+			},
+			{
+				name:     "tag reference",
+				image:    ImageIdentifier{Repo: "repo", Tag: "tag"},
+				expected: "repo:tag",
+			},
+			{
+				name:     "digest reference",
+				image:    ImageIdentifier{Repo: "repo", Digest: "sha256:123"},
+				expected: "repo@sha256:123",
+			},
+			{
+				name: "tag reference with platform",
+				image: ImageIdentifier{
+					Repo:     "repo",
+					Tag:      "tag",
+					Platform: &osArch{Os: "linux", Arch: "amd64"},
+				},
+				expected: "repo:tag (linux/amd64)",
+			},
+			{
+				name: "partial platform is omitted",
+				image: ImageIdentifier{
+					Repo:     "repo",
+					Tag:      "tag",
+					Platform: &osArch{Os: "linux"},
+				},
+				expected: "repo:tag",
+			},
+		}
+
+		for _, testCase := range testCases {
+			testCase := testCase
+
+			Convey(testCase.name, func() {
+				So(formatImageIdentifier(testCase.image), ShouldEqual, testCase.expected)
+			})
+		}
+	})
+}
+
 func TestSearchImagesByCVEIDGQL(t *testing.T) {
 	Convey("SearchImagesByCVEIDGQL", t, func() {
 		buff := bytes.NewBufferString("")

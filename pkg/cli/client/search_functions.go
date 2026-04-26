@@ -297,6 +297,9 @@ func SearchCVEDiffList(config SearchConfig, minuend, subtrahend ImageIdentifier)
 	var builder strings.Builder
 
 	if config.OutputFormat == defaultOutputFormat || config.OutputFormat == "" {
+		fmt.Fprintf(config.ResultWriter, "CVEs in image %s that are not in image %s\n\n",
+			formatImageIdentifier(cveDiffResult.Minuend), formatImageIdentifier(cveDiffResult.Subtrahend))
+
 		imageCVESummary := result.Data.CVEListForImage.Summary
 
 		statsStr := fmt.Sprintf("CRITICAL %d, HIGH %d, MEDIUM %d, LOW %d, UNKNOWN %d, TOTAL %d\n\n",
@@ -317,6 +320,25 @@ func SearchCVEDiffList(config SearchConfig, minuend, subtrahend ImageIdentifier)
 	fmt.Fprint(config.ResultWriter, out)
 
 	return nil
+}
+
+func formatImageIdentifier(image ImageIdentifier) string {
+	if image.Repo == "" {
+		return "unknown image"
+	}
+
+	name := image.Repo
+	if image.Tag != "" {
+		name += ":" + image.Tag
+	} else if image.Digest != "" {
+		name += "@" + image.Digest
+	}
+
+	if image.Platform != nil && image.Platform.Os != "" && image.Platform.Arch != "" {
+		name += fmt.Sprintf(" (%s/%s)", image.Platform.Os, image.Platform.Arch)
+	}
+
+	return name
 }
 
 func SearchImagesByCVEIDGQL(config SearchConfig, repo, cveid string) error {
