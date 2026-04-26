@@ -71,6 +71,18 @@ func (registry *RemoteRegistry) GetRepositories(ctx context.Context) ([]string, 
 func (registry *RemoteRegistry) getRepoList(ctx context.Context, hostname string) ([]string, error) {
 	repositories := []string{}
 
+	if registry.hasConfiguredCredentials(hostname) {
+		hostRef, err := ref.NewHost(hostname)
+		if err != nil {
+			return repositories, fmt.Errorf("failed to parse remote registry host %s: %w", hostname, err)
+		}
+
+		_, err = registry.client.Ping(ctx, hostRef)
+		if err != nil {
+			return repositories, err
+		}
+	}
+
 	last := ""
 
 	for {
@@ -100,6 +112,18 @@ func (registry *RemoteRegistry) getRepoList(ctx context.Context, hostname string
 	}
 
 	return repositories, nil
+}
+
+func (registry *RemoteRegistry) hasConfiguredCredentials(hostname string) bool {
+	for _, host := range registry.hosts {
+		if host.Hostname != hostname && host.Name != hostname {
+			continue
+		}
+
+		return host.User != "" || host.Pass != "" || host.Token != ""
+	}
+
+	return false
 }
 
 func (registry *RemoteRegistry) GetImageReference(repo, reference string) (ref.Ref, error) {
