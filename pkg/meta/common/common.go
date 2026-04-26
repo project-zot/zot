@@ -7,6 +7,7 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
@@ -51,6 +52,50 @@ func ValidateRepoReferenceInput(repo, reference string, manifestDigest godigest.
 	}
 
 	return nil
+}
+
+func SetRepoReferenceDescriptor(repoMeta *proto_go.RepoMeta, reference string, imageMeta mTypes.ImageMeta) {
+	var taggedTimestamp *timestamppb.Timestamp
+
+	if !ReferenceIsDigest(reference) {
+		if existingTag, exists := repoMeta.Tags[reference]; exists {
+			taggedTimestamp = existingTag.GetTaggedTimestamp()
+		} else {
+			taggedTimestamp = timestamppb.Now()
+		}
+	}
+
+	repoMeta.Tags[reference] = &proto_go.TagDescriptor{
+		Digest:          imageMeta.Digest.String(),
+		MediaType:       imageMeta.MediaType,
+		TaggedTimestamp: taggedTimestamp,
+	}
+}
+
+func removeIndexChildDigestReferences(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.RepoBlobs) {
+	indexChildDigests := map[string]struct{}{}
+
+	for digest, blobInfo := range repoBlobs.Blobs {
+		if blobInfo == nil || len(blobInfo.SubBlobs) == 0 {
+			continue
+		}
+
+		for _, subBlob := range blobInfo.SubBlobs {
+			if subBlob == digest || !ReferenceIsDigest(subBlob) {
+				continue
+			}
+
+			if childBlobInfo, ok := repoBlobs.Blobs[subBlob]; ok && len(childBlobInfo.GetSubBlobs()) > 0 {
+				indexChildDigests[subBlob] = struct{}{}
+			}
+		}
+	}
+
+	for digest := range indexChildDigests {
+		if descriptor, ok := repoMeta.Tags[digest]; ok && descriptor.GetDigest() == digest {
+			delete(repoMeta.Tags, digest)
+		}
+	}
 }
 
 // These constants are meant used to describe how high or low in rank a match is.
@@ -247,10 +292,7 @@ func AddImageMetaToRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.Rep
 		}
 	}
 
-	// update info only when a tag is added
-	if zcommon.IsDigest(reference) {
-		return repoMeta, repoBlobs
-	}
+	removeIndexChildDigestReferences(repoMeta, repoBlobs)
 
 	size, platforms, vendors := recalculateAggregateFields(repoMeta, repoBlobs)
 	repoMeta.Vendors = vendors
