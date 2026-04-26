@@ -36,6 +36,7 @@ type StorageConfig struct {
 	Commit        bool
 	GCDelay       time.Duration // applied for blobs
 	GCInterval    time.Duration
+	GCTimeWindow  string `json:"gcTimeWindow,omitempty" mapstructure:"gcTimeWindow,omitempty"`
 	Retention     ImageRetention
 	StorageDriver map[string]any `mapstructure:",omitempty"`
 	CacheDriver   map[string]any `mapstructure:",omitempty"`
@@ -668,7 +669,8 @@ func New() *Config {
 
 func (expConfig StorageConfig) ParamsEqual(actConfig StorageConfig) bool {
 	return expConfig.GC == actConfig.GC && expConfig.Dedupe == actConfig.Dedupe &&
-		expConfig.GCDelay == actConfig.GCDelay && expConfig.GCInterval == actConfig.GCInterval
+		expConfig.GCDelay == actConfig.GCDelay && expConfig.GCInterval == actConfig.GCInterval &&
+		expConfig.GCTimeWindow == actConfig.GCTimeWindow
 }
 
 // isRetentionEnabledInternal checks if retention is enabled without acquiring a lock (internal use only).
@@ -794,6 +796,7 @@ func (c *Config) UpdateReloadableConfig(newConfig *Config) {
 	c.Storage.Dedupe = newConfig.Storage.Dedupe
 	c.Storage.GCDelay = newConfig.Storage.GCDelay
 	c.Storage.GCInterval = newConfig.Storage.GCInterval
+	c.Storage.GCTimeWindow = newConfig.Storage.GCTimeWindow
 
 	// Only update retention if we have a metaDB already in place
 	if c.isRetentionEnabledInternal() {
@@ -811,6 +814,7 @@ func (c *Config) UpdateReloadableConfig(newConfig *Config) {
 		subPathConfig.Dedupe = storageConfig.Dedupe
 		subPathConfig.GCDelay = storageConfig.GCDelay
 		subPathConfig.GCInterval = storageConfig.GCInterval
+		subPathConfig.GCTimeWindow = storageConfig.GCTimeWindow
 
 		// Only update retention if we have a metaDB already in place
 		if c.isRetentionEnabledInternal() {

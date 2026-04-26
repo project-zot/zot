@@ -49,6 +49,14 @@ func TestConfig(t *testing.T) {
 
 		So(firstStorageConfig.ParamsEqual(secondStorageConfig), ShouldBeTrue)
 
+		firstStorageConfig.GCTimeWindow = "01.00 - 08.00"
+
+		So(firstStorageConfig.ParamsEqual(secondStorageConfig), ShouldBeFalse)
+
+		secondStorageConfig.GCTimeWindow = "01.00 - 08.00"
+
+		So(firstStorageConfig.ParamsEqual(secondStorageConfig), ShouldBeTrue)
+
 		isSame, err := config.SameFile("test-config", "test")
 		So(err, ShouldNotBeNil)
 		So(isSame, ShouldBeFalse)
@@ -3362,5 +3370,25 @@ func TestConfig(t *testing.T) {
 			So(path2Config.GC, ShouldBeFalse)    // Unchanged
 			So(path2Config.Dedupe, ShouldBeTrue) // Unchanged
 		})
+	})
+}
+
+func TestGCTimeWindowReloadableConfig(t *testing.T) {
+	Convey("UpdateReloadableConfig updates GC time window settings", t, func() {
+		conf := config.New()
+		conf.Storage.SubPaths = map[string]config.StorageConfig{
+			"/a": {GCTimeWindow: "01.00 - 02.00"},
+		}
+
+		newConfig := config.New()
+		newConfig.Storage.GCTimeWindow = "03.00 - 04.00"
+		newConfig.Storage.SubPaths = map[string]config.StorageConfig{
+			"/a": {GCTimeWindow: "04.00 - 05.00"},
+		}
+
+		conf.UpdateReloadableConfig(newConfig)
+
+		So(conf.Storage.GCTimeWindow, ShouldEqual, "03.00 - 04.00")
+		So(conf.Storage.SubPaths["/a"].GCTimeWindow, ShouldEqual, "04.00 - 05.00")
 	})
 }

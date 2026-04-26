@@ -131,6 +131,7 @@ func TestSchema(t *testing.T) {
 		So(storageProperties, ShouldContainKey, "rootDirectory")
 		So(storageProperties, ShouldContainKey, "gcDelay")
 		So(storageProperties, ShouldContainKey, "gcInterval")
+		So(storageProperties, ShouldContainKey, "gcTimeWindow")
 		So(storageProperties, ShouldContainKey, "subPaths")
 		So(storageProperties, ShouldNotContainKey, "gcMaxSchedulerDelay")
 		So(storageProperties, ShouldNotContainKey, "gCDelay")
@@ -2630,6 +2631,40 @@ func TestGC(t *testing.T) {
 
 			file := MakeTempFileWithContent(t, "gc-config.json", string(contents))
 			err = cli.LoadConfiguration(config, file)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Valid GC time window", func() {
+			cfg := config.New()
+			err = json.Unmarshal(contents, cfg)
+			cfg.Storage.GCTimeWindow = "01.00 - 08.00"
+			cfg.Storage.SubPaths = map[string]config.StorageConfig{
+				"/a": {
+					RootDirectory: "/tmp/zot-a",
+					GC:            true,
+					GCDelay:       1 * time.Hour,
+					GCTimeWindow:  "23:30 - 02:15",
+				},
+			}
+
+			contents, err = json.MarshalIndent(cfg, "", " ")
+			So(err, ShouldBeNil)
+
+			file := MakeTempFileWithContent(t, "gc-config.json", string(contents))
+			err = cli.LoadConfiguration(cfg, file)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Invalid GC time window", func() {
+			cfg := config.New()
+			err = json.Unmarshal(contents, cfg)
+			cfg.Storage.GCTimeWindow = "24.00 - 08.00"
+
+			contents, err = json.MarshalIndent(cfg, "", " ")
+			So(err, ShouldBeNil)
+
+			file := MakeTempFileWithContent(t, "gc-config.json", string(contents))
+			err = cli.LoadConfiguration(cfg, file)
 			So(err, ShouldNotBeNil)
 		})
 	})
