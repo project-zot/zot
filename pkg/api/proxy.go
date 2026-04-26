@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -131,14 +130,27 @@ func proxyHTTPRequest(ctx context.Context, req *http.Request,
 	cloneURL.Scheme = proxyQueryScheme
 	cloneURL.Host = targetMember
 
-	clonedBody := cloneRequestBody(req)
+	requestBody := io.Reader(http.NoBody)
+	if req.Body != nil {
+		requestBody = req.Body
+	}
 
-	fwdRequest, err := http.NewRequestWithContext(ctx, req.Method, cloneURL.String(), clonedBody)
+	fwdRequest, err := http.NewRequestWithContext(ctx, req.Method, cloneURL.String(), requestBody)
 	if err != nil {
 		return nil, err
 	}
 
 	copyHeader(fwdRequest.Header, req.Header)
+
+	// Preserve ContentLength from original request, including explicit zero-length
+	// bodies, so empty requests are not forwarded as unknown-length chunked bodies.
+	if req.ContentLength >= 0 {
+		fwdRequest.ContentLength = req.ContentLength
+
+		if req.ContentLength == 0 {
+			fwdRequest.Body = http.NoBody
+		}
+	}
 
 	// always set hop count to 1 for now.
 	// the handler wrapper above will terminate the process if it sees a request that
@@ -171,40 +183,7 @@ func proxyHTTPRequest(ctx context.Context, req *http.Request,
 		return nil, err
 	}
 
-	var clonedRespBody bytes.Buffer
-
-	// copy out the contents into a new buffer as the response body
-	// stream should be closed to get all the data out.
-	_, _ = io.Copy(&clonedRespBody, resp.Body)
-	resp.Body.Close()
-
-	// after closing the original body, substitute it with a new reader
-	// using the buffer that was just created.
-	// this buffer should be closed later by the consumer of the response.
-	resp.Body = io.NopCloser(bytes.NewReader(clonedRespBody.Bytes()))
-
 	return resp, nil
-}
-
-func cloneRequestBody(src *http.Request) io.Reader {
-	var bCloneForOriginal, bCloneForCopy bytes.Buffer
-	multiWriter := io.MultiWriter(&bCloneForOriginal, &bCloneForCopy)
-	numBytesCopied, _ := io.Copy(multiWriter, src.Body)
-
-	// if the body is a type of io.NopCloser and length is 0,
-	// the Content-Length header is not sent in the proxied request.
-	// explicitly returning http.NoBody allows the implementation
-	// to set the header.
-	// ref: https://github.com/golang/go/issues/34295
-	if numBytesCopied == 0 {
-		src.Body = http.NoBody
-
-		return http.NoBody
-	}
-
-	src.Body = io.NopCloser(&bCloneForOriginal)
-
-	return bytes.NewReader(bCloneForCopy.Bytes())
 }
 
 func copyHeader(dst, src http.Header) {

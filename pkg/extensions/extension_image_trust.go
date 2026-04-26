@@ -82,12 +82,18 @@ type ImageTrust struct {
 // @Param   requestBody     body     string   true   "Public key content"
 // @Success 200 {string}   string    "ok"
 // @Failure 400 {string}   string    "bad request"
+// @Failure 413 {string}   string    "request entity too large"
 // @Failure 500 {string}   string    "internal server error"
 func (trust *ImageTrust) HandleCosignPublicKeyUpload(response http.ResponseWriter, request *http.Request) {
-	body, err := io.ReadAll(request.Body)
+	body, err := io.ReadAll(http.MaxBytesReader(response, request.Body, constants.MaxImageTrustBodySize))
 	if err != nil {
-		trust.Log.Error().Err(err).Str("component", "image-trust").Msg("failed to read cosign key body")
-		response.WriteHeader(http.StatusInternalServerError)
+		var mbe *http.MaxBytesError
+		if errors.As(err, &mbe) {
+			response.WriteHeader(http.StatusRequestEntityTooLarge)
+		} else {
+			trust.Log.Error().Err(err).Str("component", "image-trust").Msg("failed to read cosign key body")
+			response.WriteHeader(http.StatusInternalServerError)
+		}
 
 		return
 	}
@@ -117,6 +123,7 @@ func (trust *ImageTrust) HandleCosignPublicKeyUpload(response http.ResponseWrite
 // @Param   requestBody     body     string   true   "Certificate content"
 // @Success 200 {string}   string    "ok"
 // @Failure 400 {string}   string    "bad request"
+// @Failure 413 {string}   string    "request entity too large"
 // @Failure 500 {string}   string    "internal server error"
 func (trust *ImageTrust) HandleNotationCertificateUpload(response http.ResponseWriter, request *http.Request) {
 	var truststoreType string
@@ -127,10 +134,15 @@ func (trust *ImageTrust) HandleNotationCertificateUpload(response http.ResponseW
 		truststoreType = "ca" // default value of "truststoreType" query param
 	}
 
-	body, err := io.ReadAll(request.Body)
+	body, err := io.ReadAll(http.MaxBytesReader(response, request.Body, constants.MaxImageTrustBodySize))
 	if err != nil {
-		trust.Log.Error().Err(err).Str("component", "image-trust").Msg("failed to read notation certificate body")
-		response.WriteHeader(http.StatusInternalServerError)
+		var mbe *http.MaxBytesError
+		if errors.As(err, &mbe) {
+			response.WriteHeader(http.StatusRequestEntityTooLarge)
+		} else {
+			trust.Log.Error().Err(err).Str("component", "image-trust").Msg("failed to read notation certificate body")
+			response.WriteHeader(http.StatusInternalServerError)
+		}
 
 		return
 	}

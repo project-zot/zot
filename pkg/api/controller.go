@@ -172,9 +172,12 @@ func (c *Controller) Run() error {
 
 	port := c.Config.GetHTTPPort()
 	addr := fmt.Sprintf("%s:%s", c.Config.GetHTTPAddress(), port)
+
 	server := &http.Server{
 		Addr:              addr,
 		Handler:           c.Router,
+		ReadTimeout:       c.Config.GetHTTPReadTimeout(),
+		WriteTimeout:      c.Config.GetHTTPWriteTimeout(),
 		IdleTimeout:       idleTimeout,
 		ReadHeaderTimeout: readHeaderTimeout,
 	}

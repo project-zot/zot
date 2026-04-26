@@ -94,6 +94,28 @@ function teardown_file() {
     http_server_stop http_receiver_lint
 }
 
+function wait_for_event_count() {
+    local output_path="$1"
+    local expected_count="$2"
+    local timeout_seconds="${3:-10}"
+    local elapsed=0
+    local count=0
+
+    while [ "$elapsed" -lt "$timeout_seconds" ]; do
+        count=$(find "${output_path}" -type f | wc -l)
+        if [ "$count" -eq "$expected_count" ]; then
+            return 0
+        fi
+
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+
+    echo "timed out waiting for ${expected_count} events, found ${count}" >&3
+
+    return 1
+}
+
 @test "http/publish image lint failure event" {
     http_server_port=$(cat ${BATS_FILE_TMPDIR}/http_server.port)
     zot_port=$(cat ${BATS_FILE_TMPDIR}/zot.port)
@@ -117,6 +139,7 @@ function teardown_file() {
     rm -f artifact.txt config.json
 
     # Check the correct number of events were generated
+    wait_for_event_count "${output_path}" 2
     count=$(find "${output_path}" -type f | wc -l)
     [ "$count" -eq 2 ]
 
@@ -152,6 +175,7 @@ function teardown_file() {
     rm -f artifact.txt config.json
 
     # Check the correct number of events were generated
+    wait_for_event_count "${output_path}" 1
     count=$(find "${output_path}" -type f | wc -l)
     [ "$count" -eq 1 ]
 
