@@ -49,6 +49,14 @@ func TestConfig(t *testing.T) {
 
 		So(firstStorageConfig.ParamsEqual(secondStorageConfig), ShouldBeTrue)
 
+		firstStorageConfig.Redirect = true
+
+		So(firstStorageConfig.ParamsEqual(secondStorageConfig), ShouldBeFalse)
+
+		firstStorageConfig.Redirect = false
+
+		So(firstStorageConfig.ParamsEqual(secondStorageConfig), ShouldBeTrue)
+
 		isSame, err := config.SameFile("test-config", "test")
 		So(err, ShouldNotBeNil)
 		So(isSame, ShouldBeFalse)
@@ -2135,6 +2143,39 @@ func TestConfig(t *testing.T) {
 			So(cfg.CopyExtensionsConfig().IsSearchEnabled(), ShouldBeTrue)
 		})
 
+		Convey("Test with Storage update", func() {
+			cfg := &config.Config{
+				Storage: config.GlobalStorageConfig{
+					StorageConfig: config.StorageConfig{
+						GC:         true,
+						Dedupe:     false,
+						Redirect:   false,
+						GCDelay:    time.Hour,
+						GCInterval: 2 * time.Hour,
+					},
+				},
+			}
+			newConfig := &config.Config{
+				Storage: config.GlobalStorageConfig{
+					StorageConfig: config.StorageConfig{
+						GC:         false,
+						Dedupe:     true,
+						Redirect:   true,
+						GCDelay:    3 * time.Hour,
+						GCInterval: 4 * time.Hour,
+					},
+				},
+			}
+
+			cfg.UpdateReloadableConfig(newConfig)
+
+			So(cfg.Storage.GC, ShouldBeFalse)
+			So(cfg.Storage.Dedupe, ShouldBeTrue)
+			So(cfg.Storage.Redirect, ShouldBeTrue)
+			So(cfg.Storage.GCDelay, ShouldEqual, 3*time.Hour)
+			So(cfg.Storage.GCInterval, ShouldEqual, 4*time.Hour)
+		})
+
 		Convey("Test search CVE config removal when new config has nil Search.CVE", func() {
 			// First set up a config with search enabled and CVE config
 			enabled := true
@@ -3058,19 +3099,22 @@ func TestConfig(t *testing.T) {
 			cfg := &config.Config{
 				Storage: config.GlobalStorageConfig{
 					StorageConfig: config.StorageConfig{
-						GC:     true,
-						Dedupe: false,
+						GC:       true,
+						Dedupe:   false,
+						Redirect: false,
 					},
 					SubPaths: map[string]config.StorageConfig{
 						"/path1": {
 							GC:         true,
 							Dedupe:     false,
+							Redirect:   false,
 							GCDelay:    time.Hour,
 							GCInterval: time.Hour * 24,
 						},
 						"/path2": {
 							GC:         false,
 							Dedupe:     true,
+							Redirect:   true,
 							GCDelay:    time.Hour * 2,
 							GCInterval: time.Hour * 48,
 						},
@@ -3082,19 +3126,22 @@ func TestConfig(t *testing.T) {
 			newConfig := &config.Config{
 				Storage: config.GlobalStorageConfig{
 					StorageConfig: config.StorageConfig{
-						GC:     true,
-						Dedupe: false,
+						GC:       true,
+						Dedupe:   false,
+						Redirect: true,
 					},
 					SubPaths: map[string]config.StorageConfig{
 						"/path1": {
 							GC:         false,          // Changed
 							Dedupe:     true,           // Changed
+							Redirect:   true,           // Changed
 							GCDelay:    time.Hour * 2,  // Changed
 							GCInterval: time.Hour * 12, // Changed
 						},
 						"/path2": {
 							GC:         true,           // Changed
 							Dedupe:     false,          // Changed
+							Redirect:   false,          // Changed
 							GCDelay:    time.Hour * 3,  // Changed
 							GCInterval: time.Hour * 36, // Changed
 						},
@@ -3112,6 +3159,7 @@ func TestConfig(t *testing.T) {
 			path1Config := cfg.Storage.SubPaths["/path1"]
 			So(path1Config.GC, ShouldBeFalse)
 			So(path1Config.Dedupe, ShouldBeTrue)
+			So(path1Config.Redirect, ShouldBeTrue)
 			So(path1Config.GCDelay, ShouldEqual, time.Hour*2)
 			So(path1Config.GCInterval, ShouldEqual, time.Hour*12)
 
@@ -3119,6 +3167,7 @@ func TestConfig(t *testing.T) {
 			path2Config := cfg.Storage.SubPaths["/path2"]
 			So(path2Config.GC, ShouldBeTrue)
 			So(path2Config.Dedupe, ShouldBeFalse)
+			So(path2Config.Redirect, ShouldBeFalse)
 			So(path2Config.GCDelay, ShouldEqual, time.Hour*3)
 			So(path2Config.GCInterval, ShouldEqual, time.Hour*36)
 		})

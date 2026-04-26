@@ -1168,6 +1168,19 @@ func parseRangeHeader(contentRange string) (int64, int64, error) {
 	return from, to, nil
 }
 
+func (rh *RouteHandler) isBlobRedirectEnabled(name string) bool {
+	storageConfig := rh.c.Config.CopyStorageConfig()
+	storePath := rh.c.StoreController.GetStorePath(name)
+
+	if storePath != storage.DefaultStorePath {
+		if subPathConfig, ok := storageConfig.SubPaths[storePath]; ok {
+			return subPathConfig.Redirect
+		}
+	}
+
+	return storageConfig.Redirect
+}
+
 // GetBlob godoc
 // @Summary Get image blob/layer
 // @Description Get an image's blob/layer given a digest
@@ -1233,10 +1246,23 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 	var blen, bsize int64
 
-	if partial {
-		repo, blen, bsize, err = imgStore.GetBlobPartial(name, digest, mediaType, from, to)
-	} else {
-		repo, blen, err = imgStore.GetBlob(name, digest, mediaType)
+	if rh.isBlobRedirectEnabled(name) {
+		redirectURL, redirectErr := imgStore.GetBlobRedirectURL(request, name, digest)
+		if redirectErr != nil {
+			err = redirectErr
+		} else if redirectURL != "" {
+			http.Redirect(response, request, redirectURL, http.StatusTemporaryRedirect)
+
+			return
+		}
+	}
+
+	if err == nil {
+		if partial {
+			repo, blen, bsize, err = imgStore.GetBlobPartial(name, digest, mediaType, from, to)
+		} else {
+			repo, blen, err = imgStore.GetBlob(name, digest, mediaType)
+		}
 	}
 
 	if err != nil {

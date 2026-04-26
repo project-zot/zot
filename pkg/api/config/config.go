@@ -32,6 +32,7 @@ type StorageConfig struct {
 	MaxRepos      int
 	Dedupe        bool
 	RemoteCache   bool
+	Redirect      bool
 	GC            bool
 	Commit        bool
 	GCDelay       time.Duration // applied for blobs
@@ -668,7 +669,8 @@ func New() *Config {
 
 func (expConfig StorageConfig) ParamsEqual(actConfig StorageConfig) bool {
 	return expConfig.GC == actConfig.GC && expConfig.Dedupe == actConfig.Dedupe &&
-		expConfig.GCDelay == actConfig.GCDelay && expConfig.GCInterval == actConfig.GCInterval
+		expConfig.Redirect == actConfig.Redirect && expConfig.GCDelay == actConfig.GCDelay &&
+		expConfig.GCInterval == actConfig.GCInterval
 }
 
 // isRetentionEnabledInternal checks if retention is enabled without acquiring a lock (internal use only).
@@ -792,6 +794,7 @@ func (c *Config) UpdateReloadableConfig(newConfig *Config) {
 	// Update storage configuration
 	c.Storage.GC = newConfig.Storage.GC
 	c.Storage.Dedupe = newConfig.Storage.Dedupe
+	c.Storage.Redirect = newConfig.Storage.Redirect
 	c.Storage.GCDelay = newConfig.Storage.GCDelay
 	c.Storage.GCInterval = newConfig.Storage.GCInterval
 
@@ -809,6 +812,7 @@ func (c *Config) UpdateReloadableConfig(newConfig *Config) {
 
 		subPathConfig.GC = storageConfig.GC
 		subPathConfig.Dedupe = storageConfig.Dedupe
+		subPathConfig.Redirect = storageConfig.Redirect
 		subPathConfig.GCDelay = storageConfig.GCDelay
 		subPathConfig.GCInterval = storageConfig.GCInterval
 
