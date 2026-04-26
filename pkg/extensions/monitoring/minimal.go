@@ -22,6 +22,8 @@ const (
 	repoDownloads       = metricsNamespace + ".repo.downloads"
 	repoUploads         = metricsNamespace + ".repo.uploads"
 	schedulerGenerators = metricsNamespace + ".scheduler.generators"
+	gcRuns              = metricsNamespace + ".gc.runs"
+	gcDeleted           = metricsNamespace + ".gc.deleted"
 	// Gauge.
 	repoStorageBytes          = metricsNamespace + ".repo.storage.bytes"
 	serverInfo                = metricsNamespace + ".info"
@@ -31,6 +33,7 @@ const (
 	schedulerTasksQueue       = metricsNamespace + ".scheduler.tasksqueue.length"
 	// Summary.
 	httpRepoLatencySeconds = metricsNamespace + ".http.repo.latency.seconds"
+	gcDurationSeconds      = metricsNamespace + ".gc.duration.seconds"
 	// Histogram.
 	httpMethodLatencySeconds  = metricsNamespace + ".http.method.latency.seconds"
 	storageLockLatencySeconds = metricsNamespace + ".storage.lock.latency.seconds"
@@ -274,6 +277,8 @@ func GetCounters() map[string][]string {
 		repoDownloads:       {"repo"},
 		repoUploads:         {"repo"},
 		schedulerGenerators: {},
+		gcRuns:              {"error"},
+		gcDeleted:           {"type"},
 	}
 }
 
@@ -291,6 +296,7 @@ func GetGauges() map[string][]string {
 func GetSummaries() map[string][]string {
 	return map[string][]string{
 		httpRepoLatencySeconds: {"repo"},
+		gcDurationSeconds:      {},
 	}
 }
 
@@ -364,13 +370,18 @@ func (ms *metricServer) CounterInc(cv *CounterValue) {
 		return
 	}
 
+	increment := cv.Count
+	if increment <= 0 {
+		increment = 1
+	}
+
 	index, ok := findCounterValueIndex(ms.cache.Counters, cv.Name, cv.LabelValues)
 	if !ok {
 		// cv not found in cache: add it
-		cv.Count = 1
+		cv.Count = increment
 		ms.cache.Counters = append(ms.cache.Counters, cv)
 	} else {
-		ms.cache.Counters[index].Count++
+		ms.cache.Counters[index].Count += increment
 	}
 }
 
@@ -604,6 +615,39 @@ func ObserveWorkersTasksDuration(ms MetricServer, taskName string, duration time
 		LabelValues: []string{taskName},
 	}
 	ms.SendMetric(h)
+}
+
+func ObserveGCRun(ms MetricServer, duration time.Duration, runErr error) {
+	if ms == nil {
+		return
+	}
+
+	run := CounterValue{
+		Name:        gcRuns,
+		LabelNames:  []string{"error"},
+		LabelValues: []string{strconv.FormatBool(runErr != nil)},
+	}
+	durationSummary := SummaryValue{
+		Name: gcDurationSeconds,
+		Sum:  duration.Seconds(),
+	}
+
+	ms.SendMetric(run)
+	ms.SendMetric(durationSummary)
+}
+
+func AddGCDeleted(ms MetricServer, itemType string, count int) {
+	if ms == nil || count <= 0 {
+		return
+	}
+
+	deleted := CounterValue{
+		Name:        gcDeleted,
+		Count:       count,
+		LabelNames:  []string{"type"},
+		LabelValues: []string{itemType},
+	}
+	ms.SendMetric(deleted)
 }
 
 func SetSchedulerGenerators(ms MetricServer, gen map[string]map[string]uint64) {

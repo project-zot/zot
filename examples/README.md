@@ -875,6 +875,12 @@ Set server path on which metrics will be exposed:
 
 In order to test the Metrics feature locally in a [Kind](https://kind.sigs.k8s.io/) cluster, folow [this guide](metrics/README.md).
 
+When garbage collection is enabled, zot also exposes:
+
+- `zot_gc_runs_total{error="true|false"}`: garbage collection runs by result.
+- `zot_gc_duration_seconds`: garbage collection run duration.
+- `zot_gc_deleted_total{type="blob|manifest|upload"}`: items removed by garbage collection.
+
 ## Storage Drivers
 
 Beside filesystem storage backend, zot also supports S3 storage backend, check below url to see how to configure it:
@@ -1189,4 +1195,3 @@ To set those options explicitly (for example to mirror standalone Trivy’s `--v
 - [config-cve-trivy.json](config-cve-trivy.json) — shows optional `dbRepository`, `javaDBRepository`, and `vulnSeveritySources`.
 
 `vulnSeveritySources` is a list of source names in priority order (for example `auto`, `nvd`, or vendor IDs such as `redhat`, `alpine`). If omitted, zot defaults it to `["auto"]`, consistent with the Trivy CLI. See [Trivy: severity selection](https://trivy.dev/docs/latest/scanner/vulnerability/#severity-selection).
-
