@@ -252,31 +252,7 @@ JSON
 }
 
 @test "[new] existing list repositories with regclient" {
-    zot_port=$(get_zot_port)
-    run regctl repo ls localhost:${zot_port}
-    [ "$status" -eq 0 ]
-
-    found=0
-    for i in "${lines[@]}"
-    do
-        if [ "$i" = 'test-regclient' ]; then
-            found=1
-        fi
-    done
-    [ "$found" -eq 1 ]
-
-    run regctl repo ls --limit 4 localhost:${zot_port}
-    [ "$status" -eq 0 ]
-    echo "$output"
-    [ $(echo "$output" | wc -l) -eq 4 ]
-    [ "${lines[-2]}" == "busybox" ]
-    [ "${lines[-1]}" == "golang" ]
-
-    run regctl repo ls --last busybox --limit 1 localhost:${zot_port}
-    [ "$status" -eq 0 ]
-    echo "$output"
-    [ $(echo "$output" | wc -l) -eq 1 ]
-    [ "${lines[-1]}" == "golang" ]
+    helper_list_repositories_with_regclient_pagination 4 busybox golang "-2:busybox" "-1:golang"
 }
 
 @test "[new] push image" {
