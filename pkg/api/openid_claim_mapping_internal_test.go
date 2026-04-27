@@ -175,42 +175,69 @@ func TestAppendOpenIDGroups(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		groups   []string
-		claims   map[string]any
-		claim    string
-		expected []string
+		name          string
+		groups        []string
+		claims        map[string]any
+		claim         string
+		expected      []string
+		expectedFound bool
 	}{
 		{
-			name:     "appends any slice",
-			groups:   []string{"existing"},
-			claims:   map[string]any{"roles": []any{"dev", 7}},
-			claim:    "roles",
-			expected: []string{"existing", "dev", "7"},
+			name:          "appends any slice",
+			groups:        []string{"existing"},
+			claims:        map[string]any{"roles": []any{"dev", 7}},
+			claim:         "roles",
+			expected:      []string{"existing", "dev", "7"},
+			expectedFound: true,
 		},
 		{
-			name:     "appends string slice",
-			claims:   map[string]any{"roles": []string{"admin", "ops"}},
-			claim:    "roles",
-			expected: []string{"admin", "ops"},
+			name:          "appends string slice",
+			claims:        map[string]any{"roles": []string{"admin", "ops"}},
+			claim:         "roles",
+			expected:      []string{"admin", "ops"},
+			expectedFound: true,
 		},
 		{
-			name:     "appends non-empty string",
-			claims:   map[string]any{"roles": "admin"},
-			claim:    "roles",
-			expected: []string{"admin"},
+			name:          "appends non-empty string",
+			claims:        map[string]any{"roles": "admin"},
+			claim:         "roles",
+			expected:      []string{"admin"},
+			expectedFound: true,
 		},
 		{
-			name:     "ignores empty string",
-			claims:   map[string]any{"roles": ""},
-			claim:    "roles",
-			expected: nil,
+			name:          "finds empty string",
+			claims:        map[string]any{"roles": ""},
+			claim:         "roles",
+			expected:      nil,
+			expectedFound: true,
 		},
 		{
-			name:     "ignores missing claim",
-			claims:   map[string]any{},
-			claim:    "roles",
-			expected: nil,
+			name:          "finds empty any slice",
+			claims:        map[string]any{"roles": []any{}},
+			claim:         "roles",
+			expected:      nil,
+			expectedFound: true,
+		},
+		{
+			name:          "finds empty string slice",
+			claims:        map[string]any{"roles": []string{}},
+			claim:         "roles",
+			expected:      nil,
+			expectedFound: true,
+		},
+		{
+			name:          "does not find missing claim",
+			claims:        map[string]any{},
+			claim:         "roles",
+			expected:      nil,
+			expectedFound: false,
+		},
+		{
+			name:          "does not find unsupported claim type",
+			claims:        map[string]any{"roles": 7},
+			claim:         "roles",
+			expected:      nil,
+			expectedFound: false,
 		},
 	}
 
@@ -220,7 +247,11 @@ func TestAppendOpenIDGroups(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			groups := appendOpenIDGroups(test.groups, test.claims, test.claim)
+			groups, found := appendOpenIDGroups(test.groups, test.claims, test.claim)
+			if found != test.expectedFound {
+				t.Fatalf("expected found %t, got %t", test.expectedFound, found)
+			}
+
 			if len(groups) != len(test.expected) {
 				t.Fatalf("expected groups %v, got %v", test.expected, groups)
 			}

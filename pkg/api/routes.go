@@ -2274,21 +2274,27 @@ func getOpenIDUsername(info *oidc.UserInfo, claimName string) string {
 	return ""
 }
 
-func appendOpenIDGroups(groups []string, claims map[string]any, claimName string) []string {
+func appendOpenIDGroups(groups []string, claims map[string]any, claimName string) ([]string, bool) {
 	switch val := claims[claimName].(type) {
 	case []any:
 		for _, group := range val {
 			groups = append(groups, fmt.Sprint(group))
 		}
+
+		return groups, true
 	case []string:
 		groups = append(groups, val...)
+
+		return groups, true
 	case string:
 		if val != "" {
 			groups = append(groups, val)
 		}
+
+		return groups, true
 	}
 
-	return groups
+	return groups, false
 }
 
 // OpenIDCodeExchangeCallbackWithProvider is the OIDC CodeExchange callback that supports configurable claim mapping.
@@ -2326,7 +2332,7 @@ func (rh *RouteHandler) OpenIDCodeExchangeCallbackWithProvider(providerName stri
 				Str("username", username).
 				Msg("extracted username from configured claim")
 		} else {
-			rh.c.Log.Info().
+			rh.c.Log.Debug().
 				Str("provider", providerName).
 				Str("username", username).
 				Msg("using email as username (fallback)")
@@ -2334,14 +2340,15 @@ func (rh *RouteHandler) OpenIDCodeExchangeCallbackWithProvider(providerName stri
 
 		var groups []string
 
-		groups = appendOpenIDGroups(groups, info.Claims, groupsClaim)
-		if len(groups) == 0 {
+		var groupsFound bool
+
+		groups, groupsFound = appendOpenIDGroups(groups, info.Claims, groupsClaim)
+		if !groupsFound {
 			rh.c.Log.Info().Msgf("failed to find any %q claim for user %s in UserInfo", groupsClaim, username)
 		}
 
-		idTokenGroupCount := len(groups)
-		groups = appendOpenIDGroups(groups, tokens.IDTokenClaims.Claims, groupsClaim)
-		if len(groups) == idTokenGroupCount {
+		groups, groupsFound = appendOpenIDGroups(groups, tokens.IDTokenClaims.Claims, groupsClaim)
+		if !groupsFound {
 			rh.c.Log.Info().Msgf("failed to find any %q claim for user %s in IDTokenClaimsToken", groupsClaim, username)
 		}
 
