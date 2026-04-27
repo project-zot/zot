@@ -106,7 +106,9 @@ func (cm ContentManager) GetRepoSource(repo string) string {
 
 // utilies functions.
 func (cm ContentManager) getContentByUpstreamRepo(repo string) *syncconf.Content {
-	for _, content := range cm.contents {
+	for i := range cm.contents {
+		content := &cm.contents[i]
+
 		var prefix string
 		// handle prefixes starting with '/'
 		if strings.HasPrefix(content.Prefix, "/") {
@@ -125,7 +127,7 @@ func (cm ContentManager) getContentByUpstreamRepo(repo string) *syncconf.Content
 		}
 
 		if matched {
-			return &content
+			return content
 		}
 	}
 
