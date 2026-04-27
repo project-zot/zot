@@ -1250,7 +1250,7 @@ func coalesceRanges(ranges []httpRange) []httpRange {
 	return coalesced
 }
 
-func writeMultipartRanges(response http.ResponseWriter, mediaType string, ranges []blobRangeReader, bsize int64,
+func writeMultipartRanges(response http.ResponseWriter, ranges []blobRangeReader, bsize int64,
 	logger log.Logger,
 ) {
 	writer := multipart.NewWriter(response)
@@ -1266,10 +1266,6 @@ func writeMultipartRanges(response http.ResponseWriter, mediaType string, ranges
 	for _, rangeReader := range ranges {
 		partHeader := textproto.MIMEHeader{}
 		partHeader.Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", rangeReader.start, rangeReader.end, bsize))
-
-		if mediaType != "" {
-			partHeader.Set("Content-Type", mediaType)
-		}
 
 		part, err := writer.CreatePart(partHeader)
 		if err != nil {
@@ -1392,10 +1388,10 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 			rangeReaders = append(rangeReaders, blobRangeReader{httpRange: httpRange, reader: repo})
 		}
 
-		defer closeRangeReaders(rangeReaders)
+		response.Header().Set(constants.DistContentDigestKey, digest.String())
 
 		if len(rangeReaders) > 1 {
-			writeMultipartRanges(response, mediaType, rangeReaders, bsize, rh.c.Log)
+			writeMultipartRanges(response, rangeReaders, bsize, rh.c.Log)
 
 			return
 		}

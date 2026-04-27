@@ -1,5 +1,3 @@
-//go:build sync && scrub && metrics && search && lint && userprefs && mgmt && imagetrust && ui
-
 package api
 
 import (
