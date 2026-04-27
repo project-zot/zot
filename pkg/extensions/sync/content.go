@@ -50,7 +50,7 @@ func (cm ContentManager) MatchesContent(repo string) bool {
 
 // FilterTags filters a repo tags based on content config rules (semver, regex).
 func (cm ContentManager) FilterTags(repo string, tags []string) ([]string, error) {
-	content := cm.GetContentByLocalRepo(repo)
+	content := cm.getContentByUpstreamRepo(repo)
 
 	var err error
 	// filter based on tags rules
@@ -106,7 +106,9 @@ func (cm ContentManager) GetRepoSource(repo string) string {
 
 // utilies functions.
 func (cm ContentManager) getContentByUpstreamRepo(repo string) *syncconf.Content {
-	for _, content := range cm.contents {
+	for i := range cm.contents {
+		content := &cm.contents[i]
+
 		var prefix string
 		// handle prefixes starting with '/'
 		if strings.HasPrefix(content.Prefix, "/") {
@@ -125,7 +127,7 @@ func (cm ContentManager) getContentByUpstreamRepo(repo string) *syncconf.Content
 		}
 
 		if matched {
-			return &content
+			return content
 		}
 	}
 
