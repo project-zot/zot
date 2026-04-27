@@ -2312,17 +2312,19 @@ func (rh *RouteHandler) OpenIDCodeExchangeCallbackWithProvider(providerName stri
 		usernameClaim, groupsClaim, usernameConfigured := getOpenIDClaimMapping(authConfig, providerName)
 
 		username := getOpenIDUsername(info, usernameClaim)
-		if username == "" && usernameClaim != defaultUsernameClaim {
-			usernameClaim = defaultUsernameClaim
-			username = getOpenIDUsername(info, usernameClaim)
-			usernameConfigured = false
-		}
-
 		if username == "" {
-			rh.c.Log.Error().Msg("failed to set user record for empty username value")
-			w.WriteHeader(http.StatusUnauthorized)
+			if usernameClaim != defaultUsernameClaim {
+				usernameClaim = defaultUsernameClaim
+				usernameConfigured = false
+				username = getOpenIDUsername(info, usernameClaim)
+			}
 
-			return
+			if username == "" {
+				rh.c.Log.Error().Msg("failed to set user record for empty username value")
+				w.WriteHeader(http.StatusUnauthorized)
+
+				return
+			}
 		}
 
 		if usernameConfigured {
