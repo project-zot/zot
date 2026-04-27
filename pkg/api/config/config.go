@@ -322,6 +322,10 @@ type ClaimMapping struct {
 	// Acceptable values include "preferred_username", "email", "sub", "name", or any custom claim name.
 	// If not configured, the default is "email".
 	Username string `mapstructure:"username,omitempty"`
+
+	// Groups specifies which OpenID claim to use as the groups for the authenticated user.
+	// If not configured, the default is "groups".
+	Groups string `mapstructure:"groups,omitempty"`
 }
 
 // CELClaimValidationAndMapping specifies Common Expression Language (CEL) expressions
