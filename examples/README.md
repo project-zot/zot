@@ -19,6 +19,7 @@ Examples of working configurations for various use cases are available [here](..
 # Configuration Parameters
 
 - [Configuration Parameters](#configuration-parameters)
+  - [Environment variables](#environment-variables)
   - [Network](#network)
   - [Storage](#storage)
   - [Authentication](#authentication)
@@ -34,6 +35,34 @@ Examples of working configurations for various use cases are available [here](..
   - [Sync](#sync)
   - [Search and CVE scanning (Trivy)](#search-and-cve-scanning-trivy)
 
+## Environment variables
+
+Configuration files support environment variable substitution for string values. Both `${VAR}` and `$VAR` forms are
+supported in the main zot config and in referenced secret files such as OpenID/OAuth2, LDAP, and session key files.
+Startup fails if a referenced environment variable is not set.
+
+For example:
+
+```
+{
+    "storage": {
+        "rootDirectory": "${ZOT_ROOT_DIRECTORY}"
+    },
+    "http": {
+        "auth": {
+            "openid": {
+                "providers": {
+                    "oidc": {
+                        "credentialsFile": "${ZOT_OPENID_CREDENTIALS_FILE}",
+                        "issuer": "${ZOT_OPENID_ISSUER}",
+                        "scopes": ["openid"]
+                    }
+                }
+            }
+        }
+    }
+}
+```
 
 ## Network
 
@@ -1189,4 +1218,3 @@ To set those options explicitly (for example to mirror standalone Trivy’s `--v
 - [config-cve-trivy.json](config-cve-trivy.json) — shows optional `dbRepository`, `javaDBRepository`, and `vulnSeveritySources`.
 
 `vulnSeveritySources` is a list of source names in priority order (for example `auto`, `nvd`, or vendor IDs such as `redhat`, `alpine`). If omitted, zot defaults it to `["auto"]`, consistent with the Trivy CLI. See [Trivy: severity selection](https://trivy.dev/docs/latest/scanner/vulnerability/#severity-selection).
-

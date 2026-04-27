@@ -2491,6 +2491,91 @@ func TestLoadConfig(t *testing.T) {
 		err := cli.LoadConfiguration(config, "../../../examples/config-policy.json")
 		So(err, ShouldBeNil)
 	})
+
+	Convey("Test config environment variable substitution", t, func() {
+		rootDir := t.TempDir()
+		credentialsFile := filepath.Join(t.TempDir(), "openid-credentials.json")
+
+		t.Setenv("ZOT_TEST_ROOT_DIR", rootDir)
+		t.Setenv("ZOT_TEST_OIDC_CREDENTIALS", credentialsFile)
+		t.Setenv("ZOT_TEST_CLIENT_ID", "env-client-id")
+		t.Setenv("ZOT_TEST_CLIENT_SECRET", `env-client-secret-with-"quotes"`)
+		t.Setenv("ZOT_TEST_GC_DELAY", "2h")
+
+		err := os.WriteFile(credentialsFile, []byte(`{
+			"clientid": "${ZOT_TEST_CLIENT_ID}",
+			"clientsecret": "${ZOT_TEST_CLIENT_SECRET}"
+		}`), 0o600)
+		So(err, ShouldBeNil)
+
+		content := `{
+			"storage": {
+				"rootDirectory": "$ZOT_TEST_ROOT_DIR",
+				"gc": true,
+				"gcDelay": "${ZOT_TEST_GC_DELAY}"
+			},
+			"http": {
+				"address": "127.0.0.1",
+				"port": "8080",
+				"auth": {
+					"openid": {
+						"providers": {
+							"oidc": {
+								"name": "oidc",
+								"credentialsFile": "${ZOT_TEST_OIDC_CREDENTIALS}",
+								"issuer": "https://issuer.example.com",
+								"scopes": ["openid"]
+							}
+						}
+					}
+				}
+			},
+			"log": {
+				"level": "debug"
+			}
+		}`
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+		config := config.New()
+		err = cli.LoadConfiguration(config, tmpfile)
+		So(err, ShouldBeNil)
+		So(config.Storage.RootDirectory, ShouldEqual, rootDir)
+		So(config.Storage.GCDelay, ShouldEqual, 2*time.Hour)
+		So(config.HTTP.Auth.OpenID.Providers["oidc"].CredentialsFile, ShouldEqual, credentialsFile)
+		So(config.HTTP.Auth.OpenID.Providers["oidc"].ClientID, ShouldEqual, "env-client-id")
+		So(config.HTTP.Auth.OpenID.Providers["oidc"].ClientSecret, ShouldEqual, `env-client-secret-with-"quotes"`)
+	})
+
+	Convey("Test missing config environment variable", t, func() {
+		missingEnvName := "ZOT_TEST_MISSING_ROOT_DIR"
+		oldEnvValue, wasSet := os.LookupEnv(missingEnvName)
+
+		err := os.Unsetenv(missingEnvName)
+		So(err, ShouldBeNil)
+
+		defer func() {
+			if wasSet {
+				_ = os.Setenv(missingEnvName, oldEnvValue)
+			}
+		}()
+
+		content := fmt.Sprintf(`{
+			"storage": {
+				"rootDirectory": "${%s}"
+			},
+			"http": {
+				"address": "127.0.0.1",
+				"port": "8080"
+			}
+		}`, missingEnvName)
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+		config := config.New()
+		err = cli.LoadConfiguration(config, tmpfile)
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring, "environment variable(s) not set: "+missingEnvName)
+	})
+
 	Convey("Test subpath config combination", t, func(c C) {
 		config := config.New()
 		content := `{"storage":{"rootDirectory":"/tmp/zot",

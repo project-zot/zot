@@ -1103,44 +1103,10 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 	// we need another key delimiter.
 	viperInstance := viper.NewWithOptions(viper.KeyDelimiter("::"))
 
-	ext := filepath.Ext(configPath)
-	ext = strings.Replace(ext, ".", "", 1)
+	if err := readConfigFile(viperInstance, configPath, logger); err != nil {
+		logger.Error().Err(err).Str("path", configPath).Msg("failed to read configuration")
 
-	/* if file extension is not supported, try everything
-	it's also possible that the filename is starting with a dot eg: ".config". */
-	if !slices.Contains(viper.SupportedExts, ext) {
-		ext = ""
-	}
-
-	switch ext {
-	case "":
-		logger.Info().Str("path", configPath).Msg("config file with no extension, trying all supported config types")
-
-		var err error
-
-		for _, configType := range viper.SupportedExts {
-			viperInstance.SetConfigType(configType)
-			viperInstance.SetConfigFile(configPath)
-
-			err = viperInstance.ReadInConfig()
-			if err == nil {
-				break
-			}
-		}
-
-		if err != nil {
-			logger.Error().Err(err).Str("path", configPath).Msg("failed to read configuration, tried all supported config types")
-
-			return err
-		}
-	default:
-		viperInstance.SetConfigFile(configPath)
-
-		if err := viperInstance.ReadInConfig(); err != nil {
-			logger.Error().Err(err).Str("path", configPath).Msg("failed to read configuration")
-
-			return err
-		}
+		return err
 	}
 
 	metaData := &mapstructure.Metadata{}
@@ -1149,6 +1115,7 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 		metadataConfig(metaData),
 		viper.DecodeHook(
 			mapstructure.ComposeDecodeHookFunc(
+				envSubstitutionDecodeHook(),
 				mapstructure.StringToTimeDurationHookFunc(),
 				eventsconf.SinkConfigDecoderHook(),
 			),
@@ -1292,16 +1259,14 @@ func readSecretFile(path string, v any, checkUnsetFields bool) error { //nolint:
 
 	viperInstance := viper.NewWithOptions(viper.KeyDelimiter("::"))
 
-	viperInstance.SetConfigFile(path)
-
-	if err := viperInstance.ReadInConfig(); err != nil {
+	if err := readConfigFile(viperInstance, path, logger); err != nil {
 		logger.Error().Err(err).Str("path", path).Msg("failed to read secret file configuration")
 
 		return errors.Join(zerr.ErrBadConfig, err)
 	}
 
 	metaData := &mapstructure.Metadata{}
-	if err := viperInstance.Unmarshal(v, metadataConfig(metaData)); err != nil {
+	if err := viperInstance.Unmarshal(v, metadataConfig(metaData), viper.DecodeHook(envSubstitutionDecodeHook())); err != nil {
 		logger.Error().Err(err).Str("path", path).Msg("failed to unmarshal secret file config")
 
 		return errors.Join(zerr.ErrBadConfig, err)
