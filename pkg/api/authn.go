@@ -1106,6 +1106,161 @@ func saveUserLoggedSession(cookieStore sessions.Store, response http.ResponseWri
 	return nil
 }
 
+const (
+	defaultUsernameClaim = "email"
+	defaultGroupsClaim   = "groups"
+)
+
+// getOpenIDClaimMapping resolves the username and groups claim names for a given provider.
+// The third return value reports whether the username claim was explicitly configured
+// (false means the default "email" claim is being used as a fallback).
+func getOpenIDClaimMapping(authConfig *config.AuthConfig, providerName string) (string, string, bool) {
+	usernameClaim := defaultUsernameClaim
+	groupsClaim := defaultGroupsClaim
+	usernameConfigured := false
+
+	if authConfig == nil || authConfig.OpenID == nil || providerName == "" {
+		return usernameClaim, groupsClaim, usernameConfigured
+	}
+
+	providerConfig, ok := authConfig.OpenID.Providers[providerName]
+	if !ok || providerConfig.ClaimMapping == nil {
+		return usernameClaim, groupsClaim, usernameConfigured
+	}
+
+	if providerConfig.ClaimMapping.Username != "" {
+		usernameClaim = providerConfig.ClaimMapping.Username
+		usernameConfigured = true
+	}
+
+	if providerConfig.ClaimMapping.Groups != "" {
+		groupsClaim = providerConfig.ClaimMapping.Groups
+	}
+
+	return usernameClaim, groupsClaim, usernameConfigured
+}
+
+func getOpenIDUsername(info *oidc.UserInfo, claimName string) string {
+	if info == nil {
+		return ""
+	}
+
+	switch claimName {
+	case "preferred_username":
+		return info.PreferredUsername
+	case defaultUsernameClaim:
+		return info.UserInfoEmail.Email
+	case "sub":
+		return info.Subject
+	case "name":
+		return info.Name
+	default:
+		if val, ok := info.Claims[claimName].(string); ok {
+			return val
+		}
+	}
+
+	return ""
+}
+
+func appendOpenIDGroups(groups []string, claims map[string]any, claimName string) ([]string, bool) {
+	switch val := claims[claimName].(type) {
+	case []any:
+		for _, group := range val {
+			if group == nil {
+				continue
+			}
+
+			if str := fmt.Sprint(group); str != "" {
+				groups = append(groups, str)
+			}
+		}
+
+		return groups, true
+	case []string:
+		for _, group := range val {
+			if group != "" {
+				groups = append(groups, group)
+			}
+		}
+
+		return groups, true
+	case string:
+		if val != "" {
+			groups = append(groups, val)
+		}
+
+		return groups, true
+	}
+
+	return groups, false
+}
+
+// extractOpenIDIdentity resolves the username and groups for an OIDC callback
+// based on the provider's configured claim mapping. It returns the resolved
+// username, the deduplicated/sorted groups, and a boolean reporting whether
+// the username could be resolved at all (false means callers should reject).
+func extractOpenIDIdentity(logger log.Logger, authConfig *config.AuthConfig, providerName string,
+	info *oidc.UserInfo, idTokenClaims map[string]any,
+) (string, []string, bool) {
+	usernameClaim, groupsClaim, usernameConfigured := getOpenIDClaimMapping(authConfig, providerName)
+
+	username := getOpenIDUsername(info, usernameClaim)
+
+	if username == "" && usernameConfigured {
+		configuredClaim := usernameClaim
+		usernameClaim = defaultUsernameClaim
+		usernameConfigured = false
+		username = getOpenIDUsername(info, usernameClaim)
+
+		logger.Warn().
+			Str("provider", providerName).
+			Str("claim", configuredClaim).
+			Msg("configured username claim missing or empty, falling back to email")
+	}
+
+	if username == "" {
+		return "", nil, false
+	}
+
+	if usernameConfigured {
+		logger.Debug().
+			Str("provider", providerName).
+			Str("claim", usernameClaim).
+			Str("username", username).
+			Msg("extracted username from configured claim")
+	} else {
+		logger.Debug().
+			Str("provider", providerName).
+			Str("username", username).
+			Msg("using email as username (fallback)")
+	}
+
+	var (
+		groups      []string
+		groupsFound bool
+	)
+
+	if info != nil {
+		groups, groupsFound = appendOpenIDGroups(groups, info.Claims, groupsClaim)
+		if !groupsFound {
+			logger.Info().Msgf("failed to find any %q claim for user %s in UserInfo", groupsClaim, username)
+		}
+	}
+
+	if idTokenClaims != nil {
+		groups, groupsFound = appendOpenIDGroups(groups, idTokenClaims, groupsClaim)
+		if !groupsFound {
+			logger.Info().Msgf("failed to find any %q claim for user %s in IDTokenClaimsToken", groupsClaim, username)
+		}
+	}
+
+	slices.Sort(groups)
+	groups = slices.Compact(groups)
+
+	return username, groups, true
+}
+
 // OAuth2Callback is the callback logic where openid/oauth2 will redirect back to our app.
 func OAuth2Callback(ctlr *Controller, w http.ResponseWriter, r *http.Request, state, email, provider string,
 	groups []string,

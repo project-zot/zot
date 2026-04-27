@@ -19,7 +19,6 @@ import (
 	"net/textproto"
 	"net/url"
 	"path"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -2516,86 +2515,6 @@ func (rh *RouteHandler) OpenIDCodeExchangeCallback() rp.CodeExchangeUserinfoCall
 	return rh.OpenIDCodeExchangeCallbackWithProvider("")
 }
 
-const (
-	defaultUsernameClaim = "email"
-	defaultGroupsClaim   = "groups"
-)
-
-// getOpenIDClaimMapping resolves the username and groups claim names for a given provider.
-// The third return value reports whether the username claim was explicitly configured
-// (false means the default "email" claim is being used as a fallback).
-func getOpenIDClaimMapping(authConfig *config.AuthConfig, providerName string) (string, string, bool) {
-	usernameClaim := defaultUsernameClaim
-	groupsClaim := defaultGroupsClaim
-	usernameConfigured := false
-
-	if authConfig == nil || authConfig.OpenID == nil || providerName == "" {
-		return usernameClaim, groupsClaim, usernameConfigured
-	}
-
-	providerConfig, ok := authConfig.OpenID.Providers[providerName]
-	if !ok || providerConfig.ClaimMapping == nil {
-		return usernameClaim, groupsClaim, usernameConfigured
-	}
-
-	if providerConfig.ClaimMapping.Username != "" {
-		usernameClaim = providerConfig.ClaimMapping.Username
-		usernameConfigured = true
-	}
-
-	if providerConfig.ClaimMapping.Groups != "" {
-		groupsClaim = providerConfig.ClaimMapping.Groups
-	}
-
-	return usernameClaim, groupsClaim, usernameConfigured
-}
-
-func getOpenIDUsername(info *oidc.UserInfo, claimName string) string {
-	if info == nil {
-		return ""
-	}
-
-	switch claimName {
-	case "preferred_username":
-		return info.PreferredUsername
-	case defaultUsernameClaim:
-		return info.UserInfoEmail.Email
-	case "sub":
-		return info.Subject
-	case "name":
-		return info.Name
-	default:
-		if val, ok := info.Claims[claimName].(string); ok {
-			return val
-		}
-	}
-
-	return ""
-}
-
-func appendOpenIDGroups(groups []string, claims map[string]any, claimName string) ([]string, bool) {
-	switch val := claims[claimName].(type) {
-	case []any:
-		for _, group := range val {
-			groups = append(groups, fmt.Sprint(group))
-		}
-
-		return groups, true
-	case []string:
-		groups = append(groups, val...)
-
-		return groups, true
-	case string:
-		if val != "" {
-			groups = append(groups, val)
-		}
-
-		return groups, true
-	}
-
-	return groups, false
-}
-
 // OpenIDCodeExchangeCallbackWithProvider is the OIDC CodeExchange callback that supports configurable claim mapping.
 // The providerName parameter is used to lookup provider-specific claim mapping configuration.
 // This differs from the legacy version by allowing per-provider claim mapping based on the providerName.
@@ -2606,55 +2525,20 @@ func (rh *RouteHandler) OpenIDCodeExchangeCallbackWithProvider(providerName stri
 	return func(w http.ResponseWriter, r *http.Request, tokens *oidc.Tokens[*oidc.IDTokenClaims], state string,
 		relyingParty rp.RelyingParty, info *oidc.UserInfo,
 	) {
-		// Extract username based on claim mapping configuration
 		authConfig := rh.c.Config.CopyAuthConfig()
-		usernameClaim, groupsClaim, usernameConfigured := getOpenIDClaimMapping(authConfig, providerName)
 
-		username := getOpenIDUsername(info, usernameClaim)
-		if username == "" {
-			if usernameClaim != defaultUsernameClaim {
-				usernameClaim = defaultUsernameClaim
-				usernameConfigured = false
-				username = getOpenIDUsername(info, usernameClaim)
-			}
-
-			if username == "" {
-				rh.c.Log.Error().Msg("failed to set user record for empty username value")
-				w.WriteHeader(http.StatusUnauthorized)
-
-				return
-			}
+		var idTokenClaims map[string]any
+		if tokens != nil && tokens.IDTokenClaims != nil {
+			idTokenClaims = tokens.IDTokenClaims.Claims
 		}
 
-		if usernameConfigured {
-			rh.c.Log.Debug().
-				Str("provider", providerName).
-				Str("claim", usernameClaim).
-				Str("username", username).
-				Msg("extracted username from configured claim")
-		} else {
-			rh.c.Log.Debug().
-				Str("provider", providerName).
-				Str("username", username).
-				Msg("using email as username (fallback)")
+		username, groups, ok := extractOpenIDIdentity(rh.c.Log, authConfig, providerName, info, idTokenClaims)
+		if !ok {
+			rh.c.Log.Error().Msg("failed to set user record for empty username value")
+			w.WriteHeader(http.StatusUnauthorized)
+
+			return
 		}
-
-		var groups []string
-
-		var groupsFound bool
-
-		groups, groupsFound = appendOpenIDGroups(groups, info.Claims, groupsClaim)
-		if !groupsFound {
-			rh.c.Log.Info().Msgf("failed to find any %q claim for user %s in UserInfo", groupsClaim, username)
-		}
-
-		groups, groupsFound = appendOpenIDGroups(groups, tokens.IDTokenClaims.Claims, groupsClaim)
-		if !groupsFound {
-			rh.c.Log.Info().Msgf("failed to find any %q claim for user %s in IDTokenClaimsToken", groupsClaim, username)
-		}
-
-		slices.Sort(groups)
-		groups = slices.Compact(groups)
 
 		callbackUI, err := OAuth2Callback(rh.c, w, r, state, username, providerName, groups)
 		if err != nil {

@@ -1,5 +1,3 @@
-//go:build sync && scrub && metrics && search && lint && mgmt
-
 package api
 
 import (
@@ -191,8 +189,22 @@ func TestAppendOpenIDGroups(t *testing.T) {
 			expectedFound: true,
 		},
 		{
+			name:          "skips nil and empty entries in any slice",
+			claims:        map[string]any{"roles": []any{"dev", nil, ""}},
+			claim:         "roles",
+			expected:      []string{"dev"},
+			expectedFound: true,
+		},
+		{
 			name:          "appends string slice",
 			claims:        map[string]any{"roles": []string{"admin", "ops"}},
+			claim:         "roles",
+			expected:      []string{"admin", "ops"},
+			expectedFound: true,
+		},
+		{
+			name:          "skips empty entries in string slice",
+			claims:        map[string]any{"roles": []string{"admin", "", "ops"}},
 			claim:         "roles",
 			expected:      []string{"admin", "ops"},
 			expectedFound: true,
