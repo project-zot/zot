@@ -11247,6 +11247,10 @@ func TestPullRange(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.Header().Get("Accept-Ranges"), ShouldEqual, "bytes")
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			// HEAD on an unreferenced blob (no manifest/index) must still
+			// advertise a valid Content-Type. The descriptor lookup fails
+			// here, so we expect the application/octet-stream fallback.
+			So(resp.Header().Get("Content-Type"), ShouldEqual, "application/octet-stream")
 		})
 
 		Convey("Get a range of bytes", func() {
@@ -11255,6 +11259,11 @@ func TestPullRange(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusPartialContent)
 			So(resp.Header().Get("Content-Length"), ShouldEqual, strconv.Itoa(len(content)))
 			So(resp.Body(), ShouldResemble, content)
+			// Single-range 206: descriptor lookup fails (blob is not
+			// referenced by any manifest), so Content-Type falls back to
+			// application/octet-stream rather than echoing the request
+			// Accept header.
+			So(resp.Header().Get("Content-Type"), ShouldEqual, "application/octet-stream")
 
 			resp, err = resty.R().SetHeader("Range", "bytes=0-100").Get(blobLoc)
 			So(err, ShouldBeNil)
@@ -11318,6 +11327,11 @@ func TestPullRange(t *testing.T) {
 			part, err := multipartReader.NextPart()
 			So(err, ShouldBeNil)
 			So(part.Header.Get("Content-Range"), ShouldEqual, "bytes 0-1/10")
+			// Per-part Content-Type reflects the descriptor-aware
+			// resolution. For an unreferenced blob this is the
+			// application/octet-stream fallback; for a real OCI layer it
+			// would carry the manifest's layer media type.
+			So(part.Header.Get("Content-Type"), ShouldEqual, "application/octet-stream")
 
 			partBody, err := io.ReadAll(part)
 			So(err, ShouldBeNil)
@@ -11326,6 +11340,7 @@ func TestPullRange(t *testing.T) {
 			part, err = multipartReader.NextPart()
 			So(err, ShouldBeNil)
 			So(part.Header.Get("Content-Range"), ShouldEqual, "bytes 4-6/10")
+			So(part.Header.Get("Content-Type"), ShouldEqual, "application/octet-stream")
 
 			partBody, err = io.ReadAll(part)
 			So(err, ShouldBeNil)

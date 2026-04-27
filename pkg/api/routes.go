@@ -1025,6 +1025,27 @@ func canMount(userAc *reqCtx.UserAccessControl, imgStore storageTypes.ImageStore
 	return canMount, nil
 }
 
+// blobResponseMediaType resolves the OCI media type to advertise for a blob via
+// the repo's index/manifests. If the descriptor lookup fails (or the descriptor
+// has no media type), it falls back to application/octet-stream.
+//
+// Use this for Content-Type on HEAD/GET blob responses to satisfy OCI
+// distribution-spec conformance and consumers like stargz-snapshotter that
+// require a non-empty, well-formed media type.
+func blobResponseMediaType(
+	imgStore storageTypes.ImageStore,
+	repo string,
+	digest godigest.Digest,
+	logger log.Logger,
+) string {
+	desc, err := storageCommon.GetBlobDescriptorFromRepo(imgStore, repo, digest, logger)
+	if err == nil && desc.MediaType != "" {
+		return desc.MediaType
+	}
+
+	return constants.BinaryMediaType
+}
+
 // CheckBlob godoc
 // @Summary Check image blob/layer
 // @Description Check an image's blob/layer given a digest
@@ -1118,6 +1139,7 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 
 	response.Header().Set("Content-Length", strconv.FormatInt(blen, 10))
 	response.Header().Set("Accept-Ranges", "bytes")
+	response.Header().Set("Content-Type", blobResponseMediaType(imgStore, name, digest, rh.c.Log))
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
 	response.WriteHeader(http.StatusOK)
 }
@@ -1251,7 +1273,7 @@ func coalesceRanges(ranges []httpRange) []httpRange {
 }
 
 func writeMultipartRanges(response http.ResponseWriter, ranges []blobRangeReader, bsize int64,
-	logger log.Logger,
+	mediaType string, logger log.Logger,
 ) {
 	writer := multipart.NewWriter(response)
 	defer func() {
@@ -1266,6 +1288,14 @@ func writeMultipartRanges(response http.ResponseWriter, ranges []blobRangeReader
 	for _, rangeReader := range ranges {
 		partHeader := textproto.MIMEHeader{}
 		partHeader.Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", rangeReader.start, rangeReader.end, bsize))
+
+		// RFC 9110 §15.3.7 lets us omit per-part Content-Type, but when the
+		// caller has resolved a real media type (descriptor lookup succeeded
+		// or fell back to application/octet-stream) we propagate it so OCI
+		// clients don't have to re-derive it from the index for every part.
+		if mediaType != "" {
+			partHeader.Set("Content-Type", mediaType)
+		}
 
 		part, err := writer.CreatePart(partHeader)
 		if err != nil {
@@ -1314,8 +1344,6 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 	digest := godigest.Digest(digestStr)
 
-	mediaType := request.Header.Get("Accept")
-
 	contentRange := request.Header.Get("Range")
 	_, rangeHeaderPresent := request.Header["Range"]
 
@@ -1354,6 +1382,10 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 			return
 		}
 
+		// Resolve the response Content-Type from the blob's OCI descriptor (if
+		// any), with a fallback to application/octet-stream.
+		mediaType := blobResponseMediaType(imgStore, name, digest, rh.c.Log)
+
 		ranges, err := parseRangeHeader(contentRange, bsize)
 		if err != nil {
 			response.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", bsize))
@@ -1391,7 +1423,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 		response.Header().Set(constants.DistContentDigestKey, digest.String())
 
 		if len(rangeReaders) > 1 {
-			writeMultipartRanges(response, rangeReaders, bsize, rh.c.Log)
+			writeMultipartRanges(response, rangeReaders, bsize, mediaType, rh.c.Log)
 
 			return
 		}
@@ -1409,6 +1441,11 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 	var blen int64
 
+	// Same descriptor-aware Content-Type story as the range branch; deferred
+	// to after GetBlob succeeds so we never do an index walk for a missing
+	// blob.
+	mediaType := blobResponseMediaType(imgStore, name, digest, rh.c.Log)
+
 	repo, blen, err := imgStore.GetBlob(name, digest, mediaType)
 	if err != nil {
 		writeBlobError(err)
@@ -1421,7 +1458,6 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 	response.Header().Set("Content-Length", strconv.FormatInt(blen, 10))
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
 
-	// return the blob data
 	WriteDataFromReader(response, http.StatusOK, blen, mediaType, repo, rh.c.Log)
 }
 
