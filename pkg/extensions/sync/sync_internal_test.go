@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,6 +20,8 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/regclient/regclient"
+	"github.com/regclient/regclient/types/blob"
+	"github.com/regclient/regclient/types/descriptor"
 	"github.com/regclient/regclient/types/ref"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -37,6 +40,114 @@ import (
 	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
+
+func TestDownloadRateLimiter(t *testing.T) {
+	Convey("downloadRate parser accepts documented units", t, func() {
+		tests := []struct {
+			rate     string
+			expected int64
+		}{
+			{rate: "", expected: 0},
+			{rate: "1024", expected: 1024},
+			{rate: "8bps", expected: 1},
+			{rate: "100mbps", expected: 12500000},
+			{rate: "100Mbps", expected: 12500000},
+			{rate: "1MBps", expected: 1000000},
+			{rate: "1MiBps", expected: 1048576},
+			{rate: "2 GB/s", expected: 2000000000},
+		}
+
+		for _, test := range tests {
+			parsed, err := parseDownloadRate(test.rate)
+			So(err, ShouldBeNil)
+			So(parsed, ShouldEqual, test.expected)
+		}
+	})
+
+	Convey("downloadRate parser rejects invalid values", t, func() {
+		for _, rate := range []string{"fast", "0mbps", "-1mbps", "1bps", "10widgets"} {
+			parsed, err := parseDownloadRate(rate)
+			So(err, ShouldNotBeNil)
+			So(parsed, ShouldEqual, 0)
+		}
+	})
+
+	Convey("new service rejects invalid downloadRate", t, func() {
+		service, err := New(syncconf.RegistryConfig{
+			URLs:         []string{"http://localhost"},
+			DownloadRate: "fast",
+		}, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+
+		So(err, ShouldNotBeNil)
+		So(service, ShouldBeNil)
+	})
+
+	Convey("downloadRate config installs image copy options", t, func() {
+		service, err := New(syncconf.RegistryConfig{
+			URLs:         []string{"http://localhost"},
+			DownloadRate: "8Bps",
+		}, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+
+		So(err, ShouldBeNil)
+		So(service.downloadLimiter, ShouldNotBeNil)
+		So(len(service.downloadLimiter.imageCopyOptions(context.Background())), ShouldEqual, 1)
+	})
+
+	Convey("rate-limited reader waits according to bytes read", t, func() {
+		now := time.Unix(0, 0)
+		waits := []time.Duration{}
+		limiter := &downloadRateLimiter{
+			rateBytesPerSecond: 100,
+			now: func() time.Time {
+				return now
+			},
+			sleep: func(ctx context.Context, delay time.Duration) error {
+				waits = append(waits, delay)
+				now = now.Add(delay)
+
+				return nil
+			},
+		}
+
+		content := []byte("0123456789")
+		desc := descriptor.Descriptor{
+			Size:   int64(len(content)),
+			Digest: godigest.FromBytes(content),
+		}
+		reader := blob.NewReader(blob.WithDesc(desc), blob.WithReader(bytes.NewReader(content)))
+		wrapped, err := limiter.blobReaderHook(context.Background())(reader)
+		So(err, ShouldBeNil)
+
+		readContent, err := io.ReadAll(wrapped)
+		So(err, ShouldBeNil)
+		So(readContent, ShouldResemble, content)
+		So(waits, ShouldResemble, []time.Duration{100 * time.Millisecond})
+	})
+
+	Convey("rate-limited reader returns context cancellation", t, func() {
+		limiter := &downloadRateLimiter{
+			rateBytesPerSecond: 100,
+			now:                time.Now,
+			sleep:              sleepWithContext,
+		}
+		content := []byte("cancel me")
+		desc := descriptor.Descriptor{
+			Size:   int64(len(content)),
+			Digest: godigest.FromBytes(content),
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		reader := blob.NewReader(blob.WithDesc(desc), blob.WithReader(bytes.NewReader(content)))
+		wrapped, err := limiter.blobReaderHook(ctx)(reader)
+		So(err, ShouldBeNil)
+
+		readContent := make([]byte, len(content))
+		n, err := wrapped.Read(readContent)
+		So(n, ShouldEqual, len(content))
+		So(err, ShouldEqual, context.Canceled)
+	})
+}
 
 func TestService(t *testing.T) {
 	Convey("trigger fetch tags error", t, func() {
