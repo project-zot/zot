@@ -7,9 +7,13 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/google/uuid"
@@ -19,6 +23,8 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/project-zot/mockoidc"
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/zitadel/oidc/v3/pkg/client/rp"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
 	"golang.org/x/oauth2"
@@ -1833,4 +1839,1089 @@ func TestWriteDataFromReader(t *testing.T) {
 
 		So(response.Code, ShouldEqual, 200)
 	})
+}
+
+// Descriptor-aware Content-Type tests for blob HEAD/GET.
+//
+// The blob endpoints derive the response Content-Type from the OCI
+// descriptor associated with the blob (via the repo's index/manifest
+// chain), and fall back to application/octet-stream when no such
+// descriptor is available. These tests use mock image stores to drive
+// both branches independently of the on-disk storage layer.
+
+// descriptorTestDigests returns deterministic layer, manifest, and
+// config digests (in that order) used by the descriptor-aware
+// Content-Type tests.
+func descriptorTestDigests() (godigest.Digest, godigest.Digest, godigest.Digest) {
+	return godigest.FromString("layer"), godigest.FromString("manifest"), godigest.FromString("config")
+}
+
+// newBlobTestRouteHandler returns a fresh RouteHandler whose default
+// store is the supplied mock. It does not start a server; handlers are
+// invoked directly via httptest. The Router is initialized manually
+// because NewRouteHandler->SetupRoutes dereferences it but the server
+// (which would normally do that) is never started here.
+func newBlobTestRouteHandler(t *testing.T, store mocks.MockedImageStore) *api.RouteHandler {
+	t.Helper()
+
+	ctlr := api.NewController(config.New())
+	ctlr.Router = mux.NewRouter()
+	ctlr.StoreController.DefaultStore = store
+
+	return api.NewRouteHandler(ctlr)
+}
+
+// descriptorFixture builds a minimal index -> manifest -> layer chain
+// that resolves the layer digest from descriptorTestDigests to
+// MediaTypeImageLayerGzip.
+func descriptorFixture(t *testing.T) ([]byte, []byte) {
+	t.Helper()
+
+	layerDigest, manifestDigest, configDigest := descriptorTestDigests()
+
+	manifest := ispec.Manifest{
+		Config: ispec.Descriptor{
+			MediaType: ispec.MediaTypeImageConfig,
+			Digest:    configDigest,
+			Size:      1,
+		},
+		Layers: []ispec.Descriptor{
+			{
+				MediaType: ispec.MediaTypeImageLayerGzip,
+				Digest:    layerDigest,
+				Size:      4,
+			},
+		},
+	}
+	manifest.SchemaVersion = 2
+
+	manifestJSON, err := json.Marshal(manifest)
+	require.NoError(t, err)
+
+	index := ispec.Index{
+		Manifests: []ispec.Descriptor{
+			{
+				MediaType: ispec.MediaTypeImageManifest,
+				Digest:    manifestDigest,
+				Size:      int64(len(manifestJSON)),
+				Annotations: map[string]string{
+					ispec.AnnotationRefName: "latest",
+				},
+			},
+		},
+	}
+	index.SchemaVersion = 2
+
+	indexJSON, err := json.Marshal(index)
+	require.NoError(t, err)
+
+	return indexJSON, manifestJSON
+}
+
+// descriptorStore returns a mock store backed by descriptorFixture.
+// Looking up the layer digest from descriptorTestDigests resolves to a
+// layer with media type MediaTypeImageLayerGzip via the index walk;
+// other digests fall through to the binary fallback.
+func descriptorStore(t *testing.T) mocks.MockedImageStore {
+	t.Helper()
+
+	indexJSON, manifestJSON := descriptorFixture(t)
+	layerDigest, manifestDigest, _ := descriptorTestDigests()
+
+	return mocks.MockedImageStore{
+		RootDirFn: func() string { return t.TempDir() },
+		CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+			if digest == layerDigest {
+				return true, 4, nil
+			}
+
+			return true, 0, nil
+		},
+		GetIndexContentFn: func(repo string) ([]byte, error) {
+			return indexJSON, nil
+		},
+		GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+			require.Equal(t, manifestDigest, digest, "unexpected blob content lookup")
+
+			return manifestJSON, nil
+		},
+	}
+}
+
+func TestCheckBlobUsesDescriptorContentType(t *testing.T) {
+	store := descriptorStore(t)
+	store.CheckBlobFn = func(repo string, digest godigest.Digest) (bool, int64, error) {
+		return true, 42, nil
+	}
+
+	handler := newBlobTestRouteHandler(t, store)
+
+	layerDigest, _, _ := descriptorTestDigests()
+
+	req := httptest.NewRequest(http.MethodHead, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req.Header.Set("Accept", "application/vnd.oci.image.layer.v1.tar+gzip, */*")
+	req = mux.SetURLVars(req, map[string]string{
+		"name":   "test",
+		"digest": layerDigest.String(),
+	})
+
+	rec := httptest.NewRecorder()
+	handler.CheckBlob(rec, req)
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, ispec.MediaTypeImageLayerGzip, resp.Header.Get("Content-Type"))
+	assert.Equal(t, "bytes", resp.Header.Get("Accept-Ranges"))
+	assert.Equal(t, layerDigest.String(), resp.Header.Get(constants.DistContentDigestKey))
+}
+
+func TestCheckBlobFallsBackToBinaryContentType(t *testing.T) {
+	// No index/manifest at all: descriptor lookup fails and the handler
+	// must fall back to application/octet-stream so OCI clients get a
+	// well-formed Content-Type.
+	handler := newBlobTestRouteHandler(t, mocks.MockedImageStore{
+		CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+			return true, 1024, nil
+		},
+		GetIndexContentFn: func(repo string) ([]byte, error) {
+			return nil, zerr.ErrManifestNotFound
+		},
+	})
+
+	layerDigest, _, _ := descriptorTestDigests()
+
+	req := httptest.NewRequest(http.MethodHead, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req.Header.Set("Accept", "*/*")
+	req = mux.SetURLVars(req, map[string]string{
+		"name":   "test",
+		"digest": layerDigest.String(),
+	})
+
+	rec := httptest.NewRecorder()
+	handler.CheckBlob(rec, req)
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, constants.BinaryMediaType, resp.Header.Get("Content-Type"))
+}
+
+func TestGetBlobUsesDescriptorContentType(t *testing.T) {
+	store := descriptorStore(t)
+	store.GetBlobFn = func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error) {
+		// The mediaType argument forwarded to the storage layer is a
+		// hint and is currently ignored; we still feed it the resolved
+		// value so the surface stays consistent.
+		assert.Equal(t, ispec.MediaTypeImageLayerGzip, mediaType)
+
+		return io.NopCloser(strings.NewReader("blob")), 4, nil
+	}
+
+	handler := newBlobTestRouteHandler(t, store)
+
+	layerDigest, _, _ := descriptorTestDigests()
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	// Wildcard / mixed Accept must not leak into the response.
+	req.Header.Set("Accept", "application/vnd.oci.image.layer.v1.tar+gzip, */*")
+	req = mux.SetURLVars(req, map[string]string{
+		"name":   "test",
+		"digest": layerDigest.String(),
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetBlob(rec, req)
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, ispec.MediaTypeImageLayerGzip, resp.Header.Get("Content-Type"))
+}
+
+func TestGetBlobFallsBackOnInvalidDescriptorContentType(t *testing.T) {
+	// Descriptor media types are user-supplied and may be invalid as HTTP
+	// header values. resolveBlobResponseMediaType must sanitize/validate
+	// and fall back to application/octet-stream on parse failure.
+	store := descriptorStore(t)
+	store.GetBlobFn = func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error) {
+		assert.Equal(t, constants.BinaryMediaType, mediaType)
+
+		return io.NopCloser(strings.NewReader("blob")), 4, nil
+	}
+
+	// Force descriptor lookup success but with an invalid media type string.
+	store.GetBlobContentFn = func(repo string, digest godigest.Digest) ([]byte, error) {
+		_, manifestJSON := descriptorFixture(t)
+
+		var manifest ispec.Manifest
+		require.NoError(t, json.Unmarshal(manifestJSON, &manifest))
+		require.Len(t, manifest.Layers, 1)
+		manifest.Layers[0].MediaType = "bad\r\nvalue"
+
+		out, err := json.Marshal(manifest)
+		require.NoError(t, err)
+
+		return out, nil
+	}
+
+	handler := newBlobTestRouteHandler(t, store)
+
+	layerDigest, _, _ := descriptorTestDigests()
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req = mux.SetURLVars(req, map[string]string{
+		"name":   "test",
+		"digest": layerDigest.String(),
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetBlob(rec, req)
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, constants.BinaryMediaType, resp.Header.Get("Content-Type"))
+}
+
+func TestGetBlobFallsBackToBinaryContentType(t *testing.T) {
+	// Repository has no index/manifest: full GET must respond with
+	// application/octet-stream rather than echoing Accept.
+	handler := newBlobTestRouteHandler(t, mocks.MockedImageStore{
+		GetBlobFn: func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error) {
+			assert.Equal(t, constants.BinaryMediaType, mediaType)
+
+			return io.NopCloser(strings.NewReader("blob")), 4, nil
+		},
+		GetIndexContentFn: func(repo string) ([]byte, error) {
+			return nil, zerr.ErrManifestNotFound
+		},
+	})
+
+	layerDigest, _, _ := descriptorTestDigests()
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	// Comma-separated Accept must not produce a malformed Content-Type.
+	req.Header.Set("Accept", "typeA, typeB")
+	req = mux.SetURLVars(req, map[string]string{
+		"name":   "test",
+		"digest": layerDigest.String(),
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetBlob(rec, req)
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, constants.BinaryMediaType, resp.Header.Get("Content-Type"))
+}
+
+func TestGetBlobPartialUsesDescriptorContentType(t *testing.T) {
+	store := descriptorStore(t)
+	store.GetBlobPartialFn = func(
+		repo string,
+		digest godigest.Digest,
+		mediaType string,
+		from,
+		to int64,
+	) (io.ReadCloser, int64, int64, error) {
+		assert.Equal(t, ispec.MediaTypeImageLayerGzip, mediaType)
+		assert.Equal(t, int64(0), from)
+		assert.Equal(t, int64(1), to)
+
+		return io.NopCloser(strings.NewReader("bl")), 2, 4, nil
+	}
+
+	handler := newBlobTestRouteHandler(t, store)
+
+	layerDigest, _, _ := descriptorTestDigests()
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req.Header.Set("Range", "bytes=0-1")
+	req = mux.SetURLVars(req, map[string]string{
+		"name":   "test",
+		"digest": layerDigest.String(),
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetBlob(rec, req)
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusPartialContent, resp.StatusCode)
+	assert.Equal(t, ispec.MediaTypeImageLayerGzip, resp.Header.Get("Content-Type"))
+	assert.Equal(t, "bytes 0-1/4", resp.Header.Get("Content-Range"))
+	assert.Equal(t, layerDigest.String(), resp.Header.Get(constants.DistContentDigestKey))
+}
+
+func TestGetBlobPartialFallsBackToBinaryContentType(t *testing.T) {
+	// Single-range request for a blob whose repo has no index — same
+	// fallback behaviour as the full-GET case.
+	handler := newBlobTestRouteHandler(t, mocks.MockedImageStore{
+		CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+			return true, 4, nil
+		},
+		GetBlobPartialFn: func(
+			repo string,
+			digest godigest.Digest,
+			mediaType string,
+			from,
+			to int64,
+		) (io.ReadCloser, int64, int64, error) {
+			assert.Equal(t, constants.BinaryMediaType, mediaType)
+
+			return io.NopCloser(strings.NewReader("bl")), 2, 4, nil
+		},
+		GetIndexContentFn: func(repo string) ([]byte, error) {
+			return nil, zerr.ErrManifestNotFound
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req.Header.Set("Range", "bytes=0-1")
+	req.Header.Set("Accept", "application/vnd.oci.image.layer.v1.tar+gzip, */*")
+	req = mux.SetURLVars(req, map[string]string{
+		"name":   "test",
+		"digest": "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621",
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetBlob(rec, req)
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusPartialContent, resp.StatusCode)
+	assert.Equal(t, constants.BinaryMediaType, resp.Header.Get("Content-Type"))
+}
+
+// TestGetBlobMultipartPartHasDescriptorContentType verifies that each
+// part of a multipart/byteranges response carries the descriptor-
+// derived Content-Type alongside the per-part Content-Range.
+func TestGetBlobMultipartPartHasDescriptorContentType(t *testing.T) {
+	const blobBody = "0123456789"
+
+	store := descriptorStore(t)
+	store.CheckBlobFn = func(repo string, digest godigest.Digest) (bool, int64, error) {
+		return true, int64(len(blobBody)), nil
+	}
+	store.GetBlobPartialFn = func(
+		repo string,
+		digest godigest.Digest,
+		mediaType string,
+		from,
+		to int64,
+	) (io.ReadCloser, int64, int64, error) {
+		assert.Equal(t, ispec.MediaTypeImageLayerGzip, mediaType)
+
+		return io.NopCloser(strings.NewReader(blobBody[from : to+1])), to - from + 1, int64(len(blobBody)), nil
+	}
+
+	handler := newBlobTestRouteHandler(t, store)
+
+	layerDigest, _, _ := descriptorTestDigests()
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req.Header.Set("Range", "bytes=0-1,5-7")
+	req = mux.SetURLVars(req, map[string]string{
+		"name":   "test",
+		"digest": layerDigest.String(),
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetBlob(rec, req)
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusPartialContent, resp.StatusCode)
+
+	contentType, params, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	require.NoError(t, err)
+	require.Equal(t, "multipart/byteranges", contentType)
+	require.NotEmpty(t, params["boundary"])
+
+	reader := multipart.NewReader(resp.Body, params["boundary"])
+
+	expected := []struct {
+		body         string
+		contentRange string
+	}{
+		{body: "01", contentRange: "bytes 0-1/10"},
+		{body: "567", contentRange: "bytes 5-7/10"},
+	}
+
+	for i, want := range expected {
+		part, err := reader.NextPart()
+		require.NoError(t, err, "read part %d", i)
+
+		assert.Equal(t, want.contentRange, part.Header.Get("Content-Range"), "part %d content-range", i)
+		assert.Equal(t, ispec.MediaTypeImageLayerGzip, part.Header.Get("Content-Type"),
+			"part %d content-type", i)
+
+		body, err := io.ReadAll(part)
+		require.NoError(t, err, "read part %d body", i)
+		assert.Equal(t, want.body, string(body), "part %d body", i)
+	}
+
+	_, err = reader.NextPart()
+	require.ErrorIs(t, err, io.EOF)
+
+	assert.Equal(t, layerDigest.String(), resp.Header.Get(constants.DistContentDigestKey))
+}
+
+// Streaming-multipart tests for the lazy-fan-out path.
+//
+// The multipart 206 response is written from a producer goroutine that
+// opens range readers one at a time, with the response Content-Length
+// precomputed up front. These tests cover:
+//   - Content-Length matches the actual body length on the wire.
+//   - At most one range reader is ever open at any instant (the
+//     fan-out improvement that motivated the rewrite).
+//   - A reader-error mid-stream truncates the body (since the 206
+//     headers have already been flushed) and is logged.
+
+// countingReader wraps a strings.Reader so a test can observe whether
+// the wrapper has been closed yet. It tracks open/max-open counters
+// shared with the test; the storage mock invokes its constructor on
+// every GetBlobPartial call, so any concurrent opens immediately
+// surface as a maxOpen > 1.
+type countingReader struct {
+	*strings.Reader
+
+	open    *atomic.Int32
+	maxOpen *atomic.Int32
+	closed  bool
+}
+
+func newCountingReader(body string, open, maxOpen *atomic.Int32) *countingReader {
+	cur := open.Add(1)
+
+	for {
+		prev := maxOpen.Load()
+		if cur <= prev || maxOpen.CompareAndSwap(prev, cur) {
+			break
+		}
+	}
+
+	return &countingReader{Reader: strings.NewReader(body), open: open, maxOpen: maxOpen}
+}
+
+func (cr *countingReader) Close() error {
+	if cr.closed {
+		return nil
+	}
+
+	cr.closed = true
+	cr.open.Add(-1)
+
+	return nil
+}
+
+// drainResponseBody reads until EOF and returns the bytes plus any
+// non-EOF error that occurred. The httptest recorder's body is fully
+// buffered so this never blocks.
+func drainResponseBody(t *testing.T, resp *http.Response) []byte {
+	t.Helper()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	return body
+}
+
+func TestGetBlobMultipartContentLengthMatchesBody(t *testing.T) {
+	const blobBody = "0123456789abcdef" // 16 bytes
+
+	store := descriptorStore(t)
+	store.CheckBlobFn = func(repo string, digest godigest.Digest) (bool, int64, error) {
+		return true, int64(len(blobBody)), nil
+	}
+	store.GetBlobPartialFn = func(
+		repo string,
+		digest godigest.Digest,
+		mediaType string,
+		from,
+		to int64,
+	) (io.ReadCloser, int64, int64, error) {
+		return io.NopCloser(strings.NewReader(blobBody[from : to+1])), to - from + 1, int64(len(blobBody)), nil
+	}
+
+	handler := newBlobTestRouteHandler(t, store)
+
+	layerDigest, _, _ := descriptorTestDigests()
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req.Header.Set("Range", "bytes=0-1,5-7,12-15")
+	req = mux.SetURLVars(req, map[string]string{
+		"name":   "test",
+		"digest": layerDigest.String(),
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetBlob(rec, req)
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusPartialContent, resp.StatusCode)
+
+	contentType, params, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	require.NoError(t, err)
+	require.Equal(t, "multipart/byteranges", contentType)
+	require.NotEmpty(t, params["boundary"])
+
+	advertisedLen, err := strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64)
+	require.NoError(t, err, "Content-Length must be a valid integer")
+	require.Positive(t, advertisedLen, "Content-Length must be set on multipart responses")
+
+	body := drainResponseBody(t, resp)
+	assert.Equal(t, advertisedLen, int64(len(body)),
+		"advertised Content-Length must match the actual body length")
+
+	// Sanity-check the multipart structure is parseable end-to-end so
+	// the byte count above isn't masking a malformed body.
+	multipartReader := multipart.NewReader(bytes.NewReader(body), params["boundary"])
+
+	const wantParts = 3
+	for i := range wantParts {
+		part, err := multipartReader.NextPart()
+		require.NoError(t, err, "part %d", i)
+
+		_, err = io.Copy(io.Discard, part)
+		require.NoError(t, err, "part %d body", i)
+	}
+
+	_, err = multipartReader.NextPart()
+	require.ErrorIs(t, err, io.EOF)
+}
+
+func TestGetBlobMultipartOpensOneReaderAtATime(t *testing.T) {
+	const blobBody = "0123456789abcdef0123456789abcdef" // 32 bytes
+
+	var (
+		open    atomic.Int32
+		maxOpen atomic.Int32
+	)
+
+	store := descriptorStore(t)
+	store.CheckBlobFn = func(repo string, digest godigest.Digest) (bool, int64, error) {
+		return true, int64(len(blobBody)), nil
+	}
+	store.GetBlobPartialFn = func(
+		repo string,
+		digest godigest.Digest,
+		mediaType string,
+		from,
+		to int64,
+	) (io.ReadCloser, int64, int64, error) {
+		// Wrap a strings.Reader in a counter that increments on open
+		// and decrements on close. The producer goroutine in
+		// writeMultipartRanges should open and fully consume each
+		// reader before opening the next.
+		reader := newCountingReader(blobBody[from:to+1], &open, &maxOpen)
+
+		return reader, to - from + 1, int64(len(blobBody)), nil
+	}
+
+	handler := newBlobTestRouteHandler(t, store)
+
+	layerDigest, _, _ := descriptorTestDigests()
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	// Four non-coalescing ranges so the producer must open four
+	// distinct readers in sequence.
+	req.Header.Set("Range", "bytes=0-3,8-11,16-19,24-27")
+	req = mux.SetURLVars(req, map[string]string{
+		"name":   "test",
+		"digest": layerDigest.String(),
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetBlob(rec, req)
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusPartialContent, resp.StatusCode)
+
+	// Drain the body so the producer goroutine completes and decrements
+	// the open counter on every reader.
+	_ = drainResponseBody(t, resp)
+
+	assert.Equal(t, int32(0), open.Load(), "all readers must be closed by the time the body is drained")
+	assert.Equal(t, int32(1), maxOpen.Load(),
+		"writeMultipartRanges must open at most one range reader at a time")
+}
+
+func TestGetBlobMultipartTruncatesOnReaderError(t *testing.T) {
+	const blobBody = "0123456789abcdef" // 16 bytes
+
+	var calls atomic.Int32
+
+	store := descriptorStore(t)
+	store.CheckBlobFn = func(repo string, digest godigest.Digest) (bool, int64, error) {
+		return true, int64(len(blobBody)), nil
+	}
+	store.GetBlobPartialFn = func(
+		repo string,
+		digest godigest.Digest,
+		mediaType string,
+		from,
+		to int64,
+	) (io.ReadCloser, int64, int64, error) {
+		// First range succeeds, second fails. The 206 status and
+		// Content-Length have already been written by the time the
+		// producer hits the failure, so we expect a truncated body
+		// rather than a 5xx.
+		if calls.Add(1) == 1 {
+			return io.NopCloser(strings.NewReader(blobBody[from : to+1])), to - from + 1, int64(len(blobBody)), nil
+		}
+
+		return nil, 0, 0, ErrUnexpectedError
+	}
+
+	handler := newBlobTestRouteHandler(t, store)
+
+	layerDigest, _, _ := descriptorTestDigests()
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req.Header.Set("Range", "bytes=0-1,5-7")
+	req = mux.SetURLVars(req, map[string]string{
+		"name":   "test",
+		"digest": layerDigest.String(),
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetBlob(rec, req)
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	// 206 was already in flight when the 2nd-range error fired; the
+	// connection just truncates.
+	require.Equal(t, http.StatusPartialContent, resp.StatusCode)
+
+	advertisedLen, err := strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64)
+	require.NoError(t, err)
+
+	body := drainResponseBody(t, resp)
+	assert.Less(t, int64(len(body)), advertisedLen,
+		"body must be truncated relative to the advertised Content-Length on mid-stream error")
+}
+
+func TestGetBlobRangeUnsatisfiable(t *testing.T) {
+	// A Range header that lies entirely past the end of the blob must
+	// produce 416 with `Content-Range: bytes */<size>` so clients can
+	// retry with a valid range. parseRangeHeader rejects the header
+	// before the handler reaches GetBlobPartial.
+	handler := newBlobTestRouteHandler(t, mocks.MockedImageStore{
+		CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+			return true, 4, nil
+		},
+		GetIndexContentFn: func(repo string) ([]byte, error) {
+			return nil, zerr.ErrManifestNotFound
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req.Header.Set("Range", "bytes=999-1000")
+	req = mux.SetURLVars(req, map[string]string{
+		"name":   "test",
+		"digest": "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621",
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetBlob(rec, req)
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusRequestedRangeNotSatisfiable, resp.StatusCode)
+	assert.Equal(t, "bytes */4", resp.Header.Get("Content-Range"))
+}
+
+func TestGetBlobRangeCheckBlobError(t *testing.T) {
+	// CheckBlob returning a non-zerr error must surface as 500 via
+	// writeBlobError's default branch.
+	handler := newBlobTestRouteHandler(t, mocks.MockedImageStore{
+		CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+			return false, 0, ErrUnexpectedError
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req.Header.Set("Range", "bytes=0-1")
+	req = mux.SetURLVars(req, map[string]string{
+		"name":   "test",
+		"digest": "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621",
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetBlob(rec, req)
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+}
+
+func TestGetBlobRangeCheckBlobMissing(t *testing.T) {
+	// CheckBlob succeeding with ok=false (e.g. a deleted blob whose
+	// repo still exists) must short-circuit to 404 BLOB_UNKNOWN before
+	// any range parsing or descriptor lookup.
+	handler := newBlobTestRouteHandler(t, mocks.MockedImageStore{
+		CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+			return false, 0, nil
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req.Header.Set("Range", "bytes=0-1")
+	req = mux.SetURLVars(req, map[string]string{
+		"name":   "test",
+		"digest": "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621",
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetBlob(rec, req)
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+
+	var errList apiErr.ErrorList
+
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&errList))
+	require.Len(t, errList.Errors, 1)
+	assert.Equal(t, apiErr.BLOB_UNKNOWN.String(), errList.Errors[0].Code)
+}
+
+func TestGetBlobSingleRangePartialBlobNotFound(t *testing.T) {
+	// Single-range path: GetBlobPartial returning ErrBlobNotFound after
+	// a successful CheckBlob (a blob deleted between the two calls)
+	// must surface as 404 with the BLOB_UNKNOWN error body. CheckBlob
+	// has already returned ok=true so we get past the length check;
+	// the response is still recoverable because no body bytes have
+	// been written yet.
+	handler := newBlobTestRouteHandler(t, mocks.MockedImageStore{
+		CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+			return true, 4, nil
+		},
+		GetBlobPartialFn: func(
+			repo string,
+			digest godigest.Digest,
+			mediaType string,
+			from,
+			to int64,
+		) (io.ReadCloser, int64, int64, error) {
+			return nil, 0, 0, zerr.ErrBlobNotFound
+		},
+		GetIndexContentFn: func(repo string) ([]byte, error) {
+			return nil, zerr.ErrManifestNotFound
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req.Header.Set("Range", "bytes=0-1")
+	req = mux.SetURLVars(req, map[string]string{
+		"name":   "test",
+		"digest": "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621",
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetBlob(rec, req)
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+
+	var errList apiErr.ErrorList
+
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&errList))
+	require.Len(t, errList.Errors, 1)
+	assert.Equal(t, apiErr.BLOB_UNKNOWN.String(), errList.Errors[0].Code)
+}
+
+func TestGetBlobSingleRangePartialUnexpectedError(t *testing.T) {
+	// Single-range path: GetBlobPartial returning a non-zerr error
+	// hits writeBlobError's default branch and produces a 500.
+	handler := newBlobTestRouteHandler(t, mocks.MockedImageStore{
+		CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+			return true, 4, nil
+		},
+		GetBlobPartialFn: func(
+			repo string,
+			digest godigest.Digest,
+			mediaType string,
+			from,
+			to int64,
+		) (io.ReadCloser, int64, int64, error) {
+			return nil, 0, 0, ErrUnexpectedError
+		},
+		GetIndexContentFn: func(repo string) ([]byte, error) {
+			return nil, zerr.ErrManifestNotFound
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req.Header.Set("Range", "bytes=0-1")
+	req = mux.SetURLVars(req, map[string]string{
+		"name":   "test",
+		"digest": "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621",
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetBlob(rec, req)
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	assert.Empty(t, resp.Header.Get(constants.DistContentDigestKey),
+		"Docker-Content-Digest must not be set on error responses")
+}
+
+func TestGetBlobSingleRangeLengthMismatch(t *testing.T) {
+	// Single-range path: storage returns a reader claiming a different
+	// length than the request asked for. The handler must reject this
+	// with 500 rather than streaming an under- or over-sized body,
+	// since on the single-range path the headers haven't been flushed
+	// yet and 5xx is still possible.
+	handler := newBlobTestRouteHandler(t, mocks.MockedImageStore{
+		CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+			return true, 4, nil
+		},
+		GetBlobPartialFn: func(
+			repo string,
+			digest godigest.Digest,
+			mediaType string,
+			from,
+			to int64,
+		) (io.ReadCloser, int64, int64, error) {
+			// Caller asked for [0,1] (2 bytes); we hand back a reader
+			// claiming 3 bytes. blen != rng.length() so the handler
+			// should bail out with 500.
+			return io.NopCloser(strings.NewReader("xyz")), 3, 4, nil
+		},
+		GetIndexContentFn: func(repo string) ([]byte, error) {
+			return nil, zerr.ErrManifestNotFound
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req.Header.Set("Range", "bytes=0-1")
+	req = mux.SetURLVars(req, map[string]string{
+		"name":   "test",
+		"digest": "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621",
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetBlob(rec, req)
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+}
+
+func TestGetBlobMultipartShortReaderTruncates(t *testing.T) {
+	// Multipart path: the second range's reader is short — it claims
+	// rng.length() bytes but EOFs after one. io.CopyN inside the
+	// producer goroutine returns ErrUnexpectedEOF, which the handler
+	// surfaces as a truncated body (the 206 is already on the wire).
+	// This exercises the copyErr branch of writeMultipartRanges,
+	// distinct from the openRange-error path covered above.
+	const blobBody = "0123456789abcdef" // 16 bytes
+
+	var calls atomic.Int32
+
+	store := descriptorStore(t)
+	store.CheckBlobFn = func(repo string, digest godigest.Digest) (bool, int64, error) {
+		return true, int64(len(blobBody)), nil
+	}
+	store.GetBlobPartialFn = func(
+		repo string,
+		digest godigest.Digest,
+		mediaType string,
+		from,
+		to int64,
+	) (io.ReadCloser, int64, int64, error) {
+		if calls.Add(1) == 1 {
+			return io.NopCloser(strings.NewReader(blobBody[from : to+1])), to - from + 1, int64(len(blobBody)), nil
+		}
+
+		// Second range: announce the requested length but only deliver
+		// 1 byte. io.CopyN will return ErrUnexpectedEOF.
+		return io.NopCloser(strings.NewReader("x")), to - from + 1, int64(len(blobBody)), nil
+	}
+
+	handler := newBlobTestRouteHandler(t, store)
+
+	layerDigest, _, _ := descriptorTestDigests()
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req.Header.Set("Range", "bytes=0-1,5-7")
+	req = mux.SetURLVars(req, map[string]string{
+		"name":   "test",
+		"digest": layerDigest.String(),
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetBlob(rec, req)
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusPartialContent, resp.StatusCode)
+
+	advertisedLen, err := strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64)
+	require.NoError(t, err)
+
+	body := drainResponseBody(t, resp)
+	assert.Less(t, int64(len(body)), advertisedLen,
+		"a short reader on the second range must truncate the body")
+}
+
+func TestGetBlobRangeCheckBlobNamedErrors(t *testing.T) {
+	// CheckBlob is the first storage call on the range branch and the
+	// only place where named storage errors can be turned into proper
+	// 4xx OCI error responses (once the 206 is in flight on the
+	// multipart path it's too late). Each case in the table maps a
+	// zerr.* return to the OCI status code + error code the handler
+	// must produce via writeBlobError.
+	type expect struct {
+		status int
+		code   string
+	}
+
+	cases := map[string]struct {
+		err    error
+		expect expect
+	}{
+		"bad digest": {
+			err:    zerr.ErrBadBlobDigest,
+			expect: expect{status: http.StatusBadRequest, code: apiErr.DIGEST_INVALID.String()},
+		},
+		"repo not found": {
+			err:    zerr.ErrRepoNotFound,
+			expect: expect{status: http.StatusNotFound, code: apiErr.NAME_UNKNOWN.String()},
+		},
+		"blob not found": {
+			err:    zerr.ErrBlobNotFound,
+			expect: expect{status: http.StatusNotFound, code: apiErr.BLOB_UNKNOWN.String()},
+		},
+	}
+
+	for name, testCase := range cases {
+		t.Run(name, func(t *testing.T) {
+			handler := newBlobTestRouteHandler(t, mocks.MockedImageStore{
+				CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+					return false, 0, testCase.err
+				},
+			})
+
+			req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+			req.Header.Set("Range", "bytes=0-1")
+			req = mux.SetURLVars(req, map[string]string{
+				"name":   "test",
+				"digest": "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621",
+			})
+
+			rec := httptest.NewRecorder()
+			handler.GetBlob(rec, req)
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			require.Equal(t, testCase.expect.status, resp.StatusCode)
+
+			var errList apiErr.ErrorList
+
+			require.NoError(t, json.NewDecoder(resp.Body).Decode(&errList))
+			require.Len(t, errList.Errors, 1)
+			assert.Equal(t, testCase.expect.code, errList.Errors[0].Code)
+		})
+	}
+}
+
+// erroringCloseReader wraps an io.Reader and returns a fixed error
+// from Close(). It exists to exercise the closeErr branch of
+// writeMultipartRanges' producer goroutine, which the recent deferred-
+// CloseWithError refactor introduced as a distinct code path.
+type erroringCloseReader struct {
+	io.Reader
+
+	err error
+}
+
+func (e *erroringCloseReader) Close() error { return e.err }
+
+func TestGetBlobMultipartReaderCloseError(t *testing.T) {
+	// A range reader whose Close() errors after a full read must
+	// still truncate the body — the 206 is on the wire, so we can
+	// only tear the pipe down. This drives the closeErr branch of
+	// writeMultipartRanges; the open/copy paths already succeeded.
+	const blobBody = "0123456789abcdef" // 16 bytes
+
+	var calls atomic.Int32
+
+	store := descriptorStore(t)
+	store.CheckBlobFn = func(repo string, digest godigest.Digest) (bool, int64, error) {
+		return true, int64(len(blobBody)), nil
+	}
+	store.GetBlobPartialFn = func(
+		repo string,
+		digest godigest.Digest,
+		mediaType string,
+		from,
+		to int64,
+	) (io.ReadCloser, int64, int64, error) {
+		// First range: clean reader; second range: a reader whose
+		// content is fine but Close() errors.
+		body := blobBody[from : to+1]
+		if calls.Add(1) == 1 {
+			return io.NopCloser(strings.NewReader(body)), to - from + 1, int64(len(blobBody)), nil
+		}
+
+		return &erroringCloseReader{
+			Reader: strings.NewReader(body),
+			err:    ErrUnexpectedError,
+		}, to - from + 1, int64(len(blobBody)), nil
+	}
+
+	handler := newBlobTestRouteHandler(t, store)
+
+	layerDigest, _, _ := descriptorTestDigests()
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req.Header.Set("Range", "bytes=0-1,5-7")
+	req = mux.SetURLVars(req, map[string]string{
+		"name":   "test",
+		"digest": layerDigest.String(),
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetBlob(rec, req)
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusPartialContent, resp.StatusCode)
+
+	advertisedLen, err := strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64)
+	require.NoError(t, err)
+
+	body := drainResponseBody(t, resp)
+	assert.Less(t, int64(len(body)), advertisedLen,
+		"a Close() error on the second range must truncate the body")
 }
