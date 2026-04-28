@@ -556,6 +556,35 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) 
 		So(repos[0].Signatures, ShouldContainKey, missingImageDigest.String())
 	})
 
+	Convey("Detect cosign bundle signatures by artifact type and subject", func() {
+		imageStore := local.NewImageStore(rootDir, false, false,
+			log, monitoring.NewMetricsServer(false, log), nil, nil, nil, nil)
+
+		storeController := storage.StoreController{DefaultStore: imageStore}
+
+		signedImage := CreateRandomImage()
+		err := WriteImageToFileSystem(signedImage, repo, "signed", storeController)
+		So(err, ShouldBeNil)
+
+		bundleSig := CreateMockCosignBundleSignature(signedImage.DescriptorRef())
+		err = WriteImageToFileSystem(bundleSig, repo, "bundle-sig", storeController)
+		So(err, ShouldBeNil)
+
+		err = meta.ParseStorage(metaDB, storeController, log) //nolint: contextcheck
+		So(err, ShouldBeNil)
+
+		repos, err := metaDB.GetMultipleRepoMeta(ctx,
+			func(repoMeta mTypes.RepoMeta) bool { return true })
+		So(err, ShouldBeNil)
+		So(repos, ShouldNotBeEmpty)
+
+		repoMeta := repos[0]
+		subjectDigest := signedImage.DigestStr()
+		So(repoMeta.Signatures, ShouldContainKey, subjectDigest)
+		So(repoMeta.Signatures[subjectDigest], ShouldContainKey, zcommon.CosignSignature)
+		So(len(repoMeta.Signatures[subjectDigest][zcommon.CosignSignature]), ShouldBeGreaterThan, 0)
+	})
+
 	Convey("Check statistics after load", func() {
 		imageStore := local.NewImageStore(rootDir, false, false,
 			log, monitoring.NewMetricsServer(false, log), nil, nil, nil, nil)

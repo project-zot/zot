@@ -17,13 +17,16 @@ function verify_prerequisites() {
         return 1
     fi
 
+    if [ ! $(command -v cosign) ]; then
+        echo "you need to install cosign as a prerequisite to running the tests" >&3
+        return 1
+    fi
+
     return 0
 }
 
 function setup_file() {
     export COSIGN_PASSWORD=""
-    export COSIGN_OCI_EXPERIMENTAL=1
-    export COSIGN_EXPERIMENTAL=1
 
     # Verify prerequisites are available
     if ! $(verify_prerequisites); then
@@ -275,7 +278,7 @@ function teardown_file() {
     [ "$status" -eq 0 ]
     run cosign sign --key ${BATS_FILE_TMPDIR}/cosign-sign-sync-test.key localhost:${zot_port3}/golang:1.20 --yes
     [ "$status" -eq 0 ]
-    run cosign sign --registry-referrers-mode=oci-1-1 --key ${BATS_FILE_TMPDIR}/cosign-sign-sync-test.key localhost:${zot_port3}/golang:1.20 --yes
+    run env COSIGN_EXPERIMENTAL=1 cosign sign --new-bundle-format=true --registry-referrers-mode=oci-1-1 --key ${BATS_FILE_TMPDIR}/cosign-sign-sync-test.key localhost:${zot_port3}/golang:1.20 --yes
     [ "$status" -eq 0 ]
     run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-sync-test.pub localhost:${zot_port3}/golang:1.20
     [ "$status" -eq 0 ]
