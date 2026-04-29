@@ -626,7 +626,8 @@ func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo
 	}
 
 	if withReferrers {
-		_ = service.syncReferrers(ctx, repoTags, localRepo, remoteRepo, localImageRef, remoteImageRef, true)
+		_ = service.syncReferrers(ctx, repoTags, localRepo, remoteRepo, localImageRef, remoteImageRef,
+			service.config.ShouldSyncReferrersRecursively())
 	}
 
 	// convert image to oci if needed
