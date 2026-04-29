@@ -4,6 +4,7 @@ package sync
 
 import (
 	"context"
+	cryptotls "crypto/tls"
 	"errors"
 	"fmt"
 	"net/http"
@@ -893,28 +894,23 @@ func newClient(opts syncconf.RegistryConfig, credentials syncconf.CredentialsFil
 		regOpts = append(regOpts, reg.WithDelay(*opts.RetryDelay, *opts.RetryDelay))
 	}
 
-	// Configure transport with timeouts to prevent indefinite hangs.
+	// Configure transports with timeouts to prevent indefinite hangs.
 	// See https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/
-	// Clone DefaultTransport to preserve proxy/TLS settings and existing timeouts
-	// (DialContext: 30s, TLSHandshakeTimeout: 10s).
-	// regclient uses DefaultTransport internally if no custom transport is provided, so this ensures compatibility.
-	transport := http.DefaultTransport.(*http.Transport).Clone() //nolint: forcetypeassert
+	primaryTransport := http.DefaultTransport.(*http.Transport).Clone() //nolint: forcetypeassert
+	primaryTransport.ResponseHeaderTimeout = opts.ResponseHeaderTimeout
 
-	// ResponseHeaderTimeout: prevents hanging when server connects but doesn't send headers.
-	// Set programmatically in root.go. This timeout applies only to waiting for response headers
-	// after the request is sent. It does NOT include DialContext (30s) or TLSHandshakeTimeout (10s),
-	// which are separate component timeouts. Doesn't cover body transfer time, which is expected
-	// to be slow for large images.
-	transport.ResponseHeaderTimeout = opts.ResponseHeaderTimeout
+	fallbackTransport := http.DefaultTransport.(*http.Transport).Clone() //nolint: forcetypeassert
+	fallbackTransport.TLSNextProto = make(map[string]func(string, *cryptotls.Conn) http.RoundTripper)
+	fallbackTransport.ForceAttemptHTTP2 = false
+	fallbackTransport.ResponseHeaderTimeout = opts.ResponseHeaderTimeout
 
-	// Use SyncTimeout for overall HTTP client timeout. This is the maximum time for the entire
-	// HTTP request, covering all stages: DialContext (connection establishment), TLSHandshakeTimeout
-	// (TLS handshake), ResponseHeaderTimeout (waiting for headers), and body transfer time.
-	// Critical for periodic sync operations (catalog listing, SyncRepo, getTags) which don't use
-	// on-demand timeout contexts and could otherwise hang indefinitely if upstream doesn't respond.
 	httpClient := &http.Client{
-		Transport: transport,
-		Timeout:   opts.SyncTimeout,
+		Transport: &http2FallbackTransport{
+			primary:  primaryTransport,
+			fallback: fallbackTransport,
+			log:      logger,
+		},
+		Timeout: opts.SyncTimeout,
 	}
 	regOpts = append(regOpts, reg.WithHTTPClient(httpClient))
 
@@ -927,4 +923,45 @@ func newClient(opts syncconf.RegistryConfig, credentials syncconf.CredentialsFil
 	)
 
 	return client, hostConfigOpts, nil
+}
+
+// http2FallbackTransport tries HTTP/2 first, falls back to HTTP/1.1 on framing errors.
+// Docker Hub's LB occasionally sends raw HTTP/2 SETTINGS frames on connections that Go's
+// net/http opened as HTTP/1.1, causing "malformed HTTP response" errors. This transport
+// catches those errors at the RoundTrip level and retries transparently with HTTP/1.1,
+// so regclient never sees the failure and never enters its backoff cycle.
+type http2FallbackTransport struct {
+	primary  http.RoundTripper
+	fallback http.RoundTripper
+	log      log.Logger
+}
+
+func (t *http2FallbackTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := t.primary.RoundTrip(req)
+	if err == nil || !isHTTP2FramingError(err) {
+		return resp, err
+	}
+
+	t.log.Warn().Str("method", req.Method).Str("url", req.URL.String()).
+		Err(err).Msg("HTTP/2 framing error from upstream, retrying with HTTP/1.1")
+
+	if req.Body != nil && req.GetBody != nil {
+		body, bodyErr := req.GetBody()
+		if bodyErr != nil {
+			return nil, err
+		}
+
+		req.Body = body
+	}
+
+	return t.fallback.RoundTrip(req)
+}
+
+func isHTTP2FramingError(err error) bool {
+	msg := err.Error()
+
+	return strings.Contains(msg, "malformed HTTP response") ||
+		strings.Contains(msg, "INTERNAL_ERROR") ||
+		strings.Contains(msg, "stream error") ||
+		strings.Contains(msg, "PROTOCOL_ERROR")
 }
