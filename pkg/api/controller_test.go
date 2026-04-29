@@ -14361,6 +14361,24 @@ func TestDockerClientV2ChallengeWorkaround(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 			So(resp.Header().Get("WWW-Authenticate"), ShouldContainSubstring, "Basic realm=")
 
+			// zot sync client without an Authorization header should get 401 so regclient can prime auth.
+			resp, err = resty.R().
+				SetHeader("User-Agent", "zot-sync").
+				Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			So(resp.Header().Get("WWW-Authenticate"), ShouldContainSubstring, "Basic realm=")
+
+			// zot sync client with valid credentials should get 200.
+			resp, err = resty.R().
+				SetHeader("User-Agent", "zot-sync").
+				SetBasicAuth(htpasswdUsername, htpasswdPassword).
+				Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
 			// Podman client without credentials should get 200 (unaffected by workaround)
 			resp, err = resty.R().
 				SetHeader("User-Agent", "containers/5.33.0 (github.com/containers/image)").
@@ -14405,6 +14423,14 @@ func TestDockerClientV2ChallengeWorkaround(t *testing.T) {
 			// Docker client without credentials should get 200 (no mixed policies)
 			resp, err := resty.R().
 				SetHeader("User-Agent", "docker/26.1.3 go/go1.22.2 UpstreamClient(Docker-Client/26.1.3 (linux))").
+				Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// zot sync client without an Authorization header should get 200 (no mixed policies).
+			resp, err = resty.R().
+				SetHeader("User-Agent", "zot-sync").
 				Get(baseURL + "/v2/")
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
