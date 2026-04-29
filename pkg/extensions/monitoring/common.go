@@ -18,6 +18,12 @@ type MetricServer interface {
 	Stop()
 }
 
+const (
+	GCDeletedBlob     = "blob"
+	GCDeletedManifest = "manifest"
+	GCDeletedUpload   = "upload"
+)
+
 func GetDirSize(path string) (int64, error) {
 	var size int64
 

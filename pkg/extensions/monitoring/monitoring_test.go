@@ -3,6 +3,7 @@
 package monitoring_test
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -37,6 +38,7 @@ func TestExtensionMetrics(t *testing.T) {
 		rootDir := t.TempDir()
 
 		conf.Storage.RootDirectory = rootDir
+		conf.Storage.GC = false
 		conf.Extensions = &extconf.ExtensionConfig{}
 		enabled := true
 		conf.Extensions.Metrics = &extconf.MetricsConfig{
@@ -71,6 +73,11 @@ func TestExtensionMetrics(t *testing.T) {
 		monitoring.SetStorageUsage(ctlr.Metrics, rootDir, "alpine")
 
 		monitoring.ObserveStorageLockLatency(ctlr.Metrics, time.Millisecond, rootDir, "RWLock")
+		monitoring.ObserveGCRun(ctlr.Metrics, time.Millisecond, nil)
+		monitoring.ObserveGCRun(ctlr.Metrics, 2*time.Millisecond, errors.New("gc error"))
+		monitoring.AddGCDeleted(ctlr.Metrics, monitoring.GCDeletedBlob, 2)
+		monitoring.AddGCDeleted(ctlr.Metrics, monitoring.GCDeletedManifest, 1)
+		monitoring.AddGCDeleted(ctlr.Metrics, monitoring.GCDeletedUpload, 3)
 
 		resp, err := resty.R().Get(baseURL + "/metrics")
 		So(err, ShouldBeNil)
@@ -84,6 +91,12 @@ func TestExtensionMetrics(t *testing.T) {
 		So(respStr, ShouldContainSubstring, "zot_storage_lock_latency_seconds_bucket")
 		So(respStr, ShouldContainSubstring, "zot_storage_lock_latency_seconds_sum")
 		So(respStr, ShouldContainSubstring, "zot_storage_lock_latency_seconds_bucket")
+		So(respStr, ShouldContainSubstring, "zot_gc_runs_total{error=\"false\"} 1")
+		So(respStr, ShouldContainSubstring, "zot_gc_runs_total{error=\"true\"} 1")
+		So(respStr, ShouldContainSubstring, "zot_gc_duration_seconds_count 2")
+		So(respStr, ShouldContainSubstring, "zot_gc_deleted_total{type=\"blob\"} 2")
+		So(respStr, ShouldContainSubstring, "zot_gc_deleted_total{type=\"manifest\"} 1")
+		So(respStr, ShouldContainSubstring, "zot_gc_deleted_total{type=\"upload\"} 3")
 	})
 	Convey("Make a new controller with disabled metrics extension", t, func() {
 		port := test.GetFreePort()
