@@ -189,6 +189,8 @@ inconsistencies between the metaDB and storage. To enable it:
     },
 ```
 
+You can also force a full reparse with the `--force-reparse` flag to `zot serve`.
+
 ## Retention
 
 You can define tag retention rules that govern how many tags of a given repository to retain, or for how long to retain certain tags.
