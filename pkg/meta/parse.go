@@ -16,6 +16,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/meta/convert"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
+	"zotregistry.dev/zot/v2/pkg/meta/version"
 	stypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
@@ -84,6 +85,57 @@ func ParseStorage(metaDB mTypes.MetaDB, storeController stypes.StoreController, 
 	}
 
 	log.Info().Str("component", "metadb").Msg("successfully initialized")
+
+	return nil
+}
+
+// MaybeParseStorage conditionally runs ParseStorage based on a writer-version stamp stored in metaDB.
+// When fastRestart is true and the metaDB carries a writer-version stamp matching this binary, the full
+// walk is skipped under the assumption that metaDB is consistent with storage from the previous run.
+func MaybeParseStorage(metaDB mTypes.MetaDB, storeController stypes.StoreController,
+	fastRestart bool, log log.Logger,
+) error {
+	if fastRestart {
+		currentWriter := version.CurrentWriterVersion()
+		if currentWriter == "" {
+			log.Info().Str("component", "metadb").
+				Msg("fast-restart enabled but binary has no release/commit stamp; falling back to full parse")
+		} else {
+			storedWriter, err := metaDB.GetWriterVersion()
+			switch {
+			case err != nil:
+				log.Warn().Err(err).Str("component", "metadb").
+					Msg("failed to read writer version stamp, falling back to full parse")
+			case storedWriter == currentWriter:
+				log.Info().Str("component", "metadb").Str("writerVersion", storedWriter).
+					Msg("metaDB writer version matches binary, skipping full storage parse")
+
+				return nil
+			case storedWriter == "":
+				log.Info().Str("component", "metadb").
+					Msg("metaDB has no writer version stamp, running full parse")
+			default:
+				log.Info().Str("component", "metadb").
+					Str("storedWriter", storedWriter).Str("currentWriter", currentWriter).
+					Msg("metaDB writer version differs from binary, running full parse")
+			}
+		}
+	}
+
+	if err := ParseStorage(metaDB, storeController, log); err != nil {
+		return err
+	}
+
+	currentWriter := version.CurrentWriterVersion()
+	if currentWriter == "" {
+		// go run/go test builds have no stamp, so always reparse.
+		return nil
+	}
+
+	if err := metaDB.SetWriterVersion(currentWriter); err != nil {
+		log.Warn().Err(err).Str("component", "metadb").
+			Msg("failed to stamp metaDB writer version; next restart will reparse")
+	}
 
 	return nil
 }
