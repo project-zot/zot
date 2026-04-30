@@ -1656,3 +1656,77 @@ func TestDynamoDBCountRepos(t *testing.T) {
 		})
 	})
 }
+
+func TestDynamoDBWriterVersion(t *testing.T) {
+	tskip.SkipDynamo(t)
+
+	const region = "us-east-2"
+
+	endpoint := os.Getenv("DYNAMODBMOCK_ENDPOINT")
+
+	uuid, err := guuid.NewV4()
+	if err != nil {
+		panic(err)
+	}
+
+	repoMetaTablename := "RepoMetadataTable" + uuid.String()
+	versionTablename := "Version" + uuid.String()
+	imageMetaTablename := "ImageMeta" + uuid.String()
+	repoBlobsTablename := "RepoBlobs" + uuid.String()
+	userDataTablename := "UserDataTable" + uuid.String()
+	apiKeyTablename := "ApiKeyTable" + uuid.String()
+
+	log := log.NewTestLogger()
+
+	Convey("WriterVersion", t, func() {
+		params := mdynamodb.DBDriverParameters{
+			Endpoint:               endpoint,
+			Region:                 region,
+			RepoMetaTablename:      repoMetaTablename,
+			ImageMetaTablename:     imageMetaTablename,
+			RepoBlobsInfoTablename: repoBlobsTablename,
+			VersionTablename:       versionTablename,
+			APIKeyTablename:        apiKeyTablename,
+			UserDataTablename:      userDataTablename,
+		}
+		client, err := mdynamodb.GetDynamoClient(params)
+		So(err, ShouldBeNil)
+
+		dynamoWrapper, err := mdynamodb.New(client, params, log)
+		So(err, ShouldBeNil)
+
+		So(dynamoWrapper.ResetTable(dynamoWrapper.VersionTablename), ShouldBeNil)
+
+		Convey("returns empty before set", func() {
+			v, err := dynamoWrapper.GetWriterVersion()
+			So(err, ShouldBeNil)
+			So(v, ShouldEqual, "")
+		})
+
+		Convey("round-trips a value", func() {
+			So(dynamoWrapper.SetWriterVersion("v2.3.4"), ShouldBeNil)
+
+			v, err := dynamoWrapper.GetWriterVersion()
+			So(err, ShouldBeNil)
+			So(v, ShouldEqual, "v2.3.4")
+		})
+
+		Convey("overwrites a previous value", func() {
+			So(dynamoWrapper.SetWriterVersion("v1"), ShouldBeNil)
+			So(dynamoWrapper.SetWriterVersion("v2"), ShouldBeNil)
+
+			v, err := dynamoWrapper.GetWriterVersion()
+			So(err, ShouldBeNil)
+			So(v, ShouldEqual, "v2")
+		})
+
+		Convey("ResetDB clears the stamp", func() {
+			So(dynamoWrapper.SetWriterVersion("v1"), ShouldBeNil)
+			So(dynamoWrapper.ResetDB(), ShouldBeNil)
+
+			v, err := dynamoWrapper.GetWriterVersion()
+			So(err, ShouldBeNil)
+			So(v, ShouldEqual, "")
+		})
+	})
+}

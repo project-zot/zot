@@ -2228,6 +2228,53 @@ func (dwr *DynamoDB) PatchDB() error {
 	return nil
 }
 
+func (dwr *DynamoDB) GetWriterVersion() (string, error) {
+	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
+		TableName: aws.String(dwr.VersionTablename),
+		Key: map[string]types.AttributeValue{
+			"TableKey": &types.AttributeValueMemberS{Value: mTypes.WriterVersionKey},
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+
+	if resp.Item == nil {
+		return "", nil
+	}
+
+	var writerVersion string
+
+	if err := attributevalue.Unmarshal(resp.Item["Version"], &writerVersion); err != nil {
+		return "", err
+	}
+
+	return writerVersion, nil
+}
+
+func (dwr *DynamoDB) SetWriterVersion(writerVersion string) error {
+	mdAttributeValue, err := attributevalue.Marshal(writerVersion)
+	if err != nil {
+		return err
+	}
+
+	_, err = dwr.Client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
+		ExpressionAttributeNames: map[string]string{
+			"#V": "Version",
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":Version": mdAttributeValue,
+		},
+		Key: map[string]types.AttributeValue{
+			"TableKey": &types.AttributeValueMemberS{Value: mTypes.WriterVersionKey},
+		},
+		TableName:        aws.String(dwr.VersionTablename),
+		UpdateExpression: aws.String("SET #V = :Version"),
+	})
+
+	return err
+}
+
 func (dwr *DynamoDB) ResetDB() error {
 	err := dwr.ResetTable(dwr.APIKeyTablename)
 	if err != nil {
@@ -2250,6 +2297,16 @@ func (dwr *DynamoDB) ResetDB() error {
 	}
 
 	err = dwr.ResetTable(dwr.UserDataTablename)
+	if err != nil {
+		return err
+	}
+
+	_, err = dwr.Client.DeleteItem(context.TODO(), &dynamodb.DeleteItemInput{
+		TableName: aws.String(dwr.VersionTablename),
+		Key: map[string]types.AttributeValue{
+			"TableKey": &types.AttributeValueMemberS{Value: mTypes.WriterVersionKey},
+		},
+	})
 	if err != nil {
 		return err
 	}
