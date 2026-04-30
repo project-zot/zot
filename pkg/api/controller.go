@@ -433,7 +433,7 @@ func (c *Controller) InitMetaDB() error {
 			return err
 		}
 
-		err = meta.ParseStorage(driver, c.StoreController, c.Log) //nolint: contextcheck
+		err = meta.MaybeParseStorage(driver, c.StoreController, c.Config.IsFastRestartEnabled(), c.Log) //nolint: contextcheck
 		if err != nil {
 			return err
 		}
