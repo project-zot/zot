@@ -1572,6 +1572,7 @@ func (bdw *BoltDB) ToggleStarRepo(ctx context.Context, repo string) (mTypes.Togg
 			userData.StarredRepos = zcommon.RemoveFrom(userData.StarredRepos, repo)
 		} else {
 			res = mTypes.Added
+
 			userData.StarredRepos = append(userData.StarredRepos, repo)
 		}
 
@@ -1645,6 +1646,7 @@ func (bdw *BoltDB) ToggleBookmarkRepo(ctx context.Context, repo string) (mTypes.
 			userData.BookmarkedRepos = zcommon.RemoveFrom(userData.BookmarkedRepos, repo)
 		} else {
 			res = mTypes.Added
+
 			userData.BookmarkedRepos = append(userData.BookmarkedRepos, repo)
 		}
 
@@ -1694,6 +1696,34 @@ func (bdw *BoltDB) PatchDB() error {
 	}
 
 	return nil
+}
+
+func (bdw *BoltDB) GetWriterVersion() (string, error) {
+	var writerVersion string
+
+	err := bdw.DB.View(func(tx *bbolt.Tx) error {
+		buck := tx.Bucket([]byte(VersionBucket))
+		if buck == nil {
+			return nil
+		}
+
+		writerVersion = string(buck.Get([]byte(mTypes.WriterVersionKey)))
+
+		return nil
+	})
+
+	return writerVersion, err
+}
+
+func (bdw *BoltDB) SetWriterVersion(writerVersion string) error {
+	return bdw.DB.Update(func(tx *bbolt.Tx) error {
+		buck, err := tx.CreateBucketIfNotExists([]byte(VersionBucket))
+		if err != nil {
+			return err
+		}
+
+		return buck.Put([]byte(mTypes.WriterVersionKey), []byte(writerVersion))
+	})
 }
 
 func getUserStars(ctx context.Context, transaction *bbolt.Tx) []string {
@@ -2151,6 +2181,12 @@ func (bdw *BoltDB) ResetDB() error {
 		err = resetBucket(transaction, UserDataBucket)
 		if err != nil {
 			return err
+		}
+
+		if versionBuck := transaction.Bucket([]byte(VersionBucket)); versionBuck != nil {
+			if err := versionBuck.Delete([]byte(mTypes.WriterVersionKey)); err != nil {
+				return err
+			}
 		}
 
 		return nil

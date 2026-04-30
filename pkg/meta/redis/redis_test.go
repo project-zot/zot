@@ -1773,3 +1773,56 @@ func DumpKeys(t *testing.T, client goredis.UniversalClient) {
 		}
 	}
 }
+
+func TestRedisWriterVersion(t *testing.T) {
+	miniRedis := miniredis.RunT(t)
+
+	Convey("WriterVersion", t, func() {
+		log := log.NewTestLogger()
+		So(log, ShouldNotBeNil)
+
+		opts, err := goredis.ParseURL("redis://" + miniRedis.Addr())
+		So(err, ShouldBeNil)
+
+		client := goredis.NewClient(opts)
+		defer DumpKeys(t, client) // Troubleshoot test failures
+
+		params := redis.DBDriverParameters{KeyPrefix: keyPrefix}
+
+		metaDB, err := redis.New(client, params, log)
+		So(err, ShouldBeNil)
+		So(metaDB, ShouldNotBeNil)
+
+		Convey("returns empty before set", func() {
+			v, err := metaDB.GetWriterVersion()
+			So(err, ShouldBeNil)
+			So(v, ShouldEqual, "")
+		})
+
+		Convey("round-trips a value", func() {
+			So(metaDB.SetWriterVersion("v2.3.4"), ShouldBeNil)
+
+			v, err := metaDB.GetWriterVersion()
+			So(err, ShouldBeNil)
+			So(v, ShouldEqual, "v2.3.4")
+		})
+
+		Convey("overwrites a previous value", func() {
+			So(metaDB.SetWriterVersion("v1"), ShouldBeNil)
+			So(metaDB.SetWriterVersion("v2"), ShouldBeNil)
+
+			v, err := metaDB.GetWriterVersion()
+			So(err, ShouldBeNil)
+			So(v, ShouldEqual, "v2")
+		})
+
+		Convey("ResetDB clears the stamp", func() {
+			So(metaDB.SetWriterVersion("v1"), ShouldBeNil)
+			So(metaDB.ResetDB(), ShouldBeNil)
+
+			v, err := metaDB.GetWriterVersion()
+			So(err, ShouldBeNil)
+			So(v, ShouldEqual, "")
+		})
+	})
+}

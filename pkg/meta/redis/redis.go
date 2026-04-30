@@ -54,6 +54,7 @@ type RedisDB struct {
 	RepoLastUpdatedKey string
 	UserDataKey        string
 	VersionKey         string
+	WriterVersionKey   string
 	UserAPIKeysKey     string
 	LocksKey           string
 }
@@ -75,6 +76,7 @@ func New(client redis.UniversalClient, params DBDriverParameters, log log.Logger
 		RepoLastUpdatedKey: join(params.KeyPrefix, RepoLastUpdatedBucket),
 		UserDataKey:        join(params.KeyPrefix, UserDataBucket),
 		VersionKey:         join(params.KeyPrefix, VersionBucket),
+		WriterVersionKey:   join(params.KeyPrefix, mTypes.WriterVersionKey),
 		UserAPIKeysKey:     join(params.KeyPrefix, UserAPIKeysBucket),
 		LocksKey:           join(params.KeyPrefix, LocksBucket),
 	}
@@ -2165,6 +2167,12 @@ func (rc *RedisDB) ResetDB() error {
 			return fmt.Errorf("failed to delete version bucket: %w", err)
 		}
 
+		if err := txrp.Del(ctx, rc.WriterVersionKey).Err(); err != nil {
+			rc.Log.Error().Err(err).Str("del", rc.WriterVersionKey).Msg("failed to delete writer version key")
+
+			return fmt.Errorf("failed to delete writer version key: %w", err)
+		}
+
 		return nil
 	})
 
@@ -2216,6 +2224,35 @@ func (rc *RedisDB) PatchDB() error {
 	})
 
 	return err
+}
+
+func (rc *RedisDB) GetWriterVersion() (string, error) {
+	ctx := context.Background()
+
+	writerVersion, err := rc.Client.Get(ctx, rc.WriterVersionKey).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return "", nil
+		}
+
+		rc.Log.Error().Err(err).Str("get", rc.WriterVersionKey).Msg("failed to get writer version")
+
+		return "", err
+	}
+
+	return writerVersion, nil
+}
+
+func (rc *RedisDB) SetWriterVersion(writerVersion string) error {
+	ctx := context.Background()
+
+	if err := rc.Client.Set(ctx, rc.WriterVersionKey, writerVersion, 0).Err(); err != nil {
+		rc.Log.Error().Err(err).Str("set", rc.WriterVersionKey).Msg("failed to set writer version")
+
+		return err
+	}
+
+	return nil
 }
 
 func (rc *RedisDB) ImageTrustStore() mTypes.ImageTrustStore {
