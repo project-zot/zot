@@ -46,6 +46,10 @@ type MetaDBMock struct {
 
 	PatchDBFn func() error
 
+	GetWriterVersionFn func() (string, error)
+
+	SetWriterVersionFn func(writerVersion string) error
+
 	ImageTrustStoreFn func() mTypes.ImageTrustStore
 
 	SetImageTrustStoreFn func(mTypes.ImageTrustStore)
@@ -166,6 +170,22 @@ func (sdm MetaDBMock) SetImageTrustStore(imgTrustStore mTypes.ImageTrustStore) {
 func (sdm MetaDBMock) PatchDB() error {
 	if sdm.PatchDBFn != nil {
 		return sdm.PatchDBFn()
+	}
+
+	return nil
+}
+
+func (sdm MetaDBMock) GetWriterVersion() (string, error) {
+	if sdm.GetWriterVersionFn != nil {
+		return sdm.GetWriterVersionFn()
+	}
+
+	return "", nil
+}
+
+func (sdm MetaDBMock) SetWriterVersion(writerVersion string) error {
+	if sdm.SetWriterVersionFn != nil {
+		return sdm.SetWriterVersionFn(writerVersion)
 	}
 
 	return nil
