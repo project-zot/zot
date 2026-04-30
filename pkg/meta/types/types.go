@@ -17,6 +17,11 @@ const (
 	Removed
 )
 
+// WriterVersionKey is the metaDB key/attribute name under which each backend
+// stores the binary identity of the last successful ParseStorage run.
+// Defined here so all backends share a single source of truth.
+const WriterVersionKey = "WriterVersion"
+
 type (
 	// FilterFunc is a filter function.
 	// Currently imageMeta applied for indexes is applied for each manifest individually so imageMeta.manifests
@@ -157,6 +162,15 @@ type MetaDB interface { //nolint:interfacebloat
 	ResetDB() error
 
 	PatchDB() error
+
+	// GetWriterVersion returns the binary identity that last successfully
+	// completed ParseStorage against this metaDB. Returns "" when unset
+	// (new DB, or DB last written by a binary that predates this stamp).
+	GetWriterVersion() (string, error)
+
+	// SetWriterVersion stamps the metaDB with the given binary identity.
+	// Called by ParseStorage only after a successful walk + per-repo parse.
+	SetWriterVersion(writerVersion string) error
 
 	ImageTrustStore() ImageTrustStore
 
