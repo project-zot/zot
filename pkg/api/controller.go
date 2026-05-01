@@ -540,7 +540,7 @@ func (c *Controller) StartBackgroundTasks() {
 	}
 
 	// Run GC and retention tasks
-	RunGCTasks(c.Config, c.StoreController, c.MetaDB, c.taskScheduler, c.Log, c.Audit)
+	RunGCTasks(c.Config, c.StoreController, c.MetaDB, c.taskScheduler, c.Log, c.Audit, c.Metrics)
 
 	// Enable running dedupe blobs both ways (dedupe or restore deduped blobs)
 	c.StoreController.DefaultStore.RunDedupeBlobs(time.Duration(0), c.taskScheduler)
@@ -600,7 +600,7 @@ func (c *Controller) StartBackgroundTasks() {
 
 // RunGCTasks runs minimal GC and retention tasks without full controller.
 func RunGCTasks(conf *config.Config, storeController storage.StoreController, metaDB mTypes.MetaDB,
-	taskScheduler *scheduler.Scheduler, logger log.Logger, audit *log.Logger,
+	taskScheduler *scheduler.Scheduler, logger log.Logger, audit *log.Logger, metrics monitoring.MetricServer,
 ) {
 	// Enable running garbage-collect periodically for DefaultStore
 	storageConfig := conf.CopyStorageConfig()
@@ -609,7 +609,7 @@ func RunGCTasks(conf *config.Config, storeController storage.StoreController, me
 			Delay:             storageConfig.GCDelay,
 			ImageRetention:    storageConfig.Retention,
 			MaxSchedulerDelay: storageConfig.GCMaxSchedulerDelay,
-		}, audit, logger)
+		}, audit, logger, metrics)
 
 		gc.CleanImageStorePeriodically(storageConfig.GCInterval, taskScheduler)
 	}
@@ -624,7 +624,7 @@ func RunGCTasks(conf *config.Config, storeController storage.StoreController, me
 						Delay:             subStorageConfig.GCDelay,
 						ImageRetention:    subStorageConfig.Retention,
 						MaxSchedulerDelay: subStorageConfig.GCMaxSchedulerDelay,
-					}, audit, logger)
+					}, audit, logger, metrics)
 
 				gc.CleanImageStorePeriodically(subStorageConfig.GCInterval, taskScheduler)
 			}
