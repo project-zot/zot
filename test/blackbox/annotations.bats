@@ -21,6 +21,11 @@ function verify_prerequisites {
         return 1
     fi
 
+    if [ ! $(command -v cosign) ]; then
+        echo "you need to install cosign as a prerequisite to running the tests" >&3
+        return 1
+    fi
+
     return 0
 }
 
@@ -132,18 +137,37 @@ function teardown_file() {
     [ "$status" -eq 0 ]
     run cosign generate-key-pair --output-key-prefix "${BATS_FILE_TMPDIR}/cosign-sign-test"
     [ "$status" -eq 0 ]
-    run cosign sign --key ${BATS_FILE_TMPDIR}/cosign-sign-test.key localhost:${zot_port}/annotations:latest --yes
+    run cosign sign --registry-referrers-mode=legacy --key ${BATS_FILE_TMPDIR}/cosign-sign-test.key localhost:${zot_port}/annotations:latest --yes
     [ "$status" -eq 0 ]
     run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-test.pub localhost:${zot_port}/annotations:latest
     [ "$status" -eq 0 ]
     local sigName=$(echo "${lines[-1]}" | jq '.[].critical.image."docker-manifest-digest"')
     [[ "$sigName" == *"${digest}"* ]]
-    tags=( $(oras repo tags --plain-http localhost:${zot_port}/annotations) )
+    run oras repo tags --plain-http localhost:${zot_port}/annotations
     [ "$status" -eq 0 ]
-    local sigdes=$(oras manifest fetch --descriptor localhost:${zot_port}/annotations:${tags[1]} | jq  .digest | tr -d \")
-    [ "$status" -eq 0 ]
-    run oras manifest fetch --plain-http localhost:${zot_port}/annotations@${sigdes}
-    [ "$status" -eq 0 ]
+    local sigTag=""
+    for tag in "${lines[@]}"; do
+        if [[ "${tag}" == *.sig ]]; then
+            sigTag="${tag}"
+            break
+        fi
+    done
+
+    if [ -n "${sigTag}" ]; then
+        run oras manifest fetch --plain-http --descriptor localhost:${zot_port}/annotations:${sigTag}
+        [ "$status" -eq 0 ]
+        local sigdes=$(echo "${output}" | jq -r .digest)
+        [ -n "${sigdes}" ]
+
+        run oras manifest fetch --plain-http localhost:${zot_port}/annotations@${sigdes}
+        [ "$status" -eq 0 ]
+    else
+        # Fallback lookup via referrers API for registries where cosign v3 does not expose legacy .sig tags.
+        run oras discover --plain-http --distribution-spec v1.1-referrers-api --format json localhost:${zot_port}/annotations:latest
+        [ "$status" -eq 0 ]
+        local sigRefCount=$(echo "${output}" | jq '(.referrers // .manifests // []) | length')
+        [ "${sigRefCount}" -gt 0 ]
+    fi
 }
 
 @test "sign/verify with cosign (only referrers)" {
@@ -153,20 +177,33 @@ function teardown_file() {
     [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].RepoName') = '"annotations"' ]
     local digest=$(echo "${lines[-1]}" | jq -r '.data.ImageList.Results[0].Manifests[0].Digest')
 
-    export COSIGN_OCI_EXPERIMENTAL=1
-    export COSIGN_EXPERIMENTAL=1
     run cosign initialize
     [ "$status" -eq 0 ]
     run cosign generate-key-pair --output-key-prefix "${BATS_FILE_TMPDIR}/cosign-sign-test-experimental"
     [ "$status" -eq 0 ]
-    run cosign sign --registry-referrers-mode=oci-1-1 --key ${BATS_FILE_TMPDIR}/cosign-sign-test-experimental.key localhost:${zot_port}/annotations:latest --yes
+    run env COSIGN_EXPERIMENTAL=1 cosign sign --new-bundle-format=true --registry-referrers-mode=oci-1-1 --key ${BATS_FILE_TMPDIR}/cosign-sign-test-experimental.key localhost:${zot_port}/annotations:latest --yes
     [ "$status" -eq 0 ]
     run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-test-experimental.pub localhost:${zot_port}/annotations:latest
     [ "$status" -eq 0 ]
     local sigName=$(echo "${lines[-1]}" | jq '.[].critical.image."docker-manifest-digest"')
     [[ "$sigName" == *"${digest}"* ]]
-    unset COSIGN_OCI_EXPERIMENTAL
-    unset COSIGN_EXPERIMENTAL
+}
+
+@test "zot reports IsSigned true for cosign referrer signatures" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses }}}"}' http://localhost:${zot_port}/v2/_zot/ext/search
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].RepoName') = '"annotations"' ]
+
+    run cosign initialize
+    [ "$status" -eq 0 ]
+    run cosign generate-key-pair --output-key-prefix "${BATS_FILE_TMPDIR}/cosign-sign-is-signed"
+    [ "$status" -eq 0 ]
+    run env COSIGN_EXPERIMENTAL=1 cosign sign --new-bundle-format=true --registry-referrers-mode=oci-1-1 --key ${BATS_FILE_TMPDIR}/cosign-sign-is-signed.key --allow-insecure-registry localhost:${zot_port}/annotations:latest --yes
+    [ "$status" -eq 0 ]
+    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ GlobalSearch(query: \"annotations:latest\") { Images { IsSigned } } }" }' http://localhost:${zot_port}/v2/_zot/ext/search
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.data.GlobalSearch.Images[0].IsSigned') = 'true' ]
 }
 
 @test "sign/verify with cosign (tag and referrers)" {
@@ -176,8 +213,6 @@ function teardown_file() {
     [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].RepoName') = '"annotations"' ]
     local digest=$(echo "${lines[-1]}" | jq -r '.data.ImageList.Results[0].Manifests[0].Digest')
 
-    export COSIGN_OCI_EXPERIMENTAL=1
-    export COSIGN_EXPERIMENTAL=1
     run cosign initialize
     [ "$status" -eq 0 ]
 
@@ -188,7 +223,7 @@ function teardown_file() {
 
     run cosign generate-key-pair --output-key-prefix "${BATS_FILE_TMPDIR}/cosign-sign-test-referrers-1"
     [ "$status" -eq 0 ]
-    run cosign sign --registry-referrers-mode=oci-1-1 --key ${BATS_FILE_TMPDIR}/cosign-sign-test-referrers-1.key localhost:${zot_port}/annotations:latest --yes
+    run env COSIGN_EXPERIMENTAL=1 cosign sign --new-bundle-format=true --registry-referrers-mode=oci-1-1 --key ${BATS_FILE_TMPDIR}/cosign-sign-test-referrers-1.key localhost:${zot_port}/annotations:latest --yes
     [ "$status" -eq 0 ]
 
     run cosign generate-key-pair --output-key-prefix "${BATS_FILE_TMPDIR}/cosign-sign-test-tag-2"
@@ -211,15 +246,13 @@ function teardown_file() {
 
     run cosign generate-key-pair --output-key-prefix "${BATS_FILE_TMPDIR}/cosign-sign-test-referrers-2"
     [ "$status" -eq 0 ]
-    run cosign sign --registry-referrers-mode=oci-1-1 --key ${BATS_FILE_TMPDIR}/cosign-sign-test-referrers-2.key localhost:${zot_port}/annotations:latest --yes
+    run env COSIGN_EXPERIMENTAL=1 cosign sign --new-bundle-format=true --registry-referrers-mode=oci-1-1 --key ${BATS_FILE_TMPDIR}/cosign-sign-test-referrers-2.key localhost:${zot_port}/annotations:latest --yes
     [ "$status" -eq 0 ]
     run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-test-referrers-2.pub localhost:${zot_port}/annotations:latest
     [ "$status" -eq 0 ]
     local sigName=$(echo "${lines[-1]}" | jq '.[].critical.image."docker-manifest-digest"')
     [[ "$sigName" == *"${digest}"* ]]
 
-    unset COSIGN_OCI_EXPERIMENTAL
-    unset COSIGN_EXPERIMENTAL
 }
 
 @test "sign/verify with notation" {

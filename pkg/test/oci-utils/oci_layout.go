@@ -266,12 +266,12 @@ func (olu BaseOciLayoutUtils) checkCosignSignature(name string, digest godigest.
 		return true
 	}
 
-	mediaType := common.ArtifactTypeCosign
+	mediaTypes := []string{common.ArtifactTypeCosign, common.ArtifactTypeCosignBundle}
 
-	referrers, err := imageStore.GetReferrers(name, digest, []string{mediaType})
+	referrers, err := imageStore.GetReferrers(name, digest, mediaTypes)
 	if err != nil {
 		olu.Log.Info().Err(err).Str("repository", name).Str("digest",
-			digest.String()).Str("mediatype", mediaType).Msg("invalid cosign signature")
+			digest.String()).Interface("mediatypes", mediaTypes).Msg("invalid cosign signature")
 
 		return false
 	}

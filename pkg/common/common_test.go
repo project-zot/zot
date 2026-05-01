@@ -61,6 +61,13 @@ func TestCommon(t *testing.T) {
 		So(common.ArtifactTypeNotation, ShouldEqual, notreg.ArtifactTypeNotation)
 	})
 
+	Convey("Test IsArtifactTypeCosign", t, func() {
+		So(common.IsArtifactTypeCosign(common.ArtifactTypeCosign), ShouldBeTrue)
+		So(common.IsArtifactTypeCosign(common.ArtifactTypeCosignBundle), ShouldBeTrue)
+		So(common.IsArtifactTypeCosign(common.ArtifactTypeNotation), ShouldBeFalse)
+		So(common.IsArtifactTypeCosign("application/example"), ShouldBeFalse)
+	})
+
 	Convey("Test GetLocalIPs", t, func() {
 		localIPs, err := common.GetLocalIPs()
 		So(err, ShouldBeNil)

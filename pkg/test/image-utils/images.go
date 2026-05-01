@@ -268,6 +268,11 @@ func CreateMockCosignSignature(subject *ispec.Descriptor) Image {
 		ArtifactType(common.ArtifactTypeCosign).Build()
 }
 
+func CreateMockCosignBundleSignature(subject *ispec.Descriptor) Image {
+	return CreateImageWith().EmptyLayer().EmptyConfig().Subject(subject).
+		ArtifactType(common.ArtifactTypeCosignBundle).Build()
+}
+
 type BaseImageBuilder struct {
 	layers []Layer
 
