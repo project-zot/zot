@@ -155,6 +155,183 @@ func TestRoutes(t *testing.T) {
 			So(resp.StatusCode, ShouldEqual, http.StatusUnauthorized)
 		})
 
+		Convey("Test OpenIDCodeExchangeCallback with claim mapping", func() {
+			authConfig := conf.HTTP.Auth.OpenID.Providers["oidc"]
+			authConfig.ClaimMapping = &config.ClaimMapping{
+				Username: "preferred_username",
+				Groups:   "roles",
+			}
+			conf.HTTP.Auth.OpenID.Providers["oidc"] = authConfig
+
+			var capturedGroups []string
+			ctlr.MetaDB = mocks.MetaDBMock{
+				SetUserGroupsFn: func(ctx context.Context, groups []string) error {
+					capturedGroups = append(capturedGroups, groups...)
+
+					return nil
+				},
+			}
+
+			callback := rthdlr.OpenIDCodeExchangeCallbackWithProvider("oidc")
+			ctx := context.TODO()
+
+			request, _ := http.NewRequestWithContext(ctx, http.MethodGet, baseURL, nil)
+			response := httptest.NewRecorder()
+
+			state := uuid.New().String()
+			session, _ := ctlr.CookieStore.Get(request, "statecookie")
+			session.Values["state"] = state
+			So(session.Save(request, response), ShouldBeNil)
+
+			tokens := &oidc.Tokens[*oidc.IDTokenClaims]{
+				IDTokenClaims: &oidc.IDTokenClaims{
+					Claims: map[string]any{
+						"groups": []any{"ignored-token-group"},
+						"roles":  []any{"ops", "admin"},
+					},
+				},
+			}
+			relyingParty, err := rp.NewRelyingPartyOAuth(&oauth2.Config{})
+			So(err, ShouldBeNil)
+
+			userinfo := &oidc.UserInfo{
+				Subject:         "sub",
+				UserInfoProfile: oidc.UserInfoProfile{PreferredUsername: "mapped-user"},
+				Claims: map[string]any{
+					"email":  "test@test.com",
+					"groups": []any{"ignored-userinfo-group"},
+					"roles":  []any{"dev", "ops"},
+				},
+				UserInfoEmail: oidc.UserInfoEmail{Email: "test@test.com"},
+			}
+
+			callback(response, request, tokens, state, relyingParty, userinfo)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusCreated)
+			So(capturedGroups, ShouldResemble, []string{"admin", "dev", "ops"})
+
+			userAc, err := reqCtx.UserAcFromContext(request.Context())
+			So(err, ShouldBeNil)
+			So(userAc.GetUsername(), ShouldEqual, "mapped-user")
+			So(userAc.GetGroups(), ShouldResemble, []string{"admin", "dev", "ops"})
+		})
+
+		Convey("Test OpenIDCodeExchangeCallback falls back to email when mapped username is missing", func() {
+			authConfig := conf.HTTP.Auth.OpenID.Providers["oidc"]
+			authConfig.ClaimMapping = &config.ClaimMapping{
+				Username: "missing_username",
+				Groups:   "roles",
+			}
+			conf.HTTP.Auth.OpenID.Providers["oidc"] = authConfig
+
+			ctlr.MetaDB = mocks.MetaDBMock{
+				SetUserGroupsFn: func(ctx context.Context, groups []string) error {
+					return nil
+				},
+			}
+
+			callback := rthdlr.OpenIDCodeExchangeCallbackWithProvider("oidc")
+			ctx := context.TODO()
+
+			request, _ := http.NewRequestWithContext(ctx, http.MethodGet, baseURL, nil)
+			response := httptest.NewRecorder()
+
+			state := uuid.New().String()
+			session, _ := ctlr.CookieStore.Get(request, "statecookie")
+			session.Values["state"] = state
+			So(session.Save(request, response), ShouldBeNil)
+
+			tokens := &oidc.Tokens[*oidc.IDTokenClaims]{
+				IDTokenClaims: &oidc.IDTokenClaims{
+					Claims: map[string]any{
+						"roles": []any{"admin"},
+					},
+				},
+			}
+			relyingParty, err := rp.NewRelyingPartyOAuth(&oauth2.Config{})
+			So(err, ShouldBeNil)
+
+			userinfo := &oidc.UserInfo{
+				Subject: "sub",
+				Claims: map[string]any{
+					"roles": []any{"dev"},
+				},
+				UserInfoEmail: oidc.UserInfoEmail{Email: "fallback@test.com"},
+			}
+
+			callback(response, request, tokens, state, relyingParty, userinfo)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusCreated)
+
+			userAc, err := reqCtx.UserAcFromContext(request.Context())
+			So(err, ShouldBeNil)
+			So(userAc.GetUsername(), ShouldEqual, "fallback@test.com")
+			So(userAc.GetGroups(), ShouldResemble, []string{"admin", "dev"})
+		})
+
+		Convey("Test OpenIDCodeExchangeCallback continues when mapped groups are missing", func() {
+			authConfig := conf.HTTP.Auth.OpenID.Providers["oidc"]
+			authConfig.ClaimMapping = &config.ClaimMapping{
+				Username: "preferred_username",
+				Groups:   "roles",
+			}
+			conf.HTTP.Auth.OpenID.Providers["oidc"] = authConfig
+
+			var capturedGroups []string
+			ctlr.MetaDB = mocks.MetaDBMock{
+				SetUserGroupsFn: func(ctx context.Context, groups []string) error {
+					capturedGroups = append(capturedGroups, groups...)
+
+					return nil
+				},
+			}
+
+			callback := rthdlr.OpenIDCodeExchangeCallbackWithProvider("oidc")
+			ctx := context.TODO()
+
+			request, _ := http.NewRequestWithContext(ctx, http.MethodGet, baseURL, nil)
+			response := httptest.NewRecorder()
+
+			state := uuid.New().String()
+			session, _ := ctlr.CookieStore.Get(request, "statecookie")
+			session.Values["state"] = state
+			So(session.Save(request, response), ShouldBeNil)
+
+			tokens := &oidc.Tokens[*oidc.IDTokenClaims]{
+				IDTokenClaims: &oidc.IDTokenClaims{
+					Claims: map[string]any{},
+				},
+			}
+			relyingParty, err := rp.NewRelyingPartyOAuth(&oauth2.Config{})
+			So(err, ShouldBeNil)
+
+			userinfo := &oidc.UserInfo{
+				Subject:         "sub",
+				UserInfoProfile: oidc.UserInfoProfile{PreferredUsername: "mapped-user"},
+				Claims:          map[string]any{},
+				UserInfoEmail:   oidc.UserInfoEmail{Email: "mapped@test.com"},
+			}
+
+			callback(response, request, tokens, state, relyingParty, userinfo)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusCreated)
+			So(capturedGroups, ShouldBeEmpty)
+
+			userAc, err := reqCtx.UserAcFromContext(request.Context())
+			So(err, ShouldBeNil)
+			So(userAc.GetUsername(), ShouldEqual, "mapped-user")
+			So(userAc.GetGroups(), ShouldBeEmpty)
+		})
+
 		Convey("Test OAuth2Callback errors", func() {
 			ctx := context.TODO()
 

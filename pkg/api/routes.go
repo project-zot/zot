@@ -19,7 +19,6 @@ import (
 	"net/textproto"
 	"net/url"
 	"path"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -2526,82 +2525,20 @@ func (rh *RouteHandler) OpenIDCodeExchangeCallbackWithProvider(providerName stri
 	return func(w http.ResponseWriter, r *http.Request, tokens *oidc.Tokens[*oidc.IDTokenClaims], state string,
 		relyingParty rp.RelyingParty, info *oidc.UserInfo,
 	) {
-		// Extract username based on claim mapping configuration
-		var username string
 		authConfig := rh.c.Config.CopyAuthConfig()
 
-		if authConfig != nil && authConfig.OpenID != nil && providerName != "" {
-			if providerConfig, ok := authConfig.OpenID.Providers[providerName]; ok {
-				// Check if claim mapping is configured
-				if providerConfig.ClaimMapping != nil && providerConfig.ClaimMapping.Username != "" {
-					claimName := providerConfig.ClaimMapping.Username
-
-					// Use the configured claim
-					switch claimName {
-					case "preferred_username":
-						username = info.PreferredUsername
-					case "email":
-						username = info.UserInfoEmail.Email
-					case "sub":
-						username = info.Subject
-					case "name":
-						username = info.Name
-					default:
-						// Try to get from custom claims in UserInfo
-						if val, ok := info.Claims[claimName].(string); ok {
-							username = val
-						}
-					}
-
-					if username != "" {
-						rh.c.Log.Debug().
-							Str("provider", providerName).
-							Str("claim", claimName).
-							Str("username", username).
-							Msg("extracted username from configured claim")
-					}
-				}
-			}
+		var idTokenClaims map[string]any
+		if tokens != nil && tokens.IDTokenClaims != nil {
+			idTokenClaims = tokens.IDTokenClaims.Claims
 		}
 
-		// Fallback to email if no username was extracted
-		if username == "" {
-			username = info.UserInfoEmail.Email
-			rh.c.Log.Debug().
-				Str("provider", providerName).
-				Str("username", username).
-				Msg("using email as username (fallback)")
-		}
-
-		if username == "" {
+		username, groups, ok := extractOpenIDIdentity(rh.c.Log, authConfig, providerName, info, idTokenClaims)
+		if !ok {
 			rh.c.Log.Error().Msg("failed to set user record for empty username value")
 			w.WriteHeader(http.StatusUnauthorized)
 
 			return
 		}
-
-		var groups []string
-
-		val, ok := info.Claims["groups"].([]any)
-		if !ok {
-			rh.c.Log.Info().Msgf("failed to find any 'groups' claim for user %s in UserInfo", username)
-		}
-
-		for _, group := range val {
-			groups = append(groups, fmt.Sprint(group))
-		}
-
-		val, ok = tokens.IDTokenClaims.Claims["groups"].([]any)
-		if !ok {
-			rh.c.Log.Info().Msgf("failed to find any 'groups' claim for user %s in IDTokenClaimsToken", username)
-		}
-
-		for _, group := range val {
-			groups = append(groups, fmt.Sprint(group))
-		}
-
-		slices.Sort(groups)
-		groups = slices.Compact(groups)
 
 		callbackUI, err := OAuth2Callback(rh.c, w, r, state, username, providerName, groups)
 		if err != nil {
