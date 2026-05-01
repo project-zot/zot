@@ -1,10 +1,8 @@
 package api
 
 import (
-	"encoding/base64"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/didip/tollbooth/v7"
@@ -12,6 +10,7 @@ import (
 
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	"zotregistry.dev/zot/v2/pkg/log"
+	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
 )
 
 type statusWriter struct {
@@ -94,22 +93,16 @@ func SessionLogger(ctlr *Controller) mux.MiddlewareFunc {
 
 			for key, value := range request.Header {
 				if key == "Authorization" { // anonymize from logs
-					s := strings.SplitN(value[0], " ", 2) //nolint:mnd
-					if len(s) == 2 && strings.EqualFold(s[0], "basic") {
-						b, err := base64.StdEncoding.DecodeString(s[1])
-						if err == nil {
-							pair := strings.SplitN(string(b), ":", 2) //nolint:mnd
-							//nolint:mnd
-							if len(pair) == 2 {
-								log = log.Str("username", pair[0])
-							}
-						}
-					}
-
 					value = []string{"******"}
 				}
 
 				headers[key] = value
+			}
+
+			if userAc, err := reqCtx.UserAcFromContext(request.Context()); err == nil {
+				if username := userAc.GetUsername(); username != "" {
+					log = log.Str("username", username)
+				}
 			}
 
 			statusCode := stwr.status
@@ -153,20 +146,10 @@ func SessionAuditLogger(audit *log.Logger) mux.MiddlewareFunc {
 
 			clientIP := request.RemoteAddr
 			method := request.Method
-			username := ""
-
-			for key, value := range request.Header {
-				if key == "Authorization" { // anonymize from logs
-					s := strings.SplitN(value[0], " ", 2) //nolint:mnd
-					if len(s) == 2 && strings.EqualFold(s[0], "basic") {
-						b, err := base64.StdEncoding.DecodeString(s[1])
-						if err == nil {
-							pair := strings.SplitN(string(b), ":", 2) //nolint:mnd
-							if len(pair) == 2 {                       //nolint:mnd
-								username = pair[0]
-							}
-						}
-					}
+			subject := "anonymous"
+			if userAc, err := reqCtx.UserAcFromContext(request.Context()); err == nil {
+				if username := userAc.GetUsername(); username != "" {
+					subject = username
 				}
 			}
 
@@ -182,7 +165,7 @@ func SessionAuditLogger(audit *log.Logger) mux.MiddlewareFunc {
 				audit.Info().
 					Str("component", "session").
 					Str("clientIP", clientIP).
-					Str("subject", username).
+					Str("subject", subject).
 					Str("action", method).
 					Str("object", path).
 					Int("status", statusCode).
