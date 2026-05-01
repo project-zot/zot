@@ -35,6 +35,7 @@ Examples of working configurations for various use cases are available [here](..
   - [Top-level Configuration Map](#top-level-configuration-map)
   - [Network](#network)
   - [Storage](#storage)
+    - [Fast restart](#fast-restart)
   - [Authentication](#authentication)
     - [TLS Mutual Authentication](#tls-mutual-authentication)
     - [Passphrase Authentication](#passphrase-authentication)
@@ -166,6 +167,29 @@ their own repository paths, dedupe and garbage collection settings with:
         }
     },
 ```
+
+### Fast restart
+
+On large registries (for example a 1TB+ S3 backend with many repos), the
+startup walk that reconciles metaDB with the current storage can dominate
+restart time. Setting `fastRestart` lets zot skip that walk when the same
+binary is restarted. After a successful walk, zot stamps metaDB with the
+running binary's identity so that the next startup, if the stamp matches,
+may skip the walk. Any binary upgrade invalidates the stamp and forces a
+full reparse.
+
+Fast restart is off by default. The trade-off when enabling it is that
+out-of-band changes to Zot's storage will not be detected and may cause
+inconsistencies between the metaDB and storage. To enable it:
+
+```json
+    "storage": {
+        "rootDirectory": "/var/lib/registry",
+        "fastRestart": true
+    },
+```
+
+You can also force a full reparse with the `--force-reparse` flag to `zot serve`.
 
 ## Retention
 

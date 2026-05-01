@@ -47,6 +47,8 @@ func metadataConfig(md *mapstructure.Metadata) viper.DecoderConfigOption {
 }
 
 func newServeCmd(conf *config.Config) *cobra.Command {
+	var forceReparse bool
+
 	// "serve"
 	serveCmd := &cobra.Command{
 		Use:     "serve <config>",
@@ -61,6 +63,11 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 				if err := LoadConfiguration(conf, args[0]); err != nil {
 					return err
 				}
+			}
+
+			if forceReparse {
+				disable := false
+				conf.Storage.FastRestart = &disable
 			}
 
 			ctlr := api.NewController(conf)
@@ -95,6 +102,9 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 			return nil
 		},
 	}
+
+	serveCmd.Flags().BoolVar(&forceReparse, "force-reparse", false,
+		"force a full storage->metaDB reparse on startup, ignoring the writer-version stamp")
 
 	return serveCmd
 }

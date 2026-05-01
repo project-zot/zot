@@ -40,6 +40,12 @@ type StorageConfig struct {
 	StorageDriver map[string]any `mapstructure:",omitempty"`
 	CacheDriver   map[string]any `mapstructure:",omitempty"`
 
+	// FastRestart allows the controller to skip the startup storage walk when
+	// the same version of Zot is used. This prevents re-reading all metadata
+	// from storage on every restart, at the cost of being able to detect
+	// out-of-band changes made to the storage. Defaults to false.
+	FastRestart *bool `mapstructure:",omitempty"`
+
 	// GCMaxSchedulerDelay is the maximum random delay for GC task scheduling
 	// This field is not configurable by the end user
 	GCMaxSchedulerDelay time.Duration `yaml:"-"`
@@ -1087,6 +1093,24 @@ func (c *Config) GetRealm() string {
 	defer c.mu.RUnlock()
 
 	return c.HTTP.Realm
+}
+
+// IsFastRestartEnabled reports whether the controller may skip the startup
+// storage walk when the metaDB writer-version stamp matches the current
+// binary. Defaults to false when unset.
+func (c *Config) IsFastRestartEnabled() bool {
+	if c == nil {
+		return false
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.Storage.FastRestart == nil {
+		return false
+	}
+
+	return *c.Storage.FastRestart
 }
 
 // GetCompat returns a copy of the compatibility config.
