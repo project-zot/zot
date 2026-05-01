@@ -602,7 +602,7 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 			}
 
 			// Try OIDC authentication first if configured
-			var username string
+			var identity string
 
 			var groups []string
 
@@ -611,21 +611,21 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 				var authenticated bool
 
-				username, groups, authenticated, err = oidcAuthorizer.AuthenticateRequest(request.Context(), header)
+				identity, groups, authenticated, err = oidcAuthorizer.AuthenticateRequest(request.Context(), header)
 				if err == nil && authenticated {
 					// OIDC authentication succeeded
-					ctlr.Log.Debug().Str("username", username).Msg("the OIDC bearer authentication was successful")
+					ctlr.Log.Debug().Str("identity", identity).Msg("the OIDC bearer authentication was successful")
 
 					// Set user context for authorization
 					userAc := reqCtx.NewUserAccessControl()
-					userAc.SetUsername(username)
+					userAc.SetUsername(identity)
 					userAc.AddGroups(groups)
 					userAc.SaveOnRequest(request)
 
 					// Update user groups in MetaDB if available
 					if ctlr.MetaDB != nil {
 						if err := ctlr.MetaDB.SetUserGroups(request.Context(), groups); err != nil {
-							ctlr.Log.Error().Err(err).Str("username", username).Msg("failed to update user profile")
+							ctlr.Log.Error().Err(err).Str("identity", identity).Msg("failed to update user profile")
 							response.WriteHeader(http.StatusInternalServerError)
 
 							return
@@ -1027,10 +1027,10 @@ func getUsernamePasswordBasicAuth(request *http.Request) (string, string, error)
 		return "", "", zerr.ErrParsingAuthHeader
 	}
 
-	username := pair[0]
+	identity := pair[0]
 	passphrase := pair[1]
 
-	return username, passphrase, nil
+	return identity, passphrase, nil
 }
 
 func GetGithubUserInfo(ctx context.Context, client *github.Client, log log.Logger) (string, []string, error) {
@@ -1111,36 +1111,37 @@ const (
 	defaultGroupsClaim   = "groups"
 )
 
-// getOpenIDClaimMapping resolves the username and groups claim names for a given provider.
-// The third return value reports whether the username claim was explicitly configured
-// (false means the default "email" claim is being used as a fallback).
+// getOpenIDClaimMapping resolves which OIDC claims supply identity (see ClaimMapping.Username)
+// and groups for a given provider.
+// The third return value reports whether the identity username claim was explicitly configured
+// (false means the default "email" claim is being used).
 func getOpenIDClaimMapping(authConfig *config.AuthConfig, providerName string) (string, string, bool) {
-	usernameClaim := defaultUsernameClaim
+	identityClaim := defaultUsernameClaim
 	groupsClaim := defaultGroupsClaim
-	usernameConfigured := false
+	identityConfigured := false
 
 	if authConfig == nil || authConfig.OpenID == nil || providerName == "" {
-		return usernameClaim, groupsClaim, usernameConfigured
+		return identityClaim, groupsClaim, identityConfigured
 	}
 
 	providerConfig, ok := authConfig.OpenID.Providers[providerName]
 	if !ok || providerConfig.ClaimMapping == nil {
-		return usernameClaim, groupsClaim, usernameConfigured
+		return identityClaim, groupsClaim, identityConfigured
 	}
 
 	if providerConfig.ClaimMapping.Username != "" {
-		usernameClaim = providerConfig.ClaimMapping.Username
-		usernameConfigured = true
+		identityClaim = providerConfig.ClaimMapping.Username
+		identityConfigured = true
 	}
 
 	if providerConfig.ClaimMapping.Groups != "" {
 		groupsClaim = providerConfig.ClaimMapping.Groups
 	}
 
-	return usernameClaim, groupsClaim, usernameConfigured
+	return identityClaim, groupsClaim, identityConfigured
 }
 
-func getOpenIDUsername(info *oidc.UserInfo, claimName string) string {
+func getOpenIDIdentity(info *oidc.UserInfo, claimName string) string {
 	if info == nil {
 		return ""
 	}
@@ -1196,73 +1197,67 @@ func appendOpenIDGroups(groups []string, claims map[string]any, claimName string
 	return groups, false
 }
 
-// extractOpenIDIdentity resolves the username and groups for an OIDC callback
+// extractOpenIDIdentity resolves identity and groups for an OIDC callback
 // based on the provider's configured claim mapping. It returns the resolved
-// username, the deduplicated/sorted groups, and a boolean reporting whether
-// the username could be resolved at all (false means callers should reject).
+// identity string, the deduplicated/sorted groups, and a boolean reporting whether
+// identity could be resolved at all (false means callers should reject).
 func extractOpenIDIdentity(logger log.Logger, authConfig *config.AuthConfig, providerName string,
 	info *oidc.UserInfo, idTokenClaims map[string]any,
 ) (string, []string, bool) {
-	usernameClaim, groupsClaim, usernameConfigured := getOpenIDClaimMapping(authConfig, providerName)
+	identityClaim, groupsClaim, identityConfigured := getOpenIDClaimMapping(authConfig, providerName)
 
-	username := getOpenIDUsername(info, usernameClaim)
+	identity := getOpenIDIdentity(info, identityClaim)
+	fellBackToDefaultClaim := false
 
-	if username == "" && usernameConfigured {
-		configuredClaim := usernameClaim
-		usernameClaim = defaultUsernameClaim
-		usernameConfigured = false
-		username = getOpenIDUsername(info, usernameClaim)
+	if identity == "" && identityConfigured && identityClaim != defaultUsernameClaim {
+		fellBackToDefaultClaim = true
+		configuredClaim := identityClaim
+		identityClaim = defaultUsernameClaim
+		identity = getOpenIDIdentity(info, identityClaim)
 
 		logger.Warn().
 			Str("provider", providerName).
 			Str("claim", configuredClaim).
-			Msg("configured username claim missing or empty, falling back to email")
+			Msgf("configured username claim missing or empty, falling back to %q claim", defaultUsernameClaim)
 	}
 
-	if username == "" {
+	if identity == "" {
 		return "", nil, false
 	}
 
-	if usernameConfigured {
-		logger.Debug().
-			Str("provider", providerName).
-			Str("claim", usernameClaim).
-			Str("username", username).
-			Msg("extracted username from configured claim")
-	} else {
-		logger.Debug().
-			Str("provider", providerName).
-			Str("username", username).
-			Msg("using email as username (fallback)")
-	}
+	logger.Debug().
+		Str("provider", providerName).
+		Str("claim", identityClaim).
+		Str("identity", identity).
+		Bool("fellBackToDefaultClaim", fellBackToDefaultClaim).
+		Msg("extracted identity")
 
-	var (
-		groups      []string
-		groupsFound bool
-	)
+	var groups []string
 
 	if info != nil {
-		groups, groupsFound = appendOpenIDGroups(groups, info.Claims, groupsClaim)
-		if !groupsFound {
-			logger.Info().Msgf("failed to find any %q claim for user %s in UserInfo", groupsClaim, username)
-		}
+		groups, _ = appendOpenIDGroups(groups, info.Claims, groupsClaim)
 	}
 
 	if idTokenClaims != nil {
-		groups, groupsFound = appendOpenIDGroups(groups, idTokenClaims, groupsClaim)
-		if !groupsFound {
-			logger.Info().Msgf("failed to find any %q claim for user %s in IDTokenClaimsToken", groupsClaim, username)
-		}
+		groups, _ = appendOpenIDGroups(groups, idTokenClaims, groupsClaim)
 	}
 
 	slices.Sort(groups)
 	groups = slices.Compact(groups)
 
-	return username, groups, true
+	if len(groups) == 0 {
+		logger.Debug().
+			Str("provider", providerName).
+			Str("groupsClaim", groupsClaim).
+			Str("identity", identity).
+			Msg("no groups claim values found in UserInfo or ID token claims")
+	}
+
+	return identity, groups, true
 }
 
 // OAuth2Callback is the callback logic where openid/oauth2 will redirect back to our app.
-func OAuth2Callback(ctlr *Controller, w http.ResponseWriter, r *http.Request, state, email, provider string,
+func OAuth2Callback(ctlr *Controller, w http.ResponseWriter, r *http.Request, state, identity, provider string,
 	groups []string,
 ) (string, error) {
 	stateCookie, _ := ctlr.CookieStore.Get(r, "statecookie")
@@ -1283,24 +1278,24 @@ func OAuth2Callback(ctlr *Controller, w http.ResponseWriter, r *http.Request, st
 	}
 
 	userAc := reqCtx.NewUserAccessControl()
-	userAc.SetUsername(email)
+	userAc.SetUsername(identity)
 	userAc.AddGroups(groups)
 	userAc.SaveOnRequest(r)
 
 	// if this line has been reached, then a new session should be created
 	// if the `session` key is already on the cookie, it's not a valid one
 	secure := ctlr.Config.UseSecureSession()
-	if err := saveUserLoggedSession(ctlr.CookieStore, w, r, email, provider, secure, ctlr.Log); err != nil {
+	if err := saveUserLoggedSession(ctlr.CookieStore, w, r, identity, provider, secure, ctlr.Log); err != nil {
 		return "", err
 	}
 
 	if err := ctlr.MetaDB.SetUserGroups(r.Context(), groups); err != nil {
-		ctlr.Log.Error().Err(err).Str("identity", email).Msg("failed to update the user profile")
+		ctlr.Log.Error().Err(err).Str("identity", identity).Msg("failed to update the user profile")
 
 		return "", err
 	}
 
-	ctlr.Log.Info().Msgf("user profile set successfully for email %s", email)
+	ctlr.Log.Info().Str("identity", identity).Msg("user profile set successfully")
 
 	// redirect to UI
 	callbackUI, _ := stateCookie.Values["callback"].(string)
@@ -1316,7 +1311,7 @@ func hashUUID(uuid string) string {
 }
 
 /*
-GetAuthUserFromRequestSession returns identity
+GetAuthUserFromRequestSession returns the authenticated user identifier
 and auth status if on the request's cookie session is a logged in user.
 */
 func GetAuthUserFromRequestSession(cookieStore sessions.Store, request *http.Request, log log.Logger,
@@ -1452,7 +1447,7 @@ func extractIdentityFromCertificate(cert *x509.Certificate, identityAttribute st
 	}
 }
 
-// extractMTLSIdentity extracts identity from certificate using configured soidentity attributes with fallback chain.
+// extractMTLSIdentity extracts identity from certificate using configured identity attributes with fallback chain.
 func extractMTLSIdentity(cert *x509.Certificate, mtlsConfig *config.MTLSConfig) (string, error) {
 	identityAttributes := []string{"CommonName"} // Default
 	if mtlsConfig != nil && len(mtlsConfig.IdentityAttibutes) > 0 {
