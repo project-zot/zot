@@ -4,6 +4,7 @@ package client_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"log"
 	"os"
 	"regexp"
@@ -310,6 +311,129 @@ func TestConfigCmdMain(t *testing.T) {
 
 			So(strings.TrimSpace(buff.String()), ShouldEqual, "")
 		})
+	})
+
+	Convey("Test set default config", t, func() {
+		args := []string{"configtest2", "--set-default"}
+
+		configPath := makeConfigFile(t, `{"configs":[
+			{"_name":"configtest1","url":"https://test-url1.com","default":true},
+			{"_name":"configtest2","url":"https://test-url2.com","showspinner":false}
+		]}`)
+
+		cmd := client.NewConfigCommand()
+		buff := bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err := cmd.Execute()
+		So(err, ShouldBeNil)
+
+		actual, err := os.ReadFile(configPath)
+		So(err, ShouldBeNil)
+
+		var configFile map[string][]map[string]any
+
+		err = json.Unmarshal(actual, &configFile)
+		So(err, ShouldBeNil)
+		So(configFile["configs"][0]["default"], ShouldBeNil)
+		So(configFile["configs"][1]["default"], ShouldEqual, true)
+		So(buff.String(), ShouldEqual, "")
+	})
+
+	Convey("Test set default config variable", t, func() {
+		args := []string{"configtest2", "default", "true"}
+
+		configPath := makeConfigFile(t, `{"configs":[
+			{"_name":"configtest1","url":"https://test-url1.com","default":true},
+			{"_name":"configtest2","url":"https://test-url2.com"}
+		]}`)
+
+		cmd := client.NewConfigCommand()
+		buff := bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err := cmd.Execute()
+		So(err, ShouldBeNil)
+
+		actual, err := os.ReadFile(configPath)
+		So(err, ShouldBeNil)
+
+		var configFile map[string][]map[string]any
+
+		err = json.Unmarshal(actual, &configFile)
+		So(err, ShouldBeNil)
+		So(configFile["configs"][0]["default"], ShouldBeNil)
+		So(configFile["configs"][1]["default"], ShouldEqual, true)
+		So(buff.String(), ShouldEqual, "")
+	})
+
+	Convey("Test reset default config variable", t, func() {
+		args := []string{"configtest", "default", "--reset"}
+
+		configPath := makeConfigFile(t,
+			`{"configs":[{"_name":"configtest","url":"https://test-url.com","default":true}]}`)
+
+		cmd := client.NewConfigCommand()
+		buff := bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err := cmd.Execute()
+		So(err, ShouldBeNil)
+
+		actual, err := os.ReadFile(configPath)
+		So(err, ShouldBeNil)
+
+		var configFile map[string][]map[string]any
+
+		err = json.Unmarshal(actual, &configFile)
+		So(err, ShouldBeNil)
+		So(configFile["configs"][0]["default"], ShouldBeNil)
+		So(buff.String(), ShouldEqual, "")
+	})
+
+	Convey("Test set default missing config", t, func() {
+		args := []string{"missing", "--set-default"}
+
+		_ = makeConfigFile(t, `{"configs":[{"_name":"configtest","url":"https://test-url.com"}]}`)
+
+		cmd := client.NewConfigCommand()
+		buff := bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err := cmd.Execute()
+		So(err, ShouldNotBeNil)
+		So(buff.String(), ShouldContainSubstring, "does not exist")
+	})
+
+	Convey("Test set default rejects conflicting flags", t, func() {
+		args := []string{"configtest2", "--set-default", "--list"}
+
+		configPath := makeConfigFile(t, `{"configs":[
+			{"_name":"configtest1","url":"https://test-url1.com","default":true},
+			{"_name":"configtest2","url":"https://test-url2.com"}
+		]}`)
+
+		cmd := client.NewConfigCommand()
+		buff := bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err := cmd.Execute()
+		So(err, ShouldEqual, zerr.ErrInvalidArgs)
+
+		actual, err := os.ReadFile(configPath)
+		So(err, ShouldBeNil)
+
+		var configFile map[string][]map[string]any
+
+		err = json.Unmarshal(actual, &configFile)
+		So(err, ShouldBeNil)
+		So(configFile["configs"][0]["default"], ShouldEqual, true)
+		So(configFile["configs"][1]["default"], ShouldBeNil)
 	})
 
 	Convey("Test fetch a config", t, func() {
