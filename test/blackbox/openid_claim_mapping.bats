@@ -25,6 +25,17 @@ function verify_prerequisites {
     return 0
 }
 
+function assert_oidc_extract_identity_log() {
+    local log_file=${1:?}
+    local expect_fell_back=${2:?}
+    local expect_claim=${3:?}
+
+    grep '"message":"extracted identity"' "${log_file}" \
+        | grep "\"claim\":\"${expect_claim}\"" \
+        | grep "\"fellBackToDefaultClaim\":${expect_fell_back}" \
+        | grep -q .
+}
+
 IDP_PID=""
 
 function setup_file() {
@@ -173,9 +184,8 @@ EOF
     [ "$status" -eq 0 ]
     echo "$output"
     
-    # Verify that the log contains the preferred_username claim being used
-    log_output ${BATS_FILE_TMPDIR}/zot-preferred-username.log | jq 'contains("extracted username from configured claim")' | grep true
-    ! log_output ${BATS_FILE_TMPDIR}/zot-preferred-username.log | grep -q "using email as username (fallback)"
+    # Verify structured extract identity debug line (preferred_username mapped)
+    assert_oidc_extract_identity_log ${BATS_FILE_TMPDIR}/zot-preferred-username.log false preferred_username
 }
 
 @test "test OIDC claim mapping with email" {
@@ -249,9 +259,8 @@ EOF
     [ "$status" -eq 0 ]
     echo "$output"
     
-    # Verify that the log contains email claim being used
-    grep -q "extracted username from configured claim" ${BATS_FILE_TMPDIR}/zot-email.log
-	! grep -q "using email as username (fallback)" ${BATS_FILE_TMPDIR}/zot-email.log
+    # Verify structured extract identity debug line (explicit email username claim)
+    assert_oidc_extract_identity_log ${BATS_FILE_TMPDIR}/zot-email.log false email
 }
 
 @test "test OIDC claim mapping with sub" {
@@ -319,9 +328,8 @@ EOF
     [ "$status" -eq 0 ]
     echo "$output"
     
-    # Verify that the log contains sub claim being used
-    log_output ${BATS_FILE_TMPDIR}/zot-sub.log | jq 'contains("extracted username from configured claim")' | grep true
-    ! log_output ${BATS_FILE_TMPDIR}/zot-sub.log | grep -q "using email as username (fallback)"
+    # Verify structured extract identity debug line (sub mapped)
+    assert_oidc_extract_identity_log ${BATS_FILE_TMPDIR}/zot-sub.log false sub
 }
 
 @test "test OIDC with no claim mapping (default to email)" {
@@ -394,6 +402,6 @@ EOF
     [ "$status" -eq 0 ]
     echo "$output"
     
-    # Verify that the log contains email claim being used (default behavior)
-    log_output ${ZOT_LOG_FILE} | jq 'contains("using email as username (fallback)")' | grep true
+    # Verify structured extract identity debug line (default email claim, no claimMapping)
+    assert_oidc_extract_identity_log ${ZOT_LOG_FILE} false email
 }

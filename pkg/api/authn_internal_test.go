@@ -1,29 +1,32 @@
 package api
 
 import (
+	"slices"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
 
 	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/log"
 )
 
 func TestGetOpenIDClaimMapping(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name               string
-		authConfig         *config.AuthConfig
-		providerName       string
-		expectedUsername   string
-		expectedGroups     string
-		expectedConfigured bool
+		name                       string
+		authConfig                 *config.AuthConfig
+		providerName               string
+		expectedIdentityClaim      string
+		expectedGroups             string
+		expectedIdentityConfigured bool
 	}{
 		{
-			name:               "nil auth config uses defaults",
-			expectedUsername:   defaultUsernameClaim,
-			expectedGroups:     defaultGroupsClaim,
-			expectedConfigured: false,
+			name:                       "nil auth config uses defaults",
+			expectedIdentityClaim:      defaultUsernameClaim,
+			expectedGroups:             defaultGroupsClaim,
+			expectedIdentityConfigured: false,
 		},
 		{
 			name: "empty provider uses defaults",
@@ -32,9 +35,9 @@ func TestGetOpenIDClaimMapping(t *testing.T) {
 					Providers: map[string]config.OpenIDProviderConfig{},
 				},
 			},
-			expectedUsername:   defaultUsernameClaim,
-			expectedGroups:     defaultGroupsClaim,
-			expectedConfigured: false,
+			expectedIdentityClaim:      defaultUsernameClaim,
+			expectedGroups:             defaultGroupsClaim,
+			expectedIdentityConfigured: false,
 		},
 		{
 			name: "missing provider uses defaults",
@@ -43,10 +46,10 @@ func TestGetOpenIDClaimMapping(t *testing.T) {
 					Providers: map[string]config.OpenIDProviderConfig{},
 				},
 			},
-			providerName:       "oidc",
-			expectedUsername:   defaultUsernameClaim,
-			expectedGroups:     defaultGroupsClaim,
-			expectedConfigured: false,
+			providerName:               "oidc",
+			expectedIdentityClaim:      defaultUsernameClaim,
+			expectedGroups:             defaultGroupsClaim,
+			expectedIdentityConfigured: false,
 		},
 		{
 			name: "provider without claim mapping uses defaults",
@@ -57,10 +60,10 @@ func TestGetOpenIDClaimMapping(t *testing.T) {
 					},
 				},
 			},
-			providerName:       "oidc",
-			expectedUsername:   defaultUsernameClaim,
-			expectedGroups:     defaultGroupsClaim,
-			expectedConfigured: false,
+			providerName:               "oidc",
+			expectedIdentityClaim:      defaultUsernameClaim,
+			expectedGroups:             defaultGroupsClaim,
+			expectedIdentityConfigured: false,
 		},
 		{
 			name: "custom username and groups claims",
@@ -76,10 +79,10 @@ func TestGetOpenIDClaimMapping(t *testing.T) {
 					},
 				},
 			},
-			providerName:       "oidc",
-			expectedUsername:   "preferred_username",
-			expectedGroups:     "roles",
-			expectedConfigured: true,
+			providerName:               "oidc",
+			expectedIdentityClaim:      "preferred_username",
+			expectedGroups:             "roles",
+			expectedIdentityConfigured: true,
 		},
 		{
 			name: "custom groups keeps default username",
@@ -94,10 +97,10 @@ func TestGetOpenIDClaimMapping(t *testing.T) {
 					},
 				},
 			},
-			providerName:       "oidc",
-			expectedUsername:   defaultUsernameClaim,
-			expectedGroups:     "roles",
-			expectedConfigured: false,
+			providerName:               "oidc",
+			expectedIdentityClaim:      defaultUsernameClaim,
+			expectedGroups:             "roles",
+			expectedIdentityConfigured: false,
 		},
 	}
 
@@ -107,23 +110,91 @@ func TestGetOpenIDClaimMapping(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			usernameClaim, groupsClaim, usernameConfigured := getOpenIDClaimMapping(test.authConfig, test.providerName)
-			if usernameClaim != test.expectedUsername {
-				t.Fatalf("expected username claim %q, got %q", test.expectedUsername, usernameClaim)
-			}
-
-			if groupsClaim != test.expectedGroups {
-				t.Fatalf("expected groups claim %q, got %q", test.expectedGroups, groupsClaim)
-			}
-
-			if usernameConfigured != test.expectedConfigured {
-				t.Fatalf("expected usernameConfigured %t, got %t", test.expectedConfigured, usernameConfigured)
-			}
+			identityClaim, groupsClaim, identityConfigured := getOpenIDClaimMapping(test.authConfig, test.providerName)
+			assert.Equal(t, test.expectedIdentityClaim, identityClaim)
+			assert.Equal(t, test.expectedGroups, groupsClaim)
+			assert.Equal(t, test.expectedIdentityConfigured, identityConfigured)
 		})
 	}
+
+	logger := log.NewTestLogger()
+
+	t.Run("extractOpenIDIdentity_fallbackToEmailWhenConfiguredNonDefaultClaimMissing", func(t *testing.T) {
+		t.Parallel()
+
+		authConfig := &config.AuthConfig{
+			OpenID: &config.OpenIDConfig{
+				Providers: map[string]config.OpenIDProviderConfig{
+					"oidc": {
+						ClaimMapping: &config.ClaimMapping{
+							Username: "preferred_username",
+						},
+					},
+				},
+			},
+		}
+
+		info := &oidc.UserInfo{
+			UserInfoProfile: oidc.UserInfoProfile{
+				PreferredUsername: "",
+			},
+			UserInfoEmail: oidc.UserInfoEmail{Email: "user@example.com"},
+		}
+
+		identity, groups, ok := extractOpenIDIdentity(logger, authConfig, "oidc", info, nil)
+		assert.True(t, ok)
+		assert.Equal(t, "user@example.com", identity)
+		assert.Empty(t, groups)
+	})
+
+	t.Run("extractOpenIDIdentity_explicitDefaultClaimMissingRejects", func(t *testing.T) {
+		t.Parallel()
+
+		authConfig := &config.AuthConfig{
+			OpenID: &config.OpenIDConfig{
+				Providers: map[string]config.OpenIDProviderConfig{
+					"oidc": {
+						ClaimMapping: &config.ClaimMapping{
+							Username: "email",
+						},
+					},
+				},
+			},
+		}
+
+		info := &oidc.UserInfo{
+			UserInfoEmail: oidc.UserInfoEmail{Email: ""},
+		}
+
+		identity, groups, ok := extractOpenIDIdentity(logger, authConfig, "oidc", info, nil)
+		assert.False(t, ok)
+		assert.Empty(t, identity)
+		assert.Nil(t, groups)
+	})
+
+	t.Run("extractOpenIDIdentity_mergesSortsDedupesGroupsFromUserInfoAndIDToken", func(t *testing.T) {
+		t.Parallel()
+
+		info := &oidc.UserInfo{
+			UserInfoEmail: oidc.UserInfoEmail{Email: "user@example.com"},
+			Claims: map[string]any{
+				"groups": []any{"b", "a", "", nil, "a"},
+			},
+		}
+
+		idTokenClaims := map[string]any{
+			"groups": []string{"c", "b"},
+		}
+
+		identity, groups, ok := extractOpenIDIdentity(logger, nil, "", info, idTokenClaims)
+		assert.True(t, ok)
+		assert.Equal(t, "user@example.com", identity)
+		expected := []string{"a", "b", "c"}
+		assert.True(t, slices.Equal(expected, groups))
+	})
 }
 
-func TestGetOpenIDUsername(t *testing.T) {
+func TestGetOpenIDIdentity(t *testing.T) {
 	t.Parallel()
 
 	info := &oidc.UserInfo{
@@ -161,10 +232,8 @@ func TestGetOpenIDUsername(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			username := getOpenIDUsername(test.info, test.claim)
-			if username != test.expected {
-				t.Fatalf("expected username %q, got %q", test.expected, username)
-			}
+			identity := getOpenIDIdentity(test.info, test.claim)
+			assert.Equal(t, test.expected, identity)
 		})
 	}
 }
@@ -260,19 +329,8 @@ func TestAppendOpenIDGroups(t *testing.T) {
 			t.Parallel()
 
 			groups, found := appendOpenIDGroups(test.groups, test.claims, test.claim)
-			if found != test.expectedFound {
-				t.Fatalf("expected found %t, got %t", test.expectedFound, found)
-			}
-
-			if len(groups) != len(test.expected) {
-				t.Fatalf("expected groups %v, got %v", test.expected, groups)
-			}
-
-			for i := range test.expected {
-				if groups[i] != test.expected[i] {
-					t.Fatalf("expected groups %v, got %v", test.expected, groups)
-				}
-			}
+			assert.Equal(t, test.expectedFound, found)
+			assert.Equal(t, test.expected, groups)
 		})
 	}
 }
