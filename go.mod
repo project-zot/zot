@@ -1,6 +1,6 @@
 module zotregistry.dev/zot/v2
 
-go 1.25.8
+go 1.26.0
 
 require (
 	github.com/99designs/gqlgen v0.17.89
@@ -76,15 +76,15 @@ require (
 	github.com/swaggo/swag v1.16.6
 	github.com/tiendc/go-deepcopy v1.7.2
 	github.com/vektah/gqlparser/v2 v2.5.32
-	github.com/zitadel/oidc/v3 v3.47.4
+	github.com/zitadel/oidc/v3 v3.47.5
 	go.etcd.io/bbolt v1.4.3
 	golang.org/x/crypto v0.50.0
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sys v0.43.0
-	google.golang.org/protobuf v1.36.11
+	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
 	gopkg.in/resty.v1 v1.12.0
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/apimachinery v0.35.4
+	k8s.io/apimachinery v0.36.0
 	modernc.org/sqlite v1.49.1
 	oras.land/oras-go/v2 v2.6.0
 	sigs.k8s.io/controller-runtime v0.23.3
@@ -554,7 +554,7 @@ require (
 	k8s.io/client-go v0.35.3 // indirect
 	k8s.io/component-base v0.35.2 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
-	k8s.io/kube-openapi v0.0.0-20260304202019-5b3e3fdb0acf // indirect
+	k8s.io/kube-openapi v0.0.0-20260317180543-43fb72c5454a // indirect
 	k8s.io/kubectl v0.35.1 // indirect
 	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2 // indirect
 	modernc.org/libc v1.72.0 // indirect
