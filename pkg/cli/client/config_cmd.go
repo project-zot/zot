@@ -3,24 +3,13 @@
 package client
 
 import (
-	"errors"
 	"fmt"
 	"os"
-	"path"
-	"slices"
-	"strconv"
-	"strings"
-	"text/tabwriter"
+	"path/filepath"
 
-	jsoniter "github.com/json-iterator/go"
 	"github.com/spf13/cobra"
 
 	zerr "zotregistry.dev/zot/v2/errors"
-)
-
-const (
-	defaultConfigPerms = 0o644
-	defaultFilePerms   = 0o600
 )
 
 func NewConfigCommand() *cobra.Command {
@@ -40,11 +29,11 @@ func NewConfigCommand() *cobra.Command {
 				return err
 			}
 
-			configPath := path.Join(home, "/.zot")
+			configPath := filepath.Join(home, ".zot")
 
 			switch len(args) {
 			case noArgs:
-				if isListing { // zot config -l
+				if isListing { // zli config -l
 					res, err := getConfigNames(configPath)
 					if err != nil {
 						return err
@@ -57,7 +46,7 @@ func NewConfigCommand() *cobra.Command {
 
 				return zerr.ErrInvalidArgs
 			case oneArg:
-				// zot config <name> -l
+				// zli config <name> -l
 				if isListing {
 					res, err := getAllConfig(configPath, args[0])
 					if err != nil {
@@ -71,17 +60,17 @@ func NewConfigCommand() *cobra.Command {
 
 				return zerr.ErrInvalidArgs
 			case twoArgs:
-				if isReset { // zot config <name> <key> --reset
+				if isReset { // zli config <name> <key> --reset
 					return resetConfigValue(configPath, args[0], args[1])
 				}
-				// zot config <name> <key>
+				// zli config <name> <key>
 				res, err := getConfigValue(configPath, args[0], args[1])
 				if err != nil {
 					return err
 				}
 				fmt.Fprintln(cmd.OutOrStdout(), res)
 			case threeArgs:
-				// zot config <name> <key> <value>
+				// zli config <name> <key> <value>
 				if err := setConfigValue(configPath, args[0], args[1], args[2]); err != nil {
 					return err
 				}
@@ -116,8 +105,8 @@ func NewConfigAddCommand() *cobra.Command {
 				return err
 			}
 
-			configPath := path.Join(home, "/.zot")
-			// zot config add <config-name> <url>
+			configPath := filepath.Join(home, ".zot")
+			// zli config add <config-name> <url>
 			err = addConfig(configPath, args[0], args[1])
 			if err != nil {
 				return err
@@ -146,8 +135,8 @@ func NewConfigRemoveCommand() *cobra.Command {
 				return err
 			}
 
-			configPath := path.Join(home, "/.zot")
-			// zot config add <config-name> <url>
+			configPath := filepath.Join(home, ".zot")
+			// zli config remove <config-name>
 			err = removeConfig(configPath, args[0])
 			if err != nil {
 				return err
@@ -163,223 +152,95 @@ func NewConfigRemoveCommand() *cobra.Command {
 	return configRemoveCmd
 }
 
-func getConfigMapFromFile(filePath string) ([]any, error) {
-	file, err := os.OpenFile(filePath, os.O_RDONLY|os.O_CREATE, defaultConfigPerms)
-	if err != nil {
-		return nil, err
-	}
-
-	file.Close()
-
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, err
-	}
-
-	var jsonMap map[string]any
-
-	json := jsoniter.ConfigCompatibleWithStandardLibrary
-
-	_ = json.Unmarshal(data, &jsonMap)
-
-	if jsonMap["configs"] == nil {
-		return nil, zerr.ErrEmptyJSON
-	}
-
-	configs, ok := jsonMap["configs"].([]any)
-	if !ok {
-		return nil, zerr.ErrCliBadConfig
-	}
-
-	return configs, nil
-}
-
-func saveConfigMapToFile(filePath string, configMap []any) error {
-	json := jsoniter.ConfigCompatibleWithStandardLibrary
-
-	listMap := make(map[string]any)
-	listMap["configs"] = configMap
-
-	marshalled, err := json.MarshalIndent(&listMap, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	if err := os.WriteFile(filePath, marshalled, defaultFilePerms); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func getConfigNames(configPath string) (string, error) {
-	configs, err := getConfigMapFromFile(configPath)
+	cfg, err := ReadZliConfigFile(configPath)
 	if err != nil {
-		if errors.Is(err, zerr.ErrEmptyJSON) {
+		if isConfigUnavailable(err) {
 			return "", nil
 		}
 
 		return "", err
 	}
 
-	var builder strings.Builder
-
-	writer := tabwriter.NewWriter(&builder, 0, 8, 1, '\t', tabwriter.AlignRight) //nolint:mnd
-
-	for _, val := range configs {
-		configMap, ok := val.(map[string]any)
-		if !ok {
-			return "", zerr.ErrBadConfig
-		}
-
-		fmt.Fprintf(writer, "%s\t%s\n", configMap[nameKey], configMap["url"])
-	}
-
-	err = writer.Flush()
-	if err != nil {
-		return "", err
-	}
-
-	return builder.String(), nil
+	return cfg.FormatNames()
 }
 
 func addConfig(configPath, configName, url string) error {
-	configs, err := getConfigMapFromFile(configPath)
-	if err != nil && !errors.Is(err, zerr.ErrEmptyJSON) {
-		return err
-	}
-
-	if err := validateURL(url); err != nil {
-		return err
-	}
-
-	if configNameExists(configs, configName) {
-		return zerr.ErrDuplicateConfigName
-	}
-
-	configMap := make(map[string]any)
-	configMap["url"] = url
-	configMap[nameKey] = configName
-	addDefaultConfigs(configMap)
-	configs = append(configs, configMap)
-
-	err = saveConfigMapToFile(configPath, configs)
+	cfg, err := ReadZliConfigFile(configPath)
 	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func removeConfig(configPath, configName string) error {
-	configs, err := getConfigMapFromFile(configPath)
-	if err != nil {
-		return err
-	}
-
-	for i, val := range configs {
-		configMap, ok := val.(map[string]any)
-		if !ok {
-			return zerr.ErrBadConfig
-		}
-
-		name := configMap[nameKey]
-		if name != configName {
-			continue
-		}
-
-		// Remove config from the config list before saving
-		newConfigs := configs[:i]
-		newConfigs = append(newConfigs, configs[i+1:]...)
-
-		err = saveConfigMapToFile(configPath, newConfigs)
-		if err != nil {
+		if !isConfigUnavailable(err) {
 			return err
 		}
 
-		return nil
+		cfg = &ZliConfigFile{}
 	}
 
-	return zerr.ErrConfigNotFound
+	if err := cfg.AddEntry(configName, url); err != nil {
+		return err
+	}
+
+	return cfg.WriteFile(configPath)
 }
 
-func addDefaultConfigs(config map[string]any) {
-	if _, ok := config[showspinnerConfig]; !ok {
-		config[showspinnerConfig] = true
-	}
-
-	if _, ok := config[verifyTLSConfig]; !ok {
-		config[verifyTLSConfig] = true
-	}
-}
-
-func getConfigValue(configPath, configName, key string) (string, error) {
-	configs, err := getConfigMapFromFile(configPath)
+func removeConfig(configPath, configName string) error {
+	cfg, err := ReadZliConfigFile(configPath)
 	if err != nil {
-		if errors.Is(err, zerr.ErrEmptyJSON) {
-			return "", zerr.ErrConfigNotFound
-		}
-
-		return "", err
-	}
-
-	for _, val := range configs {
-		configMap, ok := val.(map[string]any)
-		if !ok {
-			return "", zerr.ErrBadConfig
-		}
-
-		addDefaultConfigs(configMap)
-
-		name := configMap[nameKey]
-		if name == configName {
-			if configMap[key] == nil {
-				return "", nil
-			}
-
-			return fmt.Sprintf("%v", configMap[key]), nil
-		}
-	}
-
-	return "", zerr.ErrConfigNotFound
-}
-
-func resetConfigValue(configPath, configName, key string) error {
-	if key == "url" || key == nameKey {
-		return zerr.ErrCannotResetConfigKey
-	}
-
-	configs, err := getConfigMapFromFile(configPath)
-	if err != nil {
-		if errors.Is(err, zerr.ErrEmptyJSON) {
+		if isConfigUnavailable(err) {
 			return zerr.ErrConfigNotFound
 		}
 
 		return err
 	}
 
-	for _, val := range configs {
-		configMap, ok := val.(map[string]any)
-		if !ok {
-			return zerr.ErrBadConfig
-		}
-
-		addDefaultConfigs(configMap)
-
-		name := configMap[nameKey]
-		if name == configName {
-			delete(configMap, key)
-
-			err = saveConfigMapToFile(configPath, configs)
-			if err != nil {
-				return err
-			}
-
-			return nil
-		}
+	if err := cfg.RemoveEntry(configName); err != nil {
+		return err
 	}
 
-	return zerr.ErrConfigNotFound
+	return cfg.WriteFile(configPath)
+}
+
+func getConfigValue(configPath, configName, key string) (string, error) {
+	cfg, err := ReadZliConfigFile(configPath)
+	if err != nil {
+		if isConfigUnavailable(err) {
+			return "", zerr.ErrConfigNotFound
+		}
+
+		return "", err
+	}
+
+	c, err := cfg.Find(configName)
+	if err != nil {
+		return "", err
+	}
+
+	return c.GetVar(key)
+}
+
+func resetConfigValue(configPath, configName, key string) error {
+	if key == URLFlag || key == nameKey {
+		return zerr.ErrCannotResetConfigKey
+	}
+
+	cfg, err := ReadZliConfigFile(configPath)
+	if err != nil {
+		if isConfigUnavailable(err) {
+			return zerr.ErrConfigNotFound
+		}
+
+		return err
+	}
+
+	c, err := cfg.Find(configName)
+	if err != nil {
+		return err
+	}
+
+	if err := c.ResetVar(key); err != nil {
+		return err
+	}
+
+	return cfg.WriteFile(configPath)
 }
 
 func setConfigValue(configPath, configName, key, value string) error {
@@ -387,90 +248,43 @@ func setConfigValue(configPath, configName, key, value string) error {
 		return zerr.ErrIllegalConfigKey
 	}
 
-	configs, err := getConfigMapFromFile(configPath)
+	cfg, err := ReadZliConfigFile(configPath)
 	if err != nil {
-		if errors.Is(err, zerr.ErrEmptyJSON) {
+		if isConfigUnavailable(err) {
 			return zerr.ErrConfigNotFound
 		}
 
 		return err
 	}
 
-	for _, val := range configs {
-		configMap, ok := val.(map[string]any)
-		if !ok {
-			return zerr.ErrBadConfig
-		}
-
-		addDefaultConfigs(configMap)
-
-		name := configMap[nameKey]
-		if name == configName {
-			boolVal, err := strconv.ParseBool(value)
-			if err == nil {
-				configMap[key] = boolVal
-			} else {
-				configMap[key] = value
-			}
-
-			err = saveConfigMapToFile(configPath, configs)
-			if err != nil {
-				return err
-			}
-
-			return nil
-		}
+	c, err := cfg.Find(configName)
+	if err != nil {
+		return err
 	}
 
-	return zerr.ErrConfigNotFound
+	if err := c.SetVar(key, value); err != nil {
+		return err
+	}
+
+	return cfg.WriteFile(configPath)
 }
 
 func getAllConfig(configPath, configName string) (string, error) {
-	configs, err := getConfigMapFromFile(configPath)
+	cfg, err := ReadZliConfigFile(configPath)
 	if err != nil {
-		if errors.Is(err, zerr.ErrEmptyJSON) {
+		if isConfigUnavailable(err) {
 			return "", nil
 		}
 
 		return "", err
 	}
 
-	var builder strings.Builder
-
-	for _, value := range configs {
-		configMap, ok := value.(map[string]any)
-		if !ok {
-			return "", zerr.ErrBadConfig
-		}
-
-		addDefaultConfigs(configMap)
-
-		name := configMap[nameKey]
-		if name == configName {
-			for key, val := range configMap {
-				if key == nameKey {
-					continue
-				}
-
-				fmt.Fprintf(&builder, "%s = %v\n", key, val)
-			}
-
-			return builder.String(), nil
-		}
+	c, err := cfg.Find(configName)
+	if err != nil {
+		return "", err
 	}
 
-	return "", zerr.ErrConfigNotFound
-}
-
-func configNameExists(configs []any, configName string) bool {
-	return slices.ContainsFunc(configs, func(val any) bool {
-		configMap, ok := val.(map[string]any)
-		if !ok {
-			return false
-		}
-
-		return configMap[nameKey] == configName
-	})
+	return c.FormatListedVars(), nil
 }
 
 const (
@@ -487,13 +301,8 @@ Useful variables:
   verify-tls	enable TLS certificate verification of the server [default: true]
 `
 
-	nameKey = "_name"
-
 	noArgs    = 0
 	oneArg    = 1
 	twoArgs   = 2
 	threeArgs = 3
-
-	showspinnerConfig = "showspinner"
-	verifyTLSConfig   = "verify-tls"
 )

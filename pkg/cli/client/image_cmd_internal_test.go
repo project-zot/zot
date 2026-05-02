@@ -7,9 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -35,7 +33,7 @@ func TestSearchImageCmd(t *testing.T) {
 	Convey("Test image help", t, func() {
 		args := []string{"--help"}
 
-		_ = makeConfigFile(t, "")
+		t.Setenv("HOME", t.TempDir())
 
 		cmd := NewImageCommand(newMockService())
 		buff := bytes.NewBufferString("")
@@ -50,7 +48,7 @@ func TestSearchImageCmd(t *testing.T) {
 		Convey("with the shorthand", func() {
 			args[0] = "-h"
 
-			_ = makeConfigFile(t, "")
+			t.Setenv("HOME", t.TempDir())
 
 			cmd := NewImageCommand(newMockService())
 			buff := bytes.NewBufferString("")
@@ -76,7 +74,7 @@ func TestSearchImageCmd(t *testing.T) {
 		cmd.SetArgs(args)
 		err := cmd.Execute()
 		So(err, ShouldNotBeNil)
-		So(errors.Is(err, zerr.ErrNoURLProvided), ShouldBeTrue)
+		So(errors.Is(err, zerr.ErrCliBadConfig), ShouldBeTrue)
 	})
 
 	Convey("Test image invalid home directory", t, func() {
@@ -84,34 +82,21 @@ func TestSearchImageCmd(t *testing.T) {
 
 		_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":false}]}`)
 
-		err := os.Setenv("HOME", "nonExistentDirectory")
-		if err != nil {
-			panic(err)
-		}
+		t.Setenv("HOME", "nonExistentDirectory")
 
 		cmd := NewImageCommand(newMockService())
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
 		cmd.SetArgs(args)
-		err = cmd.Execute()
+		err := cmd.Execute()
 		So(err, ShouldNotBeNil)
-
-		home, err := os.UserHomeDir()
-		if err != nil {
-			panic(err)
-		}
-
-		err = os.Setenv("HOME", home)
-		if err != nil {
-			log.Fatal(err)
-		}
 	})
 
 	Convey("Test image no params", t, func() {
 		args := []string{"--url", "someUrl"}
 
-		_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest","showspinner":false}]}`)
+		t.Setenv("HOME", t.TempDir())
 
 		cmd := NewImageCommand(newMockService())
 		buff := bytes.NewBufferString("")
@@ -125,7 +110,7 @@ func TestSearchImageCmd(t *testing.T) {
 	Convey("Test image invalid url", t, func() {
 		args := []string{"name", "dummyImageName", "--url", "invalidUrl"}
 
-		_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest","showspinner":false}]}`)
+		t.Setenv("HOME", t.TempDir())
 
 		cmd := NewImageCommand(NewSearchService())
 		buff := bytes.NewBufferString("")
@@ -141,7 +126,7 @@ func TestSearchImageCmd(t *testing.T) {
 	Convey("Test image invalid url port", t, func() {
 		args := []string{"name", "dummyImageName", "--url", "http://localhost:99999"}
 
-		_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest","showspinner":false}]}`)
+		t.Setenv("HOME", t.TempDir())
 
 		cmd := NewImageCommand(NewSearchService())
 		buff := bytes.NewBufferString("")
@@ -155,7 +140,7 @@ func TestSearchImageCmd(t *testing.T) {
 		Convey("without flags", func() {
 			args := []string{"list", "--url", "http://localhost:99999"}
 
-			_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest","showspinner":false}]}`)
+			t.Setenv("HOME", t.TempDir())
 
 			cmd := NewImageCommand(NewSearchService())
 			buff := bytes.NewBufferString("")
@@ -171,7 +156,7 @@ func TestSearchImageCmd(t *testing.T) {
 	Convey("Test image unreachable", t, func() {
 		args := []string{"name", "dummyImageName", "--url", "http://localhost:9999"}
 
-		_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest","showspinner":false}]}`)
+		t.Setenv("HOME", t.TempDir())
 
 		cmd := NewImageCommand(NewSearchService())
 		buff := bytes.NewBufferString("")
@@ -203,7 +188,7 @@ func TestSearchImageCmd(t *testing.T) {
 	Convey("Test image by name", t, func() {
 		args := []string{"name", "dummyImageName", "--url", "http://127.0.0.1:8080"}
 
-		_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest","showspinner":false}]}`)
+		t.Setenv("HOME", t.TempDir())
 
 		imageCmd := NewImageCommand(newMockService())
 		buff := &bytes.Buffer{}
@@ -267,28 +252,15 @@ func TestListRepos(t *testing.T) {
 
 		_ = makeConfigFile(t, `{"configs":[{"_name":"config-test","url":"https://test-url.com","showspinner":false}]}`)
 
-		err := os.Setenv("HOME", "nonExistentDirectory")
-		if err != nil {
-			panic(err)
-		}
+		t.Setenv("HOME", "nonExistentDirectory")
 
 		cmd := NewRepoCommand(newMockService())
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
 		cmd.SetArgs(args)
-		err = cmd.Execute()
+		err := cmd.Execute()
 		So(err, ShouldNotBeNil)
-
-		home, err := os.UserHomeDir()
-		if err != nil {
-			panic(err)
-		}
-
-		err = os.Setenv("HOME", home)
-		if err != nil {
-			log.Fatal(err)
-		}
 	})
 
 	Convey("Test listing repositories error", t, func() {
@@ -1522,15 +1494,11 @@ func (service *mockService) getImagesByDigest(ctx context.Context, config Search
 }
 
 func makeConfigFile(t *testing.T, content string) string {
+	t.Helper()
 	tempDir := t.TempDir()
-	os.Setenv("HOME", tempDir)
+	t.Setenv("HOME", tempDir)
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		panic(err)
-	}
-
-	configPath := path.Join(home, "/.zot")
+	configPath := filepath.Join(tempDir, ".zot")
 
 	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
 		panic(err)

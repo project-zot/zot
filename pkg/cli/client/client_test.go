@@ -105,9 +105,9 @@ func TestTLSWithAuth(t *testing.T) {
 		defer cm.StopServer()
 
 		Convey("Test with htpassw auth", func() {
-			_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest","showspinner":false}]}`)
+			t.Setenv("HOME", t.TempDir())
 
-			// Use the HOME that makeConfigFile set (temp directory) for certificates
+			// Client certs are resolved under $HOME; isolate from the real home directory.
 			home := os.Getenv("HOME")
 			destCertsDir := filepath.Join(home, certsDir1)
 			err := os.MkdirAll(destCertsDir, 0o755)
@@ -368,14 +368,9 @@ func TestTLSBadCerts(t *testing.T) {
 func makeConfigFile(t *testing.T, content string) string {
 	t.Helper()
 	tempDir := t.TempDir()
-	os.Setenv("HOME", tempDir)
+	t.Setenv("HOME", tempDir)
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		panic(err)
-	}
-
-	configPath := path.Join(home, "/.zot")
+	configPath := filepath.Join(tempDir, ".zot")
 
 	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
 		panic(err)
