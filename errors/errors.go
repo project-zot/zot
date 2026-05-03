@@ -49,6 +49,7 @@ func GetDetails(err error) map[string]string {
 var (
 	ErrBadConfig                        = errors.New("invalid server config")
 	ErrCliBadConfig                     = errors.New("invalid cli config")
+	ErrCliMissingConfigsField           = errors.New(`missing or null "configs" field`)
 	ErrRepoNotFound                     = errors.New("repository not found")
 	ErrRepoBadVersion                   = errors.New("unsupported repository layout version")
 	ErrRepoBadLayout                    = errors.New("invalid repository layout")

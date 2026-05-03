@@ -939,7 +939,7 @@ func TestUtils(t *testing.T) {
 		So(verifyTLS, ShouldBeFalse)
 
 		// bad showspinner
-		_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest","showspinner":"bad", "verify-tls": false}]}`)
+		_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":"bad", "verify-tls": false}]}`)
 		cmd = &cobra.Command{}
 		cmd.Flags().String(ConfigFlag, "imagetest", "")
 		isSpinner, verifyTLS, err = GetCliConfigOptions(cmd)
@@ -948,7 +948,7 @@ func TestUtils(t *testing.T) {
 		So(verifyTLS, ShouldBeFalse)
 
 		// bad verify-tls
-		_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest","showspinner":false, "verify-tls": "bad"}]}`)
+		_ = makeConfigFile(t, `{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":false, "verify-tls": "bad"}]}`)
 		cmd = &cobra.Command{}
 		cmd.Flags().String(ConfigFlag, "imagetest", "")
 		isSpinner, verifyTLS, err = GetCliConfigOptions(cmd)

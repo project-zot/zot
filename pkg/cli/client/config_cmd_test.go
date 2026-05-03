@@ -4,7 +4,7 @@ package client_test
 
 import (
 	"bytes"
-	"log"
+	"errors"
 	"os"
 	"regexp"
 	"strings"
@@ -93,28 +93,15 @@ func TestConfigCmdMain(t *testing.T) {
 
 		_ = makeConfigFile(t, "")
 
-		err := os.Setenv("HOME", "nonExistentDirectory")
-		if err != nil {
-			panic(err)
-		}
+		t.Setenv("HOME", "nonExistentDirectory")
 
 		cmd := client.NewConfigCommand()
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
 		cmd.SetArgs(args)
-		err = cmd.Execute()
+		err := cmd.Execute()
 		So(err, ShouldNotBeNil)
-
-		home, err := os.UserHomeDir()
-		if err != nil {
-			panic(err)
-		}
-
-		err = os.Setenv("HOME", home)
-		if err != nil {
-			log.Fatal(err)
-		}
 	})
 
 	Convey("Test error on home directory at new add config", t, func() {
@@ -122,28 +109,15 @@ func TestConfigCmdMain(t *testing.T) {
 
 		_ = makeConfigFile(t, "")
 
-		err := os.Setenv("HOME", "nonExistentDirectory")
-		if err != nil {
-			panic(err)
-		}
+		t.Setenv("HOME", "nonExistentDirectory")
 
 		cmd := client.NewConfigAddCommand()
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
 		cmd.SetArgs(args)
-		err = cmd.Execute()
+		err := cmd.Execute()
 		So(err, ShouldNotBeNil)
-
-		home, err := os.UserHomeDir()
-		if err != nil {
-			panic(err)
-		}
-
-		err = os.Setenv("HOME", home)
-		if err != nil {
-			log.Fatal(err)
-		}
 	})
 
 	Convey("Test add config with invalid format", t, func() {
@@ -157,7 +131,7 @@ func TestConfigCmdMain(t *testing.T) {
 		cmd.SetErr(buff)
 		cmd.SetArgs(args)
 		err := cmd.Execute()
-		So(err, ShouldEqual, zerr.ErrCliBadConfig)
+		So(errors.Is(err, zerr.ErrCliBadConfig), ShouldBeTrue)
 	})
 
 	Convey("Test add config with invalid URL", t, func() {
@@ -198,7 +172,7 @@ func TestConfigCmdMain(t *testing.T) {
 	Convey("Test remove missing config entry", t, func() {
 		args := []string{"remove", "configtest"}
 
-		_ = makeConfigFile(t, `{"configs":[]`)
+		_ = makeConfigFile(t, `{"configs":[]}`)
 
 		cmd := client.NewConfigCommand()
 		buff := bytes.NewBufferString("")
@@ -222,7 +196,7 @@ func TestConfigCmdMain(t *testing.T) {
 		cmd.SetArgs(args)
 		err := cmd.Execute()
 		So(err, ShouldNotBeNil)
-		So(buff.String(), ShouldContainSubstring, "config json is empty")
+		So(errors.Is(err, zerr.ErrCliBadConfig), ShouldBeTrue)
 	})
 
 	Convey("Test remove bad config file entry", t, func() {
@@ -237,7 +211,7 @@ func TestConfigCmdMain(t *testing.T) {
 		cmd.SetArgs(args)
 		err := cmd.Execute()
 		So(err, ShouldNotBeNil)
-		So(buff.String(), ShouldContainSubstring, "invalid server config")
+		So(buff.String(), ShouldContainSubstring, zerr.ErrCliBadConfig.Error())
 	})
 
 	Convey("Test remove config bad permissions", t, func() {

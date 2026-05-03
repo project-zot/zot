@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -457,14 +457,14 @@ func GetCliConfigOptions(cmd *cobra.Command) (bool, bool, error) {
 		return false, false, err
 	}
 
-	configDir := path.Join(home, "/.zot")
+	configPath := filepath.Join(home, ".zot")
 
-	isSpinner, err := parseBooleanConfig(configDir, configName, showspinnerConfig)
+	isSpinner, err := parseBooleanConfig(configPath, configName, showspinnerConfig)
 	if err != nil {
 		return false, false, err
 	}
 
-	verifyTLS, err := parseBooleanConfig(configDir, configName, verifyTLSConfig)
+	verifyTLS, err := parseBooleanConfig(configPath, configName, verifyTLSConfig)
 	if err != nil {
 		return false, false, err
 	}
@@ -492,10 +492,6 @@ func GetServerURLFromFlags(cmd *cobra.Command) (string, error) {
 		return serverURL, fmt.Errorf("reading url from config failed: %w", err)
 	}
 
-	if serverURL == "" {
-		return "", fmt.Errorf("%w: url field from config is empty", zerr.ErrNoURLProvided)
-	}
-
 	if err := validateURL(serverURL); err != nil {
 		return "", err
 	}
@@ -509,9 +505,9 @@ func ReadServerURLFromConfig(configName string) (string, error) {
 		return "", err
 	}
 
-	configDir := path.Join(home, "/.zot")
+	configPath := filepath.Join(home, ".zot")
 
-	urlFromConfig, err := getConfigValue(configDir, configName, "url")
+	urlFromConfig, err := getConfigValue(configPath, configName, URLFlag)
 	if err != nil {
 		return "", err
 	}
