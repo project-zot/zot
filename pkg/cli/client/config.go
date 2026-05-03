@@ -217,7 +217,7 @@ func (f *ZliConfigFile) RemoveEntry(configName string) error {
 	return zerr.ErrConfigNotFound
 }
 
-// FormatNames renders name and URL columns for `zli config --list`.
+// FormatNames renders name and URL columns for `zli config list`.
 func (f *ZliConfigFile) FormatNames() (string, error) {
 	var builder strings.Builder
 
@@ -317,7 +317,7 @@ func (c *ZliConfig) ResetVar(key string) error {
 	return nil
 }
 
-// FormatListedVars renders lines for `zli config <name> --list`.
+// FormatListedVars renders lines for `zli config show <name>`.
 func (c *ZliConfig) FormatListedVars() string {
 	var builder strings.Builder
 
