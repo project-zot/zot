@@ -43,6 +43,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/debug/pprof"
 	debug "zotregistry.dev/zot/v2/pkg/debug/swagger"
 	ext "zotregistry.dev/zot/v2/pkg/extensions"
+	"zotregistry.dev/zot/v2/pkg/extensions/events"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/meta"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
@@ -779,7 +780,9 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
-	digest, subjectDigest, err := imgStore.PutImageManifest(name, reference, mediaType, body, digestQueryTags)
+	ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
+
+	digest, subjectDigest, err := imgStore.PutImageManifest(ctx, name, reference, mediaType, body, digestQueryTags)
 	if err != nil {
 		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
@@ -806,7 +809,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 			// could be syscall.EMFILE (Err:0x18 too many opened files), etc
 			rh.c.Log.Error().Err(err).Msg("unexpected error, performing cleanup")
 
-			if err = imgStore.DeleteImageManifest(name, reference, false); err != nil {
+			if err = imgStore.DeleteImageManifest(ctx, name, reference, false); err != nil {
 				// deletion of image manifest is important, but not critical for image repo consistency
 				// in the worst scenario a partial manifest file written to disk will not affect the repo because
 				// the new manifest was not added to "index.json" file (it is possible that GC will take care of it)
@@ -951,7 +954,9 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
-	err = imgStore.DeleteImageManifest(name, reference, detectCollision)
+	ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
+
+	err = imgStore.DeleteImageManifest(ctx, name, reference, detectCollision)
 	if err != nil { //nolint: dupl
 		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
@@ -2881,4 +2886,24 @@ func isSyncOnDemandEnabled(ctlr *Controller) bool {
 	}
 
 	return false
+}
+
+func eventContextFromRequest(r *http.Request) *events.EventContext {
+	ectx := &events.EventContext{
+		Request: &events.RequestInfo{
+			Addr:      r.RemoteAddr,
+			Method:    r.Method,
+			UserAgent: r.UserAgent(),
+		},
+	}
+
+	userAc, err := reqCtx.UserAcFromContext(r.Context())
+	if err == nil && userAc != nil {
+		username := userAc.GetUsername()
+		if username != "" {
+			ectx.Actor = &events.ActorInfo{Name: username}
+		}
+	}
+
+	return ectx
 }

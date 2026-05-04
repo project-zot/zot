@@ -52,10 +52,11 @@ func (r eventRecorder) publish(event *cloudevents.Event) {
 	}()
 }
 
-func (r eventRecorder) RepositoryCreated(name string) {
+func (r eventRecorder) RepositoryCreated(name string, ectx *EventContext) {
 	event, err := newEventBuilder().
 		WithEventType(RepositoryCreatedEventType).
 		WithDataField("name", name).
+		WithEventContext(ectx).
 		Build()
 	if err != nil {
 		r.log.Warn().Err(err).Msg("failed to create event")
@@ -66,7 +67,7 @@ func (r eventRecorder) RepositoryCreated(name string) {
 	r.publish(event)
 }
 
-func (r eventRecorder) ImageUpdated(name, reference, digest, mediaType, manifest string) {
+func (r eventRecorder) ImageUpdated(name, reference, digest, mediaType, manifest string, ectx *EventContext) {
 	event, err := newEventBuilder().
 		WithEventType(ImageUpdatedEventType).
 		WithDataField("name", name).
@@ -74,6 +75,7 @@ func (r eventRecorder) ImageUpdated(name, reference, digest, mediaType, manifest
 		WithDataField("digest", digest).
 		WithDataField("mediaType", mediaType).
 		WithDataField("manifest", manifest).
+		WithEventContext(ectx).
 		Build()
 	if err != nil {
 		r.log.Warn().Err(err).Msg("failed to create event")
@@ -84,13 +86,14 @@ func (r eventRecorder) ImageUpdated(name, reference, digest, mediaType, manifest
 	r.publish(event)
 }
 
-func (r eventRecorder) ImageDeleted(name, reference, digest, mediaType string) {
+func (r eventRecorder) ImageDeleted(name, reference, digest, mediaType string, ectx *EventContext) {
 	event, err := newEventBuilder().
 		WithEventType(ImageDeletedEventType).
 		WithDataField("name", name).
 		WithDataField("reference", reference).
 		WithDataField("digest", digest).
 		WithDataField("mediaType", mediaType).
+		WithEventContext(ectx).
 		Build()
 	if err != nil {
 		r.log.Warn().Err(err).Msg("failed to create event")
@@ -101,7 +104,7 @@ func (r eventRecorder) ImageDeleted(name, reference, digest, mediaType string) {
 	r.publish(event)
 }
 
-func (r eventRecorder) ImageLintFailed(name, reference, digest, mediaType, manifest string) {
+func (r eventRecorder) ImageLintFailed(name, reference, digest, mediaType, manifest string, ectx *EventContext) {
 	event, err := newEventBuilder().
 		WithEventType(ImageLintFailedEventType).
 		WithDataField("name", name).
@@ -109,6 +112,7 @@ func (r eventRecorder) ImageLintFailed(name, reference, digest, mediaType, manif
 		WithDataField("digest", digest).
 		WithDataField("mediaType", mediaType).
 		WithDataField("manifest", manifest).
+		WithEventContext(ectx).
 		Build()
 	if err != nil {
 		r.log.Warn().Err(err).Msg("failed to create event")
