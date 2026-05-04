@@ -24,7 +24,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.18.0
 	github.com/dchest/siphash v1.2.3
 	github.com/didip/tollbooth/v7 v7.0.2
-	github.com/distribution/distribution/v3 v3.1.0
+	github.com/distribution/distribution/v3 v3.1.1
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-jose/go-jose/v4 v4.1.4
