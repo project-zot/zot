@@ -187,9 +187,11 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 		return err
 	}
 
-	monitoring.IncGCDeleted(gc.metrics, "manifest", manifestsDeleted)
-	monitoring.IncGCDeleted(gc.metrics, "blob", blobsDeleted)
-	monitoring.IncGCDeleted(gc.metrics, "upload", uploadsDeleted)
+	if !gc.opts.ImageRetention.DryRun {
+		monitoring.IncGCDeleted(gc.metrics, "manifest", manifestsDeleted)
+		monitoring.IncGCDeleted(gc.metrics, "blob", blobsDeleted)
+		monitoring.IncGCDeleted(gc.metrics, "upload", uploadsDeleted)
+	}
 
 	return nil
 }

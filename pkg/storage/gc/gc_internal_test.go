@@ -963,3 +963,62 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 		})
 	})
 }
+
+func TestDryRunShouldNotEmitDeletedMetrics(t *testing.T) {
+	Convey("DryRun should not report deleted manifests in metrics", t, func() {
+		dir := t.TempDir()
+
+		log := zlog.NewTestLogger()
+		audit := zlog.NewAuditLogger("debug", "")
+
+		metrics := monitoring.NewMetricsServer(true, log)
+		defer metrics.Stop()
+
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+
+		err := WriteImageToFileSystem(CreateDefaultImage(), repoName, "keep-me",
+			storage.StoreController{DefaultStore: imgStore})
+		So(err, ShouldBeNil)
+		err = WriteImageToFileSystem(CreateDefaultImage(), repoName, "delete-me",
+			storage.StoreController{DefaultStore: imgStore})
+		So(err, ShouldBeNil)
+
+		trueVal := true
+		gc := NewGarbageCollect(imgStore, nil, Options{
+			Delay: 1 * time.Millisecond,
+			ImageRetention: config.ImageRetention{
+				Delay:  1 * time.Millisecond,
+				DryRun: true,
+				Policies: []config.RetentionPolicy{
+					{
+						Repositories:   []string{"**"},
+						DeleteUntagged: &trueVal,
+						KeepTags: []config.KeepTagsPolicy{
+							{
+								Patterns: []string{"keep-me"},
+							},
+						},
+					},
+				},
+			},
+		}, audit, log, metrics)
+
+		err = gc.CleanRepo(context.Background(), repoName)
+		So(err, ShouldBeNil)
+
+		data := metrics.ReceiveMetrics()
+		metricsCopy, ok := data.(monitoring.MetricsCopy)
+		So(ok, ShouldBeTrue)
+
+		for _, counter := range metricsCopy.Counters {
+			if counter.Name == "zot.gc.deleted" {
+				So(counter.Count, ShouldEqual, 0)
+			}
+		}
+	})
+}
