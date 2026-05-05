@@ -3,6 +3,8 @@
 package monitoring_test
 
 import (
+	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"math/rand"
@@ -12,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
@@ -19,11 +22,13 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
-	"zotregistry.dev/zot/v2/pkg/log"
+	zlog "zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/scheduler"
 	common "zotregistry.dev/zot/v2/pkg/storage/common"
+	"zotregistry.dev/zot/v2/pkg/storage/gc"
 	test "zotregistry.dev/zot/v2/pkg/test/common"
 	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
+	"zotregistry.dev/zot/v2/pkg/test/mocks"
 	ociutils "zotregistry.dev/zot/v2/pkg/test/oci-utils"
 )
 
@@ -446,7 +451,7 @@ func TestPopulateStorageMetrics(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 		So(ctlr, ShouldNotBeNil)
-		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
+		ctlr.Log = zlog.NewLoggerWithWriter("debug", writers)
 
 		// Write images before starting controller to avoid race condition with garbage collection
 		srcStorageCtlr := ociutils.GetDefaultStoreController(rootDir, ctlr.Log)
@@ -508,26 +513,38 @@ func TestGCMetrics(t *testing.T) {
 		baseURL := test.GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
-		conf.Storage.RootDirectory = t.TempDir()
-		conf.Extensions = &extconf.ExtensionConfig{}
+		rootDir := t.TempDir()
+		conf.Storage.RootDirectory = rootDir
+		conf.Storage.GC = false
 		enabled := true
+		conf.Extensions = &extconf.ExtensionConfig{}
 		conf.Extensions.Metrics = &extconf.MetricsConfig{
 			BaseConfig: extconf.BaseConfig{Enable: &enabled},
 			Prometheus: &extconf.PrometheusConfig{Path: "/metrics"},
 		}
 
 		ctlr := api.NewController(conf)
-		So(ctlr, ShouldNotBeNil)
+
+		srcStorageCtlr := ociutils.GetDefaultStoreController(rootDir, ctlr.Log)
+		err := WriteImageToFileSystem(CreateDefaultImage(), "gc-metrics-test", "0.0.1", srcStorageCtlr)
+		So(err, ShouldBeNil)
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
 		defer cm.StopServer()
 
-		monitoring.IncGCRuns(ctlr.Metrics, false)
-		monitoring.ObserveGCDuration(ctlr.Metrics, time.Millisecond)
-		monitoring.IncGCDeleted(ctlr.Metrics, "blob", 1)
-		monitoring.IncGCDeleted(ctlr.Metrics, "manifest", 1)
-		monitoring.IncGCDeleted(ctlr.Metrics, "upload", 1)
+		imgStore := ctlr.StoreController.DefaultStore
+
+		orphanBlob := []byte("orphaned-blob-content")
+		_, _, err = imgStore.FullBlobUpload("gc-metrics-test", bytes.NewReader(orphanBlob), godigest.FromBytes(orphanBlob))
+		So(err, ShouldBeNil)
+
+		audit := zlog.NewAuditLogger("debug", "/dev/null")
+		gcObj := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{Delay: 0},
+			audit, ctlr.Log, ctlr.Metrics)
+
+		err = gcObj.CleanRepo(context.Background(), "gc-metrics-test")
+		So(err, ShouldBeNil)
 
 		resp, err := resty.R().Get(baseURL + "/metrics")
 		So(err, ShouldBeNil)
@@ -537,7 +554,7 @@ func TestGCMetrics(t *testing.T) {
 		respStr := string(resp.Body())
 		So(respStr, ShouldContainSubstring, "zot_gc_runs_total")
 		So(respStr, ShouldContainSubstring, "zot_gc_duration_seconds")
-		So(respStr, ShouldContainSubstring, "zot_gc_deleted_total")
+		So(respStr, ShouldContainSubstring, "zot_gc_deleted_total{type=\"blob\"}")
 	})
 }
 
