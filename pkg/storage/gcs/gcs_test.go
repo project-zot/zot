@@ -423,6 +423,7 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 
 	log := log.NewTestLogger()
 	metrics := monitoring.NewMetricsServer(false, log)
+	defer metrics.Stop()
 
 	var cacheDriver storageTypes.Cache
 
@@ -1840,6 +1841,7 @@ func TestGCSMandatoryAnnotations(t *testing.T) {
 
 	testLog := log.NewTestLogger()
 	metrics := monitoring.NewMetricsServer(false, testLog)
+	defer metrics.Stop()
 
 	storeDriver, imgStore, err := createObjectsStore(testDir, tdir, true)
 	if err != nil {
@@ -2232,6 +2234,7 @@ func TestGCSGarbageCollectImageIndex(t *testing.T) {
 	testLog := log.NewTestLogger()
 	audit := log.NewAuditLogger("debug", "")
 	metrics := monitoring.NewMetricsServer(false, testLog)
+	defer metrics.Stop()
 
 	ctx := context.Background()
 
@@ -2385,6 +2388,7 @@ func TestGCSGarbageCollectChainedImageIndexes(t *testing.T) {
 	testLog := log.NewTestLogger()
 	audit := log.NewAuditLogger("debug", "")
 	metrics := monitoring.NewMetricsServer(false, testLog)
+	defer metrics.Stop()
 
 	ctx := context.Background()
 
