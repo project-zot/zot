@@ -123,6 +123,15 @@ func NewController(appConfig *config.Config) *Controller {
 		controller.Audit = audit
 	}
 
+	// Pre-compile policy conditions. Errors were already surfaced by config
+	// validation; if anything still fails here it's a programmer bug.
+	programs, err := CompileAccessControl(appConfig.HTTP.AccessControl)
+	if err != nil {
+		logger.Panic().Err(err).Msg("failed to compile access control policy conditions")
+	}
+
+	appConfig.HTTP.AccessControl.StoreCompiledConditions(programs)
+
 	return &controller
 }
 
@@ -458,6 +467,14 @@ func (c *Controller) InitEventRecorder() error {
 func (c *Controller) LoadNewConfig(newConfig *config.Config) {
 	// Update only reloadable config fields atomically
 	c.Config.UpdateReloadableConfig(newConfig)
+
+	// Refresh compiled policy conditions to reflect the new access-control
+	// config. Errors were caught during validation in LoadConfiguration.
+	if programs, err := CompileAccessControl(newConfig.HTTP.AccessControl); err != nil {
+		c.Log.Error().Err(err).Msg("failed to recompile access control policy conditions")
+	} else {
+		c.Config.HTTP.AccessControl.StoreCompiledConditions(programs)
+	}
 
 	// Operations that need to happen after config update
 	authConfig := c.Config.CopyAuthConfig()

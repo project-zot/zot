@@ -602,24 +602,20 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 			}
 
 			// Try OIDC authentication first if configured
-			var identity string
-
-			var groups []string
-
 			if oidcAuthorizer != nil {
-				var err error
-
-				var authenticated bool
-
-				identity, groups, authenticated, err = oidcAuthorizer.AuthenticateRequest(request.Context(), header)
-				if err == nil && authenticated {
+				res, err := oidcAuthorizer.Authenticate(request.Context(), header)
+				if err == nil && res != nil && res.Username != "" {
 					// OIDC authentication succeeded
+					identity := res.Username
+					groups := res.Groups
+
 					ctlr.Log.Debug().Str("identity", identity).Msg("the OIDC bearer authentication was successful")
 
 					// Set user context for authorization
 					userAc := reqCtx.NewUserAccessControl()
 					userAc.SetUsername(identity)
 					userAc.AddGroups(groups)
+					userAc.SetClaims(res.Claims)
 					userAc.SaveOnRequest(request)
 
 					// Update user groups in MetaDB if available

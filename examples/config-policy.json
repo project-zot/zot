@@ -60,6 +60,22 @@
             }
           ],
           "defaultPolicy": ["read"]
+        },
+        "prod/**": {
+          "policies": [{
+              "users": ["alice"],
+              "actions": ["read", "create", "update"],
+              "conditions": [{
+                  "expression": "req.time < timestamp(\"2099-12-31T23:59:59Z\")",
+                  "message": "alice's prod access expires end of 2099"
+                },
+                {
+                  "expression": "req.referenceType == \"digest\"",
+                  "message": "prod pushes must use digest references, not mutable tags"
+                }
+              ]
+            }
+          ]
         }
       },
       "adminPolicy": {

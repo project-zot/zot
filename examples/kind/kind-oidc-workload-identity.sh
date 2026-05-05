@@ -18,8 +18,8 @@
 # Options:
 #   --skip-setup      Skip cluster creation, image building, and initial setup
 #                     (assumes resources already exist from a previous run)
-#   --only-crane      Only run crane e2e tests (tests 8-14)
-#   --only-curl       Only run curl-based tests (tests 1-7)
+#   --only-crane      Only run crane e2e tests
+#   --only-curl       Only run curl-based tests (includes conditional access)
 #   --keep-resources  Don't clean up resources on exit (useful for debugging)
 #   --help            Show this help message
 
@@ -338,6 +338,21 @@ cat <<EOF > /tmp/zot-oidc-config.json
             }
           ],
           "defaultPolicy": []
+        },
+        "cond-*/**": {
+          "policies": [
+            {
+              "users": ["${OIDC_ISSUER}/system:serviceaccount:${TEST_NAMESPACE}:other-sa"],
+              "actions": ["read", "create", "update", "delete"],
+              "conditions": [
+                {
+                  "expression": "req.repository.startsWith(\"cond-allowed/\")",
+                  "message": "other-sa may only push to cond-allowed/*"
+                }
+              ]
+            }
+          ],
+          "defaultPolicy": []
         }
       }
     }
@@ -605,16 +620,24 @@ EOF
     kubectl wait --for=condition=Ready pod/oidc-test-pod-other-sa -n "${TEST_NAMESPACE}" --timeout=60s
 fi
 
-# Verify that other-sa can authenticate but sees an EMPTY catalog (no read permissions)
+# Verify that other-sa authenticates but cannot see test-repo (which lives
+# under the `**` pattern where other-sa has no policy). The catalog may
+# still contain repos under `cond-*/**`, since the conditional policy on
+# that pattern is *optimistically* included in glob-time filtering — the
+# real condition enforcement happens at per-request authz time. Asserting
+# "test-repo is absent" expresses the intent without depending on whether
+# cond-allowed/test exists from a previous test run (re-runs with
+# --skip-setup keep storage around).
 CATALOG_RESPONSE=$(kubectl exec -n "${TEST_NAMESPACE}" oidc-test-pod-other-sa -- \
     sh -c 'TOKEN=$(cat /var/run/secrets/tokens/zot-token); curl -s -H "Authorization: Bearer $TOKEN" "http://${ZOT_REGISTRY}/v2/_catalog"' 2>/dev/null || echo "{}")
 
-if echo "$CATALOG_RESPONSE" | grep -q '"repositories":\[\]'; then
-    log_info "TEST 6 PASSED: Other ServiceAccount authenticated but has NO permissions (empty catalog)"
+if ! echo "$CATALOG_RESPONSE" | jq -e '.repositories | index("test-repo")' >/dev/null 2>&1; then
+    log_info "TEST 6 PASSED: Other ServiceAccount authenticated but cannot see test-repo"
     log_info "      The username '${OIDC_ISSUER}/system:serviceaccount:${TEST_NAMESPACE}:other-sa' was extracted from the token."
     log_info "      Authorization is enforced via accessControl config."
+    log_info "      Catalog: $CATALOG_RESPONSE"
 else
-    log_error "TEST 6 FAILED: Expected empty catalog for other-sa (not in config)"
+    log_error "TEST 6 FAILED: Expected test-repo to be absent from other-sa's catalog"
     log_error "Got: $CATALOG_RESPONSE"
     docker logs "${ZOT_REG_NAME}" 2>&1 | tail -30
     exit 1
@@ -622,19 +645,85 @@ fi
 
 # =============================================================================
 # TEST 7: Verify other-sa gets 403 when trying to write (authorization enforced)
+# This is a NON-conditional deny: no policy on the matched pattern grants
+# other-sa, so the response body must NOT carry a `reason` field — that
+# field is reserved for condition-driven denies (see Test 9 for the contrast).
 # =============================================================================
 log_info "TEST 7: Verifying other-sa gets 403 Forbidden when trying to write..."
 
-HTTP_CODE=$(kubectl exec -n "${TEST_NAMESPACE}" oidc-test-pod-other-sa -- \
-    sh -c 'TOKEN=$(cat /var/run/secrets/tokens/zot-token); curl -s -o /dev/null -w "%{http_code}" -X POST -H "Authorization: Bearer $TOKEN" "http://${ZOT_REGISTRY}/v2/unauthorized-repo/blobs/uploads/"' 2>/dev/null || echo "000")
+# `-w "\n%{http_code}"` appends the status code on its own line after the body,
+# so we can split with shell builtins.
+RESPONSE=$(kubectl exec -n "${TEST_NAMESPACE}" oidc-test-pod-other-sa -- \
+    sh -c 'TOKEN=$(cat /var/run/secrets/tokens/zot-token); curl -s -w "\n%{http_code}" -X POST -H "Authorization: Bearer $TOKEN" "http://${ZOT_REGISTRY}/v2/unauthorized-repo/blobs/uploads/"' 2>/dev/null || echo $'\n000')
+TEST7_HTTP=$(echo "$RESPONSE" | tail -n1)
+TEST7_BODY=$(echo "$RESPONSE" | sed '$d')
 
-if [ "$HTTP_CODE" = "403" ]; then
-    log_info "TEST 7 PASSED: Other ServiceAccount correctly rejected for write (HTTP 403)"
-else
-    log_error "TEST 7 FAILED: Expected 403 for write operation, got HTTP $HTTP_CODE"
+if [ "$TEST7_HTTP" != "403" ]; then
+    log_error "TEST 7 FAILED: Expected 403 for write operation, got HTTP $TEST7_HTTP"
     docker logs "${ZOT_REG_NAME}" 2>&1 | tail -30
     exit 1
 fi
+
+# A non-conditional deny must NOT surface a reason. jq -e returns non-zero if
+# .errors[0].detail.reason is absent or null, which is what we want here.
+if echo "$TEST7_BODY" | jq -e '.errors[0].detail.reason // empty' >/dev/null 2>&1; then
+    log_error "TEST 7 FAILED: Non-conditional 403 unexpectedly carried a reason: $TEST7_BODY"
+    exit 1
+fi
+
+log_info "TEST 7 PASSED: Other ServiceAccount rejected (HTTP 403, no reason in body)"
+
+# =============================================================================
+# TEST 8: Conditional access GRANTS other-sa write on cond-allowed/* (condition true)
+# =============================================================================
+# The accessControl config grants other-sa read/create/update/delete on the
+# `cond-*/**` pattern only when `req.repository.startsWith("cond-allowed/")`
+# is true. A push to `cond-allowed/test` should be authorized by the
+# conditional policy (HTTP 202 Accepted on blob upload start).
+log_info "TEST 8: Verifying CEL condition grants other-sa write on cond-allowed/*..."
+
+HTTP_CODE=$(kubectl exec -n "${TEST_NAMESPACE}" oidc-test-pod-other-sa -- \
+    sh -c 'TOKEN=$(cat /var/run/secrets/tokens/zot-token); curl -s -o /dev/null -w "%{http_code}" -X POST -H "Authorization: Bearer $TOKEN" "http://${ZOT_REGISTRY}/v2/cond-allowed/test/blobs/uploads/"' 2>/dev/null || echo "000")
+
+if [ "$HTTP_CODE" = "202" ]; then
+    log_info "TEST 8 PASSED: Conditional policy grants write on cond-allowed/* (HTTP 202)"
+else
+    log_error "TEST 8 FAILED: Expected 202 for cond-allowed/test write, got HTTP $HTTP_CODE"
+    docker logs "${ZOT_REG_NAME}" 2>&1 | tail -30
+    exit 1
+fi
+
+# =============================================================================
+# TEST 9: Conditional access DENIES other-sa on cond-denied/* and surfaces the
+#         operator-authored Message in the 403 response body's error detail
+# =============================================================================
+# Same conditional policy, but `cond-denied/*` does not satisfy
+# `startsWith("cond-allowed/")`. The policy's `message` should appear in the
+# response body's error detail under the `reason` key, so the client knows
+# why access was denied.
+log_info "TEST 9: Verifying CEL condition denies on cond-denied/* and surfaces reason..."
+
+RESPONSE=$(kubectl exec -n "${TEST_NAMESPACE}" oidc-test-pod-other-sa -- \
+    sh -c 'TOKEN=$(cat /var/run/secrets/tokens/zot-token); curl -s -w "\n%{http_code}" -X POST -H "Authorization: Bearer $TOKEN" "http://${ZOT_REGISTRY}/v2/cond-denied/test/blobs/uploads/"' 2>/dev/null || echo $'\n000')
+TEST9_HTTP=$(echo "$RESPONSE" | tail -n1)
+TEST9_BODY=$(echo "$RESPONSE" | sed '$d')
+
+if [ "$TEST9_HTTP" != "403" ]; then
+    log_error "TEST 9 FAILED: Expected 403 for cond-denied/* write, got HTTP $TEST9_HTTP"
+    log_error "Body: $TEST9_BODY"
+    docker logs "${ZOT_REG_NAME}" 2>&1 | tail -30
+    exit 1
+fi
+
+# Conditional denies must surface the operator-authored Message in
+# detail.reason — that's the contrast with Test 7.
+if ! echo "$TEST9_BODY" | jq -e '.errors[0].detail.reason | contains("only push to cond-allowed/*")' >/dev/null 2>&1; then
+    log_error "TEST 9 FAILED: Expected deny reason in response body, got: $TEST9_BODY"
+    docker logs "${ZOT_REG_NAME}" 2>&1 | tail -30
+    exit 1
+fi
+
+log_info "TEST 9 PASSED: Conditional deny returned HTTP 403 with reason in body"
 
 fi  # End of curl-based tests conditional
 

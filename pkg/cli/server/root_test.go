@@ -87,6 +87,95 @@ func TestServerUsage(t *testing.T) {
 	})
 }
 
+func TestLoadConfigurationDecodesPolicyConditions(t *testing.T) {
+	Convey("conditions on accessControl policy decode into []Condition", t, func() {
+		htpasswdPath := MakeHtpasswdFileFromString(t, "alice:$2y$05$ajq8Q7fbtFRQvPndnct8OuRu7n6BDpRYHvz7dNH0G9z2j5XbB7yIm")
+		content := fmt.Sprintf(`{
+			"storage": {"rootDirectory": "/tmp/zot"},
+			"http": {
+				"address": "127.0.0.1",
+				"port": "8080",
+				"auth": {"htpasswd": {"path": %q}},
+				"accessControl": {
+					"repositories": {
+						"**": {
+							"policies": [
+								{
+									"users": ["alice"],
+									"actions": ["read"],
+									"conditions": [
+										{
+											"expression": "req.time < timestamp(\"2099-12-31T23:59:59Z\")",
+											"message": "access expired"
+										},
+										{
+											"expression": "req.repository.startsWith(\"prod/\")",
+											"message": "only prod/* allowed"
+										}
+									]
+								},
+								{
+									"users": ["bob"],
+									"actions": ["read"]
+								}
+							]
+						}
+					}
+				}
+			}
+		}`, htpasswdPath)
+
+		tmpfile := MakeTempFileWithContent(t, "zot-policy-conditions.json", content)
+		cfg := config.New()
+
+		err := cli.LoadConfiguration(cfg, tmpfile)
+		So(err, ShouldBeNil)
+
+		policies := cfg.HTTP.AccessControl.Repositories["**"].Policies
+		So(policies, ShouldHaveLength, 2)
+		So(policies[0].Conditions, ShouldHaveLength, 2)
+		So(policies[0].Conditions[0].Expression, ShouldEqual,
+			`req.time < timestamp("2099-12-31T23:59:59Z")`)
+		So(policies[0].Conditions[0].Message, ShouldEqual, "access expired")
+		So(policies[0].Conditions[1].Expression, ShouldEqual, `req.repository.startsWith("prod/")`)
+		So(policies[0].Conditions[1].Message, ShouldEqual, "only prod/* allowed")
+		So(policies[1].Conditions, ShouldBeEmpty)
+	})
+
+	Convey("malformed condition expression fails config load", t, func() {
+		htpasswdPath := MakeHtpasswdFileFromString(t, "alice:$2y$05$ajq8Q7fbtFRQvPndnct8OuRu7n6BDpRYHvz7dNH0G9z2j5XbB7yIm")
+		content := fmt.Sprintf(`{
+			"storage": {"rootDirectory": "/tmp/zot"},
+			"http": {
+				"address": "127.0.0.1",
+				"port": "8080",
+				"auth": {"htpasswd": {"path": %q}},
+				"accessControl": {
+					"repositories": {
+						"**": {
+							"policies": [
+								{
+									"users": ["alice"],
+									"actions": ["read"],
+									"conditions": [
+										{"expression": "this is not valid CEL", "message": "broken"}
+									]
+								}
+							]
+						}
+					}
+				}
+			}
+		}`, htpasswdPath)
+
+		tmpfile := MakeTempFileWithContent(t, "zot-policy-conditions-bad.json", content)
+		cfg := config.New()
+
+		err := cli.LoadConfiguration(cfg, tmpfile)
+		So(err, ShouldNotBeNil)
+	})
+}
+
 func TestLoadConfigurationInjectsHTTPTimeoutDefaults(t *testing.T) {
 	Convey("load config sets HTTP read/write timeout defaults when not explicitly configured", t, func() {
 		content := `{
