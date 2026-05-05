@@ -22,7 +22,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
-	zlog "zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/scheduler"
 	common "zotregistry.dev/zot/v2/pkg/storage/common"
 	"zotregistry.dev/zot/v2/pkg/storage/gc"
@@ -451,7 +451,7 @@ func TestPopulateStorageMetrics(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 		So(ctlr, ShouldNotBeNil)
-		ctlr.Log = zlog.NewLoggerWithWriter("debug", writers)
+		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
 
 		// Write images before starting controller to avoid race condition with garbage collection
 		srcStorageCtlr := ociutils.GetDefaultStoreController(rootDir, ctlr.Log)
@@ -539,7 +539,7 @@ func TestGCMetrics(t *testing.T) {
 		_, _, err = imgStore.FullBlobUpload("gc-metrics-test", bytes.NewReader(orphanBlob), godigest.FromBytes(orphanBlob))
 		So(err, ShouldBeNil)
 
-		audit := zlog.NewAuditLogger("debug", "/dev/null")
+		audit := log.NewAuditLogger("debug", "/dev/null")
 		gcObj := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{Delay: 0},
 			audit, ctlr.Log, ctlr.Metrics)
 
