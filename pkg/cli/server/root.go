@@ -1150,6 +1150,7 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 		viper.DecodeHook(
 			mapstructure.ComposeDecodeHookFunc(
 				mapstructure.StringToTimeDurationHookFunc(),
+				mapstructure.StringToTimeHookFunc(time.RFC3339),
 				eventsconf.SinkConfigDecoderHook(),
 			),
 		),

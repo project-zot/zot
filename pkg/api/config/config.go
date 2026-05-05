@@ -634,6 +634,10 @@ type Policy struct {
 	Users   []string
 	Actions []string
 	Groups  []string
+
+	// ExpiresAt is an optional expiration time for this policy entry.
+	// When set, the policy is ignored once the timestamp is in the past.
+	ExpiresAt *time.Time
 }
 
 type Metrics struct {

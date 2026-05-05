@@ -87,6 +87,77 @@ func TestServerUsage(t *testing.T) {
 	})
 }
 
+func TestLoadConfigurationDecodesPolicyExpiresAt(t *testing.T) {
+	Convey("expiresAt on accessControl policy decodes into *time.Time", t, func() {
+		htpasswdPath := MakeHtpasswdFileFromString(t, "alice:$2y$05$ajq8Q7fbtFRQvPndnct8OuRu7n6BDpRYHvz7dNH0G9z2j5XbB7yIm")
+		content := fmt.Sprintf(`{
+			"storage": {"rootDirectory": "/tmp/zot"},
+			"http": {
+				"address": "127.0.0.1",
+				"port": "8080",
+				"auth": {"htpasswd": {"path": %q}},
+				"accessControl": {
+					"repositories": {
+						"**": {
+							"policies": [
+								{
+									"users": ["alice"],
+									"actions": ["read"],
+									"expiresAt": "2099-12-31T23:59:59Z"
+								},
+								{
+									"users": ["bob"],
+									"actions": ["read"]
+								}
+							]
+						}
+					}
+				}
+			}
+		}`, htpasswdPath)
+
+		tmpfile := MakeTempFileWithContent(t, "zot-policy-expiresat.json", content)
+		cfg := config.New()
+
+		err := cli.LoadConfiguration(cfg, tmpfile)
+		So(err, ShouldBeNil)
+
+		policies := cfg.HTTP.AccessControl.Repositories["**"].Policies
+		So(policies, ShouldHaveLength, 2)
+		So(policies[0].ExpiresAt, ShouldNotBeNil)
+
+		expected, perr := time.Parse(time.RFC3339, "2099-12-31T23:59:59Z")
+		So(perr, ShouldBeNil)
+		So(policies[0].ExpiresAt.Equal(expected), ShouldBeTrue)
+		So(policies[1].ExpiresAt, ShouldBeNil)
+	})
+
+	Convey("malformed expiresAt fails to load", t, func() {
+		content := `{
+			"storage": {"rootDirectory": "/tmp/zot"},
+			"http": {
+				"address": "127.0.0.1",
+				"port": "8080",
+				"accessControl": {
+					"repositories": {
+						"**": {
+							"policies": [
+								{"users": ["alice"], "actions": ["read"], "expiresAt": "not-a-date"}
+							]
+						}
+					}
+				}
+			}
+		}`
+
+		tmpfile := MakeTempFileWithContent(t, "zot-policy-expiresat-bad.json", content)
+		cfg := config.New()
+
+		err := cli.LoadConfiguration(cfg, tmpfile)
+		So(err, ShouldNotBeNil)
+	})
+}
+
 func TestLoadConfigurationInjectsHTTPTimeoutDefaults(t *testing.T) {
 	Convey("load config sets HTTP read/write timeout defaults when not explicitly configured", t, func() {
 		content := `{

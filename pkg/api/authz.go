@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"slices"
+	"time"
 
 	glob "github.com/bmatcuk/doublestar/v4"
 	"github.com/gorilla/mux"
@@ -80,16 +81,24 @@ func (ac *AccessController) getGlobPatterns(username string, groups []string, ac
 		}
 
 		// check user based policy
-		for _, p := range policyGroup.Policies {
-			if slices.Contains(p.Users, username) && slices.Contains(p.Actions, action) {
+		for _, policy := range policyGroup.Policies {
+			if isPolicyExpired(policy) {
+				continue
+			}
+
+			if slices.Contains(policy.Users, username) && slices.Contains(policy.Actions, action) {
 				globPatterns[pattern] = true
 			}
 		}
 
 		// check group based policy
 		for _, group := range groups {
-			for _, p := range policyGroup.Policies {
-				if slices.Contains(p.Groups, group) && slices.Contains(p.Actions, action) {
+			for _, policy := range policyGroup.Policies {
+				if isPolicyExpired(policy) {
+					continue
+				}
+
+				if slices.Contains(policy.Groups, group) && slices.Contains(policy.Actions, action) {
 					globPatterns[pattern] = true
 				}
 			}
@@ -211,21 +220,34 @@ func (ac *AccessController) getAuthnMiddlewareContext(authnType string, request 
 	return ctx
 }
 
+// isPolicyExpired reports whether a policy's optional ExpiresAt has passed.
+func isPolicyExpired(p config.Policy) bool {
+	return p.ExpiresAt != nil && p.ExpiresAt.Before(time.Now())
+}
+
 // isPermitted returns true if username can do action on a repository policy.
 func (ac *AccessController) isPermitted(userGroups []string, username, action string,
 	policyGroup config.PolicyGroup,
 ) bool {
 	// check repo/system based policies
-	for _, p := range policyGroup.Policies {
-		if slices.Contains(p.Users, username) && slices.Contains(p.Actions, action) {
+	for _, policy := range policyGroup.Policies {
+		if isPolicyExpired(policy) {
+			continue
+		}
+
+		if slices.Contains(policy.Users, username) && slices.Contains(policy.Actions, action) {
 			return true
 		}
 	}
 
 	if userGroups != nil {
-		for _, p := range policyGroup.Policies {
-			if slices.Contains(p.Actions, action) {
-				for _, group := range p.Groups {
+		for _, policy := range policyGroup.Policies {
+			if isPolicyExpired(policy) {
+				continue
+			}
+
+			if slices.Contains(policy.Actions, action) {
+				for _, group := range policy.Groups {
 					if slices.Contains(userGroups, group) {
 						return true
 					}
