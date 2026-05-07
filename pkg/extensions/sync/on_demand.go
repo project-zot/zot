@@ -27,9 +27,10 @@ type request struct {
 
 // blobInflight tracks a single in-progress blob download from upstream.
 type blobInflight struct {
-	done chan struct{} // closed when download completes
-	err  error        // set before closing done
-	size int64        // blob size from upstream
+	done  chan struct{} // closed when download completes
+	ready chan struct{} // closed when upstream metadata is available or setup failed
+	err   error         // set before closing done
+	size  int64         // blob size from upstream
 }
 
 /*
@@ -97,11 +98,20 @@ func (onDemand *BaseOnDemand) SyncBlobOnDemand(ctx context.Context, repo string,
 		onDemand.log.Info().Str("repo", repo).Str("digest", digest.String()).
 			Msg("blob already being downloaded, waiting on channel")
 
+		select {
+		case <-inf.ready:
+			if inf.err != nil {
+				return nil, 0, false, nil, inf.err
+			}
+		case <-ctx.Done():
+			return nil, 0, false, nil, ctx.Err()
+		}
+
 		return nil, inf.size, false, inf.done, nil
 	}
 
 	// First client: register inflight and fetch from upstream
-	inf := &blobInflight{done: make(chan struct{})}
+	inf := &blobInflight{done: make(chan struct{}), ready: make(chan struct{})}
 	onDemand.blobInflight[key] = inf
 	onDemand.blobInflightMu.Unlock()
 
@@ -124,6 +134,7 @@ func (onDemand *BaseOnDemand) SyncBlobOnDemand(ctx context.Context, repo string,
 		upstreamReader, size, err = service.GetBlobStream(syncCtx, repo, digest)
 		if err == nil {
 			inf.size = size
+			close(inf.ready)
 			// Context will be cancelled when the copy goroutine finishes (caller's responsibility)
 			_ = cancel
 
@@ -135,6 +146,7 @@ func (onDemand *BaseOnDemand) SyncBlobOnDemand(ctx context.Context, repo string,
 
 	// All services failed — clean up inflight entry
 	inf.err = err
+	close(inf.ready)
 	close(inf.done)
 
 	onDemand.blobInflightMu.Lock()
