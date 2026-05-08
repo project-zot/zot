@@ -6,7 +6,7 @@ import (
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
 	"github.com/spf13/cobra"
 
-	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/buildinfo"
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
@@ -21,8 +21,8 @@ func NewCliRootCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			if showVersion {
 				logger := log.NewLogger("info", "")
-				logger.Info().Str("distribution-spec", distspec.Version).Str("commit", config.Commit).
-					Str("binary-type", config.BinaryType).Str("go version", config.GoVersion).Msg("version")
+				logger.Info().Str("distribution-spec", distspec.Version).Str("commit", buildinfo.Commit).
+					Str("binary-type", buildinfo.BinaryType).Str("go version", buildinfo.GoVersion).Msg("version")
 			} else {
 				_ = cmd.Usage()
 				cmd.SilenceErrors = false
