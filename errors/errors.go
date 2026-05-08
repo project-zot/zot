@@ -87,6 +87,7 @@ var (
 	ErrScanNotSupported                 = errors.New("scanning is not supported for given media type")
 	ErrCLITimeout                       = errors.New("query timed out while waiting for results")
 	ErrDuplicateConfigName              = errors.New("cli config name already added")
+	ErrReservedConfigName               = errors.New("cli config name is reserved")
 	ErrInvalidRoute                     = errors.New("invalid route prefix")
 	ErrImgStoreNotFound                 = errors.New("image store not found corresponding to given route")
 	ErrLocalImgStoreNotFound            = errors.New("local image store not found corresponding to given route")

@@ -1445,6 +1445,10 @@ func TestRetentionCheckWithSubpaths(t *testing.T) {
 			},
 		}
 
+		// The command returns after its timeout; ensure we have all expected decisions in the log
+		// before validating, to avoid flakes from buffered writes.
+		logContent = readLogUntilRetentionDecisions(t, logFile, len(expectedResults), 2*time.Second)
+		logStr = string(logContent)
 		validateRetentionDecisions(t, logContent, expectedResults)
 	})
 }
@@ -1712,6 +1716,56 @@ func validateRetentionDecisions(t *testing.T, logContent []byte, expectedResults
 		_, exists := expectedMap[key]
 		So(exists, ShouldBeTrue)
 	}
+}
+
+func readLogUntilRetentionDecisions(
+	t *testing.T,
+	logFile string,
+	expectedCount int,
+	timeout time.Duration,
+) []byte {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+
+	var (
+		lastContent []byte
+		lastReadErr error
+	)
+
+	for time.Now().Before(deadline) {
+		content, err := os.ReadFile(logFile)
+		if err != nil {
+			lastReadErr = err
+			time.Sleep(50 * time.Millisecond)
+
+			continue
+		}
+
+		lastReadErr = nil
+		lastContent = content
+		if len(parseRetentionDecisions(content)) >= expectedCount {
+			return content
+		}
+
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if lastContent == nil && lastReadErr != nil {
+		t.Fatalf("failed to read log file %q: %v", logFile, lastReadErr)
+	}
+
+	if lastReadErr != nil {
+		t.Logf("last log read error for %q: %v", logFile, lastReadErr)
+	}
+
+	observed := len(parseRetentionDecisions(lastContent))
+	if observed < expectedCount {
+		t.Fatalf("timed out waiting for retention decisions in %q: observed=%d expected>=%d",
+			logFile, observed, expectedCount)
+	}
+
+	return lastContent
 }
 
 func logRetentionDecisions(t *testing.T, actualDecisions []RetentionDecision) {

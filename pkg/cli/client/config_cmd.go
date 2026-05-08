@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -18,78 +21,87 @@ func NewConfigCommand() *cobra.Command {
 	var isReset bool
 
 	configCmd := &cobra.Command{
-		Use:     "config <config-name> [variable] [value]",
+		Use:     "config",
 		Example: examples,
 		Short:   "Configure zot registry parameters for CLI",
-		Long:    `Configure zot registry parameters for CLI`,
 		Args:    cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			home, err := os.UserHomeDir()
+			configPath, err := zliUserConfigPath()
 			if err != nil {
 				return err
 			}
 
-			configPath := filepath.Join(home, ".zot")
-
-			switch len(args) {
-			case noArgs:
-				if isListing { // zli config -l
-					res, err := getConfigNames(configPath)
-					if err != nil {
-						return err
-					}
-
-					fmt.Fprint(cmd.OutOrStdout(), res)
-
-					return nil
-				}
-
-				return zerr.ErrInvalidArgs
-			case oneArg:
-				// zli config <name> -l
-				if isListing {
-					res, err := getAllConfig(configPath, args[0])
-					if err != nil {
-						return err
-					}
-
-					fmt.Fprint(cmd.OutOrStdout(), res)
-
-					return nil
-				}
-
-				return zerr.ErrInvalidArgs
-			case twoArgs:
-				if isReset { // zli config <name> <key> --reset
-					return resetConfigValue(configPath, args[0], args[1])
-				}
-				// zli config <name> <key>
-				res, err := getConfigValue(configPath, args[0], args[1])
-				if err != nil {
-					return err
-				}
-				fmt.Fprintln(cmd.OutOrStdout(), res)
-			case threeArgs:
-				// zli config <name> <key> <value>
-				if err := setConfigValue(configPath, args[0], args[1], args[2]); err != nil {
-					return err
-				}
-
-			default:
-				return zerr.ErrInvalidArgs
-			}
-
-			return nil
+			return runLegacyConfig(cmd, args, configPath, isListing, isReset)
 		},
 	}
 
-	configCmd.Flags().BoolVarP(&isListing, "list", "l", false, "List configurations")
-	configCmd.Flags().BoolVar(&isReset, "reset", false, "Reset a variable value")
+	configCmd.Flags().BoolVarP(&isListing, "list", "l", false,
+		"[deprecated: use \"config list\" or \"config show <name>\"] List configurations")
+
+	configCmd.Flags().BoolVar(&isReset, "reset", false,
+		"[deprecated: use \"config reset\"] Reset a variable value")
+
 	configCmd.SetUsageTemplate(configCmd.UsageTemplate() + supportedOptions)
 	configCmd.AddCommand(NewConfigAddCommand())
 	configCmd.AddCommand(NewConfigRemoveCommand())
+	configCmd.AddCommand(NewConfigListCommand())
+	configCmd.AddCommand(NewConfigShowCommand())
+	configCmd.AddCommand(NewConfigGetCommand())
+	configCmd.AddCommand(NewConfigSetCommand())
+	configCmd.AddCommand(NewConfigResetCommand())
+
+	// Build this from actual subcommands to avoid drift.
+	reserved := strings.Join(reservedProfileNames(configCmd), ", ")
+	configCmd.Long = fmt.Sprintf(`Configure zot registry parameters for CLI.
+
+Use the list, show, get, set, and reset subcommands for inspecting and editing profiles.
+Profile names must not collide with subcommand names (%s).
+
+Older positional syntax on this command is deprecated and will soon be removed.`, reserved)
 
 	return configCmd
+}
+
+func zliUserConfigPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join(home, ".zot"), nil
+}
+
+// validateProfileNameForCreation prevents creating profiles that shadow subcommand names.
+// We intentionally allow interacting with pre-existing profiles that collide with subcommand names
+// so users can migrate/rename/remove them without editing ~/.zot by hand.
+func validateProfileNameForCreation(configCmd *cobra.Command, name string) error {
+	if slices.Contains(reservedProfileNames(configCmd), name) {
+		return fmt.Errorf("%w: %q", zerr.ErrReservedConfigName, name)
+	}
+
+	return nil
+}
+
+func reservedProfileNames(configCmd *cobra.Command) []string {
+	seen := make(map[string]struct{})
+
+	for _, sub := range configCmd.Commands() {
+		name := sub.Name()
+		if name == "" {
+			continue
+		}
+
+		seen[name] = struct{}{}
+	}
+
+	reserved := make([]string, 0, len(seen))
+	for name := range seen {
+		reserved = append(reserved, name)
+	}
+
+	sort.Strings(reserved)
+
+	return reserved
 }
 
 func NewConfigAddCommand() *cobra.Command {
@@ -100,13 +112,20 @@ func NewConfigAddCommand() *cobra.Command {
 		Long:    "Add configuration for a zot registry",
 		Args:    cobra.ExactArgs(twoArgs),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			home, err := os.UserHomeDir()
+			configPath, err := zliUserConfigPath()
 			if err != nil {
 				return err
 			}
 
-			configPath := filepath.Join(home, ".zot")
-			// zli config add <config-name> <url>
+			configRoot := cmd.Parent()
+			if configRoot == nil {
+				configRoot = cmd
+			}
+
+			if err := validateProfileNameForCreation(configRoot, args[0]); err != nil {
+				return err
+			}
+
 			err = addConfig(configPath, args[0], args[1])
 			if err != nil {
 				return err
@@ -130,13 +149,11 @@ func NewConfigRemoveCommand() *cobra.Command {
 		Long:    "Remove configuration for a zot registry",
 		Args:    cobra.ExactArgs(oneArg),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			home, err := os.UserHomeDir()
+			configPath, err := zliUserConfigPath()
 			if err != nil {
 				return err
 			}
 
-			configPath := filepath.Join(home, ".zot")
-			// zli config remove <config-name>
 			err = removeConfig(configPath, args[0])
 			if err != nil {
 				return err
@@ -150,6 +167,137 @@ func NewConfigRemoveCommand() *cobra.Command {
 	configRemoveCmd.SetUsageTemplate(configRemoveCmd.UsageTemplate())
 
 	return configRemoveCmd
+}
+
+func NewConfigListCommand() *cobra.Command {
+	listCmd := &cobra.Command{
+		Use:     "list",
+		Example: "  zli config list",
+		Short:   "List all configuration profile names",
+		Long:    "Print every configured CLI profile name (and URLs where applicable).",
+		Args:    cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			configPath, err := zliUserConfigPath()
+			if err != nil {
+				return err
+			}
+
+			res, err := getConfigNames(configPath)
+			if err != nil {
+				return err
+			}
+
+			fmt.Fprint(cmd.OutOrStdout(), res)
+
+			return nil
+		},
+	}
+
+	listCmd.SetUsageTemplate(listCmd.UsageTemplate())
+
+	return listCmd
+}
+
+func NewConfigShowCommand() *cobra.Command {
+	showCmd := &cobra.Command{
+		Use:     "show <name>",
+		Example: "  zli config show main",
+		Short:   "Show all variables for one profile",
+		Long:    "Print every variable set for the named CLI profile.",
+		Args:    cobra.ExactArgs(oneArg),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			configPath, err := zliUserConfigPath()
+			if err != nil {
+				return err
+			}
+
+			res, err := getAllConfig(configPath, args[0])
+			if err != nil {
+				return err
+			}
+
+			fmt.Fprint(cmd.OutOrStdout(), res)
+
+			return nil
+		},
+	}
+
+	showCmd.SetUsageTemplate(showCmd.UsageTemplate())
+
+	return showCmd
+}
+
+func NewConfigGetCommand() *cobra.Command {
+	getCmd := &cobra.Command{
+		Use:     "get <name> <key>",
+		Example: "  zli config get main url",
+		Short:   "Print one configuration variable",
+		Long:    "Print the value of a single key for the named profile.",
+		Args:    cobra.ExactArgs(twoArgs),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			configPath, err := zliUserConfigPath()
+			if err != nil {
+				return err
+			}
+
+			res, err := getConfigValue(configPath, args[0], args[1])
+			if err != nil {
+				return err
+			}
+
+			fmt.Fprintln(cmd.OutOrStdout(), res)
+
+			return nil
+		},
+	}
+
+	getCmd.SetUsageTemplate(getCmd.UsageTemplate())
+
+	return getCmd
+}
+
+func NewConfigSetCommand() *cobra.Command {
+	setCmd := &cobra.Command{
+		Use:     "set <name> <key> <value>",
+		Example: "  zli config set main showspinner false",
+		Short:   "Set a configuration variable",
+		Long:    "Set a single key for the named profile and persist ~/.zot.",
+		Args:    cobra.ExactArgs(threeArgs),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			configPath, err := zliUserConfigPath()
+			if err != nil {
+				return err
+			}
+
+			return setConfigValue(configPath, args[0], args[1], args[2])
+		},
+	}
+
+	setCmd.SetUsageTemplate(setCmd.UsageTemplate())
+
+	return setCmd
+}
+
+func NewConfigResetCommand() *cobra.Command {
+	resetCmd := &cobra.Command{
+		Use:     "reset <name> <key>",
+		Example: "  zli config reset main showspinner",
+		Short:   "Reset a configuration variable to its default",
+		Long:    "Remove a non-default key from the named profile (URL and profile name cannot be reset).",
+		Args:    cobra.ExactArgs(twoArgs),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			configPath, err := zliUserConfigPath()
+			if err != nil {
+				return err
+			}
+
+			return resetConfigValue(configPath, args[0], args[1])
+		},
+	}
+
+	resetCmd.SetUsageTemplate(resetCmd.UsageTemplate())
+
+	return resetCmd
 }
 
 func getConfigNames(configPath string) (string, error) {
@@ -289,9 +437,11 @@ func getAllConfig(configPath, configName string) (string, error) {
 
 const (
 	examples = `  zli config add main https://zot-foo.com:8080
-  zli config --list
-  zli config main url
-  zli config main --list
+  zli config list
+  zli config show main
+  zli config get main url
+  zli config set main showspinner false
+  zli config reset main showspinner
   zli config remove main`
 
 	supportedOptions = `
