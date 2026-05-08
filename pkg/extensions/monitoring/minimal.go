@@ -56,7 +56,6 @@ type metricServer struct {
 	stopChan   chan struct{} // Channel to signal shutdown
 }
 
-
 func GetDefaultBuckets() []float64 {
 	return []float64{.05, .5, 1, 5, 30, 60, 600, math.MaxFloat64}
 }
