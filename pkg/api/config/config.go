@@ -11,20 +11,15 @@ import (
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
 	"github.com/tiendc/go-deepcopy"
 
+	"zotregistry.dev/zot/v2/pkg/buildinfo"
 	"zotregistry.dev/zot/v2/pkg/compat"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 )
 
 var (
-	Commit     string //nolint: gochecknoglobals
-	ReleaseTag string //nolint: gochecknoglobals
-	BinaryType string //nolint: gochecknoglobals
-	GoVersion  string //nolint: gochecknoglobals
-
 	openIDSupportedProviders = [...]string{"google", "gitlab", "oidc"} //nolint: gochecknoglobals
 	oauth2SupportedProviders = [...]string{"github"}                   //nolint: gochecknoglobals
-
 )
 
 type StorageConfig struct {
@@ -660,10 +655,10 @@ type Config struct {
 func New() *Config {
 	return &Config{
 		DistSpecVersion: distspec.Version,
-		GoVersion:       GoVersion,
-		Commit:          Commit,
-		ReleaseTag:      ReleaseTag,
-		BinaryType:      BinaryType,
+		GoVersion:       buildinfo.GoVersion,
+		Commit:          buildinfo.Commit,
+		ReleaseTag:      buildinfo.ReleaseTag,
+		BinaryType:      buildinfo.BinaryType,
 		Storage: GlobalStorageConfig{
 			StorageConfig: StorageConfig{
 				Dedupe:     true,

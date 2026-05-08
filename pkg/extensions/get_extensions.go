@@ -5,6 +5,7 @@ import (
 
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/api/constants"
+	"zotregistry.dev/zot/v2/pkg/buildinfo"
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/scheduler"
@@ -40,7 +41,7 @@ func GetExtensions(config *config.Config) distext.ExtensionList {
 	if len(endpoints) > 0 {
 		extensions = append(extensions, distext.Extension{
 			Name:        constants.BaseExtension,
-			URL:         "https://github.com/project-zot/zot/blob/" + config.ReleaseTag + "/pkg/extensions/_zot.md",
+			URL:         "https://github.com/project-zot/zot/blob/" + buildinfo.ReleaseTag + "/pkg/extensions/_zot.md",
 			Description: "zot registry extensions",
 			Endpoints:   endpoints,
 		})

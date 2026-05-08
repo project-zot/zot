@@ -17,6 +17,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/api/constants"
+	"zotregistry.dev/zot/v2/pkg/buildinfo"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	test "zotregistry.dev/zot/v2/pkg/test/common"
 )
@@ -54,8 +55,8 @@ func TestServerStatusCommand(t *testing.T) {
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
 		actual := strings.TrimSpace(str)
-		So(actual, ShouldContainSubstring, config.ReleaseTag)
-		So(actual, ShouldContainSubstring, config.BinaryType)
+		So(actual, ShouldContainSubstring, buildinfo.ReleaseTag)
+		So(actual, ShouldContainSubstring, buildinfo.BinaryType)
 
 		// JSON
 		args = []string{"status", "--config", "status-test", "--format", "json"}
@@ -69,8 +70,8 @@ func TestServerStatusCommand(t *testing.T) {
 		space = regexp.MustCompile(`\s+`)
 		str = space.ReplaceAllString(buff.String(), " ")
 		actual = strings.TrimSpace(str)
-		So(actual, ShouldContainSubstring, config.ReleaseTag)
-		So(actual, ShouldContainSubstring, config.BinaryType)
+		So(actual, ShouldContainSubstring, buildinfo.ReleaseTag)
+		So(actual, ShouldContainSubstring, buildinfo.BinaryType)
 
 		// YAML
 		args = []string{"status", "--config", "status-test", "--format", "yaml"}
@@ -84,8 +85,8 @@ func TestServerStatusCommand(t *testing.T) {
 		space = regexp.MustCompile(`\s+`)
 		str = space.ReplaceAllString(buff.String(), " ")
 		actual = strings.TrimSpace(str)
-		So(actual, ShouldContainSubstring, config.ReleaseTag)
-		So(actual, ShouldContainSubstring, config.BinaryType)
+		So(actual, ShouldContainSubstring, buildinfo.ReleaseTag)
+		So(actual, ShouldContainSubstring, buildinfo.BinaryType)
 
 		// bad type
 		args = []string{"status", "--config", "status-test", "--format", "badType"}
