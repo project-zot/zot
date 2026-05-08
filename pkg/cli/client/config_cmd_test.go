@@ -62,7 +62,7 @@ func TestConfigCmdBasics(t *testing.T) {
 		err := cmd.Execute()
 
 		So(buff.String(), ShouldContainSubstring, "Usage")
-		So(err, ShouldNotBeNil)
+		So(err, ShouldBeNil)
 	})
 }
 

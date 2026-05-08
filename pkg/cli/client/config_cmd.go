@@ -26,6 +26,12 @@ func NewConfigCommand() *cobra.Command {
 		Short:   "Configure zot registry parameters for CLI",
 		Args:    cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 && !isListing && !isReset {
+				_ = cmd.Help()
+
+				return nil
+			}
+
 			configPath, err := zliUserConfigPath()
 			if err != nil {
 				return err
@@ -60,6 +66,18 @@ Profile names must not collide with subcommand names (%s).
 Older positional syntax on this command is deprecated and will soon be removed.`, reserved)
 
 	return configCmd
+}
+
+func exactArgsOrHelp(expected int) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) != expected {
+			_ = cmd.Help()
+
+			return zerr.ErrInvalidArgs
+		}
+
+		return nil
+	}
 }
 
 func zliUserConfigPath() (string, error) {
@@ -106,11 +124,12 @@ func reservedProfileNames(configCmd *cobra.Command) []string {
 
 func NewConfigAddCommand() *cobra.Command {
 	configAddCmd := &cobra.Command{
-		Use:     "add <config-name> <url>",
-		Example: "  zli config add main https://zot-foo.com:8080",
-		Short:   "Add configuration for a zot registry",
-		Long:    "Add configuration for a zot registry",
-		Args:    cobra.ExactArgs(twoArgs),
+		Use:          "add <config-name> <url>",
+		Example:      "  zli config add main https://zot-foo.com:8080",
+		Short:        "Add configuration for a zot registry",
+		Long:         "Add configuration for a zot registry",
+		SilenceUsage: true,
+		Args:         exactArgsOrHelp(twoArgs),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			configPath, err := zliUserConfigPath()
 			if err != nil {
@@ -143,11 +162,12 @@ func NewConfigAddCommand() *cobra.Command {
 
 func NewConfigRemoveCommand() *cobra.Command {
 	configRemoveCmd := &cobra.Command{
-		Use:     "remove <config-name>",
-		Example: "  zli config remove main",
-		Short:   "Remove configuration for a zot registry",
-		Long:    "Remove configuration for a zot registry",
-		Args:    cobra.ExactArgs(oneArg),
+		Use:          "remove <config-name>",
+		Example:      "  zli config remove main",
+		Short:        "Remove configuration for a zot registry",
+		Long:         "Remove configuration for a zot registry",
+		SilenceUsage: true,
+		Args:         exactArgsOrHelp(oneArg),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			configPath, err := zliUserConfigPath()
 			if err != nil {
@@ -200,11 +220,12 @@ func NewConfigListCommand() *cobra.Command {
 
 func NewConfigShowCommand() *cobra.Command {
 	showCmd := &cobra.Command{
-		Use:     "show <name>",
-		Example: "  zli config show main",
-		Short:   "Show all variables for one profile",
-		Long:    "Print every variable set for the named CLI profile.",
-		Args:    cobra.ExactArgs(oneArg),
+		Use:          "show <name>",
+		Example:      "  zli config show main",
+		Short:        "Show all variables for one profile",
+		Long:         "Print every variable set for the named CLI profile.",
+		SilenceUsage: true,
+		Args:         exactArgsOrHelp(oneArg),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			configPath, err := zliUserConfigPath()
 			if err != nil {
@@ -229,11 +250,12 @@ func NewConfigShowCommand() *cobra.Command {
 
 func NewConfigGetCommand() *cobra.Command {
 	getCmd := &cobra.Command{
-		Use:     "get <name> <key>",
-		Example: "  zli config get main url",
-		Short:   "Print one configuration variable",
-		Long:    "Print the value of a single key for the named profile.",
-		Args:    cobra.ExactArgs(twoArgs),
+		Use:          "get <name> <key>",
+		Example:      "  zli config get main url",
+		Short:        "Print one configuration variable",
+		Long:         "Print the value of a single key for the named profile.",
+		SilenceUsage: true,
+		Args:         exactArgsOrHelp(twoArgs),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			configPath, err := zliUserConfigPath()
 			if err != nil {
@@ -258,11 +280,12 @@ func NewConfigGetCommand() *cobra.Command {
 
 func NewConfigSetCommand() *cobra.Command {
 	setCmd := &cobra.Command{
-		Use:     "set <name> <key> <value>",
-		Example: "  zli config set main showspinner false",
-		Short:   "Set a configuration variable",
-		Long:    "Set a single key for the named profile and persist ~/.zot.",
-		Args:    cobra.ExactArgs(threeArgs),
+		Use:          "set <name> <key> <value>",
+		Example:      "  zli config set main showspinner false",
+		Short:        "Set a configuration variable",
+		Long:         "Set a single key for the named profile and persist ~/.zot.",
+		SilenceUsage: true,
+		Args:         exactArgsOrHelp(threeArgs),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			configPath, err := zliUserConfigPath()
 			if err != nil {
@@ -280,11 +303,12 @@ func NewConfigSetCommand() *cobra.Command {
 
 func NewConfigResetCommand() *cobra.Command {
 	resetCmd := &cobra.Command{
-		Use:     "reset <name> <key>",
-		Example: "  zli config reset main showspinner",
-		Short:   "Reset a configuration variable to its default",
-		Long:    "Remove a non-default key from the named profile (URL and profile name cannot be reset).",
-		Args:    cobra.ExactArgs(twoArgs),
+		Use:          "reset <name> <key>",
+		Example:      "  zli config reset main showspinner",
+		Short:        "Reset a configuration variable to its default",
+		Long:         "Remove a non-default key from the named profile (URL and profile name cannot be reset).",
+		SilenceUsage: true,
+		Args:         exactArgsOrHelp(twoArgs),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			configPath, err := zliUserConfigPath()
 			if err != nil {
