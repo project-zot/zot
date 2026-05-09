@@ -136,7 +136,7 @@ func newHTTPSProxyServer(target string) (*httpsProxyServer, error) {
 		}
 
 		// Create request to target
-		req, err := http.NewRequestWithContext(r.Context(), r.Method, targetURL, r.Body)
+		req, err := http.NewRequestWithContext(r.Context(), r.Method, targetURL, r.Body) //nolint:gosec // proxy target is local test server
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 
@@ -154,7 +154,7 @@ func newHTTPSProxyServer(target string) (*httpsProxyServer, error) {
 
 		// Make request
 		client := &http.Client{Timeout: 30 * time.Second}
-		resp, err := client.Do(req)
+		resp, err := client.Do(req) //nolint:gosec // request is sent to local test server
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadGateway)
 
@@ -377,7 +377,7 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 
 	url := strings.TrimSuffix(endpoint, "/") + "/storage/v1/b?project=test-project"
 	body := fmt.Sprintf(`{"name": "%s"}`, bucket)
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, strings.NewReader(body))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, strings.NewReader(body)) //nolint:gosec // URL points to gcsmock endpoint in tests
 	if err != nil {
 		return nil, nil, err
 	}

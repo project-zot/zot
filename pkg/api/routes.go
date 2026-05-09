@@ -2686,7 +2686,7 @@ func (rh *RouteHandler) GetAPIKeys(resp http.ResponseWriter, req *http.Request) 
 
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
 
-	data, err := json.Marshal(apiKeyResponse)
+	data, err := json.Marshal(apiKeyResponse) //nolint:gosec // API key is intentionally returned on creation
 	if err != nil {
 		rh.c.Log.Error().Err(err).Msg("failed to marshal api key response")
 
@@ -2795,7 +2795,7 @@ func (rh *RouteHandler) CreateAPIKey(resp http.ResponseWriter, req *http.Request
 
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
 
-	data, err := json.Marshal(apiKeyResponse)
+	data, err := json.Marshal(apiKeyResponse) //nolint:gosec // API key is intentionally returned on creation
 	if err != nil {
 		rh.c.Log.Error().Err(err).Msg("failed to marshal api key response")
 

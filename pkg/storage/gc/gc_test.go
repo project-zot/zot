@@ -2200,7 +2200,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 
 							continue
 						}
-						So(repo, ShouldEqual, expectedRepos[i])
+						So(repo, ShouldEqual, expectedRepos[i]) //nolint:gosec // guarded by i < len(expectedRepos)
 
 						processedRepos[repo] = struct{}{}
 

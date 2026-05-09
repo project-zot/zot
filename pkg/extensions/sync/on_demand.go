@@ -64,7 +64,7 @@ func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference str
 
 	defer onDemand.requestStore.Delete(req)
 
-	go onDemand.syncImage(repo, reference, syncResult)
+	go onDemand.syncImage(ctx, repo, reference, syncResult)
 
 	err := <-syncResult
 
@@ -95,14 +95,14 @@ func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 
 	defer onDemand.requestStore.Delete(req)
 
-	go onDemand.syncReferrers(repo, subjectDigestStr, referenceTypes, syncResult)
+	go onDemand.syncReferrers(ctx, repo, subjectDigestStr, referenceTypes, syncResult)
 
 	err := <-syncResult
 
 	return err
 }
 
-func (onDemand *BaseOnDemand) syncReferrers(repo, subjectDigestStr string,
+func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDigestStr string,
 	referenceTypes []string, syncResult chan error,
 ) {
 	defer close(syncResult)
@@ -121,7 +121,7 @@ func (onDemand *BaseOnDemand) syncReferrers(repo, subjectDigestStr string,
 
 		// Create a detached context with timeout to ensure sync completes even if HTTP client disconnects.
 		// This prevents Kubernetes timeout/retries from aborting in-progress referrer downloads.
-		syncCtx, cancel := context.WithTimeout(context.Background(), timeout)
+		syncCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 		err = service.SyncReferrers(syncCtx, repo, subjectDigestStr, referenceTypes)
 
 		cancel()
@@ -164,7 +164,7 @@ func (onDemand *BaseOnDemand) syncReferrers(repo, subjectDigestStr string,
 						Msg("sync routine: starting routine to copy image, because of error")
 
 					// Use detached context with timeout for background retry
-					retryCtx, cancel := context.WithTimeout(context.Background(), serviceTimeout)
+					retryCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), serviceTimeout)
 					defer cancel()
 
 					err := service.SyncReferrers(retryCtx, repo, subjectDigestStr, referenceTypes)
@@ -182,7 +182,7 @@ func (onDemand *BaseOnDemand) syncReferrers(repo, subjectDigestStr string,
 	syncResult <- err
 }
 
-func (onDemand *BaseOnDemand) syncImage(repo, reference string, syncResult chan error) {
+func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference string, syncResult chan error) {
 	defer close(syncResult)
 
 	var err error
@@ -199,7 +199,7 @@ func (onDemand *BaseOnDemand) syncImage(repo, reference string, syncResult chan 
 
 		// Create a detached context with timeout to ensure sync completes even if HTTP client disconnects.
 		// This prevents Kubernetes timeout/retries from aborting in-progress image downloads.
-		syncCtx, cancel := context.WithTimeout(context.Background(), timeout)
+		syncCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 		err = service.SyncImage(syncCtx, repo, reference)
 
 		cancel()
@@ -242,7 +242,7 @@ func (onDemand *BaseOnDemand) syncImage(repo, reference string, syncResult chan 
 						Msg("sync routine: starting routine to retry copy image due to error")
 
 					// Use detached context with timeout for background retry
-					retryCtx, cancel := context.WithTimeout(context.Background(), serviceTimeout)
+					retryCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), serviceTimeout)
 					defer cancel()
 
 					err := service.SyncImage(retryCtx, repo, reference)

@@ -1202,7 +1202,7 @@ func TestS3Dedupe(t *testing.T) {
 		Convey("Check backward compatibility - switch dedupe to false", func() {
 			/* copy cache to the new storage with dedupe false (doing this because we
 			already have a cache object holding the lock on cache db file) */
-			input, err := os.ReadFile(path.Join(tdir, storageConstants.BoltdbName+storageConstants.DBExtensionName))
+			input, err := os.ReadFile(path.Join(tdir, storageConstants.BoltdbName+storageConstants.DBExtensionName)) //nolint:gosec // test path is tempdir-scoped
 			So(err, ShouldBeNil)
 
 			tdir = t.TempDir()
