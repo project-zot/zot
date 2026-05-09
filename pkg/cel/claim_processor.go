@@ -19,6 +19,9 @@ const defaultUsernameExpr = "claims.iss + '/' + claims.sub"
 type ClaimResult struct {
 	Username string
 	Groups   []string
+	// Claims is the raw OIDC claim set. Carried through so authorization-time
+	// CEL expressions can reference token claims directly via `req.claims`.
+	Claims map[string]any
 }
 
 // ClaimProcessor processes OIDC claims using CEL expressions.
@@ -206,6 +209,7 @@ func (c *ClaimProcessor) Process(ctx context.Context, claims map[string]any) (*C
 	return &ClaimResult{
 		Username: username,
 		Groups:   groups,
+		Claims:   claims,
 	}, nil
 }
 

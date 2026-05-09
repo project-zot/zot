@@ -55,6 +55,19 @@ func WithStructVariables(vars ...string) Option {
 	}
 }
 
+// WithDynMapVariables declares variables of type map<string, dyn>. Unlike
+// google.protobuf.Struct (JSON-shape only), values in a dyn-valued map carry
+// their natural CEL type, so a Go time.Time at evaluation time surfaces as a
+// CEL timestamp and can be compared with timestamp(...) directly.
+func WithDynMapVariables(vars ...string) Option {
+	return func(o *options) {
+		for _, v := range vars {
+			d := cel.Variable(v, cel.MapType(cel.StringType, cel.DynType))
+			o.variables = append(o.variables, d)
+		}
+	}
+}
+
 // WithCompile specifies that the expression should be compiled,
 // which provides stricter checks at parse time, before evaluation.
 func WithCompile() Option {

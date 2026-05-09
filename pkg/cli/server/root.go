@@ -792,6 +792,12 @@ func validateAuthzPolicies(config *config.Config, logger zlog.Logger) error {
 		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 	}
 
+	if _, err := api.CompileAccessControl(accessControlConfig); err != nil {
+		logger.Error().Err(err).Msg("failed to compile access control policy conditions")
+
+		return fmt.Errorf("%w: %w", zerr.ErrBadConfig, err)
+	}
+
 	return nil
 }
 

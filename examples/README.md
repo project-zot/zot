@@ -867,6 +867,66 @@ Behaviour-based action list
 }
 ```
 
+##### Conditional access on policies
+
+Policy entries can carry an optional list of `conditions`: CEL boolean
+expressions that must all evaluate to true for the entry to grant access.
+This is the same pattern as conditional access in cloud IAM systems.
+
+```
+"policies": [{
+  "users": ["alice"],
+  "actions": ["read", "create", "update"],
+  "conditions": [{
+      "expression": "req.time < timestamp(\"2099-12-31T23:59:59Z\")",
+      "message": "alice's access expires end of 2099"
+    },
+    {
+      "expression": "req.referenceType == \"digest\"",
+      "message": "prod pushes must use digest references"
+    }
+  ]
+}]
+```
+
+Expressions evaluate against a `req` struct with the following fields:
+
+| Path | Type | Description |
+|---|---|---|
+| `req.time` | timestamp | Current time as a CEL timestamp; compare with `timestamp("2099-12-31T23:59:59Z")`. |
+| `req.method` | string | Raw HTTP method of the originating request (`"GET"`, `"PUT"`, ...). |
+| `req.userAgent` | string | `User-Agent` header. |
+| `req.action` | string | Abstract action being authorized: `"read"`, `"create"`, `"update"`, `"delete"`. Use this for action gating; `req.method` is the raw verb escape hatch. |
+| `req.repository` | string | The requested repository, when known. |
+| `req.reference` | string | Tag or digest, when the route has one. |
+| `req.referenceType` | string | `"tag"`, `"digest"`, or `""` when the route has no reference. |
+| `req.tag` | string | The tag, when reference is a tag. |
+| `req.digest` | string | The digest, when reference is a digest. |
+| `req.user.username` | string | Authenticated username. |
+| `req.user.groups` | list&lt;string&gt; | Authenticated user's groups. |
+| `req.auth.anonymous` | bool | Convenience for `req.user.username == ""`. |
+| `req.auth.admin` | bool | True when the user matches the admin policy. |
+| `req.client.ip` | string | TCP peer address from `RemoteAddr` (port stripped). Always trustworthy. |
+| `req.client.forwardedFor` | list&lt;string&gt; | `X-Forwarded-For` chain, left to right. **Untrusted** — anyone can set the header. |
+| `req.tls.enabled` | bool | Whether the request arrived over TLS at zot. |
+| `req.tls.version` | string | TLS version: `"1.2"`, `"1.3"`, ... when applicable. |
+| `req.claims` | map | Authn-time attribute bag, populated by the active authn flow (today: OIDC bearer fills it with the ID token claim set; other flows can feed this surface as they grow that capability). |
+
+**Network gates.** `req.client.ip` is the TCP peer (the proxy, behind a
+reverse proxy). `req.client.forwardedFor` is the raw header chain — useful
+but spoofable, since any client can set it. The idiomatic pattern is to gate
+on the chain only after asserting the TCP peer is your trusted proxy:
+
+```
+req.client.ip == "10.0.0.5" && req.client.forwardedFor[0].startsWith("192.0.2.")
+```
+
+**Deny messages.** When a condition evaluates to false, its `message` is
+surfaced to the client in the 403 response body's error detail under the
+`reason` key, and also logged for operator diagnosis. Internal lookup or
+evaluation failures are *not* surfaced (the client just gets a generic deny)
+to avoid leaking implementation issues.
+
 #### Scheduler Workers
 
 The number of workers for the task scheduler has the default value of runtime.NumCPU()*4, and it is configurable with:
