@@ -298,7 +298,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: fake
         continue-on-error: true
       - name: Upload zot logs as build artifact
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: zot-scale-out-dynamodb-logs
@@ -327,7 +327,7 @@ jobs:
           exit 1
       - name: Upload zb test results zip as build artifact
         if: steps.scale.outcome == 'success'
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: zb-cloud-scale-out-perf-results-${{ github.sha }}
           path: ./zb-results/
@@ -369,7 +369,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: fake
         continue-on-error: true
       - name: Upload zot logs as build artifact
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: zot-scale-out-redis-logs
@@ -398,7 +398,7 @@ jobs:
           exit 1
       - name: Upload zb test results zip as build artifact
         if: steps.scale.outcome == 'success'
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: zb-cloud-scale-out-redis-results-${{ github.sha }}
           path: ./zb-results/
