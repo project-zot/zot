@@ -24,7 +24,7 @@ jobs:
         with:
           cache: false
           check-latest: true
-          go-version: 1.25.x
+          go-version: 1.26.x
       - name: Cache go dependencies
         id: cache-go-dependencies
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
@@ -66,7 +66,7 @@ jobs:
         with:
           cache: false
           check-latest: true
-          go-version: 1.25.x
+          go-version: 1.26.x
       - name: Cache go dependencies
         id: cache-go-dependencies
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
@@ -108,7 +108,7 @@ jobs:
         with:
           cache: false
           check-latest: true
-          go-version: 1.25.x
+          go-version: 1.26.x
       - name: Cache go dependencies
         id: cache-go-dependencies
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
@@ -141,7 +141,7 @@ jobs:
         with:
           cache: false
           check-latest: true
-          go-version: 1.25.x
+          go-version: 1.26.x
       - name: Cache go dependencies
         id: cache-go-dependencies
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
@@ -186,7 +186,7 @@ jobs:
         with:
           cache: false
           check-latest: true
-          go-version: 1.25.x
+          go-version: 1.26.x
       - name: download all workflow coverage files
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       - name: merge code coverage

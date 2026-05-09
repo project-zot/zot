@@ -53,7 +53,7 @@ jobs:
       with:
         cache: false
         check-latest: true
-        go-version: 1.25.x
+        go-version: 1.26.x
 
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
