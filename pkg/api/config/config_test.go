@@ -118,7 +118,7 @@ func TestConfig(t *testing.T) {
 						"github": {
 							Name:         "GitHub",
 							ClientID:     "github-client-id",
-							ClientSecret: "github-client-secret",
+							ClientSecret: "github-client-secret", //nolint: gosec
 							AuthURL:      "github-auth-url",
 							TokenURL:     "github-token-url",
 							Scopes:       []string{"user:email"},

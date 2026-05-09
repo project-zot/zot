@@ -2498,7 +2498,7 @@ func (rh *RouteHandler) GithubCodeExchangeCallback() rp.CodeExchangeCallback[*oi
 		}
 
 		if callbackUI != "" {
-			http.Redirect(w, r, callbackUI, http.StatusFound)
+			http.Redirect(w, r, callbackUI, http.StatusFound) //nolint: gosec
 
 			return
 		}
@@ -2554,7 +2554,7 @@ func (rh *RouteHandler) OpenIDCodeExchangeCallbackWithProvider(providerName stri
 		}
 
 		if callbackUI != "" {
-			http.Redirect(w, r, callbackUI, http.StatusFound)
+			http.Redirect(w, r, callbackUI, http.StatusFound) //nolint: gosec
 
 			return
 		}
@@ -2654,7 +2654,7 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 	return imgStore.GetImageManifest(name, reference)
 }
 
-type APIKeyPayload struct { //nolint:revive
+type APIKeyPayload struct { //nolint:revive,gosec
 	Label          string   `json:"label"`
 	Scopes         []string `json:"scopes"`
 	ExpirationDate string   `json:"expirationDate"`

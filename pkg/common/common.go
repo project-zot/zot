@@ -82,7 +82,7 @@ func DirExists(d string) bool {
 		return false
 	}
 
-	fileInfo, err := os.Stat(d)
+	fileInfo, err := os.Stat(d) //nolint: gosec
 	if err != nil {
 		if e, ok := err.(*fs.PathError); ok && errors.Is(e.Err, syscall.ENAMETOOLONG) || //nolint: errorlint
 			errors.Is(e.Err, syscall.EINVAL) {
