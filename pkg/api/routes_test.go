@@ -2944,7 +2944,12 @@ func TestGetBlobSingleRangePartialUnexpectedError(t *testing.T) {
 		},
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"http://example.com/v2/test/blobs/sha256:test",
+		http.NoBody,
+	)
 	req.Header.Set("Range", "bytes=0-1")
 	req = mux.SetURLVars(req, map[string]string{
 		"name":   "test",
@@ -2989,7 +2994,12 @@ func TestGetBlobSingleRangeLengthMismatch(t *testing.T) {
 		},
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"http://example.com/v2/test/blobs/sha256:test",
+		http.NoBody,
+	)
 	req.Header.Set("Range", "bytes=0-1")
 	req = mux.SetURLVars(req, map[string]string{
 		"name":   "test",
@@ -3040,7 +3050,12 @@ func TestGetBlobMultipartShortReaderTruncates(t *testing.T) {
 
 	layerDigest, _, _ := descriptorTestDigests()
 
-	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"http://example.com/v2/test/blobs/sha256:test",
+		http.NoBody,
+	)
 	req.Header.Set("Range", "bytes=0-1,5-7")
 	req = mux.SetURLVars(req, map[string]string{
 		"name":   "test",
@@ -3101,7 +3116,12 @@ func TestGetBlobRangeCheckBlobNamedErrors(t *testing.T) {
 				},
 			})
 
-			req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+			req := httptest.NewRequestWithContext(
+				context.Background(),
+				http.MethodGet,
+				"http://example.com/v2/test/blobs/sha256:test",
+				http.NoBody,
+			)
 			req.Header.Set("Range", "bytes=0-1")
 			req = mux.SetURLVars(req, map[string]string{
 				"name":   "test",
@@ -3174,7 +3194,12 @@ func TestGetBlobMultipartReaderCloseError(t *testing.T) {
 
 	layerDigest, _, _ := descriptorTestDigests()
 
-	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"http://example.com/v2/test/blobs/sha256:test",
+		http.NoBody,
+	)
 	req.Header.Set("Range", "bytes=0-1,5-7")
 	req = mux.SetURLVars(req, map[string]string{
 		"name":   "test",
