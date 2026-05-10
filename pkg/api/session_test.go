@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -100,7 +101,12 @@ func TestSessionAuditLogger(t *testing.T) {
 
 			wrapped := zotapi.SessionAuditLogger(audit)(inner)
 
-			req := httptest.NewRequest(testCase.method, "/v2/repo/test/uploads", http.NoBody)
+			req := httptest.NewRequestWithContext(
+				context.Background(),
+				testCase.method,
+				"/v2/repo/test/uploads",
+				http.NoBody,
+			)
 			req.RemoteAddr = "127.0.0.1:12345"
 
 			recorder := httptest.NewRecorder()
@@ -147,7 +153,7 @@ func TestSessionAuditLogger_rawQueryAppendedToObject(t *testing.T) {
 
 	wrapped := zotapi.SessionAuditLogger(audit)(inner)
 
-	req := httptest.NewRequest(http.MethodPost, "/v2/a/b", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v2/a/b", http.NoBody)
 	req.URL.RawQuery = "digest=sha256:abc"
 
 	recorder := httptest.NewRecorder()
@@ -185,7 +191,7 @@ func TestSessionLogger_redactsAuthorizationAndLogsUsernameFromContext(t *testing
 
 	wrapped := zotapi.SessionLogger(ctlr)(inner)
 
-	req := httptest.NewRequest(http.MethodGet, "/v2/_catalog", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v2/_catalog", http.NoBody)
 	req.Header.Set("Authorization", "Bearer super-secret-token")
 	req.RemoteAddr = "10.0.0.1:4444"
 
@@ -217,7 +223,7 @@ func TestSessionLogger_omitsUsernameWhenAnonymous(t *testing.T) {
 
 	wrapped := zotapi.SessionLogger(ctlr)(inner)
 
-	req := httptest.NewRequest(http.MethodGet, "/v2/_catalog", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v2/_catalog", http.NoBody)
 
 	recorder := httptest.NewRecorder()
 	wrapped.ServeHTTP(recorder, req)

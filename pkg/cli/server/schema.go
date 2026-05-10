@@ -126,9 +126,7 @@ func (g *schemaGenerator) schemaForStruct(reflectType reflect.Type) map[string]a
 
 	properties := map[string]any{}
 
-	for i := range reflectType.NumField() {
-		field := reflectType.Field(i)
-
+	for field := range reflectType.Fields() {
 		if !field.IsExported() {
 			continue
 		}

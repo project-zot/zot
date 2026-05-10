@@ -135,6 +135,7 @@ func proxyHTTPRequest(ctx context.Context, req *http.Request,
 		requestBody = req.Body
 	}
 
+	//nolint:gosec // target host is selected from trusted cluster membership config (not client-controlled input)
 	fwdRequest, err := http.NewRequestWithContext(ctx, req.Method, cloneURL.String(), requestBody)
 	if err != nil {
 		return nil, err
@@ -178,6 +179,7 @@ func proxyHTTPRequest(ctx context.Context, req *http.Request,
 		return nil, err
 	}
 
+	//nolint:gosec // outbound request is restricted to the trusted cluster member selected above
 	resp, err := httpClient.Do(fwdRequest)
 	if err != nil {
 		return nil, err

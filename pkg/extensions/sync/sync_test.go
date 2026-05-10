@@ -2640,15 +2640,15 @@ func TestTLS(t *testing.T) {
 			t.Fatalf("Failed to read CA cert: %v", err)
 		}
 
-		err = os.WriteFile(destClientCertPath, clientCertData, 0o600)
+		err = os.WriteFile(destClientCertPath, clientCertData, 0o600) //nolint:gosec // test path is tempdir-scoped
 		if err != nil {
 			t.Fatalf("Failed to write client cert: %v", err)
 		}
-		err = os.WriteFile(destClientKeyPath, clientKeyData, 0o600)
+		err = os.WriteFile(destClientKeyPath, clientKeyData, 0o600) //nolint:gosec // test path is tempdir-scoped
 		if err != nil {
 			t.Fatalf("Failed to write client key: %v", err)
 		}
-		err = os.WriteFile(destCACertPath, caCertData, 0o600)
+		err = os.WriteFile(destCACertPath, caCertData, 0o600) //nolint:gosec // test path is tempdir-scoped
 		if err != nil {
 			t.Fatalf("Failed to write CA cert: %v", err)
 		}

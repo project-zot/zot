@@ -115,7 +115,7 @@ func TestConfig(t *testing.T) {
 							Issuer:       "https://accounts.google.com",
 							Scopes:       []string{"openid", "email"},
 						},
-						"github": {
+						"github": { //nolint: gosec
 							Name:         "GitHub",
 							ClientID:     "github-client-id",
 							ClientSecret: "github-client-secret", //nolint: gosec

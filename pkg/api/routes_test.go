@@ -2135,7 +2135,12 @@ func TestCheckBlobUsesDescriptorContentType(t *testing.T) {
 
 	layerDigest, _, _ := descriptorTestDigests()
 
-	req := httptest.NewRequest(http.MethodHead, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodHead,
+		"http://example.com/v2/test/blobs/sha256:test",
+		http.NoBody,
+	)
 	req.Header.Set("Accept", "application/vnd.oci.image.layer.v1.tar+gzip, */*")
 	req = mux.SetURLVars(req, map[string]string{
 		"name":   "test",
@@ -2169,7 +2174,12 @@ func TestCheckBlobFallsBackToBinaryContentType(t *testing.T) {
 
 	layerDigest, _, _ := descriptorTestDigests()
 
-	req := httptest.NewRequest(http.MethodHead, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodHead,
+		"http://example.com/v2/test/blobs/sha256:test",
+		http.NoBody,
+	)
 	req.Header.Set("Accept", "*/*")
 	req = mux.SetURLVars(req, map[string]string{
 		"name":   "test",
@@ -2201,7 +2211,12 @@ func TestGetBlobUsesDescriptorContentType(t *testing.T) {
 
 	layerDigest, _, _ := descriptorTestDigests()
 
-	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"http://example.com/v2/test/blobs/sha256:test",
+		http.NoBody,
+	)
 	// Wildcard / mixed Accept must not leak into the response.
 	req.Header.Set("Accept", "application/vnd.oci.image.layer.v1.tar+gzip, */*")
 	req = mux.SetURLVars(req, map[string]string{

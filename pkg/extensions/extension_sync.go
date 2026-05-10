@@ -5,6 +5,7 @@ package extensions
 import (
 	"net"
 	"net/url"
+	"slices"
 	"strings"
 
 	zerr "zotregistry.dev/zot/v2/errors"
@@ -119,7 +120,7 @@ func removeSelfURLs(httpAddress, httpPort string, registryConfig *syncconf.Regis
 		return err
 	}
 
-	for idx := len(registryConfig.URLs) - 1; idx >= 0; idx-- {
+	for idx := range slices.Backward(registryConfig.URLs) {
 		registryURL := registryConfig.URLs[idx]
 
 		url, err := url.Parse(registryURL)

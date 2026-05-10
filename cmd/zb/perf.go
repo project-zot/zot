@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -1038,7 +1039,7 @@ func getIPsFromCIDR(cidr string, maxIPs int) ([]string, error) {
 
 // https://go.dev/play/p/sdzcMvZYWnc
 func inc(ip net.IP) {
-	for j := len(ip) - 1; j >= 0; j-- {
+	for j := range slices.Backward(ip) {
 		ip[j]++
 		if ip[j] > 0 {
 			break
