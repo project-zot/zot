@@ -152,6 +152,7 @@ func setupBearerAuthServerCerts(t *testing.T, keyType tlsutils.KeyType) (
 		if err != nil {
 			t.Fatalf("Failed to extract public key from cert: %v", err)
 		}
+		//nolint:gosec // Path is generated from t.TempDir() within this test helper.
 		err = os.WriteFile(serverPublicKeyPath, publicKeyPKIX, 0o600)
 		if err != nil {
 			t.Fatalf("Failed to write server public key: %v", err)
@@ -163,6 +164,7 @@ func setupBearerAuthServerCerts(t *testing.T, keyType tlsutils.KeyType) (
 		if err != nil {
 			t.Fatalf("Failed to extract PKCS1 public key: %v", err)
 		}
+		//nolint:gosec // Path is generated from t.TempDir() within this test helper.
 		err = os.WriteFile(serverPublicKeyPKCS1Path, publicKeyPKCS1, 0o600)
 		if err != nil {
 			t.Fatalf("Failed to write server PKCS1 public key: %v", err)
@@ -173,6 +175,7 @@ func setupBearerAuthServerCerts(t *testing.T, keyType tlsutils.KeyType) (
 		if err != nil {
 			t.Fatalf("Failed to extract public key from cert: %v", err)
 		}
+		//nolint:gosec // Path is generated from t.TempDir() within this test helper.
 		err = os.WriteFile(serverPublicKeyPath, publicKeyPKIX, 0o600)
 		if err != nil {
 			t.Fatalf("Failed to write server public key: %v", err)
@@ -5215,7 +5218,12 @@ func TestAuthnSessionErrors(t *testing.T) {
 			client := resty.New()
 			client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
 
-			client.SetCookie(&http.Cookie{Name: "session"})
+			client.SetCookie(&http.Cookie{
+				Name:     "session",
+				Secure:   true,
+				HttpOnly: true,
+				SameSite: http.SameSiteLaxMode,
+			})
 
 			// call endpoint with session (added to client after previous request)
 			resp, err := client.R().
@@ -12993,8 +13001,8 @@ func TestGetGithubUserInfo(t *testing.T) {
 				mock.GetUserEmails,
 				[]github.UserEmail{
 					{
-						Email:   github.String("test@test"),
-						Primary: github.Bool(true),
+						Email:   new("test@test"),
+						Primary: new(true),
 					},
 				},
 			),
@@ -13002,7 +13010,7 @@ func TestGetGithubUserInfo(t *testing.T) {
 				mock.GetUserOrgs,
 				[]github.Organization{
 					{
-						Login: github.String("testOrg"),
+						Login: new("testOrg"),
 					},
 				},
 			),
@@ -13040,8 +13048,8 @@ func TestGetGithubUserInfo(t *testing.T) {
 				mock.GetUserEmails,
 				[]github.UserEmail{
 					{
-						Email:   github.String("test@test"),
-						Primary: github.Bool(true),
+						Email:   new("test@test"),
+						Primary: new(true),
 					},
 				},
 			),
