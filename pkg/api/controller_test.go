@@ -11934,6 +11934,7 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 				err = gc.CleanRepo(ctx, repoName)
 				So(err, ShouldNotBeNil)
 
+				//nolint:gosec // Test path is constructed from t.TempDir() repo data and known blob layout.
 				err = os.WriteFile(path.Join(dir, repoName, "blobs", "sha256", refs.Manifests[0].Digest.Encoded()), content, 0o600)
 				So(err, ShouldBeNil)
 			})
