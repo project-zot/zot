@@ -66,7 +66,12 @@ func TestHandlers(t *testing.T) {
 	mockmetaDB := mocks.MetaDBMock{}
 
 	Convey("No repo in request", t, func() {
-		request := httptest.NewRequest(http.MethodGet, UserprefsBaseURL+"", strings.NewReader("My string"))
+		request := httptest.NewRequestWithContext(
+			context.Background(),
+			http.MethodGet,
+			UserprefsBaseURL+"",
+			strings.NewReader("My string"),
+		)
 		response := httptest.NewRecorder()
 
 		extensions.PutStar(response, request, mockmetaDB, log)
@@ -83,7 +88,12 @@ func TestHandlers(t *testing.T) {
 	})
 
 	Convey("Empty repo in request", t, func() {
-		request := httptest.NewRequest(http.MethodGet, UserprefsBaseURL+"?repo=", strings.NewReader("My string"))
+		request := httptest.NewRequestWithContext(
+			context.Background(),
+			http.MethodGet,
+			UserprefsBaseURL+"?repo=",
+			strings.NewReader("My string"),
+		)
 		response := httptest.NewRecorder()
 
 		extensions.PutStar(response, request, mockmetaDB, log)
@@ -100,7 +110,7 @@ func TestHandlers(t *testing.T) {
 	})
 
 	Convey("ToggleStarRepo different errors", t, func() {
-		request := httptest.NewRequest(http.MethodGet, UserprefsBaseURL+"?repo=test",
+		request := httptest.NewRequestWithContext(context.Background(), http.MethodGet, UserprefsBaseURL+"?repo=test",
 			strings.NewReader("My string"))
 
 		Convey("ErrRepoMetaNotFound", func() {
