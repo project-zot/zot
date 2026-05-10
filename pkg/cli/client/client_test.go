@@ -110,10 +110,12 @@ func TestTLSWithAuth(t *testing.T) {
 			// Client certs are resolved under $HOME; isolate from the real home directory.
 			home := os.Getenv("HOME")
 			destCertsDir := filepath.Join(home, certsDir1)
+			//nolint:gosec // test path is tempdir-scoped via HOME override
 			err := os.MkdirAll(destCertsDir, 0o755)
 			So(err, ShouldBeNil)
 
 			// Write CA certificate to client certs directory (needed for server verification)
+			//nolint:gosec // test path is tempdir-scoped via HOME override
 			err = os.WriteFile(filepath.Join(destCertsDir, "ca.crt"), caCertPEM, 0o600)
 			So(err, ShouldBeNil)
 
@@ -150,10 +152,12 @@ func TestTLSWithAuth(t *testing.T) {
 			// Ensure certificates are in the HOME directory that makeConfigFile set
 			home = os.Getenv("HOME")
 			destCertsDir = filepath.Join(home, certsDir1)
+			//nolint:gosec // test path is tempdir-scoped via HOME override
 			err = os.MkdirAll(destCertsDir, 0o755)
 			So(err, ShouldBeNil)
 
 			// Write CA certificate to client certs directory (needed for server verification)
+			//nolint:gosec // test path is tempdir-scoped via HOME override
 			err = os.WriteFile(filepath.Join(destCertsDir, "ca.crt"), caCertPEM, 0o600)
 			So(err, ShouldBeNil)
 
@@ -257,10 +261,12 @@ func TestTLSWithoutAuth(t *testing.T) {
 			home := os.Getenv("HOME")
 			destCertsDir := filepath.Join(home, certsDir1)
 
+			//nolint:gosec // test path is tempdir-scoped via HOME override
 			err := os.MkdirAll(destCertsDir, 0o755)
 			So(err, ShouldBeNil)
 
 			// Write CA certificate to client certs directory (needed for server verification)
+			//nolint:gosec // test path is tempdir-scoped via HOME override
 			err = os.WriteFile(filepath.Join(destCertsDir, "ca.crt"), caCertPEM, 0o600)
 			So(err, ShouldBeNil)
 

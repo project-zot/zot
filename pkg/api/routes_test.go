@@ -2264,7 +2264,12 @@ func TestGetBlobFallsBackOnInvalidDescriptorContentType(t *testing.T) {
 
 	layerDigest, _, _ := descriptorTestDigests()
 
-	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"http://example.com/v2/test/blobs/sha256:test",
+		http.NoBody,
+	)
 	req = mux.SetURLVars(req, map[string]string{
 		"name":   "test",
 		"digest": layerDigest.String(),
@@ -2296,7 +2301,12 @@ func TestGetBlobFallsBackToBinaryContentType(t *testing.T) {
 
 	layerDigest, _, _ := descriptorTestDigests()
 
-	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"http://example.com/v2/test/blobs/sha256:test",
+		http.NoBody,
+	)
 	// Comma-separated Accept must not produce a malformed Content-Type.
 	req.Header.Set("Accept", "typeA, typeB")
 	req = mux.SetURLVars(req, map[string]string{
@@ -2334,7 +2344,12 @@ func TestGetBlobPartialUsesDescriptorContentType(t *testing.T) {
 
 	layerDigest, _, _ := descriptorTestDigests()
 
-	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"http://example.com/v2/test/blobs/sha256:test",
+		http.NoBody,
+	)
 	req.Header.Set("Range", "bytes=0-1")
 	req = mux.SetURLVars(req, map[string]string{
 		"name":   "test",
@@ -2376,7 +2391,12 @@ func TestGetBlobPartialFallsBackToBinaryContentType(t *testing.T) {
 		},
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"http://example.com/v2/test/blobs/sha256:test",
+		http.NoBody,
+	)
 	req.Header.Set("Range", "bytes=0-1")
 	req.Header.Set("Accept", "application/vnd.oci.image.layer.v1.tar+gzip, */*")
 	req = mux.SetURLVars(req, map[string]string{
@@ -2420,7 +2440,12 @@ func TestGetBlobMultipartPartHasDescriptorContentType(t *testing.T) {
 
 	layerDigest, _, _ := descriptorTestDigests()
 
-	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"http://example.com/v2/test/blobs/sha256:test",
+		http.NoBody,
+	)
 	req.Header.Set("Range", "bytes=0-1,5-7")
 	req = mux.SetURLVars(req, map[string]string{
 		"name":   "test",
@@ -2574,7 +2599,12 @@ func TestGetBlobMultipartContentLengthMatchesBody(t *testing.T) {
 
 	layerDigest, _, _ := descriptorTestDigests()
 
-	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"http://example.com/v2/test/blobs/sha256:test",
+		http.NoBody,
+	)
 	req.Header.Set("Range", "bytes=0-1,5-7,12-15")
 	req = mux.SetURLVars(req, map[string]string{
 		"name":   "test",
