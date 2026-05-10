@@ -614,7 +614,7 @@ $(COSIGN):
 
 $(KIND): check-linux
 	mkdir -p $(TOOLSDIR)/bin; \
-	curl -fsSL curl -Lo ./kind https://kind.sigs.k8s.io/dl/$(KIND_VERSION)/kind-$(OS)-$(ARCH) -o $@; \
+	curl -fsSL https://kind.sigs.k8s.io/dl/$(KIND_VERSION)/kind-$(OS)-$(ARCH) -o $@; \
 	chmod +x $@
 
 # set ZUI_VERSION to empty string in order to clone zui locally and build default branch
