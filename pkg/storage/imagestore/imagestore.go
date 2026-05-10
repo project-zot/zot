@@ -1605,7 +1605,13 @@ func (is *ImageStore) originalBlobInfo(repo string, digest godigest.Digest) (dri
 
 	binfo, err := is.storeDriver.Stat(blobPath)
 	if err != nil {
-		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
+		var pathNotFoundErr driver.PathNotFoundError
+
+		if errors.As(err, &pathNotFoundErr) {
+			is.log.Debug().Err(err).Str("blob", blobPath).Str("digest", digest.String()).Msg("blob not found")
+		} else {
+			is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
+		}
 
 		return nil, zerr.ErrBlobNotFound
 	}
