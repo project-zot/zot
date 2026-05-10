@@ -341,7 +341,7 @@ $(GOLINTER): $(TOOLSDIR)/.golangci-lint-$(GOLINTER_VERSION)
 $(TOOLSDIR)/.golangci-lint-$(GOLINTER_VERSION):
 	mkdir -p $(TOOLSDIR)/bin
 	rm -f $(TOOLSDIR)/.golangci-lint-*
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(TOOLSDIR)/bin $(GOLINTER_VERSION)
+	curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b $(TOOLSDIR)/bin $(GOLINTER_VERSION)
 	$(GOLINTER) version
 	touch $@
 
