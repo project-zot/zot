@@ -2676,7 +2676,12 @@ func TestGetBlobMultipartOpensOneReaderAtATime(t *testing.T) {
 
 	layerDigest, _, _ := descriptorTestDigests()
 
-	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"http://example.com/v2/test/blobs/sha256:test",
+		http.NoBody,
+	)
 	// Four non-coalescing ranges so the producer must open four
 	// distinct readers in sequence.
 	req.Header.Set("Range", "bytes=0-3,8-11,16-19,24-27")
@@ -2733,7 +2738,12 @@ func TestGetBlobMultipartTruncatesOnReaderError(t *testing.T) {
 
 	layerDigest, _, _ := descriptorTestDigests()
 
-	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"http://example.com/v2/test/blobs/sha256:test",
+		http.NoBody,
+	)
 	req.Header.Set("Range", "bytes=0-1,5-7")
 	req = mux.SetURLVars(req, map[string]string{
 		"name":   "test",
@@ -2772,7 +2782,12 @@ func TestGetBlobRangeUnsatisfiable(t *testing.T) {
 		},
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "http://example.com/v2/test/blobs/sha256:test", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"http://example.com/v2/test/blobs/sha256:test",
+		http.NoBody,
+	)
 	req.Header.Set("Range", "bytes=999-1000")
 	req = mux.SetURLVars(req, map[string]string{
 		"name":   "test",
