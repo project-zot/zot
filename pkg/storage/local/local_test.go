@@ -893,6 +893,92 @@ func FuzzCheckBlob(f *testing.F) {
 	})
 }
 
+func TestMissingBlobChecksDoNotLogErrors(t *testing.T) {
+	t.Parallel()
+
+	newImageStore := func(t *testing.T) (storageTypes.ImageStore, *bytes.Buffer) {
+		t.Helper()
+
+		var buf bytes.Buffer
+
+		logger := zlog.NewLoggerWithWriter("debug", &buf)
+		metrics := monitoring.NewMetricsServer(false, logger)
+		t.Cleanup(metrics.Stop)
+
+		dir := t.TempDir()
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, logger)
+		if err != nil {
+			t.Fatalf("create cache driver: %v", err)
+		}
+
+		imgStore := local.NewImageStore(dir, true, true, logger, metrics, nil, cacheDriver, nil, nil)
+
+		return imgStore, &buf
+	}
+
+	digest := godigest.FromString("missing-blob")
+
+	t.Run("CheckBlob", func(t *testing.T) {
+		t.Parallel()
+
+		imgStore, buf := newImageStore(t)
+
+		found, size, err := imgStore.CheckBlob("repo", digest)
+		if !errors.Is(err, zerr.ErrBlobNotFound) {
+			t.Fatalf("expected ErrBlobNotFound, got %v", err)
+		}
+
+		if found {
+			t.Fatalf("expected missing blob to be absent")
+		}
+
+		if size != -1 {
+			t.Fatalf("expected missing blob size -1, got %d", size)
+		}
+
+		output := buf.String()
+		if strings.Contains(output, `"level":"error"`) {
+			t.Fatalf("expected missing blob check to avoid error logs, got %s", output)
+		}
+
+		if !strings.Contains(output, `"message":"cache miss for blob"`) {
+			t.Fatalf("expected debug cache-miss log, got %s", output)
+		}
+	})
+
+	t.Run("StatBlob", func(t *testing.T) {
+		t.Parallel()
+
+		imgStore, buf := newImageStore(t)
+
+		found, size, _, err := imgStore.StatBlob("repo", digest)
+		if !errors.Is(err, zerr.ErrBlobNotFound) {
+			t.Fatalf("expected ErrBlobNotFound, got %v", err)
+		}
+
+		if found {
+			t.Fatalf("expected missing blob to be absent")
+		}
+
+		if size != -1 {
+			t.Fatalf("expected missing blob size -1, got %d", size)
+		}
+
+		output := buf.String()
+		if strings.Contains(output, `"level":"error"`) {
+			t.Fatalf("expected missing blob stat to avoid error logs, got %s", output)
+		}
+
+		if !strings.Contains(output, `"message":"blob not found"`) {
+			t.Fatalf("expected debug missing-blob log, got %s", output)
+		}
+	})
+}
+
 func FuzzGetBlob(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data string) {
 		log := zlog.NewTestLoggerPtr()
