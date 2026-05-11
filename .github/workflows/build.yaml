@@ -33,10 +33,10 @@ jobs:
         with:
           cache: false
           check-latest: true
-          go-version: 1.25.x
+          go-version: 1.26.x
       - name: Cache go dependencies
         id: cache-go-dependencies
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             ~/go/pkg/mod
@@ -45,7 +45,7 @@ jobs:
             ${{ runner.os }}-go-mod-
       - name: Cache go build output
         id: cache-go-build
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             ~/.cache/go-build
@@ -117,7 +117,7 @@ jobs:
       packages: write
     steps:
       - name: Download Release Artifacts
-        uses: robinraju/release-downloader@daf26c55d821e836577a15f77d86ddc078948b05 # v1
+        uses: robinraju/release-downloader@28fc21f50d76778e7023361aa1f863e717d3d56f # v1
         with:
           tag: ${{ github.ref_name }}
           fileName: "z*"

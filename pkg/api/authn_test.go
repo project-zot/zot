@@ -1706,10 +1706,10 @@ func mockWorkloadOIDCServer(t *testing.T, pubKey *rsa.PublicKey) *httptest.Serve
 		// Calculate modulus and exponent for JWK
 		nBytes := pubKey.N.Bytes()
 		eBytes := make([]byte, 4)
-		eBytes[0] = byte(pubKey.E >> 24)
-		eBytes[1] = byte(pubKey.E >> 16)
-		eBytes[2] = byte(pubKey.E >> 8)
-		eBytes[3] = byte(pubKey.E)
+		eBytes[0] = byte(pubKey.E >> 24) //nolint: gosec
+		eBytes[1] = byte(pubKey.E >> 16) //nolint: gosec
+		eBytes[2] = byte(pubKey.E >> 8)  //nolint: gosec
+		eBytes[3] = byte(pubKey.E)       //nolint: gosec
 
 		// Trim leading zeros from exponent
 		for len(eBytes) > 1 && eBytes[0] == 0 {

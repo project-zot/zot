@@ -18,7 +18,7 @@ func GetTLSConfig(certsPath string, caCertPool *x509.CertPool) (*tls.Config, err
 		return nil, err
 	}
 
-	caCert, err := os.ReadFile(caCertFile)
+	caCert, err := os.ReadFile(caCertFile) //nolint:gosec // cert path is constrained to cert directories
 	if err != nil {
 		return nil, err
 	}

@@ -135,8 +135,14 @@ func newHTTPSProxyServer(target string) (*httpsProxyServer, error) {
 			targetURL += "?" + r.URL.RawQuery
 		}
 
-		// Create request to target
-		req, err := http.NewRequestWithContext(r.Context(), r.Method, targetURL, r.Body)
+		// Create request to target.
+		//nolint:gosec // proxy target is local test server
+		req, err := http.NewRequestWithContext(
+			r.Context(),
+			r.Method,
+			targetURL,
+			r.Body,
+		)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 
@@ -154,7 +160,7 @@ func newHTTPSProxyServer(target string) (*httpsProxyServer, error) {
 
 		// Make request
 		client := &http.Client{Timeout: 30 * time.Second}
-		resp, err := client.Do(req)
+		resp, err := client.Do(req) //nolint:gosec // request is sent to local test server
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadGateway)
 
@@ -204,12 +210,9 @@ func newHTTPSProxyServer(target string) (*httpsProxyServer, error) {
 }
 
 func (p *httpsProxyServer) Start() {
-	p.wg.Add(1) //nolint:modernize // standard sync.WaitGroup usage
-
-	go func() {
-		defer p.wg.Done()
+	p.wg.Go(func() {
 		_ = p.server.Serve(p.listener)
-	}()
+	})
 }
 
 func (p *httpsProxyServer) Stop() {
@@ -377,7 +380,13 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 
 	url := strings.TrimSuffix(endpoint, "/") + "/storage/v1/b?project=test-project"
 	body := fmt.Sprintf(`{"name": "%s"}`, bucket)
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, strings.NewReader(body))
+	//nolint:gosec // URL points to gcsmock endpoint in tests
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		url,
+		strings.NewReader(body),
+	)
 	if err != nil {
 		return nil, nil, err
 	}

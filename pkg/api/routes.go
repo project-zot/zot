@@ -2498,7 +2498,7 @@ func (rh *RouteHandler) GithubCodeExchangeCallback() rp.CodeExchangeCallback[*oi
 		}
 
 		if callbackUI != "" {
-			http.Redirect(w, r, callbackUI, http.StatusFound)
+			http.Redirect(w, r, callbackUI, http.StatusFound) //nolint: gosec
 
 			return
 		}
@@ -2554,7 +2554,7 @@ func (rh *RouteHandler) OpenIDCodeExchangeCallbackWithProvider(providerName stri
 		}
 
 		if callbackUI != "" {
-			http.Redirect(w, r, callbackUI, http.StatusFound)
+			http.Redirect(w, r, callbackUI, http.StatusFound) //nolint: gosec
 
 			return
 		}
@@ -2654,7 +2654,7 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 	return imgStore.GetImageManifest(name, reference)
 }
 
-type APIKeyPayload struct { //nolint:revive
+type APIKeyPayload struct { //nolint:revive,gosec
 	Label          string   `json:"label"`
 	Scopes         []string `json:"scopes"`
 	ExpirationDate string   `json:"expirationDate"`
@@ -2686,7 +2686,7 @@ func (rh *RouteHandler) GetAPIKeys(resp http.ResponseWriter, req *http.Request) 
 
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
 
-	data, err := json.Marshal(apiKeyResponse)
+	data, err := json.Marshal(apiKeyResponse) //nolint:gosec // API key is intentionally returned on creation
 	if err != nil {
 		rh.c.Log.Error().Err(err).Msg("failed to marshal api key response")
 
@@ -2795,7 +2795,7 @@ func (rh *RouteHandler) CreateAPIKey(resp http.ResponseWriter, req *http.Request
 
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
 
-	data, err := json.Marshal(apiKeyResponse)
+	data, err := json.Marshal(apiKeyResponse) //nolint:gosec // API key is intentionally returned on creation
 	if err != nil {
 		rh.c.Log.Error().Err(err).Msg("failed to marshal api key response")
 

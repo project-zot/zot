@@ -1202,12 +1202,20 @@ func TestS3Dedupe(t *testing.T) {
 		Convey("Check backward compatibility - switch dedupe to false", func() {
 			/* copy cache to the new storage with dedupe false (doing this because we
 			already have a cache object holding the lock on cache db file) */
-			input, err := os.ReadFile(path.Join(tdir, storageConstants.BoltdbName+storageConstants.DBExtensionName))
+			//nolint:gosec // test path is tempdir-scoped
+			input, err := os.ReadFile(path.Join(
+				tdir,
+				storageConstants.BoltdbName+storageConstants.DBExtensionName,
+			))
 			So(err, ShouldBeNil)
 
 			tdir = t.TempDir()
 
-			err = os.WriteFile(path.Join(tdir, storageConstants.BoltdbName+storageConstants.DBExtensionName), input, 0o600)
+			//nolint:gosec // test path is tempdir-scoped
+			err = os.WriteFile(path.Join(
+				tdir,
+				storageConstants.BoltdbName+storageConstants.DBExtensionName,
+			), input, 0o600)
 			So(err, ShouldBeNil)
 
 			storeDriver, imgStore, _ := createObjectsStore(testDir, tdir, false)
@@ -3626,7 +3634,11 @@ func TestS3DedupeErr(t *testing.T) {
 
 		tdir = t.TempDir()
 
-		err = os.WriteFile(path.Join(tdir, storageConstants.BoltdbName+storageConstants.DBExtensionName), input, 0o600)
+		//nolint:gosec // test path is tempdir-scoped
+		err = os.WriteFile(path.Join(
+			tdir,
+			storageConstants.BoltdbName+storageConstants.DBExtensionName,
+		), input, 0o600)
 		So(err, ShouldBeNil)
 
 		imgStore = createMockStorage(testDir, tdir, true, &mocks.StorageDriverMock{
@@ -3674,7 +3686,11 @@ func TestS3DedupeErr(t *testing.T) {
 
 		tdir = t.TempDir()
 
-		err = os.WriteFile(path.Join(tdir, storageConstants.BoltdbName+storageConstants.DBExtensionName), input, 0o600)
+		//nolint:gosec // test path is tempdir-scoped
+		err = os.WriteFile(path.Join(
+			tdir,
+			storageConstants.BoltdbName+storageConstants.DBExtensionName,
+		), input, 0o600)
 		So(err, ShouldBeNil)
 
 		imgStore = createMockStorage(testDir, tdir, true, &mocks.StorageDriverMock{

@@ -1572,6 +1572,7 @@ func (bdw *BoltDB) ToggleStarRepo(ctx context.Context, repo string) (mTypes.Togg
 			userData.StarredRepos = zcommon.RemoveFrom(userData.StarredRepos, repo)
 		} else {
 			res = mTypes.Added
+
 			userData.StarredRepos = append(userData.StarredRepos, repo)
 		}
 
@@ -1645,6 +1646,7 @@ func (bdw *BoltDB) ToggleBookmarkRepo(ctx context.Context, repo string) (mTypes.
 			userData.BookmarkedRepos = zcommon.RemoveFrom(userData.BookmarkedRepos, repo)
 		} else {
 			res = mTypes.Added
+
 			userData.BookmarkedRepos = append(userData.BookmarkedRepos, repo)
 		}
 

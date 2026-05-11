@@ -24,10 +24,10 @@ jobs:
         with:
           cache: false
           check-latest: true
-          go-version: 1.25.x
+          go-version: 1.26.x
       - name: Cache go dependencies
         id: cache-go-dependencies
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             ~/go/pkg/mod
@@ -50,7 +50,7 @@ jobs:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
       - name: upload coverage
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-minimal
           path: coverage-minimal.txt
@@ -66,10 +66,10 @@ jobs:
         with:
           cache: false
           check-latest: true
-          go-version: 1.25.x
+          go-version: 1.26.x
       - name: Cache go dependencies
         id: cache-go-dependencies
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             ~/go/pkg/mod
@@ -92,7 +92,7 @@ jobs:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
       - name: upload coverage
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-extended
           path: coverage-extended.txt
@@ -108,10 +108,10 @@ jobs:
         with:
           cache: false
           check-latest: true
-          go-version: 1.25.x
+          go-version: 1.26.x
       - name: Cache go dependencies
         id: cache-go-dependencies
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             ~/go/pkg/mod
@@ -126,7 +126,7 @@ jobs:
       - name: run zot development-mode unit tests (possibly using failure injection)
         run: make test-devmode
       - name: upload coverage
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-devmode
           path: coverage-dev-*.txt
@@ -141,10 +141,10 @@ jobs:
         with:
           cache: false
           check-latest: true
-          go-version: 1.25.x
+          go-version: 1.26.x
       - name: Cache go dependencies
         id: cache-go-dependencies
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             ~/go/pkg/mod
@@ -168,7 +168,7 @@ jobs:
           GCSMOCK_ENDPOINT: http://localhost:9000/
           STORAGE_EMULATOR_HOST: localhost:9000
       - name: upload coverage
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-needprivileges
           path: coverage-needprivileges-*.txt
@@ -186,7 +186,7 @@ jobs:
         with:
           cache: false
           check-latest: true
-          go-version: 1.25.x
+          go-version: 1.26.x
       - name: download all workflow coverage files
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       - name: merge code coverage
@@ -200,7 +200,7 @@ jobs:
           mkdir unified-coverage
           cp coverage.txt coverage.html unified-coverage/
       - name: upload unified-coverage as build artifact
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: unified-coverage
           path: unified-coverage/*

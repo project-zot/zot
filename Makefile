@@ -12,7 +12,7 @@ TOOLSDIR := $(shell pwd)/hack/tools
 PATH := bin:$(TOOLSDIR)/bin:$(PATH)
 STACKER := $(shell which stacker)
 GOLINTER := $(TOOLSDIR)/bin/golangci-lint
-GOLINTER_VERSION := v2.6.2
+GOLINTER_VERSION := v2.12.2
 NOTATION := $(TOOLSDIR)/bin/notation
 NOTATION_VERSION := 1.3.2
 COSIGN := $(TOOLSDIR)/bin/cosign
@@ -28,7 +28,7 @@ CRICTL_VERSION := v1.26.1
 ACTION_VALIDATOR := $(TOOLSDIR)/bin/action-validator
 ACTION_VALIDATOR_VERSION := v0.5.3
 ZUI_BUILD_PATH := ""
-ZUI_VERSION := commit-c90dd09
+ZUI_VERSION := commit-f6aa31b
 ZUI_REPO_OWNER := project-zot
 ZUI_REPO_NAME := zui
 SWAGGER_VERSION := v1.16.2
@@ -614,7 +614,7 @@ $(COSIGN):
 
 $(KIND): check-linux
 	mkdir -p $(TOOLSDIR)/bin; \
-	curl -fsSL curl -Lo ./kind https://kind.sigs.k8s.io/dl/$(KIND_VERSION)/kind-$(OS)-$(ARCH) -o $@; \
+	curl -fsSL https://kind.sigs.k8s.io/dl/$(KIND_VERSION)/kind-$(OS)-$(ARCH) -o $@; \
 	chmod +x $@
 
 # set ZUI_VERSION to empty string in order to clone zui locally and build default branch

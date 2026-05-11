@@ -74,7 +74,7 @@ func TestRedisOptions(t *testing.T) {
 			So(clientIntf, ShouldBeNil)
 
 			// Success
-			config = map[string]any{"url": "redis://user:password@localhost:6379/1?dial_timeout=5s"}
+			config = map[string]any{"url": "redis://user:password@localhost:6379/1?dial_timeout=5s"} //nolint: gosec
 
 			clientIntf, err = rediscfg.GetRedisClient(config, log)
 			So(err, ShouldBeNil)

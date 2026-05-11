@@ -75,7 +75,7 @@ func (amw *AuthnMiddleware) sessionAuthn(ctlr *Controller, userAc *reqCtx.UserAc
 	identity, ok := GetAuthUserFromRequestSession(ctlr.CookieStore, request, ctlr.Log)
 	if !ok {
 		// let the client know that this session is invalid/expired
-		cookie := &http.Cookie{
+		cookie := &http.Cookie{ //nolint: gosec
 			Name:    "session",
 			Value:   "",
 			Path:    "/",

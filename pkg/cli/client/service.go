@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -1411,7 +1412,7 @@ func (service *searchService) getRepos(ctx context.Context, config SearchConfig,
 	} else {
 		// Iterate in reverse order
 		repos := catalog.Repositories
-		for i := len(repos) - 1; i >= 0; i-- {
+		for i := range slices.Backward(repos) {
 			fmt.Fprintln(config.ResultWriter, repos[i])
 		}
 	}
