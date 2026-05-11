@@ -274,6 +274,9 @@ func (driver *Driver) SameFile(path1, path2 string) bool {
 	return os.SameFile(file1, file2)
 }
 
+// Link records a dedupe association between src and dest
+// in the filesystem by creating a hard link from src to dest.
+// This is used for deduplication of blobs in the local storage driver.
 func (driver *Driver) Link(src, dest string) error {
 	if err := os.Remove(dest); err != nil && !os.IsNotExist(err) {
 		return err

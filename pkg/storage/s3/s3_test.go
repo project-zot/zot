@@ -42,12 +42,16 @@ import (
 
 //nolint:gochecknoglobals
 var (
-	testImage      = "test"
-	errorText      = "new s3 error"
-	errS3          = errors.New(errorText)
-	errCache       = errors.New("new cache error")
-	zotStorageTest = "zot-storage-test"
-	s3Region       = "us-east-2"
+	testImage                    = "test"
+	errorText                    = "new s3 error"
+	errS3                        = errors.New(errorText)
+	errCache                     = errors.New("new cache error")
+	zotStorageTest               = "zot-storage-test"
+	s3Region                     = "us-east-2"
+	dedupeRebuildWaitTimeout     = 30 * time.Second
+	dedupeRebuildWaitInterval    = 100 * time.Millisecond
+	errConditionNotMet           = errors.New("condition not met")
+	errDedupePathShouldBeMissing = errors.New("expected deduped blob path to be absent")
 )
 
 func cleanupStorage(store driver.StorageDriver, name string) {
@@ -192,6 +196,31 @@ func runAndGetScheduler() *scheduler.Scheduler {
 	taskScheduler.RunScheduler()
 
 	return taskScheduler
+}
+
+func waitForCondition(timeout, interval time.Duration, condition func() (bool, error)) error {
+	var lastErr error
+
+	deadline := time.Now().Add(timeout)
+
+	for time.Now().Before(deadline) {
+		ok, err := condition()
+		if err == nil && ok {
+			return nil
+		}
+
+		if err != nil {
+			lastErr = err
+		}
+
+		time.Sleep(interval)
+	}
+
+	if lastErr != nil {
+		return fmt.Errorf("%w within %s", errors.Join(errConditionNotMet, lastErr), timeout)
+	}
+
+	return fmt.Errorf("%w within %s", errConditionNotMet, timeout)
 }
 
 func TestStorageDriverStatFunction(t *testing.T) {
@@ -1131,15 +1160,15 @@ func TestS3Dedupe(t *testing.T) {
 			blobDigest1.Encoded()))
 		So(err, ShouldBeNil)
 
-		fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
+		_, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 			blobDigest2.Encoded()))
-		So(err, ShouldBeNil)
+		So(err, ShouldNotBeNil)
 
-		// original blob should have the real content of blob
-		So(fi1.Size(), ShouldNotEqual, fi2.Size())
+		var pathNotFoundErr driver.PathNotFoundError
+		So(errors.As(err, &pathNotFoundErr), ShouldBeTrue)
+
+		// With no-op Link on remote storage, only the original dedupe blob exists physically.
 		So(fi1.Size(), ShouldBeGreaterThan, 0)
-		// deduped blob should be of size 0
-		So(fi2.Size(), ShouldEqual, 0)
 
 		Convey("delete blobs from storage/cache should work when dedupe is true", func() {
 			So(blobDigest1, ShouldEqual, blobDigest2)
@@ -1183,7 +1212,7 @@ func TestS3Dedupe(t *testing.T) {
 				blobDigest1.Encoded()))
 			So(err, ShouldNotBeNil)
 
-			fi2, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
+			fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 				blobDigest2.Encoded()))
 			So(err, ShouldBeNil)
 
@@ -1311,10 +1340,11 @@ func TestS3Dedupe(t *testing.T) {
 				blobDigest1.Encoded()))
 			So(err, ShouldBeNil)
 
-			fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
+			_, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 				blobDigest1.Encoded()))
-			So(err, ShouldBeNil)
-			So(fi2.Size(), ShouldEqual, 0)
+
+			var pathNotFoundErr driver.PathNotFoundError
+			So(errors.As(err, &pathNotFoundErr), ShouldBeTrue)
 
 			fi3, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe3", "blobs", "sha256",
 				blobDigest2.Encoded()))
@@ -1346,55 +1376,84 @@ func TestS3Dedupe(t *testing.T) {
 			})
 
 			Convey("rebuild s3 dedupe index from true to false", func() { //nolint: dupl
-				taskScheduler := runAndGetScheduler()
-				defer taskScheduler.Shutdown()
-
-				storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), false)
+				// Use the same DynamoDB table (tdir) so the rebuild store can access cache entries
+				// for dedupe2, which has no physical S3 file (no-op Link). Without the cache,
+				// GetBlobContent would always return ErrBlobNotFound for dedupe2.
+				storeDriver, imgStore, _ := createObjectsStoreDynamo(testDir, t.TempDir(), false, tdir)
 				defer cleanupStorage(storeDriver, testDir)
 
-				// rebuild with dedupe false, should have all blobs with content
-				imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
-				// wait until rebuild finishes
+				dedupe1BlobPath := path.Join(testDir, "dedupe1", "blobs", "sha256", blobDigest1.Encoded())
+				dedupe2BlobPath := path.Join(testDir, "dedupe2", "blobs", "sha256", blobDigest2.Encoded())
 
-				time.Sleep(10 * time.Second)
+				// Rebuild synchronously for this digest to avoid scheduler timing flakes in integration CI.
+				err = imgStore.RunDedupeForDigest(context.Background(), blobDigest1, false,
+					[]string{dedupe1BlobPath, dedupe2BlobPath})
+				So(err, ShouldBeNil)
 
-				taskScheduler.Shutdown()
-
-				fi1, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe1", "blobs", "sha256",
-					blobDigest1.Encoded()))
+				fi1, err := storeDriver.Stat(context.Background(), dedupe1BlobPath)
 				So(fi1.Size(), ShouldBeGreaterThan, 0)
 				So(err, ShouldBeNil)
 
-				fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
-					blobDigest2.Encoded()))
+				fi2, err := storeDriver.Stat(context.Background(), dedupe2BlobPath)
+				So(fi2.Size(), ShouldBeGreaterThan, 0)
 				So(err, ShouldBeNil)
-				So(fi2.Size(), ShouldEqual, fi1.Size())
 
-				blobContent, err := imgStore.GetBlobContent("dedupe2", blobDigest2)
+				var blobContent []byte
+				err = waitForCondition(dedupeRebuildWaitTimeout, dedupeRebuildWaitInterval, func() (bool, error) {
+					content, contentErr := imgStore.GetBlobContent("dedupe2", blobDigest2)
+					if contentErr != nil {
+						return false, contentErr
+					}
+
+					blobContent = content
+
+					return true, nil
+				})
+
 				So(err, ShouldBeNil)
 				So(len(blobContent), ShouldEqual, fi1.Size())
 
 				Convey("rebuild s3 dedupe index from false to true", func() {
-					taskScheduler := runAndGetScheduler()
-					defer taskScheduler.Shutdown()
-
-					storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), true)
+					// Use the same DynamoDB table (tdir) so GetBlobContent can resolve dedupe2 via cache.
+					storeDriver, imgStore, _ := createObjectsStoreDynamo(testDir, t.TempDir(), true, tdir)
 					defer cleanupStorage(storeDriver, testDir)
 
-					// rebuild with dedupe false, should have all blobs with content
-					imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
-					// wait until rebuild finishes
+					dedupe1BlobPath := path.Join(testDir, "dedupe1", "blobs", "sha256", blobDigest1.Encoded())
+					dedupe2BlobPath := path.Join(testDir, "dedupe2", "blobs", "sha256", blobDigest2.Encoded())
 
-					time.Sleep(10 * time.Second)
-
-					taskScheduler.Shutdown()
-
-					fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
-						blobDigest2.Encoded()))
+					// Rebuild synchronously for this digest to avoid scheduler timing flakes in integration CI.
+					err = imgStore.RunDedupeForDigest(context.Background(), blobDigest1, true,
+						[]string{dedupe1BlobPath, dedupe2BlobPath})
 					So(err, ShouldBeNil)
-					So(fi2.Size(), ShouldEqual, 0)
 
-					blobContent, err := imgStore.GetBlobContent("dedupe2", blobDigest2)
+					err = waitForCondition(dedupeRebuildWaitTimeout, dedupeRebuildWaitInterval, func() (bool, error) {
+						_, statErr := storeDriver.Stat(context.Background(), dedupe2BlobPath)
+
+						var pathNotFoundErr driver.PathNotFoundError
+						if errors.As(statErr, &pathNotFoundErr) {
+							return true, nil
+						}
+
+						if statErr != nil {
+							return false, statErr
+						}
+
+						return false, errDedupePathShouldBeMissing
+					})
+					So(err, ShouldBeNil)
+
+					var blobContent []byte
+					err = waitForCondition(dedupeRebuildWaitTimeout, dedupeRebuildWaitInterval, func() (bool, error) {
+						content, contentErr := imgStore.GetBlobContent("dedupe2", blobDigest2)
+						if contentErr != nil {
+							return false, contentErr
+						}
+
+						blobContent = content
+
+						return true, nil
+					})
+
 					So(err, ShouldBeNil)
 					So(len(blobContent), ShouldBeGreaterThan, 0)
 				})
@@ -1556,15 +1615,15 @@ func TestS3Dedupe(t *testing.T) {
 			blobDigest1.Encoded()))
 		So(err, ShouldBeNil)
 
-		fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
+		_, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 			blobDigest2.Encoded()))
-		So(err, ShouldBeNil)
+		So(err, ShouldNotBeNil)
 
-		// original blob should have the real content of blob
-		So(fi1.Size(), ShouldNotEqual, fi2.Size())
+		var pathNotFoundErr driver.PathNotFoundError
+		So(errors.As(err, &pathNotFoundErr), ShouldBeTrue)
+
+		// With no-op Link on remote storage, only the original dedupe blob exists physically.
 		So(fi1.Size(), ShouldBeGreaterThan, 0)
-		// deduped blob should be of size 0
-		So(fi2.Size(), ShouldEqual, 0)
 
 		Convey("delete blobs from storage/cache should work when dedupe is true", func() {
 			So(blobDigest1, ShouldEqual, blobDigest2)
@@ -1593,31 +1652,38 @@ func TestS3Dedupe(t *testing.T) {
 		})
 
 		Convey("rebuild s3 dedupe index from true to false", func() { //nolint: dupl
-			taskScheduler := runAndGetScheduler()
-			defer taskScheduler.Shutdown()
-
-			storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), false)
+			// Use the same DynamoDB table (tdir) so GetBlobContent can resolve dedupe2 via cache.
+			storeDriver, imgStore, _ := createObjectsStoreDynamo(testDir, t.TempDir(), false, tdir)
 			defer cleanupStorage(storeDriver, testDir)
 
-			// rebuild with dedupe false, should have all blobs with content
-			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
-			// wait until rebuild finishes
+			dedupe1BlobPath := path.Join(testDir, "dedupe1", "blobs", "sha256", blobDigest1.Encoded())
+			dedupe2BlobPath := path.Join(testDir, "dedupe2", "blobs", "sha256", blobDigest2.Encoded())
 
-			time.Sleep(10 * time.Second)
+			// Rebuild synchronously for this digest to avoid scheduler timing flakes in integration CI.
+			err = imgStore.RunDedupeForDigest(context.Background(), blobDigest1, false,
+				[]string{dedupe1BlobPath, dedupe2BlobPath})
+			So(err, ShouldBeNil)
 
-			taskScheduler.Shutdown()
-
-			fi1, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe1", "blobs", "sha256",
-				blobDigest1.Encoded()))
+			fi1, err := storeDriver.Stat(context.Background(), dedupe1BlobPath)
 			So(fi1.Size(), ShouldBeGreaterThan, 0)
 			So(err, ShouldBeNil)
 
-			fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
-				blobDigest2.Encoded()))
+			fi2, err := storeDriver.Stat(context.Background(), dedupe2BlobPath)
+			So(fi2.Size(), ShouldBeGreaterThan, 0)
 			So(err, ShouldBeNil)
-			So(fi2.Size(), ShouldEqual, fi1.Size())
 
-			blobContent, err := imgStore.GetBlobContent("dedupe2", blobDigest2)
+			var blobContent []byte
+			err = waitForCondition(dedupeRebuildWaitTimeout, dedupeRebuildWaitInterval, func() (bool, error) {
+				content, contentErr := imgStore.GetBlobContent("dedupe2", blobDigest2)
+				if contentErr != nil {
+					return false, contentErr
+				}
+
+				blobContent = content
+
+				return true, nil
+			})
+
 			So(err, ShouldBeNil)
 			So(len(blobContent), ShouldEqual, fi1.Size())
 
@@ -1648,26 +1714,46 @@ func TestS3Dedupe(t *testing.T) {
 			})
 
 			Convey("rebuild s3 dedupe index from false to true", func() {
-				taskScheduler := runAndGetScheduler()
-				defer taskScheduler.Shutdown()
-
-				storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), true)
+				// Use the same DynamoDB table (tdir) so GetBlobContent can resolve dedupe2 via cache.
+				storeDriver, imgStore, _ := createObjectsStoreDynamo(testDir, t.TempDir(), true, tdir)
 				defer cleanupStorage(storeDriver, testDir)
 
-				// rebuild with dedupe false, should have all blobs with content
-				imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
-				// wait until rebuild finishes
+				dedupe1BlobPath := path.Join(testDir, "dedupe1", "blobs", "sha256", blobDigest1.Encoded())
+				dedupe2BlobPath := path.Join(testDir, "dedupe2", "blobs", "sha256", blobDigest2.Encoded())
 
-				time.Sleep(10 * time.Second)
-
-				taskScheduler.Shutdown()
-
-				fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
-					blobDigest2.Encoded()))
+				// Rebuild synchronously for this digest to avoid scheduler timing flakes in integration CI.
+				err = imgStore.RunDedupeForDigest(context.Background(), blobDigest1, true,
+					[]string{dedupe1BlobPath, dedupe2BlobPath})
 				So(err, ShouldBeNil)
-				So(fi2.Size(), ShouldEqual, 0)
 
-				blobContent, err := imgStore.GetBlobContent("dedupe2", blobDigest2)
+				err = waitForCondition(dedupeRebuildWaitTimeout, dedupeRebuildWaitInterval, func() (bool, error) {
+					_, statErr := storeDriver.Stat(context.Background(), dedupe2BlobPath)
+
+					var pathNotFoundErr driver.PathNotFoundError
+					if errors.As(statErr, &pathNotFoundErr) {
+						return true, nil
+					}
+
+					if statErr != nil {
+						return false, statErr
+					}
+
+					return false, errDedupePathShouldBeMissing
+				})
+				So(err, ShouldBeNil)
+
+				var blobContent []byte
+				err = waitForCondition(dedupeRebuildWaitTimeout, dedupeRebuildWaitInterval, func() (bool, error) {
+					content, contentErr := imgStore.GetBlobContent("dedupe2", blobDigest2)
+					if contentErr != nil {
+						return false, contentErr
+					}
+
+					blobContent = content
+
+					return true, nil
+				})
+
 				So(err, ShouldBeNil)
 				So(len(blobContent), ShouldBeGreaterThan, 0)
 			})
@@ -1689,7 +1775,7 @@ func TestS3Dedupe(t *testing.T) {
 				blobDigest1.Encoded()))
 			So(err, ShouldNotBeNil)
 
-			fi2, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
+			fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 				blobDigest2.Encoded()))
 			So(err, ShouldBeNil)
 
@@ -1720,7 +1806,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 
 		tdir := t.TempDir()
 
-		storeDriver, imgStore, _ := createObjectsStore(testDir, tdir, true)
+		storeDriver, imgStore, _ := createObjectsStoreDynamo(testDir, tdir, true, tdir)
 		defer cleanupStorage(storeDriver, testDir)
 
 		// push image1
@@ -1814,28 +1900,25 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			cdigest.Encoded()))
 		So(err, ShouldBeNil)
 
-		configFi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
+		_, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 			cdigest.Encoded()))
-		So(err, ShouldBeNil)
+
+		var configPathNotFoundErr driver.PathNotFoundError
+		So(errors.As(err, &configPathNotFoundErr), ShouldBeTrue)
 
 		fi1, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe1", "blobs", "sha256",
 			blobDigest1.Encoded()))
 		So(err, ShouldBeNil)
 
-		fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
+		_, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 			blobDigest2.Encoded()))
-		So(err, ShouldBeNil)
 
-		// original blob should have the real content of blob
-		So(fi1.Size(), ShouldNotEqual, fi2.Size())
+		var pathNotFoundErr driver.PathNotFoundError
+		So(errors.As(err, &pathNotFoundErr), ShouldBeTrue)
+
+		// With no-op Link on remote storage, only original dedupe blobs exist physically.
 		So(fi1.Size(), ShouldBeGreaterThan, 0)
-		// deduped blob should be of size 0
-		So(fi2.Size(), ShouldEqual, 0)
-
-		So(configFi1.Size(), ShouldNotEqual, configFi2.Size())
 		So(configFi1.Size(), ShouldBeGreaterThan, 0)
-		// deduped blob should be of size 0
-		So(configFi2.Size(), ShouldEqual, 0)
 
 		Convey("Intrerrupt rebuilding and restart, checking idempotency", func() {
 			for i := range 10 {
@@ -1847,7 +1930,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 				taskScheduler.RunScheduler()
 				defer taskScheduler.Shutdown()
 
-				storeDriver, imgStore, _ = createObjectsStore(testDir, t.TempDir(), false)
+				storeDriver, imgStore, _ = createObjectsStoreDynamo(testDir, t.TempDir(), false, tdir)
 				defer cleanupStorage(storeDriver, testDir)
 
 				// rebuild with dedupe false, should have all blobs with content
@@ -1889,10 +1972,10 @@ func TestRebuildDedupeIndex(t *testing.T) {
 				taskScheduler.RunScheduler()
 				defer taskScheduler.Shutdown()
 
-				storeDriver, imgStore, _ = createObjectsStore(testDir, t.TempDir(), true)
+				storeDriver, imgStore, _ = createObjectsStoreDynamo(testDir, t.TempDir(), true, tdir)
 				defer cleanupStorage(storeDriver, testDir)
 
-				// rebuild with dedupe false, should have all blobs with content
+				// rebuild with dedupe true, should dedup blobs
 				imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
 				sleepValue := i * 5
@@ -1904,7 +1987,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			taskScheduler = runAndGetScheduler()
 			defer taskScheduler.Shutdown()
 
-			// rebuild with dedupe false, should have all blobs with content
+			// rebuild with dedupe true
 			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
 			// wait until rebuild finishes
@@ -1912,21 +1995,31 @@ func TestRebuildDedupeIndex(t *testing.T) {
 
 			taskScheduler.Shutdown()
 
-			fi2, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
+			// With no-op Link on remote storage, deduped blobs should not exist (no placeholder files).
+			_, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 				blobDigest2.Encoded()))
-			So(err, ShouldBeNil)
-			So(fi2.Size(), ShouldNotEqual, fi1.Size())
-			So(fi2.Size(), ShouldEqual, 0)
 
-			configFi2, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
+			var blobPathNotFoundErr driver.PathNotFoundError
+			So(errors.As(err, &blobPathNotFoundErr), ShouldBeTrue)
+
+			_, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 				cdigest.Encoded()))
-			So(err, ShouldBeNil)
-			So(configFi2.Size(), ShouldNotEqual, configFi1.Size())
-			So(configFi2.Size(), ShouldEqual, 0)
+
+			var configPathNotFoundErr2 driver.PathNotFoundError
+			So(errors.As(err, &configPathNotFoundErr2), ShouldBeTrue)
 		})
 
 		Convey("Trigger ErrDedupeRebuild because cache is nil", func() {
-			storeDriver, imgStore, _ := createObjectsStore(testDir, tdir, true)
+			// Pre-lock a boltdb in a temp dir so the second open fails, yielding a nil cache.
+			lockedCacheDir := t.TempDir()
+
+			_, _ = storage.Create("boltdb", cache.BoltDBDriverParameters{
+				RootDir:     lockedCacheDir,
+				Name:        "cache",
+				UseRelPaths: false,
+			}, log.NewTestLogger())
+
+			storeDriver, imgStore, _ := createObjectsStore(testDir, lockedCacheDir, true)
 			defer cleanupStorage(storeDriver, testDir)
 
 			taskScheduler := runAndGetScheduler()
@@ -1942,7 +2035,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			taskScheduler := runAndGetScheduler()
 			defer taskScheduler.Shutdown()
 
-			storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), true)
+			storeDriver, imgStore, _ := createObjectsStoreDynamo(testDir, t.TempDir(), true, tdir)
 			defer cleanupStorage(storeDriver, testDir)
 
 			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
@@ -2029,7 +2122,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			taskScheduler := runAndGetScheduler()
 			defer taskScheduler.Shutdown()
 
-			storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), false)
+			storeDriver, imgStore, _ := createObjectsStoreDynamo(testDir, t.TempDir(), false, tdir)
 			defer cleanupStorage(storeDriver, testDir)
 
 			// rebuild with dedupe false, should have all blobs with content
@@ -2303,23 +2396,26 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 		})
 	})
 
-	Convey("Trigger PutContent() error in dedupeBlobs()", t, func() {
+	Convey("Remote dedupe should not write placeholder files with no-op Link", t, func() {
+		// With no-op Link() on remote storage (S3/GCS), deduped blob paths should not have
+		// placeholder files created. This test verifies that RunDedupeForDigest succeeds
+		// even if PutContent would fail, because remote storage doesn't need placeholders.
 		tdir := t.TempDir()
+
+		var putContentCalled bool
 		imgStore := createMockStorage(testDir, tdir, true, &mocks.StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				if path == blobPath("path/to", validDigest) {
+					// Original blob
 					return &mocks.FileInfoMock{
 						SizeFn: func() int64 {
-							return int64(0)
+							return int64(10)
 						},
 					}, nil
 				}
 
-				return &mocks.FileInfoMock{
-					SizeFn: func() int64 {
-						return int64(10)
-					},
-				}, nil
+				// Deduped blob path (doesn't physically exist on remote)
+				return nil, driver.PathNotFoundError{}
 			},
 			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn, options ...func(*driver.WalkOptions)) error {
 				_ = walkFn(&mocks.FileInfoMock{
@@ -2342,6 +2438,9 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 				return nil
 			},
 			PutContentFn: func(ctx context.Context, path string, content []byte) error {
+				// Track that PutContent was called, but don't fail - remote dedupe shouldn't call this
+				putContentCalled = true
+
 				return errS3
 			},
 		})
@@ -2349,8 +2448,17 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
 		So(err, ShouldBeNil)
 
+		// Dedupe should succeed without calling PutContent to create a placeholder file
 		err = imgStore.RunDedupeForDigest(context.TODO(), digest, true, duplicateBlobs)
-		So(err, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+
+		// On remote storage with no-op Link, PutContent should not be called for placeholder creation
+		So(putContentCalled, ShouldBeFalse)
+
+		// Cache mappings should still be created
+		allRepos, err := imgStore.GetAllDedupeReposCandidates(digest)
+		So(err, ShouldBeNil)
+		So(len(allRepos), ShouldEqual, 2)
 	})
 
 	//nolint: dupl

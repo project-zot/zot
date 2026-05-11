@@ -5,10 +5,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"path"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -65,6 +65,17 @@ func (is *ImageStore) RootDir() string {
 
 func (is *ImageStore) DirExists(d string) bool {
 	return is.storeDriver.DirExists(d)
+}
+
+// isCacheConfigured returns true if a cache driver is configured.
+func (is *ImageStore) isCacheConfigured() bool {
+	if is.cache == nil {
+		return false
+	}
+
+	v := reflect.ValueOf(is.cache)
+
+	return !(v.Kind() == reflect.Ptr && v.IsNil())
 }
 
 // NewImageStore returns a new image store backed by cloud storages.
@@ -1125,7 +1136,7 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 	is.Lock(&lockLatency)
 	defer is.Unlock(&lockLatency)
 
-	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+	if is.dedupe && is.isCacheConfigured() {
 		err = is.DedupeBlob(src, dstDigest, repo, dst)
 		if err := inject.Error(err); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
@@ -1221,7 +1232,7 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, dstDigest godi
 
 	dst := is.BlobPath(repo, dstDigest)
 
-	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+	if is.dedupe && is.isCacheConfigured() {
 		if err := is.DedupeBlob(src, dstDigest, repo, dst); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
 				Str("dst", dst).Msg("failed to dedupe blob")
@@ -1379,7 +1390,7 @@ func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]str
 		return nil, err
 	}
 
-	if is.cache == nil {
+	if !is.isCacheConfigured() {
 		return nil, nil //nolint:nilnil
 	}
 
@@ -1419,7 +1430,7 @@ func (is *ImageStore) CheckBlob(repo string, digest godigest.Digest) (bool, int6
 
 	blobPath := is.BlobPath(repo, digest)
 
-	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+	if is.dedupe && is.isCacheConfigured() {
 		is.Lock(&lockLatency)
 		defer is.Unlock(&lockLatency)
 	} else {
@@ -1444,7 +1455,7 @@ func (is *ImageStore) CheckBlob(repo string, digest godigest.Digest) (bool, int6
 			return false, -1, zerr.ErrBlobNotFound
 		}
 	}
-	// otherwise is a 'deduped' blob (empty file)
+	// otherwise is a 'deduped' blob (empty file or non-existent for remote storage)
 
 	// Check blobs in cache
 	dstRecord, err := is.checkCacheBlob(digest)
@@ -1493,37 +1504,43 @@ func (is *ImageStore) checkCacheBlob(digest godigest.Digest) (string, error) {
 		return "", err
 	}
 
-	if fmt.Sprintf("%v", is.cache) == fmt.Sprintf("%v", nil) {
+	if !is.isCacheConfigured() {
 		return "", zerr.ErrBlobNotFound
 	}
 
-	dstRecord, err := is.cache.GetBlob(digest)
+	dstRecords, err := is.cache.GetAllBlobs(digest)
 	if err != nil {
 		return "", err
 	}
 
-	if is.cache.UsesRelativePaths() {
-		dstRecord = path.Join(is.rootDir, dstRecord)
-	}
-
-	if _, err := is.storeDriver.Stat(dstRecord); err != nil {
-		is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to stat blob")
-
-		// the actual blob on disk may have been removed by GC, so sync the cache
-		if err := is.cache.DeleteBlob(digest, dstRecord); err != nil {
-			is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", dstRecord).
-				Msg("failed to remove blob path from cache")
-
-			return "", err
+	for _, record := range dstRecords {
+		dstRecord := record
+		if is.cache.UsesRelativePaths() {
+			dstRecord = path.Join(is.rootDir, dstRecord)
 		}
 
-		return "", zerr.ErrBlobNotFound
+		if _, err := is.storeDriver.Stat(dstRecord); err == nil {
+			is.log.Debug().Str("digest", digest.String()).Str("dstRecord", dstRecord).Str("component", "cache").
+				Msg("found dedupe record")
+
+			return dstRecord, nil
+		} else {
+			is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to stat blob")
+
+			// On local storage a missing cached path is stale and should be removed.
+			// On remote storage deduped paths may be intentionally absent.
+			if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
+				if err := is.cache.DeleteBlob(digest, dstRecord); err != nil {
+					is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", dstRecord).
+						Msg("failed to remove blob path from cache")
+
+					return "", err
+				}
+			}
+		}
 	}
 
-	is.log.Debug().Str("digest", digest.String()).Str("dstRecord", dstRecord).Str("component", "cache").
-		Msg("found dedupe record")
-
-	return dstRecord, nil
+	return "", zerr.ErrBlobNotFound
 }
 
 func (is *ImageStore) copyBlob(repo string, blobPath, dstRecord string) (int64, error) {
@@ -1594,36 +1611,68 @@ func (is *ImageStore) GetBlobPartial(repo string, digest godigest.Digest, mediaT
 }
 
 /*
-	In the case of s3(which doesn't support links) we link them in our cache by
-	keeping a reference to the original blob and its duplicates
-
-On the storage, original blobs are those with contents, and duplicates one are just empty files.
-This function helps handling this situation, by using this one you can make sure you always get the original blob.
+In the case of remote storage (s3, gcs, etc., which don't support symlinks) we deduplicate
+blobs by keeping a reference to the original blob in the cache, without creating any
+placeholder file for duplicates. On the storage, original blobs are those with contents;
+deduplicated blobs are simply absent.
+This function helps handling this situation: if the blob is an empty file
+(legacy placeholder), or if it is not found on remote storage, it looks up the
+cache to retrieve the original blob.
 */
 func (is *ImageStore) originalBlobInfo(repo string, digest godigest.Digest) (driver.FileInfo, error) {
 	blobPath := is.BlobPath(repo, digest)
 
 	binfo, err := is.storeDriver.Stat(blobPath)
+	if err == nil && binfo.Size() > 0 {
+		return binfo, nil
+	}
+
 	if err != nil {
-		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
+		// On local storage, any stat error (including permission denied) is treated as not found.
+		// This preserves original behavior and allows GC to proceed gracefully.
+		if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
+			is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
+
+			return nil, zerr.ErrBlobNotFound
+		}
+
+		// For remote storage, only PathNotFoundError means the blob may be a cache-backed deduped path;
+		// other errors (network, auth) are propagated so callers can distinguish real failures.
+		var pathNotFoundErr driver.PathNotFoundError
+		if !errors.As(err, &pathNotFoundErr) {
+			is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
+
+			return nil, err
+		}
+
+		// PathNotFoundError on remote is expected for deduped blobs with no placeholder file.
+		is.log.Debug().Err(err).Str("blob", blobPath).Msg("blob path not found on remote storage, checking cache")
+	}
+
+	if !is.isCacheConfigured() {
+		return nil, zerr.ErrBlobNotFound
+	}
+
+	if !is.cache.HasBlob(digest, blobPath) {
+		is.log.Debug().Str("digest", digest.String()).Str("blob", blobPath).Msg("blob path not found in cache")
 
 		return nil, zerr.ErrBlobNotFound
 	}
 
-	if binfo.Size() == 0 {
-		dstRecord, err := is.checkCacheBlob(digest)
-		if err != nil {
-			is.log.Debug().Err(err).Str("digest", digest.String()).Msg("not found in cache")
+	// For remote storage, a deduped blob path may not exist at all (no placeholder file).
+	// For legacy data, the deduped blob can be an empty file. In both cases, check cache.
+	dstRecord, err := is.checkCacheBlob(digest)
+	if err != nil {
+		is.log.Debug().Err(err).Str("digest", digest.String()).Msg("not found in cache")
 
-			return nil, zerr.ErrBlobNotFound
-		}
+		return nil, zerr.ErrBlobNotFound
+	}
 
-		binfo, err = is.storeDriver.Stat(dstRecord)
-		if err != nil {
-			is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to stat blob")
+	binfo, err = is.storeDriver.Stat(dstRecord)
+	if err != nil {
+		is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to stat blob")
 
-			return nil, zerr.ErrBlobNotFound
-		}
+		return nil, zerr.ErrBlobNotFound
 	}
 
 	return binfo, nil
@@ -1875,12 +1924,42 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 
 func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 	blobPath := is.BlobPath(repo, digest)
+	blobPathMissing := false
 
 	_, err := is.storeDriver.Stat(blobPath)
 	if err != nil {
-		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
+		var pathNotFoundErr driver.PathNotFoundError
+		if !errors.As(err, &pathNotFoundErr) {
+			is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
 
-		return zerr.ErrBlobNotFound
+			return err
+		}
+
+		if is.storeDriver.Name() == storageConstants.LocalStorageDriverName ||
+			!is.isCacheConfigured() {
+			is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
+
+			return zerr.ErrBlobNotFound
+		}
+
+		if !is.cache.HasBlob(digest, blobPath) {
+			// If the digest still exists in cache, this path was likely already cleaned up;
+			// treat delete as idempotent for remote deduped storage.
+			if _, cacheErr := is.cache.GetBlob(digest); errors.Is(cacheErr, zerr.ErrCacheMiss) {
+				is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
+
+				return zerr.ErrBlobNotFound
+			} else if cacheErr != nil {
+				is.log.Error().Err(cacheErr).Str("blob", blobPath).Str("component", "dedupe").
+					Msg("failed to lookup blob record")
+
+				return cacheErr
+			}
+		}
+
+		// For remote deduped blobs we no longer create placeholder files, so a missing
+		// blob path can still be valid if the cache contains a mapping for this path.
+		blobPathMissing = true
 	}
 
 	// first check if this blob is not currently in use
@@ -1888,60 +1967,19 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 		return zerr.ErrBlobReferenced
 	}
 
-	if fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
-		dstRecord, err := is.cache.GetBlob(digest)
-		if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
-			is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
-				Msg("failed to lookup blob record")
-
+	if is.isCacheConfigured() {
+		blobMoved, err := is.cleanupBlobCacheAndMoveContent(blobPath, digest)
+		if err != nil {
 			return err
 		}
 
-		// remove cache entry and move blob contents to the next candidate if there is any
-		if ok := is.cache.HasBlob(digest, blobPath); ok {
-			if err := is.cache.DeleteBlob(digest, blobPath); err != nil {
-				is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", blobPath).
-					Msg("failed to remove blob path from cache")
-
-				return err
-			}
+		if blobMoved {
+			return nil
 		}
+	}
 
-		// if the deleted blob is one with content
-		if dstRecord == blobPath {
-			// get next candidate
-			dstRecord, err := is.cache.GetBlob(digest)
-			if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
-				is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
-					Msg("failed to lookup blob record")
-
-				return err
-			}
-
-			// if we have a new candidate move the blob content to it
-			if dstRecord != "" {
-				/* check to see if we need to move the content from original blob to duplicate one
-				(in case of filesystem, this should not be needed */
-				binfo, err := is.storeDriver.Stat(dstRecord)
-				if err != nil {
-					is.log.Error().Err(err).Str("path", blobPath).Str("component", "dedupe").
-						Msg("failed to stat blob")
-
-					return err
-				}
-
-				if binfo.Size() == 0 {
-					if err := is.storeDriver.Move(blobPath, dstRecord); err != nil {
-						is.log.Error().Err(err).Str("blobPath", blobPath).Str("component", "dedupe").
-							Msg("failed to remove blob path")
-
-						return err
-					}
-				}
-
-				return nil
-			}
-		}
+	if blobPathMissing {
+		return nil
 	}
 
 	if err := is.storeDriver.Delete(blobPath); err != nil {
@@ -1951,6 +1989,98 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 	}
 
 	return nil
+}
+
+func (is *ImageStore) cleanupBlobCacheAndMoveContent(blobPath string, digest godigest.Digest) (bool, error) {
+	dstRecord, err := is.cache.GetBlob(digest)
+	if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+		is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
+			Msg("failed to lookup blob record")
+
+		return false, err
+	}
+
+	// remove cache entry and move blob contents to the next candidate if there is any
+	if ok := is.cache.HasBlob(digest, blobPath); ok {
+		if err := is.cache.DeleteBlob(digest, blobPath); err != nil {
+			is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", blobPath).
+				Msg("failed to remove blob path from cache")
+
+			return false, err
+		}
+	}
+
+	// if the deleted blob is one with content, promote the next cache candidate
+	if dstRecord != blobPath {
+		return false, nil
+	}
+
+	// get next candidate
+	nextCandidate, err := is.cache.GetBlob(digest)
+	if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+		is.log.Error().Err(err).Str("blobPath", nextCandidate).Str("component", "dedupe").
+			Msg("failed to lookup blob record")
+
+		return false, err
+	}
+
+	if nextCandidate == "" {
+		return false, nil
+	}
+
+	moved, err := is.moveBlobContentToNewPrimary(blobPath, nextCandidate)
+	if err != nil {
+		return false, err
+	}
+
+	return moved, nil
+}
+
+/*
+moveBlobContentToNewPrimary determines whether the blob data needs to be moved
+from the original blobPath to the new primary dstRecord.
+For local filesystem backends, Link creates a hardlink so all candidates share
+the same underlying file, and no Move is usually required when changing the
+primary.
+For remote backends where Link is a no-op that only records metadata, the next
+candidate may be a placeholder with no physical content. In that case we must
+Move the data from blobPath to dstRecord when promoting the new primary.
+*/
+func (is *ImageStore) moveBlobContentToNewPrimary(blobPath, dstRecord string) (bool, error) {
+	binfo, err := is.storeDriver.Stat(dstRecord)
+	if err != nil {
+		var pathNotFoundErr driver.PathNotFoundError
+		if !errors.As(err, &pathNotFoundErr) {
+			is.log.Error().Err(err).Str("path", dstRecord).Str("component", "dedupe").
+				Msg("failed to stat blob")
+
+			return false, err
+		}
+
+		// For remote storage with no-op Link, the next candidate has no physical file;
+		// move content from the blob being deleted to establish the new primary.
+		if err := is.storeDriver.Move(blobPath, dstRecord); err != nil {
+			is.log.Error().Err(err).Str("blobPath", blobPath).Str("dstRecord", dstRecord).
+				Str("component", "dedupe").Msg("failed to move blob content to new primary")
+
+			return false, err
+		}
+
+		return true, nil
+	}
+
+	if binfo.Size() != 0 {
+		return false, nil
+	}
+
+	if err := is.storeDriver.Move(blobPath, dstRecord); err != nil {
+		is.log.Error().Err(err).Str("blobPath", blobPath).Str("dstRecord", dstRecord).
+			Str("component", "dedupe").Msg("failed to move blob content to new primary")
+
+		return false, err
+	}
+
+	return true, nil
 }
 
 func getBlobDigest(imgStore *ImageStore, path string, digestAlgorithm godigest.Algorithm,
@@ -2100,6 +2230,26 @@ func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []g
 		return digest, duplicateBlobs, nil
 	}
 
+	// On remote storage with no-op Link, deduped blob paths may not exist on the filesystem.
+	// Augment the discovered paths with those recorded in the cache so that rebuild operations
+	// (dedupe / restore) see all blob copies, not just the physical original.
+	if err == nil && digest != "" && is.isCacheConfigured() &&
+		is.storeDriver.Name() != storageConstants.LocalStorageDriverName {
+		cachedPaths, cacheErr := is.cache.GetAllBlobs(digest)
+		if cacheErr == nil {
+			for _, cachedPath := range cachedPaths {
+				fullPath := cachedPath
+				if is.cache.UsesRelativePaths() {
+					fullPath = path.Join(is.rootDir, cachedPath)
+				}
+
+				if !slices.Contains(duplicateBlobs, fullPath) {
+					duplicateBlobs = append(duplicateBlobs, fullPath)
+				}
+			}
+		}
+	}
+
 	return digest, duplicateBlobs, err
 }
 
@@ -2107,6 +2257,12 @@ func (is *ImageStore) getOriginalBlobFromDisk(duplicateBlobs []string) (string, 
 	for _, blobPath := range duplicateBlobs {
 		binfo, err := is.storeDriver.Stat(blobPath)
 		if err != nil {
+			var pathNotFoundErr driver.PathNotFoundError
+			if errors.As(err, &pathNotFoundErr) && is.storeDriver.Name() != storageConstants.LocalStorageDriverName {
+				// Remote dedupe may not keep placeholder blobs, continue searching for a real blob.
+				continue
+			}
+
 			is.log.Error().Err(err).Str("path", blobPath).Str("component", "storage").Msg("failed to stat blob")
 
 			return "", zerr.ErrBlobNotFound
@@ -2150,7 +2306,7 @@ func (is *ImageStore) getOriginalBlob(digest godigest.Digest, duplicateBlobs []s
 }
 
 func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, duplicateBlobs []string) error {
-	if fmt.Sprintf("%v", is.cache) == fmt.Sprintf("%v", nil) {
+	if !is.isCacheConfigured() {
 		is.log.Error().Err(zerr.ErrDedupeRebuild).Msg("failed to dedupe blobs, no cache driver found")
 
 		return zerr.ErrDedupeRebuild
@@ -2168,6 +2324,33 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 
 		binfo, err := is.storeDriver.Stat(blobPath)
 		if err != nil {
+			var pathNotFoundErr driver.PathNotFoundError
+			if errors.As(err, &pathNotFoundErr) && is.storeDriver.Name() != storageConstants.LocalStorageDriverName {
+				// Remote dedupe entries may not have placeholder files.
+				if originalBlob == "" {
+					originalBlob, err = is.getOriginalBlob(digest, duplicateBlobs)
+					if err != nil {
+						is.log.Error().Err(err).Str("component", "dedupe").Msg("failed to find original blob")
+
+						return zerr.ErrDedupeRebuild
+					}
+
+					if _, err := is.cache.GetBlob(digest); err != nil {
+						if err := is.cache.PutBlob(digest, originalBlob); err != nil {
+							return err
+						}
+					}
+				}
+
+				if ok := is.cache.HasBlob(digest, blobPath); !ok {
+					if err := is.cache.PutBlob(digest, blobPath); err != nil {
+						return err
+					}
+				}
+
+				continue
+			}
+
 			is.log.Error().Err(err).Str("path", blobPath).Str("component", "dedupe").Msg("failed to stat blob")
 
 			return err
@@ -2207,6 +2390,16 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 
 					return err
 				}
+
+				// On remote storage, delete non-original deduped blobs to enforce no-placeholder semantics.
+				// Local storage relies on hard linking which consumes no additional space.
+				if is.storeDriver.Name() != storageConstants.LocalStorageDriverName {
+					if err := is.storeDriver.Delete(blobPath); err != nil {
+						is.log.Warn().Err(err).Str("path", blobPath).Str("component", "dedupe").
+							Msg("failed to delete non-original deduped blob on remote storage")
+						// Continue; cache mapping is still valid for recovery via GetBlobContent.
+					}
+				}
 			}
 
 			// cache it
@@ -2245,6 +2438,24 @@ func (is *ImageStore) restoreDedupedBlobs(ctx context.Context, digest godigest.D
 
 		binfo, err := is.storeDriver.Stat(blobPath)
 		if err != nil {
+			var pathNotFoundErr driver.PathNotFoundError
+			if errors.As(err, &pathNotFoundErr) && is.storeDriver.Name() != storageConstants.LocalStorageDriverName {
+				// Remote deduped blobs may have no placeholder file; recreate them from the original blob.
+				buf, err := is.storeDriver.ReadFile(originalBlob)
+				if err != nil {
+					is.log.Error().Err(err).Str("path", originalBlob).Str("component", "dedupe").
+						Msg("failed to get original blob content")
+
+					return err
+				}
+
+				if _, err := is.storeDriver.WriteFile(blobPath, buf); err != nil {
+					return err
+				}
+
+				continue
+			}
+
 			is.log.Error().Err(err).Str("path", blobPath).Str("component", "dedupe").Msg("failed to stat blob")
 
 			return err
@@ -2287,6 +2498,96 @@ func (is *ImageStore) RunDedupeForDigest(ctx context.Context, digest godigest.Di
 	}
 
 	return is.restoreDedupedBlobs(ctx, digest, duplicateBlobs)
+}
+
+// CleanupRemoteEmptyDedupeLinks removes legacy zero-byte dedupe placeholders on remote
+// stores (s3/gcs) as a startup upgrade path.
+func (is *ImageStore) CleanupRemoteEmptyDedupeLinks() error {
+	if !is.dedupe || !is.isCacheConfigured() {
+		return nil
+	}
+
+	if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
+		return nil
+	}
+
+	repos, err := is.GetRepositories()
+	if err != nil {
+		return err
+	}
+
+	removedLinks := 0
+
+	for _, repo := range repos {
+		blobs, err := is.GetAllBlobs(repo)
+		if err != nil {
+			return err
+		}
+
+		for _, digest := range blobs {
+			blobPath := is.BlobPath(repo, digest)
+
+			binfo, err := is.storeDriver.Stat(blobPath)
+			if err != nil {
+				var pathNotFoundErr driver.PathNotFoundError
+				if errors.As(err, &pathNotFoundErr) {
+					continue
+				}
+
+				return err
+			}
+
+			if binfo.Size() > 0 {
+				continue
+			}
+
+			if !is.cache.HasBlob(digest, blobPath) {
+				continue
+			}
+
+			dstRecord, err := is.cache.GetBlob(digest)
+			if err != nil {
+				if errors.Is(err, zerr.ErrCacheMiss) {
+					is.log.Debug().Err(err).Str("digest", digest.String()).Str("blobPath", blobPath).
+						Str("component", "dedupe").Msg("cache miss while cleaning legacy dedupe placeholder")
+
+					continue
+				}
+
+				is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", blobPath).
+					Str("component", "dedupe").Msg("failed to get primary blob record from cache")
+
+				return err
+			}
+
+			if is.cache.UsesRelativePaths() {
+				dstRecord = path.Join(is.rootDir, dstRecord)
+			}
+
+			// Never remove the primary cache record path.
+			if is.storeDriver.SameFile(blobPath, dstRecord) {
+				continue
+			}
+
+			if err := is.storeDriver.Delete(blobPath); err != nil {
+				var pathNotFoundErr driver.PathNotFoundError
+				if errors.As(err, &pathNotFoundErr) {
+					continue
+				}
+
+				return err
+			}
+
+			removedLinks++
+		}
+	}
+
+	if removedLinks > 0 {
+		is.log.Info().Int("removedLinks", removedLinks).Str("component", "dedupe").
+			Msg("removed legacy empty dedupe links on remote storage")
+	}
+
+	return nil
 }
 
 func (is *ImageStore) RunDedupeBlobs(interval time.Duration, sch *scheduler.Scheduler) {
