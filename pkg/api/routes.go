@@ -2659,6 +2659,8 @@ func (rh *RouteHandler) streamBlobFromUpstream(
 	upstreamReader io.ReadCloser, size int64,
 	imgStore storageTypes.ImageStore,
 ) {
+	const blobStreamBufferSize = 32 * 1024
+
 	storagePR, storagePW := io.Pipe()
 	clientPR, clientPW := io.Pipe()
 	storageErrCh := make(chan error, 1)
@@ -2680,7 +2682,7 @@ func (rh *RouteHandler) streamBlobFromUpstream(
 
 		var copyErr error
 
-		buf := make([]byte, 32*1024) //nolint:mnd
+		buf := make([]byte, blobStreamBufferSize)
 
 		for {
 			readN, readErr := upstreamReader.Read(buf)
@@ -2710,13 +2712,7 @@ func (rh *RouteHandler) streamBlobFromUpstream(
 
 		storagePW.Close()
 		storageErr := <-storageErrCh
-		if storageErr != nil {
-			if copyErr != nil {
-				copyErr = errors.Join(copyErr, storageErr)
-			} else {
-				copyErr = storageErr
-			}
-		}
+		copyErr = errors.Join(copyErr, storageErr)
 
 		if clientAlive {
 			if copyErr != nil {

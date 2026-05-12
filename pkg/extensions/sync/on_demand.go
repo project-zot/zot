@@ -138,6 +138,8 @@ func (onDemand *BaseOnDemand) SyncBlobOnDemand(ctx context.Context, repo string,
 
 		timeout := service.GetSyncTimeout()
 
+		// Use a detached context so upstream blob fetch can continue if the client disconnects,
+		// while still preserving request-scoped values (trace IDs, auth context, etc.).
 		syncCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 
 		upstreamReader, size, err = service.GetBlobStream(syncCtx, repo, digest)
