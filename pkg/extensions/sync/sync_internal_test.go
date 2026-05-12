@@ -257,6 +257,87 @@ func TestOnDemandBlobStreaming(t *testing.T) {
 		So(reader, ShouldNotBeNil)
 		So(calls, ShouldEqual, 2)
 	})
+
+	Convey("check blob error is returned directly", t, func() {
+		digest := godigest.FromString("check-blob-error")
+		expectedErr := errors.New("check blob failure")
+
+		onDemand := NewOnDemand(log.NewTestLogger())
+		onDemand.Add(blobStreamTestService{
+			streamEnabled: true,
+			getBlobStream: func(ctx context.Context, repo string, blobDigest godigest.Digest) (io.ReadCloser, int64, error) {
+				return io.NopCloser(strings.NewReader("unexpected")), 10, nil
+			},
+		})
+
+		store := mocks.MockedImageStore{
+			CheckBlobFn: func(repo string, blobDigest godigest.Digest) (bool, int64, error) {
+				return false, 0, expectedErr
+			},
+		}
+
+		reader, size, isFirstClient, waitCh, err := onDemand.SyncBlobOnDemand(context.Background(), "repo", digest, store)
+		So(err, ShouldEqual, expectedErr)
+		So(reader, ShouldBeNil)
+		So(size, ShouldEqual, 0)
+		So(isFirstClient, ShouldBeFalse)
+		So(waitCh, ShouldBeNil)
+	})
+
+	Convey("successful upstream stream keeps request values and cancels context on close", t, func() {
+		digest := godigest.FromString("ctx-cancel")
+
+		type ctxKey string
+
+		const key ctxKey = "request-id"
+
+		ctxValueSeen := make(chan any, 1)
+		ctxDoneSeen := make(chan (<-chan struct{}), 1)
+
+		onDemand := NewOnDemand(log.NewTestLogger())
+		onDemand.Add(blobStreamTestService{
+			streamEnabled: true,
+			syncTimeout:   time.Second,
+			getBlobStream: func(ctx context.Context, repo string, blobDigest godigest.Digest) (io.ReadCloser, int64, error) {
+				ctxValueSeen <- ctx.Value(key)
+				ctxDoneSeen <- ctx.Done()
+
+				return io.NopCloser(strings.NewReader("payload")), 7, nil
+			},
+		})
+
+		store := mocks.MockedImageStore{
+			CheckBlobFn: func(repo string, blobDigest godigest.Digest) (bool, int64, error) {
+				return false, 0, nil
+			},
+		}
+
+		reqCtx := context.WithValue(context.Background(), key, "value")
+
+		reader, size, isFirstClient, waitCh, err := onDemand.SyncBlobOnDemand(reqCtx, "repo", digest, store)
+		So(err, ShouldBeNil)
+		So(size, ShouldEqual, 7)
+		So(isFirstClient, ShouldBeTrue)
+		So(waitCh, ShouldBeNil)
+		So(reader, ShouldNotBeNil)
+
+		So(<-ctxValueSeen, ShouldEqual, "value")
+		doneCh := <-ctxDoneSeen
+
+		select {
+		case <-doneCh:
+			t.Fatal("stream context cancelled before reader close")
+		default:
+		}
+
+		So(reader.Close(), ShouldBeNil)
+
+		select {
+		case <-doneCh:
+		case <-time.After(time.Second):
+			t.Fatal("stream context was not cancelled when reader closed")
+		}
+	})
 }
 
 func TestService(t *testing.T) {

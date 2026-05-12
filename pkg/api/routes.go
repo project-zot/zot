@@ -2622,30 +2622,24 @@ func (rh *RouteHandler) handleBlobStream(response http.ResponseWriter, request *
 	}
 
 	if waitCh != nil {
-		response.Header().Set("Content-Length", strconv.FormatInt(size, 10))
-		response.Header().Set(constants.DistContentDigestKey, digest.String())
-		response.WriteHeader(http.StatusOK)
-
-		if flusher, ok := response.(http.Flusher); ok {
-			flusher.Flush()
+		select {
+		case <-waitCh:
+		case <-request.Context().Done():
+			return true
 		}
-
-		<-waitCh
 
 		blobReader, blobSize, err := imgStore.GetBlob(repo, digest, mediaType)
 		if err != nil {
 			rh.c.Log.Error().Err(err).Str("repo", repo).Str("digest", digest.String()).
 				Msg("failed to get blob from cache after streaming completed")
 
-			return true
+			return false
 		}
 
 		defer blobReader.Close()
 
-		_, err = io.CopyN(response, blobReader, blobSize)
-		if err != nil {
-			rh.c.Log.Error().Err(err).Msg("failed to copy blob to response after waiting")
-		}
+		response.Header().Set(constants.DistContentDigestKey, digest.String())
+		WriteDataFromReader(response, http.StatusOK, blobSize, mediaType, blobReader, rh.c.Log)
 
 		return true
 	}
@@ -2667,15 +2661,16 @@ func (rh *RouteHandler) streamBlobFromUpstream(
 ) {
 	storagePR, storagePW := io.Pipe()
 	clientPR, clientPW := io.Pipe()
+	storageErrCh := make(chan error, 1)
 
 	go func() {
 		_, _, err := imgStore.FullBlobUpload(repo, storagePR, digest)
 		if err != nil {
 			rh.c.Log.Error().Err(err).Str("repo", repo).Str("digest", digest.String()).
 				Msg("failed to cache streamed blob to local storage")
-
-			storagePR.CloseWithError(err)
 		}
+
+		storageErrCh <- err
 	}()
 
 	go func() {
@@ -2714,6 +2709,14 @@ func (rh *RouteHandler) streamBlobFromUpstream(
 		}
 
 		storagePW.Close()
+		storageErr := <-storageErrCh
+		if storageErr != nil {
+			if copyErr != nil {
+				copyErr = errors.Join(copyErr, storageErr)
+			} else {
+				copyErr = storageErr
+			}
+		}
 
 		if clientAlive {
 			if copyErr != nil {

@@ -32,6 +32,23 @@ type blobInflight struct {
 	size  int64
 }
 
+type cancelOnCloseReadCloser struct {
+	reader io.ReadCloser
+	cancel context.CancelFunc
+	once   sync.Once
+}
+
+func (wrapper *cancelOnCloseReadCloser) Read(p []byte) (int, error) {
+	return wrapper.reader.Read(p)
+}
+
+func (wrapper *cancelOnCloseReadCloser) Close() error {
+	err := wrapper.reader.Close()
+	wrapper.once.Do(wrapper.cancel)
+
+	return err
+}
+
 /*
 BaseOnDemand tracks requests that can be an image/signature/sbom.
 
@@ -73,15 +90,18 @@ func (onDemand *BaseOnDemand) SyncBlobOnDemand(ctx context.Context, repo string,
 ) (io.ReadCloser, int64, bool, <-chan struct{}, error) {
 	key := repo + "@" + digest.String()
 
-	onDemand.blobInflightMu.Lock()
+	ok, _, checkErr := imgStore.CheckBlob(repo, digest)
+	if checkErr != nil {
+		return nil, 0, false, nil, checkErr
+	}
 
-	if ok, _, _ := imgStore.CheckBlob(repo, digest); ok {
-		onDemand.blobInflightMu.Unlock()
-
+	if ok {
 		reader, size, err := imgStore.GetBlob(repo, digest, "")
 
 		return reader, size, false, nil, err
 	}
+
+	onDemand.blobInflightMu.Lock()
 
 	if inf, exists := onDemand.blobInflight[key]; exists {
 		onDemand.blobInflightMu.Unlock()
@@ -118,15 +138,18 @@ func (onDemand *BaseOnDemand) SyncBlobOnDemand(ctx context.Context, repo string,
 
 		timeout := service.GetSyncTimeout()
 
-		syncCtx, cancel := context.WithTimeout(context.Background(), timeout)
+		syncCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 
 		upstreamReader, size, err = service.GetBlobStream(syncCtx, repo, digest)
 		if err == nil {
+			wrappedReader := &cancelOnCloseReadCloser{
+				reader: upstreamReader,
+				cancel: cancel,
+			}
 			inf.size = size
 			close(inf.ready)
-			_ = cancel
 
-			return upstreamReader, size, true, nil, nil
+			return wrappedReader, size, true, nil, nil
 		}
 
 		cancel()
