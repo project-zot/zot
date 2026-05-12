@@ -326,7 +326,6 @@ func (service *BaseService) IsStreamEnabled() bool {
 	return service.config.Stream
 }
 
-// GetBlobStream fetches a single blob from the upstream registry and returns a live stream.
 func (service *BaseService) GetBlobStream(ctx context.Context, repo string,
 	digest godigest.Digest,
 ) (io.ReadCloser, int64, error) {

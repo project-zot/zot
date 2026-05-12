@@ -25,12 +25,11 @@ type request struct {
 	isBackground bool
 }
 
-// blobInflight tracks a single in-progress blob download from upstream.
 type blobInflight struct {
-	done  chan struct{} // closed when download completes
-	ready chan struct{} // closed when upstream metadata is available or setup failed
-	err   error         // set before closing done
-	size  int64         // blob size from upstream
+	done  chan struct{}
+	ready chan struct{}
+	err   error
+	size  int64
 }
 
 /*
@@ -43,7 +42,7 @@ type BaseOnDemand struct {
 	services []Service
 	// map[request]chan err
 	requestStore   *sync.Map
-	blobInflight   map[string]*blobInflight // key: "repo@digest"
+	blobInflight   map[string]*blobInflight
 	blobInflightMu sync.Mutex
 	streamEnabled  bool
 	log            log.Logger
@@ -69,12 +68,6 @@ func (onDemand *BaseOnDemand) IsStreamEnabled() bool {
 	return onDemand.streamEnabled
 }
 
-// SyncBlobOnDemand fetches a blob from upstream for streaming to a client.
-// Returns:
-//   - reader, size: upstream blob stream (only for first client)
-//   - isFirstClient: true if caller should stream from reader; false if blob is already available in cache
-//   - waitCh: non-nil channel for waiting clients (closed when download completes)
-//   - err: non-nil on failure
 func (onDemand *BaseOnDemand) SyncBlobOnDemand(ctx context.Context, repo string,
 	digest godigest.Digest, imgStore storageTypes.ImageStore,
 ) (io.ReadCloser, int64, bool, <-chan struct{}, error) {
@@ -82,7 +75,6 @@ func (onDemand *BaseOnDemand) SyncBlobOnDemand(ctx context.Context, repo string,
 
 	onDemand.blobInflightMu.Lock()
 
-	// Check if blob arrived in cache while we waited for lock
 	if ok, _, _ := imgStore.CheckBlob(repo, digest); ok {
 		onDemand.blobInflightMu.Unlock()
 
@@ -91,7 +83,6 @@ func (onDemand *BaseOnDemand) SyncBlobOnDemand(ctx context.Context, repo string,
 		return reader, size, false, nil, err
 	}
 
-	// Check if another client is already downloading this blob
 	if inf, exists := onDemand.blobInflight[key]; exists {
 		onDemand.blobInflightMu.Unlock()
 
@@ -110,12 +101,10 @@ func (onDemand *BaseOnDemand) SyncBlobOnDemand(ctx context.Context, repo string,
 		return nil, inf.size, false, inf.done, nil
 	}
 
-	// First client: register inflight and fetch from upstream
 	inf := &blobInflight{done: make(chan struct{}), ready: make(chan struct{})}
 	onDemand.blobInflight[key] = inf
 	onDemand.blobInflightMu.Unlock()
 
-	// Try each streaming-enabled service until one succeeds
 	var upstreamReader io.ReadCloser
 
 	var size int64
@@ -135,7 +124,6 @@ func (onDemand *BaseOnDemand) SyncBlobOnDemand(ctx context.Context, repo string,
 		if err == nil {
 			inf.size = size
 			close(inf.ready)
-			// Context will be cancelled when the copy goroutine finishes (caller's responsibility)
 			_ = cancel
 
 			return upstreamReader, size, true, nil, nil
@@ -144,7 +132,6 @@ func (onDemand *BaseOnDemand) SyncBlobOnDemand(ctx context.Context, repo string,
 		cancel()
 	}
 
-	// All services failed — clean up inflight entry
 	inf.err = err
 	close(inf.ready)
 	close(inf.done)
@@ -156,7 +143,6 @@ func (onDemand *BaseOnDemand) SyncBlobOnDemand(ctx context.Context, repo string,
 	return nil, 0, false, nil, err
 }
 
-// BlobDownloadDone is called by the copy goroutine when a blob download completes or fails.
 func (onDemand *BaseOnDemand) BlobDownloadDone(repo string, digest godigest.Digest, err error) {
 	key := repo + "@" + digest.String()
 

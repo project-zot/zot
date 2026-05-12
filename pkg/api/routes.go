@@ -1464,7 +1464,6 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrBlobNotFound) {
-			// Try streaming from upstream if sync streaming is enabled (not for range requests)
 			if !rangeHeaderPresent && rh.c.SyncOnDemand != nil && rh.c.SyncOnDemand.IsStreamEnabled() {
 				mediaType := resolveBlobResponseMediaType(imgStore, name, digest, rh.c.Log)
 				if rh.handleBlobStream(response, request, name, digest, mediaType, imgStore) {
@@ -2607,8 +2606,6 @@ func getContentRange(r *http.Request) (int64 /* from */, int64 /* to */, error) 
 	return rangeStart, rangeEnd, nil
 }
 
-// handleBlobStream attempts to stream a blob from upstream when it's not found locally.
-// Returns true if the request was handled (either streamed or waiting), false to fall through to 404.
 func (rh *RouteHandler) handleBlobStream(response http.ResponseWriter, request *http.Request,
 	repo string, digest godigest.Digest, mediaType string, imgStore storageTypes.ImageStore,
 ) bool {
@@ -2625,7 +2622,6 @@ func (rh *RouteHandler) handleBlobStream(response http.ResponseWriter, request *
 	}
 
 	if waitCh != nil {
-		// Waiting client: flush headers immediately to keep gateway alive, then wait
 		response.Header().Set("Content-Length", strconv.FormatInt(size, 10))
 		response.Header().Set(constants.DistContentDigestKey, digest.String())
 		response.WriteHeader(http.StatusOK)
@@ -2641,7 +2637,7 @@ func (rh *RouteHandler) handleBlobStream(response http.ResponseWriter, request *
 			rh.c.Log.Error().Err(err).Str("repo", repo).Str("digest", digest.String()).
 				Msg("failed to get blob from cache after streaming completed")
 
-			return true // headers already sent, can't change status
+			return true
 		}
 
 		defer blobReader.Close()
@@ -2654,7 +2650,6 @@ func (rh *RouteHandler) handleBlobStream(response http.ResponseWriter, request *
 		return true
 	}
 
-	// Blob was found in cache (race resolved) — serve from the returned reader
 	defer upstreamReader.Close()
 
 	response.Header().Set("Content-Length", strconv.FormatInt(size, 10))
@@ -2664,9 +2659,6 @@ func (rh *RouteHandler) handleBlobStream(response http.ResponseWriter, request *
 	return true
 }
 
-// streamBlobFromUpstream streams a blob from upstream to the client while simultaneously caching it locally.
-// The upstream reader is consumed by a copy goroutine that writes to both local storage and the client pipe.
-// If the client disconnects, storage write continues to completion.
 func (rh *RouteHandler) streamBlobFromUpstream(
 	response http.ResponseWriter,
 	repo string, digest godigest.Digest, mediaType string,
@@ -2676,7 +2668,6 @@ func (rh *RouteHandler) streamBlobFromUpstream(
 	storagePR, storagePW := io.Pipe()
 	clientPR, clientPW := io.Pipe()
 
-	// Goroutine: write blob to local storage from storage pipe
 	go func() {
 		_, _, err := imgStore.FullBlobUpload(repo, storagePR, digest)
 		if err != nil {
@@ -2687,7 +2678,6 @@ func (rh *RouteHandler) streamBlobFromUpstream(
 		}
 	}()
 
-	// Goroutine: read from upstream, write to both pipes
 	go func() {
 		defer upstreamReader.Close()
 
@@ -2700,14 +2690,12 @@ func (rh *RouteHandler) streamBlobFromUpstream(
 		for {
 			readN, readErr := upstreamReader.Read(buf)
 			if readN > 0 {
-				// Always write to storage
 				if _, err := storagePW.Write(buf[:readN]); err != nil {
 					copyErr = err
 
 					break
 				}
 
-				// Write to client (tolerate disconnect)
 				if clientAlive {
 					if _, err := clientPW.Write(buf[:readN]); err != nil {
 						clientAlive = false
@@ -2735,11 +2723,9 @@ func (rh *RouteHandler) streamBlobFromUpstream(
 			}
 		}
 
-		// Signal completion to waiting clients
 		rh.c.SyncOnDemand.BlobDownloadDone(repo, digest, copyErr)
 	}()
 
-	// Stream to client from client pipe
 	response.Header().Set("Content-Length", strconv.FormatInt(size, 10))
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
 	WriteDataFromReader(response, http.StatusOK, size, mediaType, clientPR, rh.c.Log)
