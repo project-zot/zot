@@ -151,6 +151,11 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 		return err
 	}
 
+	// prune manifest entries whose blobs no longer exist in storage
+	if err := gc.removeStaleManifestEntries(repo, &index); err != nil {
+		return err
+	}
+
 	// update repos's index.json in storage
 	if !gc.opts.ImageRetention.DryRun {
 		/* this will update the index.json with manifests deleted above
@@ -169,6 +174,69 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 	if err := gc.removeBlobUploads(repo, gc.opts.Delay); err != nil {
 		return err
 	}
+
+	return nil
+}
+
+func (gc GarbageCollect) removeStaleManifestEntries(repo string, index *ispec.Index) error {
+	if gc.opts.ImageRetention.DryRun {
+		return nil
+	}
+
+	allBlobs, err := gc.imgStore.GetAllBlobs(repo)
+	if err != nil {
+		// /blobs/sha256/ may not exist (empty repo) — skip cleanup
+		var pathNotFoundErr driver.PathNotFoundError
+		if errors.As(err, &pathNotFoundErr) {
+			return nil
+		}
+
+		return err
+	}
+
+	existingBlobs := make(map[string]bool, len(allBlobs))
+	for _, d := range allBlobs {
+		existingBlobs[d.String()] = true
+	}
+
+	kept := make([]ispec.Descriptor, 0, len(index.Manifests))
+
+	for _, desc := range index.Manifests {
+		if !existingBlobs[desc.Digest.String()] {
+			gc.log.Warn().Str("module", "gc").Str("repository", repo).
+				Str("digest", desc.Digest.String()).
+				Msg("removing stale manifest entry: blob missing from storage")
+
+			if gc.auditLog != nil {
+				gc.auditLog.Info().Str("module", "gc").Str("repository", repo).
+					Str("digest", desc.Digest.String()).
+					Msg("removed stale manifest entry")
+			}
+
+			// sync metaDB
+			if gc.metaDB != nil {
+				tag, _ := getDescriptorTag(desc)
+				ref := tag
+				if ref == "" {
+					ref = desc.Digest.String()
+				}
+
+				_ = gc.metaDB.RemoveRepoReference(repo, ref, desc.Digest)
+			}
+
+			continue
+		}
+
+		kept = append(kept, desc)
+	}
+
+	if removed := len(index.Manifests) - len(kept); removed > 0 {
+		gc.log.Info().Str("module", "gc").Str("repository", repo).
+			Int("removed", removed).Int("kept", len(kept)).
+			Msg("pruned stale manifest entries from index")
+	}
+
+	index.Manifests = kept
 
 	return nil
 }
