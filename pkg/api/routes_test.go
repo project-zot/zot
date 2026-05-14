@@ -2568,7 +2568,9 @@ func TestGetBlobStreamOnDemandFirstClient(t *testing.T) {
 		GetBlobFn: func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error) {
 			return nil, 0, zerr.ErrBlobNotFound
 		},
-		FullBlobUploadFn: func(_ context.Context, repo string, body io.Reader, digest godigest.Digest) (string, int64, error) {
+		FullBlobUploadFn: func(_ context.Context, repo string, body io.Reader,
+			digest godigest.Digest,
+		) (string, int64, error) {
 			defer close(streamDone)
 
 			content, err := io.ReadAll(body)
@@ -2648,6 +2650,7 @@ func TestGetBlobStreamOnDemandWaiterFromCache(t *testing.T) {
 	layerDigest := godigest.FromString("stream-waiter")
 
 	waitCh := make(chan struct{})
+
 	go func() {
 		time.Sleep(25 * time.Millisecond)
 		close(waitCh)
@@ -2769,7 +2772,9 @@ func TestGetBlobStreamOnDemandSignalsBlobDownloadDoneOnCacheCommitError(t *testi
 		GetBlobFn: func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error) {
 			return nil, 0, zerr.ErrBlobNotFound
 		},
-		FullBlobUploadFn: func(_ context.Context, repo string, body io.Reader, digest godigest.Digest) (string, int64, error) {
+		FullBlobUploadFn: func(_ context.Context, repo string, body io.Reader,
+			digest godigest.Digest,
+		) (string, int64, error) {
 			_, err := io.ReadAll(body)
 			require.NoError(t, err)
 
