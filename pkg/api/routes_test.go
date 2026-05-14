@@ -46,6 +46,8 @@ import (
 
 const sessionStr = "session"
 
+var errCacheCommitFailed = errors.New("cache commit failed")
+
 func TestRoutes(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		conf := config.New()
@@ -2762,7 +2764,6 @@ func TestGetBlobStreamOnDemandSignalsBlobDownloadDoneOnCacheCommitError(t *testi
 
 	blobDone := make(chan error, 1)
 	streamBody := "streamed"
-	cacheErr := errors.New("cache commit failed")
 
 	store := mocks.MockedImageStore{
 		GetBlobFn: func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error) {
@@ -2772,7 +2773,7 @@ func TestGetBlobStreamOnDemandSignalsBlobDownloadDoneOnCacheCommitError(t *testi
 			_, err := io.ReadAll(body)
 			require.NoError(t, err)
 
-			return "", 0, cacheErr
+			return "", 0, errCacheCommitFailed
 		},
 		GetIndexContentFn: func(repo string) ([]byte, error) {
 			return nil, zerr.ErrManifestNotFound
@@ -2816,7 +2817,7 @@ func TestGetBlobStreamOnDemandSignalsBlobDownloadDoneOnCacheCommitError(t *testi
 
 	select {
 	case err := <-blobDone:
-		require.ErrorIs(t, err, cacheErr)
+		require.ErrorIs(t, err, errCacheCommitFailed)
 	case <-time.After(time.Second):
 		t.Fatal("BlobDownloadDone was not called")
 	}
