@@ -63,33 +63,59 @@ func New(client *dynamodb.Client, params DBDriverParameters, log log.Logger,
 		return nil, err
 	}
 
-	err = dynamoWrapper.createTable(dynamoWrapper.RepoMetaTablename)
+	err = dynamoWrapper.createTableIfNotExists(dynamoWrapper.RepoMetaTablename, func() error {
+		return dynamoWrapper.createTable(dynamoWrapper.RepoMetaTablename)
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	err = dynamoWrapper.createTable(dynamoWrapper.RepoBlobsTablename)
+	err = dynamoWrapper.createTableIfNotExists(dynamoWrapper.RepoBlobsTablename, func() error {
+		return dynamoWrapper.createTable(dynamoWrapper.RepoBlobsTablename)
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	err = dynamoWrapper.createTable(dynamoWrapper.ImageMetaTablename)
+	err = dynamoWrapper.createTableIfNotExists(dynamoWrapper.ImageMetaTablename, func() error {
+		return dynamoWrapper.createTable(dynamoWrapper.ImageMetaTablename)
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	err = dynamoWrapper.createTable(dynamoWrapper.UserDataTablename)
+	err = dynamoWrapper.createTableIfNotExists(dynamoWrapper.UserDataTablename, func() error {
+		return dynamoWrapper.createTable(dynamoWrapper.UserDataTablename)
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	err = dynamoWrapper.createTable(dynamoWrapper.APIKeyTablename)
+	err = dynamoWrapper.createTableIfNotExists(dynamoWrapper.APIKeyTablename, func() error {
+		return dynamoWrapper.createTable(dynamoWrapper.APIKeyTablename)
+	})
 	if err != nil {
 		return nil, err
 	}
 
 	// Using the Config value, create the DynamoDB client
 	return &dynamoWrapper, nil
+}
+
+func (dwr *DynamoDB) createTableIfNotExists(tableName string, createTable func() error) error {
+	_, err := dwr.Client.DescribeTable(context.Background(), &dynamodb.DescribeTableInput{
+		TableName: aws.String(tableName),
+	})
+	if err == nil {
+		return nil
+	}
+
+	var notFoundErr *types.ResourceNotFoundException
+	if !errors.As(err, &notFoundErr) {
+		return err
+	}
+
+	return createTable()
 }
 
 func (dwr *DynamoDB) GetAllRepoNames() ([]string, error) {

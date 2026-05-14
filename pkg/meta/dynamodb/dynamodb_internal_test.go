@@ -147,6 +147,54 @@ func TestWrapperErrors(t *testing.T) {
 			So(actualVersion, ShouldEqual, version.CurrentVersion)
 		})
 
+		Convey("New sets version when version table already exists but version doesn't", func() {
+			uuid, err := guuid.NewV4()
+			So(err, ShouldBeNil)
+
+			client := dynamodb.NewFromConfig(cfg, func(o *dynamodb.Options) {
+				o.BaseEndpoint = aws.String(endpoint)
+			})
+
+			params := DBDriverParameters{
+				RepoMetaTablename:      "RepoMetadataTable" + uuid.String(),
+				RepoBlobsInfoTablename: "RepoBlobsTable" + uuid.String(),
+				ImageMetaTablename:     "ImageMetaTable" + uuid.String(),
+				UserDataTablename:      "UserDataTable" + uuid.String(),
+				APIKeyTablename:        "ApiKeyTable" + uuid.String(),
+				VersionTablename:       "Version" + uuid.String(),
+			}
+
+			dynamoWrapper := DynamoDB{
+				Client:           client,
+				VersionTablename: params.VersionTablename,
+				Patches:          version.GetDynamoDBPatches(),
+				Log:              log.NewTestLogger(),
+			}
+
+			err = dynamoWrapper.createTable(params.VersionTablename)
+			So(err, ShouldBeNil)
+
+			defer func() {
+				for _, tableName := range []string{
+					params.RepoMetaTablename,
+					params.RepoBlobsInfoTablename,
+					params.ImageMetaTablename,
+					params.UserDataTablename,
+					params.APIKeyTablename,
+					params.VersionTablename,
+				} {
+					_ = dynamoWrapper.deleteTable(tableName)
+				}
+			}()
+
+			_, err = New(client, params, log.NewTestLogger())
+			So(err, ShouldBeNil)
+
+			actualVersion, err := getVersion(client, params.VersionTablename)
+			So(err, ShouldBeNil)
+			So(actualVersion, ShouldEqual, version.CurrentVersion)
+		})
+
 		Convey("createVersionTable does not overwrite existing version", func() {
 			uuid, err := guuid.NewV4()
 			So(err, ShouldBeNil)
