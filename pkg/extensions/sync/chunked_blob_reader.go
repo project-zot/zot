@@ -24,6 +24,7 @@ type ChunkedBlobReader struct {
 
 	InFlightReader  *blob.BReader
 	clientMu        sync.Mutex
+	clientCond      *sync.Cond
 	chunksMu        sync.RWMutex
 	clients         map[int]chan int64
 	numClientsTotal int
@@ -37,13 +38,17 @@ func NewChunkedBlobReader(onDiskPath string, chunkSizeBytes int64, logger log.Lo
 		return nil, err
 	}
 
-	return &ChunkedBlobReader{
+	cbr := &ChunkedBlobReader{
 		clients:        make(map[int]chan int64),
 		logger:         logger,
 		onDiskPath:     onDiskPath,
 		onDiskFile:     createdFile,
 		chunkSizeBytes: chunkSizeBytes,
-	}, nil
+	}
+
+	cbr.clientCond = sync.NewCond(&cbr.clientMu)
+
+	return cbr, nil
 }
 
 func (cbr *ChunkedBlobReader) InitReader(r *blob.BReader, numChunksTotal int64) {
@@ -55,12 +60,11 @@ func (cbr *ChunkedBlobReader) InitReader(r *blob.BReader, numChunksTotal int64) 
 
 func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 	if cbr.InFlightReader == nil {
-		return 0, errors.New("reader not initialized")
+		return 0, ErrReaderNotInitialized
 	}
 
 	cbr.chunksMu.Lock()
 
-	// TODO: This is duplicating file IO so that the stream logic can access it easily. It would be more efficient to
 	// Access the file that regclient is writing to avoid this extra duplication.
 	var internalBuffBytes []byte = make([]byte, 0, cbr.chunkSizeBytes)
 	internalBuff := bytes.NewBuffer(internalBuffBytes)
@@ -71,7 +75,6 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 	if err != nil {
 		if !errors.Is(err, io.EOF) {
 			cbr.logger.Error().Err(err).Msg("failed to copy from in flight reader")
-			// TODO: This means there was an upstream read error. Should the in-progress streams be terminated?
 			copy(buff, internalBuff.Bytes())
 			cbr.chunksMu.Unlock()
 
@@ -108,7 +111,10 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 // the client would create a subscription here with a channel where latest chunk info is sent.
 func (cbr *ChunkedBlobReader) Subscribe(channel chan int64) int {
 	cbr.clientMu.Lock()
-	defer cbr.clientMu.Unlock()
+	defer func() {
+		cbr.clientCond.Broadcast()
+		cbr.clientMu.Unlock()
+	}()
 
 	cbr.clients[cbr.numClientsTotal] = channel
 	chanId := cbr.numClientsTotal
@@ -127,11 +133,15 @@ func (cbr *ChunkedBlobReader) Subscribe(channel chan int64) int {
 	return chanId
 }
 
-func (cbr *ChunkedBlobReader) Unsubscribe(id int) {
+func (cbr *ChunkedBlobReader) Unsubscribe(clientId int) {
 	cbr.clientMu.Lock()
-	defer cbr.clientMu.Unlock()
+	defer func() {
+		cbr.clientCond.Broadcast()
+		cbr.clientMu.Unlock()
+	}()
 
-	delete(cbr.clients, id)
+	delete(cbr.clients, clientId)
+	cbr.numClientsTotal--
 }
 
 func (cbr *ChunkedBlobReader) ToBReader() *blob.BReader {
@@ -140,4 +150,13 @@ func (cbr *ChunkedBlobReader) ToBReader() *blob.BReader {
 		blob.WithDesc(cbr.InFlightReader.GetDescriptor()),
 		blob.WithReader(cbr),
 	)
+}
+
+func (cbr *ChunkedBlobReader) WaitForClientEmpty() {
+	cbr.clientMu.Lock()
+	defer cbr.clientMu.Unlock()
+
+	for len(cbr.clients) > 0 {
+		cbr.clientCond.Wait()
+	}
 }

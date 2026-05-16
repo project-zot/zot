@@ -135,7 +135,7 @@ func TestService(t *testing.T) {
 			URLs: []string{"http://localhost"},
 		}
 
-		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		// Mock remote returns isConverted=true so OCI conversion would be attempted if not skipped
@@ -654,7 +654,7 @@ func TestSyncLegacyCosignTagsSyncReferrers(t *testing.T) {
 			SyncLegacyCosignTags: &syncLegacyFalse,
 		}
 
-		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		service.rc = regclient.New()
@@ -701,7 +701,7 @@ func TestSyncLegacyCosignTagsSyncReferrers(t *testing.T) {
 			SyncLegacyCosignTags: &syncLegacyTrue,
 		}
 
-		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		service.rc = regclient.New()
@@ -744,7 +744,7 @@ func TestOnDemandSyncReferrersNonRecursive(t *testing.T) {
 			SyncLegacyCosignTags: &syncLegacyFalse,
 		}
 
-		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		service.rc = regclient.New()

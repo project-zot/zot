@@ -1119,15 +1119,24 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 
 	if err != nil {
 		details := zerr.GetDetails(err)
+
 		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic,dupl // errorslint conflicts with gocritic:IfElseChain
 			details["digest"] = digest.String()
 			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrRepoNotFound) {
+			streamErr := rh.getBlobInfoFromStreamCache(digest.String(), response)
+			if streamErr == nil {
+				return
+			}
 			details["name"] = name
 			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrBlobNotFound) {
+			streamErr := rh.getBlobInfoFromStreamCache(digest.String(), response)
+			if streamErr == nil {
+				return
+			}
 			details["digest"] = digest.String()
 			e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
@@ -1151,6 +1160,30 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 	response.Header().Set("Content-Type", resolveBlobResponseMediaType(imgStore, name, digest, rh.c.Log))
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
 	response.WriteHeader(http.StatusOK)
+}
+
+func (rh *RouteHandler) getBlobInfoFromStreamCache(digest string, response http.ResponseWriter) error {
+	rh.c.Log.Debug().Str("digest", digest).Msg("checking stream cache for blob existence")
+
+	extConf := rh.c.Config.CopyExtensionsConfig()
+	if extConf.IsStreamingEnabled() {
+		// when streaming is enabled, the blob might exist in the stream cache
+		blobSize, blobMediaType, err := rh.c.SyncOnDemand.StreamManager().CachedBlobInfo(digest)
+		if err != nil {
+			rh.c.Log.Error().Err(err).Str("digest", digest).Msg("error checking stream cache for blob existence")
+
+			return err
+		}
+		blen := blobSize
+
+		response.Header().Set("Content-Length", strconv.FormatInt(blen, 10))
+		response.Header().Set("Accept-Ranges", "bytes")
+		response.Header().Set("Content-Type", blobMediaType)
+		response.Header().Set(constants.DistContentDigestKey, digest)
+		response.WriteHeader(http.StatusOK)
+	}
+
+	return nil
 }
 
 type httpRange struct {
@@ -1463,7 +1496,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 			if errors.Is(err, zerr.ErrRepoNotFound) || errors.Is(err, zerr.ErrBlobNotFound) {
 				rh.c.Log.Info().Msg("blob was not found. Connecting client to stream")
 
-				copier, err := rh.c.StreamManager.ConnectClient(digest.String(), response)
+				copier, err := rh.c.SyncOnDemand.StreamManager().ConnectClient(digest.String(), response)
 				if err != nil {
 					rh.c.Log.Error().Err(err).Msg("failed to connect client to stream")
 					response.WriteHeader(http.StatusInternalServerError)
@@ -1471,7 +1504,6 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 					return
 				}
 
-				// TODO: handle partial
 				err = copier.Copy()
 				if err != nil {
 					rh.c.Log.Error().Err(err).Msg("unexpected error during stream copy")
@@ -2678,7 +2710,7 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 
 		extConf := routeHandler.c.Config.CopyExtensionsConfig()
 
-		// if streaming enabled, return manifest immediately, start sync in background
+		// if streaming enabled, return manifest immediately
 		if extConf.IsStreamingEnabled() {
 			routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
 				Msg("streaming is enabled. Direct fetching manifest.")
@@ -2698,13 +2730,6 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 
 				return imgStore.GetImageManifest(name, reference)
 			}
-
-			go func() {
-				if errSync := routeHandler.c.SyncOnDemand.SyncImage(ctx, name, reference); errSync != nil {
-					routeHandler.c.Log.Err(errSync).Str("repository", name).Str("reference", reference).
-						Msg("failed to sync image")
-				}
-			}()
 
 			return content, fetchedManifest.GetDescriptor().Digest, fetchedManifest.GetDescriptor().MediaType, nil
 		}

@@ -4,7 +4,6 @@ package sync
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -16,7 +15,6 @@ import (
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
-	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/regclient/regclient"
 	"github.com/regclient/regclient/config"
 	"github.com/regclient/regclient/mod"
@@ -333,57 +331,6 @@ func (service *BaseService) FetchManifest(ctx context.Context, repo, reference s
 		return nil, err
 	}
 
-	// if this is being executed, it is for sure part of streaming.
-	// install chunked blob readers for each blob into the stream manager's cache
-	if m != nil {
-		// first for the manifest blob
-		err := service.streamManager.PrepareActiveStreamForBlob(m.GetDescriptor().Digest)
-		if err != nil {
-			return nil, err
-		}
-
-		var contents ispec.Manifest
-		contentBytes, err := m.RawBody()
-		if err != nil {
-			return nil, err
-		}
-
-		err = json.Unmarshal(contentBytes, &contents)
-		if err != nil {
-			return nil, err
-		}
-
-		// imager, ok := orig.(manifest.Imager)
-		// if !ok {
-		// 	return nil, errors.New("failed to convert to imager")
-		// }
-
-		// next, for config
-		// cfg, err := imager.GetConfig()
-		// if err != nil {
-		// 	return nil, err
-		// }
-
-		err = service.streamManager.PrepareActiveStreamForBlob(contents.Config.Digest)
-		if err != nil {
-			return nil, err
-		}
-
-		// finally, for all layers
-		// layers, err := imager.GetLayers()
-		// if err != nil {
-		// 	return nil, err
-		// }
-
-		layers := contents.Layers
-		for _, layer := range layers {
-			err = service.streamManager.PrepareActiveStreamForBlob(layer.Digest)
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
-
 	return m, nil
 }
 
@@ -574,7 +521,8 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 	copyOpts := []regclient.ImageOpts{}
 
 	if service.streamManager != nil {
-		service.log.Info().Str("repo", localRepo).Str("reference", remoteImageRef.Tag).Msg("streaming is enabled. Enabling reader hook")
+		service.log.Info().Str("repo", localRepo).Str("reference", remoteImageRef.Tag).
+			Msg("streaming is enabled. Enabling reader hook")
 		copyOpts = append(copyOpts, regclient.ImageWithBlobReaderHook(service.streamManager.StreamingBlobReader))
 	}
 
@@ -716,6 +664,15 @@ func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo
 
 	// just in case there is an error before commit() which cleans up.
 	defer service.destination.CleanupImage(localImageRef, localRepo) //nolint: errcheck
+
+	// clears the stream cache after the sync is done in both error as well as committed cases.
+	defer func() {
+		if service.streamManager != nil {
+			service.log.Debug().Str("repo", localRepo).Str("reference", tag).Msg("cleaning up stream cache after sync")
+			// run in a goroutine as the cleanup waits for clients to drain
+			go service.streamManager.RemoveStreamingImage(localRepo, tag)
+		}
+	}()
 
 	// first sync image
 	skipped, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, localDigest)

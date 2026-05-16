@@ -1,7 +1,7 @@
 {
 	"distSpecVersion": "1.1.1",
 	"storage": {
-		"rootDirectory": "./temp/zot1"
+		"rootDirectory": "./temp/zot"
 	},
 	"http": {
 		"address": "127.0.0.1",
@@ -13,6 +13,7 @@
 	"extensions": {
 		"sync": {
 			"enable": true,
+			"enableStream": true,
 			"registries": [
 				{
 					"urls": [

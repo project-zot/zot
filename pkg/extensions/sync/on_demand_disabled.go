@@ -4,7 +4,6 @@ package sync
 
 import (
 	"context"
-	"errors"
 
 	"github.com/regclient/regclient/types/manifest"
 )
@@ -22,5 +21,9 @@ func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 }
 
 func (onDemand *BaseOnDemand) FetchManifest(ctx context.Context, repo, reference string) (manifest.Manifest, error) {
-	return nil, errors.New("manifest not found in ondemand disabled")
+	return nil, ErrManifestNotFoundOnDemandDisabl
+}
+
+func (onDemand *BaseOnDemand) StreamManager() StreamManager {
+	return nil
 }
