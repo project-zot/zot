@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/http"
 	"os"
 	"path"
 	"sort"
@@ -291,6 +292,10 @@ func (driver *Driver) Link(src, dest string) error {
 	}
 
 	return nil
+}
+
+func (driver *Driver) URLFor(_ *http.Request, _ string) (string, error) {
+	return "", zerr.ErrBlobRedirectURLNotSupported
 }
 
 func (driver *Driver) formatErr(err error) error {

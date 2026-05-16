@@ -1450,6 +1450,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 	digest := godigest.Digest(digestStr)
 
+	redirect := rh.c.Config.Storage.StorageConfig.Redirect
 	contentRange := request.Header.Get("Range")
 	_, rangeHeaderPresent := request.Header["Range"]
 
@@ -1552,19 +1553,34 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 		return
 	}
 
-	var repo io.ReadCloser
-
-	var blen int64
-
 	// Resolve the response Content-Type from the blob's OCI descriptor
 	// (if any), with a fallback to application/octet-stream. This lookup
 	// may require an additional repo index/manifest walk before we read
 	// the blob, but preserves a more specific Content-Type when available.
 	mediaType := resolveBlobResponseMediaType(imgStore, name, digest, rh.c.Log)
 
-	repo, blen, err := imgStore.GetBlob(name, digest, mediaType)
+	var (
+		repo        io.ReadCloser
+		blen        int64
+		err         error
+		redirectURL string
+	)
+	if !redirect {
+		repo, blen, err = imgStore.GetBlob(name, digest, mediaType)
+	} else {
+		redirectURL, err = imgStore.GetBlobURL(request, name, digest, mediaType)
+		if errors.Is(err, zerr.ErrBlobRedirectURLNotSupported) {
+			repo, blen, err = imgStore.GetBlob(name, digest, mediaType)
+		}
+	}
 	if err != nil {
 		writeBlobError(err)
+
+		return
+	}
+	if redirectURL != "" {
+		// #nosec G710 - RedirectURL is from storage driver
+		http.Redirect(response, request, redirectURL, http.StatusTemporaryRedirect)
 
 		return
 	}

@@ -212,4 +212,5 @@ var (
 	ErrCertificateWatcherAlreadyRunning = errors.New("certificate watcher is already running")
 	ErrInvalidEndSessionEndpoint        = errors.New("end_session_endpoint must be an absolute http(s) URL")
 	ErrPolicyConditionNotCompiled       = errors.New("policy condition not compiled")
+	ErrBlobRedirectURLNotSupported      = errors.New("blob redirect url not supported")
 )

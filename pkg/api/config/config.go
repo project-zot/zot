@@ -35,6 +35,8 @@ type StorageConfig struct {
 	Retention     ImageRetention
 	StorageDriver map[string]any `mapstructure:",omitempty"`
 	CacheDriver   map[string]any `mapstructure:",omitempty"`
+	// Redirect allows storage backends to hand out redirect URLs
+	Redirect bool
 
 	// GCMaxSchedulerDelay is the maximum random delay for GC task scheduling
 	// This field is not configurable by the end user
