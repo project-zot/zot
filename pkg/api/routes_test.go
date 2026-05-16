@@ -2033,15 +2033,23 @@ func descriptorTestDigests() (godigest.Digest, godigest.Digest, godigest.Digest)
 	return godigest.FromString("layer"), godigest.FromString("manifest"), godigest.FromString("config")
 }
 
-// newBlobTestRouteHandler returns a fresh RouteHandler whose default
+// newBlobTestRouteHandler calls newBlobTestRouteHandlerWithConfig with the default config.
+func newBlobTestRouteHandler(t *testing.T, store mocks.MockedImageStore) *api.RouteHandler {
+	t.Helper()
+
+	return newBlobTestRouteHandlerWithConfig(t, store, config.New())
+}
+
+// newBlobTestRouteHandlerWithConfig returns a fresh RouteHandler whose default
 // store is the supplied mock. It does not start a server; handlers are
 // invoked directly via httptest. The Router is initialized manually
 // because NewRouteHandler->SetupRoutes dereferences it but the server
 // (which would normally do that) is never started here.
-func newBlobTestRouteHandler(t *testing.T, store mocks.MockedImageStore) *api.RouteHandler {
+func newBlobTestRouteHandlerWithConfig(t *testing.T, store mocks.MockedImageStore, cfg *config.Config,
+) *api.RouteHandler {
 	t.Helper()
 
-	ctlr := api.NewController(config.New())
+	ctlr := api.NewController(cfg)
 	ctlr.Router = mux.NewRouter()
 	ctlr.StoreController.DefaultStore = store
 
@@ -3220,4 +3228,73 @@ func TestGetBlobMultipartReaderCloseError(t *testing.T) {
 	body := drainResponseBody(t, resp)
 	assert.Less(t, int64(len(body)), advertisedLen,
 		"a Close() error on the second range must truncate the body")
+}
+
+func TestGetBlobRedirectURL(t *testing.T) {
+	cfg := config.New()
+	cfg.Storage.Redirect = true
+
+	handler := newBlobTestRouteHandlerWithConfig(t, mocks.MockedImageStore{
+		GetBlobURLFn: func(request *http.Request, repo string, digest godigest.Digest, mediaType string) (string, error) {
+			return "http://example.com/foo", nil
+		},
+	}, cfg)
+
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"http://example.com/v2/test/blobs/sha256:test",
+		http.NoBody,
+	)
+	req = mux.SetURLVars(req, map[string]string{
+		"name":   "test",
+		"digest": "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621",
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetBlob(rec, req)
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusTemporaryRedirect, resp.StatusCode)
+	assert.Equal(t, "http://example.com/foo", resp.Header.Get("Location"))
+}
+
+func TestGetBlobRedirectFallback(t *testing.T) {
+	cfg := config.New()
+	cfg.Storage.Redirect = true
+
+	var getBlobCalled bool
+
+	handler := newBlobTestRouteHandlerWithConfig(t, mocks.MockedImageStore{
+		GetBlobURLFn: func(request *http.Request, repo string, digest godigest.Digest, mediaType string) (string, error) {
+			return "", zerr.ErrBlobRedirectURLNotSupported
+		},
+		GetBlobFn: func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error) {
+			getBlobCalled = true
+
+			return io.NopCloser(strings.NewReader("")), 0, nil
+		},
+	}, cfg)
+
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"http://example.com/v2/test/blobs/sha256:test",
+		http.NoBody,
+	)
+	req = mux.SetURLVars(req, map[string]string{
+		"name":   "test",
+		"digest": "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621",
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetBlob(rec, req)
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	require.NotEqual(t, http.StatusTemporaryRedirect, resp.StatusCode)
+	assert.True(t, getBlobCalled)
 }
