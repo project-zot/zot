@@ -36,7 +36,7 @@ func TestElevatedPrivilegesInvalidDedupe(t *testing.T) {
 		}, log)
 		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
 
-		upload, err := imgStore.NewBlobUpload("dedupe1")
+		upload, err := imgStore.NewBlobUpload(context.Background(), "dedupe1")
 		So(err, ShouldBeNil)
 		So(upload, ShouldNotBeEmpty)
 
@@ -44,7 +44,7 @@ func TestElevatedPrivilegesInvalidDedupe(t *testing.T) {
 		buf := bytes.NewBuffer(content)
 		buflen := buf.Len()
 		digest := godigest.FromBytes(content)
-		blob, err := imgStore.PutBlobChunkStreamed("dedupe1", upload, buf)
+		blob, err := imgStore.PutBlobChunkStreamed(context.Background(), "dedupe1", upload, buf)
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
 
@@ -69,7 +69,7 @@ func TestElevatedPrivilegesInvalidDedupe(t *testing.T) {
 			panic(err)
 		}
 
-		upload, err = imgStore.NewBlobUpload("dedupe2")
+		upload, err = imgStore.NewBlobUpload(context.Background(), "dedupe2")
 		So(err, ShouldBeNil)
 		So(upload, ShouldNotBeEmpty)
 
@@ -77,7 +77,7 @@ func TestElevatedPrivilegesInvalidDedupe(t *testing.T) {
 		buf = bytes.NewBuffer(content)
 		buflen = buf.Len()
 		digest = godigest.FromBytes(content)
-		blob, err = imgStore.PutBlobChunkStreamed("dedupe2", upload, buf)
+		blob, err = imgStore.PutBlobChunkStreamed(context.Background(), "dedupe2", upload, buf)
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
 

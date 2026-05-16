@@ -1237,12 +1237,12 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 						},
 					}, audit, log, metrics)
 
-					blobUploadID, err := imgStore.NewBlobUpload(repoName)
+					blobUploadID, err := imgStore.NewBlobUpload(context.Background(), repoName)
 					So(err, ShouldBeNil)
 
 					content := []byte("test-data3")
 					buf := bytes.NewBuffer(content)
-					_, err = imgStore.PutBlobChunkStreamed(repoName, blobUploadID, buf)
+					_, err = imgStore.PutBlobChunkStreamed(context.Background(), repoName, blobUploadID, buf)
 					So(err, ShouldBeNil)
 
 					// Blob upload should be there
@@ -2559,12 +2559,12 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 						},
 					}, audit, log, metrics)
 
-					blobUploadID, err := imgStore.NewBlobUpload(repoName)
+					blobUploadID, err := imgStore.NewBlobUpload(context.Background(), repoName)
 					So(err, ShouldBeNil)
 
 					content := []byte("test-data3")
 					buf := bytes.NewBuffer(content)
-					_, err = imgStore.PutBlobChunkStreamed(repoName, blobUploadID, buf)
+					_, err = imgStore.PutBlobChunkStreamed(context.Background(), repoName, blobUploadID, buf)
 					So(err, ShouldBeNil)
 
 					// Blob upload should be there

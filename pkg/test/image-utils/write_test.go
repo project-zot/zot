@@ -33,7 +33,7 @@ func TestWriteImageToFileSystem(t *testing.T) {
 			"tag",
 			storage.StoreController{
 				DefaultStore: mocks.MockedImageStore{
-					FullBlobUploadFn: func(repo string, body io.Reader, digest godigest.Digest,
+					FullBlobUploadFn: func(ctx context.Context, repo string, body io.Reader, digest godigest.Digest,
 					) (string, int64, error) {
 						return "", 0, ErrTestError
 					},
@@ -48,7 +48,7 @@ func TestWriteImageToFileSystem(t *testing.T) {
 			"tag",
 			storage.StoreController{
 				DefaultStore: mocks.MockedImageStore{
-					FullBlobUploadFn: func(repo string, body io.Reader, digest godigest.Digest,
+					FullBlobUploadFn: func(ctx context.Context, repo string, body io.Reader, digest godigest.Digest,
 					) (string, int64, error) {
 						if count == 0 {
 							count++

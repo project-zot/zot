@@ -42,17 +42,17 @@ type ImageStore interface { //nolint:interfacebloat
 	BlobUploadPath(repo, uuid string) string
 	StatBlobUpload(repo, uuid string) (bool, int64, time.Time, error)
 	ListBlobUploads(repo string) ([]string, error)
-	NewBlobUpload(repo string) (string, error)
+	NewBlobUpload(ctx context.Context, repo string) (string, error)
 	GetBlobUpload(repo, uuid string) (int64, error)
-	PutBlobChunkStreamed(repo, uuid string, body io.Reader) (int64, error)
-	PutBlobChunk(repo, uuid string, from, to int64, body io.Reader) (int64, error)
+	PutBlobChunkStreamed(ctx context.Context, repo, uuid string, body io.Reader) (int64, error)
+	PutBlobChunk(ctx context.Context, repo, uuid string, from, to int64, body io.Reader) (int64, error)
 	BlobUploadInfo(repo, uuid string) (int64, error)
 	FinishBlobUpload(repo, uuid string, body io.Reader, digest godigest.Digest) error
-	FullBlobUpload(repo string, body io.Reader, digest godigest.Digest) (string, int64, error)
+	FullBlobUpload(ctx context.Context, repo string, body io.Reader, digest godigest.Digest) (string, int64, error)
 	DedupeBlob(src string, dstDigest godigest.Digest, dstRepo, dst string) error
 	DeleteBlobUpload(repo, uuid string) error
 	BlobPath(repo string, digest godigest.Digest) string
-	CheckBlob(repo string, digest godigest.Digest) (bool, int64, error)
+	CheckBlob(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error)
 	StatBlob(repo string, digest godigest.Digest) (bool, int64, time.Time, error)
 	GetBlob(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error)
 	GetBlobPartial(repo string, digest godigest.Digest, mediaType string, from, to int64,

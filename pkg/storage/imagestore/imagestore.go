@@ -938,8 +938,8 @@ func (is *ImageStore) StatBlobUpload(repo, uuid string) (bool, int64, time.Time,
 }
 
 // NewBlobUpload returns the unique ID for an upload in progress.
-func (is *ImageStore) NewBlobUpload(repo string) (string, error) {
-	if err := is.InitRepo(context.Background(), repo); err != nil {
+func (is *ImageStore) NewBlobUpload(ctx context.Context, repo string) (string, error) {
+	if err := is.InitRepo(ctx, repo); err != nil {
 		is.log.Error().Err(err).Msg("failed to initialize repo")
 
 		return "", err
@@ -993,8 +993,8 @@ func (is *ImageStore) GetBlobUpload(repo, uuid string) (int64, error) {
 
 // PutBlobChunkStreamed appends another chunk of data to the specified blob. It returns
 // the number of actual bytes to the blob.
-func (is *ImageStore) PutBlobChunkStreamed(repo, uuid string, body io.Reader) (int64, error) {
-	if err := is.InitRepo(context.Background(), repo); err != nil {
+func (is *ImageStore) PutBlobChunkStreamed(ctx context.Context, repo, uuid string, body io.Reader) (int64, error) {
+	if err := is.InitRepo(ctx, repo); err != nil {
 		return -1, err
 	}
 
@@ -1024,10 +1024,10 @@ func (is *ImageStore) PutBlobChunkStreamed(repo, uuid string, body io.Reader) (i
 
 // PutBlobChunk writes another chunk of data to the specified blob. It returns
 // the number of actual bytes to the blob.
-func (is *ImageStore) PutBlobChunk(repo, uuid string, from, to int64,
+func (is *ImageStore) PutBlobChunk(ctx context.Context, repo, uuid string, from, to int64,
 	body io.Reader,
 ) (int64, error) {
-	if err := is.InitRepo(context.Background(), repo); err != nil {
+	if err := is.InitRepo(ctx, repo); err != nil {
 		return -1, err
 	}
 
@@ -1157,12 +1157,14 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 }
 
 // FullBlobUpload handles a full blob upload, and no partial session is created.
-func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, dstDigest godigest.Digest) (string, int64, error) {
+func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.Reader,
+	dstDigest godigest.Digest,
+) (string, int64, error) {
 	if err := dstDigest.Validate(); err != nil {
 		return "", -1, err
 	}
 
-	if err := is.InitRepo(context.Background(), repo); err != nil {
+	if err := is.InitRepo(ctx, repo); err != nil {
 		return "", -1, err
 	}
 
@@ -1431,7 +1433,7 @@ func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]str
 
 // CheckBlob verifies a blob and returns true if the blob is correct.
 // If the blob is not found but it's found in cache then it will be copied over.
-func (is *ImageStore) CheckBlob(repo string, digest godigest.Digest) (bool, int64, error) {
+func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 	var lockLatency time.Time
 
 	if err := digest.Validate(); err != nil {
@@ -1480,7 +1482,7 @@ func (is *ImageStore) CheckBlob(repo string, digest godigest.Digest) (bool, int6
 		return false, -1, zerr.ErrBlobNotFound
 	}
 
-	blobSize, err := is.copyBlob(repo, blobPath, dstRecord)
+	blobSize, err := is.copyBlob(ctx, repo, blobPath, dstRecord)
 	if err != nil {
 		return false, -1, zerr.ErrBlobNotFound
 	}
@@ -1547,8 +1549,8 @@ func (is *ImageStore) checkCacheBlob(digest godigest.Digest) (string, error) {
 	return dstRecord, nil
 }
 
-func (is *ImageStore) copyBlob(repo string, blobPath, dstRecord string) (int64, error) {
-	if err := is.initRepo(context.Background(), repo); err != nil {
+func (is *ImageStore) copyBlob(ctx context.Context, repo string, blobPath, dstRecord string) (int64, error) {
+	if err := is.initRepo(ctx, repo); err != nil {
 		is.log.Error().Err(err).Str("repository", repo).Msg("failed to initialize an empty repo")
 
 		return -1, err

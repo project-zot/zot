@@ -95,12 +95,12 @@ func TestGarbageCollectManifestErrors(t *testing.T) {
 		digest := godigest.FromBytes(content)
 		So(digest, ShouldNotBeNil)
 
-		_, blen, err := imgStore.FullBlobUpload(repoName, bytes.NewReader(content), digest)
+		_, blen, err := imgStore.FullBlobUpload(context.Background(), repoName, bytes.NewReader(content), digest)
 		So(err, ShouldBeNil)
 		So(blen, ShouldEqual, len(content))
 
 		cblob, cdigest := GetRandomImageConfig()
-		_, clen, err := imgStore.FullBlobUpload(repoName, bytes.NewReader(cblob), cdigest)
+		_, clen, err := imgStore.FullBlobUpload(context.Background(), repoName, bytes.NewReader(cblob), cdigest)
 		So(err, ShouldBeNil)
 		So(clen, ShouldEqual, len(cblob))
 
@@ -125,7 +125,6 @@ func TestGarbageCollectManifestErrors(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		manifestDigest := godigest.FromBytes(body)
-
 
 		_, _, err = imgStore.PutImageManifest(context.Background(), repoName, "1.0", ispec.MediaTypeImageManifest, body, nil)
 		So(err, ShouldBeNil)
@@ -201,7 +200,7 @@ func TestGarbageCollectIndexErrors(t *testing.T) {
 		bdgst := godigest.FromBytes(content)
 		So(bdgst, ShouldNotBeNil)
 
-		_, bsize, err := imgStore.FullBlobUpload(repoName, bytes.NewReader(content), bdgst)
+		_, bsize, err := imgStore.FullBlobUpload(context.Background(), repoName, bytes.NewReader(content), bdgst)
 		So(err, ShouldBeNil)
 		So(bsize, ShouldEqual, len(content))
 
@@ -213,14 +212,14 @@ func TestGarbageCollectIndexErrors(t *testing.T) {
 
 		for i := 0; i < 4; i++ {
 			// upload image config blob
-			upload, err := imgStore.NewBlobUpload(repoName)
+			upload, err := imgStore.NewBlobUpload(context.Background(), repoName)
 			So(err, ShouldBeNil)
 			So(upload, ShouldNotBeEmpty)
 
 			cblob, cdigest := GetRandomImageConfig()
 			buf := bytes.NewBuffer(cblob)
 			buflen := buf.Len()
-			blob, err := imgStore.PutBlobChunkStreamed(repoName, upload, buf)
+			blob, err := imgStore.PutBlobChunkStreamed(context.Background(), repoName, upload, buf)
 			So(err, ShouldBeNil)
 			So(blob, ShouldEqual, buflen)
 
@@ -252,7 +251,7 @@ func TestGarbageCollectIndexErrors(t *testing.T) {
 
 			_, _, err = imgStore.PutImageManifest(
 				context.Background(), repoName, digest.String(), ispec.MediaTypeImageManifest, content, nil)
-				So(err, ShouldBeNil)
+			So(err, ShouldBeNil)
 
 			index.Manifests = append(index.Manifests, ispec.Descriptor{
 				Digest:    digest,
@@ -267,7 +266,6 @@ func TestGarbageCollectIndexErrors(t *testing.T) {
 
 		indexDigest := godigest.FromBytes(indexContent)
 		So(indexDigest, ShouldNotBeNil)
-
 
 		_, _, err = imgStore.PutImageManifest(context.Background(), repoName, "1.0", ispec.MediaTypeImageIndex, indexContent, nil)
 		So(err, ShouldBeNil)

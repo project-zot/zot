@@ -1112,7 +1112,8 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 	var blen int64
 
 	if userCanMount {
-		ok, blen, err = imgStore.CheckBlob(name, digest)
+		ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
+		ok, blen, err = imgStore.CheckBlob(ctx, name, digest)
 	} else {
 		var lockLatency time.Time
 
@@ -1536,7 +1537,8 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 	}
 
 	if rangeHeaderPresent {
-		ok, bsize, err := imgStore.CheckBlob(name, digest)
+		ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
+		ok, bsize, err := imgStore.CheckBlob(ctx, name, digest)
 		if err != nil {
 			writeBlobError(err)
 
@@ -1724,6 +1726,8 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 
 	imgStore := rh.getImageStore(name)
 
+	ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
+
 	// currently zot does not support cross-repository mounting, following dist-spec and returning 202
 	if mountDigests, ok := request.URL.Query()["mount"]; ok {
 		if len(mountDigests) != 1 {
@@ -1755,11 +1759,11 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 		// check blob looks for actual path (name+mountDigests[0]) first then look for cache and
 		// if found in cache, will do hard link and if fails we will start new upload.
 		if userCanMount {
-			_, _, err = imgStore.CheckBlob(name, mountDigest)
+			_, _, err = imgStore.CheckBlob(ctx, name, mountDigest)
 		}
 
 		if err != nil || !userCanMount {
-			upload, err := imgStore.NewBlobUpload(name)
+			upload, err := imgStore.NewBlobUpload(ctx, name)
 			if err != nil {
 				details := zerr.GetDetails(err)
 				if errors.Is(err, zerr.ErrRepoNotFound) {
@@ -1833,7 +1837,7 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 			return
 		}
 
-		sessionID, size, err := imgStore.FullBlobUpload(name, request.Body, digest)
+		sessionID, size, err := imgStore.FullBlobUpload(ctx, name, request.Body, digest)
 		if err != nil {
 			rh.c.Log.Error().Err(err).Int64("actual", size).Int64("expected", contentLength).
 				Msg("failed to full blob upload")
@@ -1856,7 +1860,7 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 		return
 	}
 
-	upload, err := imgStore.NewBlobUpload(name)
+	upload, err := imgStore.NewBlobUpload(ctx, name)
 	if err != nil {
 		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrRepoNotFound) {
@@ -1983,9 +1987,11 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 
 	var err error
 
+	ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
+
 	if request.Header.Get("Content-Length") == "" || request.Header.Get("Content-Range") == "" {
 		// streamed blob upload
-		clen, err = imgStore.PutBlobChunkStreamed(name, sessionID, request.Body)
+		clen, err = imgStore.PutBlobChunkStreamed(ctx, name, sessionID, request.Body)
 	} else {
 		// chunked blob upload
 		var contentLength int64
@@ -2004,7 +2010,7 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 			return
 		}
 
-		clen, err = imgStore.PutBlobChunk(name, sessionID, from, to, request.Body)
+		clen, err = imgStore.PutBlobChunk(ctx, name, sessionID, from, to, request.Body)
 	}
 
 	if err != nil { //nolint: dupl
@@ -2071,6 +2077,8 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 
 	imgStore := rh.getImageStore(name)
 
+	ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
+
 	sessionID, ok := vars["session_id"]
 	if !ok || sessionID == "" {
 		response.WriteHeader(http.StatusNotFound)
@@ -2134,7 +2142,7 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 			return
 		}
 
-		_, err = imgStore.PutBlobChunk(name, sessionID, from, to, request.Body)
+		_, err = imgStore.PutBlobChunk(ctx, name, sessionID, from, to, request.Body)
 		if err != nil { //nolint:dupl
 			details := zerr.GetDetails(err)
 			if errors.Is(err, zerr.ErrBadUploadRange) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
