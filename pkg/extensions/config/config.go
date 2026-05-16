@@ -139,7 +139,7 @@ func (e *ExtensionConfig) IsStreamingEnabled() bool {
 		return false
 	}
 
-	return e.Sync != nil && e.Sync.EnableStreaming != nil && *e.Sync.EnableStreaming
+	return e.Sync != nil && e.Sync.Stream != nil && *e.Sync.Stream
 }
 
 // IsScrubEnabled checks if scrub is enabled in this extensions config.

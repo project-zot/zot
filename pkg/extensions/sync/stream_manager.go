@@ -25,6 +25,8 @@ type StreamManager interface {
 	CachedBlobInfo(blobDigest string) (blen int64, mediaType string, err error)
 }
 
+const chunkSizeBytes = 32768
+
 type ChunkingStreamManager struct {
 	tempStore StreamTempStore
 	// activeStreams maps blob digest to the corresponding chunked blob reader
@@ -33,23 +35,20 @@ type ChunkingStreamManager struct {
 	// streamingRefs holds the references to the images that are currently being streamed and their corresponding manifest.
 	streamingRefs map[string]manifestpkg.Manifest
 	// blobInfo holds blobs and their corresponding descriptor.
-	blobInfoMap    map[string]descriptor.Descriptor
-	logger         log.Logger
-	streamLock     sync.Mutex
-	chunkSizeBytes int64
+	blobInfoMap map[string]descriptor.Descriptor
+	logger      log.Logger
+	streamLock  sync.Mutex
 }
 
 func NewChunkingStreamManager(config *config.Config, logger log.Logger) *ChunkingStreamManager {
 	store := NewLocalTempStore(path.Join(config.Storage.RootDirectory, "stream"))
-	extConf := config.CopyExtensionsConfig()
 
 	return &ChunkingStreamManager{
-		tempStore:      store,
-		activeStreams:  map[string]*ChunkedBlobReader{},
-		streamingRefs:  map[string]manifestpkg.Manifest{},
-		blobInfoMap:    map[string]descriptor.Descriptor{},
-		logger:         logger,
-		chunkSizeBytes: *extConf.Sync.StreamChunkSizeBytes,
+		tempStore:     store,
+		activeStreams: map[string]*ChunkedBlobReader{},
+		streamingRefs: map[string]manifestpkg.Manifest{},
+		blobInfoMap:   map[string]descriptor.Descriptor{},
+		logger:        logger,
 	}
 }
 
@@ -60,7 +59,7 @@ func (sm *ChunkingStreamManager) ConnectClient(blobDigest string, writer io.Writ
 
 	stream, ok := sm.activeStreams[blobDigest]
 	if !ok {
-		return nil, ErrBlobNotFoundInActiveStreams
+		return nil, zerr.ErrBlobNotFoundInActiveStreams
 	}
 
 	dig, err := godigest.Parse(blobDigest)
@@ -68,7 +67,7 @@ func (sm *ChunkingStreamManager) ConnectClient(blobDigest string, writer io.Writ
 		return nil, err
 	}
 
-	copier := NewInFlightBlobCopier(stream, sm.tempStore.BlobPath(dig), writer, sm.chunkSizeBytes, sm.logger)
+	copier := NewInFlightBlobCopier(stream, sm.tempStore.BlobPath(dig), writer, chunkSizeBytes, sm.logger)
 	sm.logger.Info().Str("blob", blobDigest).Msg("connected client for blob")
 
 	return copier, nil
@@ -99,10 +98,10 @@ func (sm *ChunkingStreamManager) StreamingBlobReader(reader *blob.BReader) (*blo
 	// as the code here only supplies the reader and the chunk count
 	chunkingReader, ok := sm.activeStreams[digest]
 	if !ok {
-		return nil, ErrChunkingReaderNotInitialized
+		return nil, zerr.ErrBlobReaderMissing
 	}
 
-	chunkingReader.InitReader(reader, chunkCount(size, sm.chunkSizeBytes))
+	chunkingReader.InitReader(reader, chunkCount(size, chunkSizeBytes))
 	sm.logger.Info().Str("blob", digest).Msg("finished init chunked blob reader")
 
 	return chunkingReader.ToBReader(), nil
@@ -127,7 +126,7 @@ func (sm *ChunkingStreamManager) prepareActiveStreamForBlob(descriptor descripto
 		return nil
 	}
 
-	r, err := NewChunkedBlobReader(sm.tempStore.BlobPath(descriptor.Digest), sm.chunkSizeBytes, sm.logger)
+	r, err := NewChunkedBlobReader(sm.tempStore.BlobPath(descriptor.Digest), chunkSizeBytes, sm.logger)
 	if err != nil {
 		return err
 	}

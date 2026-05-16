@@ -9,6 +9,7 @@ import (
 
 	"github.com/regclient/regclient/types/blob"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
@@ -60,7 +61,7 @@ func (cbr *ChunkedBlobReader) InitReader(r *blob.BReader, numChunksTotal int64) 
 
 func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 	if cbr.InFlightReader == nil {
-		return 0, ErrReaderNotInitialized
+		return 0, zerr.ErrStreamReaderNotInitialized
 	}
 
 	cbr.chunksMu.Lock()

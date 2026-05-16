@@ -1119,23 +1119,28 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 
 	if err != nil {
 		details := zerr.GetDetails(err)
-
 		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic,dupl // errorslint conflicts with gocritic:IfElseChain
 			details["digest"] = digest.String()
 			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrRepoNotFound) {
-			streamErr := rh.getBlobInfoFromStreamCache(digest.String(), response)
-			if streamErr == nil {
-				return
+			extConf := rh.c.Config.CopyExtensionsConfig()
+			if extConf.IsStreamingEnabled() {
+				streamErr := rh.getBlobInfoFromStreamCache(digest.String(), response)
+				if streamErr == nil {
+					return
+				}
 			}
 			details["name"] = name
 			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrBlobNotFound) {
-			streamErr := rh.getBlobInfoFromStreamCache(digest.String(), response)
-			if streamErr == nil {
-				return
+			extConf := rh.c.Config.CopyExtensionsConfig()
+			if extConf.IsStreamingEnabled() {
+				streamErr := rh.getBlobInfoFromStreamCache(digest.String(), response)
+				if streamErr == nil {
+					return
+				}
 			}
 			details["digest"] = digest.String()
 			e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(details)
@@ -1165,23 +1170,27 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 func (rh *RouteHandler) getBlobInfoFromStreamCache(digest string, response http.ResponseWriter) error {
 	rh.c.Log.Debug().Str("digest", digest).Msg("checking stream cache for blob existence")
 
-	extConf := rh.c.Config.CopyExtensionsConfig()
-	if extConf.IsStreamingEnabled() {
-		// when streaming is enabled, the blob might exist in the stream cache
-		blobSize, blobMediaType, err := rh.c.SyncOnDemand.StreamManager().CachedBlobInfo(digest)
-		if err != nil {
-			rh.c.Log.Error().Err(err).Str("digest", digest).Msg("error checking stream cache for blob existence")
+	streamMgr := rh.c.SyncOnDemand.StreamManager()
+	if streamMgr == nil {
+		rh.c.Log.Error().Str("digest", digest).Msg("stream manager is not initialized")
 
-			return err
-		}
-		blen := blobSize
-
-		response.Header().Set("Content-Length", strconv.FormatInt(blen, 10))
-		response.Header().Set("Accept-Ranges", "bytes")
-		response.Header().Set("Content-Type", blobMediaType)
-		response.Header().Set(constants.DistContentDigestKey, digest)
-		response.WriteHeader(http.StatusOK)
+		return zerr.ErrStreamManagerNotInitialized
 	}
+
+	// when streaming is enabled, the blob might exist in the stream cache
+	blobSize, blobMediaType, err := streamMgr.CachedBlobInfo(digest)
+	if err != nil {
+		rh.c.Log.Error().Err(err).Str("digest", digest).Msg("failed to check stream cache for blob existence")
+
+		return err
+	}
+	blen := blobSize
+
+	response.Header().Set("Content-Length", strconv.FormatInt(blen, 10))
+	response.Header().Set("Accept-Ranges", "bytes")
+	response.Header().Set("Content-Type", blobMediaType)
+	response.Header().Set(constants.DistContentDigestKey, digest)
+	response.WriteHeader(http.StatusOK)
 
 	return nil
 }

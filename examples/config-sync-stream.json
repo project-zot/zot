@@ -13,8 +13,7 @@
 	"extensions": {
 		"sync": {
 			"enable": true,
-			"enableStreaming": true,
-			"streamChunkSizeBytes": 32768,
+			"stream": true,
 			"registries": [
 				{
 					"urls": [

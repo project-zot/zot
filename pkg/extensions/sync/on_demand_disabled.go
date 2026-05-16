@@ -21,7 +21,7 @@ func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 }
 
 func (onDemand *BaseOnDemand) FetchManifest(ctx context.Context, repo, reference string) (manifest.Manifest, error) {
-	return nil, ErrManifestNotFoundOnDemandDisabl
+	return manifest.New()
 }
 
 func (onDemand *BaseOnDemand) StreamManager() StreamManager {
