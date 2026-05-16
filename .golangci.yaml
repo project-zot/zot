@@ -12,6 +12,7 @@ linters:
     - funlen
     - gocognit
     - goconst
+    - gomodguard
     - gosmopolitan
     - iface
     - inamedparam
