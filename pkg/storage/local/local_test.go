@@ -1151,7 +1151,7 @@ func FuzzRunGCRepo(f *testing.F) {
 		gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
 			Delay:          storageConstants.DefaultGCDelay,
 			ImageRetention: DeleteReferrers,
-		}, audit, log)
+		}, audit, log, metrics)
 
 		if err := gc.CleanRepo(context.Background(), data); err != nil {
 			t.Error(err)
@@ -2075,7 +2075,7 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 			gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
 				Delay:          1 * time.Second,
 				ImageRetention: DeleteReferrers,
-			}, audit, log)
+			}, audit, log, metrics)
 
 			image := CreateDefaultVulnerableImage()
 			err := WriteImageToFileSystem(image, repoName, "0.0.1", storage.StoreController{
@@ -2124,7 +2124,7 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 			gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
 				Delay:          1 * time.Second,
 				ImageRetention: DeleteReferrers,
-			}, audit, log)
+			}, audit, log, metrics)
 
 			image := CreateDefaultVulnerableImage()
 			err := WriteImageToFileSystem(image, repoName, "0.0.1", storage.StoreController{
@@ -2162,7 +2162,7 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 			gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
 				Delay:          1 * time.Second,
 				ImageRetention: DeleteReferrers,
-			}, audit, log)
+			}, audit, log, metrics)
 
 			storeController := storage.StoreController{DefaultStore: imgStore}
 			img := CreateRandomImage()
@@ -2238,7 +2238,7 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 			gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
 				Delay:          1 * time.Second,
 				ImageRetention: DeleteReferrers,
-			}, audit, log)
+			}, audit, log, metrics)
 
 			blobUploadID, err := imgStore.NewBlobUpload(repoName)
 			So(err, ShouldBeNil)
@@ -2316,7 +2316,7 @@ func TestGarbageCollectImageUnknownManifest(t *testing.T) {
 		gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
 			Delay:          1 * time.Second,
 			ImageRetention: DeleteReferrers,
-		}, audit, log)
+		}, audit, log, metrics)
 
 		unsupportedMediaType := "application/vnd.oci.artifact.manifest.v1+json"
 
@@ -2496,7 +2496,7 @@ func TestGarbageCollectErrors(t *testing.T) {
 		gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
 			Delay:          500 * time.Millisecond,
 			ImageRetention: DeleteReferrers,
-		}, audit, log)
+		}, audit, log, metrics)
 
 		// create a blob/layer
 		upload, err := imgStore.NewBlobUpload(repoName)

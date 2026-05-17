@@ -4,6 +4,7 @@ package monitoring
 
 import (
 	"path"
+	"strconv"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -128,6 +129,29 @@ var (
 			Buckets:   GetDefaultBuckets(),
 		},
 		[]string{"name"},
+	)
+	gcRuns = promauto.NewCounterVec( //nolint: gochecknoglobals
+		prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Name:      "gc_runs_total",
+			Help:      "Total number of garbage collection runs",
+		},
+		[]string{"error"},
+	)
+	gcDuration = promauto.NewSummary( //nolint: gochecknoglobals
+		prometheus.SummaryOpts{
+			Namespace: metricsNamespace,
+			Name:      "gc_duration_seconds",
+			Help:      "Duration of garbage collection runs",
+		},
+	)
+	gcDeleted = promauto.NewCounterVec( //nolint: gochecknoglobals
+		prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Name:      "gc_deleted_total",
+			Help:      "Total number of items deleted by garbage collection",
+		},
+		[]string{"type"},
 	)
 )
 
@@ -292,4 +316,24 @@ func ObserveWorkersTasksDuration(ms MetricServer, taskName string, duration time
 	ms.SendMetric(func() {
 		workersTasksDuration.WithLabelValues(taskName).Observe(duration.Seconds())
 	})
+}
+
+func IncGCRuns(ms MetricServer, hasError bool) {
+	ms.SendMetric(func() {
+		gcRuns.WithLabelValues(strconv.FormatBool(hasError)).Inc()
+	})
+}
+
+func ObserveGCDuration(ms MetricServer, latency time.Duration) {
+	ms.SendMetric(func() {
+		gcDuration.Observe(latency.Seconds())
+	})
+}
+
+func IncGCDeleted(ms MetricServer, artifactType string, count int) {
+	if count > 0 {
+		ms.SendMetric(func() {
+			gcDeleted.WithLabelValues(artifactType).Add(float64(count))
+		})
+	}
 }
