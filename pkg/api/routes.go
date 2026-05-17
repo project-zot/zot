@@ -1167,15 +1167,13 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 	response.WriteHeader(http.StatusOK)
 }
 
+// getBlobInfoFromStreamCache checks if a blob exists in the stream cache
+// and writes appropriate headers to the response if it does.
+// This is only applicable when streaming is enabled.
 func (rh *RouteHandler) getBlobInfoFromStreamCache(digest string, response http.ResponseWriter) error {
 	rh.c.Log.Debug().Str("digest", digest).Msg("checking stream cache for blob existence")
 
 	streamMgr := rh.c.SyncOnDemand.StreamManager()
-	if streamMgr == nil {
-		rh.c.Log.Error().Str("digest", digest).Msg("stream manager is not initialized")
-
-		return zerr.ErrStreamManagerNotInitialized
-	}
 
 	// when streaming is enabled, the blob might exist in the stream cache
 	blobSize, blobMediaType, err := streamMgr.CachedBlobInfo(digest)
@@ -1507,15 +1505,20 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 				copier, err := rh.c.SyncOnDemand.StreamManager().ConnectClient(digest.String(), response)
 				if err != nil {
-					rh.c.Log.Error().Err(err).Msg("failed to connect client to stream")
-					response.WriteHeader(http.StatusInternalServerError)
+					if !errors.Is(err, zerr.ErrBlobNotFoundInActiveStreams) {
+						rh.c.Log.Error().Err(err).Str("digest", digest.String()).Msg("failed to connect client to stream")
+						response.WriteHeader(http.StatusInternalServerError)
 
-					return
+						return
+					}
 				}
 
 				err = copier.Copy()
 				if err != nil {
-					rh.c.Log.Error().Err(err).Msg("unexpected error during stream copy")
+					rh.c.Log.Error().Err(err).Str("digest", digest.String()).Msg("unexpected error during stream copy")
+					response.WriteHeader(http.StatusInternalServerError)
+
+					return
 				}
 
 				response.Header().Set("Content-Length", strconv.FormatInt(copier.Source.InFlightReader.GetDescriptor().Size, 10))
@@ -2724,7 +2727,7 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 			routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
 				Msg("streaming is enabled. Direct fetching manifest.")
 
-			fetchedManifest, err := routeHandler.c.SyncOnDemand.FetchManifest(ctx, name, reference)
+			fetchedManifest, err := routeHandler.c.SyncOnDemand.FetchManifestForStream(ctx, name, reference)
 			if err != nil {
 				routeHandler.c.Log.Err(err).Str("repository", name).Str("reference", reference).
 					Msg("failed to fetch manifest")

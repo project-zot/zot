@@ -216,4 +216,5 @@ var (
 	ErrStreamReaderNotInitialized       = errors.New("reader not initialized")
 	ErrBlobNotFoundInActiveStreams      = errors.New("blob not found in active streams")
 	ErrBlobReaderMissing                = errors.New("blob reader missing for this blob")
+	ErrSyncUpstreamDownloadFailed       = errors.New("upstream blob download failed")
 )

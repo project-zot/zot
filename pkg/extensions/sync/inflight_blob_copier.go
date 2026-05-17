@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
@@ -37,7 +38,7 @@ func NewInFlightBlobCopier(
 }
 
 func (ifbc *InFlightBlobCopier) Copy() error {
-	ifbc.log.Info().Msg("starting inflight copy")
+	ifbc.log.Debug().Str("onDiskPath", ifbc.onDiskPath).Msg("starting inflight copy")
 
 	onDiskFile, err := os.Open(ifbc.onDiskPath)
 	if err != nil {
@@ -51,12 +52,15 @@ func (ifbc *InFlightBlobCopier) Copy() error {
 	chunkChan := make(chan int64, 1)
 
 	id := ifbc.Source.Subscribe(chunkChan)
-
 	defer ifbc.Source.Unsubscribe(id)
-	defer close(chunkChan)
 
 	for {
-		latestChunkNum := <-chunkChan
+		latestChunkNum, ok := <-chunkChan
+		if !ok {
+			ifbc.log.Error().Str("onDiskPath", ifbc.onDiskPath).Msg("failed to download from upstream, aborting inflight copy")
+
+			return zerr.ErrSyncUpstreamDownloadFailed
+		}
 
 		ifbc.Lock()
 		if latestChunkNum <= ifbc.numChunksCopied {

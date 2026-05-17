@@ -75,11 +75,16 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 	numBytesRead, err := io.CopyN(multiWriter, cbr.InFlightReader, cbr.chunkSizeBytes)
 	if err != nil {
 		if !errors.Is(err, io.EOF) {
+			// upstream download error
 			cbr.logger.Error().Err(err).Msg("failed to copy from in flight reader")
-			copy(buff, internalBuff.Bytes())
 			cbr.chunksMu.Unlock()
 
-			return int(numBytesRead), err
+			// drain all clients and close their channels
+			for clientId := range cbr.clients {
+				cbr.Unsubscribe(clientId)
+			}
+
+			return -1, err
 		}
 	}
 
@@ -141,8 +146,13 @@ func (cbr *ChunkedBlobReader) Unsubscribe(clientId int) {
 		cbr.clientMu.Unlock()
 	}()
 
-	delete(cbr.clients, clientId)
-	cbr.numClientsTotal--
+	channel, ok := cbr.clients[clientId]
+	if ok {
+		close(channel)
+
+		cbr.numClientsTotal--
+		delete(cbr.clients, clientId)
+	}
 }
 
 func (cbr *ChunkedBlobReader) ToBReader() *blob.BReader {

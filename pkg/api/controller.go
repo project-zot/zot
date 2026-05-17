@@ -654,6 +654,6 @@ func RunGCTasks(conf *config.Config, storeController storage.StoreController, me
 type SyncOnDemand interface {
 	SyncImage(ctx context.Context, repo, reference string) error
 	SyncReferrers(ctx context.Context, repo string, subjectDigestStr string, referenceTypes []string) error
-	FetchManifest(ctx context.Context, repo, reference string) (manifest.Manifest, error)
+	FetchManifestForStream(ctx context.Context, repo, reference string) (manifest.Manifest, error)
 	StreamManager() sync.StreamManager
 }

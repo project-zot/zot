@@ -41,7 +41,7 @@ type ChunkingStreamManager struct {
 }
 
 func NewChunkingStreamManager(config *config.Config, logger log.Logger) *ChunkingStreamManager {
-	store := NewLocalTempStore(path.Join(config.Storage.RootDirectory, "stream"))
+	store := NewLocalTempStore(path.Join(config.Storage.RootDirectory, "_stream"), logger)
 
 	return &ChunkingStreamManager{
 		tempStore:     store,

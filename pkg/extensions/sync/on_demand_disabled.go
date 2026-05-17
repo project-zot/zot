@@ -20,7 +20,9 @@ func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 	return nil
 }
 
-func (onDemand *BaseOnDemand) FetchManifest(ctx context.Context, repo, reference string) (manifest.Manifest, error) {
+func (onDemand *BaseOnDemand) FetchManifestForStream(
+	ctx context.Context, repo, reference string,
+) (manifest.Manifest, error) {
 	return manifest.New()
 }
 
