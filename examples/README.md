@@ -1286,6 +1286,11 @@ sync can also read the certificates directly under certDir:
 
 Besides sync-auth.json file, zot also reads and uses docker credentials by default: https://docs.docker.com/reference/cli/docker/login/#description
 
+### Streaming sync
+
+Under sync, set `"stream": true` to enable streaming. With this option enabled, blobs are streamed to clients as they are being downloaded
+from the upstream registry. This does not require any configuration on the upstream.
+
 ## Search and CVE scanning (Trivy)
 
 The `search` extension can include a `cve` section so zot downloads the [Trivy](https://github.com/aquasecurity/trivy) vulnerability database and exposes CVE data via the search API (for example GraphQL).
