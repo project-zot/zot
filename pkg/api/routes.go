@@ -1503,30 +1503,30 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 			if errors.Is(err, zerr.ErrRepoNotFound) || errors.Is(err, zerr.ErrBlobNotFound) {
 				rh.c.Log.Info().Msg("blob was not found. Connecting client to stream")
 
-				copier, err := rh.c.SyncOnDemand.StreamManager().ConnectClient(digest.String(), response)
-				if err != nil {
-					if !errors.Is(err, zerr.ErrBlobNotFoundInActiveStreams) {
-						rh.c.Log.Error().Err(err).Str("digest", digest.String()).Msg("failed to connect client to stream")
+				copier, clientConnErr := rh.c.SyncOnDemand.StreamManager().ConnectClient(digest.String(), response)
+				if clientConnErr != nil {
+					if !errors.Is(clientConnErr, zerr.ErrBlobNotFoundInActiveStreams) {
+						rh.c.Log.Error().Err(clientConnErr).Str("digest", digest.String()).Msg("failed to connect client to stream")
 						response.WriteHeader(http.StatusInternalServerError)
 
 						return
 					}
-				}
+				} else {
+					clientCopyErr := copier.Copy()
+					if clientCopyErr != nil {
+						rh.c.Log.Error().Err(clientCopyErr).Str("digest", digest.String()).Msg("unexpected error during stream copy")
+						response.WriteHeader(http.StatusInternalServerError)
 
-				err = copier.Copy()
-				if err != nil {
-					rh.c.Log.Error().Err(err).Str("digest", digest.String()).Msg("unexpected error during stream copy")
-					response.WriteHeader(http.StatusInternalServerError)
+						return
+					}
+
+					response.Header().Set("Content-Length", strconv.FormatInt(copier.Source.InFlightReader.GetDescriptor().Size, 10))
+					response.Header().Set(constants.DistContentDigestKey, digest.String())
+					response.Header().Set("Content-Type", copier.Source.InFlightReader.GetDescriptor().MediaType)
+					response.WriteHeader(http.StatusOK)
 
 					return
 				}
-
-				response.Header().Set("Content-Length", strconv.FormatInt(copier.Source.InFlightReader.GetDescriptor().Size, 10))
-				response.Header().Set(constants.DistContentDigestKey, digest.String())
-				response.Header().Set("Content-Type", copier.Source.InFlightReader.GetDescriptor().MediaType)
-				response.WriteHeader(http.StatusOK)
-
-				return
 			}
 		}
 

@@ -25,14 +25,13 @@ type StreamManager interface {
 	CachedBlobInfo(blobDigest string) (blen int64, mediaType string, err error)
 }
 
-const chunkSizeBytes = 32768
-
 type ChunkingStreamManager struct {
 	tempStore StreamTempStore
 	// activeStreams maps blob digest to the corresponding chunked blob reader
 	// that is currently active and receiving data for that blob.
 	activeStreams map[string]*ChunkedBlobReader
-	// streamingRefs holds the references to the images that are currently being streamed and their corresponding manifest.
+	// streamingRefs holds the references to the images that are
+	// currently being streamed and their corresponding manifest.
 	streamingRefs map[string]manifestpkg.Manifest
 	// blobInfo holds blobs and their corresponding descriptor.
 	blobInfoMap map[string]descriptor.Descriptor
@@ -67,7 +66,7 @@ func (sm *ChunkingStreamManager) ConnectClient(blobDigest string, writer io.Writ
 		return nil, err
 	}
 
-	copier := NewInFlightBlobCopier(stream, sm.tempStore.BlobPath(dig), writer, chunkSizeBytes, sm.logger)
+	copier := NewInFlightBlobCopier(stream, sm.tempStore.BlobPath(dig), writer, sm.logger)
 	sm.logger.Info().Str("blob", blobDigest).Msg("connected client for blob")
 
 	return copier, nil
@@ -95,27 +94,16 @@ func (sm *ChunkingStreamManager) StreamingBlobReader(reader *blob.BReader) (*blo
 	size := desc.Size
 
 	// This expects the chunked blob reader to be initialized and ready
-	// as the code here only supplies the reader and the chunk count
+	// as the code here only supplies the reader and the number of bytes.
 	chunkingReader, ok := sm.activeStreams[digest]
 	if !ok {
 		return nil, zerr.ErrBlobReaderMissing
 	}
 
-	chunkingReader.InitReader(reader, chunkCount(size, chunkSizeBytes))
-	sm.logger.Info().Str("blob", digest).Msg("finished init chunked blob reader")
+	chunkingReader.InitReader(reader, size)
+	sm.logger.Debug().Str("blob", digest).Msg("finished init chunked blob reader")
 
 	return chunkingReader.ToBReader(), nil
-}
-
-func chunkCount(blobSize int64, chunkSizeBytes int64) int64 {
-	chunkCount := blobSize / chunkSizeBytes
-	remainder := blobSize % chunkSizeBytes
-
-	if remainder > 0 {
-		chunkCount++
-	}
-
-	return chunkCount
 }
 
 func (sm *ChunkingStreamManager) prepareActiveStreamForBlob(descriptor descriptor.Descriptor) error {
@@ -126,7 +114,7 @@ func (sm *ChunkingStreamManager) prepareActiveStreamForBlob(descriptor descripto
 		return nil
 	}
 
-	r, err := NewChunkedBlobReader(sm.tempStore.BlobPath(descriptor.Digest), chunkSizeBytes, sm.logger)
+	r, err := NewChunkedBlobReader(sm.tempStore.BlobPath(descriptor.Digest), sm.logger)
 	if err != nil {
 		return err
 	}

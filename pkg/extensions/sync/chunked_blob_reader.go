@@ -1,7 +1,6 @@
 package sync
 
 import (
-	"bytes"
 	"errors"
 	"io"
 	"os"
@@ -9,42 +8,40 @@ import (
 
 	"github.com/regclient/regclient/types/blob"
 
-	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
-// ChunkedBlobReader is a helper that splits a blob into chunks based on chunkSize
-// It then copies chunks to disk.
-// The latest chunk number is announced to channels of subscribers.
+// ChunkedBlobReader is a helper that copies blobs to disk
+// and keeps track of clients that are being served the blob.
+// The latest byte number is announced to channels of subscribers.
 type ChunkedBlobReader struct {
-	numChunksTotal int64
-	numChunksRead  int64
-	chunkSizeBytes int64
-	onDiskPath     string
-	onDiskFile     *os.File
+	numBytesTotal      int64
+	numBytesReadToDisk int64
+	bytesMu            sync.RWMutex
+
+	onDiskPath string
+	onDiskFile *os.File
 
 	InFlightReader  *blob.BReader
-	clientMu        sync.Mutex
+	clientMu        sync.RWMutex
 	clientCond      *sync.Cond
-	chunksMu        sync.RWMutex
 	clients         map[int]chan int64
 	numClientsTotal int
 
 	logger log.Logger
 }
 
-func NewChunkedBlobReader(onDiskPath string, chunkSizeBytes int64, logger log.Logger) (*ChunkedBlobReader, error) {
+func NewChunkedBlobReader(onDiskPath string, logger log.Logger) (*ChunkedBlobReader, error) {
 	createdFile, err := os.OpenFile(onDiskPath, os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return nil, err
 	}
 
 	cbr := &ChunkedBlobReader{
-		clients:        make(map[int]chan int64),
-		logger:         logger,
-		onDiskPath:     onDiskPath,
-		onDiskFile:     createdFile,
-		chunkSizeBytes: chunkSizeBytes,
+		clients:    make(map[int]chan int64),
+		logger:     logger,
+		onDiskPath: onDiskPath,
+		onDiskFile: createdFile,
 	}
 
 	cbr.clientCond = sync.NewCond(&cbr.clientMu)
@@ -52,65 +49,90 @@ func NewChunkedBlobReader(onDiskPath string, chunkSizeBytes int64, logger log.Lo
 	return cbr, nil
 }
 
-func (cbr *ChunkedBlobReader) InitReader(r *blob.BReader, numChunksTotal int64) {
+// InitReader initializes sets the regclient blob reader
+// and the total number of bytes to read for the blob.
+func (cbr *ChunkedBlobReader) InitReader(blobReader *blob.BReader, numBytesTotal int64) {
+	cbr.bytesMu.Lock()
+	defer cbr.bytesMu.Unlock()
+
 	if cbr.InFlightReader == nil {
-		cbr.numChunksTotal = numChunksTotal
-		cbr.InFlightReader = r
+		cbr.numBytesTotal = numBytesTotal
+		cbr.InFlightReader = blobReader
 	}
 }
 
 func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
-	if cbr.InFlightReader == nil {
-		return 0, zerr.ErrStreamReaderNotInitialized
-	}
+	// InitReader is called inside the regclient callback
+	// When Read is called the reader will always be initialized.
+	cbr.bytesMu.Lock()
 
-	cbr.chunksMu.Lock()
-
-	// Access the file that regclient is writing to avoid this extra duplication.
-	var internalBuffBytes []byte = make([]byte, 0, cbr.chunkSizeBytes)
-	internalBuff := bytes.NewBuffer(internalBuffBytes)
-
-	multiWriter := io.MultiWriter(cbr.onDiskFile, internalBuff)
-
-	numBytesRead, err := io.CopyN(multiWriter, cbr.InFlightReader, cbr.chunkSizeBytes)
+	n, err := io.ReadFull(cbr.InFlightReader, buff)
 	if err != nil {
-		if !errors.Is(err, io.EOF) {
+		if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 			// upstream download error
-			cbr.logger.Error().Err(err).Msg("failed to copy from in flight reader")
-			cbr.chunksMu.Unlock()
+			cbr.logger.Error().Err(err).Msg("failed to read from in flight reader")
+			cbr.bytesMu.Unlock()
+
+			cbr.clientMu.RLock()
+			clients := cbr.clients
+			cbr.clientMu.RUnlock()
 
 			// drain all clients and close their channels
-			for clientId := range cbr.clients {
+			for clientId := range clients {
 				cbr.Unsubscribe(clientId)
 			}
 
 			return -1, err
 		}
+		// partial read at end of stream; normalise to EOF for callers
+		err = io.EOF
 	}
 
-	copy(buff, internalBuff.Bytes())
+	if n > 0 {
+		if _, werr := cbr.onDiskFile.Write(buff[:n]); werr != nil {
+			cbr.logger.Error().Err(werr).Msg("failed to write blob data to disk")
+			cbr.bytesMu.Unlock()
 
-	cbr.numChunksRead++
-	if cbr.numChunksRead == cbr.numChunksTotal {
-		cbr.onDiskFile.Close()
+			return -1, werr
+		}
+
+		cbr.numBytesReadToDisk += int64(n)
 	}
 
-	cbr.chunksMu.Unlock()
+	if cbr.numBytesReadToDisk >= cbr.numBytesTotal {
+		clsErr := cbr.onDiskFile.Close()
+		if clsErr != nil {
+			cbr.logger.Error().Err(clsErr).Msg("failed to close on disk file")
+		}
+	}
+
+	numBytesRead := cbr.numBytesReadToDisk
+	cbr.bytesMu.Unlock()
 
 	cbr.clientMu.Lock()
-	// Update all clients about the new chunk
-	// Clients always read the chunk from disk
+	// Update all clients about the latest byte offset available on disk.
 	var wg sync.WaitGroup
 	for _, c := range cbr.clients {
 		wg.Go(func() {
-			c <- cbr.numChunksRead
+			c <- numBytesRead
 		})
 	}
-	cbr.clientMu.Unlock()
-
 	wg.Wait()
 
-	return int(numBytesRead), err
+	cbr.clientMu.Unlock()
+
+	// If the reader has finished reading the blob, close all clients.
+	if err == io.EOF {
+		cbr.clientMu.RLock()
+		clients := cbr.clients
+		cbr.clientMu.RUnlock()
+
+		for clientId := range clients {
+			cbr.Unsubscribe(clientId)
+		}
+	}
+
+	return n, err
 }
 
 // Subscribe to the reader each time a new client is interested in the current blob,
@@ -128,11 +150,11 @@ func (cbr *ChunkedBlobReader) Subscribe(channel chan int64) int {
 
 	// Announce the current number of available chunks to the new client only if the reader is initialized
 	if cbr.InFlightReader != nil {
-		cbr.chunksMu.RLock()
-		defer cbr.chunksMu.RUnlock()
+		cbr.bytesMu.RLock()
+		defer cbr.bytesMu.RUnlock()
 
 		go func() {
-			channel <- cbr.numChunksRead
+			channel <- cbr.numBytesReadToDisk
 		}()
 	}
 
