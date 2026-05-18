@@ -1,8 +1,12 @@
 package trivy
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"path"
@@ -24,6 +28,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	regTypes "github.com/google/go-containerregistry/pkg/v1/types"
 	godigest "github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	_ "modernc.org/sqlite"
 
@@ -34,16 +39,28 @@ import (
 	cvecache "zotregistry.dev/zot/v2/pkg/extensions/search/cve/cache"
 	cvemodel "zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
 	"zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/meta"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/storage"
+	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 )
 
 const cacheSize = 1000000
 
+const (
+	defaultSBOMFormat         = types.FormatSPDXJSON
+	defaultSBOMArtifactType   = "application/spdx+json"
+	defaultSBOMLayerMediaType = "application/spdx+json"
+	cycloneDXArtifactType     = "application/vnd.cyclonedx+json"
+	cycloneDXLayerMediaType   = "application/vnd.cyclonedx+json"
+)
+
+var errImageStoreNotFound = errors.New("image store not found")
+
 // getNewScanOptions sets trivy configuration values for our scans and returns them as
 // a trivy Options structure.
 func getNewScanOptions(dir string, dbRepositoryRef, javaDBRepositoryRef name.Reference,
-	vulnSeveritySources []dbTypes.SourceID,
+	vulnSeveritySources []dbTypes.SourceID, sbomEnabled bool,
 ) *flag.Options {
 	scanOptions := flag.Options{
 		GlobalOptions: flag.GlobalOptions{
@@ -80,6 +97,14 @@ func getNewScanOptions(dir string, dbRepositoryRef, javaDBRepositoryRef name.Ref
 		},
 	}
 
+	if sbomEnabled {
+		scanOptions.ScanOptions.Scanners = types.Scanners{types.VulnerabilityScanner, types.LicenseScanner}
+		scanOptions.ScanOptions.DetectionPriority = fanalTypes.PriorityComprehensive
+		scanOptions.ImageOptions.ScanRemovedPkgs = true
+		scanOptions.LicenseOptions.LicenseFull = true
+		scanOptions.PackageOptions.IncludeDevDeps = true
+	}
+
 	return &scanOptions
 }
 
@@ -98,6 +123,20 @@ type Scanner struct {
 	dbRepositoryRef     name.Reference
 	javaDBRepositoryRef name.Reference
 	vulnSeveritySources []dbTypes.SourceID
+	sbomOptions         sbomOptions
+}
+
+type sbomOptions struct {
+	enabled        bool
+	reportFormat   types.Format
+	artifactType   string
+	layerMediaType string
+}
+
+type generatedSBOM struct {
+	filePath string
+	digest   godigest.Digest
+	size     int64
 }
 
 func NewScanner(storeController storage.StoreController,
@@ -111,6 +150,8 @@ func NewScanner(storeController storage.StoreController,
 	if trivyCfg == nil {
 		trivyCfg = &extconf.TrivyConfig{}
 	}
+
+	sbomOpts := getSBOMOptions(trivyCfg.SBOM, log)
 
 	dbRepository := trivyCfg.DBRepository
 	javaDBRepository := trivyCfg.JavaDBRepository
@@ -158,7 +199,7 @@ func NewScanner(storeController storage.StoreController,
 		rootDir := imageStore.RootDir()
 
 		cacheDir := path.Join(rootDir, "_trivy")
-		opts := getNewScanOptions(cacheDir, dbRepositoryRef, javaDBRepositoryRef, sevSources)
+		opts := getNewScanOptions(cacheDir, dbRepositoryRef, javaDBRepositoryRef, sevSources, sbomOpts.enabled)
 
 		cveController.DefaultCveConfig = opts
 	}
@@ -168,7 +209,7 @@ func NewScanner(storeController storage.StoreController,
 			rootDir := storage.RootDir()
 
 			cacheDir := path.Join(rootDir, "_trivy")
-			opts := getNewScanOptions(cacheDir, dbRepositoryRef, javaDBRepositoryRef, sevSources)
+			opts := getNewScanOptions(cacheDir, dbRepositoryRef, javaDBRepositoryRef, sevSources, sbomOpts.enabled)
 
 			subCveConfig[route] = opts
 		}
@@ -186,7 +227,41 @@ func NewScanner(storeController storage.StoreController,
 		dbRepositoryRef:     dbRepositoryRef,
 		javaDBRepositoryRef: javaDBRepositoryRef,
 		vulnSeveritySources: sevSources,
+		sbomOptions:         sbomOpts,
 	}
+}
+
+func getSBOMOptions(cfg *extconf.SBOMConfig, logger log.Logger) sbomOptions {
+	options := sbomOptions{
+		enabled:        false,
+		reportFormat:   defaultSBOMFormat,
+		artifactType:   defaultSBOMArtifactType,
+		layerMediaType: defaultSBOMLayerMediaType,
+	}
+
+	if cfg == nil || !cfg.Enable {
+		return options
+	}
+
+	options.enabled = true
+
+	format := strings.ToLower(cfg.Format)
+	if format == "" || format == string(types.FormatSPDXJSON) {
+		return options
+	}
+
+	if format == string(types.FormatCycloneDX) {
+		options.reportFormat = types.FormatCycloneDX
+		options.artifactType = cycloneDXArtifactType
+		options.layerMediaType = cycloneDXLayerMediaType
+
+		return options
+	}
+
+	logger.Warn().Str("format", cfg.Format).
+		Msg("unsupported trivy sbom format, defaulting to spdx-json")
+
+	return options
 }
 
 func (scanner Scanner) getTrivyOptions(image string) flag.Options {
@@ -244,13 +319,16 @@ func (scanner Scanner) withTempDir(wrappedFunc func() error) error {
 	return wrappedFunc()
 }
 
-func (scanner Scanner) runTrivy(ctx context.Context, opts flag.Options) (types.Report, error) {
+func (scanner Scanner) runTrivy(ctx context.Context, opts flag.Options) (types.Report, *generatedSBOM, error) {
 	err := scanner.checkDBPresence()
 	if err != nil {
-		return types.Report{}, err
+		return types.Report{}, nil, err
 	}
 
 	report := types.Report{}
+
+	var sbom *generatedSBOM
+
 	err = scanner.withTempDir(func() error {
 		runner, err := artifact.NewRunner(ctx, opts, artifact.TargetContainerImage)
 		if err != nil {
@@ -264,11 +342,74 @@ func (scanner Scanner) runTrivy(ctx context.Context, opts flag.Options) (types.R
 		}
 
 		report, err = runner.Filter(ctx, opts, report)
+		if err != nil {
+			return err
+		}
+
+		if scanner.sbomOptions.enabled {
+			sbom, err = scanner.generateSBOM(ctx, runner, opts, report)
+			if err != nil {
+				scanner.log.Warn().Err(err).Str("image", opts.ImageOptions.Input).Msg("failed to generate sbom")
+			}
+		}
 
 		return err
 	})
 
-	return report, err
+	return report, sbom, err
+}
+
+func (scanner Scanner) generateSBOM(ctx context.Context, runner artifact.Runner, opts flag.Options, report types.Report,
+) (*generatedSBOM, error) {
+	sbomTempFile, err := os.CreateTemp("", "zot-trivy-sbom-*.json")
+	if err != nil {
+		return nil, err
+	}
+
+	sbomPath := sbomTempFile.Name()
+
+	if err = sbomTempFile.Close(); err != nil {
+		_ = os.Remove(sbomPath)
+
+		return nil, err
+	}
+
+	sbomOpts := opts
+	sbomOpts.ReportOptions.Format = scanner.sbomOptions.reportFormat
+	sbomOpts.ReportOptions.Output = sbomTempFile.Name()
+	sbomOpts.ReportOptions.ListAllPkgs = true
+	sbomOpts.ReportOptions.DependencyTree = true
+
+	if err = runner.Report(ctx, sbomOpts, report); err != nil {
+		_ = os.Remove(sbomPath)
+
+		return nil, err
+	}
+
+	sbomDigest, sbomSize, err := digestAndSizeFromFile(sbomPath)
+	if err != nil {
+		_ = os.Remove(sbomPath)
+
+		return nil, err
+	}
+
+	return &generatedSBOM{filePath: sbomPath, digest: sbomDigest, size: sbomSize}, nil
+}
+
+func digestAndSizeFromFile(filePath string) (godigest.Digest, int64, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", 0, err
+	}
+	defer file.Close()
+
+	digester := godigest.Canonical.Digester()
+	size, err := io.Copy(digester.Hash(), file)
+	if err != nil {
+		return "", 0, err
+	}
+
+	return digester.Digest(), size, nil
 }
 
 func (scanner Scanner) IsImageFormatScannable(repo, ref string) (bool, error) {
@@ -464,11 +605,20 @@ func (scanner Scanner) scanManifest(ctx context.Context, repo, digest string) (m
 
 	scanner.dbLock.Lock()
 	opts := scanner.getTrivyOptions(image)
-	report, err := scanner.runTrivy(ctx, opts)
+	report, sbom, err := scanner.runTrivy(ctx, opts)
 	scanner.dbLock.Unlock()
+	if sbom != nil && sbom.filePath != "" {
+		defer os.Remove(sbom.filePath)
+	}
 
 	if err != nil { //nolint: wsl
 		return cveidMap, err
+	}
+
+	// SBOM persistence is best-effort: CVE scanning should still complete even if
+	// SBOM artifact upload fails.
+	if err = scanner.storeSBOMAsOCIArtifact(ctx, repo, digest, sbom); err != nil {
+		scanner.log.Warn().Err(err).Str("image", image).Msg("failed to store generated sbom as OCI artifact")
 	}
 
 	for _, result := range report.Results {
@@ -538,6 +688,148 @@ func (scanner Scanner) scanManifest(ctx context.Context, repo, digest string) (m
 	scanner.cache.Add(digest, cveidMap)
 
 	return cveidMap, nil
+}
+
+func (scanner Scanner) storeSBOMAsOCIArtifact(ctx context.Context,
+	repo, subjectDigest string, sbom *generatedSBOM,
+) error {
+	if !scanner.sbomOptions.enabled {
+		scanner.log.Debug().Str("repo", repo).Str("subject", subjectDigest).
+			Msg("skipping sbom artifact persistence: sbom support disabled")
+
+		return nil
+	}
+
+	if sbom == nil || sbom.filePath == "" {
+		scanner.log.Debug().Str("repo", repo).Str("subject", subjectDigest).
+			Msg("skipping sbom artifact persistence: no sbom file available")
+
+		return nil
+	}
+
+	imgStore := scanner.storeController.GetImageStore(repo)
+	if imgStore == nil {
+		scanner.log.Warn().Str("repo", repo).Msg("skipping sbom artifact persistence: image store not found")
+
+		return fmt.Errorf("%w for repo %q", errImageStoreNotFound, repo)
+	}
+
+	subject := godigest.Digest(subjectDigest)
+	if err := subject.Validate(); err != nil {
+		return err
+	}
+
+	subjectManifestBlob, _, subjectMediaType, err := imgStore.GetImageManifest(repo, subjectDigest)
+	if err != nil {
+		return err
+	}
+
+	referrers, err := imgStore.GetReferrers(repo, subject, []string{scanner.sbomOptions.artifactType})
+	if err == nil && len(referrers.Manifests) > 0 {
+		scanner.log.Debug().Str("repo", repo).Str("subject", subjectDigest).
+			Str("artifactType", scanner.sbomOptions.artifactType).
+			Msg("skipping sbom artifact persistence: referrer already exists")
+
+		return nil
+	}
+
+	sbomExists, _, err := imgStore.CheckBlob(repo, sbom.digest)
+	if err != nil && !errors.Is(err, zerr.ErrBlobNotFound) {
+		return err
+	}
+
+	if !sbomExists {
+		sbomFile, openErr := os.Open(sbom.filePath)
+		if openErr != nil {
+			return openErr
+		}
+
+		defer sbomFile.Close()
+
+		if _, _, err = imgStore.FullBlobUpload(repo, sbomFile, sbom.digest); err != nil {
+			return err
+		}
+
+		scanner.log.Debug().Str("repo", repo).Str("subject", subjectDigest).Str("digest", sbom.digest.String()).
+			Msg("uploaded sbom blob")
+	}
+
+	emptyConfigExists, _, err := imgStore.CheckBlob(repo, ispec.DescriptorEmptyJSON.Digest)
+	if err != nil && !errors.Is(err, zerr.ErrBlobNotFound) {
+		return err
+	}
+
+	if !emptyConfigExists {
+		if _, _, err = imgStore.FullBlobUpload(repo, bytes.NewReader(ispec.DescriptorEmptyJSON.Data),
+			ispec.DescriptorEmptyJSON.Digest); err != nil {
+			return err
+		}
+
+		scanner.log.Debug().Str("repo", repo).Str("digest", ispec.DescriptorEmptyJSON.Digest.String()).
+			Msg("uploaded empty config blob for sbom artifact")
+	}
+
+	sbomManifest := ispec.Manifest{
+		Versioned:    specs.Versioned{SchemaVersion: storageConstants.SchemaVersion},
+		MediaType:    ispec.MediaTypeImageManifest,
+		ArtifactType: scanner.sbomOptions.artifactType,
+		Subject: &ispec.Descriptor{
+			MediaType: subjectMediaType,
+			Digest:    subject,
+			Size:      int64(len(subjectManifestBlob)),
+		},
+		Config: ispec.Descriptor{
+			MediaType: ispec.MediaTypeEmptyJSON,
+			Digest:    ispec.DescriptorEmptyJSON.Digest,
+			Size:      int64(len(ispec.DescriptorEmptyJSON.Data)),
+		},
+		Layers: []ispec.Descriptor{
+			{
+				MediaType: scanner.sbomOptions.layerMediaType,
+				Digest:    sbom.digest,
+				Size:      sbom.size,
+			},
+		},
+	}
+
+	sbomManifestBlob, err := json.Marshal(sbomManifest)
+	if err != nil {
+		return err
+	}
+
+	sbomManifestDigest := godigest.FromBytes(sbomManifestBlob)
+	_, _, err = imgStore.PutImageManifest(repo, sbomManifestDigest.String(), ispec.MediaTypeImageManifest,
+		sbomManifestBlob, nil)
+	if err != nil {
+		return err
+	}
+
+	scanner.log.Debug().Str("repo", repo).Str("subject", subjectDigest).
+		Str("manifestDigest", sbomManifestDigest.String()).
+		Str("artifactType", scanner.sbomOptions.artifactType).
+		Msg("stored sbom as oci artifact manifest")
+
+	if scanner.metaDB != nil {
+		err = meta.OnUpdateManifest(ctx, repo, sbomManifestDigest.String(),
+			ispec.MediaTypeImageManifest, sbomManifestDigest, sbomManifestBlob,
+			scanner.storeController, scanner.metaDB, scanner.log)
+		if err != nil {
+			scanner.log.Warn().Err(err).Str("repo", repo).Str("subject", subjectDigest).
+				Str("manifestDigest", sbomManifestDigest.String()).
+				Msg("failed to persist sbom artifact metadata")
+
+			return err
+		}
+
+		scanner.log.Debug().Str("repo", repo).Str("subject", subjectDigest).
+			Str("manifestDigest", sbomManifestDigest.String()).
+			Msg("persisted sbom artifact metadata")
+	} else {
+		scanner.log.Debug().Str("repo", repo).Str("subject", subjectDigest).
+			Msg("skipping sbom artifact metadata persistence: metadb not configured")
+	}
+
+	return nil
 }
 
 func getCVEReference(primaryURL string, references []string) string {

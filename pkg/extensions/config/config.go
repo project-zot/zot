@@ -63,6 +63,14 @@ type TrivyConfig struct {
 	// VulnSeveritySources controls Trivy's severity source selection (same as Trivy's --vuln-severity-source).
 	// If empty, zot will default it to ["auto"].
 	VulnSeveritySources []string
+	SBOM                *SBOMConfig
+}
+
+type SBOMConfig struct {
+	Enable bool
+	// Format controls the generated SBOM output format.
+	// Supported values are "spdx-json" (default) and "cyclonedx".
+	Format string
 }
 
 type MetricsConfig struct {

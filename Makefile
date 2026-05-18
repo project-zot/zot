@@ -31,7 +31,7 @@ ZUI_BUILD_PATH := ""
 ZUI_VERSION := commit-34deb3d
 ZUI_REPO_OWNER := project-zot
 ZUI_REPO_NAME := zui
-SWAGGER_VERSION := v1.16.2
+SWAGGER_VERSION := v1.16.6
 STACKER := $(TOOLSDIR)/bin/stacker
 STACKER_VERSION := v1.1.0-rc3
 KIND := $(TOOLSDIR)/bin/kind
@@ -364,7 +364,7 @@ check: ./.golangci.yaml $(GOLINTER)
 .PHONY: swagger
 swagger:
 	swag -v || go install github.com/swaggo/swag/cmd/swag@$(SWAGGER_VERSION)
-	swag init --parseDependency -o swagger -g pkg/api/routes.go -q
+	swag init --parseDependency --exclude pkg/extensions/search/cve/trivy -o swagger -g pkg/api/routes.go -q
 
 .PHONY: update-licenses
 # note: for predictable output of below sort command we use locale LC_ALL=C

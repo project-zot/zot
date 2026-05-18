@@ -33,3 +33,5 @@ vendor/
 examples/config-sync-localhost.json
 node_modules
 zot-test
+
+.gotmp/
