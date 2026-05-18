@@ -4,12 +4,14 @@ package trivy
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path"
 	"testing"
 	"time"
 
 	dbTypes "github.com/aquasecurity/trivy-db/pkg/types"
+	trivyTypes "github.com/aquasecurity/trivy/pkg/types"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
@@ -214,7 +216,7 @@ func TestTrivyLibraryErrors(t *testing.T) {
 
 		// Try to scan without a valid DB being downloaded
 		opts := scanner.getTrivyOptions(img)
-		_, err = scanner.runTrivy(ctx, opts)
+		_, _, err = scanner.runTrivy(ctx, opts)
 		So(err, ShouldNotBeNil)
 		So(err, ShouldWrap, zerr.ErrCVEDBNotFound)
 
@@ -243,25 +245,25 @@ func TestTrivyLibraryErrors(t *testing.T) {
 
 		// Scanning image with correct options
 		opts = scanner.getTrivyOptions(img)
-		_, err = scanner.runTrivy(ctx, opts)
+		_, _, err = scanner.runTrivy(ctx, opts)
 		So(err, ShouldBeNil)
 
 		// Scanning image with incorrect cache options
 		// to trigger runner initialization errors
 		opts.CacheOptions.CacheBackend = "redis://asdf!$%&!*)("
-		_, err = scanner.runTrivy(ctx, opts)
+		_, _, err = scanner.runTrivy(ctx, opts)
 		So(err, ShouldNotBeNil)
 
 		// Scanning image with invalid input to trigger a scanner error
 		opts = scanner.getTrivyOptions("nilnonexisting_image:0.0.1")
-		_, err = scanner.runTrivy(ctx, opts)
+		_, _, err = scanner.runTrivy(ctx, opts)
 		So(err, ShouldNotBeNil)
 
 		// Scanning image with incorrect report options
 		// to trigger report filtering errors
 		opts = scanner.getTrivyOptions(img)
 		opts.ReportOptions.IgnorePolicy = "invalid file path"
-		_, err = scanner.runTrivy(ctx, opts)
+		_, _, err = scanner.runTrivy(ctx, opts)
 		So(err, ShouldNotBeNil)
 	})
 }
@@ -433,14 +435,14 @@ func TestTrivyDBUrl(t *testing.T) {
 		img := "zot-test:0.0.1" //nolint:goconst
 
 		opts := scanner.getTrivyOptions(img)
-		_, err = scanner.runTrivy(ctx, opts)
+		_, _, err = scanner.runTrivy(ctx, opts)
 		So(err, ShouldBeNil)
 
 		// Scanning image containing a jar file
 		img = "zot-cve-java-test:0.0.1"
 
 		opts = scanner.getTrivyOptions(img)
-		_, err = scanner.runTrivy(ctx, opts)
+		_, _, err = scanner.runTrivy(ctx, opts)
 		So(err, ShouldBeNil)
 	})
 }
@@ -526,6 +528,92 @@ func TestVulnSeveritySourcesDefaulting(t *testing.T) {
 		}, log.NewTestLogger())
 		So(scanner, ShouldNotBeNil)
 		So(scanner.vulnSeveritySources, ShouldResemble, []dbTypes.SourceID{"nvd", "ghsa"})
+	})
+
+	Convey("NewScanner enables SBOM generation with default options", t, func() {
+		scanner := NewScanner(storage.StoreController{}, nil, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository: "ghcr.io/project-zot/trivy-db",
+				SBOM: &extconf.SBOMConfig{
+					Enable: true,
+				},
+			},
+		}, log.NewTestLogger())
+		So(scanner, ShouldNotBeNil)
+		So(scanner.sbomOptions.enabled, ShouldBeTrue)
+		So(scanner.sbomOptions.reportFormat, ShouldEqual, trivyTypes.FormatSPDXJSON)
+		So(scanner.sbomOptions.artifactType, ShouldEqual, defaultSBOMArtifactType)
+		So(scanner.sbomOptions.layerMediaType, ShouldEqual, defaultSBOMLayerMediaType)
+	})
+
+	Convey("NewScanner supports CycloneDX SBOM format", t, func() {
+		scanner := NewScanner(storage.StoreController{}, nil, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository: "ghcr.io/project-zot/trivy-db",
+				SBOM: &extconf.SBOMConfig{
+					Enable: true,
+					Format: string(trivyTypes.FormatCycloneDX),
+				},
+			},
+		}, log.NewTestLogger())
+		So(scanner, ShouldNotBeNil)
+		So(scanner.sbomOptions.reportFormat, ShouldEqual, trivyTypes.FormatCycloneDX)
+		So(scanner.sbomOptions.artifactType, ShouldEqual, cycloneDXArtifactType)
+		So(scanner.sbomOptions.layerMediaType, ShouldEqual, cycloneDXLayerMediaType)
+	})
+}
+
+func TestStoreSBOMAsOCIArtifact(t *testing.T) {
+	Convey("storeSBOMAsOCIArtifact stores SBOM once as OCI referrer", t, func() {
+		rootDir := t.TempDir()
+
+		logger := log.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, logger)
+		defer metrics.Stop()
+		store := local.NewImageStore(rootDir, false, false, logger, metrics, nil, nil, nil, nil)
+
+		storeController := storage.StoreController{
+			DefaultStore: store,
+		}
+
+		generateTestImage(storeController, "repo:1.0")
+
+		_, subjectDigest, _, err := store.GetImageManifest("repo", "1.0")
+		So(err, ShouldBeNil)
+
+		scanner := NewScanner(storeController, nil, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository: "ghcr.io/project-zot/trivy-db",
+				SBOM: &extconf.SBOMConfig{
+					Enable: true,
+				},
+			},
+		}, logger)
+
+		sbomBlob := []byte(`{"spdxVersion":"SPDX-2.3"}`)
+		err = scanner.storeSBOMAsOCIArtifact("repo", subjectDigest.String(), sbomBlob)
+		So(err, ShouldBeNil)
+
+		referrers, err := store.GetReferrers("repo", subjectDigest, []string{defaultSBOMArtifactType})
+		So(err, ShouldBeNil)
+		So(len(referrers.Manifests), ShouldEqual, 1)
+		So(referrers.Manifests[0].ArtifactType, ShouldEqual, defaultSBOMArtifactType)
+
+		refManifestBlob, _, _, err := store.GetImageManifest("repo", referrers.Manifests[0].Digest.String())
+		So(err, ShouldBeNil)
+
+		var refManifest ispec.Manifest
+		err = json.Unmarshal(refManifestBlob, &refManifest)
+		So(err, ShouldBeNil)
+		So(refManifest.Subject.Digest, ShouldEqual, subjectDigest)
+		So(refManifest.Layers[0].MediaType, ShouldEqual, defaultSBOMLayerMediaType)
+
+		err = scanner.storeSBOMAsOCIArtifact("repo", subjectDigest.String(), sbomBlob)
+		So(err, ShouldBeNil)
+
+		referrers, err = store.GetReferrers("repo", subjectDigest, []string{defaultSBOMArtifactType})
+		So(err, ShouldBeNil)
+		So(len(referrers.Manifests), ShouldEqual, 1)
 	})
 }
 
