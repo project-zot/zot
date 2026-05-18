@@ -307,7 +307,7 @@ func (scanner Scanner) runTrivy(ctx context.Context, opts flag.Options) (types.R
 	}
 
 	report := types.Report{}
-	sbomContent := []byte(nil)
+	var sbomContent []byte
 
 	err = scanner.withTempDir(func() error {
 		runner, err := artifact.NewRunner(ctx, opts, artifact.TargetContainerImage)
@@ -562,6 +562,8 @@ func (scanner Scanner) scanManifest(ctx context.Context, repo, digest string) (m
 		return cveidMap, err
 	}
 
+	// SBOM persistence is best-effort: CVE scanning should still complete even if
+	// SBOM artifact upload fails.
 	if err = scanner.storeSBOMAsOCIArtifact(repo, digest, sbomContent); err != nil {
 		scanner.log.Warn().Err(err).Str("image", image).Msg("failed to store generated sbom as OCI artifact")
 	}
