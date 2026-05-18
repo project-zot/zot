@@ -4,11 +4,12 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
 	"os"
-	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,8 +25,6 @@ import (
 // With a 1 minute interval, repeated calls will generally reuse cached keys and only trigger
 // a refresh roughly once per minute, but this is best-effort and not a strict upper bound.
 const oidcProviderRefreshInterval = 1 * time.Minute
-
-var bearerOIDCTokenMatch = regexp.MustCompile("(?i)bearer (.*)")
 
 // OIDCBearerAuthorizer validates OIDC ID tokens for workload identity authentication.
 type OIDCBearerAuthorizer struct {
@@ -169,10 +168,10 @@ func (a *oidcProvider) authenticate(ctx context.Context, header string) (*cel.Cl
 		return nil, zerr.ErrNoBearerToken
 	}
 
-	// Extract token from Authorization header
-	tokenString := bearerOIDCTokenMatch.ReplaceAllString(header, "$1")
-	if tokenString == "" || tokenString == header {
-		return nil, zerr.ErrInvalidBearerToken
+	// Extract token from Authorization header.
+	tokenString, err := getOIDCTokenFromAuthorizationHeader(header)
+	if err != nil {
+		return nil, err
 	}
 
 	// Get verifier.
@@ -208,6 +207,46 @@ func (a *oidcProvider) authenticate(ctx context.Context, header string) (*cel.Cl
 	a.log.Debug().Str("username", res.Username).Strs("groups", res.Groups).Msg("the OIDC token was authenticated")
 
 	return res, nil
+}
+
+func getOIDCTokenFromAuthorizationHeader(header string) (string, error) {
+	splitStr := strings.SplitN(header, " ", 2) //nolint:mnd
+	if len(splitStr) != 2 {
+		return "", zerr.ErrInvalidBearerToken
+	}
+
+	switch strings.ToLower(splitStr[0]) {
+	case "bearer":
+		tokenString := strings.TrimSpace(splitStr[1])
+		if tokenString == "" {
+			return "", zerr.ErrInvalidBearerToken
+		}
+
+		return tokenString, nil
+	case "basic":
+		decodedStr, err := base64.StdEncoding.DecodeString(splitStr[1])
+		if err != nil {
+			return "", zerr.ErrInvalidBearerToken
+		}
+
+		pair := strings.SplitN(string(decodedStr), ":", 2) //nolint:mnd
+		if len(pair) != 2 {                                //nolint:mnd
+			return "", zerr.ErrInvalidBearerToken
+		}
+
+		tokenString := pair[1]
+		if tokenString == "" {
+			tokenString = pair[0]
+		}
+
+		if strings.TrimSpace(tokenString) == "" {
+			return "", zerr.ErrInvalidBearerToken
+		}
+
+		return tokenString, nil
+	default:
+		return "", zerr.ErrInvalidBearerToken
+	}
 }
 
 // getVerifier retrieves or refreshes the oidc.IDTokenVerifier as needed.

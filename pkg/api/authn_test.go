@@ -1239,6 +1239,45 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			So(resp.StatusCode, ShouldEqual, http.StatusOK)
 		})
 
+		Convey("OIDC authentication success with token in basic auth password", func() {
+			conf := config.New()
+			port := test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
+
+			conf.HTTP.Port = port
+			conf.HTTP.Auth = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					OIDC: []config.BearerOIDCConfig{{
+						Issuer:    issuer,
+						Audiences: []string{audience},
+					}},
+				},
+			}
+			conf.Storage.RootDirectory = t.TempDir()
+
+			ctlr := api.NewController(conf)
+			cm := test.NewControllerManager(ctlr)
+
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			token, err := createWorkloadOIDCToken(privKey, issuer, audience, nil)
+			So(err, ShouldBeNil)
+
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, baseURL+"/v2/_catalog", nil)
+			So(err, ShouldBeNil)
+
+			basicAuth := base64.StdEncoding.EncodeToString([]byte("workload:" + token))
+			req.Header.Set("Authorization", "Basic "+basicAuth)
+
+			client := &http.Client{}
+			resp, err := client.Do(req)
+			So(err, ShouldBeNil)
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+		})
+
 		Convey("OIDC authentication success with groups", func() {
 			conf := config.New()
 			port := test.GetFreePort()

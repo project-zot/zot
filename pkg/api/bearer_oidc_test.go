@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"maps"
@@ -173,6 +174,21 @@ func TestOIDCBearerAuthorizer(t *testing.T) {
 				So(err, ShouldBeNil)
 
 				authHeader := "Bearer " + token
+
+				result, err := authorizer.Authenticate(ctx, authHeader)
+				So(err, ShouldBeNil)
+				So(result, ShouldNotBeNil)
+				So(result.Username, ShouldEqual, issuer+"/"+subject)
+				So(result.Groups, ShouldBeEmpty)
+			})
+
+			Convey("Valid token in basic auth password", func() {
+				subject := "test-user" //nolint:goconst
+				token, err := createTestOIDCToken(privKey, issuer, audience, subject, nil)
+				So(err, ShouldBeNil)
+
+				basicCredentials := base64.StdEncoding.EncodeToString([]byte("workload:" + token))
+				authHeader := "Basic " + basicCredentials
 
 				result, err := authorizer.Authenticate(ctx, authHeader)
 				So(err, ShouldBeNil)
