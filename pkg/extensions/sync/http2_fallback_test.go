@@ -10,12 +10,30 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 	"golang.org/x/net/http2"
 
 	"zotregistry.dev/zot/v2/pkg/log"
 )
+
+// newTestFallbackTransport builds an http2FallbackTransport configured with deterministic
+// time and a 1-minute sticky window. Tests advance time via the returned *time.Time.
+func newTestFallbackTransport(primary, fallback http.RoundTripper) (*http2FallbackTransport, *time.Time) {
+	now := time.Unix(1700000000, 0)
+	clock := &now
+
+	tr := &http2FallbackTransport{
+		primary:   primary,
+		fallback:  fallback,
+		log:       log.NewLogger("debug", ""),
+		stickyTTL: time.Minute,
+		now:       func() time.Time { return *clock },
+	}
+
+	return tr, clock
+}
 
 func TestIsHTTP2FramingError(t *testing.T) {
 	Convey("isHTTP2FramingError classification", t, func() {
@@ -69,14 +87,12 @@ func newOKResponse(body string) *http.Response {
 }
 
 func TestHTTP2FallbackTransportRoundTrip(t *testing.T) {
-	logger := log.NewLogger("debug", "")
-
 	Convey("RoundTrip behavior", t, func() {
 		Convey("primary success short-circuits fallback", func() {
 			primary := &stubRoundTripper{resp: newOKResponse("primary")}
 			fallback := &stubRoundTripper{resp: newOKResponse("fallback")}
 
-			tr := &http2FallbackTransport{primary: primary, fallback: fallback, log: logger}
+			tr, _ := newTestFallbackTransport(primary, fallback)
 
 			req, err := http.NewRequest(http.MethodGet, "https://example.test/v2/", http.NoBody)
 			So(err, ShouldBeNil)
@@ -94,7 +110,7 @@ func TestHTTP2FallbackTransportRoundTrip(t *testing.T) {
 			}}
 			fallback := &stubRoundTripper{resp: newOKResponse("fallback")}
 
-			tr := &http2FallbackTransport{primary: primary, fallback: fallback, log: logger}
+			tr, _ := newTestFallbackTransport(primary, fallback)
 
 			req, err := http.NewRequest(http.MethodGet, "https://example.test/v2/", http.NoBody)
 			So(err, ShouldBeNil)
@@ -111,7 +127,7 @@ func TestHTTP2FallbackTransportRoundTrip(t *testing.T) {
 			primary := &stubRoundTripper{err: nonFraming}
 			fallback := &stubRoundTripper{resp: newOKResponse("fallback")}
 
-			tr := &http2FallbackTransport{primary: primary, fallback: fallback, log: logger}
+			tr, _ := newTestFallbackTransport(primary, fallback)
 
 			req, err := http.NewRequest(http.MethodGet, "https://example.test/v2/", http.NoBody)
 			So(err, ShouldBeNil)
@@ -129,7 +145,7 @@ func TestHTTP2FallbackTransportRoundTrip(t *testing.T) {
 			}}
 			fallback := &stubRoundTripper{resp: newOKResponse("fallback")}
 
-			tr := &http2FallbackTransport{primary: primary, fallback: fallback, log: logger}
+			tr, _ := newTestFallbackTransport(primary, fallback)
 
 			payload := []byte(`{"hello":"world"}`)
 			req, err := http.NewRequest(http.MethodPost, "https://example.test/v2/",
@@ -157,7 +173,7 @@ func TestHTTP2FallbackTransportRoundTrip(t *testing.T) {
 			primary := &stubRoundTripper{err: primaryErr}
 			fallback := &stubRoundTripper{resp: newOKResponse("fallback")}
 
-			tr := &http2FallbackTransport{primary: primary, fallback: fallback, log: logger}
+			tr, _ := newTestFallbackTransport(primary, fallback)
 
 			req, err := http.NewRequest(http.MethodPost, "https://example.test/v2/",
 				strings.NewReader("payload"))
@@ -170,6 +186,79 @@ func TestHTTP2FallbackTransportRoundTrip(t *testing.T) {
 			So(resp, ShouldBeNil)
 			So(errors.Is(err, primaryErr), ShouldBeTrue)
 			So(fallback.hits, ShouldEqual, 0)
+		})
+	})
+}
+
+func TestHTTP2FallbackStickyPerHost(t *testing.T) {
+	Convey("Sticky per-host fallback", t, func() {
+		Convey("after a framing error the same host skips the primary", func() {
+			primary := &stubRoundTripper{err: http2.StreamError{
+				StreamID: 1, Code: http2.ErrCodeInternal,
+			}}
+			fallback := &stubRoundTripper{resp: newOKResponse("fallback")}
+
+			tr, _ := newTestFallbackTransport(primary, fallback)
+
+			for i := 0; i < 3; i++ {
+				req, err := http.NewRequest(http.MethodGet, "https://example.test/v2/", http.NoBody)
+				So(err, ShouldBeNil)
+
+				resp, err := tr.RoundTrip(req)
+				So(err, ShouldBeNil)
+				So(resp.StatusCode, ShouldEqual, http.StatusOK)
+			}
+
+			So(primary.hits, ShouldEqual, 1)
+			So(fallback.hits, ShouldEqual, 3)
+		})
+
+		Convey("different hosts have independent sticky state", func() {
+			primary := &stubRoundTripper{err: http2.StreamError{
+				StreamID: 1, Code: http2.ErrCodeProtocol,
+			}}
+			fallback := &stubRoundTripper{resp: newOKResponse("fallback")}
+
+			tr, _ := newTestFallbackTransport(primary, fallback)
+
+			for _, host := range []string{"a.test", "b.test"} {
+				req, err := http.NewRequest(http.MethodGet, "https://"+host+"/v2/", http.NoBody)
+				So(err, ShouldBeNil)
+
+				_, err = tr.RoundTrip(req)
+				So(err, ShouldBeNil)
+			}
+
+			So(primary.hits, ShouldEqual, 2)
+			So(fallback.hits, ShouldEqual, 2)
+		})
+
+		Convey("sticky entry expires after the TTL elapses", func() {
+			primary := &stubRoundTripper{err: http2.StreamError{
+				StreamID: 1, Code: http2.ErrCodeInternal,
+			}}
+			fallback := &stubRoundTripper{resp: newOKResponse("fallback")}
+
+			tr, clock := newTestFallbackTransport(primary, fallback)
+
+			req, err := http.NewRequest(http.MethodGet, "https://example.test/v2/", http.NoBody)
+			So(err, ShouldBeNil)
+
+			_, err = tr.RoundTrip(req)
+			So(err, ShouldBeNil)
+			So(primary.hits, ShouldEqual, 1)
+			So(fallback.hits, ShouldEqual, 1)
+
+			// Advance past stickyTTL — primary should be retried.
+			*clock = clock.Add(2 * time.Minute)
+
+			req, err = http.NewRequest(http.MethodGet, "https://example.test/v2/", http.NoBody)
+			So(err, ShouldBeNil)
+
+			_, err = tr.RoundTrip(req)
+			So(err, ShouldBeNil)
+			So(primary.hits, ShouldEqual, 2)
+			So(fallback.hits, ShouldEqual, 2)
 		})
 	})
 }
