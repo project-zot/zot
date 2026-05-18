@@ -63,18 +63,27 @@ func isHTTP2FramingError(err error) bool {
 	return strings.Contains(err.Error(), "malformed HTTP response")
 }
 
+// clonedTransport returns a clone of http.DefaultTransport with the registry-specific
+// ResponseHeaderTimeout applied. The timeout reflects how long a single sync request will
+// wait for the upstream registry to start streaming a response and matches the rationale
+// in https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/.
+func clonedTransport(opts syncconf.RegistryConfig) *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone() //nolint: forcetypeassert
+	transport.ResponseHeaderTimeout = opts.ResponseHeaderTimeout
+
+	return transport
+}
+
 // newHTTP2FallbackTransport builds a RoundTripper that prefers HTTP/2 for upstream sync
 // and falls back to HTTP/1.1 on the framing errors enumerated in isHTTP2FramingError.
-// See https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/ for the
-// timeout configuration rationale.
+// Both transports share the same timeout configuration; the fallback only differs by
+// disabling HTTP/2 negotiation, so an upstream that breaks HTTP/2 can still be reached.
 func newHTTP2FallbackTransport(opts syncconf.RegistryConfig, logger log.Logger) http.RoundTripper {
-	primaryTransport := http.DefaultTransport.(*http.Transport).Clone() //nolint: forcetypeassert
-	primaryTransport.ResponseHeaderTimeout = opts.ResponseHeaderTimeout
+	primaryTransport := clonedTransport(opts)
 
-	fallbackTransport := http.DefaultTransport.(*http.Transport).Clone() //nolint: forcetypeassert
+	fallbackTransport := clonedTransport(opts)
 	fallbackTransport.TLSNextProto = make(map[string]func(string, *cryptotls.Conn) http.RoundTripper)
 	fallbackTransport.ForceAttemptHTTP2 = false
-	fallbackTransport.ResponseHeaderTimeout = opts.ResponseHeaderTimeout
 
 	return &http2FallbackTransport{
 		primary:  primaryTransport,
