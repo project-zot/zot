@@ -4,7 +4,11 @@ package sync
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -21,6 +25,33 @@ type request struct {
 	isBackground bool
 }
 
+// syncLockTTL is the fixed expiry of the on-demand distributed lock.
+// The leader replica refreshes the TTL every syncLockHeartbeatInterval
+// so the lock survives long syncs. If the leader dies the lock expires
+// within syncLockTTL after the last heartbeat, so the next replica can
+// start a fresh sync.
+const syncLockTTL = 90 * time.Second
+
+// syncLockHeartbeatInterval is how often the leader replica refreshes
+// the lock TTL while a sync is in progress. Must be < syncLockTTL/2 so
+// a single missed heartbeat doesn't drop the lock.
+const syncLockHeartbeatInterval = 30 * time.Second
+
+// distributedLockBackend abstracts the cluster-wide lock store so it can
+// be backed by Redis in multi-replica deployments or left unset for
+// single-replica deployments (in-process dedup only).
+type distributedLockBackend interface {
+	TryLock(ctx context.Context, key, value string, ttl time.Duration) (bool, error)
+	Unlock(ctx context.Context, key, value string) error
+	Refresh(ctx context.Context, key, value string, ttl time.Duration) (bool, error)
+	IsLocked(ctx context.Context, key string) (bool, error)
+}
+
+type lockHandle struct {
+	key   string
+	owner string
+}
+
 /*
 BaseOnDemand tracks requests that can be an image/signature/sbom.
 
@@ -30,76 +61,219 @@ process just the first one, also keep track of all background retrying routines.
 type BaseOnDemand struct {
 	services []Service
 	// map[request]chan err
-	requestStore *sync.Map
-	log          log.Logger
+	requestStore          *sync.Map
+	distributedLock       distributedLockBackend
+	distributedLockOwner  string
+	distributedLockPrefix string
+	log                   log.Logger
 }
 
 func NewOnDemand(log log.Logger) *BaseOnDemand {
-	return &BaseOnDemand{log: log, requestStore: &sync.Map{}}
+	return &BaseOnDemand{
+		log:                   log,
+		requestStore:          &sync.Map{},
+		distributedLockOwner:  newLockOwnerID(),
+		distributedLockPrefix: "zot",
+	}
+}
+
+// SetDistributedLock enables cluster-wide on-demand sync deduplication
+// using the provided backend. Without it, BaseOnDemand only dedups
+// within a single process.
+func (onDemand *BaseOnDemand) SetDistributedLock(lock distributedLockBackend, keyPrefix string) {
+	onDemand.distributedLock = lock
+	if keyPrefix != "" {
+		onDemand.distributedLockPrefix = keyPrefix
+	}
 }
 
 func (onDemand *BaseOnDemand) Add(service Service) {
 	onDemand.services = append(onDemand.services, service)
 }
 
+// IsSyncInFlight reports whether an on-demand sync is currently running
+// for this repo+reference, locally or on another replica.
+func (onDemand *BaseOnDemand) IsSyncInFlight(repo, reference string) bool {
+	req := request{repo: repo, reference: reference}
+	if _, ok := onDemand.requestStore.Load(req); ok {
+		return true
+	}
+
+	if onDemand.distributedLock == nil {
+		return false
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	locked, err := onDemand.distributedLock.IsLocked(ctx, onDemand.lockKey("image", repo, reference))
+	if err != nil {
+		onDemand.log.Warn().Err(err).Str("repo", repo).Str("reference", reference).
+			Msg("failed to check distributed on-demand sync lock")
+
+		return false
+	}
+
+	return locked
+}
+
+func (onDemand *BaseOnDemand) lockKey(kind, repo, reference string) string {
+	sum := sha256.Sum256([]byte(kind + "\x00" + repo + "\x00" + reference))
+
+	return fmt.Sprintf("%s:sync:ondemand:locks:%s:%s",
+		onDemand.distributedLockPrefix, kind, hex.EncodeToString(sum[:]))
+}
+
+func newLockOwnerID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err == nil {
+		return hex.EncodeToString(b[:])
+	}
+
+	return fmt.Sprintf("%d", time.Now().UnixNano())
+}
+
+// acquireDistributedLock claims the cluster-wide lock for repo+reference.
+// Returns:
+//   - (handle, release, nil) on success; caller must defer release()
+//   - (nil, nil, ErrSyncInFlight) if another replica holds the lock
+//   - (nil, nil, err) on Redis failure
+//
+// When no distributed lock backend is configured, returns (nil, no-op, nil).
+func (onDemand *BaseOnDemand) acquireDistributedLock(ctx context.Context,
+	kind, repo, reference string,
+) (*lockHandle, func(), error) {
+	if onDemand.distributedLock == nil {
+		return nil, func() {}, nil
+	}
+
+	key := onDemand.lockKey(kind, repo, reference)
+	value := onDemand.distributedLockOwner
+
+	locked, err := onDemand.distributedLock.TryLock(ctx, key, value, syncLockTTL)
+	if err != nil {
+		onDemand.log.Error().Err(err).
+			Str("repo", repo).Str("reference", reference).Str("kind", kind).
+			Msg("failed to acquire distributed on-demand sync lock")
+
+		return nil, nil, err
+	}
+
+	if !locked {
+		onDemand.log.Info().
+			Str("repo", repo).Str("reference", reference).Str("kind", kind).
+			Msg("distributed on-demand sync already in flight")
+
+		return nil, nil, zerr.ErrSyncInFlight
+	}
+
+	handle := &lockHandle{key: key, owner: value}
+	release := func() {
+		rctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := onDemand.distributedLock.Unlock(rctx, key, value); err != nil {
+			onDemand.log.Warn().Err(err).
+				Str("repo", repo).Str("reference", reference).Str("kind", kind).
+				Msg("failed to release distributed on-demand sync lock")
+		}
+	}
+
+	return handle, release, nil
+}
+
+// runLockHeartbeat refreshes the distributed lock TTL on a fixed interval
+// until ctx is cancelled. Caller must cancel ctx (typically via defer)
+// before releasing the lock so the heartbeat stops first.
+func (onDemand *BaseOnDemand) runLockHeartbeat(ctx context.Context,
+	key, owner string, interval time.Duration,
+) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			refreshCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ok, err := onDemand.distributedLock.Refresh(refreshCtx, key, owner, syncLockTTL)
+			cancel()
+
+			if err != nil {
+				onDemand.log.Warn().Err(err).Str("key", key).
+					Msg("failed to refresh distributed sync lock")
+
+				continue
+			}
+
+			if !ok {
+				onDemand.log.Warn().Str("key", key).
+					Msg("lost ownership of distributed sync lock; stopping heartbeat")
+
+				return
+			}
+		}
+	}
+}
+
 func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference string) error {
-	req := request{
-		repo:      repo,
-		reference: reference,
-	}
-
-	syncResult := make(chan error)
-	val, loaded := onDemand.requestStore.LoadOrStore(req, syncResult)
-
-	if loaded {
-		onDemand.log.Info().Str("repo", repo).Str("reference", reference).
-			Msg("image already demanded, waiting on channel")
-
-		syncResult, _ := val.(chan error)
-
-		err := <-syncResult
-
-		return err
-	}
-
-	defer onDemand.requestStore.Delete(req)
-
-	go onDemand.syncImage(ctx, repo, reference, syncResult)
-
-	err := <-syncResult
-
-	return err
+	return onDemand.runWithLock(ctx, "image", repo, reference, func(syncResult chan error) {
+		onDemand.syncImage(ctx, repo, reference, syncResult)
+	})
 }
 
 func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 	subjectDigestStr string, referenceTypes []string,
 ) error {
-	req := request{
-		repo:      repo,
-		reference: subjectDigestStr,
-	}
+	return onDemand.runWithLock(ctx, "referrers", repo, subjectDigestStr, func(syncResult chan error) {
+		onDemand.syncReferrers(ctx, repo, subjectDigestStr, referenceTypes, syncResult)
+	})
+}
 
+// runWithLock combines in-process dedup, distributed locking, and the
+// heartbeat goroutine. The run closure executes the actual sync and is
+// expected to deliver the result on syncResult and close it.
+func (onDemand *BaseOnDemand) runWithLock(ctx context.Context, kind, repo, reference string,
+	run func(chan error),
+) error {
+	req := request{repo: repo, reference: reference}
 	syncResult := make(chan error)
+
 	val, loaded := onDemand.requestStore.LoadOrStore(req, syncResult)
-
 	if loaded {
-		onDemand.log.Info().Str("repo", repo).Str("reference", subjectDigestStr).
-			Msg("referrers for image already demanded, waiting on channel")
+		onDemand.log.Info().Str("repo", repo).Str("reference", reference).Str("kind", kind).
+			Msg("on-demand sync already in flight on this replica, waiting on channel")
 
-		syncResult, _ := val.(chan error)
+		existing, _ := val.(chan error)
 
-		err := <-syncResult
-
-		return err
+		return <-existing
 	}
 
 	defer onDemand.requestStore.Delete(req)
 
-	go onDemand.syncReferrers(ctx, repo, subjectDigestStr, referenceTypes, syncResult)
+	handle, release, err := onDemand.acquireDistributedLock(ctx, kind, repo, reference)
+	if err != nil {
+		close(syncResult)
 
-	err := <-syncResult
+		return err
+	}
 
-	return err
+	defer release()
+
+	// Heartbeat lifetime is bound to the sync run, not ctx, so we keep
+	// refreshing even if the client disconnects (mirroring syncImage's
+	// detached context behavior).
+	if handle != nil {
+		heartbeatCtx, heartbeatCancel := context.WithCancel(context.Background())
+		defer heartbeatCancel()
+
+		go onDemand.runLockHeartbeat(heartbeatCtx, handle.key, handle.owner, syncLockHeartbeatInterval)
+	}
+
+	go run(syncResult)
+
+	return <-syncResult
 }
 
 func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDigestStr string,

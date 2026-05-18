@@ -55,6 +55,10 @@ import (
 	"zotregistry.dev/zot/v2/pkg/test/inject"
 )
 
+// syncInFlightRetryAfterSeconds is returned with HTTP 503 while an on-demand
+// manifest sync is still populating shared storage.
+const syncInFlightRetryAfterSeconds = "30"
+
 type RouteHandler struct {
 	c *Controller
 }
@@ -474,7 +478,10 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 		details := zerr.GetDetails(err)
 		details["reference"] = reference
 
-		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
+		if errors.Is(err, zerr.ErrSyncInFlight) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
+			response.Header().Set("Retry-After", syncInFlightRetryAfterSeconds)
+			response.WriteHeader(http.StatusServiceUnavailable)
+		} else if errors.Is(err, zerr.ErrRepoNotFound) {
 			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrManifestNotFound) {
@@ -549,7 +556,10 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 	content, digest, mediaType, err := getImageManifest(request.Context(), rh, imgStore, name, reference)
 	if err != nil {
 		details := zerr.GetDetails(err)
-		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
+		if errors.Is(err, zerr.ErrSyncInFlight) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
+			response.Header().Set("Retry-After", syncInFlightRetryAfterSeconds)
+			response.WriteHeader(http.StatusServiceUnavailable)
+		} else if errors.Is(err, zerr.ErrRepoNotFound) {
 			details["name"] = name
 			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
@@ -2712,12 +2722,45 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 	}
 
 	if syncEnabled {
+		// If another replica (or this one) is already syncing the same image,
+		// tell the client to retry instead of starting a parallel sync.
+		if routeHandler.c.SyncOnDemand.IsSyncInFlight(name, reference) {
+			routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
+				Msg("on-demand sync in flight, returning 503 to let client retry")
+
+			return nil, "", "", zerr.ErrSyncInFlight
+		}
+
+		// In async-manifest mode, kick the sync off in the background and
+		// return 503 immediately so the client (kubelet, etc.) retries
+		// rather than holding the request open for the full sync timeout.
+		extensionsConfig := routeHandler.c.Config.CopyExtensionsConfig()
+		if extensionsConfig.Sync != nil && extensionsConfig.Sync.AsyncManifest {
+			routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
+				Msg("kicking off background on-demand sync; returning 503 to let client retry")
+
+			bgCtx := context.WithoutCancel(ctx)
+
+			go func() {
+				if errSync := routeHandler.c.SyncOnDemand.SyncImage(bgCtx, name, reference); errSync != nil {
+					routeHandler.c.Log.Err(errSync).Str("repository", name).Str("reference", reference).
+						Msg("background on-demand sync failed")
+				}
+			}()
+
+			return nil, "", "", zerr.ErrSyncInFlight
+		}
+
 		routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
 			Msg("trying to get updated image by syncing on demand")
 
 		if errSync := routeHandler.c.SyncOnDemand.SyncImage(ctx, name, reference); errSync != nil {
 			routeHandler.c.Log.Err(errSync).Str("repository", name).Str("reference", reference).
 				Msg("failed to sync image")
+
+			if errors.Is(errSync, zerr.ErrSyncInFlight) {
+				return nil, "", "", errSync
+			}
 		}
 	}
 
