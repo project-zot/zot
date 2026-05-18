@@ -602,6 +602,8 @@ type ImageIndex struct {
 	Annotations  map[string]string `json:"annotations,omitempty"`
 }
 
+// ImageDescriptor is a swagger-friendly variant of ispec.Descriptor.
+// It keeps digest as string to avoid swagger parser issues with external digest.Digest.
 type ImageDescriptor struct {
 	MediaType    string            `json:"mediaType"`
 	Digest       string            `json:"digest"`

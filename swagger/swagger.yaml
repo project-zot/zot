@@ -34,7 +34,7 @@ definitions:
       mediaType:
         type: string
       platform:
-        $ref: '#/definitions/v1.Platform'
+        $ref: '#/definitions/github_com_opencontainers_image-spec_specs-go_v1.Platform'
       size:
         type: integer
       urls:
@@ -174,7 +174,7 @@ definitions:
       releaseTag:
         type: string
     type: object
-  v1.Platform:
+  github_com_opencontainers_image-spec_specs-go_v1.Platform:
     properties:
       architecture:
         description: |-

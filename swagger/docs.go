@@ -1264,7 +1264,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "platform": {
-                    "$ref": "#/definitions/v1.Platform"
+                    "$ref": "#/definitions/github_com_opencontainers_image-spec_specs-go_v1.Platform"
                 },
                 "size": {
                     "type": "integer"
@@ -1481,7 +1481,7 @@ const docTemplate = `{
                 }
             }
         },
-        "v1.Platform": {
+        "github_com_opencontainers_image-spec_specs-go_v1.Platform": {
             "type": "object",
             "properties": {
                 "architecture": {
