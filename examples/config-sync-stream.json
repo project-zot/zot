@@ -20,10 +20,7 @@
 						"http://localhost:9000"
 					],
 					"onDemand": true,
-					"tlsVerify": false,
-					"maxRetries": 5,
-					"retryDelay": "30s",
-					"syncTimeout": "10m"
+					"tlsVerify": false
 				}
 			]
 		}
