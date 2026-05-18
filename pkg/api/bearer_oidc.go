@@ -226,7 +226,7 @@ func getOIDCTokenFromAuthorizationHeader(header string) (string, error) {
 	case "basic":
 		decodedStr, err := base64.StdEncoding.DecodeString(splitStr[1])
 		if err != nil {
-			return "", zerr.ErrInvalidBearerToken
+			return "", fmt.Errorf("%w: %w", zerr.ErrInvalidBearerToken, err)
 		}
 
 		pair := strings.SplitN(string(decodedStr), ":", 2) //nolint:mnd
@@ -238,8 +238,9 @@ func getOIDCTokenFromAuthorizationHeader(header string) (string, error) {
 		if tokenString == "" {
 			tokenString = pair[0]
 		}
+		tokenString = strings.TrimSpace(tokenString)
 
-		if strings.TrimSpace(tokenString) == "" {
+		if tokenString == "" {
 			return "", zerr.ErrInvalidBearerToken
 		}
 
