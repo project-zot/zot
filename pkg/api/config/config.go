@@ -250,6 +250,11 @@ type BearerOIDCConfig struct {
 	// Default: {"username":"claims.iss + '/' + claims.sub"}
 	ClaimMapping *CELClaimValidationAndMapping `json:"claimMapping,omitempty" mapstructure:"claimMapping,omitempty"`
 
+	// AllowBasicAuth enables extracting OIDC tokens from HTTP Basic credentials
+	// (using the password field, or username if password is empty).
+	// Default: false
+	AllowBasicAuth bool `json:"allowBasicAuth,omitempty" mapstructure:"allowBasicAuth,omitempty"`
+
 	// CertificateAuthority is a PEM-encoded optional CA certificate to validate the OIDC provider's TLS certificate.
 	// Mutually exclusive with CertificateAuthorityFile.
 	CertificateAuthority string `json:"certificateAuthority,omitempty" mapstructure:"certificateAuthority,omitempty"`

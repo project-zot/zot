@@ -1416,8 +1416,6 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 
 	for _, testCase := range testCases {
 		Convey("Verify docker images are skipped when they are already synced, preserveDigest: "+testCase.name, t, func() {
-			updateDuration, _ := time.ParseDuration("30m")
-
 			sctlr, srcBaseURL, srcDir, _ := makeUpstreamServer(t, false, false)
 
 			scm := test.NewControllerManager(sctlr)
@@ -1442,7 +1440,6 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 					},
 				},
 				URLs:           []string{srcBaseURL},
-				PollInterval:   updateDuration,
 				TLSVerify:      &tlsVerify,
 				CertDir:        "",
 				MaxRetries:     &maxRetries,
