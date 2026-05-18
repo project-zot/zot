@@ -1424,6 +1424,18 @@ sync can also read the certificates directly under certDir:
 
 Besides sync-auth.json file, zot also reads and uses docker credentials by default: https://docs.docker.com/reference/cli/docker/login/#description
 
+### Sync's HTTP/2 transport with HTTP/1.1 fallback
+
+Sync requests now use HTTP/2 by default. Some upstream load balancers (notably Docker Hub's) occasionally send raw HTTP/2 SETTINGS frames on a connection that Go's `net/http` opened as HTTP/1.1, surfacing as `malformed HTTP response` or HTTP/2 `INTERNAL_ERROR` / `PROTOCOL_ERROR`. The sync transport catches those framing errors at the RoundTrip layer and transparently retries the request over HTTP/1.1, so neither the regclient pipeline nor the on-demand caller sees the failure.
+
+After a host triggers the fallback once, sync routes subsequent requests for the same host straight to HTTP/1.1 for 15 minutes; the host gets another HTTP/2 attempt once that window elapses. There is no configuration knob — the behavior is automatic and applies to every registry under `extensions.sync.registries[*].urls[*]`.
+
+Operator upgrade notes:
+
+- Before this change the sync transport always used HTTP/1.1 with `ForceAttemptHTTP2 = false`. Upgrading restores HTTP/2 for any upstream that supports it cleanly. No config change is required.
+- Healthy upstreams continue to serve sync over HTTP/2; only hosts that emit framing errors are downgraded, and only until the sticky window expires.
+- The warning line `HTTP/2 framing error from upstream, retrying with HTTP/1.1` is logged on the first occurrence per host. Repeated downgrades within the sticky window are silent to avoid log spam.
+
 ## Search and CVE scanning (Trivy)
 
 The `search` extension can include a `cve` section so zot downloads the [Trivy](https://github.com/aquasecurity/trivy) vulnerability database and exposes CVE data via the search API (for example GraphQL).
