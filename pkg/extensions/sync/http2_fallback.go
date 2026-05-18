@@ -4,8 +4,11 @@ package sync
 
 import (
 	cryptotls "crypto/tls"
+	"errors"
 	"net/http"
 	"strings"
+
+	"golang.org/x/net/http2"
 
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
 	"zotregistry.dev/zot/v2/pkg/log"
@@ -44,12 +47,20 @@ func (t *http2FallbackTransport) RoundTrip(req *http.Request) (*http.Response, e
 }
 
 func isHTTP2FramingError(err error) bool {
-	msg := err.Error()
+	var streamErr http2.StreamError
+	if errors.As(err, &streamErr) {
+		return true
+	}
 
-	return strings.Contains(msg, "malformed HTTP response") ||
-		strings.Contains(msg, "INTERNAL_ERROR") ||
-		strings.Contains(msg, "stream error") ||
-		strings.Contains(msg, "PROTOCOL_ERROR")
+	var goAwayErr *http2.GoAwayError
+	if errors.As(err, &goAwayErr) {
+		return true
+	}
+
+	// The "malformed HTTP response" case is produced by net/http when an HTTP/1.1 connection
+	// receives raw HTTP/2 SETTINGS frames. Go's stdlib does not expose a typed error for this
+	// path (see https://github.com/golang/go/issues/40926), so we keep a substring match.
+	return strings.Contains(err.Error(), "malformed HTTP response")
 }
 
 // newHTTP2FallbackTransport builds a RoundTripper that prefers HTTP/2 for upstream sync
