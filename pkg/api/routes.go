@@ -1182,9 +1182,8 @@ func (rh *RouteHandler) getBlobInfoFromStreamCache(digest string, response http.
 
 		return err
 	}
-	blen := blobSize
 
-	response.Header().Set("Content-Length", strconv.FormatInt(blen, 10))
+	response.Header().Set("Content-Length", strconv.FormatInt(blobSize, 10))
 	response.Header().Set("Accept-Ranges", "bytes")
 	response.Header().Set("Content-Type", blobMediaType)
 	response.Header().Set(constants.DistContentDigestKey, digest)
@@ -1512,18 +1511,17 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 						return
 					}
 				} else {
-					clientCopyErr := copier.Copy()
-					if clientCopyErr != nil {
-						rh.c.Log.Error().Err(clientCopyErr).Str("digest", digest.String()).Msg("unexpected error during stream copy")
-						response.WriteHeader(http.StatusInternalServerError)
-
-						return
-					}
-
 					response.Header().Set("Content-Length", strconv.FormatInt(copier.Source.InFlightReader.GetDescriptor().Size, 10))
 					response.Header().Set(constants.DistContentDigestKey, digest.String())
 					response.Header().Set("Content-Type", copier.Source.InFlightReader.GetDescriptor().MediaType)
 					response.WriteHeader(http.StatusOK)
+
+					clientCopyErr := copier.Copy()
+					if clientCopyErr != nil {
+						rh.c.Log.Error().Err(clientCopyErr).Str("digest", digest.String()).Msg("unexpected error during stream copy")
+
+						return
+					}
 
 					return
 				}

@@ -49,8 +49,7 @@ func NewChunkedBlobReader(onDiskPath string, logger log.Logger) (*ChunkedBlobRea
 	return cbr, nil
 }
 
-// InitReader initializes sets the regclient blob reader
-// and the total number of bytes to read for the blob.
+// InitReader sets the regclient blob reader and the total number of bytes to read for the blob.
 func (cbr *ChunkedBlobReader) InitReader(blobReader *blob.BReader, numBytesTotal int64) {
 	cbr.bytesMu.Lock()
 	defer cbr.bytesMu.Unlock()
@@ -137,28 +136,29 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 
 // Subscribe to the reader each time a new client is interested in the current blob,
 // the client would create a subscription here with a channel where latest chunk info is sent.
-func (cbr *ChunkedBlobReader) Subscribe(channel chan int64) int {
+func (cbr *ChunkedBlobReader) Subscribe() (chan int64, int) {
 	cbr.clientMu.Lock()
 	defer func() {
 		cbr.clientCond.Broadcast()
 		cbr.clientMu.Unlock()
 	}()
 
+	channel := make(chan int64, 1)
+
 	cbr.clients[cbr.numClientsTotal] = channel
 	chanId := cbr.numClientsTotal
 	cbr.numClientsTotal++
 
+	cbr.bytesMu.RLock()
+	defer cbr.bytesMu.RUnlock()
 	// Announce the current number of available chunks to the new client only if the reader is initialized
 	if cbr.InFlightReader != nil {
-		cbr.bytesMu.RLock()
-		defer cbr.bytesMu.RUnlock()
-
 		go func() {
 			channel <- cbr.numBytesReadToDisk
 		}()
 	}
 
-	return chanId
+	return channel, chanId
 }
 
 func (cbr *ChunkedBlobReader) Unsubscribe(clientId int) {

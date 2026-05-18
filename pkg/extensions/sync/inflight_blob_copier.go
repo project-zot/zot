@@ -47,10 +47,7 @@ func (ifbc *InFlightBlobCopier) Copy() error {
 	}
 	defer onDiskFile.Close()
 
-	// Register channel for latest byte count updates
-	byteAnnounceChan := make(chan int64, 1)
-
-	id := ifbc.Source.Subscribe(byteAnnounceChan)
+	byteAnnounceChan, id := ifbc.Source.Subscribe()
 	defer ifbc.Source.Unsubscribe(id)
 
 	for {

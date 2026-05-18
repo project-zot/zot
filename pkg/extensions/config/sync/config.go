@@ -13,7 +13,8 @@ type Credentials struct {
 }
 
 type Config struct {
-	Enable          *bool
+	Enable *bool
+	// Stream is set to true when it is desired to stream blobs to clients as they are being synced to zot.
 	Stream          *bool
 	CredentialsFile string
 	/* DownloadDir is needed only in case of using cloud based storages

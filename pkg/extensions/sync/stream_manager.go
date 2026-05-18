@@ -106,21 +106,21 @@ func (sm *ChunkingStreamManager) StreamingBlobReader(reader *blob.BReader) (*blo
 	return chunkingReader.ToBReader(), nil
 }
 
-func (sm *ChunkingStreamManager) prepareActiveStreamForBlob(descriptor descriptor.Descriptor) error {
-	_, ok := sm.activeStreams[descriptor.Digest.String()]
+func (sm *ChunkingStreamManager) prepareActiveStreamForBlob(desc descriptor.Descriptor) error {
+	_, ok := sm.activeStreams[desc.Digest.String()]
 	if ok {
-		sm.logger.Warn().Str("blob", descriptor.Digest.String()).Msg("active stream already exists for blob")
+		sm.logger.Warn().Str("blob", desc.Digest.String()).Msg("active stream already exists for blob")
 
 		return nil
 	}
 
-	r, err := NewChunkedBlobReader(sm.tempStore.BlobPath(descriptor.Digest), sm.logger)
+	r, err := NewChunkedBlobReader(sm.tempStore.BlobPath(desc.Digest), sm.logger)
 	if err != nil {
 		return err
 	}
 
-	sm.activeStreams[descriptor.Digest.String()] = r
-	sm.blobInfoMap[descriptor.Digest.String()] = descriptor
+	sm.activeStreams[desc.Digest.String()] = r
+	sm.blobInfoMap[desc.Digest.String()] = desc
 
 	return nil
 }
@@ -273,8 +273,15 @@ func (sm *ChunkingStreamManager) waitForClientDrainAndDeleteStream(blobDigest st
 	delete(sm.activeStreams, blobDigest)
 	delete(sm.blobInfoMap, blobDigest)
 
-	blobPath := sm.tempStore.BlobPath(godigest.FromString(blobDigest))
-	_, err := os.Stat(blobPath)
+	dgst, err := godigest.Parse(blobDigest)
+	if err != nil {
+		sm.logger.Error().Err(err).Str("blob", blobDigest).Msg("failed to parse blob digest")
+
+		return
+	}
+
+	blobPath := sm.tempStore.BlobPath(dgst)
+	_, err = os.Stat(blobPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return
@@ -285,7 +292,7 @@ func (sm *ChunkingStreamManager) waitForClientDrainAndDeleteStream(blobDigest st
 		return
 	}
 
-	err = os.Remove(sm.tempStore.BlobPath(godigest.FromString(blobDigest)))
+	err = os.Remove(sm.tempStore.BlobPath(dgst))
 	if err != nil {
 		sm.logger.Error().Err(err).Str("blob", blobDigest).Msg("failed to remove blob from temp store")
 	}

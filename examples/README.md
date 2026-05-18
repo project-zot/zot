@@ -1289,7 +1289,9 @@ Besides sync-auth.json file, zot also reads and uses docker credentials by defau
 ### Streaming sync
 
 Under sync, set `"stream": true` to enable streaming. With this option enabled, blobs are streamed to clients as they are being downloaded
-from the upstream registry. This does not require any configuration on the upstream.
+from the upstream registry. This does not require any configuration on the upstream registry.
+
+Note that when streaming is enabled, sync retry cannot be configured. If a stream fails, all clients on that stream are disconnected. When a client next retries, a fresh stream is started.
 
 ## Search and CVE scanning (Trivy)
 
