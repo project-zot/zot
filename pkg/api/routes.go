@@ -30,6 +30,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
 	godigest "github.com/opencontainers/go-digest"
+	specs "github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/zitadel/oidc/v3/pkg/client/rp"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
@@ -499,7 +500,13 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 }
 
 type ImageManifest struct {
-	ispec.Manifest
+	specs.Versioned
+	MediaType    string            `json:"mediaType,omitempty"`
+	ArtifactType string            `json:"artifactType,omitempty"`
+	Config       ImageDescriptor   `json:"config"`
+	Layers       []ImageDescriptor `json:"layers"`
+	Subject      *ImageDescriptor  `json:"subject,omitempty"`
+	Annotations  map[string]string `json:"annotations,omitempty"`
 }
 
 type ExtensionList struct {
@@ -587,7 +594,23 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 }
 
 type ImageIndex struct {
-	ispec.Index
+	specs.Versioned
+	MediaType    string            `json:"mediaType,omitempty"`
+	ArtifactType string            `json:"artifactType,omitempty"`
+	Manifests    []ImageDescriptor `json:"manifests"`
+	Subject      *ImageDescriptor  `json:"subject,omitempty"`
+	Annotations  map[string]string `json:"annotations,omitempty"`
+}
+
+type ImageDescriptor struct {
+	MediaType    string            `json:"mediaType"`
+	Digest       string            `json:"digest"`
+	Size         int64             `json:"size"`
+	URLs         []string          `json:"urls,omitempty"`
+	Annotations  map[string]string `json:"annotations,omitempty"`
+	Data         []byte            `json:"data,omitempty"`
+	Platform     *ispec.Platform   `json:"platform,omitempty"`
+	ArtifactType string            `json:"artifactType,omitempty"`
 }
 
 func getReferrers(ctx context.Context, routeHandler *RouteHandler,

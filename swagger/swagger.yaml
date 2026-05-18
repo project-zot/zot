@@ -17,71 +17,72 @@ definitions:
           $ref: '#/definitions/extensions.Extension'
         type: array
     type: object
+  api.ImageDescriptor:
+    properties:
+      annotations:
+        additionalProperties:
+          type: string
+        type: object
+      artifactType:
+        type: string
+      data:
+        items:
+          type: integer
+        type: array
+      digest:
+        type: string
+      mediaType:
+        type: string
+      platform:
+        $ref: '#/definitions/v1.Platform'
+      size:
+        type: integer
+      urls:
+        items:
+          type: string
+        type: array
+    type: object
   api.ImageIndex:
     properties:
       annotations:
         additionalProperties:
           type: string
-        description: Annotations contains arbitrary metadata for the image index.
         type: object
       artifactType:
-        description: ArtifactType specifies the IANA media type of artifact when the
-          manifest is used for an artifact.
         type: string
       manifests:
-        description: Manifests references platform specific manifests.
         items:
-          $ref: '#/definitions/v1.Descriptor'
+          $ref: '#/definitions/api.ImageDescriptor'
         type: array
       mediaType:
-        description: MediaType specifies the type of this document data structure
-          e.g. `application/vnd.oci.image.index.v1+json`
         type: string
       schemaVersion:
         description: SchemaVersion is the image manifest schema that this image follows
         type: integer
       subject:
-        allOf:
-        - $ref: '#/definitions/v1.Descriptor'
-        description: Subject is an optional link from the image manifest to another
-          manifest forming an association between the image manifest and the other
-          manifest.
+        $ref: '#/definitions/api.ImageDescriptor'
     type: object
   api.ImageManifest:
     properties:
       annotations:
         additionalProperties:
           type: string
-        description: Annotations contains arbitrary metadata for the image manifest.
         type: object
       artifactType:
-        description: ArtifactType specifies the IANA media type of artifact when the
-          manifest is used for an artifact.
         type: string
       config:
-        allOf:
-        - $ref: '#/definitions/v1.Descriptor'
-        description: |-
-          Config references a configuration object for a container, by digest.
-          The referenced configuration object is a JSON blob that the runtime uses to set up the container.
+        $ref: '#/definitions/api.ImageDescriptor'
       layers:
-        description: Layers is an indexed list of layers referenced by the manifest.
         items:
-          $ref: '#/definitions/v1.Descriptor'
+          $ref: '#/definitions/api.ImageDescriptor'
         type: array
       mediaType:
-        description: MediaType specifies the type of this document data structure
-          e.g. `application/vnd.oci.image.manifest.v1+json`
         type: string
       schemaVersion:
         description: SchemaVersion is the image manifest schema that this image follows
         type: integer
       subject:
-        allOf:
-        - $ref: '#/definitions/v1.Descriptor'
-        description: Subject is an optional link from the image manifest to another
-          manifest forming an association between the image manifest and the other
-          manifest.
+        $ref: '#/definitions/api.ImageDescriptor'
     type: object
   api.LogoutResponse:
     properties:
@@ -172,48 +173,6 @@ definitions:
         type: object
       releaseTag:
         type: string
-    type: object
-  v1.Descriptor:
-    properties:
-      annotations:
-        additionalProperties:
-          type: string
-        description: Annotations contains arbitrary metadata relating to the targeted
-          content.
-        type: object
-      artifactType:
-        description: ArtifactType is the IANA media type of this artifact.
-        type: string
-      data:
-        description: |-
-          Data is an embedding of the targeted content. This is encoded as a base64
-          string when marshalled to JSON (automatically, by encoding/json). If
-          present, Data can be used directly to avoid fetching the targeted content.
-        items:
-          type: integer
-        type: array
-      digest:
-        description: Digest is the digest of the targeted content.
-        type: string
-      mediaType:
-        description: MediaType is the media type of the object this schema refers
-          to.
-        type: string
-      platform:
-        allOf:
-        - $ref: '#/definitions/v1.Platform'
-        description: |-
-          Platform describes the platform which the image in the manifest runs on.
-
-          This should only be used when referring to a manifest.
-      size:
-        description: Size specifies the size in bytes of the blob.
-        type: integer
-      urls:
-        description: URLs specifies a list of URLs from which this object MAY be downloaded
-        items:
-          type: string
-        type: array
     type: object
   v1.Platform:
     properties:

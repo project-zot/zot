@@ -1239,29 +1239,63 @@ const docTemplate = `{
                 }
             }
         },
-        "api.ImageIndex": {
+        "api.ImageDescriptor": {
             "type": "object",
             "properties": {
                 "annotations": {
-                    "description": "Annotations contains arbitrary metadata for the image index.",
                     "type": "object",
                     "additionalProperties": {
                         "type": "string"
                     }
                 },
                 "artifactType": {
-                    "description": "ArtifactType specifies the IANA media type of artifact when the manifest is used for an artifact.",
+                    "type": "string"
+                },
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "digest": {
+                    "type": "string"
+                },
+                "mediaType": {
+                    "type": "string"
+                },
+                "platform": {
+                    "$ref": "#/definitions/v1.Platform"
+                },
+                "size": {
+                    "type": "integer"
+                },
+                "urls": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "api.ImageIndex": {
+            "type": "object",
+            "properties": {
+                "annotations": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "artifactType": {
                     "type": "string"
                 },
                 "manifests": {
-                    "description": "Manifests references platform specific manifests.",
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/v1.Descriptor"
+                        "$ref": "#/definitions/api.ImageDescriptor"
                     }
                 },
                 "mediaType": {
-                    "description": "MediaType specifies the type of this document data structure e.g. ` + "`" + `application/vnd.oci.image.index.v1+json` + "`" + `",
                     "type": "string"
                 },
                 "schemaVersion": {
@@ -1269,12 +1303,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "subject": {
-                    "description": "Subject is an optional link from the image manifest to another manifest forming an association between the image manifest and the other manifest.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/v1.Descriptor"
-                        }
-                    ]
+                    "$ref": "#/definitions/api.ImageDescriptor"
                 }
             }
         },
@@ -1282,33 +1311,24 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "annotations": {
-                    "description": "Annotations contains arbitrary metadata for the image manifest.",
                     "type": "object",
                     "additionalProperties": {
                         "type": "string"
                     }
                 },
                 "artifactType": {
-                    "description": "ArtifactType specifies the IANA media type of artifact when the manifest is used for an artifact.",
                     "type": "string"
                 },
                 "config": {
-                    "description": "Config references a configuration object for a container, by digest.\nThe referenced configuration object is a JSON blob that the runtime uses to set up the container.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/v1.Descriptor"
-                        }
-                    ]
+                    "$ref": "#/definitions/api.ImageDescriptor"
                 },
                 "layers": {
-                    "description": "Layers is an indexed list of layers referenced by the manifest.",
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/v1.Descriptor"
+                        "$ref": "#/definitions/api.ImageDescriptor"
                     }
                 },
                 "mediaType": {
-                    "description": "MediaType specifies the type of this document data structure e.g. ` + "`" + `application/vnd.oci.image.manifest.v1+json` + "`" + `",
                     "type": "string"
                 },
                 "schemaVersion": {
@@ -1316,12 +1336,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "subject": {
-                    "description": "Subject is an optional link from the image manifest to another manifest forming an association between the image manifest and the other manifest.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/v1.Descriptor"
-                        }
-                    ]
+                    "$ref": "#/definitions/api.ImageDescriptor"
                 }
             }
         },
@@ -1463,56 +1478,6 @@ const docTemplate = `{
                 },
                 "releaseTag": {
                     "type": "string"
-                }
-            }
-        },
-        "v1.Descriptor": {
-            "type": "object",
-            "properties": {
-                "annotations": {
-                    "description": "Annotations contains arbitrary metadata relating to the targeted content.",
-                    "type": "object",
-                    "additionalProperties": {
-                        "type": "string"
-                    }
-                },
-                "artifactType": {
-                    "description": "ArtifactType is the IANA media type of this artifact.",
-                    "type": "string"
-                },
-                "data": {
-                    "description": "Data is an embedding of the targeted content. This is encoded as a base64\nstring when marshalled to JSON (automatically, by encoding/json). If\npresent, Data can be used directly to avoid fetching the targeted content.",
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
-                },
-                "digest": {
-                    "description": "Digest is the digest of the targeted content.",
-                    "type": "string"
-                },
-                "mediaType": {
-                    "description": "MediaType is the media type of the object this schema refers to.",
-                    "type": "string"
-                },
-                "platform": {
-                    "description": "Platform describes the platform which the image in the manifest runs on.\n\nThis should only be used when referring to a manifest.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/v1.Platform"
-                        }
-                    ]
-                },
-                "size": {
-                    "description": "Size specifies the size in bytes of the blob.",
-                    "type": "integer"
-                },
-                "urls": {
-                    "description": "URLs specifies a list of URLs from which this object MAY be downloaded",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
                 }
             }
         },
