@@ -13,9 +13,7 @@ type Credentials struct {
 }
 
 type Config struct {
-	Enable *bool
-	// Stream is set to true when it is desired to stream blobs to clients as they are being synced to zot.
-	Stream          *bool
+	Enable          *bool
 	CredentialsFile string
 	/* DownloadDir is needed only in case of using cloud based storages
 	it uses regclient to first copy images into this dir (as oci layout)
@@ -25,11 +23,13 @@ type Config struct {
 }
 
 type RegistryConfig struct {
-	URLs                  []string
-	PollInterval          time.Duration
-	Content               []Content
-	TLSVerify             *bool
-	OnDemand              bool
+	URLs         []string
+	PollInterval time.Duration
+	Content      []Content
+	TLSVerify    *bool
+	OnDemand     bool
+	// Stream is set to true when it is desired to stream blobs to clients as they are being synced from this upstream.
+	Stream                *bool
 	CertDir               string
 	MaxRetries            *int
 	RetryDelay            *time.Duration
@@ -45,6 +45,11 @@ type RegistryConfig struct {
 // Default is true when SyncLegacyCosignTags is unset (nil).
 func (r RegistryConfig) ShouldSyncLegacyCosignTags() bool {
 	return r.SyncLegacyCosignTags == nil || *r.SyncLegacyCosignTags
+}
+
+// IsStreamEnabled returns true if streaming is enabled for this registry config.
+func (r RegistryConfig) IsStreamEnabled() bool {
+	return r.Stream != nil && *r.Stream
 }
 
 type Content struct {

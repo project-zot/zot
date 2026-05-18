@@ -215,6 +215,21 @@ func (service *BaseService) CanRetryOnError() bool {
 	return false
 }
 
+// IsStreamingForRepo returns whether streaming is enabled for the given local repo on this service.
+// Streaming is enabled if the registry config has Stream set to true and the repo matches the content config.
+func (service *BaseService) IsStreamingForRepo(repo string) bool {
+	if !service.config.IsStreamEnabled() {
+		return false
+	}
+
+	// If no content filter is configured, all repos match.
+	if len(service.config.Content) == 0 {
+		return true
+	}
+
+	return service.contentManager.GetContentByLocalRepo(repo) != nil
+}
+
 func (service *BaseService) GetSyncTimeout() time.Duration {
 	if service.config.SyncTimeout == 0 {
 		return syncConstants.DefaultSyncTimeout
@@ -520,7 +535,7 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 
 	copyOpts := []regclient.ImageOpts{}
 
-	if service.streamManager != nil {
+	if service.config.Stream != nil && *service.config.Stream && service.streamManager != nil {
 		service.log.Debug().Str("repo", localRepo).Str("reference", remoteImageRef.Tag).
 			Msg("streaming is enabled. Enabling reader hook")
 		copyOpts = append(copyOpts, regclient.ImageWithBlobReaderHook(service.streamManager.StreamingBlobReader))

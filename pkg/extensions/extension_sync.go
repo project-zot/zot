@@ -65,8 +65,14 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 			// Get cluster config safely
 			clusterConfig := config.CopyClusterConfig()
 
+			// Only pass the stream manager to services that have streaming enabled on their registry config.
+			var svcStreamManager sync.StreamManager
+			if registryConfig.Stream != nil && *registryConfig.Stream {
+				svcStreamManager = streamManager
+			}
+
 			service, err := sync.New(
-				registryConfig, credsPath, clusterConfig, tmpDir, storeController, streamManager, metaDB, log)
+				registryConfig, credsPath, clusterConfig, tmpDir, storeController, svcStreamManager, metaDB, log)
 			if err != nil {
 				log.Error().Err(err).Msg("failed to initialize sync extension")
 

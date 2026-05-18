@@ -1124,8 +1124,7 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrRepoNotFound) {
-			extConf := rh.c.Config.CopyExtensionsConfig()
-			if extConf.IsStreamingEnabled() {
+			if rh.c.SyncOnDemand != nil && rh.c.SyncOnDemand.IsStreamingEnabledForRepo(name) {
 				streamErr := rh.getBlobInfoFromStreamCache(digest.String(), response)
 				if streamErr == nil {
 					return
@@ -1135,8 +1134,7 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrBlobNotFound) {
-			extConf := rh.c.Config.CopyExtensionsConfig()
-			if extConf.IsStreamingEnabled() {
+			if rh.c.SyncOnDemand != nil && rh.c.SyncOnDemand.IsStreamingEnabledForRepo(name) {
 				streamErr := rh.getBlobInfoFromStreamCache(digest.String(), response)
 				if streamErr == nil {
 					return
@@ -1494,13 +1492,12 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 	writeBlobError := func(err error) {
 		details := zerr.GetDetails(err)
-		extConf := rh.c.Config.CopyExtensionsConfig()
 
-		if extConf.IsStreamingEnabled() {
-			rh.c.Log.Info().Msg("streaming enabled. using stream logic")
+		if rh.c.SyncOnDemand != nil && rh.c.SyncOnDemand.IsStreamingEnabledForRepo(name) {
+			rh.c.Log.Debug().Str("repo", name).Msg("streaming enabled for repo. using stream logic for blob.")
 
 			if errors.Is(err, zerr.ErrRepoNotFound) || errors.Is(err, zerr.ErrBlobNotFound) {
-				rh.c.Log.Info().Msg("blob was not found. Connecting client to stream")
+				rh.c.Log.Debug().Str("repo", name).Str("digest", digest.String()).Msg("connecting client to stream")
 
 				copier, clientConnErr := rh.c.SyncOnDemand.StreamManager().ConnectClient(digest.String(), response)
 				if clientConnErr != nil {
@@ -2718,12 +2715,10 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 		routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
 			Msg("trying to get updated image by syncing on demand")
 
-		extConf := routeHandler.c.Config.CopyExtensionsConfig()
-
-		// if streaming enabled, return manifest immediately
-		if extConf.IsStreamingEnabled() {
-			routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
-				Msg("streaming is enabled. Direct fetching manifest.")
+		// If streaming is enabled for this repo, return manifest immediately.
+		if routeHandler.c.SyncOnDemand.IsStreamingEnabledForRepo(name) {
+			routeHandler.c.Log.Debug().Str("repository", name).Str("reference", reference).
+				Msg("streaming is enabled for repo. Direct fetching manifest.")
 
 			fetchedManifest, err := routeHandler.c.SyncOnDemand.FetchManifestForStream(ctx, name, reference)
 			if err != nil {

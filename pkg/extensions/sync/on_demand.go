@@ -53,6 +53,17 @@ func (onDemand *BaseOnDemand) StreamManager() StreamManager {
 	return onDemand.streamManager
 }
 
+// IsStreamingEnabledForRepo returns true if any on-demand service has streaming enabled for the given repo.
+func (onDemand *BaseOnDemand) IsStreamingEnabledForRepo(repo string) bool {
+	for _, service := range onDemand.services {
+		if service.IsStreamingForRepo(repo) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // FetchManifestForStream directly fetches the manifest from the upstream services and prepares the image
 // for streaming.
 // This is only intended for use with streaming sync.

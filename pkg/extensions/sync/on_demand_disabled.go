@@ -29,3 +29,7 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(
 func (onDemand *BaseOnDemand) StreamManager() StreamManager {
 	return nil
 }
+
+func (onDemand *BaseOnDemand) IsStreamingEnabledForRepo(_ string) bool {
+	return false
+}

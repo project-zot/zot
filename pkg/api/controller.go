@@ -656,4 +656,5 @@ type SyncOnDemand interface {
 	SyncReferrers(ctx context.Context, repo string, subjectDigestStr string, referenceTypes []string) error
 	FetchManifestForStream(ctx context.Context, repo, reference string) (manifest.Manifest, error)
 	StreamManager() sync.StreamManager
+	IsStreamingEnabledForRepo(repo string) bool
 }

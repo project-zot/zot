@@ -39,6 +39,8 @@ type Service interface {
 	GetSyncTimeout() time.Duration
 
 	FetchManifest(ctx context.Context, repo, reference string) (manifest.Manifest, error)
+	// Returns whether streaming is enabled for the given local repo on this service.
+	IsStreamingForRepo(repo string) bool
 }
 
 // Registry interface must be implemented by local and remote registries.

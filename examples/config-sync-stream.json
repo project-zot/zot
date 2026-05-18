@@ -13,13 +13,13 @@
 	"extensions": {
 		"sync": {
 			"enable": true,
-			"stream": true,
 			"registries": [
 				{
 					"urls": [
 						"http://localhost:9000"
 					],
 					"onDemand": true,
+					"stream": true,
 					"tlsVerify": false
 				}
 			]
