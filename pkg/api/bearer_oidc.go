@@ -37,6 +37,7 @@ type oidcProvider struct {
 	issuer          string
 	audiences       []string
 	claimProcessor  *cel.ClaimProcessor
+	allowBasicAuth  bool
 	skipIssuerCheck bool
 	httpClient      *http.Client
 	log             log.Logger
@@ -157,6 +158,7 @@ func newOIDCProvider(oidcConfig *config.BearerOIDCConfig, log log.Logger) (*oidc
 		issuer:          oidcConfig.Issuer,
 		audiences:       oidcConfig.Audiences,
 		claimProcessor:  claimProcessor,
+		allowBasicAuth:  oidcConfig.AllowBasicAuth,
 		skipIssuerCheck: oidcConfig.SkipIssuerVerification,
 		httpClient:      httpClient,
 		log:             log,
@@ -169,7 +171,7 @@ func (a *oidcProvider) authenticate(ctx context.Context, header string) (*cel.Cl
 	}
 
 	// Extract token from Authorization header.
-	tokenString, err := getOIDCTokenFromAuthorizationHeader(header)
+	tokenString, err := getOIDCTokenFromAuthorizationHeader(header, a.allowBasicAuth)
 	if err != nil {
 		return nil, err
 	}
@@ -209,7 +211,7 @@ func (a *oidcProvider) authenticate(ctx context.Context, header string) (*cel.Cl
 	return res, nil
 }
 
-func getOIDCTokenFromAuthorizationHeader(header string) (string, error) {
+func getOIDCTokenFromAuthorizationHeader(header string, allowBasicAuth bool) (string, error) {
 	splitStr := strings.SplitN(header, " ", 2) //nolint:mnd
 	if len(splitStr) != 2 {
 		return "", zerr.ErrInvalidBearerToken
@@ -224,6 +226,10 @@ func getOIDCTokenFromAuthorizationHeader(header string) (string, error) {
 
 		return tokenString, nil
 	case "basic":
+		if !allowBasicAuth {
+			return "", zerr.ErrInvalidBearerToken
+		}
+
 		decodedStr, err := base64.StdEncoding.DecodeString(splitStr[1])
 		if err != nil {
 			return "", fmt.Errorf("%w: %w", zerr.ErrInvalidBearerToken, err)

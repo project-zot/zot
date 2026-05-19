@@ -184,6 +184,14 @@ func TestOIDCBearerAuthorizer(t *testing.T) {
 
 			Convey("Valid token in basic auth password", func() {
 				subject := "test-user" //nolint:goconst
+				cfg := []config.BearerOIDCConfig{{
+					Issuer:         issuer,
+					Audiences:      []string{audience},
+					AllowBasicAuth: true,
+				}}
+				authorizer, err := api.NewOIDCBearerAuthorizer(cfg, logger)
+				So(err, ShouldBeNil)
+
 				token, err := createTestOIDCToken(privKey, issuer, audience, subject, nil)
 				So(err, ShouldBeNil)
 
@@ -195,6 +203,19 @@ func TestOIDCBearerAuthorizer(t *testing.T) {
 				So(result, ShouldNotBeNil)
 				So(result.Username, ShouldEqual, issuer+"/"+subject)
 				So(result.Groups, ShouldBeEmpty)
+			})
+
+			Convey("Basic auth token is rejected by default", func() {
+				subject := "test-user" //nolint:goconst
+				token, err := createTestOIDCToken(privKey, issuer, audience, subject, nil)
+				So(err, ShouldBeNil)
+
+				basicCredentials := base64.StdEncoding.EncodeToString([]byte("workload:" + token))
+				authHeader := "Basic " + basicCredentials
+
+				result, err := authorizer.Authenticate(ctx, authHeader)
+				So(err, ShouldNotBeNil)
+				So(result, ShouldBeNil)
 			})
 
 			Convey("Valid token with groups", func() {
