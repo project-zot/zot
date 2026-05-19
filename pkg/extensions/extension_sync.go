@@ -67,7 +67,7 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 
 			// Only pass the stream manager to services that have streaming enabled on their registry config.
 			var svcStreamManager sync.StreamManager
-			if registryConfig.Stream != nil && *registryConfig.Stream {
+			if registryConfig.IsStreamEnabled() {
 				svcStreamManager = streamManager
 			}
 

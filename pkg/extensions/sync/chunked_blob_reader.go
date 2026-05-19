@@ -103,6 +103,11 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 		if clsErr != nil {
 			cbr.logger.Error().Err(clsErr).Msg("failed to close on disk file")
 		}
+		// All bytes have been written to disk; treat as EOF regardless of
+		// what io.ReadFull returned. This handles the case where the caller's
+		// buffer is exactly the remaining data size and io.ReadFull returns
+		// (n, nil) instead of (n, io.ErrUnexpectedEOF).
+		err = io.EOF
 	}
 
 	numBytesRead := cbr.numBytesReadToDisk
@@ -135,7 +140,7 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 }
 
 // Subscribe to the reader each time a new client is interested in the current blob,
-// the client would create a subscription here with a channel where latest chunk info is sent.
+// the client would create a subscription here with a channel where latest bytes info is sent.
 func (cbr *ChunkedBlobReader) Subscribe() (chan int64, int) {
 	cbr.clientMu.Lock()
 	defer func() {
@@ -151,11 +156,12 @@ func (cbr *ChunkedBlobReader) Subscribe() (chan int64, int) {
 
 	cbr.bytesMu.RLock()
 	defer cbr.bytesMu.RUnlock()
-	// Announce the current number of available chunks to the new client only if the reader is initialized
+	// Announce the current number of available bytes to the new client only if
+	// the reader is initialized. Send synchronously while clientMu is held so
+	// that Unsubscribe cannot close the channel between the map insertion above
+	// and this send.
 	if cbr.InFlightReader != nil {
-		go func() {
-			channel <- cbr.numBytesReadToDisk
-		}()
+		channel <- cbr.numBytesReadToDisk
 	}
 
 	return channel, chanId
