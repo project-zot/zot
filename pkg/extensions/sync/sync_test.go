@@ -1551,15 +1551,20 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 
 				// trigger config blob upstream error
 				// remove synced image
+				const (
+					maxRemoveRetries = 5
+					removeRetryDelay = 100 * time.Millisecond
+				)
+
 				downstreamImagePath := path.Join(destDir, testImage)
 
-				for retry := 0; retry < 5; retry++ {
+				for retry := 0; retry < maxRemoveRetries; retry++ {
 					err = os.RemoveAll(downstreamImagePath)
 					if err == nil || !errors.Is(err, syscall.ENOTEMPTY) {
 						break
 					}
 
-					time.Sleep(100 * time.Millisecond)
+					time.Sleep(removeRetryDelay)
 				}
 
 				So(err, ShouldBeNil)
