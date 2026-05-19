@@ -91,16 +91,15 @@ func (sm *ChunkingStreamManager) StreamingBlobReader(reader *blob.BReader) (*blo
 
 	desc := reader.GetDescriptor()
 	digest := desc.Digest.String()
-	size := desc.Size
 
 	// This expects the chunked blob reader to be initialized and ready
-	// as the code here only supplies the reader and the number of bytes.
+	// as the code here only supplies the reader and the descriptor.
 	chunkingReader, ok := sm.activeStreams[digest]
 	if !ok {
 		return nil, zerr.ErrBlobReaderMissing
 	}
 
-	chunkingReader.InitReader(reader, size)
+	chunkingReader.InitReader(reader, desc)
 	sm.logger.Debug().Str("blob", digest).Msg("finished init chunked blob reader")
 
 	return chunkingReader.ToBReader(), nil

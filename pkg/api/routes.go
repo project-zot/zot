@@ -1508,9 +1508,10 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 						return
 					}
 				} else {
-					response.Header().Set("Content-Length", strconv.FormatInt(copier.Source.InFlightReader.GetDescriptor().Size, 10))
+					desc := copier.Source.Descriptor()
+					response.Header().Set("Content-Length", strconv.FormatInt(desc.Size, 10))
 					response.Header().Set(constants.DistContentDigestKey, digest.String())
-					response.Header().Set("Content-Type", copier.Source.InFlightReader.GetDescriptor().MediaType)
+					response.Header().Set("Content-Type", desc.MediaType)
 					response.WriteHeader(http.StatusOK)
 
 					clientCopyErr := copier.Copy()

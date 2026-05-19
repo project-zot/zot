@@ -69,21 +69,21 @@ func TestInitReader(t *testing.T) {
 		reader := newTestBReader(data)
 
 		Convey("sets the in-flight reader and total bytes", func() {
-			So(cbr.InFlightReader, ShouldBeNil)
+			So(cbr.inFlightReader, ShouldBeNil)
 
-			cbr.InitReader(reader, int64(len(data)))
+			cbr.InitReader(reader, reader.GetDescriptor())
 
-			So(cbr.InFlightReader, ShouldEqual, reader)
+			So(cbr.inFlightReader, ShouldEqual, reader)
 			So(cbr.numBytesTotal, ShouldEqual, int64(len(data)))
 		})
 
 		Convey("is idempotent — second call does not overwrite first reader", func() {
-			cbr.InitReader(reader, int64(len(data)))
+			cbr.InitReader(reader, reader.GetDescriptor())
 
 			secondReader := newTestBReader([]byte("other data"))
-			cbr.InitReader(secondReader, 99)
+			cbr.InitReader(secondReader, secondReader.GetDescriptor())
 
-			So(cbr.InFlightReader, ShouldEqual, reader)
+			So(cbr.inFlightReader, ShouldEqual, reader)
 			So(cbr.numBytesTotal, ShouldEqual, int64(len(data)))
 		})
 	})
@@ -97,7 +97,8 @@ func TestRead(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		data := []byte("hello world")
-		cbr.InitReader(newTestBReader(data), int64(len(data)))
+		testBReader := newTestBReader(data)
+		cbr.InitReader(testBReader, testBReader.GetDescriptor())
 
 		Convey("reads all data and writes it to disk", func() {
 			buf := make([]byte, len(data))
@@ -220,7 +221,7 @@ func TestRead(t *testing.T) {
 					return 0, zerr.ErrSyncUpstreamDownloadFailed
 				})),
 			)
-			errCBR.InitReader(errReader, 100)
+			errCBR.InitReader(errReader, errReader.GetDescriptor())
 
 			buf := make([]byte, 50)
 			n, readErr := errCBR.Read(buf)
@@ -255,7 +256,8 @@ func TestSubscribeUnsubscribe(t *testing.T) {
 
 		Convey("Subscribe sends current byte offset when reader is already initialized", func() {
 			data := []byte("preloaded")
-			cbr.InitReader(newTestBReader(data), int64(len(data)))
+			testBReader := newTestBReader(data)
+			cbr.InitReader(testBReader, testBReader.GetDescriptor())
 
 			// Manually advance numBytesReadToDisk to simulate partial read.
 			cbr.bytesMu.Lock()
@@ -382,7 +384,7 @@ func TestToBReader(t *testing.T) {
 
 		data := []byte("to-breader test data")
 		original := newTestBReader(data)
-		cbr.InitReader(original, int64(len(data)))
+		cbr.InitReader(original, original.GetDescriptor())
 
 		br := cbr.ToBReader()
 		So(br, ShouldNotBeNil)
@@ -390,6 +392,69 @@ func TestToBReader(t *testing.T) {
 		// The returned BReader should have the same descriptor as the original.
 		So(br.GetDescriptor().Digest, ShouldEqual, original.GetDescriptor().Digest)
 		So(br.GetDescriptor().Size, ShouldEqual, original.GetDescriptor().Size)
+	})
+}
+
+func TestDescriptor(t *testing.T) {
+	Convey("Descriptor", t, func() {
+		dir := t.TempDir()
+		cbr, err := NewChunkedBlobReader(filepath.Join(dir, "blob.bin"), log.NewTestLogger())
+		So(err, ShouldBeNil)
+		defer cbr.onDiskFile.Close()
+
+		data := []byte("descriptor test data")
+		testBReader := newTestBReader(data)
+		expectedDesc := testBReader.GetDescriptor()
+
+		Convey("returns descriptor immediately when reader is already initialized", func() {
+			cbr.InitReader(testBReader, expectedDesc)
+
+			desc := cbr.Descriptor()
+			So(desc.Digest, ShouldEqual, expectedDesc.Digest)
+			So(desc.Size, ShouldEqual, expectedDesc.Size)
+		})
+
+		Convey("blocks until InitReader is called and returns the correct descriptor", func() {
+			result := make(chan descriptor.Descriptor, 1)
+
+			go func() {
+				result <- cbr.Descriptor()
+			}()
+
+			// Give the goroutine time to block on readerReady.
+			// It must not have returned yet since InitReader has not been called.
+			select {
+			case <-result:
+				So("Descriptor returned before InitReader was called", ShouldBeEmpty)
+			default:
+			}
+
+			cbr.InitReader(testBReader, expectedDesc)
+
+			desc := <-result
+			So(desc.Digest, ShouldEqual, expectedDesc.Digest)
+			So(desc.Size, ShouldEqual, expectedDesc.Size)
+		})
+
+		Convey("multiple concurrent callers all receive the descriptor", func() {
+			const numCallers = 5
+
+			results := make([]chan descriptor.Descriptor, numCallers)
+			for i := range results {
+				results[i] = make(chan descriptor.Descriptor, 1)
+				go func(ch chan descriptor.Descriptor) {
+					ch <- cbr.Descriptor()
+				}(results[i])
+			}
+
+			cbr.InitReader(testBReader, expectedDesc)
+
+			for _, ch := range results {
+				desc := <-ch
+				So(desc.Digest, ShouldEqual, expectedDesc.Digest)
+				So(desc.Size, ShouldEqual, expectedDesc.Size)
+			}
+		})
 	})
 }
 

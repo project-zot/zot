@@ -106,13 +106,13 @@ EOF
     "extensions": {
         "sync": {
             "enable": true,
-            "stream": true,
             "registries": [
                 {
                     "urls": [
                         "http://localhost:${upstream_port}"
                     ],
                     "onDemand": true,
+                    "stream": true,
                     "tlsVerify": false
                 }
             ]

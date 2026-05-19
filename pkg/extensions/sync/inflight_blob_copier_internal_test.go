@@ -26,7 +26,8 @@ func TestInFlightBlobCopierCopy(t *testing.T) {
 
 			cbr, err := NewChunkedBlobReader(blobPath, log.NewTestLogger())
 			So(err, ShouldBeNil)
-			cbr.InitReader(newTestBReader(data), int64(len(data)))
+			testBReader := newTestBReader(data)
+			cbr.InitReader(testBReader, testBReader.GetDescriptor())
 
 			var dest bytes.Buffer
 			ifbc := NewInFlightBlobCopier(cbr, blobPath, &dest, log.NewTestLogger())
@@ -54,7 +55,8 @@ func TestInFlightBlobCopierCopy(t *testing.T) {
 
 			cbr, err := NewChunkedBlobReader(blobPath, log.NewTestLogger())
 			So(err, ShouldBeNil)
-			cbr.InitReader(newTestBReader(data), int64(len(data)))
+			testBReader := newTestBReader(data)
+			cbr.InitReader(testBReader, testBReader.GetDescriptor())
 
 			var dest bytes.Buffer
 			ifbc := NewInFlightBlobCopier(cbr, blobPath, &dest, log.NewTestLogger())
@@ -108,7 +110,7 @@ func TestInFlightBlobCopierCopy(t *testing.T) {
 			errCBR, cerr := NewChunkedBlobReader(errPath, log.NewTestLogger())
 			So(cerr, ShouldBeNil)
 
-			errCBR.InitReader(blob.NewReader(
+			testReader := blob.NewReader(
 				blob.WithDesc(descriptor.Descriptor{
 					Digest:    godigest.FromBytes([]byte("x")),
 					Size:      100,
@@ -117,7 +119,9 @@ func TestInFlightBlobCopierCopy(t *testing.T) {
 				blob.WithReader(errReaderFunc(func(p []byte) (int, error) {
 					return 0, zerr.ErrSyncUpstreamDownloadFailed
 				})),
-			), 100)
+			)
+
+			errCBR.InitReader(testReader, testReader.GetDescriptor())
 
 			var dest bytes.Buffer
 			ifbc := NewInFlightBlobCopier(errCBR, errPath, &dest, log.NewTestLogger())

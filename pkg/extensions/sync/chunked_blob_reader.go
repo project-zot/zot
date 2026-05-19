@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/regclient/regclient/types/blob"
+	"github.com/regclient/regclient/types/descriptor"
 
 	"zotregistry.dev/zot/v2/pkg/log"
 )
@@ -18,11 +19,13 @@ type ChunkedBlobReader struct {
 	numBytesTotal      int64
 	numBytesReadToDisk int64
 	bytesMu            sync.RWMutex
+	readerReady        chan struct{}
+	blobDesc           descriptor.Descriptor
 
 	onDiskPath string
 	onDiskFile *os.File
 
-	InFlightReader  *blob.BReader
+	inFlightReader  *blob.BReader
 	clientMu        sync.RWMutex
 	clientCond      *sync.Cond
 	clients         map[int]chan int64
@@ -38,10 +41,11 @@ func NewChunkedBlobReader(onDiskPath string, logger log.Logger) (*ChunkedBlobRea
 	}
 
 	cbr := &ChunkedBlobReader{
-		clients:    make(map[int]chan int64),
-		logger:     logger,
-		onDiskPath: onDiskPath,
-		onDiskFile: createdFile,
+		clients:     make(map[int]chan int64),
+		logger:      logger,
+		onDiskPath:  onDiskPath,
+		onDiskFile:  createdFile,
+		readerReady: make(chan struct{}),
 	}
 
 	cbr.clientCond = sync.NewCond(&cbr.clientMu)
@@ -49,14 +53,37 @@ func NewChunkedBlobReader(onDiskPath string, logger log.Logger) (*ChunkedBlobRea
 	return cbr, nil
 }
 
+// Descriptor returns the descriptor of the blob being read.
+// If the descriptor is not yet available, it waits until it is set by InitReader.
+func (cbr *ChunkedBlobReader) Descriptor() descriptor.Descriptor {
+	cbr.bytesMu.RLock()
+	if cbr.inFlightReader != nil {
+		desc := cbr.blobDesc
+		cbr.bytesMu.RUnlock()
+
+		return desc
+	}
+	cbr.bytesMu.RUnlock()
+
+	// Block without holding any lock until InitReader signals readiness.
+	<-cbr.readerReady
+
+	cbr.bytesMu.RLock()
+	defer cbr.bytesMu.RUnlock()
+
+	return cbr.blobDesc
+}
+
 // InitReader sets the regclient blob reader and the total number of bytes to read for the blob.
-func (cbr *ChunkedBlobReader) InitReader(blobReader *blob.BReader, numBytesTotal int64) {
+func (cbr *ChunkedBlobReader) InitReader(blobReader *blob.BReader, desc descriptor.Descriptor) {
 	cbr.bytesMu.Lock()
 	defer cbr.bytesMu.Unlock()
 
-	if cbr.InFlightReader == nil {
-		cbr.numBytesTotal = numBytesTotal
-		cbr.InFlightReader = blobReader
+	if cbr.inFlightReader == nil {
+		cbr.numBytesTotal = desc.Size
+		cbr.inFlightReader = blobReader
+		cbr.blobDesc = desc
+		close(cbr.readerReady)
 	}
 }
 
@@ -65,7 +92,7 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 	// When Read is called the reader will always be initialized.
 	cbr.bytesMu.Lock()
 
-	n, err := io.ReadFull(cbr.InFlightReader, buff)
+	n, err := io.ReadFull(cbr.inFlightReader, buff)
 	if err != nil {
 		if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 			// upstream download error
@@ -160,7 +187,7 @@ func (cbr *ChunkedBlobReader) Subscribe() (chan int64, int) {
 	// the reader is initialized. Send synchronously while clientMu is held so
 	// that Unsubscribe cannot close the channel between the map insertion above
 	// and this send.
-	if cbr.InFlightReader != nil {
+	if cbr.inFlightReader != nil {
 		channel <- cbr.numBytesReadToDisk
 	}
 
@@ -185,8 +212,8 @@ func (cbr *ChunkedBlobReader) Unsubscribe(clientId int) {
 
 func (cbr *ChunkedBlobReader) ToBReader() *blob.BReader {
 	return blob.NewReader(
-		blob.WithHeader(cbr.InFlightReader.RawHeaders()),
-		blob.WithDesc(cbr.InFlightReader.GetDescriptor()),
+		blob.WithHeader(cbr.inFlightReader.RawHeaders()),
+		blob.WithDesc(cbr.inFlightReader.GetDescriptor()),
 		blob.WithReader(cbr),
 	)
 }
