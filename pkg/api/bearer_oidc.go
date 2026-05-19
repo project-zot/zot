@@ -236,10 +236,12 @@ func getOIDCTokenFromAuthorizationHeader(header string, allowBasicAuth bool) (st
 		}
 
 		pair := strings.SplitN(string(decodedStr), ":", 2) //nolint:mnd
-		if len(pair) != 2 {                                //nolint:mnd
+		if len(pair) != 2 {                                 //nolint:mnd
 			return "", zerr.ErrInvalidBearerToken
 		}
 
+		// Prefer the password field as the token; fall back to the username field
+		// when the password is empty (e.g. "token:" basic-auth encoding).
 		tokenString := pair[1]
 		if tokenString == "" {
 			tokenString = pair[0]
