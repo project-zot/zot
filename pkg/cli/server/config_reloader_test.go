@@ -79,7 +79,7 @@ func TestConfigReloader(t *testing.T) {
 
 		go func() {
 			err = cli.NewServerRootCmd().Execute()
-			So(err, ShouldBeNil)
+			c.So(err, ShouldBeNil)
 		}()
 
 		test.WaitTillServerReady(baseURL)
@@ -214,7 +214,7 @@ func TestConfigReloader(t *testing.T) {
 
 		go func() {
 			err = cli.NewServerRootCmd().Execute()
-			So(err, ShouldBeNil)
+			c.So(err, ShouldBeNil)
 		}()
 
 		test.WaitTillServerReady(baseURL)
@@ -352,7 +352,7 @@ func TestConfigReloader(t *testing.T) {
 
 		go func() {
 			err = cli.NewServerRootCmd().Execute()
-			So(err, ShouldBeNil)
+			c.So(err, ShouldBeNil)
 		}()
 
 		test.WaitTillServerReady(baseURL)
@@ -495,7 +495,7 @@ func TestConfigReloader(t *testing.T) {
 
 		go func() {
 			err = cli.NewServerRootCmd().Execute()
-			So(err, ShouldBeNil)
+			c.So(err, ShouldBeNil)
 		}()
 
 		test.WaitTillServerReady(baseURL)
@@ -643,7 +643,7 @@ func TestConfigReloader(t *testing.T) {
 
 		go func() {
 			err = cli.NewServerRootCmd().Execute()
-			So(err, ShouldBeNil)
+			c.So(err, ShouldBeNil)
 		}()
 
 		test.WaitTillServerReady(baseURL)
