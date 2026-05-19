@@ -17,7 +17,6 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"syscall"
 	goSync "sync"
 	"testing"
 	"time"
@@ -1548,22 +1547,7 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 
 				// trigger config blob upstream error
 				// remove synced image
-				const (
-					maxRemoveRetries = 5
-					removeRetryDelay = 100 * time.Millisecond
-				)
-
-				downstreamImagePath := path.Join(destDir, testImage)
-
-				for retry := 0; retry < maxRemoveRetries; retry++ {
-					err = os.RemoveAll(downstreamImagePath)
-					if err == nil || !errors.Is(err, syscall.ENOTEMPTY) {
-						break
-					}
-
-					time.Sleep(removeRetryDelay)
-				}
-
+				err = os.RemoveAll(path.Join(destDir, testImage))
 				So(err, ShouldBeNil)
 
 				configBlobPath := path.Join(srcDir, testImage, "blobs/sha256", configBlobDigest.Encoded())
