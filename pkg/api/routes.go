@@ -1176,6 +1176,12 @@ func (rh *RouteHandler) getBlobInfoFromStreamCache(digest string, response http.
 	// when streaming is enabled, the blob might exist in the stream cache
 	blobSize, blobMediaType, err := streamMgr.CachedBlobInfo(digest)
 	if err != nil {
+		if errors.Is(err, zerr.ErrBlobNotFound) {
+			rh.c.Log.Debug().Str("digest", digest).Msg("blob not found in stream cache")
+
+			return err
+		}
+
 		rh.c.Log.Error().Err(err).Str("digest", digest).Msg("failed to check stream cache for blob existence")
 
 		return err

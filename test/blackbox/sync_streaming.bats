@@ -7,22 +7,15 @@ load helpers_wait
 load ../port_helper
 
 function verify_prerequisites() {
-    if [ ! $(command -v curl) ]; then
-        echo "you need to install curl as a prerequisite to running the tests" >&3
-        return 1
-    fi
+    local ok=0
+    for cmd in curl jq skopeo; do
+        if ! command -v "${cmd}" &>/dev/null; then
+            echo "you need to install ${cmd} as a prerequisite to running the tests" >&3
+            ok=1
+        fi
+    done
 
-    if [ ! $(command -v jq) ]; then
-        echo "you need to install jq as a prerequisite to running the tests" >&3
-        return 1
-    fi
-
-    if [ ! $(command -v skopeo) ]; then
-        echo "you need to install skopeo as a prerequisite to running the tests" >&3
-        return 1
-    fi
-
-    return 0
+    return "${ok}"
 }
 
 # delete_repo_from_zot <port> <repo> <tag> <root>
@@ -45,7 +38,7 @@ function delete_repo_from_zot() {
     curl -s -X DELETE "http://127.0.0.1:${port}/v2/${repo}/manifests/${digest}" >/dev/null
 
     # delete blobs from disk
-    rm -r "${root}/${repo}/blobs"
+    rm -rf "${root}/${repo}/blobs"
 }
 
 function setup_file() {
@@ -125,7 +118,7 @@ EOF
     local upstream_bin="${BATS_FILE_TMPDIR}/${zot_bin_name}"
     if [ ! -f "${upstream_bin}" ]; then
         if ! curl -f -L -o "${upstream_bin}" \
-                "https://github.com/project-zot/zot/releases/latest/download/${zot_bin_name}"; then
+                "https://github.com/project-zot/zot/releases/download/v2.1.17/${zot_bin_name}"; then
             echo "ERROR: failed to download upstream zot release binary" >&2
             exit 1
         fi

@@ -224,9 +224,8 @@ func TestRead(t *testing.T) {
 			errCBR.InitReader(errReader, errReader.GetDescriptor())
 
 			buf := make([]byte, 50)
-			n, readErr := errCBR.Read(buf)
+			_, readErr := errCBR.Read(buf)
 			So(readErr, ShouldNotBeNil)
-			So(n, ShouldEqual, -1)
 
 			// Channel should have been closed.
 			_, open := <-bytesUpdateChan

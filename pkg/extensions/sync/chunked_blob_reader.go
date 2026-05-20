@@ -25,11 +25,11 @@ type ChunkedBlobReader struct {
 	onDiskPath string
 	onDiskFile *os.File
 
-	inFlightReader  *blob.BReader
-	clientMu        sync.RWMutex
-	clientCond      *sync.Cond
-	clients         map[int]chan int64
-	numClientsTotal int
+	inFlightReader *blob.BReader
+	clientMu       sync.RWMutex
+	clientCond     *sync.Cond
+	clients        map[int]chan int64
+	nextClientId   int
 
 	logger log.Logger
 }
@@ -108,7 +108,7 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 				cbr.Unsubscribe(clientId)
 			}
 
-			return -1, err
+			return n, err
 		}
 		// partial read at end of stream; normalise to EOF for callers
 		err = io.EOF
@@ -119,7 +119,7 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 			cbr.logger.Error().Err(werr).Msg("failed to write blob data to disk")
 			cbr.bytesMu.Unlock()
 
-			return -1, werr
+			return n, werr
 		}
 
 		cbr.numBytesReadToDisk += int64(n)
@@ -177,9 +177,9 @@ func (cbr *ChunkedBlobReader) Subscribe() (chan int64, int) {
 
 	channel := make(chan int64, 1)
 
-	cbr.clients[cbr.numClientsTotal] = channel
-	chanId := cbr.numClientsTotal
-	cbr.numClientsTotal++
+	cbr.clients[cbr.nextClientId] = channel
+	chanId := cbr.nextClientId
+	cbr.nextClientId++
 
 	cbr.bytesMu.RLock()
 	defer cbr.bytesMu.RUnlock()
@@ -204,8 +204,6 @@ func (cbr *ChunkedBlobReader) Unsubscribe(clientId int) {
 	channel, ok := cbr.clients[clientId]
 	if ok {
 		close(channel)
-
-		cbr.numClientsTotal--
 		delete(cbr.clients, clientId)
 	}
 }

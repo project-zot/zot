@@ -27,6 +27,7 @@ func TestEnableSyncExtension_StreamManager(t *testing.T) {
 		metaDB := mocks.MetaDBMock{}
 		storeController := storage.StoreController{}
 		metrics := monitoring.NewMetricsServer(false, logger)
+		t.Cleanup(metrics.Stop)
 		sch := scheduler.NewScheduler(cfg, metrics, logger)
 
 		Convey("stream manager is nil when Stream is not set on any registry", func() {
