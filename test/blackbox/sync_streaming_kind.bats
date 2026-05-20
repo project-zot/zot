@@ -12,7 +12,7 @@ CLUSTER_NAME="zotstream"
 
 function verify_prerequisites() {
     local ok=0
-    for cmd in curl jq skopeo docker kubectl; do
+    for cmd in curl jq docker kubectl; do
         if ! command -v "${cmd}" &>/dev/null; then
             echo "you need to install ${cmd} as a prerequisite to running the tests" >&3
             ok=1
@@ -41,7 +41,6 @@ function setup_file() {
     test_port=$(get_free_port_for_service "zot_test")
     echo "${test_port}" > "${BATS_FILE_TMPDIR}/zot.test.port"
 
-    # Create docker network
     docker network create kind 2>/dev/null || true
     local host_ip
     host_ip=$(docker network inspect kind \
@@ -102,8 +101,7 @@ EOF
         "${KIND}" delete cluster --name "${CLUSTER_NAME}"
     fi
 
-    # Configure containerd so that ${host_ip}:${test_port} is treated as a
-    # plain-HTTP registry.
+    # Configure containerd so that zot is treated as a plain-HTTP registry.
     local kind_config="${BATS_FILE_TMPDIR}/kind_config.yaml"
     cat > "${kind_config}" <<EOF
 kind: Cluster

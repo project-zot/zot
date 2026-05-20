@@ -57,7 +57,6 @@ function setup_file() {
     local test_root="${BATS_FILE_TMPDIR}/zot-test"
     mkdir -p "${upstream_root}" "${test_root}"
 
-    # Persist storage root path for use in individual tests
     echo "${test_root}" > "${BATS_FILE_TMPDIR}/test_root"
 
     local upstream_port
@@ -68,7 +67,7 @@ function setup_file() {
     test_port=$(get_free_port_for_service "zot_test")
     echo "${test_port}" > "${BATS_FILE_TMPDIR}/zot.test.port"
 
-    # Upstream config (bare minimum, latest release minimal binary)
+    # Upstream config
     local upstream_config="${BATS_FILE_TMPDIR}/zot_upstream_config.json"
     cat > "${upstream_config}" <<EOF
 {
@@ -87,7 +86,7 @@ function setup_file() {
 }
 EOF
 
-    # Test zot config (current branch, streaming on-demand sync)
+    # Test zot config
     local test_config="${BATS_FILE_TMPDIR}/zot_test_config.json"
     cat > "${test_config}" <<EOF
 {
@@ -282,14 +281,14 @@ function teardown_file() {
     [ "${status_pid2}" -eq 0 ]
 }
 
-@test "delete image from zot after interrupted pull" {
+@test "delete image from zot after client interrupted pull" {
     local test_port
     test_port=$(cat "${BATS_FILE_TMPDIR}/zot.test.port")
     local test_root
     test_root=$(cat "${BATS_FILE_TMPDIR}/test_root")
     local index_json="${test_root}/ollama/ollama/index.json"
 
-    sleep 3
+    sleep 10
 
     # Confirm the image is present on the filesystem before deleting.
     # Can't use curl here — an HTTP request would re-trigger on-demand sync.
