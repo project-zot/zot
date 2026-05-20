@@ -100,11 +100,15 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 			cbr.bytesMu.Unlock()
 
 			cbr.clientMu.RLock()
-			clients := cbr.clients
+
+			clientIDs := make([]int, 0, len(cbr.clients))
+			for id := range cbr.clients {
+				clientIDs = append(clientIDs, id)
+			}
 			cbr.clientMu.RUnlock()
 
 			// drain all clients and close their channels
-			for clientId := range clients {
+			for _, clientId := range clientIDs {
 				cbr.Unsubscribe(clientId)
 			}
 
@@ -155,10 +159,14 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 	// If the reader has finished reading the blob, close all clients.
 	if err == io.EOF {
 		cbr.clientMu.RLock()
-		clients := cbr.clients
+
+		clientIDs := make([]int, 0, len(cbr.clients))
+		for id := range cbr.clients {
+			clientIDs = append(clientIDs, id)
+		}
 		cbr.clientMu.RUnlock()
 
-		for clientId := range clients {
+		for _, clientId := range clientIDs {
 			cbr.Unsubscribe(clientId)
 		}
 	}
