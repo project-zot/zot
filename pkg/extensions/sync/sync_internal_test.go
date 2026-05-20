@@ -1693,7 +1693,7 @@ func TestBaseServiceIsStreamingForRepo(t *testing.T) {
 	streamEnabled := true
 	streamDisabled := false
 
-	Convey("returns false when Stream is not configured)", t, func() {
+	Convey("returns false when Stream is not configured", t, func() {
 		conf := syncconf.RegistryConfig{
 			URLs: []string{"http://localhost"},
 		}

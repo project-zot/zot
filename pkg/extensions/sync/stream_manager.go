@@ -147,6 +147,8 @@ func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string, 
 		sm.logger.Error().Err(err).Str("blob", manifest.GetDescriptor().Digest.String()).
 			Msg("failed to prepare active stream for blob")
 
+		delete(sm.streamingRefs, key)
+
 		return err
 	}
 
@@ -164,12 +166,16 @@ func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string, 
 		sm.logger.Error().Err(err).Str("blob", configDesc.Digest.String()).
 			Msg("failed to get config descriptor from manifest")
 
+		delete(sm.streamingRefs, key)
+
 		return err
 	}
 
 	err = sm.prepareActiveStreamForBlob(configDesc)
 	if err != nil {
 		sm.logger.Error().Err(err).Str("blob", configDesc.Digest.String()).Msg("failed to prepare active stream for blob")
+
+		delete(sm.streamingRefs, key)
 
 		return err
 	}
@@ -179,6 +185,8 @@ func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string, 
 	if err != nil {
 		sm.logger.Error().Err(err).Msg("failed to get layers from manifest")
 
+		delete(sm.streamingRefs, key)
+
 		return err
 	}
 
@@ -186,6 +194,8 @@ func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string, 
 		err = sm.prepareActiveStreamForBlob(layer)
 		if err != nil {
 			sm.logger.Error().Err(err).Str("blob", layer.Digest.String()).Msg("failed to prepare active stream for blob")
+
+			delete(sm.streamingRefs, key)
 
 			return err
 		}

@@ -535,7 +535,8 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 
 	copyOpts := []regclient.ImageOpts{}
 
-	if service.config.Stream != nil && *service.config.Stream && service.streamManager != nil {
+	// When streaming is enabled, all blobs are read through the streaming reader.
+	if service.config.IsStreamEnabled() {
 		service.log.Debug().Str("repo", localRepo).Str("reference", remoteImageRef.Tag).
 			Msg("streaming is enabled. Enabling reader hook")
 		copyOpts = append(copyOpts, regclient.ImageWithBlobReaderHook(service.streamManager.StreamingBlobReader))

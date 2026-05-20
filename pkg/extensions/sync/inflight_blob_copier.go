@@ -82,7 +82,7 @@ func (ifbc *InFlightBlobCopier) Copy() error {
 		ifbc.numBytesCopied = latestByteNum
 		ifbc.Unlock()
 
-		if latestByteNum >= ifbc.Source.numBytesTotal {
+		if latestByteNum >= ifbc.Source.Descriptor().Size {
 			// transfer is complete
 			break
 		}
