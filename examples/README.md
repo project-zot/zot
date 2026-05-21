@@ -1322,7 +1322,7 @@ After a host triggers the fallback once, sync routes subsequent requests for the
 
 Operator upgrade notes:
 
-- Before this change the sync transport always used HTTP/1.1 with `ForceAttemptHTTP2 = false`. Upgrading restores HTTP/2 for any upstream that supports it cleanly. No config change is required.
+- HTTPS upstreams already negotiated HTTP/2 before this change (the sync transport cloned `http.DefaultTransport`, which attempts HTTP/2 by default). The only behavioral change is the transparent HTTP/1.1 retry on framing errors. No config change is required.
 - Healthy upstreams continue to serve sync over HTTP/2; only hosts that emit framing errors are downgraded, and only until the sticky window expires.
 - The warning line `HTTP/2 framing error from upstream, retrying with HTTP/1.1` is logged on the first occurrence per host. Repeated downgrades within the sticky window are silent to avoid log spam.
 

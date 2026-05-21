@@ -4,11 +4,15 @@ package sync
 
 import (
 	"bytes"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -186,6 +190,82 @@ func TestHTTP2FallbackTransportRoundTrip(t *testing.T) {
 			So(resp, ShouldBeNil)
 			So(errors.Is(err, primaryErr), ShouldBeTrue)
 			So(fallback.hits, ShouldEqual, 0)
+		})
+	})
+}
+
+func TestHTTP2FallbackRealTransport(t *testing.T) {
+	Convey("Real HTTP/2 transport boundary", t, func() {
+		var h2Hits, h1Hits int32
+
+		server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.ProtoMajor == 2 {
+				atomic.AddInt32(&h2Hits, 1)
+				panic(http.ErrAbortHandler)
+			}
+
+			atomic.AddInt32(&h1Hits, 1)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("ok"))
+		}))
+		server.EnableHTTP2 = true
+		server.StartTLS()
+		defer server.Close()
+
+		pool := x509.NewCertPool()
+		pool.AddCert(server.Certificate())
+		tlsConf := &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
+
+		newPrimary := func() *http.Transport {
+			tr := http.DefaultTransport.(*http.Transport).Clone() //nolint: forcetypeassert
+			tr.TLSClientConfig = tlsConf.Clone()
+			So(http2.ConfigureTransport(tr), ShouldBeNil)
+
+			return tr
+		}
+
+		Convey("ConfigureTransport'd primary surfaces a typed http2 framing error", func() {
+			req, err := http.NewRequest(http.MethodGet, server.URL+"/v2/", http.NoBody)
+			So(err, ShouldBeNil)
+
+			_, err = newPrimary().RoundTrip(req)
+			So(err, ShouldNotBeNil)
+			So(isHTTP2FramingError(err), ShouldBeTrue)
+
+			var streamErr http2.StreamError
+
+			var goAwayErr *http2.GoAwayError
+
+			So(errors.As(err, &streamErr) || errors.As(err, &goAwayErr), ShouldBeTrue)
+			So(atomic.LoadInt32(&h2Hits), ShouldEqual, 1)
+		})
+
+		Convey("fallback transport retries the framing error over HTTP/1.1", func() {
+			fallback := http.DefaultTransport.(*http.Transport).Clone() //nolint: forcetypeassert
+			fallback.TLSClientConfig = tlsConf.Clone()
+			fallback.TLSNextProto = make(map[string]func(string, *tls.Conn) http.RoundTripper)
+			fallback.ForceAttemptHTTP2 = false
+
+			tr, _ := newTestFallbackTransport(newPrimary(), fallback)
+
+			req, err := http.NewRequest(http.MethodGet, server.URL+"/v2/", http.NoBody)
+			So(err, ShouldBeNil)
+
+			resp, err := tr.RoundTrip(req)
+			So(err, ShouldBeNil)
+
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+			So(resp.ProtoMajor, ShouldEqual, 1)
+
+			body, err := io.ReadAll(resp.Body)
+			So(err, ShouldBeNil)
+			So(string(body), ShouldEqual, "ok")
+
+			So(tr.hostStuckOnFallback(req.URL.Host), ShouldBeTrue)
+			So(atomic.LoadInt32(&h2Hits), ShouldEqual, 1)
+			So(atomic.LoadInt32(&h1Hits), ShouldEqual, 1)
 		})
 	})
 }
