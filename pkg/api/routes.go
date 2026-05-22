@@ -612,6 +612,12 @@ func getReferrers(ctx context.Context, routeHandler *RouteHandler,
 		if errSync := routeHandler.c.SyncOnDemand.SyncReferrers(ctx, name, digest.String(), artifactTypes); errSync != nil {
 			routeHandler.c.Log.Err(errSync).Str("repository", name).Str("reference", digest.String()).
 				Msg("failed to sync image referrers")
+
+			// Another replica is already syncing this subject; surface it so the
+			// handler can return 503 instead of serving possibly-stale referrers.
+			if errors.Is(errSync, zerr.ErrSyncInFlight) {
+				return ispec.Index{}, errSync
+			}
 		}
 	}
 
@@ -662,7 +668,12 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 
 	referrers, err := getReferrers(request.Context(), rh, imgStore, name, digest, artifactTypes)
 	if err != nil {
-		if errors.Is(err, zerr.ErrManifestNotFound) || errors.Is(err, zerr.ErrRepoNotFound) {
+		if errors.Is(err, zerr.ErrSyncInFlight) {
+			rh.c.Log.Info().Str("name", name).Str("digest", digest.String()).
+				Msg("on-demand referrers sync in flight, returning 503 to let client retry")
+			response.Header().Set("Retry-After", syncInFlightRetryAfterSeconds)
+			response.WriteHeader(http.StatusServiceUnavailable)
+		} else if errors.Is(err, zerr.ErrManifestNotFound) || errors.Is(err, zerr.ErrRepoNotFound) {
 			rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).
 				Msg("failed to get manifest")
 			response.WriteHeader(http.StatusNotFound)

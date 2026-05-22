@@ -91,8 +91,10 @@ func (onDemand *BaseOnDemand) Add(service Service) {
 	onDemand.services = append(onDemand.services, service)
 }
 
-// IsSyncInFlight reports whether an on-demand sync is currently running
-// for this repo+reference, locally or on another replica.
+// IsSyncInFlight reports whether an on-demand image sync is currently
+// running for this repo+reference, locally or on another replica. It is
+// advisory: the authoritative dedup is the atomic TryLock in
+// acquireDistributedLock, which returns ErrSyncInFlight to the loser.
 func (onDemand *BaseOnDemand) IsSyncInFlight(repo, reference string) bool {
 	req := request{repo: repo, reference: reference}
 	if _, ok := onDemand.requestStore.Load(req); ok {

@@ -45,7 +45,6 @@ func TestDistributedLockDedupAcrossReplicas(t *testing.T) {
 		t.Fatalf("replicaA acquire: %v", err)
 	}
 
-	// A second replica must observe the in-flight sync and be refused the lock.
 	if !replicaB.IsSyncInFlight(repo, ref) {
 		t.Fatal("expected replicaB to observe sync in flight")
 	}
@@ -56,7 +55,6 @@ func TestDistributedLockDedupAcrossReplicas(t *testing.T) {
 
 	release()
 
-	// After the leader releases, another replica can claim the lock.
 	if replicaB.IsSyncInFlight(repo, ref) {
 		t.Fatal("expected no sync in flight after release")
 	}
@@ -81,7 +79,6 @@ func TestAcquireDistributedLockNoBackendIsNoop(t *testing.T) {
 		t.Fatal("expected nil handle without a distributed lock backend")
 	}
 
-	// release must be a callable no-op.
 	release()
 
 	if onDemand.IsSyncInFlight("repo", "ref") {
