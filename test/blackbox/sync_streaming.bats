@@ -42,7 +42,7 @@ function delete_repo_from_zot() {
 }
 
 function setup_file() {
-    if ! $(verify_prerequisites); then
+    if ! verify_prerequisites; then
         exit 1
     fi
 
@@ -221,7 +221,8 @@ function teardown_file() {
     test_root=$(cat "${BATS_FILE_TMPDIR}/test_root")
     local index_json="${test_root}/ollama/ollama/index.json"
 
-    sleep 3
+    # Wait for the image to be fully committed to storage.
+    sleep 30
 
     # Confirm the image is present on the filesystem before deleting.
     # Can't use curl here — an HTTP request would re-trigger on-demand sync.
@@ -281,7 +282,8 @@ function teardown_file() {
     test_root=$(cat "${BATS_FILE_TMPDIR}/test_root")
     local index_json="${test_root}/ollama/ollama/index.json"
 
-    sleep 10
+    # Wait for the image to be fully committed to storage.
+    sleep 30
 
     # Confirm the image is present on the filesystem before deleting.
     # Can't use curl here — an HTTP request would re-trigger on-demand sync.
