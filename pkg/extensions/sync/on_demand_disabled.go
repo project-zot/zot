@@ -15,3 +15,7 @@ func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 ) error {
 	return nil
 }
+
+func (onDemand *BaseOnDemand) IsSyncInFlight(repo, reference string) bool {
+	return false
+}
