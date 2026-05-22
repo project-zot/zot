@@ -893,11 +893,6 @@ func newClient(opts syncconf.RegistryConfig, credentials syncconf.CredentialsFil
 		regOpts = append(regOpts, reg.WithDelay(*opts.RetryDelay, *opts.RetryDelay))
 	}
 
-	// Use SyncTimeout for overall HTTP client timeout. This is the maximum time for the entire
-	// HTTP request, covering all stages: DialContext (connection establishment), TLSHandshakeTimeout
-	// (TLS handshake), ResponseHeaderTimeout (waiting for headers), and body transfer time.
-	// Critical for periodic sync operations (catalog listing, SyncRepo, getTags) which don't use
-	// on-demand timeout contexts and could otherwise hang indefinitely if upstream doesn't respond.
 	httpClient := &http.Client{
 		Transport: newHTTP2FallbackTransport(opts, logger),
 		Timeout:   opts.SyncTimeout,
