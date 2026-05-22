@@ -109,12 +109,19 @@ func isHTTP2FramingError(err error) bool {
 	return strings.Contains(err.Error(), "malformed HTTP response")
 }
 
-// clonedTransport returns a clone of http.DefaultTransport with the registry-specific
-// ResponseHeaderTimeout applied. The timeout reflects how long a single sync request will
-// wait for the upstream registry to start streaming a response and matches the rationale
-// in https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/.
 func clonedTransport(opts syncconf.RegistryConfig) *http.Transport {
+	// Configure transport with timeouts to prevent indefinite hangs.
+	// See https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/
+	// Clone DefaultTransport to preserve proxy/TLS settings and existing timeouts
+	// (DialContext: 30s, TLSHandshakeTimeout: 10s).
+	// regclient uses DefaultTransport internally if no custom transport is provided, so this ensures compatibility.
 	transport := http.DefaultTransport.(*http.Transport).Clone() //nolint: forcetypeassert
+
+	// ResponseHeaderTimeout: prevents hanging when server connects but doesn't send headers.
+	// Set programmatically in root.go. This timeout applies only to waiting for response headers
+	// after the request is sent. It does NOT include DialContext (30s) or TLSHandshakeTimeout (10s),
+	// which are separate component timeouts. Doesn't cover body transfer time, which is expected
+	// to be slow for large images.
 	transport.ResponseHeaderTimeout = opts.ResponseHeaderTimeout
 
 	return transport
