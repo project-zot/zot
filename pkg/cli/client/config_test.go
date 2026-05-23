@@ -86,6 +86,12 @@ func TestReadZliConfigFile_errors(t *testing.T) {
 			wantSubs:    "",
 			wantErrIs:   []error{zerr.ErrCliBadConfig, zerr.ErrCliMissingConfigsField},
 		},
+		{
+			name:        "default_config_name_not_string",
+			cfgContents: `{"configs":[],"defaultConfigName":1}`,
+			wantSubs:    `field "defaultConfigName" must be a string`,
+			wantErrIs:   []error{zerr.ErrCliBadConfig},
+		},
 	}
 
 	for _, tableCase := range tests {
@@ -117,6 +123,42 @@ func TestZliConfigFile_RemoveEntry_NotFound(t *testing.T) {
 
 	err := f.RemoveEntry("missing")
 	assert.ErrorIs(t, err, zerr.ErrConfigNotFound)
+}
+
+func TestZliConfigFile_DefaultConfigName(t *testing.T) {
+	t.Parallel()
+
+	f := client.ZliConfigFile{
+		Configs: []client.ZliConfig{
+			{Name: "main", URL: "https://example.com"},
+			{Name: "other", URL: "https://other.example.com"},
+		},
+	}
+
+	require.NoError(t, f.SetDefault("main"))
+	assert.Equal(t, "main", f.DefaultConfigName)
+
+	defaultName, err := f.DefaultName()
+	require.NoError(t, err)
+	assert.Equal(t, "main", defaultName)
+
+	assert.ErrorIs(t, f.SetDefault("missing"), zerr.ErrConfigNotFound)
+
+	require.NoError(t, f.RemoveEntry("main"))
+	assert.Empty(t, f.DefaultConfigName)
+}
+
+func TestZliConfigFile_DefaultNameMissingProfile(t *testing.T) {
+	t.Parallel()
+
+	f := client.ZliConfigFile{
+		DefaultConfigName: "missing",
+		Configs:           []client.ZliConfig{{Name: "main", URL: "https://example.com"}},
+	}
+
+	_, err := f.DefaultName()
+	assert.ErrorIs(t, err, zerr.ErrConfigNotFound)
+	assert.Contains(t, err.Error(), "defaultConfigName")
 }
 
 func TestZliConfig_GetVar(t *testing.T) {

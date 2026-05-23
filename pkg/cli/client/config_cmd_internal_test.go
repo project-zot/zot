@@ -306,6 +306,74 @@ func TestSetConfigValue(t *testing.T) {
 	})
 }
 
+func TestDefaultConfigValue(t *testing.T) {
+	t.Parallel()
+
+	validProfile := `{"configs":[{"_name":"a","url":"https://example.com"}]}`
+
+	t.Run("setDefaultConfig_success", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		cfgPath := writeTestZotFile(t, dir, validProfile)
+
+		require.NoError(t, setDefaultConfig(cfgPath, "a"))
+
+		cfg, err := ReadZliConfigFile(cfgPath)
+		require.NoError(t, err)
+		require.Equal(t, "a", cfg.DefaultConfigName)
+	})
+
+	t.Run("setDefaultConfig_missing_profile", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		cfgPath := writeTestZotFile(t, dir, validProfile)
+
+		err := setDefaultConfig(cfgPath, "missing")
+		require.ErrorIs(t, err, zerr.ErrConfigNotFound)
+	})
+
+	t.Run("clearDefaultConfig_success", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		cfgPath := writeTestZotFile(t, dir,
+			`{"configs":[{"_name":"a","url":"https://example.com"}],"defaultConfigName":"a"}`)
+
+		require.NoError(t, clearDefaultConfig(cfgPath))
+
+		cfg, err := ReadZliConfigFile(cfgPath)
+		require.NoError(t, err)
+		require.Empty(t, cfg.DefaultConfigName)
+	})
+
+	t.Run("getDefaultConfigName_missing_profile", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		cfgPath := writeTestZotFile(t, dir,
+			`{"configs":[{"_name":"a","url":"https://example.com"}],"defaultConfigName":"missing"}`)
+
+		_, err := getDefaultConfigName(cfgPath)
+		require.ErrorIs(t, err, zerr.ErrConfigNotFound)
+		require.Contains(t, err.Error(), "defaultConfigName")
+	})
+
+	t.Run("getDefaultConfigName_missing_file", func(t *testing.T) {
+		t.Parallel()
+
+		cfgPath := tempConfigPath(t, false, "")
+
+		defaultName, err := getDefaultConfigName(cfgPath)
+		require.NoError(t, err)
+		require.Empty(t, defaultName)
+
+		_, err = os.Stat(cfgPath)
+		require.ErrorIs(t, err, os.ErrNotExist)
+	})
+}
+
 func TestConfigCmd_listFreshAndFindErrors(t *testing.T) {
 	t.Parallel()
 
