@@ -1010,6 +1010,42 @@ func TestRoutes(t *testing.T) {
 				So(getBlobCalled, ShouldBeTrue)
 			})
 
+			Convey("falls back to proxying when redirect URL is invalid", func() {
+				blobDigest := "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621"
+				getBlobCalled := false
+
+				ctlr.Config.Storage.Redirect = true
+				defer func() {
+					ctlr.Config.Storage.Redirect = false
+				}()
+
+				ctlr.StoreController.DefaultStore = &mocks.MockedImageStore{
+					GetBlobRedirectURLFn: func(r *http.Request, repo string, digest godigest.Digest) (string, error) {
+						return "javascript:alert(1)", nil
+					},
+					GetBlobFn: func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error) {
+						getBlobCalled = true
+
+						return io.NopCloser(bytes.NewBufferString("blob")), 4, nil
+					},
+				}
+
+				request, _ := http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
+				request = mux.SetURLVars(request, map[string]string{
+					"name":   "repo",
+					"digest": blobDigest,
+				})
+				response := httptest.NewRecorder()
+
+				rthdlr.GetBlob(response, request)
+
+				resp := response.Result()
+				defer resp.Body.Close()
+				So(resp.StatusCode, ShouldEqual, http.StatusOK)
+				So(resp.Header.Get("Location"), ShouldEqual, "")
+				So(getBlobCalled, ShouldBeTrue)
+			})
+
 			Convey("uses subpath redirect config", func() {
 				blobDigest := "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621"
 				redirectURL := "https://storage.example.com/zot-a/repo/blobs/sha256/layer"

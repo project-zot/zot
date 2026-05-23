@@ -1431,6 +1431,28 @@ func (rh *RouteHandler) isBlobRedirectEnabled(name string) bool {
 	return storageConfig.Redirect
 }
 
+func normalizeBlobRedirectURL(rawURL string) (string, bool) {
+	if strings.ContainsAny(rawURL, "\r\n") {
+		return "", false
+	}
+
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return "", false
+	}
+
+	if parsedURL.Scheme == "" || parsedURL.Host == "" {
+		return "", false
+	}
+
+	scheme := strings.ToLower(parsedURL.Scheme)
+	if scheme != constants.SchemeHTTP && scheme != constants.SchemeHTTPS {
+		return "", false
+	}
+
+	return parsedURL.String(), true
+}
+
 // GetBlob godoc
 // @Summary Get image blob/layer
 // @Description Get an image's blob/layer given a digest
@@ -1466,52 +1488,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 	contentRange := request.Header.Get("Range")
 	_, rangeHeaderPresent := request.Header["Range"]
 
-<<<<<<< HEAD
 	writeBlobError := func(err error) {
-=======
-	_, ok = request.Header["Range"]
-	if ok && contentRange == "" {
-		response.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
-
-		return
-	}
-
-	if contentRange != "" {
-		from, to, err = parseRangeHeader(contentRange)
-		if err != nil {
-			response.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
-
-			return
-		}
-
-		partial = true
-	}
-
-	var repo io.ReadCloser
-
-	var blen, bsize int64
-
-	if rh.isBlobRedirectEnabled(name) {
-		redirectURL, redirectErr := imgStore.GetBlobRedirectURL(request, name, digest)
-		if redirectErr != nil {
-			err = redirectErr
-		} else if redirectURL != "" {
-			http.Redirect(response, request, redirectURL, http.StatusTemporaryRedirect)
-
-			return
-		}
-	}
-
-	if err == nil {
-		if partial {
-			repo, blen, bsize, err = imgStore.GetBlobPartial(name, digest, mediaType, from, to)
-		} else {
-			repo, blen, err = imgStore.GetBlob(name, digest, mediaType)
-		}
-	}
-
-	if err != nil {
->>>>>>> 2e3b4ec2 (feat(storage): redirect blob pulls to backend URLs)
 		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			details["digest"] = digest.String()
@@ -1528,6 +1505,26 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			response.WriteHeader(http.StatusInternalServerError)
+		}
+	}
+
+	if rh.isBlobRedirectEnabled(name) {
+		redirectURL, err := imgStore.GetBlobRedirectURL(request, name, digest)
+		if err != nil {
+			writeBlobError(err)
+
+			return
+		} else if redirectURL != "" {
+			if normalizedURL, ok := normalizeBlobRedirectURL(redirectURL); ok {
+				response.Header().Set("Location", normalizedURL)
+				response.WriteHeader(http.StatusTemporaryRedirect)
+
+				return
+			}
+
+			rh.c.Log.Warn().Str("repo", name).Str("digest", digest.String()).
+				Msg("ignoring invalid blob redirect URL and falling back to proxy")
+
 		}
 	}
 
