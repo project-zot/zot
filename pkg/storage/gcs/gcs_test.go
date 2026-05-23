@@ -1168,7 +1168,8 @@ func TestGCSStorageAPIs(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(bupload, ShouldEqual, int64(firstChunkLen))
 
-				bupload, err = imgStore.PutBlobChunk(context.Background(), "test", upload, int64(firstChunkLen), int64(buflen), secondChunkBuf)
+				bupload, err = imgStore.PutBlobChunk(context.Background(), "test", upload,
+					int64(firstChunkLen), int64(buflen), secondChunkBuf)
 				So(err, ShouldBeNil)
 				So(bupload, ShouldEqual, int64(firstChunkLen+secondChunkLen))
 

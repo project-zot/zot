@@ -1154,7 +1154,8 @@ func TestStorageAPIs(t *testing.T) {
 						So(err, ShouldBeNil)
 						So(bupload, ShouldEqual, int64(firstChunkLen))
 
-						bupload, err = imgStore.PutBlobChunk(context.Background(), "test", upload, int64(firstChunkLen), int64(buflen), secondChunkBuf)
+						bupload, err = imgStore.PutBlobChunk(context.Background(), "test", upload,
+							int64(firstChunkLen), int64(buflen), secondChunkBuf)
 						So(err, ShouldBeNil)
 						So(bupload, ShouldEqual, int64(firstChunkLen+secondChunkLen))
 
@@ -2634,12 +2635,13 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					artifactBlobDigest := godigest.FromBytes(artifactBlob)
 
 					// push layer
-					_, _, err = imgStore.FullBlobUpload(context.Background(), repoName, bytes.NewReader(artifactBlob), artifactBlobDigest)
+					_, _, err = imgStore.FullBlobUpload(context.Background(), repoName,
+						bytes.NewReader(artifactBlob), artifactBlobDigest)
 					So(err, ShouldBeNil)
 
 					// push config
-					_, _, err = imgStore.FullBlobUpload(context.Background(), repoName, bytes.NewReader(ispec.DescriptorEmptyJSON.Data),
-						ispec.DescriptorEmptyJSON.Digest)
+					_, _, err = imgStore.FullBlobUpload(context.Background(), repoName,
+						bytes.NewReader(ispec.DescriptorEmptyJSON.Data), ispec.DescriptorEmptyJSON.Digest)
 					So(err, ShouldBeNil)
 
 					artifactManifest := ispec.Manifest{
@@ -2816,12 +2818,13 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					artifactBlobDigest := godigest.FromBytes(artifactBlob)
 
 					// push layer
-					_, _, err = imgStore.FullBlobUpload(context.Background(), repoName, bytes.NewReader(artifactBlob), artifactBlobDigest)
+					_, _, err = imgStore.FullBlobUpload(context.Background(), repoName,
+						bytes.NewReader(artifactBlob), artifactBlobDigest)
 					So(err, ShouldBeNil)
 
 					// push config
-					_, _, err = imgStore.FullBlobUpload(context.Background(), repoName, bytes.NewReader(ispec.DescriptorEmptyJSON.Data),
-						ispec.DescriptorEmptyJSON.Digest)
+					_, _, err = imgStore.FullBlobUpload(context.Background(), repoName,
+						bytes.NewReader(ispec.DescriptorEmptyJSON.Data), ispec.DescriptorEmptyJSON.Digest)
 					So(err, ShouldBeNil)
 
 					artifactManifest := ispec.Manifest{
@@ -3272,12 +3275,13 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 					artifactBlobDigest := godigest.FromBytes(artifactBlob)
 
 					// push layer
-					_, _, err := imgStore.FullBlobUpload(context.Background(), repoName, bytes.NewReader(artifactBlob), artifactBlobDigest)
+					_, _, err := imgStore.FullBlobUpload(context.Background(), repoName,
+						bytes.NewReader(artifactBlob), artifactBlobDigest)
 					So(err, ShouldBeNil)
 
 					// push config
-					_, _, err = imgStore.FullBlobUpload(context.Background(), repoName, bytes.NewReader(ispec.DescriptorEmptyJSON.Data),
-						ispec.DescriptorEmptyJSON.Digest)
+					_, _, err = imgStore.FullBlobUpload(context.Background(), repoName,
+						bytes.NewReader(ispec.DescriptorEmptyJSON.Data), ispec.DescriptorEmptyJSON.Digest)
 					So(err, ShouldBeNil)
 
 					artifactManifest := ispec.Manifest{
@@ -3419,12 +3423,13 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 					artifactBlobDigest := godigest.FromBytes(artifactBlob)
 
 					// push layer
-					_, _, err = imgStore.FullBlobUpload(context.Background(), repoName, bytes.NewReader(artifactBlob), artifactBlobDigest)
+					_, _, err = imgStore.FullBlobUpload(context.Background(), repoName,
+						bytes.NewReader(artifactBlob), artifactBlobDigest)
 					So(err, ShouldBeNil)
 
 					// push config
-					_, _, err = imgStore.FullBlobUpload(context.Background(), repoName, bytes.NewReader(ispec.DescriptorEmptyJSON.Data),
-						ispec.DescriptorEmptyJSON.Digest)
+					_, _, err = imgStore.FullBlobUpload(context.Background(), repoName,
+						bytes.NewReader(ispec.DescriptorEmptyJSON.Data), ispec.DescriptorEmptyJSON.Digest)
 					So(err, ShouldBeNil)
 
 					// push artifact manifest pointing to index
@@ -3722,12 +3727,13 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 				artifactBlobDigest := godigest.FromBytes(artifactBlob)
 
 				// push layer
-				_, _, err = imgStore.FullBlobUpload(context.Background(), repoName, bytes.NewReader(artifactBlob), artifactBlobDigest)
+				_, _, err = imgStore.FullBlobUpload(context.Background(), repoName,
+					bytes.NewReader(artifactBlob), artifactBlobDigest)
 				So(err, ShouldBeNil)
 
 				// push config
-				_, _, err = imgStore.FullBlobUpload(context.Background(), repoName, bytes.NewReader(ispec.DescriptorEmptyJSON.Data),
-					ispec.DescriptorEmptyJSON.Digest)
+				_, _, err = imgStore.FullBlobUpload(context.Background(), repoName,
+					bytes.NewReader(ispec.DescriptorEmptyJSON.Data), ispec.DescriptorEmptyJSON.Digest)
 				So(err, ShouldBeNil)
 
 				var index ispec.Index

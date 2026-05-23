@@ -1307,7 +1307,9 @@ func TestRoutes(t *testing.T) {
 					"Content-Length": "100",
 				},
 				&mocks.MockedImageStore{
-					FullBlobUploadFn: func(ctx context.Context, repo string, body io.Reader, digest godigest.Digest) (string, int64, error) {
+					FullBlobUploadFn: func(ctx context.Context, repo string, body io.Reader,
+						digest godigest.Digest,
+					) (string, int64, error) {
 						return sessionStr, 0, zerr.ErrBadBlobDigest
 					},
 				})
@@ -1323,7 +1325,9 @@ func TestRoutes(t *testing.T) {
 					"Content-Length": "100",
 				},
 				&mocks.MockedImageStore{
-					FullBlobUploadFn: func(ctx context.Context, repo string, body io.Reader, digest godigest.Digest) (string, int64, error) {
+					FullBlobUploadFn: func(ctx context.Context, repo string, body io.Reader,
+						digest godigest.Digest,
+					) (string, int64, error) {
 						return sessionStr, 20, nil
 					},
 				})

@@ -822,7 +822,8 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 					}, errS3
 				},
 			})
-			_, err := imgStore.PutBlobChunk(context.Background(), testImage, "uuid", 12, 100, io.NopCloser(strings.NewReader("")))
+			_, err := imgStore.PutBlobChunk(context.Background(), testImage, "uuid", 12, 100,
+				io.NopCloser(strings.NewReader("")))
 			So(err, ShouldNotBeNil)
 		})
 
