@@ -9,7 +9,7 @@
 | [List CVEs for a given image](#list-cves-of-given-image) | image | CVE list | Scan given image and return list of CVEs affecting the image | CVEListForImage |
 | [List images not affected by a given CVE id](#list-images-not-affected-by-a-given-cve-id) | repository, CVE id | image list | Scan all images in a given repository and return list of latest (by date) images not affected by the given CVE |ImagesListWithCVEFixed|
 | [Latest image from all repos](#list-the-latest-image-across-every-repository) | none | repo summary list | Return the latest image from all the repos in the registry | RepoListWithNewestImage |
-| [List all images with expanded information for a given repository](#list-all-images-with-expanded-information-for-a-given-repository) | repository | repo info | List expanded repo information for all images in repo, alongisde a repo summary | ExpandedRepoInfo |
+| [List all images with expanded information for a given repository](#list-all-images-with-expanded-information-for-a-given-repository) | repository | repo info | List expanded repo information for all images in repo, alongside a repo summary | ExpandedRepoInfo |
 | [All images in repo](#all-images-in-repo) | repository | image list | Returns all images in the specified repo | ImageList |
 | [Global search](#global-search) | query | image summary / repo summary / layer summary | Will return what's requested in the query argument | GlobalSearch |
 | [Derived image list](#search-derived-images) | image | image list | Returns a list of images that depend on the image specified in the arg | DerivedImageList |
