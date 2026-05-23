@@ -4,10 +4,10 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -449,15 +449,30 @@ func GetCliConfigOptions(cmd *cobra.Command) (bool, bool, error) {
 	}
 
 	if configName == "" {
-		return false, false, nil
+		serverURL, urlErr := cmd.Flags().GetString(URLFlag)
+		if urlErr == nil && serverURL != "" {
+			return false, false, nil
+		}
+
+		configPath, err := zliUserConfigPath()
+		if err != nil {
+			return false, false, err
+		}
+
+		configName, err = getDefaultConfigName(configPath)
+		if err != nil {
+			return false, false, err
+		}
+
+		if configName == "" {
+			return false, false, nil
+		}
 	}
 
-	home, err := os.UserHomeDir()
+	configPath, err := zliUserConfigPath()
 	if err != nil {
 		return false, false, err
 	}
-
-	configPath := filepath.Join(home, ".zot")
 
 	isSpinner, err := parseBooleanConfig(configPath, configName, showspinnerConfig)
 	if err != nil {
@@ -484,7 +499,21 @@ func GetServerURLFromFlags(cmd *cobra.Command) (string, error) {
 	}
 
 	if configName == "" {
-		return "", fmt.Errorf("%w: specify either '--%s' or '--%s' flags", zerr.ErrNoURLProvided, URLFlag, ConfigFlag)
+		configPath, err := zliUserConfigPath()
+		if err != nil {
+			return "", err
+		}
+
+		configName, err = getDefaultConfigName(configPath)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	if configName == "" {
+		return "", fmt.Errorf(
+			"%w: specify either '--%s' or '--%s' flags, or set a default with 'zli config set-default <name>'",
+			zerr.ErrNoURLProvided, URLFlag, ConfigFlag)
 	}
 
 	serverURL, err = ReadServerURLFromConfig(configName)
@@ -500,12 +529,10 @@ func GetServerURLFromFlags(cmd *cobra.Command) (string, error) {
 }
 
 func ReadServerURLFromConfig(configName string) (string, error) {
-	home, err := os.UserHomeDir()
+	configPath, err := zliUserConfigPath()
 	if err != nil {
 		return "", err
 	}
-
-	configPath := filepath.Join(home, ".zot")
 
 	urlFromConfig, err := getConfigValue(configPath, configName, URLFlag)
 	if err != nil {
@@ -513,6 +540,27 @@ func ReadServerURLFromConfig(configName string) (string, error) {
 	}
 
 	return urlFromConfig, nil
+}
+
+func getDefaultConfigName(configPath string) (string, error) {
+	if _, err := os.Stat(configPath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", nil
+		}
+
+		return "", err
+	}
+
+	cfg, err := ReadZliConfigFile(configPath)
+	if err != nil {
+		if isConfigUnavailable(err) {
+			return "", nil
+		}
+
+		return "", err
+	}
+
+	return cfg.DefaultName()
 }
 
 func GetSuggestionsString(suggestions []string) string {
