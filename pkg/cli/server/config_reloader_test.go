@@ -20,7 +20,7 @@ func TestConfigReloader(t *testing.T) {
 
 	defer func() { os.Args = oldArgs }()
 
-	Convey("reload access control config", t, func(c C) {
+	Convey("reload access control config", t, func(conveyCtx C) {
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
 
@@ -79,7 +79,7 @@ func TestConfigReloader(t *testing.T) {
 
 		go func() {
 			err = cli.NewServerRootCmd().Execute()
-			So(err, ShouldBeNil)
+			conveyCtx.So(err, ShouldBeNil)
 		}()
 
 		test.WaitTillServerReady(baseURL)
@@ -173,7 +173,7 @@ func TestConfigReloader(t *testing.T) {
 		})
 	})
 
-	Convey("reload gc config", t, func(c C) {
+	Convey("reload gc config", t, func(ctx C) {
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
 
@@ -214,7 +214,7 @@ func TestConfigReloader(t *testing.T) {
 
 		go func() {
 			err = cli.NewServerRootCmd().Execute()
-			So(err, ShouldBeNil)
+			ctx.So(err, ShouldBeNil)
 		}()
 
 		test.WaitTillServerReady(baseURL)
@@ -300,7 +300,7 @@ func TestConfigReloader(t *testing.T) {
 		})
 	})
 
-	Convey("reload sync config", t, func(c C) {
+	Convey("reload sync config", t, func(ctx C) {
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
 
@@ -352,7 +352,7 @@ func TestConfigReloader(t *testing.T) {
 
 		go func() {
 			err = cli.NewServerRootCmd().Execute()
-			So(err, ShouldBeNil)
+			ctx.So(err, ShouldBeNil)
 		}()
 
 		test.WaitTillServerReady(baseURL)
@@ -450,7 +450,7 @@ func TestConfigReloader(t *testing.T) {
 		})
 	})
 
-	Convey("reload scrub and CVE config", t, func(c C) {
+	Convey("reload scrub and CVE config", t, func(ctx C) {
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
 
@@ -495,7 +495,7 @@ func TestConfigReloader(t *testing.T) {
 
 		go func() {
 			err = cli.NewServerRootCmd().Execute()
-			So(err, ShouldBeNil)
+			ctx.So(err, ShouldBeNil)
 		}()
 
 		test.WaitTillServerReady(baseURL)
@@ -591,7 +591,7 @@ func TestConfigReloader(t *testing.T) {
 		So(found, ShouldBeTrue)
 	})
 
-	Convey("reload bad config", t, func(c C) {
+	Convey("reload bad config", t, func(conveyCtx C) {
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
 
@@ -643,7 +643,7 @@ func TestConfigReloader(t *testing.T) {
 
 		go func() {
 			err = cli.NewServerRootCmd().Execute()
-			So(err, ShouldBeNil)
+			conveyCtx.So(err, ShouldBeNil)
 		}()
 
 		test.WaitTillServerReady(baseURL)
