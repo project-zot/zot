@@ -135,7 +135,8 @@ func newHTTP2FallbackTransport(opts syncconf.RegistryConfig, logger log.Logger) 
 	primaryTransport := clonedTransport(opts)
 
 	if err := http2.ConfigureTransport(primaryTransport); err != nil {
-		logger.Warn().Err(err).Msg("failed to configure http2 on sync transport, framing-error fallback may be limited to substring detection")
+		logger.Warn().Err(err).
+			Msg("failed to configure http2 on sync transport, framing-error fallback may be limited to substring detection")
 	}
 
 	fallbackTransport := clonedTransport(opts)

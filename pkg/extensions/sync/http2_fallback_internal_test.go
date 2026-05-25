@@ -22,13 +22,21 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
+var (
+	errMalformedHTTP = errors.New("malformed HTTP response \"\\x00\\x00\\x12\\x04\"")
+	errConnRefused   = errors.New("connection refused")
+	errCtxCanceled   = errors.New("context canceled")
+	errDialRefused   = errors.New("dial tcp: connection refused")
+	errRewindFailed  = errors.New("rewind failed")
+)
+
 // newTestFallbackTransport builds an http2FallbackTransport configured with deterministic
 // time and a 1-minute sticky window. Tests advance time via the returned *time.Time.
 func newTestFallbackTransport(primary, fallback http.RoundTripper) (*http2FallbackTransport, *time.Time) {
 	now := time.Unix(1700000000, 0)
 	clock := &now
 
-	tr := &http2FallbackTransport{
+	transport := &http2FallbackTransport{
 		primary:   primary,
 		fallback:  fallback,
 		log:       log.NewLogger("debug", ""),
@@ -36,7 +44,7 @@ func newTestFallbackTransport(primary, fallback http.RoundTripper) (*http2Fallba
 		now:       func() time.Time { return *clock },
 	}
 
-	return tr, clock
+	return transport, clock
 }
 
 func TestIsHTTP2FramingError(t *testing.T) {
@@ -59,13 +67,12 @@ func TestIsHTTP2FramingError(t *testing.T) {
 		})
 
 		Convey("malformed HTTP response substring returns true", func() {
-			err := errors.New("malformed HTTP response \"\\x00\\x00\\x12\\x04\"")
-			So(isHTTP2FramingError(err), ShouldBeTrue)
+			So(isHTTP2FramingError(errMalformedHTTP), ShouldBeTrue)
 		})
 
 		Convey("unrelated error returns false", func() {
-			So(isHTTP2FramingError(errors.New("connection refused")), ShouldBeFalse)
-			So(isHTTP2FramingError(errors.New("context canceled")), ShouldBeFalse)
+			So(isHTTP2FramingError(errConnRefused), ShouldBeFalse)
+			So(isHTTP2FramingError(errCtxCanceled), ShouldBeFalse)
 		})
 	})
 }
@@ -96,12 +103,16 @@ func TestHTTP2FallbackTransportRoundTrip(t *testing.T) {
 			primary := &stubRoundTripper{resp: newOKResponse("primary")}
 			fallback := &stubRoundTripper{resp: newOKResponse("fallback")}
 
-			tr, _ := newTestFallbackTransport(primary, fallback)
+			defer primary.resp.Body.Close()
+			defer fallback.resp.Body.Close()
 
-			req, err := http.NewRequest(http.MethodGet, "https://example.test/v2/", http.NoBody)
+			transport, _ := newTestFallbackTransport(primary, fallback)
+
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet,
+				"https://example.test/v2/", http.NoBody)
 			So(err, ShouldBeNil)
 
-			resp, err := tr.RoundTrip(req)
+			resp, err := transport.RoundTrip(req)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusOK)
 			So(primary.hits, ShouldEqual, 1)
@@ -114,12 +125,15 @@ func TestHTTP2FallbackTransportRoundTrip(t *testing.T) {
 			}}
 			fallback := &stubRoundTripper{resp: newOKResponse("fallback")}
 
-			tr, _ := newTestFallbackTransport(primary, fallback)
+			defer fallback.resp.Body.Close()
 
-			req, err := http.NewRequest(http.MethodGet, "https://example.test/v2/", http.NoBody)
+			transport, _ := newTestFallbackTransport(primary, fallback)
+
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet,
+				"https://example.test/v2/", http.NoBody)
 			So(err, ShouldBeNil)
 
-			resp, err := tr.RoundTrip(req)
+			resp, err := transport.RoundTrip(req)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusOK)
 			So(primary.hits, ShouldEqual, 1)
@@ -127,17 +141,19 @@ func TestHTTP2FallbackTransportRoundTrip(t *testing.T) {
 		})
 
 		Convey("non-framing error is returned without fallback", func() {
-			nonFraming := errors.New("dial tcp: connection refused")
-			primary := &stubRoundTripper{err: nonFraming}
+			primary := &stubRoundTripper{err: errDialRefused}
 			fallback := &stubRoundTripper{resp: newOKResponse("fallback")}
 
-			tr, _ := newTestFallbackTransport(primary, fallback)
+			defer fallback.resp.Body.Close()
 
-			req, err := http.NewRequest(http.MethodGet, "https://example.test/v2/", http.NoBody)
+			transport, _ := newTestFallbackTransport(primary, fallback)
+
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet,
+				"https://example.test/v2/", http.NoBody)
 			So(err, ShouldBeNil)
 
-			resp, err := tr.RoundTrip(req)
-			So(err, ShouldEqual, nonFraming)
+			resp, err := transport.RoundTrip(req)
+			So(err, ShouldEqual, errDialRefused)
 			So(resp, ShouldBeNil)
 			So(primary.hits, ShouldEqual, 1)
 			So(fallback.hits, ShouldEqual, 0)
@@ -149,11 +165,13 @@ func TestHTTP2FallbackTransportRoundTrip(t *testing.T) {
 			}}
 			fallback := &stubRoundTripper{resp: newOKResponse("fallback")}
 
-			tr, _ := newTestFallbackTransport(primary, fallback)
+			defer fallback.resp.Body.Close()
+
+			transport, _ := newTestFallbackTransport(primary, fallback)
 
 			payload := []byte(`{"hello":"world"}`)
-			req, err := http.NewRequest(http.MethodPost, "https://example.test/v2/",
-				bytes.NewReader(payload))
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodPost,
+				"https://example.test/v2/", bytes.NewReader(payload))
 			So(err, ShouldBeNil)
 			So(req.GetBody, ShouldNotBeNil)
 
@@ -162,7 +180,7 @@ func TestHTTP2FallbackTransportRoundTrip(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(drained, ShouldResemble, payload)
 
-			resp, err := tr.RoundTrip(req)
+			resp, err := transport.RoundTrip(req)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusOK)
 
@@ -177,16 +195,17 @@ func TestHTTP2FallbackTransportRoundTrip(t *testing.T) {
 			primary := &stubRoundTripper{err: primaryErr}
 			fallback := &stubRoundTripper{resp: newOKResponse("fallback")}
 
-			tr, _ := newTestFallbackTransport(primary, fallback)
+			defer fallback.resp.Body.Close()
 
-			req, err := http.NewRequest(http.MethodPost, "https://example.test/v2/",
-				strings.NewReader("payload"))
+			transport, _ := newTestFallbackTransport(primary, fallback)
+
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodPost,
+				"https://example.test/v2/", strings.NewReader("payload"))
 			So(err, ShouldBeNil)
 
-			rewindErr := errors.New("rewind failed")
-			req.GetBody = func() (io.ReadCloser, error) { return nil, rewindErr }
+			req.GetBody = func() (io.ReadCloser, error) { return nil, errRewindFailed }
 
-			resp, err := tr.RoundTrip(req)
+			resp, err := transport.RoundTrip(req)
 			So(resp, ShouldBeNil)
 			So(errors.Is(err, primaryErr), ShouldBeTrue)
 			So(fallback.hits, ShouldEqual, 0)
@@ -217,15 +236,16 @@ func TestHTTP2FallbackRealTransport(t *testing.T) {
 		tlsConf := &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
 
 		newPrimary := func() *http.Transport {
-			tr := http.DefaultTransport.(*http.Transport).Clone() //nolint: forcetypeassert
-			tr.TLSClientConfig = tlsConf.Clone()
-			So(http2.ConfigureTransport(tr), ShouldBeNil)
+			transport := http.DefaultTransport.(*http.Transport).Clone() //nolint: forcetypeassert
+			transport.TLSClientConfig = tlsConf.Clone()
+			So(http2.ConfigureTransport(transport), ShouldBeNil)
 
-			return tr
+			return transport
 		}
 
 		Convey("ConfigureTransport'd primary surfaces a typed http2 framing error", func() {
-			req, err := http.NewRequest(http.MethodGet, server.URL+"/v2/", http.NoBody)
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet,
+				server.URL+"/v2/", http.NoBody)
 			So(err, ShouldBeNil)
 
 			_, err = newPrimary().RoundTrip(req)
@@ -246,12 +266,13 @@ func TestHTTP2FallbackRealTransport(t *testing.T) {
 			fallback.TLSNextProto = make(map[string]func(string, *tls.Conn) http.RoundTripper)
 			fallback.ForceAttemptHTTP2 = false
 
-			tr, _ := newTestFallbackTransport(newPrimary(), fallback)
+			transport, _ := newTestFallbackTransport(newPrimary(), fallback)
 
-			req, err := http.NewRequest(http.MethodGet, server.URL+"/v2/", http.NoBody)
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet,
+				server.URL+"/v2/", http.NoBody)
 			So(err, ShouldBeNil)
 
-			resp, err := tr.RoundTrip(req)
+			resp, err := transport.RoundTrip(req)
 			So(err, ShouldBeNil)
 
 			defer resp.Body.Close()
@@ -263,7 +284,7 @@ func TestHTTP2FallbackRealTransport(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(string(body), ShouldEqual, "ok")
 
-			So(tr.hostStuckOnFallback(req.URL.Host), ShouldBeTrue)
+			So(transport.hostStuckOnFallback(req.URL.Host), ShouldBeTrue)
 			So(atomic.LoadInt32(&h2Hits), ShouldEqual, 1)
 			So(atomic.LoadInt32(&h1Hits), ShouldEqual, 1)
 		})
@@ -278,13 +299,16 @@ func TestHTTP2FallbackStickyPerHost(t *testing.T) {
 			}}
 			fallback := &stubRoundTripper{resp: newOKResponse("fallback")}
 
-			tr, _ := newTestFallbackTransport(primary, fallback)
+			defer fallback.resp.Body.Close()
 
-			for i := 0; i < 3; i++ {
-				req, err := http.NewRequest(http.MethodGet, "https://example.test/v2/", http.NoBody)
+			transport, _ := newTestFallbackTransport(primary, fallback)
+
+			for range 3 {
+				req, err := http.NewRequestWithContext(t.Context(), http.MethodGet,
+					"https://example.test/v2/", http.NoBody)
 				So(err, ShouldBeNil)
 
-				resp, err := tr.RoundTrip(req)
+				resp, err := transport.RoundTrip(req)
 				So(err, ShouldBeNil)
 				So(resp.StatusCode, ShouldEqual, http.StatusOK)
 			}
@@ -299,13 +323,16 @@ func TestHTTP2FallbackStickyPerHost(t *testing.T) {
 			}}
 			fallback := &stubRoundTripper{resp: newOKResponse("fallback")}
 
-			tr, _ := newTestFallbackTransport(primary, fallback)
+			defer fallback.resp.Body.Close()
+
+			transport, _ := newTestFallbackTransport(primary, fallback)
 
 			for _, host := range []string{"a.test", "b.test"} {
-				req, err := http.NewRequest(http.MethodGet, "https://"+host+"/v2/", http.NoBody)
+				req, err := http.NewRequestWithContext(t.Context(), http.MethodGet,
+					"https://"+host+"/v2/", http.NoBody)
 				So(err, ShouldBeNil)
 
-				_, err = tr.RoundTrip(req)
+				_, err = transport.RoundTrip(req)
 				So(err, ShouldBeNil)
 			}
 
@@ -319,12 +346,15 @@ func TestHTTP2FallbackStickyPerHost(t *testing.T) {
 			}}
 			fallback := &stubRoundTripper{resp: newOKResponse("fallback")}
 
-			tr, clock := newTestFallbackTransport(primary, fallback)
+			defer fallback.resp.Body.Close()
 
-			req, err := http.NewRequest(http.MethodGet, "https://example.test/v2/", http.NoBody)
+			transport, clock := newTestFallbackTransport(primary, fallback)
+
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet,
+				"https://example.test/v2/", http.NoBody)
 			So(err, ShouldBeNil)
 
-			_, err = tr.RoundTrip(req)
+			_, err = transport.RoundTrip(req)
 			So(err, ShouldBeNil)
 			So(primary.hits, ShouldEqual, 1)
 			So(fallback.hits, ShouldEqual, 1)
@@ -332,10 +362,11 @@ func TestHTTP2FallbackStickyPerHost(t *testing.T) {
 			// Advance past stickyTTL — primary should be retried.
 			*clock = clock.Add(2 * time.Minute)
 
-			req, err = http.NewRequest(http.MethodGet, "https://example.test/v2/", http.NoBody)
+			req, err = http.NewRequestWithContext(t.Context(), http.MethodGet,
+				"https://example.test/v2/", http.NoBody)
 			So(err, ShouldBeNil)
 
-			_, err = tr.RoundTrip(req)
+			_, err = transport.RoundTrip(req)
 			So(err, ShouldBeNil)
 			So(primary.hits, ShouldEqual, 2)
 			So(fallback.hits, ShouldEqual, 2)
