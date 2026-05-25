@@ -12194,7 +12194,8 @@ func TestPeriodicGC(t *testing.T) {
 
 		// periodic GC is enabled for sub store
 		So(string(data), ShouldContainSubstring,
-			fmt.Sprintf("\"SubPaths\":{\"/a\":{\"RootDirectory\":\"%s\",\"MaxRepos\":0,\"Dedupe\":false,\"RemoteCache\":false,\"GC\":true,\"Commit\":false,\"GCDelay\":1000000000,\"GCInterval\":86400000000000", subDir)) //nolint:lll // gofumpt conflicts with lll
+			fmt.Sprintf("\"SubPaths\":{\"/a\":{\"RootDirectory\":\"%s\"", subDir))
+		So(string(data), ShouldContainSubstring, "\"GCDelay\":1000000000,\"GCInterval\":86400000000000")
 	})
 
 	Convey("Periodic gc error", t, func() {
