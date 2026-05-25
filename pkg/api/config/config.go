@@ -27,18 +27,18 @@ var (
 )
 
 type StorageConfig struct {
-	RootDirectory string
-	MaxRepos      int
-	Dedupe        bool
-	RemoteCache   bool
-	Redirect      bool
-	GC            bool
-	Commit        bool
-	GCDelay       time.Duration // applied for blobs
-	GCInterval    time.Duration
-	Retention     ImageRetention
-	StorageDriver map[string]any `mapstructure:",omitempty"`
-	CacheDriver   map[string]any `mapstructure:",omitempty"`
+	RootDirectory   string
+	MaxRepos        int
+	Dedupe          bool
+	RemoteCache     bool
+	RedirectBlobURL bool
+	GC              bool
+	Commit          bool
+	GCDelay         time.Duration // applied for blobs
+	GCInterval      time.Duration
+	Retention       ImageRetention
+	StorageDriver   map[string]any `mapstructure:",omitempty"`
+	CacheDriver     map[string]any `mapstructure:",omitempty"`
 
 	// GCMaxSchedulerDelay is the maximum random delay for GC task scheduling
 	// This field is not configurable by the end user
@@ -804,7 +804,7 @@ func New() *Config {
 
 func (expConfig StorageConfig) ParamsEqual(actConfig StorageConfig) bool {
 	return expConfig.GC == actConfig.GC && expConfig.Dedupe == actConfig.Dedupe &&
-		expConfig.Redirect == actConfig.Redirect && expConfig.GCDelay == actConfig.GCDelay &&
+		expConfig.RedirectBlobURL == actConfig.RedirectBlobURL && expConfig.GCDelay == actConfig.GCDelay &&
 		expConfig.GCInterval == actConfig.GCInterval
 }
 
@@ -1011,7 +1011,7 @@ func (c *Config) UpdateReloadableConfig(newConfig *Config) {
 	// Update storage configuration
 	c.Storage.GC = newConfig.Storage.GC
 	c.Storage.Dedupe = newConfig.Storage.Dedupe
-	c.Storage.Redirect = newConfig.Storage.Redirect
+	c.Storage.RedirectBlobURL = newConfig.Storage.RedirectBlobURL
 	c.Storage.GCDelay = newConfig.Storage.GCDelay
 	c.Storage.GCInterval = newConfig.Storage.GCInterval
 
@@ -1029,7 +1029,7 @@ func (c *Config) UpdateReloadableConfig(newConfig *Config) {
 
 		subPathConfig.GC = storageConfig.GC
 		subPathConfig.Dedupe = storageConfig.Dedupe
-		subPathConfig.Redirect = storageConfig.Redirect
+		subPathConfig.RedirectBlobURL = storageConfig.RedirectBlobURL
 		subPathConfig.GCDelay = storageConfig.GCDelay
 		subPathConfig.GCInterval = storageConfig.GCInterval
 

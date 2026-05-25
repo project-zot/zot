@@ -118,11 +118,11 @@ func TestConfig(t *testing.T) {
 
 		So(firstStorageConfig.ParamsEqual(secondStorageConfig), ShouldBeTrue)
 
-		firstStorageConfig.Redirect = true
+		firstStorageConfig.RedirectBlobURL = true
 
 		So(firstStorageConfig.ParamsEqual(secondStorageConfig), ShouldBeFalse)
 
-		firstStorageConfig.Redirect = false
+		firstStorageConfig.RedirectBlobURL = false
 
 		So(firstStorageConfig.ParamsEqual(secondStorageConfig), ShouldBeTrue)
 
@@ -2312,22 +2312,22 @@ func TestConfig(t *testing.T) {
 			cfg := &config.Config{
 				Storage: config.GlobalStorageConfig{
 					StorageConfig: config.StorageConfig{
-						GC:         true,
-						Dedupe:     false,
-						Redirect:   false,
-						GCDelay:    time.Hour,
-						GCInterval: 2 * time.Hour,
+						GC:              true,
+						Dedupe:          false,
+						RedirectBlobURL: false,
+						GCDelay:         time.Hour,
+						GCInterval:      2 * time.Hour,
 					},
 				},
 			}
 			newConfig := &config.Config{
 				Storage: config.GlobalStorageConfig{
 					StorageConfig: config.StorageConfig{
-						GC:         false,
-						Dedupe:     true,
-						Redirect:   true,
-						GCDelay:    3 * time.Hour,
-						GCInterval: 4 * time.Hour,
+						GC:              false,
+						Dedupe:          true,
+						RedirectBlobURL: true,
+						GCDelay:         3 * time.Hour,
+						GCInterval:      4 * time.Hour,
 					},
 				},
 			}
@@ -2336,7 +2336,7 @@ func TestConfig(t *testing.T) {
 
 			So(cfg.Storage.GC, ShouldBeFalse)
 			So(cfg.Storage.Dedupe, ShouldBeTrue)
-			So(cfg.Storage.Redirect, ShouldBeTrue)
+			So(cfg.Storage.RedirectBlobURL, ShouldBeTrue)
 			So(cfg.Storage.GCDelay, ShouldEqual, 3*time.Hour)
 			So(cfg.Storage.GCInterval, ShouldEqual, 4*time.Hour)
 		})
@@ -3264,24 +3264,24 @@ func TestConfig(t *testing.T) {
 			cfg := &config.Config{
 				Storage: config.GlobalStorageConfig{
 					StorageConfig: config.StorageConfig{
-						GC:       true,
-						Dedupe:   false,
-						Redirect: false,
+						GC:              true,
+						Dedupe:          false,
+						RedirectBlobURL: false,
 					},
 					SubPaths: map[string]config.StorageConfig{
 						"/path1": {
-							GC:         true,
-							Dedupe:     false,
-							Redirect:   false,
-							GCDelay:    time.Hour,
-							GCInterval: time.Hour * 24,
+							GC:              true,
+							Dedupe:          false,
+							RedirectBlobURL: false,
+							GCDelay:         time.Hour,
+							GCInterval:      time.Hour * 24,
 						},
 						"/path2": {
-							GC:         false,
-							Dedupe:     true,
-							Redirect:   true,
-							GCDelay:    time.Hour * 2,
-							GCInterval: time.Hour * 48,
+							GC:              false,
+							Dedupe:          true,
+							RedirectBlobURL: true,
+							GCDelay:         time.Hour * 2,
+							GCInterval:      time.Hour * 48,
 						},
 					},
 				},
@@ -3291,24 +3291,24 @@ func TestConfig(t *testing.T) {
 			newConfig := &config.Config{
 				Storage: config.GlobalStorageConfig{
 					StorageConfig: config.StorageConfig{
-						GC:       true,
-						Dedupe:   false,
-						Redirect: true,
+						GC:              true,
+						Dedupe:          false,
+						RedirectBlobURL: true,
 					},
 					SubPaths: map[string]config.StorageConfig{
 						"/path1": {
-							GC:         false,          // Changed
-							Dedupe:     true,           // Changed
-							Redirect:   true,           // Changed
-							GCDelay:    time.Hour * 2,  // Changed
-							GCInterval: time.Hour * 12, // Changed
+							GC:              false,          // Changed
+							Dedupe:          true,           // Changed
+							RedirectBlobURL: true,           // Changed
+							GCDelay:         time.Hour * 2,  // Changed
+							GCInterval:      time.Hour * 12, // Changed
 						},
 						"/path2": {
-							GC:         true,           // Changed
-							Dedupe:     false,          // Changed
-							Redirect:   false,          // Changed
-							GCDelay:    time.Hour * 3,  // Changed
-							GCInterval: time.Hour * 36, // Changed
+							GC:              true,           // Changed
+							Dedupe:          false,          // Changed
+							RedirectBlobURL: false,          // Changed
+							GCDelay:         time.Hour * 3,  // Changed
+							GCInterval:      time.Hour * 36, // Changed
 						},
 					},
 				},
@@ -3324,7 +3324,7 @@ func TestConfig(t *testing.T) {
 			path1Config := cfg.Storage.SubPaths["/path1"]
 			So(path1Config.GC, ShouldBeFalse)
 			So(path1Config.Dedupe, ShouldBeTrue)
-			So(path1Config.Redirect, ShouldBeTrue)
+			So(path1Config.RedirectBlobURL, ShouldBeTrue)
 			So(path1Config.GCDelay, ShouldEqual, time.Hour*2)
 			So(path1Config.GCInterval, ShouldEqual, time.Hour*12)
 
@@ -3332,7 +3332,7 @@ func TestConfig(t *testing.T) {
 			path2Config := cfg.Storage.SubPaths["/path2"]
 			So(path2Config.GC, ShouldBeTrue)
 			So(path2Config.Dedupe, ShouldBeFalse)
-			So(path2Config.Redirect, ShouldBeFalse)
+			So(path2Config.RedirectBlobURL, ShouldBeFalse)
 			So(path2Config.GCDelay, ShouldEqual, time.Hour*3)
 			So(path2Config.GCInterval, ShouldEqual, time.Hour*36)
 		})

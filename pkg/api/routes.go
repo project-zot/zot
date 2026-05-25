@@ -1424,11 +1424,11 @@ func (rh *RouteHandler) isBlobRedirectEnabled(name string) bool {
 
 	if storePath != storage.DefaultStorePath {
 		if subPathConfig, ok := storageConfig.SubPaths[storePath]; ok {
-			return subPathConfig.Redirect
+			return subPathConfig.RedirectBlobURL
 		}
 	}
 
-	return storageConfig.Redirect
+	return storageConfig.RedirectBlobURL
 }
 
 func normalizeBlobRedirectURL(rawURL string) (string, bool) {
@@ -1524,7 +1524,6 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 			rh.c.Log.Warn().Str("repo", name).Str("digest", digest.String()).
 				Msg("ignoring invalid blob redirect URL and falling back to proxy")
-
 		}
 	}
 

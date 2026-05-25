@@ -939,9 +939,9 @@ func TestRoutes(t *testing.T) {
 				redirectURL := "https://storage.example.com/zot/repo/blobs/sha256/layer"
 				getBlobCalled := false
 
-				ctlr.Config.Storage.Redirect = true
+				ctlr.Config.Storage.RedirectBlobURL = true
 				defer func() {
-					ctlr.Config.Storage.Redirect = false
+					ctlr.Config.Storage.RedirectBlobURL = false
 				}()
 
 				ctlr.StoreController.DefaultStore = &mocks.MockedImageStore{
@@ -979,9 +979,9 @@ func TestRoutes(t *testing.T) {
 				blobDigest := "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621"
 				getBlobCalled := false
 
-				ctlr.Config.Storage.Redirect = true
+				ctlr.Config.Storage.RedirectBlobURL = true
 				defer func() {
-					ctlr.Config.Storage.Redirect = false
+					ctlr.Config.Storage.RedirectBlobURL = false
 				}()
 
 				ctlr.StoreController.DefaultStore = &mocks.MockedImageStore{
@@ -1014,9 +1014,9 @@ func TestRoutes(t *testing.T) {
 				blobDigest := "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621"
 				getBlobCalled := false
 
-				ctlr.Config.Storage.Redirect = true
+				ctlr.Config.Storage.RedirectBlobURL = true
 				defer func() {
-					ctlr.Config.Storage.Redirect = false
+					ctlr.Config.Storage.RedirectBlobURL = false
 				}()
 
 				ctlr.StoreController.DefaultStore = &mocks.MockedImageStore{
@@ -1063,9 +1063,9 @@ func TestRoutes(t *testing.T) {
 					},
 				}
 
-				ctlr.Config.Storage.Redirect = false
+				ctlr.Config.Storage.RedirectBlobURL = false
 				ctlr.Config.Storage.SubPaths = map[string]config.StorageConfig{
-					"/a": {Redirect: true},
+					"/a": {RedirectBlobURL: true},
 				}
 				ctlr.StoreController.SubStore = map[string]storageTypes.ImageStore{
 					"/a": subStore,
@@ -1095,9 +1095,9 @@ func TestRoutes(t *testing.T) {
 				blobDigest := "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621"
 				getBlobCalled := false
 
-				ctlr.Config.Storage.Redirect = true
+				ctlr.Config.Storage.RedirectBlobURL = true
 				defer func() {
-					ctlr.Config.Storage.Redirect = false
+					ctlr.Config.Storage.RedirectBlobURL = false
 				}()
 
 				ctlr.StoreController.DefaultStore = &mocks.MockedImageStore{
