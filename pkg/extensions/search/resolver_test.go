@@ -752,9 +752,12 @@ func TestQueryResolverErrors(t *testing.T) {
 
 			qr := queryResolver{resolverConfig}
 
-			_, err := qr.CVEDiffListForImages(ctx, gql_generated.ImageInput{}, gql_generated.ImageInput{},
+			result, err := qr.CVEDiffListForImages(ctx, gql_generated.ImageInput{}, gql_generated.ImageInput{},
 				&gql_generated.PageInput{}, nil, nil)
 			So(err, ShouldBeNil)
+			So(result, ShouldNotBeNil)
+			So(result.Minuend, ShouldNotBeNil)
+			So(result.Subtrahend, ShouldNotBeNil)
 		})
 
 		Convey("CVEListForImage nil cveinfo returns empty result", func() {
