@@ -100,6 +100,41 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		So(cli.NewServerRootCmd().Execute(), ShouldNotBeNil)
 	})
 
+	Convey("Test verify CVE can be explicitly disabled for remote storage", t, func(c C) {
+		content := fmt.Sprintf(`{
+			"storage":{
+				"rootDirectory":"%s",
+				"dedupe":true,
+				"remoteCache":false,
+				"storageDriver":{
+					"name":"s3",
+					"rootdirectory":"/zot",
+					"region":"us-east-2",
+					"bucket":"zot-storage",
+					"secure":true,
+					"skipverify":false
+				}
+			},
+			"http":{
+				"address":"127.0.0.1",
+				"port":"8080"
+			},
+			"extensions":{
+				"search": {
+					"enable": true,
+					"cve": {
+						"enable": false
+					}
+				}
+			}
+		}`, t.TempDir())
+
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+		os.Args = []string{"cli_test", "verify", tmpfile}
+
+		So(cli.NewServerRootCmd().Execute(), ShouldBeNil)
+	})
+
 	Convey("Test verify w/ sync and w/o filesystem storage", t, func(c C) {
 		content := fmt.Sprintf(`{"storage":{"rootDirectory":"%s", "storageDriver": {"name": "s3"}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
@@ -1097,6 +1132,41 @@ func TestServeSearchEnabledNoCVE(t *testing.T) {
 		}
 
 		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("search explicitly enabled, and CVE explicitly disabled", t, func(c C) {
+		content := `{
+				"storage": {
+					"rootDirectory": "%s"
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "%s"
+				},
+				"log": {
+					"level": "debug",
+					"output": "%s"
+				},
+				"extensions": {
+					"search": {
+						"enable": true,
+						"cve": {
+							"enable": false
+						}
+					}
+				}
+			}`
+
+		logPath, _, err := runCLIWithConfig(t, content)
+		So(err, ShouldBeNil)
+
+		found, err := ReadLogFileAndSearchString(logPath, `"CVE":{"Enable":false`, readLogFileTimeout)
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
+
+		found, err = ReadLogFileAndSearchString(logPath, "updating cve-db", readLogFileTimeout)
+		So(found, ShouldBeFalse)
 		So(err, ShouldBeNil)
 	})
 }
