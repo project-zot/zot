@@ -53,6 +53,7 @@ type SearchConfig struct {
 }
 
 type CVEConfig struct {
+	Enable         *bool         `mapstructure:",omitempty" json:",omitempty"`
 	UpdateInterval time.Duration // should be 2 hours or more, if not specified default be kept as 2 hours
 	Trivy          *TrivyConfig
 }
@@ -109,8 +110,15 @@ func (e *ExtensionConfig) IsCveScanningEnabled() bool {
 		return false
 	}
 
-	return e.Search != nil && e.Search.Enable != nil && *e.Search.Enable &&
-		e.Search.CVE != nil && e.Search.CVE.Trivy != nil
+	if e.Search == nil || e.Search.Enable == nil || !*e.Search.Enable || e.Search.CVE == nil {
+		return false
+	}
+
+	if e.Search.CVE.Enable != nil && !*e.Search.CVE.Enable {
+		return false
+	}
+
+	return e.Search.CVE.Trivy != nil
 }
 
 // IsEventRecorderEnabled checks if event recording is enabled in this extensions config.
