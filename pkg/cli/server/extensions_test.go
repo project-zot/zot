@@ -1168,6 +1168,10 @@ func TestServeSearchEnabledNoCVE(t *testing.T) {
 		found, err = ReadLogFileAndSearchString(logPath, "cve config not provided, skipping cve-db update", readLogFileTimeout)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
+
+		found, err = ReadLogFileAndSearchString(logPath, "updating cve-db", readLogFileTimeout)
+		So(found, ShouldBeFalse)
+		So(err, ShouldBeNil)
 	})
 }
 
