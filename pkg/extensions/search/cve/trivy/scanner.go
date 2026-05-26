@@ -57,6 +57,8 @@ const (
 
 var errImageStoreNotFound = errors.New("image store not found")
 
+var newArtifactRunner = artifact.NewRunner //nolint:gochecknoglobals // test seam for deterministic runner injection
+
 // getNewScanOptions sets trivy configuration values for our scans and returns them as
 // a trivy Options structure.
 func getNewScanOptions(dir string, dbRepositoryRef, javaDBRepositoryRef name.Reference,
@@ -330,7 +332,7 @@ func (scanner Scanner) runTrivy(ctx context.Context, opts flag.Options) (types.R
 	var sbom *generatedSBOM
 
 	err = scanner.withTempDir(func() error {
-		runner, err := artifact.NewRunner(ctx, opts, artifact.TargetContainerImage)
+		runner, err := newArtifactRunner(ctx, opts, artifact.TargetContainerImage)
 		if err != nil {
 			return err
 		}
@@ -347,13 +349,14 @@ func (scanner Scanner) runTrivy(ctx context.Context, opts flag.Options) (types.R
 		}
 
 		if scanner.sbomOptions.enabled {
-			sbom, err = scanner.generateSBOM(ctx, runner, opts, report)
-			if err != nil {
-				scanner.log.Warn().Err(err).Str("image", opts.ImageOptions.Input).Msg("failed to generate sbom")
+			var sbomErr error
+			sbom, sbomErr = scanner.generateSBOM(ctx, runner, opts, report)
+			if sbomErr != nil {
+				scanner.log.Warn().Err(sbomErr).Str("image", opts.ImageOptions.Input).Msg("failed to generate sbom")
 			}
 		}
 
-		return err
+		return nil
 	})
 
 	return report, sbom, err

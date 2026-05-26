@@ -1,4 +1,4 @@
-package uac
+package requestcontext
 
 import (
 	"context"
@@ -167,9 +167,8 @@ func (uac *UserAccessControl) SetGlobPatterns(action string, patterns map[string
 	uac.authzInfo.globPatterns[action] = patterns
 }
 
-/*
-Can returns whether or not the user/anonymous who made the request has 'action' permission on 'repository'.
-*/
+// Can returns whether or not the user/anonymous who made the request has
+// action permission on repository.
 func (uac *UserAccessControl) Can(action, repository string) bool {
 	var defaultRet bool
 	if uac.isBehaviourAction(action) {
@@ -205,10 +204,8 @@ func (uac *UserAccessControl) areGlobPatternsSet() bool {
 	return !notSet
 }
 
-/*
-returns whether or not 'repository' can be found in the list of patterns
-on which the user who made the request has read permission on.
-*/
+// matchesRepo returns whether repository matches the provided action's glob patterns
+// and is allowed by the longest matching pattern.
 func (uac *UserAccessControl) matchesRepo(globPatterns map[string]bool, repository string) bool {
 	var longestMatchedPattern string
 

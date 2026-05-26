@@ -5,11 +5,13 @@ package trivy
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path"
 	"testing"
 	"time"
 
+	"github.com/aquasecurity/trivy-db/pkg/metadata"
 	dbTypes "github.com/aquasecurity/trivy-db/pkg/types"
 	"github.com/aquasecurity/trivy/pkg/commands/artifact"
 	"github.com/aquasecurity/trivy/pkg/flag"
@@ -129,6 +131,54 @@ func TestGenerateSBOM(t *testing.T) {
 		So(storedSBOM, ShouldResemble, expectedSBOM)
 		So(generated.size, ShouldEqual, int64(len(expectedSBOM)))
 		So(generated.digest, ShouldEqual, godigest.FromBytes(expectedSBOM))
+	})
+}
+
+func TestRunTrivySBOMGenerationFailureIsNonFatal(t *testing.T) {
+	Convey("runTrivy should return report and nil error when SBOM generation fails", t, func() {
+		logger := log.NewTestLogger()
+		rootDir := t.TempDir()
+
+		dbDir := path.Join(rootDir, "_trivy", "db")
+		err := os.MkdirAll(dbDir, 0o755)
+		So(err, ShouldBeNil)
+		err = os.WriteFile(metadata.Path(dbDir), []byte(`{"Version":2}`), 0o600)
+		So(err, ShouldBeNil)
+
+		store := local.NewImageStore(rootDir, false, false, logger, monitoring.NewMetricsServer(false, logger), nil, nil, nil, nil)
+		storeController := storage.StoreController{DefaultStore: store}
+
+		scanner := Scanner{
+			log:             logger,
+			storeController: storeController,
+			sbomOptions: sbomOptions{
+				enabled:      true,
+				reportFormat: trivyTypes.FormatSPDXJSON,
+			},
+		}
+
+		sbomErr := errors.New("sbom generation failed")
+		oldNewArtifactRunner := newArtifactRunner
+		newArtifactRunner = func(ctx context.Context, opts flag.Options, target artifact.TargetKind,
+			runnerOpts ...artifact.RunnerOption,
+		) (artifact.Runner, error) {
+			return fakeArtifactRunner{
+				reportFn: func(ctx context.Context, opts flag.Options, report trivyTypes.Report) error {
+					return sbomErr
+				},
+			}, nil
+		}
+		defer func() {
+			newArtifactRunner = oldNewArtifactRunner
+		}()
+
+		report, generated, err := scanner.runTrivy(context.Background(), flag.Options{
+			ImageOptions: flag.ImageOptions{Input: "repo:tag"},
+		})
+
+		So(err, ShouldBeNil)
+		So(report, ShouldResemble, trivyTypes.Report{})
+		So(generated, ShouldBeNil)
 	})
 }
 
