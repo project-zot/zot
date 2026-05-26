@@ -204,8 +204,8 @@ func (uac *UserAccessControl) areGlobPatternsSet() bool {
 	return !notSet
 }
 
-// matchesRepo returns whether repository can be found in the list of patterns
-// on which the user who made the request has read permission.
+// matchesRepo returns whether repository matches the provided action's glob patterns
+// and is allowed by the longest matching pattern.
 func (uac *UserAccessControl) matchesRepo(globPatterns map[string]bool, repository string) bool {
 	var longestMatchedPattern string
 
