@@ -53,6 +53,8 @@ type SearchConfig struct {
 }
 
 type CVEConfig struct {
+	// Enable controls whether CVE scanning is active for search.
+	// If omitted, CVE scanning defaults to enabled when search is enabled.
 	Enable         *bool         `mapstructure:",omitempty" json:",omitempty"`
 	UpdateInterval time.Duration // should be 2 hours or more, if not specified default be kept as 2 hours
 	Trivy          *TrivyConfig
