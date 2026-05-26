@@ -82,7 +82,7 @@ func TestConfigCmdDeprecatedMain(t *testing.T) {
 
 		actual, err := os.ReadFile(configPath)
 		if err != nil {
-			panic(err)
+			t.Fatalf("failed to read config file %s: %v", configPath, err)
 		}
 		actualStr := string(actual)
 		So(actualStr, ShouldContainSubstring, "configtest1")
@@ -405,7 +405,7 @@ func TestConfigCmdDeprecatedMain(t *testing.T) {
 
 		actual, err := os.ReadFile(configPath)
 		if err != nil {
-			panic(err)
+			t.Fatalf("failed to read config file %s: %v", configPath, err)
 		}
 		actualStr := string(actual)
 		So(actualStr, ShouldContainSubstring, "https://test-url.com")
@@ -450,7 +450,7 @@ func TestConfigCmdDeprecatedMain(t *testing.T) {
 
 		actual, err := os.ReadFile(configPath)
 		if err != nil {
-			panic(err)
+			t.Fatalf("failed to read config file %s: %v", configPath, err)
 		}
 		actualStr := string(actual)
 		So(actualStr, ShouldContainSubstring, `https://new-url.com`)
@@ -477,7 +477,7 @@ func TestConfigCmdDeprecatedMain(t *testing.T) {
 
 		actual, err := os.ReadFile(configPath)
 		if err != nil {
-			panic(err)
+			t.Fatalf("failed to read config file %s: %v", configPath, err)
 		}
 		actualStr := string(actual)
 		So(actualStr, ShouldNotContainSubstring, "showspinner")
