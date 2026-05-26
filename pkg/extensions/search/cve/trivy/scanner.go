@@ -347,13 +347,14 @@ func (scanner Scanner) runTrivy(ctx context.Context, opts flag.Options) (types.R
 		}
 
 		if scanner.sbomOptions.enabled {
-			sbom, err = scanner.generateSBOM(ctx, runner, opts, report)
-			if err != nil {
-				scanner.log.Warn().Err(err).Str("image", opts.ImageOptions.Input).Msg("failed to generate sbom")
+			var sbomErr error
+			sbom, sbomErr = scanner.generateSBOM(ctx, runner, opts, report)
+			if sbomErr != nil {
+				scanner.log.Warn().Err(sbomErr).Str("image", opts.ImageOptions.Input).Msg("failed to generate sbom")
 			}
 		}
 
-		return err
+		return nil
 	})
 
 	return report, sbom, err
