@@ -58,12 +58,20 @@ var testCases = []struct {
 	},
 }
 
+func newTestMetricsServer(t *testing.T, log zlog.Logger) monitoring.MetricServer {
+	t.Helper()
+
+	metrics := monitoring.NewMetricsServer(false, log)
+	t.Cleanup(metrics.Stop)
+
+	return metrics
+}
+
 func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 	log := zlog.NewTestLogger()
 	audit := zlog.NewAuditLogger("debug", "/dev/null")
 
-	metrics := monitoring.NewMetricsServer(false, log)
-	defer metrics.Stop() // Clean up metrics server to prevent resource leaks
+	metrics := newTestMetricsServer(t, log)
 
 	trueVal := true
 
@@ -1242,7 +1250,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					So(err, ShouldBeNil)
 
 					if testcase.testCaseName == s3TestName {
-						// Remote sorage is written to only after the blob upload is finished,
+						// Remote storage is written to only after the blob upload is finished,
 						// there should be no space used by blob uploads
 						So(uploads, ShouldEqual, []string{})
 					} else {
@@ -1253,7 +1261,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					isPresent, _, _, err := imgStore.StatBlobUpload(repoName, blobUploadID)
 
 					if testcase.testCaseName == s3TestName {
-						// Remote sorage is written to only after the blob upload is finished,
+						// Remote storage is written to only after the blob upload is finished,
 						// there should be no space used by blob uploads
 						So(err, ShouldNotBeNil)
 						So(isPresent, ShouldBeFalse)
@@ -1271,7 +1279,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					So(err, ShouldBeNil)
 
 					if testcase.testCaseName == s3TestName {
-						// Remote sorage is written to only after the blob upload is finished,
+						// Remote storage is written to only after the blob upload is finished,
 						// there should be no space used by blob uploads
 						So(uploads, ShouldEqual, []string{})
 					} else {
@@ -1282,7 +1290,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					isPresent, _, _, err = imgStore.StatBlobUpload(repoName, blobUploadID)
 
 					if testcase.testCaseName == s3TestName {
-						// Remote sorage is written to only after the blob upload is finished,
+						// Remote storage is written to only after the blob upload is finished,
 						// there should be no space used by blob uploads
 						So(err, ShouldNotBeNil)
 						So(isPresent, ShouldBeFalse)
@@ -1316,8 +1324,7 @@ func TestGarbageCollectDeletion(t *testing.T) {
 		log := zlog.NewTestLogger()
 		audit := zlog.NewAuditLogger("debug", "/dev/null")
 
-		metrics := monitoring.NewMetricsServer(false, log)
-		defer metrics.Stop() // Clean up metrics server to prevent resource leaks
+		metrics := newTestMetricsServer(t, log)
 
 		trueVal := true
 		falseVal := false
@@ -1755,8 +1762,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 	log := zlog.NewTestLogger()
 	audit := zlog.NewAuditLogger("debug", "/dev/null")
 
-	metrics := monitoring.NewMetricsServer(false, log)
-	defer metrics.Stop() // Clean up metrics server to prevent resource leaks
+	metrics := newTestMetricsServer(t, log)
 
 	trueVal := true
 
@@ -2566,7 +2572,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 					So(err, ShouldBeNil)
 
 					if testcase.testCaseName == s3TestName {
-						// Remote sorage is written to only after the blob upload is finished,
+						// Remote storage is written to only after the blob upload is finished,
 						// there should be no space used by blob uploads
 						So(uploads, ShouldEqual, []string{})
 					} else {
@@ -2577,7 +2583,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 					isPresent, _, _, err := imgStore.StatBlobUpload(repoName, blobUploadID)
 
 					if testcase.testCaseName == s3TestName {
-						// Remote sorage is written to only after the blob upload is finished,
+						// Remote storage is written to only after the blob upload is finished,
 						// there should be no space used by blob uploads
 						So(err, ShouldNotBeNil)
 						So(isPresent, ShouldBeFalse)
@@ -2595,7 +2601,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 					So(err, ShouldBeNil)
 
 					if testcase.testCaseName == s3TestName {
-						// Remote sorage is written to only after the blob upload is finished,
+						// Remote storage is written to only after the blob upload is finished,
 						// there should be no space used by blob uploads
 						So(uploads, ShouldEqual, []string{})
 					} else {
@@ -2606,7 +2612,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 					isPresent, _, _, err = imgStore.StatBlobUpload(repoName, blobUploadID)
 
 					if testcase.testCaseName == s3TestName {
-						// Remote sorage is written to only after the blob upload is finished,
+						// Remote storage is written to only after the blob upload is finished,
 						// there should be no space used by blob uploads
 						So(err, ShouldNotBeNil)
 						So(isPresent, ShouldBeFalse)
