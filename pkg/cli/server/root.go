@@ -874,11 +874,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, logge
 			}
 
 			if *config.Extensions.Search.Enable && config.Extensions.Search.CVE != nil {
-				if config.Extensions.Search.CVE.Enable == nil {
-					config.Extensions.Search.CVE.Enable = &defaultVal
-				}
-
-				if *config.Extensions.Search.CVE.Enable {
+				if config.Extensions.Search.CVE.Enable == nil || *config.Extensions.Search.CVE.Enable {
 					defaultUpdateInterval, _ := time.ParseDuration("2h")
 
 					if config.Extensions.Search.CVE.UpdateInterval < defaultUpdateInterval {
