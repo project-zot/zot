@@ -695,8 +695,8 @@ func TestGetReferrers(t *testing.T) {
 	})
 }
 
-func TestQueryResolverErrors(t *testing.T) {
-	Convey("Errors", t, func() {
+func TestQueryResolverErrorsAndEmptyResults(t *testing.T) {
+	Convey("Errors and empty results", t, func() {
 		log := log.NewTestLogger()
 		ctx := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 			graphql.DefaultRecover)
