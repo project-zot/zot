@@ -64,24 +64,28 @@ func GetLinter(config *config.Config, log log.Logger) *lint.Linter {
 }
 
 func hasLocalTrustStoreMaterial(rootDir string) bool {
-	return hasFile(filepath.Join(rootDir, "_cosign")) ||
-		hasFile(filepath.Join(rootDir, "_notation", "truststore", "x509"))
+	return containsFiles(filepath.Join(rootDir, "_cosign")) ||
+		containsFiles(filepath.Join(rootDir, "_notation", "truststore", "x509"))
 }
 
-func hasFile(root string) bool {
+func containsFiles(root string) bool {
 	stat, err := os.Stat(root)
 	if err != nil || !stat.IsDir() {
 		return false
 	}
 
 	hasMaterial := false
-	_ = filepath.WalkDir(root, func(_ string, d os.DirEntry, err error) error {
+	walkErr := filepath.WalkDir(root, func(_ string, d os.DirEntry, err error) error {
 		if err == nil && !d.IsDir() {
 			hasMaterial = true
 		}
 
 		return nil
 	})
+
+	if walkErr != nil {
+		return false
+	}
 
 	return hasMaterial
 }
