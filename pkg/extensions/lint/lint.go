@@ -135,7 +135,7 @@ func (linter *Linter) CheckMandatorySignatures(repo string, manifestDigest godig
 
 	mandatory := false
 	for _, mandatoryRepo := range linter.config.MandatorySignatures {
-		if repo == mandatoryRepo {
+		if mandatoryRepo == "*" || mandatoryRepo == "**" || repo == mandatoryRepo {
 			mandatory = true
 
 			break
