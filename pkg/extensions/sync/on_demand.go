@@ -52,6 +52,15 @@ type lockHandle struct {
 	owner string
 }
 
+// syncResult is the shared outcome of a single in-flight on-demand sync.
+// Every caller that dedups onto the same request blocks on done and then
+// reads err, so all waiters observe the same result reliably, including
+// early failures (e.g. lock rejection) before the sync goroutine starts.
+type syncResult struct {
+	done chan struct{}
+	err  error
+}
+
 /*
 BaseOnDemand tracks requests that can be an image/signature/sbom.
 
@@ -60,7 +69,7 @@ process just the first one, also keep track of all background retrying routines.
 */
 type BaseOnDemand struct {
 	services []Service
-	// map[request]chan err
+	// map[request]*syncResult for in-flight syncs; struct{}{} for background retries
 	requestStore          *sync.Map
 	distributedLock       distributedLockBackend
 	distributedLockOwner  string
@@ -220,43 +229,46 @@ func (onDemand *BaseOnDemand) runLockHeartbeat(ctx context.Context,
 }
 
 func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference string) error {
-	return onDemand.runWithLock(ctx, "image", repo, reference, func(syncResult chan error) {
-		onDemand.syncImage(ctx, repo, reference, syncResult)
+	return onDemand.runWithLock(ctx, "image", repo, reference, func(result *syncResult) {
+		onDemand.syncImage(ctx, repo, reference, result)
 	})
 }
 
 func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 	subjectDigestStr string, referenceTypes []string,
 ) error {
-	return onDemand.runWithLock(ctx, "referrers", repo, subjectDigestStr, func(syncResult chan error) {
-		onDemand.syncReferrers(ctx, repo, subjectDigestStr, referenceTypes, syncResult)
+	return onDemand.runWithLock(ctx, "referrers", repo, subjectDigestStr, func(result *syncResult) {
+		onDemand.syncReferrers(ctx, repo, subjectDigestStr, referenceTypes, result)
 	})
 }
 
 // runWithLock combines in-process dedup, distributed locking, and the
 // heartbeat goroutine. The run closure executes the actual sync and is
-// expected to deliver the result on syncResult and close it.
+// expected to set result.err and close result.done.
 func (onDemand *BaseOnDemand) runWithLock(ctx context.Context, kind, repo, reference string,
-	run func(chan error),
+	run func(*syncResult),
 ) error {
 	req := request{repo: repo, reference: reference}
-	syncResult := make(chan error)
+	result := &syncResult{done: make(chan struct{})}
 
-	val, loaded := onDemand.requestStore.LoadOrStore(req, syncResult)
+	val, loaded := onDemand.requestStore.LoadOrStore(req, result)
 	if loaded {
 		onDemand.log.Info().Str("repo", repo).Str("reference", reference).Str("kind", kind).
-			Msg("on-demand sync already in flight on this replica, waiting on channel")
+			Msg("on-demand sync already in flight on this replica, waiting on result")
 
-		existing, _ := val.(chan error)
+		existing, _ := val.(*syncResult)
 
-		return <-existing
+		<-existing.done
+
+		return existing.err
 	}
 
 	defer onDemand.requestStore.Delete(req)
 
 	handle, release, err := onDemand.acquireDistributedLock(ctx, kind, repo, reference)
 	if err != nil {
-		close(syncResult)
+		result.err = err
+		close(result.done)
 
 		return err
 	}
@@ -273,15 +285,17 @@ func (onDemand *BaseOnDemand) runWithLock(ctx context.Context, kind, repo, refer
 		go onDemand.runLockHeartbeat(heartbeatCtx, handle.key, handle.owner, syncLockHeartbeatInterval)
 	}
 
-	go run(syncResult)
+	go run(result)
 
-	return <-syncResult
+	<-result.done
+
+	return result.err
 }
 
 func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDigestStr string,
-	referenceTypes []string, syncResult chan error,
+	referenceTypes []string, result *syncResult,
 ) {
-	defer close(syncResult)
+	defer close(result.done)
 
 	var err error
 
@@ -355,11 +369,11 @@ func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDi
 		}
 	}
 
-	syncResult <- err
+	result.err = err
 }
 
-func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference string, syncResult chan error) {
-	defer close(syncResult)
+func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference string, result *syncResult) {
+	defer close(result.done)
 
 	var err error
 
@@ -433,5 +447,5 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference str
 		}
 	}
 
-	syncResult <- err
+	result.err = err
 }
