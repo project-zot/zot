@@ -134,6 +134,7 @@ func (linter *Linter) CheckMandatorySignatures(repo string, manifestDigest godig
 	}
 
 	mandatory := false
+
 	for _, mandatoryRepo := range linter.config.MandatorySignatures {
 		if mandatoryRepo == "*" || mandatoryRepo == "**" || repo == mandatoryRepo {
 			mandatory = true
@@ -228,7 +229,9 @@ func (linter *Linter) hasTrustedSignature(repo string, manifestDigest godigest.D
 	return false, nil
 }
 
-func getSignatureType(descriptor ispec.Descriptor, signatureManifest ispec.Manifest, manifestDigest godigest.Digest) (string, bool) {
+func getSignatureType(descriptor ispec.Descriptor, signatureManifest ispec.Manifest,
+	manifestDigest godigest.Digest,
+) (string, bool) {
 	artifactType := zcommon.GetManifestArtifactType(signatureManifest)
 
 	if signatureManifest.Subject != nil && signatureManifest.Subject.Digest == manifestDigest {

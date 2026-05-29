@@ -113,8 +113,6 @@ func TestMandatorySignaturesFunction(t *testing.T) {
 	})
 
 	for _, wildcard := range []string{"*", "**"} {
-		wildcard := wildcard
-
 		Convey("mandatory signatures check rejects unsigned images for wildcard repository list "+wildcard, t, func() {
 			enable := true
 			lintConfig := &extconf.LintConfig{

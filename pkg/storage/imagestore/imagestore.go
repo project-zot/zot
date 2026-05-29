@@ -638,6 +638,8 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 	manifestPath := path.Join(dir, mDigest.Encoded())
 
 	binfo, err := is.storeDriver.Stat(manifestPath)
+	manifestUploaded := false
+
 	if err != nil || binfo.Size() != desc.Size {
 		// The blob isn't already there, or it is corrupted, and needs a correction
 		if _, err = is.storeDriver.WriteFile(manifestPath, body); err != nil {
@@ -645,6 +647,8 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 
 			return "", "", err
 		}
+
+		manifestUploaded = true
 	}
 
 	var (
@@ -760,6 +764,13 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 	if !pass {
 		is.log.Error().Err(err).Str("repository", repo).Str("reference", reference).
 			Msg("linter didn't pass")
+
+		if manifestUploaded && zerr.GetDetails(err)["missingSignatures"] != "" {
+			if deleteErr := is.storeDriver.Delete(manifestPath); deleteErr != nil {
+				is.log.Error().Err(deleteErr).Str("repository", repo).Str("reference", reference).
+					Str("digest", mDigest.String()).Msg("failed to delete untrusted manifest")
+			}
+		}
 
 		if is.events != nil {
 			is.events.ImageLintFailed(repo, reference, mDigest.String(), mediaType, string(body))

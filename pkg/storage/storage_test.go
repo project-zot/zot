@@ -1492,10 +1492,48 @@ func TestMandatoryAnnotations(t *testing.T) {
 				manifest.SchemaVersion = 2
 				manifestBuf, err := json.Marshal(manifest)
 				So(err, ShouldBeNil)
+				manifestDigest := godigest.FromBytes(manifestBuf)
 
 				Convey("Missing mandatory annotations", func() {
 					_, _, err = imgStore.PutImageManifest("test", "1.0.0", ispec.MediaTypeImageManifest, manifestBuf, nil)
 					So(err, ShouldNotBeNil)
+				})
+
+				Convey("Signature lint failure deletes uploaded manifest blob and does not update index", func() {
+					if testcase.storageType == storageConstants.S3StorageDriverName {
+						imgStore = imagestore.NewImageStore(testDir, cacheDir, false, false, log, metrics,
+							&mocks.MockedLint{
+								LintFn: func(repo string, manifestDigest godigest.Digest,
+									imageStore storageTypes.ImageStore,
+								) (bool, error) {
+									return false, zerr.NewError(zerr.ErrImageLintAnnotations).
+										AddDetail("missingSignatures", "missing trusted signature")
+								},
+							}, store, nil, nil, nil)
+					} else {
+						var cacheDriver storageTypes.Cache
+						store, _, cacheDriver, err := createObjectsStore(opts)
+						So(err, ShouldBeNil)
+						imgStore = imagestore.NewImageStore(cacheDir, cacheDir, true, true, log, metrics,
+							&mocks.MockedLint{
+								LintFn: func(repo string, manifestDigest godigest.Digest,
+									imageStore storageTypes.ImageStore,
+								) (bool, error) {
+									return false, zerr.NewError(zerr.ErrImageLintAnnotations).
+										AddDetail("missingSignatures", "missing trusted signature")
+								},
+							}, store, cacheDriver, nil, nil)
+					}
+
+					_, _, err = imgStore.PutImageManifest("test", "1.0.0", ispec.MediaTypeImageManifest, manifestBuf, nil)
+					So(err, ShouldNotBeNil)
+
+					_, err = imgStore.GetBlobContent("test", manifestDigest)
+					So(err, ShouldEqual, zerr.ErrBlobNotFound)
+
+					index, err := storageCommon.GetIndex(imgStore, "test", log)
+					So(err, ShouldBeNil)
+					So(len(index.Manifests), ShouldEqual, 0)
 				})
 
 				Convey("Error on mandatory annotations", func() {

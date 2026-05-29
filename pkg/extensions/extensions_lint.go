@@ -82,7 +82,6 @@ func containsFiles(root string) bool {
 
 		return nil
 	})
-
 	if walkErr != nil {
 		return false
 	}
