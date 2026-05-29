@@ -51,12 +51,22 @@ func (t *http2FallbackTransport) RoundTrip(req *http.Request) (*http.Response, e
 		return resp, err
 	}
 
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+
 	t.markHostStuck(host)
 
 	t.log.Warn().Str("method", req.Method).Str("url", req.URL.String()).
 		Err(err).Msg("HTTP/2 framing error from upstream, retrying with HTTP/1.1")
 
-	if req.Body != nil && req.GetBody != nil {
+	if req.Body != nil && req.Body != http.NoBody {
+		// A real body with no GetBody can't be rewound; the primary may have consumed it,
+		// so retrying would send a truncated payload. Return the primary error instead.
+		if req.GetBody == nil {
+			return nil, err
+		}
+
 		body, bodyErr := req.GetBody()
 		if bodyErr != nil {
 			return nil, err
