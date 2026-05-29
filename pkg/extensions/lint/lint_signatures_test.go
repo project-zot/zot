@@ -82,6 +82,36 @@ func TestMandatorySignaturesFunction(t *testing.T) {
 		So(pass, ShouldBeFalse)
 	})
 
+	Convey("mandatory signatures check is skipped for non-matching repositories", t, func() {
+		enable := true
+		lintConfig := &extconf.LintConfig{
+			BaseConfig:          extconf.BaseConfig{Enable: &enable},
+			MandatorySignatures: []string{"another-repo"},
+		}
+
+		dir := t.TempDir()
+		testStoreCtlr := ociutils.GetDefaultStoreController(dir, log.NewTestLogger())
+		err := WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		So(err, ShouldBeNil)
+
+		indexContent, err := os.ReadFile(path.Join(dir, "zot-test", "index.json"))
+		So(err, ShouldBeNil)
+
+		var index ispec.Index
+		err = json.Unmarshal(indexContent, &index)
+		So(err, ShouldBeNil)
+
+		linter := lint.NewLinter(lintConfig, log.NewTestLogger())
+		linter.SetSignatureVerifier(mockImageTrustStore{trusted: true}, true)
+
+		imgStore := local.NewImageStore(dir, false, false,
+			log.NewTestLogger(), monitoring.NewMetricsServer(false, log.NewTestLogger()), linter, nil, nil, nil)
+
+		pass, err := linter.CheckMandatorySignatures("zot-test", index.Manifests[0].Digest, imgStore)
+		So(err, ShouldBeNil)
+		So(pass, ShouldBeTrue)
+	})
+
 	for _, wildcard := range []string{"*", "**"} {
 		wildcard := wildcard
 
