@@ -765,7 +765,8 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 		is.log.Error().Err(err).Str("repository", repo).Str("reference", reference).
 			Msg("linter didn't pass")
 
-		if manifestUploaded && zerr.GetDetails(err)["missingSignatures"] != "" {
+		_, missingSignatures := zerr.GetDetails(err)["missingSignatures"]
+		if manifestUploaded && missingSignatures {
 			if deleteErr := is.storeDriver.Delete(manifestPath); deleteErr != nil {
 				is.log.Error().Err(deleteErr).Str("repository", repo).Str("reference", reference).
 					Str("digest", mDigest.String()).Msg("failed to delete untrusted manifest")
