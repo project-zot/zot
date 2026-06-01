@@ -786,16 +786,33 @@ func TestStoreSBOMAsOCIArtifact(t *testing.T) {
 
 func TestGetCVEReference(t *testing.T) {
 	Convey("getCVEReference", t, func() {
-		ref := getCVEReference("primary", []string{})
+		ref := getCVEReference("CVE-2023-2650", "primary", []string{})
 		So(ref, ShouldResemble, "primary")
 
-		ref = getCVEReference("", []string{"secondary"})
+		ref = getCVEReference("CVE-2023-2650", "", []string{"secondary"})
 		So(ref, ShouldResemble, "secondary")
 
-		ref = getCVEReference("", []string{""})
+		ref = getCVEReference("CVE-2023-2650", "", []string{""})
 		So(ref, ShouldResemble, "")
 
-		ref = getCVEReference("", []string{"https://nvd.nist.gov/vuln/detail/CVE-2023-2650"})
+		ref = getCVEReference(
+			"CVE-2023-2650",
+			"",
+			[]string{"https://nvd.nist.gov/vuln/detail/CVE-2023-2650"},
+		)
 		So(ref, ShouldResemble, "https://nvd.nist.gov/vuln/detail/CVE-2023-2650")
+
+		ref = getCVEReference(
+			"CVE-2026-42496",
+			"https://avd.aquasec.com/nvd/cve-2026-42496",
+			[]string{},
+		)
+		So(ref, ShouldResemble, "https://www.cve.org/CVERecord?id=CVE-2026-42496")
+
+		ref = getCVEReference("", "https://avd.aquasec.com/nvd/cve-2026-42496", []string{})
+		So(ref, ShouldResemble, "https://avd.aquasec.com/nvd/cve-2026-42496")
+
+		ref = getCVEReference("GHSA-abcd-1234", "https://avd.aquasec.com/nvd/cve-2026-42496", []string{})
+		So(ref, ShouldResemble, "https://avd.aquasec.com/nvd/cve-2026-42496")
 	})
 }

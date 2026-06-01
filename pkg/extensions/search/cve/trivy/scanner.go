@@ -680,7 +680,11 @@ func (scanner Scanner) scanManifest(ctx context.Context, repo, digest string) (m
 					ID:          vulnerability.VulnerabilityID,
 					Title:       vulnerability.Title,
 					Description: vulnerability.Description,
-					Reference:   getCVEReference(vulnerability.PrimaryURL, vulnerability.References),
+					Reference: getCVEReference(
+						vulnerability.VulnerabilityID,
+						vulnerability.PrimaryURL,
+						vulnerability.References,
+					),
 					Severity:    convertSeverity(vulnerability.Severity),
 					PackageList: newPkgList,
 				}
@@ -835,7 +839,11 @@ func (scanner Scanner) storeSBOMAsOCIArtifact(ctx context.Context,
 	return nil
 }
 
-func getCVEReference(primaryURL string, references []string) string {
+func getCVEReference(cveID, primaryURL string, references []string) string {
+	if isCVEID(cveID) && isAquasecAVDReference(primaryURL) {
+		return "https://www.cve.org/CVERecord?id=" + cveID
+	}
+
 	if primaryURL != "" {
 		return primaryURL
 	}
@@ -851,6 +859,14 @@ func getCVEReference(primaryURL string, references []string) string {
 	}
 
 	return ""
+}
+
+func isCVEID(cveID string) bool {
+	return strings.HasPrefix(cveID, "CVE-")
+}
+
+func isAquasecAVDReference(reference string) bool {
+	return strings.Contains(reference, "avd.aquasec.com/nvd/cve-")
 }
 
 func getNVDReference(references []string) (string, bool) {
