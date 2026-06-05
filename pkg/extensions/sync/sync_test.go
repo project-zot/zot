@@ -2718,6 +2718,7 @@ func TestTLS(t *testing.T) {
 		waitSyncFinish(dctlr.Config.Log.Output)
 
 		deadline := time.Now().Add(30 * time.Second)
+
 		var resp *resty.Response
 
 		for time.Now().Before(deadline) {
