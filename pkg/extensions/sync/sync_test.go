@@ -2717,8 +2717,21 @@ func TestTLS(t *testing.T) {
 
 		waitSyncFinish(dctlr.Config.Log.Output)
 
-		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		deadline := time.Now().Add(30 * time.Second)
+		var resp *resty.Response
+		var err error
+
+		for time.Now().Before(deadline) {
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			if err == nil && resp.StatusCode() == http.StatusOK {
+				break
+			}
+
+			time.Sleep(500 * time.Millisecond)
+		}
+
 		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 	})
 }
