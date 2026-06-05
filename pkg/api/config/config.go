@@ -23,6 +23,7 @@ import (
 var (
 	openIDSupportedProviders = [...]string{"google", "gitlab", "oidc"} //nolint: gochecknoglobals
 	oauth2SupportedProviders = [...]string{"github"}                   //nolint: gochecknoglobals
+	sensitiveFieldNormalizer = strings.NewReplacer("_", "", "-", "")   //nolint: gochecknoglobals
 )
 
 const redactedSecret = "******"
@@ -934,7 +935,7 @@ func redactSecretsInMap(values map[string]any) {
 }
 
 func isSensitiveFieldName(fieldName string) bool {
-	normalized := strings.NewReplacer("_", "", "-", "").Replace(strings.ToLower(fieldName))
+	normalized := sensitiveFieldNormalizer.Replace(strings.ToLower(fieldName))
 
 	switch normalized {
 	case "accesskey", "secretkey", "clientsecret", "password", "token", "authorization",
