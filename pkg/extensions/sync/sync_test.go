@@ -2719,7 +2719,6 @@ func TestTLS(t *testing.T) {
 
 		deadline := time.Now().Add(30 * time.Second)
 		var resp *resty.Response
-		var err error
 
 		for time.Now().Before(deadline) {
 			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
