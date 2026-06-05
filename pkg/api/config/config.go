@@ -3,8 +3,10 @@ package config
 import (
 	"encoding/json"
 	"maps"
+	"net/url"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -22,6 +24,8 @@ var (
 	openIDSupportedProviders = [...]string{"google", "gitlab", "oidc"} //nolint: gochecknoglobals
 	oauth2SupportedProviders = [...]string{"github"}                   //nolint: gochecknoglobals
 )
+
+const redactedSecret = "******"
 
 type StorageConfig struct {
 	RootDirectory string
@@ -836,6 +840,10 @@ func (c *Config) Sanitize() *Config {
 
 	// Sanitize HTTP config
 	if c.HTTP.Auth != nil {
+		redactSecretsInMap(sanitizedConfig.HTTP.Auth.SessionDriver)
+		sanitizedConfig.HTTP.Auth.SessionHashKey = nil
+		sanitizedConfig.HTTP.Auth.SessionEncryptKey = nil
+
 		// Sanitize LDAP bind password
 		if c.HTTP.Auth.LDAP != nil && c.HTTP.Auth.LDAP.bindPassword != "" {
 			sanitizedConfig.HTTP.Auth.LDAP = &LDAPConfig{}
@@ -844,7 +852,7 @@ func (c *Config) Sanitize() *Config {
 				panic(err)
 			}
 
-			sanitizedConfig.HTTP.Auth.LDAP.bindPassword = "******"
+			sanitizedConfig.HTTP.Auth.LDAP.bindPassword = redactedSecret
 		}
 
 		// Sanitize OpenID client secrets
@@ -858,7 +866,7 @@ func (c *Config) Sanitize() *Config {
 				sanitizedConfig.HTTP.Auth.OpenID.Providers[provider] = OpenIDProviderConfig{
 					Name:         config.Name,
 					ClientID:     config.ClientID,
-					ClientSecret: "******",
+					ClientSecret: redactedSecret,
 					KeyPath:      config.KeyPath,
 					Issuer:       config.Issuer,
 					AuthURL:      config.AuthURL,
@@ -868,6 +876,19 @@ func (c *Config) Sanitize() *Config {
 				}
 			}
 		}
+	}
+
+	redactSecretsInMap(sanitizedConfig.Storage.StorageDriver)
+	redactSecretsInMap(sanitizedConfig.Storage.CacheDriver)
+
+	for subPath, subPathConfig := range sanitizedConfig.Storage.SubPaths {
+		redactSecretsInMap(subPathConfig.StorageDriver)
+		redactSecretsInMap(subPathConfig.CacheDriver)
+		sanitizedConfig.Storage.SubPaths[subPath] = subPathConfig
+	}
+
+	if sanitizedConfig.Cluster != nil && sanitizedConfig.Cluster.HashKey != "" {
+		sanitizedConfig.Cluster.HashKey = redactedSecret
 	}
 
 	if c.Extensions.IsEventRecorderEnabled() {
@@ -880,11 +901,65 @@ func (c *Config) Sanitize() *Config {
 				panic(err)
 			}
 
-			sanitizedConfig.Extensions.Events.Sinks[i].Credentials.Password = "******"
+			sanitizedConfig.Extensions.Events.Sinks[i].Credentials.Password = redactedSecret
+			sanitizedConfig.Extensions.Events.Sinks[i].Credentials.Token = redactedSecret
 		}
 	}
 
 	return sanitizedConfig
+}
+
+func redactSecretsInMap(values map[string]any) {
+	for key, value := range values {
+		if isSensitiveFieldName(key) {
+			values[key] = redactedSecret
+
+			continue
+		}
+
+		switch typedValue := value.(type) {
+		case map[string]any:
+			redactSecretsInMap(typedValue)
+		case []any:
+			for _, element := range typedValue {
+				nestedMap, ok := element.(map[string]any)
+				if ok {
+					redactSecretsInMap(nestedMap)
+				}
+			}
+		case string:
+			values[key] = sanitizeURLPassword(typedValue)
+		}
+	}
+}
+
+func isSensitiveFieldName(fieldName string) bool {
+	normalized := strings.NewReplacer("_", "", "-", "").Replace(strings.ToLower(fieldName))
+
+	switch normalized {
+	case "accesskey", "secretkey", "clientsecret", "password", "token", "authorization",
+		"apikey", "sessionhashkey", "sessionencryptkey", "hashkey":
+		return true
+	default:
+		return false
+	}
+}
+
+func sanitizeURLPassword(rawURL string) string {
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil || parsedURL.User == nil {
+		return rawURL
+	}
+
+	username := parsedURL.User.Username()
+	_, hasPassword := parsedURL.User.Password()
+	if !hasPassword {
+		return rawURL
+	}
+
+	parsedURL.User = url.UserPassword(username, redactedSecret)
+
+	return parsedURL.String()
 }
 
 // UpdateReloadableConfig updates only the fields that can be reloaded at runtime.

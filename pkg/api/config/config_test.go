@@ -1,6 +1,8 @@
 package config_test
 
 import (
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -165,6 +167,7 @@ func TestConfig(t *testing.T) {
 							Credentials: &eventsconf.Credentials{
 								Username: "webhook-user",
 								Password: "webhook-password",
+								Token:    "webhook-token",
 							},
 						},
 						{
@@ -173,6 +176,7 @@ func TestConfig(t *testing.T) {
 							Credentials: &eventsconf.Credentials{
 								Username: "nats-user",
 								Password: "nats-token",
+								Token:    "nats-auth-token",
 							},
 						},
 					},
@@ -186,6 +190,8 @@ func TestConfig(t *testing.T) {
 			// Verify event sink credentials passwords are sanitized
 			So(sanitizedConf.Extensions.Events.Sinks[0].Credentials.Password, ShouldEqual, "******")
 			So(sanitizedConf.Extensions.Events.Sinks[1].Credentials.Password, ShouldEqual, "******")
+			So(sanitizedConf.Extensions.Events.Sinks[0].Credentials.Token, ShouldEqual, "******")
+			So(sanitizedConf.Extensions.Events.Sinks[1].Credentials.Token, ShouldEqual, "******")
 
 			// Verify other fields are preserved
 			So(sanitizedConf.Extensions.Events.Sinks[0].Credentials.Username, ShouldEqual, "webhook-user")
@@ -196,6 +202,8 @@ func TestConfig(t *testing.T) {
 			// Verify original config is not modified
 			So(conf.Extensions.Events.Sinks[0].Credentials.Password, ShouldEqual, "webhook-password")
 			So(conf.Extensions.Events.Sinks[1].Credentials.Password, ShouldEqual, "nats-token")
+			So(conf.Extensions.Events.Sinks[0].Credentials.Token, ShouldEqual, "webhook-token")
+			So(conf.Extensions.Events.Sinks[1].Credentials.Token, ShouldEqual, "nats-auth-token")
 		})
 
 		Convey("Test Sanitize() with Event sink credentials including nil credentials", func() {
@@ -310,6 +318,87 @@ func TestConfig(t *testing.T) {
 			So(sanitizedConf.HTTP.Auth.OpenID.Providers["azure"].Name, ShouldEqual, "Azure AD")
 			So(sanitizedConf.Extensions.Events.Sinks[0].Credentials.Username, ShouldEqual, "smtp-user")
 			So(sanitizedConf.Extensions.Events.Sinks[0].Type, ShouldEqual, eventsconf.HTTP)
+		})
+
+		Convey("Test Sanitize() redacts storage and auth driver secrets", func() {
+			conf := config.New()
+			So(conf, ShouldNotBeNil)
+
+			cacheURL := "redis://cache-user:" + "pwd123" + "@redis:6379/1"
+			subPathCacheURL := "redis://subpath-user:" + "pwd123" + "@redis:6379/2"
+			sessionURL := "redis://session-user:" + "pwd123" + "@redis:6379/3"
+			redactedURL := func(rawURL string) string {
+				parsedURL, err := url.Parse(rawURL)
+				So(err, ShouldBeNil)
+
+				parsedURL.User = url.UserPassword(parsedURL.User.Username(), strings.Repeat("*", 6))
+
+				return parsedURL.String()
+			}
+			redactedCacheURL := redactedURL(cacheURL)
+			redactedSubPathCacheURL := redactedURL(subPathCacheURL)
+			redactedSessionURL := redactedURL(sessionURL)
+
+			conf.Storage.StorageDriver = map[string]any{
+				"name":      "s3",
+				"accesskey": "driver-access-key",
+				"secretkey": "driver-secret-key",
+			}
+			conf.Storage.CacheDriver = map[string]any{
+				"name":     "redis",
+				"url":      cacheURL,
+				"password": "cache-password",
+			}
+			conf.Storage.SubPaths = map[string]config.StorageConfig{
+				"/tenant": {
+					StorageDriver: map[string]any{
+						"accesskey": "subpath-access-key",
+						"secretkey": "subpath-secret-key",
+					},
+					CacheDriver: map[string]any{
+						"url": subPathCacheURL,
+					},
+				},
+			}
+
+			conf.HTTP.Auth = &config.AuthConfig{
+				SessionHashKey:    []byte("hash-secret"),
+				SessionEncryptKey: []byte("encrypt-secret"),
+				SessionDriver: map[string]any{
+					"url":      sessionURL,
+					"password": "session-password",
+				},
+			}
+
+			conf.Cluster = &config.ClusterConfig{HashKey: "cluster-hash-secret"}
+
+			So(func() { conf.Sanitize() }, ShouldNotPanic)
+
+			sanitizedConf := conf.Sanitize()
+			So(sanitizedConf.Storage.StorageDriver["accesskey"], ShouldEqual, "******")
+			So(sanitizedConf.Storage.StorageDriver["secretkey"], ShouldEqual, "******")
+			So(sanitizedConf.Storage.CacheDriver["password"], ShouldEqual, "******")
+			So(sanitizedConf.Storage.CacheDriver["url"], ShouldEqual, redactedCacheURL)
+			So(sanitizedConf.Storage.SubPaths["/tenant"].StorageDriver["accesskey"], ShouldEqual, "******")
+			So(sanitizedConf.Storage.SubPaths["/tenant"].StorageDriver["secretkey"], ShouldEqual, "******")
+			So(sanitizedConf.Storage.SubPaths["/tenant"].CacheDriver["url"], ShouldEqual,
+				redactedSubPathCacheURL)
+			So(sanitizedConf.HTTP.Auth.SessionDriver["password"], ShouldEqual, "******")
+			So(sanitizedConf.HTTP.Auth.SessionDriver["url"], ShouldEqual,
+				redactedSessionURL)
+			So(sanitizedConf.HTTP.Auth.SessionHashKey, ShouldBeNil)
+			So(sanitizedConf.HTTP.Auth.SessionEncryptKey, ShouldBeNil)
+			So(sanitizedConf.Cluster.HashKey, ShouldEqual, "******")
+
+			// Verify original config is not modified.
+			So(conf.Storage.StorageDriver["accesskey"], ShouldEqual, "driver-access-key")
+			So(conf.Storage.StorageDriver["secretkey"], ShouldEqual, "driver-secret-key")
+			So(conf.Storage.CacheDriver["url"], ShouldEqual, cacheURL)
+			So(conf.Storage.SubPaths["/tenant"].StorageDriver["secretkey"], ShouldEqual, "subpath-secret-key")
+			So(conf.HTTP.Auth.SessionDriver["url"], ShouldEqual, sessionURL)
+			So(string(conf.HTTP.Auth.SessionHashKey), ShouldEqual, "hash-secret")
+			So(string(conf.HTTP.Auth.SessionEncryptKey), ShouldEqual, "encrypt-secret")
+			So(conf.Cluster.HashKey, ShouldEqual, "cluster-hash-secret")
 		})
 
 		Convey("Test Sanitize() with nil sensitive data", func() {
