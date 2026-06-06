@@ -4,6 +4,7 @@ package sync
 
 import (
 	cryptotls "crypto/tls"
+	"crypto/x509"
 	"errors"
 	"net/http"
 	"strings"
@@ -134,7 +135,54 @@ func clonedTransport(opts syncconf.RegistryConfig) *http.Transport {
 	// to be slow for large images.
 	transport.ResponseHeaderTimeout = opts.ResponseHeaderTimeout
 
+	configureTransportTLS(transport, opts)
+
 	return transport
+}
+
+func configureTransportTLS(transport *http.Transport, opts syncconf.RegistryConfig) {
+	tlsConfig := &cryptotls.Config{}
+	needsTLSConfig := false
+
+	if opts.TLSVerify != nil && !*opts.TLSVerify {
+		tlsConfig.InsecureSkipVerify = true //nolint:gosec // this is an explicit sync configuration option
+		needsTLSConfig = true
+	}
+
+	if opts.CertDir == "" {
+		if needsTLSConfig {
+			transport.TLSClientConfig = tlsConfig
+		}
+
+		return
+	}
+
+	clientCert, clientKey, regCert, err := getCertificates(opts.CertDir)
+	if err != nil {
+		// Keep the transport usable; the sync path will surface the failure if
+		// the cert files are actually required.
+		return
+	}
+
+	if regCert != "" {
+		pool := x509.NewCertPool()
+		if pool.AppendCertsFromPEM([]byte(regCert)) {
+			tlsConfig.RootCAs = pool
+			needsTLSConfig = true
+		}
+	}
+
+	if clientCert != "" && clientKey != "" {
+		cert, err := cryptotls.X509KeyPair([]byte(clientCert), []byte(clientKey))
+		if err == nil {
+			tlsConfig.Certificates = []cryptotls.Certificate{cert}
+			needsTLSConfig = true
+		}
+	}
+
+	if needsTLSConfig {
+		transport.TLSClientConfig = tlsConfig
+	}
 }
 
 // newHTTP2FallbackTransport builds a RoundTripper that prefers HTTP/2 for upstream sync

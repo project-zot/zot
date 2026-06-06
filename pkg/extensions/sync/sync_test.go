@@ -2717,6 +2717,11 @@ func TestTLS(t *testing.T) {
 		indexDeadline := time.Now().Add(2 * time.Minute)
 
 		for time.Now().Before(indexDeadline) {
+			logData, _ := os.ReadFile(dctlr.Config.Log.Output)
+			if strings.Contains(string(logData), "tls: failed to verify certificate: x509: certificate signed by unknown authority") {
+				t.Fatalf("sync failed early with certificate trust error; downstream log:\n%s", string(logData))
+			}
+
 			destBuf, err := os.ReadFile(path.Join(destDir, testImage, "index.json"))
 			if err == nil {
 				var idx ispec.Index
