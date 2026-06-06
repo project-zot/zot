@@ -173,8 +173,8 @@ func TestConfig(t *testing.T) {
 							Address: "nats://localhost:4222",
 							Credentials: &eventsconf.Credentials{
 								Username: "nats-user",
-								Password: "nats-token",
-								Token:    "nats-auth-token",
+								Password: "nats-token",      //nolint:gosec // test fixture
+								Token:    "nats-auth-token", //nolint:gosec // test fixture
 							},
 						},
 					},
@@ -214,8 +214,8 @@ func TestConfig(t *testing.T) {
 				"accesskey": "storage-access",
 				"secretkey": "storage-secret",
 				"nested": map[string]any{
-					"token":     "nested-token",
-					"secretKey": "nested-secret-key",
+					"token":     "nested-token",      //nolint:gosec // test fixture
+					"secretKey": "nested-secret-key", //nolint:gosec // test fixture
 				},
 			}
 
@@ -233,7 +233,7 @@ func TestConfig(t *testing.T) {
 					},
 					CacheDriver: map[string]any{
 						"name":  "memory",
-						"token": "subpath-cache-token",
+						"token": "subpath-cache-token", //nolint:gosec // test fixture
 					},
 				},
 			}
