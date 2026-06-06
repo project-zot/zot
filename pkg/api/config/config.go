@@ -824,7 +824,8 @@ func isSensitiveConfigMapKey(key string) bool {
 	normalized := strings.ToLower(strings.ReplaceAll(key, "_", ""))
 
 	switch normalized {
-	case "accesskey", "secretkey", "password", "secret", "token", "clientsecret", "sessionhashkey", "sessionencryptkey", "sentinelpassword":
+	case "accesskey", "secretkey", "password", "secret", "token",
+		"clientsecret", "sessionhashkey", "sessionencryptkey", "sentinelpassword":
 		return true
 	default:
 		return false
