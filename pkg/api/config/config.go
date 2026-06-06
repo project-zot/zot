@@ -824,7 +824,7 @@ func isSensitiveConfigMapKey(key string) bool {
 	normalized := strings.ToLower(strings.ReplaceAll(key, "_", ""))
 
 	switch normalized {
-	case "accesskey", "secretkey", "password", "secret", "token", "clientsecret", "sessionhashkey", "sessionencryptkey":
+	case "accesskey", "secretkey", "password", "secret", "token", "clientsecret", "sessionhashkey", "sessionencryptkey", "sentinelpassword":
 		return true
 	default:
 		return false
@@ -956,8 +956,13 @@ func (c *Config) Sanitize() *Config {
 				panic(err)
 			}
 
-			sanitizedConfig.Extensions.Events.Sinks[i].Credentials.Password = "******"
-			sanitizedConfig.Extensions.Events.Sinks[i].Credentials.Token = "******"
+			if sanitizedConfig.Extensions.Events.Sinks[i].Credentials.Password != "" {
+				sanitizedConfig.Extensions.Events.Sinks[i].Credentials.Password = "******"
+			}
+
+			if sanitizedConfig.Extensions.Events.Sinks[i].Credentials.Token != "" {
+				sanitizedConfig.Extensions.Events.Sinks[i].Credentials.Token = "******"
+			}
 		}
 	}
 

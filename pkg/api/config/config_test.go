@@ -460,8 +460,8 @@ func TestConfig(t *testing.T) {
 			So(sanitizedConf.HTTP.Auth.LDAP.BindPassword(), ShouldEqual, "")
 			// OpenID empty secret is always sanitized
 			So(sanitizedConf.HTTP.Auth.OpenID.Providers["empty"].ClientSecret, ShouldEqual, "******")
-			// Event sink empty password is always sanitized
-			So(sanitizedConf.Extensions.Events.Sinks[0].Credentials.Password, ShouldEqual, "******")
+			// Event sink empty password remains empty when no credential value is present
+			So(sanitizedConf.Extensions.Events.Sinks[0].Credentials.Password, ShouldEqual, "")
 		})
 
 		Convey("Test Sanitize() with nil config", func() {
