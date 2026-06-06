@@ -3191,10 +3191,10 @@ func TestCreateRedisDB(t *testing.T) {
 		})
 
 		Convey("Fails on Ping()", func() {
-			// Redis client will not be responding
+			// Use a guaranteed-invalid endpoint to avoid free-port races in CI.
 			cacheDriverParams := map[string]any{
 				"name": "redis",
-				"url":  "redis://127.0.0.1:" + tCommon.GetFreePort(),
+				"url":  "redis://127.0.0.1:0",
 			}
 
 			conf.Storage.CacheDriver = cacheDriverParams
