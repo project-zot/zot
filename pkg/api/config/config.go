@@ -859,7 +859,7 @@ func sanitizeMapValues(values map[string]any) {
 }
 
 func sanitizeSliceValues(values []any) {
-	for idx, value := range values {
+	for _, value := range values {
 		switch typedVal := value.(type) {
 		case map[string]any:
 			sanitizeMapValues(typedVal)
@@ -867,8 +867,6 @@ func sanitizeSliceValues(values []any) {
 			sanitizeStringMapValues(typedVal)
 		case []any:
 			sanitizeSliceValues(typedVal)
-		default:
-			values[idx] = value
 		}
 	}
 }
