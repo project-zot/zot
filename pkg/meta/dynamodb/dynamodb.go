@@ -63,27 +63,27 @@ func New(client *dynamodb.Client, params DBDriverParameters, log log.Logger,
 		return nil, err
 	}
 
-	err = dynamoWrapper.createTable(dynamoWrapper.RepoMetaTablename)
+	err = dynamoWrapper.createTableIfNotExists(dynamoWrapper.RepoMetaTablename)
 	if err != nil {
 		return nil, err
 	}
 
-	err = dynamoWrapper.createTable(dynamoWrapper.RepoBlobsTablename)
+	err = dynamoWrapper.createTableIfNotExists(dynamoWrapper.RepoBlobsTablename)
 	if err != nil {
 		return nil, err
 	}
 
-	err = dynamoWrapper.createTable(dynamoWrapper.ImageMetaTablename)
+	err = dynamoWrapper.createTableIfNotExists(dynamoWrapper.ImageMetaTablename)
 	if err != nil {
 		return nil, err
 	}
 
-	err = dynamoWrapper.createTable(dynamoWrapper.UserDataTablename)
+	err = dynamoWrapper.createTableIfNotExists(dynamoWrapper.UserDataTablename)
 	if err != nil {
 		return nil, err
 	}
 
-	err = dynamoWrapper.createTable(dynamoWrapper.APIKeyTablename)
+	err = dynamoWrapper.createTableIfNotExists(dynamoWrapper.APIKeyTablename)
 	if err != nil {
 		return nil, err
 	}
@@ -2266,6 +2266,48 @@ func (dwr *DynamoDB) ResetTable(tableName string) error {
 	return dwr.createTable(tableName)
 }
 
+func (dwr *DynamoDB) tableExists(tableName string) (bool, error) {
+	_, err := dwr.Client.DescribeTable(context.Background(), &dynamodb.DescribeTableInput{
+		TableName: aws.String(tableName),
+	})
+	if err == nil {
+		return true, nil
+	}
+
+	var notFoundErr *types.ResourceNotFoundException
+	if errors.As(err, &notFoundErr) {
+		return false, nil
+	}
+
+	return false, err
+}
+
+func (dwr *DynamoDB) createTableIfNotExists(tableName string) error {
+	exists, err := dwr.tableExists(tableName)
+	if err != nil {
+		return err
+	}
+
+	if exists {
+		return nil
+	}
+
+	return dwr.createTable(tableName)
+}
+
+func ignoreResourceInUseError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	var inUseException *types.ResourceInUseException
+	if errors.As(err, &inUseException) {
+		return nil
+	}
+
+	return err
+}
+
 func (dwr *DynamoDB) createTable(tableName string) error {
 	_, err := dwr.Client.CreateTable(context.Background(), &dynamodb.CreateTableInput{
 		TableName: aws.String(tableName),
@@ -2283,11 +2325,8 @@ func (dwr *DynamoDB) createTable(tableName string) error {
 		},
 		BillingMode: types.BillingModePayPerRequest,
 	})
-	if err != nil {
-		inUseException := new(types.ResourceInUseException)
-		if !errors.As(err, &inUseException) {
-			return err
-		}
+	if err = ignoreResourceInUseError(err); err != nil {
+		return err
 	}
 
 	return dwr.waitTableToBeCreated(tableName)
@@ -2326,28 +2365,31 @@ func (dwr *DynamoDB) waitTableToBeDeleted(tableName string) error {
 }
 
 func (dwr *DynamoDB) createVersionTable() error {
-	_, err := dwr.Client.CreateTable(context.Background(), &dynamodb.CreateTableInput{
-		TableName: aws.String(dwr.VersionTablename),
-		AttributeDefinitions: []types.AttributeDefinition{
-			{
-				AttributeName: aws.String("TableKey"),
-				AttributeType: types.ScalarAttributeTypeS,
-			},
-		},
-		KeySchema: []types.KeySchemaElement{
-			{
-				AttributeName: aws.String("TableKey"),
-				KeyType:       types.KeyTypeHash,
-			},
-		},
-		BillingMode: types.BillingModePayPerRequest,
-	})
+	exists, err := dwr.tableExists(dwr.VersionTablename)
 	if err != nil {
-		inUseException := new(types.ResourceInUseException)
-		if !errors.As(err, &inUseException) {
+		return err
+	}
+
+	if !exists {
+		_, err = dwr.Client.CreateTable(context.Background(), &dynamodb.CreateTableInput{
+			TableName: aws.String(dwr.VersionTablename),
+			AttributeDefinitions: []types.AttributeDefinition{
+				{
+					AttributeName: aws.String("TableKey"),
+					AttributeType: types.ScalarAttributeTypeS,
+				},
+			},
+			KeySchema: []types.KeySchemaElement{
+				{
+					AttributeName: aws.String("TableKey"),
+					KeyType:       types.KeyTypeHash,
+				},
+			},
+			BillingMode: types.BillingModePayPerRequest,
+		})
+		if err = ignoreResourceInUseError(err); err != nil {
 			return err
 		}
-		// Table already exists, continue to ensure version data is set
 	}
 
 	err = dwr.waitTableToBeCreated(dwr.VersionTablename)
