@@ -2244,6 +2244,7 @@ func TestConfigReloader(t *testing.T) {
 				_, err := resty.R().Get(destBaseURL)
 				if err == nil {
 					ready = true
+
 					break
 				}
 
@@ -2402,6 +2403,7 @@ func TestConfigReloader(t *testing.T) {
 				_, err := resty.R().Get(destBaseURL)
 				if err == nil {
 					ready = true
+
 					break
 				}
 
@@ -2720,6 +2722,7 @@ func TestTLS(t *testing.T) {
 				var idx ispec.Index
 				if err := json.Unmarshal(destBuf, &idx); err == nil && len(idx.Manifests) > 0 {
 					destIndex = idx
+
 					break
 				}
 			}
