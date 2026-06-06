@@ -2237,13 +2237,23 @@ func TestConfigReloader(t *testing.T) {
 			}()
 
 			// wait till ready
-			for {
+			readyDeadline := time.Now().Add(30 * time.Second)
+			ready := false
+
+			for time.Now().Before(readyDeadline) {
 				_, err := resty.R().Get(destBaseURL)
 				if err == nil {
+					ready = true
 					break
 				}
 
 				time.Sleep(100 * time.Millisecond)
+			}
+
+			if !ready {
+				logData, _ := os.ReadFile(dctlr.Config.Log.Output)
+				t.Fatalf("timed out waiting for server readiness at %s; downstream log:\n%s",
+					destBaseURL, string(logData))
 			}
 
 			defer dctlr.Shutdown()
@@ -2385,13 +2395,23 @@ func TestConfigReloader(t *testing.T) {
 			}()
 
 			// wait till ready
-			for {
+			readyDeadline := time.Now().Add(30 * time.Second)
+			ready := false
+
+			for time.Now().Before(readyDeadline) {
 				_, err := resty.R().Get(destBaseURL)
 				if err == nil {
+					ready = true
 					break
 				}
 
 				time.Sleep(100 * time.Millisecond)
+			}
+
+			if !ready {
+				logData, _ := os.ReadFile(dctlr.Config.Log.Output)
+				t.Fatalf("timed out waiting for server readiness at %s; downstream log:\n%s",
+					destBaseURL, string(logData))
 			}
 
 			defer dctlr.Shutdown()
@@ -2692,15 +2712,25 @@ func TestTLS(t *testing.T) {
 		defer dcm.StopServer()
 
 		// wait till ready
-		for {
-			destBuf, _ := os.ReadFile(path.Join(destDir, testImage, "index.json"))
-			_ = json.Unmarshal(destBuf, &destIndex)
+		indexDeadline := time.Now().Add(30 * time.Second)
+
+		for time.Now().Before(indexDeadline) {
+			destBuf, err := os.ReadFile(path.Join(destDir, testImage, "index.json"))
+			if err == nil {
+				var idx ispec.Index
+				if err := json.Unmarshal(destBuf, &idx); err == nil && len(idx.Manifests) > 0 {
+					destIndex = idx
+					break
+				}
+			}
 
 			time.Sleep(500 * time.Millisecond)
+		}
 
-			if len(destIndex.Manifests) > 0 {
-				break
-			}
+		if len(destIndex.Manifests) == 0 {
+			logData, _ := os.ReadFile(dctlr.Config.Log.Output)
+			t.Fatalf("timed out waiting for synced index in %s; downstream log:\n%s",
+				path.Join(destDir, testImage, "index.json"), string(logData))
 		}
 
 		var found bool
