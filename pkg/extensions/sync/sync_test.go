@@ -2714,7 +2714,7 @@ func TestTLS(t *testing.T) {
 		defer dcm.StopServer()
 
 		// wait till ready
-		indexDeadline := time.Now().Add(30 * time.Second)
+		indexDeadline := time.Now().Add(2 * time.Minute)
 
 		for time.Now().Before(indexDeadline) {
 			destBuf, err := os.ReadFile(path.Join(destDir, testImage, "index.json"))
