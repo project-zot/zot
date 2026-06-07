@@ -165,14 +165,16 @@ func TestConfig(t *testing.T) {
 							Credentials: &eventsconf.Credentials{
 								Username: "webhook-user",
 								Password: "webhook-password",
+								Token:    "webhook-token",
 							},
 						},
 						{
 							Type:    eventsconf.NATS,
 							Address: "nats://localhost:4222",
-							Credentials: &eventsconf.Credentials{
+							Credentials: &eventsconf.Credentials{ //nolint:gosec // test fixture
 								Username: "nats-user",
 								Password: "nats-token",
+								Token:    "nats-auth-token",
 							},
 						},
 					},
@@ -186,6 +188,8 @@ func TestConfig(t *testing.T) {
 			// Verify event sink credentials passwords are sanitized
 			So(sanitizedConf.Extensions.Events.Sinks[0].Credentials.Password, ShouldEqual, "******")
 			So(sanitizedConf.Extensions.Events.Sinks[1].Credentials.Password, ShouldEqual, "******")
+			So(sanitizedConf.Extensions.Events.Sinks[0].Credentials.Token, ShouldEqual, "******")
+			So(sanitizedConf.Extensions.Events.Sinks[1].Credentials.Token, ShouldEqual, "******")
 
 			// Verify other fields are preserved
 			So(sanitizedConf.Extensions.Events.Sinks[0].Credentials.Username, ShouldEqual, "webhook-user")
@@ -196,6 +200,80 @@ func TestConfig(t *testing.T) {
 			// Verify original config is not modified
 			So(conf.Extensions.Events.Sinks[0].Credentials.Password, ShouldEqual, "webhook-password")
 			So(conf.Extensions.Events.Sinks[1].Credentials.Password, ShouldEqual, "nats-token")
+			So(conf.Extensions.Events.Sinks[0].Credentials.Token, ShouldEqual, "webhook-token")
+			So(conf.Extensions.Events.Sinks[1].Credentials.Token, ShouldEqual, "nats-auth-token")
+		})
+
+		Convey("Test Sanitize() with storage and session driver secrets", func() {
+			conf := config.New()
+			So(conf, ShouldNotBeNil)
+
+			conf.Storage.StorageDriver = map[string]any{
+				"name":      "s3",
+				"region":    "us-east-1",
+				"accesskey": "storage-access",
+				"secretkey": "storage-secret",
+				"nested": map[string]any{ //nolint:gosec // test fixture
+					"token":     "nested-token",
+					"secretKey": "nested-secret-key",
+				},
+			}
+
+			conf.Storage.CacheDriver = map[string]any{
+				"name":     "redis",
+				"password": "cache-password",
+			}
+
+			conf.Storage.SubPaths = map[string]config.StorageConfig{
+				"/team-a": {
+					StorageDriver: map[string]any{
+						"name":       "s3",
+						"access_key": "subpath-access",
+						"secret_key": "subpath-secret",
+					},
+					CacheDriver: map[string]any{ //nolint:gosec // test fixture
+						"name":  "memory",
+						"token": "subpath-cache-token",
+					},
+				},
+			}
+
+			conf.HTTP.Auth = &config.AuthConfig{
+				SessionDriver: map[string]any{
+					"name":     "redis",
+					"password": "session-password",
+					"token":    "session-token",
+				},
+			}
+
+			sanitizedConf := conf.Sanitize()
+
+			So(sanitizedConf.Storage.StorageDriver["name"], ShouldEqual, "s3")
+			So(sanitizedConf.Storage.StorageDriver["accesskey"], ShouldEqual, "******")
+			So(sanitizedConf.Storage.StorageDriver["secretkey"], ShouldEqual, "******")
+
+			nestedMap, ok := sanitizedConf.Storage.StorageDriver["nested"].(map[string]any)
+			So(ok, ShouldBeTrue)
+			So(nestedMap["token"], ShouldEqual, "******")
+			So(nestedMap["secretKey"], ShouldEqual, "******")
+
+			So(sanitizedConf.Storage.CacheDriver["password"], ShouldEqual, "******")
+			So(sanitizedConf.Storage.SubPaths["/team-a"].StorageDriver["access_key"], ShouldEqual, "******")
+			So(sanitizedConf.Storage.SubPaths["/team-a"].StorageDriver["secret_key"], ShouldEqual, "******")
+			So(sanitizedConf.Storage.SubPaths["/team-a"].CacheDriver["token"], ShouldEqual, "******")
+
+			So(sanitizedConf.HTTP.Auth.SessionDriver["name"], ShouldEqual, "redis")
+			So(sanitizedConf.HTTP.Auth.SessionDriver["password"], ShouldEqual, "******")
+			So(sanitizedConf.HTTP.Auth.SessionDriver["token"], ShouldEqual, "******")
+
+			So(conf.Storage.StorageDriver["accesskey"], ShouldEqual, "storage-access")
+			So(conf.Storage.StorageDriver["secretkey"], ShouldEqual, "storage-secret")
+			So(conf.Storage.CacheDriver["password"], ShouldEqual, "cache-password")
+			So(conf.Storage.SubPaths["/team-a"].StorageDriver["access_key"], ShouldEqual, "subpath-access")
+			So(conf.Storage.SubPaths["/team-a"].StorageDriver["secret_key"], ShouldEqual, "subpath-secret")
+			So(conf.Storage.SubPaths["/team-a"].CacheDriver["token"], ShouldEqual, "subpath-cache-token")
+			So(conf.HTTP.Auth.SessionDriver["password"], ShouldEqual, "session-password")
+			So(conf.HTTP.Auth.SessionDriver["token"], ShouldEqual, "session-token")
 		})
 
 		Convey("Test Sanitize() with Event sink credentials including nil credentials", func() {
@@ -382,8 +460,8 @@ func TestConfig(t *testing.T) {
 			So(sanitizedConf.HTTP.Auth.LDAP.BindPassword(), ShouldEqual, "")
 			// OpenID empty secret is always sanitized
 			So(sanitizedConf.HTTP.Auth.OpenID.Providers["empty"].ClientSecret, ShouldEqual, "******")
-			// Event sink empty password is always sanitized
-			So(sanitizedConf.Extensions.Events.Sinks[0].Credentials.Password, ShouldEqual, "******")
+			// Event sink empty password remains empty when no credential value is present
+			So(sanitizedConf.Extensions.Events.Sinks[0].Credentials.Password, ShouldEqual, "")
 		})
 
 		Convey("Test Sanitize() with nil config", func() {

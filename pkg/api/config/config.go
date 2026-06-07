@@ -5,6 +5,7 @@ import (
 	"maps"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -819,6 +820,58 @@ func (c *Config) isTagsRetentionEnabled(tagRetentionPolicy KeepTagsPolicy) bool 
 	return false
 }
 
+func isSensitiveConfigMapKey(key string) bool {
+	normalized := strings.ToLower(strings.ReplaceAll(key, "_", ""))
+
+	switch normalized {
+	case "accesskey", "secretkey", "password", "secret", "token",
+		"clientsecret", "sessionhashkey", "sessionencryptkey", "sentinelpassword":
+		return true
+	default:
+		return false
+	}
+}
+
+func sanitizeStringMapValues(values map[string]string) {
+	for key := range values {
+		if isSensitiveConfigMapKey(key) {
+			values[key] = "******"
+		}
+	}
+}
+
+func sanitizeMapValues(values map[string]any) {
+	for key, value := range values {
+		if isSensitiveConfigMapKey(key) {
+			values[key] = "******"
+
+			continue
+		}
+
+		switch typedVal := value.(type) {
+		case map[string]any:
+			sanitizeMapValues(typedVal)
+		case map[string]string:
+			sanitizeStringMapValues(typedVal)
+		case []any:
+			sanitizeSliceValues(typedVal)
+		}
+	}
+}
+
+func sanitizeSliceValues(values []any) {
+	for _, value := range values {
+		switch typedVal := value.(type) {
+		case map[string]any:
+			sanitizeMapValues(typedVal)
+		case map[string]string:
+			sanitizeStringMapValues(typedVal)
+		case []any:
+			sanitizeSliceValues(typedVal)
+		}
+	}
+}
+
 // Sanitize makes a sanitized copy of the config removing any secrets.
 func (c *Config) Sanitize() *Config {
 	if c == nil {
@@ -834,8 +887,32 @@ func (c *Config) Sanitize() *Config {
 		panic(err)
 	}
 
+	if sanitizedConfig.Storage.StorageDriver != nil {
+		sanitizeMapValues(sanitizedConfig.Storage.StorageDriver)
+	}
+
+	if sanitizedConfig.Storage.CacheDriver != nil {
+		sanitizeMapValues(sanitizedConfig.Storage.CacheDriver)
+	}
+
+	for subPath, subPathCfg := range sanitizedConfig.Storage.SubPaths {
+		if subPathCfg.StorageDriver != nil {
+			sanitizeMapValues(subPathCfg.StorageDriver)
+		}
+
+		if subPathCfg.CacheDriver != nil {
+			sanitizeMapValues(subPathCfg.CacheDriver)
+		}
+
+		sanitizedConfig.Storage.SubPaths[subPath] = subPathCfg
+	}
+
 	// Sanitize HTTP config
 	if c.HTTP.Auth != nil {
+		if sanitizedConfig.HTTP.Auth.SessionDriver != nil {
+			sanitizeMapValues(sanitizedConfig.HTTP.Auth.SessionDriver)
+		}
+
 		// Sanitize LDAP bind password
 		if c.HTTP.Auth.LDAP != nil && c.HTTP.Auth.LDAP.bindPassword != "" {
 			sanitizedConfig.HTTP.Auth.LDAP = &LDAPConfig{}
@@ -880,7 +957,13 @@ func (c *Config) Sanitize() *Config {
 				panic(err)
 			}
 
-			sanitizedConfig.Extensions.Events.Sinks[i].Credentials.Password = "******"
+			if sanitizedConfig.Extensions.Events.Sinks[i].Credentials.Password != "" {
+				sanitizedConfig.Extensions.Events.Sinks[i].Credentials.Password = "******"
+			}
+
+			if sanitizedConfig.Extensions.Events.Sinks[i].Credentials.Token != "" {
+				sanitizedConfig.Extensions.Events.Sinks[i].Credentials.Token = "******"
+			}
 		}
 	}
 
