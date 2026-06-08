@@ -186,7 +186,7 @@ inconsistencies between the metaDB and storage. To enable it:
     "storage": {
         "rootDirectory": "/var/lib/registry",
         "fastRestart": true
-    },
+    }
 ```
 
 You can also force a full reparse with the `--force-reparse` flag to `zot serve`.
