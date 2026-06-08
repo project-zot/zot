@@ -8,12 +8,19 @@ import "zotregistry.dev/zot/v2/pkg/buildinfo"
 // release tag) it is "dev-<commit>". Builds without either ldflag (typically
 // `go run` and `go test`) return "" which always forces a full parse.
 func CurrentWriterVersion() string {
-	if buildinfo.ReleaseTag != "" {
-		return buildinfo.ReleaseTag
+	return writerVersion(buildinfo.ReleaseTag, buildinfo.Commit)
+}
+
+// writerVersion is the core of CurrentWriterVersion, split out so the
+// release-tag/commit resolution can be tested directly without mutating the
+// process-global buildinfo values.
+func writerVersion(releaseTag, commit string) string {
+	if releaseTag != "" {
+		return releaseTag
 	}
 
-	if buildinfo.Commit != "" {
-		return "dev-" + buildinfo.Commit
+	if commit != "" {
+		return "dev-" + commit
 	}
 
 	return ""

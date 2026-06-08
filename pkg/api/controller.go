@@ -28,6 +28,7 @@ import (
 	log "zotregistry.dev/zot/v2/pkg/log"
 	meta "zotregistry.dev/zot/v2/pkg/meta"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
+	version "zotregistry.dev/zot/v2/pkg/meta/version"
 	scheduler "zotregistry.dev/zot/v2/pkg/scheduler"
 	storage "zotregistry.dev/zot/v2/pkg/storage"
 	gc "zotregistry.dev/zot/v2/pkg/storage/gc"
@@ -442,7 +443,8 @@ func (c *Controller) InitMetaDB() error {
 			return err
 		}
 
-		err = meta.MaybeParseStorage(driver, c.StoreController, c.Config.IsFastRestartEnabled(), c.Log) //nolint: contextcheck
+		err = meta.MaybeParseStorage(driver, c.StoreController, c.Config.IsFastRestartEnabled(),
+			version.CurrentWriterVersion(), c.Log)
 		if err != nil {
 			return err
 		}
