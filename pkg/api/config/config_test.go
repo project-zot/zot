@@ -605,6 +605,24 @@ func TestConfig(t *testing.T) {
 		So(conf.IsRetentionEnabled(), ShouldBeFalse)
 	})
 
+	Convey("Test IsFastRestartEnabled()", t, func() {
+		var nilConf *config.Config = nil
+
+		So(nilConf.IsFastRestartEnabled(), ShouldBeFalse)
+
+		// Default config leaves FastRestart unset
+		conf := config.New()
+		So(conf.IsFastRestartEnabled(), ShouldBeFalse)
+
+		disabled := false
+		conf.Storage.FastRestart = &disabled
+		So(conf.IsFastRestartEnabled(), ShouldBeFalse)
+
+		enabled := true
+		conf.Storage.FastRestart = &enabled
+		So(conf.IsFastRestartEnabled(), ShouldBeTrue)
+	})
+
 	Convey("Test IsEventRecorderEnabled()", t, func() {
 		conf := config.New()
 		extensionsConfig := conf.CopyExtensionsConfig()
