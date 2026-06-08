@@ -173,10 +173,12 @@ their own repository paths, dedupe and garbage collection settings with:
 On large registries (for example a 1TB+ S3 backend with many repos), the
 startup walk that reconciles metaDB with the current storage can dominate
 restart time. Setting `fastRestart` lets zot skip that walk when the same
-binary is restarted. After a successful walk, zot stamps metaDB with the
-running binary's identity so that the next startup, if the stamp matches,
-may skip the walk. Any binary upgrade invalidates the stamp and forces a
-full reparse.
+binary is restarted with the same storage config. After a successful walk,
+zot stamps metaDB with the running binary's identity plus a fingerprint of
+the storage config, so that the next startup, if the stamp matches, may skip
+the walk. Any binary upgrade or storage configuration changes (for example,
+`dedupe`/`rootDirectory`/`subPaths`) invalidates the stamp and forces a full
+reparse.
 
 Fast restart is off by default. The trade-off when enabling it is that
 out-of-band changes to Zot's storage will not be detected and may cause

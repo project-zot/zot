@@ -46,6 +46,20 @@ func TestParseStatsComplete(t *testing.T) {
 	})
 }
 
+func TestFastRestartStamp(t *testing.T) {
+	Convey("FastRestartStamp joins the binary version and storage fingerprint", t, func() {
+		So(FastRestartStamp("v2.3.4+abc123", "deadbeef"), ShouldEqual, "v2.3.4+abc123|deadbeef")
+	})
+
+	Convey("FastRestartStamp returns empty when the binary version is empty", t, func() {
+		So(FastRestartStamp("", "deadbeef"), ShouldEqual, "")
+	})
+
+	Convey("FastRestartStamp returns empty when the storage fingerprint is empty", t, func() {
+		So(FastRestartStamp("v2.3.4+abc123", ""), ShouldEqual, "")
+	})
+}
+
 func TestParseStorageStats(t *testing.T) {
 	logger := log.NewTestLogger()
 

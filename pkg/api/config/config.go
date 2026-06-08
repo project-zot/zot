@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"maps"
 	"os"
@@ -38,9 +40,11 @@ type StorageConfig struct {
 	CacheDriver   map[string]any `mapstructure:",omitempty"`
 
 	// FastRestart allows the controller to skip the startup storage walk when
-	// the same version of Zot is used. This prevents re-reading all metadata
-	// from storage on every restart, at the cost of being able to detect
-	// out-of-band changes made to the storage. Defaults to false.
+	// neither the Zot binary nor the storage config has changed since the last
+	// run. This prevents re-reading all metadata from storage on every restart,
+	// at the cost of being able to detect out-of-band changes made to the
+	// storage. Any change to the storage config forces a full reparse. Defaults
+	// to false.
 	FastRestart *bool `mapstructure:",omitempty"`
 
 	// GCMaxSchedulerDelay is the maximum random delay for GC task scheduling
@@ -1292,6 +1296,44 @@ func (c *Config) IsFastRestartEnabled() bool {
 	}
 
 	return *c.Storage.FastRestart
+}
+
+// StorageFingerprint returns a stable SHA-256 of the storage config that influences the
+// storage->metaDB walk. It is combined with this binary's identity (see meta.FastRestartStamp)
+// into the fast-restart stamp: when it changes, the metaDB may no longer match storage and a full
+// reparse is forced. FastRestart and the runtime-only GCMaxSchedulerDelay are excluded so
+// toggling them never spuriously invalidates the stamp.
+func (c *Config) StorageFingerprint() string {
+	if c == nil {
+		return ""
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	var norm GlobalStorageConfig
+	if err := DeepCopy(c.Storage, &norm); err != nil {
+		return ""
+	}
+
+	norm.FastRestart = nil
+	norm.GCMaxSchedulerDelay = 0
+
+	for name, subPath := range norm.SubPaths {
+		subPath.FastRestart = nil
+		subPath.GCMaxSchedulerDelay = 0
+		norm.SubPaths[name] = subPath
+	}
+
+	// encoding/json sorts map keys, so the serialization is deterministic across restarts.
+	blob, err := json.Marshal(norm)
+	if err != nil {
+		return ""
+	}
+
+	sum := sha256.Sum256(blob)
+
+	return hex.EncodeToString(sum[:])
 }
 
 // GetCompat returns a copy of the compatibility config.

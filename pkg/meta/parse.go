@@ -118,6 +118,16 @@ func parseStorage(metaDB mTypes.MetaDB, storeController stypes.StoreController, 
 	return stats, nil
 }
 
+// FastRestartStamp combines this binary's identity (binaryVersion, from version.CurrentWriterVersion)
+// with a fingerprint of the storage config into the stamp used to gate a fast restart.
+func FastRestartStamp(binaryVersion, storageFingerprint string) string {
+	if binaryVersion == "" || storageFingerprint == "" {
+		return ""
+	}
+
+	return binaryVersion + "|" + storageFingerprint
+}
+
 // MaybeParseStorage conditionally runs ParseStorage based on a writer-version stamp stored in metaDB.
 // When fastRestart is true and the metaDB carries a writer-version stamp matching this binary, the full
 // walk is skipped under the assumption that metaDB is consistent with storage from the previous run.
