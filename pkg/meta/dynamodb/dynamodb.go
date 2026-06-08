@@ -331,7 +331,7 @@ func (dwr *DynamoDB) setProtoRepoMeta(repo string, repoMeta *proto_go.RepoMeta) 
 		return err
 	}
 
-	_, err = dwr.Client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
+	_, err = dwr.Client.UpdateItem(context.Background(), &dynamodb.UpdateItemInput{
 		ExpressionAttributeNames: map[string]string{
 			"#RM": "RepoMeta",
 		},
@@ -625,7 +625,7 @@ func (dwr *DynamoDB) setRepoBlobsInfo(repo string, repoBlobs *proto_go.RepoBlobs
 		return err
 	}
 
-	_, err = dwr.Client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
+	_, err = dwr.Client.UpdateItem(context.Background(), &dynamodb.UpdateItemInput{
 		ExpressionAttributeNames: map[string]string{
 			"#RBI": "RepoBlobsInfo",
 			"#RLU": "RepoLastUpdated",
@@ -1518,7 +1518,7 @@ func (dwr *DynamoDB) RemoveRepoReference(repo, reference string, manifestDigest 
 ) error {
 	ctx := context.Background()
 
-	protoRepoMeta, err := dwr.getProtoRepoMeta(context.Background(), repo)
+	protoRepoMeta, err := dwr.getProtoRepoMeta(ctx, repo)
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoMetaNotFound) {
 			return nil
@@ -1527,7 +1527,7 @@ func (dwr *DynamoDB) RemoveRepoReference(repo, reference string, manifestDigest 
 		return err
 	}
 
-	protoImageMeta, err := dwr.GetProtoImageMeta(context.TODO(), manifestDigest)
+	protoImageMeta, err := dwr.GetProtoImageMeta(ctx, manifestDigest)
 	if err != nil {
 		if errors.Is(err, zerr.ErrImageMetaNotFound) {
 			return nil
@@ -2301,7 +2301,7 @@ func (dwr *DynamoDB) ResetDB() error {
 		return err
 	}
 
-	_, err = dwr.Client.DeleteItem(context.TODO(), &dynamodb.DeleteItemInput{
+	_, err = dwr.Client.DeleteItem(context.Background(), &dynamodb.DeleteItemInput{
 		TableName: aws.String(dwr.VersionTablename),
 		Key: map[string]types.AttributeValue{
 			"TableKey": &types.AttributeValueMemberS{Value: mTypes.WriterVersionKey},
@@ -2459,7 +2459,7 @@ func (dwr *DynamoDB) createVersionTable() error {
 		return err
 	}
 
-	_, err = dwr.Client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
+	_, err = dwr.Client.UpdateItem(context.Background(), &dynamodb.UpdateItemInput{
 		ExpressionAttributeNames: map[string]string{
 			"#V": "Version",
 		},
@@ -2489,7 +2489,7 @@ func (dwr *DynamoDB) createVersionTable() error {
 }
 
 func (dwr *DynamoDB) getDBVersion() (string, error) {
-	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
+	resp, err := dwr.Client.GetItem(context.Background(), &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.VersionTablename),
 		Key: map[string]types.AttributeValue{
 			"TableKey": &types.AttributeValueMemberS{Value: version.DBVersionKey},
