@@ -24,14 +24,36 @@ const (
 	NotationType = "notation"
 )
 
+// parseStats tracks per-repo outcomes of a storage walk.
+type parseStats struct {
+	failedRepos  int // skipped on a StatIndex or ParseRepo error
+	partialRepos int // parsed, but a manifest blob was missing
+}
+
+// complete reports whether the walk fully populated the metaDB.
+func (s parseStats) complete() bool {
+	return s.failedRepos == 0 && s.partialRepos == 0
+}
+
 // ParseStorage will sync all repos found in the rootdirectory of the oci layout that zot was deployed on with the
 // ParseStorage database.
 func ParseStorage(metaDB mTypes.MetaDB, storeController stypes.StoreController, log log.Logger) error {
+	_, err := parseStorage(metaDB, storeController, log)
+
+	return err
+}
+
+// parseStorage runs the storage walk, returning per-repo outcomes in parseStats.
+// Per-repo failures are logged and skipped. Only enumeration or deletion errors
+// abort the walk and return a non-nil error.
+func parseStorage(metaDB mTypes.MetaDB, storeController stypes.StoreController, log log.Logger) (parseStats, error) {
 	log.Info().Str("component", "metadb").Msg("parsing storage and initializing")
+
+	var stats parseStats
 
 	allStorageRepos, err := getAllRepos(storeController, log)
 	if err != nil {
-		return err
+		return parseStats{}, err
 	}
 
 	allMetaDBRepos, err := metaDB.GetAllRepoNames()
@@ -40,7 +62,7 @@ func ParseStorage(metaDB mTypes.MetaDB, storeController stypes.StoreController, 
 		log.Error().Err(err).Str("component", "metadb").Str("rootDir", rootDir).
 			Msg("failed to get all repo names present under rootDir")
 
-		return err
+		return parseStats{}, err
 	}
 
 	for _, repo := range getReposToBeDeleted(allStorageRepos, allMetaDBRepos) {
@@ -49,7 +71,7 @@ func ParseStorage(metaDB mTypes.MetaDB, storeController stypes.StoreController, 
 			log.Error().Err(err).Str("rootDir", storeController.GetImageStore(repo).RootDir()).Str("component", "metadb").
 				Str("repo", repo).Msg("failed to delete repo meta")
 
-			return err
+			return parseStats{}, err
 		}
 	}
 
@@ -64,6 +86,8 @@ func ParseStorage(metaDB mTypes.MetaDB, storeController stypes.StoreController, 
 			log.Error().Err(err).Str("rootDir", imgStore.RootDir()).
 				Str("repo", repo).Msg("failed to sync repo")
 
+			stats.failedRepos++
+
 			continue
 		}
 
@@ -75,17 +99,23 @@ func ParseStorage(metaDB mTypes.MetaDB, storeController stypes.StoreController, 
 			continue
 		}
 
-		err = ParseRepo(repo, metaDB, storeController, log)
+		partial, err := parseRepo(repo, metaDB, storeController, log)
 		if err != nil {
 			log.Error().Err(err).Str("repo", repo).Str("rootDir", imgStore.RootDir()).Msg("failed to sync repo")
 
+			stats.failedRepos++
+
 			continue
+		}
+
+		if partial {
+			stats.partialRepos++
 		}
 	}
 
 	log.Info().Str("component", "metadb").Msg("successfully initialized")
 
-	return nil
+	return stats, nil
 }
 
 // MaybeParseStorage conditionally runs ParseStorage based on a writer-version stamp stored in metaDB.
@@ -120,12 +150,23 @@ func MaybeParseStorage(metaDB mTypes.MetaDB, storeController stypes.StoreControl
 		}
 	}
 
-	if err := ParseStorage(metaDB, storeController, log); err != nil {
+	stats, err := parseStorage(metaDB, storeController, log)
+	if err != nil {
 		return err
 	}
 
 	if writerVersion == "" {
 		// go run/go test builds have no stamp, so always reparse.
+		return nil
+	}
+
+	// Leave the stamp untouched on an incomplete walk so the next restart
+	// reparses and can recover.
+	if !stats.complete() {
+		log.Warn().Str("component", "metadb").
+			Int("failedRepos", stats.failedRepos).Int("partialRepos", stats.partialRepos).
+			Msg("storage parse incomplete; skipping writer-version stamp so the next restart reparses")
+
 		return nil
 	}
 
@@ -158,6 +199,16 @@ func getReposToBeDeleted(allStorageRepos []string, allMetaDBRepos []string) []st
 
 // ParseRepo reads the contents of a repo and syncs all images and signatures found.
 func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController stypes.StoreController, log log.Logger) error {
+	_, err := parseRepo(repo, metaDB, storeController, log)
+
+	return err
+}
+
+// parseRepo syncs all images and signatures in a repo. It returns partial=true
+// when a manifest was skipped because its blob is missing, so the caller knows
+// the metaDB is incomplete even though no error was returned.
+func parseRepo(repo string, metaDB mTypes.MetaDB, storeController stypes.StoreController, log log.Logger,
+) (bool, error) {
 	imageStore := storeController.GetImageStore(repo)
 
 	var lockLatency time.Time
@@ -169,7 +220,7 @@ func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController stypes.StoreCo
 	if err != nil {
 		log.Error().Err(err).Str("repository", repo).Msg("failed to read index.json for repo")
 
-		return err
+		return false, err
 	}
 
 	var indexContent ispec.Index
@@ -178,7 +229,7 @@ func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController stypes.StoreCo
 	if err != nil {
 		log.Error().Err(err).Str("repository", repo).Msg("failed to unmarshal index.json for repo")
 
-		return err
+		return false, err
 	}
 
 	// Collect tags that exist in storage to preserve them
@@ -195,8 +246,10 @@ func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController stypes.StoreCo
 	if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
 		log.Error().Err(err).Str("repository", repo).Msg("failed to reset tag field in RepoMetadata for repo")
 
-		return err
+		return false, err
 	}
+
+	partial := false
 
 	for _, manifest := range indexContent.Manifests {
 		tag := manifest.Annotations[ispec.AnnotationRefName]
@@ -213,13 +266,15 @@ func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController stypes.StoreCo
 				log.Warn().Err(err).Str("repository", repo).Str("digest", manifest.Digest.String()).
 					Msg("skipping missing manifest blob, continuing repo parse")
 
+				partial = true
+
 				continue
 			}
 
 			log.Error().Err(err).Str("repository", repo).Str("digest", manifest.Digest.String()).
 				Msg("failed to get blob for image")
 
-			return err
+			return false, err
 		}
 
 		reference := tag
@@ -234,11 +289,11 @@ func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController stypes.StoreCo
 			log.Error().Err(err).Str("repository", repo).Str("tag", tag).
 				Msg("failed to set metadata for image")
 
-			return err
+			return false, err
 		}
 	}
 
-	return nil
+	return partial, nil
 }
 
 func getAllRepos(storeController stypes.StoreController, log log.Logger) ([]string, error) {

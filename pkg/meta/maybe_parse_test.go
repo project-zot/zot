@@ -3,9 +3,13 @@ package meta_test
 import (
 	"errors"
 	"testing"
+	"time"
 
+	godigest "github.com/opencontainers/go-digest"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/meta"
 	"zotregistry.dev/zot/v2/pkg/storage"
@@ -145,5 +149,59 @@ func TestMaybeParseStorageGate(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(parsed, ShouldBeTrue)
 		So(stampInvoked, ShouldBeFalse)
+	})
+
+	Convey("a repo that fails to parse is not stamped", t, func() {
+		// StatIndex fails for the only repo, so it is skipped (failedRepos > 0).
+		store := storage.StoreController{DefaultStore: mocks.MockedImageStore{
+			GetRepositoriesFn: func() ([]string, error) { return []string{repo}, nil },
+			StatIndexFn: func(string) (bool, int64, time.Time, error) {
+				return false, 0, time.Time{}, errMetaTestInjected
+			},
+		}}
+
+		mock := mocks.MetaDBMock{
+			GetAllRepoNamesFn: func() ([]string, error) { return nil, nil },
+			SetWriterVersionFn: func(string) error {
+				t.Fatal("must not stamp when a repo failed to parse")
+
+				return nil
+			},
+		}
+
+		err := meta.MaybeParseStorage(mock, store, false, "v1", logger)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("a repo with a missing manifest blob is not stamped", t, func() {
+		// The repo parses, but its only manifest blob is missing, so the repo is
+		// only partially parsed (partialRepos > 0).
+		store := storage.StoreController{DefaultStore: mocks.MockedImageStore{
+			GetRepositoriesFn: func() ([]string, error) { return []string{repo}, nil },
+			GetIndexContentFn: func(string) ([]byte, error) {
+				return getIndexBlob(ispec.Index{
+					Manifests: []ispec.Descriptor{{
+						MediaType:   ispec.MediaTypeImageManifest,
+						Digest:      godigest.FromString("missing"),
+						Annotations: map[string]string{ispec.AnnotationRefName: "tag1"},
+					}},
+				}), nil
+			},
+			GetBlobContentFn: func(string, godigest.Digest) ([]byte, error) {
+				return nil, zerr.ErrBlobNotFound
+			},
+		}}
+
+		mock := mocks.MetaDBMock{
+			GetAllRepoNamesFn: func() ([]string, error) { return nil, nil },
+			SetWriterVersionFn: func(string) error {
+				t.Fatal("must not stamp when a repo was only partially parsed")
+
+				return nil
+			},
+		}
+
+		err := meta.MaybeParseStorage(mock, store, false, "v1", logger)
+		So(err, ShouldBeNil)
 	})
 }
