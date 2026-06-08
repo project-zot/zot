@@ -13,6 +13,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -730,6 +731,84 @@ func TestSyncLegacyCosignTagsSyncReferrers(t *testing.T) {
 		err = service.SyncReferrers(ctx, "repo", digest, nil)
 		// We don't care if it fails, only that getTags was called.
 		So(getTagsCallCount, ShouldEqual, 1)
+	})
+}
+
+func TestRemoteRegistryCatalogAuth(t *testing.T) {
+	Convey("Remote registry primes auth before catalog listing", t, func() {
+		const (
+			authUser = "sync-user"
+			authPass = "sync-pass"
+		)
+
+		var sawPing atomic.Bool
+		var sawZotSyncUserAgent atomic.Bool
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hasAuth := func() bool {
+				user, pass, ok := r.BasicAuth()
+
+				return ok && user == authUser && pass == authPass
+			}
+
+			switch r.URL.Path {
+			case "/v2/":
+				sawPing.Store(true)
+				sawZotSyncUserAgent.Store(strings.HasPrefix(r.Header.Get("User-Agent"), zotSyncUserAgent))
+				if !hasAuth() {
+					w.Header().Set("WWW-Authenticate", `Basic realm="zot"`)
+					w.WriteHeader(http.StatusUnauthorized)
+
+					return
+				}
+
+				w.WriteHeader(http.StatusOK)
+			case "/v2/_catalog":
+				w.Header().Set("Content-Type", "application/json")
+
+				if hasAuth() {
+					_, _ = w.Write([]byte(`{"repositories":["library/alpine","chat/app"]}`))
+
+					return
+				}
+
+				_, _ = w.Write([]byte(`{"repositories":["library/alpine"]}`))
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		defer server.Close()
+
+		host := strings.TrimPrefix(server.URL, "http://")
+		credentials := syncconf.CredentialsFile{
+			host: syncconf.Credentials{
+				Username: authUser,
+				Password: authPass,
+			},
+		}
+
+		client, hosts, err := newClient(syncconf.RegistryConfig{URLs: []string{server.URL}}, credentials, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		registry := NewRemoteRegistry(client, hosts, log.NewTestLogger())
+
+		repositories, err := registry.GetRepositories(context.Background())
+		So(err, ShouldBeNil)
+		So(sawPing.Load(), ShouldBeTrue)
+		So(sawZotSyncUserAgent.Load(), ShouldBeTrue)
+		So(repositories, ShouldResemble, []string{"library/alpine", "chat/app"})
+
+		sawPing.Store(false)
+		sawZotSyncUserAgent.Store(false)
+		client, hosts, err = newClient(syncconf.RegistryConfig{URLs: []string{server.URL}}, nil, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		registry = NewRemoteRegistry(client, hosts, log.NewTestLogger())
+
+		repositories, err = registry.GetRepositories(context.Background())
+		So(err, ShouldBeNil)
+		So(sawPing.Load(), ShouldBeFalse)
+		So(sawZotSyncUserAgent.Load(), ShouldBeFalse)
+		So(repositories, ShouldResemble, []string{"library/alpine"})
 	})
 }
 

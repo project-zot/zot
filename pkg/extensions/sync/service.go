@@ -34,6 +34,7 @@ import (
 )
 
 const defaultExpireMinutes = 30 * time.Minute
+const zotSyncUserAgent = "zot-sync"
 
 type BaseService struct {
 	config           syncconf.RegistryConfig
@@ -919,6 +920,7 @@ func newClient(opts syncconf.RegistryConfig, credentials syncconf.CredentialsFil
 	regOpts = append(regOpts, reg.WithHTTPClient(httpClient))
 
 	client := regclient.New(
+		regclient.WithUserAgent(zotSyncUserAgent),
 		regclient.WithDockerCerts(),
 		regclient.WithDockerCreds(),
 		regclient.WithRegOpts(regOpts...),

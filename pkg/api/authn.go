@@ -422,6 +422,7 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 			// "UpstreamClient(...)". Direct Docker CLI requests use "Docker-Client/...".
 			ua := request.Header.Get("User-Agent")
 			isDockerClient := strings.Contains(ua, "Docker-Client") || strings.HasPrefix(ua, "docker/")
+			isZotSyncClient := strings.HasPrefix(ua, "zot-sync")
 
 			// Get auth config safely
 			authConfig := ctlr.Config.CopyAuthConfig()
@@ -473,12 +474,14 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 
 			// If no credentials provided - check for anonymous / mgmt requests
 			case allowAnonymous || isMgmtRequested:
-				// Docker workaround: force 401 on /v2/ when anonymous policies coexist with
-				// authenticated-only policies. Otherwise Docker treats 200 on /v2/ as "no auth"
-				// and will not send stored credentials for protected repositories.
+				// Force 401 on /v2/ for clients that need an auth challenge before their first
+				// catalog request when anonymous policies coexist with authenticated-only
+				// policies. Otherwise these clients treat 200 on /v2/ as "no auth" and will not
+				// send stored credentials for protected repositories.
 				// See: https://github.com/opencontainers/wg-auth/blob/main/docs/implementations/moby.md
 				hasMixedPolicy := accessControlConfig.HasMixedAnonymousAndAuthenticatedPolicies()
-				if isDockerClient && isV2Requested && hasMixedPolicy && authConfig.CanAuthenticateWithBasicCredentials() {
+				if (isDockerClient || isZotSyncClient) && isV2Requested && hasMixedPolicy &&
+					authConfig.CanAuthenticateWithBasicCredentials() {
 					authenticated = false
 				} else {
 					authenticated = true
