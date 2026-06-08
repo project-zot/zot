@@ -2229,7 +2229,7 @@ func (dwr *DynamoDB) PatchDB() error {
 }
 
 func (dwr *DynamoDB) GetWriterVersion() (string, error) {
-	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
+	resp, err := dwr.Client.GetItem(context.Background(), &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.VersionTablename),
 		Key: map[string]types.AttributeValue{
 			"TableKey": &types.AttributeValueMemberS{Value: mTypes.WriterVersionKey},
@@ -2258,7 +2258,7 @@ func (dwr *DynamoDB) SetWriterVersion(writerVersion string) error {
 		return err
 	}
 
-	_, err = dwr.Client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
+	_, err = dwr.Client.UpdateItem(context.Background(), &dynamodb.UpdateItemInput{
 		ExpressionAttributeNames: map[string]string{
 			"#V": "Version",
 		},
