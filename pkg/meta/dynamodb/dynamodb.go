@@ -2245,6 +2245,9 @@ func (dwr *DynamoDB) GetWriterVersion() (string, error) {
 
 	var writerVersion string
 
+	// In aws-sdk-go-v2, a missing attribute arrives as a nil AttributeValue,
+	// which Unmarshal treats as null, setting the attribute to its zero
+	// value ("") and returning nil rather than an error
 	if err := attributevalue.Unmarshal(resp.Item["Version"], &writerVersion); err != nil {
 		return "", err
 	}
