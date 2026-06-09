@@ -1774,10 +1774,10 @@ func DumpKeys(t *testing.T, client goredis.UniversalClient) {
 	}
 }
 
-func TestRedisWriterVersion(t *testing.T) {
+func TestRedisFastRestartStamp(t *testing.T) {
 	miniRedis := miniredis.RunT(t)
 
-	Convey("WriterVersion", t, func() {
+	Convey("FastRestartStamp", t, func() {
 		log := log.NewTestLogger()
 		So(log, ShouldNotBeNil)
 
@@ -1794,33 +1794,33 @@ func TestRedisWriterVersion(t *testing.T) {
 		So(metaDB, ShouldNotBeNil)
 
 		Convey("returns empty before set", func() {
-			v, err := metaDB.GetWriterVersion()
+			v, err := metaDB.GetFastRestartStamp()
 			So(err, ShouldBeNil)
 			So(v, ShouldEqual, "")
 		})
 
 		Convey("round-trips a value", func() {
-			So(metaDB.SetWriterVersion("v2.3.4"), ShouldBeNil)
+			So(metaDB.SetFastRestartStamp("v2.3.4"), ShouldBeNil)
 
-			v, err := metaDB.GetWriterVersion()
+			v, err := metaDB.GetFastRestartStamp()
 			So(err, ShouldBeNil)
 			So(v, ShouldEqual, "v2.3.4")
 		})
 
 		Convey("overwrites a previous value", func() {
-			So(metaDB.SetWriterVersion("v1"), ShouldBeNil)
-			So(metaDB.SetWriterVersion("v2"), ShouldBeNil)
+			So(metaDB.SetFastRestartStamp("v1"), ShouldBeNil)
+			So(metaDB.SetFastRestartStamp("v2"), ShouldBeNil)
 
-			v, err := metaDB.GetWriterVersion()
+			v, err := metaDB.GetFastRestartStamp()
 			So(err, ShouldBeNil)
 			So(v, ShouldEqual, "v2")
 		})
 
 		Convey("ResetDB clears the stamp", func() {
-			So(metaDB.SetWriterVersion("v1"), ShouldBeNil)
+			So(metaDB.SetFastRestartStamp("v1"), ShouldBeNil)
 			So(metaDB.ResetDB(), ShouldBeNil)
 
-			v, err := metaDB.GetWriterVersion()
+			v, err := metaDB.GetFastRestartStamp()
 			So(err, ShouldBeNil)
 			So(v, ShouldEqual, "")
 		})

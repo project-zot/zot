@@ -118,7 +118,7 @@ func parseStorage(metaDB mTypes.MetaDB, storeController stypes.StoreController, 
 	return stats, nil
 }
 
-// FastRestartStamp combines this binary's identity (binaryVersion, from version.CurrentWriterVersion)
+// FastRestartStamp combines this binary's identity (binaryVersion, from version.CurrentBinaryVersion)
 // with a fingerprint of the storage config into the stamp used to gate a fast restart.
 func FastRestartStamp(binaryVersion, storageFingerprint string) string {
 	if binaryVersion == "" || storageFingerprint == "" {
@@ -128,34 +128,35 @@ func FastRestartStamp(binaryVersion, storageFingerprint string) string {
 	return binaryVersion + "|" + storageFingerprint
 }
 
-// MaybeParseStorage conditionally runs ParseStorage based on a writer-version stamp stored in metaDB.
-// When fastRestart is true and the metaDB carries a writer-version stamp matching this binary, the full
-// walk is skipped under the assumption that metaDB is consistent with storage from the previous run.
+// MaybeParseStorage conditionally runs ParseStorage based on a fast-restart stamp stored in metaDB.
+// When fastRestart is true and the metaDB carries a stamp matching this binary and storage config,
+// the full walk is skipped under the assumption that metaDB is consistent with storage from the
+// previous run.
 func MaybeParseStorage(metaDB mTypes.MetaDB, storeController stypes.StoreController,
-	fastRestart bool, writerVersion string, log log.Logger,
+	fastRestart bool, fastRestartStamp string, log log.Logger,
 ) error {
 	if fastRestart {
-		if writerVersion == "" {
+		if fastRestartStamp == "" {
 			log.Info().Str("component", "metadb").
-				Msg("fast-restart enabled but binary has no release/commit stamp; falling back to full parse")
+				Msg("fast-restart enabled but no stamp is available; falling back to full parse")
 		} else {
-			storedWriter, err := metaDB.GetWriterVersion()
+			storedStamp, err := metaDB.GetFastRestartStamp()
 			switch {
 			case err != nil:
 				log.Warn().Err(err).Str("component", "metadb").
-					Msg("failed to read writer version stamp, falling back to full parse")
-			case storedWriter == writerVersion:
-				log.Info().Str("component", "metadb").Str("writerVersion", storedWriter).
-					Msg("metaDB writer version matches binary, skipping full storage parse")
+					Msg("failed to read fast-restart stamp, falling back to full parse")
+			case storedStamp == fastRestartStamp:
+				log.Info().Str("component", "metadb").Str("fastRestartStamp", storedStamp).
+					Msg("metaDB fast-restart stamp matches, skipping full storage parse")
 
 				return nil
-			case storedWriter == "":
+			case storedStamp == "":
 				log.Info().Str("component", "metadb").
-					Msg("metaDB has no writer version stamp, running full parse")
+					Msg("metaDB has no fast-restart stamp, running full parse")
 			default:
 				log.Info().Str("component", "metadb").
-					Str("storedWriter", storedWriter).Str("currentWriter", writerVersion).
-					Msg("metaDB writer version differs from binary, running full parse")
+					Str("storedStamp", storedStamp).Str("currentStamp", fastRestartStamp).
+					Msg("metaDB fast-restart stamp differs, running full parse")
 			}
 		}
 	}
@@ -165,7 +166,7 @@ func MaybeParseStorage(metaDB mTypes.MetaDB, storeController stypes.StoreControl
 		return err
 	}
 
-	if writerVersion == "" {
+	if fastRestartStamp == "" {
 		// go run/go test builds have no stamp, so always reparse.
 		return nil
 	}
@@ -175,14 +176,14 @@ func MaybeParseStorage(metaDB mTypes.MetaDB, storeController stypes.StoreControl
 	if !stats.complete() {
 		log.Warn().Str("component", "metadb").
 			Int("failedRepos", stats.failedRepos).Int("partialRepos", stats.partialRepos).
-			Msg("storage parse incomplete; skipping writer-version stamp so the next restart reparses")
+			Msg("storage parse incomplete; skipping fast-restart stamp so the next restart reparses")
 
 		return nil
 	}
 
-	if err := metaDB.SetWriterVersion(writerVersion); err != nil {
+	if err := metaDB.SetFastRestartStamp(fastRestartStamp); err != nil {
 		log.Warn().Err(err).Str("component", "metadb").
-			Msg("failed to stamp metaDB writer version; next restart will reparse")
+			Msg("failed to write fast-restart stamp; next restart will reparse")
 	}
 
 	return nil

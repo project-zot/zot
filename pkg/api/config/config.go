@@ -1281,8 +1281,8 @@ func (c *Config) GetRealm() string {
 }
 
 // IsFastRestartEnabled reports whether the controller may skip the startup
-// storage walk when the metaDB writer-version stamp matches the current
-// binary. Defaults to false when unset.
+// storage walk when the metaDB fast-restart stamp matches the current binary
+// and storage config. Defaults to false when unset.
 func (c *Config) IsFastRestartEnabled() bool {
 	if c == nil {
 		return false

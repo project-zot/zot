@@ -1236,8 +1236,8 @@ func TestBoltDBCountRepos(t *testing.T) {
 	})
 }
 
-func TestBoltDBWriterVersion(t *testing.T) {
-	Convey("WriterVersion", t, func() {
+func TestBoltDBFastRestartStamp(t *testing.T) {
+	Convey("FastRestartStamp", t, func() {
 		tmpDir := t.TempDir()
 		boltDBParams := boltdb.DBParameters{RootDir: tmpDir}
 		boltDriver, err := boltdb.GetBoltDriver(boltDBParams)
@@ -1248,33 +1248,33 @@ func TestBoltDBWriterVersion(t *testing.T) {
 		So(boltdbWrapper, ShouldNotBeNil)
 
 		Convey("returns empty before set", func() {
-			v, err := boltdbWrapper.GetWriterVersion()
+			v, err := boltdbWrapper.GetFastRestartStamp()
 			So(err, ShouldBeNil)
 			So(v, ShouldEqual, "")
 		})
 
 		Convey("round-trips a value", func() {
-			So(boltdbWrapper.SetWriterVersion("v2.3.4"), ShouldBeNil)
+			So(boltdbWrapper.SetFastRestartStamp("v2.3.4"), ShouldBeNil)
 
-			v, err := boltdbWrapper.GetWriterVersion()
+			v, err := boltdbWrapper.GetFastRestartStamp()
 			So(err, ShouldBeNil)
 			So(v, ShouldEqual, "v2.3.4")
 		})
 
 		Convey("overwrites a previous value", func() {
-			So(boltdbWrapper.SetWriterVersion("v1"), ShouldBeNil)
-			So(boltdbWrapper.SetWriterVersion("v2"), ShouldBeNil)
+			So(boltdbWrapper.SetFastRestartStamp("v1"), ShouldBeNil)
+			So(boltdbWrapper.SetFastRestartStamp("v2"), ShouldBeNil)
 
-			v, err := boltdbWrapper.GetWriterVersion()
+			v, err := boltdbWrapper.GetFastRestartStamp()
 			So(err, ShouldBeNil)
 			So(v, ShouldEqual, "v2")
 		})
 
 		Convey("ResetDB clears the stamp", func() {
-			So(boltdbWrapper.SetWriterVersion("v1"), ShouldBeNil)
+			So(boltdbWrapper.SetFastRestartStamp("v1"), ShouldBeNil)
 			So(boltdbWrapper.ResetDB(), ShouldBeNil)
 
-			v, err := boltdbWrapper.GetWriterVersion()
+			v, err := boltdbWrapper.GetFastRestartStamp()
 			So(err, ShouldBeNil)
 			So(v, ShouldEqual, "")
 		})

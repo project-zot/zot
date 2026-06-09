@@ -444,7 +444,7 @@ func (c *Controller) InitMetaDB() error {
 		}
 
 		err = meta.MaybeParseStorage(driver, c.StoreController, c.Config.IsFastRestartEnabled(),
-			meta.FastRestartStamp(version.CurrentWriterVersion(), c.Config.StorageFingerprint()), c.Log)
+			meta.FastRestartStamp(version.CurrentBinaryVersion(), c.Config.StorageFingerprint()), c.Log)
 		if err != nil {
 			return err
 		}

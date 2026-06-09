@@ -17,10 +17,10 @@ const (
 	Removed
 )
 
-// WriterVersionKey is the metaDB key/attribute name under which each backend
-// stores the binary identity of the last successful ParseStorage run.
+// FastRestartStampKey is the metaDB key/attribute name under which each backend
+// stores the fast-restart stamp of the last successful ParseStorage run.
 // Defined here so all backends share a single source of truth.
-const WriterVersionKey = "WriterVersion"
+const FastRestartStampKey = "FastRestartStamp"
 
 type (
 	// FilterFunc is a filter function.
@@ -163,14 +163,15 @@ type MetaDB interface { //nolint:interfacebloat
 
 	PatchDB() error
 
-	// GetWriterVersion returns the binary identity that last successfully
-	// completed ParseStorage against this metaDB. Returns "" when unset
-	// (new DB, or DB last written by a binary that predates this stamp).
-	GetWriterVersion() (string, error)
+	// GetFastRestartStamp returns the fast-restart stamp (binary identity +
+	// storage-config fingerprint) of the last successful ParseStorage run.
+	// Returns "" when unset (new DB, or DB last written by a binary that
+	// predates this stamp).
+	GetFastRestartStamp() (string, error)
 
-	// SetWriterVersion stamps the metaDB with the given binary identity.
+	// SetFastRestartStamp records the given fast-restart stamp in the metaDB.
 	// Called by MaybeParseStorage only after a successful walk + per-repo parse.
-	SetWriterVersion(writerVersion string) error
+	SetFastRestartStamp(fastRestartStamp string) error
 
 	ImageTrustStore() ImageTrustStore
 

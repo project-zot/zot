@@ -1698,8 +1698,8 @@ func (bdw *BoltDB) PatchDB() error {
 	return nil
 }
 
-func (bdw *BoltDB) GetWriterVersion() (string, error) {
-	var writerVersion string
+func (bdw *BoltDB) GetFastRestartStamp() (string, error) {
+	var stamp string
 
 	err := bdw.DB.View(func(tx *bbolt.Tx) error {
 		buck := tx.Bucket([]byte(VersionBucket))
@@ -1707,22 +1707,22 @@ func (bdw *BoltDB) GetWriterVersion() (string, error) {
 			return nil
 		}
 
-		writerVersion = string(buck.Get([]byte(mTypes.WriterVersionKey)))
+		stamp = string(buck.Get([]byte(mTypes.FastRestartStampKey)))
 
 		return nil
 	})
 
-	return writerVersion, err
+	return stamp, err
 }
 
-func (bdw *BoltDB) SetWriterVersion(writerVersion string) error {
+func (bdw *BoltDB) SetFastRestartStamp(stamp string) error {
 	return bdw.DB.Update(func(tx *bbolt.Tx) error {
 		buck, err := tx.CreateBucketIfNotExists([]byte(VersionBucket))
 		if err != nil {
 			return err
 		}
 
-		return buck.Put([]byte(mTypes.WriterVersionKey), []byte(writerVersion))
+		return buck.Put([]byte(mTypes.FastRestartStampKey), []byte(stamp))
 	})
 }
 
@@ -2184,7 +2184,7 @@ func (bdw *BoltDB) ResetDB() error {
 		}
 
 		if versionBuck := transaction.Bucket([]byte(VersionBucket)); versionBuck != nil {
-			if err := versionBuck.Delete([]byte(mTypes.WriterVersionKey)); err != nil {
+			if err := versionBuck.Delete([]byte(mTypes.FastRestartStampKey)); err != nil {
 				return err
 			}
 		}

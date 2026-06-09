@@ -46,9 +46,9 @@ type MetaDBMock struct {
 
 	PatchDBFn func() error
 
-	GetWriterVersionFn func() (string, error)
+	GetFastRestartStampFn func() (string, error)
 
-	SetWriterVersionFn func(writerVersion string) error
+	SetFastRestartStampFn func(stamp string) error
 
 	ImageTrustStoreFn func() mTypes.ImageTrustStore
 
@@ -175,17 +175,17 @@ func (sdm MetaDBMock) PatchDB() error {
 	return nil
 }
 
-func (sdm MetaDBMock) GetWriterVersion() (string, error) {
-	if sdm.GetWriterVersionFn != nil {
-		return sdm.GetWriterVersionFn()
+func (sdm MetaDBMock) GetFastRestartStamp() (string, error) {
+	if sdm.GetFastRestartStampFn != nil {
+		return sdm.GetFastRestartStampFn()
 	}
 
 	return "", nil
 }
 
-func (sdm MetaDBMock) SetWriterVersion(writerVersion string) error {
-	if sdm.SetWriterVersionFn != nil {
-		return sdm.SetWriterVersionFn(writerVersion)
+func (sdm MetaDBMock) SetFastRestartStamp(stamp string) error {
+	if sdm.SetFastRestartStampFn != nil {
+		return sdm.SetFastRestartStampFn(stamp)
 	}
 
 	return nil

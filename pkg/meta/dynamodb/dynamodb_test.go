@@ -1657,7 +1657,7 @@ func TestDynamoDBCountRepos(t *testing.T) {
 	})
 }
 
-func TestDynamoDBWriterVersion(t *testing.T) {
+func TestDynamoDBFastRestartStamp(t *testing.T) {
 	tskip.SkipDynamo(t)
 
 	const region = "us-east-2"
@@ -1678,7 +1678,7 @@ func TestDynamoDBWriterVersion(t *testing.T) {
 
 	log := log.NewTestLogger()
 
-	Convey("WriterVersion", t, func() {
+	Convey("FastRestartStamp", t, func() {
 		params := mdynamodb.DBDriverParameters{
 			Endpoint:               endpoint,
 			Region:                 region,
@@ -1698,33 +1698,33 @@ func TestDynamoDBWriterVersion(t *testing.T) {
 		So(dynamoWrapper.ResetTable(dynamoWrapper.VersionTablename), ShouldBeNil)
 
 		Convey("returns empty before set", func() {
-			v, err := dynamoWrapper.GetWriterVersion()
+			v, err := dynamoWrapper.GetFastRestartStamp()
 			So(err, ShouldBeNil)
 			So(v, ShouldEqual, "")
 		})
 
 		Convey("round-trips a value", func() {
-			So(dynamoWrapper.SetWriterVersion("v2.3.4"), ShouldBeNil)
+			So(dynamoWrapper.SetFastRestartStamp("v2.3.4"), ShouldBeNil)
 
-			v, err := dynamoWrapper.GetWriterVersion()
+			v, err := dynamoWrapper.GetFastRestartStamp()
 			So(err, ShouldBeNil)
 			So(v, ShouldEqual, "v2.3.4")
 		})
 
 		Convey("overwrites a previous value", func() {
-			So(dynamoWrapper.SetWriterVersion("v1"), ShouldBeNil)
-			So(dynamoWrapper.SetWriterVersion("v2"), ShouldBeNil)
+			So(dynamoWrapper.SetFastRestartStamp("v1"), ShouldBeNil)
+			So(dynamoWrapper.SetFastRestartStamp("v2"), ShouldBeNil)
 
-			v, err := dynamoWrapper.GetWriterVersion()
+			v, err := dynamoWrapper.GetFastRestartStamp()
 			So(err, ShouldBeNil)
 			So(v, ShouldEqual, "v2")
 		})
 
 		Convey("ResetDB clears the stamp", func() {
-			So(dynamoWrapper.SetWriterVersion("v1"), ShouldBeNil)
+			So(dynamoWrapper.SetFastRestartStamp("v1"), ShouldBeNil)
 			So(dynamoWrapper.ResetDB(), ShouldBeNil)
 
-			v, err := dynamoWrapper.GetWriterVersion()
+			v, err := dynamoWrapper.GetFastRestartStamp()
 			So(err, ShouldBeNil)
 			So(v, ShouldEqual, "")
 		})

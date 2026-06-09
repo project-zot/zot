@@ -27,12 +27,12 @@ func TestMaybeParseStorageGate(t *testing.T) {
 
 		mock := mocks.MetaDBMock{
 			GetAllRepoNamesFn: func() ([]string, error) { return nil, nil },
-			GetWriterVersionFn: func() (string, error) {
-				t.Fatal("GetWriterVersion must not be called when fastRestart=false")
+			GetFastRestartStampFn: func() (string, error) {
+				t.Fatal("GetFastRestartStamp must not be called when fastRestart=false")
 
 				return "", nil
 			},
-			SetWriterVersionFn: func(v string) error {
+			SetFastRestartStampFn: func(v string) error {
 				stamped = v
 
 				return nil
@@ -51,8 +51,8 @@ func TestMaybeParseStorageGate(t *testing.T) {
 
 				return nil, nil
 			},
-			GetWriterVersionFn: func() (string, error) { return "v1", nil },
-			SetWriterVersionFn: func(v string) error {
+			GetFastRestartStampFn: func() (string, error) { return "v1", nil },
+			SetFastRestartStampFn: func(v string) error {
 				t.Fatal("must not re-stamp when stamp already matches")
 
 				return nil
@@ -75,8 +75,8 @@ func TestMaybeParseStorageGate(t *testing.T) {
 
 				return nil, nil
 			},
-			GetWriterVersionFn: func() (string, error) { return "v1", nil },
-			SetWriterVersionFn: func(v string) error {
+			GetFastRestartStampFn: func() (string, error) { return "v1", nil },
+			SetFastRestartStampFn: func(v string) error {
 				stamped = v
 
 				return nil
@@ -93,9 +93,9 @@ func TestMaybeParseStorageGate(t *testing.T) {
 		var stamped string
 
 		mock := mocks.MetaDBMock{
-			GetAllRepoNamesFn:  func() ([]string, error) { return nil, nil },
-			GetWriterVersionFn: func() (string, error) { return "", nil },
-			SetWriterVersionFn: func(v string) error {
+			GetAllRepoNamesFn:     func() ([]string, error) { return nil, nil },
+			GetFastRestartStampFn: func() (string, error) { return "", nil },
+			SetFastRestartStampFn: func(v string) error {
 				stamped = v
 
 				return nil
@@ -107,13 +107,13 @@ func TestMaybeParseStorageGate(t *testing.T) {
 		So(stamped, ShouldEqual, "v1")
 	})
 
-	Convey("fastRestart=true falls back to full parse when GetWriterVersion errors", t, func() {
+	Convey("fastRestart=true falls back to full parse when GetFastRestartStamp errors", t, func() {
 		var stamped string
 
 		mock := mocks.MetaDBMock{
-			GetAllRepoNamesFn:  func() ([]string, error) { return nil, nil },
-			GetWriterVersionFn: func() (string, error) { return "", errors.New("redis down") }, //nolint: err113
-			SetWriterVersionFn: func(v string) error {
+			GetAllRepoNamesFn:     func() ([]string, error) { return nil, nil },
+			GetFastRestartStampFn: func() (string, error) { return "", errors.New("redis down") }, //nolint: err113
+			SetFastRestartStampFn: func(v string) error {
 				stamped = v
 
 				return nil
@@ -137,8 +137,8 @@ func TestMaybeParseStorageGate(t *testing.T) {
 
 				return nil, nil
 			},
-			GetWriterVersionFn: func() (string, error) { return "", nil },
-			SetWriterVersionFn: func(v string) error {
+			GetFastRestartStampFn: func() (string, error) { return "", nil },
+			SetFastRestartStampFn: func(v string) error {
 				stampInvoked = true
 
 				return nil
@@ -162,7 +162,7 @@ func TestMaybeParseStorageGate(t *testing.T) {
 
 		mock := mocks.MetaDBMock{
 			GetAllRepoNamesFn: func() ([]string, error) { return nil, nil },
-			SetWriterVersionFn: func(string) error {
+			SetFastRestartStampFn: func(string) error {
 				t.Fatal("must not stamp when a repo failed to parse")
 
 				return nil
@@ -194,7 +194,7 @@ func TestMaybeParseStorageGate(t *testing.T) {
 
 		mock := mocks.MetaDBMock{
 			GetAllRepoNamesFn: func() ([]string, error) { return nil, nil },
-			SetWriterVersionFn: func(string) error {
+			SetFastRestartStampFn: func(string) error {
 				t.Fatal("must not stamp when a repo was only partially parsed")
 
 				return nil

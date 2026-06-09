@@ -42,21 +42,21 @@ const (
 )
 
 type RedisDB struct {
-	Client             redis.UniversalClient
-	imgTrustStore      mTypes.ImageTrustStore
-	Patches            []func(client redis.UniversalClient) error
-	Version            string
-	Log                log.Logger
-	RS                 *redsync.Redsync
-	ImageMetaKey       string
-	RepoMetaKey        string
-	RepoBlobsKey       string
-	RepoLastUpdatedKey string
-	UserDataKey        string
-	VersionKey         string
-	WriterVersionKey   string
-	UserAPIKeysKey     string
-	LocksKey           string
+	Client              redis.UniversalClient
+	imgTrustStore       mTypes.ImageTrustStore
+	Patches             []func(client redis.UniversalClient) error
+	Version             string
+	Log                 log.Logger
+	RS                  *redsync.Redsync
+	ImageMetaKey        string
+	RepoMetaKey         string
+	RepoBlobsKey        string
+	RepoLastUpdatedKey  string
+	UserDataKey         string
+	VersionKey          string
+	FastRestartStampKey string
+	UserAPIKeysKey      string
+	LocksKey            string
 }
 
 type DBDriverParameters struct {
@@ -65,20 +65,20 @@ type DBDriverParameters struct {
 
 func New(client redis.UniversalClient, params DBDriverParameters, log log.Logger) (*RedisDB, error) {
 	redisWrapper := RedisDB{
-		Client:             client,
-		Log:                log,
-		Patches:            version.GetRedisDBPatches(),
-		Version:            version.CurrentVersion,
-		imgTrustStore:      nil,
-		ImageMetaKey:       join(params.KeyPrefix, ImageMetaBucket),
-		RepoMetaKey:        join(params.KeyPrefix, RepoMetaBucket),
-		RepoBlobsKey:       join(params.KeyPrefix, RepoBlobsBucket),
-		RepoLastUpdatedKey: join(params.KeyPrefix, RepoLastUpdatedBucket),
-		UserDataKey:        join(params.KeyPrefix, UserDataBucket),
-		VersionKey:         join(params.KeyPrefix, VersionBucket),
-		WriterVersionKey:   join(params.KeyPrefix, mTypes.WriterVersionKey),
-		UserAPIKeysKey:     join(params.KeyPrefix, UserAPIKeysBucket),
-		LocksKey:           join(params.KeyPrefix, LocksBucket),
+		Client:              client,
+		Log:                 log,
+		Patches:             version.GetRedisDBPatches(),
+		Version:             version.CurrentVersion,
+		imgTrustStore:       nil,
+		ImageMetaKey:        join(params.KeyPrefix, ImageMetaBucket),
+		RepoMetaKey:         join(params.KeyPrefix, RepoMetaBucket),
+		RepoBlobsKey:        join(params.KeyPrefix, RepoBlobsBucket),
+		RepoLastUpdatedKey:  join(params.KeyPrefix, RepoLastUpdatedBucket),
+		UserDataKey:         join(params.KeyPrefix, UserDataBucket),
+		VersionKey:          join(params.KeyPrefix, VersionBucket),
+		FastRestartStampKey: join(params.KeyPrefix, mTypes.FastRestartStampKey),
+		UserAPIKeysKey:      join(params.KeyPrefix, UserAPIKeysBucket),
+		LocksKey:            join(params.KeyPrefix, LocksBucket),
 	}
 
 	if err := client.Ping(context.Background()).Err(); err != nil {
@@ -2167,10 +2167,10 @@ func (rc *RedisDB) ResetDB() error {
 			return fmt.Errorf("failed to delete version bucket: %w", err)
 		}
 
-		if err := txrp.Del(ctx, rc.WriterVersionKey).Err(); err != nil {
-			rc.Log.Error().Err(err).Str("del", rc.WriterVersionKey).Msg("failed to delete writer version key")
+		if err := txrp.Del(ctx, rc.FastRestartStampKey).Err(); err != nil {
+			rc.Log.Error().Err(err).Str("del", rc.FastRestartStampKey).Msg("failed to delete fast-restart stamp key")
 
-			return fmt.Errorf("failed to delete writer version key: %w", err)
+			return fmt.Errorf("failed to delete fast-restart stamp key: %w", err)
 		}
 
 		return nil
@@ -2226,28 +2226,28 @@ func (rc *RedisDB) PatchDB() error {
 	return err
 }
 
-func (rc *RedisDB) GetWriterVersion() (string, error) {
+func (rc *RedisDB) GetFastRestartStamp() (string, error) {
 	ctx := context.Background()
 
-	writerVersion, err := rc.Client.Get(ctx, rc.WriterVersionKey).Result()
+	stamp, err := rc.Client.Get(ctx, rc.FastRestartStampKey).Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
 			return "", nil
 		}
 
-		rc.Log.Error().Err(err).Str("get", rc.WriterVersionKey).Msg("failed to get writer version")
+		rc.Log.Error().Err(err).Str("get", rc.FastRestartStampKey).Msg("failed to get fast-restart stamp")
 
 		return "", err
 	}
 
-	return writerVersion, nil
+	return stamp, nil
 }
 
-func (rc *RedisDB) SetWriterVersion(writerVersion string) error {
+func (rc *RedisDB) SetFastRestartStamp(stamp string) error {
 	ctx := context.Background()
 
-	if err := rc.Client.Set(ctx, rc.WriterVersionKey, writerVersion, 0).Err(); err != nil {
-		rc.Log.Error().Err(err).Str("set", rc.WriterVersionKey).Msg("failed to set writer version")
+	if err := rc.Client.Set(ctx, rc.FastRestartStampKey, stamp, 0).Err(); err != nil {
+		rc.Log.Error().Err(err).Str("set", rc.FastRestartStampKey).Msg("failed to set fast-restart stamp")
 
 		return err
 	}

@@ -2228,11 +2228,11 @@ func (dwr *DynamoDB) PatchDB() error {
 	return nil
 }
 
-func (dwr *DynamoDB) GetWriterVersion() (string, error) {
+func (dwr *DynamoDB) GetFastRestartStamp() (string, error) {
 	resp, err := dwr.Client.GetItem(context.Background(), &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.VersionTablename),
 		Key: map[string]types.AttributeValue{
-			"TableKey": &types.AttributeValueMemberS{Value: mTypes.WriterVersionKey},
+			"TableKey": &types.AttributeValueMemberS{Value: mTypes.FastRestartStampKey},
 		},
 	})
 	if err != nil {
@@ -2243,20 +2243,20 @@ func (dwr *DynamoDB) GetWriterVersion() (string, error) {
 		return "", nil
 	}
 
-	var writerVersion string
+	var stamp string
 
 	// In aws-sdk-go-v2, a missing attribute arrives as a nil AttributeValue,
 	// which Unmarshal treats as null, setting the attribute to its zero
 	// value ("") and returning nil rather than an error
-	if err := attributevalue.Unmarshal(resp.Item["Version"], &writerVersion); err != nil {
+	if err := attributevalue.Unmarshal(resp.Item["Version"], &stamp); err != nil {
 		return "", err
 	}
 
-	return writerVersion, nil
+	return stamp, nil
 }
 
-func (dwr *DynamoDB) SetWriterVersion(writerVersion string) error {
-	mdAttributeValue, err := attributevalue.Marshal(writerVersion)
+func (dwr *DynamoDB) SetFastRestartStamp(stamp string) error {
+	mdAttributeValue, err := attributevalue.Marshal(stamp)
 	if err != nil {
 		return err
 	}
@@ -2269,7 +2269,7 @@ func (dwr *DynamoDB) SetWriterVersion(writerVersion string) error {
 			":Version": mdAttributeValue,
 		},
 		Key: map[string]types.AttributeValue{
-			"TableKey": &types.AttributeValueMemberS{Value: mTypes.WriterVersionKey},
+			"TableKey": &types.AttributeValueMemberS{Value: mTypes.FastRestartStampKey},
 		},
 		TableName:        aws.String(dwr.VersionTablename),
 		UpdateExpression: aws.String("SET #V = :Version"),
@@ -2307,7 +2307,7 @@ func (dwr *DynamoDB) ResetDB() error {
 	_, err = dwr.Client.DeleteItem(context.Background(), &dynamodb.DeleteItemInput{
 		TableName: aws.String(dwr.VersionTablename),
 		Key: map[string]types.AttributeValue{
-			"TableKey": &types.AttributeValueMemberS{Value: mTypes.WriterVersionKey},
+			"TableKey": &types.AttributeValueMemberS{Value: mTypes.FastRestartStampKey},
 		},
 	})
 	if err != nil {

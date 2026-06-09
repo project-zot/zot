@@ -33,7 +33,7 @@ func Test(t *testing.T) {
 		So(metaDB.UserDataKey, ShouldEqual, "zot:UserData")
 		So(metaDB.UserAPIKeysKey, ShouldEqual, "zot:UserAPIKeys")
 		So(metaDB.VersionKey, ShouldEqual, "zot:Version")
-		So(metaDB.WriterVersionKey, ShouldEqual, "zot:WriterVersion")
+		So(metaDB.FastRestartStampKey, ShouldEqual, "zot:FastRestartStamp")
 		So(metaDB.LocksKey, ShouldEqual, "zot:Locks")
 
 		So(metaDB.getUserLockKey("user1"), ShouldEqual, "zot:Locks:User:user1")
@@ -52,7 +52,7 @@ func Test(t *testing.T) {
 		So(metaDB.UserDataKey, ShouldEqual, "someprefix:UserData")
 		So(metaDB.UserAPIKeysKey, ShouldEqual, "someprefix:UserAPIKeys")
 		So(metaDB.VersionKey, ShouldEqual, "someprefix:Version")
-		So(metaDB.WriterVersionKey, ShouldEqual, "someprefix:WriterVersion")
+		So(metaDB.FastRestartStampKey, ShouldEqual, "someprefix:FastRestartStamp")
 		So(metaDB.LocksKey, ShouldEqual, "someprefix:Locks")
 
 		So(metaDB.getUserLockKey("user1"), ShouldEqual, "someprefix:Locks:User:user1")

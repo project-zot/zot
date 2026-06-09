@@ -104,7 +104,7 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 	}
 
 	serveCmd.Flags().BoolVar(&forceReparse, "force-reparse", false,
-		"force a full storage->metaDB reparse on startup, ignoring the writer-version stamp")
+		"force a full storage->metaDB reparse on startup, ignoring the fast-restart stamp")
 
 	return serveCmd
 }
