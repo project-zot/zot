@@ -187,13 +187,22 @@ func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
 		return zerr.ErrEmptyValue
 	}
 
-	if originBlob, _ := d.GetBlob(digest); originBlob == "" {
-		// first entry, so add original blob
+	originBlob, _ := d.GetBlob(digest)
+	if originBlob == "" {
+		// first entry, so add original blob only
 		if err := d.putOriginBlob(digest, path); err != nil {
 			return err
 		}
+
+		return nil
 	}
 
+	// if same as original, this is idempotent
+	if originBlob == path {
+		return nil
+	}
+
+	// add as duplicate
 	expression := "ADD DuplicateBlobPath :i"
 	attrPath := types.AttributeValueMemberSS{Value: []string{path}}
 
@@ -245,27 +254,69 @@ func (d *DynamoDBDriver) HasBlob(digest godigest.Digest, path string) bool {
 func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 	marshaledKey, _ := attributevalue.MarshalMap(map[string]any{"Digest": digest.String()})
 
-	expression := "DELETE DuplicateBlobPath :i"
-	attrPath := types.AttributeValueMemberSS{Value: []string{path}}
+	// check if path is a duplicate first
+	duplicateBlob, _ := d.GetDuplicateBlob(digest)
+	if duplicateBlob != "" {
+		// check if path is in the duplicates set
+		resp, err := d.client.GetItem(context.TODO(), &dynamodb.GetItemInput{
+			TableName: aws.String(d.tableName),
+			Key: map[string]types.AttributeValue{
+				"Digest": &types.AttributeValueMemberS{Value: digest.String()},
+			},
+		})
+		if err != nil {
+			return err
+		}
 
-	if err := d.updateItem(digest, expression, map[string]types.AttributeValue{":i": &attrPath}); err != nil {
-		d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("failed to delete")
+		out := Blob{}
+		if resp.Item != nil {
+			_ = attributevalue.UnmarshalMap(resp.Item, &out)
 
-		return err
-	}
+			if slices.Contains(out.DuplicateBlobPath, path) {
+				expression := "DELETE DuplicateBlobPath :i"
+				attrPath := types.AttributeValueMemberSS{Value: []string{path}}
 
-	originBlob, _ := d.GetBlob(digest)
-	// if original blob is the one deleted
-	if originBlob == path {
-		// move duplicate blob to original, storage will move content here
-		originBlob, _ = d.GetDuplicateBlob(digest)
-		if originBlob != "" {
-			if err := d.putOriginBlob(digest, originBlob); err != nil {
-				return err
+				if err := d.updateItem(digest, expression, map[string]types.AttributeValue{":i": &attrPath}); err != nil {
+					d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("failed to delete")
+
+					return err
+				}
+
+				return nil
 			}
 		}
 	}
 
+	originBlob, err := d.GetBlob(digest)
+	if err != nil {
+		// ErrCacheMiss means the digest doesn't exist at all — path not found
+		return err
+	}
+
+	// if original blob is the one being deleted
+	if originBlob == path {
+		// check if duplicates still exist
+		remainingDuplicate, _ := d.GetDuplicateBlob(digest)
+		if remainingDuplicate != "" {
+			// duplicates still exist, keep the original (global blobstore file stays)
+			return nil
+		}
+
+		// no more duplicates, remove the original
+		_, err = d.client.DeleteItem(context.TODO(), &dynamodb.DeleteItemInput{
+			Key:       marshaledKey,
+			TableName: &d.tableName,
+		})
+		if err != nil {
+			d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("failed to delete")
+
+			return err
+		}
+
+		return nil
+	}
+
+	// originBlob is empty but record exists (orphaned entry) — clean up
 	if originBlob == "" {
 		d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("deleting empty bucket")
 
@@ -273,9 +324,12 @@ func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 			Key:       marshaledKey,
 			TableName: &d.tableName,
 		})
+
+		return zerr.ErrCacheMiss
 	}
 
-	return nil
+	// path not found in duplicates or original
+	return zerr.ErrCacheMiss
 }
 
 func (d *DynamoDBDriver) GetDuplicateBlob(digest godigest.Digest) (string, error) {
