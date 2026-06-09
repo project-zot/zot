@@ -90,6 +90,12 @@ func (registry *DestinationRegistry) GetImageReference(repo, reference string) (
 func (registry *DestinationRegistry) CommitAll(repo string, imageReference ref.Ref) error {
 	tempImageStore := getImageStoreFromImageReference(repo, imageReference, registry.log)
 
+	if tempImageStore == nil {
+		registry.log.Error().Str("repo", repo).Msg("failed to get temp image store for sync commit")
+
+		return zerr.ErrLocalImgStoreNotFound
+	}
+
 	defer os.RemoveAll(tempImageStore.RootDir())
 
 	repoDir := path.Join(tempImageStore.RootDir(), repo)
