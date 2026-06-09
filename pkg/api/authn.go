@@ -1088,6 +1088,15 @@ func GetGithubUserInfo(ctx context.Context, client *github.Client, log log.Logge
 		groups = append(groups, *org.Login)
 	}
 
+	teams, _, err := client.Teams.ListUserTeams(ctx, nil)
+	if err == nil {
+		for _, team := range teams {
+			if team.Organization != nil && team.Organization.Login != nil && team.Slug != nil {
+				groups = append(groups, fmt.Sprintf("%s/%s", *team.Organization.Login, *team.Slug))
+			}
+		}
+	}
+
 	return primaryEmail, groups, nil
 }
 
