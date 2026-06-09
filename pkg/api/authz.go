@@ -742,6 +742,12 @@ func MetricsAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			}
 
 			metricsConfig := accessControlConfig.GetMetrics()
+			if slices.Contains(metricsConfig.AnonymousPolicy, constants.ReadPermission) {
+				next.ServeHTTP(response, request)
+
+				return
+			}
+
 			if len(metricsConfig.Users) == 0 {
 				log := ctlr.Log
 				log.Warn().Msg("auth is enabled but no metrics users in accessControl: /metrics is unaccesible")

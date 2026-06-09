@@ -867,6 +867,45 @@ Behaviour-based action list
 }
 ```
 
+##### Metrics access control
+
+The `metrics` key inside `accessControl` controls access to the Prometheus scrape endpoint independently of repository policies. It supports two fields:
+
+- `users` - list of named authenticated users allowed to scrape. Requires authentication (e.g. htpasswd) to be configured.
+- `anonymousPolicy` - set to `["read"]` to allow unauthenticated access to the metrics endpoint when authentication is configured for other routes.
+
+To restrict scraping to specific named users:
+
+```
+"accessControl": {
+    "metrics": {
+        "users": ["prometheus"]
+    }
+}
+```
+
+See [config-metrics-authz.json](config-metrics-authz.json) for a complete example combining htpasswd authentication with repository policies.
+
+When authentication is configured and repositories have non-anonymous policies, `anonymousPolicy` on `metrics` allows unauthenticated scrapers to reach the metrics endpoint while keeping repository routes protected:
+
+```
+"http": {
+    "auth": {
+        "htpasswd": { "path": "test/data/htpasswd" }
+    },
+    "accessControl": {
+        "metrics": {
+            "anonymousPolicy": ["read"]
+        },
+        "repositories": {
+            "**": { "defaultPolicy": ["read", "create"] }
+        }
+    }
+}
+```
+
+See [config-metrics-authn-anonymous-access.json](config-metrics-authn-anonymous-access.json) for a complete example.
+
 ##### Conditional access on policies
 
 Policy entries can carry an optional list of `conditions`: CEL boolean
