@@ -145,7 +145,18 @@ func (d *RedisDriver) PutBlob(digest godigest.Digest, path string) error {
 
 				return err
 			}
+
+			// first entry is only stored as the original, not as a duplicate
+			return nil
 		}
+
+		// check if this is the same as the original (idempotent)
+		currentPath, err := d.db.HGet(ctx, d.join(constants.BlobsCache, constants.OriginalBucket),
+			digest.String()).Result()
+		if err == nil && currentPath == path {
+			return nil
+		}
+
 		// add path to the set of paths which the digest represents
 		if err := txrp.SAdd(ctx, d.join(constants.BlobsCache, constants.DuplicatesBucket,
 			digest.String()), path).Err(); err != nil {
@@ -234,7 +245,23 @@ func (d *RedisDriver) HasBlob(digest godigest.Digest, path string) bool {
 	}
 
 	ctx := context.TODO()
-	// see if we are in the set
+
+	// check if path is the original
+	currentPath, err := d.db.HGet(ctx, d.join(constants.BlobsCache, constants.OriginalBucket), digest.String()).Result()
+	if err != nil {
+		if !goerrors.Is(err, redis.Nil) {
+			d.log.Error().Err(err).Str("hget", d.join(constants.BlobsCache, constants.OriginalBucket)).
+				Str("digest", digest.String()).Msg("unable to get record")
+		}
+
+		return false
+	}
+
+	if currentPath == path {
+		return true
+	}
+
+	// check if path is in the duplicates set
 	exists, err := d.db.SIsMember(ctx, d.join(constants.BlobsCache, constants.DuplicatesBucket,
 		digest.String()), path).Result()
 	if err != nil {
@@ -244,25 +271,7 @@ func (d *RedisDriver) HasBlob(digest godigest.Digest, path string) bool {
 		return false
 	}
 
-	if !exists {
-		return false
-	}
-
-	// see if the path entry exists. is this actually needed? i guess it doesn't really hurt (it is fast)
-	exists, err = d.db.HExists(ctx, d.join(constants.BlobsCache, constants.OriginalBucket), digest.String()).Result()
-
-	d.log.Error().Err(err).Str("hexists", d.join(constants.BlobsCache, constants.OriginalBucket)).
-		Str("digest", digest.String()).Msg("unable to get record")
-
-	if err != nil {
-		return false
-	}
-
-	if !exists {
-		return false
-	}
-
-	return true
+	return exists
 }
 
 func (d *RedisDriver) DeleteBlob(digest godigest.Digest, path string) error {
@@ -291,47 +300,57 @@ func (d *RedisDriver) DeleteBlob(digest godigest.Digest, path string) error {
 		}
 	}()
 
+	// check duplicates first
 	pathSet := d.join(constants.BlobsCache, constants.DuplicatesBucket, digest.String())
 
-	// delete path from the set of paths which the digest represents
-	_, err = d.db.SRem(ctx, pathSet, path).Result()
+	exists, err := d.db.SIsMember(ctx, pathSet, path).Result()
 	if err != nil {
-		d.log.Error().Err(err).Str("srem", pathSet).Str("value", path).Msg("failed to delete record")
+		d.log.Error().Err(err).Str("sismember", pathSet).Str("value", path).Msg("failed to lookup record")
 
 		return err
 	}
 
+	if exists {
+		// delete path from the set of paths which the digest represents
+		_, err = d.db.SRem(ctx, pathSet, path).Result()
+		if err != nil {
+			d.log.Error().Err(err).Str("srem", pathSet).Str("value", path).Msg("failed to delete record")
+
+			return err
+		}
+
+		return nil
+	}
+
+	// check if path is the original
 	currentPath, err := d.GetBlob(digest)
 	if err != nil {
 		return err
 	}
 
 	if currentPath != path {
-		// nothing we need to do, return nil yay
-		return nil
+		// path not found in duplicates or original
+		return zerr.ErrCacheMiss
 	}
 
-	// we need to set a new path
-	newPath, err := d.db.SRandMember(ctx, pathSet).Result()
+	// path is the original - check if there are still duplicates
+	dupes, err := d.db.SCard(ctx, pathSet).Result()
 	if err != nil {
-		if goerrors.Is(err, redis.Nil) {
-			_, err := d.db.HDel(ctx, d.join(constants.BlobsCache, constants.OriginalBucket), digest.String()).Result()
-			if err != nil {
-				return err
-			}
-
-			return nil
-		}
-
-		d.log.Error().Err(err).Str("srandmember", pathSet).Msg("failed to get new path")
+		d.log.Error().Err(err).Str("scard", pathSet).Msg("failed to count duplicates")
 
 		return err
 	}
 
-	if _, err := d.db.HSet(ctx, d.join(constants.BlobsCache, constants.OriginalBucket),
-		digest.String(), newPath).Result(); err != nil {
-		d.log.Error().Err(err).Str("hset", d.join(constants.BlobsCache, constants.OriginalBucket)).Str("value", newPath).
-			Msg("unable to put record")
+	if dupes > 0 {
+		// duplicates still exist, keep the original (global blobstore file stays)
+		return nil
+	}
+
+	// no more duplicates, remove the original
+	if _, err := d.db.HDel(ctx, d.join(constants.BlobsCache, constants.OriginalBucket),
+		digest.String()).Result(); err != nil {
+		d.log.Error().Err(err).Str("hdel", d.join(constants.BlobsCache, constants.OriginalBucket)).Str("value", path).
+			Msg("failed to delete record")
 
 		return err
 	}

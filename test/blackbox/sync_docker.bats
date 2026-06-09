@@ -177,7 +177,7 @@ function teardown_file() {
 # sync image
 @test "sync docker image list on demand" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
-    run skopeo --insecure-policy copy --multi-arch=all --src-tls-verify=false \
+    run skopeo --insecure-policy copy --all --src-tls-verify=false \
         docker://127.0.0.1:${zot_port}/registry \
         oci:${TEST_DATA_DIR}
     [ "$status" -eq 0 ]
@@ -190,7 +190,7 @@ function teardown_file() {
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
 
     # make sure image is skipped when synced again
-    run skopeo --insecure-policy copy --multi-arch=all --src-tls-verify=false \
+    run skopeo --insecure-policy copy --all --src-tls-verify=false \
         docker://127.0.0.1:${zot_port}/registry \
         oci:${TEST_DATA_DIR}
     [ "$status" -eq 0 ]
@@ -225,7 +225,7 @@ function teardown_file() {
 
 @test "sync k8s image list on demand" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
-    run skopeo --insecure-policy copy --multi-arch=all --src-tls-verify=false \
+    run skopeo --insecure-policy copy --all --src-tls-verify=false \
         docker://127.0.0.1:${zot_port}/kube-apiserver:v1.26.0 \
         oci:${TEST_DATA_DIR}
     [ "$status" -eq 0 ]
@@ -347,7 +347,11 @@ function teardown_file() {
 @test "run docker with image synced from docker.io" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
-    run rm -rf ${zot_root_dir}
+    # Remove only the archlinux repo dir (not the entire root) so that _blobstore
+    # remains intact while the server is still running. Wiping the full root causes
+    # DedupeBlob to repeatedly fail to stat blobs in _blobstore, resulting in an
+    # infinite retry loop.
+    run rm -rf ${zot_root_dir}/archlinux
     [ "$status" -eq 0 ]
 
     run docker run -d 127.0.0.1:${zot_port}/archlinux:latest

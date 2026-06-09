@@ -122,7 +122,7 @@ func createObjectsStore(options createObjectStoreOpts) (
 	bucket := "zot-storage-test"
 	endpoint := os.Getenv("S3MOCK_ENDPOINT")
 	storageDriverParams := map[string]any{
-		"rootDir":        options.rootDir,
+		"rootdirectory":  options.rootDir,
 		"name":           "s3",
 		"region":         "us-east-2",
 		"bucket":         bucket,
@@ -640,9 +640,12 @@ func TestGetAllDedupeReposCandidates(t *testing.T) {
 
 				repos, err := imgStore.GetAllDedupeReposCandidates(randomBlobDigest)
 				So(err, ShouldBeNil)
-				slices.Sort(repoNames)
+
+				// with global blobstore, _blobstore is included as a candidate
+				expectedRepos := append([]string{storageConstants.GlobalBlobsRepo}, repoNames...)
+				slices.Sort(expectedRepos)
 				slices.Sort(repos)
-				So(repoNames, ShouldResemble, repos)
+				So(repos, ShouldResemble, expectedRepos)
 			})
 		})
 	}

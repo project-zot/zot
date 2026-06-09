@@ -26,4 +26,7 @@ const (
 	S3StorageDriverName     = "s3"
 	GCSStorageDriverName    = "gcs"
 	LocalStorageDriverName  = "local"
+	// GlobalBlobsRepo is the internal directory used as the master copy location for deduped blobs.
+	// It uses a leading underscore to ensure it can never collide with a valid OCI repository name.
+	GlobalBlobsRepo = "_blobstore"
 )
