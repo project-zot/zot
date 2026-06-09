@@ -803,7 +803,7 @@ func TestImageLintFailedEvents(t *testing.T) {
 		eventCapture.mu.Unlock()
 	})
 
-	Convey("digest push with extra tags that fails lint emits one ImageLintFailed per tag", t, func() {
+	Convey("digest push with extra tags that fails lint emits a single ImageLintFailed", t, func() {
 		eventCapture := &captureImageEvents{}
 		imgStore := newLocalImageStoreWithEventRecorderAndLinter(t, eventCapture, failingLinter)
 
@@ -817,22 +817,11 @@ func TestImageLintFailedEvents(t *testing.T) {
 		So(err, ShouldNotBeNil)
 
 		eventCapture.mu.Lock()
-		So(len(eventCapture.imageLintFailed), ShouldEqual, len(extraTags))
-
-		seenRefs := map[string]struct{}{}
-
-		for _, call := range eventCapture.imageLintFailed {
-			So(call.repo, ShouldEqual, repo)
-			So(call.digest, ShouldEqual, manifestDigest.String())
-
-			seenRefs[call.reference] = struct{}{}
-		}
-
-		for _, tag := range extraTags {
-			_, ok := seenRefs[tag]
-			So(ok, ShouldBeTrue)
-		}
-
+		// lint is a property of the manifest, not the tag(s), so only one event is emitted.
+		So(len(eventCapture.imageLintFailed), ShouldEqual, 1)
+		So(eventCapture.imageLintFailed[0].repo, ShouldEqual, repo)
+		So(eventCapture.imageLintFailed[0].digest, ShouldEqual, manifestDigest.String())
+		So(eventCapture.imageLintFailed[0].reference, ShouldEqual, extraTags[0])
 		eventCapture.mu.Unlock()
 	})
 }

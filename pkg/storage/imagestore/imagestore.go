@@ -752,6 +752,7 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 		desc.ArtifactType = artifactType
 
 		lintDesc = desc
+		changedTags = []string{reference}
 	}
 
 	pass, err := common.ApplyLinter(is, is.linter, repo, lintDesc)
@@ -760,14 +761,10 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 			Msg("linter didn't pass")
 
 		if is.events != nil {
-			evCtx := events.EventContextFromContext(ctx)
-			if len(changedTags) > 0 {
-				for _, tag := range changedTags {
-					is.events.ImageLintFailed(repo, tag, mDigest.String(), mediaType, string(body), evCtx)
-				}
-			} else {
-				is.events.ImageLintFailed(repo, reference, mDigest.String(), mediaType, string(body), evCtx)
-			}
+			// lint is a property of the manifest, not of the tag(s) it is applied under,
+			// so a single event is emitted per manifest regardless of how many tags changed.
+			is.events.ImageLintFailed(repo, changedTags[0], mDigest.String(), mediaType, string(body),
+				events.EventContextFromContext(ctx))
 		}
 
 		return "", "", err
@@ -779,12 +776,8 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 
 	if is.events != nil {
 		evCtx := events.EventContextFromContext(ctx)
-		if len(changedTags) > 0 {
-			for _, tag := range changedTags {
-				is.events.ImageUpdated(repo, tag, mDigest.String(), mediaType, string(body), evCtx)
-			}
-		} else {
-			is.events.ImageUpdated(repo, reference, mDigest.String(), mediaType, string(body), evCtx)
+		for _, ref := range changedTags {
+			is.events.ImageUpdated(repo, ref, mDigest.String(), mediaType, string(body), evCtx)
 		}
 	}
 
