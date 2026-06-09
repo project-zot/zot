@@ -13015,12 +13015,25 @@ func TestGetGithubUserInfo(t *testing.T) {
 					},
 				},
 			),
+			mock.WithRequestMatchHandler(
+				mock.EndpointPattern{
+					Pattern: "/user/teams",
+					Method:  "GET",
+				},
+				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					w.Write([]byte(`[{"slug": "infra", "organization": {"login": "myorg"}}]`))
+				}),
+			),
 		)
 
 		client := github.NewClient(mockedHTTPClient)
 
-		_, _, err := api.GetGithubUserInfo(context.Background(), client, log.NewTestLogger())
+		email, groups, err := api.GetGithubUserInfo(context.Background(), client, log.NewTestLogger())
 		So(err, ShouldBeNil)
+		So(email, ShouldEqual, "test@test")
+		So(groups, ShouldContain, "testOrg")
+		So(groups, ShouldContain, "myorg/infra")
 	})
 
 	Convey("github ListEmails error", t, func() {
@@ -13056,6 +13069,46 @@ func TestGetGithubUserInfo(t *testing.T) {
 			),
 			mock.WithRequestMatchHandler(
 				mock.GetUserOrgs,
+				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					mock.WriteError(
+						w,
+						http.StatusInternalServerError,
+						"github error",
+					)
+				}),
+			),
+		)
+
+		client := github.NewClient(mockedHTTPClient)
+
+		_, _, err := api.GetGithubUserInfo(context.Background(), client, log.NewTestLogger())
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("github ListUserTeams error", t, func() {
+		mockedHTTPClient := mock.NewMockedHTTPClient(
+			mock.WithRequestMatch(
+				mock.GetUserEmails,
+				[]github.UserEmail{
+					{
+						Email:   new("test@test"),
+						Primary: new(true),
+					},
+				},
+			),
+			mock.WithRequestMatch(
+				mock.GetUserOrgs,
+				[]github.Organization{
+					{
+						Login: new("testOrg"),
+					},
+				},
+			),
+			mock.WithRequestMatchHandler(
+				mock.EndpointPattern{
+					Pattern: "/user/teams",
+					Method:  "GET",
+				},
 				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					mock.WriteError(
 						w,

@@ -1062,11 +1062,15 @@ func GetGithubUserInfo(ctx context.Context, client *github.Client, log log.Logge
 	}
 
 	teams, _, err := client.Teams.ListUserTeams(ctx, nil)
-	if err == nil {
-		for _, team := range teams {
-			if team.Organization != nil && team.Organization.Login != nil && team.Slug != nil {
-				groups = append(groups, fmt.Sprintf("%s/%s", *team.Organization.Login, *team.Slug))
-			}
+	if err != nil {
+		log.Error().Msg("failed to fetch user teams")
+
+		return "", []string{}, err
+	}
+
+	for _, team := range teams {
+		if team.Organization != nil && team.Organization.Login != nil && team.Slug != nil {
+			groups = append(groups, fmt.Sprintf("%s/%s", *team.Organization.Login, *team.Slug))
 		}
 	}
 
