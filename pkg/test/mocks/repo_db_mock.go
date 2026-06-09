@@ -46,6 +46,10 @@ type MetaDBMock struct {
 
 	PatchDBFn func() error
 
+	GetFastRestartStampFn func() (string, error)
+
+	SetFastRestartStampFn func(stamp string) error
+
 	ImageTrustStoreFn func() mTypes.ImageTrustStore
 
 	SetImageTrustStoreFn func(mTypes.ImageTrustStore)
@@ -166,6 +170,22 @@ func (sdm MetaDBMock) SetImageTrustStore(imgTrustStore mTypes.ImageTrustStore) {
 func (sdm MetaDBMock) PatchDB() error {
 	if sdm.PatchDBFn != nil {
 		return sdm.PatchDBFn()
+	}
+
+	return nil
+}
+
+func (sdm MetaDBMock) GetFastRestartStamp() (string, error) {
+	if sdm.GetFastRestartStampFn != nil {
+		return sdm.GetFastRestartStampFn()
+	}
+
+	return "", nil
+}
+
+func (sdm MetaDBMock) SetFastRestartStamp(stamp string) error {
+	if sdm.SetFastRestartStampFn != nil {
+		return sdm.SetFastRestartStampFn(stamp)
 	}
 
 	return nil

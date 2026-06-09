@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"maps"
 	"os"
@@ -498,6 +500,14 @@ type GlobalStorageConfig struct {
 	StorageConfig `mapstructure:",squash"`
 
 	SubPaths map[string]StorageConfig
+
+	// FastRestart lets the controller skip the startup storage walk when neither
+	// the Zot binary nor the storage config has changed since the last run. This
+	// avoids re-reading all metadata from storage on every restart, at the cost
+	// of not detecting out-of-band changes to storage; any storage-config change
+	// forces a full reparse. It is a top-level storage setting only and is not
+	// honored under subPaths. Defaults to false.
+	FastRestart *bool `mapstructure:",omitempty"`
 }
 
 type AccessControlConfig struct {
@@ -1268,6 +1278,61 @@ func (c *Config) GetRealm() string {
 	defer c.mu.RUnlock()
 
 	return c.HTTP.Realm
+}
+
+// IsFastRestartEnabled reports whether the controller may skip the startup
+// storage walk when the metaDB fast-restart stamp matches the current binary
+// and storage config. Defaults to false when unset.
+func (c *Config) IsFastRestartEnabled() bool {
+	if c == nil {
+		return false
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.Storage.FastRestart == nil {
+		return false
+	}
+
+	return *c.Storage.FastRestart
+}
+
+// StorageFingerprint returns a stable SHA-256 of the storage config that influences the
+// storage->metaDB walk. It is combined with this binary's identity (see meta.FastRestartStamp)
+// into the fast-restart stamp: when it changes, the metaDB may no longer match storage and a full
+// reparse is forced. FastRestart and the runtime-only GCMaxSchedulerDelay are excluded so
+// toggling them never spuriously invalidates the stamp.
+func (c *Config) StorageFingerprint() string {
+	if c == nil {
+		return ""
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	var norm GlobalStorageConfig
+	if err := DeepCopy(c.Storage, &norm); err != nil {
+		return ""
+	}
+
+	norm.FastRestart = nil
+	norm.GCMaxSchedulerDelay = 0
+
+	for name, subPath := range norm.SubPaths {
+		subPath.GCMaxSchedulerDelay = 0
+		norm.SubPaths[name] = subPath
+	}
+
+	// encoding/json sorts map keys, so the serialization is deterministic across restarts.
+	blob, err := json.Marshal(norm)
+	if err != nil {
+		return ""
+	}
+
+	sum := sha256.Sum256(blob)
+
+	return hex.EncodeToString(sum[:])
 }
 
 // GetCompat returns a copy of the compatibility config.

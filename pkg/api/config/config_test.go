@@ -13,6 +13,75 @@ import (
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
 )
 
+func TestStorageFingerprint(t *testing.T) {
+	newConf := func() *config.Config {
+		conf := config.New()
+		conf.Storage.RootDirectory = "/var/lib/registry"
+
+		return conf
+	}
+
+	Convey("StorageFingerprint", t, func() {
+		Convey("nil config yields an empty fingerprint", func() {
+			var nilConf *config.Config
+
+			So(nilConf.StorageFingerprint(), ShouldEqual, "")
+		})
+
+		Convey("identical storage config yields an identical, non-empty fingerprint", func() {
+			fingerprint := newConf().StorageFingerprint()
+
+			So(fingerprint, ShouldNotEqual, "")
+			So(newConf().StorageFingerprint(), ShouldEqual, fingerprint)
+		})
+
+		Convey("changing a storage field changes the fingerprint", func() {
+			base := newConf().StorageFingerprint()
+
+			dedupe := newConf()
+			dedupe.Storage.Dedupe = !dedupe.Storage.Dedupe
+			So(dedupe.StorageFingerprint(), ShouldNotEqual, base)
+
+			rootDir := newConf()
+			rootDir.Storage.RootDirectory = "/different"
+			So(rootDir.StorageFingerprint(), ShouldNotEqual, base)
+
+			driver := newConf()
+			driver.Storage.StorageDriver = map[string]any{"name": "s3"}
+			So(driver.StorageFingerprint(), ShouldNotEqual, base)
+
+			subPaths := newConf()
+			subPaths.Storage.SubPaths = map[string]config.StorageConfig{"/a": {RootDirectory: "/data/a"}}
+			So(subPaths.StorageFingerprint(), ShouldNotEqual, base)
+		})
+
+		Convey("changing a non-storage field keeps the fingerprint", func() {
+			base := newConf().StorageFingerprint()
+
+			port := newConf()
+			port.HTTP.Port = "9999"
+			So(port.StorageFingerprint(), ShouldEqual, base)
+
+			logLevel := newConf()
+			logLevel.Log = &config.LogConfig{Level: "debug"}
+			So(logLevel.StorageFingerprint(), ShouldEqual, base)
+		})
+
+		Convey("FastRestart and GCMaxSchedulerDelay are excluded from the fingerprint", func() {
+			base := newConf().StorageFingerprint()
+
+			enabled := true
+			fastRestart := newConf()
+			fastRestart.Storage.FastRestart = &enabled
+			So(fastRestart.StorageFingerprint(), ShouldEqual, base)
+
+			schedDelay := newConf()
+			schedDelay.Storage.GCMaxSchedulerDelay = 5 * time.Minute
+			So(schedDelay.StorageFingerprint(), ShouldEqual, base)
+		})
+	})
+}
+
 func TestConfig(t *testing.T) {
 	Convey("Test config utils", t, func() {
 		firstStorageConfig := config.StorageConfig{
@@ -603,6 +672,24 @@ func TestConfig(t *testing.T) {
 			},
 		}
 		So(conf.IsRetentionEnabled(), ShouldBeFalse)
+	})
+
+	Convey("Test IsFastRestartEnabled()", t, func() {
+		var nilConf *config.Config = nil
+
+		So(nilConf.IsFastRestartEnabled(), ShouldBeFalse)
+
+		// Default config leaves FastRestart unset
+		conf := config.New()
+		So(conf.IsFastRestartEnabled(), ShouldBeFalse)
+
+		disabled := false
+		conf.Storage.FastRestart = &disabled
+		So(conf.IsFastRestartEnabled(), ShouldBeFalse)
+
+		enabled := true
+		conf.Storage.FastRestart = &enabled
+		So(conf.IsFastRestartEnabled(), ShouldBeTrue)
 	})
 
 	Convey("Test IsEventRecorderEnabled()", t, func() {
