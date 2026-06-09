@@ -129,6 +129,7 @@ func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string, 
 	defer sm.streamLock.Unlock()
 
 	key := repo + ":" + reference
+	digestKey := repo + ":" + manifest.GetDescriptor().Digest.String()
 
 	if _, ok := sm.streamingRefs[key]; ok {
 		sm.logger.Warn().Str("repo", repo).Str("reference", reference).
@@ -139,6 +140,7 @@ func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string, 
 
 	// populate the manifest into streamingRefs
 	sm.streamingRefs[key] = manifest
+	sm.streamingRefs[digestKey] = manifest
 
 	// pre-load the individual blobs into activeStreams
 	// first, the manifest
@@ -148,6 +150,7 @@ func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string, 
 			Msg("failed to prepare active stream for blob")
 
 		delete(sm.streamingRefs, key)
+		delete(sm.streamingRefs, digestKey)
 
 		return err
 	}
@@ -167,6 +170,7 @@ func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string, 
 			Msg("failed to get config descriptor from manifest")
 
 		delete(sm.streamingRefs, key)
+		delete(sm.streamingRefs, digestKey)
 
 		return err
 	}
@@ -176,6 +180,7 @@ func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string, 
 		sm.logger.Error().Err(err).Str("blob", configDesc.Digest.String()).Msg("failed to prepare active stream for blob")
 
 		delete(sm.streamingRefs, key)
+		delete(sm.streamingRefs, digestKey)
 
 		return err
 	}
@@ -186,6 +191,7 @@ func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string, 
 		sm.logger.Error().Err(err).Msg("failed to get layers from manifest")
 
 		delete(sm.streamingRefs, key)
+		delete(sm.streamingRefs, digestKey)
 
 		return err
 	}
@@ -235,6 +241,10 @@ func (sm *ChunkingStreamManager) RemoveStreamingImage(repo, reference string) {
 		sm.logger.Warn().Str("repo", repo).Str("reference", reference).
 			Msg("failed to cast manifest to imager, skipping removal of active streams for config and layers")
 
+		sm.waitForClientDrainAndDeleteStream(manifest.GetDescriptor().Digest.String())
+		delete(sm.streamingRefs, key)
+		delete(sm.streamingRefs, repo+":"+manifest.GetDescriptor().Digest.String())
+
 		return
 	}
 
@@ -265,6 +275,7 @@ func (sm *ChunkingStreamManager) RemoveStreamingImage(repo, reference string) {
 
 	// remove the active streams for the manifest and its blobs
 	delete(sm.streamingRefs, key)
+	delete(sm.streamingRefs, repo+":"+manifest.GetDescriptor().Digest.String())
 
 	sm.logger.Info().Str("repo", repo).Str("reference", reference).Msg("finished removing streaming image")
 }

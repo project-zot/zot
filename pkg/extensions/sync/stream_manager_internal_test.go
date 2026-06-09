@@ -69,6 +69,27 @@ func newTestOCIManifestWithBlobs(t *testing.T, configData, layerData []byte) rcM
 	return m
 }
 
+func newTestOCIIndexWithManifests(t *testing.T, manifests ...rcManifest.Manifest) rcManifest.Manifest {
+	t.Helper()
+
+	descriptors := make([]descriptor.Descriptor, 0, len(manifests))
+	for _, man := range manifests {
+		descriptors = append(descriptors, man.GetDescriptor())
+	}
+
+	origMan := rcOCIV1.Index{
+		Versioned: rcOCIV1.IndexSchemaVersion,
+		Manifests: descriptors,
+	}
+
+	m, err := rcManifest.New(rcManifest.WithOrig(origMan))
+	if err != nil {
+		t.Fatalf("failed to create test OCI index: %v", err)
+	}
+
+	return m
+}
+
 func TestChunkingStreamManagerConnectClient(t *testing.T) {
 	Convey("ConnectClient", t, func() {
 		sm := newTestChunkingStreamManager(t.TempDir())
@@ -241,6 +262,15 @@ func TestChunkingStreamManagerStreamingImageManifest(t *testing.T) {
 			So(ok, ShouldBeTrue)
 			So(m, ShouldEqual, manifest)
 		})
+
+		Convey("returns the manifest by digest after it is stored by tag", func() {
+			err := sm.StoreImageForStreaming("repo", "tag", manifest)
+			So(err, ShouldBeNil)
+
+			m, ok := sm.StreamingImageManifest("repo", manifest.GetDescriptor().Digest.String())
+			So(ok, ShouldBeTrue)
+			So(m, ShouldEqual, manifest)
+		})
 	})
 }
 
@@ -283,6 +313,36 @@ func TestChunkingStreamManagerRemoveStreamingImage(t *testing.T) {
 
 			_, stillHasLayer := sm.activeStreams[layerDigest]
 			So(stillHasLayer, ShouldBeFalse)
+		})
+
+		Convey("removes an index manifest without removing separately stored sub-manifests", func() {
+			configData := []byte("index-cfg-payload")
+			layerData := []byte("index-lyr-payload")
+			manifest := newTestOCIManifestWithBlobs(t, configData, layerData)
+			index := newTestOCIIndexWithManifests(t, manifest)
+
+			err := sm.StoreImageForStreaming("myrepo", manifest.GetDescriptor().Digest.String(), manifest)
+			So(err, ShouldBeNil)
+
+			err = sm.StoreImageForStreaming("myrepo", "multi", index)
+			So(err, ShouldBeNil)
+
+			indexDigest := index.GetDescriptor().Digest.String()
+			manifestDigest := manifest.GetDescriptor().Digest.String()
+
+			sm.RemoveStreamingImage("myrepo", "multi")
+
+			_, found := sm.StreamingImageManifest("myrepo", "multi")
+			So(found, ShouldBeFalse)
+
+			_, found = sm.StreamingImageManifest("myrepo", indexDigest)
+			So(found, ShouldBeFalse)
+
+			_, stillHasIndex := sm.activeStreams[indexDigest]
+			So(stillHasIndex, ShouldBeFalse)
+
+			_, found = sm.StreamingImageManifest("myrepo", manifestDigest)
+			So(found, ShouldBeTrue)
 		})
 	})
 }

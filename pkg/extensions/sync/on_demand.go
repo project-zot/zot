@@ -80,29 +80,36 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(
 		return cachedManifest, nil
 	}
 
-	var manifest manifest.Manifest
+	var fetchedManifest manifest.Manifest
+	var fetchedService Service
 
 	for _, service := range onDemand.services {
 		onDemand.log.Debug().Str("repo", repo).Str("ref", reference).Msg("attempting to fetch manifest")
-		fetchedManifest, err := service.FetchManifest(ctx, repo, reference)
+		man, err := service.FetchManifest(ctx, repo, reference)
 		if err != nil {
 			onDemand.log.Error().Err(err).Msg("failed to fetch manifest from service")
 
 			continue
 		}
-		manifest = fetchedManifest
+
+		fetchedManifest = man
+		fetchedService = service
 
 		break
 	}
 
-	if manifest == nil {
+	if fetchedManifest == nil {
 		return nil, zerr.ErrBlobNotFound
+	}
+
+	if err := onDemand.prepareIndexManifestsForStreaming(ctx, fetchedService, repo, fetchedManifest); err != nil {
+		return nil, err
 	}
 
 	onDemand.log.Debug().Str("repo", repo).Str("reference", reference).
 		Msg("storing image for streaming")
 
-	err := onDemand.streamManager.StoreImageForStreaming(repo, reference, manifest)
+	err := onDemand.streamManager.StoreImageForStreaming(repo, reference, fetchedManifest)
 	if err != nil {
 		onDemand.log.Error().Err(err).Str("repo", repo).Str("reference", reference).
 			Msg("failed to store manifest for streaming")
@@ -119,7 +126,50 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(
 		}
 	}()
 
-	return manifest, nil
+	return fetchedManifest, nil
+}
+
+func (onDemand *BaseOnDemand) prepareIndexManifestsForStreaming(
+	ctx context.Context, service Service, repo string, man manifest.Manifest,
+) error {
+	indexer, ok := man.(manifest.Indexer)
+	if !ok {
+		return nil
+	}
+
+	manifestList, err := indexer.GetManifestList()
+	if err != nil {
+		return err
+	}
+
+	for _, desc := range manifestList {
+		reference := desc.Digest.String()
+
+		if _, ok := onDemand.streamManager.StreamingImageManifest(repo, reference); ok {
+			continue
+		}
+
+		onDemand.log.Debug().Str("repo", repo).Str("reference", reference).
+			Msg("fetching index sub-manifest for streaming")
+
+		subManifest, err := service.FetchManifest(ctx, repo, reference)
+		if err != nil {
+			onDemand.log.Error().Err(err).Str("repo", repo).Str("reference", reference).
+				Msg("failed to fetch index sub-manifest for streaming")
+
+			return err
+		}
+
+		err = onDemand.streamManager.StoreImageForStreaming(repo, reference, subManifest)
+		if err != nil {
+			onDemand.log.Error().Err(err).Str("repo", repo).Str("reference", reference).
+				Msg("failed to store index sub-manifest for streaming")
+
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference string) error {

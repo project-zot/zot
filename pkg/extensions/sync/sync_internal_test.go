@@ -21,6 +21,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/regclient/regclient"
 	rcBlob "github.com/regclient/regclient/types/blob"
+	"github.com/regclient/regclient/types/descriptor"
 	rcManifest "github.com/regclient/regclient/types/manifest"
 	rcOCIV1 "github.com/regclient/regclient/types/oci/v1"
 	"github.com/regclient/regclient/types/ref"
@@ -1386,6 +1387,27 @@ func newTestManifest(t *testing.T) rcManifest.Manifest {
 	return m
 }
 
+func newTestIndexManifest(t *testing.T, manifests ...rcManifest.Manifest) rcManifest.Manifest {
+	t.Helper()
+
+	descriptors := make([]descriptor.Descriptor, 0, len(manifests))
+	for _, man := range manifests {
+		descriptors = append(descriptors, man.GetDescriptor())
+	}
+
+	origMan := rcOCIV1.Index{
+		Versioned: rcOCIV1.IndexSchemaVersion,
+		Manifests: descriptors,
+	}
+
+	m, err := rcManifest.New(rcManifest.WithOrig(origMan))
+	if err != nil {
+		t.Fatalf("failed to create test index manifest: %v", err)
+	}
+
+	return m
+}
+
 func TestOnDemandSetAndGetStreamManager(t *testing.T) {
 	Convey("StreamManager is nil before SetStreamManager is called", t, func() {
 		onDemand := NewOnDemand(log.NewTestLogger())
@@ -1551,6 +1573,52 @@ func TestOnDemandFetchManifestForStream(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(result, ShouldEqual, fetched)
 		So(secondFetchCalled, ShouldBeFalse)
+	})
+
+	Convey("fetches and stores index sub-manifests before returning the index", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+		childManifest := newTestManifest(t)
+		indexManifest := newTestIndexManifest(t, childManifest)
+		childDigest := childManifest.GetDescriptor().Digest.String()
+
+		stored := map[string]rcManifest.Manifest{}
+		sm := &mockStreamManager{
+			streamingImageManifestFn: func(repo, reference string) (rcManifest.Manifest, bool) {
+				man, ok := stored[repo+":"+reference]
+
+				return man, ok
+			},
+			storeImageForStreamingFn: func(repo, reference string, m rcManifest.Manifest) error {
+				stored[repo+":"+reference] = m
+				stored[repo+":"+m.GetDescriptor().Digest.String()] = m
+
+				return nil
+			},
+		}
+		onDemand.SetStreamManager(sm)
+
+		fetchedRefs := []string{}
+		svc := &mockSyncService{
+			fetchManifestFn: func(_ context.Context, _, reference string) (rcManifest.Manifest, error) {
+				fetchedRefs = append(fetchedRefs, reference)
+				if reference == "latest" {
+					return indexManifest, nil
+				}
+
+				So(reference, ShouldEqual, childDigest)
+
+				return childManifest, nil
+			},
+			getSyncTimeoutFn: func() time.Duration { return 5 * time.Second },
+		}
+		onDemand.Add(svc)
+
+		result, err := onDemand.FetchManifestForStream(context.Background(), "myrepo", "latest")
+		So(err, ShouldBeNil)
+		So(result, ShouldEqual, indexManifest)
+		So(fetchedRefs, ShouldResemble, []string{"latest", childDigest})
+		So(stored["myrepo:"+childDigest], ShouldEqual, childManifest)
+		So(stored["myrepo:latest"], ShouldEqual, indexManifest)
 	})
 
 	Convey("returns error when StoreImageForStreaming fails", t, func() {
