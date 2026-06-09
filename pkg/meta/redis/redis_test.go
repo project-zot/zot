@@ -45,6 +45,7 @@ func TestRedisMocked(t *testing.T) {
 		So(log, ShouldNotBeNil)
 
 		client, mock := redismock.NewClientMock()
+		defer client.Close()
 		defer DumpKeys(t, client) // Troubleshoot test failures
 
 		mock.ExpectPing().SetVal("PONG")
@@ -236,6 +237,7 @@ func TestRedisRepoMeta(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		client := goredis.NewClient(opts)
+		defer client.Close()
 		defer DumpKeys(t, client) // Troubleshoot test failures
 
 		params := redis.DBDriverParameters{KeyPrefix: "zot"}
@@ -412,6 +414,7 @@ func TestRedisUnreachable(t *testing.T) {
 		connOpts, err := goredis.ParseURL("redis://" + miniRedis.Addr())
 		So(err, ShouldBeNil)
 		workingClient := goredis.NewClient(connOpts)
+		defer workingClient.Close()
 
 		params := redis.DBDriverParameters{KeyPrefix: "zot"}
 
@@ -422,6 +425,7 @@ func TestRedisUnreachable(t *testing.T) {
 		connOpts, err = goredis.ParseURL("redis://127.0.0.1:" + test.GetFreePort())
 		So(err, ShouldBeNil)
 		brokenClient := goredis.NewClient(connOpts)
+		defer brokenClient.Close()
 
 		// Replace connection with the unreachable server
 		metaDB.Client = brokenClient
@@ -586,6 +590,7 @@ func TestWrapperErrors(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		client := goredis.NewClient(opts)
+		defer client.Close()
 		params := redis.DBDriverParameters{KeyPrefix: keyPrefix}
 
 		metaDB, err := redis.New(client, params, log)
@@ -1785,6 +1790,7 @@ func TestRedisFastRestartStamp(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		client := goredis.NewClient(opts)
+		defer client.Close()
 		defer DumpKeys(t, client) // Troubleshoot test failures
 
 		params := redis.DBDriverParameters{KeyPrefix: keyPrefix}
