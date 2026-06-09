@@ -191,6 +191,8 @@ inconsistencies between the metaDB and storage. To enable it:
     }
 ```
 
+`fastRestart` is a top-level storage setting; it is not honored under `subPaths`.
+
 You can also force a full reparse with the `--force-reparse` flag to `zot serve`.
 
 ## Retention

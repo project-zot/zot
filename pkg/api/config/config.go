@@ -39,14 +39,6 @@ type StorageConfig struct {
 	StorageDriver map[string]any `mapstructure:",omitempty"`
 	CacheDriver   map[string]any `mapstructure:",omitempty"`
 
-	// FastRestart allows the controller to skip the startup storage walk when
-	// neither the Zot binary nor the storage config has changed since the last
-	// run. This prevents re-reading all metadata from storage on every restart,
-	// at the cost of being able to detect out-of-band changes made to the
-	// storage. Any change to the storage config forces a full reparse. Defaults
-	// to false.
-	FastRestart *bool `mapstructure:",omitempty"`
-
 	// GCMaxSchedulerDelay is the maximum random delay for GC task scheduling
 	// This field is not configurable by the end user
 	GCMaxSchedulerDelay time.Duration `yaml:"-"`
@@ -508,6 +500,14 @@ type GlobalStorageConfig struct {
 	StorageConfig `mapstructure:",squash"`
 
 	SubPaths map[string]StorageConfig
+
+	// FastRestart lets the controller skip the startup storage walk when neither
+	// the Zot binary nor the storage config has changed since the last run. This
+	// avoids re-reading all metadata from storage on every restart, at the cost
+	// of not detecting out-of-band changes to storage; any storage-config change
+	// forces a full reparse. It is a top-level storage setting only and is not
+	// honored under subPaths. Defaults to false.
+	FastRestart *bool `mapstructure:",omitempty"`
 }
 
 type AccessControlConfig struct {
@@ -1320,7 +1320,6 @@ func (c *Config) StorageFingerprint() string {
 	norm.GCMaxSchedulerDelay = 0
 
 	for name, subPath := range norm.SubPaths {
-		subPath.FastRestart = nil
 		subPath.GCMaxSchedulerDelay = 0
 		norm.SubPaths[name] = subPath
 	}
