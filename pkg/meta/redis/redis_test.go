@@ -45,6 +45,7 @@ func TestRedisMocked(t *testing.T) {
 		So(log, ShouldNotBeNil)
 
 		client, mock := redismock.NewClientMock()
+		defer client.Close()
 		defer DumpKeys(t, client) // Troubleshoot test failures
 
 		mock.ExpectPing().SetVal("PONG")
@@ -236,6 +237,7 @@ func TestRedisRepoMeta(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		client := goredis.NewClient(opts)
+		defer client.Close()
 		defer DumpKeys(t, client) // Troubleshoot test failures
 
 		params := redis.DBDriverParameters{KeyPrefix: "zot"}
@@ -412,6 +414,7 @@ func TestRedisUnreachable(t *testing.T) {
 		connOpts, err := goredis.ParseURL("redis://" + miniRedis.Addr())
 		So(err, ShouldBeNil)
 		workingClient := goredis.NewClient(connOpts)
+		defer workingClient.Close()
 
 		params := redis.DBDriverParameters{KeyPrefix: "zot"}
 
@@ -422,6 +425,7 @@ func TestRedisUnreachable(t *testing.T) {
 		connOpts, err = goredis.ParseURL("redis://127.0.0.1:" + test.GetFreePort())
 		So(err, ShouldBeNil)
 		brokenClient := goredis.NewClient(connOpts)
+		defer brokenClient.Close()
 
 		// Replace connection with the unreachable server
 		metaDB.Client = brokenClient
@@ -586,6 +590,7 @@ func TestWrapperErrors(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		client := goredis.NewClient(opts)
+		defer client.Close()
 		params := redis.DBDriverParameters{KeyPrefix: keyPrefix}
 
 		metaDB, err := redis.New(client, params, log)
@@ -1772,4 +1777,58 @@ func DumpKeys(t *testing.T, client goredis.UniversalClient) {
 			t.Logf("Key: %s, Type: %s, Value: %s\n", key, keyType, value)
 		}
 	}
+}
+
+func TestRedisFastRestartStamp(t *testing.T) {
+	miniRedis := miniredis.RunT(t)
+
+	Convey("FastRestartStamp", t, func() {
+		log := log.NewTestLogger()
+		So(log, ShouldNotBeNil)
+
+		opts, err := goredis.ParseURL("redis://" + miniRedis.Addr())
+		So(err, ShouldBeNil)
+
+		client := goredis.NewClient(opts)
+		defer client.Close()
+		defer DumpKeys(t, client) // Troubleshoot test failures
+
+		params := redis.DBDriverParameters{KeyPrefix: keyPrefix}
+
+		metaDB, err := redis.New(client, params, log)
+		So(err, ShouldBeNil)
+		So(metaDB, ShouldNotBeNil)
+
+		Convey("returns empty before set", func() {
+			v, err := metaDB.GetFastRestartStamp()
+			So(err, ShouldBeNil)
+			So(v, ShouldEqual, "")
+		})
+
+		Convey("round-trips a value", func() {
+			So(metaDB.SetFastRestartStamp("v2.3.4"), ShouldBeNil)
+
+			v, err := metaDB.GetFastRestartStamp()
+			So(err, ShouldBeNil)
+			So(v, ShouldEqual, "v2.3.4")
+		})
+
+		Convey("overwrites a previous value", func() {
+			So(metaDB.SetFastRestartStamp("v1"), ShouldBeNil)
+			So(metaDB.SetFastRestartStamp("v2"), ShouldBeNil)
+
+			v, err := metaDB.GetFastRestartStamp()
+			So(err, ShouldBeNil)
+			So(v, ShouldEqual, "v2")
+		})
+
+		Convey("ResetDB clears the stamp", func() {
+			So(metaDB.SetFastRestartStamp("v1"), ShouldBeNil)
+			So(metaDB.ResetDB(), ShouldBeNil)
+
+			v, err := metaDB.GetFastRestartStamp()
+			So(err, ShouldBeNil)
+			So(v, ShouldEqual, "")
+		})
+	})
 }
