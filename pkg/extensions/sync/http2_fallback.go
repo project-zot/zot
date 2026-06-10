@@ -7,10 +7,13 @@ import (
 	"crypto/x509"
 	"errors"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/regclient/regclient"
 	"golang.org/x/net/http2"
 
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
@@ -39,6 +42,14 @@ type http2FallbackTransport struct {
 	stickyTTL  time.Duration
 	now        func() time.Time
 	stickyHost sync.Map // host string -> time.Time when entry expires
+}
+
+type hostAwareTransport struct {
+	base           *http.Transport
+	certDirs       []string
+	configureHTTP2 bool
+	log            log.Logger
+	transports     sync.Map // host string -> *http.Transport
 }
 
 func (t *http2FallbackTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -124,6 +135,109 @@ func isHTTP2FramingError(err error) bool {
 	return strings.Contains(err.Error(), "malformed HTTP response")
 }
 
+func (t *hostAwareTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	return t.transportForHost(req.URL.Host).RoundTrip(req)
+}
+
+func (t *hostAwareTransport) transportForHost(host string) *http.Transport {
+	if cached, ok := t.transports.Load(host); ok {
+		if transport, ok := cached.(*http.Transport); ok {
+			return transport
+		}
+	}
+
+	transport := t.base.Clone()
+	configureHostCertDirTLS(transport, host, t.certDirs)
+
+	if t.configureHTTP2 {
+		if err := http2.ConfigureTransport(transport); err != nil {
+			t.log.Warn().Err(err).
+				Msg("failed to configure http2 on sync transport, framing-error fallback may be limited to substring detection")
+		}
+	}
+
+	actual, _ := t.transports.LoadOrStore(host, transport)
+	if cached, ok := actual.(*http.Transport); ok {
+		return cached
+	}
+
+	return transport
+}
+
+func cloneOrCreateTLSConfig(transport *http.Transport) *cryptotls.Config {
+	if transport.TLSClientConfig != nil {
+		return transport.TLSClientConfig.Clone()
+	}
+
+	return &cryptotls.Config{}
+}
+
+func appendCertsToPool(pool *x509.CertPool, certsPEM []byte) (*x509.CertPool, bool) {
+	if pool == nil {
+		var err error
+		pool, err = x509.SystemCertPool()
+		if err != nil || pool == nil {
+			pool = x509.NewCertPool()
+		}
+	} else {
+		pool = pool.Clone()
+	}
+
+	if !pool.AppendCertsFromPEM(certsPEM) {
+		return nil, false
+	}
+
+	return pool, true
+}
+
+func configureHostCertDirTLS(transport *http.Transport, host string, certDirs []string) {
+	if len(certDirs) == 0 {
+		return
+	}
+
+	tlsConfig := cloneOrCreateTLSConfig(transport)
+	rootPool := tlsConfig.RootCAs
+	updated := false
+
+	for _, certDir := range certDirs {
+		if certDir == "" {
+			continue
+		}
+
+		hostDir := filepath.Join(certDir, host)
+		files, err := os.ReadDir(hostDir)
+		if err != nil {
+			continue
+		}
+
+		for _, file := range files {
+			if file.IsDir() || !strings.HasSuffix(file.Name(), ".crt") {
+				continue
+			}
+
+			certPEM, err := os.ReadFile(filepath.Join(hostDir, file.Name())) //nolint:gosec // hostDir is derived from configured cert directories
+			if err != nil {
+				continue
+			}
+
+			pool, ok := appendCertsToPool(rootPool, certPEM)
+			if !ok {
+				continue
+			}
+
+			rootPool = pool
+			updated = true
+		}
+	}
+
+	if !updated {
+		return
+	}
+
+	tlsConfig.RootCAs = rootPool
+	transport.TLSClientConfig = tlsConfig
+}
+
 func clonedTransport(opts syncconf.RegistryConfig) *http.Transport {
 	// Configure transport with timeouts to prevent indefinite hangs.
 	// See https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/
@@ -145,7 +259,7 @@ func clonedTransport(opts syncconf.RegistryConfig) *http.Transport {
 }
 
 func configureTransportTLS(transport *http.Transport, opts syncconf.RegistryConfig) {
-	tlsConfig := &cryptotls.Config{}
+	tlsConfig := cloneOrCreateTLSConfig(transport)
 	needsTLSConfig := false
 
 	if opts.TLSVerify != nil && !*opts.TLSVerify {
@@ -173,8 +287,8 @@ func configureTransportTLS(transport *http.Transport, opts syncconf.RegistryConf
 	}
 
 	if regCert != "" {
-		pool := x509.NewCertPool()
-		if pool.AppendCertsFromPEM([]byte(regCert)) {
+		pool, ok := appendCertsToPool(tlsConfig.RootCAs, []byte(regCert))
+		if ok {
 			tlsConfig.RootCAs = pool
 			needsTLSConfig = true
 		}
@@ -193,21 +307,38 @@ func configureTransportTLS(transport *http.Transport, opts syncconf.RegistryConf
 	}
 }
 
+func buildTransportCertDirs(opts syncconf.RegistryConfig) []string {
+	certDirs := []string{regclient.DockerCertDir}
+	if opts.CertDir != "" {
+		certDirs = append(certDirs, opts.CertDir)
+	}
+
+	return certDirs
+}
+
 // newHTTP2FallbackTransport builds a RoundTripper that prefers HTTP/2 for upstream sync
 // and falls back to HTTP/1.1 on the framing errors enumerated in isHTTP2FramingError.
 // Both transports share the same timeout configuration; the fallback only differs by
 // disabling HTTP/2 negotiation, so an upstream that breaks HTTP/2 can still be reached.
 func newHTTP2FallbackTransport(opts syncconf.RegistryConfig, logger log.Logger) http.RoundTripper {
-	primaryTransport := clonedTransport(opts)
+	certDirs := buildTransportCertDirs(opts)
 
-	if err := http2.ConfigureTransport(primaryTransport); err != nil {
-		logger.Warn().Err(err).
-			Msg("failed to configure http2 on sync transport, framing-error fallback may be limited to substring detection")
+	primaryTransport := &hostAwareTransport{
+		base:           clonedTransport(opts),
+		certDirs:       certDirs,
+		configureHTTP2: true,
+		log:            logger,
 	}
 
-	fallbackTransport := clonedTransport(opts)
-	fallbackTransport.TLSNextProto = make(map[string]func(string, *cryptotls.Conn) http.RoundTripper)
-	fallbackTransport.ForceAttemptHTTP2 = false
+	fallbackBase := clonedTransport(opts)
+	fallbackBase.TLSNextProto = make(map[string]func(string, *cryptotls.Conn) http.RoundTripper)
+	fallbackBase.ForceAttemptHTTP2 = false
+
+	fallbackTransport := &hostAwareTransport{
+		base:     fallbackBase,
+		certDirs: certDirs,
+		log:      logger,
+	}
 
 	return &http2FallbackTransport{
 		primary:   primaryTransport,

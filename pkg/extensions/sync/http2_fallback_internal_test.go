@@ -11,6 +11,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -19,7 +21,9 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"golang.org/x/net/http2"
 
+	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
 	"zotregistry.dev/zot/v2/pkg/log"
+	tlsutils "zotregistry.dev/zot/v2/pkg/test/tls"
 )
 
 var (
@@ -95,6 +99,38 @@ func newOKResponse(body string) *http.Response {
 		Body:       io.NopCloser(strings.NewReader(body)),
 		Header:     make(http.Header),
 	}
+}
+
+func writeTestCACert(t *testing.T, dir string) []byte {
+	t.Helper()
+
+	caCertPEM, _, err := tlsutils.GenerateCACert(&tlsutils.CertificateOptions{
+		CommonName: "test-ca",
+		NotAfter:   time.Now().AddDate(1, 0, 0),
+	})
+	if err != nil {
+		t.Fatalf("failed to generate CA cert: %v", err)
+	}
+
+	err = os.WriteFile(filepath.Join(dir, "ca.crt"), caCertPEM, 0o600)
+	if err != nil {
+		t.Fatalf("failed to write CA cert: %v", err)
+	}
+
+	return caCertPEM
+}
+
+func certPoolSubjects(pool *x509.CertPool) []string {
+	if pool == nil {
+		return nil
+	}
+
+	subjects := make([]string, 0, len(pool.Subjects()))
+	for _, subject := range pool.Subjects() {
+		subjects = append(subjects, string(subject))
+	}
+
+	return subjects
 }
 
 func TestHTTP2FallbackTransportRoundTrip(t *testing.T) {
@@ -375,5 +411,67 @@ func TestHTTP2FallbackStickyPerHost(t *testing.T) {
 			So(primary.hits, ShouldEqual, 2)
 			So(fallback.hits, ShouldEqual, 2)
 		})
+	})
+}
+
+func TestConfigureTransportTLSAppendsRootCAs(t *testing.T) {
+	Convey("configureTransportTLS preserves existing roots", t, func() {
+		tempDir := t.TempDir()
+		newCAPEM := writeTestCACert(t, tempDir)
+
+		existingCAPEM, _, err := tlsutils.GenerateCACert(&tlsutils.CertificateOptions{
+			CommonName: "existing-ca",
+			NotAfter:   time.Now().AddDate(1, 0, 0),
+		})
+		So(err, ShouldBeNil)
+
+		existingPool := x509.NewCertPool()
+		So(existingPool.AppendCertsFromPEM(existingCAPEM), ShouldBeTrue)
+
+		transport := http.DefaultTransport.(*http.Transport).Clone() //nolint: forcetypeassert
+		transport.TLSClientConfig = &tls.Config{RootCAs: existingPool}
+
+		configureTransportTLS(transport, syncconf.RegistryConfig{CertDir: tempDir})
+
+		So(transport.TLSClientConfig, ShouldNotBeNil)
+		So(transport.TLSClientConfig.RootCAs, ShouldNotBeNil)
+		So(len(transport.TLSClientConfig.RootCAs.Subjects()), ShouldEqual, 2)
+
+		newPool := x509.NewCertPool()
+		So(newPool.AppendCertsFromPEM(newCAPEM), ShouldBeTrue)
+		subjects := certPoolSubjects(transport.TLSClientConfig.RootCAs)
+		So(subjects, ShouldContain, string(existingPool.Subjects()[0]))
+		So(subjects, ShouldContain, string(newPool.Subjects()[0]))
+	})
+}
+
+func TestHostAwareTransportLoadsHostSpecificRootCAs(t *testing.T) {
+	Convey("hostAwareTransport appends host specific cert-dir roots", t, func() {
+		tempDir := t.TempDir()
+		hostDir := filepath.Join(tempDir, "example.test")
+		err := os.MkdirAll(hostDir, 0o755)
+		So(err, ShouldBeNil)
+
+		hostCAPEM := writeTestCACert(t, hostDir)
+
+		transport := &hostAwareTransport{
+			base:     http.DefaultTransport.(*http.Transport).Clone(), //nolint: forcetypeassert
+			certDirs: []string{tempDir},
+			log:      log.NewLogger("debug", ""),
+		}
+
+		hostTransport := transport.transportForHost("example.test")
+		So(hostTransport.TLSClientConfig, ShouldNotBeNil)
+		So(hostTransport.TLSClientConfig.RootCAs, ShouldNotBeNil)
+
+		hostPool := x509.NewCertPool()
+		So(hostPool.AppendCertsFromPEM(hostCAPEM), ShouldBeTrue)
+		subjects := certPoolSubjects(hostTransport.TLSClientConfig.RootCAs)
+		So(subjects, ShouldContain, string(hostPool.Subjects()[0]))
+
+		otherTransport := transport.transportForHost("other.test")
+		if otherTransport.TLSClientConfig != nil && otherTransport.TLSClientConfig.RootCAs != nil {
+			So(certPoolSubjects(otherTransport.TLSClientConfig.RootCAs), ShouldNotContain, string(hostPool.Subjects()[0]))
+		}
 	})
 }
