@@ -73,7 +73,11 @@ func (t *http2FallbackTransport) RoundTrip(req *http.Request) (*http.Response, e
 			return nil, err
 		}
 
-		req.Body = body
+		fallbackReq := req.Clone(req.Context())
+		fallbackReq.Body = body
+		fallbackReq.GetBody = req.GetBody
+
+		return t.fallback.RoundTrip(fallbackReq)
 	}
 
 	return t.fallback.RoundTrip(req)
@@ -161,6 +165,10 @@ func configureTransportTLS(transport *http.Transport, opts syncconf.RegistryConf
 	if err != nil {
 		// Keep the transport usable; the sync path will surface the failure if
 		// the cert files are actually required.
+		if needsTLSConfig {
+			transport.TLSClientConfig = tlsConfig
+		}
+
 		return
 	}
 

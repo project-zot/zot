@@ -175,6 +175,14 @@ func TestHTTP2FallbackTransportRoundTrip(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(req.GetBody, ShouldNotBeNil)
 
+			originalGetBody := req.GetBody
+			var getBodyCalls int
+			req.GetBody = func() (io.ReadCloser, error) {
+				getBodyCalls++
+
+				return originalGetBody()
+			}
+
 			// Drain the body to simulate primary having consumed it before failing.
 			drained, err := io.ReadAll(req.Body)
 			So(err, ShouldBeNil)
@@ -183,11 +191,7 @@ func TestHTTP2FallbackTransportRoundTrip(t *testing.T) {
 			resp, err := transport.RoundTrip(req)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusOK)
-
-			// After fallback, req.Body has been replaced with a fresh reader.
-			refetched, err := io.ReadAll(req.Body)
-			So(err, ShouldBeNil)
-			So(refetched, ShouldResemble, payload)
+			So(getBodyCalls, ShouldEqual, 1)
 		})
 
 		Convey("body rewind failure surfaces original error", func() {

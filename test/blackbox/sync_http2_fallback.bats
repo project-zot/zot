@@ -10,17 +10,17 @@ load helpers_wait
 load ../port_helper
 
 function verify_prerequisites() {
-    if [ ! $(command -v curl) ]; then
+    if ! command -v curl >/dev/null 2>&1; then
         echo "you need to install curl as a prerequisite to running the tests" >&3
         return 1
     fi
 
-    if [ ! $(command -v skopeo) ]; then
+    if ! command -v skopeo >/dev/null 2>&1; then
         echo "you need to install skopeo as a prerequisite to running the tests" >&3
         return 1
     fi
 
-    if [ ! $(command -v jq) ]; then
+    if ! command -v jq >/dev/null 2>&1; then
         echo "you need to install jq as a prerequisite to running the tests" >&3
         return 1
     fi
@@ -29,7 +29,7 @@ function verify_prerequisites() {
 }
 
 function setup_file() {
-    if ! $(verify_prerequisites); then
+    if ! verify_prerequisites; then
         exit 1
     fi
 
