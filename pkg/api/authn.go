@@ -40,6 +40,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/constants"
 	apiErr "zotregistry.dev/zot/v2/pkg/api/errors"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
+	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	"zotregistry.dev/zot/v2/pkg/log"
 	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
 )
@@ -432,6 +433,10 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 			accessControlConfig := ctlr.Config.CopyAccessControlConfig()
 			allowAnonymous := accessControlConfig != nil && accessControlConfig.AnonymousPolicyExists()
 
+			// Allow anonymous access to the metrics endpoint only if configured.
+			extensionsConfig := ctlr.Config.CopyExtensionsConfig()
+			isMetricsRequestedWithAnonymousAccess := isAnonymousMetricsRequest(request, accessControlConfig, extensionsConfig)
+
 			// build user access control info
 			userAc := reqCtx.NewUserAccessControl()
 			// if it will not be populated by authn handlers, this represents an anonymous user
@@ -461,7 +466,7 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 				// If session authentication fails, but anonymous or management access is allowed,
 				// treat the request as authenticated. This fallback is necessary because the session
 				// header may be present for anonymous or management requests.
-				authenticated = authenticated || allowAnonymous || isMgmtRequested
+				authenticated = authenticated || allowAnonymous || isMgmtRequested || isMetricsRequestedWithAnonymousAccess
 
 			// Try mTLS authentication if client certificates are present
 			case ctlr.Config.IsMTLSAuthEnabled() && request.TLS != nil && len(request.TLS.PeerCertificates) > 0:
@@ -471,8 +476,8 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 			case !authConfig.IsBasicAuthnEnabled() && !ctlr.Config.IsMTLSAuthEnabled():
 				authenticated = true
 
-			// If no credentials provided - check for anonymous / mgmt requests
-			case allowAnonymous || isMgmtRequested:
+			// If no credentials provided - check for anonymous / mgmt / metrics requests
+			case allowAnonymous || isMgmtRequested || isMetricsRequestedWithAnonymousAccess:
 				// Docker workaround: force 401 on /v2/ when anonymous policies coexist with
 				// authenticated-only policies. Otherwise Docker treats 200 on /v2/ as "no auth"
 				// and will not send stored credentials for protected repositories.
@@ -577,6 +582,16 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 			header := request.Header.Get("Authorization")
 
 			if isAuthorizationHeaderEmpty(request) && isMgmtRequested {
+				next.ServeHTTP(response, request)
+
+				return
+			}
+
+			// Allow anonymous access to the metrics endpoint only if configured.
+			accessControlConfig := ctlr.Config.CopyAccessControlConfig()
+			extensionsConfig := ctlr.Config.CopyExtensionsConfig()
+
+			if isAnonymousMetricsRequest(request, accessControlConfig, extensionsConfig) {
 				next.ServeHTTP(response, request)
 
 				return
@@ -975,6 +990,18 @@ func authFail(w http.ResponseWriter, r *http.Request, realm string, delay int) {
 
 	w.Header().Set("Content-Type", "application/json")
 	zcommon.WriteJSON(w, http.StatusUnauthorized, apiErr.NewError(apiErr.UNAUTHORIZED))
+}
+
+func isAnonymousMetricsRequest(request *http.Request, accessControlConfig *config.AccessControlConfig,
+	extensionsConfig *extconf.ExtensionConfig,
+) bool {
+	prometheusConfig := extensionsConfig.GetMetricsPrometheusConfig()
+
+	return isAuthorizationHeaderEmpty(request) &&
+		slices.Contains(accessControlConfig.GetMetrics().AnonymousPolicy, constants.ReadPermission) &&
+		extensionsConfig.IsMetricsEnabled() &&
+		prometheusConfig != nil &&
+		strings.HasPrefix(request.URL.Path, prometheusConfig.Path)
 }
 
 func isAuthorizationHeaderEmpty(request *http.Request) bool {

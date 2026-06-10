@@ -1,0 +1,31 @@
+{
+    "distSpecVersion": "1.1.1",
+    "storage": {
+        "rootDirectory": "/tmp/zot"
+    },
+    "http": {
+        "address": "127.0.0.1",
+        "port": "8080",
+        "auth": {
+            "htpasswd": {
+                "path": "/tmp/zot-test-htpasswd"
+            }
+        },
+        "accessControl": {
+            "metrics": {
+                "anonymousPolicy": ["read"]
+            }
+        }
+    },
+    "log": {
+        "level": "debug"
+    },
+    "extensions": {
+        "metrics": {
+            "enable": true,
+            "prometheus": {
+                "path": "/metrics"
+            }
+        }
+    }
+}

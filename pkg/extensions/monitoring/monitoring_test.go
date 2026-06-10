@@ -9,6 +9,7 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"testing"
@@ -26,10 +27,12 @@ import (
 	"zotregistry.dev/zot/v2/pkg/scheduler"
 	common "zotregistry.dev/zot/v2/pkg/storage/common"
 	"zotregistry.dev/zot/v2/pkg/storage/gc"
+	authutils "zotregistry.dev/zot/v2/pkg/test/auth"
 	test "zotregistry.dev/zot/v2/pkg/test/common"
 	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 	ociutils "zotregistry.dev/zot/v2/pkg/test/oci-utils"
+	tlsutils "zotregistry.dev/zot/v2/pkg/test/tls"
 )
 
 func TestExtensionMetrics(t *testing.T) {
@@ -422,6 +425,179 @@ func TestMetricsAuthorization(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		})
+		Convey("with basic auth: metrics.anonymousPolicy=[read] allows unauthenticated scraping", func() {
+			conf.HTTP.AccessControl = &config.AccessControlConfig{
+				Metrics: config.Metrics{
+					AnonymousPolicy: []string{"read"},
+				},
+			}
+			ctlr := api.NewController(conf)
+			ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+			cm := test.NewControllerManager(ctlr)
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			// unauthenticated client should be allowed to scrape /metrics
+			resp, err := resty.R().Get(baseURL + "/metrics")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// wrong credentials should still be rejected at authn
+			resp, err = resty.R().SetBasicAuth("hacker", "wrongpass").Get(baseURL + "/metrics")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+			// valid credentials should also work
+			client := resty.New()
+			client.SetBasicAuth(metricsuser, metricspass)
+			resp, err = client.R().Get(baseURL + "/metrics")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// anonymous access to registry endpoints should remain protected
+			resp, err = resty.R().Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		})
+		Convey("with basic auth: empty metrics.anonymousPolicy blocks unauthenticated scraping", func() {
+			conf.HTTP.AccessControl = &config.AccessControlConfig{
+				Metrics: config.Metrics{
+					AnonymousPolicy: nil,
+					Users:           []string{metricsuser},
+				},
+			}
+			ctlr := api.NewController(conf)
+			ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+			cm := test.NewControllerManager(ctlr)
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			// unauthenticated client should be blocked
+			resp, err := resty.R().Get(baseURL + "/metrics")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+			// authorized user should still have access
+			client := resty.New()
+			client.SetBasicAuth(metricsuser, metricspass)
+			resp, err = client.R().Get(baseURL + "/metrics")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		})
+	})
+	Convey("Make a new controller with bearer auth & metrics enabled", t, func() {
+		serverCertPath, serverKeyPath := setupMetricsBearerAuthServerCerts(t)
+
+		authTestServer := authutils.MakeAuthTestServer(serverKeyPath, "RS256", "unauthorized-repo")
+		defer authTestServer.Close()
+
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		authURL, err := url.Parse(authTestServer.URL)
+		So(err, ShouldBeNil)
+
+		conf.HTTP.Auth = &config.AuthConfig{
+			Bearer: &config.BearerConfig{
+				Cert:    serverCertPath,
+				Realm:   authTestServer.URL + "/auth/token",
+				Service: authURL.Host,
+			},
+		}
+
+		enabled := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Metrics: &extconf.MetricsConfig{
+				BaseConfig: extconf.BaseConfig{Enable: &enabled},
+				Prometheus: &extconf.PrometheusConfig{Path: "/metrics"},
+			},
+		}
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
+			Metrics: config.Metrics{
+				AnonymousPolicy: []string{"read"},
+			},
+		}
+
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
+
+		Convey("with bearer auth: metrics.anonymousPolicy=[read] allows unauthenticated scraping", func() {
+			// unauthenticated client should be allowed to scrape /metrics
+			resp, err := resty.R().Get(baseURL + "/metrics")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// invalid bearer token should still be rejected at authn
+			resp, err = resty.R().SetHeader("Authorization", "Bearer invalidToken").Get(baseURL + "/metrics")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+			// anonymous access to registry endpoints should remain protected
+			resp, err = resty.R().Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		})
+	})
+}
+
+func TestMetricsAnonymousAccessNoAuth(t *testing.T) {
+	Convey("Make a new controller with no auth and metrics.anonymousPolicy=[read]", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		enabled := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Metrics: &extconf.MetricsConfig{
+				BaseConfig: extconf.BaseConfig{Enable: &enabled},
+				Prometheus: &extconf.PrometheusConfig{Path: "/metrics"},
+			},
+		}
+
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
+			Metrics: config.Metrics{
+				AnonymousPolicy: []string{"read"},
+			},
+		}
+
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
+
+		// unauthenticated client should be allowed to scrape /metrics
+		resp, err := resty.R().Get(baseURL + "/metrics")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+	})
+}
+
+func TestMetricsAnonymousPolicyNilAccessControl(t *testing.T) {
+	Convey("Nil access control does not match metrics anonymous policy", t, func() {
+		var accessControlConfig *config.AccessControlConfig
+
+		So(accessControlConfig.ContainsOnlyMetricsAnonymousPolicy(), ShouldBeFalse)
 	})
 }
 
@@ -569,4 +745,35 @@ func generateRandomString() string {
 	}
 
 	return string(randomBytes)
+}
+
+func setupMetricsBearerAuthServerCerts(t *testing.T) (string, string) {
+	t.Helper()
+
+	tempDir := t.TempDir()
+	caOpts := &tlsutils.CertificateOptions{
+		CommonName: "*",
+		NotAfter:   time.Now().AddDate(10, 0, 0),
+		KeyType:    tlsutils.KeyTypeRSA,
+	}
+	caCertPEM, caKeyPEM, err := tlsutils.GenerateCACert(caOpts)
+	if err != nil {
+		t.Fatalf("failed to generate CA cert: %v", err)
+	}
+
+	serverCertPath := path.Join(tempDir, "server.cert")
+	serverKeyPath := path.Join(tempDir, "server.key")
+	serverOpts := &tlsutils.CertificateOptions{
+		Hostname:           "127.0.0.1",
+		CommonName:         "*",
+		OrganizationalUnit: "TestServer",
+		NotAfter:           time.Now().AddDate(10, 0, 0),
+		KeyType:            tlsutils.KeyTypeRSA,
+	}
+	err = tlsutils.GenerateServerCertToFile(caCertPEM, caKeyPEM, serverCertPath, serverKeyPath, serverOpts)
+	if err != nil {
+		t.Fatalf("failed to generate server cert: %v", err)
+	}
+
+	return serverCertPath, serverKeyPath
 }
