@@ -80,6 +80,29 @@ func getCertificates(certDir string) (string, string, string, error) {
 
 	var regCert string
 
+	// Prefer canonical filenames when present to avoid ambiguity when a cert dir
+	// contains multiple *.cert/*.key files.
+	clientCertPath := path.Join(certDir, "client.cert")
+	if buf, err := os.ReadFile(clientCertPath); err == nil {
+		clientCert = string(buf)
+	} else if !os.IsNotExist(err) {
+		return "", "", "", err
+	}
+
+	clientKeyPath := path.Join(certDir, "client.key")
+	if buf, err := os.ReadFile(clientKeyPath); err == nil {
+		clientKey = string(buf)
+	} else if !os.IsNotExist(err) {
+		return "", "", "", err
+	}
+
+	caCertPath := path.Join(certDir, "ca.crt")
+	if buf, err := os.ReadFile(caCertPath); err == nil {
+		regCert = string(buf)
+	} else if !os.IsNotExist(err) {
+		return "", "", "", err
+	}
+
 	files, err := os.ReadDir(certDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -94,7 +117,7 @@ func getCertificates(certDir string) (string, string, string, error) {
 			continue
 		}
 
-		if strings.HasSuffix(file.Name(), ".cert") {
+		if clientCert == "" && strings.HasSuffix(file.Name(), ".cert") {
 			certPath := path.Join(certDir, file.Name())
 
 			buf, err := os.ReadFile(certPath)
@@ -105,7 +128,7 @@ func getCertificates(certDir string) (string, string, string, error) {
 			clientCert = string(buf)
 		}
 
-		if strings.HasSuffix(file.Name(), ".key") {
+		if clientKey == "" && strings.HasSuffix(file.Name(), ".key") {
 			certPath := path.Join(certDir, file.Name())
 
 			buf, err := os.ReadFile(certPath)
@@ -116,7 +139,7 @@ func getCertificates(certDir string) (string, string, string, error) {
 			clientKey = string(buf)
 		}
 
-		if strings.HasSuffix(file.Name(), ".crt") {
+		if regCert == "" && strings.HasSuffix(file.Name(), ".crt") {
 			certPath := path.Join(certDir, file.Name())
 
 			buf, err := os.ReadFile(certPath)

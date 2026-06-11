@@ -893,27 +893,8 @@ func newClient(opts syncconf.RegistryConfig, credentials syncconf.CredentialsFil
 		regOpts = append(regOpts, reg.WithDelay(*opts.RetryDelay, *opts.RetryDelay))
 	}
 
-	// Configure transport with timeouts to prevent indefinite hangs.
-	// See https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/
-	// Clone DefaultTransport to preserve proxy/TLS settings and existing timeouts
-	// (DialContext: 30s, TLSHandshakeTimeout: 10s).
-	// regclient uses DefaultTransport internally if no custom transport is provided, so this ensures compatibility.
-	transport := http.DefaultTransport.(*http.Transport).Clone() //nolint: forcetypeassert
-
-	// ResponseHeaderTimeout: prevents hanging when server connects but doesn't send headers.
-	// Set programmatically in root.go. This timeout applies only to waiting for response headers
-	// after the request is sent. It does NOT include DialContext (30s) or TLSHandshakeTimeout (10s),
-	// which are separate component timeouts. Doesn't cover body transfer time, which is expected
-	// to be slow for large images.
-	transport.ResponseHeaderTimeout = opts.ResponseHeaderTimeout
-
-	// Use SyncTimeout for overall HTTP client timeout. This is the maximum time for the entire
-	// HTTP request, covering all stages: DialContext (connection establishment), TLSHandshakeTimeout
-	// (TLS handshake), ResponseHeaderTimeout (waiting for headers), and body transfer time.
-	// Critical for periodic sync operations (catalog listing, SyncRepo, getTags) which don't use
-	// on-demand timeout contexts and could otherwise hang indefinitely if upstream doesn't respond.
 	httpClient := &http.Client{
-		Transport: transport,
+		Transport: newHTTP2FallbackTransport(opts, logger),
 		Timeout:   opts.SyncTimeout,
 	}
 	regOpts = append(regOpts, reg.WithHTTPClient(httpClient))

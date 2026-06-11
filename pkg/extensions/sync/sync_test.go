@@ -2237,13 +2237,24 @@ func TestConfigReloader(t *testing.T) {
 			}()
 
 			// wait till ready
-			for {
+			readyDeadline := time.Now().Add(30 * time.Second)
+			ready := false
+
+			for time.Now().Before(readyDeadline) {
 				_, err := resty.R().Get(destBaseURL)
 				if err == nil {
+					ready = true
+
 					break
 				}
 
 				time.Sleep(100 * time.Millisecond)
+			}
+
+			if !ready {
+				logData, _ := os.ReadFile(dctlr.Config.Log.Output)
+				t.Fatalf("timed out waiting for server readiness at %s; downstream log:\n%s",
+					destBaseURL, string(logData))
 			}
 
 			defer dctlr.Shutdown()
@@ -2385,13 +2396,24 @@ func TestConfigReloader(t *testing.T) {
 			}()
 
 			// wait till ready
-			for {
+			readyDeadline := time.Now().Add(30 * time.Second)
+			ready := false
+
+			for time.Now().Before(readyDeadline) {
 				_, err := resty.R().Get(destBaseURL)
 				if err == nil {
+					ready = true
+
 					break
 				}
 
 				time.Sleep(100 * time.Millisecond)
+			}
+
+			if !ready {
+				logData, _ := os.ReadFile(dctlr.Config.Log.Output)
+				t.Fatalf("timed out waiting for server readiness at %s; downstream log:\n%s",
+					destBaseURL, string(logData))
 			}
 
 			defer dctlr.Shutdown()
@@ -2692,15 +2714,32 @@ func TestTLS(t *testing.T) {
 		defer dcm.StopServer()
 
 		// wait till ready
-		for {
-			destBuf, _ := os.ReadFile(path.Join(destDir, testImage, "index.json"))
-			_ = json.Unmarshal(destBuf, &destIndex)
+		indexDeadline := time.Now().Add(2 * time.Minute)
+
+		for time.Now().Before(indexDeadline) {
+			logData, _ := os.ReadFile(dctlr.Config.Log.Output)
+			if strings.Contains(string(logData),
+				"tls: failed to verify certificate: x509: certificate signed by unknown authority") {
+				t.Fatalf("sync failed early with certificate trust error; downstream log:\n%s", string(logData))
+			}
+
+			destBuf, err := os.ReadFile(path.Join(destDir, testImage, "index.json"))
+			if err == nil {
+				var idx ispec.Index
+				if err := json.Unmarshal(destBuf, &idx); err == nil && len(idx.Manifests) > 0 {
+					destIndex = idx
+
+					break
+				}
+			}
 
 			time.Sleep(500 * time.Millisecond)
+		}
 
-			if len(destIndex.Manifests) > 0 {
-				break
-			}
+		if len(destIndex.Manifests) == 0 {
+			logData, _ := os.ReadFile(dctlr.Config.Log.Output)
+			t.Fatalf("timed out waiting for synced index in %s; downstream log:\n%s",
+				path.Join(destDir, testImage, "index.json"), string(logData))
 		}
 
 		var found bool
@@ -2717,8 +2756,21 @@ func TestTLS(t *testing.T) {
 
 		waitSyncFinish(dctlr.Config.Log.Output)
 
-		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		deadline := time.Now().Add(30 * time.Second)
+
+		var resp *resty.Response
+
+		for time.Now().Before(deadline) {
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			if err == nil && resp.StatusCode() == http.StatusOK {
+				break
+			}
+
+			time.Sleep(500 * time.Millisecond)
+		}
+
 		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 	})
 }
