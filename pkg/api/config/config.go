@@ -650,6 +650,22 @@ func (config *AccessControlConfig) GetMetrics() Metrics {
 	return config.Metrics
 }
 
+// ContainsOnlyMetricsAnonymousPolicy identifies an access control configuration
+// that contains only an anonymous policy for metrics.
+func (config *AccessControlConfig) ContainsOnlyMetricsAnonymousPolicy() bool {
+	if config == nil {
+		return false
+	}
+	admin := config.GetAdminPolicy()
+	if len(admin.Actions)+len(admin.Users)+len(admin.Groups) > 0 {
+		return false
+	}
+
+	return len(config.GetRepositories()) == 0 &&
+		len(config.GetGroups()) == 0 &&
+		slices.Contains(config.GetMetrics().AnonymousPolicy, "read")
+}
+
 // GetGroups safely gets a copy of the groups configuration.
 func (config *AccessControlConfig) GetGroups() Groups {
 	if config == nil {
@@ -739,7 +755,8 @@ type Condition struct {
 }
 
 type Metrics struct {
-	Users []string
+	Users           []string
+	AnonymousPolicy []string
 }
 
 type Config struct {
