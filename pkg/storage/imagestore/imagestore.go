@@ -1388,6 +1388,16 @@ func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]str
 
 	blobsPaths, err := is.cache.GetAllBlobs(digest)
 	if err != nil {
+		// A cache miss means the digest is not present in the cache yet, so there
+		// are simply no dedupe/mount candidates for it — that is the normal case
+		// for a not-yet-cached blob, not a failure. Treat it like the nil-cache
+		// case above and return no candidates rather than propagating the error
+		// (which callers log as an "unexpected error", spamming the logs on every
+		// fresh blob during pushes/cross-repo mount checks).
+		if errors.Is(err, zerr.ErrCacheMiss) {
+			return nil, nil //nolint:nilnil
+		}
+
 		return nil, err
 	}
 

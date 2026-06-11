@@ -644,6 +644,18 @@ func TestGetAllDedupeReposCandidates(t *testing.T) {
 				slices.Sort(repos)
 				So(repoNames, ShouldResemble, repos)
 			})
+
+			Convey("A digest with no cached blob returns no candidates and no error", t, func(c C) {
+				// A cache miss is the normal case for a not-yet-cached blob (e.g. the
+				// first push of a new blob, or a cross-repo mount check during a push).
+				// It must surface as "no dedupe/mount candidates", NOT as an error the
+				// caller logs as "unexpected error".
+				uncachedDigest := godigest.FromBytes([]byte("blob that was never pushed to any repo"))
+
+				repos, err := imgStore.GetAllDedupeReposCandidates(uncachedDigest)
+				So(err, ShouldBeNil)
+				So(repos, ShouldBeEmpty)
+			})
 		})
 	}
 }
