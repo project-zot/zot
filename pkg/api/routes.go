@@ -1509,6 +1509,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 			return
 		} else if redirectURL != "" {
 			if normalizedURL, ok := normalizeBlobRedirectURL(redirectURL); ok {
+				response.Header().Set(constants.DistContentDigestKey, digest.String())
 				response.Header().Set("Location", normalizedURL)
 				response.WriteHeader(http.StatusTemporaryRedirect)
 

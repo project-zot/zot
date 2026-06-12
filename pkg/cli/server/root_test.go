@@ -1593,6 +1593,30 @@ storage:
 		So(string(data), ShouldContainSubstring, "\"subpath\":\"/a\"")
 	})
 
+	Convey("Test redirectBlobURL warning for empty storageDriver map", t, func(c C) {
+		logPath := path.Join(t.TempDir(), "zot-load-config-empty-map.log")
+
+		content := fmt.Sprintf(`{"storage":{"rootDirectory":"/tmp/zot","redirectBlobURL":true,
+							"storageDriver": {},
+							"subPaths": {"/a": {"rootDirectory": "/tmp/zot-a","redirectBlobURL":true,"storageDriver": {}}},
+							"http":{"address":"127.0.0.1","port":"8080"},
+							"log":{"level":"debug","output":"%s"}}`, logPath)
+
+		tmpfile := MakeTempFileWithContent(t, "zot-test-empty-map.json", content)
+
+		cfg := config.New()
+		err := cli.LoadConfiguration(cfg, tmpfile)
+		So(err, ShouldBeNil)
+
+		data, err := os.ReadFile(logPath)
+		So(err, ShouldBeNil)
+
+		So(string(data), ShouldContainSubstring,
+			"redirectBlobURL is enabled for non-s3/gcs storage; blob pulls will be proxied")
+		So(string(data), ShouldContainSubstring, "\"storageDriver\":\"local\"")
+		So(string(data), ShouldContainSubstring, "\"subpath\":\"/a\"")
+	})
+
 	Convey("Test verify w/ authorization and w/o authentication", t, func(c C) {
 		content := `{"storage":{"rootDirectory":"/tmp/zot"},
 		 					"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
