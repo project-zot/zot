@@ -3272,6 +3272,15 @@ func TestGetBlobMultipartShortReaderTruncates(t *testing.T) {
 		"a short reader on the second range must truncate the body")
 }
 
+func TestNormalizeBlobRedirectURL(t *testing.T) {
+	normalized, ok := normalizeBlobRedirectURL("HTTPS://storage.example.com/blob")
+	require.True(t, ok)
+	assert.Equal(t, "https://storage.example.com/blob", normalized)
+
+	_, ok = normalizeBlobRedirectURL("javascript:alert(1)")
+	assert.False(t, ok)
+}
+
 func TestGetBlobRangeCheckBlobNamedErrors(t *testing.T) {
 	// CheckBlob is the first storage call on the range branch and the
 	// only place where named storage errors can be turned into proper

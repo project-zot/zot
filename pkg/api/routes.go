@@ -1443,6 +1443,8 @@ func normalizeBlobRedirectURL(rawURL string) (string, bool) {
 		return "", false
 	}
 
+	parsedURL.Scheme = scheme
+
 	return parsedURL.String(), true
 }
 

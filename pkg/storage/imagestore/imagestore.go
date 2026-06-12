@@ -1678,7 +1678,11 @@ func (is *ImageStore) GetBlobRedirectURL(r *http.Request, repo string, digest go
 	var lockLatency time.Time
 
 	if err := digest.Validate(); err != nil {
-		return "", err
+		return "", zerr.ErrBadBlobDigest
+	}
+
+	if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
+		return "", nil
 	}
 
 	is.RLock(&lockLatency)
