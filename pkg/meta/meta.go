@@ -2,6 +2,7 @@ package meta
 
 import (
 	"fmt"
+	"strings"
 
 	"zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
@@ -69,22 +70,32 @@ func getDynamoParams(cacheDriverConfig map[string]any, log log.Logger) mdynamodb
 	region, ok := toStringIfOk(cacheDriverConfig, "region", "", log)
 	allParametersOk = allParametersOk && ok
 
-	repoMetaTablename, ok := toStringIfOk(cacheDriverConfig, "repometatablename", "", log)
+	tablenamePrefix, hasTablenamePrefix, ok := optionalStringIfOk(
+		cacheDriverConfig, sconstants.DynamoDBTableNamePrefix, log)
 	allParametersOk = allParametersOk && ok
 
-	repoBlobsInfoTablename, ok := toStringIfOk(cacheDriverConfig, "repoblobsinfotablename", "", log)
+	repoMetaTablename, ok := tableNameIfOk(cacheDriverConfig, sconstants.DynamoDBRepoMetaTable,
+		sconstants.DynamoDBRepoMetaSuffix, tablenamePrefix, hasTablenamePrefix, log)
 	allParametersOk = allParametersOk && ok
 
-	imageMetaTablename, ok := toStringIfOk(cacheDriverConfig, "imagemetatablename", "", log)
+	repoBlobsInfoTablename, ok := tableNameIfOk(cacheDriverConfig, sconstants.DynamoDBRepoBlobsTable,
+		sconstants.DynamoDBRepoBlobsSuffix, tablenamePrefix, hasTablenamePrefix, log)
 	allParametersOk = allParametersOk && ok
 
-	apiKeyTablename, ok := toStringIfOk(cacheDriverConfig, "apikeytablename", "", log)
+	imageMetaTablename, ok := tableNameIfOk(cacheDriverConfig, sconstants.DynamoDBImageMetaTable,
+		sconstants.DynamoDBImageMetaSuffix, tablenamePrefix, hasTablenamePrefix, log)
 	allParametersOk = allParametersOk && ok
 
-	versionTablename, ok := toStringIfOk(cacheDriverConfig, "versiontablename", "", log)
+	apiKeyTablename, ok := tableNameIfOk(cacheDriverConfig, sconstants.DynamoDBAPIKeyTable,
+		sconstants.DynamoDBAPIKeySuffix, tablenamePrefix, hasTablenamePrefix, log)
 	allParametersOk = allParametersOk && ok
 
-	userDataTablename, ok := toStringIfOk(cacheDriverConfig, "userdatatablename", "", log)
+	versionTablename, ok := tableNameIfOk(cacheDriverConfig, sconstants.DynamoDBVersionTable,
+		sconstants.DynamoDBVersionSuffix, tablenamePrefix, hasTablenamePrefix, log)
+	allParametersOk = allParametersOk && ok
+
+	userDataTablename, ok := tableNameIfOk(cacheDriverConfig, sconstants.DynamoDBUserDataTable,
+		sconstants.DynamoDBUserDataSuffix, tablenamePrefix, hasTablenamePrefix, log)
 	allParametersOk = allParametersOk && ok
 
 	if !allParametersOk {
@@ -114,12 +125,47 @@ func getRedisParams(cacheDriverConfig map[string]any, log log.Logger) redis.DBDr
 	}
 }
 
+func tableNameIfOk(cacheDriverConfig map[string]any,
+	param string,
+	tableSuffix string,
+	tablenamePrefix string,
+	hasTablenamePrefix bool,
+	log log.Logger,
+) (string, bool) {
+	tableName, ok := configValue(cacheDriverConfig, param)
+	if ok {
+		return stringValueIfOk(tableName, param, log)
+	}
+
+	if hasTablenamePrefix {
+		return tablenamePrefix + tableSuffix, true
+	}
+
+	log.Error().Str("field", param).Msg("failed to parse CacheDriver config, field is not present")
+
+	return "", false
+}
+
+func optionalStringIfOk(cacheDriverConfig map[string]any,
+	param string,
+	log log.Logger,
+) (string, bool, bool) {
+	val, ok := configValue(cacheDriverConfig, param)
+	if !ok {
+		return "", false, true
+	}
+
+	str, ok := stringValueIfOk(val, param, log)
+
+	return str, true, ok
+}
+
 func toStringIfOk(cacheDriverConfig map[string]any,
 	param string,
 	defaultVal string,
 	log log.Logger,
 ) (string, bool) {
-	val, ok := cacheDriverConfig[param]
+	val, ok := configValue(cacheDriverConfig, param)
 
 	if !ok && defaultVal != "" {
 		log.Info().Str("field", param).Str("default", defaultVal).
@@ -132,6 +178,10 @@ func toStringIfOk(cacheDriverConfig map[string]any,
 		return "", false
 	}
 
+	return stringValueIfOk(val, param, log)
+}
+
+func stringValueIfOk(val any, param string, log log.Logger) (string, bool) {
 	str, ok := val.(string)
 	if !ok {
 		log.Error().Str("parameter", param).Msg("failed to parse CacheDriver config, parameter isn't a string")
@@ -146,6 +196,20 @@ func toStringIfOk(cacheDriverConfig map[string]any,
 	}
 
 	return str, true
+}
+
+func configValue(cacheDriverConfig map[string]any, key string) (any, bool) {
+	if val, ok := cacheDriverConfig[key]; ok {
+		return val, true
+	}
+
+	for candidate, val := range cacheDriverConfig {
+		if strings.EqualFold(candidate, key) {
+			return val, true
+		}
+	}
+
+	return nil, false
 }
 
 func Close(metadb mTypes.MetaDB) error {

@@ -2,6 +2,7 @@ package storage
 
 import (
 	"fmt"
+	"strings"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
@@ -97,19 +98,67 @@ func getDynamoParams(storageConfig *config.StorageConfig) (cache.DynamoDBDriverP
 	dynamoParams := cache.DynamoDBDriverParameters{}
 	dynamoParams.Endpoint, _ = storageConfig.CacheDriver["endpoint"].(string)
 	dynamoParams.Region, _ = storageConfig.CacheDriver["region"].(string)
-	dynamoParams.TableName, _ = storageConfig.CacheDriver["cachetablename"].(string)
 
-	cachetable, ok := storageConfig.CacheDriver["cachetablename"]
-	if !ok {
-		return dynamoParams, fmt.Errorf("%w: cachetablename key is mandatory for dynamodb cache driver", zerr.ErrBadConfig)
+	tableName, err := getDynamoTableName(
+		storageConfig.CacheDriver,
+		constants.DynamoDBCacheTableName,
+		constants.DynamoDBCacheTableSuffix,
+	)
+	if err != nil {
+		return dynamoParams, err
 	}
 
-	dynamoParams.TableName, ok = cachetable.(string)
-	if !ok {
-		return dynamoParams, fmt.Errorf("%w: failed to cast cachetablename %s to string type", zerr.ErrBadConfig, cachetable)
-	}
+	dynamoParams.TableName = tableName
 
 	return dynamoParams, nil
+}
+
+func getDynamoTableName(cacheDriverConfig map[string]any, tableKey, tableSuffix string) (string, error) {
+	tableName, ok := cacheDriverConfigValue(cacheDriverConfig, tableKey)
+	if ok {
+		tableValue, ok := tableName.(string)
+		if !ok {
+			return "", fmt.Errorf("%w: failed to cast %s %v to string type", zerr.ErrBadConfig, tableKey, tableName)
+		}
+
+		if tableValue == "" {
+			return "", fmt.Errorf("%w: %s key is empty", zerr.ErrBadConfig, tableKey)
+		}
+
+		return tableValue, nil
+	}
+
+	prefix, ok := cacheDriverConfigValue(cacheDriverConfig, constants.DynamoDBTableNamePrefix)
+	if !ok {
+		return "", fmt.Errorf("%w: %s key or %s key is mandatory for dynamodb cache driver",
+			zerr.ErrBadConfig, tableKey, constants.DynamoDBTableNamePrefix)
+	}
+
+	prefixValue, ok := prefix.(string)
+	if !ok {
+		return "", fmt.Errorf("%w: failed to cast %s %v to string type",
+			zerr.ErrBadConfig, constants.DynamoDBTableNamePrefix, prefix)
+	}
+
+	if prefixValue == "" {
+		return "", fmt.Errorf("%w: %s key is empty", zerr.ErrBadConfig, constants.DynamoDBTableNamePrefix)
+	}
+
+	return prefixValue + tableSuffix, nil
+}
+
+func cacheDriverConfigValue(cacheDriverConfig map[string]any, key string) (any, bool) {
+	if val, ok := cacheDriverConfig[key]; ok {
+		return val, true
+	}
+
+	for candidate, val := range cacheDriverConfig {
+		if strings.EqualFold(candidate, key) {
+			return val, true
+		}
+	}
+
+	return nil, false
 }
 
 func getRedisParams(storageConfig *config.StorageConfig, log zlog.Logger) (cache.RedisDriverParameters, error) {

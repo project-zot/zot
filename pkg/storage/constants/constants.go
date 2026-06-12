@@ -20,10 +20,27 @@ const (
 	BoltdbName              = "cache"
 	DynamoDBDriverName      = "dynamodb"
 	RedisDriverName         = "redis"
-	RedisLocksBucket        = "locks"
-	DefaultGCDelay          = 1 * time.Hour
-	DefaultGCInterval       = 1 * time.Hour
-	S3StorageDriverName     = "s3"
-	GCSStorageDriverName    = "gcs"
-	LocalStorageDriverName  = "local"
+
+	DynamoDBTableNamePrefix = "tablenamePrefix"
+	DynamoDBCacheTableName  = "cachetablename"
+	DynamoDBRepoMetaTable   = "repometatablename"
+	DynamoDBRepoBlobsTable  = "repoblobsinfotablename"
+	DynamoDBImageMetaTable  = "imagemetatablename"
+	DynamoDBUserDataTable   = "userdatatablename"
+	DynamoDBAPIKeyTable     = "apikeytablename"
+	DynamoDBVersionTable    = "versiontablename"
+
+	DynamoDBCacheTableSuffix = "BlobTable"
+	DynamoDBRepoMetaSuffix   = "RepoMetadataTable"
+	DynamoDBRepoBlobsSuffix  = "RepoBlobsInfoTable"
+	DynamoDBImageMetaSuffix  = "ImageMetaTable"
+	DynamoDBUserDataSuffix   = "UserDataTable"
+	DynamoDBAPIKeySuffix     = "ApiKeyDataTable"
+	DynamoDBVersionSuffix    = "VersionTable"
+	RedisLocksBucket         = "locks"
+	DefaultGCDelay           = 1 * time.Hour
+	DefaultGCInterval        = 1 * time.Hour
+	S3StorageDriverName      = "s3"
+	GCSStorageDriverName     = "gcs"
+	LocalStorageDriverName   = "local"
 )

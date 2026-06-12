@@ -18,13 +18,7 @@
             "name": "dynamodb",
             "endpoint": "http://localhost:4566",
             "region": "us-east-2",
-            "cacheTablename": "ZotBlobTable",
-            "repoMetaTablename": "ZotRepoMetadataTable",
-            "imageMetaTablename": "ZotImageMetaTable",
-            "repoBlobsInfoTablename": "ZotRepoBlobsInfoTable",
-            "userDataTablename": "ZotUserDataTable",
-            "apiKeyTablename": "ZotApiKeyTable",
-            "versionTablename": "ZotVersion"
+            "tablenamePrefix": "Zot"
         }
     },
     "http": {
