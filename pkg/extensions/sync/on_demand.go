@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/regclient/regclient/types/manifest"
+
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/log"
@@ -30,8 +32,9 @@ process just the first one, also keep track of all background retrying routines.
 type BaseOnDemand struct {
 	services []Service
 	// map[request]chan err
-	requestStore *sync.Map
-	log          log.Logger
+	requestStore  *sync.Map
+	log           log.Logger
+	streamManager StreamManager
 }
 
 func NewOnDemand(log log.Logger) *BaseOnDemand {
@@ -40,6 +43,83 @@ func NewOnDemand(log log.Logger) *BaseOnDemand {
 
 func (onDemand *BaseOnDemand) Add(service Service) {
 	onDemand.services = append(onDemand.services, service)
+}
+
+func (onDemand *BaseOnDemand) SetStreamManager(sm StreamManager) {
+	onDemand.streamManager = sm
+}
+
+func (onDemand *BaseOnDemand) StreamManager() StreamManager {
+	return onDemand.streamManager
+}
+
+// IsStreamingEnabledForRepo returns true if any on-demand service has streaming enabled for the given repo.
+func (onDemand *BaseOnDemand) IsStreamingEnabledForRepo(repo string) bool {
+	for _, service := range onDemand.services {
+		if service.IsStreamingForRepo(repo) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// FetchManifestForStream directly fetches the manifest from the upstream services and prepares the image
+// for streaming.
+// This is only intended for use with streaming sync.
+func (onDemand *BaseOnDemand) FetchManifestForStream(
+	ctx context.Context, repo, reference string,
+) (manifest.Manifest, error) {
+	// If an image is already streaming, return the one in cache.
+	// There is no need to start a new background sync if the manifest is already cached.
+	cachedManifest, ok := onDemand.streamManager.StreamingImageManifest(repo, reference)
+	if ok {
+		onDemand.log.Debug().Str("repo", repo).Str("reference", reference).
+			Msg("streaming manifest already present in cache.")
+
+		return cachedManifest, nil
+	}
+
+	var manifest manifest.Manifest
+
+	for _, service := range onDemand.services {
+		onDemand.log.Debug().Str("repo", repo).Str("ref", reference).Msg("attempting to fetch manifest")
+		fetchedManifest, err := service.FetchManifest(ctx, repo, reference)
+		if err != nil {
+			onDemand.log.Error().Err(err).Msg("failed to fetch manifest from service")
+
+			continue
+		}
+		manifest = fetchedManifest
+
+		break
+	}
+
+	if manifest == nil {
+		return nil, zerr.ErrBlobNotFound
+	}
+
+	onDemand.log.Debug().Str("repo", repo).Str("reference", reference).
+		Msg("storing image for streaming")
+
+	err := onDemand.streamManager.StoreImageForStreaming(repo, reference, manifest)
+	if err != nil {
+		onDemand.log.Error().Err(err).Str("repo", repo).Str("reference", reference).
+			Msg("failed to store manifest for streaming")
+
+		return nil, err
+	}
+
+	// sync the image in the background
+	go func() {
+		syncCtx := context.WithoutCancel(ctx)
+		if errSync := onDemand.SyncImage(syncCtx, repo, reference); errSync != nil {
+			onDemand.log.Err(errSync).Str("repository", repo).Str("reference", reference).
+				Msg("failed to sync image")
+		}
+	}()
+
+	return manifest, nil
 }
 
 func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference string) error {

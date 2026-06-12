@@ -1577,6 +1577,33 @@ func validateSync(config *config.Config, logger zlog.Logger) error {
 	// can't check with IsSyncEnabled(), because it can't test invalid sync configs
 	if extensionsConfig != nil && extensionsConfig.Sync != nil && len(extensionsConfig.Sync.Registries) > 0 {
 		for regID, regCfg := range extensionsConfig.Sync.Registries {
+			// check streaming sync configuration
+			if regCfg.IsStreamEnabled() {
+				if !regCfg.OnDemand {
+					msg := "streaming sync requires onDemand to be enabled"
+					logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
+						extensionsConfig.Sync.Registries[regID]).Msg(msg)
+
+					return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+				}
+
+				if regCfg.MaxRetries != nil {
+					msg := "maxRetries cannot be used when streaming sync is enabled"
+					logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
+						extensionsConfig.Sync.Registries[regID]).Msg(msg)
+
+					return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+				}
+
+				if regCfg.RetryDelay != nil {
+					msg := "retryDelay cannot be used when streaming sync is enabled"
+					logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
+						extensionsConfig.Sync.Registries[regID]).Msg(msg)
+
+					return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+				}
+			}
+
 			// check retry options are configured for sync
 			if regCfg.MaxRetries != nil && regCfg.RetryDelay == nil {
 				msg := "retryDelay is required when using maxRetries"
