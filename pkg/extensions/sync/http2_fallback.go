@@ -121,8 +121,8 @@ func isHTTP2FramingError(err error) bool {
 	}
 
 	// The "malformed HTTP response" case is produced by net/http when an HTTP/1.1 connection
-	// receives raw HTTP/2 SETTINGS frames. Go's stdlib does not expose a typed error for this
-	// path (see https://github.com/golang/go/issues/40926), so we keep a substring match.
+	// receives raw HTTP/2 SETTINGS frames. net/http returns an unexported badStringError for
+	// this path rather than a typed error, so a substring match is the only option.
 	return strings.Contains(err.Error(), "malformed HTTP response")
 }
 
