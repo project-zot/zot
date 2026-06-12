@@ -1418,17 +1418,10 @@ func writeMultipartRanges(
 	}
 }
 
-func (rh *RouteHandler) isBlobRedirectEnabled(name string) bool {
-	storageConfig := rh.c.Config.CopyStorageConfig()
-	storePath := rh.c.StoreController.GetStorePath(name)
+func (rh *RouteHandler) isBlobRedirectEnabled(repo string) bool {
+	storePath := rh.c.StoreController.GetStorePath(repo)
 
-	if storePath != storage.DefaultStorePath {
-		if subPathConfig, ok := storageConfig.SubPaths[storePath]; ok {
-			return subPathConfig.RedirectBlobURL
-		}
-	}
-
-	return storageConfig.RedirectBlobURL
+	return rh.c.Config.IsBlobRedirectEnabled(storePath)
 }
 
 func normalizeBlobRedirectURL(rawURL string) (string, bool) {

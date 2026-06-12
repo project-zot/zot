@@ -1601,6 +1601,38 @@ func TestConfig(t *testing.T) {
 			})
 		})
 
+		Convey("Test IsBlobRedirectEnabled()", func() {
+			Convey("returns global setting for default store path", func() {
+				cfg := &config.Config{
+					Storage: config.GlobalStorageConfig{
+						StorageConfig: config.StorageConfig{RedirectBlobURL: true},
+					},
+				}
+
+				So(cfg.IsBlobRedirectEnabled("/"), ShouldBeTrue)
+			})
+
+			Convey("returns subpath setting when subpath exists", func() {
+				cfg := &config.Config{
+					Storage: config.GlobalStorageConfig{
+						StorageConfig: config.StorageConfig{RedirectBlobURL: false},
+						SubPaths: map[string]config.StorageConfig{
+							"/a": {RedirectBlobURL: true},
+						},
+					},
+				}
+
+				So(cfg.IsBlobRedirectEnabled("/a"), ShouldBeTrue)
+				So(cfg.IsBlobRedirectEnabled("/b"), ShouldBeFalse)
+			})
+
+			Convey("nil config returns false", func() {
+				var nilCfg *config.Config
+
+				So(nilCfg.IsBlobRedirectEnabled("/"), ShouldBeFalse)
+			})
+		})
+
 		Convey("Test CopyLogConfig()", func() {
 			Convey("Test with non-nil Log", func() {
 				cfg := &config.Config{

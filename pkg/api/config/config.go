@@ -1160,6 +1160,25 @@ func (c *Config) CopyStorageConfig() GlobalStorageConfig {
 	return storageCopy
 }
 
+// IsBlobRedirectEnabled returns whether blob redirect is enabled for a store path.
+// If a matching subpath exists, its setting takes precedence over the global one.
+func (c *Config) IsBlobRedirectEnabled(storePath string) bool {
+	if c == nil {
+		return false
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if storePath != "/" {
+		if subPathConfig, ok := c.Storage.SubPaths[storePath]; ok {
+			return subPathConfig.RedirectBlobURL
+		}
+	}
+
+	return c.Storage.RedirectBlobURL
+}
+
 // CopyExtensionsConfig returns a copy of the extensions config if it exists.
 func (c *Config) CopyExtensionsConfig() *extconf.ExtensionConfig {
 	if c == nil {

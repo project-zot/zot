@@ -583,6 +583,12 @@ func validateExtensionsConfig(cfg *config.Config, logger zlog.Logger) error {
 func validateStorageConfigSection(
 	cfg *config.Config, logger zlog.Logger, storageConfig config.GlobalStorageConfig,
 ) error {
+	if storageConfig.RedirectBlobURL && getStorageType(storageConfig.StorageDriver) == storageConstants.LocalStorageDriverName {
+		logger.Warn().Bool("redirectBlobURL", storageConfig.RedirectBlobURL).
+			Str("storageDriver", storageConstants.LocalStorageDriverName).
+			Msg("redirectBlobURL is enabled for non-s3/gcs storage; blob pulls will be proxied")
+	}
+
 	if len(storageConfig.StorageDriver) != 0 {
 		// enforce s3/gcs driver in case of using storage driver
 		if storageConfig.StorageDriver["name"] != storageConstants.S3StorageDriverName &&
@@ -606,6 +612,13 @@ func validateStorageConfigSection(
 	// enforce s3/gcs driver on subpaths in case of using storage driver
 	if len(storageConfig.SubPaths) > 0 {
 		for route, subStorageConfig := range storageConfig.SubPaths {
+			if subStorageConfig.RedirectBlobURL &&
+				getStorageType(subStorageConfig.StorageDriver) == storageConstants.LocalStorageDriverName {
+				logger.Warn().Str("subpath", route).Bool("redirectBlobURL", subStorageConfig.RedirectBlobURL).
+					Str("storageDriver", storageConstants.LocalStorageDriverName).
+					Msg("redirectBlobURL is enabled for non-s3/gcs storage; blob pulls will be proxied")
+			}
+
 			if len(subStorageConfig.StorageDriver) != 0 {
 				if subStorageConfig.StorageDriver["name"] != storageConstants.S3StorageDriverName &&
 					subStorageConfig.StorageDriver["name"] != storageConstants.GCSStorageDriverName {
