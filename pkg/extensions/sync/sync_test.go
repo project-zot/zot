@@ -2692,15 +2692,27 @@ func TestTLS(t *testing.T) {
 		defer dcm.StopServer()
 
 		// wait till ready
-		for {
-			destBuf, _ := os.ReadFile(path.Join(destDir, testImage, "index.json"))
-			_ = json.Unmarshal(destBuf, &destIndex)
+		deadline := time.Now().Add(30 * time.Second)
+
+		for time.Now().Before(deadline) {
+			var currentIndex ispec.Index
+
+			destBuf, err := os.ReadFile(path.Join(destDir, testImage, "index.json"))
+			if err == nil {
+				if err := json.Unmarshal(destBuf, &currentIndex); err == nil && len(currentIndex.Manifests) > 0 {
+					destIndex = currentIndex
+
+					break
+				}
+			}
 
 			time.Sleep(500 * time.Millisecond)
+		}
 
-			if len(destIndex.Manifests) > 0 {
-				break
-			}
+		if len(destIndex.Manifests) == 0 {
+			logData, _ := os.ReadFile(dctlr.Config.Log.Output)
+			t.Fatalf("timed out waiting for TLS sync to populate %s/index.json; downstream log:\n%s",
+				testImage, string(logData))
 		}
 
 		var found bool
