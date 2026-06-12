@@ -1598,7 +1598,7 @@ storage:
 
 		content := fmt.Sprintf(`{"storage":{"rootDirectory":"/tmp/zot","redirectBlobURL":true,
 							"storageDriver": {},
-							"subPaths": {"/a": {"rootDirectory": "/tmp/zot-a","redirectBlobURL":true,"storageDriver": {}}},
+							"subPaths": {"/a": {"rootDirectory": "/tmp/zot-a","redirectBlobURL":true,"storageDriver": {}}}},
 							"http":{"address":"127.0.0.1","port":"8080"},
 							"log":{"level":"debug","output":"%s"}}`, logPath)
 
