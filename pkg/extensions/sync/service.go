@@ -893,8 +893,22 @@ func newClient(opts syncconf.RegistryConfig, credentials syncconf.CredentialsFil
 		regOpts = append(regOpts, reg.WithDelay(*opts.RetryDelay, *opts.RetryDelay))
 	}
 
+	// regclient only injects per-host TLS settings (root CAs, client certs, insecure)
+	// into plain *http.Transport instances; the fallback wrapper is opaque to it, so the
+	// TLS configuration has to be built here and carried by the wrapped transports.
+	tlsHosts := make([]string, 0, len(urls)+1)
+	for _, u := range urls {
+		tlsHosts = append(tlsHosts, u.Host)
+
+		// docker.io aliases resolve to registry-1.docker.io for cert lookups
+		switch u.Host {
+		case regclient.DockerRegistryAuth, regclient.DockerRegistry, "index.docker.io":
+			tlsHosts = append(tlsHosts, regclient.DockerRegistryDNS)
+		}
+	}
+
 	httpClient := &http.Client{
-		Transport: newHTTP2FallbackTransport(opts, logger),
+		Transport: newHTTP2FallbackTransport(opts, fallbackTLSConfig(tls, tlsHosts, opts.CertDir, logger), logger),
 		Timeout:   opts.SyncTimeout,
 	}
 	regOpts = append(regOpts, reg.WithHTTPClient(httpClient))

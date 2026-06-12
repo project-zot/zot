@@ -11,15 +11,20 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/regclient/regclient/config"
 	. "github.com/smartystreets/goconvey/convey"
 	"golang.org/x/net/http2"
 
+	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
 	"zotregistry.dev/zot/v2/pkg/log"
+	tlsutils "zotregistry.dev/zot/v2/pkg/test/tls"
 )
 
 var (
@@ -371,5 +376,96 @@ func TestHTTP2FallbackStickyPerHost(t *testing.T) {
 			So(primary.hits, ShouldEqual, 2)
 			So(fallback.hits, ShouldEqual, 2)
 		})
+	})
+}
+
+func TestFallbackTLSConfig(t *testing.T) {
+	Convey("fallbackTLSConfig", t, func() {
+		logger := log.NewLogger("debug", "")
+		hosts := []string{"upstream.test"}
+
+		Convey("disabled TLS still carries material for https redirects", func() {
+			tlsConf := fallbackTLSConfig(config.TLSDisabled, hosts, "", logger)
+			So(tlsConf, ShouldNotBeNil)
+			So(tlsConf.InsecureSkipVerify, ShouldBeFalse)
+			So(tlsConf.RootCAs, ShouldNotBeNil)
+		})
+
+		Convey("insecure TLS sets InsecureSkipVerify", func() {
+			tlsConf := fallbackTLSConfig(config.TLSInsecure, hosts, "", logger)
+			So(tlsConf, ShouldNotBeNil)
+			So(tlsConf.InsecureSkipVerify, ShouldBeTrue)
+		})
+
+		Convey("flat cert dir loads the registry CA and client cert pair", func() {
+			certDir := t.TempDir()
+
+			caCert, caKey, err := tlsutils.GenerateCACert()
+			So(err, ShouldBeNil)
+			So(os.WriteFile(path.Join(certDir, "ca.crt"), caCert, 0o600), ShouldBeNil)
+
+			clientCert, clientKey, err := tlsutils.GenerateClientCert(caCert, caKey, nil)
+			So(err, ShouldBeNil)
+			So(os.WriteFile(path.Join(certDir, "client.cert"), clientCert, 0o600), ShouldBeNil)
+			So(os.WriteFile(path.Join(certDir, "client.key"), clientKey, 0o600), ShouldBeNil)
+
+			tlsConf := fallbackTLSConfig(config.TLSEnabled, hosts, certDir, logger)
+			So(tlsConf, ShouldNotBeNil)
+			So(tlsConf.InsecureSkipVerify, ShouldBeFalse)
+			So(tlsConf.RootCAs, ShouldNotBeNil)
+			So(len(tlsConf.Certificates), ShouldEqual, 1)
+
+			systemPool, err := x509.SystemCertPool()
+			So(err, ShouldBeNil)
+			So(tlsConf.RootCAs.Equal(systemPool), ShouldBeFalse)
+		})
+
+		Convey("host subdir certs are added to the root pool", func() {
+			certDir := t.TempDir()
+
+			caCert, _, err := tlsutils.GenerateCACert()
+			So(err, ShouldBeNil)
+
+			hostDir := path.Join(certDir, "upstream.test")
+			So(os.MkdirAll(hostDir, 0o700), ShouldBeNil)
+			So(os.WriteFile(path.Join(hostDir, "extra.crt"), caCert, 0o600), ShouldBeNil)
+
+			tlsConf := fallbackTLSConfig(config.TLSEnabled, hosts, certDir, logger)
+			So(tlsConf, ShouldNotBeNil)
+			So(tlsConf.RootCAs, ShouldNotBeNil)
+
+			systemPool, err := x509.SystemCertPool()
+			So(err, ShouldBeNil)
+			So(tlsConf.RootCAs.Equal(systemPool), ShouldBeFalse)
+		})
+	})
+}
+
+func TestNewHTTP2FallbackTransportTLS(t *testing.T) {
+	Convey("both wrapped transports carry the TLS configuration", t, func() {
+		logger := log.NewLogger("debug", "")
+
+		//nolint:gosec // insecure flag exercises config propagation only
+		tlsConf := &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12}
+
+		roundTripper := newHTTP2FallbackTransport(syncconf.RegistryConfig{}, tlsConf, logger)
+		transport, ok := roundTripper.(*http2FallbackTransport)
+		So(ok, ShouldBeTrue)
+
+		primary, ok := transport.primary.(*http.Transport)
+		So(ok, ShouldBeTrue)
+		So(primary.TLSClientConfig, ShouldNotBeNil)
+		So(primary.TLSClientConfig.InsecureSkipVerify, ShouldBeTrue)
+		// ConfigureTransport registered the typed x/net http2 implementation
+		So(primary.TLSClientConfig.NextProtos, ShouldContain, "h2")
+
+		fallback, ok := transport.fallback.(*http.Transport)
+		So(ok, ShouldBeTrue)
+		So(fallback.TLSClientConfig, ShouldNotBeNil)
+		So(fallback.TLSClientConfig.InsecureSkipVerify, ShouldBeTrue)
+		So(fallback.TLSClientConfig.NextProtos, ShouldNotContain, "h2")
+
+		// each transport got its own clone; the input config is not mutated
+		So(tlsConf.NextProtos, ShouldBeEmpty)
 	})
 }

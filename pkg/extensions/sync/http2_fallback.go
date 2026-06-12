@@ -4,14 +4,21 @@ package sync
 
 import (
 	cryptotls "crypto/tls"
+	"crypto/x509"
 	"errors"
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/regclient/regclient"
+	"github.com/regclient/regclient/config"
 	"golang.org/x/net/http2"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
 	"zotregistry.dev/zot/v2/pkg/log"
 )
@@ -137,12 +144,115 @@ func clonedTransport(opts syncconf.RegistryConfig) *http.Transport {
 	return transport
 }
 
+// fallbackTLSConfig mirrors the per-host TLS settings regclient injects into a plain
+// *http.Transport (internal/reghttp): root CAs collected from <dir>/<host>/*.crt under
+// the sync cert dir and /etc/docker/certs.d, the registry CA and client cert pair from
+// the flat cert dir, and InsecureSkipVerify when TLS verification is disabled. regclient
+// skips that injection when the configured transport is not a *http.Transport, so the
+// HTTP/2 fallback wrapper has to carry the TLS material itself. Failures are logged and
+// skipped rather than fatal, matching regclient's behavior for the same conditions.
+// The material is also built for plain-http upstreams (TLSDisabled), matching regclient:
+// it is used when an http upstream redirects to an https endpoint.
+func fallbackTLSConfig(tlsMode config.TLSConf, hosts []string, certDir string, logger log.Logger) *cryptotls.Config {
+	tlsConf := &cryptotls.Config{MinVersion: cryptotls.VersionTLS12}
+
+	clientCert, clientKey, regCert, err := getCertificates(certDir)
+	if err != nil {
+		logger.Warn().Err(err).Str("certDir", certDir).Msg("failed to read certificates for sync transport")
+	}
+
+	if tlsMode == config.TLSInsecure {
+		tlsConf.InsecureSkipVerify = true //nolint:gosec // explicitly requested via tlsVerify=false
+	} else if pool, err := syncRootCAPool(hosts, certDir, regCert, logger); err != nil {
+		logger.Warn().Err(err).Msg("failed to setup CA pool for sync transport")
+	} else {
+		tlsConf.RootCAs = pool
+	}
+
+	if clientCert != "" && clientKey != "" {
+		cert, err := cryptotls.X509KeyPair([]byte(clientCert), []byte(clientKey))
+		if err != nil {
+			logger.Warn().Err(err).Msg("failed to configure client certs for sync transport")
+		} else {
+			tlsConf.Certificates = []cryptotls.Certificate{cert}
+		}
+	}
+
+	return tlsConf
+}
+
+// syncRootCAPool builds the root CA pool the same way regclient's makeRootPool does:
+// system roots, then <dir>/<host>/*.crt for every configured host under both the sync
+// cert dir and the docker certs dir, then the registry CA from the flat cert dir.
+// An unreadable or unparseable host cert only loses that cert (logged), so one bad file
+// cannot drop the CA material of every other host of the registry.
+func syncRootCAPool(hosts []string, certDir string, regCert string, logger log.Logger) (*x509.CertPool, error) {
+	pool, err := x509.SystemCertPool()
+	if err != nil {
+		return nil, err
+	}
+
+	dirs := []string{}
+	if certDir != "" {
+		dirs = append(dirs, certDir)
+	}
+
+	dirs = append(dirs, regclient.DockerCertDir)
+
+	for _, dir := range dirs {
+		for _, host := range hosts {
+			hostDir := filepath.Join(dir, host)
+
+			files, err := os.ReadDir(hostDir)
+			if err != nil {
+				if !os.IsNotExist(err) {
+					logger.Warn().Err(err).Str("dir", hostDir).Msg("failed to read sync cert dir")
+				}
+
+				continue
+			}
+
+			for _, file := range files {
+				if file.IsDir() || !strings.HasSuffix(file.Name(), ".crt") {
+					continue
+				}
+
+				certPath := filepath.Join(hostDir, file.Name())
+
+				cert, err := os.ReadFile(certPath) //nolint:gosec // path from user-configured cert dir
+				if err != nil {
+					logger.Warn().Err(err).Str("cert", certPath).Msg("failed to read sync CA cert")
+
+					continue
+				}
+
+				if ok := pool.AppendCertsFromPEM(cert); !ok {
+					logger.Warn().Str("cert", certPath).Msg("failed to parse sync CA cert")
+				}
+			}
+		}
+	}
+
+	if regCert != "" {
+		if ok := pool.AppendCertsFromPEM([]byte(regCert)); !ok {
+			return nil, fmt.Errorf("%w: cert dir %s", zerr.ErrBadCACert, certDir)
+		}
+	}
+
+	return pool, nil
+}
+
 // newHTTP2FallbackTransport builds a RoundTripper that prefers HTTP/2 for upstream sync
 // and falls back to HTTP/1.1 on the framing errors enumerated in isHTTP2FramingError.
-// Both transports share the same timeout configuration; the fallback only differs by
-// disabling HTTP/2 negotiation, so an upstream that breaks HTTP/2 can still be reached.
-func newHTTP2FallbackTransport(opts syncconf.RegistryConfig, logger log.Logger) http.RoundTripper {
+// Both transports share the same timeout and TLS configuration; the fallback only differs
+// by disabling HTTP/2 negotiation, so an upstream that breaks HTTP/2 can still be reached.
+func newHTTP2FallbackTransport(opts syncconf.RegistryConfig, tlsConf *cryptotls.Config,
+	logger log.Logger,
+) http.RoundTripper {
 	primaryTransport := clonedTransport(opts)
+	if tlsConf != nil {
+		primaryTransport.TLSClientConfig = tlsConf.Clone()
+	}
 
 	if err := http2.ConfigureTransport(primaryTransport); err != nil {
 		logger.Warn().Err(err).
@@ -150,6 +260,10 @@ func newHTTP2FallbackTransport(opts syncconf.RegistryConfig, logger log.Logger) 
 	}
 
 	fallbackTransport := clonedTransport(opts)
+	if tlsConf != nil {
+		fallbackTransport.TLSClientConfig = tlsConf.Clone()
+	}
+
 	fallbackTransport.TLSNextProto = make(map[string]func(string, *cryptotls.Conn) http.RoundTripper)
 	fallbackTransport.ForceAttemptHTTP2 = false
 
