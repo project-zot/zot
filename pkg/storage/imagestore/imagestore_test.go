@@ -70,7 +70,8 @@ func TestGetBlobRedirectURL(t *testing.T) {
 				return expectedURL, nil
 			}
 
-			req := httptest.NewRequest(http.MethodGet, "http://localhost/v2/repo/blobs/sha256:deadbeef", nil)
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+				"http://localhost/v2/repo/blobs/sha256:deadbeef", nil)
 
 			url, err := store.GetBlobRedirectURL(req, repo, digest)
 			So(err, ShouldBeNil)

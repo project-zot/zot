@@ -1,6 +1,7 @@
 package s3_test
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -12,11 +13,14 @@ import (
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
 
+var errRedirect = errors.New("redirect error")
+
 func TestDriverRedirectURL(t *testing.T) {
 	Convey("S3 Driver RedirectURL", t, func() {
 		storeMock := &mocks.StorageDriverMock{}
 		s3Driver := s3.New(storeMock)
-		req := httptest.NewRequest(http.MethodGet, "http://localhost/v2/repo/blobs/sha256:abc", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+			"http://localhost/v2/repo/blobs/sha256:abc", nil)
 
 		Convey("Success", func() {
 			storeMock.RedirectURLFn = func(r *http.Request, path string) (string, error) {
@@ -32,14 +36,13 @@ func TestDriverRedirectURL(t *testing.T) {
 		})
 
 		Convey("Error", func() {
-			errS3 := errors.New("redirect error")
 			storeMock.RedirectURLFn = func(_ *http.Request, _ string) (string, error) {
-				return "", errS3
+				return "", errRedirect
 			}
 
 			url, err := s3Driver.RedirectURL(req, "/blob/path")
 			So(url, ShouldEqual, "")
-			So(errors.Is(err, errS3), ShouldBeTrue)
+			So(errors.Is(err, errRedirect), ShouldBeTrue)
 		})
 	})
 }

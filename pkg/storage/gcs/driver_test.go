@@ -387,7 +387,8 @@ func TestDriver(t *testing.T) {
 		})
 
 		Convey("RedirectURL", func() {
-			req := httptest.NewRequest(http.MethodGet, "http://localhost/v2/repo/blobs/sha256:abc", nil)
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+				"http://localhost/v2/repo/blobs/sha256:abc", nil)
 
 			Convey("Success", func() {
 				storeMock.RedirectURLFn = func(r *http.Request, path string) (string, error) {
