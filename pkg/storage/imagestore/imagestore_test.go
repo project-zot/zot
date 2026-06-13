@@ -45,9 +45,10 @@ func TestGetBlobRedirectURL(t *testing.T) {
 		})
 
 		Convey("returns redirect URL for remote storage", func() {
+			rootDir := t.TempDir()
 			storeMock := &mocks.StorageDriverMock{}
 			remoteDriver := gcs.New(storeMock)
-			store := imagestore.NewImageStore("/tmp/zot", "", false, false, log, metrics, nil,
+			store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
 				remoteDriver, nil, nil, nil)
 
 			repo := "repo"
@@ -79,9 +80,10 @@ func TestGetBlobRedirectURL(t *testing.T) {
 		})
 
 		Convey("returns blob not found when blob path does not exist", func() {
+			rootDir := t.TempDir()
 			storeMock := &mocks.StorageDriverMock{}
 			remoteDriver := gcs.New(storeMock)
-			store := imagestore.NewImageStore("/tmp/zot", "", false, false, log, metrics, nil,
+			store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
 				remoteDriver, nil, nil, nil)
 
 			storeMock.StatFn = func(_ context.Context, path string) (driver.FileInfo, error) {
