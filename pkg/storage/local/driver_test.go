@@ -222,6 +222,16 @@ func TestMove(t *testing.T) {
 	})
 }
 
+func TestRedirectURL(t *testing.T) {
+	Convey("Test RedirectURL returns empty URL for local driver", t, func() {
+		driver := local.New(true)
+
+		url, err := driver.RedirectURL(nil, "/repo/blobs/sha256/abc")
+		So(err, ShouldBeNil)
+		So(url, ShouldEqual, "")
+	})
+}
+
 func TestValidateHardLink(t *testing.T) {
 	Convey("Test ValidateHardLink functionality", t, func() {
 		rootDir := t.TempDir()

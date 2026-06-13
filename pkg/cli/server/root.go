@@ -584,9 +584,11 @@ func validateStorageConfigSection(
 	cfg *config.Config, logger zlog.Logger, storageConfig config.GlobalStorageConfig,
 ) error {
 	if storageConfig.RedirectBlobURL && len(storageConfig.StorageDriver) == 0 {
-		logger.Warn().Bool("redirectBlobURL", storageConfig.RedirectBlobURL).
-			Str("storageDriver", storageConstants.LocalStorageDriverName).
-			Msg("redirectBlobURL is enabled for non-s3/gcs storage; blob pulls will be proxied")
+		msg := "invalid storage config, redirectBlobURL is supported only for s3/gcs storage"
+		logger.Error().Err(zerr.ErrBadConfig).Bool("redirectBlobURL", storageConfig.RedirectBlobURL).
+			Str("storageDriver", storageConstants.LocalStorageDriverName).Msg(msg)
+
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 	}
 
 	if len(storageConfig.StorageDriver) != 0 {
@@ -613,9 +615,12 @@ func validateStorageConfigSection(
 	if len(storageConfig.SubPaths) > 0 {
 		for route, subStorageConfig := range storageConfig.SubPaths {
 			if subStorageConfig.RedirectBlobURL && len(subStorageConfig.StorageDriver) == 0 {
-				logger.Warn().Str("subpath", route).Bool("redirectBlobURL", subStorageConfig.RedirectBlobURL).
-					Str("storageDriver", storageConstants.LocalStorageDriverName).
-					Msg("redirectBlobURL is enabled for non-s3/gcs storage; blob pulls will be proxied")
+				msg := "invalid storage config, redirectBlobURL is supported only for s3/gcs storage"
+				logger.Error().Err(zerr.ErrBadConfig).Str("subpath", route).
+					Bool("redirectBlobURL", subStorageConfig.RedirectBlobURL).
+					Str("storageDriver", storageConstants.LocalStorageDriverName).Msg(msg)
+
+				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 			}
 
 			if len(subStorageConfig.StorageDriver) != 0 {
