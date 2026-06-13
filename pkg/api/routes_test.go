@@ -1055,11 +1055,11 @@ func TestRoutes(t *testing.T) {
 						return true, 4, nil
 					},
 					GetBlobPartialFn: func(repo string, digest godigest.Digest, mediaType string,
-						offset, length int64,
-					) (io.ReadCloser, int64, error) {
+						from, to int64,
+					) (io.ReadCloser, int64, int64, error) {
 						proxyCalled = true
 
-						return io.NopCloser(strings.NewReader("blob")), 4, nil
+						return io.NopCloser(strings.NewReader("blob")), 4, 4, nil
 					},
 				}
 
