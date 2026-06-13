@@ -1503,7 +1503,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 		}
 	}
 
-	if rh.isBlobRedirectEnabled(name) {
+	if !rangeHeaderPresent && rh.isBlobRedirectEnabled(name) {
 		redirectURL, err := imgStore.GetBlobRedirectURL(request, name, digest)
 		if err != nil {
 			writeBlobError(err)

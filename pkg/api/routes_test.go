@@ -976,6 +976,110 @@ func TestRoutes(t *testing.T) {
 				So(getBlobCalled, ShouldBeFalse)
 			})
 
+			Convey("rejects invalid blob digests before redirect or proxy execution", func() {
+				invalidDigest := "sha256:bad"
+
+				Convey("with redirect enabled", func() {
+					ctlr.Config.Storage.RedirectBlobURL = true
+					defer func() {
+						ctlr.Config.Storage.RedirectBlobURL = false
+					}()
+
+					ctlr.StoreController.DefaultStore = &mocks.MockedImageStore{
+						GetBlobRedirectURLFn: func(r *http.Request, repo string, digest godigest.Digest) (string, error) {
+							t.Fatal("GetBlobRedirectURL should not run for an invalid digest")
+
+							return "", nil
+						},
+					}
+
+					request, _ := http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
+					request = mux.SetURLVars(request, map[string]string{
+						"name":   "repo",
+						"digest": invalidDigest,
+					})
+					response := httptest.NewRecorder()
+
+					rthdlr.GetBlob(response, request)
+
+					resp := response.Result()
+					defer resp.Body.Close()
+
+					So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
+				})
+
+				Convey("with redirect disabled", func() {
+					ctlr.Config.Storage.RedirectBlobURL = false
+
+					ctlr.StoreController.DefaultStore = &mocks.MockedImageStore{
+						GetBlobFn: func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error) {
+							t.Fatal("GetBlob should not run for an invalid digest")
+
+							return nil, 0, nil
+						},
+					}
+
+					request, _ := http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
+					request = mux.SetURLVars(request, map[string]string{
+						"name":   "repo",
+						"digest": invalidDigest,
+					})
+					response := httptest.NewRecorder()
+
+					rthdlr.GetBlob(response, request)
+
+					resp := response.Result()
+					defer resp.Body.Close()
+
+					So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
+				})
+			})
+
+			Convey("does not redirect ranged blob requests", func() {
+				blobDigest := "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621"
+				redirectCalled := false
+				proxyCalled := false
+
+				ctlr.Config.Storage.RedirectBlobURL = true
+				defer func() {
+					ctlr.Config.Storage.RedirectBlobURL = false
+				}()
+
+				ctlr.StoreController.DefaultStore = &mocks.MockedImageStore{
+					GetBlobRedirectURLFn: func(r *http.Request, repo string, digest godigest.Digest) (string, error) {
+						redirectCalled = true
+
+						return "https://storage.example.com/zot/repo/blobs/sha256/layer", nil
+					},
+					CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+						return true, 4, nil
+					},
+					GetBlobPartialFn: func(repo string, digest godigest.Digest, mediaType string,
+						offset, length int64,
+					) (io.ReadCloser, int64, error) {
+						proxyCalled = true
+
+						return io.NopCloser(strings.NewReader("blob")), 4, nil
+					},
+				}
+
+				request, _ := http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
+				request.Header.Set("Range", "bytes=0-0")
+				request = mux.SetURLVars(request, map[string]string{
+					"name":   "repo",
+					"digest": blobDigest,
+				})
+				response := httptest.NewRecorder()
+
+				rthdlr.GetBlob(response, request)
+
+				resp := response.Result()
+				defer resp.Body.Close()
+				So(resp.StatusCode, ShouldEqual, http.StatusPartialContent)
+				So(redirectCalled, ShouldBeFalse)
+				So(proxyCalled, ShouldBeTrue)
+			})
+
 			Convey("falls back to proxying when redirect URL is unavailable", func() {
 				blobDigest := "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621"
 				getBlobCalled := false
