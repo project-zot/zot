@@ -1059,7 +1059,10 @@ func TestRoutes(t *testing.T) {
 					) (io.ReadCloser, int64, int64, error) {
 						proxyCalled = true
 
-						return io.NopCloser(strings.NewReader("blob")), 4, 4, nil
+						// Return the correct length: to - from + 1
+						length := to - from + 1
+
+						return io.NopCloser(strings.NewReader("b")), length, length, nil
 					},
 				}
 
