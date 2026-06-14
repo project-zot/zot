@@ -126,7 +126,7 @@ function authn_setup_file() {
     wait_zot_reachable "${zot_port}"
 
     if [ "${PUSHPULL_AUTHN_FIPS_MODE:-0}" = 1 ]; then
-        log_output | jq 'contains("fips140 is currently enabled")' | grep true
+        log_output | jq 'contains("fips140 is currently enabled")?' | grep true
     fi
 }
 
@@ -206,31 +206,46 @@ function helper_authn_list_oci_artifact_references_with_regclient() {
 function helper_authn_ml_artifacts() {
     local user=${1:-${AUTH_USER}}
     local pass=${2:-${AUTH_PASS}}
+    local zot_port sha256_in sha256_out
 
     helper_authn_regctl_login "${user}" "${pass}"
+    zot_port=$(get_zot_port)
 
-    curl -v -L0 \
+    run curl --fail -L -0 \
         https://github.com/tarilabs/demo20231212/raw/main/v1.nb20231206162408/mnist.onnx \
         -o "${BATS_FILE_TMPDIR}/mnist.onnx"
-    sha256_in=$(sha256sum "${BATS_FILE_TMPDIR}/mnist.onnx" | awk '{print $1}')
+    [ "${status}" -eq 0 ]
 
-    regctl artifact put \
+    run sha256sum "${BATS_FILE_TMPDIR}/mnist.onnx"
+    [ "${status}" -eq 0 ]
+    sha256_in=$(echo "${output}" | awk '{print $1}')
+    [ -n "${sha256_in}" ]
+
+    run regctl artifact put \
         --annotation description="used for demo purposes" \
         --annotation model_format_name="onnx" \
         --annotation model_format_version="1" \
         --artifact-type "application/vnd.model.type" \
-        "localhost:$(get_zot_port)/models/my-model-from-gh:v1" \
+        "localhost:${zot_port}/models/my-model-from-gh:v1" \
         -f "${BATS_FILE_TMPDIR}/mnist.onnx"
+    [ "${status}" -eq 0 ]
 
-    regctl artifact list "localhost:$(get_zot_port)/models/my-model-from-gh:v1" \
+    run regctl artifact list "localhost:${zot_port}/models/my-model-from-gh:v1" \
         --format '{{jsonPretty .}}'
-    regctl artifact list --filter-artifact-type "application/vnd.model.type" \
-        "localhost:$(get_zot_port)/models/my-model-from-gh:v1" \
-        --format '{{jsonPretty .}}'
+    [ "${status}" -eq 0 ]
 
-    regctl artifact get "localhost:$(get_zot_port)/models/my-model-from-gh:v1" \
-        >"${BATS_FILE_TMPDIR}/mnist.onnx.check"
-    sha256_out=$(sha256sum "${BATS_FILE_TMPDIR}/mnist.onnx.check" | awk '{print $1}')
+    run regctl artifact list --filter-artifact-type "application/vnd.model.type" \
+        "localhost:${zot_port}/models/my-model-from-gh:v1" \
+        --format '{{jsonPretty .}}'
+    [ "${status}" -eq 0 ]
+
+    run bash -c "regctl artifact get 'localhost:${zot_port}/models/my-model-from-gh:v1' >'${BATS_FILE_TMPDIR}/mnist.onnx.check'"
+    [ "${status}" -eq 0 ]
+
+    run sha256sum "${BATS_FILE_TMPDIR}/mnist.onnx.check"
+    [ "${status}" -eq 0 ]
+    sha256_out=$(echo "${output}" | awk '{print $1}')
+    [ -n "${sha256_out}" ]
     [ "${sha256_in}" = "${sha256_out}" ]
 }
 
@@ -249,7 +264,7 @@ function helper_authn_verify_auth_and_push() {
         [ "${status}" -eq 0 ]
     else
         [ "${status}" -eq 1 ]
-        log_output | jq 'contains("htpasswd bcrypt failed since fips140 is enabled")' | grep true
+        log_output | jq 'contains("htpasswd bcrypt failed since fips140 is enabled")?' | grep true
     fi
 }
 
