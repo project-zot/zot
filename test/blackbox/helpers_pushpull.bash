@@ -232,12 +232,21 @@ function helper_delete_manifest() {
 function helper_push_oras_artifact() {
     local artifact_name=${1:-hello-artifact}
     local tag=${2:-v2}
-    local zot_port
+    local zot_port annotations_file
     zot_port=$(get_zot_port)
+    annotations_file=${BATS_TEST_TMPDIR}/oras-artifact-annotations.json
 
     echo '{"name":"foo","value":"bar"}' > config.json
     echo "hello world" > artifact.txt
+    cat > "${annotations_file}" <<'EOF'
+{
+    "artifact.txt": {
+        "org.opencontainers.image.title": "artifact.txt"
+    }
+}
+EOF
     run oras push --plain-http "127.0.0.1:${zot_port}/${artifact_name}:${tag}" \
+        --annotation-file "${annotations_file}" \
         --config config.json:application/vnd.acme.rocket.config.v1+json artifact.txt:text/plain -d -v
     [ "${status}" -eq 0 ]
     rm -f artifact.txt config.json
@@ -247,12 +256,24 @@ function helper_push_oras_artifact() {
 function helper_pull_oras_artifact() {
     local artifact_name=${1:-hello-artifact}
     local tag=${2:-v2}
-    local zot_port
+    local zot_port ref digest
     zot_port=$(get_zot_port)
+    ref="127.0.0.1:${zot_port}/${artifact_name}:${tag}"
 
-    run oras pull --plain-http "127.0.0.1:${zot_port}/${artifact_name}:${tag}" -d -v
+    rm -f artifact.txt
+    run oras pull --plain-http "${ref}" -d -v
     [ "${status}" -eq 0 ]
     grep -q "hello world" artifact.txt
+
+    run oras manifest fetch --plain-http "${ref}"
+    [ "${status}" -eq 0 ]
+    digest=$(echo "${output}" | jq -r '.layers[] | select(.mediaType == "text/plain") | .digest' | head -1)
+    [ -n "${digest}" ]
+
+    run curl -fsSL "http://127.0.0.1:${zot_port}/v2/${artifact_name}/blobs/${digest}"
+    [ "${status}" -eq 0 ]
+    echo "${output}" | grep -q "hello world"
+
     rm -f artifact.txt
 }
 
