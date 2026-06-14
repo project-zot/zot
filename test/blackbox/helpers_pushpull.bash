@@ -5,25 +5,14 @@
 # pushpull_setup_file / pushpull_teardown / pushpull_teardown_file for lifecycle.
 
 function verify_prerequisites() {
-    if ! command -v curl >/dev/null; then
-        echo "you need to install curl as a prerequisite to running the tests" >&3
-        return 1
-    fi
+    local tool
 
-    if ! command -v jq >/dev/null; then
-        echo "you need to install jq as a prerequisite to running the tests" >&3
-        return 1
-    fi
-
-    if ! command -v git >/dev/null; then
-        echo "you need to install git as a prerequisite to running the tests" >&3
-        return 1
-    fi
-
-    if ! command -v docker >/dev/null; then
-        echo "you need to install docker as a prerequisite to running the tests" >&3
-        return 1
-    fi
+    for tool in curl jq git docker; do
+        if ! command -v "${tool}" >/dev/null; then
+            echo "you need to install ${tool} as a prerequisite to running the tests" >&3
+            return 1
+        fi
+    done
 
     return 0
 }
