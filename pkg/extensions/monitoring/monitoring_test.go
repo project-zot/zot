@@ -450,7 +450,47 @@ func TestMetricsAuthorization(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-			// valid credentials should also work
+			// valid credentials should not work as user is not in the users list
+			client := resty.New()
+			client.SetBasicAuth(metricsuser, metricspass)
+			resp, err = client.R().Get(baseURL + "/metrics")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+			// anonymous access to registry endpoints should remain protected
+			resp, err = resty.R().Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		})
+		Convey("with basic auth: metrics.anonymousPolicy and users list, allow permitted user", func() {
+			conf.HTTP.AccessControl = &config.AccessControlConfig{
+				Metrics: config.Metrics{
+					Users:           []string{metricsuser},
+					AnonymousPolicy: []string{"read"},
+				},
+			}
+			ctlr := api.NewController(conf)
+			ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+			cm := test.NewControllerManager(ctlr)
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			// unauthenticated client should be allowed to scrape /metrics
+			resp, err := resty.R().Get(baseURL + "/metrics")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// wrong credentials should still be rejected at authn
+			resp, err = resty.R().SetBasicAuth("hacker", "wrongpass").Get(baseURL + "/metrics")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+			// valid credentials should work as user is in the users list
 			client := resty.New()
 			client.SetBasicAuth(metricsuser, metricspass)
 			resp, err = client.R().Get(baseURL + "/metrics")
