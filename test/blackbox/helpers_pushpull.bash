@@ -15,6 +15,16 @@ function verify_prerequisites() {
         return 1
     fi
 
+    if ! command -v git >/dev/null; then
+        echo "you need to install git as a prerequisite to running the tests" >&3
+        return 1
+    fi
+
+    if ! command -v docker >/dev/null; then
+        echo "you need to install docker as a prerequisite to running the tests" >&3
+        return 1
+    fi
+
     return 0
 }
 
@@ -232,38 +242,38 @@ function helper_delete_manifest() {
 function helper_push_oras_artifact() {
     local artifact_name=${1:-hello-artifact}
     local tag=${2:-v2}
-    local zot_port annotations_file
+    local zot_port work_dir
     zot_port=$(get_zot_port)
-    annotations_file=${BATS_TEST_TMPDIR}/oras-artifact-annotations.json
+    work_dir=${BATS_TEST_TMPDIR}
 
-    echo '{"name":"foo","value":"bar"}' > config.json
-    echo "hello world" > artifact.txt
-    cat > "${annotations_file}" <<'EOF'
+    echo '{"name":"foo","value":"bar"}' > "${work_dir}/config.json"
+    echo "hello world" > "${work_dir}/artifact.txt"
+    cat > "${work_dir}/oras-artifact-annotations.json" <<'EOF'
 {
     "artifact.txt": {
         "org.opencontainers.image.title": "artifact.txt"
     }
 }
 EOF
-    run oras push --plain-http "127.0.0.1:${zot_port}/${artifact_name}:${tag}" \
-        --annotation-file "${annotations_file}" \
-        --config config.json:application/vnd.acme.rocket.config.v1+json artifact.txt:text/plain -d -v
+    run bash -c "cd '${work_dir}' && oras push --plain-http '127.0.0.1:${zot_port}/${artifact_name}:${tag}' \
+        --annotation-file oras-artifact-annotations.json \
+        --config config.json:application/vnd.acme.rocket.config.v1+json \
+        artifact.txt:text/plain -d -v"
     [ "${status}" -eq 0 ]
-    rm -f artifact.txt config.json
 }
 
 # Args: $1 = artifact_name, $2 = tag
 function helper_pull_oras_artifact() {
     local artifact_name=${1:-hello-artifact}
     local tag=${2:-v2}
-    local zot_port ref digest
+    local zot_port ref digest artifact_file
     zot_port=$(get_zot_port)
     ref="127.0.0.1:${zot_port}/${artifact_name}:${tag}"
+    artifact_file=${BATS_TEST_TMPDIR}/artifact.txt
 
-    rm -f artifact.txt
-    run oras pull --plain-http "${ref}" -d -v
+    run oras pull --plain-http -o "${BATS_TEST_TMPDIR}" "${ref}" -d -v
     [ "${status}" -eq 0 ]
-    grep -q "hello world" artifact.txt
+    grep -q "hello world" "${artifact_file}"
 
     run oras manifest fetch --plain-http "${ref}"
     [ "${status}" -eq 0 ]
@@ -273,8 +283,6 @@ function helper_pull_oras_artifact() {
     run curl -fsSL "http://127.0.0.1:${zot_port}/v2/${artifact_name}/blobs/${digest}"
     [ "${status}" -eq 0 ]
     echo "${output}" | grep -q "hello world"
-
-    rm -f artifact.txt
 }
 
 # Args: $1 = image_name, $2 = tag
@@ -403,7 +411,6 @@ function helper_list_repositories_with_regclient_pagination() {
     local expected_next_repo=${3:-golang}
     local zot_port
     zot_port=$(get_zot_port)
-    shift 3 || true
 
     run regctl repo ls "localhost:${zot_port}"
     [ "${status}" -eq 0 ]
@@ -413,7 +420,7 @@ function helper_list_repositories_with_regclient_pagination() {
     [ "${status}" -eq 0 ]
     echo "${output}"
     [ "$(echo "${output}" | wc -l)" -eq "${limit}" ]
-    helper_assert_line_specs "$@"
+    helper_assert_line_specs "${@:4}"
 
     run regctl repo ls --last "${cursor_repo}" --limit 1 "localhost:${zot_port}"
     [ "${status}" -eq 0 ]
@@ -554,14 +561,15 @@ function helper_pull_oci_artifact_references_with_regclient() {
 }
 
 function helper_push_docker_image() {
-    local zot_port
+    local zot_port dockerfile
     zot_port=$(get_zot_port)
+    dockerfile=${BATS_TEST_TMPDIR}/Dockerfile
 
-    cat > Dockerfile <<DOCKERFILE
+    cat > "${dockerfile}" <<DOCKERFILE
 FROM ghcr.io/project-zot/test-images/busybox-docker:1.37
 RUN echo "hello world" > /testfile
 DOCKERFILE
-    run sh -c "unset GODEBUG; docker build -f Dockerfile -t localhost:${zot_port}/test ."
+    run sh -c "unset GODEBUG; docker build -f '${dockerfile}' -t localhost:${zot_port}/test '${BATS_TEST_TMPDIR}'"
     [ "${status}" -eq 0 ]
     run docker push "localhost:${zot_port}/test"
     [ "${status}" -eq 1 ]
