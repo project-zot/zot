@@ -1443,9 +1443,13 @@ func normalizeBlobRedirectURL(rawURL string) (string, bool) {
 		return "", false
 	}
 
-	parsedURL.Scheme = scheme
+	i := strings.Index(rawURL, ":")
+	if i <= 0 {
+		return "", false
+	}
 
-	return parsedURL.String(), true
+	// Preserve original URL bytes for signed URLs; only normalize scheme casing.
+	return scheme + rawURL[i:], true
 }
 
 // GetBlob godoc

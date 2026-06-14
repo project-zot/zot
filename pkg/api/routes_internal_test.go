@@ -104,13 +104,23 @@ func TestParseRangeHeader(t *testing.T) {
 }
 
 func TestNormalizeBlobRedirectURL(t *testing.T) {
-	normalized, ok := normalizeBlobRedirectURL("HTTPS://storage.example.com/blob")
+	rawURL := "HTTPS://storage.example.com/blob?X-Amz-Signature=a%2Fb%2Bc"
+	normalized, ok := normalizeBlobRedirectURL(rawURL)
 	if !ok {
 		t.Fatal("expected HTTPS URL to be accepted")
 	}
 
-	if normalized != "https://storage.example.com/blob" {
-		t.Fatalf("expected normalized URL to use lowercase scheme, got %q", normalized)
+	if normalized != "https://storage.example.com/blob?X-Amz-Signature=a%2Fb%2Bc" {
+		t.Fatalf("expected normalized URL to preserve raw bytes while lowercasing scheme, got %q", normalized)
+	}
+
+	normalized, ok = normalizeBlobRedirectURL("https://storage.example.com/blob?X-Amz-Signature=a%2Fb%2Bc")
+	if !ok {
+		t.Fatal("expected lowercase https URL to be accepted")
+	}
+
+	if normalized != "https://storage.example.com/blob?X-Amz-Signature=a%2Fb%2Bc" {
+		t.Fatalf("expected lowercase scheme URL to be returned unchanged, got %q", normalized)
 	}
 
 	_, ok = normalizeBlobRedirectURL("javascript:alert(1)")
