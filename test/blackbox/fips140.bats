@@ -6,54 +6,18 @@ load helpers_zot
 load helpers_pushpull
 load ../port_helper
 
+PUSHPULL_FIPS_MODE=1
+
 function setup_file() {
-    # Verify prerequisites are available
-    if ! $(verify_prerequisites); then
-        exit 1
-    fi
-    # Download test data to folder common for the entire suite, not just this file
-    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.20 oci:${TEST_DATA_DIR}/golang:1.20
-    # Setup zot server
-    local zot_root_dir=${BATS_FILE_TMPDIR}/zot
-    local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
-    ZOT_LOG_FILE=${zot_root_dir}/zot-log.json
-    local oci_data_dir=${BATS_FILE_TMPDIR}/oci
-    mkdir -p ${zot_root_dir}
-    mkdir -p ${oci_data_dir}
-    zot_port=$(get_free_port_for_service "zot")
-    echo ${zot_port} > ${BATS_FILE_TMPDIR}/zot.port
-    touch ${ZOT_LOG_FILE}
-    cat > ${zot_config_file}<<EOF
-{
-    "distSpecVersion": "1.1.1",
-    "storage": {
-        "rootDirectory": "${zot_root_dir}"
-    },
-    "http": {
-        "address": "0.0.0.0",
-        "port": "${zot_port}"
-    },
-    "log": {
-        "level": "debug",
-        "output": "${ZOT_LOG_FILE}"
-    }
-}
-EOF
-    export GODEBUG="fips140=only"
-    git -C ${BATS_FILE_TMPDIR} clone https://github.com/project-zot/helm-charts.git
-    zot_serve ${ZOT_PATH} ${zot_config_file}
-    wait_zot_reachable ${zot_port}
-    log_output | jq 'contains("fips140 is currently enabled")?' | grep true
+    pushpull_setup_file
 }
 
 function teardown() {
-    # conditionally printing on failure is possible from teardown but not from from teardown_file
-    cat ${BATS_FILE_TMPDIR}/zot/zot-log.json
+    pushpull_teardown
 }
 
 function teardown_file() {
-    zot_stop_all
-    unset GODEBUG
+    pushpull_teardown_file
 }
 
 @test "push image" {
@@ -69,7 +33,11 @@ function teardown_file() {
 }
 
 @test "pull image index" {
-    helper_pull_image_index_and_delete busybox latest
+    helper_pull_image_index busybox latest
+}
+
+@test "delete image index" {
+    helper_delete_manifest busybox latest
 }
 
 @test "push oras artifact" {

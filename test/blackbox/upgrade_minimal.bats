@@ -189,6 +189,10 @@ JSON
     test_new_pull_image_index
 }
 
+@test "[new] delete image index" {
+    test_new_delete_image_index
+}
+
 @test "[new] push oras artifact" {
     test_new_push_oras_artifact
 }

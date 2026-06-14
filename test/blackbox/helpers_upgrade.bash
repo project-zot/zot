@@ -148,7 +148,11 @@ function test_new_push_image_index() {
 }
 
 function test_new_pull_image_index() {
-    helper_pull_image_index_and_delete busybox latest
+    helper_pull_image_index busybox latest
+}
+
+function test_new_delete_image_index() {
+    helper_delete_manifest busybox latest
 }
 
 function test_new_push_oras_artifact() {
