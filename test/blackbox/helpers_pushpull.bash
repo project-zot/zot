@@ -1,5 +1,8 @@
 # Common helper functions and test utilities for blackbox push/pull-style tests.
 # Used by pushpull.bats, fips140.bats, and upgrade BATS suites.
+#
+# pushpull.bats and fips140.bats set PUSHPULL_FIPS_MODE (0 or 1) and call
+# pushpull_setup_file / pushpull_teardown / pushpull_teardown_file for lifecycle.
 
 function verify_prerequisites() {
     if ! command -v curl >/dev/null; then
@@ -17,6 +20,75 @@ function verify_prerequisites() {
 
 function get_zot_port() {
     cat "${BATS_FILE_TMPDIR}/zot.port"
+}
+
+function pushpull_setup_file() {
+    if ! verify_prerequisites; then
+        exit 1
+    fi
+
+    skopeo --insecure-policy copy --format=oci \
+        docker://ghcr.io/project-zot/golang:1.20 \
+        oci:${TEST_DATA_DIR}/golang:1.20
+
+    local zot_root_dir=${BATS_FILE_TMPDIR}/zot
+    local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
+    local oci_data_dir=${BATS_FILE_TMPDIR}/oci
+    local log_file
+
+    mkdir -p "${zot_root_dir}" "${oci_data_dir}"
+
+    if [ "${PUSHPULL_FIPS_MODE:-0}" = 1 ]; then
+        log_file=${zot_root_dir}/zot-log.json
+        touch "${log_file}"
+        export GODEBUG="fips140=only"
+    else
+        log_file=${BATS_FILE_TMPDIR}/zot.log
+    fi
+
+    zot_port=$(get_free_port_for_service "zot")
+    echo "${zot_port}" >"${BATS_FILE_TMPDIR}/zot.port"
+
+    cat >"${zot_config_file}" <<EOF
+{
+    "distSpecVersion": "1.1.1",
+    "storage": {
+        "rootDirectory": "${zot_root_dir}"
+    },
+    "http": {
+        "address": "0.0.0.0",
+        "port": "${zot_port}"
+    },
+    "log": {
+        "level": "debug",
+        "output": "${log_file}"
+    }
+}
+EOF
+
+    git -C "${BATS_FILE_TMPDIR}" clone https://github.com/project-zot/helm-charts.git
+    zot_serve "${ZOT_PATH}" "${zot_config_file}"
+    wait_zot_reachable "${zot_port}"
+
+    if [ "${PUSHPULL_FIPS_MODE:-0}" = 1 ]; then
+        log_output | jq 'contains("fips140 is currently enabled")?' | grep true
+    fi
+}
+
+function pushpull_teardown() {
+    if [ "${PUSHPULL_FIPS_MODE:-0}" = 1 ]; then
+        cat "${BATS_FILE_TMPDIR}/zot/zot-log.json"
+    else
+        cat "${BATS_FILE_TMPDIR}/zot.log"
+    fi
+}
+
+function pushpull_teardown_file() {
+    zot_stop_all
+
+    if [ "${PUSHPULL_FIPS_MODE:-0}" = 1 ]; then
+        unset GODEBUG
+    fi
 }
 
 function helper_assert_output_contains_line() {
@@ -146,13 +218,11 @@ function helper_pull_image_index() {
 }
 
 # Args: $1 = image_name, $2 = tag
-function helper_pull_image_index_and_delete() {
+function helper_delete_manifest() {
     local image_name=${1:-busybox}
     local tag=${2:-latest}
     local zot_port
     zot_port=$(get_zot_port)
-
-    helper_pull_image_index "${image_name}" "${tag}"
 
     run curl -X DELETE "http://127.0.0.1:${zot_port}/v2/${image_name}/manifests/${tag}"
     [ "${status}" -eq 0 ]
