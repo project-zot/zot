@@ -21,7 +21,7 @@ function teardown_file() {
 }
 
 @test "push image" {
-    helper_push_image golang 1.20
+    helper_push_image golang 1.20 oci:${TEST_DATA_DIR}/golang:1.20
 }
 
 @test "pull image" {
@@ -69,43 +69,43 @@ function teardown_file() {
 }
 
 @test "push image with regclient" {
-    helper_push_image_with_regclient
+    helper_push_image_with_regclient "ocidir://${TEST_DATA_DIR}/golang:1.20" test-regclient
 }
 
 @test "pull image with regclient" {
-    helper_pull_image_with_regclient
+    helper_pull_image_with_regclient test-regclient "ocidir://${TEST_DATA_DIR}/golang:1.20"
 }
 
 @test "list repositories with regclient" {
-    helper_list_repositories_with_regclient_pagination 2 busybox golang "-2:busybox" "-1:golang"
+    helper_list_repositories_with_regclient_pagination 2 busybox golang test-regclient "-2:busybox" "-1:golang"
 }
 
 @test "list image tags with regclient" {
-    helper_list_image_tags_with_regclient
+    helper_list_image_tags_with_regclient test-regclient
 }
 
 @test "push manifest with regclient" {
-    helper_push_manifest_with_regclient
+    helper_push_manifest_with_regclient test-regclient 1.0.0
 }
 
 @test "pull manifest with regclient" {
-    helper_pull_manifest_with_regclient
+    helper_pull_manifest_with_regclient test-regclient
 }
 
 @test "pull manifest with docker client" {
-    helper_pull_manifest_with_docker_client
+    helper_pull_manifest_with_docker_client test-regclient
 }
 
 @test "pull manifest with crictl" {
-    helper_pull_manifest_with_crictl
+    helper_pull_manifest_with_crictl test-regclient
 }
 
 @test "push OCI artifact with regclient" {
-    helper_push_oci_artifact_with_regclient
+    helper_push_oci_artifact_with_regclient artifact:demo
 }
 
 @test "pull OCI artifact with regclient" {
-    helper_pull_oci_artifact_with_regclient
+    helper_pull_oci_artifact_with_regclient artifact:demo "this is an artifact"
 }
 
 @test "push OCI artifact references with regclient" {

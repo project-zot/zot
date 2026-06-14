@@ -138,11 +138,11 @@ function helper_assert_oci_index_has_ref_name() {
     [ "${lines[-1]}" = true ]
 }
 
-# Args: $1 = image_name, $2 = tag, $3 = source reference (optional)
+# Args: $1 = image_name, $2 = tag, $3 = source reference
 function helper_push_image() {
-    local image_name=${1:-golang}
-    local tag=${2:-1.20}
-    local source_ref=${3:-oci:${TEST_DATA_DIR}/${image_name}:${tag}}
+    local image_name=${1}
+    local tag=${2}
+    local source_ref=${3}
     local zot_port
     zot_port=$(get_zot_port)
 
@@ -157,8 +157,8 @@ function helper_push_image() {
 
 # Args: $1 = image_name, $2 = tag
 function helper_pull_image() {
-    local image_name=${1:-golang}
-    local tag=${2:-1.20}
+    local image_name=${1}
+    local tag=${2}
     local oci_data_dir=${BATS_FILE_TMPDIR}/oci
     local zot_port
     zot_port=$(get_zot_port)
@@ -173,9 +173,9 @@ function helper_pull_image() {
 
 # Args: $1 = source_image, $2 = destination image name, $3 = tag
 function helper_push_image_index() {
-    local source_image=${1:-docker://public.ecr.aws/docker/library/busybox:latest}
-    local dest_name=${2:-busybox}
-    local tag=${3:-latest}
+    local source_image=${1}
+    local dest_name=${2}
+    local tag=${3}
     local zot_port
     zot_port=$(get_zot_port)
 
@@ -190,8 +190,8 @@ function helper_push_image_index() {
 
 # Args: $1 = image_name, $2 = tag
 function helper_pull_image_index() {
-    local image_name=${1:-busybox}
-    local tag=${2:-latest}
+    local image_name=${1}
+    local tag=${2}
     local oci_data_dir=${BATS_FILE_TMPDIR}/oci
     local zot_port
     zot_port=$(get_zot_port)
@@ -211,8 +211,8 @@ function helper_pull_image_index() {
 
 # Args: $1 = image_name, $2 = tag
 function helper_delete_manifest() {
-    local image_name=${1:-busybox}
-    local tag=${2:-latest}
+    local image_name=${1}
+    local tag=${2}
     local zot_port
     zot_port=$(get_zot_port)
 
@@ -222,8 +222,8 @@ function helper_delete_manifest() {
 
 # Args: $1 = artifact_name, $2 = tag
 function helper_push_oras_artifact() {
-    local artifact_name=${1:-hello-artifact}
-    local tag=${2:-v2}
+    local artifact_name=${1}
+    local tag=${2}
     local zot_port work_dir
     zot_port=$(get_zot_port)
     work_dir=${BATS_TEST_TMPDIR}
@@ -246,8 +246,8 @@ EOF
 
 # Args: $1 = artifact_name, $2 = tag
 function helper_pull_oras_artifact() {
-    local artifact_name=${1:-hello-artifact}
-    local tag=${2:-v2}
+    local artifact_name=${1}
+    local tag=${2}
     local zot_port ref digest artifact_file
     zot_port=$(get_zot_port)
     ref="127.0.0.1:${zot_port}/${artifact_name}:${tag}"
@@ -269,8 +269,8 @@ function helper_pull_oras_artifact() {
 
 # Args: $1 = image_name, $2 = tag
 function helper_attach_oras_artifacts() {
-    local image_name=${1:-golang}
-    local tag=${2:-1.20}
+    local image_name=${1}
+    local tag=${2}
     local zot_port
     zot_port=$(get_zot_port)
 
@@ -287,9 +287,9 @@ function helper_attach_oras_artifacts() {
 
 # Args: $1 = image_name, $2 = tag, $3 = expected artifact count
 function helper_discover_oras_artifacts() {
-    local image_name=${1:-golang}
-    local tag=${2:-1.20}
-    local expected_count=${3:-2}
+    local image_name=${1}
+    local tag=${2}
+    local expected_count=${3}
     local zot_port
     zot_port=$(get_zot_port)
 
@@ -367,42 +367,50 @@ function helper_pull_helm_chart() {
     [ "${status}" -eq 0 ]
 }
 
+# Args: $1 = source reference, $2 = destination repository
 function helper_push_image_with_regclient() {
+    local source_ref=${1}
+    local dest_repo=${2}
     local zot_port
     zot_port=$(get_zot_port)
 
     run regctl registry set "localhost:${zot_port}" --tls disabled
     [ "${status}" -eq 0 ]
-    run regctl image copy "ocidir://${TEST_DATA_DIR}/golang:1.20" "localhost:${zot_port}/test-regclient"
+    run regctl image copy "${source_ref}" "localhost:${zot_port}/${dest_repo}"
     [ "${status}" -eq 0 ]
 }
 
+# Args: $1 = source repository, $2 = destination reference
 function helper_pull_image_with_regclient() {
+    local source_repo=${1}
+    local dest_ref=${2}
     local zot_port
     zot_port=$(get_zot_port)
 
-    run regctl image copy "localhost:${zot_port}/test-regclient" "ocidir://${TEST_DATA_DIR}/golang:1.20"
+    run regctl image copy "localhost:${zot_port}/${source_repo}" "${dest_ref}"
     [ "${status}" -eq 0 ]
 }
 
 # Args: $1 = page limit, $2 = --last cursor repo, $3 = expected next repo,
-#       $@ = optional index:repo assertions against the limited result page.
+#       $4 = repository expected in full catalog listing,
+#       $@ = index:repo assertions against the limited result page.
 function helper_list_repositories_with_regclient_pagination() {
-    local limit=${1:-2}
-    local cursor_repo=${2:-busybox}
-    local expected_next_repo=${3:-golang}
+    local limit=${1}
+    local cursor_repo=${2}
+    local expected_next_repo=${3}
+    local expected_catalog_repo=${4}
     local zot_port
     zot_port=$(get_zot_port)
 
     run regctl repo ls "localhost:${zot_port}"
     [ "${status}" -eq 0 ]
-    helper_assert_output_contains_line test-regclient
+    helper_assert_output_contains_line "${expected_catalog_repo}"
 
     run regctl repo ls --limit "${limit}" "localhost:${zot_port}"
     [ "${status}" -eq 0 ]
     echo "${output}"
     [ "$(echo "${output}" | wc -l)" -eq "${limit}" ]
-    helper_assert_line_specs "${@:4}"
+    helper_assert_line_specs "${@:5}"
 
     run regctl repo ls --last "${cursor_repo}" --limit 1 "localhost:${zot_port}"
     [ "${status}" -eq 0 ]
@@ -411,21 +419,26 @@ function helper_list_repositories_with_regclient_pagination() {
     [ "${lines[-1]}" = "${expected_next_repo}" ]
 }
 
+# Args: $1 = repository
 function helper_list_image_tags_with_regclient() {
+    local repo=${1}
     local zot_port
     zot_port=$(get_zot_port)
 
-    run regctl tag ls "localhost:${zot_port}/test-regclient"
+    run regctl tag ls "localhost:${zot_port}/${repo}"
     [ "${status}" -eq 0 ]
     helper_assert_output_contains_line latest
 }
 
+# Args: $1 = repository, $2 = manifest tag
 function helper_push_manifest_with_regclient() {
+    local repo=${1}
+    local tag=${2}
     local zot_port manifest
     zot_port=$(get_zot_port)
-    manifest=$(regctl manifest get "localhost:${zot_port}/test-regclient" --format=raw-body)
+    manifest=$(regctl manifest get "localhost:${zot_port}/${repo}" --format=raw-body)
 
-    run regctl manifest put "localhost:${zot_port}/test-regclient:1.0.0" \
+    run regctl manifest put "localhost:${zot_port}/${repo}:${tag}" \
         --format oci \
         --content-type application/vnd.oci.image.manifest.v1+json <<JSON
 ${manifest}
@@ -433,54 +446,65 @@ JSON
     [ "${status}" -eq 0 ]
 }
 
+# Args: $1 = repository
 function helper_pull_manifest_with_regclient() {
+    local repo=${1}
     local zot_port
     zot_port=$(get_zot_port)
 
-    run regctl manifest get "localhost:${zot_port}/test-regclient"
+    run regctl manifest get "localhost:${zot_port}/${repo}"
     [ "${status}" -eq 0 ]
 }
 
+# Args: $1 = repository
 function helper_pull_manifest_with_docker_client() {
+    local repo=${1}
     local zot_port
     zot_port=$(get_zot_port)
 
-    run docker pull "localhost:${zot_port}/test-regclient"
+    run docker pull "localhost:${zot_port}/${repo}"
     [ "${status}" -eq 0 ]
 }
 
+# Args: $1 = repository
 function helper_pull_manifest_with_crictl() {
+    local repo=${1}
     local zot_port
     zot_port=$(get_zot_port)
 
-    run crictl pull "localhost:${zot_port}/test-regclient"
+    run crictl pull "localhost:${zot_port}/${repo}"
     [ "${status}" -eq 0 ]
 }
 
+# Args: $1 = artifact reference
 function helper_push_oci_artifact_with_regclient() {
+    local ref=${1}
     local zot_port
     zot_port=$(get_zot_port)
 
-    run regctl artifact put "localhost:${zot_port}/artifact:demo" <<TXT
+    run regctl artifact put "localhost:${zot_port}/${ref}" <<TXT
 this is an artifact
 TXT
     [ "${status}" -eq 0 ]
 }
 
+# Args: $1 = artifact reference, $2 = expected artifact content
 function helper_pull_oci_artifact_with_regclient() {
+    local ref=${1}
+    local expected_content=${2}
     local zot_port
     zot_port=$(get_zot_port)
 
-    run regctl manifest get "localhost:${zot_port}/artifact:demo"
+    run regctl manifest get "localhost:${zot_port}/${ref}"
     [ "${status}" -eq 0 ]
-    run regctl artifact get "localhost:${zot_port}/artifact:demo"
+    run regctl artifact get "localhost:${zot_port}/${ref}"
     [ "${status}" -eq 0 ]
-    [ "${lines[-1]}" = "this is an artifact" ]
+    [ "${lines[-1]}" = "${expected_content}" ]
 }
 
 # Args: $1 = expected initial referrers count
 function helper_push_oci_artifact_references_with_regclient() {
-    local expected_initial_count=${1:-0}
+    local expected_initial_count=${1}
     local zot_port
     zot_port=$(get_zot_port)
 
@@ -517,7 +541,7 @@ TXT
 
 # Args: $1 = expected referrers count
 function helper_pull_oci_artifact_references_with_regclient() {
-    local expected_count=${1:-1}
+    local expected_count=${1}
     local zot_port
     zot_port=$(get_zot_port)
 

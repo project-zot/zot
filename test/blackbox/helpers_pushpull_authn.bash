@@ -157,28 +157,41 @@ function helper_authn_regctl_login() {
     [ "${status}" -eq 0 ]
 }
 
+# Args: $1 = source reference, $2 = destination repository
 function helper_authn_push_image_with_regclient() {
+    local source_ref=${1}
+    local dest_repo=${2}
+
     helper_authn_regctl_login "${AUTH_USER}" "${AUTH_PASS}"
-    run regctl image copy "ocidir://${TEST_DATA_DIR}/busybox:1.36" \
-        "localhost:$(get_zot_port)/test-regclient"
+    run regctl image copy "${source_ref}" "localhost:$(get_zot_port)/${dest_repo}"
     [ "${status}" -eq 0 ]
 }
 
+# Args: $1 = source repository, $2 = destination reference
 function helper_authn_pull_image_with_regclient() {
+    local source_repo=${1}
+    local dest_ref=${2}
+
     helper_authn_regctl_login "${AUTH_USER}" "${AUTH_PASS}"
-    run regctl image copy "localhost:$(get_zot_port)/test-regclient" \
-        "ocidir://${TEST_DATA_DIR}/busybox:latest"
+    run regctl image copy "localhost:$(get_zot_port)/${source_repo}" "${dest_ref}"
     [ "${status}" -eq 0 ]
 }
 
+# Args: $1 = artifact reference
 function helper_authn_push_oci_artifact_with_regclient() {
+    local ref=${1}
+
     helper_authn_regctl_login "${AUTH_USER}" "${AUTH_PASS}"
-    helper_push_oci_artifact_with_regclient
+    helper_push_oci_artifact_with_regclient "${ref}"
 }
 
+# Args: $1 = artifact reference, $2 = expected artifact content
 function helper_authn_pull_oci_artifact_with_regclient() {
+    local ref=${1}
+    local expected_content=${2}
+
     helper_authn_regctl_login "${AUTH_USER}" "${AUTH_PASS}"
-    helper_pull_oci_artifact_with_regclient
+    helper_pull_oci_artifact_with_regclient "${ref}" "${expected_content}"
 }
 
 function helper_authn_push_oci_artifact_references_with_regclient() {
@@ -191,10 +204,10 @@ function helper_authn_list_oci_artifact_references_with_regclient() {
     helper_pull_oci_artifact_references_with_regclient 1
 }
 
-# Args: $1=username (optional), $2=password (optional)
+# Args: $1=username, $2=password
 function helper_authn_ml_artifacts() {
-    local user=${1:-${AUTH_USER}}
-    local pass=${2:-${AUTH_PASS}}
+    local user=${1}
+    local pass=${2}
     local zot_port sha256_in sha256_out
 
     helper_authn_regctl_login "${user}" "${pass}"

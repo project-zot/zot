@@ -17,19 +17,19 @@ function teardown_file() {
 }
 
 @test "push image with regclient" {
-    helper_authn_push_image_with_regclient
+    helper_authn_push_image_with_regclient "ocidir://${TEST_DATA_DIR}/busybox:1.36" test-regclient
 }
 
 @test "pull image with regclient" {
-    helper_authn_pull_image_with_regclient
+    helper_authn_pull_image_with_regclient test-regclient "ocidir://${TEST_DATA_DIR}/busybox:latest"
 }
 
 @test "push OCI artifact with regclient" {
-    helper_authn_push_oci_artifact_with_regclient
+    helper_authn_push_oci_artifact_with_regclient artifact:demo
 }
 
 @test "pull OCI artifact with regclient" {
-    helper_authn_pull_oci_artifact_with_regclient
+    helper_authn_pull_oci_artifact_with_regclient artifact:demo "this is an artifact"
 }
 
 @test "push OCI artifact references with regclient" {
@@ -41,5 +41,5 @@ function teardown_file() {
 }
 
 @test "ML artifacts" {
-    helper_authn_ml_artifacts
+    helper_authn_ml_artifacts "${AUTH_USER}" "${AUTH_PASS}"
 }

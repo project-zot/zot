@@ -57,7 +57,7 @@ function teardown_file() {
 # ==============================================================================
 
 @test "[release] push image" {
-    helper_push_image golang 1.20
+    helper_push_image golang 1.20 oci:${TEST_DATA_DIR}/golang:1.20
 }
 
 @test "[release] pull image" {
@@ -101,43 +101,43 @@ function teardown_file() {
 }
 
 @test "[release] push image with regclient" {
-    helper_push_image_with_regclient
+    helper_push_image_with_regclient "ocidir://${TEST_DATA_DIR}/golang:1.20" test-regclient
 }
 
 @test "[release] pull image with regclient" {
-    helper_pull_image_with_regclient
+    helper_pull_image_with_regclient test-regclient "ocidir://${TEST_DATA_DIR}/golang:1.20"
 }
 
 @test "[release] list repositories with regclient" {
-    helper_list_repositories_with_regclient_pagination 2 busybox golang "-2:busybox" "-1:golang"
+    helper_list_repositories_with_regclient_pagination 2 busybox golang test-regclient "-2:busybox" "-1:golang"
 }
 
 @test "[release] list image tags with regclient" {
-    helper_list_image_tags_with_regclient
+    helper_list_image_tags_with_regclient test-regclient
 }
 
 @test "[release] push manifest with regclient" {
-    helper_push_manifest_with_regclient
+    helper_push_manifest_with_regclient test-regclient 1.0.0
 }
 
 @test "[release] pull manifest with regclient" {
-    helper_pull_manifest_with_regclient
+    helper_pull_manifest_with_regclient test-regclient
 }
 
 @test "[release] pull manifest with docker client" {
-    helper_pull_manifest_with_docker_client
+    helper_pull_manifest_with_docker_client test-regclient
 }
 
 @test "[release] pull manifest with crictl" {
-    helper_pull_manifest_with_crictl
+    helper_pull_manifest_with_crictl test-regclient
 }
 
 @test "[release] push OCI artifact with regclient" {
-    helper_push_oci_artifact_with_regclient
+    helper_push_oci_artifact_with_regclient artifact:demo
 }
 
 @test "[release] pull OCI artifact with regclient" {
-    helper_pull_oci_artifact_with_regclient
+    helper_pull_oci_artifact_with_regclient artifact:demo "this is an artifact"
 }
 
 @test "[release] push OCI artifact references with regclient" {
@@ -185,7 +185,7 @@ function teardown_file() {
 
 @test "[new] push image" {
     helper_assert_catalog_has_repo golang
-    helper_push_image golang 1.20
+    helper_push_image golang 1.20 oci:${TEST_DATA_DIR}/golang:1.20
     helper_push_image alpine 3.17.3 docker://ghcr.io/project-zot/test-images/alpine:3.17.3
     helper_assert_catalog_has_repo golang
     helper_assert_catalog_has_repo alpine
@@ -237,43 +237,43 @@ function teardown_file() {
 }
 
 @test "[new] push image with regclient" {
-    helper_push_image_with_regclient
+    helper_push_image_with_regclient "ocidir://${TEST_DATA_DIR}/golang:1.20" test-regclient
 }
 
 @test "[new] pull image with regclient" {
-    helper_pull_image_with_regclient
+    helper_pull_image_with_regclient test-regclient "ocidir://${TEST_DATA_DIR}/golang:1.20"
 }
 
 @test "[new] list repositories with regclient" {
-    helper_list_repositories_with_regclient_pagination 4 busybox golang "0:alpine" "-1:busybox"
+    helper_list_repositories_with_regclient_pagination 4 busybox golang test-regclient "0:alpine" "-1:busybox"
 }
 
 @test "[new] list image tags with regclient" {
-    helper_list_image_tags_with_regclient
+    helper_list_image_tags_with_regclient test-regclient
 }
 
 @test "[new] push manifest with regclient" {
-    helper_push_manifest_with_regclient
+    helper_push_manifest_with_regclient test-regclient 1.0.0
 }
 
 @test "[new] pull manifest with regclient" {
-    helper_pull_manifest_with_regclient
+    helper_pull_manifest_with_regclient test-regclient
 }
 
 @test "[new] pull manifest with docker client" {
-    helper_pull_manifest_with_docker_client
+    helper_pull_manifest_with_docker_client test-regclient
 }
 
 @test "[new] pull manifest with crictl" {
-    helper_pull_manifest_with_crictl
+    helper_pull_manifest_with_crictl test-regclient
 }
 
 @test "[new] push OCI artifact with regclient" {
-    helper_push_oci_artifact_with_regclient
+    helper_push_oci_artifact_with_regclient artifact:demo
 }
 
 @test "[new] pull OCI artifact with regclient" {
-    helper_pull_oci_artifact_with_regclient
+    helper_pull_oci_artifact_with_regclient artifact:demo "this is an artifact"
 }
 
 @test "[new] push OCI artifact references with regclient" {
