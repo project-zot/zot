@@ -280,14 +280,14 @@ func TestMetricsAuthorization(t *testing.T) {
 			resp, err := client.R().Get(baseURL + "/metrics")
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 			// authenticated but not authorized user should not have access to/metrics
 			client.SetBasicAuth(metricsuser, metricspass)
 			resp, err = client.R().Get(baseURL + "/metrics")
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 		})
 		Convey("with basic auth: metrics users in accessControl", func() {
 			conf.HTTP.AccessControl = &config.AccessControlConfig{
@@ -450,13 +450,71 @@ func TestMetricsAuthorization(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-			// valid credentials should also work
-			client := resty.New()
-			client.SetBasicAuth(metricsuser, metricspass)
-			resp, err = client.R().Get(baseURL + "/metrics")
+			// Scrape should not be allowed for the metrics user when allowed metrics users
+			// are not configured.
+			metricsUserClient := resty.New()
+			metricsUserClient.SetBasicAuth(metricsuser, metricspass)
+			resp, err = metricsUserClient.R().Get(baseURL + "/metrics")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+			// Scrape should not be allowed for a valid user when allowed metrics users
+			// are not configured.
+			normalUserClient := resty.New()
+			normalUserClient.SetBasicAuth(username, password)
+			resp, err = normalUserClient.R().Get(baseURL + "/metrics")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+			// anonymous access to registry endpoints should remain protected
+			resp, err = resty.R().Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		})
+		Convey("with basic auth: metrics.anonymousPolicy and users list, allow permitted user", func() {
+			conf.HTTP.AccessControl = &config.AccessControlConfig{
+				Metrics: config.Metrics{
+					Users:           []string{metricsuser},
+					AnonymousPolicy: []string{"read"},
+				},
+			}
+			ctlr := api.NewController(conf)
+			ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+			cm := test.NewControllerManager(ctlr)
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			// unauthenticated client should be allowed to scrape /metrics
+			resp, err := resty.R().Get(baseURL + "/metrics")
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// wrong credentials should still be rejected at authn
+			resp, err = resty.R().SetBasicAuth("hacker", "wrongpass").Get(baseURL + "/metrics")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+			// scrape should be allowed for a valid user in the metrics users list
+			metricsUserClient := resty.New()
+			metricsUserClient.SetBasicAuth(metricsuser, metricspass)
+			resp, err = metricsUserClient.R().Get(baseURL + "/metrics")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// scrape should not be allowed for a valid user who is not in the metrics users list
+			normalUserClient := resty.New()
+			normalUserClient.SetBasicAuth(username, password)
+			resp, err = normalUserClient.R().Get(baseURL + "/metrics")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 			// anonymous access to registry endpoints should remain protected
 			resp, err = resty.R().Get(baseURL + "/v2/")

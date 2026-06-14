@@ -741,21 +741,6 @@ func MetricsAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 				return
 			}
 
-			metricsConfig := accessControlConfig.GetMetrics()
-			if slices.Contains(metricsConfig.AnonymousPolicy, constants.ReadPermission) {
-				next.ServeHTTP(response, request)
-
-				return
-			}
-
-			if len(metricsConfig.Users) == 0 {
-				log := ctlr.Log
-				log.Warn().Msg("auth is enabled but no metrics users in accessControl: /metrics is unaccesible")
-				common.AuthzFail(response, request, "", realm, failDelay)
-
-				return
-			}
-
 			// get access control context made in authn.go
 			userAc, err := reqCtx.UserAcFromContext(request.Context())
 			if err != nil { // should never happen
@@ -764,11 +749,31 @@ func MetricsAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 				return
 			}
 
-			username := userAc.GetUsername()
-			if !slices.Contains(metricsConfig.Users, username) {
-				common.AuthzFail(response, request, username, realm, failDelay)
+			metricsAccessConfig := accessControlConfig.GetMetrics()
 
-				return
+			if userAc.IsAnonymous() {
+				// If anonymous read is not specified in access control, deny.
+				if !slices.Contains(metricsAccessConfig.AnonymousPolicy, constants.ReadPermission) {
+					common.AuthzFail(response, request, "", realm, failDelay)
+
+					return
+				}
+			} else {
+				username := userAc.GetUsername()
+				if len(metricsAccessConfig.Users) == 0 {
+					log := ctlr.Log
+					log.Warn().Msg("no users configured in metrics user list; " +
+						"metrics are not accessible to any authenticated user.")
+					common.AuthzFail(response, request, username, realm, failDelay)
+
+					return
+				}
+
+				if !slices.Contains(metricsAccessConfig.Users, username) {
+					common.AuthzFail(response, request, username, realm, failDelay)
+
+					return
+				}
 			}
 
 			next.ServeHTTP(response, request) //nolint:contextcheck
