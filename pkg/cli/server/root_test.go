@@ -3446,3 +3446,216 @@ func TestBearerASMConfigValidation(t *testing.T) {
 		})
 	})
 }
+
+func TestMetricsConfigurationValidation(t *testing.T) {
+	Convey("Test metrics config", t, func() {
+		Convey("Allow no metrics config", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1", "port": "8080"
+				},
+				"extensions": {}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Allow empty metrics config", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1", "port": "8080"
+				},
+				"extensions": {
+					"metrics": {}
+				}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Allow only metrics enabled", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1", "port": "8080"
+				},
+				"extensions": {
+					"metrics": {
+						"enable": true
+					}
+				}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldBeNil)
+		})
+	})
+
+	Convey("Test metrics path validation", t, func() {
+		Convey("Reject / as metrics path", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1", "port": "8080"
+				},
+				"extensions": {
+					"metrics": {
+						"enable": true,
+						"prometheus": {
+							"path": "/"
+						}
+					}
+				}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err, ShouldWrap, zerr.ErrDisallowedMetricsPath)
+		})
+
+		Convey("Reject /v2 as metrics path", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1", "port": "8080"
+				},
+				"extensions": {
+					"metrics": {
+						"enable": true,
+						"prometheus": {
+							"path": "/v2"
+						}
+					}
+				}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err, ShouldWrap, zerr.ErrDisallowedMetricsPath)
+		})
+
+		Convey("Reject /v2/ as metrics path", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1", "port": "8080"
+				},
+				"extensions": {
+					"metrics": {
+						"enable": true,
+						"prometheus": {
+							"path": "/v2/"
+						}
+					}
+				}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err, ShouldWrap, zerr.ErrInvalidMetricsPath)
+		})
+
+		Convey("Reject /abcd/.. as metrics path", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1", "port": "8080"
+				},
+				"extensions": {
+					"metrics": {
+						"enable": true,
+						"prometheus": {
+							"path": "/abcd/.."
+						}
+					}
+				}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err, ShouldWrap, zerr.ErrInvalidMetricsPath)
+		})
+
+		Convey("Reject abcd as metrics path", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1", "port": "8080"
+				},
+				"extensions": {
+					"metrics": {
+						"enable": true,
+						"prometheus": {
+							"path": "abcd"
+						}
+					}
+				}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err, ShouldWrap, zerr.ErrInvalidMetricsPathPrefix)
+		})
+
+		Convey("Reject blank metrics path", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1", "port": "8080"
+				},
+				"extensions": {
+					"metrics": {
+						"enable": true,
+						"prometheus": {
+							"path": ""
+						}
+					}
+				}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err, ShouldWrap, zerr.ErrInvalidMetricsPath)
+		})
+
+		Convey("Allow valid metrics path", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1", "port": "8080"
+				},
+				"extensions": {
+					"metrics": {
+						"enable": true,
+						"prometheus": {
+							"path": "/abcd"
+						}
+					}
+				}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldBeNil)
+		})
+	})
+}
