@@ -566,7 +566,9 @@ function helper_pull_oci_artifact_references_with_regclient() {
     [ "$(echo "${lines[-1]}" | jq '.manifests | length')" -eq 0 ]
 }
 
-function helper_push_docker_image() {
+# Build a local docker image, then verify docker push and pull fail without the
+# docker compatibility extension (happy path is in docker_compat.bats).
+function helper_build_docker_image_push_and_pull() {
     local zot_port dockerfile
     zot_port=$(get_zot_port)
     dockerfile=${BATS_TEST_TMPDIR}/Dockerfile

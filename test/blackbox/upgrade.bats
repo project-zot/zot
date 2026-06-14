@@ -163,8 +163,8 @@ function teardown_file() {
     helper_pull_oci_artifact_references_with_regclient 1
 }
 
-@test "[release] push docker image" {
-    helper_push_docker_image
+@test "[release] build docker image and verify docker push and pull fail" {
+    helper_build_docker_image_push_and_pull
 }
 
 @test "[release] list by image name" {
@@ -365,8 +365,8 @@ function teardown_file() {
     helper_pull_oci_artifact_references_with_regclient 1
 }
 
-@test "[new] push docker image" {
-    helper_push_docker_image
+@test "[new] build docker image and verify docker push and pull fail" {
+    helper_build_docker_image_push_and_pull
 }
 
 @test "[new] list by image name" {

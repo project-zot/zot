@@ -116,6 +116,6 @@ function teardown_file() {
     helper_pull_oci_artifact_references_with_regclient 1
 }
 
-@test "push docker image" {
-    helper_push_docker_image
+@test "build docker image and verify docker push and pull fail" {
+    helper_build_docker_image_push_and_pull
 }
