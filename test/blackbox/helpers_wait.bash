@@ -40,7 +40,7 @@ function retry_until_success() {
         fi
         attempts=$((attempts - 1))
         if [ "${attempts}" -eq 0 ]; then
-            return 1
+            return "${status}"
         fi
         sleep "${delay}"
     done
