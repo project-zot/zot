@@ -451,7 +451,7 @@ func TestMetricsAuthorization(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 			// Scrape should not be allowed for the metrics user when allowed metrics users
-			// is not configured.
+			// are not configured.
 			metricsUserClient := resty.New()
 			metricsUserClient.SetBasicAuth(metricsuser, metricspass)
 			resp, err = metricsUserClient.R().Get(baseURL + "/metrics")
@@ -460,7 +460,7 @@ func TestMetricsAuthorization(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 			// Scrape should not be allowed for a valid user when allowed metrics users
-			// is not configured.
+			// are not configured.
 			normalUserClient := resty.New()
 			normalUserClient.SetBasicAuth(username, password)
 			resp, err = normalUserClient.R().Get(baseURL + "/metrics")

@@ -762,8 +762,8 @@ func MetricsAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 				username := userAc.GetUsername()
 				if len(metricsAccessConfig.Users) == 0 {
 					log := ctlr.Log
-					log.Warn().Msg("auth is enabled and a metrics request with a user received " +
-						"but no metrics users configured in accessControl")
+					log.Warn().Msg("no users configured in metrics user list; " +
+						"metrics are not accessible to any authenticated user.")
 					common.AuthzFail(response, request, username, realm, failDelay)
 
 					return
