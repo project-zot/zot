@@ -89,6 +89,8 @@ function authn_setup_file() {
         exit 1
     fi
 
+    pushpull_isolate_regctl_config
+
     skopeo --insecure-policy copy --format=oci \
         docker://ghcr.io/project-zot/test-images/busybox:1.36 \
         oci:${TEST_DATA_DIR}/busybox:1.36
@@ -116,6 +118,9 @@ function authn_setup_file() {
     zot_serve "${ZOT_PATH}" "${zot_config_file}"
     wait_zot_reachable "${zot_port}"
 
+    run regctl registry set "localhost:${zot_port}" --tls disabled
+    [ "${status}" -eq 0 ]
+
     if [ "${PUSHPULL_AUTHN_FIPS_MODE:-0}" = 1 ]; then
         log_output | jq 'contains("fips140 is currently enabled")?' | grep true
     fi
@@ -123,13 +128,6 @@ function authn_setup_file() {
 
 function authn_teardown() {
     cat "${BATS_FILE_TMPDIR}/zot/zot-log.json"
-
-    if [ "${PUSHPULL_AUTHN_FIPS_MODE:-0}" = 1 ]; then
-        if [ -f "${BATS_FILE_TMPDIR}/zot.port" ]; then
-            zot_port=$(get_zot_port)
-            regctl registry logout "localhost:${zot_port}" 2>/dev/null || true
-        fi
-    fi
 }
 
 function authn_teardown_file() {
@@ -140,19 +138,10 @@ function authn_teardown_file() {
     fi
 }
 
-function helper_authn_regctl_tls_disabled() {
-    local zot_port
-    zot_port=$(get_zot_port)
-
-    run regctl registry set "localhost:${zot_port}" --tls disabled
-    [ "${status}" -eq 0 ]
-}
-
 function helper_authn_regctl_login() {
     local user=${1}
     local pass=${2}
 
-    helper_authn_regctl_tls_disabled
     run regctl registry login "localhost:$(get_zot_port)" -u "${user}" -p "${pass}"
     [ "${status}" -eq 0 ]
 }

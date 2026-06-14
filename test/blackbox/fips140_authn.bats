@@ -16,10 +16,6 @@ function teardown_file() {
     authn_teardown_file
 }
 
-@test "push image with regclient - setup registry" {
-    helper_authn_regctl_tls_disabled
-}
-
 @test "push image with bcrypt auth (should fail in FIPS mode)" {
     helper_authn_verify_auth_and_push "${AUTH_USER}" "${AUTH_PASS}" bcrypt false
 }

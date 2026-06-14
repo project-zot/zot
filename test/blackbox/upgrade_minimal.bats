@@ -11,6 +11,7 @@ function setup_file() {
     if ! verify_prerequisites; then
         exit 1
     fi
+    pushpull_isolate_regctl_config
     # Download test data to folder common for the entire suite, not just this file
     skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.20 oci:${TEST_DATA_DIR}/golang:1.20
     # Setup zot server

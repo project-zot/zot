@@ -21,10 +21,17 @@ function get_zot_port() {
     cat "${BATS_FILE_TMPDIR}/zot.port"
 }
 
+function pushpull_isolate_regctl_config() {
+    # regctl persists login/TLS settings to config on disk; isolate per BATS file.
+    export REGCTL_CONFIG="${BATS_FILE_TMPDIR}/regctl.json"
+}
+
 function pushpull_setup_file() {
     if ! verify_prerequisites; then
         exit 1
     fi
+
+    pushpull_isolate_regctl_config
 
     skopeo --insecure-policy copy --format=oci \
         docker://ghcr.io/project-zot/golang:1.20 \
