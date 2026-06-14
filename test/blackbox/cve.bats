@@ -23,7 +23,7 @@ function setup_file() {
     # Use unique config name based on test file name and test run to avoid conflicts
     export REGISTRY_NAME=$(basename "${BASH_SOURCE[0]}" .bats)-$(basename "${BATS_FILE_TMPDIR}")
     # Verify prerequisites are available
-    if ! $(verify_prerequisites); then
+    if ! verify_prerequisites; then
         exit 1
     fi
 

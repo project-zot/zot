@@ -16,7 +16,7 @@ function setup_file(){
 
 function setup() {
     # verify prerequisites are available
-    if ! $(verify_prerequisites); then
+    if ! verify_prerequisites; then
         exit 1
     fi
 
