@@ -3,7 +3,7 @@
 #       Extra tools that are not covered in Makefile target needs to be added in verify_prerequisites()
 
 load helpers_zot
-load helpers_upgrade
+load helpers_pushpull
 load ../port_helper
 
 function setup_file() {
@@ -58,104 +58,113 @@ JSON
     zli_add_config ${REGISTRY_NAME} ${registry_url}
 }
 
+function teardown() {
+    # conditionally printing on failure is possible from teardown but not from teardown_file
+    cat "${BATS_FILE_TMPDIR}/zot/zot-log.json"
+}
+
+function teardown_file() {
+    zot_stop_all
+}
+
 # ==============================================================================
 # RELEASE TESTS - Test released version before upgrade
 # ==============================================================================
 
 @test "[release] push image" {
-    test_release_push_image
+    helper_push_image golang 1.20
 }
 
 @test "[release] pull image" {
-    test_release_pull_image
+    helper_pull_image golang 1.20
 }
 
 @test "[release] push image index" {
-    test_release_push_image_index
+    helper_push_image_index docker://public.ecr.aws/docker/library/busybox:latest busybox latest
 }
 
 @test "[release] pull image index" {
-    test_release_pull_image_index
+    helper_pull_image_index busybox latest
 }
 
 @test "[release] push oras artifact" {
-    test_release_push_oras_artifact
+    helper_push_oras_artifact hello-artifact v2
 }
 
 @test "[release] pull oras artifact" {
-    test_release_pull_oras_artifact
+    helper_pull_oras_artifact hello-artifact v2
 }
 
 @test "[release] attach oras artifacts" {
-    test_release_attach_oras_artifacts
+    helper_attach_oras_artifacts golang 1.20
 }
 
 @test "[release] discover oras artifacts" {
-    test_release_discover_oras_artifacts
+    helper_discover_oras_artifacts golang 1.20 2
 }
 
 @test "[release] add and list tags using oras" {
-    test_release_add_and_list_tags_using_oras
+    helper_add_and_list_tags_using_oras
 }
 
 @test "[release] push helm chart" {
-    test_release_push_helm_chart
+    helper_push_helm_chart
 }
 
 @test "[release] pull helm chart" {
-    test_release_pull_helm_chart
+    helper_pull_helm_chart
 }
 
 @test "[release] push image with regclient" {
-    test_release_push_image_with_regclient
+    helper_push_image_with_regclient
 }
 
 @test "[release] pull image with regclient" {
-    test_release_pull_image_with_regclient
+    helper_pull_image_with_regclient
 }
 
 @test "[release] list repositories with regclient" {
-    test_release_list_repositories_with_regclient
+    helper_list_repositories_with_regclient_pagination 2 busybox golang "-2:busybox" "-1:golang"
 }
 
 @test "[release] list image tags with regclient" {
-    test_release_list_image_tags_with_regclient
+    helper_list_image_tags_with_regclient
 }
 
 @test "[release] push manifest with regclient" {
-    test_release_push_manifest_with_regclient
+    helper_push_manifest_with_regclient
 }
 
 @test "[release] pull manifest with regclient" {
-    test_release_pull_manifest_with_regclient
+    helper_pull_manifest_with_regclient
 }
 
 @test "[release] pull manifest with docker client" {
-    test_release_pull_manifest_with_docker_client
+    helper_pull_manifest_with_docker_client
 }
 
 @test "[release] pull manifest with crictl" {
-    test_release_pull_manifest_with_crictl
+    helper_pull_manifest_with_crictl
 }
 
 @test "[release] push OCI artifact with regclient" {
-    test_release_push_oci_artifact_with_regclient
+    helper_push_oci_artifact_with_regclient
 }
 
 @test "[release] pull OCI artifact with regclient" {
-    test_release_pull_oci_artifact_with_regclient
+    helper_pull_oci_artifact_with_regclient
 }
 
 @test "[release] push OCI artifact references with regclient" {
-    test_release_push_oci_artifact_references_with_regclient
+    helper_push_oci_artifact_references_with_regclient 0
 }
 
 @test "[release] pull OCI artifact references with regclient" {
-    test_release_pull_oci_artifact_references_with_regclient
+    helper_pull_oci_artifact_references_with_regclient 1
 }
 
 @test "[release] push docker image" {
-    test_release_push_docker_image
+    helper_push_docker_image
 }
 
 @test "[release] list by image name" {
@@ -240,15 +249,15 @@ JSON
 }
 
 @test "[new] existing pull image" {
-    test_new_existing_pull_image
+    helper_pull_image golang 1.20
 }
 
 @test "[new] existing pull image index" {
-    test_new_existing_pull_image_index
+    helper_pull_image_index busybox latest
 }
 
 @test "[new] existing pull oras artifact" {
-    test_new_existing_pull_oras_artifact
+    helper_pull_oras_artifact hello-artifact v2
 }
 
 @test "[new] existing list repositories with regclient" {
@@ -256,103 +265,108 @@ JSON
 }
 
 @test "[new] push image" {
-    test_new_push_image
+    helper_assert_catalog_has_repo golang
+    helper_push_image golang 1.20
+    helper_push_image alpine 3.17.3 docker://ghcr.io/project-zot/test-images/alpine:3.17.3
+    helper_assert_catalog_has_repo golang
+    helper_assert_catalog_has_repo alpine
+    helper_assert_repo_has_tag golang 1.20
 }
 
 @test "[new] pull image" {
-    test_new_pull_image
+    helper_pull_image golang 1.20
 }
 
 @test "[new] push image index" {
-    test_new_push_image_index
+    helper_push_image_index docker://public.ecr.aws/docker/library/busybox:latest busybox latest
 }
 
 @test "[new] pull image index" {
-    test_new_pull_image_index
+    helper_pull_image_index busybox latest
 }
 
 @test "[new] delete image index" {
-    test_new_delete_image_index
+    helper_delete_manifest busybox latest
 }
 
 @test "[new] push oras artifact" {
-    test_new_push_oras_artifact
+    helper_push_oras_artifact hello-artifact v2
 }
 
 @test "[new] pull oras artifact" {
-    test_new_pull_oras_artifact
+    helper_pull_oras_artifact hello-artifact v2
 }
 
 @test "[new] attach oras artifacts" {
-    test_new_attach_oras_artifacts
+    helper_attach_oras_artifacts golang 1.20
 }
 
 @test "[new] discover oras artifacts" {
-    test_new_discover_oras_artifacts 4
+    helper_discover_oras_artifacts golang 1.20 4
 }
 
 @test "[new] add and list tags using oras" {
-    test_new_add_and_list_tags_using_oras
+    helper_add_and_list_tags_using_oras
 }
 
 @test "[new] push helm chart" {
-    test_new_push_helm_chart
+    helper_push_helm_chart
 }
 
 @test "[new] pull helm chart" {
-    test_new_pull_helm_chart
+    helper_pull_helm_chart
 }
 
 @test "[new] push image with regclient" {
-    test_new_push_image_with_regclient
+    helper_push_image_with_regclient
 }
 
 @test "[new] pull image with regclient" {
-    test_new_pull_image_with_regclient
+    helper_pull_image_with_regclient
 }
 
 @test "[new] list repositories with regclient" {
-    test_new_list_repositories_with_regclient
+    helper_list_repositories_with_regclient_pagination 4 busybox golang "0:alpine" "-1:busybox"
 }
 
 @test "[new] list image tags with regclient" {
-    test_new_list_image_tags_with_regclient
+    helper_list_image_tags_with_regclient
 }
 
 @test "[new] push manifest with regclient" {
-    test_new_push_manifest_with_regclient
+    helper_push_manifest_with_regclient
 }
 
 @test "[new] pull manifest with regclient" {
-    test_new_pull_manifest_with_regclient
+    helper_pull_manifest_with_regclient
 }
 
 @test "[new] pull manifest with docker client" {
-    test_new_pull_manifest_with_docker_client
+    helper_pull_manifest_with_docker_client
 }
 
 @test "[new] pull manifest with crictl" {
-    test_new_pull_manifest_with_crictl
+    helper_pull_manifest_with_crictl
 }
 
 @test "[new] push OCI artifact with regclient" {
-    test_new_push_oci_artifact_with_regclient
+    helper_push_oci_artifact_with_regclient
 }
 
 @test "[new] pull OCI artifact with regclient" {
-    test_new_pull_oci_artifact_with_regclient
+    helper_pull_oci_artifact_with_regclient
 }
 
 @test "[new] push OCI artifact references with regclient" {
-    test_new_push_oci_artifact_references_with_regclient
+    helper_push_oci_artifact_references_with_regclient 1
 }
 
 @test "[new] pull OCI artifact references with regclient" {
-    test_new_pull_oci_artifact_references_with_regclient
+    helper_pull_oci_artifact_references_with_regclient 1
 }
 
 @test "[new] push docker image" {
-    test_new_push_docker_image
+    helper_push_docker_image
 }
 
 @test "[new] list by image name" {
