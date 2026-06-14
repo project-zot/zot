@@ -44,16 +44,13 @@ function pushpull_setup_file() {
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
     local oci_data_dir=${BATS_FILE_TMPDIR}/oci
-    local log_file
+    local log_file=${zot_root_dir}/zot-log.json
 
     mkdir -p "${zot_root_dir}" "${oci_data_dir}"
+    touch "${log_file}"
 
     if [ "${PUSHPULL_FIPS_MODE:-0}" = 1 ]; then
-        log_file=${zot_root_dir}/zot-log.json
-        touch "${log_file}"
         export GODEBUG="fips140=only"
-    else
-        log_file=${BATS_FILE_TMPDIR}/zot.log
     fi
 
     zot_port=$(get_free_port_for_service "zot")
@@ -86,11 +83,7 @@ EOF
 }
 
 function pushpull_teardown() {
-    if [ "${PUSHPULL_FIPS_MODE:-0}" = 1 ]; then
-        cat "${BATS_FILE_TMPDIR}/zot/zot-log.json"
-    else
-        cat "${BATS_FILE_TMPDIR}/zot.log"
-    fi
+    cat "${BATS_FILE_TMPDIR}/zot/zot-log.json"
 }
 
 function pushpull_teardown_file() {

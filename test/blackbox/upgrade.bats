@@ -35,7 +35,7 @@ function setup_file() {
     },
     "log": {
         "level": "debug",
-        "output": "${BATS_FILE_TMPDIR}/zot.log"
+        "output": "${zot_root_dir}/zot-log.json"
     },
     "extensions": {
         "search": {

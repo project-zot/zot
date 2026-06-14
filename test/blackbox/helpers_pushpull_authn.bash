@@ -96,13 +96,7 @@ function authn_setup_file() {
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
     local zot_htpasswd_file=${BATS_FILE_TMPDIR}/zot_htpasswd
-    local log_file
-
-    if [ "${PUSHPULL_AUTHN_FIPS_MODE:-0}" = 1 ]; then
-        log_file=${zot_root_dir}/zot-log.json
-    else
-        log_file=${BATS_FILE_TMPDIR}/zot.log
-    fi
+    local log_file=${zot_root_dir}/zot-log.json
 
     zot_port=$(get_free_port_for_service "zot")
     echo "${zot_port}" >"${BATS_FILE_TMPDIR}/zot.port"
@@ -110,10 +104,7 @@ function authn_setup_file() {
 
     echo "${zot_root_dir}" >&3
     mkdir -p "${zot_root_dir}"
-
-    if [ "${PUSHPULL_AUTHN_FIPS_MODE:-0}" = 1 ]; then
-        touch "${log_file}"
-    fi
+    touch "${log_file}"
 
     authn_write_zot_config "${zot_config_file}" "${zot_root_dir}" "${zot_port}" \
         "${zot_htpasswd_file}" "${log_file}"
@@ -131,15 +122,13 @@ function authn_setup_file() {
 }
 
 function authn_teardown() {
-    if [ "${PUSHPULL_AUTHN_FIPS_MODE:-0}" = 1 ]; then
-        cat "${BATS_FILE_TMPDIR}/zot/zot-log.json"
+    cat "${BATS_FILE_TMPDIR}/zot/zot-log.json"
 
+    if [ "${PUSHPULL_AUTHN_FIPS_MODE:-0}" = 1 ]; then
         if [ -f "${BATS_FILE_TMPDIR}/zot.port" ]; then
             zot_port=$(get_zot_port)
             regctl registry logout "localhost:${zot_port}" 2>/dev/null || true
         fi
-    else
-        cat "${BATS_FILE_TMPDIR}/zot.log"
     fi
 }
 
