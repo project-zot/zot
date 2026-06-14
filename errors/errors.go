@@ -212,4 +212,7 @@ var (
 	ErrCertificateWatcherAlreadyRunning = errors.New("certificate watcher is already running")
 	ErrInvalidEndSessionEndpoint        = errors.New("end_session_endpoint must be an absolute http(s) URL")
 	ErrPolicyConditionNotCompiled       = errors.New("policy condition not compiled")
+	ErrDisallowedMetricsPath            = errors.New("provided metrics path is disallowed")
+	ErrInvalidMetricsPathPrefix         = errors.New("metrics path must start with /")
+	ErrInvalidMetricsPath               = errors.New("invalid metrics path")
 )

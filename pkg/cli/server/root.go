@@ -536,6 +536,32 @@ func validateRemoteSessionStoreConfig(cfg *config.Config, logger zlog.Logger) er
 	return nil
 }
 
+func validateMetricsConfig(cfg *extconf.ExtensionConfig) error {
+	metricsCfg := cfg.GetMetricsPrometheusConfig()
+	if metricsCfg == nil {
+		return nil
+	}
+
+	cleanedPath := path.Clean(metricsCfg.Path)
+	// The path when cleaned should be exactly the same as in config
+	// to avoid invalid paths from being used for metrics.
+	if metricsCfg.Path != cleanedPath {
+		return zerr.ErrInvalidMetricsPath
+	}
+
+	if !strings.HasPrefix(metricsCfg.Path, "/") {
+		return zerr.ErrInvalidMetricsPathPrefix
+	}
+
+	disallowedMetricsPaths := []string{"/", "/v2"}
+
+	if slices.Contains(disallowedMetricsPaths, metricsCfg.Path) {
+		return zerr.ErrDisallowedMetricsPath
+	}
+
+	return nil
+}
+
 func validateExtensionsConfig(cfg *config.Config, logger zlog.Logger) error {
 	extensionsConfig := cfg.CopyExtensionsConfig()
 	if extensionsConfig != nil && extensionsConfig.Mgmt != nil {
@@ -545,6 +571,15 @@ func validateExtensionsConfig(cfg *config.Config, logger zlog.Logger) error {
 	if extensionsConfig != nil && extensionsConfig.APIKey != nil {
 		logger.Warn().Msg("apikey extension configuration will be ignored as API keys " +
 			"are now configurable in the HTTP settings.")
+	}
+
+	if extensionsConfig != nil {
+		if metricsValErr := validateMetricsConfig(extensionsConfig); metricsValErr != nil {
+			joinedErr := errors.Join(zerr.ErrBadConfig, metricsValErr)
+			logger.Error().Err(joinedErr).Msg("invalid metrics config")
+
+			return joinedErr
+		}
 	}
 
 	if extensionsConfig.IsUIEnabled() {
