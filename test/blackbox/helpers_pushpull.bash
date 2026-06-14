@@ -224,7 +224,7 @@ function helper_delete_manifest() {
     local zot_port
     zot_port=$(get_zot_port)
 
-    run curl -X DELETE "http://127.0.0.1:${zot_port}/v2/${image_name}/manifests/${tag}"
+    run curl --fail -X DELETE "http://127.0.0.1:${zot_port}/v2/${image_name}/manifests/${tag}"
     [ "${status}" -eq 0 ]
 }
 
@@ -438,8 +438,7 @@ function helper_push_manifest_with_regclient() {
 
     run regctl manifest put "localhost:${zot_port}/test-regclient:1.0.0" \
         --format oci \
-        --content-type application/vnd.oci.image.manifest.v1+json \
-        --format oci <<JSON
+        --content-type application/vnd.oci.image.manifest.v1+json <<JSON
 ${manifest}
 JSON
     [ "${status}" -eq 0 ]
