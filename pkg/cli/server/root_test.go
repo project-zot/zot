@@ -1571,6 +1571,7 @@ storage:
 	})
 
 	Convey("Test redirectBlobURL error for local storage", t, func(c C) {
+		// Redirect requires a remote driver that can generate an external URL.
 		content := `{"storage":{"rootDirectory":"/tmp/zot","redirectBlobURL":true,
 							"subPaths": {"/a": {"rootDirectory": "/tmp/zot-a","redirectBlobURL":true}}},
 							"http":{"address":"127.0.0.1","port":"8080"}}`
@@ -1585,6 +1586,7 @@ storage:
 	})
 
 	Convey("Test redirectBlobURL error for empty storageDriver map", t, func(c C) {
+		// An empty driver map is equivalent to local storage for redirect validation.
 		content := `{"storage":{"rootDirectory":"/tmp/zot","redirectBlobURL":true,
 							"storageDriver": {},
 							"subPaths": {"/a": {"rootDirectory": "/tmp/zot-a","redirectBlobURL":true,"storageDriver": {}}}},

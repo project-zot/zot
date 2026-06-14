@@ -1066,6 +1066,7 @@ func TestRoutes(t *testing.T) {
 					},
 				}
 
+				// Range requests must stay on proxy path to preserve partial-content behavior.
 				request, _ := http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 				request.Header.Set("Range", "bytes=0-0")
 				request = mux.SetURLVars(request, map[string]string{
@@ -1172,6 +1173,7 @@ func TestRoutes(t *testing.T) {
 				}
 
 				ctlr.Config.Storage.RedirectBlobURL = false
+				// Redirect enablement is resolved from matched store path, not only global storage.
 				ctlr.Config.Storage.SubPaths = map[string]config.StorageConfig{
 					"/a": {RedirectBlobURL: true},
 				}

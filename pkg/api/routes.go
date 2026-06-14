@@ -1443,13 +1443,8 @@ func normalizeBlobRedirectURL(rawURL string) (string, bool) {
 		return "", false
 	}
 
-	i := strings.Index(rawURL, ":")
-	if i <= 0 {
-		return "", false
-	}
-
-	// Preserve original URL bytes for signed URLs; only normalize scheme casing.
-	return scheme + rawURL[i:], true
+	// Keep the exact signed URL returned by the backend; only validate safety here.
+	return rawURL, true
 }
 
 // GetBlob godoc
@@ -1513,6 +1508,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 		return
 	}
 
+	// Keep ranged pulls on the proxy path so zot can preserve 206 semantics.
 	if !rangeHeaderPresent && rh.isBlobRedirectEnabled(name) {
 		redirectURL, err := imgStore.GetBlobRedirectURL(request, name, digest)
 		if err != nil {
@@ -1528,6 +1524,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 				return
 			}
 
+			// Invalid redirect URLs are treated as a soft failure to keep pulls working.
 			rh.c.Log.Warn().Str("repo", name).Str("digest", digest.String()).
 				Msg("ignoring invalid blob redirect URL and falling back to proxy")
 		}

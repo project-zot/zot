@@ -583,6 +583,8 @@ func validateExtensionsConfig(cfg *config.Config, logger zlog.Logger) error {
 func validateStorageConfigSection(
 	cfg *config.Config, logger zlog.Logger, storageConfig config.GlobalStorageConfig,
 ) error {
+	// Redirect mode requires a backend capable of issuing external signed URLs.
+	// With local storage there is no target URL to redirect clients to.
 	if storageConfig.RedirectBlobURL && len(storageConfig.StorageDriver) == 0 {
 		msg := "invalid storage config, redirectBlobURL is supported only for s3/gcs storage"
 		logger.Error().Err(zerr.ErrBadConfig).Bool("redirectBlobURL", storageConfig.RedirectBlobURL).
@@ -614,6 +616,8 @@ func validateStorageConfigSection(
 	// enforce s3/gcs driver on subpaths in case of using storage driver
 	if len(storageConfig.SubPaths) > 0 {
 		for route, subStorageConfig := range storageConfig.SubPaths {
+			// Apply the same redirect precondition per subpath because subpaths can
+			// override driver config independently from the default store.
 			if subStorageConfig.RedirectBlobURL && len(subStorageConfig.StorageDriver) == 0 {
 				msg := "invalid storage config, redirectBlobURL is supported only for s3/gcs storage"
 				logger.Error().Err(zerr.ErrBadConfig).Str("subpath", route).

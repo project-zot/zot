@@ -39,6 +39,7 @@ func TestGetBlobRedirectURL(t *testing.T) {
 				local.New(true), nil, nil, nil)
 
 			digest := godigest.FromString("blob-content")
+			// Local driver has no external signed URL endpoint, so redirect is intentionally empty.
 			url, err := store.GetBlobRedirectURL(nil, "repo", digest)
 			So(err, ShouldBeNil)
 			So(url, ShouldEqual, "")

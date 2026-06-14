@@ -1681,6 +1681,7 @@ func (is *ImageStore) GetBlobRedirectURL(r *http.Request, repo string, digest go
 		return "", zerr.ErrBadBlobDigest
 	}
 
+	// Local storage has no external signed URL endpoint; proxy path is expected.
 	if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
 		return "", nil
 	}
