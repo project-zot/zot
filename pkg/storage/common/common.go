@@ -10,6 +10,8 @@ import (
 	"path"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	dockerList "github.com/distribution/distribution/v3/manifest/manifestlist"
@@ -898,6 +900,28 @@ func IsEmptyLayersError(err error) bool {
 	return len(validationErr.Causes) == 1 && strings.Contains(validationErr.Error(), manifestWithEmptyLayersErrMsg)
 }
 
+// restoreRunState holds the completion-tracking state for a single restore run.
+// Reset() replaces DedupeTaskGenerator.run with a brand new instance once the current
+// run has no in-flight tasks left, rather than mutating it in place, so onDone closures
+// captured during a previous run keep operating on their own isolated state and can
+// never affect a new run's counters or completion callback. While tasks are still
+// in-flight, Reset() keeps the same instance so their onDone callbacks can still drive
+// checkCompletion for this run.
+type restoreRunState struct {
+	// pendingTaskCount counts restore tasks generated for this run that have not yet
+	// completed successfully. It is incremented when a task is generated and decremented
+	// only by onDone, which a task calls on success (see dedupeTask.DoWork). A failed task
+	// is therefore never decremented, so the count intentionally never reaches zero again
+	// for this run, preventing checkCompletion from firing OnRestoreComplete after a failure.
+	pendingTaskCount atomic.Int64
+	// completeOnce ensures OnRestoreComplete is called at most once for this run.
+	completeOnce sync.Once
+	// done is set to true once all tasks for this run have been generated. It is read
+	// both by IsDone() on the scheduler goroutine and by checkCompletion() from onDone
+	// callbacks running on task executor goroutines, hence atomic.
+	done atomic.Bool
+}
+
 // DedupeTaskGenerator takes all blobs paths found in the storage.imagestore and groups them by digest.
 // For each digest and based on the dedupe value it will dedupe or restore deduped blobs
 // to the original state(undeduped) by creating a task for each digest and pushing it to the task scheduler.
@@ -911,17 +935,64 @@ type DedupeTaskGenerator struct {
 	/* store processed digest, used for iterating duplicateBlobs one by one
 	and generating a task for each unprocessed one*/
 	lastDigests []godigest.Digest
-	done        bool
 	repos       []string // list of repos on which we run dedupe
 	Log         zlog.Logger
+	// OnRestoreComplete is called exactly once after ALL restore tasks have executed
+	// successfully. Used to write the restore-complete marker so the next startup with
+	// dedupe=false can skip the expensive per-digest scan.
+	OnRestoreComplete func()
+	// run holds the completion-tracking state for the current run. onDone closures
+	// capture the *restoreRunState pointer directly and operate on it independently
+	// of any later Reset(). It is an atomic.Pointer because checkCompletion() compares
+	// a captured run against the current one from task executor goroutines, while
+	// Next()/Reset() update it from the scheduler goroutine.
+	run atomic.Pointer[restoreRunState]
 }
 
 func (gen *DedupeTaskGenerator) Name() string {
 	return "DedupeTaskGenerator"
 }
 
+// getRun returns the state for the current run, lazily creating it on first use.
+func (gen *DedupeTaskGenerator) getRun() *restoreRunState {
+	if run := gen.run.Load(); run != nil {
+		return run
+	}
+
+	run := &restoreRunState{}
+	if !gen.run.CompareAndSwap(nil, run) {
+		run = gen.run.Load()
+	}
+
+	return run
+}
+
+// All restore tasks for this run have been generated AND all of them have completed successfully.
+func (gen *DedupeTaskGenerator) checkCompletion(run *restoreRunState) {
+	if gen.OnRestoreComplete != nil &&
+		run.done.Load() &&
+		run.pendingTaskCount.Load() == 0 {
+		// Dispatch asynchronously so the executor goroutine that triggered completion
+		// isn't blocked on the marker write, which may be a slow S3 PUT.
+		run.completeOnce.Do(func() {
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						gen.Log.Error().Interface("panic", r).Str("component", "dedupe").
+							Msg("panic in OnRestoreComplete")
+					}
+				}()
+
+				gen.OnRestoreComplete()
+			}()
+		})
+	}
+}
+
 func (gen *DedupeTaskGenerator) Next() (scheduler.Task, error) {
 	var err error
+
+	run := gen.getRun()
 
 	/* at first run get from storage currently found repositories so that we skip the ones that gets synced/uploaded
 	while this generator runs, there are deduped/restored inline, no need to run dedupe/restore again */
@@ -939,7 +1010,8 @@ func (gen *DedupeTaskGenerator) Next() (scheduler.Task, error) {
 			gen.Log.Info().Str("component", "dedupe").Msg("no repositories found in storage, finished.")
 
 			// no repositories in storage, no need to continue
-			gen.done = true
+			run.done.Store(true)
+			gen.checkCompletion(run)
 
 			return nil, nil //nolint:nilnil
 		}
@@ -957,7 +1029,8 @@ func (gen *DedupeTaskGenerator) Next() (scheduler.Task, error) {
 	if gen.digest == "" {
 		gen.Log.Info().Str("component", "dedupe").Msg("no digests left, finished")
 
-		gen.done = true
+		run.done.Store(true)
+		gen.checkCompletion(run)
 
 		return nil, nil //nolint:nilnil
 	}
@@ -965,12 +1038,25 @@ func (gen *DedupeTaskGenerator) Next() (scheduler.Task, error) {
 	// mark digest as processed before running its task
 	gen.lastDigests = append(gen.lastDigests, gen.digest)
 
+	// For restore passes, track each task so the marker is only written after all succeed.
+	var onDone func()
+
+	if !gen.Dedupe && gen.OnRestoreComplete != nil {
+		run.pendingTaskCount.Add(1)
+
+		onDone = func() {
+			if run.pendingTaskCount.Add(-1) == 0 {
+				gen.checkCompletion(run)
+			}
+		}
+	}
+
 	// generate rebuild dedupe task for this digest
-	return newDedupeTask(gen.ImgStore, gen.digest, gen.Dedupe, gen.duplicateBlobs, gen.Log), nil
+	return newDedupeTask(gen.ImgStore, gen.digest, gen.Dedupe, gen.duplicateBlobs, gen.Log, onDone), nil
 }
 
 func (gen *DedupeTaskGenerator) IsDone() bool {
-	return gen.done
+	return gen.getRun().done.Load()
 }
 
 func (gen *DedupeTaskGenerator) IsReady() bool {
@@ -978,11 +1064,21 @@ func (gen *DedupeTaskGenerator) IsReady() bool {
 }
 
 func (gen *DedupeTaskGenerator) Reset() {
+	run := gen.getRun()
+
+	// Only start a fresh run if the current one has no in-flight tasks (or completion
+	// isn't tracked at all). If tasks are still executing, keep the same run state so
+	// their onDone callbacks can still drive checkCompletion to fire OnRestoreComplete
+	// once they finish; replacing gen.run here would otherwise make that run's
+	// completion unobservable forever.
+	if gen.OnRestoreComplete == nil || (run.done.Load() && run.pendingTaskCount.Load() == 0) {
+		gen.run.Store(&restoreRunState{})
+	}
+
 	gen.lastDigests = []godigest.Digest{}
 	gen.duplicateBlobs = []string{}
 	gen.repos = []string{}
 	gen.digest = ""
-	gen.done = false
 }
 
 type dedupeTask struct {
@@ -993,12 +1089,21 @@ type dedupeTask struct {
 	duplicateBlobs []string
 	dedupe         bool
 	log            zlog.Logger
+	// onDone is called when this restore task succeeds. nil for dedupe (non-restore) tasks.
+	onDone func()
 }
 
 func newDedupeTask(imgStore storageTypes.ImageStore, digest godigest.Digest, dedupe bool,
-	duplicateBlobs []string, log zlog.Logger,
+	duplicateBlobs []string, log zlog.Logger, onDone func(),
 ) *dedupeTask {
-	return &dedupeTask{imgStore, digest, duplicateBlobs, dedupe, log}
+	return &dedupeTask{
+		imgStore:       imgStore,
+		digest:         digest,
+		duplicateBlobs: duplicateBlobs,
+		dedupe:         dedupe,
+		log:            log,
+		onDone:         onDone,
+	}
 }
 
 func (dt *dedupeTask) DoWork(ctx context.Context) error {
@@ -1008,9 +1113,16 @@ func (dt *dedupeTask) DoWork(ctx context.Context) error {
 		// log it
 		dt.log.Error().Err(err).Str("digest", dt.digest.String()).Str("component", "dedupe").
 			Msg("failed to rebuild digest")
+
+		return err
 	}
 
-	return err
+	// Signal successful completion so the generator can track when all restores are done.
+	if dt.onDone != nil {
+		dt.onDone()
+	}
+
+	return nil
 }
 
 func (dt *dedupeTask) String() string {
