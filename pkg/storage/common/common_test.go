@@ -23,6 +23,7 @@ import (
 	common "zotregistry.dev/zot/v2/pkg/storage/common"
 	"zotregistry.dev/zot/v2/pkg/storage/imagestore"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
+	tcommon "zotregistry.dev/zot/v2/pkg/test/common"
 	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
@@ -615,27 +616,6 @@ func TestDedupeGeneratorErrors(t *testing.T) {
 	})
 }
 
-// syncBuffer is a concurrency-safe io.Writer used to capture log output written
-// from the goroutine checkCompletion dispatches OnRestoreComplete on.
-type syncBuffer struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
-}
-
-func (b *syncBuffer) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	return b.buf.Write(p)
-}
-
-func (b *syncBuffer) String() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	return b.buf.String()
-}
-
 func TestDedupeTaskGeneratorRestoreComplete(t *testing.T) {
 	testLog := log.NewTestLogger()
 
@@ -821,9 +801,9 @@ func TestDedupeTaskGeneratorRestoreComplete(t *testing.T) {
 			},
 		}
 
-		var logBuf syncBuffer
+		logBuf := tcommon.NewThreadSafeLogBuffer()
 
-		panicLog := log.NewLoggerWithWriter("debug", &logBuf)
+		panicLog := log.NewLoggerWithWriter("debug", logBuf)
 
 		done := make(chan struct{})
 

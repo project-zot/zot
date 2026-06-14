@@ -1568,27 +1568,6 @@ func TestDedupeLinks(t *testing.T) {
 	}
 }
 
-// syncBuffer is a concurrency-safe io.Writer used to capture log output from
-// goroutines started by RunDedupeBlobs.
-type syncBuffer struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
-}
-
-func (b *syncBuffer) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	return b.buf.Write(p)
-}
-
-func (b *syncBuffer) String() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	return b.buf.String()
-}
-
 func TestDedupeRestoreCompleteMarker(t *testing.T) {
 	waitForMarker := func(t *testing.T, markerPath, expected string) {
 		t.Helper()
@@ -1608,9 +1587,9 @@ func TestDedupeRestoreCompleteMarker(t *testing.T) {
 	Convey("Restore-complete marker lifecycle", t, func(c C) {
 		dir := t.TempDir()
 
-		var logBuf syncBuffer
+		logBuf := test.NewThreadSafeLogBuffer()
 
-		log := zlog.NewLoggerWithWriter("debug", &logBuf)
+		log := zlog.NewLoggerWithWriter("debug", logBuf)
 		metrics := monitoring.NewMetricsServer(false, log)
 
 		markerPath := path.Join(dir, storageConstants.DedupeRestoreCompleteMarker)
@@ -1833,9 +1812,9 @@ func TestRunDedupeBlobsMarkerDeleteError(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		Convey("falls back to writing an invalid marker when delete fails", func() {
-			var logBuf syncBuffer
+			logBuf := test.NewThreadSafeLogBuffer()
 
-			log := zlog.NewLoggerWithWriter("debug", &logBuf)
+			log := zlog.NewLoggerWithWriter("debug", logBuf)
 			metrics := monitoring.NewMetricsServer(false, log)
 
 			testDriver := &errMarkerDriver{
@@ -1858,9 +1837,9 @@ func TestRunDedupeBlobsMarkerDeleteError(t *testing.T) {
 		})
 
 		Convey("logs when even the invalid-marker write fails", func() {
-			var logBuf syncBuffer
+			logBuf := test.NewThreadSafeLogBuffer()
 
-			log := zlog.NewLoggerWithWriter("debug", &logBuf)
+			log := zlog.NewLoggerWithWriter("debug", logBuf)
 			metrics := monitoring.NewMetricsServer(false, log)
 
 			testDriver := &errMarkerDriver{
