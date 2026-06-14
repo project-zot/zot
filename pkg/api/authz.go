@@ -751,8 +751,7 @@ func MetricsAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			metricsAccessConfig := accessControlConfig.GetMetrics()
 
-			username := userAc.GetUsername()
-			if username == "" {
+			if userAc.IsAnonymous() {
 				// If anonymous read is not specified in access control, deny.
 				if !slices.Contains(metricsAccessConfig.AnonymousPolicy, constants.ReadPermission) {
 					common.AuthzFail(response, request, "", realm, failDelay)
@@ -760,11 +759,12 @@ func MetricsAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 					return
 				}
 			} else {
+				username := userAc.GetUsername()
 				if len(metricsAccessConfig.Users) == 0 {
 					log := ctlr.Log
 					log.Warn().Msg("auth is enabled and a metrics request with a user received " +
 						"but no metrics users configured in accessControl")
-					common.AuthzFail(response, request, "", realm, failDelay)
+					common.AuthzFail(response, request, username, realm, failDelay)
 
 					return
 				}
