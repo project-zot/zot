@@ -145,13 +145,17 @@ func TestBoltDBCache(t *testing.T) {
 		err = cacheDriver.PutBlob("digest", "first")
 		So(err, ShouldBeNil)
 
+		blobs, err := cacheDriver.GetAllBlobs("digest")
+		So(err, ShouldBeNil)
+		So(blobs, ShouldResemble, []string{"first"})
+
 		err = cacheDriver.PutBlob("digest", "second")
 		So(err, ShouldBeNil)
 
 		err = cacheDriver.PutBlob("digest", "third")
 		So(err, ShouldBeNil)
 
-		blobs, err := cacheDriver.GetAllBlobs("digest")
+		blobs, err = cacheDriver.GetAllBlobs("digest")
 		So(err, ShouldBeNil)
 
 		// "first" is the original, "second" and "third" are duplicates

@@ -766,6 +766,40 @@ func TestStorageCacheErrors(t *testing.T) {
 		_, _, err = imgStore.FullBlobUpload(dedupedRepo, bytes.NewReader(cblob), cdigest)
 		So(err, ShouldNotBeNil)
 	})
+
+	Convey("DedupeBlob returns when the cached global blob is stale", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		dir := t.TempDir()
+
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		So(err, ShouldBeNil)
+
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+
+		cblob, cdigest := GetRandomImageConfig()
+
+		_, _, err = imgStore.FullBlobUpload("dedupe1", bytes.NewReader(cblob), cdigest)
+		So(err, ShouldBeNil)
+
+		_, _, err = imgStore.FullBlobUpload("dedupe2", bytes.NewReader(cblob), cdigest)
+		So(err, ShouldBeNil)
+
+		globalBlobPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, cdigest)
+		err = os.Remove(globalBlobPath)
+		So(err, ShouldBeNil)
+
+		err = imgStore.InitRepo("dedupe3")
+		So(err, ShouldBeNil)
+
+		err = imgStore.DedupeBlob("", cdigest, "dedupe3", imgStore.BlobPath("dedupe3", cdigest))
+		So(err, ShouldNotBeNil)
+	})
 }
 
 func FuzzDedupeBlob(f *testing.F) {

@@ -223,9 +223,9 @@ func (d *BoltDBDriver) GetAllBlobs(digest godigest.Digest) ([]string, error) {
 						blobPaths = append(blobPaths, duplicateBlob)
 					}
 				}
-
-				return nil
 			}
+
+			return nil
 		}
 
 		return zerr.ErrCacheMiss
