@@ -21,7 +21,7 @@ function verify_prerequisites {
 
 function setup_file() {
     # Verify prerequisites are available
-    if ! $(verify_prerequisites); then
+    if ! verify_prerequisites; then
         exit 1
     fi
     # Download test data to folder common for the entire suite, not just this file

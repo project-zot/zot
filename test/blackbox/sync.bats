@@ -29,7 +29,7 @@ function setup_file() {
     export COSIGN_PASSWORD=""
 
     # Verify prerequisites are available
-    if ! $(verify_prerequisites); then
+    if ! verify_prerequisites; then
         exit 1
     fi
 
@@ -321,14 +321,11 @@ EOF
 
 @test "sync signatures periodically" {
     zot_port1=`cat ${BATS_FILE_TMPDIR}/zot.port1`
-    # wait for signatures to be copied
+    # wait for signatures to be copied (PollInterval is 10s; allow extra margin on slow CI)
     run sleep 15s
 
-    run notation verify --insecure-registry localhost:${zot_port1}/golang:1.20
-    [ "$status" -eq 0 ]
-
-    run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-sync-test.pub localhost:${zot_port1}/golang:1.20
-    [ "$status" -eq 0 ]
+    retry_until_success 12 5 notation verify --insecure-registry localhost:${zot_port1}/golang:1.20
+    retry_until_success 12 5 cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-sync-test.pub localhost:${zot_port1}/golang:1.20
 }
 
 @test "sync signatures ondemand" {

@@ -26,3 +26,22 @@ function wait_file() {
 
     until test $((wait_seconds--)) -eq 0 -o -f "$file" ; do sleep 1; done
 }
+
+# Args: $1 = max attempts, $2 = delay seconds, $3+ = command
+function retry_until_success() {
+    local attempts=${1}
+    local delay=${2}
+    shift 2
+
+    while [ "${attempts}" -gt 0 ]; do
+        run "$@"
+        if [ "${status}" -eq 0 ]; then
+            return 0
+        fi
+        attempts=$((attempts - 1))
+        if [ "${attempts}" -eq 0 ]; then
+            return "${status}"
+        fi
+        sleep "${delay}"
+    done
+}
