@@ -1601,6 +1601,36 @@ storage:
 			"invalid storage config, redirectBlobURL is supported only for s3/gcs storage")
 	})
 
+	Convey("Test redirectBlobURL error for subpath local storage", t, func(c C) {
+		// Global storage has no redirect; only the subpath enables it without a driver.
+		content := `{"storage":{"rootDirectory":"/tmp/zot",
+							"subPaths": {"/a": {"rootDirectory": "/tmp/zot-a","redirectBlobURL":true}}},
+							"http":{"address":"127.0.0.1","port":"8080"}}`
+
+		tmpfile := MakeTempFileWithContent(t, "zot-test-subpath-local.json", content)
+
+		cfg := config.New()
+		err := cli.LoadConfiguration(cfg, tmpfile)
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring,
+			"invalid storage config, redirectBlobURL is supported only for s3/gcs storage")
+	})
+
+	Convey("Test redirectBlobURL error for subpath empty storageDriver map", t, func(c C) {
+		// Global storage has no redirect; subpath has an empty driver map.
+		content := `{"storage":{"rootDirectory":"/tmp/zot",
+							"subPaths": {"/a": {"rootDirectory": "/tmp/zot-a","redirectBlobURL":true,"storageDriver": {}}}},
+							"http":{"address":"127.0.0.1","port":"8080"}}`
+
+		tmpfile := MakeTempFileWithContent(t, "zot-test-subpath-empty-map.json", content)
+
+		cfg := config.New()
+		err := cli.LoadConfiguration(cfg, tmpfile)
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring,
+			"invalid storage config, redirectBlobURL is supported only for s3/gcs storage")
+	})
+
 	Convey("Test verify w/ authorization and w/o authentication", t, func(c C) {
 		content := `{"storage":{"rootDirectory":"/tmp/zot"},
 		 					"http":{"address":"127.0.0.1","port":"8080","realm":"zot",

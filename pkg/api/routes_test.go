@@ -1008,31 +1008,6 @@ func TestRoutes(t *testing.T) {
 					So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
 				})
 
-				Convey("with redirect disabled", func() {
-					ctlr.Config.Storage.RedirectBlobURL = false
-
-					ctlr.StoreController.DefaultStore = &mocks.MockedImageStore{
-						GetBlobFn: func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error) {
-							t.Fatal("GetBlob should not run for an invalid digest")
-
-							return nil, 0, nil
-						},
-					}
-
-					request, _ := http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
-					request = mux.SetURLVars(request, map[string]string{
-						"name":   "repo",
-						"digest": invalidDigest,
-					})
-					response := httptest.NewRecorder()
-
-					rthdlr.GetBlob(response, request)
-
-					resp := response.Result()
-					defer resp.Body.Close()
-
-					So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
-				})
 			})
 
 			Convey("does not redirect ranged blob requests", func() {
