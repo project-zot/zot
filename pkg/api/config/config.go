@@ -27,17 +27,18 @@ var (
 )
 
 type StorageConfig struct {
-	RootDirectory string
-	MaxRepos      int
-	Dedupe        bool
-	RemoteCache   bool
-	GC            bool
-	Commit        bool
-	GCDelay       time.Duration // applied for blobs
-	GCInterval    time.Duration
-	Retention     ImageRetention
-	StorageDriver map[string]any `mapstructure:",omitempty"`
-	CacheDriver   map[string]any `mapstructure:",omitempty"`
+	RootDirectory   string
+	MaxRepos        int
+	Dedupe          bool
+	RemoteCache     bool
+	RedirectBlobURL bool
+	GC              bool
+	Commit          bool
+	GCDelay         time.Duration // applied for blobs
+	GCInterval      time.Duration
+	Retention       ImageRetention
+	StorageDriver   map[string]any `mapstructure:",omitempty"`
+	CacheDriver     map[string]any `mapstructure:",omitempty"`
 
 	// GCMaxSchedulerDelay is the maximum random delay for GC task scheduling
 	// This field is not configurable by the end user
@@ -803,7 +804,8 @@ func New() *Config {
 
 func (expConfig StorageConfig) ParamsEqual(actConfig StorageConfig) bool {
 	return expConfig.GC == actConfig.GC && expConfig.Dedupe == actConfig.Dedupe &&
-		expConfig.GCDelay == actConfig.GCDelay && expConfig.GCInterval == actConfig.GCInterval
+		expConfig.RedirectBlobURL == actConfig.RedirectBlobURL && expConfig.GCDelay == actConfig.GCDelay &&
+		expConfig.GCInterval == actConfig.GCInterval
 }
 
 // isRetentionEnabledInternal checks if retention is enabled without acquiring a lock (internal use only).
@@ -1009,6 +1011,7 @@ func (c *Config) UpdateReloadableConfig(newConfig *Config) {
 	// Update storage configuration
 	c.Storage.GC = newConfig.Storage.GC
 	c.Storage.Dedupe = newConfig.Storage.Dedupe
+	c.Storage.RedirectBlobURL = newConfig.Storage.RedirectBlobURL
 	c.Storage.GCDelay = newConfig.Storage.GCDelay
 	c.Storage.GCInterval = newConfig.Storage.GCInterval
 
@@ -1026,6 +1029,7 @@ func (c *Config) UpdateReloadableConfig(newConfig *Config) {
 
 		subPathConfig.GC = storageConfig.GC
 		subPathConfig.Dedupe = storageConfig.Dedupe
+		subPathConfig.RedirectBlobURL = storageConfig.RedirectBlobURL
 		subPathConfig.GCDelay = storageConfig.GCDelay
 		subPathConfig.GCInterval = storageConfig.GCInterval
 
@@ -1154,6 +1158,25 @@ func (c *Config) CopyStorageConfig() GlobalStorageConfig {
 	_ = deepcopy.Copy(&storageCopy, &c.Storage)
 
 	return storageCopy
+}
+
+// IsBlobRedirectEnabled returns whether blob redirect is enabled for a store path.
+// If a matching subpath exists, its setting takes precedence over the global one.
+func (c *Config) IsBlobRedirectEnabled(storePath string) bool {
+	if c == nil {
+		return false
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if storePath != "/" {
+		if subPathConfig, ok := c.Storage.SubPaths[storePath]; ok {
+			return subPathConfig.RedirectBlobURL
+		}
+	}
+
+	return c.Storage.RedirectBlobURL
 }
 
 // CopyExtensionsConfig returns a copy of the extensions config if it exists.

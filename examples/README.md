@@ -1099,6 +1099,7 @@ The following AWS policy is required by zot for push and pull. Make sure to repl
     "storage": {
         "rootDirectory": "/tmp/zot",  # local path used to store dedupe cache database
         "dedupe": true,
+        "redirectBlobURL": true,
         "storageDriver": {
             "name": "s3",
             "rootdirectory": "/zot",  # this is a prefix that is applied to all S3 keys to allow you to segment data in your bucket if necessary.
@@ -1112,6 +1113,8 @@ The following AWS policy is required by zot for push and pull. Make sure to repl
         }
     }
 ```
+
+Blob pull redirects are disabled by default. With S3 or GCS storage, set `redirectBlobURL` to `true` under `storage` or under a `subPaths` entry to return a `307 Temporary Redirect` to the storage driver's signed URL after zot authorization. If the storage driver does not return a redirect URL, zot proxies the blob as before.
 
 There are multiple ways to specify S3 credentials besides config file:
 

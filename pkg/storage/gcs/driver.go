@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/http"
 	"strings"
 
 	// Add gcs support.
@@ -174,6 +175,12 @@ func (driver *Driver) SameFile(path1, path2 string) bool {
 // from cache.
 func (driver *Driver) Link(src, dest string) error {
 	return driver.formatErr(driver.store.PutContent(context.Background(), dest, []byte{}), dest)
+}
+
+func (driver *Driver) RedirectURL(r *http.Request, path string) (string, error) {
+	redirectURL, err := driver.store.RedirectURL(r, path)
+
+	return redirectURL, driver.formatErr(err, path)
 }
 
 // formatErr converts GCS-specific 404/not found errors to PathNotFoundError.

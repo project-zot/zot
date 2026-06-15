@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -382,6 +384,38 @@ func TestDriver(t *testing.T) {
 			}
 			err := gcsDriver.Link("/src", "/dst")
 			So(err, ShouldBeNil)
+		})
+
+		Convey("RedirectURL", func() {
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+				"http://localhost/v2/repo/blobs/sha256:abc", nil)
+
+			Convey("Success", func() {
+				storeMock.RedirectURLFn = func(r *http.Request, path string) (string, error) {
+					So(r, ShouldEqual, req)
+					So(path, ShouldEqual, "/blob/path")
+
+					return "https://example.com/signed", nil
+				}
+
+				url, err := gcsDriver.RedirectURL(req, "/blob/path")
+				So(err, ShouldBeNil)
+				So(url, ShouldEqual, "https://example.com/signed")
+			})
+
+			Convey("Error", func() {
+				storeMock.RedirectURLFn = func(_ *http.Request, _ string) (string, error) {
+					return "", errTest
+				}
+
+				url, err := gcsDriver.RedirectURL(req, "/blob/path")
+				So(url, ShouldEqual, "")
+				So(err, ShouldNotBeNil)
+
+				var storageErr driver.Error
+				So(errors.As(err, &storageErr), ShouldBeTrue)
+				So(storageErr.DriverName, ShouldEqual, "gcs")
+			})
 		})
 	})
 }

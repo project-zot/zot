@@ -3,6 +3,7 @@ package mocks
 import (
 	"context"
 	"io"
+	"net/http"
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
@@ -62,6 +63,7 @@ type MockedImageStore struct {
 	StatIndexFn                   func(repo string) (bool, int64, time.Time, error)
 	VerifyBlobDigestValueFn       func(repo string, digest godigest.Digest) error
 	GetAllDedupeReposCandidatesFn func(digest godigest.Digest) ([]string, error)
+	GetBlobRedirectURLFn          func(r *http.Request, repo string, digest godigest.Digest) (string, error)
 }
 
 func (is MockedImageStore) StatIndex(repo string) (bool, int64, time.Time, error) {
@@ -338,6 +340,16 @@ func (is MockedImageStore) GetBlob(repo string, digest godigest.Digest, mediaTyp
 	}
 
 	return io.NopCloser(&io.LimitedReader{}), 0, nil
+}
+
+func (is MockedImageStore) GetBlobRedirectURL(
+	r *http.Request, repo string, digest godigest.Digest,
+) (string, error) {
+	if is.GetBlobRedirectURLFn != nil {
+		return is.GetBlobRedirectURLFn(r, repo, digest)
+	}
+
+	return "", nil
 }
 
 func (is MockedImageStore) DeleteBlobUpload(repo string, uuid string) error {

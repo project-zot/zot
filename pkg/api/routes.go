@@ -1418,6 +1418,35 @@ func writeMultipartRanges(
 	}
 }
 
+func (rh *RouteHandler) isBlobRedirectEnabled(repo string) bool {
+	storePath := rh.c.StoreController.GetStorePath(repo)
+
+	return rh.c.Config.IsBlobRedirectEnabled(storePath)
+}
+
+func normalizeBlobRedirectURL(rawURL string) (string, bool) {
+	if strings.ContainsAny(rawURL, "\r\n") {
+		return "", false
+	}
+
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return "", false
+	}
+
+	if parsedURL.Scheme == "" || parsedURL.Host == "" {
+		return "", false
+	}
+
+	scheme := strings.ToLower(parsedURL.Scheme)
+	if scheme != constants.SchemeHTTP && scheme != constants.SchemeHTTPS {
+		return "", false
+	}
+
+	// Keep the exact signed URL returned by the backend; only validate safety here.
+	return rawURL, true
+}
+
 // GetBlob godoc
 // @Summary Get image blob/layer
 // @Description Get an image's blob/layer given a digest
@@ -1470,6 +1499,34 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			response.WriteHeader(http.StatusInternalServerError)
+		}
+	}
+
+	if err := digest.Validate(); err != nil {
+		writeBlobError(zerr.ErrBadBlobDigest)
+
+		return
+	}
+
+	// Keep ranged pulls on the proxy path so zot can preserve 206 semantics.
+	if !rangeHeaderPresent && rh.isBlobRedirectEnabled(name) {
+		redirectURL, err := imgStore.GetBlobRedirectURL(request, name, digest)
+		if err != nil {
+			writeBlobError(err)
+
+			return
+		} else if redirectURL != "" {
+			if normalizedURL, ok := normalizeBlobRedirectURL(redirectURL); ok {
+				response.Header().Set(constants.DistContentDigestKey, digest.String())
+				response.Header().Set("Location", normalizedURL)
+				response.WriteHeader(http.StatusTemporaryRedirect)
+
+				return
+			}
+
+			// Invalid redirect URLs are treated as a soft failure to keep pulls working.
+			rh.c.Log.Warn().Str("repo", name).Str("digest", digest.String()).
+				Msg("ignoring invalid blob redirect URL and falling back to proxy")
 		}
 	}
 
