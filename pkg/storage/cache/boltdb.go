@@ -395,9 +395,11 @@ func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 
 				return err
 			}
+
+			return nil
 		}
 
-		return nil
+		return zerr.ErrCacheMiss
 	}); err != nil {
 		return err
 	}
