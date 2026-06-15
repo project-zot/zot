@@ -449,6 +449,10 @@ func GetCliConfigOptions(cmd *cobra.Command) (bool, bool, error) {
 	}
 
 	if configName == "" {
+		configName = readDefaultConfigName()
+	}
+
+	if configName == "" {
 		return false, false, nil
 	}
 
@@ -484,6 +488,10 @@ func GetServerURLFromFlags(cmd *cobra.Command) (string, error) {
 	}
 
 	if configName == "" {
+		configName = readDefaultConfigName()
+	}
+
+	if configName == "" {
 		return "", fmt.Errorf("%w: specify either '--%s' or '--%s' flags", zerr.ErrNoURLProvided, URLFlag, ConfigFlag)
 	}
 
@@ -497,6 +505,21 @@ func GetServerURLFromFlags(cmd *cobra.Command) (string, error) {
 	}
 
 	return serverURL, nil
+}
+
+// readDefaultConfigName returns the defaultConfigName field from ~/.zot, or "" when unset.
+func readDefaultConfigName() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+
+	cfg, err := ReadZliConfigFile(filepath.Join(home, ".zot"))
+	if err != nil {
+		return ""
+	}
+
+	return cfg.DefaultConfig
 }
 
 func ReadServerURLFromConfig(configName string) (string, error) {

@@ -28,7 +28,8 @@ const (
 
 // ZliConfigFile is the on-disk JSON shape for ~/.zot (zli CLI registry profiles).
 type ZliConfigFile struct {
-	Configs []ZliConfig `json:"configs"`
+	Configs       []ZliConfig `json:"configs"`
+	DefaultConfig string      `json:"defaultConfigName,omitempty"`
 }
 
 // ZliConfig is one named registry profile inside ZliConfigFile.Configs.
@@ -217,14 +218,34 @@ func (f *ZliConfigFile) RemoveEntry(configName string) error {
 	return zerr.ErrConfigNotFound
 }
 
-// FormatNames renders name and URL columns for `zli config list`.
+// SetDefault marks a named profile as the default; returns ErrConfigNotFound when absent.
+func (f *ZliConfigFile) SetDefault(name string) error {
+	if !f.HasEntry(name) {
+		return zerr.ErrConfigNotFound
+	}
+
+	f.DefaultConfig = name
+
+	return nil
+}
+
+// ClearDefault removes the default profile designation.
+func (f *ZliConfigFile) ClearDefault() {
+	f.DefaultConfig = ""
+}
+
+// FormatNames renders name and URL columns for `zli config list`, marking the default profile.
 func (f *ZliConfigFile) FormatNames() (string, error) {
 	var builder strings.Builder
 
 	writer := tabwriter.NewWriter(&builder, 0, 8, 1, '\t', tabwriter.AlignRight) //nolint:mnd
 
 	for _, c := range f.Configs {
-		fmt.Fprintf(writer, "%s\t%s\n", c.Name, c.URL)
+		if c.Name == f.DefaultConfig {
+			fmt.Fprintf(writer, "%s\t%s\t(default)\n", c.Name, c.URL)
+		} else {
+			fmt.Fprintf(writer, "%s\t%s\n", c.Name, c.URL)
+		}
 	}
 
 	if err := writer.Flush(); err != nil {

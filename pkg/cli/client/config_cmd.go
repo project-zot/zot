@@ -55,6 +55,8 @@ func NewConfigCommand() *cobra.Command {
 	configCmd.AddCommand(NewConfigGetCommand())
 	configCmd.AddCommand(NewConfigSetCommand())
 	configCmd.AddCommand(NewConfigResetCommand())
+	configCmd.AddCommand(NewConfigSetDefaultCommand())
+	configCmd.AddCommand(NewConfigClearDefaultCommand())
 
 	// Build this from actual subcommands to avoid drift.
 	reserved := strings.Join(reservedProfileNames(configCmd), ", ")
@@ -324,6 +326,53 @@ func NewConfigResetCommand() *cobra.Command {
 	return resetCmd
 }
 
+func NewConfigSetDefaultCommand() *cobra.Command {
+	setDefaultCmd := &cobra.Command{
+		Use:          "set-default <name>",
+		Example:      "  zli config set-default main",
+		Short:        "Set the default configuration profile",
+		Long: "Mark a named profile as the default so that commands needing a registry URL\n" +
+			"use it automatically when --config is not specified.",
+		SilenceUsage: true,
+		Args:         exactArgsOrHelp(oneArg),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			configPath, err := zliUserConfigPath()
+			if err != nil {
+				return err
+			}
+
+			return setDefaultConfig(configPath, args[0])
+		},
+	}
+
+	setDefaultCmd.SetUsageTemplate(setDefaultCmd.UsageTemplate())
+
+	return setDefaultCmd
+}
+
+func NewConfigClearDefaultCommand() *cobra.Command {
+	clearDefaultCmd := &cobra.Command{
+		Use:          "clear-default",
+		Example:      "  zli config clear-default",
+		Short:        "Remove the default configuration profile designation",
+		Long:         "Clear the default profile so that commands always require an explicit --config flag.",
+		SilenceUsage: true,
+		Args:         cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			configPath, err := zliUserConfigPath()
+			if err != nil {
+				return err
+			}
+
+			return clearDefaultConfig(configPath)
+		},
+	}
+
+	clearDefaultCmd.SetUsageTemplate(clearDefaultCmd.UsageTemplate())
+
+	return clearDefaultCmd
+}
+
 func getConfigNames(configPath string) (string, error) {
 	cfg, err := ReadZliConfigFile(configPath)
 	if err != nil {
@@ -441,6 +490,38 @@ func setConfigValue(configPath, configName, key, value string) error {
 	return cfg.WriteFile(configPath)
 }
 
+func setDefaultConfig(configPath, name string) error {
+	cfg, err := ReadZliConfigFile(configPath)
+	if err != nil {
+		if isConfigUnavailable(err) {
+			return zerr.ErrConfigNotFound
+		}
+
+		return err
+	}
+
+	if err := cfg.SetDefault(name); err != nil {
+		return err
+	}
+
+	return cfg.WriteFile(configPath)
+}
+
+func clearDefaultConfig(configPath string) error {
+	cfg, err := ReadZliConfigFile(configPath)
+	if err != nil {
+		if isConfigUnavailable(err) {
+			return nil
+		}
+
+		return err
+	}
+
+	cfg.ClearDefault()
+
+	return cfg.WriteFile(configPath)
+}
+
 func getAllConfig(configPath, configName string) (string, error) {
 	cfg, err := ReadZliConfigFile(configPath)
 	if err != nil {
@@ -466,7 +547,9 @@ const (
   zli config get main url
   zli config set main showspinner false
   zli config reset main showspinner
-  zli config remove main`
+  zli config remove main
+  zli config set-default main
+  zli config clear-default`
 
 	supportedOptions = `
 Useful variables:
