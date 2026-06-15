@@ -1007,7 +1007,6 @@ func TestRoutes(t *testing.T) {
 
 					So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
 				})
-
 			})
 
 			Convey("does not redirect ranged blob requests", func() {
