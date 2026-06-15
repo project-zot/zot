@@ -2,10 +2,14 @@ package storage_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -19,6 +23,7 @@ import (
 	common "zotregistry.dev/zot/v2/pkg/storage/common"
 	"zotregistry.dev/zot/v2/pkg/storage/imagestore"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
+	tcommon "zotregistry.dev/zot/v2/pkg/test/common"
 	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
@@ -608,6 +613,260 @@ func TestDedupeGeneratorErrors(t *testing.T) {
 		task, err := generator.Next()
 		So(err, ShouldNotBeNil)
 		So(task, ShouldBeNil)
+	})
+}
+
+func TestDedupeTaskGeneratorRestoreComplete(t *testing.T) {
+	testLog := log.NewTestLogger()
+
+	Convey("OnRestoreComplete fires once after all restore tasks finish successfully", t, func(c C) {
+		digest := godigest.FromString("blob1")
+		duplicateBlobs := []string{"/repo/blob1-a", "/repo/blob1-b"}
+
+		getNextCalls := 0
+
+		imgStore := &mocks.MockedImageStore{
+			GetRepositoriesFn: func() ([]string, error) {
+				return []string{"repo1"}, nil
+			},
+			GetNextDigestWithBlobPathsFn: func(repos []string, lastDigests []godigest.Digest) (
+				godigest.Digest, []string, error,
+			) {
+				getNextCalls++
+				if getNextCalls == 1 {
+					return digest, duplicateBlobs, nil
+				}
+
+				return "", nil, nil
+			},
+			RunDedupeForDigestFn: func(ctx context.Context, digest godigest.Digest, dedupe bool,
+				duplicateBlobs []string,
+			) error {
+				return nil
+			},
+		}
+
+		var (
+			callCountMutex sync.Mutex
+			callCount      int
+		)
+
+		done := make(chan struct{})
+
+		generator := &common.DedupeTaskGenerator{
+			ImgStore: imgStore,
+			Dedupe:   false,
+			Log:      testLog,
+			OnRestoreComplete: func() {
+				callCountMutex.Lock()
+				callCount++
+				callCountMutex.Unlock()
+				close(done)
+			},
+		}
+
+		// first Next(): generates the restore task, pendingTaskCount becomes 1
+		task, err := generator.Next()
+		So(err, ShouldBeNil)
+		So(task, ShouldNotBeNil)
+		So(generator.IsDone(), ShouldBeFalse)
+
+		// running the task triggers onDone(), bringing pendingTaskCount back to 0;
+		// the run isn't marked done yet so this is a no-op for checkCompletion
+		err = task.DoWork(context.Background())
+		So(err, ShouldBeNil)
+
+		// second Next(): no more digests, marks the run as done and triggers checkCompletion
+		task, err = generator.Next()
+		So(err, ShouldBeNil)
+		So(task, ShouldBeNil)
+		So(generator.IsDone(), ShouldBeTrue)
+
+		// OnRestoreComplete is dispatched asynchronously
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for OnRestoreComplete")
+		}
+
+		callCountMutex.Lock()
+		So(callCount, ShouldEqual, 1)
+		callCountMutex.Unlock()
+
+		// Reset() starts a fresh run since this one completed with no pending tasks
+		generator.Reset()
+		So(generator.IsDone(), ShouldBeFalse)
+	})
+
+	Convey("Reset keeps the same run while a restore task is in-flight", t, func(c C) {
+		digest := godigest.FromString("blob2")
+		duplicateBlobs := []string{"/repo/blob2-a"}
+
+		getNextCalls := 0
+
+		imgStore := &mocks.MockedImageStore{
+			GetRepositoriesFn: func() ([]string, error) {
+				return []string{"repo1"}, nil
+			},
+			GetNextDigestWithBlobPathsFn: func(repos []string, lastDigests []godigest.Digest) (
+				godigest.Digest, []string, error,
+			) {
+				getNextCalls++
+				if getNextCalls == 1 {
+					return digest, duplicateBlobs, nil
+				}
+
+				return "", nil, nil
+			},
+			RunDedupeForDigestFn: func(ctx context.Context, digest godigest.Digest, dedupe bool,
+				duplicateBlobs []string,
+			) error {
+				return nil
+			},
+		}
+
+		var (
+			callCountMutex sync.Mutex
+			callCount      int
+		)
+
+		done := make(chan struct{})
+
+		generator := &common.DedupeTaskGenerator{
+			ImgStore: imgStore,
+			Dedupe:   false,
+			Log:      testLog,
+			OnRestoreComplete: func() {
+				callCountMutex.Lock()
+				callCount++
+				callCountMutex.Unlock()
+				close(done)
+			},
+		}
+
+		// first Next(): generates the restore task, pendingTaskCount becomes 1, task not run yet
+		task, err := generator.Next()
+		So(err, ShouldBeNil)
+		So(task, ShouldNotBeNil)
+
+		// second Next(): no more digests, marks the run as done; checkCompletion is a no-op
+		// because the task above hasn't finished yet (pendingTaskCount == 1)
+		_, err = generator.Next()
+		So(err, ShouldBeNil)
+		So(generator.IsDone(), ShouldBeTrue)
+
+		// Reset() must keep the same run state, since OnRestoreComplete hasn't fired yet
+		generator.Reset()
+		So(generator.IsDone(), ShouldBeTrue)
+
+		// finishing the in-flight task now drives checkCompletion to fire OnRestoreComplete
+		err = task.DoWork(context.Background())
+		So(err, ShouldBeNil)
+
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for OnRestoreComplete")
+		}
+
+		callCountMutex.Lock()
+		So(callCount, ShouldEqual, 1)
+		callCountMutex.Unlock()
+	})
+
+	Convey("checkCompletion recovers if OnRestoreComplete panics", t, func(c C) {
+		digest := godigest.FromString("blob3")
+		duplicateBlobs := []string{"/repo/blob3-a"}
+
+		getNextCalls := 0
+
+		imgStore := &mocks.MockedImageStore{
+			GetRepositoriesFn: func() ([]string, error) {
+				return []string{"repo1"}, nil
+			},
+			GetNextDigestWithBlobPathsFn: func(repos []string, lastDigests []godigest.Digest) (
+				godigest.Digest, []string, error,
+			) {
+				getNextCalls++
+				if getNextCalls == 1 {
+					return digest, duplicateBlobs, nil
+				}
+
+				return "", nil, nil
+			},
+			RunDedupeForDigestFn: func(ctx context.Context, digest godigest.Digest, dedupe bool,
+				duplicateBlobs []string,
+			) error {
+				return nil
+			},
+		}
+
+		logBuf := tcommon.NewThreadSafeLogBuffer()
+
+		panicLog := log.NewLoggerWithWriter("debug", logBuf)
+
+		done := make(chan struct{})
+
+		generator := &common.DedupeTaskGenerator{
+			ImgStore: imgStore,
+			Dedupe:   false,
+			Log:      panicLog,
+			OnRestoreComplete: func() {
+				defer close(done)
+				panic("boom")
+			},
+		}
+
+		task, err := generator.Next()
+		So(err, ShouldBeNil)
+		So(task, ShouldNotBeNil)
+
+		err = task.DoWork(context.Background())
+		So(err, ShouldBeNil)
+
+		_, err = generator.Next()
+		So(err, ShouldBeNil)
+		So(generator.IsDone(), ShouldBeTrue)
+
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for OnRestoreComplete")
+		}
+
+		for range 100 {
+			if strings.Contains(logBuf.String(), "panic in OnRestoreComplete") {
+				break
+			}
+
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		So(logBuf.String(), ShouldContainSubstring, "panic in OnRestoreComplete")
+	})
+
+	Convey("getRun is safe when the first call races across goroutines", t, func(c C) {
+		generator := &common.DedupeTaskGenerator{
+			Log: log.NewTestLogger(),
+		}
+
+		const numGoroutines = 50
+
+		var wg sync.WaitGroup
+
+		start := make(chan struct{})
+
+		for range numGoroutines {
+			wg.Go(func() {
+				<-start
+				generator.IsDone()
+			})
+		}
+
+		close(start)
+		wg.Wait()
+
+		So(generator.IsDone(), ShouldBeFalse)
 	})
 }
 

@@ -14,10 +14,12 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
+	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
 	imeta "github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -33,6 +35,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage/cache"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/gc"
+	"zotregistry.dev/zot/v2/pkg/storage/imagestore"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 	test "zotregistry.dev/zot/v2/pkg/test/common"
@@ -59,7 +62,12 @@ var DeleteReferrers = config.ImageRetention{ //nolint: gochecknoglobals
 	},
 }
 
-var errCache = errors.New("new cache error")
+var (
+	errCache              = errors.New("new cache error")
+	errRecheckStatFailed  = errors.New("recheck stat failed")
+	errMarkerDeleteFailed = errors.New("delete failed")
+	errMarkerWriteFailed  = errors.New("write failed")
+)
 
 func runAndGetScheduler() *scheduler.Scheduler {
 	log := zlog.NewTestLogger()
@@ -1558,6 +1566,299 @@ func TestDedupeLinks(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestDedupeRestoreCompleteMarker(t *testing.T) {
+	waitForMarker := func(t *testing.T, markerPath, expected string) {
+		t.Helper()
+
+		for range 100 {
+			data, err := os.ReadFile(markerPath)
+			if err == nil && strings.TrimSpace(string(data)) == expected {
+				return
+			}
+
+			time.Sleep(50 * time.Millisecond)
+		}
+
+		t.Fatalf("timed out waiting for marker %q at %s", expected, markerPath)
+	}
+
+	Convey("Restore-complete marker lifecycle", t, func(c C) {
+		dir := t.TempDir()
+
+		logBuf := test.NewThreadSafeLogBuffer()
+
+		log := zlog.NewLoggerWithWriter("debug", logBuf)
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		markerPath := path.Join(dir, storageConstants.DedupeRestoreCompleteMarker)
+
+		Convey("dedupe=false on an empty store writes the restore-complete marker", func() {
+			imgStore := local.NewImageStore(dir, false, true, log, metrics, nil, nil, nil, nil)
+
+			taskScheduler := runAndGetScheduler()
+			defer taskScheduler.Shutdown()
+
+			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+			waitForMarker(t, markerPath, storageConstants.DedupeRestoreMarkerComplete)
+
+			taskScheduler.Shutdown()
+
+			So(logBuf.String(), ShouldContainSubstring, "restore-complete marker written")
+		})
+
+		Convey("dedupe=false with a complete marker skips the restore scan", func() {
+			err := os.WriteFile(markerPath, []byte(storageConstants.DedupeRestoreMarkerComplete),
+				storageConstants.DefaultFilePerms)
+			So(err, ShouldBeNil)
+
+			imgStore := local.NewImageStore(dir, false, true, log, metrics, nil, nil, nil, nil)
+
+			taskScheduler := runAndGetScheduler()
+			defer taskScheduler.Shutdown()
+
+			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+			taskScheduler.Shutdown()
+
+			So(logBuf.String(), ShouldContainSubstring, "skipping dedupe restore scan")
+
+			data, err := os.ReadFile(markerPath)
+			So(err, ShouldBeNil)
+			So(strings.TrimSpace(string(data)), ShouldEqual, storageConstants.DedupeRestoreMarkerComplete)
+		})
+
+		Convey("dedupe=false with an incomplete marker continues the restore scan", func() {
+			err := os.WriteFile(markerPath, []byte(storageConstants.DedupeRestoreMarkerInvalid),
+				storageConstants.DefaultFilePerms)
+			So(err, ShouldBeNil)
+
+			imgStore := local.NewImageStore(dir, false, true, log, metrics, nil, nil, nil, nil)
+
+			taskScheduler := runAndGetScheduler()
+			defer taskScheduler.Shutdown()
+
+			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+			waitForMarker(t, markerPath, storageConstants.DedupeRestoreMarkerComplete)
+
+			taskScheduler.Shutdown()
+
+			So(logBuf.String(), ShouldContainSubstring, "restore-complete marker present but not complete")
+		})
+
+		Convey("dedupe=true removes an existing restore-complete marker", func() {
+			err := os.WriteFile(markerPath, []byte(storageConstants.DedupeRestoreMarkerComplete),
+				storageConstants.DefaultFilePerms)
+			So(err, ShouldBeNil)
+
+			imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, nil, nil, nil)
+
+			taskScheduler := runAndGetScheduler()
+			defer taskScheduler.Shutdown()
+
+			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+			taskScheduler.Shutdown()
+
+			_, err = os.Stat(markerPath)
+			So(errors.Is(err, fs.ErrNotExist), ShouldBeTrue)
+		})
+	})
+}
+
+// recheckDriver wraps local.Driver and, for a single target path, returns a
+// custom result on the second Stat call to simulate the state observed by
+// restoreDedupedBlobs' re-check under the write lock.
+type recheckDriver struct {
+	*local.Driver
+
+	targetPath string
+
+	mu        sync.Mutex
+	statCalls int
+
+	recheckSize int64
+	recheckErr  error
+}
+
+func (d *recheckDriver) Stat(path string) (storagedriver.FileInfo, error) {
+	if path == d.targetPath {
+		d.mu.Lock()
+		d.statCalls++
+		call := d.statCalls
+		d.mu.Unlock()
+
+		if call == 2 {
+			if d.recheckErr != nil {
+				return nil, d.recheckErr
+			}
+
+			return storagedriver.FileInfoInternal{
+				FileInfoFields: storagedriver.FileInfoFields{Path: path, Size: d.recheckSize},
+			}, nil
+		}
+	}
+
+	return d.Driver.Stat(path)
+}
+
+func TestRestoreDedupedBlobsRecheck(t *testing.T) {
+	Convey("restoreDedupedBlobs re-checks blob size under the write lock", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		Convey("a blob restored by a concurrent task is left untouched", func() {
+			dir := t.TempDir()
+			blobsDir := path.Join(dir, "test", "blobs", "sha256")
+
+			err := os.MkdirAll(blobsDir, storageConstants.DefaultDirPerms)
+			So(err, ShouldBeNil)
+
+			content := []byte("original content")
+			digest := godigest.FromBytes(content)
+
+			originalPath := path.Join(blobsDir, digest.Encoded())
+			err = os.WriteFile(originalPath, content, storageConstants.DefaultFilePerms)
+			So(err, ShouldBeNil)
+
+			dupPath := path.Join(blobsDir, "duplicate")
+			err = os.WriteFile(dupPath, []byte{}, storageConstants.DefaultFilePerms)
+			So(err, ShouldBeNil)
+
+			testDriver := &recheckDriver{
+				Driver:      local.New(true),
+				targetPath:  dupPath,
+				recheckSize: int64(len(content)),
+			}
+
+			imgStore := imagestore.NewImageStore(dir, dir, false, true, log, metrics, nil, testDriver, nil, nil, nil)
+
+			err = imgStore.RunDedupeForDigest(context.Background(), digest, false, []string{originalPath, dupPath})
+			So(err, ShouldBeNil)
+
+			data, err := os.ReadFile(dupPath)
+			So(err, ShouldBeNil)
+			So(data, ShouldBeEmpty)
+		})
+
+		Convey("a stat error on the re-check is propagated", func() {
+			dir := t.TempDir()
+			blobsDir := path.Join(dir, "test", "blobs", "sha256")
+
+			err := os.MkdirAll(blobsDir, storageConstants.DefaultDirPerms)
+			So(err, ShouldBeNil)
+
+			content := []byte("original content")
+			digest := godigest.FromBytes(content)
+
+			originalPath := path.Join(blobsDir, digest.Encoded())
+			err = os.WriteFile(originalPath, content, storageConstants.DefaultFilePerms)
+			So(err, ShouldBeNil)
+
+			dupPath := path.Join(blobsDir, "duplicate")
+			err = os.WriteFile(dupPath, []byte{}, storageConstants.DefaultFilePerms)
+			So(err, ShouldBeNil)
+
+			testDriver := &recheckDriver{
+				Driver:     local.New(true),
+				targetPath: dupPath,
+				recheckErr: errRecheckStatFailed,
+			}
+
+			imgStore := imagestore.NewImageStore(dir, dir, false, true, log, metrics, nil, testDriver, nil, nil, nil)
+
+			err = imgStore.RunDedupeForDigest(context.Background(), digest, false, []string{originalPath, dupPath})
+			So(err, ShouldEqual, errRecheckStatFailed)
+		})
+	})
+}
+
+// errMarkerDriver wraps local.Driver and injects errors for operations on the
+// dedupe restore-complete marker file.
+type errMarkerDriver struct {
+	*local.Driver
+
+	deleteErr error
+	writeErr  error
+}
+
+func (d *errMarkerDriver) Delete(path string) error {
+	if d.deleteErr != nil && strings.Contains(path, storageConstants.DedupeRestoreCompleteMarker) {
+		return d.deleteErr
+	}
+
+	return d.Driver.Delete(path)
+}
+
+func (d *errMarkerDriver) WriteFile(filepath string, content []byte) (int, error) {
+	if d.writeErr != nil && strings.Contains(filepath, storageConstants.DedupeRestoreCompleteMarker) {
+		return 0, d.writeErr
+	}
+
+	return d.Driver.WriteFile(filepath, content)
+}
+
+func TestRunDedupeBlobsMarkerDeleteError(t *testing.T) {
+	Convey("RunDedupeBlobs handles errors removing the restore-complete marker", t, func() {
+		dir := t.TempDir()
+
+		markerPath := path.Join(dir, storageConstants.DedupeRestoreCompleteMarker)
+
+		err := os.WriteFile(markerPath, []byte(storageConstants.DedupeRestoreMarkerComplete),
+			storageConstants.DefaultFilePerms)
+		So(err, ShouldBeNil)
+
+		Convey("falls back to writing an invalid marker when delete fails", func() {
+			logBuf := test.NewThreadSafeLogBuffer()
+
+			log := zlog.NewLoggerWithWriter("debug", logBuf)
+			metrics := monitoring.NewMetricsServer(false, log)
+
+			testDriver := &errMarkerDriver{
+				Driver:    local.New(true),
+				deleteErr: errMarkerDeleteFailed,
+			}
+
+			imgStore := imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, testDriver, nil, nil, nil)
+
+			taskScheduler := runAndGetScheduler()
+			defer taskScheduler.Shutdown()
+
+			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+			So(logBuf.String(), ShouldContainSubstring, "failed to remove restore-complete marker")
+
+			data, err := os.ReadFile(markerPath)
+			So(err, ShouldBeNil)
+			So(strings.TrimSpace(string(data)), ShouldEqual, storageConstants.DedupeRestoreMarkerInvalid)
+		})
+
+		Convey("logs when even the invalid-marker write fails", func() {
+			logBuf := test.NewThreadSafeLogBuffer()
+
+			log := zlog.NewLoggerWithWriter("debug", logBuf)
+			metrics := monitoring.NewMetricsServer(false, log)
+
+			testDriver := &errMarkerDriver{
+				Driver:    local.New(true),
+				deleteErr: errMarkerDeleteFailed,
+				writeErr:  errMarkerWriteFailed,
+			}
+
+			imgStore := imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, testDriver, nil, nil, nil)
+
+			taskScheduler := runAndGetScheduler()
+			defer taskScheduler.Shutdown()
+
+			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+			So(logBuf.String(), ShouldContainSubstring, "failed to remove restore-complete marker")
+			So(logBuf.String(), ShouldContainSubstring, "failed to invalidate restore-complete marker")
+		})
+	})
 }
 
 func TestDedupe(t *testing.T) {
