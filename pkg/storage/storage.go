@@ -63,6 +63,9 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 		defaultStore = local.NewImageStore(rootDir,
 			config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, cacheDriver, config.HTTP.Compat, recorder,
 		)
+		if defaultStore == nil {
+			return storeController, zerr.ErrDefaultImgStoreCreate
+		}
 	} else {
 		storeName := fmt.Sprintf("%v", config.Storage.StorageDriver["name"])
 		if storeName != constants.S3StorageDriverName && storeName != constants.GCSStorageDriverName &&
@@ -70,7 +73,7 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 			log.Error().Err(zerr.ErrBadConfig).Str("storageDriver", storeName).
 				Msg("unsupported storage driver")
 
-			return storeController, fmt.Errorf("storageDriver '%s' unsupported storage driver: %w", storeName, zerr.ErrBadConfig)
+			return storeController, zerr.ErrBadConfig
 		}
 
 		NormalizeRootDirectory(storeName, config.Storage.StorageDriver)
@@ -105,6 +108,10 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 			defaultStore = gcs.NewImageStore(rootDir, config.Storage.RootDirectory,
 				config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, store, cacheDriver,
 				config.HTTP.Compat, recorder)
+		}
+
+		if defaultStore == nil {
+			return storeController, zerr.ErrDefaultImgStoreCreate
 		}
 	}
 
@@ -185,6 +192,9 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 				imgStoreMap[storageConfig.RootDirectory] = local.NewImageStore(rootDir,
 					storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, cacheDriver, cfg.HTTP.Compat, recorder,
 				)
+				if imgStoreMap[storageConfig.RootDirectory] == nil {
+					return nil, fmt.Errorf("%w: %s", zerr.ErrSubpathImgStoreCreate, route)
+				}
 
 				subImageStore[route] = imgStoreMap[storageConfig.RootDirectory]
 			}
@@ -195,7 +205,7 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 				log.Error().Err(zerr.ErrBadConfig).Str("storageDriver", storeName).
 					Msg("unsupported storage driver")
 
-				return nil, fmt.Errorf("storageDriver '%s' unsupported storage driver: %w", storeName, zerr.ErrBadConfig)
+				return nil, zerr.ErrBadConfig
 			}
 
 			NormalizeRootDirectory(storeName, storageConfig.StorageDriver)
@@ -233,6 +243,10 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 				subImageStore[route] = gcs.NewImageStore(rootDir, storageConfig.RootDirectory,
 					storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, store, cacheDriver, cfg.HTTP.Compat, recorder,
 				)
+			}
+
+			if subImageStore[route] == nil {
+				return nil, fmt.Errorf("%w: %s", zerr.ErrSubpathImgStoreCreate, route)
 			}
 		}
 	}
