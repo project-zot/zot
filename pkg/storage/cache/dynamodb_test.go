@@ -82,7 +82,7 @@ func TestDynamoDB(t *testing.T) {
 		So(exists, ShouldBeTrue)
 
 		exists = cacheDriver.HasBlob(keyDigest, path.Join(dir, "value1"))
-		So(exists, ShouldBeFalse)
+		So(exists, ShouldBeTrue)
 
 		err = cacheDriver.DeleteBlob(keyDigest, path.Join(dir, "value2"))
 		So(err, ShouldBeNil)
@@ -111,16 +111,16 @@ func TestDynamoDB(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		val, err = cacheDriver.GetBlob("key1")
-		So(val, ShouldEqual, "duplicateBlobPath")
+		So(val, ShouldEqual, "originalBlobPath")
 		So(err, ShouldBeNil)
 
 		err = cacheDriver.DeleteBlob("key1", "duplicateBlobPath")
 		So(err, ShouldBeNil)
 
-		// should be empty
+		// original remains while duplicates are removed
 		val, err = cacheDriver.GetBlob("key1")
-		So(err, ShouldNotBeNil)
-		So(val, ShouldBeEmpty)
+		So(err, ShouldBeNil)
+		So(val, ShouldEqual, "originalBlobPath")
 
 		// try to add three same values
 		err = cacheDriver.PutBlob("key2", "duplicate")
@@ -176,7 +176,7 @@ func TestDynamoDB(t *testing.T) {
 		blobs, err = cacheDriver.GetAllBlobs("digest")
 		So(err, ShouldBeNil)
 
-		So(blobs, ShouldResemble, []string{"second", "third"})
+		So(blobs, ShouldResemble, []string{"first", "second", "third"})
 
 		err = cacheDriver.DeleteBlob("digest", "third")
 		So(err, ShouldBeNil)
@@ -184,7 +184,7 @@ func TestDynamoDB(t *testing.T) {
 		blobs, err = cacheDriver.GetAllBlobs("digest")
 		So(err, ShouldBeNil)
 
-		So(blobs, ShouldResemble, []string{"second"})
+		So(blobs, ShouldResemble, []string{"first", "second"})
 	})
 }
 
