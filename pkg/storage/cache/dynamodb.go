@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 
@@ -187,14 +188,44 @@ func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
 		return zerr.ErrEmptyValue
 	}
 
-	originBlob, _ := d.GetBlob(digest)
-	if originBlob == "" {
-		// first entry, so add original blob only
-		if err := d.putOriginBlob(digest, path); err != nil {
-			return err
+	var originBlob string
+
+	for {
+		var err error
+
+		originBlob, err = d.GetBlob(digest)
+		if err != nil {
+			if !errors.Is(err, zerr.ErrCacheMiss) {
+				return err
+			}
+
+			// first entry, so add original blob only
+			if err := d.putOriginBlob(digest, path); err != nil {
+				var conditionalErr *types.ConditionalCheckFailedException
+				if errors.As(err, &conditionalErr) {
+					continue
+				}
+
+				return err
+			}
+
+			return nil
 		}
 
-		return nil
+		if originBlob == "" {
+			if err := d.putOriginBlob(digest, path); err != nil {
+				var conditionalErr *types.ConditionalCheckFailedException
+				if errors.As(err, &conditionalErr) {
+					continue
+				}
+
+				return err
+			}
+
+			return nil
+		}
+
+		break
 	}
 
 	// if same as original, this is idempotent
@@ -206,7 +237,7 @@ func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
 	expression := "ADD DuplicateBlobPath :i"
 	attrPath := types.AttributeValueMemberSS{Value: []string{path}}
 
-	if err := d.updateItem(digest, expression, map[string]types.AttributeValue{":i": &attrPath}); err != nil {
+	if err := d.updateItem(digest, expression, map[string]types.AttributeValue{":i": &attrPath}, nil); err != nil {
 		d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("failed to put blob")
 
 		return err
@@ -276,7 +307,7 @@ func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 				expression := "DELETE DuplicateBlobPath :i"
 				attrPath := types.AttributeValueMemberSS{Value: []string{path}}
 
-				if err := d.updateItem(digest, expression, map[string]types.AttributeValue{":i": &attrPath}); err != nil {
+				if err := d.updateItem(digest, expression, map[string]types.AttributeValue{":i": &attrPath}, nil); err != nil {
 					d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("failed to delete")
 
 					return err
@@ -303,11 +334,21 @@ func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 		}
 
 		// no more duplicates, remove the original
+		conditionExpression := "attribute_not_exists(DuplicateBlobPath) OR size(DuplicateBlobPath) = :zero"
+		zero := types.AttributeValueMemberN{Value: "0"}
+
 		_, err = d.client.DeleteItem(context.TODO(), &dynamodb.DeleteItemInput{
-			Key:       marshaledKey,
-			TableName: &d.tableName,
+			Key:                       marshaledKey,
+			TableName:                 &d.tableName,
+			ConditionExpression:       &conditionExpression,
+			ExpressionAttributeValues: map[string]types.AttributeValue{":zero": &zero},
 		})
 		if err != nil {
+			var conditionalErr *types.ConditionalCheckFailedException
+			if errors.As(err, &conditionalErr) {
+				return nil
+			}
+
 			d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("failed to delete")
 
 			return err
@@ -363,8 +404,13 @@ func (d *DynamoDBDriver) GetDuplicateBlob(digest godigest.Digest) (string, error
 func (d *DynamoDBDriver) putOriginBlob(digest godigest.Digest, path string) error {
 	expression := "SET OriginalBlobPath = :s"
 	attrPath := types.AttributeValueMemberS{Value: path}
+	emptyPath := types.AttributeValueMemberS{Value: ""}
+	conditionExpression := "attribute_not_exists(OriginalBlobPath) OR OriginalBlobPath = :empty"
 
-	if err := d.updateItem(digest, expression, map[string]types.AttributeValue{":s": &attrPath}); err != nil {
+	if err := d.updateItem(digest, expression, map[string]types.AttributeValue{
+		":empty": &emptyPath,
+		":s":     &attrPath,
+	}, &conditionExpression); err != nil {
 		d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("failed to put original blob")
 
 		return err
@@ -374,7 +420,7 @@ func (d *DynamoDBDriver) putOriginBlob(digest godigest.Digest, path string) erro
 }
 
 func (d *DynamoDBDriver) updateItem(digest godigest.Digest, expression string,
-	expressionAttVals map[string]types.AttributeValue,
+	expressionAttVals map[string]types.AttributeValue, conditionExpression *string,
 ) error {
 	marshaledKey, _ := attributevalue.MarshalMap(map[string]any{"Digest": digest.String()})
 
@@ -383,6 +429,7 @@ func (d *DynamoDBDriver) updateItem(digest godigest.Digest, expression string,
 		TableName:                 &d.tableName,
 		UpdateExpression:          &expression,
 		ExpressionAttributeValues: expressionAttVals,
+		ConditionExpression:       conditionExpression,
 	})
 
 	return err

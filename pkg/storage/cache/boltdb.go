@@ -223,9 +223,9 @@ func (d *BoltDBDriver) GetAllBlobs(digest godigest.Digest) ([]string, error) {
 						blobPaths = append(blobPaths, duplicateBlob)
 					}
 				}
-
-				return nil
 			}
+
+			return nil
 		}
 
 		return zerr.ErrCacheMiss
@@ -389,17 +389,15 @@ func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 		k := d.getOne(origin)
 		if k == nil {
 			d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("deleting empty bucket")
-			if err := root.DeleteBucket([]byte(digest)); err != nil {
+			if err := root.DeleteBucket([]byte(digest.String())); err != nil {
 				d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", digest.String()).Str("path", path).
 					Msg("failed to delete")
 
 				return err
 			}
-
-			return nil
 		}
 
-		return zerr.ErrCacheMiss
+		return nil
 	}); err != nil {
 		return err
 	}

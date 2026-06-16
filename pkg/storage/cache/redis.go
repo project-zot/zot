@@ -252,9 +252,9 @@ func (d *RedisDriver) HasBlob(digest godigest.Digest, path string) bool {
 		if !goerrors.Is(err, redis.Nil) {
 			d.log.Error().Err(err).Str("hget", d.join(constants.BlobsCache, constants.OriginalBucket)).
 				Str("digest", digest.String()).Msg("unable to get record")
-		}
 
-		return false
+			return false
+		}
 	}
 
 	if currentPath == path {
