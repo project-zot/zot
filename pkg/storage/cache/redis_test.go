@@ -73,7 +73,7 @@ func TestRedisCache(t *testing.T) {
 		So(err, ShouldEqual, zerr.ErrCacheMiss)
 
 		err = cacheDriver.DeleteBlob("key", "bogusValue")
-		So(err, ShouldBeNil)
+		So(err, ShouldEqual, zerr.ErrCacheMiss)
 
 		// try to insert empty path
 		err = cacheDriver.PutBlob("key", "")
@@ -112,16 +112,16 @@ func TestRedisCache(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		val, err = cacheDriver.GetBlob("key1")
-		So(val, ShouldEqual, "duplicateBlobPath")
+		So(val, ShouldEqual, "originalBlobPath")
 		So(err, ShouldBeNil)
 
 		err = cacheDriver.DeleteBlob("key1", "duplicateBlobPath")
 		So(err, ShouldBeNil)
 
-		// should be empty
+		// original remains while duplicates are removed
 		val, err = cacheDriver.GetBlob("key1")
-		So(err, ShouldNotBeNil)
-		So(val, ShouldBeEmpty)
+		So(err, ShouldBeNil)
+		So(val, ShouldEqual, "originalBlobPath")
 
 		// try to add three same values
 		err = cacheDriver.PutBlob("key2", "duplicate")
@@ -186,7 +186,8 @@ func TestRedisCache(t *testing.T) {
 
 		blobs, err = cacheDriver.GetAllBlobs("digest")
 		So(err, ShouldBeNil)
-		So(len(blobs), ShouldEqual, 2)
+		So(len(blobs), ShouldEqual, 3)
+		So(blobs, ShouldContain, "first")
 		So(blobs, ShouldContain, "second")
 		So(blobs, ShouldContain, "third")
 
@@ -196,7 +197,7 @@ func TestRedisCache(t *testing.T) {
 		blobs, err = cacheDriver.GetAllBlobs("digest")
 		So(err, ShouldBeNil)
 
-		So(blobs, ShouldResemble, []string{"second"})
+		So(blobs, ShouldResemble, []string{"first", "second"})
 	})
 }
 
@@ -355,10 +356,10 @@ func TestRedisMocked(t *testing.T) {
 
 				mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
 				mock.ExpectHExists(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
-					SetVal(false)
+					SetVal(true)
+				mock.ExpectHGet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
+					SetVal(path.Join(pathPrefix, "original"))
 				mock.ExpectTxPipeline()
-				mock.ExpectHSet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key",
-					path.Join(pathPrefix, "val")).SetVal(1)
 				mock.ExpectSAdd(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
 					path.Join(pathPrefix, "val")).SetErr(ErrTestError)
 
@@ -384,8 +385,6 @@ func TestRedisMocked(t *testing.T) {
 					SetVal(false)
 				mock.ExpectTxPipeline()
 				mock.ExpectHSet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key",
-					path.Join(pathPrefix, "val")).SetVal(1)
-				mock.ExpectSAdd(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
 					path.Join(pathPrefix, "val")).SetVal(1)
 				mock.ExpectTxPipelineExec()
 
@@ -459,8 +458,6 @@ func TestRedisMocked(t *testing.T) {
 				mock.ExpectTxPipeline()
 				mock.ExpectHSet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key",
 					path.Join(pathPrefix, "val1")).SetVal(1)
-				mock.ExpectSAdd(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
-					path.Join(pathPrefix, "val1")).SetVal(1)
 				mock.ExpectTxPipelineExec()
 
 				err = cacheDriver.PutBlob("key", path.Join(dir, "val1"))
@@ -468,10 +465,10 @@ func TestRedisMocked(t *testing.T) {
 
 				mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
 				mock.ExpectHExists(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
-					SetVal(false)
+					SetVal(true)
+				mock.ExpectHGet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
+					SetVal(path.Join(pathPrefix, "val1"))
 				mock.ExpectTxPipeline()
-				mock.ExpectHSet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key",
-					path.Join(pathPrefix, "val2")).SetVal(1)
 				mock.ExpectSAdd(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
 					path.Join(pathPrefix, "val2")).SetVal(1)
 				mock.ExpectTxPipelineExec()
@@ -492,7 +489,7 @@ func TestRedisMocked(t *testing.T) {
 				So(err, ShouldBeNil)
 			})
 
-			Convey("HasBlob HExists returns error"+testID, func() {
+			Convey("HasBlob HGet returns error"+testID, func() {
 				// initialize mock client
 				cacheDB, mock := redismock.NewClientMock()
 				redisDriverParams.Client = cacheDB
@@ -502,9 +499,7 @@ func TestRedisMocked(t *testing.T) {
 				So(cacheDriver, ShouldNotBeNil)
 				So(err, ShouldBeNil)
 
-				mock.ExpectSIsMember(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
-					path.Join(pathPrefix, "val")).SetVal(true)
-				mock.ExpectHExists(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
+				mock.ExpectHGet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
 					SetErr(ErrTestError)
 
 				ok := cacheDriver.HasBlob("key", path.Join(dir, "val"))
@@ -524,6 +519,8 @@ func TestRedisMocked(t *testing.T) {
 				So(cacheDriver, ShouldNotBeNil)
 				So(err, ShouldBeNil)
 
+				mock.ExpectHGet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
+					SetVal(path.Join(pathPrefix, "other"))
 				mock.ExpectSIsMember(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
 					path.Join(pathPrefix, "val")).SetErr(ErrTestError)
 
@@ -534,7 +531,7 @@ func TestRedisMocked(t *testing.T) {
 				So(err, ShouldBeNil)
 			})
 
-			Convey("HasBlob HExists returns false"+testID, func() {
+			Convey("HasBlob HGet returns redis nil"+testID, func() {
 				// initialize mock client
 				cacheDB, mock := redismock.NewClientMock()
 				redisDriverParams.Client = cacheDB
@@ -544,10 +541,8 @@ func TestRedisMocked(t *testing.T) {
 				So(cacheDriver, ShouldNotBeNil)
 				So(err, ShouldBeNil)
 
-				mock.ExpectSIsMember(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
-					path.Join(pathPrefix, "val")).SetVal(true)
-				mock.ExpectHExists(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
-					SetVal(false)
+				mock.ExpectHGet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
+					RedisNil()
 
 				ok := cacheDriver.HasBlob("key", path.Join(dir, "val"))
 				So(ok, ShouldBeFalse)
@@ -566,14 +561,12 @@ func TestRedisMocked(t *testing.T) {
 				So(cacheDriver, ShouldNotBeNil)
 				So(err, ShouldBeNil)
 
-				// Create entry for 1st path
+				// Create origin entry for val1
 				mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
 				mock.ExpectHExists(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
 					SetVal(false)
 				mock.ExpectTxPipeline()
 				mock.ExpectHSet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key",
-					path.Join(pathPrefix, "val1")).SetVal(1)
-				mock.ExpectSAdd(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
 					path.Join(pathPrefix, "val1")).SetVal(1)
 				mock.ExpectTxPipelineExec()
 
@@ -581,16 +574,13 @@ func TestRedisMocked(t *testing.T) {
 				So(err, ShouldBeNil)
 
 				Convey("DeleteBlob error in HDel"+testID, func() {
-					// If the 2nd path does not exist, HDel is callled
-					// Error switching to new path
 					mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
-					mock.ExpectSRem(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
-						path.Join(pathPrefix, "val1")).SetVal(1)
+					mock.ExpectSIsMember(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
+						path.Join(pathPrefix, "val1")).SetVal(false)
 					mock.ExpectHGet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
 						SetVal(path.Join(pathPrefix, "val1"))
-					// failed to get new path
-					mock.ExpectSRandMember(keyPrefix + constants.BlobsCache + ":" + constants.DuplicatesBucket + ":key").
-						RedisNil()
+					mock.ExpectSCard(keyPrefix + constants.BlobsCache + ":" + constants.DuplicatesBucket + ":key").
+						SetVal(0)
 					mock.ExpectHDel(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
 						SetErr(ErrTestError)
 
@@ -598,17 +588,14 @@ func TestRedisMocked(t *testing.T) {
 					So(err, ShouldEqual, ErrTestError)
 				})
 
-				Convey("DeleteBlob succeeds in deleting all data for original blob"+testID, func() {
-					// If the 2nd path does not exist, HDel is callled
-					// Error switching to new path
+				Convey("DeleteBlob succeeds in deleting original when no duplicates"+testID, func() {
 					mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
-					mock.ExpectSRem(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
-						path.Join(pathPrefix, "val1")).SetVal(1)
+					mock.ExpectSIsMember(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
+						path.Join(pathPrefix, "val1")).SetVal(false)
 					mock.ExpectHGet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
 						SetVal(path.Join(pathPrefix, "val1"))
-					// failed to get new path
-					mock.ExpectSRandMember(keyPrefix + constants.BlobsCache + ":" + constants.DuplicatesBucket + ":key").
-						RedisNil()
+					mock.ExpectSCard(keyPrefix + constants.BlobsCache + ":" + constants.DuplicatesBucket + ":key").
+						SetVal(0)
 					mock.ExpectHDel(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
 						SetVal(1)
 
@@ -616,43 +603,27 @@ func TestRedisMocked(t *testing.T) {
 					So(err, ShouldBeNil)
 				})
 
-				Convey("DeleteBlob error in SRandMember"+testID, func() {
-					// Create entry for 2nd path
+				Convey("DeleteBlob error in SCard"+testID, func() {
 					mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
-					mock.ExpectHExists(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
-						SetVal(false)
-					mock.ExpectTxPipeline()
-					mock.ExpectHSet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key",
-						path.Join(pathPrefix, "val2")).SetVal(1)
-					mock.ExpectSAdd(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
-						path.Join(pathPrefix, "val2")).SetVal(1)
-					mock.ExpectTxPipelineExec()
-
-					err = cacheDriver.PutBlob("key", path.Join(dir, "val2"))
-					So(err, ShouldBeNil)
-
-					// Error switching to new path
-					mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
-					mock.ExpectSRem(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
-						path.Join(pathPrefix, "val1")).SetVal(1)
+					mock.ExpectSIsMember(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
+						path.Join(pathPrefix, "val1")).SetVal(false)
 					mock.ExpectHGet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
 						SetVal(path.Join(pathPrefix, "val1"))
-					// failed to get new path
-					mock.ExpectSRandMember(keyPrefix + constants.BlobsCache + ":" + constants.DuplicatesBucket + ":key").
+					mock.ExpectSCard(keyPrefix + constants.BlobsCache + ":" + constants.DuplicatesBucket + ":key").
 						SetErr(ErrTestError)
 
 					err = cacheDriver.DeleteBlob("key", path.Join(dir, "val1"))
 					So(err, ShouldEqual, ErrTestError)
 				})
 
-				Convey("DeleteBlob error in HSet"+testID, func() {
-					// Create entry for 2nd path
+				Convey("DeleteBlob keeps original when duplicates exist"+testID, func() {
+					// Add duplicate val2
 					mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
 					mock.ExpectHExists(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
-						SetVal(false)
+						SetVal(true)
+					mock.ExpectHGet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
+						SetVal(path.Join(pathPrefix, "val1"))
 					mock.ExpectTxPipeline()
-					mock.ExpectHSet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key",
-						path.Join(pathPrefix, "val2")).SetVal(1)
 					mock.ExpectSAdd(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
 						path.Join(pathPrefix, "val2")).SetVal(1)
 					mock.ExpectTxPipelineExec()
@@ -660,45 +631,14 @@ func TestRedisMocked(t *testing.T) {
 					err = cacheDriver.PutBlob("key", path.Join(dir, "val2"))
 					So(err, ShouldBeNil)
 
-					// Error switching to new path
+					// delete original val1, keep as long as duplicates exist
 					mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
-					mock.ExpectSRem(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
-						path.Join(pathPrefix, "val1")).SetVal(1)
+					mock.ExpectSIsMember(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
+						path.Join(pathPrefix, "val1")).SetVal(false)
 					mock.ExpectHGet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
 						SetVal(path.Join(pathPrefix, "val1"))
-					mock.ExpectSRandMember(keyPrefix + constants.BlobsCache + ":" + constants.DuplicatesBucket + ":key").
-						SetVal(path.Join(pathPrefix, "val2"))
-					mock.ExpectHSet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key",
-						path.Join(pathPrefix, "val2")).SetErr(ErrTestError)
-
-					err = cacheDriver.DeleteBlob("key", path.Join(dir, "val1"))
-					So(err, ShouldEqual, ErrTestError)
-				})
-
-				Convey("DeleteBlob succeeds in switching original blob path"+testID, func() {
-					// Create entry for 2nd path
-					mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
-					mock.ExpectHExists(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
-						SetVal(false)
-					mock.ExpectTxPipeline()
-					mock.ExpectHSet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key",
-						path.Join(pathPrefix, "val2")).SetVal(1)
-					mock.ExpectSAdd(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
-						path.Join(pathPrefix, "val2")).SetVal(1)
-					mock.ExpectTxPipelineExec()
-
-					err = cacheDriver.PutBlob("key", path.Join(dir, "val2"))
-					So(err, ShouldBeNil)
-
-					mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
-					mock.ExpectSRem(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
-						path.Join(pathPrefix, "val1")).SetVal(1)
-					mock.ExpectHGet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
-						SetVal(path.Join(pathPrefix, "val1"))
-					mock.ExpectSRandMember(keyPrefix + constants.BlobsCache + ":" + constants.DuplicatesBucket + ":key").
-						SetVal(path.Join(pathPrefix, "val2"))
-					mock.ExpectHSet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key",
-						path.Join(pathPrefix, "val2")).SetVal(1)
+					mock.ExpectSCard(keyPrefix + constants.BlobsCache + ":" + constants.DuplicatesBucket + ":key").
+						SetVal(1)
 
 					err = cacheDriver.DeleteBlob("key", path.Join(dir, "val1"))
 					So(err, ShouldBeNil)

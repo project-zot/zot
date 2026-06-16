@@ -38,4 +38,7 @@ const (
 	// DedupeRestoreMarkerInvalid is the content written to DedupeRestoreCompleteMarker to
 	// invalidate a previous completion, forcing the restore scan to run again.
 	DedupeRestoreMarkerInvalid = "0"
+	// GlobalBlobsRepo is the internal directory used as the master copy location for deduped blobs.
+	// It uses a leading underscore to ensure it can never collide with a valid OCI repository name.
+	GlobalBlobsRepo = "_blobstore"
 )
