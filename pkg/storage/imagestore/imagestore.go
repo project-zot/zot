@@ -1457,6 +1457,8 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 
 		blobInfo, err := is.storeDriver.Stat(dstRecord)
 		if err != nil {
+			statErr := err
+
 			is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").Msg("failed to stat")
 			// the actual blob on disk may have been removed by GC, so sync the cache
 			err := is.cache.DeleteBlob(dstDigest, dstRecord)
@@ -1466,6 +1468,21 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 					Str("component", "dedupe").Msg("failed to delete blob record")
 
 				return err
+			}
+
+			updatedRecord, err := is.cache.GetBlob(dstDigest)
+			if err := inject.Error(err); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+				is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").Msg("failed to lookup blob record")
+
+				return err
+			}
+
+			if is.cache.UsesRelativePaths() && !path.IsAbs(updatedRecord) {
+				updatedRecord = path.Join(is.rootDir, updatedRecord)
+			}
+
+			if updatedRecord == dstRecord {
+				return statErr
 			}
 
 			continue
