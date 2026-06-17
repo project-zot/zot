@@ -13034,12 +13034,12 @@ func TestGetGithubUserInfo(t *testing.T) {
 					page := r.URL.Query().Get("page")
 					if page == "" || page == "1" {
 						w.Header().Set("Link", `<https://api.github.com/user/teams?page=2>; rel="next"`)
-						_, _ = w.Write([]byte(`[{"slug": "infra", "organization": {"login": "myorg"}}]`))
+						_, _ = w.Write([]byte(`[{"slug": "infra", "organization": {"login": "MyOrg"}}]`))
 
 						return
 					}
 
-					_, _ = w.Write([]byte(`[{"slug": "platform", "organization": {"login": "myorg"}}]`))
+					_, _ = w.Write([]byte(`[{"slug": "platform", "organization": {"login": "MyOrg"}}]`))
 				}),
 			),
 		)
@@ -13051,8 +13051,8 @@ func TestGetGithubUserInfo(t *testing.T) {
 		So(email, ShouldEqual, "test@test")
 		So(groups, ShouldContain, "MyOrg")
 		So(groups, ShouldContain, "AnotherOrg")
-		So(groups, ShouldContain, "myorg/infra")
-		So(groups, ShouldContain, "myorg/platform")
+		So(groups, ShouldContain, "MyOrg/infra")
+		So(groups, ShouldContain, "MyOrg/platform")
 	})
 
 	Convey("github ListEmails internal server error", t, func() {
