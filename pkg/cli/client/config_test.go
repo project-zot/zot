@@ -128,36 +128,36 @@ func TestZliConfigFile_RemoveEntry_NotFound(t *testing.T) {
 func TestZliConfigFile_DefaultConfigName(t *testing.T) {
 	t.Parallel()
 
-	f := client.ZliConfigFile{
+	configFile := client.ZliConfigFile{
 		Configs: []client.ZliConfig{
 			{Name: "main", URL: "https://example.com"},
 			{Name: "other", URL: "https://other.example.com"},
 		},
 	}
 
-	require.NoError(t, f.SetDefault("main"))
-	assert.Equal(t, "main", f.DefaultConfigName)
+	require.NoError(t, configFile.SetDefault("main"))
+	assert.Equal(t, "main", configFile.DefaultConfigName)
 
-	defaultName, err := f.DefaultName()
+	defaultName, err := configFile.DefaultName()
 	require.NoError(t, err)
 	assert.Equal(t, "main", defaultName)
 
-	assert.ErrorIs(t, f.SetDefault("missing"), zerr.ErrConfigNotFound)
+	require.ErrorIs(t, configFile.SetDefault("missing"), zerr.ErrConfigNotFound)
 
-	require.NoError(t, f.RemoveEntry("main"))
-	assert.Empty(t, f.DefaultConfigName)
+	require.NoError(t, configFile.RemoveEntry("main"))
+	assert.Empty(t, configFile.DefaultConfigName)
 }
 
 func TestZliConfigFile_DefaultNameMissingProfile(t *testing.T) {
 	t.Parallel()
 
-	f := client.ZliConfigFile{
+	configFile := client.ZliConfigFile{
 		DefaultConfigName: "missing",
 		Configs:           []client.ZliConfig{{Name: "main", URL: "https://example.com"}},
 	}
 
-	_, err := f.DefaultName()
-	assert.ErrorIs(t, err, zerr.ErrConfigNotFound)
+	_, err := configFile.DefaultName()
+	require.ErrorIs(t, err, zerr.ErrConfigNotFound)
 	assert.Contains(t, err.Error(), "defaultConfigName")
 }
 

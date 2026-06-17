@@ -378,7 +378,8 @@ func TestConfigCmdMain(t *testing.T) {
 
 		Convey("clears the default profile", func() {
 			configPath := makeConfigFile(t,
-				`{"configs":[{"_name":"configtest","url":"https://test-url.com","showspinner":false}],"defaultConfigName":"configtest"}`)
+				`{"configs":[{"_name":"configtest","url":"https://test-url.com",`+
+					`"showspinner":false}],"defaultConfigName":"configtest"}`)
 
 			cmd := client.NewConfigCommand()
 			outBuff := bytes.NewBufferString("")
@@ -397,7 +398,8 @@ func TestConfigCmdMain(t *testing.T) {
 
 		Convey("remove clears the default profile", func() {
 			configPath := makeConfigFile(t,
-				`{"configs":[{"_name":"configtest","url":"https://test-url.com","showspinner":false}],"defaultConfigName":"configtest"}`)
+				`{"configs":[{"_name":"configtest","url":"https://test-url.com",`+
+					`"showspinner":false}],"defaultConfigName":"configtest"}`)
 
 			cmd := client.NewConfigCommand()
 			outBuff := bytes.NewBufferString("")

@@ -270,13 +270,13 @@ func (f *ZliConfigFile) FormatNames() (string, error) {
 
 	writer := tabwriter.NewWriter(&builder, 0, 8, 1, '\t', tabwriter.AlignRight) //nolint:mnd
 
-	for _, c := range f.Configs {
-		name := c.Name
-		if c.Name == f.DefaultConfigName {
+	for _, profile := range f.Configs {
+		name := profile.Name
+		if profile.Name == f.DefaultConfigName {
 			name += " (default)"
 		}
 
-		fmt.Fprintf(writer, "%s\t%s\n", name, c.URL)
+		fmt.Fprintf(writer, "%s\t%s\n", name, profile.URL)
 	}
 
 	if err := writer.Flush(); err != nil {
