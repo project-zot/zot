@@ -1536,7 +1536,7 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 
 		// cache record exists, but due to GC and upgrades from older versions,
 		// disk content and cache records may go out of sync
-		if is.cache.UsesRelativePaths() && !path.IsAbs(dstRecord) {
+		if is.cache.UsesRelativePaths() && !path.IsAbs(dstRecord) && !strings.HasPrefix(dstRecord, is.rootDir+"/") {
 			dstRecord = path.Join(is.rootDir, dstRecord)
 		}
 
@@ -1562,7 +1562,7 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 				return err
 			}
 
-			if is.cache.UsesRelativePaths() && !path.IsAbs(updatedRecord) {
+			if is.cache.UsesRelativePaths() && !path.IsAbs(updatedRecord) && !strings.HasPrefix(updatedRecord, is.rootDir+"/") {
 				updatedRecord = path.Join(is.rootDir, updatedRecord)
 			}
 
@@ -1829,7 +1829,7 @@ func (is *ImageStore) checkCacheBlob(digest godigest.Digest) (string, error) {
 		return "", err
 	}
 
-	if is.cache.UsesRelativePaths() && !path.IsAbs(dstRecord) {
+	if is.cache.UsesRelativePaths() && !path.IsAbs(dstRecord) && !strings.HasPrefix(dstRecord, is.rootDir+"/") {
 		dstRecord = path.Join(is.rootDir, dstRecord)
 	}
 
