@@ -25,6 +25,7 @@ const (
 	DefaultGCInterval       = 1 * time.Hour
 	S3StorageDriverName     = "s3"
 	GCSStorageDriverName    = "gcs"
+	AzureStorageDriverName  = "azure"
 	LocalStorageDriverName  = "local"
 	// DedupeRestoreCompleteMarker is written at the image store root when a full dedupe-restore
 	// pass has completed. Its presence means no deduped blobs remain, so subsequent startups

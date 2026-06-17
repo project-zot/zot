@@ -629,9 +629,10 @@ func validateStorageConfigSection(
 	}
 
 	if len(storageConfig.StorageDriver) != 0 {
-		// enforce s3/gcs driver in case of using storage driver
+		// enforce s3/gcs/azure driver in case of using storage driver
 		if storageConfig.StorageDriver["name"] != storageConstants.S3StorageDriverName &&
-			storageConfig.StorageDriver["name"] != storageConstants.GCSStorageDriverName {
+			storageConfig.StorageDriver["name"] != storageConstants.GCSStorageDriverName &&
+			storageConfig.StorageDriver["name"] != storageConstants.AzureStorageDriverName {
 			msg := "unsupported storage driver"
 			logger.Error().Err(zerr.ErrBadConfig).Interface("storageDriver", storageConfig.StorageDriver["name"]).Msg(msg)
 
@@ -664,7 +665,8 @@ func validateStorageConfigSection(
 
 			if len(subStorageConfig.StorageDriver) != 0 {
 				if subStorageConfig.StorageDriver["name"] != storageConstants.S3StorageDriverName &&
-					subStorageConfig.StorageDriver["name"] != storageConstants.GCSStorageDriverName {
+					subStorageConfig.StorageDriver["name"] != storageConstants.GCSStorageDriverName &&
+					subStorageConfig.StorageDriver["name"] != storageConstants.AzureStorageDriverName {
 					msg := "unsupported storage driver"
 					logger.Error().Err(zerr.ErrBadConfig).Str("subpath", route).Interface("storageDriver",
 						subStorageConfig.StorageDriver["name"]).Msg(msg)

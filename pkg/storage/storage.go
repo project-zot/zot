@@ -16,6 +16,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/extensions/events"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	"zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/storage/azure"
 	common "zotregistry.dev/zot/v2/pkg/storage/common"
 	"zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/gcs"
@@ -64,7 +65,8 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 		)
 	} else {
 		storeName := fmt.Sprintf("%v", config.Storage.StorageDriver["name"])
-		if storeName != constants.S3StorageDriverName && storeName != constants.GCSStorageDriverName {
+		if storeName != constants.S3StorageDriverName && storeName != constants.GCSStorageDriverName &&
+			storeName != constants.AzureStorageDriverName {
 			log.Error().Err(zerr.ErrBadConfig).Str("storageDriver", storeName).
 				Msg("unsupported storage driver")
 
@@ -92,6 +94,10 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 		//nolint: typecheck,contextcheck
 		if storeName == constants.S3StorageDriverName {
 			defaultStore = s3.NewImageStore(rootDir, config.Storage.RootDirectory,
+				config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, store, cacheDriver,
+				config.HTTP.Compat, recorder)
+		} else if storeName == constants.AzureStorageDriverName {
+			defaultStore = azure.NewImageStore(rootDir, config.Storage.RootDirectory,
 				config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, store, cacheDriver,
 				config.HTTP.Compat, recorder)
 		} else {
@@ -183,7 +189,8 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 			}
 		} else {
 			storeName := fmt.Sprintf("%v", storageConfig.StorageDriver["name"])
-			if storeName != constants.S3StorageDriverName && storeName != constants.GCSStorageDriverName {
+			if storeName != constants.S3StorageDriverName && storeName != constants.GCSStorageDriverName &&
+				storeName != constants.AzureStorageDriverName {
 				log.Error().Err(zerr.ErrBadConfig).Str("storageDriver", storeName).
 					Msg("unsupported storage driver")
 
@@ -216,6 +223,10 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 				subImageStore[route] = s3.NewImageStore(rootDir, storageConfig.RootDirectory,
 					storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, store, cacheDriver, cfg.HTTP.Compat, recorder,
 				)
+			} else if storeName == constants.AzureStorageDriverName {
+				subImageStore[route] = azure.NewImageStore(rootDir, storageConfig.RootDirectory,
+					storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, store, cacheDriver, cfg.HTTP.Compat, recorder,
+				)
 			} else {
 				subImageStore[route] = gcs.NewImageStore(rootDir, storageConfig.RootDirectory,
 					storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, store, cacheDriver, cfg.HTTP.Compat, recorder,
@@ -232,7 +243,9 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 // Must be called before factory.Create so the upstream GCS driver receives the correct prefix.
 // Non-GCS drivers are not affected.
 func NormalizeGCSRootDirectory(storeName string, driverParams map[string]any) {
-	if storeName != constants.GCSStorageDriverName {
+	// GCS and Azure are both modern drivers (no legacy double-prefixed data) that prefix
+	// rootdirectory internally, so give them a sane default and let RootDir() return "/".
+	if storeName != constants.GCSStorageDriverName && storeName != constants.AzureStorageDriverName {
 		return
 	}
 
