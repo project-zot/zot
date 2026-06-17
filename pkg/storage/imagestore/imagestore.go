@@ -225,20 +225,18 @@ func (is *ImageStore) initRepo(ctx context.Context, name string) error {
 // For local filesystem it uses hard links (no extra disk space).
 // For S3/GCS it copies the blob content to the global blobstore.
 func (is *ImageStore) upgradeToGlobalBlobstore() error {
-	globalBlobs, err := is.GetAllBlobs(storageConstants.GlobalBlobsRepo)
-	if err != nil {
-		return err
-	}
-
-	if len(globalBlobs) > 0 {
-		// already has blobs, no upgrade needed
+	// Check for the migration-complete marker first; this is more reliable than counting
+	// blobs (which would be zero on a fresh install that never pushed anything).
+	markerPath := path.Join(is.rootDir, storageConstants.BlobstoreMigratedMarker)
+	if _, err := is.storeDriver.Stat(markerPath); err == nil {
+		// marker exists — migration already done on a previous startup
 		return nil
 	}
 
 	// discover repos using Walk (supports nested repos like org/repo)
 	repos := []string{}
 
-	err = is.storeDriver.Walk(is.rootDir, func(fileInfo driver.FileInfo) error {
+	err := is.storeDriver.Walk(is.rootDir, func(fileInfo driver.FileInfo) error {
 		if !fileInfo.IsDir() {
 			return nil
 		}
@@ -277,7 +275,21 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 
 	is.log.Info().Msg("upgrading storage: populating global blobstore from existing repos")
 
-	seenDigests := map[string]bool{}
+	type blobCandidate struct {
+		repoName string
+		blobPath string
+		size     int64
+	}
+
+	type repoBlobRef struct {
+		digest   godigest.Digest
+		repoName string
+		blobPath string
+	}
+
+	candidates := map[string]blobCandidate{}
+	repoBlobRefs := []repoBlobRef{}
+	promotedDigests := map[string]bool{}
 
 	for _, repoName := range repos {
 		repoBlobs, err := is.GetAllBlobs(repoName)
@@ -289,75 +301,114 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 
 		for _, digest := range repoBlobs {
 			repoBlobPath := is.BlobPath(repoName, digest)
-			globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+			repoBlobRefs = append(repoBlobRefs, repoBlobRef{digest: digest, repoName: repoName, blobPath: repoBlobPath})
 
-			if !seenDigests[digest.String()] {
-				seenDigests[digest.String()] = true
-
-				// ensure algorithm dir exists in _blobstore
-				algoDir := path.Join(is.rootDir, storageConstants.GlobalBlobsRepo,
-					ispec.ImageBlobsDir, digest.Algorithm().String())
-				if err := is.storeDriver.EnsureDir(algoDir); err != nil {
-					is.log.Error().Err(err).Str("dir", algoDir).Msg("failed to create algorithm dir")
-
-					return err
-				}
-
-				if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
-					// local filesystem: use hard link (no extra disk space)
-					if err := is.storeDriver.Link(repoBlobPath, globalBlobPath); err != nil {
-						is.log.Error().Err(err).Str("src", repoBlobPath).Str("dst", globalBlobPath).
-							Msg("failed to link blob to global blobstore")
-
-						return err
-					}
-				} else {
-					// S3/GCS: copy the actual blob content
-					content, err := is.storeDriver.ReadFile(repoBlobPath)
-					if err != nil {
-						is.log.Error().Err(err).Str("src", repoBlobPath).
-							Msg("failed to read blob during upgrade")
-
-						return err
-					}
-
-					if _, err := is.storeDriver.WriteFile(globalBlobPath, content); err != nil {
-						is.log.Error().Err(err).Str("dst", globalBlobPath).
-							Msg("failed to write blob to global blobstore")
-
-						return err
-					}
-				}
-
-				// register global blobstore path as the master/original cache entry first,
-				// so that subsequent PutBlob calls for per-repo paths go into DuplicatesBucket
-				if is.cache != nil {
-					if err := is.cache.PutBlob(digest, globalBlobPath); err != nil {
-						is.log.Error().Err(err).Str("digest", digest.String()).
-							Msg("failed to update cache with global blobstore path during upgrade")
-
-						return err
-					}
-				}
-
-				is.log.Info().Str("digest", digest.String()).Str("repo", repoName).
-					Msg("upgraded blob to global blobstore")
+			candidate, found := candidates[digest.String()]
+			if !found {
+				candidate = blobCandidate{repoName: repoName, blobPath: repoBlobPath}
 			}
 
-			// always register each repo's blob path in the cache as a duplicate,
-			// so GetAllDedupeReposCandidates returns all repos that own this blob
-			if is.cache != nil {
-				if err := is.cache.PutBlob(digest, repoBlobPath); err != nil {
-					is.log.Error().Err(err).Str("digest", digest.String()).Str("repo", repoName).
-						Msg("failed to register repo blob path in cache during upgrade")
-
-					return err
+			if binfo, err := is.storeDriver.Stat(repoBlobPath); err == nil {
+				if binfo.Size() > 0 && candidate.size == 0 {
+					candidate.repoName = repoName
+					candidate.blobPath = repoBlobPath
+					candidate.size = binfo.Size()
 				}
+			}
+
+			candidates[digest.String()] = candidate
+		}
+	}
+
+	for digestStr, candidate := range candidates {
+		digest := godigest.Digest(digestStr)
+		globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+
+		if candidate.size == 0 {
+			is.log.Warn().Str("digest", digestStr).Str("repo", candidate.repoName).
+				Msg("skipping upgrade for digest: only empty marker blobs found")
+
+			continue
+		}
+
+		// ensure algorithm dir exists in _blobstore
+		algoDir := path.Join(is.rootDir, storageConstants.GlobalBlobsRepo,
+			ispec.ImageBlobsDir, digest.Algorithm().String())
+		if err := is.storeDriver.EnsureDir(algoDir); err != nil {
+			is.log.Error().Err(err).Str("dir", algoDir).Msg("failed to create algorithm dir")
+
+			return err
+		}
+
+		if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
+			// local filesystem: use hard link (no extra disk space)
+			if err := is.storeDriver.Link(candidate.blobPath, globalBlobPath); err != nil {
+				is.log.Error().Err(err).Str("src", candidate.blobPath).Str("dst", globalBlobPath).
+					Msg("failed to link blob to global blobstore")
+
+				return err
+			}
+		} else {
+			// S3/GCS: copy the actual blob content
+			content, err := is.storeDriver.ReadFile(candidate.blobPath)
+			if err != nil {
+				is.log.Error().Err(err).Str("src", candidate.blobPath).
+					Msg("failed to read blob during upgrade")
+
+				return err
+			}
+
+			if _, err := is.storeDriver.WriteFile(globalBlobPath, content); err != nil {
+				is.log.Error().Err(err).Str("dst", globalBlobPath).
+					Msg("failed to write blob to global blobstore")
+
+				return err
+			}
+		}
+
+		// register global blobstore path as the master/original cache entry first,
+		// so that subsequent PutBlob calls for per-repo paths go into DuplicatesBucket
+		if is.cache != nil {
+			if err := is.cache.PutBlob(digest, globalBlobPath); err != nil {
+				is.log.Error().Err(err).Str("digest", digest.String()).
+					Msg("failed to update cache with global blobstore path during upgrade")
+
+				return err
+			}
+		}
+
+		promotedDigests[digest.String()] = true
+
+		is.log.Info().Str("digest", digest.String()).Str("repo", candidate.repoName).
+			Msg("upgraded blob to global blobstore")
+	}
+
+	for _, repoBlobRef := range repoBlobRefs {
+		if !promotedDigests[repoBlobRef.digest.String()] {
+			continue
+		}
+
+		// always register each repo's blob path in the cache as a duplicate,
+		// so GetAllDedupeReposCandidates returns all repos that own this blob
+		if is.cache != nil {
+			if err := is.cache.PutBlob(repoBlobRef.digest, repoBlobRef.blobPath); err != nil {
+				is.log.Error().Err(err).Str("digest", repoBlobRef.digest.String()).Str("repo", repoBlobRef.repoName).
+					Msg("failed to register repo blob path in cache during upgrade")
+
+				return err
 			}
 		}
 	}
 
-	is.log.Info().Int("blobCount", len(seenDigests)).Msg("global blobstore upgrade completed")
+	is.log.Info().Int("blobCount", len(promotedDigests)).Msg("global blobstore upgrade completed")
+
+	// Write the migration-complete marker so this scan is skipped on future startups.
+	markerDir := path.Join(is.rootDir, storageConstants.GlobalBlobsRepo)
+	if err := is.storeDriver.EnsureDir(markerDir); err != nil {
+		is.log.Warn().Err(err).Msg("failed to ensure _blobstore dir for migration marker")
+	} else if _, err := is.storeDriver.WriteFile(markerPath, []byte("1")); err != nil {
+		is.log.Warn().Err(err).Msg("failed to write blobstore migration marker")
+	}
 
 	return nil
 }
