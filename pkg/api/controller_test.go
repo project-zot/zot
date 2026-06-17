@@ -641,8 +641,8 @@ func TestObjectStorageController(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
-		if resp.StatusCode() != http.StatusOK {
-			panic(fmt.Sprintf("failed to create bucket: %d %s", resp.StatusCode(), resp.String()))
+		if sc := resp.StatusCode(); sc != http.StatusOK && sc != http.StatusConflict {
+			panic(fmt.Sprintf("failed to create bucket: %d %s", sc, resp.String()))
 		}
 
 		storageDriverParams := map[string]any{
@@ -735,8 +735,8 @@ func TestObjectStorageController(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
-		if resp.StatusCode() != http.StatusOK {
-			panic(fmt.Sprintf("failed to create bucket: %d %s", resp.StatusCode(), resp.String()))
+		if sc := resp.StatusCode(); sc != http.StatusOK && sc != http.StatusConflict {
+			panic(fmt.Sprintf("failed to create bucket: %d %s", sc, resp.String()))
 		}
 
 		ctlr := makeController(conf, "/")
@@ -766,8 +766,8 @@ func TestObjectStorageControllerSubPaths(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
-		if resp.StatusCode() != http.StatusOK {
-			panic(fmt.Sprintf("failed to create bucket: %d %s", resp.StatusCode(), resp.String()))
+		if sc := resp.StatusCode(); sc != http.StatusOK && sc != http.StatusConflict {
+			panic(fmt.Sprintf("failed to create bucket: %d %s", sc, resp.String()))
 		}
 
 		storageDriverParams := map[string]any{
