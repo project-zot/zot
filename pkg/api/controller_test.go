@@ -13103,7 +13103,7 @@ func TestGetGithubUserInfo(t *testing.T) {
 				},
 				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
-					_, _ = w.Write([]byte(`[{"slug": "infra", "organization": {"login": "myorg"}}]`))
+					_, _ = w.Write([]byte(`[{"slug": "infra", "organization": {"login": "MyOrg"}}]`))
 				}),
 			),
 		)
@@ -13114,7 +13114,7 @@ func TestGetGithubUserInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(email, ShouldEqual, "test@test")
 		So(groups, ShouldNotContain, "MyOrg")
-		So(groups, ShouldContain, "myorg/infra")
+		So(groups, ShouldContain, "MyOrg/infra")
 	})
 
 	Convey("github ListOrgs internal server error", t, func() {
