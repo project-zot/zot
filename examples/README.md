@@ -445,7 +445,7 @@ If network policy doesn't allow inbound connections, this callback wont work!
 #### GitHub Teams in Access Control
 
 When authenticating with the GitHub provider, if you include the `read:org` scope, zot will fetch both the user's Organization memberships and their Team memberships.
-Team memberships are formatted as `<organization>/<team-slug>` and added to the user's groups. You can use these in your access control policies. For example, if a user belongs to the `Infra` team in the `MyOrg` organization, the group name will be `myorg/infra`.
+Team memberships are formatted as `<organization>/<team-slug>` and added to the user's groups. You can use these in your access control policies. For example, if a user belongs to the `Infra` team in the `myorg` organization, the group name will be `myorg/infra`.
 
 ```json
 {
