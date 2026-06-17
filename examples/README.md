@@ -1085,6 +1085,34 @@ For an s3 zot configuration with multiple storage drivers see: [s3-config](confi
 
 zot also supports different storage drivers for each subpath.
 
+### Azure Blob Storage
+
+zot supports an Azure Blob Storage backend. For a full example see [azure config](config-azure.json).
+
+The driver requires `accountname` and `container`, and selects credentials via
+`storageDriver.credentials.type`:
+
+- `shared_key` — storage account key (set `accountkey`)
+- `client_secret` — service principal (set `tenantid`, `clientid`, `secret`)
+- `default_credentials` — `DefaultAzureCredential` (managed identity / Azure Workload
+  Identity); no secrets stored in config
+
+Example (Workload Identity, secret-less):
+
+```
+    "storage": {
+        "rootDirectory": "/tmp/zot",  # local path used to store dedupe cache database
+        "dedupe": false,
+        "storageDriver": {
+            "name": "azure",
+            "rootdirectory": "/zot",  # prefix applied to all blob names
+            "accountname": "myazurestorageaccount",
+            "container": "zot-storage",
+            "credentials": { "type": "default_credentials" }
+        }
+    }
+```
+
 ### S3 permissions scopes
 
 The following AWS policy is required by zot for push and pull. Make sure to replace S3_BUCKET_NAME with the name of your bucket.
