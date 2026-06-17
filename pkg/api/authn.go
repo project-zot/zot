@@ -1061,7 +1061,7 @@ func GetGithubUserInfo(ctx context.Context, client *github.Client, log log.Logge
 
 	userEmails, _, err := client.Users.ListEmails(ctx, nil)
 	if err != nil {
-		log.Error().Msg("failed to set user record for empty email value")
+		log.Error().Err(err).Msg("failed to fetch github user emails")
 
 		return "", []string{}, err
 	}
@@ -1076,17 +1076,88 @@ func GetGithubUserInfo(ctx context.Context, client *github.Client, log log.Logge
 		}
 	}
 
-	orgs, _, err := client.Organizations.List(ctx, "", nil)
-	if err != nil {
-		log.Error().Msg("failed to set user record for empty email value")
-
-		return "", []string{}, err
-	}
+	log.Debug().Int("emailCount", len(userEmails)).Bool("hasPrimaryEmail", primaryEmail != "").
+		Msg("fetched github user emails")
 
 	groups := []string{}
-	for _, org := range orgs {
-		groups = append(groups, *org.Login)
+
+	orgsOpt := &github.ListOptions{PerPage: 100}
+	for {
+		orgs, resp, err := client.Organizations.List(ctx, "", orgsOpt)
+		if err != nil {
+			var ghErr *github.ErrorResponse
+
+			if errors.As(err, &ghErr) && ghErr.Response != nil && ghErr.Response.StatusCode == http.StatusForbidden {
+				log.Warn().Err(err).Msg("skipping github orgs: read:org scope not granted or access denied")
+
+				break
+			}
+
+			log.Error().Err(err).Msg("failed to fetch github organizations")
+
+			return "", []string{}, err
+		}
+
+		for _, org := range orgs {
+			if org.Login != nil {
+				groups = append(groups, *org.Login)
+			}
+		}
+
+		log.Debug().Int("orgsInPage", len(orgs)).Int("nextPage", func() int {
+			if resp == nil {
+				return 0
+			}
+
+			return resp.NextPage
+		}()).Msg("processed github organization page")
+
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+
+		orgsOpt.Page = resp.NextPage
 	}
+
+	teamsOpt := &github.ListOptions{PerPage: 100}
+	for {
+		teams, resp, err := client.Teams.ListUserTeams(ctx, teamsOpt)
+		if err != nil {
+			var ghErr *github.ErrorResponse
+
+			if errors.As(err, &ghErr) && ghErr.Response != nil && ghErr.Response.StatusCode == http.StatusForbidden {
+				log.Warn().Err(err).Msg("skipping github teams: read:org scope not granted or access denied")
+
+				break
+			}
+
+			log.Error().Err(err).Msg("failed to fetch user teams")
+
+			return "", []string{}, err
+		}
+
+		for _, team := range teams {
+			if team.Organization != nil && team.Organization.Login != nil && team.Slug != nil {
+				groups = append(groups, fmt.Sprintf("%s/%s", *team.Organization.Login, *team.Slug))
+			}
+		}
+
+		log.Debug().Int("teamsInPage", len(teams)).Int("nextPage", func() int {
+			if resp == nil {
+				return 0
+			}
+
+			return resp.NextPage
+		}()).Msg("processed github team page")
+
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+
+		teamsOpt.Page = resp.NextPage
+	}
+
+	log.Debug().Int("totalGroups", len(groups)).Msg("computed github groups for user")
 
 	return primaryEmail, groups, nil
 }

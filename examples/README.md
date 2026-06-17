@@ -415,6 +415,7 @@ zot can be configured to use the above providers with:
   }
 ```
 
+
 To login with either provider use http://127.0.0.1:8080/zot/auth/login?provider=\<provider\>&callback_ui=/home
 for example to login with github use http://127.0.0.1:8080/zot/auth/login?provider=github&callback_ui=/home
 
@@ -440,6 +441,29 @@ The callback url which should be used when making oauth2 provider setup is http:
 for example github callback url would be http://127.0.0.1:8080/zot/auth/callback/github
 
 If network policy doesn't allow inbound connections, this callback wont work!
+
+#### GitHub Teams in Access Control
+
+When authenticating with the GitHub provider, if you include the `read:org` scope, zot will fetch both the user's Organization memberships and their Team memberships.
+Team memberships are formatted as `<organization>/<team-slug>` and added to the user's groups. You can use these in your access control policies. For example, if a user belongs to the `Infra` team in the `myorg` organization, the group name will be `myorg/infra`.
+Group strings preserve GitHub-provided `login`/`slug` casing (no lowercasing is applied), so policy group values must match that exact casing.
+
+```json
+{
+  "accessControl": {
+    "repositories": {
+      "myorg/infrastructure/**": {
+        "policies": [
+          {
+            "groups": ["myorg/infra"],
+            "actions": ["read", "create", "update", "delete"]
+          }
+        ]
+      }
+    }
+  }
+}
+```
 
 dex is an identity service that uses OpenID Connect to drive authentication for other apps https://github.com/dexidp/dex
 To setup dex service see https://dexidp.io/docs/getting-started/
