@@ -73,7 +73,7 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 			return storeController, fmt.Errorf("storageDriver '%s' unsupported storage driver: %w", storeName, zerr.ErrBadConfig)
 		}
 
-		NormalizeGCSRootDirectory(storeName, config.Storage.StorageDriver)
+		NormalizeRootDirectory(storeName, config.Storage.StorageDriver)
 
 		// Init a Storager from connection string.
 		store, err := factory.Create(context.Background(), storeName, config.Storage.StorageDriver)
@@ -92,15 +92,16 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 
 		// false positive lint - linter does not implement Lint method
 		//nolint: typecheck,contextcheck
-		if storeName == constants.S3StorageDriverName {
+		switch storeName {
+		case constants.S3StorageDriverName:
 			defaultStore = s3.NewImageStore(rootDir, config.Storage.RootDirectory,
 				config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, store, cacheDriver,
 				config.HTTP.Compat, recorder)
-		} else if storeName == constants.AzureStorageDriverName {
+		case constants.AzureStorageDriverName:
 			defaultStore = azure.NewImageStore(rootDir, config.Storage.RootDirectory,
 				config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, store, cacheDriver,
 				config.HTTP.Compat, recorder)
-		} else {
+		default:
 			defaultStore = gcs.NewImageStore(rootDir, config.Storage.RootDirectory,
 				config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, store, cacheDriver,
 				config.HTTP.Compat, recorder)
@@ -197,7 +198,7 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 				return nil, fmt.Errorf("storageDriver '%s' unsupported storage driver: %w", storeName, zerr.ErrBadConfig)
 			}
 
-			NormalizeGCSRootDirectory(storeName, storageConfig.StorageDriver)
+			NormalizeRootDirectory(storeName, storageConfig.StorageDriver)
 
 			// Init a Storager from connection string.
 			store, err := factory.Create(context.Background(), storeName, storageConfig.StorageDriver)
@@ -219,15 +220,16 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 
 			// false positive lint - linter does not implement Lint method
 			//nolint: typecheck
-			if storeName == constants.S3StorageDriverName {
+			switch storeName {
+			case constants.S3StorageDriverName:
 				subImageStore[route] = s3.NewImageStore(rootDir, storageConfig.RootDirectory,
 					storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, store, cacheDriver, cfg.HTTP.Compat, recorder,
 				)
-			} else if storeName == constants.AzureStorageDriverName {
+			case constants.AzureStorageDriverName:
 				subImageStore[route] = azure.NewImageStore(rootDir, storageConfig.RootDirectory,
 					storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, store, cacheDriver, cfg.HTTP.Compat, recorder,
 				)
-			} else {
+			default:
 				subImageStore[route] = gcs.NewImageStore(rootDir, storageConfig.RootDirectory,
 					storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, store, cacheDriver, cfg.HTTP.Compat, recorder,
 				)
@@ -238,11 +240,11 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 	return subImageStore, nil
 }
 
-// NormalizeGCSRootDirectory ensures the GCS storage driver has a sensible default for rootdirectory.
-// Defaults to "zot" if unset or empty; overrides "/" with "zot" to prevent upstream gcs driver issue.
-// Must be called before factory.Create so the upstream GCS driver receives the correct prefix.
-// Non-GCS drivers are not affected.
-func NormalizeGCSRootDirectory(storeName string, driverParams map[string]any) {
+// NormalizeRootDirectory ensures the GCS and Azure storage drivers have a sensible default
+// for rootdirectory. Defaults to "/zot" if unset or empty; overrides "/" with "/zot" to prevent
+// the upstream driver double-prefixing. Must be called before factory.Create so the upstream
+// driver receives the correct prefix. Other drivers (e.g. S3) are not affected.
+func NormalizeRootDirectory(storeName string, driverParams map[string]any) {
 	// GCS and Azure are both modern drivers (no legacy double-prefixed data) that prefix
 	// rootdirectory internally, so give them a sane default and let RootDir() return "/".
 	if storeName != constants.GCSStorageDriverName && storeName != constants.AzureStorageDriverName {

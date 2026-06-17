@@ -10,8 +10,8 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
-	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/azure"
+	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.dev/zot/v2/pkg/storage/azure"
@@ -97,8 +97,9 @@ func TestAzureDriverIntegration(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Source is gone: must surface as PathNotFoundError (our error mapping).
-			_, err = driver.ReadFile(src)
 			var pathErr storagedriver.PathNotFoundError
+
+			_, err = driver.ReadFile(src)
 			So(errors.As(err, &pathErr), ShouldBeTrue)
 
 			err = driver.Delete(dst)

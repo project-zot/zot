@@ -1903,35 +1903,59 @@ func TestRootDir(t *testing.T) {
 	})
 }
 
-func TestNormalizeGCSRootDirectory(t *testing.T) {
+func TestNormalizeRootDirectory(t *testing.T) {
 	Convey("GCS without rootdirectory defaults to zot", t, func() {
 		params := map[string]any{}
-		storage.NormalizeGCSRootDirectory(storageConstants.GCSStorageDriverName, params)
+		storage.NormalizeRootDirectory(storageConstants.GCSStorageDriverName, params)
 		So(params["rootdirectory"], ShouldEqual, "/zot")
 	})
 
 	Convey("GCS with rootdirectory / is overwritten to zot", t, func() {
 		params := map[string]any{"rootdirectory": "/"}
-		storage.NormalizeGCSRootDirectory(storageConstants.GCSStorageDriverName, params)
+		storage.NormalizeRootDirectory(storageConstants.GCSStorageDriverName, params)
 		So(params["rootdirectory"], ShouldEqual, "/zot")
 	})
 
 	Convey("GCS with empty rootdirectory defaults to zot", t, func() {
 		params := map[string]any{"rootdirectory": ""}
-		storage.NormalizeGCSRootDirectory(storageConstants.GCSStorageDriverName, params)
+		storage.NormalizeRootDirectory(storageConstants.GCSStorageDriverName, params)
 		So(params["rootdirectory"], ShouldEqual, "/zot")
 	})
 
 	Convey("GCS with custom rootdirectory is preserved", t, func() {
 		params := map[string]any{"rootdirectory": "my-prefix"}
-		storage.NormalizeGCSRootDirectory(storageConstants.GCSStorageDriverName, params)
+		storage.NormalizeRootDirectory(storageConstants.GCSStorageDriverName, params)
 		So(params["rootdirectory"], ShouldEqual, "my-prefix")
 	})
 
 	Convey("S3 params are not affected", t, func() {
 		params := map[string]any{"rootdirectory": "/"}
-		storage.NormalizeGCSRootDirectory(storageConstants.S3StorageDriverName, params)
+		storage.NormalizeRootDirectory(storageConstants.S3StorageDriverName, params)
 		So(params["rootdirectory"], ShouldEqual, "/")
+	})
+
+	Convey("Azure without rootdirectory defaults to zot", t, func() {
+		params := map[string]any{}
+		storage.NormalizeRootDirectory(storageConstants.AzureStorageDriverName, params)
+		So(params["rootdirectory"], ShouldEqual, "/zot")
+	})
+
+	Convey("Azure with rootdirectory / is overwritten to zot", t, func() {
+		params := map[string]any{"rootdirectory": "/"}
+		storage.NormalizeRootDirectory(storageConstants.AzureStorageDriverName, params)
+		So(params["rootdirectory"], ShouldEqual, "/zot")
+	})
+
+	Convey("Azure with empty rootdirectory defaults to zot", t, func() {
+		params := map[string]any{"rootdirectory": ""}
+		storage.NormalizeRootDirectory(storageConstants.AzureStorageDriverName, params)
+		So(params["rootdirectory"], ShouldEqual, "/zot")
+	})
+
+	Convey("Azure with custom rootdirectory is preserved", t, func() {
+		params := map[string]any{"rootdirectory": "my-prefix"}
+		storage.NormalizeRootDirectory(storageConstants.AzureStorageDriverName, params)
+		So(params["rootdirectory"], ShouldEqual, "my-prefix")
 	})
 }
 
