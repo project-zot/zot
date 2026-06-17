@@ -13186,7 +13186,7 @@ func TestGetGithubUserInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(email, ShouldEqual, "test@test")
 		So(groups, ShouldContain, "MyOrg")
-		So(groups, ShouldNotContain, "myorg/infra")
+		So(groups, ShouldNotContain, "MyOrg/infra")
 	})
 
 	Convey("github ListUserTeams internal server error", t, func() {
