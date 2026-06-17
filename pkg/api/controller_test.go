@@ -13055,7 +13055,7 @@ func TestGetGithubUserInfo(t *testing.T) {
 		So(groups, ShouldContain, "myorg/platform")
 	})
 
-	Convey("github ListOrgs internal server error", t, func() {
+	Convey("github ListEmails internal server error", t, func() {
 		mockedHTTPClient := mock.NewMockedHTTPClient(
 			mock.WithRequestMatchHandler(
 				mock.GetUserEmails,
@@ -13113,11 +13113,11 @@ func TestGetGithubUserInfo(t *testing.T) {
 		email, groups, err := api.GetGithubUserInfo(context.Background(), client, log.NewTestLogger())
 		So(err, ShouldBeNil)
 		So(email, ShouldEqual, "test@test")
-		So(groups, ShouldNotContain, "testOrg")
+		So(groups, ShouldNotContain, "MyOrg")
 		So(groups, ShouldContain, "myorg/infra")
 	})
 
-	Convey("github ListEmails error", t, func() {
+	Convey("github ListOrgs internal server error", t, func() {
 		mockedHTTPClient := mock.NewMockedHTTPClient(
 			mock.WithRequestMatch(
 				mock.GetUserEmails,
