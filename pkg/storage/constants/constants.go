@@ -40,4 +40,9 @@ const (
 	// GlobalBlobsRepo is the internal directory used as the master copy location for deduped blobs.
 	// It uses a leading underscore to ensure it can never collide with a valid OCI repository name.
 	GlobalBlobsRepo = "_blobstore"
+	// BlobstoreMigratedMarker is written inside GlobalBlobsRepo when the one-time upgrade from
+	// per-repo blob layout to the global blobstore has completed. Its presence on subsequent
+	// startups causes the upgrade scan to be skipped entirely, even when the blobstore is empty
+	// (e.g. a fresh install that never had blobs).
+	BlobstoreMigratedMarker = "_blobstore/.migrated"
 )
