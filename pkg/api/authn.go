@@ -1061,7 +1061,7 @@ func GetGithubUserInfo(ctx context.Context, client *github.Client, log log.Logge
 
 	userEmails, _, err := client.Users.ListEmails(ctx, nil)
 	if err != nil {
-		log.Error().Msg("failed to set user record for empty email value")
+		log.Error().Err(err).Msg("failed to fetch github user emails")
 
 		return "", []string{}, err
 	}
