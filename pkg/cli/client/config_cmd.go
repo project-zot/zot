@@ -531,12 +531,17 @@ func getAllConfig(configPath, configName string) (string, error) {
 		return "", err
 	}
 
-	c, err := cfg.Find(configName)
+	profile, err := cfg.Find(configName)
 	if err != nil {
 		return "", err
 	}
 
-	return c.formatListedVars(cfg.DefaultConfigName == configName), nil
+	defaultName, err := cfg.DefaultName()
+	if err != nil {
+		return "", err
+	}
+
+	return profile.formatListedVars(defaultName == configName), nil
 }
 
 const (

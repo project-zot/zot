@@ -266,13 +266,18 @@ func (f *ZliConfigFile) RemoveEntry(configName string) error {
 
 // FormatNames renders name and URL columns for `zli config list`.
 func (f *ZliConfigFile) FormatNames() (string, error) {
+	defaultName, err := f.DefaultName()
+	if err != nil {
+		return "", err
+	}
+
 	var builder strings.Builder
 
 	writer := tabwriter.NewWriter(&builder, 0, 8, 1, '\t', tabwriter.AlignRight) //nolint:mnd
 
 	for _, profile := range f.Configs {
 		name := profile.Name
-		if profile.Name == f.DefaultConfigName {
+		if profile.Name == defaultName {
 			name += " (default)"
 		}
 

@@ -321,6 +321,22 @@ func TestConfigCmdMain(t *testing.T) {
 			So(strings.TrimSpace(outBuff.String()), ShouldEqual, "")
 			So(errBuff.String(), ShouldEqual, "")
 		})
+
+		Convey("rejects stale defaultConfigName", func() {
+			_ = makeConfigFile(t,
+				`{"configs":[{"_name":"configtest","url":"https://test-url.com"}],"defaultConfigName":"missing"}`)
+
+			cmd := client.NewConfigCommand()
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs([]string{"list"})
+			err := cmd.Execute()
+
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrConfigNotFound), ShouldBeTrue)
+			So(buff.String(), ShouldContainSubstring, "defaultConfigName")
+		})
 	})
 
 	Convey("Test config default profile commands", t, func() {
@@ -429,6 +445,22 @@ func TestConfigCmdMain(t *testing.T) {
 			So(outBuff.String(), ShouldContainSubstring, "url = https://test-url.com")
 			So(outBuff.String(), ShouldContainSubstring, "showspinner = false")
 			So(errBuff.String(), ShouldEqual, "")
+		})
+
+		Convey("rejects stale defaultConfigName", func() {
+			_ = makeConfigFile(t,
+				`{"configs":[{"_name":"configtest","url":"https://test-url.com"}],"defaultConfigName":"missing"}`)
+
+			cmd := client.NewConfigCommand()
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs([]string{"show", "configtest"})
+			err := cmd.Execute()
+
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrConfigNotFound), ShouldBeTrue)
+			So(buff.String(), ShouldContainSubstring, "defaultConfigName")
 		})
 
 		Convey("from empty config file", func() {

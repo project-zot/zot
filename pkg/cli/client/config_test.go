@@ -161,6 +161,41 @@ func TestZliConfigFile_DefaultNameMissingProfile(t *testing.T) {
 	assert.Contains(t, err.Error(), "defaultConfigName")
 }
 
+func TestZliConfigFile_FormatNames(t *testing.T) {
+	t.Parallel()
+
+	t.Run("marks_valid_default", func(t *testing.T) {
+		t.Parallel()
+
+		configFile := client.ZliConfigFile{
+			DefaultConfigName: "main",
+			Configs: []client.ZliConfig{
+				{Name: "main", URL: "https://example.com"},
+				{Name: "other", URL: "https://other.example.com"},
+			},
+		}
+
+		out, err := configFile.FormatNames()
+		require.NoError(t, err)
+		assert.Contains(t, out, "main (default)")
+		assert.Contains(t, out, "other")
+		assert.NotContains(t, out, "other (default)")
+	})
+
+	t.Run("stale_default_errors", func(t *testing.T) {
+		t.Parallel()
+
+		configFile := client.ZliConfigFile{
+			DefaultConfigName: "missing",
+			Configs:           []client.ZliConfig{{Name: "main", URL: "https://example.com"}},
+		}
+
+		_, err := configFile.FormatNames()
+		require.ErrorIs(t, err, zerr.ErrConfigNotFound)
+		assert.Contains(t, err.Error(), "defaultConfigName")
+	})
+}
+
 func TestZliConfig_GetVar(t *testing.T) {
 	t.Parallel()
 

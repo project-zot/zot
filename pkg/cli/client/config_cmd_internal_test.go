@@ -405,6 +405,20 @@ func TestConfigCmd_listFreshAndFindErrors(t *testing.T) {
 			name:    "getConfigNames_fresh_returns_empty",
 			wantOut: "",
 		},
+		{
+			name:        "getConfigNames_stale_default_ErrConfigNotFound",
+			writeFile:   true,
+			cfgContents: `{"configs":[{"_name":"main","url":"https://example.com"}],"defaultConfigName":"missing"}`,
+			wantErrIs:   zerr.ErrConfigNotFound,
+		},
+		{
+			name:        "getAllConfig_stale_default_ErrConfigNotFound",
+			writeFile:   true,
+			cfgContents: `{"configs":[{"_name":"main","url":"https://example.com"}],"defaultConfigName":"missing"}`,
+			runGetAll:   true,
+			configName:  "main",
+			wantErrIs:   zerr.ErrConfigNotFound,
+		},
 	}
 
 	for _, tableCase := range tests {
@@ -421,6 +435,9 @@ func TestConfigCmd_listFreshAndFindErrors(t *testing.T) {
 				out, err := getAllConfig(cfgPath, "any")
 				require.NoError(t, err)
 				require.Equal(t, tableCase.wantOut, out)
+			case tableCase.wantErrIs != nil:
+				_, err := getConfigNames(cfgPath)
+				require.ErrorIs(t, err, tableCase.wantErrIs)
 			default:
 				out, err := getConfigNames(cfgPath)
 				require.NoError(t, err)
