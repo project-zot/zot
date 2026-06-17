@@ -4,6 +4,4 @@ runs:
   using: "composite"
   steps:
     - shell: bash
-      run: |
-        docker stop azurite || true
-        docker rm azurite || true
+      run: docker rm -f azurite || true

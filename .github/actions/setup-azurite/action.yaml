@@ -6,7 +6,7 @@ runs:
     - shell: bash
       run: |
         docker run -d --name azurite -p 10000:10000 \
-          mcr.microsoft.com/azure-storage/azurite \
+          mcr.microsoft.com/azure-storage/azurite:3.34.0@sha256:0a47e12e3693483cef5c71f35468b91d751611f172d2f97414e9c69113b106d9 \
           azurite-blob --blobHost 0.0.0.0 --skipApiVersionCheck
         echo "Waiting for azurite..."
         timeout 30s bash -c 'until curl -s -o /dev/null http://localhost:10000/devstoreaccount1; do sleep 1; done'
