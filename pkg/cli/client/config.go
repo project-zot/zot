@@ -374,11 +374,6 @@ func (c *ZliConfig) ResetVar(key string) error {
 	return nil
 }
 
-// FormatListedVars renders lines for `zli config show <name>`.
-func (c *ZliConfig) FormatListedVars() string {
-	return c.formatListedVars(false)
-}
-
 func (c *ZliConfig) formatListedVars(isDefault bool) string {
 	var builder strings.Builder
 
