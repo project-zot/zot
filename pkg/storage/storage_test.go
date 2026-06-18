@@ -1904,19 +1904,19 @@ func TestRootDir(t *testing.T) {
 }
 
 func TestNormalizeRootDirectory(t *testing.T) {
-	Convey("GCS without rootdirectory defaults to zot", t, func() {
+	Convey("GCS without rootdirectory defaults to /zot", t, func() {
 		params := map[string]any{}
 		storage.NormalizeRootDirectory(storageConstants.GCSStorageDriverName, params)
 		So(params["rootdirectory"], ShouldEqual, "/zot")
 	})
 
-	Convey("GCS with rootdirectory / is overwritten to zot", t, func() {
+	Convey("GCS with rootdirectory / is overwritten to /zot", t, func() {
 		params := map[string]any{"rootdirectory": "/"}
 		storage.NormalizeRootDirectory(storageConstants.GCSStorageDriverName, params)
 		So(params["rootdirectory"], ShouldEqual, "/zot")
 	})
 
-	Convey("GCS with empty rootdirectory defaults to zot", t, func() {
+	Convey("GCS with empty rootdirectory defaults to /zot", t, func() {
 		params := map[string]any{"rootdirectory": ""}
 		storage.NormalizeRootDirectory(storageConstants.GCSStorageDriverName, params)
 		So(params["rootdirectory"], ShouldEqual, "/zot")
@@ -1934,19 +1934,19 @@ func TestNormalizeRootDirectory(t *testing.T) {
 		So(params["rootdirectory"], ShouldEqual, "/")
 	})
 
-	Convey("Azure without rootdirectory defaults to zot", t, func() {
+	Convey("Azure without rootdirectory defaults to /zot", t, func() {
 		params := map[string]any{}
 		storage.NormalizeRootDirectory(storageConstants.AzureStorageDriverName, params)
 		So(params["rootdirectory"], ShouldEqual, "/zot")
 	})
 
-	Convey("Azure with rootdirectory / is overwritten to zot", t, func() {
+	Convey("Azure with rootdirectory / is overwritten to /zot", t, func() {
 		params := map[string]any{"rootdirectory": "/"}
 		storage.NormalizeRootDirectory(storageConstants.AzureStorageDriverName, params)
 		So(params["rootdirectory"], ShouldEqual, "/zot")
 	})
 
-	Convey("Azure with empty rootdirectory defaults to zot", t, func() {
+	Convey("Azure with empty rootdirectory defaults to /zot", t, func() {
 		params := map[string]any{"rootdirectory": ""}
 		storage.NormalizeRootDirectory(storageConstants.AzureStorageDriverName, params)
 		So(params["rootdirectory"], ShouldEqual, "/zot")
