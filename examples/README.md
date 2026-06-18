@@ -1102,8 +1102,16 @@ The driver requires `accountname` and `container`, and selects how to authentica
   the [Azure Workload Identity](https://azure.github.io/azure-workload-identity/) webhook —
   zot's pod receives a federated token and needs no stored credentials.
 
-The example uses `default_credentials` (Workload Identity). For a non-federated setup, use
-`shared_key` with `accountkey`, or `client_secret` with a service principal.
+The example uses `default_credentials` (Workload Identity). `DefaultAzureCredential` works
+wherever an ambient Azure identity is available — **not only on Azure**: any Kubernetes
+cluster running the [azure-workload-identity](https://azure.github.io/azure-workload-identity/)
+webhook can federate a managed identity to zot's ServiceAccount (the cluster's OIDC issuer
+trusted by Entra), including **self-managed / non-Azure clusters**, and zot gets a token via
+the WorkloadIdentityCredential — no secrets stored. For a plain standalone process with no
+managed/federated identity, `default_credentials` falls back to the `AZURE_TENANT_ID` /
+`AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` (or `AZURE_CLIENT_CERTIFICATE_PATH`) environment
+variables or an `az login` session; otherwise use `shared_key` (with `accountkey`) or
+`client_secret` (with a service principal).
 
 Example (Workload Identity, secret-less):
 
