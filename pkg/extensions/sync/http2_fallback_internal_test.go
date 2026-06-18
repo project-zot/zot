@@ -67,7 +67,7 @@ func TestIsHTTP2FramingError(t *testing.T) {
 		})
 
 		Convey("http2.GoAwayError returns true", func() {
-			err := &http2.GoAwayError{ErrCode: http2.ErrCodeInternal, DebugData: "shutdown"}
+			err := http2.GoAwayError{ErrCode: http2.ErrCodeInternal, DebugData: "shutdown"}
 			So(isHTTP2FramingError(err), ShouldBeTrue)
 		})
 
@@ -259,7 +259,7 @@ func TestHTTP2FallbackRealTransport(t *testing.T) {
 
 			var streamErr http2.StreamError
 
-			var goAwayErr *http2.GoAwayError
+			var goAwayErr http2.GoAwayError
 
 			So(errors.As(err, &streamErr) || errors.As(err, &goAwayErr), ShouldBeTrue)
 			So(atomic.LoadInt32(&h2Hits), ShouldEqual, 1)

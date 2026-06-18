@@ -97,7 +97,9 @@ func (t *http2FallbackTransport) hostStuckOnFallback(host string) bool {
 	}
 
 	if !t.now().Before(expiresAt) {
-		t.stickyHost.Delete(host)
+		// CompareAndDelete, not Delete: don't clobber a fresh entry a concurrent
+		// markHostStuck may have stored between our Load and here.
+		t.stickyHost.CompareAndDelete(host, expiresAt)
 
 		return false
 	}
@@ -115,7 +117,8 @@ func isHTTP2FramingError(err error) bool {
 		return true
 	}
 
-	var goAwayErr *http2.GoAwayError
+	// value, not pointer: x/net's transport emits GoAwayError as a value.
+	var goAwayErr http2.GoAwayError
 	if errors.As(err, &goAwayErr) {
 		return true
 	}
