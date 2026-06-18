@@ -392,6 +392,19 @@ func TestConfigCmdMain(t *testing.T) {
 			So(errors.Is(err, zerr.ErrConfigNotFound), ShouldBeTrue)
 		})
 
+		Convey("set-default errors when home directory is unavailable", func() {
+			t.Setenv("HOME", "nonExistentDirectory")
+
+			cmd := client.NewConfigCommand()
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs([]string{"set-default", "configtest"})
+			err := cmd.Execute()
+
+			So(err, ShouldNotBeNil)
+		})
+
 		Convey("clears the default profile", func() {
 			configPath := makeConfigFile(t,
 				`{"configs":[{"_name":"configtest","url":"https://test-url.com",`+
@@ -428,6 +441,19 @@ func TestConfigCmdMain(t *testing.T) {
 			actual, err := os.ReadFile(configPath)
 			So(err, ShouldBeNil)
 			So(string(actual), ShouldNotContainSubstring, "defaultConfigName")
+		})
+
+		Convey("clear-default errors when home directory is unavailable", func() {
+			t.Setenv("HOME", "nonExistentDirectory")
+
+			cmd := client.NewConfigCommand()
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs([]string{"clear-default"})
+			err := cmd.Execute()
+
+			So(err, ShouldNotBeNil)
 		})
 	})
 

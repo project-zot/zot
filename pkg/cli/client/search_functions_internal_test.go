@@ -966,6 +966,36 @@ func TestUtils(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(isSpinner, ShouldBeFalse)
 		So(verifyTLS, ShouldBeFalse)
+
+		// no default profile and no flags returns defaults without error
+		_ = makeConfigFile(t, "")
+		cmd = &cobra.Command{}
+		cmd.Flags().String(ConfigFlag, "", "")
+		cmd.Flags().String(URLFlag, "", "")
+		isSpinner, verifyTLS, err = GetCliConfigOptions(cmd)
+		So(err, ShouldBeNil)
+		So(isSpinner, ShouldBeFalse)
+		So(verifyTLS, ShouldBeFalse)
+
+		// stale default profile returns error
+		_ = makeConfigFile(t,
+			`{"configs":[{"_name":"imagetest","url":"https://test-url.com"}],"defaultConfigName":"missing"}`)
+		cmd = &cobra.Command{}
+		cmd.Flags().String(ConfigFlag, "", "")
+		cmd.Flags().String(URLFlag, "", "")
+		isSpinner, verifyTLS, err = GetCliConfigOptions(cmd)
+		So(err, ShouldNotBeNil)
+		So(isSpinner, ShouldBeFalse)
+		So(verifyTLS, ShouldBeFalse)
+
+		// unreadable config path when --config is set
+		t.Setenv("HOME", "nonExistentDirectory")
+		cmd = &cobra.Command{}
+		cmd.Flags().String(ConfigFlag, "imagetest", "")
+		isSpinner, verifyTLS, err = GetCliConfigOptions(cmd)
+		So(err, ShouldNotBeNil)
+		So(isSpinner, ShouldBeFalse)
+		So(verifyTLS, ShouldBeFalse)
 	})
 
 	Convey("GetServerURLFromFlags", t, func() {
@@ -1033,6 +1063,28 @@ func TestUtils(t *testing.T) {
 		So(url, ShouldResemble, "")
 		So(err, ShouldNotBeNil)
 		So(err.Error(), ShouldContainSubstring, "defaultConfigName")
+
+		// invalid URL in default profile
+		_ = makeConfigFile(t,
+			`{"configs":[{"_name":"main","url":"not-a-url"}],"defaultConfigName":"main"}`)
+		cmd = &cobra.Command{}
+		cmd.Flags().String(URLFlag, "", "")
+		cmd.Flags().String(ConfigFlag, "", "")
+		url, err = GetServerURLFromFlags(cmd)
+		So(url, ShouldResemble, "")
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("ReadServerURLFromConfig", t, func() {
+		_ = makeConfigFile(t, `{"configs":[{"_name":"main","url":"https://default.example.com"}]}`)
+		url, err := ReadServerURLFromConfig("main")
+		So(url, ShouldResemble, "https://default.example.com")
+		So(err, ShouldBeNil)
+
+		t.Setenv("HOME", "nonExistentDirectory")
+		url, err = ReadServerURLFromConfig("main")
+		So(url, ShouldResemble, "")
+		So(err, ShouldNotBeNil)
 	})
 
 	Convey("CheckExtEndPointQuery", t, func() {
