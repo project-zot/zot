@@ -1089,13 +1089,21 @@ zot also supports different storage drivers for each subpath.
 
 zot supports an Azure Blob Storage backend. For a full example see [azure config](config-azure.json).
 
-The driver requires `accountname` and `container`, and selects credentials via
+The driver requires `accountname` and `container`, and selects how to authenticate via
 `storageDriver.credentials.type`:
 
-- `shared_key` — storage account key (set `accountkey`)
-- `client_secret` — service principal (set `tenantid`, `clientid`, `secret`)
-- `default_credentials` — `DefaultAzureCredential` (managed identity / Azure Workload
-  Identity); no secrets stored in config
+- `shared_key` — authenticate with a storage account key; set `accountkey`.
+- `client_secret` — authenticate as an Entra (Azure AD) service principal; set `tenantid`,
+  `clientid`, and `secret`.
+- `default_credentials` — use the Azure SDK's `DefaultAzureCredential` chain, so **no secret
+  is stored in the zot config**. It resolves a credential in order: Azure Workload Identity
+  (federated token), Managed Identity, the `AZURE_*` environment variables, then Azure CLI
+  login. This is the recommended option when zot runs on AKS or a self-managed cluster with
+  the [Azure Workload Identity](https://azure.github.io/azure-workload-identity/) webhook —
+  zot's pod receives a federated token and needs no stored credentials.
+
+The example uses `default_credentials` (Workload Identity). For a non-federated setup, use
+`shared_key` with `accountkey`, or `client_secret` with a service principal.
 
 Example (Workload Identity, secret-less):
 
