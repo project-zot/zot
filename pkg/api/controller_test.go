@@ -610,8 +610,6 @@ func TestObjectStorageController(t *testing.T) {
 	tskip.SkipS3(t)
 	tskip.SkipDynamo(t)
 
-	bucket := "zot-storage-test"
-
 	Convey("Negative make a new object storage controller", t, func() {
 		port := test.GetFreePort()
 		conf := config.New()
@@ -631,6 +629,7 @@ func TestObjectStorageController(t *testing.T) {
 	})
 
 	Convey("Make a new object storage controller", t, func() {
+		bucket := fmt.Sprintf("zot-storage-test-%d", time.Now().UnixNano())
 		conf := config.New()
 		conf.HTTP.Port = "0"
 
@@ -670,6 +669,7 @@ func TestObjectStorageController(t *testing.T) {
 	})
 
 	Convey("Make a new object storage controller with openid", t, func() {
+		bucket := fmt.Sprintf("zot-storage-test-%d", time.Now().UnixNano())
 		conf := config.New()
 		conf.HTTP.Port = "0"
 
@@ -753,9 +753,9 @@ func TestObjectStorageController(t *testing.T) {
 func TestObjectStorageControllerSubPaths(t *testing.T) {
 	tskip.SkipS3(t)
 
-	bucket := "zot-storage-test"
-
 	Convey("Make a new object storage controller", t, func() {
+		bucket := fmt.Sprintf("zot-storage-test-%d", time.Now().UnixNano())
+
 		port := test.GetFreePort()
 		conf := config.New()
 		conf.HTTP.Port = port
