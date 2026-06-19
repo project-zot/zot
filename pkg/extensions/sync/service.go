@@ -104,6 +104,24 @@ func New(
 				log.Error().Err(err).Msg("failed to retrieve credentials using ECR credentials helper.")
 			}
 			service.credentials = creds
+		case "oauth2":
+			// Logic to fetch credentials by exchanging a JWT assertion for an access token.
+			log.Info().Msg("fetch the credentials using OAuth2 JWT assertion exchange.")
+
+			credentialHelper, err := NewOAuth2CredentialHelper(log, service.config.CredentialHelperConfig)
+			if err != nil {
+				log.Error().Err(err).Msg("failed to create OAuth2 credentials helper.")
+
+				break
+			}
+
+			service.credentialHelper = credentialHelper
+
+			creds, err := service.credentialHelper.GetCredentials(service.config.URLs)
+			if err != nil {
+				log.Error().Err(err).Msg("failed to retrieve credentials using OAuth2 credentials helper.")
+			}
+			service.credentials = creds
 		default:
 			log.Warn().Msgf("unsupported CredentialHelper: %s", service.config.CredentialHelper)
 		}

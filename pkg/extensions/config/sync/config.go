@@ -23,20 +23,34 @@ type Config struct {
 }
 
 type RegistryConfig struct {
-	URLs                  []string
-	PollInterval          time.Duration
-	Content               []Content
-	TLSVerify             *bool
-	OnDemand              bool
-	CertDir               string
-	MaxRetries            *int
-	RetryDelay            *time.Duration
-	OnlySigned            *bool
-	SyncLegacyCosignTags  *bool // when unset, defaults to true
-	CredentialHelper      string
-	PreserveDigest        bool          // sync without converting
-	SyncTimeout           time.Duration // overall HTTP client timeout for all sync operations
-	ResponseHeaderTimeout time.Duration `yaml:"-"` // response header timeout; set in root.go
+	URLs                   []string
+	PollInterval           time.Duration
+	Content                []Content
+	TLSVerify              *bool
+	OnDemand               bool
+	CertDir                string
+	MaxRetries             *int
+	RetryDelay             *time.Duration
+	OnlySigned             *bool
+	SyncLegacyCosignTags   *bool // when unset, defaults to true
+	CredentialHelper       string
+	CredentialHelperConfig *CredentialHelperConfig
+	PreserveDigest         bool          // sync without converting
+	SyncTimeout            time.Duration // overall HTTP client timeout for all sync operations
+	ResponseHeaderTimeout  time.Duration `yaml:"-"` // response header timeout; set in root.go
+}
+
+// CredentialHelperConfig holds the options used by the "oauth2" credential helper,
+// which exchanges a JWT assertion for a short-lived registry access token.
+type CredentialHelperConfig struct {
+	TokenURL         string   // OAuth2 token endpoint
+	AssertionFile    string   // file holding the JWT assertion, re-read on every refresh
+	GrantType        string   // "client_credentials" (default) or the jwt-bearer grant URN
+	ClientID         string   // optional OAuth2 client identifier
+	ClientSecret     string   // optional OAuth2 client secret, sent in the request body
+	ClientSecretFile string   // file holding the client secret, takes precedence over ClientSecret
+	Scopes           []string // optional OAuth2 scopes
+	Username         string   // registry username paired with the token, defaults to "<token>"
 }
 
 // ShouldSyncLegacyCosignTags returns whether to sync legacy cosign tags (e.g. sha256-<digest>.sig/sbom).
