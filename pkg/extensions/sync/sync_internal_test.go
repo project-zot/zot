@@ -644,6 +644,67 @@ func TestService(t *testing.T) {
 	})
 }
 
+func TestServiceOAuth2CredentialHelper(t *testing.T) {
+	Convey("New wires the oauth2 credential helper", t, func() {
+		tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"helper-token","token_type":"Bearer","expires_in":3600}`))
+		}))
+		defer tokenServer.Close()
+
+		assertionFile := path.Join(t.TempDir(), "assertion.jwt")
+		So(os.WriteFile(assertionFile, []byte("assertion"), 0o600), ShouldBeNil)
+
+		conf := syncconf.RegistryConfig{
+			URLs:             []string{"http://localhost"},
+			CredentialHelper: "oauth2",
+			CredentialHelperConfig: &syncconf.CredentialHelperConfig{
+				TokenURL:      tokenServer.URL,
+				AssertionFile: assertionFile,
+				Username:      "robot",
+			},
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(service.credentialHelper, ShouldNotBeNil)
+		So(service.credentials["localhost"].Username, ShouldEqual, "robot")
+		So(service.credentials["localhost"].Password, ShouldEqual, "helper-token")
+	})
+
+	Convey("New falls back gracefully on invalid oauth2 config", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs:             []string{"http://localhost"},
+			CredentialHelper: "oauth2",
+			CredentialHelperConfig: &syncconf.CredentialHelperConfig{
+				AssertionFile: "/does/not/matter",
+			},
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(service.credentialHelper, ShouldBeNil)
+	})
+
+	Convey("New tolerates oauth2 credential retrieval failure", t, func() {
+		assertionFile := path.Join(t.TempDir(), "assertion.jwt")
+		So(os.WriteFile(assertionFile, []byte("assertion"), 0o600), ShouldBeNil)
+
+		conf := syncconf.RegistryConfig{
+			URLs:             []string{"http://localhost"},
+			CredentialHelper: "oauth2",
+			CredentialHelperConfig: &syncconf.CredentialHelperConfig{
+				TokenURL:      "http://127.0.0.1:1/token",
+				AssertionFile: assertionFile,
+			},
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(service.credentialHelper, ShouldNotBeNil)
+	})
+}
+
 func TestSyncLegacyCosignTagsSyncReferrers(t *testing.T) {
 	Convey("SyncLegacyCosignTags=false skips getTags and the digest-tag loop in SyncReferrers", t, func() {
 		getTagsCallCount := 0
