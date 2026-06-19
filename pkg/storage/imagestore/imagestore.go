@@ -109,6 +109,12 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 
 			return nil
 		}
+
+		// upgrade from older releases that did not have _blobstore
+		// runs whenever migration marker is absent (checked at top of upgradeToGlobalBlobstore)
+		if err := imgStore.upgradeToGlobalBlobstore(); err != nil {
+			log.Error().Err(err).Msg("failed to upgrade to global blobstore")
+		}
 	}
 
 	return imgStore
@@ -182,14 +188,6 @@ func (is *ImageStore) initRepo(ctx context.Context, name string) error {
 			is.log.Error().Err(err).Str("file", ilPath).Msg("failed to write file")
 
 			return err
-		}
-
-		// upgrade from older releases that did not have _blobstore
-		// only run when dedupe is enabled and for the global blobstore repo itself
-		if is.dedupe && name == storageConstants.GlobalBlobsRepo {
-			if err := is.upgradeToGlobalBlobstore(); err != nil {
-				is.log.Error().Err(err).Msg("failed to upgrade to global blobstore")
-			}
 		}
 	}
 
