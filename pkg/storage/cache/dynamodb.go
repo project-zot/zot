@@ -286,7 +286,11 @@ func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 	marshaledKey, _ := attributevalue.MarshalMap(map[string]any{"Digest": digest.String()})
 
 	// check if path is a duplicate first
-	duplicateBlob, _ := d.GetDuplicateBlob(digest)
+	duplicateBlob, err := d.GetDuplicateBlob(digest)
+	if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+		return err
+	}
+
 	if duplicateBlob != "" {
 		// check if path is in the duplicates set
 		resp, err := d.client.GetItem(context.TODO(), &dynamodb.GetItemInput{
@@ -327,7 +331,11 @@ func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 	// if original blob is the one being deleted
 	if originBlob == path {
 		// check if duplicates still exist
-		remainingDuplicate, _ := d.GetDuplicateBlob(digest)
+		remainingDuplicate, err := d.GetDuplicateBlob(digest)
+		if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+			return err
+		}
+
 		if remainingDuplicate != "" {
 			// duplicates still exist, keep the original (global blobstore file stays)
 			return nil
