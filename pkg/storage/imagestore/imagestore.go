@@ -1528,7 +1528,11 @@ func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.R
 }
 
 func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo string, dst string) error {
-	for {
+	const maxDedupeSelfHealRetries = 16
+
+	var lastRetryErr error
+
+	for attempt := 0; attempt < maxDedupeSelfHealRetries; attempt++ {
 		is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe begin")
 
 		dstRecord, err := is.cache.GetBlob(dstDigest)
@@ -1612,6 +1616,8 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 				return statErr
 			}
 
+			lastRetryErr = statErr
+
 			continue
 		}
 
@@ -1663,6 +1669,16 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 
 		return nil
 	}
+
+	if lastRetryErr == nil {
+		lastRetryErr = zerr.ErrBlobNotFound
+	}
+
+	is.log.Error().Err(lastRetryErr).Str("dstDigest", dstDigest.String()).Str("dst", dst).
+		Int("maxRetries", maxDedupeSelfHealRetries).Str("component", "dedupe").
+		Msg("dedupe retry limit exceeded while healing stale cache records")
+
+	return lastRetryErr
 }
 
 // DeleteBlobUpload deletes an existing blob upload that is currently in progress.
