@@ -864,6 +864,45 @@ func TestStorageCacheErrors(t *testing.T) {
 		err = imgStore.DedupeBlob("", cdigest, "dedupe3", imgStore.BlobPath("dedupe3", cdigest))
 		So(err, ShouldNotBeNil)
 	})
+
+	Convey("DedupeBlob retries are bounded when stale cache records keep changing", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		dir := t.TempDir()
+		digest := godigest.FromString("dedupe-retry-bounded")
+
+		getCalls := 0
+		deleteCalls := 0
+
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, &mocks.CacheMock{
+			GetBlobFn: func(_ godigest.Digest) (string, error) {
+				getCalls++
+
+				// Always return a different non-existent master path so self-heal keeps retrying.
+				return path.Join(dir, "_blobstore", "blobs", "sha256", fmt.Sprintf("missing-%d", getCalls)), nil
+			},
+			DeleteBlobFn: func(_ godigest.Digest, _ string) error {
+				deleteCalls++
+
+				return nil
+			},
+		}, nil, nil)
+
+		done := make(chan error, 1)
+		go func() {
+			done <- imgStore.DedupeBlob("/tmp/src", digest, "repo", path.Join(dir, "repo", "blob"))
+		}()
+
+		select {
+		case err := <-done:
+			So(err, ShouldNotBeNil)
+			So(deleteCalls, ShouldBeGreaterThan, 0)
+			So(deleteCalls, ShouldBeLessThan, 100)
+		case <-time.After(2 * time.Second):
+			t.Fatal("DedupeBlob did not return within bounded retry time")
+		}
+	})
 }
 
 func FuzzDedupeBlob(f *testing.F) {
