@@ -10,7 +10,6 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
-	_ "github.com/distribution/distribution/v3/registry/storage/driver/azure"
 	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
 	. "github.com/smartystreets/goconvey/convey"
 

@@ -7,9 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	// Add azure support.
 	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
-	_ "github.com/distribution/distribution/v3/registry/storage/driver/azure"
 
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 )

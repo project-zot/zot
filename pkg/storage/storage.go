@@ -240,13 +240,14 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 	return subImageStore, nil
 }
 
-// NormalizeRootDirectory ensures the GCS and Azure storage drivers have a sensible default
-// for rootdirectory. Defaults to "/zot" if unset or empty; overrides "/" with "/zot" to prevent
-// the upstream driver double-prefixing. Must be called before factory.Create so the upstream
-// driver receives the correct prefix. Other drivers (e.g. S3) are not affected.
+// NormalizeRootDirectory gives the GCS and Azure storage drivers a sensible default
+// rootdirectory. Both prefix the rootdirectory internally, and zot's RootDir() returns "/"
+// for them, so an unset, empty, or "/" rootdirectory would leave blobs at the bucket/container
+// root. This defaults it to "/zot" in those cases. Must be called before factory.Create so the
+// upstream driver receives the prefix. Other drivers (e.g. S3) are not affected.
 func NormalizeRootDirectory(storeName string, driverParams map[string]any) {
-	// GCS and Azure are both modern drivers (no legacy double-prefixed data) that prefix
-	// rootdirectory internally, so give them a sane default and let RootDir() return "/".
+	// GCS and Azure are modern drivers that prefix rootdirectory internally, so give them a
+	// sane default prefix instead of leaving everything at the storage root.
 	if storeName != constants.GCSStorageDriverName && storeName != constants.AzureStorageDriverName {
 		return
 	}
