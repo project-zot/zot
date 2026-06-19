@@ -350,10 +350,12 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 	candidates := map[string]blobCandidate{}
 	repoBlobRefs := []repoBlobRef{}
 	promotedDigests := map[string]bool{}
+	skippedRepoListFailures := 0
 
 	for _, repoName := range repos {
 		repoBlobs, err := is.GetAllBlobs(repoName)
 		if err != nil {
+			skippedRepoListFailures++
 			is.log.Warn().Err(err).Str("repo", repoName).Msg("failed to list blobs during upgrade, skipping repo")
 
 			continue
@@ -416,6 +418,13 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 	}
 
 	is.log.Info().Int("blobCount", len(promotedDigests)).Msg("global blobstore upgrade completed")
+
+	if skippedRepoListFailures > 0 {
+		is.log.Warn().Int("skippedRepoCount", skippedRepoListFailures).
+			Msg("blobstore upgrade incomplete: migration marker not written because some repos were skipped")
+
+		return nil
+	}
 
 	// Write the migration-complete marker so this scan is skipped on future startups.
 	markerDir := path.Join(is.rootDir, storageConstants.GlobalBlobsRepo)
