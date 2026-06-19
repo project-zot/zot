@@ -3957,5 +3957,9 @@ func TestUpgradeToGlobalBlobstore(t *testing.T) {
 		globalBlobs, err := imgStore.GetAllBlobs(storageConstants.GlobalBlobsRepo)
 		So(err, ShouldBeNil)
 		So(len(globalBlobs), ShouldEqual, 0)
+
+		markerPath := path.Join(dir, storageConstants.BlobstoreMigratedMarker)
+		_, err = os.Stat(markerPath)
+		So(err, ShouldBeNil)
 	})
 }
