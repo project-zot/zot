@@ -111,7 +111,7 @@ func New(
 			credentialHelper, err := NewOAuth2CredentialHelper(log, service.config.CredentialHelperConfig)
 			if err != nil {
 				log.Error().Err(err).Msg("failed to create OAuth2 credentials helper.")
-
+				service.config.CredentialHelper = ""
 				break
 			}
 
