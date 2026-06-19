@@ -344,6 +344,8 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 	}
 
 	if len(repos) == 0 {
+		is.writeBlobstoreMigrationMarker(markerPath)
+
 		return nil
 	}
 
@@ -428,6 +430,12 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 		return nil
 	}
 
+	is.writeBlobstoreMigrationMarker(markerPath)
+
+	return nil
+}
+
+func (is *ImageStore) writeBlobstoreMigrationMarker(markerPath string) {
 	// Write the migration-complete marker so this scan is skipped on future startups.
 	markerDir := path.Join(is.rootDir, storageConstants.GlobalBlobsRepo)
 	if err := is.storeDriver.EnsureDir(markerDir); err != nil {
@@ -435,8 +443,6 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 	} else if _, err := is.storeDriver.WriteFile(markerPath, []byte("1")); err != nil {
 		is.log.Warn().Err(err).Msg("failed to write blobstore migration marker")
 	}
-
-	return nil
 }
 
 // InitRepo creates an image repository under this store.
