@@ -209,6 +209,62 @@ func TestStorageFSAPIs(t *testing.T) {
 				panic(err)
 			}
 		})
+		Convey("Upgrade does not write marker when any repo blob listing is skipped", func() {
+			dir := t.TempDir()
+
+			log := zlog.NewTestLogger()
+			metrics := monitoring.NewMetricsServer(false, log)
+
+			imgStoreOld := local.NewImageStore(dir, false, true, log, metrics, nil, nil, nil, nil)
+			So(imgStoreOld, ShouldNotBeNil)
+
+			content := []byte("marker-skip-list-failure")
+			digest := godigest.FromBytes(content)
+
+			_, _, err := imgStoreOld.FullBlobUpload("goodrepo", bytes.NewReader(content), digest)
+			So(err, ShouldBeNil)
+
+			err = imgStoreOld.InitRepo("badrepo")
+			So(err, ShouldBeNil)
+
+			badRepoBlobsDir := path.Join(dir, "badrepo", ispec.ImageBlobsDir)
+			err = os.Chmod(badRepoBlobsDir, 0)
+			So(err, ShouldBeNil)
+
+			defer func() {
+				_ = os.Chmod(badRepoBlobsDir, 0o755)
+			}()
+
+			cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+				RootDir:     dir,
+				Name:        "cache",
+				UseRelPaths: true,
+			}, log)
+			So(err, ShouldBeNil)
+
+			imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+			So(imgStore, ShouldNotBeNil)
+
+			markerPath := path.Join(dir, storageConstants.BlobstoreMigratedMarker)
+			_, err = os.Stat(markerPath)
+			So(os.IsNotExist(err), ShouldBeTrue)
+
+			err = os.Chmod(badRepoBlobsDir, 0o755)
+			So(err, ShouldBeNil)
+
+			cacheDriver2, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+				RootDir:     dir,
+				Name:        "cache2",
+				UseRelPaths: true,
+			}, log)
+			So(err, ShouldBeNil)
+
+			imgStore2 := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver2, nil, nil)
+			So(imgStore2, ShouldNotBeNil)
+
+			_, err = os.Stat(markerPath)
+			So(err, ShouldBeNil)
+		})
 	})
 }
 
