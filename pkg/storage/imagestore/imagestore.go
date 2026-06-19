@@ -95,6 +95,23 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 		events:      recorder,
 	}
 
+	if dedupe {
+		// create the global blobs repo which will serve as the master copy for all deduped blobs
+		if err := imgStore.initRepo(storageConstants.GlobalBlobsRepo); err != nil {
+			log.Error().Err(err).Str("rootDir", rootDir).Msg("failed to create global blobs repo")
+
+			return nil
+		}
+
+		// upgrade from older releases that did not have _blobstore
+		// runs whenever migration marker is absent (checked at top of upgradeToGlobalBlobstore)
+		if err := imgStore.upgradeToGlobalBlobstore(); err != nil {
+			log.Error().Err(err).Msg("failed to upgrade to global blobstore")
+
+			return nil
+		}
+	}
+
 	return imgStore
 }
 
@@ -134,18 +151,6 @@ func (is *ImageStore) Unlock(lockStart *time.Time) {
 
 func (is *ImageStore) initRepo(name string) error {
 	repoDir := path.Join(is.rootDir, name)
-
-	if !utf8.ValidString(name) {
-		is.log.Error().Msg("invalid UTF-8 input")
-
-		return zerr.ErrInvalidRepositoryName
-	}
-
-	if !zreg.FullNameRegexp.MatchString(name) {
-		is.log.Error().Str("repository", name).Msg("invalid repository name")
-
-		return zerr.ErrInvalidRepositoryName
-	}
 
 	// create "blobs" subdir
 	err := is.storeDriver.EnsureDir(path.Join(repoDir, ispec.ImageBlobsDir))
@@ -208,8 +213,265 @@ func (is *ImageStore) initRepo(name string) error {
 	return nil
 }
 
+// promoteBlobCandidate handles the core logic of copying/linking a single blob candidate
+// into the global blobstore and registering it in the cache.
+//
+// blobCandidate holds metadata for a blob selected from the pre-blobstore layout.
+type blobCandidate struct {
+	repoName string
+	blobPath string
+	size     int64
+}
+
+// repoBlobRef tracks a blob's presence in a specific repo (for cache registration).
+type repoBlobRef struct {
+	digest   godigest.Digest
+	repoName string
+	blobPath string
+}
+
+func (is *ImageStore) promoteBlobCandidate(
+	candidate blobCandidate,
+	digest godigest.Digest,
+	globalBlobPath string,
+) error {
+	// ensure algorithm dir exists in _blobstore
+	algoDir := path.Join(is.rootDir, storageConstants.GlobalBlobsRepo,
+		ispec.ImageBlobsDir, digest.Algorithm().String())
+	if err := is.storeDriver.EnsureDir(algoDir); err != nil {
+		is.log.Error().Err(err).Str("dir", algoDir).Msg("failed to create algorithm dir")
+
+		return err
+	}
+
+	if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
+		// local filesystem: use hard link (no extra disk space)
+		if err := is.storeDriver.Link(candidate.blobPath, globalBlobPath); err != nil {
+			is.log.Error().Err(err).Str("src", candidate.blobPath).Str("dst", globalBlobPath).
+				Msg("failed to link blob to global blobstore")
+
+			return err
+		}
+	} else {
+		// S3/GCS: copy the actual blob content
+		content, err := is.storeDriver.ReadFile(candidate.blobPath)
+		if err != nil {
+			is.log.Error().Err(err).Str("src", candidate.blobPath).
+				Msg("failed to read blob during upgrade")
+
+			return err
+		}
+
+		if _, err := is.storeDriver.WriteFile(globalBlobPath, content); err != nil {
+			is.log.Error().Err(err).Str("dst", globalBlobPath).
+				Msg("failed to write blob to global blobstore")
+
+			return err
+		}
+	}
+
+	// register global blobstore path as the master/original cache entry first,
+	// so that subsequent PutBlob calls for per-repo paths go into DuplicatesBucket
+	if is.cache != nil {
+		if err := is.cache.PutBlob(digest, globalBlobPath); err != nil {
+			is.log.Error().Err(err).Str("digest", digest.String()).
+				Msg("failed to update cache with global blobstore path during upgrade")
+
+			return err
+		}
+	}
+
+	is.log.Info().Str("digest", digest.String()).Str("repo", candidate.repoName).
+		Msg("upgraded blob to global blobstore")
+
+	return nil
+}
+
+// upgradeToGlobalBlobstore migrates blobs from per-repo directories into the global _blobstore
+// for older zot releases that did not have a centralized blobstore.
+// For local filesystem it uses hard links (no extra disk space).
+// For S3/GCS it copies the blob content to the global blobstore.
+func (is *ImageStore) upgradeToGlobalBlobstore() error {
+	// Check for the migration-complete marker first; this is more reliable than counting
+	// blobs (which would be zero on a fresh install that never pushed anything).
+	markerPath := path.Join(is.rootDir, storageConstants.BlobstoreMigratedMarker)
+	if _, err := is.storeDriver.Stat(markerPath); err == nil {
+		// marker exists — migration already done on a previous startup
+		return nil
+	}
+
+	// discover repos using Walk (supports nested repos like org/repo)
+	repos := []string{}
+
+	err := is.storeDriver.Walk(is.rootDir, func(fileInfo driver.FileInfo) error {
+		if !fileInfo.IsDir() {
+			return nil
+		}
+
+		// skip internal dirs
+		if strings.HasSuffix(fileInfo.Path(), syncConstants.SyncBlobUploadDir) ||
+			strings.HasSuffix(fileInfo.Path(), ispec.ImageBlobsDir) ||
+			strings.HasSuffix(fileInfo.Path(), storageConstants.BlobUploadDir) {
+			return driver.ErrSkipDir
+		}
+
+		rel, err := filepath.Rel(is.rootDir, fileInfo.Path())
+		if err != nil {
+			return nil //nolint:nilerr
+		}
+
+		if rel == storageConstants.GlobalBlobsRepo {
+			return driver.ErrSkipDir
+		}
+
+		if ok, _ := is.ValidateRepo(rel); !ok {
+			return nil //nolint:nilerr
+		}
+
+		repos = append(repos, rel)
+
+		return nil
+	})
+	if err != nil && !errors.As(err, &driver.PathNotFoundError{}) {
+		return err
+	}
+
+	if len(repos) == 0 {
+		is.writeBlobstoreMigrationMarker(markerPath)
+
+		return nil
+	}
+
+	is.log.Info().Msg("upgrading storage: populating global blobstore from existing repos")
+
+	candidates := map[string]blobCandidate{}
+	repoBlobRefs := []repoBlobRef{}
+	promotedDigests := map[string]bool{}
+	skippedRepoListFailures := 0
+	markerOnlyDigests := 0
+
+	for _, repoName := range repos {
+		repoBlobs, err := is.GetAllBlobs(repoName)
+		if err != nil {
+			skippedRepoListFailures++
+			is.log.Warn().Err(err).Str("repo", repoName).Msg("failed to list blobs during upgrade, skipping repo")
+
+			continue
+		}
+
+		for _, digest := range repoBlobs {
+			repoBlobPath := is.BlobPath(repoName, digest)
+			repoBlobRefs = append(repoBlobRefs, repoBlobRef{digest: digest, repoName: repoName, blobPath: repoBlobPath})
+
+			candidate, found := candidates[digest.String()]
+			if !found {
+				candidate = blobCandidate{repoName: repoName, blobPath: repoBlobPath}
+			}
+
+			if binfo, err := is.storeDriver.Stat(repoBlobPath); err == nil {
+				if binfo.Size() > 0 && candidate.size == 0 {
+					candidate.repoName = repoName
+					candidate.blobPath = repoBlobPath
+					candidate.size = binfo.Size()
+				}
+			}
+
+			candidates[digest.String()] = candidate
+		}
+	}
+
+	for digestStr, candidate := range candidates {
+		digest := godigest.Digest(digestStr)
+		globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+
+		if candidate.size == 0 {
+			markerOnlyDigests++
+			is.log.Warn().Str("digest", digestStr).Str("repo", candidate.repoName).
+				Msg("skipping upgrade for digest: only empty marker blobs found")
+
+			continue
+		}
+
+		if err := is.promoteBlobCandidate(candidate, digest, globalBlobPath); err != nil {
+			return err
+		}
+
+		promotedDigests[digest.String()] = true
+	}
+
+	for _, repoBlobRef := range repoBlobRefs {
+		if !promotedDigests[repoBlobRef.digest.String()] {
+			continue
+		}
+
+		// always register each repo's blob path in the cache as a duplicate,
+		// so GetAllDedupeReposCandidates returns all repos that own this blob
+		if is.cache != nil {
+			if err := is.cache.PutBlob(repoBlobRef.digest, repoBlobRef.blobPath); err != nil {
+				is.log.Error().Err(err).Str("digest", repoBlobRef.digest.String()).Str("repo", repoBlobRef.repoName).
+					Msg("failed to register repo blob path in cache during upgrade")
+
+				return err
+			}
+		}
+	}
+
+	is.log.Info().
+		Int("blobCount", len(promotedDigests)).
+		Int("candidateCount", len(candidates)).
+		Int("markerOnlyDigestCount", markerOnlyDigests).
+		Msg("global blobstore upgrade completed")
+
+	if skippedRepoListFailures > 0 {
+		is.log.Warn().Int("skippedRepoCount", skippedRepoListFailures).
+			Msg("blobstore upgrade incomplete: migration marker not written because some repos were skipped")
+
+		return nil
+	}
+
+	if markerOnlyDigests > 0 {
+		is.log.Warn().Int("markerOnlyDigestCount", markerOnlyDigests).
+			Msg("blobstore upgrade incomplete: migration marker not written because some digests only have legacy 0-byte markers")
+
+		return nil
+	}
+
+	if len(promotedDigests) == 0 {
+		is.log.Warn().Int("candidateCount", len(candidates)).
+			Msg("blobstore upgrade incomplete: migration marker not written because no digests were promoted")
+
+		return nil
+	}
+
+	is.writeBlobstoreMigrationMarker(markerPath)
+
+	return nil
+}
+
+func (is *ImageStore) writeBlobstoreMigrationMarker(markerPath string) {
+	// Write the migration-complete marker so this scan is skipped on future startups.
+	markerDir := path.Join(is.rootDir, storageConstants.GlobalBlobsRepo)
+	if err := is.storeDriver.EnsureDir(markerDir); err != nil {
+		is.log.Warn().Err(err).Msg("failed to ensure _blobstore dir for migration marker")
+	} else if _, err := is.storeDriver.WriteFile(markerPath, []byte("1")); err != nil {
+		is.log.Warn().Err(err).Msg("failed to write blobstore migration marker")
+	}
+}
+
 // InitRepo creates an image repository under this store.
 func (is *ImageStore) InitRepo(name string) error {
+	if !utf8.ValidString(name) {
+		is.log.Error().Msg("invalid UTF-8 input")
+
+		return zerr.ErrInvalidRepositoryName
+	}
+
+	if !zreg.FullNameRegexp.MatchString(name) {
+		is.log.Error().Str("repository", name).Msg("invalid repository name")
+
+		return zerr.ErrInvalidRepositoryName
+	}
+
 	var lockLatency time.Time
 
 	is.Lock(&lockLatency)
@@ -1242,7 +1504,11 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, dstDigest godi
 }
 
 func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo string, dst string) error {
-	for {
+	const maxDedupeSelfHealRetries = 16
+
+	var lastRetryErr error
+
+	for attempt := 0; attempt < maxDedupeSelfHealRetries; attempt++ {
 		is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe begin")
 
 		dstRecord, err := is.cache.GetBlob(dstDigest)
@@ -1252,36 +1518,54 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 			return err
 		}
 
+		if dst == "" {
+			return zerr.ErrEmptyValue
+		}
+
+		if err := dstDigest.Validate(); err != nil {
+			return err
+		}
+
+		blobUploadRemoved := false
+
 		if dstRecord == "" {
 			// cache record doesn't exist, so first disk and cache entry for this digest
-			if err := is.cache.PutBlob(dstDigest, dst); err != nil {
-				is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
+			// store the master copy in the global blobstore
+			gdst := is.BlobPath(storageConstants.GlobalBlobsRepo, dstDigest)
+
+			if err := is.cache.PutBlob(dstDigest, gdst); err != nil {
+				is.log.Error().Err(err).Str("blobPath", gdst).Str("component", "dedupe").
 					Msg("failed to insert blob record")
 
 				return err
 			}
 
-			// move the blob from uploads to final dest
-			if err := is.storeDriver.Move(src, dst); err != nil {
-				is.log.Error().Err(err).Str("src", src).Str("dst", dst).Str("component", "dedupe").
+			// move the blob from uploads to global blobstore
+			if err := is.storeDriver.Move(src, gdst); err != nil {
+				is.log.Error().Err(err).Str("src", src).Str("dst", gdst).Str("component", "dedupe").
 					Msg("failed to rename blob")
 
 				return err
 			}
 
-			is.log.Debug().Str("src", src).Str("dst", dst).Str("component", "dedupe").Msg("rename")
+			blobUploadRemoved = true
 
-			return nil
+			is.log.Debug().Str("src", src).Str("gdst", gdst).Str("component", "dedupe").Msg("moved to global blobstore")
+
+			// update dstRecord to point to the global blobstore path for the link step below
+			dstRecord = gdst
 		}
 
 		// cache record exists, but due to GC and upgrades from older versions,
 		// disk content and cache records may go out of sync
-		if is.cache.UsesRelativePaths() {
+		if is.cache.UsesRelativePaths() && !path.IsAbs(dstRecord) && !strings.HasPrefix(dstRecord, is.rootDir+"/") {
 			dstRecord = path.Join(is.rootDir, dstRecord)
 		}
 
 		blobInfo, err := is.storeDriver.Stat(dstRecord)
 		if err != nil {
+			statErr := err
+
 			is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").Msg("failed to stat")
 			// the actual blob on disk may have been removed by GC, so sync the cache
 			err := is.cache.DeleteBlob(dstDigest, dstRecord)
@@ -1292,6 +1576,23 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 
 				return err
 			}
+
+			updatedRecord, err := is.cache.GetBlob(dstDigest)
+			if err := inject.Error(err); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+				is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").Msg("failed to lookup blob record")
+
+				return err
+			}
+
+			if is.cache.UsesRelativePaths() && !path.IsAbs(updatedRecord) && !strings.HasPrefix(updatedRecord, is.rootDir+"/") {
+				updatedRecord = path.Join(is.rootDir, updatedRecord)
+			}
+
+			if updatedRecord == dstRecord {
+				return statErr
+			}
+
+			lastRetryErr = statErr
 
 			continue
 		}
@@ -1330,18 +1631,30 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 			}
 		}
 
-		// remove temp blobupload
-		if err := is.storeDriver.Delete(src); err != nil {
-			is.log.Error().Err(err).Str("src", src).Str("component", "dedupe").
-				Msg("failed to remove blob")
+		if !blobUploadRemoved {
+			// remove temp blobupload
+			if err := is.storeDriver.Delete(src); err != nil {
+				is.log.Error().Err(err).Str("src", src).Str("component", "dedupe").
+					Msg("failed to remove blob")
 
-			return err
+				return err
+			}
 		}
 
 		is.log.Debug().Str("src", src).Str("component", "dedupe").Msg("remove")
 
 		return nil
 	}
+
+	if lastRetryErr == nil {
+		lastRetryErr = zerr.ErrBlobNotFound
+	}
+
+	is.log.Error().Err(lastRetryErr).Str("dstDigest", dstDigest.String()).Str("dst", dst).
+		Int("maxRetries", maxDedupeSelfHealRetries).Str("component", "dedupe").
+		Msg("dedupe retry limit exceeded while healing stale cache records")
+
+	return lastRetryErr
 }
 
 // DeleteBlobUpload deletes an existing blob upload that is currently in progress.
@@ -1513,7 +1826,7 @@ func (is *ImageStore) checkCacheBlob(digest godigest.Digest) (string, error) {
 		return "", err
 	}
 
-	if is.cache.UsesRelativePaths() {
+	if is.cache.UsesRelativePaths() && !path.IsAbs(dstRecord) && !strings.HasPrefix(dstRecord, is.rootDir+"/") {
 		dstRecord = path.Join(is.rootDir, dstRecord)
 	}
 
@@ -1870,7 +2183,8 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 			Str("digest", digest.String()).Msg("perform GC on blob")
 
 		if err := is.deleteBlob(repo, digest); err != nil {
-			if errors.Is(err, zerr.ErrBlobReferenced) {
+			switch {
+			case errors.Is(err, zerr.ErrBlobReferenced):
 				if err := is.deleteImageManifest(repo, digest.String(), true); err != nil {
 					if errors.Is(err, zerr.ErrManifestConflict) || errors.Is(err, zerr.ErrManifestReferenced) {
 						continue
@@ -1882,7 +2196,14 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 				}
 
 				count++
-			} else {
+			case errors.Is(err, zerr.ErrBlobNotFound):
+				// Blob not found is not an error during cleanup - it may have been already deleted
+				// by concurrent dedupe or other cleanup operations. Treat it as successfully deleted.
+				is.log.Debug().Err(err).Str("repository", repo).Str("digest", digest.String()).
+					Msg("blob not found during cleanup (may already be cleaned)")
+
+				count++
+			default:
 				is.log.Error().Err(err).Str("repository", repo).Str("digest", digest.String()).Msg("failed to delete blob")
 
 				return count, err
@@ -1895,7 +2216,8 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 	blobUploads, _ := is.ListBlobUploads(repo)
 
 	// if removeRepo flag is true and we cleanup all blobs and there are no blobs currently being uploaded.
-	if removeRepo && count == len(blobs) && count > 0 && len(blobUploads) == 0 {
+	if removeRepo && count == len(blobs) && count > 0 && len(blobUploads) == 0 &&
+		repo != storageConstants.GlobalBlobsRepo {
 		is.log.Info().Str("repository", repo).Msg("removed all blobs, removing repo")
 
 		if err := is.storeDriver.Delete(path.Join(is.rootDir, repo)); err != nil {
@@ -1929,59 +2251,43 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 	}
 
 	if fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
-		dstRecord, err := is.cache.GetBlob(digest)
-		if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
-			is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
-				Msg("failed to lookup blob record")
+		// remove this repo's blob path from cache (cache may store relative paths)
+		if err := is.cache.DeleteBlob(digest, blobPath); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+			is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", blobPath).
+				Msg("failed to remove blob path from cache")
 
 			return err
 		}
 
-		// remove cache entry and move blob contents to the next candidate if there is any
-		if ok := is.cache.HasBlob(digest, blobPath); ok {
-			if err := is.cache.DeleteBlob(digest, blobPath); err != nil {
-				is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", blobPath).
-					Msg("failed to remove blob path from cache")
+		// delete the repo-specific blob file (hard link)
+		if err := is.storeDriver.Delete(blobPath); err != nil {
+			is.log.Error().Err(err).Str("blobPath", blobPath).Msg("failed to remove blob path")
+
+			return err
+		}
+
+		globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+
+		// if only the global blobstore record remains, remove it as well
+		if paths, err := is.cache.GetAllBlobs(digest); err == nil && len(paths) == 1 {
+			if err := is.cache.DeleteBlob(digest, globalBlobPath); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+				is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", globalBlobPath).
+					Msg("failed to remove global blob path from cache")
 
 				return err
 			}
 		}
 
-		// if the deleted blob is one with content
-		if dstRecord == blobPath {
-			// get next candidate
-			dstRecord, err := is.cache.GetBlob(digest)
-			if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
-				is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
-					Msg("failed to lookup blob record")
-
-				return err
-			}
-
-			// if we have a new candidate move the blob content to it
-			if dstRecord != "" {
-				/* check to see if we need to move the content from original blob to duplicate one
-				(in case of filesystem, this should not be needed */
-				binfo, err := is.storeDriver.Stat(dstRecord)
-				if err != nil {
-					is.log.Error().Err(err).Str("path", blobPath).Str("component", "dedupe").
-						Msg("failed to stat blob")
-
-					return err
-				}
-
-				if binfo.Size() == 0 {
-					if err := is.storeDriver.Move(blobPath, dstRecord); err != nil {
-						is.log.Error().Err(err).Str("blobPath", blobPath).Str("component", "dedupe").
-							Msg("failed to remove blob path")
-
-						return err
-					}
-				}
-
-				return nil
+		// check if there are still other references to this digest
+		// if not, clean up the global blobstore copy too
+		if _, err := is.cache.GetBlob(digest); errors.Is(err, zerr.ErrCacheMiss) {
+			if err := is.storeDriver.Delete(globalBlobPath); err != nil {
+				is.log.Debug().Err(err).Str("blobPath", globalBlobPath).
+					Msg("failed to remove global blob (may already be cleaned up)")
 			}
 		}
+
+		return nil
 	}
 
 	if err := is.storeDriver.Delete(blobPath); err != nil {

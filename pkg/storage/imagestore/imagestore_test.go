@@ -98,3 +98,31 @@ func TestGetBlobRedirectURL(t *testing.T) {
 		})
 	})
 }
+
+func TestNewImageStoreFailsWhenMigrationFails(t *testing.T) {
+	Convey("NewImageStore returns nil when global blobstore migration fails", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		storeMock := &mocks.StorageDriverMock{}
+		remoteDriver := gcs.New(storeMock)
+
+		storeMock.StatFn = func(_ context.Context, path string) (driver.FileInfo, error) {
+			if path == "_blobstore/.migrated" {
+				return nil, driver.PathNotFoundError{Path: path}
+			}
+
+			return nil, driver.PathNotFoundError{Path: path}
+		}
+
+		storeMock.WalkFn = func(_ context.Context, _ string, _ driver.WalkFn,
+			_ ...func(*driver.WalkOptions),
+		) error {
+			return errors.New("walk failed")
+		}
+
+		store := imagestore.NewImageStore("", "", true, false, log, metrics, nil,
+			remoteDriver, nil, nil, nil)
+		So(store, ShouldBeNil)
+	})
+}
