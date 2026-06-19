@@ -3962,4 +3962,66 @@ func TestUpgradeToGlobalBlobstore(t *testing.T) {
 		_, err = os.Stat(markerPath)
 		So(err, ShouldBeNil)
 	})
+
+	Convey("Upgrade does not write marker when digests are only legacy 0-byte markers", t, func() {
+		dir := t.TempDir()
+
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		imgStoreOld := local.NewImageStore(dir, false, true, log, metrics, nil, nil, nil, nil)
+		So(imgStoreOld, ShouldNotBeNil)
+
+		err := imgStoreOld.InitRepo("markerrepo")
+		So(err, ShouldBeNil)
+
+		digest := godigest.FromString("legacy-marker-only")
+		markerBlobPath := path.Join(dir, "markerrepo", "blobs", digest.Algorithm().String(), digest.Encoded())
+		err = os.MkdirAll(path.Dir(markerBlobPath), 0o755)
+		So(err, ShouldBeNil)
+
+		err = os.WriteFile(markerBlobPath, []byte{}, 0o644)
+		So(err, ShouldBeNil)
+
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		So(err, ShouldBeNil)
+
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+		So(imgStore, ShouldNotBeNil)
+
+		migrationMarkerPath := path.Join(dir, storageConstants.BlobstoreMigratedMarker)
+		_, err = os.Stat(migrationMarkerPath)
+		So(os.IsNotExist(err), ShouldBeTrue)
+	})
+
+	Convey("Upgrade does not write marker when repos exist but no digests are promoted", t, func() {
+		dir := t.TempDir()
+
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		imgStoreOld := local.NewImageStore(dir, false, true, log, metrics, nil, nil, nil, nil)
+		So(imgStoreOld, ShouldNotBeNil)
+
+		err := imgStoreOld.InitRepo("emptyrepo")
+		So(err, ShouldBeNil)
+
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		So(err, ShouldBeNil)
+
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+		So(imgStore, ShouldNotBeNil)
+
+		migrationMarkerPath := path.Join(dir, storageConstants.BlobstoreMigratedMarker)
+		_, err = os.Stat(migrationMarkerPath)
+		So(os.IsNotExist(err), ShouldBeTrue)
+	})
 }
