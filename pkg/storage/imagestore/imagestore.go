@@ -355,6 +355,7 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 	repoBlobRefs := []repoBlobRef{}
 	promotedDigests := map[string]bool{}
 	skippedRepoListFailures := 0
+	markerOnlyDigests := 0
 
 	for _, repoName := range repos {
 		repoBlobs, err := is.GetAllBlobs(repoName)
@@ -391,6 +392,7 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 		globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
 
 		if candidate.size == 0 {
+			markerOnlyDigests++
 			is.log.Warn().Str("digest", digestStr).Str("repo", candidate.repoName).
 				Msg("skipping upgrade for digest: only empty marker blobs found")
 
@@ -421,11 +423,29 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 		}
 	}
 
-	is.log.Info().Int("blobCount", len(promotedDigests)).Msg("global blobstore upgrade completed")
+	is.log.Info().
+		Int("blobCount", len(promotedDigests)).
+		Int("candidateCount", len(candidates)).
+		Int("markerOnlyDigestCount", markerOnlyDigests).
+		Msg("global blobstore upgrade completed")
 
 	if skippedRepoListFailures > 0 {
 		is.log.Warn().Int("skippedRepoCount", skippedRepoListFailures).
 			Msg("blobstore upgrade incomplete: migration marker not written because some repos were skipped")
+
+		return nil
+	}
+
+	if markerOnlyDigests > 0 {
+		is.log.Warn().Int("markerOnlyDigestCount", markerOnlyDigests).
+			Msg("blobstore upgrade incomplete: migration marker not written because some digests only have legacy 0-byte markers")
+
+		return nil
+	}
+
+	if len(promotedDigests) == 0 {
+		is.log.Warn().Int("candidateCount", len(candidates)).
+			Msg("blobstore upgrade incomplete: migration marker not written because no digests were promoted")
 
 		return nil
 	}
