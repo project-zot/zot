@@ -955,6 +955,47 @@ func TestUtils(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(isSpinner, ShouldBeFalse)
 		So(verifyTLS, ShouldBeFalse)
+
+		// default profile when --config and --url are absent
+		_ = makeConfigFile(t,
+			`{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":false, "verify-tls": false}],"defaultConfigName":"imagetest"}`)
+		cmd = &cobra.Command{}
+		cmd.Flags().String(ConfigFlag, "", "")
+		cmd.Flags().String(URLFlag, "", "")
+		isSpinner, verifyTLS, err = GetCliConfigOptions(cmd)
+		So(err, ShouldBeNil)
+		So(isSpinner, ShouldBeFalse)
+		So(verifyTLS, ShouldBeFalse)
+
+		// no default profile and no flags returns defaults without error
+		_ = makeConfigFile(t, "")
+		cmd = &cobra.Command{}
+		cmd.Flags().String(ConfigFlag, "", "")
+		cmd.Flags().String(URLFlag, "", "")
+		isSpinner, verifyTLS, err = GetCliConfigOptions(cmd)
+		So(err, ShouldBeNil)
+		So(isSpinner, ShouldBeFalse)
+		So(verifyTLS, ShouldBeFalse)
+
+		// stale default profile returns error
+		_ = makeConfigFile(t,
+			`{"configs":[{"_name":"imagetest","url":"https://test-url.com"}],"defaultConfigName":"missing"}`)
+		cmd = &cobra.Command{}
+		cmd.Flags().String(ConfigFlag, "", "")
+		cmd.Flags().String(URLFlag, "", "")
+		isSpinner, verifyTLS, err = GetCliConfigOptions(cmd)
+		So(err, ShouldNotBeNil)
+		So(isSpinner, ShouldBeFalse)
+		So(verifyTLS, ShouldBeFalse)
+
+		// unreadable config path when --config is set
+		t.Setenv("HOME", "nonExistentDirectory")
+		cmd = &cobra.Command{}
+		cmd.Flags().String(ConfigFlag, "imagetest", "")
+		isSpinner, verifyTLS, err = GetCliConfigOptions(cmd)
+		So(err, ShouldNotBeNil)
+		So(isSpinner, ShouldBeFalse)
+		So(verifyTLS, ShouldBeFalse)
 	})
 
 	Convey("GetServerURLFromFlags", t, func() {
@@ -983,6 +1024,65 @@ func TestUtils(t *testing.T) {
 		cmd = &cobra.Command{}
 		cmd.Flags().String(ConfigFlag, "imagetest", "")
 		url, err = GetServerURLFromFlags(cmd)
+		So(url, ShouldResemble, "")
+		So(err, ShouldNotBeNil)
+
+		// default profile when --config and --url are absent
+		_ = makeConfigFile(t,
+			`{"configs":[{"_name":"main","url":"https://default.example.com"},{"_name":"other","url":"https://other.example.com"}],"defaultConfigName":"main"}`)
+		cmd = &cobra.Command{}
+		cmd.Flags().String(URLFlag, "", "")
+		cmd.Flags().String(ConfigFlag, "", "")
+		url, err = GetServerURLFromFlags(cmd)
+		So(url, ShouldResemble, "https://default.example.com")
+		So(err, ShouldBeNil)
+
+		// explicit --url overrides default
+		cmd = &cobra.Command{}
+		cmd.Flags().String(URLFlag, "https://flag.example.com", "")
+		cmd.Flags().String(ConfigFlag, "", "")
+		url, err = GetServerURLFromFlags(cmd)
+		So(url, ShouldResemble, "https://flag.example.com")
+		So(err, ShouldBeNil)
+
+		// explicit --config overrides default
+		cmd = &cobra.Command{}
+		cmd.Flags().String(URLFlag, "", "")
+		cmd.Flags().String(ConfigFlag, "other", "")
+		url, err = GetServerURLFromFlags(cmd)
+		So(url, ShouldResemble, "https://other.example.com")
+		So(err, ShouldBeNil)
+
+		// invalid default profile has a clear error
+		_ = makeConfigFile(t,
+			`{"configs":[{"_name":"main","url":"https://default.example.com"}],"defaultConfigName":"missing"}`)
+		cmd = &cobra.Command{}
+		cmd.Flags().String(URLFlag, "", "")
+		cmd.Flags().String(ConfigFlag, "", "")
+		url, err = GetServerURLFromFlags(cmd)
+		So(url, ShouldResemble, "")
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring, "defaultConfigName")
+
+		// invalid URL in default profile
+		_ = makeConfigFile(t,
+			`{"configs":[{"_name":"main","url":"not-a-url"}],"defaultConfigName":"main"}`)
+		cmd = &cobra.Command{}
+		cmd.Flags().String(URLFlag, "", "")
+		cmd.Flags().String(ConfigFlag, "", "")
+		url, err = GetServerURLFromFlags(cmd)
+		So(url, ShouldResemble, "")
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("ReadServerURLFromConfig", t, func() {
+		_ = makeConfigFile(t, `{"configs":[{"_name":"main","url":"https://default.example.com"}]}`)
+		url, err := ReadServerURLFromConfig("main")
+		So(url, ShouldResemble, "https://default.example.com")
+		So(err, ShouldBeNil)
+
+		t.Setenv("HOME", "nonExistentDirectory")
+		url, err = ReadServerURLFromConfig("main")
 		So(url, ShouldResemble, "")
 		So(err, ShouldNotBeNil)
 	})

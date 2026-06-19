@@ -4,6 +4,7 @@ package client
 
 import (
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -306,6 +307,131 @@ func TestSetConfigValue(t *testing.T) {
 	})
 }
 
+func TestDefaultConfigValue(t *testing.T) {
+	t.Parallel()
+
+	validProfile := `{"configs":[{"_name":"a","url":"https://example.com"}]}`
+
+	t.Run("setDefaultConfig_success", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		cfgPath := writeTestZotFile(t, dir, validProfile)
+
+		require.NoError(t, setDefaultConfig(cfgPath, "a"))
+
+		cfg, err := ReadZliConfigFile(cfgPath)
+		require.NoError(t, err)
+		require.Equal(t, "a", cfg.DefaultConfigName)
+	})
+
+	t.Run("setDefaultConfig_missing_profile", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		cfgPath := writeTestZotFile(t, dir, validProfile)
+
+		err := setDefaultConfig(cfgPath, "missing")
+		require.ErrorIs(t, err, zerr.ErrConfigNotFound)
+	})
+
+	t.Run("setDefaultConfig_fresh_ErrConfigNotFound", func(t *testing.T) {
+		t.Parallel()
+
+		cfgPath := tempConfigPath(t, false, "")
+
+		err := setDefaultConfig(cfgPath, "any")
+		require.ErrorIs(t, err, zerr.ErrConfigNotFound)
+	})
+
+	t.Run("setDefaultConfig_invalid_config_returns_error", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		cfgPath := writeTestZotFile(t, dir, `{"configs":"not-an-array"}`)
+
+		err := setDefaultConfig(cfgPath, "any")
+		require.ErrorIs(t, err, zerr.ErrCliBadConfig)
+	})
+
+	t.Run("removeConfig_fresh_ErrConfigNotFound", func(t *testing.T) {
+		t.Parallel()
+
+		cfgPath := tempConfigPath(t, false, "")
+
+		err := removeConfig(cfgPath, "any")
+		require.ErrorIs(t, err, zerr.ErrConfigNotFound)
+	})
+
+	t.Run("clearDefaultConfig_success", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		cfgPath := writeTestZotFile(t, dir,
+			`{"configs":[{"_name":"a","url":"https://example.com"}],"defaultConfigName":"a"}`)
+
+		require.NoError(t, clearDefaultConfig(cfgPath))
+
+		cfg, err := ReadZliConfigFile(cfgPath)
+		require.NoError(t, err)
+		require.Empty(t, cfg.DefaultConfigName)
+	})
+
+	t.Run("clearDefaultConfig_fresh_returns_nil", func(t *testing.T) {
+		t.Parallel()
+
+		cfgPath := tempConfigPath(t, false, "")
+
+		require.NoError(t, clearDefaultConfig(cfgPath))
+	})
+
+	t.Run("getDefaultConfigName_missing_profile", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		cfgPath := writeTestZotFile(t, dir,
+			`{"configs":[{"_name":"a","url":"https://example.com"}],"defaultConfigName":"missing"}`)
+
+		_, err := getDefaultConfigName(cfgPath)
+		require.ErrorIs(t, err, zerr.ErrConfigNotFound)
+		require.Contains(t, err.Error(), "defaultConfigName")
+	})
+
+	t.Run("getDefaultConfigName_missing_file", func(t *testing.T) {
+		t.Parallel()
+
+		cfgPath := tempConfigPath(t, false, "")
+
+		defaultName, err := getDefaultConfigName(cfgPath)
+		require.NoError(t, err)
+		require.Empty(t, defaultName)
+
+		_, err = os.Stat(cfgPath)
+		require.ErrorIs(t, err, os.ErrNotExist)
+	})
+
+	t.Run("getDefaultConfigName_empty_file_returns_empty", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		cfgPath := writeTestZotFile(t, dir, "")
+
+		defaultName, err := getDefaultConfigName(cfgPath)
+		require.NoError(t, err)
+		require.Empty(t, defaultName)
+	})
+
+	t.Run("getDefaultConfigName_invalid_config_returns_error", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		cfgPath := writeTestZotFile(t, dir, `{"configs":"not-an-array"}`)
+
+		_, err := getDefaultConfigName(cfgPath)
+		require.ErrorIs(t, err, zerr.ErrCliBadConfig)
+	})
+}
+
 func TestConfigCmd_listFreshAndFindErrors(t *testing.T) {
 	t.Parallel()
 
@@ -337,6 +463,28 @@ func TestConfigCmd_listFreshAndFindErrors(t *testing.T) {
 			name:    "getConfigNames_fresh_returns_empty",
 			wantOut: "",
 		},
+		{
+			name:        "getConfigNames_stale_default_ErrConfigNotFound",
+			writeFile:   true,
+			cfgContents: `{"configs":[{"_name":"main","url":"https://example.com"}],"defaultConfigName":"missing"}`,
+			wantErrIs:   zerr.ErrConfigNotFound,
+		},
+		{
+			name:        "getAllConfig_stale_default_ErrConfigNotFound",
+			writeFile:   true,
+			cfgContents: `{"configs":[{"_name":"main","url":"https://example.com"}],"defaultConfigName":"missing"}`,
+			runGetAll:   true,
+			configName:  "main",
+			wantErrIs:   zerr.ErrConfigNotFound,
+		},
+		{
+			name:        "getAllConfig_invalid_config_ErrCliBadConfig",
+			writeFile:   true,
+			cfgContents: `{"configs":"not-an-array"}`,
+			runGetAll:   true,
+			configName:  "main",
+			wantErrIs:   zerr.ErrCliBadConfig,
+		},
 	}
 
 	for _, tableCase := range tests {
@@ -353,6 +501,9 @@ func TestConfigCmd_listFreshAndFindErrors(t *testing.T) {
 				out, err := getAllConfig(cfgPath, "any")
 				require.NoError(t, err)
 				require.Equal(t, tableCase.wantOut, out)
+			case tableCase.wantErrIs != nil:
+				_, err := getConfigNames(cfgPath)
+				require.ErrorIs(t, err, tableCase.wantErrIs)
 			default:
 				out, err := getConfigNames(cfgPath)
 				require.NoError(t, err)
@@ -360,4 +511,57 @@ func TestConfigCmd_listFreshAndFindErrors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestConfigSubcommands_unavailableHome(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "add", args: []string{"add", "main", "https://example.com"}},
+		{name: "remove", args: []string{"remove", "main"}},
+		{name: "list", args: []string{"list"}},
+		{name: "show", args: []string{"show", "main"}},
+		{name: "get", args: []string{"get", "main", "url"}},
+		{name: "set", args: []string{"set", "main", "showspinner", "false"}},
+		{name: "reset", args: []string{"reset", "main", "showspinner"}},
+		{name: "set-default", args: []string{"set-default", "main"}},
+		{name: "clear-default", args: []string{"clear-default"}},
+	}
+
+	for _, tableCase := range tests {
+		t.Run(tableCase.name, func(t *testing.T) {
+			t.Setenv("HOME", "nonExistentDirectory")
+
+			cmd := NewConfigCommand()
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
+			cmd.SetArgs(tableCase.args)
+
+			require.Error(t, cmd.Execute())
+		})
+	}
+}
+
+func TestConfigCommand_legacyPath_unavailableHome(t *testing.T) {
+	t.Setenv("HOME", "nonExistentDirectory")
+
+	cmd := NewConfigCommand()
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs([]string{"main", "https://example.com"})
+
+	require.Error(t, cmd.Execute())
+}
+
+func TestConfigSubcommands_exactArgsOrHelp(t *testing.T) {
+	t.Parallel()
+
+	cmd := NewConfigCommand()
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs([]string{"show"})
+
+	err := cmd.Execute()
+	require.ErrorIs(t, err, zerr.ErrInvalidArgs)
 }

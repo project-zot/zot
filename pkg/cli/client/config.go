@@ -21,14 +21,16 @@ const (
 	defaultConfigPerms = 0o644
 	defaultFilePerms   = 0o600
 
-	nameKey           = "_name"
-	showspinnerConfig = "showspinner"
-	verifyTLSConfig   = "verify-tls"
+	defaultConfigNameKey = "defaultConfigName"
+	nameKey              = "_name"
+	showspinnerConfig    = "showspinner"
+	verifyTLSConfig      = "verify-tls"
 )
 
 // ZliConfigFile is the on-disk JSON shape for ~/.zot (zli CLI registry profiles).
 type ZliConfigFile struct {
-	Configs []ZliConfig `json:"configs"`
+	Configs           []ZliConfig `json:"configs"`
+	DefaultConfigName string      `json:"defaultConfigName,omitempty"`
 }
 
 // ZliConfig is one named registry profile inside ZliConfigFile.Configs.
@@ -88,6 +90,17 @@ func ReadZliConfigFile(filePath string) (*ZliConfigFile, error) {
 	}
 
 	out := &ZliConfigFile{Configs: make([]ZliConfig, 0, len(configsAny))}
+
+	if defaultNameRaw, ok := jsonMap[defaultConfigNameKey]; ok && defaultNameRaw != nil {
+		defaultName, ok := defaultNameRaw.(string)
+		if !ok {
+			return nil, fmt.Errorf(
+				`%w: field "%s" must be a string, got %T`,
+				zerr.ErrCliBadConfig, defaultConfigNameKey, defaultNameRaw)
+		}
+
+		out.DefaultConfigName = defaultName
+	}
 
 	for i, v := range configsAny {
 		configMap, ok := v.(map[string]any)
@@ -182,6 +195,37 @@ func (f *ZliConfigFile) HasEntry(configName string) bool {
 	})
 }
 
+// SetDefault validates and stores the default profile name.
+func (f *ZliConfigFile) SetDefault(configName string) error {
+	if !f.HasEntry(configName) {
+		return zerr.ErrConfigNotFound
+	}
+
+	f.DefaultConfigName = configName
+
+	return nil
+}
+
+// ClearDefault clears the stored default profile name.
+func (f *ZliConfigFile) ClearDefault() {
+	f.DefaultConfigName = ""
+}
+
+// DefaultName returns the configured default profile name, validating that it still exists.
+func (f *ZliConfigFile) DefaultName() (string, error) {
+	if f.DefaultConfigName == "" {
+		return "", nil
+	}
+
+	if !f.HasEntry(f.DefaultConfigName) {
+		return "", fmt.Errorf(
+			"%w: %s %q does not match any profile",
+			zerr.ErrConfigNotFound, defaultConfigNameKey, f.DefaultConfigName)
+	}
+
+	return f.DefaultConfigName, nil
+}
+
 // AddEntry appends a new profile after validating URL and duplicate names.
 func (f *ZliConfigFile) AddEntry(configName, urlStr string) error {
 	if err := validateURL(urlStr); err != nil {
@@ -210,6 +254,9 @@ func (f *ZliConfigFile) RemoveEntry(configName string) error {
 		}
 
 		f.Configs = append(f.Configs[:i], f.Configs[i+1:]...)
+		if f.DefaultConfigName == configName {
+			f.ClearDefault()
+		}
 
 		return nil
 	}
@@ -219,12 +266,22 @@ func (f *ZliConfigFile) RemoveEntry(configName string) error {
 
 // FormatNames renders name and URL columns for `zli config list`.
 func (f *ZliConfigFile) FormatNames() (string, error) {
+	defaultName, err := f.DefaultName()
+	if err != nil {
+		return "", err
+	}
+
 	var builder strings.Builder
 
 	writer := tabwriter.NewWriter(&builder, 0, 8, 1, '\t', tabwriter.AlignRight) //nolint:mnd
 
-	for _, c := range f.Configs {
-		fmt.Fprintf(writer, "%s\t%s\n", c.Name, c.URL)
+	for _, profile := range f.Configs {
+		name := profile.Name
+		if profile.Name == defaultName {
+			name += " (default)"
+		}
+
+		fmt.Fprintf(writer, "%s\t%s\n", name, profile.URL)
 	}
 
 	if err := writer.Flush(); err != nil {
@@ -317,13 +374,15 @@ func (c *ZliConfig) ResetVar(key string) error {
 	return nil
 }
 
-// FormatListedVars renders lines for `zli config show <name>`.
-func (c *ZliConfig) FormatListedVars() string {
+func (c *ZliConfig) formatListedVars(isDefault bool) string {
 	var builder strings.Builder
 
 	fmt.Fprintf(&builder, "%s = %v\n", URLFlag, c.URL)
 	fmt.Fprintf(&builder, "%s = %v\n", showspinnerConfig, c.ShowSpinner)
 	fmt.Fprintf(&builder, "%s = %v\n", verifyTLSConfig, c.VerifyTLS)
+	if isDefault {
+		fmt.Fprintln(&builder, "default = true")
+	}
 
 	return builder.String()
 }

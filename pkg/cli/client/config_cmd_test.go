@@ -321,6 +321,140 @@ func TestConfigCmdMain(t *testing.T) {
 			So(strings.TrimSpace(outBuff.String()), ShouldEqual, "")
 			So(errBuff.String(), ShouldEqual, "")
 		})
+
+		Convey("rejects stale defaultConfigName", func() {
+			_ = makeConfigFile(t,
+				`{"configs":[{"_name":"configtest","url":"https://test-url.com"}],"defaultConfigName":"missing"}`)
+
+			cmd := client.NewConfigCommand()
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs([]string{"list"})
+			err := cmd.Execute()
+
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrConfigNotFound), ShouldBeTrue)
+			So(buff.String(), ShouldContainSubstring, "defaultConfigName")
+		})
+	})
+
+	Convey("Test config default profile commands", t, func() {
+		Convey("sets and displays the default profile", func() {
+			configPath := makeConfigFile(t,
+				`{"configs":[{"_name":"configtest","url":"https://test-url.com","showspinner":false}]}`)
+
+			cmd := client.NewConfigCommand()
+			outBuff := bytes.NewBufferString("")
+			errBuff := bytes.NewBufferString("")
+			cmd.SetOut(outBuff)
+			cmd.SetErr(errBuff)
+			cmd.SetArgs([]string{"set-default", "configtest"})
+			So(cmd.Execute(), ShouldBeNil)
+
+			actual, err := os.ReadFile(configPath)
+			So(err, ShouldBeNil)
+			So(string(actual), ShouldContainSubstring, `"defaultConfigName": "configtest"`)
+
+			listCmd := client.NewConfigCommand()
+			listOut := bytes.NewBufferString("")
+			listErr := bytes.NewBufferString("")
+			listCmd.SetOut(listOut)
+			listCmd.SetErr(listErr)
+			listCmd.SetArgs([]string{"list"})
+			So(listCmd.Execute(), ShouldBeNil)
+			So(listOut.String(), ShouldContainSubstring, "configtest (default)")
+			So(listErr.String(), ShouldEqual, "")
+
+			showCmd := client.NewConfigCommand()
+			showOut := bytes.NewBufferString("")
+			showErr := bytes.NewBufferString("")
+			showCmd.SetOut(showOut)
+			showCmd.SetErr(showErr)
+			showCmd.SetArgs([]string{"show", "configtest"})
+			So(showCmd.Execute(), ShouldBeNil)
+			So(showOut.String(), ShouldContainSubstring, "default = true")
+			So(showErr.String(), ShouldEqual, "")
+		})
+
+		Convey("rejects a missing default profile", func() {
+			_ = makeConfigFile(t,
+				`{"configs":[{"_name":"configtest","url":"https://test-url.com","showspinner":false}]}`)
+
+			cmd := client.NewConfigCommand()
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs([]string{"set-default", "missing"})
+			err := cmd.Execute()
+
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrConfigNotFound), ShouldBeTrue)
+		})
+
+		Convey("set-default errors when home directory is unavailable", func() {
+			t.Setenv("HOME", "nonExistentDirectory")
+
+			cmd := client.NewConfigCommand()
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs([]string{"set-default", "configtest"})
+			err := cmd.Execute()
+
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("clears the default profile", func() {
+			configPath := makeConfigFile(t,
+				`{"configs":[{"_name":"configtest","url":"https://test-url.com",`+
+					`"showspinner":false}],"defaultConfigName":"configtest"}`)
+
+			cmd := client.NewConfigCommand()
+			outBuff := bytes.NewBufferString("")
+			errBuff := bytes.NewBufferString("")
+			cmd.SetOut(outBuff)
+			cmd.SetErr(errBuff)
+			cmd.SetArgs([]string{"clear-default"})
+			So(cmd.Execute(), ShouldBeNil)
+			So(outBuff.String(), ShouldEqual, "")
+			So(errBuff.String(), ShouldEqual, "")
+
+			actual, err := os.ReadFile(configPath)
+			So(err, ShouldBeNil)
+			So(string(actual), ShouldNotContainSubstring, "defaultConfigName")
+		})
+
+		Convey("remove clears the default profile", func() {
+			configPath := makeConfigFile(t,
+				`{"configs":[{"_name":"configtest","url":"https://test-url.com",`+
+					`"showspinner":false}],"defaultConfigName":"configtest"}`)
+
+			cmd := client.NewConfigCommand()
+			outBuff := bytes.NewBufferString("")
+			errBuff := bytes.NewBufferString("")
+			cmd.SetOut(outBuff)
+			cmd.SetErr(errBuff)
+			cmd.SetArgs([]string{"remove", "configtest"})
+			So(cmd.Execute(), ShouldBeNil)
+
+			actual, err := os.ReadFile(configPath)
+			So(err, ShouldBeNil)
+			So(string(actual), ShouldNotContainSubstring, "defaultConfigName")
+		})
+
+		Convey("clear-default errors when home directory is unavailable", func() {
+			t.Setenv("HOME", "nonExistentDirectory")
+
+			cmd := client.NewConfigCommand()
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs([]string{"clear-default"})
+			err := cmd.Execute()
+
+			So(err, ShouldNotBeNil)
+		})
 	})
 
 	Convey("Test config show", t, func() {
@@ -337,6 +471,22 @@ func TestConfigCmdMain(t *testing.T) {
 			So(outBuff.String(), ShouldContainSubstring, "url = https://test-url.com")
 			So(outBuff.String(), ShouldContainSubstring, "showspinner = false")
 			So(errBuff.String(), ShouldEqual, "")
+		})
+
+		Convey("rejects stale defaultConfigName", func() {
+			_ = makeConfigFile(t,
+				`{"configs":[{"_name":"configtest","url":"https://test-url.com"}],"defaultConfigName":"missing"}`)
+
+			cmd := client.NewConfigCommand()
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs([]string{"show", "configtest"})
+			err := cmd.Execute()
+
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrConfigNotFound), ShouldBeTrue)
+			So(buff.String(), ShouldContainSubstring, "defaultConfigName")
 		})
 
 		Convey("from empty config file", func() {
