@@ -114,6 +114,8 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 		// runs whenever migration marker is absent (checked at top of upgradeToGlobalBlobstore)
 		if err := imgStore.upgradeToGlobalBlobstore(); err != nil {
 			log.Error().Err(err).Msg("failed to upgrade to global blobstore")
+
+			return nil
 		}
 	}
 
