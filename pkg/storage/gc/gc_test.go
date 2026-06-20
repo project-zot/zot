@@ -89,7 +89,8 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 			var metaDB mTypes.MetaDB
 			compat := []compat.MediaCompatibility{compat.DockerManifestV2SchemaV2}
 
-			if testcase.storageType == storageConstants.S3StorageDriverName {
+			switch testcase.storageType {
+			case storageConstants.S3StorageDriverName:
 				tskip.SkipDynamo(t)
 				tskip.SkipS3(t)
 
@@ -158,7 +159,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 				}
 
 				imgStore = s3.NewImageStore(rootDir, cacheDir, true, false, log, metrics, nil, store, nil, compat, nil)
-			} else if testcase.storageType == storageConstants.AzureStorageDriverName {
+			case storageConstants.AzureStorageDriverName:
 				tskip.SkipAzure(t)
 
 				uuid, err := guuid.NewV4()
@@ -200,7 +201,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 
 				imgStore = azure.NewImageStore(storage.RootDir(storageConstants.AzureStorageDriverName, driverParams),
 					cacheDir, true, false, log, metrics, nil, store, nil, compat, nil)
-			} else {
+			default:
 				// Create temporary directory
 				rootDir := t.TempDir()
 
@@ -1826,7 +1827,8 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 			var metaDB mTypes.MetaDB
 			metaDB = nil
 
-			if testcase.storageType == storageConstants.S3StorageDriverName {
+			switch testcase.storageType {
+			case storageConstants.S3StorageDriverName:
 				tskip.SkipDynamo(t)
 				tskip.SkipS3(t)
 
@@ -1869,7 +1871,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 				}
 
 				imgStore = s3.NewImageStore(rootDir, cacheDir, true, false, log, metrics, nil, store, nil, nil, nil)
-			} else if testcase.storageType == storageConstants.AzureStorageDriverName {
+			case storageConstants.AzureStorageDriverName:
 				tskip.SkipAzure(t)
 
 				uuid, err := guuid.NewV4()
@@ -1896,7 +1898,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 
 				imgStore = azure.NewImageStore(storage.RootDir(storageConstants.AzureStorageDriverName, driverParams),
 					cacheDir, true, false, log, metrics, nil, store, nil, nil, nil)
-			} else {
+			default:
 				// Create temporary directory
 				rootDir := t.TempDir()
 

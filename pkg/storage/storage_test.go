@@ -1865,7 +1865,8 @@ func TestMandatoryAnnotations(t *testing.T) {
 				})
 
 				Convey("Error on mandatory annotations", func() {
-					if testcase.storageType == storageConstants.S3StorageDriverName {
+					switch testcase.storageType {
+					case storageConstants.S3StorageDriverName:
 						imgStore = imagestore.NewImageStore(testDir, cacheDir, false, false, log, metrics,
 							&mocks.MockedLint{
 								LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storageTypes.ImageStore) (bool, error) {
@@ -1873,7 +1874,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 									return false, errors.New("linter error")
 								},
 							}, store, nil, nil, nil)
-					} else if testcase.storageType == storageConstants.AzureStorageDriverName {
+					case storageConstants.AzureStorageDriverName:
 						imgStore = imagestore.NewImageStore("/", cacheDir, false, false, log, metrics,
 							&mocks.MockedLint{
 								LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storageTypes.ImageStore) (bool, error) {
@@ -1881,7 +1882,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 									return false, errors.New("linter error")
 								},
 							}, store, nil, nil, nil)
-					} else {
+					default:
 						var cacheDriver storageTypes.Cache
 						store, _, cacheDriver, err := createObjectsStore(opts)
 						if err != nil {
