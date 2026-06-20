@@ -28,11 +28,13 @@ import (
 	"zotregistry.dev/zot/v2/pkg/meta/dynamodb"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/storage"
+	"zotregistry.dev/zot/v2/pkg/storage/azure"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/gc"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
 	"zotregistry.dev/zot/v2/pkg/storage/s3"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
+	"zotregistry.dev/zot/v2/pkg/test/azurite"
 	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
 	tskip "zotregistry.dev/zot/v2/pkg/test/skip"
 )
@@ -41,6 +43,7 @@ const (
 	region        = "us-east-2"
 	s3TestName    = "S3APIs"
 	localTestName = "LocalAPIs"
+	azureTestName = "AzureAPIs"
 )
 
 //nolint:gochecknoglobals
@@ -55,6 +58,10 @@ var testCases = []struct {
 	{
 		testCaseName: localTestName,
 		storageType:  storageConstants.LocalStorageDriverName,
+	},
+	{
+		testCaseName: azureTestName,
+		storageType:  storageConstants.AzureStorageDriverName,
 	},
 }
 
@@ -151,6 +158,48 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 				}
 
 				imgStore = s3.NewImageStore(rootDir, cacheDir, true, false, log, metrics, nil, store, nil, compat, nil)
+			} else if testcase.storageType == storageConstants.AzureStorageDriverName {
+				tskip.SkipAzure(t)
+
+				uuid, err := guuid.NewV4()
+				if err != nil {
+					panic(err)
+				}
+
+				rootDir := path.Join("/oci-repo-test", uuid.String())
+				cacheDir := t.TempDir()
+
+				driverParams := azurite.DriverParams(rootDir)
+				storage.NormalizeRootDirectory(storageConstants.AzureStorageDriverName, driverParams)
+
+				store, err := factory.Create(context.Background(), storageConstants.AzureStorageDriverName, driverParams)
+				if err != nil {
+					panic(err)
+				}
+
+				if err := azurite.EnsureContainer(); err != nil {
+					panic(err)
+				}
+
+				defer store.Delete(context.Background(), "/") //nolint: errcheck
+
+				// init metaDB on a local boltdb (independent of the blob store)
+				boltParams := boltdb.DBParameters{
+					RootDir: cacheDir,
+				}
+
+				boltDriver, err := boltdb.GetBoltDriver(boltParams)
+				if err != nil {
+					panic(err)
+				}
+
+				metaDB, err = boltdb.New(boltDriver, log)
+				if err != nil {
+					panic(err)
+				}
+
+				imgStore = azure.NewImageStore(storage.RootDir(storageConstants.AzureStorageDriverName, driverParams),
+					cacheDir, true, false, log, metrics, nil, store, nil, compat, nil)
 			} else {
 				// Create temporary directory
 				rootDir := t.TempDir()
@@ -1217,25 +1266,29 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 				})
 
 				Convey("should gc only stale blob uploads", func() {
-					gcDelay := 1 * time.Second
 					repoName := "gc-test1"
 
-					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
-						Delay: gcDelay,
-						ImageRetention: config.ImageRetention{
-							Delay: storageConstants.DefaultGCDelay,
-							Policies: []config.RetentionPolicy{
-								{
-									Repositories:    []string{"**"},
-									DeleteReferrers: true,
-									DeleteUntagged:  &trueVal,
-									KeepTags: []config.KeepTagsPolicy{
-										{},
+					// Drive staleness through the GC delay rather than wall-clock time: a long
+					// delay keeps a recent upload, a zero delay treats it as stale. This keeps the
+					// test deterministic regardless of how long the backend takes to respond.
+					newGC := func(delay time.Duration) gc.GarbageCollect {
+						return gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
+							Delay: delay,
+							ImageRetention: config.ImageRetention{
+								Delay: storageConstants.DefaultGCDelay,
+								Policies: []config.RetentionPolicy{
+									{
+										Repositories:    []string{"**"},
+										DeleteReferrers: true,
+										DeleteUntagged:  &trueVal,
+										KeepTags: []config.KeepTagsPolicy{
+											{},
+										},
 									},
 								},
 							},
-						},
-					}, audit, log, metrics)
+						}, audit, log, metrics)
+					}
 
 					blobUploadID, err := imgStore.NewBlobUpload(context.Background(), repoName)
 					So(err, ShouldBeNil)
@@ -1271,7 +1324,8 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 						So(isPresent, ShouldBeTrue)
 					}
 
-					err = gc.CleanRepo(ctx, repoName)
+					// A long GC delay keeps the recent upload.
+					err = newGC(1*time.Hour).CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
 
 					// Blob upload is recent it should still be there
@@ -1300,9 +1354,8 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 						So(isPresent, ShouldBeTrue)
 					}
 
-					time.Sleep(gcDelay + 1*time.Second)
-
-					err = gc.CleanRepo(ctx, repoName)
+					// A zero GC delay treats the upload as stale, so it is collected.
+					err = newGC(0).CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
 
 					// Blob uploads should be GCed
@@ -1816,6 +1869,33 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 				}
 
 				imgStore = s3.NewImageStore(rootDir, cacheDir, true, false, log, metrics, nil, store, nil, nil, nil)
+			} else if testcase.storageType == storageConstants.AzureStorageDriverName {
+				tskip.SkipAzure(t)
+
+				uuid, err := guuid.NewV4()
+				if err != nil {
+					panic(err)
+				}
+
+				rootDir := path.Join("/oci-repo-test", uuid.String())
+				cacheDir := t.TempDir()
+
+				driverParams := azurite.DriverParams(rootDir)
+				storage.NormalizeRootDirectory(storageConstants.AzureStorageDriverName, driverParams)
+
+				store, err := factory.Create(context.Background(), storageConstants.AzureStorageDriverName, driverParams)
+				if err != nil {
+					panic(err)
+				}
+
+				if err := azurite.EnsureContainer(); err != nil {
+					panic(err)
+				}
+
+				defer store.Delete(context.Background(), "/") //nolint: errcheck
+
+				imgStore = azure.NewImageStore(storage.RootDir(storageConstants.AzureStorageDriverName, driverParams),
+					cacheDir, true, false, log, metrics, nil, store, nil, nil, nil)
 			} else {
 				// Create temporary directory
 				rootDir := t.TempDir()
@@ -2539,25 +2619,29 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 				})
 
 				Convey("should gc only stale blob uploads", func() {
-					gcDelay := 1 * time.Second
 					repoName := "gc-test1"
 
-					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
-						Delay: gcDelay,
-						ImageRetention: config.ImageRetention{
-							Delay: storageConstants.DefaultGCDelay,
-							Policies: []config.RetentionPolicy{
-								{
-									Repositories:    []string{"**"},
-									DeleteReferrers: true,
-									DeleteUntagged:  &trueVal,
-									KeepTags: []config.KeepTagsPolicy{
-										{},
+					// Drive staleness through the GC delay rather than wall-clock time: a long
+					// delay keeps a recent upload, a zero delay treats it as stale. This keeps the
+					// test deterministic regardless of how long the backend takes to respond.
+					newGC := func(delay time.Duration) gc.GarbageCollect {
+						return gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
+							Delay: delay,
+							ImageRetention: config.ImageRetention{
+								Delay: storageConstants.DefaultGCDelay,
+								Policies: []config.RetentionPolicy{
+									{
+										Repositories:    []string{"**"},
+										DeleteReferrers: true,
+										DeleteUntagged:  &trueVal,
+										KeepTags: []config.KeepTagsPolicy{
+											{},
+										},
 									},
 								},
 							},
-						},
-					}, audit, log, metrics)
+						}, audit, log, metrics)
+					}
 
 					blobUploadID, err := imgStore.NewBlobUpload(context.Background(), repoName)
 					So(err, ShouldBeNil)
@@ -2593,7 +2677,8 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 						So(isPresent, ShouldBeTrue)
 					}
 
-					err = gc.CleanRepo(ctx, repoName)
+					// A long GC delay keeps the recent upload.
+					err = newGC(1*time.Hour).CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
 
 					// Blob upload is recent it should still be there
@@ -2622,9 +2707,8 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 						So(isPresent, ShouldBeTrue)
 					}
 
-					time.Sleep(gcDelay + 1*time.Second)
-
-					err = gc.CleanRepo(ctx, repoName)
+					// A zero GC delay treats the upload as stale, so it is collected.
+					err = newGC(0).CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
 
 					// Blob uploads should be GCed
