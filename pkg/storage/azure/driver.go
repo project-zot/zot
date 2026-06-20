@@ -156,8 +156,12 @@ func (driver *Driver) SameFile(path1, path2 string) bool {
 	fi2, _ := driver.store.Stat(context.Background(), path2)
 
 	if fi1 != nil && fi2 != nil {
+		// Compare modification times with Equal, not ==: time.Time values parsed from
+		// Azure's LastModified header carry differing monotonic/location data, so == reports
+		// two stats of the same blob as unequal. That would make dedupe Link a blob onto
+		// itself and overwrite it with an empty placeholder.
 		if fi1.IsDir() == fi2.IsDir() &&
-			fi1.ModTime() == fi2.ModTime() &&
+			fi1.ModTime().Equal(fi2.ModTime()) &&
 			fi1.Path() == fi2.Path() &&
 			fi1.Size() == fi2.Size() {
 			return true
