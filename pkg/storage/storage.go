@@ -78,7 +78,7 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 		// Init a Storager from connection string.
 		store, err := factory.Create(context.Background(), storeName, config.Storage.StorageDriver)
 		if err != nil {
-			log.Error().Err(err).Str("rootDir", config.Storage.RootDirectory).Msg("failed to create s3 service")
+			log.Error().Err(err).Str("rootDir", config.Storage.RootDirectory).Msg("failed to create remote storage service")
 
 			return storeController, err
 		}
@@ -203,7 +203,7 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 			// Init a Storager from connection string.
 			store, err := factory.Create(context.Background(), storeName, storageConfig.StorageDriver)
 			if err != nil {
-				log.Error().Err(err).Str("rootDir", storageConfig.RootDirectory).Msg("failed to create s3 service")
+				log.Error().Err(err).Str("rootDir", storageConfig.RootDirectory).Msg("failed to create remote storage service")
 
 				return nil, err
 			}
@@ -267,7 +267,7 @@ func NormalizeRootDirectory(storeName string, driverParams map[string]any) {
 // For S3: preserve the old behavior for backward compatibility — existing deployments
 // have data stored under double-prefixed keys.
 //
-// For GCS: use "/" to avoid double-prefixing (new driver in 2.1.15, no legacy data).
+// For GCS/Azure: use "/" to avoid double-prefixing (new driver in 2.1.15, no legacy data).
 func RootDir(storeName string, driverParams map[string]any) string {
 	if storeName == constants.S3StorageDriverName && driverParams["rootdirectory"] != nil {
 		return fmt.Sprintf("%v", driverParams["rootdirectory"])
