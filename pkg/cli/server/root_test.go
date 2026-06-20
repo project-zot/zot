@@ -1582,7 +1582,7 @@ storage:
 		err := cli.LoadConfiguration(cfg, tmpfile)
 		So(err, ShouldNotBeNil)
 		So(err.Error(), ShouldContainSubstring,
-			"invalid storage config, redirectBlobURL is supported only for s3/gcs storage")
+			"invalid storage config, redirectBlobURL is supported only for s3/gcs/azure storage")
 	})
 
 	Convey("Test redirectBlobURL error for empty storageDriver map", t, func(c C) {
@@ -1598,7 +1598,7 @@ storage:
 		err := cli.LoadConfiguration(cfg, tmpfile)
 		So(err, ShouldNotBeNil)
 		So(err.Error(), ShouldContainSubstring,
-			"invalid storage config, redirectBlobURL is supported only for s3/gcs storage")
+			"invalid storage config, redirectBlobURL is supported only for s3/gcs/azure storage")
 	})
 
 	Convey("Test redirectBlobURL error for subpath local storage", t, func(c C) {
@@ -1613,7 +1613,7 @@ storage:
 		err := cli.LoadConfiguration(cfg, tmpfile)
 		So(err, ShouldNotBeNil)
 		So(err.Error(), ShouldContainSubstring,
-			"invalid storage config, redirectBlobURL is supported only for s3/gcs storage")
+			"invalid storage config, redirectBlobURL is supported only for s3/gcs/azure storage")
 	})
 
 	Convey("Test redirectBlobURL error for subpath empty storageDriver map", t, func(c C) {
@@ -1628,7 +1628,7 @@ storage:
 		err := cli.LoadConfiguration(cfg, tmpfile)
 		So(err, ShouldNotBeNil)
 		So(err.Error(), ShouldContainSubstring,
-			"invalid storage config, redirectBlobURL is supported only for s3/gcs storage")
+			"invalid storage config, redirectBlobURL is supported only for s3/gcs/azure storage")
 	})
 
 	Convey("Test verify w/ authorization and w/o authentication", t, func(c C) {
