@@ -40,6 +40,11 @@ func DriverParams(rootDir string) map[string]any {
 		"serviceurl":    Endpoint(),
 		"rootdirectory": rootDir,
 		"credentials":   map[string]any{"type": "shared_key"},
+		// Azurite completes server-side copies almost instantly but briefly reports them
+		// as pending, so the driver polls every retry_delay. The 100ms default is tuned for
+		// real Azure latency and dominates test time (every Move/InitRepo/blob finalize pays
+		// it); a short interval against a local emulator keeps the suite fast.
+		"retry_delay": "10ms",
 	}
 }
 
