@@ -40,6 +40,7 @@ jobs:
           cd $GITHUB_WORKSPACE
           go mod download
       - uses: ./.github/actions/setup-localstack
+      - uses: ./.github/actions/setup-azurite
       - name: run zot minimal tests
         run: |
           cd $GITHUB_WORKSPACE
@@ -49,51 +50,13 @@ jobs:
           DYNAMODBMOCK_ENDPOINT: http://localhost:4566
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
+          AZURITEMOCK_ENDPOINT: http://127.0.0.1:10000/devstoreaccount1
       - name: upload coverage
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-minimal
           path: coverage-minimal.txt
       - uses: ./.github/actions/teardown-localstack
-  test-azure-storage:
-    name: Azure Blob storage driver tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-      - name: Install go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
-        with:
-          cache: false
-          check-latest: true
-          go-version: 1.26.x
-      - name: Cache go dependencies
-        id: cache-go-dependencies
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: |
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-mod-
-      - name: Install go dependencies
-        if: steps.cache-go-dependencies.outputs.cache-hit != 'true'
-        run: |
-          cd $GITHUB_WORKSPACE
-          go mod download
-      - uses: ./.github/actions/setup-azurite
-      - name: run azure storage driver tests
-        run: |
-          cd $GITHUB_WORKSPACE
-          go test -covermode=atomic -coverprofile=coverage-azure.txt ./pkg/storage/azure/...
-        env:
-          AZURITEMOCK_ENDPOINT: http://127.0.0.1:10000/devstoreaccount1
-      - name: upload coverage
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: coverage-azure
-          path: coverage-azure.txt
       - uses: ./.github/actions/teardown-azurite
   test-run-extensions:
     name: Run zot with extensions tests
@@ -122,6 +85,7 @@ jobs:
           cd $GITHUB_WORKSPACE
           go mod download
       - uses: ./.github/actions/setup-localstack
+      - uses: ./.github/actions/setup-azurite
       - name: run zot extended tests
         run: |
           cd $GITHUB_WORKSPACE
@@ -131,12 +95,14 @@ jobs:
           DYNAMODBMOCK_ENDPOINT: http://localhost:4566
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
+          AZURITEMOCK_ENDPOINT: http://127.0.0.1:10000/devstoreaccount1
       - name: upload coverage
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-extended
           path: coverage-extended.txt
       - uses: ./.github/actions/teardown-localstack
+      - uses: ./.github/actions/teardown-azurite
   test-run-devmode:
     name: Running development-mode tests on Linux
     runs-on: ubuntu-latest
