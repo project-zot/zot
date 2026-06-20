@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
 	"zotregistry.dev/zot/v2/pkg/log"
 )
@@ -57,6 +58,7 @@ type oauth2CredentialsHelper struct {
 	mu         sync.RWMutex
 	tokens     map[string]oauth2Token
 	log        log.Logger
+}
 
 type oauth2TokenResponse struct {
 	AccessToken string `json:"access_token"` //nolint:tagliatelle // OAuth2 token response field
@@ -207,6 +209,20 @@ func (credHelper *oauth2CredentialsHelper) fetchToken() (oauth2Token, error) {
 	}, nil
 }
 
+func (credHelper *oauth2CredentialsHelper) storeToken(remoteAddress string, token oauth2Token) {
+	credHelper.mu.Lock()
+	defer credHelper.mu.Unlock()
+
+	credHelper.tokens[remoteAddress] = token
+}
+
+func (credHelper *oauth2CredentialsHelper) tokenExpiry(remoteAddress string) time.Time {
+	credHelper.mu.RLock()
+	defer credHelper.mu.RUnlock()
+
+	return credHelper.tokens[remoteAddress].expiry
+}
+
 // GetCredentials retrieves access tokens for the provided list of registry URLs.
 func (credHelper *oauth2CredentialsHelper) GetCredentials(urls []string) (syncconf.CredentialsFile, error) {
 	credentials := make(syncconf.CredentialsFile)
@@ -219,7 +235,7 @@ func (credHelper *oauth2CredentialsHelper) GetCredentials(urls []string) (syncco
 			return syncconf.CredentialsFile{}, fmt.Errorf("%w %s: %w", errFailedToGetOAuth2Creds, registryURL, err)
 		}
 
-		credHelper.mu.Lock(); credHelper.tokens[remoteAddress] = token; credHelper.mu.Unlock()
+		credHelper.storeToken(remoteAddress, token)
 		credentials[remoteAddress] = syncconf.Credentials{
 			Username: credHelper.username(),
 			Password: token.accessToken,
@@ -230,7 +246,7 @@ func (credHelper *oauth2CredentialsHelper) GetCredentials(urls []string) (syncco
 }
 
 func (credHelper *oauth2CredentialsHelper) AreCredentialsValid(remoteAddress string) bool {
-	credHelper.mu.RLock(); expiry := credHelper.tokens[remoteAddress].expiry; credHelper.mu.RUnlock()
+	expiry := credHelper.tokenExpiry(remoteAddress)
 
 	if time.Until(expiry) <= oauth2ExpiryWindow {
 		credHelper.log.Info().
@@ -255,7 +271,7 @@ func (credHelper *oauth2CredentialsHelper) RefreshCredentials(remoteAddress stri
 		return syncconf.Credentials{}, fmt.Errorf("%w %s: %w", errFailedToGetOAuth2Creds, remoteAddress, err)
 	}
 
-	credHelper.mu.Lock(); credHelper.tokens[remoteAddress] = token; credHelper.mu.Unlock()
+	credHelper.storeToken(remoteAddress, token)
 
 	return syncconf.Credentials{Username: credHelper.username(), Password: token.accessToken}, nil
 }
