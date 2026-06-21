@@ -74,6 +74,11 @@ func newTestMetricsServer(t *testing.T, log zlog.Logger) monitoring.MetricServer
 	return metrics
 }
 
+// The backend subtests run in parallel, but the top-level test stays sequential on
+// purpose: parallelising it too would run this and the other retention test's backends
+// concurrently, multiplying the load on the runner and the storage emulators.
+//
+//nolint:tparallel
 func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 	log := zlog.NewTestLogger()
 	audit := zlog.NewAuditLogger("debug", "/dev/null")
@@ -1817,6 +1822,11 @@ func readTagsFromStorage(rootDir, repoName string, digest godigest.Digest) ([]st
 	return result, nil
 }
 
+// The backend subtests run in parallel, but the top-level test stays sequential on
+// purpose: parallelising it too would run this and the other retention test's backends
+// concurrently, multiplying the load on the runner and the storage emulators.
+//
+//nolint:tparallel
 func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 	log := zlog.NewTestLogger()
 	audit := zlog.NewAuditLogger("debug", "/dev/null")
