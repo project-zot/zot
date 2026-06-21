@@ -91,7 +91,7 @@ func rollbackDigestManifestTags(ctx context.Context, repo string, tags, appliedM
 
 	for i := range slices.Backward(tags) {
 		refTag := tags[i]
-		if delErr := imgStore.DeleteImageManifest(context.Background(), repo, refTag, false); delErr != nil &&
+		if delErr := imgStore.DeleteImageManifest(ctx, repo, refTag, false); delErr != nil &&
 			!errors.Is(delErr, zerr.ErrManifestNotFound) {
 			log.Error().Err(delErr).Str("repository", repo).Str("tag", refTag).
 				Msg("multi-tag digest push: rollback DeleteImageManifest failed")
@@ -126,7 +126,7 @@ func rollbackDigestManifestTags(ctx context.Context, repo string, tags, appliedM
 			continue
 		}
 
-		if _, _, putErr := imgStore.PutImageManifest(context.Background(), repo, prior.digest.String(), prior.mediaType,
+		if _, _, putErr := imgStore.PutImageManifest(ctx, repo, prior.digest.String(), prior.mediaType,
 			restoreBody, []string{refTag}); putErr != nil {
 			log.Error().Err(putErr).Str("repository", repo).Str("tag", refTag).
 				Msg("multi-tag digest push: rollback restore prior manifest in store failed")

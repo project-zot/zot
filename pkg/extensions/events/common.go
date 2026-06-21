@@ -50,6 +50,10 @@ func WithEventContext(ctx context.Context, ec *EventContext) context.Context {
 
 // EventContextFromContext retrieves the EventContext from a context.Context.
 func EventContextFromContext(ctx context.Context) *EventContext {
+	if ctx == nil {
+		return nil
+	}
+
 	ec, _ := ctx.Value(eventContextKey{}).(*EventContext)
 
 	return ec
