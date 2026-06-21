@@ -41,12 +41,12 @@ func TestOAuth2CredentialsHelper(t *testing.T) {
 			So(err, ShouldNotBeNil)
 
 			_, err = sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
-				&syncconf.CredentialHelperConfig{AssertionFile: assertionFile})
+				&syncconf.OAuth2HelperConfig{AssertionFile: assertionFile})
 			So(err, ShouldNotBeNil)
 
 			_, err = sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
 				//nolint:gosec // test token endpoint URL, not a credential
-				&syncconf.CredentialHelperConfig{TokenURL: "https://idp.example.com/token"})
+				&syncconf.OAuth2HelperConfig{TokenURL: "https://idp.example.com/token"})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -63,7 +63,7 @@ func TestOAuth2CredentialsHelper(t *testing.T) {
 			defer server.Close()
 
 			credentialHelper, err := sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
-				&syncconf.CredentialHelperConfig{
+				&syncconf.OAuth2HelperConfig{
 					TokenURL:      server.URL,
 					AssertionFile: assertionFile,
 					ClientID:      "the-client",
@@ -100,14 +100,17 @@ func TestOAuth2CredentialsHelper(t *testing.T) {
 			}))
 			defer server.Close()
 
+			secretFile := filepath.Join(t.TempDir(), "client-secret")
+			So(os.WriteFile(secretFile, []byte("the-secret\n"), 0o600), ShouldBeNil)
+
 			credentialHelper, err := sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
-				&syncconf.CredentialHelperConfig{
-					TokenURL:      server.URL,
-					AssertionFile: assertionFile,
-					GrantType:     "urn:ietf:params:oauth:grant-type:jwt-bearer",
-					ClientID:      "the-client",
-					ClientSecret:  "the-secret",
-					Username:      "robot",
+				&syncconf.OAuth2HelperConfig{
+					TokenURL:         server.URL,
+					AssertionFile:    assertionFile,
+					GrantType:        "urn:ietf:params:oauth:grant-type:jwt-bearer",
+					ClientID:         "the-client",
+					ClientSecretFile: secretFile,
+					Username:         "robot",
 				})
 			So(err, ShouldBeNil)
 
@@ -136,10 +139,9 @@ func TestOAuth2CredentialsHelper(t *testing.T) {
 			So(os.WriteFile(secretFile, []byte("file-secret\n"), 0o600), ShouldBeNil)
 
 			credentialHelper, err := sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
-				&syncconf.CredentialHelperConfig{
+				&syncconf.OAuth2HelperConfig{
 					TokenURL:         server.URL,
 					AssertionFile:    assertionFile,
-					ClientSecret:     "inline-secret",
 					ClientSecretFile: secretFile,
 				})
 			So(err, ShouldBeNil)
@@ -156,7 +158,7 @@ func TestOAuth2CredentialsHelper(t *testing.T) {
 			defer server.Close()
 
 			credentialHelper, err := sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
-				&syncconf.CredentialHelperConfig{TokenURL: server.URL, AssertionFile: assertionFile})
+				&syncconf.OAuth2HelperConfig{TokenURL: server.URL, AssertionFile: assertionFile})
 			So(err, ShouldBeNil)
 
 			_, err = credentialHelper.GetCredentials([]string{registryURL})
@@ -166,7 +168,7 @@ func TestOAuth2CredentialsHelper(t *testing.T) {
 		Convey("Error when the assertion file is missing", func() {
 			credentialHelper, err := sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
 				//nolint:gosec // test token endpoint URL, not a credential
-				&syncconf.CredentialHelperConfig{
+				&syncconf.OAuth2HelperConfig{
 					TokenURL:      "https://idp.example.com/token",
 					AssertionFile: filepath.Join(t.TempDir(), "does-not-exist.jwt"),
 				})
@@ -184,7 +186,7 @@ func TestOAuth2CredentialsHelper(t *testing.T) {
 			defer server.Close()
 
 			credentialHelper, err := sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
-				&syncconf.CredentialHelperConfig{TokenURL: server.URL, AssertionFile: assertionFile})
+				&syncconf.OAuth2HelperConfig{TokenURL: server.URL, AssertionFile: assertionFile})
 			So(err, ShouldBeNil)
 
 			_, err = credentialHelper.GetCredentials([]string{registryURL})
@@ -199,7 +201,7 @@ func TestOAuth2CredentialsHelper(t *testing.T) {
 			defer server.Close()
 
 			credentialHelper, err := sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
-				&syncconf.CredentialHelperConfig{TokenURL: server.URL, AssertionFile: assertionFile})
+				&syncconf.OAuth2HelperConfig{TokenURL: server.URL, AssertionFile: assertionFile})
 			So(err, ShouldBeNil)
 
 			_, err = credentialHelper.GetCredentials([]string{registryURL})
@@ -209,8 +211,21 @@ func TestOAuth2CredentialsHelper(t *testing.T) {
 		Convey("Error when the token endpoint is unreachable", func() {
 			credentialHelper, err := sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
 				//nolint:gosec // test token endpoint URL, not a credential
-				&syncconf.CredentialHelperConfig{
+				&syncconf.OAuth2HelperConfig{
 					TokenURL:      "http://127.0.0.1:1/token",
+					AssertionFile: assertionFile,
+				})
+			So(err, ShouldBeNil)
+
+			_, err = credentialHelper.GetCredentials([]string{registryURL})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Error when the token URL is malformed", func() {
+			credentialHelper, err := sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
+				//nolint:gosec // test token endpoint URL, not a credential
+				&syncconf.OAuth2HelperConfig{
+					TokenURL:      "http://127.0.0.1\x7f/token",
 					AssertionFile: assertionFile,
 				})
 			So(err, ShouldBeNil)
@@ -222,7 +237,7 @@ func TestOAuth2CredentialsHelper(t *testing.T) {
 		Convey("Error when the client secret file is missing", func() {
 			credentialHelper, err := sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
 				//nolint:gosec // test token endpoint URL, not a credential
-				&syncconf.CredentialHelperConfig{
+				&syncconf.OAuth2HelperConfig{
 					TokenURL:         "https://idp.example.com/token",
 					AssertionFile:    assertionFile,
 					ClientSecretFile: filepath.Join(t.TempDir(), "no-secret"),
@@ -236,7 +251,7 @@ func TestOAuth2CredentialsHelper(t *testing.T) {
 		Convey("Credentials are invalid when no token is cached or it expired", func() {
 			credentialHelper, err := sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
 				//nolint:gosec // test token endpoint URL, not a credential
-				&syncconf.CredentialHelperConfig{
+				&syncconf.OAuth2HelperConfig{
 					TokenURL:      "https://idp.example.com/token",
 					AssertionFile: assertionFile,
 				})
@@ -248,7 +263,7 @@ func TestOAuth2CredentialsHelper(t *testing.T) {
 		Convey("RefreshCredentials fails when the assertion file is missing", func() {
 			credentialHelper, err := sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
 				//nolint:gosec // test token endpoint URL, not a credential
-				&syncconf.CredentialHelperConfig{
+				&syncconf.OAuth2HelperConfig{
 					TokenURL:      "https://idp.example.com/token",
 					AssertionFile: filepath.Join(t.TempDir(), "does-not-exist.jwt"),
 				})

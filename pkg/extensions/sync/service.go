@@ -108,7 +108,15 @@ func New(
 			// Logic to fetch credentials by exchanging a JWT assertion for an access token.
 			log.Info().Msg("fetch the credentials using OAuth2 JWT assertion exchange.")
 
-			credentialHelper, err := NewOAuth2CredentialHelper(log, service.config.CredentialHelperConfig)
+			oauth2Config, err := syncconf.OAuth2HelperConfigFromMap(service.config.CredentialHelperConfig)
+			if err != nil {
+				log.Error().Err(err).Msg("failed to parse the OAuth2 credentials helper config.")
+				service.config.CredentialHelper = ""
+
+				break
+			}
+
+			credentialHelper, err := NewOAuth2CredentialHelper(log, oauth2Config)
 			if err != nil {
 				log.Error().Err(err).Msg("failed to create OAuth2 credentials helper.")
 				service.config.CredentialHelper = ""
