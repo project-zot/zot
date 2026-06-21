@@ -84,6 +84,11 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 
 	for _, testcase := range testCases {
 		t.Run(testcase.testCaseName, func(t *testing.T) {
+			// Run the storage backends concurrently. Each subtest builds its own store,
+			// cache and metaDB (unique prefixes / temp dirs), so the S3, filesystem and
+			// Azure passes are independent and need not run in series.
+			t.Parallel()
+
 			var imgStore storageTypes.ImageStore
 
 			var metaDB mTypes.MetaDB
@@ -1822,6 +1827,11 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 
 	for _, testcase := range testCases {
 		t.Run(testcase.testCaseName, func(t *testing.T) {
+			// Run the storage backends concurrently. Each subtest builds its own store,
+			// cache and metaDB (unique prefixes / temp dirs), so the S3, filesystem and
+			// Azure passes are independent and need not run in series.
+			t.Parallel()
+
 			var imgStore storageTypes.ImageStore
 
 			var metaDB mTypes.MetaDB
