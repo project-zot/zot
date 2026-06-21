@@ -35,7 +35,7 @@ const (
 )
 
 var (
-	errOAuth2ConfigMissing    = errors.New("oauth2 credential helper requires credentialHelperConfig")
+	errOAuth2ConfigMissing    = errors.New("oauth2 credential helper requires oauth2HelperConfig")
 	errOAuth2TokenURLMissing  = errors.New("oauth2 credential helper requires a tokenURL")
 	errOAuth2AssertionMissing = errors.New("oauth2 credential helper requires an assertionFile")
 	errOAuth2ReadAssertion    = errors.New("unable to read the oauth2 assertion file")
@@ -53,7 +53,7 @@ type oauth2Token struct {
 }
 
 type oauth2CredentialsHelper struct {
-	config     *syncconf.CredentialHelperConfig
+	config     *syncconf.OAuth2HelperConfig
 	httpClient *http.Client
 	mu         sync.RWMutex
 	tokens     map[string]oauth2Token
@@ -70,7 +70,7 @@ type oauth2TokenResponse struct {
 // access token using an OAuth2 token endpoint.
 func NewOAuth2CredentialHelper(
 	log log.Logger,
-	config *syncconf.CredentialHelperConfig,
+	config *syncconf.OAuth2HelperConfig,
 ) (CredentialHelper, error) {
 	if config == nil {
 		return nil, errOAuth2ConfigMissing
@@ -110,7 +110,7 @@ func (credHelper *oauth2CredentialsHelper) username() string {
 
 func (credHelper *oauth2CredentialsHelper) clientSecret() (string, error) {
 	if credHelper.config.ClientSecretFile == "" {
-		return credHelper.config.ClientSecret, nil
+		return "", nil
 	}
 
 	secret, err := os.ReadFile(credHelper.config.ClientSecretFile)
@@ -249,14 +249,14 @@ func (credHelper *oauth2CredentialsHelper) AreCredentialsValid(remoteAddress str
 	expiry := credHelper.tokenExpiry(remoteAddress)
 
 	if time.Until(expiry) <= oauth2ExpiryWindow {
-		credHelper.log.Info().
+		credHelper.log.Debug().
 			Str("url", remoteAddress).
 			Msg("the oauth2 credentials are close to expiring")
 
 		return false
 	}
 
-	credHelper.log.Info().
+	credHelper.log.Debug().
 		Str("url", remoteAddress).
 		Msg("the oauth2 credentials are valid")
 
