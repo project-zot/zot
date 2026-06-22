@@ -100,7 +100,7 @@ func (p policyManager) getRules(tagPolicy config.KeepTagsPolicy) []types.Rule {
 	return rules
 }
 
-func (p policyManager) getPullRules(tagPolicy config.KeepTagsPolicy) []types.Rule {
+func (p policyManager) getPullRetentionRules(tagPolicy config.KeepTagsPolicy) []types.Rule {
 	rules := make([]types.Rule, 0)
 
 	if tagPolicy.MostRecentlyPulledCount != 0 {
@@ -360,12 +360,10 @@ func (p policyManager) groupUntaggedCandidatesByTagPolicy(repo string, candidate
 			continue
 		}
 
-		rules := p.getPullRules(tagPolicy)
+		rules := p.getPullRetentionRules(tagPolicy)
 		if len(rules) == 0 {
 			continue
 		}
-
-		candidateInfo.RetainedBy = "patterns"
 
 		if _, ok := candidatesByTagPolicy[tagPolicyID]; !ok {
 			candidatesByTagPolicy[tagPolicyID] = candidatesRules{
