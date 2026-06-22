@@ -27,6 +27,7 @@
 		"sync": {
 			"enable": true,
 			"asyncManifest": true,
+			"downloadDir": "/var/lib/registry/sync",
 			"registries": [
 				{
 					"urls": ["https://registry-1.docker.io"],

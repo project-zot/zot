@@ -15,14 +15,16 @@ import (
 
 func newMiniredisClient(t *testing.T) (*miniredis.Miniredis, redis.UniversalClient) {
 	t.Helper()
-	mr := miniredis.RunT(t)
-	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+
+	miniRedis := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: miniRedis.Addr()})
 	t.Cleanup(func() { _ = client.Close() })
-	return mr, client
+
+	return miniRedis, client
 }
 
 func TestRefreshExtendsTTLWhenOwnerMatches(t *testing.T) {
-	mr, client := newMiniredisClient(t)
+	miniRedis, client := newMiniredisClient(t)
 	lock := syncext.NewRedisDistributedLock(client)
 	ctx := context.Background()
 
@@ -30,14 +32,14 @@ func TestRefreshExtendsTTLWhenOwnerMatches(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("TryLock: ok=%v err=%v", ok, err)
 	}
-	mr.FastForward(3 * time.Second)
+	miniRedis.FastForward(3 * time.Second)
 
 	refreshed, err := lock.Refresh(ctx, "k", "owner-A", 10*time.Second)
 	if err != nil || !refreshed {
 		t.Fatalf("Refresh: refreshed=%v err=%v", refreshed, err)
 	}
-	if mr.TTL("k") < 9*time.Second {
-		t.Fatalf("TTL not extended: got %v", mr.TTL("k"))
+	if miniRedis.TTL("k") < 9*time.Second {
+		t.Fatalf("TTL not extended: got %v", miniRedis.TTL("k"))
 	}
 }
 

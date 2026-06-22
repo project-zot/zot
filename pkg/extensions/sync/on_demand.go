@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -141,7 +142,7 @@ func newLockOwnerID() string {
 		return hex.EncodeToString(b[:])
 	}
 
-	return fmt.Sprintf("%d", time.Now().UnixNano())
+	return strconv.FormatInt(time.Now().UnixNano(), 10)
 }
 
 // acquireDistributedLock claims the cluster-wide lock for repo+reference.
@@ -277,12 +278,17 @@ func (onDemand *BaseOnDemand) runWithLock(ctx context.Context, kind, repo, refer
 
 	// Heartbeat lifetime is bound to the sync run, not ctx, so we keep
 	// refreshing even if the client disconnects (mirroring syncImage's
-	// detached context behavior).
+	// detached context behavior). WithoutCancel keeps the request context's
+	// values while dropping its cancellation; linking to ctx instead would
+	// drop the lock mid-sync on a client disconnect while the detached sync
+	// (run on context.WithoutCancel(ctx)) keeps copying.
 	if handle != nil {
-		heartbeatCtx, heartbeatCancel := context.WithCancel(context.Background())
+		heartbeatCtx, heartbeatCancel := context.WithCancel(context.WithoutCancel(ctx))
 		defer heartbeatCancel()
 
-		go onDemand.runLockHeartbeat(heartbeatCtx, handle.key, handle.owner, syncLockHeartbeatInterval)
+		// gosec G118: the goroutine intentionally uses a cancellation-detached
+		// derivative of ctx so the lock heartbeat survives client disconnects.
+		go onDemand.runLockHeartbeat(heartbeatCtx, handle.key, handle.owner, syncLockHeartbeatInterval) //nolint:gosec
 	}
 
 	go run(result)

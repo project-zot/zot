@@ -668,16 +668,17 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 
 	referrers, err := getReferrers(request.Context(), rh, imgStore, name, digest, artifactTypes)
 	if err != nil {
-		if errors.Is(err, zerr.ErrSyncInFlight) {
+		switch {
+		case errors.Is(err, zerr.ErrSyncInFlight):
 			rh.c.Log.Info().Str("name", name).Str("digest", digest.String()).
 				Msg("on-demand referrers sync in flight, returning 503 to let client retry")
 			response.Header().Set("Retry-After", syncInFlightRetryAfterSeconds)
 			response.WriteHeader(http.StatusServiceUnavailable)
-		} else if errors.Is(err, zerr.ErrManifestNotFound) || errors.Is(err, zerr.ErrRepoNotFound) {
+		case errors.Is(err, zerr.ErrManifestNotFound) || errors.Is(err, zerr.ErrRepoNotFound):
 			rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).
 				Msg("failed to get manifest")
 			response.WriteHeader(http.StatusNotFound)
-		} else {
+		default:
 			rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).
 				Msg("failed to get references")
 			response.WriteHeader(http.StatusInternalServerError)
