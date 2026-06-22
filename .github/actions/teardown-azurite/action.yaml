@@ -1,0 +1,7 @@
+name: 'Teardown Azurite'
+description: 'Stop and remove the Azurite emulator'
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      run: docker rm -f azurite || true

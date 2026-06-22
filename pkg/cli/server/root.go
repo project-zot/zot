@@ -621,7 +621,7 @@ func validateStorageConfigSection(
 	// Redirect mode requires a backend capable of issuing external signed URLs.
 	// With local storage there is no target URL to redirect clients to.
 	if storageConfig.RedirectBlobURL && len(storageConfig.StorageDriver) == 0 {
-		msg := "invalid storage config, redirectBlobURL is supported only for s3/gcs storage"
+		msg := "invalid storage config, redirectBlobURL is supported only for s3/gcs/azure storage"
 		logger.Error().Err(zerr.ErrBadConfig).Bool("redirectBlobURL", storageConfig.RedirectBlobURL).
 			Str("storageDriver", storageConstants.LocalStorageDriverName).Msg(msg)
 
@@ -629,9 +629,10 @@ func validateStorageConfigSection(
 	}
 
 	if len(storageConfig.StorageDriver) != 0 {
-		// enforce s3/gcs driver in case of using storage driver
+		// enforce s3/gcs/azure driver in case of using storage driver
 		if storageConfig.StorageDriver["name"] != storageConstants.S3StorageDriverName &&
-			storageConfig.StorageDriver["name"] != storageConstants.GCSStorageDriverName {
+			storageConfig.StorageDriver["name"] != storageConstants.GCSStorageDriverName &&
+			storageConfig.StorageDriver["name"] != storageConstants.AzureStorageDriverName {
 			msg := "unsupported storage driver"
 			logger.Error().Err(zerr.ErrBadConfig).Interface("storageDriver", storageConfig.StorageDriver["name"]).Msg(msg)
 
@@ -654,7 +655,7 @@ func validateStorageConfigSection(
 			// Apply the same redirect precondition per subpath because subpaths can
 			// override driver config independently from the default store.
 			if subStorageConfig.RedirectBlobURL && len(subStorageConfig.StorageDriver) == 0 {
-				msg := "invalid storage config, redirectBlobURL is supported only for s3/gcs storage"
+				msg := "invalid storage config, redirectBlobURL is supported only for s3/gcs/azure storage"
 				logger.Error().Err(zerr.ErrBadConfig).Str("subpath", route).
 					Bool("redirectBlobURL", subStorageConfig.RedirectBlobURL).
 					Str("storageDriver", storageConstants.LocalStorageDriverName).Msg(msg)
@@ -664,7 +665,8 @@ func validateStorageConfigSection(
 
 			if len(subStorageConfig.StorageDriver) != 0 {
 				if subStorageConfig.StorageDriver["name"] != storageConstants.S3StorageDriverName &&
-					subStorageConfig.StorageDriver["name"] != storageConstants.GCSStorageDriverName {
+					subStorageConfig.StorageDriver["name"] != storageConstants.GCSStorageDriverName &&
+					subStorageConfig.StorageDriver["name"] != storageConstants.AzureStorageDriverName {
 					msg := "unsupported storage driver"
 					logger.Error().Err(zerr.ErrBadConfig).Str("subpath", route).Interface("storageDriver",
 						subStorageConfig.StorageDriver["name"]).Msg(msg)

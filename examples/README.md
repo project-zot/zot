@@ -1085,6 +1085,50 @@ For an s3 zot configuration with multiple storage drivers see: [s3-config](confi
 
 zot also supports different storage drivers for each subpath.
 
+### Azure Blob Storage
+
+zot supports an Azure Blob Storage backend. For a full example see [azure config](config-azure.json).
+
+The driver requires `accountname` and `container`, and selects how to authenticate via
+`storageDriver.credentials.type`:
+
+- `shared_key` — authenticate with a storage account key; set `accountkey`.
+- `client_secret` — authenticate as an Entra (Azure AD) service principal; set `tenantid`,
+  `clientid`, and `secret`.
+- `default_credentials` — use the Azure SDK's `DefaultAzureCredential` chain, so **no secret
+  is stored in the zot config**. It resolves a credential in order: Azure Workload Identity
+  (federated token), Managed Identity, the `AZURE_*` environment variables, then Azure CLI
+  login. This is the recommended option when zot runs on AKS or a self-managed cluster with
+  the [Azure Workload Identity](https://azure.github.io/azure-workload-identity/) webhook —
+  zot's pod receives a federated token and needs no stored credentials.
+
+The example uses `default_credentials` (Workload Identity). `DefaultAzureCredential` works
+wherever an ambient Azure identity is available — **not only on Azure**: any Kubernetes
+cluster running the [azure-workload-identity](https://azure.github.io/azure-workload-identity/)
+webhook can federate a managed identity to zot's ServiceAccount (the cluster's OIDC issuer
+trusted by Entra), including **self-managed / non-Azure clusters**, and zot gets a token via
+the WorkloadIdentityCredential — no secrets stored. For a plain standalone process with no
+managed/federated identity, `default_credentials` falls back to the `AZURE_TENANT_ID` /
+`AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` (or `AZURE_CLIENT_CERTIFICATE_PATH`) environment
+variables or an `az login` session; otherwise use `shared_key` (with `accountkey`) or
+`client_secret` (with a service principal).
+
+Example (Workload Identity, secret-less):
+
+```
+    "storage": {
+        "rootDirectory": "/tmp/zot",  # local path used to store dedupe cache database
+        "dedupe": false,
+        "storageDriver": {
+            "name": "azure",
+            "rootdirectory": "/zot",  # prefix applied to all blob names
+            "accountname": "myazurestorageaccount",
+            "container": "zot-storage",
+            "credentials": { "type": "default_credentials" }
+        }
+    }
+```
+
 ### S3 permissions scopes
 
 The following AWS policy is required by zot for push and pull. Make sure to replace S3_BUCKET_NAME with the name of your bucket.

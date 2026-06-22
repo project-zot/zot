@@ -40,6 +40,7 @@ jobs:
           cd $GITHUB_WORKSPACE
           go mod download
       - uses: ./.github/actions/setup-localstack
+      - uses: ./.github/actions/setup-azurite
       - name: run zot minimal tests
         run: |
           cd $GITHUB_WORKSPACE
@@ -49,12 +50,14 @@ jobs:
           DYNAMODBMOCK_ENDPOINT: http://localhost:4566
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
+          AZURITEMOCK_ENDPOINT: http://127.0.0.1:10000/devstoreaccount1
       - name: upload coverage
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-minimal
           path: coverage-minimal.txt
       - uses: ./.github/actions/teardown-localstack
+      - uses: ./.github/actions/teardown-azurite
   test-run-extensions:
     name: Run zot with extensions tests
     runs-on: cncf-ubuntu-16-64-x86
@@ -82,6 +85,7 @@ jobs:
           cd $GITHUB_WORKSPACE
           go mod download
       - uses: ./.github/actions/setup-localstack
+      - uses: ./.github/actions/setup-azurite
       - name: run zot extended tests
         run: |
           cd $GITHUB_WORKSPACE
@@ -91,12 +95,14 @@ jobs:
           DYNAMODBMOCK_ENDPOINT: http://localhost:4566
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
+          AZURITEMOCK_ENDPOINT: http://127.0.0.1:10000/devstoreaccount1
       - name: upload coverage
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-extended
           path: coverage-extended.txt
       - uses: ./.github/actions/teardown-localstack
+      - uses: ./.github/actions/teardown-azurite
   test-run-devmode:
     name: Running development-mode tests on Linux
     runs-on: ubuntu-latest

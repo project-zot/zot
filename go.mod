@@ -4,6 +4,7 @@ go 1.26.3
 
 require (
 	github.com/99designs/gqlgen v0.17.90
+	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.6.4
 	github.com/GehirnInc/crypt v0.0.0-20230320061759-8cc1b52080c5
 	github.com/Masterminds/semver v1.5.0
 	github.com/alicebob/miniredis/v2 v2.38.0
