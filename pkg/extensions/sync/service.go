@@ -669,6 +669,7 @@ func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo
 func (service *BaseService) syncTagsForDigest(ctx context.Context, localRepo, remoteRepo, reference string,
 	remoteDigest, localDigest godigest.Digest,
 ) error {
+	// Tag references are already synced directly; only digest references need upstream tag inheritance.
 	if _, ok := parseReference(reference); !ok {
 		return nil
 	}
