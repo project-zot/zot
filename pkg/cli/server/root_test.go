@@ -191,7 +191,7 @@ func TestLoadConfigurationSyncCredentialHelperConfig(t *testing.T) {
 							"credentialHelper": "oauth2",
 							"credentialHelperConfig": {
 								"tokenURL": "https://idp.example.com/token",
-								"assertionFile": "/run/secrets/jwt",
+								"signingConfigFile": "/run/secrets/signing-config.json",
 								"grantType": "urn:ietf:params:oauth:grant-type:jwt-bearer",
 								"clientID": "zot-sync",
 								"clientSecretFile": "/etc/zot/secret",
@@ -220,7 +220,7 @@ func TestLoadConfigurationSyncCredentialHelperConfig(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(oauth2Config, ShouldNotBeNil)
 		So(oauth2Config.TokenURL, ShouldEqual, "https://idp.example.com/token")
-		So(oauth2Config.AssertionFile, ShouldEqual, "/run/secrets/jwt")
+		So(oauth2Config.SigningConfigFile, ShouldEqual, "/run/secrets/signing-config.json")
 		So(oauth2Config.GrantType, ShouldEqual, "urn:ietf:params:oauth:grant-type:jwt-bearer")
 		So(oauth2Config.ClientID, ShouldEqual, "zot-sync")
 		So(oauth2Config.ClientSecretFile, ShouldEqual, "/etc/zot/secret")

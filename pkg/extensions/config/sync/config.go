@@ -44,14 +44,22 @@ type RegistryConfig struct {
 
 // OAuth2HelperConfig holds the options used by the "oauth2" credential helper,
 // which exchanges a JWT assertion for a short-lived registry access token.
+//
+// The assertion comes from one of two mutually exclusive sources, exactly one of which must be set:
+//   - AssertionFile: a pre-signed JWT issued and rotated by an external platform (e.g. a Kubernetes
+//     projected service account token, EKS IRSA or a workload-identity token), re-read on every
+//     refresh. zot never holds a private key; single-use semantics, if any, are owned by the platform.
+//   - SigningConfigFile: a private key and claims that zot uses to mint a fresh, single-use assertion
+//     (unique "jti") on every refresh, then exchanges it for a short-lived access token.
 type OAuth2HelperConfig struct {
-	TokenURL         string   // OAuth2 token endpoint
-	AssertionFile    string   // file holding the JWT assertion, re-read on every refresh
-	GrantType        string   // "client_credentials" (default) or the jwt-bearer grant URN
-	ClientID         string   // optional OAuth2 client identifier
-	ClientSecretFile string   // file holding the optional OAuth2 client secret, sent in the request body
-	Scopes           []string // optional OAuth2 scopes
-	Username         string   // registry username paired with the token, defaults to "<token>"
+	TokenURL          string   // OAuth2 token endpoint
+	AssertionFile     string   // file holding a pre-signed JWT assertion, re-read on every refresh
+	SigningConfigFile string   // file holding the signing key and claims used to mint assertions in-code
+	GrantType         string   // "client_credentials" (default) or the jwt-bearer grant URN
+	ClientID          string   // optional OAuth2 client identifier
+	ClientSecretFile  string   // file holding the optional OAuth2 client secret, sent in the request body
+	Scopes            []string // optional OAuth2 scopes
+	Username          string   // registry username paired with the token, defaults to "<token>"
 }
 
 // decodeCredentialHelperConfig decodes the generic credentialHelperConfig dictionary

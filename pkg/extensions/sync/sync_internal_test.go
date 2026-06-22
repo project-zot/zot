@@ -5,7 +5,11 @@ package sync
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"net/http"
@@ -644,6 +648,37 @@ func TestService(t *testing.T) {
 	})
 }
 
+// writeOAuth2SigningConfigFile writes a minimal RS256 signing config the oauth2 helper
+// can use to mint assertions, and returns its path.
+func writeOAuth2SigningConfigFile(t *testing.T) string {
+	t.Helper()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("failed to generate RSA key: %v", err)
+	}
+
+	privateKeyPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(key),
+	})
+
+	raw, err := json.Marshal(map[string]any{
+		"privateKey": string(privateKeyPEM),
+		"algorithm":  "RS256",
+	})
+	if err != nil {
+		t.Fatalf("failed to marshal signing config: %v", err)
+	}
+
+	signingConfigFile := path.Join(t.TempDir(), "signing-config.json")
+	if err := os.WriteFile(signingConfigFile, raw, 0o600); err != nil {
+		t.Fatalf("failed to write signing config file: %v", err)
+	}
+
+	return signingConfigFile
+}
+
 func TestServiceOAuth2CredentialHelper(t *testing.T) {
 	Convey("New wires the oauth2 credential helper", t, func() {
 		tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -652,16 +687,15 @@ func TestServiceOAuth2CredentialHelper(t *testing.T) {
 		}))
 		defer tokenServer.Close()
 
-		assertionFile := path.Join(t.TempDir(), "assertion.jwt")
-		So(os.WriteFile(assertionFile, []byte("assertion"), 0o600), ShouldBeNil)
+		signingConfigFile := writeOAuth2SigningConfigFile(t)
 
 		conf := syncconf.RegistryConfig{
 			URLs:             []string{"http://localhost"},
 			CredentialHelper: "oauth2",
 			CredentialHelperConfig: map[string]any{
-				"tokenURL":      tokenServer.URL,
-				"assertionFile": assertionFile,
-				"username":      "robot",
+				"tokenURL":          tokenServer.URL,
+				"signingConfigFile": signingConfigFile,
+				"username":          "robot",
 			},
 		}
 
@@ -705,7 +739,7 @@ func TestServiceOAuth2CredentialHelper(t *testing.T) {
 			URLs:             []string{"http://localhost"},
 			CredentialHelper: "oauth2",
 			CredentialHelperConfig: map[string]any{
-				"assertionFile": "/does/not/matter",
+				"signingConfigFile": "/does/not/matter",
 			},
 		}
 
@@ -716,15 +750,14 @@ func TestServiceOAuth2CredentialHelper(t *testing.T) {
 	})
 
 	Convey("New tolerates oauth2 credential retrieval failure", t, func() {
-		assertionFile := path.Join(t.TempDir(), "assertion.jwt")
-		So(os.WriteFile(assertionFile, []byte("assertion"), 0o600), ShouldBeNil)
+		signingConfigFile := writeOAuth2SigningConfigFile(t)
 
 		conf := syncconf.RegistryConfig{
 			URLs:             []string{"http://localhost"},
 			CredentialHelper: "oauth2",
 			CredentialHelperConfig: map[string]any{
-				"tokenURL":      "http://127.0.0.1:1/token",
-				"assertionFile": assertionFile,
+				"tokenURL":          "http://127.0.0.1:1/token",
+				"signingConfigFile": signingConfigFile,
 			},
 		}
 
@@ -743,18 +776,18 @@ func TestOAuth2HelperConfigFromMap(t *testing.T) {
 
 	Convey("generic dictionary is decoded into the typed OAuth2 helper config", t, func() {
 		config, err := syncconf.OAuth2HelperConfigFromMap(map[string]any{
-			"tokenURL":         "https://idp.example.com/token",
-			"assertionFile":    "/var/run/secrets/token",
-			"grantType":        "urn:ietf:params:oauth:grant-type:jwt-bearer",
-			"clientID":         "zot-sync",
-			"clientSecretFile": "/etc/zot/secret",
-			"scopes":           []any{"repository:pull", "repository:push"},
-			"username":         "robot",
+			"tokenURL":          "https://idp.example.com/token",
+			"signingConfigFile": "/var/run/secrets/signing-config.json",
+			"grantType":         "urn:ietf:params:oauth:grant-type:jwt-bearer",
+			"clientID":          "zot-sync",
+			"clientSecretFile":  "/etc/zot/secret",
+			"scopes":            []any{"repository:pull", "repository:push"},
+			"username":          "robot",
 		})
 		So(err, ShouldBeNil)
 		So(config, ShouldNotBeNil)
 		So(config.TokenURL, ShouldEqual, "https://idp.example.com/token")
-		So(config.AssertionFile, ShouldEqual, "/var/run/secrets/token")
+		So(config.SigningConfigFile, ShouldEqual, "/var/run/secrets/signing-config.json")
 		So(config.GrantType, ShouldEqual, "urn:ietf:params:oauth:grant-type:jwt-bearer")
 		So(config.ClientID, ShouldEqual, "zot-sync")
 		So(config.ClientSecretFile, ShouldEqual, "/etc/zot/secret")

@@ -24,9 +24,10 @@
                     "credentialHelper": "oauth2",
                     "credentialHelperConfig": {
                         "tokenURL": "https://idp.example.com/oauth2/token",
-                        "signingConfigFile": "./examples/sync-oauth2-signing-config.json",
-                        "grantType": "client_credentials",
+                        "assertionFile": "./examples/sync-oauth2-assertion.jwt",
+                        "grantType": "urn:ietf:params:oauth:grant-type:jwt-bearer",
                         "clientID": "zot-sync",
+                        "clientSecretFile": "./examples/sync-oauth2-client-secret",
                         "scopes": [
                             "repository:pull"
                         ]
