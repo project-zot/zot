@@ -181,6 +181,68 @@ func TestService(t *testing.T) {
 		// If mod.Apply were called, it would fail since service.rc is nil - proving the guard works.
 	})
 
+	Convey("test syncImage creates downstream tags for digest references with matching upstream tags", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs: []string{"http://localhost"},
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		localDigest := godigest.Digest("sha256:" + strings.Repeat("a", 64))
+		remoteDigest := godigest.Digest("sha256:" + strings.Repeat("b", 64))
+		otherDigest := godigest.Digest("sha256:" + strings.Repeat("c", 64))
+
+		getDigestCalls := []string{}
+
+		service.remote = &mocks.SyncRemoteMock{
+			GetImageReferenceFn: func(repo string, reference string) (ref.Ref, error) {
+				return ref.New("mock-registry/" + repo + "@" + reference)
+			},
+			GetOCIDigestFn: func(ctx context.Context, repo, reference string) (godigest.Digest, godigest.Digest, bool, error) {
+				return localDigest, remoteDigest, false, nil
+			},
+			GetTagsFn: func(ctx context.Context, repo string) ([]string, error) {
+				return []string{"latest", "old", "sha256-" + remoteDigest.Encoded() + ".sig"}, nil
+			},
+			GetDigestFn: func(ctx context.Context, repo, tag string) (godigest.Digest, error) {
+				getDigestCalls = append(getDigestCalls, tag)
+				if tag == "latest" {
+					return remoteDigest, nil
+				}
+
+				return otherDigest, nil
+			},
+		}
+
+		taggedImages := map[string]string{}
+
+		service.destination = &mocks.SyncDestinationMock{
+			GetImageReferenceFn: func(repo string, reference string) (ref.Ref, error) {
+				return ref.New("local/" + repo + "@" + reference)
+			},
+			CanSkipImageFn: func(repo string, reference string, digest godigest.Digest) (bool, error) {
+				return true, nil
+			},
+			CommitAllFn: func(repo string, imageReference ref.Ref) error {
+				return nil
+			},
+			TagImageFn: func(repo, sourceReference, targetTag string) error {
+				taggedImages[targetTag] = sourceReference
+
+				return nil
+			},
+			CleanupImageFn: func(imageReference ref.Ref, repo string) error {
+				return nil
+			},
+		}
+
+		err = service.syncImage(context.Background(), "localrepo", "remoterepo", remoteDigest.String(), []string{}, false)
+		So(err, ShouldBeNil)
+		So(taggedImages, ShouldResemble, map[string]string{"latest": localDigest.String()})
+		So(getDigestCalls, ShouldResemble, []string{"latest", "old"})
+	})
+
 	Convey("test syncImage ReferrerList error with OnlySigned", t, func() {
 		onlySigned := true
 		conf := syncconf.RegistryConfig{

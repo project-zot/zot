@@ -147,6 +147,41 @@ func (registry *DestinationRegistry) CommitAll(repo string, imageReference ref.R
 	return nil
 }
 
+func (registry *DestinationRegistry) TagImage(repo, sourceReference, targetTag string) error {
+	imageStore := registry.storeController.GetImageStore(repo)
+
+	manifestContent, digest, mediaType, err := imageStore.GetImageManifest(repo, sourceReference)
+	if err != nil {
+		registry.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).
+			Str("sourceReference", sourceReference).Str("targetTag", targetTag).
+			Err(err).Msg("couldn't get local image manifest to tag")
+
+		return err
+	}
+
+	_, _, err = imageStore.PutImageManifest(context.Background(), repo, targetTag, mediaType, manifestContent, nil)
+	if err != nil {
+		registry.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).
+			Str("sourceReference", sourceReference).Str("targetTag", targetTag).
+			Err(err).Msg("couldn't tag local image manifest")
+
+		return err
+	}
+
+	if registry.metaDB != nil {
+		err = meta.SetImageMetaFromInput(context.Background(), repo, targetTag, mediaType,
+			digest, manifestContent, imageStore, registry.metaDB, registry.log)
+		if err != nil {
+			registry.log.Error().Str("errorType", common.TypeOf(err)).
+				Err(err).Msg("couldn't set metadata from input")
+
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (registry *DestinationRegistry) CleanupImage(imageReference ref.Ref, repo string) error {
 	var err error
 
