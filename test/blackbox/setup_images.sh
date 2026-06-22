@@ -9,10 +9,10 @@ echo "Pre-downloading Docker images for blackbox tests..."
 
 # List of images used in the tests
 IMAGES=(
-    "nats:2.11.1"
-    "natsio/nats-box:latest"
-    "python:3"
-    "redis:latest"
+    "ghcr.io/project-zot/ci-images/nats:2.11.1"
+    "ghcr.io/project-zot/ci-images/nats-box:0.19.7"
+    "ghcr.io/project-zot/ci-images/python:3.11"
+    "ghcr.io/project-zot/ci-images/redis:7.4.2"
     "ghcr.io/project-zot/test-images/busybox-docker:1.37"
 )
 
