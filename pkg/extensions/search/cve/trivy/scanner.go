@@ -740,7 +740,7 @@ func (scanner Scanner) storeSBOMAsOCIArtifact(ctx context.Context,
 		return nil
 	}
 
-	sbomExists, _, err := imgStore.CheckBlob(repo, sbom.digest)
+	sbomExists, _, err := imgStore.CheckBlob(ctx, repo, sbom.digest)
 	if err != nil && !errors.Is(err, zerr.ErrBlobNotFound) {
 		return err
 	}
@@ -753,7 +753,7 @@ func (scanner Scanner) storeSBOMAsOCIArtifact(ctx context.Context,
 
 		defer sbomFile.Close()
 
-		if _, _, err = imgStore.FullBlobUpload(repo, sbomFile, sbom.digest); err != nil {
+		if _, _, err = imgStore.FullBlobUpload(ctx, repo, sbomFile, sbom.digest); err != nil {
 			return err
 		}
 
@@ -761,13 +761,13 @@ func (scanner Scanner) storeSBOMAsOCIArtifact(ctx context.Context,
 			Msg("uploaded sbom blob")
 	}
 
-	emptyConfigExists, _, err := imgStore.CheckBlob(repo, ispec.DescriptorEmptyJSON.Digest)
+	emptyConfigExists, _, err := imgStore.CheckBlob(ctx, repo, ispec.DescriptorEmptyJSON.Digest)
 	if err != nil && !errors.Is(err, zerr.ErrBlobNotFound) {
 		return err
 	}
 
 	if !emptyConfigExists {
-		if _, _, err = imgStore.FullBlobUpload(repo, bytes.NewReader(ispec.DescriptorEmptyJSON.Data),
+		if _, _, err = imgStore.FullBlobUpload(ctx, repo, bytes.NewReader(ispec.DescriptorEmptyJSON.Data),
 			ispec.DescriptorEmptyJSON.Digest); err != nil {
 			return err
 		}
@@ -805,7 +805,7 @@ func (scanner Scanner) storeSBOMAsOCIArtifact(ctx context.Context,
 	}
 
 	sbomManifestDigest := godigest.FromBytes(sbomManifestBlob)
-	_, _, err = imgStore.PutImageManifest(repo, sbomManifestDigest.String(), ispec.MediaTypeImageManifest,
+	_, _, err = imgStore.PutImageManifest(ctx, repo, sbomManifestDigest.String(), ispec.MediaTypeImageManifest,
 		sbomManifestBlob, nil)
 	if err != nil {
 		return err

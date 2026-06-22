@@ -503,9 +503,9 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte, _ []string) (godigest.Digest,
-						godigest.Digest, error,
-					) {
+					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string,
+						body []byte, extraTags []string,
+					) (godigest.Digest, godigest.Digest, error) {
 						return "", "", zerr.ErrRepoNotFound
 					},
 				})
@@ -518,9 +518,9 @@ func TestRoutes(t *testing.T) {
 				},
 
 				&mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte, _ []string) (godigest.Digest,
-						godigest.Digest, error,
-					) {
+					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string,
+						body []byte, extraTags []string,
+					) (godigest.Digest, godigest.Digest, error) {
 						return "", "", zerr.ErrManifestNotFound
 					},
 				})
@@ -532,9 +532,9 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte, _ []string) (godigest.Digest,
-						godigest.Digest, error,
-					) {
+					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string,
+						body []byte, extraTags []string,
+					) (godigest.Digest, godigest.Digest, error) {
 						return "", "", zerr.ErrBadManifest
 					},
 				})
@@ -546,9 +546,9 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte, _ []string) (godigest.Digest,
-						godigest.Digest, error,
-					) {
+					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string,
+						body []byte, extraTags []string,
+					) (godigest.Digest, godigest.Digest, error) {
 						return "", "", zerr.ErrBlobNotFound
 					},
 				})
@@ -561,9 +561,9 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte, _ []string) (godigest.Digest,
-						godigest.Digest, error,
-					) {
+					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string,
+						body []byte, extraTags []string,
+					) (godigest.Digest, godigest.Digest, error) {
 						return "", "", zerr.ErrRepoBadVersion
 					},
 				})
@@ -595,9 +595,9 @@ func TestRoutes(t *testing.T) {
 			digestRef := manifestDigest.String()
 
 			ism := &mocks.MockedImageStore{
-				PutImageManifestFn: func(repo, reference, mediaType string, body []byte, extraTags []string) (
-					godigest.Digest, godigest.Digest, error,
-				) {
+				PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string,
+					body []byte, extraTags []string,
+				) (godigest.Digest, godigest.Digest, error) {
 					So(extraTags, ShouldResemble, []string{"meta-a", "meta-b"})
 					So(string(body), ShouldEqual, string(mcontent))
 
@@ -692,7 +692,7 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					DeleteImageManifestFn: func(repo, reference string, detectCollision bool) error {
+					DeleteImageManifestFn: func(ctx context.Context, repo, reference string, detectCollision bool) error {
 						return zerr.ErrRepoNotFound
 					},
 				},
@@ -707,7 +707,7 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					DeleteImageManifestFn: func(repo, reference string, detectCollision bool) error {
+					DeleteImageManifestFn: func(ctx context.Context, repo, reference string, detectCollision bool) error {
 						return zerr.ErrManifestNotFound
 					},
 				},
@@ -722,7 +722,7 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					DeleteImageManifestFn: func(repo, reference string, detectCollision bool) error {
+					DeleteImageManifestFn: func(ctx context.Context, repo, reference string, detectCollision bool) error {
 						return ErrUnexpectedError
 					},
 				},
@@ -737,7 +737,7 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					DeleteImageManifestFn: func(repo, reference string, detectCollision bool) error {
+					DeleteImageManifestFn: func(ctx context.Context, repo, reference string, detectCollision bool) error {
 						return zerr.ErrBadManifest
 					},
 				},
@@ -835,7 +835,7 @@ func TestRoutes(t *testing.T) {
 					"digest": "1234",
 				},
 				&mocks.MockedImageStore{
-					CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+					CheckBlobFn: func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 						return true, 0, zerr.ErrBadBlobDigest
 					},
 				})
@@ -848,7 +848,7 @@ func TestRoutes(t *testing.T) {
 					"digest": "1234",
 				},
 				&mocks.MockedImageStore{
-					CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+					CheckBlobFn: func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 						return true, 0, zerr.ErrRepoNotFound
 					},
 				})
@@ -861,7 +861,7 @@ func TestRoutes(t *testing.T) {
 					"digest": "1234",
 				},
 				&mocks.MockedImageStore{
-					CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+					CheckBlobFn: func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 						return true, 0, zerr.ErrBlobNotFound
 					},
 				})
@@ -874,7 +874,7 @@ func TestRoutes(t *testing.T) {
 					"digest": "1234",
 				},
 				&mocks.MockedImageStore{
-					CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+					CheckBlobFn: func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 						return true, 0, ErrUnexpectedError
 					},
 				})
@@ -887,7 +887,7 @@ func TestRoutes(t *testing.T) {
 					"digest": "1234",
 				},
 				&mocks.MockedImageStore{
-					CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+					CheckBlobFn: func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 						return false, 0, nil
 					},
 				})
@@ -1025,7 +1025,7 @@ func TestRoutes(t *testing.T) {
 
 						return "https://storage.example.com/zot/repo/blobs/sha256/layer", nil
 					},
-					CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+					CheckBlobFn: func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 						return true, 4, nil
 					},
 					GetBlobPartialFn: func(repo string, digest godigest.Digest, mediaType string,
@@ -1253,10 +1253,10 @@ func TestRoutes(t *testing.T) {
 				},
 				map[string]string{},
 				&mocks.MockedImageStore{
-					NewBlobUploadFn: func(repo string) (string, error) {
+					NewBlobUploadFn: func(ctx context.Context, repo string) (string, error) {
 						return "", zerr.ErrRepoNotFound
 					},
-					CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+					CheckBlobFn: func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 						return true, 0, zerr.ErrRepoNotFound
 					},
 				})
@@ -1270,10 +1270,10 @@ func TestRoutes(t *testing.T) {
 				},
 				map[string]string{},
 				&mocks.MockedImageStore{
-					NewBlobUploadFn: func(repo string) (string, error) {
+					NewBlobUploadFn: func(ctx context.Context, repo string) (string, error) {
 						return "", zerr.ErrRepoNotFound
 					},
-					CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+					CheckBlobFn: func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 						return true, 0, zerr.ErrRepoNotFound
 					},
 				})
@@ -1288,10 +1288,10 @@ func TestRoutes(t *testing.T) {
 					"Content-Type": "badContentType",
 				},
 				&mocks.MockedImageStore{
-					NewBlobUploadFn: func(repo string) (string, error) {
+					NewBlobUploadFn: func(ctx context.Context, repo string) (string, error) {
 						return "", zerr.ErrRepoNotFound
 					},
-					CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+					CheckBlobFn: func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 						return true, 0, zerr.ErrRepoNotFound
 					},
 				})
@@ -1307,7 +1307,9 @@ func TestRoutes(t *testing.T) {
 					"Content-Length": "100",
 				},
 				&mocks.MockedImageStore{
-					FullBlobUploadFn: func(repo string, body io.Reader, digest godigest.Digest) (string, int64, error) {
+					FullBlobUploadFn: func(ctx context.Context, repo string, body io.Reader,
+						digest godigest.Digest,
+					) (string, int64, error) {
 						return sessionStr, 0, zerr.ErrBadBlobDigest
 					},
 				})
@@ -1323,7 +1325,9 @@ func TestRoutes(t *testing.T) {
 					"Content-Length": "100",
 				},
 				&mocks.MockedImageStore{
-					FullBlobUploadFn: func(repo string, body io.Reader, digest godigest.Digest) (string, int64, error) {
+					FullBlobUploadFn: func(ctx context.Context, repo string, body io.Reader,
+						digest godigest.Digest,
+					) (string, int64, error) {
 						return sessionStr, 20, nil
 					},
 				})
@@ -1337,7 +1341,7 @@ func TestRoutes(t *testing.T) {
 					"Content-Length": "100",
 				},
 				&mocks.MockedImageStore{
-					NewBlobUploadFn: func(repo string) (string, error) {
+					NewBlobUploadFn: func(ctx context.Context, repo string) (string, error) {
 						return "", zerr.ErrRepoNotFound
 					},
 				})
@@ -1351,7 +1355,7 @@ func TestRoutes(t *testing.T) {
 					"Content-Length": "100",
 				},
 				&mocks.MockedImageStore{
-					NewBlobUploadFn: func(repo string) (string, error) {
+					NewBlobUploadFn: func(ctx context.Context, repo string) (string, error) {
 						return "", ErrUnexpectedError
 					},
 				})
@@ -1529,7 +1533,7 @@ func TestRoutes(t *testing.T) {
 					"session_id": "test",
 				},
 				&mocks.MockedImageStore{
-					PutBlobChunkFn: func(repo, uuid string, from, to int64, body io.Reader) (int64, error) {
+					PutBlobChunkFn: func(ctx context.Context, repo, uuid string, from, to int64, body io.Reader) (int64, error) {
 						return 100, zerr.ErrRepoNotFound
 					},
 				},
@@ -1547,7 +1551,7 @@ func TestRoutes(t *testing.T) {
 					"session_id": "test",
 				},
 				&mocks.MockedImageStore{
-					PutBlobChunkFn: func(repo, uuid string, from, to int64, body io.Reader) (int64, error) {
+					PutBlobChunkFn: func(ctx context.Context, repo, uuid string, from, to int64, body io.Reader) (int64, error) {
 						return 100, zerr.ErrUploadNotFound
 					},
 				},
@@ -1565,7 +1569,7 @@ func TestRoutes(t *testing.T) {
 					"session_id": "test",
 				},
 				&mocks.MockedImageStore{
-					PutBlobChunkFn: func(repo, uuid string, from, to int64, body io.Reader) (int64, error) {
+					PutBlobChunkFn: func(ctx context.Context, repo, uuid string, from, to int64, body io.Reader) (int64, error) {
 						return 100, ErrUnexpectedError
 					},
 					DeleteBlobUploadFn: func(repo, uuid string) error {
@@ -1670,7 +1674,7 @@ func TestRoutes(t *testing.T) {
 					"session_id": "test",
 				},
 				&mocks.MockedImageStore{
-					PutBlobChunkFn: func(repo, uuid string, from, to int64, body io.Reader) (int64, error) {
+					PutBlobChunkFn: func(ctx context.Context, repo, uuid string, from, to int64, body io.Reader) (int64, error) {
 						return 0, zerr.ErrBadUploadRange
 					},
 				},
@@ -1690,7 +1694,7 @@ func TestRoutes(t *testing.T) {
 					"session_id": "test",
 				},
 				&mocks.MockedImageStore{
-					PutBlobChunkFn: func(repo, uuid string, from, to int64, body io.Reader) (int64, error) {
+					PutBlobChunkFn: func(ctx context.Context, repo, uuid string, from, to int64, body io.Reader) (int64, error) {
 						return 0, zerr.ErrRepoNotFound
 					},
 				},
@@ -1710,7 +1714,7 @@ func TestRoutes(t *testing.T) {
 					"session_id": "test",
 				},
 				&mocks.MockedImageStore{
-					PutBlobChunkFn: func(repo, uuid string, from, to int64, body io.Reader) (int64, error) {
+					PutBlobChunkFn: func(ctx context.Context, repo, uuid string, from, to int64, body io.Reader) (int64, error) {
 						return 0, zerr.ErrUploadNotFound
 					},
 				},
@@ -1730,7 +1734,7 @@ func TestRoutes(t *testing.T) {
 					"session_id": "test",
 				},
 				&mocks.MockedImageStore{
-					PutBlobChunkFn: func(repo, uuid string, from, to int64, body io.Reader) (int64, error) {
+					PutBlobChunkFn: func(ctx context.Context, repo, uuid string, from, to int64, body io.Reader) (int64, error) {
 						return 0, ErrUnexpectedError
 					},
 					DeleteBlobUploadFn: func(repo, uuid string) error {
@@ -2384,7 +2388,7 @@ func descriptorStore(t *testing.T) mocks.MockedImageStore {
 
 	return mocks.MockedImageStore{
 		RootDirFn: func() string { return t.TempDir() },
-		CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+		CheckBlobFn: func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 			if digest == layerDigest {
 				return true, 4, nil
 			}
@@ -2404,7 +2408,7 @@ func descriptorStore(t *testing.T) mocks.MockedImageStore {
 
 func TestCheckBlobUsesDescriptorContentType(t *testing.T) {
 	store := descriptorStore(t)
-	store.CheckBlobFn = func(repo string, digest godigest.Digest) (bool, int64, error) {
+	store.CheckBlobFn = func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 		return true, 42, nil
 	}
 
@@ -2441,7 +2445,7 @@ func TestCheckBlobFallsBackToBinaryContentType(t *testing.T) {
 	// must fall back to application/octet-stream so OCI clients get a
 	// well-formed Content-Type.
 	handler := newBlobTestRouteHandler(t, mocks.MockedImageStore{
-		CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+		CheckBlobFn: func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 			return true, 1024, nil
 		},
 		GetIndexContentFn: func(repo string) ([]byte, error) {
@@ -2649,7 +2653,7 @@ func TestGetBlobPartialFallsBackToBinaryContentType(t *testing.T) {
 	// Single-range request for a blob whose repo has no index — same
 	// fallback behaviour as the full-GET case.
 	handler := newBlobTestRouteHandler(t, mocks.MockedImageStore{
-		CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+		CheckBlobFn: func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 			return true, 4, nil
 		},
 		GetBlobPartialFn: func(
@@ -2698,7 +2702,7 @@ func TestGetBlobMultipartPartHasDescriptorContentType(t *testing.T) {
 	const blobBody = "0123456789"
 
 	store := descriptorStore(t)
-	store.CheckBlobFn = func(repo string, digest godigest.Digest) (bool, int64, error) {
+	store.CheckBlobFn = func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 		return true, int64(len(blobBody)), nil
 	}
 	store.GetBlobPartialFn = func(
@@ -2859,7 +2863,7 @@ func TestGetBlobMultipartContentLengthMatchesBody(t *testing.T) {
 	const blobBody = "0123456789abcdef" // 16 bytes
 
 	store := descriptorStore(t)
-	store.CheckBlobFn = func(repo string, digest godigest.Digest) (bool, int64, error) {
+	store.CheckBlobFn = func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 		return true, int64(len(blobBody)), nil
 	}
 	store.GetBlobPartialFn = func(
@@ -2932,7 +2936,7 @@ func TestGetBlobMultipartOpensOneReaderAtATime(t *testing.T) {
 	var opens partialReaderOpenTracker
 
 	store := descriptorStore(t)
-	store.CheckBlobFn = func(repo string, digest godigest.Digest) (bool, int64, error) {
+	store.CheckBlobFn = func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 		return true, int64(len(blobBody)), nil
 	}
 	store.GetBlobPartialFn = func(
@@ -2990,7 +2994,7 @@ func TestGetBlobMultipartTruncatesOnReaderError(t *testing.T) {
 	var calls atomic.Int32
 
 	store := descriptorStore(t)
-	store.CheckBlobFn = func(repo string, digest godigest.Digest) (bool, int64, error) {
+	store.CheckBlobFn = func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 		return true, int64(len(blobBody)), nil
 	}
 	store.GetBlobPartialFn = func(
@@ -3051,7 +3055,7 @@ func TestGetBlobRangeUnsatisfiable(t *testing.T) {
 	// retry with a valid range. parseRangeHeader rejects the header
 	// before the handler reaches GetBlobPartial.
 	handler := newBlobTestRouteHandler(t, mocks.MockedImageStore{
-		CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+		CheckBlobFn: func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 			return true, 4, nil
 		},
 		GetIndexContentFn: func(repo string) ([]byte, error) {
@@ -3085,7 +3089,7 @@ func TestGetBlobRangeCheckBlobError(t *testing.T) {
 	// CheckBlob returning a non-zerr error must surface as 500 via
 	// writeBlobError's default branch.
 	handler := newBlobTestRouteHandler(t, mocks.MockedImageStore{
-		CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+		CheckBlobFn: func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 			return false, 0, ErrUnexpectedError
 		},
 	})
@@ -3116,7 +3120,7 @@ func TestGetBlobRangeCheckBlobMissing(t *testing.T) {
 	// repo still exists) must short-circuit to 404 BLOB_UNKNOWN before
 	// any range parsing or descriptor lookup.
 	handler := newBlobTestRouteHandler(t, mocks.MockedImageStore{
-		CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+		CheckBlobFn: func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 			return false, 0, nil
 		},
 	})
@@ -3156,7 +3160,7 @@ func TestGetBlobSingleRangePartialBlobNotFound(t *testing.T) {
 	// the response is still recoverable because no body bytes have
 	// been written yet.
 	handler := newBlobTestRouteHandler(t, mocks.MockedImageStore{
-		CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+		CheckBlobFn: func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 			return true, 4, nil
 		},
 		GetBlobPartialFn: func(
@@ -3204,7 +3208,7 @@ func TestGetBlobSingleRangePartialUnexpectedError(t *testing.T) {
 	// Single-range path: GetBlobPartial returning a non-zerr error
 	// hits writeBlobError's default branch and produces a 500.
 	handler := newBlobTestRouteHandler(t, mocks.MockedImageStore{
-		CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+		CheckBlobFn: func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 			return true, 4, nil
 		},
 		GetBlobPartialFn: func(
@@ -3251,7 +3255,7 @@ func TestGetBlobSingleRangeLengthMismatch(t *testing.T) {
 	// since on the single-range path the headers haven't been flushed
 	// yet and 5xx is still possible.
 	handler := newBlobTestRouteHandler(t, mocks.MockedImageStore{
-		CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+		CheckBlobFn: func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 			return true, 4, nil
 		},
 		GetBlobPartialFn: func(
@@ -3304,7 +3308,7 @@ func TestGetBlobMultipartShortReaderTruncates(t *testing.T) {
 	var calls atomic.Int32
 
 	store := descriptorStore(t)
-	store.CheckBlobFn = func(repo string, digest godigest.Digest) (bool, int64, error) {
+	store.CheckBlobFn = func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 		return true, int64(len(blobBody)), nil
 	}
 	store.GetBlobPartialFn = func(
@@ -3388,7 +3392,7 @@ func TestGetBlobRangeCheckBlobNamedErrors(t *testing.T) {
 	for name, testCase := range cases {
 		t.Run(name, func(t *testing.T) {
 			handler := newBlobTestRouteHandler(t, mocks.MockedImageStore{
-				CheckBlobFn: func(repo string, digest godigest.Digest) (bool, int64, error) {
+				CheckBlobFn: func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 					return false, 0, testCase.err
 				},
 			})
@@ -3444,7 +3448,7 @@ func TestGetBlobMultipartReaderCloseError(t *testing.T) {
 	var calls atomic.Int32
 
 	store := descriptorStore(t)
-	store.CheckBlobFn = func(repo string, digest godigest.Digest) (bool, int64, error) {
+	store.CheckBlobFn = func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 		return true, int64(len(blobBody)), nil
 	}
 	store.GetBlobPartialFn = func(

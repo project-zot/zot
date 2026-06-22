@@ -129,7 +129,7 @@ func TestRollbackDigestManifestTags(t *testing.T) {
 			var deleteCalls int
 
 			is := mocks.MockedImageStore{
-				DeleteImageManifestFn: func(repo, reference string, detectCollision bool) error {
+				DeleteImageManifestFn: func(ctx context.Context, repo, reference string, detectCollision bool) error {
 					deleteCalls++
 
 					return errors.New("delete failed")
@@ -145,7 +145,7 @@ func TestRollbackDigestManifestTags(t *testing.T) {
 
 		Convey("delete manifest not found is ignored", func() {
 			is := mocks.MockedImageStore{
-				DeleteImageManifestFn: func(repo, reference string, detectCollision bool) error {
+				DeleteImageManifestFn: func(ctx context.Context, repo, reference string, detectCollision bool) error {
 					return zerr.ErrManifestNotFound
 				},
 			}
@@ -177,7 +177,7 @@ func TestRollbackDigestManifestTags(t *testing.T) {
 			}
 
 			is := mocks.MockedImageStore{
-				DeleteImageManifestFn: func(string, string, bool) error { return nil },
+				DeleteImageManifestFn: func(ctx context.Context, repo, reference string, detectCollision bool) error { return nil },
 				GetBlobContentFn: func(string, godigest.Digest) ([]byte, error) {
 					return nil, errors.New("blob missing")
 				},
@@ -196,13 +196,13 @@ func TestRollbackDigestManifestTags(t *testing.T) {
 			}
 
 			is := mocks.MockedImageStore{
-				DeleteImageManifestFn: func(string, string, bool) error { return nil },
+				DeleteImageManifestFn: func(ctx context.Context, repo, reference string, detectCollision bool) error { return nil },
 				GetBlobContentFn: func(_ string, blobDigest godigest.Digest) ([]byte, error) {
 					So(blobDigest, ShouldResemble, priorD)
 
 					return priorBody, nil
 				},
-				PutImageManifestFn: func(string, string, string, []byte, []string) (godigest.Digest, godigest.Digest, error) {
+				PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string, body []byte, extraTags []string) (godigest.Digest, godigest.Digest, error) {
 					return "", "", errors.New("put failed")
 				},
 			}
@@ -233,7 +233,7 @@ func TestRollbackDigestManifestTags(t *testing.T) {
 			}
 
 			is := mocks.MockedImageStore{
-				DeleteImageManifestFn: func(string, string, bool) error { return nil },
+				DeleteImageManifestFn: func(ctx context.Context, repo, reference string, detectCollision bool) error { return nil },
 				GetBlobContentFn: func(_ string, blobDigest godigest.Digest) ([]byte, error) {
 					switch {
 					case blobDigest == priorD:
@@ -247,7 +247,7 @@ func TestRollbackDigestManifestTags(t *testing.T) {
 
 					return nil, nil
 				},
-				PutImageManifestFn: func(_, _, _ string, blob []byte, _ []string) (godigest.Digest, godigest.Digest, error) {
+				PutImageManifestFn: func(ctx context.Context, _, _, _ string, blob []byte, _ []string) (godigest.Digest, godigest.Digest, error) {
 					d := godigest.FromBytes(blob)
 
 					return d, d, nil

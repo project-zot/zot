@@ -3348,7 +3348,7 @@ func TestBasicAuth(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-			err = dctlr.StoreController.DefaultStore.DeleteImageManifest(testImage, testImageTag, false)
+			err = dctlr.StoreController.DefaultStore.DeleteImageManifest(context.Background(), testImage, testImageTag, false)
 			So(err, ShouldBeNil)
 
 			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "1.1.1")

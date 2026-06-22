@@ -770,7 +770,8 @@ func TestGCMetrics(t *testing.T) {
 		imgStore := ctlr.StoreController.DefaultStore
 
 		orphanBlob := []byte("orphaned-blob-content")
-		_, _, err = imgStore.FullBlobUpload("gc-metrics-test", bytes.NewReader(orphanBlob), godigest.FromBytes(orphanBlob))
+		_, _, err = imgStore.FullBlobUpload(context.Background(), "gc-metrics-test",
+			bytes.NewReader(orphanBlob), godigest.FromBytes(orphanBlob))
 		So(err, ShouldBeNil)
 
 		audit := log.NewAuditLogger("debug", "/dev/null")

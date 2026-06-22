@@ -473,13 +473,24 @@ function helper_pull_manifest_with_docker_client() {
     [ "${status}" -eq 0 ]
 }
 
-# Args: $1 = repository
+# Args: $1 = repository, $2 = attempts (optional, default: 3)
+# Retries crictl pull a few times: on busy runners the CRI-O image-store step
+# that follows blob download ("copying config") occasionally cancels its own
+# context even though zot has already served every blob with 200 OK. A fresh
+# pull replays from cri-o's local cache and almost always succeeds.
 function helper_pull_manifest_with_crictl() {
     local repo=${1}
+    local attempts=${2:-3}
     local zot_port
     zot_port=$(get_zot_port)
 
-    run crictl pull "localhost:${zot_port}/${repo}"
+    for (( i=1; i<=attempts; i++ )); do
+        run crictl pull "localhost:${zot_port}/${repo}"
+        [ "${status}" -eq 0 ] && return 0
+        echo "crictl pull ${repo} failed on attempt ${i}/${attempts} (status=${status}): ${output}" >&3
+        sleep 2
+    done
+
     [ "${status}" -eq 0 ]
 }
 
