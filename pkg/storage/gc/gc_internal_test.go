@@ -167,6 +167,76 @@ func TestGarbageCollectManifestErrors(t *testing.T) {
 	})
 }
 
+func TestUntaggedManifestRetentionUsesPullStats(t *testing.T) {
+	Convey("GC should retain untagged manifests that match pull-based retention rules", t, func() {
+		ctx := context.Background()
+		repo := "untagged-retention"
+		log := zlog.NewTestLogger()
+		audit := zlog.NewAuditLogger("debug", "")
+		metrics := monitoring.NewMetricsServer(false, log)
+		defer metrics.Stop()
+
+		dir := t.TempDir()
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, nil, nil, nil)
+		storeController := storage.StoreController{DefaultStore: imgStore}
+
+		active := CreateRandomImage()
+		err := WriteImageToFileSystem(active, repo, active.DigestStr(), storeController)
+		So(err, ShouldBeNil)
+
+		stale := CreateRandomImage()
+		err = WriteImageToFileSystem(stale, repo, stale.DigestStr(), storeController)
+		So(err, ShouldBeNil)
+
+		now := time.Now()
+		repoMeta := types.RepoMeta{
+			Name: repo,
+			Statistics: map[string]types.DescriptorStatistics{
+				active.DigestStr(): {
+					PushTimestamp:     now.Add(-30 * 24 * time.Hour),
+					LastPullTimestamp: now,
+				},
+				stale.DigestStr(): {
+					PushTimestamp:     now.Add(-30 * 24 * time.Hour),
+					LastPullTimestamp: now.Add(-30 * 24 * time.Hour),
+				},
+			},
+		}
+
+		pulledWithin := 24 * time.Hour
+		trueVal := true
+		gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{
+			GetRepoMetaFn: func(ctx context.Context, repo string) (types.RepoMeta, error) {
+				return repoMeta, nil
+			},
+		}, Options{
+			ImageRetention: config.ImageRetention{
+				Policies: []config.RetentionPolicy{
+					{
+						Repositories:   []string{"**"},
+						DeleteUntagged: &trueVal,
+						KeepTags: []config.KeepTagsPolicy{
+							{
+								Patterns:     []string{".*"},
+								PulledWithin: &pulledWithin,
+							},
+						},
+					},
+				},
+			},
+		}, audit, log, metrics)
+
+		err = gc.CleanRepo(ctx, repo)
+		So(err, ShouldBeNil)
+
+		_, _, _, err = imgStore.GetImageManifest(repo, active.DigestStr())
+		So(err, ShouldBeNil)
+
+		_, _, _, err = imgStore.GetImageManifest(repo, stale.DigestStr())
+		So(err, ShouldNotBeNil)
+	})
+}
+
 func TestGarbageCollectIndexErrors(t *testing.T) {
 	Convey("Make imagestore and upload manifest", t, func(c C) {
 		dir := t.TempDir()

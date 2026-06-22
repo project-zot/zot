@@ -1,6 +1,7 @@
 package retention
 
 import (
+	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
@@ -27,6 +28,38 @@ func GetCandidates(repoMeta mTypes.RepoMeta) []*types.Candidate {
 			MediaType:     desc.MediaType,
 			DigestStr:     desc.Digest,
 			Tag:           tag,
+			PushTimestamp: stats.PushTimestamp,
+			PullTimestamp: stats.LastPullTimestamp,
+		}
+
+		candidates = append(candidates, candidate)
+	}
+
+	return candidates
+}
+
+func GetUntaggedCandidates(repoMeta mTypes.RepoMeta, index ispec.Index,
+	referenced map[godigest.Digest]bool,
+) []*types.Candidate {
+	candidates := make([]*types.Candidate, 0)
+
+	for _, manifest := range index.Manifests {
+		if referenced[manifest.Digest] {
+			continue
+		}
+
+		if _, ok := manifest.Annotations[ispec.AnnotationRefName]; ok {
+			continue
+		}
+
+		stats, hasStatistics := repoMeta.Statistics[manifest.Digest.String()]
+		if !hasStatistics {
+			continue
+		}
+
+		candidate := &types.Candidate{
+			MediaType:     manifest.MediaType,
+			DigestStr:     manifest.Digest.String(),
 			PushTimestamp: stats.PushTimestamp,
 			PullTimestamp: stats.LastPullTimestamp,
 		}
