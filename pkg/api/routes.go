@@ -1366,6 +1366,7 @@ func writeMultipartRanges(
 	bsize int64,
 	mediaType string,
 	openRange openRangeFunc,
+	writeTimeout time.Duration,
 	logger log.Logger,
 ) {
 	pipeReader, pipeWriter := io.Pipe()
@@ -1419,7 +1420,7 @@ func writeMultipartRanges(
 		pipeErr = writer.Close()
 	}()
 
-	if _, err := io.CopyN(response, pipeReader, contentLength); err != nil {
+	if _, err := io.CopyN(newStreamDeadlineWriter(response, writeTimeout, logger), pipeReader, contentLength); err != nil {
 		logger.Error().Err(err).Msg("failed to copy multipart range data into http response")
 	}
 }
@@ -1578,7 +1579,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 					return reader, err
 				},
-				rh.c.Log,
+				rh.c.Config.GetHTTPWriteTimeout(), rh.c.Log,
 			)
 
 			return
@@ -1610,7 +1611,8 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 		response.Header().Set(constants.DistContentDigestKey, digest.String())
 		response.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", rng.start, rng.end, bsize))
 		WriteDataFromReader(
-			response, http.StatusPartialContent, rng.length(), mediaType, reader, rh.c.Log,
+			response, http.StatusPartialContent, rng.length(), mediaType, reader,
+			rh.c.Config.GetHTTPWriteTimeout(), rh.c.Log,
 		)
 
 		return
@@ -1638,7 +1640,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 	response.Header().Set("Content-Length", strconv.FormatInt(blen, 10))
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
 
-	WriteDataFromReader(response, http.StatusOK, blen, mediaType, repo, rh.c.Log)
+	WriteDataFromReader(response, http.StatusOK, blen, mediaType, repo, rh.c.Config.GetHTTPWriteTimeout(), rh.c.Log)
 }
 
 // DeleteBlob godoc
@@ -1837,7 +1839,7 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 			return
 		}
 
-		sessionID, size, err := imgStore.FullBlobUpload(ctx, name, request.Body, digest)
+		sessionID, size, err := imgStore.FullBlobUpload(ctx, name, rh.uploadBody(request, response), digest)
 		if err != nil {
 			rh.c.Log.Error().Err(err).Int64("actual", size).Int64("expected", contentLength).
 				Msg("failed to full blob upload")
@@ -1991,7 +1993,7 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 
 	if request.Header.Get("Content-Length") == "" || request.Header.Get("Content-Range") == "" {
 		// streamed blob upload
-		clen, err = imgStore.PutBlobChunkStreamed(ctx, name, sessionID, request.Body)
+		clen, err = imgStore.PutBlobChunkStreamed(ctx, name, sessionID, rh.uploadBody(request, response))
 	} else {
 		// chunked blob upload
 		var contentLength int64
@@ -2010,7 +2012,7 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 			return
 		}
 
-		clen, err = imgStore.PutBlobChunk(ctx, name, sessionID, from, to, request.Body)
+		clen, err = imgStore.PutBlobChunk(ctx, name, sessionID, from, to, rh.uploadBody(request, response))
 	}
 
 	if err != nil { //nolint: dupl
@@ -2142,7 +2144,7 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 			return
 		}
 
-		_, err = imgStore.PutBlobChunk(ctx, name, sessionID, from, to, request.Body)
+		_, err = imgStore.PutBlobChunk(ctx, name, sessionID, from, to, rh.uploadBody(request, response))
 		if err != nil { //nolint:dupl
 			details := zerr.GetDetails(err)
 			if errors.Is(err, zerr.ErrBadUploadRange) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
@@ -2175,7 +2177,7 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 
 finish:
 	// blob chunks already transferred, just finish
-	if err := imgStore.FinishBlobUpload(name, sessionID, request.Body, digest); err != nil {
+	if err := imgStore.FinishBlobUpload(name, sessionID, rh.uploadBody(request, response), digest); err != nil {
 		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			details["digest"] = digest.String()
@@ -2669,26 +2671,124 @@ func getContentRange(r *http.Request) (int64 /* from */, int64 /* to */, error) 
 	return rangeStart, rangeEnd, nil
 }
 
+const streamCopyChunkSize = 1024 * 1024
+
 func WriteDataFromReader(response http.ResponseWriter, status int, length int64, mediaType string,
-	reader io.Reader, logger log.Logger,
+	reader io.Reader, writeTimeout time.Duration, logger log.Logger,
 ) {
 	response.Header().Set("Content-Type", mediaType)
 	response.Header().Set("Content-Length", strconv.FormatInt(length, 10))
 	response.WriteHeader(status)
 
-	const maxSize = 10 * 1024 * 1024
+	if err := copyWithWriteDeadline(response, reader, length, writeTimeout, logger); err != nil {
+		// other kinds of intermittent errors can occur, e.g, io.ErrShortWrite
+		logger.Error().Err(err).Msg("failed to copy data into http response")
+	}
+}
 
-	for {
-		_, err := io.CopyN(response, reader, maxSize)
-		if errors.Is(err, io.EOF) {
-			break
-		} else if err != nil {
-			// other kinds of intermittent errors can occur, e.g, io.ErrShortWrite
-			logger.Error().Err(err).Msg("failed to copy data into http response")
+func copyWithWriteDeadline(response http.ResponseWriter, reader io.Reader, length int64, writeTimeout time.Duration,
+	logger log.Logger,
+) error {
+	responseController := http.NewResponseController(response)
+	remaining := length
 
-			return
+	for remaining > 0 {
+		extendStreamWriteDeadline(responseController, writeTimeout, logger)
+
+		chunkSize := min(remaining, int64(streamCopyChunkSize))
+		copied, err := io.CopyN(response, reader, chunkSize)
+		remaining -= copied
+
+		if err != nil {
+			return err
 		}
 	}
+
+	return nil
+}
+
+// streamDeadlineWriter extends the connection write deadline before each Write.
+// Multipart responses write through a pipe, so wrapping the ResponseWriter keeps
+// their deadline granularity at the actual response writes while io.CopyN still
+// enforces the advertised Content-Length.
+type streamDeadlineWriter struct {
+	writer             io.Writer
+	responseController *http.ResponseController
+	timeout            time.Duration
+	logger             log.Logger
+}
+
+func newStreamDeadlineWriter(response http.ResponseWriter, timeout time.Duration,
+	logger log.Logger,
+) io.Writer {
+	if timeout <= 0 {
+		return response
+	}
+
+	return &streamDeadlineWriter{
+		writer:             response,
+		responseController: http.NewResponseController(response),
+		timeout:            timeout,
+		logger:             logger,
+	}
+}
+
+func (w *streamDeadlineWriter) Write(buf []byte) (int, error) {
+	extendStreamWriteDeadline(w.responseController, w.timeout, w.logger)
+
+	return w.writer.Write(buf)
+}
+
+func extendStreamWriteDeadline(responseController *http.ResponseController, timeout time.Duration, logger log.Logger) {
+	if timeout <= 0 {
+		return
+	}
+
+	if err := responseController.SetWriteDeadline(time.Now().Add(timeout)); err != nil &&
+		!errors.Is(err, http.ErrNotSupported) {
+		logger.Error().Err(err).Msg("failed to extend response write deadline")
+	}
+}
+
+// streamDeadlineReader extends the connection read deadline before each Read. http.Server.ReadTimeout
+// is a deadline on reading the entire request, so a large or slow upload is aborted mid-stream
+// without this. Resetting per Read makes it an idle deadline. A zero timeout returns the body
+// unwrapped, preserving "0 means no timeout".
+type streamDeadlineReader struct {
+	reader             io.Reader
+	responseController *http.ResponseController
+	timeout            time.Duration
+	logger             log.Logger
+}
+
+func newStreamDeadlineReader(body io.Reader, response http.ResponseWriter, timeout time.Duration,
+	logger log.Logger,
+) io.Reader {
+	if timeout <= 0 {
+		return body
+	}
+
+	return &streamDeadlineReader{
+		reader:             body,
+		responseController: http.NewResponseController(response),
+		timeout:            timeout,
+		logger:             logger,
+	}
+}
+
+func (r *streamDeadlineReader) Read(buf []byte) (int, error) {
+	if err := r.responseController.SetReadDeadline(time.Now().Add(r.timeout)); err != nil &&
+		!errors.Is(err, http.ErrNotSupported) {
+		r.logger.Error().Err(err).Msg("failed to extend request read deadline")
+	}
+
+	return r.reader.Read(buf)
+}
+
+// uploadBody wraps the request body so the configured ReadTimeout applies per read instead of
+// to the whole upload, so large or slow blob uploads stream without being cut off mid-transfer.
+func (rh *RouteHandler) uploadBody(request *http.Request, response http.ResponseWriter) io.Reader {
+	return newStreamDeadlineReader(request.Body, response, rh.c.Config.GetHTTPReadTimeout(), rh.c.Log)
 }
 
 // will return image storage corresponding to subpath provided in config.

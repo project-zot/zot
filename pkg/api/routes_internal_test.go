@@ -1,11 +1,17 @@
 package api
 
 import (
+	"bytes"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
@@ -202,3 +208,70 @@ func TestIsBlobRedirectEnabled(t *testing.T) {
 		t.Fatal("expected redirect to be disabled for default storage")
 	}
 }
+
+// readDeadlineRecorder is an http.ResponseWriter that records SetReadDeadline
+// calls so the read side of the streaming deadline handling can be asserted.
+// http.ResponseController calls SetReadDeadline directly when the writer
+// implements it, so no Unwrap is needed.
+type readDeadlineRecorder struct {
+	*httptest.ResponseRecorder
+
+	readDeadlines int
+	deadlineErr   error
+}
+
+func (r *readDeadlineRecorder) SetReadDeadline(_ time.Time) error {
+	r.readDeadlines++
+
+	return r.deadlineErr
+}
+
+func TestStreamDeadlineReader(t *testing.T) {
+	t.Run("extends the read deadline before each read", func(t *testing.T) {
+		recorder := &readDeadlineRecorder{ResponseRecorder: httptest.NewRecorder()}
+		reader := newStreamDeadlineReader(bytes.NewReader([]byte("upload-body")), recorder,
+			time.Minute, log.NewTestLogger())
+
+		got, err := reader.Read(make([]byte, 4))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if got == 0 {
+			t.Fatal("expected to read some bytes")
+		}
+
+		if recorder.readDeadlines < 1 {
+			t.Fatalf("expected the read deadline to be set at least once, got %d", recorder.readDeadlines)
+		}
+	})
+
+	t.Run("reads through when setting the deadline errors", func(t *testing.T) {
+		recorder := &readDeadlineRecorder{
+			ResponseRecorder: httptest.NewRecorder(),
+			deadlineErr:      errors.New("deadline not supported"), //nolint:err113
+		}
+		reader := newStreamDeadlineReader(bytes.NewReader([]byte("upload-body")), recorder,
+			time.Minute, log.NewTestLogger())
+
+		if _, err := reader.Read(make([]byte, 4)); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("zero timeout returns the body unwrapped", func(t *testing.T) {
+		recorder := &readDeadlineRecorder{ResponseRecorder: httptest.NewRecorder()}
+		reader := newStreamDeadlineReader(bytes.NewReader([]byte("upload-body")), recorder,
+			0, log.NewTestLogger())
+
+		if _, err := reader.Read(make([]byte, 4)); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if recorder.readDeadlines != 0 {
+			t.Fatalf("expected no read deadline calls with a zero timeout, got %d", recorder.readDeadlines)
+		}
+	})
+}
+
+var _ http.ResponseWriter = (*readDeadlineRecorder)(nil)

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -2289,13 +2290,66 @@ func (r readerThatFails) Read(p []byte) (int, error) {
 	return 0, zerr.ErrInjected
 }
 
+// deadlineRecorder records SetWriteDeadline calls so tests can assert the
+// streaming write deadline is being extended. http.ResponseController calls
+// SetWriteDeadline directly when the writer implements it, so no Unwrap is
+// needed here.
+type deadlineRecorder struct {
+	*httptest.ResponseRecorder
+
+	writeDeadlines int
+}
+
+func (d *deadlineRecorder) SetWriteDeadline(_ time.Time) error {
+	d.writeDeadlines++
+
+	return nil
+}
+
 func TestWriteDataFromReader(t *testing.T) {
-	Convey("", t, func() {
+	Convey("reader error is handled", t, func() {
 		response := httptest.NewRecorder()
 		api.WriteDataFromReader(response, 200, 100, ispec.MediaTypeImageManifest, readerThatFails{},
-			log.NewTestLogger())
+			0, log.NewTestLogger())
 
 		So(response.Code, ShouldEqual, 200)
+	})
+
+	Convey("data is streamed when the writer lacks deadline support", t, func() {
+		response := httptest.NewRecorder()
+		payload := []byte("some-blob-content")
+
+		// httptest.NewRecorder does not support SetWriteDeadline; the deadline
+		// error is http.ErrNotSupported and must be ignored, so the body still
+		// streams in full.
+		api.WriteDataFromReader(response, 200, int64(len(payload)), ispec.MediaTypeImageLayer,
+			bytes.NewReader(payload), time.Minute, log.NewTestLogger())
+
+		So(response.Code, ShouldEqual, 200)
+		So(response.Body.Bytes(), ShouldResemble, payload)
+	})
+
+	Convey("write deadline is extended while streaming", t, func() {
+		recorder := &deadlineRecorder{ResponseRecorder: httptest.NewRecorder()}
+		payload := []byte("some-blob-content")
+
+		api.WriteDataFromReader(recorder, 200, int64(len(payload)), ispec.MediaTypeImageLayer,
+			bytes.NewReader(payload), time.Minute, log.NewTestLogger())
+
+		So(recorder.Code, ShouldEqual, 200)
+		So(recorder.Body.Bytes(), ShouldResemble, payload)
+		So(recorder.writeDeadlines, ShouldBeGreaterThanOrEqualTo, 1)
+	})
+
+	Convey("write deadline is not set when the timeout is zero", t, func() {
+		recorder := &deadlineRecorder{ResponseRecorder: httptest.NewRecorder()}
+		payload := []byte("some-blob-content")
+
+		api.WriteDataFromReader(recorder, 200, int64(len(payload)), ispec.MediaTypeImageLayer,
+			bytes.NewReader(payload), 0, log.NewTestLogger())
+
+		So(recorder.Code, ShouldEqual, 200)
+		So(recorder.writeDeadlines, ShouldEqual, 0)
 	})
 }
 
