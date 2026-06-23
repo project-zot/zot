@@ -52,7 +52,7 @@ jobs:
                 -v /tmp/data:/data \
                 -v /tmp/config:/root/.minio \
                 --health-cmd "curl http://localhost:9000/minio/health/live" \
-                minio/minio:RELEASE.2024-07-16T23-46-41Z server /data
+                ghcr.io/project-zot/ci-images/minio:RELEASE.2024-07-16T23-46-41Z server /data
       - name: Install py minio
         run: pip3 install minio==7.2.18
 
@@ -310,7 +310,7 @@ jobs:
                 -v /tmp/data:/data \
                 -v /tmp/config:/root/.minio \
                 --health-cmd "curl http://localhost:9000/minio/health/live" \
-                minio/minio:RELEASE.2024-07-16T23-46-41Z server /data
+                ghcr.io/project-zot/ci-images/minio:RELEASE.2024-07-16T23-46-41Z server /data
       - name: Install py minio
         run: pip3 install minio==7.2.18
 
@@ -329,7 +329,7 @@ jobs:
                 --health-interval 10s \
                 --health-timeout 5s \
                 --health-retries 5 \
-                redis:7.4.2
+                ghcr.io/project-zot/ci-images/redis:7.4.2
 
       - name: Create minio bucket
         run: |
