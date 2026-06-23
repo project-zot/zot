@@ -18,7 +18,7 @@ import (
 	"github.com/vektah/gqlparser/v2/ast"
 )
 
-// region    ************************** generated!.gotpl **************************
+// region    ***************************** api!.gotpl *****************************
 
 // NewExecutableSchema creates an ExecutableSchema from the ResolverRoot interface.
 func NewExecutableSchema(cfg Config) graphql.ExecutableSchema {
@@ -229,6 +229,10 @@ type ComplexityRoot struct {
 	}
 }
 
+// endregion ***************************** api!.gotpl *****************************
+
+// region    ************************** generated!.gotpl **************************
+
 type QueryResolver interface {
 	CVEListForImage(ctx context.Context, image string, requestedPage *PageInput, searchedCve *string, excludedCve *string, severity *string) (*CVEResultForImage, error)
 	CVEDiffListForImages(ctx context.Context, minuend ImageInput, subtrahend ImageInput, requestedPage *PageInput, searchedCve *string, excludedCve *string) (*CVEDiffResult, error)
@@ -246,6 +250,10 @@ type QueryResolver interface {
 	StarredRepos(ctx context.Context, requestedPage *PageInput) (*PaginatedReposResult, error)
 	BookmarkedRepos(ctx context.Context, requestedPage *PageInput) (*PaginatedReposResult, error)
 }
+
+// endregion ************************** generated!.gotpl **************************
+
+// region    ************************** internal!.gotpl ***************************
 
 type executableSchema graphql.ExecutableSchemaState[ResolverRoot, DirectiveRoot, ComplexityRoot]
 
@@ -2565,7 +2573,7 @@ func (ec *executionContext) childFields___Type(ctx context.Context, field graphq
 	return nil, fmt.Errorf("no field named %q was found under type __Type", field.Name)
 }
 
-// endregion ************************** generated!.gotpl **************************
+// endregion ************************** internal!.gotpl ***************************
 
 // region    ***************************** args.gotpl *****************************
 
@@ -3034,10 +3042,6 @@ func (ec *executionContext) field___Type_fields_args(ctx context.Context, rawArg
 }
 
 // endregion ***************************** args.gotpl *****************************
-
-// region    ************************** directives.gotpl **************************
-
-// endregion ************************** directives.gotpl **************************
 
 // region    **************************** field.gotpl *****************************
 
@@ -7938,8 +7942,14 @@ func (ec *executionContext) _Annotation(ctx context.Context, sel ast.SelectionSe
 			out.Values[i] = graphql.MarshalString("Annotation")
 		case "Key":
 			out.Values[i] = ec._Annotation_Key(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Value":
 			out.Values[i] = ec._Annotation_Value(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -7976,16 +7986,34 @@ func (ec *executionContext) _CVE(ctx context.Context, sel ast.SelectionSet, obj 
 			out.Values[i] = graphql.MarshalString("CVE")
 		case "Id":
 			out.Values[i] = ec._CVE_Id(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Title":
 			out.Values[i] = ec._CVE_Title(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Description":
 			out.Values[i] = ec._CVE_Description(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Reference":
 			out.Values[i] = ec._CVE_Reference(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Severity":
 			out.Values[i] = ec._CVE_Severity(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "PackageList":
 			out.Values[i] = ec._CVE_PackageList(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -8032,10 +8060,19 @@ func (ec *executionContext) _CVEDiffResult(ctx context.Context, sel ast.Selectio
 			}
 		case "CVEList":
 			out.Values[i] = ec._CVEDiffResult_CVEList(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Summary":
 			out.Values[i] = ec._CVEDiffResult_Summary(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Page":
 			out.Values[i] = ec._CVEDiffResult_Page(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -8072,12 +8109,24 @@ func (ec *executionContext) _CVEResultForImage(ctx context.Context, sel ast.Sele
 			out.Values[i] = graphql.MarshalString("CVEResultForImage")
 		case "Tag":
 			out.Values[i] = ec._CVEResultForImage_Tag(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "CVEList":
 			out.Values[i] = ec._CVEResultForImage_CVEList(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Summary":
 			out.Values[i] = ec._CVEResultForImage_Summary(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Page":
 			out.Values[i] = ec._CVEResultForImage_Page(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -8114,12 +8163,24 @@ func (ec *executionContext) _GlobalSearchResult(ctx context.Context, sel ast.Sel
 			out.Values[i] = graphql.MarshalString("GlobalSearchResult")
 		case "Page":
 			out.Values[i] = ec._GlobalSearchResult_Page(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Images":
 			out.Values[i] = ec._GlobalSearchResult_Images(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Repos":
 			out.Values[i] = ec._GlobalSearchResult_Repos(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Layers":
 			out.Values[i] = ec._GlobalSearchResult_Layers(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -8156,14 +8217,29 @@ func (ec *executionContext) _HistoryDescription(ctx context.Context, sel ast.Sel
 			out.Values[i] = graphql.MarshalString("HistoryDescription")
 		case "Created":
 			out.Values[i] = ec._HistoryDescription_Created(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "CreatedBy":
 			out.Values[i] = ec._HistoryDescription_CreatedBy(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Author":
 			out.Values[i] = ec._HistoryDescription_Author(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Comment":
 			out.Values[i] = ec._HistoryDescription_Comment(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "EmptyLayer":
 			out.Values[i] = ec._HistoryDescription_EmptyLayer(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -8210,8 +8286,14 @@ func (ec *executionContext) _ImageIdentifier(ctx context.Context, sel ast.Select
 			}
 		case "Digest":
 			out.Values[i] = ec._ImageIdentifier_Digest(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Platform":
 			out.Values[i] = ec._ImageIdentifier_Platform(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -8248,54 +8330,129 @@ func (ec *executionContext) _ImageSummary(ctx context.Context, sel ast.Selection
 			out.Values[i] = graphql.MarshalString("ImageSummary")
 		case "RepoName":
 			out.Values[i] = ec._ImageSummary_RepoName(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Tag":
 			out.Values[i] = ec._ImageSummary_Tag(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Digest":
 			out.Values[i] = ec._ImageSummary_Digest(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "MediaType":
 			out.Values[i] = ec._ImageSummary_MediaType(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Manifests":
 			out.Values[i] = ec._ImageSummary_Manifests(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Size":
 			out.Values[i] = ec._ImageSummary_Size(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "DownloadCount":
 			out.Values[i] = ec._ImageSummary_DownloadCount(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "LastPullTimestamp":
 			out.Values[i] = ec._ImageSummary_LastPullTimestamp(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "PushTimestamp":
 			out.Values[i] = ec._ImageSummary_PushTimestamp(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "PushedBy":
 			out.Values[i] = ec._ImageSummary_PushedBy(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "TaggedTimestamp":
 			out.Values[i] = ec._ImageSummary_TaggedTimestamp(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "LastUpdated":
 			out.Values[i] = ec._ImageSummary_LastUpdated(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Description":
 			out.Values[i] = ec._ImageSummary_Description(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "IsSigned":
 			out.Values[i] = ec._ImageSummary_IsSigned(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "SignatureInfo":
 			out.Values[i] = ec._ImageSummary_SignatureInfo(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Licenses":
 			out.Values[i] = ec._ImageSummary_Licenses(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Labels":
 			out.Values[i] = ec._ImageSummary_Labels(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Title":
 			out.Values[i] = ec._ImageSummary_Title(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Source":
 			out.Values[i] = ec._ImageSummary_Source(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Documentation":
 			out.Values[i] = ec._ImageSummary_Documentation(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Vendor":
 			out.Values[i] = ec._ImageSummary_Vendor(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Authors":
 			out.Values[i] = ec._ImageSummary_Authors(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Vulnerabilities":
 			out.Values[i] = ec._ImageSummary_Vulnerabilities(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Referrers":
 			out.Values[i] = ec._ImageSummary_Referrers(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "IsDeletable":
 			out.Values[i] = ec._ImageSummary_IsDeletable(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -8332,18 +8489,39 @@ func (ec *executionContext) _ImageVulnerabilitySummary(ctx context.Context, sel 
 			out.Values[i] = graphql.MarshalString("ImageVulnerabilitySummary")
 		case "MaxSeverity":
 			out.Values[i] = ec._ImageVulnerabilitySummary_MaxSeverity(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Count":
 			out.Values[i] = ec._ImageVulnerabilitySummary_Count(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "UnknownCount":
 			out.Values[i] = ec._ImageVulnerabilitySummary_UnknownCount(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "LowCount":
 			out.Values[i] = ec._ImageVulnerabilitySummary_LowCount(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "MediumCount":
 			out.Values[i] = ec._ImageVulnerabilitySummary_MediumCount(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "HighCount":
 			out.Values[i] = ec._ImageVulnerabilitySummary_HighCount(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "CriticalCount":
 			out.Values[i] = ec._ImageVulnerabilitySummary_CriticalCount(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -8380,8 +8558,14 @@ func (ec *executionContext) _LayerHistory(ctx context.Context, sel ast.Selection
 			out.Values[i] = graphql.MarshalString("LayerHistory")
 		case "Layer":
 			out.Values[i] = ec._LayerHistory_Layer(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "HistoryDescription":
 			out.Values[i] = ec._LayerHistory_HistoryDescription(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -8418,8 +8602,14 @@ func (ec *executionContext) _LayerSummary(ctx context.Context, sel ast.Selection
 			out.Values[i] = graphql.MarshalString("LayerSummary")
 		case "Size":
 			out.Values[i] = ec._LayerSummary_Size(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Digest":
 			out.Values[i] = ec._LayerSummary_Digest(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -8456,30 +8646,69 @@ func (ec *executionContext) _ManifestSummary(ctx context.Context, sel ast.Select
 			out.Values[i] = graphql.MarshalString("ManifestSummary")
 		case "Digest":
 			out.Values[i] = ec._ManifestSummary_Digest(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "ConfigDigest":
 			out.Values[i] = ec._ManifestSummary_ConfigDigest(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "LastUpdated":
 			out.Values[i] = ec._ManifestSummary_LastUpdated(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Size":
 			out.Values[i] = ec._ManifestSummary_Size(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "IsSigned":
 			out.Values[i] = ec._ManifestSummary_IsSigned(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "SignatureInfo":
 			out.Values[i] = ec._ManifestSummary_SignatureInfo(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Platform":
 			out.Values[i] = ec._ManifestSummary_Platform(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "DownloadCount":
 			out.Values[i] = ec._ManifestSummary_DownloadCount(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Layers":
 			out.Values[i] = ec._ManifestSummary_Layers(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "History":
 			out.Values[i] = ec._ManifestSummary_History(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Vulnerabilities":
 			out.Values[i] = ec._ManifestSummary_Vulnerabilities(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Referrers":
 			out.Values[i] = ec._ManifestSummary_Referrers(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "ArtifactType":
 			out.Values[i] = ec._ManifestSummary_ArtifactType(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -8516,12 +8745,24 @@ func (ec *executionContext) _PackageInfo(ctx context.Context, sel ast.SelectionS
 			out.Values[i] = graphql.MarshalString("PackageInfo")
 		case "Name":
 			out.Values[i] = ec._PackageInfo_Name(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "PackagePath":
 			out.Values[i] = ec._PackageInfo_PackagePath(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "InstalledVersion":
 			out.Values[i] = ec._PackageInfo_InstalledVersion(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "FixedVersion":
 			out.Values[i] = ec._PackageInfo_FixedVersion(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -8602,6 +8843,9 @@ func (ec *executionContext) _PaginatedImagesResult(ctx context.Context, sel ast.
 			out.Values[i] = graphql.MarshalString("PaginatedImagesResult")
 		case "Page":
 			out.Values[i] = ec._PaginatedImagesResult_Page(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Results":
 			out.Values[i] = ec._PaginatedImagesResult_Results(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -8643,6 +8887,9 @@ func (ec *executionContext) _PaginatedReposResult(ctx context.Context, sel ast.S
 			out.Values[i] = graphql.MarshalString("PaginatedReposResult")
 		case "Page":
 			out.Values[i] = ec._PaginatedReposResult_Page(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Results":
 			out.Values[i] = ec._PaginatedReposResult_Results(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -8684,8 +8931,14 @@ func (ec *executionContext) _Platform(ctx context.Context, sel ast.SelectionSet,
 			out.Values[i] = graphql.MarshalString("Platform")
 		case "Os":
 			out.Values[i] = ec._Platform_Os(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Arch":
 			out.Values[i] = ec._Platform_Arch(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -9062,10 +9315,16 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Query___type(ctx, field)
 			})
+			if out.Values[i] == graphql.RequiredNull {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
 		case "__schema":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Query___schema(ctx, field)
 			})
+			if out.Values[i] == graphql.RequiredNull {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -9102,12 +9361,24 @@ func (ec *executionContext) _Referrer(ctx context.Context, sel ast.SelectionSet,
 			out.Values[i] = graphql.MarshalString("Referrer")
 		case "MediaType":
 			out.Values[i] = ec._Referrer_MediaType(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "ArtifactType":
 			out.Values[i] = ec._Referrer_ArtifactType(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Size":
 			out.Values[i] = ec._Referrer_Size(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Digest":
 			out.Values[i] = ec._Referrer_Digest(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Annotations":
 			out.Values[i] = ec._Referrer_Annotations(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -9149,8 +9420,14 @@ func (ec *executionContext) _RepoInfo(ctx context.Context, sel ast.SelectionSet,
 			out.Values[i] = graphql.MarshalString("RepoInfo")
 		case "Images":
 			out.Values[i] = ec._RepoInfo_Images(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Summary":
 			out.Values[i] = ec._RepoInfo_Summary(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -9187,26 +9464,59 @@ func (ec *executionContext) _RepoSummary(ctx context.Context, sel ast.SelectionS
 			out.Values[i] = graphql.MarshalString("RepoSummary")
 		case "Name":
 			out.Values[i] = ec._RepoSummary_Name(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "LastUpdated":
 			out.Values[i] = ec._RepoSummary_LastUpdated(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Size":
 			out.Values[i] = ec._RepoSummary_Size(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Platforms":
 			out.Values[i] = ec._RepoSummary_Platforms(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Vendors":
 			out.Values[i] = ec._RepoSummary_Vendors(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "NewestImage":
 			out.Values[i] = ec._RepoSummary_NewestImage(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "DownloadCount":
 			out.Values[i] = ec._RepoSummary_DownloadCount(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "StarCount":
 			out.Values[i] = ec._RepoSummary_StarCount(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "IsBookmarked":
 			out.Values[i] = ec._RepoSummary_IsBookmarked(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "IsStarred":
 			out.Values[i] = ec._RepoSummary_IsStarred(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Rank":
 			out.Values[i] = ec._RepoSummary_Rank(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -9243,10 +9553,19 @@ func (ec *executionContext) _SignatureSummary(ctx context.Context, sel ast.Selec
 			out.Values[i] = graphql.MarshalString("SignatureSummary")
 		case "Tool":
 			out.Values[i] = ec._SignatureSummary_Tool(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "IsTrusted":
 			out.Values[i] = ec._SignatureSummary_IsTrusted(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "Author":
 			out.Values[i] = ec._SignatureSummary_Author(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -9288,6 +9607,9 @@ func (ec *executionContext) ___Directive(ctx context.Context, sel ast.SelectionS
 			}
 		case "description":
 			out.Values[i] = ec.___Directive_description(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "isRepeatable":
 			out.Values[i] = ec.___Directive_isRepeatable(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -9344,6 +9666,9 @@ func (ec *executionContext) ___EnumValue(ctx context.Context, sel ast.SelectionS
 			}
 		case "description":
 			out.Values[i] = ec.___EnumValue_description(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "isDeprecated":
 			out.Values[i] = ec.___EnumValue_isDeprecated(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -9351,6 +9676,9 @@ func (ec *executionContext) ___EnumValue(ctx context.Context, sel ast.SelectionS
 			}
 		case "deprecationReason":
 			out.Values[i] = ec.___EnumValue_deprecationReason(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -9392,6 +9720,9 @@ func (ec *executionContext) ___Field(ctx context.Context, sel ast.SelectionSet, 
 			}
 		case "description":
 			out.Values[i] = ec.___Field_description(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "args":
 			out.Values[i] = ec.___Field_args(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -9409,6 +9740,9 @@ func (ec *executionContext) ___Field(ctx context.Context, sel ast.SelectionSet, 
 			}
 		case "deprecationReason":
 			out.Values[i] = ec.___Field_deprecationReason(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -9450,6 +9784,9 @@ func (ec *executionContext) ___InputValue(ctx context.Context, sel ast.Selection
 			}
 		case "description":
 			out.Values[i] = ec.___InputValue_description(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "type":
 			out.Values[i] = ec.___InputValue_type(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -9457,6 +9794,9 @@ func (ec *executionContext) ___InputValue(ctx context.Context, sel ast.Selection
 			}
 		case "defaultValue":
 			out.Values[i] = ec.___InputValue_defaultValue(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "isDeprecated":
 			out.Values[i] = ec.___InputValue_isDeprecated(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -9464,6 +9804,9 @@ func (ec *executionContext) ___InputValue(ctx context.Context, sel ast.Selection
 			}
 		case "deprecationReason":
 			out.Values[i] = ec.___InputValue_deprecationReason(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -9500,6 +9843,9 @@ func (ec *executionContext) ___Schema(ctx context.Context, sel ast.SelectionSet,
 			out.Values[i] = graphql.MarshalString("__Schema")
 		case "description":
 			out.Values[i] = ec.___Schema_description(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "types":
 			out.Values[i] = ec.___Schema_types(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -9512,8 +9858,14 @@ func (ec *executionContext) ___Schema(ctx context.Context, sel ast.SelectionSet,
 			}
 		case "mutationType":
 			out.Values[i] = ec.___Schema_mutationType(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "subscriptionType":
 			out.Values[i] = ec.___Schema_subscriptionType(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "directives":
 			out.Values[i] = ec.___Schema_directives(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -9560,24 +9912,54 @@ func (ec *executionContext) ___Type(ctx context.Context, sel ast.SelectionSet, o
 			}
 		case "name":
 			out.Values[i] = ec.___Type_name(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "description":
 			out.Values[i] = ec.___Type_description(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "specifiedByURL":
 			out.Values[i] = ec.___Type_specifiedByURL(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "fields":
 			out.Values[i] = ec.___Type_fields(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "interfaces":
 			out.Values[i] = ec.___Type_interfaces(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "possibleTypes":
 			out.Values[i] = ec.___Type_possibleTypes(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "enumValues":
 			out.Values[i] = ec.___Type_enumValues(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "inputFields":
 			out.Values[i] = ec.___Type_inputFields(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "ofType":
 			out.Values[i] = ec.___Type_ofType(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		case "isOneOf":
 			out.Values[i] = ec.___Type_isOneOf(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
