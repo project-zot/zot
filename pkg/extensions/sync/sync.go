@@ -5,6 +5,7 @@ package sync
 import (
 	"context"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
@@ -36,6 +37,8 @@ type Service interface {
 	CanRetryOnError() bool // used by sync on demand to retry in background
 	// Get the sync timeout configured for this service
 	GetSyncTimeout() time.Duration
+	GetBlobStream(ctx context.Context, repo string, digest godigest.Digest) (io.ReadCloser, int64, error)
+	IsStreamEnabled() bool
 }
 
 // Registry interface must be implemented by local and remote registries.
