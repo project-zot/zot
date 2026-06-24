@@ -1681,6 +1681,123 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 	})
 }
 
+func TestTraditionalBearerMethodActionMapping(t *testing.T) {
+	Convey("Traditional bearer maps HTTP methods to expected scope actions", t, func() {
+		tempDir := t.TempDir()
+
+		caCert, caKey, err := tlsutils.GenerateCACert()
+		So(err, ShouldBeNil)
+
+		serverCertPath := path.Join(tempDir, "server.cert")
+		serverKeyPath := path.Join(tempDir, "server.key")
+		opts := &tlsutils.CertificateOptions{Hostname: "localhost"}
+		err = tlsutils.GenerateServerCertToFile(caCert, caKey, serverCertPath, serverKeyPath, opts)
+		So(err, ShouldBeNil)
+
+		conf := config.New()
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		conf.HTTP.Port = port
+		conf.HTTP.Auth = &config.AuthConfig{
+			Bearer: &config.BearerConfig{
+				Cert:    serverCertPath,
+				Realm:   "test-realm",
+				Service: "test-service",
+			},
+		}
+		conf.Storage.RootDirectory = t.TempDir()
+
+		ctlr := api.NewController(conf)
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
+
+		keyBytes, err := os.ReadFile(serverKeyPath)
+		So(err, ShouldBeNil)
+
+		keyBlock, _ := pem.Decode(keyBytes)
+		So(keyBlock, ShouldNotBeNil)
+
+		privateKey, err := x509.ParsePKCS1PrivateKey(keyBlock.Bytes)
+		So(err, ShouldBeNil)
+
+		// Keep the token valid but scoped to another repository so requests fail with
+		// insufficient scope and expose the requested action in WWW-Authenticate.
+		claims := &api.ClaimsWithAccess{
+			RegisteredClaims: jwt.RegisteredClaims{
+				IssuedAt:  jwt.NewNumericDate(time.Now()),
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+			},
+			Access: []api.ResourceAccess{
+				{
+					Type:    "repository",
+					Name:    "other-repo",
+					Actions: []string{"pull", "push", "delete"},
+				},
+			},
+		}
+
+		token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+		tokenString, err := token.SignedString(privateKey)
+		So(err, ShouldBeNil)
+
+		testCases := []struct {
+			name          string
+			method        string
+			path          string
+			expectedScope string
+		}{
+			{
+				name:          "GET maps to pull",
+				method:        http.MethodGet,
+				path:          "/v2/testrepo/tags/list",
+				expectedScope: "repository:testrepo:pull",
+			},
+			{
+				name:          "POST maps to push",
+				method:        http.MethodPost,
+				path:          "/v2/testrepo/blobs/uploads/",
+				expectedScope: "repository:testrepo:push",
+			},
+			{
+				name:          "PATCH maps to push",
+				method:        http.MethodPatch,
+				path:          "/v2/testrepo/blobs/uploads/upload-uuid",
+				expectedScope: "repository:testrepo:push",
+			},
+			{
+				name:          "PUT maps to push",
+				method:        http.MethodPut,
+				path:          "/v2/testrepo/manifests/latest",
+				expectedScope: "repository:testrepo:push",
+			},
+			{
+				name:          "DELETE maps to delete",
+				method:        http.MethodDelete,
+				path:          "/v2/testrepo/manifests/latest",
+				expectedScope: "repository:testrepo:delete",
+			},
+		}
+
+		for _, testCase := range testCases {
+			Convey(testCase.name, func() {
+				req, err := http.NewRequestWithContext(context.Background(), testCase.method, baseURL+testCase.path, nil)
+				So(err, ShouldBeNil)
+				req.Header.Set("Authorization", "Bearer "+tokenString)
+
+				client := &http.Client{}
+				resp, err := client.Do(req)
+				So(err, ShouldBeNil)
+				defer resp.Body.Close()
+
+				So(resp.StatusCode, ShouldEqual, http.StatusUnauthorized)
+				So(resp.Header.Get("WWW-Authenticate"), ShouldContainSubstring, "scope=\""+testCase.expectedScope+"\"")
+			})
+		}
+	})
+}
+
 // mockWorkloadOIDCServer creates a mock OIDC provider server for workload identity testing.
 func mockWorkloadOIDCServer(t *testing.T, pubKey *rsa.PublicKey) *httptest.Server {
 	t.Helper()
