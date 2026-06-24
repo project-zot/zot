@@ -604,9 +604,16 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 				vars := mux.Vars(request)
 				name := vars["name"]
 
-				action := "pull"
-				if m := request.Method; m != http.MethodGet && m != http.MethodHead {
+				var action string
+				switch m := request.Method; m {
+				case http.MethodHead, http.MethodGet:
+					action = "pull"
+				case http.MethodPost, http.MethodPatch, http.MethodPut:
 					action = "push"
+				case http.MethodDelete:
+					action = "delete"
+				default:
+					action = "pull" // default to pull for other methods, e.g., OPTIONS
 				}
 
 				requestedAccess = &ResourceAction{
