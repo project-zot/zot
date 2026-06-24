@@ -159,6 +159,7 @@ var (
 	ErrInvalidPublicKeyContent          = errors.New("invalid signature public key content")
 	ErrInvalidStateCookie               = errors.New("auth state cookie not present or differs from original state")
 	ErrSyncNoURLsLeft                   = errors.New("no valid registry urls left after filtering local ones")
+	ErrSyncInFlight                     = errors.New("on-demand sync is in flight for this image; retry later")
 	ErrInvalidCLIParameter              = errors.New("invalid cli parameter")
 	ErrGQLEndpointNotFound              = errors.New("the server doesn't have a gql endpoint")
 	ErrGQLQueryNotSupported             = errors.New("query is not supported or has different arguments")

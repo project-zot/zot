@@ -10,12 +10,14 @@ import (
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
+	rediscfg "zotregistry.dev/zot/v2/pkg/api/config/redis"
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
 	"zotregistry.dev/zot/v2/pkg/extensions/sync"
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/scheduler"
 	"zotregistry.dev/zot/v2/pkg/storage"
+	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 )
 
 func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
@@ -30,6 +32,17 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 		log.Info().Msg("sync extension is enabled")
 
 		onDemand := sync.NewOnDemand(log)
+		if config.Storage.CacheDriver != nil && config.Storage.CacheDriver["name"] == storageConstants.RedisDriverName {
+			client, err := rediscfg.GetRedisClient(config.Storage.CacheDriver, log)
+			if err != nil {
+				return nil, err
+			}
+
+			keyPrefix, _ := config.Storage.CacheDriver["keyprefix"].(string)
+			onDemand.SetDistributedLock(sync.NewRedisDistributedLock(client), keyPrefix)
+			log.Info().Msg("redis distributed on-demand sync lock is enabled")
+		}
+
 		syncConfig := extensionsConfig.GetSyncConfig()
 
 		for _, registryConfig := range syncConfig.Registries {

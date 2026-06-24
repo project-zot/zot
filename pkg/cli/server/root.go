@@ -1634,6 +1634,27 @@ func validateSync(config *config.Config, logger zlog.Logger) error {
 	extensionsConfig := config.CopyExtensionsConfig()
 	// can't check with IsSyncEnabled(), because it can't test invalid sync configs
 	if extensionsConfig != nil && extensionsConfig.Sync != nil && len(extensionsConfig.Sync.Registries) > 0 {
+		// asyncManifest only takes effect on on-demand cache misses, so it
+		// requires at least one registry with onDemand enabled.
+		if extensionsConfig.Sync.AsyncManifest {
+			hasOnDemand := false
+
+			for _, regCfg := range extensionsConfig.Sync.Registries {
+				if regCfg.OnDemand {
+					hasOnDemand = true
+
+					break
+				}
+			}
+
+			if !hasOnDemand {
+				msg := "sync asyncManifest requires at least one registry with onDemand enabled"
+				logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
+
+				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+			}
+		}
+
 		for regID, regCfg := range extensionsConfig.Sync.Registries {
 			// check retry options are configured for sync
 			if regCfg.MaxRetries != nil && regCfg.RetryDelay == nil {

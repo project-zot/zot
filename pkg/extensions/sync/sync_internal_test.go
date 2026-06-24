@@ -585,22 +585,23 @@ func TestService(t *testing.T) {
 				isBackground: false,
 			}
 
-			// Create a channel that we control completely
-			pendingChannel := make(chan error, 1)
-			onDemand.requestStore.Store(req, pendingChannel)
+			// Pre-populate with a shared result we control completely
+			pendingResult := &syncResult{done: make(chan struct{})}
+			onDemand.requestStore.Store(req, pendingResult)
 
-			// Start request that will wait on our channel
+			// Start request that will wait on our result
 			requestCompleted := make(chan error)
 			go func() {
 				err := onDemand.SyncImage(context.Background(), "test-guaranteed-channel-image", "guaranteed-image-tag")
 				requestCompleted <- err
 			}()
 
-			// Wait a moment for the request to reach the channel waiting code
+			// Wait a moment for the request to reach the waiting code
 			time.Sleep(50 * time.Millisecond)
 
-			// Send error through our controlled channel - this proves channel waiting worked
-			pendingChannel <- errors.New("guaranteed channel error")
+			// Publish the result and broadcast - this proves the waiting worked
+			pendingResult.err = errors.New("guaranteed channel error")
+			close(pendingResult.done)
 
 			// Verify the request got our controlled error
 			err := <-requestCompleted
@@ -619,22 +620,23 @@ func TestService(t *testing.T) {
 				isBackground: false,
 			}
 
-			// Create a channel that we control completely
-			pendingChannel := make(chan error, 1)
-			onDemand.requestStore.Store(req, pendingChannel)
+			// Pre-populate with a shared result we control completely
+			pendingResult := &syncResult{done: make(chan struct{})}
+			onDemand.requestStore.Store(req, pendingResult)
 
-			// Start request that will wait on our channel
+			// Start request that will wait on our result
 			requestCompleted := make(chan error)
 			go func() {
 				err := onDemand.SyncReferrers(context.Background(), "test-guaranteed-channel-referrers", "sha256:guaranteed", []string{"signature"})
 				requestCompleted <- err
 			}()
 
-			// Wait a moment for the request to reach the channel waiting code
+			// Wait a moment for the request to reach the waiting code
 			time.Sleep(50 * time.Millisecond)
 
-			// Send error through our controlled channel - this proves channel waiting worked
-			pendingChannel <- errors.New("guaranteed referrer channel error")
+			// Publish the result and broadcast - this proves the waiting worked
+			pendingResult.err = errors.New("guaranteed referrer channel error")
+			close(pendingResult.done)
 
 			// Verify the request got our controlled error
 			err := <-requestCompleted

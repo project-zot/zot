@@ -1,0 +1,45 @@
+{
+	"distSpecVersion": "1.1.1",
+	"storage": {
+		"rootDirectory": "/var/lib/registry",
+		"dedupe": true,
+		"gc": true,
+		"cacheDriver": {
+			"name": "redis",
+			"url": "redis://redis-master:6379",
+			"keyprefix": "zot"
+		},
+		"storageDriver": {
+			"name": "s3",
+			"rootdirectory": "/zot",
+			"region": "us-east-1",
+			"bucket": "zot-registry"
+		}
+	},
+	"http": {
+		"address": "0.0.0.0",
+		"port": "5000"
+	},
+	"log": {
+		"level": "info"
+	},
+	"extensions": {
+		"sync": {
+			"enable": true,
+			"asyncManifest": true,
+			"downloadDir": "/var/lib/registry/sync",
+			"registries": [
+				{
+					"urls": ["https://registry-1.docker.io"],
+					"onDemand": true,
+					"tlsVerify": true,
+					"maxRetries": 3,
+					"retryDelay": "30s",
+					"content": [
+						{ "prefix": "**", "destination": "/docker.io" }
+					]
+				}
+			]
+		}
+	}
+}

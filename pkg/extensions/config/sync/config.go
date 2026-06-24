@@ -20,6 +20,9 @@ type Config struct {
 	and then move them into storage. */
 	DownloadDir string
 	Registries  []RegistryConfig
+	// AsyncManifest returns 503 + Retry-After immediately on manifest cache
+	// misses while on-demand sync runs in the background.
+	AsyncManifest bool
 }
 
 type RegistryConfig struct {
