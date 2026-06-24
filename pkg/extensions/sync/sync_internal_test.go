@@ -733,6 +733,130 @@ func TestSyncLegacyCosignTagsSyncReferrers(t *testing.T) {
 	})
 }
 
+func TestGetNextRepoLocalCatalogFallback(t *testing.T) {
+	Convey("local catalog fallback is disabled by default", t, func() {
+		remoteCatalogErr := errors.New("remote catalog unavailable")
+		localCatalogCalled := false
+
+		conf := syncconf.RegistryConfig{
+			URLs: []string{"http://localhost"},
+			Content: []syncconf.Content{{
+				Prefix: "repo/**",
+			}},
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{
+			DefaultStore: mocks.MockedImageStore{
+				GetRepositoriesFn: func() ([]string, error) {
+					localCatalogCalled = true
+
+					return []string{"repo/app"}, nil
+				},
+			},
+		}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		service.remote = mocks.SyncRemoteMock{
+			GetRepositoriesFn: func(ctx context.Context) ([]string, error) {
+				return nil, remoteCatalogErr
+			},
+		}
+
+		repo, err := service.GetNextRepo("")
+		So(err, ShouldEqual, remoteCatalogErr)
+		So(repo, ShouldBeEmpty)
+		So(localCatalogCalled, ShouldBeFalse)
+	})
+
+	Convey("local catalog fallback uses cached repositories when enabled", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs:                 []string{"http://localhost"},
+			LocalCatalogFallback: true,
+			Content: []syncconf.Content{{
+				Prefix: "repo/**",
+			}},
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{
+			DefaultStore: mocks.MockedImageStore{
+				GetRepositoriesFn: func() ([]string, error) {
+					return []string{"repo/app", "other/app"}, nil
+				},
+			},
+		}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		service.remote = mocks.SyncRemoteMock{
+			GetRepositoriesFn: func(ctx context.Context) ([]string, error) {
+				return nil, errors.New("remote catalog unavailable")
+			},
+		}
+
+		repo, err := service.GetNextRepo("")
+		So(err, ShouldBeNil)
+		So(repo, ShouldEqual, "repo/app")
+	})
+
+	Convey("local catalog fallback returns local catalog errors", t, func() {
+		localCatalogErr := errors.New("local catalog unavailable")
+
+		conf := syncconf.RegistryConfig{
+			URLs:                 []string{"http://localhost"},
+			LocalCatalogFallback: true,
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{
+			DefaultStore: mocks.MockedImageStore{
+				GetRepositoriesFn: func() ([]string, error) {
+					return nil, localCatalogErr
+				},
+			},
+		}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		service.remote = mocks.SyncRemoteMock{
+			GetRepositoriesFn: func(ctx context.Context) ([]string, error) {
+				return nil, errors.New("remote catalog unavailable")
+			},
+		}
+
+		repo, err := service.GetNextRepo("")
+		So(err, ShouldEqual, localCatalogErr)
+		So(repo, ShouldBeEmpty)
+	})
+
+	Convey("local catalog fallback maps destination repositories back to upstream names", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs:                 []string{"http://localhost"},
+			LocalCatalogFallback: true,
+			Content: []syncconf.Content{{
+				Prefix:      "upstream/**",
+				Destination: "mirror",
+				StripPrefix: true,
+			}},
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{
+			DefaultStore: mocks.MockedImageStore{
+				GetRepositoriesFn: func() ([]string, error) {
+					return []string{"mirror/app"}, nil
+				},
+			},
+		}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		service.remote = mocks.SyncRemoteMock{
+			GetRepositoriesFn: func(ctx context.Context) ([]string, error) {
+				return nil, errors.New("remote catalog unavailable")
+			},
+		}
+
+		repo, err := service.GetNextRepo("")
+		So(err, ShouldBeNil)
+		So(repo, ShouldEqual, "upstream/app")
+	})
+}
+
 func TestOnDemandSyncReferrersNonRecursive(t *testing.T) {
 	Convey("SyncReferrers (on-demand) uses non-recursive sync", t, func() {
 		// Verify that recursive calls are not made.
