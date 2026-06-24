@@ -461,6 +461,12 @@
       "end": 11529
     }
   },
+  "blackbox/lint_mandatory_signatures_wildcard.bats": {
+    "zot": {
+      "begin": 11540,
+      "end": 11549
+    }
+  },
   "blackbox/quota.bats": {
     "zot": {
       "begin": 11530,

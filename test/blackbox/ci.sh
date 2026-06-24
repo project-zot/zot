@@ -18,7 +18,7 @@ ${SCRIPTPATH}/setup_images.sh
 tests=("pushpull" "pushpull_authn" "delete_images" "referrers" "sbom" "metadata" "anonymous_policy"
       "annotations" "detect_manifest_collision" "cve" "sync" "sync_docker" "sync_replica_cluster"
       "scrub" "garbage_collect" "metrics" "metrics_minimal" "multiarch_index" "docker_compat" "redis_local" "redis_session_store"
-      "events_nats" "events_http" "events_nats_lint_failure" "events_http_lint_failure" "events_sink_failure" "events_config_decoding"
+      "events_nats" "events_http" "events_nats_lint_failure" "events_http_lint_failure" "events_sink_failure" "events_config_decoding" "lint_mandatory_signatures_wildcard"
       "fips140" "fips140_authn" "openid_claim_mapping" "upgrade" "upgrade_minimal" "dynamic_tls" "quota")
 
 for test in ${tests[*]}; do

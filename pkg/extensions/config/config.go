@@ -44,6 +44,7 @@ type LintConfig struct {
 	BaseConfig `mapstructure:",squash"`
 
 	MandatoryAnnotations []string
+	MandatorySignatures  []string
 }
 
 type SearchConfig struct {
