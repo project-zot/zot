@@ -43,17 +43,21 @@ const (
 
 // ImageStore provides the image storage operations.
 type ImageStore struct {
-	rootDir     string
-	storeDriver storageTypes.Driver
-	lock        *sync.RWMutex
-	log         zlog.Logger
-	metrics     monitoring.MetricServer
-	events      events.Recorder
-	cache       storageTypes.Cache
-	dedupe      bool
-	linter      common.Lint
-	commit      bool
-	compat      []compat.MediaCompatibility
+	rootDir        string
+	storeDriver    storageTypes.Driver
+	lock           *sync.RWMutex
+	log            zlog.Logger
+	metrics        monitoring.MetricServer
+	events         events.Recorder
+	cache          storageTypes.Cache
+	dedupe         bool
+	linter         common.Lint
+	commit         bool
+	compat         []compat.MediaCompatibility
+	// deletedBlobs tracks blob paths that have been explicitly deleted from a repository.
+	// This prevents CheckBlob from silently restoring a deleted blob via the dedupe cache.
+	// Entries are added in deleteBlob and cleared when the blob is re-uploaded.
+	deletedBlobs sync.Map
 }
 
 func (is *ImageStore) Name() string {
@@ -1146,6 +1150,9 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 		}
 	}
 
+	// Clear any deleted-blob marker so the blob is visible again after re-upload.
+	is.deletedBlobs.Delete(dst)
+
 	return nil
 }
 
@@ -1242,6 +1249,9 @@ func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.R
 			return "", -1, err
 		}
 	}
+
+	// Clear any deleted-blob marker so the blob is visible again after re-upload.
+	is.deletedBlobs.Delete(dst)
 
 	return uuid, nbytes, nil
 }
@@ -1444,7 +1454,43 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 	}
 
 	binfo, err := is.storeDriver.Stat(blobPath)
-	if err == nil && binfo.Size() > 0 {
+	if err != nil {
+		// Blob file doesn't exist at this path.
+		// If it was explicitly deleted from this repository, do not restore it from the
+		// dedupe cache: a deleted blob must remain absent per the OCI distribution spec.
+		if _, deleted := is.deletedBlobs.Load(blobPath); deleted {
+			return false, -1, zerr.ErrBlobNotFound
+		}
+
+		// Not explicitly deleted — check the dedupe cache to support lazy cross-mount
+		// (e.g. a blob uploaded to another repo and mounted here).
+		dstRecord, err := is.checkCacheBlob(digest)
+		if err != nil {
+			if errors.Is(err, zerr.ErrCacheMiss) || errors.Is(err, zerr.ErrBlobNotFound) {
+				is.log.Debug().Err(err).Str("digest", digest.String()).Msg("cache miss for blob")
+			} else {
+				is.log.Warn().Err(err).Str("digest", digest.String()).Msg("failed to lookup blob in cache")
+			}
+
+			return false, -1, zerr.ErrBlobNotFound
+		}
+
+		blobSize, err := is.copyBlob(ctx, repo, blobPath, dstRecord)
+		if err != nil {
+			return false, -1, zerr.ErrBlobNotFound
+		}
+
+		// put deduped blob in cache
+		if err := is.cache.PutBlob(digest, blobPath); err != nil {
+			is.log.Error().Err(err).Str("blobPath", blobPath).Str("component", "dedupe").Msg("failed to insert blob record")
+
+			return false, -1, err
+		}
+
+		return true, blobSize, nil
+	}
+
+	if binfo.Size() > 0 {
 		// try to find blob size in blob descriptors, if blob can not be found
 		desc, err := common.GetBlobDescriptorFromRepo(is, repo, digest, is.log)
 		if err != nil || desc.Size == binfo.Size() {
@@ -1460,9 +1506,18 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 			return false, -1, zerr.ErrBlobNotFound
 		}
 	}
-	// otherwise is a 'deduped' blob (empty file)
 
-	// Check blobs in cache
+	// Size == 0: either a genuine empty blob, or an S3-style deduped placeholder.
+	// Distinguish by checking whether the digest matches the hash of empty content.
+	emptyDigest := digest.Algorithm().FromBytes(nil)
+	if emptyDigest == digest {
+		// Genuine empty blob (e.g. sha256:e3b0c44... or sha512:cf83e13...).
+		is.log.Debug().Str("blob path", blobPath).Msg("empty blob found")
+
+		return true, 0, nil
+	}
+
+	// S3-style deduped placeholder: the real content lives elsewhere in the cache.
 	dstRecord, err := is.checkCacheBlob(digest)
 	if err != nil {
 		// Cache miss / not-found is a normal condition when the blob truly doesn't exist.
@@ -1984,6 +2039,9 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 					}
 				}
 
+				// Mark this path as explicitly deleted so CheckBlob won't restore it from cache.
+				is.deletedBlobs.Store(blobPath, struct{}{})
+
 				return nil
 			}
 		}
@@ -1994,6 +2052,9 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 
 		return err
 	}
+
+	// Mark this path as explicitly deleted so CheckBlob won't restore it from cache.
+	is.deletedBlobs.Store(blobPath, struct{}{})
 
 	return nil
 }
