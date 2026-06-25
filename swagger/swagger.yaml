@@ -521,6 +521,9 @@ paths:
         "201":
           description: created
           headers:
+            Blob-Upload-UUID:
+              description: Opaque blob upload session identifier
+              type: string
             Location:
               description: /v2/{name}/blobs/{digest}
               type: string

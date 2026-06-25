@@ -1719,6 +1719,7 @@ func (rh *RouteHandler) DeleteBlob(response http.ResponseWriter, request *http.R
 // @Param   name    path    string     true        "repository name"
 // @Success 201 "created"
 // @Header  201 {string} Location "/v2/{name}/blobs/{digest}"
+// @Header  201 {string} Blob-Upload-UUID "Opaque blob upload session identifier"
 // @Success 202 "accepted"
 // @Header  202 {string} Location "/v2/{name}/blobs/uploads/{session_id}"
 // @Header  202 {string} Range "0-0"

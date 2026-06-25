@@ -313,6 +313,10 @@ const docTemplate = `{
                     "201": {
                         "description": "created",
                         "headers": {
+                            "Blob-Upload-UUID": {
+                                "type": "string",
+                                "description": "Opaque blob upload session identifier"
+                            },
                             "Location": {
                                 "type": "string",
                                 "description": "/v2/{name}/blobs/{digest}"
