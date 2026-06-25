@@ -610,14 +610,16 @@ func getReferrers(ctx context.Context, routeHandler *RouteHandler,
 
 // GetReferrers godoc
 // @Summary Get referrers for a given digest
-// @Description Get referrers given a digest
+// @Description Returns referrers for a subject digest as an OCI image index. Missing repositories and
+// @Description subjects with no referrers return 200 with an empty manifests list.
 // @Accept  json
 // @Produce application/vnd.oci.image.index.v1+json
 // @Param   name       path    string     true        "repository name"
 // @Param   digest     path    string     true        "digest"
 // @Param artifactType query string false "artifact type"
 // @Success 200 {object} api.ImageIndex
-// @Failure 404 {string} string "not found"
+// @Failure 400 {string} string "bad request (invalid digest)"
+// @Failure 404 {string} string "not found (manifest unknown)"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/referrers/{digest} [get].
 func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http.Request) {
@@ -652,7 +654,7 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 
 	referrers, err := getReferrers(request.Context(), rh, imgStore, name, digest, artifactTypes)
 	if err != nil {
-		if errors.Is(err, zerr.ErrManifestNotFound) || errors.Is(err, zerr.ErrRepoNotFound) {
+		if errors.Is(err, zerr.ErrManifestNotFound) {
 			rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).
 				Msg("failed to get manifest")
 			response.WriteHeader(http.StatusNotFound)
@@ -715,6 +717,13 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 	if !ok || reference == "" {
 		err := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(map[string]string{"reference": reference})
 		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(err))
+
+		return
+	}
+
+	if zcommon.LooksLikeDigestReference(reference) {
+		e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(map[string]string{"reference": reference})
+		zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 
 		return
 	}
@@ -1703,13 +1712,17 @@ func (rh *RouteHandler) DeleteBlob(response http.ResponseWriter, request *http.R
 
 // CreateBlobUpload godoc
 // @Summary Create image blob/layer upload
-// @Description Create a new image blob/layer upload
+// @Description Create a new image blob/layer upload. A `digest` query parameter requests a monolithic upload
+// @Description and returns 201 on success; otherwise a new upload session is started and 202 is returned.
 // @Accept  json
 // @Produce json
 // @Param   name    path    string     true        "repository name"
+// @Success 201 "created"
+// @Header  201 {string} Location "/v2/{name}/blobs/{digest}"
 // @Success 202 "accepted"
 // @Header  202 {string} Location "/v2/{name}/blobs/uploads/{session_id}"
 // @Header  202 {string} Range "0-0"
+// @Failure 400 {string} string "bad request (invalid digest or upload)"
 // @Failure 401 {string} string "unauthorized"
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
@@ -1815,11 +1828,17 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 
 		digestStr := digests[0]
 
-		digest := godigest.Digest(digestStr)
+		digest, err := godigest.Parse(digestStr)
+		if err != nil {
+			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(map[string]string{"digest": digestStr})
+			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+
+			return
+		}
 
 		var contentLength int64
 
-		contentLength, err := strconv.ParseInt(request.Header.Get("Content-Length"), 10, 64)
+		contentLength, err = strconv.ParseInt(request.Header.Get("Content-Length"), 10, 64)
 		if err != nil || contentLength <= 0 {
 			rh.c.Log.Warn().Str("actual", request.Header.Get("Content-Length")).Msg("invalid content length")
 
@@ -1839,6 +1858,15 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 
 		sessionID, size, err := imgStore.FullBlobUpload(ctx, name, request.Body, digest)
 		if err != nil {
+			if errors.Is(err, zerr.ErrBadBlobDigest) {
+				details := zerr.GetDetails(err)
+				details["digest"] = digest.String()
+				e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
+				zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+
+				return
+			}
+
 			rh.c.Log.Error().Err(err).Int64("actual", size).Int64("expected", contentLength).
 				Msg("failed to full blob upload")
 			response.WriteHeader(http.StatusInternalServerError)

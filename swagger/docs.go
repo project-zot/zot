@@ -292,7 +292,7 @@ const docTemplate = `{
         },
         "/v2/{name}/blobs/uploads": {
             "post": {
-                "description": "Create a new image blob/layer upload",
+                "description": "Create a new image blob/layer upload. A ` + "`" + `digest` + "`" + ` query parameter requests a monolithic upload\nand returns 201 on success; otherwise a new upload session is started and 202 is returned.",
                 "consumes": [
                     "application/json"
                 ],
@@ -310,6 +310,15 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
+                    "201": {
+                        "description": "created",
+                        "headers": {
+                            "Location": {
+                                "type": "string",
+                                "description": "/v2/{name}/blobs/{digest}"
+                            }
+                        }
+                    },
                     "202": {
                         "description": "accepted",
                         "headers": {
@@ -321,6 +330,12 @@ const docTemplate = `{
                                 "type": "string",
                                 "description": "0-0"
                             }
+                        }
+                    },
+                    "400": {
+                        "description": "bad request (invalid digest or upload)",
+                        "schema": {
+                            "type": "string"
                         }
                     },
                     "401": {
@@ -946,7 +961,7 @@ const docTemplate = `{
         },
         "/v2/{name}/referrers/{digest}": {
             "get": {
-                "description": "Get referrers given a digest",
+                "description": "Returns referrers for a subject digest as an OCI image index. Missing repositories and\nsubjects with no referrers return 200 with an empty manifests list.",
                 "consumes": [
                     "application/json"
                 ],
@@ -983,8 +998,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/api.ImageIndex"
                         }
                     },
+                    "400": {
+                        "description": "bad request (invalid digest)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
                     "404": {
-                        "description": "not found",
+                        "description": "not found (manifest unknown)",
                         "schema": {
                             "type": "string"
                         }

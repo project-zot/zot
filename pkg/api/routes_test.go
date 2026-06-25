@@ -554,6 +554,15 @@ func TestRoutes(t *testing.T) {
 				})
 			So(statusCode, ShouldEqual, http.StatusBadRequest)
 
+			// malformed digest-shaped manifest reference
+			statusCode = testUpdateManifest(
+				map[string]string{
+					"name":      "test",
+					"reference": "sha256:baddigeststring",
+				},
+				&mocks.MockedImageStore{})
+			So(statusCode, ShouldEqual, http.StatusBadRequest)
+
 			// ErrRepoBadVersion
 			statusCode = testUpdateManifest(
 				map[string]string{
@@ -1300,7 +1309,7 @@ func TestRoutes(t *testing.T) {
 			// digest prezent imgStore err
 			statusCode = testCreateBlobUpload(
 				[]struct{ k, v string }{
-					{"digest", "1234"},
+					{"digest", "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621"},
 				},
 				map[string]string{
 					"Content-Type":   constants.BinaryMediaType,
@@ -1313,12 +1322,11 @@ func TestRoutes(t *testing.T) {
 						return sessionStr, 0, zerr.ErrBadBlobDigest
 					},
 				})
-			So(statusCode, ShouldEqual, http.StatusInternalServerError)
+			So(statusCode, ShouldEqual, http.StatusBadRequest)
 
-			// digest prezent bad length
 			statusCode = testCreateBlobUpload(
 				[]struct{ k, v string }{
-					{"digest", "1234"},
+					{"digest", "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621"},
 				},
 				map[string]string{
 					"Content-Type":   constants.BinaryMediaType,

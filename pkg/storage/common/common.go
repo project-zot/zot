@@ -681,7 +681,7 @@ func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godiges
 
 	dir := path.Join(imgStore.RootDir(), repo)
 	if !imgStore.DirExists(dir) {
-		return nilIndex, zerr.ErrRepoNotFound
+		return newEmptyReferrersIndex(), nil
 	}
 
 	index, err := GetIndex(imgStore, repo, log)
@@ -773,14 +773,21 @@ func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godiges
 		}
 	}
 
-	index = ispec.Index{
+	return ispec.Index{
 		Versioned:   imeta.Versioned{SchemaVersion: storageConstants.SchemaVersion},
 		MediaType:   ispec.MediaTypeImageIndex,
 		Manifests:   result,
 		Annotations: map[string]string{},
-	}
+	}, nil
+}
 
-	return index, nil
+func newEmptyReferrersIndex() ispec.Index {
+	return ispec.Index{
+		Versioned:   imeta.Versioned{SchemaVersion: storageConstants.SchemaVersion},
+		MediaType:   ispec.MediaTypeImageIndex,
+		Manifests:   []ispec.Descriptor{},
+		Annotations: map[string]string{},
+	}
 }
 
 // GetBlobDescriptorFromRepo gets blob descriptor from it's manifest contents,

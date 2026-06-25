@@ -8039,10 +8039,15 @@ func TestArtifactReferences(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 
-				// unknown repo will return status not found
+				// unknown repo returns empty referrers index
 				resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", "unknown", digest.String()))
 				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+				var emptyReferrers ispec.Index
+				err = json.Unmarshal(resp.Body(), &emptyReferrers)
+				So(err, ShouldBeNil)
+				So(emptyReferrers.Manifests, ShouldBeEmpty)
 
 				resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
 				So(err, ShouldBeNil)
