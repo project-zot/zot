@@ -37,34 +37,12 @@ jobs:
           RUNNER_TRACKING_ID="" && ./bin/zot-linux-amd64 serve examples/config-conformance.json &
           IP=`hostname -I | awk '{print $1}'`
           echo "SERVER_URL=http://${IP}:8080" >> $GITHUB_ENV
-    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      with:
-        repository: opencontainers/distribution-spec
-        ref: af32c8c0de81c7e2e7c74709fd98b1c11ac55659
-        path: distribution-spec
-        persist-credentials: false
-    - name: build conformance binary from main
-      run: |
-        (cd distribution-spec/ && make conformance-binary)
-        mv distribution-spec/output/conformance.test .
-        rm -rf distribution-spec/
     - name: run conformance
+      uses: opencontainers/distribution-spec@fcfba1ec55526073f48b2f6d4e3d7eef410ddcbc # main
       env:
-        OCI_ROOT_URL: ${{ env.SERVER_URL }}
-        OCI_NAMESPACE: oci-conformance/distribution-test
-        OCI_TEST_PULL: 1
-        OCI_TEST_PUSH: 1
-        OCI_TEST_CONTENT_DISCOVERY: 1
-        OCI_TEST_CONTENT_MANAGEMENT: 1
-        OCI_REFERRERS: 1
-        OCI_CROSSMOUNT_NAMESPACE: oci-conformance/crossmount-test
-      run: |
-        ./conformance.test
-    - run: mkdir -p .out/ && mv {report.html,junit.xml} .out/
-      if: always()
-    - name: Upload test results zip as build artifact
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-      with:
-        name: oci-test-results-${{ github.sha }}
-        path: .out/
-      if: github.event_name == 'push'
+        OCI_REGISTRY: ${{ env.SERVER_URL }}
+        OCI_TLS: disabled
+        OCI_REPO1: oci-conformance/distribution-test
+        OCI_REPO2: oci-conformance/crossmount-test
+        OCI_VERSION: 1.1
+        OCI_RESULTS_DIR: .
