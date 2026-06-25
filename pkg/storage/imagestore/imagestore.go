@@ -43,20 +43,22 @@ const (
 
 // ImageStore provides the image storage operations.
 type ImageStore struct {
-	rootDir        string
-	storeDriver    storageTypes.Driver
-	lock           *sync.RWMutex
-	log            zlog.Logger
-	metrics        monitoring.MetricServer
-	events         events.Recorder
-	cache          storageTypes.Cache
-	dedupe         bool
-	linter         common.Lint
-	commit         bool
-	compat         []compat.MediaCompatibility
+	rootDir     string
+	storeDriver storageTypes.Driver
+	lock        *sync.RWMutex
+	log         zlog.Logger
+	metrics     monitoring.MetricServer
+	events      events.Recorder
+	cache       storageTypes.Cache
+	dedupe      bool
+	linter      common.Lint
+	commit      bool
+	compat      []compat.MediaCompatibility
 	// deletedBlobs tracks blob paths that have been explicitly deleted from a repository.
-	// This prevents CheckBlob from silently restoring a deleted blob via the dedupe cache.
-	// Entries are added in deleteBlob and cleared when the blob is re-uploaded.
+	// This prevents CheckBlob from silently restoring a deleted blob via the dedupe cache
+	// (e.g. a cross-mounted path that still exists in another repo).
+	// Access is safe without additional locking because sync.Map handles concurrent reads
+	// and writes internally; all callers that mutate this map already hold is.lock as well.
 	deletedBlobs sync.Map
 }
 
@@ -1150,7 +1152,8 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 		}
 	}
 
-	// Clear any deleted-blob marker so the blob is visible again after re-upload.
+	// Clear any deleted-blob marker: a successful re-upload to dst legitimately
+	// replaces any prior deletion, so the blob must be visible again from now on.
 	is.deletedBlobs.Delete(dst)
 
 	return nil
@@ -1250,7 +1253,8 @@ func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.R
 		}
 	}
 
-	// Clear any deleted-blob marker so the blob is visible again after re-upload.
+	// Clear any deleted-blob marker: a successful re-upload to dst legitimately
+	// replaces any prior deletion, so the blob must be visible again from now on.
 	is.deletedBlobs.Delete(dst)
 
 	return uuid, nbytes, nil
@@ -1508,7 +1512,8 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 	}
 
 	// Size == 0: either a genuine empty blob, or an S3-style deduped placeholder.
-	// Distinguish by checking whether the digest matches the hash of empty content.
+	// Distinguish by comparing the digest against the hash of empty content for
+	// the same algorithm (cheap single-pass hash over 0 bytes).
 	emptyDigest := digest.Algorithm().FromBytes(nil)
 	if emptyDigest == digest {
 		// Genuine empty blob (e.g. sha256:e3b0c44... or sha512:cf83e13...).
