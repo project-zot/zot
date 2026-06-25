@@ -499,7 +499,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) 
 		So(err, ShouldBeNil)
 
 		So(len(repos), ShouldEqual, 1)
-		So(len(repos[0].Tags), ShouldEqual, 2)
+		So(len(repos[0].Tags), ShouldEqual, 3)
 
 		for tag, descriptor := range repos[0].Tags {
 			imageManifestData, err := metaDB.GetFullImageMeta(ctx, repo, tag)
