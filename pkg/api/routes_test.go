@@ -1306,6 +1306,18 @@ func TestRoutes(t *testing.T) {
 				})
 			So(statusCode, ShouldEqual, http.StatusUnsupportedMediaType)
 
+			// invalid digest query value
+			statusCode = testCreateBlobUpload(
+				[]struct{ k, v string }{
+					{"digest", "sha256:invalid_digest_format"},
+				},
+				map[string]string{
+					"Content-Type":   constants.BinaryMediaType,
+					"Content-Length": "10",
+				},
+				&mocks.MockedImageStore{})
+			So(statusCode, ShouldEqual, http.StatusBadRequest)
+
 			// digest prezent imgStore err
 			statusCode = testCreateBlobUpload(
 				[]struct{ k, v string }{

@@ -292,7 +292,7 @@ const docTemplate = `{
         },
         "/v2/{name}/blobs/uploads": {
             "post": {
-                "description": "Create a new image blob/layer upload. A ` + "`" + `digest` + "`" + ` query parameter requests a monolithic upload\nand returns 201 on success; otherwise a new upload session is started and 202 is returned.",
+                "description": "Create a new image blob/layer upload. With no query parameters, starts an upload session\nand returns 202.\nA ` + "`" + `digest` + "`" + ` query parameter requests a monolithic upload and returns 201 on success.\nA ` + "`" + `mount` + "`" + ` query parameter requests a cross-repository blob mount and returns 201 or 202.",
                 "consumes": [
                     "application/json"
                 ],
@@ -307,6 +307,18 @@ const docTemplate = `{
                         "name": "name",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "blob digest for monolithic upload",
+                        "name": "digest",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "blob digest to mount into the repository",
+                        "name": "mount",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -350,6 +362,12 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "415": {
+                        "description": "unsupported media type (monolithic upload requires application/octet-stream)",
                         "schema": {
                             "type": "string"
                         }

@@ -1712,11 +1712,15 @@ func (rh *RouteHandler) DeleteBlob(response http.ResponseWriter, request *http.R
 
 // CreateBlobUpload godoc
 // @Summary Create image blob/layer upload
-// @Description Create a new image blob/layer upload. A `digest` query parameter requests a monolithic upload
-// @Description and returns 201 on success; otherwise a new upload session is started and 202 is returned.
+// @Description Create a new image blob/layer upload. With no query parameters, starts an upload session
+// @Description and returns 202.
+// @Description A `digest` query parameter requests a monolithic upload and returns 201 on success.
+// @Description A `mount` query parameter requests a cross-repository blob mount and returns 201 or 202.
 // @Accept  json
 // @Produce json
 // @Param   name    path    string     true        "repository name"
+// @Param   digest  query   string     false       "blob digest for monolithic upload"
+// @Param   mount   query   string     false       "blob digest to mount into the repository"
 // @Success 201 "created"
 // @Header  201 {string} Location "/v2/{name}/blobs/{digest}"
 // @Header  201 {string} Blob-Upload-UUID "Opaque blob upload session identifier"
@@ -1726,6 +1730,7 @@ func (rh *RouteHandler) DeleteBlob(response http.ResponseWriter, request *http.R
 // @Failure 400 {string} string "bad request (invalid digest or upload)"
 // @Failure 401 {string} string "unauthorized"
 // @Failure 404 {string} string "not found"
+// @Failure 415 {string} string "unsupported media type (monolithic upload requires application/octet-stream)"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads [post].
 func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *http.Request) {

@@ -507,13 +507,23 @@ paths:
       consumes:
       - application/json
       description: |-
-        Create a new image blob/layer upload. A `digest` query parameter requests a monolithic upload
-        and returns 201 on success; otherwise a new upload session is started and 202 is returned.
+        Create a new image blob/layer upload. With no query parameters, starts an upload session
+        and returns 202.
+        A `digest` query parameter requests a monolithic upload and returns 201 on success.
+        A `mount` query parameter requests a cross-repository blob mount and returns 201 or 202.
       parameters:
       - description: repository name
         in: path
         name: name
         required: true
+        type: string
+      - description: blob digest for monolithic upload
+        in: query
+        name: digest
+        type: string
+      - description: blob digest to mount into the repository
+        in: query
+        name: mount
         type: string
       produces:
       - application/json
@@ -546,6 +556,10 @@ paths:
             type: string
         "404":
           description: not found
+          schema:
+            type: string
+        "415":
+          description: unsupported media type (monolithic upload requires application/octet-stream)
           schema:
             type: string
         "500":
