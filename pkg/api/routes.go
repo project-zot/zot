@@ -1845,9 +1845,17 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 
 		sessionID, size, err := imgStore.FullBlobUpload(ctx, name, request.Body, digest)
 		if err != nil {
-			rh.c.Log.Error().Err(err).Int64("actual", size).Int64("expected", contentLength).
-				Msg("failed to full blob upload")
-			response.WriteHeader(http.StatusInternalServerError)
+			details := zerr.GetDetails(err)
+			details["digest"] = digest.String()
+
+			if errors.Is(err, zerr.ErrBadBlobDigest) {
+				e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
+				zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+			} else {
+				rh.c.Log.Error().Err(err).Int64("actual", size).Int64("expected", contentLength).
+					Msg("failed to full blob upload")
+				response.WriteHeader(http.StatusInternalServerError)
+			}
 
 			return
 		}

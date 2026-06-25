@@ -687,7 +687,12 @@ func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godiges
 
 	dir := path.Join(imgStore.RootDir(), repo)
 	if !imgStore.DirExists(dir) {
-		return nilIndex, zerr.ErrRepoNotFound
+		return ispec.Index{
+			Versioned:   imeta.Versioned{SchemaVersion: storageConstants.SchemaVersion},
+			MediaType:   ispec.MediaTypeImageIndex,
+			Manifests:   []ispec.Descriptor{},
+			Annotations: map[string]string{},
+		}, nil
 	}
 
 	index, err := GetIndex(imgStore, repo, log)
