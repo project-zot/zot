@@ -1815,12 +1815,18 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 
 		digestStr := digests[0]
 
-		digest := godigest.Digest(digestStr)
+		digest, err := godigest.Parse(digestStr)
+		if err != nil {
+			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(map[string]string{"digest": digestStr})
+			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+
+			return
+		}
 
 		var contentLength int64
 
-		contentLength, err := strconv.ParseInt(request.Header.Get("Content-Length"), 10, 64)
-		if err != nil || contentLength <= 0 {
+		contentLength, err = strconv.ParseInt(request.Header.Get("Content-Length"), 10, 64)
+		if err != nil || contentLength < 0 {
 			rh.c.Log.Warn().Str("actual", request.Header.Get("Content-Length")).Msg("invalid content length")
 
 			details := map[string]string{"digest": digest.String()}
@@ -2113,15 +2119,13 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 		contentRangePresent = false
 	}
 
-	// we expect at least one of "Content-Length" or "Content-Range" to be
-	// present
-	if !contentPresent && !contentRangePresent {
-		response.WriteHeader(http.StatusBadRequest)
-
-		return
-	}
-
 	var from, to int64
+
+	// if neither "Content-Length" nor "Content-Range" is present, treat
+	// this as an empty-body finalization (e.g. finishing an empty blob upload)
+	if !contentPresent && !contentRangePresent {
+		goto finish
+	}
 
 	if contentPresent {
 		contentRange := request.Header.Get("Content-Range")
