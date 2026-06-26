@@ -14,6 +14,7 @@
           {
             "issuer": "https://kubernetes.default.svc.cluster.local",
             "audiences": ["zot", "https://zot.example.com"],
+            "allowBasicAuth": true,
             "claimMapping": {
               "username": "claims.sub"
             }
