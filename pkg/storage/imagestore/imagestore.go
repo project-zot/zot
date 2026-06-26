@@ -1907,11 +1907,7 @@ func (is *ImageStore) DeleteBlob(repo string, digest godigest.Digest) error {
 	is.Lock(&lockLatency)
 	defer is.Unlock(&lockLatency)
 
-	if err := is.deleteBlob(repo, digest); err != nil {
-		return err
-	}
-
-	return nil
+	return is.deleteBlob(repo, digest)
 }
 
 /*
