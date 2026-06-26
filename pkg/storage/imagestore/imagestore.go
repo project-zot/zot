@@ -1920,7 +1920,14 @@ func (is *ImageStore) DeleteBlob(repo string, digest godigest.Digest) error {
 	is.Lock(&lockLatency)
 	defer is.Unlock(&lockLatency)
 
-	return is.deleteBlob(repo, digest)
+	if err := is.deleteBlob(repo, digest); err != nil {
+		return err
+	}
+
+	// Mark this path as explicitly deleted so CheckBlob won't restore it from cache.
+	is.deletedBlobs.Store(is.BlobPath(repo, digest), struct{}{})
+
+	return nil
 }
 
 /*
@@ -2044,9 +2051,6 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 					}
 				}
 
-				// Mark this path as explicitly deleted so CheckBlob won't restore it from cache.
-				is.deletedBlobs.Store(blobPath, struct{}{})
-
 				return nil
 			}
 		}
@@ -2057,9 +2061,6 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 
 		return err
 	}
-
-	// Mark this path as explicitly deleted so CheckBlob won't restore it from cache.
-	is.deletedBlobs.Store(blobPath, struct{}{})
 
 	return nil
 }
