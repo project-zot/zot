@@ -1148,6 +1148,8 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 
 	return nil
 }
+
+// FullBlobUpload handles a full blob upload, and no partial session is created.
 func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.Reader,
 	dstDigest godigest.Digest,
 ) (string, int64, error) {
@@ -1668,6 +1670,16 @@ func (is *ImageStore) originalBlobInfo(repo string, digest godigest.Digest) (dri
 	}
 
 	if binfo.Size() == 0 {
+		// A zero-size file is either a genuine empty blob or an S3-style
+		// deduplication placeholder pointing into the cache.  Distinguish the
+		// two by checking whether the digest matches the hash of zero bytes for
+		// the same algorithm (cheap single-pass hash over 0 bytes).
+		emptyDigest := digest.Algorithm().FromBytes(nil)
+		if emptyDigest == digest {
+			// Genuine empty blob – return its FileInfo as-is.
+			return binfo, nil
+		}
+
 		dstRecord, err := is.checkCacheBlob(digest)
 		if err != nil {
 			is.log.Debug().Err(err).Str("digest", digest.String()).Msg("not found in cache")

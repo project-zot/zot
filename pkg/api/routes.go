@@ -1844,16 +1844,16 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 
 		var contentLength int64
 
-		contentLength, err = strconv.ParseInt(request.Header.Get("Content-Length"), 10, 64)
-		if err != nil || contentLength < 0 {
-			rh.c.Log.Warn().Str("actual", request.Header.Get("Content-Length")).Msg("invalid content length")
+		// Use request.ContentLength which is pre-parsed by the HTTP framework.
+		// request.Header.Get("Content-Length") may return "" when the body is
+		// empty because Go strips the header for body-less requests.
+		contentLength = request.ContentLength
+		if contentLength < 0 {
+			rh.c.Log.Warn().Int64("actual", contentLength).Msg("invalid content length")
 
-			details := map[string]string{"digest": digest.String()}
-
-			if err != nil {
-				details["conversion error"] = err.Error()
-			} else {
-				details["Content-Length"] = request.Header.Get("Content-Length")
+			details := map[string]string{
+				"digest":         digest.String(),
+				"Content-Length": strconv.FormatInt(contentLength, 10),
 			}
 
 			e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
