@@ -35,6 +35,7 @@ Examples of working configurations for various use cases are available [here](..
   - [Top-level Configuration Map](#top-level-configuration-map)
   - [Network](#network)
   - [Storage](#storage)
+    - [Hydrate blob on read](#hydrate-blob-on-read)
     - [Fast restart](#fast-restart)
   - [Authentication](#authentication)
     - [TLS Mutual Authentication](#tls-mutual-authentication)
@@ -69,7 +70,7 @@ includes supported field aliases where the config loader accepts them.
 | Key | Type | Purpose |
 | --- | --- | --- |
 | `distSpecVersion` | string | Distribution spec version declared by the config. zot warns if it differs from the supported version and then uses the supported version. |
-| `storage` | object | Registry storage root, dedupe, garbage collection, retention, storage drivers, cache drivers, and repository subpaths. |
+| `storage` | object | Registry storage root, dedupe, hydrate blob on read, garbage collection, retention, storage drivers, cache drivers, and repository subpaths. |
 | `http` | object | Listener address and port, TLS, authentication, authorization, CORS, rate limits, realm, and client compatibility settings. |
 | `log` | object | Log level, primary log output, and audit log output. |
 | `extensions` | object | Optional sync, search, UI, metrics, scrub, lint, image trust, API key, management, and event-recorder settings. |
@@ -122,6 +123,32 @@ support hard links, inline deduplication can be enabled with:
 ```
         "dedupe": true,
 ```
+
+### Hydrate blob on read
+
+With `dedupe` enabled, `POST /v2/<name>/blobs/uploads/?mount=<digest>` can still
+link a blob from this store's dedupe cache into another repository. By default,
+blob **reads** (`HEAD` and ranged `GET`) only look at the repository-local blob
+path, so a digest deleted from one repository stays missing there even if the
+same digest remains in another repository or in the cache (OCI distribution-spec
+AtomicDelete behavior).
+
+To restore the older behavior where `HEAD` / ranged `GET` may materialize a
+cached digest into the target repository when it is not present locally, set:
+
+```
+        "hydrateBlobOnRead": true,
+```
+
+The default is `false` (omit the field or set it explicitly). The setting is
+per store: it can be set under top-level `storage` or under a `subPaths` entry,
+and it only applies within that store (not across different `subPaths` /
+storage drivers). Explicit mounts via `POST ...?mount=` are unchanged.
+When `accessControl` is enabled, both hydration and explicit mounts also require
+`create` on the destination repository and `read` on at least one repository that
+already holds the digest; otherwise `HEAD` / ranged `GET` stay repo-local
+(`StatBlob`) and can still return 404 for digests missing from the destination.
+A complete example is in [config-hydrate-blob-on-read.json](config-hydrate-blob-on-read.json).
 
 When an image is deleted (either by tag or reference), orphaned blobs can lead
 to wasted storage, and background garbage collection can be enabled with:
@@ -177,7 +204,8 @@ their own repository paths, dedupe and garbage collection settings with:
             },
             "/b": {
                 "rootDirectory": "/tmp/zot2",
-                "dedupe": true
+                "dedupe": true,
+                "hydrateBlobOnRead": true
             },
             "/c": {
                 "rootDirectory": "/tmp/zot3",

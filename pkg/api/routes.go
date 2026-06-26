@@ -1021,33 +1021,133 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 	response.WriteHeader(http.StatusAccepted)
 }
 
-// canMount checks if a user has read permission on cached blobs with this specific digest.
-// returns true if the user have permission to copy blob from cache.
-func canMount(userAc *reqCtx.UserAccessControl, imgStore storageTypes.ImageStore, digest godigest.Digest,
+// canMount reports whether the caller may materialize digest into destRepo from
+// the dedupe cache. That requires create on destRepo and read on at least
+// one repository that already holds the digest. Permissions are evaluated with
+// AccessController.can so policy CEL conditions apply. Call only when authz is
+// enabled.
+func (rh *RouteHandler) canMount(
+	request *http.Request, userAc *reqCtx.UserAccessControl, imgStore storageTypes.ImageStore,
+	digest godigest.Digest, destRepo string,
 ) (bool, error) {
-	canMount := true
+	authnMwCtx, err := reqCtx.GetAuthnMiddlewareContext(request.Context())
+	if err == nil && authnMwCtx != nil && authnMwCtx.AuthnType == BEARER {
+		return true, nil
+	}
 
-	if userAc != nil {
-		canMount = false
+	// Snapshot AC config and reuse the controller logger (avoid opening Log.Output per call).
+	accessControlConfig := rh.c.Config.CopyAccessControlConfig()
+	if accessControlConfig == nil {
+		accessControlConfig = &config.AccessControlConfig{}
+	}
 
-		repos, err := imgStore.GetAllDedupeReposCandidates(digest)
-		if err != nil {
-			return false, err
-		}
+	acCtrlr := &AccessController{
+		Config: accessControlConfig,
+		Log:    rh.c.Log,
+	}
 
-		if len(repos) == 0 {
-			canMount = false
-		}
+	digestRef := digest.String()
 
-		// check if user can read any repo which contain this blob
-		for _, repo := range repos {
-			if userAc.Can(constants.ReadPermission, repo) {
-				canMount = true
-			}
+	if ok, _ := acCtrlr.can(request, userAc, constants.CreatePermission, destRepo, digestRef); !ok {
+		return false, nil
+	}
+
+	repos, err := imgStore.GetAllDedupeReposCandidates(digest)
+	if err != nil {
+		return false, err
+	}
+
+	for _, repo := range repos {
+		if ok, _ := acCtrlr.can(request, userAc, constants.ReadPermission, repo, digestRef); ok {
+			return true, nil
 		}
 	}
 
-	return canMount, nil
+	return false, nil
+}
+
+func (rh *RouteHandler) isHydrateBlobOnReadEnabled(repo string) bool {
+	storePath := rh.c.StoreController.GetStorePath(repo)
+
+	return rh.c.Config.IsHydrateBlobOnReadEnabled(storePath)
+}
+
+// userMayMountBlob reports whether request may rematerialize digest into destRepo
+// via CheckBlob. canMount lookup failures are logged and treated as "not allowed"
+// (repo-local fallback).
+func (rh *RouteHandler) userMayMountBlob(
+	request *http.Request, imgStore storageTypes.ImageStore, digest godigest.Digest, destRepo string,
+) (bool, error) {
+	userAc, err := reqCtx.UserAcFromContext(request.Context())
+	if err != nil {
+		return false, err
+	}
+
+	accessControlConfig := rh.c.Config.CopyAccessControlConfig()
+	if !accessControlConfig.IsAuthzEnabled() {
+		return true, nil
+	}
+
+	allowed, err := rh.canMount(request, userAc, imgStore, digest, destRepo)
+	if err != nil {
+		rh.c.Log.Error().Err(err).Msg("unexpected error")
+
+		return false, nil
+	}
+
+	return allowed, nil
+}
+
+// resolveBlobPresence returns whether digest exists for repo. By default this is
+// repo-local (StatBlob). When hydrateBlobOnRead is enabled and the caller
+// may mount, CheckBlob may hard-link from the dedupe cache into repo.
+func (rh *RouteHandler) resolveBlobPresence(
+	request *http.Request, imgStore storageTypes.ImageStore, repo string, digest godigest.Digest,
+) (bool, int64, error) {
+	if rh.isHydrateBlobOnReadEnabled(repo) {
+		userCanMount, err := rh.userMayMountBlob(request, imgStore, digest, repo)
+		if err != nil {
+			return false, -1, err
+		}
+
+		if userCanMount {
+			ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
+
+			return imgStore.CheckBlob(ctx, repo, digest)
+		}
+		// Mount not allowed: fall through to repo-local StatBlob.
+	}
+
+	var lockLatency time.Time
+
+	imgStore.RLock(&lockLatency)
+	ok, size, _, err := imgStore.StatBlob(repo, digest)
+	imgStore.RUnlock(&lockLatency)
+
+	return ok, size, err
+}
+
+// writeBlobReadError maps storage errors for blob HEAD/GET to OCI error responses.
+func (rh *RouteHandler) writeBlobReadError(
+	response http.ResponseWriter, name string, digest godigest.Digest, err error,
+) {
+	details := zerr.GetDetails(err)
+	if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
+		details["digest"] = digest.String()
+		e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+	} else if errors.Is(err, zerr.ErrRepoNotFound) {
+		details["name"] = name
+		e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
+	} else if errors.Is(err, zerr.ErrBlobNotFound) {
+		details["digest"] = digest.String()
+		e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
+	} else {
+		rh.c.Log.Error().Err(err).Msg("unexpected error")
+		response.WriteHeader(http.StatusInternalServerError)
+	}
 }
 
 // CheckBlob godoc
@@ -1083,55 +1183,15 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 
 	digest := godigest.Digest(digestStr)
 
-	userAc, err := reqCtx.UserAcFromContext(request.Context())
-	if err != nil {
-		response.WriteHeader(http.StatusInternalServerError)
+	if err := digest.Validate(); err != nil {
+		rh.writeBlobReadError(response, name, digest, zerr.ErrBadBlobDigest)
 
 		return
 	}
 
-	userCanMount := true
-	accessControlConfig := rh.c.Config.CopyAccessControlConfig()
-
-	if accessControlConfig.IsAuthzEnabled() {
-		userCanMount, err = canMount(userAc, imgStore, digest)
-		if err != nil {
-			rh.c.Log.Error().Err(err).Msg("unexpected error")
-		}
-	}
-
-	var blen int64
-
-	if userCanMount {
-		ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
-		ok, blen, err = imgStore.CheckBlob(ctx, name, digest)
-	} else {
-		var lockLatency time.Time
-
-		imgStore.RLock(&lockLatency)
-		defer imgStore.RUnlock(&lockLatency)
-
-		ok, blen, _, err = imgStore.StatBlob(name, digest)
-	}
-
+	ok, blen, err := rh.resolveBlobPresence(request, imgStore, name, digest)
 	if err != nil {
-		details := zerr.GetDetails(err)
-		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic,dupl // errorslint conflicts with gocritic:IfElseChain
-			details["digest"] = digest.String()
-			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrRepoNotFound) {
-			details["name"] = name
-			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrBlobNotFound) {
-			details["digest"] = digest.String()
-			e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
-		} else {
-			rh.c.Log.Error().Err(err).Msg("unexpected error")
-			response.WriteHeader(http.StatusInternalServerError)
-		}
+		rh.writeBlobReadError(response, name, digest, err)
 
 		return
 	}
@@ -1349,8 +1409,9 @@ func (c *byteCountingWriter) Write(p []byte) (int, error) {
 // layer's metadata path (e.g. a deleted blob) would historically have
 // produced a 4xx; under this design they too truncate. The 16-range
 // cap and coalesceRanges already bound the worst case, and the eager
-// CheckBlob earlier in GetBlob still rejects the obvious "blob does
-// not exist" case before we get here.
+// existence check in GetBlob (resolveBlobPresence — StatBlob by default,
+// or CheckBlob when hydrateBlobOnRead permits rematerialization) still
+// rejects the obvious "blob does not exist" case before we get here.
 func writeMultipartRanges(
 	response http.ResponseWriter,
 	ranges []httpRange,
@@ -1480,28 +1541,8 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 	contentRange := request.Header.Get("Range")
 	_, rangeHeaderPresent := request.Header["Range"]
 
-	writeBlobError := func(err error) {
-		details := zerr.GetDetails(err)
-		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
-			details["digest"] = digest.String()
-			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrRepoNotFound) {
-			details["name"] = name
-			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrBlobNotFound) {
-			details["digest"] = digest.String()
-			e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
-		} else {
-			rh.c.Log.Error().Err(err).Msg("unexpected error")
-			response.WriteHeader(http.StatusInternalServerError)
-		}
-	}
-
 	if err := digest.Validate(); err != nil {
-		writeBlobError(zerr.ErrBadBlobDigest)
+		rh.writeBlobReadError(response, name, digest, zerr.ErrBadBlobDigest)
 
 		return
 	}
@@ -1510,7 +1551,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 	if !rangeHeaderPresent && rh.isBlobRedirectEnabled(name) {
 		redirectURL, err := imgStore.GetBlobRedirectURL(request, name, digest)
 		if err != nil {
-			writeBlobError(err)
+			rh.writeBlobReadError(response, name, digest, err)
 
 			return
 		} else if redirectURL != "" {
@@ -1529,10 +1570,9 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 	}
 
 	if rangeHeaderPresent {
-		ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
-		ok, bsize, err := imgStore.CheckBlob(ctx, name, digest)
+		ok, bsize, err := rh.resolveBlobPresence(request, imgStore, name, digest)
 		if err != nil {
-			writeBlobError(err)
+			rh.writeBlobReadError(response, name, digest, err)
 
 			return
 		}
@@ -1581,7 +1621,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 		reader, blen, _, err := imgStore.GetBlobPartial(name, digest, mediaType, rng.start, rng.end)
 		if err != nil {
-			writeBlobError(err)
+			rh.writeBlobReadError(response, name, digest, err)
 
 			return
 		}
@@ -1614,7 +1654,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 	repo, blen, err := imgStore.GetBlob(name, digest, mediaType)
 	if err != nil {
-		writeBlobError(err)
+		rh.writeBlobReadError(response, name, digest, err)
 
 		return
 	}
@@ -1724,7 +1764,7 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 
 	ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
 
-	// currently zot does not support cross-repository mounting, following dist-spec and returning 202
+	// Cross-repository mount: CheckBlob hard-links from the store dedupe cache when allowed.
 	if mountDigests, ok := request.URL.Query()["mount"]; ok {
 		if len(mountDigests) != 1 {
 			response.WriteHeader(http.StatusBadRequest)
@@ -1745,15 +1785,15 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 		accessControlConfig := rh.c.Config.CopyAccessControlConfig()
 
 		if accessControlConfig.IsAuthzEnabled() {
-			userCanMount, err = canMount(userAc, imgStore, mountDigest)
+			userCanMount, err = rh.canMount(request, userAc, imgStore, mountDigest, name)
 			if err != nil {
 				rh.c.Log.Error().Err(err).Msg("unexpected error")
 			}
 		}
 
-		// zot does not support cross mounting directly and do a workaround creating using hard link.
-		// check blob looks for actual path (name+mountDigests[0]) first then look for cache and
-		// if found in cache, will do hard link and if fails we will start new upload.
+		// CheckBlob looks for the digest under dest first, then the dedupe cache; on a
+		// cache hit it hard-links into dest. On failure (or if canMount denied), fall
+		// through to a new blob upload.
 		if userCanMount {
 			_, _, err = imgStore.CheckBlob(ctx, name, mountDigest)
 		}
