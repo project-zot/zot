@@ -5811,11 +5811,16 @@ func TestAuthorizationMountBlob(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 
-		/* a HEAD request by user1 on blob digest (found in user1Repo) should return 200
-		because user1 has permission to read user1Repo */
-		resp, err = userClient1.R().Head(baseURL + fmt.Sprintf("/v2/%s/blobs/%s", username1+"/"+"mysecondrepo", blobDigest))
+		/* a HEAD request by user1 on the blob in repoName1 should return 200;
+		blob reads are repo-local (StatBlob), not satisfied via cross-repo cache */
+		resp, err = userClient1.R().Head(baseURL + fmt.Sprintf("/v2/%s/blobs/%s", repoName1, blobDigest))
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		/* the same digest is not known to a different repository until mounted there */
+		resp, err = userClient1.R().Head(baseURL + fmt.Sprintf("/v2/%s/blobs/%s", username1+"/"+"mysecondrepo", blobDigest))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 		// user2 can upload without dedupe
 		err = UploadImageWithBasicAuth(img, baseURL, repoName2, tag, username2, password2)
@@ -6934,10 +6939,16 @@ func TestCrossRepoMount(t *testing.T) {
 
 		So(os.SameFile(cacheFi, linkFi), ShouldEqual, true)
 
+		// Blob reads are repo-local: HEAD succeeds only where the blob was mounted.
+		headResponse, err = client.R().SetBasicAuth(username, password).
+			Head(fmt.Sprintf("%s/v2/zot-mount-test/blobs/%s", baseURL, manifestDigest))
+		So(err, ShouldBeNil)
+		So(headResponse.StatusCode(), ShouldEqual, http.StatusOK)
+
 		headResponse, err = client.R().SetBasicAuth(username, password).
 			Head(fmt.Sprintf("%s/v2/zot-cv-test/blobs/%s", baseURL, manifestDigest))
 		So(err, ShouldBeNil)
-		So(headResponse.StatusCode(), ShouldEqual, http.StatusOK)
+		So(headResponse.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 		// Invalid request
 		params = make(map[string]string)
@@ -6997,6 +7008,98 @@ func TestCrossRepoMount(t *testing.T) {
 			Head(fmt.Sprintf("%s/v2/%s/blobs/%s", baseURL, name, digest))
 		So(err, ShouldBeNil)
 		So(headResponse.StatusCode(), ShouldEqual, http.StatusNotFound)
+	})
+}
+
+func TestBlobReadRepoLocalAfterMountDelete(t *testing.T) {
+	Convey("blob HEAD and GET are repo-local after cross-repo mount and delete", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		dir := t.TempDir()
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.Dedupe = true
+		ctlr.Config.Storage.GC = false
+
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+
+		defer cm.StopServer()
+
+		client := resty.New()
+
+		const (
+			repoDest = "oci-conformance/distribution-test"
+			repoSrc  = "oci-conformance/crossmount-test"
+		)
+
+		blob := []byte("mount-atomic-delete-test")
+		digest := godigest.FromBytes(blob).String()
+
+		resp, err := client.R().
+			SetHeader("Content-Type", "application/octet-stream").
+			SetHeader("Content-Length", strconv.Itoa(len(blob))).
+			SetQueryParam("digest", digest).
+			SetBody(blob).
+			Post(baseURL + "/v2/" + repoSrc + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		resp, err = client.R().
+			SetQueryParam("mount", digest).
+			Post(baseURL + "/v2/" + repoDest + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		headBlob := func(repo string) int {
+			head, headErr := client.R().Head(baseURL + "/v2/" + repo + "/blobs/" + digest)
+			So(headErr, ShouldBeNil)
+
+			return head.StatusCode()
+		}
+
+		getBlob := func(repo string, rangeHeader string) (int, []byte) {
+			req := client.R()
+			if rangeHeader != "" {
+				req.SetHeader("Range", rangeHeader)
+			}
+
+			get, getErr := req.Get(baseURL + "/v2/" + repo + "/blobs/" + digest)
+			So(getErr, ShouldBeNil)
+
+			return get.StatusCode(), get.Body()
+		}
+
+		So(headBlob(repoDest), ShouldEqual, http.StatusOK)
+
+		status, body := getBlob(repoDest, "")
+		So(status, ShouldEqual, http.StatusOK)
+		So(body, ShouldResemble, blob)
+
+		status, body = getBlob(repoDest, "bytes=0-4")
+		So(status, ShouldEqual, http.StatusPartialContent)
+		So(body, ShouldResemble, blob[:5])
+
+		resp, err = client.R().Delete(baseURL + "/v2/" + repoDest + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+		So(headBlob(repoDest), ShouldEqual, http.StatusNotFound)
+		So(headBlob(repoSrc), ShouldEqual, http.StatusOK)
+
+		status, _ = getBlob(repoDest, "")
+		So(status, ShouldEqual, http.StatusNotFound)
+
+		status, _ = getBlob(repoDest, "bytes=0-4")
+		So(status, ShouldEqual, http.StatusNotFound)
+
+		status, body = getBlob(repoSrc, "")
+		So(status, ShouldEqual, http.StatusOK)
+		So(body, ShouldResemble, blob)
 	})
 }
 
