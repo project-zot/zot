@@ -943,42 +943,48 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, logge
 				config.Extensions.Search.Enable = &defaultVal
 			}
 
+			if config.Extensions.Search.CVE != nil && config.Extensions.Search.CVE.Enable == nil {
+				config.Extensions.Search.CVE.Enable = &defaultVal
+			}
+
 			if *config.Extensions.Search.Enable && config.Extensions.Search.CVE != nil {
-				defaultUpdateInterval, _ := time.ParseDuration("2h")
+				if config.Extensions.Search.CVE.Enable == nil || *config.Extensions.Search.CVE.Enable {
+					defaultUpdateInterval, _ := time.ParseDuration("2h")
 
-				if config.Extensions.Search.CVE.UpdateInterval < defaultUpdateInterval {
-					config.Extensions.Search.CVE.UpdateInterval = defaultUpdateInterval
+					if config.Extensions.Search.CVE.UpdateInterval < defaultUpdateInterval {
+						config.Extensions.Search.CVE.UpdateInterval = defaultUpdateInterval
 
-					logger.Warn().Msg("cve update interval set to too-short interval < 2h, " +
-						"changing update duration to 2 hours and continuing.")
-				}
+						logger.Warn().Msg("cve update interval set to too-short interval < 2h, " +
+							"changing update duration to 2 hours and continuing.")
+					}
 
-				if config.Extensions.Search.CVE.Trivy == nil {
-					config.Extensions.Search.CVE.Trivy = &extconf.TrivyConfig{}
-				}
+					if config.Extensions.Search.CVE.Trivy == nil {
+						config.Extensions.Search.CVE.Trivy = &extconf.TrivyConfig{}
+					}
 
-				if config.Extensions.Search.CVE.Trivy.DBRepository == "" {
-					defaultDBDownloadURL := "ghcr.io/aquasecurity/trivy-db"
-					logger.Info().Str("url", defaultDBDownloadURL).Str("component", "config").
-						Msg("using default trivy-db download URL.")
+					if config.Extensions.Search.CVE.Trivy.DBRepository == "" {
+						defaultDBDownloadURL := "ghcr.io/aquasecurity/trivy-db"
+						logger.Info().Str("url", defaultDBDownloadURL).Str("component", "config").
+							Msg("using default trivy-db download URL.")
 
-					config.Extensions.Search.CVE.Trivy.DBRepository = defaultDBDownloadURL
-				}
+						config.Extensions.Search.CVE.Trivy.DBRepository = defaultDBDownloadURL
+					}
 
-				if config.Extensions.Search.CVE.Trivy.JavaDBRepository == "" {
-					defaultJavaDBDownloadURL := "ghcr.io/aquasecurity/trivy-java-db"
-					logger.Info().Str("url", defaultJavaDBDownloadURL).Str("component", "config").
-						Msg("using default trivy-java-db download URL.")
+					if config.Extensions.Search.CVE.Trivy.JavaDBRepository == "" {
+						defaultJavaDBDownloadURL := "ghcr.io/aquasecurity/trivy-java-db"
+						logger.Info().Str("url", defaultJavaDBDownloadURL).Str("component", "config").
+							Msg("using default trivy-java-db download URL.")
 
-					config.Extensions.Search.CVE.Trivy.JavaDBRepository = defaultJavaDBDownloadURL
-				}
+						config.Extensions.Search.CVE.Trivy.JavaDBRepository = defaultJavaDBDownloadURL
+					}
 
-				if len(config.Extensions.Search.CVE.Trivy.VulnSeveritySources) == 0 {
-					defaultVulnSeveritySources := []string{"auto"}
-					logger.Info().Strs("vulnSeveritySources", defaultVulnSeveritySources).Str("component", "config").
-						Msg("using default trivy vulnerability severity sources.")
+					if len(config.Extensions.Search.CVE.Trivy.VulnSeveritySources) == 0 {
+						defaultVulnSeveritySources := []string{"auto"}
+						logger.Info().Strs("vulnSeveritySources", defaultVulnSeveritySources).Str("component", "config").
+							Msg("using default trivy vulnerability severity sources.")
 
-					config.Extensions.Search.CVE.Trivy.VulnSeveritySources = defaultVulnSeveritySources
+						config.Extensions.Search.CVE.Trivy.VulnSeveritySources = defaultVulnSeveritySources
+					}
 				}
 			}
 		}

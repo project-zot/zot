@@ -695,8 +695,8 @@ func TestGetReferrers(t *testing.T) {
 	})
 }
 
-func TestQueryResolverErrors(t *testing.T) {
-	Convey("Errors", t, func() {
+func TestQueryResolverErrorsAndEmptyResults(t *testing.T) {
+	Convey("Errors and empty results", t, func() {
 		log := log.NewTestLogger()
 		ctx := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 			graphql.DefaultRecover)
@@ -735,7 +735,10 @@ func TestQueryResolverErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("CVEDiffListForImages nill cveinfo", func() {
+		Convey("CVEDiffListForImages nil cveinfo returns empty result", func() {
+			minuend := gql_generated.ImageInput{Repo: "repo1", Tag: "1.0.0", Digest: ref("sha256:minuend")}
+			subtrahend := gql_generated.ImageInput{Repo: "repo2", Tag: "2.0.0", Digest: ref("sha256:subtrahend")}
+
 			resolverConfig := NewResolver(
 				log,
 				storage.StoreController{
@@ -752,9 +755,75 @@ func TestQueryResolverErrors(t *testing.T) {
 
 			qr := queryResolver{resolverConfig}
 
-			_, err := qr.CVEDiffListForImages(ctx, gql_generated.ImageInput{}, gql_generated.ImageInput{},
+			result, err := qr.CVEDiffListForImages(ctx, minuend, subtrahend,
 				&gql_generated.PageInput{}, nil, nil)
-			So(err, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(result, ShouldNotBeNil)
+			So(result.Minuend, ShouldNotBeNil)
+			So(result.Minuend.Repo, ShouldEqual, minuend.Repo)
+			So(result.Minuend.Tag, ShouldEqual, minuend.Tag)
+			So(result.Minuend.Digest, ShouldEqual, minuend.Digest)
+			So(result.Subtrahend, ShouldNotBeNil)
+			So(result.Subtrahend.Repo, ShouldEqual, subtrahend.Repo)
+			So(result.Subtrahend.Tag, ShouldEqual, subtrahend.Tag)
+			So(result.Subtrahend.Digest, ShouldEqual, subtrahend.Digest)
+			So(result.Page, ShouldNotBeNil)
+			So(result.CVEList, ShouldNotBeNil)
+			So(len(result.CVEList), ShouldEqual, 0)
+		})
+
+		Convey("CVEListForImage nil cveinfo returns empty result", func() {
+			resolverConfig := NewResolver(
+				log,
+				storage.StoreController{DefaultStore: mocks.MockedImageStore{}},
+				mocks.MetaDBMock{},
+				nil,
+			)
+
+			qr := queryResolver{resolverConfig}
+
+			result, err := qr.CVEListForImage(ctx, "repo1:1.0.0", &gql_generated.PageInput{}, nil, nil, nil)
+			So(err, ShouldBeNil)
+			So(result, ShouldNotBeNil)
+			So(result.Page, ShouldNotBeNil)
+			So(result.CVEList, ShouldNotBeNil)
+			So(len(result.CVEList), ShouldEqual, 0)
+		})
+
+		Convey("ImageListForCve nil cveinfo returns empty result", func() {
+			resolverConfig := NewResolver(
+				log,
+				storage.StoreController{DefaultStore: mocks.MockedImageStore{}},
+				mocks.MetaDBMock{},
+				nil,
+			)
+
+			qr := queryResolver{resolverConfig}
+
+			result, err := qr.ImageListForCve(ctx, "CVE-123", &gql_generated.Filter{}, &gql_generated.PageInput{})
+			So(err, ShouldBeNil)
+			So(result, ShouldNotBeNil)
+			So(result.Page, ShouldNotBeNil)
+			So(result.Results, ShouldNotBeNil)
+			So(len(result.Results), ShouldEqual, 0)
+		})
+
+		Convey("ImageListWithCVEFixed nil cveinfo returns empty result", func() {
+			resolverConfig := NewResolver(
+				log,
+				storage.StoreController{DefaultStore: mocks.MockedImageStore{}},
+				mocks.MetaDBMock{},
+				nil,
+			)
+
+			qr := queryResolver{resolverConfig}
+
+			result, err := qr.ImageListWithCVEFixed(ctx, "CVE-123", "repo1", &gql_generated.Filter{}, &gql_generated.PageInput{})
+			So(err, ShouldBeNil)
+			So(result, ShouldNotBeNil)
+			So(result.Page, ShouldNotBeNil)
+			So(result.Results, ShouldNotBeNil)
+			So(len(result.Results), ShouldEqual, 0)
 		})
 
 		Convey("CVEDiffListForImages error", func() {
