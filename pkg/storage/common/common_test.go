@@ -221,10 +221,12 @@ func TestGetReferrersErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("Trigger repo not found error", func(c C) {
-			_, err := common.GetReferrers(imgStore, "zot-test", validDigest,
+		Convey("repo not found returns empty index", func(c C) {
+			idx, err := common.GetReferrers(imgStore, "zot-test", validDigest,
 				[]string{artifactType}, log)
-			So(err, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(idx.Manifests, ShouldBeEmpty)
+			So(idx.MediaType, ShouldEqual, ispec.MediaTypeImageIndex)
 		})
 
 		storageCtlr := storage.StoreController{DefaultStore: imgStore}
