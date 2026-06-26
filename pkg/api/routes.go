@@ -1101,38 +1101,7 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 
 	digest := godigest.Digest(digestStr)
 
-	userAc, err := reqCtx.UserAcFromContext(request.Context())
-	if err != nil {
-		response.WriteHeader(http.StatusInternalServerError)
-
-		return
-	}
-
-	userCanMount := true
-	accessControlConfig := rh.c.Config.CopyAccessControlConfig()
-
-	if accessControlConfig.IsAuthzEnabled() {
-		userCanMount, err = canMount(userAc, imgStore, digest)
-		if err != nil {
-			rh.c.Log.Error().Err(err).Msg("unexpected error")
-		}
-	}
-
-	var blen int64
-
-	if userCanMount {
-		ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
-		ok, blen, err = imgStore.CheckBlob(ctx, name, digest)
-	} else {
-		var lockLatency time.Time
-
-		imgStore.RLock(&lockLatency)
-		defer imgStore.RUnlock(&lockLatency)
-
-		ok, blen, _, err = imgStore.StatBlob(name, digest)
-	}
-
-	if err != nil {
+	respondBlobError := func(err error) {
 		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic,dupl // errorslint conflicts with gocritic:IfElseChain
 			details["digest"] = digest.String()
@@ -1150,6 +1119,22 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			response.WriteHeader(http.StatusInternalServerError)
 		}
+	}
+
+	if err := digest.Validate(); err != nil {
+		respondBlobError(zerr.ErrBadBlobDigest)
+
+		return
+	}
+
+	var lockLatency time.Time
+
+	imgStore.RLock(&lockLatency)
+	ok, blen, _, err := imgStore.StatBlob(name, digest)
+	imgStore.RUnlock(&lockLatency)
+
+	if err != nil {
+		respondBlobError(err)
 
 		return
 	}
@@ -1367,7 +1352,7 @@ func (c *byteCountingWriter) Write(p []byte) (int, error) {
 // layer's metadata path (e.g. a deleted blob) would historically have
 // produced a 4xx; under this design they too truncate. The 16-range
 // cap and coalesceRanges already bound the worst case, and the eager
-// CheckBlob earlier in GetBlob still rejects the obvious "blob does
+// StatBlob earlier in GetBlob still rejects the obvious "blob does
 // not exist" case before we get here.
 func writeMultipartRanges(
 	response http.ResponseWriter,
@@ -1546,8 +1531,12 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 	}
 
 	if rangeHeaderPresent {
-		ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
-		ok, bsize, err := imgStore.CheckBlob(ctx, name, digest)
+		var lockLatency time.Time
+
+		imgStore.RLock(&lockLatency)
+		ok, bsize, _, err := imgStore.StatBlob(name, digest)
+		imgStore.RUnlock(&lockLatency)
+
 		if err != nil {
 			writeBlobError(err)
 
