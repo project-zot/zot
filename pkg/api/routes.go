@@ -2134,37 +2134,41 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 		return
 	}
 
-	contentPresent := true
+	contentLenHeader := request.Header.Get("Content-Length")
+	contentRange := request.Header.Get("Content-Range")
+	contentLenHeaderPresent := len(request.Header.Values("Content-Length")) > 0
+	contentRangePresent := len(request.Header.Values("Content-Range")) > 0
 
-	contentLen, err := strconv.ParseInt(request.Header.Get("Content-Length"), 10, 64)
-	if err != nil {
-		contentPresent = false
-	}
-
-	contentRangePresent := true
-
-	if request.Header.Get("Content-Range") == "" {
-		contentRangePresent = false
-	}
+	shouldPutBlobChunk := contentLenHeaderPresent || contentRangePresent
 
 	var from, to int64
 
-	// if neither "Content-Length" nor "Content-Range" is present, treat
-	// this as an empty-body finalization (e.g. finishing an empty blob upload)
-	if !contentPresent && !contentRangePresent {
-		goto finish
-	}
+	if shouldPutBlobChunk {
+		contentLen, err := strconv.ParseInt(contentLenHeader, 10, 64)
+		if err != nil || contentLen < 0 {
+			rh.c.Log.Warn().Str("actual", contentLenHeader).Msg("invalid content length")
 
-	if contentPresent {
-		contentRange := request.Header.Get("Content-Range")
+			details := map[string]string{"digest": digest.String()}
+			if err != nil {
+				details["conversion error"] = err.Error()
+			} else {
+				details["Content-Length"] = contentLenHeader
+			}
+
+			e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+
+			return
+		}
+
 		if contentRange == "" { // monolithic upload
 			from = 0
 
-			if contentLen == 0 {
-				goto finish
+			if contentLen > 0 {
+				to = contentLen
+			} else {
+				shouldPutBlobChunk = false
 			}
-
-			to = contentLen
 		} else if from, to, err = getContentRange(request); err != nil { // finish chunked upload
 			details := zerr.GetDetails(err)
 			details["session_id"] = sessionID
@@ -2173,7 +2177,9 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 
 			return
 		}
+	}
 
+	if shouldPutBlobChunk {
 		_, err = imgStore.PutBlobChunk(ctx, name, sessionID, from, to, request.Body)
 		if err != nil { //nolint:dupl
 			details := zerr.GetDetails(err)
@@ -2205,7 +2211,6 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 		}
 	}
 
-finish:
 	// blob chunks already transferred, just finish
 	if err := imgStore.FinishBlobUpload(name, sessionID, request.Body, digest); err != nil {
 		details := zerr.GetDetails(err)
