@@ -506,16 +506,37 @@ paths:
     post:
       consumes:
       - application/json
-      description: Create a new image blob/layer upload
+      description: |-
+        Create a new image blob/layer upload. With no query parameters, starts an upload session
+        and returns 202.
+        A `digest` query parameter requests a monolithic upload and returns 201 on success.
+        A `mount` query parameter requests a cross-repository blob mount and returns 201 or 202.
       parameters:
       - description: repository name
         in: path
         name: name
         required: true
         type: string
+      - description: blob digest for monolithic upload
+        in: query
+        name: digest
+        type: string
+      - description: blob digest to mount into the repository
+        in: query
+        name: mount
+        type: string
       produces:
       - application/json
       responses:
+        "201":
+          description: created
+          headers:
+            Blob-Upload-UUID:
+              description: Opaque blob upload session identifier
+              type: string
+            Location:
+              description: /v2/{name}/blobs/{digest}
+              type: string
         "202":
           description: accepted
           headers:
@@ -525,12 +546,20 @@ paths:
             Range:
               description: 0-0
               type: string
+        "400":
+          description: bad request (invalid digest or upload)
+          schema:
+            type: string
         "401":
           description: unauthorized
           schema:
             type: string
         "404":
           description: not found
+          schema:
+            type: string
+        "415":
+          description: unsupported media type (monolithic upload requires application/octet-stream)
           schema:
             type: string
         "500":
@@ -878,7 +907,9 @@ paths:
     get:
       consumes:
       - application/json
-      description: Get referrers given a digest
+      description: |-
+        Returns referrers for a subject digest as an OCI image index. Missing repositories and
+        subjects with no referrers return 200 with an empty manifests list.
       parameters:
       - description: repository name
         in: path
@@ -901,8 +932,12 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/api.ImageIndex'
+        "400":
+          description: bad request (invalid digest)
+          schema:
+            type: string
         "404":
-          description: not found
+          description: not found (manifest unknown)
           schema:
             type: string
         "500":

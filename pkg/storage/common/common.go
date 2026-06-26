@@ -186,9 +186,9 @@ func GetAndValidateRequestDigest(body []byte, reference string, log zlog.Logger)
 ) {
 	expectedDigest, err := godigest.Parse(reference)
 	if err != nil {
-		// If the reference contains ":", it resembles a digest but is malformed (e.g. "sha256:invalidhex").
-		// Reject it as a bad manifest rather than treating it as a tag.
-		if strings.Contains(reference, ":") {
+		// If the reference starts with a supported digest algorithm, it resembles a digest but is malformed
+		// (e.g. "sha256:invalidhex"). Reject it as a bad manifest rather than treating it as a tag.
+		if algorithm, _, ok := strings.Cut(reference, ":"); ok && godigest.Algorithm(algorithm).Available() {
 			return "", zerr.ErrBadManifest
 		}
 
@@ -687,12 +687,7 @@ func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godiges
 
 	dir := path.Join(imgStore.RootDir(), repo)
 	if !imgStore.DirExists(dir) {
-		return ispec.Index{
-			Versioned:   imeta.Versioned{SchemaVersion: storageConstants.SchemaVersion},
-			MediaType:   ispec.MediaTypeImageIndex,
-			Manifests:   []ispec.Descriptor{},
-			Annotations: map[string]string{},
-		}, nil
+		return newEmptyReferrersIndex(), nil
 	}
 
 	index, err := GetIndex(imgStore, repo, log)
@@ -784,14 +779,21 @@ func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godiges
 		}
 	}
 
-	index = ispec.Index{
+	return ispec.Index{
 		Versioned:   imeta.Versioned{SchemaVersion: storageConstants.SchemaVersion},
 		MediaType:   ispec.MediaTypeImageIndex,
 		Manifests:   result,
 		Annotations: map[string]string{},
-	}
+	}, nil
+}
 
-	return index, nil
+func newEmptyReferrersIndex() ispec.Index {
+	return ispec.Index{
+		Versioned:   imeta.Versioned{SchemaVersion: storageConstants.SchemaVersion},
+		MediaType:   ispec.MediaTypeImageIndex,
+		Manifests:   []ispec.Descriptor{},
+		Annotations: map[string]string{},
+	}
 }
 
 // GetBlobDescriptorFromRepo gets blob descriptor from it's manifest contents,
