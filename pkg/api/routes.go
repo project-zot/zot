@@ -2168,6 +2168,8 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 			if contentLen > 0 {
 				to = contentLen
 			} else {
+				// Zero-length monolithic upload (e.g. empty blob): skip
+				// PutBlobChunk and go straight to FinishBlobUpload below.
 				shouldPutBlobChunk = false
 			}
 		} else if from, to, err = getContentRange(request); err != nil { // finish chunked upload
