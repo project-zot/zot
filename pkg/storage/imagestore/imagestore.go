@@ -54,12 +54,6 @@ type ImageStore struct {
 	linter      common.Lint
 	commit      bool
 	compat      []compat.MediaCompatibility
-	// deletedBlobs tracks blob paths that have been explicitly deleted from a repository.
-	// This prevents CheckBlob from silently restoring a deleted blob via the dedupe cache
-	// (e.g. a cross-mounted path that still exists in another repo).
-	// Access is safe without additional locking because sync.Map handles concurrent reads
-	// and writes internally; all callers that mutate this map already hold is.lock as well.
-	deletedBlobs sync.Map
 }
 
 func (is *ImageStore) Name() string {
@@ -1152,14 +1146,8 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 		}
 	}
 
-	// Clear any deleted-blob marker: a successful re-upload to dst legitimately
-	// replaces any prior deletion, so the blob must be visible again from now on.
-	is.deletedBlobs.Delete(dst)
-
 	return nil
 }
-
-// FullBlobUpload handles a full blob upload, and no partial session is created.
 func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.Reader,
 	dstDigest godigest.Digest,
 ) (string, int64, error) {
@@ -1252,10 +1240,6 @@ func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.R
 			return "", -1, err
 		}
 	}
-
-	// Clear any deleted-blob marker: a successful re-upload to dst legitimately
-	// replaces any prior deletion, so the blob must be visible again from now on.
-	is.deletedBlobs.Delete(dst)
 
 	return uuid, nbytes, nil
 }
@@ -1459,15 +1443,6 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 
 	binfo, err := is.storeDriver.Stat(blobPath)
 	if err != nil {
-		// Blob file doesn't exist at this path.
-		// If it was explicitly deleted from this repository, do not restore it from the
-		// dedupe cache: a deleted blob must remain absent per the OCI distribution spec.
-		if _, deleted := is.deletedBlobs.Load(blobPath); deleted {
-			return false, -1, zerr.ErrBlobNotFound
-		}
-
-		// Not explicitly deleted — check the dedupe cache to support lazy cross-mount
-		// (e.g. a blob uploaded to another repo and mounted here).
 		dstRecord, err := is.checkCacheBlob(digest)
 		if err != nil {
 			if errors.Is(err, zerr.ErrCacheMiss) || errors.Is(err, zerr.ErrBlobNotFound) {
@@ -1923,9 +1898,6 @@ func (is *ImageStore) DeleteBlob(repo string, digest godigest.Digest) error {
 	if err := is.deleteBlob(repo, digest); err != nil {
 		return err
 	}
-
-	// Mark this path as explicitly deleted so CheckBlob won't restore it from cache.
-	is.deletedBlobs.Store(is.BlobPath(repo, digest), struct{}{})
 
 	return nil
 }
