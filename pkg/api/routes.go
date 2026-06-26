@@ -2136,6 +2136,7 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 
 	contentLenHeader := request.Header.Get("Content-Length")
 	contentRange := request.Header.Get("Content-Range")
+	// Header.Get cannot distinguish missing headers from present-but-empty headers.
 	contentLenHeaderPresent := len(request.Header.Values("Content-Length")) > 0
 	contentRangePresent := len(request.Header.Values("Content-Range")) > 0
 
