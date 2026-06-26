@@ -644,6 +644,133 @@ func TestService(t *testing.T) {
 	})
 }
 
+func TestServiceOAuth2CredentialHelper(t *testing.T) {
+	Convey("New wires the oauth2 credential helper", t, func() {
+		tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"helper-token","token_type":"Bearer","expires_in":3600}`))
+		}))
+		defer tokenServer.Close()
+
+		assertionFile := path.Join(t.TempDir(), "assertion.jwt")
+		So(os.WriteFile(assertionFile, []byte("assertion"), 0o600), ShouldBeNil)
+
+		conf := syncconf.RegistryConfig{
+			URLs:             []string{"http://localhost"},
+			CredentialHelper: "oauth2",
+			CredentialHelperConfig: map[string]any{
+				"tokenURL":      tokenServer.URL,
+				"assertionFile": assertionFile,
+				"username":      "robot",
+			},
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(service.credentialHelper, ShouldNotBeNil)
+		So(service.credentials["localhost"].Username, ShouldEqual, "robot")
+		So(service.credentials["localhost"].Password, ShouldEqual, "helper-token")
+	})
+
+	Convey("New falls back gracefully when the oauth2 config is missing", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs:                   []string{"http://localhost"},
+			CredentialHelper:       "oauth2",
+			CredentialHelperConfig: nil,
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(service.credentialHelper, ShouldBeNil)
+		So(service.config.CredentialHelper, ShouldEqual, "")
+	})
+
+	Convey("New falls back gracefully when the oauth2 config cannot be decoded", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs:             []string{"http://localhost"},
+			CredentialHelper: "oauth2",
+			CredentialHelperConfig: map[string]any{
+				"tokenURL": map[string]any{"unexpected": "object"},
+			},
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(service.credentialHelper, ShouldBeNil)
+		So(service.config.CredentialHelper, ShouldEqual, "")
+	})
+
+	Convey("New falls back gracefully on invalid oauth2 config", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs:             []string{"http://localhost"},
+			CredentialHelper: "oauth2",
+			CredentialHelperConfig: map[string]any{
+				"assertionFile": "/does/not/matter",
+			},
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(service.credentialHelper, ShouldBeNil)
+		So(service.config.CredentialHelper, ShouldEqual, "")
+	})
+
+	Convey("New tolerates oauth2 credential retrieval failure", t, func() {
+		assertionFile := path.Join(t.TempDir(), "assertion.jwt")
+		So(os.WriteFile(assertionFile, []byte("assertion"), 0o600), ShouldBeNil)
+
+		conf := syncconf.RegistryConfig{
+			URLs:             []string{"http://localhost"},
+			CredentialHelper: "oauth2",
+			CredentialHelperConfig: map[string]any{
+				"tokenURL":      "http://127.0.0.1:1/token",
+				"assertionFile": assertionFile,
+			},
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(service.credentialHelper, ShouldNotBeNil)
+	})
+}
+
+func TestOAuth2HelperConfigFromMap(t *testing.T) {
+	Convey("nil dictionary decodes to nil config", t, func() {
+		config, err := syncconf.OAuth2HelperConfigFromMap(nil)
+		So(err, ShouldBeNil)
+		So(config, ShouldBeNil)
+	})
+
+	Convey("generic dictionary is decoded into the typed OAuth2 helper config", t, func() {
+		config, err := syncconf.OAuth2HelperConfigFromMap(map[string]any{
+			"tokenURL":         "https://idp.example.com/token",
+			"assertionFile":    "/var/run/secrets/token",
+			"grantType":        "urn:ietf:params:oauth:grant-type:jwt-bearer",
+			"clientID":         "zot-sync",
+			"clientSecretFile": "/etc/zot/secret",
+			"scopes":           []any{"repository:pull", "repository:push"},
+			"username":         "robot",
+		})
+		So(err, ShouldBeNil)
+		So(config, ShouldNotBeNil)
+		So(config.TokenURL, ShouldEqual, "https://idp.example.com/token")
+		So(config.AssertionFile, ShouldEqual, "/var/run/secrets/token")
+		So(config.GrantType, ShouldEqual, "urn:ietf:params:oauth:grant-type:jwt-bearer")
+		So(config.ClientID, ShouldEqual, "zot-sync")
+		So(config.ClientSecretFile, ShouldEqual, "/etc/zot/secret")
+		So(config.Username, ShouldEqual, "robot")
+		So(config.Scopes, ShouldResemble, []string{"repository:pull", "repository:push"})
+	})
+
+	Convey("an undecodable dictionary returns an error", t, func() {
+		config, err := syncconf.OAuth2HelperConfigFromMap(map[string]any{
+			"tokenURL": map[string]any{"unexpected": "object"},
+		})
+		So(err, ShouldNotBeNil)
+		So(config, ShouldBeNil)
+	})
+}
+
 func TestSyncLegacyCosignTagsSyncReferrers(t *testing.T) {
 	Convey("SyncLegacyCosignTags=false skips getTags and the digest-tag loop in SyncReferrers", t, func() {
 		getTagsCallCount := 0

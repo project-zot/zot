@@ -2,6 +2,8 @@ package sync
 
 import (
 	"time"
+
+	"github.com/mitchellh/mapstructure"
 )
 
 // CredentialsFile is a map where key is registry address.
@@ -23,20 +25,64 @@ type Config struct {
 }
 
 type RegistryConfig struct {
-	URLs                  []string
-	PollInterval          time.Duration
-	Content               []Content
-	TLSVerify             *bool
-	OnDemand              bool
-	CertDir               string
-	MaxRetries            *int
-	RetryDelay            *time.Duration
-	OnlySigned            *bool
-	SyncLegacyCosignTags  *bool // when unset, defaults to true
-	CredentialHelper      string
-	PreserveDigest        bool          // sync without converting
-	SyncTimeout           time.Duration // overall HTTP client timeout for all sync operations
-	ResponseHeaderTimeout time.Duration `yaml:"-"` // response header timeout; set in root.go
+	URLs                   []string
+	PollInterval           time.Duration
+	Content                []Content
+	TLSVerify              *bool
+	OnDemand               bool
+	CertDir                string
+	MaxRetries             *int
+	RetryDelay             *time.Duration
+	OnlySigned             *bool
+	SyncLegacyCosignTags   *bool // when unset, defaults to true
+	CredentialHelper       string
+	CredentialHelperConfig map[string]any `mapstructure:",omitempty"` // decoded per CredentialHelper
+	PreserveDigest         bool           // sync without converting
+	SyncTimeout            time.Duration  // overall HTTP client timeout for all sync operations
+	ResponseHeaderTimeout  time.Duration  `yaml:"-"` // response header timeout; set in root.go
+}
+
+// OAuth2HelperConfig holds the options used by the "oauth2" credential helper,
+// which exchanges a JWT assertion for a short-lived registry access token.
+type OAuth2HelperConfig struct {
+	TokenURL         string   // OAuth2 token endpoint
+	AssertionFile    string   // file holding the JWT assertion, re-read on every refresh
+	GrantType        string   // "client_credentials" (default) or the jwt-bearer grant URN
+	ClientID         string   // optional OAuth2 client identifier
+	ClientSecretFile string   // file holding the optional OAuth2 client secret, sent in the request body
+	Scopes           []string // optional OAuth2 scopes
+	Username         string   // registry username paired with the token, defaults to "<token>"
+}
+
+// decodeCredentialHelperConfig decodes the generic credentialHelperConfig dictionary
+// into the typed configuration of a specific credential helper. New helpers can reuse
+// it by adding a typed wrapper such as OAuth2HelperConfigFromMap below.
+func decodeCredentialHelperConfig(raw map[string]any, out any) error {
+	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		Result:           out,
+		WeaklyTypedInput: true,
+		TagName:          "mapstructure",
+	})
+	if err != nil {
+		return err
+	}
+
+	return decoder.Decode(raw)
+}
+
+// OAuth2HelperConfigFromMap decodes the generic credentialHelperConfig dictionary into
+// the typed OAuth2 helper configuration. It returns nil when no configuration is set.
+func OAuth2HelperConfigFromMap(raw map[string]any) (*OAuth2HelperConfig, error) {
+	if len(raw) == 0 {
+		return nil, nil //nolint:nilnil // absence of config is not an error here
+	}
+
+	config := &OAuth2HelperConfig{}
+	if err := decodeCredentialHelperConfig(raw, config); err != nil {
+		return nil, err
+	}
+
+	return config, nil
 }
 
 // ShouldSyncLegacyCosignTags returns whether to sync legacy cosign tags (e.g. sha256-<digest>.sig/sbom).
