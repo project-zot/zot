@@ -30,19 +30,6 @@ import (
 
 var ErrTestError = errors.New("TestError")
 
-func TestGetAndValidateRequestDigest(t *testing.T) {
-	Convey("GetAndValidateRequestDigest", t, func() {
-		body := []byte("manifest-content")
-		logger := log.NewTestLogger()
-
-		Convey("returns canonical digest with bad manifest on malformed digest-like reference", func() {
-			digest, err := common.GetAndValidateRequestDigest(body, "sha256:invalidhex", logger)
-			So(err, ShouldEqual, zerr.ErrBadManifest)
-			So(digest, ShouldEqual, godigest.Canonical.FromBytes(body))
-		})
-	})
-}
-
 func TestValidateManifest(t *testing.T) {
 	Convey("Make manifest", t, func(c C) {
 		dir := t.TempDir()

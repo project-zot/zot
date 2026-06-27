@@ -186,13 +186,6 @@ func GetAndValidateRequestDigest(body []byte, reference string, log zlog.Logger)
 ) {
 	expectedDigest, err := godigest.Parse(reference)
 	if err != nil {
-		// If the reference starts with a supported digest algorithm, it resembles a digest but is malformed
-		// (e.g. "sha256:invalidhex"). Reject it as a bad manifest rather than treating it as a tag.
-		if algorithm, _, ok := strings.Cut(reference, ":"); ok && godigest.Algorithm(algorithm).Available() {
-			return godigest.Canonical.FromBytes(body), zerr.ErrBadManifest
-		}
-
-		// This is a non-digest reference (tag)
 		return godigest.Canonical.FromBytes(body), err
 	}
 
