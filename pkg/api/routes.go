@@ -1844,9 +1844,9 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 
 		var contentLength int64
 
-		// Use request.ContentLength which is pre-parsed by the HTTP framework.
-		// request.Header.Get("Content-Length") may return "" when the body is
-		// empty because Go strips the header for body-less requests.
+		// request.ContentLength is pre-parsed by net/http: 0 for an explicit empty
+		// body, -1 when unknown/chunked. Reject only the unknown case (< 0); a
+		// Content-Length of 0 is a valid empty-blob upload.
 		contentLength = request.ContentLength
 		if contentLength < 0 {
 			rh.c.Log.Warn().Int64("actual", contentLength).Msg("invalid content length")
