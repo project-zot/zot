@@ -91,6 +91,8 @@ type Destination interface {
 	CanSkipImage(repo string, tag string, digest godigest.Digest) (bool, error)
 	// CommitAll moves a synced repo and all its manifests from temporary oci layout to ImageStore
 	CommitAll(repo string, imageReference ref.Ref) error
+	// TagImage creates targetTag for an already synced manifest reference.
+	TagImage(repo, sourceReference, targetTag string) error
 	// Removes image reference, used when copy.Image() errors out
 	CleanupImage(imageReference ref.Ref, repo string) error
 }

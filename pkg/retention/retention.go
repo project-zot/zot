@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	glob "github.com/bmatcuk/doublestar/v4"
+	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	zerr "zotregistry.dev/zot/v2/errors"
@@ -94,6 +95,20 @@ func (p policyManager) getRules(tagPolicy config.KeepTagsPolicy) []types.Rule {
 
 	if tagPolicy.PushedWithin != nil {
 		rules = append(rules, NewDaysPush(*tagPolicy.PushedWithin))
+	}
+
+	return rules
+}
+
+func (p policyManager) getPullRetentionRules(tagPolicy config.KeepTagsPolicy) []types.Rule {
+	rules := make([]types.Rule, 0)
+
+	if tagPolicy.MostRecentlyPulledCount != 0 {
+		rules = append(rules, NewLatestPull(tagPolicy.MostRecentlyPulledCount))
+	}
+
+	if tagPolicy.PulledWithin != nil {
+		rules = append(rules, NewDaysPull(*tagPolicy.PulledWithin))
 	}
 
 	return rules
@@ -240,6 +255,44 @@ func (p policyManager) GetRetainedTagsFromMetaDB(ctx context.Context, repoMeta m
 	return retainTags
 }
 
+func (p policyManager) GetRetainedUntaggedFromMetaDB(ctx context.Context, repoMeta mTypes.RepoMeta,
+	index ispec.Index, referenced map[godigest.Digest]bool,
+) []godigest.Digest {
+	repo := repoMeta.Name
+	candidates := GetUntaggedCandidates(repoMeta, index, referenced)
+	retainDigests := make([]godigest.Digest, 0)
+
+	grouped := p.groupUntaggedCandidatesByTagPolicy(repo, candidates)
+
+	for _, candidates := range grouped {
+		if zcommon.IsContextDone(ctx) {
+			return nil
+		}
+
+		retainCandidates := make([]*types.Candidate, 0)
+
+		for _, rule := range candidates.rules {
+			ruleCandidates := rule.Perform(candidates.candidates)
+
+			retainCandidates = append(retainCandidates, ruleCandidates...)
+		}
+
+		for _, retainCandidate := range retainCandidates {
+			digest := godigest.Digest(retainCandidate.DigestStr)
+
+			if !slices.Contains(retainDigests, digest) {
+				reason := fmt.Sprintf(retainedStrFormat, retainCandidate.RetainedBy)
+
+				logAction(repo, "keep", reason, retainCandidate, p.config.DryRun, &p.log)
+
+				retainDigests = append(retainDigests, digest)
+			}
+		}
+	}
+
+	return retainDigests
+}
+
 func (p policyManager) getRepoPolicy(repo string) (config.RetentionPolicy, error) {
 	for _, policy := range p.config.Policies {
 		for _, pattern := range policy.Repositories {
@@ -285,6 +338,38 @@ func (p policyManager) groupCandidatesByTagPolicy(repo string, candidates []*typ
 			candidatesRules := candidatesRules{candidates: []*types.Candidate{candidateInfo}}
 			candidatesRules.rules = p.getRules(tagPolicy)
 			candidatesByTagPolicy[tagPolicyID] = candidatesRules
+		} else {
+			candidatesRules := candidatesByTagPolicy[tagPolicyID]
+			candidatesRules.candidates = append(candidatesRules.candidates, candidateInfo)
+			candidatesByTagPolicy[tagPolicyID] = candidatesRules
+		}
+	}
+
+	return candidatesByTagPolicy
+}
+
+func (p policyManager) groupUntaggedCandidatesByTagPolicy(repo string, candidates []*types.Candidate,
+) map[int]candidatesRules {
+	candidatesByTagPolicy := make(map[int]candidatesRules)
+
+	repoPolicy, _ := p.getRepoPolicy(repo)
+
+	for _, candidateInfo := range candidates {
+		tagPolicy, tagPolicyID, err := p.getTagPolicy(candidateInfo.Tag, repoPolicy.KeepTags)
+		if err != nil {
+			continue
+		}
+
+		rules := p.getPullRetentionRules(tagPolicy)
+		if len(rules) == 0 {
+			continue
+		}
+
+		if _, ok := candidatesByTagPolicy[tagPolicyID]; !ok {
+			candidatesByTagPolicy[tagPolicyID] = candidatesRules{
+				candidates: []*types.Candidate{candidateInfo},
+				rules:      rules,
+			}
 		} else {
 			candidatesRules := candidatesByTagPolicy[tagPolicyID]
 			candidatesRules.candidates = append(candidatesRules.candidates, candidateInfo)

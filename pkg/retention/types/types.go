@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
@@ -24,6 +25,9 @@ type PolicyManager interface {
 	HasTagRetention(repo string) bool
 	GetRetainedTagsFromIndex(ctx context.Context, repo string, index ispec.Index) []string
 	GetRetainedTagsFromMetaDB(ctx context.Context, repoMeta mTypes.RepoMeta, index ispec.Index) []string
+	GetRetainedUntaggedFromMetaDB(ctx context.Context, repoMeta mTypes.RepoMeta, index ispec.Index,
+		referenced map[godigest.Digest]bool,
+	) []godigest.Digest
 }
 
 type Rule interface {

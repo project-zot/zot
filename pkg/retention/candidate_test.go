@@ -1,11 +1,16 @@
 package retention_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
+	godigest "github.com/opencontainers/go-digest"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	zlog "zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/retention"
 )
@@ -114,5 +119,119 @@ func TestGetCandidatesWithMissingStatistics(t *testing.T) {
 			// Should return empty list and not panic
 			So(candidates, ShouldHaveLength, 0)
 		})
+	})
+}
+
+func TestRetainedUntaggedMostRecentlyPulled(t *testing.T) {
+	Convey("GetRetainedUntaggedFromMetaDB should apply mostRecentlyPulledCount to untagged manifests", t, func() {
+		now := time.Now()
+		recentDigest := godigest.FromString("recent")
+		oldDigest := godigest.FromString("old")
+		log := zlog.NewTestLogger()
+		policyMgr := retention.NewPolicyManager(config.ImageRetention{
+			Policies: []config.RetentionPolicy{
+				{
+					Repositories: []string{"**"},
+					KeepTags: []config.KeepTagsPolicy{
+						{
+							Patterns:                []string{".*"},
+							MostRecentlyPulledCount: 1,
+						},
+					},
+				},
+			},
+		}, log, nil)
+
+		repoMeta := mTypes.RepoMeta{
+			Name: "test-repo",
+			Statistics: map[string]mTypes.DescriptorStatistics{
+				recentDigest.String(): {
+					PushTimestamp:     now.Add(-48 * time.Hour),
+					LastPullTimestamp: now,
+				},
+				oldDigest.String(): {
+					PushTimestamp:     now.Add(-48 * time.Hour),
+					LastPullTimestamp: now.Add(-24 * time.Hour),
+				},
+			},
+		}
+
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    oldDigest,
+				},
+				{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    recentDigest,
+				},
+			},
+		}
+
+		retained := policyMgr.GetRetainedUntaggedFromMetaDB(context.Background(), repoMeta, index, nil)
+
+		So(retained, ShouldResemble, []godigest.Digest{recentDigest})
+	})
+}
+
+func TestGetUntaggedCandidates(t *testing.T) {
+	Convey("GetUntaggedCandidates should return only untagged descriptors with statistics", t, func() {
+		now := time.Now()
+		untaggedDigest := godigest.FromString("untagged")
+		taggedDigest := godigest.FromString("tagged")
+		missingStatsDigest := godigest.FromString("missing-stats")
+		referencedDigest := godigest.FromString("referenced")
+
+		repoMeta := mTypes.RepoMeta{
+			Name: "test-repo",
+			Statistics: map[string]mTypes.DescriptorStatistics{
+				untaggedDigest.String(): {
+					PushTimestamp:     now.Add(-48 * time.Hour),
+					LastPullTimestamp: now,
+				},
+				taggedDigest.String(): {
+					PushTimestamp:     now,
+					LastPullTimestamp: now,
+				},
+				referencedDigest.String(): {
+					PushTimestamp:     now,
+					LastPullTimestamp: now,
+				},
+			},
+		}
+
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    untaggedDigest,
+				},
+				{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    taggedDigest,
+					Annotations: map[string]string{
+						ispec.AnnotationRefName: "latest",
+					},
+				},
+				{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    missingStatsDigest,
+				},
+				{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    referencedDigest,
+				},
+			},
+		}
+
+		candidates := retention.GetUntaggedCandidates(repoMeta, index, map[godigest.Digest]bool{
+			referencedDigest: true,
+		})
+
+		So(candidates, ShouldHaveLength, 1)
+		So(candidates[0].DigestStr, ShouldEqual, untaggedDigest.String())
+		So(candidates[0].Tag, ShouldBeEmpty)
+		So(candidates[0].PullTimestamp, ShouldHappenOnOrBetween, now.Add(-time.Second), now.Add(time.Second))
 	})
 }
