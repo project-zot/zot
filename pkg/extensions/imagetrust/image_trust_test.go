@@ -102,6 +102,39 @@ func TestInitCosignAndNotationDirs(t *testing.T) {
 		So(err, ShouldEqual, zerr.ErrSignConfigDirNotSet)
 	})
 
+	Convey("InitTrustpolicy includes TSA store", t, func() {
+		dir := t.TempDir()
+
+		certStorage, err := imagetrust.NewCertificateLocalStorage(dir)
+		So(err, ShouldBeNil)
+
+		notationDir, err := certStorage.GetNotationDirPath()
+		So(err, ShouldBeNil)
+
+		_, err = os.Stat(path.Join(notationDir, "truststore/x509/tsa/default"))
+		So(err, ShouldBeNil)
+
+		trustPolicyBytes, err := os.ReadFile(path.Join(notationDir, "trustpolicy.json"))
+		So(err, ShouldBeNil)
+
+		trustPolicyDoc := struct {
+			TrustPolicies []struct {
+				TrustStores           []string `json:"trustStores"`
+				SignatureVerification struct {
+					VerifyTimestamp string `json:"verifyTimestamp"`
+				} `json:"signatureVerification"`
+			} `json:"trustPolicies"`
+		}{}
+
+		err = json.Unmarshal(trustPolicyBytes, &trustPolicyDoc)
+		So(err, ShouldBeNil)
+		So(trustPolicyDoc.TrustPolicies, ShouldNotBeEmpty)
+		So(trustPolicyDoc.TrustPolicies[0].TrustStores, ShouldContain, "ca:default")
+		So(trustPolicyDoc.TrustPolicies[0].TrustStores, ShouldContain, "signingAuthority:default")
+		So(trustPolicyDoc.TrustPolicies[0].TrustStores, ShouldContain, "tsa:default")
+		So(trustPolicyDoc.TrustPolicies[0].SignatureVerification.VerifyTimestamp, ShouldEqual, "afterCertExpiry")
+	})
+
 	Convey("UploadCertificate - notationDir is not set", t, func() {
 		rootDir := t.TempDir()
 

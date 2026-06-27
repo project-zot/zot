@@ -149,9 +149,10 @@ The information above will be included in the ManifestSummary objects returned b
                     "name": "default-config",
                     "registryScopes": [ "*" ],
                     "signatureVerification": {
-                        "level" : "strict" 
+                        "level" : "strict",
+                        "verifyTimestamp": "afterCertExpiry"
                     },
-                    "trustStores": ["ca:default","signingAuthority:default"],
+                    "trustStores": ["ca:default","signingAuthority:default","tsa:default"],
                     "trustedIdentities": [
                         "*"
                     ]
@@ -159,3 +160,5 @@ The information above will be included in the ManifestSummary objects returned b
             ]
         }
         ```
+
+        The default trust policy includes all supported notation truststore types, including CA, signing authority, and TSA stores.
