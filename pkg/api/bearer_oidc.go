@@ -73,6 +73,21 @@ func NewOIDCBearerAuthorizer(oidcConfig []config.BearerOIDCConfig, log log.Logge
 	}, nil
 }
 
+func (c *Controller) getOIDCBearerAuthorizer(oidcConfig config.BearerOIDCConfigs) *OIDCBearerAuthorizer {
+	if c.oidcBearerAuthz != nil {
+		return c.oidcBearerAuthz
+	}
+
+	authorizer, err := NewOIDCBearerAuthorizer(oidcConfig, c.Log)
+	if err != nil {
+		c.Log.Panic().Err(err).Msg("failed to initialize OIDC bearer authorizer")
+	}
+
+	c.oidcBearerAuthz = authorizer
+
+	return c.oidcBearerAuthz
+}
+
 // AuthenticateRequest is a convenience method that handles the full authentication flow
 // and returns whether authentication succeeded and any error.
 func (a *OIDCBearerAuthorizer) AuthenticateRequest(ctx context.Context,

@@ -1239,6 +1239,85 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			So(resp.StatusCode, ShouldEqual, http.StatusOK)
 		})
 
+		Convey("OIDC token exchange returns the password token", func() {
+			conf := config.New()
+			port := test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
+
+			conf.HTTP.Port = port
+			conf.HTTP.Auth = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					Realm:   baseURL + constants.TokenPath,
+					Service: "test-zot",
+					OIDC: []config.BearerOIDCConfig{{
+						Issuer:    issuer,
+						Audiences: []string{audience},
+					}},
+				},
+			}
+			conf.Storage.RootDirectory = t.TempDir()
+
+			ctlr := api.NewController(conf)
+			cm := test.NewControllerManager(ctlr)
+
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			token, err := createWorkloadOIDCToken(privKey, issuer, audience, nil)
+			So(err, ShouldBeNil)
+
+			challengeResp, err := resty.R().Get(baseURL + "/v2/testrepo/tags/list")
+			So(err, ShouldBeNil)
+			So(challengeResp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+			challenge := authutils.ParseBearerAuthHeader(challengeResp.Header().Get("WWW-Authenticate"))
+			So(challenge.Realm, ShouldEqual, baseURL+constants.TokenPath)
+			So(challenge.Service, ShouldEqual, "test-zot")
+			So(challenge.Scope, ShouldEqual, "repository:testrepo:pull")
+
+			optionsResp, err := resty.R().Options(baseURL + constants.TokenPath)
+			So(err, ShouldBeNil)
+			So(optionsResp.StatusCode(), ShouldEqual, http.StatusNoContent)
+
+			missingBasicResp, err := resty.R().Get(baseURL + constants.TokenPath)
+			So(err, ShouldBeNil)
+			So(missingBasicResp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			So(missingBasicResp.Header().Get("WWW-Authenticate"), ShouldEqual,
+				`Basic realm="`+baseURL+constants.TokenPath+`"`)
+			So(missingBasicResp.Header().Get("Cache-Control"), ShouldEqual, "no-store")
+			So(missingBasicResp.Header().Get("Pragma"), ShouldEqual, "no-cache")
+
+			exchangeResp, err := resty.R().
+				SetBasicAuth("<token>", token).
+				SetQueryParam("service", challenge.Service).
+				SetQueryParam("scope", challenge.Scope).
+				Get(baseURL + constants.TokenPath)
+			So(err, ShouldBeNil)
+			So(exchangeResp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(exchangeResp.Header().Get("Cache-Control"), ShouldEqual, "no-store")
+			So(exchangeResp.Header().Get("Pragma"), ShouldEqual, "no-cache")
+
+			tokenResp := map[string]string{}
+			err = json.Unmarshal(exchangeResp.Body(), &tokenResp)
+			So(err, ShouldBeNil)
+			So(tokenResp["token"], ShouldEqual, token)
+			So(tokenResp["access_token"], ShouldEqual, token)
+
+			registryResp, err := resty.R().
+				SetHeader("Authorization", "Bearer "+tokenResp["token"]).
+				Get(baseURL + "/v2/_catalog")
+			So(err, ShouldBeNil)
+			So(registryResp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			invalidResp, err := resty.R().
+				SetBasicAuth("<token>", "invalid-token").
+				Get(baseURL + constants.TokenPath)
+			So(err, ShouldBeNil)
+			So(invalidResp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			So(invalidResp.Header().Get("Cache-Control"), ShouldEqual, "no-store")
+			So(invalidResp.Header().Get("Pragma"), ShouldEqual, "no-cache")
+		})
+
 		Convey("OIDC authentication success with groups", func() {
 			conf := config.New()
 			port := test.GetFreePort()

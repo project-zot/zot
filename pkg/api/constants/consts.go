@@ -35,6 +35,7 @@ const (
 	CallbackBasePath             = AppNamespacePath + "/auth/callback"
 	LoginPath                    = AppNamespacePath + "/auth/login"
 	LogoutPath                   = AppNamespacePath + "/auth/logout"
+	TokenPath                    = AppNamespacePath + "/auth/token"
 	APIKeyPath                   = AppNamespacePath + "/auth/apikey"
 	SessionClientHeaderName      = "X-ZOT-API-CLIENT"
 	SessionClientHeaderValue     = "zot-ui"
