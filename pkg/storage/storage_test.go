@@ -4665,7 +4665,7 @@ func TestCheckBlobEmptyBlob(t *testing.T) {
 
 	ctx := context.Background()
 
-	So := func(actual any, assertion func(any, ...any) string, expected ...any) {
+	assertExpectation := func(actual any, assertion func(any, ...any) string, expected ...any) {
 		t.Helper()
 
 		if msg := assertion(actual, expected...); msg != "" {
@@ -4696,15 +4696,15 @@ func TestCheckBlobEmptyBlob(t *testing.T) {
 
 	// Case 1: CheckBlob must report the empty blob as present with size 0.
 	ok, size, err := imgStore.CheckBlob(ctx, repo, emptyDigest)
-	So(ok, ShouldBeTrue)
-	So(size, ShouldEqual, int64(0))
-	So(err, ShouldBeNil)
+	assertExpectation(ok, ShouldBeTrue)
+	assertExpectation(size, ShouldEqual, int64(0))
+	assertExpectation(err, ShouldBeNil)
 
 	// Case 2: StatBlob must also succeed and report size 0.
 	statOk, statSize, _, statErr := imgStore.StatBlob(repo, emptyDigest)
-	So(statOk, ShouldBeTrue)
-	So(statSize, ShouldEqual, int64(0))
-	So(statErr, ShouldBeNil)
+	assertExpectation(statOk, ShouldBeTrue)
+	assertExpectation(statSize, ShouldEqual, int64(0))
+	assertExpectation(statErr, ShouldBeNil)
 
 	// ------------------------------------------------------------------ //
 	// Case 3: zero-size placeholder whose digest is NOT the empty-content hash.
@@ -4726,12 +4726,12 @@ func TestCheckBlobEmptyBlob(t *testing.T) {
 		t.Fatalf("MkdirAll: %v", err)
 	}
 
-	if err := os.WriteFile(blobPath, []byte{}, 0o644); err != nil {
+	if err := os.WriteFile(blobPath, []byte{}, 0o600); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
 	ok, size, err = imgStore.CheckBlob(ctx, repo, nonEmptyDigest)
-	So(ok, ShouldBeFalse)
-	So(size, ShouldEqual, int64(-1))
-	So(err, ShouldEqual, zerr.ErrBlobNotFound)
+	assertExpectation(ok, ShouldBeFalse)
+	assertExpectation(size, ShouldEqual, int64(-1))
+	assertExpectation(err, ShouldEqual, zerr.ErrBlobNotFound)
 }

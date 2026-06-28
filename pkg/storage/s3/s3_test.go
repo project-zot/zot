@@ -76,13 +76,13 @@ func createMockStorage(rootDir string, cacheDir string, dedupe bool, store drive
 	return il
 }
 
-func createMockStorageWithMockCache(rootDir string, dedupe bool, store driver.StorageDriver,
+func createMockStorageWithMockCache(rootDir string, store driver.StorageDriver,
 	cacheDriver storageTypes.Cache,
 ) storageTypes.ImageStore {
 	log := log.NewTestLogger()
 	metrics := monitoring.NewMetricsServer(false, log)
 
-	il := s3.NewImageStore(rootDir, "", dedupe, false, log, metrics, nil, store, cacheDriver, nil, nil)
+	il := s3.NewImageStore(rootDir, "", true, false, log, metrics, nil, store, cacheDriver, nil, nil)
 
 	return il
 }
@@ -2599,7 +2599,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 		}
 
 		Convey("on original blob", func() {
-			imgStore := createMockStorageWithMockCache(testDir, true, storageDriverMockIfBranch,
+			imgStore := createMockStorageWithMockCache(testDir, storageDriverMockIfBranch,
 				&mocks.CacheMock{
 					HasBlobFn: func(digest godigest.Digest, path string) bool {
 						return false
@@ -2617,7 +2617,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 		})
 
 		Convey("on dedupe blob", func() {
-			imgStore := createMockStorageWithMockCache(testDir, true, storageDriverMockIfBranch,
+			imgStore := createMockStorageWithMockCache(testDir, storageDriverMockIfBranch,
 				&mocks.CacheMock{
 					HasBlobFn: func(digest godigest.Digest, path string) bool {
 						return false
@@ -2639,7 +2639,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 		})
 
 		Convey("on else branch", func() {
-			imgStore := createMockStorageWithMockCache(testDir, true, storageDriverMockElseBranch,
+			imgStore := createMockStorageWithMockCache(testDir, storageDriverMockElseBranch,
 				&mocks.CacheMock{
 					HasBlobFn: func(digest godigest.Digest, path string) bool {
 						return false
@@ -3882,7 +3882,7 @@ func TestS3DedupeZeroSizeBlob(t *testing.T) {
 
 		cacheGetBlobCalled := false
 
-		imgStore := createMockStorageWithMockCache(testDir, true, &mocks.StorageDriverMock{
+		imgStore := createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				return &mocks.FileInfoMock{SizeFn: func() int64 { return 0 }}, nil
 			},
@@ -3925,7 +3925,7 @@ func TestS3DedupeZeroSizeBlob(t *testing.T) {
 		dstRecord := testDir + "/dedupe-src/blobs/sha256/real-blob"
 		realSize := int64(len(nonEmptyContent))
 
-		imgStore := createMockStorageWithMockCache(testDir, true, &mocks.StorageDriverMock{
+		imgStore := createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				if path == dstRecord {
 					return &mocks.FileInfoMock{SizeFn: func() int64 { return realSize }}, nil
@@ -3959,7 +3959,7 @@ func TestS3DedupeZeroSizeBlob(t *testing.T) {
 		dstRecord := testDir + "/dedupe-src/blobs/sha256/real-blob"
 		realSize := int64(len(nonEmptyContent))
 
-		imgStore := createMockStorageWithMockCache(testDir, true, &mocks.StorageDriverMock{
+		imgStore := createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				if path == dstRecord {
 					return &mocks.FileInfoMock{SizeFn: func() int64 { return realSize }}, nil
