@@ -149,8 +149,7 @@ The information above will be included in the ManifestSummary objects returned b
                     "name": "default-config",
                     "registryScopes": [ "*" ],
                     "signatureVerification": {
-                        "level" : "strict",
-                        "verifyTimestamp": "afterCertExpiry"
+                        "level" : "strict" 
                     },
                     "trustStores": ["ca:default","signingAuthority:default","tsa:default"],
                     "trustedIdentities": [
