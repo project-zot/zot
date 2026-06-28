@@ -186,7 +186,6 @@ func GetAndValidateRequestDigest(body []byte, reference string, log zlog.Logger)
 ) {
 	expectedDigest, err := godigest.Parse(reference)
 	if err != nil {
-		// This is a non-digest reference
 		return godigest.Canonical.FromBytes(body), err
 	}
 
