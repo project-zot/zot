@@ -656,7 +656,73 @@ func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo
 		return err
 	}
 
+	err = service.syncTagsForDigest(ctx, localRepo, remoteRepo, tag, remoteDigest, localDigest)
+	if err != nil {
+		return err
+	}
+
 	service.log.Info().Str("repo", localRepo).Str("reference", tag).Msg("successfully synced image")
+
+	return nil
+}
+
+func (service *BaseService) syncTagsForDigest(ctx context.Context, localRepo, remoteRepo, reference string,
+	remoteDigest, localDigest godigest.Digest,
+) error {
+	// Tag references are already synced directly; only digest references need upstream tag inheritance.
+	if _, ok := parseReference(reference); !ok {
+		return nil
+	}
+
+	tags, err := service.getTags(ctx, remoteRepo, false)
+	if err != nil {
+		service.log.Warn().Str("errorType", common.TypeOf(err)).Str("repo", remoteRepo).
+			Str("reference", reference).Err(err).Msg("failed to get tags while syncing digest")
+
+		return nil
+	}
+
+	tags, err = service.contentManager.FilterTags(remoteRepo, tags)
+	if err != nil {
+		service.log.Warn().Str("errorType", common.TypeOf(err)).Str("repo", remoteRepo).
+			Str("reference", reference).Err(err).Msg("failed to filter tags while syncing digest")
+
+		return nil
+	}
+
+	for _, tag := range tags {
+		if common.IsContextDone(ctx) {
+			return ctx.Err()
+		}
+
+		if common.IsCosignTag(tag) || common.IsReferrersTag(tag) {
+			continue
+		}
+
+		tagDigest, err := service.remote.GetDigest(ctx, remoteRepo, tag)
+		if err != nil {
+			service.log.Warn().Str("errorType", common.TypeOf(err)).Str("repo", remoteRepo).
+				Str("tag", tag).Err(err).Msg("failed to get tag digest while syncing digest")
+
+			continue
+		}
+
+		if tagDigest != remoteDigest {
+			continue
+		}
+
+		err = service.destination.TagImage(localRepo, localDigest.String(), tag)
+		if err != nil {
+			service.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", localRepo).
+				Str("sourceReference", localDigest.String()).Str("tag", tag).
+				Err(err).Msg("failed to create downstream tag for synced digest")
+
+			return err
+		}
+
+		service.log.Info().Str("repo", localRepo).Str("reference", reference).Str("tag", tag).
+			Msg("created downstream tag for synced digest")
+	}
 
 	return nil
 }
