@@ -2691,16 +2691,33 @@ func TestTLS(t *testing.T) {
 
 		defer dcm.StopServer()
 
-		// wait till ready
-		for {
-			destBuf, _ := os.ReadFile(path.Join(destDir, testImage, "index.json"))
-			_ = json.Unmarshal(destBuf, &destIndex)
+		// wait till ready: the manifest endpoint returns 200 only once the async sync commits.
+		deadline := time.Now().Add(2 * time.Minute)
 
-			time.Sleep(500 * time.Millisecond)
-
-			if len(destIndex.Manifests) > 0 {
+		for time.Now().Before(deadline) {
+			resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			if err == nil && resp.StatusCode() == http.StatusOK {
 				break
 			}
+
+			time.Sleep(500 * time.Millisecond)
+		}
+
+		if destBuf, err := os.ReadFile(path.Join(destDir, testImage, "index.json")); err == nil {
+			_ = json.Unmarshal(destBuf, &destIndex)
+		}
+
+		if len(destIndex.Manifests) == 0 {
+			logData, _ := os.ReadFile(dctlr.Config.Log.Output)
+
+			if strings.Contains(string(logData), "x509:") ||
+				strings.Contains(string(logData), "certificate signed by unknown authority") {
+				t.Fatalf("TLS sync failed with a certificate trust error for %s; downstream log:\n%s",
+					testImage, string(logData))
+			}
+
+			t.Fatalf("timed out waiting for TLS sync to populate %s/index.json; downstream log:\n%s",
+				testImage, string(logData))
 		}
 
 		var found bool
