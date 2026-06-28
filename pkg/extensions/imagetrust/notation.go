@@ -136,7 +136,8 @@ func InitTrustpolicyFile(notationStorage certificateStorage) error {
 			"name": "default-config",
 			"registryScopes": [ "*" ],
 			"signatureVerification": {
-				"level" : "strict" 
+				"level" : "strict",
+                                "verifyTimestamp": "afterCertExpiry"
 			},
 			"trustStores": [` + defaultTruststores + `],
 			"trustedIdentities": [
