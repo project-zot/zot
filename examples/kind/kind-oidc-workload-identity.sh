@@ -94,6 +94,7 @@ fi
 CLUSTER_NAME="kind-oidc-wid"
 ZOT_REG_NAME="zot-oidc-wid"
 ZOT_PORT="5000"
+ZOT_TOKEN_PATH="/zot/auth/token"
 TEST_NAMESPACE="oidc-test"
 TEST_SA_NAME="test-workload"
 AUDIENCE="zot-registry"
@@ -160,7 +161,7 @@ cleanup() {
     log_info "Cleaning up..."
     "${KIND}" delete cluster --name "${CLUSTER_NAME}" 2>/dev/null || true
     docker rm -f "${ZOT_REG_NAME}" 2>/dev/null || true
-    rm -f /tmp/kind-ca.pem /tmp/zot-oidc-config.json /tmp/test-token.txt 2>/dev/null || true
+    rm -f /tmp/kind-ca.pem /tmp/zot-oidc-config.json /tmp/test-token.txt /tmp/zot-image-pull-secret.json 2>/dev/null || true
 }
 
 trap cleanup EXIT
@@ -222,6 +223,10 @@ log_info "Creating Kind cluster '${CLUSTER_NAME}'..."
 cat <<EOF | "${KIND}" create cluster --name "${CLUSTER_NAME}" --config=-
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
+containerdConfigPatches:
+- |-
+  [plugins."io.containerd.grpc.v1.cri".registry.mirrors."${ZOT_REG_NAME}:${ZOT_PORT}"]
+    endpoint = ["http://${ZOT_REG_NAME}:${ZOT_PORT}"]
 nodes:
 - role: control-plane
   image: ${KIND_NODE_IMAGE}
@@ -315,10 +320,11 @@ cat <<EOF > /tmp/zot-oidc-config.json
   "http": {
     "address": "0.0.0.0",
     "port": "${ZOT_PORT}",
+    "compat": ["docker2s2"],
     "auth": {
       "bearer": {
-        "realm": "zot",
-        "service": "zot-registry",
+        "realm": "http://${ZOT_REG_NAME}:${ZOT_PORT}${ZOT_TOKEN_PATH}",
+        "service": "${ZOT_REG_NAME}:${ZOT_PORT}",
         "oidc": [
           {
             "issuer": "${OIDC_ISSUER}",
@@ -728,15 +734,14 @@ log_info "TEST 9 PASSED: Conditional deny returned HTTP 403 with reason in body"
 fi  # End of curl-based tests conditional
 
 # =============================================================================
-# E2E Tests using Crane CLI for real OCI image operations
+# E2E tests using Crane and kubelet for real image operations
 # =============================================================================
 # NOTE: Crane (from go-containerregistry) properly supports the `registryToken`
 # field in Docker config, which sends the token directly as a Bearer header.
 # This is compatible with zot's OIDC bearer authentication.
 #
-# Other tools like oras and skopeo do NOT properly support this - they expect
-# the token service authentication flow (exchanging credentials with a token
-# endpoint) which is different from direct bearer token authentication.
+# TEST 15 below covers the token service authentication flow used by kubelet
+# when credentials are supplied as username/password in an image pull secret.
 # =============================================================================
 if [ "$ONLY_CURL" = true ]; then
     log_info "Skipping crane e2e tests (--only-curl specified)"
@@ -822,23 +827,20 @@ remove_crane_auth() {
 }
 
 # =============================================================================
-# TEST 8: Copy OCI image using crane WITH auth (should SUCCEED)
+# TEST 8: Copy container image using crane WITH auth (should SUCCEED)
 # Note: This runs first to populate zot, so subsequent tests don't need Docker Hub
 # We check if the image already exists to avoid Docker Hub rate limiting on reruns
 # =============================================================================
-log_info "TEST 8: Copying OCI image using crane WITH auth (should succeed)..."
+log_info "TEST 8: Copying container image using crane WITH auth (should succeed)..."
 setup_crane_auth
 
 # Check if image already exists in zot from a previous run
-IMAGE_EXISTS=$(kubectl exec -n "${TEST_NAMESPACE}" crane-test-pod -- \
-    sh -c 'crane manifest --insecure $ZOT_REGISTRY/crane-test:v1 2>&1 && echo EXISTS' || true)
-
-if echo "$IMAGE_EXISTS" | grep -q "EXISTS"; then
+if kubectl exec -n "${TEST_NAMESPACE}" crane-test-pod -- \
+    sh -c "crane manifest --insecure \$ZOT_REGISTRY/crane-test:v1 >/dev/null 2>&1"; then
     log_info "Image crane-test:v1 already exists in zot, skipping Docker Hub pull"
     # Verify we can still access it with auth (do a copy to v1-test to verify write works)
-    PUSH_OUTPUT=$(kubectl exec -n "${TEST_NAMESPACE}" crane-test-pod -- \
-        sh -c 'crane copy --insecure $ZOT_REGISTRY/crane-test:v1 $ZOT_REGISTRY/crane-test:v1-test 2>&1') || true
-    if echo "$PUSH_OUTPUT" | grep -qiE "pushed|existing|copied|digest"; then
+    if PUSH_OUTPUT=$(kubectl exec -n "${TEST_NAMESPACE}" crane-test-pod -- \
+        sh -c "crane copy --insecure \$ZOT_REGISTRY/crane-test:v1 \$ZOT_REGISTRY/crane-test:v1-test" 2>&1); then
         log_info "TEST 8 PASSED: crane copy within zot succeeded with auth"
         log_info "Push output: $(echo "$PUSH_OUTPUT" | tail -2)"
     else
@@ -848,12 +850,10 @@ if echo "$IMAGE_EXISTS" | grep -q "EXISTS"; then
         exit 1
     fi
 else
-    # Image doesn't exist, need to pull from Docker Hub
+    # Image does not exist, need to pull from Docker Hub
     log_info "Image not found in zot, pulling from Docker Hub..."
-    PUSH_OUTPUT=$(kubectl exec -n "${TEST_NAMESPACE}" crane-test-pod -- \
-        sh -c "crane copy --insecure ${BUSYBOX_IMAGE} \$ZOT_REGISTRY/crane-test:v1 2>&1") || true
-
-    if echo "$PUSH_OUTPUT" | grep -qiE "pushed|existing|crane-test:v1.*digest|copied"; then
+    if PUSH_OUTPUT=$(kubectl exec -n "${TEST_NAMESPACE}" crane-test-pod -- \
+        sh -c "crane copy --insecure ${BUSYBOX_IMAGE} \$ZOT_REGISTRY/crane-test:v1" 2>&1); then
         log_info "TEST 8 PASSED: crane copy from Docker Hub succeeded with auth"
         log_info "Push output: $(echo "$PUSH_OUTPUT" | tail -3)"
     else
@@ -863,6 +863,22 @@ else
         docker logs "${ZOT_REG_NAME}" 2>&1 | tail -50
         exit 1
     fi
+fi
+
+PUSHED_MANIFEST=$(kubectl exec -n "${TEST_NAMESPACE}" crane-test-pod -- \
+    sh -c "crane manifest --insecure \$ZOT_REGISTRY/crane-test:v1" 2>&1) || {
+    log_error "TEST 8 FAILED: pushed image manifest is not readable"
+    log_error "Output: $PUSHED_MANIFEST"
+    docker logs "${ZOT_REG_NAME}" 2>&1 | tail -50
+    exit 1
+}
+
+if echo "$PUSHED_MANIFEST" | grep -qiE "schemaVersion|mediaType|manifests"; then
+    log_info "Verified: crane-test:v1 manifest is readable"
+else
+    log_error "TEST 8 FAILED: pushed manifest response did not look like an OCI/Docker manifest"
+    log_error "Output: $PUSHED_MANIFEST"
+    exit 1
 fi
 
 # Verify the image was pushed by listing tags
@@ -1070,6 +1086,63 @@ else
     exit 1
 fi
 
+# =============================================================================
+# TEST 15: Kubernetes imagePullSecret using username/password OIDC token exchange
+# =============================================================================
+log_info "TEST 15: Pulling zot image with Kubernetes imagePullSecret username/password auth..."
+
+PULL_SECRET_NAME="zot-oidc-pull-secret"
+PULL_TEST_POD="kubelet-oidc-pull-test"
+PULL_TOKEN=$(kubectl create token "${TEST_SA_NAME}" -n "${TEST_NAMESPACE}" --audience="${AUDIENCE}" --duration=1h)
+PULL_AUTH=$(printf '<token>:%s' "${PULL_TOKEN}" | base64 | tr -d '\n')
+
+jq -n \
+    --arg registry "${ZOT_REG_NAME}:${ZOT_PORT}" \
+    --arg username "<token>" \
+    --arg password "${PULL_TOKEN}" \
+    --arg auth "${PULL_AUTH}" \
+    '{auths: {($registry): {username: $username, password: $password, auth: $auth}}}' \
+    > /tmp/zot-image-pull-secret.json
+
+kubectl create secret generic "${PULL_SECRET_NAME}" \
+    -n "${TEST_NAMESPACE}" \
+    --type=kubernetes.io/dockerconfigjson \
+    --from-file=.dockerconfigjson=/tmp/zot-image-pull-secret.json \
+    --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl delete pod "${PULL_TEST_POD}" -n "${TEST_NAMESPACE}" --ignore-not-found --wait=true
+
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ${PULL_TEST_POD}
+  namespace: ${TEST_NAMESPACE}
+spec:
+  serviceAccountName: ${TEST_SA_NAME}
+  imagePullSecrets:
+  - name: ${PULL_SECRET_NAME}
+  containers:
+  - name: pulled
+    image: ${ZOT_REG_NAME}:${ZOT_PORT}/crane-test:v1
+    imagePullPolicy: Always
+    command: ["sh", "-c", "echo pulled-from-zot; sleep 3600"]
+  restartPolicy: Never
+EOF
+
+if kubectl wait --for=condition=Ready "pod/${PULL_TEST_POD}" -n "${TEST_NAMESPACE}" --timeout=180s; then
+    log_info "TEST 15 PASSED: kubelet pulled ${ZOT_REG_NAME}:${ZOT_PORT}/crane-test:v1 using imagePullSecret"
+    PULL_TEST_LOGS=$(kubectl logs "${PULL_TEST_POD}" -n "${TEST_NAMESPACE}" 2>/dev/null || true)
+    log_info "TEST 15 pod logs: ${PULL_TEST_LOGS}"
+else
+    log_error "TEST 15 FAILED: kubelet did not pull the image with imagePullSecret auth"
+    kubectl describe pod "${PULL_TEST_POD}" -n "${TEST_NAMESPACE}" || true
+    kubectl get events -n "${TEST_NAMESPACE}" --sort-by=.lastTimestamp | tail -30 || true
+    docker logs "${ZOT_REG_NAME}" 2>&1 | tail -50
+    exit 1
+fi
+
+
 fi  # End of crane tests conditional
 
 # Print final zot logs for debugging
@@ -1078,7 +1151,7 @@ docker logs "${ZOT_REG_NAME}" 2>&1 | tail -50
 
 log_info "=========================================="
 if [ "$ONLY_CRANE" = true ]; then
-    log_info "Crane e2e tests (8-14) PASSED!"
+    log_info "Crane e2e tests (8-15) PASSED!"
 elif [ "$ONLY_CURL" = true ]; then
     log_info "Curl-based tests (1-7) PASSED!"
 else
@@ -1088,6 +1161,6 @@ log_info "=========================================="
 log_info ""
 log_info "Iteration tips:"
 log_info "  --skip-setup     Skip cluster/image/zot setup (reuse existing)"
-log_info "  --only-crane     Run only crane tests (8-14)"
+log_info "  --only-crane     Run only crane tests (8-15)"
 log_info "  --only-curl      Run only curl tests (1-7)"
 log_info "  --keep-resources Keep cluster/zot running after exit"

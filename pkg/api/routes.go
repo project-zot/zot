@@ -81,6 +81,13 @@ func (rh *RouteHandler) SetupRoutes() {
 
 	// Get auth config for OpenID checks
 	authConfig := rh.c.Config.CopyAuthConfig()
+	if authConfig.IsOIDCBearerAuthEnabled() {
+		oidcTokenAuthorizer := rh.c.getOIDCBearerAuthorizer(authConfig.Bearer.OIDC)
+
+		rh.c.Router.HandleFunc(constants.TokenPath, rh.OIDCBearerTokenExchange(oidcTokenAuthorizer)).
+			Methods(http.MethodGet, http.MethodOptions)
+	}
+
 	if authConfig.IsOpenIDAuthEnabled() {
 		// login path for openID
 		rh.c.Router.HandleFunc(constants.LoginPath, rh.AuthURLHandler())
@@ -297,6 +304,54 @@ func (rh *RouteHandler) CheckVersionSupport(response http.ResponseWriter, reques
 	}
 
 	zcommon.WriteData(response, http.StatusOK, "application/json", []byte{})
+}
+
+type oidcBearerTokenResponse struct {
+	Token       string `json:"token"`
+	AccessToken string `json:"access_token"` //nolint:tagliatelle
+}
+
+func (rh *RouteHandler) OIDCBearerTokenExchange(authorizer *OIDCBearerAuthorizer) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodOptions {
+			response.WriteHeader(http.StatusNoContent)
+
+			return
+		}
+
+		response.Header().Set("Cache-Control", "no-store")
+		response.Header().Set("Pragma", "no-cache")
+
+		_, password, ok := request.BasicAuth()
+		if !ok || password == "" {
+			oidcTokenExchangeUnauthorized(response, rh.c.Config.CopyAuthConfig())
+
+			return
+		}
+
+		res, err := authorizer.Authenticate(request.Context(), "Bearer "+password)
+		if err != nil || res == nil || res.Username == "" {
+			rh.c.Log.Debug().Err(err).Msg("oidc bearer token exchange failed")
+			oidcTokenExchangeUnauthorized(response, rh.c.Config.CopyAuthConfig())
+
+			return
+		}
+
+		zcommon.WriteJSON(response, http.StatusOK, oidcBearerTokenResponse{
+			Token:       password,
+			AccessToken: password,
+		})
+	}
+}
+
+func oidcTokenExchangeUnauthorized(response http.ResponseWriter, authConfig *config.AuthConfig) {
+	realm := "zot"
+	if authConfig != nil && authConfig.Bearer != nil && authConfig.Bearer.Realm != "" {
+		realm = authConfig.Bearer.Realm
+	}
+
+	response.Header().Set("WWW-Authenticate", "Basic realm="+strconv.Quote(realm))
+	zcommon.WriteJSON(response, http.StatusUnauthorized, apiErr.NewError(apiErr.UNAUTHORIZED))
 }
 
 // ListTags godoc
