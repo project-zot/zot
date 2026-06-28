@@ -3853,6 +3853,133 @@ func TestS3DedupeErr(t *testing.T) {
 	})
 }
 
+// TestS3DedupeZeroSizeBlob covers the zero-size blob branches in CheckBlob and
+// StatBlob (via originalBlobInfo) for the S3+dedupe configuration.  Four
+// sub-cases are exercised using mock storage so no real S3 endpoint is needed:
+//
+//  1. A genuine empty blob (digest == hash-of-zero-bytes) is short-circuited:
+//     CheckBlob returns (true, 0, nil) and the cache is never consulted.
+//  2. StatBlob on the same genuine empty blob returns (true, 0, ..., nil) –
+//     this specifically exercises the "return binfo, nil" branch inside
+//     originalBlobInfo that was previously untested.
+//  3. A zero-size S3 deduplication placeholder (non-empty digest, empty file)
+//     is resolved via the cache: CheckBlob falls through to the cache lookup
+//     and returns the real blob size.
+//  4. The same deduplication-placeholder path exercised through StatBlob.
+func TestS3DedupeZeroSizeBlob(t *testing.T) {
+	testDir := "/oci-repo-test/dedupe-zero-size"
+	const repo = "dedupe-zero-size-repo"
+
+	// ------------------------------------------------------------------ //
+	// Cases 1 & 2: genuine empty blob (sha256:e3b0c44...).
+	//
+	// Stat always returns size 0; the digest is the hash of zero bytes.
+	// Neither CheckBlob nor StatBlob should consult the cache.
+	// ------------------------------------------------------------------ //
+	Convey("CheckBlob and StatBlob with genuine empty blob in S3+dedupe mode", t, func() {
+		emptyDigest := godigest.FromBytes(nil)
+
+		cacheGetBlobCalled := false
+
+		imgStore := createMockStorageWithMockCache(testDir, true, &mocks.StorageDriverMock{
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+				return &mocks.FileInfoMock{SizeFn: func() int64 { return 0 }}, nil
+			},
+		}, &mocks.CacheMock{
+			GetBlobFn: func(digest godigest.Digest) (string, error) {
+				cacheGetBlobCalled = true
+
+				return "", zerr.ErrCacheMiss
+			},
+		})
+
+		// Case 1: CheckBlob must report the empty blob as present with size 0
+		// and must NOT fall through to the cache lookup.
+		ok, size, err := imgStore.CheckBlob(context.Background(), repo, emptyDigest)
+		So(ok, ShouldBeTrue)
+		So(size, ShouldEqual, int64(0))
+		So(err, ShouldBeNil)
+		So(cacheGetBlobCalled, ShouldBeFalse)
+
+		// Case 2: StatBlob must also succeed and report size 0.
+		// This exercises the "return binfo, nil" branch in originalBlobInfo.
+		statOk, statSize, _, statErr := imgStore.StatBlob(repo, emptyDigest)
+		So(statOk, ShouldBeTrue)
+		So(statSize, ShouldEqual, int64(0))
+		So(statErr, ShouldBeNil)
+		So(cacheGetBlobCalled, ShouldBeFalse)
+	})
+
+	// ------------------------------------------------------------------ //
+	// Case 3: S3-style deduplication placeholder.
+	//
+	// A non-empty digest is stored as a zero-size stub file (S3 Link writes
+	// empty content).  CheckBlob must fall through to the cache, retrieve the
+	// original blob path, copy it back via Link, and return the real size.
+	// StatBlob must do the same via originalBlobInfo.
+	// ------------------------------------------------------------------ //
+	Convey("CheckBlob with S3-style deduplication placeholder in S3+dedupe mode", t, func() {
+		nonEmptyContent := []byte("non-empty-blob-content")
+		nonEmptyDigest := godigest.FromBytes(nonEmptyContent)
+		dstRecord := testDir + "/dedupe-src/blobs/sha256/real-blob"
+		realSize := int64(len(nonEmptyContent))
+
+		imgStore := createMockStorageWithMockCache(testDir, true, &mocks.StorageDriverMock{
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+				if path == dstRecord {
+					return &mocks.FileInfoMock{SizeFn: func() int64 { return realSize }}, nil
+				}
+
+				// Blob placeholder and repo metadata files all appear as zero-size.
+				return &mocks.FileInfoMock{SizeFn: func() int64 { return 0 }}, nil
+			},
+			// S3 Link is implemented as PutContent with empty bytes.
+			PutContentFn: func(ctx context.Context, path string, content []byte) error {
+				return nil
+			},
+		}, &mocks.CacheMock{
+			GetBlobFn: func(digest godigest.Digest) (string, error) {
+				return dstRecord, nil
+			},
+			PutBlobFn: func(digest godigest.Digest, path string) error {
+				return nil
+			},
+		})
+
+		ok, size, err := imgStore.CheckBlob(context.Background(), repo, nonEmptyDigest)
+		So(ok, ShouldBeTrue)
+		So(size, ShouldEqual, realSize)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("StatBlob with S3-style deduplication placeholder in S3+dedupe mode", t, func() {
+		nonEmptyContent := []byte("non-empty-blob-content")
+		nonEmptyDigest := godigest.FromBytes(nonEmptyContent)
+		dstRecord := testDir + "/dedupe-src/blobs/sha256/real-blob"
+		realSize := int64(len(nonEmptyContent))
+
+		imgStore := createMockStorageWithMockCache(testDir, true, &mocks.StorageDriverMock{
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+				if path == dstRecord {
+					return &mocks.FileInfoMock{SizeFn: func() int64 { return realSize }}, nil
+				}
+
+				return &mocks.FileInfoMock{SizeFn: func() int64 { return 0 }}, nil
+			},
+		}, &mocks.CacheMock{
+			GetBlobFn: func(digest godigest.Digest) (string, error) {
+				return dstRecord, nil
+			},
+		})
+
+		// StatBlob exercises the deduped-placeholder branch in originalBlobInfo.
+		statOk, statSize, _, statErr := imgStore.StatBlob(repo, nonEmptyDigest)
+		So(statOk, ShouldBeTrue)
+		So(statSize, ShouldEqual, realSize)
+		So(statErr, ShouldBeNil)
+	})
+}
+
 func TestInjectDedupe(t *testing.T) {
 	tdir := t.TempDir()
 
