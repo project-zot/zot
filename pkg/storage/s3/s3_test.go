@@ -3868,6 +3868,7 @@ func TestS3DedupeErr(t *testing.T) {
 //  4. The same deduplication-placeholder path exercised through StatBlob.
 func TestS3DedupeZeroSizeBlob(t *testing.T) {
 	testDir := "/oci-repo-test/dedupe-zero-size"
+
 	const repo = "dedupe-zero-size-repo"
 
 	// ------------------------------------------------------------------ //
