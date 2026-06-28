@@ -80,16 +80,9 @@ func NewCertificateLocalStorage(rootDir string) (*CertificateLocalStorage, error
 	for _, truststoreType := range truststore.Types {
 		defaultTruststore := path.Join(dir, "truststore", "x509", string(truststoreType), truststoreName)
 
-		_, err = os.Stat(defaultTruststore)
+		err = os.MkdirAll(defaultTruststore, defaultDirPerms)
 		if err != nil {
-			if !os.IsNotExist(err) {
-				return nil, err
-			}
-
-			err = os.MkdirAll(defaultTruststore, defaultDirPerms)
-			if err != nil {
-				return nil, err
-			}
+			return nil, err
 		}
 	}
 
@@ -136,7 +129,7 @@ func InitTrustpolicyFile(notationStorage certificateStorage) error {
 			"name": "default-config",
 			"registryScopes": [ "*" ],
 			"signatureVerification": {
-				"level" : "strict",
+				"level": "strict",
 				"verifyTimestamp": "afterCertExpiry"
 			},
 			"trustStores": [` + defaultTruststores + `],
