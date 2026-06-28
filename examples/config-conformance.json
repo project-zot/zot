@@ -3,7 +3,7 @@
   "storage": {
     "rootDirectory": "/tmp/zot",
     "gc": true,
-    "dedupe": false
+    "dedupe": true
   },
   "http": {
     "address": "0.0.0.0",
