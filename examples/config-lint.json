@@ -13,8 +13,8 @@
     "extensions": {
         "lint": {
           "enable": true,
-          "mandatoryAnnotations": ["annot1", "annot2", "annot3"]
-          
-          }
-      }
+          "mandatoryAnnotations": ["annot1", "annot2", "annot3"],
+          "mandatorySignatures": ["repo1", "repo2", "**"]
+        }
+    }
 }

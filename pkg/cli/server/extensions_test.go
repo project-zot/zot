@@ -885,7 +885,7 @@ func TestServeLintExtension(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		So(string(data), ShouldContainSubstring,
-			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":{\"Enable\":false,\"MandatoryAnnotations\":null}") //nolint:lll // gofumpt conflicts with lll
+			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":{\"Enable\":false,\"MandatoryAnnotations\":null,\"MandatorySignatures\":null}") //nolint:lll // gofumpt conflicts with lll
 	})
 }
 
