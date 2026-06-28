@@ -4648,3 +4648,90 @@ func TestPutIndexContent_atomicReplace(t *testing.T) {
 		})
 	})
 }
+
+// TestCheckBlobEmptyBlob covers the zero-size blob branch added to CheckBlob and
+// originalBlobInfo.  Three sub-cases are tested for the local (filesystem) driver:
+//
+//  1. A genuine empty blob uploaded via the normal path returns (true, 0, nil).
+//  2. StatBlob on the same genuine empty blob also returns (true, 0, ...).
+//  3. A zero-size file planted at a blob path whose digest does NOT match the
+//     hash of empty content (simulating an S3-style deduplication placeholder
+//     without a backing cache entry) is reported as not found.
+func TestCheckBlobEmptyBlob(t *testing.T) {
+	const repo = "empty-blob-test"
+
+	_, imgStore, cleanup := newLocalImageStoreWithDriver(t, nil)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	assertExpectation := func(actual any, assertion func(any, ...any) string, expected ...any) {
+		t.Helper()
+
+		if msg := assertion(actual, expected...); msg != "" {
+			t.Fatal(msg)
+		}
+	}
+
+	// Initialise the repository so blob uploads can proceed.
+	if err := imgStore.InitRepo(ctx, repo); err != nil {
+		t.Fatalf("InitRepo: %v", err)
+	}
+
+	// ------------------------------------------------------------------ //
+	// Case 1 & 2: genuine empty blob (sha256:e3b0c44...).
+	// ------------------------------------------------------------------ //
+	emptyContent := []byte{}
+	emptyDigest := godigest.FromBytes(emptyContent)
+
+	upload, err := imgStore.NewBlobUpload(ctx, repo)
+	if err != nil {
+		t.Fatalf("NewBlobUpload: %v", err)
+	}
+
+	err = imgStore.FinishBlobUpload(repo, upload, bytes.NewReader(emptyContent), emptyDigest)
+	if err != nil {
+		t.Fatalf("FinishBlobUpload: %v", err)
+	}
+
+	// Case 1: CheckBlob must report the empty blob as present with size 0.
+	ok, size, err := imgStore.CheckBlob(ctx, repo, emptyDigest)
+	assertExpectation(ok, ShouldBeTrue)
+	assertExpectation(size, ShouldEqual, int64(0))
+	assertExpectation(err, ShouldBeNil)
+
+	// Case 2: StatBlob must also succeed and report size 0.
+	statOk, statSize, _, statErr := imgStore.StatBlob(repo, emptyDigest)
+	assertExpectation(statOk, ShouldBeTrue)
+	assertExpectation(statSize, ShouldEqual, int64(0))
+	assertExpectation(statErr, ShouldBeNil)
+
+	// ------------------------------------------------------------------ //
+	// Case 3: zero-size placeholder whose digest is NOT the empty-content hash.
+	//
+	// Plant an empty file at the expected blob path for an arbitrary non-empty
+	// digest.  This simulates what object-store deduplication drivers (S3, GCS,
+	// Azure) write when they hard-link blobs via the cache: they leave a
+	// zero-byte stub file.  CheckBlob must NOT mistakenly accept such a stub as
+	// a genuine empty blob; it should fall through to the cache lookup and
+	// return ErrBlobNotFound when there is no cache entry.
+	// ------------------------------------------------------------------ //
+	nonEmptyContent := []byte("not-empty")
+	nonEmptyDigest := godigest.FromBytes(nonEmptyContent)
+
+	blobPath := imgStore.BlobPath(repo, nonEmptyDigest)
+
+	// Ensure the parent directory exists before writing the stub.
+	if err := os.MkdirAll(path.Dir(blobPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	if err := os.WriteFile(blobPath, []byte{}, 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	ok, size, err = imgStore.CheckBlob(ctx, repo, nonEmptyDigest)
+	assertExpectation(ok, ShouldBeFalse)
+	assertExpectation(size, ShouldEqual, int64(-1))
+	assertExpectation(err, ShouldEqual, zerr.ErrBlobNotFound)
+}

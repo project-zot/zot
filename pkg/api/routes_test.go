@@ -1353,6 +1353,23 @@ func TestRoutes(t *testing.T) {
 				})
 			So(statusCode, ShouldEqual, http.StatusInternalServerError)
 
+			// full blob upload with empty body and no Content-Length header
+			statusCode = testCreateBlobUpload(
+				[]struct{ k, v string }{
+					{"digest", "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+				},
+				map[string]string{
+					"Content-Type": constants.BinaryMediaType,
+				},
+				&mocks.MockedImageStore{
+					FullBlobUploadFn: func(ctx context.Context, repo string, body io.Reader,
+						digest godigest.Digest,
+					) (string, int64, error) {
+						return sessionStr, 0, nil
+					},
+				})
+			So(statusCode, ShouldEqual, http.StatusCreated)
+
 			// newBlobUpload not found
 			statusCode = testCreateBlobUpload(
 				[]struct{ k, v string }{},
