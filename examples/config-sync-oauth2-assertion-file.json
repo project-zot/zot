@@ -22,7 +22,7 @@
                     "maxRetries": 5,
                     "retryDelay": "2m",
                     "credentialHelper": "oauth2",
-                    "credentialHelperConfig": {
+                    "oauth2CredentialHelper": {
                         "tokenURL": "https://idp.example.com/oauth2/token",
                         "assertionFile": "./examples/sync-oauth2-assertion.jwt",
                         "grantType": "urn:ietf:params:oauth:grant-type:jwt-bearer",

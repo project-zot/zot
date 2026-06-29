@@ -42,25 +42,25 @@ const (
 )
 
 var (
-	errOAuth2ConfigMissing       = errors.New("oauth2 credential helper requires oauth2HelperConfig")
-	errOAuth2TokenURLMissing     = errors.New("oauth2 credential helper requires a tokenURL")
-	errOAuth2AssertionMissing    = errors.New("oauth2 credential helper requires an assertionFile or a signingConfigFile")
-	errOAuth2AssertionConflict   = errors.New("oauth2 credential helper accepts only one of assertionFile or signingConfigFile")
-	errOAuth2ReadAssertion       = errors.New("unable to read the oauth2 assertion file")
-	errOAuth2ReadSecret          = errors.New("unable to read the oauth2 client secret file")
-	errOAuth2ReadSigningConfig   = errors.New("unable to read the oauth2 signing config file")
-	errOAuth2DecodeSigningConfig = errors.New("unable to decode the oauth2 signing config file")
-	errOAuth2SigningKeyMissing   = errors.New("the oauth2 signing config requires a privateKey or privateKeyFile")
-	errOAuth2ReadSigningKey      = errors.New("unable to read the oauth2 signing key file")
-	errOAuth2ParseSigningKey     = errors.New("unable to parse the oauth2 signing key")
-	errOAuth2UnsupportedAlg      = errors.New("unsupported oauth2 signing algorithm")
-	errOAuth2GenerateJTI         = errors.New("unable to generate the oauth2 assertion id")
-	errOAuth2SignAssertion       = errors.New("unable to sign the oauth2 assertion")
-	errOAuth2ExchangeFailed      = errors.New("failed to exchange the oauth2 assertion for an access token")
-	errOAuth2UnexpectedStatus    = errors.New("unexpected status code from the oauth2 token endpoint")
-	errOAuth2DecodeResponse      = errors.New("unable to decode the oauth2 token response")
-	errOAuth2EmptyAccessToken    = errors.New("the oauth2 token endpoint returned an empty access token")
-	errFailedToGetOAuth2Creds    = errors.New("failed to get oauth2 credentials")
+	errOauth2CredentialHelperMissing = errors.New("oauth2 credential helper requires oauth2CredentialHelper")
+	errOAuth2TokenURLMissing         = errors.New("oauth2 credential helper requires a tokenURL")
+	errOAuth2AssertionMissing        = errors.New("oauth2 credential helper requires an assertionFile or a SigningFile")
+	errOAuth2AssertionConflict       = errors.New("oauth2 credential helper accepts only one of assertionFile or SigningFile")
+	errOAuth2ReadAssertion           = errors.New("unable to read the oauth2 assertion file")
+	errOAuth2ReadSecret              = errors.New("unable to read the oauth2 client secret file")
+	errOAuth2ReadSigningFile         = errors.New("unable to read the oauth2 signing file")
+	errOAuth2DecodeSigningFile       = errors.New("unable to decode the oauth2 signing file")
+	errOAuth2SigningKeyMissing       = errors.New("the oauth2 signing requires a privateKey or privateKeyFile")
+	errOAuth2ReadSigningKey          = errors.New("unable to read the oauth2 signing key file")
+	errOAuth2ParseSigningKey         = errors.New("unable to parse the oauth2 signing key")
+	errOAuth2UnsupportedAlg          = errors.New("unsupported oauth2 signing algorithm")
+	errOAuth2GenerateJTI             = errors.New("unable to generate the oauth2 assertion id")
+	errOAuth2SignAssertion           = errors.New("unable to sign the oauth2 assertion")
+	errOAuth2ExchangeFailed          = errors.New("failed to exchange the oauth2 assertion for an access token")
+	errOAuth2UnexpectedStatus        = errors.New("unexpected status code from the oauth2 token endpoint")
+	errOAuth2DecodeResponse          = errors.New("unable to decode the oauth2 token response")
+	errOAuth2EmptyAccessToken        = errors.New("the oauth2 token endpoint returned an empty access token")
+	errFailedToGetOAuth2Creds        = errors.New("failed to get oauth2 credentials")
 )
 
 type oauth2Token struct {
@@ -82,12 +82,11 @@ type oauth2TokenResponse struct {
 	ExpiresIn   int    `json:"expires_in"`   //nolint:tagliatelle // OAuth2 token response field
 }
 
-// oauth2SigningConfig is read from the file pointed to by SigningConfigFile and holds the
+// oauth2SigningConfig is read from the file pointed to by SigningFile and holds the
 // private key and claims used to mint a fresh JWT assertion on every token exchange. Keeping
 // it in a dedicated file lets the signing key be mounted as a secret, separate from the main
 // zot configuration.
 type oauth2SigningConfig struct {
-	PrivateKey     string `json:"privateKey"`     // inline PEM-encoded private key
 	PrivateKeyFile string `json:"privateKeyFile"` // path to a PEM-encoded private key
 	Algorithm      string `json:"algorithm"`      // JWT signing algorithm, e.g. RS256 or ES256
 	KeyID          string `json:"keyId"`          // optional "kid" header value
@@ -103,7 +102,7 @@ func NewOAuth2CredentialHelper(
 	config *syncconf.OAuth2HelperConfig,
 ) (CredentialHelper, error) {
 	if config == nil {
-		return nil, errOAuth2ConfigMissing
+		return nil, errOauth2CredentialHelperMissing
 	}
 
 	if config.TokenURL == "" {
@@ -111,13 +110,13 @@ func NewOAuth2CredentialHelper(
 	}
 
 	hasAssertionFile := config.AssertionFile != ""
-	hasSigningConfig := config.SigningConfigFile != ""
+	hasSigningFile := config.SigningFile != ""
 
-	if !hasAssertionFile && !hasSigningConfig {
+	if !hasAssertionFile && !hasSigningFile {
 		return nil, errOAuth2AssertionMissing
 	}
 
-	if hasAssertionFile && hasSigningConfig {
+	if hasAssertionFile && hasSigningFile {
 		return nil, errOAuth2AssertionConflict
 	}
 
@@ -186,11 +185,11 @@ func (credHelper *oauth2CredentialsHelper) requestValues(assertion, clientSecret
 	return values
 }
 
-// assertion returns the JWT assertion to exchange for an access token. When a signing config
+// assertion returns the JWT assertion to exchange for an access token. When a signing file
 // is set it mints a fresh, single-use assertion (unique "jti") in-code; otherwise it reads a
 // pre-signed one from AssertionFile. Both sources are re-evaluated on every refresh.
 func (credHelper *oauth2CredentialsHelper) assertion() (string, error) {
-	if credHelper.config.SigningConfigFile != "" {
+	if credHelper.config.SigningFile != "" {
 		return credHelper.mintAssertion()
 	}
 
@@ -202,17 +201,17 @@ func (credHelper *oauth2CredentialsHelper) assertion() (string, error) {
 	return strings.TrimSpace(string(assertion)), nil
 }
 
-// mintAssertion reads the signing config and signs a fresh, single-use JWT assertion from it.
+// mintAssertion reads the signing file and signs a fresh, single-use JWT assertion from it.
 func (credHelper *oauth2CredentialsHelper) mintAssertion() (string, error) {
-	raw, err := os.ReadFile(credHelper.config.SigningConfigFile)
+	raw, err := os.ReadFile(credHelper.config.SigningFile)
 	if err != nil {
-		return "", fmt.Errorf("%w %s: %w", errOAuth2ReadSigningConfig, credHelper.config.SigningConfigFile, err)
+		return "", fmt.Errorf("%w %s: %w", errOAuth2ReadSigningFile, credHelper.config.SigningFile, err)
 	}
 
 	var signingConfig oauth2SigningConfig
 
 	if err := json.Unmarshal(raw, &signingConfig); err != nil {
-		return "", fmt.Errorf("%w %s: %w", errOAuth2DecodeSigningConfig, credHelper.config.SigningConfigFile, err)
+		return "", fmt.Errorf("%w %s: %w", errOAuth2DecodeSigningFile, credHelper.config.SigningFile, err)
 	}
 
 	method := jwt.GetSigningMethod(signingConfig.Algorithm)
@@ -286,10 +285,6 @@ func (credHelper *oauth2CredentialsHelper) parseSigningKey(
 // signingKeyPEM returns the PEM-encoded private key, preferring the inline value
 // over the file reference.
 func signingKeyPEM(signingConfig oauth2SigningConfig) ([]byte, error) {
-	if signingConfig.PrivateKey != "" {
-		return []byte(signingConfig.PrivateKey), nil
-	}
-
 	if signingConfig.PrivateKeyFile != "" {
 		pemKey, err := os.ReadFile(signingConfig.PrivateKeyFile)
 		if err != nil {

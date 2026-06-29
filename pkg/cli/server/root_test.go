@@ -177,8 +177,8 @@ func TestLoadConfigurationDecodesPolicyConditions(t *testing.T) {
 	})
 }
 
-func TestLoadConfigurationSyncCredentialHelperConfig(t *testing.T) {
-	Convey("the generic credentialHelperConfig dictionary loads and decodes", t, func() {
+func TestLoadConfigurationSyncCredentialHelper(t *testing.T) {
+	Convey("the generic oauth2CredentialHelper dictionary loads and decodes", t, func() {
 		content := `{
 			"storage": {"rootDirectory": "/tmp/zot"},
 			"http": {"address": "127.0.0.1", "port": "8080"},
@@ -189,9 +189,9 @@ func TestLoadConfigurationSyncCredentialHelperConfig(t *testing.T) {
 							"urls": ["https://registry.example.com"],
 							"onDemand": true,
 							"credentialHelper": "oauth2",
-							"credentialHelperConfig": {
+							"oauth2CredentialHelper": {
 								"tokenURL": "https://idp.example.com/token",
-								"signingConfigFile": "/run/secrets/signing-config.json",
+								"signingFile": "/run/secrets/signing-config.json",
 								"grantType": "urn:ietf:params:oauth:grant-type:jwt-bearer",
 								"clientID": "zot-sync",
 								"clientSecretFile": "/etc/zot/secret",
@@ -214,13 +214,13 @@ func TestLoadConfigurationSyncCredentialHelperConfig(t *testing.T) {
 		registries := cfg.Extensions.Sync.Registries
 		So(registries, ShouldHaveLength, 1)
 		So(registries[0].CredentialHelper, ShouldEqual, "oauth2")
-		So(registries[0].CredentialHelperConfig, ShouldNotBeEmpty)
+		So(registries[0].Oauth2CredentialHelper, ShouldNotBeEmpty)
 
-		oauth2Config, err := syncconf.OAuth2HelperConfigFromMap(registries[0].CredentialHelperConfig)
+		oauth2Config, err := syncconf.OAuth2HelperConfigFromMap(registries[0].Oauth2CredentialHelper)
 		So(err, ShouldBeNil)
 		So(oauth2Config, ShouldNotBeNil)
 		So(oauth2Config.TokenURL, ShouldEqual, "https://idp.example.com/token")
-		So(oauth2Config.SigningConfigFile, ShouldEqual, "/run/secrets/signing-config.json")
+		So(oauth2Config.SigningFile, ShouldEqual, "/run/secrets/signing-config.json")
 		So(oauth2Config.GrantType, ShouldEqual, "urn:ietf:params:oauth:grant-type:jwt-bearer")
 		So(oauth2Config.ClientID, ShouldEqual, "zot-sync")
 		So(oauth2Config.ClientSecretFile, ShouldEqual, "/etc/zot/secret")
