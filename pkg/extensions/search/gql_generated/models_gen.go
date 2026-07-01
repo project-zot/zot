@@ -185,7 +185,8 @@ type ImageSummary struct {
 	Referrers []*Referrer `json:"Referrers,omitempty"`
 	// True if current user has delete permission on this tag.
 	IsDeletable *bool `json:"IsDeletable,omitempty"`
-	// Value of the artifactType field if present, used to identify artifacts per OCI image spec guidelines
+	// For image manifests, value of the artifactType field if present else the value of the config media type.
+	// For image indexes, value of the index artifactType field.
 	ArtifactType *string `json:"ArtifactType,omitempty"`
 }
 
