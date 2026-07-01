@@ -47,9 +47,13 @@ Add OIDC workload identity configuration to your bearer authentication settings.
 - **`audiences`** (required): List of acceptable audiences for the OIDC token. At least one must be specified.
   - Example: `["zot", "https://zot.example.com"]`
 
-- **`realm`** (required for challenge-based OCI username/password login flows): Absolute URL of the bearer token service advertised in `WWW-Authenticate` challenges. Set this to Zot token exchange endpoint, normally `https://<registry-host>/zot/auth/token`, only when OCI clients should exchange an OIDC token password with Zot itself. If traditional bearer authentication already uses an external token service, keep `realm` pointed at that service.
+- **`realm`** (required for challenge-based OCI username/password login flows): Absolute URL of the bearer token service advertised in `WWW-Authenticate` challenges. Set this to Zot token exchange endpoint, normally `https://<registry-host>/zot/auth/token`, when OCI clients should exchange an OIDC token password with Zot itself.
 
 - **`service`** (recommended): Registry service name advertised in the bearer challenge. Use the registry host and port that clients connect to.
+
+- **`proxyRealm`** (optional; configure with `proxyService`): Upstream external token service URL used when Zot token exchange endpoint cannot authenticate the request as an OIDC token. These optional proxy fields let OIDC workload identity be used together with traditional bearer authentication while still advertising Zot `/zot/auth/token` as the single OCI challenge realm.
+
+- **`proxyService`** (optional; configure with `proxyRealm`): Service value Zot sends to the upstream token service. Zot preserves the original token request method, headers, query parameters, and body, rewriting only `service` to this value.
 
 - **`claimMapping`** (optional): CEL-based configuration for validating and mapping OIDC claims.
   - **`variables`**: List of variables to extract from claims using CEL expressions
@@ -90,8 +94,9 @@ claims to uniquely identify Kubernetes ServiceAccounts across different clusters
 Note that `claims.iss + '/' + claims.sub` is the default username mapping if none
 is specified (so the whole `claimMapping` section could be omitted in this example).
 The example also advertises Zot token exchange endpoint for OCI username/password
-login flows; keep `realm` pointed at your external token service instead if the
-same bearer configuration is also used for traditional bearer authentication.
+login flows. If the same bearer configuration also uses traditional bearer
+authentication, add `proxyRealm` and `proxyService` as shown in the compatibility
+section so non-OIDC token requests can fall back to the external token service.
 
 ```json
 {
@@ -282,9 +287,9 @@ curl -H "Authorization: Bearer $TOKEN" https://zot.example.com/v2/_catalog
 
 ### OCI Username/Password Login Flow
 
-Zot also supports the OCI token service flow for clients that only know how to send registry credentials as username/password pairs. When `bearer.oidc` is configured, Zot exposes `GET /zot/auth/token`. The username is ignored, and the password must be an OIDC ID token trusted by one of the configured providers.
+Zot also supports the OCI token service flow for clients that only know how to send registry credentials as username/password pairs. When `bearer.oidc` is configured, Zot exposes `GET` and `POST` on `/zot/auth/token`. The username is ignored, and the password must be an OIDC ID token trusted by one of the configured providers.
 
-To make Docker, containerd, or kubelet discover Zot token exchange endpoint automatically, configure `bearer.realm` as an externally reachable URL for `/zot/auth/token` and set `bearer.service` to the registry host clients use. Do this only when those clients should use Zot as the token service; mixed deployments that rely on an external bearer token service should keep `realm` pointed at the external service.
+To make Docker, containerd, or kubelet discover Zot token exchange endpoint automatically, configure `bearer.realm` as an externally reachable URL for `/zot/auth/token` and set `bearer.service` to the registry host clients use. In mixed deployments, set `proxyRealm` and `proxyService` so Zot can forward non-OIDC token requests to the existing external token service.
 
 Example token exchange request:
 
@@ -445,15 +450,17 @@ Use Zot's access control policies to grant permissions based on the OIDC identit
 
 OIDC workload identity can coexist with traditional bearer authentication. If both are configured, Zot will try OIDC authentication first, then fall back to traditional bearer token authentication.
 
-There is still only one `bearer.realm` value in the challenge. Keep it pointed at the external token service when challenge-based clients should obtain traditional bearer tokens from that service. Point it at Zot `/zot/auth/token` only when those clients should exchange OIDC token passwords with Zot:
+There is still only one `bearer.realm` value in the challenge, so mixed deployments should advertise Zot `/zot/auth/token` and configure the existing external token service as a proxy fallback. Zot first validates the token request password as an OIDC token. If that fails, Zot proxies the token request to `proxyRealm`, preserving the request shape and rewriting `service` to `proxyService`:
 
 ```json
 {
   "http": {
     "auth": {
       "bearer": {
-        "realm": "https://auth.myreg.io/auth/token",
-        "service": "myauth",
+        "realm": "https://zot.example.com/zot/auth/token",
+        "service": "zot.example.com",
+        "proxyRealm": "https://auth.myreg.io/auth/token",
+        "proxyService": "myauth",
         "cert": "/etc/zot/auth.crt",
         "oidc": [
           {

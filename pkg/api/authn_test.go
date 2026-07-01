@@ -1318,6 +1318,128 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			So(invalidResp.Header().Get("Pragma"), ShouldEqual, "no-cache")
 		})
 
+		Convey("OIDC token exchange proxies GET requests after OIDC authentication fails", func() {
+			conf := config.New()
+			port := test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
+
+			var gotMethod, gotUsername, gotPassword, gotService, gotScope, gotClientID, gotFrom string
+			proxyServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				gotMethod = request.Method
+				gotUsername, gotPassword, _ = request.BasicAuth()
+				gotService = request.URL.Query().Get("service")
+				gotScope = request.URL.Query().Get("scope")
+				gotClientID = request.URL.Query().Get("client_id")
+				gotFrom = request.URL.Query().Get("from")
+
+				response.Header().Set("Content-Type", "application/json")
+				response.Header().Set("X-Token-Proxy", "hit")
+				response.WriteHeader(http.StatusAccepted)
+				_, _ = response.Write([]byte(`{"token":"proxied-token"}`))
+			}))
+			defer proxyServer.Close()
+
+			conf.HTTP.Port = port
+			conf.HTTP.Auth = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					Realm:        baseURL + constants.TokenPath,
+					Service:      "zot-service",
+					ProxyRealm:   proxyServer.URL + "/token?from=proxy",
+					ProxyService: "upstream-service",
+					OIDC: []config.BearerOIDCConfig{{
+						Issuer:    issuer,
+						Audiences: []string{audience},
+					}},
+				},
+			}
+			conf.Storage.RootDirectory = t.TempDir()
+
+			ctlr := api.NewController(conf)
+			cm := test.NewControllerManager(ctlr)
+
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			proxyResp, err := resty.R().
+				SetBasicAuth("user", "not-an-oidc-token").
+				SetQueryParam("service", "zot-service").
+				SetQueryParam("scope", "repository:testrepo:pull").
+				SetQueryParam("client_id", "test-client").
+				Get(baseURL + constants.TokenPath)
+			So(err, ShouldBeNil)
+			So(proxyResp.StatusCode(), ShouldEqual, http.StatusAccepted)
+			So(proxyResp.Header().Get("X-Token-Proxy"), ShouldEqual, "hit")
+			So(string(proxyResp.Body()), ShouldEqual, `{"token":"proxied-token"}`)
+
+			So(gotMethod, ShouldEqual, http.MethodGet)
+			So(gotUsername, ShouldEqual, "user")
+			So(gotPassword, ShouldEqual, "not-an-oidc-token")
+			So(gotService, ShouldEqual, "upstream-service")
+			So(gotScope, ShouldEqual, "repository:testrepo:pull")
+			So(gotClientID, ShouldEqual, "test-client")
+			So(gotFrom, ShouldEqual, "proxy")
+		})
+
+		Convey("OIDC token exchange proxies POST form requests after OIDC authentication fails", func() {
+			conf := config.New()
+			port := test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
+
+			var gotMethod, gotService, gotScope, gotGrantType, gotUsername, gotPassword string
+			proxyServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				gotMethod = request.Method
+				if err := request.ParseForm(); err != nil {
+					t.Errorf("failed to parse upstream token request form: %v", err)
+				}
+				gotService = request.PostForm.Get("service")
+				gotScope = request.PostForm.Get("scope")
+				gotGrantType = request.PostForm.Get("grant_type")
+				gotUsername = request.PostForm.Get("username")
+				gotPassword = request.PostForm.Get("password")
+
+				response.Header().Set("Content-Type", "application/json")
+				_, _ = response.Write([]byte(`{"access_token":"proxied-access-token"}`))
+			}))
+			defer proxyServer.Close()
+
+			conf.HTTP.Port = port
+			conf.HTTP.Auth = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					Realm:        baseURL + constants.TokenPath,
+					Service:      "zot-service",
+					ProxyRealm:   proxyServer.URL + "/token",
+					ProxyService: "upstream-service",
+					OIDC: []config.BearerOIDCConfig{{
+						Issuer:    issuer,
+						Audiences: []string{audience},
+					}},
+				},
+			}
+			conf.Storage.RootDirectory = t.TempDir()
+
+			ctlr := api.NewController(conf)
+			cm := test.NewControllerManager(ctlr)
+
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			proxyResp, err := resty.R().
+				SetHeader("Content-Type", "application/x-www-form-urlencoded").
+				SetBody("grant_type=password&username=user&password=not-an-oidc-token" +
+					"&service=zot-service&scope=repository:testrepo:pull").
+				Post(baseURL + constants.TokenPath)
+			So(err, ShouldBeNil)
+			So(proxyResp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(string(proxyResp.Body()), ShouldEqual, `{"access_token":"proxied-access-token"}`)
+
+			So(gotMethod, ShouldEqual, http.MethodPost)
+			So(gotService, ShouldEqual, "upstream-service")
+			So(gotScope, ShouldEqual, "repository:testrepo:pull")
+			So(gotGrantType, ShouldEqual, "password")
+			So(gotUsername, ShouldEqual, "user")
+			So(gotPassword, ShouldEqual, "not-an-oidc-token")
+		})
+
 		Convey("OIDC authentication success with groups", func() {
 			conf := config.New()
 			port := test.GetFreePort()

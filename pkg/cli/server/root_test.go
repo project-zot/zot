@@ -3470,6 +3470,65 @@ func TestBearerASMConfigValidation(t *testing.T) {
 			So(err, ShouldWrap, zerr.ErrBadConfig)
 		})
 
+		Convey("Reject proxyRealm without proxyService", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1", "port": "8080",
+					"auth": {
+						"bearer": {
+							"realm": "test", "service": "test",
+							"proxyRealm": "https://auth.example.com/token"
+						}
+					}
+				}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+		})
+
+		Convey("Reject invalid proxyRealm", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1", "port": "8080",
+					"auth": {
+						"bearer": {
+							"realm": "test", "service": "test",
+							"proxyRealm": "/token", "proxyService": "upstream"
+						}
+					}
+				}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+		})
+
+		Convey("Valid proxy token service config is accepted", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1", "port": "8080",
+					"auth": {
+						"bearer": {
+							"realm": "test", "service": "test",
+							"proxyRealm": "https://auth.example.com/token", "proxyService": "upstream"
+						}
+					}
+				}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldBeNil)
+		})
+
 		Convey("Reject empty region", func() {
 			content := `{
 				"storage": {"rootDirectory": "/tmp/zot"},

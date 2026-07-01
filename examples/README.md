@@ -375,6 +375,8 @@ NOTE: The separate file for storing DN and password credentials must be created.
       }
 ```
 
+When OIDC workload identity/federation uses Zot `/zot/auth/token` but the same deployment still needs this traditional bearer token service, configure the optional `proxyRealm` and `proxyService` fields together. `proxyRealm` points to the existing token service and `proxyService` is the upstream service value; Zot preserves the token request and rewrites only `service` before proxying non-OIDC token requests.
+
 ### OpenID/OAuth2 social login
 
 zot supports several openID/OAuth2 providers:
