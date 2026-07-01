@@ -7,6 +7,7 @@ import (
 	"errors"
 	"testing"
 
+	godigest "github.com/opencontainers/go-digest"
 	"github.com/99designs/gqlgen/graphql"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
@@ -20,6 +21,34 @@ import (
 )
 
 var ErrTestError = errors.New("TestError")
+
+func TestGetLayersSummaries(t *testing.T) {
+	Convey("Layer summaries include descriptor media type and annotations", t, func() {
+		manifest := ispec.Manifest{
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageLayerGzip,
+					Digest:    godigest.FromString("layer-1"),
+					Size:      123,
+					Annotations: map[string]string{
+						ispec.AnnotationTitle: "artifact.tar.gz",
+					},
+				},
+			},
+		}
+
+		layers := getLayersSummaries(manifest)
+
+		So(layers, ShouldHaveLength, 1)
+		So(layers[0], ShouldNotBeNil)
+		So(*layers[0].Size, ShouldEqual, "123")
+		So(*layers[0].Digest, ShouldEqual, godigest.FromString("layer-1").String())
+		So(*layers[0].MediaType, ShouldEqual, ispec.MediaTypeImageLayerGzip)
+		So(layers[0].Annotations, ShouldHaveLength, 1)
+		So(*layers[0].Annotations[0].Key, ShouldEqual, ispec.AnnotationTitle)
+		So(*layers[0].Annotations[0].Value, ShouldEqual, "artifact.tar.gz")
+	})
+}
 
 func TestCVEConvert(t *testing.T) {
 	Convey("Test adding CVE information to Summary objects", t, func() {

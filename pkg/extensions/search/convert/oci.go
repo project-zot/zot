@@ -15,10 +15,13 @@ func getLayersSummaries(manifestContent ispec.Manifest) []*gql_generated.LayerSu
 	for _, layer := range manifestContent.Layers {
 		size := strconv.FormatInt(layer.Size, 10)
 		digest := layer.Digest.String()
+		mediaType := layer.MediaType
 
 		layers = append(layers, &gql_generated.LayerSummary{
-			Size:   &size,
-			Digest: &digest,
+			Size:        &size,
+			Digest:      &digest,
+			MediaType:   &mediaType,
+			Annotations: getAnnotationsFromMap(layer.Annotations),
 		})
 	}
 

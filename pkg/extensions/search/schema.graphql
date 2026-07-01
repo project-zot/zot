@@ -434,6 +434,14 @@ type LayerSummary {
     Digest of the layer content
     """
     Digest: String
+    """
+    Media type of the layer descriptor
+    """
+    MediaType: String
+    """
+    OCI annotations attached to the layer descriptor
+    """
+    Annotations: [Annotation]
 }
 
 """

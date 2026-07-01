@@ -97,9 +97,11 @@ type ImageVulnerabilitySummary struct {
 }
 
 type LayerSummary struct {
-	Size   string `json:"size"`
-	Digest string `json:"digest"`
-	Score  int    `json:"score"`
+	Size        string       `json:"size"`
+	Digest      string       `json:"digest"`
+	Score       int          `json:"score"`
+	MediaType   string       `json:"mediaType"`
+	Annotations []Annotation `json:"annotations"`
 }
 
 type LayerHistory struct {
