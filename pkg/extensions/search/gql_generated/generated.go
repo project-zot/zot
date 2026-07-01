@@ -130,8 +130,10 @@ type ComplexityRoot struct {
 	}
 
 	LayerSummary struct {
-		Digest func(childComplexity int) int
-		Size   func(childComplexity int) int
+		Annotations func(childComplexity int) int
+		Digest      func(childComplexity int) int
+		MediaType   func(childComplexity int) int
+		Size        func(childComplexity int) int
 	}
 
 	ManifestSummary struct {
@@ -663,12 +665,24 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.LayerHistory.Layer(childComplexity), true
 
+	case "LayerSummary.Annotations":
+		if e.ComplexityRoot.LayerSummary.Annotations == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LayerSummary.Annotations(childComplexity), true
 	case "LayerSummary.Digest":
 		if e.ComplexityRoot.LayerSummary.Digest == nil {
 			break
 		}
 
 		return e.ComplexityRoot.LayerSummary.Digest(childComplexity), true
+	case "LayerSummary.MediaType":
+		if e.ComplexityRoot.LayerSummary.MediaType == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LayerSummary.MediaType(childComplexity), true
 	case "LayerSummary.Size":
 		if e.ComplexityRoot.LayerSummary.Size == nil {
 			break
@@ -1637,6 +1651,14 @@ type LayerSummary {
     Digest of the layer content
     """
     Digest: String
+    """
+    Media type of the layer descriptor
+    """
+    MediaType: String
+    """
+    OCI annotations attached to the layer descriptor
+    """
+    Annotations: [Annotation]
 }
 
 """
@@ -2305,6 +2327,10 @@ func (ec *executionContext) childFields_LayerSummary(ctx context.Context, field 
 		return ec.fieldContext_LayerSummary_Size(ctx, field)
 	case "Digest":
 		return ec.fieldContext_LayerSummary_Digest(ctx, field)
+	case "MediaType":
+		return ec.fieldContext_LayerSummary_MediaType(ctx, field)
+	case "Annotations":
+		return ec.fieldContext_LayerSummary_Annotations(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type LayerSummary", field.Name)
 }
@@ -4741,6 +4767,61 @@ func (ec *executionContext) _LayerSummary_Digest(ctx context.Context, field grap
 }
 func (ec *executionContext) fieldContext_LayerSummary_Digest(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("LayerSummary", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _LayerSummary_MediaType(ctx context.Context, field graphql.CollectedField, obj *LayerSummary) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LayerSummary_MediaType(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.MediaType, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_LayerSummary_MediaType(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LayerSummary", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _LayerSummary_Annotations(ctx context.Context, field graphql.CollectedField, obj *LayerSummary) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LayerSummary_Annotations(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Annotations, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*Annotation) graphql.Marshaler {
+			return ec.marshalOAnnotation2ᚕᚖzotregistryᚗdevᚋzotᚋv2ᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐAnnotation(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_LayerSummary_Annotations(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "LayerSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Annotation(ctx, field)
+		},
+	}
+	return fc, nil
 }
 
 func (ec *executionContext) _ManifestSummary_Digest(ctx context.Context, field graphql.CollectedField, obj *ManifestSummary) (ret graphql.Marshaler) {
@@ -8610,6 +8691,16 @@ func (ec *executionContext) _LayerSummary(ctx context.Context, sel ast.Selection
 			if out.Values[i] == graphql.RequiredNull {
 				out.Invalids++
 			}
+		case "MediaType":
+			out.Values[i] = ec._LayerSummary_MediaType(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		case "Annotations":
+			out.Values[i] = ec._LayerSummary_Annotations(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -10349,6 +10440,19 @@ func (ec *executionContext) marshalN__TypeKind2string(ctx context.Context, sel a
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) marshalOAnnotation2ᚕᚖzotregistryᚗdevᚋzotᚋv2ᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐAnnotation(ctx context.Context, sel ast.SelectionSet, v []*Annotation) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalOAnnotation2ᚖzotregistryᚗdevᚋzotᚋv2ᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐAnnotation(ctx, sel, v[i])
+	})
+
+	return ret
 }
 
 func (ec *executionContext) marshalOAnnotation2ᚖzotregistryᚗdevᚋzotᚋv2ᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐAnnotation(ctx context.Context, sel ast.SelectionSet, v *Annotation) graphql.Marshaler {

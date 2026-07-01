@@ -219,6 +219,10 @@ type LayerSummary struct {
 	Size *string `json:"Size,omitempty"`
 	// Digest of the layer content
 	Digest *string `json:"Digest,omitempty"`
+	// Media type of the layer descriptor
+	MediaType *string `json:"MediaType,omitempty"`
+	// OCI annotations attached to the layer descriptor
+	Annotations []*Annotation `json:"Annotations,omitempty"`
 }
 
 // Details about a specific version of an image for a certain operating system and architecture.
