@@ -491,3 +491,51 @@ func TestOIDCBearerTokenExchangeProxyError(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusBadGateway, response.Code)
 	}
 }
+
+func TestOIDCBearerTokenExchangeRejectsUnsupportedMethod(t *testing.T) {
+	t.Parallel()
+
+	conf := config.New()
+	conf.HTTP.Auth = &config.AuthConfig{Bearer: &config.BearerConfig{Realm: "zot"}}
+
+	routeHandler := &RouteHandler{
+		c: &Controller{
+			Config: conf,
+			Log:    log.NewTestLogger(),
+		},
+	}
+
+	request := httptest.NewRequest(http.MethodPut, "/zot/auth/token", nil)
+	response := httptest.NewRecorder()
+
+	routeHandler.OIDCBearerTokenExchange(&OIDCBearerAuthorizer{})(response, request)
+
+	if response.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected status %d, got %d", http.StatusMethodNotAllowed, response.Code)
+	}
+}
+
+func TestOIDCBearerTokenExchangeRejectsMultipleAuthorizationHeaders(t *testing.T) {
+	t.Parallel()
+
+	conf := config.New()
+	conf.HTTP.Auth = &config.AuthConfig{Bearer: &config.BearerConfig{Realm: "zot"}}
+
+	routeHandler := &RouteHandler{
+		c: &Controller{
+			Config: conf,
+			Log:    log.NewTestLogger(),
+		},
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/zot/auth/token", nil)
+	request.Header.Add("Authorization", "Basic dXNlcjpwYXNz")
+	request.Header.Add("Authorization", "Bearer token")
+	response := httptest.NewRecorder()
+
+	routeHandler.OIDCBearerTokenExchange(&OIDCBearerAuthorizer{})(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, response.Code)
+	}
+}

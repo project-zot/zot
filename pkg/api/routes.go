@@ -319,8 +319,22 @@ type oidcBearerTokenResponse struct {
 
 func (rh *RouteHandler) OIDCBearerTokenExchange(authorizer *OIDCBearerAuthorizer) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
-		if request.Method == http.MethodOptions {
+		switch request.Method {
+		case http.MethodOptions:
 			response.WriteHeader(http.StatusNoContent)
+
+			return
+		case http.MethodGet, http.MethodPost:
+		default:
+			response.WriteHeader(http.StatusMethodNotAllowed)
+
+			return
+		}
+
+		if hasMultipleAuthorizationHeaders(request) {
+			rh.c.Log.Error().Msg("failed to parse Authorization header: multiple Authorization headers detected")
+			response.Header().Set("Content-Type", "application/json")
+			zcommon.WriteJSON(response, http.StatusUnauthorized, apiErr.NewError(apiErr.UNSUPPORTED))
 
 			return
 		}
