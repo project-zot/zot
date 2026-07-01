@@ -1358,7 +1358,8 @@ Configure each registry sync:
 				"tlsVerify": true,                  # whether or not to verify tls (default is true)
 				"certDir": "/home/user/certs",      # use certificates at certDir path similar to Docker's /etc/docker/certs.d., if not specified then use the default certs dir,
 				"maxRetries": 5,                    # maxRetries in case of temporary errors (default: no retries)
-				"retryDelay": "10m",                # delay between retries, retry options are applied for both on demand and periodically sync and retryDelay is mandatory when using maxRetries.
+				"retryDelay": "1s",                 # initial HTTP retry delay; mandatory when using maxRetries
+				"maxRetryDelay": "30s",             # max HTTP retry backoff; optional, defaults to retryDelay (fixed interval). Set higher than retryDelay for exponential backoff.
 				"onlySigned": true,                 # sync only signed images (either notary or cosign)
 				"content":[                         # which content to periodically pull, also it's used for filtering ondemand images, if not set then periodically polling will not run
 					{
@@ -1405,7 +1406,8 @@ Configure each registry sync:
 				"onDemand": true,                     # doesn't have content, don't periodically pull, pull just on demand.
 				"tlsVerify": true,
 				"maxRetries": 3,                      
-				"retryDelay": "15m"
+				"retryDelay": "15m",                # initial HTTP retry delay; fixed 15m interval unless maxRetryDelay is set higher
+				"maxRetryDelay": "15m"              # optional; omit or set equal to retryDelay for fixed interval (as here)
 			}
 		]
 		}

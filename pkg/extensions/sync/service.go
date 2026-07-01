@@ -806,6 +806,24 @@ func getTLSConfigOption(url *url.URL, tlsVerify *bool) config.TLSConf {
 	return tls
 }
 
+// httpRetryDelayBounds returns regclient WithDelay arguments for HTTP retry backoff.
+// When maxRetryDelay is unset, delayMax defaults to delayInit so existing configs keep a fixed retry interval.
+// Set maxRetryDelay greater than retryDelay to enable exponential backoff up to that cap.
+func httpRetryDelayBounds(opts syncconf.RegistryConfig) (time.Duration, time.Duration, bool) {
+	if opts.RetryDelay == nil {
+		return 0, 0, false
+	}
+
+	delayInit := *opts.RetryDelay
+	delayMax := delayInit
+
+	if opts.MaxRetryDelay != nil {
+		delayMax = *opts.MaxRetryDelay
+	}
+
+	return delayInit, delayMax, true
+}
+
 func newClient(opts syncconf.RegistryConfig, credentials syncconf.CredentialsFile, logger log.Logger,
 ) (*regclient.RegClient, []config.Host, error) {
 	urls, err := parseRegistryURLs(opts.URLs)
@@ -889,8 +907,8 @@ func newClient(opts syncconf.RegistryConfig, credentials syncconf.CredentialsFil
 		regOpts = append(regOpts, reg.WithRetryLimit(*opts.MaxRetries))
 	}
 
-	if opts.RetryDelay != nil {
-		regOpts = append(regOpts, reg.WithDelay(*opts.RetryDelay, *opts.RetryDelay))
+	if delayInit, delayMax, ok := httpRetryDelayBounds(opts); ok {
+		regOpts = append(regOpts, reg.WithDelay(delayInit, delayMax))
 	}
 
 	// Configure transport with timeouts to prevent indefinite hangs.

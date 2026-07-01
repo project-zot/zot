@@ -64,6 +64,7 @@ func TestSchemaAllowsNullForPointerFields(t *testing.T) {
 						map[string]any{
 							"tlsVerify":            nil,
 							"retryDelay":           nil,
+							"maxRetryDelay":        nil,
 							"onlySigned":           nil,
 							"syncLegacyCosignTags": nil,
 						},

@@ -1387,3 +1387,34 @@ func TestNewClientTimeoutBehavior(t *testing.T) {
 		})
 	})
 }
+
+func TestHTTPRetryDelayBounds(t *testing.T) {
+	Convey("httpRetryDelayBounds maps sync config to regclient delay args", t, func() {
+		retryDelay := 1 * time.Second
+		maxRetryDelay := 30 * time.Second
+
+		Convey("no retryDelay returns ok=false", func() {
+			delayInit, delayMax, ok := httpRetryDelayBounds(syncconf.RegistryConfig{})
+			So(ok, ShouldBeFalse)
+			So(delayInit, ShouldEqual, time.Duration(0))
+			So(delayMax, ShouldEqual, time.Duration(0))
+		})
+
+		Convey("retryDelay only defaults max to init (fixed interval)", func() {
+			delayInit, delayMax, ok := httpRetryDelayBounds(syncconf.RegistryConfig{RetryDelay: &retryDelay})
+			So(ok, ShouldBeTrue)
+			So(delayInit, ShouldEqual, retryDelay)
+			So(delayMax, ShouldEqual, retryDelay)
+		})
+
+		Convey("maxRetryDelay greater than retryDelay enables exponential backoff cap", func() {
+			delayInit, delayMax, ok := httpRetryDelayBounds(syncconf.RegistryConfig{
+				RetryDelay:    &retryDelay,
+				MaxRetryDelay: &maxRetryDelay,
+			})
+			So(ok, ShouldBeTrue)
+			So(delayInit, ShouldEqual, retryDelay)
+			So(delayMax, ShouldEqual, maxRetryDelay)
+		})
+	})
+}

@@ -1644,6 +1644,23 @@ func validateSync(config *config.Config, logger zlog.Logger) error {
 				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 			}
 
+			if regCfg.MaxRetryDelay != nil && regCfg.RetryDelay == nil {
+				msg := "retryDelay is required when using maxRetryDelay"
+				logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
+					extensionsConfig.Sync.Registries[regID]).Msg(msg)
+
+				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+			}
+
+			if regCfg.MaxRetryDelay != nil && regCfg.RetryDelay != nil &&
+				*regCfg.MaxRetryDelay < *regCfg.RetryDelay {
+				msg := "maxRetryDelay must be greater than or equal to retryDelay"
+				logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
+					extensionsConfig.Sync.Registries[regID]).Msg(msg)
+
+				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+			}
+
 			// check preserveDigest without compat
 			if regCfg.PreserveDigest && !config.IsCompatEnabled() {
 				msg := "can not use PreserveDigest option without enabling http.Compat"
