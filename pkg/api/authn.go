@@ -549,11 +549,7 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 	// OIDC bearer auth for workload identity
 	var oidcAuthorizer *OIDCBearerAuthorizer
 	if len(authConfig.Bearer.OIDC) > 0 {
-		var err error
-		oidcAuthorizer, err = NewOIDCBearerAuthorizer(authConfig.Bearer.OIDC, ctlr.Log)
-		if err != nil {
-			ctlr.Log.Panic().Err(err).Msg("failed to initialize OIDC bearer authorizer")
-		}
+		oidcAuthorizer = ctlr.getOIDCBearerAuthorizer(authConfig.Bearer.OIDC)
 	}
 
 	return func(next http.Handler) http.Handler {
@@ -696,10 +692,29 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 				ctlr.Log.Error().Msg("failed to authenticate with bearer token")
 			}
 
+			setBearerAuthChallenge(response, authConfig, requestedAccess)
 			response.Header().Set("Content-Type", "application/json")
 			zcommon.WriteJSON(response, http.StatusUnauthorized, apiErr.NewError(apiErr.UNAUTHORIZED))
 		})
 	}
+}
+
+func setBearerAuthChallenge(
+	response http.ResponseWriter,
+	authConfig *config.AuthConfig,
+	requestedAccess *ResourceAction,
+) {
+	if authConfig == nil || authConfig.Bearer == nil || authConfig.Bearer.Realm == "" {
+		return
+	}
+
+	challenge := AuthChallengeError{
+		realm:          authConfig.Bearer.Realm,
+		service:        authConfig.Bearer.Service,
+		resourceAction: requestedAccess,
+	}
+
+	response.Header().Set("WWW-Authenticate", challenge.Header())
 }
 
 func canonicalOrigin(parsedURL *url.URL) (string, bool) {

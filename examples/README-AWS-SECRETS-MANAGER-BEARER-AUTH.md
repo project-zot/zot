@@ -177,15 +177,17 @@ To rotate keys without downtime:
 
 ### With OIDC Workload Identity
 
-AWS Secrets Manager bearer authentication can coexist with OIDC workload identity. If both are configured, Zot will try OIDC authentication first, then fall back to traditional bearer token authentication using keys from AWS Secrets Manager:
+AWS Secrets Manager bearer authentication can coexist with OIDC workload identity. Direct bearer tokens are still verified using keys from AWS Secrets Manager after OIDC authentication fails. For challenge-based OCI username/password login, configure the optional `proxyRealm` and `proxyService` fields together so Zot's OIDC token exchange endpoint can forward non-OIDC token requests to the existing traditional bearer token service:
 
 ```json
 {
   "http": {
     "auth": {
       "bearer": {
-        "realm": "zot",
-        "service": "zot-service",
+        "realm": "https://zot.example.com/zot/auth/token",
+        "service": "zot.example.com",
+        "proxyRealm": "https://auth.myreg.io/auth/token",
+        "proxyService": "myauth",
         "awsSecretsManager": {
           "region": "us-east-1",
           "secretName": "zot/jwt-verification-keys"

@@ -8,6 +8,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -55,6 +56,11 @@ import (
 	"zotregistry.dev/zot/v2/pkg/test/inject"
 )
 
+var (
+	errInvalidProxyRealm     = errors.New("invalid proxy realm")
+	errInvalidTokenProxyForm = errors.New("invalid token proxy form body")
+)
+
 type RouteHandler struct {
 	c *Controller
 }
@@ -81,6 +87,13 @@ func (rh *RouteHandler) SetupRoutes() {
 
 	// Get auth config for OpenID checks
 	authConfig := rh.c.Config.CopyAuthConfig()
+	if authConfig.IsOIDCBearerAuthEnabled() {
+		oidcTokenAuthorizer := rh.c.getOIDCBearerAuthorizer(authConfig.Bearer.OIDC)
+
+		rh.c.Router.HandleFunc(constants.TokenPath, rh.OIDCBearerTokenExchange(oidcTokenAuthorizer)).
+			Methods(http.MethodGet, http.MethodPost, http.MethodOptions)
+	}
+
 	if authConfig.IsOpenIDAuthEnabled() {
 		// login path for openID
 		rh.c.Router.HandleFunc(constants.LoginPath, rh.AuthURLHandler())
@@ -297,6 +310,219 @@ func (rh *RouteHandler) CheckVersionSupport(response http.ResponseWriter, reques
 	}
 
 	zcommon.WriteData(response, http.StatusOK, "application/json", []byte{})
+}
+
+type oidcBearerTokenResponse struct {
+	Token       string `json:"token"`
+	AccessToken string `json:"access_token"` //nolint:tagliatelle
+}
+
+func (rh *RouteHandler) OIDCBearerTokenExchange(authorizer *OIDCBearerAuthorizer) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		switch request.Method {
+		case http.MethodOptions:
+			response.WriteHeader(http.StatusNoContent)
+
+			return
+		case http.MethodGet, http.MethodPost:
+		default:
+			response.WriteHeader(http.StatusMethodNotAllowed)
+
+			return
+		}
+
+		if hasMultipleAuthorizationHeaders(request) {
+			rh.c.Log.Error().Msg("failed to parse Authorization header: multiple Authorization headers detected")
+			response.Header().Set("Content-Type", "application/json")
+			zcommon.WriteJSON(response, http.StatusUnauthorized, apiErr.NewError(apiErr.UNSUPPORTED))
+
+			return
+		}
+
+		authConfig := rh.c.Config.CopyAuthConfig()
+		_, password, ok := request.BasicAuth()
+		if ok && password != "" {
+			res, err := authorizer.Authenticate(request.Context(), "Bearer "+password)
+			if err == nil && res != nil && res.Username != "" {
+				response.Header().Set("Cache-Control", "no-store")
+				response.Header().Set("Pragma", "no-cache")
+				zcommon.WriteJSON(response, http.StatusOK, oidcBearerTokenResponse{
+					Token:       password,
+					AccessToken: password,
+				})
+
+				return
+			}
+
+			rh.c.Log.Debug().Err(err).Msg("oidc bearer token exchange failed")
+		}
+
+		if bearerTokenProxyConfigured(authConfig) {
+			if err := rh.proxyOIDCBearerTokenExchange(response, request, authConfig.Bearer); err != nil {
+				rh.c.Log.Error().Err(err).Msg("failed to proxy oidc bearer token exchange")
+				http.Error(response, "failed to proxy token request", http.StatusBadGateway)
+			}
+
+			return
+		}
+
+		response.Header().Set("Cache-Control", "no-store")
+		response.Header().Set("Pragma", "no-cache")
+		oidcTokenExchangeUnauthorized(response, authConfig)
+	}
+}
+
+func bearerTokenProxyConfigured(authConfig *config.AuthConfig) bool {
+	return authConfig != nil && authConfig.Bearer != nil &&
+		authConfig.Bearer.ProxyRealm != "" && authConfig.Bearer.ProxyService != ""
+}
+
+func (rh *RouteHandler) proxyOIDCBearerTokenExchange(
+	response http.ResponseWriter,
+	request *http.Request,
+	bearerConfig *config.BearerConfig,
+) error {
+	proxyURL, err := url.Parse(bearerConfig.ProxyRealm)
+	if err != nil {
+		return fmt.Errorf("%w: %w", errInvalidProxyRealm, err)
+	}
+
+	if proxyURL.Scheme == "" || proxyURL.Host == "" {
+		return fmt.Errorf("%w: must be an absolute URL", errInvalidProxyRealm)
+	}
+
+	query := proxyURL.Query()
+	for key, values := range request.URL.Query() {
+		query.Del(key)
+
+		for _, value := range values {
+			query.Add(key, value)
+		}
+	}
+	query.Set("service", bearerConfig.ProxyService)
+	proxyURL.RawQuery = query.Encode()
+
+	body, contentLength, err := tokenProxyRequestBody(request, bearerConfig.ProxyService)
+	if err != nil {
+		return err
+	}
+
+	proxyReq, err := http.NewRequestWithContext(request.Context(), request.Method, proxyURL.String(), body)
+	if err != nil {
+		return err
+	}
+	if contentLength >= 0 {
+		proxyReq.ContentLength = contentLength
+	}
+
+	copyTokenProxyHeaders(proxyReq.Header, request.Header)
+
+	proxyClient, err := zcommon.CreateHTTPClient(&zcommon.HTTPClientOptions{
+		TLSEnabled: strings.EqualFold(proxyURL.Scheme, "https"),
+		VerifyTLS:  true,
+		Host:       proxyURL.Hostname(),
+	})
+	if err != nil {
+		return err
+	}
+
+	proxyClient.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+
+	//nolint:gosec // proxyRealm is an administrator-configured token service URL.
+	proxyResp, err := proxyClient.Do(proxyReq)
+	if err != nil {
+		return err
+	}
+	defer proxyResp.Body.Close()
+
+	copyTokenProxyHeaders(response.Header(), proxyResp.Header)
+	response.WriteHeader(proxyResp.StatusCode)
+	_, err = io.Copy(response, proxyResp.Body)
+
+	return err
+}
+
+func tokenProxyRequestBody(request *http.Request, proxyService string) (io.Reader, int64, error) {
+	if request.Body == nil || request.Body == http.NoBody {
+		return nil, 0, nil
+	}
+
+	if !isFormURLEncoded(request.Header.Get("Content-Type")) {
+		return request.Body, request.ContentLength, nil
+	}
+
+	bodyBytes, err := io.ReadAll(request.Body)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	form, parseErr := url.ParseQuery(string(bodyBytes))
+	if parseErr != nil {
+		return nil, 0, fmt.Errorf("%w: %w", errInvalidTokenProxyForm, parseErr)
+	}
+
+	form.Set("service", proxyService)
+	encodedBody := []byte(form.Encode())
+
+	return bytes.NewReader(encodedBody), int64(len(encodedBody)), nil
+}
+
+func isFormURLEncoded(contentType string) bool {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return false
+	}
+
+	return strings.EqualFold(mediaType, "application/x-www-form-urlencoded")
+}
+
+func copyTokenProxyHeaders(dst, src http.Header) {
+	connectionHeaders := map[string]struct{}{}
+
+	for _, value := range src.Values("Connection") {
+		for part := range strings.SplitSeq(value, ",") {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				connectionHeaders[http.CanonicalHeaderKey(part)] = struct{}{}
+			}
+		}
+	}
+
+	for key, values := range src {
+		canonicalKey := http.CanonicalHeaderKey(key)
+		if tokenProxyHeaderShouldBeSkipped(canonicalKey) {
+			continue
+		}
+		if _, ok := connectionHeaders[canonicalKey]; ok {
+			continue
+		}
+
+		for _, value := range values {
+			dst.Add(key, value)
+		}
+	}
+}
+
+func tokenProxyHeaderShouldBeSkipped(header string) bool {
+	switch header {
+	case "Connection", "Content-Length", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization", "Te", "Trailer",
+		"Transfer-Encoding", "Upgrade":
+		return true
+	default:
+		return false
+	}
+}
+
+func oidcTokenExchangeUnauthorized(response http.ResponseWriter, authConfig *config.AuthConfig) {
+	realm := "zot"
+	if authConfig != nil && authConfig.Bearer != nil && authConfig.Bearer.Realm != "" {
+		realm = authConfig.Bearer.Realm
+	}
+
+	response.Header().Set("WWW-Authenticate", "Basic realm="+strconv.Quote(realm))
+	zcommon.WriteJSON(response, http.StatusUnauthorized, apiErr.NewError(apiErr.UNAUTHORIZED))
 }
 
 // ListTags godoc

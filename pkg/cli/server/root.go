@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -815,6 +816,23 @@ func validateBearerConfig(cfg *config.Config, logger zlog.Logger) error {
 		logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
 		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+	}
+
+	if (bearer.ProxyRealm == "") != (bearer.ProxyService == "") {
+		msg := "proxyRealm and proxyService must be configured together"
+		logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
+
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+	}
+
+	if bearer.ProxyRealm != "" {
+		proxyRealm, err := url.Parse(bearer.ProxyRealm)
+		if err != nil || proxyRealm.Scheme == "" || proxyRealm.Host == "" {
+			msg := "proxyRealm must be an absolute URL"
+			logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
+
+			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+		}
 	}
 
 	if bearer.AWSSecretsManager != nil {
