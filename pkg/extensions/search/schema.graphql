@@ -277,6 +277,10 @@ type ImageSummary {
     True if current user has delete permission on this tag.
     """
     IsDeletable: Boolean
+    """
+    Value of the artifactType field if present, used to identify artifacts per OCI image spec guidelines
+    """
+    ArtifactType: String
 }
 """
 Details about a specific version of an image for a certain operating system and architecture.

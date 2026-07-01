@@ -87,6 +87,7 @@ type ComplexityRoot struct {
 	}
 
 	ImageSummary struct {
+		ArtifactType      func(childComplexity int) int
 		Authors           func(childComplexity int) int
 		Description       func(childComplexity int) int
 		Digest            func(childComplexity int) int
@@ -456,6 +457,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.ImageIdentifier.Tag(childComplexity), true
 
+	case "ImageSummary.ArtifactType":
+		if e.ComplexityRoot.ImageSummary.ArtifactType == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ImageSummary.ArtifactType(childComplexity), true
 	case "ImageSummary.Authors":
 		if e.ComplexityRoot.ImageSummary.Authors == nil {
 			break
@@ -1480,6 +1487,10 @@ type ImageSummary {
     True if current user has delete permission on this tag.
     """
     IsDeletable: Boolean
+    """
+    Value of the artifactType field if present, used to identify artifacts per OCI image spec guidelines
+    """
+    ArtifactType: String
 }
 """
 Details about a specific version of an image for a certain operating system and architecture.
@@ -2265,6 +2276,8 @@ func (ec *executionContext) childFields_ImageSummary(ctx context.Context, field 
 		return ec.fieldContext_ImageSummary_Referrers(ctx, field)
 	case "IsDeletable":
 		return ec.fieldContext_ImageSummary_IsDeletable(ctx, field)
+	case "ArtifactType":
+		return ec.fieldContext_ImageSummary_ArtifactType(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 }
@@ -4470,6 +4483,29 @@ func (ec *executionContext) _ImageSummary_IsDeletable(ctx context.Context, field
 }
 func (ec *executionContext) fieldContext_ImageSummary_IsDeletable(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("ImageSummary", field, false, false, errors.New("field of type Boolean does not have child fields"))
+}
+
+func (ec *executionContext) _ImageSummary_ArtifactType(ctx context.Context, field graphql.CollectedField, obj *ImageSummary) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ImageSummary_ArtifactType(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ArtifactType, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_ImageSummary_ArtifactType(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ImageSummary", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
 func (ec *executionContext) _ImageVulnerabilitySummary_MaxSeverity(ctx context.Context, field graphql.CollectedField, obj *ImageVulnerabilitySummary) (ret graphql.Marshaler) {
@@ -8450,6 +8486,11 @@ func (ec *executionContext) _ImageSummary(ctx context.Context, sel ast.Selection
 			}
 		case "IsDeletable":
 			out.Values[i] = ec._ImageSummary_IsDeletable(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		case "ArtifactType":
+			out.Values[i] = ec._ImageSummary_ArtifactType(ctx, field, obj)
 			if out.Values[i] == graphql.RequiredNull {
 				out.Invalids++
 			}
