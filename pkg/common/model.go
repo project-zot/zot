@@ -56,6 +56,7 @@ type ImageSummary struct {
 	Vulnerabilities   ImageVulnerabilitySummary `json:"vulnerabilities"`
 	Referrers         []Referrer                `json:"referrers"`
 	SignatureInfo     []SignatureSummary        `json:"signatureInfo"`
+	ArtifactType      string                    `json:"artifactType"`
 }
 
 type ManifestSummary struct {

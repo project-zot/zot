@@ -7287,6 +7287,7 @@ func TestImageSummary(t *testing.T) {
 				Image(image:"repo:art%d"){
 					RepoName
 					Tag
+					ArtifactType
 					Manifests {
 						Digest
 						ArtifactType
@@ -7331,6 +7332,7 @@ func TestImageSummary(t *testing.T) {
 		imgSum := imgSummaryResponse.SingleImageSummary.ImageSummary
 		So(len(imgSum.Manifests), ShouldEqual, 1)
 		So(imgSum.Manifests[0].ArtifactType, ShouldResemble, artType1)
+		So(imgSum.ArtifactType, ShouldResemble, artType1)
 
 		// GET image 2
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(queryImg2))
@@ -7345,6 +7347,7 @@ func TestImageSummary(t *testing.T) {
 		imgSum = imgSummaryResponse.SingleImageSummary.ImageSummary
 		So(len(imgSum.Manifests), ShouldEqual, 1)
 		So(imgSum.Manifests[0].ArtifactType, ShouldResemble, artType2)
+		So(imgSum.ArtifactType, ShouldResemble, artType2)
 
 		// Expanded repo info test
 
