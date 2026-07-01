@@ -19,15 +19,13 @@ OIDC Workload Identity authentication allows workloads (e.g., Kubernetes pods, C
 
 ### Basic Configuration
 
-Add OIDC workload identity configuration to your bearer authentication settings. The `oidc` field accepts an array of provider configurations:
+Add OIDC workload identity configuration to your bearer authentication settings. The `oidc` field accepts an array of provider configurations.
 
 ```json
 {
   "http": {
     "auth": {
       "bearer": {
-        "realm": "zot",
-        "service": "zot-service",
         "oidc": [
           {
             "issuer": "https://kubernetes.default.svc.cluster.local",
@@ -48,6 +46,10 @@ Add OIDC workload identity configuration to your bearer authentication settings.
 
 - **`audiences`** (required): List of acceptable audiences for the OIDC token. At least one must be specified.
   - Example: `["zot", "https://zot.example.com"]`
+
+- **`realm`** (required for challenge-based OCI username/password login flows): Absolute URL of the bearer token service advertised in `WWW-Authenticate` challenges. Set this to Zot token exchange endpoint, normally `https://<registry-host>/zot/auth/token`, only when OCI clients should exchange an OIDC token password with Zot itself. If traditional bearer authentication already uses an external token service, keep `realm` pointed at that service.
+
+- **`service`** (recommended): Registry service name advertised in the bearer challenge. Use the registry host and port that clients connect to.
 
 - **`claimMapping`** (optional): CEL-based configuration for validating and mapping OIDC claims.
   - **`variables`**: List of variables to extract from claims using CEL expressions
@@ -87,6 +89,9 @@ In the example below, the username is mapped from both the issuer and subject
 claims to uniquely identify Kubernetes ServiceAccounts across different clusters.
 Note that `claims.iss + '/' + claims.sub` is the default username mapping if none
 is specified (so the whole `claimMapping` section could be omitted in this example).
+The example also advertises Zot token exchange endpoint for OCI username/password
+login flows; keep `realm` pointed at your external token service instead if the
+same bearer configuration is also used for traditional bearer authentication.
 
 ```json
 {
@@ -99,8 +104,8 @@ is specified (so the whole `claimMapping` section could be omitted in this examp
     "port": "8080",
     "auth": {
       "bearer": {
-        "realm": "zot",
-        "service": "zot-service",
+        "realm": "https://zot.example.com/zot/auth/token",
+        "service": "zot.example.com",
         "oidc": [
           {
             "issuer": "https://kubernetes.default.svc.cluster.local",
@@ -265,7 +270,7 @@ Configure multiple OIDC providers to support different identity sources. Zot wil
 
 ### Kubernetes ServiceAccount Tokens
 
-When running in Kubernetes, workloads can use their ServiceAccount tokens to authenticate:
+When running in Kubernetes, workloads can use their ServiceAccount tokens directly as bearer tokens:
 
 ```bash
 # Get the ServiceAccount token
@@ -273,6 +278,72 @@ TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
 
 # Use it to authenticate to Zot
 curl -H "Authorization: Bearer $TOKEN" https://zot.example.com/v2/_catalog
+```
+
+### OCI Username/Password Login Flow
+
+Zot also supports the OCI token service flow for clients that only know how to send registry credentials as username/password pairs. When `bearer.oidc` is configured, Zot exposes `GET /zot/auth/token`. The username is ignored, and the password must be an OIDC ID token trusted by one of the configured providers.
+
+To make Docker, containerd, or kubelet discover Zot token exchange endpoint automatically, configure `bearer.realm` as an externally reachable URL for `/zot/auth/token` and set `bearer.service` to the registry host clients use. Do this only when those clients should use Zot as the token service; mixed deployments that rely on an external bearer token service should keep `realm` pointed at the external service.
+
+Example token exchange request:
+
+```bash
+TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+
+curl -u "zot:$TOKEN" \
+  "https://zot.example.com/zot/auth/token?service=zot.example.com&scope=repository:app:pull"
+```
+
+The response contains the same OIDC token in both `token` and `access_token`, allowing OCI clients to retry the original registry request with `Authorization: Bearer <token>`.
+
+Docker-compatible login works the same way:
+
+```bash
+TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+
+echo "$TOKEN" | docker login -u zot --password-stdin zot.example.com
+```
+
+This requires the registry challenge to advertise `realm: "https://zot.example.com/zot/auth/token"` and a `service` value matching the registry host clients use.
+
+### Kubernetes Image Pull Secrets
+
+For kubelet image pulls, store a projected ServiceAccount token as the password in a `kubernetes.io/dockerconfigjson` Secret. The username can be any non-empty value.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: zot-oidc-pull-secret
+  namespace: workloads
+type: kubernetes.io/dockerconfigjson
+stringData:
+  .dockerconfigjson: |
+    {
+      "auths": {
+        "zot.example.com": {
+          "username": "zot",
+          "password": "<kubernetes-service-account-token>"
+        }
+      }
+    }
+```
+
+Attach the Secret to the Pod or ServiceAccount that pulls from Zot:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: zot-pull-test
+  namespace: workloads
+spec:
+  imagePullSecrets:
+  - name: zot-oidc-pull-secret
+  containers:
+  - name: app
+    image: zot.example.com/app:v1
 ```
 
 ### Flux Integration
@@ -372,7 +443,9 @@ Use Zot's access control policies to grant permissions based on the OIDC identit
 
 ### Traditional Bearer Authentication
 
-OIDC workload identity can coexist with traditional bearer authentication. If both are configured, Zot will try OIDC authentication first, then fall back to traditional bearer token authentication:
+OIDC workload identity can coexist with traditional bearer authentication. If both are configured, Zot will try OIDC authentication first, then fall back to traditional bearer token authentication.
+
+There is still only one `bearer.realm` value in the challenge. Keep it pointed at the external token service when challenge-based clients should obtain traditional bearer tokens from that service. Point it at Zot `/zot/auth/token` only when those clients should exchange OIDC token passwords with Zot:
 
 ```json
 {
