@@ -1850,6 +1850,49 @@ storage:
 		So(err, ShouldNotBeNil)
 	})
 
+	Convey("Test verify sync with maxRetryDelay without retryDelay", t, func(c C) {
+		content := `{"storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+							"maxRetryDelay": "30s"}]}}}`
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+		os.Args = []string{"cli_test", "verify", tmpfile}
+		err := cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+		So(err, ShouldWrap, zerr.ErrBadConfig)
+		So(err.Error(), ShouldContainSubstring, "retryDelay is required when using maxRetryDelay")
+	})
+
+	Convey("Test verify sync with maxRetryDelay less than retryDelay", t, func(c C) {
+		content := `{"storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+							"retryDelay": "30s", "maxRetryDelay": "1s"}]}}}`
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+		os.Args = []string{"cli_test", "verify", tmpfile}
+		err := cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+		So(err, ShouldWrap, zerr.ErrBadConfig)
+		So(err.Error(), ShouldContainSubstring, "maxRetryDelay must be greater than or equal to retryDelay")
+	})
+
+	Convey("Test verify sync with valid maxRetryDelay", t, func(c C) {
+		content := `{"storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+							"maxRetries": 3, "retryDelay": "1s", "maxRetryDelay": "30s"}]}}}`
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+		os.Args = []string{"cli_test", "verify", tmpfile}
+		err := cli.NewServerRootCmd().Execute()
+		So(err, ShouldBeNil)
+	})
+
 	Convey("Test verify config with unknown keys", t, func(c C) {
 		content := `{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot"},
 							"http": {"url": "127.0.0.1", "port": "8080"},
