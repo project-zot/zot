@@ -31,7 +31,8 @@ Add OIDC workload identity configuration to your bearer authentication settings.
         "oidc": [
           {
             "issuer": "https://kubernetes.default.svc.cluster.local",
-            "audiences": ["zot"]
+            "audiences": ["zot"],
+            "allowBasicAuth": true
           }
         ]
       }
@@ -54,6 +55,10 @@ Add OIDC workload identity configuration to your bearer authentication settings.
   - **`validations`**: List of validation rules with CEL expressions
   - **`username`**: CEL expression to extract the username. Default: `"claims.iss + '/' + claims.sub"`
   - **`groups`**: CEL expression to extract groups. Default: none (no groups extracted)
+
+- **`allowBasicAuth`** (optional): Allow OIDC token extraction from HTTP Basic credentials (`username:token`).
+  - Default: `false`
+  - Use this only when clients cannot send Bearer tokens.
 
 - **`certificateAuthority`** (optional): PEM-encoded CA certificate to validate the OIDC provider's TLS certificate. Useful when the OIDC issuer uses a private CA (e.g., Kubernetes API server with a self-signed certificate). Mutually exclusive with `certificateAuthorityFile`.
 
@@ -105,6 +110,7 @@ is specified (so the whole `claimMapping` section could be omitted in this examp
           {
             "issuer": "https://kubernetes.default.svc.cluster.local",
             "audiences": ["zot", "https://zot.example.com"],
+            "allowBasicAuth": true,
             "claimMapping": {
               "username": "claims.iss + '/' + claims.sub"
             }
