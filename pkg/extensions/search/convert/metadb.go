@@ -263,29 +263,10 @@ func GetSignaturesInfo(isSigned bool, signatures mTypes.ManifestSignatures) []*g
 	for sigType, signatures := range signatures {
 		for _, sig := range signatures {
 			for _, layer := range sig.LayersInfo {
-				var (
-					isTrusted bool
-					author    string
-					tool      string
-				)
-
-				if layer.Signer != "" {
-					author = layer.Signer
-
-					if !layer.Date.IsZero() && time.Now().After(layer.Date) {
-						isTrusted = false
-					} else {
-						isTrusted = true
-					}
-				} else {
-					isTrusted = false
-					author = ""
-				}
-
-				tool = sigType
+				isTrusted := layer.Signer != ""
 
 				signaturesInfo = append(signaturesInfo,
-					&gql_generated.SignatureSummary{Tool: &tool, IsTrusted: &isTrusted, Author: &author})
+					&gql_generated.SignatureSummary{Tool: &sigType, IsTrusted: &isTrusted, Author: &layer.Signer})
 			}
 		}
 	}
