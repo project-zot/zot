@@ -472,6 +472,8 @@ func ImageIndex2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullImage
 		imageLastUpdated = &indexLastUpdated
 	}
 
+	indexArtifactType := zcommon.GetIndexArtifactType(*fullImageMeta.Index)
+
 	indexSummary := gql_generated.ImageSummary{
 		RepoName:          &repo,
 		Tag:               &tag,
@@ -496,6 +498,7 @@ func ImageIndex2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullImage
 		Vendor:            &annotations.Vendor,
 		Authors:           &annotations.Authors,
 		Referrers:         getReferrers(fullImageMeta.Referrers),
+		ArtifactType:      &indexArtifactType,
 	}
 
 	return &indexSummary, indexBlobs, nil
@@ -591,6 +594,7 @@ func ImageManifest2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullIm
 		Vendor:            &annotations.Vendor,
 		Authors:           &authors,
 		Referrers:         manifestSummary.Referrers,
+		ArtifactType:      &artifactType,
 	}
 
 	return &imageSummary, imageBlobsMap, nil
