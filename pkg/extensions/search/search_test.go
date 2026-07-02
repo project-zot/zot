@@ -7284,9 +7284,10 @@ func TestImageSummary(t *testing.T) {
 
 		query := `
 			{
-				Image(image:"repo:art%d"){
+				Image(image:"repo:%s"){
 					RepoName
 					Tag
+					ArtifactType
 					Manifests {
 						Digest
 						ArtifactType
@@ -7295,8 +7296,9 @@ func TestImageSummary(t *testing.T) {
 				}
 			}`
 
-		queryImg1 := fmt.Sprintf(query, 1)
-		queryImg2 := fmt.Sprintf(query, 2)
+		queryImg1 := fmt.Sprintf(query, "art1")
+		queryImg2 := fmt.Sprintf(query, "art2")
+		queryImgIndex := fmt.Sprintf(query, "index")
 
 		var imgSummaryResponse zcommon.ImageSummaryResult
 
@@ -7318,6 +7320,12 @@ func TestImageSummary(t *testing.T) {
 		err = UploadImage(img2, baseURL, "repo", "art2")
 		So(err, ShouldBeNil)
 
+		indexArtType := "application/test.index.v1"
+		indexImage := CreateMultiarchWith().RandomImages(2).ArtifactType(indexArtType).Build()
+
+		err = UploadMultiarchImage(indexImage, baseURL, "repo", "index")
+		So(err, ShouldBeNil)
+
 		// GET image 1
 		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(queryImg1))
 		So(resp, ShouldNotBeNil)
@@ -7331,6 +7339,7 @@ func TestImageSummary(t *testing.T) {
 		imgSum := imgSummaryResponse.SingleImageSummary.ImageSummary
 		So(len(imgSum.Manifests), ShouldEqual, 1)
 		So(imgSum.Manifests[0].ArtifactType, ShouldResemble, artType1)
+		So(imgSum.ArtifactType, ShouldResemble, artType1)
 
 		// GET image 2
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(queryImg2))
@@ -7345,6 +7354,20 @@ func TestImageSummary(t *testing.T) {
 		imgSum = imgSummaryResponse.SingleImageSummary.ImageSummary
 		So(len(imgSum.Manifests), ShouldEqual, 1)
 		So(imgSum.Manifests[0].ArtifactType, ShouldResemble, artType2)
+		So(imgSum.ArtifactType, ShouldResemble, artType2)
+
+		// GET index image
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(queryImgIndex))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.Body(), ShouldNotBeNil)
+
+		err = json.Unmarshal(resp.Body(), &imgSummaryResponse)
+		So(err, ShouldBeNil)
+
+		imgSum = imgSummaryResponse.SingleImageSummary.ImageSummary
+		So(imgSum.ArtifactType, ShouldResemble, indexArtType)
 
 		// Expanded repo info test
 
