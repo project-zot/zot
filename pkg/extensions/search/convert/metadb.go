@@ -263,6 +263,8 @@ func GetSignaturesInfo(isSigned bool, signatures mTypes.ManifestSignatures) []*g
 	for sigType, signatures := range signatures {
 		for _, sig := range signatures {
 			for _, layer := range sig.LayersInfo {
+
+				// Signer is only set by UpdateSignaturesValidity when VerifySignature succeeds, so empty Signer means untrusted.
 				tool := sigType
 				author := layer.Signer
 				isTrusted := author != ""

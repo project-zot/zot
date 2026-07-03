@@ -1532,6 +1532,8 @@ func (rc *RedisDB) UpdateSignaturesValidity(ctx context.Context, repo string, ma
 
 					if isTrusted {
 						layerInfo.Signer = author
+					} else {
+						layerInfo.Signer = ""
 					}
 
 					if !date.IsZero() {
