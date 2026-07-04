@@ -645,6 +645,28 @@ func TestConfig(t *testing.T) {
 		}
 		So(conf.IsRetentionEnabled(), ShouldBeTrue)
 
+		// Test KeepUntagged with retention criteria
+		conf = config.New()
+		conf.Storage.Retention.Policies = []config.RetentionPolicy{
+			{
+				Repositories: []string{"repo"},
+				KeepUntagged: &config.KeepUntaggedPolicy{
+					MostRecentlyPulledCount: 2,
+				},
+			},
+		}
+		So(conf.IsRetentionEnabled(), ShouldBeTrue)
+
+		// Test KeepUntagged without criteria
+		conf = config.New()
+		conf.Storage.Retention.Policies = []config.RetentionPolicy{
+			{
+				Repositories:  []string{"repo"},
+				KeepUntagged: &config.KeepUntaggedPolicy{},
+			},
+		}
+		So(conf.IsRetentionEnabled(), ShouldBeFalse)
+
 		// Test SubPaths with retention policies
 		conf = config.New()
 		conf.Storage.SubPaths = map[string]config.StorageConfig{

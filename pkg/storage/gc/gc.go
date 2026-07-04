@@ -708,6 +708,26 @@ func (gc GarbageCollect) removeUntaggedManifests(repo string, index *ispec.Index
 
 	gc.log.Debug().Str("module", "gc").Str("repository", repo).Msg("manifests without tags")
 
+	retainUntagged := make(map[string]bool)
+	if gc.policyMgr.HasUntaggedRetention(repo) {
+		if gc.metaDB != nil {
+			repoMeta, err := gc.metaDB.GetRepoMeta(context.Background(), repo)
+			if err != nil {
+				gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
+					Msg("failed to get repoMeta for untagged retention")
+
+				return false, err
+			}
+
+			for _, digestStr := range gc.policyMgr.GetRetainedUntaggedFromMetaDB(context.Background(), repoMeta, *index) {
+				retainUntagged[digestStr] = true
+			}
+		} else {
+			gc.log.Warn().Str("module", "gc").Str("repository", repo).
+				Msg("keepUntagged policy requires metadata database; falling back to delay-based untagged cleanup")
+		}
+	}
+
 	for _, desc := range index.Manifests {
 		// skip manifests referenced in image indexes
 		if _, referenced := referenced[desc.Digest]; referenced {
@@ -719,6 +739,10 @@ func (gc GarbageCollect) removeUntaggedManifests(repo string, index *ispec.Index
 			desc.MediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(desc.MediaType) {
 			_, ok := getDescriptorTag(desc)
 			if !ok {
+				if retainUntagged[desc.Digest.String()] {
+					continue
+				}
+
 				gced, err = gc.gcManifest(repo, index, desc, "", "", gc.opts.ImageRetention.Delay)
 				if err != nil {
 					return false, err

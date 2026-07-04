@@ -3,6 +3,7 @@ package retention
 import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
+	"zotregistry.dev/zot/v2/pkg/compat"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/retention/types"
 )
@@ -29,6 +30,42 @@ func GetCandidates(repoMeta mTypes.RepoMeta) []*types.Candidate {
 			Tag:           tag,
 			PushTimestamp: stats.PushTimestamp,
 			PullTimestamp: stats.LastPullTimestamp,
+		}
+
+		candidates = append(candidates, candidate)
+	}
+
+	return candidates
+}
+
+func GetUntaggedCandidates(repoMeta mTypes.RepoMeta, index ispec.Index) []*types.Candidate {
+	candidates := make([]*types.Candidate, 0)
+
+	for _, manifest := range index.Manifests {
+		if _, ok := manifest.Annotations[ispec.AnnotationRefName]; ok {
+			continue
+		}
+
+		if manifest.MediaType != ispec.MediaTypeImageManifest && manifest.MediaType != ispec.MediaTypeImageIndex &&
+			!compat.IsCompatibleManifestMediaType(manifest.MediaType) &&
+			!compat.IsCompatibleManifestListMediaType(manifest.MediaType) {
+			continue
+		}
+
+		digestStr := manifest.Digest.String()
+
+		stats, hasStatistics := repoMeta.Statistics[digestStr]
+		if !hasStatistics {
+			continue
+		}
+
+		candidate := &types.Candidate{
+			MediaType:      manifest.MediaType,
+			DigestStr:      digestStr,
+			PushTimestamp:  stats.PushTimestamp,
+			PullTimestamp:  stats.LastPullTimestamp,
+			IsUntagged:     true,
+			ReferenceLabel: digestStr,
 		}
 
 		candidates = append(candidates, candidate)

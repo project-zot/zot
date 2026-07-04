@@ -16,14 +16,18 @@ type Candidate struct {
 	PushTimestamp time.Time
 	PullTimestamp time.Time
 	RetainedBy    string
+	IsUntagged    bool
+	ReferenceLabel string
 }
 
 type PolicyManager interface {
 	HasDeleteReferrer(repo string) bool
 	HasDeleteUntagged(repo string) bool
+	HasUntaggedRetention(repo string) bool
 	HasTagRetention(repo string) bool
 	GetRetainedTagsFromIndex(ctx context.Context, repo string, index ispec.Index) []string
 	GetRetainedTagsFromMetaDB(ctx context.Context, repoMeta mTypes.RepoMeta, index ispec.Index) []string
+	GetRetainedUntaggedFromMetaDB(ctx context.Context, repoMeta mTypes.RepoMeta, index ispec.Index) []string
 }
 
 type Rule interface {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"time"
 
 	glob "github.com/bmatcuk/doublestar/v4"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -77,23 +78,43 @@ func (p policyManager) HasTagRetention(repo string) bool {
 	return false
 }
 
+func (p policyManager) HasUntaggedRetention(repo string) bool {
+	if policy, err := p.getRepoPolicy(repo); err == nil {
+		return policy.KeepUntagged != nil
+	}
+
+	return false
+}
+
 func (p policyManager) getRules(tagPolicy config.KeepTagsPolicy) []types.Rule {
+	return getRules(tagPolicy.MostRecentlyPulledCount, tagPolicy.MostRecentlyPushedCount,
+		tagPolicy.PulledWithin, tagPolicy.PushedWithin)
+}
+
+func (p policyManager) getUntaggedRules(untaggedPolicy config.KeepUntaggedPolicy) []types.Rule {
+	return getRules(untaggedPolicy.MostRecentlyPulledCount, untaggedPolicy.MostRecentlyPushedCount,
+		untaggedPolicy.PulledWithin, untaggedPolicy.PushedWithin)
+}
+
+func getRules(mostRecentlyPulledCount, mostRecentlyPushedCount int,
+	pulledWithin, pushedWithin *time.Duration,
+) []types.Rule {
 	rules := make([]types.Rule, 0)
 
-	if tagPolicy.MostRecentlyPulledCount != 0 {
-		rules = append(rules, NewLatestPull(tagPolicy.MostRecentlyPulledCount))
+	if mostRecentlyPulledCount != 0 {
+		rules = append(rules, NewLatestPull(mostRecentlyPulledCount))
 	}
 
-	if tagPolicy.MostRecentlyPushedCount != 0 {
-		rules = append(rules, NewLatestPush(tagPolicy.MostRecentlyPushedCount))
+	if mostRecentlyPushedCount != 0 {
+		rules = append(rules, NewLatestPush(mostRecentlyPushedCount))
 	}
 
-	if tagPolicy.PulledWithin != nil {
-		rules = append(rules, NewDaysPull(*tagPolicy.PulledWithin))
+	if pulledWithin != nil {
+		rules = append(rules, NewDaysPull(*pulledWithin))
 	}
 
-	if tagPolicy.PushedWithin != nil {
-		rules = append(rules, NewDaysPush(*tagPolicy.PushedWithin))
+	if pushedWithin != nil {
+		rules = append(rules, NewDaysPush(*pushedWithin))
 	}
 
 	return rules
@@ -240,6 +261,63 @@ func (p policyManager) GetRetainedTagsFromMetaDB(ctx context.Context, repoMeta m
 	return retainTags
 }
 
+func (p policyManager) GetRetainedUntaggedFromMetaDB(ctx context.Context, repoMeta mTypes.RepoMeta,
+	index ispec.Index,
+) []string {
+	repo := repoMeta.Name
+	policy, err := p.getRepoPolicy(repo)
+	if err != nil || policy.KeepUntagged == nil {
+		return nil
+	}
+
+	candidates := GetUntaggedCandidates(repoMeta, index)
+	retainDigests := make([]string, 0)
+	retainCandidates := candidates
+	rules := p.getUntaggedRules(*policy.KeepUntagged)
+
+	rulesCandidates := make([]*types.Candidate, 0)
+
+	for _, rule := range rules {
+		if zcommon.IsContextDone(ctx) {
+			return nil
+		}
+
+		ruleCandidates := rule.Perform(retainCandidates)
+
+		rulesCandidates = append(rulesCandidates, ruleCandidates...)
+	}
+
+	if len(rules) > 0 {
+		retainCandidates = rulesCandidates
+	} else {
+		for _, retainCandidate := range retainCandidates {
+			retainCandidate.RetainedBy = "keepUntagged"
+		}
+	}
+
+	for _, retainCandidate := range retainCandidates {
+		if !slices.Contains(retainDigests, retainCandidate.DigestStr) {
+			reason := fmt.Sprintf(retainedStrFormat, retainCandidate.RetainedBy)
+
+			logDigestAction(repo, "keep", reason, retainCandidate, p.config.DryRun, &p.log)
+
+			retainDigests = append(retainDigests, retainCandidate.DigestStr)
+		}
+	}
+
+	for _, candidateInfo := range candidates {
+		if !slices.Contains(retainDigests, candidateInfo.DigestStr) {
+			logDigestAction(repo, "delete", filteredByTagRules, candidateInfo, p.config.DryRun, &p.log)
+
+			if p.auditLog != nil {
+				logDigestAction(repo, "delete", filteredByTagRules, candidateInfo, p.config.DryRun, p.auditLog)
+			}
+		}
+	}
+
+	return retainDigests
+}
+
 func (p policyManager) getRepoPolicy(repo string) (config.RetentionPolicy, error) {
 	for _, policy := range p.config.Policies {
 		for _, pattern := range policy.Repositories {
@@ -306,6 +384,19 @@ func logAction(repo, decision, reason string, candidate *types.Candidate, dryRun
 		Str("pushTimestamp", candidate.PushTimestamp.String()).
 		Str("decision", decision).
 		Str("reason", reason).Msg("applied policy")
+}
+
+func logDigestAction(repo, decision, reason string, candidate *types.Candidate, dryRun bool, log *zlog.Logger) {
+	log.Info().Str("module", "retention").
+		Bool("dry-run", dryRun).
+		Str("repository", repo).
+		Str("mediaType", candidate.MediaType).
+		Str("digest", candidate.DigestStr).
+		Str("reference", candidate.DigestStr).
+		Str("lastPullTimestamp", candidate.PullTimestamp.String()).
+		Str("pushTimestamp", candidate.PushTimestamp.String()).
+		Str("decision", decision).
+		Str("reason", reason).Msg("applied untagged policy")
 }
 
 func getIndexTags(index ispec.Index) []string {

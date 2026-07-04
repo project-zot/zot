@@ -53,6 +53,10 @@ func TestSchemaAllowsNullForPointerFields(t *testing.T) {
 									"pushedWithin": nil,
 								},
 							},
+							"keepUntagged": map[string]any{
+								"pulledWithin": nil,
+								"pushedWithin": nil,
+							},
 						},
 					},
 				},

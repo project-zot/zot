@@ -198,6 +198,7 @@ You can also force a full reparse with the `--force-reparse` flag to `zot serve`
 ## Retention
 
 You can define tag retention rules that govern how many tags of a given repository to retain, or for how long to retain certain tags.
+You can also define `keepUntagged` rules for untagged manifests, including manifests cached by digest-only pull-through requests.
 
 There are 4 possible rules for tags:
 
@@ -206,7 +207,10 @@ mostRecentlyPulledCount: x - top x most recently pulled tags
 pulledWithin: x hours - tags pulled in the last x hours
 pushedWithin: x hours - tags pushed in the last x hours
 
-If ANY of these rules are met by a tag, then it will be retained, in other words there is an OR logic between them
+The same 4 rules can be used under `keepUntagged`; for digest-only cached content, pushed means cached locally at the descriptor's push timestamp.
+Tagged and untagged manifests are evaluated separately, so counts in `keepTags` do not compete with counts in `keepUntagged`.
+
+If ANY of these rules are met by a tag or untagged manifest, then it will be retained, in other words there is an OR logic between them
 
 repositories uses glob patterns
 tag patterns uses regex
@@ -236,7 +240,11 @@ tag patterns uses regex
                         "patterns": ["v1.*"],           // all the other tags will be removed
                         "pulledWithin": "168h",      
                         "pushedWithin": "168h"
-                    }]
+                    }],
+                    "keepUntagged": {                   // untagged manifests pulled or cached locally within the last 168h are retained
+                        "pulledWithin": "168h",
+                        "pushedWithin": "168h"
+                    }
                 },
                 {
                     "repositories": ["**"],
@@ -247,7 +255,13 @@ tag patterns uses regex
                         "mostRecentlyPulledCount": 10,    // top 10 recently pulled tags
                         "pulledWithin": "720h",
                         "pushedWithin": "720h"
-                    }]
+                    }],
+                    "keepUntagged": {
+                        "mostRecentlyPushedCount": 10,    // top 10 recently cached/pushed untagged manifests
+                        "mostRecentlyPulledCount": 10,    // top 10 recently pulled untagged manifests
+                        "pulledWithin": "720h",
+                        "pushedWithin": "720h"
+                    }
                 }
             ]
         }
@@ -256,6 +270,7 @@ tag patterns uses regex
 If a repo doesn't match any policy, then that repo and all its tags are retained. (default is to not delete anything)
 If keepTags is empty, then all tags are retained (default is to retain all tags)
 If we have at least one tagRetention policy in the tagRetention list then all tags that don't match at least one of them will be removed!
+`deleteUntagged` remains the master switch for untagged manifests. When `deleteUntagged` is true and `keepUntagged` is configured, untagged manifests that fail `keepUntagged` rules still honor the configured retention delay before deletion. Without `keepUntagged`, untagged manifests keep the existing delay-based cleanup behavior.
 
 For safety purpose you can have a default policy as the last policy in list, all tags that don't match the above policies will be retained by this one:
 ```
