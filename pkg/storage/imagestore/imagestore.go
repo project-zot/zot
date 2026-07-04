@@ -1921,26 +1921,35 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 		is.log.Debug().Str("repository", repo).
 			Str("digest", digest.String()).Msg("perform GC on blob")
 
-		if err := is.deleteBlob(repo, digest); err != nil {
-			if errors.Is(err, zerr.ErrBlobReferenced) {
-				if err := is.deleteImageManifest(context.Background(), repo, digest.String(), true); err != nil {
-					if errors.Is(err, zerr.ErrManifestConflict) || errors.Is(err, zerr.ErrManifestReferenced) {
-						continue
-					}
+		err := is.deleteBlob(repo, digest)
+		if err == nil {
+			count++
 
-					is.log.Error().Err(err).Str("repository", repo).Str("digest", digest.String()).Msg("failed to delete manifest")
+			continue
+		}
 
-					return count, err
+		switch {
+		case errors.Is(err, zerr.ErrBlobReferenced):
+			if err := is.deleteImageManifest(context.Background(), repo, digest.String(), true); err != nil {
+				if errors.Is(err, zerr.ErrManifestConflict) || errors.Is(err, zerr.ErrManifestReferenced) {
+					continue
 				}
 
-				count++
-			} else {
-				is.log.Error().Err(err).Str("repository", repo).Str("digest", digest.String()).Msg("failed to delete blob")
+				is.log.Error().Err(err).Str("repository", repo).Str("digest", digest.String()).Msg("failed to delete manifest")
 
 				return count, err
 			}
-		} else {
+
 			count++
+		case errors.Is(err, zerr.ErrBlobNotFound):
+			is.log.Info().Str("repository", repo).Str("digest", digest.String()).
+				Msg("blob already absent during GC, skipping")
+
+			count++
+		default:
+			is.log.Error().Err(err).Str("repository", repo).Str("digest", digest.String()).Msg("failed to delete blob")
+
+			return count, err
 		}
 	}
 
@@ -1970,9 +1979,14 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 
 	_, err := is.storeDriver.Stat(blobPath)
 	if err != nil {
+		var pathNotFoundErr driver.PathNotFoundError
+		if errors.As(err, &pathNotFoundErr) {
+			return zerr.ErrBlobNotFound
+		}
+
 		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
 
-		return zerr.ErrBlobNotFound
+		return err
 	}
 
 	// first check if this blob is not currently in use
@@ -2037,6 +2051,14 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 	}
 
 	if err := is.storeDriver.Delete(blobPath); err != nil {
+		var pathNotFoundErr driver.PathNotFoundError
+		if errors.As(err, &pathNotFoundErr) {
+			is.log.Warn().Str("repository", repo).Str("digest", digest.String()).
+				Str("blobPath", blobPath).Msg("blob already removed from storage, skipping")
+
+			return nil
+		}
+
 		is.log.Error().Err(err).Str("blobPath", blobPath).Msg("failed to remove blob path")
 
 		return err
