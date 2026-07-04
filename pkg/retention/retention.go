@@ -273,6 +273,7 @@ func (p policyManager) GetRetainedUntaggedFromMetaDB(ctx context.Context, repoMe
 
 	candidates := GetUntaggedCandidates(repoMeta, index)
 	retainDigests := make([]string, 0)
+	retainDigestsSet := make(map[string]struct{})
 	retainCandidates := candidates
 	rules := p.getUntaggedRules(*policy.KeepUntagged)
 	if len(rules) == 0 {
@@ -294,17 +295,18 @@ func (p policyManager) GetRetainedUntaggedFromMetaDB(ctx context.Context, repoMe
 	retainCandidates = rulesCandidates
 
 	for _, retainCandidate := range retainCandidates {
-		if !slices.Contains(retainDigests, retainCandidate.DigestStr) {
+		if _, ok := retainDigestsSet[retainCandidate.DigestStr]; !ok {
 			reason := fmt.Sprintf(retainedStrFormat, retainCandidate.RetainedBy)
 
 			logDigestAction(repo, "keep", reason, retainCandidate, p.config.DryRun, &p.log)
 
+			retainDigestsSet[retainCandidate.DigestStr] = struct{}{}
 			retainDigests = append(retainDigests, retainCandidate.DigestStr)
 		}
 	}
 
 	for _, candidateInfo := range candidates {
-		if !slices.Contains(retainDigests, candidateInfo.DigestStr) {
+		if _, ok := retainDigestsSet[candidateInfo.DigestStr]; !ok {
 			logDigestAction(repo, "delete", filteredByUntaggedRules, candidateInfo, p.config.DryRun, &p.log)
 
 			if p.auditLog != nil {

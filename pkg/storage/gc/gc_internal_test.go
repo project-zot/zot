@@ -227,7 +227,7 @@ func TestRemoveUntaggedManifestsWithRetention(t *testing.T) {
 			log: zlog.NewTestLogger(),
 		}
 
-		gced, err := gc.removeUntaggedManifests(repoName, &index, map[godigest.Digest]bool{})
+		gced, err := gc.removeUntaggedManifests(context.Background(), repoName, &index, map[godigest.Digest]bool{})
 
 		So(err, ShouldBeNil)
 		So(gced, ShouldBeFalse)

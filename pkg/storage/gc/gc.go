@@ -408,7 +408,7 @@ func (gc GarbageCollect) removeManifestsPerRepoPolicy(ctx context.Context, repo 
 			}
 
 			// apply image retention policy
-			gcedUntagged, err = gc.removeUntaggedManifests(repo, index, referenced)
+			gcedUntagged, err = gc.removeUntaggedManifests(ctx, repo, index, referenced)
 			if err != nil {
 				return err
 			}
@@ -699,7 +699,7 @@ func (gc GarbageCollect) removeManifest(repo string, index *ispec.Index,
 	return true, nil
 }
 
-func (gc GarbageCollect) removeUntaggedManifests(repo string, index *ispec.Index,
+func (gc GarbageCollect) removeUntaggedManifests(ctx context.Context, repo string, index *ispec.Index,
 	referenced map[godigest.Digest]bool,
 ) (bool, error) {
 	var gced bool
@@ -711,7 +711,7 @@ func (gc GarbageCollect) removeUntaggedManifests(repo string, index *ispec.Index
 	retainUntagged := make(map[string]bool)
 	if gc.policyMgr.HasUntaggedRetention(repo) {
 		if gc.metaDB != nil {
-			repoMeta, err := gc.metaDB.GetRepoMeta(context.Background(), repo)
+			repoMeta, err := gc.metaDB.GetRepoMeta(ctx, repo)
 			if err != nil {
 				gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
 					Msg("failed to get repoMeta for untagged retention")
@@ -719,7 +719,7 @@ func (gc GarbageCollect) removeUntaggedManifests(repo string, index *ispec.Index
 				return false, err
 			}
 
-			for _, digestStr := range gc.policyMgr.GetRetainedUntaggedFromMetaDB(context.Background(), repoMeta, *index) {
+			for _, digestStr := range gc.policyMgr.GetRetainedUntaggedFromMetaDB(ctx, repoMeta, *index) {
 				retainUntagged[digestStr] = true
 			}
 		} else {

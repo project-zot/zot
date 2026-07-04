@@ -196,7 +196,7 @@ func TestGetRetainedUntaggedFromMetaDB(t *testing.T) {
 			Name: "test-repo",
 			Statistics: map[string]mTypes.DescriptorStatistics{
 				recentDigest.String(): {
-					PushTimestamp:     now.Add(-48 * time.Hour),
+					PushTimestamp:     now.Add(-time.Hour),
 					LastPullTimestamp: now.Add(-time.Hour),
 				},
 				oldDigest.String(): {
@@ -211,7 +211,8 @@ func TestGetRetainedUntaggedFromMetaDB(t *testing.T) {
 				{
 					Repositories: []string{"test-repo"},
 					KeepUntagged: &config.KeepUntaggedPolicy{
-						PulledWithin: &pulledWithin,
+						PulledWithin:            &pulledWithin,
+						MostRecentlyPushedCount: 1,
 					},
 				},
 			},

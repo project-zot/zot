@@ -831,7 +831,7 @@ func (c *Config) isRetentionEnabledInternal() bool {
 			}
 		}
 
-		if retentionPolicy.KeepUntagged != nil && c.isUntaggedRetentionEnabled(*retentionPolicy.KeepUntagged) {
+		if c.isUntaggedRetentionEnabledForPolicy(retentionPolicy) {
 			needsMetaDB = true
 		}
 	}
@@ -844,7 +844,7 @@ func (c *Config) isRetentionEnabledInternal() bool {
 				}
 			}
 
-			if retentionPolicy.KeepUntagged != nil && c.isUntaggedRetentionEnabled(*retentionPolicy.KeepUntagged) {
+			if c.isUntaggedRetentionEnabledForPolicy(retentionPolicy) {
 				needsMetaDB = true
 			}
 		}
@@ -874,6 +874,12 @@ func (c *Config) isUntaggedRetentionEnabled(untaggedRetentionPolicy KeepUntagged
 	}
 
 	return false
+}
+
+func (c *Config) isUntaggedRetentionEnabledForPolicy(retentionPolicy RetentionPolicy) bool {
+	return retentionPolicy.KeepUntagged != nil &&
+		(retentionPolicy.DeleteUntagged == nil || *retentionPolicy.DeleteUntagged) &&
+		c.isUntaggedRetentionEnabled(*retentionPolicy.KeepUntagged)
 }
 
 func isSensitiveConfigMapKey(key string) bool {
