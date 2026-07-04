@@ -315,6 +315,8 @@ func (rh *RouteHandler) CheckVersionSupport(response http.ResponseWriter, reques
 type oidcBearerTokenResponse struct {
 	Token       string `json:"token"`
 	AccessToken string `json:"access_token"` //nolint:tagliatelle
+	ExpiresIn   int64  `json:"expires_in"`   //nolint:tagliatelle
+	IssuedAt    string `json:"issued_at"`    //nolint:tagliatelle
 }
 
 func (rh *RouteHandler) OIDCBearerTokenExchange(authorizer *OIDCBearerAuthorizer) http.HandlerFunc {
@@ -339,22 +341,61 @@ func (rh *RouteHandler) OIDCBearerTokenExchange(authorizer *OIDCBearerAuthorizer
 			return
 		}
 
+		response.Header().Set("Cache-Control", "no-store")
+		response.Header().Set("Pragma", "no-cache")
+
 		authConfig := rh.c.Config.CopyAuthConfig()
-		_, password, ok := request.BasicAuth()
-		if ok && password != "" {
-			res, err := authorizer.Authenticate(request.Context(), "Bearer "+password)
-			if err == nil && res != nil && res.Username != "" {
-				response.Header().Set("Cache-Control", "no-store")
-				response.Header().Set("Pragma", "no-cache")
-				zcommon.WriteJSON(response, http.StatusOK, oidcBearerTokenResponse{
-					Token:       password,
-					AccessToken: password,
-				})
+		tokenRequest, err := normalizeTokenExchangeRequest(request)
+		if err != nil {
+			rh.c.Log.Debug().Err(err).Msg("failed to parse token exchange request")
+			if errors.Is(err, errTokenRequestBodyTooLarge) {
+				http.Error(response, "token request body too large", http.StatusRequestEntityTooLarge)
 
 				return
 			}
 
-			rh.c.Log.Debug().Err(err).Msg("oidc bearer token exchange failed")
+			if errors.Is(err, errInvalidTokenProxyForm) {
+				http.Error(response, "invalid token request form body", http.StatusBadRequest)
+
+				return
+			}
+
+			http.Error(response, "failed to parse token request", http.StatusBadRequest)
+
+			return
+		}
+
+		locallyOwned := false
+
+		for _, credential := range tokenRequest.credentials {
+			switch localOIDCTokenOwnerForCredential(credential, authConfig) {
+			case localOIDCTokenOwnerBearer:
+				locallyOwned = true
+
+				if authorizer == nil {
+					break
+				}
+
+				res, err := authorizer.Authenticate(request.Context(), "Bearer "+credential)
+				if err == nil && res != nil && res.Username != "" {
+					zcommon.WriteJSON(response, http.StatusOK,
+						newOIDCBearerTokenResponse(credential, res.Claims, time.Now()))
+
+					return
+				}
+
+				rh.c.Log.Debug().Err(err).Msg("oidc bearer token exchange failed")
+			case localOIDCTokenOwnerOpenID:
+				locallyOwned = true
+				rh.c.Log.Debug().Msg("token exchange request matched browser OpenID provider; refusing proxy fallback")
+			case localOIDCTokenOwnerNone:
+			}
+		}
+
+		if locallyOwned {
+			oidcTokenExchangeUnauthorized(response, authConfig)
+
+			return
 		}
 
 		if bearerTokenProxyConfigured(authConfig) {
@@ -366,8 +407,6 @@ func (rh *RouteHandler) OIDCBearerTokenExchange(authorizer *OIDCBearerAuthorizer
 			return
 		}
 
-		response.Header().Set("Cache-Control", "no-store")
-		response.Header().Set("Pragma", "no-cache")
 		oidcTokenExchangeUnauthorized(response, authConfig)
 	}
 }
@@ -389,6 +428,13 @@ func (rh *RouteHandler) proxyOIDCBearerTokenExchange(
 
 	if proxyURL.Scheme == "" || proxyURL.Host == "" {
 		return fmt.Errorf("%w: must be an absolute URL", errInvalidProxyRealm)
+	}
+
+	if !strings.EqualFold(proxyURL.Scheme, constants.SchemeHTTPS) {
+		if !strings.EqualFold(proxyURL.Scheme, constants.SchemeHTTP) || !bearerConfig.AllowInsecureProxyRealm {
+			return fmt.Errorf("%w: proxyRealm must use https unless allowInsecureProxyRealm is true",
+				errInvalidProxyRealm)
+		}
 	}
 
 	query := proxyURL.Query()
@@ -453,7 +499,7 @@ func tokenProxyRequestBody(request *http.Request, proxyService string) (io.Reade
 		return request.Body, request.ContentLength, nil
 	}
 
-	bodyBytes, err := io.ReadAll(request.Body)
+	bodyBytes, err := readTokenRequestFormBody(request.Body)
 	if err != nil {
 		return nil, 0, err
 	}

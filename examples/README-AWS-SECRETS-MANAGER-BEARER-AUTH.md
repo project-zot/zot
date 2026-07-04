@@ -177,7 +177,7 @@ To rotate keys without downtime:
 
 ### With OIDC Workload Identity
 
-AWS Secrets Manager bearer authentication can coexist with OIDC workload identity. Direct bearer tokens are still verified using keys from AWS Secrets Manager after OIDC authentication fails. For challenge-based OCI username/password login, configure the optional `proxyRealm` and `proxyService` fields together so Zot's OIDC token exchange endpoint can forward non-OIDC token requests to the existing traditional bearer token service:
+AWS Secrets Manager bearer authentication can coexist with OIDC workload identity. Direct bearer tokens are still verified using keys from AWS Secrets Manager after OIDC authentication fails. For challenge-based OCI username/password login, configure the optional `proxyRealm` and `proxyService` fields together so Zot's OIDC token exchange endpoint can forward token requests that are not owned by local token backends to the existing traditional bearer token service. `proxyRealm` must use HTTPS by default; plaintext HTTP requires the explicit `allowInsecureProxyRealm` opt-in and should only be used in controlled test environments:
 
 ```json
 {

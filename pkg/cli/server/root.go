@@ -833,6 +833,17 @@ func validateBearerConfig(cfg *config.Config, logger zlog.Logger) error {
 
 			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 		}
+
+		if !strings.EqualFold(proxyRealm.Scheme, constants.SchemeHTTPS) {
+			if !strings.EqualFold(proxyRealm.Scheme, constants.SchemeHTTP) || !bearer.AllowInsecureProxyRealm {
+				msg := "proxyRealm must use https unless allowInsecureProxyRealm is true"
+				logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
+
+				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+			}
+
+			logger.Warn().Msg("allowInsecureProxyRealm is enabled; token proxy credentials may be sent over plaintext HTTP")
+		}
 	}
 
 	if bearer.AWSSecretsManager != nil {

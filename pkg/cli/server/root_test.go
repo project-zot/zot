@@ -3529,6 +3529,46 @@ func TestBearerASMConfigValidation(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 
+		Convey("Reject insecure proxyRealm by default", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1", "port": "8080",
+					"auth": {
+						"bearer": {
+							"realm": "test", "service": "test",
+							"proxyRealm": "http://auth.example.com/token", "proxyService": "upstream"
+						}
+					}
+				}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+		})
+
+		Convey("Allow insecure proxyRealm with explicit opt-in", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1", "port": "8080",
+					"auth": {
+						"bearer": {
+							"realm": "test", "service": "test",
+							"proxyRealm": "http://auth.example.com/token", "proxyService": "upstream",
+							"allowInsecureProxyRealm": true
+						}
+					}
+				}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldBeNil)
+		})
+
 		Convey("Reject empty region", func() {
 			content := `{
 				"storage": {"rootDirectory": "/tmp/zot"},

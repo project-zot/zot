@@ -51,9 +51,11 @@ Add OIDC workload identity configuration to your bearer authentication settings.
 
 - **`service`** (recommended): Registry service name advertised in the bearer challenge. Use the registry host and port that clients connect to.
 
-- **`proxyRealm`** (optional; configure with `proxyService`): Upstream external token service URL used when Zot token exchange endpoint cannot authenticate the request as an OIDC token. These optional proxy fields let OIDC workload identity be used together with traditional bearer authentication while still advertising Zot `/zot/auth/token` as the single OCI challenge realm.
+- **`proxyRealm`** (optional; configure with `proxyService`): HTTPS URL for an existing traditional bearer token service. Zot uses this only as a compatibility fallback when `/zot/auth/token` receives credentials that are not owned by any local token backend.
 
-- **`proxyService`** (optional; configure with `proxyRealm`): Service value Zot sends to the upstream token service. Zot preserves the original token request method, headers, query parameters, and body, rewriting only `service` to this value.
+- **`proxyService`** (optional; configure with `proxyRealm`): Service value Zot sends to the upstream traditional bearer token service. Zot preserves the original token request method, headers, query parameters, and body, rewriting only `service` to this value.
+
+- **`allowInsecureProxyRealm`** (optional; default `false`): Allows `proxyRealm` to use plaintext HTTP. This can expose proxied credentials and should only be used in controlled test environments.
 
 - **`claimMapping`** (optional): CEL-based configuration for validating and mapping OIDC claims.
   - **`variables`**: List of variables to extract from claims using CEL expressions
@@ -287,9 +289,9 @@ curl -H "Authorization: Bearer $TOKEN" https://zot.example.com/v2/_catalog
 
 ### OCI Username/Password Login Flow
 
-Zot also supports the OCI token service flow for clients that only know how to send registry credentials as username/password pairs. When `bearer.oidc` is configured, Zot exposes `GET` and `POST` on `/zot/auth/token`. The username is ignored, and the password must be an OIDC ID token trusted by one of the configured providers.
+Zot also supports the OCI token service flow for clients that only know how to send registry credentials as username/password pairs. When `bearer.oidc` is configured, Zot exposes `GET` and `POST` on `/zot/auth/token`. For local OIDC workload login, the submitted credential must be an OIDC JWT trusted by one of the configured `bearer.oidc` providers.
 
-To make Docker, containerd, or kubelet discover Zot token exchange endpoint automatically, configure `bearer.realm` as an externally reachable URL for `/zot/auth/token` and set `bearer.service` to the registry host clients use. In mixed deployments, set `proxyRealm` and `proxyService` so Zot can forward non-OIDC token requests to the existing external token service.
+To make Docker, containerd, or kubelet discover Zot token exchange endpoint automatically, configure `bearer.realm` as an externally reachable URL for `/zot/auth/token` and set `bearer.service` to the registry host clients use. In mixed deployments with traditional bearer authentication, set `proxyRealm` and `proxyService` so Zot can forward token requests that are not owned by local token backends to the existing traditional bearer token service. Browser `openid.providers` logins continue to use `/zot/auth/login`, not this token endpoint.
 
 Example token exchange request:
 
@@ -300,7 +302,7 @@ curl -u "zot:$TOKEN" \
   "https://zot.example.com/zot/auth/token?service=zot.example.com&scope=repository:app:pull"
 ```
 
-The response contains the same OIDC token in both `token` and `access_token`, allowing OCI clients to retry the original registry request with `Authorization: Bearer <token>`.
+The response contains the same OIDC token in both `token` and `access_token`, plus `expires_in` and `issued_at` derived from the JWT claims, allowing OCI clients to retry the original registry request with `Authorization: Bearer <token>`.
 
 Docker-compatible login works the same way:
 
@@ -450,7 +452,7 @@ Use Zot's access control policies to grant permissions based on the OIDC identit
 
 OIDC workload identity can coexist with traditional bearer authentication. If both are configured, Zot will try OIDC authentication first, then fall back to traditional bearer token authentication.
 
-There is still only one `bearer.realm` value in the challenge, so mixed deployments should advertise Zot `/zot/auth/token` and configure the existing external token service as a proxy fallback. Zot first validates the token request password as an OIDC token. If that fails, Zot proxies the token request to `proxyRealm`, preserving the request shape and rewriting `service` to `proxyService`:
+There is still only one `bearer.realm` value in the challenge, so mixed deployments should advertise Zot `/zot/auth/token` and configure the existing traditional bearer token service as a proxy fallback. Zot first checks whether the submitted credential is owned by a local token backend such as `bearer.oidc` or `openid.providers`. Locally owned credentials are never proxied: they either authenticate locally or fail with 401. If no local backend owns the credential, Zot proxies the token request to `proxyRealm`, preserving the request shape and rewriting `service` to `proxyService`:
 
 ```json
 {

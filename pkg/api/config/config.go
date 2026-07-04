@@ -214,11 +214,12 @@ func (a *AuthConfig) GetMTLSConfig() *MTLSConfig {
 }
 
 type BearerConfig struct {
-	Realm        string
-	Service      string
-	ProxyRealm   string `json:"proxyRealm,omitempty"   mapstructure:"proxyRealm,omitempty"`
-	ProxyService string `json:"proxyService,omitempty" mapstructure:"proxyService,omitempty"`
-	Cert         string
+	Realm                   string
+	Service                 string
+	ProxyRealm              string `json:"proxyRealm,omitempty"              mapstructure:"proxyRealm,omitempty"`
+	ProxyService            string `json:"proxyService,omitempty"            mapstructure:"proxyService,omitempty"`
+	AllowInsecureProxyRealm bool   `json:"allowInsecureProxyRealm,omitempty" mapstructure:"allowInsecureProxyRealm,omitempty"` //nolint:lll
+	Cert                    string
 
 	// OIDC configuration for workload identity authentication
 	OIDC BearerOIDCConfigs `json:"oidc,omitempty" mapstructure:"oidc,omitempty"`

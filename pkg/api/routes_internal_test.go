@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/api/constants"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
@@ -318,6 +319,19 @@ func TestTokenProxyRequestBody(t *testing.T) {
 			t.Fatalf("expected invalid form error, got %v", err)
 		}
 	})
+
+	t.Run("rejects oversized form body", func(t *testing.T) {
+		t.Parallel()
+
+		request := httptest.NewRequest(http.MethodPost, "/token",
+			strings.NewReader(strings.Repeat("a", constants.MaxTokenRequestBodySize+1)))
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		_, _, err := tokenProxyRequestBody(request, "upstream")
+		if !errors.Is(err, errTokenRequestBodyTooLarge) {
+			t.Fatalf("expected body too large error, got %v", err)
+		}
+	})
 }
 
 func TestTokenProxyHeaders(t *testing.T) {
@@ -384,6 +398,19 @@ func TestProxyOIDCBearerTokenExchangeErrorsAndRedirect(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects insecure proxy realm by default", func(t *testing.T) {
+		t.Parallel()
+
+		err := routeHandler.proxyOIDCBearerTokenExchange(
+			httptest.NewRecorder(),
+			httptest.NewRequest(http.MethodGet, "/token", nil),
+			&config.BearerConfig{ProxyRealm: "http://example.com/token", ProxyService: "upstream"},
+		)
+		if !errors.Is(err, errInvalidProxyRealm) {
+			t.Fatalf("expected invalid proxy realm error, got %v", err)
+		}
+	})
+
 	t.Run("returns form rewrite errors", func(t *testing.T) {
 		t.Parallel()
 
@@ -393,7 +420,11 @@ func TestProxyOIDCBearerTokenExchangeErrorsAndRedirect(t *testing.T) {
 		err := routeHandler.proxyOIDCBearerTokenExchange(
 			httptest.NewRecorder(),
 			request,
-			&config.BearerConfig{ProxyRealm: "http://example.com/token", ProxyService: "upstream"},
+			&config.BearerConfig{
+				ProxyRealm:              "http://example.com/token",
+				ProxyService:            "upstream",
+				AllowInsecureProxyRealm: true,
+			},
 		)
 		if !errors.Is(err, errInvalidTokenProxyForm) {
 			t.Fatalf("expected invalid form error, got %v", err)
@@ -409,7 +440,11 @@ func TestProxyOIDCBearerTokenExchangeErrorsAndRedirect(t *testing.T) {
 		err := routeHandler.proxyOIDCBearerTokenExchange(
 			httptest.NewRecorder(),
 			request,
-			&config.BearerConfig{ProxyRealm: "http://example.com/token", ProxyService: "upstream"},
+			&config.BearerConfig{
+				ProxyRealm:              "http://example.com/token",
+				ProxyService:            "upstream",
+				AllowInsecureProxyRealm: true,
+			},
 		)
 		if err == nil {
 			t.Fatal("expected request construction error")
@@ -426,7 +461,7 @@ func TestProxyOIDCBearerTokenExchangeErrorsAndRedirect(t *testing.T) {
 		err := routeHandler.proxyOIDCBearerTokenExchange(
 			httptest.NewRecorder(),
 			httptest.NewRequest(http.MethodGet, "/token", nil),
-			&config.BearerConfig{ProxyRealm: proxyRealm, ProxyService: "upstream"},
+			&config.BearerConfig{ProxyRealm: proxyRealm, ProxyService: "upstream", AllowInsecureProxyRealm: true},
 		)
 		if err == nil {
 			t.Fatal("expected upstream request error")
@@ -445,7 +480,11 @@ func TestProxyOIDCBearerTokenExchangeErrorsAndRedirect(t *testing.T) {
 		err := routeHandler.proxyOIDCBearerTokenExchange(
 			response,
 			httptest.NewRequest(http.MethodGet, "/token", nil),
-			&config.BearerConfig{ProxyRealm: proxyServer.URL + "/token", ProxyService: "upstream"},
+			&config.BearerConfig{
+				ProxyRealm:              proxyServer.URL + "/token",
+				ProxyService:            "upstream",
+				AllowInsecureProxyRealm: true,
+			},
 		)
 		if err != nil {
 			t.Fatalf("unexpected proxy error: %v", err)
@@ -534,6 +573,94 @@ func TestOIDCBearerTokenExchangeRejectsMultipleAuthorizationHeaders(t *testing.T
 	response := httptest.NewRecorder()
 
 	routeHandler.OIDCBearerTokenExchange(&OIDCBearerAuthorizer{})(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, response.Code)
+	}
+}
+
+func TestOIDCBearerTokenExchangeRequestParseErrors(t *testing.T) {
+	t.Parallel()
+
+	conf := config.New()
+	conf.HTTP.Auth = &config.AuthConfig{Bearer: &config.BearerConfig{Realm: "zot"}}
+
+	routeHandler := &RouteHandler{
+		c: &Controller{
+			Config: conf,
+			Log:    log.NewTestLogger(),
+		},
+	}
+
+	t.Run("rejects invalid form body", func(t *testing.T) {
+		t.Parallel()
+
+		request := httptest.NewRequest(http.MethodPost, constants.TokenPath, strings.NewReader("password=%zz"))
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		response := httptest.NewRecorder()
+
+		routeHandler.OIDCBearerTokenExchange(&OIDCBearerAuthorizer{})(response, request)
+
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("expected status %d, got %d", http.StatusBadRequest, response.Code)
+		}
+	})
+
+	t.Run("rejects unreadable form body", func(t *testing.T) {
+		t.Parallel()
+
+		request := httptest.NewRequest(http.MethodPost, constants.TokenPath, nil)
+		request.Body = errTokenProxyReadCloser{}
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		response := httptest.NewRecorder()
+
+		routeHandler.OIDCBearerTokenExchange(&OIDCBearerAuthorizer{})(response, request)
+
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("expected status %d, got %d", http.StatusBadRequest, response.Code)
+		}
+	})
+
+	t.Run("rejects oversized form body", func(t *testing.T) {
+		t.Parallel()
+
+		request := httptest.NewRequest(http.MethodPost, constants.TokenPath,
+			strings.NewReader(strings.Repeat("a", constants.MaxTokenRequestBodySize+1)))
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		response := httptest.NewRecorder()
+
+		routeHandler.OIDCBearerTokenExchange(&OIDCBearerAuthorizer{})(response, request)
+
+		if response.Code != http.StatusRequestEntityTooLarge {
+			t.Fatalf("expected status %d, got %d", http.StatusRequestEntityTooLarge, response.Code)
+		}
+	})
+}
+
+func TestOIDCBearerTokenExchangeOwnedTokenWithoutAuthorizer(t *testing.T) {
+	t.Parallel()
+
+	const issuer = "https://issuer.example.com"
+	const audience = "zot"
+
+	conf := config.New()
+	conf.HTTP.Auth = &config.AuthConfig{Bearer: &config.BearerConfig{
+		Realm: "zot",
+		OIDC:  []config.BearerOIDCConfig{{Issuer: issuer, Audiences: []string{audience}}},
+	}}
+
+	routeHandler := &RouteHandler{
+		c: &Controller{
+			Config: conf,
+			Log:    log.NewTestLogger(),
+		},
+	}
+
+	request := httptest.NewRequest(http.MethodGet, constants.TokenPath, nil)
+	request.SetBasicAuth("<token>", testJWT(map[string]any{"iss": issuer, "aud": audience}))
+	response := httptest.NewRecorder()
+
+	routeHandler.OIDCBearerTokenExchange(nil)(response, request)
 
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, response.Code)
