@@ -56,10 +56,18 @@ type RetentionPolicy struct {
 	DeleteReferrers bool
 	DeleteUntagged  *bool
 	KeepTags        []KeepTagsPolicy
+	KeepUntagged    *KeepUntaggedPolicy
 }
 
 type KeepTagsPolicy struct {
 	Patterns                []string
+	PulledWithin            *time.Duration
+	PushedWithin            *time.Duration
+	MostRecentlyPushedCount int
+	MostRecentlyPulledCount int
+}
+
+type KeepUntaggedPolicy struct {
 	PulledWithin            *time.Duration
 	PushedWithin            *time.Duration
 	MostRecentlyPushedCount int
@@ -845,6 +853,10 @@ func (c *Config) isRetentionEnabledInternal() bool {
 				needsMetaDB = true
 			}
 		}
+
+		if c.isUntaggedRetentionEnabledForPolicy(retentionPolicy) {
+			needsMetaDB = true
+		}
 	}
 
 	for _, subpath := range c.Storage.SubPaths {
@@ -853,6 +865,10 @@ func (c *Config) isRetentionEnabledInternal() bool {
 				if c.isTagsRetentionEnabled(tagRetentionPolicy) {
 					needsMetaDB = true
 				}
+			}
+
+			if c.isUntaggedRetentionEnabledForPolicy(retentionPolicy) {
+				needsMetaDB = true
 			}
 		}
 	}
@@ -870,6 +886,23 @@ func (c *Config) isTagsRetentionEnabled(tagRetentionPolicy KeepTagsPolicy) bool 
 	}
 
 	return false
+}
+
+func (c *Config) isUntaggedRetentionEnabled(untaggedRetentionPolicy KeepUntaggedPolicy) bool {
+	if untaggedRetentionPolicy.MostRecentlyPulledCount != 0 ||
+		untaggedRetentionPolicy.MostRecentlyPushedCount != 0 ||
+		untaggedRetentionPolicy.PulledWithin != nil ||
+		untaggedRetentionPolicy.PushedWithin != nil {
+		return true
+	}
+
+	return false
+}
+
+func (c *Config) isUntaggedRetentionEnabledForPolicy(retentionPolicy RetentionPolicy) bool {
+	return retentionPolicy.KeepUntagged != nil &&
+		(retentionPolicy.DeleteUntagged == nil || *retentionPolicy.DeleteUntagged) &&
+		c.isUntaggedRetentionEnabled(*retentionPolicy.KeepUntagged)
 }
 
 func isSensitiveConfigMapKey(key string) bool {

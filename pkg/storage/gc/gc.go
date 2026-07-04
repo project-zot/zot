@@ -408,7 +408,7 @@ func (gc GarbageCollect) removeManifestsPerRepoPolicy(ctx context.Context, repo 
 			}
 
 			// apply image retention policy
-			gcedUntagged, err = gc.removeUntaggedManifests(repo, index, referenced)
+			gcedUntagged, err = gc.removeUntaggedManifests(ctx, repo, index, referenced)
 			if err != nil {
 				return err
 			}
@@ -699,7 +699,7 @@ func (gc GarbageCollect) removeManifest(repo string, index *ispec.Index,
 	return true, nil
 }
 
-func (gc GarbageCollect) removeUntaggedManifests(repo string, index *ispec.Index,
+func (gc GarbageCollect) removeUntaggedManifests(ctx context.Context, repo string, index *ispec.Index,
 	referenced map[godigest.Digest]bool,
 ) (bool, error) {
 	var gced bool
@@ -707,6 +707,27 @@ func (gc GarbageCollect) removeUntaggedManifests(repo string, index *ispec.Index
 	var err error
 
 	gc.log.Debug().Str("module", "gc").Str("repository", repo).Msg("manifests without tags")
+
+	retainUntagged := make(map[string]bool)
+	if gc.policyMgr.HasUntaggedRetention(repo) {
+		if gc.metaDB != nil {
+			repoMeta, err := gc.metaDB.GetRepoMeta(ctx, repo)
+			if err != nil {
+				gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
+					Msg("failed to get repoMeta for untagged retention")
+
+				return false, err
+			}
+
+			for _, digestStr := range gc.policyMgr.GetRetainedUntaggedFromMetaDB(ctx, repoMeta, *index) {
+				retainUntagged[digestStr] = true
+			}
+		} else {
+			gc.log.Warn().Str("module", "gc").Str("repository", repo).
+				Msg("keepUntagged policy requires metadata database;" +
+					" ignoring keepUntagged rules and using delay-based untagged cleanup")
+		}
+	}
 
 	for _, desc := range index.Manifests {
 		// skip manifests referenced in image indexes
@@ -719,6 +740,10 @@ func (gc GarbageCollect) removeUntaggedManifests(repo string, index *ispec.Index
 			desc.MediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(desc.MediaType) {
 			_, ok := getDescriptorTag(desc)
 			if !ok {
+				if retainUntagged[desc.Digest.String()] {
+					continue
+				}
+
 				gced, err = gc.gcManifest(repo, index, desc, "", "", gc.opts.ImageRetention.Delay)
 				if err != nil {
 					return false, err
