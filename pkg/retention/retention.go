@@ -19,8 +19,9 @@ import (
 
 const (
 	// reasons for gc.
-	filteredByTagRules = "didn't meet any tag retention rule"
-	filteredByTagNames = "didn't meet any tag 'patterns' rules"
+	filteredByTagRules      = "didn't meet any tag retention rule"
+	filteredByTagNames      = "didn't meet any tag 'patterns' rules"
+	filteredByUntaggedRules = "didn't meet any untagged retention rule"
 	// reasons for retention.
 	retainedStrFormat = "retained by %s policy"
 )
@@ -80,7 +81,7 @@ func (p policyManager) HasTagRetention(repo string) bool {
 
 func (p policyManager) HasUntaggedRetention(repo string) bool {
 	if policy, err := p.getRepoPolicy(repo); err == nil {
-		return policy.KeepUntagged != nil
+		return policy.KeepUntagged != nil && len(p.getUntaggedRules(*policy.KeepUntagged)) > 0
 	}
 
 	return false
@@ -274,6 +275,9 @@ func (p policyManager) GetRetainedUntaggedFromMetaDB(ctx context.Context, repoMe
 	retainDigests := make([]string, 0)
 	retainCandidates := candidates
 	rules := p.getUntaggedRules(*policy.KeepUntagged)
+	if len(rules) == 0 {
+		return nil
+	}
 
 	rulesCandidates := make([]*types.Candidate, 0)
 
@@ -287,13 +291,7 @@ func (p policyManager) GetRetainedUntaggedFromMetaDB(ctx context.Context, repoMe
 		rulesCandidates = append(rulesCandidates, ruleCandidates...)
 	}
 
-	if len(rules) > 0 {
-		retainCandidates = rulesCandidates
-	} else {
-		for _, retainCandidate := range retainCandidates {
-			retainCandidate.RetainedBy = "keepUntagged"
-		}
-	}
+	retainCandidates = rulesCandidates
 
 	for _, retainCandidate := range retainCandidates {
 		if !slices.Contains(retainDigests, retainCandidate.DigestStr) {
@@ -307,10 +305,10 @@ func (p policyManager) GetRetainedUntaggedFromMetaDB(ctx context.Context, repoMe
 
 	for _, candidateInfo := range candidates {
 		if !slices.Contains(retainDigests, candidateInfo.DigestStr) {
-			logDigestAction(repo, "delete", filteredByTagRules, candidateInfo, p.config.DryRun, &p.log)
+			logDigestAction(repo, "delete", filteredByUntaggedRules, candidateInfo, p.config.DryRun, &p.log)
 
 			if p.auditLog != nil {
-				logDigestAction(repo, "delete", filteredByTagRules, candidateInfo, p.config.DryRun, p.auditLog)
+				logDigestAction(repo, "delete", filteredByUntaggedRules, candidateInfo, p.config.DryRun, p.auditLog)
 			}
 		}
 	}

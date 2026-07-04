@@ -16,8 +16,6 @@ type Candidate struct {
 	PushTimestamp time.Time
 	PullTimestamp time.Time
 	RetainedBy    string
-	IsUntagged    bool
-	ReferenceLabel string
 }
 
 type PolicyManager interface {

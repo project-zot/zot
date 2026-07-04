@@ -60,12 +60,10 @@ func GetUntaggedCandidates(repoMeta mTypes.RepoMeta, index ispec.Index) []*types
 		}
 
 		candidate := &types.Candidate{
-			MediaType:      manifest.MediaType,
-			DigestStr:      digestStr,
-			PushTimestamp:  stats.PushTimestamp,
-			PullTimestamp:  stats.LastPullTimestamp,
-			IsUntagged:     true,
-			ReferenceLabel: digestStr,
+			MediaType:     manifest.MediaType,
+			DigestStr:     digestStr,
+			PushTimestamp: stats.PushTimestamp,
+			PullTimestamp: stats.LastPullTimestamp,
 		}
 
 		candidates = append(candidates, candidate)

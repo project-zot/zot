@@ -35,6 +35,42 @@ var (
 	repoName = "test" //nolint: gochecknoglobals
 )
 
+type retentionPolicyMock struct {
+	retainedUntagged []string
+}
+
+func (rpm retentionPolicyMock) HasDeleteReferrer(repo string) bool {
+	return false
+}
+
+func (rpm retentionPolicyMock) HasDeleteUntagged(repo string) bool {
+	return true
+}
+
+func (rpm retentionPolicyMock) HasUntaggedRetention(repo string) bool {
+	return true
+}
+
+func (rpm retentionPolicyMock) HasTagRetention(repo string) bool {
+	return false
+}
+
+func (rpm retentionPolicyMock) GetRetainedTagsFromIndex(ctx context.Context, repo string, index ispec.Index) []string {
+	return nil
+}
+
+func (rpm retentionPolicyMock) GetRetainedTagsFromMetaDB(ctx context.Context, repoMeta types.RepoMeta,
+	index ispec.Index,
+) []string {
+	return nil
+}
+
+func (rpm retentionPolicyMock) GetRetainedUntaggedFromMetaDB(ctx context.Context, repoMeta types.RepoMeta,
+	index ispec.Index,
+) []string {
+	return rpm.retainedUntagged
+}
+
 func TestGarbageCollectManifestErrors(t *testing.T) {
 	Convey("Make imagestore and upload manifest", t, func(c C) {
 		dir := t.TempDir()
@@ -164,6 +200,39 @@ func TestGarbageCollectManifestErrors(t *testing.T) {
 			err = gc.addIndexBlobsToReferences(repoName, index, map[string]bool{})
 			So(err, ShouldNotBeNil)
 		})
+	})
+}
+
+func TestRemoveUntaggedManifestsWithRetention(t *testing.T) {
+	Convey("removeUntaggedManifests keeps untagged manifests retained by policy", t, func() {
+		digest := godigest.FromString("retained")
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{
+					Digest:    digest,
+					MediaType: ispec.MediaTypeImageManifest,
+				},
+			},
+		}
+
+		gc := GarbageCollect{
+			metaDB: mocks.MetaDBMock{
+				GetRepoMetaFn: func(ctx context.Context, repo string) (types.RepoMeta, error) {
+					return types.RepoMeta{Name: repo}, nil
+				},
+			},
+			policyMgr: retentionPolicyMock{
+				retainedUntagged: []string{digest.String()},
+			},
+			log: zlog.NewTestLogger(),
+		}
+
+		gced, err := gc.removeUntaggedManifests(repoName, &index, map[godigest.Digest]bool{})
+
+		So(err, ShouldBeNil)
+		So(gced, ShouldBeFalse)
+		So(index.Manifests, ShouldHaveLength, 1)
+		So(index.Manifests[0].Digest, ShouldEqual, digest)
 	})
 }
 

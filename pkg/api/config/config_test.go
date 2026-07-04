@@ -661,7 +661,7 @@ func TestConfig(t *testing.T) {
 		conf = config.New()
 		conf.Storage.Retention.Policies = []config.RetentionPolicy{
 			{
-				Repositories:  []string{"repo"},
+				Repositories: []string{"repo"},
 				KeepUntagged: &config.KeepUntaggedPolicy{},
 			},
 		}
