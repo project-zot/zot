@@ -4,11 +4,12 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
 	"os"
-	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,8 +26,6 @@ import (
 // a refresh roughly once per minute, but this is best-effort and not a strict upper bound.
 const oidcProviderRefreshInterval = 1 * time.Minute
 
-var bearerOIDCTokenMatch = regexp.MustCompile("(?i)bearer (.*)")
-
 // OIDCBearerAuthorizer validates OIDC ID tokens for workload identity authentication.
 type OIDCBearerAuthorizer struct {
 	providers []*oidcProvider
@@ -38,6 +37,7 @@ type oidcProvider struct {
 	issuer          string
 	audiences       []string
 	claimProcessor  *cel.ClaimProcessor
+	allowBasicAuth  bool
 	skipIssuerCheck bool
 	httpClient      *http.Client
 	log             log.Logger
@@ -158,6 +158,7 @@ func newOIDCProvider(oidcConfig *config.BearerOIDCConfig, log log.Logger) (*oidc
 		issuer:          oidcConfig.Issuer,
 		audiences:       oidcConfig.Audiences,
 		claimProcessor:  claimProcessor,
+		allowBasicAuth:  oidcConfig.AllowBasicAuth,
 		skipIssuerCheck: oidcConfig.SkipIssuerVerification,
 		httpClient:      httpClient,
 		log:             log,
@@ -169,10 +170,10 @@ func (a *oidcProvider) authenticate(ctx context.Context, header string) (*cel.Cl
 		return nil, zerr.ErrNoBearerToken
 	}
 
-	// Extract token from Authorization header
-	tokenString := bearerOIDCTokenMatch.ReplaceAllString(header, "$1")
-	if tokenString == "" || tokenString == header {
-		return nil, zerr.ErrInvalidBearerToken
+	// Extract token from Authorization header.
+	tokenString, err := getOIDCTokenFromAuthorizationHeader(header, a.allowBasicAuth)
+	if err != nil {
+		return nil, err
 	}
 
 	// Get verifier.
@@ -208,6 +209,53 @@ func (a *oidcProvider) authenticate(ctx context.Context, header string) (*cel.Cl
 	a.log.Debug().Str("username", res.Username).Strs("groups", res.Groups).Msg("the OIDC token was authenticated")
 
 	return res, nil
+}
+
+func getOIDCTokenFromAuthorizationHeader(header string, allowBasicAuth bool) (string, error) {
+	splitStr := strings.SplitN(header, " ", 2) //nolint:mnd
+	if len(splitStr) != 2 {
+		return "", zerr.ErrInvalidBearerToken
+	}
+
+	switch strings.ToLower(splitStr[0]) {
+	case "bearer":
+		tokenString := strings.TrimSpace(splitStr[1])
+		if tokenString == "" {
+			return "", zerr.ErrInvalidBearerToken
+		}
+
+		return tokenString, nil
+	case "basic":
+		if !allowBasicAuth {
+			return "", zerr.ErrInvalidBearerToken
+		}
+
+		decodedStr, err := base64.StdEncoding.DecodeString(splitStr[1])
+		if err != nil {
+			return "", fmt.Errorf("%w: %w", zerr.ErrInvalidBearerToken, err)
+		}
+
+		pair := strings.SplitN(string(decodedStr), ":", 2) //nolint:mnd
+		if len(pair) != 2 {                                //nolint:mnd
+			return "", zerr.ErrInvalidBearerToken
+		}
+
+		// Prefer the password field as the token; fall back to the username field
+		// when the password is empty (e.g. "token:" basic-auth encoding).
+		tokenString := pair[1]
+		if tokenString == "" {
+			tokenString = pair[0]
+		}
+		tokenString = strings.TrimSpace(tokenString)
+
+		if tokenString == "" {
+			return "", zerr.ErrInvalidBearerToken
+		}
+
+		return tokenString, nil
+	default:
+		return "", zerr.ErrInvalidBearerToken
+	}
 }
 
 // getVerifier retrieves or refreshes the oidc.IDTokenVerifier as needed.
