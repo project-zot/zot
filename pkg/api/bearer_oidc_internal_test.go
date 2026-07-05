@@ -43,7 +43,9 @@ func TestNewBearerAuthOIDCBearerAuthorizerInvalidConfigPanics(t *testing.T) {
 
 	NewBearerAuth(&config.AuthConfig{Bearer: &config.BearerConfig{
 		OIDC: config.BearerOIDCConfigs{{
-			Audiences: []string{"zot"},
+			Issuer:               "https://issuer.example.com",
+			Audiences:            []string{"zot"},
+			CertificateAuthority: "not a valid PEM certificate",
 		}},
 	}}, log.NewTestLogger())
 }

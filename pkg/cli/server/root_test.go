@@ -3470,7 +3470,7 @@ func TestBearerASMConfigValidation(t *testing.T) {
 			So(err, ShouldWrap, zerr.ErrBadConfig)
 		})
 
-		Convey("Reject proxyRealm without proxyService", func() {
+		Convey("Reject upstream token endpoint without service", func() {
 			content := `{
 				"storage": {"rootDirectory": "/tmp/zot"},
 				"http": {
@@ -3478,7 +3478,7 @@ func TestBearerASMConfigValidation(t *testing.T) {
 					"auth": {
 						"bearer": {
 							"realm": "test", "service": "test",
-							"proxyRealm": "https://auth.example.com/token"
+							"upstreamTokenEndpoint": {"realm": "https://auth.example.com/token"}
 						}
 					}
 				}
@@ -3490,7 +3490,7 @@ func TestBearerASMConfigValidation(t *testing.T) {
 			So(err, ShouldWrap, zerr.ErrBadConfig)
 		})
 
-		Convey("Reject invalid proxyRealm", func() {
+		Convey("Reject invalid upstream token endpoint realm", func() {
 			content := `{
 				"storage": {"rootDirectory": "/tmp/zot"},
 				"http": {
@@ -3498,7 +3498,7 @@ func TestBearerASMConfigValidation(t *testing.T) {
 					"auth": {
 						"bearer": {
 							"realm": "test", "service": "test",
-							"proxyRealm": "/token", "proxyService": "upstream"
+							"upstreamTokenEndpoint": {"realm": "/token", "service": "upstream"}
 						}
 					}
 				}
@@ -3510,7 +3510,7 @@ func TestBearerASMConfigValidation(t *testing.T) {
 			So(err, ShouldWrap, zerr.ErrBadConfig)
 		})
 
-		Convey("Valid proxy token service config is accepted", func() {
+		Convey("Valid upstream token endpoint config is accepted", func() {
 			content := `{
 				"storage": {"rootDirectory": "/tmp/zot"},
 				"http": {
@@ -3518,7 +3518,7 @@ func TestBearerASMConfigValidation(t *testing.T) {
 					"auth": {
 						"bearer": {
 							"realm": "test", "service": "test",
-							"proxyRealm": "https://auth.example.com/token", "proxyService": "upstream"
+							"upstreamTokenEndpoint": {"realm": "https://auth.example.com/token", "service": "upstream"}
 						}
 					}
 				}
@@ -3529,7 +3529,7 @@ func TestBearerASMConfigValidation(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 
-		Convey("Reject insecure proxyRealm by default", func() {
+		Convey("Reject insecure upstream token endpoint by default", func() {
 			content := `{
 				"storage": {"rootDirectory": "/tmp/zot"},
 				"http": {
@@ -3537,7 +3537,7 @@ func TestBearerASMConfigValidation(t *testing.T) {
 					"auth": {
 						"bearer": {
 							"realm": "test", "service": "test",
-							"proxyRealm": "http://auth.example.com/token", "proxyService": "upstream"
+							"upstreamTokenEndpoint": {"realm": "http://auth.example.com/token", "service": "upstream"}
 						}
 					}
 				}
@@ -3549,7 +3549,7 @@ func TestBearerASMConfigValidation(t *testing.T) {
 			So(err, ShouldWrap, zerr.ErrBadConfig)
 		})
 
-		Convey("Allow insecure proxyRealm with explicit opt-in", func() {
+		Convey("Allow insecure upstream token endpoint with explicit opt-in", func() {
 			content := `{
 				"storage": {"rootDirectory": "/tmp/zot"},
 				"http": {
@@ -3557,8 +3557,10 @@ func TestBearerASMConfigValidation(t *testing.T) {
 					"auth": {
 						"bearer": {
 							"realm": "test", "service": "test",
-							"proxyRealm": "http://auth.example.com/token", "proxyService": "upstream",
-							"allowInsecureProxyRealm": true
+							"upstreamTokenEndpoint": {
+								"realm": "http://auth.example.com/token", "service": "upstream",
+								"allowInsecureHttp": true
+							}
 						}
 					}
 				}

@@ -818,31 +818,34 @@ func validateBearerConfig(cfg *config.Config, logger zlog.Logger) error {
 		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 	}
 
-	if (bearer.ProxyRealm == "") != (bearer.ProxyService == "") {
-		msg := "proxyRealm and proxyService must be configured together"
-		logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
-
-		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
-	}
-
-	if bearer.ProxyRealm != "" {
-		proxyRealm, err := url.Parse(bearer.ProxyRealm)
-		if err != nil || proxyRealm.Scheme == "" || proxyRealm.Host == "" {
-			msg := "proxyRealm must be an absolute URL"
+	if bearer.UpstreamTokenEndpoint != nil {
+		upstreamTokenEndpoint := bearer.UpstreamTokenEndpoint
+		if upstreamTokenEndpoint.Realm == "" || upstreamTokenEndpoint.Service == "" {
+			msg := "upstreamTokenEndpoint.realm and upstreamTokenEndpoint.service must be configured together"
 			logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
 			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 		}
 
-		if !strings.EqualFold(proxyRealm.Scheme, constants.SchemeHTTPS) {
-			if !strings.EqualFold(proxyRealm.Scheme, constants.SchemeHTTP) || !bearer.AllowInsecureProxyRealm {
-				msg := "proxyRealm must use https unless allowInsecureProxyRealm is true"
+		upstreamRealm, err := url.Parse(upstreamTokenEndpoint.Realm)
+		if err != nil || upstreamRealm.Scheme == "" || upstreamRealm.Host == "" {
+			msg := "upstreamTokenEndpoint.realm must be an absolute URL"
+			logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
+
+			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+		}
+
+		if !strings.EqualFold(upstreamRealm.Scheme, constants.SchemeHTTPS) {
+			if !strings.EqualFold(upstreamRealm.Scheme, constants.SchemeHTTP) || !upstreamTokenEndpoint.AllowInsecureHTTP {
+				msg := "upstreamTokenEndpoint.realm must use https unless " +
+					"upstreamTokenEndpoint.allowInsecureHttp is true"
 				logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
 				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 			}
 
-			logger.Warn().Msg("allowInsecureProxyRealm is enabled; token proxy credentials may be sent over plaintext HTTP")
+			logger.Warn().Msg("upstreamTokenEndpoint.allowInsecureHttp is enabled; " +
+				"token endpoint credentials may be sent over plaintext HTTP")
 		}
 	}
 

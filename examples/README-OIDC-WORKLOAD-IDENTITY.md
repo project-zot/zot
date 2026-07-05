@@ -51,11 +51,11 @@ Add OIDC workload identity configuration to your bearer authentication settings.
 
 - **`service`** (recommended): Registry service name advertised in the bearer challenge. Use the registry host and port that clients connect to.
 
-- **`proxyRealm`** (optional; configure with `proxyService`): HTTPS URL for an existing traditional bearer token service. Zot uses this only as a compatibility fallback when `/zot/auth/token` receives credentials that are not owned by any local token backend.
+- **`upstreamTokenEndpoint.realm`** (optional; configure inside `upstreamTokenEndpoint` with `service`): HTTPS URL for an existing traditional bearer token service. Zot uses this only as a compatibility fallback when `/zot/auth/token` receives credentials that are not owned by any local token backend.
 
-- **`proxyService`** (optional; configure with `proxyRealm`): Service value Zot sends to the upstream traditional bearer token service. Zot preserves the original token request method, headers, query parameters, and body, rewriting only `service` to this value.
+- **`upstreamTokenEndpoint.service`** (optional; configure inside `upstreamTokenEndpoint` with `realm`): Service value Zot sends to the upstream traditional bearer token service. Zot preserves the original token request method, headers, query parameters, and body, rewriting only `service` to this value.
 
-- **`allowInsecureProxyRealm`** (optional; default `false`): Allows `proxyRealm` to use plaintext HTTP. This can expose proxied credentials and should only be used in controlled test environments.
+- **`upstreamTokenEndpoint.allowInsecureHttp`** (optional; default `false`): Allows `upstreamTokenEndpoint.realm` to use plaintext HTTP. This can expose proxied credentials and should only be used in controlled test environments.
 
 - **`claimMapping`** (optional): CEL-based configuration for validating and mapping OIDC claims.
   - **`variables`**: List of variables to extract from claims using CEL expressions
@@ -97,7 +97,7 @@ Note that `claims.iss + '/' + claims.sub` is the default username mapping if non
 is specified (so the whole `claimMapping` section could be omitted in this example).
 The example also advertises Zot token exchange endpoint for OCI username/password
 login flows. If the same bearer configuration also uses traditional bearer
-authentication, add `proxyRealm` and `proxyService` as shown in the compatibility
+authentication, add `upstreamTokenEndpoint` as shown in the compatibility
 section so non-OIDC token requests can fall back to the external token service.
 
 ```json
@@ -291,7 +291,7 @@ curl -H "Authorization: Bearer $TOKEN" https://zot.example.com/v2/_catalog
 
 Zot also supports the OCI token service flow for clients that only know how to send registry credentials as username/password pairs. When `bearer.oidc` is configured, Zot exposes `GET` and `POST` on `/zot/auth/token`. For local OIDC workload login, the submitted credential must be an OIDC JWT trusted by one of the configured `bearer.oidc` providers.
 
-To make Docker, containerd, or kubelet discover Zot token exchange endpoint automatically, configure `bearer.realm` as an externally reachable URL for `/zot/auth/token` and set `bearer.service` to the registry host clients use. In mixed deployments with traditional bearer authentication, set `proxyRealm` and `proxyService` so Zot can forward token requests that are not owned by local token backends to the existing traditional bearer token service. Browser `openid.providers` logins continue to use `/zot/auth/login`, not this token endpoint.
+To make Docker, containerd, or kubelet discover Zot token exchange endpoint automatically, configure `bearer.realm` as an externally reachable URL for `/zot/auth/token` and set `bearer.service` to the registry host clients use. In mixed deployments with traditional bearer authentication, set `upstreamTokenEndpoint` so Zot can forward token requests that are not owned by local token backends to the existing traditional bearer token service. Browser `openid.providers` logins continue to use `/zot/auth/login`, not this token endpoint.
 
 Example token exchange request:
 
@@ -452,7 +452,7 @@ Use Zot's access control policies to grant permissions based on the OIDC identit
 
 OIDC workload identity can coexist with traditional bearer authentication. If both are configured, Zot will try OIDC authentication first, then fall back to traditional bearer token authentication.
 
-There is still only one `bearer.realm` value in the challenge, so mixed deployments should advertise Zot `/zot/auth/token` and configure the existing traditional bearer token service as a proxy fallback. Zot first checks whether the submitted credential is owned by a local token backend such as `bearer.oidc` or `openid.providers`. Locally owned credentials are never proxied: they either authenticate locally or fail with 401. If no local backend owns the credential, Zot proxies the token request to `proxyRealm`, preserving the request shape and rewriting `service` to `proxyService`:
+There is still only one `bearer.realm` value in the challenge, so mixed deployments should advertise Zot `/zot/auth/token` and configure the existing traditional bearer token service as a proxy fallback. Zot first checks whether the submitted credential is owned by a local token backend such as `bearer.oidc` or `openid.providers`. Locally owned credentials are never proxied: they either authenticate locally or fail with 401. If no local backend owns the credential, Zot proxies the token request to `upstreamTokenEndpoint.realm`, preserving the request shape and rewriting `service` to `upstreamTokenEndpoint.service`:
 
 ```json
 {
@@ -461,8 +461,10 @@ There is still only one `bearer.realm` value in the challenge, so mixed deployme
       "bearer": {
         "realm": "https://zot.example.com/zot/auth/token",
         "service": "zot.example.com",
-        "proxyRealm": "https://auth.myreg.io/auth/token",
-        "proxyService": "myauth",
+        "upstreamTokenEndpoint": {
+          "realm": "https://auth.myreg.io/auth/token",
+          "service": "myauth"
+        },
         "cert": "/etc/zot/auth.crt",
         "oidc": [
           {

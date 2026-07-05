@@ -46,7 +46,7 @@ func NewBearerAuth(authConfig *config.AuthConfig, logger log.Logger) *BearerAuth
 		authConfig: authConfig,
 		log:        logger,
 	}
-	if authConfig == nil || authConfig.Bearer == nil {
+	if !authConfig.HasBearerConfig() {
 		return bearerAuth
 	}
 
@@ -86,7 +86,7 @@ func NewBearerAuth(authConfig *config.AuthConfig, logger log.Logger) *BearerAuth
 		)
 	}
 
-	if len(authConfig.Bearer.OIDC) > 0 {
+	if authConfig.IsOIDCBearerAuthEnabled() {
 		oidcAuthorizer, err := NewOIDCBearerAuthorizer(authConfig.Bearer.OIDC, logger)
 		if err != nil {
 			logger.Panic().Err(err).Msg("failed to initialize OIDC bearer authorizer")
@@ -241,7 +241,7 @@ func (b *BearerAuth) Middleware(ctlr *Controller) mux.MiddlewareFunc {
 }
 
 func (b *BearerAuth) TokenExchangeHandler() http.HandlerFunc {
-	if b == nil || b.oidc == nil {
+	if b == nil || !b.authConfig.IsOIDCBearerAuthEnabled() || b.oidc == nil {
 		return nil
 	}
 
@@ -306,7 +306,7 @@ func (b *BearerAuth) TokenExchangeHandler() http.HandlerFunc {
 			return
 		}
 
-		if b.authConfig.IsTokenProxyConfigured() {
+		if b.authConfig.IsUpstreamTokenEndpointConfigured() {
 			if err := b.proxyOIDCBearerTokenExchange(response, request); err != nil {
 				b.log.Error().Err(err).Msg("failed to proxy oidc bearer token exchange")
 				writeTokenExchangeError(response, http.StatusBadGateway, "failed to proxy token request")
@@ -321,19 +321,20 @@ func (b *BearerAuth) TokenExchangeHandler() http.HandlerFunc {
 
 func (b *BearerAuth) proxyOIDCBearerTokenExchange(response http.ResponseWriter, request *http.Request) error {
 	bearerConfig := b.bearerConfig
-	proxyURL, err := url.Parse(bearerConfig.ProxyRealm)
+	upstreamTokenEndpoint := bearerConfig.UpstreamTokenEndpoint
+	proxyURL, err := url.Parse(upstreamTokenEndpoint.Realm)
 	if err != nil {
-		return fmt.Errorf("%w: %w", zerr.ErrInvalidProxyRealm, err)
+		return fmt.Errorf("%w: %w", zerr.ErrInvalidUpstreamTokenEndpoint, err)
 	}
 
 	if proxyURL.Scheme == "" || proxyURL.Host == "" {
-		return fmt.Errorf("%w: must be an absolute URL", zerr.ErrInvalidProxyRealm)
+		return fmt.Errorf("%w: must be an absolute URL", zerr.ErrInvalidUpstreamTokenEndpoint)
 	}
 
 	if !strings.EqualFold(proxyURL.Scheme, constants.SchemeHTTPS) {
-		if !strings.EqualFold(proxyURL.Scheme, constants.SchemeHTTP) || !bearerConfig.AllowInsecureProxyRealm {
-			return fmt.Errorf("%w: proxyRealm must use https unless allowInsecureProxyRealm is true",
-				zerr.ErrInvalidProxyRealm)
+		if !strings.EqualFold(proxyURL.Scheme, constants.SchemeHTTP) || !upstreamTokenEndpoint.AllowInsecureHTTP {
+			return fmt.Errorf("%w: upstreamTokenEndpoint.realm must use https unless "+
+				"upstreamTokenEndpoint.allowInsecureHttp is true", zerr.ErrInvalidUpstreamTokenEndpoint)
 		}
 	}
 
@@ -345,10 +346,10 @@ func (b *BearerAuth) proxyOIDCBearerTokenExchange(response http.ResponseWriter, 
 			query.Add(key, value)
 		}
 	}
-	query.Set("service", bearerConfig.ProxyService)
+	query.Set("service", upstreamTokenEndpoint.Service)
 	proxyURL.RawQuery = query.Encode()
 
-	body, contentLength, err := tokenProxyRequestBody(request, bearerConfig.ProxyService)
+	body, contentLength, err := tokenProxyRequestBody(request, upstreamTokenEndpoint.Service)
 	if err != nil {
 		return err
 	}
@@ -376,7 +377,7 @@ func (b *BearerAuth) proxyOIDCBearerTokenExchange(response http.ResponseWriter, 
 		return http.ErrUseLastResponse
 	}
 
-	//nolint:gosec // proxyRealm is an administrator-configured token service URL.
+	//nolint:gosec // upstreamTokenEndpoint.realm is an administrator-configured token service URL.
 	proxyResp, err := proxyClient.Do(proxyReq)
 	if err != nil {
 		return err
@@ -390,7 +391,7 @@ func (b *BearerAuth) proxyOIDCBearerTokenExchange(response http.ResponseWriter, 
 	return err
 }
 
-func tokenProxyRequestBody(request *http.Request, proxyService string) (io.Reader, int64, error) {
+func tokenProxyRequestBody(request *http.Request, upstreamService string) (io.Reader, int64, error) {
 	if request.Body == nil || request.Body == http.NoBody {
 		return nil, 0, nil
 	}
@@ -409,7 +410,7 @@ func tokenProxyRequestBody(request *http.Request, proxyService string) (io.Reade
 		return nil, 0, fmt.Errorf("%w: %w", zerr.ErrInvalidTokenProxyForm, parseErr)
 	}
 
-	form.Set("service", proxyService)
+	form.Set("service", upstreamService)
 	encodedBody := []byte(form.Encode())
 
 	return bytes.NewReader(encodedBody), int64(len(encodedBody)), nil

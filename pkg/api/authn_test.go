@@ -1366,11 +1366,13 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			conf.HTTP.Port = port
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
-					Realm:                   baseURL + constants.TokenPath,
-					Service:                 "zot-service",
-					ProxyRealm:              proxyServer.URL + "/token",
-					ProxyService:            "upstream-service",
-					AllowInsecureProxyRealm: true,
+					Realm:   baseURL + constants.TokenPath,
+					Service: "zot-service",
+					UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{
+						Realm:             proxyServer.URL + "/token",
+						Service:           "upstream-service",
+						AllowInsecureHTTP: true,
+					},
 					OIDC: []config.BearerOIDCConfig{{
 						Issuer:    issuer,
 						Audiences: []string{audience},
@@ -1415,11 +1417,13 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			conf.HTTP.Port = port
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
-					Realm:                   baseURL + constants.TokenPath,
-					Service:                 "zot-service",
-					ProxyRealm:              proxyServer.URL + "/token",
-					ProxyService:            "upstream-service",
-					AllowInsecureProxyRealm: true,
+					Realm:   baseURL + constants.TokenPath,
+					Service: "zot-service",
+					UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{
+						Realm:             proxyServer.URL + "/token",
+						Service:           "upstream-service",
+						AllowInsecureHTTP: true,
+					},
 					OIDC: []config.BearerOIDCConfig{{
 						Issuer:    issuer,
 						Audiences: []string{audience},
@@ -1479,11 +1483,13 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			conf.HTTP.Port = port
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
-					Realm:                   baseURL + constants.TokenPath,
-					Service:                 "zot-service",
-					ProxyRealm:              proxyServer.URL + "/token?from=proxy",
-					ProxyService:            "upstream-service",
-					AllowInsecureProxyRealm: true,
+					Realm:   baseURL + constants.TokenPath,
+					Service: "zot-service",
+					UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{
+						Realm:             proxyServer.URL + "/token?from=proxy",
+						Service:           "upstream-service",
+						AllowInsecureHTTP: true,
+					},
 					OIDC: []config.BearerOIDCConfig{{
 						Issuer:    issuer,
 						Audiences: []string{audience},
@@ -1543,11 +1549,13 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			conf.HTTP.Port = port
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
-					Realm:                   baseURL + constants.TokenPath,
-					Service:                 "zot-service",
-					ProxyRealm:              proxyServer.URL + "/token",
-					ProxyService:            "upstream-service",
-					AllowInsecureProxyRealm: true,
+					Realm:   baseURL + constants.TokenPath,
+					Service: "zot-service",
+					UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{
+						Realm:             proxyServer.URL + "/token",
+						Service:           "upstream-service",
+						AllowInsecureHTTP: true,
+					},
 					OIDC: []config.BearerOIDCConfig{{
 						Issuer:    issuer,
 						Audiences: []string{audience},

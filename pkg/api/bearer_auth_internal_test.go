@@ -33,6 +33,10 @@ func (errTokenProxyReadCloser) Close() error {
 }
 
 func newTestBearerAuth(bearerConfig *config.BearerConfig) *BearerAuth {
+	if bearerConfig != nil && len(bearerConfig.OIDC) == 0 {
+		bearerConfig.OIDC = []config.BearerOIDCConfig{{Issuer: "https://issuer.example.com", Audiences: []string{"zot"}}}
+	}
+
 	authConfig := &config.AuthConfig{Bearer: bearerConfig}
 
 	return &BearerAuth{
@@ -275,42 +279,42 @@ func TestIsFormURLEncoded(t *testing.T) {
 func TestProxyOIDCBearerTokenExchangeErrorsAndRedirect(t *testing.T) {
 	t.Parallel()
 
-	t.Run("rejects invalid proxy realm", func(t *testing.T) {
+	t.Run("rejects invalid upstream token endpoint realm", func(t *testing.T) {
 		t.Parallel()
 
-		bearerAuth := newTestBearerAuth(&config.BearerConfig{ProxyRealm: "http://[::1", ProxyService: "upstream"})
+		bearerAuth := newTestBearerAuth(&config.BearerConfig{UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{Realm: "http://[::1", Service: "upstream"}})
 		err := bearerAuth.proxyOIDCBearerTokenExchange(
 			httptest.NewRecorder(),
 			httptest.NewRequest(http.MethodGet, "/token", nil),
 		)
-		if !errors.Is(err, zerr.ErrInvalidProxyRealm) {
-			t.Fatalf("expected invalid proxy realm error, got %v", err)
+		if !errors.Is(err, zerr.ErrInvalidUpstreamTokenEndpoint) {
+			t.Fatalf("expected invalid upstream token endpoint realm error, got %v", err)
 		}
 	})
 
-	t.Run("rejects relative proxy realm", func(t *testing.T) {
+	t.Run("rejects relative upstream token endpoint realm", func(t *testing.T) {
 		t.Parallel()
 
-		bearerAuth := newTestBearerAuth(&config.BearerConfig{ProxyRealm: "/token", ProxyService: "upstream"})
+		bearerAuth := newTestBearerAuth(&config.BearerConfig{UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{Realm: "/token", Service: "upstream"}})
 		err := bearerAuth.proxyOIDCBearerTokenExchange(
 			httptest.NewRecorder(),
 			httptest.NewRequest(http.MethodGet, "/token", nil),
 		)
-		if !errors.Is(err, zerr.ErrInvalidProxyRealm) {
-			t.Fatalf("expected invalid proxy realm error, got %v", err)
+		if !errors.Is(err, zerr.ErrInvalidUpstreamTokenEndpoint) {
+			t.Fatalf("expected invalid upstream token endpoint realm error, got %v", err)
 		}
 	})
 
-	t.Run("rejects insecure proxy realm by default", func(t *testing.T) {
+	t.Run("rejects insecure upstream token endpoint realm by default", func(t *testing.T) {
 		t.Parallel()
 
-		bearerAuth := newTestBearerAuth(&config.BearerConfig{ProxyRealm: "http://example.com/token", ProxyService: "upstream"})
+		bearerAuth := newTestBearerAuth(&config.BearerConfig{UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{Realm: "http://example.com/token", Service: "upstream"}})
 		err := bearerAuth.proxyOIDCBearerTokenExchange(
 			httptest.NewRecorder(),
 			httptest.NewRequest(http.MethodGet, "/token", nil),
 		)
-		if !errors.Is(err, zerr.ErrInvalidProxyRealm) {
-			t.Fatalf("expected invalid proxy realm error, got %v", err)
+		if !errors.Is(err, zerr.ErrInvalidUpstreamTokenEndpoint) {
+			t.Fatalf("expected invalid upstream token endpoint realm error, got %v", err)
 		}
 	})
 
@@ -321,9 +325,11 @@ func TestProxyOIDCBearerTokenExchangeErrorsAndRedirect(t *testing.T) {
 		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 		bearerAuth := newTestBearerAuth(&config.BearerConfig{
-			ProxyRealm:              "http://example.com/token",
-			ProxyService:            "upstream",
-			AllowInsecureProxyRealm: true,
+			UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{
+				Realm:             "http://example.com/token",
+				Service:           "upstream",
+				AllowInsecureHTTP: true,
+			},
 		})
 		err := bearerAuth.proxyOIDCBearerTokenExchange(
 			httptest.NewRecorder(),
@@ -341,9 +347,11 @@ func TestProxyOIDCBearerTokenExchangeErrorsAndRedirect(t *testing.T) {
 		request.Method = "bad\nmethod"
 
 		bearerAuth := newTestBearerAuth(&config.BearerConfig{
-			ProxyRealm:              "http://example.com/token",
-			ProxyService:            "upstream",
-			AllowInsecureProxyRealm: true,
+			UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{
+				Realm:             "http://example.com/token",
+				Service:           "upstream",
+				AllowInsecureHTTP: true,
+			},
 		})
 		err := bearerAuth.proxyOIDCBearerTokenExchange(
 			httptest.NewRecorder(),
@@ -358,13 +366,15 @@ func TestProxyOIDCBearerTokenExchangeErrorsAndRedirect(t *testing.T) {
 		t.Parallel()
 
 		proxyServer := httptest.NewServer(http.NotFoundHandler())
-		proxyRealm := proxyServer.URL + "/token"
+		upstreamRealm := proxyServer.URL + "/token"
 		proxyServer.Close()
 
 		bearerAuth := newTestBearerAuth(&config.BearerConfig{
-			ProxyRealm:              proxyRealm,
-			ProxyService:            "upstream",
-			AllowInsecureProxyRealm: true,
+			UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{
+				Realm:             upstreamRealm,
+				Service:           "upstream",
+				AllowInsecureHTTP: true,
+			},
 		})
 		err := bearerAuth.proxyOIDCBearerTokenExchange(
 			httptest.NewRecorder(),
@@ -385,9 +395,11 @@ func TestProxyOIDCBearerTokenExchangeErrorsAndRedirect(t *testing.T) {
 
 		response := httptest.NewRecorder()
 		bearerAuth := newTestBearerAuth(&config.BearerConfig{
-			ProxyRealm:              proxyServer.URL + "/token",
-			ProxyService:            "upstream",
-			AllowInsecureProxyRealm: true,
+			UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{
+				Realm:             proxyServer.URL + "/token",
+				Service:           "upstream",
+				AllowInsecureHTTP: true,
+			},
 		})
 		err := bearerAuth.proxyOIDCBearerTokenExchange(
 			response,
@@ -413,10 +425,12 @@ func TestOIDCBearerTokenExchangeProxyError(t *testing.T) {
 	conf := config.New()
 	conf.HTTP.Auth = &config.AuthConfig{
 		Bearer: &config.BearerConfig{
-			Realm:        "zot",
-			Service:      "zot",
-			ProxyRealm:   "/token",
-			ProxyService: "upstream",
+			Realm:   "zot",
+			Service: "zot",
+			UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{
+				Realm:   "/token",
+				Service: "upstream",
+			},
 		},
 	}
 
