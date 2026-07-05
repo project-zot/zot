@@ -1028,7 +1028,8 @@ func TestDestinationRegistry(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(imageReference, ShouldNotBeNil)
 
-		imgStore := getImageStoreFromImageReference(repoName, imageReference, log)
+		imgStore, err := getImageStoreFromImageReference(repoName, imageReference, log)
+		So(err, ShouldBeNil)
 
 		// create a blob/layer
 		upload, err := imgStore.NewBlobUpload(context.Background(), repoName)
@@ -1229,7 +1230,8 @@ func TestDestinationRegistry(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Get the temp image store from the image reference
-			tempImgStore := getImageStoreFromImageReference(repoName, imageReference, log)
+			tempImgStore, err := getImageStoreFromImageReference(repoName, imageReference, log)
+			So(err, ShouldBeNil)
 
 			// Create an image index with multiple manifests
 			var index ispec.Index
@@ -1351,7 +1353,8 @@ func TestDestinationRegistry(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(imageReference, ShouldNotBeNil)
 
-			imgStore := getImageStoreFromImageReference(repoName, imageReference, log)
+			imgStore, err := getImageStoreFromImageReference(repoName, imageReference, log)
+			So(err, ShouldBeNil)
 
 			// upload image
 
@@ -1432,7 +1435,8 @@ func TestDestinationRegistry(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Remove the directory to simulate it not existing
-			tempImageStore := getImageStoreFromImageReference("nonexistent-repo", imageReference, log)
+			tempImageStore, err := getImageStoreFromImageReference("nonexistent-repo", imageReference, log)
+			So(err, ShouldBeNil)
 			repoDir := path.Join(tempImageStore.RootDir(), "nonexistent-repo")
 			err = os.RemoveAll(repoDir)
 			So(err, ShouldBeNil)
@@ -1449,7 +1453,8 @@ func TestDestinationRegistry(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Create an empty directory (no index.json, no blobs)
-			tempImageStore := getImageStoreFromImageReference("empty-repo", imageReference, log)
+			tempImageStore, err := getImageStoreFromImageReference("empty-repo", imageReference, log)
+			So(err, ShouldBeNil)
 			repoDir := path.Join(tempImageStore.RootDir(), "empty-repo")
 			err = os.MkdirAll(repoDir, 0o755)
 			So(err, ShouldBeNil)
@@ -1466,7 +1471,8 @@ func TestDestinationRegistry(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Create a directory with some files but no index.json (inconsistent state)
-			tempImageStore := getImageStoreFromImageReference("inconsistent-repo", imageReference, log)
+			tempImageStore, err := getImageStoreFromImageReference("inconsistent-repo", imageReference, log)
+			So(err, ShouldBeNil)
 			repoDir := path.Join(tempImageStore.RootDir(), "inconsistent-repo")
 			err = os.MkdirAll(repoDir, 0o755)
 			So(err, ShouldBeNil)
@@ -1489,7 +1495,8 @@ func TestDestinationRegistry(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Get the repo directory path
-			tempImageStore := getImageStoreFromImageReference("error-repo", imageReference, log)
+			tempImageStore, err := getImageStoreFromImageReference("error-repo", imageReference, log)
+			So(err, ShouldBeNil)
 			repoDir := path.Join(tempImageStore.RootDir(), "error-repo")
 
 			// Create a file at the repoDir path instead of a directory
@@ -1504,6 +1511,39 @@ func TestDestinationRegistry(t *testing.T) {
 			err = registry.CommitAll("error-repo", imageReference)
 			So(err, ShouldNotBeNil)
 			So(errors.Is(err, os.ErrNotExist), ShouldBeFalse)
+		})
+	})
+}
+
+func TestSyncTempSessionRoot(t *testing.T) {
+	Convey("syncTempSessionRoot resolves temp ocidir session directories", t, func() {
+		repo := "zot-test"
+		layoutPath := path.Join("/tmp", "dest", repo, ".sync", "session-id", repo)
+		imageReference, err := ref.New(fmt.Sprintf("ocidir://%s:1.0", layoutPath))
+		So(err, ShouldBeNil)
+
+		sessionRoot, err := syncTempSessionRoot(repo, imageReference)
+		So(err, ShouldBeNil)
+		So(sessionRoot, ShouldEqual, path.Join("/tmp", "dest", repo, ".sync", "session-id"))
+
+		Convey("reparses layout path from Reference when Path is empty", func() {
+			cleared := imageReference
+			cleared.Path = ""
+
+			sessionRoot, err := syncTempSessionRoot(repo, cleared)
+			So(err, ShouldBeNil)
+			So(sessionRoot, ShouldEqual, path.Join("/tmp", "dest", repo, ".sync", "session-id"))
+		})
+
+		Convey("returns error when path cannot be resolved", func() {
+			_, err := syncTempSessionRoot(repo, ref.Ref{})
+			So(err, ShouldNotBeNil)
+
+			_, err = syncTempSessionRoot("other-repo", imageReference)
+			So(err, ShouldNotBeNil)
+
+			_, err = syncTempSessionRoot(repo, ref.Ref{Path: repo})
+			So(err, ShouldNotBeNil)
 		})
 	})
 }
