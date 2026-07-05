@@ -56,7 +56,6 @@ type Controller struct {
 	HTPasswd        *HTPasswd
 	HTPasswdWatcher *HTPasswdWatcher
 	LDAPClient      *LDAPClient
-	oidcBearerAuthz *OIDCBearerAuthorizer
 	taskScheduler   *scheduler.Scheduler
 	Healthz         *common.Healthz
 	// runtime params (atomic: Run may set the port concurrently with GetPort readers, e.g. tests)

@@ -12,42 +12,43 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
-func TestControllerReusesOIDCBearerAuthorizer(t *testing.T) {
+func TestNewBearerAuthCreatesOIDCBearerAuthorizer(t *testing.T) {
 	t.Parallel()
 
-	ctlr := &Controller{Log: log.NewTestLogger()}
-	oidcConfig := config.BearerOIDCConfigs{{
-		Issuer:    "https://issuer.example.com",
-		Audiences: []string{"zot"},
+	authConfig := &config.AuthConfig{Bearer: &config.BearerConfig{
+		OIDC: config.BearerOIDCConfigs{{
+			Issuer:    "https://issuer.example.com",
+			Audiences: []string{"zot"},
+		}},
 	}}
 
-	first := ctlr.getOIDCBearerAuthorizer(oidcConfig)
-	if first == nil {
+	bearerAuth := NewBearerAuth(authConfig, log.NewTestLogger())
+	if bearerAuth.oidc == nil {
 		t.Fatal("expected OIDC bearer authorizer")
 	}
 
-	second := ctlr.getOIDCBearerAuthorizer(oidcConfig)
-	if first != second {
-		t.Fatal("expected controller to reuse OIDC bearer authorizer")
+	if bearerAuth.TokenExchangeHandler() == nil {
+		t.Fatal("expected OIDC bearer token exchange handler")
 	}
 }
 
-func TestControllerOIDCBearerAuthorizerInvalidConfigPanics(t *testing.T) {
+func TestNewBearerAuthOIDCBearerAuthorizerInvalidConfigPanics(t *testing.T) {
 	t.Parallel()
 
-	ctlr := &Controller{Log: log.NewTestLogger()}
 	defer func() {
 		if recover() == nil {
 			t.Fatal("expected panic for invalid OIDC bearer config")
 		}
 	}()
 
-	ctlr.getOIDCBearerAuthorizer(config.BearerOIDCConfigs{{
-		Audiences: []string{"zot"},
-	}})
+	NewBearerAuth(&config.AuthConfig{Bearer: &config.BearerConfig{
+		OIDC: config.BearerOIDCConfigs{{
+			Audiences: []string{"zot"},
+		}},
+	}}, log.NewTestLogger())
 }
 
-func TestRouteSetupReusesOIDCBearerAuthorizer(t *testing.T) {
+func TestRouteSetupRegistersOIDCBearerTokenHandler(t *testing.T) {
 	t.Parallel()
 
 	conf := config.New()
@@ -63,10 +64,6 @@ func TestRouteSetupReusesOIDCBearerAuthorizer(t *testing.T) {
 	ctlr := NewController(conf)
 	ctlr.Router = mux.NewRouter()
 	NewRouteHandler(ctlr)
-
-	if ctlr.oidcBearerAuthz == nil {
-		t.Fatal("expected route setup to initialize OIDC bearer authorizer")
-	}
 
 	request := httptest.NewRequest(http.MethodOptions, constants.TokenPath, nil)
 	response := httptest.NewRecorder()

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/api/constants"
 )
@@ -58,7 +59,7 @@ func normalizeTokenExchangeRequest(request *http.Request) (*tokenExchangeRequest
 
 	form, parseErr := url.ParseQuery(string(bodyBytes))
 	if parseErr != nil {
-		return nil, fmt.Errorf("%w: %w", errInvalidTokenProxyForm, parseErr)
+		return nil, fmt.Errorf("%w: %w", zerr.ErrInvalidTokenProxyForm, parseErr)
 	}
 
 	for _, field := range []string{"password", "id_token", "access_token", "refresh_token", "token"} {

@@ -664,7 +664,6 @@ func TestDedupeTaskGeneratorRestoreComplete(t *testing.T) {
 			Log:      testLog,
 			OnRestoreComplete: func() {
 				callCountMutex.Lock()
-
 				callCount++
 				callCountMutex.Unlock()
 				close(done)
@@ -744,7 +743,6 @@ func TestDedupeTaskGeneratorRestoreComplete(t *testing.T) {
 			Log:      testLog,
 			OnRestoreComplete: func() {
 				callCountMutex.Lock()
-
 				callCount++
 				callCountMutex.Unlock()
 				close(done)

@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/api/constants"
 )
@@ -107,7 +108,7 @@ func TestNormalizeTokenExchangeRequest(t *testing.T) {
 		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 		_, err := normalizeTokenExchangeRequest(request)
-		if !errors.Is(err, errInvalidTokenProxyForm) {
+		if !errors.Is(err, zerr.ErrInvalidTokenProxyForm) {
 			t.Fatalf("expected form parse error, got %v", err)
 		}
 	})

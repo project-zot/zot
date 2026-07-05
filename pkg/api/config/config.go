@@ -157,6 +157,11 @@ func (a *AuthConfig) IsOIDCBearerAuthEnabled() bool {
 	return a != nil && a.Bearer != nil && a.Bearer.OIDC.IsEnabled()
 }
 
+// IsTokenProxyConfigured checks if a token-service proxy is configured for bearer auth.
+func (a *AuthConfig) IsTokenProxyConfigured() bool {
+	return a != nil && a.Bearer.IsTokenProxyConfigured()
+}
+
 // IsOpenIDAuthEnabled checks if OpenID authentication is enabled in this auth config.
 func (a *AuthConfig) IsOpenIDAuthEnabled() bool {
 	if a == nil || a.OpenID == nil {
@@ -226,6 +231,11 @@ type BearerConfig struct {
 
 	// AWSSecretsManager configuration for retrieving JWT Bearer verification keys.
 	AWSSecretsManager *AWSSecretsManagerConfig `json:"awsSecretsManager,omitempty" mapstructure:"awsSecretsManager,omitempty"` //nolint:lll
+}
+
+// IsTokenProxyConfigured checks if this bearer config can proxy token-service requests.
+func (b *BearerConfig) IsTokenProxyConfigured() bool {
+	return b != nil && b.ProxyRealm != "" && b.ProxyService != ""
 }
 
 // BearerOIDCConfigs is a slice of BearerOIDCConfig.
