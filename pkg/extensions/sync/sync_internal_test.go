@@ -1548,6 +1548,124 @@ func TestSyncTempSessionRoot(t *testing.T) {
 	})
 }
 
+func TestSyncTempLayoutPathHelpers(t *testing.T) {
+	Convey("ocidirLayoutPath and getImageStoreFromImageReference errors", t, func() {
+		log := log.NewTestLogger()
+
+		Convey("missing path and reference", func() {
+			_, err := ocidirLayoutPath(ref.Ref{})
+			So(errors.Is(err, errSyncTempImageReferenceNoPath), ShouldBeTrue)
+		})
+
+		Convey("invalid reference parse", func() {
+			_, err := ocidirLayoutPath(ref.Ref{Reference: "://bad"})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("reparses layout path from reference", func() {
+			parsed, err := ref.New("ocidir:///tmp/layout/repo:1.0")
+			So(err, ShouldBeNil)
+
+			cleared := parsed
+			cleared.Path = ""
+
+			path, err := ocidirLayoutPath(cleared)
+			So(err, ShouldBeNil)
+			So(path, ShouldEqual, "/tmp/layout/repo")
+		})
+
+		Convey("ocidir reference without layout path fails on reparsing", func() {
+			_, err := ref.New("ocidir://")
+			So(err, ShouldNotBeNil)
+
+			_, err = ocidirLayoutPath(ref.Ref{Reference: "ocidir://"})
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, errSyncTempImageReferenceNoPath), ShouldBeFalse)
+			// regclient rejects empty ocidir paths at parse time, before no-layout-path check
+			So(errors.Is(err, errSyncTempImageReferenceNoLayoutPath), ShouldBeFalse)
+		})
+
+		Convey("session root is not a directory", func() {
+			sessionFile := path.Join(t.TempDir(), "session")
+			So(os.WriteFile(sessionFile, []byte("x"), 0o644), ShouldBeNil)
+
+			layoutPath := path.Join(sessionFile, "repo")
+			_, err := getImageStoreFromImageReference("repo", ref.Ref{Path: layoutPath}, log)
+			So(errors.Is(err, errSyncTempImageStoreCreateFailed), ShouldBeTrue)
+		})
+	})
+}
+
+func TestDestinationRegistryCommitAllErrors(t *testing.T) {
+	Convey("CommitAll and CleanupImage temp path errors", t, func() {
+		log := log.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+		defer metrics.Stop()
+
+		dir := t.TempDir()
+		store := local.NewImageStore(dir, true, true, log, metrics, nil, nil, nil, nil)
+		sc := storage.StoreController{DefaultStore: store}
+		registry := NewDestinationRegistry(sc, sc, nil, log)
+
+		Convey("CommitAll with unresolvable temp ref", func() {
+			err := registry.CommitAll("repo", ref.Ref{})
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, errSyncTempImageReferenceNoPath), ShouldBeTrue)
+		})
+
+		Convey("CleanupImage with unresolvable temp ref returns nil", func() {
+			err := registry.CleanupImage(ref.Ref{}, "repo")
+			So(err, ShouldBeNil)
+		})
+
+		Convey("CleanupImage removes existing temp session", func() {
+			repoName := "cleanup-repo"
+			imageReference, err := registry.GetImageReference(repoName, "1.0")
+			So(err, ShouldBeNil)
+
+			sessionRoot, err := syncTempSessionRoot(repoName, imageReference)
+			So(err, ShouldBeNil)
+			So(os.MkdirAll(path.Join(sessionRoot, repoName), 0o755), ShouldBeNil)
+
+			err = registry.CleanupImage(imageReference, repoName)
+			So(err, ShouldBeNil)
+			_, statErr := os.Stat(sessionRoot)
+			So(os.IsNotExist(statErr), ShouldBeTrue)
+		})
+	})
+}
+
+func TestCopyManifestInvalidJSON(t *testing.T) {
+	Convey("copyManifest rejects invalid manifest JSON", t, func() {
+		log := log.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+		defer metrics.Stop()
+
+		tempDir := t.TempDir()
+		destDir := t.TempDir()
+		tempStore := local.NewImageStore(tempDir, true, true, log, metrics, nil, nil, nil, nil)
+		destStore := local.NewImageStore(destDir, true, true, log, metrics, nil, nil, nil, nil)
+		destReg := NewDestinationRegistry(
+			storage.StoreController{DefaultStore: destStore},
+			storage.StoreController{DefaultStore: tempStore},
+			nil,
+			log,
+		).(*DestinationRegistry)
+
+		invalid := []byte("not-json")
+		desc := ispec.Descriptor{
+			MediaType: ispec.MediaTypeImageManifest,
+			Digest:    godigest.FromBytes(invalid),
+			Size:      int64(len(invalid)),
+			Data:      invalid,
+		}
+		seen := &[]godigest.Digest{}
+
+		err := destReg.copyManifest("repo", desc, "1.0", tempStore, seen)
+		So(err, ShouldNotBeNil)
+	})
+}
+
 func TestCopyManifestReferrersTag(t *testing.T) {
 	Convey("referrers-shaped layout entries are not committed as tags", t, func() {
 		log := log.NewTestLogger()

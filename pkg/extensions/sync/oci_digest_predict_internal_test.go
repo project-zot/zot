@@ -5,8 +5,10 @@ package sync //nolint:testpackage // white-box tests for unexported predictOCIDi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	dockerList "github.com/distribution/distribution/v3/manifest/manifestlist"
@@ -15,10 +17,13 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/regclient/regclient"
 	"github.com/regclient/regclient/mod"
+	"github.com/regclient/regclient/types/descriptor"
+	"github.com/regclient/regclient/types/mediatype"
 	"github.com/regclient/regclient/types/ref"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/compat"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	"zotregistry.dev/zot/v2/pkg/log"
@@ -234,6 +239,71 @@ func TestPredictOCIDigestManifestTreeLimits(t *testing.T) {
 		srcRef := mustOCIDirRef(t, writeDeepIndexChain(t, "deep-index-valid", predictTestTag, maxManifestTreeDepth-1),
 			predictTestTag)
 		assertPredictMatchesRegclientApply(t, ctx, regClient, srcRef)
+	})
+}
+
+func TestPredictOCIDigestErrorPaths(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	regClient := regclient.New()
+
+	t.Run("unsupported root media type", func(t *testing.T) {
+		t.Parallel()
+
+		srcRef := mustOCIDirRef(t, writeUnsupportedRootMediaType(t, "unsupported-root", predictTestTag), predictTestTag)
+
+		_, _, _, err := predictOCIDigest(ctx, regClient, srcRef)
+		require.Error(t, err)
+		require.True(t, errors.Is(err, zerr.ErrMediaTypeNotSupported) || strings.Contains(err.Error(), "unsupported media type"))
+	})
+
+	t.Run("fetchManifestNode rejects digest already on path", func(t *testing.T) {
+		t.Parallel()
+
+		storeRoot, storeCtrl := newTestStore(t)
+		repoPath := writeOCISingleManifest(t, storeCtrl, storeRoot, "cycle-enter", predictTestTag)
+		srcRef := mustOCIDirRef(t, repoPath, predictTestTag)
+
+		man, err := regClient.ManifestGet(ctx, srcRef)
+		require.NoError(t, err)
+		defer regClient.Close(ctx, man.GetRef())
+
+		walkState := &manifestTreeWalkState{
+			path: map[string]struct{}{man.GetDescriptor().Digest.String(): {}},
+		}
+
+		_, err = fetchManifestNode(ctx, regClient, srcRef, true, walkState)
+		require.ErrorIs(t, err, errManifestTreeCycle)
+	})
+}
+
+func TestPredictOCIDigestDockerLayerMediaTypes(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	regClient := regclient.New()
+	srcRef := mustOCIDirRef(t, writeDockerManifestVariedLayers(t, "docker-layer-types", predictTestTag), predictTestTag)
+
+	assertPredictMatchesRegclientApply(t, ctx, regClient, srcRef)
+}
+
+func TestManifestNodeHelpers(t *testing.T) {
+	t.Parallel()
+
+	t.Run("closeManifestTree nil", func(t *testing.T) {
+		t.Parallel()
+
+		closeManifestTree(context.Background(), regclient.New(), nil)
+	})
+
+	t.Run("effectiveDesc falls back to origDesc", func(t *testing.T) {
+		t.Parallel()
+
+		orig := descriptor.Descriptor{Digest: godigest.FromString("sha256:" + strings.Repeat("a", 64))}
+		node := &manifestNode{mod: manifestDeleted, origDesc: orig}
+
+		assert.Equal(t, orig.Digest, node.effectiveDesc().Digest)
 	})
 }
 
@@ -966,4 +1036,70 @@ func writeCyclicIndexLayoutDirect(t *testing.T, root, repo, tag string, images [
 	require.NoError(t, os.WriteFile(filepath.Join(repoDir, "index.json"), indexFileData, storageConstants.DefaultFilePerms))
 
 	return repoDir
+}
+
+func writeUnsupportedRootMediaType(t *testing.T, repo, tag string) string {
+	t.Helper()
+
+	image := CreateImageWith().EmptyLayer().EmptyConfig().Build()
+	const unsupportedMT = "application/vnd.test.unsupported+json"
+
+	manifestBlob, err := json.Marshal(image.Manifest)
+	require.NoError(t, err)
+
+	rootDesc := ispec.Descriptor{
+		MediaType: unsupportedMT,
+		Digest:    godigest.FromBytes(manifestBlob),
+		Size:      int64(len(manifestBlob)),
+		Data:      manifestBlob,
+	}
+	image.ManifestDescriptor = rootDesc
+
+	repoDir := writeCyclicIndexLayoutDirect(t, t.TempDir(), repo, tag, []Image{image}, rootDesc, ispec.Descriptor{})
+
+	// Tag descriptor media type is what regclient exposes from index.json.
+	indexPath := filepath.Join(repoDir, "index.json")
+	indexData, err := os.ReadFile(indexPath)
+	require.NoError(t, err)
+
+	var layoutIndex ispec.Index
+	require.NoError(t, json.Unmarshal(indexData, &layoutIndex))
+	layoutIndex.Manifests[0].MediaType = unsupportedMT
+
+	indexData, err = json.Marshal(layoutIndex)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(indexPath, indexData, storageConstants.DefaultFilePerms))
+
+	return repoDir
+}
+
+func writeDockerManifestVariedLayers(t *testing.T, repo, tag string) string {
+	t.Helper()
+
+	image := CreateImageWith().RandomLayers(4, 8).RandomConfig().Build().AsDockerImage()
+	require.GreaterOrEqual(t, len(image.Manifest.Layers), 4)
+
+	layerTypes := []string{
+		mediatype.Docker2Layer,
+		mediatype.Docker2LayerGzip,
+		mediatype.Docker2LayerZstd,
+		mediatype.Docker2ForeignLayer,
+	}
+
+	for i, layerType := range layerTypes {
+		image.Manifest.Layers[i].MediaType = layerType
+	}
+
+	manifestBlob, err := json.Marshal(image.Manifest)
+	require.NoError(t, err)
+
+	rootDesc := ispec.Descriptor{
+		MediaType: mediatype.Docker2Manifest,
+		Digest:    godigest.FromBytes(manifestBlob),
+		Size:      int64(len(manifestBlob)),
+		Data:      manifestBlob,
+	}
+	image.ManifestDescriptor = rootDesc
+
+	return writeCyclicIndexLayoutDirect(t, t.TempDir(), repo, tag, []Image{image}, rootDesc, ispec.Descriptor{})
 }
