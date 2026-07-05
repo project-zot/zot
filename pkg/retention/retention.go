@@ -274,6 +274,33 @@ func (p policyManager) GetRetainedUntaggedFromMetaDB(ctx context.Context, repoMe
 	candidates := GetUntaggedCandidates(repoMeta, index)
 	retainDigests := make([]string, 0)
 	retainDigestsSet := make(map[string]struct{})
+	candidateDigestsSet := make(map[string]struct{}, len(candidates))
+
+	for _, candidate := range candidates {
+		candidateDigestsSet[candidate.DigestStr] = struct{}{}
+	}
+
+	for _, digestStr := range getIndexUntaggedDigests(index) {
+		if _, found := candidateDigestsSet[digestStr]; found {
+			continue
+		}
+
+		if _, retained := retainDigestsSet[digestStr]; retained {
+			continue
+		}
+
+		p.log.Info().Str("module", "retention").
+			Bool("dry-run", p.config.DryRun).
+			Str("repository", repo).
+			Str("digest", digestStr).
+			Str("reference", digestStr).
+			Str("decision", "keep").
+			Str("reason", "untagged manifest statistics not found").Msg("will keep untagged manifest")
+
+		retainDigestsSet[digestStr] = struct{}{}
+		retainDigests = append(retainDigests, digestStr)
+	}
+
 	retainCandidates := candidates
 	rules := p.getUntaggedRules(*policy.KeepUntagged)
 	if len(rules) == 0 {

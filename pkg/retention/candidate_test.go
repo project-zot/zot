@@ -223,4 +223,60 @@ func TestGetRetainedUntaggedFromMetaDB(t *testing.T) {
 		So(retained, ShouldHaveLength, 1)
 		So(retained[0], ShouldEqual, recentDigest.String())
 	})
+
+	Convey("GetRetainedUntaggedFromMetaDB keeps untagged manifests missing statistics", t, func() {
+		now := time.Now()
+		recentDigest := godigest.FromString("recent")
+		missingStatsDigest := godigest.FromString("missing-stats")
+		oldDigest := godigest.FromString("old")
+		pulledWithin := 24 * time.Hour
+
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{
+					Digest:    recentDigest,
+					MediaType: ispec.MediaTypeImageManifest,
+				},
+				{
+					Digest:    missingStatsDigest,
+					MediaType: ispec.MediaTypeImageManifest,
+				},
+				{
+					Digest:    oldDigest,
+					MediaType: ispec.MediaTypeImageManifest,
+				},
+			},
+		}
+
+		repoMeta := mTypes.RepoMeta{
+			Name: "test-repo",
+			Statistics: map[string]mTypes.DescriptorStatistics{
+				recentDigest.String(): {
+					PushTimestamp:     now.Add(-time.Hour),
+					LastPullTimestamp: now.Add(-time.Hour),
+				},
+				oldDigest.String(): {
+					PushTimestamp:     now.Add(-48 * time.Hour),
+					LastPullTimestamp: now.Add(-36 * time.Hour),
+				},
+			},
+		}
+
+		policyMgr := retention.NewPolicyManager(config.ImageRetention{
+			Policies: []config.RetentionPolicy{
+				{
+					Repositories: []string{"test-repo"},
+					KeepUntagged: &config.KeepUntaggedPolicy{
+						PulledWithin: &pulledWithin,
+					},
+				},
+			},
+		}, zlog.NewTestLogger(), nil)
+
+		retained := policyMgr.GetRetainedUntaggedFromMetaDB(context.Background(), repoMeta, index)
+
+		So(retained, ShouldContain, recentDigest.String())
+		So(retained, ShouldContain, missingStatsDigest.String())
+		So(retained, ShouldNotContain, oldDigest.String())
+	})
 }

@@ -209,6 +209,8 @@ pushedWithin: x hours - tags pushed in the last x hours
 
 The same 4 rules can be used under `keepUntagged`; for digest-only cached content, pushed means cached locally at the descriptor's push timestamp.
 Tagged and untagged manifests are evaluated separately, so counts in `keepTags` do not compete with counts in `keepUntagged`.
+An empty `keepUntagged: {}` does not retain all untagged manifests; it is equivalent to omitting `keepUntagged`.
+`keepUntagged` rules require the metadata database. If it is unavailable, zot ignores `keepUntagged` and uses the existing delay-based untagged cleanup.
 
 If ANY of these rules are met by a tag or untagged manifest, then it will be retained, in other words there is an OR logic between them
 

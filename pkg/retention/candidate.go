@@ -42,13 +42,7 @@ func GetUntaggedCandidates(repoMeta mTypes.RepoMeta, index ispec.Index) []*types
 	candidates := make([]*types.Candidate, 0)
 
 	for _, manifest := range index.Manifests {
-		if _, ok := manifest.Annotations[ispec.AnnotationRefName]; ok {
-			continue
-		}
-
-		if manifest.MediaType != ispec.MediaTypeImageManifest && manifest.MediaType != ispec.MediaTypeImageIndex &&
-			!compat.IsCompatibleManifestMediaType(manifest.MediaType) &&
-			!compat.IsCompatibleManifestListMediaType(manifest.MediaType) {
+		if !isUntaggedRetentionDescriptor(manifest) {
 			continue
 		}
 
@@ -70,6 +64,28 @@ func GetUntaggedCandidates(repoMeta mTypes.RepoMeta, index ispec.Index) []*types
 	}
 
 	return candidates
+}
+
+func getIndexUntaggedDigests(index ispec.Index) []string {
+	digests := make([]string, 0)
+
+	for _, manifest := range index.Manifests {
+		if isUntaggedRetentionDescriptor(manifest) {
+			digests = append(digests, manifest.Digest.String())
+		}
+	}
+
+	return digests
+}
+
+func isUntaggedRetentionDescriptor(manifest ispec.Descriptor) bool {
+	if _, ok := manifest.Annotations[ispec.AnnotationRefName]; ok {
+		return false
+	}
+
+	return manifest.MediaType == ispec.MediaTypeImageManifest || manifest.MediaType == ispec.MediaTypeImageIndex ||
+		compat.IsCompatibleManifestMediaType(manifest.MediaType) ||
+		compat.IsCompatibleManifestListMediaType(manifest.MediaType)
 }
 
 func GetCandidatesFromIndex(index ispec.Index) []*types.Candidate {
