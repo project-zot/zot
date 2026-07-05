@@ -5425,12 +5425,11 @@ func TestSyncedSignaturesMetaDB(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-		// regclient will put all referrers under ref tag "alg-subjectDigest"
 		repoMeta, err := dctlr.MetaDB.GetRepoMeta(context.Background(), repoName)
 		So(err, ShouldBeNil)
 		So(repoMeta.Tags, ShouldContainKey, tag)
-		// one tag for refs and the tag we pushed earlier
-		So(len(repoMeta.Tags), ShouldEqual, 2)
+		// only the image tag; referrers-shaped refs are not committed as tags
+		So(len(repoMeta.Tags), ShouldEqual, 1)
 		So(repoMeta.Signatures, ShouldContainKey, signedImage.DigestStr())
 
 		imageSignatures := repoMeta.Signatures[signedImage.DigestStr()]

@@ -27,6 +27,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/extensions/config"
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
 	"zotregistry.dev/zot/v2/pkg/extensions/lint"
@@ -1503,6 +1504,98 @@ func TestDestinationRegistry(t *testing.T) {
 			err = registry.CommitAll("error-repo", imageReference)
 			So(err, ShouldNotBeNil)
 			So(errors.Is(err, os.ErrNotExist), ShouldBeFalse)
+		})
+	})
+}
+
+func TestCopyManifestReferrersTag(t *testing.T) {
+	Convey("referrers-shaped layout entries are not committed as tags", t, func() {
+		log := log.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+		defer metrics.Stop()
+
+		repoName := "repo"
+		subjectImage := CreateImageWith().RandomLayers(1, 10).RandomConfig().Build()
+		subjectDigest := subjectImage.Digest()
+		referrersTag := "sha256-" + subjectDigest.Encoded()
+
+		Convey("referrers-tagged manifest entry is skipped", func() {
+			tempDir := t.TempDir()
+			destDir := t.TempDir()
+			tempStore := local.NewImageStore(tempDir, true, true, log, metrics, nil, nil, nil, nil)
+			destStore := local.NewImageStore(destDir, true, true, log, metrics, nil, nil, nil, nil)
+			tempController := storage.StoreController{DefaultStore: tempStore}
+			destController := storage.StoreController{DefaultStore: destStore}
+			destReg := NewDestinationRegistry(destController, tempController, nil, log).(*DestinationRegistry)
+
+			referrerImage := CreateImageWith().RandomLayers(1, 10).RandomConfig().
+				Subject(&ispec.Descriptor{
+					Digest:    subjectDigest,
+					MediaType: ispec.MediaTypeImageManifest,
+				}).Build()
+			referrerManifest, err := json.Marshal(referrerImage.Manifest)
+			So(err, ShouldBeNil)
+			referrerDigest := godigest.FromBytes(referrerManifest)
+
+			err = WriteImageToFileSystem(referrerImage, repoName, referrersTag, tempController)
+			So(err, ShouldBeNil)
+
+			desc := ispec.Descriptor{
+				Digest:    referrerDigest,
+				MediaType: ispec.MediaTypeImageManifest,
+				Size:      int64(len(referrerManifest)),
+			}
+			seen := &[]godigest.Digest{}
+
+			err = destReg.copyManifest(repoName, desc, referrersTag, tempStore, seen)
+			So(err, ShouldBeNil)
+
+			_, _, _, err = destStore.GetImageManifest(repoName, referrerDigest.String())
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("referrers-tagged index commits child manifests only", func() {
+			tempDir := t.TempDir()
+			destDir := t.TempDir()
+			tempStore := local.NewImageStore(tempDir, true, true, log, metrics, nil, nil, nil, nil)
+			destStore := local.NewImageStore(destDir, true, true, log, metrics, nil, nil, nil, nil)
+			tempController := storage.StoreController{DefaultStore: tempStore}
+			destController := storage.StoreController{DefaultStore: destStore}
+			destReg := NewDestinationRegistry(destController, tempController, nil, log).(*DestinationRegistry)
+
+			referrerImage := CreateImageWith().RandomLayers(1, 10).RandomConfig().
+				Subject(&ispec.Descriptor{
+					Digest:    subjectDigest,
+					MediaType: ispec.MediaTypeImageManifest,
+				}).Build()
+
+			referrersIndex := CreateMultiarchWith().Images([]Image{referrerImage}).Build()
+			referrersIndex.Index.Subject = &ispec.Descriptor{
+				Digest:    subjectDigest,
+				MediaType: ispec.MediaTypeImageManifest,
+			}
+
+			err := WriteMultiArchImageToFileSystem(referrersIndex, repoName, referrersTag, tempController)
+			So(err, ShouldBeNil)
+
+			desc := referrersIndex.IndexDescriptor
+			seen := &[]godigest.Digest{}
+
+			err = destReg.copyManifest(repoName, desc, referrersTag, tempStore, seen)
+			So(err, ShouldBeNil)
+
+			tags, err := destStore.GetImageTags(repoName)
+			So(err, ShouldBeNil)
+			for _, tag := range tags {
+				So(common.IsReferrersTag(tag), ShouldBeFalse)
+			}
+
+			_, _, _, err = destStore.GetImageManifest(repoName, referrersIndex.Digest().String())
+			So(err, ShouldNotBeNil)
+
+			_, childDigest, _, err := destStore.GetImageManifest(repoName, referrerImage.Digest().String())
+			So(err, ShouldBeNil)
+			So(childDigest, ShouldEqual, referrerImage.Digest())
 		})
 	})
 }

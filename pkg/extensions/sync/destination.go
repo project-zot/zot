@@ -175,6 +175,7 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 	*seen = append(*seen, desc.Digest)
 
 	imageStore := registry.storeController.GetImageStore(repo)
+	isReferrersRef := common.IsReferrersTag(reference)
 
 	manifestContent := desc.Data
 	if manifestContent == nil {
@@ -191,6 +192,10 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 	// is image manifest
 	switch desc.MediaType {
 	case ispec.MediaTypeImageManifest, mediatype.Docker2Manifest:
+		if isReferrersRef {
+			return nil
+		}
+
 		var manifest ispec.Manifest
 
 		if err := json.Unmarshal(manifestContent, &manifest); err != nil {
@@ -297,6 +302,12 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 		// Return error if we encountered any missing manifests
 		if firstMissingErr != nil {
 			return firstMissingErr
+		}
+
+		// Referrers indexes are a transport convention in the temp ocidir layout; persist child
+		// manifests only, not the referrers index entry itself.
+		if isReferrersRef {
+			return nil
 		}
 
 		_, _, err := imageStore.PutImageManifest(context.Background(), repo, reference, desc.MediaType, manifestContent, nil)
