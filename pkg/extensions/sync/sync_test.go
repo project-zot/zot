@@ -7672,7 +7672,11 @@ func TestSyncImageIndex(t *testing.T) {
 			So(resp.Body(), ShouldNotBeEmpty)
 			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
 
-			childMultiarchImage.IndexDescriptor.Digest = godigest.FromBytes(resp.Body())
+			childBody := resp.Body()
+			childMultiarchImage.IndexDescriptor.Digest = godigest.FromBytes(childBody)
+			childMultiarchImage.IndexDescriptor.Size = int64(len(childBody))
+			err = json.Unmarshal(childBody, &childMultiarchImage.Index)
+			So(err, ShouldBeNil)
 
 			rootMultiarchImage.Index.Manifests = append(rootMultiarchImage.Index.Manifests, childMultiarchImage.IndexDescriptor)
 			rootMultiarchImage.IndexDescriptor.Data = nil
@@ -7687,6 +7691,9 @@ func TestSyncImageIndex(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 			So(resp.Body(), ShouldNotBeEmpty)
 			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+
+			err = json.Unmarshal(resp.Body(), &rootMultiarchImage.Index)
+			So(err, ShouldBeNil)
 
 			Convey("sync periodically", func() {
 				// start downstream server
