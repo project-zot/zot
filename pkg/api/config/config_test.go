@@ -940,6 +940,33 @@ func TestConfig(t *testing.T) {
 			So(authConfig.IsOIDCBearerAuthEnabled(), ShouldBeFalse)
 		})
 
+		Convey("Test HasBearerConfig()", func() {
+			var authConfig *config.AuthConfig = nil
+			So(authConfig.HasBearerConfig(), ShouldBeFalse)
+
+			authConfig = &config.AuthConfig{}
+			So(authConfig.HasBearerConfig(), ShouldBeFalse)
+
+			authConfig = &config.AuthConfig{Bearer: &config.BearerConfig{}}
+			So(authConfig.HasBearerConfig(), ShouldBeTrue)
+		})
+
+		Convey("Test IsUpstreamTokenEndpointConfigured()", func() {
+			var authConfig *config.AuthConfig = nil
+			So(authConfig.IsUpstreamTokenEndpointConfigured(), ShouldBeFalse)
+
+			authConfig = &config.AuthConfig{Bearer: &config.BearerConfig{}}
+			So(authConfig.IsUpstreamTokenEndpointConfigured(), ShouldBeFalse)
+
+			authConfig = &config.AuthConfig{Bearer: &config.BearerConfig{
+				UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{Realm: "https://auth.example.com/token"},
+			}}
+			So(authConfig.IsUpstreamTokenEndpointConfigured(), ShouldBeFalse)
+
+			authConfig.Bearer.UpstreamTokenEndpoint.Service = "upstream"
+			So(authConfig.IsUpstreamTokenEndpointConfigured(), ShouldBeTrue)
+		})
+
 		Convey("Test IsOpenIDAuthEnabled()", func() {
 			// Test with nil AuthConfig
 			var authConfig *config.AuthConfig = nil
@@ -2450,8 +2477,10 @@ func TestConfig(t *testing.T) {
 			So(authConfig.IsLdapAuthEnabled(), ShouldBeFalse)
 			So(authConfig.IsHtpasswdAuthEnabled(), ShouldBeFalse)
 			So(authConfig.IsBearerAuthEnabled(), ShouldBeFalse)
+			So(authConfig.HasBearerConfig(), ShouldBeFalse)
 			So(authConfig.IsTraditionalBearerAuthEnabled(), ShouldBeFalse)
 			So(authConfig.IsOIDCBearerAuthEnabled(), ShouldBeFalse)
+			So(authConfig.IsUpstreamTokenEndpointConfigured(), ShouldBeFalse)
 			So(authConfig.IsOpenIDAuthEnabled(), ShouldBeFalse)
 			So(authConfig.IsAPIKeyEnabled(), ShouldBeFalse)
 			So(authConfig.IsBasicAuthnEnabled(), ShouldBeFalse)

@@ -375,6 +375,8 @@ NOTE: The separate file for storing DN and password credentials must be created.
       }
 ```
 
+When OIDC workload identity/federation uses Zot `/zot/auth/token` but the same deployment still needs this traditional bearer token service, configure the optional `upstreamTokenEndpoint` object. `upstreamTokenEndpoint.realm` points to the existing traditional bearer token service and `upstreamTokenEndpoint.service` is the upstream service value; Zot preserves the token request and rewrites only `service` before proxying requests that are not owned by local token backends. `upstreamTokenEndpoint.realm` must use HTTPS by default; plaintext HTTP requires `upstreamTokenEndpoint.allowInsecureHttp: true` and should only be used in controlled test environments.
+
 ### OpenID/OAuth2 social login
 
 zot supports several openID/OAuth2 providers:

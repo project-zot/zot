@@ -16,6 +16,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path"
 	"testing"
@@ -1237,6 +1238,353 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			defer resp.Body.Close()
 
 			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+		})
+
+		Convey("OIDC token exchange returns the password token", func() {
+			conf := config.New()
+			port := test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
+
+			conf.HTTP.Port = port
+			conf.HTTP.Auth = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					Realm:   baseURL + constants.TokenPath,
+					Service: "test-zot",
+					OIDC: []config.BearerOIDCConfig{{
+						Issuer:    issuer,
+						Audiences: []string{audience},
+					}},
+				},
+			}
+			conf.Storage.RootDirectory = t.TempDir()
+
+			ctlr := api.NewController(conf)
+			cm := test.NewControllerManager(ctlr)
+
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			token, err := createWorkloadOIDCToken(privKey, issuer, audience, nil)
+			So(err, ShouldBeNil)
+
+			challengeResp, err := resty.R().Get(baseURL + "/v2/testrepo/tags/list")
+			So(err, ShouldBeNil)
+			So(challengeResp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+			challenge := authutils.ParseBearerAuthHeader(challengeResp.Header().Get("WWW-Authenticate"))
+			So(challenge.Realm, ShouldEqual, baseURL+constants.TokenPath)
+			So(challenge.Service, ShouldEqual, "test-zot")
+			So(challenge.Scope, ShouldEqual, "repository:testrepo:pull")
+
+			optionsResp, err := resty.R().Options(baseURL + constants.TokenPath)
+			So(err, ShouldBeNil)
+			So(optionsResp.StatusCode(), ShouldEqual, http.StatusNoContent)
+
+			missingBasicResp, err := resty.R().Get(baseURL + constants.TokenPath)
+			So(err, ShouldBeNil)
+			So(missingBasicResp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			So(missingBasicResp.Header().Get("WWW-Authenticate"), ShouldEqual,
+				`Basic realm="`+baseURL+constants.TokenPath+`"`)
+			So(missingBasicResp.Header().Get("Cache-Control"), ShouldEqual, "no-store")
+			So(missingBasicResp.Header().Get("Pragma"), ShouldEqual, "no-cache")
+
+			exchangeResp, err := resty.R().
+				SetBasicAuth("<token>", token).
+				SetQueryParam("service", challenge.Service).
+				SetQueryParam("scope", challenge.Scope).
+				Get(baseURL + constants.TokenPath)
+			So(err, ShouldBeNil)
+			So(exchangeResp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(exchangeResp.Header().Get("Cache-Control"), ShouldEqual, "no-store")
+			So(exchangeResp.Header().Get("Pragma"), ShouldEqual, "no-cache")
+
+			tokenResp := struct {
+				Token       string `json:"token"`
+				AccessToken string `json:"access_token"` //nolint:tagliatelle
+				ExpiresIn   int64  `json:"expires_in"`   //nolint:tagliatelle
+				IssuedAt    string `json:"issued_at"`    //nolint:tagliatelle
+			}{}
+			err = json.Unmarshal(exchangeResp.Body(), &tokenResp)
+			So(err, ShouldBeNil)
+			So(tokenResp.Token, ShouldEqual, token)
+			So(tokenResp.AccessToken, ShouldEqual, token)
+			So(tokenResp.ExpiresIn, ShouldBeGreaterThan, 0)
+			So(tokenResp.IssuedAt, ShouldNotBeEmpty)
+
+			postExchangeResp, err := resty.R().
+				SetHeader("Content-Type", "application/x-www-form-urlencoded").
+				SetBody("grant_type=password&username=%3Ctoken%3E&password=" + url.QueryEscape(token)).
+				Post(baseURL + constants.TokenPath)
+			So(err, ShouldBeNil)
+			So(postExchangeResp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			postTokenResp := struct {
+				Token       string `json:"token"`
+				AccessToken string `json:"access_token"` //nolint:tagliatelle
+			}{}
+			err = json.Unmarshal(postExchangeResp.Body(), &postTokenResp)
+			So(err, ShouldBeNil)
+			So(postTokenResp.Token, ShouldEqual, token)
+			So(postTokenResp.AccessToken, ShouldEqual, token)
+
+			for _, credentialField := range []string{"id_token", "access_token", "refresh_token", "token"} {
+				postExchangeResp, err := resty.R().
+					SetHeader("Content-Type", "application/x-www-form-urlencoded").
+					SetBody("grant_type=password&" + credentialField + "=" + url.QueryEscape(token)).
+					Post(baseURL + constants.TokenPath)
+				So(err, ShouldBeNil)
+				So(postExchangeResp.StatusCode(), ShouldEqual, http.StatusOK)
+			}
+
+			registryResp, err := resty.R().
+				SetHeader("Authorization", "Bearer "+tokenResp.Token).
+				Get(baseURL + "/v2/_catalog")
+			So(err, ShouldBeNil)
+			So(registryResp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			invalidResp, err := resty.R().
+				SetBasicAuth("<token>", "invalid-token").
+				Get(baseURL + constants.TokenPath)
+			So(err, ShouldBeNil)
+			So(invalidResp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			So(invalidResp.Header().Get("Cache-Control"), ShouldEqual, "no-store")
+			So(invalidResp.Header().Get("Pragma"), ShouldEqual, "no-cache")
+		})
+
+		Convey("OIDC token exchange refuses to proxy locally owned bearer OIDC tokens that fail authentication", func() {
+			conf := config.New()
+			port := test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
+
+			proxyHit := false
+			proxyServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				proxyHit = true
+				response.WriteHeader(http.StatusOK)
+			}))
+			defer proxyServer.Close()
+
+			conf.HTTP.Port = port
+			conf.HTTP.Auth = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					Realm:   baseURL + constants.TokenPath,
+					Service: "zot-service",
+					UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{
+						Realm:             proxyServer.URL + "/token",
+						Service:           "upstream-service",
+						AllowInsecureHTTP: true,
+					},
+					OIDC: []config.BearerOIDCConfig{{
+						Issuer:    issuer,
+						Audiences: []string{audience},
+					}},
+				},
+			}
+			conf.Storage.RootDirectory = t.TempDir()
+
+			ctlr := api.NewController(conf)
+			cm := test.NewControllerManager(ctlr)
+
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			wrongKey, err := rsa.GenerateKey(rand.Reader, 2048)
+			So(err, ShouldBeNil)
+
+			ownedInvalidToken, err := createWorkloadOIDCToken(wrongKey, issuer, audience, nil)
+			So(err, ShouldBeNil)
+
+			resp, err := resty.R().
+				SetBasicAuth("<token>", ownedInvalidToken).
+				Get(baseURL + constants.TokenPath)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			So(proxyHit, ShouldBeFalse)
+		})
+
+		Convey("OIDC token exchange refuses to proxy browser OpenID-owned tokens", func() {
+			conf := config.New()
+			port := test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
+			humanClientID := "human-client"
+
+			proxyHit := false
+			proxyServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				proxyHit = true
+				response.WriteHeader(http.StatusOK)
+			}))
+			defer proxyServer.Close()
+
+			conf.HTTP.Port = port
+			conf.HTTP.Auth = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					Realm:   baseURL + constants.TokenPath,
+					Service: "zot-service",
+					UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{
+						Realm:             proxyServer.URL + "/token",
+						Service:           "upstream-service",
+						AllowInsecureHTTP: true,
+					},
+					OIDC: []config.BearerOIDCConfig{{
+						Issuer:    issuer,
+						Audiences: []string{audience},
+					}},
+				},
+				OpenID: &config.OpenIDConfig{
+					Providers: map[string]config.OpenIDProviderConfig{
+						"oidc": {
+							ClientID: humanClientID,
+							Issuer:   issuer,
+							Scopes:   []string{"openid", "email"},
+						},
+					},
+				},
+			}
+			conf.Storage.RootDirectory = t.TempDir()
+
+			ctlr := api.NewController(conf)
+			cm := test.NewControllerManager(ctlr)
+
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			humanToken, err := createWorkloadOIDCToken(privKey, issuer, humanClientID, nil)
+			So(err, ShouldBeNil)
+
+			resp, err := resty.R().
+				SetHeader("Content-Type", "application/x-www-form-urlencoded").
+				SetBody("grant_type=password&id_token=" + url.QueryEscape(humanToken)).
+				Post(baseURL + constants.TokenPath)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			So(proxyHit, ShouldBeFalse)
+		})
+
+		Convey("OIDC token exchange proxies GET requests when no local backend owns the credential", func() {
+			conf := config.New()
+			port := test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
+
+			var gotMethod, gotUsername, gotPassword, gotService, gotScope, gotClientID, gotFrom string
+			proxyServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				gotMethod = request.Method
+				gotUsername, gotPassword, _ = request.BasicAuth()
+				gotService = request.URL.Query().Get("service")
+				gotScope = request.URL.Query().Get("scope")
+				gotClientID = request.URL.Query().Get("client_id")
+				gotFrom = request.URL.Query().Get("from")
+
+				response.Header().Set("Content-Type", "application/json")
+				response.Header().Set("X-Token-Proxy", "hit")
+				response.WriteHeader(http.StatusAccepted)
+				_, _ = response.Write([]byte(`{"token":"proxied-token"}`))
+			}))
+			defer proxyServer.Close()
+
+			conf.HTTP.Port = port
+			conf.HTTP.Auth = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					Realm:   baseURL + constants.TokenPath,
+					Service: "zot-service",
+					UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{
+						Realm:             proxyServer.URL + "/token?from=proxy",
+						Service:           "upstream-service",
+						AllowInsecureHTTP: true,
+					},
+					OIDC: []config.BearerOIDCConfig{{
+						Issuer:    issuer,
+						Audiences: []string{audience},
+					}},
+				},
+			}
+			conf.Storage.RootDirectory = t.TempDir()
+
+			ctlr := api.NewController(conf)
+			cm := test.NewControllerManager(ctlr)
+
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			proxyResp, err := resty.R().
+				SetBasicAuth("user", "not-an-oidc-token").
+				SetQueryParam("service", "zot-service").
+				SetQueryParam("scope", "repository:testrepo:pull").
+				SetQueryParam("client_id", "test-client").
+				Get(baseURL + constants.TokenPath)
+			So(err, ShouldBeNil)
+			So(proxyResp.StatusCode(), ShouldEqual, http.StatusAccepted)
+			So(proxyResp.Header().Get("X-Token-Proxy"), ShouldEqual, "hit")
+			So(string(proxyResp.Body()), ShouldEqual, `{"token":"proxied-token"}`)
+
+			So(gotMethod, ShouldEqual, http.MethodGet)
+			So(gotUsername, ShouldEqual, "user")
+			So(gotPassword, ShouldEqual, "not-an-oidc-token")
+			So(gotService, ShouldEqual, "upstream-service")
+			So(gotScope, ShouldEqual, "repository:testrepo:pull")
+			So(gotClientID, ShouldEqual, "test-client")
+			So(gotFrom, ShouldEqual, "proxy")
+		})
+
+		Convey("OIDC token exchange proxies POST form requests when no local backend owns the credential", func() {
+			conf := config.New()
+			port := test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
+
+			var gotMethod, gotService, gotScope, gotGrantType, gotUsername, gotPassword string
+			proxyServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				gotMethod = request.Method
+				if err := request.ParseForm(); err != nil {
+					t.Errorf("failed to parse upstream token request form: %v", err)
+				}
+				gotService = request.PostForm.Get("service")
+				gotScope = request.PostForm.Get("scope")
+				gotGrantType = request.PostForm.Get("grant_type")
+				gotUsername = request.PostForm.Get("username")
+				gotPassword = request.PostForm.Get("password")
+
+				response.Header().Set("Content-Type", "application/json")
+				_, _ = response.Write([]byte(`{"access_token":"proxied-access-token"}`))
+			}))
+			defer proxyServer.Close()
+
+			conf.HTTP.Port = port
+			conf.HTTP.Auth = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					Realm:   baseURL + constants.TokenPath,
+					Service: "zot-service",
+					UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{
+						Realm:             proxyServer.URL + "/token",
+						Service:           "upstream-service",
+						AllowInsecureHTTP: true,
+					},
+					OIDC: []config.BearerOIDCConfig{{
+						Issuer:    issuer,
+						Audiences: []string{audience},
+					}},
+				},
+			}
+			conf.Storage.RootDirectory = t.TempDir()
+
+			ctlr := api.NewController(conf)
+			cm := test.NewControllerManager(ctlr)
+
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			proxyResp, err := resty.R().
+				SetHeader("Content-Type", "application/x-www-form-urlencoded").
+				SetBody("grant_type=password&username=user&password=not-an-oidc-token" +
+					"&service=zot-service&scope=repository:testrepo:pull").
+				Post(baseURL + constants.TokenPath)
+			So(err, ShouldBeNil)
+			So(proxyResp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(string(proxyResp.Body()), ShouldEqual, `{"access_token":"proxied-access-token"}`)
+
+			So(gotMethod, ShouldEqual, http.MethodPost)
+			So(gotService, ShouldEqual, "upstream-service")
+			So(gotScope, ShouldEqual, "repository:testrepo:pull")
+			So(gotGrantType, ShouldEqual, "password")
+			So(gotUsername, ShouldEqual, "user")
+			So(gotPassword, ShouldEqual, "not-an-oidc-token")
 		})
 
 		Convey("OIDC authentication success with groups", func() {

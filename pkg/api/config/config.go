@@ -134,6 +134,11 @@ func (a *AuthConfig) IsBearerAuthEnabled() bool {
 	return a.IsTraditionalBearerAuthEnabled() || a.IsOIDCBearerAuthEnabled()
 }
 
+// HasBearerConfig checks if Bearer authentication config is present.
+func (a *AuthConfig) HasBearerConfig() bool {
+	return a != nil && a.Bearer != nil
+}
+
 // IsTraditionalBearerAuthEnabled checks if traditional Bearer authentication is enabled in this auth config.
 func (a *AuthConfig) IsTraditionalBearerAuthEnabled() bool {
 	return a.IsTraditionalBearerAuthEnabledWithCert() || a.IsTraditionalBearerAuthEnabledWithASM()
@@ -155,6 +160,11 @@ func (a *AuthConfig) IsTraditionalBearerAuthEnabledWithASM() bool {
 // IsOIDCBearerAuthEnabled checks if OIDC Bearer authentication is enabled in this auth config.
 func (a *AuthConfig) IsOIDCBearerAuthEnabled() bool {
 	return a != nil && a.Bearer != nil && a.Bearer.OIDC.IsEnabled()
+}
+
+// IsUpstreamTokenEndpointConfigured checks if an upstream token endpoint is configured for bearer auth.
+func (a *AuthConfig) IsUpstreamTokenEndpointConfigured() bool {
+	return a != nil && a.Bearer.HasUpstreamTokenEndpoint()
 }
 
 // IsOpenIDAuthEnabled checks if OpenID authentication is enabled in this auth config.
@@ -214,15 +224,28 @@ func (a *AuthConfig) GetMTLSConfig() *MTLSConfig {
 }
 
 type BearerConfig struct {
-	Realm   string
-	Service string
-	Cert    string
+	Realm                 string
+	Service               string
+	UpstreamTokenEndpoint *UpstreamTokenEndpointConfig `json:"upstreamTokenEndpoint,omitempty" mapstructure:"upstreamTokenEndpoint,omitempty"` //nolint:lll
+	Cert                  string
 
 	// OIDC configuration for workload identity authentication
 	OIDC BearerOIDCConfigs `json:"oidc,omitempty" mapstructure:"oidc,omitempty"`
 
 	// AWSSecretsManager configuration for retrieving JWT Bearer verification keys.
 	AWSSecretsManager *AWSSecretsManagerConfig `json:"awsSecretsManager,omitempty" mapstructure:"awsSecretsManager,omitempty"` //nolint:lll
+}
+
+type UpstreamTokenEndpointConfig struct {
+	Realm             string `json:"realm,omitempty"             mapstructure:"realm,omitempty"`
+	Service           string `json:"service,omitempty"           mapstructure:"service,omitempty"`
+	AllowInsecureHTTP bool   `json:"allowInsecureHttp,omitempty" mapstructure:"allowInsecureHttp,omitempty"`
+}
+
+// HasUpstreamTokenEndpoint checks if this bearer config can proxy token-service requests.
+func (b *BearerConfig) HasUpstreamTokenEndpoint() bool {
+	return b != nil && b.UpstreamTokenEndpoint != nil &&
+		b.UpstreamTokenEndpoint.Realm != "" && b.UpstreamTokenEndpoint.Service != ""
 }
 
 // BearerOIDCConfigs is a slice of BearerOIDCConfig.

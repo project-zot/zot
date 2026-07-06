@@ -73,7 +73,8 @@ func (rh *RouteHandler) SetupRoutes() {
 	rh.c.Router.Path("/startupz").Handler(rh.c.Healthz.Handler)
 
 	// first get Auth middleware in order to first setup openid/ldap/htpasswd, before oidc provider routes are setup
-	authHandler := AuthHandler(rh.c)
+	auth := AuthHandler(rh.c)
+	authHandler := auth.Middleware
 
 	// Get CORS config safely
 	allowOrigin := rh.c.Config.GetAllowOrigin()
@@ -81,6 +82,11 @@ func (rh *RouteHandler) SetupRoutes() {
 
 	// Get auth config for OpenID checks
 	authConfig := rh.c.Config.CopyAuthConfig()
+	if auth.TokenHandler != nil {
+		rh.c.Router.HandleFunc(constants.TokenPath, tokenExchangeOptions).Methods(http.MethodOptions)
+		rh.c.Router.HandleFunc(constants.TokenPath, auth.TokenHandler).Methods(http.MethodGet, http.MethodPost)
+	}
+
 	if authConfig.IsOpenIDAuthEnabled() {
 		// login path for openID
 		rh.c.Router.HandleFunc(constants.LoginPath, rh.AuthURLHandler())

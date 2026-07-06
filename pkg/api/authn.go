@@ -23,7 +23,6 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 	guuid "github.com/gofrs/uuid"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/go-github/v62/github"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -56,7 +55,12 @@ type AuthnMiddleware struct {
 	log        log.Logger
 }
 
-func AuthHandler(ctlr *Controller) mux.MiddlewareFunc {
+type AuthSetup struct {
+	Middleware   mux.MiddlewareFunc
+	TokenHandler http.HandlerFunc
+}
+
+func AuthHandler(ctlr *Controller) AuthSetup {
 	authnMiddleware := &AuthnMiddleware{
 		htpasswd: ctlr.HTPasswd,
 		log:      ctlr.Log,
@@ -64,10 +68,15 @@ func AuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 	authConfig := ctlr.Config.CopyAuthConfig()
 	if authConfig.IsBearerAuthEnabled() {
-		return bearerAuthHandler(ctlr)
+		bearerAuth := NewBearerAuth(authConfig, ctlr.Log)
+
+		return AuthSetup{
+			Middleware:   bearerAuth.Middleware(ctlr),
+			TokenHandler: bearerAuth.TokenExchangeHandler(),
+		}
 	}
 
-	return authnMiddleware.tryAuthnHandlers(ctlr)
+	return AuthSetup{Middleware: authnMiddleware.tryAuthnHandlers(ctlr)}
 }
 
 func (amw *AuthnMiddleware) sessionAuthn(ctlr *Controller, userAc *reqCtx.UserAccessControl,
@@ -506,200 +515,22 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 	}
 }
 
-func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
-	// Get auth config safely
-	authConfig := ctlr.Config.CopyAuthConfig()
-
-	var traditionalAuthorizerKeyFunc BearerAuthorizerKeyFunc
-
-	// Traditional bearer auth with public key/certificate
-	if authConfig.Bearer.Cert != "" {
-		// although the configuration option is called 'cert', this function will also parse a public key directly
-		// see https://github.com/project-zot/zot/issues/3173 for info
-		publicKey, err := loadPublicKeyFromFile(authConfig.Bearer.Cert)
-		if err != nil {
-			ctlr.Log.Panic().Err(err).Msg("failed to load public key for bearer authentication")
-		}
-
-		traditionalAuthorizerKeyFunc = func(_ context.Context, token *jwt.Token) (any, error) {
-			return publicKey, nil
-		}
+func setBearerAuthChallenge(
+	response http.ResponseWriter,
+	authConfig *config.AuthConfig,
+	requestedAccess *ResourceAction,
+) {
+	if authConfig == nil || authConfig.Bearer == nil || authConfig.Bearer.Realm == "" {
+		return
 	}
 
-	// Traditional bearer auth with AWS Secrets Manager
-	if authConfig.Bearer.AWSSecretsManager != nil {
-		asmAuthz, err := NewAWSSecretsManager(
-			authConfig.Bearer.AWSSecretsManager, AWSSecretsManagerProviderImplementation{}, ctlr.Log)
-		if err != nil {
-			ctlr.Log.Panic().Err(err).Msg("failed to create AWS Secrets Manager key function for bearer authentication")
-		}
-		traditionalAuthorizerKeyFunc = asmAuthz.GetPublicKey
+	challenge := AuthChallengeError{
+		realm:          authConfig.Bearer.Realm,
+		service:        authConfig.Bearer.Service,
+		resourceAction: requestedAccess,
 	}
 
-	// Initialize authorizers based on configuration
-	var traditionalAuthorizer *BearerAuthorizer
-	if traditionalAuthorizerKeyFunc != nil {
-		traditionalAuthorizer = NewBearerAuthorizer(
-			authConfig.Bearer.Realm,
-			authConfig.Bearer.Service,
-			traditionalAuthorizerKeyFunc,
-		)
-	}
-
-	// OIDC bearer auth for workload identity
-	var oidcAuthorizer *OIDCBearerAuthorizer
-	if len(authConfig.Bearer.OIDC) > 0 {
-		var err error
-		oidcAuthorizer, err = NewOIDCBearerAuthorizer(authConfig.Bearer.OIDC, ctlr.Log)
-		if err != nil {
-			ctlr.Log.Panic().Err(err).Msg("failed to initialize OIDC bearer authorizer")
-		}
-	}
-
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-			if request.Method == http.MethodOptions {
-				next.ServeHTTP(response, request)
-				response.WriteHeader(http.StatusNoContent)
-
-				return
-			}
-
-			// Reject requests with multiple Authorization headers as a security measure
-			if hasMultipleAuthorizationHeaders(request) {
-				ctlr.Log.Error().Msg("failed to parse Authorization header: multiple Authorization headers detected")
-				response.Header().Set("Content-Type", "application/json")
-				zcommon.WriteJSON(response, http.StatusUnauthorized, apiErr.NewError(apiErr.UNSUPPORTED))
-
-				return
-			}
-
-			acCtrlr := NewAccessController(ctlr.Config)
-
-			// we want to bypass auth for mgmt route
-			isMgmtRequested := request.RequestURI == constants.FullMgmt
-
-			header := request.Header.Get("Authorization")
-
-			if isAuthorizationHeaderEmpty(request) && isMgmtRequested {
-				next.ServeHTTP(response, request)
-
-				return
-			}
-
-			// Allow anonymous access to the metrics endpoint only if configured.
-			accessControlConfig := ctlr.Config.CopyAccessControlConfig()
-			extensionsConfig := ctlr.Config.CopyExtensionsConfig()
-
-			if isAnonymousMetricsRequest(request, accessControlConfig, extensionsConfig) {
-				next.ServeHTTP(response, request)
-
-				return
-			}
-
-			var requestedAccess *ResourceAction
-
-			if request.RequestURI != "/v2/" {
-				// if this is not the base route, the requested repository/action must be authorized
-				vars := mux.Vars(request)
-				name := vars["name"]
-
-				var action string
-				switch m := request.Method; m {
-				case http.MethodHead, http.MethodGet:
-					action = "pull"
-				case http.MethodPost, http.MethodPatch, http.MethodPut:
-					action = "push"
-				case http.MethodDelete:
-					action = "delete"
-				default:
-					action = "pull" // default to pull for other methods, e.g., OPTIONS
-				}
-
-				requestedAccess = &ResourceAction{
-					Type:   "repository",
-					Name:   name,
-					Action: action,
-				}
-			}
-
-			// Try OIDC authentication first if configured
-			if oidcAuthorizer != nil {
-				res, err := oidcAuthorizer.Authenticate(request.Context(), header)
-				if err == nil && res != nil && res.Username != "" {
-					// OIDC authentication succeeded
-					identity := res.Username
-					groups := res.Groups
-
-					ctlr.Log.Debug().Str("identity", identity).Msg("the OIDC bearer authentication was successful")
-
-					// Set user context for authorization
-					userAc := reqCtx.NewUserAccessControl()
-					userAc.SetUsername(identity)
-					userAc.AddGroups(groups)
-					userAc.SetClaims(res.Claims)
-					userAc.SaveOnRequest(request)
-
-					// Update user groups in MetaDB if available
-					if ctlr.MetaDB != nil {
-						if err := ctlr.MetaDB.SetUserGroups(request.Context(), groups); err != nil {
-							ctlr.Log.Error().Err(err).Str("identity", identity).Msg("failed to update user profile")
-							response.WriteHeader(http.StatusInternalServerError)
-
-							return
-						}
-					}
-
-					// Use BEARER_OIDC to enable authorization via accessControl config.
-					// Unlike traditional bearer tokens (which contain 'access' claims with permissions),
-					// OIDC tokens contain identity only, so authorization must come from the config.
-					amCtx := acCtrlr.getAuthnMiddlewareContext(BEARER_OIDC, request)
-					next.ServeHTTP(response, request.WithContext(amCtx)) //nolint:contextcheck
-
-					return
-				}
-			}
-
-			// Fall back to traditional bearer token auth if OIDC didn't succeed
-			if traditionalAuthorizer != nil {
-				err := traditionalAuthorizer.Authorize(request.Context(), header, requestedAccess)
-				if err != nil {
-					var challenge *AuthChallengeError
-					if errors.As(err, &challenge) {
-						ctlr.Log.Debug().Err(challenge).Msg("bearer token authorization failed")
-						response.Header().Set("Content-Type", "application/json")
-						response.Header().Set("WWW-Authenticate", challenge.Header())
-						zcommon.WriteJSON(response, http.StatusUnauthorized, apiErr.NewError(apiErr.UNAUTHORIZED))
-
-						return
-					}
-
-					ctlr.Log.Error().Err(err).Msg("failed to parse Authorization header")
-					response.Header().Set("Content-Type", "application/json")
-					zcommon.WriteJSON(response, http.StatusUnauthorized, apiErr.NewError(apiErr.UNSUPPORTED))
-
-					return
-				}
-
-				amCtx := acCtrlr.getAuthnMiddlewareContext(BEARER, request)
-				next.ServeHTTP(response, request.WithContext(amCtx)) //nolint:contextcheck
-
-				return
-			}
-
-			// No authentication succeeded
-			if isAuthorizationHeaderEmpty(request) {
-				// No bearer token provided and no authentication method configured
-				ctlr.Log.Debug().Msg("no bearer token provided")
-			} else {
-				// Bearer token provided but authentication failed
-				ctlr.Log.Error().Msg("failed to authenticate with bearer token")
-			}
-
-			response.Header().Set("Content-Type", "application/json")
-			zcommon.WriteJSON(response, http.StatusUnauthorized, apiErr.NewError(apiErr.UNAUTHORIZED))
-		})
-	}
+	response.Header().Set("WWW-Authenticate", challenge.Header())
 }
 
 func canonicalOrigin(parsedURL *url.URL) (string, bool) {
