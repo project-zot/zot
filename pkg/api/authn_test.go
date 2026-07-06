@@ -1187,6 +1187,96 @@ func TestMultipleAuthorizationHeaders(t *testing.T) {
 	})
 }
 
+func TestBearerAuthDoesNotShortCircuitOtherAuthn(t *testing.T) {
+	Convey("Bearer auth does not disable OpenID, htpasswd, or API-key auth", t, func() {
+		tempDir := t.TempDir()
+
+		caCert, caKey, err := tlsutils.GenerateCACert()
+		So(err, ShouldBeNil)
+
+		serverCertPath := path.Join(tempDir, "server.cert")
+		serverKeyPath := path.Join(tempDir, "server.key")
+		opts := &tlsutils.CertificateOptions{Hostname: "localhost"}
+		err = tlsutils.GenerateServerCertToFile(caCert, caKey, serverCertPath, serverKeyPath, opts)
+		So(err, ShouldBeNil)
+
+		username, _ := test.GenerateRandomString()
+		password, _ := test.GenerateRandomString()
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
+
+		mockOIDCServer, err := authutils.MockOIDCRun()
+		So(err, ShouldBeNil)
+
+		defer func() {
+			err := mockOIDCServer.Shutdown()
+			So(err, ShouldBeNil)
+		}()
+
+		mockOIDCConfig := mockOIDCServer.Config()
+		apiKeyEnabled := true
+
+		conf := config.New()
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf.HTTP.Port = port
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{Path: htpasswdPath},
+			OpenID: &config.OpenIDConfig{
+				Providers: map[string]config.OpenIDProviderConfig{
+					"oidc": {
+						ClientID:     mockOIDCConfig.ClientID,
+						ClientSecret: mockOIDCConfig.ClientSecret,
+						Issuer:       mockOIDCConfig.Issuer,
+						Scopes:       []string{"openid", "email"},
+					},
+				},
+			},
+			APIKey: apiKeyEnabled,
+			Bearer: &config.BearerConfig{
+				Cert:    serverCertPath,
+				Realm:   "test-realm",
+				Service: "test-service",
+			},
+		}
+		conf.Storage.RootDirectory = t.TempDir()
+
+		ctlr := api.NewController(conf)
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
+
+		_, ok := ctlr.RelyingParties["oidc"]
+		So(ok, ShouldBeTrue)
+
+		payload := api.APIKeyPayload{
+			Label:  "mixed-auth",
+			Scopes: []string{"test"},
+		}
+		reqBody, err := json.Marshal(payload)
+		So(err, ShouldBeNil)
+
+		resp, err := resty.R().
+			SetBody(reqBody).
+			SetBasicAuth(username, password).
+			Post(baseURL + constants.APIKeyPath)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		var created apiKeyResponse
+		err = json.Unmarshal(resp.Body(), &created)
+		So(err, ShouldBeNil)
+		So(created.APIKey, ShouldNotBeEmpty)
+
+		resp, err = resty.R().
+			SetBasicAuth(username, created.APIKey).
+			Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+	})
+}
+
 func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 	Convey("Test bearer auth with OIDC workload identity", t, func() {
 		// Generate test keys for mock OIDC server

@@ -601,6 +601,21 @@ func (config *AccessControlConfig) AnonymousPolicyExists() bool {
 	return false
 }
 
+// HasAnonymousReadPolicy reports whether at least one repository grants anonymous read access.
+func (config *AccessControlConfig) HasAnonymousReadPolicy() bool {
+	if config == nil {
+		return false
+	}
+
+	for _, repository := range config.Repositories {
+		if slices.Contains(repository.AnonymousPolicy, "read") {
+			return true
+		}
+	}
+
+	return false
+}
+
 // HasMixedAnonymousAndAuthenticatedPolicies reports whether the access control configuration contains
 // at least one anonymous repository policy AND at least one authenticated-only policy
 // (default/admin/user-specific).

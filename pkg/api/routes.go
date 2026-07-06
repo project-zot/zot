@@ -289,7 +289,10 @@ func (rh *RouteHandler) CheckVersionSupport(response http.ResponseWriter, reques
 	// work correctly
 	// Get auth config safely
 	authConfig := rh.c.Config.CopyAuthConfig()
-	if authConfig.IsBasicAuthnEnabled() || authConfig.IsBearerAuthEnabled() {
+	accessControlConfig := rh.c.Config.CopyAccessControlConfig()
+	anonymousRead := isAuthorizationHeaderEmpty(request) && accessControlConfig.HasAnonymousReadPolicy()
+
+	if (authConfig.IsBasicAuthnEnabled() || authConfig.IsBearerAuthEnabled()) && !anonymousRead {
 		// don't send auth headers if request is coming from UI
 		if request.Header.Get(constants.SessionClientHeaderName) != constants.SessionClientHeaderValue {
 			if authConfig.Bearer != nil {

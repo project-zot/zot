@@ -1219,6 +1219,28 @@ func TestConfig(t *testing.T) {
 			So(accessControlConfig.AnonymousPolicyExists(), ShouldBeFalse)
 		})
 
+		Convey("Test HasAnonymousReadPolicy()", func() {
+			var accessControlConfig *config.AccessControlConfig = nil
+			So(accessControlConfig.HasAnonymousReadPolicy(), ShouldBeFalse)
+
+			accessControlConfig = &config.AccessControlConfig{}
+			So(accessControlConfig.HasAnonymousReadPolicy(), ShouldBeFalse)
+
+			accessControlConfig.Repositories = config.Repositories{
+				"repo1": config.PolicyGroup{
+					AnonymousPolicy: []string{"create"},
+				},
+			}
+			So(accessControlConfig.HasAnonymousReadPolicy(), ShouldBeFalse)
+
+			accessControlConfig.Repositories = config.Repositories{
+				"repo1": config.PolicyGroup{
+					AnonymousPolicy: []string{"read"},
+				},
+			}
+			So(accessControlConfig.HasAnonymousReadPolicy(), ShouldBeTrue)
+		})
+
 		Convey("Test GetRepositories()", func() {
 			repositories := config.Repositories{
 				"repo1": config.PolicyGroup{

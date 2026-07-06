@@ -52,6 +52,7 @@ const (
 type AuthnMiddleware struct {
 	htpasswd   *HTPasswd
 	ldapClient *LDAPClient
+	bearerAuth *BearerAuth
 	log        log.Logger
 }
 
@@ -67,16 +68,19 @@ func AuthHandler(ctlr *Controller) AuthSetup {
 	}
 
 	authConfig := ctlr.Config.CopyAuthConfig()
+
+	var tokenHandler http.HandlerFunc
+
 	if authConfig.IsBearerAuthEnabled() {
 		bearerAuth := NewBearerAuth(authConfig, ctlr.Log)
-
-		return AuthSetup{
-			Middleware:   bearerAuth.Middleware(ctlr),
-			TokenHandler: bearerAuth.TokenExchangeHandler(),
-		}
+		authnMiddleware.bearerAuth = bearerAuth
+		tokenHandler = bearerAuth.TokenExchangeHandler()
 	}
 
-	return AuthSetup{Middleware: authnMiddleware.tryAuthnHandlers(ctlr)}
+	return AuthSetup{
+		Middleware:   authnMiddleware.tryAuthnHandlers(ctlr),
+		TokenHandler: tokenHandler,
+	}
 }
 
 func (amw *AuthnMiddleware) sessionAuthn(ctlr *Controller, userAc *reqCtx.UserAccessControl,
@@ -425,13 +429,6 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 			}
 
 			isMgmtRequested := request.RequestURI == constants.FullMgmt
-			isV2Requested := strings.TrimSuffix(request.URL.Path, "/") == constants.RoutePrefix
-			// Match Docker daemon-proxied requests regardless of the upstream client tool.
-			// The Docker daemon always prefixes its UA with "docker/<version>" when proxying,
-			// while the upstream tool (docker CLI, compose, buildx, etc.) appears inside
-			// "UpstreamClient(...)". Direct Docker CLI requests use "Docker-Client/...".
-			ua := request.Header.Get("User-Agent")
-			isDockerClient := strings.Contains(ua, "Docker-Client") || strings.HasPrefix(ua, "docker/")
 
 			// Get auth config safely
 			authConfig := ctlr.Config.CopyAuthConfig()
@@ -461,8 +458,14 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 			case hasMultipleAuthorizationHeaders(request):
 				authenticated = false
 
-			// The authorization header presence is an explicit attempt to use basic authentication
-			case !isAuthorizationHeaderEmpty(request) && authConfig.IsBasicAuthnEnabled():
+			// Bearer credentials are owned by the bearer backends.
+			case hasBearerAuthorizationHeader(request) && amw.bearerAuth != nil:
+				amw.bearerAuth.Middleware(ctlr)(next).ServeHTTP(response, request)
+
+				return
+
+			// Basic credentials are owned by htpasswd/LDAP/API key authentication.
+			case hasBasicAuthorizationHeader(request) && authConfig.CanAuthenticateWithBasicCredentials():
 				authenticated, err = amw.basicAuthn(ctlr, userAc, response, request)
 
 			// The session header is an explicit attempt to use session authentication
@@ -482,21 +485,13 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 				authenticated, err = amw.mTLSAuthn(ctlr, userAc, request)
 
 			// If no auth methods enabled at all - then just authenticate anything
-			case !authConfig.IsBasicAuthnEnabled() && !ctlr.Config.IsMTLSAuthEnabled():
+			case !authConfig.IsBasicAuthnEnabled() && !authConfig.IsBearerAuthEnabled() && !ctlr.Config.IsMTLSAuthEnabled():
 				authenticated = true
 
-			// If no credentials provided - check for anonymous / mgmt / metrics requests
-			case allowAnonymous || isMgmtRequested || isMetricsRequestedWithAnonymousAccess:
-				// Docker workaround: force 401 on /v2/ when anonymous policies coexist with
-				// authenticated-only policies. Otherwise Docker treats 200 on /v2/ as "no auth"
-				// and will not send stored credentials for protected repositories.
-				// See: https://github.com/opencontainers/wg-auth/blob/main/docs/implementations/moby.md
-				hasMixedPolicy := accessControlConfig.HasMixedAnonymousAndAuthenticatedPolicies()
-				if isDockerClient && isV2Requested && hasMixedPolicy && authConfig.CanAuthenticateWithBasicCredentials() {
-					authenticated = false
-				} else {
-					authenticated = true
-				}
+			// If no credentials provided - check for anonymous / mgmt / metrics requests.
+			case canUseAnonymousAuthnFallback(request, authConfig, allowAnonymous, isMgmtRequested,
+				isMetricsRequestedWithAnonymousAccess):
+				authenticated = true
 			}
 
 			// If error occurred during authn process - return 500 error
@@ -506,9 +501,12 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 				return
 			}
 
-			if authenticated {
+			switch {
+			case authenticated:
 				next.ServeHTTP(response, request)
-			} else {
+			case isAuthorizationHeaderEmpty(request) && amw.bearerAuth != nil:
+				amw.bearerAuth.Middleware(ctlr)(next).ServeHTTP(response, request)
+			default:
 				authFail(response, request, realm, delay)
 			}
 		})
@@ -850,6 +848,45 @@ func isAuthorizationHeaderEmpty(request *http.Request) bool {
 	}
 
 	return false
+}
+
+func authorizationHeaderScheme(request *http.Request) string {
+	header := strings.TrimSpace(request.Header.Get("Authorization"))
+	if header == "" {
+		return ""
+	}
+
+	scheme, _, found := strings.Cut(header, " ")
+	if !found {
+		return strings.ToLower(header)
+	}
+
+	return strings.ToLower(scheme)
+}
+
+func hasBasicAuthorizationHeader(request *http.Request) bool {
+	return !isAuthorizationHeaderEmpty(request) && authorizationHeaderScheme(request) == "basic"
+}
+
+func hasBearerAuthorizationHeader(request *http.Request) bool {
+	return !isAuthorizationHeaderEmpty(request) && authorizationHeaderScheme(request) == "bearer"
+}
+
+func canUseAnonymousAuthnFallback(request *http.Request, authConfig *config.AuthConfig,
+	allowAnonymous, isMgmtRequested, isMetricsRequestedWithAnonymousAccess bool,
+) bool {
+	if !allowAnonymous && !isMgmtRequested && !isMetricsRequestedWithAnonymousAccess {
+		return false
+	}
+
+	if isAuthorizationHeaderEmpty(request) {
+		return true
+	}
+
+	// mTLS-only configs historically ignore stray Authorization headers and can still
+	// fall back to anonymous access. Basic and bearer configs own Authorization
+	// headers, so an unsupported scheme must fail instead of becoming anonymous.
+	return !authConfig.IsBasicAuthnEnabled() && !authConfig.IsBearerAuthEnabled()
 }
 
 // hasMultipleAuthorizationHeaders checks if the request has multiple Authorization headers.
