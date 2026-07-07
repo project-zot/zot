@@ -724,7 +724,8 @@ func (gc GarbageCollect) removeUntaggedManifests(ctx context.Context, repo strin
 			}
 		} else {
 			gc.log.Warn().Str("module", "gc").Str("repository", repo).
-				Msg("keepUntagged policy requires metadata database; ignoring keepUntagged rules and using delay-based untagged cleanup")
+				Msg("keepUntagged policy requires metadata database;" +
+					" ignoring keepUntagged rules and using delay-based untagged cleanup")
 		}
 	}
 
