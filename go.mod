@@ -3,7 +3,7 @@ module zotregistry.dev/zot/v2
 go 1.26.3
 
 require (
-	github.com/99designs/gqlgen v0.17.92
+	github.com/99designs/gqlgen v0.17.93
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.8.0
 	github.com/GehirnInc/crypt v0.0.0-20230320061759-8cc1b52080c5
 	github.com/Masterminds/semver v1.5.0
@@ -479,7 +479,7 @@ require (
 	github.com/transparency-dev/merkle v0.0.2 // indirect
 	github.com/twitchtv/twirp v8.1.3+incompatible // indirect
 	github.com/ulikunitz/xz v0.5.15 // indirect
-	github.com/urfave/cli/v3 v3.9.0 // indirect
+	github.com/urfave/cli/v3 v3.10.0 // indirect
 	github.com/valyala/fastjson v1.6.10 // indirect
 	github.com/veraison/go-cose v1.3.0 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
