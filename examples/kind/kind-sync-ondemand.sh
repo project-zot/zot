@@ -212,7 +212,7 @@ for i in $(seq 1 60); do
             exit 1
             ;;
     esac
-    [ "${i}" -lt 60 ] || { log_error "pause-first pod did not start within 120s"; exit 1; }
+    [ "${i}" -lt 60 ] || { log_error "pause-first pod did not start within 60 attempts (120s)"; exit 1; }
     sleep 2
 done
 log_info "pause-first pod phase: ${PHASE}"
@@ -263,7 +263,7 @@ for i in $(seq 1 60); do
             exit 1
             ;;
     esac
-    [ "${i}" -lt 60 ] || { log_error "pause-second pod did not start within 120s"; exit 1; }
+    [ "${i}" -lt 60 ] || { log_error "pause-second pod did not start within 60 attempts (120s)"; exit 1; }
     sleep 2
 done
 log_info "pause-second pod phase: ${PHASE}"
