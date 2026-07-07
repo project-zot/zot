@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -54,6 +55,9 @@ type ImageStore struct {
 	linter      common.Lint
 	commit      bool
 	compat      []compat.MediaCompatibility
+	// dedupeRebuildDone is set once RunDedupeBlobs has walked all blobs, i.e. the
+	// cache accounts for every pre-existing blob; see deleteBlob.
+	dedupeRebuildDone atomic.Bool
 }
 
 func (is *ImageStore) Name() string {
@@ -94,6 +98,9 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 		compat:      compat,
 		events:      recorder,
 	}
+
+	// Deletes are only gated while a dedupe/restore walk is pending; see RunDedupeBlobs.
+	imgStore.dedupeRebuildDone.Store(true)
 
 	return imgStore
 }
@@ -1983,7 +1990,7 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 	blobPath := is.BlobPath(repo, digest)
 
-	_, err := is.storeDriver.Stat(blobPath)
+	binfo, err := is.storeDriver.Stat(blobPath)
 	if err != nil {
 		var pathNotFoundErr driver.PathNotFoundError
 		if errors.As(err, &pathNotFoundErr) {
@@ -2007,6 +2014,16 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 				Msg("failed to lookup blob record")
 
 			return err
+		}
+
+		// Cache miss: with dedupe on remote storage this blob may be the only
+		// content copy backing zero-size duplicates elsewhere.
+		// Defer until the startup walk has rebuilt the cache; GC retries later.
+		if dstRecord == "" && binfo.Size() > 0 && !is.dedupeRebuildDone.Load() {
+			is.log.Warn().Str("digest", digest.String()).Str("blobPath", blobPath).Str("component", "dedupe").
+				Msg("no cache record for content blob while dedupe rebuild is still running, deferring delete")
+
+			return zerr.ErrDedupeRebuildInProgress
 		}
 
 		// remove cache entry and move blob contents to the next candidate if there is any
@@ -2054,6 +2071,15 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 				return nil
 			}
 		}
+	}
+
+	// No cache (dedupe off): leftover placeholders are refilled by the restore
+	// walk; until it completes this blob may be their only content copy.
+	if fmt.Sprintf("%v", is.cache) == fmt.Sprintf("%v", nil) && binfo.Size() > 0 && !is.dedupeRebuildDone.Load() {
+		is.log.Warn().Str("digest", digest.String()).Str("blobPath", blobPath).Str("component", "dedupe").
+			Msg("content blob delete requested before dedupe restore walk finished, deferring delete")
+
+		return zerr.ErrDedupeRebuildInProgress
 	}
 
 	if err := is.storeDriver.Delete(blobPath); err != nil {
@@ -2442,6 +2468,12 @@ func (is *ImageStore) RunDedupeForDigest(ctx context.Context, digest godigest.Di
 func (is *ImageStore) RunDedupeBlobs(interval time.Duration, sch *scheduler.Scheduler) {
 	markerPath := path.Join(is.rootDir, storageConstants.DedupeRestoreCompleteMarker)
 
+	// Gate deletes of cache-unknown blobs until the walk completes (see deleteBlob).
+	// Local storage dedupes via hardlinks, so deletes there never destroy shared content.
+	if is.storeDriver.Name() != storageConstants.LocalStorageDriverName {
+		is.dedupeRebuildDone.Store(false)
+	}
+
 	if is.dedupe {
 		// Dedupe is active: remove the restore-complete marker so that a future dedupe→false
 		// transition knows it must run restore again.
@@ -2470,6 +2502,9 @@ func (is *ImageStore) RunDedupeBlobs(interval time.Duration, sch *scheduler.Sche
 				is.log.Info().Str("component", "dedupe").
 					Msg("restore-complete marker present, skipping dedupe restore scan")
 
+				// storage holds no deduped blobs, so deletes are safe without a walk
+				is.dedupeRebuildDone.Store(true)
+
 				return
 			}
 
@@ -2490,16 +2525,21 @@ func (is *ImageStore) RunDedupeBlobs(interval time.Duration, sch *scheduler.Sche
 		Log:      is.log,
 	}
 
-	if !is.dedupe {
-		generator.OnRestoreComplete = func() {
-			if _, err := is.storeDriver.WriteFile(markerPath,
-				[]byte(storageConstants.DedupeRestoreMarkerComplete)); err != nil {
-				is.log.Error().Err(err).Str("component", "dedupe").
-					Msg("failed to write restore-complete marker")
-			} else {
-				is.log.Info().Str("component", "dedupe").
-					Msg("restore-complete marker written; future startups will skip the restore scan")
-			}
+	generator.OnRunComplete = func() {
+		// walk finished: deferred blob deletes may proceed (see deleteBlob)
+		is.dedupeRebuildDone.Store(true)
+
+		if is.dedupe {
+			return
+		}
+
+		if _, err := is.storeDriver.WriteFile(markerPath,
+			[]byte(storageConstants.DedupeRestoreMarkerComplete)); err != nil {
+			is.log.Error().Err(err).Str("component", "dedupe").
+				Msg("failed to write restore-complete marker")
+		} else {
+			is.log.Info().Str("component", "dedupe").
+				Msg("restore-complete marker written; future startups will skip the restore scan")
 		}
 	}
 

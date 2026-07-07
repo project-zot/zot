@@ -918,9 +918,9 @@ type restoreRunState struct {
 	// completed successfully. It is incremented when a task is generated and decremented
 	// only by onDone, which a task calls on success (see dedupeTask.DoWork). A failed task
 	// is therefore never decremented, so the count intentionally never reaches zero again
-	// for this run, preventing checkCompletion from firing OnRestoreComplete after a failure.
+	// for this run, preventing checkCompletion from firing OnRunComplete after a failure.
 	pendingTaskCount atomic.Int64
-	// completeOnce ensures OnRestoreComplete is called at most once for this run.
+	// completeOnce ensures OnRunComplete is called at most once for this run.
 	completeOnce sync.Once
 	// done is set to true once all tasks for this run have been generated. It is read
 	// both by IsDone() on the scheduler goroutine and by checkCompletion() from onDone
@@ -943,10 +943,12 @@ type DedupeTaskGenerator struct {
 	lastDigests []godigest.Digest
 	repos       []string // list of repos on which we run dedupe
 	Log         zlog.Logger
-	// OnRestoreComplete is called exactly once after ALL restore tasks have executed
-	// successfully. Used to write the restore-complete marker so the next startup with
-	// dedupe=false can skip the expensive per-digest scan.
-	OnRestoreComplete func()
+	// OnRunComplete is called exactly once after all tasks of a run have
+	// succeeded, whether the run dedupes blobs (Dedupe=true) or restores them
+	// (Dedupe=false). Restore runs use it to write the restore-complete marker;
+	// both kinds use it to signal the image store that blob deletes may proceed
+	// (see ImageStore.deleteBlob).
+	OnRunComplete func()
 	// run holds the completion-tracking state for the current run. onDone closures
 	// capture the *restoreRunState pointer directly and operate on it independently
 	// of any later Reset(). It is an atomic.Pointer because checkCompletion() compares
@@ -975,7 +977,7 @@ func (gen *DedupeTaskGenerator) getRun() *restoreRunState {
 
 // All restore tasks for this run have been generated AND all of them have completed successfully.
 func (gen *DedupeTaskGenerator) checkCompletion(run *restoreRunState) {
-	if gen.OnRestoreComplete != nil &&
+	if gen.OnRunComplete != nil &&
 		run.done.Load() &&
 		run.pendingTaskCount.Load() == 0 {
 		// Dispatch asynchronously so the executor goroutine that triggered completion
@@ -985,11 +987,11 @@ func (gen *DedupeTaskGenerator) checkCompletion(run *restoreRunState) {
 				defer func() {
 					if r := recover(); r != nil {
 						gen.Log.Error().Interface("panic", r).Str("component", "dedupe").
-							Msg("panic in OnRestoreComplete")
+							Msg("panic in OnRunComplete")
 					}
 				}()
 
-				gen.OnRestoreComplete()
+				gen.OnRunComplete()
 			}()
 		})
 	}
@@ -1044,10 +1046,10 @@ func (gen *DedupeTaskGenerator) Next() (scheduler.Task, error) {
 	// mark digest as processed before running its task
 	gen.lastDigests = append(gen.lastDigests, gen.digest)
 
-	// For restore passes, track each task so the marker is only written after all succeed.
+	// Track each task so completion fires only after all of them succeed.
 	var onDone func()
 
-	if !gen.Dedupe && gen.OnRestoreComplete != nil {
+	if gen.OnRunComplete != nil {
 		run.pendingTaskCount.Add(1)
 
 		onDone = func() {
@@ -1074,10 +1076,10 @@ func (gen *DedupeTaskGenerator) Reset() {
 
 	// Only start a fresh run if the current one has no in-flight tasks (or completion
 	// isn't tracked at all). If tasks are still executing, keep the same run state so
-	// their onDone callbacks can still drive checkCompletion to fire OnRestoreComplete
+	// their onDone callbacks can still drive checkCompletion to fire OnRunComplete
 	// once they finish; replacing gen.run here would otherwise make that run's
 	// completion unobservable forever.
-	if gen.OnRestoreComplete == nil || (run.done.Load() && run.pendingTaskCount.Load() == 0) {
+	if gen.OnRunComplete == nil || (run.done.Load() && run.pendingTaskCount.Load() == 0) {
 		gen.run.Store(&restoreRunState{})
 	}
 
@@ -1095,7 +1097,7 @@ type dedupeTask struct {
 	duplicateBlobs []string
 	dedupe         bool
 	log            zlog.Logger
-	// onDone is called when this restore task succeeds. nil for dedupe (non-restore) tasks.
+	// onDone is called when this task succeeds; nil when completion isn't tracked.
 	onDone func()
 }
 
