@@ -215,6 +215,33 @@ jobs:
             sudo ./scripts/enable_userns.sh
             ./examples/kind/kind-ci.sh
 
+  kind-sync-ondemand:
+    name: On-demand sync mirror regression (issue 4184)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          check-latest: true
+          go-version: 1.26.x
+      - name: Install dependencies
+        run: |
+          cd $GITHUB_WORKSPACE
+          make check-blackbox-prerequisites
+          go mod download
+          sudo apt-get update
+          sudo apt-get install -y libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config rpm uidmap jq
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # main
+      - name: Build zot binary
+        run: make binary
+      - name: Run on-demand sync mirror regression test
+        run: |
+          sudo ./scripts/enable_userns.sh
+          ./examples/kind/kind-sync-ondemand.sh
+
   oidc-workload-identity:
     name: OIDC Workload Identity E2E
     runs-on: ubuntu-latest

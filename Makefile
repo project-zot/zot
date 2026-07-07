@@ -591,6 +591,10 @@ run-blackbox-sync-nightly: check-blackbox-prerequisites binary binary-minimal be
 	echo running nightly sync tests; \
 	$(BATS) $(BATS_FLAGS) test/blackbox/sync_harness.bats
 
+.PHONY: run-kind-sync-ondemand
+run-kind-sync-ondemand: check-blackbox-prerequisites binary
+	./examples/kind/kind-sync-ondemand.sh
+
 .PHONY: fuzz-all
 fuzz-all: fuzztime=${1}
 fuzz-all:
