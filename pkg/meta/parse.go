@@ -561,10 +561,19 @@ func isSignature(reference string, manifestContent ispec.Manifest) (bool, string
 	if tag := reference; zcommon.IsCosignSignature(reference) {
 		prefixLen := len("sha256-")
 		digestLen := 64
+
+		if len(tag) != prefixLen+digestLen+len(".sig") {
+			return false, "", ""
+		}
+
 		signedImageManifestDigestEncoded := tag[prefixLen : prefixLen+digestLen]
 
 		signedImageManifestDigest := godigest.NewDigestFromEncoded(godigest.SHA256,
 			signedImageManifestDigestEncoded)
+
+		if err := signedImageManifestDigest.Validate(); err != nil {
+			return false, "", ""
+		}
 
 		return true, CosignType, signedImageManifestDigest
 	}
