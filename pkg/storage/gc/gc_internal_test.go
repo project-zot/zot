@@ -1698,6 +1698,37 @@ func TestCleanRepoWithStaleManifestEntries(t *testing.T) {
 	})
 }
 
+func TestGetSubjectFromCosignTag(t *testing.T) {
+	Convey("cosign tag subject digests are parsed for both .sig and .sbom", t, func() {
+		subjectDigest := godigest.FromString("app:v1")
+
+		index := &ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{
+					Digest:    subjectDigest,
+					MediaType: ispec.MediaTypeImageManifest,
+				},
+			},
+		}
+
+		Convey("signature tag resolves to the subject and stays referenced", func() {
+			sigTag := "sha256-" + subjectDigest.Encoded() + ".sig"
+
+			So(zcommon.IsCosignTag(sigTag), ShouldBeTrue)
+			So(getSubjectFromCosignTag(sigTag), ShouldEqual, subjectDigest)
+			So(isManifestReferencedInIndex(index, getSubjectFromCosignTag(sigTag)), ShouldBeTrue)
+		})
+
+		Convey("SBOM tag resolves to the subject and stays referenced", func() {
+			sbomTag := "sha256-" + subjectDigest.Encoded() + ".sbom"
+
+			So(zcommon.IsCosignTag(sbomTag), ShouldBeTrue)
+			So(getSubjectFromCosignTag(sbomTag), ShouldEqual, subjectDigest)
+			So(isManifestReferencedInIndex(index, getSubjectFromCosignTag(sbomTag)), ShouldBeTrue)
+		})
+	})
+}
+
 func TestCleanupRepoMissingBlob(t *testing.T) {
 	Convey("CleanupRepo skips blobs that are already absent", t, func() {
 		dir := t.TempDir()
