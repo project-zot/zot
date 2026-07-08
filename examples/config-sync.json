@@ -21,6 +21,7 @@
 					],
 					"onDemand": false,
 					"pollInterval": "6h",
+					"downloadRate": "100mbps",
 					"tlsVerify": true,
 					"certDir": "/home/user/certs",
 					"maxRetries": 3,
