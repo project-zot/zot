@@ -73,7 +73,8 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 			log.Error().Err(zerr.ErrBadConfig).Str("storageDriver", storeName).
 				Msg("unsupported storage driver")
 
-			return storeController, zerr.ErrBadConfig
+			return storeController, fmt.Errorf("storageDriver '%s' unsupported storage driver: %w",
+				storeName, zerr.ErrBadConfig)
 		}
 
 		NormalizeRootDirectory(storeName, config.Storage.StorageDriver)
@@ -205,7 +206,8 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 				log.Error().Err(zerr.ErrBadConfig).Str("storageDriver", storeName).
 					Msg("unsupported storage driver")
 
-				return nil, zerr.ErrBadConfig
+				return nil, fmt.Errorf("storageDriver '%s' unsupported storage driver: %w",
+					storeName, zerr.ErrBadConfig)
 			}
 
 			NormalizeRootDirectory(storeName, storageConfig.StorageDriver)
