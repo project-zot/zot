@@ -97,7 +97,7 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 
 	if dedupe {
 		// create the global blobs repo which will serve as the master copy for all deduped blobs
-		if err := imgStore.initRepo(storageConstants.GlobalBlobsRepo); err != nil {
+		if err := imgStore.initRepo(context.Background(), storageConstants.GlobalBlobsRepo); err != nil {
 			log.Error().Err(err).Str("rootDir", rootDir).Msg("failed to create global blobs repo")
 
 			return nil
