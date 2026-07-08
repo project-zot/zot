@@ -593,12 +593,12 @@ func (gc GarbageCollect) removeReferrer(repo string, index *ispec.Index, manifes
 }
 
 func (gc GarbageCollect) removeTagsPerRetentionPolicy(ctx context.Context, repo string, index *ispec.Index) error {
-	if !gc.policyMgr.HasTagRetention(repo) {
+	// skip the global blobs repo - it has no tags to retain
+	if repo == storageConstants.GlobalBlobsRepo {
 		return nil
 	}
 
-	// skip the global blobs repo - it has no tags to retain
-	if repo == storageConstants.GlobalBlobsRepo {
+	if !gc.policyMgr.HasTagRetention(repo) {
 		return nil
 	}
 

@@ -26,7 +26,10 @@ import (
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
 
-var errDeleteFailed = errors.New("delete failed") //nolint: gochecknoglobals
+var (
+	errDeleteFailed = errors.New("delete failed")
+	errWalkFailed   = errors.New("walk failed")
+) //nolint: gochecknoglobals
 
 func TestGetBlobRedirectURL(t *testing.T) {
 	Convey("GetBlobRedirectURL", t, func() {
@@ -274,7 +277,7 @@ func TestNewImageStoreFailsWhenMigrationFails(t *testing.T) {
 		storeMock.WalkFn = func(_ context.Context, _ string, _ driver.WalkFn,
 			_ ...func(*driver.WalkOptions),
 		) error {
-			return errors.New("walk failed")
+			return errWalkFailed
 		}
 
 		store := imagestore.NewImageStore("", "", true, false, log, metrics, nil,

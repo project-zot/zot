@@ -157,6 +157,20 @@ func (is *ImageStore) Unlock(lockStart *time.Time) {
 }
 
 func (is *ImageStore) initRepo(ctx context.Context, name string) error {
+	if name != storageConstants.GlobalBlobsRepo {
+		if !utf8.ValidString(name) {
+			is.log.Error().Msg("invalid UTF-8 input")
+
+			return zerr.ErrInvalidRepositoryName
+		}
+
+		if !zreg.FullNameRegexp.MatchString(name) {
+			is.log.Error().Str("repository", name).Msg("invalid repository name")
+
+			return zerr.ErrInvalidRepositoryName
+		}
+	}
+
 	repoDir := path.Join(is.rootDir, name)
 
 	// create "blobs" subdir
@@ -438,7 +452,8 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 
 	if markerOnlyDigests > 0 {
 		is.log.Warn().Int("markerOnlyDigestCount", markerOnlyDigests).
-			Msg("blobstore upgrade incomplete: migration marker not written because some digests only have legacy 0-byte markers")
+			Msg("blobstore upgrade incomplete: migration marker not written because some digests " +
+				"only have legacy 0-byte markers")
 
 		return nil
 	}
@@ -478,6 +493,7 @@ func (is *ImageStore) InitRepo(ctx context.Context, name string) error {
 
 		return zerr.ErrInvalidRepositoryName
 	}
+
 	var lockLatency time.Time
 
 	is.Lock(&lockLatency)
@@ -1532,7 +1548,7 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 
 	var lastRetryErr error
 
-	for attempt := 0; attempt < maxDedupeSelfHealRetries; attempt++ {
+	for range maxDedupeSelfHealRetries {
 		is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe begin")
 
 		dstRecord, err := is.cache.GetBlob(dstDigest)

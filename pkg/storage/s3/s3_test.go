@@ -3738,11 +3738,8 @@ func TestS3DedupeErr(t *testing.T) {
 			GetBlobFn: func(d godigest.Digest) (string, error) { return gdst, nil },
 		})
 
-		digest := godigest.NewDigestFromEncoded(godigest.SHA256,
+		digest = godigest.NewDigestFromEncoded(godigest.SHA256,
 			"7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
-
-		err := imgStore.DedupeBlob("repo", digest, "", "dst")
-		So(err, ShouldBeNil)
 
 		_, _, err = imgStore.CheckBlob(context.Background(), "repo", digest)
 		So(err, ShouldNotBeNil)
@@ -3768,11 +3765,8 @@ func TestS3DedupeErr(t *testing.T) {
 			GetBlobFn: func(d godigest.Digest) (string, error) { return gdst, nil },
 		})
 
-		digest := godigest.NewDigestFromEncoded(godigest.SHA256,
+		digest = godigest.NewDigestFromEncoded(godigest.SHA256,
 			"7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
-
-		err := imgStore.DedupeBlob("repo", digest, "", "dst")
-		So(err, ShouldBeNil)
 
 		_, _, err = imgStore.CheckBlob(context.Background(), "repo", digest)
 		So(err, ShouldNotBeNil)
@@ -3788,17 +3782,18 @@ func TestS3DedupeErr(t *testing.T) {
 		// StatFn fails so checkCacheBlob returns ErrBlobNotFound.
 		imgStore = createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+				if path == gdst {
+					return driver.FileInfoInternal{}, nil
+				}
+
 				return driver.FileInfoInternal{}, errS3
 			},
 		}, &mocks.CacheMock{
 			GetBlobFn: func(d godigest.Digest) (string, error) { return gdst, nil },
 		})
 
-		digest := godigest.NewDigestFromEncoded(godigest.SHA256,
+		digest = godigest.NewDigestFromEncoded(godigest.SHA256,
 			"7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
-
-		err := imgStore.DedupeBlob("repo", digest, "", "dst")
-		So(err, ShouldBeNil)
 
 		_, _, err = imgStore.CheckBlob(context.Background(), "repo", digest)
 		So(err, ShouldNotBeNil)
