@@ -30,6 +30,10 @@ func NewHTTPSink(config eventsconf.SinkConfig) (*HTTPSink, error) {
 		return nil, zerr.ErrEventSinkAddressEmpty
 	}
 
+	if config.Timeout <= 0 {
+		config.Timeout = DefaultHTTPTimeout
+	}
+
 	// Create the basic http client
 	httpClient, err := GetHTTPClientForConfig(config)
 	if err != nil {
