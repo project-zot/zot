@@ -1250,7 +1250,7 @@ func (bdw *BoltDB) GetReferrersInfo(repo string, referredDigest godigest.Digest,
 			return err
 		}
 
-		referrersInfo := protoRepoMeta.Referrers[referredDigest.String()].List
+		referrersInfo := protoRepoMeta.Referrers[referredDigest.String()].GetList()
 		seenDigests := make(map[string]struct{})
 
 		for i := range referrersInfo {
