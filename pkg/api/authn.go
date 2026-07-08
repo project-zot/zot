@@ -598,6 +598,12 @@ func ValidateCallbackUI(callbackUI string, allowOrigins []string) string {
 		return "/"
 	}
 
+	// Reject backslash in the path — browsers may normalize /\evil.com to //evil.com
+	// (open redirect). url.Parse decodes %5C, so this also covers encoded forms.
+	if strings.Contains(parsed.Path, `\`) {
+		return "/"
+	}
+
 	// Reject protocol-relative URLs (e.g. //evil.com/path)
 	if strings.HasPrefix(callbackUI, "//") {
 		return "/"
