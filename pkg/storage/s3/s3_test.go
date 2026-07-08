@@ -3738,7 +3738,7 @@ func TestS3DedupeErr(t *testing.T) {
 			GetBlobFn: func(d godigest.Digest) (string, error) { return gdst, nil },
 		})
 
-		digest := godigest.NewDigestFromEncoded(godigest.SHA256,
+		digest = godigest.NewDigestFromEncoded(godigest.SHA256,
 			"7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
 
 		err := imgStore.DedupeBlob("repo", digest, "", "dst")
@@ -3768,7 +3768,7 @@ func TestS3DedupeErr(t *testing.T) {
 			GetBlobFn: func(d godigest.Digest) (string, error) { return gdst, nil },
 		})
 
-		digest := godigest.NewDigestFromEncoded(godigest.SHA256,
+		digest = godigest.NewDigestFromEncoded(godigest.SHA256,
 			"7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
 
 		err := imgStore.DedupeBlob("repo", digest, "", "dst")
@@ -3794,7 +3794,7 @@ func TestS3DedupeErr(t *testing.T) {
 			GetBlobFn: func(d godigest.Digest) (string, error) { return gdst, nil },
 		})
 
-		digest := godigest.NewDigestFromEncoded(godigest.SHA256,
+		digest = godigest.NewDigestFromEncoded(godigest.SHA256,
 			"7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
 
 		err := imgStore.DedupeBlob("repo", digest, "", "dst")

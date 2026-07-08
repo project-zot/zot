@@ -224,10 +224,10 @@ func TestStorageFSAPIs(t *testing.T) {
 			content := []byte("marker-skip-list-failure")
 			digest := godigest.FromBytes(content)
 
-			_, _, err := imgStoreOld.FullBlobUpload("goodrepo", bytes.NewReader(content), digest)
+			_, _, err := imgStoreOld.FullBlobUpload(context.Background(), "goodrepo", bytes.NewReader(content), digest)
 			So(err, ShouldBeNil)
 
-			err = imgStoreOld.InitRepo("badrepo")
+			err = imgStoreOld.InitRepo(context.Background(), "badrepo")
 			So(err, ShouldBeNil)
 
 			badRepoBlobsDir := path.Join(dir, "badrepo", ispec.ImageBlobsDir)
@@ -853,17 +853,17 @@ func TestStorageCacheErrors(t *testing.T) {
 
 		cblob, cdigest := GetRandomImageConfig()
 
-		_, _, err = imgStore.FullBlobUpload("dedupe1", bytes.NewReader(cblob), cdigest)
+		_, _, err = imgStore.FullBlobUpload(context.Background(), "dedupe1", bytes.NewReader(cblob), cdigest)
 		So(err, ShouldBeNil)
 
-		_, _, err = imgStore.FullBlobUpload("dedupe2", bytes.NewReader(cblob), cdigest)
+		_, _, err = imgStore.FullBlobUpload(context.Background(), "dedupe2", bytes.NewReader(cblob), cdigest)
 		So(err, ShouldBeNil)
 
 		globalBlobPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, cdigest)
 		err = os.Remove(globalBlobPath)
 		So(err, ShouldBeNil)
 
-		err = imgStore.InitRepo("dedupe3")
+		err = imgStore.InitRepo(context.Background(), "dedupe3")
 		So(err, ShouldBeNil)
 
 		err = imgStore.DedupeBlob("", cdigest, "dedupe3", imgStore.BlobPath("dedupe3", cdigest))
@@ -3827,10 +3827,10 @@ func TestUpgradeToGlobalBlobstore(t *testing.T) {
 		content1 := []byte("blob-content-shared")
 		digest1 := godigest.FromBytes(content1)
 
-		upload, err := imgStoreOld.NewBlobUpload("repo1")
+		upload, err := imgStoreOld.NewBlobUpload(context.Background(), "repo1")
 		So(err, ShouldBeNil)
 
-		_, err = imgStoreOld.PutBlobChunkStreamed("repo1", upload, bytes.NewBuffer(content1))
+		_, err = imgStoreOld.PutBlobChunkStreamed(context.Background(), "repo1", upload, bytes.NewBuffer(content1))
 		So(err, ShouldBeNil)
 
 		err = imgStoreOld.FinishBlobUpload("repo1", upload, bytes.NewBuffer(nil), digest1)
@@ -3838,7 +3838,7 @@ func TestUpgradeToGlobalBlobstore(t *testing.T) {
 
 		// Upload a config blob for the manifest
 		cblob, cdigest := GetRandomImageConfig()
-		_, _, err = imgStoreOld.FullBlobUpload("repo1", bytes.NewReader(cblob), cdigest)
+		_, _, err = imgStoreOld.FullBlobUpload(context.Background(), "repo1", bytes.NewReader(cblob), cdigest)
 		So(err, ShouldBeNil)
 
 		// Create and upload a manifest for repo1
@@ -3862,23 +3862,23 @@ func TestUpgradeToGlobalBlobstore(t *testing.T) {
 		manifestBuf, err := json.Marshal(manifest)
 		So(err, ShouldBeNil)
 
-		_, _, err = imgStoreOld.PutImageManifest("repo1", tag, ispec.MediaTypeImageManifest, manifestBuf, nil)
+		_, _, err = imgStoreOld.PutImageManifest(context.Background(), "repo1", tag, ispec.MediaTypeImageManifest, manifestBuf, []string{})
 		So(err, ShouldBeNil)
 
 		// Upload the SAME blob to repo "repo2" (duplicate content, separate files)
-		upload, err = imgStoreOld.NewBlobUpload("repo2")
+		upload, err = imgStoreOld.NewBlobUpload(context.Background(), "repo2")
 		So(err, ShouldBeNil)
 
-		_, err = imgStoreOld.PutBlobChunkStreamed("repo2", upload, bytes.NewBuffer(content1))
+		_, err = imgStoreOld.PutBlobChunkStreamed(context.Background(), "repo2", upload, bytes.NewBuffer(content1))
 		So(err, ShouldBeNil)
 
 		err = imgStoreOld.FinishBlobUpload("repo2", upload, bytes.NewBuffer(nil), digest1)
 		So(err, ShouldBeNil)
 
-		_, _, err = imgStoreOld.FullBlobUpload("repo2", bytes.NewReader(cblob), cdigest)
+		_, _, err = imgStoreOld.FullBlobUpload(context.Background(), "repo2", bytes.NewReader(cblob), cdigest)
 		So(err, ShouldBeNil)
 
-		_, _, err = imgStoreOld.PutImageManifest("repo2", tag, ispec.MediaTypeImageManifest, manifestBuf, nil)
+		_, _, err = imgStoreOld.PutImageManifest(context.Background(), "repo2", tag, ispec.MediaTypeImageManifest, manifestBuf, []string{})
 		So(err, ShouldBeNil)
 
 		// Verify _blobstore does NOT exist yet (pre-upgrade state)
@@ -3941,11 +3941,11 @@ func TestUpgradeToGlobalBlobstore(t *testing.T) {
 		content := []byte("skip-test-blob")
 		digest := godigest.FromBytes(content)
 
-		_, _, err := imgStoreOld.FullBlobUpload("myrepo", bytes.NewReader(content), digest)
+		_, _, err := imgStoreOld.FullBlobUpload(context.Background(), "myrepo", bytes.NewReader(content), digest)
 		So(err, ShouldBeNil)
 
 		cblob, cdigest := GetRandomImageConfig()
-		_, _, err = imgStoreOld.FullBlobUpload("myrepo", bytes.NewReader(cblob), cdigest)
+		_, _, err = imgStoreOld.FullBlobUpload(context.Background(), "myrepo", bytes.NewReader(cblob), cdigest)
 		So(err, ShouldBeNil)
 
 		manifest := ispec.Manifest{
@@ -3968,7 +3968,7 @@ func TestUpgradeToGlobalBlobstore(t *testing.T) {
 		manifestBuf, err := json.Marshal(manifest)
 		So(err, ShouldBeNil)
 
-		_, _, err = imgStoreOld.PutImageManifest("myrepo", tag, ispec.MediaTypeImageManifest, manifestBuf, nil)
+		_, _, err = imgStoreOld.PutImageManifest(context.Background(), "myrepo", tag, ispec.MediaTypeImageManifest, manifestBuf, []string{})
 		So(err, ShouldBeNil)
 
 		// Step 2: Open with dedupe (first upgrade - populates _blobstore)
@@ -4039,7 +4039,7 @@ func TestUpgradeToGlobalBlobstore(t *testing.T) {
 		imgStoreOld := local.NewImageStore(dir, false, true, log, metrics, nil, nil, nil, nil)
 		So(imgStoreOld, ShouldNotBeNil)
 
-		err := imgStoreOld.InitRepo("markerrepo")
+		err := imgStoreOld.InitRepo(context.Background(), "markerrepo")
 		So(err, ShouldBeNil)
 
 		digest := godigest.FromString("legacy-marker-only")
@@ -4074,7 +4074,7 @@ func TestUpgradeToGlobalBlobstore(t *testing.T) {
 		imgStoreOld := local.NewImageStore(dir, false, true, log, metrics, nil, nil, nil, nil)
 		So(imgStoreOld, ShouldNotBeNil)
 
-		err := imgStoreOld.InitRepo("emptyrepo")
+		err := imgStoreOld.InitRepo(context.Background(), "emptyrepo")
 		So(err, ShouldBeNil)
 
 		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
