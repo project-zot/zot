@@ -593,6 +593,10 @@ func ValidateCallbackUI(callbackUI string, allowOrigins []string) string {
 		return "/"
 	}
 
+	if strings.Contains(callbackUI, "\\") {
+		return "/"
+	}
+
 	parsed, err := url.Parse(callbackUI)
 	if err != nil {
 		return "/"
