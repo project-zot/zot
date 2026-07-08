@@ -28,6 +28,7 @@ type RegistryConfig struct {
 	Content               []Content
 	TLSVerify             *bool
 	OnDemand              bool
+	LocalCatalogFallback  bool
 	CertDir               string
 	MaxRetries            *int
 	RetryDelay            *time.Duration

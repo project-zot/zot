@@ -21,6 +21,7 @@
 					],
 					"onDemand": false,
 					"pollInterval": "6h",
+					"localCatalogFallback": false,
 					"tlsVerify": true,
 					"certDir": "/home/user/certs",
 					"maxRetries": 3,
