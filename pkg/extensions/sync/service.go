@@ -133,6 +133,7 @@ func New(
 			service.credentials = creds
 		default:
 			log.Warn().Msgf("unsupported CredentialHelper: %s", service.config.CredentialHelper)
+			service.config.CredentialHelper = ""
 		}
 	}
 

@@ -776,6 +776,18 @@ func TestServiceOAuth2CredentialHelper(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(service.credentialHelper, ShouldNotBeNil)
 	})
+
+	Convey("New falls back gracefully on an unsupported credential helper", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs:             []string{"http://localhost"},
+			CredentialHelper: "unsupported",
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(service.credentialHelper, ShouldBeNil)
+		So(service.config.CredentialHelper, ShouldEqual, "")
+	})
 }
 
 func TestOAuth2HelperConfigFromMap(t *testing.T) {
