@@ -1079,7 +1079,9 @@ func isBlobOlderThan(imgStore types.ImageStore, repo string,
 
 func getSubjectFromCosignTag(tag string) godigest.Digest {
 	alg := strings.Split(tag, "-")[0]
-	encoded := strings.Split(strings.Split(tag, "-")[1], ".sig")[0]
+	encoded := strings.Split(tag, "-")[1]
+	encoded = strings.TrimSuffix(encoded, "."+cosignSignatureTagSuffix)
+	encoded = strings.TrimSuffix(encoded, "."+SBOMTagSuffix)
 
 	return godigest.NewDigestFromEncoded(godigest.Algorithm(alg), encoded)
 }
