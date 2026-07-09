@@ -233,14 +233,20 @@ func pullAndCollect(url string, repos []string, manifestItem manifestStruct,
 			latency = time.Since(start)
 
 			if err != nil {
-				log.Fatal(err)
+				log.Println(err)
+				isConnFail = true
+
+				return
 			}
 
 			var pulledManifest ispec.Manifest
 
 			err = json.Unmarshal(manifestBody, &pulledManifest)
 			if err != nil {
-				log.Fatal(err)
+				log.Println(err)
+				isErr = true
+
+				return
 			}
 
 			// check config
@@ -305,7 +311,10 @@ func pullAndCollect(url string, repos []string, manifestItem manifestStruct,
 			latency = time.Since(start)
 
 			if err != nil {
-				log.Fatal(err)
+				log.Println(err)
+				isConnFail = true
+
+				return
 			}
 
 			// download blobs
@@ -357,9 +366,11 @@ func pullAndCollect(url string, repos []string, manifestItem manifestStruct,
 
 				// request specific check
 				statusCode = resp.StatusCode()
+				body := resp.RawBody()
+
 				if statusCode != http.StatusOK {
 					isErr = true
-					resp.RawBody().Close()
+					_ = body.Close()
 
 					return
 				}
@@ -369,11 +380,17 @@ func pullAndCollect(url string, repos []string, manifestItem manifestStruct,
 				}
 
 				// drain response body without buffering in memory
-				if _, err = io.Copy(io.Discard, resp.RawBody()); err != nil {
-					log.Fatal(err)
+				if _, err = io.Copy(io.Discard, body); err != nil {
+					_ = body.Close()
+					latency = time.Since(start)
+					log.Println(err)
+					isConnFail = true
+
+					return
 				}
 
-				resp.RawBody().Close()
+				_ = body.Close()
+				latency = time.Since(start)
 			}
 
 			timings = append(timings, tagTiming)
@@ -567,7 +584,11 @@ func pushMonolithAndCollect(workdir, url, trepo string, count int,
 
 		ruid, err := uuid.NewUUID()
 		if err != nil {
-			log.Fatal(err)
+			latency = time.Since(start)
+			log.Println(err)
+			isErr = true
+
+			return
 		}
 
 		var repo string
@@ -715,7 +736,11 @@ func pushMonolithAndCollect(workdir, url, trepo string, count int,
 
 		content, err := json.MarshalIndent(&manifest, "", "\t")
 		if err != nil {
-			log.Fatal(err)
+			latency = time.Since(start)
+			log.Println(err)
+			isErr = true
+
+			return
 		}
 
 		manifestTag := fmt.Sprintf("tag%d", count)
@@ -773,7 +798,11 @@ func pushChunkAndCollect(workdir, url, trepo string, count int,
 
 		ruid, err := uuid.NewUUID()
 		if err != nil {
-			log.Fatal(err)
+			latency = time.Since(start)
+			log.Println(err)
+			isErr = true
+
+			return
 		}
 
 		var repo string
@@ -990,7 +1019,11 @@ func pushChunkAndCollect(workdir, url, trepo string, count int,
 
 		content, err := json.Marshal(manifest)
 		if err != nil {
-			log.Fatal(err)
+			latency = time.Since(start)
+			log.Println(err)
+			isErr = true
+
+			return
 		}
 
 		manifestTag := fmt.Sprintf("tag%d", count)
