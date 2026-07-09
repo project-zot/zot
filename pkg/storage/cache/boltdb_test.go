@@ -166,3 +166,35 @@ func TestBoltDBCache(t *testing.T) {
 		So(blobs, ShouldResemble, []string{"second"})
 	})
 }
+
+func TestBoltDBDeleteNonOriginDuplicate(t *testing.T) {
+	Convey("Deleting a non-origin duplicate must not promote another path to origin", t, func() {
+		dir := t.TempDir()
+
+		log := log.NewTestLogger()
+		So(log, ShouldNotBeNil)
+
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{dir, "cache_test", false}, log)
+		So(cacheDriver, ShouldNotBeNil)
+
+		err := cacheDriver.PutBlob("digest", "zebra")
+		So(err, ShouldBeNil)
+
+		err = cacheDriver.PutBlob("digest", "alpha")
+		So(err, ShouldBeNil)
+
+		err = cacheDriver.PutBlob("digest", "mango")
+		So(err, ShouldBeNil)
+
+		val, err := cacheDriver.GetBlob("digest")
+		So(err, ShouldBeNil)
+		So(val, ShouldEqual, "zebra")
+
+		err = cacheDriver.DeleteBlob("digest", "mango")
+		So(err, ShouldBeNil)
+
+		val, err = cacheDriver.GetBlob("digest")
+		So(err, ShouldBeNil)
+		So(val, ShouldEqual, "zebra")
+	})
+}
