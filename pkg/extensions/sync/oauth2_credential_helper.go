@@ -44,8 +44,8 @@ const (
 var (
 	errOauth2CredentialHelperMissing = errors.New("oauth2 credential helper requires oauth2CredentialHelper")
 	errOAuth2TokenURLMissing         = errors.New("oauth2 credential helper requires a tokenURL")
-	errOAuth2AssertionMissing        = errors.New("oauth2 credential helper requires an assertionFile or a SigningFile")
-	errOAuth2AssertionConflict       = errors.New("oauth2 credential helper accepts only one of assertionFile or SigningFile")
+	errOAuth2AssertionMissing        = errors.New("oauth2 credential helper requires an assertionFile or a signingFile")
+	errOAuth2AssertionConflict       = errors.New("oauth2 credential helper allows only assertionFile or signingFile")
 	errOAuth2ReadAssertion           = errors.New("unable to read the oauth2 assertion file")
 	errOAuth2ReadSecret              = errors.New("unable to read the oauth2 client secret file")
 	errOAuth2ReadSigningFile         = errors.New("unable to read the oauth2 signing file")

@@ -61,7 +61,7 @@ func writeSigningFile(t *testing.T, config map[string]any) string {
 	return signingFile
 }
 
-func generateRSAKeyPEM(t *testing.T) (privateKeyPEM string, publicKey *rsa.PublicKey) {
+func generateRSAKeyPEM(t *testing.T) (string, *rsa.PublicKey) {
 	t.Helper()
 
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -77,11 +77,11 @@ func generateRSAKeyPEM(t *testing.T) (privateKeyPEM string, publicKey *rsa.Publi
 
 // defaultsigningFile writes a minimal RS256 signing config and returns its path
 // together with the public key needed to verify the minted assertions.
-func defaultsigningFile(t *testing.T) (signingFile string, publicKey *rsa.PublicKey) {
+func defaultsigningFile(t *testing.T) (string, *rsa.PublicKey) {
 	t.Helper()
 
 	privateKeyPEM, publicKey := generateRSAKeyPEM(t)
-	signingFile = writeSigningFile(t, map[string]any{
+	signingFile := writeSigningFile(t, map[string]any{
 		"privateKeyFile": writeKeyFile(t, privateKeyPEM),
 		"algorithm":      "RS256",
 	})
@@ -512,10 +512,11 @@ func TestOAuth2CredentialsHelper(t *testing.T) {
 
 		Convey("Error when the token endpoint is unreachable", func() {
 			signingFile, _ := defaultsigningFile(t)
+			unreachableURL := "http://127.0.0.1:1/"
 
 			credentialHelper, err := sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
 				&syncconf.OAuth2HelperConfig{
-					TokenURL:    "http://127.0.0.1:1/token",
+					TokenURL:    unreachableURL,
 					SigningFile: signingFile,
 				})
 			So(err, ShouldBeNil)
