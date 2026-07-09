@@ -395,7 +395,7 @@ func TestOutputFormatGQL(t *testing.T) {
 				`"description":"","isSigned":false,` +
 				`"licenses":"","labels":"","title":"","source":"","documentation":"","authors":"","vendor":"",` +
 				`"vulnerabilities":{"maxSeverity":"","unknownCount":0,"lowCount":0,"mediumCount":0,` +
-				`"highCount":0,"criticalCount":0,"count":0},"referrers":null,"signatureInfo":null}` + "\n" +
+				`"highCount":0,"criticalCount":0,"count":0},"referrers":null,"signatureInfo":null,"artifactType":""}` + "\n" +
 				`{"repoName":"repo7","tag":"test:2.0",` +
 				`"digest":"sha256:51e18f508fd7125b0831ff9a22ba74cd79f0b934e77661ff72cfb54896951a06",` +
 				`"mediaType":"application/vnd.oci.image.manifest.v1+json",` +
@@ -412,7 +412,7 @@ func TestOutputFormatGQL(t *testing.T) {
 				`"description":"","isSigned":false,` +
 				`"licenses":"","labels":"","title":"","source":"","documentation":"","authors":"","vendor":"",` +
 				`"vulnerabilities":{"maxSeverity":"","unknownCount":0,"lowCount":0,"mediumCount":0,` +
-				`"highCount":0,"criticalCount":0,"count":0},"referrers":null,"signatureInfo":null}` + "\n"
+				`"highCount":0,"criticalCount":0,"count":0},"referrers":null,"signatureInfo":null,"artifactType":""}` + "\n"
 			// Output is supposed to be in json lines format, keep all spaces as is for verification
 			So(buff.String(), ShouldEqual, expectedStr)
 			So(err, ShouldBeNil)
@@ -449,7 +449,7 @@ func TestOutputFormatGQL(t *testing.T) {
 				`issigned: false licenses: "" labels: "" title: "" source: "" documentation: "" ` +
 				`authors: "" vendor: "" vulnerabilities: maxseverity: "" ` +
 				`unknowncount: 0 lowcount: 0 mediumcount: 0 highcount: 0 criticalcount: 0 count: 0 ` +
-				`referrers: [] signatureinfo: [] ` +
+				`referrers: [] signatureinfo: [] artifacttype: "" ` +
 				`--- reponame: repo7 tag: test:2.0 ` +
 				`digest: sha256:51e18f508fd7125b0831ff9a22ba74cd79f0b934e77661ff72cfb54896951a06 ` +
 				`mediatype: application/vnd.oci.image.manifest.v1+json manifests: - ` +
@@ -467,7 +467,7 @@ func TestOutputFormatGQL(t *testing.T) {
 				`issigned: false licenses: "" labels: "" title: "" source: "" documentation: "" ` +
 				`authors: "" vendor: "" vulnerabilities: maxseverity: "" ` +
 				`unknowncount: 0 lowcount: 0 mediumcount: 0 highcount: 0 criticalcount: 0 count: 0 ` +
-				`referrers: [] signatureinfo: []`
+				`referrers: [] signatureinfo: [] artifacttype: ""`
 			So(strings.TrimSpace(str), ShouldEqual, expectedStr)
 			So(err, ShouldBeNil)
 		})
@@ -503,7 +503,7 @@ func TestOutputFormatGQL(t *testing.T) {
 				`issigned: false licenses: "" labels: "" title: "" source: "" documentation: "" ` +
 				`authors: "" vendor: "" vulnerabilities: maxseverity: "" ` +
 				`unknowncount: 0 lowcount: 0 mediumcount: 0 highcount: 0 criticalcount: 0 count: 0 ` +
-				`referrers: [] signatureinfo: [] ` +
+				`referrers: [] signatureinfo: [] artifacttype: "" ` +
 				`--- reponame: repo7 tag: test:2.0 ` +
 				`digest: sha256:51e18f508fd7125b0831ff9a22ba74cd79f0b934e77661ff72cfb54896951a06 ` +
 				`mediatype: application/vnd.oci.image.manifest.v1+json manifests: - ` +
@@ -521,7 +521,7 @@ func TestOutputFormatGQL(t *testing.T) {
 				`issigned: false licenses: "" labels: "" title: "" source: "" documentation: "" ` +
 				`authors: "" vendor: "" vulnerabilities: maxseverity: "" ` +
 				`unknowncount: 0 lowcount: 0 mediumcount: 0 highcount: 0 criticalcount: 0 count: 0 ` +
-				`referrers: [] signatureinfo: []`
+				`referrers: [] signatureinfo: [] artifacttype: ""`
 			So(strings.TrimSpace(str), ShouldEqual, expectedStr)
 			So(err, ShouldBeNil)
 		})

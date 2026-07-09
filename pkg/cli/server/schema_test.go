@@ -53,6 +53,10 @@ func TestSchemaAllowsNullForPointerFields(t *testing.T) {
 									"pushedWithin": nil,
 								},
 							},
+							"keepUntagged": map[string]any{
+								"pulledWithin": nil,
+								"pushedWithin": nil,
+							},
 						},
 					},
 				},
@@ -64,6 +68,7 @@ func TestSchemaAllowsNullForPointerFields(t *testing.T) {
 						map[string]any{
 							"tlsVerify":            nil,
 							"retryDelay":           nil,
+							"maxRetryDelay":        nil,
 							"onlySigned":           nil,
 							"syncLegacyCosignTags": nil,
 						},

@@ -3,6 +3,7 @@ package retention
 import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
+	"zotregistry.dev/zot/v2/pkg/compat"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/retention/types"
 )
@@ -35,6 +36,56 @@ func GetCandidates(repoMeta mTypes.RepoMeta) []*types.Candidate {
 	}
 
 	return candidates
+}
+
+func GetUntaggedCandidates(repoMeta mTypes.RepoMeta, index ispec.Index) []*types.Candidate {
+	candidates := make([]*types.Candidate, 0)
+
+	for _, manifest := range index.Manifests {
+		if !isUntaggedRetentionDescriptor(manifest) {
+			continue
+		}
+
+		digestStr := manifest.Digest.String()
+
+		stats, hasStatistics := repoMeta.Statistics[digestStr]
+		if !hasStatistics {
+			continue
+		}
+
+		candidate := &types.Candidate{
+			MediaType:     manifest.MediaType,
+			DigestStr:     digestStr,
+			PushTimestamp: stats.PushTimestamp,
+			PullTimestamp: stats.LastPullTimestamp,
+		}
+
+		candidates = append(candidates, candidate)
+	}
+
+	return candidates
+}
+
+func getIndexUntaggedDigests(index ispec.Index) []string {
+	digests := make([]string, 0)
+
+	for _, manifest := range index.Manifests {
+		if isUntaggedRetentionDescriptor(manifest) {
+			digests = append(digests, manifest.Digest.String())
+		}
+	}
+
+	return digests
+}
+
+func isUntaggedRetentionDescriptor(manifest ispec.Descriptor) bool {
+	if _, ok := manifest.Annotations[ispec.AnnotationRefName]; ok {
+		return false
+	}
+
+	return manifest.MediaType == ispec.MediaTypeImageManifest || manifest.MediaType == ispec.MediaTypeImageIndex ||
+		compat.IsCompatibleManifestMediaType(manifest.MediaType) ||
+		compat.IsCompatibleManifestListMediaType(manifest.MediaType)
 }
 
 func GetCandidatesFromIndex(index ispec.Index) []*types.Candidate {

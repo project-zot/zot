@@ -217,7 +217,7 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 			return err
 		}
 
-		digest, _, err := imageStore.PutImageManifest(repo, reference,
+		digest, _, err := imageStore.PutImageManifest(context.Background(), repo, reference,
 			desc.MediaType, manifestContent, nil)
 		if err != nil {
 			registry.log.Error().Str("errorType", common.TypeOf(err)).
@@ -299,7 +299,7 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 			return firstMissingErr
 		}
 
-		_, _, err := imageStore.PutImageManifest(repo, reference, desc.MediaType, manifestContent, nil)
+		_, _, err := imageStore.PutImageManifest(context.Background(), repo, reference, desc.MediaType, manifestContent, nil)
 		if err != nil {
 			registry.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).Str("reference", reference).
 				Err(err).Msg("failed to upload manifest")
@@ -327,7 +327,8 @@ func (registry *DestinationRegistry) copyBlob(repo string, blobDigest godigest.D
 	tempImageStore storageTypes.ImageStore,
 ) error {
 	imageStore := registry.storeController.GetImageStore(repo)
-	if found, _, _ := imageStore.CheckBlob(repo, blobDigest); found {
+	ctx := context.Background()
+	if found, _, _ := imageStore.CheckBlob(ctx, repo, blobDigest); found {
 		// Blob is already at destination, nothing to do
 		return nil
 	}
@@ -343,7 +344,7 @@ func (registry *DestinationRegistry) copyBlob(repo string, blobDigest godigest.D
 	}
 	defer blobReadCloser.Close()
 
-	_, _, err = imageStore.FullBlobUpload(repo, blobReadCloser, blobDigest)
+	_, _, err = imageStore.FullBlobUpload(ctx, repo, blobReadCloser, blobDigest)
 	if err != nil {
 		registry.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
 			Str("blob digest", blobDigest.String()).Str("media type", blobMediaType).

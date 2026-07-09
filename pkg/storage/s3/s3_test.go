@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -76,13 +77,13 @@ func createMockStorage(rootDir string, cacheDir string, dedupe bool, store drive
 	return il
 }
 
-func createMockStorageWithMockCache(rootDir string, dedupe bool, store driver.StorageDriver,
+func createMockStorageWithMockCache(rootDir string, store driver.StorageDriver,
 	cacheDriver storageTypes.Cache,
 ) storageTypes.ImageStore {
 	log := log.NewTestLogger()
 	metrics := monitoring.NewMetricsServer(false, log)
 
-	il := s3.NewImageStore(rootDir, "", dedupe, false, log, metrics, nil, store, cacheDriver, nil, nil)
+	il := s3.NewImageStore(rootDir, "", true, false, log, metrics, nil, store, cacheDriver, nil, nil)
 
 	return il
 }
@@ -220,14 +221,14 @@ func TestStorageDriverStatFunction(t *testing.T) {
 
 		So(imgStore, ShouldNotBeNil)
 
-		err = imgStore.InitRepo(repo1)
+		err = imgStore.InitRepo(context.Background(), repo1)
 		So(err, ShouldBeNil)
 
 		isValid, err := imgStore.ValidateRepo(repo1)
 		So(err, ShouldBeNil)
 		So(isValid, ShouldBeTrue)
 
-		err = imgStore.InitRepo(repo2)
+		err = imgStore.InitRepo(context.Background(), repo2)
 		So(err, ShouldBeNil)
 
 		isValid, err = imgStore.ValidateRepo(repo2)
@@ -297,7 +298,7 @@ func TestGetOCIReferrers(t *testing.T) {
 		layers := image.Layers
 
 		for _, content := range layers {
-			upload, err := imgStore.NewBlobUpload(repo)
+			upload, err := imgStore.NewBlobUpload(context.Background(), repo)
 			So(err, ShouldBeNil)
 			So(upload, ShouldNotBeEmpty)
 
@@ -305,7 +306,7 @@ func TestGetOCIReferrers(t *testing.T) {
 			buflen := buf.Len()
 			digest := godigest.FromBytes(content)
 
-			blob, err := imgStore.PutBlobChunkStreamed(repo, upload, buf)
+			blob, err := imgStore.PutBlobChunkStreamed(context.Background(), repo, upload, buf)
 			So(err, ShouldBeNil)
 			So(blob, ShouldEqual, buflen)
 
@@ -325,7 +326,7 @@ func TestGetOCIReferrers(t *testing.T) {
 		buflen := buf.Len()
 		digest := godigest.FromBytes(cblob)
 
-		_, clen, err := imgStore.FullBlobUpload(repo, buf, digest)
+		_, clen, err := imgStore.FullBlobUpload(context.Background(), repo, buf, digest)
 		So(err, ShouldBeNil)
 		So(clen, ShouldEqual, buflen)
 
@@ -337,7 +338,8 @@ func TestGetOCIReferrers(t *testing.T) {
 		mbuflen := mbuf.Len()
 		mdigest := godigest.FromBytes(mblob)
 
-		d, _, err := imgStore.PutImageManifest(repo, "1.0", ispec.MediaTypeImageManifest, mbuf.Bytes(), nil)
+		d, _, err := imgStore.PutImageManifest(context.Background(), repo, "1.0",
+			ispec.MediaTypeImageManifest, mbuf.Bytes(), nil)
 		So(d, ShouldEqual, mdigest)
 		So(err, ShouldBeNil)
 
@@ -346,7 +348,7 @@ func TestGetOCIReferrers(t *testing.T) {
 		buf = bytes.NewBuffer(body)
 		buflen = buf.Len()
 
-		_, n, err := imgStore.FullBlobUpload(repo, buf, digest)
+		_, n, err := imgStore.FullBlobUpload(context.Background(), repo, buf, digest)
 		So(err, ShouldBeNil)
 		So(n, ShouldEqual, buflen)
 
@@ -358,7 +360,7 @@ func TestGetOCIReferrers(t *testing.T) {
 			configBuf := bytes.NewBuffer(configBody)
 			configBufLen := configBuf.Len()
 
-			_, n, err := imgStore.FullBlobUpload(repo, configBuf, configDigest)
+			_, n, err := imgStore.FullBlobUpload(context.Background(), repo, configBuf, configDigest)
 			So(err, ShouldBeNil)
 			So(n, ShouldEqual, configBufLen)
 
@@ -391,7 +393,8 @@ func TestGetOCIReferrers(t *testing.T) {
 			manBufLen := len(manBuf)
 			manDigest := godigest.FromBytes(manBuf)
 
-			_, _, err = imgStore.PutImageManifest(repo, manDigest.Encoded(), ispec.MediaTypeImageManifest, manBuf, nil)
+			_, _, err = imgStore.PutImageManifest(context.Background(),
+				repo, manDigest.Encoded(), ispec.MediaTypeImageManifest, manBuf, nil)
 			So(err, ShouldBeNil)
 
 			index, err := imgStore.GetReferrers(repo, mdigest, []string{artifactType})
@@ -443,29 +446,29 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 			So(errors.Is(err, zerr.ErrInvalidRepositoryName), ShouldBeTrue)
 
 			// Init repo should fail if repo name does not match spec
-			err = imgStore.InitRepo(".")
+			err = imgStore.InitRepo(context.Background(), ".")
 			So(err, ShouldNotBeNil)
 			So(errors.Is(err, zerr.ErrInvalidRepositoryName), ShouldBeTrue)
 
-			err = imgStore.InitRepo("..")
+			err = imgStore.InitRepo(context.Background(), "..")
 			So(err, ShouldNotBeNil)
 			So(errors.Is(err, zerr.ErrInvalidRepositoryName), ShouldBeTrue)
 
-			err = imgStore.InitRepo("_test-dir")
+			err = imgStore.InitRepo(context.Background(), "_test-dir")
 			So(err, ShouldNotBeNil)
 			So(errors.Is(err, zerr.ErrInvalidRepositoryName), ShouldBeTrue)
 
-			err = imgStore.InitRepo(".test-dir")
+			err = imgStore.InitRepo(context.Background(), ".test-dir")
 			So(err, ShouldNotBeNil)
 			So(errors.Is(err, zerr.ErrInvalidRepositoryName), ShouldBeTrue)
 
-			err = imgStore.InitRepo("-test-dir")
+			err = imgStore.InitRepo(context.Background(), "-test-dir")
 			So(err, ShouldNotBeNil)
 			So(errors.Is(err, zerr.ErrInvalidRepositoryName), ShouldBeTrue)
 		})
 
 		Convey("Invalid validate repo", func(c C) {
-			So(imgStore.InitRepo(testImage), ShouldBeNil)
+			So(imgStore.InitRepo(context.Background(), testImage), ShouldBeNil)
 			objects, err := storeDriver.List(context.Background(), path.Join(imgStore.RootDir(), testImage))
 			So(err, ShouldBeNil)
 
@@ -520,7 +523,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 		})
 
 		Convey("Invalid get image tags", func(c C) {
-			So(imgStore.InitRepo(testImage), ShouldBeNil)
+			So(imgStore.InitRepo(context.Background(), testImage), ShouldBeNil)
 
 			So(storeDriver.Move(context.Background(), path.Join(testDir, testImage, "index.json"),
 				path.Join(testDir, testImage, "blobs")), ShouldBeNil)
@@ -533,7 +536,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 			So(storeDriver.Delete(context.Background(), path.Join(testDir, testImage)), ShouldBeNil)
 
-			So(imgStore.InitRepo(testImage), ShouldBeNil)
+			So(imgStore.InitRepo(context.Background(), testImage), ShouldBeNil)
 			So(storeDriver.PutContent(context.Background(), path.Join(testDir, testImage, "index.json"), []byte{}), ShouldBeNil)
 			_, err = imgStore.GetImageTags(testImage)
 			So(err, ShouldNotBeNil)
@@ -547,12 +550,12 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 		defer cleanupStorage(storeDriver, testDir)
 
 		Convey("Invalid get image manifest", func(c C) {
-			So(imgStore.InitRepo(testImage), ShouldBeNil)
+			So(imgStore.InitRepo(context.Background(), testImage), ShouldBeNil)
 			So(storeDriver.Delete(context.Background(), path.Join(testDir, testImage, "index.json")), ShouldBeNil)
 			_, _, _, err = imgStore.GetImageManifest(testImage, "")
 			So(err, ShouldNotBeNil)
 			So(storeDriver.Delete(context.Background(), path.Join(testDir, testImage)), ShouldBeNil)
-			So(imgStore.InitRepo(testImage), ShouldBeNil)
+			So(imgStore.InitRepo(context.Background(), testImage), ShouldBeNil)
 			So(storeDriver.PutContent(context.Background(), path.Join(testDir, testImage, "index.json"), []byte{}), ShouldBeNil)
 			_, _, _, err = imgStore.GetImageManifest(testImage, "")
 			So(err, ShouldNotBeNil)
@@ -561,12 +564,12 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 		Convey("Invalid validate repo", func(c C) {
 			So(imgStore, ShouldNotBeNil)
 
-			So(imgStore.InitRepo(testImage), ShouldBeNil)
+			So(imgStore.InitRepo(context.Background(), testImage), ShouldBeNil)
 			So(storeDriver.Delete(context.Background(), path.Join(testDir, testImage, "index.json")), ShouldBeNil)
 			_, err = imgStore.ValidateRepo(testImage)
 			So(err, ShouldNotBeNil)
 			So(storeDriver.Delete(context.Background(), path.Join(testDir, testImage)), ShouldBeNil)
-			So(imgStore.InitRepo(testImage), ShouldBeNil)
+			So(imgStore.InitRepo(context.Background(), testImage), ShouldBeNil)
 			So(storeDriver.Move(context.Background(), path.Join(testDir, testImage, "index.json"),
 				path.Join(testDir, testImage, "_index.json")), ShouldBeNil)
 
@@ -578,8 +581,8 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 		Convey("Invalid finish blob upload", func(c C) {
 			So(imgStore, ShouldNotBeNil)
 
-			So(imgStore.InitRepo(testImage), ShouldBeNil)
-			upload, err := imgStore.NewBlobUpload(testImage)
+			So(imgStore.InitRepo(context.Background(), testImage), ShouldBeNil)
+			upload, err := imgStore.NewBlobUpload(context.Background(), testImage)
 			So(err, ShouldBeNil)
 			So(upload, ShouldNotBeEmpty)
 
@@ -588,7 +591,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 			buflen := buf.Len()
 			digest := godigest.FromBytes(content)
 
-			blob, err := imgStore.PutBlobChunk(testImage, upload, 0, int64(buflen), buf)
+			blob, err := imgStore.PutBlobChunk(context.Background(), testImage, upload, 0, int64(buflen), buf)
 			So(err, ShouldBeNil)
 			So(blob, ShouldEqual, buflen)
 
@@ -638,11 +641,11 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 			})
 			So(imgStore, ShouldNotBeNil)
 
-			So(imgStore.InitRepo(testImage), ShouldNotBeNil)
+			So(imgStore.InitRepo(context.Background(), testImage), ShouldNotBeNil)
 			_, err := imgStore.ValidateRepo(testImage)
 			So(err, ShouldNotBeNil)
 
-			upload, err := imgStore.NewBlobUpload(testImage)
+			upload, err := imgStore.NewBlobUpload(context.Background(), testImage)
 			So(err, ShouldNotBeNil)
 
 			content := []byte("test-data1")
@@ -650,7 +653,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 			buflen := buf.Len()
 			digest := godigest.FromBytes(content)
 
-			_, err = imgStore.PutBlobChunk(testImage, upload, 0, int64(buflen), buf)
+			_, err = imgStore.PutBlobChunk(context.Background(), testImage, upload, 0, int64(buflen), buf)
 			So(err, ShouldNotBeNil)
 
 			err = imgStore.FinishBlobUpload(testImage, upload, buf, digest)
@@ -662,19 +665,19 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 			err = imgStore.DeleteBlobUpload(testImage, upload)
 			So(err, ShouldNotBeNil)
 
-			err = imgStore.DeleteImageManifest(testImage, "1.0", false)
+			err = imgStore.DeleteImageManifest(context.Background(), testImage, "1.0", false)
 			So(err, ShouldNotBeNil)
 
-			_, _, err = imgStore.PutImageManifest(testImage, "1.0", "application/json", []byte{}, nil)
+			_, _, err = imgStore.PutImageManifest(context.Background(), testImage, "1.0", "application/json", []byte{}, nil)
 			So(err, ShouldNotBeNil)
 
-			_, err = imgStore.PutBlobChunkStreamed(testImage, upload, bytes.NewBufferString(testImage))
+			_, err = imgStore.PutBlobChunkStreamed(context.Background(), testImage, upload, bytes.NewBufferString(testImage))
 			So(err, ShouldNotBeNil)
 
-			_, _, err = imgStore.FullBlobUpload(testImage, bytes.NewBuffer([]byte{}), "inexistent")
+			_, _, err = imgStore.FullBlobUpload(context.Background(), testImage, bytes.NewBuffer([]byte{}), "inexistent")
 			So(err, ShouldNotBeNil)
 
-			_, _, err = imgStore.CheckBlob(testImage, digest)
+			_, _, err = imgStore.CheckBlob(context.Background(), testImage, digest)
 			So(err, ShouldNotBeNil)
 
 			_, _, _, err = imgStore.StatBlob(testImage, digest)
@@ -711,7 +714,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 					return []byte{}, errS3
 				},
 			})
-			err := imgStore.DeleteImageManifest(testImage, "1.0", false)
+			err := imgStore.DeleteImageManifest(context.Background(), testImage, "1.0", false)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -727,7 +730,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 		Convey("Test DeleteImageManifest2", func(c C) {
 			imgStore = createMockStorage(testDir, tdir, false, &mocks.StorageDriverMock{})
-			err := imgStore.DeleteImageManifest(testImage, "1.0", false)
+			err := imgStore.DeleteImageManifest(context.Background(), testImage, "1.0", false)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -737,7 +740,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 					return nil, errS3
 				},
 			})
-			_, err := imgStore.NewBlobUpload(testImage)
+			_, err := imgStore.NewBlobUpload(context.Background(), testImage)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -767,7 +770,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 					return &mocks.FileWriterMock{}, errS3
 				},
 			})
-			_, err := imgStore.PutBlobChunkStreamed(testImage, "uuid", io.NopCloser(strings.NewReader("")))
+			_, err := imgStore.PutBlobChunkStreamed(context.Background(), testImage, "uuid", io.NopCloser(strings.NewReader("")))
 			So(err, ShouldNotBeNil)
 		})
 
@@ -779,7 +782,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 					}}, errS3
 				},
 			})
-			_, err := imgStore.PutBlobChunkStreamed(testImage, "uuid", io.NopCloser(strings.NewReader("")))
+			_, err := imgStore.PutBlobChunkStreamed(context.Background(), testImage, "uuid", io.NopCloser(strings.NewReader("")))
 			So(err, ShouldNotBeNil)
 		})
 
@@ -789,7 +792,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 					return &mocks.FileWriterMock{}, errS3
 				},
 			})
-			_, err := imgStore.PutBlobChunk(testImage, "uuid", 0, 100, io.NopCloser(strings.NewReader("")))
+			_, err := imgStore.PutBlobChunk(context.Background(), testImage, "uuid", 0, 100, io.NopCloser(strings.NewReader("")))
 			So(err, ShouldNotBeNil)
 		})
 
@@ -806,7 +809,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 					}, nil
 				},
 			})
-			_, err := imgStore.PutBlobChunk(testImage, "uuid", 0, 100, io.NopCloser(strings.NewReader("")))
+			_, err := imgStore.PutBlobChunk(context.Background(), testImage, "uuid", 0, 100, io.NopCloser(strings.NewReader("")))
 			So(err, ShouldNotBeNil)
 		})
 
@@ -820,7 +823,8 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 					}, errS3
 				},
 			})
-			_, err := imgStore.PutBlobChunk(testImage, "uuid", 12, 100, io.NopCloser(strings.NewReader("")))
+			_, err := imgStore.PutBlobChunk(context.Background(), testImage, "uuid", 12, 100,
+				io.NopCloser(strings.NewReader("")))
 			So(err, ShouldNotBeNil)
 		})
 
@@ -830,7 +834,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 					return &mocks.FileWriterMock{}, driver.PathNotFoundError{}
 				},
 			})
-			_, err := imgStore.PutBlobChunk(testImage, "uuid", 0, 100, io.NopCloser(strings.NewReader("")))
+			_, err := imgStore.PutBlobChunk(context.Background(), testImage, "uuid", 0, 100, io.NopCloser(strings.NewReader("")))
 			So(err, ShouldNotBeNil)
 		})
 
@@ -893,14 +897,14 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 				},
 			})
 			d := godigest.FromBytes([]byte(""))
-			_, _, err := imgStore.FullBlobUpload(testImage, io.NopCloser(strings.NewReader("")), d)
+			_, _, err := imgStore.FullBlobUpload(context.Background(), testImage, io.NopCloser(strings.NewReader("")), d)
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("Test FullBlobUpload2", func(c C) {
 			imgStore = createMockStorage(testDir, tdir, false, &mocks.StorageDriverMock{})
 			d := godigest.FromBytes([]byte(" "))
-			_, _, err := imgStore.FullBlobUpload(testImage, io.NopCloser(strings.NewReader("")), d)
+			_, _, err := imgStore.FullBlobUpload(context.Background(), testImage, io.NopCloser(strings.NewReader("")), d)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -911,7 +915,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 				},
 			})
 			d := godigest.FromBytes([]byte(""))
-			_, _, err := imgStore.FullBlobUpload(testImage, io.NopCloser(strings.NewReader("")), d)
+			_, _, err := imgStore.FullBlobUpload(context.Background(), testImage, io.NopCloser(strings.NewReader("")), d)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -976,7 +980,7 @@ func TestS3Dedupe(t *testing.T) {
 		defer cleanupStorage(storeDriver, testDir)
 
 		// manifest1
-		upload, err := imgStore.NewBlobUpload("dedupe1")
+		upload, err := imgStore.NewBlobUpload(context.Background(), "dedupe1")
 		So(err, ShouldBeNil)
 		So(upload, ShouldNotBeEmpty)
 
@@ -984,7 +988,7 @@ func TestS3Dedupe(t *testing.T) {
 		buf := bytes.NewBuffer(content)
 		buflen := buf.Len()
 		digest := godigest.FromBytes(content)
-		blob, err := imgStore.PutBlobChunkStreamed("dedupe1", upload, buf)
+		blob, err := imgStore.PutBlobChunkStreamed(context.Background(), "dedupe1", upload, buf)
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
 
@@ -995,7 +999,7 @@ func TestS3Dedupe(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
 
-		ok, checkBlobSize1, err := imgStore.CheckBlob("dedupe1", digest)
+		ok, checkBlobSize1, err := imgStore.CheckBlob(context.Background(), "dedupe1", digest)
 		So(ok, ShouldBeTrue)
 		So(checkBlobSize1, ShouldBeGreaterThan, 0)
 		So(err, ShouldBeNil)
@@ -1013,11 +1017,11 @@ func TestS3Dedupe(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		cblob, cdigest := GetRandomImageConfig()
-		_, clen, err := imgStore.FullBlobUpload("dedupe1", bytes.NewReader(cblob), cdigest)
+		_, clen, err := imgStore.FullBlobUpload(context.Background(), "dedupe1", bytes.NewReader(cblob), cdigest)
 		So(err, ShouldBeNil)
 		So(clen, ShouldEqual, len(cblob))
 
-		hasBlob, _, err := imgStore.CheckBlob("dedupe1", cdigest)
+		hasBlob, _, err := imgStore.CheckBlob(context.Background(), "dedupe1", cdigest)
 		So(err, ShouldBeNil)
 		So(hasBlob, ShouldEqual, true)
 
@@ -1041,7 +1045,8 @@ func TestS3Dedupe(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		manifestDigest := godigest.FromBytes(manifestBuf)
-		_, _, err = imgStore.PutImageManifest("dedupe1", manifestDigest.String(),
+
+		_, _, err = imgStore.PutImageManifest(context.Background(), "dedupe1", manifestDigest.String(),
 			ispec.MediaTypeImageManifest, manifestBuf, nil)
 		So(err, ShouldBeNil)
 
@@ -1049,7 +1054,7 @@ func TestS3Dedupe(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// manifest2
-		upload, err = imgStore.NewBlobUpload("dedupe2")
+		upload, err = imgStore.NewBlobUpload(context.Background(), "dedupe2")
 		So(err, ShouldBeNil)
 		So(upload, ShouldNotBeEmpty)
 
@@ -1058,7 +1063,7 @@ func TestS3Dedupe(t *testing.T) {
 		buflen = buf.Len()
 		digest = godigest.FromBytes(content)
 
-		blob, err = imgStore.PutBlobChunkStreamed("dedupe2", upload, buf)
+		blob, err = imgStore.PutBlobChunkStreamed(context.Background(), "dedupe2", upload, buf)
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
 
@@ -1069,7 +1074,7 @@ func TestS3Dedupe(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
 
-		_, checkBlobSize2, err := imgStore.CheckBlob("dedupe2", digest)
+		_, checkBlobSize2, err := imgStore.CheckBlob(context.Background(), "dedupe2", digest)
 		So(err, ShouldBeNil)
 		So(checkBlobSize2, ShouldBeGreaterThan, 0)
 
@@ -1093,11 +1098,11 @@ func TestS3Dedupe(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		cblob, cdigest = GetRandomImageConfig()
-		_, clen, err = imgStore.FullBlobUpload("dedupe2", bytes.NewReader(cblob), cdigest)
+		_, clen, err = imgStore.FullBlobUpload(context.Background(), "dedupe2", bytes.NewReader(cblob), cdigest)
 		So(err, ShouldBeNil)
 		So(clen, ShouldEqual, len(cblob))
 
-		hasBlob, _, err = imgStore.CheckBlob("dedupe2", cdigest)
+		hasBlob, _, err = imgStore.CheckBlob(context.Background(), "dedupe2", cdigest)
 		So(err, ShouldBeNil)
 		So(hasBlob, ShouldEqual, true)
 
@@ -1120,7 +1125,8 @@ func TestS3Dedupe(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		manifestDigest2 := godigest.FromBytes(manifestBuf)
-		_, _, err = imgStore.PutImageManifest("dedupe2", "1.0", ispec.MediaTypeImageManifest,
+
+		_, _, err = imgStore.PutImageManifest(context.Background(), "dedupe2", "1.0", ispec.MediaTypeImageManifest,
 			manifestBuf, nil)
 		So(err, ShouldBeNil)
 
@@ -1145,11 +1151,11 @@ func TestS3Dedupe(t *testing.T) {
 			So(blobDigest1, ShouldEqual, blobDigest2)
 
 			// to not trigger BlobInUse err, delete manifest first
-			err = imgStore.DeleteImageManifest("dedupe1", manifestDigest.String(), false)
+			err = imgStore.DeleteImageManifest(context.Background(), "dedupe1", manifestDigest.String(), false)
 			So(err, ShouldBeNil)
 
 			// delete tag, but not manifest
-			err = imgStore.DeleteImageManifest("dedupe2", "1.0", false)
+			err = imgStore.DeleteImageManifest(context.Background(), "dedupe2", "1.0", false)
 			So(err, ShouldBeNil)
 
 			// delete should succeed as the manifest was deleted
@@ -1160,7 +1166,7 @@ func TestS3Dedupe(t *testing.T) {
 			err = imgStore.DeleteBlob("dedupe2", blobDigest2)
 			So(err, ShouldEqual, zerr.ErrBlobReferenced)
 
-			err = imgStore.DeleteImageManifest("dedupe2", manifestDigest2.String(), false)
+			err = imgStore.DeleteImageManifest(context.Background(), "dedupe2", manifestDigest2.String(), false)
 			So(err, ShouldBeNil)
 
 			err = imgStore.DeleteBlob("dedupe2", blobDigest2)
@@ -1169,10 +1175,10 @@ func TestS3Dedupe(t *testing.T) {
 
 		Convey("Check that delete blobs moves the real content to the next contenders", func() {
 			// to not trigger BlobInUse err, delete manifest first
-			err = imgStore.DeleteImageManifest("dedupe1", manifestDigest.String(), false)
+			err = imgStore.DeleteImageManifest(context.Background(), "dedupe1", manifestDigest.String(), false)
 			So(err, ShouldBeNil)
 
-			err = imgStore.DeleteImageManifest("dedupe2", manifestDigest2.String(), false)
+			err = imgStore.DeleteImageManifest(context.Background(), "dedupe2", manifestDigest2.String(), false)
 			So(err, ShouldBeNil)
 
 			// if we delete blob1, the content should be moved to blob2
@@ -1222,7 +1228,7 @@ func TestS3Dedupe(t *testing.T) {
 			defer cleanupStorage(storeDriver, testDir)
 
 			// manifest3 without dedupe
-			upload, err = imgStore.NewBlobUpload("dedupe3")
+			upload, err = imgStore.NewBlobUpload(context.Background(), "dedupe3")
 			So(err, ShouldBeNil)
 			So(upload, ShouldNotBeEmpty)
 
@@ -1231,7 +1237,7 @@ func TestS3Dedupe(t *testing.T) {
 			buflen = buf.Len()
 			digest = godigest.FromBytes(content)
 
-			blob, err = imgStore.PutBlobChunkStreamed("dedupe3", upload, buf)
+			blob, err = imgStore.PutBlobChunkStreamed(context.Background(), "dedupe3", upload, buf)
 			So(err, ShouldBeNil)
 			So(blob, ShouldEqual, buflen)
 
@@ -1242,7 +1248,7 @@ func TestS3Dedupe(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(blob, ShouldEqual, buflen)
 
-			_, _, err = imgStore.CheckBlob("dedupe3", digest)
+			_, _, err = imgStore.CheckBlob(context.Background(), "dedupe3", digest)
 			So(err, ShouldBeNil)
 
 			// check that we retrieve the real dedupe2/blob (which is deduped earlier - 0 size) when switching to dedupe false
@@ -1254,7 +1260,7 @@ func TestS3Dedupe(t *testing.T) {
 			err = blobReadCloser.Close()
 			So(err, ShouldBeNil)
 
-			_, checkBlobSize2, err := imgStore.CheckBlob("dedupe2", digest)
+			_, checkBlobSize2, err := imgStore.CheckBlob(context.Background(), "dedupe2", digest)
 			So(err, ShouldBeNil)
 			So(checkBlobSize2, ShouldBeGreaterThan, 0)
 			So(checkBlobSize2, ShouldEqual, getBlobSize2)
@@ -1267,17 +1273,17 @@ func TestS3Dedupe(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(getBlobSize1, ShouldEqual, len(blobContent))
 
-			_, checkBlobSize3, err := imgStore.CheckBlob("dedupe3", digest)
+			_, checkBlobSize3, err := imgStore.CheckBlob(context.Background(), "dedupe3", digest)
 			So(err, ShouldBeNil)
 			So(checkBlobSize3, ShouldBeGreaterThan, 0)
 			So(checkBlobSize3, ShouldEqual, getBlobSize3)
 
 			cblob, cdigest = GetRandomImageConfig()
-			_, clen, err = imgStore.FullBlobUpload("dedupe3", bytes.NewReader(cblob), cdigest)
+			_, clen, err = imgStore.FullBlobUpload(context.Background(), "dedupe3", bytes.NewReader(cblob), cdigest)
 			So(err, ShouldBeNil)
 			So(clen, ShouldEqual, len(cblob))
 
-			hasBlob, _, err = imgStore.CheckBlob("dedupe3", cdigest)
+			hasBlob, _, err = imgStore.CheckBlob(context.Background(), "dedupe3", cdigest)
 			So(err, ShouldBeNil)
 			So(hasBlob, ShouldEqual, true)
 
@@ -1300,7 +1306,8 @@ func TestS3Dedupe(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			manifestDigest3 := godigest.FromBytes(manifestBuf)
-			_, _, err = imgStore.PutImageManifest("dedupe3", "1.0", ispec.MediaTypeImageManifest,
+
+			_, _, err = imgStore.PutImageManifest(context.Background(), "dedupe3", "1.0", ispec.MediaTypeImageManifest,
 				manifestBuf, nil)
 			So(err, ShouldBeNil)
 
@@ -1326,13 +1333,13 @@ func TestS3Dedupe(t *testing.T) {
 			Convey("delete blobs from storage/cache should work when dedupe is false", func() {
 				So(blobDigest1, ShouldEqual, blobDigest2)
 				// to not trigger BlobInUse err, delete manifest first
-				err = imgStore.DeleteImageManifest("dedupe1", manifestDigest.String(), false)
+				err = imgStore.DeleteImageManifest(context.Background(), "dedupe1", manifestDigest.String(), false)
 				So(err, ShouldBeNil)
 
-				err = imgStore.DeleteImageManifest("dedupe2", manifestDigest2.String(), false)
+				err = imgStore.DeleteImageManifest(context.Background(), "dedupe2", manifestDigest2.String(), false)
 				So(err, ShouldBeNil)
 
-				err = imgStore.DeleteImageManifest("dedupe3", manifestDigest3.String(), false)
+				err = imgStore.DeleteImageManifest(context.Background(), "dedupe3", manifestDigest3.String(), false)
 				So(err, ShouldBeNil)
 
 				err = imgStore.DeleteBlob("dedupe1", blobDigest1)
@@ -1416,7 +1423,7 @@ func TestS3Dedupe(t *testing.T) {
 		defer cleanupStorage(storeDriver, testDir)
 
 		// manifest1
-		upload, err := imgStore.NewBlobUpload("dedupe1")
+		upload, err := imgStore.NewBlobUpload(context.Background(), "dedupe1")
 		So(err, ShouldBeNil)
 		So(upload, ShouldNotBeEmpty)
 
@@ -1424,7 +1431,7 @@ func TestS3Dedupe(t *testing.T) {
 		buf := bytes.NewBuffer(content)
 		buflen := buf.Len()
 		digest := godigest.FromBytes(content)
-		blob, err := imgStore.PutBlobChunkStreamed("dedupe1", upload, buf)
+		blob, err := imgStore.PutBlobChunkStreamed(context.Background(), "dedupe1", upload, buf)
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
 
@@ -1435,7 +1442,7 @@ func TestS3Dedupe(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
 
-		_, checkBlobSize1, err := imgStore.CheckBlob("dedupe1", digest)
+		_, checkBlobSize1, err := imgStore.CheckBlob(context.Background(), "dedupe1", digest)
 		So(checkBlobSize1, ShouldBeGreaterThan, 0)
 		So(err, ShouldBeNil)
 
@@ -1447,11 +1454,11 @@ func TestS3Dedupe(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		cblob, cdigest := GetRandomImageConfig()
-		_, clen, err := imgStore.FullBlobUpload("dedupe1", bytes.NewReader(cblob), cdigest)
+		_, clen, err := imgStore.FullBlobUpload(context.Background(), "dedupe1", bytes.NewReader(cblob), cdigest)
 		So(err, ShouldBeNil)
 		So(clen, ShouldEqual, len(cblob))
 
-		hasBlob, _, err := imgStore.CheckBlob("dedupe1", cdigest)
+		hasBlob, _, err := imgStore.CheckBlob(context.Background(), "dedupe1", cdigest)
 		So(err, ShouldBeNil)
 		So(hasBlob, ShouldEqual, true)
 
@@ -1475,7 +1482,8 @@ func TestS3Dedupe(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		manifestDigest := godigest.FromBytes(manifestBuf)
-		_, _, err = imgStore.PutImageManifest("dedupe1", manifestDigest.String(),
+
+		_, _, err = imgStore.PutImageManifest(context.Background(), "dedupe1", manifestDigest.String(),
 			ispec.MediaTypeImageManifest, manifestBuf, nil)
 		So(err, ShouldBeNil)
 
@@ -1483,7 +1491,7 @@ func TestS3Dedupe(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// manifest2
-		upload, err = imgStore.NewBlobUpload("dedupe2")
+		upload, err = imgStore.NewBlobUpload(context.Background(), "dedupe2")
 		So(err, ShouldBeNil)
 		So(upload, ShouldNotBeEmpty)
 
@@ -1492,7 +1500,7 @@ func TestS3Dedupe(t *testing.T) {
 		buflen = buf.Len()
 		digest = godigest.FromBytes(content)
 
-		blob, err = imgStore.PutBlobChunkStreamed("dedupe2", upload, buf)
+		blob, err = imgStore.PutBlobChunkStreamed(context.Background(), "dedupe2", upload, buf)
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
 
@@ -1503,7 +1511,7 @@ func TestS3Dedupe(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
 
-		_, checkBlobSize2, err := imgStore.CheckBlob("dedupe2", digest)
+		_, checkBlobSize2, err := imgStore.CheckBlob(context.Background(), "dedupe2", digest)
 		So(err, ShouldBeNil)
 		So(checkBlobSize2, ShouldBeGreaterThan, 0)
 
@@ -1518,11 +1526,11 @@ func TestS3Dedupe(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		cblob, cdigest = GetRandomImageConfig()
-		_, clen, err = imgStore.FullBlobUpload("dedupe2", bytes.NewReader(cblob), cdigest)
+		_, clen, err = imgStore.FullBlobUpload(context.Background(), "dedupe2", bytes.NewReader(cblob), cdigest)
 		So(err, ShouldBeNil)
 		So(clen, ShouldEqual, len(cblob))
 
-		hasBlob, _, err = imgStore.CheckBlob("dedupe2", cdigest)
+		hasBlob, _, err = imgStore.CheckBlob(context.Background(), "dedupe2", cdigest)
 		So(err, ShouldBeNil)
 		So(hasBlob, ShouldEqual, true)
 
@@ -1545,7 +1553,8 @@ func TestS3Dedupe(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		manifestDigest2 := godigest.FromBytes(manifestBuf)
-		_, _, err = imgStore.PutImageManifest("dedupe2", "1.0", ispec.MediaTypeImageManifest,
+
+		_, _, err = imgStore.PutImageManifest(context.Background(), "dedupe2", "1.0", ispec.MediaTypeImageManifest,
 			manifestBuf, nil)
 		So(err, ShouldBeNil)
 
@@ -1570,11 +1579,11 @@ func TestS3Dedupe(t *testing.T) {
 			So(blobDigest1, ShouldEqual, blobDigest2)
 
 			// to not trigger BlobInUse err, delete manifest first
-			err = imgStore.DeleteImageManifest("dedupe1", manifestDigest.String(), false)
+			err = imgStore.DeleteImageManifest(context.Background(), "dedupe1", manifestDigest.String(), false)
 			So(err, ShouldBeNil)
 
 			// delete tag, but not manifest
-			err = imgStore.DeleteImageManifest("dedupe2", "1.0", false)
+			err = imgStore.DeleteImageManifest(context.Background(), "dedupe2", "1.0", false)
 			So(err, ShouldBeNil)
 
 			// Delete should succeed as the manifest was deleted
@@ -1585,7 +1594,7 @@ func TestS3Dedupe(t *testing.T) {
 			err = imgStore.DeleteBlob("dedupe2", blobDigest2)
 			So(err, ShouldEqual, zerr.ErrBlobReferenced)
 
-			err = imgStore.DeleteImageManifest("dedupe2", manifestDigest2.String(), false)
+			err = imgStore.DeleteImageManifest(context.Background(), "dedupe2", manifestDigest2.String(), false)
 			So(err, ShouldBeNil)
 
 			err = imgStore.DeleteBlob("dedupe2", blobDigest2)
@@ -1625,11 +1634,11 @@ func TestS3Dedupe(t *testing.T) {
 				So(blobDigest1, ShouldEqual, blobDigest2)
 
 				// to not trigger BlobInUse err, delete manifest first
-				err = imgStore.DeleteImageManifest("dedupe1", manifestDigest.String(), false)
+				err = imgStore.DeleteImageManifest(context.Background(), "dedupe1", manifestDigest.String(), false)
 				So(err, ShouldBeNil)
 
 				// delete tag, but not manifest
-				err = imgStore.DeleteImageManifest("dedupe2", "1.0", false)
+				err = imgStore.DeleteImageManifest(context.Background(), "dedupe2", "1.0", false)
 				So(err, ShouldBeNil)
 
 				// delete should succeed as the manifest was deleted
@@ -1640,7 +1649,7 @@ func TestS3Dedupe(t *testing.T) {
 				err = imgStore.DeleteBlob("dedupe2", blobDigest2)
 				So(err, ShouldEqual, zerr.ErrBlobReferenced)
 
-				err = imgStore.DeleteImageManifest("dedupe2", manifestDigest2.String(), false)
+				err = imgStore.DeleteImageManifest(context.Background(), "dedupe2", manifestDigest2.String(), false)
 				So(err, ShouldBeNil)
 
 				err = imgStore.DeleteBlob("dedupe2", blobDigest2)
@@ -1676,10 +1685,10 @@ func TestS3Dedupe(t *testing.T) {
 		Convey("Check that delete blobs moves the real content to the next contenders", func() {
 			// if we delete blob1, the content should be moved to blob2
 			// to not trigger BlobInUse err, delete manifest first
-			err = imgStore.DeleteImageManifest("dedupe1", manifestDigest.String(), false)
+			err = imgStore.DeleteImageManifest(context.Background(), "dedupe1", manifestDigest.String(), false)
 			So(err, ShouldBeNil)
 
-			err = imgStore.DeleteImageManifest("dedupe2", manifestDigest2.String(), false)
+			err = imgStore.DeleteImageManifest(context.Background(), "dedupe2", manifestDigest2.String(), false)
 			So(err, ShouldBeNil)
 
 			err = imgStore.DeleteBlob("dedupe1", blobDigest1)
@@ -1731,21 +1740,21 @@ func TestRebuildDedupeIndex(t *testing.T) {
 
 		blobDigest1 := digest
 
-		_, blen, err := imgStore.FullBlobUpload("dedupe1", buf, digest)
+		_, blen, err := imgStore.FullBlobUpload(context.Background(), "dedupe1", buf, digest)
 		So(err, ShouldBeNil)
 		So(blen, ShouldEqual, buflen)
 
-		hasBlob, blen1, err := imgStore.CheckBlob("dedupe1", digest)
+		hasBlob, blen1, err := imgStore.CheckBlob(context.Background(), "dedupe1", digest)
 		So(blen1, ShouldEqual, buflen)
 		So(hasBlob, ShouldEqual, true)
 		So(err, ShouldBeNil)
 
 		cblob, cdigest := GetRandomImageConfig()
-		_, clen, err := imgStore.FullBlobUpload("dedupe1", bytes.NewReader(cblob), cdigest)
+		_, clen, err := imgStore.FullBlobUpload(context.Background(), "dedupe1", bytes.NewReader(cblob), cdigest)
 		So(err, ShouldBeNil)
 		So(clen, ShouldEqual, len(cblob))
 
-		hasBlob, clen, err = imgStore.CheckBlob("dedupe1", cdigest)
+		hasBlob, clen, err = imgStore.CheckBlob(context.Background(), "dedupe1", cdigest)
 		So(err, ShouldBeNil)
 		So(hasBlob, ShouldEqual, true)
 		So(clen, ShouldEqual, len(cblob))
@@ -1770,7 +1779,8 @@ func TestRebuildDedupeIndex(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		digest = godigest.FromBytes(manifestBuf)
-		_, _, err = imgStore.PutImageManifest("dedupe1", digest.String(),
+
+		_, _, err = imgStore.PutImageManifest(context.Background(), "dedupe1", digest.String(),
 			ispec.MediaTypeImageManifest, manifestBuf, nil)
 		So(err, ShouldBeNil)
 
@@ -1784,26 +1794,27 @@ func TestRebuildDedupeIndex(t *testing.T) {
 
 		blobDigest2 := digest
 
-		_, blen, err = imgStore.FullBlobUpload("dedupe2", buf, digest)
+		_, blen, err = imgStore.FullBlobUpload(context.Background(), "dedupe2", buf, digest)
 		So(err, ShouldBeNil)
 		So(blen, ShouldEqual, buflen)
 
-		hasBlob, blen1, err = imgStore.CheckBlob("dedupe2", digest)
+		hasBlob, blen1, err = imgStore.CheckBlob(context.Background(), "dedupe2", digest)
 		So(blen1, ShouldEqual, buflen)
 		So(hasBlob, ShouldEqual, true)
 		So(err, ShouldBeNil)
 
-		_, clen, err = imgStore.FullBlobUpload("dedupe2", bytes.NewReader(cblob), cdigest)
+		_, clen, err = imgStore.FullBlobUpload(context.Background(), "dedupe2", bytes.NewReader(cblob), cdigest)
 		So(err, ShouldBeNil)
 		So(clen, ShouldEqual, len(cblob))
 
-		hasBlob, clen, err = imgStore.CheckBlob("dedupe2", cdigest)
+		hasBlob, clen, err = imgStore.CheckBlob(context.Background(), "dedupe2", cdigest)
 		So(err, ShouldBeNil)
 		So(hasBlob, ShouldEqual, true)
 		So(clen, ShouldEqual, len(cblob))
 
 		digest = godigest.FromBytes(manifestBuf)
-		_, _, err = imgStore.PutImageManifest("dedupe2", digest.String(),
+
+		_, _, err = imgStore.PutImageManifest(context.Background(), "dedupe2", digest.String(),
 			ispec.MediaTypeImageManifest, manifestBuf, nil)
 		So(err, ShouldBeNil)
 
@@ -2589,7 +2600,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 		}
 
 		Convey("on original blob", func() {
-			imgStore := createMockStorageWithMockCache(testDir, true, storageDriverMockIfBranch,
+			imgStore := createMockStorageWithMockCache(testDir, storageDriverMockIfBranch,
 				&mocks.CacheMock{
 					HasBlobFn: func(digest godigest.Digest, path string) bool {
 						return false
@@ -2607,7 +2618,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 		})
 
 		Convey("on dedupe blob", func() {
-			imgStore := createMockStorageWithMockCache(testDir, true, storageDriverMockIfBranch,
+			imgStore := createMockStorageWithMockCache(testDir, storageDriverMockIfBranch,
 				&mocks.CacheMock{
 					HasBlobFn: func(digest godigest.Digest, path string) bool {
 						return false
@@ -2629,7 +2640,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 		})
 
 		Convey("on else branch", func() {
-			imgStore := createMockStorageWithMockCache(testDir, true, storageDriverMockElseBranch,
+			imgStore := createMockStorageWithMockCache(testDir, storageDriverMockElseBranch,
 				&mocks.CacheMock{
 					HasBlobFn: func(digest godigest.Digest, path string) bool {
 						return false
@@ -2663,7 +2674,7 @@ func TestS3PullRange(t *testing.T) {
 		defer cleanupStorage(storeDriver, testDir)
 
 		// create a blob/layer
-		upload, err := imgStore.NewBlobUpload("index")
+		upload, err := imgStore.NewBlobUpload(context.Background(), "index")
 		So(err, ShouldBeNil)
 		So(upload, ShouldNotBeEmpty)
 
@@ -2673,7 +2684,7 @@ func TestS3PullRange(t *testing.T) {
 		digest := godigest.FromBytes(content)
 		So(digest, ShouldNotBeNil)
 
-		blob, err := imgStore.PutBlobChunkStreamed("index", upload, buf)
+		blob, err := imgStore.PutBlobChunkStreamed(context.Background(), "index", upload, buf)
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
 
@@ -2734,7 +2745,7 @@ func TestS3PullRange(t *testing.T) {
 
 		Convey("With Dedupe", func() {
 			// create a blob/layer with same content
-			upload, err := imgStore.NewBlobUpload("dupindex")
+			upload, err := imgStore.NewBlobUpload(context.Background(), "dupindex")
 			So(err, ShouldBeNil)
 			So(upload, ShouldNotBeEmpty)
 
@@ -2744,7 +2755,7 @@ func TestS3PullRange(t *testing.T) {
 			digest := godigest.FromBytes(dupcontent)
 			So(digest, ShouldNotBeNil)
 
-			blob, err := imgStore.PutBlobChunkStreamed("dupindex", upload, buf)
+			blob, err := imgStore.PutBlobChunkStreamed(context.Background(), "dupindex", upload, buf)
 			So(err, ShouldBeNil)
 			So(blob, ShouldEqual, buflen)
 
@@ -2841,7 +2852,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 		defer cleanupStorage(storeDriver, testDir)
 
 		// create a blob/layer
-		upload, err := imgStore.NewBlobUpload("index")
+		upload, err := imgStore.NewBlobUpload(context.Background(), "index")
 		So(err, ShouldBeNil)
 		So(upload, ShouldNotBeEmpty)
 
@@ -2851,7 +2862,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 		digest := godigest.FromBytes(content)
 		So(digest, ShouldNotBeNil)
 
-		blob, err := imgStore.PutBlobChunkStreamed("index", upload, buf)
+		blob, err := imgStore.PutBlobChunkStreamed(context.Background(), "index", upload, buf)
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
 
@@ -2863,14 +2874,14 @@ func TestS3ManifestImageIndex(t *testing.T) {
 		So(blob, ShouldEqual, buflen)
 
 		// upload image config blob
-		upload, err = imgStore.NewBlobUpload("index")
+		upload, err = imgStore.NewBlobUpload(context.Background(), "index")
 		So(err, ShouldBeNil)
 		So(upload, ShouldNotBeEmpty)
 
 		cblob, cdigest := GetRandomImageConfig()
 		buf = bytes.NewBuffer(cblob)
 		buflen = buf.Len()
-		blob, err = imgStore.PutBlobChunkStreamed("index", upload, buf)
+		blob, err = imgStore.PutBlobChunkStreamed(context.Background(), "index", upload, buf)
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
 
@@ -2901,20 +2912,22 @@ func TestS3ManifestImageIndex(t *testing.T) {
 		So(digest, ShouldNotBeNil)
 
 		m1content := content
-		_, _, err = imgStore.PutImageManifest("index", "test:1.0", ispec.MediaTypeImageManifest, content, nil)
+
+		_, _, err = imgStore.PutImageManifest(context.Background(),
+			"index", "test:1.0", ispec.MediaTypeImageManifest, content, nil)
 		So(err, ShouldBeNil)
 
 		// create another manifest but upload using its sha256 reference
 
 		// upload image config blob
-		upload, err = imgStore.NewBlobUpload("index")
+		upload, err = imgStore.NewBlobUpload(context.Background(), "index")
 		So(err, ShouldBeNil)
 		So(upload, ShouldNotBeEmpty)
 
 		cblob, cdigest = GetRandomImageConfig()
 		buf = bytes.NewBuffer(cblob)
 		buflen = buf.Len()
-		blob, err = imgStore.PutBlobChunkStreamed("index", upload, buf)
+		blob, err = imgStore.PutBlobChunkStreamed(context.Background(), "index", upload, buf)
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
 
@@ -2945,19 +2958,21 @@ func TestS3ManifestImageIndex(t *testing.T) {
 		So(digest, ShouldNotBeNil)
 		m2dgst := digest
 		m2size := len(content)
-		_, _, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageManifest, content, nil)
+
+		_, _, err = imgStore.PutImageManifest(context.Background(),
+			"index", digest.String(), ispec.MediaTypeImageManifest, content, nil)
 		So(err, ShouldBeNil)
 
 		Convey("Image index", func() {
 			// upload image config blob
-			upload, err = imgStore.NewBlobUpload("index")
+			upload, err = imgStore.NewBlobUpload(context.Background(), "index")
 			So(err, ShouldBeNil)
 			So(upload, ShouldNotBeEmpty)
 
 			cblob, cdigest = GetRandomImageConfig()
 			buf = bytes.NewBuffer(cblob)
 			buflen = buf.Len()
-			blob, err = imgStore.PutBlobChunkStreamed("index", upload, buf)
+			blob, err = imgStore.PutBlobChunkStreamed(context.Background(), "index", upload, buf)
 			So(err, ShouldBeNil)
 			So(blob, ShouldEqual, buflen)
 
@@ -2986,7 +3001,9 @@ func TestS3ManifestImageIndex(t *testing.T) {
 
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
-			_, _, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageManifest, content, nil)
+
+			_, _, err = imgStore.PutImageManifest(context.Background(),
+				"index", digest.String(), ispec.MediaTypeImageManifest, content, nil)
 			So(err, ShouldBeNil)
 
 			var index ispec.Index
@@ -3010,20 +3027,22 @@ func TestS3ManifestImageIndex(t *testing.T) {
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 			index1dgst := digest
-			_, _, err = imgStore.PutImageManifest("index", "test:index1", ispec.MediaTypeImageIndex, content, nil)
+
+			_, _, err = imgStore.PutImageManifest(context.Background(),
+				"index", "test:index1", ispec.MediaTypeImageIndex, content, nil)
 			So(err, ShouldBeNil)
 			_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
 			So(err, ShouldBeNil)
 
 			// upload another image config blob
-			upload, err = imgStore.NewBlobUpload("index")
+			upload, err = imgStore.NewBlobUpload(context.Background(), "index")
 			So(err, ShouldBeNil)
 			So(upload, ShouldNotBeEmpty)
 
 			cblob, cdigest = GetRandomImageConfig()
 			buf = bytes.NewBuffer(cblob)
 			buflen = buf.Len()
-			blob, err = imgStore.PutBlobChunkStreamed("index", upload, buf)
+			blob, err = imgStore.PutBlobChunkStreamed(context.Background(), "index", upload, buf)
 			So(err, ShouldBeNil)
 			So(blob, ShouldEqual, buflen)
 
@@ -3054,7 +3073,9 @@ func TestS3ManifestImageIndex(t *testing.T) {
 			So(digest, ShouldNotBeNil)
 			m4dgst := digest
 			m4size := len(content)
-			_, _, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageManifest, content, nil)
+
+			_, _, err = imgStore.PutImageManifest(context.Background(),
+				"index", digest.String(), ispec.MediaTypeImageManifest, content, nil)
 			So(err, ShouldBeNil)
 
 			index.SchemaVersion = 2
@@ -3077,7 +3098,8 @@ func TestS3ManifestImageIndex(t *testing.T) {
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 
-			_, _, err = imgStore.PutImageManifest("index", "test:index2", ispec.MediaTypeImageIndex, content, nil)
+			_, _, err = imgStore.PutImageManifest(context.Background(),
+				"index", "test:index2", ispec.MediaTypeImageIndex, content, nil)
 			So(err, ShouldBeNil)
 			_, _, _, err = imgStore.GetImageManifest("index", "test:index2")
 			So(err, ShouldBeNil)
@@ -3108,7 +3130,8 @@ func TestS3ManifestImageIndex(t *testing.T) {
 				digest = godigest.FromBytes(content)
 				So(digest, ShouldNotBeNil)
 
-				_, _, err = imgStore.PutImageManifest("index", "test:index3", ispec.MediaTypeImageIndex, content, nil)
+				_, _, err = imgStore.PutImageManifest(context.Background(),
+					"index", "test:index3", ispec.MediaTypeImageIndex, content, nil)
 				So(err, ShouldBeNil)
 				_, _, _, err = imgStore.GetImageManifest("index", "test:index3")
 				So(err, ShouldBeNil)
@@ -3130,7 +3153,9 @@ func TestS3ManifestImageIndex(t *testing.T) {
 
 				digest = godigest.FromBytes(content)
 				So(digest, ShouldNotBeNil)
-				_, _, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageIndex, content, nil)
+
+				_, _, err = imgStore.PutImageManifest(context.Background(),
+					"index", digest.String(), ispec.MediaTypeImageIndex, content, nil)
 				So(err, ShouldBeNil)
 				_, _, _, err = imgStore.GetImageManifest("index", digest.String())
 				So(err, ShouldBeNil)
@@ -3138,12 +3163,12 @@ func TestS3ManifestImageIndex(t *testing.T) {
 
 			Convey("Deleting an image index", func() {
 				// delete manifest by tag should pass
-				err := imgStore.DeleteImageManifest("index", "test:index3", false)
+				err := imgStore.DeleteImageManifest(context.Background(), "index", "test:index3", false)
 				So(err, ShouldNotBeNil)
 				_, _, _, err = imgStore.GetImageManifest("index", "test:index3")
 				So(err, ShouldNotBeNil)
 
-				err = imgStore.DeleteImageManifest("index", "test:index1", false)
+				err = imgStore.DeleteImageManifest(context.Background(), "index", "test:index1", false)
 				So(err, ShouldBeNil)
 
 				_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
@@ -3155,12 +3180,12 @@ func TestS3ManifestImageIndex(t *testing.T) {
 
 			Convey("Deleting an image index by digest", func() {
 				// delete manifest by tag should pass
-				err := imgStore.DeleteImageManifest("index", "test:index3", false)
+				err := imgStore.DeleteImageManifest(context.Background(), "index", "test:index3", false)
 				So(err, ShouldNotBeNil)
 				_, _, _, err = imgStore.GetImageManifest("index", "test:index3")
 				So(err, ShouldNotBeNil)
 
-				err = imgStore.DeleteImageManifest("index", index1dgst.String(), false)
+				err = imgStore.DeleteImageManifest(context.Background(), "index", index1dgst.String(), false)
 				So(err, ShouldBeNil)
 				_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
 				So(err, ShouldNotBeNil)
@@ -3171,7 +3196,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 
 			Convey("Update an index tag with different manifest", func() {
 				// create a blob/layer
-				upload, err := imgStore.NewBlobUpload("index")
+				upload, err := imgStore.NewBlobUpload(context.Background(), "index")
 				So(err, ShouldBeNil)
 				So(upload, ShouldNotBeEmpty)
 
@@ -3181,7 +3206,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 				digest := godigest.FromBytes(content)
 				So(digest, ShouldNotBeNil)
 
-				blob, err := imgStore.PutBlobChunkStreamed("index", upload, buf)
+				blob, err := imgStore.PutBlobChunkStreamed(context.Background(), "index", upload, buf)
 				So(err, ShouldBeNil)
 				So(blob, ShouldEqual, buflen)
 
@@ -3210,7 +3235,9 @@ func TestS3ManifestImageIndex(t *testing.T) {
 
 				digest = godigest.FromBytes(content)
 				So(digest, ShouldNotBeNil)
-				_, _, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageManifest, content, nil)
+
+				_, _, err = imgStore.PutImageManifest(context.Background(),
+					"index", digest.String(), ispec.MediaTypeImageManifest, content, nil)
 				So(err, ShouldBeNil)
 				_, _, _, err = imgStore.GetImageManifest("index", digest.String())
 				So(err, ShouldBeNil)
@@ -3230,12 +3257,13 @@ func TestS3ManifestImageIndex(t *testing.T) {
 				digest = godigest.FromBytes(content)
 				So(digest, ShouldNotBeNil)
 
-				_, _, err = imgStore.PutImageManifest("index", "test:index1", ispec.MediaTypeImageIndex, content, nil)
+				_, _, err = imgStore.PutImageManifest(context.Background(),
+					"index", "test:index1", ispec.MediaTypeImageIndex, content, nil)
 				So(err, ShouldBeNil)
 				_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
 				So(err, ShouldBeNil)
 
-				err = imgStore.DeleteImageManifest("index", "test:index1", false)
+				err = imgStore.DeleteImageManifest(context.Background(), "index", "test:index1", false)
 				So(err, ShouldBeNil)
 				_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
 				So(err, ShouldNotBeNil)
@@ -3246,7 +3274,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 					cleanupStorage(storeDriver, path.Join(testDir, "index", "blobs",
 						index1dgst.Algorithm().String(), index1dgst.Encoded()))
 
-					err = imgStore.DeleteImageManifest("index", index1dgst.String(), false)
+					err = imgStore.DeleteImageManifest(context.Background(), "index", index1dgst.String(), false)
 					So(err, ShouldNotBeNil)
 					_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
 					So(err, ShouldNotBeNil)
@@ -3262,7 +3290,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 					So(err, ShouldBeNil)
 					wrtr.Close()
 
-					err = imgStore.DeleteImageManifest("index", index1dgst.String(), false)
+					err = imgStore.DeleteImageManifest(context.Background(), "index", index1dgst.String(), false)
 					So(err, ShouldBeNil)
 					_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
 					So(err, ShouldNotBeNil)
@@ -3286,11 +3314,13 @@ func TestS3ManifestImageIndex(t *testing.T) {
 					digest = godigest.FromBytes(content)
 					So(digest, ShouldNotBeNil)
 
-					_, _, err = imgStore.PutImageManifest("index", "test:1.0", ispec.MediaTypeImageIndex, content, nil)
+					_, _, err = imgStore.PutImageManifest(context.Background(),
+						"index", "test:1.0", ispec.MediaTypeImageIndex, content, nil)
 					So(err, ShouldBeNil)
 
 					// previously an image index, try writing a manifest
-					_, _, err = imgStore.PutImageManifest("index", "test:index1", ispec.MediaTypeImageManifest, m1content, nil)
+					_, _, err = imgStore.PutImageManifest(context.Background(),
+						"index", "test:index1", ispec.MediaTypeImageManifest, m1content, nil)
 					So(err, ShouldBeNil)
 				})
 			})
@@ -3322,7 +3352,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 
 		So(bdigest, ShouldNotBeNil)
 
-		_, clen, err := imgStore.FullBlobUpload("index", buf, bdigest)
+		_, clen, err := imgStore.FullBlobUpload(context.Background(), "index", buf, bdigest)
 		So(err, ShouldBeNil)
 		So(clen, ShouldEqual, buflen)
 
@@ -3331,7 +3361,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 		buf = bytes.NewBuffer(cblob)
 		buflen = buf.Len()
 
-		_, clen, err = imgStore.FullBlobUpload("index", buf, cdigest)
+		_, clen, err = imgStore.FullBlobUpload(context.Background(), "index", buf, cdigest)
 		So(err, ShouldBeNil)
 		So(clen, ShouldEqual, buflen)
 
@@ -3359,7 +3389,8 @@ func TestS3ManifestImageIndex(t *testing.T) {
 
 		m1size := len(content)
 
-		_, _, err = imgStore.PutImageManifest("index", "test:1.0", ispec.MediaTypeImageManifest, content, nil)
+		_, _, err = imgStore.PutImageManifest(context.Background(),
+			"index", "test:1.0", ispec.MediaTypeImageManifest, content, nil)
 		So(err, ShouldBeNil)
 
 		// second config
@@ -3367,7 +3398,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 		buf = bytes.NewBuffer(cblob)
 		buflen = buf.Len()
 
-		_, clen, err = imgStore.FullBlobUpload("index", buf, cdigest)
+		_, clen, err = imgStore.FullBlobUpload(context.Background(), "index", buf, cdigest)
 		So(err, ShouldBeNil)
 		So(clen, ShouldEqual, buflen)
 
@@ -3394,7 +3425,9 @@ func TestS3ManifestImageIndex(t *testing.T) {
 		So(m2digest, ShouldNotBeNil)
 
 		m2size := len(content)
-		_, _, err = imgStore.PutImageManifest("index", m2digest.String(), ispec.MediaTypeImageManifest, content, nil)
+
+		_, _, err = imgStore.PutImageManifest(context.Background(),
+			"index", m2digest.String(), ispec.MediaTypeImageManifest, content, nil)
 		So(err, ShouldBeNil)
 
 		Convey("Put image index with valid subject", func() {
@@ -3420,7 +3453,8 @@ func TestS3ManifestImageIndex(t *testing.T) {
 			idigest := godigest.FromBytes(content)
 			So(idigest, ShouldNotBeNil)
 
-			digest1, digest2, err := imgStore.PutImageManifest("index", "test:index1", ispec.MediaTypeImageIndex, content, nil)
+			digest1, digest2, err := imgStore.PutImageManifest(context.Background(),
+				"index", "test:index1", ispec.MediaTypeImageIndex, content, nil)
 			So(err, ShouldBeNil)
 			So(digest1.String(), ShouldEqual, idigest.String())
 			So(digest2.String(), ShouldEqual, m1digest.String())
@@ -3571,7 +3605,7 @@ func TestS3DedupeErr(t *testing.T) {
 		err := imgStore.DedupeBlob("repo", digest, "", "dst")
 		So(err, ShouldBeNil)
 
-		_, _, err = imgStore.CheckBlob("repo", digest)
+		_, _, err = imgStore.CheckBlob(context.Background(), "repo", digest)
 		So(err, ShouldNotBeNil)
 	})
 
@@ -3592,7 +3626,7 @@ func TestS3DedupeErr(t *testing.T) {
 		err := imgStore.DedupeBlob("repo", digest, "", "dst")
 		So(err, ShouldBeNil)
 
-		_, _, err = imgStore.CheckBlob("repo", digest)
+		_, _, err = imgStore.CheckBlob(context.Background(), "repo", digest)
 		So(err, ShouldNotBeNil)
 	})
 
@@ -3610,7 +3644,7 @@ func TestS3DedupeErr(t *testing.T) {
 		err := imgStore.DedupeBlob("repo", digest, "", "dst")
 		So(err, ShouldBeNil)
 
-		_, _, err = imgStore.CheckBlob("repo", digest)
+		_, _, err = imgStore.CheckBlob(context.Background(), "repo", digest)
 		So(err, ShouldNotBeNil)
 	})
 
@@ -3788,7 +3822,7 @@ func TestS3DedupeErr(t *testing.T) {
 		err := imgStore.DedupeBlob("repo", digest, "", blobPath)
 		So(err, ShouldBeNil)
 
-		_, _, err = imgStore.CheckBlob("repo2", digest)
+		_, _, err = imgStore.CheckBlob(context.Background(), "repo2", digest)
 		So(err, ShouldBeNil)
 
 		err = imgStore.DeleteBlob("repo", digest)
@@ -3803,7 +3837,7 @@ func TestS3DedupeErr(t *testing.T) {
 			},
 		})
 		d := godigest.FromBytes([]byte(""))
-		_, _, err := imgStore.FullBlobUpload(testImage, io.NopCloser(strings.NewReader("")), d)
+		_, _, err := imgStore.FullBlobUpload(context.Background(), testImage, io.NopCloser(strings.NewReader("")), d)
 		So(err, ShouldNotBeNil)
 	})
 
@@ -3817,6 +3851,134 @@ func TestS3DedupeErr(t *testing.T) {
 		d := godigest.FromBytes([]byte(""))
 		err := imgStore.FinishBlobUpload(testImage, "uuid", io.NopCloser(strings.NewReader("")), d)
 		So(err, ShouldNotBeNil)
+	})
+}
+
+// TestS3DedupeZeroSizeBlob covers the zero-size blob branches in CheckBlob and
+// StatBlob (via originalBlobInfo) for the S3+dedupe configuration.  Four
+// sub-cases are exercised using mock storage so no real S3 endpoint is needed:
+//
+//  1. A genuine empty blob (digest == hash-of-zero-bytes) is short-circuited:
+//     CheckBlob returns (true, 0, nil) and the cache is never consulted.
+//  2. StatBlob on the same genuine empty blob returns (true, 0, ..., nil) –
+//     this specifically exercises the "return binfo, nil" branch inside
+//     originalBlobInfo that was previously untested.
+//  3. A zero-size S3 deduplication placeholder (non-empty digest, empty file)
+//     is resolved via the cache: CheckBlob falls through to the cache lookup
+//     and returns the real blob size.
+//  4. The same deduplication-placeholder path exercised through StatBlob.
+func TestS3DedupeZeroSizeBlob(t *testing.T) {
+	testDir := "/oci-repo-test/dedupe-zero-size"
+
+	const repo = "dedupe-zero-size-repo"
+
+	// ------------------------------------------------------------------ //
+	// Cases 1 & 2: genuine empty blob (sha256:e3b0c44...).
+	//
+	// Stat always returns size 0; the digest is the hash of zero bytes.
+	// Neither CheckBlob nor StatBlob should consult the cache.
+	// ------------------------------------------------------------------ //
+	Convey("CheckBlob and StatBlob with genuine empty blob in S3+dedupe mode", t, func() {
+		emptyDigest := godigest.FromBytes(nil)
+
+		cacheGetBlobCalled := false
+
+		imgStore := createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+				return &mocks.FileInfoMock{SizeFn: func() int64 { return 0 }}, nil
+			},
+		}, &mocks.CacheMock{
+			GetBlobFn: func(digest godigest.Digest) (string, error) {
+				cacheGetBlobCalled = true
+
+				return "", zerr.ErrCacheMiss
+			},
+		})
+
+		// Case 1: CheckBlob must report the empty blob as present with size 0
+		// and must NOT fall through to the cache lookup.
+		ok, size, err := imgStore.CheckBlob(context.Background(), repo, emptyDigest)
+		So(ok, ShouldBeTrue)
+		So(size, ShouldEqual, int64(0))
+		So(err, ShouldBeNil)
+		So(cacheGetBlobCalled, ShouldBeFalse)
+
+		// Case 2: StatBlob must also succeed and report size 0.
+		// This exercises the "return binfo, nil" branch in originalBlobInfo.
+		statOk, statSize, _, statErr := imgStore.StatBlob(repo, emptyDigest)
+		So(statOk, ShouldBeTrue)
+		So(statSize, ShouldEqual, int64(0))
+		So(statErr, ShouldBeNil)
+		So(cacheGetBlobCalled, ShouldBeFalse)
+	})
+
+	// ------------------------------------------------------------------ //
+	// Case 3: S3-style deduplication placeholder.
+	//
+	// A non-empty digest is stored as a zero-size stub file (S3 Link writes
+	// empty content).  CheckBlob must fall through to the cache, retrieve the
+	// original blob path, copy it back via Link, and return the real size.
+	// StatBlob must do the same via originalBlobInfo.
+	// ------------------------------------------------------------------ //
+	Convey("CheckBlob with S3-style deduplication placeholder in S3+dedupe mode", t, func() {
+		nonEmptyContent := []byte("non-empty-blob-content")
+		nonEmptyDigest := godigest.FromBytes(nonEmptyContent)
+		dstRecord := testDir + "/dedupe-src/blobs/sha256/real-blob"
+		realSize := int64(len(nonEmptyContent))
+
+		imgStore := createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+				if path == dstRecord {
+					return &mocks.FileInfoMock{SizeFn: func() int64 { return realSize }}, nil
+				}
+
+				// Blob placeholder and repo metadata files all appear as zero-size.
+				return &mocks.FileInfoMock{SizeFn: func() int64 { return 0 }}, nil
+			},
+			// S3 Link is implemented as PutContent with empty bytes.
+			PutContentFn: func(ctx context.Context, path string, content []byte) error {
+				return nil
+			},
+		}, &mocks.CacheMock{
+			GetBlobFn: func(digest godigest.Digest) (string, error) {
+				return dstRecord, nil
+			},
+			PutBlobFn: func(digest godigest.Digest, path string) error {
+				return nil
+			},
+		})
+
+		ok, size, err := imgStore.CheckBlob(context.Background(), repo, nonEmptyDigest)
+		So(ok, ShouldBeTrue)
+		So(size, ShouldEqual, realSize)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("StatBlob with S3-style deduplication placeholder in S3+dedupe mode", t, func() {
+		nonEmptyContent := []byte("non-empty-blob-content")
+		nonEmptyDigest := godigest.FromBytes(nonEmptyContent)
+		dstRecord := testDir + "/dedupe-src/blobs/sha256/real-blob"
+		realSize := int64(len(nonEmptyContent))
+
+		imgStore := createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+				if path == dstRecord {
+					return &mocks.FileInfoMock{SizeFn: func() int64 { return realSize }}, nil
+				}
+
+				return &mocks.FileInfoMock{SizeFn: func() int64 { return 0 }}, nil
+			},
+		}, &mocks.CacheMock{
+			GetBlobFn: func(digest godigest.Digest) (string, error) {
+				return dstRecord, nil
+			},
+		})
+
+		// StatBlob exercises the deduped-placeholder branch in originalBlobInfo.
+		statOk, statSize, _, statErr := imgStore.StatBlob(repo, nonEmptyDigest)
+		So(statOk, ShouldBeTrue)
+		So(statSize, ShouldEqual, realSize)
+		So(statErr, ShouldBeNil)
 	})
 }
 
@@ -3856,5 +4018,372 @@ func TestInjectDedupe(t *testing.T) {
 		} else {
 			So(err, ShouldBeNil)
 		}
+	})
+}
+
+// Deleting a blob the dedupe cache cannot account for must be
+// deferred until the startup dedupe walk completes.
+func TestDeleteBlobDeferredDuringDedupeRebuild(t *testing.T) {
+	testDir := "/oci-repo-test/dedupe-rebuild-delete"
+	repoName := "repo"
+
+	content := []byte("content-bearing-blob")
+	contentDigest := godigest.FromBytes(content)
+	contentBlobPath := path.Join(testDir, repoName, "blobs",
+		contentDigest.Algorithm().String(), contentDigest.Encoded())
+
+	newStoppedScheduler := func() *scheduler.Scheduler {
+		log := log.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+		taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
+		taskScheduler.RateLimit = 50 * time.Millisecond
+
+		return taskScheduler
+	}
+
+	Convey("content blob with no cache record: delete deferred, then allowed after rebuild", t, func() {
+		var deletedContentBlob atomic.Bool
+
+		imgStore := createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
+			StatFn: func(ctx context.Context, statPath string) (driver.FileInfo, error) {
+				if statPath == contentBlobPath {
+					return &mocks.FileInfoMock{SizeFn: func() int64 { return int64(len(content)) }}, nil
+				}
+
+				return nil, driver.PathNotFoundError{Path: statPath}
+			},
+			DeleteFn: func(ctx context.Context, deletePath string) error {
+				if deletePath == contentBlobPath {
+					deletedContentBlob.Store(true)
+				}
+
+				return nil
+			},
+		}, &mocks.CacheMock{
+			GetBlobFn: func(digest godigest.Digest) (string, error) {
+				return "", zerr.ErrCacheMiss
+			},
+			HasBlobFn: func(digest godigest.Digest, blob string) bool {
+				return false
+			},
+		})
+
+		// walk submitted but not yet run: delete deferred, content preserved
+		taskScheduler := newStoppedScheduler()
+		imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+		err := imgStore.DeleteBlob(repoName, contentDigest)
+		So(err, ShouldNotBeNil)
+		So(errors.Is(err, zerr.ErrDedupeRebuildInProgress), ShouldBeTrue)
+		So(deletedContentBlob.Load(), ShouldBeFalse)
+
+		// empty storage: the walk completes immediately once the scheduler runs
+		taskScheduler.RunScheduler()
+		defer taskScheduler.Shutdown()
+
+		for range 100 {
+			err = imgStore.DeleteBlob(repoName, contentDigest)
+			if err == nil {
+				break
+			}
+
+			So(errors.Is(err, zerr.ErrDedupeRebuildInProgress), ShouldBeTrue)
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		So(err, ShouldBeNil)
+		So(deletedContentBlob.Load(), ShouldBeTrue)
+	})
+
+	Convey("zero-size placeholder can still be deleted while the rebuild is running", t, func() {
+		var deletedPlaceholder atomic.Bool
+
+		imgStore := createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
+			StatFn: func(ctx context.Context, statPath string) (driver.FileInfo, error) {
+				if statPath == contentBlobPath {
+					return &mocks.FileInfoMock{SizeFn: func() int64 { return 0 }}, nil
+				}
+
+				return nil, driver.PathNotFoundError{Path: statPath}
+			},
+			DeleteFn: func(ctx context.Context, deletePath string) error {
+				if deletePath == contentBlobPath {
+					deletedPlaceholder.Store(true)
+				}
+
+				return nil
+			},
+		}, &mocks.CacheMock{
+			GetBlobFn: func(digest godigest.Digest) (string, error) {
+				return "", zerr.ErrCacheMiss
+			},
+			HasBlobFn: func(digest godigest.Digest, blob string) bool {
+				return false
+			},
+		})
+
+		// zero-size placeholders are deletable while the walk is pending
+		imgStore.RunDedupeBlobs(time.Duration(0), newStoppedScheduler())
+
+		err := imgStore.DeleteBlob(repoName, contentDigest)
+		So(err, ShouldBeNil)
+		So(deletedPlaceholder.Load(), ShouldBeTrue)
+	})
+
+	Convey("content blob known to the cache is deleted normally during the rebuild", t, func() {
+		var deletedContentBlob atomic.Bool
+
+		removedFromCache := false
+
+		imgStore := createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
+			StatFn: func(ctx context.Context, statPath string) (driver.FileInfo, error) {
+				if statPath == contentBlobPath {
+					return &mocks.FileInfoMock{SizeFn: func() int64 { return int64(len(content)) }}, nil
+				}
+
+				return nil, driver.PathNotFoundError{Path: statPath}
+			},
+			DeleteFn: func(ctx context.Context, deletePath string) error {
+				if deletePath == contentBlobPath {
+					deletedContentBlob.Store(true)
+				}
+
+				return nil
+			},
+		}, &mocks.CacheMock{
+			GetBlobFn: func(digest godigest.Digest) (string, error) {
+				if removedFromCache {
+					return "", zerr.ErrCacheMiss
+				}
+
+				return contentBlobPath, nil
+			},
+			HasBlobFn: func(digest godigest.Digest, blob string) bool {
+				return !removedFromCache
+			},
+			DeleteBlobFn: func(digest godigest.Digest, blob string) error {
+				removedFromCache = true
+
+				return nil
+			},
+		})
+
+		// cache-known blob: delete proceeds while the walk is pending
+		imgStore.RunDedupeBlobs(time.Duration(0), newStoppedScheduler())
+
+		err := imgStore.DeleteBlob(repoName, contentDigest)
+		So(err, ShouldBeNil)
+		So(deletedContentBlob.Load(), ShouldBeTrue)
+	})
+}
+
+// Restore-direction gating (dedupe=false, no cache): leftover zero-size
+// duplicates are refilled by the restore walk, so content deletes are deferred
+// until it completes; the restore-complete marker skips both the walk and the
+// deferral on later startups.
+func TestDeleteBlobDeferredDuringRestoreWalk(t *testing.T) {
+	testDir := "/oci-repo-test/restore-walk-delete"
+	repoName := "repo"
+
+	content := []byte("restore-content-blob")
+	contentDigest := godigest.FromBytes(content)
+	contentBlobPath := path.Join(testDir, repoName, "blobs",
+		contentDigest.Algorithm().String(), contentDigest.Encoded())
+
+	newStoppedScheduler := func() *scheduler.Scheduler {
+		log := log.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+		taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
+		taskScheduler.RateLimit = 50 * time.Millisecond
+
+		return taskScheduler
+	}
+
+	newMockDriver := func(markerContent string, deleted *atomic.Bool, markerWritten *atomic.Bool, writeErr error,
+	) *mocks.StorageDriverMock {
+		return &mocks.StorageDriverMock{
+			StatFn: func(ctx context.Context, statPath string) (driver.FileInfo, error) {
+				if statPath == contentBlobPath {
+					return &mocks.FileInfoMock{SizeFn: func() int64 { return int64(len(content)) }}, nil
+				}
+
+				return nil, driver.PathNotFoundError{Path: statPath}
+			},
+			GetContentFn: func(ctx context.Context, readPath string) ([]byte, error) {
+				if markerContent != "" && strings.HasSuffix(readPath, storageConstants.DedupeRestoreCompleteMarker) {
+					return []byte(markerContent), nil
+				}
+
+				return nil, driver.PathNotFoundError{Path: readPath}
+			},
+			// zot's s3 Driver.WriteFile goes through store.Writer, not PutContent.
+			WriterFn: func(ctx context.Context, writePath string, isAppend bool) (driver.FileWriter, error) {
+				if strings.HasSuffix(writePath, storageConstants.DedupeRestoreCompleteMarker) {
+					if writeErr != nil {
+						return nil, writeErr
+					}
+
+					return &mocks.FileWriterMock{CommitFn: func() error {
+						markerWritten.Store(true)
+
+						return nil
+					}}, nil
+				}
+
+				return &mocks.FileWriterMock{}, nil
+			},
+			DeleteFn: func(ctx context.Context, deletePath string) error {
+				if deletePath == contentBlobPath {
+					deleted.Store(true)
+				}
+
+				return nil
+			},
+		}
+	}
+
+	Convey("no marker: content delete deferred until the restore walk completes, then marker written", t, func() {
+		var deleted, markerWritten atomic.Bool
+
+		imgStore := createMockStorage(testDir, t.TempDir(), false,
+			newMockDriver("", &deleted, &markerWritten, nil))
+
+		taskScheduler := newStoppedScheduler()
+		imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+		err := imgStore.DeleteBlob(repoName, contentDigest)
+		So(err, ShouldNotBeNil)
+		So(errors.Is(err, zerr.ErrDedupeRebuildInProgress), ShouldBeTrue)
+		So(deleted.Load(), ShouldBeFalse)
+
+		taskScheduler.RunScheduler()
+		defer taskScheduler.Shutdown()
+
+		for range 100 {
+			err = imgStore.DeleteBlob(repoName, contentDigest)
+			if err == nil {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		So(err, ShouldBeNil)
+		So(deleted.Load(), ShouldBeTrue)
+		So(markerWritten.Load(), ShouldBeTrue)
+	})
+
+	Convey("restore-complete marker present: walk skipped, deletes proceed immediately", t, func() {
+		var deleted, markerWritten atomic.Bool
+
+		imgStore := createMockStorage(testDir, t.TempDir(), false,
+			newMockDriver(storageConstants.DedupeRestoreMarkerComplete, &deleted, &markerWritten, nil))
+
+		imgStore.RunDedupeBlobs(time.Duration(0), newStoppedScheduler())
+
+		err := imgStore.DeleteBlob(repoName, contentDigest)
+		So(err, ShouldBeNil)
+		So(deleted.Load(), ShouldBeTrue)
+	})
+
+	Convey("marker write failure: deletes still proceed once the walk completed", t, func() {
+		var deleted, markerWritten atomic.Bool
+
+		imgStore := createMockStorage(testDir, t.TempDir(), false,
+			newMockDriver("", &deleted, &markerWritten, errS3))
+
+		taskScheduler := newStoppedScheduler()
+		imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+		taskScheduler.RunScheduler()
+		defer taskScheduler.Shutdown()
+
+		var err error
+		for range 100 {
+			err = imgStore.DeleteBlob(repoName, contentDigest)
+			if err == nil {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		So(err, ShouldBeNil)
+		So(deleted.Load(), ShouldBeTrue)
+		So(markerWritten.Load(), ShouldBeFalse)
+	})
+}
+
+// One repo holds the only content-bearing copy, another holds a
+// zero-size deduped placeholder. With an empty cache and the rebuild gate armed,
+// GC must not delete the original or every duplicate becomes permanently unreadable.
+func TestDeleteBlobDeferredIssue2625CrossRepoOriginal(t *testing.T) {
+	testDir := "/oci-repo-test/dedupe-2625-cross-repo"
+	repoA := "repo-a"
+	repoB := "repo-b"
+
+	content := []byte("shared-layer-content")
+	digest := godigest.FromBytes(content)
+
+	originalPath := path.Join(testDir, repoA, ispec.ImageBlobsDir,
+		digest.Algorithm().String(), digest.Encoded())
+	placeholderPath := path.Join(testDir, repoB, ispec.ImageBlobsDir,
+		digest.Algorithm().String(), digest.Encoded())
+
+	newStoppedScheduler := func() *scheduler.Scheduler {
+		log := log.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+		taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
+		taskScheduler.RateLimit = 50 * time.Millisecond
+
+		return taskScheduler
+	}
+
+	statFn := func(_ context.Context, statPath string) (driver.FileInfo, error) {
+		switch statPath {
+		case originalPath:
+			return &mocks.FileInfoMock{SizeFn: func() int64 { return int64(len(content)) }}, nil
+		case placeholderPath:
+			return &mocks.FileInfoMock{SizeFn: func() int64 { return 0 }}, nil
+		default:
+			return nil, driver.PathNotFoundError{Path: statPath}
+		}
+	}
+
+	Convey("content original is preserved while rebuild is armed; placeholder still deletable", t, func() {
+		var deletedOriginal, deletedPlaceholder atomic.Bool
+
+		imgStore := createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
+			StatFn: statFn,
+			DeleteFn: func(ctx context.Context, deletePath string) error {
+				switch deletePath {
+				case originalPath:
+					deletedOriginal.Store(true)
+				case placeholderPath:
+					deletedPlaceholder.Store(true)
+				}
+
+				return nil
+			},
+		}, &mocks.CacheMock{
+			GetBlobFn: func(digest godigest.Digest) (string, error) {
+				return "", zerr.ErrCacheMiss
+			},
+			HasBlobFn: func(digest godigest.Digest, blob string) bool {
+				return false
+			},
+		})
+
+		imgStore.RunDedupeBlobs(time.Duration(0), newStoppedScheduler())
+
+		err := imgStore.DeleteBlob(repoA, digest)
+		So(err, ShouldNotBeNil)
+		So(errors.Is(err, zerr.ErrDedupeRebuildInProgress), ShouldBeTrue)
+		So(deletedOriginal.Load(), ShouldBeFalse)
+
+		err = imgStore.DeleteBlob(repoB, digest)
+		So(err, ShouldBeNil)
+		So(deletedPlaceholder.Load(), ShouldBeTrue)
+		So(deletedOriginal.Load(), ShouldBeFalse)
 	})
 }

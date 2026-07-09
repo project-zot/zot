@@ -345,7 +345,7 @@ func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 		origin := bucket.Bucket([]byte(constants.OriginalBucket))
 		if origin != nil {
 			originBlob := d.getOne(origin)
-			if originBlob != nil {
+			if originBlob != nil && string(originBlob) == path {
 				if err := origin.Delete([]byte(path)); err != nil {
 					d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", constants.OriginalBucket).
 						Str("path", path).Msg("failed to delete")

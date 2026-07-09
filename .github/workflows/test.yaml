@@ -14,20 +14,20 @@ permissions: read-all
 jobs:
   test-run-minimal:
     name: Running zot without extensions tests
-    runs-on: ubuntu-latest
+    runs-on: cncf-ubuntu-8-32-x86
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - name: Install go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           cache: false
           check-latest: true
           go-version: 1.26.x
       - name: Cache go dependencies
         id: cache-go-dependencies
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/go/pkg/mod
@@ -40,6 +40,7 @@ jobs:
           cd $GITHUB_WORKSPACE
           go mod download
       - uses: ./.github/actions/setup-localstack
+      - uses: ./.github/actions/setup-azurite
       - name: run zot minimal tests
         run: |
           cd $GITHUB_WORKSPACE
@@ -49,27 +50,29 @@ jobs:
           DYNAMODBMOCK_ENDPOINT: http://localhost:4566
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
+          AZURITEMOCK_ENDPOINT: http://127.0.0.1:10000/devstoreaccount1
       - name: upload coverage
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-minimal
           path: coverage-minimal.txt
       - uses: ./.github/actions/teardown-localstack
+      - uses: ./.github/actions/teardown-azurite
   test-run-extensions:
     name: Run zot with extensions tests
     runs-on: cncf-ubuntu-16-64-x86
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           cache: false
           check-latest: true
           go-version: 1.26.x
       - name: Cache go dependencies
         id: cache-go-dependencies
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/go/pkg/mod
@@ -82,6 +85,7 @@ jobs:
           cd $GITHUB_WORKSPACE
           go mod download
       - uses: ./.github/actions/setup-localstack
+      - uses: ./.github/actions/setup-azurite
       - name: run zot extended tests
         run: |
           cd $GITHUB_WORKSPACE
@@ -91,27 +95,29 @@ jobs:
           DYNAMODBMOCK_ENDPOINT: http://localhost:4566
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
+          AZURITEMOCK_ENDPOINT: http://127.0.0.1:10000/devstoreaccount1
       - name: upload coverage
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-extended
           path: coverage-extended.txt
       - uses: ./.github/actions/teardown-localstack
+      - uses: ./.github/actions/teardown-azurite
   test-run-devmode:
     name: Running development-mode tests on Linux
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           cache: false
           check-latest: true
           go-version: 1.26.x
       - name: Cache go dependencies
         id: cache-go-dependencies
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/go/pkg/mod
@@ -134,17 +140,17 @@ jobs:
     name: Running privileged tests on Linux
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           cache: false
           check-latest: true
           go-version: 1.26.x
       - name: Cache go dependencies
         id: cache-go-dependencies
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/go/pkg/mod
@@ -179,10 +185,10 @@ jobs:
     if: always()
     needs: [test-run-minimal,test-run-extensions,test-run-devmode,test-run-privileged]
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           cache: false
           check-latest: true
@@ -205,7 +211,7 @@ jobs:
           name: unified-coverage
           path: unified-coverage/*
       - name: upload code coverage
-        uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v6.0.1
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 

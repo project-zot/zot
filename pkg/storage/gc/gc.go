@@ -164,6 +164,14 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 		return err
 	}
 
+	// prune manifest/index descriptors whose blobs no longer exist in storage
+	if err := gc.removeStaleManifestEntries(repo, &index); err != nil {
+		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
+			Msg("failed to prune stale manifest entries")
+
+		return err
+	}
+
 	// update repos's index.json in storage
 	if !gc.opts.ImageRetention.DryRun {
 		/* this will update the index.json with manifests deleted above
@@ -194,6 +202,176 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 	}
 
 	return nil
+}
+
+func (gc GarbageCollect) removeStaleManifestEntries(repo string, index *ispec.Index) error {
+	if gc.opts.ImageRetention.DryRun {
+		return nil
+	}
+
+	allBlobs, err := gc.imgStore.GetAllBlobs(repo)
+	if err != nil {
+		var pathNotFoundErr driver.PathNotFoundError
+		if !errors.As(err, &pathNotFoundErr) {
+			return err
+		}
+
+		allBlobs = []godigest.Digest{}
+	}
+
+	existingBlobs := make(map[string]bool, len(allBlobs))
+	for _, d := range allBlobs {
+		existingBlobs[d.String()] = true
+	}
+
+	kept := make([]ispec.Descriptor, 0, len(index.Manifests))
+
+	for _, desc := range index.Manifests {
+		if !existingBlobs[desc.Digest.String()] {
+			if err := gc.syncStaleManifestRemoval(repo, desc); err != nil {
+				return err
+			}
+
+			continue
+		}
+
+		if desc.MediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(desc.MediaType) {
+			stale, err := gc.imageIndexHasStaleNestedManifests(repo, desc, existingBlobs)
+			if err != nil {
+				return err
+			}
+
+			if stale {
+				if err := gc.syncStaleManifestRemoval(repo, desc); err != nil {
+					return err
+				}
+
+				continue
+			}
+		}
+
+		kept = append(kept, desc)
+	}
+
+	if removed := len(index.Manifests) - len(kept); removed > 0 {
+		gc.log.Info().Str("module", "gc").Str("repository", repo).
+			Int("removed", removed).Int("kept", len(kept)).
+			Msg("pruned stale manifest entries from index")
+	}
+
+	index.Manifests = kept
+
+	return nil
+}
+
+// syncStaleManifestRemoval best-effort syncs metaDB before a stale descriptor is removed from
+// index.Manifests (index.json is persisted later in cleanRepo). metaDB failures are logged but
+// do not abort stale pruning — storage repair must not depend on secondary index consistency.
+// The blob is typically already absent from storage; cosign signatures are cleaned up via tag annotation.
+func (gc GarbageCollect) syncStaleManifestRemoval(repo string, desc ispec.Descriptor) error {
+	tag, hasTag := getDescriptorTag(desc)
+	ref := tag
+	if ref == "" {
+		ref = desc.Digest.String()
+	}
+
+	var subjectDigest godigest.Digest
+
+	isCosignSig := hasTag && zcommon.IsCosignSignature(tag)
+	if isCosignSig {
+		subjectDigest = getSubjectFromCosignTag(tag)
+		if err := subjectDigest.Validate(); err != nil {
+			gc.log.Warn().Err(err).Str("module", "gc").Str("repository", repo).
+				Str("reference", ref).Str("digest", desc.Digest.String()).
+				Msg("invalid cosign tag subject digest, falling back to RemoveRepoReference")
+
+			isCosignSig = false
+			subjectDigest = ""
+		}
+	}
+
+	if gc.metaDB != nil {
+		if isCosignSig {
+			if err := gc.metaDB.DeleteSignature(repo, subjectDigest, mTypes.SignatureMetadata{
+				SignatureDigest: desc.Digest.String(),
+				SignatureType:   storage.CosignType,
+			}); err != nil {
+				gc.log.Error().Err(err).Str("module", "gc").Str("component", "metadb").
+					Str("repository", repo).Str("digest", desc.Digest.String()).Str("reference", ref).
+					Msg("failed to remove stale cosign signature from metaDB, continuing stale prune")
+			}
+		} else if err := gc.metaDB.RemoveRepoReference(repo, ref, desc.Digest); err != nil {
+			gc.log.Error().Err(err).Str("module", "gc").Str("component", "metadb").
+				Str("repository", repo).Str("digest", desc.Digest.String()).Str("reference", ref).
+				Msg("failed to remove stale manifest reference from metaDB, continuing stale prune")
+		}
+	}
+
+	logEvent := gc.log.Info().Str("module", "gc").
+		Str("repository", repo).
+		Str("reference", ref).
+		Str("digest", desc.Digest.String()).
+		Str("decision", "delete").
+		Str("reason", "staleManifestPrune")
+
+	if subjectDigest != "" {
+		logEvent = logEvent.Str("subject", subjectDigest.String())
+	}
+
+	logEvent.Msg("pruned stale manifest entry from index")
+
+	if gc.auditLog != nil {
+		auditEvent := gc.auditLog.Info().Str("module", "gc").
+			Str("repository", repo).
+			Str("reference", ref).
+			Str("digest", desc.Digest.String()).
+			Str("decision", "delete").
+			Str("reason", "staleManifestPrune")
+
+		if subjectDigest != "" {
+			auditEvent = auditEvent.Str("subject", subjectDigest.String())
+		}
+
+		auditEvent.Msg("pruned stale manifest entry from index")
+	}
+
+	return nil
+}
+
+// imageIndexHasStaleNestedManifests reports whether the top-level image index descriptor
+// should be dropped from index.json. The index blob itself is never rewritten.
+// Sparse indexes are supported: if any nested manifest blob still exists, return false
+// (not stale) so the tagged index entry is kept even when other nested manifests are missing.
+// Return true only when every nested manifest blob is gone (or the index blob is missing).
+// Empty manifest lists are valid OCI and are kept when the index blob still exists.
+func (gc GarbageCollect) imageIndexHasStaleNestedManifests(repo string, desc ispec.Descriptor,
+	existingBlobs map[string]bool,
+) (bool, error) {
+	indexImage, err := common.GetImageIndex(gc.imgStore, repo, desc.Digest, gc.log)
+	if err != nil {
+		var pathNotFoundErr driver.PathNotFoundError
+		if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
+			// Index blob missing — top-level descriptor is stale.
+			return true, nil
+		}
+
+		return false, err
+	}
+
+	if len(indexImage.Manifests) == 0 {
+		return false, nil
+	}
+
+	for _, nested := range indexImage.Manifests {
+		if existingBlobs[nested.Digest.String()] {
+			// At least one nested manifest remains; keep this sparse index in index.json.
+			// Early return (not continue): stale=false is decided as soon as one survivor exists.
+			return false, nil
+		}
+	}
+
+	// Every nested manifest blob is missing.
+	return true, nil
 }
 
 func (gc GarbageCollect) removeManifestsPerRepoPolicy(ctx context.Context, repo string, index *ispec.Index) error {
@@ -230,7 +408,7 @@ func (gc GarbageCollect) removeManifestsPerRepoPolicy(ctx context.Context, repo 
 			}
 
 			// apply image retention policy
-			gcedUntagged, err = gc.removeUntaggedManifests(repo, index, referenced)
+			gcedUntagged, err = gc.removeUntaggedManifests(ctx, repo, index, referenced)
 			if err != nil {
 				return err
 			}
@@ -521,7 +699,7 @@ func (gc GarbageCollect) removeManifest(repo string, index *ispec.Index,
 	return true, nil
 }
 
-func (gc GarbageCollect) removeUntaggedManifests(repo string, index *ispec.Index,
+func (gc GarbageCollect) removeUntaggedManifests(ctx context.Context, repo string, index *ispec.Index,
 	referenced map[godigest.Digest]bool,
 ) (bool, error) {
 	var gced bool
@@ -529,6 +707,27 @@ func (gc GarbageCollect) removeUntaggedManifests(repo string, index *ispec.Index
 	var err error
 
 	gc.log.Debug().Str("module", "gc").Str("repository", repo).Msg("manifests without tags")
+
+	retainUntagged := make(map[string]bool)
+	if gc.policyMgr.HasUntaggedRetention(repo) {
+		if gc.metaDB != nil {
+			repoMeta, err := gc.metaDB.GetRepoMeta(ctx, repo)
+			if err != nil {
+				gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
+					Msg("failed to get repoMeta for untagged retention")
+
+				return false, err
+			}
+
+			for _, digestStr := range gc.policyMgr.GetRetainedUntaggedFromMetaDB(ctx, repoMeta, *index) {
+				retainUntagged[digestStr] = true
+			}
+		} else {
+			gc.log.Warn().Str("module", "gc").Str("repository", repo).
+				Msg("keepUntagged policy requires metadata database;" +
+					" ignoring keepUntagged rules and using delay-based untagged cleanup")
+		}
+	}
 
 	for _, desc := range index.Manifests {
 		// skip manifests referenced in image indexes
@@ -541,6 +740,10 @@ func (gc GarbageCollect) removeUntaggedManifests(repo string, index *ispec.Index
 			desc.MediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(desc.MediaType) {
 			_, ok := getDescriptorTag(desc)
 			if !ok {
+				if retainUntagged[desc.Digest.String()] {
+					continue
+				}
+
 				gced, err = gc.gcManifest(repo, index, desc, "", "", gc.opts.ImageRetention.Delay)
 				if err != nil {
 					return false, err
@@ -876,7 +1079,9 @@ func isBlobOlderThan(imgStore types.ImageStore, repo string,
 
 func getSubjectFromCosignTag(tag string) godigest.Digest {
 	alg := strings.Split(tag, "-")[0]
-	encoded := strings.Split(strings.Split(tag, "-")[1], ".sig")[0]
+	encoded := strings.Split(tag, "-")[1]
+	encoded = strings.TrimSuffix(encoded, "."+cosignSignatureTagSuffix)
+	encoded = strings.TrimSuffix(encoded, "."+SBOMTagSuffix)
 
 	return godigest.NewDigestFromEncoded(godigest.Algorithm(alg), encoded)
 }

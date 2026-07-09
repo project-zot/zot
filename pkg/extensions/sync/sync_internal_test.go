@@ -974,7 +974,7 @@ func TestDestinationRegistry(t *testing.T) {
 		imgStore := getImageStoreFromImageReference(repoName, imageReference, log)
 
 		// create a blob/layer
-		upload, err := imgStore.NewBlobUpload(repoName)
+		upload, err := imgStore.NewBlobUpload(context.Background(), repoName)
 		So(err, ShouldBeNil)
 		So(upload, ShouldNotBeEmpty)
 
@@ -983,7 +983,7 @@ func TestDestinationRegistry(t *testing.T) {
 		buflen := buf.Len()
 		digest := godigest.FromBytes(content)
 		So(digest, ShouldNotBeNil)
-		blob, err := imgStore.PutBlobChunkStreamed(repoName, upload, buf)
+		blob, err := imgStore.PutBlobChunkStreamed(context.Background(), repoName, upload, buf)
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
 		bdgst1 := digest
@@ -1000,14 +1000,14 @@ func TestDestinationRegistry(t *testing.T) {
 
 		for i := 0; i < 4; i++ {
 			// upload image config blob
-			upload, err := imgStore.NewBlobUpload(repoName)
+			upload, err := imgStore.NewBlobUpload(context.Background(), repoName)
 			So(err, ShouldBeNil)
 			So(upload, ShouldNotBeEmpty)
 
 			cblob, cdigest := GetRandomImageConfig()
 			buf := bytes.NewBuffer(cblob)
 			buflen := buf.Len()
-			blob, err := imgStore.PutBlobChunkStreamed(repoName, upload, buf)
+			blob, err := imgStore.PutBlobChunkStreamed(context.Background(), repoName, upload, buf)
 			So(err, ShouldBeNil)
 			So(blob, ShouldEqual, buflen)
 
@@ -1035,7 +1035,9 @@ func TestDestinationRegistry(t *testing.T) {
 			So(err, ShouldBeNil)
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
-			_, _, err = imgStore.PutImageManifest(repoName, digest.String(), ispec.MediaTypeImageManifest, content, nil)
+
+			_, _, err = imgStore.PutImageManifest(
+				context.Background(), repoName, digest.String(), ispec.MediaTypeImageManifest, content, nil)
 			So(err, ShouldBeNil)
 
 			index.Manifests = append(index.Manifests, ispec.Descriptor{
@@ -1051,7 +1053,7 @@ func TestDestinationRegistry(t *testing.T) {
 		indexDigest := godigest.FromBytes(indexContent)
 		So(indexDigest, ShouldNotBeNil)
 
-		_, _, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageIndex, indexContent, nil)
+		_, _, err = imgStore.PutImageManifest(context.Background(), repoName, "1.0", ispec.MediaTypeImageIndex, indexContent, nil)
 		So(err, ShouldBeNil)
 
 		Convey("sync index image", func() {
@@ -1187,11 +1189,11 @@ func TestDestinationRegistry(t *testing.T) {
 				So(digest, ShouldNotBeNil)
 
 				// Upload blob
-				upload, err := tempImgStore.NewBlobUpload(repoName)
+				upload, err := tempImgStore.NewBlobUpload(context.Background(), repoName)
 				So(err, ShouldBeNil)
 				So(upload, ShouldNotBeEmpty)
 
-				blob, err := tempImgStore.PutBlobChunkStreamed(repoName, upload, buf)
+				blob, err := tempImgStore.PutBlobChunkStreamed(context.Background(), repoName, upload, buf)
 				So(err, ShouldBeNil)
 				So(blob, ShouldEqual, buflen)
 
@@ -1203,12 +1205,12 @@ func TestDestinationRegistry(t *testing.T) {
 				cdigest := godigest.FromBytes(cblob)
 				So(cdigest, ShouldNotBeNil)
 
-				upload, err = tempImgStore.NewBlobUpload(repoName)
+				upload, err = tempImgStore.NewBlobUpload(context.Background(), repoName)
 				So(err, ShouldBeNil)
 				So(upload, ShouldNotBeEmpty)
 
 				cbuf := bytes.NewBuffer(cblob)
-				blob, err = tempImgStore.PutBlobChunkStreamed(repoName, upload, cbuf)
+				blob, err = tempImgStore.PutBlobChunkStreamed(context.Background(), repoName, upload, cbuf)
 				So(err, ShouldBeNil)
 				So(blob, ShouldEqual, len(cblob))
 
@@ -1238,7 +1240,9 @@ func TestDestinationRegistry(t *testing.T) {
 				So(manifestDigest, ShouldNotBeNil)
 
 				// Store the manifest in the temp image store
-				_, _, err = tempImgStore.PutImageManifest(repoName, manifestDigest.String(), ispec.MediaTypeImageManifest, manifestContent, nil)
+
+				_, _, err = tempImgStore.PutImageManifest(
+					context.Background(), repoName, manifestDigest.String(), ispec.MediaTypeImageManifest, manifestContent, nil)
 				So(err, ShouldBeNil)
 
 				// Add to index
@@ -1256,7 +1260,9 @@ func TestDestinationRegistry(t *testing.T) {
 			So(indexDigest, ShouldNotBeNil)
 
 			// Store the index manifest in the temp image store
-			_, _, err = tempImgStore.PutImageManifest(repoName, indexDigest.String(), ispec.MediaTypeImageIndex, indexContent, nil)
+
+			_, _, err = tempImgStore.PutImageManifest(
+				context.Background(), repoName, indexDigest.String(), ispec.MediaTypeImageIndex, indexContent, nil)
 			So(err, ShouldBeNil)
 
 			// Now remove one of the child manifest blobs to trigger the error
@@ -1293,7 +1299,7 @@ func TestDestinationRegistry(t *testing.T) {
 			// upload image
 
 			// create a blob/layer
-			upload, err := imgStore.NewBlobUpload(repoName)
+			upload, err := imgStore.NewBlobUpload(context.Background(), repoName)
 			So(err, ShouldBeNil)
 			So(upload, ShouldNotBeEmpty)
 
@@ -1302,7 +1308,7 @@ func TestDestinationRegistry(t *testing.T) {
 			buflen := buf.Len()
 			digest := godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
-			blob, err := imgStore.PutBlobChunkStreamed(repoName, upload, buf)
+			blob, err := imgStore.PutBlobChunkStreamed(context.Background(), repoName, upload, buf)
 			So(err, ShouldBeNil)
 			So(blob, ShouldEqual, buflen)
 			bdgst1 := digest
@@ -1313,14 +1319,14 @@ func TestDestinationRegistry(t *testing.T) {
 			So(blob, ShouldEqual, buflen)
 
 			// upload image config blob
-			upload, err = imgStore.NewBlobUpload(repoName)
+			upload, err = imgStore.NewBlobUpload(context.Background(), repoName)
 			So(err, ShouldBeNil)
 			So(upload, ShouldNotBeEmpty)
 
 			cblob, cdigest := GetRandomImageConfig()
 			buf = bytes.NewBuffer(cblob)
 			buflen = buf.Len()
-			blob, err = imgStore.PutBlobChunkStreamed(repoName, upload, buf)
+			blob, err = imgStore.PutBlobChunkStreamed(context.Background(), repoName, upload, buf)
 			So(err, ShouldBeNil)
 			So(blob, ShouldEqual, buflen)
 
@@ -1349,7 +1355,7 @@ func TestDestinationRegistry(t *testing.T) {
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 
-			_, _, err = imgStore.PutImageManifest(repoName, "2.0", ispec.MediaTypeImageManifest, content, nil)
+			_, _, err = imgStore.PutImageManifest(context.Background(), repoName, "2.0", ispec.MediaTypeImageManifest, content, nil)
 			So(err, ShouldBeNil)
 
 			Convey("sync image", func() {
@@ -1549,6 +1555,37 @@ func TestNewClientTimeoutBehavior(t *testing.T) {
 			// Allow small tolerance for timing variability (5ms)
 			So(elapsed, ShouldBeGreaterThanOrEqualTo, opts.SyncTimeout-5*time.Millisecond)
 			So(elapsed, ShouldBeLessThan, serverDelay)
+		})
+	})
+}
+
+func TestHTTPRetryDelayBounds(t *testing.T) {
+	Convey("httpRetryDelayBounds maps sync config to regclient delay args", t, func() {
+		retryDelay := 1 * time.Second
+		maxRetryDelay := 30 * time.Second
+
+		Convey("no retryDelay returns ok=false", func() {
+			delayInit, delayMax, ok := httpRetryDelayBounds(syncconf.RegistryConfig{})
+			So(ok, ShouldBeFalse)
+			So(delayInit, ShouldEqual, time.Duration(0))
+			So(delayMax, ShouldEqual, time.Duration(0))
+		})
+
+		Convey("retryDelay only defaults max to init (fixed interval)", func() {
+			delayInit, delayMax, ok := httpRetryDelayBounds(syncconf.RegistryConfig{RetryDelay: &retryDelay})
+			So(ok, ShouldBeTrue)
+			So(delayInit, ShouldEqual, retryDelay)
+			So(delayMax, ShouldEqual, retryDelay)
+		})
+
+		Convey("maxRetryDelay greater than retryDelay enables exponential backoff cap", func() {
+			delayInit, delayMax, ok := httpRetryDelayBounds(syncconf.RegistryConfig{
+				RetryDelay:    &retryDelay,
+				MaxRetryDelay: &maxRetryDelay,
+			})
+			So(ok, ShouldBeTrue)
+			So(delayInit, ShouldEqual, retryDelay)
+			So(delayMax, ShouldEqual, maxRetryDelay)
 		})
 	})
 }

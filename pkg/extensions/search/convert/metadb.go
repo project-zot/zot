@@ -263,26 +263,10 @@ func GetSignaturesInfo(isSigned bool, signatures mTypes.ManifestSignatures) []*g
 	for sigType, signatures := range signatures {
 		for _, sig := range signatures {
 			for _, layer := range sig.LayersInfo {
-				var (
-					isTrusted bool
-					author    string
-					tool      string
-				)
-
-				if layer.Signer != "" {
-					author = layer.Signer
-
-					if !layer.Date.IsZero() && time.Now().After(layer.Date) {
-						isTrusted = false
-					} else {
-						isTrusted = true
-					}
-				} else {
-					isTrusted = false
-					author = ""
-				}
-
-				tool = sigType
+				// Signer is only set by UpdateSignaturesValidity when VerifySignature succeeds, so empty Signer means untrusted.
+				tool := sigType
+				author := layer.Signer
+				isTrusted := author != ""
 
 				signaturesInfo = append(signaturesInfo,
 					&gql_generated.SignatureSummary{Tool: &tool, IsTrusted: &isTrusted, Author: &author})
@@ -491,6 +475,8 @@ func ImageIndex2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullImage
 		imageLastUpdated = &indexLastUpdated
 	}
 
+	indexArtifactType := zcommon.GetIndexArtifactType(*fullImageMeta.Index)
+
 	indexSummary := gql_generated.ImageSummary{
 		RepoName:          &repo,
 		Tag:               &tag,
@@ -515,6 +501,7 @@ func ImageIndex2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullImage
 		Vendor:            &annotations.Vendor,
 		Authors:           &annotations.Authors,
 		Referrers:         getReferrers(fullImageMeta.Referrers),
+		ArtifactType:      &indexArtifactType,
 	}
 
 	return &indexSummary, indexBlobs, nil
@@ -610,6 +597,7 @@ func ImageManifest2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullIm
 		Vendor:            &annotations.Vendor,
 		Authors:           &authors,
 		Referrers:         manifestSummary.Referrers,
+		ArtifactType:      &artifactType,
 	}
 
 	return &imageSummary, imageBlobsMap, nil

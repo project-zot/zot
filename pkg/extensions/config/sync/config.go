@@ -33,6 +33,7 @@ type RegistryConfig struct {
 	CertDir                string
 	MaxRetries             *int
 	RetryDelay             *time.Duration
+	MaxRetryDelay          *time.Duration // max HTTP retry backoff; when unset defaults to retryDelay (fixed delay)
 	OnlySigned             *bool
 	SyncLegacyCosignTags   *bool // when unset, defaults to true
 	CredentialHelper       string

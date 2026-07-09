@@ -1314,10 +1314,11 @@ func (dwr *DynamoDB) UpdateSignaturesValidity(ctx context.Context, repo string, 
 
 				if isTrusted {
 					layerInfo.Signer = author
+				} else {
+					layerInfo.Signer = ""
 				}
 
 				if !date.IsZero() {
-					layerInfo.Signer = author
 					layerInfo.Date = timestamppb.New(date)
 				}
 

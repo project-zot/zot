@@ -186,7 +186,7 @@ func TestGetSignaturesInfo(t *testing.T) {
 		signaturesSummary := convert.GetSignaturesInfo(true, signatures[digest.String()])
 		So(signaturesSummary, ShouldNotBeEmpty)
 		So(*signaturesSummary[0].Author, ShouldEqual, "author")
-		So(*signaturesSummary[0].IsTrusted, ShouldEqual, false)
+		So(*signaturesSummary[0].IsTrusted, ShouldEqual, true)
 		So(*signaturesSummary[0].Tool, ShouldEqual, "notation")
 	})
 }

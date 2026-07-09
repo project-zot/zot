@@ -1,7 +1,7 @@
 function nats_server_start() {
   local cname="$1" # container name
   local free_port="$2"
-  docker run -d --name ${cname} -p ${free_port}:4222 nats:2.11.1 --user jane.joe --pass opensesame
+  docker run -d --name ${cname} -p ${free_port}:4222 ghcr.io/project-zot/ci-images/nats:2.11.1 --user jane.joe --pass opensesame
 }
 
 function nats_server_stop() {
@@ -18,7 +18,7 @@ function wait_event_on_subject() {
 
     mkdir -p "${dir}"
 
-    docker run -d --rm --network host --user "$(id -u):$(id -g)" -v "${dir}":/data natsio/nats-box:latest  \
+    docker run -d --rm --network host --user "$(id -u):$(id -g)" -v "${dir}":/data ghcr.io/project-zot/ci-images/nats-box:0.19.7  \
         nats sub ${subject} --user jane.joe --password opensesame \
         --server nats://127.0.0.1:${port} --count=${count} --wait=5s --raw --dump=/data
 
@@ -40,7 +40,7 @@ function http_server_start() {
     docker run -d --rm --name "${cname}" \
         -p "${port}:8080" \
         -v "${dir}":/data \
-        python:3 sh -c ' \
+        ghcr.io/project-zot/ci-images/python:3.11 sh -c ' \
             echo "Installing Flask..." >&2 && \
             pip install flask > /dev/null 2>&1 && \
             echo "Flask installed, starting server..." >&2 && \

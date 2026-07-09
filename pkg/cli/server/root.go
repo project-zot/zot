@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -621,7 +622,7 @@ func validateStorageConfigSection(
 	// Redirect mode requires a backend capable of issuing external signed URLs.
 	// With local storage there is no target URL to redirect clients to.
 	if storageConfig.RedirectBlobURL && len(storageConfig.StorageDriver) == 0 {
-		msg := "invalid storage config, redirectBlobURL is supported only for s3/gcs storage"
+		msg := "invalid storage config, redirectBlobURL is supported only for s3/gcs/azure storage"
 		logger.Error().Err(zerr.ErrBadConfig).Bool("redirectBlobURL", storageConfig.RedirectBlobURL).
 			Str("storageDriver", storageConstants.LocalStorageDriverName).Msg(msg)
 
@@ -629,9 +630,10 @@ func validateStorageConfigSection(
 	}
 
 	if len(storageConfig.StorageDriver) != 0 {
-		// enforce s3/gcs driver in case of using storage driver
+		// enforce s3/gcs/azure driver in case of using storage driver
 		if storageConfig.StorageDriver["name"] != storageConstants.S3StorageDriverName &&
-			storageConfig.StorageDriver["name"] != storageConstants.GCSStorageDriverName {
+			storageConfig.StorageDriver["name"] != storageConstants.GCSStorageDriverName &&
+			storageConfig.StorageDriver["name"] != storageConstants.AzureStorageDriverName {
 			msg := "unsupported storage driver"
 			logger.Error().Err(zerr.ErrBadConfig).Interface("storageDriver", storageConfig.StorageDriver["name"]).Msg(msg)
 
@@ -654,7 +656,7 @@ func validateStorageConfigSection(
 			// Apply the same redirect precondition per subpath because subpaths can
 			// override driver config independently from the default store.
 			if subStorageConfig.RedirectBlobURL && len(subStorageConfig.StorageDriver) == 0 {
-				msg := "invalid storage config, redirectBlobURL is supported only for s3/gcs storage"
+				msg := "invalid storage config, redirectBlobURL is supported only for s3/gcs/azure storage"
 				logger.Error().Err(zerr.ErrBadConfig).Str("subpath", route).
 					Bool("redirectBlobURL", subStorageConfig.RedirectBlobURL).
 					Str("storageDriver", storageConstants.LocalStorageDriverName).Msg(msg)
@@ -664,7 +666,8 @@ func validateStorageConfigSection(
 
 			if len(subStorageConfig.StorageDriver) != 0 {
 				if subStorageConfig.StorageDriver["name"] != storageConstants.S3StorageDriverName &&
-					subStorageConfig.StorageDriver["name"] != storageConstants.GCSStorageDriverName {
+					subStorageConfig.StorageDriver["name"] != storageConstants.GCSStorageDriverName &&
+					subStorageConfig.StorageDriver["name"] != storageConstants.AzureStorageDriverName {
 					msg := "unsupported storage driver"
 					logger.Error().Err(zerr.ErrBadConfig).Str("subpath", route).Interface("storageDriver",
 						subStorageConfig.StorageDriver["name"]).Msg(msg)
@@ -813,6 +816,37 @@ func validateBearerConfig(cfg *config.Config, logger zlog.Logger) error {
 		logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
 		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+	}
+
+	if bearer.UpstreamTokenEndpoint != nil {
+		upstreamTokenEndpoint := bearer.UpstreamTokenEndpoint
+		if upstreamTokenEndpoint.Realm == "" || upstreamTokenEndpoint.Service == "" {
+			msg := "upstreamTokenEndpoint.realm and upstreamTokenEndpoint.service must be configured together"
+			logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
+
+			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+		}
+
+		upstreamRealm, err := url.Parse(upstreamTokenEndpoint.Realm)
+		if err != nil || upstreamRealm.Scheme == "" || upstreamRealm.Host == "" {
+			msg := "upstreamTokenEndpoint.realm must be an absolute URL"
+			logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
+
+			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+		}
+
+		if !strings.EqualFold(upstreamRealm.Scheme, constants.SchemeHTTPS) {
+			if !strings.EqualFold(upstreamRealm.Scheme, constants.SchemeHTTP) || !upstreamTokenEndpoint.AllowInsecureHTTP {
+				msg := "upstreamTokenEndpoint.realm must use https unless " +
+					"upstreamTokenEndpoint.allowInsecureHttp is true"
+				logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
+
+				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+			}
+
+			logger.Warn().Msg("upstreamTokenEndpoint.allowInsecureHttp is enabled; " +
+				"token endpoint credentials may be sent over plaintext HTTP")
+		}
 	}
 
 	if bearer.AWSSecretsManager != nil {
@@ -1636,6 +1670,23 @@ func validateSync(config *config.Config, logger zlog.Logger) error {
 			// check retry options are configured for sync
 			if regCfg.MaxRetries != nil && regCfg.RetryDelay == nil {
 				msg := "retryDelay is required when using maxRetries"
+				logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
+					extensionsConfig.Sync.Registries[regID]).Msg(msg)
+
+				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+			}
+
+			if regCfg.MaxRetryDelay != nil && regCfg.RetryDelay == nil {
+				msg := "retryDelay is required when using maxRetryDelay"
+				logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
+					extensionsConfig.Sync.Registries[regID]).Msg(msg)
+
+				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+			}
+
+			if regCfg.MaxRetryDelay != nil && regCfg.RetryDelay != nil &&
+				*regCfg.MaxRetryDelay < *regCfg.RetryDelay {
+				msg := "maxRetryDelay must be greater than or equal to retryDelay"
 				logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
 					extensionsConfig.Sync.Registries[regID]).Msg(msg)
 

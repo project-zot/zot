@@ -1,0 +1,12 @@
+name: 'Setup Azurite'
+description: 'Download & run the Azurite Azure Storage emulator for integration tests'
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      run: |
+        docker run -d --name azurite -p 10000:10000 \
+          ghcr.io/project-zot/ci-images/azurite:3.34.0 \
+          azurite-blob --blobHost 0.0.0.0 --skipApiVersionCheck --inMemoryPersistence --silent
+        echo "Waiting for azurite..."
+        timeout 30s bash -c 'until curl -s -o /dev/null http://localhost:10000/devstoreaccount1; do sleep 1; done'

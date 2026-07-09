@@ -43,6 +43,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/debug/pprof"
 	debug "zotregistry.dev/zot/v2/pkg/debug/swagger"
 	ext "zotregistry.dev/zot/v2/pkg/extensions"
+	"zotregistry.dev/zot/v2/pkg/extensions/events"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/meta"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
@@ -72,7 +73,8 @@ func (rh *RouteHandler) SetupRoutes() {
 	rh.c.Router.Path("/startupz").Handler(rh.c.Healthz.Handler)
 
 	// first get Auth middleware in order to first setup openid/ldap/htpasswd, before oidc provider routes are setup
-	authHandler := AuthHandler(rh.c)
+	auth := AuthHandler(rh.c)
+	authHandler := auth.Middleware
 
 	// Get CORS config safely
 	allowOrigin := rh.c.Config.GetAllowOrigin()
@@ -80,6 +82,11 @@ func (rh *RouteHandler) SetupRoutes() {
 
 	// Get auth config for OpenID checks
 	authConfig := rh.c.Config.CopyAuthConfig()
+	if auth.TokenHandler != nil {
+		rh.c.Router.HandleFunc(constants.TokenPath, tokenExchangeOptions).Methods(http.MethodOptions)
+		rh.c.Router.HandleFunc(constants.TokenPath, auth.TokenHandler).Methods(http.MethodGet, http.MethodPost)
+	}
+
 	if authConfig.IsOpenIDAuthEnabled() {
 		// login path for openID
 		rh.c.Router.HandleFunc(constants.LoginPath, rh.AuthURLHandler())
@@ -609,14 +616,16 @@ func getReferrers(ctx context.Context, routeHandler *RouteHandler,
 
 // GetReferrers godoc
 // @Summary Get referrers for a given digest
-// @Description Get referrers given a digest
+// @Description Returns referrers for a subject digest as an OCI image index. Missing repositories and
+// @Description subjects with no referrers return 200 with an empty manifests list.
 // @Accept  json
 // @Produce application/vnd.oci.image.index.v1+json
 // @Param   name       path    string     true        "repository name"
 // @Param   digest     path    string     true        "digest"
 // @Param artifactType query string false "artifact type"
 // @Success 200 {object} api.ImageIndex
-// @Failure 404 {string} string "not found"
+// @Failure 400 {string} string "bad request (invalid digest)"
+// @Failure 404 {string} string "not found (manifest unknown)"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/referrers/{digest} [get].
 func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http.Request) {
@@ -651,7 +660,7 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 
 	referrers, err := getReferrers(request.Context(), rh, imgStore, name, digest, artifactTypes)
 	if err != nil {
-		if errors.Is(err, zerr.ErrManifestNotFound) || errors.Is(err, zerr.ErrRepoNotFound) {
+		if errors.Is(err, zerr.ErrManifestNotFound) {
 			rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).
 				Msg("failed to get manifest")
 			response.WriteHeader(http.StatusNotFound)
@@ -718,6 +727,13 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
+	if zcommon.LooksLikeDigestReference(reference) {
+		e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(map[string]string{"reference": reference})
+		zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+
+		return
+	}
+
 	mediaType := request.Header.Get("Content-Type")
 	compatConfig := rh.c.Config.GetCompat()
 
@@ -779,7 +795,9 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
-	digest, subjectDigest, err := imgStore.PutImageManifest(name, reference, mediaType, body, digestQueryTags)
+	ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
+
+	digest, subjectDigest, err := imgStore.PutImageManifest(ctx, name, reference, mediaType, body, digestQueryTags)
 	if err != nil {
 		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
@@ -806,7 +824,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 			// could be syscall.EMFILE (Err:0x18 too many opened files), etc
 			rh.c.Log.Error().Err(err).Msg("unexpected error, performing cleanup")
 
-			if err = imgStore.DeleteImageManifest(name, reference, false); err != nil {
+			if err = imgStore.DeleteImageManifest(ctx, name, reference, false); err != nil {
 				// deletion of image manifest is important, but not critical for image repo consistency
 				// in the worst scenario a partial manifest file written to disk will not affect the repo because
 				// the new manifest was not added to "index.json" file (it is possible that GC will take care of it)
@@ -951,7 +969,9 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
-	err = imgStore.DeleteImageManifest(name, reference, detectCollision)
+	ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
+
+	err = imgStore.DeleteImageManifest(ctx, name, reference, detectCollision)
 	if err != nil { //nolint: dupl
 		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
@@ -1107,7 +1127,8 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 	var blen int64
 
 	if userCanMount {
-		ok, blen, err = imgStore.CheckBlob(name, digest)
+		ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
+		ok, blen, err = imgStore.CheckBlob(ctx, name, digest)
 	} else {
 		var lockLatency time.Time
 
@@ -1531,7 +1552,8 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 	}
 
 	if rangeHeaderPresent {
-		ok, bsize, err := imgStore.CheckBlob(name, digest)
+		ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
+		ok, bsize, err := imgStore.CheckBlob(ctx, name, digest)
 		if err != nil {
 			writeBlobError(err)
 
@@ -1696,15 +1718,25 @@ func (rh *RouteHandler) DeleteBlob(response http.ResponseWriter, request *http.R
 
 // CreateBlobUpload godoc
 // @Summary Create image blob/layer upload
-// @Description Create a new image blob/layer upload
+// @Description Create a new image blob/layer upload. With no query parameters, starts an upload session
+// @Description and returns 202.
+// @Description A `digest` query parameter requests a monolithic upload and returns 201 on success.
+// @Description A `mount` query parameter requests a cross-repository blob mount and returns 201 or 202.
 // @Accept  json
 // @Produce json
 // @Param   name    path    string     true        "repository name"
+// @Param   digest  query   string     false       "blob digest for monolithic upload"
+// @Param   mount   query   string     false       "blob digest to mount into the repository"
+// @Success 201 "created"
+// @Header  201 {string} Location "/v2/{name}/blobs/{digest}"
+// @Header  201 {string} Blob-Upload-UUID "Opaque blob upload session identifier"
 // @Success 202 "accepted"
 // @Header  202 {string} Location "/v2/{name}/blobs/uploads/{session_id}"
 // @Header  202 {string} Range "0-0"
+// @Failure 400 {string} string "bad request (invalid digest or upload)"
 // @Failure 401 {string} string "unauthorized"
 // @Failure 404 {string} string "not found"
+// @Failure 415 {string} string "unsupported media type (monolithic upload requires application/octet-stream)"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads [post].
 func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *http.Request) {
@@ -1718,6 +1750,8 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 	}
 
 	imgStore := rh.getImageStore(name)
+
+	ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
 
 	// currently zot does not support cross-repository mounting, following dist-spec and returning 202
 	if mountDigests, ok := request.URL.Query()["mount"]; ok {
@@ -1750,11 +1784,11 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 		// check blob looks for actual path (name+mountDigests[0]) first then look for cache and
 		// if found in cache, will do hard link and if fails we will start new upload.
 		if userCanMount {
-			_, _, err = imgStore.CheckBlob(name, mountDigest)
+			_, _, err = imgStore.CheckBlob(ctx, name, mountDigest)
 		}
 
 		if err != nil || !userCanMount {
-			upload, err := imgStore.NewBlobUpload(name)
+			upload, err := imgStore.NewBlobUpload(ctx, name)
 			if err != nil {
 				details := zerr.GetDetails(err)
 				if errors.Is(err, zerr.ErrRepoNotFound) {
@@ -1806,20 +1840,26 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 
 		digestStr := digests[0]
 
-		digest := godigest.Digest(digestStr)
+		digest, err := godigest.Parse(digestStr)
+		if err != nil {
+			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(map[string]string{"digest": digestStr})
+			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+
+			return
+		}
 
 		var contentLength int64
 
-		contentLength, err := strconv.ParseInt(request.Header.Get("Content-Length"), 10, 64)
-		if err != nil || contentLength <= 0 {
-			rh.c.Log.Warn().Str("actual", request.Header.Get("Content-Length")).Msg("invalid content length")
+		// request.ContentLength is pre-parsed by net/http: 0 for an explicit empty
+		// body, -1 when unknown/chunked. Reject only the unknown case (< 0); a
+		// Content-Length of 0 is a valid empty-blob upload.
+		contentLength = request.ContentLength
+		if contentLength < 0 {
+			rh.c.Log.Warn().Int64("actual", contentLength).Msg("invalid content length")
 
-			details := map[string]string{"digest": digest.String()}
-
-			if err != nil {
-				details["conversion error"] = err.Error()
-			} else {
-				details["Content-Length"] = request.Header.Get("Content-Length")
+			details := map[string]string{
+				"digest":         digest.String(),
+				"Content-Length": strconv.FormatInt(contentLength, 10),
 			}
 
 			e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
@@ -1828,8 +1868,17 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 			return
 		}
 
-		sessionID, size, err := imgStore.FullBlobUpload(name, request.Body, digest)
+		sessionID, size, err := imgStore.FullBlobUpload(ctx, name, request.Body, digest)
 		if err != nil {
+			if errors.Is(err, zerr.ErrBadBlobDigest) {
+				details := zerr.GetDetails(err)
+				details["digest"] = digest.String()
+				e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
+				zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+
+				return
+			}
+
 			rh.c.Log.Error().Err(err).Int64("actual", size).Int64("expected", contentLength).
 				Msg("failed to full blob upload")
 			response.WriteHeader(http.StatusInternalServerError)
@@ -1851,7 +1900,7 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 		return
 	}
 
-	upload, err := imgStore.NewBlobUpload(name)
+	upload, err := imgStore.NewBlobUpload(ctx, name)
 	if err != nil {
 		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrRepoNotFound) {
@@ -1978,9 +2027,11 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 
 	var err error
 
+	ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
+
 	if request.Header.Get("Content-Length") == "" || request.Header.Get("Content-Range") == "" {
 		// streamed blob upload
-		clen, err = imgStore.PutBlobChunkStreamed(name, sessionID, request.Body)
+		clen, err = imgStore.PutBlobChunkStreamed(ctx, name, sessionID, request.Body)
 	} else {
 		// chunked blob upload
 		var contentLength int64
@@ -1999,7 +2050,7 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 			return
 		}
 
-		clen, err = imgStore.PutBlobChunk(name, sessionID, from, to, request.Body)
+		clen, err = imgStore.PutBlobChunk(ctx, name, sessionID, from, to, request.Body)
 	}
 
 	if err != nil { //nolint: dupl
@@ -2066,6 +2117,8 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 
 	imgStore := rh.getImageStore(name)
 
+	ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
+
 	sessionID, ok := vars["session_id"]
 	if !ok || sessionID == "" {
 		response.WriteHeader(http.StatusNotFound)
@@ -2087,39 +2140,44 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 		return
 	}
 
-	contentPresent := true
+	contentLenHeader := request.Header.Get("Content-Length")
+	contentRange := request.Header.Get("Content-Range")
+	// Header.Get cannot distinguish missing headers from present-but-empty headers.
+	contentLenHeaderPresent := len(request.Header.Values("Content-Length")) > 0
+	contentRangePresent := len(request.Header.Values("Content-Range")) > 0
 
-	contentLen, err := strconv.ParseInt(request.Header.Get("Content-Length"), 10, 64)
-	if err != nil {
-		contentPresent = false
-	}
-
-	contentRangePresent := true
-
-	if request.Header.Get("Content-Range") == "" {
-		contentRangePresent = false
-	}
-
-	// we expect at least one of "Content-Length" or "Content-Range" to be
-	// present
-	if !contentPresent && !contentRangePresent {
-		response.WriteHeader(http.StatusBadRequest)
-
-		return
-	}
+	shouldPutBlobChunk := contentLenHeaderPresent || contentRangePresent
 
 	var from, to int64
 
-	if contentPresent {
-		contentRange := request.Header.Get("Content-Range")
+	if shouldPutBlobChunk {
+		contentLen, err := strconv.ParseInt(contentLenHeader, 10, 64)
+		if err != nil || contentLen < 0 {
+			rh.c.Log.Warn().Str("actual", contentLenHeader).Msg("invalid content length")
+
+			details := map[string]string{"digest": digest.String()}
+			if err != nil {
+				details["conversion error"] = err.Error()
+			} else {
+				details["Content-Length"] = contentLenHeader
+			}
+
+			e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+
+			return
+		}
+
 		if contentRange == "" { // monolithic upload
 			from = 0
 
-			if contentLen == 0 {
-				goto finish
+			if contentLen > 0 {
+				to = contentLen
+			} else {
+				// Zero-length monolithic upload (e.g. empty blob): skip
+				// PutBlobChunk and go straight to FinishBlobUpload below.
+				shouldPutBlobChunk = false
 			}
-
-			to = contentLen
 		} else if from, to, err = getContentRange(request); err != nil { // finish chunked upload
 			details := zerr.GetDetails(err)
 			details["session_id"] = sessionID
@@ -2128,8 +2186,10 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 
 			return
 		}
+	}
 
-		_, err = imgStore.PutBlobChunk(name, sessionID, from, to, request.Body)
+	if shouldPutBlobChunk {
+		_, err = imgStore.PutBlobChunk(ctx, name, sessionID, from, to, request.Body)
 		if err != nil { //nolint:dupl
 			details := zerr.GetDetails(err)
 			if errors.Is(err, zerr.ErrBadUploadRange) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
@@ -2160,7 +2220,6 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 		}
 	}
 
-finish:
 	// blob chunks already transferred, just finish
 	if err := imgStore.FinishBlobUpload(name, sessionID, request.Body, digest); err != nil {
 		details := zerr.GetDetails(err)
@@ -2938,4 +2997,23 @@ func isSyncOnDemandEnabled(ctlr *Controller) bool {
 	}
 
 	return false
+}
+
+func eventContextFromRequest(r *http.Request) *events.EventContext {
+	ectx := &events.EventContext{
+		Request: &events.RequestInfo{
+			Addr:      r.RemoteAddr,
+			Method:    r.Method,
+			UserAgent: r.UserAgent(),
+		},
+	}
+
+	userAc, err := reqCtx.UserAcFromContext(r.Context())
+	if err == nil {
+		if username := userAc.GetUsername(); username != "" {
+			ectx.Actor = &events.ActorInfo{Name: username}
+		}
+	}
+
+	return ectx
 }

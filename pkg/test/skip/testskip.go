@@ -28,3 +28,11 @@ func SkipGCS(t *testing.T) {
 		t.Skip("Skipping testing without GCS mock server")
 	}
 }
+
+func SkipAzure(t *testing.T) {
+	t.Helper()
+
+	if os.Getenv("AZURITEMOCK_ENDPOINT") == "" {
+		t.Skip("Skipping testing without Azurite mock server")
+	}
+}

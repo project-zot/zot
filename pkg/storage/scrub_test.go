@@ -109,12 +109,39 @@ func TestS3CheckAllBlobsIntegrity(t *testing.T) {
 	})
 }
 
+func TestAzureCheckAllBlobsIntegrity(t *testing.T) {
+	tskip.SkipAzure(t)
+
+	Convey("test with Azure storage", t, func() {
+		uuid, err := guuid.NewV4()
+		if err != nil {
+			panic(err)
+		}
+
+		testDir := path.Join("/oci-repo-test", uuid.String())
+		tdir := t.TempDir()
+		log := log.NewTestLogger()
+
+		opts := createObjectStoreOpts{
+			rootDir:     testDir,
+			cacheDir:    tdir,
+			cacheType:   storageConstants.BoltdbName,
+			storageType: storageConstants.AzureStorageDriverName,
+		}
+
+		driver, imgStore, _, _ := createObjectsStore(opts)
+		defer cleanupStorage(driver, "/")
+
+		RunCheckAllBlobsIntegrityTests(t, imgStore, driver, log)
+	})
+}
+
 func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 	t *testing.T, imgStore storageTypes.ImageStore, driver storageTypes.Driver, log log.Logger,
 ) {
 	Convey("Scrub only one repo", func() {
 		// initialize repo
-		err := imgStore.InitRepo(repoName)
+		err := imgStore.InitRepo(context.Background(), repoName)
 		So(err, ShouldBeNil)
 
 		ok := imgStore.DirExists(path.Join(imgStore.RootDir(), repoName))
@@ -490,7 +517,9 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 
 			indexBlob, err := json.Marshal(index)
 			So(err, ShouldBeNil)
-			indexDigest, _, err := imgStore.PutImageManifest(repoName, "", ispec.MediaTypeImageIndex, indexBlob, nil)
+
+			indexDigest, _, err := imgStore.PutImageManifest(context.Background(),
+				repoName, "", ispec.MediaTypeImageIndex, indexBlob, nil)
 			So(err, ShouldBeNil)
 
 			buff := bytes.NewBufferString("")
