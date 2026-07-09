@@ -130,6 +130,7 @@ var (
 	ErrTimeout                          = errors.New("operation timeout")
 	ErrNotImplemented                   = errors.New("not implemented")
 	ErrDedupeRebuild                    = errors.New("couldn't rebuild dedupe index")
+	ErrDedupeRebuildInProgress          = errors.New("dedupe cache rebuild in progress, blob delete deferred")
 	ErrMissingAuthHeader                = errors.New("required authorization header is missing")
 	ErrUserAPIKeyNotFound               = errors.New("user info for given API key hash not found")
 	ErrUserSessionNotFound              = errors.New("user session for given ID not found")

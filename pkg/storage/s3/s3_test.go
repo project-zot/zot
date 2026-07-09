@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -4017,5 +4018,372 @@ func TestInjectDedupe(t *testing.T) {
 		} else {
 			So(err, ShouldBeNil)
 		}
+	})
+}
+
+// Deleting a blob the dedupe cache cannot account for must be
+// deferred until the startup dedupe walk completes.
+func TestDeleteBlobDeferredDuringDedupeRebuild(t *testing.T) {
+	testDir := "/oci-repo-test/dedupe-rebuild-delete"
+	repoName := "repo"
+
+	content := []byte("content-bearing-blob")
+	contentDigest := godigest.FromBytes(content)
+	contentBlobPath := path.Join(testDir, repoName, "blobs",
+		contentDigest.Algorithm().String(), contentDigest.Encoded())
+
+	newStoppedScheduler := func() *scheduler.Scheduler {
+		log := log.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+		taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
+		taskScheduler.RateLimit = 50 * time.Millisecond
+
+		return taskScheduler
+	}
+
+	Convey("content blob with no cache record: delete deferred, then allowed after rebuild", t, func() {
+		var deletedContentBlob atomic.Bool
+
+		imgStore := createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
+			StatFn: func(ctx context.Context, statPath string) (driver.FileInfo, error) {
+				if statPath == contentBlobPath {
+					return &mocks.FileInfoMock{SizeFn: func() int64 { return int64(len(content)) }}, nil
+				}
+
+				return nil, driver.PathNotFoundError{Path: statPath}
+			},
+			DeleteFn: func(ctx context.Context, deletePath string) error {
+				if deletePath == contentBlobPath {
+					deletedContentBlob.Store(true)
+				}
+
+				return nil
+			},
+		}, &mocks.CacheMock{
+			GetBlobFn: func(digest godigest.Digest) (string, error) {
+				return "", zerr.ErrCacheMiss
+			},
+			HasBlobFn: func(digest godigest.Digest, blob string) bool {
+				return false
+			},
+		})
+
+		// walk submitted but not yet run: delete deferred, content preserved
+		taskScheduler := newStoppedScheduler()
+		imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+		err := imgStore.DeleteBlob(repoName, contentDigest)
+		So(err, ShouldNotBeNil)
+		So(errors.Is(err, zerr.ErrDedupeRebuildInProgress), ShouldBeTrue)
+		So(deletedContentBlob.Load(), ShouldBeFalse)
+
+		// empty storage: the walk completes immediately once the scheduler runs
+		taskScheduler.RunScheduler()
+		defer taskScheduler.Shutdown()
+
+		for range 100 {
+			err = imgStore.DeleteBlob(repoName, contentDigest)
+			if err == nil {
+				break
+			}
+
+			So(errors.Is(err, zerr.ErrDedupeRebuildInProgress), ShouldBeTrue)
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		So(err, ShouldBeNil)
+		So(deletedContentBlob.Load(), ShouldBeTrue)
+	})
+
+	Convey("zero-size placeholder can still be deleted while the rebuild is running", t, func() {
+		var deletedPlaceholder atomic.Bool
+
+		imgStore := createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
+			StatFn: func(ctx context.Context, statPath string) (driver.FileInfo, error) {
+				if statPath == contentBlobPath {
+					return &mocks.FileInfoMock{SizeFn: func() int64 { return 0 }}, nil
+				}
+
+				return nil, driver.PathNotFoundError{Path: statPath}
+			},
+			DeleteFn: func(ctx context.Context, deletePath string) error {
+				if deletePath == contentBlobPath {
+					deletedPlaceholder.Store(true)
+				}
+
+				return nil
+			},
+		}, &mocks.CacheMock{
+			GetBlobFn: func(digest godigest.Digest) (string, error) {
+				return "", zerr.ErrCacheMiss
+			},
+			HasBlobFn: func(digest godigest.Digest, blob string) bool {
+				return false
+			},
+		})
+
+		// zero-size placeholders are deletable while the walk is pending
+		imgStore.RunDedupeBlobs(time.Duration(0), newStoppedScheduler())
+
+		err := imgStore.DeleteBlob(repoName, contentDigest)
+		So(err, ShouldBeNil)
+		So(deletedPlaceholder.Load(), ShouldBeTrue)
+	})
+
+	Convey("content blob known to the cache is deleted normally during the rebuild", t, func() {
+		var deletedContentBlob atomic.Bool
+
+		removedFromCache := false
+
+		imgStore := createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
+			StatFn: func(ctx context.Context, statPath string) (driver.FileInfo, error) {
+				if statPath == contentBlobPath {
+					return &mocks.FileInfoMock{SizeFn: func() int64 { return int64(len(content)) }}, nil
+				}
+
+				return nil, driver.PathNotFoundError{Path: statPath}
+			},
+			DeleteFn: func(ctx context.Context, deletePath string) error {
+				if deletePath == contentBlobPath {
+					deletedContentBlob.Store(true)
+				}
+
+				return nil
+			},
+		}, &mocks.CacheMock{
+			GetBlobFn: func(digest godigest.Digest) (string, error) {
+				if removedFromCache {
+					return "", zerr.ErrCacheMiss
+				}
+
+				return contentBlobPath, nil
+			},
+			HasBlobFn: func(digest godigest.Digest, blob string) bool {
+				return !removedFromCache
+			},
+			DeleteBlobFn: func(digest godigest.Digest, blob string) error {
+				removedFromCache = true
+
+				return nil
+			},
+		})
+
+		// cache-known blob: delete proceeds while the walk is pending
+		imgStore.RunDedupeBlobs(time.Duration(0), newStoppedScheduler())
+
+		err := imgStore.DeleteBlob(repoName, contentDigest)
+		So(err, ShouldBeNil)
+		So(deletedContentBlob.Load(), ShouldBeTrue)
+	})
+}
+
+// Restore-direction gating (dedupe=false, no cache): leftover zero-size
+// duplicates are refilled by the restore walk, so content deletes are deferred
+// until it completes; the restore-complete marker skips both the walk and the
+// deferral on later startups.
+func TestDeleteBlobDeferredDuringRestoreWalk(t *testing.T) {
+	testDir := "/oci-repo-test/restore-walk-delete"
+	repoName := "repo"
+
+	content := []byte("restore-content-blob")
+	contentDigest := godigest.FromBytes(content)
+	contentBlobPath := path.Join(testDir, repoName, "blobs",
+		contentDigest.Algorithm().String(), contentDigest.Encoded())
+
+	newStoppedScheduler := func() *scheduler.Scheduler {
+		log := log.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+		taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
+		taskScheduler.RateLimit = 50 * time.Millisecond
+
+		return taskScheduler
+	}
+
+	newMockDriver := func(markerContent string, deleted *atomic.Bool, markerWritten *atomic.Bool, writeErr error,
+	) *mocks.StorageDriverMock {
+		return &mocks.StorageDriverMock{
+			StatFn: func(ctx context.Context, statPath string) (driver.FileInfo, error) {
+				if statPath == contentBlobPath {
+					return &mocks.FileInfoMock{SizeFn: func() int64 { return int64(len(content)) }}, nil
+				}
+
+				return nil, driver.PathNotFoundError{Path: statPath}
+			},
+			GetContentFn: func(ctx context.Context, readPath string) ([]byte, error) {
+				if markerContent != "" && strings.HasSuffix(readPath, storageConstants.DedupeRestoreCompleteMarker) {
+					return []byte(markerContent), nil
+				}
+
+				return nil, driver.PathNotFoundError{Path: readPath}
+			},
+			// zot's s3 Driver.WriteFile goes through store.Writer, not PutContent.
+			WriterFn: func(ctx context.Context, writePath string, isAppend bool) (driver.FileWriter, error) {
+				if strings.HasSuffix(writePath, storageConstants.DedupeRestoreCompleteMarker) {
+					if writeErr != nil {
+						return nil, writeErr
+					}
+
+					return &mocks.FileWriterMock{CommitFn: func() error {
+						markerWritten.Store(true)
+
+						return nil
+					}}, nil
+				}
+
+				return &mocks.FileWriterMock{}, nil
+			},
+			DeleteFn: func(ctx context.Context, deletePath string) error {
+				if deletePath == contentBlobPath {
+					deleted.Store(true)
+				}
+
+				return nil
+			},
+		}
+	}
+
+	Convey("no marker: content delete deferred until the restore walk completes, then marker written", t, func() {
+		var deleted, markerWritten atomic.Bool
+
+		imgStore := createMockStorage(testDir, t.TempDir(), false,
+			newMockDriver("", &deleted, &markerWritten, nil))
+
+		taskScheduler := newStoppedScheduler()
+		imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+		err := imgStore.DeleteBlob(repoName, contentDigest)
+		So(err, ShouldNotBeNil)
+		So(errors.Is(err, zerr.ErrDedupeRebuildInProgress), ShouldBeTrue)
+		So(deleted.Load(), ShouldBeFalse)
+
+		taskScheduler.RunScheduler()
+		defer taskScheduler.Shutdown()
+
+		for range 100 {
+			err = imgStore.DeleteBlob(repoName, contentDigest)
+			if err == nil {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		So(err, ShouldBeNil)
+		So(deleted.Load(), ShouldBeTrue)
+		So(markerWritten.Load(), ShouldBeTrue)
+	})
+
+	Convey("restore-complete marker present: walk skipped, deletes proceed immediately", t, func() {
+		var deleted, markerWritten atomic.Bool
+
+		imgStore := createMockStorage(testDir, t.TempDir(), false,
+			newMockDriver(storageConstants.DedupeRestoreMarkerComplete, &deleted, &markerWritten, nil))
+
+		imgStore.RunDedupeBlobs(time.Duration(0), newStoppedScheduler())
+
+		err := imgStore.DeleteBlob(repoName, contentDigest)
+		So(err, ShouldBeNil)
+		So(deleted.Load(), ShouldBeTrue)
+	})
+
+	Convey("marker write failure: deletes still proceed once the walk completed", t, func() {
+		var deleted, markerWritten atomic.Bool
+
+		imgStore := createMockStorage(testDir, t.TempDir(), false,
+			newMockDriver("", &deleted, &markerWritten, errS3))
+
+		taskScheduler := newStoppedScheduler()
+		imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+		taskScheduler.RunScheduler()
+		defer taskScheduler.Shutdown()
+
+		var err error
+		for range 100 {
+			err = imgStore.DeleteBlob(repoName, contentDigest)
+			if err == nil {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		So(err, ShouldBeNil)
+		So(deleted.Load(), ShouldBeTrue)
+		So(markerWritten.Load(), ShouldBeFalse)
+	})
+}
+
+// One repo holds the only content-bearing copy, another holds a
+// zero-size deduped placeholder. With an empty cache and the rebuild gate armed,
+// GC must not delete the original or every duplicate becomes permanently unreadable.
+func TestDeleteBlobDeferredIssue2625CrossRepoOriginal(t *testing.T) {
+	testDir := "/oci-repo-test/dedupe-2625-cross-repo"
+	repoA := "repo-a"
+	repoB := "repo-b"
+
+	content := []byte("shared-layer-content")
+	digest := godigest.FromBytes(content)
+
+	originalPath := path.Join(testDir, repoA, ispec.ImageBlobsDir,
+		digest.Algorithm().String(), digest.Encoded())
+	placeholderPath := path.Join(testDir, repoB, ispec.ImageBlobsDir,
+		digest.Algorithm().String(), digest.Encoded())
+
+	newStoppedScheduler := func() *scheduler.Scheduler {
+		log := log.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+		taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
+		taskScheduler.RateLimit = 50 * time.Millisecond
+
+		return taskScheduler
+	}
+
+	statFn := func(_ context.Context, statPath string) (driver.FileInfo, error) {
+		switch statPath {
+		case originalPath:
+			return &mocks.FileInfoMock{SizeFn: func() int64 { return int64(len(content)) }}, nil
+		case placeholderPath:
+			return &mocks.FileInfoMock{SizeFn: func() int64 { return 0 }}, nil
+		default:
+			return nil, driver.PathNotFoundError{Path: statPath}
+		}
+	}
+
+	Convey("content original is preserved while rebuild is armed; placeholder still deletable", t, func() {
+		var deletedOriginal, deletedPlaceholder atomic.Bool
+
+		imgStore := createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
+			StatFn: statFn,
+			DeleteFn: func(ctx context.Context, deletePath string) error {
+				switch deletePath {
+				case originalPath:
+					deletedOriginal.Store(true)
+				case placeholderPath:
+					deletedPlaceholder.Store(true)
+				}
+
+				return nil
+			},
+		}, &mocks.CacheMock{
+			GetBlobFn: func(digest godigest.Digest) (string, error) {
+				return "", zerr.ErrCacheMiss
+			},
+			HasBlobFn: func(digest godigest.Digest, blob string) bool {
+				return false
+			},
+		})
+
+		imgStore.RunDedupeBlobs(time.Duration(0), newStoppedScheduler())
+
+		err := imgStore.DeleteBlob(repoA, digest)
+		So(err, ShouldNotBeNil)
+		So(errors.Is(err, zerr.ErrDedupeRebuildInProgress), ShouldBeTrue)
+		So(deletedOriginal.Load(), ShouldBeFalse)
+
+		err = imgStore.DeleteBlob(repoB, digest)
+		So(err, ShouldBeNil)
+		So(deletedPlaceholder.Load(), ShouldBeTrue)
+		So(deletedOriginal.Load(), ShouldBeFalse)
 	})
 }
