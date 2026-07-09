@@ -548,6 +548,114 @@ func TestVerifySignatures(t *testing.T) {
 	})
 }
 
+func TestCosignSignatureDigestBinding(t *testing.T) {
+	Convey("transplanted cosign signature is bound to the signed manifest digest", t, func() {
+		repo := "repo"
+		tag := "test"
+
+		image := CreateRandomImage()
+
+		rootDir := t.TempDir()
+
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.GC = false
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = rootDir
+
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(conf.HTTP.Port)
+		defer cm.StopServer()
+
+		err := UploadImage(image, baseURL, repo, tag)
+		So(err, ShouldBeNil)
+
+		pubKeyStorage, err := imagetrust.NewPublicKeyLocalStorage(rootDir)
+		So(err, ShouldBeNil)
+
+		cosignDir, err := pubKeyStorage.GetCosignDirPath()
+		So(err, ShouldBeNil)
+
+		cwd, err := os.Getwd()
+		So(err, ShouldBeNil)
+
+		So(os.Chdir(cosignDir), ShouldBeNil)
+
+		t.Setenv("COSIGN_PASSWORD", "")
+		err = generate.GenerateKeyPairCmd(context.TODO(), "", "cosign", nil)
+		So(err, ShouldBeNil)
+
+		So(os.Chdir(cwd), ShouldBeNil)
+
+		err = sign.SignCmd(context.TODO(),
+			&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
+			options.KeyOpts{KeyRef: path.Join(cosignDir, "cosign.key"), PassFunc: generate.GetPass},
+			options.SignOptions{
+				Registry:          options.RegistryOptions{AllowInsecure: true},
+				AnnotationOptions: options.AnnotationOptions{Annotations: []string{"tag=" + tag}},
+				Upload:            true,
+			},
+			[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repo, image.DigestStr())})
+		So(err, ShouldBeNil)
+
+		err = os.Remove(path.Join(cosignDir, "cosign.key"))
+		So(err, ShouldBeNil)
+
+		indexContent, err := ctlr.StoreController.DefaultStore.GetIndexContent(repo)
+		So(err, ShouldBeNil)
+
+		var index ispec.Index
+
+		err = json.Unmarshal(indexContent, &index)
+		So(err, ShouldBeNil)
+
+		var (
+			rawSignature []byte
+			sigKey       string
+		)
+
+		for _, manifest := range index.Manifests {
+			if manifest.Digest != image.Digest() {
+				blobContent, err := ctlr.StoreController.DefaultStore.GetBlobContent(repo, manifest.Digest)
+				So(err, ShouldBeNil)
+
+				var cosignSig ispec.Manifest
+
+				err = json.Unmarshal(blobContent, &cosignSig)
+				So(err, ShouldBeNil)
+
+				sigKey = cosignSig.Layers[0].Annotations[zcommon.CosignSigKey]
+				So(sigKey, ShouldNotBeEmpty)
+
+				rawSignature, err = ctlr.StoreController.DefaultStore.GetBlobContent(repo, cosignSig.Layers[0].Digest)
+				So(err, ShouldBeNil)
+				So(rawSignature, ShouldNotBeEmpty)
+			}
+		}
+
+		Convey("genuine signature verifies against the manifest it signed", func() {
+			author, isTrusted, err := imagetrust.VerifyCosignSignature(pubKeyStorage, repo, image.Digest(), sigKey,
+				rawSignature)
+			So(err, ShouldBeNil)
+			So(isTrusted, ShouldBeTrue)
+			So(author, ShouldNotBeEmpty)
+		})
+
+		Convey("same genuine signature transplanted onto a different manifest is not trusted", func() {
+			otherImage := CreateRandomImage()
+			So(otherImage.Digest(), ShouldNotEqual, image.Digest())
+
+			author, isTrusted, err := imagetrust.VerifyCosignSignature(pubKeyStorage, repo, otherImage.Digest(), sigKey,
+				rawSignature)
+			So(err, ShouldBeNil)
+			So(isTrusted, ShouldBeFalse)
+			So(author, ShouldBeEmpty)
+		})
+	})
+}
+
 func TestCheckExpiryErr(t *testing.T) {
 	Convey("no expiry err", t, func() {
 		isExpiryErr := imagetrust.CheckExpiryErr([]*notation.ValidationResult{{Error: nil, Type: "wrongtype"}}, time.Now(),
