@@ -34,7 +34,7 @@ jobs:
             sleep 10
             bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080
 
-            killall -r zot-*
+            killall --wait -r zot-*
 
             # clean zot storage
             sudo rm -rf /tmp/zot
@@ -76,7 +76,7 @@ jobs:
             sleep 10
             bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080
 
-            killall -r zot-*
+            killall --wait -r zot-*
 
             # clean zot storage
             sudo rm -rf /tmp/zot
@@ -158,7 +158,7 @@ jobs:
             sleep 10
             bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080
 
-            killall -r zot-*
+            killall --wait -r zot-*
 
             # clean zot storage
             sudo rm -rf /tmp/zot
@@ -245,7 +245,7 @@ jobs:
             sleep 10
             bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080
 
-            killall -r zot-*
+            killall --wait -r zot-*
 
             # clean zot storage
             sudo rm -rf /tmp/zot

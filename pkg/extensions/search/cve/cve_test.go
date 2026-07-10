@@ -1741,6 +1741,7 @@ func TestFixedTagsWithIndex(t *testing.T) {
 		conf.HTTP.Port = port
 		defaultVal := true
 		conf.Storage.RootDirectory = tempDir
+		conf.Storage.GC = false
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: &extconf.SearchConfig{
 				BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
