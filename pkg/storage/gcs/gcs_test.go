@@ -925,7 +925,8 @@ func TestGCSDeleteBlobsInUse(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		manifestDigest, _, err := imgStore.PutImageManifest(
-			context.Background(), "repo", tag, ispec.MediaTypeImageManifest, manifestBuf, nil)
+			context.Background(), "repo", tag, ispec.MediaTypeImageManifest, manifestBuf, nil,
+		)
 		So(err, ShouldBeNil)
 
 		Convey("Try to delete blob currently in use", func() {
@@ -1276,20 +1277,24 @@ func TestGCSStorageAPIs(t *testing.T) {
 					So(err, ShouldNotBeNil)
 
 					_, _, err = imgStore.PutImageManifest(
-						context.Background(), "test", "1.0", ispec.MediaTypeImageManifest, manifestBuf, nil)
+						context.Background(), "test", "1.0", ispec.MediaTypeImageManifest, manifestBuf, nil,
+					)
 					So(err, ShouldBeNil)
 
 					// same manifest for coverage
 					_, _, err = imgStore.PutImageManifest(
-						context.Background(), "test", "1.0", ispec.MediaTypeImageManifest, manifestBuf, nil)
+						context.Background(), "test", "1.0", ispec.MediaTypeImageManifest, manifestBuf, nil,
+					)
 					So(err, ShouldBeNil)
 
 					_, _, err = imgStore.PutImageManifest(
-						context.Background(), "test", "2.0", ispec.MediaTypeImageManifest, manifestBuf, nil)
+						context.Background(), "test", "2.0", ispec.MediaTypeImageManifest, manifestBuf, nil,
+					)
 					So(err, ShouldBeNil)
 
 					_, _, err = imgStore.PutImageManifest(
-						context.Background(), "test", "3.0", ispec.MediaTypeImageManifest, manifestBuf, nil)
+						context.Background(), "test", "3.0", ispec.MediaTypeImageManifest, manifestBuf, nil,
+					)
 					So(err, ShouldBeNil)
 
 					_, err = imgStore.GetImageTags("inexistent")
@@ -1595,7 +1600,8 @@ func TestGCSStorageAPIs(t *testing.T) {
 			digest = godigest.FromBytes(manifestBuf)
 
 			_, _, err = imgStore.PutImageManifest(
-				context.Background(), "replace", "1.0", ispec.MediaTypeImageManifest, manifestBuf, nil)
+				context.Background(), "replace", "1.0", ispec.MediaTypeImageManifest, manifestBuf, nil,
+			)
 			So(err, ShouldBeNil)
 
 			_, _, _, err = imgStore.GetImageManifest("replace", digest.String())
@@ -1651,7 +1657,8 @@ func TestGCSStorageAPIs(t *testing.T) {
 			_ = godigest.FromBytes(manifestBuf)
 
 			_, _, err = imgStore.PutImageManifest(
-				context.Background(), "replace", "1.0", ispec.MediaTypeImageManifest, manifestBuf, nil)
+				context.Background(), "replace", "1.0", ispec.MediaTypeImageManifest, manifestBuf, nil,
+			)
 			So(err, ShouldBeNil)
 		})
 
@@ -1926,7 +1933,8 @@ func TestGCSMandatoryAnnotations(t *testing.T) {
 				}, storeDriver, cacheDriver, nil, nil)
 
 			_, _, err = imgStoreWithLinter.PutImageManifest(
-				context.Background(), "test", "1.0.0", ispec.MediaTypeImageManifest, manifestBuf, nil)
+				context.Background(), "test", "1.0.0", ispec.MediaTypeImageManifest, manifestBuf, nil,
+			)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -1947,7 +1955,8 @@ func TestGCSMandatoryAnnotations(t *testing.T) {
 				}, storeDriver, nil, nil, nil)
 
 			_, _, err = imgStoreWithLinter.PutImageManifest(
-				context.Background(), "test", "1.0.0", ispec.MediaTypeImageManifest, manifestBuf, nil)
+				context.Background(), "test", "1.0.0", ispec.MediaTypeImageManifest, manifestBuf, nil,
+			)
 			So(err, ShouldNotBeNil)
 		})
 	})
@@ -2010,7 +2019,8 @@ func pushRandomImageIndexGCS(imgStore storageTypes.ImageStore, repoName string,
 		So(digest, ShouldNotBeNil)
 
 		_, _, err = imgStore.PutImageManifest(
-			context.Background(), repoName, digest.String(), ispec.MediaTypeImageManifest, content, nil)
+			context.Background(), repoName, digest.String(), ispec.MediaTypeImageManifest, content, nil,
+		)
 		So(err, ShouldBeNil)
 
 		index.Manifests = append(index.Manifests, ispec.Descriptor{
@@ -2538,7 +2548,8 @@ func TestGCSGarbageCollectChainedImageIndexes(t *testing.T) {
 			So(digest, ShouldNotBeNil)
 
 			_, _, err = imgStore.PutImageManifest(
-				context.Background(), repoName, digest.String(), ispec.MediaTypeImageManifest, content, nil)
+				context.Background(), repoName, digest.String(), ispec.MediaTypeImageManifest, content, nil,
+			)
 			So(err, ShouldBeNil)
 
 			index.Manifests = append(index.Manifests, ispec.Descriptor{
@@ -2624,7 +2635,8 @@ func TestGCSGarbageCollectChainedImageIndexes(t *testing.T) {
 			So(digest, ShouldNotBeNil)
 
 			_, _, err = imgStore.PutImageManifest(
-				context.Background(), repoName, digest.String(), ispec.MediaTypeImageManifest, content, nil)
+				context.Background(), repoName, digest.String(), ispec.MediaTypeImageManifest, content, nil,
+			)
 			So(err, ShouldBeNil)
 
 			innerIndex.Manifests = append(innerIndex.Manifests, ispec.Descriptor{
@@ -3285,7 +3297,8 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 			So(err, ShouldBeNil)
 
 			indexDigest, _, err := imgStore.PutImageManifest(
-				context.Background(), repoName, "", ispec.MediaTypeImageIndex, indexBlob, nil)
+				context.Background(), repoName, "", ispec.MediaTypeImageIndex, indexBlob, nil,
+			)
 			So(err, ShouldBeNil)
 
 			buff := bytes.NewBufferString("")

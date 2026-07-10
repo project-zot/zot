@@ -36,12 +36,13 @@ func (d *streamTestDriver) EnsureDir(dir string) error {
 
 	return d.ensureErr
 }
-func (d *streamTestDriver) DirExists(string) bool                             { return true }
-func (d *streamTestDriver) Reader(string, int64) (io.ReadCloser, error)       { return d.reader, nil }
-func (d *streamTestDriver) ReadFile(string) ([]byte, error)                   { return nil, nil }
-func (d *streamTestDriver) Delete(string) error                               { return nil }
-func (d *streamTestDriver) Stat(string) (driver.FileInfo, error)              { return nil, nil }
-func (d *streamTestDriver) Writer(string, bool) (driver.FileWriter, error)    { return d.writer, nil }
+func (d *streamTestDriver) DirExists(string) bool                       { return true }
+func (d *streamTestDriver) Reader(string, int64) (io.ReadCloser, error) { return d.reader, nil }
+func (d *streamTestDriver) ReadFile(string) ([]byte, error)             { return nil, nil }
+func (d *streamTestDriver) Delete(string) error                         { return nil }
+func (d *streamTestDriver) Stat(string) (driver.FileInfo, error)        { return nil, nil }
+func (d *streamTestDriver) Writer(string, bool) (driver.FileWriter, error) { return d.writer, nil }
+
 func (d *streamTestDriver) WriteFile(string, []byte) (int, error)             { return 0, d.writeErr }
 func (d *streamTestDriver) Walk(string, driver.WalkFn) error                  { return nil }
 func (d *streamTestDriver) List(string) ([]string, error)                     { return nil, nil }

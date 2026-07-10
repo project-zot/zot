@@ -26,9 +26,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
 
-var (
-	errDeleteFailed = errors.New("delete failed")
-) //nolint: gochecknoglobals
+var errDeleteFailed = errors.New("delete failed") //nolint: gochecknoglobals
 
 func TestGetBlobRedirectURL(t *testing.T) {
 	Convey("GetBlobRedirectURL", t, func() {

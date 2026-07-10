@@ -153,28 +153,32 @@ func (rh *RouteHandler) SetupRoutes() {
 	// dist-spec APIs that need to be proxied are wrapped in clusterRouteProxy for scale-out proxying.
 	// these are handlers that have a repository name.
 	{
-		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/tags/list", zreg.NameRegexp.String()),
+		prefixedDistSpecRouter.HandleFunc(
+			fmt.Sprintf("/{name:%s}/tags/list", zreg.NameRegexp.String()),
 			clusterRouteProxy(
 				getUIHeadersHandler(rh.c.Config, http.MethodGet, http.MethodOptions)(
 					applyCORSHeaders(rh.ListTags),
 				),
 			),
 		).Methods(http.MethodGet, http.MethodOptions)
-		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
+		prefixedDistSpecRouter.HandleFunc(
+			fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
 			clusterRouteProxy(
 				getUIHeadersHandler(rh.c.Config, http.MethodHead, http.MethodGet, http.MethodDelete, http.MethodOptions)(
 					applyCORSHeaders(rh.CheckManifest),
 				),
 			),
 		).Methods(http.MethodHead, http.MethodOptions)
-		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
+		prefixedDistSpecRouter.HandleFunc(
+			fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
 			clusterRouteProxy(
 				applyCORSHeaders(rh.GetManifest),
 			),
 		).Methods(http.MethodGet)
 		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
 			clusterRouteProxy(rh.UpdateManifest)).Methods(http.MethodPut)
-		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
+		prefixedDistSpecRouter.HandleFunc(
+			fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
 			clusterRouteProxy(
 				applyCORSHeaders(rh.DeleteManifest),
 			),
@@ -196,7 +200,8 @@ func (rh *RouteHandler) SetupRoutes() {
 		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{session_id}", zreg.NameRegexp.String()),
 			clusterRouteProxy(rh.DeleteBlobUpload)).Methods(http.MethodDelete)
 		// support for OCI artifact references
-		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/referrers/{digest}", zreg.NameRegexp.String()),
+		prefixedDistSpecRouter.HandleFunc(
+			fmt.Sprintf("/{name:%s}/referrers/{digest}", zreg.NameRegexp.String()),
 			clusterRouteProxy(
 				getUIHeadersHandler(rh.c.Config, http.MethodGet, http.MethodOptions)(
 					applyCORSHeaders(rh.GetReferrers),
@@ -209,13 +214,16 @@ func (rh *RouteHandler) SetupRoutes() {
 		// discover and the default path handlers are node-specific so do not require proxying.
 		prefixedRouter.HandleFunc(constants.ExtCatalogPrefix,
 			getUIHeadersHandler(rh.c.Config, http.MethodGet, http.MethodOptions)(
-				applyCORSHeaders(rh.ListRepositories))).Methods(http.MethodGet, http.MethodOptions)
+				applyCORSHeaders(rh.ListRepositories),
+			)).Methods(http.MethodGet, http.MethodOptions)
 		prefixedRouter.HandleFunc(constants.ExtOciDiscoverPrefix,
 			getUIHeadersHandler(rh.c.Config, http.MethodGet, http.MethodOptions)(
-				applyCORSHeaders(rh.ListExtensions))).Methods(http.MethodGet, http.MethodOptions)
+				applyCORSHeaders(rh.ListExtensions),
+			)).Methods(http.MethodGet, http.MethodOptions)
 		prefixedRouter.HandleFunc("/",
 			getUIHeadersHandler(rh.c.Config, http.MethodGet, http.MethodOptions)(
-				applyCORSHeaders(rh.CheckVersionSupport))).Methods(http.MethodGet, http.MethodOptions)
+				applyCORSHeaders(rh.CheckVersionSupport),
+			)).Methods(http.MethodGet, http.MethodOptions)
 	}
 
 	// swagger
@@ -426,7 +434,8 @@ func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Req
 		stopIndex = startIndex + numTags - 1
 		response.Header().Set(
 			"Link",
-			fmt.Sprintf("</v2/%s/tags/list?n=%d&last=%s>; rel=\"next\"",
+			fmt.Sprintf(
+				"</v2/%s/tags/list?n=%d&last=%s>; rel=\"next\"",
 				name,
 				numTags,
 				tags[stopIndex],
@@ -1141,7 +1150,6 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 	digest := godigest.Digest(digestStr)
 
 	ok, blen, err := rh.checkBlobWithAuthz(request, imgStore, name, digest)
-
 	if err != nil {
 		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic,dupl // errorslint conflicts with gocritic:IfElseChain
@@ -1590,7 +1598,8 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 			// here; once the 206 headers are flushed there's no way to turn
 			// a mismatch into a 5xx, so writeMultipartRanges relies on
 			// io.CopyN to enforce it on the wire.
-			writeMultipartRanges(response, ranges, bsize, mediaType,
+			writeMultipartRanges(
+				response, ranges, bsize, mediaType,
 				func(rng httpRange) (io.ReadCloser, error) {
 					reader, _, _, err := imgStore.GetBlobPartial(name, digest, mediaType, rng.start, rng.end)
 
@@ -2435,7 +2444,8 @@ func (rh *RouteHandler) ListRepositories(response http.ResponseWriter, request *
 
 		response.Header().Set(
 			"Link",
-			fmt.Sprintf("</v2/_catalog?n=%d&last=%s>; rel=\"next\"",
+			fmt.Sprintf(
+				"</v2/_catalog?n=%d&last=%s>; rel=\"next\"",
 				maxEntries,
 				lastRepo,
 			),

@@ -263,7 +263,8 @@ func (c *Controller) Run() error {
 		}
 		if !fips140.Enabled() {
 			// CHACHA20_POLY1305 is not FIPS-compliant
-			cipherSuites = append(cipherSuites,
+			cipherSuites = append(
+				cipherSuites,
 				tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
 				tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
 			)
