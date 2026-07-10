@@ -1045,6 +1045,39 @@ func canMount(userAc *reqCtx.UserAccessControl, imgStore storageTypes.ImageStore
 	return canMount, nil
 }
 
+func (rh *RouteHandler) checkBlobWithAuthz(request *http.Request, imgStore storageTypes.ImageStore,
+	repo string, digest godigest.Digest,
+) (bool, int64, error) {
+	userCanMount := true
+
+	if rh.c.Config.CopyAccessControlConfig().IsAuthzEnabled() {
+		userAc, err := reqCtx.UserAcFromContext(request.Context())
+		if err != nil {
+			return false, -1, err
+		}
+
+		userCanMount, err = canMount(userAc, imgStore, digest)
+		if err != nil {
+			return false, -1, err
+		}
+	}
+
+	if userCanMount {
+		ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
+
+		return imgStore.CheckBlob(ctx, repo, digest)
+	}
+
+	var lockLatency time.Time
+
+	imgStore.RLock(&lockLatency)
+	defer imgStore.RUnlock(&lockLatency)
+
+	ok, size, _, err := imgStore.StatBlob(repo, digest)
+
+	return ok, size, err
+}
+
 // resolveBlobResponseMediaType resolves the OCI media type to advertise for a blob via
 // the repo's index/manifests. If the descriptor lookup fails (or the descriptor
 // has no media type), it falls back to application/octet-stream.
@@ -1107,36 +1140,7 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 
 	digest := godigest.Digest(digestStr)
 
-	userAc, err := reqCtx.UserAcFromContext(request.Context())
-	if err != nil {
-		response.WriteHeader(http.StatusInternalServerError)
-
-		return
-	}
-
-	userCanMount := true
-	accessControlConfig := rh.c.Config.CopyAccessControlConfig()
-
-	if accessControlConfig.IsAuthzEnabled() {
-		userCanMount, err = canMount(userAc, imgStore, digest)
-		if err != nil {
-			rh.c.Log.Error().Err(err).Msg("unexpected error")
-		}
-	}
-
-	var blen int64
-
-	if userCanMount {
-		ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
-		ok, blen, err = imgStore.CheckBlob(ctx, name, digest)
-	} else {
-		var lockLatency time.Time
-
-		imgStore.RLock(&lockLatency)
-		defer imgStore.RUnlock(&lockLatency)
-
-		ok, blen, _, err = imgStore.StatBlob(name, digest)
-	}
+	ok, blen, err := rh.checkBlobWithAuthz(request, imgStore, name, digest)
 
 	if err != nil {
 		details := zerr.GetDetails(err)
@@ -1552,8 +1556,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 	}
 
 	if rangeHeaderPresent {
-		ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
-		ok, bsize, err := imgStore.CheckBlob(ctx, name, digest)
+		ok, bsize, err := rh.checkBlobWithAuthz(request, imgStore, name, digest)
 		if err != nil {
 			writeBlobError(err)
 

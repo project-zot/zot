@@ -492,6 +492,11 @@ func (is *ImageStore) MigrateToGlobalBlobstore() error {
 		return nil
 	}
 
+	var lockLatency time.Time
+
+	is.Lock(&lockLatency)
+	defer is.Unlock(&lockLatency)
+
 	return is.upgradeToGlobalBlobstore()
 }
 
