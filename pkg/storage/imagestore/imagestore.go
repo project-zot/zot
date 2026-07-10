@@ -100,7 +100,7 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 	}
 
 	// Deletes are only gated while a dedupe/restore walk is pending; see RunDedupeBlobs.
-	imgStore.dedupeRebuildDone.Store(!dedupe || storeDriver.Name() == storageConstants.LocalStorageDriverName)
+	imgStore.dedupeRebuildDone.Store(true)
 
 	if dedupe {
 		// create the global blobs repo which will serve as the master copy for all deduped blobs
@@ -1643,7 +1643,7 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 			is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").Msg("failed to stat")
 			// the actual blob on disk may have been removed by GC, so sync the cache
 			err := is.cache.DeleteBlob(dstDigest, dstRecord)
-			if err = inject.Error(err); err != nil {
+			if err = inject.Error(err); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
 				//nolint:lll
 				is.log.Error().Err(err).Str("dstDigest", dstDigest.String()).Str("dst", dst).
 					Str("component", "dedupe").Msg("failed to delete blob record")
