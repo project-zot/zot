@@ -201,6 +201,35 @@ func TestRedisCache(t *testing.T) {
 	})
 }
 
+func TestRedisReplaceOriginalBlob(t *testing.T) {
+	miniRedis := miniredis.RunT(t)
+
+	Convey("Replace original blob", t, func() {
+		connOpts, err := redis.ParseURL("redis://" + miniRedis.Addr())
+		So(err, ShouldBeNil)
+
+		cacheDriver, err := storage.Create("redis",
+			cache.RedisDriverParameters{redis.NewClient(connOpts), t.TempDir(), false, "replace"}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		err = cacheDriver.PutBlob("digest", "repo/blobs/digest")
+		So(err, ShouldBeNil)
+		err = cacheDriver.PutBlob("digest", "_blobstore/blobs/digest")
+		So(err, ShouldBeNil)
+
+		err = cacheDriver.ReplaceOriginalBlob("digest", "_blobstore/blobs/digest")
+		So(err, ShouldBeNil)
+
+		original, err := cacheDriver.GetBlob("digest")
+		So(err, ShouldBeNil)
+		So(original, ShouldEqual, "_blobstore/blobs/digest")
+
+		blobs, err := cacheDriver.GetAllBlobs("digest")
+		So(err, ShouldBeNil)
+		So(blobs, ShouldContain, "repo/blobs/digest")
+	})
+}
+
 func TestRedisCacheError(t *testing.T) {
 	Convey("Make a new cache", t, func() {
 		dir := t.TempDir()

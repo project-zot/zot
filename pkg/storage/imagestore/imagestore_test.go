@@ -26,7 +26,10 @@ import (
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
 
-var errDeleteFailed = errors.New("delete failed") //nolint: gochecknoglobals
+var (
+	errDeleteFailed = errors.New("delete failed")
+	errWalkFailed   = errors.New("walk failed")
+) //nolint: gochecknoglobals
 
 func TestGetBlobRedirectURL(t *testing.T) {
 	Convey("GetBlobRedirectURL", t, func() {
@@ -255,13 +258,14 @@ func TestCleanupRepoFailsOnDeleteImageManifest(t *testing.T) {
 	})
 }
 
-func TestNewImageStoreFailsWhenMigrationFails(t *testing.T) {
-	Convey("NewImageStore returns nil when global blobstore migration fails", t, func() {
+func TestNewImageStoreDoesNotBlockOnMigration(t *testing.T) {
+	Convey("NewImageStore defers global blobstore migration", t, func() {
 		log := zlog.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 
 		storeMock := &mocks.StorageDriverMock{}
 		remoteDriver := gcs.New(storeMock)
+		walkCalls := 0
 
 		storeMock.StatFn = func(_ context.Context, path string) (driver.FileInfo, error) {
 			if path == "_blobstore/.migrated" {
@@ -274,11 +278,18 @@ func TestNewImageStoreFailsWhenMigrationFails(t *testing.T) {
 		storeMock.WalkFn = func(_ context.Context, _ string, _ driver.WalkFn,
 			_ ...func(*driver.WalkOptions),
 		) error {
-			return errors.New("walk failed")
+			walkCalls++
+
+			return errWalkFailed
 		}
 
 		store := imagestore.NewImageStore("", "", true, false, log, metrics, nil,
 			remoteDriver, nil, nil, nil)
-		So(store, ShouldBeNil)
+		So(store, ShouldNotBeNil)
+		So(walkCalls, ShouldEqual, 0)
+
+		err := store.MigrateToGlobalBlobstore()
+		So(err, ShouldNotBeNil)
+		So(walkCalls, ShouldEqual, 1)
 	})
 }

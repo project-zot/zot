@@ -14,6 +14,8 @@ type CacheMock struct {
 	// Uploads blob to cachedb.
 	PutBlobFn func(digest godigest.Digest, path string) error
 
+	ReplaceOriginalBlobFn func(digest godigest.Digest, path string) error
+
 	// Check if blob exists in cachedb.
 	HasBlobFn func(digest godigest.Digest, path string) bool
 
@@ -25,7 +27,7 @@ type CacheMock struct {
 
 func (cacheMock CacheMock) UsesRelativePaths() bool {
 	if cacheMock.UsesRelativePathsFn != nil {
-		return cacheMock.UsesRelativePaths()
+		return cacheMock.UsesRelativePathsFn()
 	}
 
 	return false
@@ -50,6 +52,14 @@ func (cacheMock CacheMock) GetBlob(digest godigest.Digest) (string, error) {
 func (cacheMock CacheMock) PutBlob(digest godigest.Digest, path string) error {
 	if cacheMock.PutBlobFn != nil {
 		return cacheMock.PutBlobFn(digest, path)
+	}
+
+	return nil
+}
+
+func (cacheMock CacheMock) ReplaceOriginalBlob(digest godigest.Digest, path string) error {
+	if cacheMock.ReplaceOriginalBlobFn != nil {
+		return cacheMock.ReplaceOriginalBlobFn(digest, path)
 	}
 
 	return nil

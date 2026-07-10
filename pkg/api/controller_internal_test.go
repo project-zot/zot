@@ -3,6 +3,7 @@
 package api
 
 import (
+	"context"
 	goerrors "errors"
 	"net/url"
 	"os"
@@ -12,10 +13,58 @@ import (
 	"time"
 
 	"zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/scheduler"
+	"zotregistry.dev/zot/v2/pkg/test/mocks"
 	tlsutils "zotregistry.dev/zot/v2/pkg/test/tls"
 )
 
 var errGetCertificateFailed = goerrors.New("GetCertificate failed")
+
+func TestStorageStartupTask(t *testing.T) {
+	t.Run("runs dedupe after migration", func(t *testing.T) {
+		calls := []string{}
+		store := mocks.MockedImageStore{
+			MigrateToGlobalBlobstoreFn: func() error {
+				calls = append(calls, "migrate")
+
+				return nil
+			},
+			RunDedupeBlobsFn: func(time.Duration, *scheduler.Scheduler) {
+				calls = append(calls, "dedupe")
+			},
+		}
+
+		if err := (storageStartupTask{store: store}).DoWork(context.Background()); err != nil {
+			t.Fatalf("storage startup task failed: %v", err)
+		}
+
+		if len(calls) != 2 || calls[0] != "migrate" || calls[1] != "dedupe" {
+			t.Fatalf("unexpected call order: %v", calls)
+		}
+	})
+
+	t.Run("does not run dedupe after migration failure", func(t *testing.T) {
+		migrationErr := goerrors.New("migration failed")
+		dedupeCalled := false
+		store := mocks.MockedImageStore{
+			MigrateToGlobalBlobstoreFn: func() error {
+				return migrationErr
+			},
+			RunDedupeBlobsFn: func(time.Duration, *scheduler.Scheduler) {
+				dedupeCalled = true
+			},
+		}
+
+		err := (storageStartupTask{store: store}).DoWork(context.Background())
+		if !goerrors.Is(err, migrationErr) {
+			t.Fatalf("expected migration error, got %v", err)
+		}
+
+		if dedupeCalled {
+			t.Fatal("dedupe ran after migration failure")
+		}
+	})
+}
 
 func TestReloadCertificateStatFailureKeepsModTimes(t *testing.T) {
 	logger := log.NewLogger("debug", "")

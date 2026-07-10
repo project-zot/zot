@@ -17,6 +17,9 @@ type Cache interface {
 	// Uploads blob to cachedb.
 	PutBlob(digest godigest.Digest, path string) error
 
+	// Replaces the original blob while retaining the previous original as a duplicate.
+	ReplaceOriginalBlob(digest godigest.Digest, path string) error
+
 	// Check if blob exists in cachedb.
 	HasBlob(digest godigest.Digest, path string) bool
 

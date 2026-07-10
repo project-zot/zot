@@ -32,7 +32,31 @@ import (
 	scheduler "zotregistry.dev/zot/v2/pkg/scheduler"
 	storage "zotregistry.dev/zot/v2/pkg/storage"
 	gc "zotregistry.dev/zot/v2/pkg/storage/gc"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
+
+type storageStartupTask struct {
+	store     storageTypes.ImageStore
+	scheduler *scheduler.Scheduler
+}
+
+func (task storageStartupTask) DoWork(context.Context) error {
+	if err := task.store.MigrateToGlobalBlobstore(); err != nil {
+		return err
+	}
+
+	task.store.RunDedupeBlobs(time.Duration(0), task.scheduler)
+
+	return nil
+}
+
+func (task storageStartupTask) Name() string {
+	return "storage startup migration"
+}
+
+func (task storageStartupTask) String() string {
+	return task.Name()
+}
 
 const (
 	idleTimeout       = 120 * time.Second
@@ -558,17 +582,29 @@ func (c *Controller) StartBackgroundTasks() {
 		c.HTPasswdWatcher.Run()
 	}
 
-	// Run GC and retention tasks
-	RunGCTasks(c.Config, c.StoreController, c.MetaDB, c.taskScheduler, c.Log, c.Audit, c.Metrics)
+	// Migrate legacy blobs before running the dedupe/restore walk, without blocking startup.
+	c.taskScheduler.SubmitTask(storageStartupTask{
+		store:     c.StoreController.DefaultStore,
+		scheduler: c.taskScheduler,
+	}, scheduler.MediumPriority)
 
-	// Enable running dedupe blobs both ways (dedupe or restore deduped blobs)
-	c.StoreController.DefaultStore.RunDedupeBlobs(time.Duration(0), c.taskScheduler)
+	storageConfig := c.Config.CopyStorageConfig()
+	for route := range storageConfig.SubPaths {
+		if substore := c.StoreController.SubStore[route]; substore != nil {
+			c.taskScheduler.SubmitTask(storageStartupTask{
+				store:     substore,
+				scheduler: c.taskScheduler,
+			}, scheduler.MediumPriority)
+		}
+	}
+
+	// Run GC and retention tasks after all storage migrations have been queued.
+	RunGCTasks(c.Config, c.StoreController, c.MetaDB, c.taskScheduler, c.Log, c.Audit, c.Metrics)
 
 	// Always call EnableSearchExtension to ensure proper logging, even when search is disabled
 	ext.EnableSearchExtension(c.Config, c.StoreController, c.MetaDB, c.taskScheduler, c.CveScanner, c.Log)
 
 	// Always call EnableMetricsExtension to ensure proper logging, even when metrics is disabled
-	storageConfig := c.Config.CopyStorageConfig()
 	ext.EnableMetricsExtension(c.Config, c.Log, storageConfig.RootDirectory)
 
 	// runs once if metrics are enabled & imagestore is local
@@ -582,11 +618,8 @@ func (c *Controller) StartBackgroundTasks() {
 			// Enable extensions if extension config is provided for subImageStore
 			ext.EnableMetricsExtension(c.Config, c.Log, subStorageConfig.RootDirectory)
 
-			// Enable running dedupe blobs both ways (dedupe or restore deduped blobs) for subpaths
 			substore := c.StoreController.SubStore[route]
 			if substore != nil {
-				substore.RunDedupeBlobs(time.Duration(0), c.taskScheduler)
-
 				if extensionsConfig.IsMetricsEnabled() && storageConfig.StorageDriver == nil {
 					substore.PopulateStorageMetrics(time.Duration(0), c.taskScheduler)
 				}

@@ -247,6 +247,7 @@ func TestStorageFSAPIs(t *testing.T) {
 
 			imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
 			So(imgStore, ShouldNotBeNil)
+			So(imgStore.MigrateToGlobalBlobstore(), ShouldBeNil)
 
 			markerPath := path.Join(dir, storageConstants.BlobstoreMigratedMarker)
 			_, err = os.Stat(markerPath)
@@ -264,6 +265,7 @@ func TestStorageFSAPIs(t *testing.T) {
 
 			imgStore2 := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver2, nil, nil)
 			So(imgStore2, ShouldNotBeNil)
+			So(imgStore2.MigrateToGlobalBlobstore(), ShouldBeNil)
 
 			_, err = os.Stat(markerPath)
 			So(err, ShouldBeNil)
@@ -3862,7 +3864,8 @@ func TestUpgradeToGlobalBlobstore(t *testing.T) {
 		manifestBuf, err := json.Marshal(manifest)
 		So(err, ShouldBeNil)
 
-		_, _, err = imgStoreOld.PutImageManifest(context.Background(), "repo1", tag, ispec.MediaTypeImageManifest, manifestBuf, []string{})
+		_, _, err = imgStoreOld.PutImageManifest(context.Background(), "repo1", tag,
+			ispec.MediaTypeImageManifest, manifestBuf, []string{})
 		So(err, ShouldBeNil)
 
 		// Upload the SAME blob to repo "repo2" (duplicate content, separate files)
@@ -3878,7 +3881,8 @@ func TestUpgradeToGlobalBlobstore(t *testing.T) {
 		_, _, err = imgStoreOld.FullBlobUpload(context.Background(), "repo2", bytes.NewReader(cblob), cdigest)
 		So(err, ShouldBeNil)
 
-		_, _, err = imgStoreOld.PutImageManifest(context.Background(), "repo2", tag, ispec.MediaTypeImageManifest, manifestBuf, []string{})
+		_, _, err = imgStoreOld.PutImageManifest(context.Background(), "repo2", tag,
+			ispec.MediaTypeImageManifest, manifestBuf, []string{})
 		So(err, ShouldBeNil)
 
 		// Verify _blobstore does NOT exist yet (pre-upgrade state)
@@ -3894,8 +3898,13 @@ func TestUpgradeToGlobalBlobstore(t *testing.T) {
 		}, log)
 		So(err, ShouldBeNil)
 
+		repo1BlobPath := path.Join(dir, "repo1", "blobs", digest1.Algorithm().String(), digest1.Encoded())
+		err = cacheDriver.PutBlob(digest1, repo1BlobPath)
+		So(err, ShouldBeNil)
+
 		imgStoreNew := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
 		So(imgStoreNew, ShouldNotBeNil)
+		So(imgStoreNew.MigrateToGlobalBlobstore(), ShouldBeNil)
 
 		// Verify _blobstore was created and populated
 		_, err = os.Stat(blobstoreDir)
@@ -3910,7 +3919,6 @@ func TestUpgradeToGlobalBlobstore(t *testing.T) {
 		So(slices.Contains(globalBlobs, digest1), ShouldBeTrue)
 
 		// Verify hard link: repo1 blob and _blobstore blob should be the same file (same inode)
-		repo1BlobPath := path.Join(dir, "repo1", "blobs", digest1.Algorithm().String(), digest1.Encoded())
 		globalBlobPath := path.Join(dir, storageConstants.GlobalBlobsRepo, "blobs",
 			digest1.Algorithm().String(), digest1.Encoded())
 
@@ -3921,6 +3929,16 @@ func TestUpgradeToGlobalBlobstore(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		So(os.SameFile(fi1, fi2), ShouldBeTrue)
+
+		canonicalPath, err := cacheDriver.GetBlob(digest1)
+		So(err, ShouldBeNil)
+		So(canonicalPath, ShouldEqual, path.Join(storageConstants.GlobalBlobsRepo, "blobs",
+			digest1.Algorithm().String(), digest1.Encoded()))
+
+		cachedPaths, err := cacheDriver.GetAllBlobs(digest1)
+		So(err, ShouldBeNil)
+		So(cachedPaths, ShouldContain, path.Join("repo1", "blobs", digest1.Algorithm().String(), digest1.Encoded()))
+		So(cachedPaths, ShouldContain, path.Join("repo2", "blobs", digest1.Algorithm().String(), digest1.Encoded()))
 
 		// Verify the blob content is intact
 		blobContent, err := os.ReadFile(globalBlobPath)
@@ -3968,7 +3986,8 @@ func TestUpgradeToGlobalBlobstore(t *testing.T) {
 		manifestBuf, err := json.Marshal(manifest)
 		So(err, ShouldBeNil)
 
-		_, _, err = imgStoreOld.PutImageManifest(context.Background(), "myrepo", tag, ispec.MediaTypeImageManifest, manifestBuf, []string{})
+		_, _, err = imgStoreOld.PutImageManifest(context.Background(), "myrepo", tag,
+			ispec.MediaTypeImageManifest, manifestBuf, []string{})
 		So(err, ShouldBeNil)
 
 		// Step 2: Open with dedupe (first upgrade - populates _blobstore)
@@ -3981,6 +4000,7 @@ func TestUpgradeToGlobalBlobstore(t *testing.T) {
 
 		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
 		So(imgStore, ShouldNotBeNil)
+		So(imgStore.MigrateToGlobalBlobstore(), ShouldBeNil)
 
 		globalBlobs, err := imgStore.GetAllBlobs(storageConstants.GlobalBlobsRepo)
 		So(err, ShouldBeNil)
@@ -3998,6 +4018,7 @@ func TestUpgradeToGlobalBlobstore(t *testing.T) {
 
 		imgStore2 := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver2, nil, nil)
 		So(imgStore2, ShouldNotBeNil)
+		So(imgStore2.MigrateToGlobalBlobstore(), ShouldBeNil)
 
 		globalBlobs2, err := imgStore2.GetAllBlobs(storageConstants.GlobalBlobsRepo)
 		So(err, ShouldBeNil)
@@ -4019,6 +4040,7 @@ func TestUpgradeToGlobalBlobstore(t *testing.T) {
 
 		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
 		So(imgStore, ShouldNotBeNil)
+		So(imgStore.MigrateToGlobalBlobstore(), ShouldBeNil)
 
 		// _blobstore should be empty (no repos to upgrade from)
 		globalBlobs, err := imgStore.GetAllBlobs(storageConstants.GlobalBlobsRepo)
@@ -4047,7 +4069,7 @@ func TestUpgradeToGlobalBlobstore(t *testing.T) {
 		err = os.MkdirAll(path.Dir(markerBlobPath), 0o755)
 		So(err, ShouldBeNil)
 
-		err = os.WriteFile(markerBlobPath, []byte{}, 0o644)
+		err = os.WriteFile(markerBlobPath, []byte{}, 0o600)
 		So(err, ShouldBeNil)
 
 		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
@@ -4059,6 +4081,7 @@ func TestUpgradeToGlobalBlobstore(t *testing.T) {
 
 		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
 		So(imgStore, ShouldNotBeNil)
+		So(imgStore.MigrateToGlobalBlobstore(), ShouldBeNil)
 
 		migrationMarkerPath := path.Join(dir, storageConstants.BlobstoreMigratedMarker)
 		_, err = os.Stat(migrationMarkerPath)
@@ -4086,6 +4109,7 @@ func TestUpgradeToGlobalBlobstore(t *testing.T) {
 
 		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
 		So(imgStore, ShouldNotBeNil)
+		So(imgStore.MigrateToGlobalBlobstore(), ShouldBeNil)
 
 		migrationMarkerPath := path.Join(dir, storageConstants.BlobstoreMigratedMarker)
 		_, err = os.Stat(migrationMarkerPath)

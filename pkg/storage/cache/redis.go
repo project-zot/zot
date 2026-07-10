@@ -174,6 +174,58 @@ func (d *RedisDriver) PutBlob(digest godigest.Digest, path string) error {
 	return nil
 }
 
+func (d *RedisDriver) ReplaceOriginalBlob(digest godigest.Digest, path string) error {
+	ctx := context.TODO()
+
+	if path == "" {
+		return zerr.ErrEmptyValue
+	}
+
+	var err error
+	if d.useRelPaths {
+		path, err = filepath.Rel(d.rootDir, path)
+		if err != nil {
+			return err
+		}
+	}
+
+	lock := d.rs.NewMutex(d.join(constants.RedisLocksBucket, digest.String()))
+	if err := lock.Lock(); err != nil {
+		return err
+	}
+
+	defer func() {
+		if _, err := lock.Unlock(); err != nil {
+			d.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to release redis lock")
+		}
+	}()
+
+	originKey := d.join(constants.BlobsCache, constants.OriginalBucket)
+	oldPath, err := d.db.HGet(ctx, originKey, digest.String()).Result()
+	if err != nil && !goerrors.Is(err, redis.Nil) {
+		return err
+	}
+
+	if oldPath == path {
+		return nil
+	}
+
+	_, err = d.db.TxPipelined(ctx, func(txrp redis.Pipeliner) error {
+		if err := txrp.HSet(ctx, originKey, digest.String(), path).Err(); err != nil {
+			return err
+		}
+
+		if oldPath != "" {
+			return txrp.SAdd(ctx, d.join(constants.BlobsCache, constants.DuplicatesBucket, digest.String()),
+				oldPath).Err()
+		}
+
+		return nil
+	})
+
+	return err
+}
+
 func (d *RedisDriver) GetBlob(digest godigest.Digest) (string, error) {
 	ctx := context.TODO()
 

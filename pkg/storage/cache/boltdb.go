@@ -185,6 +185,59 @@ func (d *BoltDBDriver) PutBlob(digest godigest.Digest, path string) error {
 	return nil
 }
 
+func (d *BoltDBDriver) ReplaceOriginalBlob(digest godigest.Digest, path string) error {
+	if path == "" {
+		return zerr.ErrEmptyValue
+	}
+
+	var err error
+	if d.useRelPaths {
+		path, err = filepath.Rel(d.rootDir, path)
+		if err != nil {
+			return err
+		}
+	}
+
+	return d.db.Update(func(tx *bbolt.Tx) error {
+		root := tx.Bucket([]byte(constants.BlobsCache))
+		if root == nil {
+			return zerr.ErrCacheRootBucket
+		}
+
+		bucket, err := root.CreateBucketIfNotExists([]byte(digest.String()))
+		if err != nil {
+			return err
+		}
+
+		origin, err := bucket.CreateBucketIfNotExists([]byte(constants.OriginalBucket))
+		if err != nil {
+			return err
+		}
+
+		oldPath := d.getOne(origin)
+		if string(oldPath) == path {
+			return nil
+		}
+
+		if oldPath != nil {
+			deduped, err := bucket.CreateBucketIfNotExists([]byte(constants.DuplicatesBucket))
+			if err != nil {
+				return err
+			}
+
+			if err := deduped.Put(oldPath, nil); err != nil {
+				return err
+			}
+
+			if err := origin.Delete(oldPath); err != nil {
+				return err
+			}
+		}
+
+		return origin.Put([]byte(path), nil)
+	})
+}
+
 func (d *BoltDBDriver) GetAllBlobs(digest godigest.Digest) ([]string, error) {
 	var blobPath strings.Builder
 

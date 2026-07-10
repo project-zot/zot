@@ -100,7 +100,7 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 	}
 
 	// Deletes are only gated while a dedupe/restore walk is pending; see RunDedupeBlobs.
-	imgStore.dedupeRebuildDone.Store(true)
+	imgStore.dedupeRebuildDone.Store(!dedupe || storeDriver.Name() == storageConstants.LocalStorageDriverName)
 
 	if dedupe {
 		// create the global blobs repo which will serve as the master copy for all deduped blobs
@@ -110,13 +110,6 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 			return nil
 		}
 
-		// upgrade from older releases that did not have _blobstore
-		// runs whenever migration marker is absent (checked at top of upgradeToGlobalBlobstore)
-		if err := imgStore.upgradeToGlobalBlobstore(); err != nil {
-			log.Error().Err(err).Msg("failed to upgrade to global blobstore")
-
-			return nil
-		}
 	}
 
 	return imgStore
@@ -260,19 +253,7 @@ func (is *ImageStore) promoteBlobCandidate(
 			return err
 		}
 	} else {
-		// S3/GCS: copy the actual blob content
-		content, err := is.storeDriver.ReadFile(candidate.blobPath)
-		if err != nil {
-			is.log.Error().Err(err).Str("src", candidate.blobPath).
-				Msg("failed to read blob during upgrade")
-
-			return err
-		}
-
-		if _, err := is.storeDriver.WriteFile(globalBlobPath, content); err != nil {
-			is.log.Error().Err(err).Str("dst", globalBlobPath).
-				Msg("failed to write blob to global blobstore")
-
+		if err := is.streamBlobCandidate(candidate, digest, globalBlobPath); err != nil {
 			return err
 		}
 	}
@@ -280,7 +261,7 @@ func (is *ImageStore) promoteBlobCandidate(
 	// register global blobstore path as the master/original cache entry first,
 	// so that subsequent PutBlob calls for per-repo paths go into DuplicatesBucket
 	if is.cache != nil {
-		if err := is.cache.PutBlob(digest, globalBlobPath); err != nil {
+		if err := is.cache.ReplaceOriginalBlob(digest, globalBlobPath); err != nil {
 			is.log.Error().Err(err).Str("digest", digest.String()).
 				Msg("failed to update cache with global blobstore path during upgrade")
 
@@ -290,6 +271,51 @@ func (is *ImageStore) promoteBlobCandidate(
 
 	is.log.Info().Str("digest", digest.String()).Str("repo", candidate.repoName).
 		Msg("upgraded blob to global blobstore")
+
+	return nil
+}
+
+func (is *ImageStore) streamBlobCandidate(candidate blobCandidate, digest godigest.Digest,
+	globalBlobPath string,
+) (err error) {
+	reader, err := is.storeDriver.Reader(candidate.blobPath, 0)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+
+	writer, err := is.storeDriver.Writer(globalBlobPath, false)
+	if err != nil {
+		return err
+	}
+
+	committed := false
+	defer func() {
+		if !committed {
+			_ = writer.Cancel(context.Background())
+		}
+
+		closeErr := writer.Close()
+		if err == nil {
+			err = closeErr
+		}
+	}()
+
+	digester := digest.Algorithm().Digester()
+	nbytes, err := io.Copy(io.MultiWriter(writer, digester.Hash()), reader)
+	if err != nil {
+		return err
+	}
+
+	if nbytes != candidate.size || digester.Digest() != digest {
+		return zerr.ErrBadBlobDigest
+	}
+
+	if err := writer.Commit(context.Background()); err != nil {
+		return err
+	}
+
+	committed = true
 
 	return nil
 }
@@ -438,7 +464,8 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 
 	if markerOnlyDigests > 0 {
 		is.log.Warn().Int("markerOnlyDigestCount", markerOnlyDigests).
-			Msg("blobstore upgrade incomplete: migration marker not written because some digests only have legacy 0-byte markers")
+			Msg("blobstore upgrade incomplete: migration marker not written because some digests " +
+				"only have legacy 0-byte markers")
 
 		return nil
 	}
@@ -453,6 +480,14 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 	is.writeBlobstoreMigrationMarker(markerPath)
 
 	return nil
+}
+
+func (is *ImageStore) MigrateToGlobalBlobstore() error {
+	if !is.dedupe {
+		return nil
+	}
+
+	return is.upgradeToGlobalBlobstore()
 }
 
 func (is *ImageStore) writeBlobstoreMigrationMarker(markerPath string) {
@@ -1525,7 +1560,7 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 
 	var lastRetryErr error
 
-	for attempt := 0; attempt < maxDedupeSelfHealRetries; attempt++ {
+	for range maxDedupeSelfHealRetries {
 		is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe begin")
 
 		dstRecord, err := is.cache.GetBlob(dstDigest)
@@ -1743,7 +1778,10 @@ func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]str
 		blobPath = filepath.ToSlash(blobPath)
 		blobsDirIndex := strings.LastIndex(blobPath, "/blobs/")
 
-		repos = append(repos, blobPath[:blobsDirIndex])
+		repo := blobPath[:blobsDirIndex]
+		if repo != storageConstants.GlobalBlobsRepo {
+			repos = append(repos, repo)
+		}
 	}
 
 	return repos, nil

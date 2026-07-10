@@ -46,16 +46,17 @@ type MockedImageStore struct {
 	StatBlobFn         func(repo string, digest godigest.Digest) (bool, int64, time.Time, error)
 	GetBlobPartialFn   func(repo string, digest godigest.Digest, mediaType string, from, to int64,
 	) (io.ReadCloser, int64, int64, error)
-	GetBlobFn            func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error)
-	DeleteBlobFn         func(repo string, digest godigest.Digest) error
-	GetIndexContentFn    func(repo string) ([]byte, error)
-	GetBlobContentFn     func(repo string, digest godigest.Digest) ([]byte, error)
-	GetReferrersFn       func(repo string, digest godigest.Digest, artifactTypes []string) (ispec.Index, error)
-	URLForPathFn         func(path string) (string, error)
-	RunGCRepoFn          func(repo string) error
-	RunGCPeriodicallyFn  func(interval time.Duration, sch *scheduler.Scheduler)
-	RunDedupeBlobsFn     func(interval time.Duration, sch *scheduler.Scheduler)
-	RunDedupeForDigestFn func(ctx context.Context, digest godigest.Digest, dedupe bool,
+	GetBlobFn                  func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error)
+	DeleteBlobFn               func(repo string, digest godigest.Digest) error
+	GetIndexContentFn          func(repo string) ([]byte, error)
+	GetBlobContentFn           func(repo string, digest godigest.Digest) ([]byte, error)
+	GetReferrersFn             func(repo string, digest godigest.Digest, artifactTypes []string) (ispec.Index, error)
+	MigrateToGlobalBlobstoreFn func() error
+	URLForPathFn               func(path string) (string, error)
+	RunGCRepoFn                func(repo string) error
+	RunGCPeriodicallyFn        func(interval time.Duration, sch *scheduler.Scheduler)
+	RunDedupeBlobsFn           func(interval time.Duration, sch *scheduler.Scheduler)
+	RunDedupeForDigestFn       func(ctx context.Context, digest godigest.Digest, dedupe bool,
 		duplicateBlobs []string) error
 	GetNextDigestWithBlobPathsFn  func(repos []string, lastDigests []godigest.Digest) (godigest.Digest, []string, error)
 	GetAllBlobsFn                 func(repo string) ([]godigest.Digest, error)
@@ -66,6 +67,14 @@ type MockedImageStore struct {
 	VerifyBlobDigestValueFn       func(repo string, digest godigest.Digest) error
 	GetAllDedupeReposCandidatesFn func(digest godigest.Digest) ([]string, error)
 	GetBlobRedirectURLFn          func(r *http.Request, repo string, digest godigest.Digest) (string, error)
+}
+
+func (is MockedImageStore) MigrateToGlobalBlobstore() error {
+	if is.MigrateToGlobalBlobstoreFn != nil {
+		return is.MigrateToGlobalBlobstoreFn()
+	}
+
+	return nil
 }
 
 func (is MockedImageStore) StatIndex(repo string) (bool, int64, time.Time, error) {

@@ -75,6 +75,13 @@ func TestDynamoDB(t *testing.T) {
 		err = cacheDriver.PutBlob(keyDigest, path.Join(dir, "value2"))
 		So(err, ShouldBeNil)
 
+		err = cacheDriver.ReplaceOriginalBlob(keyDigest, path.Join(dir, "global"))
+		So(err, ShouldBeNil)
+
+		val, err = cacheDriver.GetBlob(keyDigest)
+		So(err, ShouldBeNil)
+		So(val, ShouldEqual, path.Join(dir, "global"))
+
 		err = cacheDriver.DeleteBlob(keyDigest, path.Join(dir, "value1"))
 		So(err, ShouldBeNil)
 

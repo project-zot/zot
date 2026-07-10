@@ -180,6 +180,30 @@ func TestBoltDBCache(t *testing.T) {
 	})
 }
 
+func TestBoltDBReplaceOriginalBlob(t *testing.T) {
+	Convey("Replace original blob", t, func() {
+		cacheDriver, err := storage.Create("boltdb",
+			cache.BoltDBDriverParameters{t.TempDir(), "replace_original", false}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		err = cacheDriver.PutBlob("digest", "repo/blobs/digest")
+		So(err, ShouldBeNil)
+		err = cacheDriver.PutBlob("digest", "_blobstore/blobs/digest")
+		So(err, ShouldBeNil)
+
+		err = cacheDriver.ReplaceOriginalBlob("digest", "_blobstore/blobs/digest")
+		So(err, ShouldBeNil)
+
+		original, err := cacheDriver.GetBlob("digest")
+		So(err, ShouldBeNil)
+		So(original, ShouldEqual, "_blobstore/blobs/digest")
+
+		blobs, err := cacheDriver.GetAllBlobs("digest")
+		So(err, ShouldBeNil)
+		So(blobs, ShouldResemble, []string{"_blobstore/blobs/digest", "repo/blobs/digest"})
+	})
+}
+
 func TestBoltDBDeleteNonOriginDuplicate(t *testing.T) {
 	Convey("Deleting a non-origin duplicate must not promote another path to origin", t, func() {
 		dir := t.TempDir()

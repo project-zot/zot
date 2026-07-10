@@ -246,6 +246,54 @@ func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
 	return nil
 }
 
+func (d *DynamoDBDriver) ReplaceOriginalBlob(digest godigest.Digest, path string) error {
+	if path == "" {
+		return zerr.ErrEmptyValue
+	}
+
+	for {
+		oldPath, err := d.GetBlob(digest)
+		if err != nil {
+			if errors.Is(err, zerr.ErrCacheMiss) {
+				if err := d.putOriginBlob(digest, path); err != nil {
+					var conditionalErr *types.ConditionalCheckFailedException
+					if errors.As(err, &conditionalErr) {
+						continue
+					}
+
+					return err
+				}
+
+				return nil
+			}
+
+			return err
+		}
+
+		if oldPath == path {
+			return nil
+		}
+
+		expression := "SET OriginalBlobPath = :new ADD DuplicateBlobPath :oldSet"
+		conditionExpression := "OriginalBlobPath = :old"
+		values := map[string]types.AttributeValue{
+			":new":    &types.AttributeValueMemberS{Value: path},
+			":old":    &types.AttributeValueMemberS{Value: oldPath},
+			":oldSet": &types.AttributeValueMemberSS{Value: []string{oldPath}},
+		}
+
+		err = d.updateItem(digest, expression, values, &conditionExpression)
+		if err == nil {
+			return nil
+		}
+
+		var conditionalErr *types.ConditionalCheckFailedException
+		if !errors.As(err, &conditionalErr) {
+			return err
+		}
+	}
+}
+
 func (d *DynamoDBDriver) HasBlob(digest godigest.Digest, path string) bool {
 	resp, err := d.client.GetItem(context.TODO(), &dynamodb.GetItemInput{
 		TableName: aws.String(d.tableName),

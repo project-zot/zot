@@ -64,6 +64,7 @@ type ImageStore interface { //nolint:interfacebloat
 	StatIndex(repo string) (bool, int64, time.Time, error)
 	GetBlobContent(repo string, digest godigest.Digest) ([]byte, error)
 	GetReferrers(repo string, digest godigest.Digest, artifactTypes []string) (ispec.Index, error)
+	MigrateToGlobalBlobstore() error
 	RunDedupeBlobs(interval time.Duration, sch *scheduler.Scheduler)
 	RunDedupeForDigest(ctx context.Context, digest godigest.Digest, dedupe bool, duplicateBlobs []string) error
 	GetNextDigestWithBlobPaths(repos []string, lastDigests []godigest.Digest) (godigest.Digest, []string, error)
