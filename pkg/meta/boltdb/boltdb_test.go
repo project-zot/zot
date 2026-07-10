@@ -306,6 +306,15 @@ func TestWrapperErrors(t *testing.T) {
 				_, err = boltdbWrapper.GetReferrersInfo("repo", "refDig", []string{})
 				So(err, ShouldNotBeNil)
 			})
+
+			Convey("digest with no referrers entry returns empty list without panic", func() {
+				err := boltdbWrapper.SetRepoReference(ctx, "repo", "tag", imageMeta)
+				So(err, ShouldBeNil)
+
+				referrers, err := boltdbWrapper.GetReferrersInfo("repo", godigest.FromString("no-referrers"), []string{})
+				So(err, ShouldBeNil)
+				So(referrers, ShouldBeEmpty)
+			})
 		})
 
 		Convey("ResetRepoReferences", func() {

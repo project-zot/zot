@@ -233,10 +233,8 @@ func TestMetricsAuthorization(t *testing.T) {
 	const AuthorizationAllRepos = "**"
 
 	Convey("Make a new controller with auth & metrics enabled", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		username := generateRandomString()
 		password := generateRandomString()
@@ -271,7 +269,7 @@ func TestMetricsAuthorization(t *testing.T) {
 			ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			// authenticated but not authorized user should not have access to/metrics
@@ -299,7 +297,7 @@ func TestMetricsAuthorization(t *testing.T) {
 			ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			// authenticated but not authorized user should not have access to/metrics
@@ -339,7 +337,7 @@ func TestMetricsAuthorization(t *testing.T) {
 			ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			// unauthenticated clients should not have access to /metrics
@@ -395,7 +393,7 @@ func TestMetricsAuthorization(t *testing.T) {
 			ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			// unauthenticated clients should not have access to /metrics
@@ -435,7 +433,7 @@ func TestMetricsAuthorization(t *testing.T) {
 			ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			// unauthenticated client should be allowed to scrape /metrics
@@ -485,7 +483,7 @@ func TestMetricsAuthorization(t *testing.T) {
 			ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			// unauthenticated client should be allowed to scrape /metrics
@@ -533,7 +531,7 @@ func TestMetricsAuthorization(t *testing.T) {
 			ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			// unauthenticated client should be blocked

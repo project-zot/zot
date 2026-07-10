@@ -1732,7 +1732,7 @@ func (rc *RedisDB) GetReferrersInfo(repo string, referredDigest godigest.Digest,
 		return referrersInfoResult, err
 	}
 
-	referrersInfo := protoRepoMeta.Referrers[referredDigest.String()].List
+	referrersInfo := protoRepoMeta.Referrers[referredDigest.String()].GetList()
 	seenDigests := make(map[string]struct{})
 
 	for i := range referrersInfo {
