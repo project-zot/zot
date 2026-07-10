@@ -28,7 +28,6 @@ import (
 
 var (
 	errDeleteFailed = errors.New("delete failed")
-	errWalkFailed   = errors.New("walk failed")
 ) //nolint: gochecknoglobals
 
 func TestGetBlobRedirectURL(t *testing.T) {
@@ -280,7 +279,7 @@ func TestNewImageStoreDoesNotBlockOnMigration(t *testing.T) {
 		) error {
 			walkCalls++
 
-			return errWalkFailed
+			return errDeleteFailed
 		}
 
 		store := imagestore.NewImageStore("", "", true, false, log, metrics, nil,
