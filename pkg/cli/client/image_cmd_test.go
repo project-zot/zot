@@ -931,10 +931,8 @@ func TestServerResponseGQLWithoutPermissions(t *testing.T) {
 
 func TestDisplayIndex(t *testing.T) {
 	Convey("Init Basic Server, No GQL", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		Convey("No GQL", func() {
 			defaultVal := false
@@ -945,7 +943,7 @@ func TestDisplayIndex(t *testing.T) {
 			ctlr.Config.Storage.RootDirectory = t.TempDir()
 			cm := test.NewControllerManager(ctlr)
 
-			cm.StartAndWait(conf.HTTP.Port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			runDisplayIndexTests(baseURL)
@@ -960,7 +958,7 @@ func TestDisplayIndex(t *testing.T) {
 			ctlr.Config.Storage.RootDirectory = t.TempDir()
 			cm := test.NewControllerManager(ctlr)
 
-			cm.StartAndWait(conf.HTTP.Port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			runDisplayIndexTests(baseURL)

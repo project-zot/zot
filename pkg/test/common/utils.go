@@ -24,6 +24,7 @@ const (
 	BaseURL               = "http://127.0.0.1:%s"
 	BaseSecureURL         = "https://127.0.0.1:%s"
 	SleepTime             = 100 * time.Millisecond
+	boundPortWaitTimeout  = 30 * time.Second
 	AuthorizationAllRepos = "**"
 )
 
@@ -98,28 +99,54 @@ func (cm *ControllerManager) StopServer() {
 	cm.controller.Shutdown()
 }
 
-func (cm *ControllerManager) WaitServerToBeReady(port string) {
-	url := GetBaseURL(port)
-	WaitTillServerReady(url)
+// StartAndWait starts the controller and blocks until the server responds to HTTP GET.
+// It returns the HTTP base URL (http://127.0.0.1:<port>).
+//
+// The listen port comes from the controller config. After bind, the port is
+// read from the controller (including kernel-chosen ports when config uses "0").
+// Prefer conf.HTTP.Port = "0" in new tests to avoid port-allocation races.
+//
+// Optional port arguments are deprecated and ignored; kept for call-site compatibility.
+func (cm *ControllerManager) StartAndWait(_ ...string) string {
+	cm.StartServer()
+	baseURL := GetBaseURL(cm.waitForBoundPort())
+	WaitTillServerReady(baseURL)
+
+	return baseURL
 }
 
-func (cm *ControllerManager) StartAndWait(port string) {
-	cm.StartServer()
+// Port returns the TCP port the controller bound to, or 0 if not listening yet.
+func (cm *ControllerManager) Port() int {
+	return cm.controller.GetPort()
+}
 
-	if port == "0" || port == "" {
-		for {
-			if chosenPort := cm.controller.GetPort(); chosenPort > 0 {
-				port = strconv.Itoa(chosenPort)
-
-				break
-			}
-
-			time.Sleep(SleepTime)
-		}
+// BaseURL returns http://127.0.0.1:<port> from the bound listen port, or "" if not listening yet.
+func (cm *ControllerManager) BaseURL() string {
+	port := cm.Port()
+	if port <= 0 {
+		return ""
 	}
 
-	url := GetBaseURL(port)
-	WaitTillServerReady(url)
+	return GetBaseURL(strconv.Itoa(port))
+}
+
+func (cm *ControllerManager) waitForBoundPort() string {
+	deadline := time.Now().Add(boundPortWaitTimeout)
+
+	for time.Now().Before(deadline) {
+		if port := cm.controller.GetPort(); port > 0 {
+			return strconv.Itoa(port)
+		}
+
+		time.Sleep(SleepTime)
+	}
+
+	panic(fmt.Sprintf("timed out after %s waiting for controller to bind a port", boundPortWaitTimeout))
+}
+
+// WaitServerReady blocks until the server responds to HTTP GET on the bound port.
+func (cm *ControllerManager) WaitServerReady() {
+	WaitTillServerReady(GetBaseURL(cm.waitForBoundPort()))
 }
 
 func NewControllerManager(controller Controller) ControllerManager {
