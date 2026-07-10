@@ -3,6 +3,9 @@
 package sync_test
 
 import (
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -73,6 +76,38 @@ func generateRSAKeyPEM(t *testing.T) (string, *rsa.PublicKey) {
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: der})
 
 	return string(pemBytes), &key.PublicKey
+}
+
+func generateECKeyPEM(t *testing.T) string {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("failed to generate EC key: %v", err)
+	}
+
+	der, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		t.Fatalf("failed to marshal EC key: %v", err)
+	}
+
+	return string(pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: der}))
+}
+
+func generateEd25519KeyPEM(t *testing.T) string {
+	t.Helper()
+
+	_, key, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("failed to generate Ed25519 key: %v", err)
+	}
+
+	der, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatalf("failed to marshal Ed25519 key: %v", err)
+	}
+
+	return string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}))
 }
 
 // defaultsigningFile writes a minimal RS256 signing config and returns its path
@@ -364,6 +399,48 @@ func TestOAuth2CredentialsHelper(t *testing.T) {
 			So(creds[remoteAddress].Password, ShouldEqual, "the-access-token")
 		})
 
+		Convey("Mints an assertion with an ECDSA signing key", func() {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"access_token":"the-access-token","expires_in":3600}`))
+			}))
+			defer server.Close()
+
+			signingFile := writeSigningFile(t, map[string]any{
+				"privateKeyFile": writeKeyFile(t, generateECKeyPEM(t)),
+				"algorithm":      "ES256",
+			})
+
+			credentialHelper, err := sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
+				&syncconf.OAuth2HelperConfig{TokenURL: server.URL, SigningFile: signingFile})
+			So(err, ShouldBeNil)
+
+			creds, err := credentialHelper.GetCredentials([]string{registryURL})
+			So(err, ShouldBeNil)
+			So(creds[remoteAddress].Password, ShouldEqual, "the-access-token")
+		})
+
+		Convey("Mints an assertion with an Ed25519 signing key", func() {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"access_token":"the-access-token","expires_in":3600}`))
+			}))
+			defer server.Close()
+
+			signingFile := writeSigningFile(t, map[string]any{
+				"privateKeyFile": writeKeyFile(t, generateEd25519KeyPEM(t)),
+				"algorithm":      "EdDSA",
+			})
+
+			credentialHelper, err := sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
+				&syncconf.OAuth2HelperConfig{TokenURL: server.URL, SigningFile: signingFile})
+			So(err, ShouldBeNil)
+
+			creds, err := credentialHelper.GetCredentials([]string{registryURL})
+			So(err, ShouldBeNil)
+			So(creds[remoteAddress].Password, ShouldEqual, "the-access-token")
+		})
+
 		Convey("Client secret is read from a file when configured", func() {
 			var receivedBody url.Values
 
@@ -396,8 +473,8 @@ func TestOAuth2CredentialsHelper(t *testing.T) {
 		Convey("Error when the signing algorithm is unsupported", func() {
 			privateKeyPEM, _ := generateRSAKeyPEM(t)
 			signingFile := writeSigningFile(t, map[string]any{
-				"privateKey": privateKeyPEM,
-				"algorithm":  "NOPE",
+				"privateKeyFile": writeKeyFile(t, privateKeyPEM),
+				"algorithm":      "NOPE",
 			})
 
 			credentialHelper, err := sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
@@ -431,9 +508,43 @@ func TestOAuth2CredentialsHelper(t *testing.T) {
 
 		Convey("Error when the signing key is not valid PEM", func() {
 			signingFile := writeSigningFile(t, map[string]any{
-				"privateKey": "not-a-pem-key",
-				"algorithm":  "RS256",
+				"privateKeyFile": writeKeyFile(t, "not-a-pem-key"),
+				"algorithm":      "RS256",
 			})
+
+			credentialHelper, err := sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
+				//nolint:gosec // test token endpoint URL, not a credential
+				&syncconf.OAuth2HelperConfig{
+					TokenURL:    "https://idp.example.com/token",
+					SigningFile: signingFile,
+				})
+			So(err, ShouldBeNil)
+
+			_, err = credentialHelper.GetCredentials([]string{registryURL})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Error when the signing key file is missing", func() {
+			signingFile := writeSigningFile(t, map[string]any{
+				"privateKeyFile": filepath.Join(t.TempDir(), "no-key.pem"),
+				"algorithm":      "RS256",
+			})
+
+			credentialHelper, err := sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
+				//nolint:gosec // test token endpoint URL, not a credential
+				&syncconf.OAuth2HelperConfig{
+					TokenURL:    "https://idp.example.com/token",
+					SigningFile: signingFile,
+				})
+			So(err, ShouldBeNil)
+
+			_, err = credentialHelper.GetCredentials([]string{registryURL})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Error when the signing config file is not valid JSON", func() {
+			signingFile := filepath.Join(t.TempDir(), "invalid.json")
+			So(os.WriteFile(signingFile, []byte("not-json"), 0o600), ShouldBeNil)
 
 			credentialHelper, err := sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
 				//nolint:gosec // test token endpoint URL, not a credential

@@ -50,7 +50,7 @@ var (
 	errOAuth2ReadSecret              = errors.New("unable to read the oauth2 client secret file")
 	errOAuth2ReadSigningFile         = errors.New("unable to read the oauth2 signing file")
 	errOAuth2DecodeSigningFile       = errors.New("unable to decode the oauth2 signing file")
-	errOAuth2SigningKeyMissing       = errors.New("the oauth2 signing requires a privateKey or privateKeyFile")
+	errOAuth2SigningKeyMissing       = errors.New("the oauth2 signing requires a privateKeyFile")
 	errOAuth2ReadSigningKey          = errors.New("unable to read the oauth2 signing key file")
 	errOAuth2ParseSigningKey         = errors.New("unable to parse the oauth2 signing key")
 	errOAuth2UnsupportedAlg          = errors.New("unsupported oauth2 signing algorithm")
@@ -282,8 +282,7 @@ func (credHelper *oauth2CredentialsHelper) parseSigningKey(
 	return key, nil
 }
 
-// signingKeyPEM returns the PEM-encoded private key, preferring the inline value
-// over the file reference.
+// signingKeyPEM returns the PEM-encoded private key, from the file reference.
 func signingKeyPEM(signingConfig oauth2SigningConfig) ([]byte, error) {
 	if signingConfig.PrivateKeyFile != "" {
 		pemKey, err := os.ReadFile(signingConfig.PrivateKeyFile)
