@@ -262,7 +262,8 @@ func TestRedisCacheError(t *testing.T) {
 		brokenClient := redis.NewClient(connOpts)
 
 		cacheDriver, err := cache.NewRedisCache(
-			cache.RedisDriverParameters{workingClient, dir, false, "zot"}, log)
+			cache.RedisDriverParameters{workingClient, dir, false, "zot"}, log,
+		)
 		So(cacheDriver, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
@@ -373,6 +374,29 @@ func TestRedisMocked(t *testing.T) {
 				So(err, ShouldBeNil)
 			})
 
+			Convey("PutBlob HGet error"+testID, func() {
+				// initialize mock client
+				cacheDB, mock := redismock.NewClientMock()
+				redisDriverParams.Client = cacheDB
+
+				mock.ExpectPing().SetVal("OK")
+				cacheDriver, err := cache.NewRedisCache(redisDriverParams, log)
+				So(cacheDriver, ShouldNotBeNil)
+				So(err, ShouldBeNil)
+
+				mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
+				mock.ExpectHExists(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
+					SetVal(true)
+				mock.ExpectHGet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
+					SetErr(ErrTestError)
+
+				err = cacheDriver.PutBlob("key", path.Join(dir, "val"))
+				So(err, ShouldEqual, ErrTestError)
+
+				err = mock.ExpectationsWereMet()
+				So(err, ShouldBeNil)
+			})
+
 			Convey("PutBlob SAdd error"+testID, func() {
 				// initialize mock client
 				cacheDB, mock := redismock.NewClientMock()
@@ -437,6 +461,8 @@ func TestRedisMocked(t *testing.T) {
 				mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
 				mock.ExpectHExists(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
 					SetVal(true)
+				mock.ExpectHGet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
+					SetVal(path.Join(pathPrefix, "original"))
 				mock.ExpectTxPipeline()
 				mock.ExpectSAdd(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
 					path.Join(pathPrefix, "val")).SetVal(1)

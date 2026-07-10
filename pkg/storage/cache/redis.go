@@ -156,6 +156,9 @@ func (d *RedisDriver) PutBlob(digest godigest.Digest, path string) error {
 		if err == nil && currentPath == path {
 			return nil
 		}
+		if err != nil && !goerrors.Is(err, redis.Nil) {
+			return err
+		}
 
 		// add path to the set of paths which the digest represents
 		if err := txrp.SAdd(ctx, d.join(constants.BlobsCache, constants.DuplicatesBucket,
