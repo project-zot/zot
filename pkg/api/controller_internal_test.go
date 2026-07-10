@@ -14,6 +14,7 @@ import (
 
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/scheduler"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 	tlsutils "zotregistry.dev/zot/v2/pkg/test/tls"
 )
@@ -34,12 +35,23 @@ func TestStorageStartupTask(t *testing.T) {
 			},
 		}
 
-		if err := (storageStartupTask{store: store}).DoWork(context.Background()); err != nil {
+		completed := false
+		if err := (storageStartupTask{
+			stores: []storageTypes.ImageStore{store},
+			onComplete: func() {
+				calls = append(calls, "complete")
+				completed = true
+			},
+		}).DoWork(context.Background()); err != nil {
 			t.Fatalf("storage startup task failed: %v", err)
 		}
 
-		if len(calls) != 2 || calls[0] != "migrate" || calls[1] != "dedupe" {
+		if len(calls) != 3 || calls[0] != "migrate" || calls[1] != "dedupe" || calls[2] != "complete" {
 			t.Fatalf("unexpected call order: %v", calls)
+		}
+
+		if !completed {
+			t.Fatal("completion callback was not called")
 		}
 	})
 
@@ -55,13 +67,23 @@ func TestStorageStartupTask(t *testing.T) {
 			},
 		}
 
-		err := (storageStartupTask{store: store}).DoWork(context.Background())
+		completed := false
+		err := (storageStartupTask{
+			stores: []storageTypes.ImageStore{store},
+			onComplete: func() {
+				completed = true
+			},
+		}).DoWork(context.Background())
 		if !goerrors.Is(err, migrationErr) {
 			t.Fatalf("expected migration error, got %v", err)
 		}
 
 		if dedupeCalled {
 			t.Fatal("dedupe ran after migration failure")
+		}
+
+		if completed {
+			t.Fatal("completion callback ran after migration failure")
 		}
 	})
 }

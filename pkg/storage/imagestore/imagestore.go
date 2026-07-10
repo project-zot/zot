@@ -357,7 +357,12 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 			return driver.ErrSkipDir
 		}
 
-		if ok, _ := is.ValidateRepo(rel); !ok {
+		ok, err := is.ValidateRepo(rel)
+		if err != nil {
+			return err
+		}
+
+		if !ok {
 			return nil //nolint:nilerr
 		}
 

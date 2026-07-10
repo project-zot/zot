@@ -252,34 +252,63 @@ func (d *DynamoDBDriver) ReplaceOriginalBlob(digest godigest.Digest, path string
 	}
 
 	for {
-		oldPath, err := d.GetBlob(digest)
+		resp, err := d.client.GetItem(context.TODO(), &dynamodb.GetItemInput{
+			ConsistentRead: aws.Bool(true),
+			TableName:      aws.String(d.tableName),
+			Key: map[string]types.AttributeValue{
+				"Digest": &types.AttributeValueMemberS{Value: digest.String()},
+			},
+		})
 		if err != nil {
-			if errors.Is(err, zerr.ErrCacheMiss) {
-				if err := d.putOriginBlob(digest, path); err != nil {
-					var conditionalErr *types.ConditionalCheckFailedException
-					if errors.As(err, &conditionalErr) {
-						continue
-					}
-
-					return err
-				}
-
-				return nil
-			}
-
 			return err
 		}
 
+		if resp.Item == nil {
+			if err := d.putOriginBlob(digest, path); err != nil {
+				var conditionalErr *types.ConditionalCheckFailedException
+				if errors.As(err, &conditionalErr) {
+					continue
+				}
+
+				return err
+			}
+
+			return nil
+		}
+
+		current := Blob{}
+		if err := attributevalue.UnmarshalMap(resp.Item, &current); err != nil {
+			return err
+		}
+
+		oldPath := current.OriginalBlobPath
 		if oldPath == path {
 			return nil
 		}
 
-		expression := "SET OriginalBlobPath = :new ADD DuplicateBlobPath :oldSet"
-		conditionExpression := "OriginalBlobPath = :old"
+		duplicates := map[string]struct{}{oldPath: {}}
+		for _, duplicate := range current.DuplicateBlobPath {
+			if duplicate != path {
+				duplicates[duplicate] = struct{}{}
+			}
+		}
+
+		newDuplicates := make([]string, 0, len(duplicates))
+		for duplicate := range duplicates {
+			newDuplicates = append(newDuplicates, duplicate)
+		}
+
+		expression := "SET OriginalBlobPath = :new, DuplicateBlobPath = :newDuplicates"
+		conditionExpression := "OriginalBlobPath = :old AND attribute_not_exists(DuplicateBlobPath)"
 		values := map[string]types.AttributeValue{
-			":new":    &types.AttributeValueMemberS{Value: path},
-			":old":    &types.AttributeValueMemberS{Value: oldPath},
-			":oldSet": &types.AttributeValueMemberSS{Value: []string{oldPath}},
+			":new":           &types.AttributeValueMemberS{Value: path},
+			":newDuplicates": &types.AttributeValueMemberSS{Value: newDuplicates},
+			":old":           &types.AttributeValueMemberS{Value: oldPath},
+		}
+
+		if len(current.DuplicateBlobPath) > 0 {
+			conditionExpression = "OriginalBlobPath = :old AND DuplicateBlobPath = :oldDuplicates"
+			values[":oldDuplicates"] = &types.AttributeValueMemberSS{Value: current.DuplicateBlobPath}
 		}
 
 		err = d.updateItem(digest, expression, values, &conditionExpression)

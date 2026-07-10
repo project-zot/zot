@@ -226,7 +226,7 @@ func TestRedisReplaceOriginalBlob(t *testing.T) {
 
 		blobs, err := cacheDriver.GetAllBlobs("digest")
 		So(err, ShouldBeNil)
-		So(blobs, ShouldContain, "repo/blobs/digest")
+		So(blobs, ShouldResemble, []string{"_blobstore/blobs/digest", "repo/blobs/digest"})
 	})
 }
 

@@ -234,6 +234,13 @@ func (d *BoltDBDriver) ReplaceOriginalBlob(digest godigest.Digest, path string) 
 			}
 		}
 
+		deduped := bucket.Bucket([]byte(constants.DuplicatesBucket))
+		if deduped != nil {
+			if err := deduped.Delete([]byte(path)); err != nil {
+				return err
+			}
+		}
+
 		return origin.Put([]byte(path), nil)
 	})
 }

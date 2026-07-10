@@ -82,6 +82,13 @@ func TestDynamoDB(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(val, ShouldEqual, path.Join(dir, "global"))
 
+		blobs, err := cacheDriver.GetAllBlobs(keyDigest)
+		So(err, ShouldBeNil)
+		So(blobs, ShouldHaveLength, 3)
+		So(blobs, ShouldContain, path.Join(dir, "global"))
+		So(blobs, ShouldContain, path.Join(dir, "value1"))
+		So(blobs, ShouldContain, path.Join(dir, "value2"))
+
 		err = cacheDriver.DeleteBlob(keyDigest, path.Join(dir, "value1"))
 		So(err, ShouldBeNil)
 
@@ -89,7 +96,7 @@ func TestDynamoDB(t *testing.T) {
 		So(exists, ShouldBeTrue)
 
 		exists = cacheDriver.HasBlob(keyDigest, path.Join(dir, "value1"))
-		So(exists, ShouldBeTrue)
+		So(exists, ShouldBeFalse)
 
 		err = cacheDriver.DeleteBlob(keyDigest, path.Join(dir, "value2"))
 		So(err, ShouldBeNil)

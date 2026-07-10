@@ -216,11 +216,13 @@ func (d *RedisDriver) ReplaceOriginalBlob(digest godigest.Digest, path string) e
 		}
 
 		if oldPath != "" {
-			return txrp.SAdd(ctx, d.join(constants.BlobsCache, constants.DuplicatesBucket, digest.String()),
-				oldPath).Err()
+			if err := txrp.SAdd(ctx, d.join(constants.BlobsCache, constants.DuplicatesBucket, digest.String()),
+				oldPath).Err(); err != nil {
+				return err
+			}
 		}
 
-		return nil
+		return txrp.SRem(ctx, d.join(constants.BlobsCache, constants.DuplicatesBucket, digest.String()), path).Err()
 	})
 
 	return err

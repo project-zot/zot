@@ -36,16 +36,25 @@ import (
 )
 
 type storageStartupTask struct {
-	store     storageTypes.ImageStore
-	scheduler *scheduler.Scheduler
+	stores     []storageTypes.ImageStore
+	scheduler  *scheduler.Scheduler
+	onComplete func()
 }
 
 func (task storageStartupTask) DoWork(context.Context) error {
-	if err := task.store.MigrateToGlobalBlobstore(); err != nil {
-		return err
+	for _, store := range task.stores {
+		if err := store.MigrateToGlobalBlobstore(); err != nil {
+			return err
+		}
 	}
 
-	task.store.RunDedupeBlobs(time.Duration(0), task.scheduler)
+	for _, store := range task.stores {
+		store.RunDedupeBlobs(time.Duration(0), task.scheduler)
+	}
+
+	if task.onComplete != nil {
+		task.onComplete()
+	}
 
 	return nil
 }
@@ -582,24 +591,22 @@ func (c *Controller) StartBackgroundTasks() {
 		c.HTPasswdWatcher.Run()
 	}
 
-	// Migrate legacy blobs before running the dedupe/restore walk, without blocking startup.
-	c.taskScheduler.SubmitTask(storageStartupTask{
-		store:     c.StoreController.DefaultStore,
-		scheduler: c.taskScheduler,
-	}, scheduler.MediumPriority)
-
 	storageConfig := c.Config.CopyStorageConfig()
+	stores := []storageTypes.ImageStore{c.StoreController.DefaultStore}
 	for route := range storageConfig.SubPaths {
 		if substore := c.StoreController.SubStore[route]; substore != nil {
-			c.taskScheduler.SubmitTask(storageStartupTask{
-				store:     substore,
-				scheduler: c.taskScheduler,
-			}, scheduler.MediumPriority)
+			stores = append(stores, substore)
 		}
 	}
 
-	// Run GC and retention tasks after all storage migrations have been queued.
-	RunGCTasks(c.Config, c.StoreController, c.MetaDB, c.taskScheduler, c.Log, c.Audit, c.Metrics)
+	// Migrate all legacy stores before enabling dedupe/restore and GC, without blocking startup.
+	c.taskScheduler.SubmitTask(storageStartupTask{
+		stores:    stores,
+		scheduler: c.taskScheduler,
+		onComplete: func() {
+			RunGCTasks(c.Config, c.StoreController, c.MetaDB, c.taskScheduler, c.Log, c.Audit, c.Metrics)
+		},
+	}, scheduler.MediumPriority)
 
 	// Always call EnableSearchExtension to ensure proper logging, even when search is disabled
 	ext.EnableSearchExtension(c.Config, c.StoreController, c.MetaDB, c.taskScheduler, c.CveScanner, c.Log)
