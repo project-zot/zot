@@ -5,7 +5,11 @@ package sync
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"net/http"
@@ -641,6 +645,229 @@ func TestService(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldEqual, "guaranteed referrer channel error")
 		})
+	})
+}
+
+func writeKeyFile(t *testing.T, content string) string {
+	t.Helper()
+
+	keyFile := path.Join(t.TempDir(), "key.pem")
+	if err := os.WriteFile(keyFile, []byte(content), 0o600); err != nil {
+		t.Fatalf("failed to write key file: %v", err)
+	}
+
+	return keyFile
+}
+
+// writeOAuth2SigningFile writes a minimal RS256 signing config the oauth2 helper
+// can use to mint assertions, and returns its path.
+func writeOAuth2SigningFile(t *testing.T) string {
+	t.Helper()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("failed to generate RSA key: %v", err)
+	}
+
+	privateKeyPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(key),
+	})
+
+	raw, err := json.Marshal(map[string]any{
+		"privateKeyFile": writeKeyFile(t, string(privateKeyPEM)),
+		"algorithm":      "RS256",
+	})
+	if err != nil {
+		t.Fatalf("failed to marshal signing config: %v", err)
+	}
+
+	signingFile := path.Join(t.TempDir(), "signing-config.json")
+	if err := os.WriteFile(signingFile, raw, 0o600); err != nil {
+		t.Fatalf("failed to write signing config file: %v", err)
+	}
+
+	return signingFile
+}
+
+func TestServiceOAuth2CredentialHelper(t *testing.T) {
+	Convey("New wires the oauth2 credential helper", t, func() {
+		tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"helper-token","token_type":"Bearer","expires_in":3600}`))
+		}))
+		defer tokenServer.Close()
+
+		signingFile := writeOAuth2SigningFile(t)
+
+		conf := syncconf.RegistryConfig{
+			URLs:             []string{"http://localhost"},
+			CredentialHelper: "oauth2",
+			Oauth2CredentialHelper: map[string]any{
+				"tokenURL":    tokenServer.URL,
+				"signingFile": signingFile,
+				"username":    "robot",
+			},
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(service.credentialHelper, ShouldNotBeNil)
+		So(service.credentials["localhost"].Username, ShouldEqual, "robot")
+		So(service.credentials["localhost"].Password, ShouldEqual, "helper-token")
+	})
+
+	Convey("New falls back gracefully when the oauth2 config is missing", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs:                   []string{"http://localhost"},
+			CredentialHelper:       "oauth2",
+			Oauth2CredentialHelper: nil,
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(service.credentialHelper, ShouldBeNil)
+		So(service.config.CredentialHelper, ShouldEqual, "")
+	})
+
+	Convey("New falls back gracefully when the oauth2 config cannot be decoded", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs:             []string{"http://localhost"},
+			CredentialHelper: "oauth2",
+			Oauth2CredentialHelper: map[string]any{
+				"tokenURL": map[string]any{"unexpected": "object"},
+			},
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(service.credentialHelper, ShouldBeNil)
+		So(service.config.CredentialHelper, ShouldEqual, "")
+	})
+
+	Convey("New falls back gracefully on invalid oauth2 config", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs:             []string{"http://localhost"},
+			CredentialHelper: "oauth2",
+			Oauth2CredentialHelper: map[string]any{
+				"signingFile": "/does/not/matter",
+			},
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(service.credentialHelper, ShouldBeNil)
+		So(service.config.CredentialHelper, ShouldEqual, "")
+	})
+
+	Convey("New tolerates oauth2 credential retrieval failure", t, func() {
+		signingFile := writeOAuth2SigningFile(t)
+
+		conf := syncconf.RegistryConfig{
+			URLs:             []string{"http://localhost"},
+			CredentialHelper: "oauth2",
+			Oauth2CredentialHelper: map[string]any{
+				"tokenURL":    "http://127.0.0.1:1/token",
+				"signingFile": signingFile,
+			},
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(service.credentialHelper, ShouldNotBeNil)
+	})
+
+	Convey("New falls back gracefully on an unsupported credential helper", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs:             []string{"http://localhost"},
+			CredentialHelper: "unsupported",
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(service.credentialHelper, ShouldBeNil)
+		So(service.config.CredentialHelper, ShouldEqual, "")
+	})
+}
+
+func TestOAuth2HelperConfigFromMap(t *testing.T) {
+	Convey("nil dictionary decodes to nil config", t, func() {
+		config, err := syncconf.OAuth2HelperConfigFromMap(nil)
+		So(err, ShouldBeNil)
+		So(config, ShouldBeNil)
+	})
+
+	Convey("generic dictionary is decoded into the typed OAuth2 helper config", t, func() {
+		config, err := syncconf.OAuth2HelperConfigFromMap(map[string]any{
+			"tokenURL":         "https://idp.example.com/token",
+			"signingFile":      "/var/run/secrets/signing-config.json",
+			"grantType":        "urn:ietf:params:oauth:grant-type:jwt-bearer",
+			"clientID":         "zot-sync",
+			"clientSecretFile": "/etc/zot/secret",
+			"scopes":           []any{"repository:pull", "repository:push"},
+			"username":         "robot",
+		})
+		So(err, ShouldBeNil)
+		So(config, ShouldNotBeNil)
+		So(config.TokenURL, ShouldEqual, "https://idp.example.com/token")
+		So(config.SigningFile, ShouldEqual, "/var/run/secrets/signing-config.json")
+		So(config.GrantType, ShouldEqual, "urn:ietf:params:oauth:grant-type:jwt-bearer")
+		So(config.ClientID, ShouldEqual, "zot-sync")
+		So(config.ClientSecretFile, ShouldEqual, "/etc/zot/secret")
+		So(config.Username, ShouldEqual, "robot")
+		So(config.Scopes, ShouldResemble, []string{"repository:pull", "repository:push"})
+	})
+
+	Convey("an undecodable dictionary returns an error", t, func() {
+		config, err := syncconf.OAuth2HelperConfigFromMap(map[string]any{
+			"tokenURL": map[string]any{"unexpected": "object"},
+		})
+		So(err, ShouldNotBeNil)
+		So(config, ShouldBeNil)
+	})
+
+	Convey("a misspelled key is rejected instead of silently dropped", t, func() {
+		config, err := syncconf.OAuth2HelperConfigFromMap(map[string]any{
+			"tokenURL":     "https://idp.example.com/token",
+			"signingFile":  "/run/secrets/signing-config.json",
+			"clientSecret": "misspelled-clientSecretFile",
+		})
+		So(err, ShouldNotBeNil)
+		So(config, ShouldBeNil)
+	})
+}
+
+func TestOAuth2HelperConfigValidate(t *testing.T) {
+	Convey("a nil config is invalid", t, func() {
+		var config *syncconf.OAuth2HelperConfig
+		So(config.Validate(), ShouldNotBeNil)
+	})
+
+	Convey("tokenURL is required", t, func() {
+		config := &syncconf.OAuth2HelperConfig{SigningFile: "/run/secrets/signing-config.json"}
+		So(config.Validate(), ShouldNotBeNil)
+	})
+
+	Convey("an assertion source is required", t, func() {
+		config := &syncconf.OAuth2HelperConfig{TokenURL: "https://idp.example.com/token"}
+		So(config.Validate(), ShouldNotBeNil)
+	})
+
+	Convey("assertionFile and signingFile are mutually exclusive", t, func() {
+		config := &syncconf.OAuth2HelperConfig{
+			TokenURL:      "https://idp.example.com/token",
+			AssertionFile: "/run/secrets/assertion.jwt",
+			SigningFile:   "/run/secrets/signing-config.json",
+		}
+		So(config.Validate(), ShouldNotBeNil)
+	})
+
+	Convey("a complete config is valid", t, func() {
+		config := &syncconf.OAuth2HelperConfig{
+			TokenURL:    "https://idp.example.com/token",
+			SigningFile: "/run/secrets/signing-config.json",
+		}
+		So(config.Validate(), ShouldBeNil)
 	})
 }
 
