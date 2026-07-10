@@ -854,8 +854,8 @@ func TestGCSGetAllDedupeReposCandidates(t *testing.T) {
 		repos, err := imgStore.GetAllDedupeReposCandidates(randomBlobDigest)
 		So(err, ShouldBeNil)
 
-		// with global blobstore, _blobstore is included as a candidate
-		expectedRepos := append([]string{storageConstants.GlobalBlobsRepo}, repoNames...)
+		// the internal global blobstore is not exposed as a dedupe candidate
+		expectedRepos := append([]string{}, repoNames...)
 		slices.Sort(expectedRepos)
 		slices.Sort(repos)
 		So(repos, ShouldResemble, expectedRepos)

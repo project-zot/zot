@@ -593,6 +593,7 @@ func (c *Controller) StartBackgroundTasks() {
 
 	storageConfig := c.Config.CopyStorageConfig()
 	stores := []storageTypes.ImageStore{c.StoreController.DefaultStore}
+
 	for route := range storageConfig.SubPaths {
 		if substore := c.StoreController.SubStore[route]; substore != nil {
 			stores = append(stores, substore)

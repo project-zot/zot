@@ -191,6 +191,7 @@ func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
 	}
 
 	var originBlob string
+
 	var retryErr error
 
 	for range maxDynamoDBConditionalRetries {
@@ -302,6 +303,7 @@ func (d *DynamoDBDriver) ReplaceOriginalBlob(digest godigest.Digest, path string
 		}
 
 		duplicates := map[string]struct{}{oldPath: {}}
+
 		for _, duplicate := range current.DuplicateBlobPath {
 			if duplicate != path {
 				duplicates[duplicate] = struct{}{}

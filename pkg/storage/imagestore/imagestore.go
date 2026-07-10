@@ -109,7 +109,6 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 
 			return nil
 		}
-
 	}
 
 	return imgStore
@@ -150,6 +149,20 @@ func (is *ImageStore) Unlock(lockStart *time.Time) {
 }
 
 func (is *ImageStore) initRepo(ctx context.Context, name string) error {
+	if name != storageConstants.GlobalBlobsRepo {
+		if !utf8.ValidString(name) {
+			is.log.Error().Msg("invalid UTF-8 input")
+
+			return zerr.ErrInvalidRepositoryName
+		}
+
+		if !zreg.FullNameRegexp.MatchString(name) {
+			is.log.Error().Str("repository", name).Msg("invalid repository name")
+
+			return zerr.ErrInvalidRepositoryName
+		}
+	}
+
 	repoDir := path.Join(is.rootDir, name)
 
 	// create "blobs" subdir
@@ -521,6 +534,7 @@ func (is *ImageStore) InitRepo(ctx context.Context, name string) error {
 
 		return zerr.ErrInvalidRepositoryName
 	}
+
 	var lockLatency time.Time
 
 	is.Lock(&lockLatency)

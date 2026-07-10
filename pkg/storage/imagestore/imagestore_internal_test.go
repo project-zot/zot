@@ -2,6 +2,8 @@ package imagestore
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"io"
 	"net/http"
 	"sync"
@@ -23,10 +25,17 @@ type streamTestDriver struct {
 	writer    driver.FileWriter
 	ensureErr error
 	writeErr  error
+	ensureFn  func(string) error
 }
 
-func (d *streamTestDriver) Name() string                                      { return "remote" }
-func (d *streamTestDriver) EnsureDir(string) error                            { return d.ensureErr }
+func (d *streamTestDriver) Name() string { return "remote" }
+func (d *streamTestDriver) EnsureDir(dir string) error {
+	if d.ensureFn != nil {
+		return d.ensureFn(dir)
+	}
+
+	return d.ensureErr
+}
 func (d *streamTestDriver) DirExists(string) bool                             { return true }
 func (d *streamTestDriver) Reader(string, int64) (io.ReadCloser, error)       { return d.reader, nil }
 func (d *streamTestDriver) ReadFile(string) ([]byte, error)                   { return nil, nil }
@@ -116,6 +125,40 @@ func TestGetAllDedupeReposCandidatesExcludesBlobstore(t *testing.T) {
 		repos, err := imageStore.GetAllDedupeReposCandidates(digest)
 		So(err, ShouldBeNil)
 		So(repos, ShouldResemble, []string{"repo"})
+	})
+}
+
+func TestInitRepoRejectsInvalidInternalRepoNames(t *testing.T) {
+	Convey("initRepo rejects invalid non-internal repository names", t, func() {
+		ensureCalls := 0
+		testDriver := &streamTestDriver{
+			ensureFn: func(string) error {
+				ensureCalls++
+
+				return nil
+			},
+		}
+		imageStore := &ImageStore{storeDriver: testDriver, log: zlog.NewTestLogger()}
+
+		err := imageStore.initRepo(context.Background(), "../escape")
+		So(errors.Is(err, zerr.ErrInvalidRepositoryName), ShouldBeTrue)
+		So(ensureCalls, ShouldEqual, 0)
+	})
+
+	Convey("initRepo still allows the internal global blobstore name", t, func() {
+		ensureCalls := 0
+		testDriver := &streamTestDriver{
+			ensureFn: func(string) error {
+				ensureCalls++
+
+				return nil
+			},
+		}
+		imageStore := &ImageStore{storeDriver: testDriver, log: zlog.NewTestLogger()}
+
+		err := imageStore.initRepo(context.Background(), storageConstants.GlobalBlobsRepo)
+		So(err, ShouldBeNil)
+		So(ensureCalls, ShouldEqual, 2)
 	})
 }
 
