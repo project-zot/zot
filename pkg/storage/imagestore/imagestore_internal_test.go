@@ -19,19 +19,21 @@ import (
 )
 
 type streamTestDriver struct {
-	reader io.ReadCloser
-	writer driver.FileWriter
+	reader    io.ReadCloser
+	writer    driver.FileWriter
+	ensureErr error
+	writeErr  error
 }
 
 func (d *streamTestDriver) Name() string                                      { return "remote" }
-func (d *streamTestDriver) EnsureDir(string) error                            { return nil }
+func (d *streamTestDriver) EnsureDir(string) error                            { return d.ensureErr }
 func (d *streamTestDriver) DirExists(string) bool                             { return true }
 func (d *streamTestDriver) Reader(string, int64) (io.ReadCloser, error)       { return d.reader, nil }
 func (d *streamTestDriver) ReadFile(string) ([]byte, error)                   { return nil, nil }
 func (d *streamTestDriver) Delete(string) error                               { return nil }
 func (d *streamTestDriver) Stat(string) (driver.FileInfo, error)              { return nil, nil }
 func (d *streamTestDriver) Writer(string, bool) (driver.FileWriter, error)    { return d.writer, nil }
-func (d *streamTestDriver) WriteFile(string, []byte) (int, error)             { return 0, nil }
+func (d *streamTestDriver) WriteFile(string, []byte) (int, error)             { return 0, d.writeErr }
 func (d *streamTestDriver) Walk(string, driver.WalkFn) error                  { return nil }
 func (d *streamTestDriver) List(string) ([]string, error)                     { return nil, nil }
 func (d *streamTestDriver) Move(string, string) error                         { return nil }
@@ -114,5 +116,23 @@ func TestGetAllDedupeReposCandidatesExcludesBlobstore(t *testing.T) {
 		repos, err := imageStore.GetAllDedupeReposCandidates(digest)
 		So(err, ShouldBeNil)
 		So(repos, ShouldResemble, []string{"repo"})
+	})
+}
+
+func TestWriteBlobstoreMigrationMarkerErrors(t *testing.T) {
+	Convey("Migration marker directory errors are propagated", t, func() {
+		testDriver := &streamTestDriver{ensureErr: zerr.ErrBadBlobDigest}
+		imageStore := &ImageStore{storeDriver: testDriver}
+
+		err := imageStore.writeBlobstoreMigrationMarker("_blobstore/.migrated")
+		So(err, ShouldEqual, zerr.ErrBadBlobDigest)
+	})
+
+	Convey("Migration marker write errors are propagated", t, func() {
+		testDriver := &streamTestDriver{writeErr: zerr.ErrBadBlobDigest}
+		imageStore := &ImageStore{storeDriver: testDriver}
+
+		err := imageStore.writeBlobstoreMigrationMarker("_blobstore/.migrated")
+		So(err, ShouldEqual, zerr.ErrBadBlobDigest)
 	})
 }

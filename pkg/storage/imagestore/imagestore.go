@@ -375,9 +375,7 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 	}
 
 	if len(repos) == 0 {
-		is.writeBlobstoreMigrationMarker(markerPath)
-
-		return nil
+		return is.writeBlobstoreMigrationMarker(markerPath)
 	}
 
 	is.log.Info().Msg("upgrading storage: populating global blobstore from existing repos")
@@ -482,9 +480,7 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 		return nil
 	}
 
-	is.writeBlobstoreMigrationMarker(markerPath)
-
-	return nil
+	return is.writeBlobstoreMigrationMarker(markerPath)
 }
 
 func (is *ImageStore) MigrateToGlobalBlobstore() error {
@@ -500,14 +496,16 @@ func (is *ImageStore) MigrateToGlobalBlobstore() error {
 	return is.upgradeToGlobalBlobstore()
 }
 
-func (is *ImageStore) writeBlobstoreMigrationMarker(markerPath string) {
+func (is *ImageStore) writeBlobstoreMigrationMarker(markerPath string) error {
 	// Write the migration-complete marker so this scan is skipped on future startups.
 	markerDir := path.Join(is.rootDir, storageConstants.GlobalBlobsRepo)
 	if err := is.storeDriver.EnsureDir(markerDir); err != nil {
-		is.log.Warn().Err(err).Msg("failed to ensure _blobstore dir for migration marker")
-	} else if _, err := is.storeDriver.WriteFile(markerPath, []byte("1")); err != nil {
-		is.log.Warn().Err(err).Msg("failed to write blobstore migration marker")
+		return err
 	}
+
+	_, err := is.storeDriver.WriteFile(markerPath, []byte("1"))
+
+	return err
 }
 
 // InitRepo creates an image repository under this store.
