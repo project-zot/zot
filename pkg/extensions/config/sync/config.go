@@ -1,9 +1,17 @@
 package sync
 
 import (
+	"errors"
 	"time"
 
 	"github.com/mitchellh/mapstructure"
+)
+
+var (
+	errOAuth2HelperConfigMissing = errors.New("oauth2 credential helper requires an oauth2CredentialHelper config")
+	errOAuth2TokenURLMissing     = errors.New("oauth2 credential helper requires a tokenURL")
+	errOAuth2AssertionMissing    = errors.New("oauth2 credential helper requires an assertionFile or a signingFile")
+	errOAuth2AssertionConflict   = errors.New("oauth2 credential helper allows only assertionFile or signingFile")
 )
 
 // CredentialsFile is a map where key is registry address.
@@ -70,6 +78,7 @@ func decodeOauth2CredentialHelper(raw map[string]any, out any) error {
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
 		Result:           out,
 		WeaklyTypedInput: true,
+		ErrorUnused:      true, // reject misspelled keys, mirroring the strict top-level config load
 		TagName:          "mapstructure",
 	})
 	if err != nil {
@@ -92,6 +101,30 @@ func OAuth2HelperConfigFromMap(raw map[string]any) (*OAuth2HelperConfig, error) 
 	}
 
 	return config, nil
+}
+
+// Validate checks that the OAuth2 helper configuration is complete and consistent.
+func (config *OAuth2HelperConfig) Validate() error {
+	if config == nil {
+		return errOAuth2HelperConfigMissing
+	}
+
+	if config.TokenURL == "" {
+		return errOAuth2TokenURLMissing
+	}
+
+	hasAssertionFile := config.AssertionFile != ""
+	hasSigningFile := config.SigningFile != ""
+
+	if !hasAssertionFile && !hasSigningFile {
+		return errOAuth2AssertionMissing
+	}
+
+	if hasAssertionFile && hasSigningFile {
+		return errOAuth2AssertionConflict
+	}
+
+	return nil
 }
 
 // ShouldSyncLegacyCosignTags returns whether to sync legacy cosign tags (e.g. sha256-<digest>.sig/sbom).

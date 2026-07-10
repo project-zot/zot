@@ -42,25 +42,21 @@ const (
 )
 
 var (
-	errOauth2CredentialHelperMissing = errors.New("oauth2 credential helper requires oauth2CredentialHelper")
-	errOAuth2TokenURLMissing         = errors.New("oauth2 credential helper requires a tokenURL")
-	errOAuth2AssertionMissing        = errors.New("oauth2 credential helper requires an assertionFile or a signingFile")
-	errOAuth2AssertionConflict       = errors.New("oauth2 credential helper allows only assertionFile or signingFile")
-	errOAuth2ReadAssertion           = errors.New("unable to read the oauth2 assertion file")
-	errOAuth2ReadSecret              = errors.New("unable to read the oauth2 client secret file")
-	errOAuth2ReadSigningFile         = errors.New("unable to read the oauth2 signing file")
-	errOAuth2DecodeSigningFile       = errors.New("unable to decode the oauth2 signing file")
-	errOAuth2SigningKeyMissing       = errors.New("the oauth2 signing requires a privateKeyFile")
-	errOAuth2ReadSigningKey          = errors.New("unable to read the oauth2 signing key file")
-	errOAuth2ParseSigningKey         = errors.New("unable to parse the oauth2 signing key")
-	errOAuth2UnsupportedAlg          = errors.New("unsupported oauth2 signing algorithm")
-	errOAuth2GenerateJTI             = errors.New("unable to generate the oauth2 assertion id")
-	errOAuth2SignAssertion           = errors.New("unable to sign the oauth2 assertion")
-	errOAuth2ExchangeFailed          = errors.New("failed to exchange the oauth2 assertion for an access token")
-	errOAuth2UnexpectedStatus        = errors.New("unexpected status code from the oauth2 token endpoint")
-	errOAuth2DecodeResponse          = errors.New("unable to decode the oauth2 token response")
-	errOAuth2EmptyAccessToken        = errors.New("the oauth2 token endpoint returned an empty access token")
-	errFailedToGetOAuth2Creds        = errors.New("failed to get oauth2 credentials")
+	errOAuth2ReadAssertion     = errors.New("unable to read the oauth2 assertion file")
+	errOAuth2ReadSecret        = errors.New("unable to read the oauth2 client secret file")
+	errOAuth2ReadSigningFile   = errors.New("unable to read the oauth2 signing file")
+	errOAuth2DecodeSigningFile = errors.New("unable to decode the oauth2 signing file")
+	errOAuth2SigningKeyMissing = errors.New("the oauth2 signing requires a privateKeyFile")
+	errOAuth2ReadSigningKey    = errors.New("unable to read the oauth2 signing key file")
+	errOAuth2ParseSigningKey   = errors.New("unable to parse the oauth2 signing key")
+	errOAuth2UnsupportedAlg    = errors.New("unsupported oauth2 signing algorithm")
+	errOAuth2GenerateJTI       = errors.New("unable to generate the oauth2 assertion id")
+	errOAuth2SignAssertion     = errors.New("unable to sign the oauth2 assertion")
+	errOAuth2ExchangeFailed    = errors.New("failed to exchange the oauth2 assertion for an access token")
+	errOAuth2UnexpectedStatus  = errors.New("unexpected status code from the oauth2 token endpoint")
+	errOAuth2DecodeResponse    = errors.New("unable to decode the oauth2 token response")
+	errOAuth2EmptyAccessToken  = errors.New("the oauth2 token endpoint returned an empty access token")
+	errFailedToGetOAuth2Creds  = errors.New("failed to get oauth2 credentials")
 )
 
 type oauth2Token struct {
@@ -101,23 +97,8 @@ func NewOAuth2CredentialHelper(
 	log log.Logger,
 	config *syncconf.OAuth2HelperConfig,
 ) (CredentialHelper, error) {
-	if config == nil {
-		return nil, errOauth2CredentialHelperMissing
-	}
-
-	if config.TokenURL == "" {
-		return nil, errOAuth2TokenURLMissing
-	}
-
-	hasAssertionFile := config.AssertionFile != ""
-	hasSigningFile := config.SigningFile != ""
-
-	if !hasAssertionFile && !hasSigningFile {
-		return nil, errOAuth2AssertionMissing
-	}
-
-	if hasAssertionFile && hasSigningFile {
-		return nil, errOAuth2AssertionConflict
+	if err := config.Validate(); err != nil {
+		return nil, err
 	}
 
 	return &oauth2CredentialsHelper{
@@ -392,16 +373,22 @@ func (credHelper *oauth2CredentialsHelper) tokenExpiry(remoteAddress string) tim
 }
 
 // GetCredentials retrieves access tokens for the provided list of registry URLs.
+// The token is not URL-specific, so a single exchange covers all URLs; this also
+// keeps a single-use assertion from being replayed once per mirror.
 func (credHelper *oauth2CredentialsHelper) GetCredentials(urls []string) (syncconf.CredentialsFile, error) {
 	credentials := make(syncconf.CredentialsFile)
 
+	if len(urls) == 0 {
+		return credentials, nil
+	}
+
+	token, err := credHelper.fetchToken()
+	if err != nil {
+		return syncconf.CredentialsFile{}, fmt.Errorf("%w: %w", errFailedToGetOAuth2Creds, err)
+	}
+
 	for _, registryURL := range urls {
 		remoteAddress := StripRegistryTransport(registryURL)
-
-		token, err := credHelper.fetchToken()
-		if err != nil {
-			return syncconf.CredentialsFile{}, fmt.Errorf("%w %s: %w", errFailedToGetOAuth2Creds, registryURL, err)
-		}
 
 		credHelper.storeToken(remoteAddress, token)
 		credentials[remoteAddress] = syncconf.Credentials{

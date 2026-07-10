@@ -226,6 +226,63 @@ func TestLoadConfigurationSyncCredentialHelper(t *testing.T) {
 		So(oauth2Config.ClientSecretFile, ShouldEqual, "/etc/zot/secret")
 		So(oauth2Config.Scopes, ShouldResemble, []string{"repository:pull"})
 	})
+
+	Convey("an incomplete oauth2CredentialHelper config fails at load time", t, func() {
+		content := `{
+			"storage": {"rootDirectory": "/tmp/zot"},
+			"http": {"address": "127.0.0.1", "port": "8080"},
+			"extensions": {
+				"sync": {
+					"registries": [
+						{
+							"urls": ["https://registry.example.com"],
+							"onDemand": true,
+							"credentialHelper": "oauth2",
+							"oauth2CredentialHelper": {
+								"signingFile": "/run/secrets/signing-config.json"
+							}
+						}
+					]
+				}
+			}
+		}`
+
+		tmpfile := MakeTempFileWithContent(t, "zot-sync-oauth2-no-tokenurl.json", content)
+		cfg := config.New()
+
+		// tokenURL is required
+		err := cli.LoadConfiguration(cfg, tmpfile)
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("a misspelled oauth2CredentialHelper key fails at load time", t, func() {
+		content := `{
+			"storage": {"rootDirectory": "/tmp/zot"},
+			"http": {"address": "127.0.0.1", "port": "8080"},
+			"extensions": {
+				"sync": {
+					"registries": [
+						{
+							"urls": ["https://registry.example.com"],
+							"onDemand": true,
+							"credentialHelper": "oauth2",
+							"oauth2CredentialHelper": {
+								"tokenURL": "https://idp.example.com/token",
+								"signingFile": "/run/secrets/signing-config.json",
+								"clientSecret": "misspelled-clientSecretFile"
+							}
+						}
+					]
+				}
+			}
+		}`
+
+		tmpfile := MakeTempFileWithContent(t, "zot-sync-oauth2-bad-key.json", content)
+		cfg := config.New()
+
+		err := cli.LoadConfiguration(cfg, tmpfile)
+		So(err, ShouldNotBeNil)
+	})
 }
 
 func TestLoadConfigurationInjectsHTTPTimeoutDefaults(t *testing.T) {

@@ -262,6 +262,32 @@ func TestOAuth2CredentialsHelper(t *testing.T) {
 			So(claims["jti"], ShouldNotBeEmpty)
 		})
 
+		Convey("A single token exchange covers all URLs", func() {
+			requestCount := 0
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				requestCount++
+
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"access_token":"the-access-token","expires_in":3600}`))
+			}))
+			defer server.Close()
+
+			signingFile, _ := defaultsigningFile(t)
+
+			credentialHelper, err := sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
+				&syncconf.OAuth2HelperConfig{TokenURL: server.URL, SigningFile: signingFile})
+			So(err, ShouldBeNil)
+
+			creds, err := credentialHelper.GetCredentials([]string{registryURL, "https://mirror.example.com"})
+			So(err, ShouldBeNil)
+			So(requestCount, ShouldEqual, 1)
+			So(creds[remoteAddress].Password, ShouldEqual, "the-access-token")
+			So(creds["mirror.example.com"].Password, ShouldEqual, "the-access-token")
+			So(credentialHelper.AreCredentialsValid(remoteAddress), ShouldBeTrue)
+			So(credentialHelper.AreCredentialsValid("mirror.example.com"), ShouldBeTrue)
+		})
+
 		Convey("Each minted assertion is single-use with a unique jti", func() {
 			var assertions []string
 
@@ -487,6 +513,23 @@ func TestOAuth2CredentialsHelper(t *testing.T) {
 
 			_, err = credentialHelper.GetCredentials([]string{registryURL})
 			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Empty URL list needs no token exchange", func() {
+			signingFile, _ := defaultsigningFile(t)
+
+			credentialHelper, err := sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
+				//nolint:gosec // test token endpoint URL, not a credential
+				&syncconf.OAuth2HelperConfig{
+					TokenURL:    "https://idp.example.com/token",
+					SigningFile: signingFile,
+				})
+			So(err, ShouldBeNil)
+
+			// the unreachable tokenURL proves no exchange was attempted
+			creds, err := credentialHelper.GetCredentials(nil)
+			So(err, ShouldBeNil)
+			So(creds, ShouldBeEmpty)
 		})
 
 		Convey("Error when the signing key is missing", func() {

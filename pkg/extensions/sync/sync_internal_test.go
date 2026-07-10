@@ -825,6 +825,50 @@ func TestOAuth2HelperConfigFromMap(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(config, ShouldBeNil)
 	})
+
+	Convey("a misspelled key is rejected instead of silently dropped", t, func() {
+		config, err := syncconf.OAuth2HelperConfigFromMap(map[string]any{
+			"tokenURL":     "https://idp.example.com/token",
+			"signingFile":  "/run/secrets/signing-config.json",
+			"clientSecret": "misspelled-clientSecretFile",
+		})
+		So(err, ShouldNotBeNil)
+		So(config, ShouldBeNil)
+	})
+}
+
+func TestOAuth2HelperConfigValidate(t *testing.T) {
+	Convey("a nil config is invalid", t, func() {
+		var config *syncconf.OAuth2HelperConfig
+		So(config.Validate(), ShouldNotBeNil)
+	})
+
+	Convey("tokenURL is required", t, func() {
+		config := &syncconf.OAuth2HelperConfig{SigningFile: "/run/secrets/signing-config.json"}
+		So(config.Validate(), ShouldNotBeNil)
+	})
+
+	Convey("an assertion source is required", t, func() {
+		config := &syncconf.OAuth2HelperConfig{TokenURL: "https://idp.example.com/token"}
+		So(config.Validate(), ShouldNotBeNil)
+	})
+
+	Convey("assertionFile and signingFile are mutually exclusive", t, func() {
+		config := &syncconf.OAuth2HelperConfig{
+			TokenURL:      "https://idp.example.com/token",
+			AssertionFile: "/run/secrets/assertion.jwt",
+			SigningFile:   "/run/secrets/signing-config.json",
+		}
+		So(config.Validate(), ShouldNotBeNil)
+	})
+
+	Convey("a complete config is valid", t, func() {
+		config := &syncconf.OAuth2HelperConfig{
+			TokenURL:    "https://idp.example.com/token",
+			SigningFile: "/run/secrets/signing-config.json",
+		}
+		So(config.Validate(), ShouldBeNil)
+	})
 }
 
 func TestSyncLegacyCosignTagsSyncReferrers(t *testing.T) {
