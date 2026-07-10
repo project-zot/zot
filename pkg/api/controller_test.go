@@ -84,16 +84,14 @@ const (
 )
 
 var (
-	username         = "test"                    //nolint: gochecknoglobals
-	password         = "test"                    //nolint: gochecknoglobals
-	group            = "test"                    //nolint: gochecknoglobals
-	LDAPBaseDN       = "ou=" + username          //nolint: gochecknoglobals
-	LDAPBindDN       = "cn=reader," + LDAPBaseDN //nolint: gochecknoglobals
-	LDAPBindPassword = "ldappass"                //nolint: gochecknoglobals
-	LDAPUserAttr     = "uid"                     //nolint: gochecknoglobals
-
-	errTimedOutWaitingForControllerPort = goerrors.New("timed out waiting for controller port") //nolint: gochecknoglobals
-	errGetCertificateFailed             = goerrors.New("GetCertificate failed")                 //nolint: gochecknoglobals
+	username                = "test"                                //nolint: gochecknoglobals
+	password                = "test"                                //nolint: gochecknoglobals
+	group                   = "test"                                //nolint: gochecknoglobals
+	LDAPBaseDN              = "ou=" + username                      //nolint: gochecknoglobals
+	LDAPBindDN              = "cn=reader," + LDAPBaseDN             //nolint: gochecknoglobals
+	LDAPBindPassword        = "ldappass"                            //nolint: gochecknoglobals
+	LDAPUserAttr            = "uid"                                 //nolint: gochecknoglobals
+	errGetCertificateFailed = goerrors.New("GetCertificate failed") //nolint: gochecknoglobals
 )
 
 // setupBearerAuthServerCerts generates CA and server certificates for bearer auth server testing
@@ -587,9 +585,7 @@ func TestAutoPortSelection(t *testing.T) {
 		ctlr := makeController(conf, t.TempDir())
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartServer()
-		So(waitForControllerPort(ctlr, 30*time.Second), ShouldBeNil)
-		cm.WaitServerToBeReady(strconv.Itoa(ctlr.GetPort()))
+		cm.StartAndWait()
 
 		defer cm.StopServer()
 
@@ -608,19 +604,6 @@ func TestAutoPortSelection(t *testing.T) {
 		So(ctlr.GetPort(), ShouldBeGreaterThan, 0)
 		So(ctlr.GetPort(), ShouldBeLessThan, 65536)
 	})
-}
-
-func waitForControllerPort(ctlr interface{ GetPort() int }, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-
-	for time.Now().Before(deadline) {
-		if p := ctlr.GetPort(); p > 0 {
-			return nil
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-
-	return errTimedOutWaitingForControllerPort
 }
 
 func TestObjectStorageController(t *testing.T) {
@@ -648,9 +631,8 @@ func TestObjectStorageController(t *testing.T) {
 	})
 
 	Convey("Make a new object storage controller", t, func() {
-		port := test.GetFreePort()
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		endpoint := os.Getenv("S3MOCK_ENDPOINT")
 		tmp := t.TempDir()
@@ -670,15 +652,14 @@ func TestObjectStorageController(t *testing.T) {
 		So(ctlr, ShouldNotBeNil)
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
+		cm.StartAndWait()
 
 		defer cm.StopServer()
 	})
 
 	Convey("Make a new object storage controller with openid", t, func() {
-		port := test.GetFreePort()
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		endpoint := os.Getenv("S3MOCK_ENDPOINT")
 
@@ -745,7 +726,7 @@ func TestObjectStorageController(t *testing.T) {
 		So(ctlr, ShouldNotBeNil)
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
+		cm.StartAndWait()
 
 		defer cm.StopServer()
 	})
@@ -5533,10 +5514,7 @@ func TestAuthnMetaDBErrors(t *testing.T) {
 
 func TestAuthorization(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
@@ -5565,6 +5543,9 @@ func TestAuthorization(t *testing.T) {
 		}
 
 		Convey("with openid", func() {
+			// OIDC redirect URIs are registered at controller init from conf.HTTP.Port.
+			conf.HTTP.Port = test.GetFreePort()
+
 			mockOIDCServer, err := authutils.MockOIDCRun()
 			if err != nil {
 				panic(err)
@@ -5601,7 +5582,7 @@ func TestAuthorization(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 
 			defer cm.StopServer()
 
@@ -5630,6 +5611,8 @@ func TestAuthorization(t *testing.T) {
 		})
 
 		Convey("with basic auth", func() {
+			conf.HTTP.Port = "0"
+
 			ctlr := api.NewController(conf)
 			ctlr.Config.Storage.RootDirectory = t.TempDir()
 
@@ -5638,7 +5621,7 @@ func TestAuthorization(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 
 			defer cm.StopServer()
 
@@ -6455,11 +6438,7 @@ func TestAuthorizationWithAnonymousPolicyBasicAuthAndSessionHeader(t *testing.T)
 
 func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
 		conf := config.New()
-		conf.HTTP.Port = port
 		// have two users: one for  user Policy, and another for default policy
 		username1, seedUser1 := test.GenerateRandomString()
 		password1, seedPass1 := test.GenerateRandomString()
@@ -6495,6 +6474,9 @@ func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 		}
 
 		Convey("with openid", func() {
+			// OIDC redirect URIs are registered at controller init from conf.HTTP.Port.
+			conf.HTTP.Port = test.GetFreePort()
+
 			dir := t.TempDir()
 
 			mockOIDCServer, err := authutils.MockOIDCRun()
@@ -6537,7 +6519,7 @@ func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 
 			defer cm.StopServer()
 
@@ -6587,6 +6569,8 @@ func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 		})
 
 		Convey("with basic auth", func() {
+			conf.HTTP.Port = "0"
+
 			dir := t.TempDir()
 
 			ctlr := api.NewController(conf)
@@ -6597,7 +6581,7 @@ func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 
 			defer cm.StopServer()
 
@@ -11767,10 +11751,8 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 			repoName := "testrepo" //nolint:goconst
 			tag := "0.0.1"
 
-			port := test.GetFreePort()
-			baseURL := test.GetBaseURL(port)
 			conf := config.New()
-			conf.HTTP.Port = port
+			conf.HTTP.Port = "0"
 			conf.Log.Output = test.MakeTempFilePath(t, "zot-log.txt")
 			conf.Log.Audit = test.MakeTempFilePath(t, "zot-audit.log")
 
@@ -11806,11 +11788,10 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 
 			ctlr.Config.Storage.Dedupe = false
 
-			cm := test.NewControllerManager(ctlr)
-			cm.StartServer() //nolint: contextcheck
-			cm.WaitServerToBeReady(port)
+			controllerManager := test.NewControllerManager(ctlr)
+			baseURL := controllerManager.StartAndWait()
 
-			defer cm.StopServer()
+			defer controllerManager.StopServer()
 
 			img := CreateDefaultImage()
 
@@ -11843,7 +11824,7 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 			err = generate.GenerateKeyPairCmd(ctx, "", "cosign", nil)
 			So(err, ShouldBeNil)
 
-			image := fmt.Sprintf("localhost:%s/%s@%s", port, repoName, digest.String())
+			image := fmt.Sprintf("localhost:%d/%s@%s", controllerManager.Port(), repoName, digest.String())
 
 			annotations := []string{"tag=" + tag}
 
@@ -14447,16 +14428,13 @@ func TestDynamicTLSCertificateReloading(t *testing.T) {
 
 func TestDockerClientV2ChallengeWorkaround(t *testing.T) {
 	Convey("Test Docker client /v2/ challenge workaround", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
 		htpasswdUsername, seedUser := test.GenerateRandomString()
 		htpasswdPassword, seedPass := test.GenerateRandomString()
 		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(htpasswdUsername, htpasswdPassword))
 
 		Convey("With mixed anonymous and authenticated repository policies", func() {
 			conf := config.New()
-			conf.HTTP.Port = port
+			conf.HTTP.Port = "0"
 			conf.HTTP.Auth = &config.AuthConfig{
 				HTPasswd: config.AuthHTPasswd{
 					Path: htpasswdPath,
@@ -14480,7 +14458,7 @@ func TestDockerClientV2ChallengeWorkaround(t *testing.T) {
 			ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).
 				Msg("random seed for username & password")
 			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 
 			defer cm.StopServer()
 
@@ -14550,7 +14528,7 @@ func TestDockerClientV2ChallengeWorkaround(t *testing.T) {
 
 		Convey("With only anonymous repository policies", func() {
 			conf := config.New()
-			conf.HTTP.Port = port
+			conf.HTTP.Port = "0"
 			conf.HTTP.Auth = &config.AuthConfig{
 				HTPasswd: config.AuthHTPasswd{
 					Path: htpasswdPath,
@@ -14569,7 +14547,7 @@ func TestDockerClientV2ChallengeWorkaround(t *testing.T) {
 			ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).
 				Msg("random seed for username & password")
 			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 
 			defer cm.StopServer()
 
