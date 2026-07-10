@@ -17,6 +17,8 @@ import (
 	zlog "zotregistry.dev/zot/v2/pkg/log"
 )
 
+const maxDynamoDBConditionalRetries = 10
+
 type DynamoDBDriver struct {
 	client    *dynamodb.Client
 	log       zlog.Logger
@@ -189,8 +191,9 @@ func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
 	}
 
 	var originBlob string
+	var retryErr error
 
-	for {
+	for range maxDynamoDBConditionalRetries {
 		var err error
 
 		originBlob, err = d.GetBlob(digest)
@@ -203,6 +206,8 @@ func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
 			if err := d.putOriginBlob(digest, path); err != nil {
 				var conditionalErr *types.ConditionalCheckFailedException
 				if errors.As(err, &conditionalErr) {
+					retryErr = err
+
 					continue
 				}
 
@@ -216,6 +221,8 @@ func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
 			if err := d.putOriginBlob(digest, path); err != nil {
 				var conditionalErr *types.ConditionalCheckFailedException
 				if errors.As(err, &conditionalErr) {
+					retryErr = err
+
 					continue
 				}
 
@@ -226,6 +233,10 @@ func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
 		}
 
 		break
+	}
+
+	if originBlob == "" {
+		return retryErr
 	}
 
 	// if same as original, this is idempotent
@@ -251,7 +262,9 @@ func (d *DynamoDBDriver) ReplaceOriginalBlob(digest godigest.Digest, path string
 		return zerr.ErrEmptyValue
 	}
 
-	for {
+	var retryErr error
+
+	for range maxDynamoDBConditionalRetries {
 		resp, err := d.client.GetItem(context.TODO(), &dynamodb.GetItemInput{
 			ConsistentRead: aws.Bool(true),
 			TableName:      aws.String(d.tableName),
@@ -267,6 +280,8 @@ func (d *DynamoDBDriver) ReplaceOriginalBlob(digest godigest.Digest, path string
 			if err := d.putOriginBlob(digest, path); err != nil {
 				var conditionalErr *types.ConditionalCheckFailedException
 				if errors.As(err, &conditionalErr) {
+					retryErr = err
+
 					continue
 				}
 
@@ -320,7 +335,11 @@ func (d *DynamoDBDriver) ReplaceOriginalBlob(digest godigest.Digest, path string
 		if !errors.As(err, &conditionalErr) {
 			return err
 		}
+
+		retryErr = err
 	}
+
+	return retryErr
 }
 
 func (d *DynamoDBDriver) HasBlob(digest godigest.Digest, path string) bool {
