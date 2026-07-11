@@ -353,6 +353,83 @@ func TestConfig(t *testing.T) {
 			So(conf.HTTP.Auth.SessionDriver["token"], ShouldEqual, "session-token")
 		})
 
+		Convey("Test Sanitize() with Event sink headers", func() {
+			conf := config.New()
+			So(conf, ShouldNotBeNil)
+
+			enabled := true
+			conf.Extensions = &extconf.ExtensionConfig{
+				Events: &eventsconf.Config{
+					Enable: &enabled,
+					Sinks: []eventsconf.SinkConfig{
+						{
+							Type:    eventsconf.HTTP,
+							Address: "https://example.com/webhook",
+							Headers: map[string]string{
+								"Authorization": "Bearer header-only-token",
+								"X-API-Key":     "header-only-apikey",
+								"Content-Type":  "application/json",
+							},
+						},
+						{
+							Type:    eventsconf.HTTP,
+							Address: "https://example.com/webhook2",
+							Credentials: &eventsconf.Credentials{
+								Password: "cred-password",
+								Token:    "cred-token",
+							},
+							Headers: map[string]string{
+								"Authorization": "Bearer with-creds-token",
+							},
+						},
+					},
+				},
+			}
+
+			sanitizedConf := conf.Sanitize()
+
+			So(sanitizedConf.Extensions.Events.Sinks[0].Headers["Authorization"], ShouldEqual, "******")
+			So(sanitizedConf.Extensions.Events.Sinks[0].Headers["X-API-Key"], ShouldEqual, "******")
+			So(sanitizedConf.Extensions.Events.Sinks[0].Headers["Content-Type"], ShouldEqual, "application/json")
+			So(sanitizedConf.Extensions.Events.Sinks[1].Credentials.Password, ShouldEqual, "******")
+			So(sanitizedConf.Extensions.Events.Sinks[1].Credentials.Token, ShouldEqual, "******")
+			So(sanitizedConf.Extensions.Events.Sinks[1].Headers["Authorization"], ShouldEqual, "******")
+
+			So(conf.Extensions.Events.Sinks[0].Headers["Authorization"], ShouldEqual, "Bearer header-only-token")
+			So(conf.Extensions.Events.Sinks[1].Credentials.Password, ShouldEqual, "cred-password")
+		})
+
+		Convey("Test Sanitize() with Event sink secrets when events extension is disabled", func() {
+			conf := config.New()
+			So(conf, ShouldNotBeNil)
+
+			disabled := false
+			conf.Extensions = &extconf.ExtensionConfig{
+				Events: &eventsconf.Config{
+					Enable: &disabled,
+					Sinks: []eventsconf.SinkConfig{
+						{
+							Type:    eventsconf.HTTP,
+							Address: "https://example.com/webhook",
+							Credentials: &eventsconf.Credentials{
+								Password: "disabled-password",
+							},
+							Headers: map[string]string{
+								"X-API-Key": "disabled-apikey",
+							},
+						},
+					},
+				},
+			}
+
+			sanitizedConf := conf.Sanitize()
+
+			So(sanitizedConf.Extensions.Events.Sinks[0].Credentials.Password, ShouldEqual, "******")
+			So(sanitizedConf.Extensions.Events.Sinks[0].Headers["X-API-Key"], ShouldEqual, "******")
+			So(conf.Extensions.Events.Sinks[0].Credentials.Password, ShouldEqual, "disabled-password")
+			So(conf.Extensions.Events.Sinks[0].Headers["X-API-Key"], ShouldEqual, "disabled-apikey")
+		})
+
 		Convey("Test Sanitize() with Event sink credentials including nil credentials", func() {
 			conf := config.New()
 			So(conf, ShouldNotBeNil)
@@ -374,7 +451,10 @@ func TestConfig(t *testing.T) {
 						{
 							Type:        eventsconf.NATS,
 							Address:     "nats://localhost:4222",
-							Credentials: nil, // This should trigger the continue statement
+							Credentials: nil,
+							Headers: map[string]string{
+								"Authorization": "Bearer nats-header-token",
+							},
 						},
 						{
 							Type:    eventsconf.HTTP,
@@ -396,8 +476,9 @@ func TestConfig(t *testing.T) {
 			So(sanitizedConf.Extensions.Events.Sinks[0].Credentials.Password, ShouldEqual, "******")
 			So(sanitizedConf.Extensions.Events.Sinks[2].Credentials.Password, ShouldEqual, "******")
 
-			// Verify that sink with nil credentials is preserved as-is (no panic, no modification)
+			// Verify that sink with nil credentials still has headers sanitized
 			So(sanitizedConf.Extensions.Events.Sinks[1].Credentials, ShouldBeNil)
+			So(sanitizedConf.Extensions.Events.Sinks[1].Headers["Authorization"], ShouldEqual, "******")
 			So(sanitizedConf.Extensions.Events.Sinks[1].Type, ShouldEqual, eventsconf.NATS)
 			So(sanitizedConf.Extensions.Events.Sinks[1].Address, ShouldEqual, "nats://localhost:4222")
 
