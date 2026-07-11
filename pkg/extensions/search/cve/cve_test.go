@@ -425,10 +425,8 @@ func TestImageFormat(t *testing.T) {
 
 func TestCVESearchDisabled(t *testing.T) {
 	Convey("Test with CVE search disabled", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
@@ -463,7 +461,7 @@ func TestCVESearchDisabled(t *testing.T) {
 		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
 		ctrlManager := test.NewControllerManager(ctlr)
 
-		ctrlManager.StartAndWait(port)
+		baseURL := ctrlManager.StartAndWait()
 
 		// Wait for trivy db to download
 		found, err := test.ReadLogFileAndSearchString(logPath, "cve config not provided, skipping cve-db update", 90*time.Second)
@@ -490,10 +488,8 @@ func TestCVESearchDisabled(t *testing.T) {
 func TestCVESearch(t *testing.T) {
 	Convey("Test image vulnerability scanning", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
@@ -538,7 +534,7 @@ func TestCVESearch(t *testing.T) {
 		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
 		ctrlManager := test.NewControllerManager(ctlr)
 
-		ctrlManager.StartAndWait(port)
+		baseURL := ctrlManager.StartAndWait()
 
 		// trivy db download fail
 		err = os.Mkdir(dbDir+"/_trivy", 0o000)
@@ -1735,10 +1731,8 @@ func TestFixedTags(t *testing.T) {
 func TestFixedTagsWithIndex(t *testing.T) {
 	Convey("Test fixed tags", t, func() {
 		tempDir := t.TempDir()
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		defaultVal := true
 		conf.Storage.RootDirectory = tempDir
 		conf.Storage.GC = false
@@ -1765,7 +1759,7 @@ func TestFixedTagsWithIndex(t *testing.T) {
 		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
 		// push index with 2 manifests: one with vulns and one without
 		vulnManifestCreated := time.Date(2010, 1, 1, 1, 1, 1, 1, time.UTC)
