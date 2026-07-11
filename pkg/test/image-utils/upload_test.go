@@ -20,17 +20,14 @@ import (
 
 func TestUploadImage(t *testing.T) {
 	Convey("Manifest without schemaVersion should fail validation", t, func() {
-		port := tcommon.GetFreePort()
-		baseURL := tcommon.GetBaseURL(port)
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = t.TempDir()
 
 		ctlr := api.NewController(conf)
 
 		ctlrManager := tcommon.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		layerBlob := []byte("test")
@@ -57,12 +54,9 @@ func TestUploadImage(t *testing.T) {
 	})
 
 	Convey("Post request results in an error", t, func() {
+		// No server started: need a reachable-looking URL with nothing listening.
 		port := tcommon.GetFreePort()
 		baseURL := tcommon.GetBaseURL(port)
-
-		conf := config.New()
-		conf.HTTP.Port = port
-		conf.Storage.RootDirectory = t.TempDir()
 
 		img := Image{
 			Layers: make([][]byte, 10),
@@ -73,18 +67,15 @@ func TestUploadImage(t *testing.T) {
 	})
 
 	Convey("Post request status differs from accepted", t, func() {
-		port := tcommon.GetFreePort()
-		baseURL := tcommon.GetBaseURL(port)
-
 		tempDir := t.TempDir()
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = tempDir
 
 		ctlr := api.NewController(conf)
 
 		ctlrManager := tcommon.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		err := os.Chmod(tempDir, 0o400)
@@ -108,17 +99,14 @@ func TestUploadImage(t *testing.T) {
 	})
 
 	Convey("Put request results in an error", t, func() {
-		port := tcommon.GetFreePort()
-		baseURL := tcommon.GetBaseURL(port)
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = t.TempDir()
 
 		ctlr := api.NewController(conf)
 
 		ctlrManager := tcommon.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		img := Image{
@@ -131,17 +119,14 @@ func TestUploadImage(t *testing.T) {
 	})
 
 	Convey("Image uploaded successfully", t, func() {
-		port := tcommon.GetFreePort()
-		baseURL := tcommon.GetBaseURL(port)
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = t.TempDir()
 
 		ctlr := api.NewController(conf)
 
 		ctlrManager := tcommon.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		layerBlob := []byte("test")
@@ -173,8 +158,7 @@ func TestUploadImage(t *testing.T) {
 	Convey("Upload image with authentification", t, func() {
 		tempDir := t.TempDir()
 		conf := config.New()
-		port := tcommon.GetFreePort()
-		baseURL := tcommon.GetBaseURL(port)
+		conf.HTTP.Port = "0"
 
 		user1 := "test"
 		password1 := "test"
@@ -186,8 +170,6 @@ func TestUploadImage(t *testing.T) {
 				Path: htpasswdPath,
 			},
 		}
-
-		conf.HTTP.Port = port
 
 		conf.HTTP.AccessControl = &config.AccessControlConfig{
 			Repositories: config.Repositories{
@@ -221,7 +203,7 @@ func TestUploadImage(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = tempDir
 
 		ctlrManager := tcommon.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		Convey("Request fail while pushing layer", func() {
@@ -243,18 +225,15 @@ func TestUploadImage(t *testing.T) {
 	})
 
 	Convey("Blob upload wrong response status code", t, func() {
-		port := tcommon.GetFreePort()
-		baseURL := tcommon.GetBaseURL(port)
-
 		tempDir := t.TempDir()
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = tempDir
 
 		ctlr := api.NewController(conf)
 
 		ctlrManager := tcommon.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		layerBlob := []byte("test")
@@ -299,18 +278,15 @@ func TestUploadImage(t *testing.T) {
 	})
 
 	Convey("CreateBlobUpload wrong response status code", t, func() {
-		port := tcommon.GetFreePort()
-		baseURL := tcommon.GetBaseURL(port)
-
 		tempDir := t.TempDir()
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = tempDir
 
 		ctlr := api.NewController(conf)
 
 		ctlrManager := tcommon.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		layerBlob := []byte("test")
@@ -341,18 +317,15 @@ func TestUploadImage(t *testing.T) {
 
 func TestInjectUploadImage(t *testing.T) {
 	Convey("Inject failures for unreachable lines", t, func() {
-		port := tcommon.GetFreePort()
-		baseURL := tcommon.GetBaseURL(port)
-
 		tempDir := t.TempDir()
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = tempDir
 
 		ctlr := api.NewController(conf)
 
 		ctlrManager := tcommon.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		layerBlob := []byte("test")
@@ -405,17 +378,14 @@ func TestInjectUploadImage(t *testing.T) {
 
 func TestUploadMultiarchImage(t *testing.T) {
 	Convey("make controller", t, func() {
-		port := tcommon.GetFreePort()
-		baseURL := tcommon.GetBaseURL(port)
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = t.TempDir()
 
 		ctlr := api.NewController(conf)
 
 		ctlrManager := tcommon.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		layerBlob := []byte("test")
@@ -484,9 +454,6 @@ func TestUploadMultiarchImage(t *testing.T) {
 
 func TestUploadImageWithOpts(t *testing.T) {
 	Convey("WithBasicAuth uploads image successfully with valid credentials", t, func() {
-		port := tcommon.GetFreePort()
-		baseURL := tcommon.GetBaseURL(port)
-
 		user := "user"
 		password := "password"
 		testString := tcommon.GetBcryptCredString(user, password)
@@ -494,7 +461,7 @@ func TestUploadImageWithOpts(t *testing.T) {
 		htpasswdPath := tcommon.MakeHtpasswdFileFromString(t, testString)
 
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = t.TempDir()
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
@@ -505,7 +472,7 @@ func TestUploadImageWithOpts(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		ctlrManager := tcommon.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		layerBlob := []byte("test")
@@ -533,17 +500,14 @@ func TestUploadImageWithOpts(t *testing.T) {
 	})
 
 	Convey("WithExtraTags exercises tag params path", t, func() {
-		port := tcommon.GetFreePort()
-		baseURL := tcommon.GetBaseURL(port)
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = t.TempDir()
 
 		ctlr := api.NewController(conf)
 
 		ctlrManager := tcommon.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		layerBlob := []byte("test")
@@ -595,12 +559,9 @@ func TestUploadImageWithOpts(t *testing.T) {
 
 func TestInjectUploadImageWithBasicAuth(t *testing.T) {
 	Convey("Inject failures for unreachable lines", t, func() {
-		port := tcommon.GetFreePort()
-		baseURL := tcommon.GetBaseURL(port)
-
 		tempDir := t.TempDir()
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = tempDir
 
 		user := "user"
@@ -617,7 +578,7 @@ func TestInjectUploadImageWithBasicAuth(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		ctlrManager := tcommon.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		layerBlob := []byte("test")

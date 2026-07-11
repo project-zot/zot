@@ -32,10 +32,8 @@ func TestWaitTillTrivyDBDownloadStarted(t *testing.T) {
 
 func TestControllerManager(t *testing.T) {
 	Convey("Test StartServer Init() panic", t, func() {
-		port := tcommon.GetFreePort()
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		ctlr := api.NewController(conf)
 		ctlrManager := tcommon.NewControllerManager(ctlr)

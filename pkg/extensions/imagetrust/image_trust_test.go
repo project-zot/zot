@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"strconv"
 	"testing"
 	"time"
 
@@ -263,16 +264,15 @@ func TestVerifySignatures(t *testing.T) {
 		Convey("signature is trusted", func() {
 			rootDir := t.TempDir()
 
-			port := test.GetFreePort()
-			baseURL := test.GetBaseURL(port)
 			conf := config.New()
-			conf.HTTP.Port = port
+			conf.HTTP.Port = "0"
 			conf.Storage.GC = false
 			ctlr := api.NewController(conf)
 			ctlr.Config.Storage.RootDirectory = rootDir
 
 			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(conf.HTTP.Port)
+			baseURL := cm.StartAndWait()
+			port := strconv.Itoa(cm.Port())
 			defer cm.StopServer()
 
 			err := UploadImage(image, baseURL, repo, tag)
@@ -431,16 +431,15 @@ func TestVerifySignatures(t *testing.T) {
 		Convey("signature is trusted", func() {
 			rootDir := t.TempDir()
 
-			port := test.GetFreePort()
-			baseURL := test.GetBaseURL(port)
 			conf := config.New()
-			conf.HTTP.Port = port
+			conf.HTTP.Port = "0"
 			conf.Storage.GC = false
 			ctlr := api.NewController(conf)
 			ctlr.Config.Storage.RootDirectory = rootDir
 
 			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(conf.HTTP.Port)
+			baseURL := cm.StartAndWait()
+			port := strconv.Itoa(cm.Port())
 			defer cm.StopServer()
 
 			err := UploadImage(image, baseURL, repo, tag)
@@ -557,16 +556,15 @@ func TestCosignSignatureDigestBinding(t *testing.T) {
 
 		rootDir := t.TempDir()
 
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.GC = false
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = rootDir
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(conf.HTTP.Port)
+		baseURL := cm.StartAndWait()
+		port := strconv.Itoa(cm.Port())
 		defer cm.StopServer()
 
 		err := UploadImage(image, baseURL, repo, tag)
@@ -1355,10 +1353,8 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]any) { //nolin
 
 		writers := io.MultiWriter(os.Stdout, logFile)
 
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.GC = false
 
 		if dbDriverParams != nil {
@@ -1377,7 +1373,8 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]any) { //nolin
 		ctlr.Config.Storage.RootDirectory = rootDir
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(conf.HTTP.Port)
+		baseURL := cm.StartAndWait()
+		port := strconv.Itoa(cm.Port())
 		defer cm.StopServer()
 
 		repo := "repo" //nolint:goconst

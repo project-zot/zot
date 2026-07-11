@@ -31,11 +31,8 @@ import (
 func TestVerifyMandatoryAnnotations(t *testing.T) {
 	//nolint: dupl
 	Convey("Mandatory annotations disabled", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		enable := false
 		conf.Extensions = &extconf.ExtensionConfig{Lint: &extconf.LintConfig{}}
 		conf.Extensions.Lint.MandatoryAnnotations = []string{}
@@ -51,7 +48,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = dir
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
 
 		resp, err := resty.R().Get(baseURL + "/v2/zot-test/manifests/0.0.1")
@@ -78,11 +75,8 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 
 	//nolint: dupl
 	Convey("Mandatory annotations enabled, but no list in config", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		enable := true
 		conf.Extensions = &extconf.ExtensionConfig{Lint: &extconf.LintConfig{}}
 		conf.Extensions.Lint.MandatoryAnnotations = []string{}
@@ -99,7 +93,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = dir
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
 
 		resp, err := resty.R().Get(baseURL + "/v2/zot-test/manifests/0.0.1")
@@ -125,11 +119,8 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 	})
 
 	Convey("Mandatory annotations verification passing", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		enable := true
 		conf.Extensions = &extconf.ExtensionConfig{Lint: &extconf.LintConfig{}}
 		conf.Extensions.Lint.MandatoryAnnotations = []string{}
@@ -147,7 +138,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = dir
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
 
 		resp, err := resty.R().Get(baseURL + "/v2/zot-test/manifests/0.0.1")
@@ -179,11 +170,8 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 	})
 
 	Convey("Mandatory annotations verification in manifest and config passing", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		enable := true
 		conf.Extensions = &extconf.ExtensionConfig{Lint: &extconf.LintConfig{}}
 		conf.Extensions.Lint.MandatoryAnnotations = []string{}
@@ -201,7 +189,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = dir
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
 
 		resp, err := resty.R().Get(baseURL + "/v2/zot-test/manifests/0.0.1")
@@ -269,11 +257,8 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 	})
 
 	Convey("Mandatory annotations verification in manifest and config failing", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		enable := true
 		conf.Extensions = &extconf.ExtensionConfig{Lint: &extconf.LintConfig{}}
 		conf.Extensions.Lint.MandatoryAnnotations = []string{}
@@ -291,7 +276,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = dir
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
 
 		resp, err := resty.R().Get(baseURL + "/v2/zot-test/manifests/0.0.1")
@@ -357,11 +342,8 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 	})
 
 	Convey("Mandatory annotations incomplete in manifest", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		enable := true
 		conf.Extensions = &extconf.ExtensionConfig{Lint: &extconf.LintConfig{}}
 		conf.Extensions.Lint.MandatoryAnnotations = []string{}
@@ -379,7 +361,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = dir
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
 
 		resp, err := resty.R().Get(baseURL + "/v2/zot-test/manifests/0.0.1")
@@ -410,11 +392,8 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 	})
 
 	Convey("Mandatory annotations verification passing - more annotations than the mandatory list", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		enable := true
 		conf.Extensions = &extconf.ExtensionConfig{Lint: &extconf.LintConfig{}}
 		conf.Extensions.Lint.MandatoryAnnotations = []string{}
@@ -436,7 +415,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = dir
 		cm := test.NewControllerManager(ctlr)
 
-		cm.StartAndWait(port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
 
 		resp, err := resty.R().Get(baseURL + "/v2/zot-test/manifests/0.0.1")

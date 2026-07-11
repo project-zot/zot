@@ -61,7 +61,6 @@ func setupTestServerCerts(t *testing.T) (string, string) {
 func TestEnableExtension(t *testing.T) {
 	Convey("Verify log if sync disabled in config", t, func() {
 		globalDir := t.TempDir()
-		port := test.GetFreePort()
 		conf := config.New()
 		falseValue := false
 
@@ -73,7 +72,7 @@ func TestEnableExtension(t *testing.T) {
 		// conf.Extensions.Sync.Enable = &falseValue
 		conf.Extensions = &extconf.ExtensionConfig{}
 		conf.Extensions.Sync = syncConfig
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 		conf.Log.Level = "info"
@@ -86,7 +85,7 @@ func TestEnableExtension(t *testing.T) {
 
 		ctlr.Config.Storage.RootDirectory = globalDir
 
-		ctlrManager.StartAndWait(port)
+		ctlrManager.StartAndWait()
 
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
@@ -99,8 +98,7 @@ func TestMetricsExtension(t *testing.T) {
 	Convey("Verify Metrics enabled for storage subpaths", t, func() {
 		globalDir := t.TempDir()
 		conf := config.New()
-		port := test.GetFreePort()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 		defaultValue := true
@@ -125,7 +123,8 @@ func TestMetricsExtension(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = globalDir
 		ctlr.Config.Storage.SubPaths = subPaths
 
-		ctlrManager.StartAndWait(port)
+		ctlrManager.StartAndWait()
+		defer ctlrManager.StopServer()
 
 		data, _ := os.ReadFile(logPath)
 
@@ -136,9 +135,7 @@ func TestMetricsExtension(t *testing.T) {
 func TestMgmtExtension(t *testing.T) {
 	globalDir := t.TempDir()
 	conf := config.New()
-	port := test.GetFreePort()
-	conf.HTTP.Port = port
-	baseURL := test.GetBaseURL(port)
+	conf.HTTP.Port = "0"
 	mgmtReadyTimeout := 5 * time.Second
 
 	defaultValue := true
@@ -188,7 +185,7 @@ func TestMgmtExtension(t *testing.T) {
 		ctlr.Config.Storage.SubPaths = subPaths
 
 		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		found, err := test.ReadLogFileAndSearchString(logPath,
@@ -274,7 +271,7 @@ func TestMgmtExtension(t *testing.T) {
 		ctlr.Config.Storage.SubPaths = subPaths
 
 		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		found, err := test.ReadLogFileAndSearchString(logPath,
@@ -339,7 +336,7 @@ func TestMgmtExtension(t *testing.T) {
 		ctlr.Config.Storage.SubPaths = subPaths
 
 		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		found, err := test.ReadLogFileAndSearchString(logPath,
@@ -409,7 +406,7 @@ func TestMgmtExtension(t *testing.T) {
 		ctlr.Config.Storage.SubPaths = subPaths
 
 		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		found, err := test.ReadLogFileAndSearchString(logPath,
@@ -494,7 +491,7 @@ func TestMgmtExtension(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		found, err := test.ReadLogFileAndSearchString(logPath,
@@ -578,7 +575,7 @@ func TestMgmtExtension(t *testing.T) {
 		ctlr.Config.Storage.SubPaths = subPaths
 
 		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		found, err := test.ReadLogFileAndSearchString(logPath,
@@ -638,7 +635,7 @@ func TestMgmtExtension(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		found, err := test.ReadLogFileAndSearchString(logPath,
@@ -705,7 +702,7 @@ func TestMgmtExtension(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		found, err := test.ReadLogFileAndSearchString(logPath,
@@ -777,7 +774,7 @@ func TestMgmtExtension(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		found, err := test.ReadLogFileAndSearchString(logPath,
@@ -815,9 +812,7 @@ func TestMgmtExtension(t *testing.T) {
 
 	Convey("Verify mgmt auth info route enabled without any auth", t, func() {
 		conf := config.New()
-		port := test.GetFreePort()
-		conf.HTTP.Port = port
-		baseURL := test.GetBaseURL(port)
+		conf.HTTP.Port = "0"
 
 		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 		defaultValue := true
@@ -838,7 +833,7 @@ func TestMgmtExtension(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		resp, err := resty.R().Get(baseURL + constants.FullMgmt)
@@ -884,11 +879,8 @@ func TestMgmtWithBearer(t *testing.T) {
 		authTestServer := authutils.MakeAuthTestServer(serverKeyPath, "RS256", unauthorizedNamespace)
 		defer authTestServer.Close()
 
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		aurl, err := url.Parse(authTestServer.URL)
 		So(err, ShouldBeNil)
@@ -915,7 +907,7 @@ func TestMgmtWithBearer(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
 
 		resp, err := resty.R().Get(baseURL + "/v2/")
@@ -1038,8 +1030,7 @@ func TestAllowedMethodsHeaderMgmt(t *testing.T) {
 
 	Convey("Test http options response", t, func() {
 		conf := config.New()
-		port := test.GetFreePort()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Extensions = &extconf.ExtensionConfig{}
 		conf.Extensions.Search = &extconf.SearchConfig{}
 		conf.Extensions.Search.Enable = &defaultVal
@@ -1047,14 +1038,12 @@ func TestAllowedMethodsHeaderMgmt(t *testing.T) {
 		conf.Extensions.UI = &extconf.UIConfig{}
 		conf.Extensions.UI.Enable = &defaultVal
 
-		baseURL := test.GetBaseURL(port)
-
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		ctrlManager := test.NewControllerManager(ctlr)
 
-		ctrlManager.StartAndWait(port)
+		baseURL := ctrlManager.StartAndWait()
 		defer ctrlManager.StopServer()
 
 		resp, _ := resty.R().Options(baseURL + constants.FullMgmt)
