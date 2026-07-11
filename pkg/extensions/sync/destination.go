@@ -96,12 +96,6 @@ func (registry *DestinationRegistry) CommitAll(repo string, imageReference ref.R
 		return zerr.ErrLocalImgStoreNotFound
 	}
 
-	if tempImageStore == nil {
-		registry.log.Error().Str("repo", repo).Msg("failed to get temp image store for sync commit")
-
-		return zerr.ErrLocalImgStoreNotFound
-	}
-
 	defer os.RemoveAll(tempImageStore.RootDir())
 
 	repoDir := path.Join(tempImageStore.RootDir(), repo)
