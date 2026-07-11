@@ -360,6 +360,10 @@ func CheckManifestAndConfig(
 		return manifestDesc.Digest, ispec.Manifest{}, zerr.ErrBadManifest
 	}
 
+	if err := imgStore.VerifyBlobDigestValue(imageName, manifestDesc.Digest); err != nil {
+		return manifestDesc.Digest, ispec.Manifest{}, err
+	}
+
 	configContent, err := imgStore.GetBlobContent(imageName, manifest.Config.Digest)
 	if err != nil {
 		return manifest.Config.Digest, ispec.Manifest{}, err
@@ -370,6 +374,10 @@ func CheckManifestAndConfig(
 	err = json.Unmarshal(configContent, &config)
 	if err != nil {
 		return manifest.Config.Digest, ispec.Manifest{}, zerr.ErrBadConfig
+	}
+
+	if err := imgStore.VerifyBlobDigestValue(imageName, manifest.Config.Digest); err != nil {
+		return manifest.Config.Digest, ispec.Manifest{}, err
 	}
 
 	return "", manifest, nil

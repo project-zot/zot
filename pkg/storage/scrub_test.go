@@ -136,6 +136,61 @@ func TestAzureCheckAllBlobsIntegrity(t *testing.T) {
 	})
 }
 
+func TestScrubDetectsCorruptedConfigContent(t *testing.T) {
+	Convey("scrub detects config corruption that stays valid JSON", t, func() {
+		tdir := t.TempDir()
+		log := log.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		defer metrics.Stop()
+
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     tdir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		driver := local.New(true)
+		imgStore := local.NewImageStore(tdir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+
+		err := imgStore.InitRepo(context.Background(), repoName)
+		So(err, ShouldBeNil)
+
+		storeCtlr := storage.StoreController{}
+		storeCtlr.DefaultStore = imgStore
+
+		image := CreateRandomImage()
+
+		err = WriteImageToFileSystem(image, repoName, tag, storeCtlr)
+		So(err, ShouldBeNil)
+
+		// corrupt the config blob on disk while keeping it valid JSON so its
+		// stored bytes no longer hash to the config digest
+		corruptedConfig := image.Config
+		corruptedConfig.Architecture += "-corrupted"
+
+		corruptedContent, err := json.Marshal(corruptedConfig)
+		So(err, ShouldBeNil)
+
+		var stillValidJSON ispec.Image
+		So(json.Unmarshal(corruptedContent, &stillValidJSON), ShouldBeNil)
+
+		configDig := image.ConfigDescriptor.Digest.Encoded()
+		configFile := path.Join(imgStore.RootDir(), repoName, "/blobs/sha256", configDig)
+		_, err = driver.WriteFile(configFile, corruptedContent)
+		So(err, ShouldBeNil)
+
+		buff := bytes.NewBufferString("")
+
+		res, err := storeCtlr.CheckAllBlobsIntegrity(context.Background())
+		res.PrintScrubResults(buff)
+		So(err, ShouldBeNil)
+
+		space := regexp.MustCompile(`\s+`)
+		actual := strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
+		So(actual, ShouldContainSubstring, fmt.Sprintf("test 1.0 affected %s bad blob digest", configDig))
+	})
+}
+
 func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 	t *testing.T, imgStore storageTypes.ImageStore, driver storageTypes.Driver, log log.Logger,
 ) {
