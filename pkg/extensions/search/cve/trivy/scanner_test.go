@@ -41,9 +41,8 @@ func TestScanBigTestFile(t *testing.T) {
 		testImage := filepath.Join(projRootDir, "test/data/zot-test")
 
 		tempDir := t.TempDir()
-		port := GetFreePort()
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		defaultVal := true
 		conf.Storage.RootDirectory = tempDir
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -58,7 +57,7 @@ func TestScanBigTestFile(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		cm := NewControllerManager(ctlr)
-		cm.StartAndWait(port)
+		cm.StartAndWait()
 		defer cm.StopServer()
 		// scan
 		scanner := trivy.NewScanner(ctlr.StoreController, ctlr.MetaDB, &extconf.CVEConfig{
@@ -80,10 +79,8 @@ func TestScanningByDigest(t *testing.T) {
 	Convey("Scan the individual manifests inside an index", t, func() {
 		// start server
 		tempDir := t.TempDir()
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		defaultVal := true
 		conf.Storage.RootDirectory = tempDir
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -95,7 +92,7 @@ func TestScanningByDigest(t *testing.T) {
 		So(ctlr, ShouldNotBeNil)
 
 		cm := NewControllerManager(ctlr)
-		cm.StartAndWait(port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
 		// push index with 2 manifests: one with vulns and one without
 		vulnImage := CreateDefaultVulnerableImage()

@@ -51,10 +51,8 @@ func TestDigestSearchHTTP(t *testing.T) {
 	Convey("Test image search by digest scanning", t, func() {
 		rootDir := t.TempDir()
 
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = rootDir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -64,7 +62,7 @@ func TestDigestSearchHTTP(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctrlManager := NewControllerManager(ctlr)
 
-		ctrlManager.StartAndWait(port)
+		baseURL := ctrlManager.StartAndWait()
 
 		// shut down server
 		defer ctrlManager.StopServer()
@@ -260,10 +258,8 @@ func TestDigestSearchHTTPSubPaths(t *testing.T) {
 	Convey("Test image search by digest scanning using storage subpaths", t, func() {
 		subRootDir := t.TempDir()
 
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
@@ -283,7 +279,7 @@ func TestDigestSearchHTTPSubPaths(t *testing.T) {
 		ctlr.Config.Storage.SubPaths = subPathMap
 		ctrlManager := NewControllerManager(ctlr)
 
-		ctrlManager.StartAndWait(port)
+		baseURL := ctrlManager.StartAndWait()
 
 		// shut down server
 		defer ctrlManager.StopServer()
@@ -335,10 +331,8 @@ func TestDigestSearchHTTPSubPaths(t *testing.T) {
 func TestDigestSearchDisabled(t *testing.T) {
 	Convey("Test disabling image search", t, func() {
 		var disabled bool
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = t.TempDir()
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &disabled}},
@@ -347,7 +341,7 @@ func TestDigestSearchDisabled(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctrlManager := NewControllerManager(ctlr)
 
-		ctrlManager.StartAndWait(port)
+		baseURL := ctrlManager.StartAndWait()
 
 		// shut down server
 		defer ctrlManager.StopServer()

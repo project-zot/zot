@@ -355,10 +355,8 @@ func getMockCveScanner(metaDB mTypes.MetaDB) cveinfo.Scanner {
 func TestRepoListWithNewestImage(t *testing.T) {
 	Convey("Test repoListWithNewestImage by tag with HTTP", t, func() {
 		subpath := "/a"
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		rootDir := t.TempDir()
 		subRootDir := t.TempDir()
 		conf.Storage.RootDirectory = rootDir
@@ -374,7 +372,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		uploadedImage := CreateImageWith().RandomLayers(1, 100).DefaultConfig().Build()
@@ -649,10 +647,8 @@ func TestRepoListWithNewestImage(t *testing.T) {
 
 	Convey("Test repoListWithNewestImage with vulnerability scan enabled", t, func() {
 		subpath := "/a"
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		rootDir := t.TempDir()
 		subRootDir := t.TempDir()
 		conf.Storage.RootDirectory = rootDir
@@ -718,7 +714,9 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
-		WaitTillServerReady(baseURL)
+		cm := NewControllerManager(ctlr)
+		cm.WaitServerReady()
+		baseURL := cm.BaseURL()
 
 		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix)
 		So(resp, ShouldNotBeNil)
@@ -790,10 +788,8 @@ func TestRepoListWithNewestImage(t *testing.T) {
 
 func TestGetReferrersGQL(t *testing.T) {
 	Convey("get referrers", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = t.TempDir()
 
 		defaultVal := true
@@ -806,13 +802,12 @@ func TestGetReferrersGQL(t *testing.T) {
 			},
 		}
 
-		gqlEndpoint := fmt.Sprintf("%s%s?query=", baseURL, graphqlQueryPrefix)
-
 		conf.Extensions.Search.CVE = nil
 
 		ctlr := api.NewController(conf)
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
+		gqlEndpoint := fmt.Sprintf("%s%s?query=", baseURL, graphqlQueryPrefix)
 
 		defer ctlrManager.StopServer()
 
@@ -914,10 +909,8 @@ func TestGetReferrersGQL(t *testing.T) {
 	})
 
 	Convey("referrers for image index", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = t.TempDir()
 		conf.Storage.GC = false
 
@@ -931,13 +924,12 @@ func TestGetReferrersGQL(t *testing.T) {
 			},
 		}
 
-		gqlEndpoint := fmt.Sprintf("%s%s?query=", baseURL, graphqlQueryPrefix)
-
 		conf.Extensions.Search.CVE = nil
 
 		ctlr := api.NewController(conf)
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
+		gqlEndpoint := fmt.Sprintf("%s%s?query=", baseURL, graphqlQueryPrefix)
 
 		defer ctlrManager.StopServer()
 
@@ -1043,10 +1035,8 @@ func TestGetReferrersGQL(t *testing.T) {
 	})
 
 	Convey("Get referrers with index as referrer", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = t.TempDir()
 		conf.Storage.GC = false
 
@@ -1065,7 +1055,7 @@ func TestGetReferrersGQL(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		// Upload the index referrer
@@ -1141,11 +1131,9 @@ func TestExpandedRepoInfo(t *testing.T) {
 		tagToBeRemoved := "3.0"
 		repo1 := "test1"
 		tempDir := t.TempDir()
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = tempDir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -1195,7 +1183,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		query := `{
@@ -1238,10 +1226,8 @@ func TestExpandedRepoInfo(t *testing.T) {
 		subpath := "/a"
 		rootDir := t.TempDir()
 		subRootDir := t.TempDir()
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = rootDir
 		conf.Storage.GC = false
 		conf.Storage.SubPaths = make(map[string]config.StorageConfig)
@@ -1255,7 +1241,8 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
+		port := strconv.Itoa(ctlrManager.Port())
 
 		defer ctlrManager.StopServer()
 
@@ -1472,10 +1459,8 @@ func TestExpandedRepoInfo(t *testing.T) {
 	Convey("Test expanded repo info with tagged referrers", t, func() {
 		const testTag = "test"
 		rootDir := t.TempDir()
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = rootDir
 		conf.Storage.GC = false
 		defaultVal := true
@@ -1487,7 +1472,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 
 		defer ctlrManager.StopServer()
 
@@ -1547,10 +1532,8 @@ func TestExpandedRepoInfo(t *testing.T) {
 	})
 
 	Convey("Test image tags order", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = t.TempDir()
 
 		defaultVal := true
@@ -1563,7 +1546,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		resp, err := resty.R().Get(baseURL + "/v2/")
@@ -1622,8 +1605,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 	Convey("With Multiarch Images", t, func() {
 		conf := config.New()
-		conf.HTTP.Port = GetFreePort()
-		baseURL := GetBaseURL(conf.HTTP.Port)
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = t.TempDir()
 
 		defaultVal := true
@@ -1694,7 +1676,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		// ------- Start Server /tmp/TestExpandedRepoInfo4021254039/005
 
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(conf.HTTP.Port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		// ------- Test ExpandedRepoInfo
@@ -1752,10 +1734,8 @@ func TestExpandedRepoInfo(t *testing.T) {
 		subpath := "/a"
 		rootDir := t.TempDir()
 		subRootDir := t.TempDir()
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = rootDir
 		conf.Storage.GC = false
 		conf.Storage.SubPaths = make(map[string]config.StorageConfig)
@@ -1769,7 +1749,8 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
+		port := strconv.Itoa(ctlrManager.Port())
 
 		defer ctlrManager.StopServer()
 
@@ -2003,10 +1984,8 @@ func TestExpandedRepoInfo(t *testing.T) {
 func TestDerivedImageList(t *testing.T) {
 	rootDir := t.TempDir()
 
-	port := GetFreePort()
-	baseURL := GetBaseURL(port)
 	conf := config.New()
-	conf.HTTP.Port = port
+	conf.HTTP.Port = "0"
 	conf.Storage.RootDirectory = rootDir
 	defaultVal := true
 	conf.Extensions = &extconf.ExtensionConfig{
@@ -2018,7 +1997,7 @@ func TestDerivedImageList(t *testing.T) {
 	ctlr := api.NewController(conf)
 	ctlrManager := NewControllerManager(ctlr)
 
-	ctlrManager.StartAndWait(port)
+	baseURL := ctlrManager.StartAndWait()
 	defer ctlrManager.StopServer()
 
 	Convey("Test dependency list for image working", t, func() {
@@ -2398,11 +2377,8 @@ func TestDerivedImageList(t *testing.T) {
 //nolint:dupl
 func TestDerivedImageListNoRepos(t *testing.T) {
 	Convey("No repositories found", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = t.TempDir()
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -2414,7 +2390,7 @@ func TestDerivedImageListNoRepos(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		query := `
@@ -2477,10 +2453,8 @@ func TestGetImageManifest(t *testing.T) {
 func TestBaseImageList(t *testing.T) {
 	rootDir := t.TempDir()
 
-	port := GetFreePort()
-	baseURL := GetBaseURL(port)
 	conf := config.New()
-	conf.HTTP.Port = port
+	conf.HTTP.Port = "0"
 	conf.Storage.RootDirectory = rootDir
 	defaultVal := true
 	conf.Extensions = &extconf.ExtensionConfig{
@@ -2492,7 +2466,7 @@ func TestBaseImageList(t *testing.T) {
 	ctlr := api.NewController(conf)
 	ctlrManager := NewControllerManager(ctlr)
 
-	ctlrManager.StartAndWait(port)
+	baseURL := ctlrManager.StartAndWait()
 	defer ctlrManager.StopServer()
 
 	Convey("Test base image list for image working", t, func() {
@@ -3046,11 +3020,8 @@ func TestBaseImageList(t *testing.T) {
 //nolint:dupl
 func TestBaseImageListNoRepos(t *testing.T) {
 	Convey("No repositories found", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = t.TempDir()
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -3062,7 +3033,7 @@ func TestBaseImageListNoRepos(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		query := `
@@ -3120,10 +3091,8 @@ func TestGetRepositories(t *testing.T) {
 }
 
 func TestGlobalSearchImageAuthor(t *testing.T) {
-	port := GetFreePort()
-	baseURL := GetBaseURL(port)
 	conf := config.New()
-	conf.HTTP.Port = port
+	conf.HTTP.Port = "0"
 	tempDir := t.TempDir()
 	conf.Storage.RootDirectory = tempDir
 
@@ -3137,7 +3106,7 @@ func TestGlobalSearchImageAuthor(t *testing.T) {
 	ctlr := api.NewController(conf)
 	ctlrManager := NewControllerManager(ctlr)
 
-	ctlrManager.StartAndWait(port)
+	baseURL := ctlrManager.StartAndWait()
 	defer ctlrManager.StopServer()
 
 	Convey("Test global search with author in manifest's annotations", t, func() {
@@ -3262,10 +3231,8 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		dir := t.TempDir()
 		subRootDir := t.TempDir()
 
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = dir
 		conf.Storage.SubPaths = make(map[string]config.StorageConfig)
 		conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
@@ -3279,7 +3246,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		ctlr := api.NewController(conf)
 
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		// push test images to repo 1 image 1
@@ -3616,10 +3583,8 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		dir := t.TempDir()
 		subRootDir := t.TempDir()
 
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = dir
 		conf.Storage.SubPaths = make(map[string]config.StorageConfig)
 		conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
@@ -3684,7 +3649,9 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
-		WaitTillServerReady(baseURL)
+		cm := NewControllerManager(ctlr)
+		cm.WaitServerReady()
+		baseURL := cm.BaseURL()
 
 		// push test images to repo 1 image 1
 		createdTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -3990,10 +3957,8 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 	Convey("global searching by digest", t, func() {
 		log := log.NewTestLogger()
 		rootDir := t.TempDir()
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = rootDir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -4020,7 +3985,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		err = WriteImageToFileSystem(image2, "repo2", "tag2", storeCtlr)
 		So(err, ShouldBeNil)
 
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		// simple image
@@ -4055,10 +4020,8 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 	Convey("global searching by tag cross repo", t, func() {
 		log := log.NewTestLogger()
 		rootDir := t.TempDir()
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = rootDir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -4113,7 +4076,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		err = WriteMultiArchImageToFileSystem(multiArch62, "repo6", "tag2", storeCtlr)
 		So(err, ShouldBeNil)
 
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		// Search for a specific tag cross-repo and return single arch images
@@ -4198,10 +4161,8 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 	Convey("test nested indexes CVE scanning disabled", t, func() {
 		log := log.NewTestLogger()
 		rootDir := t.TempDir()
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = rootDir
 
 		Convey("test with boltdb", func() {
@@ -4336,7 +4297,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 			context.Background(), repoName, "multiArchTop", ispec.MediaTypeImageIndex, indexMultiArchTopBlob, nil)
 		So(err, ShouldBeNil)
 
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		// Search for a specific tag cross-repo and return single arch images
@@ -4361,10 +4322,8 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 	Convey("test nested indexes CVE scanning enabled", t, func() {
 		log := log.NewTestLogger()
 		rootDir := t.TempDir()
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = rootDir
 
 		Convey("test with boltdb", func() {
@@ -4524,7 +4483,9 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 
 		defer ctlr.Shutdown()
 
-		WaitTillServerReady(baseURL)
+		cm := NewControllerManager(ctlr)
+		cm.WaitServerReady()
+		baseURL := cm.BaseURL()
 
 		// Search for a specific tag cross-repo and return single arch images
 		results := GlobalSearchGQL(":multiArch", baseURL).GlobalSearch
@@ -4550,10 +4511,8 @@ func TestCleaningFilteringParamsGlobalSearch(t *testing.T) {
 	Convey("Test cleaning filtering parameters for global search", t, func() {
 		dir := t.TempDir()
 
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = dir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -4563,7 +4522,7 @@ func TestCleaningFilteringParamsGlobalSearch(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		image := CreateImageWith().RandomLayers(1, 100).
@@ -4609,10 +4568,8 @@ func TestCleaningFilteringParamsGlobalSearch(t *testing.T) {
 func TestGlobalSearchFiltering(t *testing.T) {
 	Convey("Global search HasToBeSigned filtering", t, func() {
 		dir := t.TempDir()
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = dir
 
 		defaultVal := true
@@ -4623,7 +4580,8 @@ func TestGlobalSearchFiltering(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
+		port := strconv.Itoa(ctlrManager.Port())
 		defer ctlrManager.StopServer()
 
 		image := CreateRandomImage()
@@ -4667,10 +4625,8 @@ func TestGlobalSearchWithInvalidInput(t *testing.T) {
 	Convey("Global search with invalid input", t, func() {
 		dir := t.TempDir()
 
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = dir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -4680,7 +4636,7 @@ func TestGlobalSearchWithInvalidInput(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		longString := RandomString(1000)
@@ -4757,11 +4713,8 @@ func TestImageList(t *testing.T) {
 	Convey("Test ImageList", t, func() {
 		rootDir := t.TempDir()
 
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = rootDir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -4773,7 +4726,7 @@ func TestImageList(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		createdTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -4921,10 +4874,8 @@ func TestGlobalSearchPagination(t *testing.T) {
 	Convey("Test global search pagination", t, func() {
 		dir := t.TempDir()
 
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = dir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -4934,7 +4885,7 @@ func TestGlobalSearchPagination(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		for i := range 3 {
@@ -5106,10 +5057,8 @@ func TestMetaDBWhenSigningImages(t *testing.T) {
 		dir := t.TempDir()
 		subRootDir := t.TempDir()
 
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = dir
 		conf.Storage.SubPaths = make(map[string]config.StorageConfig)
 		conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
@@ -5123,7 +5072,8 @@ func TestMetaDBWhenSigningImages(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
+		port := strconv.Itoa(ctlrManager.Port())
 		defer ctlrManager.StopServer()
 
 		// push test images to repo 1 image 1
@@ -5322,10 +5272,8 @@ func TestMetaDBWhenPushingImages(t *testing.T) {
 	Convey("Cover errors when pushing", t, func() {
 		dir := t.TempDir()
 
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = dir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -5335,7 +5283,7 @@ func TestMetaDBWhenPushingImages(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		Convey("SetManifestMeta succeeds but SetRepoReference fails", func() {
@@ -5365,10 +5313,8 @@ func TestMetaDBIndexOperations(t *testing.T) {
 	Convey("Idex Operations BoltDB", t, func() {
 		dir := t.TempDir()
 
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.HTTP.Compat = []compat.MediaCompatibility{compat.DockerManifestV2SchemaV2}
 		conf.Storage.RootDirectory = dir
 		conf.Storage.GC = false
@@ -5380,7 +5326,8 @@ func TestMetaDBIndexOperations(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
+		port := strconv.Itoa(ctlrManager.Port())
 		defer ctlrManager.StopServer()
 
 		RunMetaDBIndexTests(baseURL, port)
@@ -6111,10 +6058,8 @@ func TestMetaDBWhenReadingImages(t *testing.T) {
 	Convey("Push test image", t, func() {
 		dir := t.TempDir()
 
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = dir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -6124,7 +6069,7 @@ func TestMetaDBWhenReadingImages(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		image := CreateImageWith().RandomLayers(1, 100).DefaultConfig().Build()
@@ -6203,10 +6148,8 @@ func TestMetaDBWhenReadingImages(t *testing.T) {
 	Convey("Push test image with Docker media types", t, func() {
 		dir := t.TempDir()
 
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.HTTP.Compat = []compat.MediaCompatibility{compat.DockerManifestV2SchemaV2}
 		conf.Storage.RootDirectory = dir
 		defaultVal := true
@@ -6217,7 +6160,7 @@ func TestMetaDBWhenReadingImages(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		image := CreateImageWith().RandomLayers(1, 100).DefaultConfig().Build().AsDockerImage()
@@ -6285,11 +6228,9 @@ func TestMetaDBWhenReadingImages(t *testing.T) {
 func TestMetaDBWhenDeletingImages(t *testing.T) {
 	Convey("Setting up zot repo with test images", t, func() {
 		dir := t.TempDir()
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = dir
 		conf.Storage.GC = false
 
@@ -6303,7 +6244,8 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
+		port := strconv.Itoa(ctlrManager.Port())
 		defer ctlrManager.StopServer()
 
 		// push test images to repo 1 image 1
@@ -6718,11 +6660,8 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 
 func TestSearchSize(t *testing.T) {
 	Convey("Repo sizes", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		tr := true
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &tr}},
@@ -6733,7 +6672,7 @@ func TestSearchSize(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = dir
 
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		repoName := "testrepo"
@@ -6903,10 +6842,8 @@ func TestSearchSize(t *testing.T) {
 
 func TestImageSummary(t *testing.T) {
 	Convey("GraphQL query ImageSummary", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = t.TempDir()
 		conf.Storage.GC = false
 
@@ -6970,10 +6907,9 @@ func TestImageSummary(t *testing.T) {
 				}
 			}`
 
-		gqlEndpoint := fmt.Sprintf("%s%s?query=", baseURL, graphqlQueryPrefix)
-
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
+		gqlEndpoint := fmt.Sprintf("%s%s?query=", baseURL, graphqlQueryPrefix)
 		defer ctlrManager.StopServer()
 
 		repoName := "test-repo" //nolint:goconst
@@ -7132,10 +7068,8 @@ func TestImageSummary(t *testing.T) {
 	})
 
 	Convey("GraphQL query ImageSummary with Vulnerability scan enabled", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = t.TempDir()
 
 		defaultVal := true
@@ -7181,8 +7115,6 @@ func TestImageSummary(t *testing.T) {
 				}
 			}`
 
-		gqlEndpoint := fmt.Sprintf("%s%s?query=", baseURL, graphqlQueryPrefix)
-
 		createdTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
 
 		image := CreateImageWith().DefaultLayers().ImageConfig(ispec.Image{
@@ -7210,7 +7142,10 @@ func TestImageSummary(t *testing.T) {
 
 		defer ctlr.Shutdown()
 
-		WaitTillServerReady(baseURL)
+		cm := NewControllerManager(ctlr)
+		cm.WaitServerReady()
+		baseURL := cm.BaseURL()
+		gqlEndpoint := fmt.Sprintf("%s%s?query=", baseURL, graphqlQueryPrefix)
 
 		repoName := "test-repo" //nolint:goconst
 		tagTarget := "latest"
@@ -7266,10 +7201,8 @@ func TestImageSummary(t *testing.T) {
 	})
 
 	Convey("GraphQL query for Artifact Type", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = t.TempDir()
 		conf.Storage.GC = false
 
@@ -7303,7 +7236,7 @@ func TestImageSummary(t *testing.T) {
 		var imgSummaryResponse zcommon.ImageSummaryResult
 
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		// upload the images
@@ -7410,10 +7343,8 @@ func TestImageSummary(t *testing.T) {
 
 func TestUploadingArtifactsWithDifferentMediaType(t *testing.T) {
 	Convey("", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = t.TempDir()
 		conf.Storage.GC = false
 
@@ -7426,7 +7357,7 @@ func TestUploadingArtifactsWithDifferentMediaType(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		const customMediaType = "application/custom.media.type+json"
@@ -7505,10 +7436,8 @@ func TestReadUploadDeleteDynamoDB(t *testing.T) {
 		"versiontablename":       versionTablename,
 	}
 
-	port := GetFreePort()
-	baseURL := GetBaseURL(port)
 	conf := config.New()
-	conf.HTTP.Port = port
+	conf.HTTP.Port = "0"
 	conf.Storage.RootDirectory = t.TempDir()
 	conf.Storage.GC = false
 	conf.Storage.CacheDriver = cacheDriverParams
@@ -7523,17 +7452,15 @@ func TestReadUploadDeleteDynamoDB(t *testing.T) {
 	ctlr := api.NewController(conf)
 	ctlrManager := NewControllerManager(ctlr)
 
-	ctlrManager.StartAndWait(port)
+	baseURL := ctlrManager.StartAndWait()
 	defer ctlrManager.StopServer()
 
 	RunReadUploadDeleteTests(t, baseURL)
 }
 
 func TestReadUploadDeleteBoltDB(t *testing.T) {
-	port := GetFreePort()
-	baseURL := GetBaseURL(port)
 	conf := config.New()
-	conf.HTTP.Port = port
+	conf.HTTP.Port = "0"
 	conf.Storage.RootDirectory = t.TempDir()
 	conf.Storage.GC = false
 	conf.Log = &config.LogConfig{Level: "debug", Output: "/dev/null"}
@@ -7546,7 +7473,7 @@ func TestReadUploadDeleteBoltDB(t *testing.T) {
 	ctlr := api.NewController(conf)
 	ctlrManager := NewControllerManager(ctlr)
 
-	ctlrManager.StartAndWait(port)
+	baseURL := ctlrManager.StartAndWait()
 	defer ctlrManager.StopServer()
 
 	RunReadUploadDeleteTests(t, baseURL)
@@ -7821,10 +7748,8 @@ func TestSearchWithMissingManifest(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// 3. Start the controller (MetaDB parsing would be done in the background)
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = dir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -7836,7 +7761,7 @@ func TestSearchWithMissingManifest(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		// Search for the repository
