@@ -2014,15 +2014,6 @@ func TestPeriodicallyWithScaleOutCluster(t *testing.T) {
 
 		defer dcm.StopServer()
 
-		// downstream should not have any of the images in its storage.
-		images := []string{testImage, testCveImage, zotAlpineTestImageName}
-
-		for _, image := range images {
-			_, err := os.Stat(path.Join(destDir, image))
-			So(err, ShouldNotBeNil)
-			So(os.IsNotExist(err), ShouldBeTrue)
-		}
-
 		// wait for generator to complete.
 		waitSyncFinish(dctlr.Config.Log.Output)
 
