@@ -31,10 +31,12 @@ const (
 
 func TestScrubExtension(t *testing.T) {
 	Convey("Blobs integrity not affected", t, func(c C) {
+		port := test.GetFreePort()
+
 		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		conf := config.New()
-		conf.HTTP.Port = "0"
+		conf.HTTP.Port = port
 
 		dir := t.TempDir()
 		subdir := t.TempDir()
@@ -62,7 +64,7 @@ func TestScrubExtension(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait()
+		cm.StartAndWait(port)
 		defer cm.StopServer()
 
 		found, err := test.ReadLogFileAndSearchString(logPath, "blobs/manifest ok", 60*time.Second)
@@ -71,10 +73,12 @@ func TestScrubExtension(t *testing.T) {
 	})
 
 	Convey("Blobs integrity affected", t, func(c C) {
+		port := test.GetFreePort()
+
 		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		conf := config.New()
-		conf.HTTP.Port = "0"
+		conf.HTTP.Port = port
 
 		dir := t.TempDir()
 
@@ -107,7 +111,7 @@ func TestScrubExtension(t *testing.T) {
 		}
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait()
+		cm.StartAndWait(port)
 		defer cm.StopServer()
 
 		found, err := test.ReadLogFileAndSearchString(logPath, "blobs/manifest affected", 60*time.Second)
@@ -116,10 +120,12 @@ func TestScrubExtension(t *testing.T) {
 	})
 
 	Convey("Generator error - not enough permissions to access root directory", t, func(c C) {
+		port := test.GetFreePort()
+
 		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		conf := config.New()
-		conf.HTTP.Port = "0"
+		conf.HTTP.Port = port
 
 		dir := t.TempDir()
 
@@ -148,7 +154,7 @@ func TestScrubExtension(t *testing.T) {
 		So(os.Chmod(path.Join(dir, repoName), 0o000), ShouldBeNil)
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait()
+		cm.StartAndWait(port)
 		defer cm.StopServer()
 
 		found, err := test.ReadLogFileAndSearchString(logPath, "failed to execute generator", 60*time.Second)

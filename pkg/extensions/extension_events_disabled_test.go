@@ -18,13 +18,14 @@ import (
 func TestEventsExtension(t *testing.T) {
 	Convey("event generation is skipped when extension is disabled", t, func() {
 		conf := config.New()
+		port := test.GetFreePort()
 
 		globalDir := t.TempDir()
 		defaultValue := true
 
 		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
-		conf.HTTP.Port = "0"
+		conf.HTTP.Port = port
 		conf.Storage.RootDirectory = globalDir
 		conf.Storage.Commit = true
 		conf.Extensions = &extconf.ExtensionConfig{}
@@ -37,7 +38,7 @@ func TestEventsExtension(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlrManager := test.NewControllerManager(ctlr)
 
-		ctlrManager.StartAndWait()
+		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
 		data, err := os.ReadFile(logPath)

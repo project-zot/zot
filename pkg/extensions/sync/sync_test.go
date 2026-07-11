@@ -5425,11 +5425,12 @@ func TestSyncedSignaturesMetaDB(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
+		// regclient will put all referrers under ref tag "alg-subjectDigest"
 		repoMeta, err := dctlr.MetaDB.GetRepoMeta(context.Background(), repoName)
 		So(err, ShouldBeNil)
 		So(repoMeta.Tags, ShouldContainKey, tag)
-		// only the image tag; referrers-shaped refs are not committed as tags
-		So(len(repoMeta.Tags), ShouldEqual, 1)
+		// one tag for refs and the tag we pushed earlier
+		So(len(repoMeta.Tags), ShouldEqual, 2)
 		So(repoMeta.Signatures, ShouldContainKey, signedImage.DigestStr())
 
 		imageSignatures := repoMeta.Signatures[signedImage.DigestStr()]
@@ -7671,11 +7672,7 @@ func TestSyncImageIndex(t *testing.T) {
 			So(resp.Body(), ShouldNotBeEmpty)
 			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
 
-			childBody := resp.Body()
-			childMultiarchImage.IndexDescriptor.Digest = godigest.FromBytes(childBody)
-			childMultiarchImage.IndexDescriptor.Size = int64(len(childBody))
-			err = json.Unmarshal(childBody, &childMultiarchImage.Index)
-			So(err, ShouldBeNil)
+			childMultiarchImage.IndexDescriptor.Digest = godigest.FromBytes(resp.Body())
 
 			rootMultiarchImage.Index.Manifests = append(rootMultiarchImage.Index.Manifests, childMultiarchImage.IndexDescriptor)
 			rootMultiarchImage.IndexDescriptor.Data = nil
@@ -7690,9 +7687,6 @@ func TestSyncImageIndex(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 			So(resp.Body(), ShouldNotBeEmpty)
 			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
-
-			err = json.Unmarshal(resp.Body(), &rootMultiarchImage.Index)
-			So(err, ShouldBeNil)
 
 			Convey("sync periodically", func() {
 				// start downstream server

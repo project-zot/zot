@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"strconv"
 	"testing"
 	"time"
 
@@ -292,8 +291,10 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		// checkNotarySignature -> true
 		dir := t.TempDir()
 
+		port := tcommon.GetFreePort()
+		baseURL := tcommon.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = "0"
+		conf.HTTP.Port = port
 		conf.Storage.RootDirectory = dir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -305,9 +306,8 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		ctlrManager := tcommon.NewControllerManager(ctlr)
-		baseURL := ctlrManager.StartAndWait()
+		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
-		port := strconv.Itoa(ctlrManager.Port())
 
 		// push test image to repo
 		image := CreateRandomImage()
@@ -337,8 +337,10 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		// checkCosignSignature -> true (tag)
 		dir := t.TempDir()
 
+		port := tcommon.GetFreePort()
+		baseURL := tcommon.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = "0"
+		conf.HTTP.Port = port
 		conf.Storage.RootDirectory = dir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -350,9 +352,8 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		ctlrManager := tcommon.NewControllerManager(ctlr)
-		baseURL := ctlrManager.StartAndWait()
+		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
-		port := strconv.Itoa(ctlrManager.Port())
 
 		// push test image to repo
 		image := CreateRandomImage()
@@ -383,8 +384,10 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		// checkCosignSignature -> true (referrers)
 		dir := t.TempDir()
 
+		port := tcommon.GetFreePort()
+		baseURL := tcommon.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = "0"
+		conf.HTTP.Port = port
 		conf.Storage.RootDirectory = dir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -396,9 +399,8 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		ctlrManager := tcommon.NewControllerManager(ctlr)
-		baseURL := ctlrManager.StartAndWait()
+		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
-		port := strconv.Itoa(ctlrManager.Port())
 
 		// push test image to repo
 		image := CreateRandomImage()

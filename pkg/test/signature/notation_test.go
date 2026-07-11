@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"strconv"
 	"testing"
 
 	notconfig "github.com/notaryproject/notation-go/config"
@@ -252,18 +251,19 @@ func TestVerifyWithNotation(t *testing.T) {
 
 	Convey("invalid content of trustpolicy.json", t, func() {
 		// start a new server
+		port := tcommon.GetFreePort()
+		baseURL := tcommon.GetBaseURL(port)
 		dir := t.TempDir()
 
 		conf := config.New()
-		conf.HTTP.Port = "0"
+		conf.HTTP.Port = port
 		conf.Storage.RootDirectory = dir
 
 		ctlr := api.NewController(conf)
 		cm := tcommon.NewControllerManager(ctlr)
 		// this blocks
-		baseURL := cm.StartAndWait()
+		cm.StartAndWait(port)
 		defer cm.StopServer()
-		port := strconv.Itoa(cm.Port())
 
 		repoName := "signed-repo"
 		tag := "1.0"

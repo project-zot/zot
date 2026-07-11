@@ -30,13 +30,6 @@ import (
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
-var (
-	errSyncTempImageReferenceNoPath       = errors.New("sync temp image reference has no path")
-	errSyncTempImageReferenceNoLayoutPath = errors.New("sync temp image reference has no layout path")
-	errSyncTempLayoutPathRepoMismatch     = errors.New("sync temp layout path does not end with repo")
-	errSyncTempImageStoreCreateFailed     = errors.New("failed to create temp sync image store")
-)
-
 type DestinationRegistry struct {
 	storeController storage.StoreController
 	tempStorage     OciLayoutStorage
@@ -95,13 +88,12 @@ func (registry *DestinationRegistry) GetImageReference(repo, reference string) (
 
 // CommitAll finalizes a syncing image.
 func (registry *DestinationRegistry) CommitAll(repo string, imageReference ref.Ref) error {
-	tempImageStore, err := getImageStoreFromImageReference(repo, imageReference, registry.log)
-	if err != nil {
-		registry.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
-			Str("repo", repo).Str("reference", imageReference.Reference).
-			Msg("failed to open temp sync image store")
+	tempImageStore := getImageStoreFromImageReference(repo, imageReference, registry.log)
 
-		return err
+	if tempImageStore == nil {
+		registry.log.Error().Str("repo", repo).Msg("failed to get temp image store for sync commit")
+
+		return zerr.ErrLocalImgStoreNotFound
 	}
 
 	if tempImageStore == nil {
@@ -168,16 +160,11 @@ func (registry *DestinationRegistry) CommitAll(repo string, imageReference ref.R
 }
 
 func (registry *DestinationRegistry) CleanupImage(imageReference ref.Ref, repo string) error {
-	sessionRoot, err := syncTempSessionRoot(repo, imageReference)
-	if err != nil {
-		registry.log.Debug().Err(err).Str("repo", repo).
-			Msg("failed to resolve temp sync session root for cleanup")
+	var err error
 
-		return nil
-	}
-
-	if _, err = os.Stat(sessionRoot); err == nil {
-		if err := os.RemoveAll(sessionRoot); err != nil {
+	dir := strings.TrimSuffix(imageReference.Path, repo)
+	if _, err = os.Stat(dir); err == nil {
+		if err := os.RemoveAll(strings.TrimSuffix(imageReference.Path, repo)); err != nil {
 			registry.log.Error().Err(err).Msg("failed to cleanup image from temp storage")
 
 			return err
@@ -200,7 +187,6 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 	*seen = append(*seen, desc.Digest)
 
 	imageStore := registry.storeController.GetImageStore(repo)
-	isReferrersRef := common.IsReferrersTag(reference)
 
 	manifestContent := desc.Data
 	if manifestContent == nil {
@@ -217,10 +203,6 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 	// is image manifest
 	switch desc.MediaType {
 	case ispec.MediaTypeImageManifest, mediatype.Docker2Manifest:
-		if isReferrersRef {
-			return nil
-		}
-
 		var manifest ispec.Manifest
 
 		if err := json.Unmarshal(manifestContent, &manifest); err != nil {
@@ -329,12 +311,6 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 			return firstMissingErr
 		}
 
-		// Referrers indexes are a transport convention in the temp ocidir layout; persist child
-		// manifests only, not the referrers index entry itself.
-		if isReferrersRef {
-			return nil
-		}
-
 		_, _, err := imageStore.PutImageManifest(context.Background(), repo, reference, desc.MediaType, manifestContent, nil)
 		if err != nil {
 			registry.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).Str("reference", reference).
@@ -390,58 +366,11 @@ func (registry *DestinationRegistry) copyBlob(repo string, blobDigest godigest.D
 	return err
 }
 
-// ocidirLayoutPath returns the on-disk OCI layout directory for a temp sync ref.
-// regclient may clear Path after mod.Apply while Reference still holds the ocidir URL.
-func ocidirLayoutPath(imageReference ref.Ref) (string, error) {
-	if imageReference.Path != "" {
-		return imageReference.Path, nil
-	}
-
-	if imageReference.Reference == "" {
-		return "", errSyncTempImageReferenceNoPath
-	}
-
-	parsed, err := ref.New(imageReference.Reference)
-	if err != nil {
-		return "", fmt.Errorf("parse sync temp image reference: %w", err)
-	}
-
-	if parsed.Path == "" {
-		return "", errSyncTempImageReferenceNoLayoutPath
-	}
-
-	return parsed.Path, nil
-}
-
-// syncTempSessionRoot maps a temp ocidir ref to the session directory that contains the repo layout.
-func syncTempSessionRoot(repo string, imageReference ref.Ref) (string, error) {
-	layoutPath, err := ocidirLayoutPath(imageReference)
-	if err != nil {
-		return "", err
-	}
-
-	repoSuffix := path.Join("/", repo)
-	if sessionRoot, ok := strings.CutSuffix(layoutPath, repoSuffix); ok {
-		return sessionRoot, nil
-	}
-
-	return "", fmt.Errorf("%w: layout=%q repo=%q", errSyncTempLayoutPathRepoMismatch, layoutPath, repo)
-}
-
 // use only with local imageReferences.
-func getImageStoreFromImageReference(repo string, imageReference ref.Ref, log log.Logger,
-) (storageTypes.ImageStore, error) {
-	sessionRootDir, err := syncTempSessionRoot(repo, imageReference)
-	if err != nil {
-		return nil, err
-	}
+func getImageStoreFromImageReference(repo string, imageReference ref.Ref, log log.Logger) storageTypes.ImageStore {
+	sessionRootDir := strings.TrimSuffix(imageReference.Path, repo)
 
-	store := getImageStore(sessionRootDir, log)
-	if store == nil {
-		return nil, fmt.Errorf("%w: %q", errSyncTempImageStoreCreateFailed, sessionRootDir)
-	}
-
-	return store, nil
+	return getImageStore(sessionRootDir, log)
 }
 
 func getImageStore(rootDir string, log log.Logger) storageTypes.ImageStore {
