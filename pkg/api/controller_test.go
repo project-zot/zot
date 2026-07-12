@@ -12151,6 +12151,7 @@ func TestPeriodicGC(t *testing.T) {
 		ctlr.Config.Storage.GC = true
 		ctlr.Config.Storage.GCInterval = 1 * time.Hour
 		ctlr.Config.Storage.GCDelay = 1 * time.Second
+		ctlr.Config.Storage.GCMaxSchedulerDelay = 5 * time.Millisecond
 
 		err := WriteImageToFileSystem(CreateDefaultImage(), repoName, "0.0.1",
 			ociutils.GetDefaultStoreController(dir, ctlr.Log))
@@ -12161,7 +12162,12 @@ func TestPeriodicGC(t *testing.T) {
 
 		defer cm.StopServer()
 
-		time.Sleep(5000 * time.Millisecond)
+		require.Eventually(t, func() bool {
+			data, err := os.ReadFile(logPath)
+
+			return err == nil && strings.Contains(string(data),
+				"gc successfully completed for "+path.Join(ctlr.StoreController.DefaultStore.RootDir(), repoName))
+		}, 10*time.Second, 100*time.Millisecond)
 
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
@@ -12234,6 +12240,7 @@ func TestPeriodicGC(t *testing.T) {
 		ctlr.Config.Storage.GC = true
 		ctlr.Config.Storage.GCInterval = 1 * time.Hour
 		ctlr.Config.Storage.GCDelay = 1 * time.Second
+		ctlr.Config.Storage.GCMaxSchedulerDelay = 5 * time.Millisecond
 
 		err := WriteImageToFileSystem(CreateDefaultImage(), repoName, "0.0.1",
 			ociutils.GetDefaultStoreController(dir, ctlr.Log))
@@ -12250,7 +12257,11 @@ func TestPeriodicGC(t *testing.T) {
 
 		defer cm.StopServer()
 
-		time.Sleep(5000 * time.Millisecond)
+		require.Eventually(t, func() bool {
+			data, err := os.ReadFile(logPath)
+
+			return err == nil && strings.Contains(string(data), "failed to walk storage root-dir")
+		}, 10*time.Second, 100*time.Millisecond)
 
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)

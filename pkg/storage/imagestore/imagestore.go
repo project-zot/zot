@@ -333,20 +333,7 @@ func (is *ImageStore) streamBlobCandidate(candidate blobCandidate, digest godige
 	return nil
 }
 
-// upgradeToGlobalBlobstore migrates blobs from per-repo directories into the global _blobstore
-// for older zot releases that did not have a centralized blobstore.
-// For local filesystem it uses hard links (no extra disk space).
-// For S3/GCS it copies the blob content to the global blobstore.
-func (is *ImageStore) upgradeToGlobalBlobstore() error {
-	// Check for the migration-complete marker first; this is more reliable than counting
-	// blobs (which would be zero on a fresh install that never pushed anything).
-	markerPath := path.Join(is.rootDir, storageConstants.BlobstoreMigratedMarker)
-	if _, err := is.storeDriver.Stat(markerPath); err == nil {
-		// marker exists — migration already done on a previous startup
-		return nil
-	}
-
-	// discover repos using Walk (supports nested repos like org/repo)
+func (is *ImageStore) getLegacyRepositories() ([]string, error) {
 	repos := []string{}
 
 	err := is.storeDriver.Walk(is.rootDir, func(fileInfo driver.FileInfo) error {
@@ -354,7 +341,6 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 			return nil
 		}
 
-		// skip internal dirs
 		if strings.HasSuffix(fileInfo.Path(), syncConstants.SyncBlobUploadDir) ||
 			strings.HasSuffix(fileInfo.Path(), ispec.ImageBlobsDir) ||
 			strings.HasSuffix(fileInfo.Path(), storageConstants.BlobUploadDir) {
@@ -383,14 +369,31 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 			return fmt.Errorf("validate repository %q during blobstore migration: %w", rel, err)
 		}
 
-		if !ok {
-			return nil //nolint:nilerr
+		if ok {
+			repos = append(repos, rel)
 		}
-
-		repos = append(repos, rel)
 
 		return nil
 	})
+
+	return repos, err
+}
+
+// upgradeToGlobalBlobstore migrates blobs from per-repo directories into the global _blobstore
+// for older zot releases that did not have a centralized blobstore.
+// For local filesystem it uses hard links (no extra disk space).
+// For S3/GCS it copies the blob content to the global blobstore.
+func (is *ImageStore) upgradeToGlobalBlobstore() error {
+	// Check for the migration-complete marker first; this is more reliable than counting
+	// blobs (which would be zero on a fresh install that never pushed anything).
+	markerPath := path.Join(is.rootDir, storageConstants.BlobstoreMigratedMarker)
+	if _, err := is.storeDriver.Stat(markerPath); err == nil {
+		// marker exists — migration already done on a previous startup
+		return nil
+	}
+
+	// discover repos using Walk (supports nested repos like org/repo)
+	repos, err := is.getLegacyRepositories()
 	if err != nil && !errors.As(err, &driver.PathNotFoundError{}) {
 		return err
 	}
