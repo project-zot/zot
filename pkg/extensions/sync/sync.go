@@ -77,8 +77,8 @@ type Remote interface {
 	GetRepositories(ctx context.Context) ([]string, error)
 	// Get a list of tags given a repo
 	GetTags(ctx context.Context, repo string) ([]string, error)
-	/* Get oci digest for repo:tag, if docker image, convert it before returning:
-	oci digest,	original digest on the remote before converting, if it was converted and error	*/
+	/* Get oci digest for repo:tag as regclient mod.WithManifestToOCI would produce:
+	predicted digest, original remote digest, whether mod.Apply would modify the image, error */
 	GetOCIDigest(ctx context.Context, repo, tag string) (godigest.Digest, godigest.Digest, bool, error)
 	// Get remote digest for repo:tag
 	GetDigest(ctx context.Context, repo, tag string) (godigest.Digest, error)

@@ -5,7 +5,11 @@ package sync
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"net/http"
@@ -23,6 +27,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/extensions/config"
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
 	"zotregistry.dev/zot/v2/pkg/extensions/lint"
@@ -644,6 +649,229 @@ func TestService(t *testing.T) {
 	})
 }
 
+func writeKeyFile(t *testing.T, content string) string {
+	t.Helper()
+
+	keyFile := path.Join(t.TempDir(), "key.pem")
+	if err := os.WriteFile(keyFile, []byte(content), 0o600); err != nil {
+		t.Fatalf("failed to write key file: %v", err)
+	}
+
+	return keyFile
+}
+
+// writeOAuth2SigningFile writes a minimal RS256 signing config the oauth2 helper
+// can use to mint assertions, and returns its path.
+func writeOAuth2SigningFile(t *testing.T) string {
+	t.Helper()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("failed to generate RSA key: %v", err)
+	}
+
+	privateKeyPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(key),
+	})
+
+	raw, err := json.Marshal(map[string]any{
+		"privateKeyFile": writeKeyFile(t, string(privateKeyPEM)),
+		"algorithm":      "RS256",
+	})
+	if err != nil {
+		t.Fatalf("failed to marshal signing config: %v", err)
+	}
+
+	signingFile := path.Join(t.TempDir(), "signing-config.json")
+	if err := os.WriteFile(signingFile, raw, 0o600); err != nil {
+		t.Fatalf("failed to write signing config file: %v", err)
+	}
+
+	return signingFile
+}
+
+func TestServiceOAuth2CredentialHelper(t *testing.T) {
+	Convey("New wires the oauth2 credential helper", t, func() {
+		tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"helper-token","token_type":"Bearer","expires_in":3600}`))
+		}))
+		defer tokenServer.Close()
+
+		signingFile := writeOAuth2SigningFile(t)
+
+		conf := syncconf.RegistryConfig{
+			URLs:             []string{"http://localhost"},
+			CredentialHelper: "oauth2",
+			Oauth2CredentialHelper: map[string]any{
+				"tokenURL":    tokenServer.URL,
+				"signingFile": signingFile,
+				"username":    "robot",
+			},
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(service.credentialHelper, ShouldNotBeNil)
+		So(service.credentials["localhost"].Username, ShouldEqual, "robot")
+		So(service.credentials["localhost"].Password, ShouldEqual, "helper-token")
+	})
+
+	Convey("New falls back gracefully when the oauth2 config is missing", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs:                   []string{"http://localhost"},
+			CredentialHelper:       "oauth2",
+			Oauth2CredentialHelper: nil,
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(service.credentialHelper, ShouldBeNil)
+		So(service.config.CredentialHelper, ShouldEqual, "")
+	})
+
+	Convey("New falls back gracefully when the oauth2 config cannot be decoded", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs:             []string{"http://localhost"},
+			CredentialHelper: "oauth2",
+			Oauth2CredentialHelper: map[string]any{
+				"tokenURL": map[string]any{"unexpected": "object"},
+			},
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(service.credentialHelper, ShouldBeNil)
+		So(service.config.CredentialHelper, ShouldEqual, "")
+	})
+
+	Convey("New falls back gracefully on invalid oauth2 config", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs:             []string{"http://localhost"},
+			CredentialHelper: "oauth2",
+			Oauth2CredentialHelper: map[string]any{
+				"signingFile": "/does/not/matter",
+			},
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(service.credentialHelper, ShouldBeNil)
+		So(service.config.CredentialHelper, ShouldEqual, "")
+	})
+
+	Convey("New tolerates oauth2 credential retrieval failure", t, func() {
+		signingFile := writeOAuth2SigningFile(t)
+
+		conf := syncconf.RegistryConfig{
+			URLs:             []string{"http://localhost"},
+			CredentialHelper: "oauth2",
+			Oauth2CredentialHelper: map[string]any{
+				"tokenURL":    "http://127.0.0.1:1/token",
+				"signingFile": signingFile,
+			},
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(service.credentialHelper, ShouldNotBeNil)
+	})
+
+	Convey("New falls back gracefully on an unsupported credential helper", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs:             []string{"http://localhost"},
+			CredentialHelper: "unsupported",
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(service.credentialHelper, ShouldBeNil)
+		So(service.config.CredentialHelper, ShouldEqual, "")
+	})
+}
+
+func TestOAuth2HelperConfigFromMap(t *testing.T) {
+	Convey("nil dictionary decodes to nil config", t, func() {
+		config, err := syncconf.OAuth2HelperConfigFromMap(nil)
+		So(err, ShouldBeNil)
+		So(config, ShouldBeNil)
+	})
+
+	Convey("generic dictionary is decoded into the typed OAuth2 helper config", t, func() {
+		config, err := syncconf.OAuth2HelperConfigFromMap(map[string]any{
+			"tokenURL":         "https://idp.example.com/token",
+			"signingFile":      "/var/run/secrets/signing-config.json",
+			"grantType":        "urn:ietf:params:oauth:grant-type:jwt-bearer",
+			"clientID":         "zot-sync",
+			"clientSecretFile": "/etc/zot/secret",
+			"scopes":           []any{"repository:pull", "repository:push"},
+			"username":         "robot",
+		})
+		So(err, ShouldBeNil)
+		So(config, ShouldNotBeNil)
+		So(config.TokenURL, ShouldEqual, "https://idp.example.com/token")
+		So(config.SigningFile, ShouldEqual, "/var/run/secrets/signing-config.json")
+		So(config.GrantType, ShouldEqual, "urn:ietf:params:oauth:grant-type:jwt-bearer")
+		So(config.ClientID, ShouldEqual, "zot-sync")
+		So(config.ClientSecretFile, ShouldEqual, "/etc/zot/secret")
+		So(config.Username, ShouldEqual, "robot")
+		So(config.Scopes, ShouldResemble, []string{"repository:pull", "repository:push"})
+	})
+
+	Convey("an undecodable dictionary returns an error", t, func() {
+		config, err := syncconf.OAuth2HelperConfigFromMap(map[string]any{
+			"tokenURL": map[string]any{"unexpected": "object"},
+		})
+		So(err, ShouldNotBeNil)
+		So(config, ShouldBeNil)
+	})
+
+	Convey("a misspelled key is rejected instead of silently dropped", t, func() {
+		config, err := syncconf.OAuth2HelperConfigFromMap(map[string]any{
+			"tokenURL":     "https://idp.example.com/token",
+			"signingFile":  "/run/secrets/signing-config.json",
+			"clientSecret": "misspelled-clientSecretFile",
+		})
+		So(err, ShouldNotBeNil)
+		So(config, ShouldBeNil)
+	})
+}
+
+func TestOAuth2HelperConfigValidate(t *testing.T) {
+	Convey("a nil config is invalid", t, func() {
+		var config *syncconf.OAuth2HelperConfig
+		So(config.Validate(), ShouldNotBeNil)
+	})
+
+	Convey("tokenURL is required", t, func() {
+		config := &syncconf.OAuth2HelperConfig{SigningFile: "/run/secrets/signing-config.json"}
+		So(config.Validate(), ShouldNotBeNil)
+	})
+
+	Convey("an assertion source is required", t, func() {
+		config := &syncconf.OAuth2HelperConfig{TokenURL: "https://idp.example.com/token"}
+		So(config.Validate(), ShouldNotBeNil)
+	})
+
+	Convey("assertionFile and signingFile are mutually exclusive", t, func() {
+		config := &syncconf.OAuth2HelperConfig{
+			TokenURL:      "https://idp.example.com/token",
+			AssertionFile: "/run/secrets/assertion.jwt",
+			SigningFile:   "/run/secrets/signing-config.json",
+		}
+		So(config.Validate(), ShouldNotBeNil)
+	})
+
+	Convey("a complete config is valid", t, func() {
+		config := &syncconf.OAuth2HelperConfig{
+			TokenURL:    "https://idp.example.com/token",
+			SigningFile: "/run/secrets/signing-config.json",
+		}
+		So(config.Validate(), ShouldBeNil)
+	})
+}
+
 func TestSyncLegacyCosignTagsSyncReferrers(t *testing.T) {
 	Convey("SyncLegacyCosignTags=false skips getTags and the digest-tag loop in SyncReferrers", t, func() {
 		getTagsCallCount := 0
@@ -800,7 +1028,8 @@ func TestDestinationRegistry(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(imageReference, ShouldNotBeNil)
 
-		imgStore := getImageStoreFromImageReference(repoName, imageReference, log)
+		imgStore, err := getImageStoreFromImageReference(repoName, imageReference, log)
+		So(err, ShouldBeNil)
 
 		// create a blob/layer
 		upload, err := imgStore.NewBlobUpload(context.Background(), repoName)
@@ -1001,7 +1230,8 @@ func TestDestinationRegistry(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Get the temp image store from the image reference
-			tempImgStore := getImageStoreFromImageReference(repoName, imageReference, log)
+			tempImgStore, err := getImageStoreFromImageReference(repoName, imageReference, log)
+			So(err, ShouldBeNil)
 
 			// Create an image index with multiple manifests
 			var index ispec.Index
@@ -1123,7 +1353,8 @@ func TestDestinationRegistry(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(imageReference, ShouldNotBeNil)
 
-			imgStore := getImageStoreFromImageReference(repoName, imageReference, log)
+			imgStore, err := getImageStoreFromImageReference(repoName, imageReference, log)
+			So(err, ShouldBeNil)
 
 			// upload image
 
@@ -1204,7 +1435,8 @@ func TestDestinationRegistry(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Remove the directory to simulate it not existing
-			tempImageStore := getImageStoreFromImageReference("nonexistent-repo", imageReference, log)
+			tempImageStore, err := getImageStoreFromImageReference("nonexistent-repo", imageReference, log)
+			So(err, ShouldBeNil)
 			repoDir := path.Join(tempImageStore.RootDir(), "nonexistent-repo")
 			err = os.RemoveAll(repoDir)
 			So(err, ShouldBeNil)
@@ -1221,7 +1453,8 @@ func TestDestinationRegistry(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Create an empty directory (no index.json, no blobs)
-			tempImageStore := getImageStoreFromImageReference("empty-repo", imageReference, log)
+			tempImageStore, err := getImageStoreFromImageReference("empty-repo", imageReference, log)
+			So(err, ShouldBeNil)
 			repoDir := path.Join(tempImageStore.RootDir(), "empty-repo")
 			err = os.MkdirAll(repoDir, 0o755)
 			So(err, ShouldBeNil)
@@ -1238,7 +1471,8 @@ func TestDestinationRegistry(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Create a directory with some files but no index.json (inconsistent state)
-			tempImageStore := getImageStoreFromImageReference("inconsistent-repo", imageReference, log)
+			tempImageStore, err := getImageStoreFromImageReference("inconsistent-repo", imageReference, log)
+			So(err, ShouldBeNil)
 			repoDir := path.Join(tempImageStore.RootDir(), "inconsistent-repo")
 			err = os.MkdirAll(repoDir, 0o755)
 			So(err, ShouldBeNil)
@@ -1261,7 +1495,8 @@ func TestDestinationRegistry(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Get the repo directory path
-			tempImageStore := getImageStoreFromImageReference("error-repo", imageReference, log)
+			tempImageStore, err := getImageStoreFromImageReference("error-repo", imageReference, log)
+			So(err, ShouldBeNil)
 			repoDir := path.Join(tempImageStore.RootDir(), "error-repo")
 
 			// Create a file at the repoDir path instead of a directory
@@ -1276,6 +1511,249 @@ func TestDestinationRegistry(t *testing.T) {
 			err = registry.CommitAll("error-repo", imageReference)
 			So(err, ShouldNotBeNil)
 			So(errors.Is(err, os.ErrNotExist), ShouldBeFalse)
+		})
+	})
+}
+
+func TestSyncTempSessionRoot(t *testing.T) {
+	Convey("syncTempSessionRoot resolves temp ocidir session directories", t, func() {
+		repo := "zot-test"
+		layoutPath := path.Join("/tmp", "dest", repo, ".sync", "session-id", repo)
+		imageReference, err := ref.New(fmt.Sprintf("ocidir://%s:1.0", layoutPath))
+		So(err, ShouldBeNil)
+
+		sessionRoot, err := syncTempSessionRoot(repo, imageReference)
+		So(err, ShouldBeNil)
+		So(sessionRoot, ShouldEqual, path.Join("/tmp", "dest", repo, ".sync", "session-id"))
+
+		Convey("reparses layout path from Reference when Path is empty", func() {
+			cleared := imageReference
+			cleared.Path = ""
+
+			sessionRoot, err := syncTempSessionRoot(repo, cleared)
+			So(err, ShouldBeNil)
+			So(sessionRoot, ShouldEqual, path.Join("/tmp", "dest", repo, ".sync", "session-id"))
+		})
+
+		Convey("returns error when path cannot be resolved", func() {
+			_, err := syncTempSessionRoot(repo, ref.Ref{})
+			So(err, ShouldNotBeNil)
+
+			_, err = syncTempSessionRoot("other-repo", imageReference)
+			So(err, ShouldNotBeNil)
+
+			_, err = syncTempSessionRoot(repo, ref.Ref{Path: repo})
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
+func TestSyncTempLayoutPathHelpers(t *testing.T) {
+	Convey("ocidirLayoutPath and getImageStoreFromImageReference errors", t, func() {
+		log := log.NewTestLogger()
+
+		Convey("missing path and reference", func() {
+			_, err := ocidirLayoutPath(ref.Ref{})
+			So(errors.Is(err, errSyncTempImageReferenceNoPath), ShouldBeTrue)
+		})
+
+		Convey("invalid reference parse", func() {
+			_, err := ocidirLayoutPath(ref.Ref{Reference: "://bad"})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("reparses layout path from reference", func() {
+			parsed, err := ref.New("ocidir:///tmp/layout/repo:1.0")
+			So(err, ShouldBeNil)
+
+			cleared := parsed
+			cleared.Path = ""
+
+			path, err := ocidirLayoutPath(cleared)
+			So(err, ShouldBeNil)
+			So(path, ShouldEqual, "/tmp/layout/repo")
+		})
+
+		Convey("ocidir reference without layout path fails on reparsing", func() {
+			_, err := ref.New("ocidir://")
+			So(err, ShouldNotBeNil)
+
+			_, err = ocidirLayoutPath(ref.Ref{Reference: "ocidir://"})
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, errSyncTempImageReferenceNoPath), ShouldBeFalse)
+			// regclient rejects empty ocidir paths at parse time, before no-layout-path check
+			So(errors.Is(err, errSyncTempImageReferenceNoLayoutPath), ShouldBeFalse)
+		})
+
+		Convey("session root is not a directory", func() {
+			sessionFile := path.Join(t.TempDir(), "session")
+			So(os.WriteFile(sessionFile, []byte("x"), 0o644), ShouldBeNil)
+
+			layoutPath := path.Join(sessionFile, "repo")
+			_, err := getImageStoreFromImageReference("repo", ref.Ref{Path: layoutPath}, log)
+			So(errors.Is(err, errSyncTempImageStoreCreateFailed), ShouldBeTrue)
+		})
+	})
+}
+
+func TestDestinationRegistryCommitAllErrors(t *testing.T) {
+	Convey("CommitAll and CleanupImage temp path errors", t, func() {
+		log := log.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+		defer metrics.Stop()
+
+		dir := t.TempDir()
+		store := local.NewImageStore(dir, true, true, log, metrics, nil, nil, nil, nil)
+		sc := storage.StoreController{DefaultStore: store}
+		registry := NewDestinationRegistry(sc, sc, nil, log)
+
+		Convey("CommitAll with unresolvable temp ref", func() {
+			err := registry.CommitAll("repo", ref.Ref{})
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, errSyncTempImageReferenceNoPath), ShouldBeTrue)
+		})
+
+		Convey("CleanupImage with unresolvable temp ref returns nil", func() {
+			err := registry.CleanupImage(ref.Ref{}, "repo")
+			So(err, ShouldBeNil)
+		})
+
+		Convey("CleanupImage removes existing temp session", func() {
+			repoName := "cleanup-repo"
+			imageReference, err := registry.GetImageReference(repoName, "1.0")
+			So(err, ShouldBeNil)
+
+			sessionRoot, err := syncTempSessionRoot(repoName, imageReference)
+			So(err, ShouldBeNil)
+			So(os.MkdirAll(path.Join(sessionRoot, repoName), 0o755), ShouldBeNil)
+
+			err = registry.CleanupImage(imageReference, repoName)
+			So(err, ShouldBeNil)
+			_, statErr := os.Stat(sessionRoot)
+			So(os.IsNotExist(statErr), ShouldBeTrue)
+		})
+	})
+}
+
+func TestCopyManifestInvalidJSON(t *testing.T) {
+	Convey("copyManifest rejects invalid manifest JSON", t, func() {
+		log := log.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+		defer metrics.Stop()
+
+		tempDir := t.TempDir()
+		destDir := t.TempDir()
+		tempStore := local.NewImageStore(tempDir, true, true, log, metrics, nil, nil, nil, nil)
+		destStore := local.NewImageStore(destDir, true, true, log, metrics, nil, nil, nil, nil)
+		destReg := NewDestinationRegistry(
+			storage.StoreController{DefaultStore: destStore},
+			storage.StoreController{DefaultStore: tempStore},
+			nil,
+			log,
+		).(*DestinationRegistry)
+
+		invalid := []byte("not-json")
+		desc := ispec.Descriptor{
+			MediaType: ispec.MediaTypeImageManifest,
+			Digest:    godigest.FromBytes(invalid),
+			Size:      int64(len(invalid)),
+			Data:      invalid,
+		}
+		seen := &[]godigest.Digest{}
+
+		err := destReg.copyManifest("repo", desc, "1.0", tempStore, seen)
+		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestCopyManifestReferrersTag(t *testing.T) {
+	Convey("referrers-shaped layout entries are not committed as tags", t, func() {
+		log := log.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+		defer metrics.Stop()
+
+		repoName := "repo"
+		subjectImage := CreateImageWith().RandomLayers(1, 10).RandomConfig().Build()
+		subjectDigest := subjectImage.Digest()
+		referrersTag := "sha256-" + subjectDigest.Encoded()
+
+		Convey("referrers-tagged manifest entry is skipped", func() {
+			tempDir := t.TempDir()
+			destDir := t.TempDir()
+			tempStore := local.NewImageStore(tempDir, true, true, log, metrics, nil, nil, nil, nil)
+			destStore := local.NewImageStore(destDir, true, true, log, metrics, nil, nil, nil, nil)
+			tempController := storage.StoreController{DefaultStore: tempStore}
+			destController := storage.StoreController{DefaultStore: destStore}
+			destReg := NewDestinationRegistry(destController, tempController, nil, log).(*DestinationRegistry)
+
+			referrerImage := CreateImageWith().RandomLayers(1, 10).RandomConfig().
+				Subject(&ispec.Descriptor{
+					Digest:    subjectDigest,
+					MediaType: ispec.MediaTypeImageManifest,
+				}).Build()
+			referrerManifest, err := json.Marshal(referrerImage.Manifest)
+			So(err, ShouldBeNil)
+			referrerDigest := godigest.FromBytes(referrerManifest)
+
+			err = WriteImageToFileSystem(referrerImage, repoName, referrersTag, tempController)
+			So(err, ShouldBeNil)
+
+			desc := ispec.Descriptor{
+				Digest:    referrerDigest,
+				MediaType: ispec.MediaTypeImageManifest,
+				Size:      int64(len(referrerManifest)),
+			}
+			seen := &[]godigest.Digest{}
+
+			err = destReg.copyManifest(repoName, desc, referrersTag, tempStore, seen)
+			So(err, ShouldBeNil)
+
+			_, _, _, err = destStore.GetImageManifest(repoName, referrerDigest.String())
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("referrers-tagged index commits child manifests only", func() {
+			tempDir := t.TempDir()
+			destDir := t.TempDir()
+			tempStore := local.NewImageStore(tempDir, true, true, log, metrics, nil, nil, nil, nil)
+			destStore := local.NewImageStore(destDir, true, true, log, metrics, nil, nil, nil, nil)
+			tempController := storage.StoreController{DefaultStore: tempStore}
+			destController := storage.StoreController{DefaultStore: destStore}
+			destReg := NewDestinationRegistry(destController, tempController, nil, log).(*DestinationRegistry)
+
+			referrerImage := CreateImageWith().RandomLayers(1, 10).RandomConfig().
+				Subject(&ispec.Descriptor{
+					Digest:    subjectDigest,
+					MediaType: ispec.MediaTypeImageManifest,
+				}).Build()
+
+			referrersIndex := CreateMultiarchWith().Images([]Image{referrerImage}).Build()
+			referrersIndex.Index.Subject = &ispec.Descriptor{
+				Digest:    subjectDigest,
+				MediaType: ispec.MediaTypeImageManifest,
+			}
+
+			err := WriteMultiArchImageToFileSystem(referrersIndex, repoName, referrersTag, tempController)
+			So(err, ShouldBeNil)
+
+			desc := referrersIndex.IndexDescriptor
+			seen := &[]godigest.Digest{}
+
+			err = destReg.copyManifest(repoName, desc, referrersTag, tempStore, seen)
+			So(err, ShouldBeNil)
+
+			tags, err := destStore.GetImageTags(repoName)
+			So(err, ShouldBeNil)
+			for _, tag := range tags {
+				So(common.IsReferrersTag(tag), ShouldBeFalse)
+			}
+
+			_, _, _, err = destStore.GetImageManifest(repoName, referrersIndex.Digest().String())
+			So(err, ShouldNotBeNil)
+
+			_, childDigest, _, err := destStore.GetImageManifest(repoName, referrerImage.Digest().String())
+			So(err, ShouldBeNil)
+			So(childDigest, ShouldEqual, referrerImage.Digest())
 		})
 	})
 }

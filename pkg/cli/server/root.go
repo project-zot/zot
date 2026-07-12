@@ -28,6 +28,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/constants"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	eventsconf "zotregistry.dev/zot/v2/pkg/extensions/config/events"
+	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	syncConstants "zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
@@ -1691,6 +1692,22 @@ func validateSync(config *config.Config, logger zlog.Logger) error {
 					extensionsConfig.Sync.Registries[regID]).Msg(msg)
 
 				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+			}
+
+			// check the oauth2 credential helper config is complete and consistent
+			if regCfg.CredentialHelper == "oauth2" {
+				oauth2Config, err := syncconf.OAuth2HelperConfigFromMap(regCfg.Oauth2CredentialHelper)
+				if err == nil {
+					err = oauth2Config.Validate()
+				}
+
+				if err != nil {
+					msg := "invalid oauth2CredentialHelper config"
+					logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
+						extensionsConfig.Sync.Registries[regID]).Msg(msg)
+
+					return fmt.Errorf("%w: %s: %w", zerr.ErrBadConfig, msg, err)
+				}
 			}
 
 			// check preserveDigest without compat

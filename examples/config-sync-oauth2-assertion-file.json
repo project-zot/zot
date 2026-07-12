@@ -1,0 +1,39 @@
+{
+    "distSpecVersion": "1.1.1",
+    "storage": {
+        "rootDirectory": "/tmp/zot"
+    },
+    "http": {
+        "address": "0.0.0.0",
+        "port": "8080"
+    },
+    "log": {
+        "level": "debug"
+    },
+    "extensions": {
+        "sync": {
+            "downloadDir": "/tmp/zot",
+            "registries": [
+                {
+                    "urls": [
+                        "https://registry.example.com"
+                    ],
+                    "onDemand": true,
+                    "maxRetries": 5,
+                    "retryDelay": "2m",
+                    "credentialHelper": "oauth2",
+                    "oauth2CredentialHelper": {
+                        "tokenURL": "https://idp.example.com/oauth2/token",
+                        "assertionFile": "./examples/sync-oauth2-assertion.jwt",
+                        "grantType": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                        "clientID": "zot-sync",
+                        "clientSecretFile": "./examples/sync-oauth2-client-secret",
+                        "scopes": [
+                            "repository:pull"
+                        ]
+                    }
+                }
+            ]
+        }
+    }
+}
