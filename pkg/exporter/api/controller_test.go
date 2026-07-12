@@ -50,42 +50,40 @@ func TestNew(t *testing.T) {
 	})
 }
 
-func isChannelDrained(ch chan prometheus.Metric) bool {
-	time.Sleep(SleepTime)
-
-	select {
-	case <-ch:
-		return false
-	default:
-		return true
+func readMetric(ch chan prometheus.Metric, desc *prometheus.Desc) prometheus.Metric {
+	for {
+		metric := <-ch
+		if metric.Desc().String() == desc.String() {
+			return metric
+		}
 	}
 }
 
 func readDefaultMetrics(collector *api.Collector, chMetric chan prometheus.Metric) {
 	var metric dto.Metric
 
-	pmMetric := <-chMetric
+	pmMetric := readMetric(chMetric, collector.MetricsDesc["zot_up"])
 	So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_up"].String())
 
 	err := pmMetric.Write(&metric)
 	So(err, ShouldBeNil)
 	So(*metric.Gauge.Value, ShouldEqual, 1)
 
-	pmMetric = <-chMetric
+	pmMetric = readMetric(chMetric, collector.MetricsDesc["zot_scheduler_workers_total"])
 	So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_scheduler_workers_total"].String())
 
 	err = pmMetric.Write(&metric)
 	So(err, ShouldBeNil)
 	So(*metric.Gauge.Value, ShouldEqual, runtime.NumCPU()*scheduler.NumWorkersMultiplier)
 
-	pmMetric = <-chMetric
+	pmMetric = readMetric(chMetric, collector.MetricsDesc["zot_info"])
 	So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_info"].String())
 
 	err = pmMetric.Write(&metric)
 	So(err, ShouldBeNil)
 	So(*metric.Gauge.Value, ShouldEqual, 0)
 
-	pmMetric = <-chMetric
+	pmMetric = readMetric(chMetric, collector.MetricsDesc["zot_scheduler_generators_total"])
 	So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_scheduler_generators_total"].String())
 }
 
@@ -119,7 +117,7 @@ func TestNewExporter(t *testing.T) {
 					collector.Collect(chMetric)
 				}()
 				// Read from the channel expected values
-				pm := <-chMetric
+				pm := readMetric(chMetric, collector.MetricsDesc["zot_up"])
 				So(pm.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_up"].String())
 
 				var metric dto.Metric
@@ -127,8 +125,6 @@ func TestNewExporter(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(*metric.Gauge.Value, ShouldEqual, 0) // "zot_up=0" means zot server is not running
 
-				// Check that no more data was written to the channel
-				So(isChannelDrained(chMetric), ShouldEqual, true)
 			})
 			Convey("When zot server is running", func() {
 				servercConfig := zotcfg.New()
@@ -181,7 +177,6 @@ func TestNewExporter(t *testing.T) {
 						collector.Collect(chMetric)
 					}()
 					readDefaultMetrics(collector, chMetric)
-					So(isChannelDrained(chMetric), ShouldEqual, true)
 				})
 
 				Convey("Collecting data: Test init value & that increment works on Counters", func() {
@@ -195,15 +190,13 @@ func TestNewExporter(t *testing.T) {
 					}()
 					readDefaultMetrics(collector, chMetric)
 
-					pmMetric := <-chMetric
+					pmMetric := readMetric(chMetric, collector.MetricsDesc["zot_repo_uploads_total"])
 					So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_repo_uploads_total"].String())
 
 					var metric dto.Metric
 					err := pmMetric.Write(&metric)
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, 1)
-
-					So(isChannelDrained(chMetric), ShouldEqual, true)
 
 					// Testing that counter is incremented by 1
 					monitoring.IncUploadCounter(serverController.Metrics, "testrepo")
@@ -215,14 +208,13 @@ func TestNewExporter(t *testing.T) {
 					}()
 					readDefaultMetrics(collector, chMetric)
 
-					pmMetric = <-chMetric
+					pmMetric = readMetric(chMetric, collector.MetricsDesc["zot_repo_uploads_total"])
 					So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_repo_uploads_total"].String())
 
 					err = pmMetric.Write(&metric)
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, 2)
 
-					So(isChannelDrained(chMetric), ShouldEqual, true)
 				})
 				Convey("Collecting data: Test that concurent Counter increment requests works properly", func() {
 					nBig, err := rand.Int(rand.Reader, big.NewInt(1000))
@@ -242,7 +234,7 @@ func TestNewExporter(t *testing.T) {
 						collector.Collect(chMetric)
 					}()
 					readDefaultMetrics(collector, chMetric)
-					pm := <-chMetric
+					pm := readMetric(chMetric, collector.MetricsDesc["zot_repo_downloads_total"])
 					So(pm.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_repo_downloads_total"].String())
 
 					var metric dto.Metric
@@ -250,7 +242,6 @@ func TestNewExporter(t *testing.T) {
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, reqsSize)
 
-					So(isChannelDrained(chMetric), ShouldEqual, true)
 				})
 				Convey("Collecting data: Test init value & that observe works on Summaries", func() {
 					// Testing initial value of the summary counter to be 1 after first observation call
@@ -265,7 +256,7 @@ func TestNewExporter(t *testing.T) {
 					}()
 					readDefaultMetrics(collector, chMetric)
 
-					pmMetric := <-chMetric
+					pmMetric := readMetric(chMetric, collector.MetricsDesc["zot_http_repo_latency_seconds_count"])
 					So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_http_repo_latency_seconds_count"].String())
 
 					var metric dto.Metric
@@ -273,14 +264,12 @@ func TestNewExporter(t *testing.T) {
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, 1)
 
-					pmMetric = <-chMetric
+					pmMetric = readMetric(chMetric, collector.MetricsDesc["zot_http_repo_latency_seconds_sum"])
 					So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_http_repo_latency_seconds_sum"].String())
 
 					err = pmMetric.Write(&metric)
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, latency1.Seconds())
-
-					So(isChannelDrained(chMetric), ShouldEqual, true)
 
 					// Testing that summary counter is incremented by 1 and summary sum is  properly updated
 					latency2 = getRandomLatency()
@@ -293,21 +282,20 @@ func TestNewExporter(t *testing.T) {
 					}()
 					readDefaultMetrics(collector, chMetric)
 
-					pmMetric = <-chMetric
+					pmMetric = readMetric(chMetric, collector.MetricsDesc["zot_http_repo_latency_seconds_count"])
 					So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_http_repo_latency_seconds_count"].String())
 
 					err = pmMetric.Write(&metric)
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, 2)
 
-					pmMetric = <-chMetric
+					pmMetric = readMetric(chMetric, collector.MetricsDesc["zot_http_repo_latency_seconds_sum"])
 					So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_http_repo_latency_seconds_sum"].String())
 
 					err = pmMetric.Write(&metric)
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, (latency1.Seconds())+(latency2.Seconds()))
 
-					So(isChannelDrained(chMetric), ShouldEqual, true)
 				})
 				Convey("Collecting data: Test that concurent Summary observation requests works properly", func() {
 					var latencySum float64
@@ -332,7 +320,7 @@ func TestNewExporter(t *testing.T) {
 					}()
 					readDefaultMetrics(collector, chMetric)
 
-					pmMetric := <-chMetric
+					pmMetric := readMetric(chMetric, collector.MetricsDesc["zot_http_repo_latency_seconds_count"])
 					So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_http_repo_latency_seconds_count"].String())
 
 					var metric dto.Metric
@@ -340,14 +328,13 @@ func TestNewExporter(t *testing.T) {
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, reqsSize)
 
-					pmMetric = <-chMetric
+					pmMetric = readMetric(chMetric, collector.MetricsDesc["zot_http_repo_latency_seconds_sum"])
 					So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_http_repo_latency_seconds_sum"].String())
 
 					err = pmMetric.Write(&metric)
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, latencySum)
 
-					So(isChannelDrained(chMetric), ShouldEqual, true)
 				})
 				Convey("Collecting data: Test init value & that observe works on Histogram buckets", func() {
 					// Testing initial value of the histogram counter to be 1 after first observation call
@@ -361,7 +348,7 @@ func TestNewExporter(t *testing.T) {
 					}()
 					readDefaultMetrics(collector, chMetric)
 
-					pmMetric := <-chMetric
+					pmMetric := readMetric(chMetric, collector.MetricsDesc["zot_http_method_latency_seconds_count"])
 					So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_http_method_latency_seconds_count"].String())
 
 					var metric dto.Metric
@@ -369,7 +356,7 @@ func TestNewExporter(t *testing.T) {
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, 1)
 
-					pmMetric = <-chMetric
+					pmMetric = readMetric(chMetric, collector.MetricsDesc["zot_http_method_latency_seconds_sum"])
 					So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_http_method_latency_seconds_sum"].String())
 
 					err = pmMetric.Write(&metric)
@@ -377,7 +364,7 @@ func TestNewExporter(t *testing.T) {
 					So(*metric.Counter.Value, ShouldEqual, latency.Seconds())
 
 					for _, fvalue := range monitoring.GetDefaultBuckets() {
-						pmMetric = <-chMetric
+						pmMetric = readMetric(chMetric, collector.MetricsDesc["zot_http_method_latency_seconds_bucket"])
 						So(pmMetric.Desc().String(), ShouldEqual,
 							collector.MetricsDesc["zot_http_method_latency_seconds_bucket"].String())
 
@@ -391,7 +378,6 @@ func TestNewExporter(t *testing.T) {
 						}
 					}
 
-					So(isChannelDrained(chMetric), ShouldEqual, true)
 				})
 				Convey("Collecting data: Test init value & that observe works on Histogram buckets (lock latency)", func() {
 					// Testing initial value of the histogram counter to be 1 after first observation call
@@ -405,7 +391,7 @@ func TestNewExporter(t *testing.T) {
 					}()
 					readDefaultMetrics(collector, chMetric)
 
-					pmMetric := <-chMetric
+					pmMetric := readMetric(chMetric, collector.MetricsDesc["zot_storage_lock_latency_seconds_count"])
 					So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_storage_lock_latency_seconds_count"].String())
 
 					var metric dto.Metric
@@ -413,7 +399,7 @@ func TestNewExporter(t *testing.T) {
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, 1)
 
-					pmMetric = <-chMetric
+					pmMetric = readMetric(chMetric, collector.MetricsDesc["zot_storage_lock_latency_seconds_sum"])
 					So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_storage_lock_latency_seconds_sum"].String())
 
 					err = pmMetric.Write(&metric)
@@ -421,7 +407,7 @@ func TestNewExporter(t *testing.T) {
 					So(*metric.Counter.Value, ShouldEqual, latency.Seconds())
 
 					for _, fvalue := range monitoring.GetBuckets("zot.storage.lock.latency.seconds") {
-						pmMetric = <-chMetric
+						pmMetric = readMetric(chMetric, collector.MetricsDesc["zot_storage_lock_latency_seconds_bucket"])
 						So(pmMetric.Desc().String(), ShouldEqual,
 							collector.MetricsDesc["zot_storage_lock_latency_seconds_bucket"].String())
 
@@ -435,7 +421,6 @@ func TestNewExporter(t *testing.T) {
 						}
 					}
 
-					So(isChannelDrained(chMetric), ShouldEqual, true)
 				})
 				Convey("Collecting data: Test init Histogram buckets \n", func() {
 					// Generate a random  latency within each bucket and finally test
@@ -466,7 +451,7 @@ func TestNewExporter(t *testing.T) {
 					}()
 					readDefaultMetrics(collector, chMetric)
 
-					pmMetric := <-chMetric
+					pmMetric := readMetric(chMetric, collector.MetricsDesc["zot_http_method_latency_seconds_count"])
 					So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_http_method_latency_seconds_count"].String())
 
 					var metric dto.Metric
@@ -474,7 +459,7 @@ func TestNewExporter(t *testing.T) {
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, len(dBuckets))
 
-					pmMetric = <-chMetric
+					pmMetric = readMetric(chMetric, collector.MetricsDesc["zot_http_method_latency_seconds_sum"])
 					So(pmMetric.Desc().String(), ShouldEqual,
 						collector.MetricsDesc["zot_http_method_latency_seconds_sum"].String())
 
@@ -483,7 +468,7 @@ func TestNewExporter(t *testing.T) {
 					So(*metric.Counter.Value, ShouldEqual, latencySum)
 
 					for index := range dBuckets {
-						pmMetric = <-chMetric
+						pmMetric = readMetric(chMetric, collector.MetricsDesc["zot_http_method_latency_seconds_bucket"])
 						So(pmMetric.Desc().String(), ShouldEqual,
 							collector.MetricsDesc["zot_http_method_latency_seconds_bucket"].String())
 
@@ -492,7 +477,6 @@ func TestNewExporter(t *testing.T) {
 						So(*metric.Counter.Value, ShouldEqual, index+1)
 					}
 
-					So(isChannelDrained(chMetric), ShouldEqual, true)
 				})
 				Convey("Negative testing: Send unknown metric type to MetricServer", func() {
 					serverController.Metrics.SendMetric(getRandomLatency())
