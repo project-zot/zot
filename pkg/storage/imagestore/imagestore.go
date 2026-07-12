@@ -366,13 +366,21 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 			return nil //nolint:nilerr
 		}
 
+		if rel == "." {
+			return nil
+		}
+
 		if rel == storageConstants.GlobalBlobsRepo {
 			return driver.ErrSkipDir
 		}
 
 		ok, err := is.ValidateRepo(rel)
 		if err != nil {
-			return err
+			if errors.Is(err, zerr.ErrInvalidRepositoryName) {
+				return driver.ErrSkipDir
+			}
+
+			return fmt.Errorf("validate repository %q during blobstore migration: %w", rel, err)
 		}
 
 		if !ok {

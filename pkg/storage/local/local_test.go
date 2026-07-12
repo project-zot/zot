@@ -3890,6 +3890,9 @@ func TestUpgradeToGlobalBlobstore(t *testing.T) {
 		_, err = os.Stat(blobstoreDir)
 		So(os.IsNotExist(err), ShouldBeTrue)
 
+		err = os.MkdirAll(path.Join(dir, "_sessions"), 0o755)
+		So(err, ShouldBeNil)
+
 		// Step 2: Create a new image store WITH dedupe (simulating upgrade)
 		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,

@@ -83,6 +83,7 @@ func TestScanningByDigest(t *testing.T) {
 		conf.HTTP.Port = "0"
 		defaultVal := true
 		conf.Storage.RootDirectory = tempDir
+		conf.Storage.GC = false
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: &extconf.SearchConfig{
 				BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
