@@ -479,13 +479,21 @@ func resolveImageData(ctx context.Context, imageInput gql_generated.ImageInput, 
 			return gql_generated.ImageInput{}, err
 		}
 
+		indexPlatforms := convert.IndexPlatformByDigest(imageMeta.Index)
+
 		for _, manifest := range imageMeta.Manifests {
+			platform := convert.ResolveManifestPlatform(
+				manifest.Config.Platform,
+				manifest.Digest.String(),
+				indexPlatforms,
+			)
+
 			if manifest.Digest.String() == dderef(imageInput.Digest) ||
-				isMatchingPlatform(manifest.Config.Platform, dderef(imageInput.Platform)) {
+				isMatchingPlatform(platform, dderef(imageInput.Platform)) {
 				imageInput.Digest = ref(manifest.Digest.String())
 				imageInput.Platform = &gql_generated.PlatformInput{
-					Os:   ref(manifest.Config.OS),
-					Arch: ref(getArch(manifest.Config.Platform)),
+					Os:   ref(platform.OS),
+					Arch: ref(getArch(platform)),
 				}
 
 				return imageInput, nil

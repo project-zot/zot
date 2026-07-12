@@ -462,6 +462,143 @@ func TestTaggedTimestamp(t *testing.T) {
 			So(imageSummary.TaggedTimestamp, ShouldNotBeNil)
 			So(*imageSummary.TaggedTimestamp, ShouldEqual, pushTime)
 		})
+
+		Convey("ImageIndex uses index descriptor platform when config platform is empty", func() {
+			amd64Digest := godigest.FromString("sha256:amd64manifest")
+			arm64Digest := godigest.FromString("sha256:arm64manifest")
+			indexDigest := godigest.FromString("sha256:indexdigest")
+
+			imageMeta := mTypes.ImageMeta{
+				MediaType: ispec.MediaTypeImageIndex,
+				Digest:    indexDigest,
+				Index: &ispec.Index{
+					MediaType: ispec.MediaTypeImageIndex,
+					Manifests: []ispec.Descriptor{
+						{
+							MediaType: ispec.MediaTypeImageManifest,
+							Digest:    amd64Digest,
+							Size:      572,
+							Platform:  &ispec.Platform{OS: "linux", Architecture: "amd64"},
+						},
+						{
+							MediaType: ispec.MediaTypeImageManifest,
+							Digest:    arm64Digest,
+							Size:      572,
+							Platform:  &ispec.Platform{OS: "linux", Architecture: "arm64"},
+						},
+					},
+				},
+				Manifests: []mTypes.ManifestMeta{
+					{
+						Digest:   amd64Digest,
+						Size:     572,
+						Config:   ispec.Image{},
+						Manifest: ispec.Manifest{MediaType: ispec.MediaTypeImageManifest},
+					},
+					{
+						Digest:   arm64Digest,
+						Size:     572,
+						Config:   ispec.Image{},
+						Manifest: ispec.Manifest{MediaType: ispec.MediaTypeImageManifest},
+					},
+				},
+			}
+
+			repoMeta := mTypes.RepoMeta{
+				Name: "hello-artifact",
+				Tags: map[string]mTypes.Descriptor{
+					"v2": {
+						Digest:    indexDigest.String(),
+						MediaType: ispec.MediaTypeImageIndex,
+					},
+				},
+			}
+
+			fullImageMeta := convert.GetFullImageMeta("v2", repoMeta, imageMeta)
+
+			imageSummary, _, err := convert.ImageIndex2ImageSummary(ctx, fullImageMeta)
+			So(err, ShouldBeNil)
+			So(len(imageSummary.Manifests), ShouldEqual, 2)
+			So(*imageSummary.Manifests[0].Platform.Os, ShouldEqual, "linux")
+			So(*imageSummary.Manifests[0].Platform.Arch, ShouldEqual, "amd64")
+			So(*imageSummary.Manifests[1].Platform.Os, ShouldEqual, "linux")
+			So(*imageSummary.Manifests[1].Platform.Arch, ShouldEqual, "arm64")
+		})
+
+		Convey("ImageIndex prefers config platform over index descriptor", func() {
+			manifestDigest := godigest.FromString("sha256:manifest")
+
+			imageMeta := mTypes.ImageMeta{
+				MediaType: ispec.MediaTypeImageIndex,
+				Digest:    godigest.FromString("sha256:indexdigest"),
+				Index: &ispec.Index{
+					MediaType: ispec.MediaTypeImageIndex,
+					Manifests: []ispec.Descriptor{
+						{
+							MediaType: ispec.MediaTypeImageManifest,
+							Digest:    manifestDigest,
+							Platform:  &ispec.Platform{OS: "linux", Architecture: "arm64"},
+						},
+					},
+				},
+				Manifests: []mTypes.ManifestMeta{
+					{
+						Digest: manifestDigest,
+						Config: ispec.Image{Platform: ispec.Platform{OS: "linux", Architecture: "amd64"}},
+						Manifest: ispec.Manifest{
+							MediaType: ispec.MediaTypeImageManifest,
+							Config:    ispec.Descriptor{Digest: godigest.FromString("sha256:config"), Size: 1},
+						},
+					},
+				},
+			}
+
+			repoMeta := mTypes.RepoMeta{
+				Name: "repo",
+				Tags: map[string]mTypes.Descriptor{
+					"v2": {Digest: imageMeta.Digest.String(), MediaType: ispec.MediaTypeImageIndex},
+				},
+			}
+
+			imageSummary, _, err := convert.ImageIndex2ImageSummary(ctx, convert.GetFullImageMeta("v2", repoMeta, imageMeta))
+			So(err, ShouldBeNil)
+			So(*imageSummary.Manifests[0].Platform.Os, ShouldEqual, "linux")
+			So(*imageSummary.Manifests[0].Platform.Arch, ShouldEqual, "amd64")
+		})
+
+		Convey("ImageIndex leaves platform empty without index descriptor platform", func() {
+			manifestDigest := godigest.FromString("sha256:manifest")
+
+			imageMeta := mTypes.ImageMeta{
+				MediaType: ispec.MediaTypeImageIndex,
+				Digest:    godigest.FromString("sha256:indexdigest"),
+				Index: &ispec.Index{
+					MediaType: ispec.MediaTypeImageIndex,
+					Manifests: []ispec.Descriptor{
+						{MediaType: ispec.MediaTypeImageManifest, Digest: manifestDigest},
+					},
+				},
+				Manifests: []mTypes.ManifestMeta{
+					{
+						Digest:   manifestDigest,
+						Config:   ispec.Image{},
+						Manifest: ispec.Manifest{MediaType: ispec.MediaTypeImageManifest},
+					},
+				},
+			}
+
+			repoMeta := mTypes.RepoMeta{
+				Name: "repo",
+				Tags: map[string]mTypes.Descriptor{
+					"v2": {Digest: imageMeta.Digest.String(), MediaType: ispec.MediaTypeImageIndex},
+				},
+			}
+
+			imageSummary, _, err := convert.ImageIndex2ImageSummary(ctx, convert.GetFullImageMeta("v2", repoMeta, imageMeta))
+			So(err, ShouldBeNil)
+			So(*imageSummary.Manifests[0].Platform.Os, ShouldEqual, "")
+			So(*imageSummary.Manifests[0].Platform.Arch, ShouldEqual, "")
+		})
 	})
 }
 

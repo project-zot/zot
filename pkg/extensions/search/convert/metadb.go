@@ -424,6 +424,8 @@ func ImageIndex2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullImage
 		taggedTimestamp = pushTimestamp
 	}
 
+	indexPlatforms := IndexPlatformByDigest(fullImageMeta.Index)
+
 	for _, imageManifest := range fullImageMeta.Manifests {
 		imageManifestSummary, manifestBlobs, err := ImageManifest2ImageSummary(ctx, mTypes.FullImageMeta{
 			Repo:            fullImageMeta.Repo,
@@ -459,7 +461,16 @@ func ImageIndex2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullImage
 
 		indexSize += manifestSize
 
-		manifestSummaries = append(manifestSummaries, imageManifestSummary.Manifests[0])
+		manifestSummary := imageManifestSummary.Manifests[0]
+		if platformSummaryIsEmpty(manifestSummary.Platform) {
+			resolved := ResolveManifestPlatform(imageManifest.Config.Platform, imageManifest.Digest.String(), indexPlatforms)
+			if !IspecPlatformEmpty(resolved) {
+				gqlPlatform := getPlatform(resolved)
+				manifestSummary.Platform = &gqlPlatform
+			}
+		}
+
+		manifestSummaries = append(manifestSummaries, manifestSummary)
 	}
 
 	signaturesInfo := GetSignaturesInfo(isSigned, fullImageMeta.Signatures)
@@ -618,6 +629,49 @@ func getPlatform(platform ispec.Platform) gql_generated.Platform {
 		Os:   ref(platform.OS),
 		Arch: ref(getArch(platform.Architecture, platform.Variant)),
 	}
+}
+
+func IspecPlatformEmpty(platform ispec.Platform) bool {
+	return platform.OS == "" && platform.Architecture == ""
+}
+
+func IndexPlatformByDigest(index *ispec.Index) map[string]ispec.Platform {
+	result := make(map[string]ispec.Platform)
+	if index == nil {
+		return result
+	}
+
+	for i := range index.Manifests {
+		desc := index.Manifests[i]
+		if desc.Platform == nil {
+			continue
+		}
+
+		result[desc.Digest.String()] = *desc.Platform
+	}
+
+	return result
+}
+
+func ResolveManifestPlatform(configPlatform ispec.Platform, digest string, indexPlatforms map[string]ispec.Platform,
+) ispec.Platform {
+	if !IspecPlatformEmpty(configPlatform) {
+		return configPlatform
+	}
+
+	if platform, ok := indexPlatforms[digest]; ok {
+		return platform
+	}
+
+	return configPlatform
+}
+
+func platformSummaryIsEmpty(platform *gql_generated.Platform) bool {
+	if platform == nil {
+		return true
+	}
+
+	return deref(platform.Os, "") == "" && deref(platform.Arch, "") == ""
 }
 
 func getArch(arch string, variant string) string {
