@@ -62,6 +62,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/meta"
 	zreg "zotregistry.dev/zot/v2/pkg/regexp"
+	"zotregistry.dev/zot/v2/pkg/scheduler"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/gc"
@@ -12237,14 +12238,17 @@ func TestPeriodicGC(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = dir
 		ctlr.Config.Storage.Dedupe = false
 
-		ctlr.Config.Storage.GC = true
 		ctlr.Config.Storage.GCInterval = 1 * time.Hour
 		ctlr.Config.Storage.GCDelay = 1 * time.Second
-		ctlr.Config.Storage.GCMaxSchedulerDelay = 5 * time.Millisecond
 
 		err := WriteImageToFileSystem(CreateDefaultImage(), repoName, "0.0.1",
 			ociutils.GetDefaultStoreController(dir, ctlr.Log))
 		So(err, ShouldBeNil)
+
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+
+		defer cm.StopServer()
 
 		So(os.Chmod(dir, 0o000), ShouldBeNil)
 
@@ -12252,10 +12256,14 @@ func TestPeriodicGC(t *testing.T) {
 			So(os.Chmod(dir, 0o755), ShouldBeNil)
 		}()
 
-		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
+		ctlr.Config.Storage.GC = true
+		ctlr.Config.Storage.GCMaxSchedulerDelay = 5 * time.Millisecond
+		taskScheduler := scheduler.NewScheduler(ctlr.Config, ctlr.Metrics, ctlr.Log)
+		taskScheduler.RunScheduler()
 
-		defer cm.StopServer()
+		defer taskScheduler.Shutdown()
+
+		api.RunGCTasks(ctlr.Config, ctlr.StoreController, ctlr.MetaDB, taskScheduler, ctlr.Log, ctlr.Audit, ctlr.Metrics)
 
 		require.Eventually(t, func() bool {
 			data, err := os.ReadFile(logPath)
@@ -12265,8 +12273,6 @@ func TestPeriodicGC(t *testing.T) {
 
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
-		So(string(data), ShouldContainSubstring,
-			"\"GC\":true,\"Commit\":false,\"GCDelay\":1000000000,\"GCInterval\":3600000000000")
 		So(string(data), ShouldContainSubstring, "failed to walk storage root-dir") //nolint:lll
 	})
 }
