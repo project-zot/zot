@@ -128,7 +128,7 @@ pause_tag_present() {
 wait_for_pause_in_catalog() {
     local tags i
 
-    for i in $(seq 1 90); do
+    for i in $(seq 1 180); do
         tags=$(curl -sf "http://localhost:${ZOT_HOST_PORT}/v2/pause/tags/list" 2>/dev/null || echo "")
         if pause_tag_present "${tags}"; then
             return 0
