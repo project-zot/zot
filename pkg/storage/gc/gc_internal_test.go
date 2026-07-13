@@ -1865,7 +1865,7 @@ func TestGCTaskGeneratorTimeWindow(t *testing.T) {
 		Convey("inside the window, generator is ready", func() {
 			insideWindow := gcTimeWindow{
 				startMin: 0,
-				endMin:   24*minutesInHour - 1,
+				endMin:   24 * minutesInHour,
 			}
 
 			gen := &GCTaskGenerator{timeWindow: &insideWindow}

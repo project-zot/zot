@@ -1233,11 +1233,13 @@ func (gen *GCTaskGenerator) IsDone() bool {
 }
 
 func (gen *GCTaskGenerator) IsReady() bool {
-	if !time.Now().After(gen.nextRun) {
+	now := time.Now()
+
+	if !now.After(gen.nextRun) {
 		return false
 	}
 
-	if gen.timeWindow != nil && !gen.timeWindow.contains(time.Now()) {
+	if gen.timeWindow != nil && !gen.timeWindow.contains(now) {
 		return false
 	}
 
