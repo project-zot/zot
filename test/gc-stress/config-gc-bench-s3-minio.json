@@ -32,8 +32,8 @@
     "http": {
         "address": "127.0.0.1",
         "port": "8080",
-        "readTimeout": "2m",
-        "writeTimeout": "2m"
+        "readTimeout": "5m",
+        "writeTimeout": "5m"
     },
     "log": {
         "level": "debug",

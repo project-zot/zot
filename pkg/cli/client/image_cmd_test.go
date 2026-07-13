@@ -933,6 +933,7 @@ func TestDisplayIndex(t *testing.T) {
 	Convey("Init Basic Server, No GQL", t, func() {
 		conf := config.New()
 		conf.HTTP.Port = "0"
+		conf.Storage.GC = false
 
 		Convey("No GQL", func() {
 			defaultVal := false
