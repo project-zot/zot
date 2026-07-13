@@ -121,16 +121,17 @@ evict_pause_image_from_node() {
         log_info "Image was not cached on node (continuing)"
 }
 
-pause_tag_present() {
-    echo "${1}" | jq -e --arg tag "3.10.1" '.tags | index($tag)' >/dev/null 2>&1
+pause_tag_persisted() {
+    jq -e --arg tag "3.10.1" \
+        'any(.manifests[]?; .annotations["org.opencontainers.image.ref.name"] == $tag)' \
+        "${ZOT_STORAGE}/pause/index.json" >/dev/null 2>&1
 }
 
-wait_for_pause_in_catalog() {
-    local tags i
+wait_for_pause_in_storage() {
+    local i
 
     for i in $(seq 1 90); do
-        tags=$(curl -sf "http://localhost:${ZOT_HOST_PORT}/v2/pause/tags/list" 2>/dev/null || echo "")
-        if pause_tag_present "${tags}"; then
+        if pause_tag_persisted; then
             return 0
         fi
         sleep 2
@@ -399,15 +400,15 @@ kubectl --context "${KUBECTL_CTX}" run pause-first \
 wait_for_pod pause-first "first pull; multi-arch sync may take a few minutes"
 log_info "pause-first pod is ready"
 
-log_info "Verifying pause:3.10.1 exists in zot catalog..."
-if ! wait_for_pause_in_catalog; then
-    TAGS=$(curl -sf "http://localhost:${ZOT_HOST_PORT}/v2/pause/tags/list" 2>/dev/null || echo "{}")
+log_info "Verifying pause:3.10.1 was persisted by zot..."
+if ! wait_for_pause_in_storage; then
     log_error "pause:3.10.1 was not found in zot after first sync"
-    echo "Tags response: ${TAGS}"
+    echo "Repository index:"
+    cat "${ZOT_STORAGE}/pause/index.json" 2>/dev/null || echo "{}"
     docker logs "${ZOT_CONTAINER_NAME}"
     exit 1
 fi
-log_info "pause:3.10.1 confirmed in zot catalog"
+log_info "pause:3.10.1 confirmed in zot storage"
 
 LOGS_AFTER_FIRST=$(docker logs "${ZOT_CONTAINER_NAME}" 2>&1)
 FIRST_PULL_SKIP_COUNT=$(echo "${LOGS_AFTER_FIRST}" | count_pause_skip_logs)
