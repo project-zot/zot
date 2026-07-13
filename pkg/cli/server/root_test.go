@@ -3013,6 +3013,19 @@ func TestGC(t *testing.T) {
 			err = cli.LoadConfiguration(config, file)
 			So(err, ShouldBeNil)
 		})
+
+		Convey("Invalid GC time window in subPath", func() {
+			config := config.New()
+
+			content := `{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot",
+			"subPaths": {"/a": {"rootDirectory": "/tmp/zot-a", "gcTimeWindow": "not-a-window"}}},
+			"http": {"address": "127.0.0.1", "port": "8080"},
+			"log": {"level": "debug"}}`
+
+			file := MakeTempFileWithContent(t, "gc-subpath-time-window-config.json", content)
+			err = cli.LoadConfiguration(config, file)
+			So(err, ShouldNotBeNil)
+		})
 	})
 }
 

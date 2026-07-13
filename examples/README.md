@@ -137,10 +137,14 @@ Orphan blobs are removed if they are older than gcDelay.
 ```
 
 On high-load registries, garbage collection can add lock contention on storage
-while it runs. To restrict periodic GC runs to a daily time-of-day window
-(e.g. only during off-peak hours), set `gcTimeWindow` to a "HH:MM-HH:MM" range
-in local time (start inclusive, end exclusive). A window may wrap past midnight
-(e.g. `"22:00-06:00"`). Leaving it unset (the default) allows GC to run at any time:
+while it runs. To restrict when a periodic GC sweep over all repositories may
+start to a daily time-of-day window (e.g. only during off-peak hours), set
+`gcTimeWindow` to a "HH:MM-HH:MM" range in local time (start inclusive, end
+exclusive). A window may wrap past midnight (e.g. `"22:00-06:00"`). A sweep
+that starts inside the window is allowed to run to completion even past the
+window's end, so GC work stays amortized instead of stalling mid-sweep on a
+large registry until the window reopens the next day. Leaving it unset (the
+default) allows GC to run at any time:
 
 ```
         "gcTimeWindow": "01:00-08:00"
