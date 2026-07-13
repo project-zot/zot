@@ -107,6 +107,52 @@ func TestGetBlobRedirectURL(t *testing.T) {
 	})
 }
 
+func TestGetNextRepositorySkipsReservedDirectories(t *testing.T) {
+	Convey("GetNextRepository skips reserved directories in processed repositories", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+		defer metrics.Stop()
+
+		rootDir := t.TempDir()
+		storeMock := &mocks.StorageDriverMock{}
+		store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+			gcs.New(storeMock), nil, nil, nil)
+
+		storeMock.ListFn = func(_ context.Context, dir string) ([]string, error) {
+			if dir == path.Join(rootDir, "repo2") {
+				return []string{
+					path.Join(dir, ispec.ImageIndexFile),
+					path.Join(dir, ispec.ImageLayoutFile),
+				}, nil
+			}
+
+			return []string{path.Join(rootDir, "repo1"), path.Join(rootDir, "repo2")}, nil
+		}
+		storeMock.WalkFn = func(_ context.Context, _ string, walkFn driver.WalkFn,
+			_ ...func(*driver.WalkOptions),
+		) error {
+			So(walkFn(&mocks.FileInfoMock{
+				PathFn: func() string { return path.Join(rootDir, "repo1") },
+			}), ShouldBeNil)
+
+			for _, reservedDir := range []string{".sync", ispec.ImageBlobsDir, ".uploads"} {
+				err := walkFn(&mocks.FileInfoMock{
+					PathFn: func() string { return path.Join(rootDir, "repo1", reservedDir) },
+				})
+				So(errors.Is(err, driver.ErrSkipDir), ShouldBeTrue)
+			}
+
+			return walkFn(&mocks.FileInfoMock{
+				PathFn: func() string { return path.Join(rootDir, "repo2") },
+			})
+		}
+
+		repo, err := store.GetNextRepository(map[string]struct{}{"repo1": {}})
+		So(err, ShouldBeNil)
+		So(repo, ShouldEqual, "repo2")
+	})
+}
+
 func TestCleanupRepoToleratesDeletePathNotFound(t *testing.T) {
 	Convey("CleanupRepo tolerates PathNotFound on delete", t, func() {
 		log := zlog.NewTestLogger()
