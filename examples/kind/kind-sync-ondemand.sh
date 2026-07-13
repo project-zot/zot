@@ -50,6 +50,7 @@ fi
 
 ZOT_LISTEN_PORT="5000"
 KIND_NODE_IMAGE="kindest/node:v1.28.7"
+CURL_IMAGE="curlimages/curl:8.5.0"
 # pause:3.10.1 is a ~20-platform manifest list; first on-demand sync can take 1-3 minutes.
 POD_WAIT_TIMEOUT="180s"
 
@@ -129,7 +130,7 @@ wait_for_pause_in_catalog() {
     local tags i
 
     for i in $(seq 1 180); do
-        tags=$(curl -sf "http://localhost:${ZOT_HOST_PORT}/v2/pause/tags/list" 2>/dev/null || echo "")
+        tags=$(zot_api_get "/v2/pause/tags/list" 2>/dev/null || echo "")
         if pause_tag_present "${tags}"; then
             return 0
         fi
@@ -239,6 +240,16 @@ resolve_zot_host_port() {
     fi
 }
 
+# Query zot over the kind Docker network (same path containerd uses). On GHA,
+# attaching an already-running container with "docker network connect kind" can
+# break published localhost ports, so catalog checks must not rely on host curl.
+zot_api_get() {
+    local api_path=$1
+
+    docker run --rm --network kind "${CURL_IMAGE}" -sf \
+        "http://${ZOT_CONTAINER_NAME}:${ZOT_LISTEN_PORT}${api_path}"
+}
+
 cleanup() {
     local exit_code=$?
     set +o errexit
@@ -330,32 +341,9 @@ log_info "Image built: ${ZOT_IMAGE}"
 mkdir -p "${ZOT_STORAGE}"
 
 # ---------------------------------------------------------------------------
-# Start the zot container (not yet on the kind network).
-# ---------------------------------------------------------------------------
-log_info "Starting zot container (${ZOT_CONTAINER_NAME})..."
-docker run -d \
-    --name "${ZOT_CONTAINER_NAME}" \
-    -p "127.0.0.1::${ZOT_LISTEN_PORT}" \
-    -v "${ZOT_STORAGE}:/var/lib/registry" \
-    "${ZOT_IMAGE}" serve /config/config.json
-
-resolve_zot_host_port
-log_info "Zot listening on host port ${ZOT_HOST_PORT} (container port ${ZOT_LISTEN_PORT})"
-
-log_info "Waiting for zot to be ready..."
-for i in $(seq 1 30); do
-    if curl -sf "http://localhost:${ZOT_HOST_PORT}/v2/" >/dev/null 2>&1; then
-        log_info "Zot is ready"
-        break
-    fi
-    [ "${i}" -lt 30 ] || { log_error "Zot did not start in time"; docker logs "${ZOT_CONTAINER_NAME}"; exit 1; }
-    sleep 1
-done
-
-# ---------------------------------------------------------------------------
-# Create the kind cluster with registry.k8s.io mirrored to the zot container.
-# The mirror references the container by name; DNS resolves after we join the
-# kind network below.
+# Create the kind cluster first so the "kind" Docker network exists, then start
+# zot on that network. Starting on the default bridge and later running
+# "docker network connect kind" breaks localhost port publishing on GHA.
 # ---------------------------------------------------------------------------
 log_info "Creating kind cluster '${CLUSTER_NAME}'..."
 "${KIND}" get clusters 2>/dev/null | grep -qx "${CLUSTER_NAME}" && \
@@ -373,11 +361,30 @@ containerdConfigPatches:
     endpoint = ["http://${ZOT_CONTAINER_NAME}:${ZOT_LISTEN_PORT}"]
 EOF
 
-# Connect the zot container to the kind Docker network so kind nodes can reach
-# it by container name.
-if [ "$(docker inspect -f='{{json .NetworkSettings.Networks.kind}}' "${ZOT_CONTAINER_NAME}")" = 'null' ]; then
-    docker network connect kind "${ZOT_CONTAINER_NAME}"
+log_info "Starting zot container (${ZOT_CONTAINER_NAME}) on kind network..."
+if ! docker image inspect "${CURL_IMAGE}" >/dev/null 2>&1; then
+    log_info "Pulling ${CURL_IMAGE} for in-network registry API checks..."
+    docker pull "${CURL_IMAGE}"
 fi
+docker run -d \
+    --name "${ZOT_CONTAINER_NAME}" \
+    --network kind \
+    -p "127.0.0.1::${ZOT_LISTEN_PORT}" \
+    -v "${ZOT_STORAGE}:/var/lib/registry" \
+    "${ZOT_IMAGE}" serve /config/config.json
+
+resolve_zot_host_port
+log_info "Zot listening on host port ${ZOT_HOST_PORT} (container port ${ZOT_LISTEN_PORT})"
+
+log_info "Waiting for zot to be ready..."
+for i in $(seq 1 30); do
+    if zot_api_get "/v2/" >/dev/null 2>&1; then
+        log_info "Zot is ready"
+        break
+    fi
+    [ "${i}" -lt 30 ] || { log_error "Zot did not start in time"; docker logs "${ZOT_CONTAINER_NAME}"; exit 1; }
+    sleep 1
+done
 
 log_info "Cluster created; waiting for control plane..."
 kubectl --context "${KUBECTL_CTX}" get nodes
@@ -401,7 +408,7 @@ log_info "pause-first pod is ready"
 
 log_info "Verifying pause:3.10.1 exists in zot catalog..."
 if ! wait_for_pause_in_catalog; then
-    TAGS=$(curl -sf "http://localhost:${ZOT_HOST_PORT}/v2/pause/tags/list" 2>/dev/null || echo "{}")
+    TAGS=$(zot_api_get "/v2/pause/tags/list" 2>/dev/null || echo "{}")
     log_error "pause:3.10.1 was not found in zot after first sync"
     echo "Tags response: ${TAGS}"
     docker logs "${ZOT_CONTAINER_NAME}"
