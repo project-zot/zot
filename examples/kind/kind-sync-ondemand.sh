@@ -123,7 +123,9 @@ evict_pause_image_from_node() {
 
 pause_tag_persisted() {
     jq -e --arg tag "3.10.1" \
-        'any(.manifests[]?; .annotations["org.opencontainers.image.ref.name"] == $tag)' \
+        '(.manifests | type == "array") and
+         any(.manifests[]; (.annotations | type == "object") and
+             .annotations["org.opencontainers.image.ref.name"] == $tag)' \
         "${ZOT_STORAGE}/pause/index.json" >/dev/null 2>&1
 }
 
@@ -403,8 +405,13 @@ log_info "pause-first pod is ready"
 log_info "Verifying pause:3.10.1 was persisted by zot..."
 if ! wait_for_pause_in_storage; then
     log_error "pause:3.10.1 was not found in zot after first sync"
-    echo "Repository index:"
-    cat "${ZOT_STORAGE}/pause/index.json" 2>/dev/null || echo "{}"
+    INDEX_PATH="${ZOT_STORAGE}/pause/index.json"
+    if [ -r "${INDEX_PATH}" ]; then
+        echo "Repository index (${INDEX_PATH}):"
+        cat "${INDEX_PATH}"
+    else
+        echo "Repository index is missing or unreadable: ${INDEX_PATH}"
+    fi
     docker logs "${ZOT_CONTAINER_NAME}"
     exit 1
 fi
