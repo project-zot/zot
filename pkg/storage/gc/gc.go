@@ -44,8 +44,11 @@ type Options struct {
 	// Defaults to 30 seconds if not specified
 	MaxSchedulerDelay time.Duration
 
-	// TimeWindow restricts periodic GC runs to a daily time-of-day window,
-	// e.g. "01:00-08:00". Empty means no restriction.
+	// TimeWindow restricts when a new periodic GC sweep over all repositories may
+	// start to a daily time-of-day window, e.g. "01:00-08:00". A sweep that starts
+	// inside the window is allowed to run to completion even past the window's end,
+	// so GC work stays amortized and orphaned blobs don't outpace a narrow window.
+	// Empty means no restriction.
 	TimeWindow string
 
 	ImageRetention config.ImageRetention
@@ -99,7 +102,7 @@ func parseGCTimeWindow(window string) (gcTimeWindow, error) {
 func parseTimeOfDay(value string) (int, error) {
 	parsed, err := time.Parse("15:04", value)
 	if err != nil {
-		return 0, fmt.Errorf("invalid time %q, expected 24h format \"HH:MM\"", value)
+		return 0, fmt.Errorf("%w: invalid time %q, expected 24h format \"HH:MM\"", zerr.ErrBadConfig, value)
 	}
 
 	return parsed.Hour()*minutesInHour + parsed.Minute(), nil
@@ -115,6 +118,23 @@ func ValidateGCTimeWindow(window string) error {
 	_, err := parseGCTimeWindow(window)
 
 	return err
+}
+
+// newGCTimeWindow parses window if set, logging and ignoring it (returning nil) if invalid.
+func newGCTimeWindow(window string, log zlog.Logger) *gcTimeWindow {
+	if window == "" {
+		return nil
+	}
+
+	parsed, err := parseGCTimeWindow(window)
+	if err != nil {
+		log.Error().Err(err).Str("gcTimeWindow", window).
+			Msg("invalid gcTimeWindow, ignoring and running GC without a time restriction")
+
+		return nil
+	}
+
+	return &parsed
 }
 
 type GarbageCollect struct {
@@ -158,16 +178,7 @@ func (gc GarbageCollect) CleanImageStorePeriodically(interval time.Duration, sch
 		gc:             gc,
 		processedRepos: processedRepos,
 		maxDelay:       maxDelay,
-	}
-
-	if gc.opts.TimeWindow != "" {
-		window, err := parseGCTimeWindow(gc.opts.TimeWindow)
-		if err != nil {
-			gc.log.Error().Err(err).Str("gcTimeWindow", gc.opts.TimeWindow).
-				Msg("invalid gcTimeWindow, ignoring and running GC without a time restriction")
-		} else {
-			generator.timeWindow = &window
-		}
+		timeWindow:     newGCTimeWindow(gc.opts.TimeWindow, gc.log),
 	}
 
 	sch.SubmitGenerator(generator, interval, scheduler.MediumPriority)
@@ -1239,7 +1250,13 @@ func (gen *GCTaskGenerator) IsReady() bool {
 		return false
 	}
 
-	if gen.timeWindow != nil && !gen.timeWindow.contains(now) {
+	// Only gate the start of a new sweep on the configured time window. Once a sweep
+	// has begun (processedRepos is non-empty), let it run to completion regardless of
+	// the window, so GC work stays amortized instead of stalling mid-sweep until the
+	// window reopens the next day.
+	startingNewSweep := len(gen.processedRepos) == 0 && gen.nextRun.IsZero()
+
+	if startingNewSweep && gen.timeWindow != nil && !gen.timeWindow.contains(now) {
 		return false
 	}
 

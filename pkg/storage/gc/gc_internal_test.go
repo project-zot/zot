@@ -1790,8 +1790,14 @@ func TestParseGCTimeWindow(t *testing.T) {
 			So(errors.Is(err, zerr.ErrBadConfig), ShouldBeTrue)
 		})
 
-		Convey("malformed time of day is rejected", func() {
+		Convey("malformed start time of day is rejected", func() {
 			_, err := parseGCTimeWindow("25:00-08:00")
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrBadConfig), ShouldBeTrue)
+		})
+
+		Convey("malformed end time of day is rejected", func() {
+			_, err := parseGCTimeWindow("01:00-25:00")
 			So(err, ShouldNotBeNil)
 			So(errors.Is(err, zerr.ErrBadConfig), ShouldBeTrue)
 		})
@@ -1816,6 +1822,27 @@ func TestValidateGCTimeWindow(t *testing.T) {
 
 		Convey("invalid window", func() {
 			So(ValidateGCTimeWindow("not-a-window"), ShouldNotBeNil)
+		})
+	})
+}
+
+func TestNewGCTimeWindow(t *testing.T) {
+	Convey("newGCTimeWindow", t, func() {
+		log := zlog.NewTestLogger()
+
+		Convey("empty window returns nil", func() {
+			So(newGCTimeWindow("", log), ShouldBeNil)
+		})
+
+		Convey("valid window is parsed", func() {
+			window := newGCTimeWindow("01:00-08:00", log)
+			So(window, ShouldNotBeNil)
+			So(window.startMin, ShouldEqual, 60)
+			So(window.endMin, ShouldEqual, 8*60)
+		})
+
+		Convey("invalid window is logged and ignored", func() {
+			So(newGCTimeWindow("not-a-window", log), ShouldBeNil)
 		})
 	})
 }
@@ -1874,6 +1901,25 @@ func TestGCTaskGeneratorTimeWindow(t *testing.T) {
 
 		Convey("no window configured, generator is ready", func() {
 			gen := &GCTaskGenerator{}
+			So(gen.IsReady(), ShouldBeTrue)
+		})
+
+		Convey("nextRun in the future, generator is not ready regardless of window", func() {
+			gen := &GCTaskGenerator{nextRun: now.Add(time.Hour)}
+			So(gen.IsReady(), ShouldBeFalse)
+		})
+
+		Convey("a sweep already in progress stays ready outside the window", func() {
+			outsideWindow := gcTimeWindow{
+				startMin: (now.Hour()+1)%24*minutesInHour + now.Minute(),
+				endMin:   (now.Hour()+2)%24*minutesInHour + now.Minute(),
+			}
+
+			gen := &GCTaskGenerator{
+				timeWindow:     &outsideWindow,
+				processedRepos: map[string]struct{}{"repo1": {}},
+				nextRun:        now.Add(-time.Second),
+			}
 			So(gen.IsReady(), ShouldBeTrue)
 		})
 	})
