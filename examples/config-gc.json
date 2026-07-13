@@ -4,7 +4,8 @@
         "rootDirectory": "/tmp/zot",
         "gc": true,
         "gcDelay": "2h",
-        "gcInterval": "1h"
+        "gcInterval": "1h",
+        "gcTimeWindow": "01:00-08:00"
     },
     "http": {
         "address": "127.0.0.1",

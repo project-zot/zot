@@ -1760,3 +1760,121 @@ func TestCleanupRepoMissingBlob(t *testing.T) {
 		So(count, ShouldEqual, 1)
 	})
 }
+
+func TestParseGCTimeWindow(t *testing.T) {
+	Convey("parseGCTimeWindow", t, func() {
+		Convey("valid window within the same day", func() {
+			window, err := parseGCTimeWindow("01:00-08:00")
+			So(err, ShouldBeNil)
+			So(window.startMin, ShouldEqual, 60)
+			So(window.endMin, ShouldEqual, 8*60)
+		})
+
+		Convey("valid window with surrounding whitespace", func() {
+			window, err := parseGCTimeWindow(" 01:00 - 08:00 ")
+			So(err, ShouldBeNil)
+			So(window.startMin, ShouldEqual, 60)
+			So(window.endMin, ShouldEqual, 8*60)
+		})
+
+		Convey("valid window wrapping past midnight", func() {
+			window, err := parseGCTimeWindow("22:00-06:00")
+			So(err, ShouldBeNil)
+			So(window.startMin, ShouldEqual, 22*60)
+			So(window.endMin, ShouldEqual, 6*60)
+		})
+
+		Convey("missing separator is rejected", func() {
+			_, err := parseGCTimeWindow("01:00 08:00")
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrBadConfig), ShouldBeTrue)
+		})
+
+		Convey("malformed time of day is rejected", func() {
+			_, err := parseGCTimeWindow("25:00-08:00")
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrBadConfig), ShouldBeTrue)
+		})
+
+		Convey("equal start and end is rejected", func() {
+			_, err := parseGCTimeWindow("08:00-08:00")
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrBadConfig), ShouldBeTrue)
+		})
+	})
+}
+
+func TestValidateGCTimeWindow(t *testing.T) {
+	Convey("ValidateGCTimeWindow", t, func() {
+		Convey("empty window is valid", func() {
+			So(ValidateGCTimeWindow(""), ShouldBeNil)
+		})
+
+		Convey("valid window", func() {
+			So(ValidateGCTimeWindow("01:00-08:00"), ShouldBeNil)
+		})
+
+		Convey("invalid window", func() {
+			So(ValidateGCTimeWindow("not-a-window"), ShouldNotBeNil)
+		})
+	})
+}
+
+func TestGCTimeWindowContains(t *testing.T) {
+	Convey("gcTimeWindow.contains", t, func() {
+		date := func(hour, minute int) time.Time {
+			return time.Date(2024, 1, 1, hour, minute, 0, 0, time.UTC)
+		}
+
+		Convey("same-day window", func() {
+			window := gcTimeWindow{startMin: 60, endMin: 8 * 60} // 01:00-08:00
+
+			So(window.contains(date(0, 30)), ShouldBeFalse)
+			So(window.contains(date(1, 0)), ShouldBeTrue)
+			So(window.contains(date(4, 0)), ShouldBeTrue)
+			So(window.contains(date(8, 0)), ShouldBeFalse)
+			So(window.contains(date(12, 0)), ShouldBeFalse)
+		})
+
+		Convey("window wrapping past midnight", func() {
+			window := gcTimeWindow{startMin: 22 * 60, endMin: 6 * 60} // 22:00-06:00
+
+			So(window.contains(date(23, 0)), ShouldBeTrue)
+			So(window.contains(date(0, 30)), ShouldBeTrue)
+			So(window.contains(date(5, 59)), ShouldBeTrue)
+			So(window.contains(date(6, 0)), ShouldBeFalse)
+			So(window.contains(date(12, 0)), ShouldBeFalse)
+		})
+	})
+}
+
+func TestGCTaskGeneratorTimeWindow(t *testing.T) {
+	Convey("GCTaskGenerator.IsReady respects the configured time window", t, func() {
+		now := time.Now()
+
+		Convey("outside the window, generator is not ready", func() {
+			outsideWindow := gcTimeWindow{
+				startMin: (now.Hour()+1)%24*minutesInHour + now.Minute(),
+				endMin:   (now.Hour()+2)%24*minutesInHour + now.Minute(),
+			}
+
+			gen := &GCTaskGenerator{timeWindow: &outsideWindow}
+			So(gen.IsReady(), ShouldBeFalse)
+		})
+
+		Convey("inside the window, generator is ready", func() {
+			insideWindow := gcTimeWindow{
+				startMin: 0,
+				endMin:   24*minutesInHour - 1,
+			}
+
+			gen := &GCTaskGenerator{timeWindow: &insideWindow}
+			So(gen.IsReady(), ShouldBeTrue)
+		})
+
+		Convey("no window configured, generator is ready", func() {
+			gen := &GCTaskGenerator{}
+			So(gen.IsReady(), ShouldBeTrue)
+		})
+	})
+}

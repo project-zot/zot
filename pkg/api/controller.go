@@ -628,6 +628,7 @@ func RunGCTasks(conf *config.Config, storeController storage.StoreController, me
 			Delay:             storageConfig.GCDelay,
 			ImageRetention:    storageConfig.Retention,
 			MaxSchedulerDelay: storageConfig.GCMaxSchedulerDelay,
+			TimeWindow:        storageConfig.GCTimeWindow,
 		}, audit, logger, metrics)
 
 		gc.CleanImageStorePeriodically(storageConfig.GCInterval, taskScheduler)
@@ -643,6 +644,7 @@ func RunGCTasks(conf *config.Config, storeController storage.StoreController, me
 						Delay:             subStorageConfig.GCDelay,
 						ImageRetention:    subStorageConfig.Retention,
 						MaxSchedulerDelay: subStorageConfig.GCMaxSchedulerDelay,
+						TimeWindow:        subStorageConfig.GCTimeWindow,
 					}, audit, logger, metrics)
 
 				gc.CleanImageStorePeriodically(subStorageConfig.GCInterval, taskScheduler)

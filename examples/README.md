@@ -136,6 +136,16 @@ Orphan blobs are removed if they are older than gcDelay.
         "gcDelay": "2h"
 ```
 
+On high-load registries, garbage collection can add lock contention on storage
+while it runs. To restrict periodic GC runs to a daily time-of-day window
+(e.g. only during off-peak hours), set `gcTimeWindow` to a "HH:MM-HH:MM" range
+in local time. A window may wrap past midnight (e.g. `"22:00-06:00"`). Leaving
+it unset (the default) allows GC to run at any time:
+
+```
+        "gcTimeWindow": "01:00-08:00"
+```
+
 To limit the maximum number of repositories that can be created, set:
 
 ```
