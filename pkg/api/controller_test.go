@@ -9767,6 +9767,7 @@ func TestMultiarchImage(t *testing.T) {
 		baseURL := test.GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
+		conf.Storage.GC = false
 
 		dir := t.TempDir()
 		ctlr := makeController(conf, dir)

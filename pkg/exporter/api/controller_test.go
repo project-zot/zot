@@ -292,7 +292,6 @@ func TestNewExporter(t *testing.T) {
 					err = pmMetric.Write(&metric)
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, (latency1.Seconds())+(latency2.Seconds()))
-
 				})
 				Convey("Collecting data: Test that concurent Summary observation requests works properly", func() {
 					var latencySum float64
@@ -331,7 +330,6 @@ func TestNewExporter(t *testing.T) {
 					err = pmMetric.Write(&metric)
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, latencySum)
-
 				})
 				Convey("Collecting data: Test init value & that observe works on Histogram buckets", func() {
 					// Testing initial value of the histogram counter to be 1 after first observation call
@@ -374,7 +372,6 @@ func TestNewExporter(t *testing.T) {
 							So(*metric.Counter.Value, ShouldEqual, 0)
 						}
 					}
-
 				})
 				Convey("Collecting data: Test init value & that observe works on Histogram buckets (lock latency)", func() {
 					// Testing initial value of the histogram counter to be 1 after first observation call
