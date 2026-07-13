@@ -33,6 +33,7 @@ import (
 const (
 	cosignSignatureTagSuffix = "sig"
 	SBOMTagSuffix            = "sbom"
+	minutesInHour            = 60
 )
 
 type Options struct {
@@ -43,7 +44,77 @@ type Options struct {
 	// Defaults to 30 seconds if not specified
 	MaxSchedulerDelay time.Duration
 
+	// TimeWindow restricts periodic GC runs to a daily time-of-day window,
+	// e.g. "01:00-08:00". Empty means no restriction.
+	TimeWindow string
+
 	ImageRetention config.ImageRetention
+}
+
+// gcTimeWindow represents a daily recurring time-of-day window (in local time),
+// expressed in minutes since midnight, during which GC tasks are allowed to run.
+type gcTimeWindow struct {
+	startMin int
+	endMin   int
+}
+
+// contains returns true if t falls inside the window. A window whose start is after
+// its end (e.g. "22:00-06:00") is treated as wrapping past midnight.
+func (w gcTimeWindow) contains(t time.Time) bool {
+	minutes := t.Hour()*minutesInHour + t.Minute()
+
+	if w.startMin <= w.endMin {
+		return minutes >= w.startMin && minutes < w.endMin
+	}
+
+	return minutes >= w.startMin || minutes < w.endMin
+}
+
+// parseGCTimeWindow parses a "HH:MM-HH:MM" daily time-of-day window, e.g. "01:00-08:00".
+func parseGCTimeWindow(window string) (gcTimeWindow, error) {
+	start, end, found := strings.Cut(window, "-")
+	if !found {
+		return gcTimeWindow{}, fmt.Errorf(
+			"%w: invalid gcTimeWindow %q, expected format \"HH:MM-HH:MM\"", zerr.ErrBadConfig, window)
+	}
+
+	startMin, err := parseTimeOfDay(strings.TrimSpace(start))
+	if err != nil {
+		return gcTimeWindow{}, fmt.Errorf("%w: invalid gcTimeWindow %q: %w", zerr.ErrBadConfig, window, err)
+	}
+
+	endMin, err := parseTimeOfDay(strings.TrimSpace(end))
+	if err != nil {
+		return gcTimeWindow{}, fmt.Errorf("%w: invalid gcTimeWindow %q: %w", zerr.ErrBadConfig, window, err)
+	}
+
+	if startMin == endMin {
+		return gcTimeWindow{}, fmt.Errorf(
+			"%w: invalid gcTimeWindow %q: start and end of the window cannot be equal", zerr.ErrBadConfig, window)
+	}
+
+	return gcTimeWindow{startMin: startMin, endMin: endMin}, nil
+}
+
+func parseTimeOfDay(value string) (int, error) {
+	parsed, err := time.Parse("15:04", value)
+	if err != nil {
+		return 0, fmt.Errorf("invalid time %q, expected 24h format \"HH:MM\"", value)
+	}
+
+	return parsed.Hour()*minutesInHour + parsed.Minute(), nil
+}
+
+// ValidateGCTimeWindow returns an error if window is non-empty and not a valid
+// "HH:MM-HH:MM" daily time-of-day range. An empty window is valid and means no restriction.
+func ValidateGCTimeWindow(window string) error {
+	if window == "" {
+		return nil
+	}
+
+	_, err := parseGCTimeWindow(window)
+
+	return err
 }
 
 type GarbageCollect struct {
@@ -87,6 +158,16 @@ func (gc GarbageCollect) CleanImageStorePeriodically(interval time.Duration, sch
 		gc:             gc,
 		processedRepos: processedRepos,
 		maxDelay:       maxDelay,
+	}
+
+	if gc.opts.TimeWindow != "" {
+		window, err := parseGCTimeWindow(gc.opts.TimeWindow)
+		if err != nil {
+			gc.log.Error().Err(err).Str("gcTimeWindow", gc.opts.TimeWindow).
+				Msg("invalid gcTimeWindow, ignoring and running GC without a time restriction")
+		} else {
+			generator.timeWindow = &window
+		}
 	}
 
 	sch.SubmitGenerator(generator, interval, scheduler.MediumPriority)
@@ -1103,6 +1184,7 @@ type GCTaskGenerator struct {
 	done           bool
 	rand           *rand.Rand
 	maxDelay       time.Duration
+	timeWindow     *gcTimeWindow
 }
 
 func (gen *GCTaskGenerator) getRandomDelay() time.Duration {
@@ -1151,7 +1233,15 @@ func (gen *GCTaskGenerator) IsDone() bool {
 }
 
 func (gen *GCTaskGenerator) IsReady() bool {
-	return time.Now().After(gen.nextRun)
+	if !time.Now().After(gen.nextRun) {
+		return false
+	}
+
+	if gen.timeWindow != nil && !gen.timeWindow.contains(time.Now()) {
+		return false
+	}
+
+	return true
 }
 
 func (gen *GCTaskGenerator) Reset() {
