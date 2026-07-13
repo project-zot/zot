@@ -18,7 +18,6 @@ jobs:
       with:
         python-version: '3.x'
     - name: Check DCO
-      continue-on-error: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
