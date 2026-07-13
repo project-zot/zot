@@ -124,7 +124,6 @@ func TestNewExporter(t *testing.T) {
 				err := pm.Write(&metric)
 				So(err, ShouldBeNil)
 				So(*metric.Gauge.Value, ShouldEqual, 0) // "zot_up=0" means zot server is not running
-
 			})
 			Convey("When zot server is running", func() {
 				servercConfig := zotcfg.New()
@@ -214,7 +213,6 @@ func TestNewExporter(t *testing.T) {
 					err = pmMetric.Write(&metric)
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, 2)
-
 				})
 				Convey("Collecting data: Test that concurent Counter increment requests works properly", func() {
 					nBig, err := rand.Int(rand.Reader, big.NewInt(1000))
@@ -241,7 +239,6 @@ func TestNewExporter(t *testing.T) {
 					err = pm.Write(&metric)
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, reqsSize)
-
 				})
 				Convey("Collecting data: Test init value & that observe works on Summaries", func() {
 					// Testing initial value of the summary counter to be 1 after first observation call

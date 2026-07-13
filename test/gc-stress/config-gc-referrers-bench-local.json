@@ -18,8 +18,8 @@
     "http": {
         "address": "127.0.0.1",
         "port": "8080",
-        "readTimeout": "2m",
-        "writeTimeout": "2m"
+        "readTimeout": "15m",
+        "writeTimeout": "15m"
     },
     "log": {
         "level": "debug",

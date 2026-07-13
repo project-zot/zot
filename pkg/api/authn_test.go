@@ -708,7 +708,7 @@ func TestAPIKeys(t *testing.T) {
 		})
 
 		Convey("API key retrieved with openID and with short expire", func() {
-			expirationDate := time.Now().Add(1 * time.Second).Local().Round(time.Second)
+			expirationDate := time.Now().Add(5 * time.Second).Local().Round(time.Second)
 			payload := api.APIKeyPayload{
 				Label:          "test",
 				Scopes:         []string{"test"},
@@ -778,7 +778,7 @@ func TestAPIKeys(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 			// sleep past expire time
-			time.Sleep(1500 * time.Millisecond)
+			time.Sleep(5500 * time.Millisecond)
 
 			resp, err = client.R().
 				SetBasicAuth(email, apiKeyResponse.APIKey).
