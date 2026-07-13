@@ -406,7 +406,7 @@ log_info "Verifying pause:3.10.1 was persisted by zot..."
 if ! wait_for_pause_in_storage; then
     log_error "pause:3.10.1 was not found in zot after first sync"
     INDEX_PATH="${ZOT_STORAGE}/pause/index.json"
-    if [ -r "${INDEX_PATH}" ]; then
+    if [ -f "${INDEX_PATH}" ] && [ -r "${INDEX_PATH}" ]; then
         echo "Repository index (${INDEX_PATH}):"
         cat "${INDEX_PATH}"
     else
