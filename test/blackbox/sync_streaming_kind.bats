@@ -76,14 +76,6 @@ function setup_file() {
             "registries": [
                 {
                     "urls": [
-                        "https://index.docker.io"
-                    ],
-                    "onDemand": true,
-                    "stream": true,
-                    "tlsVerify": true
-                },
-                {
-                    "urls": [
                         "https://ghcr.io"
                     ],
                     "onDemand": true,
@@ -193,7 +185,7 @@ metadata:
 spec:
   containers:
   - name: debian
-    image: ${host_ip}:${test_port}/library/debian:stable-slim
+    image: ${host_ip}:${test_port}/project-zot/ci-images/debian:trixie
     command: ["sh", "-c", "echo 'container started' && sleep 300"]
   restartPolicy: Never
 EOF

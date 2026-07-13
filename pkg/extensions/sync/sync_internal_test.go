@@ -2047,12 +2047,12 @@ func TestBaseServiceFetchManifestWithStreaming(t *testing.T) {
 }
 
 type mockStreamManager struct {
-	streamingImageManifestFn func(repo, reference string) (rcManifest.Manifest, bool)
-	storeImageForStreamingFn func(repo, reference string, m rcManifest.Manifest, subManifests []rcManifest.Manifest) error
+	streamingImageManifestFn func(repo, reference string) (*StreamableManifest, bool)
+	storeImageForStreamingFn func(repo, reference string, manifest *StreamableManifest) error
 	removeStreamingImageFn   func(repo, reference string)
 }
 
-func (m *mockStreamManager) StreamingImageManifest(repo, reference string) (rcManifest.Manifest, bool) {
+func (m *mockStreamManager) StreamingImageManifest(repo, reference string) (*StreamableManifest, bool) {
 	if m.streamingImageManifestFn != nil {
 		return m.streamingImageManifestFn(repo, reference)
 	}
@@ -2060,9 +2060,9 @@ func (m *mockStreamManager) StreamingImageManifest(repo, reference string) (rcMa
 	return nil, false
 }
 
-func (m *mockStreamManager) StoreImageForStreaming(repo, reference string, man rcManifest.Manifest, subManifests []rcManifest.Manifest) error {
+func (m *mockStreamManager) StoreImageForStreaming(repo, reference string, manifest *StreamableManifest) error {
 	if m.storeImageForStreamingFn != nil {
-		return m.storeImageForStreamingFn(repo, reference, man, subManifests)
+		return m.storeImageForStreamingFn(repo, reference, manifest)
 	}
 
 	return nil
@@ -2181,13 +2181,14 @@ func TestOnDemandFetchManifestForStream(t *testing.T) {
 	Convey("returns cached manifest when StreamingImageManifest has image in cache", t, func() {
 		onDemand := NewOnDemand(log.NewTestLogger())
 		cached := newTestManifest(t)
+		streamableCached := NewStreamableManifest(cached, nil)
 
 		sm := &mockStreamManager{
-			streamingImageManifestFn: func(repo, reference string) (rcManifest.Manifest, bool) {
+			streamingImageManifestFn: func(repo, reference string) (*StreamableManifest, bool) {
 				So(repo, ShouldEqual, "myrepo")
 				So(reference, ShouldEqual, "v1.0")
 
-				return cached, true
+				return streamableCached, true
 			},
 		}
 		onDemand.SetStreamManager(sm)
@@ -2201,7 +2202,7 @@ func TestOnDemandFetchManifestForStream(t *testing.T) {
 		onDemand := NewOnDemand(log.NewTestLogger())
 
 		sm := &mockStreamManager{
-			streamingImageManifestFn: func(_, _ string) (rcManifest.Manifest, bool) {
+			streamingImageManifestFn: func(_, _ string) (*StreamableManifest, bool) {
 				return nil, false
 			},
 		}
@@ -2216,7 +2217,7 @@ func TestOnDemandFetchManifestForStream(t *testing.T) {
 		onDemand := NewOnDemand(log.NewTestLogger())
 
 		sm := &mockStreamManager{
-			streamingImageManifestFn: func(_, _ string) (rcManifest.Manifest, bool) {
+			streamingImageManifestFn: func(_, _ string) (*StreamableManifest, bool) {
 				return nil, false
 			},
 		}
@@ -2240,13 +2241,13 @@ func TestOnDemandFetchManifestForStream(t *testing.T) {
 		fetched := newTestManifest(t)
 
 		var storeRepo, storeRef string
-		var storedManifest rcManifest.Manifest
+		var storedManifest *StreamableManifest
 
 		sm := &mockStreamManager{
-			streamingImageManifestFn: func(_, _ string) (rcManifest.Manifest, bool) {
+			streamingImageManifestFn: func(_, _ string) (*StreamableManifest, bool) {
 				return nil, false
 			},
-			storeImageForStreamingFn: func(repo, reference string, m rcManifest.Manifest, s []rcManifest.Manifest) error {
+			storeImageForStreamingFn: func(repo, reference string, m *StreamableManifest) error {
 				storeRepo = repo
 				storeRef = reference
 				storedManifest = m
@@ -2275,7 +2276,7 @@ func TestOnDemandFetchManifestForStream(t *testing.T) {
 		So(result, ShouldEqual, fetched)
 		So(storeRepo, ShouldEqual, "myrepo")
 		So(storeRef, ShouldEqual, "latest")
-		So(storedManifest, ShouldEqual, fetched)
+		So(storedManifest.referenceManifest, ShouldEqual, fetched)
 
 		select {
 		case <-syncCalled:
@@ -2290,7 +2291,7 @@ func TestOnDemandFetchManifestForStream(t *testing.T) {
 		fetched := newTestManifest(t)
 
 		sm := &mockStreamManager{
-			streamingImageManifestFn: func(_, _ string) (rcManifest.Manifest, bool) {
+			streamingImageManifestFn: func(_, _ string) (*StreamableManifest, bool) {
 				return nil, false
 			},
 		}
@@ -2327,10 +2328,10 @@ func TestOnDemandFetchManifestForStream(t *testing.T) {
 		storeErr := errors.New("disk full")
 
 		sm := &mockStreamManager{
-			streamingImageManifestFn: func(_, _ string) (rcManifest.Manifest, bool) {
+			streamingImageManifestFn: func(_, _ string) (*StreamableManifest, bool) {
 				return nil, false
 			},
-			storeImageForStreamingFn: func(_, _ string, _ rcManifest.Manifest, _ []rcManifest.Manifest) error {
+			storeImageForStreamingFn: func(_, _ string, _ *StreamableManifest) error {
 				return storeErr
 			},
 		}
@@ -2408,11 +2409,11 @@ func TestOnDemandFetchManifestForStream(t *testing.T) {
 		var capturedSubManifests []rcManifest.Manifest
 
 		sm := &mockStreamManager{
-			streamingImageManifestFn: func(_, _ string) (rcManifest.Manifest, bool) {
+			streamingImageManifestFn: func(_, _ string) (*StreamableManifest, bool) {
 				return nil, false
 			},
-			storeImageForStreamingFn: func(repo, reference string, m rcManifest.Manifest, sub []rcManifest.Manifest) error {
-				capturedSubManifests = sub
+			storeImageForStreamingFn: func(repo, reference string, m *StreamableManifest) error {
+				capturedSubManifests = m.subManifests
 
 				return nil
 			},
@@ -2472,7 +2473,7 @@ func TestOnDemandFetchManifestForStreamMultiArchWithLayeredFailure(t *testing.T)
 		So(err, ShouldBeNil)
 
 		sm := &mockStreamManager{
-			streamingImageManifestFn: func(_, _ string) (rcManifest.Manifest, bool) {
+			streamingImageManifestFn: func(_, _ string) (*StreamableManifest, bool) {
 				return nil, false
 			},
 		}
@@ -2557,11 +2558,11 @@ func TestOnDemandMultiArchSubManifestsForwarding(t *testing.T) {
 		var capturedSubManifests []rcManifest.Manifest
 
 		sm := &mockStreamManager{
-			streamingImageManifestFn: func(_, _ string) (rcManifest.Manifest, bool) {
+			streamingImageManifestFn: func(_, _ string) (*StreamableManifest, bool) {
 				return nil, false
 			},
-			storeImageForStreamingFn: func(repo, reference string, m rcManifest.Manifest, sub []rcManifest.Manifest) error {
-				capturedSubManifests = sub
+			storeImageForStreamingFn: func(repo, reference string, m *StreamableManifest) error {
+				capturedSubManifests = m.subManifests
 
 				return nil
 			},

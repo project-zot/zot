@@ -77,7 +77,7 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(
 		onDemand.log.Debug().Str("repo", repo).Str("reference", reference).
 			Msg("streaming manifest already present in cache.")
 
-		return cachedManifest, nil
+		return cachedManifest.referenceManifest, nil
 	}
 
 	var resultManifest manifest.Manifest
@@ -105,7 +105,8 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(
 	onDemand.log.Debug().Str("repo", repo).Str("reference", reference).
 		Msg("storing image for streaming")
 
-	err := onDemand.streamManager.StoreImageForStreaming(repo, reference, resultManifest, subManifestsInManifest)
+	streamableManifest := NewStreamableManifest(resultManifest, subManifestsInManifest)
+	err := onDemand.streamManager.StoreImageForStreaming(repo, reference, streamableManifest)
 	if err != nil {
 		onDemand.log.Error().Err(err).Str("repo", repo).Str("reference", reference).
 			Msg("failed to store manifest for streaming")

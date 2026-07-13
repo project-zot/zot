@@ -61,9 +61,6 @@ function verify_platforms_count() {
 }
 
 function setup_file() {
-    # Sets a timeout so that a stalled test can fail and print logs
-    export BATS_TEST_TIMEOUT=240
-
     if ! verify_prerequisites; then
         exit 1
     fi
@@ -163,23 +160,19 @@ EOF
     echo "test zot is reachable" >&3
 
     # Download the test image to the shared test-data directory
-    # ollama/ollama:rocm is a ~1GB image
-    # image.
+    # ollama:rocm is a ~1GB image
     skopeo copy \
-        "docker://docker.io/ollama/ollama:rocm" \
+        "docker://ghcr.io/project-zot/ci-images/ollama:rocm" \
         "oci:${TEST_DATA_DIR}/ollama:rocm"
 
-    # Download the multi-arch zot image to the shared test-data directory
-    # ghcr.io/project-zot/zot:v2.1.18 contains 4 platforms:
-    # linux/amd64, linux/arm64 (v8), freebsd/amd64, freebsd/arm64
+    # Download multi-arch zot to test dir
     skopeo copy --multi-arch=all \
         "docker://ghcr.io/project-zot/zot:v2.1.18" \
         "oci:${TEST_DATA_DIR}/zot:v2.1.18"
 
     # Download the multi-arch debian image to the shared test-data directory
-    # docker.io/debian:trixie contains 16 platforms
     skopeo copy --multi-arch=all \
-        "docker://docker.io/debian:trixie" \
+        "docker://ghcr.io/project-zot/ci-images/debian:trixie" \
         "oci:${TEST_DATA_DIR}/debian:trixie"
 }
 
@@ -242,12 +235,7 @@ function teardown_file() {
     local pid2=$!
 
     wait "${pid1}"
-    local status1=$?
     wait "${pid2}"
-    local status2=$?
-
-    [ "${status1}" -eq 0 ]
-    [ "${status2}" -eq 0 ]
 }
 
 @test "delete image from zot after first concurrent pull" {
@@ -257,8 +245,8 @@ function teardown_file() {
     test_root=$(cat "${BATS_FILE_TMPDIR}/test_root")
     local index_json="${test_root}/ollama/ollama/index.json"
 
-    # Wait for the image to be fully committed to storage.
-    sleep 30
+    # Give some time for the image to be fully committed to storage.
+    sleep 15
 
     # Confirm the image is present on the filesystem before deleting.
     # Can't use curl here — an HTTP request would re-trigger on-demand sync.
@@ -289,31 +277,24 @@ function teardown_file() {
     # Start both pulls in parallel.
     skopeo --debug copy --src-tls-verify=false \
         "docker://127.0.0.1:${test_port}/ollama/ollama:rocm" \
-        "oci:${pull_dir1}/ollama:rocm" >"${BATS_FILE_TMPDIR}/concur_pull_3.out" 2>&1 &
+        "oci:${pull_dir1}/ollama:rocm" &>"${BATS_FILE_TMPDIR}/concur_pull_3.out" &
     local pid1=$!
 
     sleep 1
 
     skopeo --debug copy --src-tls-verify=false \
         "docker://127.0.0.1:${test_port}/ollama/ollama:rocm" \
-        "oci:${pull_dir2}/ollama:rocm" >"${BATS_FILE_TMPDIR}/concur_pull_4.out" 2>&1 &
+        "oci:${pull_dir2}/ollama:rocm" &>"${BATS_FILE_TMPDIR}/concur_pull_4.out" &
     local pid2=$!
 
     # Allow streaming to begin, then terminate the first client.
-    sleep 2
+    sleep 3
 
-    kill "${pid1}" 2>/dev/null || true
-    for i in {1..3}; do
-        kill -0 "${pid1}" 2>/dev/null || break
-        sleep 1
-    done
-    kill -0 "${pid1}" 2>/dev/null && kill -9 "${pid1}"
+    kill -9 "${pid1}" 2>/dev/null || true
     wait "${pid1}" 2>/dev/null || true
 
     # The second pull must complete successfully regardless.
     wait "${pid2}"
-    local status_pid2=$?
-    [ "${status_pid2}" -eq 0 ]
 }
 
 @test "delete image from zot after client interrupted pull" {
@@ -324,7 +305,7 @@ function teardown_file() {
     local index_json="${test_root}/ollama/ollama/index.json"
 
     # Wait for the image to be fully committed to storage.
-    sleep 30
+    sleep 15
 
     # Confirm the image is present on the filesystem before deleting.
     # Can't use curl here — an HTTP request would re-trigger on-demand sync.
@@ -443,12 +424,12 @@ function teardown_file() {
     # Start the pull in the background
     skopeo --debug copy --src-tls-verify=false \
         "docker://127.0.0.1:${test_port}/ollama/ollama:rocm" \
-        "oci:${pull_dir}/ollama:rocm" > "${BATS_FILE_TMPDIR}/pull_5.out" 2>&1 &
+        "oci:${pull_dir}/ollama:rocm" &> "${BATS_FILE_TMPDIR}/pull_5.out" &
     local copier_pid=$!
 
     sleep 1
 
-    kill "${upstream_pid}" 2>/dev/null || true
+    kill -9 "${upstream_pid}" 2>/dev/null || true
 
     # Wait for copier to exit; it must fail because the upstream is gone.
     run wait "${copier_pid}"

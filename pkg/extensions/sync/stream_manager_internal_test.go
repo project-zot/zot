@@ -36,7 +36,7 @@ func newTestChunkingStreamManager(dir string) *ChunkingStreamManager {
 	return &ChunkingStreamManager{
 		tempStore:     NewLocalTempStore(dir, logger),
 		activeStreams: map[string]*ChunkedBlobReader{},
-		streamingRefs: map[string]rcManifest.Manifest{},
+		streamingRefs: map[string]*StreamableManifest{},
 		blobInfoMap:   map[string]descriptor.Descriptor{},
 		logger:        logger,
 	}
@@ -197,13 +197,14 @@ func TestChunkingStreamManagerStoreImageForStreaming(t *testing.T) {
 		manifest := newTestOCIManifestWithBlobs(t, configData, layerData)
 
 		Convey("stores manifest and prepares active streams for all blobs", func() {
-			err := sm.StoreImageForStreaming("myrepo", "v1.0", manifest, nil)
+			streamableManifest := NewStreamableManifest(manifest, nil)
+			err := sm.StoreImageForStreaming("myrepo", "v1.0", streamableManifest)
 			So(err, ShouldBeNil)
 
 			// Manifest entry should be stored.
 			m, ok := sm.StreamingImageManifest("myrepo", "v1.0")
 			So(ok, ShouldBeTrue)
-			So(m, ShouldEqual, manifest)
+			So(m.referenceManifest, ShouldEqual, manifest)
 
 			// All three blobs (manifest, config, layer) should be active streams.
 			manifestDigest := manifest.GetDescriptor().Digest.String()
@@ -221,10 +222,11 @@ func TestChunkingStreamManagerStoreImageForStreaming(t *testing.T) {
 		})
 
 		Convey("storing the same repo:reference is idempotent", func() {
-			err := sm.StoreImageForStreaming("myrepo", "v1.0", manifest, nil)
+			streamableManifest := NewStreamableManifest(manifest, nil)
+			err := sm.StoreImageForStreaming("myrepo", "v1.0", streamableManifest)
 			So(err, ShouldBeNil)
 
-			err = sm.StoreImageForStreaming("myrepo", "v1.0", manifest, nil)
+			err = sm.StoreImageForStreaming("myrepo", "v1.0", streamableManifest)
 			So(err, ShouldBeNil)
 
 			_, ok := sm.StreamingImageManifest("myrepo", "v1.0")
@@ -237,8 +239,8 @@ func TestChunkingStreamManagerStoreImageForStreaming(t *testing.T) {
 					return "/nonexistent/dir/blob"
 				},
 			}
-
-			err := sm.StoreImageForStreaming("myrepo", "v1.0", manifest, nil)
+			streamableManifest := NewStreamableManifest(manifest, nil)
+			err := sm.StoreImageForStreaming("myrepo", "v1.0", streamableManifest)
 			So(err, ShouldNotBeNil)
 		})
 	})
@@ -257,12 +259,13 @@ func TestChunkingStreamManagerStreamingImageManifest(t *testing.T) {
 		})
 
 		Convey("returns the manifest and true after it has been stored", func() {
-			err := sm.StoreImageForStreaming("repo", "tag", manifest, nil)
+			streamableManifest := NewStreamableManifest(manifest, nil)
+			err := sm.StoreImageForStreaming("repo", "tag", streamableManifest)
 			So(err, ShouldBeNil)
 
 			m, ok := sm.StreamingImageManifest("repo", "tag")
 			So(ok, ShouldBeTrue)
-			So(m, ShouldEqual, manifest)
+			So(m.referenceManifest, ShouldEqual, manifest)
 		})
 	})
 }
@@ -279,8 +282,8 @@ func TestChunkingStreamManagerRemoveStreamingImage(t *testing.T) {
 			configData := []byte("cfg-payload")
 			layerData := []byte("lyr-payload")
 			manifest := newTestOCIManifestWithBlobs(t, configData, layerData)
-
-			err := sm.StoreImageForStreaming("myrepo", "latest", manifest, nil)
+			streamableManifest := NewStreamableManifest(manifest, nil)
+			err := sm.StoreImageForStreaming("myrepo", "latest", streamableManifest)
 			So(err, ShouldBeNil)
 
 			manifestDigest := manifest.GetDescriptor().Digest.String()
@@ -327,13 +330,14 @@ func TestChunkingStreamManagerMultiArchStoreImageForStreaming(t *testing.T) {
 		index := newTestOCIImageIndex(t, subManifests)
 
 		Convey("stores index manifest and prepares active streams for all platform configs and layers", func() {
-			err := sm.StoreImageForStreaming("multi-arch-repo", "latest", index, subManifests)
+			streamableManifest := NewStreamableManifest(index, subManifests)
+			err := sm.StoreImageForStreaming("multi-arch-repo", "latest", streamableManifest)
 			So(err, ShouldBeNil)
 
 			// Index manifest entry should be stored.
 			m, ok := sm.StreamingImageManifest("multi-arch-repo", "latest")
 			So(ok, ShouldBeTrue)
-			So(m, ShouldEqual, index)
+			So(m.referenceManifest, ShouldEqual, index)
 
 			// Each sub-manifest, its config, and its layer should be active streams.
 			amd64ManifestDigest := amd64Manifest.GetDescriptor().Digest.String()
@@ -363,7 +367,8 @@ func TestChunkingStreamManagerMultiArchStoreImageForStreaming(t *testing.T) {
 		})
 
 		Convey("stores blob info for all platform blobs", func() {
-			err := sm.StoreImageForStreaming("multi-arch-repo", "v1.0", index, subManifests)
+			streamableManifest := NewStreamableManifest(index, subManifests)
+			err := sm.StoreImageForStreaming("multi-arch-repo", "v1.0", streamableManifest)
 			So(err, ShouldBeNil)
 
 			amd64ConfigDigest := godigest.FromBytes(amd64Config).String()
@@ -388,8 +393,8 @@ func TestChunkingStreamManagerMultiArchStoreImageForStreaming(t *testing.T) {
 					return "/nonexistent/dir/blob"
 				},
 			}
-
-			err := sm.StoreImageForStreaming("multi-arch-repo", "latest", index, subManifests)
+			streamableManifest := NewStreamableManifest(index, subManifests)
+			err := sm.StoreImageForStreaming("multi-arch-repo", "latest", streamableManifest)
 			So(err, ShouldNotBeNil)
 		})
 	})

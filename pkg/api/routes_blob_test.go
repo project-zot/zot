@@ -28,6 +28,7 @@ import (
 	apiErr "zotregistry.dev/zot/v2/pkg/api/errors"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
+	"zotregistry.dev/zot/v2/pkg/extensions/sync"
 	sync_pkg "zotregistry.dev/zot/v2/pkg/extensions/sync"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
@@ -90,11 +91,11 @@ func (m *mockStreamManager) StreamingBlobReader(r *rcblob.BReader) (*rcblob.BRea
 	return r, nil
 }
 
-func (m *mockStreamManager) StoreImageForStreaming(_, _ string, _ rcmanifest.Manifest, _ []rcmanifest.Manifest) error {
+func (m *mockStreamManager) StoreImageForStreaming(_, _ string, _ *sync.StreamableManifest) error {
 	return nil
 }
 
-func (m *mockStreamManager) StreamingImageManifest(_, _ string) (rcmanifest.Manifest, bool) {
+func (m *mockStreamManager) StreamingImageManifest(_, _ string) (*sync.StreamableManifest, bool) {
 	return nil, false
 }
 

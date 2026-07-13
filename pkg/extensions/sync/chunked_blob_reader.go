@@ -162,21 +162,6 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 
 	cbr.clientMu.Unlock()
 
-	// If the reader has finished reading the blob, close all clients.
-	if err == io.EOF {
-		cbr.clientMu.RLock()
-
-		clientIDs := make([]int, 0, len(cbr.clients))
-		for id := range cbr.clients {
-			clientIDs = append(clientIDs, id)
-		}
-		cbr.clientMu.RUnlock()
-
-		for _, clientId := range clientIDs {
-			cbr.Unsubscribe(clientId)
-		}
-	}
-
 	return n, err
 }
 

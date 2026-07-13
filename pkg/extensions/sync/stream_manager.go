@@ -16,12 +16,23 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
+type StreamableManifest struct {
+	referenceManifest manifestpkg.Manifest
+	subManifests      []manifestpkg.Manifest
+}
+
+func NewStreamableManifest(mainManifest manifestpkg.Manifest, subManifests []manifestpkg.Manifest) *StreamableManifest {
+	return &StreamableManifest{
+		referenceManifest: mainManifest,
+		subManifests:      subManifests,
+	}
+}
+
 type StreamManager interface {
 	ConnectClient(blobDigest string, writer io.Writer) (*InFlightBlobCopier, error)
 	StreamingBlobReader(reader *blob.BReader) (*blob.BReader, error)
-	StoreImageForStreaming(repo, reference string, manifest manifestpkg.Manifest,
-		subManifests []manifestpkg.Manifest) error
-	StreamingImageManifest(repo, reference string) (manifestpkg.Manifest, bool)
+	StoreImageForStreaming(repo, reference string, streamManifest *StreamableManifest) error
+	StreamingImageManifest(repo, reference string) (*StreamableManifest, bool)
 	RemoveStreamingImage(repo, reference string)
 	CachedBlobInfo(blobDigest string) (blen int64, mediaType string, err error)
 }
@@ -33,10 +44,9 @@ type ChunkingStreamManager struct {
 	activeStreams map[string]*ChunkedBlobReader
 	// streamingRefs holds the references to the images that are
 	// currently being streamed and their corresponding manifest.
-	streamingRefs map[string]manifestpkg.Manifest
-	// streamingSubManifests holds additional manifests in the case
-	// of a multi-arch artifact. This is needed for stream cleanup.
-	streamingSubManifests map[string][]manifestpkg.Manifest
+	// For multi-arch images, it also holds subManifests for each of the os/arch
+	// manifests.
+	streamingRefs map[string]*StreamableManifest
 	// blobInfo holds blobs and their corresponding descriptor.
 	blobInfoMap map[string]descriptor.Descriptor
 	logger      log.Logger
@@ -47,12 +57,11 @@ func NewChunkingStreamManager(config *config.Config, logger log.Logger) *Chunkin
 	store := NewLocalTempStore(path.Join(config.Storage.RootDirectory, "_stream"), logger)
 
 	return &ChunkingStreamManager{
-		tempStore:             store,
-		activeStreams:         map[string]*ChunkedBlobReader{},
-		streamingRefs:         map[string]manifestpkg.Manifest{},
-		streamingSubManifests: map[string][]manifestpkg.Manifest{},
-		blobInfoMap:           map[string]descriptor.Descriptor{},
-		logger:                logger,
+		tempStore:     store,
+		activeStreams: map[string]*ChunkedBlobReader{},
+		streamingRefs: map[string]*StreamableManifest{},
+		blobInfoMap:   map[string]descriptor.Descriptor{},
+		logger:        logger,
 	}
 }
 
@@ -72,7 +81,7 @@ func (sm *ChunkingStreamManager) ConnectClient(blobDigest string, writer io.Writ
 	}
 
 	copier := NewInFlightBlobCopier(stream, sm.tempStore.BlobPath(dig), writer, sm.logger)
-	sm.logger.Info().Str("blob", blobDigest).Msg("connected client for blob")
+	sm.logger.Debug().Str("blob", blobDigest).Msg("connected client for blob")
 
 	return copier, nil
 }
@@ -129,6 +138,8 @@ func (sm *ChunkingStreamManager) prepareActiveStreamForBlob(desc descriptor.Desc
 		return nil
 	}
 
+	sm.logger.Debug().Str("blob", desc.Digest.String()).Msg("adding blob to active stream")
+
 	r, err := NewChunkedBlobReader(sm.tempStore.BlobPath(desc.Digest), sm.logger)
 	if err != nil {
 		return err
@@ -141,7 +152,7 @@ func (sm *ChunkingStreamManager) prepareActiveStreamForBlob(desc descriptor.Desc
 }
 
 func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string,
-	manifest manifestpkg.Manifest, subManifests []manifestpkg.Manifest,
+	manifest *StreamableManifest,
 ) error {
 	sm.streamLock.Lock()
 	defer sm.streamLock.Unlock()
@@ -157,17 +168,16 @@ func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string,
 
 	// populate the manifest into streamingRefs
 	sm.streamingRefs[key] = manifest
-	sm.streamingSubManifests[key] = subManifests
 
-	manifestMediaType := manifestpkg.GetMediaType(manifest)
+	manifestMediaType := manifestpkg.GetMediaType(manifest.referenceManifest)
 	switch manifestMediaType {
 	case manifestpkg.MediaTypeOCI1Manifest:
-		prepErr := sm.prepareManifestAndContentsForStream(repo, reference, manifest)
+		prepErr := sm.prepareManifestAndContentsForStream(repo, reference, manifest.referenceManifest)
 		if prepErr != nil {
 			sm.logger.Error().Err(prepErr).
 				Str("repo", repo).
 				Str("reference", reference).
-				Str("manifest", manifest.GetDescriptor().Digest.String()).
+				Str("manifest", manifest.referenceManifest.GetDescriptor().Digest.String()).
 				Msg("failed to prepare manifest for stream")
 
 			return zerr.ErrSyncFailedToPrepareManifest
@@ -175,7 +185,7 @@ func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string,
 	case manifestpkg.MediaTypeOCI1ManifestList:
 		// For multi-arch images, the manifest is actually an index.
 		// The individual manifests inside must be prepared as well.
-		for _, subManifest := range subManifests {
+		for _, subManifest := range manifest.subManifests {
 			prepErr := sm.prepareManifestAndContentsForStream(repo, reference, subManifest)
 			if prepErr != nil {
 				sm.logger.Error().Err(prepErr).
@@ -210,7 +220,6 @@ func (sm *ChunkingStreamManager) prepareManifestAndContentsForStream(repo, refer
 			Msg("failed to prepare active stream for blob")
 
 		delete(sm.streamingRefs, key)
-		delete(sm.streamingSubManifests, key)
 
 		return err
 	}
@@ -230,7 +239,6 @@ func (sm *ChunkingStreamManager) prepareManifestAndContentsForStream(repo, refer
 			Msg("failed to get config descriptor from manifest")
 
 		delete(sm.streamingRefs, key)
-		delete(sm.streamingSubManifests, key)
 
 		return err
 	}
@@ -240,7 +248,6 @@ func (sm *ChunkingStreamManager) prepareManifestAndContentsForStream(repo, refer
 		sm.logger.Error().Err(err).Str("blob", configDesc.Digest.String()).Msg("failed to prepare active stream for blob")
 
 		delete(sm.streamingRefs, key)
-		delete(sm.streamingSubManifests, key)
 
 		return err
 	}
@@ -251,7 +258,6 @@ func (sm *ChunkingStreamManager) prepareManifestAndContentsForStream(repo, refer
 		sm.logger.Error().Err(err).Msg("failed to get layers from manifest")
 
 		delete(sm.streamingRefs, key)
-		delete(sm.streamingSubManifests, key)
 
 		return err
 	}
@@ -262,7 +268,6 @@ func (sm *ChunkingStreamManager) prepareManifestAndContentsForStream(repo, refer
 			sm.logger.Error().Err(err).Str("blob", layer.Digest.String()).Msg("failed to prepare active stream for blob")
 
 			delete(sm.streamingRefs, key)
-			delete(sm.streamingSubManifests, key)
 
 			return err
 		}
@@ -271,7 +276,7 @@ func (sm *ChunkingStreamManager) prepareManifestAndContentsForStream(repo, refer
 	return nil
 }
 
-func (sm *ChunkingStreamManager) StreamingImageManifest(repo, reference string) (manifestpkg.Manifest, bool) {
+func (sm *ChunkingStreamManager) StreamingImageManifest(repo, reference string) (*StreamableManifest, bool) {
 	sm.streamLock.Lock()
 	defer sm.streamLock.Unlock()
 
@@ -297,19 +302,14 @@ func (sm *ChunkingStreamManager) RemoveStreamingImage(repo, reference string) {
 
 	sm.logger.Info().Str("repo", repo).Str("reference", reference).Msg("removing streaming image")
 
-	manifestMediaType := manifestpkg.GetMediaType(manifest)
+	manifestMediaType := manifestpkg.GetMediaType(manifest.referenceManifest)
 	switch manifestMediaType {
 	case manifestpkg.MediaTypeOCI1Manifest:
-		sm.purgeManifestFromStreamCache(repo, reference, manifest)
+		sm.purgeManifestFromStreamCache(repo, reference, manifest.referenceManifest)
 	case manifestpkg.MediaTypeOCI1ManifestList:
-		subManifests, ok := sm.streamingSubManifests[key]
-		if !ok {
-			subManifests = []manifestpkg.Manifest{}
-		}
-
 		// For multi-arch images, the manifest is actually an index.
 		// The individual manifests inside must be purged as well.
-		for _, subManifest := range subManifests {
+		for _, subManifest := range manifest.subManifests {
 			sm.purgeManifestFromStreamCache(repo, reference, subManifest)
 		}
 	default:
@@ -319,7 +319,6 @@ func (sm *ChunkingStreamManager) RemoveStreamingImage(repo, reference string) {
 
 	// remove the active streams for the manifest and its blobs
 	delete(sm.streamingRefs, key)
-	delete(sm.streamingSubManifests, key)
 
 	sm.logger.Info().Str("repo", repo).Str("reference", reference).Msg("finished removing streaming image")
 }

@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 
 	godigest "github.com/opencontainers/go-digest"
@@ -165,38 +164,18 @@ func TestRead(t *testing.T) {
 				close(done)
 			}()
 
-			// Consume client channel; closed automatically on EOF.
+			// Consume client channel
 			var lastOffset int64
 			for offset := range ch {
 				lastOffset = offset
+				if lastOffset == int64(len(data)) {
+					break
+				}
 			}
 
 			<-done
 
 			So(lastOffset, ShouldEqual, int64(len(data)))
-		})
-
-		Convey("closes all clients when EOF is reached", func() {
-			bytesUpdateChan, _ := cbr.Subscribe()
-
-			buf := make([]byte, len(data))
-
-			var wg sync.WaitGroup
-			wg.Go(func() {
-				_, _ = cbr.Read(buf)
-			})
-
-			// Drain the channel - it should be closed after the full read.
-			for range bytesUpdateChan {
-			}
-
-			wg.Wait()
-
-			cbr.clientMu.RLock()
-			numClients := len(cbr.clients)
-			cbr.clientMu.RUnlock()
-
-			So(numClients, ShouldEqual, 0)
 		})
 
 		Convey("returns error and closes clients on upstream read error", func() {
