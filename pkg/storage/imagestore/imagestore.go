@@ -441,7 +441,7 @@ func (is *ImageStore) GetNextRepository(processedRepos map[string]struct{}) (str
 			return nil
 		}
 
-		// skip .sync and .uploads dirs no need to try to validate them
+		// skip .sync, blobs, and .uploads dirs; no need to try to validate them
 		if strings.HasSuffix(fileInfo.Path(), syncConstants.SyncBlobUploadDir) ||
 			strings.HasSuffix(fileInfo.Path(), ispec.ImageBlobsDir) ||
 			strings.HasSuffix(fileInfo.Path(), storageConstants.BlobUploadDir) {
