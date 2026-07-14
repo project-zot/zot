@@ -1640,9 +1640,14 @@ func TestDedupeLinks(t *testing.T) {
 							return false
 						},
 						PutBlobFn: func(digest godigest.Digest, path string) error {
+							if strings.Contains(path, storageConstants.GlobalBlobsRepo) {
+								return nil
+							}
+
 							return errCache
 						},
 					}, nil, nil) // rebuild with dedupe true, should have samefile blobs
+					So(imgStore, ShouldNotBeNil)
 					imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 					// wait until rebuild finishes
 
