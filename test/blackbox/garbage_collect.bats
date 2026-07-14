@@ -89,9 +89,9 @@ function teardown_file() {
 
 @test "push image index" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
-    # --multi-arch below pushes an image index (containing many images) instead
+    # --all below pushes an image index (containing many images) instead
     # of an image manifest (single image)
-    run skopeo --insecure-policy copy --format=oci --dest-tls-verify=false --multi-arch=all \
+    run skopeo --insecure-policy copy --format=oci --dest-tls-verify=false --all \
         docker://public.ecr.aws/docker/library/busybox:latest \
         docker://127.0.0.1:${zot_port}/busybox:latest
     [ "$status" -eq 0 ]
