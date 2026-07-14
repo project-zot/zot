@@ -186,7 +186,8 @@ func (d *DynamoDBDriver) GetAllBlobs(digest godigest.Digest) ([]string, error) {
 
 func (d *DynamoDBDriver) PutBlobRef(digest godigest.Digest, path string) error {
 	if path == "" {
-		d.log.Error().Err(zerr.ErrEmptyValue).Str("digest", digest.String()).Msg("failed to put blob ref because the path provided is empty")
+		d.log.Error().Err(zerr.ErrEmptyValue).Str("digest", digest.String()).
+			Msg("failed to put blob ref because the path provided is empty")
 
 		return zerr.ErrEmptyValue
 	}
@@ -239,7 +240,12 @@ func (d *DynamoDBDriver) PutBlobRef(digest godigest.Digest, path string) error {
 	expression := "ADD DuplicateBlobPath :i"
 	attrPath := types.AttributeValueMemberSS{Value: []string{path}}
 
-	if err := d.updateItem(godigest.Digest(refDigest), expression, map[string]types.AttributeValue{":i": &attrPath}, nil); err != nil {
+	if err := d.updateItem(
+		godigest.Digest(refDigest),
+		expression,
+		map[string]types.AttributeValue{":i": &attrPath},
+		nil,
+	); err != nil {
 		d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("failed to put blob ref")
 
 		return err
@@ -309,7 +315,12 @@ func (d *DynamoDBDriver) DeleteBlobRef(digest godigest.Digest, path string) erro
 				expression := "DELETE DuplicateBlobPath :i"
 				attrPath := types.AttributeValueMemberSS{Value: []string{path}}
 
-				if err := d.updateItem(godigest.Digest(refDigest), expression, map[string]types.AttributeValue{":i": &attrPath}, nil); err != nil {
+				if err := d.updateItem(
+					godigest.Digest(refDigest),
+					expression,
+					map[string]types.AttributeValue{":i": &attrPath},
+					nil,
+				); err != nil {
 					d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("failed to delete blob ref")
 
 					return err

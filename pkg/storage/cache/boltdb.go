@@ -66,15 +66,15 @@ func NewBoltDBCache(parameters any, log zlog.Logger) (*BoltDBDriver, error) {
 		return nil, err
 	}
 
-	if err := cacheDB.Update(func(tx *bbolt.Tx) error {
-		if _, err := tx.CreateBucketIfNotExists([]byte(constants.BlobsCache)); err != nil {
+	if err := cacheDB.Update(func(txn *bbolt.Tx) error {
+		if _, err := txn.CreateBucketIfNotExists([]byte(constants.BlobsCache)); err != nil {
 			// this is a serious failure
 			log.Error().Err(err).Str("dbPath", dbPath).Msg("failed to create a root bucket")
 
 			return err
 		}
 
-		if _, err := tx.CreateBucketIfNotExists([]byte(constants.BlobRefs)); err != nil {
+		if _, err := txn.CreateBucketIfNotExists([]byte(constants.BlobRefs)); err != nil {
 			// this is a serious failure
 			log.Error().Err(err).Str("dbPath", dbPath).Msg("failed to create a blob refs root bucket")
 
