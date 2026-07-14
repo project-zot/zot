@@ -61,6 +61,65 @@ type ImageStore struct {
 	dedupeRebuildDone atomic.Bool
 }
 
+type blobRefIndexer interface {
+	PutBlobRef(digest godigest.Digest, path string) error
+	DeleteBlobRef(digest godigest.Digest, path string) error
+	GetBlobRefs(digest godigest.Digest) ([]string, error)
+}
+
+func (is *ImageStore) blobRefs() blobRefIndexer {
+	if indexer, ok := is.cache.(blobRefIndexer); ok {
+		return indexer
+	}
+
+	return nil
+}
+
+func (is *ImageStore) putBlobRef(digest godigest.Digest, path string) error {
+	if is.cache != nil {
+		if err := is.cache.PutBlob(digest, path); err != nil {
+			return err
+		}
+	}
+
+	if indexer := is.blobRefs(); indexer != nil {
+		return indexer.PutBlobRef(digest, path)
+	}
+
+	return nil
+}
+
+func (is *ImageStore) deleteBlobRef(digest godigest.Digest, path string) error {
+	if is.cache != nil {
+		if err := is.cache.DeleteBlob(digest, path); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+			return err
+		}
+	}
+
+	if indexer := is.blobRefs(); indexer != nil {
+		if err := indexer.DeleteBlobRef(digest, path); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (is *ImageStore) blobRefsForDigest(digest godigest.Digest) ([]string, error) {
+	if indexer := is.blobRefs(); indexer != nil {
+		paths, err := indexer.GetBlobRefs(digest)
+		if err == nil || !errors.Is(err, zerr.ErrCacheMiss) {
+			return paths, err
+		}
+	}
+
+	if is.cache == nil {
+		return nil, zerr.ErrCacheMiss
+	}
+
+	return is.cache.GetAllBlobs(digest)
+}
+
 func (is *ImageStore) Name() string {
 	return is.storeDriver.Name()
 }
@@ -274,15 +333,13 @@ func (is *ImageStore) promoteBlobCandidate(
 		return err
 	}
 
-	// register global blobstore path as the master/original cache entry first,
-	// so that subsequent PutBlob calls for per-repo paths go into DuplicatesBucket
-	if is.cache != nil {
-		if err := is.cache.PutBlob(digest, globalBlobPath); err != nil {
-			is.log.Error().Err(err).Str("digest", digest.String()).
-				Msg("failed to update cache with global blobstore path during upgrade")
+	// register global blobstore path as the master/original reference first,
+	// so that subsequent writes for per-repo paths are tracked alongside it.
+	if err := is.putBlobRef(digest, globalBlobPath); err != nil {
+		is.log.Error().Err(err).Str("digest", digest.String()).
+			Msg("failed to update blob refs with global blobstore path during upgrade")
 
-			return err
-		}
+		return err
 	}
 
 	is.log.Info().Str("digest", digest.String()).Str("repo", candidate.repoName).
@@ -408,13 +465,11 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 
 		// always register each repo's blob path in the cache as a duplicate,
 		// so GetAllDedupeReposCandidates returns all repos that own this blob
-		if is.cache != nil {
-			if err := is.cache.PutBlob(repoBlobRef.digest, repoBlobRef.blobPath); err != nil {
-				is.log.Error().Err(err).Str("digest", repoBlobRef.digest.String()).Str("repo", repoBlobRef.repoName).
-					Msg("failed to register repo blob path in cache during upgrade")
+		if err := is.putBlobRef(repoBlobRef.digest, repoBlobRef.blobPath); err != nil {
+			is.log.Error().Err(err).Str("digest", repoBlobRef.digest.String()).Str("repo", repoBlobRef.repoName).
+				Msg("failed to register repo blob path in blob refs during upgrade")
 
-				return err
-			}
+			return err
 		}
 	}
 
@@ -1546,7 +1601,7 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 			// store the master copy in the global blobstore
 			gdst := is.BlobPath(storageConstants.GlobalBlobsRepo, dstDigest)
 
-			if err := is.cache.PutBlob(dstDigest, gdst); err != nil {
+			if err := is.putBlobRef(dstDigest, gdst); err != nil {
 				is.log.Error().Err(err).Str("blobPath", gdst).Str("component", "dedupe").
 					Msg("failed to insert blob record")
 
@@ -1581,7 +1636,7 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 
 			is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").Msg("failed to stat")
 			// the actual blob on disk may have been removed by GC, so sync the cache
-			err := is.cache.DeleteBlob(dstDigest, dstRecord)
+			err := is.deleteBlobRef(dstDigest, dstRecord)
 			if err = inject.Error(err); err != nil {
 				//nolint:lll
 				is.log.Error().Err(err).Str("dstDigest", dstDigest.String()).Str("dst", dst).
@@ -1619,7 +1674,7 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 				return err
 			}
 
-			if err := is.cache.PutBlob(dstDigest, dst); err != nil {
+			if err := is.putBlobRef(dstDigest, dst); err != nil {
 				is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
 					Msg("failed to insert blob record")
 
@@ -1713,7 +1768,7 @@ func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]str
 	is.RLock(&lockLatency)
 	defer is.RUnlock(&lockLatency)
 
-	blobsPaths, err := is.cache.GetAllBlobs(digest)
+	blobsPaths, err := is.blobRefsForDigest(digest)
 	if err != nil {
 		// A cache miss means the digest is not present in the cache yet, so there
 		// are simply no dedupe/mount candidates for it — that is the normal case
@@ -1787,7 +1842,7 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 		}
 
 		// put deduped blob in cache
-		if err := is.cache.PutBlob(digest, blobPath); err != nil {
+		if err := is.putBlobRef(digest, blobPath); err != nil {
 			is.log.Error().Err(err).Str("blobPath", blobPath).Str("component", "dedupe").Msg("failed to insert blob record")
 
 			return false, -1, err
@@ -1843,7 +1898,7 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 	}
 
 	// put deduped blob in cache
-	if err := is.cache.PutBlob(digest, blobPath); err != nil {
+	if err := is.putBlobRef(digest, blobPath); err != nil {
 		is.log.Error().Err(err).Str("blobPath", blobPath).Str("component", "dedupe").Msg("failed to insert blob record")
 
 		return false, -1, err
@@ -1887,10 +1942,10 @@ func (is *ImageStore) checkCacheBlob(digest godigest.Digest) (string, error) {
 	if _, err := is.storeDriver.Stat(dstRecord); err != nil {
 		is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to stat blob")
 
-		// the actual blob on disk may have been removed by GC, so sync the cache
-		if err := is.cache.DeleteBlob(digest, dstRecord); err != nil {
+		// the actual blob on disk may have been removed by GC, so sync the blob refs
+		if err := is.deleteBlobRef(digest, dstRecord); err != nil {
 			is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", dstRecord).
-				Msg("failed to remove blob path from cache")
+				Msg("failed to remove blob path from blob refs")
 
 			return "", err
 		}
@@ -2330,7 +2385,7 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 		}
 
 		// remove this repo's blob path from cache (cache may store relative paths)
-		if err := is.cache.DeleteBlob(digest, blobPath); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+		if err := is.deleteBlobRef(digest, blobPath); err != nil {
 			is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", blobPath).
 				Msg("failed to remove blob path from cache")
 
@@ -2358,8 +2413,8 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 		globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
 
 		// if only the global blobstore record remains, remove it as well
-		if paths, err := is.cache.GetAllBlobs(digest); err == nil && len(paths) == 1 {
-			if err := is.cache.DeleteBlob(digest, globalBlobPath); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+		if paths, err := is.blobRefsForDigest(digest); err == nil && len(paths) == 1 {
+			if err := is.deleteBlobRef(digest, globalBlobPath); err != nil {
 				is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", globalBlobPath).
 					Msg("failed to remove global blob path from cache")
 
@@ -2640,7 +2695,7 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 
 				// cache original blob
 				if _, err := is.cache.GetBlob(digest); err != nil {
-					if err := is.cache.PutBlob(digest, originalBlob); err != nil {
+					if err := is.putBlobRef(digest, originalBlob); err != nil {
 						return err
 					}
 				}
@@ -2648,7 +2703,7 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 
 			// cache dedupe blob
 			if ok := is.cache.HasBlob(digest, blobPath); !ok {
-				if err := is.cache.PutBlob(digest, blobPath); err != nil {
+				if err := is.putBlobRef(digest, blobPath); err != nil {
 					return err
 				}
 			}
@@ -2664,7 +2719,7 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 
 			// cache it
 			if ok := is.cache.HasBlob(digest, blobPath); !ok {
-				if err := is.cache.PutBlob(digest, blobPath); err != nil {
+				if err := is.putBlobRef(digest, blobPath); err != nil {
 					return err
 				}
 			}

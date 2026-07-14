@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -69,6 +70,13 @@ func NewBoltDBCache(parameters any, log zlog.Logger) (*BoltDBDriver, error) {
 		if _, err := tx.CreateBucketIfNotExists([]byte(constants.BlobsCache)); err != nil {
 			// this is a serious failure
 			log.Error().Err(err).Str("dbPath", dbPath).Msg("failed to create a root bucket")
+
+			return err
+		}
+
+		if _, err := tx.CreateBucketIfNotExists([]byte(constants.BlobRefs)); err != nil {
+			// this is a serious failure
+			log.Error().Err(err).Str("dbPath", dbPath).Msg("failed to create a blob refs root bucket")
 
 			return err
 		}
@@ -182,7 +190,38 @@ func (d *BoltDBDriver) PutBlob(digest godigest.Digest, path string) error {
 		return err
 	}
 
+	if err := d.putBlobRef(digest, path); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+func (d *BoltDBDriver) putBlobRef(digest godigest.Digest, path string) error {
+	return d.db.Update(func(tx *bbolt.Tx) error {
+		root := tx.Bucket([]byte(constants.BlobRefs))
+		if root == nil {
+			err := zerr.ErrCacheRootBucket
+			d.log.Error().Err(err).Msg("failed to access blob refs root bucket")
+
+			return err
+		}
+
+		bucket, err := root.CreateBucketIfNotExists([]byte(digest.String()))
+		if err != nil {
+			d.log.Error().Err(err).Str("bucket", digest.String()).Msg("failed to create a blob refs bucket")
+
+			return err
+		}
+
+		if err := bucket.Put([]byte(path), nil); err != nil {
+			d.log.Error().Err(err).Str("bucket", digest.String()).Str("value", path).Msg("failed to put blob ref")
+
+			return err
+		}
+
+		return nil
+	})
 }
 
 func (d *BoltDBDriver) GetAllBlobs(digest godigest.Digest) ([]string, error) {
@@ -229,6 +268,36 @@ func (d *BoltDBDriver) GetAllBlobs(digest godigest.Digest) ([]string, error) {
 		}
 
 		return zerr.ErrCacheMiss
+	}); err != nil {
+		return nil, err
+	}
+
+	return blobPaths, nil
+}
+
+func (d *BoltDBDriver) GetBlobRefs(digest godigest.Digest) ([]string, error) {
+	blobPaths := []string{}
+
+	if err := d.db.View(func(tx *bbolt.Tx) error {
+		root := tx.Bucket([]byte(constants.BlobRefs))
+		if root == nil {
+			err := zerr.ErrCacheRootBucket
+			d.log.Error().Err(err).Msg("failed to access blob refs root bucket")
+
+			return err
+		}
+
+		bucket := root.Bucket([]byte(digest.String()))
+		if bucket == nil {
+			return zerr.ErrCacheMiss
+		}
+
+		cursor := bucket.Cursor()
+		for k, _ := cursor.First(); k != nil; k, _ = cursor.Next() {
+			blobPaths = append(blobPaths, string(k))
+		}
+
+		return nil
 	}); err != nil {
 		return nil, err
 	}
@@ -402,5 +471,39 @@ func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 		return err
 	}
 
+	if err := d.deleteBlobRef(digest, path); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+		return err
+	}
+
 	return nil
+}
+
+func (d *BoltDBDriver) deleteBlobRef(digest godigest.Digest, path string) error {
+	return d.db.Update(func(tx *bbolt.Tx) error {
+		root := tx.Bucket([]byte(constants.BlobRefs))
+		if root == nil {
+			return zerr.ErrCacheRootBucket
+		}
+
+		bucket := root.Bucket([]byte(digest.String()))
+		if bucket == nil {
+			return zerr.ErrCacheMiss
+		}
+
+		if err := bucket.Delete([]byte(path)); err != nil {
+			d.log.Error().Err(err).Str("bucket", digest.String()).Str("value", path).Msg("failed to delete blob ref")
+
+			return err
+		}
+
+		if d.getOne(bucket) == nil {
+			if err := root.DeleteBucket([]byte(digest.String())); err != nil {
+				d.log.Error().Err(err).Str("bucket", digest.String()).Msg("failed to delete empty blob refs bucket")
+
+				return err
+			}
+		}
+
+		return nil
+	})
 }
