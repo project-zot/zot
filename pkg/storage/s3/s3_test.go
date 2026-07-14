@@ -3777,13 +3777,19 @@ func TestS3DedupeErr(t *testing.T) {
 			testDigestHex)
 		gdst := path.Join(testDir, storageConstants.GlobalBlobsRepo, ispec.ImageBlobsDir,
 			digest.Algorithm().String(), digest.Encoded())
+		var gdstStatCount atomic.Int32
 
 		// Use a mock cache pre-seeded with the blob path so DedupeBlob is not needed.
-		// StatFn fails so checkCacheBlob returns ErrBlobNotFound.
+		// First stat on gdst is from checkCacheBlob (allow it), second stat is from copyBlob
+		// return path (force error) so CheckBlob deterministically fails.
 		imgStore = createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				if path == gdst {
-					return driver.FileInfoInternal{}, nil
+					if gdstStatCount.Add(1) == 1 {
+						return driver.FileInfoInternal{}, nil
+					}
+
+					return driver.FileInfoInternal{}, errS3
 				}
 
 				return driver.FileInfoInternal{}, errS3
