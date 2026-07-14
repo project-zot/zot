@@ -4141,7 +4141,7 @@ func TestUpgradeToGlobalBlobstore(t *testing.T) {
 		So(err, ShouldBeNil)
 	})
 
-	Convey("Upgrade does not write marker when digests are only legacy 0-byte markers", t, func() {
+	Convey("Upgrade writes marker when digests are only legacy 0-byte markers", t, func() {
 		dir := t.TempDir()
 
 		log := zlog.NewTestLogger()
@@ -4173,7 +4173,11 @@ func TestUpgradeToGlobalBlobstore(t *testing.T) {
 
 		migrationMarkerPath := path.Join(dir, storageConstants.BlobstoreMigratedMarker)
 		_, err = os.Stat(migrationMarkerPath)
-		So(os.IsNotExist(err), ShouldBeTrue)
+		So(err, ShouldBeNil)
+
+		globalBlobs, err := imgStore.GetAllBlobs(storageConstants.GlobalBlobsRepo)
+		So(err, ShouldBeNil)
+		So(slices.Contains(globalBlobs, digest), ShouldBeTrue)
 	})
 
 	Convey("Upgrade does not write marker when repos exist but no digests are promoted", t, func() {
