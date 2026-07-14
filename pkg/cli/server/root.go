@@ -1638,7 +1638,14 @@ func validateGC(config *config.Config, logger zlog.Logger) error {
 				zerr.ErrBadConfig, subPath.GCDelay)
 		}
 
-		if err := gc.ValidateGCTimeWindow(subPath.GCTimeWindow); err != nil {
+		if !subPath.GC {
+			if subPath.GCTimeWindow != "" {
+				logger.Warn().Err(zerr.ErrBadConfig).
+					Str("subPath", name).
+					Str("gcTimeWindow", subPath.GCTimeWindow).
+					Msg("garbage-collect time window specified without enabling garbage-collect, will be ignored")
+			}
+		} else if err := gc.ValidateGCTimeWindow(subPath.GCTimeWindow); err != nil {
 			logger.Error().Err(err).
 				Str("subPath", name).
 				Str("gcTimeWindow", subPath.GCTimeWindow).
