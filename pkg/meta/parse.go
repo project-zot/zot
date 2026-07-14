@@ -538,11 +538,12 @@ func SetImageMetaFromInput(ctx context.Context, repo, reference, mediaType strin
 	// The push time only lives in the metaDB; when it is lost, the manifest blob's storage
 	// mod time is the closest remaining record of when the image was pushed. Pass it as a
 	// hint so a metaDB rebuild doesn't stamp every image with the current time.
+	setOpts := []mTypes.SetRepoReferenceOption{}
 	if found, _, modTime, err := imageStore.StatBlob(repo, digest); err == nil && found {
-		imageMeta.PushTimestamp = modTime
+		setOpts = append(setOpts, mTypes.WithPushTimestamp(modTime))
 	}
 
-	err := metaDB.SetRepoReference(ctx, repo, reference, imageMeta)
+	err := metaDB.SetRepoReference(ctx, repo, reference, imageMeta, setOpts...)
 	if err != nil {
 		log.Error().Err(err).Str("component", "metadb").Msg("failed to set repo meta")
 
