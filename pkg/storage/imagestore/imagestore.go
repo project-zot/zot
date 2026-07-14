@@ -51,6 +51,7 @@ type ImageStore struct {
 	metrics     monitoring.MetricServer
 	events      events.Recorder
 	cache       storageTypes.Cache
+	lifecycle   blobLifecycle
 	dedupe      bool
 	linter      common.Lint
 	commit      bool
@@ -95,6 +96,7 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 		linter:      linter,
 		commit:      commit,
 		cache:       cacheDriver,
+		lifecycle:   newBlobLifecycle(storeDriver),
 		compat:      compat,
 		events:      recorder,
 	}
@@ -265,71 +267,11 @@ func (is *ImageStore) promoteBlobCandidate(
 		return err
 	}
 
-	if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
-		// local filesystem: use hard link (no extra disk space)
-		if err := is.storeDriver.Link(candidate.blobPath, globalBlobPath); err != nil {
-			is.log.Error().Err(err).Str("src", candidate.blobPath).Str("dst", globalBlobPath).
-				Msg("failed to link blob to global blobstore")
+	if err := is.lifecycle.PromoteCandidate(candidate.blobPath, globalBlobPath); err != nil {
+		is.log.Error().Err(err).Str("src", candidate.blobPath).Str("dst", globalBlobPath).
+			Msg("failed to promote blob to global blobstore")
 
-			return err
-		}
-	} else {
-		// S3/GCS: stream blob content to avoid buffering large layers in memory.
-		blobReader, err := is.storeDriver.Reader(candidate.blobPath, 0)
-		if err != nil {
-			is.log.Error().Err(err).Str("src", candidate.blobPath).
-				Msg("failed to open blob reader during upgrade")
-
-			return err
-		}
-
-		blobWriter, err := is.storeDriver.Writer(globalBlobPath, false)
-		if err != nil {
-			_ = blobReader.Close()
-
-			is.log.Error().Err(err).Str("dst", globalBlobPath).
-				Msg("failed to open blob writer during upgrade")
-
-			return err
-		}
-
-		if _, err := io.Copy(blobWriter, blobReader); err != nil {
-			_ = blobWriter.Cancel(context.Background())
-			_ = blobReader.Close()
-			_ = blobWriter.Close()
-
-			is.log.Error().Err(err).Str("src", candidate.blobPath).Str("dst", globalBlobPath).
-				Msg("failed to stream blob during upgrade")
-
-			return err
-		}
-
-		if err := blobWriter.Commit(context.Background()); err != nil {
-			_ = blobWriter.Cancel(context.Background())
-			_ = blobReader.Close()
-			_ = blobWriter.Close()
-
-			is.log.Error().Err(err).Str("dst", globalBlobPath).
-				Msg("failed to commit streamed blob during upgrade")
-
-			return err
-		}
-
-		if err := blobReader.Close(); err != nil {
-			_ = blobWriter.Close()
-
-			is.log.Error().Err(err).Str("src", candidate.blobPath).
-				Msg("failed to close blob reader during upgrade")
-
-			return err
-		}
-
-		if err := blobWriter.Close(); err != nil {
-			is.log.Error().Err(err).Str("dst", globalBlobPath).
-				Msg("failed to close blob writer during upgrade")
-
-			return err
-		}
+		return err
 	}
 
 	// register global blobstore path as the master/original cache entry first,
@@ -1680,7 +1622,7 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 
 		// prevent overwrite original blob
 		if !is.storeDriver.SameFile(dst, dstRecord) {
-			if err := is.storeDriver.Link(dstRecord, dst); err != nil {
+			if err := is.lifecycle.LinkBlob(dstRecord, dst); err != nil {
 				is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
 					Msg("failed to link blobs")
 
@@ -1807,7 +1749,7 @@ func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]str
 		blobPath = filepath.ToSlash(blobPath)
 		blobsDirIndex := strings.LastIndex(blobPath, "/blobs/")
 		repo := blobPath[:blobsDirIndex]
-		if repo == storageConstants.GlobalBlobsRepo {
+		if !is.lifecycle.IncludeRepoInMountCandidates(repo) {
 			continue
 		}
 
@@ -1981,7 +1923,7 @@ func (is *ImageStore) copyBlob(ctx context.Context, repo string, blobPath, dstRe
 
 	_ = is.storeDriver.EnsureDir(filepath.Dir(blobPath))
 
-	if err := is.storeDriver.Link(dstRecord, blobPath); err != nil {
+	if err := is.lifecycle.LinkBlob(dstRecord, blobPath); err != nil {
 		is.log.Error().Err(err).Str("blobPath", blobPath).Str("link", dstRecord).Str("component", "dedupe").
 			Msg("failed to hard link")
 
@@ -2408,7 +2350,7 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 		// Cache miss: with dedupe on remote storage this blob may be the only
 		// content copy backing zero-size duplicates elsewhere.
 		// Defer until the startup walk has rebuilt the cache; GC retries later.
-		if dstRecord == "" && binfo.Size() > 0 && !is.dedupeRebuildDone.Load() {
+		if dstRecord == "" && binfo.Size() > 0 && is.lifecycle.ShouldGateDeleteUntilRebuild() && !is.dedupeRebuildDone.Load() {
 			is.log.Warn().Str("digest", digest.String()).Str("blobPath", blobPath).Str("component", "dedupe").
 				Msg("no cache record for content blob while dedupe rebuild is still running, deferring delete")
 
@@ -2448,7 +2390,8 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 
 	// No cache (dedupe off): leftover placeholders are refilled by the restore
 	// walk; until it completes this blob may be their only content copy.
-	if fmt.Sprintf("%v", is.cache) == fmt.Sprintf("%v", nil) && binfo.Size() > 0 && !is.dedupeRebuildDone.Load() {
+	if fmt.Sprintf("%v", is.cache) == fmt.Sprintf("%v", nil) && binfo.Size() > 0 &&
+		is.lifecycle.ShouldGateDeleteUntilRebuild() && !is.dedupeRebuildDone.Load() {
 		is.log.Warn().Str("digest", digest.String()).Str("blobPath", blobPath).Str("component", "dedupe").
 			Msg("content blob delete requested before dedupe restore walk finished, deferring delete")
 
@@ -2721,7 +2664,7 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 		} else {
 			// if we have an original blob cached then we can safely dedupe the rest of them
 			if originalBlob != "" {
-				if err := is.storeDriver.Link(originalBlob, blobPath); err != nil {
+				if err := is.lifecycle.LinkBlob(originalBlob, blobPath); err != nil {
 					is.log.Error().Err(err).Str("path", blobPath).Str("component", "dedupe").Msg("failed to dedupe blob")
 
 					return err
@@ -2843,7 +2786,7 @@ func (is *ImageStore) RunDedupeBlobs(interval time.Duration, sch *scheduler.Sche
 
 	// Gate deletes of cache-unknown blobs until the walk completes (see deleteBlob).
 	// Local storage dedupes via hardlinks, so deletes there never destroy shared content.
-	if is.storeDriver.Name() != storageConstants.LocalStorageDriverName {
+	if is.lifecycle.ShouldGateDeleteUntilRebuild() {
 		is.dedupeRebuildDone.Store(false)
 	}
 
