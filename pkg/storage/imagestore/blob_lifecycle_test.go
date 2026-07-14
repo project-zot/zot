@@ -1,3 +1,4 @@
+//nolint:testpackage // Tests exercise unexported lifecycle seam directly.
 package imagestore
 
 import (
@@ -15,7 +16,7 @@ import (
 type lifecycleStubDriver struct {
 	nameFn     func() string
 	readerFn   func(path string, offset int64) (io.ReadCloser, error)
-	writerFn   func(path string, append bool) (driver.FileWriter, error)
+	writerFn   func(path string, isAppend bool) (driver.FileWriter, error)
 	linkFn     func(src, dst string) error
 	putContent func(path string, content []byte)
 }
@@ -46,9 +47,9 @@ func (s *lifecycleStubDriver) Stat(path string) (driver.FileInfo, error) {
 	return nil, driver.PathNotFoundError{Path: path}
 }
 
-func (s *lifecycleStubDriver) Writer(path string, append bool) (driver.FileWriter, error) {
+func (s *lifecycleStubDriver) Writer(path string, isAppend bool) (driver.FileWriter, error) {
 	if s.writerFn != nil {
-		return s.writerFn(path, append)
+		return s.writerFn(path, isAppend)
 	}
 
 	return &lifecycleWriterStub{}, nil
@@ -205,7 +206,7 @@ func TestRemoteBlobLifecyclePromoteStreamsContent(t *testing.T) {
 
 			return io.NopCloser(bytes.NewReader(content)), nil
 		},
-		writerFn: func(path string, append bool) (driver.FileWriter, error) {
+		writerFn: func(path string, isAppend bool) (driver.FileWriter, error) {
 			writerCalls++
 
 			return &lifecycleWriterStub{
@@ -266,7 +267,9 @@ func TestRemoteBlobLifecyclePromoteStreamsContent(t *testing.T) {
 
 func TestRemoteBlobLifecycleLinkCreatesMarker(t *testing.T) {
 	called := false
+
 	var writtenPath string
+
 	var marker []byte
 
 	driverStub := &lifecycleStubDriver{
@@ -274,6 +277,7 @@ func TestRemoteBlobLifecycleLinkCreatesMarker(t *testing.T) {
 		putContent: func(path string, content []byte) {
 			called = true
 			writtenPath = path
+
 			marker = append([]byte(nil), content...)
 		},
 	}

@@ -2350,7 +2350,8 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 		// Cache miss: with dedupe on remote storage this blob may be the only
 		// content copy backing zero-size duplicates elsewhere.
 		// Defer until the startup walk has rebuilt the cache; GC retries later.
-		if dstRecord == "" && binfo.Size() > 0 && is.lifecycle.ShouldGateDeleteUntilRebuild() && !is.dedupeRebuildDone.Load() {
+		if dstRecord == "" && binfo.Size() > 0 && is.lifecycle.ShouldGateDeleteUntilRebuild() &&
+			!is.dedupeRebuildDone.Load() {
 			is.log.Warn().Str("digest", digest.String()).Str("blobPath", blobPath).Str("component", "dedupe").
 				Msg("no cache record for content blob while dedupe rebuild is still running, deferring delete")
 
