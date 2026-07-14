@@ -1877,7 +1877,7 @@ func TestGCTimeWindowContains(t *testing.T) {
 
 func TestGCTaskGeneratorTimeWindow(t *testing.T) {
 	Convey("GCTaskGenerator.IsReady respects the configured time window", t, func() {
-		now := time.Now()
+		now := time.Now().UTC()
 
 		Convey("outside the window, generator is not ready", func() {
 			outsideWindow := gcTimeWindow{
