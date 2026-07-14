@@ -3777,6 +3777,7 @@ func TestS3DedupeErr(t *testing.T) {
 			testDigestHex)
 		gdst := path.Join(testDir, storageConstants.GlobalBlobsRepo, ispec.ImageBlobsDir,
 			digest.Algorithm().String(), digest.Encoded())
+
 		var gdstStatCount atomic.Int32
 
 		// Use a mock cache pre-seeded with the blob path so DedupeBlob is not needed.
