@@ -70,12 +70,14 @@ const (
 
 var (
 	// no retries unless explicitly configured in each test.
-	maxRetries   = 1      //nolint: gochecknoglobals
-	username     = "test" //nolint: gochecknoglobals
-	password     = "test" //nolint: gochecknoglobals
-	errSync      = errors.New("sync error, src oci repo differs from dest one")
-	errBadStatus = errors.New("bad http status")
-	ErrTestError = errors.New("testError")
+	maxRetries                = 1      //nolint: gochecknoglobals
+	username                  = "test" //nolint: gochecknoglobals
+	password                  = "test" //nolint: gochecknoglobals
+	errSync                   = errors.New("sync error, src oci repo differs from dest one")
+	errBadStatus              = errors.New("bad http status")
+	errManifestNoResponse     = errors.New("manifest request returned no response")
+	errManifestStatusMismatch = errors.New("manifest status mismatch")
+	ErrTestError              = errors.New("testError")
 )
 
 type TagsList struct {
@@ -8489,10 +8491,11 @@ func waitForManifestStatus(baseURL, repo, reference, contentType string,
 	}
 
 	if resp == nil {
-		return nil, errors.New("manifest request returned no response")
+		return nil, errManifestNoResponse
 	}
 
-	return resp, fmt.Errorf("manifest %s expected status %d, got %d", manifestURL, expectedStatus, resp.StatusCode())
+	return resp, fmt.Errorf("%w: manifest %s expected status %d, got %d", errManifestStatusMismatch,
+		manifestURL, expectedStatus, resp.StatusCode())
 }
 
 func pushBlob(url string, repoName string, buf []byte) godigest.Digest {
