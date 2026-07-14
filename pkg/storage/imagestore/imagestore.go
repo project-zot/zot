@@ -274,18 +274,59 @@ func (is *ImageStore) promoteBlobCandidate(
 			return err
 		}
 	} else {
-		// S3/GCS: copy the actual blob content
-		content, err := is.storeDriver.ReadFile(candidate.blobPath)
+		// S3/GCS: stream blob content to avoid buffering large layers in memory.
+		blobReader, err := is.storeDriver.Reader(candidate.blobPath, 0)
 		if err != nil {
 			is.log.Error().Err(err).Str("src", candidate.blobPath).
-				Msg("failed to read blob during upgrade")
+				Msg("failed to open blob reader during upgrade")
 
 			return err
 		}
 
-		if _, err := is.storeDriver.WriteFile(globalBlobPath, content); err != nil {
+		blobWriter, err := is.storeDriver.Writer(globalBlobPath, false)
+		if err != nil {
+			_ = blobReader.Close()
+
 			is.log.Error().Err(err).Str("dst", globalBlobPath).
-				Msg("failed to write blob to global blobstore")
+				Msg("failed to open blob writer during upgrade")
+
+			return err
+		}
+
+		if _, err := io.Copy(blobWriter, blobReader); err != nil {
+			_ = blobWriter.Cancel(context.Background())
+			_ = blobReader.Close()
+			_ = blobWriter.Close()
+
+			is.log.Error().Err(err).Str("src", candidate.blobPath).Str("dst", globalBlobPath).
+				Msg("failed to stream blob during upgrade")
+
+			return err
+		}
+
+		if err := blobWriter.Commit(context.Background()); err != nil {
+			_ = blobWriter.Cancel(context.Background())
+			_ = blobReader.Close()
+			_ = blobWriter.Close()
+
+			is.log.Error().Err(err).Str("dst", globalBlobPath).
+				Msg("failed to commit streamed blob during upgrade")
+
+			return err
+		}
+
+		if err := blobReader.Close(); err != nil {
+			_ = blobWriter.Close()
+
+			is.log.Error().Err(err).Str("src", candidate.blobPath).
+				Msg("failed to close blob reader during upgrade")
+
+			return err
+		}
+
+		if err := blobWriter.Close(); err != nil {
+			is.log.Error().Err(err).Str("dst", globalBlobPath).
+				Msg("failed to close blob writer during upgrade")
 
 			return err
 		}
