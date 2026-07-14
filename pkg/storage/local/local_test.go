@@ -1635,6 +1635,13 @@ func TestDedupeLinks(t *testing.T) {
 					taskScheduler := runAndGetScheduler()
 					defer taskScheduler.Shutdown()
 
+					markerPath := path.Join(dir, storageConstants.BlobstoreMigratedMarker)
+					err := os.MkdirAll(path.Dir(markerPath), 0o755)
+					So(err, ShouldBeNil)
+
+					err = os.WriteFile(markerPath, []byte("1"), 0o600)
+					So(err, ShouldBeNil)
+
 					imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, &mocks.CacheMock{
 						HasBlobFn: func(digest godigest.Digest, path string) bool {
 							return false
