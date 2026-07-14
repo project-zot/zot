@@ -1344,6 +1344,17 @@ func TestDedupeLinks(t *testing.T) {
 		return os.SameFile(blobInfo1, blobInfo2), nil
 	}
 
+	writeMigrationMarker := func(rootDir string) error {
+		markerPath := path.Join(rootDir, storageConstants.BlobstoreMigratedMarker)
+
+		err := os.MkdirAll(path.Dir(markerPath), 0o755)
+		if err != nil {
+			return err
+		}
+
+		return os.WriteFile(markerPath, []byte("1"), 0o600)
+	}
+
 	testCases := []struct {
 		dedupe   bool
 		expected bool
@@ -1555,8 +1566,15 @@ func TestDedupeLinks(t *testing.T) {
 				})
 
 				Convey("test RunDedupeForDigest directly, trigger stat error on original blob", func() {
+					err := writeMigrationMarker(dir)
+					So(err, ShouldBeNil)
+
 					// rebuild with dedupe true
 					imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+					So(imgStore, ShouldNotBeNil)
+					if imgStore == nil {
+						return
+					}
 
 					duplicateBlobs := []string{
 						path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1),
@@ -1564,7 +1582,7 @@ func TestDedupeLinks(t *testing.T) {
 					}
 
 					// remove original blob so that it can not be statted
-					err := os.Remove(path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1))
+					err = os.Remove(path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1))
 					So(err, ShouldBeNil)
 
 					err = imgStore.RunDedupeForDigest(context.TODO(), godigest.Digest(blobDigest1), true, duplicateBlobs)
@@ -1572,12 +1590,19 @@ func TestDedupeLinks(t *testing.T) {
 				})
 
 				Convey("Intrerrupt rebuilding and restart, checking idempotency", func() {
+					err := writeMigrationMarker(dir)
+					So(err, ShouldBeNil)
+
 					for i := range 10 {
 						taskScheduler := runAndGetScheduler()
 						defer taskScheduler.Shutdown()
 
 						// rebuild with dedupe true
 						imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+						So(imgStore, ShouldNotBeNil)
+						if imgStore == nil {
+							return
+						}
 
 						imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
@@ -1592,6 +1617,11 @@ func TestDedupeLinks(t *testing.T) {
 
 					// rebuild with dedupe true
 					imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+					So(imgStore, ShouldNotBeNil)
+					if imgStore == nil {
+						return
+					}
+
 					imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
 					// wait until rebuild finishes
@@ -1612,7 +1642,15 @@ func TestDedupeLinks(t *testing.T) {
 					taskScheduler := runAndGetScheduler()
 					defer taskScheduler.Shutdown()
 
+					err := writeMigrationMarker(dir)
+					So(err, ShouldBeNil)
+
 					imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, nil, nil, nil)
+					So(imgStore, ShouldNotBeNil)
+					if imgStore == nil {
+						return
+					}
+
 					// rebuild with dedupe true
 					imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 					// wait until rebuild finishes
@@ -1635,11 +1673,7 @@ func TestDedupeLinks(t *testing.T) {
 					taskScheduler := runAndGetScheduler()
 					defer taskScheduler.Shutdown()
 
-					markerPath := path.Join(dir, storageConstants.BlobstoreMigratedMarker)
-					err := os.MkdirAll(path.Dir(markerPath), 0o755)
-					So(err, ShouldBeNil)
-
-					err = os.WriteFile(markerPath, []byte("1"), 0o600)
+					err := writeMigrationMarker(dir)
 					So(err, ShouldBeNil)
 
 					imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, &mocks.CacheMock{
@@ -1655,6 +1689,10 @@ func TestDedupeLinks(t *testing.T) {
 						},
 					}, nil, nil) // rebuild with dedupe true, should have samefile blobs
 					So(imgStore, ShouldNotBeNil)
+					if imgStore == nil {
+						return
+					}
+
 					imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 					// wait until rebuild finishes
 
@@ -1676,6 +1714,9 @@ func TestDedupeLinks(t *testing.T) {
 					taskScheduler := runAndGetScheduler()
 					defer taskScheduler.Shutdown()
 
+					err := writeMigrationMarker(dir)
+					So(err, ShouldBeNil)
+
 					imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, &mocks.CacheMock{
 						HasBlobFn: func(digest godigest.Digest, path string) bool {
 							return false
@@ -1688,6 +1729,11 @@ func TestDedupeLinks(t *testing.T) {
 							return nil
 						},
 					}, nil, nil)
+					So(imgStore, ShouldNotBeNil)
+					if imgStore == nil {
+						return
+					}
+
 					// rebuild with dedupe true, should have samefile blobs
 					imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 					// wait until rebuild finishes
