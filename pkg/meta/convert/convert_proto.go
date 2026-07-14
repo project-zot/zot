@@ -135,6 +135,17 @@ func GetProtoStatistics(stats map[mTypes.ImageDigest]mTypes.DescriptorStatistics
 	return results
 }
 
+// GetProtoPushTimestamp returns the push timestamp for a newly created statistics entry:
+// the ImageMeta hint when set (e.g. the blob storage mod time on a storage re-parse),
+// otherwise the current time.
+func GetProtoPushTimestamp(imageMeta mTypes.ImageMeta) *timestamppb.Timestamp {
+	if imageMeta.PushTimestamp.IsZero() {
+		return timestamppb.Now()
+	}
+
+	return timestamppb.New(imageMeta.PushTimestamp)
+}
+
 func GetProtoPlatforms(platforms []ispec.Platform) []*proto_go.Platform {
 	result := []*proto_go.Platform{}
 

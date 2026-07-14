@@ -241,6 +241,10 @@ type ImageMeta struct {
 	Size      int64           // Size refers to the image descriptor, a manifest or a index (if multiarch)
 	Index     *ispec.Index    // If the image is multiarch the Index will be non-nil
 	Manifests []ManifestMeta  // All manifests under the image, 1 for simple images and many for multiarch
+	// PushTimestamp is an optional hint for when the image was pushed, used only when a new statistics
+	// entry is created (e.g. the manifest blob storage mod time on a storage re-parse). Zero means
+	// unknown and the metaDB falls back to the current time.
+	PushTimestamp time.Time
 }
 
 // ManifestMeta represents all data related to an image manifests (found from the image contents itself).

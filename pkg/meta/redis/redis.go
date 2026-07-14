@@ -836,13 +836,13 @@ func (rc *RedisDB) SetRepoReference(ctx context.Context, repo string,
 			stats = &proto_go.DescriptorStatistics{
 				DownloadCount:     0,
 				LastPullTimestamp: &timestamppb.Timestamp{},
-				PushTimestamp:     timestamppb.Now(),
+				PushTimestamp:     mConvert.GetProtoPushTimestamp(imageMeta),
 				PushedBy:          userid,
 			}
 			protoRepoMeta.Statistics[digestStr] = stats
 		} else {
 			if stats.PushTimestamp.AsTime().IsZero() {
-				stats.PushTimestamp = timestamppb.Now()
+				stats.PushTimestamp = mConvert.GetProtoPushTimestamp(imageMeta)
 			}
 
 			if userid != "" && stats.PushedBy == "" {
