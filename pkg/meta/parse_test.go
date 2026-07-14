@@ -450,7 +450,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) 
 		// Backdate the manifest blob: after a metaDB loss the real push time is gone,
 		// so the storage mod time is the only remaining record of when it was pushed.
 		manifestDigest := image.ManifestDescriptor.Digest
-		blobPath := path.Join(rootDir, repo, "blobs", manifestDigest.Algorithm().String(), manifestDigest.Encoded())
+		blobPath := imageStore.BlobPath(repo, manifestDigest)
 		pushedAt := time.Now().Add(-72 * time.Hour)
 
 		err = os.Chtimes(blobPath, pushedAt, pushedAt)
