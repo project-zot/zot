@@ -67,6 +67,16 @@ func (registry *RemoteRegistry) GetRepositories(ctx context.Context) ([]string, 
 func (registry *RemoteRegistry) getRepoList(ctx context.Context, hostname string) ([]string, error) {
 	repositories := []string{}
 
+	hostRef, err := ref.NewHost(hostname)
+	if err != nil {
+		return repositories, err
+	}
+
+	if _, err := registry.client.Ping(ctx, hostRef); err != nil {
+		registry.log.Debug().Err(err).Str("remote", hostname).
+			Msg("failed to ping remote registry before listing repositories")
+	}
+
 	last := ""
 
 	for {
