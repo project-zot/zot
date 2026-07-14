@@ -1651,7 +1651,8 @@ func validateGC(config *config.Config, logger zlog.Logger) error {
 				Str("gcTimeWindow", subPath.GCTimeWindow).
 				Msg("invalid garbage-collect time window specified")
 
-			return err
+			return fmt.Errorf("%w: invalid garbage-collect time window specified for subPath %q: %w",
+				zerr.ErrBadConfig, name, err)
 		}
 
 		if err := validateGCRules(subPath.Retention, logger); err != nil {

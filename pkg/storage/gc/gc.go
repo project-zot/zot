@@ -121,6 +121,9 @@ func ValidateGCTimeWindow(window string) error {
 }
 
 // newGCTimeWindow parses window if set, logging and ignoring it (returning nil) if invalid.
+// window is expected to already be validated by config.ValidateGCTimeWindow at config-load
+// time, so this error path shouldn't trigger in the running server; it's kept as a safety net
+// for direct callers of this package's exported API that skip that validation.
 func newGCTimeWindow(window string, log zlog.Logger) *gcTimeWindow {
 	if window == "" {
 		return nil
@@ -1188,14 +1191,15 @@ func getDescriptorTag(desc ispec.Descriptor) (string, bool) {
 // and it will execute garbage collection for each repository by creating a task
 // for each repository and pushing it to the task scheduler.
 type GCTaskGenerator struct {
-	imgStore       types.ImageStore
-	gc             GarbageCollect
-	processedRepos map[string]struct{}
-	nextRun        time.Time
-	done           bool
-	rand           *rand.Rand
-	maxDelay       time.Duration
-	timeWindow     *gcTimeWindow
+	imgStore          types.ImageStore
+	gc                GarbageCollect
+	processedRepos    map[string]struct{}
+	nextRun           time.Time
+	done              bool
+	rand              *rand.Rand
+	maxDelay          time.Duration
+	timeWindow        *gcTimeWindow
+	loggedWindowDefer bool
 }
 
 func (gen *GCTaskGenerator) getRandomDelay() time.Duration {
@@ -1257,8 +1261,18 @@ func (gen *GCTaskGenerator) IsReady() bool {
 	startingNewSweep := len(gen.processedRepos) == 0 && gen.nextRun.IsZero()
 
 	if startingNewSweep && gen.timeWindow != nil && !gen.timeWindow.contains(now) {
+		if !gen.loggedWindowDefer {
+			if gen.gc.log.Logger != nil {
+				gen.gc.log.Debug().Msg("GC sweep deferred, outside gcTimeWindow")
+			}
+
+			gen.loggedWindowDefer = true
+		}
+
 		return false
 	}
+
+	gen.loggedWindowDefer = false
 
 	return true
 }

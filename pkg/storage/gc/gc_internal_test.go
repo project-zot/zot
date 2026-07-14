@@ -1922,5 +1922,29 @@ func TestGCTaskGeneratorTimeWindow(t *testing.T) {
 			}
 			So(gen.IsReady(), ShouldBeTrue)
 		})
+
+		Convey("deferral outside the window is only logged once", func() {
+			outsideWindow := gcTimeWindow{
+				startMin: (now.Hour()+1)%24*minutesInHour + now.Minute(),
+				endMin:   (now.Hour()+2)%24*minutesInHour + now.Minute(),
+			}
+
+			gen := &GCTaskGenerator{
+				gc:         GarbageCollect{log: zlog.NewTestLogger()},
+				timeWindow: &outsideWindow,
+			}
+
+			So(gen.IsReady(), ShouldBeFalse)
+			So(gen.loggedWindowDefer, ShouldBeTrue)
+
+			// stays deferred without logging again (no panic, flag stays set)
+			So(gen.IsReady(), ShouldBeFalse)
+			So(gen.loggedWindowDefer, ShouldBeTrue)
+
+			// once the sweep is allowed to proceed, the flag resets for the next deferral episode
+			gen.timeWindow = nil
+			So(gen.IsReady(), ShouldBeTrue)
+			So(gen.loggedWindowDefer, ShouldBeFalse)
+		})
 	})
 }
