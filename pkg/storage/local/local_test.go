@@ -66,6 +66,7 @@ var DeleteReferrers = config.ImageRetention{ //nolint: gochecknoglobals
 var (
 	errCache              = errors.New("new cache error")
 	errRecheckStatFailed  = errors.New("recheck stat failed")
+	errBlobInfoNil        = errors.New("blob stat returned nil file info")
 	errMarkerDeleteFailed = errors.New("delete failed")
 	errMarkerWriteFailed  = errors.New("write failed")
 )
@@ -1327,9 +1328,17 @@ func TestDedupeLinks(t *testing.T) {
 			return false, err
 		}
 
+		if blobInfo1 == nil {
+			return false, errBlobInfoNil
+		}
+
 		blobInfo2, err := waitForBlobStat(blobPath2)
 		if err != nil {
 			return false, err
+		}
+
+		if blobInfo2 == nil {
+			return false, errBlobInfoNil
 		}
 
 		return os.SameFile(blobInfo1, blobInfo2), nil
