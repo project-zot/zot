@@ -45,25 +45,26 @@ type Options struct {
 	MaxSchedulerDelay time.Duration
 
 	// TimeWindow restricts when a new periodic GC sweep over all repositories may
-	// start to a daily time-of-day window, e.g. "01:00-08:00". A sweep that starts
-	// inside the window is allowed to run to completion even past the window's end,
-	// so GC work stays amortized and orphaned blobs don't outpace a narrow window.
+	// start to a daily time-of-day window in UTC, e.g. "01:00-08:00". A sweep that
+	// starts inside the window is allowed to run to completion even past the window's
+	// end, so GC work stays amortized and orphaned blobs don't outpace a narrow window.
 	// Empty means no restriction.
 	TimeWindow string
 
 	ImageRetention config.ImageRetention
 }
 
-// gcTimeWindow represents a daily recurring time-of-day window (in local time),
+// gcTimeWindow represents a daily recurring time-of-day window (in UTC),
 // expressed in minutes since midnight, during which GC tasks are allowed to run.
 type gcTimeWindow struct {
 	startMin int
 	endMin   int
 }
 
-// contains returns true if t falls inside the window. A window whose start is after
-// its end (e.g. "22:00-06:00") is treated as wrapping past midnight.
+// contains returns true if t, interpreted in UTC, falls inside the window. A window
+// whose start is after its end (e.g. "22:00-06:00") is treated as wrapping past midnight.
 func (w gcTimeWindow) contains(t time.Time) bool {
+	t = t.UTC()
 	minutes := t.Hour()*minutesInHour + t.Minute()
 
 	if w.startMin <= w.endMin {
