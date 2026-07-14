@@ -88,9 +88,81 @@ func (d *RedisDriver) SetClient(client redis.UniversalClient) {
 	d.db = client
 }
 
-func (d *RedisDriver) PutBlob(digest godigest.Digest, path string) error {
+func (d *RedisDriver) putBlobLike(digest godigest.Digest, path, rootBucket, putLogMsg string) error {
 	ctx := context.TODO()
 
+	exists, err := d.db.HExists(ctx, d.join(rootBucket, constants.OriginalBucket), digest.String()).Result()
+	if err != nil {
+		return err
+	}
+
+	if _, err := d.db.TxPipelined(ctx, func(txrp redis.Pipeliner) error {
+		if !exists {
+			if err := txrp.HSet(ctx, d.join(rootBucket, constants.OriginalBucket), digest.String(), path).Err(); err != nil {
+				d.log.Error().Err(err).Str("hset", d.join(rootBucket, constants.OriginalBucket)).
+					Str("value", path).Msg(putLogMsg)
+
+				return err
+			}
+
+			return nil
+		}
+
+		currentPath, err := d.db.HGet(ctx, d.join(rootBucket, constants.OriginalBucket), digest.String()).Result()
+		if err == nil && currentPath == path {
+			return nil
+		}
+
+		if err := txrp.SAdd(ctx, d.join(rootBucket, constants.DuplicatesBucket, digest.String()), path).Err(); err != nil {
+			d.log.Error().Err(err).Str("sadd", d.join(rootBucket, constants.DuplicatesBucket, digest.String())).
+				Str("value", path).Msg(putLogMsg)
+
+			return err
+		}
+
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (d *RedisDriver) getAllBlobLike(digest godigest.Digest, rootBucket, getLogMsg string) ([]string, error) {
+	ctx := context.TODO()
+
+	originalPath, err := d.db.HGet(ctx, d.join(rootBucket, constants.OriginalBucket), digest.String()).Result()
+	if err != nil {
+		if goerrors.Is(err, redis.Nil) {
+			return nil, zerr.ErrCacheMiss
+		}
+
+		d.log.Error().Err(err).Str("hget", d.join(rootBucket, constants.OriginalBucket)).
+			Str("digest", digest.String()).Msg(getLogMsg)
+
+		return nil, err
+	}
+
+	blobPaths := []string{originalPath}
+
+	duplicateBlobPaths, err := d.db.SMembers(ctx, d.join(rootBucket, constants.DuplicatesBucket, digest.String())).Result()
+	if err != nil {
+		d.log.Error().Err(err).Str("smembers", d.join(rootBucket, constants.DuplicatesBucket, digest.String())).
+			Str("digest", digest.String()).Msg(getLogMsg)
+
+		return nil, err
+	}
+
+	for _, item := range duplicateBlobPaths {
+		if item != originalPath {
+			blobPaths = append(blobPaths, item)
+		}
+	}
+
+	return blobPaths, nil
+}
+
+func (d *RedisDriver) PutBlob(digest godigest.Digest, path string) error {
 	if path == "" {
 		d.log.Error().Err(zerr.ErrEmptyValue).Str("digest", digest.String()).Msg("failed to provide non-empty path")
 
@@ -124,59 +196,10 @@ func (d *RedisDriver) PutBlob(digest godigest.Digest, path string) error {
 		}
 	}()
 
-	// see if the blob digest exists.
-	exists, err := d.db.HExists(ctx, d.join(constants.BlobsCache, constants.OriginalBucket), digest.String()).Result()
-	if err != nil {
-		return err
-	}
-
-	if _, err := d.db.TxPipelined(ctx, func(txrp redis.Pipeliner) error {
-		if !exists {
-			// add the key value pair [digest, path] to blobs:origin if not
-			// exist already. the path becomes the canonical blob we do this in
-			// a transaction to make sure that if something is in the set, then
-			// it is guaranteed to always have a path
-			// note that there is a race, but the worst case is that a different
-			// origin path that is still valid is used.
-			if err := txrp.HSet(ctx, d.join(constants.BlobsCache, constants.OriginalBucket),
-				digest.String(), path).Err(); err != nil {
-				d.log.Error().Err(err).Str("hset", d.join(constants.BlobsCache, constants.OriginalBucket)).
-					Str("value", path).Msg("unable to put record")
-
-				return err
-			}
-
-			// first entry is only stored as the original, not as a duplicate
-			return nil
-		}
-
-		// check if this is the same as the original (idempotent)
-		currentPath, err := d.db.HGet(ctx, d.join(constants.BlobsCache, constants.OriginalBucket),
-			digest.String()).Result()
-		if err == nil && currentPath == path {
-			return nil
-		}
-
-		// add path to the set of paths which the digest represents
-		if err := txrp.SAdd(ctx, d.join(constants.BlobsCache, constants.DuplicatesBucket,
-			digest.String()), path).Err(); err != nil {
-			d.log.Error().Err(err).Str("sadd", d.join(constants.BlobsCache, constants.DuplicatesBucket, digest.String())).
-				Str("value", path).Msg("unable to put record")
-
-			return err
-		}
-
-		return nil
-	}); err != nil {
-		return err
-	}
-
-	return nil
+	return d.putBlobLike(digest, path, constants.BlobsCache, "unable to put record")
 }
 
 func (d *RedisDriver) PutBlobRef(digest godigest.Digest, path string) error {
-	ctx := context.TODO()
-
 	if path == "" {
 		d.log.Error().Err(zerr.ErrEmptyValue).Str("digest", digest.String()).Msg("failed to provide non-empty path")
 
@@ -209,41 +232,7 @@ func (d *RedisDriver) PutBlobRef(digest godigest.Digest, path string) error {
 		}
 	}()
 
-	exists, err := d.db.HExists(ctx, d.join(constants.BlobRefs, constants.OriginalBucket), digest.String()).Result()
-	if err != nil {
-		return err
-	}
-
-	if _, err := d.db.TxPipelined(ctx, func(txrp redis.Pipeliner) error {
-		if !exists {
-			if err := txrp.HSet(ctx, d.join(constants.BlobRefs, constants.OriginalBucket), digest.String(), path).Err(); err != nil {
-				d.log.Error().Err(err).Str("hset", d.join(constants.BlobRefs, constants.OriginalBucket)).
-					Str("value", path).Msg("unable to put blob ref")
-
-				return err
-			}
-
-			return nil
-		}
-
-		currentPath, err := d.db.HGet(ctx, d.join(constants.BlobRefs, constants.OriginalBucket), digest.String()).Result()
-		if err == nil && currentPath == path {
-			return nil
-		}
-
-		if err := txrp.SAdd(ctx, d.join(constants.BlobRefs, constants.DuplicatesBucket, digest.String()), path).Err(); err != nil {
-			d.log.Error().Err(err).Str("sadd", d.join(constants.BlobRefs, constants.DuplicatesBucket, digest.String())).
-				Str("value", path).Msg("unable to put blob ref")
-
-			return err
-		}
-
-		return nil
-	}); err != nil {
-		return err
-	}
-
-	return nil
+	return d.putBlobLike(digest, path, constants.BlobRefs, "unable to put blob ref")
 }
 
 func (d *RedisDriver) GetBlob(digest godigest.Digest) (string, error) {
@@ -265,78 +254,11 @@ func (d *RedisDriver) GetBlob(digest godigest.Digest) (string, error) {
 }
 
 func (d *RedisDriver) GetAllBlobs(digest godigest.Digest) ([]string, error) {
-	blobPaths := []string{}
-
-	ctx := context.TODO()
-
-	originalPath, err := d.db.HGet(ctx, d.join(constants.BlobsCache, constants.OriginalBucket), digest.String()).Result()
-	if err != nil {
-		if goerrors.Is(err, redis.Nil) {
-			return nil, zerr.ErrCacheMiss
-		}
-
-		d.log.Error().Err(err).Str("hget", d.join(constants.BlobsCache, constants.OriginalBucket)).
-			Str("digest", digest.String()).Msg("unable to get record")
-
-		return nil, err
-	}
-
-	blobPaths = append(blobPaths, originalPath)
-
-	// see if we are in the set
-	duplicateBlobPaths, err := d.db.SMembers(ctx, d.join(constants.BlobsCache, constants.DuplicatesBucket,
-		digest.String())).Result()
-	if err != nil {
-		d.log.Error().Err(err).Str("smembers", d.join(constants.BlobsCache, constants.DuplicatesBucket, digest.String())).
-			Str("digest", digest.String()).Msg("unable to get record")
-
-		return nil, err
-	}
-
-	for _, item := range duplicateBlobPaths {
-		if item != originalPath {
-			blobPaths = append(blobPaths, item)
-		}
-	}
-
-	return blobPaths, nil
+	return d.getAllBlobLike(digest, constants.BlobsCache, "unable to get record")
 }
 
 func (d *RedisDriver) GetBlobRefs(digest godigest.Digest) ([]string, error) {
-	blobPaths := []string{}
-
-	ctx := context.TODO()
-
-	originalPath, err := d.db.HGet(ctx, d.join(constants.BlobRefs, constants.OriginalBucket), digest.String()).Result()
-	if err != nil {
-		if goerrors.Is(err, redis.Nil) {
-			return nil, zerr.ErrCacheMiss
-		}
-
-		d.log.Error().Err(err).Str("hget", d.join(constants.BlobRefs, constants.OriginalBucket)).
-			Str("digest", digest.String()).Msg("unable to get blob ref")
-
-		return nil, err
-	}
-
-	blobPaths = append(blobPaths, originalPath)
-
-	duplicateBlobPaths, err := d.db.SMembers(ctx, d.join(constants.BlobRefs, constants.DuplicatesBucket,
-		digest.String())).Result()
-	if err != nil {
-		d.log.Error().Err(err).Str("smembers", d.join(constants.BlobRefs, constants.DuplicatesBucket, digest.String())).
-			Str("digest", digest.String()).Msg("unable to get blob ref")
-
-		return nil, err
-	}
-
-	for _, item := range duplicateBlobPaths {
-		if item != originalPath {
-			blobPaths = append(blobPaths, item)
-		}
-	}
-
-	return blobPaths, nil
+	return d.getAllBlobLike(digest, constants.BlobRefs, "unable to get blob ref")
 }
 
 func (d *RedisDriver) HasBlob(digest godigest.Digest, path string) bool {
@@ -535,7 +457,8 @@ func (d *RedisDriver) DeleteBlobRef(digest godigest.Digest, path string) error {
 		return nil
 	}
 
-	if _, err := d.db.HDel(ctx, d.join(constants.BlobRefs, constants.OriginalBucket), digest.String()).Result(); err != nil {
+	if _, err := d.db.HDel(ctx, d.join(constants.BlobRefs, constants.OriginalBucket),
+		digest.String()).Result(); err != nil {
 		d.log.Error().Err(err).Str("hdel", d.join(constants.BlobRefs, constants.OriginalBucket)).Str("value", path).
 			Msg("failed to delete record")
 

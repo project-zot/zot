@@ -370,9 +370,10 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 		}
 
 		// skip internal dirs
-		if strings.HasSuffix(fileInfo.Path(), syncConstants.SyncBlobUploadDir) ||
-			strings.HasSuffix(fileInfo.Path(), ispec.ImageBlobsDir) ||
-			strings.HasSuffix(fileInfo.Path(), storageConstants.BlobUploadDir) {
+		base := filepath.Base(fileInfo.Path())
+		if base == syncConstants.SyncBlobUploadDir ||
+			base == ispec.ImageBlobsDir ||
+			base == storageConstants.BlobUploadDir {
 			return driver.ErrSkipDir
 		}
 

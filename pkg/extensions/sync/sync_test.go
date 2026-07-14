@@ -7579,8 +7579,8 @@ func TestSyncImageIndex(t *testing.T) {
 				t.Logf("waitsync(%s, %s)", dctlr.Config.Storage.RootDirectory, "index")
 				waitSync(dctlr.Config.Storage.RootDirectory, "index")
 
-				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
-					Get(destBaseURL + "/v2/index/manifests/latest")
+				resp, err = waitForManifestStatus(destBaseURL, "index", "latest", ispec.MediaTypeImageIndex,
+					http.StatusOK, 30*time.Second)
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 				So(resp.Body(), ShouldNotBeEmpty)
@@ -7705,8 +7705,8 @@ func TestSyncImageIndex(t *testing.T) {
 				// Wait for SyncRepo to finish processing all tags for the "index" repo.
 				So(waitFinishedSyncingRepo(dctlr.Config.Log.Output, "index", 60*time.Second), ShouldBeTrue)
 
-				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
-					Get(destBaseURL + "/v2/index/manifests/root")
+				resp, err = waitForManifestStatus(destBaseURL, "index", "root", ispec.MediaTypeImageIndex,
+					http.StatusOK, 30*time.Second)
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 				So(resp.Body(), ShouldNotBeEmpty)
@@ -8461,6 +8461,37 @@ func waitSync(rootDir, repoName string) {
 
 		time.Sleep(500 * time.Millisecond)
 	}
+}
+
+func waitForManifestStatus(baseURL, repo, reference, contentType string,
+	expectedStatus int, timeout time.Duration,
+) (*resty.Response, error) {
+	manifestURL := fmt.Sprintf("%s/v2/%s/manifests/%s", baseURL, repo, reference)
+	deadline := time.Now().Add(timeout)
+
+	var (
+		resp *resty.Response
+		err  error
+	)
+
+	for time.Now().Before(deadline) {
+		resp, err = resty.R().SetHeader("Content-Type", contentType).Get(manifestURL)
+		if err == nil && resp.StatusCode() == expectedStatus {
+			return resp, nil
+		}
+
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	if resp == nil {
+		return nil, errors.New("manifest request returned no response")
+	}
+
+	return resp, fmt.Errorf("manifest %s expected status %d, got %d", manifestURL, expectedStatus, resp.StatusCode())
 }
 
 func pushBlob(url string, repoName string, buf []byte) godigest.Digest {
