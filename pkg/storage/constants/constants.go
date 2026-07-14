@@ -13,6 +13,7 @@ const (
 	RLOCK                   = "RLock"
 	RWLOCK                  = "RWLock"
 	BlobsCache              = "blobs"
+	BlobRefs                = "blob_refs"
 	DuplicatesBucket        = "duplicates"
 	OriginalBucket          = "original"
 	DBExtensionName         = ".db"

@@ -33,6 +33,10 @@ type Blob struct {
 	OriginalBlobPath  string   `dynamodbav:"OriginalBlobPath,string"`
 }
 
+func (d *DynamoDBDriver) blobRefDigest(digest godigest.Digest) string {
+	return "blob_refs:" + digest.String()
+}
+
 func (d *DynamoDBDriver) NewTable(tableName string) error {
 	//nolint:mnd
 	_, err := d.client.CreateTable(context.TODO(), &dynamodb.CreateTableInput{
@@ -178,6 +182,192 @@ func (d *DynamoDBDriver) GetAllBlobs(digest godigest.Digest) ([]string, error) {
 	}
 
 	return blobPaths, nil
+}
+
+func (d *DynamoDBDriver) PutBlobRef(digest godigest.Digest, path string) error {
+	if path == "" {
+		d.log.Error().Err(zerr.ErrEmptyValue).Str("digest", digest.String()).Msg("failed to put blob ref because the path provided is empty")
+
+		return zerr.ErrEmptyValue
+	}
+
+	refDigest := d.blobRefDigest(digest)
+
+	var originBlob string
+
+	for {
+		var err error
+
+		originBlob, err = d.GetBlob(godigest.Digest(refDigest))
+		if err != nil {
+			if !errors.Is(err, zerr.ErrCacheMiss) {
+				return err
+			}
+
+			if err := d.putOriginBlob(godigest.Digest(refDigest), path); err != nil {
+				var conditionalErr *types.ConditionalCheckFailedException
+				if errors.As(err, &conditionalErr) {
+					continue
+				}
+
+				return err
+			}
+
+			return nil
+		}
+
+		if originBlob == "" {
+			if err := d.putOriginBlob(godigest.Digest(refDigest), path); err != nil {
+				var conditionalErr *types.ConditionalCheckFailedException
+				if errors.As(err, &conditionalErr) {
+					continue
+				}
+
+				return err
+			}
+
+			return nil
+		}
+
+		break
+	}
+
+	if originBlob == path {
+		return nil
+	}
+
+	expression := "ADD DuplicateBlobPath :i"
+	attrPath := types.AttributeValueMemberSS{Value: []string{path}}
+
+	if err := d.updateItem(godigest.Digest(refDigest), expression, map[string]types.AttributeValue{":i": &attrPath}, nil); err != nil {
+		d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("failed to put blob ref")
+
+		return err
+	}
+
+	return nil
+}
+
+func (d *DynamoDBDriver) GetBlobRefs(digest godigest.Digest) ([]string, error) {
+	refDigest := d.blobRefDigest(digest)
+
+	resp, err := d.client.GetItem(context.TODO(), &dynamodb.GetItemInput{
+		TableName: aws.String(d.tableName),
+		Key: map[string]types.AttributeValue{
+			"Digest": &types.AttributeValueMemberS{Value: refDigest},
+		},
+	})
+	if err != nil {
+		d.log.Error().Err(err).Str("tableName", d.tableName).Msg("failed to get blob ref")
+
+		return nil, err
+	}
+
+	out := Blob{}
+
+	if resp.Item == nil {
+		return nil, zerr.ErrCacheMiss
+	}
+
+	_ = attributevalue.UnmarshalMap(resp.Item, &out)
+
+	blobPaths := []string{out.OriginalBlobPath}
+	for _, item := range out.DuplicateBlobPath {
+		if item != out.OriginalBlobPath {
+			blobPaths = append(blobPaths, item)
+		}
+	}
+
+	return blobPaths, nil
+}
+
+func (d *DynamoDBDriver) DeleteBlobRef(digest godigest.Digest, path string) error {
+	refDigest := d.blobRefDigest(digest)
+	m_marshaledKey, _ := attributevalue.MarshalMap(map[string]any{"Digest": refDigest})
+
+	duplicateBlob, err := d.GetDuplicateBlob(godigest.Digest(refDigest))
+	if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+		return err
+	}
+
+	if duplicateBlob != "" {
+		resp, err := d.client.GetItem(context.TODO(), &dynamodb.GetItemInput{
+			TableName: aws.String(d.tableName),
+			Key: map[string]types.AttributeValue{
+				"Digest": &types.AttributeValueMemberS{Value: refDigest},
+			},
+		})
+		if err != nil {
+			return err
+		}
+
+		out := Blob{}
+		if resp.Item != nil {
+			_ = attributevalue.UnmarshalMap(resp.Item, &out)
+
+			if slices.Contains(out.DuplicateBlobPath, path) {
+				expression := "DELETE DuplicateBlobPath :i"
+				attrPath := types.AttributeValueMemberSS{Value: []string{path}}
+
+				if err := d.updateItem(godigest.Digest(refDigest), expression, map[string]types.AttributeValue{":i": &attrPath}, nil); err != nil {
+					d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("failed to delete blob ref")
+
+					return err
+				}
+
+				return nil
+			}
+		}
+	}
+
+	originBlob, err := d.GetBlob(godigest.Digest(refDigest))
+	if err != nil {
+		return err
+	}
+
+	if originBlob == path {
+		remainingDuplicate, err := d.GetDuplicateBlob(godigest.Digest(refDigest))
+		if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+			return err
+		}
+
+		if remainingDuplicate != "" {
+			return nil
+		}
+
+		conditionExpression := "attribute_not_exists(DuplicateBlobPath) OR size(DuplicateBlobPath) = :zero"
+		zero := types.AttributeValueMemberN{Value: "0"}
+
+		_, err = d.client.DeleteItem(context.TODO(), &dynamodb.DeleteItemInput{
+			Key:                       m_marshaledKey,
+			TableName:                 &d.tableName,
+			ConditionExpression:       &conditionExpression,
+			ExpressionAttributeValues: map[string]types.AttributeValue{":zero": &zero},
+		})
+		if err != nil {
+			var conditionalErr *types.ConditionalCheckFailedException
+			if errors.As(err, &conditionalErr) {
+				return nil
+			}
+
+			d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("failed to delete blob ref")
+
+			return err
+		}
+
+		return nil
+	}
+
+	if originBlob == "" {
+		_, _ = d.client.DeleteItem(context.TODO(), &dynamodb.DeleteItemInput{
+			Key:       m_marshaledKey,
+			TableName: &d.tableName,
+		})
+
+		return zerr.ErrCacheMiss
+	}
+
+	return zerr.ErrCacheMiss
 }
 
 func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
