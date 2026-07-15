@@ -1114,8 +1114,8 @@ func TestS3Dedupe(t *testing.T) {
 				expectedSize, repo, digest.Encoded(), statErr)
 		}
 
-		return fmt.Errorf("timed out waiting for size %d on blob %s/%s, observed %d",
-			expectedSize, repo, digest.Encoded(), observedSize)
+		return fmt.Errorf("%w: size %d not reached on blob %s/%s (observed %d)",
+			context.DeadlineExceeded, expectedSize, repo, digest.Encoded(), observedSize)
 	}
 
 	Convey("Dedupe", t, func(c C) {
