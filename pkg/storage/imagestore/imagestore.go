@@ -726,70 +726,33 @@ func (is *ImageStore) GetRepositories() ([]string, error) {
 	return stores, err
 }
 
-func (is *ImageStore) getRepositoriesNoLock() ([]string, error) {
-	dir := is.rootDir
-	stores := make([]string, 0)
-
-	err := is.storeDriver.Walk(dir, func(fileInfo driver.FileInfo) error {
-		if !fileInfo.IsDir() {
-			return nil
-		}
-
-		// skip internal sync/upload/blobs dirs no need to validate them as repos
-		if strings.HasSuffix(fileInfo.Path(), syncConstants.SyncBlobUploadDir) ||
-			strings.HasSuffix(fileInfo.Path(), ispec.ImageBlobsDir) ||
-			strings.HasSuffix(fileInfo.Path(), storageConstants.BlobUploadDir) {
-			return driver.ErrSkipDir
-		}
-
-		rel, err := filepath.Rel(is.rootDir, fileInfo.Path())
-		if err != nil {
-			return nil //nolint:nilerr // ignore paths that are not under root dir
-		}
-
-		rel = filepath.ToSlash(rel)
-
-		if ok, err := is.ValidateRepo(rel); !ok || err != nil {
-			return nil //nolint:nilerr // ignore invalid repos
-		}
-
-		stores = append(stores, rel)
-
-		return nil
-	})
-
-	var perr driver.PathNotFoundError
-	if errors.As(err, &perr) {
-		return stores, nil
-	}
-
-	return stores, err
-}
-
 func (is *ImageStore) isDigestReferencedAcrossRepos(digest godigest.Digest) (bool, error) {
-	repositories, err := is.getRepositoriesNoLock()
+	blobPaths, err := is.blobRefsForDigest(digest)
 	if err != nil {
+		if errors.Is(err, zerr.ErrCacheMiss) {
+			return false, nil
+		}
+
 		return false, err
 	}
 
-	for _, repoName := range repositories {
-		if repoName == storageConstants.GlobalBlobsRepo {
+	rootPrefix := filepath.ToSlash(is.rootDir)
+
+	for _, blobPath := range blobPaths {
+		normalizedPath := filepath.ToSlash(blobPath)
+		normalizedPath = strings.TrimPrefix(normalizedPath, "./")
+
+		if relativePath, ok := strings.CutPrefix(normalizedPath, rootPrefix+"/"); ok {
+			normalizedPath = relativePath
+		}
+
+		normalizedPath = strings.TrimPrefix(normalizedPath, "/")
+
+		if strings.HasPrefix(normalizedPath, storageConstants.GlobalBlobsRepo+"/") {
 			continue
 		}
 
-		referenced, err := common.IsBlobReferenced(is, repoName, digest, is.log)
-		if err != nil {
-			if errors.Is(err, zerr.ErrRepoNotFound) || errors.Is(err, zerr.ErrBlobNotFound) ||
-				errors.Is(err, zerr.ErrManifestNotFound) {
-				continue
-			}
-
-			return false, err
-		}
-
-		if referenced {
-			return true, nil
-		}
+		return true, nil
 	}
 
 	return false, nil
