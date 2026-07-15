@@ -1726,7 +1726,7 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 		blob := image.Layers[0]
 		blobDigest := godigest.FromBytes(blob)
 		blobSize := len(blob)
-		blobPath := imgStore.BlobPath(repoName, blobDigest)
+		blobPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, blobDigest)
 
 		ok, size, err := imgStore.CheckBlob(context.Background(), repoName, blobDigest)
 		So(ok, ShouldBeTrue)
@@ -1768,7 +1768,7 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 		blob := image.Images[0].Layers[0]
 		blobDigest := godigest.FromBytes(blob)
 		blobSize := len(blob)
-		blobPath := imgStore.BlobPath(repoName, blobDigest)
+		blobPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, blobDigest)
 
 		ok, size, err := imgStore.CheckBlob(context.Background(), repoName, blobDigest)
 		So(ok, ShouldBeTrue)
