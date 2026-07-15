@@ -19,6 +19,7 @@ import (
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
+	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/gcs"
 	"zotregistry.dev/zot/v2/pkg/storage/imagestore"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
@@ -66,10 +67,11 @@ func TestGetBlobRedirectURL(t *testing.T) {
 			repo := "repo"
 			digest := godigest.FromString("blob-content")
 			expectedBlobPath := store.BlobPath(repo, digest)
+			expectedGlobalBlobPath := store.BlobPath(storageConstants.GlobalBlobsRepo, digest)
 			expectedURL := "https://example.com/signed/blob"
 
 			storeMock.StatFn = func(_ context.Context, path string) (driver.FileInfo, error) {
-				So(path, ShouldEqual, expectedBlobPath)
+				So(path == expectedBlobPath || path == expectedGlobalBlobPath, ShouldBeTrue)
 
 				return &mocks.FileInfoMock{
 					PathFn: func() string { return path },
@@ -78,7 +80,7 @@ func TestGetBlobRedirectURL(t *testing.T) {
 			}
 
 			storeMock.RedirectURLFn = func(_ *http.Request, path string) (string, error) {
-				So(path, ShouldEqual, expectedBlobPath)
+				So(path, ShouldEqual, expectedGlobalBlobPath)
 
 				return expectedURL, nil
 			}
