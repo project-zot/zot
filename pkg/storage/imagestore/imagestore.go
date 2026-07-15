@@ -1852,7 +1852,19 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 		return true, blobSize, nil
 	}
 
-	if binfo.Size() > 0 {
+	resolvedPath, err := is.lifecycle.ResolveReadPath(blobPath, digest, binfo.Size(), is.checkCacheBlob)
+	if err != nil {
+		// Cache miss / not-found is a normal condition when the blob truly doesn't exist.
+		if errors.Is(err, zerr.ErrCacheMiss) || errors.Is(err, zerr.ErrBlobNotFound) {
+			is.log.Debug().Err(err).Str("digest", digest.String()).Msg("cache miss for blob")
+		} else {
+			is.log.Warn().Err(err).Str("digest", digest.String()).Msg("failed to lookup blob in cache")
+		}
+
+		return false, -1, zerr.ErrBlobNotFound
+	}
+
+	if resolvedPath == blobPath {
 		// try to find blob size in blob descriptors, if blob can not be found
 		desc, err := common.GetBlobDescriptorFromRepo(is, repo, digest, is.log)
 		if err != nil || desc.Size == binfo.Size() {
@@ -1869,31 +1881,7 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 		}
 	}
 
-	// Size == 0: either a genuine empty blob, or an S3-style deduped placeholder.
-	// Distinguish by comparing the digest against the hash of empty content for
-	// the same algorithm (cheap single-pass hash over 0 bytes).
-	emptyDigest := digest.Algorithm().FromBytes(nil)
-	if emptyDigest == digest {
-		// Genuine empty blob (e.g. sha256:e3b0c44... or sha512:cf83e13...).
-		is.log.Debug().Str("blob path", blobPath).Msg("empty blob found")
-
-		return true, 0, nil
-	}
-
-	// S3-style deduped placeholder: the real content lives elsewhere in the cache.
-	dstRecord, err := is.checkCacheBlob(digest)
-	if err != nil {
-		// Cache miss / not-found is a normal condition when the blob truly doesn't exist.
-		if errors.Is(err, zerr.ErrCacheMiss) || errors.Is(err, zerr.ErrBlobNotFound) {
-			is.log.Debug().Err(err).Str("digest", digest.String()).Msg("cache miss for blob")
-		} else {
-			is.log.Warn().Err(err).Str("digest", digest.String()).Msg("failed to lookup blob in cache")
-		}
-
-		return false, -1, zerr.ErrBlobNotFound
-	}
-
-	blobSize, err := is.copyBlob(ctx, repo, blobPath, dstRecord)
+	blobSize, err := is.copyBlob(ctx, repo, blobPath, resolvedPath)
 	if err != nil {
 		return false, -1, zerr.ErrBlobNotFound
 	}
@@ -2050,27 +2038,17 @@ func (is *ImageStore) originalBlobInfo(repo string, digest godigest.Digest) (dri
 		return nil, zerr.ErrBlobNotFound
 	}
 
-	if binfo.Size() == 0 {
-		// A zero-size file is either a genuine empty blob or an S3-style
-		// deduplication placeholder pointing into the cache.  Distinguish the
-		// two by checking whether the digest matches the hash of zero bytes for
-		// the same algorithm (cheap single-pass hash over 0 bytes).
-		emptyDigest := digest.Algorithm().FromBytes(nil)
-		if emptyDigest == digest {
-			// Genuine empty blob – return its FileInfo as-is.
-			return binfo, nil
-		}
+	resolvedPath, err := is.lifecycle.ResolveReadPath(blobPath, digest, binfo.Size(), is.checkCacheBlob)
+	if err != nil {
+		is.log.Debug().Err(err).Str("digest", digest.String()).Msg("not found in cache")
 
-		dstRecord, err := is.checkCacheBlob(digest)
+		return nil, zerr.ErrBlobNotFound
+	}
+
+	if resolvedPath != blobPath {
+		binfo, err = is.storeDriver.Stat(resolvedPath)
 		if err != nil {
-			is.log.Debug().Err(err).Str("digest", digest.String()).Msg("not found in cache")
-
-			return nil, zerr.ErrBlobNotFound
-		}
-
-		binfo, err = is.storeDriver.Stat(dstRecord)
-		if err != nil {
-			is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to stat blob")
+			is.log.Error().Err(err).Str("blob", resolvedPath).Msg("failed to stat blob")
 
 			return nil, zerr.ErrBlobNotFound
 		}
