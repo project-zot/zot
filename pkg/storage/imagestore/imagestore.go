@@ -382,6 +382,8 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 			return nil //nolint:nilerr
 		}
 
+		rel = filepath.ToSlash(rel)
+
 		if rel == storageConstants.GlobalBlobsRepo {
 			return driver.ErrSkipDir
 		}
