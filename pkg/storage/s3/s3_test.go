@@ -251,18 +251,18 @@ func TestS3LargeBlobStreamingWithDedupe(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rc, size, err := imgStore.GetBlob(repo2, digest, "application/octet-stream")
+	blobReader, size, err := imgStore.GetBlob(repo2, digest, "application/octet-stream")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	got, err := io.ReadAll(rc)
+	got, err := io.ReadAll(blobReader)
 	if err != nil {
-		_ = rc.Close()
+		_ = blobReader.Close()
 		t.Fatal(err)
 	}
 
-	if err := rc.Close(); err != nil {
+	if err := blobReader.Close(); err != nil {
 		t.Fatal(err)
 	}
 
