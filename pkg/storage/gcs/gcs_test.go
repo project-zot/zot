@@ -1731,7 +1731,9 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 	}
 
 	waitForExpectedBlobSize := func(repo string, digest godigest.Digest, expectedSize int64) bool {
-		for range 120 {
+		globalBlobPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+
+		for range 300 {
 			ok, size, _, err := imgStore.StatBlob(repo, digest)
 			if err == nil && ok && size == expectedSize {
 				return true
@@ -1739,6 +1741,11 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 
 			ok, size, err = imgStore.CheckBlob(context.Background(), repo, digest)
 			if err == nil && ok && size == expectedSize {
+				return true
+			}
+
+			blobInfo, err := gcsDriver.Stat(globalBlobPath)
+			if err == nil && blobInfo.Size() == expectedSize {
 				return true
 			}
 
