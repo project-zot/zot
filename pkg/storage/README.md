@@ -31,6 +31,15 @@ Remote downgrade across this dedupe migration is unsupported.
 
 After migration to `_blobstore` marker-based remote layout, running an older remote dedupe layout is not a supported path.
 
+## Migration Matrix
+
+| Backend | Direction | Support | Notes |
+| --- | --- | --- | --- |
+| local filesystem | legacy per-repo blobs -> `_blobstore` layout | supported | Automatic at startup when dedupe is enabled; migration marker prevents repeated full scans. |
+| local filesystem | `_blobstore` layout -> older local release | conditionally supported | No dedicated rollback flow; behavior depends on older release expectations and filesystem hardlink semantics. |
+| remote object store (S3/GCS/Azure) | legacy per-repo blobs -> `_blobstore` + marker layout | supported | Automatic at startup when dedupe is enabled; marker-guarded and resumable on next startup if incomplete. |
+| remote object store (S3/GCS/Azure) | `_blobstore` + marker layout -> older remote release | unsupported | No rollback CLI is provided; remote downgrade is not a supported compatibility path. |
+
 ## Cache Backends
 
 zot currently supports:
