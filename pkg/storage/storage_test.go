@@ -2546,12 +2546,13 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 
 				if statOK {
 					return statOK, statSize,
-						fmt.Errorf("timed out waiting for blob %s size convergence: check=%d stat=%d expected=%d",
-							digest.String(), size, statSize, expectedSize)
+						fmt.Errorf("%w: blob %s size convergence failed: check=%d stat=%d expected=%d",
+							context.DeadlineExceeded, digest.String(), size, statSize, expectedSize)
 				}
 
 				return ok, size,
-					fmt.Errorf("timed out waiting for blob %s to be present with expected size %d", digest.String(), expectedSize)
+					fmt.Errorf("%w: blob %s not present with expected size %d",
+						context.DeadlineExceeded, digest.String(), expectedSize)
 			}
 
 			Convey("Test reupload repair corrupted image", t, func() {
