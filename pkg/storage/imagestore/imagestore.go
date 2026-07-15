@@ -310,6 +310,7 @@ type repoBlobRef struct {
 	digest   godigest.Digest
 	repoName string
 	blobPath string
+	size     int64
 }
 
 func (is *ImageStore) promoteBlobCandidate(
@@ -430,7 +431,7 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 
 		for _, digest := range repoBlobs {
 			repoBlobPath := is.BlobPath(repoName, digest)
-			repoBlobRefs = append(repoBlobRefs, repoBlobRef{digest: digest, repoName: repoName, blobPath: repoBlobPath})
+			blobSize := int64(0)
 
 			candidate, found := candidates[digest.String()]
 			if !found {
@@ -438,12 +439,21 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 			}
 
 			if binfo, err := is.storeDriver.Stat(repoBlobPath); err == nil {
+				blobSize = binfo.Size()
+
 				if binfo.Size() > 0 && candidate.size == 0 {
 					candidate.repoName = repoName
 					candidate.blobPath = repoBlobPath
 					candidate.size = binfo.Size()
 				}
 			}
+
+			repoBlobRefs = append(repoBlobRefs, repoBlobRef{
+				digest:   digest,
+				repoName: repoName,
+				blobPath: repoBlobPath,
+				size:     blobSize,
+			})
 
 			candidates[digest.String()] = candidate
 		}
@@ -469,6 +479,17 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 	for _, repoBlobRef := range repoBlobRefs {
 		if !promotedDigests[repoBlobRef.digest.String()] {
 			continue
+		}
+
+		if repoBlobRef.size > 0 {
+			globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, repoBlobRef.digest)
+
+			if err := is.lifecycle.ConvertMigratedRepoBlobToMarker(globalBlobPath, repoBlobRef.blobPath); err != nil {
+				is.log.Error().Err(err).Str("digest", repoBlobRef.digest.String()).Str("repo", repoBlobRef.repoName).
+					Str("repoBlobPath", repoBlobRef.blobPath).Msg("failed to convert repo blob to marker")
+
+				return err
+			}
 		}
 
 		// always register each repo's blob path in the cache as a duplicate,

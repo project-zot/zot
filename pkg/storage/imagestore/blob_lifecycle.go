@@ -19,6 +19,7 @@ import (
 // Implementations are behavior-preserving adapters for existing local/remote flows.
 type blobLifecycle interface {
 	PromoteCandidate(srcPath, dstPath string) error
+	ConvertMigratedRepoBlobToMarker(globalBlobPath, repoBlobPath string) error
 	LinkBlob(srcPath, dstPath string) error
 	ResolveReadPath(blobPath, globalBlobPath string, digest godigest.Digest, blobSize int64,
 		resolveFromCache func(godigest.Digest) (string, error),
@@ -58,6 +59,11 @@ type localHardlinkBlobLifecycle struct {
 
 func (l *localHardlinkBlobLifecycle) PromoteCandidate(srcPath, dstPath string) error {
 	return l.storeDriver.Link(srcPath, dstPath)
+}
+
+func (l *localHardlinkBlobLifecycle) ConvertMigratedRepoBlobToMarker(_, _ string) error {
+	// Local filesystem keeps hardlinks in repos; no marker conversion is needed.
+	return nil
 }
 
 func (l *localHardlinkBlobLifecycle) LinkBlob(srcPath, dstPath string) error {
@@ -165,6 +171,10 @@ func (r *remoteMarkerBlobLifecycle) PromoteCandidate(srcPath, dstPath string) er
 	}
 
 	return nil
+}
+
+func (r *remoteMarkerBlobLifecycle) ConvertMigratedRepoBlobToMarker(globalBlobPath, repoBlobPath string) error {
+	return r.LinkBlob(globalBlobPath, repoBlobPath)
 }
 
 func (r *remoteMarkerBlobLifecycle) LinkBlob(srcPath, dstPath string) error {
