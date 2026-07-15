@@ -1852,7 +1852,8 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 		return true, blobSize, nil
 	}
 
-	resolvedPath, err := is.lifecycle.ResolveReadPath(blobPath, digest, binfo.Size(), is.checkCacheBlob)
+	globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+	resolvedPath, err := is.lifecycle.ResolveReadPath(blobPath, globalBlobPath, digest, binfo.Size(), is.checkCacheBlob)
 	if err != nil {
 		// Cache miss / not-found is a normal condition when the blob truly doesn't exist.
 		if errors.Is(err, zerr.ErrCacheMiss) || errors.Is(err, zerr.ErrBlobNotFound) {
@@ -2038,7 +2039,8 @@ func (is *ImageStore) originalBlobInfo(repo string, digest godigest.Digest) (dri
 		return nil, zerr.ErrBlobNotFound
 	}
 
-	resolvedPath, err := is.lifecycle.ResolveReadPath(blobPath, digest, binfo.Size(), is.checkCacheBlob)
+	globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+	resolvedPath, err := is.lifecycle.ResolveReadPath(blobPath, globalBlobPath, digest, binfo.Size(), is.checkCacheBlob)
 	if err != nil {
 		is.log.Debug().Err(err).Str("digest", digest.String()).Msg("not found in cache")
 

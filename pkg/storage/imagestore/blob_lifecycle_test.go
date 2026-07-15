@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
@@ -16,6 +17,7 @@ import (
 
 type lifecycleStubDriver struct {
 	nameFn     func() string
+	statFn     func(path string) (driver.FileInfo, error)
 	readerFn   func(path string, offset int64) (io.ReadCloser, error)
 	writerFn   func(path string, isAppend bool) (driver.FileWriter, error)
 	linkFn     func(src, dst string) error
@@ -45,6 +47,10 @@ func (s *lifecycleStubDriver) ReadFile(path string) ([]byte, error) { return nil
 func (s *lifecycleStubDriver) Delete(path string) error             { return nil }
 
 func (s *lifecycleStubDriver) Stat(path string) (driver.FileInfo, error) {
+	if s.statFn != nil {
+		return s.statFn(path)
+	}
+
 	return nil, driver.PathNotFoundError{Path: path}
 }
 
@@ -321,6 +327,7 @@ func TestBlobLifecycleResolveReadPath(t *testing.T) {
 		lifecycle     blobLifecycle
 		digest        godigest.Digest
 		blobSize      int64
+		globalPath    string
 		wantPath      string
 		wantErr       bool
 		wantCacheCall bool
@@ -330,7 +337,27 @@ func TestBlobLifecycleResolveReadPath(t *testing.T) {
 			lifecycle:     newLocalLifecycle(),
 			digest:        nonEmptyDigest,
 			blobSize:      42,
+			globalPath:    "_blobstore/blobs/sha256/content",
 			wantPath:      "repo/blob",
+			wantErr:       false,
+			wantCacheCall: false,
+		},
+		{
+			name: "remote uses global path when available",
+			lifecycle: newBlobLifecycle(&lifecycleStubDriver{
+				nameFn: func() string { return constants.S3StorageDriverName },
+				statFn: func(path string) (driver.FileInfo, error) {
+					if path == "_blobstore/blobs/sha256/content" {
+						return lifecycleFileInfoStub{path: path, size: 42}, nil
+					}
+
+					return nil, driver.PathNotFoundError{Path: path}
+				},
+			}),
+			digest:        nonEmptyDigest,
+			blobSize:      0,
+			globalPath:    "_blobstore/blobs/sha256/content",
+			wantPath:      "_blobstore/blobs/sha256/content",
 			wantErr:       false,
 			wantCacheCall: false,
 		},
@@ -339,18 +366,30 @@ func TestBlobLifecycleResolveReadPath(t *testing.T) {
 			lifecycle:     newRemoteLifecycle(),
 			digest:        emptyDigest,
 			blobSize:      0,
+			globalPath:    "_blobstore/blobs/sha256/content",
 			wantPath:      "repo/blob",
 			wantErr:       false,
 			wantCacheCall: false,
 		},
 		{
-			name:          "remote zero-size non-empty digest resolves via cache",
+			name:          "remote zero-size non-empty digest without global returns not found",
 			lifecycle:     newRemoteLifecycle(),
 			digest:        nonEmptyDigest,
 			blobSize:      0,
-			wantPath:      "_blobstore/blobs/sha256/content",
+			globalPath:    "_blobstore/blobs/sha256/content",
+			wantPath:      "",
+			wantErr:       true,
+			wantCacheCall: false,
+		},
+		{
+			name:          "remote non-zero blob falls back to repo path when global missing",
+			lifecycle:     newRemoteLifecycle(),
+			digest:        nonEmptyDigest,
+			blobSize:      42,
+			globalPath:    "_blobstore/blobs/sha256/content",
+			wantPath:      "repo/blob",
 			wantErr:       false,
-			wantCacheCall: true,
+			wantCacheCall: false,
 		},
 	}
 
@@ -358,7 +397,11 @@ func TestBlobLifecycleResolveReadPath(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			cacheCalled := false
 
-			gotPath, err := testCase.lifecycle.ResolveReadPath("repo/blob", testCase.digest, testCase.blobSize,
+			gotPath, err := testCase.lifecycle.ResolveReadPath(
+				"repo/blob",
+				testCase.globalPath,
+				testCase.digest,
+				testCase.blobSize,
 				func(digest godigest.Digest) (string, error) {
 					cacheCalled = true
 					if digest != testCase.digest {
@@ -385,3 +428,13 @@ func TestBlobLifecycleResolveReadPath(t *testing.T) {
 		})
 	}
 }
+
+type lifecycleFileInfoStub struct {
+	path string
+	size int64
+}
+
+func (f lifecycleFileInfoStub) Path() string       { return f.path }
+func (f lifecycleFileInfoStub) Size() int64        { return f.size }
+func (f lifecycleFileInfoStub) ModTime() time.Time { return time.Time{} }
+func (f lifecycleFileInfoStub) IsDir() bool        { return false }

@@ -2,10 +2,13 @@ package imagestore
 
 import (
 	"context"
+	"errors"
 	"io"
 
+	"github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/storage/constants"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
@@ -15,7 +18,7 @@ import (
 type blobLifecycle interface {
 	PromoteCandidate(srcPath, dstPath string) error
 	LinkBlob(srcPath, dstPath string) error
-	ResolveReadPath(blobPath string, digest godigest.Digest, blobSize int64,
+	ResolveReadPath(blobPath, globalBlobPath string, digest godigest.Digest, blobSize int64,
 		resolveFromCache func(godigest.Digest) (string, error),
 	) (string, error)
 	ShouldGateDeleteUntilRebuild() bool
@@ -56,7 +59,7 @@ func (l *localHardlinkBlobLifecycle) LinkBlob(srcPath, dstPath string) error {
 	return l.storeDriver.Link(srcPath, dstPath)
 }
 
-func (l *localHardlinkBlobLifecycle) ResolveReadPath(blobPath string, digest godigest.Digest, blobSize int64,
+func (l *localHardlinkBlobLifecycle) ResolveReadPath(blobPath, _ string, digest godigest.Digest, blobSize int64,
 	resolveFromCache func(godigest.Digest) (string, error),
 ) (string, error) {
 	return resolveReadPathWithCache(blobPath, digest, blobSize, resolveFromCache)
@@ -120,10 +123,25 @@ func (r *remoteMarkerBlobLifecycle) LinkBlob(srcPath, dstPath string) error {
 	return r.storeDriver.Link(srcPath, dstPath)
 }
 
-func (r *remoteMarkerBlobLifecycle) ResolveReadPath(blobPath string, digest godigest.Digest, blobSize int64,
-	resolveFromCache func(godigest.Digest) (string, error),
+func (r *remoteMarkerBlobLifecycle) ResolveReadPath(blobPath, globalBlobPath string, digest godigest.Digest,
+	blobSize int64, _ func(godigest.Digest) (string, error),
 ) (string, error) {
-	return resolveReadPathWithCache(blobPath, digest, blobSize, resolveFromCache)
+	if globalBlobPath != "" {
+		if _, err := r.storeDriver.Stat(globalBlobPath); err == nil {
+			return globalBlobPath, nil
+		} else {
+			var pathNotFoundErr driver.PathNotFoundError
+			if !errors.As(err, &pathNotFoundErr) {
+				return "", err
+			}
+		}
+	}
+
+	if blobSize > 0 || digest.Algorithm().FromBytes(nil) == digest {
+		return blobPath, nil
+	}
+
+	return "", zerr.ErrBlobNotFound
 }
 
 func (r *remoteMarkerBlobLifecycle) ShouldGateDeleteUntilRebuild() bool {
