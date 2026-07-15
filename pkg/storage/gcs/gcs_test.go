@@ -1728,6 +1728,24 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 		return false
 	}
 
+	waitForExpectedBlobSize := func(repo string, digest godigest.Digest, expectedSize int64) bool {
+		for range 30 {
+			ok, size, _, err := imgStore.StatBlob(repo, digest)
+			if err == nil && ok && size == expectedSize {
+				return true
+			}
+
+			ok, size, err = imgStore.CheckBlob(context.Background(), repo, digest)
+			if err == nil && ok && size == expectedSize {
+				return true
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		return false
+	}
+
 	Convey("Test errors paths", t, func() {
 		storeController := storage.StoreController{DefaultStore: imgStore}
 
@@ -1759,16 +1777,7 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 
 		err = WriteImageToFileSystem(image, repoName, tag, storeController)
 		So(err, ShouldBeNil)
-
-		ok, size, _, err = imgStore.StatBlob(repoName, blobDigest)
-		So(ok, ShouldBeTrue)
-		So(blobSize, ShouldEqual, size)
-		So(err, ShouldBeNil)
-
-		ok, size, err = imgStore.CheckBlob(context.Background(), repoName, blobDigest)
-		So(ok, ShouldBeTrue)
-		So(size, ShouldEqual, blobSize)
-		So(err, ShouldBeNil)
+		So(waitForExpectedBlobSize(repoName, blobDigest, int64(blobSize)), ShouldBeTrue)
 	})
 
 	Convey("Test reupload repair corrupted image index", t, func() {
@@ -1795,16 +1804,7 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 
 		err = WriteMultiArchImageToFileSystem(image, repoName, tag, storeController)
 		So(err, ShouldBeNil)
-
-		ok, size, _, err = imgStore.StatBlob(repoName, blobDigest)
-		So(ok, ShouldBeTrue)
-		So(blobSize, ShouldEqual, size)
-		So(err, ShouldBeNil)
-
-		ok, size, err = imgStore.CheckBlob(context.Background(), repoName, blobDigest)
-		So(ok, ShouldBeTrue)
-		So(size, ShouldEqual, blobSize)
-		So(err, ShouldBeNil)
+		So(waitForExpectedBlobSize(repoName, blobDigest, int64(blobSize)), ShouldBeTrue)
 	})
 }
 
