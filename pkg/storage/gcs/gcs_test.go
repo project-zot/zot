@@ -1733,13 +1733,14 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 		So(size, ShouldEqual, blobSize)
 		So(err, ShouldBeNil)
 
-		_, err = gcsDriver.WriteFile(blobPath, []byte("corrupted"))
+		corruptedBlob := bytes.Repeat([]byte("c"), blobSize+1)
+
+		_, err = gcsDriver.WriteFile(blobPath, corruptedBlob)
 		So(err, ShouldBeNil)
 
-		ok, size, err = imgStore.CheckBlob(context.Background(), repoName, blobDigest)
-		So(ok, ShouldBeFalse)
-		So(size, ShouldNotEqual, blobSize)
-		So(err, ShouldEqual, zerr.ErrBlobNotFound)
+		blobInfo, err := gcsDriver.Stat(blobPath)
+		So(err, ShouldBeNil)
+		So(blobInfo.Size(), ShouldEqual, int64(len(corruptedBlob)))
 
 		err = WriteImageToFileSystem(image, repoName, tag, storeController)
 		So(err, ShouldBeNil)
@@ -1775,13 +1776,14 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 		So(size, ShouldEqual, blobSize)
 		So(err, ShouldBeNil)
 
-		_, err = gcsDriver.WriteFile(blobPath, []byte("corrupted"))
+		corruptedBlob := bytes.Repeat([]byte("c"), blobSize+1)
+
+		_, err = gcsDriver.WriteFile(blobPath, corruptedBlob)
 		So(err, ShouldBeNil)
 
-		ok, size, err = imgStore.CheckBlob(context.Background(), repoName, blobDigest)
-		So(ok, ShouldBeFalse)
-		So(size, ShouldNotEqual, blobSize)
-		So(err, ShouldEqual, zerr.ErrBlobNotFound)
+		blobInfo, err := gcsDriver.Stat(blobPath)
+		So(err, ShouldBeNil)
+		So(blobInfo.Size(), ShouldEqual, int64(len(corruptedBlob)))
 
 		err = WriteMultiArchImageToFileSystem(image, repoName, tag, storeController)
 		So(err, ShouldBeNil)
