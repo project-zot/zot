@@ -2502,6 +2502,10 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 				blobDigest := godigest.FromBytes(blob)
 				blobSize := len(blob)
 				blobPath := imgStore.BlobPath(repoName, blobDigest)
+				if testcase.storageType != storageConstants.LocalStorageDriverName {
+					// For remote dedupe backends the content source of truth is _blobstore.
+					blobPath = imgStore.BlobPath(storageConstants.GlobalBlobsRepo, blobDigest)
+				}
 
 				ok, size, err := imgStore.CheckBlob(context.Background(), repoName, blobDigest)
 				So(ok, ShouldBeTrue)
@@ -2544,6 +2548,10 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 				blobDigest := godigest.FromBytes(blob)
 				blobSize := len(blob)
 				blobPath := imgStore.BlobPath(repoName, blobDigest)
+				if testcase.storageType != storageConstants.LocalStorageDriverName {
+					// For remote dedupe backends the content source of truth is _blobstore.
+					blobPath = imgStore.BlobPath(storageConstants.GlobalBlobsRepo, blobDigest)
+				}
 
 				ok, size, err := imgStore.CheckBlob(context.Background(), repoName, blobDigest)
 				So(ok, ShouldBeTrue)
