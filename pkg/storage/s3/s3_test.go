@@ -1551,7 +1551,7 @@ func TestS3Dedupe(t *testing.T) {
 
 				blobContent, err := imgStore.GetBlobContent("dedupe2", blobDigest2)
 				So(err, ShouldBeNil)
-				So(len(blobContent), ShouldEqual, fi1.Size())
+				So(int64(len(blobContent)), ShouldEqual, fi1.Size())
 
 				Convey("rebuild s3 dedupe index from false to true", func() {
 					taskScheduler := runAndGetScheduler()
