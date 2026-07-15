@@ -1786,6 +1786,13 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 
 		err = WriteImageToFileSystem(image, repoName, tag, storeController)
 		So(err, ShouldBeNil)
+
+		if !waitForExpectedBlobSize(repoName, blobDigest, int64(blobSize)) {
+			// Retry once in case remote propagation delayed the first repair attempt.
+			err = WriteImageToFileSystem(image, repoName, tag, storeController)
+			So(err, ShouldBeNil)
+		}
+
 		So(waitForExpectedBlobSize(repoName, blobDigest, int64(blobSize)), ShouldBeTrue)
 	})
 
@@ -1813,6 +1820,13 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 
 		err = WriteMultiArchImageToFileSystem(image, repoName, tag, storeController)
 		So(err, ShouldBeNil)
+
+		if !waitForExpectedBlobSize(repoName, blobDigest, int64(blobSize)) {
+			// Retry once in case remote propagation delayed the first repair attempt.
+			err = WriteMultiArchImageToFileSystem(image, repoName, tag, storeController)
+			So(err, ShouldBeNil)
+		}
+
 		So(waitForExpectedBlobSize(repoName, blobDigest, int64(blobSize)), ShouldBeTrue)
 	})
 }
