@@ -719,6 +719,75 @@ func (is *ImageStore) GetRepositories() ([]string, error) {
 	return stores, err
 }
 
+func (is *ImageStore) getRepositoriesNoLock() ([]string, error) {
+	dir := is.rootDir
+	stores := make([]string, 0)
+
+	err := is.storeDriver.Walk(dir, func(fileInfo driver.FileInfo) error {
+		if !fileInfo.IsDir() {
+			return nil
+		}
+
+		// skip internal sync/upload/blobs dirs no need to validate them as repos
+		if strings.HasSuffix(fileInfo.Path(), syncConstants.SyncBlobUploadDir) ||
+			strings.HasSuffix(fileInfo.Path(), ispec.ImageBlobsDir) ||
+			strings.HasSuffix(fileInfo.Path(), storageConstants.BlobUploadDir) {
+			return driver.ErrSkipDir
+		}
+
+		rel, err := filepath.Rel(is.rootDir, fileInfo.Path())
+		if err != nil {
+			return nil //nolint:nilerr // ignore paths that are not under root dir
+		}
+
+		rel = filepath.ToSlash(rel)
+
+		if ok, err := is.ValidateRepo(rel); !ok || err != nil {
+			return nil //nolint:nilerr // ignore invalid repos
+		}
+
+		stores = append(stores, rel)
+
+		return nil
+	})
+
+	var perr driver.PathNotFoundError
+	if errors.As(err, &perr) {
+		return stores, nil
+	}
+
+	return stores, err
+}
+
+func (is *ImageStore) isDigestReferencedAcrossRepos(digest godigest.Digest) (bool, error) {
+	repositories, err := is.getRepositoriesNoLock()
+	if err != nil {
+		return false, err
+	}
+
+	for _, repoName := range repositories {
+		if repoName == storageConstants.GlobalBlobsRepo {
+			continue
+		}
+
+		referenced, err := common.IsBlobReferenced(is, repoName, digest, is.log)
+		if err != nil {
+			if errors.Is(err, zerr.ErrRepoNotFound) || errors.Is(err, zerr.ErrBlobNotFound) ||
+				errors.Is(err, zerr.ErrManifestNotFound) {
+				continue
+			}
+
+			return false, err
+		}
+
+		if referenced {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 // GetNextRepository returns next repository under this store.
 func (is *ImageStore) GetNextRepository(processedRepos map[string]struct{}) (string, error) {
 	var lockLatency time.Time
@@ -2392,23 +2461,34 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 		}
 
 		globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+		canDeleteGlobalBlob, err := is.lifecycle.ShouldDeleteGlobalBlob(globalBlobPath,
+			digest, is.isDigestReferencedAcrossRepos)
+		if err != nil {
+			is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", globalBlobPath).
+				Msg("failed to evaluate global blob reclaim decision")
 
-		// if only the global blobstore record remains, remove it as well
-		if paths, err := is.blobRefsForDigest(digest); err == nil && len(paths) == 1 {
+			return err
+		}
+
+		if canDeleteGlobalBlob {
 			if err := is.deleteBlobRef(digest, globalBlobPath); err != nil {
 				is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", globalBlobPath).
 					Msg("failed to remove global blob path from cache")
 
 				return err
 			}
-		}
 
-		// check if there are still other references to this digest
-		// if not, clean up the global blobstore copy too
-		if _, err := is.cache.GetBlob(digest); errors.Is(err, zerr.ErrCacheMiss) {
 			if err := is.storeDriver.Delete(globalBlobPath); err != nil {
-				is.log.Debug().Err(err).Str("blobPath", globalBlobPath).
-					Msg("failed to remove global blob (may already be cleaned up)")
+				var pathNotFoundErr driver.PathNotFoundError
+				if !errors.As(err, &pathNotFoundErr) {
+					is.log.Debug().Err(err).Str("blobPath", globalBlobPath).
+						Msg("failed to remove global blob")
+
+					return err
+				}
+
+				is.log.Debug().Str("blobPath", globalBlobPath).
+					Msg("global blob already removed from storage, skipping")
 			}
 		}
 
