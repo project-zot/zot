@@ -1732,21 +1732,33 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 
 	waitForExpectedBlobSize := func(repo string, digest godigest.Digest, expectedSize int64) bool {
 		globalBlobPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+		stableMatches := 0
 
-		for range 300 {
+		for range 600 {
+			matched := false
+
 			ok, size, _, err := imgStore.StatBlob(repo, digest)
 			if err == nil && ok && size == expectedSize {
-				return true
+				matched = true
 			}
 
 			ok, size, err = imgStore.CheckBlob(context.Background(), repo, digest)
 			if err == nil && ok && size == expectedSize {
-				return true
+				matched = true
 			}
 
 			blobInfo, err := gcsDriver.Stat(globalBlobPath)
 			if err == nil && blobInfo.Size() == expectedSize {
-				return true
+				matched = true
+			}
+
+			if matched {
+				stableMatches++
+				if stableMatches >= 3 {
+					return true
+				}
+			} else {
+				stableMatches = 0
 			}
 
 			time.Sleep(200 * time.Millisecond)
