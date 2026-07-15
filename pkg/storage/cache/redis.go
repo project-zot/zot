@@ -96,8 +96,22 @@ func (d *RedisDriver) putBlobLike(digest godigest.Digest, path, rootBucket, putL
 		return err
 	}
 
+	originMissing := !exists
+	if exists {
+		currentPath, err := d.db.HGet(ctx, d.join(rootBucket, constants.OriginalBucket), digest.String()).Result()
+		if err != nil {
+			if !goerrors.Is(err, redis.Nil) {
+				return err
+			}
+
+			originMissing = true
+		} else if currentPath == path {
+			return nil
+		}
+	}
+
 	if _, err := d.db.TxPipelined(ctx, func(txrp redis.Pipeliner) error {
-		if !exists {
+		if originMissing {
 			if err := txrp.HSet(ctx, d.join(rootBucket, constants.OriginalBucket), digest.String(), path).Err(); err != nil {
 				d.log.Error().Err(err).Str("hset", d.join(rootBucket, constants.OriginalBucket)).
 					Str("value", path).Msg(putLogMsg)
@@ -105,11 +119,6 @@ func (d *RedisDriver) putBlobLike(digest godigest.Digest, path, rootBucket, putL
 				return err
 			}
 
-			return nil
-		}
-
-		currentPath, err := d.db.HGet(ctx, d.join(rootBucket, constants.OriginalBucket), digest.String()).Result()
-		if err == nil && currentPath == path {
 			return nil
 		}
 

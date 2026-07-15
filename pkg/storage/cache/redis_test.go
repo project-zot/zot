@@ -408,6 +408,8 @@ func TestRedisMocked(t *testing.T) {
 				mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
 				mock.ExpectHExists(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
 					SetVal(true)
+				mock.ExpectHGet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
+					SetVal(path.Join(pathPrefix, "original"))
 				mock.ExpectTxPipeline()
 				mock.ExpectSAdd(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
 					path.Join(pathPrefix, "val")).SetVal(1)
