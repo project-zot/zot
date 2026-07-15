@@ -4087,11 +4087,17 @@ func TestS3DedupeZeroSizeBlob(t *testing.T) {
 		nonEmptyContent := []byte("non-empty-blob-content")
 		nonEmptyDigest := godigest.FromBytes(nonEmptyContent)
 		dstRecord := testDir + "/dedupe-src/blobs/sha256/real-blob"
+		globalBlobPath := path.Join(testDir, storageConstants.GlobalBlobsRepo,
+			ispec.ImageBlobsDir, nonEmptyDigest.Algorithm().String(), nonEmptyDigest.Encoded())
 		realSize := int64(len(nonEmptyContent))
 
 		imgStore := createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				if path == dstRecord {
+					return &mocks.FileInfoMock{SizeFn: func() int64 { return realSize }}, nil
+				}
+
+				if path == globalBlobPath {
 					return &mocks.FileInfoMock{SizeFn: func() int64 { return realSize }}, nil
 				}
 
@@ -4121,11 +4127,17 @@ func TestS3DedupeZeroSizeBlob(t *testing.T) {
 		nonEmptyContent := []byte("non-empty-blob-content")
 		nonEmptyDigest := godigest.FromBytes(nonEmptyContent)
 		dstRecord := testDir + "/dedupe-src/blobs/sha256/real-blob"
+		globalBlobPath := path.Join(testDir, storageConstants.GlobalBlobsRepo,
+			ispec.ImageBlobsDir, nonEmptyDigest.Algorithm().String(), nonEmptyDigest.Encoded())
 		realSize := int64(len(nonEmptyContent))
 
 		imgStore := createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				if path == dstRecord {
+					return &mocks.FileInfoMock{SizeFn: func() int64 { return realSize }}, nil
+				}
+
+				if path == globalBlobPath {
 					return &mocks.FileInfoMock{SizeFn: func() int64 { return realSize }}, nil
 				}
 
