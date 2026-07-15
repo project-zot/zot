@@ -296,6 +296,89 @@ func TestStorageNew(t *testing.T) {
 	})
 }
 
+func TestStorageNewDisablesDedupeWhenHardlinkValidationFails(t *testing.T) {
+	rootDir := t.TempDir()
+
+	if err := os.Chmod(rootDir, 0o555); err != nil {
+		t.Fatalf("failed to make temp root read-only: %v", err)
+	}
+
+	t.Cleanup(func() {
+		_ = os.Chmod(rootDir, 0o755)
+	})
+
+	conf := config.New()
+	conf.Storage.RootDirectory = rootDir
+	conf.Storage.Dedupe = true
+
+	_, err := storage.New(conf, nil, nil, zlog.NewTestLogger(), nil)
+	if err != nil {
+		if conf.Storage.Dedupe {
+			t.Skip("environment did not trigger hardlink validation failure for read-only root")
+		}
+
+		t.Fatalf("storage.New() failed unexpectedly: %v", err)
+	}
+
+	if conf.Storage.Dedupe {
+		t.Skip("environment allows hardlinks/writes despite read-only permissions; cannot assert auto-disable path")
+	}
+}
+
+type captureImageEvents struct {
+	mu              sync.Mutex
+	imageUpdated    []imageUpdatedCall
+	imageDeleted    []imageDeletedCall
+	imageLintFailed []imageLintFailedCall
+}
+
+type imageUpdatedCall struct {
+	repo, reference, digest, mediaType, manifest string
+}
+
+type imageDeletedCall struct {
+	repo, reference, digest, mediaType string
+}
+
+type imageLintFailedCall struct {
+	repo, reference, digest, mediaType, manifest string
+}
+
+func (c *captureImageEvents) Close() {}
+
+func (c *captureImageEvents) RepositoryCreated(string, *events.EventContext) {}
+
+func (c *captureImageEvents) ImageUpdated(name, reference, digest, mediaType, manifest string,
+	ectx *events.EventContext,
+) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.imageUpdated = append(c.imageUpdated, imageUpdatedCall{
+		repo: name, reference: reference, digest: digest, mediaType: mediaType, manifest: manifest,
+	})
+}
+
+func (c *captureImageEvents) ImageDeleted(name, reference, digest, mediaType string, ectx *events.EventContext) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.imageDeleted = append(c.imageDeleted, imageDeletedCall{
+		repo: name, reference: reference, digest: digest, mediaType: mediaType,
+	})
+}
+
+func (c *captureImageEvents) ImageLintFailed(name, reference, digest, mediaType, manifest string,
+	ectx *events.EventContext,
+) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.imageLintFailed = append(c.imageLintFailed, imageLintFailedCall{
+		repo: name, reference: reference, digest: digest, mediaType: mediaType, manifest: manifest,
+	})
+}
+
 // TestPutImageManifestExtraTagsAndEvents covers extra-tag digest pushes, index updates, and ImageUpdated events.
 // One Convey uses createObjectsStore (nil recorder); the rest use newLocalImageStoreWithEventRecorder.
 func TestPutImageManifestExtraTagsAndEvents(t *testing.T) {
