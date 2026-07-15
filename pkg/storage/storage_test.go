@@ -2529,7 +2529,8 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 
 					if checkErr == nil && statErr == nil && ok && statOK &&
 						size == int64(expectedSize) && statSize == int64(expectedSize) {
-						return ok, size, nil
+						// Return the stat-confirmed size to avoid asserting on a stale CheckBlob read.
+						return statOK, statSize, nil
 					}
 
 					time.Sleep(100 * time.Millisecond)
