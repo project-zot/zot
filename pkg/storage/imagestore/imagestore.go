@@ -1780,7 +1780,39 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 			}
 
 			if updatedRecord == dstRecord {
-				return statErr
+				// Some cache drivers keep the current original while duplicates exist.
+				// If that original path is missing on disk, aggressively clear all cached
+				// paths for this digest so the next retry can promote the incoming blob.
+				allRecords, allErr := is.cache.GetAllBlobs(dstDigest)
+				if allErr != nil && !errors.Is(allErr, zerr.ErrCacheMiss) {
+					return allErr
+				}
+
+				for _, recordPath := range allRecords {
+					normalized := recordPath
+					if is.cache.UsesRelativePaths() && !path.IsAbs(normalized) &&
+						!strings.HasPrefix(normalized, is.rootDir+"/") {
+						normalized = path.Join(is.rootDir, normalized)
+					}
+
+					if delErr := is.deleteBlobRef(dstDigest, normalized); delErr != nil && !errors.Is(delErr, zerr.ErrCacheMiss) {
+						return delErr
+					}
+				}
+
+				updatedRecord, err = is.cache.GetBlob(dstDigest)
+				if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+					return err
+				}
+
+				if is.cache.UsesRelativePaths() && !path.IsAbs(updatedRecord) &&
+					!strings.HasPrefix(updatedRecord, is.rootDir+"/") {
+					updatedRecord = path.Join(is.rootDir, updatedRecord)
+				}
+
+				if updatedRecord == dstRecord {
+					return statErr
+				}
 			}
 
 			lastRetryErr = statErr
