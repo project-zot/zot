@@ -1104,3 +1104,81 @@ func TestGetBlobDescriptorFromIndexMissingNestedIndex(t *testing.T) {
 		So(err, ShouldEqual, zerr.ErrBlobNotFound)
 	})
 }
+
+func TestGetReferencedBlobsSkipsMissing(t *testing.T) {
+	log := log.NewTestLogger()
+
+	Convey("A missing manifest blob is skipped, healthy manifests are still collected", t, func(c C) {
+		missingDigest := godigest.FromString("missing-manifest")
+
+		healthyConfigDigest := godigest.FromString("healthy-config")
+		healthyLayerDigest := godigest.FromString("healthy-layer")
+		healthyManifest := ispec.Manifest{
+			Config: ispec.Descriptor{Digest: healthyConfigDigest},
+			Layers: []ispec.Descriptor{{Digest: healthyLayerDigest}},
+		}
+		healthyManifestBuf, err := json.Marshal(healthyManifest)
+		So(err, ShouldBeNil)
+		healthyDigest := godigest.FromBytes(healthyManifestBuf)
+
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageManifest, Digest: missingDigest},
+				{MediaType: ispec.MediaTypeImageManifest, Digest: healthyDigest},
+			},
+		}
+		indexBuf, err := json.Marshal(index)
+		So(err, ShouldBeNil)
+
+		imgStore := &mocks.MockedImageStore{
+			GetIndexContentFn: func(repo string) ([]byte, error) {
+				return indexBuf, nil
+			},
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				if digest == missingDigest {
+					return nil, zerr.ErrBlobNotFound
+				}
+
+				return healthyManifestBuf, nil
+			},
+		}
+
+		referenced, err := common.GetReferencedBlobs(imgStore, "zot-test", log)
+		So(err, ShouldBeNil)
+		So(referenced, ShouldNotBeNil)
+
+		_, ok := referenced[healthyConfigDigest]
+		So(ok, ShouldBeTrue)
+		_, ok = referenced[healthyLayerDigest]
+		So(ok, ShouldBeTrue)
+	})
+}
+
+func TestGetReferencedBlobsPropagatesCorruptManifestError(t *testing.T) {
+	log := log.NewTestLogger()
+
+	Convey("A corrupt manifest blob (non-not-found error) is propagated", t, func(c C) {
+		corruptDigest := godigest.FromString("corrupt-manifest")
+
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageManifest, Digest: corruptDigest},
+			},
+		}
+		indexBuf, err := json.Marshal(index)
+		So(err, ShouldBeNil)
+
+		imgStore := &mocks.MockedImageStore{
+			GetIndexContentFn: func(repo string) ([]byte, error) {
+				return indexBuf, nil
+			},
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				return []byte("not valid json"), nil
+			},
+		}
+
+		referenced, err := common.GetReferencedBlobs(imgStore, "zot-test", log)
+		So(err, ShouldNotBeNil)
+		So(referenced, ShouldBeNil)
+	})
+}
