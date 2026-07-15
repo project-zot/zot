@@ -2490,6 +2490,29 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 				So(err, ShouldBeNil)
 			})
 
+			waitForCorruptionDetection := func(digest godigest.Digest, expectedSize int) (bool, int64, error) {
+				var (
+					ok       bool
+					size     int64
+					checkErr error
+				)
+
+				for range 100 {
+					ok, size, checkErr = imgStore.CheckBlob(context.Background(), repoName, digest)
+					if !ok && errors.Is(checkErr, zerr.ErrBlobNotFound) {
+						return ok, size, checkErr
+					}
+
+					if ok && size != int64(expectedSize) {
+						return false, size, zerr.ErrBlobNotFound
+					}
+
+					time.Sleep(100 * time.Millisecond)
+				}
+
+				return ok, size, checkErr
+			}
+
 			Convey("Test reupload repair corrupted image", t, func() {
 				storeController := storage.StoreController{DefaultStore: imgStore}
 
@@ -2515,7 +2538,11 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 				_, err = driver.WriteFile(blobPath, []byte("corrupted"))
 				So(err, ShouldBeNil)
 
-				ok, size, err = imgStore.CheckBlob(context.Background(), repoName, blobDigest)
+				if testcase.storageType == storageConstants.LocalStorageDriverName {
+					ok, size, err = imgStore.CheckBlob(context.Background(), repoName, blobDigest)
+				} else {
+					ok, size, err = waitForCorruptionDetection(blobDigest, blobSize)
+				}
 				So(ok, ShouldBeFalse)
 				So(size, ShouldNotEqual, blobSize)
 				So(err, ShouldEqual, zerr.ErrBlobNotFound)
@@ -2561,7 +2588,11 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 				_, err = driver.WriteFile(blobPath, []byte("corrupted"))
 				So(err, ShouldBeNil)
 
-				ok, size, err = imgStore.CheckBlob(context.Background(), repoName, blobDigest)
+				if testcase.storageType == storageConstants.LocalStorageDriverName {
+					ok, size, err = imgStore.CheckBlob(context.Background(), repoName, blobDigest)
+				} else {
+					ok, size, err = waitForCorruptionDetection(blobDigest, blobSize)
+				}
 				So(ok, ShouldBeFalse)
 				So(size, ShouldNotEqual, blobSize)
 				So(err, ShouldEqual, zerr.ErrBlobNotFound)
