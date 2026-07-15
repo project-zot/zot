@@ -1145,10 +1145,22 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrRepoNotFound) {
+			if rh.c.SyncOnDemand != nil && rh.c.SyncOnDemand.IsStreamingEnabledForRepo(name) {
+				streamErr := rh.getBlobInfoFromStreamCache(digest.String(), response)
+				if streamErr == nil {
+					return
+				}
+			}
 			details["name"] = name
 			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrBlobNotFound) {
+			if rh.c.SyncOnDemand != nil && rh.c.SyncOnDemand.IsStreamingEnabledForRepo(name) {
+				streamErr := rh.getBlobInfoFromStreamCache(digest.String(), response)
+				if streamErr == nil {
+					return
+				}
+			}
 			details["digest"] = digest.String()
 			e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
@@ -1172,6 +1184,37 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 	response.Header().Set("Content-Type", resolveBlobResponseMediaType(imgStore, name, digest, rh.c.Log))
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
 	response.WriteHeader(http.StatusOK)
+}
+
+// getBlobInfoFromStreamCache checks if a blob exists in the stream cache
+// and writes appropriate headers to the response if it does.
+// This is only applicable when streaming is enabled.
+func (rh *RouteHandler) getBlobInfoFromStreamCache(digest string, response http.ResponseWriter) error {
+	rh.c.Log.Debug().Str("digest", digest).Msg("checking stream cache for blob existence")
+
+	streamMgr := rh.c.SyncOnDemand.StreamManager()
+
+	// when streaming is enabled, the blob might exist in the stream cache
+	blobSize, blobMediaType, err := streamMgr.CachedBlobInfo(digest)
+	if err != nil {
+		if errors.Is(err, zerr.ErrBlobNotFound) {
+			rh.c.Log.Debug().Str("digest", digest).Msg("blob not found in stream cache")
+
+			return err
+		}
+
+		rh.c.Log.Error().Err(err).Str("digest", digest).Msg("failed to check stream cache for blob existence")
+
+		return err
+	}
+
+	response.Header().Set("Content-Length", strconv.FormatInt(blobSize, 10))
+	response.Header().Set("Accept-Ranges", "bytes")
+	response.Header().Set("Content-Type", blobMediaType)
+	response.Header().Set(constants.DistContentDigestKey, digest)
+	response.WriteHeader(http.StatusOK)
+
+	return nil
 }
 
 type httpRange struct {
@@ -1505,6 +1548,40 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 	writeBlobError := func(err error) {
 		details := zerr.GetDetails(err)
+
+		if rh.c.SyncOnDemand != nil && rh.c.SyncOnDemand.IsStreamingEnabledForRepo(name) {
+			rh.c.Log.Debug().Str("repo", name).Msg("streaming enabled for repo. using stream logic for blob.")
+
+			if errors.Is(err, zerr.ErrRepoNotFound) || errors.Is(err, zerr.ErrBlobNotFound) {
+				rh.c.Log.Debug().Str("repo", name).Str("digest", digest.String()).Msg("connecting client to stream")
+
+				copier, clientConnErr := rh.c.SyncOnDemand.StreamManager().ConnectClient(digest.String(), response)
+				if clientConnErr != nil {
+					if !errors.Is(clientConnErr, zerr.ErrBlobNotFoundInActiveStreams) {
+						rh.c.Log.Error().Err(clientConnErr).Str("digest", digest.String()).Msg("failed to connect client to stream")
+						response.WriteHeader(http.StatusInternalServerError)
+
+						return
+					}
+				} else {
+					desc := copier.Source.Descriptor()
+					response.Header().Set("Content-Length", strconv.FormatInt(desc.Size, 10))
+					response.Header().Set(constants.DistContentDigestKey, digest.String())
+					response.Header().Set("Content-Type", desc.MediaType)
+					response.WriteHeader(http.StatusOK)
+
+					clientCopyErr := copier.Copy()
+					if clientCopyErr != nil {
+						rh.c.Log.Error().Err(clientCopyErr).Str("digest", digest.String()).Msg("unexpected error during stream copy")
+
+						return
+					}
+
+					return
+				}
+			}
+		}
+
 		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			details["digest"] = digest.String()
 			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
@@ -2760,6 +2837,30 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 	if syncEnabled {
 		routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
 			Msg("trying to get updated image by syncing on demand")
+
+		// If streaming is enabled for this repo, return manifest immediately.
+		if routeHandler.c.SyncOnDemand.IsStreamingEnabledForRepo(name) {
+			routeHandler.c.Log.Debug().Str("repository", name).Str("reference", reference).
+				Msg("streaming is enabled for repo. Direct fetching manifest.")
+
+			fetchedManifest, err := routeHandler.c.SyncOnDemand.FetchManifestForStream(ctx, name, reference)
+			if err != nil {
+				routeHandler.c.Log.Err(err).Str("repository", name).Str("reference", reference).
+					Msg("failed to fetch manifest")
+
+				return imgStore.GetImageManifest(name, reference)
+			}
+
+			content, err := fetchedManifest.RawBody()
+			if err != nil {
+				routeHandler.c.Log.Err(err).Str("repository", name).Str("reference", reference).
+					Msg("failed to read manifest")
+
+				return imgStore.GetImageManifest(name, reference)
+			}
+
+			return content, fetchedManifest.GetDescriptor().Digest, fetchedManifest.GetDescriptor().MediaType, nil
+		}
 
 		if errSync := routeHandler.c.SyncOnDemand.SyncImage(ctx, name, reference); errSync != nil {
 			routeHandler.c.Log.Err(errSync).Str("repository", name).Str("reference", reference).

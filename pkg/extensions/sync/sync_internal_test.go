@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -23,6 +24,10 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/regclient/regclient"
+	"github.com/regclient/regclient/types/blob"
+	"github.com/regclient/regclient/types/descriptor"
+	rcManifest "github.com/regclient/regclient/types/manifest"
+	rcOCIV1 "github.com/regclient/regclient/types/oci/v1"
 	"github.com/regclient/regclient/types/ref"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -49,7 +54,7 @@ func TestService(t *testing.T) {
 			URLs: []string{"http://localhost"},
 		}
 
-		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		err = service.SyncRepo(context.Background(), "repo")
@@ -61,7 +66,7 @@ func TestService(t *testing.T) {
 			URLs: []string{"http://localhost"},
 		}
 
-		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		// Create a context that's already cancelled
@@ -78,7 +83,7 @@ func TestService(t *testing.T) {
 			URLs: []string{"http://localhost"},
 		}
 
-		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		// Create a mock remote that returns tags so we can reach the loop
@@ -105,7 +110,7 @@ func TestService(t *testing.T) {
 			URLs: []string{"http://localhost"},
 		}
 
-		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		// Create a minimal mock remote that only returns tags
@@ -140,7 +145,7 @@ func TestService(t *testing.T) {
 			URLs: []string{"http://localhost"},
 		}
 
-		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		// Mock remote returns isConverted=true so OCI conversion would be attempted if not skipped
@@ -193,7 +198,7 @@ func TestService(t *testing.T) {
 			OnlySigned: &onlySigned,
 		}
 
-		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		// Create a mock remote that returns an invalid reference to trigger ReferrerList error
@@ -229,7 +234,7 @@ func TestService(t *testing.T) {
 			URLs: []string{"http://localhost"},
 		}
 
-		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		// Create a mock remote that returns valid references
@@ -281,7 +286,7 @@ func TestService(t *testing.T) {
 			RetryDelay: &retryDelay,
 		}
 
-		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		onDemand := NewOnDemand(log.NewTestLogger())
@@ -399,7 +404,7 @@ func TestService(t *testing.T) {
 			}},
 		}
 
-		service1, err := New(conf1, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		service1, err := New(conf1, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		// Create second service for normal processing
@@ -412,7 +417,7 @@ func TestService(t *testing.T) {
 			}},
 		}
 
-		service2, err := New(conf2, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		service2, err := New(conf2, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		onDemand := NewOnDemand(log.NewTestLogger())
@@ -444,7 +449,7 @@ func TestService(t *testing.T) {
 				}},
 			}
 
-			service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+			service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
 			So(err, ShouldBeNil)
 
 			onDemand := NewOnDemand(log.NewTestLogger())
@@ -484,7 +489,7 @@ func TestService(t *testing.T) {
 				}},
 			}
 
-			service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+			service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
 			So(err, ShouldBeNil)
 
 			onDemand := NewOnDemand(log.NewTestLogger())
@@ -711,7 +716,7 @@ func TestServiceOAuth2CredentialHelper(t *testing.T) {
 			},
 		}
 
-		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 		So(service.credentialHelper, ShouldNotBeNil)
 		So(service.credentials["localhost"].Username, ShouldEqual, "robot")
@@ -725,7 +730,7 @@ func TestServiceOAuth2CredentialHelper(t *testing.T) {
 			Oauth2CredentialHelper: nil,
 		}
 
-		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 		So(service.credentialHelper, ShouldBeNil)
 		So(service.config.CredentialHelper, ShouldEqual, "")
@@ -740,7 +745,7 @@ func TestServiceOAuth2CredentialHelper(t *testing.T) {
 			},
 		}
 
-		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 		So(service.credentialHelper, ShouldBeNil)
 		So(service.config.CredentialHelper, ShouldEqual, "")
@@ -755,7 +760,7 @@ func TestServiceOAuth2CredentialHelper(t *testing.T) {
 			},
 		}
 
-		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 		So(service.credentialHelper, ShouldBeNil)
 		So(service.config.CredentialHelper, ShouldEqual, "")
@@ -773,7 +778,7 @@ func TestServiceOAuth2CredentialHelper(t *testing.T) {
 			},
 		}
 
-		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 		So(service.credentialHelper, ShouldNotBeNil)
 	})
@@ -784,7 +789,7 @@ func TestServiceOAuth2CredentialHelper(t *testing.T) {
 			CredentialHelper: "unsupported",
 		}
 
-		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 		So(service.credentialHelper, ShouldBeNil)
 		So(service.config.CredentialHelper, ShouldEqual, "")
@@ -882,7 +887,7 @@ func TestSyncLegacyCosignTagsSyncReferrers(t *testing.T) {
 			SyncLegacyCosignTags: &syncLegacyFalse,
 		}
 
-		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		service.rc = regclient.New()
@@ -929,7 +934,7 @@ func TestSyncLegacyCosignTagsSyncReferrers(t *testing.T) {
 			SyncLegacyCosignTags: &syncLegacyTrue,
 		}
 
-		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		service.rc = regclient.New()
@@ -972,7 +977,7 @@ func TestOnDemandSyncReferrersNonRecursive(t *testing.T) {
 			SyncLegacyCosignTags: &syncLegacyFalse,
 		}
 
-		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		service.rc = regclient.New()
@@ -1894,5 +1899,704 @@ func TestHTTPRetryDelayBounds(t *testing.T) {
 			So(delayInit, ShouldEqual, retryDelay)
 			So(delayMax, ShouldEqual, maxRetryDelay)
 		})
+	})
+}
+
+func TestBaseServiceIsStreamingForRepo(t *testing.T) {
+	streamEnabled := true
+	streamDisabled := false
+
+	Convey("returns false when Stream is not configured", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs: []string{"http://localhost"},
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil,
+			mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		So(service.IsStreamingForRepo("anyrepo"), ShouldBeFalse)
+	})
+
+	Convey("returns false when Stream is explicitly disabled", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs:   []string{"http://localhost"},
+			Stream: &streamDisabled,
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil,
+			mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		So(service.IsStreamingForRepo("anyrepo"), ShouldBeFalse)
+	})
+
+	Convey("returns true when streaming enabled and no content filter configured", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs:   []string{"http://localhost"},
+			Stream: &streamEnabled,
+			// Content is empty — all repos allowed
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil,
+			mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		So(service.IsStreamingForRepo("anyrepo"), ShouldBeTrue)
+		So(service.IsStreamingForRepo("other/repo"), ShouldBeTrue)
+	})
+
+	Convey("returns true when streaming enabled and repo matches content filter", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs:    []string{"http://localhost"},
+			Stream:  &streamEnabled,
+			Content: []syncconf.Content{{Prefix: "myrepo"}},
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil,
+			mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		So(service.IsStreamingForRepo("myrepo"), ShouldBeTrue)
+	})
+
+	Convey("returns false when streaming enabled but repo does not match content filter", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs:    []string{"http://localhost"},
+			Stream:  &streamEnabled,
+			Content: []syncconf.Content{{Prefix: "allowed-prefix"}},
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil,
+			mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		So(service.IsStreamingForRepo("unrelated-repo"), ShouldBeFalse)
+	})
+}
+
+func TestBaseServiceFetchManifestWithStreaming(t *testing.T) {
+	streamEnabled := true
+
+	Convey("returns ErrSyncImageFilteredOut when content filter rejects the repo", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs:    []string{"http://localhost"},
+			Stream:  &streamEnabled,
+			Content: []syncconf.Content{{Prefix: "upstream-prefix"}},
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil,
+			mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		m, childManifests, err := service.FetchManifest(context.Background(), "myrepo", "latest")
+		So(errors.Is(err, zerr.ErrSyncImageFilteredOut), ShouldBeTrue)
+		So(m, ShouldBeNil)
+		So(childManifests, ShouldBeNil)
+	})
+
+	Convey("propagates GetImageReference error when streaming is enabled", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs:   []string{"http://localhost"},
+			Stream: &streamEnabled,
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil,
+			mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		getRefErr := errors.New("ref build failed")
+		service.remote = &mocks.SyncRemoteMock{
+			GetImageReferenceFn: func(repo, tag string) (ref.Ref, error) {
+				return ref.Ref{}, getRefErr
+			},
+		}
+
+		m, childManifests, err := service.FetchManifest(context.Background(), "myrepo", "latest")
+		So(errors.Is(err, getRefErr), ShouldBeTrue)
+		So(m, ShouldBeNil)
+		So(childManifests, ShouldBeNil)
+	})
+
+	Convey("propagates ManifestGet error when GetImageReference succeeds but registry is unreachable", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs:   []string{"http://localhost"},
+			Stream: &streamEnabled,
+			// No content filter
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil,
+			mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		service.remote = &mocks.SyncRemoteMock{
+			GetImageReferenceFn: func(repo, tag string) (ref.Ref, error) {
+				// Return a syntactically valid ref pointing to a non-existent host.
+				return ref.New("localhost:0/" + repo + ":" + tag)
+			},
+			GetHostNameFn: func() string {
+				return "localhost:0"
+			},
+		}
+
+		m, childManifests, err := service.FetchManifest(context.Background(), "myrepo", "latest")
+		So(err, ShouldNotBeNil)
+		So(m, ShouldBeNil)
+		So(childManifests, ShouldBeNil)
+	})
+}
+
+type mockStreamManager struct {
+	streamingImageManifestFn func(repo, reference string) (*StreamableManifest, bool)
+	storeImageForStreamingFn func(repo, reference string, manifest *StreamableManifest) error
+	removeStreamingImageFn   func(repo, reference string)
+}
+
+func (m *mockStreamManager) StreamingImageManifest(repo, reference string) (*StreamableManifest, bool) {
+	if m.streamingImageManifestFn != nil {
+		return m.streamingImageManifestFn(repo, reference)
+	}
+
+	return nil, false
+}
+
+func (m *mockStreamManager) StoreImageForStreaming(repo, reference string, manifest *StreamableManifest) error {
+	if m.storeImageForStreamingFn != nil {
+		return m.storeImageForStreamingFn(repo, reference, manifest)
+	}
+
+	return nil
+}
+
+func (m *mockStreamManager) RemoveStreamingImage(repo, reference string) {
+	if m.removeStreamingImageFn != nil {
+		m.removeStreamingImageFn(repo, reference)
+	}
+}
+
+func (m *mockStreamManager) ConnectClient(_ string, _ io.Writer) (*InFlightBlobCopier, error) {
+	return nil, nil
+}
+
+func (m *mockStreamManager) StreamingBlobReader(reader *blob.BReader) (*blob.BReader, error) {
+	return reader, nil
+}
+
+func (m *mockStreamManager) CachedBlobInfo(_ string) (int64, string, error) {
+	return 0, "", nil
+}
+
+type mockSyncService struct {
+	fetchManifestFn      func(ctx context.Context, repo, reference string) (rcManifest.Manifest, []rcManifest.Manifest, error)
+	isStreamingForRepoFn func(repo string) bool
+	getSyncTimeoutFn     func() time.Duration
+	syncImageFn          func(ctx context.Context, repo, reference string) error
+	canRetryOnErrorFn    func() bool
+}
+
+func (s *mockSyncService) FetchManifest(ctx context.Context, repo, reference string) (rcManifest.Manifest, []rcManifest.Manifest, error) {
+	if s.fetchManifestFn != nil {
+		return s.fetchManifestFn(ctx, repo, reference)
+	}
+
+	return nil, nil, zerr.ErrManifestNotFound
+}
+
+func (s *mockSyncService) IsStreamingForRepo(repo string) bool {
+	if s.isStreamingForRepoFn != nil {
+		return s.isStreamingForRepoFn(repo)
+	}
+
+	return false
+}
+
+func (s *mockSyncService) GetSyncTimeout() time.Duration {
+	if s.getSyncTimeoutFn != nil {
+		return s.getSyncTimeoutFn()
+	}
+
+	return 30 * time.Second
+}
+
+func (s *mockSyncService) SyncImage(ctx context.Context, repo, reference string) error {
+	if s.syncImageFn != nil {
+		return s.syncImageFn(ctx, repo, reference)
+	}
+
+	return nil
+}
+
+func (s *mockSyncService) CanRetryOnError() bool {
+	if s.canRetryOnErrorFn != nil {
+		return s.canRetryOnErrorFn()
+	}
+
+	return false
+}
+
+func (s *mockSyncService) GetNextRepo(_ string) (string, error)                           { return "", nil }
+func (s *mockSyncService) SyncRepo(_ context.Context, _ string) error                     { return nil }
+func (s *mockSyncService) SyncReferrers(_ context.Context, _, _ string, _ []string) error { return nil }
+func (s *mockSyncService) ResetCatalog()                                                  {}
+
+func newTestManifest(t *testing.T) rcManifest.Manifest {
+	t.Helper()
+
+	origMan := rcOCIV1.Manifest{
+		Versioned: rcOCIV1.ManifestSchemaVersion,
+	}
+
+	m, err := rcManifest.New(rcManifest.WithOrig(origMan))
+	if err != nil {
+		t.Fatalf("failed to create test manifest: %v", err)
+	}
+
+	return m
+}
+
+func TestOnDemandSetAndGetStreamManager(t *testing.T) {
+	Convey("StreamManager is nil before SetStreamManager is called", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+		So(onDemand.StreamManager(), ShouldBeNil)
+	})
+
+	Convey("SetStreamManager stores the manager and StreamManager returns it", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+		sm := &mockStreamManager{}
+		onDemand.SetStreamManager(sm)
+		So(onDemand.StreamManager(), ShouldEqual, sm)
+	})
+
+	Convey("SetStreamManager can be called multiple times and last value wins", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+		sm1 := &mockStreamManager{}
+		sm2 := &mockStreamManager{}
+		onDemand.SetStreamManager(sm1)
+		onDemand.SetStreamManager(sm2)
+		So(onDemand.StreamManager(), ShouldEqual, sm2)
+	})
+}
+
+func TestOnDemandFetchManifestForStream(t *testing.T) {
+	Convey("returns cached manifest when StreamingImageManifest has image in cache", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+		cached := newTestManifest(t)
+		streamableCached := NewStreamableManifest(cached, nil)
+
+		sm := &mockStreamManager{
+			streamingImageManifestFn: func(repo, reference string) (*StreamableManifest, bool) {
+				So(repo, ShouldEqual, "myrepo")
+				So(reference, ShouldEqual, "v1.0")
+
+				return streamableCached, true
+			},
+		}
+		onDemand.SetStreamManager(sm)
+
+		result, err := onDemand.FetchManifestForStream(context.Background(), "myrepo", "v1.0")
+		So(err, ShouldBeNil)
+		So(result, ShouldEqual, cached)
+	})
+
+	Convey("returns ErrBlobNotFound when no services are registered", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+
+		sm := &mockStreamManager{
+			streamingImageManifestFn: func(_, _ string) (*StreamableManifest, bool) {
+				return nil, false
+			},
+		}
+		onDemand.SetStreamManager(sm)
+
+		result, err := onDemand.FetchManifestForStream(context.Background(), "myrepo", "v1.0")
+		So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
+		So(result, ShouldBeNil)
+	})
+
+	Convey("returns ErrBlobNotFound when all services fail to fetch the manifest", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+
+		sm := &mockStreamManager{
+			streamingImageManifestFn: func(_, _ string) (*StreamableManifest, bool) {
+				return nil, false
+			},
+		}
+		onDemand.SetStreamManager(sm)
+
+		svc := &mockSyncService{
+			fetchManifestFn: func(_ context.Context, _, _ string) (rcManifest.Manifest, []rcManifest.Manifest, error) {
+				return nil, nil, errors.New("upstream unavailable")
+			},
+			getSyncTimeoutFn: func() time.Duration { return 5 * time.Second },
+		}
+		onDemand.Add(svc)
+
+		result, err := onDemand.FetchManifestForStream(context.Background(), "myrepo", "v1.0")
+		So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
+		So(result, ShouldBeNil)
+	})
+
+	Convey("fetches manifest from service, stores it for streaming and triggers background sync", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+		fetched := newTestManifest(t)
+
+		var storeRepo, storeRef string
+		var storedManifest *StreamableManifest
+
+		sm := &mockStreamManager{
+			streamingImageManifestFn: func(_, _ string) (*StreamableManifest, bool) {
+				return nil, false
+			},
+			storeImageForStreamingFn: func(repo, reference string, m *StreamableManifest) error {
+				storeRepo = repo
+				storeRef = reference
+				storedManifest = m
+
+				return nil
+			},
+		}
+		onDemand.SetStreamManager(sm)
+
+		syncCalled := make(chan struct{})
+		svc := &mockSyncService{
+			fetchManifestFn: func(_ context.Context, repo, reference string) (rcManifest.Manifest, []rcManifest.Manifest, error) {
+				return fetched, nil, nil
+			},
+			getSyncTimeoutFn: func() time.Duration { return 5 * time.Second },
+			syncImageFn: func(_ context.Context, _, _ string) error {
+				close(syncCalled)
+
+				return nil
+			},
+		}
+		onDemand.Add(svc)
+
+		result, err := onDemand.FetchManifestForStream(context.Background(), "myrepo", "latest")
+		So(err, ShouldBeNil)
+		So(result, ShouldEqual, fetched)
+		So(storeRepo, ShouldEqual, "myrepo")
+		So(storeRef, ShouldEqual, "latest")
+		So(storedManifest.referenceManifest, ShouldEqual, fetched)
+
+		select {
+		case <-syncCalled:
+			// background sync was triggered as expected
+		case <-time.After(2 * time.Second):
+			So("background sync goroutine was not triggered", ShouldBeEmpty)
+		}
+	})
+
+	Convey("stops at the first successful service and ignores later services", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+		fetched := newTestManifest(t)
+
+		sm := &mockStreamManager{
+			streamingImageManifestFn: func(_, _ string) (*StreamableManifest, bool) {
+				return nil, false
+			},
+		}
+		onDemand.SetStreamManager(sm)
+
+		secondFetchCalled := false
+
+		svc1 := &mockSyncService{
+			fetchManifestFn: func(_ context.Context, _, _ string) (rcManifest.Manifest, []rcManifest.Manifest, error) {
+				return fetched, nil, nil
+			},
+			getSyncTimeoutFn: func() time.Duration { return 5 * time.Second },
+		}
+		svc2 := &mockSyncService{
+			fetchManifestFn: func(_ context.Context, _, _ string) (rcManifest.Manifest, []rcManifest.Manifest, error) {
+				secondFetchCalled = true
+
+				return nil, nil, errors.New("should not be reached")
+			},
+			getSyncTimeoutFn: func() time.Duration { return 5 * time.Second },
+		}
+		onDemand.Add(svc1)
+		onDemand.Add(svc2)
+
+		result, err := onDemand.FetchManifestForStream(context.Background(), "myrepo", "v2.0")
+		So(err, ShouldBeNil)
+		So(result, ShouldEqual, fetched)
+		So(secondFetchCalled, ShouldBeFalse)
+	})
+
+	Convey("returns error when StoreImageForStreaming fails", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+		fetched := newTestManifest(t)
+		storeErr := errors.New("disk full")
+
+		sm := &mockStreamManager{
+			streamingImageManifestFn: func(_, _ string) (*StreamableManifest, bool) {
+				return nil, false
+			},
+			storeImageForStreamingFn: func(_, _ string, _ *StreamableManifest) error {
+				return storeErr
+			},
+		}
+		onDemand.SetStreamManager(sm)
+
+		svc := &mockSyncService{
+			fetchManifestFn: func(_ context.Context, _, _ string) (rcManifest.Manifest, []rcManifest.Manifest, error) {
+				return fetched, nil, nil
+			},
+			getSyncTimeoutFn: func() time.Duration { return 5 * time.Second },
+		}
+		onDemand.Add(svc)
+
+		result, err := onDemand.FetchManifestForStream(context.Background(), "myrepo", "v1.0")
+		So(errors.Is(err, storeErr), ShouldBeTrue)
+		So(result, ShouldBeNil)
+	})
+
+	Convey("forwards sub-manifests to StoreImageForStreaming when service returns them (multi-arch)", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+
+		// Create platform manifests returned by the mock service.
+		amd64Config := []byte("amd64-cfg")
+		amd64Layer := []byte("amd64-lyr")
+		origAmd64 := rcOCIV1.Manifest{
+			Versioned: rcOCIV1.ManifestSchemaVersion,
+			Config: descriptor.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    godigest.FromBytes(amd64Config),
+				Size:      int64(len(amd64Config)),
+			},
+			Layers: []descriptor.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar+gzip",
+					Digest:    godigest.FromBytes(amd64Layer),
+					Size:      int64(len(amd64Layer)),
+				},
+			},
+		}
+		amd64Manifest, err := rcManifest.New(rcManifest.WithOrig(origAmd64))
+		So(err, ShouldBeNil)
+
+		arm64Config := []byte("arm64-cfg")
+		arm64Layer := []byte("arm64-lyr")
+		origArm64 := rcOCIV1.Manifest{
+			Versioned: rcOCIV1.ManifestSchemaVersion,
+			Config: descriptor.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    godigest.FromBytes(arm64Config),
+				Size:      int64(len(arm64Config)),
+			},
+			Layers: []descriptor.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar+gzip",
+					Digest:    godigest.FromBytes(arm64Layer),
+					Size:      int64(len(arm64Layer)),
+				},
+			},
+		}
+		arm64Manifest, err := rcManifest.New(rcManifest.WithOrig(origArm64))
+		So(err, ShouldBeNil)
+
+		subManifests := []rcManifest.Manifest{amd64Manifest, arm64Manifest}
+
+		manifestDescs := make([]descriptor.Descriptor, len(subManifests))
+		for i, m := range subManifests {
+			manifestDescs[i] = m.GetDescriptor()
+		}
+		origIndex := rcOCIV1.Index{
+			Manifests: manifestDescs,
+		}
+		indexManifest, err := rcManifest.New(rcManifest.WithOrig(origIndex))
+		So(err, ShouldBeNil)
+
+		var capturedSubManifests []rcManifest.Manifest
+
+		sm := &mockStreamManager{
+			streamingImageManifestFn: func(_, _ string) (*StreamableManifest, bool) {
+				return nil, false
+			},
+			storeImageForStreamingFn: func(repo, reference string, m *StreamableManifest) error {
+				capturedSubManifests = m.subManifests
+
+				return nil
+			},
+		}
+		onDemand.SetStreamManager(sm)
+
+		svc := &mockSyncService{
+			fetchManifestFn: func(_ context.Context, _, _ string) (rcManifest.Manifest, []rcManifest.Manifest, error) {
+				return indexManifest, subManifests, nil
+			},
+			getSyncTimeoutFn: func() time.Duration { return 5 * time.Second },
+		}
+		onDemand.Add(svc)
+
+		result, err := onDemand.FetchManifestForStream(context.Background(), "multi-arch-repo", "latest")
+		So(err, ShouldBeNil)
+		So(result, ShouldEqual, indexManifest)
+
+		// Verify sub-manifests were forwarded.
+		So(len(capturedSubManifests), ShouldEqual, 2)
+	})
+}
+
+func TestOnDemandFetchManifestForStreamMultiArchWithLayeredFailure(t *testing.T) {
+	Convey("falls back to second service when first fails for multi-arch image", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+
+		arm64Config := []byte("arm64-cfg")
+		arm64Layer := []byte("arm64-lyr")
+		origArm64 := rcOCIV1.Manifest{
+			Versioned: rcOCIV1.ManifestSchemaVersion,
+			Config: descriptor.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    godigest.FromBytes(arm64Config),
+				Size:      int64(len(arm64Config)),
+			},
+			Layers: []descriptor.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar+gzip",
+					Digest:    godigest.FromBytes(arm64Layer),
+					Size:      int64(len(arm64Layer)),
+				},
+			},
+		}
+		arm64Manifest, err := rcManifest.New(rcManifest.WithOrig(origArm64))
+		So(err, ShouldBeNil)
+
+		subManifests := []rcManifest.Manifest{arm64Manifest}
+		manifestDescs := make([]descriptor.Descriptor, len(subManifests))
+		for i, m := range subManifests {
+			manifestDescs[i] = m.GetDescriptor()
+		}
+		origIndex := rcOCIV1.Index{
+			Manifests: manifestDescs,
+		}
+		indexManifest, err := rcManifest.New(rcManifest.WithOrig(origIndex))
+		So(err, ShouldBeNil)
+
+		sm := &mockStreamManager{
+			streamingImageManifestFn: func(_, _ string) (*StreamableManifest, bool) {
+				return nil, false
+			},
+		}
+		onDemand.SetStreamManager(sm)
+
+		firstFetchCalled := false
+
+		// First service always fails.
+		svc1 := &mockSyncService{
+			fetchManifestFn: func(_ context.Context, _, _ string) (rcManifest.Manifest, []rcManifest.Manifest, error) {
+				firstFetchCalled = true
+
+				return nil, nil, errors.New("service 1 unavailable")
+			},
+			getSyncTimeoutFn: func() time.Duration { return 5 * time.Second },
+		}
+
+		// Second service succeeds with multi-arch index.
+		svc2 := &mockSyncService{
+			fetchManifestFn: func(_ context.Context, _, _ string) (rcManifest.Manifest, []rcManifest.Manifest, error) {
+				return indexManifest, subManifests, nil
+			},
+			getSyncTimeoutFn: func() time.Duration { return 5 * time.Second },
+		}
+		onDemand.Add(svc1)
+		onDemand.Add(svc2)
+
+		result, err := onDemand.FetchManifestForStream(context.Background(), "multi-arch-repo", "v2.0")
+		So(err, ShouldBeNil)
+		So(result, ShouldEqual, indexManifest)
+		So(firstFetchCalled, ShouldBeTrue)
+	})
+}
+
+func TestOnDemandMultiArchSubManifestsForwarding(t *testing.T) {
+	Convey("correctly forwards sub-manifests with different platform configs and layers", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+
+		// Create 3 platform manifests to simulate a real multi-arch image.
+		platforms := map[string]struct {
+			configData []byte
+			layerData  []byte
+		}{
+			"amd64":   {[]byte("amd64-config-payload"), []byte("amd64-layer-payload")},
+			"arm64":   {[]byte("arm64-config-payload"), []byte("arm64-layer-payload")},
+			"ppc64le": {[]byte("ppc64le-config-payload"), []byte("ppc64le-layer-payload")},
+		}
+
+		var subManifests []rcManifest.Manifest
+		for _, p := range platforms {
+			origMan := rcOCIV1.Manifest{
+				Versioned: rcOCIV1.ManifestSchemaVersion,
+				Config: descriptor.Descriptor{
+					MediaType: "application/vnd.oci.image.config.v1+json",
+					Digest:    godigest.FromBytes(p.configData),
+					Size:      int64(len(p.configData)),
+				},
+				Layers: []descriptor.Descriptor{
+					{
+						MediaType: "application/vnd.oci.image.layer.v1.tar+gzip",
+						Digest:    godigest.FromBytes(p.layerData),
+						Size:      int64(len(p.layerData)),
+					},
+				},
+			}
+			m, err := rcManifest.New(rcManifest.WithOrig(origMan))
+			So(err, ShouldBeNil)
+
+			subManifests = append(subManifests, m)
+		}
+
+		manifestDescs := make([]descriptor.Descriptor, len(subManifests))
+		for i, m := range subManifests {
+			manifestDescs[i] = m.GetDescriptor()
+		}
+		origIndex := rcOCIV1.Index{
+			Manifests: manifestDescs,
+		}
+		indexManifest, err := rcManifest.New(rcManifest.WithOrig(origIndex))
+		So(err, ShouldBeNil)
+
+		var capturedSubManifests []rcManifest.Manifest
+
+		sm := &mockStreamManager{
+			streamingImageManifestFn: func(_, _ string) (*StreamableManifest, bool) {
+				return nil, false
+			},
+			storeImageForStreamingFn: func(repo, reference string, m *StreamableManifest) error {
+				capturedSubManifests = m.subManifests
+
+				return nil
+			},
+		}
+		onDemand.SetStreamManager(sm)
+
+		svc := &mockSyncService{
+			fetchManifestFn: func(_ context.Context, _, _ string) (rcManifest.Manifest, []rcManifest.Manifest, error) {
+				return indexManifest, subManifests, nil
+			},
+			getSyncTimeoutFn: func() time.Duration { return 5 * time.Second },
+		}
+		onDemand.Add(svc)
+
+		result, err := onDemand.FetchManifestForStream(context.Background(), "multi-arch-repo", "latest")
+		So(err, ShouldBeNil)
+		So(result, ShouldEqual, indexManifest)
+
+		// All sub-manifests must be forwarded.
+		So(len(capturedSubManifests), ShouldEqual, len(subManifests))
+
+		// Each sub-manifest's blob info (config + layers) should be present in the stream manager
+		// if it were a real ChunkingStreamManager. The mock just captures them.
+		for _, captured := range capturedSubManifests {
+			imager, ok := captured.(rcManifest.Imager)
+			So(ok, ShouldBeTrue)
+
+			configDesc, err := imager.GetConfig()
+			So(err, ShouldBeNil)
+			So(configDesc.MediaType, ShouldNotBeEmpty)
+
+			layers, err := imager.GetLayers()
+			So(err, ShouldBeNil)
+			So(len(layers), ShouldBeGreaterThan, 0)
+		}
 	})
 }

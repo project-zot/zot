@@ -49,6 +49,8 @@ type RegistryConfig struct {
 	PreserveDigest         bool           // sync without converting
 	SyncTimeout            time.Duration  // overall HTTP client timeout for all sync operations
 	ResponseHeaderTimeout  time.Duration  `yaml:"-"` // response header timeout; set in root.go
+	// Stream is set to true when it is desired to stream blobs to clients as they are being synced from this upstream.
+	Stream *bool
 }
 
 // OAuth2HelperConfig holds the options used by the "oauth2" credential helper,
@@ -131,6 +133,11 @@ func (config *OAuth2HelperConfig) Validate() error {
 // Default is true when SyncLegacyCosignTags is unset (nil).
 func (r RegistryConfig) ShouldSyncLegacyCosignTags() bool {
 	return r.SyncLegacyCosignTags == nil || *r.SyncLegacyCosignTags
+}
+
+// IsStreamEnabled returns true if streaming is enabled for this registry config.
+func (r RegistryConfig) IsStreamEnabled() bool {
+	return r.Stream != nil && *r.Stream
 }
 
 type Content struct {

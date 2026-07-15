@@ -466,5 +466,21 @@
       "begin": 11530,
       "end": 11539
     }
+  },
+  "blackbox/sync_streaming.bats": {
+    "zot_upstream": {
+      "begin": 11540,
+      "end": 11549
+    },
+    "zot_test": {
+      "begin": 11550,
+      "end": 11559
+    }
+  },
+  "blackbox/sync_streaming_kind.bats": {
+    "zot_test": {
+      "begin": 11570,
+      "end": 11579
+    }
   }
 }
