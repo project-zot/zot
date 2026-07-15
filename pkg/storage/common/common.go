@@ -640,35 +640,63 @@ func GetReferencedBlobs(imgStore storageTypes.ImageStore, repo string, log zlog.
 	}
 
 	referenced := map[godigest.Digest]struct{}{}
-	collectReferencedBlobs(imgStore, repo, index, referenced, log)
+	seen := map[godigest.Digest]struct{}{}
+
+	if err := collectReferencedBlobs(imgStore, repo, index, referenced, seen, log); err != nil {
+		return nil, err
+	}
 
 	return referenced, nil
 }
 
 func collectReferencedBlobs(imgStore storageTypes.ImageStore, repo string,
-	index ispec.Index, referenced map[godigest.Digest]struct{}, log zlog.Logger,
-) {
+	index ispec.Index, referenced map[godigest.Digest]struct{}, seen map[godigest.Digest]struct{}, log zlog.Logger,
+) error {
 	for _, desc := range index.Manifests {
 		referenced[desc.Digest] = struct{}{}
+
+		if _, ok := seen[desc.Digest]; ok {
+			continue
+		}
+
+		seen[desc.Digest] = struct{}{}
 
 		switch desc.MediaType {
 		case ispec.MediaTypeImageIndex:
 			indexImage, err := GetImageIndex(imgStore, repo, desc.Digest, log)
 			if err != nil {
-				log.Warn().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
-					Msg("skipping unreadable image index blob while collecting referenced blobs")
+				var pathNotFoundErr driver.PathNotFoundError
+				if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
+					log.Warn().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
+						Msg("skipping missing image index blob while collecting referenced blobs")
 
-				continue
+					continue
+				}
+
+				log.Error().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
+					Msg("failed to read multiarch(index) image while collecting referenced blobs")
+
+				return err
 			}
 
-			collectReferencedBlobs(imgStore, repo, indexImage, referenced, log)
+			if err := collectReferencedBlobs(imgStore, repo, indexImage, referenced, seen, log); err != nil {
+				return err
+			}
 		case ispec.MediaTypeImageManifest:
 			manifestContent, err := GetImageManifest(imgStore, repo, desc.Digest, log)
 			if err != nil {
-				log.Warn().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
-					Msg("skipping unreadable manifest blob while collecting referenced blobs")
+				var pathNotFoundErr driver.PathNotFoundError
+				if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
+					log.Warn().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
+						Msg("skipping missing manifest blob while collecting referenced blobs")
 
-				continue
+					continue
+				}
+
+				log.Error().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
+					Msg("failed to read manifest image while collecting referenced blobs")
+
+				return err
 			}
 
 			referenced[manifestContent.Config.Digest] = struct{}{}
@@ -680,6 +708,8 @@ func collectReferencedBlobs(imgStore storageTypes.ImageStore, repo string,
 			// unknown media-types only match by their own digest, already recorded above
 		}
 	}
+
+	return nil
 }
 
 func ApplyLinter(imgStore storageTypes.ImageStore, linter Lint, repo string, descriptor ispec.Descriptor,
