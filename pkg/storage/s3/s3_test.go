@@ -1069,6 +1069,55 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 func TestS3Dedupe(t *testing.T) {
 	tskip.SkipS3(t)
 	tskip.SkipDynamo(t)
+
+	waitForBlobStatExists := func(storeDrv driver.StorageDriver, rootDir string, repo string,
+		digest godigest.Digest,
+	) error {
+		var statErr error
+
+		for range 300 {
+			_, statErr = storeDrv.Stat(context.Background(), path.Join(rootDir, repo, "blobs", "sha256", digest.Encoded()))
+			if statErr == nil {
+				return nil
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		return fmt.Errorf("timed out waiting for stat on blob %s/%s: %w", repo, digest.Encoded(), statErr)
+	}
+
+	waitForBlobStatSize := func(storeDrv driver.StorageDriver, rootDir string, repo string,
+		digest godigest.Digest, expectedSize int64,
+	) error {
+		var (
+			statErr      error
+			observedSize int64 = -1
+		)
+
+		for range 300 {
+			fi, err := storeDrv.Stat(context.Background(), path.Join(rootDir, repo, "blobs", "sha256", digest.Encoded()))
+			if err == nil {
+				observedSize = fi.Size()
+				if observedSize == expectedSize {
+					return nil
+				}
+			} else {
+				statErr = err
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		if statErr != nil {
+			return fmt.Errorf("timed out waiting for size %d on blob %s/%s: %w",
+				expectedSize, repo, digest.Encoded(), statErr)
+		}
+
+		return fmt.Errorf("timed out waiting for size %d on blob %s/%s, observed %d",
+			expectedSize, repo, digest.Encoded(), observedSize)
+	}
+
 	Convey("Dedupe", t, func(c C) {
 		uuid, err := guuid.NewV4()
 		if err != nil {
@@ -1478,14 +1527,17 @@ func TestS3Dedupe(t *testing.T) {
 
 				// rebuild with dedupe false, should have all blobs with content
 				imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
-				// wait until rebuild finishes
 
-				time.Sleep(10 * time.Second)
+				err = waitForBlobStatExists(storeDriver, testDir, "dedupe1", blobDigest1)
+				So(err, ShouldBeNil)
 
 				taskScheduler.Shutdown()
 
 				fi1, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe1", "blobs", "sha256",
 					blobDigest1.Encoded()))
+				So(err, ShouldBeNil)
+
+				err = waitForBlobStatSize(storeDriver, testDir, "dedupe2", blobDigest2, fi1.Size())
 				So(err, ShouldBeNil)
 
 				blobContent1, err := imgStore.GetBlobContent("dedupe1", blobDigest1)
@@ -1510,9 +1562,9 @@ func TestS3Dedupe(t *testing.T) {
 
 					// rebuild with dedupe false, should have all blobs with content
 					imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
-					// wait until rebuild finishes
 
-					time.Sleep(10 * time.Second)
+					err = waitForBlobStatSize(storeDriver, testDir, "dedupe2", blobDigest2, 0)
+					So(err, ShouldBeNil)
 
 					taskScheduler.Shutdown()
 
@@ -1761,9 +1813,9 @@ func TestS3Dedupe(t *testing.T) {
 
 			// rebuild with dedupe false, should have all blobs with content
 			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
-			// wait until rebuild finishes
 
-			time.Sleep(10 * time.Second)
+			err = waitForBlobStatExists(storeDriver, testDir, "dedupe1", blobDigest1)
+			So(err, ShouldBeNil)
 
 			taskScheduler.Shutdown()
 
@@ -1841,9 +1893,9 @@ func TestS3Dedupe(t *testing.T) {
 
 				// rebuild with dedupe false, should have all blobs with content
 				imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
-				// wait until rebuild finishes
 
-				time.Sleep(10 * time.Second)
+				err = waitForBlobStatSize(storeDriver, testDir, "dedupe2", blobDigest2, 0)
+				So(err, ShouldBeNil)
 
 				taskScheduler.Shutdown()
 
