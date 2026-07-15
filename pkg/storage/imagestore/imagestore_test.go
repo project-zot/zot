@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -252,5 +253,157 @@ func TestCleanupRepoFailsOnDeleteImageManifest(t *testing.T) {
 		count, err := store.CleanupRepo(repo, []godigest.Digest{manifestDigest}, false)
 		So(err, ShouldNotBeNil)
 		So(count, ShouldEqual, 0)
+	})
+}
+
+func TestCleanupRepoReadsEachManifestOnlyOnce(t *testing.T) {
+	Convey("CleanupRepo reads each manifest once instead of once per deleted blob", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+		defer metrics.Stop()
+
+		rootDir := t.TempDir()
+		storeMock := &mocks.StorageDriverMock{}
+		remoteDriver := gcs.New(storeMock)
+		store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+			remoteDriver, nil, nil, nil)
+
+		repo := "repo"
+
+		// three tagged manifests, each referencing its own config and layer
+		manifestBodies := map[string][]byte{}
+
+		var index ispec.Index
+
+		for i := range 3 {
+			manifest := ispec.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageConfig,
+					Digest:    godigest.FromString(fmt.Sprintf("config-%d", i)),
+					Size:      10,
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageLayer,
+						Digest:    godigest.FromString(fmt.Sprintf("layer-%d", i)),
+						Size:      10,
+					},
+				},
+			}
+			manifest.SchemaVersion = 2
+
+			body, err := json.Marshal(manifest)
+			So(err, ShouldBeNil)
+
+			manifestDigest := godigest.FromBytes(body)
+			manifestBodies[store.BlobPath(repo, manifestDigest)] = body
+			index.Manifests = append(index.Manifests, ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageManifest,
+				Digest:    manifestDigest,
+				Size:      int64(len(body)),
+			})
+		}
+
+		indexBody, err := json.Marshal(index)
+		So(err, ShouldBeNil)
+
+		indexPath := path.Join(rootDir, repo, ispec.ImageIndexFile)
+		manifestReads := map[string]int{}
+
+		storeMock.GetContentFn = func(_ context.Context, path string) ([]byte, error) {
+			if path == indexPath {
+				return indexBody, nil
+			}
+
+			if body, ok := manifestBodies[path]; ok {
+				manifestReads[path]++
+
+				return body, nil
+			}
+
+			return nil, driver.PathNotFoundError{Path: path}
+		}
+		storeMock.StatFn = func(_ context.Context, path string) (driver.FileInfo, error) {
+			return &mocks.FileInfoMock{
+				PathFn: func() string { return path },
+				SizeFn: func() int64 { return 10 },
+			}, nil
+		}
+		storeMock.ListFn = func(_ context.Context, path string) ([]string, error) {
+			return nil, nil
+		}
+
+		// four orphan blobs, none referenced by any manifest
+		var toDelete []godigest.Digest
+		for i := range 4 {
+			toDelete = append(toDelete, godigest.FromString(fmt.Sprintf("orphan-%d", i)))
+		}
+
+		count, err := store.CleanupRepo(repo, toDelete, false)
+		So(err, ShouldBeNil)
+		So(count, ShouldEqual, len(toDelete))
+
+		totalReads := 0
+		for _, reads := range manifestReads {
+			totalReads += reads
+		}
+
+		So(totalReads, ShouldEqual, len(manifestBodies))
+	})
+}
+
+func TestCleanupRepoDeletesBlobsOrphanedByManifestDelete(t *testing.T) {
+	Convey("blobs referenced only by a manifest deleted in the same run are cleaned up", t, func() {
+		dir := t.TempDir()
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+		defer metrics.Stop()
+
+		store := local.NewImageStore(dir, true, true, log, metrics, nil, nil, nil, nil)
+		repo := "repo"
+		ctx := context.Background()
+
+		content := []byte("layer content")
+		layerDigest := godigest.FromBytes(content)
+		_, _, err := store.FullBlobUpload(ctx, repo, bytes.NewReader(content), layerDigest)
+		So(err, ShouldBeNil)
+
+		cblob, cdigest := GetRandomImageConfig()
+		_, _, err = store.FullBlobUpload(ctx, repo, bytes.NewReader(cblob), cdigest)
+		So(err, ShouldBeNil)
+
+		manifest := ispec.Manifest{
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageConfig,
+				Digest:    cdigest,
+				Size:      int64(len(cblob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageLayer,
+					Digest:    layerDigest,
+					Size:      int64(len(content)),
+				},
+			},
+		}
+		manifest.SchemaVersion = 2
+
+		body, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+
+		manifestDigest := godigest.FromBytes(body)
+		_, _, err = store.PutImageManifest(ctx, repo, "1.0", ispec.MediaTypeImageManifest, body, nil)
+		So(err, ShouldBeNil)
+
+		// the manifest is still tagged, so its blobs are referenced until it is
+		// deleted as part of the same cleanup run
+		count, err := store.CleanupRepo(repo,
+			[]godigest.Digest{manifestDigest, cdigest, layerDigest}, false)
+		So(err, ShouldBeNil)
+		So(count, ShouldEqual, 3)
+
+		ok, _, err := store.CheckBlob(ctx, repo, layerDigest)
+		So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
+		So(ok, ShouldBeFalse)
 	})
 }
