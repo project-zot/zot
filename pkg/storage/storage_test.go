@@ -2518,18 +2518,39 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 					ok       bool
 					size     int64
 					checkErr error
+					statOK   bool
+					statSize int64
+					statErr  error
 				)
 
-				for range 100 {
+				for range 300 {
 					ok, size, checkErr = imgStore.CheckBlob(context.Background(), repoName, digest)
-					if checkErr == nil && ok && size == int64(expectedSize) {
+					statOK, statSize, _, statErr = imgStore.StatBlob(repoName, digest)
+
+					if checkErr == nil && statErr == nil && ok && statOK &&
+						size == int64(expectedSize) && statSize == int64(expectedSize) {
 						return ok, size, nil
 					}
 
 					time.Sleep(100 * time.Millisecond)
 				}
 
-				return ok, size, checkErr
+				if checkErr != nil {
+					return ok, size, checkErr
+				}
+
+				if statErr != nil {
+					return statOK, statSize, statErr
+				}
+
+				if statOK {
+					return statOK, statSize,
+						fmt.Errorf("timed out waiting for blob %s size convergence: check=%d stat=%d expected=%d",
+							digest.String(), size, statSize, expectedSize)
+				}
+
+				return ok, size,
+					fmt.Errorf("timed out waiting for blob %s to be present with expected size %d", digest.String(), expectedSize)
 			}
 
 			Convey("Test reupload repair corrupted image", t, func() {
