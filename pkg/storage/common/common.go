@@ -619,6 +619,69 @@ func IsBlobReferenced(imgStore storageTypes.ImageStore, repo string,
 	return IsBlobReferencedInImageIndex(imgStore, repo, digest, index, log)
 }
 
+/*
+GetReferencedBlobs returns the set of all blob digests referenced by the repo's index.json:
+manifest digests themselves plus the config and layer digests of every (possibly nested) manifest.
+
+It mirrors the traversal of IsBlobReferencedInImageIndex, but reads each manifest only once,
+so callers checking many digests (e.g. GC) avoid re-reading every manifest per digest.
+Unreadable or missing manifests are skipped, matching IsBlobReferencedInImageIndex.
+*/
+func GetReferencedBlobs(imgStore storageTypes.ImageStore, repo string, log zlog.Logger,
+) (map[godigest.Digest]struct{}, error) {
+	dir := path.Join(imgStore.RootDir(), repo)
+	if !imgStore.DirExists(dir) {
+		return nil, zerr.ErrRepoNotFound
+	}
+
+	index, err := GetIndex(imgStore, repo, log)
+	if err != nil {
+		return nil, err
+	}
+
+	referenced := map[godigest.Digest]struct{}{}
+	collectReferencedBlobs(imgStore, repo, index, referenced, log)
+
+	return referenced, nil
+}
+
+func collectReferencedBlobs(imgStore storageTypes.ImageStore, repo string,
+	index ispec.Index, referenced map[godigest.Digest]struct{}, log zlog.Logger,
+) {
+	for _, desc := range index.Manifests {
+		referenced[desc.Digest] = struct{}{}
+
+		switch desc.MediaType {
+		case ispec.MediaTypeImageIndex:
+			indexImage, err := GetImageIndex(imgStore, repo, desc.Digest, log)
+			if err != nil {
+				log.Warn().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
+					Msg("skipping unreadable image index blob while collecting referenced blobs")
+
+				continue
+			}
+
+			collectReferencedBlobs(imgStore, repo, indexImage, referenced, log)
+		case ispec.MediaTypeImageManifest:
+			manifestContent, err := GetImageManifest(imgStore, repo, desc.Digest, log)
+			if err != nil {
+				log.Warn().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
+					Msg("skipping unreadable manifest blob while collecting referenced blobs")
+
+				continue
+			}
+
+			referenced[manifestContent.Config.Digest] = struct{}{}
+
+			for _, layer := range manifestContent.Layers {
+				referenced[layer.Digest] = struct{}{}
+			}
+		default:
+			// unknown media-types only match by their own digest, already recorded above
+		}
+	}
+}
+
 func ApplyLinter(imgStore storageTypes.ImageStore, linter Lint, repo string, descriptor ispec.Descriptor,
 ) (bool, error) {
 	pass := true

@@ -1937,11 +1937,23 @@ the caller function MUST lock from outside.
 func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRepo bool) (int, error) {
 	count := 0
 
+	// Collect the referenced blobs once per repo instead of re-reading every
+	// manifest for each deleted blob (quadratic on remote storage).
+	referenced, err := common.GetReferencedBlobs(is, repo, is.log)
+	if err != nil {
+		is.log.Warn().Err(err).Str("repository", repo).
+			Msg("failed to collect referenced blobs, treating all blobs as unreferenced")
+	}
+
 	for _, digest := range blobs {
 		is.log.Debug().Str("repository", repo).
 			Str("digest", digest.String()).Msg("perform GC on blob")
 
-		err := is.deleteBlob(repo, digest)
+		err := is.deleteBlobChecked(repo, digest, func() bool {
+			_, ok := referenced[digest]
+
+			return ok
+		})
 		if err == nil {
 			count++
 
@@ -1961,6 +1973,16 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 			}
 
 			count++
+
+			// the manifest deletion above rewrote index.json, so blobs referenced
+			// only by that manifest are now deletable: refresh the set
+			referenced, err = common.GetReferencedBlobs(is, repo, is.log)
+			if err != nil {
+				is.log.Warn().Err(err).Str("repository", repo).
+					Msg("failed to refresh referenced blobs, treating all blobs as unreferenced")
+
+				referenced = nil
+			}
 		case errors.Is(err, zerr.ErrBlobNotFound):
 			is.log.Info().Str("repository", repo).Str("digest", digest.String()).
 				Msg("blob already absent during GC, skipping")
@@ -1995,6 +2017,16 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 }
 
 func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
+	return is.deleteBlobChecked(repo, digest, func() bool {
+		ok, _ := common.IsBlobReferenced(is, repo, digest, is.log)
+
+		return ok
+	})
+}
+
+// deleteBlobChecked removes the blob unless isReferenced reports it as still in
+// use; callers batch-deleting blobs (GC) pass a precomputed referenced set here.
+func (is *ImageStore) deleteBlobChecked(repo string, digest godigest.Digest, isReferenced func() bool) error {
 	blobPath := is.BlobPath(repo, digest)
 
 	binfo, err := is.storeDriver.Stat(blobPath)
@@ -2010,7 +2042,7 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 	}
 
 	// first check if this blob is not currently in use
-	if ok, _ := common.IsBlobReferenced(is, repo, digest, is.log); ok {
+	if isReferenced() {
 		return zerr.ErrBlobReferenced
 	}
 
