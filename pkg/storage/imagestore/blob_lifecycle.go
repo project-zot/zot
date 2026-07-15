@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"reflect"
 
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
@@ -21,6 +23,9 @@ type blobLifecycle interface {
 	ResolveReadPath(blobPath, globalBlobPath string, digest godigest.Digest, blobSize int64,
 		resolveFromCache func(godigest.Digest) (string, error),
 	) (string, error)
+	ShouldDeleteGlobalBlob(globalBlobPath string, digest godigest.Digest,
+		isDigestReferenced func(godigest.Digest) (bool, error),
+	) (bool, error)
 	ShouldGateDeleteUntilRebuild() bool
 	IncludeRepoInMountCandidates(repo string) bool
 }
@@ -63,6 +68,31 @@ func (l *localHardlinkBlobLifecycle) ResolveReadPath(blobPath, _ string, digest 
 	resolveFromCache func(godigest.Digest) (string, error),
 ) (string, error) {
 	return resolveReadPathWithCache(blobPath, digest, blobSize, resolveFromCache)
+}
+
+func (l *localHardlinkBlobLifecycle) ShouldDeleteGlobalBlob(globalBlobPath string, _ godigest.Digest,
+	_ func(godigest.Digest) (bool, error),
+) (bool, error) {
+	fileInfo, err := os.Stat(globalBlobPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+
+		return false, err
+	}
+
+	fileInfoValue := reflect.Indirect(reflect.ValueOf(fileInfo.Sys()))
+	if !fileInfoValue.IsValid() || fileInfoValue.Kind() != reflect.Struct {
+		return false, nil
+	}
+
+	nLink := fileInfoValue.FieldByName("Nlink")
+	if !nLink.IsValid() || !nLink.CanUint() {
+		return false, nil
+	}
+
+	return nLink.Uint() <= 1, nil
 }
 
 func (l *localHardlinkBlobLifecycle) ShouldGateDeleteUntilRebuild() bool {
@@ -142,6 +172,17 @@ func (r *remoteMarkerBlobLifecycle) ResolveReadPath(blobPath, globalBlobPath str
 	}
 
 	return "", zerr.ErrBlobNotFound
+}
+
+func (r *remoteMarkerBlobLifecycle) ShouldDeleteGlobalBlob(_ string, digest godigest.Digest,
+	isDigestReferenced func(godigest.Digest) (bool, error),
+) (bool, error) {
+	isReferenced, err := isDigestReferenced(digest)
+	if err != nil {
+		return false, err
+	}
+
+	return !isReferenced, nil
 }
 
 func (r *remoteMarkerBlobLifecycle) ShouldGateDeleteUntilRebuild() bool {
