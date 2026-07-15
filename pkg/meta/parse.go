@@ -294,8 +294,17 @@ func parseRepo(repo string, metaDB mTypes.MetaDB, storeController stypes.StoreCo
 			reference = manifest.Digest.String()
 		}
 
+		// The push time only lives in the metaDB; when it is lost, the manifest blob's storage
+		// mod time is the closest remaining record of when the image was pushed. Pass it as a
+		// hint so a metaDB rebuild doesn't stamp every image with the current time. StatBlob
+		// requires the store lock, which this function already holds.
+		setOpts := []mTypes.SetRepoReferenceOption{}
+		if found, _, modTime, err := imageStore.StatBlob(repo, manifest.Digest); err == nil && found {
+			setOpts = append(setOpts, mTypes.WithPushTimestamp(modTime))
+		}
+
 		err = SetImageMetaFromInput(context.Background(), repo, reference, manifest.MediaType, manifest.Digest, manifestBlob,
-			imageStore, metaDB, log)
+			imageStore, metaDB, log, setOpts...)
 		if err != nil {
 			log.Error().Err(err).Str("repository", repo).Str("tag", tag).
 				Msg("failed to set metadata for image")
@@ -460,7 +469,7 @@ func getNotationSignatureLayersInfo(
 // SetImageMetaFromInput tries to set manifest metadata and update repo metadata by adding the current tag
 // (in case the reference is a tag). The function expects image manifests and indexes (multi arch images).
 func SetImageMetaFromInput(ctx context.Context, repo, reference, mediaType string, digest godigest.Digest, blob []byte,
-	imageStore stypes.ImageStore, metaDB mTypes.MetaDB, log log.Logger,
+	imageStore stypes.ImageStore, metaDB mTypes.MetaDB, log log.Logger, setOpts ...mTypes.SetRepoReferenceOption,
 ) error {
 	var imageMeta mTypes.ImageMeta
 
@@ -535,7 +544,7 @@ func SetImageMetaFromInput(ctx context.Context, repo, reference, mediaType strin
 		return nil
 	}
 
-	err := metaDB.SetRepoReference(ctx, repo, reference, imageMeta)
+	err := metaDB.SetRepoReference(ctx, repo, reference, imageMeta, setOpts...)
 	if err != nil {
 		log.Error().Err(err).Str("component", "metadb").Msg("failed to set repo meta")
 
