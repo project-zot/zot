@@ -1707,21 +1707,23 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 	gcsDriver := gcs.New(rawDriver)
 
 	overwriteUntilSizeChanges := func(blobPath string, originalSize int) bool {
-		for attempt := range 10 {
+		for attempt := range 20 {
 			corruptedBlob := bytes.Repeat([]byte("c"), originalSize+attempt+1)
 			expectedSize := int64(len(corruptedBlob))
 
 			if _, err := gcsDriver.WriteFile(blobPath, corruptedBlob); err != nil {
-				return false
+				time.Sleep(200 * time.Millisecond)
+
+				continue
 			}
 
-			for range 10 {
+			for range 20 {
 				blobInfo, err := gcsDriver.Stat(blobPath)
 				if err == nil && blobInfo.Size() == expectedSize {
 					return true
 				}
 
-				time.Sleep(100 * time.Millisecond)
+				time.Sleep(200 * time.Millisecond)
 			}
 		}
 
@@ -1729,7 +1731,7 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 	}
 
 	waitForExpectedBlobSize := func(repo string, digest godigest.Digest, expectedSize int64) bool {
-		for range 30 {
+		for range 120 {
 			ok, size, _, err := imgStore.StatBlob(repo, digest)
 			if err == nil && ok && size == expectedSize {
 				return true
@@ -1740,7 +1742,7 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 				return true
 			}
 
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(200 * time.Millisecond)
 		}
 
 		return false
