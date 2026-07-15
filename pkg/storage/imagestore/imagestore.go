@@ -1694,7 +1694,7 @@ func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.R
 	return uuid, nbytes, nil
 }
 
-//nolint:gocyclo // Dedupe logic handles multiple recovery and cache consistency paths.
+//nolint:gocyclo,cyclop // Dedupe logic handles multiple recovery and cache consistency paths.
 func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo string, dst string) error {
 	const maxDedupeSelfHealRetries = 16
 
