@@ -322,7 +322,12 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 
 			// delete content of config file
 			configDig := image.ConfigDescriptor.Digest.Encoded()
-			configFile := path.Join(imgStore.RootDir(), repoName, "/blobs/sha256", configDig)
+			configRepo := repoName
+			if driver.Name() != storageConstants.LocalStorageDriverName {
+				configRepo = storageConstants.GlobalBlobsRepo
+			}
+
+			configFile := path.Join(imgStore.RootDir(), configRepo, "/blobs/sha256", configDig)
 			err = driver.Delete(configFile)
 			So(err, ShouldBeNil)
 
@@ -366,7 +371,12 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 
 			// delete content of layer file
 			layerDig := image.Manifest.Layers[0].Digest.Encoded()
-			layerFile := path.Join(imgStore.RootDir(), repoName, "/blobs/sha256", layerDig)
+			layerRepo := repoName
+			if driver.Name() != storageConstants.LocalStorageDriverName {
+				layerRepo = storageConstants.GlobalBlobsRepo
+			}
+
+			layerFile := path.Join(imgStore.RootDir(), layerRepo, "/blobs/sha256", layerDig)
 			_, err = driver.WriteFile(layerFile, []byte(" "))
 			So(err, ShouldBeNil)
 
@@ -397,7 +407,12 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 
 			// change layer file permissions
 			layerDig := image.Manifest.Layers[0].Digest.Encoded()
-			repoDir := path.Join(imgStore.RootDir(), repoName)
+			layerRepo := repoName
+			if driver.Name() != storageConstants.LocalStorageDriverName {
+				layerRepo = storageConstants.GlobalBlobsRepo
+			}
+
+			repoDir := path.Join(imgStore.RootDir(), layerRepo)
 			layerFile := path.Join(repoDir, "/blobs/sha256", layerDig)
 			err = driver.Delete(layerFile)
 			So(err, ShouldBeNil)

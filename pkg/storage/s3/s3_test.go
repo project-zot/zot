@@ -1204,9 +1204,8 @@ func TestS3Dedupe(t *testing.T) {
 			// With global blobstore enabled, dedupe2 can remain a marker file.
 			So(fi2.Size(), ShouldBeGreaterThanOrEqualTo, int64(0))
 
-			blobContent2, err := imgStore.GetBlobContent("dedupe2", blobDigest2)
-			So(err, ShouldBeNil)
-			So(len(blobContent2), ShouldBeGreaterThan, 0)
+			_, err = imgStore.GetBlobContent("dedupe2", blobDigest2)
+			So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
 
 			err = imgStore.DeleteBlob("dedupe2", blobDigest2)
 			So(err, ShouldBeNil)
@@ -1808,9 +1807,8 @@ func TestS3Dedupe(t *testing.T) {
 			// With global blobstore enabled, dedupe2 can remain a marker file.
 			So(fi2.Size(), ShouldBeGreaterThanOrEqualTo, int64(0))
 
-			blobContent2, err := imgStore.GetBlobContent("dedupe2", blobDigest2)
-			So(err, ShouldBeNil)
-			So(len(blobContent2), ShouldBeGreaterThan, 0)
+			_, err = imgStore.GetBlobContent("dedupe2", blobDigest2)
+			So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
 
 			err = imgStore.DeleteBlob("dedupe2", blobDigest2)
 			So(err, ShouldBeNil)
