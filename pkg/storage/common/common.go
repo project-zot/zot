@@ -661,8 +661,8 @@ func collectReferencedBlobs(imgStore storageTypes.ImageStore, repo string,
 
 		seen[desc.Digest] = struct{}{}
 
-		switch desc.MediaType {
-		case ispec.MediaTypeImageIndex:
+		switch {
+		case desc.MediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(desc.MediaType):
 			indexImage, err := GetImageIndex(imgStore, repo, desc.Digest, log)
 			if err != nil {
 				var pathNotFoundErr driver.PathNotFoundError
@@ -682,7 +682,7 @@ func collectReferencedBlobs(imgStore storageTypes.ImageStore, repo string,
 			if err := collectReferencedBlobs(imgStore, repo, indexImage, referenced, seen, log); err != nil {
 				return err
 			}
-		case ispec.MediaTypeImageManifest:
+		case desc.MediaType == ispec.MediaTypeImageManifest || compat.IsCompatibleManifestMediaType(desc.MediaType):
 			manifestContent, err := GetImageManifest(imgStore, repo, desc.Digest, log)
 			if err != nil {
 				var pathNotFoundErr driver.PathNotFoundError
