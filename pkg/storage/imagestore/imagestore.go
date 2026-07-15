@@ -359,6 +359,11 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 	if _, err := is.storeDriver.Stat(markerPath); err == nil {
 		// marker exists — migration already done on a previous startup
 		return nil
+	} else {
+		var pathNotFoundErr driver.PathNotFoundError
+		if !errors.As(err, &pathNotFoundErr) {
+			return err
+		}
 	}
 
 	// discover repos using Walk (supports nested repos like org/repo)
