@@ -2746,3 +2746,418 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 		})
 	}
 }
+
+// TestGCMultiArchIndexKeepsNestedConfigAndLayers is the S2 guard (AC-1): platform manifests that are
+// reachable ONLY through a tagged image index - i.e. they are never their own index.json entry - must
+// keep their config/layer blobs across blob-GC. This requires the referenced-blobs collector to recurse
+// into the index rather than only reading the top-level index.json entries (the old
+// addImageIndexBlobsToReferences behavior recorded the nested manifest digests but not their
+// config/layers).
+func TestGCMultiArchIndexKeepsNestedConfigAndLayers(t *testing.T) {
+	Convey("tagged image index whose platform manifests are nested-only", t, func() {
+		log := zlog.NewTestLogger()
+		audit := zlog.NewAuditLogger("debug", "/dev/null")
+		metrics := newTestMetricsServer(t, log)
+
+		rootDir := t.TempDir()
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+
+		ctx := context.Background()
+		repoName := "gc-nested-multiarch"
+
+		err := imgStore.InitRepo(ctx, repoName)
+		So(err, ShouldBeNil)
+
+		platform1 := CreateRandomImage()
+		platform2 := CreateRandomImage()
+
+		blobExists := func(digest godigest.Digest) bool {
+			_, statErr := os.Stat(path.Join(rootDir, repoName, "blobs", digest.Algorithm().String(), digest.Encoded()))
+
+			return statErr == nil
+		}
+
+		// write each platform manifest's config, layers and manifest content as plain blobs -
+		// deliberately NOT via PutImageManifest, so they never become their own index.json entry.
+		writeNestedOnly := func(img Image) {
+			for _, layerBlob := range img.Layers {
+				layerDigest := godigest.FromBytes(layerBlob)
+				_, _, err := imgStore.FullBlobUpload(ctx, repoName, bytes.NewReader(layerBlob), layerDigest)
+				So(err, ShouldBeNil)
+			}
+
+			configBlob, err := json.Marshal(img.Config)
+			So(err, ShouldBeNil)
+
+			_, _, err = imgStore.FullBlobUpload(ctx, repoName, bytes.NewReader(configBlob), img.Manifest.Config.Digest)
+			So(err, ShouldBeNil)
+
+			_, _, err = imgStore.FullBlobUpload(ctx, repoName,
+				bytes.NewReader(img.ManifestDescriptor.Data), img.ManifestDescriptor.Digest)
+			So(err, ShouldBeNil)
+		}
+
+		writeNestedOnly(platform1)
+		writeNestedOnly(platform2)
+
+		topIndex := ispec.Index{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			MediaType: ispec.MediaTypeImageIndex,
+			Manifests: []ispec.Descriptor{
+				{
+					Digest:    platform1.ManifestDescriptor.Digest,
+					Size:      platform1.ManifestDescriptor.Size,
+					MediaType: ispec.MediaTypeImageManifest,
+				},
+				{
+					Digest:    platform2.ManifestDescriptor.Digest,
+					Size:      platform2.ManifestDescriptor.Size,
+					MediaType: ispec.MediaTypeImageManifest,
+				},
+			},
+		}
+
+		topIndexBlob, err := json.Marshal(topIndex)
+		So(err, ShouldBeNil)
+
+		topIndexDigest, _, err := imgStore.PutImageManifest(ctx, repoName, "top", ispec.MediaTypeImageIndex, topIndexBlob, nil)
+		So(err, ShouldBeNil)
+
+		// sanity check: index.json only carries the tagged top index, the platform manifests are
+		// reachable exclusively through recursion into that index's own descriptor list.
+		indexContent, err := imgStore.GetIndexContent(repoName)
+		So(err, ShouldBeNil)
+
+		var indexJSON ispec.Index
+
+		err = json.Unmarshal(indexContent, &indexJSON)
+		So(err, ShouldBeNil)
+		So(len(indexJSON.Manifests), ShouldEqual, 1)
+		So(indexJSON.Manifests[0].Digest, ShouldEqual, topIndexDigest)
+
+		gcInstance := gc.NewGarbageCollect(imgStore, nil, gc.Options{
+			Delay: 1 * time.Millisecond,
+			ImageRetention: config.ImageRetention{
+				Delay: 1 * time.Millisecond,
+			},
+		}, audit, log, metrics)
+
+		err = gcInstance.CleanRepo(ctx, repoName)
+		So(err, ShouldBeNil)
+
+		So(blobExists(topIndexDigest), ShouldBeTrue)
+
+		for _, platform := range []Image{platform1, platform2} {
+			So(blobExists(platform.ManifestDescriptor.Digest), ShouldBeTrue)
+			So(blobExists(platform.Manifest.Config.Digest), ShouldBeTrue)
+
+			for _, layer := range platform.Manifest.Layers {
+				So(blobExists(layer.Digest), ShouldBeTrue)
+			}
+		}
+	})
+}
+
+// TestGCDockerSchema2ListNotOverDeleted is the S1 guard (AC-2): a tagged docker manifest-list image
+// must keep every nested docker schema2 manifest's config/layer blobs after blob-GC. Docker media types
+// used to fall into the collector's own-digest-only default arm, so their config/layers were treated as
+// unreferenced and deleted regardless of nesting.
+func TestGCDockerSchema2ListNotOverDeleted(t *testing.T) {
+	Convey("tagged docker manifest-list image", t, func() {
+		log := zlog.NewTestLogger()
+		audit := zlog.NewAuditLogger("debug", "/dev/null")
+		metrics := newTestMetricsServer(t, log)
+
+		rootDir := t.TempDir()
+		compatMediaTypes := []compat.MediaCompatibility{compat.DockerManifestV2SchemaV2}
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, compatMediaTypes, nil)
+
+		storeController := storage.StoreController{}
+		storeController.DefaultStore = imgStore
+
+		ctx := context.Background()
+		repoName := "gc-docker-schema2-list"
+
+		dockerList := CreateRandomMultiarch().AsDockerImage()
+
+		err := WriteMultiArchImageToFileSystem(dockerList, repoName, "0.0.1", storeController)
+		So(err, ShouldBeNil)
+
+		blobExists := func(digest godigest.Digest) bool {
+			_, statErr := os.Stat(path.Join(rootDir, repoName, "blobs", digest.Algorithm().String(), digest.Encoded()))
+
+			return statErr == nil
+		}
+
+		gcInstance := gc.NewGarbageCollect(imgStore, nil, gc.Options{
+			Delay: 1 * time.Millisecond,
+			ImageRetention: config.ImageRetention{
+				Delay: 1 * time.Millisecond,
+			},
+		}, audit, log, metrics)
+
+		err = gcInstance.CleanRepo(ctx, repoName)
+		So(err, ShouldBeNil)
+
+		So(blobExists(dockerList.IndexDescriptor.Digest), ShouldBeTrue)
+
+		for _, image := range dockerList.Images {
+			So(blobExists(image.ManifestDescriptor.Digest), ShouldBeTrue)
+			So(blobExists(image.Manifest.Config.Digest), ShouldBeTrue)
+
+			for _, layer := range image.Manifest.Layers {
+				So(blobExists(layer.Digest), ShouldBeTrue)
+			}
+		}
+	})
+}
+
+// TestGCUnknownMediaTypeManifestPruned guards the corruption found during fix-loop verification:
+// common.GetReferencedBlobs marks every index.json descriptor's own digest as referenced regardless of
+// media type (mirroring IsBlobReferencedInImageIndex), so a tagged index entry with an
+// unsupported/unknown manifest media type would otherwise never become an orphan - while its config/layer
+// blobs still fall out as real orphans and get deleted, leaving a dangling index.json entry. GC must
+// force-prune such entries itself so the manifest and its blobs are cleaned together, and a healthy
+// tagged image must be left untouched.
+func TestGCUnknownMediaTypeManifestPruned(t *testing.T) {
+	Convey("index.json entry with unsupported manifest media type", t, func() {
+		log := zlog.NewTestLogger()
+		audit := zlog.NewAuditLogger("debug", "/dev/null")
+		metrics := newTestMetricsServer(t, log)
+
+		rootDir := t.TempDir()
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+
+		storeController := storage.StoreController{}
+		storeController.DefaultStore = imgStore
+
+		ctx := context.Background()
+		repoName := "gc-unknown-media-type"
+
+		unsupportedMediaType := "application/vnd.oci.artifact.manifest.v1+json"
+
+		healthy := CreateRandomImage()
+		err := WriteImageToFileSystem(healthy, repoName, "v1", storeController)
+		So(err, ShouldBeNil)
+
+		unknown := CreateRandomImage()
+		err = WriteImageToFileSystem(unknown, repoName, "unknown", storeController)
+		So(err, ShouldBeNil)
+
+		// rewrite the unknown image's manifest with an unsupported media type, re-hash it, write the
+		// new blob, and re-point/re-type its index.json descriptor - exactly mirroring how
+		// TestGarbageCollectImageUnknownManifest (pkg/storage/local/local_test.go) builds the fixture.
+		unknownBuf, err := os.ReadFile(path.Join(rootDir, repoName, "blobs",
+			unknown.ManifestDescriptor.Digest.Algorithm().String(), unknown.ManifestDescriptor.Digest.Encoded()))
+		So(err, ShouldBeNil)
+
+		var unknownManifest ispec.Manifest
+
+		err = json.Unmarshal(unknownBuf, &unknownManifest)
+		So(err, ShouldBeNil)
+
+		unknownManifest.MediaType = unsupportedMediaType
+
+		unknownBuf, err = json.Marshal(unknownManifest)
+		So(err, ShouldBeNil)
+
+		unknownDigest := godigest.FromBytes(unknownBuf)
+
+		err = os.WriteFile(path.Join(rootDir, repoName, "blobs", unknownDigest.Algorithm().String(), unknownDigest.Encoded()),
+			unknownBuf, storageConstants.DefaultFilePerms)
+		So(err, ShouldBeNil)
+
+		indexJSONBuf, err := os.ReadFile(path.Join(rootDir, repoName, "index.json"))
+		So(err, ShouldBeNil)
+
+		var indexJSON ispec.Index
+
+		err = json.Unmarshal(indexJSONBuf, &indexJSON)
+		So(err, ShouldBeNil)
+
+		for idx, desc := range indexJSON.Manifests {
+			if desc.Digest == unknown.ManifestDescriptor.Digest {
+				indexJSON.Manifests[idx].Digest = unknownDigest
+				indexJSON.Manifests[idx].MediaType = unsupportedMediaType
+			}
+		}
+
+		indexJSONBuf, err = json.Marshal(indexJSON)
+		So(err, ShouldBeNil)
+
+		err = os.WriteFile(path.Join(rootDir, repoName, "index.json"), indexJSONBuf, storageConstants.DefaultFilePerms)
+		So(err, ShouldBeNil)
+
+		blobExists := func(digest godigest.Digest) bool {
+			_, statErr := os.Stat(path.Join(rootDir, repoName, "blobs", digest.Algorithm().String(), digest.Encoded()))
+
+			return statErr == nil
+		}
+
+		// sleep so the unknown manifest's config/layers pass the GC delay's age gate once orphaned
+		time.Sleep(1 * time.Second)
+
+		gcInstance := gc.NewGarbageCollect(imgStore, nil, gc.Options{
+			Delay: 1 * time.Second,
+			ImageRetention: config.ImageRetention{
+				Delay: 1 * time.Second,
+			},
+		}, audit, log, metrics)
+
+		err = gcInstance.CleanRepo(ctx, repoName)
+		So(err, ShouldBeNil)
+
+		// (a) the unknown manifest entry is removed from index.json
+		prunedIndexBuf, err := imgStore.GetIndexContent(repoName)
+		So(err, ShouldBeNil)
+
+		var prunedIndex ispec.Index
+
+		err = json.Unmarshal(prunedIndexBuf, &prunedIndex)
+		So(err, ShouldBeNil)
+
+		for _, desc := range prunedIndex.Manifests {
+			So(desc.Digest, ShouldNotEqual, unknownDigest)
+		}
+
+		// (b) the unknown manifest's config/layer blobs are gone
+		So(blobExists(unknownDigest), ShouldBeFalse)
+		So(blobExists(unknown.Manifest.Config.Digest), ShouldBeFalse)
+
+		for _, layer := range unknown.Manifest.Layers {
+			So(blobExists(layer.Digest), ShouldBeFalse)
+		}
+
+		// (c) the healthy tagged image's blobs survive
+		So(blobExists(healthy.ManifestDescriptor.Digest), ShouldBeTrue)
+		So(blobExists(healthy.Manifest.Config.Digest), ShouldBeTrue)
+
+		for _, layer := range healthy.Manifest.Layers {
+			So(blobExists(layer.Digest), ShouldBeTrue)
+		}
+	})
+}
+
+// TestGCDryRunDeletesNothing guards DryRun's non-destructive-simulation contract: index.json pruning is
+// already DryRun-gated, but blob GC re-reads the on-disk index.json independently and used to run
+// unconditionally, so it could delete orphan blobs for real - including the config/layers of an
+// unknown-media-type entry whose index.json descriptor DryRun leaves untouched, corrupting the repo. Blob
+// GC (and upload GC) must be gated by DryRun exactly like the index-prune passes and metrics.
+func TestGCDryRunDeletesNothing(t *testing.T) {
+	Convey("DryRun with a true orphan blob and an unknown media type entry", t, func() {
+		log := zlog.NewTestLogger()
+		audit := zlog.NewAuditLogger("debug", "/dev/null")
+		metrics := newTestMetricsServer(t, log)
+
+		rootDir := t.TempDir()
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+
+		storeController := storage.StoreController{}
+		storeController.DefaultStore = imgStore
+
+		ctx := context.Background()
+		repoName := "gc-dry-run"
+
+		unsupportedMediaType := "application/vnd.oci.artifact.manifest.v1+json"
+
+		healthy := CreateRandomImage()
+		err := WriteImageToFileSystem(healthy, repoName, "v1", storeController)
+		So(err, ShouldBeNil)
+
+		unknown := CreateRandomImage()
+		err = WriteImageToFileSystem(unknown, repoName, "unknown", storeController)
+		So(err, ShouldBeNil)
+
+		unknownBuf, err := os.ReadFile(path.Join(rootDir, repoName, "blobs",
+			unknown.ManifestDescriptor.Digest.Algorithm().String(), unknown.ManifestDescriptor.Digest.Encoded()))
+		So(err, ShouldBeNil)
+
+		var unknownManifest ispec.Manifest
+
+		err = json.Unmarshal(unknownBuf, &unknownManifest)
+		So(err, ShouldBeNil)
+
+		unknownManifest.MediaType = unsupportedMediaType
+
+		unknownBuf, err = json.Marshal(unknownManifest)
+		So(err, ShouldBeNil)
+
+		unknownDigest := godigest.FromBytes(unknownBuf)
+
+		err = os.WriteFile(path.Join(rootDir, repoName, "blobs", unknownDigest.Algorithm().String(), unknownDigest.Encoded()),
+			unknownBuf, storageConstants.DefaultFilePerms)
+		So(err, ShouldBeNil)
+
+		indexJSONBuf, err := os.ReadFile(path.Join(rootDir, repoName, "index.json"))
+		So(err, ShouldBeNil)
+
+		var indexJSON ispec.Index
+
+		err = json.Unmarshal(indexJSONBuf, &indexJSON)
+		So(err, ShouldBeNil)
+
+		for idx, desc := range indexJSON.Manifests {
+			if desc.Digest == unknown.ManifestDescriptor.Digest {
+				indexJSON.Manifests[idx].Digest = unknownDigest
+				indexJSON.Manifests[idx].MediaType = unsupportedMediaType
+			}
+		}
+
+		indexJSONBuf, err = json.Marshal(indexJSON)
+		So(err, ShouldBeNil)
+
+		err = os.WriteFile(path.Join(rootDir, repoName, "index.json"), indexJSONBuf, storageConstants.DefaultFilePerms)
+		So(err, ShouldBeNil)
+
+		// a true orphan blob: content-addressed, never referenced by any manifest
+		orphanContent := []byte("i am a true orphan blob")
+		orphanDigest := godigest.FromBytes(orphanContent)
+
+		_, _, err = imgStore.FullBlobUpload(ctx, repoName, bytes.NewReader(orphanContent), orphanDigest)
+		So(err, ShouldBeNil)
+
+		blobExists := func(digest godigest.Digest) bool {
+			_, statErr := os.Stat(path.Join(rootDir, repoName, "blobs", digest.Algorithm().String(), digest.Encoded()))
+
+			return statErr == nil
+		}
+
+		// snapshot index.json bytes before GC, so we can assert it is byte-identical afterwards
+		indexBefore, err := imgStore.GetIndexContent(repoName)
+		So(err, ShouldBeNil)
+
+		// sleep so the orphan / unknown-media-type blobs would pass the GC delay's age gate
+		time.Sleep(1 * time.Second)
+
+		gcInstance := gc.NewGarbageCollect(imgStore, nil, gc.Options{
+			Delay: 1 * time.Second,
+			ImageRetention: config.ImageRetention{
+				Delay:  1 * time.Second,
+				DryRun: true,
+			},
+		}, audit, log, metrics)
+
+		err = gcInstance.CleanRepo(ctx, repoName)
+		So(err, ShouldBeNil)
+
+		indexAfter, err := imgStore.GetIndexContent(repoName)
+		So(err, ShouldBeNil)
+		So(string(indexAfter), ShouldEqual, string(indexBefore))
+
+		So(blobExists(orphanDigest), ShouldBeTrue)
+
+		So(blobExists(unknownDigest), ShouldBeTrue)
+		So(blobExists(unknown.Manifest.Config.Digest), ShouldBeTrue)
+
+		for _, layer := range unknown.Manifest.Layers {
+			So(blobExists(layer.Digest), ShouldBeTrue)
+		}
+
+		So(blobExists(healthy.ManifestDescriptor.Digest), ShouldBeTrue)
+		So(blobExists(healthy.Manifest.Config.Digest), ShouldBeTrue)
+
+		for _, layer := range healthy.Manifest.Layers {
+			So(blobExists(layer.Digest), ShouldBeTrue)
+		}
+	})
+}
