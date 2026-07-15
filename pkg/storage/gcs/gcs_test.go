@@ -1735,12 +1735,9 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 
 		corruptedBlob := bytes.Repeat([]byte("c"), blobSize+1)
 
-		_, err = gcsDriver.WriteFile(blobPath, corruptedBlob)
+		nbytes, err := gcsDriver.WriteFile(blobPath, corruptedBlob)
 		So(err, ShouldBeNil)
-
-		blobInfo, err := gcsDriver.Stat(blobPath)
-		So(err, ShouldBeNil)
-		So(blobInfo.Size(), ShouldEqual, int64(len(corruptedBlob)))
+		So(nbytes, ShouldEqual, len(corruptedBlob))
 
 		err = WriteImageToFileSystem(image, repoName, tag, storeController)
 		So(err, ShouldBeNil)
@@ -1778,12 +1775,9 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 
 		corruptedBlob := bytes.Repeat([]byte("c"), blobSize+1)
 
-		_, err = gcsDriver.WriteFile(blobPath, corruptedBlob)
+		nbytes, err := gcsDriver.WriteFile(blobPath, corruptedBlob)
 		So(err, ShouldBeNil)
-
-		blobInfo, err := gcsDriver.Stat(blobPath)
-		So(err, ShouldBeNil)
-		So(blobInfo.Size(), ShouldEqual, int64(len(corruptedBlob)))
+		So(nbytes, ShouldEqual, len(corruptedBlob))
 
 		err = WriteMultiArchImageToFileSystem(image, repoName, tag, storeController)
 		So(err, ShouldBeNil)
