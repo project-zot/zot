@@ -1709,17 +1709,20 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 	overwriteUntilSizeChanges := func(blobPath string, originalSize int) bool {
 		for attempt := range 10 {
 			corruptedBlob := bytes.Repeat([]byte("c"), originalSize+attempt+1)
+			expectedSize := int64(len(corruptedBlob))
 
 			if _, err := gcsDriver.WriteFile(blobPath, corruptedBlob); err != nil {
 				return false
 			}
 
-			blobInfo, err := gcsDriver.Stat(blobPath)
-			if err == nil && blobInfo.Size() != int64(originalSize) {
-				return true
-			}
+			for range 10 {
+				blobInfo, err := gcsDriver.Stat(blobPath)
+				if err == nil && blobInfo.Size() == expectedSize {
+					return true
+				}
 
-			time.Sleep(100 * time.Millisecond)
+				time.Sleep(100 * time.Millisecond)
+			}
 		}
 
 		return false
