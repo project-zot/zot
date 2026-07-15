@@ -31,6 +31,122 @@ type mapBackedCache struct {
 	failOnCall int
 }
 
+// stickyOriginalCache simulates cache drivers that keep the original path while
+// duplicates still exist, even when DeleteBlob is called on the original path.
+type stickyOriginalCache struct {
+	mu         sync.Mutex
+	original   map[string]string
+	duplicates map[string]map[string]struct{}
+}
+
+func newStickyOriginalCache() *stickyOriginalCache {
+	return &stickyOriginalCache{
+		original:   map[string]string{},
+		duplicates: map[string]map[string]struct{}{},
+	}
+}
+
+func (cache *stickyOriginalCache) Name() string {
+	return "sticky-original-cache"
+}
+
+func (cache *stickyOriginalCache) UsesRelativePaths() bool {
+	return false
+}
+
+func (cache *stickyOriginalCache) GetBlob(digest godigest.Digest) (string, error) {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+
+	original, ok := cache.original[digest.String()]
+	if !ok || original == "" {
+		return "", zerr.ErrCacheMiss
+	}
+
+	return original, nil
+}
+
+func (cache *stickyOriginalCache) GetAllBlobs(digest godigest.Digest) ([]string, error) {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+
+	original, ok := cache.original[digest.String()]
+	if !ok || original == "" {
+		return nil, zerr.ErrCacheMiss
+	}
+
+	ret := []string{original}
+	for dup := range cache.duplicates[digest.String()] {
+		ret = append(ret, dup)
+	}
+
+	sort.Strings(ret)
+
+	return ret, nil
+}
+
+func (cache *stickyOriginalCache) PutBlob(digest godigest.Digest, blobPath string) error {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+
+	if current, ok := cache.original[digest.String()]; !ok || current == "" {
+		cache.original[digest.String()] = blobPath
+
+		return nil
+	}
+
+	if cache.original[digest.String()] == blobPath {
+		return nil
+	}
+
+	if _, ok := cache.duplicates[digest.String()]; !ok {
+		cache.duplicates[digest.String()] = map[string]struct{}{}
+	}
+
+	cache.duplicates[digest.String()][blobPath] = struct{}{}
+
+	return nil
+}
+
+func (cache *stickyOriginalCache) HasBlob(digest godigest.Digest, blobPath string) bool {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+
+	if cache.original[digest.String()] == blobPath {
+		return true
+	}
+
+	_, ok := cache.duplicates[digest.String()][blobPath]
+
+	return ok
+}
+
+func (cache *stickyOriginalCache) DeleteBlob(digest godigest.Digest, blobPath string) error {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+
+	dgst := digest.String()
+
+	if _, ok := cache.duplicates[dgst][blobPath]; ok {
+		delete(cache.duplicates[dgst], blobPath)
+
+		return nil
+	}
+
+	if cache.original[dgst] != blobPath {
+		return zerr.ErrCacheMiss
+	}
+
+	// Intentionally keep original when duplicates exist.
+	if len(cache.duplicates[dgst]) > 0 {
+		return nil
+	}
+
+	delete(cache.original, dgst)
+
+	return nil
+}
+
 func newMapBackedCache() *mapBackedCache {
 	return &mapBackedCache{entries: map[string]map[string]struct{}{}}
 }
@@ -298,6 +414,36 @@ func makeStatefulMigrationStoreMock(rootDir, repo, blobPath string, blobContent 
 
 			return nil
 		},
+		MoveFn: func(_ context.Context, sourcePath, destPath string) error {
+			mu.Lock()
+			defer mu.Unlock()
+
+			content, ok := files[sourcePath]
+			if !ok {
+				return driver.PathNotFoundError{Path: sourcePath}
+			}
+
+			ensureParents(destPath)
+			files[destPath] = append([]byte(nil), content...)
+			delete(files, sourcePath)
+
+			return nil
+		},
+		DeleteFn: func(_ context.Context, filePath string) error {
+			mu.Lock()
+			defer mu.Unlock()
+
+			if _, ok := files[filePath]; !ok {
+				if _, dirExists := dirs[filePath]; !dirExists {
+					return driver.PathNotFoundError{Path: filePath}
+				}
+			}
+
+			delete(files, filePath)
+			delete(dirs, filePath)
+
+			return nil
+		},
 	}
 }
 
@@ -479,5 +625,73 @@ func TestNewImageStoreUpgradeResumesAfterPartialFailureWithPopulatedCache(t *tes
 
 	if !cache.HasBlob(digest, repoBlobPath) {
 		t.Fatal("expected cache to contain repo marker path after resumed migration")
+	}
+}
+
+func TestDedupeBlobRecoversWhenStaleOriginalIsKeptByCache(t *testing.T) {
+	log := log.NewTestLogger()
+	metrics := monitoring.NewMetricsServer(false, log)
+
+	rootDir := "/oci-repo-test/dedupe-self-heal"
+	repoWithMarker := "repo"
+	repoUploading := "repo-upload"
+
+	content := []byte("blob-content-for-self-heal")
+	digest := godigest.FromBytes(content)
+
+	staleGlobalPath := path.Join(rootDir, constants.GlobalBlobsRepo, ispec.ImageBlobsDir,
+		digest.Algorithm().String(), digest.Encoded())
+
+	markerPath := path.Join(rootDir, repoWithMarker, ispec.ImageBlobsDir,
+		digest.Algorithm().String(), digest.Encoded())
+
+	srcUploadPath := path.Join(rootDir, repoUploading, constants.BlobUploadDir, "upload-id")
+	dstPath := path.Join(rootDir, repoUploading, ispec.ImageBlobsDir,
+		digest.Algorithm().String(), digest.Encoded())
+
+	storeMock := makeStatefulMigrationStoreMock(rootDir, repoWithMarker, markerPath, []byte{})
+	if err := storeMock.PutContent(context.Background(), srcUploadPath, content); err != nil {
+		t.Fatal(err)
+	}
+
+	cache := newStickyOriginalCache()
+	if err := cache.PutBlob(digest, staleGlobalPath); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := cache.PutBlob(digest, markerPath); err != nil {
+		t.Fatal(err)
+	}
+
+	store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+		gcs.New(storeMock), cache, nil, nil)
+	if store == nil {
+		t.Fatal("expected image store initialization to succeed")
+	}
+
+	if err := store.DedupeBlob(srcUploadPath, digest, repoUploading, dstPath); err != nil {
+		t.Fatal(err)
+	}
+
+	globalContent, err := storeMock.GetContent(context.Background(), staleGlobalPath)
+	if err != nil {
+		t.Fatal("expected stale global path to be re-created from upload content")
+	}
+
+	if !bytes.Equal(globalContent, content) {
+		t.Fatal("expected re-created global blob to preserve upload content")
+	}
+
+	dstContent, err := storeMock.GetContent(context.Background(), dstPath)
+	if err != nil {
+		t.Fatal("expected destination marker path to be created")
+	}
+
+	if len(dstContent) != 0 {
+		t.Fatal("expected destination deduped marker blob to be zero-size")
+	}
+
+	if _, err := storeMock.GetContent(context.Background(), srcUploadPath); err == nil {
+		t.Fatal("expected upload source to be moved away after dedupe")
 	}
 }

@@ -1788,6 +1788,7 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 					return allErr
 				}
 
+				normalizedPaths := make([]string, 0, len(allRecords))
 				for _, recordPath := range allRecords {
 					normalized := recordPath
 					if is.cache.UsesRelativePaths() && !path.IsAbs(normalized) &&
@@ -1795,9 +1796,23 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 						normalized = path.Join(is.rootDir, normalized)
 					}
 
+					normalizedPaths = append(normalizedPaths, normalized)
+				}
+
+				// Delete non-stale entries first, then stale original path last.
+				// Some cache drivers keep the original while duplicates exist.
+				for _, normalized := range normalizedPaths {
+					if normalized == dstRecord {
+						continue
+					}
+
 					if delErr := is.deleteBlobRef(dstDigest, normalized); delErr != nil && !errors.Is(delErr, zerr.ErrCacheMiss) {
 						return delErr
 					}
+				}
+
+				if delErr := is.deleteBlobRef(dstDigest, dstRecord); delErr != nil && !errors.Is(delErr, zerr.ErrCacheMiss) {
+					return delErr
 				}
 
 				updatedRecord, err = is.cache.GetBlob(dstDigest)
