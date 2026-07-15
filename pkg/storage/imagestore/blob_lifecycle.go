@@ -70,8 +70,8 @@ func (l *localHardlinkBlobLifecycle) ResolveReadPath(blobPath, _ string, digest 
 	return resolveReadPathWithCache(blobPath, digest, blobSize, resolveFromCache)
 }
 
-func (l *localHardlinkBlobLifecycle) ShouldDeleteGlobalBlob(globalBlobPath string, _ godigest.Digest,
-	_ func(godigest.Digest) (bool, error),
+func (l *localHardlinkBlobLifecycle) ShouldDeleteGlobalBlob(globalBlobPath string, digest godigest.Digest,
+	isDigestReferenced func(godigest.Digest) (bool, error),
 ) (bool, error) {
 	fileInfo, err := os.Stat(globalBlobPath)
 	if err != nil {
@@ -82,17 +82,35 @@ func (l *localHardlinkBlobLifecycle) ShouldDeleteGlobalBlob(globalBlobPath strin
 		return false, err
 	}
 
+	nLink, ok := hardLinkCount(fileInfo)
+	if ok {
+		return nLink <= 1, nil
+	}
+
+	if isDigestReferenced == nil {
+		return false, nil
+	}
+
+	isReferenced, err := isDigestReferenced(digest)
+	if err != nil {
+		return false, err
+	}
+
+	return !isReferenced, nil
+}
+
+func hardLinkCount(fileInfo os.FileInfo) (uint64, bool) {
 	fileInfoValue := reflect.Indirect(reflect.ValueOf(fileInfo.Sys()))
 	if !fileInfoValue.IsValid() || fileInfoValue.Kind() != reflect.Struct {
-		return false, nil
+		return 0, false
 	}
 
 	nLink := fileInfoValue.FieldByName("Nlink")
 	if !nLink.IsValid() || !nLink.CanUint() {
-		return false, nil
+		return 0, false
 	}
 
-	return nLink.Uint() <= 1, nil
+	return nLink.Uint(), true
 }
 
 func (l *localHardlinkBlobLifecycle) ShouldGateDeleteUntilRebuild() bool {

@@ -566,6 +566,44 @@ func TestBlobLifecycleShouldDeleteGlobalBlobRemote(t *testing.T) {
 	})
 }
 
+func TestHardLinkCount(t *testing.T) {
+	t.Run("returns count when Nlink is present", func(t *testing.T) {
+		count, ok := hardLinkCount(fileInfoWithSys{sys: struct{ Nlink uint64 }{Nlink: 3}})
+		if !ok {
+			t.Fatal("expected hard link count to be detected")
+		}
+
+		if count != 3 {
+			t.Fatalf("unexpected hard link count: got %d want %d", count, 3)
+		}
+	})
+
+	t.Run("returns false when syscall payload has no Nlink", func(t *testing.T) {
+		_, ok := hardLinkCount(fileInfoWithSys{sys: struct{ Size int64 }{Size: 1}})
+		if ok {
+			t.Fatal("expected hard link detection to fail without Nlink field")
+		}
+	})
+
+	t.Run("returns false when syscall payload is nil", func(t *testing.T) {
+		_, ok := hardLinkCount(fileInfoWithSys{sys: nil})
+		if ok {
+			t.Fatal("expected hard link detection to fail for nil syscall payload")
+		}
+	})
+}
+
+type fileInfoWithSys struct {
+	sys any
+}
+
+func (f fileInfoWithSys) Name() string       { return "" }
+func (f fileInfoWithSys) Size() int64        { return 0 }
+func (f fileInfoWithSys) Mode() os.FileMode  { return 0 }
+func (f fileInfoWithSys) ModTime() time.Time { return time.Time{} }
+func (f fileInfoWithSys) IsDir() bool        { return false }
+func (f fileInfoWithSys) Sys() any           { return f.sys }
+
 type lifecycleFileInfoStub struct {
 	path string
 	size int64
