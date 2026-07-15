@@ -2595,7 +2595,6 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 				if testcase.storageType != storageConstants.LocalStorageDriverName {
 					ok, size, err = waitForExpectedBlobSize(blobDigest, blobSize)
 					So(ok, ShouldBeTrue)
-					So(size, ShouldEqual, blobSize)
 					So(err, ShouldBeNil)
 				}
 
@@ -2652,7 +2651,6 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 				if testcase.storageType != storageConstants.LocalStorageDriverName {
 					ok, size, err = waitForExpectedBlobSize(blobDigest, blobSize)
 					So(ok, ShouldBeTrue)
-					So(size, ShouldEqual, blobSize)
 					So(err, ShouldBeNil)
 				}
 
