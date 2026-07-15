@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/distribution/distribution/v3/registry/storage/driver"
+	godigest "github.com/opencontainers/go-digest"
 
 	"zotregistry.dev/zot/v2/pkg/storage/constants"
 )
@@ -298,5 +299,89 @@ func TestRemoteBlobLifecycleLinkCreatesMarker(t *testing.T) {
 
 	if len(marker) != 0 {
 		t.Fatal("remote link should create an empty marker content")
+	}
+}
+
+func TestBlobLifecycleResolveReadPath(t *testing.T) {
+	nonEmptyDigest := godigest.FromString("non-empty")
+	emptyDigest := nonEmptyDigest.Algorithm().FromBytes(nil)
+	newLocalLifecycle := func() blobLifecycle {
+		return newBlobLifecycle(&lifecycleStubDriver{
+			nameFn: func() string { return constants.LocalStorageDriverName },
+		})
+	}
+	newRemoteLifecycle := func() blobLifecycle {
+		return newBlobLifecycle(&lifecycleStubDriver{
+			nameFn: func() string { return constants.S3StorageDriverName },
+		})
+	}
+
+	testCases := []struct {
+		name          string
+		lifecycle     blobLifecycle
+		digest        godigest.Digest
+		blobSize      int64
+		wantPath      string
+		wantErr       bool
+		wantCacheCall bool
+	}{
+		{
+			name:          "local non-zero blob keeps path",
+			lifecycle:     newLocalLifecycle(),
+			digest:        nonEmptyDigest,
+			blobSize:      42,
+			wantPath:      "repo/blob",
+			wantErr:       false,
+			wantCacheCall: false,
+		},
+		{
+			name:          "remote empty digest keeps zero-size path",
+			lifecycle:     newRemoteLifecycle(),
+			digest:        emptyDigest,
+			blobSize:      0,
+			wantPath:      "repo/blob",
+			wantErr:       false,
+			wantCacheCall: false,
+		},
+		{
+			name:          "remote zero-size non-empty digest resolves via cache",
+			lifecycle:     newRemoteLifecycle(),
+			digest:        nonEmptyDigest,
+			blobSize:      0,
+			wantPath:      "_blobstore/blobs/sha256/content",
+			wantErr:       false,
+			wantCacheCall: true,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			cacheCalled := false
+
+			gotPath, err := testCase.lifecycle.ResolveReadPath("repo/blob", testCase.digest, testCase.blobSize,
+				func(digest godigest.Digest) (string, error) {
+					cacheCalled = true
+					if digest != testCase.digest {
+						t.Fatalf("unexpected digest passed to cache resolver: got %s want %s", digest, testCase.digest)
+					}
+
+					return "_blobstore/blobs/sha256/content", nil
+				})
+			if testCase.wantErr && err == nil {
+				t.Fatal("expected error, got nil")
+			}
+
+			if !testCase.wantErr && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if gotPath != testCase.wantPath {
+				t.Fatalf("unexpected resolved path: got %s want %s", gotPath, testCase.wantPath)
+			}
+
+			if cacheCalled != testCase.wantCacheCall {
+				t.Fatalf("unexpected cache resolver usage: got %t want %t", cacheCalled, testCase.wantCacheCall)
+			}
+		})
 	}
 }

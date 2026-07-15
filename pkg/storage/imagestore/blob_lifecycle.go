@@ -4,6 +4,8 @@ import (
 	"context"
 	"io"
 
+	godigest "github.com/opencontainers/go-digest"
+
 	"zotregistry.dev/zot/v2/pkg/storage/constants"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
@@ -13,8 +15,25 @@ import (
 type blobLifecycle interface {
 	PromoteCandidate(srcPath, dstPath string) error
 	LinkBlob(srcPath, dstPath string) error
+	ResolveReadPath(blobPath string, digest godigest.Digest, blobSize int64,
+		resolveFromCache func(godigest.Digest) (string, error),
+	) (string, error)
 	ShouldGateDeleteUntilRebuild() bool
 	IncludeRepoInMountCandidates(repo string) bool
+}
+
+func resolveReadPathWithCache(blobPath string, digest godigest.Digest, blobSize int64,
+	resolveFromCache func(godigest.Digest) (string, error),
+) (string, error) {
+	if blobSize > 0 {
+		return blobPath, nil
+	}
+
+	if digest.Algorithm().FromBytes(nil) == digest {
+		return blobPath, nil
+	}
+
+	return resolveFromCache(digest)
 }
 
 func newBlobLifecycle(storeDriver storageTypes.Driver) blobLifecycle {
@@ -35,6 +54,12 @@ func (l *localHardlinkBlobLifecycle) PromoteCandidate(srcPath, dstPath string) e
 
 func (l *localHardlinkBlobLifecycle) LinkBlob(srcPath, dstPath string) error {
 	return l.storeDriver.Link(srcPath, dstPath)
+}
+
+func (l *localHardlinkBlobLifecycle) ResolveReadPath(blobPath string, digest godigest.Digest, blobSize int64,
+	resolveFromCache func(godigest.Digest) (string, error),
+) (string, error) {
+	return resolveReadPathWithCache(blobPath, digest, blobSize, resolveFromCache)
 }
 
 func (l *localHardlinkBlobLifecycle) ShouldGateDeleteUntilRebuild() bool {
@@ -93,6 +118,12 @@ func (r *remoteMarkerBlobLifecycle) PromoteCandidate(srcPath, dstPath string) er
 
 func (r *remoteMarkerBlobLifecycle) LinkBlob(srcPath, dstPath string) error {
 	return r.storeDriver.Link(srcPath, dstPath)
+}
+
+func (r *remoteMarkerBlobLifecycle) ResolveReadPath(blobPath string, digest godigest.Digest, blobSize int64,
+	resolveFromCache func(godigest.Digest) (string, error),
+) (string, error) {
+	return resolveReadPathWithCache(blobPath, digest, blobSize, resolveFromCache)
 }
 
 func (r *remoteMarkerBlobLifecycle) ShouldGateDeleteUntilRebuild() bool {
