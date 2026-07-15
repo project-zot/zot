@@ -1861,16 +1861,35 @@ func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]str
 	}
 
 	repos := []string{}
+	rootDirSlash := filepath.ToSlash(is.rootDir)
 
 	for _, blobPath := range blobsPaths {
-		// these can be both full paths or relative paths depending on the cache options
-		if !is.cache.UsesRelativePaths() && path.IsAbs(blobPath) {
-			blobPath, _ = filepath.Rel(is.rootDir, blobPath)
+		// Cache entries may be absolute or relative, and format can vary across restarts.
+		// Normalize to a repo-relative slash path before extracting repo candidates.
+		if filepath.IsAbs(blobPath) {
+			relPath, relErr := filepath.Rel(is.rootDir, blobPath)
+			if relErr == nil {
+				blobPath = relPath
+			}
 		}
 
 		blobPath = filepath.ToSlash(blobPath)
+		blobPath = strings.TrimPrefix(blobPath, "./")
+
+		if normalizedPath, ok := strings.CutPrefix(blobPath, rootDirSlash+"/"); ok {
+			blobPath = normalizedPath
+		}
+
 		blobsDirIndex := strings.LastIndex(blobPath, "/blobs/")
-		repo := blobPath[:blobsDirIndex]
+		if blobsDirIndex <= 0 {
+			continue
+		}
+
+		repo := strings.TrimPrefix(blobPath[:blobsDirIndex], "/")
+		if repo == "" {
+			continue
+		}
+
 		if !is.lifecycle.IncludeRepoInMountCandidates(repo) {
 			continue
 		}
