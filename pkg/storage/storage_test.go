@@ -296,6 +296,35 @@ func TestStorageNew(t *testing.T) {
 	})
 }
 
+func TestStorageNewDisablesDedupeWhenHardlinkValidationFails(t *testing.T) {
+	rootDir := t.TempDir()
+
+	if err := os.Chmod(rootDir, 0o555); err != nil {
+		t.Fatalf("failed to make temp root read-only: %v", err)
+	}
+
+	t.Cleanup(func() {
+		_ = os.Chmod(rootDir, 0o755)
+	})
+
+	conf := config.New()
+	conf.Storage.RootDirectory = rootDir
+	conf.Storage.Dedupe = true
+
+	_, err := storage.New(conf, nil, nil, zlog.NewTestLogger(), nil)
+	if err != nil {
+		if conf.Storage.Dedupe {
+			t.Skip("environment did not trigger hardlink validation failure for read-only root")
+		}
+
+		t.Fatalf("storage.New() failed unexpectedly: %v", err)
+	}
+
+	if conf.Storage.Dedupe {
+		t.Skip("environment allows hardlinks/writes despite read-only permissions; cannot assert auto-disable path")
+	}
+}
+
 type captureImageEvents struct {
 	mu              sync.Mutex
 	imageUpdated    []imageUpdatedCall

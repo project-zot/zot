@@ -3,14 +3,19 @@ package imagestore_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"path"
+	"sort"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/storage/constants"
@@ -18,6 +23,283 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage/imagestore"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
+
+type mapBackedCache struct {
+	mu         sync.Mutex
+	entries    map[string]map[string]struct{}
+	putCalls   int
+	failOnCall int
+}
+
+func newMapBackedCache() *mapBackedCache {
+	return &mapBackedCache{entries: map[string]map[string]struct{}{}}
+}
+
+func (cache *mapBackedCache) Name() string {
+	return "mock-cache"
+}
+
+func (cache *mapBackedCache) GetBlob(digest godigest.Digest) (string, error) {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+
+	pathsMap, ok := cache.entries[digest.String()]
+	if !ok || len(pathsMap) == 0 {
+		return "", zerr.ErrCacheMiss
+	}
+
+	paths := make([]string, 0, len(pathsMap))
+	for blobPath := range pathsMap {
+		paths = append(paths, blobPath)
+	}
+
+	sort.Strings(paths)
+
+	return paths[0], nil
+}
+
+func (cache *mapBackedCache) GetAllBlobs(digest godigest.Digest) ([]string, error) {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+
+	pathsMap, ok := cache.entries[digest.String()]
+	if !ok || len(pathsMap) == 0 {
+		return nil, zerr.ErrCacheMiss
+	}
+
+	paths := make([]string, 0, len(pathsMap))
+	for blobPath := range pathsMap {
+		paths = append(paths, blobPath)
+	}
+
+	sort.Strings(paths)
+
+	return paths, nil
+}
+
+func (cache *mapBackedCache) PutBlob(digest godigest.Digest, blobPath string) error {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+
+	cache.putCalls++
+	if cache.failOnCall > 0 && cache.putCalls == cache.failOnCall {
+		return errors.New("injected cache put failure")
+	}
+
+	if _, ok := cache.entries[digest.String()]; !ok {
+		cache.entries[digest.String()] = map[string]struct{}{}
+	}
+
+	cache.entries[digest.String()][blobPath] = struct{}{}
+
+	return nil
+}
+
+func (cache *mapBackedCache) HasBlob(digest godigest.Digest, blobPath string) bool {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+
+	pathsMap, ok := cache.entries[digest.String()]
+	if !ok {
+		return false
+	}
+
+	_, ok = pathsMap[blobPath]
+
+	return ok
+}
+
+func (cache *mapBackedCache) DeleteBlob(digest godigest.Digest, blobPath string) error {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+
+	pathsMap, ok := cache.entries[digest.String()]
+	if !ok {
+		return zerr.ErrCacheMiss
+	}
+
+	if _, ok := pathsMap[blobPath]; !ok {
+		return zerr.ErrCacheMiss
+	}
+
+	delete(pathsMap, blobPath)
+	if len(pathsMap) == 0 {
+		delete(cache.entries, digest.String())
+	}
+
+	return nil
+}
+
+func (cache *mapBackedCache) UsesRelativePaths() bool {
+	return false
+}
+
+func makeStatefulMigrationStoreMock(rootDir, repo, blobPath string, blobContent []byte) *mocks.StorageDriverMock {
+	files := map[string][]byte{
+		blobPath: append([]byte(nil), blobContent...),
+		path.Join(rootDir, repo, ispec.ImageIndexFile):  []byte("{}"),
+		path.Join(rootDir, repo, ispec.ImageLayoutFile): []byte("{}"),
+	}
+
+	dirs := map[string]struct{}{}
+	ensureDir := func(p string) {
+		clean := strings.TrimSuffix(p, "/")
+		if clean == "" {
+			clean = "/"
+		}
+
+		dirs[clean] = struct{}{}
+	}
+
+	ensureParents := func(p string) {
+		cur := path.Dir(p)
+		for cur != "." && cur != "/" {
+			ensureDir(cur)
+			cur = path.Dir(cur)
+		}
+
+		ensureDir(rootDir)
+	}
+
+	for fpath := range files {
+		ensureParents(fpath)
+	}
+
+	listUnder := func(prefix string) []string {
+		seen := map[string]struct{}{}
+		ret := []string{}
+
+		for d := range dirs {
+			if path.Dir(d) == prefix {
+				if _, ok := seen[d]; !ok {
+					seen[d] = struct{}{}
+					ret = append(ret, d)
+				}
+			}
+		}
+
+		for f := range files {
+			if path.Dir(f) == prefix {
+				if _, ok := seen[f]; !ok {
+					seen[f] = struct{}{}
+					ret = append(ret, f)
+				}
+			}
+		}
+
+		sort.Strings(ret)
+
+		return ret
+	}
+
+	var mu sync.Mutex
+
+	return &mocks.StorageDriverMock{
+		GetContentFn: func(_ context.Context, filePath string) ([]byte, error) {
+			mu.Lock()
+			defer mu.Unlock()
+
+			content, ok := files[filePath]
+			if !ok {
+				return nil, driver.PathNotFoundError{Path: filePath}
+			}
+
+			return append([]byte(nil), content...), nil
+		},
+		StatFn: func(_ context.Context, filePath string) (driver.FileInfo, error) {
+			mu.Lock()
+			defer mu.Unlock()
+
+			if content, ok := files[filePath]; ok {
+				size := int64(len(content))
+
+				return &mocks.FileInfoMock{
+					IsDirFn: func() bool { return false },
+					PathFn:  func() string { return filePath },
+					SizeFn:  func() int64 { return size },
+				}, nil
+			}
+
+			if _, ok := dirs[filePath]; ok {
+				return &mocks.FileInfoMock{
+					IsDirFn: func() bool { return true },
+					PathFn:  func() string { return filePath },
+					SizeFn:  func() int64 { return 0 },
+				}, nil
+			}
+
+			return nil, driver.PathNotFoundError{Path: filePath}
+		},
+		ListFn: func(_ context.Context, fullPath string) ([]string, error) {
+			mu.Lock()
+			defer mu.Unlock()
+
+			if _, ok := dirs[fullPath]; !ok {
+				return nil, driver.PathNotFoundError{Path: fullPath}
+			}
+
+			return listUnder(fullPath), nil
+		},
+		WalkFn: func(_ context.Context, fullPath string, walkFn driver.WalkFn,
+			_ ...func(*driver.WalkOptions),
+		) error {
+			if fullPath != rootDir {
+				return nil
+			}
+
+			return walkFn(&mocks.FileInfoMock{
+				IsDirFn: func() bool { return true },
+				PathFn:  func() string { return path.Join(rootDir, repo) },
+				SizeFn:  func() int64 { return 0 },
+			})
+		},
+		ReaderFn: func(_ context.Context, filePath string, _ int64) (io.ReadCloser, error) {
+			mu.Lock()
+			defer mu.Unlock()
+
+			content, ok := files[filePath]
+			if !ok {
+				return nil, driver.PathNotFoundError{Path: filePath}
+			}
+
+			return io.NopCloser(bytes.NewReader(content)), nil
+		},
+		WriterFn: func(_ context.Context, filePath string, isAppend bool) (driver.FileWriter, error) {
+			mu.Lock()
+			base := []byte(nil)
+			if isAppend {
+				base = append(base, files[filePath]...)
+			}
+			mu.Unlock()
+
+			buf := bytes.NewBuffer(base)
+
+			return &mocks.FileWriterMock{
+				WriteFn: func(p []byte) (int, error) {
+					return buf.Write(p)
+				},
+				CommitFn: func() error {
+					mu.Lock()
+					defer mu.Unlock()
+
+					ensureParents(filePath)
+					files[filePath] = append([]byte(nil), buf.Bytes()...)
+
+					return nil
+				},
+			}, nil
+		},
+		PutContentFn: func(_ context.Context, filePath string, content []byte) error {
+			mu.Lock()
+			defer mu.Unlock()
+
+			ensureParents(filePath)
+			files[filePath] = append([]byte(nil), content...)
+
+			return nil
+		},
+	}
+}
 
 func TestNewImageStoreUpgradeStreamsRemoteBlob(t *testing.T) {
 	log := log.NewTestLogger()
@@ -122,5 +404,80 @@ func TestNewImageStoreUpgradeStreamsRemoteBlob(t *testing.T) {
 
 	if !bytes.Equal(writtenBlob.Bytes(), content) {
 		t.Fatal("expected migrated global blob to match streamed content")
+	}
+}
+
+func TestNewImageStoreUpgradeResumesAfterPartialFailureWithPopulatedCache(t *testing.T) {
+	log := log.NewTestLogger()
+	metrics := monitoring.NewMetricsServer(false, log)
+
+	rootDir := "/oci-repo-test/migration-resume"
+	repo := "repo"
+	content := []byte("blob-content-to-preserve")
+	digest := godigest.FromBytes(content)
+	repoBlobPath := path.Join(rootDir, repo, ispec.ImageBlobsDir, digest.Algorithm().String(), digest.Encoded())
+	globalBlobPath := path.Join(rootDir, constants.GlobalBlobsRepo, ispec.ImageBlobsDir,
+		digest.Algorithm().String(), digest.Encoded())
+	migrationMarkerPath := path.Join(rootDir, constants.BlobstoreMigratedMarker)
+
+	storeMock := makeStatefulMigrationStoreMock(rootDir, repo, repoBlobPath, content)
+	cache := newMapBackedCache()
+	cache.failOnCall = 2
+
+	store := imagestore.NewImageStore(rootDir, "", true, false, log, metrics, nil,
+		gcs.New(storeMock), cache, nil, nil)
+	if store != nil {
+		t.Fatal("expected initialization to fail on injected cache write error")
+	}
+
+	globalBlobAfterFailure, err := storeMock.GetContent(context.Background(), globalBlobPath)
+	if err != nil {
+		t.Fatal("expected promoted global blob to exist after partial failure")
+	}
+
+	if !bytes.Equal(globalBlobAfterFailure, content) {
+		t.Fatal("expected partial migration to keep full global blob content")
+	}
+
+	repoBlobAfterFailure, err := storeMock.GetContent(context.Background(), repoBlobPath)
+	if err != nil {
+		t.Fatal("expected repo blob path to still exist after partial failure")
+	}
+
+	if len(repoBlobAfterFailure) != 0 {
+		t.Fatal("expected repo blob to be converted to marker before failure")
+	}
+
+	if _, err := storeMock.GetContent(context.Background(), migrationMarkerPath); err == nil {
+		t.Fatal("expected migration marker to be absent after partial failure")
+	}
+
+	cache.failOnCall = 0
+
+	store = imagestore.NewImageStore(rootDir, "", true, false, log, metrics, nil,
+		gcs.New(storeMock), cache, nil, nil)
+	if store == nil {
+		t.Fatal("expected initialization to succeed on resumed migration")
+	}
+
+	globalBlobAfterResume, err := storeMock.GetContent(context.Background(), globalBlobPath)
+	if err != nil {
+		t.Fatal("expected global blob to exist after resumed migration")
+	}
+
+	if !bytes.Equal(globalBlobAfterResume, content) {
+		t.Fatal("expected resumed migration to preserve existing global blob content")
+	}
+
+	if _, err := storeMock.GetContent(context.Background(), migrationMarkerPath); err != nil {
+		t.Fatal("expected migration marker to be written after resumed migration")
+	}
+
+	if !cache.HasBlob(digest, globalBlobPath) {
+		t.Fatal("expected cache to contain global blob path after resumed migration")
+	}
+
+	if !cache.HasBlob(digest, repoBlobPath) {
+		t.Fatal("expected cache to contain repo marker path after resumed migration")
 	}
 }

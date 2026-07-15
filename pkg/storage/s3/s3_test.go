@@ -197,6 +197,106 @@ func runAndGetScheduler() *scheduler.Scheduler {
 	return taskScheduler
 }
 
+func TestS3LargeBlobStreamingWithDedupe(t *testing.T) {
+	tskip.SkipS3(t)
+
+	uuid, err := guuid.NewV4()
+	if err != nil {
+		panic(err)
+	}
+
+	testDir := path.Join("/oci-repo-test", uuid.String())
+
+	storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), true)
+	defer cleanupStorage(storeDriver, testDir)
+
+	content := bytes.Repeat([]byte("0123456789abcdef"), 700000)
+	digest := godigest.FromBytes(content)
+
+	repo1 := "large-stream-1"
+	upload1, err := imgStore.NewBlobUpload(context.Background(), repo1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	written, err := imgStore.PutBlobChunkStreamed(context.Background(), repo1, upload1, bytes.NewReader(content))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if written != int64(len(content)) {
+		t.Fatalf("expected written=%d, got %d", len(content), written)
+	}
+
+	if err := imgStore.FinishBlobUpload(repo1, upload1, bytes.NewReader(content), digest); err != nil {
+		t.Fatal(err)
+	}
+
+	repo2 := "large-stream-2"
+	upload2, err := imgStore.NewBlobUpload(context.Background(), repo2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	written, err = imgStore.PutBlobChunkStreamed(context.Background(), repo2, upload2, bytes.NewReader(content))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if written != int64(len(content)) {
+		t.Fatalf("expected written=%d, got %d", len(content), written)
+	}
+
+	if err := imgStore.FinishBlobUpload(repo2, upload2, bytes.NewReader(content), digest); err != nil {
+		t.Fatal(err)
+	}
+
+	rc, size, err := imgStore.GetBlob(repo2, digest, "application/octet-stream")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := io.ReadAll(rc)
+	if err != nil {
+		_ = rc.Close()
+		t.Fatal(err)
+	}
+
+	if err := rc.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if size != int64(len(content)) {
+		t.Fatalf("expected reported blob size=%d, got %d", len(content), size)
+	}
+
+	if !bytes.Equal(got, content) {
+		t.Fatal("retrieved large blob content mismatch")
+	}
+
+	globalBlobPath := path.Join(testDir, storageConstants.GlobalBlobsRepo, ispec.ImageBlobsDir,
+		digest.Algorithm().String(), digest.Encoded())
+	repo2BlobPath := path.Join(testDir, repo2, ispec.ImageBlobsDir, digest.Algorithm().String(), digest.Encoded())
+
+	globalBlobInfo, err := storeDriver.Stat(context.Background(), globalBlobPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repoBlobInfo, err := storeDriver.Stat(context.Background(), repo2BlobPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if globalBlobInfo.Size() != int64(len(content)) {
+		t.Fatalf("expected global blob size=%d, got %d", len(content), globalBlobInfo.Size())
+	}
+
+	if repoBlobInfo.Size() != 0 {
+		t.Fatalf("expected deduped repo blob marker size=0, got %d", repoBlobInfo.Size())
+	}
+}
+
 func TestStorageDriverStatFunction(t *testing.T) {
 	tskip.SkipS3(t)
 

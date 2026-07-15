@@ -318,6 +318,32 @@ func (is *ImageStore) promoteBlobCandidate(
 	digest godigest.Digest,
 	globalBlobPath string,
 ) error {
+	emptyDigest := digest.Algorithm().FromBytes(nil)
+	if candidate.size == 0 && digest != emptyDigest {
+		if binfo, err := is.storeDriver.Stat(globalBlobPath); err == nil {
+			if binfo.Size() > 0 {
+				// Resume safety: candidate can be a repo marker after a partial prior run.
+				// If global content already exists, do not overwrite it with marker bytes.
+				if err := is.putBlobRef(digest, globalBlobPath); err != nil {
+					is.log.Error().Err(err).Str("digest", digest.String()).
+						Msg("failed to update blob refs with existing global blob path during upgrade")
+
+					return err
+				}
+
+				is.log.Info().Str("digest", digest.String()).Str("repo", candidate.repoName).
+					Msg("detected existing global blob, skipping marker-only promotion")
+
+				return nil
+			}
+		} else {
+			var pathNotFoundErr driver.PathNotFoundError
+			if !errors.As(err, &pathNotFoundErr) {
+				return err
+			}
+		}
+	}
+
 	// ensure algorithm dir exists in _blobstore
 	algoDir := path.Join(is.rootDir, storageConstants.GlobalBlobsRepo,
 		ispec.ImageBlobsDir, digest.Algorithm().String())
