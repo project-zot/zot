@@ -1942,7 +1942,7 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 	referenced, err := common.GetReferencedBlobs(is, repo, is.log)
 	if err != nil {
 		is.log.Warn().Err(err).Str("repository", repo).
-			Msg("failed to collect referenced blobs, treating all blobs as unreferenced")
+			Msg("failed to collect referenced blobs, falling back to per-blob reference check")
 	}
 
 	for _, digest := range blobs {
@@ -1950,7 +1950,13 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 			Str("digest", digest.String()).Msg("perform GC on blob")
 
 		err := is.deleteBlobChecked(repo, digest, func() bool {
-			_, ok := referenced[digest]
+			if referenced != nil {
+				_, ok := referenced[digest]
+
+				return ok
+			}
+
+			ok, _ := common.IsBlobReferenced(is, repo, digest, is.log)
 
 			return ok
 		})
@@ -1979,7 +1985,7 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 			referenced, err = common.GetReferencedBlobs(is, repo, is.log)
 			if err != nil {
 				is.log.Warn().Err(err).Str("repository", repo).
-					Msg("failed to refresh referenced blobs, treating all blobs as unreferenced")
+					Msg("failed to refresh referenced blobs, falling back to per-blob reference check")
 
 				referenced = nil
 			}
