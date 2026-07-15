@@ -4,8 +4,11 @@ package imagestore
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -427,6 +430,140 @@ func TestBlobLifecycleResolveReadPath(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBlobLifecycleShouldDeleteGlobalBlobLocal(t *testing.T) {
+	lifecycle := newBlobLifecycle(&lifecycleStubDriver{
+		nameFn: func() string { return constants.LocalStorageDriverName },
+	})
+
+	t.Run("missing path is not deleted", func(t *testing.T) {
+		deleteDecision, err := lifecycle.ShouldDeleteGlobalBlob(
+			filepath.Join(t.TempDir(), "missing"),
+			godigest.FromString("missing"),
+			nil,
+		)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if deleteDecision {
+			t.Fatal("expected missing global blob path to not be deleted")
+		}
+	})
+
+	t.Run("single hardlink can be deleted", func(t *testing.T) {
+		digest := godigest.FromString("single-hardlink")
+		globalBlobPath := filepath.Join(t.TempDir(), "global-blob")
+
+		if err := os.WriteFile(globalBlobPath, []byte("content"), 0o600); err != nil {
+			t.Fatalf("create global blob file: %v", err)
+		}
+
+		deleteDecision, err := lifecycle.ShouldDeleteGlobalBlob(globalBlobPath, digest, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if !deleteDecision {
+			t.Fatal("expected single hardlink file to be deletable")
+		}
+	})
+
+	t.Run("multiple hardlinks should not be deleted", func(t *testing.T) {
+		digest := godigest.FromString("multiple-hardlinks")
+		tempDir := t.TempDir()
+		globalBlobPath := filepath.Join(tempDir, "global-blob")
+		repoBlobPath := filepath.Join(tempDir, "repo-blob")
+
+		if err := os.WriteFile(globalBlobPath, []byte("content"), 0o600); err != nil {
+			t.Fatalf("create global blob file: %v", err)
+		}
+
+		if err := os.Link(globalBlobPath, repoBlobPath); err != nil {
+			t.Fatalf("create hardlink: %v", err)
+		}
+
+		deleteDecision, err := lifecycle.ShouldDeleteGlobalBlob(globalBlobPath, digest, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if deleteDecision {
+			t.Fatal("expected multi-hardlink file to be retained")
+		}
+	})
+}
+
+func TestBlobLifecycleShouldDeleteGlobalBlobRemote(t *testing.T) {
+	lifecycle := newBlobLifecycle(&lifecycleStubDriver{
+		nameFn: func() string { return constants.S3StorageDriverName },
+	})
+
+	t.Run("delete when digest is unreferenced", func(t *testing.T) {
+		callbackCalled := false
+		digest := godigest.FromString("unreferenced")
+
+		deleteDecision, err := lifecycle.ShouldDeleteGlobalBlob(
+			"ignored/path",
+			digest,
+			func(callbackDigest godigest.Digest) (bool, error) {
+				callbackCalled = true
+				if callbackDigest != digest {
+					t.Fatalf("unexpected digest in callback: got %s want %s", callbackDigest, digest)
+				}
+
+				return false, nil
+			},
+		)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if !callbackCalled {
+			t.Fatal("expected reference callback to be invoked")
+		}
+
+		if !deleteDecision {
+			t.Fatal("expected unreferenced digest to be deletable")
+		}
+	})
+
+	t.Run("retain when digest is still referenced", func(t *testing.T) {
+		deleteDecision, err := lifecycle.ShouldDeleteGlobalBlob(
+			"ignored/path",
+			godigest.FromString("referenced"),
+			func(godigest.Digest) (bool, error) {
+				return true, nil
+			},
+		)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if deleteDecision {
+			t.Fatal("expected referenced digest to be retained")
+		}
+	})
+
+	t.Run("callback errors are propagated", func(t *testing.T) {
+		callbackErr := io.EOF
+
+		deleteDecision, err := lifecycle.ShouldDeleteGlobalBlob(
+			"ignored/path",
+			godigest.FromString("error-case"),
+			func(godigest.Digest) (bool, error) {
+				return false, callbackErr
+			},
+		)
+		if !errors.Is(err, callbackErr) {
+			t.Fatalf("expected callback error to propagate, got %v", err)
+		}
+
+		if deleteDecision {
+			t.Fatal("expected delete decision to be false on callback error")
+		}
+	})
 }
 
 type lifecycleFileInfoStub struct {
