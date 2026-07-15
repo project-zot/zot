@@ -2513,6 +2513,25 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 				return ok, size, checkErr
 			}
 
+			waitForExpectedBlobSize := func(digest godigest.Digest, expectedSize int) (bool, int64, error) {
+				var (
+					ok       bool
+					size     int64
+					checkErr error
+				)
+
+				for range 100 {
+					ok, size, checkErr = imgStore.CheckBlob(context.Background(), repoName, digest)
+					if checkErr == nil && ok && size == int64(expectedSize) {
+						return ok, size, nil
+					}
+
+					time.Sleep(100 * time.Millisecond)
+				}
+
+				return ok, size, checkErr
+			}
+
 			Convey("Test reupload repair corrupted image", t, func() {
 				storeController := storage.StoreController{DefaultStore: imgStore}
 
@@ -2549,6 +2568,13 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 
 				err = WriteImageToFileSystem(image, repoName, tag, storeController)
 				So(err, ShouldBeNil)
+
+				if testcase.storageType != storageConstants.LocalStorageDriverName {
+					ok, size, err = waitForExpectedBlobSize(blobDigest, blobSize)
+					So(ok, ShouldBeTrue)
+					So(size, ShouldEqual, blobSize)
+					So(err, ShouldBeNil)
+				}
 
 				ok, size, _, err = imgStore.StatBlob(repoName, blobDigest)
 				So(ok, ShouldBeTrue)
@@ -2599,6 +2625,13 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 
 				err = WriteMultiArchImageToFileSystem(image, repoName, tag, storeController)
 				So(err, ShouldBeNil)
+
+				if testcase.storageType != storageConstants.LocalStorageDriverName {
+					ok, size, err = waitForExpectedBlobSize(blobDigest, blobSize)
+					So(ok, ShouldBeTrue)
+					So(size, ShouldEqual, blobSize)
+					So(err, ShouldBeNil)
+				}
 
 				ok, size, _, err = imgStore.StatBlob(repoName, blobDigest)
 				So(ok, ShouldBeTrue)
