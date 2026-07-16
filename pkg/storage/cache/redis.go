@@ -98,12 +98,15 @@ func (d *RedisDriver) putBlobLike(digest godigest.Digest, path, rootBucket, putL
 
 	originMissing := !exists
 	if exists {
+		// Read current origin outside TxPipelined: this avoids mixing decision reads
+		// with queued writes and keeps idempotency checks deterministic.
 		currentPath, err := d.db.HGet(ctx, d.join(rootBucket, constants.OriginalBucket), digest.String()).Result()
 		if err != nil {
 			if !goerrors.Is(err, redis.Nil) {
 				return err
 			}
 
+			// Hash key disappeared between HExists and HGet; treat as first-writer path.
 			originMissing = true
 		} else if currentPath == path {
 			return nil

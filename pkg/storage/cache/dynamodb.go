@@ -196,6 +196,8 @@ func (d *DynamoDBDriver) PutBlobRef(digest godigest.Digest, path string) error {
 
 	var originBlob string
 
+	// Optimistic-concurrency loop: conditional writes can fail under races, so retry
+	// until one writer establishes the origin and subsequent readers see stable state.
 	for {
 		var err error
 
@@ -414,6 +416,8 @@ func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
 		}
 
 		if originBlob == "" {
+			// Item exists without an origin path (partial/legacy state); repair by
+			// attempting to set origin with the same conditional semantics.
 			if err := d.putOriginBlob(digest, path); err != nil {
 				var conditionalErr *types.ConditionalCheckFailedException
 				if errors.As(err, &conditionalErr) {
@@ -426,6 +430,7 @@ func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
 			return nil
 		}
 
+		// Origin exists and is visible; safe to exit retry loop.
 		break
 	}
 

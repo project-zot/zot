@@ -165,7 +165,10 @@ func (d *BoltDBDriver) PutBlob(digest godigest.Digest, path string) error {
 			return nil
 		}
 
-		// original bucket exists; if path is the same as the original, this is idempotent
+		// original bucket exists; if path is the same as the original, this is idempotent.
+		// bbolt Get returns nil only when a key is missing; for an existing key written
+		// with Put(key, nil), Get returns a non-nil zero-length slice, so this check is
+		// a valid key-existence test for our "key-only" bucket entries.
 		if origin.Get([]byte(path)) != nil {
 			return nil
 		}
