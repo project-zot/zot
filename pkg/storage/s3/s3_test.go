@@ -1134,6 +1134,34 @@ func TestS3Dedupe(t *testing.T) {
 			context.DeadlineExceeded, expectedSize, repo, digest.Encoded(), observedSize)
 	}
 
+	waitForBlobContentSize := func(imgStore storageTypes.ImageStore, repo string,
+		digest godigest.Digest, expectedSize int64,
+	) error {
+		var (
+			lastErr      error
+			observedSize int64 = -1
+		)
+
+		for range 300 {
+			blobContent, err := imgStore.GetBlobContent(repo, digest)
+			if err == nil {
+				observedSize = int64(len(blobContent))
+				if observedSize == expectedSize {
+					return nil
+				}
+
+				lastErr = fmt.Errorf("observed content size %d", observedSize)
+			} else {
+				lastErr = err
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		return fmt.Errorf("%w: content size %d not reached on blob %s/%s (observed %d): %v",
+			context.DeadlineExceeded, expectedSize, repo, digest.Encoded(), observedSize, lastErr)
+	}
+
 	Convey("Dedupe", t, func(c C) {
 		uuid, err := guuid.NewV4()
 		if err != nil {
@@ -1261,9 +1289,6 @@ func TestS3Dedupe(t *testing.T) {
 		So(len(blobContent), ShouldBeGreaterThan, 0)
 		So(checkBlobSize1, ShouldEqual, len(blobContent))
 		So(getBlobSize1, ShouldEqual, len(blobContent))
-
-		err = blobReadCloser.Close()
-		So(err, ShouldBeNil)
 
 		cblob, cdigest = GetRandomImageConfig()
 		_, clen, err = imgStore.FullBlobUpload(context.Background(), "dedupe2", bytes.NewReader(cblob), cdigest)
@@ -1558,6 +1583,9 @@ func TestS3Dedupe(t *testing.T) {
 				So(err, ShouldBeNil)
 
 				err = waitForBlobStatSize(storeDriver, testDir, "dedupe2", blobDigest2, fi1.Size())
+				So(err, ShouldBeNil)
+
+				err = waitForBlobContentSize(imgStore, "dedupe2", blobDigest2, fi1.Size())
 				So(err, ShouldBeNil)
 
 				blobContent1, err := imgStore.GetBlobContent("dedupe1", blobDigest1)
@@ -2035,6 +2063,34 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			context.DeadlineExceeded, expectedSize, repo, digest.Encoded(), observedSize)
 	}
 
+	waitForBlobContentSize := func(imgStore storageTypes.ImageStore, repo string,
+		digest godigest.Digest, expectedSize int64,
+	) error {
+		var (
+			lastErr      error
+			observedSize int64 = -1
+		)
+
+		for range 300 {
+			blobContent, err := imgStore.GetBlobContent(repo, digest)
+			if err == nil {
+				observedSize = int64(len(blobContent))
+				if observedSize == expectedSize {
+					return nil
+				}
+
+				lastErr = fmt.Errorf("observed content size %d", observedSize)
+			} else {
+				lastErr = err
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		return fmt.Errorf("%w: content size %d not reached on blob %s/%s (observed %d): %v",
+			context.DeadlineExceeded, expectedSize, repo, digest.Encoded(), observedSize, lastErr)
+	}
+
 	Convey("Push images with dedupe true", t, func() {
 		uuid, err := guuid.NewV4()
 		if err != nil {
@@ -2204,6 +2260,12 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			err = waitForBlobStatSize(storeDriver, testDir, "dedupe2", cdigest, configFi1.Size())
+			So(err, ShouldBeNil)
+
+			err = waitForBlobContentSize(imgStore, "dedupe2", blobDigest2, fi1.Size())
+			So(err, ShouldBeNil)
+
+			err = waitForBlobContentSize(imgStore, "dedupe2", cdigest, configFi1.Size())
 			So(err, ShouldBeNil)
 
 			taskScheduler.Shutdown()
@@ -2376,6 +2438,9 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
 			err = waitForBlobStatSize(storeDriver, testDir, "dedupe2", blobDigest2, fi1.Size())
+			So(err, ShouldBeNil)
+
+			err = waitForBlobContentSize(imgStore, "dedupe2", blobDigest2, fi1.Size())
 			So(err, ShouldBeNil)
 
 			taskScheduler.Shutdown()
