@@ -1074,6 +1074,86 @@ func TestIsBlobReferencedInImageIndexNonMissingError(t *testing.T) {
 	})
 }
 
+func TestIsBlobReferencedInImageIndexNestedRecursionError(t *testing.T) {
+	log := log.NewTestLogger()
+
+	Convey("Non-missing error in nested recursion (:586) propagates", t, func(c C) {
+		blobDigest := godigest.FromString("blob-digest")
+		outerIndexDigest := godigest.FromString("outer-index")
+		innerIndexDigest := godigest.FromString("inner-index")
+
+		outerIndex := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageIndex,
+					Digest:    innerIndexDigest,
+					Size:      100,
+				},
+			},
+		}
+		outerIndexBlob, err := json.Marshal(outerIndex)
+		So(err, ShouldBeNil)
+
+		imgStore := &mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				if digest == outerIndexDigest {
+					return outerIndexBlob, nil
+				}
+				// inner index read fails with a non-not-found error
+				return nil, ErrTestError
+			},
+		}
+
+		// Top-level index whose only entry is the outer nested index, which reads OK,
+		// but recurses into the inner index whose read fails with a non-not-found error.
+		topIndex := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageIndex,
+					Digest:    outerIndexDigest,
+					Size:      100,
+				},
+			},
+		}
+
+		referenced, err := common.IsBlobReferencedInImageIndex(imgStore, "repo", blobDigest, topIndex, log)
+		So(err, ShouldNotBeNil)
+		So(err, ShouldEqual, ErrTestError)
+		So(referenced, ShouldBeFalse)
+	})
+}
+
+func TestIsBlobReferencedInImageIndexManifestReadError(t *testing.T) {
+	log := log.NewTestLogger()
+
+	Convey("Non-missing error reading image manifest (:588) propagates", t, func(c C) {
+		blobDigest := godigest.FromString("blob-digest")
+		manifestDigest := godigest.FromString("manifest-digest")
+
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    manifestDigest,
+					Size:      100,
+				},
+			},
+		}
+
+		imgStore := &mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				// manifest read fails with a non-not-found error
+				return nil, ErrTestError
+			},
+		}
+
+		referenced, err := common.IsBlobReferencedInImageIndex(imgStore, "repo", blobDigest, index, log)
+		So(err, ShouldNotBeNil)
+		So(err, ShouldEqual, ErrTestError)
+		So(referenced, ShouldBeFalse)
+	})
+}
+
 func TestGetBlobDescriptorFromIndexMissingNestedIndex(t *testing.T) {
 	log := log.NewTestLogger()
 
