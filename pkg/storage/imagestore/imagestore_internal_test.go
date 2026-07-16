@@ -553,6 +553,51 @@ func TestNewImageStoreUpgradeStreamsRemoteBlob(t *testing.T) {
 	}
 }
 
+func TestNewImageStoreUpgradeFailsOnPromotedBlobDigestMismatch(t *testing.T) {
+	log := log.NewTestLogger()
+	metrics := monitoring.NewMetricsServer(false, log)
+
+	rootDir := "/oci-repo-test/migration-verify-fail"
+	repo := "repo"
+	content := []byte("blob-content-to-verify")
+	digest := godigest.FromBytes(content)
+	repoBlobPath := path.Join(rootDir, repo, ispec.ImageBlobsDir, digest.Algorithm().String(), digest.Encoded())
+	globalBlobPath := path.Join(rootDir, constants.GlobalBlobsRepo, ispec.ImageBlobsDir,
+		digest.Algorithm().String(), digest.Encoded())
+	migrationMarkerPath := path.Join(rootDir, constants.BlobstoreMigratedMarker)
+
+	storeMock := makeStatefulMigrationStoreMock(rootDir, repo, repoBlobPath, content)
+	originalReader := storeMock.ReaderFn
+
+	storeMock.ReaderFn = func(ctx context.Context, filePath string, offset int64) (io.ReadCloser, error) {
+		// Simulate corrupted remote read for the promoted global blob only.
+		if filePath == globalBlobPath {
+			return io.NopCloser(bytes.NewReader([]byte("corrupted-global-content"))), nil
+		}
+
+		return originalReader(ctx, filePath, offset)
+	}
+
+	store := imagestore.NewImageStore(rootDir, "", true, false, log, metrics, nil,
+		gcs.New(storeMock), newMapBackedCache(), nil, nil)
+	if store != nil {
+		t.Fatal("expected initialization to fail on promoted blob digest mismatch")
+	}
+
+	repoBlobAfterFailure, err := storeMock.GetContent(context.Background(), repoBlobPath)
+	if err != nil {
+		t.Fatal("expected repo blob content path to remain present after verify failure")
+	}
+
+	if !bytes.Equal(repoBlobAfterFailure, content) {
+		t.Fatal("expected repo blob content to remain unchanged when verify fails")
+	}
+
+	if _, err := storeMock.GetContent(context.Background(), migrationMarkerPath); err == nil {
+		t.Fatal("expected migration marker to be absent after verify failure")
+	}
+}
+
 func TestNewImageStoreUpgradeResumesAfterPartialFailureWithPopulatedCache(t *testing.T) {
 	log := log.NewTestLogger()
 	metrics := monitoring.NewMetricsServer(false, log)
