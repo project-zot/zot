@@ -2209,11 +2209,27 @@ func TestDeleteBlobsInUse(t *testing.T) {
 						err := os.Chmod(path.Join(imgStore.RootDir(), "repo", "blobs", "sha256", manifestDigest.Encoded()), 0o000)
 						So(err, ShouldBeNil)
 
-						ok, _ := storageCommon.IsBlobReferenced(imgStore, "repo", unusedDigest, log)
+						ok, err := storageCommon.IsBlobReferenced(imgStore, "repo", unusedDigest, log)
+						So(err, ShouldNotBeNil)
 						So(ok, ShouldBeFalse)
 
 						err = os.Chmod(path.Join(imgStore.RootDir(), "repo", "blobs", "sha256", manifestDigest.Encoded()), 0o755)
 						So(err, ShouldBeNil)
+					})
+
+					Convey("DeleteBlob fails closed when reference check errors", func() {
+						err := os.Chmod(path.Join(imgStore.RootDir(), "repo", "blobs", "sha256", manifestDigest.Encoded()), 0o000)
+						So(err, ShouldBeNil)
+
+						err = imgStore.DeleteBlob("repo", digest)
+						So(err, ShouldNotBeNil)
+
+						err = os.Chmod(path.Join(imgStore.RootDir(), "repo", "blobs", "sha256", manifestDigest.Encoded()), 0o755)
+						So(err, ShouldBeNil)
+
+						ok, _, err := imgStore.CheckBlob(context.Background(), "repo", digest)
+						So(err, ShouldBeNil)
+						So(ok, ShouldBeTrue)
 					})
 				}
 			})
@@ -2324,6 +2340,27 @@ func TestDeleteBlobsInUse(t *testing.T) {
 					err := imgStore.DeleteImageManifest(context.Background(), repoName, digest.String(), false)
 					So(err, ShouldEqual, zerr.ErrManifestReferenced)
 				})
+
+				if testcase.storageType == storageConstants.LocalStorageDriverName {
+					Convey("DeleteImageManifest guard fails closed when image index read errors", func() {
+						err := os.Chmod(
+							path.Join(imgStore.RootDir(), repoName, "blobs", "sha256", indexManifestDigest.Encoded()),
+							0o000)
+						So(err, ShouldBeNil)
+
+						err = imgStore.DeleteImageManifest(context.Background(), repoName, digest.String(), false)
+						So(err, ShouldNotBeNil)
+
+						err = os.Chmod(
+							path.Join(imgStore.RootDir(), repoName, "blobs", "sha256", indexManifestDigest.Encoded()),
+							0o755)
+						So(err, ShouldBeNil)
+
+						// child manifest must still be present/referenceable, not deleted
+						_, _, _, err = imgStore.GetImageManifest(repoName, digest.String())
+						So(err, ShouldBeNil)
+					})
+				}
 
 				Convey("Try to delete blob currently in use", func() {
 					// layer blob

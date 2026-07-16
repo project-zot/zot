@@ -847,9 +847,14 @@ func (is *ImageStore) deleteImageManifest(ctx context.Context, repo, reference s
 		(manifestDesc.MediaType == ispec.MediaTypeImageManifest || manifestDesc.MediaType == ispec.MediaTypeImageIndex) {
 		for _, mDesc := range index.Manifests {
 			if mDesc.MediaType == ispec.MediaTypeImageIndex {
-				if ok, _ := common.IsBlobReferencedInImageIndex(is, repo, manifestDesc.Digest, ispec.Index{
+				ok, err := common.IsBlobReferencedInImageIndex(is, repo, manifestDesc.Digest, ispec.Index{
 					Manifests: []ispec.Descriptor{mDesc},
-				}, is.log); ok {
+				}, is.log)
+				if err != nil {
+					return err
+				}
+
+				if ok {
 					return zerr.ErrManifestReferenced
 				}
 			}
@@ -1943,7 +1948,7 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 
 		// unconditional delete: GC has already filtered blobs down to known orphans (it computed the
 		// referenced set and re-derives it under this repo's write lock), so no re-check is needed here.
-		err := is.deleteBlobChecked(repo, digest, func() bool { return false })
+		err := is.deleteBlobChecked(repo, digest, func() (bool, error) { return false, nil })
 		if err == nil {
 			count++
 
@@ -1985,17 +1990,16 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 }
 
 func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
-	return is.deleteBlobChecked(repo, digest, func() bool {
-		ok, _ := common.IsBlobReferenced(is, repo, digest, is.log)
-
-		return ok
+	return is.deleteBlobChecked(repo, digest, func() (bool, error) {
+		return common.IsBlobReferenced(is, repo, digest, is.log)
 	})
 }
 
 // deleteBlobChecked removes the blob unless isReferenced reports it as still in use; the batch-delete
 // caller (GC's CleanupRepo) passes an always-false predicate since it has already filtered to known
-// orphans, while the single-blob DeleteBlob path passes its own IsBlobReferenced check.
-func (is *ImageStore) deleteBlobChecked(repo string, digest godigest.Digest, isReferenced func() bool) error {
+// orphans, while the single-blob DeleteBlob path passes its own IsBlobReferenced check. A non-nil error
+// from isReferenced aborts the delete (fail closed) rather than treating the blob as unreferenced.
+func (is *ImageStore) deleteBlobChecked(repo string, digest godigest.Digest, isReferenced func() (bool, error)) error {
 	blobPath := is.BlobPath(repo, digest)
 
 	binfo, err := is.storeDriver.Stat(blobPath)
@@ -2011,7 +2015,12 @@ func (is *ImageStore) deleteBlobChecked(repo string, digest godigest.Digest, isR
 	}
 
 	// first check if this blob is not currently in use
-	if isReferenced() {
+	referenced, err := isReferenced()
+	if err != nil {
+		return err
+	}
+
+	if referenced {
 		return zerr.ErrBlobReferenced
 	}
 

@@ -583,9 +583,17 @@ func IsBlobReferencedInImageIndex(imgStore storageTypes.ImageStore, repo string,
 				return false, err
 			}
 
-			found, _ = IsBlobReferencedInImageIndex(imgStore, repo, digest, indexImage, log)
+			found, err = IsBlobReferencedInImageIndex(imgStore, repo, digest, indexImage, log)
+			if err != nil {
+				return false, err
+			}
 		case IsImageManifestMediaType(desc.MediaType):
-			found, _ = isBlobReferencedInImageManifest(imgStore, repo, digest, desc.Digest, log)
+			var err error
+
+			found, err = isBlobReferencedInImageManifest(imgStore, repo, digest, desc.Digest, log)
+			if err != nil {
+				return false, err
+			}
 		default:
 			// should return true for digests found in index.json even if we don't know it's mediatype
 			if digest == desc.Digest {
