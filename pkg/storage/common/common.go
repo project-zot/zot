@@ -559,8 +559,8 @@ func IsBlobReferencedInImageIndex(imgStore storageTypes.ImageStore, repo string,
 	for _, desc := range index.Manifests {
 		var found bool
 
-		switch desc.MediaType {
-		case ispec.MediaTypeImageIndex:
+		switch {
+		case IsImageIndexMediaType(desc.MediaType):
 			if digest == desc.Digest {
 				// no need to look further if we have a match
 				return true, nil
@@ -584,7 +584,7 @@ func IsBlobReferencedInImageIndex(imgStore storageTypes.ImageStore, repo string,
 			}
 
 			found, _ = IsBlobReferencedInImageIndex(imgStore, repo, digest, indexImage, log)
-		case ispec.MediaTypeImageManifest:
+		case IsImageManifestMediaType(desc.MediaType):
 			found, _ = isBlobReferencedInImageManifest(imgStore, repo, digest, desc.Digest, log)
 		default:
 			// should return true for digests found in index.json even if we don't know it's mediatype
@@ -625,7 +625,8 @@ manifest digests themselves plus the config and layer digests of every (possibly
 
 It mirrors the traversal of IsBlobReferencedInImageIndex, but reads each manifest only once,
 so callers checking many digests (e.g. GC) avoid re-reading every manifest per digest.
-Unreadable or missing manifests are skipped, matching IsBlobReferencedInImageIndex.
+Missing manifests (ErrBlobNotFound / PathNotFound) are skipped; any other read/unmarshal error
+is returned to the caller.
 */
 func GetReferencedBlobs(imgStore storageTypes.ImageStore, repo string, log zlog.Logger,
 ) (map[godigest.Digest]struct{}, error) {
