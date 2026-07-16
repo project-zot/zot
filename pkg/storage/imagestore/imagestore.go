@@ -443,6 +443,7 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 	candidates := map[string]blobCandidate{}
 	repoBlobRefs := []repoBlobRef{}
 	promotedDigests := map[string]bool{}
+	verifiedPromotedDigests := map[string]bool{}
 	skippedRepoListFailures := 0
 	markerOnlyDigests := 0
 
@@ -508,6 +509,10 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 		}
 
 		if repoBlobRef.size > 0 {
+			if err := is.verifyPromotedGlobalBlobForMigration(repoBlobRef, verifiedPromotedDigests); err != nil {
+				return err
+			}
+
 			globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, repoBlobRef.digest)
 
 			if err := is.lifecycle.ConvertMigratedRepoBlobToMarker(globalBlobPath, repoBlobRef.blobPath); err != nil {
@@ -528,6 +533,12 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 		}
 	}
 
+	return is.completeBlobstoreUpgrade(markerPath, skippedRepoListFailures, promotedDigests, candidates, markerOnlyDigests)
+}
+
+func (is *ImageStore) completeBlobstoreUpgrade(markerPath string, skippedRepoListFailures int,
+	promotedDigests map[string]bool, candidates map[string]blobCandidate, markerOnlyDigests int,
+) error {
 	is.log.Info().
 		Int("blobCount", len(promotedDigests)).
 		Int("candidateCount", len(candidates)).
@@ -549,6 +560,28 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 	}
 
 	is.writeBlobstoreMigrationMarker(markerPath)
+
+	return nil
+}
+
+func (is *ImageStore) verifyPromotedGlobalBlobForMigration(ref repoBlobRef, verified map[string]bool) error {
+	// Local filesystem migration uses hardlinks and keeps per-repo blobs as content files.
+	if !is.lifecycle.ShouldGateDeleteUntilRebuild() || verified[ref.digest.String()] {
+		return nil
+	}
+
+	globalDigestPath := is.BlobPath(storageConstants.GlobalBlobsRepo, ref.digest)
+
+	// For remote marker backends, verify promoted global content before replacing
+	// per-repo content blobs with zero-byte markers.
+	if err := is.VerifyBlobDigestValue(storageConstants.GlobalBlobsRepo, ref.digest); err != nil {
+		is.log.Error().Err(err).Str("digest", ref.digest.String()).Str("repo", ref.repoName).
+			Str("globalBlobPath", globalDigestPath).Msg("failed to verify promoted global blob during upgrade")
+
+		return err
+	}
+
+	verified[ref.digest.String()] = true
 
 	return nil
 }
