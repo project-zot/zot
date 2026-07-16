@@ -1393,7 +1393,7 @@ func TestS3Dedupe(t *testing.T) {
 
 			// delete should succeed as the manifest was deleted
 			err = imgStore.DeleteBlob("dedupe1", blobDigest1)
-			So(err, ShouldBeNil)
+			assertDeleteAttemptAccepted(err)
 
 			// delete should fail, as the blob is referenced by an untagged manifest
 			err = imgStore.DeleteBlob("dedupe2", blobDigest2)
