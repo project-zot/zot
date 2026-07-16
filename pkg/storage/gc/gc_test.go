@@ -2820,7 +2820,8 @@ func TestGCMultiArchIndexKeepsNestedConfigAndLayers(t *testing.T) {
 		topIndexBlob, err := json.Marshal(topIndex)
 		So(err, ShouldBeNil)
 
-		topIndexDigest, _, err := imgStore.PutImageManifest(ctx, repoName, "top", ispec.MediaTypeImageIndex, topIndexBlob, nil)
+		topIndexDigest, _, err := imgStore.PutImageManifest(ctx, repoName, "top",
+			ispec.MediaTypeImageIndex, topIndexBlob, nil)
 		So(err, ShouldBeNil)
 
 		// sanity check: index.json only carries the tagged top index, the platform manifests are
@@ -3294,7 +3295,11 @@ func TestGCUnknownMediaTypeManifestPrunedSharedBlobKept(t *testing.T) {
 			Versioned: specs.Versioned{SchemaVersion: 2},
 			MediaType: unsupportedMediaType,
 			Config:    healthy.Manifest.Config,
-			Layers:    []ispec.Descriptor{{MediaType: ispec.MediaTypeImageLayer, Digest: exclusiveLayerDigest, Size: int64(len(exclusiveLayerContent))}},
+			Layers: []ispec.Descriptor{{
+				MediaType: ispec.MediaTypeImageLayer,
+				Digest:    exclusiveLayerDigest,
+				Size:      int64(len(exclusiveLayerContent)),
+			}},
 		}
 
 		unknownBuf, err := json.Marshal(unknownManifest)
