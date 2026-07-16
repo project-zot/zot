@@ -47,6 +47,7 @@ var (
 	errorText      = "new s3 error"
 	errS3          = errors.New(errorText)
 	errCache       = errors.New("new cache error")
+	errPartialRead = errors.New("unexpected partial content")
 	zotStorageTest = "zot-storage-test"
 	s3Region       = "us-east-2"
 )
@@ -3305,6 +3306,44 @@ func TestS3PullRange(t *testing.T) {
 		})
 
 		Convey("With Dedupe", func() {
+			waitForPartialRead := func(repo string, dgst godigest.Digest, from, to int64, expected []byte) error {
+				var lastErr error
+
+				for range 120 {
+					reader, _, _, err := imgStore.GetBlobPartial(repo, dgst, "*/*", from, to)
+					if err != nil {
+						lastErr = err
+						time.Sleep(100 * time.Millisecond)
+
+						continue
+					}
+
+					rdbuf, readErr := io.ReadAll(reader)
+					_ = reader.Close()
+					if readErr != nil {
+						lastErr = readErr
+						time.Sleep(100 * time.Millisecond)
+
+						continue
+					}
+
+					if bytes.Equal(rdbuf, expected) {
+						return nil
+					}
+
+					lastErr = errPartialRead
+					time.Sleep(100 * time.Millisecond)
+				}
+
+				if lastErr != nil {
+					return fmt.Errorf("%w: timed out waiting for partial read %s/%s: %w",
+						context.DeadlineExceeded, repo, dgst.Encoded(), lastErr)
+				}
+
+				return fmt.Errorf("%w: timed out waiting for partial read %s/%s",
+					context.DeadlineExceeded, repo, dgst.Encoded())
+			}
+
 			// create a blob/layer with same content
 			upload, err := imgStore.NewBlobUpload(context.Background(), "dupindex")
 			So(err, ShouldBeNil)
@@ -3377,12 +3416,9 @@ func TestS3PullRange(t *testing.T) {
 			err = imgStore.DeleteBlob("index", digest)
 			So(err, ShouldBeNil)
 
-			reader, _, _, err = imgStore.GetBlobPartial("dupindex", digest, "*/*", 2, 3)
+			// Remote stores can briefly return not-found while dedupe handoff settles.
+			err = waitForPartialRead("dupindex", digest, 2, 3, content[2:4])
 			So(err, ShouldBeNil)
-			rdbuf, err = io.ReadAll(reader)
-			So(err, ShouldBeNil)
-			So(rdbuf, ShouldResemble, content[2:4])
-			reader.Close()
 		})
 
 		Convey("Negative cases", func() {
