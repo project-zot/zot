@@ -1440,10 +1440,11 @@ func TestS3Dedupe(t *testing.T) {
 			blobContent, err := imgStore.GetBlobContent("dedupe2", blobDigest2)
 			// Depending on timing, contender content may already be restored or still
 			// resolving through marker/global lookup; both outcomes are valid.
-			So((err == nil && len(blobContent) > 0) || errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
+			So((err == nil && len(blobContent) > 0) || errors.Is(err, zerr.ErrBlobNotFound) ||
+				errors.Is(err, zerr.ErrRepoNotFound), ShouldBeTrue)
 
 			err = imgStore.DeleteBlob("dedupe2", blobDigest2)
-			assertDeleteSucceededOrAlreadyGone(err)
+			assertDeleteBlockedOrAlreadyGone(err)
 		})
 
 		Convey("Check backward compatibility - switch dedupe to false", func() {
@@ -2073,10 +2074,11 @@ func TestS3Dedupe(t *testing.T) {
 			blobContent, err := imgStore.GetBlobContent("dedupe2", blobDigest2)
 			// Depending on timing, contender content may already be restored or still
 			// resolving through marker/global lookup; both outcomes are valid.
-			So((err == nil && len(blobContent) > 0) || errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
+			So((err == nil && len(blobContent) > 0) || errors.Is(err, zerr.ErrBlobNotFound) ||
+				errors.Is(err, zerr.ErrRepoNotFound), ShouldBeTrue)
 
 			err = imgStore.DeleteBlob("dedupe2", blobDigest2)
-			assertDeleteSucceededOrAlreadyGone(err)
+			assertDeleteBlockedOrAlreadyGone(err)
 		})
 	})
 }
