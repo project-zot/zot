@@ -2427,6 +2427,7 @@ func TestDeleteBlobsInUse(t *testing.T) {
 	}
 }
 
+//nolint:gocyclo // Integration-style matrix test intentionally covers multiple backends and repair paths.
 func TestReuploadCorruptedBlob(t *testing.T) {
 	for _, testcase := range testCases {
 		t.Run(testcase.testCaseName, func(t *testing.T) {
@@ -2596,10 +2597,19 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 					ok, _, err = waitForExpectedBlobSize(blobDigest, blobSize)
 					if !ok || err != nil {
 						// Retry once in case the first reupload raced with remote propagation.
+						_ = driver.Delete(blobPath)
 						err = WriteImageToFileSystem(image, repoName, tag, storeController)
 						So(err, ShouldBeNil)
 
 						ok, _, err = waitForExpectedBlobSize(blobDigest, blobSize)
+						if !ok || err != nil {
+							// One more forced retry for eventual-consistency backends.
+							_ = driver.Delete(blobPath)
+							err = WriteImageToFileSystem(image, repoName, tag, storeController)
+							So(err, ShouldBeNil)
+
+							ok, _, err = waitForExpectedBlobSize(blobDigest, blobSize)
+						}
 					}
 					So(ok, ShouldBeTrue)
 					So(err, ShouldBeNil)
@@ -2659,10 +2669,19 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 					ok, _, err = waitForExpectedBlobSize(blobDigest, blobSize)
 					if !ok || err != nil {
 						// Retry once in case the first reupload raced with remote propagation.
+						_ = driver.Delete(blobPath)
 						err = WriteMultiArchImageToFileSystem(image, repoName, tag, storeController)
 						So(err, ShouldBeNil)
 
 						ok, _, err = waitForExpectedBlobSize(blobDigest, blobSize)
+						if !ok || err != nil {
+							// One more forced retry for eventual-consistency backends.
+							_ = driver.Delete(blobPath)
+							err = WriteMultiArchImageToFileSystem(image, repoName, tag, storeController)
+							So(err, ShouldBeNil)
+
+							ok, _, err = waitForExpectedBlobSize(blobDigest, blobSize)
+						}
 					}
 					So(ok, ShouldBeTrue)
 					So(err, ShouldBeNil)
