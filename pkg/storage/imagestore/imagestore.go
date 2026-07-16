@@ -1700,6 +1700,8 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 
 	var lastRetryErr error
 
+	// Retry loop is intentional: cache records can temporarily point to stale paths
+	// during GC/migration windows, and one pass may only partially heal references.
 	for range maxDedupeSelfHealRetries {
 		is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe begin")
 
@@ -1836,7 +1838,7 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 			continue
 		}
 
-		// prevent overwrite original blob
+		// Normal dedupe path: link destination to the resolved original blob and add ref.
 		if !is.storeDriver.SameFile(dst, dstRecord) {
 			if err := is.lifecycle.LinkBlob(dstRecord, dst); err != nil {
 				is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
@@ -1852,7 +1854,8 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 				return err
 			}
 		} else {
-			// if it's same file then it was already uploaded, check if blob is corrupted
+			// SameFile means destination already maps to this digest path. In that case,
+			// only rewrite content when descriptor size proves the stored blob is corrupted.
 			if desc, err := common.GetBlobDescriptorFromRepo(is, dstRepo, dstDigest, is.log); err == nil {
 				// blob corrupted, replace content
 				if desc.Size != blobInfo.Size() {
@@ -2006,9 +2009,11 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 	blobPath := is.BlobPath(repo, digest)
 
 	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+		// Dedupe mode can update cache refs (self-heal), so use write lock.
 		is.Lock(&lockLatency)
 		defer is.Unlock(&lockLatency)
 	} else {
+		// Non-dedupe read path only validates/reads blob state.
 		is.RLock(&lockLatency)
 		defer is.RUnlock(&lockLatency)
 	}
@@ -2055,7 +2060,8 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 	}
 
 	if resolvedPath == blobPath {
-		// try to find blob size in blob descriptors, if blob can not be found
+		// When lifecycle resolves to repo path itself, validate against descriptor size
+		// to catch marker/corrupted blobs that still physically exist at that path.
 		desc, err := common.GetBlobDescriptorFromRepo(is, repo, digest, is.log)
 		if err != nil || desc.Size == binfo.Size() {
 			// blob not found in descriptors, can not compare, just return
