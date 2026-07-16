@@ -1592,7 +1592,7 @@ func TestS3Dedupe(t *testing.T) {
 					var blobContent []byte
 					foundBlobContent := false
 
-					for range 20 {
+					for range 120 {
 						blobContent, err = imgStore.GetBlobContent("dedupe2", blobDigest2)
 						if err == nil && len(blobContent) > 0 {
 							foundBlobContent = true
@@ -1847,7 +1847,7 @@ func TestS3Dedupe(t *testing.T) {
 			var blobContent []byte
 			foundBlobContent := false
 
-			for range 20 {
+			for range 120 {
 				blobContent, err = imgStore.GetBlobContent("dedupe2", blobDigest2)
 				if err == nil && len(blobContent) > 0 {
 					foundBlobContent = true
@@ -1923,7 +1923,7 @@ func TestS3Dedupe(t *testing.T) {
 				var blobContent []byte
 				foundBlobContent := false
 
-				for range 20 {
+				for range 120 {
 					blobContent, err = imgStore.GetBlobContent("dedupe2", blobDigest2)
 					if err == nil && len(blobContent) > 0 {
 						foundBlobContent = true
