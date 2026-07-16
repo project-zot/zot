@@ -2594,6 +2594,13 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 
 				if testcase.storageType != storageConstants.LocalStorageDriverName {
 					ok, _, err = waitForExpectedBlobSize(blobDigest, blobSize)
+					if !ok || err != nil {
+						// Retry once in case the first reupload raced with remote propagation.
+						err = WriteImageToFileSystem(image, repoName, tag, storeController)
+						So(err, ShouldBeNil)
+
+						ok, _, err = waitForExpectedBlobSize(blobDigest, blobSize)
+					}
 					So(ok, ShouldBeTrue)
 					So(err, ShouldBeNil)
 				}
@@ -2650,6 +2657,13 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 
 				if testcase.storageType != storageConstants.LocalStorageDriverName {
 					ok, _, err = waitForExpectedBlobSize(blobDigest, blobSize)
+					if !ok || err != nil {
+						// Retry once in case the first reupload raced with remote propagation.
+						err = WriteMultiArchImageToFileSystem(image, repoName, tag, storeController)
+						So(err, ShouldBeNil)
+
+						ok, _, err = waitForExpectedBlobSize(blobDigest, blobSize)
+					}
 					So(ok, ShouldBeTrue)
 					So(err, ShouldBeNil)
 				}
