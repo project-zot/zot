@@ -1822,6 +1822,7 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 
 		if !waitForExpectedBlobSize(repoName, blobDigest, int64(blobSize)) {
 			// Retry once in case remote propagation delayed the first repair attempt.
+			_ = gcsDriver.Delete(blobPath)
 			err = WriteImageToFileSystem(image, repoName, tag, storeController)
 			So(err, ShouldBeNil)
 		}
@@ -1857,6 +1858,7 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 
 		if !waitForExpectedBlobSize(repoName, blobDigest, int64(blobSize)) {
 			// Retry once in case remote propagation delayed the first repair attempt.
+			_ = gcsDriver.Delete(blobPath)
 			err = WriteMultiArchImageToFileSystem(image, repoName, tag, storeController)
 			So(err, ShouldBeNil)
 		}
