@@ -1071,6 +1071,10 @@ func TestS3Dedupe(t *testing.T) {
 	tskip.SkipS3(t)
 	tskip.SkipDynamo(t)
 
+	checkpoint := func(step string) {
+		t.Logf("TestS3Dedupe checkpoint: %s", step)
+	}
+
 	waitForBlobStatExists := func(storeDrv driver.StorageDriver, rootDir string, repo string,
 		digest godigest.Digest,
 	) error {
@@ -1363,6 +1367,8 @@ func TestS3Dedupe(t *testing.T) {
 		So(fi2.Size(), ShouldBeGreaterThanOrEqualTo, int64(0))
 
 		Convey("delete blobs from storage/cache should work when dedupe is true", func() {
+			checkpoint("dedupe=true delete flow")
+
 			So(blobDigest1, ShouldEqual, blobDigest2)
 
 			// to not trigger BlobInUse err, delete manifest first
@@ -1389,6 +1395,8 @@ func TestS3Dedupe(t *testing.T) {
 		})
 
 		Convey("Check that delete blobs moves the real content to the next contenders", func() {
+			checkpoint("dedupe=true delete contender handoff")
+
 			// to not trigger BlobInUse err, delete manifest first
 			err = imgStore.DeleteImageManifest(context.Background(), "dedupe1", manifestDigest.String(), false)
 			So(err, ShouldBeNil)
@@ -1423,6 +1431,8 @@ func TestS3Dedupe(t *testing.T) {
 		})
 
 		Convey("Check backward compatibility - switch dedupe to false", func() {
+			checkpoint("switch dedupe true->false compatibility")
+
 			/* copy cache to the new storage with dedupe false (doing this because we
 			already have a cache object holding the lock on cache db file) */
 			//nolint:gosec // test path is tempdir-scoped
@@ -1579,6 +1589,8 @@ func TestS3Dedupe(t *testing.T) {
 			})
 
 			Convey("rebuild s3 dedupe index from true to false", func() { //nolint: dupl
+				checkpoint("compat mode rebuild true->false")
+
 				taskScheduler := runAndGetScheduler()
 				defer taskScheduler.Shutdown()
 
@@ -1617,6 +1629,8 @@ func TestS3Dedupe(t *testing.T) {
 				So(int64(len(blobContent)), ShouldEqual, fi1.Size())
 
 				Convey("rebuild s3 dedupe index from false to true", func() {
+					checkpoint("compat mode rebuild false->true")
+
 					taskScheduler := runAndGetScheduler()
 					defer taskScheduler.Shutdown()
 
@@ -1671,6 +1685,8 @@ func TestS3Dedupe(t *testing.T) {
 	})
 
 	Convey("Dedupe with dynamodb", t, func(c C) {
+		checkpoint("dynamo-backed dedupe flow")
+
 		uuid, err := guuid.NewV4()
 		if err != nil {
 			panic(err)
@@ -1844,6 +1860,8 @@ func TestS3Dedupe(t *testing.T) {
 		So(fi2.Size(), ShouldBeGreaterThanOrEqualTo, int64(0))
 
 		Convey("delete blobs from storage/cache should work when dedupe is true", func() {
+			checkpoint("dynamo dedupe=true delete flow")
+
 			So(blobDigest1, ShouldEqual, blobDigest2)
 
 			// to not trigger BlobInUse err, delete manifest first
@@ -1870,6 +1888,8 @@ func TestS3Dedupe(t *testing.T) {
 		})
 
 		Convey("rebuild s3 dedupe index from true to false", func() { //nolint: dupl
+			checkpoint("dynamo rebuild true->false")
+
 			taskScheduler := runAndGetScheduler()
 			defer taskScheduler.Shutdown()
 
@@ -1950,6 +1970,8 @@ func TestS3Dedupe(t *testing.T) {
 			})
 
 			Convey("rebuild s3 dedupe index from false to true", func() {
+				checkpoint("dynamo rebuild false->true")
+
 				taskScheduler := runAndGetScheduler()
 				defer taskScheduler.Shutdown()
 
