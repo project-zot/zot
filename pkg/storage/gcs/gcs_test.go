@@ -2986,6 +2986,32 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 		storeCtlr.DefaultStore = imgStore
 		So(storeCtlr.GetImageStore(repoName), ShouldResemble, imgStore)
 
+		space := regexp.MustCompile(`\s+`)
+
+		waitForScrubContains := func(expected string) (string, error) {
+			last := ""
+
+			for range 80 {
+				buff := bytes.NewBufferString("")
+
+				res, err := storeCtlr.CheckAllBlobsIntegrity(context.Background())
+				if err != nil {
+					return "", err
+				}
+
+				res.PrintScrubResults(buff)
+				last = strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
+
+				if strings.Contains(last, expected) {
+					return last, nil
+				}
+
+				time.Sleep(100 * time.Millisecond)
+			}
+
+			return last, fmt.Errorf("%w: scrub output did not contain %q", context.DeadlineExceeded, expected)
+		}
+
 		image := CreateRandomImage()
 
 		err = WriteImageToFileSystem(image, repoName, "1.0", storeCtlr)
@@ -2998,7 +3024,6 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 			res.PrintScrubResults(buff)
 			So(err, ShouldBeNil)
 
-			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
@@ -3029,7 +3054,6 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 			res.PrintScrubResults(buff)
 			So(err, ShouldNotBeNil)
 
-			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
@@ -3059,7 +3083,6 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 			res.PrintScrubResults(buff)
 			So(err, ShouldBeNil)
 
-			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
@@ -3118,7 +3141,6 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 			res.PrintScrubResults(buff)
 			So(err, ShouldBeNil)
 
-			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
@@ -3127,14 +3149,8 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 			_, err = driver.WriteFile(configFile, []byte("invalid content"))
 			So(err, ShouldBeNil)
 
-			buff = bytes.NewBufferString("")
-
-			res, err = storeCtlr.CheckAllBlobsIntegrity(context.Background())
-			res.PrintScrubResults(buff)
+			actual, err = waitForScrubContains(fmt.Sprintf("test 1.0 affected %s invalid server config", configDig))
 			So(err, ShouldBeNil)
-
-			str = space.ReplaceAllString(buff.String(), " ")
-			actual = strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
 			So(actual, ShouldContainSubstring, fmt.Sprintf("test 1.0 affected %s invalid server config", configDig))
 		})
@@ -3156,15 +3172,8 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 				So(err, ShouldBeNil)
 			}()
 
-			buff := bytes.NewBufferString("")
-
-			res, err := storeCtlr.CheckAllBlobsIntegrity(context.Background())
-			res.PrintScrubResults(buff)
+			actual, err := waitForScrubContains(fmt.Sprintf("test 1.0 affected %s bad blob digest", layerDig))
 			So(err, ShouldBeNil)
-
-			space := regexp.MustCompile(`\s+`)
-			str := space.ReplaceAllString(buff.String(), " ")
-			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
 			So(actual, ShouldContainSubstring, fmt.Sprintf("test 1.0 affected %s bad blob digest", layerDig))
 		})
@@ -3203,7 +3212,6 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 			res.PrintScrubResults(buff)
 			So(err, ShouldBeNil)
 
-			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")

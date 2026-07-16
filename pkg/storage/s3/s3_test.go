@@ -1308,6 +1308,8 @@ func TestS3Dedupe(t *testing.T) {
 		fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 			blobDigest2.Encoded()))
 		So(err, ShouldBeNil)
+		err = waitForBlobStatSize(storeDriver, testDir, "dedupe2", blobDigest2, 0)
+		So(err, ShouldBeNil)
 
 		globalBlobInfo, err := storeDriver.Stat(context.Background(), path.Join(testDir,
 			storageConstants.GlobalBlobsRepo, "blobs", "sha256",
@@ -1495,6 +1497,8 @@ func TestS3Dedupe(t *testing.T) {
 
 			fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 				blobDigest1.Encoded()))
+			So(err, ShouldBeNil)
+			err = waitForBlobStatSize(storeDriver, testDir, "dedupe2", blobDigest1, 0)
 			So(err, ShouldBeNil)
 			So(fi2.Size(), ShouldEqual, 0)
 
@@ -1781,6 +1785,8 @@ func TestS3Dedupe(t *testing.T) {
 
 		fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 			blobDigest2.Encoded()))
+		So(err, ShouldBeNil)
+		err = waitForBlobStatSize(storeDriver, testDir, "dedupe2", blobDigest2, 0)
 		So(err, ShouldBeNil)
 
 		globalBlobInfo, err := storeDriver.Stat(context.Background(), path.Join(testDir,
