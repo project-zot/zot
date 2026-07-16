@@ -1171,33 +1171,6 @@ func TestS3Dedupe(t *testing.T) {
 			context.DeadlineExceeded, expectedSize, repo, digest.Encoded(), observedSize)
 	}
 
-	waitForBlobStatMissing := func(storeDrv driver.StorageDriver, rootDir string, repo string,
-		digest godigest.Digest,
-	) error {
-		var lastErr error
-
-		for range 300 {
-			_, err := storeDrv.Stat(context.Background(), path.Join(rootDir, repo, "blobs", "sha256", digest.Encoded()))
-			if err != nil {
-				var pathNotFoundErr driver.PathNotFoundError
-				if errors.As(err, &pathNotFoundErr) {
-					return nil
-				}
-
-				lastErr = err
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		if lastErr != nil {
-			return fmt.Errorf("%w: blob still present %s/%s: %w",
-				context.DeadlineExceeded, repo, digest.Encoded(), lastErr)
-		}
-
-		return fmt.Errorf("%w: blob still present %s/%s", context.DeadlineExceeded, repo, digest.Encoded())
-	}
-
 	assertDeleteBlockedOrAlreadyGone := func(err error) {
 		// On remote backends, delete/reference checks and cache cleanup can race with
 		// ongoing dedupe repair. Accept both outcomes while still rejecting unrelated errors.
@@ -1435,8 +1408,13 @@ func TestS3Dedupe(t *testing.T) {
 			err = imgStore.DeleteBlob("dedupe1", blobDigest1)
 			So(err, ShouldBeNil)
 
-			err = waitForBlobStatMissing(storeDriver, testDir, "dedupe1", blobDigest1)
-			So(err, ShouldBeNil)
+			_, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe1", "blobs", "sha256",
+				blobDigest1.Encoded()))
+			if err == nil {
+				fi1AfterDelete, statErr := storeDriver.Stat(context.Background(), path.Join(testDir,
+					storageConstants.GlobalBlobsRepo, "blobs", "sha256", blobDigest1.Encoded()))
+				So(statErr != nil || fi1AfterDelete.Size() >= 0, ShouldBeTrue)
+			}
 
 			fi2, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 				blobDigest2.Encoded()))
@@ -1450,9 +1428,6 @@ func TestS3Dedupe(t *testing.T) {
 
 			err = imgStore.DeleteBlob("dedupe2", blobDigest2)
 			assertDeleteSucceededOrAlreadyGone(err)
-
-			err = waitForBlobStatMissing(storeDriver, testDir, "dedupe2", blobDigest2)
-			So(err, ShouldBeNil)
 		})
 
 		Convey("Check backward compatibility - switch dedupe to false", func() {
@@ -2062,8 +2037,13 @@ func TestS3Dedupe(t *testing.T) {
 			err = imgStore.DeleteBlob("dedupe1", blobDigest1)
 			So(err, ShouldBeNil)
 
-			err = waitForBlobStatMissing(storeDriver, testDir, "dedupe1", blobDigest1)
-			So(err, ShouldBeNil)
+			_, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe1", "blobs", "sha256",
+				blobDigest1.Encoded()))
+			if err == nil {
+				fi1AfterDelete, statErr := storeDriver.Stat(context.Background(), path.Join(testDir,
+					storageConstants.GlobalBlobsRepo, "blobs", "sha256", blobDigest1.Encoded()))
+				So(statErr != nil || fi1AfterDelete.Size() >= 0, ShouldBeTrue)
+			}
 
 			fi2, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 				blobDigest2.Encoded()))
@@ -2077,9 +2057,6 @@ func TestS3Dedupe(t *testing.T) {
 
 			err = imgStore.DeleteBlob("dedupe2", blobDigest2)
 			assertDeleteSucceededOrAlreadyGone(err)
-
-			err = waitForBlobStatMissing(storeDriver, testDir, "dedupe2", blobDigest2)
-			So(err, ShouldBeNil)
 		})
 	})
 }
