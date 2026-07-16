@@ -649,6 +649,16 @@ func GetReferencedBlobs(imgStore storageTypes.ImageStore, repo string, log zlog.
 	return referenced, nil
 }
 
+// IsImageIndexMediaType reports whether mediaType is an OCI image index or a compat manifest-list type.
+func IsImageIndexMediaType(mediaType string) bool {
+	return mediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(mediaType)
+}
+
+// IsImageManifestMediaType reports whether mediaType is an OCI image manifest or a compat manifest type.
+func IsImageManifestMediaType(mediaType string) bool {
+	return mediaType == ispec.MediaTypeImageManifest || compat.IsCompatibleManifestMediaType(mediaType)
+}
+
 func collectReferencedBlobs(imgStore storageTypes.ImageStore, repo string,
 	index ispec.Index, referenced map[godigest.Digest]struct{}, seen map[godigest.Digest]struct{}, log zlog.Logger,
 ) error {
@@ -662,7 +672,7 @@ func collectReferencedBlobs(imgStore storageTypes.ImageStore, repo string,
 		seen[desc.Digest] = struct{}{}
 
 		switch {
-		case desc.MediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(desc.MediaType):
+		case IsImageIndexMediaType(desc.MediaType):
 			indexImage, err := GetImageIndex(imgStore, repo, desc.Digest, log)
 			if err != nil {
 				var pathNotFoundErr driver.PathNotFoundError
@@ -682,7 +692,7 @@ func collectReferencedBlobs(imgStore storageTypes.ImageStore, repo string,
 			if err := collectReferencedBlobs(imgStore, repo, indexImage, referenced, seen, log); err != nil {
 				return err
 			}
-		case desc.MediaType == ispec.MediaTypeImageManifest || compat.IsCompatibleManifestMediaType(desc.MediaType):
+		case IsImageManifestMediaType(desc.MediaType):
 			manifestContent, err := GetImageManifest(imgStore, repo, desc.Digest, log)
 			if err != nil {
 				var pathNotFoundErr driver.PathNotFoundError
