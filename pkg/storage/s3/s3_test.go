@@ -1150,7 +1150,7 @@ func TestS3Dedupe(t *testing.T) {
 					return nil
 				}
 
-				lastErr = fmt.Errorf("observed content size %d", observedSize)
+				lastErr = nil
 			} else {
 				lastErr = err
 			}
@@ -1158,8 +1158,13 @@ func TestS3Dedupe(t *testing.T) {
 			time.Sleep(100 * time.Millisecond)
 		}
 
-		return fmt.Errorf("%w: content size %d not reached on blob %s/%s (observed %d): %v",
-			context.DeadlineExceeded, expectedSize, repo, digest.Encoded(), observedSize, lastErr)
+		if lastErr != nil {
+			return fmt.Errorf("%w: content size %d not reached on blob %s/%s (observed %d): %w",
+				context.DeadlineExceeded, expectedSize, repo, digest.Encoded(), observedSize, lastErr)
+		}
+
+		return fmt.Errorf("%w: content size %d not reached on blob %s/%s (observed %d)",
+			context.DeadlineExceeded, expectedSize, repo, digest.Encoded(), observedSize)
 	}
 
 	Convey("Dedupe", t, func(c C) {
@@ -2079,7 +2084,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 					return nil
 				}
 
-				lastErr = fmt.Errorf("observed content size %d", observedSize)
+				lastErr = nil
 			} else {
 				lastErr = err
 			}
@@ -2087,8 +2092,13 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			time.Sleep(100 * time.Millisecond)
 		}
 
-		return fmt.Errorf("%w: content size %d not reached on blob %s/%s (observed %d): %v",
-			context.DeadlineExceeded, expectedSize, repo, digest.Encoded(), observedSize, lastErr)
+		if lastErr != nil {
+			return fmt.Errorf("%w: content size %d not reached on blob %s/%s (observed %d): %w",
+				context.DeadlineExceeded, expectedSize, repo, digest.Encoded(), observedSize, lastErr)
+		}
+
+		return fmt.Errorf("%w: content size %d not reached on blob %s/%s (observed %d)",
+			context.DeadlineExceeded, expectedSize, repo, digest.Encoded(), observedSize)
 	}
 
 	Convey("Push images with dedupe true", t, func() {
