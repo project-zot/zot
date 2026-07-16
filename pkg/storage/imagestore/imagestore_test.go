@@ -190,4 +190,3 @@ func TestCleanupRepoFailsOnUnexpectedDeleteBlobError(t *testing.T) {
 		So(count, ShouldEqual, 0)
 	})
 }
-
