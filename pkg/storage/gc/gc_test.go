@@ -2835,10 +2835,14 @@ func TestGCMultiArchIndexKeepsNestedConfigAndLayers(t *testing.T) {
 		So(len(indexJSON.Manifests), ShouldEqual, 1)
 		So(indexJSON.Manifests[0].Digest, ShouldEqual, topIndexDigest)
 
+		// sleep past the delay so the nested config/layer blobs are genuinely GC-eligible
+		// (exercises the real orphan-age filter instead of relying on an inert near-zero delay).
+		time.Sleep(1 * time.Second)
+
 		gcInstance := gc.NewGarbageCollect(imgStore, nil, gc.Options{
-			Delay: 1 * time.Millisecond,
+			Delay: 1 * time.Second,
 			ImageRetention: config.ImageRetention{
-				Delay: 1 * time.Millisecond,
+				Delay: 1 * time.Second,
 			},
 		}, audit, log, metrics)
 
@@ -2889,10 +2893,14 @@ func TestGCDockerSchema2ListNotOverDeleted(t *testing.T) {
 			return statErr == nil
 		}
 
+		// sleep past the delay so the nested config/layer blobs are genuinely GC-eligible
+		// (exercises the real orphan-age filter instead of relying on an inert near-zero delay).
+		time.Sleep(1 * time.Second)
+
 		gcInstance := gc.NewGarbageCollect(imgStore, nil, gc.Options{
-			Delay: 1 * time.Millisecond,
+			Delay: 1 * time.Second,
 			ImageRetention: config.ImageRetention{
-				Delay: 1 * time.Millisecond,
+				Delay: 1 * time.Second,
 			},
 		}, audit, log, metrics)
 
@@ -3155,6 +3163,211 @@ func TestGCDryRunDeletesNothing(t *testing.T) {
 
 		So(blobExists(healthy.ManifestDescriptor.Digest), ShouldBeTrue)
 		So(blobExists(healthy.Manifest.Config.Digest), ShouldBeTrue)
+
+		for _, layer := range healthy.Manifest.Layers {
+			So(blobExists(layer.Digest), ShouldBeTrue)
+		}
+	})
+}
+
+// TestGCRemoveRepoAfterAllBlobsGCed covers the CleanupRepo tail (imagestore.go): once GC reaps every
+// blob in a repo (removeRepo == len(gcBlobs) == len(allBlobs)) and there is no in-progress blob upload,
+// the whole repo directory is removed; but if a blob upload is in progress, the guard must keep the
+// repo directory even though every blob was reaped.
+func TestGCRemoveRepoAfterAllBlobsGCed(t *testing.T) {
+	Convey("repo directory is removed once every blob is GCed and no upload is in progress", t, func() {
+		log := zlog.NewTestLogger()
+		audit := zlog.NewAuditLogger("debug", "/dev/null")
+		metrics := newTestMetricsServer(t, log)
+
+		rootDir := t.TempDir()
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+
+		storeController := storage.StoreController{}
+		storeController.DefaultStore = imgStore
+
+		ctx := context.Background()
+		repoName := "gc-remove-repo"
+
+		img := CreateRandomImage()
+		err := WriteImageToFileSystem(img, repoName, "v1", storeController)
+		So(err, ShouldBeNil)
+
+		// drop the only manifest entry, so index.json is empty and every on-disk blob becomes an orphan
+		err = imgStore.DeleteImageManifest(ctx, repoName, "v1", true)
+		So(err, ShouldBeNil)
+
+		time.Sleep(1 * time.Second)
+
+		gcInstance := gc.NewGarbageCollect(imgStore, nil, gc.Options{
+			Delay: 1 * time.Second,
+			ImageRetention: config.ImageRetention{
+				Delay: 1 * time.Second,
+			},
+		}, audit, log, metrics)
+
+		err = gcInstance.CleanRepo(ctx, repoName)
+		So(err, ShouldBeNil)
+
+		repos, err := imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		So(repos, ShouldNotContain, repoName)
+	})
+
+	Convey("repo directory is kept when a blob upload is in progress even though every blob was GCed", t, func() {
+		log := zlog.NewTestLogger()
+		audit := zlog.NewAuditLogger("debug", "/dev/null")
+		metrics := newTestMetricsServer(t, log)
+
+		rootDir := t.TempDir()
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+
+		storeController := storage.StoreController{}
+		storeController.DefaultStore = imgStore
+
+		ctx := context.Background()
+		repoName := "gc-remove-repo-upload-guard"
+
+		img := CreateRandomImage()
+		err := WriteImageToFileSystem(img, repoName, "v1", storeController)
+		So(err, ShouldBeNil)
+
+		err = imgStore.DeleteImageManifest(ctx, repoName, "v1", true)
+		So(err, ShouldBeNil)
+
+		// start (and leave open) a blob upload, so ListBlobUploads is non-empty when CleanupRepo runs
+		_, err = imgStore.NewBlobUpload(ctx, repoName)
+		So(err, ShouldBeNil)
+
+		time.Sleep(1 * time.Second)
+
+		gcInstance := gc.NewGarbageCollect(imgStore, nil, gc.Options{
+			Delay: 1 * time.Second,
+			ImageRetention: config.ImageRetention{
+				Delay: 1 * time.Second,
+			},
+		}, audit, log, metrics)
+
+		err = gcInstance.CleanRepo(ctx, repoName)
+		So(err, ShouldBeNil)
+
+		repos, err := imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		So(repos, ShouldContain, repoName)
+	})
+}
+
+// TestGCUnknownMediaTypeManifestPrunedSharedBlobKept guards that pruning an unknown-media-type entry
+// and then collecting orphans still respects cross-references: a config blob shared between the pruned
+// unknown-media-type manifest and a healthy tagged image must survive (the healthy image still
+// references it), while a blob referenced ONLY by the unknown manifest must be deleted.
+func TestGCUnknownMediaTypeManifestPrunedSharedBlobKept(t *testing.T) {
+	Convey("unknown media type manifest sharing a config blob with a healthy image", t, func() {
+		log := zlog.NewTestLogger()
+		audit := zlog.NewAuditLogger("debug", "/dev/null")
+		metrics := newTestMetricsServer(t, log)
+
+		rootDir := t.TempDir()
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+
+		storeController := storage.StoreController{}
+		storeController.DefaultStore = imgStore
+
+		ctx := context.Background()
+		repoName := "gc-unknown-media-type-shared-blob"
+
+		unsupportedMediaType := "application/vnd.oci.artifact.manifest.v1+json"
+
+		healthy := CreateRandomImage()
+		err := WriteImageToFileSystem(healthy, repoName, "v1", storeController)
+		So(err, ShouldBeNil)
+
+		// a blob referenced ONLY by the unknown-media-type manifest - must be deleted once pruned
+		exclusiveLayerContent := []byte("exclusive to the unknown-media-type manifest")
+		exclusiveLayerDigest := godigest.FromBytes(exclusiveLayerContent)
+
+		_, _, err = imgStore.FullBlobUpload(ctx, repoName, bytes.NewReader(exclusiveLayerContent), exclusiveLayerDigest)
+		So(err, ShouldBeNil)
+
+		// the unknown manifest reuses the healthy image's config digest - this blob must survive
+		unknownManifest := ispec.Manifest{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			MediaType: unsupportedMediaType,
+			Config:    healthy.Manifest.Config,
+			Layers:    []ispec.Descriptor{{MediaType: ispec.MediaTypeImageLayer, Digest: exclusiveLayerDigest, Size: int64(len(exclusiveLayerContent))}},
+		}
+
+		unknownBuf, err := json.Marshal(unknownManifest)
+		So(err, ShouldBeNil)
+
+		unknownDigest := godigest.FromBytes(unknownBuf)
+
+		_, _, err = imgStore.FullBlobUpload(ctx, repoName, bytes.NewReader(unknownBuf), unknownDigest)
+		So(err, ShouldBeNil)
+
+		indexJSONBuf, err := os.ReadFile(path.Join(rootDir, repoName, "index.json"))
+		So(err, ShouldBeNil)
+
+		var indexJSON ispec.Index
+
+		err = json.Unmarshal(indexJSONBuf, &indexJSON)
+		So(err, ShouldBeNil)
+
+		indexJSON.Manifests = append(indexJSON.Manifests, ispec.Descriptor{
+			MediaType: unsupportedMediaType,
+			Digest:    unknownDigest,
+			Size:      int64(len(unknownBuf)),
+			Annotations: map[string]string{
+				ispec.AnnotationRefName: "unknown",
+			},
+		})
+
+		indexJSONBuf, err = json.Marshal(indexJSON)
+		So(err, ShouldBeNil)
+
+		err = os.WriteFile(path.Join(rootDir, repoName, "index.json"), indexJSONBuf, storageConstants.DefaultFilePerms)
+		So(err, ShouldBeNil)
+
+		blobExists := func(digest godigest.Digest) bool {
+			_, statErr := os.Stat(path.Join(rootDir, repoName, "blobs", digest.Algorithm().String(), digest.Encoded()))
+
+			return statErr == nil
+		}
+
+		time.Sleep(1 * time.Second)
+
+		gcInstance := gc.NewGarbageCollect(imgStore, nil, gc.Options{
+			Delay: 1 * time.Second,
+			ImageRetention: config.ImageRetention{
+				Delay: 1 * time.Second,
+			},
+		}, audit, log, metrics)
+
+		err = gcInstance.CleanRepo(ctx, repoName)
+		So(err, ShouldBeNil)
+
+		// the unknown entry is pruned from index.json
+		prunedIndexBuf, err := imgStore.GetIndexContent(repoName)
+		So(err, ShouldBeNil)
+
+		var prunedIndex ispec.Index
+
+		err = json.Unmarshal(prunedIndexBuf, &prunedIndex)
+		So(err, ShouldBeNil)
+
+		for _, desc := range prunedIndex.Manifests {
+			So(desc.Digest, ShouldNotEqual, unknownDigest)
+		}
+
+		// the unknown manifest blob itself and its exclusive layer are gone
+		So(blobExists(unknownDigest), ShouldBeFalse)
+		So(blobExists(exclusiveLayerDigest), ShouldBeFalse)
+
+		// the shared config blob survives - still referenced by the healthy image
+		So(blobExists(healthy.Manifest.Config.Digest), ShouldBeTrue)
+
+		// the healthy image's own manifest/layers survive too
+		So(blobExists(healthy.ManifestDescriptor.Digest), ShouldBeTrue)
 
 		for _, layer := range healthy.Manifest.Layers {
 			So(blobExists(layer.Digest), ShouldBeTrue)
