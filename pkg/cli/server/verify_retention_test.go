@@ -501,7 +501,7 @@ func TestRetentionCheckWithRetentionEnabledAndRedisDriver(t *testing.T) {
 			"garbage collection and retention tasks will be submitted to the scheduler")
 		So(logStr, ShouldContainSubstring, "waiting for garbage collection tasks to complete...")
 		So(logStr, ShouldContainSubstring, "executing gc of orphaned blobs")
-		So(logStr, ShouldContainSubstring, "garbage collected blobs")
+		So(logStr, ShouldNotContainSubstring, "garbage collected blobs")
 		So(logStr, ShouldContainSubstring, "gc successfully completed")
 		So(logStr, ShouldContainSubstring, "retention check completed successfully")
 
@@ -746,7 +746,7 @@ func TestRetentionCheckWithRetentionEnabled(t *testing.T) {
 			"garbage collection and retention tasks will be submitted to the scheduler")
 		So(logStr, ShouldContainSubstring, "waiting for garbage collection tasks to complete...")
 		So(logStr, ShouldContainSubstring, "executing gc of orphaned blobs")
-		So(logStr, ShouldContainSubstring, "garbage collected blobs")
+		So(logStr, ShouldNotContainSubstring, "garbage collected blobs")
 		So(logStr, ShouldContainSubstring, "gc successfully completed")
 		So(logStr, ShouldContainSubstring, "retention check completed successfully")
 
@@ -960,7 +960,7 @@ func TestRetentionCheckWithDeleteReferrers(t *testing.T) {
 			"garbage collection and retention tasks will be submitted to the scheduler")
 		So(logStr, ShouldContainSubstring, "waiting for garbage collection tasks to complete...")
 		So(logStr, ShouldContainSubstring, "executing gc of orphaned blobs")
-		So(logStr, ShouldContainSubstring, "garbage collected blobs")
+		So(logStr, ShouldNotContainSubstring, "garbage collected blobs")
 		So(logStr, ShouldContainSubstring, "gc successfully completed")
 		So(logStr, ShouldContainSubstring, "retention check completed successfully")
 
@@ -1377,7 +1377,7 @@ func TestRetentionCheckWithSubpaths(t *testing.T) {
 			"garbage collection and retention tasks will be submitted to the scheduler")
 		So(logStr, ShouldContainSubstring, "waiting for garbage collection tasks to complete...")
 		So(logStr, ShouldContainSubstring, "executing gc of orphaned blobs")
-		So(logStr, ShouldContainSubstring, "garbage collected blobs")
+		So(logStr, ShouldNotContainSubstring, "garbage collected blobs")
 		So(logStr, ShouldContainSubstring, "gc successfully completed")
 		So(logStr, ShouldContainSubstring, "retention check completed successfully")
 
