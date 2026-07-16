@@ -2595,21 +2595,17 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 
 				if testcase.storageType != storageConstants.LocalStorageDriverName {
 					ok, _, err = waitForExpectedBlobSize(blobDigest, blobSize)
-					if !ok || err != nil {
-						// Retry once in case the first reupload raced with remote propagation.
+					for range 4 {
+						if ok && err == nil {
+							break
+						}
+
+						// Force rewrite path for eventual-consistency backends.
 						_ = driver.Delete(blobPath)
 						err = WriteImageToFileSystem(image, repoName, tag, storeController)
 						So(err, ShouldBeNil)
 
 						ok, _, err = waitForExpectedBlobSize(blobDigest, blobSize)
-						if !ok || err != nil {
-							// One more forced retry for eventual-consistency backends.
-							_ = driver.Delete(blobPath)
-							err = WriteImageToFileSystem(image, repoName, tag, storeController)
-							So(err, ShouldBeNil)
-
-							ok, _, err = waitForExpectedBlobSize(blobDigest, blobSize)
-						}
 					}
 					So(ok, ShouldBeTrue)
 					So(err, ShouldBeNil)
@@ -2667,21 +2663,17 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 
 				if testcase.storageType != storageConstants.LocalStorageDriverName {
 					ok, _, err = waitForExpectedBlobSize(blobDigest, blobSize)
-					if !ok || err != nil {
-						// Retry once in case the first reupload raced with remote propagation.
+					for range 4 {
+						if ok && err == nil {
+							break
+						}
+
+						// Force rewrite path for eventual-consistency backends.
 						_ = driver.Delete(blobPath)
 						err = WriteMultiArchImageToFileSystem(image, repoName, tag, storeController)
 						So(err, ShouldBeNil)
 
 						ok, _, err = waitForExpectedBlobSize(blobDigest, blobSize)
-						if !ok || err != nil {
-							// One more forced retry for eventual-consistency backends.
-							_ = driver.Delete(blobPath)
-							err = WriteMultiArchImageToFileSystem(image, repoName, tag, storeController)
-							So(err, ShouldBeNil)
-
-							ok, _, err = waitForExpectedBlobSize(blobDigest, blobSize)
-						}
 					}
 					So(ok, ShouldBeTrue)
 					So(err, ShouldBeNil)
