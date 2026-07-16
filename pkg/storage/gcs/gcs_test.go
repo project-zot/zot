@@ -1734,7 +1734,7 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 		globalBlobPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, digest)
 		stableMatches := 0
 
-		for range 600 {
+		for range 300 {
 			matched := false
 
 			ok, size, _, err := imgStore.StatBlob(repo, digest)
@@ -1761,7 +1761,27 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 				stableMatches = 0
 			}
 
-			time.Sleep(200 * time.Millisecond)
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		return false
+	}
+
+	waitForCorruptionDetection := func(repo string, digest godigest.Digest, expectedSize int64) bool {
+		stableMismatches := 0
+
+		for range 300 {
+			ok, size, err := imgStore.CheckBlob(context.Background(), repo, digest)
+			if (!ok && errors.Is(err, zerr.ErrBlobNotFound)) || (ok && size != expectedSize) {
+				stableMismatches++
+				if stableMismatches >= 3 {
+					return true
+				}
+			} else {
+				stableMismatches = 0
+			}
+
+			time.Sleep(100 * time.Millisecond)
 		}
 
 		return false
@@ -1795,6 +1815,7 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		So(overwriteUntilSizeChanges(blobPath, blobSize), ShouldBeTrue)
+		So(waitForCorruptionDetection(repoName, blobDigest, int64(blobSize)), ShouldBeTrue)
 
 		err = WriteImageToFileSystem(image, repoName, tag, storeController)
 		So(err, ShouldBeNil)
@@ -1829,6 +1850,7 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		So(overwriteUntilSizeChanges(blobPath, blobSize), ShouldBeTrue)
+		So(waitForCorruptionDetection(repoName, blobDigest, int64(blobSize)), ShouldBeTrue)
 
 		err = WriteMultiArchImageToFileSystem(image, repoName, tag, storeController)
 		So(err, ShouldBeNil)
