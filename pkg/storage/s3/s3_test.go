@@ -1066,6 +1066,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 	})
 }
 
+//nolint:gocyclo // Integration-style dedupe matrix test intentionally covers many scenarios.
 func TestS3Dedupe(t *testing.T) {
 	tskip.SkipS3(t)
 	tskip.SkipDynamo(t)
