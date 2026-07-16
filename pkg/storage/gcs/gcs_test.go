@@ -3012,6 +3012,16 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 			return last, fmt.Errorf("%w: scrub output did not contain %q", context.DeadlineExceeded, expected)
 		}
 
+		resolveIntegrityBlobPath := func(digest godigest.Digest) string {
+			globalBlobPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+
+			if _, statErr := driver.Stat(globalBlobPath); statErr == nil {
+				return globalBlobPath
+			}
+
+			return imgStore.BlobPath(repoName, digest)
+		}
+
 		image := CreateRandomImage()
 
 		err = WriteImageToFileSystem(image, repoName, "1.0", storeCtlr)
@@ -3125,7 +3135,7 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 
 			// delete content of config file
 			configDig := image.ConfigDescriptor.Digest.Encoded()
-			configFile := path.Join(imgStore.RootDir(), repoName, "/blobs/sha256", configDig)
+			configFile := resolveIntegrityBlobPath(image.ConfigDescriptor.Digest)
 			err = driver.Delete(configFile)
 			So(err, ShouldBeNil)
 
@@ -3162,7 +3172,7 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 
 			// delete content of layer file
 			layerDig := image.Manifest.Layers[0].Digest.Encoded()
-			layerFile := path.Join(imgStore.RootDir(), repoName, "/blobs/sha256", layerDig)
+			layerFile := resolveIntegrityBlobPath(image.Manifest.Layers[0].Digest)
 			_, err = driver.WriteFile(layerFile, []byte(" "))
 			So(err, ShouldBeNil)
 

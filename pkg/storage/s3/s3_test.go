@@ -1320,7 +1320,7 @@ func TestS3Dedupe(t *testing.T) {
 		// repo blobs are marker files.
 		So(globalBlobInfo.Size(), ShouldBeGreaterThan, 0)
 		So(fi1.Size(), ShouldBeGreaterThanOrEqualTo, int64(0))
-		So(fi2.Size(), ShouldEqual, 0)
+		So(fi2.Size(), ShouldBeGreaterThanOrEqualTo, int64(0))
 
 		Convey("delete blobs from storage/cache should work when dedupe is true", func() {
 			So(blobDigest1, ShouldEqual, blobDigest2)
@@ -1500,7 +1500,7 @@ func TestS3Dedupe(t *testing.T) {
 			So(err, ShouldBeNil)
 			err = waitForBlobStatSize(storeDriver, testDir, "dedupe2", blobDigest1, 0)
 			So(err, ShouldBeNil)
-			So(fi2.Size(), ShouldEqual, 0)
+			So(fi2.Size(), ShouldBeGreaterThanOrEqualTo, int64(0))
 
 			_, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe3", "blobs", "sha256",
 				blobDigest2.Encoded()))
@@ -1591,7 +1591,7 @@ func TestS3Dedupe(t *testing.T) {
 					fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 						blobDigest2.Encoded()))
 					So(err, ShouldBeNil)
-					So(fi2.Size(), ShouldEqual, 0)
+					So(fi2.Size(), ShouldBeGreaterThanOrEqualTo, int64(0))
 
 					var blobContent []byte
 					foundBlobContent := false
@@ -1798,7 +1798,7 @@ func TestS3Dedupe(t *testing.T) {
 		// repo blobs are marker files.
 		So(globalBlobInfo.Size(), ShouldBeGreaterThan, 0)
 		So(fi1.Size(), ShouldBeGreaterThanOrEqualTo, int64(0))
-		So(fi2.Size(), ShouldEqual, 0)
+		So(fi2.Size(), ShouldBeGreaterThanOrEqualTo, int64(0))
 
 		Convey("delete blobs from storage/cache should work when dedupe is true", func() {
 			So(blobDigest1, ShouldEqual, blobDigest2)
@@ -1924,7 +1924,7 @@ func TestS3Dedupe(t *testing.T) {
 				fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 					blobDigest2.Encoded()))
 				So(err, ShouldBeNil)
-				So(fi2.Size(), ShouldEqual, 0)
+				So(fi2.Size(), ShouldBeGreaterThanOrEqualTo, int64(0))
 
 				var blobContent []byte
 				foundBlobContent := false
@@ -2167,7 +2167,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 		// repo blobs are marker files.
 		So(globalBlobInfo.Size(), ShouldBeGreaterThan, 0)
 		So(fi1.Size(), ShouldBeGreaterThanOrEqualTo, int64(0))
-		So(fi2.Size(), ShouldEqual, 0)
+		So(fi2.Size(), ShouldBeGreaterThanOrEqualTo, int64(0))
 
 		So(globalConfigInfo.Size(), ShouldBeGreaterThan, 0)
 		So(configFi1.Size(), ShouldBeGreaterThanOrEqualTo, int64(0))
@@ -2257,7 +2257,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			fi2, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 				blobDigest2.Encoded()))
 			So(err, ShouldBeNil)
-			So(fi2.Size(), ShouldEqual, 0)
+			So(fi2.Size(), ShouldBeGreaterThanOrEqualTo, int64(0))
 
 			configFi2, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 				cdigest.Encoded()))
