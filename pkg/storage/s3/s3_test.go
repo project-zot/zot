@@ -43,10 +43,11 @@ import (
 
 //nolint:gochecknoglobals
 var (
-	testImage      = "test"
-	errorText      = "new s3 error"
-	errS3          = errors.New(errorText)
-	errCache       = errors.New("new cache error")
+	testImage = "test"
+	errorText = "new s3 error"
+	errS3     = errors.New(errorText)
+	errCache  = errors.New("new cache error")
+	// Used by retry-based pull-range assertions when content is readable but not yet the expected slice.
 	errPartialRead = errors.New("unexpected partial content")
 	zotStorageTest = "zot-storage-test"
 	s3Region       = "us-east-2"
@@ -3306,6 +3307,8 @@ func TestS3PullRange(t *testing.T) {
 		})
 
 		Convey("With Dedupe", func() {
+			// After deleting one contender, S3-backed dedupe can briefly return not-found
+			// or stale partial reads until reference handoff converges.
 			waitForPartialRead := func(repo string, dgst godigest.Digest, from, to int64, expected []byte) error {
 				var lastErr error
 
@@ -3331,6 +3334,7 @@ func TestS3PullRange(t *testing.T) {
 						return nil
 					}
 
+					// Keep retrying until expected range bytes are observable.
 					lastErr = errPartialRead
 					time.Sleep(100 * time.Millisecond)
 				}
