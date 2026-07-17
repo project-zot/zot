@@ -238,6 +238,23 @@ func (is *ImageStore) getRepoLock(repo string) *sync.RWMutex {
 	return val.(*sync.RWMutex)
 }
 
+// lockRepo/unlockRepo mirror the pre-refactor Lock/Unlock signature (direct lock,
+// deferred unlock, no closure) for the handful of methods with too many early-return
+// points to safely wrap in WithRepoLock's closure shape without risking a mistake in
+// the rewrite. Internal use only within this package; external callers (and the
+// storageTypes.ImageStore interface) use WithRepoLock/WithRepoReadLock.
+func (is *ImageStore) lockRepo(repo string, lockStart *time.Time) {
+	*lockStart = time.Now()
+	is.getRepoLock(repo).Lock()
+}
+
+func (is *ImageStore) unlockRepo(repo string, lockStart *time.Time) {
+	is.getRepoLock(repo).Unlock()
+
+	latency := time.Since(*lockStart)
+	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), storageConstants.RepoRWLock)
+}
+
 // WithRepoLock runs wrappedFunc while holding repo's write lock. Callers must not
 // call this, or WithRepoReadLock, for a second repo from within wrappedFunc: only one
 // repo's lock may be held at a time in a given goroutine (see ImageStore's lock
@@ -718,12 +735,9 @@ func (is *ImageStore) InitRepo(ctx context.Context, name string) error {
 		return zerr.ErrInvalidRepositoryName
 	}
 
-	var lockLatency time.Time
-
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
-
-	return is.initRepo(ctx, name)
+	return is.WithRepoLock(name, func() error {
+		return is.initRepo(ctx, name)
+	})
 }
 
 // ValidateRepo validates that the repository layout is complaint with the OCI repo layout.
@@ -781,14 +795,14 @@ func (is *ImageStore) ValidateRepo(name string) (bool, error) {
 	return true, nil
 }
 
+// GetNextRepositories does not take a lock: it's a read-only, whole-tree Walk that
+// already tolerates a concurrently-changing repo set (e.g. InitRepo creating a repo
+// mid-walk) the same way it does today - no backend offers an atomic multi-key
+// listing, so a whole-store lock never made this walk atomic, it only serialized
+// unrelated writes against it for no consistency benefit.
 func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filterFn storageTypes.FilterRepoFunc,
 ) ([]string, bool, error) {
-	var lockLatency time.Time
-
 	dir := is.rootDir
-
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
 
 	stores := make([]string, 0)
 
@@ -866,14 +880,10 @@ func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filte
 	return stores, moreEntries, err
 }
 
-// GetRepositories returns a list of all the repositories under this store.
+// GetRepositories returns a list of all the repositories under this store. Does not
+// take a lock - see GetNextRepositories' doc comment.
 func (is *ImageStore) GetRepositories() ([]string, error) {
-	var lockLatency time.Time
-
 	dir := is.rootDir
-
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
 
 	stores := make([]string, 0)
 
@@ -955,13 +965,9 @@ func (is *ImageStore) isDigestReferencedAcrossRepos(digest godigest.Digest) (boo
 }
 
 // GetNextRepository returns next repository under this store.
+// GetNextRepository does not take a lock - see GetNextRepositories' doc comment.
 func (is *ImageStore) GetNextRepository(processedRepos map[string]struct{}) (string, error) {
-	var lockLatency time.Time
-
 	dir := is.rootDir
-
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
 
 	_, err := is.storeDriver.List(dir)
 	if err != nil {
@@ -1038,22 +1044,25 @@ func (is *ImageStore) GetNextRepository(processedRepos map[string]struct{}) (str
 
 // GetImageTags returns a list of image tags available in the specified repository.
 func (is *ImageStore) GetImageTags(repo string) ([]string, error) {
-	var lockLatency time.Time
-
 	dir := path.Join(is.rootDir, repo)
 	if fi, err := is.storeDriver.Stat(dir); err != nil || !fi.IsDir() {
 		return nil, zerr.ErrRepoNotFound
 	}
 
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
+	var tags []string
 
-	index, err := common.GetIndex(is, repo, is.log)
-	if err != nil {
-		return nil, err
-	}
+	err := is.WithRepoReadLock(repo, func() error {
+		index, err := common.GetIndex(is, repo, is.log)
+		if err != nil {
+			return err
+		}
 
-	return common.GetTagsByIndex(index), nil
+		tags = common.GetTagsByIndex(index)
+
+		return nil
+	})
+
+	return tags, err
 }
 
 // GetImageManifest returns the image manifest of an image in the specific repository.
@@ -1063,46 +1072,50 @@ func (is *ImageStore) GetImageManifest(repo, reference string) ([]byte, godigest
 		return nil, "", "", zerr.ErrRepoNotFound
 	}
 
-	var lockLatency time.Time
+	var (
+		buf       []byte
+		digest    godigest.Digest
+		mediaType string
+	)
 
-	var err error
-
-	is.RLock(&lockLatency)
-	defer func() {
-		is.RUnlock(&lockLatency)
-
-		if err == nil {
-			monitoring.IncDownloadCounter(is.metrics, repo)
-		}
-	}()
-
-	index, err := common.GetIndex(is, repo, is.log)
-	if err != nil {
-		return nil, "", "", err
-	}
-
-	manifestDesc, found := common.GetManifestDescByReference(index, reference)
-	if !found {
-		return nil, "", "", zerr.ErrManifestNotFound
-	}
-
-	buf, err := is.GetBlobContent(repo, manifestDesc.Digest)
-	if err != nil {
-		if errors.Is(err, zerr.ErrBlobNotFound) {
-			return nil, "", "", zerr.ErrManifestNotFound
+	err := is.WithRepoReadLock(repo, func() error {
+		index, err := common.GetIndex(is, repo, is.log)
+		if err != nil {
+			return err
 		}
 
-		return nil, "", "", err
+		manifestDesc, found := common.GetManifestDescByReference(index, reference)
+		if !found {
+			return zerr.ErrManifestNotFound
+		}
+
+		content, err := is.GetBlobContent(repo, manifestDesc.Digest)
+		if err != nil {
+			if errors.Is(err, zerr.ErrBlobNotFound) {
+				return zerr.ErrManifestNotFound
+			}
+
+			return err
+		}
+
+		var manifest ispec.Manifest
+		if err := json.Unmarshal(content, &manifest); err != nil {
+			is.log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
+
+			return err
+		}
+
+		buf = content
+		digest = manifestDesc.Digest
+		mediaType = manifestDesc.MediaType
+
+		return nil
+	})
+	if err == nil {
+		monitoring.IncDownloadCounter(is.metrics, repo)
 	}
 
-	var manifest ispec.Manifest
-	if err := json.Unmarshal(buf, &manifest); err != nil {
-		is.log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
-
-		return nil, "", "", err
-	}
-
-	return buf, manifestDesc.Digest, manifestDesc.MediaType, nil
+	return buf, digest, mediaType, err
 }
 
 // PutImageManifest adds an image manifest to the repository.
@@ -1118,13 +1131,16 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 		return "", "", err
 	}
 
+	// This function has many early returns, which don't fit cleanly into
+	// WithRepoLock's closure shape without risking a mistake in the rewrite -
+	// lock the repo directly instead via lockRepo/unlockRepo.
 	var lockLatency time.Time
 
 	var err error
 
-	is.Lock(&lockLatency)
+	is.lockRepo(repo, &lockLatency)
 	defer func() {
-		is.Unlock(&lockLatency)
+		is.unlockRepo(repo, &lockLatency)
 
 		if err == nil {
 			if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
@@ -1360,17 +1376,9 @@ func (is *ImageStore) DeleteImageManifest(ctx context.Context, repo, reference s
 		return zerr.ErrRepoNotFound
 	}
 
-	var lockLatency time.Time
-
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
-
-	err := is.deleteImageManifest(ctx, repo, reference, detectCollisions)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return is.WithRepoLock(repo, func() error {
+		return is.deleteImageManifest(ctx, repo, reference, detectCollisions)
+	})
 }
 
 func (is *ImageStore) deleteImageManifest(ctx context.Context, repo, reference string, detectCollisions bool) error {
@@ -1693,12 +1701,14 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 
 	dst := is.BlobPath(repo, dstDigest)
 
-	var lockLatency time.Time
-
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
-
 	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+		// DedupeBlob is still whole-store-locked by its caller until it takes over
+		// its own blobstore+repo locking (see the corresponding TODO there).
+		var lockLatency time.Time
+
+		is.Lock(&lockLatency)
+		defer is.Unlock(&lockLatency)
+
 		err = is.DedupeBlob(src, dstDigest, repo, dst)
 		if err := inject.Error(err); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
@@ -1706,16 +1716,20 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 
 			return err
 		}
-	} else {
+
+		return nil
+	}
+
+	return is.WithRepoLock(repo, func() error {
 		if err := is.storeDriver.Move(src, dst); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
 				Str("dst", dst).Msg("failed to finish blob")
 
 			return err
 		}
-	}
 
-	return nil
+		return nil
+	})
 }
 
 // FullBlobUpload handles a full blob upload, and no partial session is created.
@@ -1789,27 +1803,38 @@ func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.R
 	dir := path.Join(is.rootDir, repo, ispec.ImageBlobsDir, dstDigestAlgorithm.String())
 	_ = is.storeDriver.EnsureDir(dir)
 
-	var lockLatency time.Time
-
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
-
 	dst := is.BlobPath(repo, dstDigest)
 
 	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+		// DedupeBlob is still whole-store-locked by its caller until it takes over
+		// its own blobstore+repo locking (see the corresponding TODO there).
+		var lockLatency time.Time
+
+		is.Lock(&lockLatency)
+		defer is.Unlock(&lockLatency)
+
 		if err := is.DedupeBlob(src, dstDigest, repo, dst); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
 				Str("dst", dst).Msg("failed to dedupe blob")
 
 			return "", -1, err
 		}
-	} else {
+
+		return uuid, nbytes, nil
+	}
+
+	err = is.WithRepoLock(repo, func() error {
 		if err := is.storeDriver.Move(src, dst); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
 				Str("dst", dst).Msg("failed to finish blob")
 
-			return "", -1, err
+			return err
 		}
+
+		return nil
+	})
+	if err != nil {
+		return "", -1, err
 	}
 
 	return uuid, nbytes, nil
@@ -2049,9 +2074,11 @@ func (is *ImageStore) BlobPath(repo string, digest godigest.Digest) string {
 	return path.Join(is.rootDir, repo, ispec.ImageBlobsDir, digest.Algorithm().String(), digest.Encoded())
 }
 
+// GetAllDedupeReposCandidates does not take a lock: it only reads the dedupe cache
+// (blobRefsForDigest), which has its own internal synchronization (BoltDB
+// transactions, DynamoDB conditional writes, Redis distributed mutexes) and never
+// touches per-repo filesystem state directly.
 func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]string, error) {
-	var lockLatency time.Time
-
 	if err := digest.Validate(); err != nil {
 		return nil, err
 	}
@@ -2059,9 +2086,6 @@ func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]str
 	if is.cache == nil {
 		return nil, nil //nolint:nilnil
 	}
-
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
 
 	blobsPaths, err := is.blobRefsForDigest(digest)
 	if err != nil {
@@ -2294,42 +2318,54 @@ func (is *ImageStore) copyBlob(ctx context.Context, repo string, blobPath, dstRe
 // blob selector instead of directly downloading the blob.
 func (is *ImageStore) GetBlobPartial(repo string, digest godigest.Digest, mediaType string, from, to int64,
 ) (io.ReadCloser, int64, int64, error) {
-	var lockLatency time.Time
-
 	if err := digest.Validate(); err != nil {
 		return nil, -1, -1, err
 	}
 
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
+	var (
+		blobReadCloser io.ReadCloser
+		contentLength  int64
+		totalSize      int64
+	)
 
-	binfo, err := is.originalBlobInfo(repo, digest)
+	err := is.WithRepoReadLock(repo, func() error {
+		binfo, err := is.originalBlobInfo(repo, digest)
+		if err != nil {
+			return err
+		}
+
+		end := to
+
+		if to < 0 || to >= binfo.Size() {
+			end = binfo.Size() - 1
+		}
+
+		blobHandle, err := is.storeDriver.Reader(binfo.Path(), from)
+		if err != nil {
+			is.log.Error().Err(err).Str("blob", binfo.Path()).Msg("failed to open blob")
+
+			return err
+		}
+
+		stream, err := newBlobStream(blobHandle, from, end)
+		if err != nil {
+			is.log.Error().Err(err).Str("blob", binfo.Path()).Msg("failed to open blob stream")
+
+			return err
+		}
+
+		blobReadCloser = stream
+		contentLength = end - from + 1
+		totalSize = binfo.Size()
+
+		return nil
+	})
 	if err != nil {
-		return nil, -1, -1, err
-	}
-
-	end := to
-
-	if to < 0 || to >= binfo.Size() {
-		end = binfo.Size() - 1
-	}
-
-	blobHandle, err := is.storeDriver.Reader(binfo.Path(), from)
-	if err != nil {
-		is.log.Error().Err(err).Str("blob", binfo.Path()).Msg("failed to open blob")
-
-		return nil, -1, -1, err
-	}
-
-	blobReadCloser, err := newBlobStream(blobHandle, from, end)
-	if err != nil {
-		is.log.Error().Err(err).Str("blob", binfo.Path()).Msg("failed to open blob stream")
-
 		return nil, -1, -1, err
 	}
 
 	// The caller function is responsible for calling Close()
-	return blobReadCloser, end - from + 1, binfo.Size(), nil
+	return blobReadCloser, contentLength, totalSize, nil
 }
 
 /*
@@ -2378,34 +2414,42 @@ func (is *ImageStore) originalBlobInfo(repo string, digest godigest.Digest) (dri
 // GetBlob returns a stream to read the blob.
 // blob selector instead of directly downloading the blob.
 func (is *ImageStore) GetBlob(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error) {
-	var lockLatency time.Time
-
 	if err := digest.Validate(); err != nil {
 		return nil, -1, err
 	}
 
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
+	var (
+		blobReadCloser io.ReadCloser
+		size           int64
+	)
 
-	binfo, err := is.originalBlobInfo(repo, digest)
+	err := is.WithRepoReadLock(repo, func() error {
+		binfo, err := is.originalBlobInfo(repo, digest)
+		if err != nil {
+			return err
+		}
+
+		reader, err := is.storeDriver.Reader(binfo.Path(), 0)
+		if err != nil {
+			is.log.Error().Err(err).Str("blob", binfo.Path()).Msg("failed to open blob")
+
+			return err
+		}
+
+		blobReadCloser = reader
+		size = binfo.Size()
+
+		return nil
+	})
 	if err != nil {
-		return nil, -1, err
-	}
-
-	blobReadCloser, err := is.storeDriver.Reader(binfo.Path(), 0)
-	if err != nil {
-		is.log.Error().Err(err).Str("blob", binfo.Path()).Msg("failed to open blob")
-
 		return nil, -1, err
 	}
 
 	// The caller function is responsible for calling Close()
-	return blobReadCloser, binfo.Size(), nil
+	return blobReadCloser, size, nil
 }
 
 func (is *ImageStore) GetBlobRedirectURL(r *http.Request, repo string, digest godigest.Digest) (string, error) {
-	var lockLatency time.Time
-
 	if err := digest.Validate(); err != nil {
 		return "", zerr.ErrBadBlobDigest
 	}
@@ -2415,15 +2459,20 @@ func (is *ImageStore) GetBlobRedirectURL(r *http.Request, repo string, digest go
 		return "", nil
 	}
 
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
+	var redirectURL string
 
-	binfo, err := is.originalBlobInfo(repo, digest)
-	if err != nil {
-		return "", err
-	}
+	err := is.WithRepoReadLock(repo, func() error {
+		binfo, err := is.originalBlobInfo(repo, digest)
+		if err != nil {
+			return err
+		}
 
-	return is.storeDriver.RedirectURL(r, binfo.Path())
+		redirectURL, err = is.storeDriver.RedirectURL(r, binfo.Path())
+
+		return err
+	})
+
+	return redirectURL, err
 }
 
 // GetBlobContent returns blob contents, the caller function MUST lock from outside.
@@ -2482,12 +2531,17 @@ func (is *ImageStore) VerifyBlobDigestValue(repo string, digest godigest.Digest)
 
 func (is *ImageStore) GetReferrers(repo string, gdigest godigest.Digest, artifactTypes []string,
 ) (ispec.Index, error) {
-	var lockLatency time.Time
+	var index ispec.Index
 
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
+	err := is.WithRepoReadLock(repo, func() error {
+		var err error
 
-	return common.GetReferrers(is, repo, gdigest, artifactTypes, is.log)
+		index, err = common.GetReferrers(is, repo, gdigest, artifactTypes, is.log)
+
+		return err
+	})
+
+	return index, err
 }
 
 // GetIndexContent returns index.json contents, the caller function MUST lock from outside.
@@ -2829,14 +2883,11 @@ func (is *ImageStore) GetAllBlobs(repo string) ([]godigest.Digest, error) {
 	return ret, nil
 }
 
+// GetNextDigestWithBlobPaths does not take a lock - see GetNextRepositories' doc
+// comment; this is the same kind of whole-tree read-only Walk.
 func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []godigest.Digest,
 ) (godigest.Digest, []string, error) {
-	var lockLatency time.Time
-
 	dir := is.rootDir
-
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
 
 	var duplicateBlobs []string
 
