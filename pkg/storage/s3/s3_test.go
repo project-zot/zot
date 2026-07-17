@@ -4104,8 +4104,17 @@ func TestS3DedupeErr(t *testing.T) {
 			MoveFn: func(ctx context.Context, sourcePath string, destPath string) error {
 				return errS3
 			},
+			// Only fail Stat for the digest's own blob path - that's what DedupeBlob
+			// checks on retry once the cache already points at it. Failing Stat
+			// unconditionally also breaks NewImageStore's own migration-marker check
+			// above (a plain, non-PathNotFoundError Stat error there aborts store
+			// construction), leaving imgStore nil before DedupeBlob is ever called.
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				return driver.FileInfoInternal{}, errS3
+				if strings.Contains(path, digest.Encoded()) {
+					return driver.FileInfoInternal{}, errS3
+				}
+
+				return driver.FileInfoInternal{}, nil
 			},
 		})
 
