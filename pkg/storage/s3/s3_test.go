@@ -4447,8 +4447,17 @@ func TestS3DedupeErr(t *testing.T) {
 		digest := godigest.NewDigestFromEncoded(godigest.SHA256,
 			testDigestHex)
 
+		// The repo's own copy is a zero-byte marker (Stat succeeds, size 0), and the
+		// global blobstore copy is unresolvable (PathNotFoundError - the same result
+		// checkCacheBlob failing used to produce before ResolveReadPath existed, and
+		// still lenient enough not to break NewImageStore's own migration-marker Stat
+		// during construction, which also lives under GlobalBlobsRepo).
 		imgStore = createMockStorage(testDir, tdir, true, &mocks.StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+				if strings.Contains(path, storageConstants.GlobalBlobsRepo) {
+					return driver.FileInfoInternal{}, driver.PathNotFoundError{}
+				}
+
 				return &mocks.FileInfoMock{
 					SizeFn: func() int64 {
 						return 0
