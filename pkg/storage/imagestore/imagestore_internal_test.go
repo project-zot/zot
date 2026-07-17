@@ -740,3 +740,58 @@ func TestDedupeBlobRecoversWhenStaleOriginalIsKeptByCache(t *testing.T) {
 		t.Fatal("expected upload source to be moved away after dedupe")
 	}
 }
+
+// TestRestoreDedupedBlobFallsBackToGlobalBlobstore covers the dedupe=true->false restore path
+// when the cache has no record for a digest (e.g. lost/rebuilt) and every per-repo copy is a
+// zero-byte dedupe marker - the normal steady state under the global blobstore scheme. Before
+// routing getOriginalBlob through the blobLifecycle seam, this left restoreDedupedBlobs unable
+// to find the content (it only scanned the given per-repo paths, never GlobalBlobsRepo) even
+// though the real bytes were sitting right there, and the digest was wrongly reported as lost.
+func TestRestoreDedupedBlobFallsBackToGlobalBlobstore(t *testing.T) {
+	log := log.NewTestLogger()
+	metrics := monitoring.NewMetricsServer(false, log)
+
+	rootDir := "/oci-repo-test/restore-global-fallback"
+	repo := "repo1"
+
+	content := []byte("blob-content-for-restore-fallback")
+	digest := godigest.FromBytes(content)
+
+	repoBlobPath := path.Join(rootDir, repo, ispec.ImageBlobsDir,
+		digest.Algorithm().String(), digest.Encoded())
+	globalBlobPath := path.Join(rootDir, constants.GlobalBlobsRepo, ispec.ImageBlobsDir,
+		digest.Algorithm().String(), digest.Encoded())
+	migratedMarkerPath := path.Join(rootDir, constants.BlobstoreMigratedMarker)
+
+	// repo1's own copy is a zero-byte dedupe marker; the real content lives only in the
+	// global blobstore. The migration marker is pre-seeded so NewImageStore starts in the
+	// already-migrated steady state instead of running the migration walk.
+	storeMock := makeStatefulMigrationStoreMock(rootDir, repo, repoBlobPath, []byte{})
+	if err := storeMock.PutContent(context.Background(), globalBlobPath, content); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := storeMock.PutContent(context.Background(), migratedMarkerPath, []byte("1")); err != nil {
+		t.Fatal(err)
+	}
+
+	// An empty cache simulates one that was lost/rebuilt and has no record of this digest.
+	store := imagestore.NewImageStore(rootDir, "", true, false, log, metrics, nil,
+		gcs.New(storeMock), newMapBackedCache(), nil, nil)
+	if store == nil {
+		t.Fatal("expected image store initialization to succeed")
+	}
+
+	if err := store.RunDedupeForDigest(context.Background(), digest, false, []string{repoBlobPath}); err != nil {
+		t.Fatal(err)
+	}
+
+	restoredContent, err := storeMock.GetContent(context.Background(), repoBlobPath)
+	if err != nil {
+		t.Fatal("expected repo blob to be restored with content")
+	}
+
+	if !bytes.Equal(restoredContent, content) {
+		t.Fatal("expected restored repo blob content to match the global blobstore copy")
+	}
+}
