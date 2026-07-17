@@ -1621,21 +1621,26 @@ func TestS3Dedupe(t *testing.T) {
 				// rebuild with dedupe false, should have all blobs with content
 				imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
+				// waitForBlobStatExists only proves the blob path exists, which is true
+				// from the start (it's a zero-byte marker) regardless of whether restore
+				// has run - it does not prove dedupe1 (let alone dedupe2) has been
+				// restored. Shutting the scheduler down right after it would race the
+				// still-in-flight restore of dedupe2, so wait for both blobs' real
+				// content (known size buflen, not a stat captured mid-race) before
+				// shutting the scheduler down.
 				err = waitForBlobStatExists(storeDriver, testDir, "dedupe1", blobDigest1)
 				So(err, ShouldBeNil)
 
-				taskScheduler.Shutdown()
-
-				fi1, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe1", "blobs", "sha256",
-					blobDigest1.Encoded()))
+				err = waitForBlobStatSize(storeDriver, testDir, "dedupe1", blobDigest1, int64(buflen))
 				So(err, ShouldBeNil)
 
-				err = waitForBlobStatSize(storeDriver, testDir, "dedupe2", blobDigest2, fi1.Size())
+				err = waitForBlobStatSize(storeDriver, testDir, "dedupe2", blobDigest2, int64(buflen))
 				So(err, ShouldBeNil)
 
-				// Avoid coupling to fi1 size because fi1 may temporarily be a marker.
 				err = waitForBlobContentNonEmpty(imgStore, "dedupe2", blobDigest2)
 				So(err, ShouldBeNil)
+
+				taskScheduler.Shutdown()
 
 				blobContent1, err := imgStore.GetBlobContent("dedupe1", blobDigest1)
 				So(err, ShouldBeNil)
