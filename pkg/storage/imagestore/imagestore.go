@@ -888,6 +888,14 @@ func (is *ImageStore) GetNextRepository(processedRepos map[string]struct{}) (str
 
 		rel = filepath.ToSlash(rel)
 
+		// ValidateRepo already rejects this, but skip descending into it outright -
+		// it can hold one entry per digest ever deduped, so walking its full blob
+		// tree on every call (this runs once per repo, in a loop, from GC/scrub/
+		// dedupe generators) is wasted work for a directory that's never a repo.
+		if rel == storageConstants.GlobalBlobsRepo {
+			return driver.ErrSkipDir
+		}
+
 		if _, ok := processedRepos[rel]; ok {
 			return nil // repo already processed
 		}
