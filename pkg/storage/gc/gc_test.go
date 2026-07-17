@@ -3047,6 +3047,198 @@ func TestGCUnknownMediaTypeManifestPruned(t *testing.T) {
 	})
 }
 
+// auditLine is the subset of audit-log JSON fields relevant to prune-reason assertions.
+type auditLine struct {
+	Digest  string `json:"digest"`
+	Reason  string `json:"reason"`
+	Message string `json:"message"`
+}
+
+// readAuditLines parses a temp audit-log file's newline-delimited JSON entries.
+func readAuditLines(t *testing.T, path string) []auditLine {
+	t.Helper()
+
+	buf, err := os.ReadFile(path)
+	So(err, ShouldBeNil)
+
+	var lines []auditLine
+
+	for raw := range bytes.SplitSeq(bytes.TrimSpace(buf), []byte("\n")) {
+		if len(raw) == 0 {
+			continue
+		}
+
+		var line auditLine
+
+		err := json.Unmarshal(raw, &line)
+		So(err, ShouldBeNil)
+
+		lines = append(lines, line)
+	}
+
+	return lines
+}
+
+// TestGCUnknownMediaTypePruneReason guards that the unknown-media-type index prune emits its own
+// accurate audit reason/message, distinct from the shared stale-prune helper's output, so audit
+// consumers can tell the two prune paths apart (SPEC.md §2).
+func TestGCUnknownMediaTypePruneReason(t *testing.T) {
+	Convey("index.json entry with unsupported manifest media type", t, func() {
+		log := zlog.NewTestLogger()
+
+		auditPath := path.Join(t.TempDir(), "audit.log")
+		audit := zlog.NewAuditLogger("debug", auditPath)
+
+		metrics := newTestMetricsServer(t, log)
+
+		rootDir := t.TempDir()
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+
+		storeController := storage.StoreController{}
+		storeController.DefaultStore = imgStore
+
+		ctx := context.Background()
+		repoName := "gc-unknown-media-type-reason"
+
+		unsupportedMediaType := "application/vnd.oci.artifact.manifest.v1+json"
+
+		unknown := CreateRandomImage()
+		err := WriteImageToFileSystem(unknown, repoName, "unknown", storeController)
+		So(err, ShouldBeNil)
+
+		// rewrite the unknown image's manifest with an unsupported media type, re-hash it, write the
+		// new blob, and re-point/re-type its index.json descriptor - mirroring
+		// TestGCUnknownMediaTypeManifestPruned's fixture construction.
+		unknownBuf, err := os.ReadFile(path.Join(rootDir, repoName, "blobs",
+			unknown.ManifestDescriptor.Digest.Algorithm().String(), unknown.ManifestDescriptor.Digest.Encoded()))
+		So(err, ShouldBeNil)
+
+		var unknownManifest ispec.Manifest
+
+		err = json.Unmarshal(unknownBuf, &unknownManifest)
+		So(err, ShouldBeNil)
+
+		unknownManifest.MediaType = unsupportedMediaType
+
+		unknownBuf, err = json.Marshal(unknownManifest)
+		So(err, ShouldBeNil)
+
+		unknownDigest := godigest.FromBytes(unknownBuf)
+
+		err = os.WriteFile(path.Join(rootDir, repoName, "blobs", unknownDigest.Algorithm().String(), unknownDigest.Encoded()),
+			unknownBuf, storageConstants.DefaultFilePerms)
+		So(err, ShouldBeNil)
+
+		indexJSONBuf, err := os.ReadFile(path.Join(rootDir, repoName, "index.json"))
+		So(err, ShouldBeNil)
+
+		var indexJSON ispec.Index
+
+		err = json.Unmarshal(indexJSONBuf, &indexJSON)
+		So(err, ShouldBeNil)
+
+		for idx, desc := range indexJSON.Manifests {
+			if desc.Digest == unknown.ManifestDescriptor.Digest {
+				indexJSON.Manifests[idx].Digest = unknownDigest
+				indexJSON.Manifests[idx].MediaType = unsupportedMediaType
+			}
+		}
+
+		indexJSONBuf, err = json.Marshal(indexJSON)
+		So(err, ShouldBeNil)
+
+		err = os.WriteFile(path.Join(rootDir, repoName, "index.json"), indexJSONBuf, storageConstants.DefaultFilePerms)
+		So(err, ShouldBeNil)
+
+		time.Sleep(1 * time.Second)
+
+		gcInstance := gc.NewGarbageCollect(imgStore, nil, gc.Options{
+			Delay: 1 * time.Second,
+			ImageRetention: config.ImageRetention{
+				Delay: 1 * time.Second,
+			},
+		}, audit, log, metrics)
+
+		err = gcInstance.CleanRepo(ctx, repoName)
+		So(err, ShouldBeNil)
+
+		lines := readAuditLines(t, auditPath)
+
+		var found *auditLine
+
+		for idx := range lines {
+			if lines[idx].Digest == unknownDigest.String() {
+				found = &lines[idx]
+
+				break
+			}
+		}
+
+		So(found, ShouldNotBeNil)
+		So(found.Reason, ShouldEqual, "unknownMediaTypePrune")
+		So(found.Message, ShouldEqual, "pruned unknown media type manifest entry from index")
+	})
+}
+
+// TestGCStaleManifestPruneReason is the AC-2 regression guard: a stale-blob prune (missing blob path,
+// removeStaleManifestEntries) must keep emitting the unchanged "staleManifestPrune" reason/message after
+// syncManifestRemoval was parametrized for the unknown-media-type prune reason.
+func TestGCStaleManifestPruneReason(t *testing.T) {
+	Convey("index.json entry pointing at a missing blob", t, func() {
+		log := zlog.NewTestLogger()
+
+		auditPath := path.Join(t.TempDir(), "audit.log")
+		audit := zlog.NewAuditLogger("debug", auditPath)
+
+		metrics := newTestMetricsServer(t, log)
+
+		rootDir := t.TempDir()
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+
+		storeController := storage.StoreController{}
+		storeController.DefaultStore = imgStore
+
+		ctx := context.Background()
+		repoName := "gc-stale-manifest-reason"
+
+		stale := CreateRandomImage()
+		err := WriteImageToFileSystem(stale, repoName, "stale", storeController)
+		So(err, ShouldBeNil)
+
+		// delete the manifest blob itself so the descriptor points at a missing blob and is pruned by
+		// removeStaleManifestEntries's missing-blob path (gc.go's "!existingBlobs[...]" branch).
+		err = os.Remove(path.Join(rootDir, repoName, "blobs",
+			stale.ManifestDescriptor.Digest.Algorithm().String(), stale.ManifestDescriptor.Digest.Encoded()))
+		So(err, ShouldBeNil)
+
+		gcInstance := gc.NewGarbageCollect(imgStore, nil, gc.Options{
+			Delay: 1 * time.Second,
+			ImageRetention: config.ImageRetention{
+				Delay: 1 * time.Second,
+			},
+		}, audit, log, metrics)
+
+		err = gcInstance.CleanRepo(ctx, repoName)
+		So(err, ShouldBeNil)
+
+		lines := readAuditLines(t, auditPath)
+
+		var found *auditLine
+
+		for idx := range lines {
+			if lines[idx].Digest == stale.ManifestDescriptor.Digest.String() {
+				found = &lines[idx]
+
+				break
+			}
+		}
+
+		So(found, ShouldNotBeNil)
+		So(found.Reason, ShouldEqual, "staleManifestPrune")
+		So(found.Message, ShouldEqual, "pruned stale manifest entry from index")
+	})
+}
+
 // TestGCDryRunDeletesNothing guards DryRun's non-destructive-simulation contract: index.json pruning is
 // already DryRun-gated, but blob GC re-reads the on-disk index.json independently and used to run
 // unconditionally, so it could delete orphan blobs for real - including the config/layers of an
