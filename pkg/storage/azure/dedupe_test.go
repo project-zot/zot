@@ -118,20 +118,20 @@ func createAzureObjectsStore(rootDir, cacheDir string, dedupe bool) (
 func TestAzureDedupeGlobalBlobResolve(t *testing.T) {
 	tskip.SkipAzure(t)
 
-	uuid, err := guuid.NewV4()
-	if err != nil {
-		panic(err)
-	}
-
-	testDir := path.Join("/oci-repo-test", uuid.String())
-	tdir := t.TempDir()
-
-	storeDriver, imgStore, err := createAzureObjectsStore(testDir, tdir, true)
-	So(err, ShouldBeNil)
-
-	defer cleanupAzureStorage(storeDriver, testDir)
-
 	Convey("Dedupe across repos resolves through the global blobstore", t, func() {
+		uuid, err := guuid.NewV4()
+		if err != nil {
+			panic(err)
+		}
+
+		testDir := path.Join("/oci-repo-test", uuid.String())
+		tdir := t.TempDir()
+
+		storeDriver, imgStore, err := createAzureObjectsStore(testDir, tdir, true)
+		So(err, ShouldBeNil)
+
+		defer cleanupAzureStorage(storeDriver, testDir)
+
 		content := []byte("azure-dedupe-content")
 		digest := godigest.FromBytes(content)
 
@@ -180,24 +180,24 @@ func TestAzureDedupeGlobalBlobResolve(t *testing.T) {
 func TestAzureDedupeReclaimOnDelete(t *testing.T) {
 	tskip.SkipAzure(t)
 
-	uuid, err := guuid.NewV4()
-	if err != nil {
-		panic(err)
-	}
-
-	testDir := path.Join("/oci-repo-test", uuid.String())
-	tdir := t.TempDir()
-
-	storeDriver, imgStore, err := createAzureObjectsStore(testDir, tdir, true)
-	So(err, ShouldBeNil)
-
-	defer cleanupAzureStorage(storeDriver, testDir)
-
 	Convey("Deleting one repo's blob does not reclaim a still-referenced global copy", t, func() {
+		uuid, err := guuid.NewV4()
+		if err != nil {
+			panic(err)
+		}
+
+		testDir := path.Join("/oci-repo-test", uuid.String())
+		tdir := t.TempDir()
+
+		storeDriver, imgStore, err := createAzureObjectsStore(testDir, tdir, true)
+		So(err, ShouldBeNil)
+
+		defer cleanupAzureStorage(storeDriver, testDir)
+
 		content := []byte("azure-reclaim-content")
 		digest := godigest.FromBytes(content)
 
-		_, _, err := imgStore.FullBlobUpload(context.Background(), "repo1", bytes.NewReader(content), digest)
+		_, _, err = imgStore.FullBlobUpload(context.Background(), "repo1", bytes.NewReader(content), digest)
 		So(err, ShouldBeNil)
 
 		_, _, err = imgStore.FullBlobUpload(context.Background(), "repo2", bytes.NewReader(content), digest)
@@ -220,24 +220,24 @@ func TestAzureDedupeReclaimOnDelete(t *testing.T) {
 func TestAzureMigrationMarkerPersistence(t *testing.T) {
 	tskip.SkipAzure(t)
 
-	uuid, err := guuid.NewV4()
-	if err != nil {
-		panic(err)
-	}
-
-	testDir := path.Join("/oci-repo-test", uuid.String())
-	tdir := t.TempDir()
-
-	storeDriver, imgStore, err := createAzureObjectsStore(testDir, tdir, true)
-	So(err, ShouldBeNil)
-	So(imgStore, ShouldNotBeNil)
-
-	defer cleanupAzureStorage(storeDriver, testDir)
-
 	Convey("A second store over the same root sees the migration marker and skips rescanning", t, func() {
+		uuid, err := guuid.NewV4()
+		if err != nil {
+			panic(err)
+		}
+
+		testDir := path.Join("/oci-repo-test", uuid.String())
+		tdir := t.TempDir()
+
+		storeDriver, imgStore, err := createAzureObjectsStore(testDir, tdir, true)
+		So(err, ShouldBeNil)
+		So(imgStore, ShouldNotBeNil)
+
+		defer cleanupAzureStorage(storeDriver, testDir)
+
 		markerPath := path.Join(testDir, storageConstants.BlobstoreMigratedMarker)
 
-		_, err := storeDriver.Stat(context.Background(), markerPath)
+		_, err = storeDriver.Stat(context.Background(), markerPath)
 		So(err, ShouldBeNil)
 
 		_, imgStore2, err := createAzureObjectsStore(testDir, t.TempDir(), true)
