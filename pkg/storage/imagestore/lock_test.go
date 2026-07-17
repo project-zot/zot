@@ -281,3 +281,74 @@ func TestLockOrderDedupeRebuildStress(t *testing.T) {
 		wg.Wait()
 	})
 }
+
+// TestLockOrderDedupeFastPathRace targets DedupeBlob's fast path (blobstore READ
+// lock + repo write lock, taken when a digest already has a resolvable copy)
+// racing against its slow path (blobstore WRITE lock + repo write lock, taken
+// for a brand-new digest's first writer or any staleness the fast path can't
+// safely resolve). For each digest, every repo races to push it simultaneously:
+// exactly one goroutine must win the slow first-writer path while the rest
+// either queue behind it on the blobstore write lock or land on the fast path
+// once the winner has promoted the blob - both outcomes must be race- and
+// deadlock-free. A second round then hammers the now-settled digest with
+// concurrent pushes and CheckBlob reads, which should mostly take the fast
+// path on both sides.
+func TestLockOrderDedupeFastPathRace(t *testing.T) {
+	t.Parallel()
+
+	imgStore := newDedupeStoreForLockTests(t)
+
+	const (
+		numDigests = 20
+		numRepos   = 15
+	)
+
+	repos := make([]string, numRepos)
+	for i := range repos {
+		repos[i] = fmt.Sprintf("fastpath-repo-%d", i)
+	}
+
+	withDeadline(t, 60*time.Second, func() {
+		for d := range numDigests {
+			content := fmt.Appendf(nil, "blob-fastpath-%d", d)
+			digest := godigest.FromBytes(content)
+
+			var wg sync.WaitGroup
+
+			// Round 1: every repo races to push this brand-new digest at once, forcing
+			// the first-writer race onto the slow (write-locked) path.
+			for _, repo := range repos {
+				wg.Add(1)
+
+				go func(repo string) {
+					defer wg.Done()
+
+					_, _, _ = imgStore.FullBlobUpload(context.Background(), repo, bytes.NewReader(content), digest)
+				}(repo)
+			}
+
+			wg.Wait()
+
+			// Round 2: the digest is now settled in _blobstore, so these pushes should
+			// mostly take the fast (read-locked) path, concurrently with CheckBlob reads
+			// racing the same digest across the same repos.
+			for _, repo := range repos {
+				wg.Add(2)
+
+				go func(repo string) {
+					defer wg.Done()
+
+					_, _, _ = imgStore.FullBlobUpload(context.Background(), repo, bytes.NewReader(content), digest)
+				}(repo)
+
+				go func(repo string) {
+					defer wg.Done()
+
+					_, _, _ = imgStore.CheckBlob(context.Background(), repo, digest)
+				}(repo)
+			}
+
+			wg.Wait()
+		}
+	})
+}

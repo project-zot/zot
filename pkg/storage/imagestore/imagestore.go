@@ -1794,6 +1794,29 @@ func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.R
 
 //nolint:gocyclo,cyclop // Dedupe logic handles multiple recovery and cache consistency paths.
 func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo string, dst string) error {
+	if dst == "" {
+		return zerr.ErrEmptyValue
+	}
+
+	if err := dstDigest.Validate(); err != nil {
+		return err
+	}
+
+	// Fast path: once dstDigest already has a healthy copy somewhere in the store
+	// (the overwhelmingly common case after a digest's first push anywhere),
+	// resolving and linking it into dstRepo only ever reads existing content and
+	// writes into dstRepo - never _blobstore itself - so a blobstore READ lock plus
+	// dstRepo's write lock suffices, same as CheckBlob's dedupe branch above. This
+	// avoids the store-wide blobstore WRITE lock below for that common case.
+	// Anything dedupeBlobFastPath can't resolve safely (first writer for this
+	// digest, a stale/missing cache record, or a corrupted-content repair) returns
+	// handled=false without mutating anything, falling through to the write-locked
+	// self-heal loop below - which always re-validates from scratch before mutating,
+	// so skipping the fast path can never skip a needed repair.
+	if handled, err := is.dedupeBlobFastPath(src, dstDigest, dstRepo, dst); handled || err != nil {
+		return err
+	}
+
 	// DedupeBlob owns its own locking (blobstore, then dstRepo, the mandated order)
 	// rather than relying on callers to pre-lock: it's the one place that decides
 	// whether this call touches only dstRepo or also _blobstore (first-writer path),
@@ -2005,6 +2028,83 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 
 		return lastRetryErr
 	})
+}
+
+// dedupeBlobFastPath attempts to resolve dstDigest to an already-existing, healthy
+// blob and link it into dstRepo using only a blobstore READ lock (plus dstRepo's
+// write lock), avoiding DedupeBlob's store-wide write lock for the common case
+// where this digest isn't being written for the first time. It returns
+// handled=false (with a nil error) whenever it can't safely complete the
+// operation itself - nothing is mutated in that case, and the caller must run the
+// full write-locked self-heal path instead.
+func (is *ImageStore) dedupeBlobFastPath(src string, dstDigest godigest.Digest, dstRepo, dst string) (bool, error) {
+	handled := false
+
+	err := is.WithBlobstoreReadAndRepoLock(dstRepo, func() error {
+		dstRecord, err := is.cache.GetBlob(dstDigest)
+		if err := inject.Error(err); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+			is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").Msg("failed to lookup blob record")
+
+			return err
+		}
+
+		if dstRecord == "" {
+			// first writer for this digest: promoting it into _blobstore needs the write lock.
+			return nil
+		}
+
+		if is.cache.UsesRelativePaths() && !path.IsAbs(dstRecord) && !strings.HasPrefix(dstRecord, is.rootDir+"/") {
+			dstRecord = path.Join(is.rootDir, dstRecord)
+		}
+
+		blobInfo, err := is.storeDriver.Stat(dstRecord)
+		if err != nil {
+			// stale cache record: repairing it needs the write lock.
+			return nil //nolint: nilerr
+		}
+
+		if is.storeDriver.SameFile(dst, dstRecord) {
+			// dst already resolves to this digest's content. The only thing left to check
+			// is a corrupted-content repair (Move(src, dst)), which mutates a path shared
+			// with every other repo's link to this content - that needs the write lock, so
+			// defer to the slow path rather than risk it under only a read lock. If the
+			// descriptor lookup itself fails, or the sizes match, there's nothing to repair
+			// (same as the slow path's identical check below) - fall through to the temp
+			// upload cleanup at the bottom of this function.
+			if desc, err := common.GetBlobDescriptorFromRepo(is, dstRepo, dstDigest, is.log); err == nil {
+				if desc.Size != blobInfo.Size() {
+					return nil
+				}
+			}
+		} else {
+			if err := is.lifecycle.LinkBlob(dstRecord, dst); err != nil {
+				is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
+					Msg("failed to link blobs")
+
+				return err
+			}
+
+			if err := is.putBlobRef(dstDigest, dst); err != nil {
+				is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
+					Msg("failed to insert blob record")
+
+				return err
+			}
+		}
+
+		if err := is.storeDriver.Delete(src); err != nil {
+			is.log.Error().Err(err).Str("src", src).Str("component", "dedupe").
+				Msg("failed to remove blob")
+
+			return err
+		}
+
+		handled = true
+
+		return nil
+	})
+
+	return handled, err
 }
 
 // DeleteBlobUpload deletes an existing blob upload that is currently in progress.
