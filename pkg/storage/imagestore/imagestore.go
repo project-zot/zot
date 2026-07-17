@@ -2820,6 +2820,28 @@ func (is *ImageStore) getOriginalBlobFromDisk(duplicateBlobs []string) (string, 
 	return "", zerr.ErrBlobNotFound
 }
 
+// getOriginalBlobFromGlobalBlobstore is the last-resort fallback for getOriginalBlob: under the
+// global-blobstore scheme every per-repo copy for a digest is normally a zero-byte marker, with
+// the real content living only under GlobalBlobsRepo. If the cache is stale/rebuilt and
+// getOriginalBlobFromDisk finds nothing (all markers), the content can still be there. Resolve it
+// through the same blobLifecycle seam GetBlob/GetBlobPartial reads use, instead of the disk-scan's
+// own size>0 convention, so restore/rebuild agrees with the read path on what counts as real.
+func (is *ImageStore) getOriginalBlobFromGlobalBlobstore(digest godigest.Digest) (string, error) {
+	globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+
+	resolvedPath, err := is.lifecycle.ResolveReadPath(globalBlobPath, globalBlobPath, digest, 0, is.checkCacheBlob)
+	if err != nil {
+		return "", zerr.ErrBlobNotFound
+	}
+
+	binfo, err := is.storeDriver.Stat(resolvedPath)
+	if err != nil || binfo.Size() == 0 {
+		return "", zerr.ErrBlobNotFound
+	}
+
+	return resolvedPath, nil
+}
+
 func (is *ImageStore) getOriginalBlob(digest godigest.Digest, duplicateBlobs []string) (string, error) {
 	var originalBlob string
 
@@ -2840,7 +2862,10 @@ func (is *ImageStore) getOriginalBlob(digest godigest.Digest, duplicateBlobs []s
 
 		originalBlob, err = is.getOriginalBlobFromDisk(duplicateBlobs)
 		if err != nil {
-			return originalBlob, err
+			originalBlob, err = is.getOriginalBlobFromGlobalBlobstore(digest)
+			if err != nil {
+				return "", err
+			}
 		}
 	}
 
