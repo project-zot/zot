@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -97,86 +96,90 @@ func (olu BaseOciLayoutUtils) GetRepositories() ([]string, error) {
 
 // GetImageManifests returns image path including root dir, root dir is determined by splitting.
 func (olu BaseOciLayoutUtils) GetImageManifests(repo string) ([]ispec.Descriptor, error) {
-	var lockLatency time.Time
-
 	imageStore := olu.StoreController.GetImageStore(repo)
 
-	imageStore.RLock(&lockLatency)
-	defer imageStore.RUnlock(&lockLatency)
+	var manifests []ispec.Descriptor
 
-	buf, err := imageStore.GetIndexContent(repo)
-	if err != nil {
-		if goerrors.Is(err, zerr.ErrRepoNotFound) {
-			olu.Log.Error().Err(err).Msg("failed to get index.json contents because the file is missing")
+	err := imageStore.WithRepoReadLock(repo, func() error {
+		buf, err := imageStore.GetIndexContent(repo)
+		if err != nil {
+			if goerrors.Is(err, zerr.ErrRepoNotFound) {
+				olu.Log.Error().Err(err).Msg("failed to get index.json contents because the file is missing")
 
-			return nil, zerr.ErrRepoNotFound
+				return zerr.ErrRepoNotFound
+			}
+
+			olu.Log.Error().Err(err).Msg("failed to open index.json")
+
+			return zerr.ErrRepoNotFound
 		}
 
-		olu.Log.Error().Err(err).Msg("failed to open index.json")
+		var index ispec.Index
 
-		return nil, zerr.ErrRepoNotFound
+		if err := json.Unmarshal(buf, &index); err != nil {
+			olu.Log.Error().Err(err).Str("dir", path.Join(imageStore.RootDir(), repo)).
+				Msg("failed to unmarshal json")
+
+			return zerr.ErrRepoNotFound
+		}
+
+		manifests = index.Manifests
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	var index ispec.Index
-
-	if err := json.Unmarshal(buf, &index); err != nil {
-		olu.Log.Error().Err(err).Str("dir", path.Join(imageStore.RootDir(), repo)).
-			Msg("failed to unmarshal json")
-
-		return nil, zerr.ErrRepoNotFound
-	}
-
-	return index.Manifests, nil
+	return manifests, nil
 }
 
 func (olu BaseOciLayoutUtils) GetImageBlobManifest(repo string, digest godigest.Digest) (ispec.Manifest, error) {
 	var blobIndex ispec.Manifest
 
-	var lockLatency time.Time
-
 	imageStore := olu.StoreController.GetImageStore(repo)
 
-	imageStore.RLock(&lockLatency)
-	defer imageStore.RUnlock(&lockLatency)
+	err := imageStore.WithRepoReadLock(repo, func() error {
+		blobBuf, err := imageStore.GetBlobContent(repo, digest)
+		if err != nil {
+			olu.Log.Error().Err(err).Msg("failed to open image metadata file")
 
-	blobBuf, err := imageStore.GetBlobContent(repo, digest)
-	if err != nil {
-		olu.Log.Error().Err(err).Msg("failed to open image metadata file")
+			return err
+		}
 
-		return blobIndex, err
-	}
+		if err := json.Unmarshal(blobBuf, &blobIndex); err != nil {
+			olu.Log.Error().Err(err).Msg("failed to marshal blob index")
 
-	if err := json.Unmarshal(blobBuf, &blobIndex); err != nil {
-		olu.Log.Error().Err(err).Msg("failed to marshal blob index")
+			return err
+		}
 
-		return blobIndex, err
-	}
+		return nil
+	})
 
-	return blobIndex, nil
+	return blobIndex, err
 }
 
 func (olu BaseOciLayoutUtils) GetImageInfo(repo string, configDigest godigest.Digest) (ispec.Image, error) {
 	var imageInfo ispec.Image
 
-	var lockLatency time.Time
-
 	imageStore := olu.StoreController.GetImageStore(repo)
 
-	imageStore.RLock(&lockLatency)
-	defer imageStore.RUnlock(&lockLatency)
+	err := imageStore.WithRepoReadLock(repo, func() error {
+		blobBuf, err := imageStore.GetBlobContent(repo, configDigest)
+		if err != nil {
+			olu.Log.Error().Err(err).Msg("failed to open image layers file")
 
-	blobBuf, err := imageStore.GetBlobContent(repo, configDigest)
-	if err != nil {
-		olu.Log.Error().Err(err).Msg("failed to open image layers file")
+			return err
+		}
 
-		return imageInfo, err
-	}
+		if err := json.Unmarshal(blobBuf, &imageInfo); err != nil {
+			olu.Log.Error().Err(err).Msg("failed to marshal blob index")
 
-	if err := json.Unmarshal(blobBuf, &imageInfo); err != nil {
-		olu.Log.Error().Err(err).Msg("failed to marshal blob index")
+			return err
+		}
 
-		return imageInfo, err
-	}
+		return nil
+	})
 
 	return imageInfo, err
 }
@@ -320,19 +323,20 @@ func (olu BaseOciLayoutUtils) GetImageConfigInfo(repo string, manifestDigest god
 func (olu BaseOciLayoutUtils) GetImageManifestSize(repo string, manifestDigest godigest.Digest) int64 {
 	imageStore := olu.StoreController.GetImageStore(repo)
 
-	var lockLatency time.Time
+	var size int64
 
-	imageStore.RLock(&lockLatency)
-	defer imageStore.RUnlock(&lockLatency)
+	_ = imageStore.WithRepoReadLock(repo, func() error {
+		manifestBlob, err := imageStore.GetBlobContent(repo, manifestDigest)
+		if err != nil {
+			olu.Log.Error().Err(err).Msg("failed to get manifest blob content")
+		}
 
-	manifestBlob, err := imageStore.GetBlobContent(repo, manifestDigest)
-	if err != nil {
-		olu.Log.Error().Err(err).Msg("failed to get manifest blob content")
+		size = int64(len(manifestBlob))
 
-		return int64(len(manifestBlob))
-	}
+		return nil
+	})
 
-	return int64(len(manifestBlob))
+	return size
 }
 
 func (olu BaseOciLayoutUtils) GetImageConfigSize(repo string, manifestDigest godigest.Digest) int64 {
