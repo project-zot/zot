@@ -4293,7 +4293,9 @@ func TestS3DedupeErr(t *testing.T) {
 
 		// Use a mock cache pre-seeded with the blob path so DedupeBlob is not needed.
 		// First stat on gdst is from checkCacheBlob (allow it), second stat is from copyBlob
-		// return path (force error) so CheckBlob deterministically fails.
+		// return path (force error) so CheckBlob deterministically fails. Every other path -
+		// including NewImageStore's own migration-marker Stat during construction - must
+		// succeed, or construction itself fails and imgStore.CheckBlob below panics on nil.
 		imgStore = createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				if path == gdst {
@@ -4304,7 +4306,7 @@ func TestS3DedupeErr(t *testing.T) {
 					return driver.FileInfoInternal{}, errS3
 				}
 
-				return driver.FileInfoInternal{}, errS3
+				return driver.FileInfoInternal{}, nil
 			},
 		}, &mocks.CacheMock{
 			GetBlobFn: func(d godigest.Digest) (string, error) { return gdst, nil },
@@ -4481,11 +4483,10 @@ func TestS3DedupeErr(t *testing.T) {
 
 				return errS3
 			},
+			// Stat always succeeds here (including for NewImageStore's own
+			// migration-marker Stat during construction, which isn't blobPath or
+			// globalBlobPath) - only Move and Delete are meant to fail in this case.
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				if path != blobPath && path != globalBlobPath {
-					return nil, errS3
-				}
-
 				return &mocks.FileInfoMock{}, nil
 			},
 			DeleteFn: func(ctx context.Context, path string) error {
