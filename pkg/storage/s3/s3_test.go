@@ -2326,10 +2326,15 @@ func TestRebuildDedupeIndex(t *testing.T) {
 
 			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
-			err = waitForBlobStatSize(storeDriver, testDir, "dedupe2", blobDigest2, fi1.Size())
+			// dedupe->false restore replaces the per-repo marker with the real content
+			// pulled from the global blobstore, not with fi1's (also a marker) size:
+			// under the global blobstore scheme every per-repo copy is always a
+			// zero-byte marker, so fi1.Size() is 0 and asserting against it here would
+			// only prove the restore left the blob as an unrestored marker.
+			err = waitForBlobStatSize(storeDriver, testDir, "dedupe2", blobDigest2, int64(buflen))
 			So(err, ShouldBeNil)
 
-			err = waitForBlobStatSize(storeDriver, testDir, "dedupe2", cdigest, configFi1.Size())
+			err = waitForBlobStatSize(storeDriver, testDir, "dedupe2", cdigest, int64(len(cblob)))
 			So(err, ShouldBeNil)
 
 			// Content may converge before marker/stat bytes settle to a final size.
@@ -2508,7 +2513,10 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			// rebuild with dedupe false, should have all blobs with content
 			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
-			err = waitForBlobStatSize(storeDriver, testDir, "dedupe2", blobDigest2, fi1.Size())
+			// fi1 is also a marker (0 bytes) under the global blobstore scheme; the
+			// restored blob's real size is buflen, not fi1.Size() - see the matching
+			// fix in the "Intrerrupt rebuilding and restart" Convey above.
+			err = waitForBlobStatSize(storeDriver, testDir, "dedupe2", blobDigest2, int64(buflen))
 			So(err, ShouldBeNil)
 
 			// Rebuild correctness here is that blob payload is retrievable, not exact marker size.
