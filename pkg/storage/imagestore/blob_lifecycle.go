@@ -47,7 +47,7 @@ func resolveReadPathWithCache(blobPath string, digest godigest.Digest, blobSize 
 
 func newBlobLifecycle(storeDriver storageTypes.Driver) blobLifecycle {
 	if storeDriver.Name() == constants.LocalStorageDriverName {
-		return &localHardlinkBlobLifecycle{storeDriver: storeDriver}
+		return &localHardlinkBlobLifecycle{storeDriver: storeDriver, statFn: os.Stat}
 	}
 
 	return &remoteMarkerBlobLifecycle{storeDriver: storeDriver}
@@ -55,6 +55,10 @@ func newBlobLifecycle(storeDriver storageTypes.Driver) blobLifecycle {
 
 type localHardlinkBlobLifecycle struct {
 	storeDriver storageTypes.Driver
+	// statFn defaults to os.Stat (set by newBlobLifecycle); overridable in tests so
+	// ShouldDeleteGlobalBlob's nlink-unavailable fallback can be driven deterministically
+	// instead of depending on a real filesystem's syscall.Stat_t always being present.
+	statFn func(name string) (os.FileInfo, error)
 }
 
 func (l *localHardlinkBlobLifecycle) PromoteCandidate(srcPath, dstPath string) error {
@@ -79,7 +83,12 @@ func (l *localHardlinkBlobLifecycle) ResolveReadPath(blobPath, _ string, digest 
 func (l *localHardlinkBlobLifecycle) ShouldDeleteGlobalBlob(globalBlobPath string, digest godigest.Digest,
 	isDigestReferenced func(godigest.Digest) (bool, error),
 ) (bool, error) {
-	fileInfo, err := os.Stat(globalBlobPath)
+	statFn := l.statFn
+	if statFn == nil {
+		statFn = os.Stat
+	}
+
+	fileInfo, err := statFn(globalBlobPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return false, nil
