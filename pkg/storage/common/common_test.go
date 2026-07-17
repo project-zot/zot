@@ -13,6 +13,7 @@ import (
 
 	"github.com/distribution/distribution/v3/manifest/manifestlist"
 	docker "github.com/distribution/distribution/v3/manifest/schema2"
+	driver "github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
@@ -1262,6 +1263,138 @@ func TestGetReferencedBlobsPropagatesCorruptManifestError(t *testing.T) {
 		referenced, err := common.GetReferencedBlobs(imgStore, "zot-test", log)
 		So(err, ShouldNotBeNil)
 		So(referenced, ShouldBeNil)
+	})
+}
+
+func TestGetReferencedBlobsPropagatesCorruptIndexError(t *testing.T) {
+	log := log.NewTestLogger()
+
+	Convey("A corrupt nested index blob (non-not-found error) is propagated", t, func(c C) {
+		indexDigest := godigest.FromString("corrupt-index")
+
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: manifestlist.MediaTypeManifestList, Digest: indexDigest},
+			},
+		}
+		indexBuf, err := json.Marshal(index)
+		So(err, ShouldBeNil)
+
+		imgStore := &mocks.MockedImageStore{
+			GetIndexContentFn: func(repo string) ([]byte, error) {
+				return indexBuf, nil
+			},
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				return []byte("not valid json"), nil
+			},
+		}
+
+		referenced, err := common.GetReferencedBlobs(imgStore, "zot-test", log)
+		So(err, ShouldNotBeNil)
+		So(referenced, ShouldBeNil)
+	})
+}
+
+func TestGetReferencedBlobsSkipsMissingIndex(t *testing.T) {
+	log := log.NewTestLogger()
+
+	Convey("A missing nested index blob is skipped, healthy manifests are still collected", t, func(c C) {
+		missingIndexDigest := godigest.FromString("missing-index")
+
+		healthyConfigDigest := godigest.FromString("healthy-index-sibling-config")
+		healthyLayerDigest := godigest.FromString("healthy-index-sibling-layer")
+		healthyManifest := ispec.Manifest{
+			Config: ispec.Descriptor{Digest: healthyConfigDigest},
+			Layers: []ispec.Descriptor{{Digest: healthyLayerDigest}},
+		}
+		healthyManifestBuf, err := json.Marshal(healthyManifest)
+		So(err, ShouldBeNil)
+		healthyDigest := godigest.FromBytes(healthyManifestBuf)
+
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: manifestlist.MediaTypeManifestList, Digest: missingIndexDigest},
+				{MediaType: ispec.MediaTypeImageManifest, Digest: healthyDigest},
+			},
+		}
+		indexBuf, err := json.Marshal(index)
+		So(err, ShouldBeNil)
+
+		imgStore := &mocks.MockedImageStore{
+			GetIndexContentFn: func(repo string) ([]byte, error) {
+				return indexBuf, nil
+			},
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				if digest == missingIndexDigest {
+					return nil, zerr.ErrBlobNotFound
+				}
+
+				return healthyManifestBuf, nil
+			},
+		}
+
+		referenced, err := common.GetReferencedBlobs(imgStore, "zot-test", log)
+		So(err, ShouldBeNil)
+		So(referenced, ShouldNotBeNil)
+
+		_, ok := referenced[missingIndexDigest]
+		So(ok, ShouldBeTrue)
+		_, ok = referenced[healthyConfigDigest]
+		So(ok, ShouldBeTrue)
+		_, ok = referenced[healthyLayerDigest]
+		So(ok, ShouldBeTrue)
+	})
+}
+
+func TestGetReferencedBlobsSkipsMissingIndexPathNotFound(t *testing.T) {
+	log := log.NewTestLogger()
+
+	Convey("A nested index blob missing on disk (PathNotFoundError) is skipped, "+
+		"healthy manifests are still collected", t, func(c C) {
+		missingIndexDigest := godigest.FromString("missing-index-path-not-found")
+
+		healthyConfigDigest := godigest.FromString("healthy-index-sibling-config-2")
+		healthyLayerDigest := godigest.FromString("healthy-index-sibling-layer-2")
+		healthyManifest := ispec.Manifest{
+			Config: ispec.Descriptor{Digest: healthyConfigDigest},
+			Layers: []ispec.Descriptor{{Digest: healthyLayerDigest}},
+		}
+		healthyManifestBuf, err := json.Marshal(healthyManifest)
+		So(err, ShouldBeNil)
+		healthyDigest := godigest.FromBytes(healthyManifestBuf)
+
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: manifestlist.MediaTypeManifestList, Digest: missingIndexDigest},
+				{MediaType: ispec.MediaTypeImageManifest, Digest: healthyDigest},
+			},
+		}
+		indexBuf, err := json.Marshal(index)
+		So(err, ShouldBeNil)
+
+		imgStore := &mocks.MockedImageStore{
+			GetIndexContentFn: func(repo string) ([]byte, error) {
+				return indexBuf, nil
+			},
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				if digest == missingIndexDigest {
+					return nil, driver.PathNotFoundError{}
+				}
+
+				return healthyManifestBuf, nil
+			},
+		}
+
+		referenced, err := common.GetReferencedBlobs(imgStore, "zot-test", log)
+		So(err, ShouldBeNil)
+		So(referenced, ShouldNotBeNil)
+
+		_, ok := referenced[missingIndexDigest]
+		So(ok, ShouldBeTrue)
+		_, ok = referenced[healthyConfigDigest]
+		So(ok, ShouldBeTrue)
+		_, ok = referenced[healthyLayerDigest]
+		So(ok, ShouldBeTrue)
 	})
 }
 
