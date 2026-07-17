@@ -248,7 +248,12 @@ func (d *BoltDBDriver) GetAllBlobs(digest godigest.Digest) ([]string, error) {
 			blobPath.Write(d.getOne(origin))
 			originBlob := blobPath.String()
 
-			blobPaths = append(blobPaths, originBlob)
+			// A missing/empty origin sub-bucket means there is no real path to report;
+			// appending "" here would surface as a phantom blob-ref to callers such as
+			// isDigestReferencedAcrossRepos, so treat it as absent rather than a path.
+			if originBlob != "" {
+				blobPaths = append(blobPaths, originBlob)
+			}
 
 			deduped := bucket.Bucket([]byte(constants.DuplicatesBucket))
 			if deduped != nil {
@@ -261,7 +266,7 @@ func (d *BoltDBDriver) GetAllBlobs(digest godigest.Digest) ([]string, error) {
 
 					duplicateBlob := blobPath.String()
 
-					if duplicateBlob != originBlob {
+					if duplicateBlob != "" && duplicateBlob != originBlob {
 						blobPaths = append(blobPaths, duplicateBlob)
 					}
 				}
@@ -324,11 +329,15 @@ func (d *BoltDBDriver) GetBlob(digest godigest.Digest) (string, error) {
 		bucket := root.Bucket([]byte(digest.String()))
 		if bucket != nil {
 			origin := bucket.Bucket([]byte(constants.OriginalBucket))
-			blobPath.Write(d.getOne(origin))
+			if originPath := d.getOne(origin); len(originPath) > 0 {
+				blobPath.Write(originPath)
 
-			return nil
+				return nil
+			}
 		}
 
+		// Bucket absent, or present with no (or empty) origin path: both are a miss,
+		// not a record whose value happens to be "".
 		return zerr.ErrCacheMiss
 	}); err != nil {
 		return "", err
