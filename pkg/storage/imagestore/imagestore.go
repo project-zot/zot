@@ -46,7 +46,6 @@ const (
 type ImageStore struct {
 	rootDir     string
 	storeDriver storageTypes.Driver
-	lock        *sync.RWMutex
 	// blobstoreLock protects only GlobalBlobsRepo (_blobstore) state/data mutations.
 	// repoLocks holds one *sync.RWMutex per repository name, created lazily on first
 	// use. Together these replace the single whole-store lock (see With*Lock helpers
@@ -157,7 +156,6 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 	imgStore := &ImageStore{
 		rootDir:       rootDir,
 		storeDriver:   storeDriver,
-		lock:          &sync.RWMutex{},
 		blobstoreLock: &sync.RWMutex{},
 		log:           log,
 		metrics:       metrics,
@@ -191,40 +189,6 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 	imgStore.dedupeRebuildDone.Store(true)
 
 	return imgStore
-}
-
-// RLock read-lock.
-func (is *ImageStore) RLock(lockStart *time.Time) {
-	*lockStart = time.Now()
-
-	is.lock.RLock()
-}
-
-// RUnlock read-unlock.
-func (is *ImageStore) RUnlock(lockStart *time.Time) {
-	is.lock.RUnlock()
-
-	lockEnd := time.Now()
-	// includes time spent in acquiring and holding a lock
-	latency := lockEnd.Sub(*lockStart)
-	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), storageConstants.RLOCK) // histogram
-}
-
-// Lock write-lock.
-func (is *ImageStore) Lock(lockStart *time.Time) {
-	*lockStart = time.Now()
-
-	is.lock.Lock()
-}
-
-// Unlock write-unlock.
-func (is *ImageStore) Unlock(lockStart *time.Time) {
-	is.lock.Unlock()
-
-	lockEnd := time.Now()
-	// includes time spent in acquiring and holding a lock
-	latency := lockEnd.Sub(*lockStart)
-	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), storageConstants.RWLOCK) // histogram
 }
 
 // getRepoLock returns the lazily-created per-repository lock for repo. Entries are
@@ -1702,13 +1666,7 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 	dst := is.BlobPath(repo, dstDigest)
 
 	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
-		// DedupeBlob is still whole-store-locked by its caller until it takes over
-		// its own blobstore+repo locking (see the corresponding TODO there).
-		var lockLatency time.Time
-
-		is.Lock(&lockLatency)
-		defer is.Unlock(&lockLatency)
-
+		// DedupeBlob acquires its own blobstore+repo locking.
 		err = is.DedupeBlob(src, dstDigest, repo, dst)
 		if err := inject.Error(err); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
@@ -1806,13 +1764,7 @@ func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.R
 	dst := is.BlobPath(repo, dstDigest)
 
 	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
-		// DedupeBlob is still whole-store-locked by its caller until it takes over
-		// its own blobstore+repo locking (see the corresponding TODO there).
-		var lockLatency time.Time
-
-		is.Lock(&lockLatency)
-		defer is.Unlock(&lockLatency)
-
+		// DedupeBlob acquires its own blobstore+repo locking.
 		if err := is.DedupeBlob(src, dstDigest, repo, dst); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
 				Str("dst", dst).Msg("failed to dedupe blob")
@@ -1842,207 +1794,217 @@ func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.R
 
 //nolint:gocyclo,cyclop // Dedupe logic handles multiple recovery and cache consistency paths.
 func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo string, dst string) error {
-	const maxDedupeSelfHealRetries = 16
+	// DedupeBlob owns its own locking (blobstore, then dstRepo, the mandated order)
+	// rather than relying on callers to pre-lock: it's the one place that decides
+	// whether this call touches only dstRepo or also _blobstore (first-writer path),
+	// so it's the natural single enforcement point. The whole retry loop below runs
+	// under one continuous lock hold, matching today's behavior where callers already
+	// hold the whole-store lock for the entire call - the loop heals staleness left
+	// over from past operations, not concurrent-with-this-call ones, so there's no
+	// need to release and reacquire between retries.
+	return is.WithBlobstoreAndRepoLock(dstRepo, func() error {
+		const maxDedupeSelfHealRetries = 16
 
-	var lastRetryErr error
+		var lastRetryErr error
 
-	// Retry loop is intentional: cache records can temporarily point to stale paths
-	// during GC/migration windows, and one pass may only partially heal references.
-	for range maxDedupeSelfHealRetries {
-		is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe begin")
+		// Retry loop is intentional: cache records can temporarily point to stale paths
+		// during GC/migration windows, and one pass may only partially heal references.
+		for range maxDedupeSelfHealRetries {
+			is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe begin")
 
-		dstRecord, err := is.cache.GetBlob(dstDigest)
-		if err := inject.Error(err); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
-			is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").Msg("failed to lookup blob record")
-
-			return err
-		}
-
-		if dst == "" {
-			return zerr.ErrEmptyValue
-		}
-
-		if err := dstDigest.Validate(); err != nil {
-			return err
-		}
-
-		blobUploadRemoved := false
-
-		if dstRecord == "" {
-			// cache record doesn't exist, so first disk and cache entry for this digest
-			// store the master copy in the global blobstore
-			gdst := is.BlobPath(storageConstants.GlobalBlobsRepo, dstDigest)
-
-			if err := is.putBlobRef(dstDigest, gdst); err != nil {
-				is.log.Error().Err(err).Str("blobPath", gdst).Str("component", "dedupe").
-					Msg("failed to insert blob record")
-
-				return err
-			}
-
-			// move the blob from uploads to global blobstore
-			if err := is.storeDriver.Move(src, gdst); err != nil {
-				is.log.Error().Err(err).Str("src", src).Str("dst", gdst).Str("component", "dedupe").
-					Msg("failed to rename blob")
-
-				return err
-			}
-
-			blobUploadRemoved = true
-
-			is.log.Debug().Str("src", src).Str("gdst", gdst).Str("component", "dedupe").Msg("moved to global blobstore")
-
-			// update dstRecord to point to the global blobstore path for the link step below
-			dstRecord = gdst
-		}
-
-		// cache record exists, but due to GC and upgrades from older versions,
-		// disk content and cache records may go out of sync
-		if is.cache.UsesRelativePaths() && !path.IsAbs(dstRecord) && !strings.HasPrefix(dstRecord, is.rootDir+"/") {
-			dstRecord = path.Join(is.rootDir, dstRecord)
-		}
-
-		blobInfo, err := is.storeDriver.Stat(dstRecord)
-		if err != nil {
-			statErr := err
-
-			is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").Msg("failed to stat")
-			// the actual blob on disk may have been removed by GC, so sync the cache
-			err := is.deleteBlobRef(dstDigest, dstRecord)
-			if err = inject.Error(err); err != nil {
-				//nolint:lll
-				is.log.Error().Err(err).Str("dstDigest", dstDigest.String()).Str("dst", dst).
-					Str("component", "dedupe").Msg("failed to delete blob record")
-
-				return err
-			}
-
-			updatedRecord, err := is.cache.GetBlob(dstDigest)
+			dstRecord, err := is.cache.GetBlob(dstDigest)
 			if err := inject.Error(err); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
 				is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").Msg("failed to lookup blob record")
 
 				return err
 			}
 
-			if is.cache.UsesRelativePaths() && !path.IsAbs(updatedRecord) && !strings.HasPrefix(updatedRecord, is.rootDir+"/") {
-				updatedRecord = path.Join(is.rootDir, updatedRecord)
+			if dst == "" {
+				return zerr.ErrEmptyValue
 			}
 
-			if updatedRecord == dstRecord {
-				// Some cache drivers keep the current original while duplicates exist.
-				// If that original path is missing on disk, aggressively clear all cached
-				// paths for this digest so the next retry can promote the incoming blob.
-				allRecords, allErr := is.cache.GetAllBlobs(dstDigest)
-				if allErr != nil && !errors.Is(allErr, zerr.ErrCacheMiss) {
-					return allErr
-				}
+			if err := dstDigest.Validate(); err != nil {
+				return err
+			}
 
-				normalizedPaths := make([]string, 0, len(allRecords))
-				for _, recordPath := range allRecords {
-					normalized := recordPath
-					if is.cache.UsesRelativePaths() && !path.IsAbs(normalized) &&
-						!strings.HasPrefix(normalized, is.rootDir+"/") {
-						normalized = path.Join(is.rootDir, normalized)
-					}
+			blobUploadRemoved := false
 
-					normalizedPaths = append(normalizedPaths, normalized)
-				}
+			if dstRecord == "" {
+				// cache record doesn't exist, so first disk and cache entry for this digest
+				// store the master copy in the global blobstore
+				gdst := is.BlobPath(storageConstants.GlobalBlobsRepo, dstDigest)
 
-				// Delete non-stale entries first, then stale original path last.
-				// Some cache drivers keep the original while duplicates exist.
-				for _, normalized := range normalizedPaths {
-					if normalized == dstRecord {
-						continue
-					}
+				if err := is.putBlobRef(dstDigest, gdst); err != nil {
+					is.log.Error().Err(err).Str("blobPath", gdst).Str("component", "dedupe").
+						Msg("failed to insert blob record")
 
-					if delErr := is.deleteBlobRef(dstDigest, normalized); delErr != nil && !errors.Is(delErr, zerr.ErrCacheMiss) {
-						return delErr
-					}
-				}
-
-				if delErr := is.deleteBlobRef(dstDigest, dstRecord); delErr != nil && !errors.Is(delErr, zerr.ErrCacheMiss) {
-					return delErr
-				}
-
-				updatedRecord, err = is.cache.GetBlob(dstDigest)
-				if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
 					return err
 				}
 
-				if is.cache.UsesRelativePaths() && !path.IsAbs(updatedRecord) &&
-					!strings.HasPrefix(updatedRecord, is.rootDir+"/") {
+				// move the blob from uploads to global blobstore
+				if err := is.storeDriver.Move(src, gdst); err != nil {
+					is.log.Error().Err(err).Str("src", src).Str("dst", gdst).Str("component", "dedupe").
+						Msg("failed to rename blob")
+
+					return err
+				}
+
+				blobUploadRemoved = true
+
+				is.log.Debug().Str("src", src).Str("gdst", gdst).Str("component", "dedupe").Msg("moved to global blobstore")
+
+				// update dstRecord to point to the global blobstore path for the link step below
+				dstRecord = gdst
+			}
+
+			// cache record exists, but due to GC and upgrades from older versions,
+			// disk content and cache records may go out of sync
+			if is.cache.UsesRelativePaths() && !path.IsAbs(dstRecord) && !strings.HasPrefix(dstRecord, is.rootDir+"/") {
+				dstRecord = path.Join(is.rootDir, dstRecord)
+			}
+
+			blobInfo, err := is.storeDriver.Stat(dstRecord)
+			if err != nil {
+				statErr := err
+
+				is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").Msg("failed to stat")
+				// the actual blob on disk may have been removed by GC, so sync the cache
+				err := is.deleteBlobRef(dstDigest, dstRecord)
+				if err = inject.Error(err); err != nil {
+					//nolint:lll
+					is.log.Error().Err(err).Str("dstDigest", dstDigest.String()).Str("dst", dst).
+						Str("component", "dedupe").Msg("failed to delete blob record")
+
+					return err
+				}
+
+				updatedRecord, err := is.cache.GetBlob(dstDigest)
+				if err := inject.Error(err); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+					is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").Msg("failed to lookup blob record")
+
+					return err
+				}
+
+				if is.cache.UsesRelativePaths() && !path.IsAbs(updatedRecord) && !strings.HasPrefix(updatedRecord, is.rootDir+"/") {
 					updatedRecord = path.Join(is.rootDir, updatedRecord)
 				}
 
 				if updatedRecord == dstRecord {
-					return statErr
-				}
-			}
+					// Some cache drivers keep the current original while duplicates exist.
+					// If that original path is missing on disk, aggressively clear all cached
+					// paths for this digest so the next retry can promote the incoming blob.
+					allRecords, allErr := is.cache.GetAllBlobs(dstDigest)
+					if allErr != nil && !errors.Is(allErr, zerr.ErrCacheMiss) {
+						return allErr
+					}
 
-			lastRetryErr = statErr
+					normalizedPaths := make([]string, 0, len(allRecords))
+					for _, recordPath := range allRecords {
+						normalized := recordPath
+						if is.cache.UsesRelativePaths() && !path.IsAbs(normalized) &&
+							!strings.HasPrefix(normalized, is.rootDir+"/") {
+							normalized = path.Join(is.rootDir, normalized)
+						}
 
-			continue
-		}
+						normalizedPaths = append(normalizedPaths, normalized)
+					}
 
-		// Normal dedupe path: link destination to the resolved original blob and add ref.
-		if !is.storeDriver.SameFile(dst, dstRecord) {
-			if err := is.lifecycle.LinkBlob(dstRecord, dst); err != nil {
-				is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
-					Msg("failed to link blobs")
+					// Delete non-stale entries first, then stale original path last.
+					// Some cache drivers keep the original while duplicates exist.
+					for _, normalized := range normalizedPaths {
+						if normalized == dstRecord {
+							continue
+						}
 
-				return err
-			}
+						if delErr := is.deleteBlobRef(dstDigest, normalized); delErr != nil && !errors.Is(delErr, zerr.ErrCacheMiss) {
+							return delErr
+						}
+					}
 
-			if err := is.putBlobRef(dstDigest, dst); err != nil {
-				is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
-					Msg("failed to insert blob record")
+					if delErr := is.deleteBlobRef(dstDigest, dstRecord); delErr != nil && !errors.Is(delErr, zerr.ErrCacheMiss) {
+						return delErr
+					}
 
-				return err
-			}
-		} else {
-			// SameFile means destination already maps to this digest path. In that case,
-			// only rewrite content when descriptor size proves the stored blob is corrupted.
-			if desc, err := common.GetBlobDescriptorFromRepo(is, dstRepo, dstDigest, is.log); err == nil {
-				// blob corrupted, replace content
-				if desc.Size != blobInfo.Size() {
-					if err := is.storeDriver.Move(src, dst); err != nil {
-						is.log.Error().Err(err).Str("src", src).Str("dst", dst).Str("component", "dedupe").
-							Msg("failed to rename blob")
-
+					updatedRecord, err = is.cache.GetBlob(dstDigest)
+					if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
 						return err
 					}
 
-					is.log.Debug().Str("src", src).Str("component", "dedupe").Msg("remove")
+					if is.cache.UsesRelativePaths() && !path.IsAbs(updatedRecord) &&
+						!strings.HasPrefix(updatedRecord, is.rootDir+"/") {
+						updatedRecord = path.Join(is.rootDir, updatedRecord)
+					}
 
-					return nil
+					if updatedRecord == dstRecord {
+						return statErr
+					}
+				}
+
+				lastRetryErr = statErr
+
+				continue
+			}
+
+			// Normal dedupe path: link destination to the resolved original blob and add ref.
+			if !is.storeDriver.SameFile(dst, dstRecord) {
+				if err := is.lifecycle.LinkBlob(dstRecord, dst); err != nil {
+					is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
+						Msg("failed to link blobs")
+
+					return err
+				}
+
+				if err := is.putBlobRef(dstDigest, dst); err != nil {
+					is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
+						Msg("failed to insert blob record")
+
+					return err
+				}
+			} else {
+				// SameFile means destination already maps to this digest path. In that case,
+				// only rewrite content when descriptor size proves the stored blob is corrupted.
+				if desc, err := common.GetBlobDescriptorFromRepo(is, dstRepo, dstDigest, is.log); err == nil {
+					// blob corrupted, replace content
+					if desc.Size != blobInfo.Size() {
+						if err := is.storeDriver.Move(src, dst); err != nil {
+							is.log.Error().Err(err).Str("src", src).Str("dst", dst).Str("component", "dedupe").
+								Msg("failed to rename blob")
+
+							return err
+						}
+
+						is.log.Debug().Str("src", src).Str("component", "dedupe").Msg("remove")
+
+						return nil
+					}
 				}
 			}
-		}
 
-		if !blobUploadRemoved {
-			// remove temp blobupload
-			if err := is.storeDriver.Delete(src); err != nil {
-				is.log.Error().Err(err).Str("src", src).Str("component", "dedupe").
-					Msg("failed to remove blob")
+			if !blobUploadRemoved {
+				// remove temp blobupload
+				if err := is.storeDriver.Delete(src); err != nil {
+					is.log.Error().Err(err).Str("src", src).Str("component", "dedupe").
+						Msg("failed to remove blob")
 
-				return err
+					return err
+				}
 			}
+
+			is.log.Debug().Str("src", src).Str("component", "dedupe").Msg("remove")
+
+			return nil
 		}
 
-		is.log.Debug().Str("src", src).Str("component", "dedupe").Msg("remove")
+		if lastRetryErr == nil {
+			lastRetryErr = zerr.ErrBlobNotFound
+		}
 
-		return nil
-	}
+		is.log.Error().Err(lastRetryErr).Str("dstDigest", dstDigest.String()).Str("dst", dst).
+			Int("maxRetries", maxDedupeSelfHealRetries).Str("component", "dedupe").
+			Msg("dedupe retry limit exceeded while healing stale cache records")
 
-	if lastRetryErr == nil {
-		lastRetryErr = zerr.ErrBlobNotFound
-	}
-
-	is.log.Error().Err(lastRetryErr).Str("dstDigest", dstDigest.String()).Str("dst", dst).
-		Int("maxRetries", maxDedupeSelfHealRetries).Str("component", "dedupe").
-		Msg("dedupe retry limit exceeded while healing stale cache records")
-
-	return lastRetryErr
+		return lastRetryErr
+	})
 }
 
 // DeleteBlobUpload deletes an existing blob upload that is currently in progress.
@@ -2072,6 +2034,26 @@ func (is *ImageStore) DeleteBlobUpload(repo, uuid string) error {
 // BlobPath returns the repository path of a blob.
 func (is *ImageStore) BlobPath(repo string, digest godigest.Digest) string {
 	return path.Join(is.rootDir, repo, ispec.ImageBlobsDir, digest.Algorithm().String(), digest.Encoded())
+}
+
+// repoFromBlobPath is BlobPath's inverse: it extracts the repository name from a full
+// blob path of the shape rootDir/repo/blobs/<algorithm>/<digest>. Used by
+// dedupeBlobs/restoreDedupedBlobs, which only receive a flat list of blob paths (not
+// repo-tagged pairs), to scope their per-iteration repo lock correctly.
+func (is *ImageStore) repoFromBlobPath(blobPath string) (string, error) {
+	rel, err := filepath.Rel(is.rootDir, blobPath)
+	if err != nil {
+		return "", err
+	}
+
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	if len(parts) < 4 {
+		return "", fmt.Errorf("%w: cannot extract repo from blob path %s", zerr.ErrBadBlob, blobPath)
+	}
+
+	// Last 3 components are "blobs", <algorithm>, <digest>; everything before is the repo
+	// (which may itself contain slashes for nested repo names).
+	return strings.Join(parts[:len(parts)-3], "/"), nil
 }
 
 // GetAllDedupeReposCandidates does not take a lock: it only reads the dedupe cache
@@ -2145,96 +2127,113 @@ func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]str
 // CheckBlob verifies a blob and returns true if the blob is correct.
 // If the blob is not found but it's found in cache then it will be copied over.
 func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
-	var lockLatency time.Time
-
 	if err := digest.Validate(); err != nil {
 		return false, -1, err
 	}
 
 	blobPath := is.BlobPath(repo, digest)
 
-	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
-		// Dedupe mode can update cache refs (self-heal), so use write lock.
-		is.Lock(&lockLatency)
-		defer is.Unlock(&lockLatency)
-	} else {
-		// Non-dedupe read path only validates/reads blob state.
-		is.RLock(&lockLatency)
-		defer is.RUnlock(&lockLatency)
-	}
+	var (
+		found bool
+		size  int64 = -1
+	)
 
-	binfo, err := is.storeDriver.Stat(blobPath)
-	if err != nil {
-		dstRecord, err := is.checkCacheBlob(digest)
+	checkBlobBody := func() error {
+		binfo, err := is.storeDriver.Stat(blobPath)
 		if err != nil {
+			dstRecord, err := is.checkCacheBlob(digest)
+			if err != nil {
+				if errors.Is(err, zerr.ErrCacheMiss) || errors.Is(err, zerr.ErrBlobNotFound) {
+					is.log.Debug().Err(err).Str("digest", digest.String()).Msg("cache miss for blob")
+				} else {
+					is.log.Warn().Err(err).Str("digest", digest.String()).Msg("failed to lookup blob in cache")
+				}
+
+				return zerr.ErrBlobNotFound
+			}
+
+			blobSize, err := is.copyBlob(ctx, repo, blobPath, dstRecord)
+			if err != nil {
+				return zerr.ErrBlobNotFound
+			}
+
+			// put deduped blob in cache
+			if err := is.putBlobRef(digest, blobPath); err != nil {
+				is.log.Error().Err(err).Str("blobPath", blobPath).Str("component", "dedupe").Msg("failed to insert blob record")
+
+				return err
+			}
+
+			found, size = true, blobSize
+
+			return nil
+		}
+
+		globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+		resolvedPath, err := is.lifecycle.ResolveReadPath(blobPath, globalBlobPath, digest, binfo.Size(), is.checkCacheBlob)
+		if err != nil {
+			// Cache miss / not-found is a normal condition when the blob truly doesn't exist.
 			if errors.Is(err, zerr.ErrCacheMiss) || errors.Is(err, zerr.ErrBlobNotFound) {
 				is.log.Debug().Err(err).Str("digest", digest.String()).Msg("cache miss for blob")
 			} else {
 				is.log.Warn().Err(err).Str("digest", digest.String()).Msg("failed to lookup blob in cache")
 			}
 
-			return false, -1, zerr.ErrBlobNotFound
+			return zerr.ErrBlobNotFound
 		}
 
-		blobSize, err := is.copyBlob(ctx, repo, blobPath, dstRecord)
+		if resolvedPath == blobPath {
+			// When lifecycle resolves to repo path itself, validate against descriptor size
+			// to catch marker/corrupted blobs that still physically exist at that path.
+			desc, err := common.GetBlobDescriptorFromRepo(is, repo, digest, is.log)
+			if err != nil || desc.Size == binfo.Size() {
+				// blob not found in descriptors, can not compare, just return
+				is.log.Debug().Str("blob path", blobPath).Msg("blob path found")
+
+				found, size = true, binfo.Size()
+
+				return nil //nolint: nilerr
+			}
+
+			if desc.Size != binfo.Size() {
+				is.log.Debug().Str("blob path", blobPath).Msg("blob path found, but it's corrupted")
+
+				return zerr.ErrBlobNotFound
+			}
+		}
+
+		blobSize, err := is.copyBlob(ctx, repo, blobPath, resolvedPath)
 		if err != nil {
-			return false, -1, zerr.ErrBlobNotFound
+			return zerr.ErrBlobNotFound
 		}
 
 		// put deduped blob in cache
 		if err := is.putBlobRef(digest, blobPath); err != nil {
 			is.log.Error().Err(err).Str("blobPath", blobPath).Str("component", "dedupe").Msg("failed to insert blob record")
 
-			return false, -1, err
+			return err
 		}
 
-		return true, blobSize, nil
+		found, size = true, blobSize
+
+		return nil
 	}
 
-	globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
-	resolvedPath, err := is.lifecycle.ResolveReadPath(blobPath, globalBlobPath, digest, binfo.Size(), is.checkCacheBlob)
-	if err != nil {
-		// Cache miss / not-found is a normal condition when the blob truly doesn't exist.
-		if errors.Is(err, zerr.ErrCacheMiss) || errors.Is(err, zerr.ErrBlobNotFound) {
-			is.log.Debug().Err(err).Str("digest", digest.String()).Msg("cache miss for blob")
-		} else {
-			is.log.Warn().Err(err).Str("digest", digest.String()).Msg("failed to lookup blob in cache")
-		}
+	var err error
 
-		return false, -1, zerr.ErrBlobNotFound
+	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+		// Dedupe mode can update cache refs (self-heal) by linking blobPath to the
+		// resolved original: reads _blobstore (if that's where content resolves) and
+		// writes into this repo, so blobstore-read then repo-write, in that order.
+		err = is.WithBlobstoreReadAndRepoLock(repo, checkBlobBody)
+	} else {
+		// Non-dedupe read path only validates/reads blob state; this store never
+		// mutates _blobstore itself when dedupe is off (is.dedupe is fixed at
+		// construction and never flips at runtime), so no blobstore lock is needed.
+		err = is.WithRepoReadLock(repo, checkBlobBody)
 	}
 
-	if resolvedPath == blobPath {
-		// When lifecycle resolves to repo path itself, validate against descriptor size
-		// to catch marker/corrupted blobs that still physically exist at that path.
-		desc, err := common.GetBlobDescriptorFromRepo(is, repo, digest, is.log)
-		if err != nil || desc.Size == binfo.Size() {
-			// blob not found in descriptors, can not compare, just return
-			is.log.Debug().Str("blob path", blobPath).Msg("blob path found")
-
-			return true, binfo.Size(), nil //nolint: nilerr
-		}
-
-		if desc.Size != binfo.Size() {
-			is.log.Debug().Str("blob path", blobPath).Msg("blob path found, but it's corrupted")
-
-			return false, -1, zerr.ErrBlobNotFound
-		}
-	}
-
-	blobSize, err := is.copyBlob(ctx, repo, blobPath, resolvedPath)
-	if err != nil {
-		return false, -1, zerr.ErrBlobNotFound
-	}
-
-	// put deduped blob in cache
-	if err := is.putBlobRef(digest, blobPath); err != nil {
-		is.log.Error().Err(err).Str("blobPath", blobPath).Str("component", "dedupe").Msg("failed to insert blob record")
-
-		return false, -1, err
-	}
-
-	return true, blobSize, nil
+	return found, size, err
 }
 
 // StatBlob verifies if a blob is present inside a repository. The caller function MUST lock from outside.
@@ -2629,21 +2628,29 @@ func (is *ImageStore) PutIndexContent(repo string, index ispec.Index) error {
 
 // DeleteBlob removes the blob from the repository.
 func (is *ImageStore) DeleteBlob(repo string, digest godigest.Digest) error {
-	var lockLatency time.Time
-
 	if err := digest.Validate(); err != nil {
 		return err
 	}
 
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
+	// deleteBlob's global-blob reclaim step (see there) touches _blobstore only when
+	// a cache is configured - match that here so we don't take the blobstore lock
+	// (and pay its contention cost) for stores that never touch _blobstore at all.
+	if fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+		return is.WithBlobstoreAndRepoLock(repo, func() error {
+			return is.deleteBlob(repo, digest)
+		})
+	}
 
-	return is.deleteBlob(repo, digest)
+	return is.WithRepoLock(repo, func() error {
+		return is.deleteBlob(repo, digest)
+	})
 }
 
 /*
 CleanupRepo removes blobs from the repository and removes repo if flag is true and all blobs were removed
-the caller function MUST lock from outside.
+the caller function MUST lock from outside (both the repo lock, and - if a cache is
+configured, since deleteBlob's global-blob reclaim step needs it - the blobstore lock,
+acquired outer-to-inner in that order; see gc.go's cleanRepo).
 */
 func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRepo bool) (int, error) {
 	count := 0
@@ -2706,6 +2713,12 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 	return count, nil
 }
 
+// deleteBlob's caller MUST hold repo's lock, and - if a cache is configured - the
+// blobstore lock too (outer, acquired before the repo lock): the global-blob reclaim
+// step below touches _blobstore. deleteBlob deliberately never acquires either lock
+// itself, since it's called both directly (DeleteBlob, which must acquire both) and
+// from CleanupRepo (already invoked with both held by gc.go's cleanRepo) - having it
+// self-lock would double-lock and deadlock on the CleanupRepo path.
 func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 	blobPath := is.BlobPath(repo, digest)
 
@@ -3052,64 +3065,85 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 
 	var originalBlob string
 
-	// rebuild from dedupe false to true
+	// rebuild from dedupe false to true. duplicateBlobs can span many repos for one
+	// digest - take one repo's lock per iteration, never more than one at a time (see
+	// ImageStore's lock ordering doc comment), releasing it before moving to the next.
+	// Note: LinkBlob below reads originalBlob's content/existence, which can be a
+	// *different* repo than the one locked for this iteration, with no lock of its
+	// own protecting that read - a concurrent delete/reclaim of originalBlob elsewhere
+	// can race it. This is the same eventual-consistency tradeoff DedupeBlob's
+	// self-heal retry loop already makes elsewhere in this subsystem, not a new class
+	// of failure mode; RunDedupeForDigest's caller already treats failures here as
+	// retryable (see the dedupe task generator).
 	for _, blobPath := range duplicateBlobs {
 		if zcommon.IsContextDone(ctx) {
 			return ctx.Err()
 		}
 
-		binfo, err := is.storeDriver.Stat(blobPath)
+		repo, err := is.repoFromBlobPath(blobPath)
 		if err != nil {
-			is.log.Error().Err(err).Str("path", blobPath).Str("component", "dedupe").Msg("failed to stat blob")
-
 			return err
 		}
 
-		if binfo.Size() == 0 {
-			is.log.Warn().Str("component", "dedupe").Msg("found file without content, trying to find the original blob")
-			// a rebuild dedupe was attempted in the past
-			// get original blob, should be found otherwise exit with error
-			if originalBlob == "" {
-				originalBlob, err = is.getOriginalBlob(digest, duplicateBlobs)
-				if err != nil {
-					is.log.Error().Err(err).Str("component", "dedupe").Msg("failed to find original blob")
+		err = is.WithRepoLock(repo, func() error {
+			binfo, err := is.storeDriver.Stat(blobPath)
+			if err != nil {
+				is.log.Error().Err(err).Str("path", blobPath).Str("component", "dedupe").Msg("failed to stat blob")
 
-					return zerr.ErrDedupeRebuild
+				return err
+			}
+
+			if binfo.Size() == 0 {
+				is.log.Warn().Str("component", "dedupe").Msg("found file without content, trying to find the original blob")
+				// a rebuild dedupe was attempted in the past
+				// get original blob, should be found otherwise exit with error
+				if originalBlob == "" {
+					originalBlob, err = is.getOriginalBlob(digest, duplicateBlobs)
+					if err != nil {
+						is.log.Error().Err(err).Str("component", "dedupe").Msg("failed to find original blob")
+
+						return zerr.ErrDedupeRebuild
+					}
+
+					// cache original blob
+					if _, err := is.cache.GetBlob(digest); err != nil {
+						if err := is.putBlobRef(digest, originalBlob); err != nil {
+							return err
+						}
+					}
 				}
 
-				// cache original blob
-				if _, err := is.cache.GetBlob(digest); err != nil {
-					if err := is.putBlobRef(digest, originalBlob); err != nil {
+				// cache dedupe blob
+				if ok := is.cache.HasBlob(digest, blobPath); !ok {
+					if err := is.putBlobRef(digest, blobPath); err != nil {
 						return err
 					}
 				}
-			}
+			} else {
+				// if we have an original blob cached then we can safely dedupe the rest of them
+				if originalBlob != "" {
+					if err := is.lifecycle.LinkBlob(originalBlob, blobPath); err != nil {
+						is.log.Error().Err(err).Str("path", blobPath).Str("component", "dedupe").Msg("failed to dedupe blob")
 
-			// cache dedupe blob
-			if ok := is.cache.HasBlob(digest, blobPath); !ok {
-				if err := is.putBlobRef(digest, blobPath); err != nil {
-					return err
+						return err
+					}
 				}
-			}
-		} else {
-			// if we have an original blob cached then we can safely dedupe the rest of them
-			if originalBlob != "" {
-				if err := is.lifecycle.LinkBlob(originalBlob, blobPath); err != nil {
-					is.log.Error().Err(err).Str("path", blobPath).Str("component", "dedupe").Msg("failed to dedupe blob")
 
-					return err
+				// cache it
+				if ok := is.cache.HasBlob(digest, blobPath); !ok {
+					if err := is.putBlobRef(digest, blobPath); err != nil {
+						return err
+					}
 				}
+
+				// mark blob as preserved
+				originalBlob = blobPath
 			}
 
-			// cache it
-			if ok := is.cache.HasBlob(digest, blobPath); !ok {
-				if err := is.putBlobRef(digest, blobPath); err != nil {
-					return err
-				}
-			}
-
-			// mark blob as preserved
-			originalBlob = blobPath
+			return nil
+		})
+		if err != nil {
+			return err
 		}
 	}
 
@@ -3157,15 +3191,15 @@ func (is *ImageStore) restoreDedupedBlobs(ctx context.Context, digest godigest.D
 				return err
 			}
 
-			// Hold the write lock only for the actual blob write so that concurrent
-			// CheckBlob (read lock) and FinishBlobUpload (write lock) are not starved
-			// by the preceding slow S3 reads.
-			err = func() error {
-				var lockLatency time.Time
+			repo, err := is.repoFromBlobPath(blobPath)
+			if err != nil {
+				return err
+			}
 
-				is.Lock(&lockLatency)
-				defer is.Unlock(&lockLatency)
-
+			// Hold this repo's write lock only for the actual blob write so that
+			// concurrent CheckBlob (read lock) and FinishBlobUpload (write lock) on
+			// other repos are not starved by the preceding slow S3 read.
+			err = is.WithRepoLock(repo, func() error {
 				// Re-check size inside the lock: another goroutine may have already
 				// restored or uploaded this blob between our Stat and Lock above.
 				recheck, serr := is.storeDriver.Stat(blobPath)
@@ -3183,7 +3217,7 @@ func (is *ImageStore) restoreDedupedBlobs(ctx context.Context, digest godigest.D
 				_, err := is.storeDriver.WriteFile(blobPath, buf)
 
 				return err
-			}()
+			})
 			if err != nil {
 				return err
 			}
@@ -3196,15 +3230,13 @@ func (is *ImageStore) restoreDedupedBlobs(ctx context.Context, digest godigest.D
 	return nil
 }
 
+// RunDedupeForDigest does not take a lock itself: dedupeBlobs/restoreDedupedBlobs
+// each take one repo's lock per iteration internally, since duplicateBlobs can span
+// many repos and no more than one repo's lock may be held at a time.
 func (is *ImageStore) RunDedupeForDigest(ctx context.Context, digest godigest.Digest, dedupe bool,
 	duplicateBlobs []string,
 ) error {
 	if dedupe {
-		var lockLatency time.Time
-
-		is.Lock(&lockLatency)
-		defer is.Unlock(&lockLatency)
-
 		return is.dedupeBlobs(ctx, digest, duplicateBlobs)
 	}
 
