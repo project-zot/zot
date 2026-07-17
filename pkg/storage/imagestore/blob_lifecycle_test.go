@@ -18,6 +18,8 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage/constants"
 )
 
+var errInjectedReferenceCheck = errors.New("injected reference-check failure")
+
 type lifecycleStubDriver struct {
 	nameFn     func() string
 	statFn     func(path string) (driver.FileInfo, error)
@@ -491,6 +493,67 @@ func TestBlobLifecycleShouldDeleteGlobalBlobLocal(t *testing.T) {
 
 		if deleteDecision {
 			t.Fatal("expected multi-hardlink file to be retained")
+		}
+	})
+
+	// The three cases above all Stat a real file on the test's local filesystem, so
+	// Sys() always exposes a real *syscall.Stat_t with Nlink - there is no way to
+	// drive ShouldDeleteGlobalBlob into the nlink-unavailable fallback that way. Use
+	// a fake statFn instead to exercise that branch (and its isDigestReferenced
+	// wiring) end-to-end, the way a filesystem that doesn't expose hardlink counts
+	// actually would.
+	fakeStatFn := func(name string) (os.FileInfo, error) {
+		return fileInfoWithSys{sys: struct{ Size int64 }{Size: 1}}, nil
+	}
+
+	t.Run("nlink unavailable, digest not referenced elsewhere: deletable", func(t *testing.T) {
+		lifecycle := &localHardlinkBlobLifecycle{statFn: fakeStatFn}
+
+		deleteDecision, err := lifecycle.ShouldDeleteGlobalBlob("irrelevant", godigest.FromString("unreferenced"),
+			func(godigest.Digest) (bool, error) { return false, nil })
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if !deleteDecision {
+			t.Fatal("expected blob to be deletable when isDigestReferenced reports no other references")
+		}
+	})
+
+	t.Run("nlink unavailable, digest still referenced elsewhere: not deletable", func(t *testing.T) {
+		lifecycle := &localHardlinkBlobLifecycle{statFn: fakeStatFn}
+
+		deleteDecision, err := lifecycle.ShouldDeleteGlobalBlob("irrelevant", godigest.FromString("referenced"),
+			func(godigest.Digest) (bool, error) { return true, nil })
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if deleteDecision {
+			t.Fatal("expected blob to be retained when isDigestReferenced reports another reference")
+		}
+	})
+
+	t.Run("nlink unavailable, isDigestReferenced error propagates", func(t *testing.T) {
+		lifecycle := &localHardlinkBlobLifecycle{statFn: fakeStatFn}
+
+		_, err := lifecycle.ShouldDeleteGlobalBlob("irrelevant", godigest.FromString("errors"),
+			func(godigest.Digest) (bool, error) { return false, errInjectedReferenceCheck })
+		if !errors.Is(err, errInjectedReferenceCheck) {
+			t.Fatalf("expected injected error to propagate, got %v", err)
+		}
+	})
+
+	t.Run("nlink unavailable, isDigestReferenced nil: not deletable", func(t *testing.T) {
+		lifecycle := &localHardlinkBlobLifecycle{statFn: fakeStatFn}
+
+		deleteDecision, err := lifecycle.ShouldDeleteGlobalBlob("irrelevant", godigest.FromString("no-callback"), nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if deleteDecision {
+			t.Fatal("expected blob to be retained when there is no way to check other references")
 		}
 	})
 }
