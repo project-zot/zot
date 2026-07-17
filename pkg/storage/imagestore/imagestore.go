@@ -587,11 +587,9 @@ func (is *ImageStore) verifyPromotedGlobalBlobForMigration(ref repoBlobRef, veri
 }
 
 func (is *ImageStore) writeBlobstoreMigrationMarker(markerPath string) {
-	// Write the migration-complete marker so this scan is skipped on future startups.
-	markerDir := path.Join(is.rootDir, storageConstants.GlobalBlobsRepo)
-	if err := is.storeDriver.EnsureDir(markerDir); err != nil {
-		is.log.Warn().Err(err).Msg("failed to ensure _blobstore dir for migration marker")
-	} else if _, err := is.storeDriver.WriteFile(markerPath, []byte("1")); err != nil {
+	// Write the migration-complete marker (at the store root, is.rootDir already exists)
+	// so this scan is skipped on future startups.
+	if _, err := is.storeDriver.WriteFile(markerPath, []byte("1")); err != nil {
 		is.log.Warn().Err(err).Msg("failed to write blobstore migration marker")
 	}
 }
