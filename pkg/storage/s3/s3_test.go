@@ -1438,11 +1438,14 @@ func TestS3Dedupe(t *testing.T) {
 				So(fi2.Size(), ShouldBeGreaterThanOrEqualTo, int64(0))
 			}
 
+			// dedupe2 still holds a blob-ref for this digest (see isDigestReferencedAcrossRepos),
+			// so deleting dedupe1 must not reclaim the shared global copy: this must always
+			// succeed, not just "eventually" - do not loosen to tolerate ErrBlobNotFound here,
+			// that would mask the exact bug this test caught before (global blob reclaimed
+			// while another repo's marker still pointed at it).
 			blobContent, err := imgStore.GetBlobContent("dedupe2", blobDigest2)
-			// Depending on timing, contender content may already be restored or still
-			// resolving through marker/global lookup; both outcomes are valid.
-			So((err == nil && len(blobContent) > 0) || errors.Is(err, zerr.ErrBlobNotFound) ||
-				errors.Is(err, zerr.ErrRepoNotFound), ShouldBeTrue)
+			So(err, ShouldBeNil)
+			So(len(blobContent), ShouldBeGreaterThan, 0)
 
 			err = imgStore.DeleteBlob("dedupe2", blobDigest2)
 			assertDeleteBlockedOrAlreadyGone(err)
@@ -2073,11 +2076,14 @@ func TestS3Dedupe(t *testing.T) {
 				So(fi2.Size(), ShouldBeGreaterThanOrEqualTo, int64(0))
 			}
 
+			// dedupe2 still holds a blob-ref for this digest (see isDigestReferencedAcrossRepos),
+			// so deleting dedupe1 must not reclaim the shared global copy: this must always
+			// succeed, not just "eventually" - do not loosen to tolerate ErrBlobNotFound here,
+			// that would mask the exact bug this test caught before (global blob reclaimed
+			// while another repo's marker still pointed at it).
 			blobContent, err := imgStore.GetBlobContent("dedupe2", blobDigest2)
-			// Depending on timing, contender content may already be restored or still
-			// resolving through marker/global lookup; both outcomes are valid.
-			So((err == nil && len(blobContent) > 0) || errors.Is(err, zerr.ErrBlobNotFound) ||
-				errors.Is(err, zerr.ErrRepoNotFound), ShouldBeTrue)
+			So(err, ShouldBeNil)
+			So(len(blobContent), ShouldBeGreaterThan, 0)
 
 			err = imgStore.DeleteBlob("dedupe2", blobDigest2)
 			assertDeleteBlockedOrAlreadyGone(err)
