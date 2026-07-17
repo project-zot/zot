@@ -269,10 +269,6 @@ func TestNewImageStoreFailsWhenMigrationFails(t *testing.T) {
 		remoteDriver := gcs.New(storeMock)
 
 		storeMock.StatFn = func(_ context.Context, path string) (driver.FileInfo, error) {
-			if path == "_blobstore/.migrated" {
-				return nil, driver.PathNotFoundError{Path: path}
-			}
-
 			return nil, driver.PathNotFoundError{Path: path}
 		}
 
