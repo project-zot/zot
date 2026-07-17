@@ -1736,26 +1736,30 @@ func TestStorageAPIs(t *testing.T) {
 				})
 
 				Convey("Locks", func() {
-					// in parallel, a mix of read and write locks - mainly for coverage
+					// in parallel, a mix of repo/blobstore read and write locks - mainly for coverage
 					var wg sync.WaitGroup
 					for range 1000 {
-						wg.Add(2)
+						wg.Add(4)
 
 						go func() {
-							var lockLatency time.Time
-
 							defer wg.Done()
-							imgStore.Lock(&lockLatency)
-							func() {}()
-							imgStore.Unlock(&lockLatency)
+
+							_ = imgStore.WithRepoLock("replace", func() error { return nil })
 						}()
 						go func() {
-							var lockLatency time.Time
-
 							defer wg.Done()
-							imgStore.RLock(&lockLatency)
-							func() {}()
-							imgStore.RUnlock(&lockLatency)
+
+							_ = imgStore.WithRepoReadLock("replace", func() error { return nil })
+						}()
+						go func() {
+							defer wg.Done()
+
+							_ = imgStore.WithBlobstoreLock(func() error { return nil })
+						}()
+						go func() {
+							defer wg.Done()
+
+							_ = imgStore.WithBlobstoreReadLock(func() error { return nil })
 						}()
 					}
 

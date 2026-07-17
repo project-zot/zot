@@ -127,16 +127,23 @@ func (gc GarbageCollect) CleanRepo(ctx context.Context, repo string) error {
 }
 
 func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
-	var lockLatency time.Time
-
 	dir := path.Join(gc.imgStore.RootDir(), repo)
 	if !gc.imgStore.DirExists(dir) {
 		return zerr.ErrRepoNotFound
 	}
 
-	gc.imgStore.Lock(&lockLatency)
-	defer gc.imgStore.Unlock(&lockLatency)
+	// The whole pass is wrapped in blobstore-then-repo (the mandated order), not just
+	// WithRepoLock: removeUnreferencedBlobs below deletes blobs one at a time, and
+	// each delete may reclaim the shared global blobstore copy (see deleteBlob) - that
+	// needs the blobstore lock held for the same repo-locked span, acquired outer to
+	// inner, so this can never invert relative to DedupeBlob/CheckBlob/DeleteBlob
+	// which also take blobstore-then-repo.
+	return gc.imgStore.WithBlobstoreAndRepoLock(repo, func() error {
+		return gc.cleanRepoLocked(ctx, repo)
+	})
+}
 
+func (gc GarbageCollect) cleanRepoLocked(ctx context.Context, repo string) error {
 	/* this index (which represents the index.json of this repo) is the root point from which we
 	search for dangling manifests/blobs
 	so this index is passed by reference in all functions that modifies it

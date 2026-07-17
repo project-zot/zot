@@ -1130,12 +1130,13 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 		ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
 		ok, blen, err = imgStore.CheckBlob(ctx, name, digest)
 	} else {
-		var lockLatency time.Time
+		err = imgStore.WithRepoReadLock(name, func() error {
+			var statErr error
 
-		imgStore.RLock(&lockLatency)
-		defer imgStore.RUnlock(&lockLatency)
+			ok, blen, _, statErr = imgStore.StatBlob(name, digest)
 
-		ok, blen, _, err = imgStore.StatBlob(name, digest)
+			return statErr
+		})
 	}
 
 	if err != nil {

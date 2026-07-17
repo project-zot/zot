@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"time"
 
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/olekukonko/tablewriter"
@@ -145,38 +144,45 @@ func checkImage(
 	manifest ispec.Descriptor, imgStore storageTypes.ImageStore, imageName, tag string,
 	scrubbedManifests map[godigest.Digest]ScrubImageResult,
 ) ([]ispec.Descriptor, error) {
-	var lockLatency time.Time
+	var results []ispec.Descriptor
 
-	imgStore.RLock(&lockLatency)
-	defer imgStore.RUnlock(&lockLatency)
+	err := imgStore.WithRepoReadLock(imageName, func() error {
+		manifestContent, err := imgStore.GetBlobContent(imageName, manifest.Digest)
+		if err != nil {
+			// ignore if the manifest is not found(probably it was deleted after we got the list of manifests)
+			return zerr.ErrManifestNotFound
+		}
 
-	manifestContent, err := imgStore.GetBlobContent(imageName, manifest.Digest)
+		results, err = scrubManifest(manifest, imgStore, imageName, tag, manifestContent, scrubbedManifests)
+
+		return err
+	})
 	if err != nil {
-		// ignore if the manifest is not found(probably it was deleted after we got the list of manifests)
-		return []ispec.Descriptor{}, zerr.ErrManifestNotFound
+		return []ispec.Descriptor{}, err
 	}
 
-	return scrubManifest(manifest, imgStore, imageName, tag, manifestContent, scrubbedManifests)
+	return results, nil
 }
 
 func getIndex(imageName string, imgStore storageTypes.ImageStore) ([]byte, error) {
-	var lockLatency time.Time
+	var indexContent []byte
 
-	imgStore.RLock(&lockLatency)
-	defer imgStore.RUnlock(&lockLatency)
+	err := imgStore.WithRepoReadLock(imageName, func() error {
+		// check image structure / layout
+		ok, err := imgStore.ValidateRepo(imageName)
+		if err != nil {
+			return err
+		}
 
-	// check image structure / layout
-	ok, err := imgStore.ValidateRepo(imageName)
-	if err != nil {
-		return []byte{}, err
-	}
+		if !ok {
+			return zerr.ErrRepoBadLayout
+		}
 
-	if !ok {
-		return []byte{}, zerr.ErrRepoBadLayout
-	}
+		// check "index.json" content
+		indexContent, err = imgStore.GetIndexContent(imageName)
 
-	// check "index.json" content
-	indexContent, err := imgStore.GetIndexContent(imageName)
+		return err
+	})
 	if err != nil {
 		return []byte{}, err
 	}

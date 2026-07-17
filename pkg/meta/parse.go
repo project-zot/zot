@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"time"
 
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
@@ -222,98 +221,97 @@ func parseRepo(repo string, metaDB mTypes.MetaDB, storeController stypes.StoreCo
 ) (bool, error) {
 	imageStore := storeController.GetImageStore(repo)
 
-	var lockLatency time.Time
+	var partial bool
 
-	imageStore.RLock(&lockLatency)
-	defer imageStore.RUnlock(&lockLatency)
-
-	indexBlob, err := imageStore.GetIndexContent(repo)
-	if err != nil {
-		log.Error().Err(err).Str("repository", repo).Msg("failed to read index.json for repo")
-
-		return false, err
-	}
-
-	var indexContent ispec.Index
-
-	err = json.Unmarshal(indexBlob, &indexContent)
-	if err != nil {
-		log.Error().Err(err).Str("repository", repo).Msg("failed to unmarshal index.json for repo")
-
-		return false, err
-	}
-
-	// Collect tags that exist in storage to preserve them
-	tagsToKeep := make(map[string]bool)
-
-	for _, manifest := range indexContent.Manifests {
-		tag := manifest.Annotations[ispec.AnnotationRefName]
-		if tag != "" && !zcommon.IsReferrersTag(tag) {
-			tagsToKeep[tag] = true
-		}
-	}
-
-	err = metaDB.ResetRepoReferences(repo, tagsToKeep)
-	if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
-		log.Error().Err(err).Str("repository", repo).Msg("failed to reset tag field in RepoMetadata for repo")
-
-		return false, err
-	}
-
-	partial := false
-
-	for _, manifest := range indexContent.Manifests {
-		tag := manifest.Annotations[ispec.AnnotationRefName]
-
-		if zcommon.IsReferrersTag(tag) {
-			continue
-		}
-
-		manifestBlob, err := imageStore.GetBlobContent(repo, manifest.Digest)
+	err := imageStore.WithRepoReadLock(repo, func() error {
+		indexBlob, err := imageStore.GetIndexContent(repo)
 		if err != nil {
-			// Handle missing blobs gracefully - log warning and continue with other manifests
-			var pathNotFoundErr driver.PathNotFoundError
-			if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
-				log.Warn().Err(err).Str("repository", repo).Str("digest", manifest.Digest.String()).
-					Msg("skipping missing manifest blob, continuing repo parse")
+			log.Error().Err(err).Str("repository", repo).Msg("failed to read index.json for repo")
 
-				partial = true
+			return err
+		}
 
+		var indexContent ispec.Index
+
+		err = json.Unmarshal(indexBlob, &indexContent)
+		if err != nil {
+			log.Error().Err(err).Str("repository", repo).Msg("failed to unmarshal index.json for repo")
+
+			return err
+		}
+
+		// Collect tags that exist in storage to preserve them
+		tagsToKeep := make(map[string]bool)
+
+		for _, manifest := range indexContent.Manifests {
+			tag := manifest.Annotations[ispec.AnnotationRefName]
+			if tag != "" && !zcommon.IsReferrersTag(tag) {
+				tagsToKeep[tag] = true
+			}
+		}
+
+		err = metaDB.ResetRepoReferences(repo, tagsToKeep)
+		if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
+			log.Error().Err(err).Str("repository", repo).Msg("failed to reset tag field in RepoMetadata for repo")
+
+			return err
+		}
+
+		for _, manifest := range indexContent.Manifests {
+			tag := manifest.Annotations[ispec.AnnotationRefName]
+
+			if zcommon.IsReferrersTag(tag) {
 				continue
 			}
 
-			log.Error().Err(err).Str("repository", repo).Str("digest", manifest.Digest.String()).
-				Msg("failed to get blob for image")
+			manifestBlob, err := imageStore.GetBlobContent(repo, manifest.Digest)
+			if err != nil {
+				// Handle missing blobs gracefully - log warning and continue with other manifests
+				var pathNotFoundErr driver.PathNotFoundError
+				if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
+					log.Warn().Err(err).Str("repository", repo).Str("digest", manifest.Digest.String()).
+						Msg("skipping missing manifest blob, continuing repo parse")
 
-			return false, err
+					partial = true
+
+					continue
+				}
+
+				log.Error().Err(err).Str("repository", repo).Str("digest", manifest.Digest.String()).
+					Msg("failed to get blob for image")
+
+				return err
+			}
+
+			reference := tag
+
+			if tag == "" {
+				reference = manifest.Digest.String()
+			}
+
+			// The push time only lives in the metaDB; when it is lost, the manifest blob's storage
+			// mod time is the closest remaining record of when the image was pushed. Pass it as a
+			// hint so a metaDB rebuild doesn't stamp every image with the current time. StatBlob
+			// requires the repo lock, which this function already holds.
+			setOpts := []mTypes.SetRepoReferenceOption{}
+			if found, _, modTime, err := imageStore.StatBlob(repo, manifest.Digest); err == nil && found {
+				setOpts = append(setOpts, mTypes.WithPushTimestamp(modTime))
+			}
+
+			err = SetImageMetaFromInput(context.Background(), repo, reference, manifest.MediaType, manifest.Digest, manifestBlob,
+				imageStore, metaDB, log, setOpts...)
+			if err != nil {
+				log.Error().Err(err).Str("repository", repo).Str("tag", tag).
+					Msg("failed to set metadata for image")
+
+				return err
+			}
 		}
 
-		reference := tag
+		return nil
+	})
 
-		if tag == "" {
-			reference = manifest.Digest.String()
-		}
-
-		// The push time only lives in the metaDB; when it is lost, the manifest blob's storage
-		// mod time is the closest remaining record of when the image was pushed. Pass it as a
-		// hint so a metaDB rebuild doesn't stamp every image with the current time. StatBlob
-		// requires the store lock, which this function already holds.
-		setOpts := []mTypes.SetRepoReferenceOption{}
-		if found, _, modTime, err := imageStore.StatBlob(repo, manifest.Digest); err == nil && found {
-			setOpts = append(setOpts, mTypes.WithPushTimestamp(modTime))
-		}
-
-		err = SetImageMetaFromInput(context.Background(), repo, reference, manifest.MediaType, manifest.Digest, manifestBlob,
-			imageStore, metaDB, log, setOpts...)
-		if err != nil {
-			log.Error().Err(err).Str("repository", repo).Str("tag", tag).
-				Msg("failed to set metadata for image")
-
-			return false, err
-		}
-	}
-
-	return partial, nil
+	return partial, err
 }
 
 func getAllRepos(storeController stypes.StoreController, log log.Logger) ([]string, error) {
@@ -385,34 +383,33 @@ func getCosignSignatureLayersInfo(
 		return layers, err
 	}
 
-	var lockLatency time.Time
+	err := imageStore.WithRepoReadLock(repo, func() error {
+		for _, layer := range manifestContent.Layers {
+			layerContent, err := imageStore.GetBlobContent(repo, layer.Digest)
+			if err != nil {
+				log.Error().Err(err).Str("repository", repo).Str("reference", tag).Str("layerDigest", layer.Digest.String()).Msg(
+					"failed to get cosign signature layer content")
 
-	imageStore.RLock(&lockLatency)
-	defer imageStore.RUnlock(&lockLatency)
+				return err
+			}
 
-	for _, layer := range manifestContent.Layers {
-		layerContent, err := imageStore.GetBlobContent(repo, layer.Digest)
-		if err != nil {
-			log.Error().Err(err).Str("repository", repo).Str("reference", tag).Str("layerDigest", layer.Digest.String()).Msg(
-				"failed to get cosign signature layer content")
+			layerSigKey, ok := layer.Annotations[zcommon.CosignSigKey]
+			if !ok {
+				log.Error().Err(err).Str("repository", repo).Str("reference", tag).Str("layerDigest", layer.Digest.String()).Msg(
+					"failed to get specific annotation of cosign signature")
+			}
 
-			return layers, err
+			layers = append(layers, mTypes.LayerInfo{
+				LayerDigest:  layer.Digest.String(),
+				LayerContent: layerContent,
+				SignatureKey: layerSigKey,
+			})
 		}
 
-		layerSigKey, ok := layer.Annotations[zcommon.CosignSigKey]
-		if !ok {
-			log.Error().Err(err).Str("repository", repo).Str("reference", tag).Str("layerDigest", layer.Digest.String()).Msg(
-				"failed to get specific annotation of cosign signature")
-		}
+		return nil
+	})
 
-		layers = append(layers, mTypes.LayerInfo{
-			LayerDigest:  layer.Digest.String(),
-			LayerContent: layerContent,
-			SignatureKey: layerSigKey,
-		})
-	}
-
-	return layers, nil
+	return layers, err
 }
 
 func getNotationSignatureLayersInfo(
@@ -442,28 +439,27 @@ func getNotationSignatureLayersInfo(
 
 	layer := manifestContent.Layers[0].Digest
 
-	var lockLatency time.Time
+	err := imageStore.WithRepoReadLock(repo, func() error {
+		layerContent, err := imageStore.GetBlobContent(repo, layer)
+		if err != nil {
+			log.Error().Err(err).Str("repository", repo).Str("reference", manifestDigest).Str("layerDigest", layer.String()).Msg(
+				"failed to get notation signature blob content")
 
-	imageStore.RLock(&lockLatency)
-	defer imageStore.RUnlock(&lockLatency)
+			return err
+		}
 
-	layerContent, err := imageStore.GetBlobContent(repo, layer)
-	if err != nil {
-		log.Error().Err(err).Str("repository", repo).Str("reference", manifestDigest).Str("layerDigest", layer.String()).Msg(
-			"failed to get notation signature blob content")
+		layerSigKey := manifestContent.Layers[0].MediaType
 
-		return layers, err
-	}
+		layers = append(layers, mTypes.LayerInfo{
+			LayerDigest:  layer.String(),
+			LayerContent: layerContent,
+			SignatureKey: layerSigKey,
+		})
 
-	layerSigKey := manifestContent.Layers[0].MediaType
-
-	layers = append(layers, mTypes.LayerInfo{
-		LayerDigest:  layer.String(),
-		LayerContent: layerContent,
-		SignatureKey: layerSigKey,
+		return nil
 	})
 
-	return layers, nil
+	return layers, err
 }
 
 // SetImageMetaFromInput tries to set manifest metadata and update repo metadata by adding the current tag
