@@ -6,12 +6,19 @@ import (
 
 const (
 	// BlobUploadDir defines the upload directory for blob uploads.
-	BlobUploadDir           = ".uploads"
-	SchemaVersion           = 2
-	DefaultFilePerms        = 0o600
-	DefaultDirPerms         = 0o700
-	RLOCK                   = "RLock"
-	RWLOCK                  = "RWLock"
+	BlobUploadDir    = ".uploads"
+	SchemaVersion    = 2
+	DefaultFilePerms = 0o600
+	DefaultDirPerms  = 0o700
+	RLOCK            = "RLock"
+	RWLOCK           = "RWLock"
+	// RepoRLock/RepoRWLock/BlobstoreRLock/BlobstoreRWLock label lock-wait metrics by domain
+	// (per-repository lock vs. the single global blobstore lock), so contention in one
+	// domain is distinguishable from the other now that they're no longer the same mutex.
+	RepoRLock               = "RepoRLock"
+	RepoRWLock              = "RepoRWLock"
+	BlobstoreRLock          = "BlobstoreRLock"
+	BlobstoreRWLock         = "BlobstoreRWLock"
 	BlobsCache              = "blobs"
 	BlobRefs                = "blob_refs"
 	DuplicatesBucket        = "duplicates"

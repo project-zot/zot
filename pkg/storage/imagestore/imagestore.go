@@ -47,15 +47,24 @@ type ImageStore struct {
 	rootDir     string
 	storeDriver storageTypes.Driver
 	lock        *sync.RWMutex
-	log         zlog.Logger
-	metrics     monitoring.MetricServer
-	events      events.Recorder
-	cache       storageTypes.Cache
-	lifecycle   blobLifecycle
-	dedupe      bool
-	linter      common.Lint
-	commit      bool
-	compat      []compat.MediaCompatibility
+	// blobstoreLock protects only GlobalBlobsRepo (_blobstore) state/data mutations.
+	// repoLocks holds one *sync.RWMutex per repository name, created lazily on first
+	// use. Together these replace the single whole-store lock (see With*Lock helpers
+	// below); the mandated acquisition order is blobstoreLock before any repo lock,
+	// never the reverse, and never more than one repo's lock held at a time - see
+	// WithBlobstoreAndRepoLock/WithBlobstoreReadAndRepoLock, the only sanctioned way
+	// to hold both.
+	blobstoreLock *sync.RWMutex
+	repoLocks     sync.Map
+	log           zlog.Logger
+	metrics       monitoring.MetricServer
+	events        events.Recorder
+	cache         storageTypes.Cache
+	lifecycle     blobLifecycle
+	dedupe        bool
+	linter        common.Lint
+	commit        bool
+	compat        []compat.MediaCompatibility
 	// dedupeRebuildDone is set once RunDedupeBlobs has walked all blobs, i.e. the
 	// cache accounts for every pre-existing blob; see deleteBlob.
 	dedupeRebuildDone atomic.Bool
@@ -146,18 +155,19 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 	}
 
 	imgStore := &ImageStore{
-		rootDir:     rootDir,
-		storeDriver: storeDriver,
-		lock:        &sync.RWMutex{},
-		log:         log,
-		metrics:     metrics,
-		dedupe:      dedupe,
-		linter:      linter,
-		commit:      commit,
-		cache:       cacheDriver,
-		lifecycle:   newBlobLifecycle(storeDriver),
-		compat:      compat,
-		events:      recorder,
+		rootDir:       rootDir,
+		storeDriver:   storeDriver,
+		lock:          &sync.RWMutex{},
+		blobstoreLock: &sync.RWMutex{},
+		log:           log,
+		metrics:       metrics,
+		dedupe:        dedupe,
+		linter:        linter,
+		commit:        commit,
+		cache:         cacheDriver,
+		lifecycle:     newBlobLifecycle(storeDriver),
+		compat:        compat,
+		events:        recorder,
 	}
 
 	if dedupe {
@@ -215,6 +225,106 @@ func (is *ImageStore) Unlock(lockStart *time.Time) {
 	// includes time spent in acquiring and holding a lock
 	latency := lockEnd.Sub(*lockStart)
 	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), storageConstants.RWLOCK) // histogram
+}
+
+// getRepoLock returns the lazily-created per-repository lock for repo. Entries are
+// never evicted (bounded by actual repo count, same tradeoff a prior locking attempt
+// made in real cluster deployments without it being the reported problem); revisit
+// only if profiling shows unbounded growth matters in practice.
+func (is *ImageStore) getRepoLock(repo string) *sync.RWMutex {
+	val, _ := is.repoLocks.LoadOrStore(repo, &sync.RWMutex{})
+
+	//nolint:forcetypeassert // only ever stored as *sync.RWMutex via getRepoLock itself
+	return val.(*sync.RWMutex)
+}
+
+// WithRepoLock runs wrappedFunc while holding repo's write lock. Callers must not
+// call this, or WithRepoReadLock, for a second repo from within wrappedFunc: only one
+// repo's lock may be held at a time in a given goroutine (see ImageStore's lock
+// ordering doc comment).
+func (is *ImageStore) WithRepoLock(repo string, wrappedFunc func() error) error {
+	lockStart := time.Now()
+	repoLock := is.getRepoLock(repo)
+
+	repoLock.Lock()
+	defer func() {
+		repoLock.Unlock()
+
+		latency := time.Since(lockStart)
+		monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), storageConstants.RepoRWLock)
+	}()
+
+	return wrappedFunc()
+}
+
+// WithRepoReadLock runs wrappedFunc while holding repo's read lock. Same
+// one-repo-at-a-time restriction as WithRepoLock.
+func (is *ImageStore) WithRepoReadLock(repo string, wrappedFunc func() error) error {
+	lockStart := time.Now()
+	repoLock := is.getRepoLock(repo)
+
+	repoLock.RLock()
+	defer func() {
+		repoLock.RUnlock()
+
+		latency := time.Since(lockStart)
+		monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), storageConstants.RepoRLock)
+	}()
+
+	return wrappedFunc()
+}
+
+// WithBlobstoreLock runs wrappedFunc while holding the global blobstore write lock.
+// If wrappedFunc also needs a repo lock, it must acquire it via WithRepoLock from
+// *inside* wrappedFunc (or, more simply, call WithBlobstoreAndRepoLock) - never take
+// a repo lock first and then call WithBlobstoreLock from within it, that inverts the
+// mandated order.
+func (is *ImageStore) WithBlobstoreLock(wrappedFunc func() error) error {
+	lockStart := time.Now()
+
+	is.blobstoreLock.Lock()
+	defer func() {
+		is.blobstoreLock.Unlock()
+
+		latency := time.Since(lockStart)
+		monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), storageConstants.BlobstoreRWLock)
+	}()
+
+	return wrappedFunc()
+}
+
+// WithBlobstoreReadLock runs wrappedFunc while holding the global blobstore read
+// lock. Same ordering rule as WithBlobstoreLock.
+func (is *ImageStore) WithBlobstoreReadLock(wrappedFunc func() error) error {
+	lockStart := time.Now()
+
+	is.blobstoreLock.RLock()
+	defer func() {
+		is.blobstoreLock.RUnlock()
+
+		latency := time.Since(lockStart)
+		monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), storageConstants.BlobstoreRLock)
+	}()
+
+	return wrappedFunc()
+}
+
+// WithBlobstoreAndRepoLock is the only sanctioned way to hold both the blobstore and
+// a repo lock at once: it enforces the mandated order (blobstore, then repo)
+// internally so call sites can't get it backwards.
+func (is *ImageStore) WithBlobstoreAndRepoLock(repo string, wrappedFunc func() error) error {
+	return is.WithBlobstoreLock(func() error {
+		return is.WithRepoLock(repo, wrappedFunc)
+	})
+}
+
+// WithBlobstoreReadAndRepoLock is WithBlobstoreAndRepoLock's read-lock-on-the-
+// blobstore counterpart, for operations that only read _blobstore (e.g. resolving a
+// dedupe marker) while still writing into a specific repo.
+func (is *ImageStore) WithBlobstoreReadAndRepoLock(repo string, wrappedFunc func() error) error {
+	return is.WithBlobstoreReadLock(func() error {
+		return is.WithRepoLock(repo, wrappedFunc)
+	})
 }
 
 func (is *ImageStore) initRepo(ctx context.Context, name string) error {
