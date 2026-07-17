@@ -239,7 +239,8 @@ func (gc GarbageCollect) removeUnknownMediaTypeManifestEntries(repo string, inde
 			continue
 		}
 
-		if err := gc.syncStaleManifestRemoval(repo, desc); err != nil {
+		if err := gc.syncManifestRemoval(repo, desc, "unknownMediaTypePrune",
+			"pruned unknown media type manifest entry from index"); err != nil {
 			return err
 		}
 	}
@@ -283,7 +284,8 @@ func (gc GarbageCollect) removeStaleManifestEntries(repo string, index *ispec.In
 
 	for _, desc := range index.Manifests {
 		if !existingBlobs[desc.Digest.String()] {
-			if err := gc.syncStaleManifestRemoval(repo, desc); err != nil {
+			if err := gc.syncManifestRemoval(repo, desc, "staleManifestPrune",
+				"pruned stale manifest entry from index"); err != nil {
 				return err
 			}
 
@@ -297,7 +299,8 @@ func (gc GarbageCollect) removeStaleManifestEntries(repo string, index *ispec.In
 			}
 
 			if stale {
-				if err := gc.syncStaleManifestRemoval(repo, desc); err != nil {
+				if err := gc.syncManifestRemoval(repo, desc, "staleManifestPrune",
+					"pruned stale manifest entry from index"); err != nil {
 					return err
 				}
 
@@ -319,11 +322,12 @@ func (gc GarbageCollect) removeStaleManifestEntries(repo string, index *ispec.In
 	return nil
 }
 
-// syncStaleManifestRemoval best-effort syncs metaDB before a stale descriptor is removed from
-// index.Manifests (index.json is persisted later in cleanRepo). metaDB failures are logged but
-// do not abort stale pruning — storage repair must not depend on secondary index consistency.
-// The blob is typically already absent from storage; cosign signatures are cleaned up via tag annotation.
-func (gc GarbageCollect) syncStaleManifestRemoval(repo string, desc ispec.Descriptor) error {
+// syncManifestRemoval best-effort syncs metaDB before a descriptor is removed from index.Manifests
+// (index.json is persisted later in cleanRepo). metaDB failures are logged but do not abort pruning —
+// storage repair must not depend on secondary index consistency. The blob is typically already absent
+// from storage; cosign signatures are cleaned up via tag annotation. reason/message identify which
+// prune path (stale vs. unknown media type) triggered the removal, for log/audit consumers.
+func (gc GarbageCollect) syncManifestRemoval(repo string, desc ispec.Descriptor, reason, message string) error {
 	tag, hasTag := getDescriptorTag(desc)
 	ref := tag
 	if ref == "" {
@@ -367,13 +371,13 @@ func (gc GarbageCollect) syncStaleManifestRemoval(repo string, desc ispec.Descri
 		Str("reference", ref).
 		Str("digest", desc.Digest.String()).
 		Str("decision", "delete").
-		Str("reason", "staleManifestPrune")
+		Str("reason", reason)
 
 	if subjectDigest != "" {
 		logEvent = logEvent.Str("subject", subjectDigest.String())
 	}
 
-	logEvent.Msg("pruned stale manifest entry from index")
+	logEvent.Msg(message)
 
 	if gc.auditLog != nil {
 		auditEvent := gc.auditLog.Info().Str("module", "gc").
@@ -381,13 +385,13 @@ func (gc GarbageCollect) syncStaleManifestRemoval(repo string, desc ispec.Descri
 			Str("reference", ref).
 			Str("digest", desc.Digest.String()).
 			Str("decision", "delete").
-			Str("reason", "staleManifestPrune")
+			Str("reason", reason)
 
 		if subjectDigest != "" {
 			auditEvent = auditEvent.Str("subject", subjectDigest.String())
 		}
 
-		auditEvent.Msg("pruned stale manifest entry from index")
+		auditEvent.Msg(message)
 	}
 
 	return nil
