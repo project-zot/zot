@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"slices"
-	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -58,8 +57,16 @@ func (d *DynamoDBDriver) NewTable(tableName string) error {
 			WriteCapacityUnits: aws.Int64(5),
 		},
 	})
-	if err != nil && !strings.Contains(err.Error(), "Table already exists") {
-		return err
+	if err != nil {
+		// Different DynamoDB-compatible backends word this differently (real AWS
+		// DynamoDB says "Table already exists", amazon/dynamodb-local says "Cannot
+		// create preexisting table") - match the typed exception instead of a
+		// backend-specific error string, so this doesn't silently fail to recognize
+		// "already exists" as benign on a backend whose wording wasn't observed yet.
+		var resourceInUse *types.ResourceInUseException
+		if !errors.As(err, &resourceInUse) {
+			return err
+		}
 	}
 
 	d.tableName = tableName
