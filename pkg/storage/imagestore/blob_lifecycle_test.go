@@ -201,6 +201,27 @@ func TestLocalBlobLifecycleDelegatesToLink(t *testing.T) {
 	}
 }
 
+// TestLocalBlobLifecycleConvertMigratedRepoBlobToMarkerIsNoOp covers the local
+// hardlink lifecycle's ConvertMigratedRepoBlobToMarker: unlike the remote/marker
+// lifecycle, local storage keeps hardlinks in each repo, so no marker conversion is
+// needed - it must always return nil without touching the driver.
+func TestLocalBlobLifecycleConvertMigratedRepoBlobToMarkerIsNoOp(t *testing.T) {
+	driverStub := &lifecycleStubDriver{
+		nameFn: func() string { return constants.LocalStorageDriverName },
+		linkFn: func(src, dst string) error {
+			t.Fatal("ConvertMigratedRepoBlobToMarker must not touch the driver on local storage")
+
+			return nil
+		},
+	}
+
+	lifecycle := newBlobLifecycle(driverStub)
+
+	if err := lifecycle.ConvertMigratedRepoBlobToMarker("global/blob", "repo/blob"); err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+}
+
 func TestRemoteBlobLifecyclePromoteStreamsContent(t *testing.T) {
 	content := []byte("remote-lifecycle-stream")
 	readerCalls := 0
@@ -275,6 +296,206 @@ func TestRemoteBlobLifecyclePromoteStreamsContent(t *testing.T) {
 	if !bytes.Equal(written.Bytes(), content) {
 		t.Fatal("streamed content does not match source content")
 	}
+}
+
+var errInjectedPromote = errors.New("injected promote failure")
+
+// errCloseReader wraps a reader with an injectable Close error - io.NopCloser (used
+// by the success-path test above) always returns nil from Close, so it can't exercise
+// PromoteCandidate's reader.Close() error branch.
+type errCloseReader struct {
+	io.Reader
+
+	closeErr   error
+	closeCalls *int
+}
+
+func (r errCloseReader) Close() error {
+	if r.closeCalls != nil {
+		*r.closeCalls++
+	}
+
+	return r.closeErr
+}
+
+// TestRemoteBlobLifecyclePromoteErrorPaths exercises every error branch in
+// PromoteCandidate: it must close whatever it opened so far (reader and/or writer,
+// cancelling the writer when content was partially streamed) before propagating the
+// error, on every failure path.
+func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
+	t.Run("reader error: no writer is opened", func(t *testing.T) {
+		writerCalls := 0
+
+		driverStub := &lifecycleStubDriver{
+			readerFn: func(path string, offset int64) (io.ReadCloser, error) {
+				return nil, errInjectedPromote
+			},
+			writerFn: func(path string, isAppend bool) (driver.FileWriter, error) {
+				writerCalls++
+
+				return &lifecycleWriterStub{}, nil
+			},
+		}
+
+		lifecycle := newBlobLifecycle(driverStub)
+
+		if err := lifecycle.PromoteCandidate("src", "dst"); !errors.Is(err, errInjectedPromote) {
+			t.Fatalf("expected injected error, got %v", err)
+		}
+
+		if writerCalls != 0 {
+			t.Fatalf("expected no writer call, got %d", writerCalls)
+		}
+	})
+
+	t.Run("writer error: reader is closed", func(t *testing.T) {
+		closeCalls := 0
+
+		driverStub := &lifecycleStubDriver{
+			readerFn: func(path string, offset int64) (io.ReadCloser, error) {
+				return errCloseReader{Reader: bytes.NewReader(nil), closeCalls: &closeCalls}, nil
+			},
+			writerFn: func(path string, isAppend bool) (driver.FileWriter, error) {
+				return nil, errInjectedPromote
+			},
+		}
+
+		lifecycle := newBlobLifecycle(driverStub)
+
+		if err := lifecycle.PromoteCandidate("src", "dst"); !errors.Is(err, errInjectedPromote) {
+			t.Fatalf("expected injected error, got %v", err)
+		}
+
+		if closeCalls != 1 {
+			t.Fatalf("expected one reader close call, got %d", closeCalls)
+		}
+	})
+
+	t.Run("copy error: writer is cancelled and both are closed", func(t *testing.T) {
+		cancelCalls, closeCalls := 0, 0
+
+		driverStub := &lifecycleStubDriver{
+			readerFn: func(path string, offset int64) (io.ReadCloser, error) {
+				return io.NopCloser(bytes.NewReader([]byte("content"))), nil
+			},
+			writerFn: func(path string, isAppend bool) (driver.FileWriter, error) {
+				return &lifecycleWriterStub{
+					writeFn: func(p []byte) (int, error) { return 0, errInjectedPromote },
+					cancelFn: func() error {
+						cancelCalls++
+
+						return nil
+					},
+					closeFn: func() error {
+						closeCalls++
+
+						return nil
+					},
+				}, nil
+			},
+		}
+
+		lifecycle := newBlobLifecycle(driverStub)
+
+		if err := lifecycle.PromoteCandidate("src", "dst"); !errors.Is(err, errInjectedPromote) {
+			t.Fatalf("expected injected error, got %v", err)
+		}
+
+		if cancelCalls != 1 {
+			t.Fatalf("expected one cancel call, got %d", cancelCalls)
+		}
+
+		if closeCalls != 1 {
+			t.Fatalf("expected one close call, got %d", closeCalls)
+		}
+	})
+
+	t.Run("commit error: writer is cancelled and both are closed", func(t *testing.T) {
+		cancelCalls, closeCalls := 0, 0
+
+		driverStub := &lifecycleStubDriver{
+			readerFn: func(path string, offset int64) (io.ReadCloser, error) {
+				return io.NopCloser(bytes.NewReader(nil)), nil
+			},
+			writerFn: func(path string, isAppend bool) (driver.FileWriter, error) {
+				return &lifecycleWriterStub{
+					commitFn: func() error { return errInjectedPromote },
+					cancelFn: func() error {
+						cancelCalls++
+
+						return nil
+					},
+					closeFn: func() error {
+						closeCalls++
+
+						return nil
+					},
+				}, nil
+			},
+		}
+
+		lifecycle := newBlobLifecycle(driverStub)
+
+		if err := lifecycle.PromoteCandidate("src", "dst"); !errors.Is(err, errInjectedPromote) {
+			t.Fatalf("expected injected error, got %v", err)
+		}
+
+		if cancelCalls != 1 {
+			t.Fatalf("expected one cancel call, got %d", cancelCalls)
+		}
+
+		if closeCalls != 1 {
+			t.Fatalf("expected one close call, got %d", closeCalls)
+		}
+	})
+
+	t.Run("reader close error: writer is still closed", func(t *testing.T) {
+		closeCalls := 0
+
+		driverStub := &lifecycleStubDriver{
+			readerFn: func(path string, offset int64) (io.ReadCloser, error) {
+				return errCloseReader{Reader: bytes.NewReader(nil), closeErr: errInjectedPromote}, nil
+			},
+			writerFn: func(path string, isAppend bool) (driver.FileWriter, error) {
+				return &lifecycleWriterStub{
+					closeFn: func() error {
+						closeCalls++
+
+						return nil
+					},
+				}, nil
+			},
+		}
+
+		lifecycle := newBlobLifecycle(driverStub)
+
+		if err := lifecycle.PromoteCandidate("src", "dst"); !errors.Is(err, errInjectedPromote) {
+			t.Fatalf("expected injected error, got %v", err)
+		}
+
+		if closeCalls != 1 {
+			t.Fatalf("expected one close call, got %d", closeCalls)
+		}
+	})
+
+	t.Run("writer close error propagates", func(t *testing.T) {
+		driverStub := &lifecycleStubDriver{
+			readerFn: func(path string, offset int64) (io.ReadCloser, error) {
+				return io.NopCloser(bytes.NewReader(nil)), nil
+			},
+			writerFn: func(path string, isAppend bool) (driver.FileWriter, error) {
+				return &lifecycleWriterStub{
+					closeFn: func() error { return errInjectedPromote },
+				}, nil
+			},
+		}
+
+		lifecycle := newBlobLifecycle(driverStub)
+
+		if err := lifecycle.PromoteCandidate("src", "dst"); !errors.Is(err, errInjectedPromote) {
+			t.Fatalf("expected injected error, got %v", err)
+		}
+	})
 }
 
 func TestRemoteBlobLifecycleLinkCreatesMarker(t *testing.T) {
