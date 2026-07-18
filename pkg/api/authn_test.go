@@ -140,6 +140,11 @@ func TestValidateCallbackUI(t *testing.T) {
 		},
 		{name: "header injection rejected (newline)", input: "/v2/\nSet-Cookie: x=y", expected: "/"},
 		{name: "header injection rejected (carriage return)", input: "/v2/\rSet-Cookie: x=y", expected: "/"},
+		{name: "backslash open redirect rejected", input: "/\\evil.com", expected: "/"},
+		{name: "leading backslash open redirect rejected", input: "\\\\evil.com", expected: "/"},
+		{name: "backslash in path rejected", input: "/v2\\evil.com", expected: "/"},
+		{name: "encoded backslash open redirect rejected", input: "/%5Cevil.com", expected: "/"},
+		{name: "encoded backslash lowercase rejected", input: "/%5cevil.com", expected: "/"},
 	}
 
 	for _, tt := range tests {

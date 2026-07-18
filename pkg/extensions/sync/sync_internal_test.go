@@ -23,6 +23,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/regclient/regclient"
+	regconfig "github.com/regclient/regclient/config"
 	"github.com/regclient/regclient/types/ref"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -44,6 +45,107 @@ import (
 )
 
 func TestService(t *testing.T) {
+	Convey("GetRepositories primes auth before listing the catalog", t, func() {
+		const username = "sync-user"
+		const password = "sync-pass"
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hasValidAuth := false
+			if user, pass, ok := r.BasicAuth(); ok {
+				hasValidAuth = user == username && pass == password
+			}
+
+			switch r.URL.Path {
+			case "/v2/", "/v2":
+				if hasValidAuth {
+					w.WriteHeader(http.StatusOK)
+
+					return
+				}
+
+				w.Header().Set("WWW-Authenticate", `Basic realm="zot"`)
+				http.Error(w, "authentication required", http.StatusUnauthorized)
+			case "/v2/_catalog":
+				w.Header().Set("Content-Type", "application/json")
+
+				if hasValidAuth {
+					_, _ = w.Write([]byte(`{"repositories":["private/repo"]}`))
+
+					return
+				}
+
+				_, _ = w.Write([]byte(`{"repositories":["library/alpine"]}`))
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		defer server.Close()
+
+		host := strings.TrimPrefix(server.URL, "http://")
+		credentials := syncconf.CredentialsFile{
+			host: {
+				Username: username,
+				Password: password,
+			},
+		}
+		conf := syncconf.RegistryConfig{
+			URLs: []string{server.URL},
+		}
+
+		client, hosts, err := newClient(conf, credentials, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		remote := NewRemoteRegistry(client, hosts, log.NewTestLogger())
+		repositories, err := remote.GetRepositories(context.Background())
+		So(err, ShouldBeNil)
+		So(repositories, ShouldResemble, []string{"private/repo"})
+	})
+
+	Convey("GetRepositories continues when the initial ping fails", t, func() {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/v2/", "/v2":
+				http.Error(w, "temporary ping failure", http.StatusInternalServerError)
+			case "/v2/_catalog":
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"repositories":["library/alpine"]}`))
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		defer server.Close()
+
+		conf := syncconf.RegistryConfig{
+			URLs: []string{server.URL},
+		}
+
+		client, hosts, err := newClient(conf, nil, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		remote := NewRemoteRegistry(client, hosts, log.NewTestLogger())
+		repositories, err := remote.GetRepositories(context.Background())
+		So(err, ShouldBeNil)
+		So(repositories, ShouldResemble, []string{"library/alpine"})
+	})
+
+	Convey("GetRepositories returns host parsing errors", t, func() {
+		remote := &RemoteRegistry{
+			client: regclient.New(),
+			hosts: []regconfig.Host{
+				{
+					Name:     "bad-host",
+					Hostname: "http://bad host",
+				},
+			},
+			primaryHost: "http://bad host",
+			log:         log.NewTestLogger(),
+		}
+
+		repositories, err := remote.GetRepositories(context.Background())
+		So(err, ShouldNotBeNil)
+		So(repositories, ShouldBeEmpty)
+	})
+
 	Convey("trigger fetch tags error", t, func() {
 		conf := syncconf.RegistryConfig{
 			URLs: []string{"http://localhost"},
