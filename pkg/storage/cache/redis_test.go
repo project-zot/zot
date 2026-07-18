@@ -201,6 +201,97 @@ func TestRedisCache(t *testing.T) {
 	})
 }
 
+// TestRedisBlobRefs covers PutBlobRef/GetBlobRefs/DeleteBlobRef, the live ref-counting
+// path imagestore.go's blobRefIndexer interface actually calls for a Redis-backed
+// cache (RedisDriver exports all three, same as DynamoDB). Previously untested.
+func TestRedisBlobRefs(t *testing.T) {
+	miniRedis := miniredis.RunT(t)
+
+	Convey("BlobRefs", t, func() {
+		log := log.NewTestLogger()
+
+		connOpts, _ := redis.ParseURL("redis://" + miniRedis.Addr())
+		client := redis.NewClient(connOpts)
+
+		cacheDriver, err := cache.NewRedisCache(
+			cache.RedisDriverParameters{client, t.TempDir(), false, "zot"}, log)
+		So(cacheDriver, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+
+		Convey("GetBlobRefs on a digest with no refs is a cache miss", func() {
+			refs, err := cacheDriver.GetBlobRefs("missing")
+			So(err, ShouldEqual, zerr.ErrCacheMiss)
+			So(refs, ShouldBeEmpty)
+		})
+
+		Convey("PutBlobRef rejects an empty path", func() {
+			err := cacheDriver.PutBlobRef("digest", "")
+			So(err, ShouldEqual, zerr.ErrEmptyValue)
+		})
+
+		Convey("PutBlobRef establishes the origin, readable via GetBlobRefs", func() {
+			err := cacheDriver.PutBlobRef("origin-only", "/repo1/blob")
+			So(err, ShouldBeNil)
+
+			refs, err := cacheDriver.GetBlobRefs("origin-only")
+			So(err, ShouldBeNil)
+			So(refs, ShouldContain, "/repo1/blob")
+		})
+
+		Convey("a second PutBlobRef adds a duplicate ref", func() {
+			So(cacheDriver.PutBlobRef("two-refs", "/repo1/blob"), ShouldBeNil)
+			So(cacheDriver.PutBlobRef("two-refs", "/repo2/blob"), ShouldBeNil)
+
+			refs, err := cacheDriver.GetBlobRefs("two-refs")
+			So(err, ShouldBeNil)
+			So(refs, ShouldContain, "/repo1/blob")
+			So(refs, ShouldContain, "/repo2/blob")
+		})
+
+		Convey("DeleteBlobRef on an unknown digest is a cache miss", func() {
+			err := cacheDriver.DeleteBlobRef("unknown", "/repo1/blob")
+			So(err, ShouldEqual, zerr.ErrCacheMiss)
+		})
+
+		Convey("DeleteBlobRef on the only ref removes the origin", func() {
+			So(cacheDriver.PutBlobRef("delete-only", "/repo1/blob"), ShouldBeNil)
+			So(cacheDriver.DeleteBlobRef("delete-only", "/repo1/blob"), ShouldBeNil)
+
+			refs, err := cacheDriver.GetBlobRefs("delete-only")
+			So(err, ShouldEqual, zerr.ErrCacheMiss)
+			So(refs, ShouldBeEmpty)
+		})
+
+		Convey("DeleteBlobRef on a duplicate leaves the origin intact", func() {
+			So(cacheDriver.PutBlobRef("delete-duplicate", "/repo1/blob"), ShouldBeNil)
+			So(cacheDriver.PutBlobRef("delete-duplicate", "/repo2/blob"), ShouldBeNil)
+			So(cacheDriver.DeleteBlobRef("delete-duplicate", "/repo2/blob"), ShouldBeNil)
+
+			refs, err := cacheDriver.GetBlobRefs("delete-duplicate")
+			So(err, ShouldBeNil)
+			So(refs, ShouldContain, "/repo1/blob")
+			So(refs, ShouldNotContain, "/repo2/blob")
+		})
+
+		Convey("DeleteBlobRef on the origin while a duplicate remains keeps the entry", func() {
+			So(cacheDriver.PutBlobRef("keep-duplicate", "/repo1/blob"), ShouldBeNil)
+			So(cacheDriver.PutBlobRef("keep-duplicate", "/repo2/blob"), ShouldBeNil)
+			So(cacheDriver.DeleteBlobRef("keep-duplicate", "/repo1/blob"), ShouldBeNil)
+
+			refs, err := cacheDriver.GetBlobRefs("keep-duplicate")
+			So(err, ShouldBeNil)
+			So(refs, ShouldContain, "/repo2/blob")
+		})
+
+		Convey("DeleteBlobRef with a path that matches neither origin nor duplicates is a cache miss", func() {
+			So(cacheDriver.PutBlobRef("mismatch", "/repo1/blob"), ShouldBeNil)
+
+			err := cacheDriver.DeleteBlobRef("mismatch", "/unrelated/blob")
+			So(err, ShouldEqual, zerr.ErrCacheMiss)
+		})
+	})
+}
+
 func TestRedisCacheError(t *testing.T) {
 	Convey("Make a new cache", t, func() {
 		dir := t.TempDir()
