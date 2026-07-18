@@ -169,8 +169,8 @@ func TestLockOrderReversedRolesDedupe(t *testing.T) {
 			defer wg.Done()
 
 			for range iterations {
-				_, _, _ = imgStore.FullBlobUpload(context.Background(), "repoA", bytes.NewReader(contentA), digestA)
-				_, _, _ = imgStore.FullBlobUpload(context.Background(), "repoB", bytes.NewReader(contentB), digestB)
+				_, _, _ = imgStore.FullBlobUpload(context.Background(), "repo-a", bytes.NewReader(contentA), digestA)
+				_, _, _ = imgStore.FullBlobUpload(context.Background(), "repo-b", bytes.NewReader(contentB), digestB)
 			}
 		}()
 
@@ -178,13 +178,34 @@ func TestLockOrderReversedRolesDedupe(t *testing.T) {
 			defer wg.Done()
 
 			for range iterations {
-				_, _, _ = imgStore.FullBlobUpload(context.Background(), "repoB", bytes.NewReader(contentB), digestB)
-				_, _, _ = imgStore.FullBlobUpload(context.Background(), "repoA", bytes.NewReader(contentA), digestA)
+				_, _, _ = imgStore.FullBlobUpload(context.Background(), "repo-b", bytes.NewReader(contentB), digestB)
+				_, _, _ = imgStore.FullBlobUpload(context.Background(), "repo-a", bytes.NewReader(contentA), digestA)
 			}
 		}()
 
 		wg.Wait()
 	})
+
+	// Errors from individual racing pushes above are deliberately discarded (some are
+	// expected under this much concurrency), but that must not hide every push
+	// actually failing (e.g. an invalid repo name) - confirm real content landed.
+	blobContent, err := imgStore.GetBlobContent("repo-a", digestA)
+	if err != nil {
+		t.Fatalf("GetBlobContent repo-a: %v", err)
+	}
+
+	if !bytes.Equal(blobContent, contentA) {
+		t.Fatal("repo-a content does not match")
+	}
+
+	blobContent, err = imgStore.GetBlobContent("repo-b", digestB)
+	if err != nil {
+		t.Fatalf("GetBlobContent repo-b: %v", err)
+	}
+
+	if !bytes.Equal(blobContent, contentB) {
+		t.Fatal("repo-b content does not match")
+	}
 }
 
 // TestLockOrderDedupeRebuildStress emulates the real topology behind #2968's
