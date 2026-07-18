@@ -46,6 +46,8 @@ func TestDynamoDB(t *testing.T) {
 		returnedName := cacheDriver.Name()
 		So(returnedName, ShouldEqual, "dynamodb")
 
+		So(cacheDriver.UsesRelativePaths(), ShouldBeFalse)
+
 		val, err := cacheDriver.GetBlob(keyDigest)
 		So(err, ShouldNotBeNil)
 		So(val, ShouldBeEmpty)
