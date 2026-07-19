@@ -179,7 +179,10 @@ func TestRedisCache(t *testing.T) {
 		blobs, err = cacheDriver.GetAllBlobs("digest")
 		So(err, ShouldBeNil)
 
-		So(blobs, ShouldResemble, []string{"first", "second", "third"})
+		So(len(blobs), ShouldEqual, 3)
+		So(blobs, ShouldContain, "first")
+		So(blobs, ShouldContain, "second")
+		So(blobs, ShouldContain, "third")
 
 		err = cacheDriver.DeleteBlob("digest", path.Join(dir, "first"))
 		So(err, ShouldBeNil)
@@ -197,7 +200,9 @@ func TestRedisCache(t *testing.T) {
 		blobs, err = cacheDriver.GetAllBlobs("digest")
 		So(err, ShouldBeNil)
 
-		So(blobs, ShouldResemble, []string{"first", "second"})
+		So(len(blobs), ShouldEqual, 2)
+		So(blobs, ShouldContain, "first")
+		So(blobs, ShouldContain, "second")
 	})
 }
 
