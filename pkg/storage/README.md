@@ -20,7 +20,7 @@ This repository uses a single global blob namespace named `_blobstore` for both 
 
 Legacy layouts are upgraded automatically at startup when dedupe is enabled.
 
-1. Migration is marker-guarded by `_blobstore/.migrated`.
+1. Migration is marker-guarded by `_global_blobstore_migrated` at the image store root.
 2. If the marker exists, startup skips migration.
 3. If migration is incomplete, startup retries on the next launch.
 4. There is no user-facing migrate or rollback CLI for this flow.
