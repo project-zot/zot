@@ -325,16 +325,20 @@ func (olu BaseOciLayoutUtils) GetImageManifestSize(repo string, manifestDigest g
 
 	var size int64
 
-	_ = imageStore.WithRepoReadLock(repo, func() error {
+	err := imageStore.WithRepoReadLock(repo, func() error {
 		manifestBlob, err := imageStore.GetBlobContent(repo, manifestDigest)
 		if err != nil {
-			olu.Log.Error().Err(err).Msg("failed to get manifest blob content")
+			return err
 		}
 
 		size = int64(len(manifestBlob))
 
 		return nil
 	})
+	if err != nil {
+		olu.Log.Error().Err(err).Str("repository", repo).Str("digest", manifestDigest.String()).
+			Msg("failed to get manifest blob content")
+	}
 
 	return size
 }
