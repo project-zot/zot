@@ -286,9 +286,17 @@ func (d *DynamoDBDriver) GetBlobRefs(digest godigest.Digest) ([]string, error) {
 
 	_ = attributevalue.UnmarshalMap(resp.Item, &out)
 
-	blobPaths := []string{out.OriginalBlobPath}
+	blobPaths := []string{}
+
+	// A missing/empty OriginalBlobPath means there is no real path to report;
+	// appending "" here would surface as a phantom blob-ref to callers such as
+	// isDigestReferencedAcrossRepos, so treat it as absent rather than a path.
+	if out.OriginalBlobPath != "" {
+		blobPaths = append(blobPaths, out.OriginalBlobPath)
+	}
+
 	for _, item := range out.DuplicateBlobPath {
-		if item != out.OriginalBlobPath {
+		if item != "" && item != out.OriginalBlobPath {
 			blobPaths = append(blobPaths, item)
 		}
 	}
