@@ -143,5 +143,33 @@ func TestBoltDBGetBlobRefs(t *testing.T) {
 			So(err, ShouldEqual, zerr.ErrCacheRootBucket)
 			So(refs, ShouldBeEmpty)
 		})
+
+		Convey("PutBlob surfaces ErrCacheRootBucket when the blob refs bucket is missing", func() {
+			err := cacheDriver.db.Update(func(tx *bbolt.Tx) error {
+				return tx.DeleteBucket([]byte(constants.BlobRefs))
+			})
+			So(err, ShouldBeNil)
+
+			err = cacheDriver.PutBlob(digest.FromString("d"), "/repo1/blob")
+			So(err, ShouldEqual, zerr.ErrCacheRootBucket)
+		})
+
+		Convey("DeleteBlob propagates deleteBlobRef's ErrCacheRootBucket instead of swallowing it", func() {
+			testDigest := digest.FromString("d")
+
+			err := cacheDriver.PutBlob(testDigest, "/repo1/blob")
+			So(err, ShouldBeNil)
+
+			err = cacheDriver.db.Update(func(tx *bbolt.Tx) error {
+				return tx.DeleteBucket([]byte(constants.BlobRefs))
+			})
+			So(err, ShouldBeNil)
+
+			// the BlobsCache-side delete succeeds; only the BlobRefs bucket is gone, so
+			// DeleteBlob must surface deleteBlobRef's non-ErrCacheMiss failure rather than
+			// reporting overall success.
+			err = cacheDriver.DeleteBlob(testDigest, "/repo1/blob")
+			So(err, ShouldEqual, zerr.ErrCacheRootBucket)
+		})
 	})
 }

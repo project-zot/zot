@@ -297,6 +297,99 @@ func TestRedisBlobRefs(t *testing.T) {
 	})
 }
 
+// TestRedisBlobRefsMocked covers DeleteBlobRef's own redis-command error branches
+// (SIsMember/SRem/HGet/SCard/HDel against the BlobRefs bucket) via redismock, mirroring
+// the "DeleteBlob tests" error cases in TestRedisMocked but for the BlobRefs code path,
+// which is otherwise only exercised by TestRedisBlobRefs' happy-path/cache-miss cases above.
+func TestRedisBlobRefsMocked(t *testing.T) {
+	Convey("DeleteBlobRef error paths using mocks", t, func() {
+		dir := t.TempDir()
+		testLog := log.NewTestLogger()
+		keyPrefix := "zot:"
+
+		newDriver := func() (*cache.RedisDriver, redismock.ClientMock) {
+			cacheDB, mock := redismock.NewClientMock()
+			mock.ExpectPing().SetVal("OK")
+
+			cacheDriver, err := cache.NewRedisCache(cache.RedisDriverParameters{
+				Client: cacheDB, RootDir: dir, UseRelPaths: true,
+			}, testLog)
+			So(err, ShouldBeNil)
+
+			return cacheDriver, mock
+		}
+
+		Convey("SIsMember error", func() {
+			cacheDriver, mock := newDriver()
+			mock.Regexp().ExpectSetNX(keyPrefix+"locks:"+constants.BlobRefs+":key", `.*`, 8*time.Second).SetVal(true)
+			mock.ExpectSIsMember(keyPrefix+constants.BlobRefs+":"+constants.DuplicatesBucket+":key", "val").
+				SetErr(ErrTestError)
+
+			err := cacheDriver.DeleteBlobRef("key", path.Join(dir, "val"))
+			So(err, ShouldEqual, ErrTestError)
+			So(mock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("SRem error", func() {
+			cacheDriver, mock := newDriver()
+			mock.Regexp().ExpectSetNX(keyPrefix+"locks:"+constants.BlobRefs+":key", `.*`, 8*time.Second).SetVal(true)
+			mock.ExpectSIsMember(keyPrefix+constants.BlobRefs+":"+constants.DuplicatesBucket+":key", "val").
+				SetVal(true)
+			mock.ExpectSRem(keyPrefix+constants.BlobRefs+":"+constants.DuplicatesBucket+":key", "val").
+				SetErr(ErrTestError)
+
+			err := cacheDriver.DeleteBlobRef("key", path.Join(dir, "val"))
+			So(err, ShouldEqual, ErrTestError)
+			So(mock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("HGet error", func() {
+			cacheDriver, mock := newDriver()
+			mock.Regexp().ExpectSetNX(keyPrefix+"locks:"+constants.BlobRefs+":key", `.*`, 8*time.Second).SetVal(true)
+			mock.ExpectSIsMember(keyPrefix+constants.BlobRefs+":"+constants.DuplicatesBucket+":key", "val").
+				SetVal(false)
+			mock.ExpectHGet(keyPrefix+constants.BlobRefs+":"+constants.OriginalBucket, "key").
+				SetErr(ErrTestError)
+
+			err := cacheDriver.DeleteBlobRef("key", path.Join(dir, "val"))
+			So(err, ShouldEqual, ErrTestError)
+			So(mock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("SCard error", func() {
+			cacheDriver, mock := newDriver()
+			mock.Regexp().ExpectSetNX(keyPrefix+"locks:"+constants.BlobRefs+":key", `.*`, 8*time.Second).SetVal(true)
+			mock.ExpectSIsMember(keyPrefix+constants.BlobRefs+":"+constants.DuplicatesBucket+":key", "val").
+				SetVal(false)
+			mock.ExpectHGet(keyPrefix+constants.BlobRefs+":"+constants.OriginalBucket, "key").
+				SetVal("val")
+			mock.ExpectSCard(keyPrefix + constants.BlobRefs + ":" + constants.DuplicatesBucket + ":key").
+				SetErr(ErrTestError)
+
+			err := cacheDriver.DeleteBlobRef("key", path.Join(dir, "val"))
+			So(err, ShouldEqual, ErrTestError)
+			So(mock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("HDel error", func() {
+			cacheDriver, mock := newDriver()
+			mock.Regexp().ExpectSetNX(keyPrefix+"locks:"+constants.BlobRefs+":key", `.*`, 8*time.Second).SetVal(true)
+			mock.ExpectSIsMember(keyPrefix+constants.BlobRefs+":"+constants.DuplicatesBucket+":key", "val").
+				SetVal(false)
+			mock.ExpectHGet(keyPrefix+constants.BlobRefs+":"+constants.OriginalBucket, "key").
+				SetVal("val")
+			mock.ExpectSCard(keyPrefix + constants.BlobRefs + ":" + constants.DuplicatesBucket + ":key").
+				SetVal(0)
+			mock.ExpectHDel(keyPrefix+constants.BlobRefs+":"+constants.OriginalBucket, "key").
+				SetErr(ErrTestError)
+
+			err := cacheDriver.DeleteBlobRef("key", path.Join(dir, "val"))
+			So(err, ShouldEqual, ErrTestError)
+			So(mock.ExpectationsWereMet(), ShouldBeNil)
+		})
+	})
+}
+
 func TestRedisCacheError(t *testing.T) {
 	Convey("Make a new cache", t, func() {
 		dir := t.TempDir()
@@ -337,6 +430,15 @@ func TestRedisCacheError(t *testing.T) {
 		cacheDriver.SetClient(brokenClient)
 
 		err = cacheDriver.PutBlob("key", "val")
+		So(err, ShouldNotBeNil)
+
+		// PutBlobRef/DeleteBlobRef acquire their own redsync lock before touching the
+		// BlobRefs bucket, distinct from PutBlob/DeleteBlob's lock above; exercise their
+		// lock-acquisition failure branches too.
+		err = cacheDriver.PutBlobRef("key", "val")
+		So(err, ShouldNotBeNil)
+
+		err = cacheDriver.DeleteBlobRef("key", "val")
 		So(err, ShouldNotBeNil)
 
 		found := cacheDriver.HasBlob("key", "val")

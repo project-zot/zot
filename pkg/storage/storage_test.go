@@ -325,6 +325,45 @@ func TestStorageNewDisablesDedupeWhenHardlinkValidationFails(t *testing.T) {
 	}
 }
 
+// TestStorageNewDefaultStoreCreateFails covers the nil-check guards added around
+// local.NewImageStore/getSubStore's image-store constructors: imagestore.NewImageStore
+// returns nil (rather than an error) when it can't create its root dir, so New and
+// getSubStore must translate that nil back into ErrDefaultImgStoreCreate/ErrSubpathImgStoreCreate
+// instead of handing callers a nil ImageStore.
+func TestStorageNewDefaultStoreCreateFails(t *testing.T) {
+	Convey("New returns ErrDefaultImgStoreCreate when the root dir can't be created", t, func() {
+		// a regular file as an ancestor of RootDirectory makes MkdirAll fail with ENOTDIR,
+		// regardless of the test process' privilege level (unlike permission-bit failures).
+		blocker := filepath.Join(t.TempDir(), "blocker")
+		So(os.WriteFile(blocker, []byte(""), 0o644), ShouldBeNil)
+
+		conf := config.New()
+		conf.Storage.RootDirectory = filepath.Join(blocker, "root")
+
+		_, err := storage.New(conf, nil, nil, zlog.NewTestLogger(), nil)
+		So(err, ShouldEqual, zerr.ErrDefaultImgStoreCreate)
+	})
+}
+
+func TestGetSubStoreCreateFails(t *testing.T) {
+	Convey("getSubStore returns ErrSubpathImgStoreCreate when a subpath root dir can't be created", t, func() {
+		blocker := filepath.Join(t.TempDir(), "blocker")
+		So(os.WriteFile(blocker, []byte(""), 0o644), ShouldBeNil)
+
+		conf := &config.Config{
+			Storage: config.GlobalStorageConfig{
+				StorageConfig: config.StorageConfig{RootDirectory: t.TempDir()},
+				SubPaths: map[string]config.StorageConfig{
+					"a/": {RootDirectory: filepath.Join(blocker, "sub")},
+				},
+			},
+		}
+
+		_, err := storage.New(conf, nil, nil, zlog.NewTestLogger(), nil)
+		So(errors.Is(err, zerr.ErrSubpathImgStoreCreate), ShouldBeTrue)
+	})
+}
+
 type captureImageEvents struct {
 	mu              sync.Mutex
 	imageUpdated    []imageUpdatedCall
