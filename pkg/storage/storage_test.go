@@ -335,7 +335,7 @@ func TestStorageNewDefaultStoreCreateFails(t *testing.T) {
 		// a regular file as an ancestor of RootDirectory makes MkdirAll fail with ENOTDIR,
 		// regardless of the test process' privilege level (unlike permission-bit failures).
 		blocker := filepath.Join(t.TempDir(), "blocker")
-		So(os.WriteFile(blocker, []byte(""), 0o644), ShouldBeNil)
+		So(os.WriteFile(blocker, []byte(""), 0o600), ShouldBeNil)
 
 		conf := config.New()
 		conf.Storage.RootDirectory = filepath.Join(blocker, "root")
@@ -348,7 +348,7 @@ func TestStorageNewDefaultStoreCreateFails(t *testing.T) {
 func TestGetSubStoreCreateFails(t *testing.T) {
 	Convey("getSubStore returns ErrSubpathImgStoreCreate when a subpath root dir can't be created", t, func() {
 		blocker := filepath.Join(t.TempDir(), "blocker")
-		So(os.WriteFile(blocker, []byte(""), 0o644), ShouldBeNil)
+		So(os.WriteFile(blocker, []byte(""), 0o600), ShouldBeNil)
 
 		conf := &config.Config{
 			Storage: config.GlobalStorageConfig{
