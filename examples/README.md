@@ -338,6 +338,8 @@ For safety purpose you can have a default policy as the last policy in list, all
 ## Authentication
 
 TLS mutual authentication and passphrase-based authentication are supported.
+For deployments that enable more than one authentication method, see
+[Combined Authentication](README-COMBINED-AUTHENTICATION.md).
 
 ### TLS Mutual Authentication
 

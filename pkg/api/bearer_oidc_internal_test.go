@@ -27,7 +27,7 @@ func TestNewBearerAuthCreatesOIDCBearerAuthorizer(t *testing.T) {
 		t.Fatal("expected OIDC bearer authorizer")
 	}
 
-	if bearerAuth.TokenExchangeHandler() == nil {
+	if bearerAuth.TokenExchangeHandler(nil) == nil {
 		t.Fatal("expected OIDC bearer token exchange handler")
 	}
 }

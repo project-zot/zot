@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,10 +18,19 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/constants"
 )
 
-var errTokenRequestBodyTooLarge = errors.New("token request body too large")
+const (
+	wrappedCredentialBearerPrefix = "zot_cred_v1." //nolint:gosec // Public token marker, not a credential.
+	wrappedCredentialVersion      = 1
+	wrappedCredentialTypeAPIKey   = "api-key"
+)
+
+type tokenExchangeCredential struct {
+	Username string
+	Secret   string
+}
 
 type tokenExchangeRequest struct {
-	credentials []string
+	credentials []tokenExchangeCredential
 }
 
 type localOIDCTokenOwner int
@@ -38,12 +46,19 @@ type unverifiedJWTClaims struct {
 	audiences []string
 }
 
+type wrappedCredentialBearer struct {
+	Version  int    `json:"v"`
+	Type     string `json:"typ"`
+	Username string `json:"username"`
+	Secret   string `json:"secret"`
+}
+
 func normalizeTokenExchangeRequest(request *http.Request) (*tokenExchangeRequest, error) {
 	tokenRequest := &tokenExchangeRequest{}
 
-	_, password, ok := request.BasicAuth()
+	username, password, ok := request.BasicAuth()
 	if ok && password != "" {
-		tokenRequest.addCredential(password)
+		tokenRequest.addCredential(username, password)
 	}
 
 	if request.Body == nil || request.Body == http.NoBody || !isFormURLEncoded(request.Header.Get("Content-Type")) {
@@ -62,22 +77,60 @@ func normalizeTokenExchangeRequest(request *http.Request) (*tokenExchangeRequest
 		return nil, fmt.Errorf("%w: %w", zerr.ErrInvalidTokenProxyForm, parseErr)
 	}
 
-	for _, field := range []string{"password", "id_token", "access_token", "refresh_token", "token"} {
+	formUsername := form.Get("username")
+	if formUsername == "" {
+		formUsername = form.Get("account")
+	}
+
+	for _, value := range form["password"] {
+		tokenRequest.addCredential(formUsername, value)
+	}
+
+	for _, field := range []string{"id_token", "access_token", "refresh_token", "token"} {
 		for _, value := range form[field] {
-			tokenRequest.addCredential(value)
+			tokenRequest.addCredential("", value)
 		}
 	}
 
 	return tokenRequest, nil
 }
 
-func (request *tokenExchangeRequest) addCredential(credential string) {
-	credential = strings.TrimSpace(credential)
-	if credential == "" || slices.Contains(request.credentials, credential) {
+func (request *tokenExchangeRequest) addCredential(username, secret string) {
+	credential := tokenExchangeCredential{
+		Username: strings.TrimSpace(username),
+		Secret:   strings.TrimSpace(secret),
+	}
+	if credential.Secret == "" || request.hasCredential(credential) {
 		return
 	}
 
 	request.credentials = append(request.credentials, credential)
+}
+
+func (request *tokenExchangeRequest) hasCredential(credential tokenExchangeCredential) bool {
+	if credential.hasAPIKeySecret() {
+		return slices.Contains(request.credentials, credential)
+	}
+
+	return slices.ContainsFunc(request.credentials, func(existing tokenExchangeCredential) bool {
+		return existing.Secret == credential.Secret
+	})
+}
+
+func (credential tokenExchangeCredential) isAPIKey() bool {
+	return credential.Username != "" && credential.hasAPIKeySecret()
+}
+
+func (credential tokenExchangeCredential) hasAPIKeySecret() bool {
+	return strings.HasPrefix(credential.Secret, constants.APIKeysPrefix)
+}
+
+func (credential tokenExchangeCredential) hasWrappedCredentialSecret() bool {
+	return isWrappedCredentialBearerToken(credential.Secret)
+}
+
+func isWrappedCredentialBearerToken(token string) bool {
+	return strings.HasPrefix(token, wrappedCredentialBearerPrefix)
 }
 
 func readTokenRequestFormBody(body io.Reader) ([]byte, error) {
@@ -89,10 +142,73 @@ func readTokenRequestFormBody(body io.Reader) ([]byte, error) {
 	}
 
 	if len(bodyBytes) > constants.MaxTokenRequestBodySize {
-		return nil, errTokenRequestBodyTooLarge
+		return nil, zerr.ErrTokenRequestBodyTooLarge
 	}
 
 	return bodyBytes, nil
+}
+
+func newWrappedCredentialBearerToken(username, secret string) string {
+	payload, _ := json.Marshal(wrappedCredentialBearer{ //nolint:errchkjson,gosec // Fixed scalar struct.
+		Version:  wrappedCredentialVersion,
+		Type:     wrappedCredentialTypeAPIKey,
+		Username: username,
+		Secret:   secret,
+	})
+
+	return wrappedCredentialBearerPrefix + base64.RawURLEncoding.EncodeToString(payload)
+}
+
+func newWrappedCredentialTokenResponse(token string) oidcBearerTokenResponse {
+	return oidcBearerTokenResponse{
+		Token:       token,
+		AccessToken: token,
+		IssuedAt:    time.Now().UTC().Format(time.RFC3339),
+	}
+}
+
+func wrappedCredentialFromBearerAuthHeader(header string) (wrappedCredentialBearer, bool, error) {
+	token, ok := bearerTokenFromAuthHeader(header)
+	if !ok || !isWrappedCredentialBearerToken(token) {
+		return wrappedCredentialBearer{}, false, nil
+	}
+
+	wrapped, err := parseWrappedCredentialBearerToken(token)
+
+	return wrapped, true, err
+}
+
+func bearerTokenFromAuthHeader(header string) (string, bool) {
+	scheme, token, ok := splitAuthorizationHeader(header)
+	if !ok || !strings.EqualFold(scheme, "bearer") {
+		return "", false
+	}
+
+	return token, true
+}
+
+func parseWrappedCredentialBearerToken(token string) (wrappedCredentialBearer, error) {
+	encoded := strings.TrimPrefix(token, wrappedCredentialBearerPrefix)
+	if encoded == "" || len(encoded) > constants.MaxTokenRequestBodySize {
+		return wrappedCredentialBearer{}, zerr.ErrInvalidWrappedBearerCredential
+	}
+
+	payload, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil {
+		return wrappedCredentialBearer{}, fmt.Errorf("%w: %w", zerr.ErrInvalidWrappedBearerCredential, err)
+	}
+
+	var wrapped wrappedCredentialBearer
+	if err := json.Unmarshal(payload, &wrapped); err != nil {
+		return wrappedCredentialBearer{}, fmt.Errorf("%w: %w", zerr.ErrInvalidWrappedBearerCredential, err)
+	}
+
+	if wrapped.Version != wrappedCredentialVersion || wrapped.Type == "" ||
+		wrapped.Username == "" || wrapped.Secret == "" {
+		return wrappedCredentialBearer{}, zerr.ErrInvalidWrappedBearerCredential
+	}
+
+	return wrapped, nil
 }
 
 func localOIDCTokenOwnerForCredential(credential string, authConfig *config.AuthConfig) localOIDCTokenOwner {
