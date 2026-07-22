@@ -87,7 +87,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/apimachinery v0.36.2
 	modernc.org/sqlite v1.53.0
-	oras.land/oras-go/v2 v2.6.1
+	oras.land/oras-go/v2 v2.6.2
 	sigs.k8s.io/controller-runtime v0.24.1
 )
 
