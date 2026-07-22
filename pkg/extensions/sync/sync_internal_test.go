@@ -1720,6 +1720,29 @@ func TestDestinationRegistryCommitAllErrors(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 
+		Convey("CommitAll reparses temp layout path from Reference when Path is empty", func() {
+			repoName := "repo"
+			tag := "1.0"
+			imageReference, err := registry.GetImageReference(repoName, tag)
+			So(err, ShouldBeNil)
+
+			tempImageStore, err := getImageStoreFromImageReference(repoName, imageReference, log)
+			So(err, ShouldBeNil)
+
+			tempController := storage.StoreController{DefaultStore: tempImageStore}
+			err = WriteImageToFileSystem(CreateRandomImage(), repoName, tag, tempController)
+			So(err, ShouldBeNil)
+
+			cleared := imageReference
+			cleared.Path = ""
+
+			err = registry.CommitAll(repoName, cleared)
+			So(err, ShouldBeNil)
+
+			_, _, _, err = store.GetImageManifest(repoName, tag)
+			So(err, ShouldBeNil)
+		})
+
 		Convey("CleanupImage removes existing temp session", func() {
 			repoName := "cleanup-repo"
 			imageReference, err := registry.GetImageReference(repoName, "1.0")
