@@ -90,7 +90,7 @@ func TestDynamoDBBlobRefs(t *testing.T) {
 			So(refs, ShouldBeEmpty)
 		})
 
-		Convey("DeleteBlobRef on the origin while a duplicate remains keeps the entry", func() {
+		Convey("DeleteBlobRef on the origin while a duplicate remains promotes the duplicate to origin", func() {
 			digest := godigest.FromString("delete-origin-keep-duplicate")
 
 			So(cacheDriver.PutBlobRef(digest, "/repo1/blob"), ShouldBeNil)
@@ -100,6 +100,8 @@ func TestDynamoDBBlobRefs(t *testing.T) {
 			refs, err := cacheDriver.GetBlobRefs(digest)
 			So(err, ShouldBeNil)
 			So(refs, ShouldContain, "/repo2/blob")
+			So(refs, ShouldNotContain, "/repo1/blob")
+			So(len(refs), ShouldEqual, 1)
 		})
 
 		Convey("DeleteBlobRef on a duplicate leaves the origin intact", func() {

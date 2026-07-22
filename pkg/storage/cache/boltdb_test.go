@@ -85,21 +85,17 @@ func TestBoltDBCache(t *testing.T) {
 		err = cacheDriver.PutBlob("key1", "duplicateBlobPath")
 		So(err, ShouldBeNil)
 
-		// deleting original when duplicates exist should keep the original (no promotion)
+		// deleting the origin while a duplicate exists promotes the duplicate to origin
+		// rather than leaving a stale origin behind
 		err = cacheDriver.DeleteBlob("key1", "originalBlobPath")
 		So(err, ShouldBeNil)
 
-		// original should still be "originalBlobPath" since duplicates exist
 		val, err = cacheDriver.GetBlob("key1")
-		So(val, ShouldEqual, "originalBlobPath")
+		So(val, ShouldEqual, "duplicateBlobPath")
 		So(err, ShouldBeNil)
 
-		// now delete the duplicate
+		// no more duplicates left; deleting the (promoted) origin removes the entry
 		err = cacheDriver.DeleteBlob("key1", "duplicateBlobPath")
-		So(err, ShouldBeNil)
-
-		// now delete the original (no more duplicates, should clean up)
-		err = cacheDriver.DeleteBlob("key1", "originalBlobPath")
 		So(err, ShouldBeNil)
 
 		// should be empty
@@ -161,14 +157,18 @@ func TestBoltDBCache(t *testing.T) {
 		// "first" is the original, "second" and "third" are duplicates
 		So(blobs, ShouldResemble, []string{"first", "second", "third"})
 
-		// deleting "first" (original) should keep it since duplicates exist
+		// deleting "first" (the origin) promotes one of the remaining duplicates to
+		// origin, rather than leaking "first" as a permanently-stale origin entry
 		err = cacheDriver.DeleteBlob("digest", "first")
 		So(err, ShouldBeNil)
 
 		blobs, err = cacheDriver.GetAllBlobs("digest")
 		So(err, ShouldBeNil)
 
-		So(blobs, ShouldResemble, []string{"first", "second", "third"})
+		So(len(blobs), ShouldEqual, 2)
+		So(blobs, ShouldContain, "second")
+		So(blobs, ShouldContain, "third")
+		So(blobs, ShouldNotContain, "first")
 
 		err = cacheDriver.DeleteBlob("digest", "third")
 		So(err, ShouldBeNil)
@@ -176,7 +176,8 @@ func TestBoltDBCache(t *testing.T) {
 		blobs, err = cacheDriver.GetAllBlobs("digest")
 		So(err, ShouldBeNil)
 
-		So(blobs, ShouldResemble, []string{"first", "second"})
+		So(len(blobs), ShouldEqual, 1)
+		So(blobs, ShouldContain, "second")
 	})
 }
 

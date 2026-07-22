@@ -109,20 +109,22 @@ func TestDynamoDB(t *testing.T) {
 		err = cacheDriver.PutBlob("key1", "duplicateBlobPath")
 		So(err, ShouldBeNil)
 
+		// deleting the origin while a duplicate exists promotes the duplicate to origin
+		// rather than leaving a stale origin behind
 		err = cacheDriver.DeleteBlob("key1", "originalBlobPath")
 		So(err, ShouldBeNil)
 
 		val, err = cacheDriver.GetBlob("key1")
-		So(val, ShouldEqual, "originalBlobPath")
+		So(val, ShouldEqual, "duplicateBlobPath")
 		So(err, ShouldBeNil)
 
+		// no duplicates left; deleting the (promoted) origin removes the entry
 		err = cacheDriver.DeleteBlob("key1", "duplicateBlobPath")
 		So(err, ShouldBeNil)
 
-		// original remains while duplicates are removed
 		val, err = cacheDriver.GetBlob("key1")
-		So(err, ShouldBeNil)
-		So(val, ShouldEqual, "originalBlobPath")
+		So(err, ShouldNotBeNil)
+		So(val, ShouldBeEmpty)
 
 		// try to add three same values
 		err = cacheDriver.PutBlob("key2", "duplicate")
@@ -172,13 +174,18 @@ func TestDynamoDB(t *testing.T) {
 
 		So(blobs, ShouldResemble, []string{"first", "second", "third"})
 
+		// deleting the origin ("first") promotes one of the remaining duplicates to
+		// origin, rather than leaking "first" as a permanently-stale origin entry
 		err = cacheDriver.DeleteBlob("digest", "first")
 		So(err, ShouldBeNil)
 
 		blobs, err = cacheDriver.GetAllBlobs("digest")
 		So(err, ShouldBeNil)
 
-		So(blobs, ShouldResemble, []string{"first", "second", "third"})
+		So(len(blobs), ShouldEqual, 2)
+		So(blobs, ShouldContain, "second")
+		So(blobs, ShouldContain, "third")
+		So(blobs, ShouldNotContain, "first")
 
 		err = cacheDriver.DeleteBlob("digest", "third")
 		So(err, ShouldBeNil)
@@ -186,7 +193,8 @@ func TestDynamoDB(t *testing.T) {
 		blobs, err = cacheDriver.GetAllBlobs("digest")
 		So(err, ShouldBeNil)
 
-		So(blobs, ShouldResemble, []string{"first", "second"})
+		So(len(blobs), ShouldEqual, 1)
+		So(blobs, ShouldContain, "second")
 	})
 }
 

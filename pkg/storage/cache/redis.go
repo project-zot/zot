@@ -385,8 +385,9 @@ func (d *RedisDriver) DeleteBlob(digest godigest.Digest, path string) error {
 	}
 
 	if dupes > 0 {
-		// duplicates still exist, keep the original (global blobstore file stays)
-		return nil
+		// duplicates still exist: promote one of them to be the new origin, so
+		// GetAllBlobs/HasBlob don't keep reporting this now-deleted path forever
+		return d.promoteDuplicateToOrigin(ctx, digest, constants.BlobsCache, pathSet)
 	}
 
 	// no more duplicates, remove the original
@@ -394,6 +395,29 @@ func (d *RedisDriver) DeleteBlob(digest godigest.Digest, path string) error {
 		digest.String()).Result(); err != nil {
 		d.log.Error().Err(err).Str("hdel", d.join(constants.BlobsCache, constants.OriginalBucket)).Str("value", path).
 			Msg("failed to delete record")
+
+		return err
+	}
+
+	return nil
+}
+
+// promoteDuplicateToOrigin pops an arbitrary path out of the duplicates set for digest
+// and installs it as the new origin. Called while the caller still holds the per-digest
+// redsync lock, so no other Put/Delete for this digest can race with the pop+set below.
+func (d *RedisDriver) promoteDuplicateToOrigin(ctx context.Context, digest godigest.Digest,
+	rootBucket, pathSet string,
+) error {
+	newOrigin, err := d.db.SPop(ctx, pathSet).Result()
+	if err != nil {
+		d.log.Error().Err(err).Str("spop", pathSet).Msg("failed to promote duplicate to origin")
+
+		return err
+	}
+
+	if err := d.db.HSet(ctx, d.join(rootBucket, constants.OriginalBucket), digest.String(), newOrigin).Err(); err != nil {
+		d.log.Error().Err(err).Str("hset", d.join(rootBucket, constants.OriginalBucket)).
+			Str("value", newOrigin).Msg("failed to promote duplicate to origin")
 
 		return err
 	}
@@ -466,7 +490,9 @@ func (d *RedisDriver) DeleteBlobRef(digest godigest.Digest, path string) error {
 	}
 
 	if dupes > 0 {
-		return nil
+		// duplicates still exist: promote one of them to be the new origin, so
+		// GetBlobRefs doesn't keep reporting this now-deleted path forever
+		return d.promoteDuplicateToOrigin(ctx, digest, constants.BlobRefs, pathSet)
 	}
 
 	if _, err := d.db.HDel(ctx, d.join(constants.BlobRefs, constants.OriginalBucket),
