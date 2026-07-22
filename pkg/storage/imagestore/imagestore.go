@@ -1912,10 +1912,13 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 					updatedRecord = path.Join(is.rootDir, updatedRecord)
 				}
 
-				if updatedRecord == dstRecord {
-					// Some cache drivers keep the current original while duplicates exist.
-					// If that original path is missing on disk, aggressively clear all cached
-					// paths for this digest so the next retry can promote the incoming blob.
+				if updatedRecord != "" {
+					// Deleting dstRecord may have promoted a duplicate to take its place
+					// (e.g. another repo's marker) rather than leaving the digest with no
+					// record at all. On a marker/remote backend that promoted path is not
+					// independently valid content - only the global blobstore copy is - so
+					// whatever is left after the delete above still needs to be aggressively
+					// cleared, not just the case where the driver left dstRecord untouched.
 					allRecords, allErr := is.cache.GetAllBlobs(dstDigest)
 					if allErr != nil && !errors.Is(allErr, zerr.ErrCacheMiss) {
 						return allErr
