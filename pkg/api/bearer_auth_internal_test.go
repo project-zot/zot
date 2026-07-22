@@ -18,6 +18,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/constants"
 	apiErr "zotregistry.dev/zot/v2/pkg/api/errors"
 	"zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
 
 var errTestTokenProxyRead = errors.New("test token proxy read error")
@@ -55,7 +56,7 @@ func TestNewBearerAuthWithoutBearerConfig(t *testing.T) {
 		t.Fatal("expected bearer auth")
 	}
 
-	if bearerAuth.TokenExchangeHandler() != nil {
+	if bearerAuth.TokenExchangeHandler(nil) != nil {
 		t.Fatal("expected no token exchange handler without OIDC")
 	}
 }
@@ -123,6 +124,306 @@ func TestBearerAuthMiddlewareDefaultsUnknownMethodsToPull(t *testing.T) {
 
 	if !strings.Contains(response.Header().Get("WWW-Authenticate"), "scope=\"repository:repo:pull\"") {
 		t.Fatalf("expected pull challenge, got %q", response.Header().Get("WWW-Authenticate"))
+	}
+}
+
+func TestRequestedBearerResourceActionBaseRoute(t *testing.T) {
+	t.Parallel()
+
+	request := httptest.NewRequest(http.MethodGet, "/v2/", nil)
+	if action := requestedBearerResourceAction(request); action != nil {
+		t.Fatalf("expected no resource action for base route, got %#v", action)
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/v2/?n=10", nil)
+	if action := requestedBearerResourceAction(request); action != nil {
+		t.Fatalf("expected no resource action for base route with query, got %#v", action)
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/v2/_catalog?n=10", nil)
+	if action := requestedBearerResourceAction(request); action != nil {
+		t.Fatalf("expected no resource action without repository route variable, got %#v", action)
+	}
+}
+
+func TestBearerAuthMiddlewareRejectsInvalidWrappedCredential(t *testing.T) {
+	t.Parallel()
+
+	conf := config.New()
+	conf.HTTP.Auth = &config.AuthConfig{
+		APIKey: true,
+		Bearer: &config.BearerConfig{
+			Realm:   "realm",
+			Service: "service",
+		},
+	}
+	bearerAuth := &BearerAuth{authConfig: conf.HTTP.Auth, bearerConfig: conf.HTTP.Auth.Bearer, log: log.NewTestLogger()}
+	ctlr := &Controller{Config: conf, Log: log.NewTestLogger()}
+
+	called := false
+	next := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		called = true
+		response.WriteHeader(http.StatusAccepted)
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/v2/repo/manifests/latest", nil)
+	request = mux.SetURLVars(request, map[string]string{"name": "repo"})
+	request.Header.Set("Authorization", "Bearer "+wrappedCredentialBearerPrefix+"not-base64!")
+	response := httptest.NewRecorder()
+
+	bearerAuth.Middleware(ctlr)(next).ServeHTTP(response, request)
+
+	if called {
+		t.Fatal("expected protected handler not to be called")
+	}
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, response.Code)
+	}
+
+	if !strings.Contains(response.Header().Get("WWW-Authenticate"), "scope=\"repository:repo:pull\"") {
+		t.Fatalf("expected pull challenge, got %q", response.Header().Get("WWW-Authenticate"))
+	}
+}
+
+func TestBearerAuthMiddlewareSuppressesWrappedCredentialChallengeForSessionClient(t *testing.T) {
+	t.Parallel()
+
+	conf := config.New()
+	conf.HTTP.Auth = &config.AuthConfig{
+		APIKey: true,
+		Bearer: &config.BearerConfig{
+			Realm:   "realm",
+			Service: "service",
+		},
+	}
+	bearerAuth := &BearerAuth{authConfig: conf.HTTP.Auth, bearerConfig: conf.HTTP.Auth.Bearer, log: log.NewTestLogger()}
+	ctlr := &Controller{Config: conf, Log: log.NewTestLogger()}
+
+	called := false
+	next := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		called = true
+		response.WriteHeader(http.StatusAccepted)
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/v2/repo/manifests/latest", nil)
+	request = mux.SetURLVars(request, map[string]string{"name": "repo"})
+	request.Header.Set("Authorization", "Bearer "+wrappedCredentialBearerPrefix+"not-base64!")
+	request.Header.Set(constants.SessionClientHeaderName, constants.SessionClientHeaderValue)
+	response := httptest.NewRecorder()
+
+	bearerAuth.Middleware(ctlr)(next).ServeHTTP(response, request)
+
+	if called {
+		t.Fatal("expected protected handler not to be called")
+	}
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, response.Code)
+	}
+
+	if challenge := response.Header().Get("WWW-Authenticate"); challenge != "" {
+		t.Fatalf("expected no challenge for session client, got %q", challenge)
+	}
+}
+
+func TestBearerAuthMiddlewareHandlesAPIKeyErrors(t *testing.T) {
+	t.Parallel()
+
+	conf := config.New()
+	conf.HTTP.Auth = &config.AuthConfig{
+		APIKey: true,
+		Bearer: &config.BearerConfig{
+			Realm:   "realm",
+			Service: "service",
+		},
+	}
+	bearerAuth := &BearerAuth{authConfig: conf.HTTP.Auth, bearerConfig: conf.HTTP.Auth.Bearer, log: log.NewTestLogger()}
+	ctlr := &Controller{
+		Config: conf,
+		Log:    log.NewTestLogger(),
+		MetaDB: mocks.MetaDBMock{
+			GetUserAPIKeyInfoFn: func(hashedKey string) (string, error) {
+				return "", errors.New("metadata unavailable")
+			},
+		},
+	}
+
+	called := false
+	next := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		called = true
+		response.WriteHeader(http.StatusAccepted)
+	})
+
+	token := newWrappedCredentialBearerToken("alice", constants.APIKeysPrefix+"key")
+	request := httptest.NewRequest(http.MethodGet, "/v2/repo/manifests/latest", nil)
+	request = mux.SetURLVars(request, map[string]string{"name": "repo"})
+	request.Header.Set("Authorization", "Bearer "+token)
+	response := httptest.NewRecorder()
+
+	bearerAuth.Middleware(ctlr)(next).ServeHTTP(response, request)
+
+	if called {
+		t.Fatal("expected protected handler not to be called")
+	}
+
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, response.Code)
+	}
+}
+
+func TestBearerAuthMiddlewareRejectsMissingMetadataDBForAPIKey(t *testing.T) {
+	t.Parallel()
+
+	conf := config.New()
+	conf.HTTP.Auth = &config.AuthConfig{
+		APIKey: true,
+		Bearer: &config.BearerConfig{
+			Realm:   "realm",
+			Service: "service",
+		},
+	}
+	bearerAuth := &BearerAuth{authConfig: conf.HTTP.Auth, bearerConfig: conf.HTTP.Auth.Bearer, log: log.NewTestLogger()}
+	ctlr := &Controller{Config: conf, Log: log.NewTestLogger()}
+
+	called := false
+	next := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		called = true
+		response.WriteHeader(http.StatusAccepted)
+	})
+
+	token := newWrappedCredentialBearerToken("alice", constants.APIKeysPrefix+"key")
+	request := httptest.NewRequest(http.MethodGet, "/v2/repo/manifests/latest", nil)
+	request = mux.SetURLVars(request, map[string]string{"name": "repo"})
+	request.Header.Set("Authorization", "Bearer "+token)
+	response := httptest.NewRecorder()
+
+	bearerAuth.Middleware(ctlr)(next).ServeHTTP(response, request)
+
+	if called {
+		t.Fatal("expected protected handler not to be called")
+	}
+
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, response.Code)
+	}
+}
+
+func TestAPIKeyTokenExchangeRejectsInvalidLocalCredential(t *testing.T) {
+	t.Parallel()
+
+	conf := config.New()
+	conf.HTTP.Auth = &config.AuthConfig{
+		APIKey: true,
+		Bearer: &config.BearerConfig{
+			Realm:   "realm",
+			Service: "service",
+		},
+	}
+	bearerAuth := &BearerAuth{authConfig: conf.HTTP.Auth, bearerConfig: conf.HTTP.Auth.Bearer, log: log.NewTestLogger()}
+	ctlr := &Controller{
+		Config: conf,
+		Log:    log.NewTestLogger(),
+		MetaDB: mocks.MetaDBMock{
+			GetUserAPIKeyInfoFn: func(hashedKey string) (string, error) {
+				return "", zerr.ErrUserAPIKeyNotFound
+			},
+		},
+	}
+
+	request := httptest.NewRequest(http.MethodGet, constants.TokenPath, nil)
+	request.SetBasicAuth("alice", constants.APIKeysPrefix+"missing")
+	response := httptest.NewRecorder()
+
+	handler := bearerAuth.TokenExchangeHandler(ctlr)
+	if handler == nil {
+		t.Fatal("expected token exchange handler")
+	}
+
+	handler(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, response.Code)
+	}
+}
+
+func TestAPIKeyTokenExchangeHandlesCredentialErrors(t *testing.T) {
+	t.Parallel()
+
+	conf := config.New()
+	conf.HTTP.Auth = &config.AuthConfig{
+		APIKey: true,
+		Bearer: &config.BearerConfig{
+			Realm:   "realm",
+			Service: "service",
+		},
+	}
+	bearerAuth := &BearerAuth{authConfig: conf.HTTP.Auth, bearerConfig: conf.HTTP.Auth.Bearer, log: log.NewTestLogger()}
+	ctlr := &Controller{
+		Config: conf,
+		Log:    log.NewTestLogger(),
+		MetaDB: mocks.MetaDBMock{
+			GetUserAPIKeyInfoFn: func(hashedKey string) (string, error) {
+				return "", errors.New("metadata unavailable")
+			},
+		},
+	}
+
+	request := httptest.NewRequest(http.MethodGet, constants.TokenPath, nil)
+	request.SetBasicAuth("alice", constants.APIKeysPrefix+"key")
+	response := httptest.NewRecorder()
+
+	handler := bearerAuth.TokenExchangeHandler(ctlr)
+	if handler == nil {
+		t.Fatal("expected token exchange handler")
+	}
+
+	handler(response, request)
+
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, response.Code)
+	}
+}
+
+func TestAPIKeyTokenExchangeRejectsMissingControllerState(t *testing.T) {
+	t.Parallel()
+
+	authConfig := &config.AuthConfig{
+		APIKey: true,
+		Bearer: &config.BearerConfig{
+			Realm:   "realm",
+			Service: "service",
+		},
+	}
+	bearerAuth := &BearerAuth{authConfig: authConfig, bearerConfig: authConfig.Bearer, log: log.NewTestLogger()}
+
+	handler := bearerAuth.TokenExchangeHandler(nil)
+	if handler == nil {
+		t.Fatal("expected token exchange handler")
+	}
+
+	for _, test := range []struct {
+		name string
+		ctlr *Controller
+	}{
+		{name: "nil controller"},
+		{name: "nil metadata database", ctlr: &Controller{Config: config.New(), Log: log.NewTestLogger()}},
+	} {
+		test := test
+
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			request := httptest.NewRequest(http.MethodGet, constants.TokenPath, nil)
+			request.SetBasicAuth("alice", constants.APIKeysPrefix+"key")
+			response := httptest.NewRecorder()
+
+			handler(response, request)
+
+			if response.Code != http.StatusInternalServerError {
+				t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, response.Code)
+			}
+		})
 	}
 }
 
@@ -440,7 +741,7 @@ func TestOIDCBearerTokenExchangeProxyError(t *testing.T) {
 	request.SetBasicAuth("user", "not-an-oidc-token")
 
 	response := httptest.NewRecorder()
-	bearerAuth.TokenExchangeHandler()(response, request)
+	bearerAuth.TokenExchangeHandler(nil)(response, request)
 
 	if response.Code != http.StatusBadGateway {
 		t.Fatalf("expected status %d, got %d", http.StatusBadGateway, response.Code)
@@ -487,7 +788,7 @@ func TestOIDCBearerTokenExchangeRejectsMultipleAuthorizationHeaders(t *testing.T
 	request.Header.Add("Authorization", "Bearer token")
 	response := httptest.NewRecorder()
 
-	bearerAuth.TokenExchangeHandler()(response, request)
+	bearerAuth.TokenExchangeHandler(nil)(response, request)
 
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, response.Code)
@@ -509,7 +810,7 @@ func TestOIDCBearerTokenExchangeRequestParseErrors(t *testing.T) {
 		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		response := httptest.NewRecorder()
 
-		bearerAuth.TokenExchangeHandler()(response, request)
+		bearerAuth.TokenExchangeHandler(nil)(response, request)
 
 		if response.Code != http.StatusBadRequest {
 			t.Fatalf("expected status %d, got %d", http.StatusBadRequest, response.Code)
@@ -524,7 +825,7 @@ func TestOIDCBearerTokenExchangeRequestParseErrors(t *testing.T) {
 		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		response := httptest.NewRecorder()
 
-		bearerAuth.TokenExchangeHandler()(response, request)
+		bearerAuth.TokenExchangeHandler(nil)(response, request)
 
 		if response.Code != http.StatusBadRequest {
 			t.Fatalf("expected status %d, got %d", http.StatusBadRequest, response.Code)
@@ -539,7 +840,7 @@ func TestOIDCBearerTokenExchangeRequestParseErrors(t *testing.T) {
 		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		response := httptest.NewRecorder()
 
-		bearerAuth.TokenExchangeHandler()(response, request)
+		bearerAuth.TokenExchangeHandler(nil)(response, request)
 
 		if response.Code != http.StatusRequestEntityTooLarge {
 			t.Fatalf("expected status %d, got %d", http.StatusRequestEntityTooLarge, response.Code)
@@ -551,7 +852,7 @@ func TestOIDCBearerTokenExchangeRequiresOIDCAuthorizer(t *testing.T) {
 	t.Parallel()
 
 	bearerAuth := &BearerAuth{}
-	if bearerAuth.TokenExchangeHandler() != nil {
+	if bearerAuth.TokenExchangeHandler(nil) != nil {
 		t.Fatal("expected token exchange handler to be nil without OIDC authorizer")
 	}
 }

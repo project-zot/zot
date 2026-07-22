@@ -39,7 +39,7 @@ func TestNormalizeTokenExchangeRequest(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		if !reflect.DeepEqual(tokenRequest.credentials, []string{"basic-token"}) {
+		if !reflect.DeepEqual(tokenRequest.credentials, []tokenExchangeCredential{{Username: "user", Secret: "basic-token"}}) {
 			t.Fatalf("unexpected credentials: %#v", tokenRequest.credentials)
 		}
 	})
@@ -64,7 +64,7 @@ func TestNormalizeTokenExchangeRequest(t *testing.T) {
 		t.Parallel()
 
 		request := httptest.NewRequest(http.MethodPost, constants.TokenPath, strings.NewReader(
-			"password=form-token&id_token=id-token&access_token=access-token&"+
+			"username=form-user&password=form-token&id_token=id-token&access_token=access-token&"+
 				"refresh_token=refresh-token&token=token-token&id_token=id-token"))
 		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		request.SetBasicAuth("user", "basic-token")
@@ -74,7 +74,14 @@ func TestNormalizeTokenExchangeRequest(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		want := []string{"basic-token", "form-token", "id-token", "access-token", "refresh-token", "token-token"}
+		want := []tokenExchangeCredential{
+			{Username: "user", Secret: "basic-token"},
+			{Username: "form-user", Secret: "form-token"},
+			{Secret: "id-token"},
+			{Secret: "access-token"},
+			{Secret: "refresh-token"},
+			{Secret: "token-token"},
+		}
 		if !reflect.DeepEqual(tokenRequest.credentials, want) {
 			t.Fatalf("unexpected credentials: %#v", tokenRequest.credentials)
 		}
@@ -85,6 +92,42 @@ func TestNormalizeTokenExchangeRequest(t *testing.T) {
 		}
 		if !strings.Contains(string(body), "password=form-token") {
 			t.Fatalf("expected request body to be restored, got %q", string(body))
+		}
+	})
+
+	t.Run("non api key credentials dedupe by secret", func(t *testing.T) {
+		t.Parallel()
+
+		request := httptest.NewRequest(http.MethodPost, constants.TokenPath, strings.NewReader(
+			"username=form-user&password=shared-token&token=shared-token"))
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		request.SetBasicAuth("basic-user", "shared-token")
+
+		tokenRequest, err := normalizeTokenExchangeRequest(request)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		want := []tokenExchangeCredential{{Username: "basic-user", Secret: "shared-token"}}
+		if !reflect.DeepEqual(tokenRequest.credentials, want) {
+			t.Fatalf("unexpected credentials: %#v", tokenRequest.credentials)
+		}
+	})
+
+	t.Run("api key credentials dedupe by username and secret", func(t *testing.T) {
+		t.Parallel()
+
+		tokenRequest := &tokenExchangeRequest{}
+		tokenRequest.addCredential("alice", constants.APIKeysPrefix+"same")
+		tokenRequest.addCredential("bob", constants.APIKeysPrefix+"same")
+		tokenRequest.addCredential("alice", constants.APIKeysPrefix+"same")
+
+		want := []tokenExchangeCredential{
+			{Username: "alice", Secret: constants.APIKeysPrefix + "same"},
+			{Username: "bob", Secret: constants.APIKeysPrefix + "same"},
+		}
+		if !reflect.DeepEqual(tokenRequest.credentials, want) {
+			t.Fatalf("unexpected credentials: %#v", tokenRequest.credentials)
 		}
 	})
 
@@ -125,6 +168,137 @@ func TestNormalizeTokenExchangeRequest(t *testing.T) {
 			t.Fatalf("expected body too large error, got %v", err)
 		}
 	})
+}
+
+func TestWrappedCredentialBearerToken(t *testing.T) {
+	t.Parallel()
+
+	token := newWrappedCredentialBearerToken("alice", constants.APIKeysPrefix+"secret")
+	if !strings.HasPrefix(token, wrappedCredentialBearerPrefix) {
+		t.Fatalf("expected wrapped credential prefix, got %q", token)
+	}
+
+	extractedToken, ok := bearerTokenFromAuthHeader("bearer " + token)
+	if !ok || extractedToken != token {
+		t.Fatalf("unexpected extracted bearer token: %q, %t", extractedToken, ok)
+	}
+
+	wrapped, ok, err := wrappedCredentialFromBearerAuthHeader("Bearer " + token)
+	if err != nil {
+		t.Fatalf("unexpected wrapped credential parse error: %v", err)
+	}
+
+	if !ok {
+		t.Fatal("expected wrapped credential to be detected")
+	}
+
+	if wrapped.Version != wrappedCredentialVersion || wrapped.Type != wrappedCredentialTypeAPIKey ||
+		wrapped.Username != "alice" || wrapped.Secret != constants.APIKeysPrefix+"secret" {
+		t.Fatalf("unexpected wrapped credential: %#v", wrapped)
+	}
+
+	if _, ok := bearerTokenFromAuthHeader("Basic " + token); ok {
+		t.Fatal("expected non-bearer Authorization header to be ignored")
+	}
+
+	if _, ok := bearerTokenFromAuthHeader("Bearer"); ok {
+		t.Fatal("expected missing bearer token to be ignored")
+	}
+
+	if _, ok := bearerTokenFromAuthHeader("Bearer   "); ok {
+		t.Fatal("expected empty bearer token to be ignored")
+	}
+
+	if _, ok, err := wrappedCredentialFromBearerAuthHeader("Bearer upstream-token"); ok || err != nil {
+		t.Fatalf("expected upstream bearer token to be ignored, got ok=%t err=%v", ok, err)
+	}
+
+	tokenResponse := newWrappedCredentialTokenResponse(token)
+	if tokenResponse.Token != token || tokenResponse.AccessToken != token {
+		t.Fatalf("unexpected wrapped credential token response: %#v", tokenResponse)
+	}
+
+	if _, err := time.Parse(time.RFC3339, tokenResponse.IssuedAt); err != nil {
+		t.Fatalf("expected issued_at timestamp to parse: %v", err)
+	}
+}
+
+func TestParseWrappedCredentialBearerTokenRejectsInvalidTokens(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name  string
+		token string
+	}{
+		{
+			name:  "empty payload",
+			token: wrappedCredentialBearerPrefix,
+		},
+		{
+			name:  "invalid base64 payload",
+			token: wrappedCredentialBearerPrefix + "not-base64!",
+		},
+		{
+			name:  "invalid json payload",
+			token: wrappedCredentialBearerPrefix + base64.RawURLEncoding.EncodeToString([]byte("{")),
+		},
+		{
+			name: "invalid credential fields",
+			token: wrappedCredentialBearerPrefix + base64.RawURLEncoding.EncodeToString([]byte(
+				`{"v":2,"typ":"api-key","username":"alice","secret":"zak_secret"}`,
+			)),
+		},
+	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			if _, err := parseWrappedCredentialBearerToken(testCase.token); !errors.Is(err, errInvalidWrappedBearerCredential) {
+				t.Fatalf("expected invalid wrapped credential error, got %v", err)
+			}
+		})
+	}
+}
+
+func TestTokenExchangeCredentialIsAPIKey(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name       string
+		credential tokenExchangeCredential
+		want       bool
+	}{
+		{
+			name:       "api key with username",
+			credential: tokenExchangeCredential{Username: "alice", Secret: constants.APIKeysPrefix + "secret"},
+			want:       true,
+		},
+		{
+			name:       "api key without username",
+			credential: tokenExchangeCredential{Secret: constants.APIKeysPrefix + "secret"},
+			want:       false,
+		},
+		{
+			name:       "non api key secret",
+			credential: tokenExchangeCredential{Username: "alice", Secret: "password"},
+			want:       false,
+		},
+	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := testCase.credential.isAPIKey(); got != testCase.want {
+				t.Fatalf("expected %t, got %t", testCase.want, got)
+			}
+		})
+	}
 }
 
 func TestLocalOIDCTokenOwnerForCredential(t *testing.T) {

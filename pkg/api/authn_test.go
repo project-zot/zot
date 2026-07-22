@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"strings"
 	"testing"
 	"time"
 
@@ -929,6 +930,140 @@ func TestAPIKeys(t *testing.T) {
 			defer resp.Body.Close()
 			So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
 		})
+	})
+}
+
+func TestOpenIDAPIKeyTokenExchangeWithBearerOIDC(t *testing.T) {
+	Convey("OpenID API keys work through bearer token exchange with bearer OIDC configured", t, func() {
+		privKey, err := rsa.GenerateKey(rand.Reader, 2048)
+		So(err, ShouldBeNil)
+
+		workloadServer := mockWorkloadOIDCServer(t, &privKey.PublicKey)
+		defer workloadServer.Close()
+
+		mockOIDCServer, err := authutils.MockOIDCRun()
+		So(err, ShouldBeNil)
+		defer func() {
+			err := mockOIDCServer.Shutdown()
+			if err != nil {
+				panic(err)
+			}
+		}()
+
+		mockOIDCConfig := mockOIDCServer.Config()
+		defaultVal := true
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		workloadAudience := "test-zot"
+
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.HTTP.Auth = &config.AuthConfig{
+			Bearer: &config.BearerConfig{
+				Realm:   baseURL + constants.TokenPath,
+				Service: workloadAudience,
+				OIDC: []config.BearerOIDCConfig{{
+					Issuer:    workloadServer.URL,
+					Audiences: []string{workloadAudience},
+				}},
+			},
+			OpenID: &config.OpenIDConfig{
+				Providers: map[string]config.OpenIDProviderConfig{
+					"oidc": {
+						ClientID:     mockOIDCConfig.ClientID,
+						ClientSecret: mockOIDCConfig.ClientSecret,
+						Issuer:       mockOIDCConfig.Issuer,
+						Scopes:       []string{"openid", "email", "groups"},
+					},
+				},
+			},
+			APIKey: true,
+		}
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Search = &extconf.SearchConfig{}
+		conf.Extensions.Search.Enable = &defaultVal
+		conf.Extensions.UI = &extconf.UIConfig{}
+		conf.Extensions.UI.Enable = &defaultVal
+		conf.Storage.RootDirectory = t.TempDir()
+
+		ctlr := api.NewController(conf)
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
+
+		client := resty.New()
+		client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
+		loginResp, err := client.R().
+			SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+			SetQueryParam("provider", "oidc").
+			Get(baseURL + constants.LoginPath)
+		So(err, ShouldBeNil)
+		So(loginResp.StatusCode(), ShouldEqual, http.StatusCreated)
+		client.SetCookies(loginResp.Cookies())
+
+		payload := api.APIKeyPayload{Label: "test", Scopes: []string{"test"}}
+		reqBody, err := json.Marshal(payload)
+		So(err, ShouldBeNil)
+
+		createResp, err := client.R().
+			SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+			SetBody(reqBody).
+			Post(baseURL + constants.APIKeyPath)
+		So(err, ShouldBeNil)
+		So(createResp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		var apiKeyResp apiKeyResponse
+		err = json.Unmarshal(createResp.Body(), &apiKeyResp)
+		So(err, ShouldBeNil)
+		So(apiKeyResp.APIKey, ShouldNotBeEmpty)
+
+		email := mockoidc.DefaultUser().Email
+		So(email, ShouldNotBeEmpty)
+
+		basicResp, err := resty.R().
+			SetBasicAuth(email, apiKeyResp.APIKey).
+			Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(basicResp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		challengeResp, err := resty.R().Get(baseURL + "/v2/testrepo/tags/list")
+		So(err, ShouldBeNil)
+		So(challengeResp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		challenge := authutils.ParseBearerAuthHeader(challengeResp.Header().Get("WWW-Authenticate"))
+		So(challenge.Realm, ShouldEqual, baseURL+constants.TokenPath)
+		So(challenge.Service, ShouldEqual, workloadAudience)
+		So(challenge.Scope, ShouldEqual, "repository:testrepo:pull")
+
+		exchangeResp, err := resty.R().
+			SetBasicAuth(email, apiKeyResp.APIKey).
+			SetQueryParam("service", workloadAudience).
+			SetQueryParam("scope", "repository:testrepo:pull").
+			Get(baseURL + constants.TokenPath)
+		So(err, ShouldBeNil)
+		So(exchangeResp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		tokenResp := struct {
+			Token       string `json:"token"`
+			AccessToken string `json:"access_token"` //nolint:tagliatelle // OCI token response field
+		}{}
+		err = json.Unmarshal(exchangeResp.Body(), &tokenResp)
+		So(err, ShouldBeNil)
+		So(strings.HasPrefix(tokenResp.Token, "zot_cred_v1."), ShouldBeTrue)
+		So(tokenResp.AccessToken, ShouldEqual, tokenResp.Token)
+
+		bearerAPIKeyResp, err := resty.R().
+			SetHeader("Authorization", "Bearer "+tokenResp.Token).
+			Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(bearerAPIKeyResp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		workloadToken, err := createWorkloadOIDCToken(privKey, workloadServer.URL, workloadAudience, nil)
+		So(err, ShouldBeNil)
+		workloadResp, err := resty.R().
+			SetHeader("Authorization", "Bearer "+workloadToken).
+			Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(workloadResp.StatusCode(), ShouldEqual, http.StatusOK)
 	})
 }
 

@@ -3852,6 +3852,12 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
 		resp, err = resty.R().
+			Get(baseURL + "/v2/" + repoName + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		resp, err = resty.R().
 			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
 			Get(baseURL + "/v2/" + repoName + "/tags/list")
 		So(err, ShouldBeNil)
@@ -14517,6 +14523,15 @@ func TestDockerClientV2ChallengeWorkaround(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// Containers/image clients still need a challenge for protected write operations.
+			resp, err = resty.R().
+				SetHeader("User-Agent", "containers/5.33.0 (github.com/containers/image)").
+				Post(baseURL + "/v2/private/repo/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			So(resp.Header().Get("WWW-Authenticate"), ShouldContainSubstring, "Basic realm=")
 
 			// Generic client without credentials should get 200 (unaffected)
 			resp, err = resty.R().

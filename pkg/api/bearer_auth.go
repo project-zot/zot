@@ -36,9 +36,9 @@ type BearerAuth struct {
 
 type oidcBearerTokenResponse struct {
 	Token       string `json:"token"`
-	AccessToken string `json:"access_token"` //nolint:tagliatelle
-	ExpiresIn   int64  `json:"expires_in"`   //nolint:tagliatelle
-	IssuedAt    string `json:"issued_at"`    //nolint:tagliatelle
+	AccessToken string `json:"access_token"`         //nolint:tagliatelle
+	ExpiresIn   int64  `json:"expires_in,omitempty"` //nolint:tagliatelle
+	IssuedAt    string `json:"issued_at,omitempty"`  //nolint:tagliatelle
 }
 
 func NewBearerAuth(authConfig *config.AuthConfig, logger log.Logger) *BearerAuth {
@@ -140,30 +140,39 @@ func (b *BearerAuth) Middleware(ctlr *Controller) mux.MiddlewareFunc {
 				return
 			}
 
-			var requestedAccess *ResourceAction
+			requestedAccess := requestedBearerResourceAction(request)
 
-			if request.RequestURI != "/v2/" {
-				// if this is not the base route, the requested repository/action must be authorized
-				vars := mux.Vars(request)
-				name := vars["name"]
+			if wrapped, ok, err := wrappedCredentialFromBearerAuthHeader(header); ok {
+				if err != nil {
+					ctlr.Log.Debug().Err(err).Msg("failed to parse wrapped bearer credential")
+				} else if wrapped.Type == wrappedCredentialTypeAPIKey && b.authConfig.IsAPIKeyEnabled() {
+					if !b.hasAPIKeyMetadataDB(ctlr) {
+						response.WriteHeader(http.StatusInternalServerError)
 
-				var action string
-				switch m := request.Method; m {
-				case http.MethodHead, http.MethodGet:
-					action = "pull"
-				case http.MethodPost, http.MethodPatch, http.MethodPut:
-					action = "push"
-				case http.MethodDelete:
-					action = "delete"
-				default:
-					action = "pull" // default to pull for other methods, e.g., OPTIONS
+						return
+					}
+
+					userAc := reqCtx.NewUserAccessControl()
+					authenticated, err := authenticateAPIKeyCredential(ctlr, userAc, request, wrapped.Username, wrapped.Secret)
+					if err != nil {
+						response.WriteHeader(http.StatusInternalServerError)
+
+						return
+					}
+
+					if authenticated {
+						amCtx := acCtrlr.getAuthnMiddlewareContext(BASIC, request)
+						next.ServeHTTP(response, request.WithContext(amCtx)) //nolint:contextcheck
+
+						return
+					}
 				}
 
-				requestedAccess = &ResourceAction{
-					Type:   "repository",
-					Name:   name,
-					Action: action,
-				}
+				setBearerAuthChallengeForNonSessionClient(response, request, b.authConfig, requestedAccess)
+				response.Header().Set("Content-Type", "application/json")
+				zcommon.WriteJSON(response, http.StatusUnauthorized, apiErr.NewError(apiErr.UNAUTHORIZED))
+
+				return
 			}
 
 			// Try OIDC authentication first if configured.
@@ -233,15 +242,56 @@ func (b *BearerAuth) Middleware(ctlr *Controller) mux.MiddlewareFunc {
 				ctlr.Log.Error().Msg("failed to authenticate with bearer token")
 			}
 
-			setBearerAuthChallenge(response, b.authConfig, requestedAccess)
+			setBearerAuthChallengeForNonSessionClient(response, request, b.authConfig, requestedAccess)
 			response.Header().Set("Content-Type", "application/json")
 			zcommon.WriteJSON(response, http.StatusUnauthorized, apiErr.NewError(apiErr.UNAUTHORIZED))
 		})
 	}
 }
 
-func (b *BearerAuth) TokenExchangeHandler() http.HandlerFunc {
-	if b == nil || !b.authConfig.IsOIDCBearerAuthEnabled() || b.oidc == nil {
+func requestedBearerResourceAction(request *http.Request) *ResourceAction {
+	if strings.TrimSuffix(request.URL.Path, "/") == constants.RoutePrefix {
+		return nil
+	}
+
+	vars := mux.Vars(request)
+	name := vars["name"]
+	if name == "" {
+		return nil
+	}
+
+	var action string
+	switch m := request.Method; m {
+	case http.MethodHead, http.MethodGet:
+		action = "pull"
+	case http.MethodPost, http.MethodPatch, http.MethodPut:
+		action = "push"
+	case http.MethodDelete:
+		action = "delete"
+	default:
+		action = "pull"
+	}
+
+	return &ResourceAction{
+		Type:   "repository",
+		Name:   name,
+		Action: action,
+	}
+}
+
+func (b *BearerAuth) hasAPIKeyMetadataDB(ctlr *Controller) bool {
+	if ctlr != nil && ctlr.MetaDB != nil {
+		return true
+	}
+
+	b.log.Error().Msg("failed to authenticate api key because metadata database is not initialized")
+
+	return false
+}
+
+func (b *BearerAuth) TokenExchangeHandler(ctlr *Controller) http.HandlerFunc {
+	if b == nil || b.authConfig == nil || b.bearerConfig == nil ||
+		(b.oidc == nil && !b.authConfig.IsAPIKeyEnabled()) {
 		return nil
 	}
 
@@ -280,14 +330,43 @@ func (b *BearerAuth) TokenExchangeHandler() http.HandlerFunc {
 		locallyOwned := false
 
 		for _, credential := range tokenRequest.credentials {
-			switch localOIDCTokenOwnerForCredential(credential, b.authConfig) {
+			if b.authConfig.IsAPIKeyEnabled() && credential.isAPIKey() {
+				locallyOwned = true
+
+				if !b.hasAPIKeyMetadataDB(ctlr) {
+					response.WriteHeader(http.StatusInternalServerError)
+
+					return
+				}
+
+				userAc := reqCtx.NewUserAccessControl()
+				authenticated, err := authenticateAPIKeyCredential(ctlr, userAc, request, credential.Username, credential.Secret)
+				if err != nil {
+					response.WriteHeader(http.StatusInternalServerError)
+
+					return
+				}
+
+				if authenticated {
+					token := newWrappedCredentialBearerToken(credential.Username, credential.Secret)
+					zcommon.WriteJSON(response, http.StatusOK, newWrappedCredentialTokenResponse(token))
+
+					return
+				}
+
+				b.log.Debug().Msg("api key token exchange failed")
+
+				continue
+			}
+
+			switch localOIDCTokenOwnerForCredential(credential.Secret, b.authConfig) {
 			case localOIDCTokenOwnerBearer:
 				locallyOwned = true
 
-				res, err := b.oidc.Authenticate(request.Context(), "Bearer "+credential)
+				res, err := b.oidc.Authenticate(request.Context(), "Bearer "+credential.Secret)
 				if err == nil && res != nil && res.Username != "" {
 					zcommon.WriteJSON(response, http.StatusOK,
-						newOIDCBearerTokenResponse(credential, res.Claims, time.Now()))
+						newOIDCBearerTokenResponse(credential.Secret, res.Claims, time.Now()))
 
 					return
 				}

@@ -289,16 +289,12 @@ func (rh *RouteHandler) CheckVersionSupport(response http.ResponseWriter, reques
 	// work correctly
 	// Get auth config safely
 	authConfig := rh.c.Config.CopyAuthConfig()
-	if authConfig.IsBasicAuthnEnabled() || authConfig.IsBearerAuthEnabled() {
-		// don't send auth headers if request is coming from UI
-		if request.Header.Get(constants.SessionClientHeaderName) != constants.SessionClientHeaderValue {
-			if authConfig.Bearer != nil {
-				realm := authConfig.Bearer.Realm
-				response.Header().Set("WWW-Authenticate", "bearer realm="+realm)
-			} else {
-				realm := rh.c.Config.GetRealm()
-				response.Header().Set("WWW-Authenticate", "basic realm="+realm)
-			}
+	// don't send auth headers if request is coming from UI
+	if request.Header.Get(constants.SessionClientHeaderName) != constants.SessionClientHeaderValue {
+		if authConfig.ShouldAdvertiseBearerChallenge() {
+			setBearerAuthChallenge(response, authConfig, nil)
+		} else if authConfig.CanAuthenticateWithBasicCredentials() {
+			setBasicAuthChallenge(response, rh.c.Config.GetRealm())
 		}
 	}
 

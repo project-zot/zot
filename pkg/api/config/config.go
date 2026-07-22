@@ -147,6 +147,25 @@ func (a *AuthConfig) HasBearerConfig() bool {
 	return a != nil && a.Bearer != nil
 }
 
+// HasBearerChallengeConfig checks if this auth config can build a complete
+// WWW-Authenticate Bearer challenge.
+func (a *AuthConfig) HasBearerChallengeConfig() bool {
+	return a != nil && a.Bearer != nil && a.Bearer.Realm != "" && a.Bearer.Service != ""
+}
+
+// ShouldAdvertiseBearerChallenge checks if clients should receive Bearer
+// challenges for one of the enabled token-consuming auth paths.
+func (a *AuthConfig) ShouldAdvertiseBearerChallenge() bool {
+	return a.HasBearerChallengeConfig() && (a.IsBearerAuthEnabled() || a.IsAPIKeyEnabled())
+}
+
+// ShouldInitializeBearerAuth checks if the API layer needs BearerAuth.
+// API-key-only deployments use BearerAuth for wrapped credentials and token
+// exchange, but only when a complete Bearer challenge can be advertised.
+func (a *AuthConfig) ShouldInitializeBearerAuth() bool {
+	return a.IsBearerAuthEnabled() || (a.IsAPIKeyEnabled() && a.ShouldAdvertiseBearerChallenge())
+}
+
 // IsTraditionalBearerAuthEnabled checks if traditional Bearer authentication is enabled in this auth config.
 func (a *AuthConfig) IsTraditionalBearerAuthEnabled() bool {
 	return a.IsTraditionalBearerAuthEnabledWithCert() || a.IsTraditionalBearerAuthEnabledWithASM()

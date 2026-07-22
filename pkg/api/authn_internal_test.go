@@ -1,14 +1,21 @@
 package api
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"testing"
 
+	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/assert"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
 
 	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/api/constants"
 	"zotregistry.dev/zot/v2/pkg/log"
+	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
+	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
 
 func TestGetOpenIDClaimMapping(t *testing.T) {
@@ -331,6 +338,229 @@ func TestAppendOpenIDGroups(t *testing.T) {
 			groups, found := appendOpenIDGroups(test.groups, test.claims, test.claim)
 			assert.Equal(t, test.expectedFound, found)
 			assert.Equal(t, test.expected, groups)
+		})
+	}
+}
+
+func TestAuthorizationSchemeHelpers(t *testing.T) {
+	t.Parallel()
+
+	request := httptest.NewRequest("GET", "/v2/", nil)
+	request.Header.Set("Authorization", "Basic")
+	assert.False(t, hasBasicAuthorizationHeader(request), "expected malformed Basic header to be ignored")
+
+	request.Header.Set("Authorization", " bearer token ")
+	assert.True(t, hasBearerAuthorizationHeader(request), "expected bearer header to be detected case-insensitively")
+
+	request.Header.Set("Authorization", "Basic token")
+	assert.True(t, hasBasicAuthorizationHeader(request), "expected basic header to be detected")
+
+	request.Header.Del("Authorization")
+	assert.False(t, hasAuthorizationScheme(request, "basic"), "expected missing Authorization header to be ignored")
+}
+
+func TestBasicAuthnReturnsFalseWithoutCredentialBackend(t *testing.T) {
+	t.Parallel()
+
+	conf := config.New()
+	conf.HTTP.Auth = &config.AuthConfig{}
+	ctlr := &Controller{Config: conf, Log: log.NewTestLogger()}
+	request := httptest.NewRequest("GET", "/v2/_catalog", nil)
+	request.SetBasicAuth("alice", "password")
+	response := httptest.NewRecorder()
+
+	authenticated, err := (&AuthnMiddleware{htpasswd: NewHTPasswd(log.NewTestLogger())}).basicAuthn(
+		ctlr,
+		reqCtx.NewUserAccessControl(),
+		response,
+		request,
+	)
+	assert.NoError(t, err)
+	assert.False(t, authenticated, "expected authentication to fail without configured credential backend")
+}
+
+func TestAuthenticateAPIKeyCredentialRequiresMetaDB(t *testing.T) {
+	t.Parallel()
+
+	authenticated, err := authenticateAPIKeyCredential(
+		&Controller{Log: log.NewTestLogger()},
+		reqCtx.NewUserAccessControl(),
+		httptest.NewRequest(http.MethodGet, "/v2/repo/tags/list", nil),
+		"alice",
+		constants.APIKeysPrefix+"key",
+	)
+
+	assert.False(t, authenticated)
+	assert.Error(t, err)
+}
+
+func TestTryAuthnHandlersDoesNotEvaluateAnonymousAccessForBearerCredentials(t *testing.T) {
+	t.Parallel()
+
+	conf := config.New()
+	conf.HTTP.Auth = &config.AuthConfig{
+		APIKey: true,
+		Bearer: &config.BearerConfig{
+			Realm:   "realm",
+			Service: "service",
+		},
+	}
+	conf.HTTP.AccessControl = &config.AccessControlConfig{
+		Repositories: config.Repositories{
+			"**": config.PolicyGroup{
+				AnonymousPolicy: []string{constants.ReadPermission},
+			},
+		},
+	}
+
+	ctlr := &Controller{
+		Config: conf,
+		Log:    log.NewTestLogger(),
+		MetaDB: mocks.MetaDBMock{
+			GetUserAPIKeyInfoFn: func(hashedKey string) (string, error) {
+				return "alice", nil
+			},
+			IsAPIKeyExpiredFn: func(_ context.Context, hashedKey string) (bool, error) {
+				return false, nil
+			},
+			UpdateUserAPIKeyLastUsedFn: func(_ context.Context, hashedKey string) error {
+				return nil
+			},
+		},
+	}
+	bearerAuth := &BearerAuth{authConfig: conf.HTTP.Auth, bearerConfig: conf.HTTP.Auth.Bearer, log: log.NewTestLogger()}
+	authnMiddleware := &AuthnMiddleware{bearerAuth: bearerAuth}
+
+	called := false
+	next := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		called = true
+		response.WriteHeader(http.StatusAccepted)
+	})
+
+	token := newWrappedCredentialBearerToken("alice", constants.APIKeysPrefix+"key")
+	request := httptest.NewRequest(http.MethodPut, "/v2/repo/manifests/latest", nil)
+	request = mux.SetURLVars(request, map[string]string{"name": "repo", "reference": "latest"})
+	request.Header.Set("Authorization", "Bearer "+token)
+	response := httptest.NewRecorder()
+
+	authnMiddleware.tryAuthnHandlers(ctlr)(next).ServeHTTP(response, request)
+
+	assert.True(t, called)
+	assert.Equal(t, http.StatusAccepted, response.Code)
+}
+
+func TestAuthChallengeHelpers(t *testing.T) {
+	t.Parallel()
+
+	response := httptest.NewRecorder()
+	setBearerAuthChallenge(response, &config.AuthConfig{Bearer: &config.BearerConfig{Realm: "realm"}}, nil)
+	assert.Empty(t, response.Header().Get("WWW-Authenticate"))
+
+	response = httptest.NewRecorder()
+	setBearerAuthChallenge(response, &config.AuthConfig{Bearer: &config.BearerConfig{Realm: "realm", Service: "service"}}, nil)
+	assert.Equal(t, `Bearer realm="realm",service="service",scope=""`, response.Header().Get("WWW-Authenticate"))
+
+	assert.False(t, (&config.AuthConfig{
+		Bearer: &config.BearerConfig{Realm: "realm"},
+		APIKey: true,
+	}).ShouldAdvertiseBearerChallenge())
+	assert.False(t, (&config.AuthConfig{
+		Bearer: &config.BearerConfig{Realm: "realm"},
+		APIKey: true,
+	}).ShouldInitializeBearerAuth())
+	assert.True(t, (&config.AuthConfig{
+		Bearer: &config.BearerConfig{Realm: "realm", Service: "service"},
+		APIKey: true,
+	}).ShouldAdvertiseBearerChallenge())
+	assert.True(t, (&config.AuthConfig{
+		Bearer: &config.BearerConfig{Realm: "realm", Service: "service"},
+		APIKey: true,
+	}).ShouldInitializeBearerAuth())
+
+	amw := &AuthnMiddleware{bearerAuth: &BearerAuth{}}
+	assert.False(t, amw.shouldChallengeWithBearer(&config.AuthConfig{
+		Bearer: &config.BearerConfig{Realm: "realm"},
+		APIKey: true,
+	}))
+	assert.True(t, amw.shouldChallengeWithBearer(&config.AuthConfig{
+		Bearer: &config.BearerConfig{Realm: "realm", Service: "service"},
+		APIKey: true,
+	}))
+
+	response = httptest.NewRecorder()
+	setBasicAuthChallenge(response, "")
+	assert.Equal(t, `Basic realm="Authorization Required"`, response.Header().Get("WWW-Authenticate"))
+
+	response = httptest.NewRecorder()
+	setBasicAuthChallenge(response, "zot")
+	assert.Equal(t, `Basic realm="zot"`, response.Header().Get("WWW-Authenticate"))
+}
+
+func TestCheckVersionSupportChallengeHeaders(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		authConfig    *config.AuthConfig
+		realm         string
+		sessionClient bool
+		wantChallenge string
+	}{
+		{
+			name: "openid only does not advertise basic",
+			authConfig: &config.AuthConfig{
+				OpenID: &config.OpenIDConfig{
+					Providers: map[string]config.OpenIDProviderConfig{"oidc": {}},
+				},
+			},
+		},
+		{
+			name: "basic credential backend uses quoted basic realm",
+			authConfig: &config.AuthConfig{
+				HTPasswd: config.AuthHTPasswd{Path: "/tmp/htpasswd"},
+			},
+			realm:         "zot",
+			wantChallenge: `Basic realm="zot"`,
+		},
+		{
+			name: "bearer token endpoint uses shared bearer challenge",
+			authConfig: &config.AuthConfig{
+				Bearer: &config.BearerConfig{Realm: "https://auth.example.test/token", Service: "zot"},
+				APIKey: true,
+			},
+			wantChallenge: `Bearer realm="https://auth.example.test/token",service="zot",scope=""`,
+		},
+		{
+			name: "ui session client suppresses challenge",
+			authConfig: &config.AuthConfig{
+				HTPasswd: config.AuthHTPasswd{Path: "/tmp/htpasswd"},
+			},
+			realm:         "zot",
+			sessionClient: true,
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			conf := config.New()
+			conf.HTTP.Auth = test.authConfig
+			conf.HTTP.Realm = test.realm
+
+			request := httptest.NewRequest(http.MethodGet, "/v2/", nil)
+			if test.sessionClient {
+				request.Header.Set(constants.SessionClientHeaderName, constants.SessionClientHeaderValue)
+			}
+
+			response := httptest.NewRecorder()
+			(&RouteHandler{c: &Controller{Config: conf}}).CheckVersionSupport(response, request)
+
+			assert.Equal(t, http.StatusOK, response.Code)
+			assert.Equal(t, "registry/2.0", response.Header().Get(constants.DistAPIVersion))
+			assert.Equal(t, test.wantChallenge, response.Header().Get("WWW-Authenticate"))
 		})
 	}
 }
