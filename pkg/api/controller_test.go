@@ -3741,6 +3741,18 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(resp.Header().Get("WWW-Authenticate"), ShouldBeEmpty)
+
+		s1, seed1 := test.GenerateRandomName()
+		s2, seed2 := test.GenerateRandomName()
+		repoName := s1 + "/" + s2
+
+		ctlr.Log.Info().Int64("seed1", seed1).Int64("seed2", seed2).Msg("random seeds for repoName")
+
+		resp, err = resty.R().Post(baseURL + "/v2/" + repoName + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		authorizationHeader := authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
@@ -3754,35 +3766,6 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 
 		var goodToken authutils.AccessTokenResponse
 
-		err = json.Unmarshal(resp.Body(), &goodToken)
-		So(err, ShouldBeNil)
-
-		resp, err = resty.R().
-			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
-			Get(baseURL + "/v2/")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-		s1, seed1 := test.GenerateRandomName()
-		s2, seed2 := test.GenerateRandomName()
-		repoName := s1 + "/" + s2
-
-		ctlr.Log.Info().Int64("seed1", seed1).Int64("seed2", seed2).Msg("random seeds for repoName")
-
-		resp, err = resty.R().Post(baseURL + "/v2/" + repoName + "/blobs/uploads/")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
-
-		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
-		resp, err = resty.R().
-			SetQueryParam("service", authorizationHeader.Service).
-			SetQueryParam("scope", authorizationHeader.Scope).
-			Get(authorizationHeader.Realm)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		err = json.Unmarshal(resp.Body(), &goodToken)
 		So(err, ShouldBeNil)
 
@@ -3825,6 +3808,12 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		resp, err = resty.R().
+			Get(baseURL + "/v2/" + repoName + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		resp, err = resty.R().
 			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
@@ -15778,6 +15767,15 @@ func TestDockerClientV2ChallengeWorkaround(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// Containers/image clients still need a challenge for protected write operations.
+			resp, err = resty.R().
+				SetHeader("User-Agent", "containers/5.33.0 (github.com/containers/image)").
+				Post(baseURL + "/v2/private/repo/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			So(resp.Header().Get("WWW-Authenticate"), ShouldContainSubstring, "Basic realm=")
 
 			// Generic client without credentials should get 200 (unaffected)
 			resp, err = resty.R().
