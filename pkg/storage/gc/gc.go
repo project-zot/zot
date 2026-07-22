@@ -18,7 +18,6 @@ import (
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
-	"zotregistry.dev/zot/v2/pkg/compat"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
@@ -164,6 +163,16 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 		return err
 	}
 
+	// prune manifest/index descriptors with an unsupported/unknown media type: nothing else
+	// in GC ever removes these, and leaving them referenced would orphan (and unchecked-delete)
+	// their config/layers while the dangling index.json entry survives.
+	if err := gc.removeUnknownMediaTypeManifestEntries(repo, &index); err != nil {
+		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
+			Msg("failed to prune unknown media type manifest entries")
+
+		return err
+	}
+
 	// prune manifest/index descriptors whose blobs no longer exist in storage
 	if err := gc.removeStaleManifestEntries(repo, &index); err != nil {
 		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
@@ -183,16 +192,23 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 
 	manifestsDeleted := manifestsBefore - len(index.Manifests)
 
-	// gc unreferenced blobs
-	blobsDeleted, err := gc.removeUnreferencedBlobs(repo, gc.opts.Delay, gc.log)
-	if err != nil {
-		return err
-	}
+	var blobsDeleted, uploadsDeleted int
 
-	// gc old blob uploads
-	uploadsDeleted, err := gc.removeBlobUploads(repo, gc.opts.Delay)
-	if err != nil {
-		return err
+	// DryRun must be a non-destructive simulation: index.json was left untouched above, and blob GC
+	// must not delete anything either - it re-reads the on-disk index.json, so running it here would
+	// delete blobs for real (e.g. orphaned by manifest-pass edits) while their index entries survive.
+	if !gc.opts.ImageRetention.DryRun {
+		// gc unreferenced blobs
+		blobsDeleted, err = gc.removeUnreferencedBlobs(repo, gc.opts.Delay, gc.log)
+		if err != nil {
+			return err
+		}
+
+		// gc old blob uploads
+		uploadsDeleted, err = gc.removeBlobUploads(repo, gc.opts.Delay)
+		if err != nil {
+			return err
+		}
 	}
 
 	if !gc.opts.ImageRetention.DryRun {
@@ -202,6 +218,46 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 	}
 
 	return nil
+}
+
+// removeUnknownMediaTypeManifestEntries prunes index.Manifests descriptors whose media type is not a
+// known manifest/index (or compat) type. common.GetReferencedBlobs marks every index.json descriptor's
+// own digest as referenced regardless of media type (mirroring IsBlobReferencedInImageIndex), so an
+// unknown-media-type entry would otherwise never become an orphan and would never be pruned - while its
+// config/layers still fall out as real orphans and get deleted, leaving a dangling index.json entry.
+func (gc GarbageCollect) removeUnknownMediaTypeManifestEntries(repo string, index *ispec.Index) error {
+	if gc.opts.ImageRetention.DryRun {
+		return nil
+	}
+
+	kept := make([]ispec.Descriptor, 0, len(index.Manifests))
+
+	for _, desc := range index.Manifests {
+		if isKnownManifestMediaType(desc.MediaType) {
+			kept = append(kept, desc)
+
+			continue
+		}
+
+		if err := gc.syncManifestRemoval(repo, desc, "unknownMediaTypePrune",
+			"pruned unknown media type manifest entry from index"); err != nil {
+			return err
+		}
+	}
+
+	if removed := len(index.Manifests) - len(kept); removed > 0 {
+		gc.log.Info().Str("module", "gc").Str("repository", repo).
+			Int("removed", removed).Int("kept", len(kept)).
+			Msg("pruned unknown media type manifest entries from index")
+	}
+
+	index.Manifests = kept
+
+	return nil
+}
+
+func isKnownManifestMediaType(mediaType string) bool {
+	return common.IsImageIndexMediaType(mediaType) || common.IsImageManifestMediaType(mediaType)
 }
 
 func (gc GarbageCollect) removeStaleManifestEntries(repo string, index *ispec.Index) error {
@@ -228,21 +284,23 @@ func (gc GarbageCollect) removeStaleManifestEntries(repo string, index *ispec.In
 
 	for _, desc := range index.Manifests {
 		if !existingBlobs[desc.Digest.String()] {
-			if err := gc.syncStaleManifestRemoval(repo, desc); err != nil {
+			if err := gc.syncManifestRemoval(repo, desc, "staleManifestPrune",
+				"pruned stale manifest entry from index"); err != nil {
 				return err
 			}
 
 			continue
 		}
 
-		if desc.MediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(desc.MediaType) {
+		if common.IsImageIndexMediaType(desc.MediaType) {
 			stale, err := gc.imageIndexHasStaleNestedManifests(repo, desc, existingBlobs)
 			if err != nil {
 				return err
 			}
 
 			if stale {
-				if err := gc.syncStaleManifestRemoval(repo, desc); err != nil {
+				if err := gc.syncManifestRemoval(repo, desc, "staleManifestPrune",
+					"pruned stale manifest entry from index"); err != nil {
 					return err
 				}
 
@@ -264,11 +322,12 @@ func (gc GarbageCollect) removeStaleManifestEntries(repo string, index *ispec.In
 	return nil
 }
 
-// syncStaleManifestRemoval best-effort syncs metaDB before a stale descriptor is removed from
-// index.Manifests (index.json is persisted later in cleanRepo). metaDB failures are logged but
-// do not abort stale pruning — storage repair must not depend on secondary index consistency.
-// The blob is typically already absent from storage; cosign signatures are cleaned up via tag annotation.
-func (gc GarbageCollect) syncStaleManifestRemoval(repo string, desc ispec.Descriptor) error {
+// syncManifestRemoval best-effort syncs metaDB before a descriptor is removed from index.Manifests
+// (index.json is persisted later in cleanRepo). metaDB failures are logged but do not abort pruning —
+// storage repair must not depend on secondary index consistency. The blob is typically already absent
+// from storage; cosign signatures are cleaned up via tag annotation. reason/message identify which
+// prune path (stale vs. unknown media type) triggered the removal, for log/audit consumers.
+func (gc GarbageCollect) syncManifestRemoval(repo string, desc ispec.Descriptor, reason, message string) error {
 	tag, hasTag := getDescriptorTag(desc)
 	ref := tag
 	if ref == "" {
@@ -312,13 +371,13 @@ func (gc GarbageCollect) syncStaleManifestRemoval(repo string, desc ispec.Descri
 		Str("reference", ref).
 		Str("digest", desc.Digest.String()).
 		Str("decision", "delete").
-		Str("reason", "staleManifestPrune")
+		Str("reason", reason)
 
 	if subjectDigest != "" {
 		logEvent = logEvent.Str("subject", subjectDigest.String())
 	}
 
-	logEvent.Msg("pruned stale manifest entry from index")
+	logEvent.Msg(message)
 
 	if gc.auditLog != nil {
 		auditEvent := gc.auditLog.Info().Str("module", "gc").
@@ -326,13 +385,13 @@ func (gc GarbageCollect) syncStaleManifestRemoval(repo string, desc ispec.Descri
 			Str("reference", ref).
 			Str("digest", desc.Digest.String()).
 			Str("decision", "delete").
-			Str("reason", "staleManifestPrune")
+			Str("reason", reason)
 
 		if subjectDigest != "" {
 			auditEvent = auditEvent.Str("subject", subjectDigest.String())
 		}
 
-		auditEvent.Msg("pruned stale manifest entry from index")
+		auditEvent.Msg(message)
 	}
 
 	return nil
@@ -435,7 +494,7 @@ func (gc GarbageCollect) removeIndexReferrers(repo string, rootIndex *ispec.Inde
 	var err error
 
 	for _, desc := range index.Manifests {
-		if (desc.MediaType == ispec.MediaTypeImageIndex) || compat.IsCompatibleManifestListMediaType(desc.MediaType) {
+		if common.IsImageIndexMediaType(desc.MediaType) {
 			indexImage, err := common.GetImageIndex(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
 				// Handle missing blobs (not found) gracefully
@@ -473,7 +532,7 @@ func (gc GarbageCollect) removeIndexReferrers(repo string, rootIndex *ispec.Inde
 			if gced {
 				count++
 			}
-		} else if (desc.MediaType == ispec.MediaTypeImageManifest) || compat.IsCompatibleManifestMediaType(desc.MediaType) {
+		} else if common.IsImageManifestMediaType(desc.MediaType) {
 			image, err := common.GetImageManifest(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
 				// Handle missing blobs (not found) gracefully
@@ -736,8 +795,7 @@ func (gc GarbageCollect) removeUntaggedManifests(ctx context.Context, repo strin
 		}
 
 		// remove untagged images
-		if desc.MediaType == ispec.MediaTypeImageManifest || compat.IsCompatibleManifestMediaType(desc.MediaType) ||
-			desc.MediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(desc.MediaType) {
+		if isKnownManifestMediaType(desc.MediaType) {
 			_, ok := getDescriptorTag(desc)
 			if !ok {
 				if retainUntagged[desc.Digest.String()] {
@@ -778,7 +836,7 @@ func (gc GarbageCollect) identifyManifestsReferencedInIndex(index ispec.Index, r
 	referenced map[godigest.Digest]bool,
 ) error {
 	for _, desc := range index.Manifests {
-		if (desc.MediaType == ispec.MediaTypeImageIndex) || compat.IsCompatibleManifestListMediaType(desc.MediaType) {
+		if common.IsImageIndexMediaType(desc.MediaType) {
 			indexImage, err := common.GetImageIndex(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
 				// Handle missing blobs (not found) gracefully
@@ -807,7 +865,7 @@ func (gc GarbageCollect) identifyManifestsReferencedInIndex(index ispec.Index, r
 			if err := gc.identifyManifestsReferencedInIndex(indexImage, repo, referenced); err != nil {
 				return err
 			}
-		} else if (desc.MediaType == ispec.MediaTypeImageManifest) || compat.IsCompatibleManifestMediaType(desc.MediaType) {
+		} else if common.IsImageManifestMediaType(desc.MediaType) {
 			image, err := common.GetImageManifest(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
 				// Handle missing blobs (not found) gracefully
@@ -889,16 +947,7 @@ func (gc GarbageCollect) removeUnreferencedBlobs(repo string, delay time.Duratio
 ) (int, error) {
 	gc.log.Debug().Str("module", "gc").Str("repository", repo).Msg("cleaning orphan blobs")
 
-	refBlobs := map[string]bool{}
-
-	index, err := common.GetIndex(gc.imgStore, repo, gc.log)
-	if err != nil {
-		log.Error().Err(err).Str("module", "gc").Str("repository", repo).Msg("failed to read index.json in repo")
-
-		return 0, err
-	}
-
-	err = gc.addIndexBlobsToReferences(repo, index, refBlobs)
+	refBlobs, err := common.GetReferencedBlobs(gc.imgStore, repo, gc.log)
 	if err != nil {
 		log.Error().Err(err).Str("module", "gc").Str("repository", repo).Msg("failed to get referenced blobs in repo")
 
@@ -927,7 +976,7 @@ func (gc GarbageCollect) removeUnreferencedBlobs(repo string, delay time.Duratio
 			return 0, err
 		}
 
-		if _, ok := refBlobs[digest.String()]; !ok {
+		if _, ok := refBlobs[digest]; !ok {
 			canGC, err := isBlobOlderThan(gc.imgStore, repo, digest, delay, log)
 			if err != nil {
 				log.Error().Err(err).Str("module", "gc").Str("repository", repo).
@@ -954,99 +1003,6 @@ func (gc GarbageCollect) removeUnreferencedBlobs(repo string, delay time.Duratio
 		Msg("garbage collected blobs")
 
 	return reaped, nil
-}
-
-// used by removeUnreferencedBlobs()
-// addIndexBlobsToReferences adds referenced blobs found in referenced manifests (index.json) in refblobs map.
-func (gc GarbageCollect) addIndexBlobsToReferences(repo string, index ispec.Index, refBlobs map[string]bool,
-) error {
-	for _, desc := range index.Manifests {
-		if (desc.MediaType == ispec.MediaTypeImageIndex) || compat.IsCompatibleManifestListMediaType(desc.MediaType) {
-			if err := gc.addImageIndexBlobsToReferences(repo, desc.Digest, refBlobs); err != nil {
-				gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
-					Str("digest", desc.Digest.String()).Msg("failed to read blobs in multiarch(index) image")
-
-				return err
-			}
-		} else if (desc.MediaType == ispec.MediaTypeImageManifest) || compat.IsCompatibleManifestMediaType(desc.MediaType) {
-			if err := gc.addImageManifestBlobsToReferences(repo, desc.Digest, refBlobs); err != nil {
-				gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
-					Str("digest", desc.Digest.String()).Msg("failed to read blobs in image manifest")
-
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
-func (gc GarbageCollect) addImageIndexBlobsToReferences(repo string, mdigest godigest.Digest, refBlobs map[string]bool,
-) error {
-	index, err := common.GetImageIndex(gc.imgStore, repo, mdigest, gc.log)
-	if err != nil {
-		// Handle missing blobs (not found) gracefully
-		var pathNotFoundErr driver.PathNotFoundError
-		if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
-			gc.log.Warn().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", mdigest.String()).
-				Msg("skipping missing image index blob, continuing GC")
-
-			return nil
-		}
-
-		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", mdigest.String()).
-			Msg("failed to read manifest image")
-
-		return err
-	}
-
-	refBlobs[mdigest.String()] = true
-
-	// if there is a Subject, it may not exist yet and that is ok
-	if index.Subject != nil {
-		refBlobs[index.Subject.Digest.String()] = true
-	}
-
-	for _, manifest := range index.Manifests {
-		refBlobs[manifest.Digest.String()] = true
-	}
-
-	return nil
-}
-
-func (gc GarbageCollect) addImageManifestBlobsToReferences(repo string, mdigest godigest.Digest,
-	refBlobs map[string]bool,
-) error {
-	manifestContent, err := common.GetImageManifest(gc.imgStore, repo, mdigest, gc.log)
-	if err != nil {
-		// Handle missing blobs (not found) gracefully
-		var pathNotFoundErr driver.PathNotFoundError
-		if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
-			gc.log.Warn().Err(err).Str("module", "gc").Str("repository", repo).
-				Str("digest", mdigest.String()).Msg("skipping missing image manifest blob, continuing GC")
-
-			return nil
-		}
-
-		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
-			Str("digest", mdigest.String()).Msg("failed to read manifest image")
-
-		return err
-	}
-
-	refBlobs[mdigest.String()] = true
-	refBlobs[manifestContent.Config.Digest.String()] = true
-
-	// if there is a Subject, it may not exist yet and that is ok
-	if manifestContent.Subject != nil {
-		refBlobs[manifestContent.Subject.Digest.String()] = true
-	}
-
-	for _, layer := range manifestContent.Layers {
-		refBlobs[layer.Digest.String()] = true
-	}
-
-	return nil
 }
 
 func isManifestReferencedInIndex(index *ispec.Index, digest godigest.Digest) bool {
