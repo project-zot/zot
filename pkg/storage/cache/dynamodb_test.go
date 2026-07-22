@@ -77,6 +77,8 @@ func TestDynamoDB(t *testing.T) {
 		err = cacheDriver.PutBlob(keyDigest, path.Join(dir, "value2"))
 		So(err, ShouldBeNil)
 
+		// deleting the origin ("value1") while a duplicate ("value2") exists promotes
+		// value2 to origin rather than leaving value1 as a stale origin
 		err = cacheDriver.DeleteBlob(keyDigest, path.Join(dir, "value1"))
 		So(err, ShouldBeNil)
 
@@ -84,7 +86,7 @@ func TestDynamoDB(t *testing.T) {
 		So(exists, ShouldBeTrue)
 
 		exists = cacheDriver.HasBlob(keyDigest, path.Join(dir, "value1"))
-		So(exists, ShouldBeTrue)
+		So(exists, ShouldBeFalse)
 
 		err = cacheDriver.DeleteBlob(keyDigest, path.Join(dir, "value2"))
 		So(err, ShouldBeNil)
