@@ -445,9 +445,35 @@ func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 
 		if origin != nil {
 			if origin.Get([]byte(path)) != nil {
-				// if duplicates still exist, keep the original (global blobstore file stays)
-				if deduped != nil && d.getOne(deduped) != nil {
-					return nil
+				// if duplicates still exist, promote one of them to be the new origin, so
+				// GetAllBlobs/HasBlob don't keep reporting this now-deleted path forever
+				if deduped != nil {
+					if promotedKey := d.getOne(deduped); promotedKey != nil {
+						promoted := append([]byte{}, promotedKey...)
+
+						if err := deduped.Delete(promoted); err != nil {
+							d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", constants.DuplicatesBucket).
+								Msg("failed to promote duplicate to origin")
+
+							return err
+						}
+
+						if err := origin.Delete([]byte(path)); err != nil {
+							d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", constants.OriginalBucket).
+								Str("path", path).Msg("failed to delete")
+
+							return err
+						}
+
+						if err := origin.Put(promoted, nil); err != nil {
+							d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", constants.OriginalBucket).
+								Msg("failed to promote duplicate to origin")
+
+							return err
+						}
+
+						return nil
+					}
 				}
 
 				// no more duplicates, safe to remove the original

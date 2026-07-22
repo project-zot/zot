@@ -108,20 +108,22 @@ func TestRedisCache(t *testing.T) {
 		err = cacheDriver.PutBlob("key1", "duplicateBlobPath")
 		So(err, ShouldBeNil)
 
+		// deleting the origin while a duplicate exists promotes the duplicate to origin
+		// rather than leaving a stale origin behind
 		err = cacheDriver.DeleteBlob("key1", "originalBlobPath")
 		So(err, ShouldBeNil)
 
 		val, err = cacheDriver.GetBlob("key1")
-		So(val, ShouldEqual, "originalBlobPath")
+		So(val, ShouldEqual, "duplicateBlobPath")
 		So(err, ShouldBeNil)
 
+		// no duplicates left; deleting the (promoted) origin removes the entry
 		err = cacheDriver.DeleteBlob("key1", "duplicateBlobPath")
 		So(err, ShouldBeNil)
 
-		// original remains while duplicates are removed
 		val, err = cacheDriver.GetBlob("key1")
-		So(err, ShouldBeNil)
-		So(val, ShouldEqual, "originalBlobPath")
+		So(err, ShouldEqual, zerr.ErrCacheMiss)
+		So(val, ShouldBeEmpty)
 
 		// try to add three same values
 		err = cacheDriver.PutBlob("key2", "duplicate")
@@ -184,15 +186,17 @@ func TestRedisCache(t *testing.T) {
 		So(blobs, ShouldContain, "second")
 		So(blobs, ShouldContain, "third")
 
+		// deleting the origin ("first") promotes one of the remaining duplicates to
+		// origin, rather than leaking "first" as a permanently-stale origin entry
 		err = cacheDriver.DeleteBlob("digest", path.Join(dir, "first"))
 		So(err, ShouldBeNil)
 
 		blobs, err = cacheDriver.GetAllBlobs("digest")
 		So(err, ShouldBeNil)
-		So(len(blobs), ShouldEqual, 3)
-		So(blobs, ShouldContain, "first")
+		So(len(blobs), ShouldEqual, 2)
 		So(blobs, ShouldContain, "second")
 		So(blobs, ShouldContain, "third")
+		So(blobs, ShouldNotContain, "first")
 
 		err = cacheDriver.DeleteBlob("digest", path.Join(dir, "third"))
 		So(err, ShouldBeNil)
@@ -200,8 +204,7 @@ func TestRedisCache(t *testing.T) {
 		blobs, err = cacheDriver.GetAllBlobs("digest")
 		So(err, ShouldBeNil)
 
-		So(len(blobs), ShouldEqual, 2)
-		So(blobs, ShouldContain, "first")
+		So(len(blobs), ShouldEqual, 1)
 		So(blobs, ShouldContain, "second")
 	})
 }
@@ -278,7 +281,7 @@ func TestRedisBlobRefs(t *testing.T) {
 			So(refs, ShouldNotContain, "/repo2/blob")
 		})
 
-		Convey("DeleteBlobRef on the origin while a duplicate remains keeps the entry", func() {
+		Convey("DeleteBlobRef on the origin while a duplicate remains promotes the duplicate to origin", func() {
 			So(cacheDriver.PutBlobRef("keep-duplicate", "/repo1/blob"), ShouldBeNil)
 			So(cacheDriver.PutBlobRef("keep-duplicate", "/repo2/blob"), ShouldBeNil)
 			So(cacheDriver.DeleteBlobRef("keep-duplicate", "/repo1/blob"), ShouldBeNil)
@@ -286,6 +289,8 @@ func TestRedisBlobRefs(t *testing.T) {
 			refs, err := cacheDriver.GetBlobRefs("keep-duplicate")
 			So(err, ShouldBeNil)
 			So(refs, ShouldContain, "/repo2/blob")
+			So(refs, ShouldNotContain, "/repo1/blob")
+			So(len(refs), ShouldEqual, 1)
 		})
 
 		Convey("DeleteBlobRef with a path that matches neither origin nor duplicates is a cache miss", func() {
@@ -816,7 +821,7 @@ func TestRedisMocked(t *testing.T) {
 					So(err, ShouldEqual, ErrTestError)
 				})
 
-				Convey("DeleteBlob keeps original when duplicates exist"+testID, func() {
+				Convey("DeleteBlob promotes a duplicate to origin when duplicates exist"+testID, func() {
 					// Add duplicate val2
 					mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
 					mock.ExpectHExists(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
@@ -831,7 +836,8 @@ func TestRedisMocked(t *testing.T) {
 					err = cacheDriver.PutBlob("key", path.Join(dir, "val2"))
 					So(err, ShouldBeNil)
 
-					// delete original val1, keep as long as duplicates exist
+					// delete original val1: since val2 is still a duplicate, it gets promoted
+					// to be the new origin instead of val1 being left as a stale origin
 					mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
 					mock.ExpectSIsMember(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
 						path.Join(pathPrefix, "val1")).SetVal(false)
@@ -839,6 +845,10 @@ func TestRedisMocked(t *testing.T) {
 						SetVal(path.Join(pathPrefix, "val1"))
 					mock.ExpectSCard(keyPrefix + constants.BlobsCache + ":" + constants.DuplicatesBucket + ":key").
 						SetVal(1)
+					mock.ExpectSPop(keyPrefix + constants.BlobsCache + ":" + constants.DuplicatesBucket + ":key").
+						SetVal(path.Join(pathPrefix, "val2"))
+					mock.ExpectHSet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key",
+						path.Join(pathPrefix, "val2")).SetVal(1)
 
 					err = cacheDriver.DeleteBlob("key", path.Join(dir, "val1"))
 					So(err, ShouldBeNil)

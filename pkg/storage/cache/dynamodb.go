@@ -360,7 +360,9 @@ func (d *DynamoDBDriver) DeleteBlobRef(digest godigest.Digest, path string) erro
 		}
 
 		if remainingDuplicate != "" {
-			return nil
+			// duplicates still exist: promote one of them to be the new origin, so
+			// GetBlobRefs doesn't keep reporting this now-deleted path forever
+			return d.promoteDuplicateToOrigin(godigest.Digest(refDigest), path)
 		}
 
 		conditionExpression := "attribute_not_exists(DuplicateBlobPath) OR size(DuplicateBlobPath) = :zero"
@@ -396,6 +398,58 @@ func (d *DynamoDBDriver) DeleteBlobRef(digest godigest.Digest, path string) erro
 	}
 
 	return zerr.ErrCacheMiss
+}
+
+// promoteDuplicateToOrigin repoints OriginalBlobPath at one of the remaining entries in
+// DuplicateBlobPath and removes that entry from the set, atomically, conditioned on
+// OriginalBlobPath still being oldOrigin. If the condition fails, another writer already
+// changed the origin concurrently (e.g. promoted it themselves), so there's nothing left
+// to do: the digest already has a live origin, just not the one this call picked.
+func (d *DynamoDBDriver) promoteDuplicateToOrigin(digest godigest.Digest, oldOrigin string) error {
+	duplicate, err := d.GetDuplicateBlob(digest)
+	if err != nil {
+		if errors.Is(err, zerr.ErrCacheMiss) {
+			return nil
+		}
+
+		return err
+	}
+
+	if duplicate == "" {
+		return nil
+	}
+
+	marshaledKey, _ := attributevalue.MarshalMap(map[string]any{"Digest": digest.String()})
+	expression := "SET OriginalBlobPath = :new DELETE DuplicateBlobPath :i"
+	newPath := types.AttributeValueMemberS{Value: duplicate}
+	removedSet := types.AttributeValueMemberSS{Value: []string{duplicate}}
+	conditionExpression := "OriginalBlobPath = :old"
+	oldPath := types.AttributeValueMemberS{Value: oldOrigin}
+
+	_, err = d.client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
+		Key:              marshaledKey,
+		TableName:        &d.tableName,
+		UpdateExpression: &expression,
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":new": &newPath,
+			":i":   &removedSet,
+			":old": &oldPath,
+		},
+		ConditionExpression: &conditionExpression,
+	})
+	if err != nil {
+		var conditionalErr *types.ConditionalCheckFailedException
+		if errors.As(err, &conditionalErr) {
+			return nil
+		}
+
+		d.log.Error().Err(err).Str("digest", digest.String()).Str("path", oldOrigin).
+			Msg("failed to promote duplicate to origin")
+
+		return err
+	}
+
+	return nil
 }
 
 func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
@@ -558,8 +612,9 @@ func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 		}
 
 		if remainingDuplicate != "" {
-			// duplicates still exist, keep the original (global blobstore file stays)
-			return nil
+			// duplicates still exist: promote one of them to be the new origin, so
+			// GetAllBlobs/HasBlob don't keep reporting this now-deleted path forever
+			return d.promoteDuplicateToOrigin(digest, path)
 		}
 
 		// no more duplicates, remove the original
