@@ -33,6 +33,7 @@ import (
 	syncConstants "zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
+	"zotregistry.dev/zot/v2/pkg/storage/gc"
 )
 
 const (
@@ -1597,6 +1598,13 @@ func validateGC(config *config.Config, logger zlog.Logger) error {
 			zerr.ErrBadConfig, storageConfig.GCInterval)
 	}
 
+	if err := gc.ValidateGCTimeWindow(storageConfig.GCTimeWindow); err != nil {
+		logger.Error().Err(err).Str("gcTimeWindow", storageConfig.GCTimeWindow).
+			Msg("invalid garbage-collect time window specified")
+
+		return err
+	}
+
 	if !storageConfig.GC {
 		if storageConfig.GCDelay != 0 {
 			logger.Warn().Err(zerr.ErrBadConfig).
@@ -1606,6 +1614,11 @@ func validateGC(config *config.Config, logger zlog.Logger) error {
 		if storageConfig.GCInterval != 0 {
 			logger.Warn().Err(zerr.ErrBadConfig).
 				Msg("periodic garbage-collect interval specified without enabling garbage-collect, will be ignored")
+		}
+
+		if storageConfig.GCTimeWindow != "" {
+			logger.Warn().Err(zerr.ErrBadConfig).
+				Msg("garbage-collect time window specified without enabling garbage-collect, will be ignored")
 		}
 	}
 
@@ -1623,6 +1636,23 @@ func validateGC(config *config.Config, logger zlog.Logger) error {
 
 			return fmt.Errorf("%w: invalid GC delay configuration - cannot be negative or zero: %s",
 				zerr.ErrBadConfig, subPath.GCDelay)
+		}
+
+		if !subPath.GC {
+			if subPath.GCTimeWindow != "" {
+				logger.Warn().Err(zerr.ErrBadConfig).
+					Str("subPath", name).
+					Str("gcTimeWindow", subPath.GCTimeWindow).
+					Msg("garbage-collect time window specified without enabling garbage-collect, will be ignored")
+			}
+		} else if err := gc.ValidateGCTimeWindow(subPath.GCTimeWindow); err != nil {
+			logger.Error().Err(err).
+				Str("subPath", name).
+				Str("gcTimeWindow", subPath.GCTimeWindow).
+				Msg("invalid garbage-collect time window specified")
+
+			return fmt.Errorf("%w: invalid garbage-collect time window specified for subPath %q: %w",
+				zerr.ErrBadConfig, name, err)
 		}
 
 		if err := validateGCRules(subPath.Retention, logger); err != nil {

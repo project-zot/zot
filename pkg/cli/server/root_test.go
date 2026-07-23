@@ -2975,6 +2975,72 @@ func TestGC(t *testing.T) {
 			err = cli.LoadConfiguration(config, file)
 			So(err, ShouldNotBeNil)
 		})
+
+		Convey("Valid GC time window", func() {
+			config := config.New()
+			err = json.Unmarshal(contents, config)
+			config.Storage.GCTimeWindow = "01:00-08:00"
+
+			contents, err = json.MarshalIndent(config, "", " ")
+			So(err, ShouldBeNil)
+
+			file := MakeTempFileWithContent(t, "gc-config.json", string(contents))
+			err = cli.LoadConfiguration(config, file)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Invalid GC time window", func() {
+			config := config.New()
+			err = json.Unmarshal(contents, config)
+			config.Storage.GCTimeWindow = "not-a-window"
+
+			contents, err = json.MarshalIndent(config, "", " ")
+			So(err, ShouldBeNil)
+
+			file := MakeTempFileWithContent(t, "gc-config.json", string(contents))
+			err = cli.LoadConfiguration(config, file)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GC time window when GC = false", func() {
+			config := config.New()
+
+			content := `{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot",
+			"gc": false, "gcTimeWindow": "01:00-08:00"}, "http": {"address": "127.0.0.1", "port": "8080"},
+			"log": {"level": "debug"}}`
+
+			file := MakeTempFileWithContent(t, "gc-time-window-false-config.json", content)
+			err = cli.LoadConfiguration(config, file)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Invalid GC time window in subPath", func() {
+			config := config.New()
+
+			content := `{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot",
+			"subPaths": {"/a": {"rootDirectory": "/tmp/zot-a", "gc": true, "gcDelay": "1h",
+			"gcTimeWindow": "not-a-window"}}},
+			"http": {"address": "127.0.0.1", "port": "8080"},
+			"log": {"level": "debug"}}`
+
+			file := MakeTempFileWithContent(t, "gc-subpath-time-window-config.json", content)
+			err = cli.LoadConfiguration(config, file)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GC time window in subPath when subPath GC = false", func() {
+			config := config.New()
+
+			content := `{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot",
+			"subPaths": {"/a": {"rootDirectory": "/tmp/zot-a", "gc": false,
+			"gcTimeWindow": "01:00-08:00"}}},
+			"http": {"address": "127.0.0.1", "port": "8080"},
+			"log": {"level": "debug"}}`
+
+			file := MakeTempFileWithContent(t, "gc-subpath-time-window-disabled-config.json", content)
+			err = cli.LoadConfiguration(config, file)
+			So(err, ShouldBeNil)
+		})
 	})
 }
 
