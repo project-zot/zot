@@ -12,6 +12,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/api/constants"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/extensions/events"
 	"zotregistry.dev/zot/v2/pkg/extensions/search"
 	cveinfo "zotregistry.dev/zot/v2/pkg/extensions/search/cve"
 	"zotregistry.dev/zot/v2/pkg/extensions/search/gql_generated"
@@ -44,7 +45,8 @@ func GetCveScanner(conf *config.Config, storeController storage.StoreController,
 }
 
 func EnableSearchExtension(conf *config.Config, storeController storage.StoreController,
-	metaDB mTypes.MetaDB, taskScheduler *scheduler.Scheduler, cveScanner CveScanner, log log.Logger,
+	metaDB mTypes.MetaDB, taskScheduler *scheduler.Scheduler, cveScanner CveScanner,
+	eventRecorder events.Recorder, log log.Logger,
 ) {
 	// Get extensions config safely
 	extensionsConfig := conf.CopyExtensionsConfig()
@@ -53,7 +55,7 @@ func EnableSearchExtension(conf *config.Config, storeController storage.StoreCon
 		updateInterval := cveConfig.UpdateInterval
 
 		downloadTrivyDB(updateInterval, taskScheduler, cveScanner, log)
-		startScanner(scanInterval, metaDB, taskScheduler, cveScanner, log)
+		startScanner(scanInterval, metaDB, taskScheduler, cveScanner, eventRecorder, log)
 	} else {
 		log.Info().Msg("cve config not provided, skipping cve-db update")
 	}
@@ -67,9 +69,9 @@ func downloadTrivyDB(interval time.Duration, sch *scheduler.Scheduler, cveScanne
 }
 
 func startScanner(interval time.Duration, metaDB mTypes.MetaDB, sch *scheduler.Scheduler,
-	cveScanner CveScanner, log log.Logger,
+	cveScanner CveScanner, eventRecorder events.Recorder, log log.Logger,
 ) {
-	generator := cveinfo.NewScanTaskGenerator(metaDB, cveScanner, log)
+	generator := cveinfo.NewScanTaskGenerator(metaDB, cveScanner, log, eventRecorder)
 
 	log.Info().Msg("submitting cve-scan generator to scheduler")
 	sch.SubmitGenerator(generator, interval, scheduler.MediumPriority)

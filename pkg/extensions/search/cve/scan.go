@@ -3,8 +3,11 @@ package cveinfo
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 
+	"zotregistry.dev/zot/v2/pkg/extensions/events"
+	cvemodel "zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
@@ -15,17 +18,24 @@ func NewScanTaskGenerator(
 	metaDB mTypes.MetaDB,
 	scanner Scanner,
 	logC log.Logger,
+	eventRecorders ...events.Recorder,
 ) scheduler.TaskGenerator {
 	sublogger := logC.With().Str("component", "cve").Logger()
 
+	var eventRecorder events.Recorder
+	if len(eventRecorders) > 0 {
+		eventRecorder = eventRecorders[0]
+	}
+
 	return &scanTaskGenerator{
-		log:        sublogger,
-		metaDB:     metaDB,
-		scanner:    scanner,
-		lock:       &sync.Mutex{},
-		scanErrors: map[string]error{},
-		scheduled:  map[string]bool{},
-		done:       false,
+		log:           sublogger,
+		metaDB:        metaDB,
+		scanner:       scanner,
+		eventRecorder: eventRecorder,
+		lock:          &sync.Mutex{},
+		scanErrors:    map[string]error{},
+		scheduled:     map[string]bool{},
+		done:          false,
 	}
 }
 
@@ -34,13 +44,14 @@ func NewScanTaskGenerator(
 // scanned, the manifest will be skipped.
 // If there are no manifests missing from the cache, the generator finishes.
 type scanTaskGenerator struct {
-	log        log.Logger
-	metaDB     mTypes.MetaDB
-	scanner    Scanner
-	lock       *sync.Mutex
-	scanErrors map[string]error
-	scheduled  map[string]bool
-	done       bool
+	log           log.Logger
+	metaDB        mTypes.MetaDB
+	scanner       Scanner
+	eventRecorder events.Recorder
+	lock          *sync.Mutex
+	scanErrors    map[string]error
+	scheduled     map[string]bool
+	done          bool
 }
 
 func (gen *scanTaskGenerator) getMatcherFunc() mTypes.FilterFunc {
@@ -190,12 +201,15 @@ func (st *scanTask) DoWork(ctx context.Context) error {
 
 	// We cache the results internally in the scanner
 	// so we can discard the actual results for now
-	if _, err := st.generator.scanner.ScanImage(ctx, image); err != nil {
+	cveMap, err := st.generator.scanner.ScanImage(ctx, image)
+	if err != nil {
 		st.generator.log.Error().Err(err).Str("image", image).Msg("failed to perform scheduled cve scan for image")
 		st.generator.addError(st.digest, err)
 
 		return err
 	}
+
+	st.generator.publishScanEvent(ctx, st.repo, st.digest, cveMap)
 
 	st.generator.log.Debug().Str("image", image).Msg("scheduled cve scan completed successfully for image")
 
@@ -209,4 +223,73 @@ func (st *scanTask) String() string {
 
 func (st *scanTask) Name() string {
 	return "ScanTask"
+}
+
+func (gen *scanTaskGenerator) publishScanEvent(ctx context.Context, repo, digest string, cveMap map[string]cvemodel.CVE) {
+	if gen.eventRecorder == nil {
+		return
+	}
+
+	userAc := reqCtx.NewUserAccessControl()
+	userAc.SetUsername("scheduler")
+	userAc.SetIsAdmin(true)
+
+	repoMeta, err := gen.metaDB.GetRepoMeta(userAc.DeriveContext(ctx), repo)
+	if err != nil {
+		gen.log.Warn().Err(err).Str("repository", repo).Str("digest", digest).
+			Msg("failed to load repo metadata for image scanned event")
+
+		return
+	}
+
+	matchingTags := make([]string, 0, len(repoMeta.Tags))
+	mediaType := ""
+
+	for tag, descriptor := range repoMeta.Tags {
+		if descriptor.Digest != digest {
+			continue
+		}
+
+		matchingTags = append(matchingTags, tag)
+		if mediaType == "" {
+			mediaType = descriptor.MediaType
+		}
+	}
+
+	if len(matchingTags) == 0 {
+		gen.log.Warn().Str("repository", repo).Str("digest", digest).
+			Msg("skipping image scanned event because no matching tag was found")
+
+		return
+	}
+
+	slices.Sort(matchingTags)
+
+	summary := getImageScanSummary(cveMap)
+	for _, tag := range matchingTags {
+		gen.eventRecorder.ImageScanned(repo, tag, digest, mediaType, summary, nil)
+	}
+}
+
+func getImageScanSummary(cveMap map[string]cvemodel.CVE) events.ImageScanSummary {
+	cveSummary := initCVESummaryFromCVEMap(cveMap)
+	summary := events.ImageScanSummary{
+		Count:         cveSummary.Count,
+		UnknownCount:  cveSummary.UnknownCount,
+		LowCount:      cveSummary.LowCount,
+		MediumCount:   cveSummary.MediumCount,
+		HighCount:     cveSummary.HighCount,
+		CriticalCount: cveSummary.CriticalCount,
+		MaxSeverity:   cveSummary.MaxSeverity,
+	}
+
+	for _, cve := range cveMap {
+		if slices.ContainsFunc(cve.PackageList, func(pack cvemodel.Package) bool {
+			return pack.FixedVersion != ""
+		}) {
+			summary.FixableCount++
+		}
+	}
+
+	return summary
 }
