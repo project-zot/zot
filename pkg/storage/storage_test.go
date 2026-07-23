@@ -350,6 +350,11 @@ func (c *captureImageEvents) ImageLintFailed(name, reference, digest, mediaType,
 	})
 }
 
+func (c *captureImageEvents) ImageScanned(name, reference, digest, mediaType string,
+	summary events.ImageScanSummary, ectx *events.EventContext,
+) {
+}
+
 // TestPutImageManifestExtraTagsAndEvents covers extra-tag digest pushes, index updates, and ImageUpdated events.
 // One Convey uses createObjectsStore (nil recorder); the rest use newLocalImageStoreWithEventRecorder.
 func TestPutImageManifestExtraTagsAndEvents(t *testing.T) {

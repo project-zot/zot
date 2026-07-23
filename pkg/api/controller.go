@@ -565,7 +565,8 @@ func (c *Controller) StartBackgroundTasks() {
 	c.StoreController.DefaultStore.RunDedupeBlobs(time.Duration(0), c.taskScheduler)
 
 	// Always call EnableSearchExtension to ensure proper logging, even when search is disabled
-	ext.EnableSearchExtension(c.Config, c.StoreController, c.MetaDB, c.taskScheduler, c.CveScanner, c.Log)
+	ext.EnableSearchExtension(c.Config, c.StoreController, c.MetaDB, c.taskScheduler,
+		c.CveScanner, c.EventRecorder, c.Log)
 
 	// Always call EnableMetricsExtension to ensure proper logging, even when metrics is disabled
 	storageConfig := c.Config.CopyStorageConfig()
