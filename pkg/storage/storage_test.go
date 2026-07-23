@@ -317,6 +317,8 @@ type imageLintFailedCall struct {
 
 func (c *captureImageEvents) Close() {}
 
+// RepositoryCreated can be emitted by the image store (e.g. on first index.json
+// creation), but none of these tests assert on it, so this is an intentional no-op.
 func (c *captureImageEvents) RepositoryCreated(string, *events.EventContext) {}
 
 func (c *captureImageEvents) ImageUpdated(name, reference, digest, mediaType, manifest string,
@@ -348,6 +350,13 @@ func (c *captureImageEvents) ImageLintFailed(name, reference, digest, mediaType,
 	c.imageLintFailed = append(c.imageLintFailed, imageLintFailedCall{
 		repo: name, reference: reference, digest: digest, mediaType: mediaType, manifest: manifest,
 	})
+}
+
+// ImageScanned is emitted only by the cve package (see cve/scan.go), never by pkg/storage,
+// so unlike RepositoryCreated above, these tests could never trigger it in the first place.
+func (c *captureImageEvents) ImageScanned(name, reference, digest, mediaType string,
+	summary events.ImageScanSummary, ectx *events.EventContext,
+) {
 }
 
 // TestPutImageManifestExtraTagsAndEvents covers extra-tag digest pushes, index updates, and ImageUpdated events.

@@ -3,8 +3,14 @@ package cveinfo
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 
+	godigest "github.com/opencontainers/go-digest"
+
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/extensions/events"
+	cvemodel "zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
@@ -190,7 +196,8 @@ func (st *scanTask) DoWork(ctx context.Context) error {
 
 	// We cache the results internally in the scanner
 	// so we can discard the actual results for now
-	if _, err := st.generator.scanner.ScanImage(ctx, image); err != nil {
+	_, err := st.generator.scanner.ScanImage(ctx, image)
+	if err != nil {
 		st.generator.log.Error().Err(err).Str("image", image).Msg("failed to perform scheduled cve scan for image")
 		st.generator.addError(st.digest, err)
 
@@ -209,4 +216,129 @@ func (st *scanTask) String() string {
 
 func (st *scanTask) Name() string {
 	return "ScanTask"
+}
+
+// ScannerOption configures optional, cross-cutting behavior on a scanner
+// (e.g. event publishing). Additional scanner features should be added as
+// new options rather than new wrapper types.
+type ScannerOption func(*scanner)
+
+// WithEventRecorder makes the scanner publish an ImageScanned event via
+// eventRecorder after each successful ScanImage call. metaDB is used to
+// resolve tags for the scanned digest.
+func WithEventRecorder(metaDB mTypes.MetaDB, eventRecorder events.Recorder) ScannerOption {
+	return func(s *scanner) {
+		s.metaDB = metaDB
+		s.eventRecorder = eventRecorder
+	}
+}
+
+// NewDecoratedScanner wraps base with optional cross-cutting behavior
+// configured via opts.
+func NewDecoratedScanner(base Scanner, log log.Logger, opts ...ScannerOption) Scanner {
+	scanner := &scanner{Scanner: base, log: log}
+
+	for _, opt := range opts {
+		// a nil option (e.g. from a conditionally-omitted call site) is a no-op, not a panic
+		if opt == nil {
+			continue
+		}
+
+		opt(scanner)
+	}
+
+	return scanner
+}
+
+type scanner struct {
+	Scanner
+
+	metaDB        mTypes.MetaDB
+	eventRecorder events.Recorder
+	log           log.Logger
+}
+
+func (s *scanner) ScanImage(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
+	cveMap, err := s.Scanner.ScanImage(ctx, image)
+	if err == nil {
+		s.publishScanEvent(ctx, image, cveMap)
+	}
+
+	return cveMap, err
+}
+
+// publishScanEvent emits one ImageScanned event using whatever reference (tag
+// or digest) ScanImage was called with, mirroring how ImageDeleted/ImageLintFailed
+// pass the caller's reference through as-is. ScanImage is also invoked with the
+// digest of untagged manifests, e.g. the individual manifests inside a multiarch
+// index, so a tag cannot be required here.
+func (s *scanner) publishScanEvent(ctx context.Context, image string, cveMap map[string]cvemodel.CVE) {
+	if s.eventRecorder == nil || s.metaDB == nil {
+		return
+	}
+
+	repo, ref, isTag := zcommon.GetImageDirAndReference(image)
+
+	// When isTag is false, ref is already the digest ScanImage was called with.
+	digest := ref
+	if isTag {
+		// Use the caller's ctx as-is rather than a synthetic elevated identity: GetRepoMeta
+		// performs no per-repo access check (unlike the Filter*/Search* methods), so a real
+		// request ctx is just as capable here, and this keeps event publishing subject to
+		// whatever access control GetRepoMeta may apply in the future.
+		repoMeta, err := s.metaDB.GetRepoMeta(ctx, repo)
+		if err != nil {
+			s.log.Warn().Err(err).Str("repository", repo).Str("reference", ref).
+				Msg("failed to load repo metadata for image scanned event")
+
+			return
+		}
+
+		descriptor, ok := repoMeta.Tags[ref]
+		if !ok {
+			s.log.Warn().Str("repository", repo).Str("reference", ref).
+				Msg("skipping image scanned event because tag was not found in repo metadata")
+
+			return
+		}
+
+		digest = descriptor.Digest
+	}
+
+	imageMeta, err := s.metaDB.GetImageMeta(godigest.Digest(digest))
+	if err != nil {
+		s.log.Warn().Err(err).Str("repository", repo).Str("digest", digest).
+			Msg("failed to load image metadata for image scanned event")
+
+		return
+	}
+
+	summary := getImageScanSummary(cveMap)
+	ectx := events.EventContextFromContext(ctx)
+
+	s.eventRecorder.ImageScanned(repo, ref, digest, imageMeta.MediaType, summary, ectx)
+}
+
+func getImageScanSummary(cveMap map[string]cvemodel.CVE) events.ImageScanSummary {
+	cveSummary := initCVESummaryFromCVEMap(cveMap)
+	summary := events.ImageScanSummary{
+		Count:         cveSummary.Count,
+		UnknownCount:  cveSummary.UnknownCount,
+		LowCount:      cveSummary.LowCount,
+		MediumCount:   cveSummary.MediumCount,
+		HighCount:     cveSummary.HighCount,
+		CriticalCount: cveSummary.CriticalCount,
+		MaxSeverity:   cveSummary.MaxSeverity,
+	}
+
+	for _, cve := range cveMap {
+		if slices.ContainsFunc(cve.PackageList, func(pack cvemodel.Package) bool {
+			// the scanner uses cvemodel.NotSpecified, never "", when there is no fix
+			return pack.FixedVersion != "" && pack.FixedVersion != cvemodel.NotSpecified
+		}) {
+			summary.FixableCount++
+		}
+	}
+
+	return summary
 }

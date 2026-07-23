@@ -46,9 +46,11 @@ type BaseCveInfo struct {
 }
 
 func NewScanner(storeController storage.StoreController, metaDB mTypes.MetaDB,
-	cveConfig *extconf.CVEConfig, log log.Logger,
+	cveConfig *extconf.CVEConfig, log log.Logger, opts ...ScannerOption,
 ) Scanner {
-	return trivy.NewScanner(storeController, metaDB, cveConfig, log)
+	trivyScanner := trivy.NewScanner(storeController, metaDB, cveConfig, log)
+
+	return NewDecoratedScanner(trivyScanner, log, opts...)
 }
 
 func NewCVEInfo(scanner Scanner, metaDB mTypes.MetaDB, log log.Logger) *BaseCveInfo {

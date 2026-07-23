@@ -38,16 +38,21 @@ function setup_file() {
     echo ${zot_port} > ${BATS_FILE_TMPDIR}/zot.port
     mkdir -p ${zot_root_dir}
     mkdir -p ${oci_data_dir}
+    # gcDelay/retention.delay must comfortably exceed how long the "push image index" test's
+    # 17-image multi-arch busybox push can take: individual platform manifests are only
+    # referenced by the top-level index once it's uploaded last, so they look untagged/orphaned
+    # to GC for the whole duration of that push. A too-short delay here previously let GC delete
+    # a platform manifest out from under an in-progress push, failing it with "manifest invalid".
     cat > ${zot_config_file}<<EOF
 {
     "distSpecVersion": "1.1.1",
     "storage": {
         "rootDirectory": "${zot_root_dir}",
         "gc": true,
-        "gcDelay": "30s",
-        "gcInterval": "1s",
+        "gcDelay": "3m",
+        "gcInterval": "5s",
         "retention": {
-            "delay": "40s",
+            "delay": "4m",
             "policies": [
                 {
                     "repositories": ["**"],
@@ -162,8 +167,8 @@ EOF
         docker://127.0.0.1:${zot_port}/busybox:latest
     [ "$status" -eq 0 ]
 
-    # sleep past gc delay
-    sleep 100
+    # sleep past gc delay (retention.delay is 4m, see setup_file)
+    sleep 300
 
     # gc should have removed artifacts
     run regctl artifact get --subject 127.0.0.1:${zot_port}/alpine:3.17.3

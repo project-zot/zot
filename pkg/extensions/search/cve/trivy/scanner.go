@@ -639,14 +639,14 @@ func (scanner Scanner) scanManifest(ctx context.Context, repo, digest string) (m
 			if vulnerability.FixedVersion != "" {
 				fixedVersion = vulnerability.FixedVersion
 			} else {
-				fixedVersion = "Not Specified"
+				fixedVersion = cvemodel.NotSpecified
 			}
 
 			var packagePath string
 			if vulnerability.PkgPath != "" {
 				packagePath = vulnerability.PkgPath
 			} else {
-				packagePath = "Not Specified"
+				packagePath = cvemodel.NotSpecified
 			}
 
 			_, ok := cveidMap[vulnerability.VulnerabilityID]

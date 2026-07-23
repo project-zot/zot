@@ -52,6 +52,10 @@ type Package struct {
 	FixedVersion     string `json:"FixedVersion"`
 }
 
+// NotSpecified is used in place of Package.FixedVersion/PackagePath when the
+// scanner has no fix available or no path, so the field is never empty.
+const NotSpecified = "Not Specified"
+
 const (
 	unScanned = iota
 	none
