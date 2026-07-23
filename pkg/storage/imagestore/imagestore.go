@@ -659,6 +659,8 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 	manifestPath := path.Join(dir, mDigest.Encoded())
 
 	binfo, err := is.storeDriver.Stat(manifestPath)
+	manifestUploaded := false
+
 	if err != nil || binfo.Size() != desc.Size {
 		// The blob isn't already there, or it is corrupted, and needs a correction
 		if _, err = is.storeDriver.WriteFile(manifestPath, body); err != nil {
@@ -666,6 +668,8 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 
 			return "", "", err
 		}
+
+		manifestUploaded = true
 	}
 
 	var (
@@ -779,6 +783,14 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 	if !pass {
 		is.log.Error().Err(err).Str("repository", repo).Str("reference", reference).
 			Msg("linter didn't pass")
+
+		_, missingSignatures := zerr.GetDetails(err)["missingSignatures"]
+		if manifestUploaded && missingSignatures {
+			if deleteErr := is.storeDriver.Delete(manifestPath); deleteErr != nil {
+				is.log.Error().Err(deleteErr).Str("repository", repo).Str("reference", reference).
+					Str("digest", mDigest.String()).Msg("failed to delete untrusted manifest")
+			}
+		}
 
 		if is.events != nil {
 			// lint is a property of the manifest, not of the tag(s) it is applied under,

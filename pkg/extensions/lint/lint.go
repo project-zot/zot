@@ -5,19 +5,26 @@ package lint
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	zerr "zotregistry.dev/zot/v2/errors"
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/extensions/config"
 	"zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/meta"
+	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
+	storageCommon "zotregistry.dev/zot/v2/pkg/storage/common"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
 type Linter struct {
-	config *config.LintConfig
-	log    log.Logger
+	config            *config.LintConfig
+	signatureVerifier mTypes.ImageTrustStore
+	trustStoreReady   bool
+	log               log.Logger
 }
 
 func NewLinter(config *config.LintConfig, log log.Logger) *Linter {
@@ -27,6 +34,15 @@ func NewLinter(config *config.LintConfig, log log.Logger) *Linter {
 	}
 }
 
+func (linter *Linter) SetSignatureVerifier(signatureVerifier mTypes.ImageTrustStore, trustStoreReady bool) {
+	linter.signatureVerifier = signatureVerifier
+	linter.trustStoreReady = trustStoreReady
+}
+
+func (linter *Linter) isEnabled() bool {
+	return linter.config != nil && (linter.config.Enable == nil || *linter.config.Enable)
+}
+
 func (linter *Linter) CheckMandatoryAnnotations(repo string, manifestDigest godigest.Digest,
 	imgStore storageTypes.ImageStore,
 ) (bool, error) {
@@ -34,7 +50,7 @@ func (linter *Linter) CheckMandatoryAnnotations(repo string, manifestDigest godi
 		return true, nil
 	}
 
-	if (linter.config != nil && !*linter.config.Enable) || len(linter.config.MandatoryAnnotations) == 0 {
+	if !linter.isEnabled() || len(linter.config.MandatoryAnnotations) == 0 {
 		return true, nil
 	}
 
@@ -110,10 +126,158 @@ func (linter *Linter) CheckMandatoryAnnotations(repo string, manifestDigest godi
 	return true, nil
 }
 
+func (linter *Linter) CheckMandatorySignatures(repo string, manifestDigest godigest.Digest,
+	imgStore storageTypes.ImageStore,
+) (bool, error) {
+	if linter.config == nil || !linter.isEnabled() || len(linter.config.MandatorySignatures) == 0 {
+		return true, nil
+	}
+
+	mandatory := false
+
+	for _, mandatoryRepo := range linter.config.MandatorySignatures {
+		if mandatoryRepo == "*" || mandatoryRepo == "**" || repo == mandatoryRepo {
+			mandatory = true
+
+			break
+		}
+	}
+
+	if !mandatory {
+		return true, nil
+	}
+
+	if linter.signatureVerifier == nil || !linter.trustStoreReady {
+		msg := fmt.Sprintf("mandatory signatures lint for repository %q requires a configured trust store", repo)
+
+		return false, zerr.NewError(zerr.ErrImageLintAnnotations).AddDetail("missingSignatures", msg)
+	}
+
+	isTrusted, err := linter.hasTrustedSignature(repo, manifestDigest, imgStore)
+	if err != nil {
+		return false, err
+	}
+
+	if !isTrusted {
+		msg := fmt.Sprintf("manifest %s in repository %s does not have a trusted signature", manifestDigest, repo)
+
+		return false, zerr.NewError(zerr.ErrImageLintAnnotations).AddDetail("missingSignatures", msg)
+	}
+
+	return true, nil
+}
+
+func (linter *Linter) hasTrustedSignature(repo string, manifestDigest godigest.Digest,
+	imgStore storageTypes.ImageStore,
+) (bool, error) {
+	index, err := storageCommon.GetIndex(imgStore, repo, linter.log)
+	if err != nil {
+		return false, err
+	}
+
+	manifestBlob, err := imgStore.GetBlobContent(repo, manifestDigest)
+	if err != nil {
+		return false, err
+	}
+
+	imageMeta := mTypes.ImageMeta{
+		MediaType: ispec.MediaTypeImageManifest,
+		Digest:    manifestDigest,
+		Size:      int64(len(manifestBlob)),
+	}
+
+	for _, descriptor := range index.Manifests {
+		if descriptor.Digest == manifestDigest {
+			continue
+		}
+
+		signatureBlob, err := imgStore.GetBlobContent(repo, descriptor.Digest)
+		if err != nil {
+			continue
+		}
+
+		var signatureManifest ispec.Manifest
+		if err := json.Unmarshal(signatureBlob, &signatureManifest); err != nil {
+			continue
+		}
+
+		signatureType, isImageSignature := getSignatureType(descriptor, signatureManifest, manifestDigest)
+		if !isImageSignature {
+			continue
+		}
+
+		signatureLayers, err := meta.GetSignatureLayersInfo(repo,
+			descriptor.Annotations[ispec.AnnotationRefName], descriptor.Digest.String(), signatureType,
+			signatureBlob, imgStore, linter.log)
+		if err != nil {
+			continue
+		}
+
+		for _, signatureLayer := range signatureLayers {
+			_, _, trusted, err := linter.signatureVerifier.VerifySignature(signatureType,
+				signatureLayer.LayerContent, signatureLayer.SignatureKey, manifestDigest, imageMeta, repo)
+			if err != nil {
+				continue
+			}
+
+			if trusted {
+				return true, nil
+			}
+		}
+	}
+
+	return false, nil
+}
+
+func getSignatureType(descriptor ispec.Descriptor, signatureManifest ispec.Manifest,
+	manifestDigest godigest.Digest,
+) (string, bool) {
+	artifactType := zcommon.GetManifestArtifactType(signatureManifest)
+
+	if signatureManifest.Subject != nil && signatureManifest.Subject.Digest == manifestDigest {
+		switch {
+		case zcommon.IsArtifactTypeCosign(artifactType):
+			return zcommon.CosignSignature, true
+		case artifactType == zcommon.ArtifactTypeNotation:
+			return zcommon.NotationSignature, true
+		}
+	}
+
+	tag := descriptor.Annotations[ispec.AnnotationRefName]
+	if zcommon.IsCosignSignature(tag) {
+		signedDigest, err := getDigestFromCosignTag(tag)
+		if err == nil && signedDigest == manifestDigest {
+			return zcommon.CosignSignature, true
+		}
+	}
+
+	return "", false
+}
+
+func getDigestFromCosignTag(tag string) (godigest.Digest, error) {
+	const (
+		cosignPrefix = "sha256-"
+		cosignSuffix = ".sig"
+	)
+
+	if !strings.HasPrefix(tag, cosignPrefix) || !strings.HasSuffix(tag, cosignSuffix) {
+		return "", zerr.ErrBadManifest
+	}
+
+	encodedDigest := strings.TrimSuffix(strings.TrimPrefix(tag, cosignPrefix), cosignSuffix)
+
+	return godigest.NewDigestFromEncoded(godigest.SHA256, encodedDigest), nil
+}
+
 func (linter *Linter) Lint(repo string, manifestDigest godigest.Digest,
 	imageStore storageTypes.ImageStore,
 ) (bool, error) {
-	return linter.CheckMandatoryAnnotations(repo, manifestDigest, imageStore)
+	pass, err := linter.CheckMandatoryAnnotations(repo, manifestDigest, imageStore)
+	if err != nil || !pass {
+		return pass, err
+	}
+
+	return linter.CheckMandatorySignatures(repo, manifestDigest, imageStore)
 }
 
 func getMissingAnnotations(mandatoryAnnotationsMap map[string]bool) []string {
