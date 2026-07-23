@@ -18,6 +18,7 @@ import (
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
+	syncConstants "zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/storage/gcs"
 	"zotregistry.dev/zot/v2/pkg/storage/imagestore"
@@ -252,5 +253,92 @@ func TestCleanupRepoFailsOnDeleteImageManifest(t *testing.T) {
 		count, err := store.CleanupRepo(repo, []godigest.Digest{manifestDigest}, false)
 		So(err, ShouldNotBeNil)
 		So(count, ShouldEqual, 0)
+	})
+}
+
+func TestCleanupRepoToleratesSyncSessions(t *testing.T) {
+	Convey("CleanupRepo rejects .sync sessions", t, func() {
+		dir := t.TempDir()
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+		defer metrics.Stop()
+
+		store := local.NewImageStore(dir, true, true, log, metrics, nil, nil, nil, nil)
+		repo := "repo"
+		ctx := context.Background()
+
+		content := []byte("test-layer")
+		digest := godigest.FromBytes(content)
+		_, _, err := store.FullBlobUpload(ctx, repo, bytes.NewReader(content), digest)
+		So(err, ShouldBeNil)
+
+		cblob, cdigest := GetRandomImageConfig()
+		_, _, err = store.FullBlobUpload(ctx, repo, bytes.NewReader(cblob), cdigest)
+		So(err, ShouldBeNil)
+
+		manifest := ispec.Manifest{
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageConfig,
+				Digest:    cdigest,
+				Size:      int64(len(cblob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageLayer,
+					Digest:    digest,
+					Size:      int64(len(content)),
+				},
+			},
+		}
+		manifest.SchemaVersion = 2
+
+		body, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+
+		manifestDigest := godigest.FromBytes(body)
+		_, _, err = store.PutImageManifest(ctx, repo, "1.0", ispec.MediaTypeImageManifest, body, nil)
+		So(err, ShouldBeNil)
+
+		Convey("sync session blocks repo removal", func() {
+			syncDir := path.Join(dir, repo, syncConstants.SyncBlobUploadDir, "a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+			err = os.MkdirAll(syncDir, 0o755)
+			So(err, ShouldBeNil)
+
+			err = os.WriteFile(path.Join(syncDir, "staging"), []byte("data"), 0o644)
+			So(err, ShouldBeNil)
+
+			allBlobs := []godigest.Digest{manifestDigest}
+
+			count, err := store.CleanupRepo(repo, allBlobs, true)
+			So(err, ShouldBeNil)
+			So(count, ShouldEqual, 1)
+
+			_, statErr := os.Stat(path.Join(dir, repo))
+			So(statErr, ShouldBeNil)
+		})
+
+		Convey("removal proceeds without sync session", func() {
+			allBlobs := []godigest.Digest{manifestDigest}
+
+			_, err = store.CleanupRepo(repo, allBlobs, true)
+			So(err, ShouldBeNil)
+
+			_, statErr := os.Stat(path.Join(dir, repo))
+			So(os.IsNotExist(statErr), ShouldBeTrue)
+		})
+
+		Convey("empty .sync dir does not block removal", func() {
+			syncDir := path.Join(dir, repo, syncConstants.SyncBlobUploadDir)
+			err = os.MkdirAll(syncDir, 0o755)
+			So(err, ShouldBeNil)
+
+			allBlobs := []godigest.Digest{manifestDigest}
+
+			_, err = store.CleanupRepo(repo, allBlobs, true)
+			So(err, ShouldBeNil)
+
+			_, statErr := os.Stat(path.Join(dir, repo))
+			So(os.IsNotExist(statErr), ShouldBeTrue)
+		})
 	})
 }

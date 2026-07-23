@@ -72,6 +72,9 @@ type ImageStore interface { //nolint:interfacebloat
 	VerifyBlobDigestValue(repo string, digest godigest.Digest) error
 	GetAllDedupeReposCandidates(digest godigest.Digest) ([]string, error)
 	GetBlobRedirectURL(r *http.Request, repo string, digest godigest.Digest) (string, error)
+	ListSyncSessions(repo string) ([]string, error)
+	StatSyncSession(repo, id string) (bool, int64, time.Time, error)
+	DeleteSyncSession(repo, id string) error
 }
 
 type Driver interface { //nolint:interfacebloat
