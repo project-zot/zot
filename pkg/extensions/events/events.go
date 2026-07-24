@@ -123,6 +123,27 @@ func (r eventRecorder) ImageLintFailed(name, reference, digest, mediaType, manif
 	r.publish(event)
 }
 
+func (r eventRecorder) ImageScanned(name, reference, digest, mediaType string,
+	summary ImageScanSummary, ectx *EventContext,
+) {
+	event, err := newEventBuilder().
+		WithEventType(ImageScannedEventType).
+		WithDataField("name", name).
+		WithDataField("reference", reference).
+		WithDataField("digest", digest).
+		WithDataField("mediaType", mediaType).
+		WithDataField("summary", summary).
+		WithEventContext(ectx).
+		Build()
+	if err != nil {
+		r.log.Warn().Err(err).Msg("failed to create event")
+
+		return
+	}
+
+	r.publish(event)
+}
+
 func getTLSConfig(config eventsconf.SinkConfig) (*tls.Config, error) {
 	tlsConfig := &tls.Config{
 		MinVersion: tls.VersionTLS12,

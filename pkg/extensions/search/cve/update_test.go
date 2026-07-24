@@ -60,7 +60,7 @@ func TestCVEDBGenerator(t *testing.T) {
 			Trivy: &extconf.TrivyConfig{
 				DBRepository: "ghcr.io/project-zot/trivy-db",
 			},
-		}, logger)
+		}, logger, nil)
 		generator := cveinfo.NewDBUpdateTaskGenerator(time.Minute, cveScanner, logger)
 
 		sch.SubmitGenerator(generator, 12000*time.Millisecond, scheduler.HighPriority)

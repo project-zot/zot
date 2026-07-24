@@ -6,6 +6,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/extensions/events"
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/scheduler"
@@ -15,7 +16,7 @@ import (
 type CveScanner any
 
 func GetCveScanner(config *config.Config, storeController storage.StoreController,
-	metaDB mTypes.MetaDB, log log.Logger,
+	metaDB mTypes.MetaDB, eventRecorder events.Recorder, log log.Logger,
 ) CveScanner {
 	return nil
 }
@@ -26,7 +27,8 @@ func IsBuiltWithSearchExtension() bool {
 
 // EnableSearchExtension ...
 func EnableSearchExtension(config *config.Config, storeController storage.StoreController,
-	metaDB mTypes.MetaDB, scheduler *scheduler.Scheduler, cveScanner CveScanner, log log.Logger,
+	metaDB mTypes.MetaDB, scheduler *scheduler.Scheduler, cveScanner CveScanner,
+	log log.Logger,
 ) {
 	log.Warn().Msg("skipping enabling search extension because given zot binary doesn't include this feature," +
 		"please build a binary that does so")

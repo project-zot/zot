@@ -3,8 +3,12 @@ package cveinfo
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/extensions/events"
+	cvemodel "zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
@@ -190,7 +194,8 @@ func (st *scanTask) DoWork(ctx context.Context) error {
 
 	// We cache the results internally in the scanner
 	// so we can discard the actual results for now
-	if _, err := st.generator.scanner.ScanImage(ctx, image); err != nil {
+	_, err := st.generator.scanner.ScanImage(ctx, image)
+	if err != nil {
 		st.generator.log.Error().Err(err).Str("image", image).Msg("failed to perform scheduled cve scan for image")
 		st.generator.addError(st.digest, err)
 
@@ -209,4 +214,121 @@ func (st *scanTask) String() string {
 
 func (st *scanTask) Name() string {
 	return "ScanTask"
+}
+
+// NewScannerWithEvent wraps scanner so that a successful ScanImage call publishes
+// an ImageScanned event via eventRecorder. metaDB is used to resolve tags for the
+// scanned digest.
+func NewScannerWithEvent(scanner Scanner, metaDB mTypes.MetaDB, eventRecorder events.Recorder,
+	log log.Logger,
+) Scanner {
+	return &scannerWithEvent{
+		Scanner:       scanner,
+		metaDB:        metaDB,
+		eventRecorder: eventRecorder,
+		log:           log,
+	}
+}
+
+type scannerWithEvent struct {
+	Scanner
+
+	metaDB        mTypes.MetaDB
+	eventRecorder events.Recorder
+	log           log.Logger
+}
+
+func (s *scannerWithEvent) ScanImage(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
+	cveMap, err := s.Scanner.ScanImage(ctx, image)
+	if err == nil {
+		s.publishScanEvent(ctx, image, cveMap)
+	}
+
+	return cveMap, err
+}
+
+func (s *scannerWithEvent) publishScanEvent(ctx context.Context, image string, cveMap map[string]cvemodel.CVE) {
+	if s.eventRecorder == nil || s.metaDB == nil {
+		return
+	}
+
+	repo, ref, isTag := zcommon.GetImageDirAndReference(image)
+
+	userAc := reqCtx.NewUserAccessControl()
+	userAc.SetUsername("scheduler")
+	userAc.SetIsAdmin(true)
+
+	repoMeta, err := s.metaDB.GetRepoMeta(userAc.DeriveContext(ctx), repo)
+	if err != nil {
+		s.log.Warn().Err(err).Str("repository", repo).Str("reference", ref).
+			Msg("failed to load repo metadata for image scanned event")
+
+		return
+	}
+
+	digest := ref
+	if isTag {
+		descriptor, ok := repoMeta.Tags[ref]
+		if !ok {
+			s.log.Warn().Str("repository", repo).Str("reference", ref).
+				Msg("skipping image scanned event because tag was not found in repo metadata")
+
+			return
+		}
+
+		digest = descriptor.Digest
+	}
+
+	matchingTags := make([]string, 0, len(repoMeta.Tags))
+	mediaType := ""
+
+	for tag, descriptor := range repoMeta.Tags {
+		if descriptor.Digest != digest {
+			continue
+		}
+
+		matchingTags = append(matchingTags, tag)
+		if mediaType == "" {
+			mediaType = descriptor.MediaType
+		}
+	}
+
+	if len(matchingTags) == 0 {
+		s.log.Warn().Str("repository", repo).Str("digest", digest).
+			Msg("skipping image scanned event because no matching tag was found")
+
+		return
+	}
+
+	slices.Sort(matchingTags)
+
+	summary := getImageScanSummary(cveMap)
+	ectx := events.EventContextFromContext(ctx)
+
+	for _, tag := range matchingTags {
+		s.eventRecorder.ImageScanned(repo, tag, digest, mediaType, summary, ectx)
+	}
+}
+
+func getImageScanSummary(cveMap map[string]cvemodel.CVE) events.ImageScanSummary {
+	cveSummary := initCVESummaryFromCVEMap(cveMap)
+	summary := events.ImageScanSummary{
+		Count:         cveSummary.Count,
+		UnknownCount:  cveSummary.UnknownCount,
+		LowCount:      cveSummary.LowCount,
+		MediumCount:   cveSummary.MediumCount,
+		HighCount:     cveSummary.HighCount,
+		CriticalCount: cveSummary.CriticalCount,
+		MaxSeverity:   cveSummary.MaxSeverity,
+	}
+
+	for _, cve := range cveMap {
+		if slices.ContainsFunc(cve.PackageList, func(pack cvemodel.Package) bool {
+			return pack.FixedVersion != ""
+		}) {
+			summary.FixableCount++
+		}
+	}
+
+	return summary
 }

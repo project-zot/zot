@@ -20,6 +20,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
+	"zotregistry.dev/zot/v2/pkg/extensions/events"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	cveinfo "zotregistry.dev/zot/v2/pkg/extensions/search/cve"
 	cvecache "zotregistry.dev/zot/v2/pkg/extensions/search/cve/cache"
@@ -40,6 +41,47 @@ var (
 	ErrBadTest    = errors.New("there is a bug in the test")
 	ErrFailedScan = errors.New("scan has failed intentionally")
 )
+
+type scanEventCall struct {
+	name      string
+	reference string
+	digest    string
+	mediaType string
+	summary   events.ImageScanSummary
+}
+
+type scanEventRecorder struct {
+	calls []scanEventCall
+}
+
+func (r *scanEventRecorder) Close() {}
+
+func (r *scanEventRecorder) RepositoryCreated(name string, ectx *events.EventContext) {}
+
+func (r *scanEventRecorder) ImageUpdated(name, reference, digest, mediaType, manifest string,
+	ectx *events.EventContext,
+) {
+}
+
+func (r *scanEventRecorder) ImageDeleted(name, reference, digest, mediaType string, ectx *events.EventContext) {
+}
+
+func (r *scanEventRecorder) ImageLintFailed(name, reference, digest, mediaType, manifest string,
+	ectx *events.EventContext,
+) {
+}
+
+func (r *scanEventRecorder) ImageScanned(name, reference, digest, mediaType string,
+	summary events.ImageScanSummary, ectx *events.EventContext,
+) {
+	r.calls = append(r.calls, scanEventCall{
+		name:      name,
+		reference: reference,
+		digest:    digest,
+		mediaType: mediaType,
+		summary:   summary,
+	})
+}
 
 func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 	Convey("Test CVE scanning task scheduler with diverse mocked data", t, func() {
@@ -518,7 +560,7 @@ func TestScanGeneratorWithRealData(t *testing.T) {
 			Trivy: &extconf.TrivyConfig{
 				DBRepository: "ghcr.io/project-zot/trivy-db",
 			},
-		}, logger)
+		}, logger, nil)
 		err = scanner.UpdateDB(context.Background())
 		So(err, ShouldBeNil)
 
@@ -575,5 +617,69 @@ func TestScanGeneratorWithRealData(t *testing.T) {
 		So(cveSummary.Count, ShouldBeGreaterThanOrEqualTo, 5)
 		// As of September 22 the max severity is MEDIUM, but new CVEs could appear in the future
 		So([]string{"MEDIUM", "HIGH", "CRITICAL", "UNKNOWN"}, ShouldContain, cveSummary.MaxSeverity)
+	})
+}
+
+func TestScanGeneratorPublishesScanEvents(t *testing.T) {
+	Convey("scheduled scans publish an event for each matching tag", t, func() {
+		params := boltdb.DBParameters{
+			RootDir: t.TempDir(),
+		}
+		boltDriver, err := boltdb.GetBoltDriver(params)
+		So(err, ShouldBeNil)
+
+		metaDB, err := boltdb.New(boltDriver, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		image := CreateImageWith().DefaultLayers().DefaultConfig().Build()
+		err = metaDB.SetRepoReference(context.Background(), "repo", "1.0.0", image.AsImageMeta())
+		So(err, ShouldBeNil)
+		err = metaDB.SetRepoReference(context.Background(), "repo", "stable", image.AsImageMeta())
+		So(err, ShouldBeNil)
+
+		recorder := &scanEventRecorder{}
+		mockScanner := mocks.CveScannerMock{
+			ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
+				return map[string]cvemodel.CVE{
+					"CVE-1": {
+						Severity: cvemodel.SeverityHigh,
+						PackageList: []cvemodel.Package{{
+							Name:         "openssl",
+							FixedVersion: "1.0.1",
+						}},
+					},
+					"CVE-2": {
+						Severity: cvemodel.SeverityLow,
+						PackageList: []cvemodel.Package{{
+							Name: "busybox",
+						}},
+					},
+				}, nil
+			},
+		}
+		scanner := cveinfo.NewScannerWithEvent(mockScanner, metaDB, recorder, log.NewTestLogger())
+
+		generator := cveinfo.NewScanTaskGenerator(metaDB, scanner, log.NewTestLogger())
+		task, err := generator.Next()
+		So(err, ShouldBeNil)
+		So(task, ShouldNotBeNil)
+
+		err = task.DoWork(context.Background())
+		So(err, ShouldBeNil)
+
+		So(recorder.calls, ShouldHaveLength, 2)
+		So([]string{recorder.calls[0].reference, recorder.calls[1].reference},
+			ShouldResemble, []string{"1.0.0", "stable"})
+
+		for _, call := range recorder.calls {
+			So(call.name, ShouldEqual, "repo")
+			So(call.digest, ShouldEqual, image.DigestStr())
+			So(call.mediaType, ShouldEqual, image.AsImageMeta().MediaType)
+			So(call.summary.Count, ShouldEqual, 2)
+			So(call.summary.FixableCount, ShouldEqual, 1)
+			So(call.summary.LowCount, ShouldEqual, 1)
+			So(call.summary.HighCount, ShouldEqual, 1)
+			So(call.summary.MaxSeverity, ShouldEqual, cvemodel.SeverityHigh)
+		}
 	})
 }
