@@ -446,7 +446,7 @@ func (scanner Scanner) IsImageMediaScannable(repo, digestStr, mediaType string) 
 
 	if mediaType == ispec.MediaTypeImageManifest || //nolint:gocritic // not converting to switch-case
 		compat.IsCompatibleManifestMediaType(mediaType) {
-		ok, err := scanner.isManifestScanable(digestStr)
+		ok, err := scanner.isManifestScannable(digestStr)
 		if err != nil {
 			return ok, fmt.Errorf("image '%s' %w", image, err)
 		}
@@ -484,7 +484,7 @@ func isManifestLayersScannable(layers []ispec.Descriptor) (bool, error) {
 	return true, nil
 }
 
-func (scanner Scanner) isManifestScanable(digestStr string) (bool, error) {
+func (scanner Scanner) isManifestScannable(digestStr string) (bool, error) {
 	if scanner.cache.Get(digestStr) != nil {
 		return true, nil
 	}
@@ -495,7 +495,7 @@ func (scanner Scanner) isManifestScanable(digestStr string) (bool, error) {
 	}
 
 	if len(manifestData.Manifests) == 0 {
-		return false, fmt.Errorf("%w:  manifest data has 0 manifests", zerr.ErrScanNotSupported)
+		return false, fmt.Errorf("%w: manifest data has 0 manifests", zerr.ErrScanNotSupported)
 	}
 
 	return isManifestLayersScannable(manifestData.Manifests[0].Manifest.Layers)
@@ -901,7 +901,7 @@ func (scanner Scanner) scanIndex(ctx context.Context, repo, digest string) (map[
 	indexCveIDMap := map[string]cvemodel.CVE{}
 
 	for _, manifest := range indexData.Index.Manifests {
-		if isScannable, err := scanner.isManifestScanable(manifest.Digest.String()); isScannable && err == nil {
+		if isScannable, err := scanner.isManifestScannable(manifest.Digest.String()); isScannable && err == nil {
 			manifestCveIDMap, err := scanner.scanManifest(ctx, repo, manifest.Digest.String())
 			if err != nil {
 				return nil, err
