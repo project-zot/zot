@@ -27,6 +27,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/scheduler"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	common "zotregistry.dev/zot/v2/pkg/storage/common"
+	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
@@ -126,16 +127,23 @@ func (gc GarbageCollect) CleanRepo(ctx context.Context, repo string) error {
 }
 
 func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
-	var lockLatency time.Time
-
 	dir := path.Join(gc.imgStore.RootDir(), repo)
 	if !gc.imgStore.DirExists(dir) {
 		return zerr.ErrRepoNotFound
 	}
 
-	gc.imgStore.Lock(&lockLatency)
-	defer gc.imgStore.Unlock(&lockLatency)
+	// The whole pass is wrapped in blobstore-then-repo (the mandated order), not just
+	// WithRepoLock: removeUnreferencedBlobs below deletes blobs one at a time, and
+	// each delete may reclaim the shared global blobstore copy (see deleteBlob) - that
+	// needs the blobstore lock held for the same repo-locked span, acquired outer to
+	// inner, so this can never invert relative to DedupeBlob/CheckBlob/DeleteBlob
+	// which also take blobstore-then-repo.
+	return gc.imgStore.WithBlobstoreAndRepoLock(repo, func() error {
+		return gc.cleanRepoLocked(ctx, repo)
+	})
+}
 
+func (gc GarbageCollect) cleanRepoLocked(ctx context.Context, repo string) error {
 	/* this index (which represents the index.json of this repo) is the root point from which we
 	search for dangling manifests/blobs
 	so this index is passed by reference in all functions that modifies it
@@ -592,6 +600,11 @@ func (gc GarbageCollect) removeReferrer(repo string, index *ispec.Index, manifes
 }
 
 func (gc GarbageCollect) removeTagsPerRetentionPolicy(ctx context.Context, repo string, index *ispec.Index) error {
+	// skip the global blobs repo - it has no tags to retain
+	if repo == storageConstants.GlobalBlobsRepo {
+		return nil
+	}
+
 	if !gc.policyMgr.HasTagRetention(repo) {
 		return nil
 	}
@@ -640,10 +653,18 @@ func (gc GarbageCollect) gcManifest(repo string, index *ispec.Index, desc ispec.
 
 	canGC, err := isBlobOlderThan(gc.imgStore, repo, desc.Digest, delay, gc.log)
 	if err != nil {
-		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", desc.Digest.String()).
-			Str("delay", delay.String()).Msg("failed to check if blob is older than delay")
+		var pathNotFoundErr driver.PathNotFoundError
+		if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
+			gc.log.Warn().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", desc.Digest.String()).
+				Msg("manifest blob missing during GC, removing stale index entry")
 
-		return false, err
+			canGC = true
+		} else {
+			gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", desc.Digest.String()).
+				Str("delay", delay.String()).Msg("failed to check if blob is older than delay")
+
+			return false, err
+		}
 	}
 
 	if canGC {

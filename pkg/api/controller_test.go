@@ -610,8 +610,6 @@ func TestObjectStorageController(t *testing.T) {
 	tskip.SkipS3(t)
 	tskip.SkipDynamo(t)
 
-	bucket := "zot-storage-test"
-
 	Convey("Negative make a new object storage controller", t, func() {
 		port := test.GetFreePort()
 		conf := config.New()
@@ -631,11 +629,21 @@ func TestObjectStorageController(t *testing.T) {
 	})
 
 	Convey("Make a new object storage controller", t, func() {
+		bucket := fmt.Sprintf("zot-storage-test-%d", time.Now().UnixNano())
 		conf := config.New()
 		conf.HTTP.Port = "0"
 
 		endpoint := os.Getenv("S3MOCK_ENDPOINT")
 		tmp := t.TempDir()
+
+		// create s3 bucket
+		resp, err := resty.R().Put("http://" + endpoint + "/" + bucket)
+		if err != nil {
+			panic(err)
+		}
+		if sc := resp.StatusCode(); sc != http.StatusOK && sc != http.StatusConflict {
+			panic(fmt.Sprintf("failed to create bucket: %d %s", sc, resp.String()))
+		}
 
 		storageDriverParams := map[string]any{
 			"rootdirectory":  tmp,
@@ -643,8 +651,11 @@ func TestObjectStorageController(t *testing.T) {
 			"region":         "us-east-2",
 			"bucket":         bucket,
 			"regionendpoint": endpoint,
+			"accesskey":      "minioadmin",
+			"secretkey":      "minioadmin",
 			"secure":         false,
 			"skipverify":     false,
+			"forcepathstyle": true,
 		}
 
 		conf.Storage.StorageDriver = storageDriverParams
@@ -658,6 +669,7 @@ func TestObjectStorageController(t *testing.T) {
 	})
 
 	Convey("Make a new object storage controller with openid", t, func() {
+		bucket := fmt.Sprintf("zot-storage-test-%d", time.Now().UnixNano())
 		conf := config.New()
 		conf.HTTP.Port = "0"
 
@@ -669,8 +681,11 @@ func TestObjectStorageController(t *testing.T) {
 			"region":         "us-east-2",
 			"bucket":         bucket,
 			"regionendpoint": endpoint,
+			"accesskey":      "minioadmin",
+			"secretkey":      "minioadmin",
 			"secure":         false,
 			"skipverify":     false,
+			"forcepathstyle": true,
 		}
 		conf.Storage.RemoteCache = true
 		conf.Storage.StorageDriver = storageDriverParams
@@ -717,9 +732,12 @@ func TestObjectStorageController(t *testing.T) {
 		}
 
 		// create s3 bucket
-		_, err = resty.R().Put("http://" + os.Getenv("S3MOCK_ENDPOINT") + "/" + bucket)
+		resp, err := resty.R().Put("http://" + os.Getenv("S3MOCK_ENDPOINT") + "/" + bucket)
 		if err != nil {
 			panic(err)
+		}
+		if sc := resp.StatusCode(); sc != http.StatusOK && sc != http.StatusConflict {
+			panic(fmt.Sprintf("failed to create bucket: %d %s", sc, resp.String()))
 		}
 
 		ctlr := makeController(conf, "/")
@@ -735,9 +753,9 @@ func TestObjectStorageController(t *testing.T) {
 func TestObjectStorageControllerSubPaths(t *testing.T) {
 	tskip.SkipS3(t)
 
-	bucket := "zot-storage-test"
-
 	Convey("Make a new object storage controller", t, func() {
+		bucket := fmt.Sprintf("zot-storage-test-%d", time.Now().UnixNano())
+
 		port := test.GetFreePort()
 		conf := config.New()
 		conf.HTTP.Port = port
@@ -745,14 +763,26 @@ func TestObjectStorageControllerSubPaths(t *testing.T) {
 		endpoint := os.Getenv("S3MOCK_ENDPOINT")
 		tmp := t.TempDir()
 
+		// create s3 bucket
+		resp, err := resty.R().Put("http://" + endpoint + "/" + bucket)
+		if err != nil {
+			panic(err)
+		}
+		if sc := resp.StatusCode(); sc != http.StatusOK && sc != http.StatusConflict {
+			panic(fmt.Sprintf("failed to create bucket: %d %s", sc, resp.String()))
+		}
+
 		storageDriverParams := map[string]any{
 			"rootdirectory":  tmp,
 			"name":           storageConstants.S3StorageDriverName,
 			"region":         "us-east-2",
 			"bucket":         bucket,
 			"regionendpoint": endpoint,
+			"accesskey":      "minioadmin",
+			"secretkey":      "minioadmin",
 			"secure":         false,
 			"skipverify":     false,
+			"forcepathstyle": true,
 		}
 		conf.Storage.StorageDriver = storageDriverParams
 		ctlr := makeController(conf, tmp)

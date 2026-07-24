@@ -1760,3 +1760,18 @@ func TestCleanupRepoMissingBlob(t *testing.T) {
 		So(count, ShouldEqual, 1)
 	})
 }
+
+// TestRemoveTagsPerRetentionPolicySkipsGlobalBlobsRepo covers the _blobstore guard in
+// removeTagsPerRetentionPolicy: _blobstore has no tags to retain, and unlike a normal
+// repo it's never expected to have a configured retention policy. A zero-value
+// GarbageCollect (policyMgr left nil) is deliberate: if the guard didn't fire before
+// reaching gc.policyMgr.HasTagRetention, this would panic on the nil interface,
+// proving the guard actually short-circuits rather than just happening to return nil.
+func TestRemoveTagsPerRetentionPolicySkipsGlobalBlobsRepo(t *testing.T) {
+	Convey("removeTagsPerRetentionPolicy no-ops for _blobstore", t, func() {
+		gc := GarbageCollect{}
+
+		err := gc.removeTagsPerRetentionPolicy(context.Background(), storageConstants.GlobalBlobsRepo, &ispec.Index{})
+		So(err, ShouldBeNil)
+	})
+}

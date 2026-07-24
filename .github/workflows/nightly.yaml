@@ -13,6 +13,8 @@ permissions: read-all
 #  task scheduler will start a restore all blobs process at zot startup, after it finishes all blobs should be restored to their original state (have content)
 #  3. run many, many, many instances of zot with shared storage and metadata front-ended by HAProxy. start a long-running zb run with high concurrency and number of requests
 #  to achieve a long-running sustained load on the system. The system is expected to perform well without errors and return performance data after the test.
+#  4. run zot with local storage and run the full zb test suite against it for up to 30 minutes, to catch performance regressions
+#  that only show up under sustained load and are missed by the quick, per-push benchmark in benchmark.yaml.
 jobs:
   dedupe:
     name: Dedupe/restore blobs
@@ -161,6 +163,61 @@ jobs:
           cat /tmp/gc-bench-s3.log
           exit 1
       - uses: ./.github/actions/teardown-localstack
+
+  long-running-benchmark:
+    name: Long-running zb benchmark (local storage)
+    runs-on: cncf-ubuntu-8-32-x86
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          cache: false
+          check-latest: true
+          go-version: 1.26.x
+      - name: Build zot and zb
+        run: |
+          make binary
+          make bench
+      # Run the full zb suite (all payload sizes, push/pull/sync) against a single local zot
+      # instance, capped at 30 minutes, to sustain load for longer than the per-push benchmark.
+      - name: Run zb
+        id: bench
+        timeout-minutes: 30
+        continue-on-error: true
+        run: |
+            ./bin/zot-linux-amd64 serve examples/config-bench.json & echo $! > zot.PID
+            curl --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 180 --retry-connrefused http://localhost:8080/v2/
+            bin/zb-linux-amd64 -c 100 -n 100000 -o ci-cd http://localhost:8080
+
+            kill -TERM $(cat zot.PID) || true
+            rm -f zot.PID
+
+            # clean zot storage
+            sudo rm -rf /tmp/zot
+      # Download previous benchmark result from cache (if exists)
+      - name: Download previous benchmark data
+        if: steps.bench.outcome == 'success'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ./cache
+          key: ${{ runner.os }}-gen1-longrunning-benchmark
+      # Run `github-action-benchmark` action
+      - name: Store benchmark result
+        if: steps.bench.outcome == 'success'
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
+        with:
+          # What benchmark tool the output.txt came from
+          tool: 'customBiggerIsBetter'
+          # Where the output from the benchmark tool is stored
+          output-file-path: ci-cd.json
+          # Where the previous data file is stored
+          external-data-json-path: ./cache/benchmark-data.json
+          # Workflow will fail when an alert happens
+          fail-on-alert: true
+          # Show data in the job summary
+          summary-always: true
 
   docker-image:
     name: Build docker image (for users still using Docker environments)

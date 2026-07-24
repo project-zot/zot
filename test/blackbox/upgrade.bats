@@ -77,6 +77,23 @@ function teardown_file() {
     helper_push_image golang 1.20 oci:${TEST_DATA_DIR}/golang:1.20
 }
 
+@test "[release] push duplicate images for migration test" {
+    # Pushing the same content to multiple repos exercises the release binary's old
+    # per-repo dedupe mechanism (no _blobstore yet) - this is what the upgrade to the
+    # new binary's global blobstore has to consolidate, not just an empty-store no-op.
+    local zot_port=$(get_zot_port)
+    local digests_file=${BATS_FILE_TMPDIR}/migration-digests.txt
+
+    : > ${digests_file}
+
+    for repo in migration-dup1 migration-dup2; do
+        helper_push_image ${repo} 1.20 oci:${TEST_DATA_DIR}/golang:1.20
+        local digest=$(skopeo inspect --tls-verify=false docker://127.0.0.1:${zot_port}/${repo}:1.20 | jq -r '.Digest')
+        [ -n "${digest}" ]
+        echo "${repo}=${digest}" >> ${digests_file}
+    done
+}
+
 @test "[release] pull image" {
     helper_pull_image golang 1.20
 }
@@ -202,8 +219,21 @@ function teardown_file() {
     zot_stop_all
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
     local zot_port=$(get_zot_port)
+
+    # The global-blobstore migration (see pkg/storage/imagestore.go's
+    # upgradeToGlobalBlobstore) runs synchronously before the HTTP server starts
+    # listening, so the reachability wait below *is* the migration duration - not
+    # asserted against a threshold (CI runner variance), just logged for visibility.
+    local start=$(date +%s)
     zot_serve ${ZOT_PATH} ${zot_config_file}
     wait_zot_reachable ${zot_port}
+    local end=$(date +%s)
+    echo "migration + startup took $((end-start)) sec" >&3
+
+    local zot_log_file=${BATS_FILE_TMPDIR}/zot/zot-log.json
+    run grep -q "global blobstore upgrade completed" ${zot_log_file}
+    [ "${status}" -eq 0 ]
+
     sleep 60    # zot does additional initialization/verification during startup
 }
 
@@ -252,6 +282,17 @@ function teardown_file() {
 
 @test "[new] existing pull image" {
     helper_pull_image golang 1.20
+}
+
+@test "[new] migrated duplicate images pull back with unchanged digests" {
+    local zot_port=$(get_zot_port)
+    local digests_file=${BATS_FILE_TMPDIR}/migration-digests.txt
+
+    while IFS='=' read -r repo expected_digest; do
+        helper_pull_image ${repo} 1.20
+        local digest=$(skopeo inspect --tls-verify=false docker://127.0.0.1:${zot_port}/${repo}:1.20 | jq -r '.Digest')
+        [ "${digest}" = "${expected_digest}" ]
+    done < ${digests_file}
 }
 
 @test "[new] existing pull image index" {
