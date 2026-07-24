@@ -477,10 +477,14 @@ func (scanner Scanner) isManifestScanable(digestStr string) (bool, error) {
 
 	for _, imageLayer := range manifestData.Manifests[0].Manifest.Layers {
 		switch imageLayer.MediaType {
-		case ispec.MediaTypeImageLayerGzip, ispec.MediaTypeImageLayer, string(regTypes.DockerLayer):
+		case ispec.MediaTypeImageLayerGzip,
+			ispec.MediaTypeImageLayerZstd,
+			ispec.MediaTypeImageLayer,
+			string(regTypes.DockerLayer):
 			continue
 		default:
-			return false, fmt.Errorf("%w: layer media type '%s'", zerr.ErrScanNotSupported, imageLayer.MediaType)
+			return false, fmt.Errorf("%w: layer media type '%s'",
+				zerr.ErrScanNotSupported, imageLayer.MediaType)
 		}
 	}
 
@@ -494,7 +498,10 @@ func (scanner Scanner) isManifestDataScannable(manifestData mTypes.ManifestMeta)
 
 	for _, imageLayer := range manifestData.Manifest.Layers {
 		switch imageLayer.MediaType {
-		case ispec.MediaTypeImageLayerGzip, ispec.MediaTypeImageLayer, string(regTypes.DockerLayer):
+		case ispec.MediaTypeImageLayerGzip,
+			ispec.MediaTypeImageLayerZstd,
+			ispec.MediaTypeImageLayer,
+			string(regTypes.DockerLayer):
 			continue
 		default:
 			return false, fmt.Errorf("%w: layer media type '%s'", zerr.ErrScanNotSupported, imageLayer.MediaType)
