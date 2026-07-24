@@ -452,6 +452,18 @@ func TestImageScannable(t *testing.T) {
 		panic(err)
 	}
 
+	validZstdImage := CreateImageWith().
+		Layers([]Layer{{
+			MediaType: ispec.MediaTypeImageLayerZstd,
+			Digest:    ispec.DescriptorEmptyJSON.Digest,
+			Blob:      ispec.DescriptorEmptyJSON.Data,
+		}}).ImageConfig(validConfig).Build()
+
+	err = metaDB.SetRepoReference(context.Background(), "repo1", "valid-zstd", validZstdImage.AsImageMeta())
+	if err != nil {
+		panic(err)
+	}
+
 	// Create MetaDB data for manifest with unscannable layers
 	imageWithUnscannableLayer := CreateImageWith().
 		Layers([]Layer{{
@@ -483,6 +495,12 @@ func TestImageScannable(t *testing.T) {
 
 	Convey("Valid image should be scannable", t, func() {
 		result, err := scanner.IsImageFormatScannable("repo1", "valid")
+		So(err, ShouldBeNil)
+		So(result, ShouldBeTrue)
+	})
+
+	Convey("Valid image with zstd-compressed layers should be scannable", t, func() {
+		result, err := scanner.IsImageFormatScannable("repo1", "valid-zstd")
 		So(err, ShouldBeNil)
 		So(result, ShouldBeTrue)
 	})
