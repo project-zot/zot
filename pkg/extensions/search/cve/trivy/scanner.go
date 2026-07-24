@@ -465,17 +465,10 @@ func (scanner Scanner) IsImageMediaScannable(repo, digestStr, mediaType string) 
 	}
 }
 
-func (scanner Scanner) isManifestScanable(digestStr string) (bool, error) {
-	if scanner.cache.Get(digestStr) != nil {
-		return true, nil
-	}
-
-	manifestData, err := scanner.metaDB.GetImageMeta(godigest.Digest(digestStr))
-	if err != nil {
-		return false, err
-	}
-
-	for _, imageLayer := range manifestData.Manifests[0].Manifest.Layers {
+// isManifestLayersScannable checks whether all layers of a manifest have
+// media types that Trivy is able to scan.
+func isManifestLayersScannable(layers []ispec.Descriptor) (bool, error) {
+	for _, imageLayer := range layers {
 		switch imageLayer.MediaType {
 		case ispec.MediaTypeImageLayerGzip,
 			ispec.MediaTypeImageLayerZstd,
@@ -491,24 +484,29 @@ func (scanner Scanner) isManifestScanable(digestStr string) (bool, error) {
 	return true, nil
 }
 
+func (scanner Scanner) isManifestScanable(digestStr string) (bool, error) {
+	if scanner.cache.Get(digestStr) != nil {
+		return true, nil
+	}
+
+	manifestData, err := scanner.metaDB.GetImageMeta(godigest.Digest(digestStr))
+	if err != nil {
+		return false, err
+	}
+
+	if len(manifestData.Manifests) == 0 {
+		return false, fmt.Errorf("%w:  manifest data has 0 manifests", zerr.ErrScanNotSupported)
+	}
+
+	return isManifestLayersScannable(manifestData.Manifests[0].Manifest.Layers)
+}
+
 func (scanner Scanner) isManifestDataScannable(manifestData mTypes.ManifestMeta) (bool, error) {
 	if scanner.cache.Get(manifestData.Digest.String()) != nil {
 		return true, nil
 	}
 
-	for _, imageLayer := range manifestData.Manifest.Layers {
-		switch imageLayer.MediaType {
-		case ispec.MediaTypeImageLayerGzip,
-			ispec.MediaTypeImageLayerZstd,
-			ispec.MediaTypeImageLayer,
-			string(regTypes.DockerLayer):
-			continue
-		default:
-			return false, fmt.Errorf("%w: layer media type '%s'", zerr.ErrScanNotSupported, imageLayer.MediaType)
-		}
-	}
-
-	return true, nil
+	return isManifestLayersScannable(manifestData.Manifest.Layers)
 }
 
 func (scanner Scanner) isIndexScannable(digestStr string) (bool, error) {
