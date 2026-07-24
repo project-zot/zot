@@ -499,7 +499,7 @@ func TestImageScannable(t *testing.T) {
 		So(result, ShouldBeTrue)
 	})
 
-	Convey("Valid image with zstd-compressed layers should be scannable", t, func() {
+	Convey("Valid image with zstd layer media type should be scannable", t, func() {
 		result, err := scanner.IsImageFormatScannable("repo1", "valid-zstd")
 		So(err, ShouldBeNil)
 		So(result, ShouldBeTrue)
