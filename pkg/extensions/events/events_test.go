@@ -485,14 +485,14 @@ func TestNATSSinkEvents(t *testing.T) {
 			testChannel := "test-events-" + randomString()
 
 			recorder, err := createRecorder(t, natsURL, testChannel)
-			defer recorder.Close()
 			So(err, ShouldBeNil)
+			defer recorder.Close()
 
 			eventChan := make(chan *cloudevents.Event, 1)
 
 			nc, err := createSubscription(t, natsURL, testChannel, eventChan)
-			defer nc.Close()
 			So(err, ShouldBeNil)
+			defer nc.Close()
 
 			recorder.ImageScanned("test", "v1", "", string(types.OCIManifestSchema1),
 				events.ImageScanSummary{Count: 1, MaxSeverity: "LOW"}, nil)
