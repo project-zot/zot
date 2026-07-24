@@ -52,12 +52,7 @@ func NewScanner(storeController storage.StoreController, metaDB mTypes.MetaDB,
 	trivyScanner := trivy.NewScanner(storeController, metaDB, cveConfig, log)
 
 	if eventRecorder != nil {
-		return &ScannerWithEvent{
-			Scanner:       trivyScanner,
-			MetaDB:        metaDB,
-			EventRecorder: eventRecorder,
-			Log:           log,
-		}
+		return NewScannerWithEvent(trivyScanner, metaDB, eventRecorder, log)
 	}
 
 	return trivyScanner

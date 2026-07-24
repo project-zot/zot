@@ -216,14 +216,28 @@ func (st *scanTask) Name() string {
 	return "ScanTask"
 }
 
-type ScannerWithEvent struct {
-	Scanner
-	MetaDB        mTypes.MetaDB
-	EventRecorder events.Recorder
-	Log           log.Logger
+// NewScannerWithEvent wraps scanner so that a successful ScanImage call publishes
+// an ImageScanned event via eventRecorder. metaDB is used to resolve tags for the
+// scanned digest.
+func NewScannerWithEvent(scanner Scanner, metaDB mTypes.MetaDB, eventRecorder events.Recorder,
+	log log.Logger,
+) Scanner {
+	return &scannerWithEvent{
+		Scanner:       scanner,
+		metaDB:        metaDB,
+		eventRecorder: eventRecorder,
+		log:           log,
+	}
 }
 
-func (s *ScannerWithEvent) ScanImage(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
+type scannerWithEvent struct {
+	Scanner
+	metaDB        mTypes.MetaDB
+	eventRecorder events.Recorder
+	log           log.Logger
+}
+
+func (s *scannerWithEvent) ScanImage(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
 	cveMap, err := s.Scanner.ScanImage(ctx, image)
 	if err == nil {
 		s.publishScanEvent(ctx, image, cveMap)
@@ -232,8 +246,8 @@ func (s *ScannerWithEvent) ScanImage(ctx context.Context, image string) (map[str
 	return cveMap, err
 }
 
-func (s *ScannerWithEvent) publishScanEvent(ctx context.Context, image string, cveMap map[string]cvemodel.CVE) {
-	if s.EventRecorder == nil {
+func (s *scannerWithEvent) publishScanEvent(ctx context.Context, image string, cveMap map[string]cvemodel.CVE) {
+	if s.eventRecorder == nil {
 		return
 	}
 
@@ -243,9 +257,9 @@ func (s *ScannerWithEvent) publishScanEvent(ctx context.Context, image string, c
 	userAc.SetUsername("scheduler")
 	userAc.SetIsAdmin(true)
 
-	repoMeta, err := s.MetaDB.GetRepoMeta(userAc.DeriveContext(ctx), repo)
+	repoMeta, err := s.metaDB.GetRepoMeta(userAc.DeriveContext(ctx), repo)
 	if err != nil {
-		s.Log.Warn().Err(err).Str("repository", repo).Str("reference", ref).
+		s.log.Warn().Err(err).Str("repository", repo).Str("reference", ref).
 			Msg("failed to load repo metadata for image scanned event")
 
 		return
@@ -255,6 +269,9 @@ func (s *ScannerWithEvent) publishScanEvent(ctx context.Context, image string, c
 	if isTag {
 		descriptor, ok := repoMeta.Tags[ref]
 		if !ok {
+			s.log.Warn().Str("repository", repo).Str("reference", ref).
+				Msg("skipping image scanned event because tag was not found in repo metadata")
+
 			return
 		}
 
@@ -276,7 +293,7 @@ func (s *ScannerWithEvent) publishScanEvent(ctx context.Context, image string, c
 	}
 
 	if len(matchingTags) == 0 {
-		s.Log.Warn().Str("repository", repo).Str("digest", digest).
+		s.log.Warn().Str("repository", repo).Str("digest", digest).
 			Msg("skipping image scanned event because no matching tag was found")
 
 		return
@@ -288,7 +305,7 @@ func (s *ScannerWithEvent) publishScanEvent(ctx context.Context, image string, c
 	ectx := events.EventContextFromContext(ctx)
 
 	for _, tag := range matchingTags {
-		s.EventRecorder.ImageScanned(repo, tag, digest, mediaType, summary, ectx)
+		s.eventRecorder.ImageScanned(repo, tag, digest, mediaType, summary, ectx)
 	}
 }
 
