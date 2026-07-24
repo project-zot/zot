@@ -560,7 +560,7 @@ func TestScanGeneratorWithRealData(t *testing.T) {
 			Trivy: &extconf.TrivyConfig{
 				DBRepository: "ghcr.io/project-zot/trivy-db",
 			},
-		}, logger)
+		}, logger, nil)
 		err = scanner.UpdateDB(context.Background())
 		So(err, ShouldBeNil)
 
@@ -638,27 +638,32 @@ func TestScanGeneratorPublishesScanEvents(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		recorder := &scanEventRecorder{}
-		scanner := mocks.CveScannerMock{
-			ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
-				return map[string]cvemodel.CVE{
-					"CVE-1": {
-						Severity: cvemodel.SeverityHigh,
-						PackageList: []cvemodel.Package{{
-							Name:         "openssl",
-							FixedVersion: "1.0.1",
-						}},
-					},
-					"CVE-2": {
-						Severity: cvemodel.SeverityLow,
-						PackageList: []cvemodel.Package{{
-							Name: "busybox",
-						}},
-					},
-				}, nil
+		scanner := &cveinfo.ScannerWithEvent{
+			Scanner: mocks.CveScannerMock{
+				ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
+					return map[string]cvemodel.CVE{
+						"CVE-1": {
+							Severity: cvemodel.SeverityHigh,
+							PackageList: []cvemodel.Package{{
+								Name:         "openssl",
+								FixedVersion: "1.0.1",
+							}},
+						},
+						"CVE-2": {
+							Severity: cvemodel.SeverityLow,
+							PackageList: []cvemodel.Package{{
+								Name: "busybox",
+							}},
+						},
+					}, nil
+				},
 			},
+			MetaDB:        metaDB,
+			EventRecorder: recorder,
+			Log:           log.NewTestLogger(),
 		}
 
-		generator := cveinfo.NewScanTaskGenerator(metaDB, scanner, log.NewTestLogger(), recorder)
+		generator := cveinfo.NewScanTaskGenerator(metaDB, scanner, log.NewTestLogger())
 		task, err := generator.Next()
 		So(err, ShouldBeNil)
 		So(task, ShouldNotBeNil)

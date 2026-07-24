@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sync"
 
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/extensions/events"
 	cvemodel "zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
 	"zotregistry.dev/zot/v2/pkg/log"
@@ -18,24 +19,17 @@ func NewScanTaskGenerator(
 	metaDB mTypes.MetaDB,
 	scanner Scanner,
 	logC log.Logger,
-	eventRecorders ...events.Recorder,
 ) scheduler.TaskGenerator {
 	sublogger := logC.With().Str("component", "cve").Logger()
 
-	var eventRecorder events.Recorder
-	if len(eventRecorders) > 0 {
-		eventRecorder = eventRecorders[0]
-	}
-
 	return &scanTaskGenerator{
-		log:           sublogger,
-		metaDB:        metaDB,
-		scanner:       scanner,
-		eventRecorder: eventRecorder,
-		lock:          &sync.Mutex{},
-		scanErrors:    map[string]error{},
-		scheduled:     map[string]bool{},
-		done:          false,
+		log:        sublogger,
+		metaDB:     metaDB,
+		scanner:    scanner,
+		lock:       &sync.Mutex{},
+		scanErrors: map[string]error{},
+		scheduled:  map[string]bool{},
+		done:       false,
 	}
 }
 
@@ -44,14 +38,13 @@ func NewScanTaskGenerator(
 // scanned, the manifest will be skipped.
 // If there are no manifests missing from the cache, the generator finishes.
 type scanTaskGenerator struct {
-	log           log.Logger
-	metaDB        mTypes.MetaDB
-	scanner       Scanner
-	eventRecorder events.Recorder
-	lock          *sync.Mutex
-	scanErrors    map[string]error
-	scheduled     map[string]bool
-	done          bool
+	log        log.Logger
+	metaDB     mTypes.MetaDB
+	scanner    Scanner
+	lock       *sync.Mutex
+	scanErrors map[string]error
+	scheduled  map[string]bool
+	done       bool
 }
 
 func (gen *scanTaskGenerator) getMatcherFunc() mTypes.FilterFunc {
@@ -201,15 +194,13 @@ func (st *scanTask) DoWork(ctx context.Context) error {
 
 	// We cache the results internally in the scanner
 	// so we can discard the actual results for now
-	cveMap, err := st.generator.scanner.ScanImage(ctx, image)
+	_, err := st.generator.scanner.ScanImage(ctx, image)
 	if err != nil {
 		st.generator.log.Error().Err(err).Str("image", image).Msg("failed to perform scheduled cve scan for image")
 		st.generator.addError(st.digest, err)
 
 		return err
 	}
-
-	st.generator.publishScanEvent(ctx, st.repo, st.digest, cveMap)
 
 	st.generator.log.Debug().Str("image", image).Msg("scheduled cve scan completed successfully for image")
 
@@ -225,21 +216,49 @@ func (st *scanTask) Name() string {
 	return "ScanTask"
 }
 
-func (gen *scanTaskGenerator) publishScanEvent(ctx context.Context, repo, digest string, cveMap map[string]cvemodel.CVE) {
-	if gen.eventRecorder == nil {
+type ScannerWithEvent struct {
+	Scanner
+	MetaDB        mTypes.MetaDB
+	EventRecorder events.Recorder
+	Log           log.Logger
+}
+
+func (s *ScannerWithEvent) ScanImage(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
+	cveMap, err := s.Scanner.ScanImage(ctx, image)
+	if err == nil {
+		s.publishScanEvent(ctx, image, cveMap)
+	}
+
+	return cveMap, err
+}
+
+func (s *ScannerWithEvent) publishScanEvent(ctx context.Context, image string, cveMap map[string]cvemodel.CVE) {
+	if s.EventRecorder == nil {
 		return
 	}
+
+	repo, ref, isTag := zcommon.GetImageDirAndReference(image)
 
 	userAc := reqCtx.NewUserAccessControl()
 	userAc.SetUsername("scheduler")
 	userAc.SetIsAdmin(true)
 
-	repoMeta, err := gen.metaDB.GetRepoMeta(userAc.DeriveContext(ctx), repo)
+	repoMeta, err := s.MetaDB.GetRepoMeta(userAc.DeriveContext(ctx), repo)
 	if err != nil {
-		gen.log.Warn().Err(err).Str("repository", repo).Str("digest", digest).
+		s.Log.Warn().Err(err).Str("repository", repo).Str("reference", ref).
 			Msg("failed to load repo metadata for image scanned event")
 
 		return
+	}
+
+	digest := ref
+	if isTag {
+		descriptor, ok := repoMeta.Tags[ref]
+		if !ok {
+			return
+		}
+
+		digest = descriptor.Digest
 	}
 
 	matchingTags := make([]string, 0, len(repoMeta.Tags))
@@ -257,7 +276,7 @@ func (gen *scanTaskGenerator) publishScanEvent(ctx context.Context, repo, digest
 	}
 
 	if len(matchingTags) == 0 {
-		gen.log.Warn().Str("repository", repo).Str("digest", digest).
+		s.Log.Warn().Str("repository", repo).Str("digest", digest).
 			Msg("skipping image scanned event because no matching tag was found")
 
 		return
@@ -266,8 +285,10 @@ func (gen *scanTaskGenerator) publishScanEvent(ctx context.Context, repo, digest
 	slices.Sort(matchingTags)
 
 	summary := getImageScanSummary(cveMap)
+	ectx := events.EventContextFromContext(ctx)
+
 	for _, tag := range matchingTags {
-		gen.eventRecorder.ImageScanned(repo, tag, digest, mediaType, summary, nil)
+		s.EventRecorder.ImageScanned(repo, tag, digest, mediaType, summary, ectx)
 	}
 }
 

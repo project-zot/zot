@@ -31,7 +31,7 @@ func IsBuiltWithSearchExtension() bool {
 }
 
 func GetCveScanner(conf *config.Config, storeController storage.StoreController,
-	metaDB mTypes.MetaDB, log log.Logger,
+	metaDB mTypes.MetaDB, eventRecorder events.Recorder, log log.Logger,
 ) CveScanner {
 	// Get extensions config safely
 	extensionsConfig := conf.CopyExtensionsConfig()
@@ -41,12 +41,12 @@ func GetCveScanner(conf *config.Config, storeController storage.StoreController,
 
 	cveConfig := extensionsConfig.GetSearchCVEConfig()
 
-	return cveinfo.NewScanner(storeController, metaDB, cveConfig, log)
+	return cveinfo.NewScanner(storeController, metaDB, cveConfig, log, eventRecorder)
 }
 
 func EnableSearchExtension(conf *config.Config, storeController storage.StoreController,
 	metaDB mTypes.MetaDB, taskScheduler *scheduler.Scheduler, cveScanner CveScanner,
-	eventRecorder events.Recorder, log log.Logger,
+	log log.Logger,
 ) {
 	// Get extensions config safely
 	extensionsConfig := conf.CopyExtensionsConfig()
@@ -55,7 +55,7 @@ func EnableSearchExtension(conf *config.Config, storeController storage.StoreCon
 		updateInterval := cveConfig.UpdateInterval
 
 		downloadTrivyDB(updateInterval, taskScheduler, cveScanner, log)
-		startScanner(scanInterval, metaDB, taskScheduler, cveScanner, eventRecorder, log)
+		startScanner(scanInterval, metaDB, taskScheduler, cveScanner, log)
 	} else {
 		log.Info().Msg("cve config not provided, skipping cve-db update")
 	}
@@ -69,9 +69,9 @@ func downloadTrivyDB(interval time.Duration, sch *scheduler.Scheduler, cveScanne
 }
 
 func startScanner(interval time.Duration, metaDB mTypes.MetaDB, sch *scheduler.Scheduler,
-	cveScanner CveScanner, eventRecorder events.Recorder, log log.Logger,
+	cveScanner CveScanner, log log.Logger,
 ) {
-	generator := cveinfo.NewScanTaskGenerator(metaDB, cveScanner, log, eventRecorder)
+	generator := cveinfo.NewScanTaskGenerator(metaDB, cveScanner, log)
 
 	log.Info().Msg("submitting cve-scan generator to scheduler")
 	sch.SubmitGenerator(generator, interval, scheduler.MediumPriority)

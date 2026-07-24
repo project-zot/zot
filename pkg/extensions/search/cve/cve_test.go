@@ -338,7 +338,7 @@ func TestImageFormat(t *testing.T) {
 			Trivy: &extconf.TrivyConfig{
 				DBRepository: "ghcr.io/project-zot/trivy-db",
 			},
-		}, log)
+		}, log, nil)
 
 		isValidImage, err := scanner.IsImageFormatScannable("zot-test", "")
 		So(err, ShouldNotBeNil)
@@ -415,7 +415,7 @@ func TestImageFormat(t *testing.T) {
 			Trivy: &extconf.TrivyConfig{
 				DBRepository: "ghcr.io/project-zot/trivy-db",
 			},
-		}, log)
+		}, log, nil)
 
 		isScanable, err := scanner.IsImageFormatScannable("repo", "tag")
 		So(err, ShouldBeNil)
