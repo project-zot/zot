@@ -174,6 +174,10 @@ func (service *BaseService) init() error {
 	service.clientLock.Lock()
 	defer service.clientLock.Unlock()
 
+	return service.initLocked()
+}
+
+func (service *BaseService) initLocked() error {
 	client, hosts, err := newClient(service.config, service.credentials, service.log)
 	if err != nil {
 		service.log.Err(err).Msg("failed to create registry client")
@@ -202,6 +206,9 @@ func (service *BaseService) refreshRegistryTemporaryCredentials() error {
 		return nil
 	}
 
+	service.clientLock.Lock()
+	defer service.clientLock.Unlock()
+
 	for _, host := range service.hosts {
 		// Exit early if the credentials are valid.
 		if service.credentialHelper.AreCredentialsValid(host.Hostname) {
@@ -228,7 +235,7 @@ func (service *BaseService) refreshRegistryTemporaryCredentials() error {
 	}
 
 	// Reinitialize regclient with new credentials
-	return service.init()
+	return service.initLocked()
 }
 
 func (service *BaseService) CanRetryOnError() bool {

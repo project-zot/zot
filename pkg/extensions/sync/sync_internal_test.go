@@ -17,6 +17,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1996,5 +1997,46 @@ func TestHTTPRetryDelayBounds(t *testing.T) {
 			So(delayInit, ShouldEqual, retryDelay)
 			So(delayMax, ShouldEqual, maxRetryDelay)
 		})
+	})
+}
+
+func TestRefreshRegistryTemporaryCredentialsConcurrent(t *testing.T) {
+	Convey("Concurrent on-demand credential refresh must not race on the credentials map", t, func() {
+		logger := log.NewTestLogger()
+
+		service := &BaseService{
+			config: syncconf.RegistryConfig{
+				URLs: []string{
+					"https://111111111111.dkr.ecr.us-east-1.amazonaws.com",
+					"https://222222222222.dkr.ecr.us-east-1.amazonaws.com",
+					"https://333333333333.dkr.ecr.us-east-1.amazonaws.com",
+					"https://444444444444.dkr.ecr.us-east-1.amazonaws.com",
+				},
+				CredentialHelper: "ecr",
+			},
+			credentials:      syncconf.CredentialsFile{},
+			credentialHelper: NewECRCredentialHelper(logger, GetMockECRCredentials),
+			log:              logger,
+		}
+
+		So(service.init(), ShouldBeNil)
+		So(len(service.hosts), ShouldEqual, len(service.config.URLs))
+
+		var wg sync.WaitGroup
+		for range 10 {
+			wg.Add(1)
+
+			go func() {
+				defer wg.Done()
+
+				for range 3 {
+					_ = service.refreshRegistryTemporaryCredentials()
+				}
+			}()
+		}
+
+		wg.Wait()
+
+		So(len(service.credentials), ShouldEqual, len(service.hosts))
 	})
 }
