@@ -417,11 +417,13 @@ type HTTPConfig struct {
 	AllowOrigin string // comma separated
 	// ReadTimeout controls maximum duration for reading the entire request (including body).
 	// When unset (nil), server-level defaults may apply. When explicitly set to <= 0,
-	// the HTTP server treats it as no timeout.
+	// the HTTP server treats it as no timeout. Blob uploads extend this deadline per read,
+	// so it acts as an idle timeout for them rather than a cap on total upload time.
 	ReadTimeout *time.Duration `mapstructure:"readTimeout,omitempty"`
 	// WriteTimeout controls maximum duration before timing out response writes.
 	// When unset (nil), server-level defaults may apply. When explicitly set to <= 0,
-	// the HTTP server treats it as no timeout.
+	// the HTTP server treats it as no timeout. Blob downloads extend this deadline per write,
+	// so it acts as an idle timeout for them rather than a cap on total download time.
 	WriteTimeout  *time.Duration `mapstructure:"writeTimeout,omitempty"`
 	TLS           *TLSConfig
 	Auth          *AuthConfig
