@@ -7,17 +7,17 @@ load helpers_events
 load ../port_helper
 
 function verify_prerequisites() {
-    if [ ! $(command -v curl) ]; then
+    if ! command -v curl >/dev/null 2>&1; then
         echo "you need to install curl as a prerequisite to running the tests" >&3
         return 1
     fi
 
-    if [ ! $(command -v jq) ]; then
+    if ! command -v jq >/dev/null 2>&1; then
         echo "you need to install jq as a prerequisite to running the tests" >&3
         return 1
     fi
 
-    if [ ! $(command -v docker) ]; then
+    if ! command -v docker >/dev/null 2>&1; then
         echo "you need to install docker as a prerequisite to running the tests" >&3
         return 1
     fi

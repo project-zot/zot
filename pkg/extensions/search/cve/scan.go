@@ -232,6 +232,7 @@ func NewScannerWithEvent(scanner Scanner, metaDB mTypes.MetaDB, eventRecorder ev
 
 type scannerWithEvent struct {
 	Scanner
+
 	metaDB        mTypes.MetaDB
 	eventRecorder events.Recorder
 	log           log.Logger
@@ -247,7 +248,7 @@ func (s *scannerWithEvent) ScanImage(ctx context.Context, image string) (map[str
 }
 
 func (s *scannerWithEvent) publishScanEvent(ctx context.Context, image string, cveMap map[string]cvemodel.CVE) {
-	if s.eventRecorder == nil {
+	if s.eventRecorder == nil || s.metaDB == nil {
 		return
 	}
 
