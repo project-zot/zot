@@ -475,6 +475,10 @@ func (scanner Scanner) isManifestScanable(digestStr string) (bool, error) {
 		return false, err
 	}
 
+	if len(manifestData.Manifests) == 0 {
+		return false, zerr.ErrUnexpectedMediaType
+	}
+
 	for _, imageLayer := range manifestData.Manifests[0].Manifest.Layers {
 		switch imageLayer.MediaType {
 		case ispec.MediaTypeImageLayerGzip,
