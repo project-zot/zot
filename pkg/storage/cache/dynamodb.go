@@ -2,8 +2,8 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"slices"
-	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -32,29 +32,60 @@ type Blob struct {
 	OriginalBlobPath  string   `dynamodbav:"OriginalBlobPath,string"`
 }
 
-func (d *DynamoDBDriver) NewTable(tableName string) error {
-	//nolint:mnd
-	_, err := d.client.CreateTable(context.TODO(), &dynamodb.CreateTableInput{
-		TableName: &tableName,
-		AttributeDefinitions: []types.AttributeDefinition{
-			{
-				AttributeName: aws.String("Digest"),
-				AttributeType: types.ScalarAttributeTypeS,
-			},
-		},
-		KeySchema: []types.KeySchemaElement{
-			{
-				AttributeName: aws.String("Digest"),
-				KeyType:       types.KeyTypeHash,
-			},
-		},
-		ProvisionedThroughput: &types.ProvisionedThroughput{
-			ReadCapacityUnits:  aws.Int64(10),
-			WriteCapacityUnits: aws.Int64(5),
-		},
+// tableExists checks for the table via DescribeTable rather than attempting CreateTable
+// and inspecting the error: callers that only have read/write item permissions on an
+// existing table (but not dynamodb:CreateTable) would otherwise get an AccessDeniedException
+// from CreateTable instead of ever finding out the table is already there. See #4259.
+func (d *DynamoDBDriver) tableExists(tableName string) (bool, error) {
+	_, err := d.client.DescribeTable(context.TODO(), &dynamodb.DescribeTableInput{
+		TableName: aws.String(tableName),
 	})
-	if err != nil && !strings.Contains(err.Error(), "Table already exists") {
+	if err == nil {
+		return true, nil
+	}
+
+	var notFoundErr *types.ResourceNotFoundException
+	if errors.As(err, &notFoundErr) {
+		return false, nil
+	}
+
+	return false, err
+}
+
+func (d *DynamoDBDriver) NewTable(tableName string) error {
+	exists, err := d.tableExists(tableName)
+	if err != nil {
 		return err
+	}
+
+	if !exists {
+		//nolint:mnd
+		_, err := d.client.CreateTable(context.TODO(), &dynamodb.CreateTableInput{
+			TableName: &tableName,
+			AttributeDefinitions: []types.AttributeDefinition{
+				{
+					AttributeName: aws.String("Digest"),
+					AttributeType: types.ScalarAttributeTypeS,
+				},
+			},
+			KeySchema: []types.KeySchemaElement{
+				{
+					AttributeName: aws.String("Digest"),
+					KeyType:       types.KeyTypeHash,
+				},
+			},
+			ProvisionedThroughput: &types.ProvisionedThroughput{
+				ReadCapacityUnits:  aws.Int64(10),
+				WriteCapacityUnits: aws.Int64(5),
+			},
+		})
+
+		// tableExists and CreateTable aren't atomic, so still tolerate a benign race where
+		// another zot instance created the table between the check above and this call.
+		var inUseErr *types.ResourceInUseException
+		if err != nil && !errors.As(err, &inUseErr) {
+			return err
+		}
 	}
 
 	d.tableName = tableName
