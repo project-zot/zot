@@ -21,8 +21,15 @@ function setup_file() {
         exit 1
     fi
 
-    # Download test data to folder common for the entire suite, not just this file
-    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.20 oci:${TEST_DATA_DIR}/golang:1.20
+    # Prefetch fixtures into a local OCI layout (same pattern as metadata.bats /
+    # anonymous_policy.bats / alpine above). Network fetch happens here, before
+    # zot GC is running; tests only copy oci: -> docker://localhost.
+    skopeo --insecure-policy copy --format=oci \
+        docker://ghcr.io/project-zot/test-images/alpine:3.17.3 \
+        oci:${TEST_DATA_DIR}/alpine:3.17.3
+    skopeo --insecure-policy copy --format=oci --multi-arch=all \
+        docker://public.ecr.aws/docker/library/busybox:latest \
+        oci:${TEST_DATA_DIR}/busybox:latest
     # Setup zot server
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
@@ -76,15 +83,15 @@ function teardown_file() {
 @test "push image" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     run skopeo --insecure-policy copy --dest-tls-verify=false \
-        oci:${TEST_DATA_DIR}/golang:1.20 \
-        docker://127.0.0.1:${zot_port}/golang:1.20
+        oci:${TEST_DATA_DIR}/alpine:3.17.3 \
+        docker://127.0.0.1:${zot_port}/alpine:3.17.3
     [ "$status" -eq 0 ]
     run curl http://127.0.0.1:${zot_port}/v2/_catalog
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"golang"' ]
-    run curl http://127.0.0.1:${zot_port}/v2/golang/tags/list
+    [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"alpine"' ]
+    run curl http://127.0.0.1:${zot_port}/v2/alpine/tags/list
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.20"' ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"3.17.3"' ]
 }
 
 @test "push image index" {
@@ -92,12 +99,12 @@ function teardown_file() {
     # --multi-arch below pushes an image index (containing many images) instead
     # of an image manifest (single image)
     run skopeo --insecure-policy copy --format=oci --dest-tls-verify=false --multi-arch=all \
-        docker://public.ecr.aws/docker/library/busybox:latest \
+        oci:${TEST_DATA_DIR}/busybox:latest \
         docker://127.0.0.1:${zot_port}/busybox:latest
     [ "$status" -eq 0 ]
     run curl http://127.0.0.1:${zot_port}/v2/_catalog
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.repositories[0]') = '"busybox"' ]
+    echo "${lines[-1]}" | jq -e '.repositories | index("busybox") != null'
     run curl http://127.0.0.1:${zot_port}/v2/busybox/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
@@ -107,18 +114,18 @@ function teardown_file() {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     # attach signature to image
     echo "{\"artifact\": \"\", \"signature\": \"pat hancock\"}" > signature.json
-    run oras attach --disable-path-validation --plain-http 127.0.0.1:${zot_port}/golang:1.20 --artifact-type 'signature/example' ./signature.json:application/json
+    run oras attach --disable-path-validation --plain-http 127.0.0.1:${zot_port}/alpine:3.17.3 --artifact-type 'signature/example' ./signature.json:application/json
     [ "$status" -eq 0 ]
     # attach sbom to image
-    echo "{\"version\": \"0.0.0.0\", \"artifact\": \"'127.0.0.1:${zot_port}/golang:1.20'\", \"contents\": \"good\"}" > sbom.json
-    run oras attach --disable-path-validation --plain-http 127.0.0.1:${zot_port}/golang:1.20 --artifact-type 'sbom/example' ./sbom.json:application/json
+    echo "{\"version\": \"0.0.0.0\", \"artifact\": \"'127.0.0.1:${zot_port}/alpine:3.17.3'\", \"contents\": \"good\"}" > sbom.json
+    run oras attach --disable-path-validation --plain-http 127.0.0.1:${zot_port}/alpine:3.17.3 --artifact-type 'sbom/example' ./sbom.json:application/json
     [ "$status" -eq 0 ]
 
     # attach signature to index image
     run oras attach --disable-path-validation --plain-http 127.0.0.1:${zot_port}/busybox:latest --artifact-type 'signature/example' ./signature.json:application/json
     [ "$status" -eq 0 ]
     # attach sbom to index image
-    echo "{\"version\": \"0.0.0.0\", \"artifact\": \"'127.0.0.1:${zot_port}/golang:1.20'\", \"contents\": \"good\"}" > sbom.json
+    echo "{\"version\": \"0.0.0.0\", \"artifact\": \"'127.0.0.1:${zot_port}/alpine:3.17.3'\", \"contents\": \"good\"}" > sbom.json
     run oras attach --disable-path-validation --plain-http 127.0.0.1:${zot_port}/busybox:latest --artifact-type 'sbom/example' ./sbom.json:application/json
     [ "$status" -eq 0 ]
 }
@@ -128,12 +135,12 @@ function teardown_file() {
     run regctl registry set 127.0.0.1:${zot_port} --tls disabled
     [ "$status" -eq 0 ]
 
-    run regctl artifact put --artifact-type application/vnd.example.artifact --subject 127.0.0.1:${zot_port}/golang:1.20 <<EOF
+    run regctl artifact put --artifact-type application/vnd.example.artifact --subject 127.0.0.1:${zot_port}/alpine:3.17.3 <<EOF
 this is an artifact
 EOF
     [ "$status" -eq 0 ]
 
-    run regctl artifact get --subject 127.0.0.1:${zot_port}/golang:1.20
+    run regctl artifact get --subject 127.0.0.1:${zot_port}/alpine:3.17.3
     [ "$status" -eq 0 ]
 
     run regctl artifact put --artifact-type application/vnd.example.artifact --subject 127.0.0.1:${zot_port}/busybox:latest <<EOF
@@ -148,7 +155,7 @@ EOF
 @test "garbage collect all artifacts after image delete" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     run skopeo --insecure-policy delete --tls-verify=false \
-        docker://127.0.0.1:${zot_port}/golang:1.20
+        docker://127.0.0.1:${zot_port}/alpine:3.17.3
     [ "$status" -eq 0 ]
 
     run skopeo --insecure-policy delete --tls-verify=false \
@@ -159,13 +166,13 @@ EOF
     sleep 100
 
     # gc should have removed artifacts
-    run regctl artifact get --subject 127.0.0.1:${zot_port}/golang:1.20
+    run regctl artifact get --subject 127.0.0.1:${zot_port}/alpine:3.17.3
     [ "$status" -eq 1 ]
 
     run regctl artifact get --subject 127.0.0.1:${zot_port}/busybox:latest
     [ "$status" -eq 1 ]
 
-    run oras discover --plain-http -o json 127.0.0.1:${zot_port}/golang:1.20
+    run oras discover --plain-http -o json 127.0.0.1:${zot_port}/alpine:3.17.3
     [ "$status" -eq 1 ]
 
     run oras discover --plain-http -o json 127.0.0.1:${zot_port}/busybox:latest
@@ -176,5 +183,3 @@ EOF
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq -r '.repositories | length') -eq 0 ]
 }
-
-
