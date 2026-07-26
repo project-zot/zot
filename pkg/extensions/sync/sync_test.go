@@ -7702,9 +7702,17 @@ func TestSyncImageIndex(t *testing.T) {
 				dcm.StartAndWait(dctlr.Config.HTTP.Port)
 				defer dcm.StopServer()
 
-				// give it time to set up sync
-				t.Logf("waitsync(%s, %s)", dctlr.Config.Storage.RootDirectory, "index")
-				waitSync(dctlr.Config.Storage.RootDirectory, "index")
+				// Wait for SyncRepo to finish processing all tags for the "index" repo.
+				// Using a log-based wait is more reliable than waitSync (which checks for
+				// an empty .sync dir) because waitSync can return prematurely in the brief
+				// window between consecutive tag sync sessions under the race detector.
+				synced, syncErr := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+					"finished syncing repo", 60*time.Second)
+				if syncErr != nil {
+					panic(syncErr)
+				}
+
+				So(synced, ShouldBeTrue)
 
 				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
 					Get(destBaseURL + "/v2/index/manifests/root")
