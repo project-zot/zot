@@ -7702,9 +7702,8 @@ func TestSyncImageIndex(t *testing.T) {
 				dcm.StartAndWait(dctlr.Config.HTTP.Port)
 				defer dcm.StopServer()
 
-				// give it time to set up sync
-				t.Logf("waitsync(%s, %s)", dctlr.Config.Storage.RootDirectory, "index")
-				waitSync(dctlr.Config.Storage.RootDirectory, "index")
+				// Wait for SyncRepo to finish processing all tags for the "index" repo.
+				So(waitFinishedSyncingRepo(dctlr.Config.Log.Output, "index", 60*time.Second), ShouldBeTrue)
 
 				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
 					Get(destBaseURL + "/v2/index/manifests/root")
@@ -8506,4 +8505,45 @@ func waitSyncFinish(logPath string) bool {
 	}
 
 	return found
+}
+
+// syncRepoLogEntry is a subset of a zot JSON log line used by waitFinishedSyncingRepo.
+type syncRepoLogEntry struct {
+	Message string `json:"message"`
+	Repo    string `json:"repo"`
+}
+
+// waitFinishedSyncingRepo polls logPath until a JSON line reports finished sync for repo.
+// Unmarshaling avoids depending on JSON key order in the log line.
+func waitFinishedSyncingRepo(logPath, repo string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+
+	for time.Now().Before(deadline) {
+		data, err := os.ReadFile(logPath)
+		if err != nil {
+			// Tolerate missing log while the server is still starting; fail fast otherwise.
+			if !errors.Is(err, os.ErrNotExist) {
+				panic(err)
+			}
+		} else {
+			for line := range strings.SplitSeq(string(data), "\n") {
+				if line == "" {
+					continue
+				}
+
+				var entry syncRepoLogEntry
+				if err := json.Unmarshal([]byte(line), &entry); err != nil {
+					continue
+				}
+
+				if entry.Message == "sync: finished syncing repo" && entry.Repo == repo {
+					return true
+				}
+			}
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	return false
 }
