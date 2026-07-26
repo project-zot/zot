@@ -33,7 +33,7 @@ function setup_file() {
     http_server_port=$(get_free_port_for_service "http")
     http_event_dir="${BATS_FILE_TMPDIR}/http_events"
     http_server_start http_receiver_failure "${http_server_port}" "${http_event_dir}"
-    wait_for_http_server $http_server_port
+    wait_for_http_server $http_server_port http_receiver_failure
 
     skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.20 oci:${TEST_DATA_DIR}/golang:1.20
 
