@@ -33,7 +33,6 @@ import (
 	syncConstants "zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
-	"zotregistry.dev/zot/v2/pkg/storage/gc"
 )
 
 const (
@@ -47,6 +46,17 @@ func metadataConfig(md *mapstructure.Metadata) viper.DecoderConfigOption {
 	return func(c *mapstructure.DecoderConfig) {
 		c.Metadata = md
 	}
+}
+
+// configDecodeHook composes the mapstructure decode hooks used to unmarshal the config
+// file. Declared at package level, rather than inline in LoadConfiguration, because that
+// function's "config" parameter shadows the "config" package.
+func configDecodeHook() mapstructure.DecodeHookFunc {
+	return mapstructure.ComposeDecodeHookFunc(
+		mapstructure.StringToTimeDurationHookFunc(),
+		eventsconf.SinkConfigDecoderHook(),
+		config.GCTimeWindowDecodeHook(),
+	)
 }
 
 func newServeCmd(conf *config.Config) *cobra.Command {
@@ -1257,12 +1267,7 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 
 	decoderOpts := []viper.DecoderConfigOption{
 		metadataConfig(metaData),
-		viper.DecodeHook(
-			mapstructure.ComposeDecodeHookFunc(
-				mapstructure.StringToTimeDurationHookFunc(),
-				eventsconf.SinkConfigDecoderHook(),
-			),
-		),
+		viper.DecodeHook(configDecodeHook()),
 	}
 
 	if err := viperInstance.UnmarshalExact(&config, decoderOpts...); err != nil {
@@ -1598,13 +1603,6 @@ func validateGC(config *config.Config, logger zlog.Logger) error {
 			zerr.ErrBadConfig, storageConfig.GCInterval)
 	}
 
-	if err := gc.ValidateGCTimeWindow(storageConfig.GCTimeWindow); err != nil {
-		logger.Error().Err(err).Str("gcTimeWindow", storageConfig.GCTimeWindow).
-			Msg("invalid garbage-collect time window specified")
-
-		return err
-	}
-
 	if !storageConfig.GC {
 		if storageConfig.GCDelay != 0 {
 			logger.Warn().Err(zerr.ErrBadConfig).
@@ -1616,7 +1614,7 @@ func validateGC(config *config.Config, logger zlog.Logger) error {
 				Msg("periodic garbage-collect interval specified without enabling garbage-collect, will be ignored")
 		}
 
-		if storageConfig.GCTimeWindow != "" {
+		if storageConfig.GCTimeWindow.IsSet() {
 			logger.Warn().Err(zerr.ErrBadConfig).
 				Msg("garbage-collect time window specified without enabling garbage-collect, will be ignored")
 		}
@@ -1638,21 +1636,11 @@ func validateGC(config *config.Config, logger zlog.Logger) error {
 				zerr.ErrBadConfig, subPath.GCDelay)
 		}
 
-		if !subPath.GC {
-			if subPath.GCTimeWindow != "" {
-				logger.Warn().Err(zerr.ErrBadConfig).
-					Str("subPath", name).
-					Str("gcTimeWindow", subPath.GCTimeWindow).
-					Msg("garbage-collect time window specified without enabling garbage-collect, will be ignored")
-			}
-		} else if err := gc.ValidateGCTimeWindow(subPath.GCTimeWindow); err != nil {
-			logger.Error().Err(err).
+		if !subPath.GC && subPath.GCTimeWindow.IsSet() {
+			logger.Warn().Err(zerr.ErrBadConfig).
 				Str("subPath", name).
-				Str("gcTimeWindow", subPath.GCTimeWindow).
-				Msg("invalid garbage-collect time window specified")
-
-			return fmt.Errorf("%w: invalid garbage-collect time window specified for subPath %q: %w",
-				zerr.ErrBadConfig, name, err)
+				Str("gcTimeWindow", subPath.GCTimeWindow.String()).
+				Msg("garbage-collect time window specified without enabling garbage-collect, will be ignored")
 		}
 
 		if err := validateGCRules(subPath.Retention, logger); err != nil {

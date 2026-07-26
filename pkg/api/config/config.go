@@ -37,8 +37,8 @@ type StorageConfig struct {
 	GCDelay         time.Duration // applied for blobs
 	GCInterval      time.Duration
 	// GCTimeWindow restricts periodic garbage-collection runs to a daily time-of-day
-	// window, e.g. "01:00-08:00". Empty means GC can run at any time.
-	GCTimeWindow  string
+	// window, e.g. "01:00-08:00". The zero value means GC can run at any time.
+	GCTimeWindow  GCTimeWindow
 	Retention     ImageRetention
 	StorageDriver map[string]any `mapstructure:",omitempty"`
 	CacheDriver   map[string]any `mapstructure:",omitempty"`

@@ -5,12 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path"
 	"testing"
 	"time"
 
 	"github.com/distribution/distribution/v3/registry/storage/driver"
+	"github.com/go-viper/mapstructure/v2"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
@@ -1761,118 +1763,43 @@ func TestCleanupRepoMissingBlob(t *testing.T) {
 	})
 }
 
-func TestParseGCTimeWindow(t *testing.T) {
-	Convey("parseGCTimeWindow", t, func() {
-		Convey("valid window within the same day", func() {
-			window, err := parseGCTimeWindow("01:00-08:00")
-			So(err, ShouldBeNil)
-			So(window.startMin, ShouldEqual, 60)
-			So(window.endMin, ShouldEqual, 8*60)
-		})
+// decodeGCTimeWindow runs the real config.GCTimeWindowDecodeHook used at config-unmarshal
+// time, so these fixtures exercise the same path production config loading does; gc no
+// longer parses or validates time windows itself (see config.GCTimeWindow).
+func decodeGCTimeWindow(t *testing.T, window string) config.GCTimeWindow {
+	t.Helper()
 
-		Convey("valid window with surrounding whitespace", func() {
-			window, err := parseGCTimeWindow(" 01:00 - 08:00 ")
-			So(err, ShouldBeNil)
-			So(window.startMin, ShouldEqual, 60)
-			So(window.endMin, ShouldEqual, 8*60)
-		})
+	var result config.GCTimeWindow
 
-		Convey("valid window wrapping past midnight", func() {
-			window, err := parseGCTimeWindow("22:00-06:00")
-			So(err, ShouldBeNil)
-			So(window.startMin, ShouldEqual, 22*60)
-			So(window.endMin, ShouldEqual, 6*60)
-		})
-
-		Convey("missing separator is rejected", func() {
-			_, err := parseGCTimeWindow("01:00 08:00")
-			So(err, ShouldNotBeNil)
-			So(errors.Is(err, zerr.ErrBadConfig), ShouldBeTrue)
-		})
-
-		Convey("malformed start time of day is rejected", func() {
-			_, err := parseGCTimeWindow("25:00-08:00")
-			So(err, ShouldNotBeNil)
-			So(errors.Is(err, zerr.ErrBadConfig), ShouldBeTrue)
-		})
-
-		Convey("malformed end time of day is rejected", func() {
-			_, err := parseGCTimeWindow("01:00-25:00")
-			So(err, ShouldNotBeNil)
-			So(errors.Is(err, zerr.ErrBadConfig), ShouldBeTrue)
-		})
-
-		Convey("equal start and end is rejected", func() {
-			_, err := parseGCTimeWindow("08:00-08:00")
-			So(err, ShouldNotBeNil)
-			So(errors.Is(err, zerr.ErrBadConfig), ShouldBeTrue)
-		})
+	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		DecodeHook: config.GCTimeWindowDecodeHook(),
+		Result:     &result,
 	})
+	if err != nil {
+		t.Fatalf("failed to create decoder: %v", err)
+	}
+
+	if err := decoder.Decode(window); err != nil {
+		t.Fatalf("failed to decode gc time window %q: %v", window, err)
+	}
+
+	return result
 }
 
-func TestValidateGCTimeWindow(t *testing.T) {
-	Convey("ValidateGCTimeWindow", t, func() {
-		Convey("empty window is valid", func() {
-			So(ValidateGCTimeWindow(""), ShouldBeNil)
-		})
-
-		Convey("valid window", func() {
-			So(ValidateGCTimeWindow("01:00-08:00"), ShouldBeNil)
-		})
-
-		Convey("invalid window", func() {
-			So(ValidateGCTimeWindow("not-a-window"), ShouldNotBeNil)
-		})
-	})
+func normalizeHour(hour int) int {
+	return ((hour % 24) + 24) % 24
 }
 
-func TestNewGCTimeWindow(t *testing.T) {
-	Convey("newGCTimeWindow", t, func() {
-		log := zlog.NewTestLogger()
-
-		Convey("empty window returns nil", func() {
-			So(newGCTimeWindow("", log), ShouldBeNil)
-		})
-
-		Convey("valid window is parsed", func() {
-			window := newGCTimeWindow("01:00-08:00", log)
-			So(window, ShouldNotBeNil)
-			So(window.startMin, ShouldEqual, 60)
-			So(window.endMin, ShouldEqual, 8*60)
-		})
-
-		Convey("invalid window is logged and ignored", func() {
-			So(newGCTimeWindow("not-a-window", log), ShouldBeNil)
-		})
-	})
+// windowAfter returns a one-hour "HH:MM-HH:MM" window starting an hour after hour:minute,
+// so it never contains hour:minute.
+func windowAfter(hour, minute int) string {
+	return fmt.Sprintf("%02d:%02d-%02d:%02d", normalizeHour(hour+1), minute, normalizeHour(hour+2), minute)
 }
 
-func TestGCTimeWindowContains(t *testing.T) {
-	Convey("gcTimeWindow.contains", t, func() {
-		date := func(hour, minute int) time.Time {
-			return time.Date(2024, 1, 1, hour, minute, 0, 0, time.UTC)
-		}
-
-		Convey("same-day window", func() {
-			window := gcTimeWindow{startMin: 60, endMin: 8 * 60} // 01:00-08:00
-
-			So(window.contains(date(0, 30)), ShouldBeFalse)
-			So(window.contains(date(1, 0)), ShouldBeTrue)
-			So(window.contains(date(4, 0)), ShouldBeTrue)
-			So(window.contains(date(8, 0)), ShouldBeFalse)
-			So(window.contains(date(12, 0)), ShouldBeFalse)
-		})
-
-		Convey("window wrapping past midnight", func() {
-			window := gcTimeWindow{startMin: 22 * 60, endMin: 6 * 60} // 22:00-06:00
-
-			So(window.contains(date(23, 0)), ShouldBeTrue)
-			So(window.contains(date(0, 30)), ShouldBeTrue)
-			So(window.contains(date(5, 59)), ShouldBeTrue)
-			So(window.contains(date(6, 0)), ShouldBeFalse)
-			So(window.contains(date(12, 0)), ShouldBeFalse)
-		})
-	})
+// windowContaining returns a two-hour "HH:MM-HH:MM" window centered on hour:minute, with
+// an hour of margin on each side so it safely contains hour:minute.
+func windowContaining(hour, minute int) string {
+	return fmt.Sprintf("%02d:%02d-%02d:%02d", normalizeHour(hour-1), minute, normalizeHour(hour+1), minute)
 }
 
 func TestGCTaskGeneratorTimeWindow(t *testing.T) {
@@ -1880,22 +1807,16 @@ func TestGCTaskGeneratorTimeWindow(t *testing.T) {
 		now := time.Now().UTC()
 
 		Convey("outside the window, generator is not ready", func() {
-			outsideWindow := gcTimeWindow{
-				startMin: (now.Hour()+1)%24*minutesInHour + now.Minute(),
-				endMin:   (now.Hour()+2)%24*minutesInHour + now.Minute(),
-			}
+			outsideWindow := decodeGCTimeWindow(t, windowAfter(now.Hour(), now.Minute()))
 
-			gen := &GCTaskGenerator{timeWindow: &outsideWindow}
+			gen := &GCTaskGenerator{timeWindow: outsideWindow}
 			So(gen.IsReady(), ShouldBeFalse)
 		})
 
 		Convey("inside the window, generator is ready", func() {
-			insideWindow := gcTimeWindow{
-				startMin: 0,
-				endMin:   24 * minutesInHour,
-			}
+			insideWindow := decodeGCTimeWindow(t, windowContaining(now.Hour(), now.Minute()))
 
-			gen := &GCTaskGenerator{timeWindow: &insideWindow}
+			gen := &GCTaskGenerator{timeWindow: insideWindow}
 			So(gen.IsReady(), ShouldBeTrue)
 		})
 
@@ -1910,13 +1831,10 @@ func TestGCTaskGeneratorTimeWindow(t *testing.T) {
 		})
 
 		Convey("a sweep already in progress stays ready outside the window", func() {
-			outsideWindow := gcTimeWindow{
-				startMin: (now.Hour()+1)%24*minutesInHour + now.Minute(),
-				endMin:   (now.Hour()+2)%24*minutesInHour + now.Minute(),
-			}
+			outsideWindow := decodeGCTimeWindow(t, windowAfter(now.Hour(), now.Minute()))
 
 			gen := &GCTaskGenerator{
-				timeWindow:     &outsideWindow,
+				timeWindow:     outsideWindow,
 				processedRepos: map[string]struct{}{"repo1": {}},
 				nextRun:        now.Add(-time.Second),
 			}
@@ -1924,14 +1842,11 @@ func TestGCTaskGeneratorTimeWindow(t *testing.T) {
 		})
 
 		Convey("deferral outside the window is only logged once", func() {
-			outsideWindow := gcTimeWindow{
-				startMin: (now.Hour()+1)%24*minutesInHour + now.Minute(),
-				endMin:   (now.Hour()+2)%24*minutesInHour + now.Minute(),
-			}
+			outsideWindow := decodeGCTimeWindow(t, windowAfter(now.Hour(), now.Minute()))
 
 			gen := &GCTaskGenerator{
 				gc:         GarbageCollect{log: zlog.NewTestLogger()},
-				timeWindow: &outsideWindow,
+				timeWindow: outsideWindow,
 			}
 
 			So(gen.IsReady(), ShouldBeFalse)
@@ -1942,7 +1857,7 @@ func TestGCTaskGeneratorTimeWindow(t *testing.T) {
 			So(gen.loggedWindowDefer, ShouldBeTrue)
 
 			// once the sweep is allowed to proceed, the flag resets for the next deferral episode
-			gen.timeWindow = nil
+			gen.timeWindow = config.GCTimeWindow{}
 			So(gen.IsReady(), ShouldBeTrue)
 			So(gen.loggedWindowDefer, ShouldBeFalse)
 		})

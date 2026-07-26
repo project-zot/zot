@@ -2979,7 +2979,6 @@ func TestGC(t *testing.T) {
 		Convey("Valid GC time window", func() {
 			config := config.New()
 			err = json.Unmarshal(contents, config)
-			config.Storage.GCTimeWindow = "01:00-08:00"
 
 			contents, err = json.MarshalIndent(config, "", " ")
 			So(err, ShouldBeNil)
@@ -2991,13 +2990,12 @@ func TestGC(t *testing.T) {
 
 		Convey("Invalid GC time window", func() {
 			config := config.New()
-			err = json.Unmarshal(contents, config)
-			config.Storage.GCTimeWindow = "not-a-window"
 
-			contents, err = json.MarshalIndent(config, "", " ")
-			So(err, ShouldBeNil)
+			content := `{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot",
+			"gc": true, "gcDelay": "1h", "gcTimeWindow": "not-a-window"}, "http": {"address": "127.0.0.1", "port": "8080"},
+			"log": {"level": "debug"}}`
 
-			file := MakeTempFileWithContent(t, "gc-config.json", string(contents))
+			file := MakeTempFileWithContent(t, "gc-time-window-config.json", content)
 			err = cli.LoadConfiguration(config, file)
 			So(err, ShouldNotBeNil)
 		})
