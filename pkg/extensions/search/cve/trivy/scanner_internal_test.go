@@ -414,14 +414,14 @@ func TestImageScannable(t *testing.T) {
 
 	boltDriver, err := boltdb.GetBoltDriver(params)
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	log := log.NewTestLogger()
 
 	metaDB, err := boltdb.New(boltDriver, log)
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	// Create test data for the following cases
@@ -449,7 +449,19 @@ func TestImageScannable(t *testing.T) {
 
 	err = metaDB.SetRepoReference(context.Background(), "repo1", "valid", validImage.AsImageMeta())
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
+	}
+
+	validZstdImage := CreateImageWith().
+		Layers([]Layer{{
+			MediaType: ispec.MediaTypeImageLayerZstd,
+			Digest:    ispec.DescriptorEmptyJSON.Digest,
+			Blob:      ispec.DescriptorEmptyJSON.Data,
+		}}).ImageConfig(validConfig).Build()
+
+	err = metaDB.SetRepoReference(context.Background(), "repo1", "valid-zstd", validZstdImage.AsImageMeta())
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Create MetaDB data for manifest with unscannable layers
@@ -463,7 +475,7 @@ func TestImageScannable(t *testing.T) {
 	err = metaDB.SetRepoReference(context.Background(), "repo1",
 		"unscannable-layer", imageWithUnscannableLayer.AsImageMeta())
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	// Continue with initializing the objects the scanner depends on
@@ -483,6 +495,12 @@ func TestImageScannable(t *testing.T) {
 
 	Convey("Valid image should be scannable", t, func() {
 		result, err := scanner.IsImageFormatScannable("repo1", "valid")
+		So(err, ShouldBeNil)
+		So(result, ShouldBeTrue)
+	})
+
+	Convey("Valid image with zstd layer media type should be scannable", t, func() {
+		result, err := scanner.IsImageFormatScannable("repo1", "valid-zstd")
 		So(err, ShouldBeNil)
 		So(result, ShouldBeTrue)
 	})

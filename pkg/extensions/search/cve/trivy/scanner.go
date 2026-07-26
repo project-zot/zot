@@ -446,7 +446,7 @@ func (scanner Scanner) IsImageMediaScannable(repo, digestStr, mediaType string) 
 
 	if mediaType == ispec.MediaTypeImageManifest || //nolint:gocritic // not converting to switch-case
 		compat.IsCompatibleManifestMediaType(mediaType) {
-		ok, err := scanner.isManifestScanable(digestStr)
+		ok, err := scanner.isManifestScannable(digestStr)
 		if err != nil {
 			return ok, fmt.Errorf("image '%s' %w", image, err)
 		}
@@ -465,7 +465,26 @@ func (scanner Scanner) IsImageMediaScannable(repo, digestStr, mediaType string) 
 	}
 }
 
-func (scanner Scanner) isManifestScanable(digestStr string) (bool, error) {
+// isManifestLayersScannable checks whether all layers of a manifest have
+// media types that Trivy is able to scan.
+func isManifestLayersScannable(layers []ispec.Descriptor) (bool, error) {
+	for _, imageLayer := range layers {
+		switch imageLayer.MediaType {
+		case ispec.MediaTypeImageLayerGzip,
+			ispec.MediaTypeImageLayerZstd,
+			ispec.MediaTypeImageLayer,
+			string(regTypes.DockerLayer):
+			continue
+		default:
+			return false, fmt.Errorf("%w: layer media type '%s'",
+				zerr.ErrScanNotSupported, imageLayer.MediaType)
+		}
+	}
+
+	return true, nil
+}
+
+func (scanner Scanner) isManifestScannable(digestStr string) (bool, error) {
 	if scanner.cache.Get(digestStr) != nil {
 		return true, nil
 	}
@@ -475,16 +494,11 @@ func (scanner Scanner) isManifestScanable(digestStr string) (bool, error) {
 		return false, err
 	}
 
-	for _, imageLayer := range manifestData.Manifests[0].Manifest.Layers {
-		switch imageLayer.MediaType {
-		case ispec.MediaTypeImageLayerGzip, ispec.MediaTypeImageLayer, string(regTypes.DockerLayer):
-			continue
-		default:
-			return false, fmt.Errorf("%w: layer media type '%s'", zerr.ErrScanNotSupported, imageLayer.MediaType)
-		}
+	if len(manifestData.Manifests) == 0 {
+		return false, fmt.Errorf("%w: manifest data has 0 manifests", zerr.ErrScanNotSupported)
 	}
 
-	return true, nil
+	return isManifestLayersScannable(manifestData.Manifests[0].Manifest.Layers)
 }
 
 func (scanner Scanner) isManifestDataScannable(manifestData mTypes.ManifestMeta) (bool, error) {
@@ -492,16 +506,7 @@ func (scanner Scanner) isManifestDataScannable(manifestData mTypes.ManifestMeta)
 		return true, nil
 	}
 
-	for _, imageLayer := range manifestData.Manifest.Layers {
-		switch imageLayer.MediaType {
-		case ispec.MediaTypeImageLayerGzip, ispec.MediaTypeImageLayer, string(regTypes.DockerLayer):
-			continue
-		default:
-			return false, fmt.Errorf("%w: layer media type '%s'", zerr.ErrScanNotSupported, imageLayer.MediaType)
-		}
-	}
-
-	return true, nil
+	return isManifestLayersScannable(manifestData.Manifest.Layers)
 }
 
 func (scanner Scanner) isIndexScannable(digestStr string) (bool, error) {
@@ -896,7 +901,7 @@ func (scanner Scanner) scanIndex(ctx context.Context, repo, digest string) (map[
 	indexCveIDMap := map[string]cvemodel.CVE{}
 
 	for _, manifest := range indexData.Index.Manifests {
-		if isScannable, err := scanner.isManifestScanable(manifest.Digest.String()); isScannable && err == nil {
+		if isScannable, err := scanner.isManifestScannable(manifest.Digest.String()); isScannable && err == nil {
 			manifestCveIDMap, err := scanner.scanManifest(ctx, repo, manifest.Digest.String())
 			if err != nil {
 				return nil, err
