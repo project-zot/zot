@@ -18,14 +18,50 @@ function wait_event_on_subject() {
 
     mkdir -p "${dir}"
 
+    # --wait must cover slow concurrent-CI pushes (e.g. golang:1.20). A short
+    # window lets the subscriber exit before ImageUpdated / RepositoryCreated.
     docker run -d --rm --network host --user "$(id -u):$(id -g)" -v "${dir}":/data ghcr.io/project-zot/ci-images/nats-box:0.19.7  \
         nats sub ${subject} --user jane.joe --password opensesame \
-        --server nats://127.0.0.1:${port} --count=${count} --wait=5s --raw --dump=/data
+        --server nats://127.0.0.1:${port} --count=${count} --wait=60s --raw --dump=/data
 
     # give client a chance to startup
     sleep 2
 
     return $?
+}
+
+# Poll until nats sub --dump has written the expected number of event files.
+# Call this after the action that should publish (push/delete), not before.
+function wait_for_nats_event_files() {
+    local dir="$1"
+    local expected="${2:-1}"
+    local timeout="${3:-60}"
+    local start_ts=$SECONDS
+    local count=0
+    local elapsed=0
+    local last_log=0
+
+    echo "# waiting for ${expected} nats event file(s) in ${dir}..." >&3
+
+    while [ $((SECONDS - start_ts)) -lt "$timeout" ]; do
+        count=$(find "${dir}" -type f 2>/dev/null | wc -l)
+        if [ "$count" -ge "$expected" ]; then
+            elapsed=$((SECONDS - start_ts))
+            echo "# found ${count} nats event file(s) after ${elapsed}s" >&3
+            return 0
+        fi
+        sleep 0.5
+        elapsed=$((SECONDS - start_ts))
+        if [ $((elapsed - last_log)) -ge 5 ]; then
+            echo "# still waiting for nats events in ${dir}... (${count}/${expected}, ${elapsed}s)" >&3
+            last_log=$elapsed
+        fi
+    done
+
+    count=$(find "${dir}" -type f 2>/dev/null | wc -l)
+    echo "# timed out waiting for ${expected} nats event file(s) in ${dir} (got ${count})" >&3
+    ls -la "${dir}" >&3 2>&1 || true
+    return 1
 }
 
 function http_server_start() {
