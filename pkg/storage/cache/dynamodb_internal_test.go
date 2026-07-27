@@ -20,7 +20,7 @@ import (
 // denyCreateTableTransport simulates an IAM policy that allows DescribeTable/GetItem/etc.
 // but denies dynamodb:CreateTable, by intercepting only CreateTable calls and returning
 // the same AccessDeniedException shape AWS returns; every other action is forwarded to
-// the real (localstack) endpoint. This reproduces https://github.com/project-zot/zot/issues/4259.
+// the real (localstack) endpoint.
 type denyCreateTableTransport struct {
 	base http.RoundTripper
 }
