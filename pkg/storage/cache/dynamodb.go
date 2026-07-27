@@ -33,8 +33,8 @@ type Blob struct {
 }
 
 // tableExists checks for the table via DescribeTable rather than attempting CreateTable
-// and inspecting the error. This allows callers that only have read/write item permissions on an
-// existing table (but not dynamodb:CreateTable) to work.
+// and inspecting the error. This allows callers that have dynamodb:DescribeTable (and read/write item
+// permissions) on an existing table, but not dynamodb:CreateTable, to work.
 func (d *DynamoDBDriver) tableExists(tableName string) (bool, error) {
 	_, err := d.client.DescribeTable(context.TODO(), &dynamodb.DescribeTableInput{
 		TableName: aws.String(tableName),
