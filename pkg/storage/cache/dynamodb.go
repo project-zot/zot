@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/aws/smithy-go"
 	godigest "github.com/opencontainers/go-digest"
 
 	zerr "zotregistry.dev/zot/v2/errors"
@@ -51,10 +52,24 @@ func (d *DynamoDBDriver) tableExists(tableName string) (bool, error) {
 	return false, err
 }
 
+// isAccessDenied reports whether err is an AWS AccessDeniedException. This isn't a
+// modeled DynamoDB exception type, so it's matched via the generic smithy API error.
+func isAccessDenied(err error) bool {
+	var apiErr smithy.APIError
+
+	return errors.As(err, &apiErr) && apiErr.ErrorCode() == "AccessDeniedException"
+}
+
 func (d *DynamoDBDriver) NewTable(tableName string) error {
 	exists, err := d.tableExists(tableName)
 	if err != nil {
-		return err
+		// DescribeTable may be denied for callers that only have dynamodb:CreateTable (and
+		// not dynamodb:DescribeTable); fall back to attempting CreateTable directly below.
+		if !isAccessDenied(err) {
+			return err
+		}
+
+		exists = false
 	}
 
 	if !exists {
@@ -82,19 +97,21 @@ func (d *DynamoDBDriver) NewTable(tableName string) error {
 		// tableExists and CreateTable aren't atomic, so still tolerate a benign race where
 		// another zot instance created the table between the check above and this call.
 		// ResourceInUseException can also occur while a table is being deleted, so confirm
-		// the table actually exists before treating the error as benign.
+		// the table actually exists before treating the error as benign. If the caller isn't
+		// permitted to call DescribeTable either (dynamodb:CreateTable-only IAM policies),
+		// there's no way to confirm further, so fall back to treating it as benign.
 		var inUseErr *types.ResourceInUseException
 		if err != nil {
 			if !errors.As(err, &inUseErr) {
 				return err
 			}
 
-			exists, existsErr := d.tableExists(tableName)
-			if existsErr != nil {
-				return existsErr
-			}
+			confirmedExists, existsErr := d.tableExists(tableName)
 
-			if !exists {
+			switch {
+			case existsErr != nil && !isAccessDenied(existsErr):
+				return existsErr
+			case existsErr == nil && !confirmedExists:
 				return err
 			}
 		}
