@@ -218,9 +218,7 @@ func (st *scanTask) Name() string {
 	return "ScanTask"
 }
 
-// ScannerOption configures optional, cross-cutting behavior on a scanner
-// (e.g. event publishing). Additional scanner features should be added as
-// new options rather than new wrapper types.
+// ScannerOption configures additional features and settings on a scanner.
 type ScannerOption func(*scanner)
 
 // WithEventRecorder makes the scanner publish an ImageScanned event via
@@ -259,52 +257,72 @@ type scanner struct {
 }
 
 func (s *scanner) ScanImage(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
-	cveMap, err := s.Scanner.ScanImage(ctx, image)
-	if err == nil {
-		s.publishScanEvent(ctx, image, cveMap)
+	if s.eventRecorder == nil || s.metaDB == nil {
+		return s.Scanner.ScanImage(ctx, image)
+	}
+
+	repo, ref, digest, ok := s.resolveDigestForEvent(ctx, image)
+
+	// Check the cache before scanning: the trivy scanner's ScanImage returns cached results
+	// directly without running a new scan, so checking after would see "cached" even for a
+	// scan that just ran, and no event would ever be published for repeated CVE queries.
+	wasCached := ok && s.IsResultCached(digest)
+
+	// Scan by the digest resolved above rather than image's original tag, so the digest
+	// recorded in the event always matches what was actually scanned even if the tag is
+	// moved to point elsewhere between resolution above and the scan below.
+	scanTarget := image
+	if ok {
+		scanTarget = zcommon.GetFullImageName(repo, digest)
+	}
+
+	cveMap, err := s.Scanner.ScanImage(ctx, scanTarget)
+	if err == nil && ok && !wasCached {
+		s.publishScanEvent(ctx, repo, ref, digest, cveMap)
 	}
 
 	return cveMap, err
 }
 
-// publishScanEvent emits one ImageScanned event using whatever reference (tag
-// or digest) ScanImage was called with, mirroring how ImageDeleted/ImageLintFailed
-// pass the caller's reference through as-is. ScanImage is also invoked with the
-// digest of untagged manifests, e.g. the individual manifests inside a multiarch
-// index, so a tag cannot be required here.
-func (s *scanner) publishScanEvent(ctx context.Context, image string, cveMap map[string]cvemodel.CVE) {
-	if s.eventRecorder == nil || s.metaDB == nil {
-		return
-	}
-
+// resolveDigestForEvent resolves image (whatever reference, tag or digest, ScanImage was
+// called with) to the repo/ref/digest needed to check the cache and publish an event.
+// ScanImage is also invoked with the digest of untagged manifests, e.g. the individual
+// manifests inside a multiarch index, so a tag cannot be required here. ok is false when
+// resolution failed; a warning has already been logged and the caller should skip both the
+// cache check and publishing.
+func (s *scanner) resolveDigestForEvent(ctx context.Context, image string) (repo, ref, digest string, ok bool) {
 	repo, ref, isTag := zcommon.GetImageDirAndReference(image)
 
 	// When isTag is false, ref is already the digest ScanImage was called with.
-	digest := ref
-	if isTag {
-		// Use the caller's ctx as-is rather than a synthetic elevated identity: GetRepoMeta
-		// performs no per-repo access check (unlike the Filter*/Search* methods), so a real
-		// request ctx is just as capable here, and this keeps event publishing subject to
-		// whatever access control GetRepoMeta may apply in the future.
-		repoMeta, err := s.metaDB.GetRepoMeta(ctx, repo)
-		if err != nil {
-			s.log.Warn().Err(err).Str("repository", repo).Str("reference", ref).
-				Msg("failed to load repo metadata for image scanned event")
-
-			return
-		}
-
-		descriptor, ok := repoMeta.Tags[ref]
-		if !ok {
-			s.log.Warn().Str("repository", repo).Str("reference", ref).
-				Msg("skipping image scanned event because tag was not found in repo metadata")
-
-			return
-		}
-
-		digest = descriptor.Digest
+	if !isTag {
+		return repo, ref, ref, true
 	}
 
+	// Use the caller's ctx as-is rather than a synthetic elevated identity: GetRepoMeta
+	// performs no per-repo access check (unlike the Filter*/Search* methods), so a real
+	// request ctx is just as capable here, and this keeps event publishing subject to
+	// whatever access control GetRepoMeta may apply in the future.
+	repoMeta, err := s.metaDB.GetRepoMeta(ctx, repo)
+	if err != nil {
+		s.log.Warn().Err(err).Str("repository", repo).Str("reference", ref).
+			Msg("failed to load repo metadata for image scanned event")
+
+		return repo, ref, "", false
+	}
+
+	descriptor, found := repoMeta.Tags[ref]
+	if !found {
+		s.log.Warn().Str("repository", repo).Str("reference", ref).
+			Msg("skipping image scanned event because tag was not found in repo metadata")
+
+		return repo, ref, "", false
+	}
+
+	return repo, ref, descriptor.Digest, true
+}
+
+// publishScanEvent emits one ImageScanned event for the already-resolved repo/ref/digest.
+func (s *scanner) publishScanEvent(ctx context.Context, repo, ref, digest string, cveMap map[string]cvemodel.CVE) {
 	imageMeta, err := s.metaDB.GetImageMeta(godigest.Digest(digest))
 	if err != nil {
 		s.log.Warn().Err(err).Str("repository", repo).Str("digest", digest).

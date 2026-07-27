@@ -726,4 +726,79 @@ func TestScanGeneratorPublishesScanEvents(t *testing.T) {
 		So(call.mediaType, ShouldEqual, image.AsImageMeta().MediaType)
 		checkScanEventSummary(call)
 	})
+
+	Convey("scanning by tag scans the resolved digest, not the tag", t, func() {
+		params := boltdb.DBParameters{
+			RootDir: t.TempDir(),
+		}
+		boltDriver, err := boltdb.GetBoltDriver(params)
+		So(err, ShouldBeNil)
+
+		metaDB, err := boltdb.New(boltDriver, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		image := CreateImageWith().DefaultLayers().DefaultConfig().Build()
+		err = metaDB.SetRepoReference(context.Background(), "repo", "1.0.0", image.AsImageMeta())
+		So(err, ShouldBeNil)
+
+		var scannedImage string
+		mockScanner := mockScannerReturningCVEs()
+		mockScanner.ScanImageFn = func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
+			scannedImage = image
+
+			return mockScannerReturningCVEs().ScanImageFn(ctx, image)
+		}
+
+		recorder := &scanEventRecorder{}
+		scanner := cveinfo.NewDecoratedScanner(mockScanner, log.NewTestLogger(),
+			cveinfo.WithEventRecorder(metaDB, recorder))
+
+		_, err = scanner.ScanImage(context.Background(), "repo:1.0.0")
+		So(err, ShouldBeNil)
+
+		// the tag is resolved to its digest before the underlying scanner is invoked, so a tag
+		// moved mid-scan can't cause the event to report a digest that wasn't actually scanned
+		So(scannedImage, ShouldEqual, "repo@"+image.DigestStr())
+
+		So(recorder.calls, ShouldHaveLength, 1)
+		So(recorder.calls[0].reference, ShouldEqual, "1.0.0")
+		So(recorder.calls[0].digest, ShouldEqual, image.DigestStr())
+	})
+
+	Convey("repeated scans of an already-cached digest publish only the first event", t, func() {
+		params := boltdb.DBParameters{
+			RootDir: t.TempDir(),
+		}
+		boltDriver, err := boltdb.GetBoltDriver(params)
+		So(err, ShouldBeNil)
+
+		metaDB, err := boltdb.New(boltDriver, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		image := CreateImageWith().DefaultLayers().DefaultConfig().Build()
+		err = metaDB.SetRepoReference(context.Background(), "repo", "1.0.0", image.AsImageMeta())
+		So(err, ShouldBeNil)
+
+		// simulates the trivy scanner, which returns cached results directly from ScanImage
+		// without running a new scan once a digest has already been scanned once
+		cached := false
+		mockScanner := mockScannerReturningCVEs()
+		mockScanner.IsResultCachedFn = func(digest string) bool {
+			return cached
+		}
+
+		recorder := &scanEventRecorder{}
+		scanner := cveinfo.NewDecoratedScanner(mockScanner, log.NewTestLogger(),
+			cveinfo.WithEventRecorder(metaDB, recorder))
+
+		_, err = scanner.ScanImage(context.Background(), "repo:1.0.0")
+		So(err, ShouldBeNil)
+		So(recorder.calls, ShouldHaveLength, 1)
+
+		cached = true
+
+		_, err = scanner.ScanImage(context.Background(), "repo:1.0.0")
+		So(err, ShouldBeNil)
+		So(recorder.calls, ShouldHaveLength, 1)
+	})
 }
