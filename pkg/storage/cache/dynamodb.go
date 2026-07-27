@@ -74,7 +74,7 @@ func (d *DynamoDBDriver) NewTable(tableName string) error {
 
 	if !exists {
 		//nolint:mnd
-		_, err := d.client.CreateTable(context.TODO(), &dynamodb.CreateTableInput{
+		_, err = d.client.CreateTable(context.TODO(), &dynamodb.CreateTableInput{
 			TableName: &tableName,
 			AttributeDefinitions: []types.AttributeDefinition{
 				{
