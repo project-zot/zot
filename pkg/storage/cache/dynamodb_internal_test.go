@@ -27,8 +27,8 @@ type denyCreateTableTransport struct {
 
 func (t *denyCreateTableTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if req.Header.Get("X-Amz-Target") == "DynamoDB_20120810.CreateTable" {
-		body := `{"__type":"com.amazonaws.dynamodb.v20120810#AccessDeniedException",` +
-			`"Message":"User: arn:aws:iam::123456789012:user/zot is not authorized to perform: ` +
+		body := `{"__type":"com.amazon.coral.service#AccessDeniedException",` +
+			`"message":"User: arn:aws:iam::123456789012:user/zot is not authorized to perform: ` +
 			`dynamodb:CreateTable on resource: arn:aws:dynamodb:us-east-2:123456789012:table/BlobTable"}`
 
 		return &http.Response{
