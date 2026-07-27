@@ -1175,7 +1175,7 @@ func (gen *GCTaskGenerator) IsReady() bool {
 	if startingNewSweep && !gen.timeWindow.Contains(now) {
 		if !gen.loggedWindowDefer {
 			if gen.gc.log.Logger != nil {
-				gen.gc.log.Debug().Msg("GC sweep deferred, outside gcTimeWindow")
+				gen.gc.log.Debug().Msg("gc sweep deferred, outside gcTimeWindow")
 			}
 
 			gen.loggedWindowDefer = true
