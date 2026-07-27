@@ -144,6 +144,22 @@ func TestNewTableWithoutDescribeTablePermission(t *testing.T) {
 			deniedDriver := newDenyDescribeTableDriver(t)
 			So(deniedDriver.NewTable(tableName), ShouldBeNil)
 			So(deniedDriver.tableName, ShouldEqual, tableName)
+
+			// confirm CreateTable actually ran (rather than NewTable returning nil
+			// without ever creating the table) via an unwrapped client
+			endpoint := os.Getenv("DYNAMODBMOCK_ENDPOINT")
+
+			plainCfg, err := awsconfig.LoadDefaultConfig(context.Background(), awsconfig.WithRegion("us-east-2"))
+			So(err, ShouldBeNil)
+
+			plainClient := dynamodb.NewFromConfig(plainCfg, func(o *dynamodb.Options) {
+				o.BaseEndpoint = aws.String(endpoint)
+			})
+
+			_, err = plainClient.DescribeTable(context.Background(), &dynamodb.DescribeTableInput{
+				TableName: aws.String(tableName),
+			})
+			So(err, ShouldBeNil)
 		})
 
 		Convey("table already exists", func() {
