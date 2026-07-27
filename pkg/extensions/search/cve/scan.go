@@ -290,7 +290,7 @@ func (s *scanner) ScanImage(ctx context.Context, image string) (map[string]cvemo
 // manifests inside a multiarch index, so a tag cannot be required here. ok is false when
 // resolution failed; a warning has already been logged and the caller should skip both the
 // cache check and publishing.
-func (s *scanner) resolveDigestForEvent(ctx context.Context, image string) (repo, ref, digest string, ok bool) {
+func (s *scanner) resolveDigestForEvent(ctx context.Context, image string) (string, string, string, bool) {
 	repo, ref, isTag := zcommon.GetImageDirAndReference(image)
 
 	// When isTag is false, ref is already the digest ScanImage was called with.
