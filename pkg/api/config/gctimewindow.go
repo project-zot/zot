@@ -32,16 +32,16 @@ func (w GCTimeWindow) IsSet() bool {
 	return w != GCTimeWindow{}
 }
 
-// Contains returns true if t, interpreted in UTC, falls inside the window, or if no
+// Contains returns true if now, interpreted in UTC, falls inside the window, or if no
 // window is configured. A window whose start is after its end (e.g. "22:00-06:00") is
 // treated as wrapping past midnight.
-func (w GCTimeWindow) Contains(t time.Time) bool {
+func (w GCTimeWindow) Contains(now time.Time) bool {
 	if !w.IsSet() {
 		return true
 	}
 
-	t = t.UTC()
-	minutes := t.Hour()*minutesInHour + t.Minute()
+	now = now.UTC()
+	minutes := now.Hour()*minutesInHour + now.Minute()
 
 	if w.startMin <= w.endMin {
 		return minutes >= w.startMin && minutes < w.endMin
