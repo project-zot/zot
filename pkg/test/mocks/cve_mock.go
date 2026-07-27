@@ -79,7 +79,7 @@ type CveScannerMock struct {
 	IsImageMediaScannableFn  func(repo string, digest, mediaType string) (bool, error)
 	IsResultCachedFn         func(digest string) bool
 	GetCachedResultFn        func(digest string) map[string]cvemodel.CVE
-	ScanImageFn              func(ctx context.Context, image string) (map[string]cvemodel.CVE, error)
+	ScanImageFn              func(ctx context.Context, image string) (cvemodel.ScanResult, error)
 	UpdateDBFn               func(ctx context.Context) error
 }
 
@@ -115,12 +115,12 @@ func (scanner CveScannerMock) GetCachedResult(digest string) map[string]cvemodel
 	return map[string]cvemodel.CVE{}
 }
 
-func (scanner CveScannerMock) ScanImage(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
+func (scanner CveScannerMock) ScanImage(ctx context.Context, image string) (cvemodel.ScanResult, error) {
 	if scanner.ScanImageFn != nil {
 		return scanner.ScanImageFn(ctx, image)
 	}
 
-	return map[string]cvemodel.CVE{}, nil
+	return cvemodel.ScanResult{CVEMap: map[string]cvemodel.CVE{}}, nil
 }
 
 func (scanner CveScannerMock) UpdateDB(ctx context.Context) error {

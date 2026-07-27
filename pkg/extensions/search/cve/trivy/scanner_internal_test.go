@@ -269,18 +269,21 @@ func TestMultipleStoragePath(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// Scanning image in default store
-		cveMap, err := scanner.ScanImage(ctx, img0)
+		scanResult, err := scanner.ScanImage(ctx, img0)
+		cveMap := scanResult.CVEMap
 
 		So(err, ShouldBeNil)
 		So(len(cveMap), ShouldEqual, 0)
 
 		// Scanning image in substore
-		cveMap, err = scanner.ScanImage(ctx, img1)
+		scanResult, err = scanner.ScanImage(ctx, img1)
+		cveMap = scanResult.CVEMap
 		So(err, ShouldBeNil)
 		So(len(cveMap), ShouldEqual, 0)
 
 		// Scanning image which does not exist
-		cveMap, err = scanner.ScanImage(ctx, "a/test/image2:tag100")
+		scanResult, err = scanner.ScanImage(ctx, "a/test/image2:tag100")
+		cveMap = scanResult.CVEMap
 		So(err, ShouldNotBeNil)
 		So(len(cveMap), ShouldEqual, 0)
 

@@ -52,6 +52,10 @@ type Package struct {
 	FixedVersion     string `json:"FixedVersion"`
 }
 
+// NotSpecified is used in place of Package.FixedVersion/PackagePath when the
+// scanner has no fix available or no path, so the field is never empty.
+const NotSpecified = "Not Specified"
+
 const (
 	unScanned = iota
 	none
@@ -115,4 +119,15 @@ type TagInfo struct {
 	Descriptor Descriptor
 	Manifests  []DescriptorInfo
 	Timestamp  time.Time
+}
+
+// ScanResult is the outcome of a Scanner.ScanImage call: the CVE map plus the digest and
+// media type actually scanned and whether the result was served from cache. Scanners resolve
+// this identity/cache info internally while scanning, so returning it here spares callers a
+// second metaDB round trip to learn what was scanned.
+type ScanResult struct {
+	CVEMap    map[string]CVE
+	Digest    string
+	MediaType string
+	WasCached bool
 }

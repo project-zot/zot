@@ -553,7 +553,7 @@ func (scanner Scanner) GetCachedResult(digest string) map[string]cvemodel.CVE {
 	return scanner.cache.Get(digest)
 }
 
-func (scanner Scanner) ScanImage(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
+func (scanner Scanner) ScanImage(ctx context.Context, image string) (cvemodel.ScanResult, error) {
 	var (
 		originalImageInput = image
 		digest             string
@@ -567,7 +567,7 @@ func (scanner Scanner) ScanImage(ctx context.Context, image string) (map[string]
 	if isTag {
 		imgDescriptor, err := getImageDescriptor(ctx, scanner.metaDB, repo, ref)
 		if err != nil {
-			return map[string]cvemodel.CVE{}, err
+			return cvemodel.ScanResult{}, err
 		}
 
 		digest = imgDescriptor.Digest
@@ -577,35 +577,41 @@ func (scanner Scanner) ScanImage(ctx context.Context, image string) (map[string]
 
 		found, mediaType = findMediaTypeForDigest(scanner.metaDB, godigest.Digest(ref))
 		if !found {
-			return map[string]cvemodel.CVE{}, zerr.ErrManifestNotFound
+			return cvemodel.ScanResult{}, zerr.ErrManifestNotFound
 		}
 	}
 
 	var (
-		cveIDMap map[string]cvemodel.CVE
-		err      error
+		cveIDMap  map[string]cvemodel.CVE
+		wasCached bool
+		err       error
 	)
 
 	if mediaType == ispec.MediaTypeImageIndex ||
 		compat.IsCompatibleManifestListMediaType(mediaType) {
-		cveIDMap, err = scanner.scanIndex(ctx, repo, digest)
+		cveIDMap, wasCached, err = scanner.scanIndex(ctx, repo, digest)
 	} else if mediaType == ispec.MediaTypeImageManifest ||
 		compat.IsCompatibleManifestMediaType(mediaType) {
-		cveIDMap, err = scanner.scanManifest(ctx, repo, digest)
+		cveIDMap, wasCached, err = scanner.scanManifest(ctx, repo, digest)
 	}
 
 	if err != nil {
 		scanner.log.Error().Err(err).Str("image", originalImageInput).Msg("failed to scan image")
 
-		return map[string]cvemodel.CVE{}, err
+		return cvemodel.ScanResult{}, err
 	}
 
-	return cveIDMap, nil
+	return cvemodel.ScanResult{
+		CVEMap:    cveIDMap,
+		Digest:    digest,
+		MediaType: mediaType,
+		WasCached: wasCached,
+	}, nil
 }
 
-func (scanner Scanner) scanManifest(ctx context.Context, repo, digest string) (map[string]cvemodel.CVE, error) {
+func (scanner Scanner) scanManifest(ctx context.Context, repo, digest string) (map[string]cvemodel.CVE, bool, error) {
 	if cachedMap := scanner.cache.Get(digest); cachedMap != nil {
-		return cachedMap, nil
+		return cachedMap, true, nil
 	}
 
 	cveidMap := map[string]cvemodel.CVE{}
@@ -620,7 +626,7 @@ func (scanner Scanner) scanManifest(ctx context.Context, repo, digest string) (m
 	}
 
 	if err != nil { //nolint: wsl
-		return cveidMap, err
+		return cveidMap, false, err
 	}
 
 	// SBOM persistence is best-effort: CVE scanning should still complete even if
@@ -639,14 +645,14 @@ func (scanner Scanner) scanManifest(ctx context.Context, repo, digest string) (m
 			if vulnerability.FixedVersion != "" {
 				fixedVersion = vulnerability.FixedVersion
 			} else {
-				fixedVersion = "Not Specified"
+				fixedVersion = cvemodel.NotSpecified
 			}
 
 			var packagePath string
 			if vulnerability.PkgPath != "" {
 				packagePath = vulnerability.PkgPath
 			} else {
-				packagePath = "Not Specified"
+				packagePath = cvemodel.NotSpecified
 			}
 
 			_, ok := cveidMap[vulnerability.VulnerabilityID]
@@ -699,7 +705,7 @@ func (scanner Scanner) scanManifest(ctx context.Context, repo, digest string) (m
 
 	scanner.cache.Add(digest, cveidMap)
 
-	return cveidMap, nil
+	return cveidMap, false, nil
 }
 
 func (scanner Scanner) storeSBOMAsOCIArtifact(ctx context.Context,
@@ -884,27 +890,29 @@ func getNVDReference(references []string) (string, bool) {
 	return "", false
 }
 
-func (scanner Scanner) scanIndex(ctx context.Context, repo, digest string) (map[string]cvemodel.CVE, error) {
+func (scanner Scanner) scanIndex(ctx context.Context, repo, digest string) (map[string]cvemodel.CVE, bool, error) {
 	if cachedMap := scanner.cache.Get(digest); cachedMap != nil {
-		return cachedMap, nil
+		return cachedMap, true, nil
 	}
 
 	indexData, err := scanner.metaDB.GetImageMeta(godigest.Digest(digest))
 	if err != nil {
-		return map[string]cvemodel.CVE{}, err
+		return map[string]cvemodel.CVE{}, false, err
 	}
 
 	if indexData.Index == nil {
-		return map[string]cvemodel.CVE{}, zerr.ErrUnexpectedMediaType
+		return map[string]cvemodel.CVE{}, false, zerr.ErrUnexpectedMediaType
 	}
 
 	indexCveIDMap := map[string]cvemodel.CVE{}
 
 	for _, manifest := range indexData.Index.Manifests {
 		if isScannable, err := scanner.isManifestScannable(manifest.Digest.String()); isScannable && err == nil {
-			manifestCveIDMap, err := scanner.scanManifest(ctx, repo, manifest.Digest.String())
+			// the per-manifest cache status doesn't matter here: it's the aggregate index-level
+			// cache check above that determines whether this ScanImage call is a cache hit
+			manifestCveIDMap, _, err := scanner.scanManifest(ctx, repo, manifest.Digest.String())
 			if err != nil {
-				return nil, err
+				return nil, false, err
 			}
 
 			maps.Copy(indexCveIDMap, manifestCveIDMap)
@@ -913,7 +921,7 @@ func (scanner Scanner) scanIndex(ctx context.Context, repo, digest string) (map[
 
 	scanner.cache.Add(digest, indexCveIDMap)
 
-	return indexCveIDMap, nil
+	return indexCveIDMap, false, nil
 }
 
 // UpdateDB downloads the Trivy DB / Cache under the store root directory.

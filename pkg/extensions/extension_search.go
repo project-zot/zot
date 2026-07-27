@@ -12,6 +12,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/api/constants"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/extensions/events"
 	"zotregistry.dev/zot/v2/pkg/extensions/search"
 	cveinfo "zotregistry.dev/zot/v2/pkg/extensions/search/cve"
 	"zotregistry.dev/zot/v2/pkg/extensions/search/gql_generated"
@@ -30,7 +31,7 @@ func IsBuiltWithSearchExtension() bool {
 }
 
 func GetCveScanner(conf *config.Config, storeController storage.StoreController,
-	metaDB mTypes.MetaDB, log log.Logger,
+	metaDB mTypes.MetaDB, eventRecorder events.Recorder, log log.Logger,
 ) CveScanner {
 	// Get extensions config safely
 	extensionsConfig := conf.CopyExtensionsConfig()
@@ -40,11 +41,14 @@ func GetCveScanner(conf *config.Config, storeController storage.StoreController,
 
 	cveConfig := extensionsConfig.GetSearchCVEConfig()
 
-	return cveinfo.NewScanner(storeController, metaDB, cveConfig, log)
+	// WithEventRecorder is safe to apply even when eventRecorder is nil: the scanner
+	// only publishes events when eventRecorder is non-nil.
+	return cveinfo.NewScanner(storeController, metaDB, cveConfig, log, cveinfo.WithEventRecorder(eventRecorder))
 }
 
 func EnableSearchExtension(conf *config.Config, storeController storage.StoreController,
-	metaDB mTypes.MetaDB, taskScheduler *scheduler.Scheduler, cveScanner CveScanner, log log.Logger,
+	metaDB mTypes.MetaDB, taskScheduler *scheduler.Scheduler, cveScanner CveScanner,
+	log log.Logger,
 ) {
 	// Get extensions config safely
 	extensionsConfig := conf.CopyExtensionsConfig()
