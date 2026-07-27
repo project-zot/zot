@@ -44,9 +44,7 @@ function setup_file() {
     # Setup zot server
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
-    local oci_data_dir=${BATS_FILE_TMPDIR}/oci
     mkdir -p ${zot_root_dir}
-    mkdir -p ${oci_data_dir}
     zot_port=$(get_free_port_for_service "zot")
     echo ${zot_port} > ${BATS_FILE_TMPDIR}/zot.port
     # readTimeout/writeTimeout must exceed how long a cold trivy scan of golang:1.20 can take
@@ -141,6 +139,12 @@ function wait_for_event_count() {
     [ "$status" -eq 0 ]
 
     sleep 10     # wait a little to populate metadb
+
+    # Event delivery is asynchronous (fired from a goroutine per publish), so wait for the
+    # push-triggered events (RepositoryCreated + ImageUpdated, this being a new repo's first
+    # push) to actually arrive before resetting, or a late arrival could be miscounted as the
+    # scan-triggered event below.
+    wait_for_event_count "${output_path}" 2
 
     # Reset the event counter so only the scan-triggered event is counted
     run curl -XGET http://127.0.0.1:${http_server_port}/reset

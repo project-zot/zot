@@ -42,8 +42,8 @@ func GetCveScanner(conf *config.Config, storeController storage.StoreController,
 	cveConfig := extensionsConfig.GetSearchCVEConfig()
 
 	// WithEventRecorder is safe to apply even when eventRecorder is nil: the scanner
-	// only publishes events when both metaDB and eventRecorder are non-nil.
-	return cveinfo.NewScanner(storeController, metaDB, cveConfig, log, cveinfo.WithEventRecorder(metaDB, eventRecorder))
+	// only publishes events when eventRecorder is non-nil.
+	return cveinfo.NewScanner(storeController, metaDB, cveConfig, log, cveinfo.WithEventRecorder(eventRecorder))
 }
 
 func EnableSearchExtension(conf *config.Config, storeController storage.StoreController,

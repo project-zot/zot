@@ -31,7 +31,7 @@ type CveInfo interface {
 }
 
 type Scanner interface {
-	ScanImage(ctx context.Context, image string) (map[string]cvemodel.CVE, error)
+	ScanImage(ctx context.Context, image string) (cvemodel.ScanResult, error)
 	IsImageFormatScannable(repo, ref string) (bool, error)
 	IsImageMediaScannable(repo, digestStr, mediaType string) (bool, error)
 	IsResultCached(digestStr string) bool
@@ -88,7 +88,7 @@ func (cveinfo BaseCveInfo) GetImageListForCVE(ctx context.Context, repo, cveID s
 				continue
 			}
 
-			cveMap, err := cveinfo.Scanner.ScanImage(ctx, zcommon.GetFullImageName(repo, tag))
+			scanResult, err := cveinfo.Scanner.ScanImage(ctx, zcommon.GetFullImageName(repo, tag))
 			if err != nil {
 				if zcommon.IsContextDone(ctx) {
 					return imgList, err
@@ -99,7 +99,7 @@ func (cveinfo BaseCveInfo) GetImageListForCVE(ctx context.Context, repo, cveID s
 				continue
 			}
 
-			if _, hasCVE := cveMap[cveID]; hasCVE {
+			if _, hasCVE := scanResult.CVEMap[cveID]; hasCVE {
 				imgList = append(imgList, cvemodel.TagInfo{
 					Tag: tag,
 					Descriptor: cvemodel.Descriptor{
@@ -283,7 +283,7 @@ func (cveinfo *BaseCveInfo) isManifestVulnerable(ctx context.Context, repo, tag,
 		return true
 	}
 
-	cveMap, err := cveinfo.Scanner.ScanImage(ctx, zcommon.GetFullImageName(repo, manifestDigestStr))
+	scanResult, err := cveinfo.Scanner.ScanImage(ctx, zcommon.GetFullImageName(repo, manifestDigestStr))
 	if err != nil {
 		cveinfo.Log.Debug().Str("image", image).Str("cve-id", cveID).
 			Msg("scanning failed, adding as a vulnerable image")
@@ -293,7 +293,7 @@ func (cveinfo *BaseCveInfo) isManifestVulnerable(ctx context.Context, repo, tag,
 
 	hasCVE := false
 
-	for id := range cveMap {
+	for id := range scanResult.CVEMap {
 		if id == cveID {
 			hasCVE = true
 
@@ -398,19 +398,19 @@ func (cveinfo BaseCveInfo) GetCVEListForImage(ctx context.Context, repo, ref str
 
 	image := zcommon.GetFullImageName(repo, ref)
 
-	cveMap, err := cveinfo.Scanner.ScanImage(ctx, image)
+	scanResult, err := cveinfo.Scanner.ScanImage(ctx, image)
 	if err != nil {
 		return []cvemodel.CVE{}, imageCVESummary, zcommon.PageInfo{}, err
 	}
 
-	imageCVESummary = initCVESummaryFromCVEMap(cveMap)
+	imageCVESummary = initCVESummaryFromCVEMap(scanResult.CVEMap)
 
 	pageFinder, err := NewCvePageFinder(pageInput.Limit, pageInput.Offset, pageInput.SortBy)
 	if err != nil {
 		return []cvemodel.CVE{}, imageCVESummary, zcommon.PageInfo{}, err
 	}
 
-	filterCVEMap(cveMap, searchedCVE, excludedCVE, severity, pageFinder)
+	filterCVEMap(scanResult.CVEMap, searchedCVE, excludedCVE, severity, pageFinder)
 
 	cveList, pageInfo := pageFinder.Page()
 
