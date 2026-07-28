@@ -466,5 +466,15 @@
       "begin": 11530,
       "end": 11539
     }
+  },
+  "blackbox/events_http_scan.bats": {
+    "http": {
+      "begin": 11540,
+      "end": 11549
+    },
+    "zot": {
+      "begin": 11550,
+      "end": 11559
+    }
   }
 }

@@ -1,8 +1,10 @@
 package common_test
 
 import (
+	"net/http"
 	"os"
 	"path"
+	"strconv"
 	"testing"
 	"time"
 
@@ -30,10 +32,8 @@ func TestWaitTillTrivyDBDownloadStarted(t *testing.T) {
 
 func TestControllerManager(t *testing.T) {
 	Convey("Test StartServer Init() panic", t, func() {
-		port := tcommon.GetFreePort()
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		ctlr := api.NewController(conf)
 		ctlrManager := tcommon.NewControllerManager(ctlr)
@@ -57,6 +57,30 @@ func TestControllerManager(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		So(func() { ctlrManager.RunServer() }, ShouldPanic)
+	})
+
+	Convey("StartAndWait returns base URL from bound port", t, func() {
+		conf := config.New()
+		conf.HTTP.Port = "0"
+		conf.Storage.RootDirectory = t.TempDir()
+
+		ctlr := api.NewController(conf)
+		ctlrManager := tcommon.NewControllerManager(ctlr)
+
+		baseURL := ctlrManager.StartAndWait()
+		defer ctlrManager.StopServer()
+
+		So(baseURL, ShouldEqual, tcommon.GetBaseURL(strconv.Itoa(ctlrManager.Port())))
+		So(ctlrManager.BaseURL(), ShouldEqual, baseURL)
+
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, baseURL+"/v2/", nil)
+		So(err, ShouldBeNil)
+
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Do(req)
+		So(err, ShouldBeNil)
+		defer resp.Body.Close()
+		So(resp.StatusCode, ShouldEqual, http.StatusOK)
 	})
 }
 

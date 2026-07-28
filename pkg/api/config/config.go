@@ -56,10 +56,18 @@ type RetentionPolicy struct {
 	DeleteReferrers bool
 	DeleteUntagged  *bool
 	KeepTags        []KeepTagsPolicy
+	KeepUntagged    *KeepUntaggedPolicy
 }
 
 type KeepTagsPolicy struct {
 	Patterns                []string
+	PulledWithin            *time.Duration
+	PushedWithin            *time.Duration
+	MostRecentlyPushedCount int
+	MostRecentlyPulledCount int
+}
+
+type KeepUntaggedPolicy struct {
 	PulledWithin            *time.Duration
 	PushedWithin            *time.Duration
 	MostRecentlyPushedCount int
@@ -134,6 +142,11 @@ func (a *AuthConfig) IsBearerAuthEnabled() bool {
 	return a.IsTraditionalBearerAuthEnabled() || a.IsOIDCBearerAuthEnabled()
 }
 
+// HasBearerConfig checks if Bearer authentication config is present.
+func (a *AuthConfig) HasBearerConfig() bool {
+	return a != nil && a.Bearer != nil
+}
+
 // IsTraditionalBearerAuthEnabled checks if traditional Bearer authentication is enabled in this auth config.
 func (a *AuthConfig) IsTraditionalBearerAuthEnabled() bool {
 	return a.IsTraditionalBearerAuthEnabledWithCert() || a.IsTraditionalBearerAuthEnabledWithASM()
@@ -155,6 +168,11 @@ func (a *AuthConfig) IsTraditionalBearerAuthEnabledWithASM() bool {
 // IsOIDCBearerAuthEnabled checks if OIDC Bearer authentication is enabled in this auth config.
 func (a *AuthConfig) IsOIDCBearerAuthEnabled() bool {
 	return a != nil && a.Bearer != nil && a.Bearer.OIDC.IsEnabled()
+}
+
+// IsUpstreamTokenEndpointConfigured checks if an upstream token endpoint is configured for bearer auth.
+func (a *AuthConfig) IsUpstreamTokenEndpointConfigured() bool {
+	return a != nil && a.Bearer.HasUpstreamTokenEndpoint()
 }
 
 // IsOpenIDAuthEnabled checks if OpenID authentication is enabled in this auth config.
@@ -214,15 +232,28 @@ func (a *AuthConfig) GetMTLSConfig() *MTLSConfig {
 }
 
 type BearerConfig struct {
-	Realm   string
-	Service string
-	Cert    string
+	Realm                 string
+	Service               string
+	UpstreamTokenEndpoint *UpstreamTokenEndpointConfig `json:"upstreamTokenEndpoint,omitempty" mapstructure:"upstreamTokenEndpoint,omitempty"` //nolint:lll
+	Cert                  string
 
 	// OIDC configuration for workload identity authentication
 	OIDC BearerOIDCConfigs `json:"oidc,omitempty" mapstructure:"oidc,omitempty"`
 
 	// AWSSecretsManager configuration for retrieving JWT Bearer verification keys.
 	AWSSecretsManager *AWSSecretsManagerConfig `json:"awsSecretsManager,omitempty" mapstructure:"awsSecretsManager,omitempty"` //nolint:lll
+}
+
+type UpstreamTokenEndpointConfig struct {
+	Realm             string `json:"realm,omitempty"             mapstructure:"realm,omitempty"`
+	Service           string `json:"service,omitempty"           mapstructure:"service,omitempty"`
+	AllowInsecureHTTP bool   `json:"allowInsecureHttp,omitempty" mapstructure:"allowInsecureHttp,omitempty"`
+}
+
+// HasUpstreamTokenEndpoint checks if this bearer config can proxy token-service requests.
+func (b *BearerConfig) HasUpstreamTokenEndpoint() bool {
+	return b != nil && b.UpstreamTokenEndpoint != nil &&
+		b.UpstreamTokenEndpoint.Realm != "" && b.UpstreamTokenEndpoint.Service != ""
 }
 
 // BearerOIDCConfigs is a slice of BearerOIDCConfig.
@@ -822,6 +853,10 @@ func (c *Config) isRetentionEnabledInternal() bool {
 				needsMetaDB = true
 			}
 		}
+
+		if c.isUntaggedRetentionEnabledForPolicy(retentionPolicy) {
+			needsMetaDB = true
+		}
 	}
 
 	for _, subpath := range c.Storage.SubPaths {
@@ -830,6 +865,10 @@ func (c *Config) isRetentionEnabledInternal() bool {
 				if c.isTagsRetentionEnabled(tagRetentionPolicy) {
 					needsMetaDB = true
 				}
+			}
+
+			if c.isUntaggedRetentionEnabledForPolicy(retentionPolicy) {
+				needsMetaDB = true
 			}
 		}
 	}
@@ -847,6 +886,23 @@ func (c *Config) isTagsRetentionEnabled(tagRetentionPolicy KeepTagsPolicy) bool 
 	}
 
 	return false
+}
+
+func (c *Config) isUntaggedRetentionEnabled(untaggedRetentionPolicy KeepUntaggedPolicy) bool {
+	if untaggedRetentionPolicy.MostRecentlyPulledCount != 0 ||
+		untaggedRetentionPolicy.MostRecentlyPushedCount != 0 ||
+		untaggedRetentionPolicy.PulledWithin != nil ||
+		untaggedRetentionPolicy.PushedWithin != nil {
+		return true
+	}
+
+	return false
+}
+
+func (c *Config) isUntaggedRetentionEnabledForPolicy(retentionPolicy RetentionPolicy) bool {
+	return retentionPolicy.KeepUntagged != nil &&
+		(retentionPolicy.DeleteUntagged == nil || *retentionPolicy.DeleteUntagged) &&
+		c.isUntaggedRetentionEnabled(*retentionPolicy.KeepUntagged)
 }
 
 func isSensitiveConfigMapKey(key string) bool {

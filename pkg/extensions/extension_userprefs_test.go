@@ -33,8 +33,7 @@ func TestAllowedMethodsHeaderUserPrefs(t *testing.T) {
 
 	Convey("Test http options response", t, func() {
 		conf := config.New()
-		port := test.GetFreePort()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Extensions = &extconf.ExtensionConfig{}
 		conf.Extensions.Search = &extconf.SearchConfig{}
 		conf.Extensions.Search.Enable = &defaultVal
@@ -42,14 +41,12 @@ func TestAllowedMethodsHeaderUserPrefs(t *testing.T) {
 		conf.Extensions.UI = &extconf.UIConfig{}
 		conf.Extensions.UI.Enable = &defaultVal
 
-		baseURL := test.GetBaseURL(port)
-
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		ctrlManager := test.NewControllerManager(ctlr)
 
-		ctrlManager.StartAndWait(port)
+		baseURL := ctrlManager.StartAndWait()
 		defer ctrlManager.StopServer()
 
 		resp, _ := resty.R().Options(baseURL + constants.FullUserPrefs)

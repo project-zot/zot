@@ -230,7 +230,7 @@ func TestNewExporter(t *testing.T) {
 						panic(err)
 					}
 
-					reqsSize := int(nBig.Int64())
+					reqsSize := int(nBig.Int64()) + 1
 					for range reqsSize {
 						monitoring.IncDownloadCounter(serverController.Metrics, "dummyrepo")
 					}
@@ -317,7 +317,7 @@ func TestNewExporter(t *testing.T) {
 						panic(err)
 					}
 
-					reqsSize := int(nBig.Int64())
+					reqsSize := int(nBig.Int64()) + 1
 					for range reqsSize {
 						latency := getRandomLatency()
 						latencySum += latency.Seconds()

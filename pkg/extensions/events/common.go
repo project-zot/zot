@@ -16,6 +16,7 @@ const (
 	ImageUpdatedEventType      EventType = "zotregistry.image.updated"
 	ImageDeletedEventType      EventType = "zotregistry.image.deleted"
 	ImageLintFailedEventType   EventType = "zotregistry.image.lint_failed"
+	ImageScannedEventType      EventType = "zotregistry.image.scanned"
 	RepositoryCreatedEventType EventType = "zotregistry.repository.created"
 )
 
@@ -39,6 +40,17 @@ type RequestInfo struct {
 type EventContext struct {
 	Actor   *ActorInfo   `json:"actor,omitempty"`
 	Request *RequestInfo `json:"request,omitempty"`
+}
+
+type ImageScanSummary struct {
+	Count         int    `json:"count"`
+	FixableCount  int    `json:"fixableCount"`
+	UnknownCount  int    `json:"unknownCount"`
+	LowCount      int    `json:"lowCount"`
+	MediumCount   int    `json:"mediumCount"`
+	HighCount     int    `json:"highCount"`
+	CriticalCount int    `json:"criticalCount"`
+	MaxSeverity   string `json:"maxSeverity"`
 }
 
 type eventContextKey struct{}
@@ -66,4 +78,5 @@ type Recorder interface {
 	ImageUpdated(name, reference, digest, mediaType, manifest string, ectx *EventContext)
 	ImageDeleted(name, reference, digest, mediaType string, ectx *EventContext)
 	ImageLintFailed(name, reference, digest, mediaType, manifest string, ectx *EventContext)
+	ImageScanned(name, reference, digest, mediaType string, summary ImageScanSummary, ectx *EventContext)
 }

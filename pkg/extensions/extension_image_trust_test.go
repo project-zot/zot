@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"strconv"
 	"testing"
 	"time"
 
@@ -116,22 +117,19 @@ func TestSignaturesAllowedMethodsHeader(t *testing.T) {
 
 	Convey("Test http options response", t, func() {
 		conf := config.New()
-		port := test.GetFreePort()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Extensions = &extconf.ExtensionConfig{}
 		conf.Extensions.Trust = &extconf.ImageTrustConfig{}
 		conf.Extensions.Trust.Enable = &defaultVal
 		conf.Extensions.Trust.Cosign = defaultVal
 		conf.Extensions.Trust.Notation = defaultVal
 
-		baseURL := test.GetBaseURL(port)
-
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		ctrlManager := test.NewControllerManager(ctlr)
 
-		ctrlManager.StartAndWait(port)
+		baseURL := ctrlManager.StartAndWait()
 		defer ctrlManager.StopServer()
 
 		resp, _ := resty.R().Options(baseURL + constants.FullCosign)
@@ -220,10 +218,8 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 
 	Convey("Verify cosign public key upload without search or notation being enabled", func() {
 		globalDir := t.TempDir()
-		port := test.GetFreePort()
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		if cacheDriverParams != nil {
 			conf.Storage.CacheDriver = cacheDriverParams
@@ -232,8 +228,6 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		conf.Extensions.Trust = &extconf.ImageTrustConfig{}
 		conf.Extensions.Trust.Enable = &defaultValue
 		conf.Extensions.Trust.Cosign = defaultValue
-
-		baseURL := test.GetBaseURL(port)
 
 		logFile := test.MakeTempFile(t, "zot-log.txt")
 		defer logFile.Close()
@@ -258,7 +252,8 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		ctlr.Config.Storage.RootDirectory = globalDir
 
 		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
+		port := strconv.Itoa(ctlrManager.Port())
 		defer ctlrManager.StopServer()
 
 		found, err := test.ReadLogFileAndSearchString(logFile.Name(), "setting up image trust routes", time.Second)
@@ -340,10 +335,8 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 
 	Convey("Verify notation certificate upload without search or cosign being enabled", func() {
 		globalDir := t.TempDir()
-		port := test.GetFreePort()
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		if cacheDriverParams != nil {
 			conf.Storage.CacheDriver = cacheDriverParams
@@ -352,8 +345,6 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		conf.Extensions.Trust = &extconf.ImageTrustConfig{}
 		conf.Extensions.Trust.Enable = &defaultValue
 		conf.Extensions.Trust.Notation = defaultValue
-
-		baseURL := test.GetBaseURL(port)
 
 		logFile := test.MakeTempFile(t, "zot-log.txt")
 		defer logFile.Close()
@@ -378,7 +369,8 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		ctlr.Config.Storage.RootDirectory = globalDir
 
 		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
+		port := strconv.Itoa(ctlrManager.Port())
 		defer ctlrManager.StopServer()
 
 		found, err := test.ReadLogFileAndSearchString(logFile.Name(), "setting up image trust routes", time.Second)
@@ -442,10 +434,8 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 
 	Convey("Verify uploading notation certificates", func() {
 		globalDir := t.TempDir()
-		port := test.GetFreePort()
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		if cacheDriverParams != nil {
 			conf.Storage.CacheDriver = cacheDriverParams
@@ -457,9 +447,6 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		conf.Extensions.Trust = &extconf.ImageTrustConfig{}
 		conf.Extensions.Trust.Enable = &defaultValue
 		conf.Extensions.Trust.Notation = defaultValue
-
-		baseURL := test.GetBaseURL(port)
-		gqlEndpoint := fmt.Sprintf("%s%s?query=", baseURL, constants.FullSearchPrefix)
 
 		logFile := test.MakeTempFile(t, "zot-log.txt")
 		defer logFile.Close()
@@ -484,8 +471,11 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		ctlr.Config.Storage.RootDirectory = globalDir
 
 		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
+		port := strconv.Itoa(ctlrManager.Port())
 		defer ctlrManager.StopServer()
+
+		gqlEndpoint := fmt.Sprintf("%s%s?query=", baseURL, constants.FullSearchPrefix)
 
 		found, err := test.ReadLogFileAndSearchString(logFile.Name(), "setting up image trust routes", time.Second)
 		So(err, ShouldBeNil)
@@ -603,10 +593,8 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 
 	Convey("Verify uploading cosign public keys", func() {
 		globalDir := t.TempDir()
-		port := test.GetFreePort()
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		if cacheDriverParams != nil {
 			conf.Storage.CacheDriver = cacheDriverParams
@@ -618,9 +606,6 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		conf.Extensions.Trust = &extconf.ImageTrustConfig{}
 		conf.Extensions.Trust.Enable = &defaultValue
 		conf.Extensions.Trust.Cosign = defaultValue
-
-		baseURL := test.GetBaseURL(port)
-		gqlEndpoint := fmt.Sprintf("%s%s?query=", baseURL, constants.FullSearchPrefix)
 
 		logFile := test.MakeTempFile(t, "zot-log.txt")
 		defer logFile.Close()
@@ -645,8 +630,11 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		ctlr.Config.Storage.RootDirectory = globalDir
 
 		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
+		port := strconv.Itoa(ctlrManager.Port())
 		defer ctlrManager.StopServer()
+
+		gqlEndpoint := fmt.Sprintf("%s%s?query=", baseURL, constants.FullSearchPrefix)
 
 		found, err := test.ReadLogFileAndSearchString(logFile.Name(), "setting up image trust routes", time.Second)
 		So(err, ShouldBeNil)
@@ -770,13 +758,12 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 
 	Convey("Verify uploading cosign public keys with auth configured", func() {
 		globalDir := t.TempDir()
-		port := test.GetFreePort()
 		testCreds := test.GetBcryptCredString("admin", "admin") + "\n" + test.GetBcryptCredString("test", "test")
 
 		htpasswdPath := test.MakeHtpasswdFileFromString(t, testCreds)
 
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.HTTP.Auth.HTPasswd.Path = htpasswdPath
 		conf.HTTP.AccessControl = &config.AccessControlConfig{
 			AdminPolicy: config.Policy{
@@ -796,8 +783,6 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		conf.Extensions.Trust.Enable = &defaultValue
 		conf.Extensions.Trust.Cosign = defaultValue
 
-		baseURL := test.GetBaseURL(port)
-
 		logFile := test.MakeTempFile(t, "zot-log.txt")
 		defer logFile.Close()
 
@@ -809,7 +794,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		ctlr.Config.Storage.RootDirectory = globalDir
 
 		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		found, err := test.ReadLogFileAndSearchString(logFile.Name(), "setting up image trust routes", time.Second)
@@ -862,10 +847,8 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 
 	Convey("Verify signatures are read from the disk and updated in the DB when zot starts", func() {
 		globalDir := t.TempDir()
-		port := test.GetFreePort()
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		if cacheDriverParams != nil {
 			conf.Storage.CacheDriver = cacheDriverParams
@@ -877,9 +860,6 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		conf.Extensions.Trust = &extconf.ImageTrustConfig{}
 		conf.Extensions.Trust.Enable = &defaultValue
 		conf.Extensions.Trust.Cosign = defaultValue
-
-		baseURL := test.GetBaseURL(port)
-		gqlEndpoint := fmt.Sprintf("%s%s?query=", baseURL, constants.FullSearchPrefix)
 
 		logFile := test.MakeTempFile(t, "zot-log.txt")
 		defer logFile.Close()
@@ -915,9 +895,11 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		ctlr.Config.Storage.RootDirectory = globalDir
 
 		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 
 		defer ctlrManager.StopServer()
+
+		gqlEndpoint := fmt.Sprintf("%s%s?query=", baseURL, constants.FullSearchPrefix)
 
 		strQuery := fmt.Sprintf(imageQuery, repo, tag)
 		gqlTargetURL := fmt.Sprintf("%s%s", gqlEndpoint, url.QueryEscape(strQuery))
@@ -968,10 +950,8 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 
 	Convey("Verify failures when saving uploaded certificates and public keys", func() {
 		globalDir := t.TempDir()
-		port := test.GetFreePort()
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		if cacheDriverParams != nil {
 			conf.Storage.CacheDriver = cacheDriverParams
@@ -985,13 +965,11 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		conf.Extensions.Trust.Notation = defaultValue
 		conf.Extensions.Trust.Cosign = defaultValue
 
-		baseURL := test.GetBaseURL(port)
-
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = globalDir
 
 		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		rootDir := t.TempDir()

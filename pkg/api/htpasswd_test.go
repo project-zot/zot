@@ -323,10 +323,12 @@ func TestHTPasswdWatcher(t *testing.T) {
 			time.Sleep(50 * time.Millisecond)
 			So(func() { htw.Close() }, ShouldNotPanic)
 			So(test.WaitForLogMessages(logBuffer, "htpasswd watcher terminating...", 1, 5*time.Second), ShouldBeTrue)
+			time.Sleep(100 * time.Millisecond) // let watcher goroutine finish cleanup before restart
 
 			// Test concurrent ChangeFile() operations
 			htw.Run()
 			defer htw.Close()
+			time.Sleep(10 * time.Millisecond)
 
 			go func() {
 				for range 3 {
@@ -344,11 +346,22 @@ func TestHTPasswdWatcher(t *testing.T) {
 				}
 			}()
 
-			time.Sleep(50 * time.Millisecond)
+			// Poll until at least one concurrent ChangeFile() reload authenticates.
+			deadline := time.Now().Add(5 * time.Second)
+
+			var ok1, present1, ok2, present2 bool
+
+			for time.Now().Before(deadline) {
+				ok1, present1 = htp.Authenticate(username1, password1)
+				ok2, present2 = htp.Authenticate(username2, password2)
+				if ok1 || ok2 {
+					break
+				}
+
+				time.Sleep(10 * time.Millisecond)
+			}
 
 			// At least one user should be present
-			ok1, present1 := htp.Authenticate(username1, password1)
-			ok2, present2 := htp.Authenticate(username2, password2)
 			So(present1 || present2, ShouldBeTrue)
 			So(ok1 || ok2, ShouldBeTrue)
 

@@ -292,7 +292,7 @@ const docTemplate = `{
         },
         "/v2/{name}/blobs/uploads": {
             "post": {
-                "description": "Create a new image blob/layer upload",
+                "description": "Create a new image blob/layer upload. With no query parameters, starts an upload session\nand returns 202.\nA ` + "`" + `digest` + "`" + ` query parameter requests a monolithic upload and returns 201 on success.\nA ` + "`" + `mount` + "`" + ` query parameter requests a cross-repository blob mount and returns 201 or 202.",
                 "consumes": [
                     "application/json"
                 ],
@@ -307,9 +307,34 @@ const docTemplate = `{
                         "name": "name",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "blob digest for monolithic upload",
+                        "name": "digest",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "blob digest to mount into the repository",
+                        "name": "mount",
+                        "in": "query"
                     }
                 ],
                 "responses": {
+                    "201": {
+                        "description": "created",
+                        "headers": {
+                            "Blob-Upload-UUID": {
+                                "type": "string",
+                                "description": "Opaque blob upload session identifier"
+                            },
+                            "Location": {
+                                "type": "string",
+                                "description": "/v2/{name}/blobs/{digest}"
+                            }
+                        }
+                    },
                     "202": {
                         "description": "accepted",
                         "headers": {
@@ -323,6 +348,12 @@ const docTemplate = `{
                             }
                         }
                     },
+                    "400": {
+                        "description": "bad request (invalid digest or upload)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
                     "401": {
                         "description": "unauthorized",
                         "schema": {
@@ -331,6 +362,12 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "415": {
+                        "description": "unsupported media type (monolithic upload requires application/octet-stream)",
                         "schema": {
                             "type": "string"
                         }
@@ -946,7 +983,7 @@ const docTemplate = `{
         },
         "/v2/{name}/referrers/{digest}": {
             "get": {
-                "description": "Get referrers given a digest",
+                "description": "Returns referrers for a subject digest as an OCI image index. Missing repositories and\nsubjects with no referrers return 200 with an empty manifests list.",
                 "consumes": [
                     "application/json"
                 ],
@@ -983,8 +1020,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/api.ImageIndex"
                         }
                     },
+                    "400": {
+                        "description": "bad request (invalid digest)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
                     "404": {
-                        "description": "not found",
+                        "description": "not found (manifest unknown)",
                         "schema": {
                             "type": "string"
                         }

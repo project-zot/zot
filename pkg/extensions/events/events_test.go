@@ -79,6 +79,12 @@ func TestEvents(t *testing.T) {
 			ev := <-sink.store
 			So(ev.Type(), ShouldEqual, events.ImageLintFailedEventType.String())
 		})
+		Convey("image scanned", func() {
+			recorder.ImageScanned("test", "v1", "", string(types.OCIManifestSchema1),
+				events.ImageScanSummary{Count: 1, HighCount: 1, FixableCount: 1, MaxSeverity: "HIGH"}, nil)
+			ev := <-sink.store
+			So(ev.Type(), ShouldEqual, events.ImageScannedEventType.String())
+		})
 	})
 }
 
@@ -144,6 +150,30 @@ func TestEventsWithContext(t *testing.T) {
 
 			_, hasRequest := data["request"]
 			So(hasRequest, ShouldBeFalse)
+		})
+		Convey("image scanned includes summary", func() {
+			recorder.ImageScanned("test", "v1", "sha256:abc", string(types.OCIManifestSchema1),
+				events.ImageScanSummary{
+					Count:         2,
+					FixableCount:  1,
+					LowCount:      1,
+					HighCount:     1,
+					MaxSeverity:   "HIGH",
+					CriticalCount: 0,
+				}, ectx)
+			ev := <-sink.store
+			So(ev.Type(), ShouldEqual, events.ImageScannedEventType.String())
+
+			var data map[string]any
+			err := ev.DataAs(&data)
+			So(err, ShouldBeNil)
+
+			summary, ok := data["summary"].(map[string]any)
+			So(ok, ShouldBeTrue)
+			So(summary["count"], ShouldEqual, float64(2))
+			So(summary["fixableCount"], ShouldEqual, float64(1))
+			So(summary["highCount"], ShouldEqual, float64(1))
+			So(summary["maxSeverity"], ShouldEqual, "HIGH")
 		})
 	})
 }
@@ -225,6 +255,13 @@ func TestHTTPSinkEvents(t *testing.T) {
 			e := getEvent(t, eventChan)
 			So(e, ShouldNotBeNil)
 			So(e.Type(), ShouldEqual, events.ImageLintFailedEventType.String())
+		})
+		Convey("image scanned", func() {
+			recorder.ImageScanned("test", "v1", "", string(types.OCIManifestSchema1),
+				events.ImageScanSummary{Count: 1, MaxSeverity: "LOW"}, nil)
+			e := getEvent(t, eventChan)
+			So(e, ShouldNotBeNil)
+			So(e.Type(), ShouldEqual, events.ImageScannedEventType.String())
 		})
 	})
 }
@@ -440,6 +477,29 @@ func TestNATSSinkEvents(t *testing.T) {
 			e := getEvent(t, eventChan)
 			So(e, ShouldNotBeNil)
 			So(e.Type(), ShouldEqual, events.ImageLintFailedEventType.String())
+		})
+		Convey("image scanned", func() {
+			natsServer, natsURL := setupTestNATSServer(t)
+			defer natsServer.Shutdown()
+
+			testChannel := "test-events-" + randomString()
+
+			recorder, err := createRecorder(t, natsURL, testChannel)
+			So(err, ShouldBeNil)
+			defer recorder.Close()
+
+			eventChan := make(chan *cloudevents.Event, 1)
+
+			nc, err := createSubscription(t, natsURL, testChannel, eventChan)
+			So(err, ShouldBeNil)
+			defer nc.Close()
+
+			recorder.ImageScanned("test", "v1", "", string(types.OCIManifestSchema1),
+				events.ImageScanSummary{Count: 1, MaxSeverity: "LOW"}, nil)
+
+			e := getEvent(t, eventChan)
+			So(e, ShouldNotBeNil)
+			So(e.Type(), ShouldEqual, events.ImageScannedEventType.String())
 		})
 	})
 }

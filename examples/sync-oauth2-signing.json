@@ -1,0 +1,8 @@
+{
+    "privateKeyFile": "./examples/sync-oauth2-signing-key.pem",
+    "algorithm": "RS256",
+    "keyId": "EXAMPLE",
+    "issuer": "zot-sync",
+    "subject": "zot-sync",
+    "audience": "https://idp.example.com/oauth2/token"
+}
