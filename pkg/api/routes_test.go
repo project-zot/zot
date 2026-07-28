@@ -554,6 +554,15 @@ func TestRoutes(t *testing.T) {
 				})
 			So(statusCode, ShouldEqual, http.StatusBadRequest)
 
+			// malformed digest-shaped manifest reference
+			statusCode = testUpdateManifest(
+				map[string]string{
+					"name":      "test",
+					"reference": "sha256:baddigeststring",
+				},
+				&mocks.MockedImageStore{})
+			So(statusCode, ShouldEqual, http.StatusBadRequest)
+
 			// ErrRepoBadVersion
 			statusCode = testUpdateManifest(
 				map[string]string{
@@ -1297,10 +1306,22 @@ func TestRoutes(t *testing.T) {
 				})
 			So(statusCode, ShouldEqual, http.StatusUnsupportedMediaType)
 
+			// invalid digest query value
+			statusCode = testCreateBlobUpload(
+				[]struct{ k, v string }{
+					{"digest", "sha256:invalid_digest_format"},
+				},
+				map[string]string{
+					"Content-Type":   constants.BinaryMediaType,
+					"Content-Length": "10",
+				},
+				&mocks.MockedImageStore{})
+			So(statusCode, ShouldEqual, http.StatusBadRequest)
+
 			// digest prezent imgStore err
 			statusCode = testCreateBlobUpload(
 				[]struct{ k, v string }{
-					{"digest", "1234"},
+					{"digest", "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621"},
 				},
 				map[string]string{
 					"Content-Type":   constants.BinaryMediaType,
@@ -1313,12 +1334,11 @@ func TestRoutes(t *testing.T) {
 						return sessionStr, 0, zerr.ErrBadBlobDigest
 					},
 				})
-			So(statusCode, ShouldEqual, http.StatusInternalServerError)
+			So(statusCode, ShouldEqual, http.StatusBadRequest)
 
-			// digest prezent bad length
 			statusCode = testCreateBlobUpload(
 				[]struct{ k, v string }{
-					{"digest", "1234"},
+					{"digest", "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621"},
 				},
 				map[string]string{
 					"Content-Type":   constants.BinaryMediaType,
@@ -1332,6 +1352,23 @@ func TestRoutes(t *testing.T) {
 					},
 				})
 			So(statusCode, ShouldEqual, http.StatusInternalServerError)
+
+			// full blob upload with empty body and no Content-Length header
+			statusCode = testCreateBlobUpload(
+				[]struct{ k, v string }{
+					{"digest", "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+				},
+				map[string]string{
+					"Content-Type": constants.BinaryMediaType,
+				},
+				&mocks.MockedImageStore{
+					FullBlobUploadFn: func(ctx context.Context, repo string, body io.Reader,
+						digest godigest.Digest,
+					) (string, int64, error) {
+						return sessionStr, 0, nil
+					},
+				})
+			So(statusCode, ShouldEqual, http.StatusCreated)
 
 			// newBlobUpload not found
 			statusCode = testCreateBlobUpload(

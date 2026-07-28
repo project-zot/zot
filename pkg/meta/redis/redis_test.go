@@ -822,6 +822,15 @@ func TestWrapperErrors(t *testing.T) {
 				_, err = metaDB.GetReferrersInfo("repo", "refDig", []string{})
 				So(err, ShouldNotBeNil)
 			})
+
+			Convey("digest with no referrers entry returns empty list without panic", func() {
+				err := metaDB.SetRepoReference(ctx, "repo", "tag", imageMeta)
+				So(err, ShouldBeNil)
+
+				referrers, err := metaDB.GetReferrersInfo("repo", godigest.FromString("no-referrers"), []string{})
+				So(err, ShouldBeNil)
+				So(referrers, ShouldBeEmpty)
+			})
 		})
 
 		Convey("ResetRepoReferences", func() {

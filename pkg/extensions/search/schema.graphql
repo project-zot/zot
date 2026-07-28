@@ -277,6 +277,11 @@ type ImageSummary {
     True if current user has delete permission on this tag.
     """
     IsDeletable: Boolean
+    """
+    For image manifests, value of the artifactType field if present else the value of the config media type.
+    For image indexes, value of the index artifactType field.
+    """
+    ArtifactType: String
 }
 """
 Details about a specific version of an image for a certain operating system and architecture.

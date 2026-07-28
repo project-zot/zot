@@ -645,6 +645,42 @@ func TestConfig(t *testing.T) {
 		}
 		So(conf.IsRetentionEnabled(), ShouldBeTrue)
 
+		// Test KeepUntagged with retention criteria
+		conf = config.New()
+		conf.Storage.Retention.Policies = []config.RetentionPolicy{
+			{
+				Repositories: []string{"repo"},
+				KeepUntagged: &config.KeepUntaggedPolicy{
+					MostRecentlyPulledCount: 2,
+				},
+			},
+		}
+		So(conf.IsRetentionEnabled(), ShouldBeTrue)
+
+		// Test KeepUntagged with retention criteria and deleteUntagged disabled
+		conf = config.New()
+		deleteUntagged := false
+		conf.Storage.Retention.Policies = []config.RetentionPolicy{
+			{
+				Repositories:   []string{"repo"},
+				DeleteUntagged: &deleteUntagged,
+				KeepUntagged: &config.KeepUntaggedPolicy{
+					MostRecentlyPulledCount: 2,
+				},
+			},
+		}
+		So(conf.IsRetentionEnabled(), ShouldBeFalse)
+
+		// Test KeepUntagged without criteria
+		conf = config.New()
+		conf.Storage.Retention.Policies = []config.RetentionPolicy{
+			{
+				Repositories: []string{"repo"},
+				KeepUntagged: &config.KeepUntaggedPolicy{},
+			},
+		}
+		So(conf.IsRetentionEnabled(), ShouldBeFalse)
+
 		// Test SubPaths with retention policies
 		conf = config.New()
 		conf.Storage.SubPaths = map[string]config.StorageConfig{
@@ -665,6 +701,25 @@ func TestConfig(t *testing.T) {
 			},
 		}
 		So(conf.IsRetentionEnabled(), ShouldBeTrue)
+
+		// Test SubPaths with KeepUntagged criteria and deleteUntagged disabled
+		conf = config.New()
+		conf.Storage.SubPaths = map[string]config.StorageConfig{
+			"subpath1": {
+				Retention: config.ImageRetention{
+					Policies: []config.RetentionPolicy{
+						{
+							Repositories:   []string{"repo1"},
+							DeleteUntagged: &deleteUntagged,
+							KeepUntagged: &config.KeepUntaggedPolicy{
+								MostRecentlyPulledCount: 5,
+							},
+						},
+					},
+				},
+			},
+		}
+		So(conf.IsRetentionEnabled(), ShouldBeFalse)
 
 		// Test empty policies with no retention criteria
 		conf = config.New()
@@ -938,6 +993,33 @@ func TestConfig(t *testing.T) {
 				},
 			}
 			So(authConfig.IsOIDCBearerAuthEnabled(), ShouldBeFalse)
+		})
+
+		Convey("Test HasBearerConfig()", func() {
+			var authConfig *config.AuthConfig = nil
+			So(authConfig.HasBearerConfig(), ShouldBeFalse)
+
+			authConfig = &config.AuthConfig{}
+			So(authConfig.HasBearerConfig(), ShouldBeFalse)
+
+			authConfig = &config.AuthConfig{Bearer: &config.BearerConfig{}}
+			So(authConfig.HasBearerConfig(), ShouldBeTrue)
+		})
+
+		Convey("Test IsUpstreamTokenEndpointConfigured()", func() {
+			var authConfig *config.AuthConfig = nil
+			So(authConfig.IsUpstreamTokenEndpointConfigured(), ShouldBeFalse)
+
+			authConfig = &config.AuthConfig{Bearer: &config.BearerConfig{}}
+			So(authConfig.IsUpstreamTokenEndpointConfigured(), ShouldBeFalse)
+
+			authConfig = &config.AuthConfig{Bearer: &config.BearerConfig{
+				UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{Realm: "https://auth.example.com/token"},
+			}}
+			So(authConfig.IsUpstreamTokenEndpointConfigured(), ShouldBeFalse)
+
+			authConfig.Bearer.UpstreamTokenEndpoint.Service = "upstream"
+			So(authConfig.IsUpstreamTokenEndpointConfigured(), ShouldBeTrue)
 		})
 
 		Convey("Test IsOpenIDAuthEnabled()", func() {
@@ -2450,8 +2532,10 @@ func TestConfig(t *testing.T) {
 			So(authConfig.IsLdapAuthEnabled(), ShouldBeFalse)
 			So(authConfig.IsHtpasswdAuthEnabled(), ShouldBeFalse)
 			So(authConfig.IsBearerAuthEnabled(), ShouldBeFalse)
+			So(authConfig.HasBearerConfig(), ShouldBeFalse)
 			So(authConfig.IsTraditionalBearerAuthEnabled(), ShouldBeFalse)
 			So(authConfig.IsOIDCBearerAuthEnabled(), ShouldBeFalse)
+			So(authConfig.IsUpstreamTokenEndpointConfigured(), ShouldBeFalse)
 			So(authConfig.IsOpenIDAuthEnabled(), ShouldBeFalse)
 			So(authConfig.IsAPIKeyEnabled(), ShouldBeFalse)
 			So(authConfig.IsBasicAuthnEnabled(), ShouldBeFalse)

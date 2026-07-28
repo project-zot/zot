@@ -403,11 +403,13 @@ func (dwr *DynamoDB) getProtoRepoMeta(ctx context.Context, repo string) (*proto_
 }
 
 func (dwr *DynamoDB) SetRepoReference(ctx context.Context, repo string, reference string,
-	imageMeta mTypes.ImageMeta,
+	imageMeta mTypes.ImageMeta, opts ...mTypes.SetRepoReferenceOption,
 ) error {
 	if err := common.ValidateRepoReferenceInput(repo, reference, imageMeta.Digest); err != nil {
 		return err
 	}
+
+	options := mTypes.ApplySetRepoReferenceOptions(opts...)
 
 	var userid string
 
@@ -490,13 +492,13 @@ func (dwr *DynamoDB) SetRepoReference(ctx context.Context, repo string, referenc
 		stats = &proto_go.DescriptorStatistics{
 			DownloadCount:     0,
 			LastPullTimestamp: &timestamppb.Timestamp{},
-			PushTimestamp:     timestamppb.Now(),
+			PushTimestamp:     mConvert.GetProtoPushTimestamp(options.PushTimestamp),
 			PushedBy:          userid,
 		}
 		repoMeta.Statistics[digestStr] = stats
 	} else {
 		if stats.PushTimestamp.AsTime().IsZero() {
-			stats.PushTimestamp = timestamppb.Now()
+			stats.PushTimestamp = mConvert.GetProtoPushTimestamp(options.PushTimestamp)
 		}
 
 		if userid != "" && stats.PushedBy == "" {
@@ -1314,10 +1316,11 @@ func (dwr *DynamoDB) UpdateSignaturesValidity(ctx context.Context, repo string, 
 
 				if isTrusted {
 					layerInfo.Signer = author
+				} else {
+					layerInfo.Signer = ""
 				}
 
 				if !date.IsZero() {
-					layerInfo.Signer = author
 					layerInfo.Date = timestamppb.New(date)
 				}
 

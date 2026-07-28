@@ -1399,6 +1399,22 @@ func TestSyncWithNonDistributableBlob(t *testing.T) {
 	})
 }
 
+// removeAllWithRetry retries os.RemoveAll until it succeeds or the timeout expires.
+// This is primarily to tolerate brief ENOTEMPTY races when background sync/meta
+// tasks momentarily re-create entries under repoDir while RemoveAll is deleting it,
+// making rmdir observe a non-empty directory.
+func removeAllWithRetry(repoDir string, timeout time.Duration) error {
+	var err error
+
+	for deadline := time.Now().Add(timeout); ; {
+		if err = os.RemoveAll(repoDir); err == nil || time.Now().After(deadline) {
+			return err
+		}
+
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
 func TestDockerImagesAreSkipped(t *testing.T) {
 	testCases := []struct {
 		name           string
@@ -1550,7 +1566,7 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 
 				// trigger config blob upstream error
 				// remove synced image
-				err = os.RemoveAll(path.Join(destDir, testImage))
+				err = removeAllWithRetry(path.Join(destDir, testImage), 10*time.Second)
 				So(err, ShouldBeNil)
 
 				configBlobPath := path.Join(srcDir, testImage, "blobs/sha256", configBlobDigest.Encoded())
@@ -1720,7 +1736,7 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 
 				// trigger config blob upstream error
 				// remove synced image
-				err = os.RemoveAll(path.Join(destDir, indexRepoName))
+				err = removeAllWithRetry(path.Join(destDir, indexRepoName), 10*time.Second)
 				So(err, ShouldBeNil)
 
 				configBlobPath := path.Join(srcDir, indexRepoName, "blobs/sha256", configBlobDigest.Encoded())
@@ -5409,12 +5425,11 @@ func TestSyncedSignaturesMetaDB(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-		// regclient will put all referrers under ref tag "alg-subjectDigest"
 		repoMeta, err := dctlr.MetaDB.GetRepoMeta(context.Background(), repoName)
 		So(err, ShouldBeNil)
 		So(repoMeta.Tags, ShouldContainKey, tag)
-		// one tag for refs and the tag we pushed earlier
-		So(len(repoMeta.Tags), ShouldEqual, 2)
+		// only the image tag; referrers-shaped refs are not committed as tags
+		So(len(repoMeta.Tags), ShouldEqual, 1)
 		So(repoMeta.Signatures, ShouldContainKey, signedImage.DigestStr())
 
 		imageSignatures := repoMeta.Signatures[signedImage.DigestStr()]
@@ -7656,7 +7671,11 @@ func TestSyncImageIndex(t *testing.T) {
 			So(resp.Body(), ShouldNotBeEmpty)
 			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
 
-			childMultiarchImage.IndexDescriptor.Digest = godigest.FromBytes(resp.Body())
+			childBody := resp.Body()
+			childMultiarchImage.IndexDescriptor.Digest = godigest.FromBytes(childBody)
+			childMultiarchImage.IndexDescriptor.Size = int64(len(childBody))
+			err = json.Unmarshal(childBody, &childMultiarchImage.Index)
+			So(err, ShouldBeNil)
 
 			rootMultiarchImage.Index.Manifests = append(rootMultiarchImage.Index.Manifests, childMultiarchImage.IndexDescriptor)
 			rootMultiarchImage.IndexDescriptor.Data = nil
@@ -7672,6 +7691,9 @@ func TestSyncImageIndex(t *testing.T) {
 			So(resp.Body(), ShouldNotBeEmpty)
 			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
 
+			err = json.Unmarshal(resp.Body(), &rootMultiarchImage.Index)
+			So(err, ShouldBeNil)
+
 			Convey("sync periodically", func() {
 				// start downstream server
 				dctlr, destBaseURL, _, _ := makeDownstreamServer(t, false, syncConfig)
@@ -7680,9 +7702,8 @@ func TestSyncImageIndex(t *testing.T) {
 				dcm.StartAndWait(dctlr.Config.HTTP.Port)
 				defer dcm.StopServer()
 
-				// give it time to set up sync
-				t.Logf("waitsync(%s, %s)", dctlr.Config.Storage.RootDirectory, "index")
-				waitSync(dctlr.Config.Storage.RootDirectory, "index")
+				// Wait for SyncRepo to finish processing all tags for the "index" repo.
+				So(waitFinishedSyncingRepo(dctlr.Config.Log.Output, "index", 60*time.Second), ShouldBeTrue)
 
 				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
 					Get(destBaseURL + "/v2/index/manifests/root")
@@ -8484,4 +8505,45 @@ func waitSyncFinish(logPath string) bool {
 	}
 
 	return found
+}
+
+// syncRepoLogEntry is a subset of a zot JSON log line used by waitFinishedSyncingRepo.
+type syncRepoLogEntry struct {
+	Message string `json:"message"`
+	Repo    string `json:"repo"`
+}
+
+// waitFinishedSyncingRepo polls logPath until a JSON line reports finished sync for repo.
+// Unmarshaling avoids depending on JSON key order in the log line.
+func waitFinishedSyncingRepo(logPath, repo string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+
+	for time.Now().Before(deadline) {
+		data, err := os.ReadFile(logPath)
+		if err != nil {
+			// Tolerate missing log while the server is still starting; fail fast otherwise.
+			if !errors.Is(err, os.ErrNotExist) {
+				panic(err)
+			}
+		} else {
+			for line := range strings.SplitSeq(string(data), "\n") {
+				if line == "" {
+					continue
+				}
+
+				var entry syncRepoLogEntry
+				if err := json.Unmarshal([]byte(line), &entry); err != nil {
+					continue
+				}
+
+				if entry.Message == "sync: finished syncing repo" && entry.Repo == repo {
+					return true
+				}
+			}
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	return false
 }

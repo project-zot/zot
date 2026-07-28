@@ -26,8 +26,6 @@ import (
 //nolint:dupl
 func TestUserData(t *testing.T) {
 	Convey("Test user stars and bookmarks", t, func(c C) {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		defaultVal := true
 
 		accessibleRepo := "accessible-repo"
@@ -47,7 +45,7 @@ func TestUserData(t *testing.T) {
 
 		conf := config.New()
 		conf.Storage.RootDirectory = tempDir
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
 				Path: htpasswdPath,
@@ -90,7 +88,7 @@ func TestUserData(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		image := CreateDefaultImage()
@@ -444,8 +442,6 @@ func TestUserData(t *testing.T) {
 }
 
 func TestChangingRepoState(t *testing.T) {
-	port := test.GetFreePort()
-	baseURL := test.GetBaseURL(port)
 	defaultVal := true
 
 	simpleUser := "test"
@@ -459,7 +455,7 @@ func TestChangingRepoState(t *testing.T) {
 
 	conf := config.New()
 	conf.Storage.RootDirectory = tempDir
-	conf.HTTP.Port = port
+	conf.HTTP.Port = "0"
 	conf.HTTP.Auth = &config.AuthConfig{
 		HTPasswd: config.AuthHTPasswd{
 			Path: htpasswdPath,
@@ -538,7 +534,7 @@ func TestChangingRepoState(t *testing.T) {
 
 	ctlrManager := test.NewControllerManager(ctlr)
 
-	ctlrManager.StartAndWait(port)
+	baseURL := ctlrManager.StartAndWait()
 
 	defer ctlrManager.StopServer()
 
@@ -596,10 +592,8 @@ func TestChangingRepoState(t *testing.T) {
 func TestGlobalSearchWithUserPrefFiltering(t *testing.T) {
 	Convey("Bookmarks and Stars filtering", t, func() {
 		dir := t.TempDir()
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = dir
 
 		simpleUser := "simpleUser"
@@ -637,7 +631,7 @@ func TestGlobalSearchWithUserPrefFiltering(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		preferencesBaseURL := baseURL + constants.FullUserPrefs
@@ -790,10 +784,8 @@ func TestGlobalSearchWithUserPrefFiltering(t *testing.T) {
 func TestExpandedRepoInfoWithUserPrefs(t *testing.T) {
 	Convey("ExpandedRepoInfo with User Prefs", t, func() {
 		dir := t.TempDir()
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = dir
 
 		simpleUser := "simpleUser"
@@ -831,7 +823,7 @@ func TestExpandedRepoInfoWithUserPrefs(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		preferencesBaseURL := baseURL + constants.FullUserPrefs

@@ -183,10 +183,13 @@ func (bdw *BoltDB) SetImageMeta(digest godigest.Digest, imageMeta mTypes.ImageMe
 }
 
 func (bdw *BoltDB) SetRepoReference(ctx context.Context, repo string, reference string, imageMeta mTypes.ImageMeta,
+	opts ...mTypes.SetRepoReferenceOption,
 ) error {
 	if err := common.ValidateRepoReferenceInput(repo, reference, imageMeta.Digest); err != nil {
 		return err
 	}
+
+	options := mTypes.ApplySetRepoReferenceOptions(opts...)
 
 	var userid string
 
@@ -281,13 +284,13 @@ func (bdw *BoltDB) SetRepoReference(ctx context.Context, repo string, reference 
 			stats = &proto_go.DescriptorStatistics{
 				DownloadCount:     0,
 				LastPullTimestamp: &timestamppb.Timestamp{},
-				PushTimestamp:     timestamppb.Now(),
+				PushTimestamp:     mConvert.GetProtoPushTimestamp(options.PushTimestamp),
 				PushedBy:          userid,
 			}
 			protoRepoMeta.Statistics[digestStr] = stats
 		} else {
 			if stats.PushTimestamp.AsTime().IsZero() {
-				stats.PushTimestamp = timestamppb.Now()
+				stats.PushTimestamp = mConvert.GetProtoPushTimestamp(options.PushTimestamp)
 			}
 
 			if userid != "" && stats.PushedBy == "" {
@@ -1250,7 +1253,7 @@ func (bdw *BoltDB) GetReferrersInfo(repo string, referredDigest godigest.Digest,
 			return err
 		}
 
-		referrersInfo := protoRepoMeta.Referrers[referredDigest.String()].List
+		referrersInfo := protoRepoMeta.Referrers[referredDigest.String()].GetList()
 		seenDigests := make(map[string]struct{})
 
 		for i := range referrersInfo {
@@ -1398,10 +1401,11 @@ func (bdw *BoltDB) UpdateSignaturesValidity(ctx context.Context, repo string, ma
 
 					if isTrusted {
 						layerInfo.Signer = author
+					} else {
+						layerInfo.Signer = ""
 					}
 
 					if !date.IsZero() {
-						layerInfo.Signer = author
 						layerInfo.Date = timestamppb.New(date)
 					}
 

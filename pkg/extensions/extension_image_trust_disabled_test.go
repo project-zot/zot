@@ -17,14 +17,13 @@ import (
 func TestImageTrustExtension(t *testing.T) {
 	Convey("periodic signature verification is skipped when binary doesn't include imagetrust", t, func() {
 		conf := config.New()
-		port := test.GetFreePort()
 
 		globalDir := t.TempDir()
 		defaultValue := true
 
 		logFile := test.MakeTempFile(t, "zot-log.txt")
 
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = globalDir
 		conf.Storage.Commit = true
 		conf.Extensions = &extconf.ExtensionConfig{}
@@ -38,7 +37,7 @@ func TestImageTrustExtension(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlrManager := test.NewControllerManager(ctlr)
 
-		ctlrManager.StartAndWait(port)
+		ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		data, err := os.ReadFile(logFile.Name())

@@ -104,8 +104,36 @@ func New(
 				log.Error().Err(err).Msg("failed to retrieve credentials using ECR credentials helper.")
 			}
 			service.credentials = creds
+		case "oauth2":
+			// Logic to fetch credentials by exchanging a JWT assertion for an access token.
+			log.Info().Msg("fetch the credentials using OAuth2 JWT assertion exchange.")
+
+			oauth2Config, err := syncconf.OAuth2HelperConfigFromMap(service.config.Oauth2CredentialHelper)
+			if err != nil {
+				log.Error().Err(err).Msg("failed to parse the OAuth2 credentials helper config.")
+				service.config.CredentialHelper = ""
+
+				break
+			}
+
+			credentialHelper, err := NewOAuth2CredentialHelper(log, oauth2Config)
+			if err != nil {
+				log.Error().Err(err).Msg("failed to create OAuth2 credentials helper.")
+				service.config.CredentialHelper = ""
+
+				break
+			}
+
+			service.credentialHelper = credentialHelper
+
+			creds, err := service.credentialHelper.GetCredentials(service.config.URLs)
+			if err != nil {
+				log.Error().Err(err).Msg("failed to retrieve credentials using OAuth2 credentials helper.")
+			}
+			service.credentials = creds
 		default:
 			log.Warn().Msgf("unsupported CredentialHelper: %s", service.config.CredentialHelper)
+			service.config.CredentialHelper = ""
 		}
 	}
 
@@ -806,6 +834,24 @@ func getTLSConfigOption(url *url.URL, tlsVerify *bool) config.TLSConf {
 	return tls
 }
 
+// httpRetryDelayBounds returns regclient WithDelay arguments for HTTP retry backoff.
+// When maxRetryDelay is unset, delayMax defaults to delayInit so existing configs keep a fixed retry interval.
+// Set maxRetryDelay greater than retryDelay to enable exponential backoff up to that cap.
+func httpRetryDelayBounds(opts syncconf.RegistryConfig) (time.Duration, time.Duration, bool) {
+	if opts.RetryDelay == nil {
+		return 0, 0, false
+	}
+
+	delayInit := *opts.RetryDelay
+	delayMax := delayInit
+
+	if opts.MaxRetryDelay != nil {
+		delayMax = *opts.MaxRetryDelay
+	}
+
+	return delayInit, delayMax, true
+}
+
 func newClient(opts syncconf.RegistryConfig, credentials syncconf.CredentialsFile, logger log.Logger,
 ) (*regclient.RegClient, []config.Host, error) {
 	urls, err := parseRegistryURLs(opts.URLs)
@@ -889,8 +935,8 @@ func newClient(opts syncconf.RegistryConfig, credentials syncconf.CredentialsFil
 		regOpts = append(regOpts, reg.WithRetryLimit(*opts.MaxRetries))
 	}
 
-	if opts.RetryDelay != nil {
-		regOpts = append(regOpts, reg.WithDelay(*opts.RetryDelay, *opts.RetryDelay))
+	if delayInit, delayMax, ok := httpRetryDelayBounds(opts); ok {
+		regOpts = append(regOpts, reg.WithDelay(delayInit, delayMax))
 	}
 
 	// Configure transport with timeouts to prevent indefinite hangs.

@@ -198,6 +198,7 @@ You can also force a full reparse with the `--force-reparse` flag to `zot serve`
 ## Retention
 
 You can define tag retention rules that govern how many tags of a given repository to retain, or for how long to retain certain tags.
+You can also define `keepUntagged` rules for untagged manifests, including manifests cached by digest-only pull-through requests.
 
 There are 4 possible rules for tags:
 
@@ -206,7 +207,12 @@ mostRecentlyPulledCount: x - top x most recently pulled tags
 pulledWithin: x hours - tags pulled in the last x hours
 pushedWithin: x hours - tags pushed in the last x hours
 
-If ANY of these rules are met by a tag, then it will be retained, in other words there is an OR logic between them
+The same 4 rules can be used under `keepUntagged`; for digest-only cached content, pushed means cached locally at the descriptor's push timestamp.
+Tagged and untagged manifests are evaluated separately, so counts in `keepTags` do not compete with counts in `keepUntagged`.
+An empty `keepUntagged: {}` does not retain all untagged manifests; it is equivalent to omitting `keepUntagged`.
+`keepUntagged` rules require the metadata database. If it is unavailable, zot ignores `keepUntagged` and uses the existing delay-based untagged cleanup.
+
+If ANY of these rules are met by a tag or untagged manifest, then it will be retained, in other words there is an OR logic between them
 
 repositories uses glob patterns
 tag patterns uses regex
@@ -236,7 +242,11 @@ tag patterns uses regex
                         "patterns": ["v1.*"],           // all the other tags will be removed
                         "pulledWithin": "168h",      
                         "pushedWithin": "168h"
-                    }]
+                    }],
+                    "keepUntagged": {                   // untagged manifests pulled or cached locally within the last 168h are retained
+                        "pulledWithin": "168h",
+                        "pushedWithin": "168h"
+                    }
                 },
                 {
                     "repositories": ["**"],
@@ -247,7 +257,13 @@ tag patterns uses regex
                         "mostRecentlyPulledCount": 10,    // top 10 recently pulled tags
                         "pulledWithin": "720h",
                         "pushedWithin": "720h"
-                    }]
+                    }],
+                    "keepUntagged": {
+                        "mostRecentlyPushedCount": 10,    // top 10 recently cached/pushed untagged manifests
+                        "mostRecentlyPulledCount": 10,    // top 10 recently pulled untagged manifests
+                        "pulledWithin": "720h",
+                        "pushedWithin": "720h"
+                    }
                 }
             ]
         }
@@ -256,6 +272,7 @@ tag patterns uses regex
 If a repo doesn't match any policy, then that repo and all its tags are retained. (default is to not delete anything)
 If keepTags is empty, then all tags are retained (default is to retain all tags)
 If we have at least one tagRetention policy in the tagRetention list then all tags that don't match at least one of them will be removed!
+`deleteUntagged` remains the master switch for untagged manifests. When `deleteUntagged` is true and `keepUntagged` is configured, untagged manifests that fail `keepUntagged` rules still honor the configured retention delay before deletion. Without `keepUntagged`, untagged manifests keep the existing delay-based cleanup behavior.
 
 For safety purpose you can have a default policy as the last policy in list, all tags that don't match the above policies will be retained by this one:
 ```
@@ -374,6 +391,8 @@ NOTE: The separate file for storing DN and password credentials must be created.
         "cert": "/etc/zot/auth.crt"
       }
 ```
+
+When OIDC workload identity/federation uses Zot `/zot/auth/token` but the same deployment still needs this traditional bearer token service, configure the optional `upstreamTokenEndpoint` object. `upstreamTokenEndpoint.realm` points to the existing traditional bearer token service and `upstreamTokenEndpoint.service` is the upstream service value; Zot preserves the token request and rewrites only `service` before proxying requests that are not owned by local token backends. `upstreamTokenEndpoint.realm` must use HTTPS by default; plaintext HTTP requires `upstreamTokenEndpoint.allowInsecureHttp: true` and should only be used in controlled test environments.
 
 ### OpenID/OAuth2 social login
 
@@ -1358,7 +1377,8 @@ Configure each registry sync:
 				"tlsVerify": true,                  # whether or not to verify tls (default is true)
 				"certDir": "/home/user/certs",      # use certificates at certDir path similar to Docker's /etc/docker/certs.d., if not specified then use the default certs dir,
 				"maxRetries": 5,                    # maxRetries in case of temporary errors (default: no retries)
-				"retryDelay": "10m",                # delay between retries, retry options are applied for both on demand and periodically sync and retryDelay is mandatory when using maxRetries.
+				"retryDelay": "1s",                 # initial HTTP retry delay; mandatory when using maxRetries
+				"maxRetryDelay": "30s",             # max HTTP retry backoff; optional, defaults to retryDelay (fixed interval). Set higher than retryDelay for exponential backoff.
 				"onlySigned": true,                 # sync only signed images (either notary or cosign)
 				"content":[                         # which content to periodically pull, also it's used for filtering ondemand images, if not set then periodically polling will not run
 					{
@@ -1405,7 +1425,8 @@ Configure each registry sync:
 				"onDemand": true,                     # doesn't have content, don't periodically pull, pull just on demand.
 				"tlsVerify": true,
 				"maxRetries": 3,                      
-				"retryDelay": "15m"
+				"retryDelay": "15m",                # initial HTTP retry delay; fixed 15m interval unless maxRetryDelay is set higher
+				"maxRetryDelay": "15m"              # optional; omit or set equal to retryDelay for fixed interval (as here)
 			}
 		]
 		}

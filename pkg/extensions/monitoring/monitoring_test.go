@@ -37,10 +37,8 @@ import (
 
 func TestExtensionMetrics(t *testing.T) {
 	Convey("Make a new controller with explicitly enabled metrics", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		rootDir := t.TempDir()
 
@@ -61,7 +59,7 @@ func TestExtensionMetrics(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
 
 		// improve code coverage
@@ -94,10 +92,8 @@ func TestExtensionMetrics(t *testing.T) {
 		So(respStr, ShouldContainSubstring, "zot_storage_lock_latency_seconds_bucket")
 	})
 	Convey("Make a new controller with disabled metrics extension", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		var disabled bool
 
@@ -109,7 +105,7 @@ func TestExtensionMetrics(t *testing.T) {
 		So(ctlr, ShouldNotBeNil)
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
 
 		So(ctlr.Metrics.IsEnabled(), ShouldBeFalse)
@@ -123,16 +119,14 @@ func TestExtensionMetrics(t *testing.T) {
 
 func TestMetricsAuthentication(t *testing.T) {
 	Convey("test metrics without authentication and metrics enabled", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
 
 		// metrics endpoint not available
@@ -142,10 +136,8 @@ func TestMetricsAuthentication(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 	})
 	Convey("test metrics without authentication and with metrics enabled", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		enabled := true
 		metricsConfig := &extconf.MetricsConfig{
 			BaseConfig: extconf.BaseConfig{Enable: &enabled},
@@ -159,7 +151,7 @@ func TestMetricsAuthentication(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
 
 		// without auth set metrics endpoint is available
@@ -169,10 +161,8 @@ func TestMetricsAuthentication(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 	})
 	Convey("test metrics with authentication and metrics enabled", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		username := generateRandomString()
 		password := generateRandomString()
@@ -201,7 +191,7 @@ func TestMetricsAuthentication(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
 
 		// without credentials
@@ -233,10 +223,8 @@ func TestMetricsAuthorization(t *testing.T) {
 	const AuthorizationAllRepos = "**"
 
 	Convey("Make a new controller with auth & metrics enabled", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		username := generateRandomString()
 		password := generateRandomString()
@@ -271,7 +259,7 @@ func TestMetricsAuthorization(t *testing.T) {
 			ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			// authenticated but not authorized user should not have access to/metrics
@@ -299,7 +287,7 @@ func TestMetricsAuthorization(t *testing.T) {
 			ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			// authenticated but not authorized user should not have access to/metrics
@@ -339,7 +327,7 @@ func TestMetricsAuthorization(t *testing.T) {
 			ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			// unauthenticated clients should not have access to /metrics
@@ -395,7 +383,7 @@ func TestMetricsAuthorization(t *testing.T) {
 			ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			// unauthenticated clients should not have access to /metrics
@@ -435,7 +423,7 @@ func TestMetricsAuthorization(t *testing.T) {
 			ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			// unauthenticated client should be allowed to scrape /metrics
@@ -485,7 +473,7 @@ func TestMetricsAuthorization(t *testing.T) {
 			ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			// unauthenticated client should be allowed to scrape /metrics
@@ -533,7 +521,7 @@ func TestMetricsAuthorization(t *testing.T) {
 			ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			// unauthenticated client should be blocked
@@ -557,10 +545,8 @@ func TestMetricsAuthorization(t *testing.T) {
 		authTestServer := authutils.MakeAuthTestServer(serverKeyPath, "RS256", "unauthorized-repo")
 		defer authTestServer.Close()
 
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		authURL, err := url.Parse(authTestServer.URL)
 		So(err, ShouldBeNil)
@@ -590,7 +576,7 @@ func TestMetricsAuthorization(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
 
 		Convey("with bearer auth: metrics.anonymousPolicy=[read] allows unauthenticated scraping", func() {
@@ -617,10 +603,8 @@ func TestMetricsAuthorization(t *testing.T) {
 
 func TestMetricsAnonymousAccessNoAuth(t *testing.T) {
 	Convey("Make a new controller with no auth and metrics.anonymousPolicy=[read]", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		enabled := true
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -640,7 +624,7 @@ func TestMetricsAnonymousAccessNoAuth(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
 
 		// unauthenticated client should be allowed to scrape /metrics
@@ -661,10 +645,8 @@ func TestMetricsAnonymousPolicyNilAccessControl(t *testing.T) {
 
 func TestPopulateStorageMetrics(t *testing.T) {
 	Convey("Start a scheduler when metrics enabled", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		rootDir := t.TempDir()
 
@@ -695,7 +677,7 @@ func TestPopulateStorageMetrics(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
 
 		metrics := monitoring.NewMetricsServer(true, ctlr.Log)
@@ -743,10 +725,8 @@ func TestPopulateStorageMetrics(t *testing.T) {
 
 func TestGCMetrics(t *testing.T) {
 	Convey("GC metrics should be emitted after garbage collection", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		rootDir := t.TempDir()
 		conf.Storage.RootDirectory = rootDir
 		conf.Storage.GC = false
@@ -764,7 +744,7 @@ func TestGCMetrics(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
 
 		imgStore := ctlr.StoreController.DefaultStore

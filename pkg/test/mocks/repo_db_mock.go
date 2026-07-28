@@ -320,7 +320,7 @@ func (sdm MetaDBMock) SetImageMeta(digest godigest.Digest, imageMeta mTypes.Imag
 }
 
 func (sdm MetaDBMock) SetRepoReference(ctx context.Context, repo string, reference string,
-	imageMeta mTypes.ImageMeta,
+	imageMeta mTypes.ImageMeta, _ ...mTypes.SetRepoReferenceOption,
 ) error {
 	if sdm.SetRepoReferenceFn != nil {
 		return sdm.SetRepoReferenceFn(ctx, repo, reference, imageMeta)

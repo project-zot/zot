@@ -28,7 +28,7 @@ CRICTL_VERSION := v1.26.1
 ACTION_VALIDATOR := $(TOOLSDIR)/bin/action-validator
 ACTION_VALIDATOR_VERSION := v0.5.3
 ZUI_BUILD_PATH := ""
-ZUI_VERSION := commit-89a04ea
+ZUI_VERSION := commit-a446689
 ZUI_REPO_OWNER := project-zot
 ZUI_REPO_NAME := zui
 SWAGGER_VERSION := v1.16.6
@@ -590,6 +590,10 @@ run-blackbox-dedupe-nightly: check-blackbox-prerequisites check-awslocal binary 
 run-blackbox-sync-nightly: check-blackbox-prerequisites binary binary-minimal bench
 	echo running nightly sync tests; \
 	$(BATS) $(BATS_FLAGS) test/blackbox/sync_harness.bats
+
+.PHONY: run-kind-sync-ondemand
+run-kind-sync-ondemand: check-blackbox-prerequisites binary
+	./examples/kind/kind-sync-ondemand.sh
 
 .PHONY: fuzz-all
 fuzz-all: fuzztime=${1}

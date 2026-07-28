@@ -1677,6 +1677,28 @@ func TestDedupeRestoreCompleteMarker(t *testing.T) {
 	})
 }
 
+func TestCheckBlobTreatsRealEmptyBlobAsPresent(t *testing.T) {
+	Convey("CheckBlob returns present for genuine empty blob with dedupe/cache disabled", t, func() {
+		dir := t.TempDir()
+
+		logger := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, logger)
+
+		imgStore := local.NewImageStore(dir, false, true, logger, metrics, nil, nil, nil, nil)
+
+		emptyDigest := godigest.Canonical.FromBytes(nil)
+
+		_, size, err := imgStore.FullBlobUpload(context.Background(), repoName, bytes.NewReader(nil), emptyDigest)
+		So(err, ShouldBeNil)
+		So(size, ShouldEqual, 0)
+
+		found, blobSize, err := imgStore.CheckBlob(context.Background(), repoName, emptyDigest)
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
+		So(blobSize, ShouldEqual, int64(0))
+	})
+}
+
 // recheckDriver wraps local.Driver and, for a single target path, returns a
 // custom result on the second Stat call to simulate the state observed by
 // restoreDedupedBlobs' re-check under the write lock.
