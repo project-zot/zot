@@ -906,11 +906,12 @@ func (c *Config) isUntaggedRetentionEnabledForPolicy(retentionPolicy RetentionPo
 }
 
 func isSensitiveConfigMapKey(key string) bool {
-	normalized := strings.ToLower(strings.ReplaceAll(key, "_", ""))
+	normalized := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(key, "_", ""), "-", ""))
 
 	switch normalized {
 	case "accesskey", "secretkey", "password", "secret", "token",
-		"clientsecret", "sessionhashkey", "sessionencryptkey", "sentinelpassword":
+		"clientsecret", "sessionhashkey", "sessionencryptkey", "sentinelpassword",
+		"authorization", "apikey", "bearer", "xapikey":
 		return true
 	default:
 		return false
@@ -1032,22 +1033,23 @@ func (c *Config) Sanitize() *Config {
 		}
 	}
 
-	if c.Extensions.IsEventRecorderEnabled() {
-		for i, sink := range c.Extensions.Events.Sinks {
-			if sink.Credentials == nil {
+	if c.Extensions != nil && c.Extensions.Events != nil {
+		for i := range c.Extensions.Events.Sinks {
+			if sanitizedConfig.Extensions.Events.Sinks[i].Headers != nil {
+				sanitizeStringMapValues(sanitizedConfig.Extensions.Events.Sinks[i].Headers)
+			}
+
+			creds := sanitizedConfig.Extensions.Events.Sinks[i].Credentials
+			if creds == nil {
 				continue
 			}
 
-			if err := DeepCopy(&c.Extensions.Events.Sinks[i], &sanitizedConfig.Extensions.Events.Sinks[i]); err != nil {
-				panic(err)
+			if creds.Password != "" {
+				creds.Password = "******"
 			}
 
-			if sanitizedConfig.Extensions.Events.Sinks[i].Credentials.Password != "" {
-				sanitizedConfig.Extensions.Events.Sinks[i].Credentials.Password = "******"
-			}
-
-			if sanitizedConfig.Extensions.Events.Sinks[i].Credentials.Token != "" {
-				sanitizedConfig.Extensions.Events.Sinks[i].Credentials.Token = "******"
+			if creds.Token != "" {
+				creds.Token = "******"
 			}
 		}
 	}
