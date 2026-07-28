@@ -174,6 +174,12 @@ func (service *BaseService) init() error {
 	service.clientLock.Lock()
 	defer service.clientLock.Unlock()
 
+	return service.initClient()
+}
+
+// initClient rebuilds the registry client from the current credentials.
+// Caller must hold clientLock for writing.
+func (service *BaseService) initClient() error {
 	client, hosts, err := newClient(service.config, service.credentials, service.log)
 	if err != nil {
 		service.log.Err(err).Msg("failed to create registry client")
@@ -198,12 +204,35 @@ func (service *BaseService) init() error {
 // If the credentials are expired, it attempts to refresh them and updates the service configuration.
 func (service *BaseService) refreshRegistryTemporaryCredentials() error {
 	// Exit early if no CredentialHelper is configured.
-	if service.config.CredentialHelper == "" {
+	if service.config.CredentialHelper == "" || service.credentialHelper == nil {
 		return nil
 	}
 
+	// Fast path: skip the write lock and client reinit when nothing has expired.
+	service.clientLock.RLock()
+	needsRefresh := false
+
 	for _, host := range service.hosts {
-		// Exit early if the credentials are valid.
+		if !service.credentialHelper.AreCredentialsValid(host.Hostname) {
+			needsRefresh = true
+
+			break
+		}
+	}
+
+	service.clientLock.RUnlock()
+
+	if !needsRefresh {
+		return nil
+	}
+
+	service.clientLock.Lock()
+	defer service.clientLock.Unlock()
+
+	credentialsUpdated := false
+
+	for _, host := range service.hosts {
+		// Re-check under the write lock: another refresher may have won the race.
 		if service.credentialHelper.AreCredentialsValid(host.Hostname) {
 			continue
 		}
@@ -225,10 +254,15 @@ func (service *BaseService) refreshRegistryTemporaryCredentials() error {
 
 		// Update the service's credentials map with the new set of credentials.
 		service.credentials[host.Hostname] = credentials
+		credentialsUpdated = true
+	}
+
+	if !credentialsUpdated {
+		return nil
 	}
 
 	// Reinitialize regclient with new credentials
-	return service.init()
+	return service.initClient()
 }
 
 func (service *BaseService) CanRetryOnError() bool {
@@ -277,6 +311,12 @@ func (service *BaseService) getNextRepoFromCatalog(lastRepo string) string {
 
 func (service *BaseService) GetNextRepo(lastRepo string) (string, error) {
 	var err error
+
+	/* Refresh before taking the read lock: a refresh reinitializes the client under the
+	write lock, which a held read lock would deadlock against. */
+	if err := service.refreshRegistryTemporaryCredentials(); err != nil {
+		service.log.Error().Err(err).Msg("failed to refresh credentials")
+	}
 
 	if len(service.repositories) == 0 {
 		service.clientLock.RLock()
@@ -351,6 +391,12 @@ func (service *BaseService) SyncImage(ctx context.Context, repo, reference strin
 func (service *BaseService) SyncReferrers(ctx context.Context, repo string,
 	subjectDigestStr string, referenceTypes []string,
 ) error {
+	/* Refresh before taking the read lock: a refresh reinitializes the client under the
+	write lock, which a held read lock would deadlock against. */
+	if err := service.refreshRegistryTemporaryCredentials(); err != nil {
+		service.log.Error().Err(err).Msg("failed to refresh credentials")
+	}
+
 	service.clientLock.RLock()
 	defer service.clientLock.RUnlock()
 
@@ -433,6 +479,10 @@ func (service *BaseService) SyncReferrers(ctx context.Context, repo string,
 func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 	service.log.Info().Str("repo", repo).Str("registry", service.remote.GetHostName()).
 		Msg("sync: syncing repo")
+
+	if err := service.refreshRegistryTemporaryCredentials(); err != nil {
+		service.log.Error().Err(err).Msg("failed to refresh credentials")
+	}
 
 	var err error
 
