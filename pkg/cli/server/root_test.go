@@ -283,6 +283,109 @@ func TestLoadConfigurationSyncCredentialHelper(t *testing.T) {
 		err := cli.LoadConfiguration(cfg, tmpfile)
 		So(err, ShouldNotBeNil)
 	})
+
+	Convey("the token-exchange grant loads with its RFC 8693 fields", t, func() {
+		content := `{
+			"storage": {"rootDirectory": "/tmp/zot"},
+			"http": {"address": "127.0.0.1", "port": "8080"},
+			"extensions": {
+				"sync": {
+					"registries": [
+						{
+							"urls": ["https://registry.example.com"],
+							"onDemand": true,
+							"credentialHelper": "oauth2",
+							"oauth2CredentialHelper": {
+								"tokenURL": "https://sts.example.com/v1/token",
+								"assertionFile": "/run/secrets/subject-token",
+								"grantType": "urn:ietf:params:oauth:grant-type:token-exchange",
+								"audience": "//sts.example.com/pools/the-pool/providers/the-provider",
+								"subjectTokenType": "urn:ietf:params:oauth:token-type:jwt",
+								"requestedTokenType": "urn:ietf:params:oauth:token-type:access_token",
+								"username": "oauth2accesstoken"
+							}
+						}
+					]
+				}
+			}
+		}`
+
+		tmpfile := MakeTempFileWithContent(t, "zot-sync-oauth2-token-exchange.json", content)
+		cfg := config.New()
+
+		err := cli.LoadConfiguration(cfg, tmpfile)
+		So(err, ShouldBeNil)
+
+		registries := cfg.Extensions.Sync.Registries
+		So(registries, ShouldHaveLength, 1)
+
+		oauth2Config, err := syncconf.OAuth2HelperConfigFromMap(registries[0].Oauth2CredentialHelper)
+		So(err, ShouldBeNil)
+		So(oauth2Config.GrantType, ShouldEqual, syncconf.TokenExchangeGrantType)
+		So(oauth2Config.Audience, ShouldEqual, "//sts.example.com/pools/the-pool/providers/the-provider")
+		So(oauth2Config.SubjectTokenType, ShouldEqual, "urn:ietf:params:oauth:token-type:jwt")
+		So(oauth2Config.RequestedTokenType, ShouldEqual, "urn:ietf:params:oauth:token-type:access_token")
+		So(oauth2Config.Validate(), ShouldBeNil)
+	})
+
+	Convey("the token-exchange grant without an audience fails at load time", t, func() {
+		content := `{
+			"storage": {"rootDirectory": "/tmp/zot"},
+			"http": {"address": "127.0.0.1", "port": "8080"},
+			"extensions": {
+				"sync": {
+					"registries": [
+						{
+							"urls": ["https://registry.example.com"],
+							"onDemand": true,
+							"credentialHelper": "oauth2",
+							"oauth2CredentialHelper": {
+								"tokenURL": "https://sts.example.com/v1/token",
+								"assertionFile": "/run/secrets/subject-token",
+								"grantType": "urn:ietf:params:oauth:grant-type:token-exchange"
+							}
+						}
+					]
+				}
+			}
+		}`
+
+		tmpfile := MakeTempFileWithContent(t, "zot-sync-oauth2-no-audience.json", content)
+		cfg := config.New()
+
+		err := cli.LoadConfiguration(cfg, tmpfile)
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("an audience without the token-exchange grant fails at load time", t, func() {
+		content := `{
+			"storage": {"rootDirectory": "/tmp/zot"},
+			"http": {"address": "127.0.0.1", "port": "8080"},
+			"extensions": {
+				"sync": {
+					"registries": [
+						{
+							"urls": ["https://registry.example.com"],
+							"onDemand": true,
+							"credentialHelper": "oauth2",
+							"oauth2CredentialHelper": {
+								"tokenURL": "https://idp.example.com/token",
+								"assertionFile": "/run/secrets/assertion.jwt",
+								"grantType": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+								"audience": "//sts.example.com/pools/the-pool/providers/the-provider"
+							}
+						}
+					]
+				}
+			}
+		}`
+
+		tmpfile := MakeTempFileWithContent(t, "zot-sync-oauth2-stray-audience.json", content)
+		cfg := config.New()
+
+		err := cli.LoadConfiguration(cfg, tmpfile)
+		So(err, ShouldNotBeNil)
+	})
 }
 
 func TestLoadConfigurationInjectsHTTPTimeoutDefaults(t *testing.T) {

@@ -7,11 +7,19 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
+// TokenExchangeGrantType is the RFC 8693 token exchange grant, used to trade a subject
+// token issued by an external identity provider for an access token minted by a security
+// token service.
+const TokenExchangeGrantType = "urn:ietf:params:oauth:grant-type:token-exchange" //nolint:gosec // not a credential
+
 var (
 	errOAuth2HelperConfigMissing = errors.New("oauth2 credential helper requires an oauth2CredentialHelper config")
 	errOAuth2TokenURLMissing     = errors.New("oauth2 credential helper requires a tokenURL")
 	errOAuth2AssertionMissing    = errors.New("oauth2 credential helper requires an assertionFile or a signingFile")
 	errOAuth2AssertionConflict   = errors.New("oauth2 credential helper allows only assertionFile or signingFile")
+	errOAuth2AudienceMissing     = errors.New("the oauth2 token-exchange grant requires an audience")
+	errOAuth2ExchangeOnlyFields  = errors.New(
+		"oauth2 audience, subjectTokenType and requestedTokenType require the token-exchange grant")
 )
 
 // CredentialsFile is a map where key is registry address.
@@ -60,15 +68,24 @@ type RegistryConfig struct {
 //     refresh. zot never holds a private key; single-use semantics, if any, are owned by the platform.
 //   - SigningFile: a private key and claims that zot uses to mint a fresh, single-use assertion
 //     (unique "jti") on every refresh, then exchanges it for a short-lived access token.
+//
+// With the RFC 8693 token-exchange grant the assertion is sent as the subject token rather
+// than as a client credential, which is what a security token service such as Google STS
+// expects when federating an external workload identity.
 type OAuth2HelperConfig struct {
 	TokenURL         string   // OAuth2 token endpoint
 	AssertionFile    string   // file holding a pre-signed JWT assertion, re-read on every refresh
 	SigningFile      string   // file holding the signing key and claims used to mint assertions in-code
-	GrantType        string   // "client_credentials" (default) or the jwt-bearer grant URN
+	GrantType        string   // "client_credentials" (default), the jwt-bearer or the token-exchange grant URN
 	ClientID         string   // optional OAuth2 client identifier
 	ClientSecretFile string   // file holding the optional OAuth2 client secret, sent in the request body
 	Scopes           []string // optional OAuth2 scopes
 	Username         string   // registry username paired with the token, defaults to "<token>"
+
+	// The fields below apply to the token-exchange grant only.
+	Audience           string // required, identifies the target of the exchange
+	SubjectTokenType   string // type of the exchanged token, defaults to the JWT token type
+	RequestedTokenType string // type asked of the endpoint, defaults to the access-token type
 }
 
 // decodeOauth2CredentialHelper decodes the generic Oauth2CredentialHelper dictionary
@@ -122,6 +139,20 @@ func (config *OAuth2HelperConfig) Validate() error {
 
 	if hasAssertionFile && hasSigningFile {
 		return errOAuth2AssertionConflict
+	}
+
+	// The RFC 8693 fields are meaningless outside the token-exchange grant, so reject them
+	// there rather than silently ignoring a misconfiguration.
+	if config.GrantType != TokenExchangeGrantType {
+		if config.Audience != "" || config.SubjectTokenType != "" || config.RequestedTokenType != "" {
+			return errOAuth2ExchangeOnlyFields
+		}
+
+		return nil
+	}
+
+	if config.Audience == "" {
+		return errOAuth2AudienceMissing
 	}
 
 	return nil
