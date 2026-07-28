@@ -839,7 +839,7 @@ func New() *Config {
 func (expConfig StorageConfig) ParamsEqual(actConfig StorageConfig) bool {
 	return expConfig.GC == actConfig.GC && expConfig.Dedupe == actConfig.Dedupe &&
 		expConfig.RedirectBlobURL == actConfig.RedirectBlobURL && expConfig.GCDelay == actConfig.GCDelay &&
-		expConfig.GCInterval == actConfig.GCInterval
+		expConfig.GCInterval == actConfig.GCInterval && expConfig.GCTimeWindow == actConfig.GCTimeWindow
 }
 
 // isRetentionEnabledInternal checks if retention is enabled without acquiring a lock (internal use only).
