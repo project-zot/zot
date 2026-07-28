@@ -2309,5 +2309,47 @@ func TestCredentialRefreshOnEverySyncEntryPoint(t *testing.T) {
 			_, _ = service.GetNextRepo("")
 			So(helper.refreshCalls.Load(), ShouldEqual, 0)
 		})
+
+		Convey("A refresh that fails is logged rather than returned to the caller", func() {
+			/* a regular file where a certificate directory is expected makes the client
+			reinitialization at the end of the refresh fail */
+			brokenCertDir := path.Join(t.TempDir(), "certs")
+			So(os.WriteFile(brokenCertDir, []byte("not a directory"), 0o600), ShouldBeNil)
+
+			newBrokenService := func() (*BaseService, string) {
+				service := newService(&countingCredentialHelper{}, "oauth2")
+				service.config.CertDir = brokenCertDir
+
+				refreshErr := service.refreshRegistryTemporaryCredentials()
+				So(refreshErr, ShouldNotBeNil)
+
+				return service, refreshErr.Error()
+			}
+
+			Convey("GetNextRepo goes on to query the upstream", func() {
+				service, refreshErr := newBrokenService()
+
+				_, err := service.GetNextRepo("")
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldNotEqual, refreshErr)
+			})
+
+			Convey("SyncRepo goes on to query the upstream", func() {
+				service, refreshErr := newBrokenService()
+
+				err := service.SyncRepo(context.Background(), "some/repo")
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldNotEqual, refreshErr)
+			})
+
+			Convey("SyncReferrers goes on to query the upstream", func() {
+				service, refreshErr := newBrokenService()
+
+				err := service.SyncReferrers(context.Background(), "some/repo",
+					godigest.FromString("s").String(), nil)
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldNotEqual, refreshErr)
+			})
+		})
 	})
 }
