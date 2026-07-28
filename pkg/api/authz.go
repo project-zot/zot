@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/cel"
 	"zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/log"
+	zreg "zotregistry.dev/zot/v2/pkg/regexp"
 	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
@@ -696,17 +698,36 @@ func DistSpecAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			}
 
 			if request.Method == http.MethodPut || request.Method == http.MethodPatch || request.Method == http.MethodPost {
-				// assume user wants to create
 				action = constants.CreatePermission
-				// if we get a reference (tag)
+
 				if ok {
 					is := ctlr.StoreController.GetImageStore(resource)
 
 					tags, err := is.GetImageTags(resource)
-					if err == nil && slices.Contains(tags, reference) {
-						// if repo exists and request's tag exists then action is UPDATE
-						action = constants.UpdatePermission
+					repoTags, repoTagErr := repoTagsForManifestWriteAuthz(tags, err)
+					if repoTagErr != nil {
+						// Fail closed if we cannot verify current tags for this repo.
+						ctlr.Log.Error().Err(repoTagErr).Str("repository", resource).
+							Msg("unable to verify permissions on existing tags")
+						response.WriteHeader(http.StatusInternalServerError)
+
+						return
 					}
+
+					// Collect and enforce every create/update check for this write
+					// (path tag and/or digest ?tag=), then allow the request.
+					denyReason, allowed := authorizeManifestWrite(
+						acCtrlr, request, userAc, resource, reference, repoTags, request.URL.Query()["tag"])
+					if !allowed {
+						common.AuthzFailWithReason(response, request, userAc.GetUsername(),
+							realm, failDelay, denyReason)
+
+						return
+					}
+
+					next.ServeHTTP(response, request) //nolint:contextcheck
+
+					return
 				}
 			}
 
@@ -722,6 +743,148 @@ func DistSpecAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			}
 		})
 	}
+}
+
+// manifestWriteAuthzCheck is one (permission, reference) pair required for a manifest write.
+type manifestWriteAuthzCheck struct {
+	action    string
+	reference string
+}
+
+// manifestWriteAuthzChecks returns every (permission, reference) check required for a
+// manifest PUT/POST/PATCH.
+//
+// Two path shapes are handled separately:
+//
+//  1. Tag path — PUT .../manifests/<tag>
+//     The route handler rejects tag= query params on this path. Authz only decides
+//     create vs update for the path tag itself.
+//
+//  2. Digest path — PUT .../manifests/<digest>?tag=...
+//     Each valid ?tag= is authorized by name (update if it already exists, create if
+//     new). The digest path reference is also authorized: create when any new tag is
+//     introduced or when there are no tag ops; update when any existing tag is moved.
+//     Mixed requests therefore require both create and update on the digest (for CEL
+//     conditions that key off referenceType=digest) in addition to the per-tag checks.
+func manifestWriteAuthzChecks(repoTags []string, reference string, rawTagQuery []string) []manifestWriteAuthzCheck {
+	// Tag path: ?tag= query params are not valid here.
+	if !common.IsDigest(reference) {
+		action := constants.CreatePermission
+		if slices.Contains(repoTags, reference) {
+			action = constants.UpdatePermission
+		}
+
+		return []manifestWriteAuthzCheck{{
+			action:    action,
+			reference: reference,
+		}}
+	}
+
+	// Digest path: authorize each ?tag= by name, then the digest itself.
+	existingQueryTags, newQueryTags := classifyDigestQueryTags(repoTags, rawTagQuery)
+
+	checks := make([]manifestWriteAuthzCheck, 0, len(existingQueryTags)+len(newQueryTags)+2)
+
+	for _, tag := range existingQueryTags {
+		checks = append(checks, manifestWriteAuthzCheck{
+			action:    constants.UpdatePermission,
+			reference: tag,
+		})
+	}
+
+	for _, tag := range newQueryTags {
+		checks = append(checks, manifestWriteAuthzCheck{
+			action:    constants.CreatePermission,
+			reference: tag,
+		})
+	}
+
+	// Digest path reference (CEL may use req.referenceType == "digest").
+	if len(newQueryTags) > 0 || len(existingQueryTags) == 0 {
+		checks = append(checks, manifestWriteAuthzCheck{
+			action:    constants.CreatePermission,
+			reference: reference,
+		})
+	}
+
+	if len(existingQueryTags) > 0 {
+		checks = append(checks, manifestWriteAuthzCheck{
+			action:    constants.UpdatePermission,
+			reference: reference,
+		})
+	}
+
+	return checks
+}
+
+// authorizeManifestWrite verifies the user has every permission required for this
+// manifest write (see manifestWriteAuthzChecks). When allowed is false, the deny
+// reason should be surfaced to the client.
+func authorizeManifestWrite(
+	acCtrlr *AccessController, request *http.Request, userAc *reqCtx.UserAccessControl,
+	resource, reference string, repoTags, rawTagQuery []string,
+) (string, bool) {
+	for _, check := range manifestWriteAuthzChecks(repoTags, reference, rawTagQuery) {
+		can, reason := acCtrlr.can(request, userAc, check.action, resource, check.reference)
+		if !can {
+			return reason, false
+		}
+	}
+
+	return "", true
+}
+
+// classifyDigestQueryTags splits valid tag= query values into those that already
+// exist in the repository and those that are new (both deduplicated, in query order).
+// Empty and invalid values are skipped so authz can still enforce permissions when
+// mixed with params the route handler will later reject with 400.
+func classifyDigestQueryTags(existingRepoTags, rawTagQuery []string) ([]string, []string) {
+	seenExisting := map[string]struct{}{}
+	seenNew := map[string]struct{}{}
+
+	existing := make([]string, 0, len(rawTagQuery))
+	newTags := make([]string, 0, len(rawTagQuery))
+
+	for _, rawTag := range rawTagQuery {
+		cleanedTag := strings.TrimSpace(rawTag)
+		if cleanedTag == "" || !zreg.IsDistributionSpecTag(cleanedTag) {
+			continue
+		}
+
+		if slices.Contains(existingRepoTags, cleanedTag) {
+			if _, ok := seenExisting[cleanedTag]; ok {
+				continue
+			}
+
+			seenExisting[cleanedTag] = struct{}{}
+			existing = append(existing, cleanedTag)
+
+			continue
+		}
+
+		if _, ok := seenNew[cleanedTag]; ok {
+			continue
+		}
+
+		seenNew[cleanedTag] = struct{}{}
+		newTags = append(newTags, cleanedTag)
+	}
+
+	return existing, newTags
+}
+
+// repoTagsForManifestWriteAuthz returns the repository tags to use for manifest
+// write authz checks and fails closed on unexpected storage errors.
+func repoTagsForManifestWriteAuthz(tags []string, err error) ([]string, error) {
+	if err == nil {
+		return tags, nil
+	}
+
+	if errors.Is(err, zerr.ErrRepoNotFound) {
+		return []string{}, nil
+	}
+
+	return nil, err
 }
 
 func MetricsAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
