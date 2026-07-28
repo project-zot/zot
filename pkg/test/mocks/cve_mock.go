@@ -2,6 +2,7 @@ package mocks
 
 import (
 	"context"
+	"sync"
 
 	"zotregistry.dev/zot/v2/pkg/common"
 	cvemodel "zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
@@ -128,5 +129,63 @@ func (scanner CveScannerMock) UpdateDB(ctx context.Context) error {
 		return scanner.UpdateDBFn(ctx)
 	}
 
+	return nil
+}
+
+type TestCveScanner struct {
+	sync.RWMutex
+
+	cveDataStore map[string]map[string]cvemodel.CVE
+}
+
+func NewTestCveScanner() *TestCveScanner {
+	return &TestCveScanner{
+		cveDataStore: make(map[string]map[string]cvemodel.CVE),
+	}
+}
+
+func (scanner *TestCveScanner) SetCveDataForImage(digestOrTag string, cveData map[string]cvemodel.CVE) {
+	scanner.Lock()
+	defer scanner.Unlock()
+	scanner.cveDataStore[digestOrTag] = cveData
+}
+
+func (scanner *TestCveScanner) ScanImage(ctx context.Context, image string) (cvemodel.ScanResult, error) {
+	scanner.RLock()
+	defer scanner.RUnlock()
+	if cveData, exists := scanner.cveDataStore[image]; exists {
+		return cvemodel.ScanResult{CVEMap: cveData}, nil
+	}
+
+	return cvemodel.ScanResult{CVEMap: map[string]cvemodel.CVE{}}, nil
+}
+
+func (scanner *TestCveScanner) IsImageFormatScannable(repo string, reference string) (bool, error) {
+	return true, nil
+}
+
+func (scanner *TestCveScanner) IsImageMediaScannable(repo string, digest, mediaType string) (bool, error) {
+	return true, nil
+}
+
+func (scanner *TestCveScanner) IsResultCached(digest string) bool {
+	scanner.RLock()
+	defer scanner.RUnlock()
+	_, exists := scanner.cveDataStore[digest]
+
+	return exists
+}
+
+func (scanner *TestCveScanner) GetCachedResult(digest string) map[string]cvemodel.CVE {
+	scanner.RLock()
+	defer scanner.RUnlock()
+	if cveData, exists := scanner.cveDataStore[digest]; exists {
+		return cveData
+	}
+
+	return map[string]cvemodel.CVE{}
+}
+
+func (scanner *TestCveScanner) UpdateDB(ctx context.Context) error {
 	return nil
 }
