@@ -312,6 +312,12 @@ func (service *BaseService) getNextRepoFromCatalog(lastRepo string) string {
 func (service *BaseService) GetNextRepo(lastRepo string) (string, error) {
 	var err error
 
+	/* Refresh before taking the read lock: a refresh reinitializes the client under the
+	write lock, which a held read lock would deadlock against. */
+	if err := service.refreshRegistryTemporaryCredentials(); err != nil {
+		service.log.Error().Err(err).Msg("failed to refresh credentials")
+	}
+
 	if len(service.repositories) == 0 {
 		service.clientLock.RLock()
 		service.repositories, err = service.remote.GetRepositories(context.Background())
@@ -385,6 +391,12 @@ func (service *BaseService) SyncImage(ctx context.Context, repo, reference strin
 func (service *BaseService) SyncReferrers(ctx context.Context, repo string,
 	subjectDigestStr string, referenceTypes []string,
 ) error {
+	/* Refresh before taking the read lock: a refresh reinitializes the client under the
+	write lock, which a held read lock would deadlock against. */
+	if err := service.refreshRegistryTemporaryCredentials(); err != nil {
+		service.log.Error().Err(err).Msg("failed to refresh credentials")
+	}
+
 	service.clientLock.RLock()
 	defer service.clientLock.RUnlock()
 
@@ -467,6 +479,10 @@ func (service *BaseService) SyncReferrers(ctx context.Context, repo string,
 func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 	service.log.Info().Str("repo", repo).Str("registry", service.remote.GetHostName()).
 		Msg("sync: syncing repo")
+
+	if err := service.refreshRegistryTemporaryCredentials(); err != nil {
+		service.log.Error().Err(err).Msg("failed to refresh credentials")
+	}
 
 	var err error
 
