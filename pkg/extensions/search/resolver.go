@@ -115,7 +115,7 @@ func getImageListForDigest(ctx context.Context, digest string, metaDB mTypes.Met
 	}
 
 	skip := convert.SkipQGLField{
-		Vulnerabilities: canSkipField(convert.GetPreloads(ctx), "Images.Vulnerabilities"),
+		Vulnerabilities: canSkipField(convert.GetPreloads(ctx), "Results.Vulnerabilities"),
 	}
 
 	pageInput := pagination.PageInput{
@@ -1096,7 +1096,7 @@ func derivedImageList(ctx context.Context, image string, digest *string, metaDB 
 	}
 
 	skip := convert.SkipQGLField{
-		Vulnerabilities: canSkipField(convert.GetPreloads(ctx), "Vulnerabilities"),
+		Vulnerabilities: canSkipField(convert.GetPreloads(ctx), "Results.Vulnerabilities"),
 	}
 
 	imageRepo, imageTag := zcommon.GetImageDirAndTag(image)
@@ -1195,7 +1195,7 @@ func baseImageList(ctx context.Context, image string, digest *string, metaDB mTy
 	}
 
 	skip := convert.SkipQGLField{
-		Vulnerabilities: canSkipField(convert.GetPreloads(ctx), "Vulnerabilities"),
+		Vulnerabilities: canSkipField(convert.GetPreloads(ctx), "Results.Vulnerabilities"),
 	}
 
 	imageRepo, imageTag := zcommon.GetImageDirAndTag(image)
@@ -1508,7 +1508,7 @@ func getImageList(ctx context.Context, repo string, metaDB mTypes.MetaDB, cveInf
 	}
 
 	skip := convert.SkipQGLField{
-		Vulnerabilities: canSkipField(convert.GetPreloads(ctx), "Images.Vulnerabilities"),
+		Vulnerabilities: canSkipField(convert.GetPreloads(ctx), "Results.Vulnerabilities"),
 	}
 
 	pageInput := pagination.PageInput{
