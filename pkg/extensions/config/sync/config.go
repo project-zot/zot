@@ -17,9 +17,11 @@ var (
 	errOAuth2TokenURLMissing     = errors.New("oauth2 credential helper requires a tokenURL")
 	errOAuth2AssertionMissing    = errors.New("oauth2 credential helper requires an assertionFile or a signingFile")
 	errOAuth2AssertionConflict   = errors.New("oauth2 credential helper allows only assertionFile or signingFile")
-	errOAuth2AudienceMissing     = errors.New("the oauth2 token-exchange grant requires an audience")
-	errOAuth2ExchangeOnlyFields  = errors.New(
-		"oauth2 audience, subjectTokenType and requestedTokenType require the token-exchange grant")
+	errOAuth2AudienceMissing     = errors.New(
+		"oauth2 credential helper requires an audience when grantType is " + TokenExchangeGrantType)
+	errOAuth2ExchangeOnlyFields = errors.New(
+		"oauth2 credential helper allows audience, subjectTokenType and requestedTokenType " +
+			"only when grantType is " + TokenExchangeGrantType)
 )
 
 // CredentialsFile is a map where key is registry address.
@@ -60,7 +62,7 @@ type RegistryConfig struct {
 }
 
 // OAuth2HelperConfig holds the options used by the "oauth2" credential helper,
-// which exchanges a JWT assertion for a short-lived registry access token.
+// which exchanges a signed assertion for a short-lived registry access token.
 //
 // The assertion comes from one of two mutually exclusive sources, exactly one of which must be set:
 //   - AssertionFile: a pre-signed JWT issued and rotated by an external platform (e.g. a Kubernetes
@@ -71,10 +73,11 @@ type RegistryConfig struct {
 //
 // With the RFC 8693 token-exchange grant the assertion is sent as the subject token rather
 // than as a client credential, which is what a security token service such as Google STS
-// expects when federating an external workload identity.
+// expects when federating an external workload identity. That grant also accepts subject
+// tokens that are not JWTs, declared through SubjectTokenType.
 type OAuth2HelperConfig struct {
 	TokenURL         string   // OAuth2 token endpoint
-	AssertionFile    string   // file holding a pre-signed JWT assertion, re-read on every refresh
+	AssertionFile    string   // file holding the pre-signed assertion, re-read on every refresh
 	SigningFile      string   // file holding the signing key and claims used to mint assertions in-code
 	GrantType        string   // "client_credentials" (default), the jwt-bearer or the token-exchange grant URN
 	ClientID         string   // optional OAuth2 client identifier
@@ -84,7 +87,7 @@ type OAuth2HelperConfig struct {
 
 	// The fields below apply to the token-exchange grant only.
 	Audience           string // required, identifies the target of the exchange
-	SubjectTokenType   string // type of the exchanged token, defaults to the JWT token type
+	SubjectTokenType   string // type of the subject token being exchanged, defaults to the JWT token type
 	RequestedTokenType string // type asked of the endpoint, defaults to the access-token type
 }
 
