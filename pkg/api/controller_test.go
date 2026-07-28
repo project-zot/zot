@@ -5813,11 +5813,8 @@ func TestAuthorizationMountBlob(t *testing.T) {
 
 func TestAuthorizationForTagUpdate(t *testing.T) {
 	Convey("Test authorization for updating tags including latest", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
@@ -5857,7 +5854,7 @@ func TestAuthorizationForTagUpdate(t *testing.T) {
 			ctlr.Config.Storage.RootDirectory = dir
 
 			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			userClient := resty.New()
@@ -5938,6 +5935,56 @@ func TestAuthorizationForTagUpdate(t *testing.T) {
 				So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 			})
 
+			Convey("Digest multi-tag push overwriting an existing tag should fail without UPDATE permission", func() {
+				err := UploadImageWithBasicAuth(img, baseURL, testRepo, "stable", username, password)
+				So(err, ShouldBeNil)
+
+				imgAttacker := CreateImageWith().
+					RandomLayers(1, 22).
+					RandomConfig().
+					Build()
+
+				// Blobs may be uploaded with create; only the digest?tag= manifest write is denied.
+				err = UploadImageWithBasicAuth(imgAttacker, baseURL, testRepo, "attacker", username, password)
+				So(err, ShouldBeNil)
+
+				manifestBlob, err := json.Marshal(imgAttacker.Manifest)
+				So(err, ShouldBeNil)
+
+				manifestPutURL, err := url.Parse(baseURL + fmt.Sprintf("/v2/%s/manifests/%s",
+					testRepo, imgAttacker.ManifestDescriptor.Digest.String()))
+				So(err, ShouldBeNil)
+				manifestPutURL.RawQuery = "tag=stable"
+
+				resp, err := userClient.R().
+					SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+					SetBody(manifestBlob).
+					Put(manifestPutURL.String())
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+				// Trusted tag must still point at the original image.
+				resp, err = userClient.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/stable", testRepo))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+				So(resp.Header().Get(constants.DistContentDigestKey), ShouldEqual, img.ManifestDescriptor.Digest.String())
+			})
+
+			Convey("Digest multi-tag push with a new tag should succeed with CREATE permission", func() {
+				imgNew := CreateImageWith().
+					RandomLayers(1, 18).
+					RandomConfig().
+					Build()
+
+				err := UploadImageWithOpts(imgNew, baseURL, testRepo, imgNew.ManifestDescriptor.Digest.String(),
+					WithBasicAuth(username, password), WithExtraTags("brand-new"))
+				So(err, ShouldBeNil)
+
+				resp, err := userClient.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/brand-new", testRepo))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			})
+
 			Convey("Updating tags should succeed with UPDATE permission", func() {
 				// Add UPDATE permission
 				conf.HTTP.AccessControl.Repositories[testRepo] = config.PolicyGroup{
@@ -5978,10 +6025,525 @@ func TestAuthorizationForTagUpdate(t *testing.T) {
 
 				err = UploadImageWithBasicAuth(imgUpdated2, baseURL, testRepo, "latest", username, password)
 				So(err, ShouldBeNil)
+
+				// Digest multi-tag overwrite of an existing tag also requires (and is allowed with) UPDATE
+				imgUpdated3 := CreateImageWith().
+					RandomLayers(1, 28).
+					RandomConfig().
+					Build()
+
+				err = UploadImageWithOpts(imgUpdated3, baseURL, testRepo, imgUpdated3.ManifestDescriptor.Digest.String(),
+					WithBasicAuth(username, password), WithExtraTags("v3.0"))
+				So(err, ShouldBeNil)
+
+				resp, err := userClient.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/v3.0", testRepo))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+				So(resp.Header().Get(constants.DistContentDigestKey),
+					ShouldEqual, imgUpdated3.ManifestDescriptor.Digest.String())
 			})
 
 			So(seedUser, ShouldBeGreaterThan, 0)
 			So(seedPass, ShouldBeGreaterThan, 0)
+		})
+
+		Convey("Digest multi-tag overwrite also authorizes the path digest reference", func() {
+			testRepo := "digest-ref-check"
+
+			// Tag-path writes are allowed; digest path references are denied by condition.
+			// Checking only ?tag= (tag refs) would incorrectly allow the request; the path
+			// digest must still be authorized.
+			conf.HTTP.AccessControl = &config.AccessControlConfig{
+				Repositories: config.Repositories{
+					testRepo: config.PolicyGroup{
+						Policies: []config.Policy{
+							{
+								Users: []string{username},
+								Actions: []string{
+									constants.ReadPermission,
+									constants.CreatePermission,
+									constants.UpdatePermission,
+								},
+								Conditions: []config.Condition{
+									{
+										Expression: `req.referenceType != "digest"`,
+										Message:    "digest path reference not permitted",
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			dir := t.TempDir()
+			ctlr := api.NewController(conf)
+			ctlr.Config.Storage.RootDirectory = dir
+
+			cm := test.NewControllerManager(ctlr)
+			baseURL := cm.StartAndWait()
+			defer cm.StopServer()
+
+			userClient := resty.New()
+			userClient.SetBasicAuth(username, password)
+
+			img := CreateImageWith().
+				RandomLayers(1, 10).
+				RandomConfig().
+				Build()
+
+			err := UploadImageWithBasicAuth(img, baseURL, testRepo, "stable", username, password)
+			So(err, ShouldBeNil)
+
+			imgUpdated := CreateImageWith().
+				RandomLayers(1, 12).
+				RandomConfig().
+				Build()
+
+			// Upload blobs/tags that use non-digest path refs first, then attempt digest?tag=.
+			err = UploadImageWithBasicAuth(imgUpdated, baseURL, testRepo, "candidate", username, password)
+			So(err, ShouldBeNil)
+
+			manifestBlob, err := json.Marshal(imgUpdated.Manifest)
+			So(err, ShouldBeNil)
+
+			manifestPutURL, err := url.Parse(baseURL + fmt.Sprintf("/v2/%s/manifests/%s",
+				testRepo, imgUpdated.ManifestDescriptor.Digest.String()))
+			So(err, ShouldBeNil)
+			manifestPutURL.RawQuery = "tag=stable"
+
+			resp, err := userClient.R().
+				SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+				SetBody(manifestBlob).
+				Put(manifestPutURL.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+			resp, err = userClient.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/stable", testRepo))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Header().Get(constants.DistContentDigestKey), ShouldEqual, img.ManifestDescriptor.Digest.String())
+		})
+
+		Convey("Digest multi-tag push evaluates CEL for every existing query tag", func() {
+			testRepo := "digest-multitag-cel"
+
+			// Allow updates of any tag except stable.
+			conf.HTTP.AccessControl = &config.AccessControlConfig{
+				Repositories: config.Repositories{
+					testRepo: config.PolicyGroup{
+						Policies: []config.Policy{
+							{
+								Users: []string{username},
+								Actions: []string{
+									constants.ReadPermission,
+									constants.CreatePermission,
+									constants.UpdatePermission,
+								},
+								Conditions: []config.Condition{
+									{
+										Expression: `req.action != "update" || req.tag != "stable"`,
+										Message:    "stable tag is immutable",
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			dir := t.TempDir()
+			ctlr := api.NewController(conf)
+			ctlr.Config.Storage.RootDirectory = dir
+
+			cm := test.NewControllerManager(ctlr)
+			baseURL := cm.StartAndWait()
+			defer cm.StopServer()
+
+			userClient := resty.New()
+			userClient.SetBasicAuth(username, password)
+
+			img := CreateImageWith().
+				RandomLayers(1, 10).
+				RandomConfig().
+				Build()
+
+			err := UploadImageWithBasicAuth(img, baseURL, testRepo, "stable", username, password)
+			So(err, ShouldBeNil)
+			err = UploadImageWithBasicAuth(img, baseURL, testRepo, "dev", username, password)
+			So(err, ShouldBeNil)
+
+			imgUpdated := CreateImageWith().
+				RandomLayers(1, 14).
+				RandomConfig().
+				Build()
+
+			err = UploadImageWithBasicAuth(imgUpdated, baseURL, testRepo, "candidate", username, password)
+			So(err, ShouldBeNil)
+
+			manifestBlob, err := json.Marshal(imgUpdated.Manifest)
+			So(err, ShouldBeNil)
+
+			// Updating only dev should succeed.
+			devURL, err := url.Parse(baseURL + fmt.Sprintf("/v2/%s/manifests/%s",
+				testRepo, imgUpdated.ManifestDescriptor.Digest.String()))
+			So(err, ShouldBeNil)
+			devURL.RawQuery = "tag=dev"
+
+			resp, err := userClient.R().
+				SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+				SetBody(manifestBlob).
+				Put(devURL.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			// Including stable in the same request must fail even if dev is allowed.
+			bothURL, err := url.Parse(baseURL + fmt.Sprintf("/v2/%s/manifests/%s",
+				testRepo, imgUpdated.ManifestDescriptor.Digest.String()))
+			So(err, ShouldBeNil)
+			q := bothURL.Query()
+			q.Add("tag", "dev")
+			q.Add("tag", "stable")
+			bothURL.RawQuery = q.Encode()
+
+			resp, err = userClient.R().
+				SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+				SetBody(manifestBlob).
+				Put(bothURL.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+			resp, err = userClient.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/stable", testRepo))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Header().Get(constants.DistContentDigestKey), ShouldEqual, img.ManifestDescriptor.Digest.String())
+		})
+
+		Convey("Digest multi-tag mix of new and existing tags requires create and update", func() {
+			testRepo := "digest-mix-create-update"
+
+			adminUser, _ := test.GenerateRandomString()
+			adminPass, _ := test.GenerateRandomString()
+			adminUser = strings.ToLower(adminUser)
+
+			htpasswd := test.GetBcryptCredString(username, password) +
+				test.GetBcryptCredString(adminUser, adminPass)
+			conf.HTTP.Auth = &config.AuthConfig{
+				HTPasswd: config.AuthHTPasswd{
+					Path: test.MakeHtpasswdFileFromString(t, htpasswd),
+				},
+			}
+
+			// Writer is update-only; admin seeds existing tags with create.
+			conf.HTTP.AccessControl = &config.AccessControlConfig{
+				Repositories: config.Repositories{
+					testRepo: config.PolicyGroup{
+						Policies: []config.Policy{
+							{
+								Users: []string{username},
+								Actions: []string{
+									constants.ReadPermission,
+									constants.UpdatePermission,
+								},
+							},
+							{
+								Users: []string{adminUser},
+								Actions: []string{
+									constants.ReadPermission,
+									constants.CreatePermission,
+									constants.UpdatePermission,
+								},
+							},
+						},
+					},
+				},
+			}
+
+			dir := t.TempDir()
+			ctlr := api.NewController(conf)
+			ctlr.Config.Storage.RootDirectory = dir
+
+			cm := test.NewControllerManager(ctlr)
+			baseURL := cm.StartAndWait()
+			defer cm.StopServer()
+
+			img := CreateImageWith().
+				RandomLayers(1, 10).
+				RandomConfig().
+				Build()
+
+			err := UploadImageWithBasicAuth(img, baseURL, testRepo, "stable", adminUser, adminPass)
+			So(err, ShouldBeNil)
+
+			imgUpdated := CreateImageWith().
+				RandomLayers(1, 16).
+				RandomConfig().
+				Build()
+
+			err = UploadImageWithBasicAuth(imgUpdated, baseURL, testRepo, "candidate", adminUser, adminPass)
+			So(err, ShouldBeNil)
+
+			manifestBlob, err := json.Marshal(imgUpdated.Manifest)
+			So(err, ShouldBeNil)
+
+			mixURL, err := url.Parse(baseURL + fmt.Sprintf("/v2/%s/manifests/%s",
+				testRepo, imgUpdated.ManifestDescriptor.Digest.String()))
+			So(err, ShouldBeNil)
+			q := mixURL.Query()
+			q.Add("tag", "stable")
+			q.Add("tag", "brand-new")
+			mixURL.RawQuery = q.Encode()
+
+			userClient := resty.New()
+			userClient.SetBasicAuth(username, password)
+
+			resp, err := userClient.R().
+				SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+				SetBody(manifestBlob).
+				Put(mixURL.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+			resp, err = userClient.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/stable", testRepo))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Header().Get(constants.DistContentDigestKey), ShouldEqual, img.ManifestDescriptor.Digest.String())
+		})
+
+		Convey("Digest multi-tag mix fails for create-only writer", func() {
+			testRepo := "digest-mix-create-only"
+
+			adminUser, _ := test.GenerateRandomString()
+			adminPass, _ := test.GenerateRandomString()
+			adminUser = strings.ToLower(adminUser)
+
+			htpasswd := test.GetBcryptCredString(username, password) +
+				test.GetBcryptCredString(adminUser, adminPass)
+			conf.HTTP.Auth = &config.AuthConfig{
+				HTPasswd: config.AuthHTPasswd{
+					Path: test.MakeHtpasswdFileFromString(t, htpasswd),
+				},
+			}
+
+			conf.HTTP.AccessControl = &config.AccessControlConfig{
+				Repositories: config.Repositories{
+					testRepo: config.PolicyGroup{
+						Policies: []config.Policy{
+							{
+								Users: []string{username},
+								Actions: []string{
+									constants.ReadPermission,
+									constants.CreatePermission,
+								},
+							},
+							{
+								Users: []string{adminUser},
+								Actions: []string{
+									constants.ReadPermission,
+									constants.CreatePermission,
+									constants.UpdatePermission,
+								},
+							},
+						},
+					},
+				},
+			}
+
+			dir := t.TempDir()
+			ctlr := api.NewController(conf)
+			ctlr.Config.Storage.RootDirectory = dir
+
+			cm := test.NewControllerManager(ctlr)
+			baseURL := cm.StartAndWait()
+			defer cm.StopServer()
+
+			img := CreateImageWith().
+				RandomLayers(1, 10).
+				RandomConfig().
+				Build()
+
+			err := UploadImageWithBasicAuth(img, baseURL, testRepo, "stable", adminUser, adminPass)
+			So(err, ShouldBeNil)
+
+			imgUpdated := CreateImageWith().
+				RandomLayers(1, 17).
+				RandomConfig().
+				Build()
+
+			err = UploadImageWithBasicAuth(imgUpdated, baseURL, testRepo, "candidate", adminUser, adminPass)
+			So(err, ShouldBeNil)
+
+			manifestBlob, err := json.Marshal(imgUpdated.Manifest)
+			So(err, ShouldBeNil)
+
+			mixURL, err := url.Parse(baseURL + fmt.Sprintf("/v2/%s/manifests/%s",
+				testRepo, imgUpdated.ManifestDescriptor.Digest.String()))
+			So(err, ShouldBeNil)
+			q := mixURL.Query()
+			q.Add("tag", "stable")
+			q.Add("tag", "brand-new")
+			mixURL.RawQuery = q.Encode()
+
+			userClient := resty.New()
+			userClient.SetBasicAuth(username, password)
+
+			resp, err := userClient.R().
+				SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+				SetBody(manifestBlob).
+				Put(mixURL.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+			resp, err = userClient.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/stable", testRepo))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Header().Get(constants.DistContentDigestKey), ShouldEqual, img.ManifestDescriptor.Digest.String())
+		})
+
+		Convey("Digest multi-tag mix succeeds with create and update", func() {
+			testRepo := "digest-mix-both"
+
+			conf.HTTP.AccessControl = &config.AccessControlConfig{
+				Repositories: config.Repositories{
+					testRepo: config.PolicyGroup{
+						Policies: []config.Policy{
+							{
+								Users: []string{username},
+								Actions: []string{
+									constants.ReadPermission,
+									constants.CreatePermission,
+									constants.UpdatePermission,
+								},
+							},
+						},
+					},
+				},
+			}
+
+			dir := t.TempDir()
+			ctlr := api.NewController(conf)
+			ctlr.Config.Storage.RootDirectory = dir
+
+			cm := test.NewControllerManager(ctlr)
+			baseURL := cm.StartAndWait()
+			defer cm.StopServer()
+
+			img := CreateImageWith().
+				RandomLayers(1, 10).
+				RandomConfig().
+				Build()
+
+			err := UploadImageWithBasicAuth(img, baseURL, testRepo, "stable", username, password)
+			So(err, ShouldBeNil)
+
+			imgUpdated := CreateImageWith().
+				RandomLayers(1, 19).
+				RandomConfig().
+				Build()
+
+			err = UploadImageWithOpts(imgUpdated, baseURL, testRepo, imgUpdated.ManifestDescriptor.Digest.String(),
+				WithBasicAuth(username, password), WithExtraTags("stable", "brand-new"))
+			So(err, ShouldBeNil)
+
+			userClient := resty.New()
+			userClient.SetBasicAuth(username, password)
+
+			for _, tag := range []string{"stable", "brand-new"} {
+				resp, err := userClient.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", testRepo, tag))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+				So(resp.Header().Get(constants.DistContentDigestKey),
+					ShouldEqual, imgUpdated.ManifestDescriptor.Digest.String())
+			}
+		})
+
+		Convey("Digest overwrite of existing tag succeeds with update-only permission", func() {
+			testRepo := "digest-update-only"
+
+			adminUser, _ := test.GenerateRandomString()
+			adminPass, _ := test.GenerateRandomString()
+			adminUser = strings.ToLower(adminUser)
+
+			htpasswd := test.GetBcryptCredString(username, password) +
+				test.GetBcryptCredString(adminUser, adminPass)
+			conf.HTTP.Auth = &config.AuthConfig{
+				HTPasswd: config.AuthHTPasswd{
+					Path: test.MakeHtpasswdFileFromString(t, htpasswd),
+				},
+			}
+
+			conf.HTTP.AccessControl = &config.AccessControlConfig{
+				Repositories: config.Repositories{
+					testRepo: config.PolicyGroup{
+						Policies: []config.Policy{
+							{
+								Users: []string{username},
+								Actions: []string{
+									constants.ReadPermission,
+									constants.UpdatePermission,
+								},
+							},
+							{
+								Users: []string{adminUser},
+								Actions: []string{
+									constants.ReadPermission,
+									constants.CreatePermission,
+									constants.UpdatePermission,
+								},
+							},
+						},
+					},
+				},
+			}
+
+			dir := t.TempDir()
+			ctlr := api.NewController(conf)
+			ctlr.Config.Storage.RootDirectory = dir
+
+			cm := test.NewControllerManager(ctlr)
+			baseURL := cm.StartAndWait()
+			defer cm.StopServer()
+
+			img := CreateImageWith().
+				RandomLayers(1, 10).
+				RandomConfig().
+				Build()
+
+			err := UploadImageWithBasicAuth(img, baseURL, testRepo, "stable", adminUser, adminPass)
+			So(err, ShouldBeNil)
+
+			imgUpdated := CreateImageWith().
+				RandomLayers(1, 21).
+				RandomConfig().
+				Build()
+
+			// Seed blobs under a throwaway tag; update-only writer then retags via digest?tag=.
+			err = UploadImageWithBasicAuth(imgUpdated, baseURL, testRepo, "candidate", adminUser, adminPass)
+			So(err, ShouldBeNil)
+
+			manifestBlob, err := json.Marshal(imgUpdated.Manifest)
+			So(err, ShouldBeNil)
+
+			overwriteURL, err := url.Parse(baseURL + fmt.Sprintf("/v2/%s/manifests/%s",
+				testRepo, imgUpdated.ManifestDescriptor.Digest.String()))
+			So(err, ShouldBeNil)
+			overwriteURL.RawQuery = "tag=stable"
+
+			userClient := resty.New()
+			userClient.SetBasicAuth(username, password)
+
+			resp, err := userClient.R().
+				SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+				SetBody(manifestBlob).
+				Put(overwriteURL.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			resp, err = userClient.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/stable", testRepo))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Header().Get(constants.DistContentDigestKey),
+				ShouldEqual, imgUpdated.ManifestDescriptor.Digest.String())
 		})
 	})
 }
