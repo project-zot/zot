@@ -1174,11 +1174,11 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 	// MetaDB loaded with initial data, now mock the scanner
 	// Setup test CVE data in mock scanner
 	scanner := mocks.CveScannerMock{
-		ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
+		ScanImageFn: func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
 			repo, ref, _, _ := common.GetRepoReference(image)
 
 			if common.IsDigest(ref) {
-				return getCveResults(ref), nil
+				return cvemodel.ScanResult{CVEMap: getCveResults(ref)}, nil
 			}
 
 			repoMeta, _ := metaDB.GetRepoMeta(ctx, repo)
@@ -1187,7 +1187,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				panic("unexpected tag '" + ref + "', test might be wrong")
 			}
 
-			return getCveResults(repoMeta.Tags[ref].Digest), nil
+			return cvemodel.ScanResult{CVEMap: getCveResults(repoMeta.Tags[ref].Digest)}, nil
 		},
 		GetCachedResultFn: func(digestStr string) map[string]cvemodel.CVE {
 			return getCveResults(digestStr)
@@ -1444,8 +1444,8 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			canceledScanner := scanner
 
-			canceledScanner.ScanImageFn = func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
-				return nil, ctx.Err()
+			canceledScanner.ScanImageFn = func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
+				return cvemodel.ScanResult{}, ctx.Err()
 			}
 
 			cveInfo.Scanner = canceledScanner
@@ -2037,11 +2037,11 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 		// MetaDB loaded with initial data, now mock the scanner
 		// Setup test CVE data in mock scanner
 		scanner := mocks.CveScannerMock{
-			ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
+			ScanImageFn: func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
 				repo, ref, _, _ := common.GetRepoReference(image)
 
 				if common.IsDigest(ref) {
-					return getCveResults(ref), nil
+					return cvemodel.ScanResult{CVEMap: getCveResults(ref)}, nil
 				}
 
 				repoMeta, _ := metaDB.GetRepoMeta(ctx, repo)
@@ -2050,7 +2050,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 					panic("unexpected tag '" + ref + "', test might be wrong")
 				}
 
-				return getCveResults(repoMeta.Tags[ref].Digest), nil
+				return cvemodel.ScanResult{CVEMap: getCveResults(repoMeta.Tags[ref].Digest)}, nil
 			},
 			GetCachedResultFn: func(digestStr string) map[string]cvemodel.CVE {
 				return getCveResults(digestStr)

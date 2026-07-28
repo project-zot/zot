@@ -296,60 +296,6 @@ func TestStorageNew(t *testing.T) {
 	})
 }
 
-type captureImageEvents struct {
-	mu              sync.Mutex
-	imageUpdated    []imageUpdatedCall
-	imageDeleted    []imageDeletedCall
-	imageLintFailed []imageLintFailedCall
-}
-
-type imageUpdatedCall struct {
-	repo, reference, digest, mediaType, manifest string
-}
-
-type imageDeletedCall struct {
-	repo, reference, digest, mediaType string
-}
-
-type imageLintFailedCall struct {
-	repo, reference, digest, mediaType, manifest string
-}
-
-func (c *captureImageEvents) Close() {}
-
-func (c *captureImageEvents) RepositoryCreated(string, *events.EventContext) {}
-
-func (c *captureImageEvents) ImageUpdated(name, reference, digest, mediaType, manifest string,
-	ectx *events.EventContext,
-) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.imageUpdated = append(c.imageUpdated, imageUpdatedCall{
-		repo: name, reference: reference, digest: digest, mediaType: mediaType, manifest: manifest,
-	})
-}
-
-func (c *captureImageEvents) ImageDeleted(name, reference, digest, mediaType string, ectx *events.EventContext) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.imageDeleted = append(c.imageDeleted, imageDeletedCall{
-		repo: name, reference: reference, digest: digest, mediaType: mediaType,
-	})
-}
-
-func (c *captureImageEvents) ImageLintFailed(name, reference, digest, mediaType, manifest string,
-	ectx *events.EventContext,
-) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.imageLintFailed = append(c.imageLintFailed, imageLintFailedCall{
-		repo: name, reference: reference, digest: digest, mediaType: mediaType, manifest: manifest,
-	})
-}
-
 // TestPutImageManifestExtraTagsAndEvents covers extra-tag digest pushes, index updates, and ImageUpdated events.
 // One Convey uses createObjectsStore (nil recorder); the rest use newLocalImageStoreWithEventRecorder.
 func TestPutImageManifestExtraTagsAndEvents(t *testing.T) {
@@ -426,7 +372,7 @@ func TestPutImageManifestExtraTagsAndEvents(t *testing.T) {
 	})
 
 	Convey("digest push with multiple extra tags applies tags, emits ImageUpdated per tag, idempotent replay", t, func() {
-		eventCapture := &captureImageEvents{}
+		eventCapture := &mocks.EventRecorderMock{}
 		imgStore := newLocalImageStoreWithEventRecorder(t, eventCapture)
 
 		repo := "mquery"
@@ -472,36 +418,36 @@ func TestPutImageManifestExtraTagsAndEvents(t *testing.T) {
 			So(slices.Contains(tags, qt), ShouldBeTrue)
 		}
 
-		eventCapture.mu.Lock()
-		So(len(eventCapture.imageUpdated), ShouldEqual, 3)
+		eventCapture.Lock()
+		So(len(eventCapture.ImageUpdatedCalls), ShouldEqual, 3)
 
 		wantRefs := map[string]struct{}{"v1.2.3": {}, "v1.2": {}, "latest": {}}
 
-		for _, imageUpd := range eventCapture.imageUpdated {
-			So(imageUpd.repo, ShouldEqual, repo)
-			So(imageUpd.digest, ShouldEqual, manifestDigest.String())
-			So(imageUpd.mediaType, ShouldEqual, ispec.MediaTypeImageManifest)
-			So(imageUpd.manifest, ShouldEqual, string(manifestBuf))
-			_, ok := wantRefs[imageUpd.reference]
+		for _, imageUpd := range eventCapture.ImageUpdatedCalls {
+			So(imageUpd.Name, ShouldEqual, repo)
+			So(imageUpd.Digest, ShouldEqual, manifestDigest.String())
+			So(imageUpd.MediaType, ShouldEqual, ispec.MediaTypeImageManifest)
+			So(imageUpd.Manifest, ShouldEqual, string(manifestBuf))
+			_, ok := wantRefs[imageUpd.Reference]
 			So(ok, ShouldBeTrue)
 
-			delete(wantRefs, imageUpd.reference)
+			delete(wantRefs, imageUpd.Reference)
 		}
 
 		So(len(wantRefs), ShouldEqual, 0)
-		eventCapture.mu.Unlock()
+		eventCapture.Unlock()
 
 		_, _, err = imgStore.PutImageManifest(context.Background(), repo, manifestDigest.String(),
 			ispec.MediaTypeImageManifest, manifestBuf, extraTags)
 		So(err, ShouldBeNil)
 
-		eventCapture.mu.Lock()
-		So(len(eventCapture.imageUpdated), ShouldEqual, 3)
-		eventCapture.mu.Unlock()
+		eventCapture.Lock()
+		So(len(eventCapture.ImageUpdatedCalls), ShouldEqual, 3)
+		eventCapture.Unlock()
 	})
 
 	Convey("digest push then digest+tags removes untagged index row for that digest", t, func() {
-		eventCapture := &captureImageEvents{}
+		eventCapture := &mocks.EventRecorderMock{}
 		imgStore := newLocalImageStoreWithEventRecorder(t, eventCapture)
 
 		repo := "strip-untagged"
@@ -535,12 +481,12 @@ func TestPutImageManifestExtraTagsAndEvents(t *testing.T) {
 			ispec.MediaTypeImageManifest, manifestBuf, nil)
 		So(err, ShouldBeNil)
 
-		eventCapture.mu.Lock()
-		So(len(eventCapture.imageUpdated), ShouldEqual, 1)
-		So(eventCapture.imageUpdated[0].repo, ShouldEqual, repo)
-		So(eventCapture.imageUpdated[0].reference, ShouldEqual, manifestDigest.String())
-		So(eventCapture.imageUpdated[0].digest, ShouldEqual, manifestDigest.String())
-		eventCapture.mu.Unlock()
+		eventCapture.Lock()
+		So(len(eventCapture.ImageUpdatedCalls), ShouldEqual, 1)
+		So(eventCapture.ImageUpdatedCalls[0].Name, ShouldEqual, repo)
+		So(eventCapture.ImageUpdatedCalls[0].Reference, ShouldEqual, manifestDigest.String())
+		So(eventCapture.ImageUpdatedCalls[0].Digest, ShouldEqual, manifestDigest.String())
+		eventCapture.Unlock()
 
 		So(countUntaggedIndexEntriesForDigest(t, imgStore, repo, manifestDigest), ShouldEqual, 1)
 
@@ -550,11 +496,11 @@ func TestPutImageManifestExtraTagsAndEvents(t *testing.T) {
 			ispec.MediaTypeImageManifest, manifestBuf, extraTags)
 		So(err, ShouldBeNil)
 
-		eventCapture.mu.Lock()
-		So(len(eventCapture.imageUpdated), ShouldEqual, 2)
-		So(eventCapture.imageUpdated[1].reference, ShouldEqual, "after-tag")
-		So(eventCapture.imageUpdated[1].digest, ShouldEqual, manifestDigest.String())
-		eventCapture.mu.Unlock()
+		eventCapture.Lock()
+		So(len(eventCapture.ImageUpdatedCalls), ShouldEqual, 2)
+		So(eventCapture.ImageUpdatedCalls[1].Reference, ShouldEqual, "after-tag")
+		So(eventCapture.ImageUpdatedCalls[1].Digest, ShouldEqual, manifestDigest.String())
+		eventCapture.Unlock()
 
 		So(countUntaggedIndexEntriesForDigest(t, imgStore, repo, manifestDigest), ShouldEqual, 0)
 
@@ -564,7 +510,7 @@ func TestPutImageManifestExtraTagsAndEvents(t *testing.T) {
 	})
 
 	Convey("digest push with tag subset is no-op for index and events; new tag adds one event", t, func() {
-		eventCapture := &captureImageEvents{}
+		eventCapture := &mocks.EventRecorderMock{}
 		imgStore := newLocalImageStoreWithEventRecorder(t, eventCapture)
 
 		repo := "tag-subset"
@@ -606,9 +552,9 @@ func TestPutImageManifestExtraTagsAndEvents(t *testing.T) {
 			So(slices.Contains(tags, qt), ShouldBeTrue)
 		}
 
-		eventCapture.mu.Lock()
-		So(len(eventCapture.imageUpdated), ShouldEqual, 3)
-		eventCapture.mu.Unlock()
+		eventCapture.Lock()
+		So(len(eventCapture.ImageUpdatedCalls), ShouldEqual, 3)
+		eventCapture.Unlock()
 
 		_, _, err = imgStore.PutImageManifest(context.Background(), repo, manifestDigest.String(),
 			ispec.MediaTypeImageManifest, manifestBuf, []string{"tag-b"})
@@ -621,9 +567,9 @@ func TestPutImageManifestExtraTagsAndEvents(t *testing.T) {
 			So(slices.Contains(tags, qt), ShouldBeTrue)
 		}
 
-		eventCapture.mu.Lock()
-		So(len(eventCapture.imageUpdated), ShouldEqual, 3)
-		eventCapture.mu.Unlock()
+		eventCapture.Lock()
+		So(len(eventCapture.ImageUpdatedCalls), ShouldEqual, 3)
+		eventCapture.Unlock()
 
 		_, _, err = imgStore.PutImageManifest(context.Background(), repo, manifestDigest.String(),
 			ispec.MediaTypeImageManifest, manifestBuf, []string{"tag-d"})
@@ -637,18 +583,18 @@ func TestPutImageManifestExtraTagsAndEvents(t *testing.T) {
 			So(slices.Contains(tags, qt), ShouldBeTrue)
 		}
 
-		eventCapture.mu.Lock()
-		So(len(eventCapture.imageUpdated), ShouldEqual, 4)
-		So(eventCapture.imageUpdated[3].reference, ShouldEqual, "tag-d")
-		So(eventCapture.imageUpdated[3].digest, ShouldEqual, manifestDigest.String())
-		So(eventCapture.imageUpdated[3].manifest, ShouldEqual, string(manifestBuf))
-		eventCapture.mu.Unlock()
+		eventCapture.Lock()
+		So(len(eventCapture.ImageUpdatedCalls), ShouldEqual, 4)
+		So(eventCapture.ImageUpdatedCalls[3].Reference, ShouldEqual, "tag-d")
+		So(eventCapture.ImageUpdatedCalls[3].Digest, ShouldEqual, manifestDigest.String())
+		So(eventCapture.ImageUpdatedCalls[3].Manifest, ShouldEqual, string(manifestBuf))
+		eventCapture.Unlock()
 	})
 }
 
 func TestDeleteImageManifestEvents(t *testing.T) {
 	Convey("delete by tag emits ImageDeleted with manifest digest and tag reference", t, func() {
-		eventCapture := &captureImageEvents{}
+		eventCapture := &mocks.EventRecorderMock{}
 		imgStore := newLocalImageStoreWithEventRecorder(t, eventCapture)
 
 		repo := "delrepo"
@@ -685,17 +631,17 @@ func TestDeleteImageManifestEvents(t *testing.T) {
 		err = imgStore.DeleteImageManifest(context.Background(), repo, tag, false)
 		So(err, ShouldBeNil)
 
-		eventCapture.mu.Lock()
-		So(len(eventCapture.imageDeleted), ShouldEqual, 1)
-		So(eventCapture.imageDeleted[0].repo, ShouldEqual, repo)
-		So(eventCapture.imageDeleted[0].reference, ShouldEqual, tag)
-		So(eventCapture.imageDeleted[0].digest, ShouldEqual, manifestDigest.String())
-		So(eventCapture.imageDeleted[0].mediaType, ShouldEqual, ispec.MediaTypeImageManifest)
-		eventCapture.mu.Unlock()
+		eventCapture.Lock()
+		So(len(eventCapture.ImageDeletedCalls), ShouldEqual, 1)
+		So(eventCapture.ImageDeletedCalls[0].Name, ShouldEqual, repo)
+		So(eventCapture.ImageDeletedCalls[0].Reference, ShouldEqual, tag)
+		So(eventCapture.ImageDeletedCalls[0].Digest, ShouldEqual, manifestDigest.String())
+		So(eventCapture.ImageDeletedCalls[0].MediaType, ShouldEqual, ispec.MediaTypeImageManifest)
+		eventCapture.Unlock()
 	})
 
 	Convey("delete by digest emits ImageDeleted with digest reference", t, func() {
-		eventCapture := &captureImageEvents{}
+		eventCapture := &mocks.EventRecorderMock{}
 		imgStore := newLocalImageStoreWithEventRecorder(t, eventCapture)
 
 		repo := "delrepo-digest"
@@ -731,16 +677,16 @@ func TestDeleteImageManifestEvents(t *testing.T) {
 		err = imgStore.DeleteImageManifest(context.Background(), repo, manifestDigest.String(), false)
 		So(err, ShouldBeNil)
 
-		eventCapture.mu.Lock()
-		So(len(eventCapture.imageDeleted), ShouldEqual, 1)
-		So(eventCapture.imageDeleted[0].repo, ShouldEqual, repo)
-		So(eventCapture.imageDeleted[0].reference, ShouldEqual, manifestDigest.String())
-		So(eventCapture.imageDeleted[0].digest, ShouldEqual, manifestDigest.String())
-		eventCapture.mu.Unlock()
+		eventCapture.Lock()
+		So(len(eventCapture.ImageDeletedCalls), ShouldEqual, 1)
+		So(eventCapture.ImageDeletedCalls[0].Name, ShouldEqual, repo)
+		So(eventCapture.ImageDeletedCalls[0].Reference, ShouldEqual, manifestDigest.String())
+		So(eventCapture.ImageDeletedCalls[0].Digest, ShouldEqual, manifestDigest.String())
+		eventCapture.Unlock()
 	})
 
 	Convey("delete of missing reference does not emit ImageDeleted", t, func() {
-		eventCapture := &captureImageEvents{}
+		eventCapture := &mocks.EventRecorderMock{}
 		imgStore := newLocalImageStoreWithEventRecorder(t, eventCapture)
 
 		repo := "delrepo-missing"
@@ -775,9 +721,9 @@ func TestDeleteImageManifestEvents(t *testing.T) {
 		err = imgStore.DeleteImageManifest(context.Background(), repo, "missing", false)
 		So(err, ShouldNotBeNil)
 
-		eventCapture.mu.Lock()
-		So(len(eventCapture.imageDeleted), ShouldEqual, 0)
-		eventCapture.mu.Unlock()
+		eventCapture.Lock()
+		So(len(eventCapture.ImageDeletedCalls), ShouldEqual, 0)
+		eventCapture.Unlock()
 	})
 }
 
@@ -818,7 +764,7 @@ func TestImageLintFailedEvents(t *testing.T) {
 	}
 
 	Convey("tag push that fails lint emits ImageLintFailed for the tag reference", t, func() {
-		eventCapture := &captureImageEvents{}
+		eventCapture := &mocks.EventRecorderMock{}
 		imgStore := newLocalImageStoreWithEventRecorderAndLinter(t, eventCapture, failingLinter)
 
 		repo := "lintrepo"
@@ -828,17 +774,17 @@ func TestImageLintFailedEvents(t *testing.T) {
 			ispec.MediaTypeImageManifest, manifestBuf, nil)
 		So(err, ShouldNotBeNil)
 
-		eventCapture.mu.Lock()
-		So(len(eventCapture.imageLintFailed), ShouldEqual, 1)
-		So(eventCapture.imageLintFailed[0].repo, ShouldEqual, repo)
-		So(eventCapture.imageLintFailed[0].reference, ShouldEqual, "v1")
-		So(eventCapture.imageLintFailed[0].digest, ShouldEqual, manifestDigest.String())
-		So(eventCapture.imageLintFailed[0].mediaType, ShouldEqual, ispec.MediaTypeImageManifest)
-		eventCapture.mu.Unlock()
+		eventCapture.Lock()
+		So(len(eventCapture.ImageLintFailedCalls), ShouldEqual, 1)
+		So(eventCapture.ImageLintFailedCalls[0].Name, ShouldEqual, repo)
+		So(eventCapture.ImageLintFailedCalls[0].Reference, ShouldEqual, "v1")
+		So(eventCapture.ImageLintFailedCalls[0].Digest, ShouldEqual, manifestDigest.String())
+		So(eventCapture.ImageLintFailedCalls[0].MediaType, ShouldEqual, ispec.MediaTypeImageManifest)
+		eventCapture.Unlock()
 	})
 
 	Convey("digest push with extra tags that fails lint emits a single ImageLintFailed", t, func() {
-		eventCapture := &captureImageEvents{}
+		eventCapture := &mocks.EventRecorderMock{}
 		imgStore := newLocalImageStoreWithEventRecorderAndLinter(t, eventCapture, failingLinter)
 
 		repo := "lintrepo-multi"
@@ -850,13 +796,13 @@ func TestImageLintFailedEvents(t *testing.T) {
 			ispec.MediaTypeImageManifest, manifestBuf, extraTags)
 		So(err, ShouldNotBeNil)
 
-		eventCapture.mu.Lock()
+		eventCapture.Lock()
 		// lint is a property of the manifest, not the tag(s), so only one event is emitted.
-		So(len(eventCapture.imageLintFailed), ShouldEqual, 1)
-		So(eventCapture.imageLintFailed[0].repo, ShouldEqual, repo)
-		So(eventCapture.imageLintFailed[0].digest, ShouldEqual, manifestDigest.String())
-		So(eventCapture.imageLintFailed[0].reference, ShouldEqual, extraTags[0])
-		eventCapture.mu.Unlock()
+		So(len(eventCapture.ImageLintFailedCalls), ShouldEqual, 1)
+		So(eventCapture.ImageLintFailedCalls[0].Name, ShouldEqual, repo)
+		So(eventCapture.ImageLintFailedCalls[0].Digest, ShouldEqual, manifestDigest.String())
+		So(eventCapture.ImageLintFailedCalls[0].Reference, ShouldEqual, extraTags[0])
+		eventCapture.Unlock()
 	})
 }
 

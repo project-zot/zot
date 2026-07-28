@@ -313,11 +313,11 @@ func TestCVEDiffList(t *testing.T) {
 	// MetaDB loaded with initial data, now mock the scanner
 	// Setup test CVE data in mock scanner
 	scanner := mocks.CveScannerMock{
-		ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
+		ScanImageFn: func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
 			repo, ref, _, _ := zcommon.GetRepoReference(image)
 
 			if zcommon.IsDigest(ref) {
-				return getCveResults(ref), nil
+				return cvemodel.ScanResult{CVEMap: getCveResults(ref)}, nil
 			}
 
 			repoMeta, _ := ctlr.MetaDB.GetRepoMeta(ctx, repo)
@@ -326,7 +326,7 @@ func TestCVEDiffList(t *testing.T) {
 				panic("unexpected tag '" + ref + "', test might be wrong")
 			}
 
-			return getCveResults(repoMeta.Tags[ref].Digest), nil
+			return cvemodel.ScanResult{CVEMap: getCveResults(repoMeta.Tags[ref].Digest)}, nil
 		},
 		GetCachedResultFn: func(digestStr string) map[string]cvemodel.CVE {
 			return getCveResults(digestStr)
@@ -898,8 +898,8 @@ func TestCVESort(t *testing.T) {
 	}
 
 	ctlr.CveScanner = mocks.CveScannerMock{
-		ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
-			return map[string]cvemodel.CVE{
+		ScanImageFn: func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
+			return cvemodel.ScanResult{CVEMap: map[string]cvemodel.CVE{
 				"CVE-2023-1255": {
 					ID:       "CVE-2023-1255",
 					Severity: "LOW",
@@ -925,7 +925,7 @@ func TestCVESort(t *testing.T) {
 					Severity: "MEDIUM",
 					Title:    "Excessive time spent checking DH q parameter and arguments",
 				},
-			}, nil
+			}}, nil
 		},
 	}
 
@@ -1032,10 +1032,10 @@ func getMockCveScanner(metaDB mTypes.MetaDB) cveinfo.Scanner {
 	// MetaDB loaded with initial data now mock the scanner
 	// Setup test CVE data in mock scanner
 	scanner := mocks.CveScannerMock{
-		ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
+		ScanImageFn: func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
 			if strings.Contains(image, "zot-cve-test@sha256:db573b01") ||
 				image == "zot-cve-test:0.0.1" {
-				return map[string]cvemodel.CVE{
+				return cvemodel.ScanResult{CVEMap: map[string]cvemodel.CVE{
 					"CVE-1": {
 						ID:          "CVE-1",
 						Severity:    "CRITICAL",
@@ -1066,11 +1066,11 @@ func getMockCveScanner(metaDB mTypes.MetaDB) cveinfo.Scanner {
 						Title:       "Title for CVE-5",
 						Description: "Description of CVE-5",
 					},
-				}, nil
+				}}, nil
 			}
 
 			// By default the image has no vulnerabilities
-			return map[string]cvemodel.CVE{}, nil
+			return cvemodel.ScanResult{CVEMap: map[string]cvemodel.CVE{}}, nil
 		},
 		IsImageFormatScannableFn: func(repo string, reference string) (bool, error) {
 			// Almost same logic compared to actual Trivy specific implementation

@@ -72,7 +72,7 @@ func TestCVEPagination(t *testing.T) {
 
 		// Setup test CVE data in mock scanner
 		scanner := mocks.CveScannerMock{
-			ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
+			ScanImageFn: func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
 				cveMap := map[string]cvemodel.CVE{}
 
 				if image == "repo1:0.1.0" {
@@ -98,7 +98,7 @@ func TestCVEPagination(t *testing.T) {
 				}
 
 				// By default the image has no vulnerabilities
-				return cveMap, nil
+				return cvemodel.ScanResult{CVEMap: cveMap}, nil
 			},
 		}
 
