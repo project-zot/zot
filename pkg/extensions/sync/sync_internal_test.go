@@ -17,6 +17,8 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1996,5 +1998,211 @@ func TestHTTPRetryDelayBounds(t *testing.T) {
 			So(delayInit, ShouldEqual, retryDelay)
 			So(delayMax, ShouldEqual, maxRetryDelay)
 		})
+	})
+}
+
+func TestRefreshRegistryTemporaryCredentialsConcurrent(t *testing.T) {
+	Convey("Concurrent on-demand credential refresh must not race on the credentials map", t, func() {
+		logger := log.NewTestLogger()
+
+		service := &BaseService{
+			config: syncconf.RegistryConfig{
+				URLs: []string{
+					"https://111111111111.dkr.ecr.us-east-1.amazonaws.com",
+					"https://222222222222.dkr.ecr.us-east-1.amazonaws.com",
+					"https://333333333333.dkr.ecr.us-east-1.amazonaws.com",
+					"https://444444444444.dkr.ecr.us-east-1.amazonaws.com",
+				},
+				CredentialHelper: "ecr",
+			},
+			credentials:      syncconf.CredentialsFile{},
+			credentialHelper: NewECRCredentialHelper(logger, GetMockECRCredentials),
+			log:              logger,
+		}
+
+		So(service.init(), ShouldBeNil)
+		So(len(service.hosts), ShouldEqual, len(service.config.URLs))
+
+		var (
+			wg          sync.WaitGroup
+			errMu       sync.Mutex
+			refreshErrs []error
+		)
+
+		for range 10 {
+			wg.Add(1)
+
+			go func() {
+				defer wg.Done()
+
+				for range 3 {
+					if err := service.refreshRegistryTemporaryCredentials(); err != nil {
+						errMu.Lock()
+						refreshErrs = append(refreshErrs, err)
+						errMu.Unlock()
+					}
+				}
+			}()
+		}
+
+		wg.Wait()
+
+		So(refreshErrs, ShouldBeEmpty)
+		So(len(service.credentials), ShouldEqual, len(service.hosts))
+
+		// Credentials are still valid after the concurrent refresh wave, so further
+		// calls must be a no-op (no client reinit failure path, no map growth).
+		So(service.refreshRegistryTemporaryCredentials(), ShouldBeNil)
+		So(len(service.credentials), ShouldEqual, len(service.hosts))
+	})
+
+	Convey("Nil credential helper is a no-op even when CredentialHelper is set", t, func() {
+		service := &BaseService{
+			config: syncconf.RegistryConfig{
+				URLs:             []string{"https://111111111111.dkr.ecr.us-east-1.amazonaws.com"},
+				CredentialHelper: "ecr",
+			},
+			credentials: syncconf.CredentialsFile{},
+			log:         log.NewTestLogger(),
+		}
+
+		So(service.init(), ShouldBeNil)
+		So(service.refreshRegistryTemporaryCredentials(), ShouldBeNil)
+		So(len(service.credentials), ShouldEqual, 0)
+	})
+}
+
+// stubCredentialHelper is a test double for refreshRegistryTemporaryCredentials branches.
+type stubCredentialHelper struct {
+	validFn    func(url string) bool
+	refreshErr error
+	username   string
+	password   string
+}
+
+func (helper *stubCredentialHelper) AreCredentialsValid(url string) bool {
+	if helper.validFn != nil {
+		return helper.validFn(url)
+	}
+
+	return false
+}
+
+func (helper *stubCredentialHelper) GetCredentials(urls []string) (syncconf.CredentialsFile, error) {
+	return syncconf.CredentialsFile{}, nil
+}
+
+func (helper *stubCredentialHelper) RefreshCredentials(url string) (syncconf.Credentials, error) {
+	if helper.refreshErr != nil {
+		return syncconf.Credentials{}, helper.refreshErr
+	}
+
+	username := helper.username
+	if username == "" {
+		username = "user"
+	}
+
+	password := helper.password
+	if password == "" {
+		password = "token"
+	}
+
+	return syncconf.Credentials{Username: username, Password: password}, nil
+}
+
+func TestRefreshRegistryTemporaryCredentialsBranches(t *testing.T) {
+	Convey("refreshRegistryTemporaryCredentials branch coverage", t, func() {
+		newService := func(helper CredentialHelper) *BaseService {
+			service := &BaseService{
+				config: syncconf.RegistryConfig{
+					URLs:             []string{"https://111111111111.dkr.ecr.us-east-1.amazonaws.com"},
+					CredentialHelper: "ecr",
+				},
+				credentials:      syncconf.CredentialsFile{},
+				credentialHelper: helper,
+				log:              log.NewTestLogger(),
+			}
+
+			So(service.init(), ShouldBeNil)
+
+			return service
+		}
+
+		Convey("Empty CredentialHelper name is a no-op even with a non-nil helper", func() {
+			helper := &stubCredentialHelper{}
+			service := newService(helper)
+			service.config.CredentialHelper = ""
+
+			So(service.refreshRegistryTemporaryCredentials(), ShouldBeNil)
+			So(len(service.credentials), ShouldEqual, 0)
+		})
+
+		Convey("A failed RefreshCredentials leaves the credentials map unchanged", func() {
+			helper := &stubCredentialHelper{refreshErr: errors.New("refresh failed")}
+			service := newService(helper)
+
+			So(service.refreshRegistryTemporaryCredentials(), ShouldBeNil)
+			So(len(service.credentials), ShouldEqual, 0)
+		})
+
+		Convey("Credentials that become valid under the write lock skip reinit", func() {
+			// First AreCredentialsValid (RLock fast path) is false so we take the write lock;
+			// the re-check under the write lock is true, so nothing is updated and initClient
+			// is skipped.
+			var checks atomic.Int64
+			helper := &stubCredentialHelper{
+				validFn: func(string) bool {
+					return checks.Add(1) > 1
+				},
+			}
+			service := newService(helper)
+
+			So(service.refreshRegistryTemporaryCredentials(), ShouldBeNil)
+			So(len(service.credentials), ShouldEqual, 0)
+			So(checks.Load(), ShouldBeGreaterThanOrEqualTo, int64(2))
+		})
+
+		Convey("initClient failure after a successful refresh is returned to the caller", func() {
+			brokenCertDir := path.Join(t.TempDir(), "certs")
+			So(os.WriteFile(brokenCertDir, []byte("not a directory"), 0o600), ShouldBeNil)
+
+			helper := &stubCredentialHelper{username: "user", password: "refreshed"}
+			service := newService(helper)
+			service.config.CertDir = brokenCertDir
+
+			err := service.refreshRegistryTemporaryCredentials()
+			So(err, ShouldNotBeNil)
+			So(service.credentials[service.hosts[0].Hostname].Password, ShouldEqual, "refreshed")
+		})
+	})
+}
+
+func TestECRRefreshCredentialsPersistsExpiry(t *testing.T) {
+	Convey("ECR RefreshCredentials stores expiry so credentials become valid", t, func() {
+		remoteAddress := "111111111111.dkr.ecr.us-east-1.amazonaws.com"
+		helper := NewECRCredentialHelper(log.NewTestLogger(), GetMockECRCredentials)
+
+		So(helper.AreCredentialsValid(remoteAddress), ShouldBeFalse)
+
+		creds, err := helper.RefreshCredentials(remoteAddress)
+		So(err, ShouldBeNil)
+		So(creds.Username, ShouldEqual, "mockUsername")
+		So(helper.AreCredentialsValid(remoteAddress), ShouldBeTrue)
+
+		// GetCredentials also populates the helper map under its mutex.
+		file, err := helper.GetCredentials([]string{"https://" + remoteAddress})
+		So(err, ShouldBeNil)
+		So(file[remoteAddress].Username, ShouldEqual, "mockUsername")
+		So(helper.AreCredentialsValid(remoteAddress), ShouldBeTrue)
+	})
+
+	Convey("ECR RefreshCredentials surfaces retrieval errors", t, func() {
+		helper := NewECRCredentialHelper(log.NewTestLogger(), func(string) (ecrCredential, error) {
+			return ecrCredential{}, errors.New("aws unavailable")
+		})
+
+		_, err := helper.RefreshCredentials("111111111111.dkr.ecr.us-east-1.amazonaws.com")
+		So(err, ShouldNotBeNil)
+		So(helper.AreCredentialsValid("111111111111.dkr.ecr.us-east-1.amazonaws.com"), ShouldBeFalse)
 	})
 }

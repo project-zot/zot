@@ -174,6 +174,12 @@ func (service *BaseService) init() error {
 	service.clientLock.Lock()
 	defer service.clientLock.Unlock()
 
+	return service.initClient()
+}
+
+// initClient rebuilds the registry client from the current credentials.
+// Caller must hold clientLock for writing.
+func (service *BaseService) initClient() error {
 	client, hosts, err := newClient(service.config, service.credentials, service.log)
 	if err != nil {
 		service.log.Err(err).Msg("failed to create registry client")
@@ -198,12 +204,35 @@ func (service *BaseService) init() error {
 // If the credentials are expired, it attempts to refresh them and updates the service configuration.
 func (service *BaseService) refreshRegistryTemporaryCredentials() error {
 	// Exit early if no CredentialHelper is configured.
-	if service.config.CredentialHelper == "" {
+	if service.config.CredentialHelper == "" || service.credentialHelper == nil {
 		return nil
 	}
 
+	// Fast path: skip the write lock and client reinit when nothing has expired.
+	service.clientLock.RLock()
+	needsRefresh := false
+
 	for _, host := range service.hosts {
-		// Exit early if the credentials are valid.
+		if !service.credentialHelper.AreCredentialsValid(host.Hostname) {
+			needsRefresh = true
+
+			break
+		}
+	}
+
+	service.clientLock.RUnlock()
+
+	if !needsRefresh {
+		return nil
+	}
+
+	service.clientLock.Lock()
+	defer service.clientLock.Unlock()
+
+	credentialsUpdated := false
+
+	for _, host := range service.hosts {
+		// Re-check under the write lock: another refresher may have won the race.
 		if service.credentialHelper.AreCredentialsValid(host.Hostname) {
 			continue
 		}
@@ -225,10 +254,15 @@ func (service *BaseService) refreshRegistryTemporaryCredentials() error {
 
 		// Update the service's credentials map with the new set of credentials.
 		service.credentials[host.Hostname] = credentials
+		credentialsUpdated = true
+	}
+
+	if !credentialsUpdated {
+		return nil
 	}
 
 	// Reinitialize regclient with new credentials
-	return service.init()
+	return service.initClient()
 }
 
 func (service *BaseService) CanRetryOnError() bool {
