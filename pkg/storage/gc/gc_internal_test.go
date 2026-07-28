@@ -1760,3 +1760,178 @@ func TestCleanupRepoMissingBlob(t *testing.T) {
 		So(count, ShouldEqual, 1)
 	})
 }
+
+func TestRemoveStaleSyncSessions(t *testing.T) {
+	Convey("removeStaleSyncSessions reaps stale sessions and keeps recent ones", t, func() {
+		dir := t.TempDir()
+
+		audit := zlog.NewAuditLogger("debug", "")
+		log := zlog.NewTestLogger()
+
+		metrics := monitoring.NewMetricsServer(false, log)
+		defer metrics.Stop()
+
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+
+		falseVal := false
+		gcOptions := Options{
+			Delay: 1 * time.Hour,
+			ImageRetention: config.ImageRetention{
+				Delay:    storageConstants.DefaultGCDelay,
+				Policies: []config.RetentionPolicy{{Repositories: []string{"**"}, DeleteUntagged: &falseVal}},
+			},
+		}
+
+		imgStore.InitRepo(context.Background(), repoName)
+
+		syncDir := path.Join(dir, repoName, ".sync")
+		err := os.MkdirAll(syncDir, 0o755)
+		So(err, ShouldBeNil)
+
+		older := time.Now().Add(-2 * time.Hour)
+
+		staleDir := path.Join(syncDir, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+		err = os.MkdirAll(staleDir, 0o755)
+		So(err, ShouldBeNil)
+		err = os.Chtimes(staleDir, older, older)
+		So(err, ShouldBeNil)
+
+		// fresh session (recent)
+		freshDir := path.Join(syncDir, "bbbbbbbb-cccc-dddd-eeee-ffffffffffffff")
+		err = os.MkdirAll(freshDir, 0o755)
+		So(err, ShouldBeNil)
+
+		gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+		deleted, err := gc.removeStaleSyncSessions(repoName, gc.opts.Delay)
+		So(err, ShouldBeNil)
+		So(deleted, ShouldEqual, 1)
+
+		// stale session should be gone
+		_, err = os.Stat(staleDir)
+		So(os.IsNotExist(err), ShouldBeTrue)
+		// fresh session should remain
+		_, err = os.Stat(freshDir)
+		So(err, ShouldBeNil)
+	})
+}
+
+func TestRemoveStaleSyncSessionsNoSessions(t *testing.T) {
+	Convey("SyncSessions returns 0 when no .sync directory exists", t, func() {
+		dir := t.TempDir()
+
+		audit := zlog.NewAuditLogger("debug", "")
+		log := zlog.NewTestLogger()
+
+		metrics := monitoring.NewMetricsServer(false, log)
+		defer metrics.Stop()
+
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+
+		falseVal := false
+		gcOptions := Options{
+			Delay: 1 * time.Hour,
+			ImageRetention: config.ImageRetention{
+				Delay:    storageConstants.DefaultGCDelay,
+				Policies: []config.RetentionPolicy{{Repositories: []string{"**"}, DeleteUntagged: &falseVal}},
+			},
+		}
+
+		imgStore.InitRepo(context.Background(), repoName)
+
+		gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+		deleted, err := gc.removeStaleSyncSessions(repoName, gc.opts.Delay)
+		So(err, ShouldBeNil)
+		So(deleted, ShouldEqual, 0)
+	})
+}
+
+func TestGCReaperSyncSessionsWithRepoRemoval(t *testing.T) {
+	Convey("stale session blocks repo removal and is reaped; empty repo left in place", t, func() {
+		dir := t.TempDir()
+
+		audit := zlog.NewAuditLogger("debug", "")
+		log := zlog.NewTestLogger()
+
+		metrics := monitoring.NewMetricsServer(false, log)
+		defer metrics.Stop()
+
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+
+		falseVal := false
+		gcOptions := Options{
+			Delay: 1 * time.Hour,
+			ImageRetention: config.ImageRetention{
+				Delay:    storageConstants.DefaultGCDelay,
+				Policies: []config.RetentionPolicy{{Repositories: []string{"**"}, DeleteUntagged: &falseVal}},
+			},
+		}
+
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+		imgStore.InitRepo(context.Background(), repoName)
+
+		// Upload a blob then remove it from the index so it becomes unreferenced
+		content := []byte("disappearing blob")
+		digest := godigest.FromBytes(content)
+		_, _, err := imgStore.FullBlobUpload(context.Background(), repoName, bytes.NewReader(content), digest)
+		So(err, ShouldBeNil)
+
+		// Write an empty index so this blob is unreferenced
+		idx := ispec.Index{Manifests: []ispec.Descriptor{}}
+		err = imgStore.PutIndexContent(repoName, idx)
+		So(err, ShouldBeNil)
+
+		// Create a stale sync session
+		syncDir := path.Join(dir, repoName, ".sync")
+		err = os.MkdirAll(syncDir, 0o755)
+		So(err, ShouldBeNil)
+		staleDir := path.Join(syncDir, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+		err = os.MkdirAll(staleDir, 0o755)
+		So(err, ShouldBeNil)
+		older := time.Now().Add(-2 * time.Hour)
+		err = os.Chtimes(staleDir, older, older)
+		So(err, ShouldBeNil)
+
+		// Age the blob so it is eligible for garbage collection (older than the 1h delay).
+		blobPath := path.Join(dir, repoName, "blobs", digest.Algorithm().String(), digest.Encoded())
+		err = os.Chtimes(blobPath, older, older)
+		So(err, ShouldBeNil)
+
+		gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+		ctx := context.Background()
+
+		// A single GC pass: removeUnreferencedBlobs reaps the unreferenced blob, the
+		// in-progress sync session blocks CleanupRepo from removing the repo, and
+		// removeStaleSyncSessions then reaps the now-stale session.
+		err = gc.CleanRepo(ctx, repoName)
+		So(err, ShouldBeNil)
+
+		// Stale session should be gone after pass 1
+		_, err = os.Stat(staleDir)
+		So(os.IsNotExist(err), ShouldBeTrue)
+
+		// Blob should also be gone (unreferenced and past delay).
+		_, err = os.Stat(blobPath)
+		So(os.IsNotExist(err), ShouldBeTrue)
+
+		// The repo directory still exists - GC does not remove empty repos.
+		repoDir := path.Join(dir, repoName)
+		_, err = os.Stat(repoDir)
+		So(err, ShouldBeNil)
+	})
+}

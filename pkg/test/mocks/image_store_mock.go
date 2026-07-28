@@ -66,6 +66,9 @@ type MockedImageStore struct {
 	VerifyBlobDigestValueFn       func(repo string, digest godigest.Digest) error
 	GetAllDedupeReposCandidatesFn func(digest godigest.Digest) ([]string, error)
 	GetBlobRedirectURLFn          func(r *http.Request, repo string, digest godigest.Digest) (string, error)
+	ListSyncSessionsFn            func(repo string) ([]string, error)
+	StatSyncSessionFn             func(repo, id string) (bool, int64, time.Time, error)
+	DeleteSyncSessionFn           func(repo, id string) error
 }
 
 func (is MockedImageStore) StatIndex(repo string) (bool, int64, time.Time, error) {
@@ -360,6 +363,30 @@ func (is MockedImageStore) GetBlobRedirectURL(
 	}
 
 	return "", nil
+}
+
+func (is MockedImageStore) ListSyncSessions(repo string) ([]string, error) {
+	if is.ListSyncSessionsFn != nil {
+		return is.ListSyncSessionsFn(repo)
+	}
+
+	return []string{}, nil
+}
+
+func (is MockedImageStore) StatSyncSession(repo, id string) (bool, int64, time.Time, error) {
+	if is.StatSyncSessionFn != nil {
+		return is.StatSyncSessionFn(repo, id)
+	}
+
+	return true, 0, time.Time{}, nil
+}
+
+func (is MockedImageStore) DeleteSyncSession(repo, id string) error {
+	if is.DeleteSyncSessionFn != nil {
+		return is.DeleteSyncSessionFn(repo, id)
+	}
+
+	return nil
 }
 
 func (is MockedImageStore) DeleteBlobUpload(repo string, uuid string) error {

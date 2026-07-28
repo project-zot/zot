@@ -936,6 +936,45 @@ func (is *ImageStore) ListBlobUploads(repo string) ([]string, error) {
 	return blobUploads, err
 }
 
+// syncSessionPath returns the full path for a sync staging session directory.
+func (is *ImageStore) syncSessionPath(repo, id string) string {
+	return path.Join(is.rootDir, repo, syncConstants.SyncBlobUploadDir, id)
+}
+
+// ListSyncSessions lists sync staging session IDs (<uuid>) under <repo>/.sync.
+func (is *ImageStore) ListSyncSessions(repo string) ([]string, error) {
+	sessionPaths, err := is.storeDriver.List(path.Join(is.rootDir, repo, syncConstants.SyncBlobUploadDir))
+	if err != nil {
+		return nil, err
+	}
+	sessions := make([]string, 0, len(sessionPaths))
+	for _, sessionPath := range sessionPaths {
+		sessions = append(sessions, path.Base(sessionPath))
+	}
+	return sessions, nil
+}
+
+// StatSyncSession returns the existence, size, and modtime of a sync session directory.
+func (is *ImageStore) StatSyncSession(repo, id string) (bool, int64, time.Time, error) {
+	sessionPath := is.syncSessionPath(repo, id)
+	binfo, err := is.storeDriver.Stat(sessionPath)
+	if err != nil {
+		is.log.Debug().Err(err).Str("session", id).Msg("failed to stat sync session")
+		return false, -1, time.Time{}, err
+	}
+	return true, binfo.Size(), binfo.ModTime(), nil
+}
+
+// DeleteSyncSession removes a sync staging session directory.
+func (is *ImageStore) DeleteSyncSession(repo, id string) error {
+	sessionPath := is.syncSessionPath(repo, id)
+	if err := is.storeDriver.Delete(sessionPath); err != nil {
+		is.log.Error().Err(err).Str("session", id).Msg("failed to delete sync session")
+		return err
+	}
+	return nil
+}
+
 // StatBlobUpload verifies if a blob upload is present inside a repository. The caller function MUST lock from outside.
 func (is *ImageStore) StatBlobUpload(repo, uuid string) (bool, int64, time.Time, error) {
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
@@ -1974,9 +2013,11 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 	}
 
 	blobUploads, _ := is.ListBlobUploads(repo)
+	syncSessions, _ := is.ListSyncSessions(repo)
 
-	// if removeRepo flag is true and we cleanup all blobs and there are no blobs currently being uploaded.
-	if removeRepo && count == len(blobs) && count > 0 && len(blobUploads) == 0 {
+	// if removeRepo flag is true and there are no uploads or sync sessions currently in-progress.
+	if removeRepo && count == len(blobs) && count > 0 &&
+		len(blobUploads) == 0 && len(syncSessions) == 0 {
 		is.log.Info().Str("repository", repo).Msg("removed all blobs, removing repo")
 
 		if err := is.storeDriver.Delete(path.Join(is.rootDir, repo)); err != nil {

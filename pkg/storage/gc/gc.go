@@ -20,6 +20,7 @@ import (
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/compat"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
+	"zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/retention"
@@ -195,15 +196,23 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 		return err
 	}
 
+	// gc stale sync staging sessions
+	sessionsDeleted, err := gc.removeStaleSyncSessions(repo, gc.opts.Delay)
+	if err != nil {
+		return err
+	}
+
 	if !gc.opts.ImageRetention.DryRun {
 		monitoring.IncGCDeleted(gc.metrics, "manifest", manifestsDeleted)
 		monitoring.IncGCDeleted(gc.metrics, "blob", blobsDeleted)
 		monitoring.IncGCDeleted(gc.metrics, "upload", uploadsDeleted)
+		monitoring.IncGCDeleted(gc.metrics, "syncSession", sessionsDeleted)
 	}
 
 	return nil
 }
 
+// removeStaleManifestEntries removes manifest/index descriptors whose blobs no longer exist in storage.
 func (gc GarbageCollect) removeStaleManifestEntries(repo string, index *ispec.Index) error {
 	if gc.opts.ImageRetention.DryRun {
 		return nil
@@ -884,6 +893,65 @@ func (gc GarbageCollect) removeBlobUploads(repo string, delay time.Duration) (in
 	return deleted, aggregatedErr
 }
 
+// removeStaleSyncSessions deletes sync staging sessions (<repo>/.sync/<uuid>)
+// which are past their gc delay. These are left behind when a sync is
+// interrupted; live sessions are protected by the delay.
+func (gc GarbageCollect) removeStaleSyncSessions(repo string, delay time.Duration) (int, error) {
+	gc.log.Debug().Str("module", "gc").Str("repository", repo).Msg("cleaning stale sync staging sessions")
+
+	repoSyncDir := path.Join(gc.imgStore.RootDir(), repo, constants.SyncBlobUploadDir)
+	if !gc.imgStore.DirExists(repoSyncDir) {
+		// The repository or .sync directory may have already been removed
+		return 0, nil
+	}
+
+	sessions, err := gc.imgStore.ListSyncSessions(repo)
+	if err != nil {
+		// A PathNotFoundError from the underlying driver means .sync is empty or absent
+		var pathNotFoundErr driver.PathNotFoundError
+		if errors.As(err, &pathNotFoundErr) {
+			return 0, nil
+		}
+
+		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Msg("failed to list sync sessions")
+
+		return 0, err
+	}
+
+	var aggregatedErr error
+
+	deleted := 0
+
+	for _, id := range sessions {
+		_, size, modtime, err := gc.imgStore.StatSyncSession(repo, id)
+		if err != nil {
+			gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("session", id).
+				Msg("failed to stat sync session")
+
+			aggregatedErr = errors.Join(aggregatedErr, err)
+
+			continue
+		}
+
+		if modtime.Add(delay).After(time.Now()) {
+			// Do not delete sync sessions which have been updated recently
+			continue
+		}
+
+		err = gc.imgStore.DeleteSyncSession(repo, id)
+		if err != nil {
+			gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("session", id).
+				Str("size", strconv.FormatInt(size, 10)).Str("modified", modtime.String()).Msg("failed to delete sync session")
+
+			aggregatedErr = errors.Join(aggregatedErr, err)
+		} else {
+			deleted++
+		}
+	}
+
+	return deleted, aggregatedErr
+}
+
 // removeUnreferencedBlobs gc all blobs which are not referenced by any manifest found in repo's index.json.
 func (gc GarbageCollect) removeUnreferencedBlobs(repo string, delay time.Duration, log zlog.Logger,
 ) (int, error) {
@@ -942,7 +1010,6 @@ func (gc GarbageCollect) removeUnreferencedBlobs(repo string, delay time.Duratio
 		}
 	}
 
-	// if we removed all blobs from repo
 	removeRepo := len(gcBlobs) > 0 && len(gcBlobs) == len(allBlobs)
 
 	reaped, err := gc.imgStore.CleanupRepo(repo, gcBlobs, removeRepo)
