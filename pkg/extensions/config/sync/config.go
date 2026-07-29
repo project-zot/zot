@@ -2,6 +2,8 @@ package sync
 
 import (
 	"errors"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/mitchellh/mapstructure"
@@ -22,7 +24,15 @@ var (
 	errOAuth2ExchangeOnlyFields = errors.New(
 		"oauth2 credential helper allows audience, subjectTokenType and requestedTokenType " +
 			"only when grantType is " + TokenExchangeGrantType)
+	errOAuth2TokenTypeNotURI = errors.New(
+		"oauth2 credential helper requires subjectTokenType and requestedTokenType to be absolute URIs")
 )
+
+// hasValue reports whether a configuration value holds anything other than blanks, so that
+// a whitespace-only entry is rejected the same way an omitted one is.
+func hasValue(value string) bool {
+	return strings.TrimSpace(value) != ""
+}
 
 // CredentialsFile is a map where key is registry address.
 type CredentialsFile map[string]Credentials
@@ -129,12 +139,12 @@ func (config *OAuth2HelperConfig) Validate() error {
 		return errOAuth2HelperConfigMissing
 	}
 
-	if config.TokenURL == "" {
+	if !hasValue(config.TokenURL) {
 		return errOAuth2TokenURLMissing
 	}
 
-	hasAssertionFile := config.AssertionFile != ""
-	hasSigningFile := config.SigningFile != ""
+	hasAssertionFile := hasValue(config.AssertionFile)
+	hasSigningFile := hasValue(config.SigningFile)
 
 	if !hasAssertionFile && !hasSigningFile {
 		return errOAuth2AssertionMissing
@@ -147,15 +157,30 @@ func (config *OAuth2HelperConfig) Validate() error {
 	// The RFC 8693 fields are meaningless outside the token-exchange grant, so reject them
 	// there rather than silently ignoring a misconfiguration.
 	if config.GrantType != TokenExchangeGrantType {
-		if config.Audience != "" || config.SubjectTokenType != "" || config.RequestedTokenType != "" {
+		if hasValue(config.Audience) || hasValue(config.SubjectTokenType) || hasValue(config.RequestedTokenType) {
 			return errOAuth2ExchangeOnlyFields
 		}
 
 		return nil
 	}
 
-	if config.Audience == "" {
+	if !hasValue(config.Audience) {
 		return errOAuth2AudienceMissing
+	}
+
+	/* RFC 8693 identifies token types by URI. The registered ones are URNs, but the spec
+	allows other schemes, so require an absolute URI rather than the "urn" scheme: that
+	still rejects a bare word such as "jwt". The audience deliberately gets no such check,
+	because it is a logical name rather than a URI, and the workload identity audience
+	Google expects carries no scheme at all. */
+	for _, tokenType := range []string{config.SubjectTokenType, config.RequestedTokenType} {
+		if !hasValue(tokenType) {
+			continue // optional, a default applies
+		}
+
+		if parsed, err := url.Parse(tokenType); err != nil || !parsed.IsAbs() {
+			return errOAuth2TokenTypeNotURI
+		}
 	}
 
 	return nil
