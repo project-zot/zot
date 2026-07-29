@@ -67,8 +67,15 @@ func NewGCPCredentialHelper(
 	}
 }
 
-// source builds the token source on first use, so that credentials which are not reachable
-// yet when sync starts do not disable the helper for the lifetime of the process.
+/*
+source builds the token source on first use, so that credentials which are not reachable yet
+when sync starts do not disable the helper for the lifetime of the process.
+
+The result is wrapped in a reusing source. The TokenSource interface promises nothing about
+caching, and AreCredentialsValid below is built on the token only changing when it is really
+rotated, so the caching is made explicit here rather than assumed of whatever the credentials
+hand back.
+*/
 func (credHelper *gcpCredentialsHelper) source(ctx context.Context) (oauth2.TokenSource, error) {
 	credHelper.mu.RLock()
 	source := credHelper.tokenSource
@@ -91,9 +98,9 @@ func (credHelper *gcpCredentialsHelper) source(ctx context.Context) (oauth2.Toke
 		return nil, err
 	}
 
-	credHelper.tokenSource = source
+	credHelper.tokenSource = oauth2.ReuseTokenSource(nil, source)
 
-	return source, nil
+	return credHelper.tokenSource, nil
 }
 
 func (credHelper *gcpCredentialsHelper) token(ctx context.Context) (*oauth2.Token, error) {
@@ -119,12 +126,17 @@ func (credHelper *gcpCredentialsHelper) store(remoteAddress string, token *oauth
 
 // GetCredentials pairs the current access token with the username Artifact Registry expects.
 func (credHelper *gcpCredentialsHelper) GetCredentials(urls []string) (syncconf.CredentialsFile, error) {
+	gcpCredentials := make(syncconf.CredentialsFile)
+
+	// nothing to authenticate against, so do not go looking for credentials
+	if len(urls) == 0 {
+		return gcpCredentials, nil
+	}
+
 	token, err := credHelper.token(context.Background())
 	if err != nil {
 		return syncconf.CredentialsFile{}, err
 	}
-
-	gcpCredentials := make(syncconf.CredentialsFile)
 
 	for _, url := range urls {
 		remoteAddress := StripRegistryTransport(url)

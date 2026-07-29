@@ -64,6 +64,25 @@ func TestGCPCredentialHelper(t *testing.T) {
 		So(credentials[remoteAddress].Password, ShouldEqual, "access-token-1")
 	})
 
+	Convey("No token is fetched when there are no registries", t, func() {
+		source := &mintingTokenSource{}
+		helper := newHelper(source)
+
+		credentials, err := helper.GetCredentials(nil)
+		So(err, ShouldBeNil)
+		So(credentials, ShouldNotBeNil)
+		So(credentials, ShouldBeEmpty)
+		So(source.calls.Load(), ShouldEqual, 0)
+	})
+
+	Convey("A failed fetch still yields a usable map", t, func() {
+		helper := newHelper(failingTokenSource{})
+
+		credentials, err := helper.GetCredentials([]string{"https://" + remoteAddress})
+		So(err, ShouldNotBeNil)
+		So(credentials, ShouldNotBeNil) // the service writes into this map later
+	})
+
 	Convey("Every requested registry gets the same token", t, func() {
 		source := &mintingTokenSource{}
 		helper := newHelper(source)
@@ -99,7 +118,8 @@ func TestGCPCredentialHelper(t *testing.T) {
 	})
 
 	Convey("Credentials become invalid once the source rotates the token", t, func() {
-		helper := newHelper(&mintingTokenSource{})
+		// an expiry inside the reuse window makes the wrapped source mint a token every time
+		helper := newHelper(&mintingTokenSource{expiry: time.Now().Add(time.Second)})
 
 		_, err := helper.GetCredentials([]string{"https://" + remoteAddress})
 		So(err, ShouldBeNil)
@@ -113,7 +133,7 @@ func TestGCPCredentialHelper(t *testing.T) {
 	})
 
 	Convey("A refresh hands back the current token", t, func() {
-		source := &mintingTokenSource{}
+		source := &mintingTokenSource{expiry: time.Now().Add(time.Second)}
 		helper := newHelper(source)
 
 		credentials, err := helper.RefreshCredentials(remoteAddress)
@@ -174,7 +194,7 @@ func (source *flakyTokenSource) Token() (*oauth2.Token, error) {
 		return nil, errTokenMintFailed
 	}
 
-	return &oauth2.Token{AccessToken: "first", TokenType: "Bearer", Expiry: time.Now().Add(time.Hour)}, nil
+	return &oauth2.Token{AccessToken: "first", TokenType: "Bearer", Expiry: time.Now().Add(time.Second)}, nil
 }
 
 type failingTokenSource struct{}

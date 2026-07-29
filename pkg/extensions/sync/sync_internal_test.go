@@ -810,8 +810,13 @@ func TestServiceGCPCredentialHelper(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(service.credentialHelper, ShouldNotBeNil)
 
-		// the credentials could not be fetched, but that must not fail the service
+		/* the credentials could not be fetched, but the map must still be usable, because the
+		refresh path writes into it without checking */
+		So(service.credentials, ShouldNotBeNil)
 		So(service.credentials, ShouldBeEmpty)
+
+		// a refresh that cannot reach the credentials is swallowed rather than fatal
+		So(service.refreshRegistryTemporaryCredentials(), ShouldBeNil)
 	})
 }
 
