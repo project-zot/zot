@@ -19,17 +19,16 @@ import (
 func startQuotaServer(t *testing.T, maxRepos int) (string, func()) {
 	t.Helper()
 
-	port := test.GetFreePort()
 	conf := config.New()
-	conf.HTTP.Port = port
+	conf.HTTP.Port = "0"
 	conf.Storage.RootDirectory = t.TempDir()
 	conf.Storage.MaxRepos = maxRepos
 
 	ctlr := api.NewController(conf)
 	ctlrManager := test.NewControllerManager(ctlr)
-	ctlrManager.StartAndWait(port)
+	baseURL := ctlrManager.StartAndWait()
 
-	return test.GetBaseURL(port), func() { ctlrManager.StopServer() }
+	return baseURL, func() { ctlrManager.StopServer() }
 }
 
 func TestQuotaEnforcement(t *testing.T) {
