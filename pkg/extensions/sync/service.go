@@ -104,6 +104,16 @@ func New(
 				log.Error().Err(err).Msg("failed to retrieve credentials using ECR credentials helper.")
 			}
 			service.credentials = creds
+		case "gcp":
+			// Logic to fetch an access token from the Google application default credentials.
+			log.Info().Msg("fetch the credentials using Google application default credentials.")
+			service.credentialHelper = NewGCPCredentialHelper(log, GetGCPTokenSource)
+
+			creds, err := service.credentialHelper.GetCredentials(service.config.URLs)
+			if err != nil {
+				log.Error().Err(err).Msg("failed to retrieve credentials using GCP credentials helper.")
+			}
+			service.credentials = creds
 		case "oauth2":
 			// Logic to fetch credentials by exchanging a JWT assertion for an access token.
 			log.Info().Msg("fetch the credentials using OAuth2 JWT assertion exchange.")
