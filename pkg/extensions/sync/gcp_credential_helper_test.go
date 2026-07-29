@@ -5,6 +5,8 @@ package sync_test
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strconv"
 	"sync/atomic"
 	"testing"
@@ -142,6 +144,14 @@ func TestGCPCredentialHelper(t *testing.T) {
 		So(credentials[remoteAddress].Password, ShouldEqual, "late")
 	})
 
+	Convey("Credentials are not valid when the token cannot be read", t, func() {
+		helper := newHelper(&flakyTokenSource{})
+
+		_, err := helper.GetCredentials([]string{"https://" + remoteAddress})
+		So(err, ShouldBeNil)
+		So(helper.AreCredentialsValid(remoteAddress), ShouldBeFalse)
+	})
+
 	Convey("A token source that fails to mint is reported", t, func() {
 		helper := newHelper(failingTokenSource{})
 
@@ -153,8 +163,55 @@ func TestGCPCredentialHelper(t *testing.T) {
 	})
 }
 
+// flakyTokenSource yields one token and fails afterwards, so that a test can reach the
+// branches that only run once credentials are already held.
+type flakyTokenSource struct {
+	calls atomic.Int64
+}
+
+func (source *flakyTokenSource) Token() (*oauth2.Token, error) {
+	if source.calls.Add(1) > 1 {
+		return nil, errTokenMintFailed
+	}
+
+	return &oauth2.Token{AccessToken: "first", TokenType: "Bearer", Expiry: time.Now().Add(time.Hour)}, nil
+}
+
 type failingTokenSource struct{}
 
 func (failingTokenSource) Token() (*oauth2.Token, error) {
 	return nil, errTokenMintFailed
+}
+
+func TestGetGCPTokenSource(t *testing.T) {
+	Convey("Application default credentials are read from the environment", t, func() {
+		directory := t.TempDir()
+		tokenFile := filepath.Join(directory, "token")
+		So(os.WriteFile(tokenFile, []byte("a.subject.token"), 0o600), ShouldBeNil)
+
+		/* an external account file is enough to build the token source offline: the exchange
+		itself only happens when a token is asked for */
+		credentialsFile := filepath.Join(directory, "credentials.json")
+		contents := `{
+			"type": "external_account",
+			"audience": "//iam.googleapis.com/projects/1/locations/global/workloadIdentityPools/p/providers/v",
+			"subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+			"token_url": "https://sts.googleapis.com/v1/token",
+			"credential_source": {"file": "` + tokenFile + `", "format": {"type": "text"}}
+		}`
+		So(os.WriteFile(credentialsFile, []byte(contents), 0o600), ShouldBeNil)
+
+		t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", credentialsFile)
+
+		source, err := sync.GetGCPTokenSource(context.Background())
+		So(err, ShouldBeNil)
+		So(source, ShouldNotBeNil)
+	})
+
+	Convey("A missing credentials file is reported", t, func() {
+		t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", filepath.Join(t.TempDir(), "absent.json"))
+
+		_, err := sync.GetGCPTokenSource(context.Background())
+		So(err, ShouldNotBeNil)
+	})
 }

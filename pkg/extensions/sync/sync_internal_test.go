@@ -795,6 +795,26 @@ func writeOAuth2SigningFile(t *testing.T) string {
 	return signingFile
 }
 
+func TestServiceGCPCredentialHelper(t *testing.T) {
+	Convey("New wires the gcp credential helper", t, func() {
+		/* point the application default credentials at a file that is not there, so that the
+		test neither depends on an ambient Google credential nor reaches the network */
+		t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", path.Join(t.TempDir(), "absent.json"))
+
+		conf := syncconf.RegistryConfig{
+			URLs:             []string{"https://us-central1-docker.pkg.dev"},
+			CredentialHelper: "gcp",
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(service.credentialHelper, ShouldNotBeNil)
+
+		// the credentials could not be fetched, but that must not fail the service
+		So(service.credentials, ShouldBeEmpty)
+	})
+}
+
 func TestServiceOAuth2CredentialHelper(t *testing.T) {
 	Convey("New wires the oauth2 credential helper", t, func() {
 		tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
