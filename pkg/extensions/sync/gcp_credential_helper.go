@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"time"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -43,14 +42,9 @@ func GetGCPTokenSource(ctx context.Context) (oauth2.TokenSource, error) {
 	return credentials.TokenSource, nil
 }
 
-type gcpCredential struct {
-	accessToken string
-	expiry      time.Time
-}
-
 type gcpCredentialsHelper struct {
 	mu             sync.RWMutex
-	credentials    map[string]gcpCredential
+	accessTokens   map[string]string
 	tokenSource    oauth2.TokenSource
 	newTokenSource func(context.Context) (oauth2.TokenSource, error)
 	log            log.Logger
@@ -61,14 +55,14 @@ func NewGCPCredentialHelper(
 	newTokenSource func(context.Context) (oauth2.TokenSource, error),
 ) CredentialHelper {
 	return &gcpCredentialsHelper{
-		credentials:    make(map[string]gcpCredential),
+		accessTokens:   make(map[string]string),
 		newTokenSource: newTokenSource,
 		log:            log,
 	}
 }
 
 /*
-source builds the token source on first use, so that credentials which are not reachable yet
+resolveTokenSource builds the token source on first use, so that credentials which are not reachable yet
 when sync starts do not disable the helper for the lifetime of the process.
 
 The result is wrapped in a reusing source. The TokenSource interface promises nothing about
@@ -76,7 +70,7 @@ caching, and AreCredentialsValid below is built on the token only changing when 
 rotated, so the caching is made explicit here rather than assumed of whatever the credentials
 hand back.
 */
-func (credHelper *gcpCredentialsHelper) source(ctx context.Context) (oauth2.TokenSource, error) {
+func (credHelper *gcpCredentialsHelper) resolveTokenSource(ctx context.Context) (oauth2.TokenSource, error) {
 	credHelper.mu.RLock()
 	source := credHelper.tokenSource
 	credHelper.mu.RUnlock()
@@ -103,8 +97,8 @@ func (credHelper *gcpCredentialsHelper) source(ctx context.Context) (oauth2.Toke
 	return credHelper.tokenSource, nil
 }
 
-func (credHelper *gcpCredentialsHelper) token(ctx context.Context) (*oauth2.Token, error) {
-	source, err := credHelper.source(ctx)
+func (credHelper *gcpCredentialsHelper) fetchToken(ctx context.Context) (*oauth2.Token, error) {
+	source, err := credHelper.resolveTokenSource(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -117,11 +111,11 @@ func (credHelper *gcpCredentialsHelper) token(ctx context.Context) (*oauth2.Toke
 	return token, nil
 }
 
-func (credHelper *gcpCredentialsHelper) store(remoteAddress string, token *oauth2.Token) {
+func (credHelper *gcpCredentialsHelper) rememberToken(remoteAddress string, token *oauth2.Token) {
 	credHelper.mu.Lock()
 	defer credHelper.mu.Unlock()
 
-	credHelper.credentials[remoteAddress] = gcpCredential{accessToken: token.AccessToken, expiry: token.Expiry}
+	credHelper.accessTokens[remoteAddress] = token.AccessToken
 }
 
 // GetCredentials pairs the current access token with the username Artifact Registry expects.
@@ -133,7 +127,7 @@ func (credHelper *gcpCredentialsHelper) GetCredentials(urls []string) (syncconf.
 		return gcpCredentials, nil
 	}
 
-	token, err := credHelper.token(context.Background())
+	token, err := credHelper.fetchToken(context.Background())
 	if err != nil {
 		return syncconf.CredentialsFile{}, err
 	}
@@ -142,7 +136,7 @@ func (credHelper *gcpCredentialsHelper) GetCredentials(urls []string) (syncconf.
 		remoteAddress := StripRegistryTransport(url)
 		gcpCredentials[remoteAddress] = syncconf.Credentials{Username: gcpTokenUser, Password: token.AccessToken}
 
-		credHelper.store(remoteAddress, token)
+		credHelper.rememberToken(remoteAddress, token)
 	}
 
 	return gcpCredentials, nil
@@ -161,14 +155,14 @@ rotation, and costs nothing while the cached token is still good.
 */
 func (credHelper *gcpCredentialsHelper) AreCredentialsValid(remoteAddress string) bool {
 	credHelper.mu.RLock()
-	credential, ok := credHelper.credentials[remoteAddress]
+	held, ok := credHelper.accessTokens[remoteAddress]
 	credHelper.mu.RUnlock()
 
 	if !ok {
 		return false
 	}
 
-	token, err := credHelper.token(context.Background())
+	token, err := credHelper.fetchToken(context.Background())
 	if err != nil {
 		credHelper.log.Error().Err(err).Str("url", remoteAddress).
 			Msg("failed to read the Google access token")
@@ -176,7 +170,7 @@ func (credHelper *gcpCredentialsHelper) AreCredentialsValid(remoteAddress string
 		return false
 	}
 
-	if token.AccessToken != credential.accessToken {
+	if token.AccessToken != held {
 		credHelper.log.Info().Str("url", remoteAddress).Msg("the Google access token has been rotated")
 
 		return false
@@ -191,12 +185,12 @@ func (credHelper *gcpCredentialsHelper) RefreshCredentials(
 ) (syncconf.Credentials, error) {
 	credHelper.log.Info().Str("url", remoteAddress).Msg("refreshing the Google access token")
 
-	token, err := credHelper.token(context.Background())
+	token, err := credHelper.fetchToken(context.Background())
 	if err != nil {
 		return syncconf.Credentials{}, err
 	}
 
-	credHelper.store(remoteAddress, token)
+	credHelper.rememberToken(remoteAddress, token)
 
 	return syncconf.Credentials{Username: gcpTokenUser, Password: token.AccessToken}, nil
 }
