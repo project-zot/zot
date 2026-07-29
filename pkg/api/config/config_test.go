@@ -126,6 +126,14 @@ func TestConfig(t *testing.T) {
 
 		So(firstStorageConfig.ParamsEqual(secondStorageConfig), ShouldBeTrue)
 
+		So(firstStorageConfig.GCTimeWindow.UnmarshalJSON([]byte(`"01:00-08:00"`)), ShouldBeNil)
+
+		So(firstStorageConfig.ParamsEqual(secondStorageConfig), ShouldBeFalse)
+
+		So(secondStorageConfig.GCTimeWindow.UnmarshalJSON([]byte(`"01:00-08:00"`)), ShouldBeNil)
+
+		So(firstStorageConfig.ParamsEqual(secondStorageConfig), ShouldBeTrue)
+
 		isSame, err := config.SameFile("test-config", "test")
 		So(err, ShouldNotBeNil)
 		So(isSame, ShouldBeFalse)
