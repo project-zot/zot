@@ -2,17 +2,37 @@ package sync
 
 import (
 	"errors"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/mitchellh/mapstructure"
 )
+
+// TokenExchangeGrantType is the RFC 8693 token exchange grant, used to trade a subject
+// token issued by an external identity provider for an access token minted by a security
+// token service.
+const TokenExchangeGrantType = "urn:ietf:params:oauth:grant-type:token-exchange" //nolint:gosec // not a credential
 
 var (
 	errOAuth2HelperConfigMissing = errors.New("oauth2 credential helper requires an oauth2CredentialHelper config")
 	errOAuth2TokenURLMissing     = errors.New("oauth2 credential helper requires a tokenURL")
 	errOAuth2AssertionMissing    = errors.New("oauth2 credential helper requires an assertionFile or a signingFile")
 	errOAuth2AssertionConflict   = errors.New("oauth2 credential helper allows only assertionFile or signingFile")
+	errOAuth2AudienceMissing     = errors.New(
+		"oauth2 credential helper requires an audience when grantType is " + TokenExchangeGrantType)
+	errOAuth2ExchangeOnlyFields = errors.New(
+		"oauth2 credential helper allows audience, subjectTokenType and requestedTokenType " +
+			"only when grantType is " + TokenExchangeGrantType)
+	errOAuth2TokenTypeNotURI = errors.New(
+		"oauth2 credential helper requires subjectTokenType and requestedTokenType to be absolute URIs")
 )
+
+// hasValue reports whether a configuration value holds anything other than blanks, so that
+// a whitespace-only entry is rejected the same way an omitted one is.
+func hasValue(value string) bool {
+	return strings.TrimSpace(value) != ""
+}
 
 // CredentialsFile is a map where key is registry address.
 type CredentialsFile map[string]Credentials
@@ -52,7 +72,7 @@ type RegistryConfig struct {
 }
 
 // OAuth2HelperConfig holds the options used by the "oauth2" credential helper,
-// which exchanges a JWT assertion for a short-lived registry access token.
+// which exchanges a signed assertion for a short-lived registry access token.
 //
 // The assertion comes from one of two mutually exclusive sources, exactly one of which must be set:
 //   - AssertionFile: a pre-signed JWT issued and rotated by an external platform (e.g. a Kubernetes
@@ -60,15 +80,25 @@ type RegistryConfig struct {
 //     refresh. zot never holds a private key; single-use semantics, if any, are owned by the platform.
 //   - SigningFile: a private key and claims that zot uses to mint a fresh, single-use assertion
 //     (unique "jti") on every refresh, then exchanges it for a short-lived access token.
+//
+// With the RFC 8693 token-exchange grant the assertion is sent as the subject token rather
+// than as a client credential, which is what a security token service such as Google STS
+// expects when federating an external workload identity. That grant also accepts subject
+// tokens that are not JWTs, declared through SubjectTokenType.
 type OAuth2HelperConfig struct {
 	TokenURL         string   // OAuth2 token endpoint
-	AssertionFile    string   // file holding a pre-signed JWT assertion, re-read on every refresh
+	AssertionFile    string   // file holding the pre-signed assertion, re-read on every refresh
 	SigningFile      string   // file holding the signing key and claims used to mint assertions in-code
-	GrantType        string   // "client_credentials" (default) or the jwt-bearer grant URN
+	GrantType        string   // "client_credentials" (default), the jwt-bearer or the token-exchange grant URN
 	ClientID         string   // optional OAuth2 client identifier
 	ClientSecretFile string   // file holding the optional OAuth2 client secret, sent in the request body
 	Scopes           []string // optional OAuth2 scopes
 	Username         string   // registry username paired with the token, defaults to "<token>"
+
+	// The fields below apply to the token-exchange grant only.
+	Audience           string // required, identifies the target of the exchange
+	SubjectTokenType   string // type of the subject token being exchanged, defaults to the JWT token type
+	RequestedTokenType string // type asked of the endpoint, defaults to the access-token type
 }
 
 // decodeOauth2CredentialHelper decodes the generic Oauth2CredentialHelper dictionary
@@ -109,12 +139,12 @@ func (config *OAuth2HelperConfig) Validate() error {
 		return errOAuth2HelperConfigMissing
 	}
 
-	if config.TokenURL == "" {
+	if !hasValue(config.TokenURL) {
 		return errOAuth2TokenURLMissing
 	}
 
-	hasAssertionFile := config.AssertionFile != ""
-	hasSigningFile := config.SigningFile != ""
+	hasAssertionFile := hasValue(config.AssertionFile)
+	hasSigningFile := hasValue(config.SigningFile)
 
 	if !hasAssertionFile && !hasSigningFile {
 		return errOAuth2AssertionMissing
@@ -122,6 +152,35 @@ func (config *OAuth2HelperConfig) Validate() error {
 
 	if hasAssertionFile && hasSigningFile {
 		return errOAuth2AssertionConflict
+	}
+
+	// The RFC 8693 fields are meaningless outside the token-exchange grant, so reject them
+	// there rather than silently ignoring a misconfiguration.
+	if config.GrantType != TokenExchangeGrantType {
+		if hasValue(config.Audience) || hasValue(config.SubjectTokenType) || hasValue(config.RequestedTokenType) {
+			return errOAuth2ExchangeOnlyFields
+		}
+
+		return nil
+	}
+
+	if !hasValue(config.Audience) {
+		return errOAuth2AudienceMissing
+	}
+
+	/* RFC 8693 identifies token types by URI. The registered ones are URNs, but the spec
+	allows other schemes, so require an absolute URI rather than the "urn" scheme: that
+	still rejects a bare word such as "jwt". The audience deliberately gets no such check,
+	because it is a logical name rather than a URI, and the workload identity audience
+	Google expects carries no scheme at all. */
+	for _, tokenType := range []string{config.SubjectTokenType, config.RequestedTokenType} {
+		if !hasValue(tokenType) {
+			continue // optional, a default applies
+		}
+
+		if parsed, err := url.Parse(tokenType); err != nil || !parsed.IsAbs() {
+			return errOAuth2TokenTypeNotURI
+		}
 	}
 
 	return nil

@@ -1,0 +1,41 @@
+{
+    "distSpecVersion": "1.1.1",
+    "storage": {
+        "rootDirectory": "/tmp/zot"
+    },
+    "http": {
+        "address": "0.0.0.0",
+        "port": "8080"
+    },
+    "log": {
+        "level": "debug"
+    },
+    "extensions": {
+        "sync": {
+            "downloadDir": "/tmp/zot",
+            "registries": [
+                {
+                    "urls": [
+                        "https://registry.example.com"
+                    ],
+                    "onDemand": true,
+                    "maxRetries": 5,
+                    "retryDelay": "2m",
+                    "credentialHelper": "oauth2",
+                    "oauth2CredentialHelper": {
+                        "tokenURL": "https://sts.example.com/v1/token",
+                        "assertionFile": "./examples/sync-oauth2-assertion.jwt",
+                        "grantType": "urn:ietf:params:oauth:grant-type:token-exchange",
+                        "audience": "//sts.example.com/pools/the-pool/providers/the-provider",
+                        "subjectTokenType": "urn:ietf:params:oauth:token-type:jwt",
+                        "requestedTokenType": "urn:ietf:params:oauth:token-type:access_token",
+                        "scopes": [
+                            "repository:pull"
+                        ],
+                        "username": "<token>"
+                    }
+                }
+            ]
+        }
+    }
+}

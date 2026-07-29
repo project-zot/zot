@@ -357,6 +357,151 @@ func TestOAuth2CredentialsHelper(t *testing.T) {
 			So(claims["jti"], ShouldNotBeEmpty)
 		})
 
+		Convey("token-exchange grant sends the RFC 8693 parameters", func() {
+			var receivedBody url.Values
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = r.ParseForm()
+				receivedBody = r.Form
+
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"access_token":"the-access-token","expires_in":3600}`))
+			}))
+			defer server.Close()
+
+			assertionFile := writeAssertionFile(t, "the-subject-token")
+
+			credentialHelper, err := sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
+				&syncconf.OAuth2HelperConfig{
+					TokenURL:      server.URL,
+					AssertionFile: assertionFile,
+					GrantType:     syncconf.TokenExchangeGrantType,
+					Audience:      "//sts.example.com/pools/the-pool/providers/the-provider",
+					Username:      "oauth2accesstoken",
+				})
+			So(err, ShouldBeNil)
+
+			creds, err := credentialHelper.GetCredentials([]string{registryURL})
+			So(err, ShouldBeNil)
+			So(creds[remoteAddress].Username, ShouldEqual, "oauth2accesstoken")
+			So(creds[remoteAddress].Password, ShouldEqual, "the-access-token")
+
+			So(receivedBody.Get("grant_type"), ShouldEqual, syncconf.TokenExchangeGrantType)
+			So(receivedBody.Get("subject_token"), ShouldEqual, "the-subject-token")
+			So(receivedBody.Get("audience"), ShouldEqual,
+				"//sts.example.com/pools/the-pool/providers/the-provider")
+
+			// the token types fall back to the RFC 8693 defaults
+			So(receivedBody.Get("subject_token_type"), ShouldEqual, "urn:ietf:params:oauth:token-type:jwt")
+			So(receivedBody.Get("requested_token_type"), ShouldEqual,
+				"urn:ietf:params:oauth:token-type:access_token")
+
+			// the subject token must not be presented as a client credential
+			So(receivedBody.Get("assertion"), ShouldBeEmpty)
+			So(receivedBody.Get("client_assertion"), ShouldBeEmpty)
+			So(receivedBody.Get("client_assertion_type"), ShouldBeEmpty)
+		})
+
+		Convey("token-exchange token types can be overridden", func() {
+			var receivedBody url.Values
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = r.ParseForm()
+				receivedBody = r.Form
+
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"access_token":"the-access-token","expires_in":3600}`))
+			}))
+			defer server.Close()
+
+			credentialHelper, err := sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
+				//nolint:gosec // token type URNs, not credentials
+				&syncconf.OAuth2HelperConfig{
+					TokenURL:           server.URL,
+					AssertionFile:      writeAssertionFile(t, "the-subject-token"),
+					GrantType:          syncconf.TokenExchangeGrantType,
+					Audience:           "the-audience",
+					SubjectTokenType:   "urn:ietf:params:oauth:token-type:id_token",
+					RequestedTokenType: "urn:ietf:params:oauth:token-type:jwt",
+				})
+			So(err, ShouldBeNil)
+
+			_, err = credentialHelper.GetCredentials([]string{registryURL})
+			So(err, ShouldBeNil)
+			So(receivedBody.Get("subject_token_type"), ShouldEqual, "urn:ietf:params:oauth:token-type:id_token")
+			So(receivedBody.Get("requested_token_type"), ShouldEqual, "urn:ietf:params:oauth:token-type:jwt")
+		})
+
+		Convey("token-exchange re-reads the subject token on every refresh", func() {
+			var subjectTokens []string
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = r.ParseForm()
+				subjectTokens = append(subjectTokens, r.Form.Get("subject_token"))
+
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"access_token":"the-access-token","expires_in":3600}`))
+			}))
+			defer server.Close()
+
+			assertionFile := writeAssertionFile(t, "first-subject-token")
+
+			credentialHelper, err := sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
+				&syncconf.OAuth2HelperConfig{
+					TokenURL:      server.URL,
+					AssertionFile: assertionFile,
+					GrantType:     syncconf.TokenExchangeGrantType,
+					Audience:      "the-audience",
+				})
+			So(err, ShouldBeNil)
+
+			_, err = credentialHelper.GetCredentials([]string{registryURL})
+			So(err, ShouldBeNil)
+
+			// the platform rotates the token on disk
+			So(os.WriteFile(assertionFile, []byte("second-subject-token"), 0o600), ShouldBeNil)
+
+			_, err = credentialHelper.RefreshCredentials(remoteAddress)
+			So(err, ShouldBeNil)
+
+			So(subjectTokens, ShouldResemble, []string{"first-subject-token", "second-subject-token"})
+		})
+
+		Convey("The token-exchange grant requires an audience", func() {
+			_, err := sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
+				//nolint:gosec // test token endpoint URL, not a credential
+				&syncconf.OAuth2HelperConfig{
+					TokenURL:      "https://sts.example.com/token",
+					AssertionFile: writeAssertionFile(t, "the-subject-token"),
+					GrantType:     syncconf.TokenExchangeGrantType,
+				})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("The RFC 8693 fields are rejected for the other grants", func() {
+			for _, grantType := range []string{"", "client_credentials", "urn:ietf:params:oauth:grant-type:jwt-bearer"} {
+				_, err := sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
+					//nolint:gosec // test token endpoint URL, not a credential
+					&syncconf.OAuth2HelperConfig{
+						TokenURL:      "https://idp.example.com/token",
+						AssertionFile: writeAssertionFile(t, "the-jwt-assertion"),
+						GrantType:     grantType,
+						Audience:      "the-audience",
+					})
+				So(err, ShouldNotBeNil)
+
+				_, err = sync.NewOAuth2CredentialHelper(log.NewTestLogger(),
+					//nolint:gosec // test token endpoint URL, not a credential
+					&syncconf.OAuth2HelperConfig{
+						TokenURL:         "https://idp.example.com/token",
+						AssertionFile:    writeAssertionFile(t, "the-jwt-assertion"),
+						GrantType:        grantType,
+						SubjectTokenType: "urn:ietf:params:oauth:token-type:jwt",
+					})
+				So(err, ShouldNotBeNil)
+			}
+		})
+
 		Convey("Signing config claims override the defaults", func() {
 			var receivedBody url.Values
 

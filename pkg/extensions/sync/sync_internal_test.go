@@ -974,6 +974,76 @@ func TestOAuth2HelperConfigValidate(t *testing.T) {
 		}
 		So(config.Validate(), ShouldBeNil)
 	})
+
+	Convey("a blank value counts as unset", t, func() {
+		Convey("for tokenURL", func() {
+			config := &syncconf.OAuth2HelperConfig{
+				TokenURL:    "   ",
+				SigningFile: "/run/secrets/signing-config.json",
+			}
+			So(config.Validate(), ShouldNotBeNil)
+		})
+
+		Convey("for the assertion sources", func() {
+			config := &syncconf.OAuth2HelperConfig{
+				TokenURL:      "https://idp.example.com/token",
+				AssertionFile: "  ",
+				SigningFile:   "\t",
+			}
+			So(config.Validate(), ShouldNotBeNil)
+		})
+
+		Convey("for the token-exchange audience", func() {
+			config := &syncconf.OAuth2HelperConfig{
+				TokenURL:      "https://sts.googleapis.com/v1/token",
+				AssertionFile: "/run/secrets/assertion.jwt",
+				GrantType:     syncconf.TokenExchangeGrantType,
+				Audience:      " ",
+			}
+			So(config.Validate(), ShouldNotBeNil)
+		})
+	})
+
+	Convey("token types are checked for URI shape", t, func() {
+		newConfig := func(subjectTokenType, requestedTokenType string) *syncconf.OAuth2HelperConfig {
+			return &syncconf.OAuth2HelperConfig{
+				TokenURL:           "https://sts.googleapis.com/v1/token",
+				AssertionFile:      "/run/secrets/assertion.jwt",
+				GrantType:          syncconf.TokenExchangeGrantType,
+				Audience:           "//iam.googleapis.com/projects/1/locations/global/workloadIdentityPools/p/providers/v",
+				SubjectTokenType:   subjectTokenType,
+				RequestedTokenType: requestedTokenType,
+			}
+		}
+
+		Convey("a bare word is rejected", func() {
+			So(newConfig("jwt", "").Validate(), ShouldNotBeNil)
+			So(newConfig("", "access_token").Validate(), ShouldNotBeNil)
+		})
+
+		Convey("the registered URNs are accepted", func() {
+			config := newConfig("urn:ietf:params:oauth:token-type:jwt",
+				"urn:ietf:params:oauth:token-type:access_token")
+			So(config.Validate(), ShouldBeNil)
+		})
+
+		/* RFC 8693 section 3 permits token type identifiers outside the urn scheme, so the
+		check must not insist on one. */
+		Convey("a non-urn URI is accepted", func() {
+			So(newConfig("https://schemas.example.com/legacy-token", "").Validate(), ShouldBeNil)
+		})
+
+		Convey("leaving them unset is fine, the defaults apply", func() {
+			So(newConfig("", "").Validate(), ShouldBeNil)
+		})
+
+		/* The audience is a logical name, not a URI: the one Google expects has no scheme,
+		so it must not be held to the same check. */
+		Convey("the scheme-less audience Google expects stays valid", func() {
+			So(newConfig("", "").Audience, ShouldStartWith, "//")
+			So(newConfig("", "").Validate(), ShouldBeNil)
+		})
+	})
 }
 
 func TestSyncLegacyCosignTagsSyncReferrers(t *testing.T) {
