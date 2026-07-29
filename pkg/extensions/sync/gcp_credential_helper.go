@@ -20,9 +20,13 @@ const (
 	// is an access token.
 	gcpTokenUser = "oauth2accesstoken"
 
-	// gcpScope is the scope a registry pull needs. Application Default Credentials applies
-	// it for the credential sources that are scope aware, such as gcloud user credentials.
-	gcpScope = "https://www.googleapis.com/auth/cloud-platform"
+	/* gcpScope is the narrowest scope Artifact Registry offers: it publishes only
+	cloud-platform and this read-only form, with nothing specific to a registry. Sync never
+	writes to the upstream, so a token that could is a liability rather than a capability.
+	The scope shapes the token for the credential sources that honour it, such as a service
+	account or an external account; the metadata server may hand back whatever the instance
+	was configured with instead. */
+	gcpScope = "https://www.googleapis.com/auth/cloud-platform.read-only"
 )
 
 var (
