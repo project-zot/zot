@@ -1,4 +1,4 @@
-This document reflects the finalized storage design decisions for proposal #3750.
+This document reflects the storage design decisions for proposal #3750.
 
 zot supports two classes of storage backends:
 
@@ -7,7 +7,7 @@ zot supports two classes of storage backends:
 
 The cache database is configured independently of the blob backend.
 
-## Dedupe Design (Final)
+## Dedupe Design
 
 This repository uses a single global blob namespace named `_blobstore` for both local and remote dedupe flows.
 
@@ -16,7 +16,7 @@ This repository uses a single global blob namespace named `_blobstore` for both 
 3. On remote backends, per-repo paths are marker objects and reads resolve deterministically from `_blobstore`.
 4. On local filesystems, dedupe still relies on hardlinks.
 
-## Migration Behavior (Final)
+## Migration Behavior
 
 Legacy layouts are upgraded automatically at startup when dedupe is enabled.
 
