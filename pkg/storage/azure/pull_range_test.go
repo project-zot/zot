@@ -1,9 +1,5 @@
 package azure_test
 
-// Pull-range parity with S3/GCS. TestS3PullRange's regression (isDigestReferencedAcrossRepos
-// falling back to manifest-only scanning) is what started this session's storage work, so
-// leaving this untested against a third real backend was the highest-priority gap.
-
 import (
 	"bytes"
 	"context"
@@ -17,6 +13,8 @@ import (
 	tskip "zotregistry.dev/zot/v2/pkg/test/skip"
 )
 
+// TestAzurePullRange covers GetBlobPartial against a real Azure backend: a range read from
+// the start, a range read from an interior offset, and a negative offset, which must error.
 func TestAzurePullRange(t *testing.T) {
 	tskip.SkipAzure(t)
 
