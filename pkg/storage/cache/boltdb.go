@@ -313,6 +313,19 @@ func (d *BoltDBDriver) GetBlobRefs(digest godigest.Digest) ([]string, error) {
 	return blobPaths, nil
 }
 
+// PutBlobRef and DeleteBlobRef are no-ops: PutBlob/DeleteBlob already write/remove the
+// BlobRefs entry as part of the same transaction (see putBlobRef/deleteBlobRef above).
+// They exist only so BoltDBDriver satisfies imagestore's blobRefIndexer interface -
+// without them, blobRefsForDigest can't reach GetBlobRefs and always falls back to
+// scanning GetAllBlobs instead.
+func (d *BoltDBDriver) PutBlobRef(_ godigest.Digest, _ string) error {
+	return nil
+}
+
+func (d *BoltDBDriver) DeleteBlobRef(_ godigest.Digest, _ string) error {
+	return nil
+}
+
 func (d *BoltDBDriver) GetBlob(digest godigest.Digest) (string, error) {
 	var blobPath strings.Builder
 

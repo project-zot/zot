@@ -66,15 +66,22 @@ func TestBoltDriverErrors(t *testing.T) {
 	})
 }
 
+// blobRefIndexer mirrors imagestore's unexported interface of the same name (imagestore.go);
+// duplicated here, rather than exported from imagestore, so this package can assert
+// BoltDBDriver satisfies it without imagestore and cache depending on each other.
+type blobRefIndexer interface {
+	PutBlobRef(digest digest.Digest, path string) error
+	DeleteBlobRef(digest digest.Digest, path string) error
+	GetBlobRefs(digest digest.Digest) ([]string, error)
+}
+
+var _ blobRefIndexer = (*BoltDBDriver)(nil)
+
 // GetBlobRefs (and the BlobRefs bucket it reads, kept up to date internally by
-// PutBlob/DeleteBlob via putBlobRef/deleteBlobRef) is currently unreachable from
-// pkg/storage/imagestore: unlike RedisDriver/DynamoDBDriver, BoltDBDriver doesn't
-// export PutBlobRef/DeleteBlobRef, so it never satisfies imagestore's blobRefIndexer
-// interface and imagestore.blobRefsForDigest always falls back to GetAllBlobs for a
-// BoltDB-backed cache. GetBlobRefs itself is still real, working code - worth testing
-// directly - but this is worth knowing: BoltDB pays the write cost of maintaining the
-// BlobRefs bucket on every PutBlob/DeleteBlob without anything ever reading it back
-// through the interface that exists for exactly that purpose.
+// PutBlob/DeleteBlob via putBlobRef/deleteBlobRef) is reachable from pkg/storage/imagestore:
+// BoltDBDriver satisfies imagestore's blobRefIndexer interface (PutBlobRef/DeleteBlobRef are
+// no-ops here since PutBlob/DeleteBlob already maintain BlobRefs directly), so
+// imagestore.blobRefsForDigest uses GetBlobRefs instead of falling back to a GetAllBlobs scan.
 func TestBoltDBGetBlobRefs(t *testing.T) {
 	Convey("GetBlobRefs", t, func() {
 		tmpDir := t.TempDir()
@@ -101,6 +108,20 @@ func TestBoltDBGetBlobRefs(t *testing.T) {
 			refs, err := cacheDriver.GetBlobRefs(digest.FromString("missing"))
 			So(err, ShouldEqual, zerr.ErrCacheMiss)
 			So(refs, ShouldBeEmpty)
+		})
+
+		Convey("PutBlobRef/DeleteBlobRef are no-ops that don't disturb BlobRefs", func() {
+			testDigest := digest.FromString("d")
+
+			err := cacheDriver.PutBlob(testDigest, "/repo1/blob")
+			So(err, ShouldBeNil)
+
+			So(cacheDriver.PutBlobRef(testDigest, "/repo1/blob"), ShouldBeNil)
+			So(cacheDriver.DeleteBlobRef(testDigest, "/repo1/blob"), ShouldBeNil)
+
+			refs, err := cacheDriver.GetBlobRefs(testDigest)
+			So(err, ShouldBeNil)
+			So(refs, ShouldContain, "/repo1/blob")
 		})
 
 		Convey("PutBlob populates the BlobRefs bucket, readable via GetBlobRefs", func() {
