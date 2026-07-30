@@ -20,7 +20,9 @@ type Cache interface {
 	// Check if blob exists in cachedb.
 	HasBlob(digest godigest.Digest, path string) bool
 
-	// Delete a blob from the cachedb.
+	// DeleteBlob removes path from digest's tracked refs. Idempotent: if path (or digest
+	// itself) isn't tracked, that's the desired postcondition already, so implementations
+	// must return nil, not a cache-miss error.
 	DeleteBlob(digest godigest.Digest, path string) error
 
 	// UsesRelativePaths returns if cache is storing blobs relative to cache rootDir

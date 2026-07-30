@@ -651,7 +651,11 @@ func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 
 	originBlob, err := d.GetBlob(digest)
 	if err != nil {
-		// ErrCacheMiss means the digest doesn't exist at all — path not found
+		if errors.Is(err, zerr.ErrCacheMiss) {
+			// digest isn't tracked at all - nothing to delete
+			return nil
+		}
+
 		return err
 	}
 
@@ -702,11 +706,11 @@ func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 			TableName: &d.tableName,
 		})
 
-		return zerr.ErrCacheMiss
+		return nil
 	}
 
-	// path not found in duplicates or original
-	return zerr.ErrCacheMiss
+	// path not found in duplicates or original - nothing to delete
+	return nil
 }
 
 func (d *DynamoDBDriver) GetDuplicateBlob(digest godigest.Digest) (string, error) {

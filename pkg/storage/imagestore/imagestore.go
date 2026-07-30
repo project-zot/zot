@@ -98,8 +98,11 @@ func (is *ImageStore) putBlobRef(digest godigest.Digest, path string) error {
 }
 
 func (is *ImageStore) deleteBlobRef(digest godigest.Digest, path string) error {
+	// Cache.DeleteBlob is idempotent - it returns nil, not ErrCacheMiss, when path isn't
+	// tracked for digest - so no tolerance is needed here (unlike blobRefIndexer.DeleteBlobRef
+	// below, a separate method on a separate data structure).
 	if is.cache != nil {
-		if err := is.cache.DeleteBlob(digest, path); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+		if err := is.cache.DeleteBlob(digest, path); err != nil {
 			return err
 		}
 	}

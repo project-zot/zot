@@ -368,12 +368,17 @@ func (d *RedisDriver) DeleteBlob(digest godigest.Digest, path string) error {
 	// check if path is the original
 	currentPath, err := d.GetBlob(digest)
 	if err != nil {
+		if goerrors.Is(err, zerr.ErrCacheMiss) {
+			// digest isn't tracked at all - nothing to delete
+			return nil
+		}
+
 		return err
 	}
 
 	if currentPath != path {
-		// path not found in duplicates or original
-		return zerr.ErrCacheMiss
+		// path not found in duplicates or original - nothing to delete
+		return nil
 	}
 
 	// path is the original - check if there are still duplicates

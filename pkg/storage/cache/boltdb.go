@@ -424,8 +424,11 @@ func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 
 	// Both buckets are updated in a single transaction so a failure partway through can't
 	// leave BlobsCache and BlobRefs disagreeing about whether this ref still exists.
+	// Deleting an already-absent blob is idempotent (ErrCacheMiss from either bucket is
+	// not an error here), matching the caller's own goal: after DeleteBlob returns nil,
+	// the postcondition ("this path isn't tracked as a ref for digest") already holds.
 	return d.db.Update(func(tx *bbolt.Tx) error {
-		if err := d.deleteBlobCacheEntry(tx, digest, path); err != nil {
+		if err := d.deleteBlobCacheEntry(tx, digest, path); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
 			return err
 		}
 

@@ -61,11 +61,12 @@ func TestCache(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(val, ShouldNotBeEmpty)
 
+		// DeleteBlob is idempotent: deleting an untracked digest or path is a no-op, not an error.
 		err = cacheDriver.DeleteBlob("bogusKey", "bogusValue")
-		So(err, ShouldEqual, errors.ErrCacheMiss)
+		So(err, ShouldBeNil)
 
 		err = cacheDriver.DeleteBlob("key", "bogusValue")
-		So(err, ShouldEqual, errors.ErrCacheMiss)
+		So(err, ShouldBeNil)
 
 		// try to insert empty path
 		err = cacheDriver.PutBlob("key", "")
