@@ -553,6 +553,47 @@ func TestNewImageStoreUpgradeStreamsRemoteBlob(t *testing.T) {
 	}
 }
 
+// TestNewImageStoreSkipsMigrationScanWhenMarkerExists proves the migration-marker check
+// in upgradeToGlobalBlobstore actually short-circuits the repo scan, rather than just
+// happening to be a no-op on an empty root: with the marker already present, Walk must
+// never be called.
+func TestNewImageStoreSkipsMigrationScanWhenMarkerExists(t *testing.T) {
+	log := log.NewTestLogger()
+	metrics := monitoring.NewMetricsServer(false, log)
+
+	rootDir := "/oci-repo-test/migration-marker-skip"
+	markerPath := path.Join(rootDir, constants.BlobstoreMigratedMarker)
+
+	var walkCalled bool
+
+	storeMock := &mocks.StorageDriverMock{
+		StatFn: func(_ context.Context, filePath string) (driver.FileInfo, error) {
+			if filePath == markerPath {
+				return &mocks.FileInfoMock{}, nil
+			}
+
+			return nil, driver.PathNotFoundError{Path: filePath}
+		},
+		WalkFn: func(_ context.Context, _ string, _ driver.WalkFn,
+			_ ...func(*driver.WalkOptions),
+		) error {
+			walkCalled = true
+
+			return nil
+		},
+	}
+
+	store := imagestore.NewImageStore(rootDir, "", true, false, log, metrics, nil,
+		gcs.New(storeMock), nil, nil, nil)
+	if store == nil {
+		t.Fatal("expected image store initialization to succeed")
+	}
+
+	if walkCalled {
+		t.Fatal("expected the migration scan to be skipped when the marker already exists")
+	}
+}
+
 func TestNewImageStoreUpgradeFailsOnPromotedBlobDigestMismatch(t *testing.T) {
 	log := log.NewTestLogger()
 	metrics := monitoring.NewMetricsServer(false, log)

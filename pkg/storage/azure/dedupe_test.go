@@ -203,15 +203,17 @@ func TestAzureDedupeReclaimOnDelete(t *testing.T) {
 	})
 }
 
-// TestAzureMigrationMarkerPersistence exercises upgradeToGlobalBlobstore's
-// migration-marker Stat check end-to-end: the first NewImageStore call finds no
-// marker (must correctly recognize that as PathNotFoundError, not a hard failure)
-// and writes one; a second ImageStore instance over the same root must Stat it
-// successfully and skip re-running the migration scan.
+// TestAzureMigrationMarkerPersistence exercises upgradeToGlobalBlobstore's migration-marker
+// Stat check against a real backend: the first NewImageStore call finds no marker (must
+// correctly recognize that as PathNotFoundError, not a hard failure) and writes one; a real
+// Stat against the now-existing marker must then succeed, and a second ImageStore
+// construction over the same root must not error. That a successful marker Stat is what
+// makes the scan itself skip is proven directly, via a mock that counts Walk calls, by
+// TestNewImageStoreSkipsMigrationScanWhenMarkerExists in pkg/storage/imagestore.
 func TestAzureMigrationMarkerPersistence(t *testing.T) {
 	tskip.SkipAzure(t)
 
-	Convey("A second store over the same root sees the migration marker and skips rescanning", t, func() {
+	Convey("A second store over the same root sees the migration marker without erroring", t, func() {
 		uuid, err := guuid.NewV4()
 		if err != nil {
 			panic(err)
