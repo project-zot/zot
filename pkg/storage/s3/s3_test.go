@@ -2598,10 +2598,8 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 		})
 
 		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
-		So(err, ShouldBeNil)
-		// GoConvey assertions do not abort the closure, so guard follow-up calls.
 		if err != nil {
-			return
+			t.Fatalf("GetNextDigestWithBlobPaths failed: %v", err)
 		}
 
 		err = imgStore.RunDedupeForDigest(context.TODO(), digest, false, duplicateBlobs)
@@ -2651,9 +2649,8 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 		})
 
 		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
-		So(err, ShouldBeNil)
 		if err != nil {
-			return
+			t.Fatalf("GetNextDigestWithBlobPaths failed: %v", err)
 		}
 
 		err = imgStore.RunDedupeForDigest(context.TODO(), digest, false, duplicateBlobs)
@@ -2703,9 +2700,8 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 		})
 
 		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
-		So(err, ShouldBeNil)
 		if err != nil {
-			return
+			t.Fatalf("GetNextDigestWithBlobPaths failed: %v", err)
 		}
 
 		err = imgStore.RunDedupeForDigest(context.TODO(), digest, false, duplicateBlobs)
@@ -2752,9 +2748,8 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 		})
 
 		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
-		So(err, ShouldBeNil)
 		if err != nil {
-			return
+			t.Fatalf("GetNextDigestWithBlobPaths failed: %v", err)
 		}
 
 		err = imgStore.RunDedupeForDigest(context.TODO(), digest, false, duplicateBlobs)
@@ -2805,9 +2800,8 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			})
 
 			digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
-			So(err, ShouldBeNil)
 			if err != nil {
-				return
+				t.Fatalf("GetNextDigestWithBlobPaths failed: %v", err)
 			}
 
 			err = imgStore.RunDedupeForDigest(context.TODO(), digest, false, duplicateBlobs)
@@ -2859,9 +2853,8 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 		})
 
 		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
-		So(err, ShouldBeNil)
 		if err != nil {
-			return
+			t.Fatalf("GetNextDigestWithBlobPaths failed: %v", err)
 		}
 
 		err = imgStore.RunDedupeForDigest(context.TODO(), digest, true, duplicateBlobs)
@@ -2910,9 +2903,8 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 		})
 
 		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
-		So(err, ShouldBeNil)
 		if err != nil {
-			return
+			t.Fatalf("GetNextDigestWithBlobPaths failed: %v", err)
 		}
 
 		err = imgStore.RunDedupeForDigest(context.TODO(), digest, true, duplicateBlobs)
@@ -2965,9 +2957,8 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 		})
 
 		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
-		So(err, ShouldBeNil)
 		if err != nil {
-			return
+			t.Fatalf("GetNextDigestWithBlobPaths failed: %v", err)
 		}
 
 		err = imgStore.RunDedupeForDigest(context.TODO(), digest, true, duplicateBlobs)
@@ -3005,9 +2996,8 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 		})
 
 		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
-		So(err, ShouldBeNil)
 		if err != nil {
-			return
+			t.Fatalf("GetNextDigestWithBlobPaths failed: %v", err)
 		}
 		// Should return empty digest because invalid algorithm directory is skipped
 		So(digest.String(), ShouldEqual, "")
@@ -3033,9 +3023,8 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 		})
 
 		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
-		So(err, ShouldBeNil)
 		if err != nil {
-			return
+			t.Fatalf("GetNextDigestWithBlobPaths failed: %v", err)
 		}
 		// Should return empty digest because invalid hash format is skipped
 		So(digest.String(), ShouldEqual, "")
@@ -3131,9 +3120,8 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 				})
 
 			digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
-			So(err, ShouldBeNil)
 			if err != nil {
-				return
+				t.Fatalf("GetNextDigestWithBlobPaths failed: %v", err)
 			}
 
 			err = imgStore.RunDedupeForDigest(context.TODO(), digest, true, duplicateBlobs)
@@ -3156,9 +3144,8 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 				})
 
 			digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
-			So(err, ShouldBeNil)
 			if err != nil {
-				return
+				t.Fatalf("GetNextDigestWithBlobPaths failed: %v", err)
 			}
 
 			err = imgStore.RunDedupeForDigest(context.TODO(), digest, true, duplicateBlobs)
@@ -3177,9 +3164,8 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 				})
 
 			digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
-			So(err, ShouldBeNil)
 			if err != nil {
-				return
+				t.Fatalf("GetNextDigestWithBlobPaths failed: %v", err)
 			}
 
 			err = imgStore.RunDedupeForDigest(context.TODO(), digest, true, duplicateBlobs)
