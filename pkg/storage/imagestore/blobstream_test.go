@@ -54,7 +54,7 @@ func TestNewBlobStream(t *testing.T) {
 			t.Fatalf("expected \"01234\", got %q", buf)
 		}
 
-		if err := stream.Close(); !errors.Is(err, nil) {
+		if err := stream.Close(); err != nil {
 			t.Fatalf("expected nil error, got %v", err)
 		}
 
