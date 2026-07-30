@@ -4773,6 +4773,11 @@ func TestImageList(t *testing.T) {
 		err = UploadImage(image, baseURL, "a/zot-test", "0.0.1")
 		So(err, ShouldBeNil)
 
+		digestOnlyRepo := "zot-digest-only"
+		digestOnlyImage := CreateRandomImage()
+		err = UploadImage(digestOnlyImage, baseURL, digestOnlyRepo, digestOnlyImage.DigestStr())
+		So(err, ShouldBeNil)
+
 		imageStore := ctlr.StoreController.DefaultStore
 
 		repos, err := imageStore.GetRepositories()
@@ -4830,6 +4835,32 @@ func TestImageList(t *testing.T) {
 
 			So(len(responseStruct.Results), ShouldEqual, len(tags))
 			So(len(responseStruct.Results[0].Manifests[0].History), ShouldEqual, len(imageConfigInfo.History))
+		})
+
+		Convey("without pagination, includes digest-only image", func() {
+			query := fmt.Sprintf(`{
+				ImageList(repo:"%s"){
+					Results {
+						RepoName
+						Tag
+						Digest
+					}
+				}
+			}`, digestOnlyRepo)
+
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+			So(resp, ShouldNotBeNil)
+
+			var responseStruct zcommon.ImageListResponse
+			err = json.Unmarshal(resp.Body(), &responseStruct)
+			So(err, ShouldBeNil)
+
+			So(len(responseStruct.Results), ShouldEqual, 1)
+			So(responseStruct.Results[0].RepoName, ShouldEqual, digestOnlyRepo)
+			So(responseStruct.Results[0].Tag, ShouldEqual, digestOnlyImage.DigestStr())
+			So(responseStruct.Results[0].Digest, ShouldEqual, digestOnlyImage.DigestStr())
 		})
 
 		Convey("Pagination with valid params", func() {
@@ -7503,7 +7534,9 @@ func RunReadUploadDeleteTests(t *testing.T, baseURL string) {
 			So(err, ShouldBeNil)
 
 			results := GlobalSearchGQL("", baseURL)
-			So(len(results.Repos), ShouldEqual, 0)
+			So(len(results.Repos), ShouldEqual, 1)
+			So(results.Repos[0].NewestImage.Tag, ShouldEqual, imageWithoutTag.DigestStr())
+			So(results.Repos[0].NewestImage.Digest, ShouldEqual, imageWithoutTag.DigestStr())
 
 			Convey("Add tag and delete it", func() {
 				err := UploadImage(image, baseURL, repo1, tag1)
@@ -7517,7 +7550,9 @@ func RunReadUploadDeleteTests(t *testing.T, baseURL string) {
 				So(err, ShouldBeNil)
 
 				results = GlobalSearchGQL("", baseURL)
-				So(len(results.Repos), ShouldEqual, 0)
+				So(len(results.Repos), ShouldEqual, 1)
+				So(results.Repos[0].NewestImage.Tag, ShouldEqual, imageWithoutTag.DigestStr())
+				So(results.Repos[0].NewestImage.Digest, ShouldEqual, imageWithoutTag.DigestStr())
 			})
 		})
 		Convey("Push a random image", func() {
@@ -7540,7 +7575,9 @@ func RunReadUploadDeleteTests(t *testing.T, baseURL string) {
 					So(err, ShouldBeNil)
 
 					results := GlobalSearchGQL("", baseURL)
-					So(len(results.Repos), ShouldEqual, 0)
+					So(len(results.Repos), ShouldEqual, 1)
+					So(results.Repos[0].NewestImage.Tag, ShouldEqual, imageWithoutTag.DigestStr())
+					So(results.Repos[0].NewestImage.Digest, ShouldEqual, imageWithoutTag.DigestStr())
 				})
 			})
 			Convey("Delete the image pushed multiple times", func() {
@@ -7684,7 +7721,7 @@ func RunReadUploadDeleteTests(t *testing.T, baseURL string) {
 
 					results := GlobalSearchGQL("", baseURL)
 					So(len(results.Repos), ShouldEqual, 1)
-					So(results.Repos[0].NewestImage.Digest, ShouldResemble, afterImage.DigestStr())
+					So(results.Repos[0].NewestImage.Digest, ShouldResemble, imageWithoutTag.DigestStr())
 				})
 
 				Convey("Delete afterImage", func() {
