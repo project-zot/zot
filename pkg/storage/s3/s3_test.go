@@ -2580,12 +2580,6 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 		return fmt.Sprintf("%s/%s/%s/%s", repo, ispec.ImageBlobsDir, digest.Algorithm().String(), digest.Encoded())
 	}
 
-	// Some error-path mocks force NewImageStore initialization to fail; skip the
-	// branch when that happens so assertions validate the intended behavior only.
-	ensureStoreReady := func(store storageTypes.ImageStore) bool {
-		return store != nil
-	}
-
 	Convey("Trigger Stat error in getOriginalBlobFromDisk()", t, func() {
 		imgStore := createMockStorage(testDir, tdir, false, &mocks.StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
@@ -2602,10 +2596,6 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 				})
 			},
 		})
-
-		if !ensureStoreReady(imgStore) {
-			return
-		}
 
 		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
 		So(err, ShouldBeNil)
@@ -2660,10 +2650,6 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			},
 		})
 
-		if !ensureStoreReady(imgStore) {
-			return
-		}
-
 		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
 		So(err, ShouldBeNil)
 		if err != nil {
@@ -2716,10 +2702,6 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			},
 		})
 
-		if !ensureStoreReady(imgStore) {
-			return
-		}
-
 		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
 		So(err, ShouldBeNil)
 		if err != nil {
@@ -2769,10 +2751,6 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			},
 		})
 
-		if !ensureStoreReady(imgStore) {
-			return
-		}
-
 		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
 		So(err, ShouldBeNil)
 		if err != nil {
@@ -2784,20 +2762,25 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 
 		Convey("Trigger Stat() error in dedupeBlobs()", func() {
 			imgStore := createMockStorage(testDir, t.TempDir(), true, &mocks.StorageDriverMock{
+				// Only the second duplicate's Stat fails - dedupeBlobs() iterates
+				// duplicateBlobs and must propagate a Stat error on any of them, not just
+				// the first. Everything else (including NewImageStore's own internal Stat
+				// calls for the global blobstore) must succeed, or construction fails
+				// before this scenario ever runs.
 				StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-					if path == blobPath("path/to", validDigest) {
+					if path == blobPath("path/to/second", validDigest) {
 						return &mocks.FileInfoMock{
 							SizeFn: func() int64 {
 								return int64(10)
 							},
-						}, nil
+						}, errS3
 					}
 
 					return &mocks.FileInfoMock{
 						SizeFn: func() int64 {
 							return int64(10)
 						},
-					}, errS3
+					}, nil
 				},
 				WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn, options ...func(*driver.WalkOptions)) error {
 					_ = walkFn(&mocks.FileInfoMock{
@@ -2820,10 +2803,6 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 					return nil
 				},
 			})
-
-			if !ensureStoreReady(imgStore) {
-				return
-			}
 
 			digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
 			So(err, ShouldBeNil)
@@ -2879,10 +2858,6 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			},
 		})
 
-		if !ensureStoreReady(imgStore) {
-			return
-		}
-
 		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
 		So(err, ShouldBeNil)
 		if err != nil {
@@ -2934,10 +2909,6 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			},
 		})
 
-		if !ensureStoreReady(imgStore) {
-			return
-		}
-
 		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
 		So(err, ShouldBeNil)
 		if err != nil {
@@ -2952,20 +2923,24 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 	Convey("Trigger Stat() error in dedupeBlobs()", t, func() {
 		tdir := t.TempDir()
 		imgStore := createMockStorage(testDir, tdir, true, &mocks.StorageDriverMock{
+			// Only the second duplicate's Stat fails - dedupeBlobs() iterates duplicateBlobs
+			// and must propagate a Stat error on any of them, not just the first. Everything
+			// else (including NewImageStore's own internal Stat calls for the global
+			// blobstore) must succeed, or construction fails before this scenario ever runs.
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				if path == blobPath("path/to", validDigest) {
+				if path == blobPath("path/to/second", validDigest) {
 					return &mocks.FileInfoMock{
 						SizeFn: func() int64 {
 							return int64(10)
 						},
-					}, nil
+					}, errS3
 				}
 
 				return &mocks.FileInfoMock{
 					SizeFn: func() int64 {
 						return int64(10)
 					},
-				}, errS3
+				}, nil
 			},
 			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn, options ...func(*driver.WalkOptions)) error {
 				_ = walkFn(&mocks.FileInfoMock{
@@ -2989,10 +2964,6 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			},
 		})
 
-		if !ensureStoreReady(imgStore) {
-			return
-		}
-
 		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
 		So(err, ShouldBeNil)
 		if err != nil {
@@ -3010,10 +2981,6 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 				return errS3
 			},
 		})
-
-		if !ensureStoreReady(imgStore) {
-			return
-		}
 
 		_, _, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
 		So(err, ShouldNotBeNil)
@@ -3036,10 +3003,6 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 				return nil
 			},
 		})
-
-		if !ensureStoreReady(imgStore) {
-			return
-		}
 
 		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
 		So(err, ShouldBeNil)
@@ -3068,10 +3031,6 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 				return nil
 			},
 		})
-
-		if !ensureStoreReady(imgStore) {
-			return
-		}
 
 		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
 		So(err, ShouldBeNil)
@@ -3171,10 +3130,6 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 					},
 				})
 
-			if !ensureStoreReady(imgStore) {
-				return
-			}
-
 			digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
 			So(err, ShouldBeNil)
 			if err != nil {
@@ -3200,10 +3155,6 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 					},
 				})
 
-			if !ensureStoreReady(imgStore) {
-				return
-			}
-
 			digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
 			So(err, ShouldBeNil)
 			if err != nil {
@@ -3224,10 +3175,6 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 						return errCache
 					},
 				})
-
-			if !ensureStoreReady(imgStore) {
-				return
-			}
 
 			digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
 			So(err, ShouldBeNil)
