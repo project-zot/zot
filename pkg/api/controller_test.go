@@ -606,6 +606,18 @@ func TestAutoPortSelection(t *testing.T) {
 	})
 }
 
+// s3MockCredential reads S3 credentials from the same env vars the AWS SDK's default
+// credential chain uses, so these tests aren't tied to a specific S3-compatible backend
+// (CI points them at localstack; a developer may point them at a local minio instead).
+// Falls back to minio's default admin credentials for convenience when unset.
+func s3MockCredential(envVar string) string {
+	if val := os.Getenv(envVar); val != "" {
+		return val
+	}
+
+	return "minioadmin"
+}
+
 func TestObjectStorageController(t *testing.T) {
 	tskip.SkipS3(t)
 	tskip.SkipDynamo(t)
@@ -650,8 +662,8 @@ func TestObjectStorageController(t *testing.T) {
 			"region":         "us-east-2",
 			"bucket":         bucket,
 			"regionendpoint": endpoint,
-			"accesskey":      "minioadmin",
-			"secretkey":      "minioadmin",
+			"accesskey":      s3MockCredential("AWS_ACCESS_KEY_ID"),
+			"secretkey":      s3MockCredential("AWS_SECRET_ACCESS_KEY"),
 			"secure":         false,
 			"skipverify":     false,
 			"forcepathstyle": true,
@@ -680,8 +692,8 @@ func TestObjectStorageController(t *testing.T) {
 			"region":         "us-east-2",
 			"bucket":         bucket,
 			"regionendpoint": endpoint,
-			"accesskey":      "minioadmin",
-			"secretkey":      "minioadmin",
+			"accesskey":      s3MockCredential("AWS_ACCESS_KEY_ID"),
+			"secretkey":      s3MockCredential("AWS_SECRET_ACCESS_KEY"),
 			"secure":         false,
 			"skipverify":     false,
 			"forcepathstyle": true,
@@ -776,8 +788,8 @@ func TestObjectStorageControllerSubPaths(t *testing.T) {
 			"region":         "us-east-2",
 			"bucket":         bucket,
 			"regionendpoint": endpoint,
-			"accesskey":      "minioadmin",
-			"secretkey":      "minioadmin",
+			"accesskey":      s3MockCredential("AWS_ACCESS_KEY_ID"),
+			"secretkey":      s3MockCredential("AWS_SECRET_ACCESS_KEY"),
 			"secure":         false,
 			"skipverify":     false,
 			"forcepathstyle": true,
