@@ -618,6 +618,19 @@ func s3MockCredential(envVar string) string {
 	return "minioadmin"
 }
 
+// createS3MockBucket creates the S3 bucket a test needs against the mock endpoint. Tolerates
+// StatusConflict as benign in case a previous run left the bucket behind.
+func createS3MockBucket(endpoint, bucket string) {
+	resp, err := resty.R().Put("http://" + endpoint + "/" + bucket)
+	if err != nil {
+		panic(err)
+	}
+
+	if sc := resp.StatusCode(); sc != http.StatusOK && sc != http.StatusConflict {
+		panic(fmt.Sprintf("failed to create bucket: %d %s", sc, resp.String()))
+	}
+}
+
 func TestObjectStorageController(t *testing.T) {
 	tskip.SkipS3(t)
 	tskip.SkipDynamo(t)
@@ -647,14 +660,7 @@ func TestObjectStorageController(t *testing.T) {
 		endpoint := os.Getenv("S3MOCK_ENDPOINT")
 		tmp := t.TempDir()
 
-		// create s3 bucket
-		resp, err := resty.R().Put("http://" + endpoint + "/" + bucket)
-		if err != nil {
-			panic(err)
-		}
-		if sc := resp.StatusCode(); sc != http.StatusOK && sc != http.StatusConflict {
-			panic(fmt.Sprintf("failed to create bucket: %d %s", sc, resp.String()))
-		}
+		createS3MockBucket(endpoint, bucket)
 
 		storageDriverParams := map[string]any{
 			"rootdirectory":  tmp,
@@ -742,14 +748,7 @@ func TestObjectStorageController(t *testing.T) {
 			},
 		}
 
-		// create s3 bucket
-		resp, err := resty.R().Put("http://" + os.Getenv("S3MOCK_ENDPOINT") + "/" + bucket)
-		if err != nil {
-			panic(err)
-		}
-		if sc := resp.StatusCode(); sc != http.StatusOK && sc != http.StatusConflict {
-			panic(fmt.Sprintf("failed to create bucket: %d %s", sc, resp.String()))
-		}
+		createS3MockBucket(endpoint, bucket)
 
 		ctlr := makeController(conf, "/")
 		So(ctlr, ShouldNotBeNil)
@@ -773,14 +772,7 @@ func TestObjectStorageControllerSubPaths(t *testing.T) {
 		endpoint := os.Getenv("S3MOCK_ENDPOINT")
 		tmp := t.TempDir()
 
-		// create s3 bucket
-		resp, err := resty.R().Put("http://" + endpoint + "/" + bucket)
-		if err != nil {
-			panic(err)
-		}
-		if sc := resp.StatusCode(); sc != http.StatusOK && sc != http.StatusConflict {
-			panic(fmt.Sprintf("failed to create bucket: %d %s", sc, resp.String()))
-		}
+		createS3MockBucket(endpoint, bucket)
 
 		storageDriverParams := map[string]any{
 			"rootdirectory":  tmp,
