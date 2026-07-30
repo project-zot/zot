@@ -81,10 +81,9 @@ func TestAzurePullRange(t *testing.T) {
 	})
 }
 
-// TestAzurePullRangeDedupedBlob is the specific scenario TestS3PullRange's regression
-// broke: pulling a byte range of a blob that's deduped across repos, where the range
-// read must resolve through the same-repo copy/global-blobstore link, not just whatever
-// isDigestReferencedAcrossRepos happens to scan.
+// TestAzurePullRangeDedupedBlob covers a range read of a blob that's deduped across
+// multiple repos, verifying the read resolves correctly for each repo regardless of which
+// one holds the underlying global-blobstore copy.
 func TestAzurePullRangeDedupedBlob(t *testing.T) {
 	tskip.SkipAzure(t)
 
