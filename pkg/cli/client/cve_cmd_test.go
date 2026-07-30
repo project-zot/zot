@@ -42,10 +42,8 @@ import (
 
 func TestNegativeServerResponse(t *testing.T) {
 	Convey("Test from real server without search endpoint", t, func() {
-		port := test.GetFreePort()
-		url := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		dir := t.TempDir()
 
@@ -80,7 +78,7 @@ func TestNegativeServerResponse(t *testing.T) {
 		ctlr.Log = log.NewLoggerWithWriter("info", writers)
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(conf.HTTP.Port)
+		url := cm.StartAndWait()
 		defer cm.StopServer()
 
 		_, err = test.ReadLogFileAndSearchString(logPath, "CVE config not provided, skipping CVE update", 90*time.Second)
@@ -105,10 +103,8 @@ func TestNegativeServerResponse(t *testing.T) {
 	})
 
 	Convey("Test non-existing manifest blob", t, func() {
-		port := test.GetFreePort()
-		url := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		dir := t.TempDir()
 
@@ -169,7 +165,9 @@ func TestNegativeServerResponse(t *testing.T) {
 
 		defer ctlr.Shutdown()
 
-		test.WaitTillServerReady(url)
+		cm := test.NewControllerManager(ctlr)
+		cm.WaitServerReady()
+		url := cm.BaseURL()
 
 		_, err = test.ReadLogFileAndSearchString(logPath, "cve-db update completed, next update scheduled after interval",
 			90*time.Second)
@@ -192,10 +190,8 @@ func TestNegativeServerResponse(t *testing.T) {
 }
 
 func TestCVEDiffList(t *testing.T) {
-	port := test.GetFreePort()
-	url := test.GetBaseURL(port)
 	conf := config.New()
-	conf.HTTP.Port = port
+	conf.HTTP.Port = "0"
 
 	dir := t.TempDir()
 
@@ -346,7 +342,9 @@ func TestCVEDiffList(t *testing.T) {
 
 	defer ctlr.Shutdown()
 
-	test.WaitTillServerReady(url)
+	cm := test.NewControllerManager(ctlr)
+	cm.WaitServerReady()
+	url := cm.BaseURL()
 
 	ctx := context.Background()
 	_, _ = ociutils.InitializeTestMetaDB(ctx, ctlr.MetaDB,
@@ -477,10 +475,8 @@ func TestCVEDiffList(t *testing.T) {
 
 //nolint:dupl
 func TestServerCVEResponse(t *testing.T) {
-	port := test.GetFreePort()
-	url := test.GetBaseURL(port)
 	conf := config.New()
-	conf.HTTP.Port = port
+	conf.HTTP.Port = "0"
 
 	dir := t.TempDir()
 
@@ -522,7 +518,9 @@ func TestServerCVEResponse(t *testing.T) {
 
 	defer ctlr.Shutdown()
 
-	test.WaitTillServerReady(url)
+	cm := test.NewControllerManager(ctlr)
+	cm.WaitServerReady()
+	url := cm.BaseURL()
 
 	image := CreateDefaultImage()
 
@@ -864,10 +862,8 @@ func TestServerCVEResponse(t *testing.T) {
 
 func TestCVESort(t *testing.T) {
 	rootDir := t.TempDir()
-	port := test.GetFreePort()
-	baseURL := test.GetBaseURL(port)
 	conf := config.New()
-	conf.HTTP.Port = port
+	conf.HTTP.Port = "0"
 
 	defaultVal := true
 	conf.Extensions = &extconf.ExtensionConfig{
@@ -937,7 +933,9 @@ func TestCVESort(t *testing.T) {
 
 	defer ctlr.Shutdown()
 
-	test.WaitTillServerReady(baseURL)
+	cm := test.NewControllerManager(ctlr)
+	cm.WaitServerReady()
+	baseURL := cm.BaseURL()
 
 	space := regexp.MustCompile(`\s+`)
 
