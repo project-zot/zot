@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-var errInjectedStreamClose = errors.New("injected close failure")
+var errInjectedStreamClose = errors.New("injected close failure") //nolint:gochecknoglobals
 
 type closeCountingReadCloser struct {
 	io.Reader
