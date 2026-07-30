@@ -25,19 +25,25 @@ type ImageStore interface { //nolint:interfacebloat
 	Name() string
 	DirExists(d string) bool
 	RootDir() string
-	// WithRepoLock/WithRepoReadLock hold repo's write/read lock for wrappedFunc's
-	// duration. WithBlobstoreLock/WithBlobstoreReadLock do the same for the shared
-	// global blobstore. WithBlobstoreAndRepoLock/WithBlobstoreReadAndRepoLock are the
-	// only sanctioned way to hold both at once, enforcing the mandated
-	// blobstore-before-repo acquisition order internally - never call WithRepoLock/
-	// WithRepoReadLock from within a WithBlobstoreLock/WithBlobstoreReadLock closure
-	// for a *different* repo, and never take a repo lock first and then a blobstore
-	// lock from within it, that inverts the order.
+	// WithRepoLock holds repo's write lock for wrappedFunc's duration.
 	WithRepoLock(repo string, wrappedFunc func() error) error
+	// WithRepoReadLock holds repo's read lock for wrappedFunc's duration.
 	WithRepoReadLock(repo string, wrappedFunc func() error) error
+	// WithBlobstoreLock holds the shared global blobstore's write lock for wrappedFunc's
+	// duration. Never call WithRepoLock/WithRepoReadLock from within this for a
+	// *different* repo, and never take a repo lock first and then a blobstore lock from
+	// within it - that inverts the mandated blobstore-before-repo acquisition order. Use
+	// WithBlobstoreAndRepoLock instead when both locks are needed.
 	WithBlobstoreLock(wrappedFunc func() error) error
+	// WithBlobstoreReadLock is WithBlobstoreLock's read-lock counterpart; the same
+	// ordering restriction applies.
 	WithBlobstoreReadLock(wrappedFunc func() error) error
+	// WithBlobstoreAndRepoLock is the only sanctioned way to hold both the blobstore
+	// and a repo lock at once: it enforces the mandated blobstore-before-repo
+	// acquisition order internally, rather than leaving callers to get it right
+	// themselves.
 	WithBlobstoreAndRepoLock(repo string, wrappedFunc func() error) error
+	// WithBlobstoreReadAndRepoLock is WithBlobstoreAndRepoLock's read-lock counterpart.
 	WithBlobstoreReadAndRepoLock(repo string, wrappedFunc func() error) error
 	InitRepo(ctx context.Context, name string) error
 	ValidateRepo(name string) (bool, error)
