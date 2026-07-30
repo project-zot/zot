@@ -162,13 +162,12 @@ func TestAzureDedupeGlobalBlobResolve(t *testing.T) {
 	})
 }
 
-// TestAzureDedupeReclaimOnDelete ports the exact isDigestReferencedAcrossRepos
-// regression fixed in imagestore.go this session: deleting one repo's copy of a
-// deduped blob must not reclaim the shared global copy while another repo's marker
-// still points at it. On remote backends the reclaim decision itself is cache-based,
-// not Stat-based, but deleteBlob's own Stat(blobPath) call (which must correctly
-// distinguish "already gone" from a hard failure via formatErr) still gates the whole
-// flow, so this is worth confirming end-to-end against real Azure too.
+// TestAzureDedupeReclaimOnDelete covers isDigestReferencedAcrossRepos: deleting one
+// repo's copy of a deduped blob must not reclaim the shared global copy while another
+// repo's marker still points at it. On remote backends the reclaim decision itself is
+// cache-based, not Stat-based, but deleteBlob's own Stat(blobPath) call - which must
+// correctly distinguish "already gone" from a hard failure via formatErr - still gates
+// the whole flow.
 func TestAzureDedupeReclaimOnDelete(t *testing.T) {
 	tskip.SkipAzure(t)
 
