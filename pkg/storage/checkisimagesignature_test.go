@@ -11,6 +11,8 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/storage"
@@ -19,30 +21,20 @@ import (
 func TestCheckIsImageSignature(t *testing.T) {
 	t.Run("invalid manifest JSON returns an error", func(t *testing.T) {
 		_, _, _, err := storage.CheckIsImageSignature("repo", []byte("not json"), "tag")
-		if err == nil {
-			t.Fatal("expected an error for invalid JSON")
-		}
+		require.Error(t, err)
 	})
 
 	t.Run("plain manifest with no subject is not a signature", func(t *testing.T) {
 		manifest := ispec.Manifest{Config: ispec.DescriptorEmptyJSON}
 		manifestBuf, err := json.Marshal(manifest)
-		if err != nil {
-			t.Fatalf("marshal: %v", err)
-		}
+		require.NoError(t, err)
 
 		isSig, sigType, digest, err := storage.CheckIsImageSignature("repo", manifestBuf, "1.0")
-		if err != nil {
-			t.Fatalf("expected nil error, got %v", err)
-		}
+		require.NoError(t, err)
 
-		if isSig {
-			t.Fatal("expected not a signature")
-		}
-
-		if sigType != "" || digest != "" {
-			t.Fatalf("expected empty type/digest, got %q/%q", sigType, digest)
-		}
+		assert.False(t, isSig)
+		assert.Empty(t, sigType)
+		assert.Empty(t, digest)
 	})
 
 	t.Run("notation artifact type with a subject is a notation signature", func(t *testing.T) {
@@ -54,19 +46,14 @@ func TestCheckIsImageSignature(t *testing.T) {
 			Subject:      &ispec.Descriptor{Digest: subjectDigest},
 		}
 		manifestBuf, err := json.Marshal(manifest)
-		if err != nil {
-			t.Fatalf("marshal: %v", err)
-		}
+		require.NoError(t, err)
 
 		isSig, sigType, digest, err := storage.CheckIsImageSignature("repo", manifestBuf, "sha256-abc.sig")
-		if err != nil {
-			t.Fatalf("expected nil error, got %v", err)
-		}
+		require.NoError(t, err)
 
-		if !isSig || sigType != storage.NotationType || digest != subjectDigest {
-			t.Fatalf("expected notation signature for subject %s, got isSig=%v type=%q digest=%q",
-				subjectDigest, isSig, sigType, digest)
-		}
+		assert.True(t, isSig)
+		assert.Equal(t, storage.NotationType, sigType)
+		assert.Equal(t, subjectDigest, digest)
 	})
 
 	t.Run("cosign artifact type with a subject is an OCI 1.1 cosign signature", func(t *testing.T) {
@@ -78,19 +65,14 @@ func TestCheckIsImageSignature(t *testing.T) {
 			Subject:      &ispec.Descriptor{Digest: subjectDigest},
 		}
 		manifestBuf, err := json.Marshal(manifest)
-		if err != nil {
-			t.Fatalf("marshal: %v", err)
-		}
+		require.NoError(t, err)
 
 		isSig, sigType, digest, err := storage.CheckIsImageSignature("repo", manifestBuf, "1.0")
-		if err != nil {
-			t.Fatalf("expected nil error, got %v", err)
-		}
+		require.NoError(t, err)
 
-		if !isSig || sigType != storage.CosignType || digest != subjectDigest {
-			t.Fatalf("expected cosign signature for subject %s, got isSig=%v type=%q digest=%q",
-				subjectDigest, isSig, sigType, digest)
-		}
+		assert.True(t, isSig)
+		assert.Equal(t, storage.CosignType, sigType)
+		assert.Equal(t, subjectDigest, digest)
 	})
 
 	t.Run("legacy cosign tag pattern is a cosign signature keyed off the tag", func(t *testing.T) {
@@ -98,20 +80,15 @@ func TestCheckIsImageSignature(t *testing.T) {
 
 		manifest := ispec.Manifest{Config: ispec.DescriptorEmptyJSON}
 		manifestBuf, err := json.Marshal(manifest)
-		if err != nil {
-			t.Fatalf("marshal: %v", err)
-		}
+		require.NoError(t, err)
 
 		reference := "sha256-" + signedDigest.Encoded() + ".sig"
 
 		isSig, sigType, digest, err := storage.CheckIsImageSignature("repo", manifestBuf, reference)
-		if err != nil {
-			t.Fatalf("expected nil error, got %v", err)
-		}
+		require.NoError(t, err)
 
-		if !isSig || sigType != storage.CosignType || digest != signedDigest {
-			t.Fatalf("expected legacy cosign signature for %s, got isSig=%v type=%q digest=%q",
-				signedDigest, isSig, sigType, digest)
-		}
+		assert.True(t, isSig)
+		assert.Equal(t, storage.CosignType, sigType)
+		assert.Equal(t, signedDigest, digest)
 	})
 }
