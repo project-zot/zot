@@ -1,17 +1,8 @@
 package azure_test
 
-// Targeted dedupe/migration coverage against a real Azurite backend.
-//
-// pkg/storage/azure/driver.go's formatErr (unlike the S3 driver, which delegates
-// directly to a typed upstream implementation) falls back to string-matching Azure
-// SDK error messages ("BlobNotFound", "ResourceNotFound", "Error 404", ...) to
-// produce the driver.PathNotFoundError the shared dedupe/migration/reclaim logic in
-// pkg/storage/imagestore depends on throughout (upgradeToGlobalBlobstore's marker
-// check, ResolveReadPath, checkCacheBlob, promoteBlobCandidate's resume check). That
-// classification can only be exercised against a real Azure/Azurite backend - a mock
-// driver returns whatever typed error it's told to, bypassing formatErr entirely.
-// These tests specifically stress that path, rather than re-testing the
-// backend-agnostic seam logic already covered elsewhere via mock drivers.
+// Targeted dedupe/migration coverage against a real Azurite backend: unlike mocks,
+// only a real backend exercises driver.go's formatErr, which string-matches Azure SDK
+// errors into the driver.PathNotFoundError that dedupe/migration/reclaim logic relies on.
 
 import (
 	"bytes"
