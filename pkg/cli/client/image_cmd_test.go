@@ -49,10 +49,8 @@ func TestSignature(t *testing.T) {
 		err = os.Chdir(currentDir)
 		So(err, ShouldBeNil)
 
-		port := test.GetFreePort()
-		url := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
@@ -61,9 +59,11 @@ func TestSignature(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = currentDir
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(conf.HTTP.Port)
+		url := cm.StartAndWait()
 
 		defer cm.StopServer()
+
+		port := strconv.Itoa(cm.Port())
 
 		image := CreateDefaultImage()
 		err = UploadImage(image, url, repoName, "1.0")
@@ -126,10 +126,8 @@ func TestSignature(t *testing.T) {
 		err = os.Chdir(currentDir)
 		So(err, ShouldBeNil)
 
-		port := test.GetFreePort()
-		url := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
@@ -137,9 +135,11 @@ func TestSignature(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = currentDir
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(conf.HTTP.Port)
+		url := cm.StartAndWait()
 
 		defer cm.StopServer()
+
+		port := strconv.Itoa(cm.Port())
 
 		err = UploadImage(CreateDefaultImage(), url, repoName, "0.0.1")
 		So(err, ShouldBeNil)
@@ -181,10 +181,8 @@ func TestSignature(t *testing.T) {
 		err = os.Chdir(currentDir)
 		So(err, ShouldBeNil)
 
-		port := test.GetFreePort()
-		url := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
@@ -192,9 +190,11 @@ func TestSignature(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = currentDir
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(conf.HTTP.Port)
+		url := cm.StartAndWait()
 
 		defer cm.StopServer()
+
+		port := strconv.Itoa(cm.Port())
 
 		err = UploadImage(CreateDefaultImage(), url, repoName, "0.0.1")
 		So(err, ShouldBeNil)
@@ -229,10 +229,8 @@ func TestSignature(t *testing.T) {
 
 //nolint:dupl
 func TestDerivedImageList(t *testing.T) {
-	port := test.GetFreePort()
-	url := test.GetBaseURL(port)
 	conf := config.New()
-	conf.HTTP.Port = port
+	conf.HTTP.Port = "0"
 	defaultVal := true
 	conf.Extensions = &extconf.ExtensionConfig{
 		Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
@@ -242,7 +240,7 @@ func TestDerivedImageList(t *testing.T) {
 
 	cm := test.NewControllerManager(ctlr)
 
-	cm.StartAndWait(conf.HTTP.Port)
+	url := cm.StartAndWait()
 	defer cm.StopServer()
 
 	err := uploadManifestDerivedBase(url)
@@ -288,10 +286,8 @@ func TestDerivedImageList(t *testing.T) {
 
 //nolint:dupl
 func TestBaseImageList(t *testing.T) {
-	port := test.GetFreePort()
-	url := test.GetBaseURL(port)
 	conf := config.New()
-	conf.HTTP.Port = port
+	conf.HTTP.Port = "0"
 	defaultVal := true
 	conf.Extensions = &extconf.ExtensionConfig{
 		Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
@@ -300,7 +296,7 @@ func TestBaseImageList(t *testing.T) {
 	ctlr.Config.Storage.RootDirectory = t.TempDir()
 	cm := test.NewControllerManager(ctlr)
 
-	cm.StartAndWait(conf.HTTP.Port)
+	url := cm.StartAndWait()
 	defer cm.StopServer()
 
 	err := uploadManifestDerivedBase(url)
@@ -346,10 +342,8 @@ func TestBaseImageList(t *testing.T) {
 
 func TestOutputFormatGQL(t *testing.T) {
 	Convey("Test from real server", t, func() {
-		port := test.GetFreePort()
-		url := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
@@ -357,7 +351,7 @@ func TestOutputFormatGQL(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(conf.HTTP.Port)
+		url := cm.StartAndWait()
 
 		defer cm.StopServer()
 
@@ -545,10 +539,8 @@ func TestOutputFormatGQL(t *testing.T) {
 
 func TestServerResponseGQL(t *testing.T) {
 	Convey("Test from real server", t, func() {
-		port := test.GetFreePort()
-		url := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
@@ -556,7 +548,7 @@ func TestServerResponseGQL(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(conf.HTTP.Port)
+		url := cm.StartAndWait()
 
 		defer cm.StopServer()
 
@@ -780,10 +772,8 @@ func TestServerResponseGQL(t *testing.T) {
 }
 
 func TestServerResponse(t *testing.T) {
-	port := test.GetFreePort()
-	url := test.GetBaseURL(port)
 	conf := config.New()
-	conf.HTTP.Port = port
+	conf.HTTP.Port = "0"
 	defaultVal := true
 	conf.Extensions = &extconf.ExtensionConfig{
 		Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
@@ -792,7 +782,7 @@ func TestServerResponse(t *testing.T) {
 	ctlr.Config.Storage.RootDirectory = t.TempDir()
 	cm := test.NewControllerManager(ctlr)
 
-	cm.StartAndWait(conf.HTTP.Port)
+	url := cm.StartAndWait()
 	defer cm.StopServer()
 
 	err := uploadManifest(url)
@@ -891,9 +881,8 @@ func TestServerResponse(t *testing.T) {
 
 func TestServerResponseGQLWithoutPermissions(t *testing.T) {
 	Convey("Test accessing a blobs folder without having permissions fails fast", t, func() {
-		port := test.GetFreePort()
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		dir := t.TempDir()
 
@@ -1022,10 +1011,8 @@ func runDisplayIndexTests(baseURL string) {
 
 func TestImagesSortFlag(t *testing.T) {
 	rootDir := t.TempDir()
-	port := test.GetFreePort()
-	baseURL := test.GetBaseURL(port)
 	conf := config.New()
-	conf.HTTP.Port = port
+	conf.HTTP.Port = "0"
 
 	defaultVal := true
 	conf.Extensions = &extconf.ExtensionConfig{
@@ -1056,7 +1043,7 @@ func TestImagesSortFlag(t *testing.T) {
 	}
 
 	cm := test.NewControllerManager(ctlr)
-	cm.StartAndWait(conf.HTTP.Port)
+	baseURL := cm.StartAndWait()
 
 	defer cm.StopServer()
 

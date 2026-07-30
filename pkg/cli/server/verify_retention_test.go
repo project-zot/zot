@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -74,7 +75,6 @@ func TestRetentionCheckNegative(t *testing.T) {
 	Convey("config with GC disabled", t, func(c C) {
 		testDir := t.TempDir()
 		logFile := MakeTempFilePath(t, "retention-check.log")
-		port := GetFreePort()
 
 		content := fmt.Sprintf(`{
 			"distSpecVersion": "1.1.1",
@@ -84,9 +84,9 @@ func TestRetentionCheckNegative(t *testing.T) {
 			},
 			"http": {
 				"address": "127.0.0.1",
-				"port": "%s"
+				"port": "0"
 			}
-		}`, testDir, port)
+		}`, testDir)
 		configFile := MakeTempFileWithContent(t, "zot-config.json", content)
 
 		os.Args = []string{"cli_test", "verify-feature", "retention", "-l", logFile, "-t", "30s", configFile}
@@ -106,9 +106,8 @@ func TestRetentionCheckNegative(t *testing.T) {
 	})
 
 	Convey("server is running", t, func(c C) {
-		port := GetFreePort()
 		config := config.New()
-		config.HTTP.Port = port
+		config.HTTP.Port = "0"
 		controller := api.NewController(config)
 
 		testDir := t.TempDir()
@@ -118,9 +117,11 @@ func TestRetentionCheckNegative(t *testing.T) {
 		controller.Config.Storage.RootDirectory = storageDir
 		controller.Config.Storage.GC = true
 		ctrlManager := NewControllerManager(controller)
-		ctrlManager.StartAndWait(port)
+		ctrlManager.StartAndWait()
 
 		defer ctrlManager.StopServer()
+
+		port := strconv.Itoa(ctrlManager.Port())
 
 		content := fmt.Sprintf(`{
 			"storage": {
@@ -169,7 +170,6 @@ func TestRetentionCheckNegative(t *testing.T) {
 	Convey("invalid address format", t, func(c C) {
 		testDir := t.TempDir()
 		logFile := MakeTempFilePath(t, "retention-check.log")
-		port := GetFreePort()
 
 		// Use an invalid IPv6 address format that will pass LoadConfiguration
 		// but fail net.ResolveTCPAddr immediately (syntax error, no DNS lookup)
@@ -181,12 +181,12 @@ func TestRetentionCheckNegative(t *testing.T) {
 			},
 			"http": {
 				"address": "[invalid:ipv6",
-				"port": "%s"
+				"port": "0"
 			},
 			"log": {
 				"level": "debug"
 			}
-		}`, testDir, port)
+		}`, testDir)
 		configFile := MakeTempFileWithContent(t, "zot-config.json", content)
 
 		os.Args = []string{"cli_test", "verify-feature", "retention", "-l", logFile, "-t", "30s", configFile}
@@ -216,7 +216,6 @@ func TestRetentionCheckNegative(t *testing.T) {
 		for _, testCase := range testCases {
 			Convey(testCase.name, func() {
 				testDir := t.TempDir()
-				port := GetFreePort()
 
 				content := fmt.Sprintf(`{
 					"distSpecVersion": "1.1.1",
@@ -226,9 +225,9 @@ func TestRetentionCheckNegative(t *testing.T) {
 					},
 					"http": {
 						"address": "127.0.0.1",
-						"port": "%s"
+						"port": "0"
 					}
-				}`, testDir, port)
+				}`, testDir)
 				configFile := MakeTempFileWithContent(t, "zot-config.json", content)
 
 				os.Args = []string{"cli_test", "verify-feature", "retention", "-l", testCase.logFile, "-t", "30s", configFile}
@@ -254,7 +253,6 @@ func TestRetentionCheckNegative(t *testing.T) {
 			Convey(testCase.name, func() {
 				testDir := t.TempDir()
 				logFile := MakeTempFilePath(t, "retention-check.log")
-				port := GetFreePort()
 
 				content := fmt.Sprintf(`{
 					"distSpecVersion": "1.1.1",
@@ -264,9 +262,9 @@ func TestRetentionCheckNegative(t *testing.T) {
 					},
 					"http": {
 						"address": "127.0.0.1",
-						"port": "%s"
+						"port": "0"
 					}
-				}`, testDir, port)
+				}`, testDir)
 				configFile := MakeTempFileWithContent(t, "zot-config.json", content)
 
 				args := []string{
@@ -297,11 +295,12 @@ func TestRetentionCheckWithRetentionEnabledAndRedisDriver(t *testing.T) {
 
 	Convey("server is running with Redis driver", t, func(c C) {
 		miniRedis := miniredis.RunT(t)
-		port := GetFreePort()
 		testDir := t.TempDir()
 		storageDir := path.Join(testDir, "storage")
 		logFile := MakeTempFilePath(t, "retention-check.log")
 
+		// Port "0": verify-feature skips HTTP bind when remoteCache is enabled, so the
+		// live controller and CLI do not need a shared pre-declared port.
 		content := fmt.Sprintf(`{
 			"distSpecVersion": "1.1.1",
 			"storage": {
@@ -331,13 +330,13 @@ func TestRetentionCheckWithRetentionEnabledAndRedisDriver(t *testing.T) {
 			},
 			"http": {
 				"address": "127.0.0.1",
-				"port": "%s"
+				"port": "0"
 			},
 			"log": {
 				"level": "debug"
 			}
 		}
-		`, storageDir, testGCDelay, miniRedis.Addr(), port)
+		`, storageDir, testGCDelay, miniRedis.Addr())
 		configFile := MakeTempFileWithContent(t, "zot-config.json", content)
 
 		// Create complex image setup before running verify-feature retention
@@ -472,7 +471,7 @@ func TestRetentionCheckWithRetentionEnabledAndRedisDriver(t *testing.T) {
 		// Start a controller using the same config to test running verify-feature retention while server is running
 		controller := api.NewController(conf)
 		ctrlManager := NewControllerManager(controller)
-		ctrlManager.StartAndWait(port)
+		ctrlManager.StartAndWait()
 
 		defer ctrlManager.StopServer()
 
@@ -533,7 +532,6 @@ func TestRetentionCheckWithRetentionEnabled(t *testing.T) {
 	defer func() { os.Args = oldArgs }()
 
 	Convey("valid config with retention enabled", t, func(c C) {
-		port := GetFreePort()
 		testDir := t.TempDir()
 		storageDir := path.Join(testDir, "storage")
 		logFile := MakeTempFilePath(t, "retention-check.log")
@@ -562,13 +560,13 @@ func TestRetentionCheckWithRetentionEnabled(t *testing.T) {
 			},
 			"http": {
 				"address": "127.0.0.1",
-				"port": "%s"
+				"port": "0"
 			},
 			"log": {
 				"level": "debug"
 			}
 		}
-		`, storageDir, testGCDelay, port)
+		`, storageDir, testGCDelay)
 		configFile := MakeTempFileWithContent(t, "zot-config.json", content)
 
 		// Create complex image setup before running verify-feature retention
@@ -822,7 +820,6 @@ func TestRetentionCheckWithDeleteReferrers(t *testing.T) {
 	defer func() { os.Args = oldArgs }()
 
 	Convey("valid config with deleteReferrers enabled", t, func(c C) {
-		port := GetFreePort()
 		testDir := t.TempDir()
 		storageDir := path.Join(testDir, "storage")
 		logFile := MakeTempFilePath(t, "retention-check.log")
@@ -852,13 +849,13 @@ func TestRetentionCheckWithDeleteReferrers(t *testing.T) {
 			},
 			"http": {
 				"address": "127.0.0.1",
-				"port": "%s"
+				"port": "0"
 			},
 			"log": {
 				"level": "debug"
 			}
 		}
-		`, storageDir, testGCDelay, port)
+		`, storageDir, testGCDelay)
 		configFile := MakeTempFileWithContent(t, "zot-config.json", content)
 
 		// Create image setup before running verify-feature retention
@@ -1001,7 +998,6 @@ func TestRetentionCheckWithRetentionDisabled(t *testing.T) {
 	defer func() { os.Args = oldArgs }()
 
 	Convey("valid config with retention disabled", t, func(c C) {
-		port := GetFreePort()
 		testDir := t.TempDir()
 		storageDir := path.Join(testDir, "storage")
 		logFile := MakeTempFilePath(t, "retention-check.log")
@@ -1016,13 +1012,13 @@ func TestRetentionCheckWithRetentionDisabled(t *testing.T) {
 			},
 			"http": {
 				"address": "127.0.0.1",
-				"port": "%s"
+				"port": "0"
 			},
 			"log": {
 				"level": "debug"
 			}
 		}
-		`, storageDir, testGCDelay, port)
+		`, storageDir, testGCDelay)
 		configFile := MakeTempFileWithContent(t, "zot-config.json", content)
 
 		// Create image setup for GC testing (no retention, no MetaDB needed)
@@ -1155,7 +1151,6 @@ func TestRetentionCheckWithSubpaths(t *testing.T) {
 	defer func() { os.Args = oldArgs }()
 
 	Convey("config with subpaths", t, func(c C) {
-		port := GetFreePort()
 		testDir := t.TempDir()
 		storageDir := path.Join(testDir, "storage")
 		subpathStoreDir := path.Join(testDir, "storage2")
@@ -1209,13 +1204,13 @@ func TestRetentionCheckWithSubpaths(t *testing.T) {
 		},
 			"http": {
 				"address": "127.0.0.1",
-				"port": "%s"
+				"port": "0"
 			},
 			"log": {
 				"level": "debug"
 			}
 		}
-		`, storageDir, testGCDelay, subpathStoreDir, testGCDelay, port)
+		`, storageDir, testGCDelay, subpathStoreDir, testGCDelay)
 		configFile := MakeTempFileWithContent(t, "zot-config.json", content)
 
 		// Create image setup before running verify-feature retention
@@ -1463,7 +1458,6 @@ func TestRetentionCheckWithGCIntervalOverride(t *testing.T) {
 		storageDir := path.Join(testDir, "storage")
 		subpathStoreDir := path.Join(testDir, "storage2")
 		logFile := MakeTempFilePath(t, "retention-check.log")
-		port := GetFreePort()
 
 		content := fmt.Sprintf(`{
 			"distSpecVersion": "1.1.1",
@@ -1483,13 +1477,13 @@ func TestRetentionCheckWithGCIntervalOverride(t *testing.T) {
 			},
 			"http": {
 				"address": "127.0.0.1",
-				"port": "%s"
+				"port": "0"
 			},
 			"log": {
 				"level": "debug"
 			}
 		}
-		`, storageDir, testGCDelay, subpathStoreDir, testGCDelay, port)
+		`, storageDir, testGCDelay, subpathStoreDir, testGCDelay)
 		configFile := MakeTempFileWithContent(t, "zot-config.json", content)
 
 		gcDelay, _ := time.ParseDuration(testGCDelay)

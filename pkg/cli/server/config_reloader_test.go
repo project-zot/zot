@@ -21,9 +21,6 @@ func TestConfigReloader(t *testing.T) {
 	defer func() { os.Args = oldArgs }()
 
 	Convey("reload access control config", t, func(conveyCtx C) {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
 		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		username := "alice"
@@ -38,7 +35,7 @@ func TestConfigReloader(t *testing.T) {
 			},
 			"http": {
 			  "address": "127.0.0.1",
-			  "port": "%s",
+			  "port": "0",
 			  "realm": "zot",
 			  "auth": {
 				"htpasswd": {
@@ -68,7 +65,7 @@ func TestConfigReloader(t *testing.T) {
 			  "level": "debug",
 			  "output": "%s"
 			}
-		  }`, t.TempDir(), port, htpasswdPath, logPath)
+		  }`, t.TempDir(), htpasswdPath, logPath)
 
 		cfgfile := test.MakeTempFile(t, "zot-test.json")
 		defer cfgfile.Close()
@@ -82,6 +79,7 @@ func TestConfigReloader(t *testing.T) {
 			conveyCtx.So(err, ShouldBeNil)
 		}()
 
+		baseURL := waitForKernelChosenPortBaseURL(logPath)
 		test.WaitTillServerReady(baseURL)
 
 		// verify initial startup authentication logs
@@ -106,7 +104,7 @@ func TestConfigReloader(t *testing.T) {
 			},
 			"http": {
 			  "address": "127.0.0.1",
-			  "port": "%s",
+			  "port": "0",
 			  "realm": "zot",
 			  "auth": {
 				"htpasswd": {
@@ -136,7 +134,7 @@ func TestConfigReloader(t *testing.T) {
 			  "level": "debug",
 			  "output": "%s"
 			}
-		}`, t.TempDir(), port, htpasswdPath, logPath)
+		}`, t.TempDir(), htpasswdPath, logPath)
 
 		err = cfgfile.Truncate(0)
 		So(err, ShouldBeNil)
@@ -174,9 +172,6 @@ func TestConfigReloader(t *testing.T) {
 	})
 
 	Convey("reload gc config", t, func(ctx C) {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
 		logFile := test.MakeTempFile(t, "zot-log.txt")
 		defer logFile.Close()
 
@@ -196,13 +191,13 @@ func TestConfigReloader(t *testing.T) {
 				},
 				"http": {
 					"address": "127.0.0.1",
-					"port": "%s"
+					"port": "0"
 				},
 				"log": {
 					"level": "debug",
 					"output": "%s"
 				}
-			}`, t.TempDir(), t.TempDir(), port, logFile.Name())
+			}`, t.TempDir(), t.TempDir(), logFile.Name())
 
 		cfgfile := test.MakeTempFile(t, "zot-test.json")
 		defer cfgfile.Close()
@@ -217,6 +212,7 @@ func TestConfigReloader(t *testing.T) {
 			ctx.So(err, ShouldBeNil)
 		}()
 
+		baseURL := waitForKernelChosenPortBaseURL(logFile.Name())
 		test.WaitTillServerReady(baseURL)
 
 		// verify initial startup authentication logs (no auth configured)
@@ -250,13 +246,13 @@ func TestConfigReloader(t *testing.T) {
 			},
 			"http": {
 				"address": "127.0.0.1",
-				"port": "%s"
+				"port": "0"
 			},
 			"log": {
 				"level": "debug",
 				"output": "%s"
 			}
-		}`, t.TempDir(), t.TempDir(), port, logFile.Name())
+		}`, t.TempDir(), t.TempDir(), logFile.Name())
 
 		err = cfgfile.Truncate(0)
 		So(err, ShouldBeNil)
@@ -301,9 +297,6 @@ func TestConfigReloader(t *testing.T) {
 	})
 
 	Convey("reload sync config", t, func(ctx C) {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
 		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		content := fmt.Sprintf(`{
@@ -313,7 +306,7 @@ func TestConfigReloader(t *testing.T) {
 				},
 				"http": {
 					"address": "127.0.0.1",
-					"port": "%s"
+					"port": "0"
 				},
 				"log": {
 					"level": "debug",
@@ -340,7 +333,7 @@ func TestConfigReloader(t *testing.T) {
 						}]
 					}
 				}
-			}`, t.TempDir(), port, logPath)
+			}`, t.TempDir(), logPath)
 
 		cfgfile := test.MakeTempFile(t, "zot-test.json")
 		defer cfgfile.Close()
@@ -355,6 +348,7 @@ func TestConfigReloader(t *testing.T) {
 			ctx.So(err, ShouldBeNil)
 		}()
 
+		baseURL := waitForKernelChosenPortBaseURL(logPath)
 		test.WaitTillServerReady(baseURL)
 
 		// verify initial startup authentication logs (no auth configured)
@@ -379,7 +373,7 @@ func TestConfigReloader(t *testing.T) {
 			},
 			"http": {
 				"address": "127.0.0.1",
-				"port": "%s"
+				"port": "0"
 			},
 			"log": {
 				"level": "debug",
@@ -406,7 +400,7 @@ func TestConfigReloader(t *testing.T) {
 					}]
 				}
 			}
-		}`, t.TempDir(), port, logPath)
+		}`, t.TempDir(), logPath)
 
 		err = cfgfile.Truncate(0)
 		So(err, ShouldBeNil)
@@ -451,9 +445,6 @@ func TestConfigReloader(t *testing.T) {
 	})
 
 	Convey("reload scrub and CVE config", t, func(ctx C) {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
 		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		content := fmt.Sprintf(`{
@@ -463,7 +454,7 @@ func TestConfigReloader(t *testing.T) {
 				},
 				"http": {
 					"address": "127.0.0.1",
-					"port": "%s"
+					"port": "0"
 				},
 				"log": {
 					"level": "debug",
@@ -483,7 +474,7 @@ func TestConfigReloader(t *testing.T) {
 						"interval": "24h"
 					}
 				}
-			}`, t.TempDir(), port, logPath)
+			}`, t.TempDir(), logPath)
 
 		cfgfile := test.MakeTempFile(t, "zot-test.json")
 		defer cfgfile.Close()
@@ -498,6 +489,7 @@ func TestConfigReloader(t *testing.T) {
 			ctx.So(err, ShouldBeNil)
 		}()
 
+		baseURL := waitForKernelChosenPortBaseURL(logPath)
 		test.WaitTillServerReady(baseURL)
 
 		// verify initial startup authentication logs (no auth configured)
@@ -522,7 +514,7 @@ func TestConfigReloader(t *testing.T) {
 			},
 			"http": {
 				"address": "127.0.0.1",
-				"port": "%s"
+				"port": "0"
 			},
 			"log": {
 				"level": "debug",
@@ -538,7 +530,7 @@ func TestConfigReloader(t *testing.T) {
 					}
 				}
 			}
-		}`, t.TempDir(), port, logPath)
+		}`, t.TempDir(), logPath)
 
 		err = cfgfile.Truncate(0)
 		So(err, ShouldBeNil)
@@ -592,9 +584,6 @@ func TestConfigReloader(t *testing.T) {
 	})
 
 	Convey("reload bad config", t, func(conveyCtx C) {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
 		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		content := fmt.Sprintf(`{
@@ -604,7 +593,7 @@ func TestConfigReloader(t *testing.T) {
 				},
 				"http": {
 					"address": "127.0.0.1",
-					"port": "%s"
+					"port": "0"
 				},
 				"log": {
 					"level": "debug",
@@ -631,7 +620,7 @@ func TestConfigReloader(t *testing.T) {
 						}]
 					}
 				}
-			}`, t.TempDir(), port, logPath)
+			}`, t.TempDir(), logPath)
 
 		cfgfile := test.MakeTempFile(t, "zot-test.json")
 		defer cfgfile.Close()
@@ -646,6 +635,7 @@ func TestConfigReloader(t *testing.T) {
 			conveyCtx.So(err, ShouldBeNil)
 		}()
 
+		baseURL := waitForKernelChosenPortBaseURL(logPath)
 		test.WaitTillServerReady(baseURL)
 
 		content = "[]"

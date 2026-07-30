@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +22,45 @@ import (
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	. "zotregistry.dev/zot/v2/pkg/test/common"
 )
+
+const (
+	// Must match the log message emitted in pkg/api/controller.go when Port is "0".
+	kernelChosenPortMsg   = "port is unspecified, listening on kernel chosen port"
+	kernelPortWaitTimeout = 30 * time.Second
+)
+
+// waitForKernelChosenPortBaseURL polls a zot log file for the kernel-assigned listen
+// port logged when conf.HTTP.Port is "0", then returns http://127.0.0.1:<port>.
+// Used for CLI serve tests that have no ControllerManager to query after bind.
+func waitForKernelChosenPortBaseURL(logPath string) string {
+	deadline := time.Now().Add(kernelPortWaitTimeout)
+
+	for time.Now().Before(deadline) {
+		content, err := os.ReadFile(logPath)
+		if err == nil {
+			for line := range strings.SplitSeq(string(content), "\n") {
+				if !strings.Contains(line, kernelChosenPortMsg) {
+					continue
+				}
+
+				var entry struct {
+					Port int `json:"port"`
+				}
+
+				if err := json.Unmarshal([]byte(line), &entry); err != nil || entry.Port <= 0 {
+					continue
+				}
+
+				return GetBaseURL(strconv.Itoa(entry.Port))
+			}
+		}
+
+		time.Sleep(SleepTime)
+	}
+
+	panic(fmt.Sprintf("timed out after %s waiting for kernel chosen port in %s",
+		kernelPortWaitTimeout, logPath))
+}
 
 // checkAuthLogEntry checks if a log entry with the given message has the expected enabled value.
 func checkAuthLogEntry(logData []byte, message string, expectedEnabled bool) bool {
@@ -2820,7 +2860,7 @@ func TestServeAPIKey(t *testing.T) {
 					},
 					"http": {
 						"address": "127.0.0.1",
-						"port": "%s",
+						"port": "0",
 						"auth": {
 							"apikey": true
 						}
@@ -2858,7 +2898,7 @@ func TestServeAPIKey(t *testing.T) {
 					},
 					"http": {
 						"address": "127.0.0.1",
-						"port": "%s",
+						"port": "0",
 						"auth": {
 							"apikey": false
 						}
@@ -3187,16 +3227,19 @@ func TestScrub(t *testing.T) {
 		})
 
 		Convey("server is running", func(c C) {
-			port := GetFreePort()
 			config := config.New()
-			config.HTTP.Port = port
+			config.HTTP.Port = "0"
 			controller := api.NewController(config)
 
 			dir := t.TempDir()
 
 			controller.Config.Storage.RootDirectory = dir
 			ctrlManager := NewControllerManager(controller)
-			ctrlManager.StartAndWait(port)
+			ctrlManager.StartAndWait()
+
+			defer ctrlManager.StopServer()
+
+			port := strconv.Itoa(ctrlManager.Port())
 
 			content := fmt.Sprintf(`{
 				"storage": {
@@ -3215,25 +3258,21 @@ func TestScrub(t *testing.T) {
 			os.Args = []string{"cli_test", "scrub", tmpfile}
 			err := cli.NewServerRootCmd().Execute()
 			So(err, ShouldNotBeNil)
-
-			defer ctrlManager.StopServer()
 		})
 
 		Convey("no image store provided", func(c C) {
-			port := GetFreePort()
-
-			content := fmt.Sprintf(`{
+			content := `{
 				"storage": {
 					"rootDirectory": ""
 				},
 				"http": {
-					"port": %s
+					"port": "0"
 				},
 				"log": {
 					"level": "debug"
 				}
 			}
-			`, port)
+			`
 			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
 
 			os.Args = []string{"cli_test", "scrub", tmpfile}
@@ -3242,8 +3281,6 @@ func TestScrub(t *testing.T) {
 		})
 
 		Convey("bad index.json", func(c C) {
-			port := GetFreePort()
-
 			dir := t.TempDir()
 
 			repoName := "badindex"
@@ -3273,13 +3310,13 @@ func TestScrub(t *testing.T) {
 					"rootDirectory": "%s"
 				},
 				"http": {
-					"port": %s
+					"port": "0"
 				},
 				"log": {
 					"level": "debug"
 				}
 			}
-			`, dir, port)
+			`, dir)
 			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
 
 			os.Args = []string{"cli_test", "scrub", tmpfile}
@@ -3485,13 +3522,12 @@ func TestClusterConfig(t *testing.T) {
 //nolint:unparam // rootDir used by callers waiting for Trivy DB, build tags may not be available.
 func runCLIWithConfig(t *testing.T, config string) (string, string, error) {
 	t.Helper()
-	port := GetFreePort()
-	baseURL := GetBaseURL(port)
-
 	logPath := MakeTempFilePath(t, "zot-log.txt")
 
 	rootDir := t.TempDir()
-	config = fmt.Sprintf(config, rootDir, port, logPath)
+	// config must use fmt placeholders for rootDirectory and log output only;
+	// http.port must be hardcoded as "0" (kernel-assigned).
+	config = fmt.Sprintf(config, rootDir, logPath)
 
 	cfgfile := MakeTempFileWithContent(t, "zot-test.json", config)
 
@@ -3512,6 +3548,7 @@ func runCLIWithConfig(t *testing.T, config string) (string, string, error) {
 	case <-time.After(250 * time.Millisecond): // No startup error
 	}
 
+	baseURL := waitForKernelChosenPortBaseURL(logPath)
 	WaitTillServerReady(baseURL)
 
 	return logPath, rootDir, nil
