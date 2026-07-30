@@ -15,19 +15,67 @@ import (
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
-// blobLifecycle encapsulates backend-specific blob lifecycle operations.
-// Implementations are behavior-preserving adapters for existing local/remote flows.
+// blobLifecycle encapsulates the operations that differ between local storage, which
+// dedupes via real hardlinks, and a remote backend (S3/GCS/Azure), which has no hardlink
+// equivalent and instead dedupes by keeping one real copy in the global blobstore repo
+// (_blobstore/) and writing empty "marker" files at every other repo path that references
+// it, redirecting reads to the global copy. Implementations are behavior-preserving
+// adapters for the existing local/remote flows.
 type blobLifecycle interface {
+	// PromoteCandidate moves/copies a blob from a repo's local path into the global
+	// blobstore, making it the canonical copy for that digest. Local: hardlink (cheap,
+	// same inode). Remote: streamed copy of the actual bytes (dstPath has no content of
+	// its own yet).
 	PromoteCandidate(srcPath, dstPath string) error
+
+	// ConvertMigratedRepoBlobToMarker runs once per pre-existing repo blob during the
+	// one-time upgrade to the global blobstore (see upgradeToGlobalBlobstore): after
+	// PromoteCandidate has copied one repo's blob into the global blobstore as the new
+	// canonical copy, every *other* repo that already held a full, real copy of the same
+	// digest must have that copy replaced by a marker, so the content only exists once.
+	// Local: no-op - local repos already dedupe via hardlinks to a shared inode, so there
+	// is nothing to convert. Remote: writes an empty marker at repoBlobPath (see LinkBlob),
+	// replacing what was previously a full duplicate.
 	ConvertMigratedRepoBlobToMarker(globalBlobPath, repoBlobPath string) error
+
+	// LinkBlob records repoBlobPath (dstPath) as a reference to an existing blob at
+	// srcPath during normal (non-migration) dedupe - e.g. a push whose content already
+	// exists under a different repo or digest-only path. Local: hardlink. Remote: writes
+	// an empty marker file; the real content is read back through ResolveReadPath instead.
 	LinkBlob(srcPath, dstPath string) error
+
+	// ResolveReadPath picks which path a read should actually use for blobPath. Local:
+	// blobPath's hardlink already points at the right content, except while a blob is
+	// still being uploaded (blobSize <= 0), when it falls back through resolveFromCache.
+	// Remote: prefers globalBlobPath if it exists (the usual case, since content lives
+	// centrally there), falling back to blobPath only for blobs that predate the global
+	// blobstore or are mid-upload.
 	ResolveReadPath(blobPath, globalBlobPath string, digest godigest.Digest, blobSize int64,
 		resolveFromCache func(godigest.Digest) (string, error),
 	) (string, error)
+
+	// ShouldDeleteGlobalBlob reports whether the global blobstore's copy of digest is
+	// safe to delete now that globalBlobPath's caller-side reference is gone. Local: uses
+	// the filesystem's hardlink count (nlink) when the platform reports it - if this was
+	// the last link, it's safe; falls back to isDigestReferenced (a cache-based scan)
+	// otherwise. Remote: always uses isDigestReferenced, since there is no hardlink count
+	// to consult.
 	ShouldDeleteGlobalBlob(globalBlobPath string, digest godigest.Digest,
 		isDigestReferenced func(godigest.Digest) (bool, error),
 	) (bool, error)
+
+	// ShouldGateDeleteUntilRebuild reports whether deletes must wait until
+	// RunDedupeBlobs's startup rebuild has walked every pre-existing blob (see
+	// dedupeRebuildDone). Local: false - ShouldDeleteGlobalBlob's nlink check doesn't
+	// depend on the cache being warm. Remote: true - reference-checking is entirely
+	// cache-based here, so deleting before the rebuild completes risks deleting a blob
+	// the cache doesn't know is still referenced elsewhere yet.
 	ShouldGateDeleteUntilRebuild() bool
+
+	// IncludeRepoInMountCandidates reports whether repo should be considered a candidate
+	// source for cross-repo blob mount/dedupe lookups (see GetAllDedupeReposCandidates).
+	// Both implementations exclude the global blobstore repo itself (_blobstore/), an
+	// internal implementation detail rather than a real repo a mount could come from.
 	IncludeRepoInMountCandidates(repo string) bool
 }
 
