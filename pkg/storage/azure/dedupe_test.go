@@ -32,6 +32,7 @@ import (
 	tskip "zotregistry.dev/zot/v2/pkg/test/skip"
 )
 
+//nolint:gochecknoglobals
 var errAzureMockEndpointNotSet = errors.New("AZURITEMOCK_ENDPOINT must be set for Azure dedupe tests")
 
 func cleanupAzureStorage(storeDriver driver.StorageDriver, name string) {
