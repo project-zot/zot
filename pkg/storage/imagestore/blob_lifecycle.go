@@ -45,11 +45,11 @@ type blobLifecycle interface {
 	LinkBlob(srcPath, dstPath string) error
 
 	// ResolveReadPath picks which path a read should actually use for blobPath. Local:
-	// blobPath's hardlink already points at the right content, except while a blob is
-	// still being uploaded (blobSize <= 0), when it falls back through resolveFromCache.
-	// Remote: prefers globalBlobPath if it exists (the usual case, since content lives
-	// centrally there), falling back to blobPath only for blobs that predate the global
-	// blobstore or are mid-upload.
+	// delegates to resolveReadPathWithCache, using blobSize to tell a real hardlink apart
+	// from a zero-byte placeholder (see that function's comment for the full case
+	// breakdown). Remote: prefers globalBlobPath if it exists (the usual case, since
+	// content lives centrally there), falling back to blobPath only for blobs that
+	// predate the global blobstore or are mid-upload; ignores resolveFromCache entirely.
 	ResolveReadPath(blobPath, globalBlobPath string, digest godigest.Digest, blobSize int64,
 		resolveFromCache func(godigest.Digest) (string, error),
 	) (string, error)
@@ -79,6 +79,20 @@ type blobLifecycle interface {
 	IncludeRepoInMountCandidates(repo string) bool
 }
 
+// resolveReadPathWithCache is localHardlinkBlobLifecycle.ResolveReadPath's body (remote
+// has its own, globalBlobPath-based logic - see remoteMarkerBlobLifecycle.ResolveReadPath).
+// blobSize is blobPath's on-disk size, as already Stat'd by the caller.
+//
+//   - blobSize > 0: blobPath's hardlink already holds the real content (its Stat size is
+//     the real content's size, not zero, since hardlinks share the same inode/bytes as
+//     whatever they're linked to). Nothing to resolve - return blobPath unchanged.
+//   - blobSize <= 0: blobPath is a zero-byte file, which is ambiguous on its own. Compare
+//     digest against the hash of empty content for its algorithm: if it matches, this is
+//     a genuine empty blob and blobPath (still zero bytes, correctly) is the right answer.
+//     Otherwise, a real hardlink to non-empty content can't legitimately be zero bytes, so
+//     something's off (e.g. an interrupted or legacy write left a stub) - fall back to
+//     resolveFromCache (checkCacheBlob), which looks up a path elsewhere in the store that
+//     actually has the bytes for this digest, rather than serving up the empty stub.
 func resolveReadPathWithCache(blobPath string, digest godigest.Digest, blobSize int64,
 	resolveFromCache func(godigest.Digest) (string, error),
 ) (string, error) {
