@@ -8,10 +8,42 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api"
 	"zotregistry.dev/zot/v2/pkg/log"
 	test "zotregistry.dev/zot/v2/pkg/test/common"
 )
+
+const htpasswdReloadTimeout = 5 * time.Second
+
+func waitForHTPasswdAuth(htp *api.HTPasswd, username, password string) bool {
+	deadline := time.Now().Add(htpasswdReloadTimeout)
+
+	for time.Now().Before(deadline) {
+		ok, present := htp.Authenticate(username, password)
+		if ok && present {
+			return true
+		}
+
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	return false
+}
+
+func waitForHTPasswdUserGone(htp *api.HTPasswd, username string) bool {
+	deadline := time.Now().Add(htpasswdReloadTimeout)
+
+	for time.Now().Before(deadline) {
+		if _, present := htp.Get(username); !present {
+			return true
+		}
+
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	return false
+}
 
 func TestHTPasswdWatcherOriginal(t *testing.T) {
 	logger := log.NewLogger("DEBUG", "")
@@ -28,7 +60,7 @@ func TestHTPasswdWatcherOriginal(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// Start the watcher goroutine
-		htw.Run()
+		So(htw.Run(), ShouldBeNil)
 
 		defer htw.Close() //nolint: errcheck
 
@@ -51,8 +83,8 @@ func TestHTPasswdWatcherOriginal(t *testing.T) {
 		err = os.WriteFile(htpasswdPath, []byte(test.GetBcryptCredString(username, password2)), 0o600)
 		So(err, ShouldBeNil)
 
-		// 3. Give some time for the background task
-		time.Sleep(10 * time.Millisecond)
+		// 3. Wait for debounced reload
+		So(waitForHTPasswdAuth(htp, username, password2), ShouldBeTrue)
 
 		// 4. Check user present and now has password2
 		ok, present = htp.Authenticate(username, password1)
@@ -61,6 +93,91 @@ func TestHTPasswdWatcherOriginal(t *testing.T) {
 
 		ok, present = htp.Authenticate(username, password2)
 		So(ok, ShouldBeTrue)
+		So(present, ShouldBeTrue)
+	})
+}
+
+func TestHTPasswdWatcherAtomicReplace(t *testing.T) {
+	logger := log.NewLogger("DEBUG", "")
+
+	Convey("reload htpasswd after atomic rename (k8s-style)", t, func() {
+		username, _ := test.GenerateRandomString()
+		password1, _ := test.GenerateRandomString()
+		password2, _ := test.GenerateRandomString()
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password1))
+
+		htp := api.NewHTPasswd(logger)
+		htw, err := api.NewHTPasswdWatcher(htp, "")
+		So(err, ShouldBeNil)
+
+		So(htw.Run(), ShouldBeNil)
+		defer htw.Close() //nolint: errcheck
+
+		err = htw.ChangeFile(htpasswdPath)
+		So(err, ShouldBeNil)
+
+		ok, present := htp.Authenticate(username, password1)
+		So(ok, ShouldBeTrue)
+		So(present, ShouldBeTrue)
+
+		// Simulate kubelet Secret/ConfigMap update: write temp then rename over target.
+		tmpPath := htpasswdPath + ".tmp"
+		err = os.WriteFile(tmpPath, []byte(test.GetBcryptCredString(username, password2)), 0o600)
+		So(err, ShouldBeNil)
+		err = os.Rename(tmpPath, htpasswdPath)
+		So(err, ShouldBeNil)
+
+		So(waitForHTPasswdAuth(htp, username, password2), ShouldBeTrue)
+
+		ok, present = htp.Authenticate(username, password1)
+		So(ok, ShouldBeFalse)
+		So(present, ShouldBeTrue)
+	})
+
+	Convey("reload htpasswd after symlink retarget (k8s ..data style)", t, func() {
+		username, _ := test.GenerateRandomString()
+		password1, _ := test.GenerateRandomString()
+		password2, _ := test.GenerateRandomString()
+
+		dir := t.TempDir()
+		data1 := dir + "/data1"
+		data2 := dir + "/data2"
+		So(os.Mkdir(data1, 0o755), ShouldBeNil)
+		So(os.Mkdir(data2, 0o755), ShouldBeNil)
+
+		So(os.WriteFile(data1+"/htpasswd", []byte(test.GetBcryptCredString(username, password1)), 0o600),
+			ShouldBeNil)
+		So(os.WriteFile(data2+"/htpasswd", []byte(test.GetBcryptCredString(username, password2)), 0o600),
+			ShouldBeNil)
+
+		dataLink := dir + "/..data"
+		htpasswdPath := dir + "/htpasswd"
+		So(os.Symlink("data1", dataLink), ShouldBeNil)
+		So(os.Symlink("..data/htpasswd", htpasswdPath), ShouldBeNil)
+
+		htp := api.NewHTPasswd(logger)
+		htw, err := api.NewHTPasswdWatcher(htp, "")
+		So(err, ShouldBeNil)
+
+		So(htw.Run(), ShouldBeNil)
+		defer htw.Close() //nolint: errcheck
+
+		err = htw.ChangeFile(htpasswdPath)
+		So(err, ShouldBeNil)
+
+		ok, present := htp.Authenticate(username, password1)
+		So(ok, ShouldBeTrue)
+		So(present, ShouldBeTrue)
+
+		// Atomic symlink swap of ..data, as kubelet does for Secret/ConfigMap mounts.
+		tmpLink := dir + "/..data_tmp"
+		So(os.Symlink("data2", tmpLink), ShouldBeNil)
+		So(os.Rename(tmpLink, dataLink), ShouldBeNil)
+
+		So(waitForHTPasswdAuth(htp, username, password2), ShouldBeTrue)
+
+		ok, present = htp.Authenticate(username, password1)
+		So(ok, ShouldBeFalse)
 		So(present, ShouldBeTrue)
 	})
 }
@@ -79,9 +196,9 @@ func TestHTPasswdWatcher(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Test Run() and Close() operations
-			So(func() { htw.Run() }, ShouldNotPanic)
+			So(htw.Run(), ShouldBeNil)
 			time.Sleep(10 * time.Millisecond)
-			So(func() { htw.Run() }, ShouldNotPanic) // Idempotent
+			So(htw.Run(), ShouldEqual, zerr.ErrHTPasswdWatcherAlreadyRunning) // Already running
 			time.Sleep(10 * time.Millisecond)
 			So(func() { htw.Close() }, ShouldNotPanic)
 			time.Sleep(10 * time.Millisecond)
@@ -112,7 +229,7 @@ func TestHTPasswdWatcher(t *testing.T) {
 			So(present, ShouldBeTrue)
 
 			// Start watcher and test ChangeFile() when running
-			htw.Run()
+			So(htw.Run(), ShouldBeNil)
 			defer htw.Close()
 			time.Sleep(10 * time.Millisecond)
 
@@ -148,35 +265,29 @@ func TestHTPasswdWatcher(t *testing.T) {
 			// Change file content and verify automatic reload
 			err = os.WriteFile(htpasswdPath1, []byte(test.GetBcryptCredString(username1, password2)), 0o600)
 			So(err, ShouldBeNil)
-			time.Sleep(100 * time.Millisecond)
-			ok, present = htp.Authenticate(username1, password2)
-			So(ok, ShouldBeTrue)
-			So(present, ShouldBeTrue)
+			So(waitForHTPasswdAuth(htp, username1, password2), ShouldBeTrue)
 
 			// Test multiple users
 			multiUserContent := test.GetBcryptCredString(username1, password1) +
 				"\n" + test.GetBcryptCredString(username2, password2)
 			err = os.WriteFile(htpasswdPath1, []byte(multiUserContent), 0o600)
 			So(err, ShouldBeNil)
-			time.Sleep(100 * time.Millisecond)
-			ok, present = htp.Authenticate(username1, password1)
-			So(ok, ShouldBeTrue)
-			So(present, ShouldBeTrue)
-			ok, present = htp.Authenticate(username2, password2)
-			So(ok, ShouldBeTrue)
-			So(present, ShouldBeTrue)
+			So(waitForHTPasswdAuth(htp, username1, password1), ShouldBeTrue)
+			So(waitForHTPasswdAuth(htp, username2, password2), ShouldBeTrue)
 
 			// Test invalid content (clears store)
 			err = os.WriteFile(htpasswdPath1, []byte("invalid-content"), 0o600)
 			So(err, ShouldBeNil)
-			time.Sleep(100 * time.Millisecond)
+			So(waitForHTPasswdUserGone(htp, username1), ShouldBeTrue)
+
 			_, present = htp.Authenticate(username1, password1)
 			So(present, ShouldBeFalse)
 
 			// Test empty file (clears store)
 			err = os.WriteFile(htpasswdPath1, []byte(""), 0o600)
 			So(err, ShouldBeNil)
-			time.Sleep(100 * time.Millisecond)
+			So(waitForHTPasswdUserGone(htp, username2), ShouldBeTrue)
+
 			_, present = htp.Authenticate(username2, password2)
 			So(present, ShouldBeFalse)
 		})
@@ -199,7 +310,7 @@ func TestHTPasswdWatcher(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Test restart capability
-			htw.Run()
+			So(htw.Run(), ShouldBeNil)
 			time.Sleep(10 * time.Millisecond)
 			err = htw.ChangeFile(htpasswdPath1)
 			So(err, ShouldBeNil)
@@ -211,7 +322,8 @@ func TestHTPasswdWatcher(t *testing.T) {
 			// Close and restart
 			So(htw.Close(), ShouldBeNil)
 			So(test.WaitForLogMessages(logBuffer, "htpasswd watcher terminating...", 1, 5*time.Second), ShouldBeTrue)
-			htw.Run()
+			// Close() tears down state synchronously, so restart is safe immediately
+			So(htw.Run(), ShouldBeNil)
 			time.Sleep(10 * time.Millisecond)
 
 			// Change file after restart
@@ -229,7 +341,8 @@ func TestHTPasswdWatcher(t *testing.T) {
 			So(ok, ShouldBeTrue) // User should still be present
 			So(present, ShouldBeTrue)
 
-			// Test file rename (should not trigger reload)
+			// Test file rename away from watched path: reload is attempted but fails,
+			// so previously loaded credentials remain available.
 			htpasswdPath3 := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username1, password1))
 			err = htw.ChangeFile(htpasswdPath3)
 			So(err, ShouldBeNil)
@@ -243,23 +356,24 @@ func TestHTPasswdWatcher(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			defer os.Remove(newPath)
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(500 * time.Millisecond)
 			ok, _ = htp.Authenticate(username1, password1)
 			So(ok, ShouldBeTrue) // User should still be present
 
-			// Test file permission change (should not trigger reload)
+			// Chmod on the renamed (unwatched) path should not clear credentials
 			err = os.Chmod(newPath, 0o000)
 			So(err, ShouldBeNil)
 
 			defer func() { _ = os.Chmod(newPath, 0o644) }()
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(500 * time.Millisecond)
 			ok, _ = htp.Authenticate(username1, password1)
 			So(ok, ShouldBeTrue) // User should still be present
 
 			// Test with non-existent directory
 			htw2, err := api.NewHTPasswdWatcher(htp, "/non/existent/dir/htpasswd")
 			So(err, ShouldBeNil)
-			So(func() { htw2.Run() }, ShouldNotPanic)
+			// Inotify setup fails but the watcher starts in polling mode
+			So(htw2.Run(), ShouldBeNil)
 			time.Sleep(10 * time.Millisecond)
 			So(htw2.Close(), ShouldBeNil)
 			// 1 termination message
@@ -276,7 +390,7 @@ func TestHTPasswdWatcher(t *testing.T) {
 			longPath := longPathBuilder.String()
 			htw3, err := api.NewHTPasswdWatcher(htp, longPath)
 			So(err, ShouldBeNil)
-			So(func() { htw3.Run() }, ShouldNotPanic)
+			So(htw3.Run(), ShouldBeNil)
 			time.Sleep(10 * time.Millisecond)
 			So(htw3.Close(), ShouldBeNil)
 			// 1 termination message
@@ -308,7 +422,8 @@ func TestHTPasswdWatcher(t *testing.T) {
 			// Test concurrent Run() and Close()
 			go func() {
 				for range 5 {
-					htw.Run()
+					_ = htw.Run()
+
 					time.Sleep(1 * time.Millisecond)
 				}
 			}()
@@ -326,7 +441,7 @@ func TestHTPasswdWatcher(t *testing.T) {
 			time.Sleep(100 * time.Millisecond) // let watcher goroutine finish cleanup before restart
 
 			// Test concurrent ChangeFile() operations
-			htw.Run()
+			So(htw.Run(), ShouldBeNil)
 			defer htw.Close()
 			time.Sleep(10 * time.Millisecond)
 
@@ -370,7 +485,7 @@ func TestHTPasswdWatcher(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Start watcher
-			htw2.Run()
+			So(htw2.Run(), ShouldBeNil)
 			time.Sleep(10 * time.Millisecond)
 
 			// Close watcher
@@ -381,7 +496,7 @@ func TestHTPasswdWatcher(t *testing.T) {
 			So(test.WaitForLogMessages(logBuffer, "htpasswd watcher terminating...", 1, 5*time.Second), ShouldBeTrue)
 
 			// Verify we can restart the watcher (indicates proper cleanup)
-			htw2.Run()
+			So(htw2.Run(), ShouldBeNil)
 			time.Sleep(10 * time.Millisecond)
 			So(htw2.Close(), ShouldBeNil)
 			// 1 termination message
@@ -389,7 +504,7 @@ func TestHTPasswdWatcher(t *testing.T) {
 
 			// Test multiple Run/Close cycles
 			for range 3 {
-				htw2.Run()
+				So(htw2.Run(), ShouldBeNil)
 				time.Sleep(10 * time.Millisecond)
 				So(htw2.Close(), ShouldBeNil)
 				time.Sleep(50 * time.Millisecond) // Give time for termination
@@ -406,7 +521,7 @@ func TestHTPasswdWatcher(t *testing.T) {
 			htw1, err := api.NewHTPasswdWatcher(htp1, "")
 			So(err, ShouldBeNil)
 
-			htw1.Run()
+			So(htw1.Run(), ShouldBeNil)
 			time.Sleep(10 * time.Millisecond)
 			So(htw1.Close(), ShouldBeNil)
 			So(test.WaitForLogMessages(logBuffer, "htpasswd watcher terminating...", 1, 5*time.Second), ShouldBeTrue)
@@ -421,7 +536,7 @@ func TestHTPasswdWatcher(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Start watcher with file
-			htw2.Run()
+			So(htw2.Run(), ShouldBeNil)
 			time.Sleep(10 * time.Millisecond)
 
 			// Load file to ensure watcher is active
@@ -436,7 +551,7 @@ func TestHTPasswdWatcher(t *testing.T) {
 
 			// Test 3: Multiple termination cycles with file watching
 			for range 3 {
-				htw2.Run()
+				So(htw2.Run(), ShouldBeNil)
 				time.Sleep(10 * time.Millisecond)
 				So(htw2.Close(), ShouldBeNil)
 				time.Sleep(50 * time.Millisecond) // Give time for termination
@@ -447,7 +562,7 @@ func TestHTPasswdWatcher(t *testing.T) {
 
 			// Test 4: Stress test with rapid cycles
 			for range 5 {
-				htw2.Run()
+				So(htw2.Run(), ShouldBeNil)
 				time.Sleep(5 * time.Millisecond)
 				So(htw2.Close(), ShouldBeNil)
 				time.Sleep(20 * time.Millisecond) // Give time for termination
@@ -457,7 +572,7 @@ func TestHTPasswdWatcher(t *testing.T) {
 			So(test.WaitForLogMessages(logBuffer, "htpasswd watcher terminating...", 8, 5*time.Second), ShouldBeTrue)
 
 			// Final verification: watcher should still work after all cycles
-			htw2.Run()
+			So(htw2.Run(), ShouldBeNil)
 			time.Sleep(10 * time.Millisecond)
 			So(htw2.Close(), ShouldBeNil)
 
@@ -479,7 +594,7 @@ func TestHTPasswdWatcher(t *testing.T) {
 			colonPath := test.MakeHtpasswdFileFromString(t, ":::")
 			htw1, err := api.NewHTPasswdWatcher(htp, colonPath)
 			So(err, ShouldBeNil)
-			htw1.Run()
+			So(htw1.Run(), ShouldBeNil)
 			time.Sleep(10 * time.Millisecond)
 			_ = htw1.ChangeFile(colonPath)
 
@@ -497,7 +612,7 @@ func TestHTPasswdWatcher(t *testing.T) {
 			commentedPath := test.MakeHtpasswdFileFromString(t, content)
 			htw2, err := api.NewHTPasswdWatcher(htp, commentedPath)
 			So(err, ShouldBeNil)
-			htw2.Run()
+			So(htw2.Run(), ShouldBeNil)
 			time.Sleep(10 * time.Millisecond)
 			_ = htw2.ChangeFile(commentedPath)
 

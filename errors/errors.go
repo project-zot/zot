@@ -214,6 +214,7 @@ var (
 	ErrOIDCAudienceMismatch             = errors.New("token audience does not match any of the expected audiences")
 	ErrCertificateNotLoaded             = errors.New("tls certificate not yet loaded")
 	ErrCertificateWatcherAlreadyRunning = errors.New("certificate watcher is already running")
+	ErrHTPasswdWatcherAlreadyRunning    = errors.New("htpasswd watcher is already running")
 	ErrInvalidEndSessionEndpoint        = errors.New("end_session_endpoint must be an absolute http(s) URL")
 	ErrPolicyConditionNotCompiled       = errors.New("policy condition not compiled")
 	ErrDisallowedMetricsPath            = errors.New("provided metrics path is disallowed")
