@@ -197,12 +197,23 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 // getRepoLock returns the lazily-created per-repository lock for repo. Entries are
 // never evicted (bounded by actual repo count, same tradeoff a prior locking attempt
 // made in real cluster deployments without it being the reported problem); revisit
-// only if profiling shows unbounded growth matters in practice.
+// only if profiling shows unbounded growth matters in practice. That bound relies on
+// callers checking repoExists first for repo names taken straight from a request.
 func (is *ImageStore) getRepoLock(repo string) *sync.RWMutex {
 	val, _ := is.repoLocks.LoadOrStore(repo, &sync.RWMutex{})
 
 	//nolint:forcetypeassert // only ever stored as *sync.RWMutex via getRepoLock itself
 	return val.(*sync.RWMutex)
+}
+
+// repoExists reports whether repo has an on-disk directory. Check this before
+// WithRepoLock/WithRepoReadLock when repo comes from a request: those calls create a
+// lock-map entry for any name (see getRepoLock), unbounded otherwise.
+func (is *ImageStore) repoExists(repo string) bool {
+	dir := path.Join(is.rootDir, repo)
+	fi, err := is.storeDriver.Stat(dir)
+
+	return err == nil && fi.IsDir()
 }
 
 // lockRepo/unlockRepo mirror the pre-refactor Lock/Unlock signature (direct lock,
@@ -1011,8 +1022,7 @@ func (is *ImageStore) GetNextRepository(processedRepos map[string]struct{}) (str
 
 // GetImageTags returns a list of image tags available in the specified repository.
 func (is *ImageStore) GetImageTags(repo string) ([]string, error) {
-	dir := path.Join(is.rootDir, repo)
-	if fi, err := is.storeDriver.Stat(dir); err != nil || !fi.IsDir() {
+	if !is.repoExists(repo) {
 		return nil, zerr.ErrRepoNotFound
 	}
 
@@ -1034,8 +1044,7 @@ func (is *ImageStore) GetImageTags(repo string) ([]string, error) {
 
 // GetImageManifest returns the image manifest of an image in the specific repository.
 func (is *ImageStore) GetImageManifest(repo, reference string) ([]byte, godigest.Digest, string, error) {
-	dir := path.Join(is.rootDir, repo)
-	if fi, err := is.storeDriver.Stat(dir); err != nil || !fi.IsDir() {
+	if !is.repoExists(repo) {
 		return nil, "", "", zerr.ErrRepoNotFound
 	}
 
@@ -1067,7 +1076,7 @@ func (is *ImageStore) GetImageManifest(repo, reference string) ([]byte, godigest
 
 		var manifest ispec.Manifest
 		if err := json.Unmarshal(content, &manifest); err != nil {
-			is.log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
+			is.log.Error().Err(err).Str("dir", path.Join(is.rootDir, repo)).Msg("invalid JSON")
 
 			return err
 		}
@@ -1338,8 +1347,7 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 
 // DeleteImageManifest deletes the image manifest from the repository.
 func (is *ImageStore) DeleteImageManifest(ctx context.Context, repo, reference string, detectCollisions bool) error {
-	dir := path.Join(is.rootDir, repo)
-	if fi, err := is.storeDriver.Stat(dir); err != nil || !fi.IsDir() {
+	if !is.repoExists(repo) {
 		return zerr.ErrRepoNotFound
 	}
 
@@ -2237,6 +2245,9 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 		return false, -1, err
 	}
 
+	// No repoExists guard here (unlike GetBlob/GetBlobPartial/GetBlobRedirectURL/
+	// GetReferrers): on a cache hit, checkBlobBody's copyBlob self-heals by creating
+	// repo, so repo may legitimately not exist yet when this is called (mount case).
 	blobPath := is.BlobPath(repo, digest)
 
 	var (
@@ -2427,6 +2438,10 @@ func (is *ImageStore) GetBlobPartial(repo string, digest godigest.Digest, mediaT
 		return nil, -1, -1, err
 	}
 
+	if !is.repoExists(repo) {
+		return nil, -1, -1, zerr.ErrRepoNotFound
+	}
+
 	var (
 		blobReadCloser io.ReadCloser
 		contentLength  int64
@@ -2523,6 +2538,10 @@ func (is *ImageStore) GetBlob(repo string, digest godigest.Digest, mediaType str
 		return nil, -1, err
 	}
 
+	if !is.repoExists(repo) {
+		return nil, -1, zerr.ErrRepoNotFound
+	}
+
 	var (
 		blobReadCloser io.ReadCloser
 		size           int64
@@ -2562,6 +2581,10 @@ func (is *ImageStore) GetBlobRedirectURL(r *http.Request, repo string, digest go
 	// Local storage has no external signed URL endpoint; proxy path is expected.
 	if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
 		return "", nil
+	}
+
+	if !is.repoExists(repo) {
+		return "", zerr.ErrRepoNotFound
 	}
 
 	var redirectURL string
@@ -2636,6 +2659,10 @@ func (is *ImageStore) VerifyBlobDigestValue(repo string, digest godigest.Digest)
 
 func (is *ImageStore) GetReferrers(repo string, gdigest godigest.Digest, artifactTypes []string,
 ) (ispec.Index, error) {
+	if !is.repoExists(repo) {
+		return ispec.Index{}, zerr.ErrRepoNotFound
+	}
+
 	var index ispec.Index
 
 	err := is.WithRepoReadLock(repo, func() error {

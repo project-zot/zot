@@ -66,15 +66,20 @@ func TestGetBlobRedirectURL(t *testing.T) {
 
 			repo := "repo"
 			digest := godigest.FromString("blob-content")
+			expectedRepoDir := path.Join(rootDir, repo)
 			expectedBlobPath := store.BlobPath(repo, digest)
 			expectedGlobalBlobPath := store.BlobPath(storageConstants.GlobalBlobsRepo, digest)
 			expectedURL := "https://example.com/signed/blob"
 
-			storeMock.StatFn = func(_ context.Context, path string) (driver.FileInfo, error) {
-				So(path == expectedBlobPath || path == expectedGlobalBlobPath, ShouldBeTrue)
+			storeMock.StatFn = func(_ context.Context, statPath string) (driver.FileInfo, error) {
+				if statPath == expectedRepoDir {
+					return &mocks.FileInfoMock{IsDirFn: func() bool { return true }}, nil
+				}
+
+				So(statPath == expectedBlobPath || statPath == expectedGlobalBlobPath, ShouldBeTrue)
 
 				return &mocks.FileInfoMock{
-					PathFn: func() string { return path },
+					PathFn: func() string { return statPath },
 					SizeFn: func() int64 { return 42 },
 				}, nil
 			}
@@ -100,12 +105,19 @@ func TestGetBlobRedirectURL(t *testing.T) {
 			store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
 				remoteDriver, nil, nil, nil)
 
-			storeMock.StatFn = func(_ context.Context, path string) (driver.FileInfo, error) {
-				return nil, driver.PathNotFoundError{Path: path}
+			repo := "repo"
+			expectedRepoDir := path.Join(rootDir, repo)
+
+			storeMock.StatFn = func(_ context.Context, statPath string) (driver.FileInfo, error) {
+				if statPath == expectedRepoDir {
+					return &mocks.FileInfoMock{IsDirFn: func() bool { return true }}, nil
+				}
+
+				return nil, driver.PathNotFoundError{Path: statPath}
 			}
 
 			digest := godigest.FromString("blob-content")
-			url, err := store.GetBlobRedirectURL(nil, "repo", digest)
+			url, err := store.GetBlobRedirectURL(nil, repo, digest)
 			So(url, ShouldEqual, "")
 			So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
 		})
