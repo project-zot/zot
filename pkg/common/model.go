@@ -292,3 +292,56 @@ type ImageTags struct {
 	Name string   `json:"name"`
 	Tags []string `json:"tags"`
 }
+
+//nolint:tagliatelle // graphQL schema
+type CVE struct {
+	ID          string    `json:"Id"`
+	Description string    `json:"Description"`
+	Severity    string    `json:"Severity"`
+	Title       string    `json:"Title"`
+	Reference   string    `json:"Reference"`
+	PackageList []Package `json:"PackageList"`
+}
+
+//nolint:tagliatelle // graphQL schema
+type Package struct {
+	Name             string `json:"Name"`
+	PackagePath      string `json:"PackagePath"`
+	InstalledVersion string `json:"InstalledVersion"`
+	FixedVersion     string `json:"FixedVersion"`
+}
+
+type CveListForImageResponse struct {
+	CveListForImageResult `json:"data"`
+
+	Errors []ErrorGQL `json:"errors"`
+}
+
+//nolint:tagliatelle // graphQL schema
+type CveListForImageResult struct {
+	CVEListForImage CVEResultForImage `json:"CVEListForImage"`
+}
+
+//nolint:tagliatelle // graphQL schema
+type CVEResultForImage struct {
+	Tag     string `json:"Tag"`
+	CVEList []CVE  `json:"CVEList"`
+}
+
+type CVEDiffListForImagesResponse struct {
+	CVEDiffListForImagesResult `json:"data"`
+
+	Errors []ErrorGQL `json:"errors"`
+}
+
+//nolint:tagliatelle // graphQL schema
+type CVEDiffListForImagesResult struct {
+	CVEDiffListForImages CVEDiffListForImages `json:"CVEDiffListForImages"`
+}
+
+//nolint:tagliatelle // graphQL schema
+type CVEDiffListForImages struct {
+	Minuend    ImageIdentifier `json:"Minuend"`
+	Subtrahend ImageIdentifier `json:"Subtrahend"`
+	CVEList    []CVE           `json:"CVEList"`
+}

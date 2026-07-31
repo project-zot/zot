@@ -151,6 +151,13 @@ func getImageSummary(ctx context.Context, repo, tag string, digest *string, skip
 ) (
 	*gql_generated.ImageSummary, error,
 ) {
+	if ok, err := reqCtx.RepoIsUserAvailable(ctx, repo); !ok || err != nil {
+		log.Info().Err(err).Str("repository", repo).Bool("availability", ok).Str("component", "graphql").
+			Msg("repo user availability")
+
+		return &gql_generated.ImageSummary{}, nil //nolint:nilerr // don't give details to a potential attacker
+	}
+
 	repoMeta, err := metaDB.GetRepoMeta(ctx, repo)
 	if err != nil {
 		return nil, err
@@ -187,7 +194,7 @@ func getImageSummary(ctx context.Context, repo, tag string, digest *string, skip
 }
 
 func getCVEListForImage(
-	ctx context.Context, //nolint:unparam // may be used in the future to filter by permissions
+	ctx context.Context,
 	image string,
 	cveInfo cveinfo.CveInfo,
 	requestedPage *gql_generated.PageInput,
@@ -196,6 +203,15 @@ func getCVEListForImage(
 	severity string,
 	log log.Logger, //nolint:unparam // may be used by devs for debugging
 ) (*gql_generated.CVEResultForImage, error) {
+	repo, ref, _ := zcommon.GetImageDirAndReference(image)
+
+	if ok, err := reqCtx.RepoIsUserAvailable(ctx, repo); !ok || err != nil {
+		log.Info().Err(err).Str("repository", repo).Bool("availability", ok).Str("component", "graphql").
+			Msg("repo user availability")
+
+		return &gql_generated.CVEResultForImage{}, nil //nolint:nilerr // don't give details to a potential attacker
+	}
+
 	if requestedPage == nil {
 		requestedPage = &gql_generated.PageInput{}
 	}
@@ -207,8 +223,6 @@ func getCVEListForImage(
 			deref(requestedPage.SortBy, gql_generated.SortCriteriaSeverity),
 		),
 	}
-
-	repo, ref, _ := zcommon.GetImageDirAndReference(image)
 
 	if ref == "" {
 		return &gql_generated.CVEResultForImage{}, gqlerror.Errorf("no reference provided")
@@ -274,7 +288,7 @@ func getCVEListForImage(
 }
 
 func getCVEDiffListForImages(
-	ctx context.Context, //nolint:unparam // may be used in the future to filter by permissions
+	ctx context.Context,
 	minuend gql_generated.ImageInput,
 	subtrahend gql_generated.ImageInput,
 	metaDB mTypes.MetaDB,
@@ -284,6 +298,18 @@ func getCVEDiffListForImages(
 	excludedCVE string,
 	log log.Logger, //nolint:unparam // may be used by devs for debugging
 ) (*gql_generated.CVEDiffResult, error) {
+	// check that user has access to the minuend repo
+	if minuend.Repo == "" {
+		return nil, fmt.Errorf("minuend image %s: %w", formatImageInputForError(minuend), zerr.ErrEmptyRepoName)
+	}
+
+	if ok, err := reqCtx.RepoIsUserAvailable(ctx, minuend.Repo); !ok || err != nil {
+		log.Info().Err(err).Str("repository", minuend.Repo).Bool("availability", ok).Str("component", "graphql").
+			Msg("repo user availability")
+
+		return &gql_generated.CVEDiffResult{}, nil //nolint:nilerr // don't give details to a potential attacker
+	}
+
 	resolvedMinuend, err := resolveImageData(ctx, minuend, metaDB)
 	if err != nil {
 		return nil, fmt.Errorf("minuend image %s: %w", formatImageInputForError(minuend), err)
@@ -294,6 +320,14 @@ func getCVEDiffListForImages(
 	resultSubtrahend := gql_generated.ImageIdentifier{}
 
 	if subtrahend.Repo != "" {
+		// check that user has access to the subtrahend repo
+		if ok, err := reqCtx.RepoIsUserAvailable(ctx, subtrahend.Repo); !ok || err != nil {
+			log.Info().Err(err).Str("repository", subtrahend.Repo).Bool("availability", ok).Str("component", "graphql").
+				Msg("repo user availability")
+
+			return &gql_generated.CVEDiffResult{}, nil //nolint:nilerr // don't give details to a potential attacker
+		}
+
 		resolvedSubtrahend, err := resolveImageData(ctx, subtrahend, metaDB)
 		if err != nil {
 			return nil, fmt.Errorf("subtrahend image %s: %w", formatImageInputForError(subtrahend), err)
@@ -1547,9 +1581,17 @@ func getImageList(ctx context.Context, repo string, metaDB mTypes.MetaDB, cveInf
 	}, nil
 }
 
-func getReferrers(metaDB mTypes.MetaDB, repo string, referredDigest string, artifactTypes []string,
+func getReferrers(ctx context.Context, metaDB mTypes.MetaDB, repo string, referredDigest string, artifactTypes []string,
 	log log.Logger,
 ) ([]*gql_generated.Referrer, error) {
+	// check if the user has access to the repo
+	if ok, err := reqCtx.RepoIsUserAvailable(ctx, repo); !ok || err != nil {
+		log.Info().Err(err).Str("repository", repo).Bool("availability", ok).Str("component", "graphql").
+			Msg("repo user availability")
+
+		return []*gql_generated.Referrer{}, nil //nolint:nilerr // don't give details to a potential attacker
+	}
+
 	refDigest := godigest.Digest(referredDigest)
 	if err := refDigest.Validate(); err != nil {
 		log.Error().Err(err).Str("digest", referredDigest).Str("component", "graphql").

@@ -611,10 +611,6 @@ func BaseAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			realm := ctlr.Config.GetRealm()
 			failDelay := authConfig.GetFailDelay()
 
-			/* NOTE:
-			since we only do READ actions in extensions, this middleware is enough for them because
-			it populates the context with user relevant data to be processed by each individual extension
-			*/
 			if request.Method == http.MethodOptions {
 				next.ServeHTTP(response, request)
 

@@ -235,3 +235,193 @@ func TestDerivedImageListGql(t *testing.T) {
 		So(respImg.Vulnerabilities.MaxSeverity, ShouldEqual, "NONE")
 	})
 }
+
+func TestDerivedImageListGqlAuthorization(t *testing.T) {
+	Convey("Derived image list for a repo should only be accessible to authorized users", t, func() {
+		rootDir := t.TempDir()
+		adminUserName := "admin"
+		adminPassword := "admin123"
+		normalUserName := "user"
+		normalPassword := "user123"
+		adminUserLine := GetBcryptCredString(adminUserName, adminPassword)
+		normalUserLine := GetBcryptCredString(normalUserName, normalPassword)
+		htpasswdPath := MakeHtpasswdFileFromString(t, adminUserLine+"\n"+normalUserLine)
+
+		conf := config.New()
+		conf.HTTP.Port = "0"
+		conf.HTTP.Auth.HTPasswd = config.AuthHTPasswd{Path: htpasswdPath}
+		conf.Storage.RootDirectory = rootDir
+		defaultVal := true
+
+		searchConfig := &extconf.SearchConfig{
+			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+		}
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: searchConfig,
+		}
+
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				"admin/**": config.PolicyGroup{
+					Policies: []config.Policy{
+						{
+							Users:   []string{"admin"},
+							Actions: []string{"create", "read", "delete"},
+						},
+					},
+				},
+				"public/**": config.PolicyGroup{
+					Policies: []config.Policy{
+						{
+							Users:   []string{"admin"},
+							Actions: []string{"create", "read", "delete"},
+						},
+						{
+							Users:   []string{"user"},
+							Actions: []string{"read"},
+						},
+					},
+				},
+			},
+		}
+
+		ctlr := api.NewController(conf)
+		cm := NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+
+		adminImage1 := testImageCreateHelper(t, [][]byte{{10, 11, 10, 11}})
+		err := UploadImageWithBasicAuth(
+			adminImage1, baseURL, "admin/secret-base", "latest",
+			adminUserName, adminPassword,
+		)
+		So(err, ShouldBeNil)
+
+		publicImage1 := testImageCreateHelper(t, [][]byte{{10, 11, 10, 11}, {20, 21, 20, 21}})
+
+		err = UploadImageWithBasicAuth(
+			publicImage1, baseURL, "public/open", "latest",
+			adminUserName, adminPassword,
+		)
+		So(err, ShouldBeNil)
+
+		adminImage2 := testImageCreateHelper(t, [][]byte{{10, 11, 10, 11}, {20, 21, 20, 21}, {30, 31, 30, 31}})
+		err = UploadImageWithBasicAuth(
+			adminImage2, baseURL, "admin/another-secret", "latest",
+			adminUserName, adminPassword,
+		)
+		So(err, ShouldBeNil)
+
+		publicImage2 := testImageCreateHelper(t, [][]byte{
+			{10, 11, 10, 11}, {20, 21, 20, 21}, {30, 31, 30, 31}, {40, 41, 40, 41},
+		})
+		err = UploadImageWithBasicAuth(
+			publicImage2, baseURL, "public/freeforusers", "latest",
+			adminUserName, adminPassword,
+		)
+		So(err, ShouldBeNil)
+
+		query := `
+			{
+				DerivedImageList(image:"admin/secret-base:latest"){
+					Results{
+						RepoName
+						Tag
+					}
+				}
+			}`
+
+		// admin should be able to access the derived image list for the secret-base image
+		adminClient := resty.New().SetBasicAuth(adminUserName, adminPassword)
+		resp, err := adminClient.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		var responseStruct zcommon.DerivedImageListResponse
+		err = json.Unmarshal(resp.Body(), &responseStruct)
+		So(err, ShouldBeNil)
+		So(len(responseStruct.Results), ShouldEqual, 3)
+
+		// check that the derived image list contains the expected images
+		imagesToCheck := map[string]bool{
+			"public/open:latest":          false,
+			"admin/another-secret:latest": false,
+			"public/freeforusers:latest":  false,
+		}
+
+		for _, img := range responseStruct.Results {
+			key := img.RepoName + ":" + img.Tag
+			if _, ok := imagesToCheck[key]; ok {
+				imagesToCheck[key] = true
+			}
+		}
+
+		for _, found := range imagesToCheck {
+			So(found, ShouldBeTrue)
+		}
+
+		// non-admin user should not be able to access the derived image list for the secret-base image
+		// even though they can access the public/open image which is derived from it.
+		nonAdminClient := resty.New().SetBasicAuth(normalUserName, normalPassword)
+		resp, err = nonAdminClient.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		var nonAdminResponse zcommon.DerivedImageListResponse
+		err = json.Unmarshal(resp.Body(), &nonAdminResponse)
+		So(err, ShouldBeNil)
+		So(nonAdminResponse.Results, ShouldBeEmpty)
+
+		// admin should be able to access the derived image list for the public/open image
+		query = `
+			{
+				DerivedImageList(image:"public/open:latest"){
+					Results{
+						RepoName
+						Tag
+					}
+				}
+			}`
+
+		resp, err = adminClient.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		var adminPublicDerivedResp zcommon.DerivedImageListResponse
+		err = json.Unmarshal(resp.Body(), &adminPublicDerivedResp)
+		So(err, ShouldBeNil)
+		So(len(adminPublicDerivedResp.Results), ShouldEqual, 2)
+
+		expectedImages := map[string]bool{
+			"admin/another-secret:latest": false,
+			"public/freeforusers:latest":  false,
+		}
+
+		for _, img := range adminPublicDerivedResp.Results {
+			key := img.RepoName + ":" + img.Tag
+			if _, ok := expectedImages[key]; ok {
+				expectedImages[key] = true
+			}
+		}
+
+		for _, found := range expectedImages {
+			So(found, ShouldBeTrue)
+		}
+
+		// non-admin user should be able to access the derived image list for the public/open image
+		// but admin image should not be in the list since they don't have access to it.
+		resp, err = nonAdminClient.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		var nonAdminPublicDerivedResp zcommon.DerivedImageListResponse
+		err = json.Unmarshal(resp.Body(), &nonAdminPublicDerivedResp)
+		So(err, ShouldBeNil)
+		So(len(nonAdminPublicDerivedResp.Results), ShouldEqual, 1)
+		So(nonAdminPublicDerivedResp.Results[0].RepoName, ShouldEqual, "public/freeforusers")
+		So(nonAdminPublicDerivedResp.Results[0].Tag, ShouldEqual, "latest")
+	})
+}

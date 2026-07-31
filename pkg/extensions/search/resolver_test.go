@@ -641,7 +641,10 @@ func TestGetReferrers(t *testing.T) {
 		Convey("referredDigest is empty", func() {
 			testLogger := log.NewTestLogger()
 
-			_, err := getReferrers(mocks.MetaDBMock{}, "test", "", nil, testLogger)
+			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
+				graphql.DefaultRecover)
+
+			_, err := getReferrers(responseContext, mocks.MetaDBMock{}, "test", "", nil, testLogger)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -654,7 +657,10 @@ func TestGetReferrers(t *testing.T) {
 				},
 			}
 
-			_, err := getReferrers(mockedStore, "test", referredDigest, nil, testLogger)
+			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
+				graphql.DefaultRecover)
+
+			_, err := getReferrers(responseContext, mockedStore, "test", referredDigest, nil, testLogger)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -684,7 +690,10 @@ func TestGetReferrers(t *testing.T) {
 				},
 			}
 
-			referrers, err := getReferrers(mockedStore, "test", referredDigest, nil, testLogger)
+			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
+				graphql.DefaultRecover)
+
+			referrers, err := getReferrers(responseContext, mockedStore, "test", referredDigest, nil, testLogger)
 			So(err, ShouldBeNil)
 			So(*referrers[0].ArtifactType, ShouldEqual, referrerDescriptor.ArtifactType)
 			So(*referrers[0].MediaType, ShouldEqual, referrerDescriptor.MediaType)
