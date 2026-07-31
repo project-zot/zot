@@ -555,7 +555,9 @@ func (c *Controller) StartBackgroundTasks() {
 
 	// Start HTPasswdWatcher goroutine
 	if c.HTPasswdWatcher != nil {
-		c.HTPasswdWatcher.Run()
+		if err := c.HTPasswdWatcher.Run(); err != nil {
+			c.Log.Warn().Err(err).Msg("failed to start htpasswd watcher")
+		}
 	}
 
 	// Run GC and retention tasks
