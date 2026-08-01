@@ -34,9 +34,13 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/api/constants"
 	apiErr "zotregistry.dev/zot/v2/pkg/api/errors"
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	"zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/meta/boltdb"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
+	"zotregistry.dev/zot/v2/pkg/storage/local"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 	test "zotregistry.dev/zot/v2/pkg/test/common"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
@@ -3538,4 +3542,193 @@ func TestGetBlobMultipartReaderCloseError(t *testing.T) {
 	body := drainResponseBody(t, resp)
 	assert.Less(t, int64(len(body)), advertisedLen,
 		"a Close() error on the second range must truncate the body")
+}
+
+// TestDeleteManifestSucceedsDespiteMetaDBHookFailure verifies that an OnDeleteManifest failure
+// after a successful image-store delete does not surface as a client-facing error.
+func TestDeleteManifestSucceedsDespiteMetaDBHookFailure(t *testing.T) {
+	Convey("Deleting a signature referrer whose metaDB cleanup fails still returns 202", t, func() {
+		subjectDigest := godigest.FromString("subject-manifest")
+
+		manifest := ispec.Manifest{
+			Versioned:    specs.Versioned{SchemaVersion: 2},
+			MediaType:    ispec.MediaTypeImageManifest,
+			ArtifactType: zcommon.ArtifactTypeCosignBundle,
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.empty.v1+json",
+				Digest:    godigest.FromString("empty-config"),
+				Size:      2,
+			},
+			Subject: &ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageManifest,
+				Digest:    subjectDigest,
+				Size:      10,
+			},
+		}
+
+		manifestJSON, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+
+		referrerDigest := godigest.FromBytes(manifestJSON)
+
+		store := mocks.MockedImageStore{
+			GetImageManifestFn: func(repo, reference string) ([]byte, godigest.Digest, string, error) {
+				return manifestJSON, referrerDigest, ispec.MediaTypeImageManifest, nil
+			},
+			DeleteImageManifestFn: func(ctx context.Context, repo, reference string, detectCollision bool) error {
+				return nil
+			},
+		}
+
+		ctlr := api.NewController(config.New())
+		ctlr.Router = mux.NewRouter()
+		ctlr.StoreController.DefaultStore = store
+		ctlr.MetaDB = mocks.MetaDBMock{
+			DeleteSignatureFn: func(repo string, signedManifestDigest godigest.Digest,
+				sigMeta mTypes.SignatureMetadata,
+			) error {
+				// Simulates a concurrent writer already removing this entry.
+				return zerr.ErrImageMetaNotFound
+			},
+		}
+
+		handler := api.NewRouteHandler(ctlr)
+
+		req := httptest.NewRequestWithContext(
+			context.Background(),
+			http.MethodDelete,
+			"http://example.com/v2/test/manifests/"+referrerDigest.String(),
+			http.NoBody,
+		)
+		req = mux.SetURLVars(req, map[string]string{
+			"name":      "test",
+			"reference": referrerDigest.String(),
+		})
+
+		rec := httptest.NewRecorder()
+		handler.DeleteManifest(rec, req)
+
+		resp := rec.Result()
+		defer resp.Body.Close()
+
+		So(resp.StatusCode, ShouldEqual, http.StatusAccepted)
+	})
+}
+
+// TestDeleteManifestSucceedsAfterSignatureSubjectOrphaned runs the same scenario end to end
+// against real components (no mocked metaDB).
+func TestDeleteManifestSucceedsAfterSignatureSubjectOrphaned(t *testing.T) {
+	Convey("Deleting a signature referrer whose subject was already untagged", t, func() {
+		rootDir := t.TempDir()
+		testLog := log.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, testLog)
+		defer metrics.Stop()
+
+		imgStore := local.NewImageStore(rootDir, true, true, testLog, metrics, nil, nil, nil, nil)
+
+		boltDriver, err := boltdb.GetBoltDriver(boltdb.DBParameters{RootDir: rootDir})
+		So(err, ShouldBeNil)
+
+		metaDB, err := boltdb.New(boltDriver, testLog)
+		So(err, ShouldBeNil)
+
+		ctx := context.Background()
+
+		ctlr := api.NewController(config.New())
+		ctlr.Router = mux.NewRouter()
+		ctlr.StoreController.DefaultStore = imgStore
+		ctlr.MetaDB = metaDB
+		handler := api.NewRouteHandler(ctlr)
+
+		putReq := func(reference string, body []byte) int {
+			req := httptest.NewRequestWithContext(ctx, http.MethodPut,
+				"http://example.com/v2/repo/manifests/"+reference, bytes.NewReader(body))
+			req.Header.Set("Content-Type", ispec.MediaTypeImageManifest)
+			req = mux.SetURLVars(req, map[string]string{"name": "repo", "reference": reference})
+
+			rec := httptest.NewRecorder()
+			handler.UpdateManifest(rec, req)
+			rec.Result().Body.Close()
+
+			return rec.Result().StatusCode
+		}
+
+		deleteReq := func(reference string) int {
+			req := httptest.NewRequestWithContext(ctx, http.MethodDelete,
+				"http://example.com/v2/repo/manifests/"+reference, http.NoBody)
+			req = mux.SetURLVars(req, map[string]string{"name": "repo", "reference": reference})
+
+			rec := httptest.NewRecorder()
+			handler.DeleteManifest(rec, req)
+			rec.Result().Body.Close()
+
+			return rec.Result().StatusCode
+		}
+
+		// Push and tag the subject image through the real hook path.
+		subjectManifest := ispec.Manifest{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			MediaType: ispec.MediaTypeImageManifest,
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageConfig,
+				Digest:    godigest.FromString("{}"),
+				Size:      2,
+			},
+			Layers: []ispec.Descriptor{},
+		}
+		subjectBody, err := json.Marshal(subjectManifest)
+		So(err, ShouldBeNil)
+		subjectDigest := godigest.FromBytes(subjectBody)
+
+		_, _, err = imgStore.FullBlobUpload(ctx, "repo", bytes.NewReader([]byte("{}")), godigest.FromString("{}"))
+		So(err, ShouldBeNil)
+
+		statusCode := putReq("latest", subjectBody)
+		So(statusCode, ShouldEqual, http.StatusCreated)
+
+		// Sign it: push a sigstore-bundle referrer whose Subject is the subject image.
+		emptyConfig := []byte("{}")
+		emptyConfigDigest := godigest.FromBytes(emptyConfig)
+		_, _, err = imgStore.FullBlobUpload(ctx, "repo", bytes.NewReader(emptyConfig), emptyConfigDigest)
+		So(err, ShouldBeNil)
+
+		referrer := ispec.Manifest{
+			Versioned:    specs.Versioned{SchemaVersion: 2},
+			MediaType:    ispec.MediaTypeImageManifest,
+			ArtifactType: zcommon.ArtifactTypeCosignBundle,
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.empty.v1+json",
+				Digest:    emptyConfigDigest,
+				Size:      int64(len(emptyConfig)),
+			},
+			Layers: []ispec.Descriptor{},
+			Subject: &ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageManifest,
+				Digest:    subjectDigest,
+				Size:      int64(len(subjectBody)),
+			},
+		}
+		referrerBody, err := json.Marshal(referrer)
+		So(err, ShouldBeNil)
+		referrerDigest := godigest.FromBytes(referrerBody)
+
+		statusCode = putReq(referrerDigest.String(), referrerBody)
+		So(statusCode, ShouldEqual, http.StatusCreated)
+
+		repoMeta, err := metaDB.GetRepoMeta(ctx, "repo")
+		So(err, ShouldBeNil)
+		So(repoMeta.Signatures, ShouldContainKey, subjectDigest.String())
+
+		// Delete the subject's only tag: its digest is now untagged.
+		statusCode = deleteReq("latest")
+		So(statusCode, ShouldEqual, http.StatusAccepted)
+
+		repoMeta, err = metaDB.GetRepoMeta(ctx, "repo")
+		So(err, ShouldBeNil)
+		So(repoMeta.Signatures, ShouldNotContainKey, subjectDigest.String())
+
+		// Deleting the now-orphaned referrer must still return 202.
+		statusCode = deleteReq(referrerDigest.String())
+		So(statusCode, ShouldEqual, http.StatusAccepted)
+	})
 }
