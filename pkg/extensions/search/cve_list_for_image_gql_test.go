@@ -15,9 +15,9 @@ import (
 
 	"zotregistry.dev/zot/v2/pkg/api"
 	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/common"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
-	cvemodel "zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
 	. "zotregistry.dev/zot/v2/pkg/test/common"
 	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
@@ -95,7 +95,7 @@ func TestCVEListForImageGql(t *testing.T) {
 		err := UploadImageWithBasicAuth(uploadedImage, baseURL, "admin/zot-test", "0.0.1", adminUserName, adminPassword)
 		So(err, ShouldBeNil)
 
-		testScanner.SetCveDataForImage("admin/zot-test:0.0.1", map[string]cvemodel.CVE{
+		testScanner.SetCveDataForImage("admin/zot-test:0.0.1", map[string]common.CVE{
 			"CVE-2021-1234": {ID: "CVE-2021-1234", Severity: "CRITICAL"},
 		})
 

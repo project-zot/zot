@@ -25,7 +25,6 @@ import (
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	cvecache "zotregistry.dev/zot/v2/pkg/extensions/search/cve/cache"
-	"zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/meta"
 	"zotregistry.dev/zot/v2/pkg/meta/boltdb"
@@ -621,7 +620,7 @@ func TestIsIndexScanable(t *testing.T) {
 				cache:           cvecache.NewCveCache(cacheSize, log),
 			}
 
-			scanner.cache.Add("digest", make(map[string]model.CVE))
+			scanner.cache.Add("digest", make(map[string]common.CVE))
 
 			found, err := scanner.isIndexScannable("digest")
 			So(err, ShouldBeNil)

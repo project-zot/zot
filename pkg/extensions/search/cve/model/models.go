@@ -1,11 +1,11 @@
 package model
 
 import (
-	"slices"
-	"strings"
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
+
+	"zotregistry.dev/zot/v2/pkg/common"
 )
 
 type ImageCVESummary struct {
@@ -16,40 +16,6 @@ type ImageCVESummary struct {
 	HighCount     int
 	CriticalCount int
 	MaxSeverity   string
-}
-
-//nolint:tagliatelle // graphQL schema
-type CVE struct {
-	ID          string    `json:"Id"`
-	Description string    `json:"Description"`
-	Severity    string    `json:"Severity"`
-	Title       string    `json:"Title"`
-	Reference   string    `json:"Reference"`
-	PackageList []Package `json:"PackageList"`
-}
-
-func (cve *CVE) ContainsStr(str string) bool {
-	str = strings.ToUpper(str)
-
-	return strings.Contains(strings.ToUpper(cve.Title), str) ||
-		strings.Contains(strings.ToUpper(cve.ID), str) ||
-		strings.Contains(strings.ToUpper(cve.Severity), str) ||
-		strings.Contains(strings.ToUpper(cve.Reference), str) ||
-		strings.Contains(strings.ToUpper(cve.Description), str) ||
-		slices.ContainsFunc(cve.PackageList, func(pack Package) bool {
-			return strings.Contains(strings.ToUpper(pack.Name), str) ||
-				strings.Contains(strings.ToUpper(pack.FixedVersion), str) ||
-				strings.Contains(strings.ToUpper(pack.InstalledVersion), str) ||
-				strings.Contains(strings.ToUpper(pack.PackagePath), str)
-		})
-}
-
-//nolint:tagliatelle // graphQL schema
-type Package struct {
-	Name             string `json:"Name"`
-	PackagePath      string `json:"PackagePath"`
-	InstalledVersion string `json:"InstalledVersion"`
-	FixedVersion     string `json:"FixedVersion"`
 }
 
 // NotSpecified is used in place of Package.FixedVersion/PackagePath when the
@@ -126,7 +92,7 @@ type TagInfo struct {
 // this identity/cache info internally while scanning, so returning it here spares callers a
 // second metaDB round trip to learn what was scanned.
 type ScanResult struct {
-	CVEMap    map[string]CVE
+	CVEMap    map[string]common.CVE
 	Digest    string
 	MediaType string
 	WasCached bool

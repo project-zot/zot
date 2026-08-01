@@ -20,15 +20,15 @@ var (
 	//nolint:gochecknoglobals // lazy initialization with sync.Once to avoid reallocation
 	sortFunctionsOnce sync.Once
 	//nolint:gochecknoglobals // cached map initialized once, effectively immutable
-	sortFunctions map[cvemodel.SortCriteria]func(a, b cvemodel.CVE) int
+	sortFunctions map[cvemodel.SortCriteria]func(a, b common.CVE) int
 )
 
 // getSortFunctions returns a cached map of sort criteria to comparison functions.
-// Using slices.SortFunc which expects func(a, b cvemodel.CVE) int.
+// Using slices.SortFunc which expects func(a, b common.CVE) int.
 // The map is initialized once using sync.Once to avoid reallocation.
-func getSortFunctions() map[cvemodel.SortCriteria]func(a, b cvemodel.CVE) int {
+func getSortFunctions() map[cvemodel.SortCriteria]func(a, b common.CVE) int {
 	sortFunctionsOnce.Do(func() {
-		sortFunctions = map[cvemodel.SortCriteria]func(a, b cvemodel.CVE) int{
+		sortFunctions = map[cvemodel.SortCriteria]func(a, b common.CVE) int{
 			AlphabeticAsc: sortCVEByAlphabeticAsc,
 			AlphabeticDsc: sortCVEByAlphabeticDsc,
 			SeverityDsc:   sortCVEBySeverityDsc,
@@ -39,7 +39,7 @@ func getSortFunctions() map[cvemodel.SortCriteria]func(a, b cvemodel.CVE) int {
 }
 
 //nolint:varnamelen // standard comparison function signature
-func sortCVEByAlphabeticAsc(a, b cvemodel.CVE) int {
+func sortCVEByAlphabeticAsc(a, b common.CVE) int {
 	if a.ID < b.ID {
 		return -1
 	}
@@ -51,7 +51,7 @@ func sortCVEByAlphabeticAsc(a, b cvemodel.CVE) int {
 }
 
 //nolint:varnamelen // standard comparison function signature
-func sortCVEByAlphabeticDsc(a, b cvemodel.CVE) int {
+func sortCVEByAlphabeticDsc(a, b common.CVE) int {
 	if a.ID > b.ID {
 		return -1
 	}
@@ -63,7 +63,7 @@ func sortCVEByAlphabeticDsc(a, b cvemodel.CVE) int {
 }
 
 //nolint:varnamelen // standard comparison function signature
-func sortCVEBySeverityDsc(a, b cvemodel.CVE) int {
+func sortCVEBySeverityDsc(a, b common.CVE) int {
 	severityCmp := cvemodel.CompareSeverities(a.Severity, b.Severity)
 	if severityCmp != 0 {
 		return severityCmp
@@ -83,8 +83,8 @@ func sortCVEBySeverityDsc(a, b cvemodel.CVE) int {
 // PageFinder permits keeping a pool of objects using Add
 // and returning a specific page.
 type PageFinder interface {
-	Add(cve cvemodel.CVE)
-	Page() ([]cvemodel.CVE, common.PageInfo)
+	Add(cve common.CVE)
+	Page() ([]common.CVE, common.PageInfo)
 	Reset()
 }
 
@@ -94,7 +94,7 @@ type CvePageFinder struct {
 	limit      int
 	offset     int
 	sortBy     cvemodel.SortCriteria
-	pageBuffer []cvemodel.CVE
+	pageBuffer []common.CVE
 }
 
 const maxCvePageLimit = 4 * 1024
@@ -125,7 +125,7 @@ func NewCvePageFinder(limit, offset int, sortBy cvemodel.SortCriteria) (*CvePage
 		limit:      limit,
 		offset:     offset,
 		sortBy:     sortBy,
-		pageBuffer: make([]cvemodel.CVE, 0),
+		pageBuffer: make([]common.CVE, 0),
 	}, nil
 }
 
@@ -134,13 +134,13 @@ func (bpt *CvePageFinder) Reset() {
 	bpt.pageBuffer = bpt.pageBuffer[:0]
 }
 
-func (bpt *CvePageFinder) Add(cve cvemodel.CVE) {
+func (bpt *CvePageFinder) Add(cve common.CVE) {
 	bpt.pageBuffer = append(bpt.pageBuffer, cve)
 }
 
-func (bpt *CvePageFinder) Page() ([]cvemodel.CVE, common.PageInfo) {
+func (bpt *CvePageFinder) Page() ([]common.CVE, common.PageInfo) {
 	if len(bpt.pageBuffer) == 0 {
-		return []cvemodel.CVE{}, common.PageInfo{}
+		return []common.CVE{}, common.PageInfo{}
 	}
 
 	pageInfo := &common.PageInfo{}

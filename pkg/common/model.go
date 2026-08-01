@@ -1,6 +1,8 @@
 package common
 
 import (
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -301,6 +303,22 @@ type CVE struct {
 	Title       string    `json:"Title"`
 	Reference   string    `json:"Reference"`
 	PackageList []Package `json:"PackageList"`
+}
+
+func (cve *CVE) ContainsStr(str string) bool {
+	str = strings.ToUpper(str)
+
+	return strings.Contains(strings.ToUpper(cve.Title), str) ||
+		strings.Contains(strings.ToUpper(cve.ID), str) ||
+		strings.Contains(strings.ToUpper(cve.Severity), str) ||
+		strings.Contains(strings.ToUpper(cve.Reference), str) ||
+		strings.Contains(strings.ToUpper(cve.Description), str) ||
+		slices.ContainsFunc(cve.PackageList, func(pack Package) bool {
+			return strings.Contains(strings.ToUpper(pack.Name), str) ||
+				strings.Contains(strings.ToUpper(pack.FixedVersion), str) ||
+				strings.Contains(strings.ToUpper(pack.InstalledVersion), str) ||
+				strings.Contains(strings.ToUpper(pack.PackagePath), str)
+		})
 }
 
 //nolint:tagliatelle // graphQL schema

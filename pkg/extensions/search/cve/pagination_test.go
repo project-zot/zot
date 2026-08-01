@@ -12,6 +12,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
+	"zotregistry.dev/zot/v2/pkg/common"
 	cveinfo "zotregistry.dev/zot/v2/pkg/extensions/search/cve"
 	cvemodel "zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
 	"zotregistry.dev/zot/v2/pkg/log"
@@ -73,11 +74,11 @@ func TestCVEPagination(t *testing.T) {
 		// Setup test CVE data in mock scanner
 		scanner := mocks.CveScannerMock{
 			ScanImageFn: func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
-				cveMap := map[string]cvemodel.CVE{}
+				cveMap := map[string]common.CVE{}
 
 				if image == "repo1:0.1.0" {
 					for i := range 5 {
-						cveMap[fmt.Sprintf("CVE%d", i)] = cvemodel.CVE{
+						cveMap[fmt.Sprintf("CVE%d", i)] = common.CVE{
 							ID:          fmt.Sprintf("CVE%d", i),
 							Severity:    intToSeverity[i%5],
 							Title:       fmt.Sprintf("Title for CVE%d", i),
@@ -88,7 +89,7 @@ func TestCVEPagination(t *testing.T) {
 
 				if image == "repo1:1.0.0" {
 					for i := range 30 {
-						cveMap[fmt.Sprintf("CVE%d", i)] = cvemodel.CVE{
+						cveMap[fmt.Sprintf("CVE%d", i)] = common.CVE{
 							ID:          fmt.Sprintf("CVE%d", i),
 							Severity:    intToSeverity[i%5],
 							Title:       fmt.Sprintf("Title for CVE%d", i),
@@ -126,9 +127,9 @@ func TestCVEPagination(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(paginator, ShouldNotBeNil)
 
-			paginator.Add(cvemodel.CVE{})
-			paginator.Add(cvemodel.CVE{})
-			paginator.Add(cvemodel.CVE{})
+			paginator.Add(common.CVE{})
+			paginator.Add(common.CVE{})
+			paginator.Add(common.CVE{})
 
 			paginator.Reset()
 
@@ -453,8 +454,8 @@ func TestCvePageFinderUnit(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Add CVEs with same ID but different severities to verify stable sort
-			cve1 := cvemodel.CVE{ID: "CVE-2024-0001", Severity: "HIGH"}
-			cve2 := cvemodel.CVE{ID: "CVE-2024-0001", Severity: "MEDIUM"}
+			cve1 := common.CVE{ID: "CVE-2024-0001", Severity: "HIGH"}
+			cve2 := common.CVE{ID: "CVE-2024-0001", Severity: "MEDIUM"}
 			paginator.Add(cve1)
 			paginator.Add(cve2)
 
@@ -487,9 +488,9 @@ func TestCvePageFinderUnit(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Add CVEs with same severity but different IDs
-			cve3 := cvemodel.CVE{ID: "CVE-2024-0003", Severity: "HIGH"}
-			cve4 := cvemodel.CVE{ID: "CVE-2024-0001", Severity: "HIGH"}
-			cve5 := cvemodel.CVE{ID: "CVE-2024-0002", Severity: "HIGH"}
+			cve3 := common.CVE{ID: "CVE-2024-0003", Severity: "HIGH"}
+			cve4 := common.CVE{ID: "CVE-2024-0001", Severity: "HIGH"}
+			cve5 := common.CVE{ID: "CVE-2024-0002", Severity: "HIGH"}
 			paginator.Add(cve3)
 			paginator.Add(cve4)
 			paginator.Add(cve5)

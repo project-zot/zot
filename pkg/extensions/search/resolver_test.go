@@ -1118,9 +1118,9 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 		panic(err)
 	}
 
-	getCveResults := func(digestStr string) map[string]cvemodel.CVE {
+	getCveResults := func(digestStr string) map[string]common.CVE {
 		if digestStr == digest1.String() {
-			return map[string]cvemodel.CVE{
+			return map[string]common.CVE{
 				"CVE1": {
 					ID:          "CVE1",
 					Severity:    "HIGH",
@@ -1149,7 +1149,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 		}
 
 		if digestStr == digest2.String() {
-			return map[string]cvemodel.CVE{
+			return map[string]common.CVE{
 				"CVE2": {
 					ID:          "CVE2",
 					Severity:    "MEDIUM",
@@ -1166,7 +1166,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 		}
 
 		if digestStr == digest3.String() {
-			return map[string]cvemodel.CVE{
+			return map[string]common.CVE{
 				"CVE3": {
 					ID:          "CVE3",
 					Severity:    "LOW",
@@ -1177,7 +1177,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 		}
 
 		// By default the image has no vulnerabilities
-		return map[string]cvemodel.CVE{}
+		return map[string]common.CVE{}
 	}
 
 	// MetaDB loaded with initial data, now mock the scanner
@@ -1198,7 +1198,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			return cvemodel.ScanResult{CVEMap: getCveResults(repoMeta.Tags[ref].Digest)}, nil
 		},
-		GetCachedResultFn: func(digestStr string) map[string]cvemodel.CVE {
+		GetCachedResultFn: func(digestStr string) map[string]common.CVE {
 			return getCveResults(digestStr)
 		},
 		IsResultCachedFn: func(digestStr string) bool {
@@ -1984,63 +1984,63 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 		multiArchImage := CreateMultiarchWith().Images([]Image{image, CreateRandomImage(), CreateRandomImage()}).
 			Build()
 
-		getCveResults := func(digestStr string) map[string]cvemodel.CVE {
+		getCveResults := func(digestStr string) map[string]common.CVE {
 			switch digestStr {
 			case image.DigestStr():
-				return map[string]cvemodel.CVE{
+				return map[string]common.CVE{
 					"CVE1": {
 						ID:          "CVE1",
 						Severity:    "HIGH",
 						Title:       "Title CVE1",
 						Description: "Description CVE1",
-						PackageList: []cvemodel.Package{{}},
+						PackageList: []common.Package{{}},
 					},
 					"CVE2": {
 						ID:          "CVE2",
 						Severity:    "MEDIUM",
 						Title:       "Title CVE2",
 						Description: "Description CVE2",
-						PackageList: []cvemodel.Package{{}},
+						PackageList: []common.Package{{}},
 					},
 					"CVE3": {
 						ID:          "CVE3",
 						Severity:    "LOW",
 						Title:       "Title CVE3",
 						Description: "Description CVE3",
-						PackageList: []cvemodel.Package{{}},
+						PackageList: []common.Package{{}},
 					},
 				}
 			case baseImage.DigestStr():
-				return map[string]cvemodel.CVE{
+				return map[string]common.CVE{
 					"CVE1": {
 						ID:          "CVE1",
 						Severity:    "HIGH",
 						Title:       "Title CVE1",
 						Description: "Description CVE1",
-						PackageList: []cvemodel.Package{{}},
+						PackageList: []common.Package{{}},
 					},
 					"CVE2": {
 						ID:          "CVE2",
 						Severity:    "MEDIUM",
 						Title:       "Title CVE2",
 						Description: "Description CVE2",
-						PackageList: []cvemodel.Package{{}},
+						PackageList: []common.Package{{}},
 					},
 				}
 			case otherImage.DigestStr():
-				return map[string]cvemodel.CVE{
+				return map[string]common.CVE{
 					"CVE1": {
 						ID:          "CVE1",
 						Severity:    "HIGH",
 						Title:       "Title CVE1",
 						Description: "Description CVE1",
-						PackageList: []cvemodel.Package{{}},
+						PackageList: []common.Package{{}},
 					},
 				}
 			}
 
 			// By default the image has no vulnerabilities
-			return map[string]cvemodel.CVE{}
+			return map[string]common.CVE{}
 		}
 
 		// MetaDB loaded with initial data, now mock the scanner
@@ -2061,7 +2061,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 				return cvemodel.ScanResult{CVEMap: getCveResults(repoMeta.Tags[ref].Digest)}, nil
 			},
-			GetCachedResultFn: func(digestStr string) map[string]cvemodel.CVE {
+			GetCachedResultFn: func(digestStr string) map[string]common.CVE {
 				return getCveResults(digestStr)
 			},
 			IsResultCachedFn: func(digestStr string) bool {
@@ -2198,7 +2198,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 		Convey("GetCVEDiffListForImages errors", func() {
 			cveInfo.GetCVEDiffListForImagesFn = func(ctx context.Context, minuend, subtrahend, searchedCVE, excluded string,
 				pageInput cvemodel.PageInput,
-			) ([]cvemodel.CVE, cvemodel.ImageCVESummary, common.PageInfo, error) {
+			) ([]common.CVE, cvemodel.ImageCVESummary, common.PageInfo, error) {
 				return nil, cvemodel.ImageCVESummary{}, common.PageInfo{}, ErrTestError
 			}
 			minuend := gql_generated.ImageInput{Repo: "test", Tag: "img"}
