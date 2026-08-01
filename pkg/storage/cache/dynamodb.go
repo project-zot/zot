@@ -353,6 +353,15 @@ func (d *DynamoDBDriver) GetBlobRefs(digest godigest.Digest) ([]string, error) {
 		}
 	}
 
+	// The item exists but carried no usable path (e.g. a stale/partial record from a
+	// race with DeleteBlobRef). Report it like a miss so callers such as
+	// isDigestReferencedAcrossRepos fall back to the authoritative GetAllBlobs scan
+	// instead of treating "no paths" as "definitely unreferenced" and reclaiming a
+	// global blob that may still be in use.
+	if len(blobPaths) == 0 {
+		return nil, zerr.ErrCacheMiss
+	}
+
 	return blobPaths, nil
 }
 

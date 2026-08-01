@@ -3,6 +3,7 @@ package cache
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -10,9 +11,12 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/log"
 	tskip "zotregistry.dev/zot/v2/pkg/test/skip"
 )
@@ -183,5 +187,48 @@ func TestNewTableWithoutDescribeTablePermission(t *testing.T) {
 			So(deniedDriver.NewTable(tableName), ShouldBeNil)
 			So(deniedDriver.tableName, ShouldEqual, tableName)
 		})
+	})
+}
+
+// TestGetBlobRefsPartialItemIsCacheMiss reproduces the state GitHub Copilot flagged on
+// PR #3927: a blob_refs item that exists (GetItem returns a non-nil Item) but carries no
+// usable path - here, only the partition key attribute, no OriginalBlobPath/
+// DuplicateBlobPath at all, the same shape DeleteBlobRef's "orphaned entry" comment
+// describes. Before the fix, GetBlobRefs returned ([], nil), which callers like
+// isDigestReferencedAcrossRepos read as "definitely not referenced elsewhere" -
+// unsafe, since it should instead defer to the GetAllBlobs fallback.
+func TestGetBlobRefsPartialItemIsCacheMiss(t *testing.T) {
+	tskip.SkipDynamo(t)
+
+	Convey("GetBlobRefs on an item with no usable path is a cache miss, not empty-success", t, func() {
+		endpoint := os.Getenv("DYNAMODBMOCK_ENDPOINT")
+
+		cfg, err := awsconfig.LoadDefaultConfig(context.Background(), awsconfig.WithRegion("us-east-2"))
+		So(err, ShouldBeNil)
+
+		client := dynamodb.NewFromConfig(cfg, func(o *dynamodb.Options) {
+			o.BaseEndpoint = aws.String(endpoint)
+		})
+
+		const tableName = "BlobRefPartialItemTable"
+
+		driver := &DynamoDBDriver{client: client, tableName: tableName, log: log.NewTestLogger()}
+		So(driver.NewTable(tableName), ShouldBeNil)
+
+		digest := godigest.FromString("partial-item")
+		refDigest := driver.blobRefDigest(digest)
+
+		key, err := attributevalue.MarshalMap(map[string]any{"Digest": refDigest})
+		So(err, ShouldBeNil)
+
+		_, err = client.PutItem(context.Background(), &dynamodb.PutItemInput{
+			TableName: aws.String(tableName),
+			Item:      key,
+		})
+		So(err, ShouldBeNil)
+
+		refs, err := driver.GetBlobRefs(digest)
+		So(errors.Is(err, zerr.ErrCacheMiss), ShouldBeTrue)
+		So(refs, ShouldBeEmpty)
 	})
 }
