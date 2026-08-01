@@ -1349,16 +1349,16 @@ func (service *mockService) getCveByImageGQL(ctx context.Context, config SearchC
 		return service.getCveByImageGQLFn(ctx, config, username, password, imageName, searchedCVE)
 	}
 	cveRes := &cveResult{}
-	cveRes.Data = cveData{
-		CVEListForImage: cveListForImage{
+	cveRes.Data = common.CVEListForImageResult{
+		CVEListForImage: common.CVEResultForImage{
 			Tag: imageName,
-			CVEList: []cve{
+			CVEList: []common.CVE{
 				{
 					ID:          "dummyCVEID",
 					Description: "Description of the CVE",
 					Title:       "Title of that CVE",
 					Severity:    "HIGH",
-					PackageList: []packageList{
+					PackageList: []common.Package{
 						{
 							Name:             "packagename",
 							FixedVersion:     "fixedver",

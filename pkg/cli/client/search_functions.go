@@ -11,6 +11,7 @@ import (
 	"time"
 
 	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/common"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 )
 
@@ -285,8 +286,8 @@ func SearchCVEDiffList(config SearchConfig, minuend, subtrahend ImageIdentifier)
 	cveDiffResult := response.Data.CveDiffResult
 
 	result := cveResult{
-		Data: cveData{
-			CVEListForImage: cveListForImage{
+		Data: common.CVEListForImageResult{
+			CVEListForImage: common.CVEResultForImage{
 				Tag:     cveDiffResult.Minuend.Tag,
 				CVEList: cveDiffResult.CVEList,
 				Summary: cveDiffResult.Summary,

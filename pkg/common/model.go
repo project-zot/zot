@@ -329,21 +329,22 @@ type Package struct {
 	FixedVersion     string `json:"FixedVersion"`
 }
 
-type CveListForImageResponse struct {
-	CveListForImageResult `json:"data"`
+type CVEListForImageResponse struct {
+	CVEListForImageResult `json:"data"`
 
 	Errors []ErrorGQL `json:"errors"`
 }
 
 //nolint:tagliatelle // graphQL schema
-type CveListForImageResult struct {
+type CVEListForImageResult struct {
 	CVEListForImage CVEResultForImage `json:"CVEListForImage"`
 }
 
 //nolint:tagliatelle // graphQL schema
 type CVEResultForImage struct {
-	Tag     string `json:"Tag"`
-	CVEList []CVE  `json:"CVEList"`
+	Tag     string                    `json:"Tag"`
+	CVEList []CVE                     `json:"CVEList"`
+	Summary ImageVulnerabilitySummary `json:"Summary"`
 }
 
 type CVEDiffListForImagesResponse struct {

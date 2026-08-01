@@ -172,12 +172,12 @@ func (service *searchService) getCVEDiffListGQL(ctx context.Context, config Sear
 				Minuend {Repo Tag Digest Platform {Os Arch}}
 				Subtrahend {Repo Tag Digest Platform {Os Arch}}
 				CVEList {
-					Id Title Description Severity Reference 
+					Id Title Description Severity Reference
 					PackageList {Name InstalledVersion FixedVersion}
-				} 
+				}
 				Summary {
 					Count UnknownCount LowCount MediumCount HighCount CriticalCount
-				} 
+				}
 				Page {TotalCount ItemCount}
 			}
 		}`, minuendInput, subtrahendInput)
@@ -773,30 +773,13 @@ func addManifestCallToPool(ctx context.Context, config SearchConfig, pool *reque
 }
 
 type cveResult struct {
-	Errors []common.ErrorGQL `json:"errors"`
-	Data   cveData           `json:"data"`
+	Errors []common.ErrorGQL            `json:"errors"`
+	Data   common.CVEListForImageResult `json:"data"`
 }
 
 type tagListResp struct {
 	Name string   `json:"name"`
 	Tags []string `json:"tags"`
-}
-
-//nolint:tagliatelle // graphQL schema
-type packageList struct {
-	Name             string `json:"Name"`
-	PackagePath      string `json:"PackagePath"`
-	InstalledVersion string `json:"InstalledVersion"`
-	FixedVersion     string `json:"FixedVersion"`
-}
-
-//nolint:tagliatelle // graphQL schema
-type cve struct {
-	ID          string        `json:"Id"`
-	Severity    string        `json:"Severity"`
-	Title       string        `json:"Title"`
-	Description string        `json:"Description"`
-	PackageList []packageList `json:"PackageList"`
 }
 
 type cveDiffListResp struct {
@@ -811,20 +794,8 @@ type cveDiffResultsForImages struct {
 type cveDiffResult struct {
 	Minuend    ImageIdentifier                  `json:"minuend"`
 	Subtrahend ImageIdentifier                  `json:"subtrahend"`
-	CVEList    []cve                            `json:"cveList"`
+	CVEList    []common.CVE                     `json:"cveList"`
 	Summary    common.ImageVulnerabilitySummary `json:"summary"`
-}
-
-//nolint:tagliatelle // graphQL schema
-type cveListForImage struct {
-	Tag     string                           `json:"Tag"`
-	CVEList []cve                            `json:"CVEList"`
-	Summary common.ImageVulnerabilitySummary `json:"Summary"`
-}
-
-//nolint:tagliatelle // graphQL schema
-type cveData struct {
-	CVEListForImage cveListForImage `json:"cveListForImage"`
 }
 
 func (cve cveResult) string(format string, verbose bool) (string, error) {
@@ -909,7 +880,7 @@ func (cve cveResult) stringPlainText() string {
 	return builder.String()
 }
 
-func generateTableRowForVulnerablePackage(pkg packageList) []string {
+func generateTableRowForVulnerablePackage(pkg common.Package) []string {
 	row := make([]string, cveColTotalCount)
 	pkgName := ellipsize(pkg.Name, cveVulnPkgNameWidth, ellipsis)
 	pkgPath := "-"

@@ -343,15 +343,15 @@ func TestSearchCVEForImageGQL(t *testing.T) {
 				imageName string, searchedCVE string) (*cveResult, error,
 			) {
 				return &cveResult{
-					Data: cveData{
-						CVEListForImage: cveListForImage{
-							CVEList: []cve{
+					Data: common.CVEListForImageResult{
+						CVEListForImage: common.CVEResultForImage{
+							CVEList: []common.CVE{
 								{
 									ID:          "dummyCVEID",
 									Description: "Description of the CVE",
 									Title:       "Title of that CVE",
 									Severity:    "HIGH",
-									PackageList: []packageList{
+									PackageList: []common.Package{
 										{
 											Name:             "packagename",
 											FixedVersion:     "fixedver",
@@ -364,7 +364,7 @@ func TestSearchCVEForImageGQL(t *testing.T) {
 									Description: "Test CVE ID 2",
 									Title:       "Test CVE 2",
 									Severity:    "HIGH",
-									PackageList: []packageList{
+									PackageList: []common.Package{
 										{
 											Name:             "packagename",
 											PackagePath:      "/usr/bin/dummy.jar",
@@ -428,22 +428,22 @@ func TestSearchCVEForImageGQL(t *testing.T) {
 				imageName string, searchedCVE string) (*cveResult, error,
 			) {
 				return &cveResult{
-					Data: cveData{
-						CVEListForImage: cveListForImage{
-							CVEList: []cve{
+					Data: common.CVEListForImageResult{
+						CVEListForImage: common.CVEResultForImage{
+							CVEList: []common.CVE{
 								{
 									ID:          "CVE-100",
 									Description: "",
 									Title:       "CVE-100 Title",
 									Severity:    "HIGH",
-									PackageList: []packageList{},
+									PackageList: []common.Package{},
 								},
 								{
 									ID:          "CVE-101",
 									Description: "Desc 101\n",
 									Title:       "CVE-101 Title",
 									Severity:    "HIGH",
-									PackageList: []packageList{
+									PackageList: []common.Package{
 										{
 											Name:             "Pkg1",
 											FixedVersion:     "2.0.0",
@@ -456,7 +456,7 @@ func TestSearchCVEForImageGQL(t *testing.T) {
 									Description: "Desc 102",
 									Title:       "CVE-102 Title",
 									Severity:    "HIGH",
-									PackageList: []packageList{
+									PackageList: []common.Package{
 										{
 											Name:             "dummy-java",
 											PackagePath:      "/usr/bin/dummy.jar",
