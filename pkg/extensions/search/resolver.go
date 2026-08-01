@@ -16,6 +16,7 @@ import (
 	"github.com/vektah/gqlparser/v2/gqlerror"
 
 	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/common"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/extensions/search/convert"
 	cveinfo "zotregistry.dev/zot/v2/pkg/extensions/search/cve"
@@ -216,10 +217,10 @@ func getCVEListForImage(
 		requestedPage = &gql_generated.PageInput{}
 	}
 
-	pageInput := cvemodel.PageInput{
+	pageInput := common.PageInput{
 		Limit:  deref(requestedPage.Limit, 0),
 		Offset: deref(requestedPage.Offset, 0),
-		SortBy: cvemodel.SortCriteria(
+		SortBy: common.SortCriteria(
 			deref(requestedPage.SortBy, gql_generated.SortCriteriaSeverity),
 		),
 	}
@@ -396,10 +397,10 @@ func getCVEDiffListForImages(
 	page := dderef(requestedPage)
 
 	diffCVEs, diffSummary, _, err := cveInfo.GetCVEDiffListForImages(ctx, minuendRepoRef, subtrahendRepoRef, searchedCVE,
-		excludedCVE, cvemodel.PageInput{
+		excludedCVE, common.PageInput{
 			Limit:  deref(page.Limit, 0),
 			Offset: deref(page.Offset, 0),
-			SortBy: cvemodel.SortCriteria(deref(page.SortBy, gql_generated.SortCriteriaSeverity)),
+			SortBy: common.SortCriteria(deref(page.SortBy, gql_generated.SortCriteriaSeverity)),
 		})
 	if err != nil {
 		return nil, err

@@ -2197,7 +2197,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 		Convey("GetCVEDiffListForImages errors", func() {
 			cveInfo.GetCVEDiffListForImagesFn = func(ctx context.Context, minuend, subtrahend, searchedCVE, excluded string,
-				pageInput cvemodel.PageInput,
+				pageInput common.PageInput,
 			) ([]common.CVE, cvemodel.ImageCVESummary, common.PageInfo, error) {
 				return nil, cvemodel.ImageCVESummary{}, common.PageInfo{}, ErrTestError
 			}

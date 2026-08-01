@@ -363,3 +363,11 @@ type CVEDiffListForImages struct {
 	Subtrahend ImageIdentifier `json:"Subtrahend"`
 	CVEList    []CVE           `json:"CVEList"`
 }
+
+type SortCriteria string
+
+type PageInput struct {
+	Limit  int
+	Offset int
+	SortBy SortCriteria
+}

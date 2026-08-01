@@ -1189,7 +1189,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 
 		t.Log("\nTest GetCVEListForImage\n")
 
-		pageInput := cvemodel.PageInput{
+		pageInput := common.PageInput{
 			SortBy: cveinfo.SeverityDsc,
 		}
 

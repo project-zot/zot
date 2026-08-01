@@ -25,9 +25,9 @@ type CveInfo interface {
 	GetImageListForCVE(ctx context.Context, repo, cveID string) ([]cvemodel.TagInfo, error)
 	GetImageListWithCVEFixed(ctx context.Context, repo, cveID string) ([]cvemodel.TagInfo, error)
 	GetCVEListForImage(ctx context.Context, repo, tag string, searchedCVE, excludedCVE string, severity string,
-		pageinput cvemodel.PageInput) ([]common.CVE, cvemodel.ImageCVESummary, zcommon.PageInfo, error)
+		pageinput common.PageInput) ([]common.CVE, cvemodel.ImageCVESummary, zcommon.PageInfo, error)
 	GetCVEDiffListForImages(ctx context.Context, minuend, subtrahend, searchedCVE, excludedCVE string,
-		pageInput cvemodel.PageInput) ([]common.CVE, cvemodel.ImageCVESummary, zcommon.PageInfo, error)
+		pageInput common.PageInput) ([]common.CVE, cvemodel.ImageCVESummary, zcommon.PageInfo, error)
 	GetCVESummaryForImageMedia(ctx context.Context, repo, digestStr, mediaType string) (cvemodel.ImageCVESummary, error)
 }
 
@@ -382,7 +382,7 @@ func filterCVEList(cveList []common.CVE, searchedCVE, excludedCVE, severity stri
 }
 
 func (cveinfo BaseCveInfo) GetCVEListForImage(ctx context.Context, repo, ref string, searchedCVE string,
-	excludedCVE, severity string, pageInput cvemodel.PageInput,
+	excludedCVE, severity string, pageInput common.PageInput,
 ) (
 	[]common.CVE, cvemodel.ImageCVESummary, zcommon.PageInfo, error,
 ) {
@@ -419,20 +419,20 @@ func (cveinfo BaseCveInfo) GetCVEListForImage(ctx context.Context, repo, ref str
 }
 
 func (cveinfo BaseCveInfo) GetCVEDiffListForImages(ctx context.Context, minuend, subtrahend, searchedCVE string,
-	excludedCVE string, pageInput cvemodel.PageInput,
+	excludedCVE string, pageInput common.PageInput,
 ) ([]common.CVE, cvemodel.ImageCVESummary, zcommon.PageInfo, error) {
 	minuendRepo, minuendRef, _ := zcommon.GetImageDirAndReference(minuend)
 	subtrahendRepo, subtrahendRef, _ := zcommon.GetImageDirAndReference(subtrahend)
 
 	// get the CVEs of image and comparedImage
 	minuendCVEList, _, _, err := cveinfo.GetCVEListForImage(ctx, minuendRepo, minuendRef, searchedCVE, excludedCVE,
-		"", cvemodel.PageInput{})
+		"", common.PageInput{})
 	if err != nil {
 		return nil, cvemodel.ImageCVESummary{}, zcommon.PageInfo{}, err
 	}
 
 	subtrahendCVEList, _, _, err := cveinfo.GetCVEListForImage(ctx, subtrahendRepo, subtrahendRef,
-		searchedCVE, excludedCVE, "", cvemodel.PageInput{})
+		searchedCVE, excludedCVE, "", common.PageInput{})
 	if err != nil {
 		return nil, cvemodel.ImageCVESummary{}, zcommon.PageInfo{}, err
 	}

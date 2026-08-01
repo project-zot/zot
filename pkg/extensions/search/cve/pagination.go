@@ -11,24 +11,24 @@ import (
 )
 
 const (
-	AlphabeticAsc = cvemodel.SortCriteria("ALPHABETIC_ASC")
-	AlphabeticDsc = cvemodel.SortCriteria("ALPHABETIC_DSC")
-	SeverityDsc   = cvemodel.SortCriteria("SEVERITY")
+	AlphabeticAsc = common.SortCriteria("ALPHABETIC_ASC")
+	AlphabeticDsc = common.SortCriteria("ALPHABETIC_DSC")
+	SeverityDsc   = common.SortCriteria("SEVERITY")
 )
 
 var (
 	//nolint:gochecknoglobals // lazy initialization with sync.Once to avoid reallocation
 	sortFunctionsOnce sync.Once
 	//nolint:gochecknoglobals // cached map initialized once, effectively immutable
-	sortFunctions map[cvemodel.SortCriteria]func(a, b common.CVE) int
+	sortFunctions map[common.SortCriteria]func(a, b common.CVE) int
 )
 
 // getSortFunctions returns a cached map of sort criteria to comparison functions.
 // Using slices.SortFunc which expects func(a, b common.CVE) int.
 // The map is initialized once using sync.Once to avoid reallocation.
-func getSortFunctions() map[cvemodel.SortCriteria]func(a, b common.CVE) int {
+func getSortFunctions() map[common.SortCriteria]func(a, b common.CVE) int {
 	sortFunctionsOnce.Do(func() {
-		sortFunctions = map[cvemodel.SortCriteria]func(a, b common.CVE) int{
+		sortFunctions = map[common.SortCriteria]func(a, b common.CVE) int{
 			AlphabeticAsc: sortCVEByAlphabeticAsc,
 			AlphabeticDsc: sortCVEByAlphabeticDsc,
 			SeverityDsc:   sortCVEBySeverityDsc,
@@ -93,13 +93,13 @@ type PageFinder interface {
 type CvePageFinder struct {
 	limit      int
 	offset     int
-	sortBy     cvemodel.SortCriteria
+	sortBy     common.SortCriteria
 	pageBuffer []common.CVE
 }
 
 const maxCvePageLimit = 4 * 1024
 
-func NewCvePageFinder(limit, offset int, sortBy cvemodel.SortCriteria) (*CvePageFinder, error) {
+func NewCvePageFinder(limit, offset int, sortBy common.SortCriteria) (*CvePageFinder, error) {
 	if sortBy == "" {
 		sortBy = SeverityDsc
 	}
