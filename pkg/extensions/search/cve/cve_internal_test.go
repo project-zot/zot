@@ -11,7 +11,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.dev/zot/v2/pkg/common"
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	cvemodel "zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
 	"zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
@@ -22,8 +22,8 @@ var ErrTestError = errors.New("test error")
 func TestUtils(t *testing.T) {
 	Convey("Utils", t, func() {
 		Convey("cve.ContainsStr for package list", func() {
-			cve := common.CVE{
-				PackageList: []common.Package{
+			cve := zcommon.CVE{
+				PackageList: []zcommon.Package{
 					{
 						Name:             "NameTest",
 						PackagePath:      "/usr/bin/artifacts/dummy.jar",
@@ -139,7 +139,7 @@ func TestUtils(t *testing.T) {
 		})
 
 		Convey("shouldIncludeCVE filtering logic", func() {
-			baseCVE := common.CVE{
+			baseCVE := zcommon.CVE{
 				ID:          "CVE-2024-0001",
 				Severity:    "HIGH",
 				Title:       "Test CVE 1",

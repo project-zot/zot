@@ -5,7 +5,7 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 
-	"zotregistry.dev/zot/v2/pkg/common"
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
 )
 
 type ImageCVESummary struct {
@@ -92,7 +92,7 @@ type TagInfo struct {
 // this identity/cache info internally while scanning, so returning it here spares callers a
 // second metaDB round trip to learn what was scanned.
 type ScanResult struct {
-	CVEMap    map[string]common.CVE
+	CVEMap    map[string]zcommon.CVE
 	Digest    string
 	MediaType string
 	WasCached bool

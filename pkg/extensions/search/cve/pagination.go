@@ -6,29 +6,29 @@ import (
 	"sync"
 
 	zerr "zotregistry.dev/zot/v2/errors"
-	"zotregistry.dev/zot/v2/pkg/common"
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	cvemodel "zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
 )
 
 const (
-	AlphabeticAsc = common.SortCriteria("ALPHABETIC_ASC")
-	AlphabeticDsc = common.SortCriteria("ALPHABETIC_DSC")
-	SeverityDsc   = common.SortCriteria("SEVERITY")
+	AlphabeticAsc = zcommon.SortCriteria("ALPHABETIC_ASC")
+	AlphabeticDsc = zcommon.SortCriteria("ALPHABETIC_DSC")
+	SeverityDsc   = zcommon.SortCriteria("SEVERITY")
 )
 
 var (
 	//nolint:gochecknoglobals // lazy initialization with sync.Once to avoid reallocation
 	sortFunctionsOnce sync.Once
 	//nolint:gochecknoglobals // cached map initialized once, effectively immutable
-	sortFunctions map[common.SortCriteria]func(a, b common.CVE) int
+	sortFunctions map[zcommon.SortCriteria]func(a, b zcommon.CVE) int
 )
 
 // getSortFunctions returns a cached map of sort criteria to comparison functions.
-// Using slices.SortFunc which expects func(a, b common.CVE) int.
+// Using slices.SortFunc which expects func(a, b zcommon.CVE) int.
 // The map is initialized once using sync.Once to avoid reallocation.
-func getSortFunctions() map[common.SortCriteria]func(a, b common.CVE) int {
+func getSortFunctions() map[zcommon.SortCriteria]func(a, b zcommon.CVE) int {
 	sortFunctionsOnce.Do(func() {
-		sortFunctions = map[common.SortCriteria]func(a, b common.CVE) int{
+		sortFunctions = map[zcommon.SortCriteria]func(a, b zcommon.CVE) int{
 			AlphabeticAsc: sortCVEByAlphabeticAsc,
 			AlphabeticDsc: sortCVEByAlphabeticDsc,
 			SeverityDsc:   sortCVEBySeverityDsc,
@@ -39,7 +39,7 @@ func getSortFunctions() map[common.SortCriteria]func(a, b common.CVE) int {
 }
 
 //nolint:varnamelen // standard comparison function signature
-func sortCVEByAlphabeticAsc(a, b common.CVE) int {
+func sortCVEByAlphabeticAsc(a, b zcommon.CVE) int {
 	if a.ID < b.ID {
 		return -1
 	}
@@ -51,7 +51,7 @@ func sortCVEByAlphabeticAsc(a, b common.CVE) int {
 }
 
 //nolint:varnamelen // standard comparison function signature
-func sortCVEByAlphabeticDsc(a, b common.CVE) int {
+func sortCVEByAlphabeticDsc(a, b zcommon.CVE) int {
 	if a.ID > b.ID {
 		return -1
 	}
@@ -63,7 +63,7 @@ func sortCVEByAlphabeticDsc(a, b common.CVE) int {
 }
 
 //nolint:varnamelen // standard comparison function signature
-func sortCVEBySeverityDsc(a, b common.CVE) int {
+func sortCVEBySeverityDsc(a, b zcommon.CVE) int {
 	severityCmp := cvemodel.CompareSeverities(a.Severity, b.Severity)
 	if severityCmp != 0 {
 		return severityCmp
@@ -83,8 +83,8 @@ func sortCVEBySeverityDsc(a, b common.CVE) int {
 // PageFinder permits keeping a pool of objects using Add
 // and returning a specific page.
 type PageFinder interface {
-	Add(cve common.CVE)
-	Page() ([]common.CVE, common.PageInfo)
+	Add(cve zcommon.CVE)
+	Page() ([]zcommon.CVE, zcommon.PageInfo)
 	Reset()
 }
 
@@ -93,13 +93,13 @@ type PageFinder interface {
 type CvePageFinder struct {
 	limit      int
 	offset     int
-	sortBy     common.SortCriteria
-	pageBuffer []common.CVE
+	sortBy     zcommon.SortCriteria
+	pageBuffer []zcommon.CVE
 }
 
 const maxCvePageLimit = 4 * 1024
 
-func NewCvePageFinder(limit, offset int, sortBy common.SortCriteria) (*CvePageFinder, error) {
+func NewCvePageFinder(limit, offset int, sortBy zcommon.SortCriteria) (*CvePageFinder, error) {
 	if sortBy == "" {
 		sortBy = SeverityDsc
 	}
@@ -125,7 +125,7 @@ func NewCvePageFinder(limit, offset int, sortBy common.SortCriteria) (*CvePageFi
 		limit:      limit,
 		offset:     offset,
 		sortBy:     sortBy,
-		pageBuffer: make([]common.CVE, 0),
+		pageBuffer: make([]zcommon.CVE, 0),
 	}, nil
 }
 
@@ -134,16 +134,16 @@ func (bpt *CvePageFinder) Reset() {
 	bpt.pageBuffer = bpt.pageBuffer[:0]
 }
 
-func (bpt *CvePageFinder) Add(cve common.CVE) {
+func (bpt *CvePageFinder) Add(cve zcommon.CVE) {
 	bpt.pageBuffer = append(bpt.pageBuffer, cve)
 }
 
-func (bpt *CvePageFinder) Page() ([]common.CVE, common.PageInfo) {
+func (bpt *CvePageFinder) Page() ([]zcommon.CVE, zcommon.PageInfo) {
 	if len(bpt.pageBuffer) == 0 {
-		return []common.CVE{}, common.PageInfo{}
+		return []zcommon.CVE{}, zcommon.PageInfo{}
 	}
 
-	pageInfo := &common.PageInfo{}
+	pageInfo := &zcommon.PageInfo{}
 
 	// Use slices.SortFunc with cached comparison function
 	sortFuncs := getSortFunctions()

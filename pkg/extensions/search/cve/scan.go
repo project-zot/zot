@@ -6,7 +6,6 @@ import (
 	"slices"
 	"sync"
 
-	"zotregistry.dev/zot/v2/pkg/common"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/extensions/events"
 	cvemodel "zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
@@ -268,7 +267,7 @@ func (s *scanner) ScanImage(ctx context.Context, image string) (cvemodel.ScanRes
 
 // publishScanEvent emits one ImageScanned event for the given repo/ref/digest/mediaType.
 func (s *scanner) publishScanEvent(ctx context.Context, repo, ref, digest, mediaType string,
-	cveMap map[string]common.CVE,
+	cveMap map[string]zcommon.CVE,
 ) {
 	summary := getImageScanSummary(cveMap)
 	ectx := events.EventContextFromContext(ctx)
@@ -276,7 +275,7 @@ func (s *scanner) publishScanEvent(ctx context.Context, repo, ref, digest, media
 	s.eventRecorder.ImageScanned(repo, ref, digest, mediaType, summary, ectx)
 }
 
-func getImageScanSummary(cveMap map[string]common.CVE) events.ImageScanSummary {
+func getImageScanSummary(cveMap map[string]zcommon.CVE) events.ImageScanSummary {
 	cveSummary := initCVESummaryFromCVEMap(cveMap)
 	summary := events.ImageScanSummary{
 		Count:         cveSummary.Count,
@@ -289,7 +288,7 @@ func getImageScanSummary(cveMap map[string]common.CVE) events.ImageScanSummary {
 	}
 
 	for _, cve := range cveMap {
-		if slices.ContainsFunc(cve.PackageList, func(pack common.Package) bool {
+		if slices.ContainsFunc(cve.PackageList, func(pack zcommon.Package) bool {
 			// the scanner uses cvemodel.NotSpecified, never "", when there is no fix
 			return pack.FixedVersion != "" && pack.FixedVersion != cvemodel.NotSpecified
 		}) {

@@ -20,7 +20,7 @@ import (
 	"github.com/spf13/cobra"
 
 	zerr "zotregistry.dev/zot/v2/errors"
-	"zotregistry.dev/zot/v2/pkg/common"
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
 )
 
 func TestSearchAllImages(t *testing.T) {
@@ -52,10 +52,10 @@ func TestSearchAllImagesGQL(t *testing.T) {
 		searchConfig := getMockSearchConfig(buff, &mockService{
 			httpClient: NewHTTPClient(),
 			getImagesGQLFn: func(ctx context.Context, config SearchConfig, username, password, imageName string,
-			) (*common.ImageListResponse, error) {
-				return &common.ImageListResponse{ImageList: common.ImageList{
-					PaginatedImagesResult: common.PaginatedImagesResult{
-						Results: []common.ImageSummary{getMockImageSummary()},
+			) (*zcommon.ImageListResponse, error) {
+				return &zcommon.ImageListResponse{ImageList: zcommon.ImageList{
+					PaginatedImagesResult: zcommon.PaginatedImagesResult{
+						Results: []zcommon.ImageSummary{getMockImageSummary()},
 					},
 				}}, nil
 			},
@@ -74,10 +74,10 @@ func TestSearchAllImagesGQL(t *testing.T) {
 		searchConfig := getMockSearchConfig(buff, &mockService{
 			httpClient: NewHTTPClient(),
 			getImagesGQLFn: func(ctx context.Context, config SearchConfig, username, password, imageName string,
-			) (*common.ImageListResponse, error) {
-				return &common.ImageListResponse{ImageList: common.ImageList{
-					PaginatedImagesResult: common.PaginatedImagesResult{
-						Results: []common.ImageSummary{getMockImageSummary()},
+			) (*zcommon.ImageListResponse, error) {
+				return &zcommon.ImageListResponse{ImageList: zcommon.ImageList{
+					PaginatedImagesResult: zcommon.PaginatedImagesResult{
+						Results: []zcommon.ImageSummary{getMockImageSummary()},
 					},
 				}}, zerr.ErrInjected
 			},
@@ -132,10 +132,10 @@ func TestSearchImageByNameGQL(t *testing.T) {
 		searchConfig := getMockSearchConfig(buff, &mockService{
 			httpClient: NewHTTPClient(),
 			getImagesGQLFn: func(ctx context.Context, config SearchConfig, username, password, imageName string,
-			) (*common.ImageListResponse, error) {
-				return &common.ImageListResponse{ImageList: common.ImageList{
-					PaginatedImagesResult: common.PaginatedImagesResult{
-						Results: []common.ImageSummary{getMockImageSummary()},
+			) (*zcommon.ImageListResponse, error) {
+				return &zcommon.ImageListResponse{ImageList: zcommon.ImageList{
+					PaginatedImagesResult: zcommon.PaginatedImagesResult{
+						Results: []zcommon.ImageSummary{getMockImageSummary()},
 					},
 				}}, nil
 			},
@@ -154,10 +154,10 @@ func TestSearchImageByNameGQL(t *testing.T) {
 		searchConfig := getMockSearchConfig(buff, &mockService{
 			httpClient: NewHTTPClient(),
 			getImagesGQLFn: func(ctx context.Context, config SearchConfig, username, password, imageName string,
-			) (*common.ImageListResponse, error) {
-				return &common.ImageListResponse{ImageList: common.ImageList{
-					PaginatedImagesResult: common.PaginatedImagesResult{
-						Results: []common.ImageSummary{getMockImageSummary()},
+			) (*zcommon.ImageListResponse, error) {
+				return &zcommon.ImageListResponse{ImageList: zcommon.ImageList{
+					PaginatedImagesResult: zcommon.PaginatedImagesResult{
+						Results: []zcommon.ImageSummary{getMockImageSummary()},
 					},
 				}}, zerr.ErrInjected
 			},
@@ -212,11 +212,11 @@ func TestSearchDerivedImageListGQL(t *testing.T) {
 		searchConfig := getMockSearchConfig(buff, &mockService{
 			httpClient: NewHTTPClient(),
 			getDerivedImageListGQLFn: func(ctx context.Context, config SearchConfig, username string, password string,
-				derivedImage string) (*common.DerivedImageListResponse, error,
+				derivedImage string) (*zcommon.DerivedImageListResponse, error,
 			) {
-				return &common.DerivedImageListResponse{DerivedImageList: common.DerivedImageList{
-					PaginatedImagesResult: common.PaginatedImagesResult{
-						Results: []common.ImageSummary{
+				return &zcommon.DerivedImageListResponse{DerivedImageList: zcommon.DerivedImageList{
+					PaginatedImagesResult: zcommon.PaginatedImagesResult{
+						Results: []zcommon.ImageSummary{
 							getMockImageSummary(),
 						},
 					},
@@ -237,10 +237,10 @@ func TestSearchDerivedImageListGQL(t *testing.T) {
 		searchConfig := getMockSearchConfig(buff, &mockService{
 			httpClient: NewHTTPClient(),
 			getDerivedImageListGQLFn: func(ctx context.Context, config SearchConfig, username string, password string,
-				derivedImage string) (*common.DerivedImageListResponse, error,
+				derivedImage string) (*zcommon.DerivedImageListResponse, error,
 			) {
-				return &common.DerivedImageListResponse{DerivedImageList: common.DerivedImageList{
-					PaginatedImagesResult: common.PaginatedImagesResult{Results: []common.ImageSummary{}},
+				return &zcommon.DerivedImageListResponse{DerivedImageList: zcommon.DerivedImageList{
+					PaginatedImagesResult: zcommon.PaginatedImagesResult{Results: []zcommon.ImageSummary{}},
 				}}, zerr.ErrInjected
 			},
 		})
@@ -256,10 +256,10 @@ func TestSearchBaseImageListGQL(t *testing.T) {
 		searchConfig := getMockSearchConfig(buff, &mockService{
 			httpClient: NewHTTPClient(),
 			getBaseImageListGQLFn: func(ctx context.Context, config SearchConfig, username string, password string,
-				derivedImage string) (*common.BaseImageListResponse, error,
+				derivedImage string) (*zcommon.BaseImageListResponse, error,
 			) {
-				return &common.BaseImageListResponse{BaseImageList: common.BaseImageList{
-					PaginatedImagesResult: common.PaginatedImagesResult{Results: []common.ImageSummary{
+				return &zcommon.BaseImageListResponse{BaseImageList: zcommon.BaseImageList{
+					PaginatedImagesResult: zcommon.PaginatedImagesResult{Results: []zcommon.ImageSummary{
 						getMockImageSummary(),
 					}},
 				}}, nil
@@ -279,10 +279,10 @@ func TestSearchBaseImageListGQL(t *testing.T) {
 		searchConfig := getMockSearchConfig(buff, &mockService{
 			httpClient: NewHTTPClient(),
 			getBaseImageListGQLFn: func(ctx context.Context, config SearchConfig, username string, password string,
-				derivedImage string) (*common.BaseImageListResponse, error,
+				derivedImage string) (*zcommon.BaseImageListResponse, error,
 			) {
-				return &common.BaseImageListResponse{BaseImageList: common.BaseImageList{
-					PaginatedImagesResult: common.PaginatedImagesResult{Results: []common.ImageSummary{}},
+				return &zcommon.BaseImageListResponse{BaseImageList: zcommon.BaseImageList{
+					PaginatedImagesResult: zcommon.PaginatedImagesResult{Results: []zcommon.ImageSummary{}},
 				}}, zerr.ErrInjected
 			},
 		})
@@ -298,11 +298,11 @@ func TestSearchImagesForDigestGQL(t *testing.T) {
 		searchConfig := getMockSearchConfig(buff, &mockService{
 			httpClient: NewHTTPClient(),
 			getImagesForDigestGQLFn: func(ctx context.Context, config SearchConfig, username string,
-				password string, digest string) (*common.ImagesForDigest, error,
+				password string, digest string) (*zcommon.ImagesForDigest, error,
 			) {
-				return &common.ImagesForDigest{ImagesForDigestList: common.ImagesForDigestList{
-					PaginatedImagesResult: common.PaginatedImagesResult{
-						Results: []common.ImageSummary{getMockImageSummary()},
+				return &zcommon.ImagesForDigest{ImagesForDigestList: zcommon.ImagesForDigestList{
+					PaginatedImagesResult: zcommon.PaginatedImagesResult{
+						Results: []zcommon.ImageSummary{getMockImageSummary()},
 					},
 				}}, nil
 			},
@@ -321,10 +321,10 @@ func TestSearchImagesForDigestGQL(t *testing.T) {
 		searchConfig := getMockSearchConfig(buff, &mockService{
 			httpClient: NewHTTPClient(),
 			getImagesForDigestGQLFn: func(ctx context.Context, config SearchConfig, username string,
-				password string, digest string) (*common.ImagesForDigest, error,
+				password string, digest string) (*zcommon.ImagesForDigest, error,
 			) {
-				return &common.ImagesForDigest{ImagesForDigestList: common.ImagesForDigestList{
-					PaginatedImagesResult: common.PaginatedImagesResult{},
+				return &zcommon.ImagesForDigest{ImagesForDigestList: zcommon.ImagesForDigestList{
+					PaginatedImagesResult: zcommon.PaginatedImagesResult{},
 				}}, zerr.ErrInjected
 			},
 		})
@@ -343,15 +343,15 @@ func TestSearchCVEForImageGQL(t *testing.T) {
 				imageName string, searchedCVE string) (*cveResult, error,
 			) {
 				return &cveResult{
-					Data: common.CVEListForImageResult{
-						CVEListForImage: common.CVEResultForImage{
-							CVEList: []common.CVE{
+					Data: zcommon.CVEListForImageResult{
+						CVEListForImage: zcommon.CVEResultForImage{
+							CVEList: []zcommon.CVE{
 								{
 									ID:          "dummyCVEID",
 									Description: "Description of the CVE",
 									Title:       "Title of that CVE",
 									Severity:    "HIGH",
-									PackageList: []common.Package{
+									PackageList: []zcommon.Package{
 										{
 											Name:             "packagename",
 											FixedVersion:     "fixedver",
@@ -364,7 +364,7 @@ func TestSearchCVEForImageGQL(t *testing.T) {
 									Description: "Test CVE ID 2",
 									Title:       "Test CVE 2",
 									Severity:    "HIGH",
-									PackageList: []common.Package{
+									PackageList: []zcommon.Package{
 										{
 											Name:             "packagename",
 											PackagePath:      "/usr/bin/dummy.jar",
@@ -380,7 +380,7 @@ func TestSearchCVEForImageGQL(t *testing.T) {
 									},
 								},
 							},
-							Summary: common.ImageVulnerabilitySummary{
+							Summary: zcommon.ImageVulnerabilitySummary{
 								Count:         2,
 								UnknownCount:  0,
 								LowCount:      0,
@@ -428,22 +428,22 @@ func TestSearchCVEForImageGQL(t *testing.T) {
 				imageName string, searchedCVE string) (*cveResult, error,
 			) {
 				return &cveResult{
-					Data: common.CVEListForImageResult{
-						CVEListForImage: common.CVEResultForImage{
-							CVEList: []common.CVE{
+					Data: zcommon.CVEListForImageResult{
+						CVEListForImage: zcommon.CVEResultForImage{
+							CVEList: []zcommon.CVE{
 								{
 									ID:          "CVE-100",
 									Description: "",
 									Title:       "CVE-100 Title",
 									Severity:    "HIGH",
-									PackageList: []common.Package{},
+									PackageList: []zcommon.Package{},
 								},
 								{
 									ID:          "CVE-101",
 									Description: "Desc 101\n",
 									Title:       "CVE-101 Title",
 									Severity:    "HIGH",
-									PackageList: []common.Package{
+									PackageList: []zcommon.Package{
 										{
 											Name:             "Pkg1",
 											FixedVersion:     "2.0.0",
@@ -456,7 +456,7 @@ func TestSearchCVEForImageGQL(t *testing.T) {
 									Description: "Desc 102",
 									Title:       "CVE-102 Title",
 									Severity:    "HIGH",
-									PackageList: []common.Package{
+									PackageList: []zcommon.Package{
 										{
 											Name:             "dummy-java",
 											PackagePath:      "/usr/bin/dummy.jar",
@@ -472,7 +472,7 @@ func TestSearchCVEForImageGQL(t *testing.T) {
 									},
 								},
 							},
-							Summary: common.ImageVulnerabilitySummary{
+							Summary: zcommon.ImageVulnerabilitySummary{
 								Count:         3,
 								UnknownCount:  0,
 								LowCount:      0,
@@ -619,12 +619,12 @@ func TestSearchImagesByCVEIDGQL(t *testing.T) {
 		searchConfig := getMockSearchConfig(buff, &mockService{
 			httpClient: NewHTTPClient(),
 			getTagsForCVEGQLFn: func(ctx context.Context, config SearchConfig, username, password,
-				imageName, cveID string) (*common.ImagesForCve, error,
+				imageName, cveID string) (*zcommon.ImagesForCve, error,
 			) {
-				return &common.ImagesForCve{
-					ImagesForCVEList: common.ImagesForCVEList{
-						PaginatedImagesResult: common.PaginatedImagesResult{
-							Results: []common.ImageSummary{
+				return &zcommon.ImagesForCve{
+					ImagesForCVEList: zcommon.ImagesForCVEList{
+						PaginatedImagesResult: zcommon.PaginatedImagesResult{
+							Results: []zcommon.ImageSummary{
 								getMockImageSummary(),
 							},
 						},
@@ -646,11 +646,11 @@ func TestSearchImagesByCVEIDGQL(t *testing.T) {
 		searchConfig := getMockSearchConfig(buff, &mockService{
 			httpClient: NewHTTPClient(),
 			getTagsForCVEGQLFn: func(ctx context.Context, config SearchConfig, username, password,
-				imageName, cveID string) (*common.ImagesForCve, error,
+				imageName, cveID string) (*zcommon.ImagesForCve, error,
 			) {
-				return &common.ImagesForCve{
-					ImagesForCVEList: common.ImagesForCVEList{
-						PaginatedImagesResult: common.PaginatedImagesResult{},
+				return &zcommon.ImagesForCve{
+					ImagesForCVEList: zcommon.ImagesForCVEList{
+						PaginatedImagesResult: zcommon.PaginatedImagesResult{},
 					},
 				}, zerr.ErrInjected
 			},
@@ -667,12 +667,12 @@ func TestSearchFixedTagsGQL(t *testing.T) {
 		searchConfig := getMockSearchConfig(buff, &mockService{
 			httpClient: NewHTTPClient(),
 			getFixedTagsForCVEGQLFn: func(ctx context.Context, config SearchConfig, username, password,
-				imageName, cveID string) (*common.ImageListWithCVEFixedResponse, error,
+				imageName, cveID string) (*zcommon.ImageListWithCVEFixedResponse, error,
 			) {
-				return &common.ImageListWithCVEFixedResponse{
-					ImageListWithCVEFixed: common.ImageListWithCVEFixed{
-						PaginatedImagesResult: common.PaginatedImagesResult{
-							Results: []common.ImageSummary{getMockImageSummary()},
+				return &zcommon.ImageListWithCVEFixedResponse{
+					ImageListWithCVEFixed: zcommon.ImageListWithCVEFixed{
+						PaginatedImagesResult: zcommon.PaginatedImagesResult{
+							Results: []zcommon.ImageSummary{getMockImageSummary()},
 						},
 					},
 				}, nil
@@ -692,11 +692,11 @@ func TestSearchFixedTagsGQL(t *testing.T) {
 		searchConfig := getMockSearchConfig(buff, &mockService{
 			httpClient: NewHTTPClient(),
 			getFixedTagsForCVEGQLFn: func(ctx context.Context, config SearchConfig, username, password,
-				imageName, cveID string) (*common.ImageListWithCVEFixedResponse, error,
+				imageName, cveID string) (*zcommon.ImageListWithCVEFixedResponse, error,
 			) {
-				return &common.ImageListWithCVEFixedResponse{
-					ImageListWithCVEFixed: common.ImageListWithCVEFixed{
-						PaginatedImagesResult: common.PaginatedImagesResult{},
+				return &zcommon.ImageListWithCVEFixedResponse{
+					ImageListWithCVEFixed: zcommon.ImageListWithCVEFixed{
+						PaginatedImagesResult: zcommon.PaginatedImagesResult{},
 					},
 				}, zerr.ErrInjected
 			},
@@ -713,11 +713,11 @@ func TestSearchReferrersGQL(t *testing.T) {
 		searchConfig := getMockSearchConfig(buff, &mockService{
 			httpClient: NewHTTPClient(),
 			getReferrersGQLFn: func(ctx context.Context, config SearchConfig, username, password,
-				repo, digest string) (*common.ReferrersResp, error,
+				repo, digest string) (*zcommon.ReferrersResp, error,
 			) {
-				return &common.ReferrersResp{
-					ReferrersResult: common.ReferrersResult{
-						Referrers: []common.Referrer{{
+				return &zcommon.ReferrersResp{
+					ReferrersResult: zcommon.ReferrersResult{
+						Referrers: []zcommon.Referrer{{
 							MediaType:    ispec.MediaTypeImageManifest,
 							Size:         100,
 							ArtifactType: "art.type",
@@ -742,9 +742,9 @@ func TestSearchReferrersGQL(t *testing.T) {
 		searchConfig := getMockSearchConfig(buff, &mockService{
 			httpClient: NewHTTPClient(),
 			getReferrersGQLFn: func(ctx context.Context, config SearchConfig, username, password,
-				repo, digest string) (*common.ReferrersResp, error,
+				repo, digest string) (*zcommon.ReferrersResp, error,
 			) {
-				return &common.ReferrersResp{}, zerr.ErrInjected
+				return &zcommon.ReferrersResp{}, zerr.ErrInjected
 			},
 		})
 
@@ -759,10 +759,10 @@ func TestGlobalSearchGQL(t *testing.T) {
 		searchConfig := getMockSearchConfig(buff, &mockService{
 			httpClient: NewHTTPClient(),
 			globalSearchGQLFn: func(ctx context.Context, config SearchConfig, username, password,
-				query string) (*common.GlobalSearch, error,
+				query string) (*zcommon.GlobalSearch, error,
 			) {
-				return &common.GlobalSearch{
-					Repos: []common.RepoSummary{{
+				return &zcommon.GlobalSearch{
+					Repos: []zcommon.RepoSummary{{
 						Name:        "repo",
 						Size:        "100",
 						LastUpdated: time.Date(2010, 1, 1, 1, 1, 1, 0, time.UTC),
@@ -785,9 +785,9 @@ func TestGlobalSearchGQL(t *testing.T) {
 		searchConfig := getMockSearchConfig(buff, &mockService{
 			httpClient: NewHTTPClient(),
 			globalSearchGQLFn: func(ctx context.Context, config SearchConfig, username, password,
-				query string) (*common.GlobalSearch, error,
+				query string) (*zcommon.GlobalSearch, error,
 			) {
-				return &common.GlobalSearch{}, zerr.ErrInjected
+				return &zcommon.GlobalSearch{}, zerr.ErrInjected
 			},
 		})
 
@@ -804,7 +804,7 @@ func TestSearchReferrers(t *testing.T) {
 			getReferrersFn: func(ctx context.Context, config SearchConfig, username string, password string,
 				repo string, digest string) (referrersResult, error,
 			) {
-				return referrersResult([]common.Referrer{
+				return referrersResult([]zcommon.Referrer{
 					{
 						MediaType:    ispec.MediaTypeImageManifest,
 						Size:         100,
@@ -871,29 +871,29 @@ func getMockSearchConfig(buff *bytes.Buffer, mockService *mockService) SearchCon
 }
 
 func getMockImageStruct() imageStruct {
-	return imageStruct(common.ImageSummary{
+	return imageStruct(zcommon.ImageSummary{
 		RepoName: "repo", Tag: "tag",
 		MediaType: ispec.MediaTypeImageManifest,
 		Digest:    godigest.FromString("str").String(),
 		Size:      "100",
-		Manifests: []common.ManifestSummary{{
+		Manifests: []zcommon.ManifestSummary{{
 			Size:         "100",
-			Platform:     common.Platform{Os: "os", Arch: "arch"},
+			Platform:     zcommon.Platform{Os: "os", Arch: "arch"},
 			Digest:       godigest.FromString("str").String(),
 			ConfigDigest: godigest.FromString("str").String(),
 		}},
 	})
 }
 
-func getMockImageSummary() common.ImageSummary {
-	return common.ImageSummary{
+func getMockImageSummary() zcommon.ImageSummary {
+	return zcommon.ImageSummary{
 		RepoName: "repo", Tag: "tag",
 		MediaType: ispec.MediaTypeImageManifest,
 		Digest:    godigest.FromString("str").String(),
 		Size:      "100",
-		Manifests: []common.ManifestSummary{{
+		Manifests: []zcommon.ManifestSummary{{
 			Size:         "100",
-			Platform:     common.Platform{Os: "os", Arch: "arch"},
+			Platform:     zcommon.Platform{Os: "os", Arch: "arch"},
 			Digest:       godigest.FromString("str").String(),
 			ConfigDigest: godigest.FromString("str").String(),
 		}},

@@ -33,7 +33,6 @@ import (
 	_ "modernc.org/sqlite"
 
 	zerr "zotregistry.dev/zot/v2/errors"
-	"zotregistry.dev/zot/v2/pkg/common"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/compat"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
@@ -550,7 +549,7 @@ func (scanner Scanner) IsResultCached(digest string) bool {
 	return scanner.cache.Contains(digest)
 }
 
-func (scanner Scanner) GetCachedResult(digest string) map[string]common.CVE {
+func (scanner Scanner) GetCachedResult(digest string) map[string]zcommon.CVE {
 	return scanner.cache.Get(digest)
 }
 
@@ -583,7 +582,7 @@ func (scanner Scanner) ScanImage(ctx context.Context, image string) (cvemodel.Sc
 	}
 
 	var (
-		cveIDMap  map[string]common.CVE
+		cveIDMap  map[string]zcommon.CVE
 		wasCached bool
 		err       error
 	)
@@ -610,12 +609,12 @@ func (scanner Scanner) ScanImage(ctx context.Context, image string) (cvemodel.Sc
 	}, nil
 }
 
-func (scanner Scanner) scanManifest(ctx context.Context, repo, digest string) (map[string]common.CVE, bool, error) {
+func (scanner Scanner) scanManifest(ctx context.Context, repo, digest string) (map[string]zcommon.CVE, bool, error) {
 	if cachedMap := scanner.cache.Get(digest); cachedMap != nil {
 		return cachedMap, true, nil
 	}
 
-	cveidMap := map[string]common.CVE{}
+	cveidMap := map[string]zcommon.CVE{}
 	image := repo + "@" + digest
 
 	scanner.dbLock.Lock()
@@ -664,7 +663,7 @@ func (scanner Scanner) scanManifest(ctx context.Context, repo, digest string) (m
 
 				pkgList = append(
 					pkgList,
-					common.Package{
+					zcommon.Package{
 						Name:             pkgName,
 						PackagePath:      packagePath,
 						InstalledVersion: installedVersion,
@@ -676,11 +675,11 @@ func (scanner Scanner) scanManifest(ctx context.Context, repo, digest string) (m
 
 				cveidMap[vulnerability.VulnerabilityID] = cveDetailStruct
 			} else {
-				newPkgList := make([]common.Package, 0)
+				newPkgList := make([]zcommon.Package, 0)
 
 				newPkgList = append(
 					newPkgList,
-					common.Package{
+					zcommon.Package{
 						Name:             pkgName,
 						PackagePath:      packagePath,
 						InstalledVersion: installedVersion,
@@ -688,7 +687,7 @@ func (scanner Scanner) scanManifest(ctx context.Context, repo, digest string) (m
 					},
 				)
 
-				cveidMap[vulnerability.VulnerabilityID] = common.CVE{
+				cveidMap[vulnerability.VulnerabilityID] = zcommon.CVE{
 					ID:          vulnerability.VulnerabilityID,
 					Title:       vulnerability.Title,
 					Description: vulnerability.Description,
@@ -891,21 +890,21 @@ func getNVDReference(references []string) (string, bool) {
 	return "", false
 }
 
-func (scanner Scanner) scanIndex(ctx context.Context, repo, digest string) (map[string]common.CVE, bool, error) {
+func (scanner Scanner) scanIndex(ctx context.Context, repo, digest string) (map[string]zcommon.CVE, bool, error) {
 	if cachedMap := scanner.cache.Get(digest); cachedMap != nil {
 		return cachedMap, true, nil
 	}
 
 	indexData, err := scanner.metaDB.GetImageMeta(godigest.Digest(digest))
 	if err != nil {
-		return map[string]common.CVE{}, false, err
+		return map[string]zcommon.CVE{}, false, err
 	}
 
 	if indexData.Index == nil {
-		return map[string]common.CVE{}, false, zerr.ErrUnexpectedMediaType
+		return map[string]zcommon.CVE{}, false, zerr.ErrUnexpectedMediaType
 	}
 
-	indexCveIDMap := map[string]common.CVE{}
+	indexCveIDMap := map[string]zcommon.CVE{}
 
 	for _, manifest := range indexData.Index.Manifests {
 		if isScannable, err := scanner.isManifestScannable(manifest.Digest.String()); isScannable && err == nil {

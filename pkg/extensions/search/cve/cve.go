@@ -10,7 +10,6 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	zerr "zotregistry.dev/zot/v2/errors"
-	"zotregistry.dev/zot/v2/pkg/common"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/compat"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
@@ -25,9 +24,9 @@ type CveInfo interface {
 	GetImageListForCVE(ctx context.Context, repo, cveID string) ([]cvemodel.TagInfo, error)
 	GetImageListWithCVEFixed(ctx context.Context, repo, cveID string) ([]cvemodel.TagInfo, error)
 	GetCVEListForImage(ctx context.Context, repo, tag string, searchedCVE, excludedCVE string, severity string,
-		pageinput common.PageInput) ([]common.CVE, cvemodel.ImageCVESummary, zcommon.PageInfo, error)
+		pageinput zcommon.PageInput) ([]zcommon.CVE, cvemodel.ImageCVESummary, zcommon.PageInfo, error)
 	GetCVEDiffListForImages(ctx context.Context, minuend, subtrahend, searchedCVE, excludedCVE string,
-		pageInput common.PageInput) ([]common.CVE, cvemodel.ImageCVESummary, zcommon.PageInfo, error)
+		pageInput zcommon.PageInput) ([]zcommon.CVE, cvemodel.ImageCVESummary, zcommon.PageInfo, error)
 	GetCVESummaryForImageMedia(ctx context.Context, repo, digestStr, mediaType string) (cvemodel.ImageCVESummary, error)
 }
 
@@ -36,7 +35,7 @@ type Scanner interface {
 	IsImageFormatScannable(repo, ref string) (bool, error)
 	IsImageMediaScannable(repo, digestStr, mediaType string) (bool, error)
 	IsResultCached(digestStr string) bool
-	GetCachedResult(digestStr string) map[string]common.CVE
+	GetCachedResult(digestStr string) map[string]zcommon.CVE
 	UpdateDB(ctx context.Context) error
 }
 
@@ -343,7 +342,7 @@ func getConfigAndDigest(metaDB mTypes.MetaDB, manifestDigestStr string) (ispec.I
 	return manifestData.Manifests[0].Config, manifestDigest, err
 }
 
-func shouldIncludeCVE(cve common.CVE, searchedCVE, excludedCVE, severity string) bool {
+func shouldIncludeCVE(cve zcommon.CVE, searchedCVE, excludedCVE, severity string) bool {
 	if severity != "" && (cvemodel.CompareSeverities(cve.Severity, severity) != 0) {
 		return false
 	}
@@ -359,7 +358,7 @@ func shouldIncludeCVE(cve common.CVE, searchedCVE, excludedCVE, severity string)
 	return true
 }
 
-func filterCVEMap(cveMap map[string]common.CVE, searchedCVE, excludedCVE, severity string,
+func filterCVEMap(cveMap map[string]zcommon.CVE, searchedCVE, excludedCVE, severity string,
 	pageFinder *CvePageFinder,
 ) {
 	searchedCVE = strings.ToUpper(searchedCVE)
@@ -371,7 +370,7 @@ func filterCVEMap(cveMap map[string]common.CVE, searchedCVE, excludedCVE, severi
 	}
 }
 
-func filterCVEList(cveList []common.CVE, searchedCVE, excludedCVE, severity string, pageFinder *CvePageFinder) {
+func filterCVEList(cveList []zcommon.CVE, searchedCVE, excludedCVE, severity string, pageFinder *CvePageFinder) {
 	searchedCVE = strings.ToUpper(searchedCVE)
 
 	for _, cve := range cveList {
@@ -382,9 +381,9 @@ func filterCVEList(cveList []common.CVE, searchedCVE, excludedCVE, severity stri
 }
 
 func (cveinfo BaseCveInfo) GetCVEListForImage(ctx context.Context, repo, ref string, searchedCVE string,
-	excludedCVE, severity string, pageInput common.PageInput,
+	excludedCVE, severity string, pageInput zcommon.PageInput,
 ) (
-	[]common.CVE, cvemodel.ImageCVESummary, zcommon.PageInfo, error,
+	[]zcommon.CVE, cvemodel.ImageCVESummary, zcommon.PageInfo, error,
 ) {
 	imageCVESummary := cvemodel.ImageCVESummary{
 		MaxSeverity: cvemodel.SeverityNotScanned,
@@ -394,21 +393,21 @@ func (cveinfo BaseCveInfo) GetCVEListForImage(ctx context.Context, repo, ref str
 	if !isValidImage {
 		cveinfo.Log.Debug().Str("image", repo+":"+ref).Err(err).Msg("image is not scanable")
 
-		return []common.CVE{}, imageCVESummary, zcommon.PageInfo{}, err
+		return []zcommon.CVE{}, imageCVESummary, zcommon.PageInfo{}, err
 	}
 
 	image := zcommon.GetFullImageName(repo, ref)
 
 	scanResult, err := cveinfo.Scanner.ScanImage(ctx, image)
 	if err != nil {
-		return []common.CVE{}, imageCVESummary, zcommon.PageInfo{}, err
+		return []zcommon.CVE{}, imageCVESummary, zcommon.PageInfo{}, err
 	}
 
 	imageCVESummary = initCVESummaryFromCVEMap(scanResult.CVEMap)
 
 	pageFinder, err := NewCvePageFinder(pageInput.Limit, pageInput.Offset, pageInput.SortBy)
 	if err != nil {
-		return []common.CVE{}, imageCVESummary, zcommon.PageInfo{}, err
+		return []zcommon.CVE{}, imageCVESummary, zcommon.PageInfo{}, err
 	}
 
 	filterCVEMap(scanResult.CVEMap, searchedCVE, excludedCVE, severity, pageFinder)
@@ -419,25 +418,25 @@ func (cveinfo BaseCveInfo) GetCVEListForImage(ctx context.Context, repo, ref str
 }
 
 func (cveinfo BaseCveInfo) GetCVEDiffListForImages(ctx context.Context, minuend, subtrahend, searchedCVE string,
-	excludedCVE string, pageInput common.PageInput,
-) ([]common.CVE, cvemodel.ImageCVESummary, zcommon.PageInfo, error) {
+	excludedCVE string, pageInput zcommon.PageInput,
+) ([]zcommon.CVE, cvemodel.ImageCVESummary, zcommon.PageInfo, error) {
 	minuendRepo, minuendRef, _ := zcommon.GetImageDirAndReference(minuend)
 	subtrahendRepo, subtrahendRef, _ := zcommon.GetImageDirAndReference(subtrahend)
 
 	// get the CVEs of image and comparedImage
 	minuendCVEList, _, _, err := cveinfo.GetCVEListForImage(ctx, minuendRepo, minuendRef, searchedCVE, excludedCVE,
-		"", common.PageInput{})
+		"", zcommon.PageInput{})
 	if err != nil {
 		return nil, cvemodel.ImageCVESummary{}, zcommon.PageInfo{}, err
 	}
 
 	subtrahendCVEList, _, _, err := cveinfo.GetCVEListForImage(ctx, subtrahendRepo, subtrahendRef,
-		searchedCVE, excludedCVE, "", common.PageInput{})
+		searchedCVE, excludedCVE, "", zcommon.PageInput{})
 	if err != nil {
 		return nil, cvemodel.ImageCVESummary{}, zcommon.PageInfo{}, err
 	}
 
-	subtrahendCVEMap := map[string]common.CVE{}
+	subtrahendCVEMap := map[string]zcommon.CVE{}
 
 	for _, cve := range subtrahendCVEList {
 		subtrahendCVEMap[cve.ID] = cve
@@ -452,7 +451,7 @@ func (cveinfo BaseCveInfo) GetCVEDiffListForImages(ctx context.Context, minuend,
 		criticalCount int
 		maxSeverity   string
 
-		diffCVEs = []common.CVE{}
+		diffCVEs = []zcommon.CVE{}
 	)
 
 	for i := range minuendCVEList {
@@ -630,7 +629,7 @@ func GetFixedTags(allTags, vulnerableTags []cvemodel.TagInfo) []cvemodel.TagInfo
 	return fixedTags
 }
 
-func initCVESummaryFromCVEMap(cveMap map[string]common.CVE) cvemodel.ImageCVESummary {
+func initCVESummaryFromCVEMap(cveMap map[string]zcommon.CVE) cvemodel.ImageCVESummary {
 	// Counters are initialized with 0 by default
 	imageCVESummary := cvemodel.ImageCVESummary{
 		MaxSeverity: cvemodel.SeverityNotScanned,

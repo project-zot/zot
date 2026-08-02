@@ -27,7 +27,6 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/api/constants"
 	apiErr "zotregistry.dev/zot/v2/pkg/api/errors"
-	"zotregistry.dev/zot/v2/pkg/common"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
@@ -73,8 +72,8 @@ type ErrorGQL struct {
 
 //nolint:tagliatelle // graphQL schema
 type CVEResultForImage struct {
-	Tag     string       `json:"Tag"`
-	CVEList []common.CVE `json:"CVEList"`
+	Tag     string        `json:"Tag"`
+	CVEList []zcommon.CVE `json:"CVEList"`
 }
 
 func testSetup(t *testing.T) (string, error) {
@@ -952,7 +951,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 
 				// Images in chronological order
 				if repo == repo1 && ref == image11Digest {
-					result := map[string]common.CVE{
+					result := map[string]zcommon.CVE{
 						"CVE1": {
 							ID:          "CVE1",
 							Severity:    "MEDIUM",
@@ -967,7 +966,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 				}
 
 				if repo == repo1 && slices.Contains([]string{image12Digest, image21Digest}, ref) {
-					result := map[string]common.CVE{
+					result := map[string]zcommon.CVE{
 						"CVE1": {
 							ID:          "CVE1",
 							Severity:    "MEDIUM",
@@ -994,7 +993,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 				}
 
 				if repo == repo1 && ref == image13Digest {
-					result := map[string]common.CVE{
+					result := map[string]zcommon.CVE{
 						"CVE3": {
 							ID:          "CVE3",
 							Severity:    "LOW",
@@ -1011,7 +1010,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 				// As a minor release on 1.0.0 banch
 				// does not include all fixes published in 1.1.0
 				if repo == repo1 && ref == image14Digest {
-					result := map[string]common.CVE{
+					result := map[string]zcommon.CVE{
 						"CVE1": {
 							ID:          "CVE1",
 							Severity:    "MEDIUM",
@@ -1033,12 +1032,12 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 
 				// Unexpected error while scanning
 				if repo == repo7 {
-					return cvemodel.ScanResult{CVEMap: map[string]common.CVE{}}, ErrFailedScan
+					return cvemodel.ScanResult{CVEMap: map[string]zcommon.CVE{}}, ErrFailedScan
 				}
 
 				if (repo == repoMultiarch && ref == indexDigest) ||
 					(repo == repoMultiarch && ref == indexM1Digest) {
-					result := map[string]common.CVE{
+					result := map[string]zcommon.CVE{
 						"CVE1": {
 							ID:          "CVE1",
 							Severity:    "MEDIUM",
@@ -1050,8 +1049,8 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 					// Simulate scanning an index results in scanning its manifests
 					if ref == indexDigest {
 						cache.Add(indexM1Digest, result)
-						cache.Add(indexM2Digest, map[string]common.CVE{})
-						cache.Add(indexM3Digest, map[string]common.CVE{})
+						cache.Add(indexM2Digest, map[string]zcommon.CVE{})
+						cache.Add(indexM3Digest, map[string]zcommon.CVE{})
 					}
 
 					cache.Add(ref, result)
@@ -1060,7 +1059,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 				}
 
 				if repo == repo8 && ref == image81Digest {
-					result := map[string]common.CVE{
+					result := map[string]zcommon.CVE{
 						"CVE0": {
 							ID:          "CVE0",
 							Severity:    "UNKNOWN",
@@ -1111,7 +1110,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 				}
 
 				// By default the image has no vulnerabilities
-				result = map[string]common.CVE{}
+				result = map[string]zcommon.CVE{}
 				cache.Add(ref, result)
 
 				return cvemodel.ScanResult{CVEMap: result}, nil
@@ -1178,7 +1177,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 
 				return cache.Contains(digest)
 			},
-			GetCachedResultFn: func(digest string) map[string]common.CVE {
+			GetCachedResultFn: func(digest string) map[string]zcommon.CVE {
 				t.Logf("GetCachedResultFn found in cache for digest %s: %v", digest, cache.Get(digest))
 
 				return cache.Get(digest)
@@ -1189,7 +1188,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 
 		t.Log("\nTest GetCVEListForImage\n")
 
-		pageInput := common.PageInput{
+		pageInput := zcommon.PageInput{
 			SortBy: cveinfo.SeverityDsc,
 		}
 
@@ -1658,7 +1657,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 
 				try++
 
-				return cvemodel.ScanResult{CVEMap: make(map[string]common.CVE)}, nil
+				return cvemodel.ScanResult{CVEMap: make(map[string]zcommon.CVE)}, nil
 			},
 		}, MetaDB: metaDB}
 		_, _, _, err = cveInfo.GetCVEDiffListForImages(ctx, "repo8:1.0.0", "repo6:0.1.0", "", "", pageInput)

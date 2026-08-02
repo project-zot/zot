@@ -22,7 +22,7 @@ import (
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api"
 	"zotregistry.dev/zot/v2/pkg/api/config"
-	"zotregistry.dev/zot/v2/pkg/common"
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	stypes "zotregistry.dev/zot/v2/pkg/storage/types"
 	test "zotregistry.dev/zot/v2/pkg/test/common"
@@ -1022,7 +1022,7 @@ type mockService struct {
 		channel chan stringResult, wtgrp *sync.WaitGroup)
 
 	getImagesGQLFn func(ctx context.Context, config SearchConfig, username, password string,
-		imageName string) (*common.ImageListResponse, error)
+		imageName string) (*zcommon.ImageListResponse, error)
 
 	getImageByNameFn func(ctx context.Context, config SearchConfig,
 		username, password, imageName string, channel chan stringResult, wtgrp *sync.WaitGroup,
@@ -1038,23 +1038,23 @@ type mockService struct {
 
 	globalSearchGQLFn func(ctx context.Context, config SearchConfig, username, password string,
 		query string,
-	) (*common.GlobalSearch, error)
+	) (*zcommon.GlobalSearch, error)
 
 	getReferrersGQLFn func(ctx context.Context, config SearchConfig, username, password string,
 		repo, digest string,
-	) (*common.ReferrersResp, error)
+	) (*zcommon.ReferrersResp, error)
 
 	getDerivedImageListGQLFn func(ctx context.Context, config SearchConfig, username, password string,
 		derivedImage string,
-	) (*common.DerivedImageListResponse, error)
+	) (*zcommon.DerivedImageListResponse, error)
 
 	getBaseImageListGQLFn func(ctx context.Context, config SearchConfig, username, password string,
 		derivedImage string,
-	) (*common.BaseImageListResponse, error)
+	) (*zcommon.BaseImageListResponse, error)
 
 	getImagesForDigestGQLFn func(ctx context.Context, config SearchConfig, username, password string,
 		digest string,
-	) (*common.ImagesForDigest, error)
+	) (*zcommon.ImagesForDigest, error)
 
 	getCveByImageGQLFn func(ctx context.Context, config SearchConfig, username, password,
 		imageName, searchedCVE string,
@@ -1062,11 +1062,11 @@ type mockService struct {
 
 	getTagsForCVEGQLFn func(ctx context.Context, config SearchConfig, username, password,
 		imageName, cveID string,
-	) (*common.ImagesForCve, error)
+	) (*zcommon.ImagesForCve, error)
 
 	getFixedTagsForCVEGQLFn func(ctx context.Context, config SearchConfig, username, password,
 		imageName, cveID string,
-	) (*common.ImageListWithCVEFixedResponse, error)
+	) (*zcommon.ImageListWithCVEFixedResponse, error)
 
 	getCVEDiffListGQLFn func(ctx context.Context, config SearchConfig, username, password string,
 		minuend, subtrahend ImageIdentifier,
@@ -1116,7 +1116,7 @@ func (service *mockService) getReferrers(ctx context.Context, config SearchConfi
 	}
 
 	return referrersResult{
-		common.Referrer{
+		zcommon.Referrer{
 			ArtifactType: "art.type",
 			Digest:       ispec.DescriptorEmptyJSON.Digest.String(),
 			MediaType:    ispec.MediaTypeImageManifest,
@@ -1127,18 +1127,18 @@ func (service *mockService) getReferrers(ctx context.Context, config SearchConfi
 
 func (service *mockService) globalSearchGQL(ctx context.Context, config SearchConfig, username, password string,
 	query string,
-) (*common.GlobalSearch, error) {
+) (*zcommon.GlobalSearch, error) {
 	if service.globalSearchGQLFn != nil {
 		return service.globalSearchGQLFn(ctx, config, username, password, query)
 	}
 
-	return &common.GlobalSearch{
-		Images: []common.ImageSummary{
+	return &zcommon.GlobalSearch{
+		Images: []zcommon.ImageSummary{
 			{
 				RepoName:  "repo",
 				MediaType: ispec.MediaTypeImageManifest,
 				Size:      "100",
-				Manifests: []common.ManifestSummary{
+				Manifests: []zcommon.ManifestSummary{
 					{
 						Digest:       godigest.FromString("str").String(),
 						Size:         "100",
@@ -1147,7 +1147,7 @@ func (service *mockService) globalSearchGQL(ctx context.Context, config SearchCo
 				},
 			},
 		},
-		Repos: []common.RepoSummary{
+		Repos: []zcommon.RepoSummary{
 			{
 				Name:        "repo",
 				Size:        "100",
@@ -1159,14 +1159,14 @@ func (service *mockService) globalSearchGQL(ctx context.Context, config SearchCo
 
 func (service *mockService) getReferrersGQL(ctx context.Context, config SearchConfig, username, password string,
 	repo, digest string,
-) (*common.ReferrersResp, error) {
+) (*zcommon.ReferrersResp, error) {
 	if service.getReferrersGQLFn != nil {
 		return service.getReferrersGQLFn(ctx, config, username, password, repo, digest)
 	}
 
-	return &common.ReferrersResp{
-		ReferrersResult: common.ReferrersResult{
-			Referrers: []common.Referrer{
+	return &zcommon.ReferrersResp{
+		ReferrersResult: zcommon.ReferrersResult{
+			Referrers: []zcommon.Referrer{
 				{
 					MediaType:    "MediaType",
 					ArtifactType: "ArtifactType",
@@ -1180,23 +1180,23 @@ func (service *mockService) getReferrersGQL(ctx context.Context, config SearchCo
 
 func (service *mockService) getDerivedImageListGQL(ctx context.Context, config SearchConfig, username, password string,
 	derivedImage string,
-) (*common.DerivedImageListResponse, error) {
+) (*zcommon.DerivedImageListResponse, error) {
 	if service.getDerivedImageListGQLFn != nil {
 		return service.getDerivedImageListGQLFn(ctx, config, username, password, derivedImage)
 	}
 
-	imageListGQLResponse := &common.DerivedImageListResponse{}
-	imageListGQLResponse.DerivedImageList.Results = []common.ImageSummary{
+	imageListGQLResponse := &zcommon.DerivedImageListResponse{}
+	imageListGQLResponse.DerivedImageList.Results = []zcommon.ImageSummary{
 		{
 			RepoName: "dummyImageName",
 			Tag:      "tag",
-			Manifests: []common.ManifestSummary{
+			Manifests: []zcommon.ManifestSummary{
 				{
 					Digest:       godigest.FromString("Digest").String(),
 					ConfigDigest: godigest.FromString("ConfigDigest").String(),
 					Size:         "123445",
-					Layers:       []common.LayerSummary{{Digest: godigest.FromString("LayerDigest").String()}},
-					Platform:     common.Platform{Os: "os", Arch: "arch"},
+					Layers:       []zcommon.LayerSummary{{Digest: godigest.FromString("LayerDigest").String()}},
+					Platform:     zcommon.Platform{Os: "os", Arch: "arch"},
 				},
 			},
 			Size: "123445",
@@ -1208,23 +1208,23 @@ func (service *mockService) getDerivedImageListGQL(ctx context.Context, config S
 
 func (service *mockService) getBaseImageListGQL(ctx context.Context, config SearchConfig, username, password string,
 	baseImage string,
-) (*common.BaseImageListResponse, error) {
+) (*zcommon.BaseImageListResponse, error) {
 	if service.getBaseImageListGQLFn != nil {
 		return service.getBaseImageListGQLFn(ctx, config, username, password, baseImage)
 	}
 
-	imageListGQLResponse := &common.BaseImageListResponse{}
-	imageListGQLResponse.BaseImageList.Results = []common.ImageSummary{
+	imageListGQLResponse := &zcommon.BaseImageListResponse{}
+	imageListGQLResponse.BaseImageList.Results = []zcommon.ImageSummary{
 		{
 			RepoName: "dummyImageName",
 			Tag:      "tag",
-			Manifests: []common.ManifestSummary{
+			Manifests: []zcommon.ManifestSummary{
 				{
 					Digest:       godigest.FromString("Digest").String(),
 					ConfigDigest: godigest.FromString("ConfigDigest").String(),
 					Size:         "123445",
-					Layers:       []common.LayerSummary{{Digest: godigest.FromString("LayerDigest").String()}},
-					Platform:     common.Platform{Os: "os", Arch: "arch"},
+					Layers:       []zcommon.LayerSummary{{Digest: godigest.FromString("LayerDigest").String()}},
+					Platform:     zcommon.Platform{Os: "os", Arch: "arch"},
 				},
 			},
 			Size: "123445",
@@ -1236,25 +1236,25 @@ func (service *mockService) getBaseImageListGQL(ctx context.Context, config Sear
 
 func (service *mockService) getImagesGQL(ctx context.Context, config SearchConfig, username, password string,
 	imageName string,
-) (*common.ImageListResponse, error) {
+) (*zcommon.ImageListResponse, error) {
 	if service.getImagesGQLFn != nil {
 		return service.getImagesGQLFn(ctx, config, username, password, imageName)
 	}
 
-	imageListGQLResponse := &common.ImageListResponse{}
-	imageListGQLResponse.PaginatedImagesResult.Results = []common.ImageSummary{
+	imageListGQLResponse := &zcommon.ImageListResponse{}
+	imageListGQLResponse.PaginatedImagesResult.Results = []zcommon.ImageSummary{
 		{
 			RepoName:  "dummyImageName",
 			Tag:       "tag",
 			MediaType: ispec.MediaTypeImageManifest,
 			Digest:    godigest.FromString("test").String(),
-			Manifests: []common.ManifestSummary{
+			Manifests: []zcommon.ManifestSummary{
 				{
 					Digest:       godigest.FromString("Digest").String(),
 					ConfigDigest: godigest.FromString("ConfigDigest").String(),
 					Size:         "123445",
-					Layers:       []common.LayerSummary{{Digest: godigest.FromString("LayerDigest").String()}},
-					Platform:     common.Platform{Os: "os", Arch: "arch"},
+					Layers:       []zcommon.LayerSummary{{Digest: godigest.FromString("LayerDigest").String()}},
+					Platform:     zcommon.Platform{Os: "os", Arch: "arch"},
 				},
 			},
 			Size: "123445",
@@ -1266,25 +1266,25 @@ func (service *mockService) getImagesGQL(ctx context.Context, config SearchConfi
 
 func (service *mockService) getImagesForDigestGQL(ctx context.Context, config SearchConfig, username, password string,
 	digest string,
-) (*common.ImagesForDigest, error) {
+) (*zcommon.ImagesForDigest, error) {
 	if service.getImagesForDigestGQLFn != nil {
 		return service.getImagesForDigestGQLFn(ctx, config, username, password, digest)
 	}
 
-	imageListGQLResponse := &common.ImagesForDigest{}
-	imageListGQLResponse.Results = []common.ImageSummary{
+	imageListGQLResponse := &zcommon.ImagesForDigest{}
+	imageListGQLResponse.Results = []zcommon.ImageSummary{
 		{
 			RepoName:  "randomimageName",
 			Tag:       "tag",
 			MediaType: ispec.MediaTypeImageManifest,
 			Digest:    godigest.FromString("test").String(),
-			Manifests: []common.ManifestSummary{
+			Manifests: []zcommon.ManifestSummary{
 				{
 					Digest:       godigest.FromString("Digest").String(),
 					ConfigDigest: godigest.FromString("ConfigDigest").String(),
-					Layers:       []common.LayerSummary{{Digest: godigest.FromString("LayerDigest").String()}},
+					Layers:       []zcommon.LayerSummary{{Digest: godigest.FromString("LayerDigest").String()}},
 					Size:         "123445",
-					Platform:     common.Platform{Os: "os", Arch: "arch"},
+					Platform:     zcommon.Platform{Os: "os", Arch: "arch"},
 				},
 			},
 			Size: "123445",
@@ -1296,15 +1296,15 @@ func (service *mockService) getImagesForDigestGQL(ctx context.Context, config Se
 
 func (service *mockService) getTagsForCVEGQL(ctx context.Context, config SearchConfig, username, password,
 	imageName, cveID string,
-) (*common.ImagesForCve, error) {
+) (*zcommon.ImagesForCve, error) {
 	if service.getTagsForCVEGQLFn != nil {
 		return service.getTagsForCVEGQLFn(ctx, config, username, password, imageName, cveID)
 	}
 
-	images := &common.ImagesForCve{
+	images := &zcommon.ImagesForCve{
 		Errors: nil,
 		ImagesForCVEList: struct {
-			common.PaginatedImagesResult `json:"ImageListForCVE"` //nolint:tagliatelle // graphQL schema
+			zcommon.PaginatedImagesResult `json:"ImageListForCVE"` //nolint:tagliatelle // graphQL schema
 		}{},
 	}
 
@@ -1315,29 +1315,29 @@ func (service *mockService) getTagsForCVEGQL(ctx context.Context, config SearchC
 	images.Errors = nil
 
 	mockedImage := service.getMockedImageByName(imageName)
-	images.Results = []common.ImageSummary{common.ImageSummary(mockedImage)}
+	images.Results = []zcommon.ImageSummary{zcommon.ImageSummary(mockedImage)}
 
 	return images, nil
 }
 
 func (service *mockService) getFixedTagsForCVEGQL(ctx context.Context, config SearchConfig, username, password,
 	imageName, cveID string,
-) (*common.ImageListWithCVEFixedResponse, error) {
+) (*zcommon.ImageListWithCVEFixedResponse, error) {
 	if service.getFixedTagsForCVEGQLFn != nil {
 		return service.getFixedTagsForCVEGQLFn(ctx, config, username, password, imageName, cveID)
 	}
 
-	fixedTags := &common.ImageListWithCVEFixedResponse{
+	fixedTags := &zcommon.ImageListWithCVEFixedResponse{
 		Errors: nil,
 		ImageListWithCVEFixed: struct {
-			common.PaginatedImagesResult `json:"ImageListWithCVEFixed"` //nolint:tagliatelle // graphQL schema
+			zcommon.PaginatedImagesResult `json:"ImageListWithCVEFixed"` //nolint:tagliatelle // graphQL schema
 		}{},
 	}
 
 	fixedTags.Errors = nil
 
 	mockedImage := service.getMockedImageByName(imageName)
-	fixedTags.Results = []common.ImageSummary{common.ImageSummary(mockedImage)}
+	fixedTags.Results = []zcommon.ImageSummary{zcommon.ImageSummary(mockedImage)}
 
 	return fixedTags, nil
 }
@@ -1349,16 +1349,16 @@ func (service *mockService) getCveByImageGQL(ctx context.Context, config SearchC
 		return service.getCveByImageGQLFn(ctx, config, username, password, imageName, searchedCVE)
 	}
 	cveRes := &cveResult{}
-	cveRes.Data = common.CVEListForImageResult{
-		CVEListForImage: common.CVEResultForImage{
+	cveRes.Data = zcommon.CVEListForImageResult{
+		CVEListForImage: zcommon.CVEResultForImage{
 			Tag: imageName,
-			CVEList: []common.CVE{
+			CVEList: []zcommon.CVE{
 				{
 					ID:          "dummyCVEID",
 					Description: "Description of the CVE",
 					Title:       "Title of that CVE",
 					Severity:    "HIGH",
-					PackageList: []common.Package{
+					PackageList: []zcommon.Package{
 						{
 							Name:             "packagename",
 							FixedVersion:     "fixedver",
@@ -1367,7 +1367,7 @@ func (service *mockService) getCveByImageGQL(ctx context.Context, config SearchC
 					},
 				},
 			},
-			Summary: common.ImageVulnerabilitySummary{
+			Summary: zcommon.ImageVulnerabilitySummary{
 				Count:         1,
 				UnknownCount:  0,
 				LowCount:      0,
@@ -1388,13 +1388,13 @@ func (service mockService) getMockedImageByName(imageName string) imageStruct {
 	image.RepoName = imageName
 	image.Tag = "tag"
 	image.MediaType = ispec.MediaTypeImageManifest
-	image.Manifests = []common.ManifestSummary{
+	image.Manifests = []zcommon.ManifestSummary{
 		{
 			Digest:       godigest.FromString("Digest").String(),
 			ConfigDigest: godigest.FromString("ConfigDigest").String(),
-			Layers:       []common.LayerSummary{{Digest: godigest.FromString("LayerDigest").String()}},
+			Layers:       []zcommon.LayerSummary{{Digest: godigest.FromString("LayerDigest").String()}},
 			Size:         "123445",
-			Platform:     common.Platform{Os: "os", Arch: "arch"},
+			Platform:     zcommon.Platform{Os: "os", Arch: "arch"},
 		},
 	}
 	image.Size = "123445"
@@ -1419,13 +1419,13 @@ func (service *mockService) getAllImages(ctx context.Context, config SearchConfi
 	image.Tag = "tag"
 	image.Digest = godigest.FromString("test").String()
 	image.MediaType = ispec.MediaTypeImageManifest
-	image.Manifests = []common.ManifestSummary{
+	image.Manifests = []zcommon.ManifestSummary{
 		{
 			Digest:       godigest.FromString("Digest").String(),
 			ConfigDigest: godigest.FromString("ConfigDigest").String(),
-			Layers:       []common.LayerSummary{{Digest: godigest.FromString("LayerDigest").String()}},
+			Layers:       []zcommon.LayerSummary{{Digest: godigest.FromString("LayerDigest").String()}},
 			Size:         "123445",
-			Platform:     common.Platform{Os: "os", Arch: "arch"},
+			Platform:     zcommon.Platform{Os: "os", Arch: "arch"},
 		},
 	}
 	image.Size = "123445"
@@ -1457,13 +1457,13 @@ func (service *mockService) getImageByName(ctx context.Context, config SearchCon
 	image.Tag = "tag"
 	image.Digest = godigest.FromString("test").String()
 	image.MediaType = ispec.MediaTypeImageManifest
-	image.Manifests = []common.ManifestSummary{
+	image.Manifests = []zcommon.ManifestSummary{
 		{
 			Digest:       godigest.FromString("Digest").String(),
 			ConfigDigest: godigest.FromString("ConfigDigest").String(),
-			Layers:       []common.LayerSummary{{Digest: godigest.FromString("LayerDigest").String()}},
+			Layers:       []zcommon.LayerSummary{{Digest: godigest.FromString("LayerDigest").String()}},
 			Size:         "123445",
-			Platform:     common.Platform{Os: "os", Arch: "arch"},
+			Platform:     zcommon.Platform{Os: "os", Arch: "arch"},
 		},
 	}
 	image.Size = "123445"

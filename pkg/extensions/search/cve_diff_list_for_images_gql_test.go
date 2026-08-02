@@ -19,7 +19,6 @@ import (
 
 	"zotregistry.dev/zot/v2/pkg/api"
 	"zotregistry.dev/zot/v2/pkg/api/config"
-	"zotregistry.dev/zot/v2/pkg/common"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	. "zotregistry.dev/zot/v2/pkg/test/common"
@@ -158,7 +157,7 @@ func TestCVEDiffListForImagesGqlAuthorization(t *testing.T) {
 		)
 		So(err, ShouldBeNil)
 
-		testScanner.SetCveDataForImage(fmt.Sprintf("admin/admin-only@%s", adminImage1.Digest()), map[string]common.CVE{
+		testScanner.SetCveDataForImage(fmt.Sprintf("admin/admin-only@%s", adminImage1.Digest()), map[string]zcommon.CVE{
 			"CVE-2023-0001": {
 				ID:          "CVE-2023-0001",
 				Description: "Test CVE 1",
@@ -173,7 +172,7 @@ func TestCVEDiffListForImagesGqlAuthorization(t *testing.T) {
 		)
 		So(err, ShouldBeNil)
 
-		testScanner.SetCveDataForImage(fmt.Sprintf("admin/no-entry@%s", adminImage2.Digest()), map[string]common.CVE{
+		testScanner.SetCveDataForImage(fmt.Sprintf("admin/no-entry@%s", adminImage2.Digest()), map[string]zcommon.CVE{
 			"CVE-2023-0002": {
 				ID:          "CVE-2023-0002",
 				Description: "Test CVE 2",
@@ -188,7 +187,7 @@ func TestCVEDiffListForImagesGqlAuthorization(t *testing.T) {
 		)
 		So(err, ShouldBeNil)
 
-		testScanner.SetCveDataForImage(fmt.Sprintf("public/open@%s", publicImage1.Digest()), map[string]common.CVE{
+		testScanner.SetCveDataForImage(fmt.Sprintf("public/open@%s", publicImage1.Digest()), map[string]zcommon.CVE{
 			"CVE-2023-0003": {
 				ID:          "CVE-2023-0003",
 				Description: "Test CVE 3",
@@ -205,7 +204,7 @@ func TestCVEDiffListForImagesGqlAuthorization(t *testing.T) {
 		)
 		So(err, ShouldBeNil)
 
-		testScanner.SetCveDataForImage(fmt.Sprintf("public/open@%s", publicImage2.Digest()), map[string]common.CVE{
+		testScanner.SetCveDataForImage(fmt.Sprintf("public/open@%s", publicImage2.Digest()), map[string]zcommon.CVE{
 			"CVE-2023-0004": {
 				ID:          "CVE-2023-0004",
 				Description: "Test CVE 4",
