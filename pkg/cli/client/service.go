@@ -23,7 +23,7 @@ import (
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/constants"
-	zcommon "zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/common"
 )
 
 const (
@@ -34,26 +34,26 @@ const (
 
 type SearchService interface { //nolint:interfacebloat
 	getImagesGQL(ctx context.Context, config SearchConfig, username, password string,
-		imageName string) (*zcommon.ImageListResponse, error)
+		imageName string) (*common.ImageListResponse, error)
 	getImagesForDigestGQL(ctx context.Context, config SearchConfig, username, password string,
-		digest string) (*zcommon.ImagesForDigest, error)
+		digest string) (*common.ImagesForDigest, error)
 	getCveByImageGQL(ctx context.Context, config SearchConfig, username, password,
 		imageName string, searchedCVE string) (*cveResult, error)
 	getTagsForCVEGQL(ctx context.Context, config SearchConfig, username, password, repo,
-		cveID string) (*zcommon.ImagesForCve, error)
+		cveID string) (*common.ImagesForCve, error)
 	getFixedTagsForCVEGQL(ctx context.Context, config SearchConfig, username, password, imageName,
-		cveID string) (*zcommon.ImageListWithCVEFixedResponse, error)
+		cveID string) (*common.ImageListWithCVEFixedResponse, error)
 	getDerivedImageListGQL(ctx context.Context, config SearchConfig, username, password string,
-		derivedImage string) (*zcommon.DerivedImageListResponse, error)
+		derivedImage string) (*common.DerivedImageListResponse, error)
 	getBaseImageListGQL(ctx context.Context, config SearchConfig, username, password string,
-		baseImage string) (*zcommon.BaseImageListResponse, error)
+		baseImage string) (*common.BaseImageListResponse, error)
 	getReferrersGQL(ctx context.Context, config SearchConfig, username, password string,
-		repo, digest string) (*zcommon.ReferrersResp, error)
+		repo, digest string) (*common.ReferrersResp, error)
 	getCVEDiffListGQL(ctx context.Context, config SearchConfig, username, password string,
 		minuend, subtrahend ImageIdentifier,
 	) (*cveDiffListResp, error)
 	globalSearchGQL(ctx context.Context, config SearchConfig, username, password string,
-		query string) (*zcommon.GlobalSearch, error)
+		query string) (*common.GlobalSearch, error)
 
 	getAllImages(ctx context.Context, config SearchConfig, username, password string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
@@ -100,7 +100,7 @@ func (service *searchService) getHTTPClient() *HTTPClient {
 func (service *searchService) getDerivedImageListGQL(
 	ctx context.Context, config SearchConfig, username, password string,
 	derivedImage string,
-) (*zcommon.DerivedImageListResponse, error) {
+) (*common.DerivedImageListResponse, error) {
 	query := fmt.Sprintf(`
 		{
 			DerivedImageList(image:"%s", requestedPage: {sortBy: %s}){
@@ -124,7 +124,7 @@ func (service *searchService) getDerivedImageListGQL(
 			}
 		}`, derivedImage, Flag2SortCriteria(config.SortBy))
 
-	result := &zcommon.DerivedImageListResponse{}
+	result := &common.DerivedImageListResponse{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
@@ -136,7 +136,7 @@ func (service *searchService) getDerivedImageListGQL(
 
 func (service *searchService) getReferrersGQL(ctx context.Context, config SearchConfig, username, password string,
 	repo, digest string,
-) (*zcommon.ReferrersResp, error) {
+) (*common.ReferrersResp, error) {
 	query := fmt.Sprintf(`
 		{
 			Referrers( repo: "%s", digest: "%s" ){
@@ -151,7 +151,7 @@ func (service *searchService) getReferrersGQL(ctx context.Context, config Search
 			}
 		}`, repo, digest)
 
-	result := &zcommon.ReferrersResp{}
+	result := &common.ReferrersResp{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
@@ -172,12 +172,12 @@ func (service *searchService) getCVEDiffListGQL(ctx context.Context, config Sear
 				Minuend {Repo Tag Digest Platform {Os Arch}}
 				Subtrahend {Repo Tag Digest Platform {Os Arch}}
 				CVEList {
-					Id Title Description Severity Reference
+					Id Title Description Severity Reference 
 					PackageList {Name InstalledVersion FixedVersion}
-				}
+				} 
 				Summary {
 					Count UnknownCount LowCount MediumCount HighCount CriticalCount
-				}
+				} 
 				Page {TotalCount ItemCount}
 			}
 		}`, minuendInput, subtrahendInput)
@@ -203,7 +203,7 @@ func getImageInput(img ImageIdentifier) string {
 
 func (service *searchService) globalSearchGQL(ctx context.Context, config SearchConfig, username, password string,
 	query string,
-) (*zcommon.GlobalSearch, error) {
+) (*common.GlobalSearch, error) {
 	GQLQuery := fmt.Sprintf(`
 		{
 			GlobalSearch(query:"%s", requestedPage: {sortBy: %s}){
@@ -236,7 +236,7 @@ func (service *searchService) globalSearchGQL(ctx context.Context, config Search
 			}
 		}`, query, Flag2SortCriteria(config.SortBy))
 
-	result := &zcommon.GlobalSearchResultResp{}
+	result := &common.GlobalSearchResultResp{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, GQLQuery, result)
 	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
@@ -248,7 +248,7 @@ func (service *searchService) globalSearchGQL(ctx context.Context, config Search
 
 func (service *searchService) getBaseImageListGQL(ctx context.Context, config SearchConfig, username, password string,
 	baseImage string,
-) (*zcommon.BaseImageListResponse, error) {
+) (*common.BaseImageListResponse, error) {
 	query := fmt.Sprintf(`
 		{
 			BaseImageList(image:"%s", requestedPage: {sortBy: %s}){
@@ -272,7 +272,7 @@ func (service *searchService) getBaseImageListGQL(ctx context.Context, config Se
 			}
 		}`, baseImage, Flag2SortCriteria(config.SortBy))
 
-	result := &zcommon.BaseImageListResponse{}
+	result := &common.BaseImageListResponse{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
@@ -284,7 +284,7 @@ func (service *searchService) getBaseImageListGQL(ctx context.Context, config Se
 
 func (service *searchService) getImagesGQL(ctx context.Context, config SearchConfig, username, password string,
 	imageName string,
-) (*zcommon.ImageListResponse, error) {
+) (*common.ImageListResponse, error) {
 	query := fmt.Sprintf(`
 	{
 		ImageList(repo: "%s", requestedPage: {sortBy: %s}) {
@@ -307,7 +307,7 @@ func (service *searchService) getImagesGQL(ctx context.Context, config SearchCon
 			}
 		}
 	}`, imageName, Flag2SortCriteria(config.SortBy))
-	result := &zcommon.ImageListResponse{}
+	result := &common.ImageListResponse{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
@@ -319,7 +319,7 @@ func (service *searchService) getImagesGQL(ctx context.Context, config SearchCon
 
 func (service *searchService) getImagesForDigestGQL(ctx context.Context, config SearchConfig, username, password string,
 	digest string,
-) (*zcommon.ImagesForDigest, error) {
+) (*common.ImagesForDigest, error) {
 	query := fmt.Sprintf(`
 	{
 		ImageListForDigest(id: "%s", requestedPage: {sortBy: %s}) {
@@ -342,7 +342,7 @@ func (service *searchService) getImagesForDigestGQL(ctx context.Context, config 
 			}
 		}
 	}`, digest, Flag2SortCriteria(config.SortBy))
-	result := &zcommon.ImagesForDigest{}
+	result := &common.ImagesForDigest{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
@@ -380,7 +380,7 @@ func (service *searchService) getCveByImageGQL(ctx context.Context, config Searc
 
 func (service *searchService) getTagsForCVEGQL(ctx context.Context, config SearchConfig,
 	username, password, repo, cveID string,
-) (*zcommon.ImagesForCve, error) {
+) (*common.ImagesForCve, error) {
 	query := fmt.Sprintf(`
 		{
 			ImageListForCVE(id: "%s", requestedPage: {sortBy: %s}) {
@@ -404,7 +404,7 @@ func (service *searchService) getTagsForCVEGQL(ctx context.Context, config Searc
 			}
 		}`,
 		cveID, Flag2SortCriteria(config.SortBy))
-	result := &zcommon.ImagesForCve{}
+	result := &common.ImagesForCve{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
@@ -416,8 +416,8 @@ func (service *searchService) getTagsForCVEGQL(ctx context.Context, config Searc
 	}
 
 	// Pre-allocate filtered results slice with estimated capacity
-	filteredResults := &zcommon.ImagesForCve{}
-	filteredResults.Results = make([]zcommon.ImageSummary, 0, len(result.Results))
+	filteredResults := &common.ImagesForCve{}
+	filteredResults.Results = make([]common.ImageSummary, 0, len(result.Results))
 
 	for _, image := range result.Results {
 		if image.RepoName == repo {
@@ -430,7 +430,7 @@ func (service *searchService) getTagsForCVEGQL(ctx context.Context, config Searc
 
 func (service *searchService) getFixedTagsForCVEGQL(ctx context.Context, config SearchConfig,
 	username, password, imageName, cveID string,
-) (*zcommon.ImageListWithCVEFixedResponse, error) {
+) (*common.ImageListWithCVEFixedResponse, error) {
 	query := fmt.Sprintf(`
 		{
 			ImageListWithCVEFixed(id: "%s", image: "%s") {
@@ -455,7 +455,7 @@ func (service *searchService) getFixedTagsForCVEGQL(ctx context.Context, config 
 		}`,
 		cveID, imageName)
 
-	result := &zcommon.ImageListWithCVEFixedResponse{}
+	result := &common.ImageListWithCVEFixedResponse{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
@@ -471,7 +471,7 @@ func (service *searchService) getReferrers(ctx context.Context, config SearchCon
 	referrersEndpoint, err := combineServerAndEndpointURL(config.ServURL,
 		fmt.Sprintf("/v2/%s/referrers/%s", repo, digest))
 	if err != nil {
-		if zcommon.IsContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return referrersResult{}, nil
 		}
 
@@ -483,7 +483,7 @@ func (service *searchService) getReferrers(ctx context.Context, config SearchCon
 	_, err = service.httpClient.makeGETRequest(ctx, referrersEndpoint, username, password, config.VerifyTLS,
 		config.Debug, &referrerResp, config.ResultWriter)
 	if err != nil {
-		if zcommon.IsContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return referrersResult{}, nil
 		}
 
@@ -494,7 +494,7 @@ func (service *searchService) getReferrers(ctx context.Context, config SearchCon
 	referrersList := make(referrersResult, 0, len(referrerResp.Manifests))
 
 	for _, referrer := range referrerResp.Manifests {
-		referrersList = append(referrersList, zcommon.Referrer{
+		referrersList = append(referrersList, common.Referrer{
 			ArtifactType: referrer.ArtifactType,
 			Digest:       referrer.Digest.String(),
 			Size:         int(referrer.Size),
@@ -534,7 +534,7 @@ func (service *searchService) getAllImages(ctx context.Context, config SearchCon
 	catalogEndPoint, err := combineServerAndEndpointURL(config.ServURL, fmt.Sprintf("%s%s",
 		constants.RoutePrefix, constants.ExtCatalogPrefix))
 	if err != nil {
-		if zcommon.IsContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return
 		}
 		rch <- stringResult{"", err}
@@ -545,7 +545,7 @@ func (service *searchService) getAllImages(ctx context.Context, config SearchCon
 	_, err = service.httpClient.makeGETRequest(ctx, catalogEndPoint, username, password, config.VerifyTLS,
 		config.Debug, catalog, config.ResultWriter)
 	if err != nil {
-		if zcommon.IsContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return
 		}
 		rch <- stringResult{"", err}
@@ -575,11 +575,11 @@ func (service *searchService) getImage(ctx context.Context, config SearchConfig,
 ) {
 	defer wtgrp.Done()
 
-	repo, imageTag := zcommon.GetImageDirAndTag(imageName)
+	repo, imageTag := common.GetImageDirAndTag(imageName)
 
 	tagListEndpoint, err := combineServerAndEndpointURL(config.ServURL, fmt.Sprintf("/v2/%s/tags/list", repo))
 	if err != nil {
-		if zcommon.IsContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return
 		}
 		rch <- stringResult{"", err}
@@ -592,7 +592,7 @@ func (service *searchService) getImage(ctx context.Context, config SearchConfig,
 	_, err = service.httpClient.makeGETRequest(ctx, tagListEndpoint, username, password, config.VerifyTLS,
 		config.Debug, &tagList, config.ResultWriter)
 	if err != nil {
-		if zcommon.IsContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return
 		}
 		rch <- stringResult{"", err}
@@ -602,7 +602,7 @@ func (service *searchService) getImage(ctx context.Context, config SearchConfig,
 
 	for _, tag := range tagList.Tags {
 		hasTagPrefix := strings.HasPrefix(tag, "sha256-")
-		hasTagSuffix := strings.HasSuffix(tag, "."+zcommon.CosignSignatureTagSuffix)
+		hasTagSuffix := strings.HasSuffix(tag, "."+common.CosignSignatureTagSuffix)
 
 		// check if it's an image or a signature
 		// we don't want to show signatures in cli responses
@@ -654,11 +654,11 @@ func (service *searchService) getImagesByDigest(ctx context.Context, config Sear
 		}`,
 		digest)
 
-	result := &zcommon.ImagesForDigest{}
+	result := &common.ImagesForDigest{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 	if err != nil {
-		if zcommon.IsContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return
 		}
 		rch <- stringResult{"", err}
@@ -673,7 +673,7 @@ func (service *searchService) getImagesByDigest(ctx context.Context, config Sear
 			fmt.Fprintln(&errBuilder, err.Message)
 		}
 
-		if zcommon.IsContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return
 		}
 		rch <- stringResult{"", errors.New(errBuilder.String())} //nolint: err113
@@ -717,10 +717,10 @@ func (service *searchService) makeGraphQLQuery(ctx context.Context,
 	return nil
 }
 
-func checkResultGraphQLQuery(ctx context.Context, err error, resultErrors []zcommon.ErrorGQL,
+func checkResultGraphQLQuery(ctx context.Context, err error, resultErrors []common.ErrorGQL,
 ) error {
 	if err != nil {
-		if zcommon.IsContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return nil //nolint:nilnil
 		}
 
@@ -734,7 +734,7 @@ func checkResultGraphQLQuery(ctx context.Context, err error, resultErrors []zcom
 			fmt.Fprintln(&errBuilder, error.Message)
 		}
 
-		if zcommon.IsContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return nil
 		}
 
@@ -753,7 +753,7 @@ func addManifestCallToPool(ctx context.Context, config SearchConfig, pool *reque
 	manifestEndpoint, err := combineServerAndEndpointURL(config.ServURL,
 		fmt.Sprintf("/v2/%s/manifests/%s", imageName, tagName))
 	if err != nil {
-		if zcommon.IsContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return
 		}
 		rch <- stringResult{"", err}
@@ -773,8 +773,8 @@ func addManifestCallToPool(ctx context.Context, config SearchConfig, pool *reque
 }
 
 type cveResult struct {
-	Errors []zcommon.ErrorGQL            `json:"errors"`
-	Data   zcommon.CVEListForImageResult `json:"data"`
+	Errors []common.ErrorGQL `json:"errors"`
+	Data   cveData           `json:"data"`
 }
 
 type tagListResp struct {
@@ -782,9 +782,26 @@ type tagListResp struct {
 	Tags []string `json:"tags"`
 }
 
+//nolint:tagliatelle // graphQL schema
+type packageList struct {
+	Name             string `json:"Name"`
+	PackagePath      string `json:"PackagePath"`
+	InstalledVersion string `json:"InstalledVersion"`
+	FixedVersion     string `json:"FixedVersion"`
+}
+
+//nolint:tagliatelle // graphQL schema
+type cve struct {
+	ID          string        `json:"Id"`
+	Severity    string        `json:"Severity"`
+	Title       string        `json:"Title"`
+	Description string        `json:"Description"`
+	PackageList []packageList `json:"PackageList"`
+}
+
 type cveDiffListResp struct {
 	Data   cveDiffResultsForImages `json:"data"`
-	Errors []zcommon.ErrorGQL      `json:"errors"`
+	Errors []common.ErrorGQL       `json:"errors"`
 }
 
 type cveDiffResultsForImages struct {
@@ -792,10 +809,22 @@ type cveDiffResultsForImages struct {
 }
 
 type cveDiffResult struct {
-	Minuend    ImageIdentifier                   `json:"minuend"`
-	Subtrahend ImageIdentifier                   `json:"subtrahend"`
-	CVEList    []zcommon.CVE                     `json:"cveList"`
-	Summary    zcommon.ImageVulnerabilitySummary `json:"summary"`
+	Minuend    ImageIdentifier                  `json:"minuend"`
+	Subtrahend ImageIdentifier                  `json:"subtrahend"`
+	CVEList    []cve                            `json:"cveList"`
+	Summary    common.ImageVulnerabilitySummary `json:"summary"`
+}
+
+//nolint:tagliatelle // graphQL schema
+type cveListForImage struct {
+	Tag     string                           `json:"Tag"`
+	CVEList []cve                            `json:"CVEList"`
+	Summary common.ImageVulnerabilitySummary `json:"Summary"`
+}
+
+//nolint:tagliatelle // graphQL schema
+type cveData struct {
+	CVEListForImage cveListForImage `json:"cveListForImage"`
 }
 
 func (cve cveResult) string(format string, verbose bool) (string, error) {
@@ -880,7 +909,7 @@ func (cve cveResult) stringPlainText() string {
 	return builder.String()
 }
 
-func generateTableRowForVulnerablePackage(pkg zcommon.Package) []string {
+func generateTableRowForVulnerablePackage(pkg packageList) []string {
 	row := make([]string, cveColTotalCount)
 	pkgName := ellipsize(pkg.Name, cveVulnPkgNameWidth, ellipsis)
 	pkgPath := "-"
@@ -921,7 +950,7 @@ func (cve cveResult) stringYAML() (string, error) {
 	return "---\n" + string(body), nil
 }
 
-type referrersResult []zcommon.Referrer
+type referrersResult []common.Referrer
 
 func (ref referrersResult) string(format string, maxArtifactTypeLen int) (string, error) {
 	switch strings.ToLower(format) {
@@ -998,7 +1027,7 @@ func (ref referrersResult) stringYAML() (string, error) {
 	return "---\n" + string(body), nil
 }
 
-type repoStruct zcommon.RepoSummary
+type repoStruct common.RepoSummary
 
 func (repo repoStruct) string(format string, maxImgNameLen, maxTimeLen int, verbose bool) (string, error) { //nolint: lll
 	switch strings.ToLower(format) {
@@ -1089,7 +1118,7 @@ func (repo repoStruct) stringYAML() (string, error) {
 	return "---\n" + string(body), nil
 }
 
-type imageStruct zcommon.ImageSummary
+type imageStruct common.ImageSummary
 
 func (img imageStruct) string(format string, maxImgNameLen, maxTagLen, maxPlatformLen int, verbose bool) (string, error) { //nolint: lll
 	switch strings.ToLower(format) {
@@ -1194,7 +1223,7 @@ func addImageIndexToTable(table *tablewriter.Table, img *imageStruct,
 	return nil
 }
 
-func addManifestToTable(table *tablewriter.Table, imageName, tagName string, manifest *zcommon.ManifestSummary,
+func addManifestToTable(table *tablewriter.Table, imageName, tagName string, manifest *common.ManifestSummary,
 	verbose bool,
 ) error {
 	manifestDigest, err := godigest.Parse(manifest.Digest)
@@ -1257,7 +1286,7 @@ func addManifestToTable(table *tablewriter.Table, imageName, tagName string, man
 	return nil
 }
 
-func getPlatformStr(platform zcommon.Platform) string {
+func getPlatformStr(platform common.Platform) string {
 	if platform.Arch == "" && platform.Os == "" {
 		return ""
 	}
@@ -1355,7 +1384,7 @@ func (service *searchService) getRepos(ctx context.Context, config SearchConfig,
 	catalogEndPoint, err := combineServerAndEndpointURL(config.ServURL, fmt.Sprintf("%s%s",
 		constants.RoutePrefix, constants.ExtCatalogPrefix))
 	if err != nil {
-		if zcommon.IsContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return
 		}
 		rch <- stringResult{"", err}
@@ -1366,7 +1395,7 @@ func (service *searchService) getRepos(ctx context.Context, config SearchConfig,
 	_, err = service.httpClient.makeGETRequest(ctx, catalogEndPoint, username, password, config.VerifyTLS,
 		config.Debug, catalog, config.ResultWriter)
 	if err != nil {
-		if zcommon.IsContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return
 		}
 		rch <- stringResult{"", err}

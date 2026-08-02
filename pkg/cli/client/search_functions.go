@@ -285,8 +285,8 @@ func SearchCVEDiffList(config SearchConfig, minuend, subtrahend ImageIdentifier)
 	cveDiffResult := response.Data.CveDiffResult
 
 	result := cveResult{
-		Data: zcommon.CVEListForImageResult{
-			CVEListForImage: zcommon.CVEResultForImage{
+		Data: cveData{
+			CVEListForImage: cveListForImage{
 				Tag:     cveDiffResult.Minuend.Tag,
 				CVEList: cveDiffResult.CVEList,
 				Summary: cveDiffResult.Summary,
