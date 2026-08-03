@@ -73,10 +73,10 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 ) error {
 	// validate the manifest
 	if !IsSupportedMediaType(compats, mediaType) {
-		log.Debug().Interface("actual", mediaType).
+		log.Warn().Str("mediaType", mediaType).
 			Msg("bad manifest media type")
 
-		return zerr.ErrBadManifest
+		return zerr.NewError(zerr.ErrBadManifest).AddDetail("mediaType", mediaType)
 	}
 
 	if len(body) == 0 {
