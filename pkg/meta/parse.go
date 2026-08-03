@@ -399,10 +399,13 @@ func getCosignSignatureLayersInfo(
 			return layers, err
 		}
 
+		// The legacy cosign annotation is absent on sigstore-bundle referrers (and any other
+		// non-legacy cosign format) by design. SignatureKey is simply left
+		// empty below in that case.
 		layerSigKey, ok := layer.Annotations[zcommon.CosignSigKey]
 		if !ok {
-			log.Error().Err(err).Str("repository", repo).Str("reference", tag).Str("layerDigest", layer.Digest.String()).Msg(
-				"failed to get specific annotation of cosign signature")
+			log.Debug().Str("repository", repo).Str("reference", tag).Str("layerDigest", layer.Digest.String()).Msg(
+				"cosign signature layer has no legacy signature-key annotation")
 		}
 
 		layers = append(layers, mTypes.LayerInfo{

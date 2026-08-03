@@ -6583,7 +6583,9 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 				resp, err = resty.R().Delete(baseURL + "/v2/" + "repo1" + "/manifests/" + "signatureReference")
 				So(resp, ShouldNotBeNil)
 				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+				// the image is already gone from the image store at this point, so a metadb
+				// bookkeeping failure here is not exposed to the client.
+				So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 			})
 
 			Convey("image is a signature, DeleteSignature fails", func() {
@@ -6614,10 +6616,12 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 					"sha256-343ebab94a7674da181c6ea3da013aee4f8cbe357870f8dcaf6268d5343c3474.sig")
 				So(resp, ShouldNotBeNil)
 				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+				// the image is already gone from the image store at this point, so a metadb
+				// bookkeeping failure here is not exposed to the client.
+				So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 			})
 
-			Convey("image is a signature, PutImageManifest fails", func() {
+			Convey("non-signature delete, RemoveRepoReference and restore PutImageManifest both fail", func() {
 				ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
 					NewBlobUploadFn: ctlr.StoreController.DefaultStore.NewBlobUpload,
 					PutBlobChunkFn:  ctlr.StoreController.DefaultStore.PutBlobChunk,
@@ -6652,6 +6656,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 					"343ebab94a7674da181c6ea3da013aee4f8cbe357870f8dcaf6268d5343c3474.sig")
 				So(resp, ShouldNotBeNil)
 				So(err, ShouldBeNil)
+				// A restore may have rolled back the delete, so this must be a 500.
 				So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
 			})
 		})

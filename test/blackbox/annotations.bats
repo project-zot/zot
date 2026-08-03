@@ -189,6 +189,58 @@ function teardown_file() {
     [[ "$sigName" == *"${digest}"* ]]
 }
 
+@test "delete cosign sigstore-bundle referrer returns 202 without error-level logs" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+
+    # Dedicated image content so this digest starts with zero referrers.
+    cat > ${BATS_FILE_TMPDIR}/Dockerfile.delete-referrer-test<<EOF
+FROM public.ecr.aws/t0x7q1g8/centos:7
+CMD ["/bin/sh", "-c", "echo 'delete cosign referrer test'"]
+EOF
+    run podman build -f ${BATS_FILE_TMPDIR}/Dockerfile.delete-referrer-test -t 127.0.0.1:${zot_port}/annotations:delete-referrer-test . --format oci
+    [ "$status" -eq 0 ]
+    run podman push 127.0.0.1:${zot_port}/annotations:delete-referrer-test --tls-verify=false --format=oci
+    [ "$status" -eq 0 ]
+
+    run curl -s -I -H "Accept: application/vnd.oci.image.manifest.v1+json" http://localhost:${zot_port}/v2/annotations/manifests/delete-referrer-test
+    [ "$status" -eq 0 ]
+    local digest=$(echo "${output}" | grep -i docker-content-digest | tr -d '\r' | awk '{print $2}')
+    [ -n "$digest" ]
+
+    run cosign initialize
+    [ "$status" -eq 0 ]
+    run cosign generate-key-pair --output-key-prefix "${BATS_FILE_TMPDIR}/cosign-sign-test-delete"
+    [ "$status" -eq 0 ]
+    run env COSIGN_EXPERIMENTAL=1 cosign sign --new-bundle-format=true --registry-referrers-mode=oci-1-1 --key ${BATS_FILE_TMPDIR}/cosign-sign-test-delete.key --allow-insecure-registry localhost:${zot_port}/annotations@${digest} --yes
+    [ "$status" -eq 0 ]
+
+    run curl -s http://localhost:${zot_port}/v2/annotations/referrers/${digest}
+    [ "$status" -eq 0 ]
+    local referrerDigest=$(echo "${output}" | jq -r '.manifests[0].digest')
+    [ -n "$referrerDigest" ]
+    [ "$referrerDigest" != "null" ]
+
+    # A well-formed sigstore-bundle referrer must never log the missing legacy
+    # annotation at error level.
+    run bash -c "grep -c '\"level\":\"error\".*legacy signature-key annotation' ${BATS_FILE_TMPDIR}/zot.log || true"
+    [ "$status" -eq 0 ]
+    [ "${output}" -eq 0 ]
+
+    # Delete the subject's only tag; the referrer above is left untouched, undeleted.
+    run curl -s -o /dev/null -w "%{http_code}" -X DELETE "http://localhost:${zot_port}/v2/annotations/manifests/delete-referrer-test"
+    [ "$status" -eq 0 ]
+    [ "${lines[-1]}" -eq 202 ]
+
+    # Deleting the now-orphaned referrer must still return 202, not 500.
+    run curl -s -o /dev/null -w "%{http_code}" -X DELETE "http://localhost:${zot_port}/v2/annotations/manifests/${referrerDigest}"
+    [ "$status" -eq 0 ]
+    [ "${lines[-1]}" -eq 202 ]
+
+    run curl -s http://localhost:${zot_port}/v2/annotations/referrers/${digest}
+    [ "$status" -eq 0 ]
+    [ $(echo "${output}" | jq --arg d "${referrerDigest}" '[.manifests[] | select(.digest == $d)] | length') -eq 0 ]
+}
+
 @test "zot reports IsSigned true for cosign referrer signatures" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses }}}"}' http://localhost:${zot_port}/v2/_zot/ext/search
