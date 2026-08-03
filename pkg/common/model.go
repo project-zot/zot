@@ -1,6 +1,8 @@
 package common
 
 import (
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -303,6 +305,22 @@ type CVE struct {
 	PackageList []Package `json:"PackageList"`
 }
 
+func (cve *CVE) ContainsStr(str string) bool {
+	str = strings.ToUpper(str)
+
+	return strings.Contains(strings.ToUpper(cve.Title), str) ||
+		strings.Contains(strings.ToUpper(cve.ID), str) ||
+		strings.Contains(strings.ToUpper(cve.Severity), str) ||
+		strings.Contains(strings.ToUpper(cve.Reference), str) ||
+		strings.Contains(strings.ToUpper(cve.Description), str) ||
+		slices.ContainsFunc(cve.PackageList, func(pack Package) bool {
+			return strings.Contains(strings.ToUpper(pack.Name), str) ||
+				strings.Contains(strings.ToUpper(pack.FixedVersion), str) ||
+				strings.Contains(strings.ToUpper(pack.InstalledVersion), str) ||
+				strings.Contains(strings.ToUpper(pack.PackagePath), str)
+		})
+}
+
 //nolint:tagliatelle // graphQL schema
 type Package struct {
 	Name             string `json:"Name"`
@@ -311,21 +329,22 @@ type Package struct {
 	FixedVersion     string `json:"FixedVersion"`
 }
 
-type CveListForImageResponse struct {
-	CveListForImageResult `json:"data"`
+type CVEListForImageResponse struct {
+	CVEListForImageResult `json:"data"`
 
 	Errors []ErrorGQL `json:"errors"`
 }
 
 //nolint:tagliatelle // graphQL schema
-type CveListForImageResult struct {
+type CVEListForImageResult struct {
 	CVEListForImage CVEResultForImage `json:"CVEListForImage"`
 }
 
 //nolint:tagliatelle // graphQL schema
 type CVEResultForImage struct {
-	Tag     string `json:"Tag"`
-	CVEList []CVE  `json:"CVEList"`
+	Tag     string                    `json:"Tag"`
+	CVEList []CVE                     `json:"CVEList"`
+	Summary ImageVulnerabilitySummary `json:"Summary"`
 }
 
 type CVEDiffListForImagesResponse struct {
@@ -344,4 +363,12 @@ type CVEDiffListForImages struct {
 	Minuend    ImageIdentifier `json:"Minuend"`
 	Subtrahend ImageIdentifier `json:"Subtrahend"`
 	CVEList    []CVE           `json:"CVEList"`
+}
+
+type SortCriteria string
+
+type PageInput struct {
+	Limit  int
+	Offset int
+	SortBy SortCriteria
 }

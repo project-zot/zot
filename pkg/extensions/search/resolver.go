@@ -216,10 +216,10 @@ func getCVEListForImage(
 		requestedPage = &gql_generated.PageInput{}
 	}
 
-	pageInput := cvemodel.PageInput{
+	pageInput := zcommon.PageInput{
 		Limit:  deref(requestedPage.Limit, 0),
 		Offset: deref(requestedPage.Offset, 0),
-		SortBy: cvemodel.SortCriteria(
+		SortBy: zcommon.SortCriteria(
 			deref(requestedPage.SortBy, gql_generated.SortCriteriaSeverity),
 		),
 	}
@@ -396,10 +396,10 @@ func getCVEDiffListForImages(
 	page := dderef(requestedPage)
 
 	diffCVEs, diffSummary, _, err := cveInfo.GetCVEDiffListForImages(ctx, minuendRepoRef, subtrahendRepoRef, searchedCVE,
-		excludedCVE, cvemodel.PageInput{
+		excludedCVE, zcommon.PageInput{
 			Limit:  deref(page.Limit, 0),
 			Offset: deref(page.Offset, 0),
-			SortBy: cvemodel.SortCriteria(deref(page.SortBy, gql_generated.SortCriteriaSeverity)),
+			SortBy: zcommon.SortCriteria(deref(page.SortBy, gql_generated.SortCriteriaSeverity)),
 		})
 	if err != nil {
 		return nil, err

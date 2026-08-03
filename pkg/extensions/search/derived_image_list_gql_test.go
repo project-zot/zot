@@ -20,7 +20,6 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
-	cvemodel "zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
 	. "zotregistry.dev/zot/v2/pkg/test/common"
 	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
@@ -174,7 +173,7 @@ func TestDerivedImageListGql(t *testing.T) {
 		)
 		So(err, ShouldBeNil)
 
-		testScanner.SetCveDataForImage(img.Digest().String(), map[string]cvemodel.CVE{
+		testScanner.SetCveDataForImage(img.Digest().String(), map[string]zcommon.CVE{
 			"CVE1": {
 				ID:          "CVE1",
 				Severity:    "MEDIUM",
@@ -219,7 +218,7 @@ func TestDerivedImageListGql(t *testing.T) {
 		So(respImg.Vulnerabilities.MaxSeverity, ShouldEqual, "HIGH")
 
 		// empty the cve data for the image and verify that the vulnerabilities count is 0
-		testScanner.SetCveDataForImage(img.Digest().String(), map[string]cvemodel.CVE{})
+		testScanner.SetCveDataForImage(img.Digest().String(), map[string]zcommon.CVE{})
 
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
 		So(resp, ShouldNotBeNil)

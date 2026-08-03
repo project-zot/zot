@@ -17,7 +17,6 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
-	cvemodel "zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
 	. "zotregistry.dev/zot/v2/pkg/test/common"
 	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
@@ -95,7 +94,7 @@ func TestCVEListForImageGql(t *testing.T) {
 		err := UploadImageWithBasicAuth(uploadedImage, baseURL, "admin/zot-test", "0.0.1", adminUserName, adminPassword)
 		So(err, ShouldBeNil)
 
-		testScanner.SetCveDataForImage("admin/zot-test:0.0.1", map[string]cvemodel.CVE{
+		testScanner.SetCveDataForImage("admin/zot-test:0.0.1", map[string]zcommon.CVE{
 			"CVE-2021-1234": {ID: "CVE-2021-1234", Severity: "CRITICAL"},
 		})
 
@@ -114,7 +113,7 @@ func TestCVEListForImageGql(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		var responseStruct zcommon.CveListForImageResponse
+		var responseStruct zcommon.CVEListForImageResponse
 		err = json.Unmarshal(resp.Body(), &responseStruct)
 		So(err, ShouldBeNil)
 		So(responseStruct.CVEListForImage.Tag, ShouldEqual, "0.0.1")
@@ -127,7 +126,7 @@ func TestCVEListForImageGql(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		var nonAdminResponse zcommon.CveListForImageResponse
+		var nonAdminResponse zcommon.CVEListForImageResponse
 		err = json.Unmarshal(resp.Body(), &nonAdminResponse)
 		So(err, ShouldBeNil)
 		So(nonAdminResponse.CVEListForImage.Tag, ShouldEqual, "")

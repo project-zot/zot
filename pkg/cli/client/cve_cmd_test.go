@@ -247,63 +247,63 @@ func TestCVEDiffList(t *testing.T) {
 	multiArchImage := CreateMultiarchWith().Images([]Image{image, CreateRandomImage(), CreateRandomImage()}).
 		Build()
 
-	getCveResults := func(digestStr string) map[string]cvemodel.CVE {
+	getCveResults := func(digestStr string) map[string]zcommon.CVE {
 		switch digestStr {
 		case image.DigestStr():
-			return map[string]cvemodel.CVE{
+			return map[string]zcommon.CVE{
 				"CVE1": {
 					ID:          "CVE1",
 					Severity:    "HIGH",
 					Title:       "Title CVE1",
 					Description: "Description CVE1",
-					PackageList: []cvemodel.Package{{}},
+					PackageList: []zcommon.Package{{}},
 				},
 				"CVE2": {
 					ID:          "CVE2",
 					Severity:    "MEDIUM",
 					Title:       "Title CVE2",
 					Description: "Description CVE2",
-					PackageList: []cvemodel.Package{{}},
+					PackageList: []zcommon.Package{{}},
 				},
 				"CVE3": {
 					ID:          "CVE3",
 					Severity:    "LOW",
 					Title:       "Title CVE3",
 					Description: "Description CVE3",
-					PackageList: []cvemodel.Package{{}},
+					PackageList: []zcommon.Package{{}},
 				},
 			}
 		case baseImage.DigestStr():
-			return map[string]cvemodel.CVE{
+			return map[string]zcommon.CVE{
 				"CVE1": {
 					ID:          "CVE1",
 					Severity:    "HIGH",
 					Title:       "Title CVE1",
 					Description: "Description CVE1",
-					PackageList: []cvemodel.Package{{}},
+					PackageList: []zcommon.Package{{}},
 				},
 				"CVE2": {
 					ID:          "CVE2",
 					Severity:    "MEDIUM",
 					Title:       "Title CVE2",
 					Description: "Description CVE2",
-					PackageList: []cvemodel.Package{{}},
+					PackageList: []zcommon.Package{{}},
 				},
 			}
 		case otherImage.DigestStr():
-			return map[string]cvemodel.CVE{
+			return map[string]zcommon.CVE{
 				"CVE1": {
 					ID:          "CVE1",
 					Severity:    "HIGH",
 					Title:       "Title CVE1",
 					Description: "Description CVE1",
-					PackageList: []cvemodel.Package{{}},
+					PackageList: []zcommon.Package{{}},
 				},
 			}
 		}
 
 		// By default the image has no vulnerabilities
-		return map[string]cvemodel.CVE{}
+		return map[string]zcommon.CVE{}
 	}
 
 	// MetaDB loaded with initial data, now mock the scanner
@@ -324,7 +324,7 @@ func TestCVEDiffList(t *testing.T) {
 
 			return cvemodel.ScanResult{CVEMap: getCveResults(repoMeta.Tags[ref].Digest)}, nil
 		},
-		GetCachedResultFn: func(digestStr string) map[string]cvemodel.CVE {
+		GetCachedResultFn: func(digestStr string) map[string]zcommon.CVE {
 			return getCveResults(digestStr)
 		},
 		IsResultCachedFn: func(digestStr string) bool {
@@ -895,7 +895,7 @@ func TestCVESort(t *testing.T) {
 
 	ctlr.CveScanner = mocks.CveScannerMock{
 		ScanImageFn: func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
-			return cvemodel.ScanResult{CVEMap: map[string]cvemodel.CVE{
+			return cvemodel.ScanResult{CVEMap: map[string]zcommon.CVE{
 				"CVE-2023-1255": {
 					ID:       "CVE-2023-1255",
 					Severity: "LOW",
@@ -1033,7 +1033,7 @@ func getMockCveScanner(metaDB mTypes.MetaDB) cveinfo.Scanner {
 		ScanImageFn: func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
 			if strings.Contains(image, "zot-cve-test@sha256:db573b01") ||
 				image == "zot-cve-test:0.0.1" {
-				return cvemodel.ScanResult{CVEMap: map[string]cvemodel.CVE{
+				return cvemodel.ScanResult{CVEMap: map[string]zcommon.CVE{
 					"CVE-1": {
 						ID:          "CVE-1",
 						Severity:    "CRITICAL",
@@ -1068,7 +1068,7 @@ func getMockCveScanner(metaDB mTypes.MetaDB) cveinfo.Scanner {
 			}
 
 			// By default the image has no vulnerabilities
-			return cvemodel.ScanResult{CVEMap: map[string]cvemodel.CVE{}}, nil
+			return cvemodel.ScanResult{CVEMap: map[string]zcommon.CVE{}}, nil
 		},
 		IsImageFormatScannableFn: func(repo string, reference string) (bool, error) {
 			// Almost same logic compared to actual Trivy specific implementation
