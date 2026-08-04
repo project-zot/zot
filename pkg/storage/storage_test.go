@@ -311,7 +311,10 @@ func TestStorageNewDisablesDedupeWhenHardlinkValidationFails(t *testing.T) {
 	conf.Storage.RootDirectory = rootDir
 	conf.Storage.Dedupe = true
 
-	_, err := storage.New(conf, nil, nil, zlog.NewTestLogger(), nil)
+	// storage.New takes conf by pointer and flips conf.Storage.Dedupe to false in place
+	// when ValidateHardLink fails, so the checks below read the post-call value, not the
+	// "true" set above, to detect whether auto-disable actually happened.
+	storeController, err := storage.New(conf, nil, nil, zlog.NewTestLogger(), nil)
 	if err != nil {
 		if conf.Storage.Dedupe {
 			t.Skip("environment did not trigger hardlink validation failure for read-only root")
@@ -322,6 +325,17 @@ func TestStorageNewDisablesDedupeWhenHardlinkValidationFails(t *testing.T) {
 
 	if conf.Storage.Dedupe {
 		t.Skip("environment allows hardlinks/writes despite read-only permissions; cannot assert auto-disable path")
+	}
+
+	if storeController.DefaultStore == nil {
+		t.Fatal("expected default store to be created despite hardlink validation failure")
+	}
+
+	// NewImageStore only creates the global blobstore dir when dedupe is enabled; its absence
+	// confirms the disabled flag actually propagated into store construction, not just conf.
+	globalBlobstoreDir := filepath.Join(rootDir, storageConstants.GlobalBlobsRepo)
+	if _, statErr := os.Stat(globalBlobstoreDir); !os.IsNotExist(statErr) {
+		t.Errorf("expected global blobstore dir to not be created when dedupe is auto-disabled, stat err: %v", statErr)
 	}
 }
 
