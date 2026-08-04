@@ -27,23 +27,25 @@ Legacy layouts are upgraded automatically at startup when dedupe is enabled.
 
 ## Downgrade Policy
 
-Remote downgrade across this dedupe migration is unsupported.
+Downgrade across this dedupe migration is unsupported for both local and remote backends.
 
-After migration to `_blobstore` marker-based remote layout, running an older remote dedupe layout is not a supported path.
+After migration to the `_blobstore` layout, running an older release against that same storage path is not a supported path, regardless of backend. There is no dedicated rollback flow, and behavior would depend on the older release's expectations and (for local filesystems) hardlink semantics. If you need to go from a new zot back to an older one, run a separate zot instance on the old layout and sync content into it from the new instance rather than downgrading in place.
 
 ## Migration Matrix
 
 | Backend | Direction | Support | Notes |
 | --- | --- | --- | --- |
 | local filesystem | legacy per-repo blobs -> `_blobstore` layout | supported | Automatic at startup when dedupe is enabled; migration marker prevents repeated full scans. |
-| local filesystem | `_blobstore` layout -> older local release | conditionally supported | No dedicated rollback flow; behavior depends on older release expectations and filesystem hardlink semantics. |
+| local filesystem | `_blobstore` layout -> older local release | unsupported | No rollback CLI or dedicated rollback flow is provided; run a separate zot instance on the old layout and sync content into it instead. |
 | remote object store (S3/GCS/Azure) | legacy per-repo blobs -> `_blobstore` + marker layout | supported | Automatic at startup when dedupe is enabled; marker-guarded and resumable on next startup if incomplete. |
-| remote object store (S3/GCS/Azure) | `_blobstore` + marker layout -> older remote release | unsupported | No rollback CLI is provided; remote downgrade is not a supported compatibility path. |
+| remote object store (S3/GCS/Azure) | `_blobstore` + marker layout -> older remote release | unsupported | Remote downgrade is not a supported compatibility path. |
 
 ## Cache Backends
 
+The cache is a digest -> path index that dedupe uses to look up whether a blob's content already exists and, if so, where. Every dedupe check and promotion into `_blobstore` goes through this index, so its backend must be reachable by every zot instance that shares the storage backend.
+
 zot currently supports:
 
-1. BoltDB (local cache)
-2. Redis (remote cache)
-3. DynamoDB (remote cache)
+1. BoltDB (local cache) - a single zot instance only; it cannot be shared across multiple instances.
+2. Redis (remote cache) - required when multiple zot instances share a remote storage backend with dedupe enabled.
+3. DynamoDB (remote cache) - also usable when multiple zot instances share a remote storage backend with dedupe enabled.
