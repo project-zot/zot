@@ -28,8 +28,8 @@ type request struct {
 type blobInflight struct {
 	done  chan struct{} // closed when download completes
 	ready chan struct{} // closed when upstream metadata is available or setup failed
-	err   error         // set before closing done
-	size  int64         // blob size from upstream
+	err   error         // guarded by blobInflightMu, set before closing done
+	size  int64         // blob size from upstream, set before closing ready
 }
 
 type cancelOnCloseReadCloser struct {
@@ -121,11 +121,20 @@ func (onDemand *BaseOnDemand) SyncBlobOnDemand(ctx context.Context, repo string,
 
 		select {
 		case <-inf.ready:
-			if inf.err != nil {
-				return nil, 0, false, nil, inf.err
-			}
 		case <-ctx.Done():
 			return nil, 0, false, nil, ctx.Err()
+		}
+
+		// BlobDownloadDone may set the error at any point after ready is closed,
+		// so this read has to take the same mutex the write is done under.
+		inflightErr := func() error {
+			onDemand.blobInflightMu.Lock()
+			defer onDemand.blobInflightMu.Unlock()
+
+			return inf.err
+		}()
+		if inflightErr != nil {
+			return nil, 0, false, nil, inflightErr
 		}
 
 		return nil, inf.size, false, inf.done, nil
@@ -164,13 +173,13 @@ func (onDemand *BaseOnDemand) SyncBlobOnDemand(ctx context.Context, repo string,
 		cancel()
 	}
 
-	inf.err = err
-	close(inf.ready)
-	close(inf.done)
-
 	onDemand.blobInflightMu.Lock()
+	inf.err = err
 	delete(onDemand.blobInflight, key)
 	onDemand.blobInflightMu.Unlock()
+
+	close(inf.ready)
+	close(inf.done)
 
 	return nil, 0, false, nil, err
 }

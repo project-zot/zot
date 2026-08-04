@@ -225,6 +225,63 @@ func TestOnDemandBlobStreaming(t *testing.T) {
 		}
 	})
 
+	Convey("waiting client reads the inflight error while the download reports failure", t, func() {
+		digest := godigest.FromString("inflight-error-race")
+		downloadErr := errors.New("download failed")
+		started := make(chan struct{})
+		release := make(chan struct{})
+
+		onDemand := NewOnDemand(log.NewTestLogger())
+		onDemand.Add(blobStreamTestService{
+			streamEnabled: true,
+			getBlobStream: func(ctx context.Context, repo string, blobDigest godigest.Digest) (io.ReadCloser, int64, error) {
+				close(started)
+				<-release
+
+				return io.NopCloser(strings.NewReader("streamed")), 8, nil
+			},
+		})
+
+		store := mocks.MockedImageStore{
+			CheckBlobFn: func(_ context.Context, repo string, blobDigest godigest.Digest) (bool, int64, error) {
+				return false, 0, nil
+			},
+		}
+
+		firstResult := make(chan io.ReadCloser, 1)
+		go func() {
+			reader, _, _, _, _ := onDemand.SyncBlobOnDemand(context.Background(), "repo", digest, store)
+			firstResult <- reader
+		}()
+
+		<-started
+
+		waitingResult := make(chan bool, 1)
+		go func() {
+			_, _, isFirstClient, _, _ := onDemand.SyncBlobOnDemand(context.Background(), "repo", digest, store)
+			waitingResult <- isFirstClient
+		}()
+
+		// Not returning here means the waiting client is already registered and
+		// parked on the inflight ready channel.
+		select {
+		case <-waitingResult:
+			t.Fatal("waiting client returned before upstream metadata was ready")
+		case <-time.After(25 * time.Millisecond):
+		}
+
+		// Releasing upstream setup wakes the waiting client up so that it reads the
+		// inflight error concurrently with the download reporting one.
+		close(release)
+
+		go onDemand.BlobDownloadDone("repo", digest, downloadErr)
+
+		reader := <-firstResult
+		So(reader, ShouldNotBeNil)
+		So(reader.Close(), ShouldBeNil)
+		So(<-waitingResult, ShouldBeFalse)
+	})
+
 	Convey("failed upstream setup cleans inflight entry so a later request can retry", t, func() {
 		digest := godigest.FromString("retry")
 		calls := 0
