@@ -6,7 +6,7 @@ ZLI_PATH=${ROOT_DIR}/bin/zli-${OS}-${ARCH}
 ZOT_MINIMAL_PATH=${ROOT_DIR}/bin/zot-${OS}-${ARCH}-minimal
 ZB_PATH=${ROOT_DIR}/bin/zb-${OS}-${ARCH}
 TEST_DATA_DIR=${BATS_FILE_TMPDIR}/test/data
-ZOT_RELEASE_VERSION="v2.1.18"
+ZOT_RELEASE_VERSION="latest"
 AUTH_USER=poweruser
 AUTH_PASS=sup*rSecr9T
 # additional creds for sha256/sha512 based password hashes
