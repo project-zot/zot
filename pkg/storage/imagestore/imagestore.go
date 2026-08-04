@@ -1984,6 +1984,28 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 
 			// Normal dedupe path: link destination to the resolved original blob and add ref.
 			if !is.storeDriver.SameFile(dst, dstRecord) {
+				// dstRecord is the shared master copy that every repo/tag dedupe-linking to this
+				// digest resolves to - on marker-based remote backends dst is never SameFile as
+				// dstRecord (unlike local's hardlink model), so this is the only place a corrupted
+				// dstRecord ever gets checked and repaired for those backends. Skipping this would
+				// silently link every caller to corrupted content forever, since a plain reupload
+				// only ever writes to dst, never back to dstRecord.
+				if desc, err := common.GetBlobDescriptorFromRepo(is, dstRepo, dstDigest, is.log); err == nil {
+					if desc.Size != blobInfo.Size() {
+						if err := is.storeDriver.Move(src, dstRecord); err != nil {
+							is.log.Error().Err(err).Str("src", src).Str("dst", dstRecord).Str("component", "dedupe").
+								Msg("failed to repair corrupted global blobstore copy")
+
+							return err
+						}
+
+						is.log.Debug().Str("src", src).Str("dstRecord", dstRecord).Str("component", "dedupe").
+							Msg("repaired corrupted global blobstore copy")
+
+						blobUploadRemoved = true
+					}
+				}
+
 				if err := is.lifecycle.LinkBlob(dstRecord, dst); err != nil {
 					is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
 						Msg("failed to link blobs")
@@ -2091,6 +2113,17 @@ func (is *ImageStore) dedupeBlobFastPath(src string, dstDigest godigest.Digest, 
 				}
 			}
 		} else {
+			// dst is never SameFile as dstRecord on marker-based remote backends, so without this
+			// check every reupload would link straight to a corrupted dstRecord and never notice.
+			// Actually repairing dstRecord needs the write lock (it's shared with every other
+			// repo's link to this content), so just detect it here and defer to the slow path,
+			// mirroring the SameFile branch above.
+			if desc, err := common.GetBlobDescriptorFromRepo(is, dstRepo, dstDigest, is.log); err == nil {
+				if desc.Size != blobInfo.Size() {
+					return nil
+				}
+			}
+
 			if err := is.lifecycle.LinkBlob(dstRecord, dst); err != nil {
 				is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
 					Msg("failed to link blobs")
