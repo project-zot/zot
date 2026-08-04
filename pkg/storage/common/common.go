@@ -680,7 +680,7 @@ func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godiges
 
 	dir := path.Join(imgStore.RootDir(), repo)
 	if !imgStore.DirExists(dir) {
-		return newEmptyReferrersIndex(), nil
+		return NewEmptyReferrersIndex(), nil
 	}
 
 	index, err := GetIndex(imgStore, repo, log)
@@ -780,7 +780,10 @@ func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godiges
 	}, nil
 }
 
-func newEmptyReferrersIndex() ispec.Index {
+// NewEmptyReferrersIndex returns an empty, spec-compliant referrers index - the correct
+// response for a digest/repo with no referrers, per the OCI distribution spec, rather than
+// an error.
+func NewEmptyReferrersIndex() ispec.Index {
 	return ispec.Index{
 		Versioned:   imeta.Versioned{SchemaVersion: storageConstants.SchemaVersion},
 		MediaType:   ispec.MediaTypeImageIndex,

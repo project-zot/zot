@@ -102,5 +102,15 @@ func TestGetReferrers(t *testing.T) {
 			_, err := store.GetReferrers(repo, godigest.Digest("not-a-digest"), nil)
 			So(err, ShouldNotBeNil)
 		})
+
+		Convey("a repo that was never created returns an empty index, not ErrRepoNotFound", func() {
+			// Regression test: OCI conformance's "empty" test group asserts a 200 with an
+			// empty index for referrers against a repo with nothing pushed to it yet, per
+			// the distribution spec. An eager repoExists guard once short-circuited this to
+			// ErrRepoNotFound (a 500 at the route handler), breaking conformance.
+			index, err := store.GetReferrers("never-created-repo", subjectDigest, nil)
+			So(err, ShouldBeNil)
+			So(index.Manifests, ShouldBeEmpty)
+		})
 	})
 }

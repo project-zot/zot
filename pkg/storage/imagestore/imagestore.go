@@ -2693,7 +2693,13 @@ func (is *ImageStore) VerifyBlobDigestValue(repo string, digest godigest.Digest)
 func (is *ImageStore) GetReferrers(repo string, gdigest godigest.Digest, artifactTypes []string,
 ) (ispec.Index, error) {
 	if !is.repoExists(repo) {
-		return ispec.Index{}, zerr.ErrRepoNotFound
+		// No repo means no manifests, so referrers is legitimately empty per the OCI
+		// distribution spec (see common.GetReferrers' own DirExists check below) - not
+		// ErrRepoNotFound; the OCI conformance suite's "empty" test group asserts a 200
+		// with an empty index here. Skip WithRepoReadLock so probing nonexistent repo
+		// names can't grow the per-repo lock map (see f63720fa) - there's nothing under
+		// this repo yet for a concurrent writer to race with.
+		return common.GetReferrers(is, repo, gdigest, artifactTypes, is.log)
 	}
 
 	var index ispec.Index
