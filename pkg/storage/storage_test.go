@@ -378,60 +378,6 @@ func TestGetSubStoreCreateFails(t *testing.T) {
 	})
 }
 
-type captureImageEvents struct {
-	mu              sync.Mutex
-	imageUpdated    []imageUpdatedCall
-	imageDeleted    []imageDeletedCall
-	imageLintFailed []imageLintFailedCall
-}
-
-type imageUpdatedCall struct {
-	repo, reference, digest, mediaType, manifest string
-}
-
-type imageDeletedCall struct {
-	repo, reference, digest, mediaType string
-}
-
-type imageLintFailedCall struct {
-	repo, reference, digest, mediaType, manifest string
-}
-
-func (c *captureImageEvents) Close() {}
-
-func (c *captureImageEvents) RepositoryCreated(string, *events.EventContext) {}
-
-func (c *captureImageEvents) ImageUpdated(name, reference, digest, mediaType, manifest string,
-	ectx *events.EventContext,
-) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.imageUpdated = append(c.imageUpdated, imageUpdatedCall{
-		repo: name, reference: reference, digest: digest, mediaType: mediaType, manifest: manifest,
-	})
-}
-
-func (c *captureImageEvents) ImageDeleted(name, reference, digest, mediaType string, ectx *events.EventContext) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.imageDeleted = append(c.imageDeleted, imageDeletedCall{
-		repo: name, reference: reference, digest: digest, mediaType: mediaType,
-	})
-}
-
-func (c *captureImageEvents) ImageLintFailed(name, reference, digest, mediaType, manifest string,
-	ectx *events.EventContext,
-) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.imageLintFailed = append(c.imageLintFailed, imageLintFailedCall{
-		repo: name, reference: reference, digest: digest, mediaType: mediaType, manifest: manifest,
-	})
-}
-
 // TestPutImageManifestExtraTagsAndEvents covers extra-tag digest pushes, index updates, and ImageUpdated events.
 // One Convey uses createObjectsStore (nil recorder); the rest use newLocalImageStoreWithEventRecorder.
 func TestPutImageManifestExtraTagsAndEvents(t *testing.T) {
