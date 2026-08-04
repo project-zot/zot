@@ -211,11 +211,19 @@ function teardown_file() {
     local zot_port=$(get_zot_port)
     local digests_file=${BATS_FILE_TMPDIR}/migration-digests.txt
 
+    # Fail loudly on a missing/empty file instead of the while loop silently no-op'ing.
+    [ -s "${digests_file}" ]
+
+    local checked=0
+
     while IFS='=' read -r repo expected_digest; do
         helper_pull_image ${repo} 1.20
         local digest=$(skopeo inspect --tls-verify=false docker://127.0.0.1:${zot_port}/${repo}:1.20 | jq -r '.Digest')
         [ "${digest}" = "${expected_digest}" ]
-    done < ${digests_file}
+        checked=$((checked + 1))
+    done < "${digests_file}"
+
+    [ "${checked}" -eq 2 ]
 }
 
 @test "[new] existing pull image index" {
