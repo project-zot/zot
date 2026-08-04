@@ -1,0 +1,70 @@
+name: 'Setup floci service'
+description: 'Download & run floci container (does not create S3 buckets; tests or workflows should create resources they need)'
+inputs:
+  # inputs for https://github.com/docker/login-action
+  username:
+    description: 'Username used to log against the github registry'
+    required: false
+    default: ${{ github.actor }}
+  password:
+    description: 'Password or personal access token used to log against the github registry'
+    required: false
+    default: ${{ github.token }}
+runs:
+  using: "composite"
+  steps:
+    - uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+      with:
+        registry: ghcr.io
+        username: ${{ inputs.username }}
+        password: ${{ inputs.password }}
+    - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      with:
+        python-version: '3.11'
+    - shell: bash
+      run: |
+        pip install --upgrade pyopenssl
+        pip install 'awscli-local[ver1]'
+
+        docker pull "$IMAGE_NAME"
+        docker run -d \
+          --name floci \
+          -p '4566:4566' \
+          -e 'FLOCI_STORAGE_MODE=persistent' "$IMAGE_NAME"
+
+        # Wait for floci to be healthy
+        attempt=1
+        ready=0
+        while [[ $ready -eq 0 && $attempt -le $MAX_ATTEMPTS ]]; do
+          echo "Attempt: $attempt"
+          response=$(curl -s -w "\n%{http_code}" "http://localhost:4566/health" || echo "000")
+          http_code=$(echo "$response" | tail -n 1)
+          json_body=$(echo "$response" | sed '$d')
+
+          if [[ "$http_code" -eq 200 ]]; then
+            s3_status=$(echo "$json_body" | jq -r '.services.s3 // empty' 2>/dev/null || true)
+            dynamodb_status=$(echo "$json_body" | jq -r '.services.dynamodb // empty' 2>/dev/null || true)
+            if [[ "$s3_status" == "running" && "$dynamodb_status" == "running" ]]; then
+              echo "S3 and DynamoDB are ready."
+              ready=1
+            else
+              echo "S3: $s3_status DynamoDB: $dynamodb_status. Continue waiting."
+            fi
+          else
+            echo "Status was $http_code. Continue waiting."
+          fi
+
+          sleep $WAIT_PERIOD_SECONDS
+          attempt=$((attempt + 1))
+        done
+        if [[ $ready -eq 0 ]]; then
+          echo "Floci failed to be ready in time."
+          docker logs floci || true
+          exit 1
+        fi
+      env:
+        AWS_ACCESS_KEY_ID: fake
+        AWS_SECRET_ACCESS_KEY: fake
+        IMAGE_NAME: ghcr.io/project-zot/floci/floci:1.5.34
+        MAX_ATTEMPTS: 30
+        WAIT_PERIOD_SECONDS: 1

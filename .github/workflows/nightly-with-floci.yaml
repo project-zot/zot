@@ -1,0 +1,428 @@
+name: 'Nightly jobs with floci'
+on:
+  schedule:
+    - cron: '30 1 * * *'
+  workflow_dispatch:
+
+permissions: read-all
+
+#  The following tests are run:
+#  1. run zot with local storage and dedupe disabled, push images, restart zot with dedupe enabled
+#  task scheduler will start a dedupe all blobs process at zot startup and it shouldn't interfere with clients.
+#  2. run zot with s3 storage and dynamodb and dedupe enabled, push images, restart zot with dedupe false and no cache
+#  task scheduler will start a restore all blobs process at zot startup, after it finishes all blobs should be restored to their original state (have content)
+#  3. run many, many, many instances of zot with shared storage and metadata front-ended by HAProxy. start a long-running zb run with high concurrency and number of requests
+#  to achieve a long-running sustained load on the system. The system is expected to perform well without errors and return performance data after the test.
+jobs:
+  dedupe:
+    name: Dedupe/restore blobs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          check-latest: true
+          go-version: 1.26.x
+      - name: Install dependencies
+        run: |
+          cd $GITHUB_WORKSPACE
+          go install github.com/swaggo/swag/cmd/swag@v1.16.2
+          go mod download
+          sudo apt-get update
+          sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config rpm uidmap
+          # install skopeo
+          git clone -b v1.12.0 https://github.com/containers/skopeo.git
+          cd skopeo
+          make bin/skopeo
+          sudo cp bin/skopeo /usr/bin
+          skopeo -v
+      - uses: ./.github/actions/setup-floci
+      - name: Run blackbox nightly dedupe tests
+        run: |
+            # test restoring s3 blobs after cache is deleted
+            # test deduping filesystem blobs after switching dedupe to enable
+            make run-blackbox-dedupe-nightly
+        env:
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
+      - uses: ./.github/actions/teardown-floci
+
+  sync:
+    name: Sync harness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          check-latest: true
+          go-version: 1.26.x
+      - name: Install dependencies
+        run: |
+          cd $GITHUB_WORKSPACE
+          go install github.com/swaggo/swag/cmd/swag@v1.16.2
+          go mod download
+      - name: Run sync harness
+        run: |
+            make run-blackbox-sync-nightly
+
+  gc-referrers-stress-s3:
+    name: GC(with referrers) on S3(floci) with short interval
+    runs-on: cncf-ubuntu-16-64-x86
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          cache: false
+          check-latest: true
+          go-version: 1.26.x
+      - uses: ./.github/actions/setup-floci
+      - name: Create zot-storage bucket on floci
+        run: |
+          awslocal s3api create-bucket --bucket zot-storage --region us-east-2 \
+            --create-bucket-configuration='{"LocationConstraint": "us-east-2"}'
+        env:
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
+      - name: Run zb
+        timeout-minutes: 240
+        id: bench
+        run: |
+            make binary
+            make bench
+            ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-referrers-bench-s3-localstack.json &
+            sleep 10
+            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080 --skip-cleanup
+
+            killall --wait -r zot-*
+
+            # clean zot storage
+            sudo rm -rf /tmp/zot
+        env:
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
+        continue-on-error: true
+
+      - name: Check on failures
+        if: steps.bench.outcome != 'success'
+        run: |
+          cat /tmp/gc-referrers-bench-s3.log
+          exit 1
+      - uses: ./.github/actions/teardown-floci
+
+  gc-stress-s3:
+    name: GC(without referrers) on S3(floci) with short interval
+    runs-on: cncf-ubuntu-16-64-x86
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          cache: false
+          check-latest: true
+          go-version: 1.26.x
+      - uses: ./.github/actions/setup-floci
+      - name: Create zot-storage bucket on floci
+        run: |
+          awslocal s3api create-bucket --bucket zot-storage --region us-east-2 \
+            --create-bucket-configuration='{"LocationConstraint": "us-east-2"}'
+        env:
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
+      - name: Run zb
+        timeout-minutes: 240
+        id: bench
+        run: |
+            make binary
+            make bench
+            ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-bench-s3-localstack.json &
+            sleep 10
+            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080 --skip-cleanup
+
+            killall --wait -r zot-*
+
+            # clean zot storage
+            sudo rm -rf /tmp/zot
+        env:
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
+        continue-on-error: true
+
+      - name: Check on failures
+        if: steps.bench.outcome != 'success'
+        run: |
+          cat /tmp/gc-bench-s3.log
+          exit 1
+      - uses: ./.github/actions/teardown-floci
+
+  docker-image:
+    name: Build docker image (for users still using Docker environments)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/clean-runner
+      - name: Build image
+        run: |
+          make docker-image
+
+  kind-setup:
+    name: Prometheus setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          check-latest: true
+          go-version: 1.26.x
+      - name: Install dependencies
+        run: |
+          cd $GITHUB_WORKSPACE
+          make check-blackbox-prerequisites
+          go mod download
+          sudo apt-get update
+          sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config rpm uidmap
+          # install skopeo
+          git clone -b v1.12.0 https://github.com/containers/skopeo.git
+          cd skopeo
+          make bin/skopeo
+          sudo cp bin/skopeo /usr/bin
+          skopeo -v
+      - name: Log in to GitHub Docker Registry
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # main
+      - name: Run tests
+        run: |
+            sudo ./scripts/enable_userns.sh
+            ./examples/kind/kind-ci.sh
+
+  kind-sync-ondemand:
+    name: On-demand sync mirror regression (issue 4184)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          check-latest: true
+          go-version: 1.26.x
+      - name: Install dependencies
+        run: |
+          cd $GITHUB_WORKSPACE
+          make check-blackbox-prerequisites
+          go mod download
+          sudo apt-get update
+          sudo apt-get install -y libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config rpm uidmap jq
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # main
+      - name: Build zot binary
+        run: make binary
+      - name: Run on-demand sync mirror regression test
+        run: |
+          sudo ./scripts/enable_userns.sh
+          ./examples/kind/kind-sync-ondemand.sh
+
+  oidc-workload-identity:
+    name: OIDC Workload Identity E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          check-latest: true
+          go-version: 1.26.x
+      - name: Install dependencies
+        run: |
+          cd $GITHUB_WORKSPACE
+          make check-blackbox-prerequisites
+          go mod download
+          sudo apt-get update
+          sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config rpm uidmap jq
+      - name: Log in to GitHub Docker Registry
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Run OIDC workload identity tests
+        run: |
+            sudo ./scripts/enable_userns.sh
+            ./examples/kind/kind-oidc-workload-identity.sh
+
+  aws-secrets-manager-bearer:
+    name: AWS Secrets Manager Bearer Auth E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          check-latest: true
+          go-version: 1.26.x
+      - name: Install crane
+        run: |
+          go install github.com/google/go-containerregistry/cmd/crane@latest
+      - name: Run AWS Secrets Manager bearer auth tests
+        run: |
+          ./examples/aws-secrets-manager-bearer-auth.sh
+
+  cloud-scale-out:
+    name: s3+dynamodb scale-out
+    runs-on: cncf-ubuntu-16-64-x86
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          cache: false
+          check-latest: true
+          go-version: 1.26.x
+      - name: Install dependencies
+        run: |
+          cd $GITHUB_WORKSPACE
+          go install github.com/swaggo/swag/cmd/swag@v1.16.2
+          go mod download
+          sudo apt-get update
+          sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config rpm uidmap haproxy jq
+          # install skopeo
+          git clone -b v1.12.0 https://github.com/containers/skopeo.git
+          cd skopeo
+          make bin/skopeo
+          sudo cp bin/skopeo /usr/bin
+          skopeo -v
+          cd $GITHUB_WORKSPACE
+      - uses: ./.github/actions/setup-floci
+      - name: Run cloud scale-out high scale performance tests
+        id: scale
+        run: |
+          make run-cloud-scale-out-high-scale-tests
+        env:
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
+        continue-on-error: true
+      - name: Upload zot logs as build artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: zot-scale-out-dynamodb-logs
+          path: /tmp/zot-ft-logs
+          if-no-files-found: error
+      - name: print service logs
+        run: |
+          sudo dmesg
+          cat /tmp/zot-ft-logs/dynamo-scale/*.log
+      - name: multi-hop detection
+        id: multihop
+        run: |
+          if cat /tmp/zot-ft-logs/dynamo-scale/*.log | grep 'cannot proxy an already proxied request'; then
+            echo "detected multi-hop"
+            exit 1
+          else
+            exit 0
+          fi
+        continue-on-error: true
+      - name: clean up logs
+        run: |
+          rm -r /tmp/zot-ft-logs/dynamo-scale
+      - name: fail job if error
+        if: ${{ steps.scale.outcome != 'success' || steps.multihop.outcome != 'success' }}
+        run: |
+          exit 1
+      - name: Upload zb test results zip as build artifact
+        if: steps.scale.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: zb-cloud-scale-out-perf-results-${{ github.sha }}
+          path: ./zb-results/
+      - uses: ./.github/actions/teardown-floci
+
+  cloud-scale-out-redis:
+    name: s3+redis scale-out
+    runs-on: cncf-ubuntu-16-64-x86
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          cache: false
+          check-latest: true
+          go-version: 1.26.x
+      - name: Install dependencies
+        run: |
+          cd $GITHUB_WORKSPACE
+          go install github.com/swaggo/swag/cmd/swag@v1.16.2
+          go mod download
+          sudo apt-get update
+          sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config rpm uidmap haproxy jq
+          # install skopeo
+          git clone -b v1.12.0 https://github.com/containers/skopeo.git
+          cd skopeo
+          make bin/skopeo
+          sudo cp bin/skopeo /usr/bin
+          skopeo -v
+          cd $GITHUB_WORKSPACE
+      - uses: ./.github/actions/setup-floci
+      - name: Run cloud scale-out Redis tests
+        id: scale
+        run: |
+          make run-cloud-scale-out-redis-high-scale-tests
+        env:
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
+        continue-on-error: true
+      - name: Upload zot logs as build artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: zot-scale-out-redis-logs
+          path: /tmp/zot-ft-logs/redis-scale
+          if-no-files-found: error
+      - name: print service logs
+        run: |
+          sudo dmesg
+          cat /tmp/zot-ft-logs/redis-scale/*.log
+      - name: multi-hop detection
+        id: multihop
+        run: |
+          if cat /tmp/zot-ft-logs/redis-scale/*.log | grep 'cannot proxy an already proxied request'; then
+            echo "detected multi-hop"
+            exit 1
+          else
+            exit 0
+          fi
+        continue-on-error: true
+      - name: clean up logs
+        run: |
+          rm -r /tmp/zot-ft-logs/redis-scale
+      - name: fail job if error
+        if: ${{ steps.scale.outcome != 'success' || steps.multihop.outcome != 'success' }}
+        run: |
+          exit 1
+      - name: Upload zb test results zip as build artifact
+        if: steps.scale.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: zb-cloud-scale-out-redis-results-${{ github.sha }}
+          path: ./zb-results/
+      - uses: ./.github/actions/teardown-floci

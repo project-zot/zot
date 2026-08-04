@@ -1,0 +1,10 @@
+name: 'Stop floci'
+description: 'Stop floci container'
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      if: always()
+      run: |
+        docker stop floci || true
+        docker rm -f floci || true
