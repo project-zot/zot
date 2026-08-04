@@ -216,18 +216,18 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 		// MetaDB loaded with initial data, now mock the scanner
 		// Setup test CVE data in mock scanner
 		scanner := mocks.CveScannerMock{
-			ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
+			ScanImageFn: func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
 				result := cache.Get(image)
 				// Will not match sending the repo:tag as a parameter, but we don't care
 				if result != nil {
-					return result, nil
+					return cvemodel.ScanResult{CVEMap: result}, nil
 				}
 
 				repo, ref, isTag := zcommon.GetImageDirAndReference(image)
 				if isTag {
 					foundRef, ok := imageMap[image]
 					if !ok {
-						return nil, ErrBadTest
+						return cvemodel.ScanResult{}, ErrBadTest
 					}
 					ref = foundRef
 				}
@@ -245,7 +245,7 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 
 					cache.Add(ref, result)
 
-					return result, nil
+					return cvemodel.ScanResult{CVEMap: result}, nil
 				}
 
 				if repo == repo1 && slices.Contains([]string{image12Digest, image21Digest}, ref) {
@@ -272,7 +272,7 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 
 					cache.Add(ref, result)
 
-					return result, nil
+					return cvemodel.ScanResult{CVEMap: result}, nil
 				}
 
 				if repo == repo1 && ref == image13Digest {
@@ -287,7 +287,7 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 
 					cache.Add(ref, result)
 
-					return result, nil
+					return cvemodel.ScanResult{CVEMap: result}, nil
 				}
 
 				// As a minor release on 1.0.0 banch
@@ -310,12 +310,12 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 
 					cache.Add(ref, result)
 
-					return result, nil
+					return cvemodel.ScanResult{CVEMap: result}, nil
 				}
 
 				// Unexpected error while scanning
 				if repo == "repo7" {
-					return map[string]cvemodel.CVE{}, ErrFailedScan
+					return cvemodel.ScanResult{CVEMap: map[string]cvemodel.CVE{}}, ErrFailedScan
 				}
 
 				if (repo == repoIndex && ref == indexDigest) ||
@@ -338,14 +338,14 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 
 					cache.Add(ref, result)
 
-					return result, nil
+					return cvemodel.ScanResult{CVEMap: result}, nil
 				}
 
 				// By default the image has no vulnerabilities
 				result = map[string]cvemodel.CVE{}
 				cache.Add(ref, result)
 
-				return result, nil
+				return cvemodel.ScanResult{CVEMap: result}, nil
 			},
 			IsImageFormatScannableFn: func(repo string, reference string) (bool, error) {
 				if repo == repoIndex {
@@ -553,7 +553,8 @@ func TestScanGeneratorWithRealData(t *testing.T) {
 
 		So(scanner.IsResultCached(image.DigestStr()), ShouldBeTrue)
 
-		cveMap, err := scanner.ScanImage(context.Background(), "zot-test:0.0.1")
+		scanResult, err := scanner.ScanImage(context.Background(), "zot-test:0.0.1")
+		cveMap := scanResult.CVEMap
 		So(err, ShouldBeNil)
 		t.Logf("cveMap: %v", cveMap)
 		// As of September 22 2023 there are 5 CVEs:
@@ -575,5 +576,225 @@ func TestScanGeneratorWithRealData(t *testing.T) {
 		So(cveSummary.Count, ShouldBeGreaterThanOrEqualTo, 5)
 		// As of September 22 the max severity is MEDIUM, but new CVEs could appear in the future
 		So([]string{"MEDIUM", "HIGH", "CRITICAL", "UNKNOWN"}, ShouldContain, cveSummary.MaxSeverity)
+	})
+}
+
+// mockScannerReturningCVEs returns a fixed CVE map alongside a resolved digest/mediaType,
+// mimicking what the real trivy scanner resolves internally via metaDB (see
+// trivy.Scanner.ScanImage) so the ScannerOption-decorated wrapper's event has something
+// real to report without the wrapper doing any metaDB lookups of its own.
+func mockScannerReturningCVEs(metaDB mTypes.MetaDB) mocks.CveScannerMock {
+	return mocks.CveScannerMock{
+		ScanImageFn: func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
+			repo, ref, isTag := zcommon.GetImageDirAndReference(image)
+
+			digest := ref
+			if isTag {
+				repoMeta, err := metaDB.GetRepoMeta(ctx, repo)
+				if err != nil {
+					return cvemodel.ScanResult{}, err
+				}
+
+				descriptor, ok := repoMeta.Tags[ref]
+				if !ok {
+					return cvemodel.ScanResult{}, ErrBadTest
+				}
+
+				digest = descriptor.Digest
+			}
+
+			imageMeta, err := metaDB.GetImageMeta(godigest.Digest(digest))
+			if err != nil {
+				return cvemodel.ScanResult{}, err
+			}
+
+			return cvemodel.ScanResult{
+				CVEMap: map[string]cvemodel.CVE{
+					"CVE-1": {
+						Severity: cvemodel.SeverityHigh,
+						PackageList: []cvemodel.Package{{
+							Name:         "openssl",
+							FixedVersion: "1.0.1",
+						}},
+					},
+					"CVE-2": {
+						Severity: cvemodel.SeverityLow,
+						PackageList: []cvemodel.Package{{
+							// matches the real trivy scanner, which uses this sentinel
+							// (never "") when no fix is available
+							Name:         "busybox",
+							FixedVersion: cvemodel.NotSpecified,
+						}},
+					},
+				},
+				Digest:    digest,
+				MediaType: imageMeta.MediaType,
+			}, nil
+		},
+	}
+}
+
+func checkScanEventSummary(call mocks.ImageScannedCall) {
+	So(call.Summary.Count, ShouldEqual, 2)
+	So(call.Summary.FixableCount, ShouldEqual, 1)
+	So(call.Summary.LowCount, ShouldEqual, 1)
+	So(call.Summary.HighCount, ShouldEqual, 1)
+	So(call.Summary.MaxSeverity, ShouldEqual, cvemodel.SeverityHigh)
+}
+
+func TestScanGeneratorPublishesScanEvents(t *testing.T) {
+	Convey("scheduled scans publish a single event using the scanned digest", t, func() {
+		params := boltdb.DBParameters{
+			RootDir: t.TempDir(),
+		}
+		boltDriver, err := boltdb.GetBoltDriver(params)
+		So(err, ShouldBeNil)
+
+		metaDB, err := boltdb.New(boltDriver, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		image := CreateImageWith().DefaultLayers().DefaultConfig().Build()
+		err = metaDB.SetRepoReference(context.Background(), "repo", "1.0.0", image.AsImageMeta())
+		So(err, ShouldBeNil)
+		err = metaDB.SetRepoReference(context.Background(), "repo", "stable", image.AsImageMeta())
+		So(err, ShouldBeNil)
+
+		recorder := &mocks.EventRecorderMock{}
+		scanner := cveinfo.NewDecoratedScanner(mockScannerReturningCVEs(metaDB), log.NewTestLogger(),
+			cveinfo.WithEventRecorder(recorder))
+
+		// the scheduled generator always scans by digest, regardless of how many tags point to it
+		generator := cveinfo.NewScanTaskGenerator(metaDB, scanner, log.NewTestLogger())
+		task, err := generator.Next()
+		So(err, ShouldBeNil)
+		So(task, ShouldNotBeNil)
+
+		err = task.DoWork(context.Background())
+		So(err, ShouldBeNil)
+
+		So(recorder.ImageScannedCalls, ShouldHaveLength, 1)
+
+		call := recorder.ImageScannedCalls[0]
+		So(call.Name, ShouldEqual, "repo")
+		So(call.Reference, ShouldEqual, image.DigestStr())
+		So(call.Digest, ShouldEqual, image.DigestStr())
+		So(call.MediaType, ShouldEqual, image.AsImageMeta().MediaType)
+		checkScanEventSummary(call)
+	})
+
+	Convey("scanning an untagged manifest digest still publishes an event", t, func() {
+		params := boltdb.DBParameters{
+			RootDir: t.TempDir(),
+		}
+		boltDriver, err := boltdb.GetBoltDriver(params)
+		So(err, ShouldBeNil)
+
+		metaDB, err := boltdb.New(boltDriver, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		// simulates a manifest that only exists inside a multiarch index, so it
+		// has no tag of its own in repoMeta.Tags
+		image := CreateImageWith().DefaultLayers().DefaultConfig().Build()
+		err = metaDB.SetImageMeta(image.Digest(), image.AsImageMeta())
+		So(err, ShouldBeNil)
+
+		recorder := &mocks.EventRecorderMock{}
+		scanner := cveinfo.NewDecoratedScanner(mockScannerReturningCVEs(metaDB), log.NewTestLogger(),
+			cveinfo.WithEventRecorder(recorder))
+
+		scanResult, err := scanner.ScanImage(context.Background(), "repo@"+image.DigestStr())
+		cveMap := scanResult.CVEMap
+		So(err, ShouldBeNil)
+		So(cveMap, ShouldNotBeEmpty)
+
+		So(recorder.ImageScannedCalls, ShouldHaveLength, 1)
+
+		call := recorder.ImageScannedCalls[0]
+		So(call.Name, ShouldEqual, "repo")
+		So(call.Reference, ShouldEqual, image.DigestStr())
+		So(call.Digest, ShouldEqual, image.DigestStr())
+		So(call.MediaType, ShouldEqual, image.AsImageMeta().MediaType)
+		checkScanEventSummary(call)
+	})
+
+	Convey("wrapper forwards the caller's reference as-is and trusts the scanner's resolved digest", t, func() {
+		params := boltdb.DBParameters{
+			RootDir: t.TempDir(),
+		}
+		boltDriver, err := boltdb.GetBoltDriver(params)
+		So(err, ShouldBeNil)
+
+		metaDB, err := boltdb.New(boltDriver, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		image := CreateImageWith().DefaultLayers().DefaultConfig().Build()
+		err = metaDB.SetRepoReference(context.Background(), "repo", "1.0.0", image.AsImageMeta())
+		So(err, ShouldBeNil)
+
+		var scannedImage string
+		mockScanner := mockScannerReturningCVEs(metaDB)
+		innerScanImageFn := mockScanner.ScanImageFn
+		mockScanner.ScanImageFn = func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
+			scannedImage = image
+
+			return innerScanImageFn(ctx, image)
+		}
+
+		recorder := &mocks.EventRecorderMock{}
+		scanner := cveinfo.NewDecoratedScanner(mockScanner, log.NewTestLogger(),
+			cveinfo.WithEventRecorder(recorder))
+
+		_, err = scanner.ScanImage(context.Background(), "repo:1.0.0")
+		So(err, ShouldBeNil)
+
+		// the wrapper does no tag resolution of its own: it forwards the caller's reference
+		// unchanged and relies on the underlying scanner's returned digest for the event, since
+		// the scanner already resolves this internally while scanning (see trivy.Scanner.ScanImage)
+		So(scannedImage, ShouldEqual, "repo:1.0.0")
+
+		So(recorder.ImageScannedCalls, ShouldHaveLength, 1)
+		So(recorder.ImageScannedCalls[0].Reference, ShouldEqual, "1.0.0")
+		So(recorder.ImageScannedCalls[0].Digest, ShouldEqual, image.DigestStr())
+	})
+
+	Convey("repeated scans of an already-cached digest publish only the first event", t, func() {
+		params := boltdb.DBParameters{
+			RootDir: t.TempDir(),
+		}
+		boltDriver, err := boltdb.GetBoltDriver(params)
+		So(err, ShouldBeNil)
+
+		metaDB, err := boltdb.New(boltDriver, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		image := CreateImageWith().DefaultLayers().DefaultConfig().Build()
+		err = metaDB.SetRepoReference(context.Background(), "repo", "1.0.0", image.AsImageMeta())
+		So(err, ShouldBeNil)
+
+		// simulates the trivy scanner, which reports WasCached directly from ScanImage
+		// without running a new scan once a digest has already been scanned once
+		cached := false
+		mockScanner := mockScannerReturningCVEs(metaDB)
+		innerScanImageFn := mockScanner.ScanImageFn
+		mockScanner.ScanImageFn = func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
+			result, err := innerScanImageFn(ctx, image)
+			result.WasCached = cached
+
+			return result, err
+		}
+
+		recorder := &mocks.EventRecorderMock{}
+		scanner := cveinfo.NewDecoratedScanner(mockScanner, log.NewTestLogger(),
+			cveinfo.WithEventRecorder(recorder))
+
+		_, err = scanner.ScanImage(context.Background(), "repo:1.0.0")
+		So(err, ShouldBeNil)
+		So(recorder.ImageScannedCalls, ShouldHaveLength, 1)
+
+		cached = true
+
+		_, err = scanner.ScanImage(context.Background(), "repo:1.0.0")
+		So(err, ShouldBeNil)
+		So(recorder.ImageScannedCalls, ShouldHaveLength, 1)
 	})
 }

@@ -126,6 +126,25 @@ func IsDigest(ref string) bool {
 	return err == nil
 }
 
+// LooksLikeDigestReference reports whether ref uses digest syntax (algorithm:encoded) but
+// fails digest.Parse, e.g. sha256:baddigeststring.
+func LooksLikeDigestReference(ref string) bool {
+	if IsDigest(ref) {
+		return false
+	}
+
+	algo, encoded, ok := strings.Cut(ref, ":")
+	if !ok || algo == "" || encoded == "" {
+		return false
+	}
+
+	if !digest.Algorithm(algo).Available() {
+		return false
+	}
+
+	return true
+}
+
 func IsTag(ref string) bool {
 	return !IsDigest(ref)
 }

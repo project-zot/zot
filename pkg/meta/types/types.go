@@ -73,7 +73,8 @@ type MetaDB interface { //nolint:interfacebloat
 	SetImageMeta(digest godigest.Digest, imageMeta ImageMeta) error
 
 	// SetRepoReference sets the given image data to the repo metadata.
-	SetRepoReference(ctx context.Context, repo string, reference string, imageMeta ImageMeta) error
+	SetRepoReference(ctx context.Context, repo string, reference string, imageMeta ImageMeta,
+		opts ...SetRepoReferenceOption) error
 
 	// SearchRepos searches for repos given a search string
 	SearchRepos(ctx context.Context, searchText string) ([]RepoMeta, error)
@@ -241,6 +242,36 @@ type ImageMeta struct {
 	Size      int64           // Size refers to the image descriptor, a manifest or a index (if multiarch)
 	Index     *ispec.Index    // If the image is multiarch the Index will be non-nil
 	Manifests []ManifestMeta  // All manifests under the image, 1 for simple images and many for multiarch
+}
+
+// SetRepoReferenceOptions holds optional per-call hints for SetRepoReference.
+type SetRepoReferenceOptions struct {
+	// PushTimestamp is an optional hint for when the image was pushed, used only when a new statistics
+	// entry is created (e.g. the manifest blob storage mod time on a storage re-parse). Zero means
+	// unknown and the metaDB falls back to the current time.
+	PushTimestamp time.Time
+}
+
+// SetRepoReferenceOption sets an optional hint on SetRepoReferenceOptions.
+type SetRepoReferenceOption func(*SetRepoReferenceOptions)
+
+// WithPushTimestamp hints when the image was pushed (e.g. the manifest blob storage mod time
+// on a storage re-parse).
+func WithPushTimestamp(pushTimestamp time.Time) SetRepoReferenceOption {
+	return func(opts *SetRepoReferenceOptions) {
+		opts.PushTimestamp = pushTimestamp
+	}
+}
+
+// ApplySetRepoReferenceOptions resolves the given options into a SetRepoReferenceOptions struct.
+func ApplySetRepoReferenceOptions(opts ...SetRepoReferenceOption) SetRepoReferenceOptions {
+	options := SetRepoReferenceOptions{}
+
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	return options
 }
 
 // ManifestMeta represents all data related to an image manifests (found from the image contents itself).

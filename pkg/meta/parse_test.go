@@ -436,6 +436,37 @@ func TestParseStorageDynamoWrapper(t *testing.T) {
 func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) {
 	ctx := context.Background()
 
+	Convey("Push timestamp falls back to the manifest blob storage mod time", func() {
+		imageStore := local.NewImageStore(rootDir, false, false,
+			log, monitoring.NewMetricsServer(false, log), nil, nil, nil, nil)
+
+		storeController := storage.StoreController{DefaultStore: imageStore}
+
+		image := CreateRandomImage() //nolint:staticcheck
+
+		err := WriteImageToFileSystem(image, repo, "tag1", storeController)
+		So(err, ShouldBeNil)
+
+		// Backdate the manifest blob: after a metaDB loss the real push time is gone,
+		// so the storage mod time is the only remaining record of when it was pushed.
+		manifestDigest := image.ManifestDescriptor.Digest
+		blobPath := imageStore.BlobPath(repo, manifestDigest)
+		pushedAt := time.Now().Add(-72 * time.Hour)
+
+		err = os.Chtimes(blobPath, pushedAt, pushedAt)
+		So(err, ShouldBeNil)
+
+		err = meta.ParseStorage(metaDB, storeController, log) //nolint: contextcheck
+		So(err, ShouldBeNil)
+
+		repoMeta, err := metaDB.GetRepoMeta(ctx, repo)
+		So(err, ShouldBeNil)
+
+		stats, ok := repoMeta.Statistics[manifestDigest.String()]
+		So(ok, ShouldBeTrue)
+		So(stats.PushTimestamp, ShouldHappenWithin, time.Minute, pushedAt)
+	})
+
 	Convey("Test with simple case", func() {
 		imageStore := local.NewImageStore(rootDir, false, false,
 			log, monitoring.NewMetricsServer(false, log), nil, nil, nil, nil)
@@ -704,7 +735,8 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) 
 		err = metaDB.SetRepoMeta(repo, repoMeta)
 		So(err, ShouldBeNil)
 
-		// metaDB should detect that pushTimestamp is 0 and update it.
+		// metaDB should detect that pushTimestamp is 0 and repopulate it
+		// (from the manifest blob's storage mod time, so close to the original push).
 		err = meta.ParseStorage(metaDB, storeController, log) //nolint: contextcheck
 		So(err, ShouldBeNil)
 
@@ -713,7 +745,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) 
 
 		So(repoMeta.Statistics[image.DigestStr()].DownloadCount, ShouldEqual, 1)
 		So(repoMeta.DownloadCount, ShouldEqual, 1)
-		So(repoMeta.Statistics[image.DigestStr()].PushTimestamp, ShouldHappenAfter, oldPushTimestamp)
+		So(repoMeta.Statistics[image.DigestStr()].PushTimestamp, ShouldHappenWithin, time.Minute, oldPushTimestamp)
 	})
 
 	Convey("Parse 2 times and check correct update of the metaDB for modified and deleted repos", func() {

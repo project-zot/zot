@@ -23,9 +23,7 @@ import (
 func TestUIExtension(t *testing.T) {
 	Convey("Verify zot with UI extension starts successfully", t, func() {
 		conf := config.New()
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		// we won't use the logging config feature as we want logs in both
 		// stdout and a file
@@ -48,7 +46,8 @@ func TestUIExtension(t *testing.T) {
 		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
 
 		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
+		defer ctlrManager.StopServer()
 
 		found, err := test.ReadLogFileAndSearchString(logPath, "\"UI\":{\"Enable\":true}", 2*time.Minute)
 		So(found, ShouldBeTrue)

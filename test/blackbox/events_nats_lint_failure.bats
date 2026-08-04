@@ -115,9 +115,8 @@ function teardown_file() {
 
     rm -f artifact.txt config.json
 
-    # Check the correct number of events were generated
-    count=$(find "${output_path}" -type f | wc -l)
-    [ "$count" -eq 2 ]
+    run wait_for_nats_event_files "${output_path}" 2
+    [ "$status" -eq 0 ]
 
     # Validate the event
     result=$(jq '.Data | @base64d | fromjson' ${output_path}/2.json)
@@ -150,9 +149,8 @@ function teardown_file() {
 
     rm -f artifact.txt config.json
 
-    # Check the correct number of events were generated
-    count=$(find "${output_path}" -type f | wc -l)
-    [ "$count" -eq 1 ]
+    run wait_for_nats_event_files "${output_path}" 1
+    [ "$status" -eq 0 ]
 
     # Validate the event
     result=$(jq '.Data | @base64d | fromjson' ${output_path}/1.json)

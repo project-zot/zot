@@ -1174,11 +1174,11 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 	// MetaDB loaded with initial data, now mock the scanner
 	// Setup test CVE data in mock scanner
 	scanner := mocks.CveScannerMock{
-		ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
+		ScanImageFn: func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
 			repo, ref, _, _ := common.GetRepoReference(image)
 
 			if common.IsDigest(ref) {
-				return getCveResults(ref), nil
+				return cvemodel.ScanResult{CVEMap: getCveResults(ref)}, nil
 			}
 
 			repoMeta, _ := metaDB.GetRepoMeta(ctx, repo)
@@ -1187,7 +1187,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				panic("unexpected tag '" + ref + "', test might be wrong")
 			}
 
-			return getCveResults(repoMeta.Tags[ref].Digest), nil
+			return cvemodel.ScanResult{CVEMap: getCveResults(repoMeta.Tags[ref].Digest)}, nil
 		},
 		GetCachedResultFn: func(digestStr string) map[string]cvemodel.CVE {
 			return getCveResults(digestStr)
@@ -1444,8 +1444,8 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			canceledScanner := scanner
 
-			canceledScanner.ScanImageFn = func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
-				return nil, ctx.Err()
+			canceledScanner.ScanImageFn = func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
+				return cvemodel.ScanResult{}, ctx.Err()
 			}
 
 			cveInfo.Scanner = canceledScanner
@@ -2037,11 +2037,11 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 		// MetaDB loaded with initial data, now mock the scanner
 		// Setup test CVE data in mock scanner
 		scanner := mocks.CveScannerMock{
-			ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
+			ScanImageFn: func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
 				repo, ref, _, _ := common.GetRepoReference(image)
 
 				if common.IsDigest(ref) {
-					return getCveResults(ref), nil
+					return cvemodel.ScanResult{CVEMap: getCveResults(ref)}, nil
 				}
 
 				repoMeta, _ := metaDB.GetRepoMeta(ctx, repo)
@@ -2050,7 +2050,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 					panic("unexpected tag '" + ref + "', test might be wrong")
 				}
 
-				return getCveResults(repoMeta.Tags[ref].Digest), nil
+				return cvemodel.ScanResult{CVEMap: getCveResults(repoMeta.Tags[ref].Digest)}, nil
 			},
 			GetCachedResultFn: func(digestStr string) map[string]cvemodel.CVE {
 				return getCveResults(digestStr)
@@ -3052,6 +3052,161 @@ func TestUtils(t *testing.T) {
 					},
 				})
 			So(err, ShouldBeNil)
+		})
+
+		Convey("checkImageInput resolves index manifest platform from index descriptor", func() {
+			amd64Digest := godigest.FromString("sha256:amd64manifest")
+
+			imageInput, err := resolveImageData(context.Background(), gql_generated.ImageInput{
+				Repo: "hello-artifact",
+				Tag:  "v2",
+				Platform: &gql_generated.PlatformInput{
+					Os:   ref("linux"),
+					Arch: ref("amd64"),
+				},
+			}, mocks.MetaDBMock{
+				GetRepoMetaFn: func(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
+					return mTypes.RepoMeta{Tags: map[string]mTypes.Descriptor{
+						"v2": {
+							Digest:    "sha256:indexdigest",
+							MediaType: ispec.MediaTypeImageIndex,
+						},
+					}}, nil
+				},
+				GetImageMetaFn: func(digest godigest.Digest) (mTypes.ImageMeta, error) {
+					return mTypes.ImageMeta{
+						MediaType: ispec.MediaTypeImageIndex,
+						Index: &ispec.Index{
+							Manifests: []ispec.Descriptor{
+								{
+									Digest:   amd64Digest,
+									Platform: &ispec.Platform{OS: "linux", Architecture: "amd64"},
+								},
+							},
+						},
+						Manifests: []mTypes.ManifestMeta{
+							{
+								Digest: amd64Digest,
+								Config: ispec.Image{},
+							},
+						},
+					}, nil
+				},
+			})
+			So(err, ShouldBeNil)
+			So(dderef(imageInput.Digest), ShouldEqual, amd64Digest.String())
+			So(dderef(imageInput.Platform.Os), ShouldEqual, "linux")
+			So(dderef(imageInput.Platform.Arch), ShouldEqual, "amd64")
+		})
+
+		Convey("checkImageInput resolves index manifest by digest and fills platform from index descriptor", func() {
+			amd64Digest := godigest.FromString("sha256:amd64manifest")
+
+			imageInput, err := resolveImageData(context.Background(), gql_generated.ImageInput{
+				Repo:   "hello-artifact",
+				Tag:    "v2",
+				Digest: ref(amd64Digest.String()),
+			}, mocks.MetaDBMock{
+				GetRepoMetaFn: func(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
+					return mTypes.RepoMeta{Tags: map[string]mTypes.Descriptor{
+						"v2": {Digest: "sha256:indexdigest", MediaType: ispec.MediaTypeImageIndex},
+					}}, nil
+				},
+				GetImageMetaFn: func(digest godigest.Digest) (mTypes.ImageMeta, error) {
+					return mTypes.ImageMeta{
+						MediaType: ispec.MediaTypeImageIndex,
+						Index: &ispec.Index{
+							Manifests: []ispec.Descriptor{
+								{
+									Digest:   amd64Digest,
+									Platform: &ispec.Platform{OS: "linux", Architecture: "amd64"},
+								},
+							},
+						},
+						Manifests: []mTypes.ManifestMeta{{Digest: amd64Digest, Config: ispec.Image{}}},
+					}, nil
+				},
+			})
+			So(err, ShouldBeNil)
+			So(dderef(imageInput.Digest), ShouldEqual, amd64Digest.String())
+			So(dderef(imageInput.Platform.Os), ShouldEqual, "linux")
+			So(dderef(imageInput.Platform.Arch), ShouldEqual, "amd64")
+		})
+
+		Convey("checkImageInput prefers config platform over index descriptor", func() {
+			manifestDigest := godigest.FromString("sha256:manifest")
+
+			imageInput, err := resolveImageData(context.Background(), gql_generated.ImageInput{
+				Repo: "hello-artifact",
+				Tag:  "v2",
+				Platform: &gql_generated.PlatformInput{
+					Os:   ref("linux"),
+					Arch: ref("amd64"),
+				},
+			}, mocks.MetaDBMock{
+				GetRepoMetaFn: func(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
+					return mTypes.RepoMeta{Tags: map[string]mTypes.Descriptor{
+						"v2": {Digest: "sha256:indexdigest", MediaType: ispec.MediaTypeImageIndex},
+					}}, nil
+				},
+				GetImageMetaFn: func(digest godigest.Digest) (mTypes.ImageMeta, error) {
+					return mTypes.ImageMeta{
+						MediaType: ispec.MediaTypeImageIndex,
+						Index: &ispec.Index{
+							Manifests: []ispec.Descriptor{
+								{
+									Digest:   manifestDigest,
+									Platform: &ispec.Platform{OS: "linux", Architecture: "arm64"},
+								},
+							},
+						},
+						Manifests: []mTypes.ManifestMeta{
+							{
+								Digest: manifestDigest,
+								Config: ispec.Image{Platform: ispec.Platform{OS: "linux", Architecture: "amd64"}},
+							},
+						},
+					}, nil
+				},
+			})
+			So(err, ShouldBeNil)
+			So(dderef(imageInput.Digest), ShouldEqual, manifestDigest.String())
+			So(dderef(imageInput.Platform.Os), ShouldEqual, "linux")
+			So(dderef(imageInput.Platform.Arch), ShouldEqual, "amd64")
+		})
+
+		Convey("checkImageInput returns not found when index platform does not match", func() {
+			manifestDigest := godigest.FromString("sha256:manifest")
+
+			_, err := resolveImageData(context.Background(), gql_generated.ImageInput{
+				Repo: "hello-artifact",
+				Tag:  "v2",
+				Platform: &gql_generated.PlatformInput{
+					Os:   ref("linux"),
+					Arch: ref("amd64"),
+				},
+			}, mocks.MetaDBMock{
+				GetRepoMetaFn: func(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
+					return mTypes.RepoMeta{Tags: map[string]mTypes.Descriptor{
+						"v2": {Digest: "sha256:indexdigest", MediaType: ispec.MediaTypeImageIndex},
+					}}, nil
+				},
+				GetImageMetaFn: func(digest godigest.Digest) (mTypes.ImageMeta, error) {
+					return mTypes.ImageMeta{
+						MediaType: ispec.MediaTypeImageIndex,
+						Index: &ispec.Index{
+							Manifests: []ispec.Descriptor{
+								{
+									Digest:   manifestDigest,
+									Platform: &ispec.Platform{OS: "linux", Architecture: "arm64"},
+								},
+							},
+						},
+						Manifests: []mTypes.ManifestMeta{{Digest: manifestDigest, Config: ispec.Image{}}},
+					}, nil
+				},
+			})
+			So(err, ShouldEqual, zerr.ErrImageNotFound)
 		})
 	})
 }

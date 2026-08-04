@@ -425,10 +425,8 @@ func TestImageFormat(t *testing.T) {
 
 func TestCVESearchDisabled(t *testing.T) {
 	Convey("Test with CVE search disabled", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
@@ -463,7 +461,7 @@ func TestCVESearchDisabled(t *testing.T) {
 		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
 		ctrlManager := test.NewControllerManager(ctlr)
 
-		ctrlManager.StartAndWait(port)
+		baseURL := ctrlManager.StartAndWait()
 
 		// Wait for trivy db to download
 		found, err := test.ReadLogFileAndSearchString(logPath, "cve config not provided, skipping cve-db update", 90*time.Second)
@@ -490,10 +488,8 @@ func TestCVESearchDisabled(t *testing.T) {
 func TestCVESearch(t *testing.T) {
 	Convey("Test image vulnerability scanning", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
@@ -538,7 +534,7 @@ func TestCVESearch(t *testing.T) {
 		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
 		ctrlManager := test.NewControllerManager(ctlr)
 
-		ctrlManager.StartAndWait(port)
+		baseURL := ctrlManager.StartAndWait()
 
 		// trivy db download fail
 		err = os.Mkdir(dbDir+"/_trivy", 0o000)
@@ -933,18 +929,18 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		// MetaDB loaded with initial data, now mock the scanner
 		// Setup test CVE data in mock scanner
 		scanner := mocks.CveScannerMock{
-			ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
+			ScanImageFn: func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
 				result := cache.Get(image)
 				// Will not match sending the repo:tag as a parameter, but we don't care
 				if result != nil {
-					return result, nil
+					return cvemodel.ScanResult{CVEMap: result}, nil
 				}
 
 				repo, ref, isTag := zcommon.GetImageDirAndReference(image)
 				if isTag {
 					foundRef, ok := imageMap[image]
 					if !ok {
-						return nil, ErrBadTest
+						return cvemodel.ScanResult{}, ErrBadTest
 					}
 					ref = foundRef
 				}
@@ -966,7 +962,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 
 					cache.Add(ref, result)
 
-					return result, nil
+					return cvemodel.ScanResult{CVEMap: result}, nil
 				}
 
 				if repo == repo1 && slices.Contains([]string{image12Digest, image21Digest}, ref) {
@@ -993,7 +989,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 
 					cache.Add(ref, result)
 
-					return result, nil
+					return cvemodel.ScanResult{CVEMap: result}, nil
 				}
 
 				if repo == repo1 && ref == image13Digest {
@@ -1008,7 +1004,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 
 					cache.Add(ref, result)
 
-					return result, nil
+					return cvemodel.ScanResult{CVEMap: result}, nil
 				}
 
 				// As a minor release on 1.0.0 banch
@@ -1031,12 +1027,12 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 
 					cache.Add(ref, result)
 
-					return result, nil
+					return cvemodel.ScanResult{CVEMap: result}, nil
 				}
 
 				// Unexpected error while scanning
 				if repo == repo7 {
-					return map[string]cvemodel.CVE{}, ErrFailedScan
+					return cvemodel.ScanResult{CVEMap: map[string]cvemodel.CVE{}}, ErrFailedScan
 				}
 
 				if (repo == repoMultiarch && ref == indexDigest) ||
@@ -1059,7 +1055,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 
 					cache.Add(ref, result)
 
-					return result, nil
+					return cvemodel.ScanResult{CVEMap: result}, nil
 				}
 
 				if repo == repo8 && ref == image81Digest {
@@ -1110,14 +1106,14 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 
 					cache.Add(ref, result)
 
-					return result, nil
+					return cvemodel.ScanResult{CVEMap: result}, nil
 				}
 
 				// By default the image has no vulnerabilities
 				result = map[string]cvemodel.CVE{}
 				cache.Add(ref, result)
 
-				return result, nil
+				return cvemodel.ScanResult{CVEMap: result}, nil
 			},
 			IsImageFormatScannableFn: func(repo string, reference string) (bool, error) {
 				if repo == repoMultiarch {
@@ -1574,9 +1570,9 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		t.Log("\nTest errors while scanning\n")
 
 		faultyScanner := mocks.CveScannerMock{
-			ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
+			ScanImageFn: func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
 				// Could be any type of error, let's reuse this one
-				return nil, zerr.ErrScanNotSupported
+				return cvemodel.ScanResult{}, zerr.ErrScanNotSupported
 			},
 		}
 
@@ -1630,8 +1626,8 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 			IsImageFormatScannableFn: func(repo, reference string) (bool, error) {
 				return true, nil
 			},
-			ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
-				return nil, zerr.ErrTypeAssertionFailed
+			ScanImageFn: func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
+				return cvemodel.ScanResult{}, zerr.ErrTypeAssertionFailed
 			},
 		}, MetaDB: metaDB}
 
@@ -1642,8 +1638,8 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 			IsImageFormatScannableFn: func(repo, reference string) (bool, error) {
 				return true, nil
 			},
-			ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
-				return nil, zerr.ErrTypeAssertionFailed
+			ScanImageFn: func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
+				return cvemodel.ScanResult{}, zerr.ErrTypeAssertionFailed
 			},
 		}, MetaDB: metaDB}
 		_, _, _, err = cveInfo.GetCVEDiffListForImages(ctx, "repo8:1.0.0", "repo1:0.1.0", "", "", pageInput)
@@ -1654,14 +1650,14 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 			IsImageFormatScannableFn: func(repo, reference string) (bool, error) {
 				return true, nil
 			},
-			ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
+			ScanImageFn: func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
 				if try == 1 {
-					return nil, zerr.ErrTypeAssertionFailed
+					return cvemodel.ScanResult{}, zerr.ErrTypeAssertionFailed
 				}
 
 				try++
 
-				return make(map[string]cvemodel.CVE), nil
+				return cvemodel.ScanResult{CVEMap: make(map[string]cvemodel.CVE)}, nil
 			},
 		}, MetaDB: metaDB}
 		_, _, _, err = cveInfo.GetCVEDiffListForImages(ctx, "repo8:1.0.0", "repo6:0.1.0", "", "", pageInput)
@@ -1735,12 +1731,11 @@ func TestFixedTags(t *testing.T) {
 func TestFixedTagsWithIndex(t *testing.T) {
 	Convey("Test fixed tags", t, func() {
 		tempDir := t.TempDir()
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		defaultVal := true
 		conf.Storage.RootDirectory = tempDir
+		conf.Storage.GC = false
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: &extconf.SearchConfig{
 				BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
@@ -1764,7 +1759,7 @@ func TestFixedTagsWithIndex(t *testing.T) {
 		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
 		// push index with 2 manifests: one with vulns and one without
 		vulnManifestCreated := time.Date(2010, 1, 1, 1, 1, 1, 1, time.UTC)

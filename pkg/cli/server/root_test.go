@@ -17,6 +17,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	cli "zotregistry.dev/zot/v2/pkg/cli/server"
+	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	. "zotregistry.dev/zot/v2/pkg/test/common"
 )
@@ -169,6 +170,114 @@ func TestLoadConfigurationDecodesPolicyConditions(t *testing.T) {
 		}`, htpasswdPath)
 
 		tmpfile := MakeTempFileWithContent(t, "zot-policy-conditions-bad.json", content)
+		cfg := config.New()
+
+		err := cli.LoadConfiguration(cfg, tmpfile)
+		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestLoadConfigurationSyncCredentialHelper(t *testing.T) {
+	Convey("the generic oauth2CredentialHelper dictionary loads and decodes", t, func() {
+		content := `{
+			"storage": {"rootDirectory": "/tmp/zot"},
+			"http": {"address": "127.0.0.1", "port": "8080"},
+			"extensions": {
+				"sync": {
+					"registries": [
+						{
+							"urls": ["https://registry.example.com"],
+							"onDemand": true,
+							"credentialHelper": "oauth2",
+							"oauth2CredentialHelper": {
+								"tokenURL": "https://idp.example.com/token",
+								"signingFile": "/run/secrets/signing-config.json",
+								"grantType": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+								"clientID": "zot-sync",
+								"clientSecretFile": "/etc/zot/secret",
+								"scopes": ["repository:pull"]
+							}
+						}
+					]
+				}
+			}
+		}`
+
+		tmpfile := MakeTempFileWithContent(t, "zot-sync-oauth2.json", content)
+		cfg := config.New()
+
+		// UnmarshalExact rejects unknown keys; the nested helper keys must be
+		// absorbed by the generic dictionary rather than flagged as unused.
+		err := cli.LoadConfiguration(cfg, tmpfile)
+		So(err, ShouldBeNil)
+
+		registries := cfg.Extensions.Sync.Registries
+		So(registries, ShouldHaveLength, 1)
+		So(registries[0].CredentialHelper, ShouldEqual, "oauth2")
+		So(registries[0].Oauth2CredentialHelper, ShouldNotBeEmpty)
+
+		oauth2Config, err := syncconf.OAuth2HelperConfigFromMap(registries[0].Oauth2CredentialHelper)
+		So(err, ShouldBeNil)
+		So(oauth2Config, ShouldNotBeNil)
+		So(oauth2Config.TokenURL, ShouldEqual, "https://idp.example.com/token")
+		So(oauth2Config.SigningFile, ShouldEqual, "/run/secrets/signing-config.json")
+		So(oauth2Config.GrantType, ShouldEqual, "urn:ietf:params:oauth:grant-type:jwt-bearer")
+		So(oauth2Config.ClientID, ShouldEqual, "zot-sync")
+		So(oauth2Config.ClientSecretFile, ShouldEqual, "/etc/zot/secret")
+		So(oauth2Config.Scopes, ShouldResemble, []string{"repository:pull"})
+	})
+
+	Convey("an incomplete oauth2CredentialHelper config fails at load time", t, func() {
+		content := `{
+			"storage": {"rootDirectory": "/tmp/zot"},
+			"http": {"address": "127.0.0.1", "port": "8080"},
+			"extensions": {
+				"sync": {
+					"registries": [
+						{
+							"urls": ["https://registry.example.com"],
+							"onDemand": true,
+							"credentialHelper": "oauth2",
+							"oauth2CredentialHelper": {
+								"signingFile": "/run/secrets/signing-config.json"
+							}
+						}
+					]
+				}
+			}
+		}`
+
+		tmpfile := MakeTempFileWithContent(t, "zot-sync-oauth2-no-tokenurl.json", content)
+		cfg := config.New()
+
+		// tokenURL is required
+		err := cli.LoadConfiguration(cfg, tmpfile)
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("a misspelled oauth2CredentialHelper key fails at load time", t, func() {
+		content := `{
+			"storage": {"rootDirectory": "/tmp/zot"},
+			"http": {"address": "127.0.0.1", "port": "8080"},
+			"extensions": {
+				"sync": {
+					"registries": [
+						{
+							"urls": ["https://registry.example.com"],
+							"onDemand": true,
+							"credentialHelper": "oauth2",
+							"oauth2CredentialHelper": {
+								"tokenURL": "https://idp.example.com/token",
+								"signingFile": "/run/secrets/signing-config.json",
+								"clientSecret": "misspelled-clientSecretFile"
+							}
+						}
+					]
+				}
+			}
+		}`
+
+		tmpfile := MakeTempFileWithContent(t, "zot-sync-oauth2-bad-key.json", content)
 		cfg := config.New()
 
 		err := cli.LoadConfiguration(cfg, tmpfile)
@@ -1902,6 +2011,49 @@ storage:
 		So(err, ShouldNotBeNil)
 	})
 
+	Convey("Test verify sync with maxRetryDelay without retryDelay", t, func(c C) {
+		content := `{"storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+							"maxRetryDelay": "30s"}]}}}`
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+		os.Args = []string{"cli_test", "verify", tmpfile}
+		err := cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+		So(err, ShouldWrap, zerr.ErrBadConfig)
+		So(err.Error(), ShouldContainSubstring, "retryDelay is required when using maxRetryDelay")
+	})
+
+	Convey("Test verify sync with maxRetryDelay less than retryDelay", t, func(c C) {
+		content := `{"storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+							"retryDelay": "30s", "maxRetryDelay": "1s"}]}}}`
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+		os.Args = []string{"cli_test", "verify", tmpfile}
+		err := cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+		So(err, ShouldWrap, zerr.ErrBadConfig)
+		So(err.Error(), ShouldContainSubstring, "maxRetryDelay must be greater than or equal to retryDelay")
+	})
+
+	Convey("Test verify sync with valid maxRetryDelay", t, func(c C) {
+		content := `{"storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+							"maxRetries": 3, "retryDelay": "1s", "maxRetryDelay": "30s"}]}}}`
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+		os.Args = []string{"cli_test", "verify", tmpfile}
+		err := cli.NewServerRootCmd().Execute()
+		So(err, ShouldBeNil)
+	})
+
 	Convey("Test verify config with unknown keys", t, func(c C) {
 		content := `{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot"},
 							"http": {"url": "127.0.0.1", "port": "8080"},
@@ -3477,6 +3629,107 @@ func TestBearerASMConfigValidation(t *testing.T) {
 			err := cli.LoadConfiguration(cfg, tmpfile)
 			So(err, ShouldNotBeNil)
 			So(err, ShouldWrap, zerr.ErrBadConfig)
+		})
+
+		Convey("Reject upstream token endpoint without service", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1", "port": "8080",
+					"auth": {
+						"bearer": {
+							"realm": "test", "service": "test",
+							"upstreamTokenEndpoint": {"realm": "https://auth.example.com/token"}
+						}
+					}
+				}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+		})
+
+		Convey("Reject invalid upstream token endpoint realm", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1", "port": "8080",
+					"auth": {
+						"bearer": {
+							"realm": "test", "service": "test",
+							"upstreamTokenEndpoint": {"realm": "/token", "service": "upstream"}
+						}
+					}
+				}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+		})
+
+		Convey("Valid upstream token endpoint config is accepted", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1", "port": "8080",
+					"auth": {
+						"bearer": {
+							"realm": "test", "service": "test",
+							"upstreamTokenEndpoint": {"realm": "https://auth.example.com/token", "service": "upstream"}
+						}
+					}
+				}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Reject insecure upstream token endpoint by default", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1", "port": "8080",
+					"auth": {
+						"bearer": {
+							"realm": "test", "service": "test",
+							"upstreamTokenEndpoint": {"realm": "http://auth.example.com/token", "service": "upstream"}
+						}
+					}
+				}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+		})
+
+		Convey("Allow insecure upstream token endpoint with explicit opt-in", func() {
+			content := `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1", "port": "8080",
+					"auth": {
+						"bearer": {
+							"realm": "test", "service": "test",
+							"upstreamTokenEndpoint": {
+								"realm": "http://auth.example.com/token", "service": "upstream",
+								"allowInsecureHttp": true
+							}
+						}
+					}
+				}
+			}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldBeNil)
 		})
 
 		Convey("Reject empty region", func() {

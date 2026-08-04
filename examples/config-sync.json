@@ -75,7 +75,8 @@
 					"stream": true,
 					"tlsVerify": true,
 					"maxRetries": 5,
-					"retryDelay": "30s",
+					"retryDelay": "1s",
+					"maxRetryDelay": "30s",
 					"syncTimeout": "10m"
 				},
 				{

@@ -34,7 +34,7 @@ function setup_file() {
     http_event_dir="${BATS_FILE_TMPDIR}/http_events"
     http_server_start http_receiver "${http_server_port}" "${http_event_dir}"
     echo ${http_server_port} > ${BATS_FILE_TMPDIR}/http_server.port
-    wait_for_http_server $http_server_port
+    wait_for_http_server $http_server_port http_receiver
 
     skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.20 oci:${TEST_DATA_DIR}/golang:1.20
 

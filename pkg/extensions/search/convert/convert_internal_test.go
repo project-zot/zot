@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/99designs/gqlgen/graphql"
+	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -328,6 +329,60 @@ func TestCVEConvert(t *testing.T) {
 			So(*manifestSummary.Vulnerabilities.Count, ShouldEqual, 0)
 			So(*manifestSummary.Vulnerabilities.MaxSeverity, ShouldEqual, "")
 			So(graphql.GetErrors(ctx).Error(), ShouldContainSubstring, "unable to run vulnerability scan in repo")
+		})
+	})
+}
+
+func TestManifestPlatformHelpers(t *testing.T) {
+	Convey("manifest platform helpers", t, func() {
+		Convey("IspecPlatformEmpty", func() {
+			So(IspecPlatformEmpty(ispec.Platform{}), ShouldBeTrue)
+			So(IspecPlatformEmpty(ispec.Platform{OS: "linux"}), ShouldBeFalse)
+			So(IspecPlatformEmpty(ispec.Platform{Architecture: "amd64"}), ShouldBeFalse)
+			So(IspecPlatformEmpty(ispec.Platform{OS: "linux", Architecture: "amd64"}), ShouldBeFalse)
+			So(IspecPlatformEmpty(ispec.Platform{Variant: "v8"}), ShouldBeTrue)
+		})
+
+		Convey("IndexPlatformByDigest", func() {
+			amd64Digest := godigest.FromString("sha256:amd64manifest")
+			arm64Digest := godigest.FromString("sha256:arm64manifest")
+
+			So(IndexPlatformByDigest(nil), ShouldResemble, map[string]ispec.Platform{})
+			So(IndexPlatformByDigest(&ispec.Index{}), ShouldResemble, map[string]ispec.Platform{})
+
+			index := &ispec.Index{
+				Manifests: []ispec.Descriptor{
+					{Digest: amd64Digest, Platform: &ispec.Platform{OS: "linux", Architecture: "amd64"}},
+					{Digest: arm64Digest},
+					{Digest: godigest.FromString("sha256:noplatform")},
+				},
+			}
+
+			platforms := IndexPlatformByDigest(index)
+			So(platforms, ShouldHaveLength, 1)
+			So(platforms[amd64Digest.String()], ShouldResemble, ispec.Platform{OS: "linux", Architecture: "amd64"})
+		})
+
+		Convey("ResolveManifestPlatform", func() {
+			configPlatform := ispec.Platform{OS: "windows", Architecture: "amd64"}
+			indexPlatform := ispec.Platform{OS: "linux", Architecture: "arm64"}
+			indexPlatforms := map[string]ispec.Platform{
+				"sha256:manifest": indexPlatform,
+			}
+
+			So(ResolveManifestPlatform(configPlatform, "sha256:manifest", indexPlatforms), ShouldResemble, configPlatform)
+			So(ResolveManifestPlatform(ispec.Platform{}, "sha256:manifest", indexPlatforms), ShouldResemble, indexPlatform)
+			So(ResolveManifestPlatform(ispec.Platform{}, "sha256:missing", indexPlatforms), ShouldResemble, ispec.Platform{})
+			So(ResolveManifestPlatform(ispec.Platform{}, "sha256:missing", nil), ShouldResemble, ispec.Platform{})
+		})
+
+		Convey("platformSummaryIsEmpty", func() {
+			So(platformSummaryIsEmpty(nil), ShouldBeTrue)
+			So(platformSummaryIsEmpty(&gql_generated.Platform{}), ShouldBeTrue)
+			So(platformSummaryIsEmpty(&gql_generated.Platform{Os: ref(""), Arch: ref("")}), ShouldBeTrue)
+			So(platformSummaryIsEmpty(&gql_generated.Platform{Os: ref("linux")}), ShouldBeFalse)
+			So(platformSummaryIsEmpty(&gql_generated.Platform{Arch: ref("amd64")}), ShouldBeFalse)
+			So(platformSummaryIsEmpty(&gql_generated.Platform{Os: ref("linux"), Arch: ref("amd64")}), ShouldBeFalse)
 		})
 	})
 }

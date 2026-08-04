@@ -20,10 +20,8 @@ import (
 func TestGetExensionsDisabled(t *testing.T) {
 	Convey("start zot server with extensions but no extensions built", t, func(c C) {
 		conf := config.New()
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		defaultVal := true
 
@@ -41,7 +39,7 @@ func TestGetExensionsDisabled(t *testing.T) {
 		ctlr := makeController(conf, t.TempDir())
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
 
 		var extensionList distext.ExtensionList

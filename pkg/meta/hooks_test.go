@@ -38,13 +38,13 @@ type setRepoRefFailMetaDB struct {
 }
 
 func (w *setRepoRefFailMetaDB) SetRepoReference(
-	ctx context.Context, repo, ref string, imageMeta mTypes.ImageMeta,
+	ctx context.Context, repo, ref string, imageMeta mTypes.ImageMeta, opts ...mTypes.SetRepoReferenceOption,
 ) error {
 	if ref == w.failRef {
 		return errDigestTagsSetRepoReferenceFail
 	}
 
-	return w.MetaDB.SetRepoReference(ctx, repo, ref, imageMeta)
+	return w.MetaDB.SetRepoReference(ctx, repo, ref, imageMeta, opts...)
 }
 
 // failDeleteImageStore delegates to an inner ImageStore but forces DeleteImageManifest to return deleteErr.

@@ -99,9 +99,8 @@ function teardown_file() {
         docker://127.0.0.1:${zot_port}/golang:1.20
     [ "$status" -eq 0 ]
 
-    # Check the correct number of events were generated
-    count=$(find "${output_path}" -type f | wc -l)
-    [ "$count" -eq 1 ]
+    run wait_for_nats_event_files "${output_path}" 1
+    [ "$status" -eq 0 ]
 
     result=$(jq '.Data | @base64d | fromjson' ${output_path}/1.json)
     [ $(echo "${result}" | jq -r '.type') = "zotregistry.repository.created" ]
@@ -123,9 +122,8 @@ function teardown_file() {
         docker://127.0.0.1:${zot_port}/golang:latest
     [ "$status" -eq 0 ]
 
-    # Check the correct number of events were generated
-    count=$(find "${output_path}" -type f | wc -l)
-    [ "$count" -eq 1 ]
+    run wait_for_nats_event_files "${output_path}" 1
+    [ "$status" -eq 0 ]
 
     # Validate the event
     result=$(jq '.Data | @base64d | fromjson' ${output_path}/1.json)
@@ -147,9 +145,8 @@ function teardown_file() {
     run curl -X DELETE  http://localhost:${zot_port}/v2/golang/manifests/latest
     [ "$status" -eq 0 ]
 
-    # Check the correct number of events were generated
-    count=$(find "${output_path}" -type f | wc -l)
-    [ "$count" -eq 1 ]
+    run wait_for_nats_event_files "${output_path}" 1
+    [ "$status" -eq 0 ]
 
     # Validate the event
     result=$(jq '.Data | @base64d | fromjson' ${output_path}/1.json)

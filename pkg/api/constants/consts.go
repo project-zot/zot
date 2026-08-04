@@ -26,7 +26,9 @@ const (
 	// MaxAPIKeyBodySize is the maximum number of bytes accepted for an API-key creation request body.
 	MaxAPIKeyBodySize = 8 * 1024
 	// MaxImageTrustBodySize is the maximum number of bytes accepted for image-trust key/certificate uploads.
-	MaxImageTrustBodySize        = 8 * 1024 * 1024
+	MaxImageTrustBodySize = 8 * 1024 * 1024
+	// MaxTokenRequestBodySize is the maximum form body size accepted by the token endpoint.
+	MaxTokenRequestBodySize      = 64 * 1024
 	BlobUploadUUID               = "Blob-Upload-UUID"
 	DefaultMediaType             = "application/json"
 	BinaryMediaType              = "application/octet-stream"
@@ -35,6 +37,7 @@ const (
 	CallbackBasePath             = AppNamespacePath + "/auth/callback"
 	LoginPath                    = AppNamespacePath + "/auth/login"
 	LogoutPath                   = AppNamespacePath + "/auth/logout"
+	TokenPath                    = AppNamespacePath + "/auth/token"
 	APIKeyPath                   = AppNamespacePath + "/auth/apikey"
 	SessionClientHeaderName      = "X-ZOT-API-CLIENT"
 	SessionClientHeaderValue     = "zot-ui"

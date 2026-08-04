@@ -247,7 +247,7 @@ func printStats(requests int, summary *statsSummary) {
 	log.Printf("Failed requests:\t%v", summary.errorCount)
 
 	for errStr, count := range summary.errors {
-		log.Printf("Error %s count:\t%d", errStr, count)
+		log.Printf("Error\t%s count:\t%d", errStr, count)
 	}
 
 	log.Printf("\n")
@@ -608,7 +608,7 @@ func MixedPullAndPush(
 			repos = pushMonolithAndCollect(
 				suiteCfg.workDir, suiteCfg.targetServerURL, suiteCfg.repo, count, repos, config, client, statsCh)
 			current := loadOrStore(&statusRequests, "Push", 0)
-			statusRequests.Store("Pull", current+1)
+			statusRequests.Store("Push", current+1)
 		}
 	}
 

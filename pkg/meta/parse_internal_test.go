@@ -60,6 +60,37 @@ func TestFastRestartStamp(t *testing.T) {
 	})
 }
 
+func TestIsSignatureCosignTag(t *testing.T) {
+	Convey("isSignature handles cosign-style tags safely", t, func() {
+		manifest := ispec.Manifest{}
+
+		Convey("a short tag matching the cosign regex does not panic and is not a signature", func() {
+			ok, sigType, digest := isSignature("sha256-abc.sig", manifest)
+			So(ok, ShouldBeFalse)
+			So(sigType, ShouldBeEmpty)
+			So(digest, ShouldBeEmpty)
+		})
+
+		Convey("a tag with a non-hex digest of the right length is not a signature", func() {
+			nonHex := ""
+			for range 64 {
+				nonHex += "z"
+			}
+			ok, _, _ := isSignature("sha256-"+nonHex+".sig", manifest)
+			So(ok, ShouldBeFalse)
+		})
+
+		Convey("a well-formed cosign tag is recognized as a signature", func() {
+			signed := godigest.FromString("signed-image")
+			tag := "sha256-" + signed.Encoded() + ".sig"
+			ok, sigType, digest := isSignature(tag, manifest)
+			So(ok, ShouldBeTrue)
+			So(sigType, ShouldEqual, CosignType)
+			So(digest, ShouldEqual, signed)
+		})
+	})
+}
+
 func TestParseStorageStats(t *testing.T) {
 	logger := log.NewTestLogger()
 

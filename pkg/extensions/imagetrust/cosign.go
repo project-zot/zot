@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -20,6 +21,7 @@ import (
 	"github.com/sigstore/sigstore/pkg/cryptoutils"
 	sigstoreSigs "github.com/sigstore/sigstore/pkg/signature"
 	"github.com/sigstore/sigstore/pkg/signature/options"
+	sigPayload "github.com/sigstore/sigstore/pkg/signature/payload"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 )
@@ -117,6 +119,16 @@ func VerifyCosignSignature(
 		err = verifier.VerifySignature(bytes.NewReader(signature), bytes.NewReader(payload),
 			options.WithContext(context.Background()))
 		if err == nil {
+			var signedPayload sigPayload.SimpleContainerImage
+
+			if err := json.Unmarshal(payload, &signedPayload); err != nil {
+				continue
+			}
+
+			if signedPayload.Critical.Image.DockerManifestDigest != digest.String() {
+				continue
+			}
+
 			return string(pubKeyContent), true, nil
 		}
 	}

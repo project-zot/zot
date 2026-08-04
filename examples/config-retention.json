@@ -28,7 +28,11 @@
                         "patterns": ["v1.*"],
                         "pulledWithin": "168h",
                         "pushedWithin": "168h"
-                    }]
+                    }],
+                    "keepUntagged": {
+                        "pulledWithin": "168h",
+                        "pushedWithin": "168h"
+                    }
                 },
                 {
                     "repositories": ["**"],
@@ -39,7 +43,13 @@
                         "mostRecentlyPulledCount": 10,
                         "pulledWithin": "720h",
                         "pushedWithin": "720h"
-                    }]
+                    }],
+                    "keepUntagged": {
+                        "mostRecentlyPushedCount": 10,
+                        "mostRecentlyPulledCount": 10,
+                        "pulledWithin": "720h",
+                        "pushedWithin": "720h"
+                    }
                 }
             ]
         },

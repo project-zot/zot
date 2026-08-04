@@ -263,26 +263,10 @@ func GetSignaturesInfo(isSigned bool, signatures mTypes.ManifestSignatures) []*g
 	for sigType, signatures := range signatures {
 		for _, sig := range signatures {
 			for _, layer := range sig.LayersInfo {
-				var (
-					isTrusted bool
-					author    string
-					tool      string
-				)
-
-				if layer.Signer != "" {
-					author = layer.Signer
-
-					if !layer.Date.IsZero() && time.Now().After(layer.Date) {
-						isTrusted = false
-					} else {
-						isTrusted = true
-					}
-				} else {
-					isTrusted = false
-					author = ""
-				}
-
-				tool = sigType
+				// Signer is only set by UpdateSignaturesValidity when VerifySignature succeeds, so empty Signer means untrusted.
+				tool := sigType
+				author := layer.Signer
+				isTrusted := author != ""
 
 				signaturesInfo = append(signaturesInfo,
 					&gql_generated.SignatureSummary{Tool: &tool, IsTrusted: &isTrusted, Author: &author})
@@ -440,6 +424,8 @@ func ImageIndex2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullImage
 		taggedTimestamp = pushTimestamp
 	}
 
+	indexPlatforms := IndexPlatformByDigest(fullImageMeta.Index)
+
 	for _, imageManifest := range fullImageMeta.Manifests {
 		imageManifestSummary, manifestBlobs, err := ImageManifest2ImageSummary(ctx, mTypes.FullImageMeta{
 			Repo:            fullImageMeta.Repo,
@@ -475,7 +461,16 @@ func ImageIndex2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullImage
 
 		indexSize += manifestSize
 
-		manifestSummaries = append(manifestSummaries, imageManifestSummary.Manifests[0])
+		manifestSummary := imageManifestSummary.Manifests[0]
+		if platformSummaryIsEmpty(manifestSummary.Platform) {
+			resolved := ResolveManifestPlatform(imageManifest.Config.Platform, imageManifest.Digest.String(), indexPlatforms)
+			if !IspecPlatformEmpty(resolved) {
+				gqlPlatform := getPlatform(resolved)
+				manifestSummary.Platform = &gqlPlatform
+			}
+		}
+
+		manifestSummaries = append(manifestSummaries, manifestSummary)
 	}
 
 	signaturesInfo := GetSignaturesInfo(isSigned, fullImageMeta.Signatures)
@@ -490,6 +485,8 @@ func ImageIndex2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullImage
 	if imageLastUpdated == nil {
 		imageLastUpdated = &indexLastUpdated
 	}
+
+	indexArtifactType := zcommon.GetIndexArtifactType(*fullImageMeta.Index)
 
 	indexSummary := gql_generated.ImageSummary{
 		RepoName:          &repo,
@@ -515,6 +512,7 @@ func ImageIndex2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullImage
 		Vendor:            &annotations.Vendor,
 		Authors:           &annotations.Authors,
 		Referrers:         getReferrers(fullImageMeta.Referrers),
+		ArtifactType:      &indexArtifactType,
 	}
 
 	return &indexSummary, indexBlobs, nil
@@ -610,6 +608,7 @@ func ImageManifest2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullIm
 		Vendor:            &annotations.Vendor,
 		Authors:           &authors,
 		Referrers:         manifestSummary.Referrers,
+		ArtifactType:      &artifactType,
 	}
 
 	return &imageSummary, imageBlobsMap, nil
@@ -630,6 +629,49 @@ func getPlatform(platform ispec.Platform) gql_generated.Platform {
 		Os:   ref(platform.OS),
 		Arch: ref(getArch(platform.Architecture, platform.Variant)),
 	}
+}
+
+func IspecPlatformEmpty(platform ispec.Platform) bool {
+	return platform.OS == "" && platform.Architecture == ""
+}
+
+func IndexPlatformByDigest(index *ispec.Index) map[string]ispec.Platform {
+	result := make(map[string]ispec.Platform)
+	if index == nil {
+		return result
+	}
+
+	for i := range index.Manifests {
+		desc := index.Manifests[i]
+		if desc.Platform == nil {
+			continue
+		}
+
+		result[desc.Digest.String()] = *desc.Platform
+	}
+
+	return result
+}
+
+func ResolveManifestPlatform(configPlatform ispec.Platform, digest string, indexPlatforms map[string]ispec.Platform,
+) ispec.Platform {
+	if !IspecPlatformEmpty(configPlatform) {
+		return configPlatform
+	}
+
+	if platform, ok := indexPlatforms[digest]; ok {
+		return platform
+	}
+
+	return configPlatform
+}
+
+func platformSummaryIsEmpty(platform *gql_generated.Platform) bool {
+	if platform == nil {
+		return true
+	}
+
+	return deref(platform.Os, "") == "" && deref(platform.Arch, "") == ""
 }
 
 func getArch(arch string, variant string) string {
