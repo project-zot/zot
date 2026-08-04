@@ -2571,6 +2571,10 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 				return ok, size, checkErr
 			}
 
+			// DedupeBlob repairs a corrupted global blobstore copy synchronously (see the
+			// !SameFile branch), so reupload converges immediately; this bounded poll is
+			// only a margin for real network latency against actual cloud backends, not a
+			// wait for eventual consistency.
 			waitForExpectedBlobSize := func(digest godigest.Digest, expectedSize int) (bool, int64, error) {
 				var (
 					ok       bool
@@ -2581,7 +2585,7 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 					statErr  error
 				)
 
-				for range 300 {
+				for range 20 {
 					ok, size, checkErr = imgStore.CheckBlob(context.Background(), repoName, digest)
 					statOK, statSize, _, statErr = imgStore.StatBlob(repoName, digest)
 
@@ -2652,18 +2656,6 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 
 				if testcase.storageType != storageConstants.LocalStorageDriverName {
 					ok, _, err = waitForExpectedBlobSize(blobDigest, blobSize)
-					for range 4 {
-						if ok && err == nil {
-							break
-						}
-
-						// Force rewrite path for eventual-consistency backends.
-						_ = driver.Delete(blobPath)
-						err = WriteImageToFileSystem(image, repoName, tag, storeController)
-						So(err, ShouldBeNil)
-
-						ok, _, err = waitForExpectedBlobSize(blobDigest, blobSize)
-					}
 					So(ok, ShouldBeTrue)
 					So(err, ShouldBeNil)
 				}
@@ -2720,18 +2712,6 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 
 				if testcase.storageType != storageConstants.LocalStorageDriverName {
 					ok, _, err = waitForExpectedBlobSize(blobDigest, blobSize)
-					for range 4 {
-						if ok && err == nil {
-							break
-						}
-
-						// Force rewrite path for eventual-consistency backends.
-						_ = driver.Delete(blobPath)
-						err = WriteMultiArchImageToFileSystem(image, repoName, tag, storeController)
-						So(err, ShouldBeNil)
-
-						ok, _, err = waitForExpectedBlobSize(blobDigest, blobSize)
-					}
 					So(ok, ShouldBeTrue)
 					So(err, ShouldBeNil)
 				}
