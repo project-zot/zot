@@ -38,6 +38,8 @@ type Service interface {
 	// Get the sync timeout configured for this service
 	GetSyncTimeout() time.Duration
 	GetBlobStream(ctx context.Context, repo string, digest godigest.Digest) (io.ReadCloser, int64, error)
+	// Get the upstream size of a blob without downloading it
+	StatBlob(ctx context.Context, repo string, digest godigest.Digest) (int64, error)
 	IsStreamEnabled() bool
 }
 

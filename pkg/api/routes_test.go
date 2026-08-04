@@ -2374,6 +2374,7 @@ type blobStreamSyncOnDemandMock struct {
 	syncBlobOnDemandFn func(ctx context.Context, repo string, digest godigest.Digest,
 		imgStore storageTypes.ImageStore,
 	) (io.ReadCloser, int64, bool, <-chan struct{}, error)
+	statBlobOnDemandFn func(ctx context.Context, repo string, digest godigest.Digest) (int64, error)
 	blobDownloadDoneFn func(repo string, digest godigest.Digest, err error)
 }
 
@@ -2395,6 +2396,16 @@ func (mock blobStreamSyncOnDemandMock) SyncBlobOnDemand(ctx context.Context, rep
 	}
 
 	return nil, 0, false, nil, nil
+}
+
+func (mock blobStreamSyncOnDemandMock) StatBlobOnDemand(ctx context.Context, repo string,
+	digest godigest.Digest,
+) (int64, error) {
+	if mock.statBlobOnDemandFn != nil {
+		return mock.statBlobOnDemandFn(ctx, repo, digest)
+	}
+
+	return 0, zerr.ErrBlobNotFound
 }
 
 func (mock blobStreamSyncOnDemandMock) BlobDownloadDone(repo string, digest godigest.Digest, err error) {
@@ -2863,6 +2874,131 @@ func TestGetBlobStreamOnDemandSignalsBlobDownloadDoneOnCacheCommitError(t *testi
 	case <-time.After(time.Second):
 		t.Fatal("BlobDownloadDone was not called")
 	}
+}
+
+func newBlobStreamCheckBlobRequest(t *testing.T, digest godigest.Digest) *http.Request {
+	t.Helper()
+
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodHead,
+		"http://example.com/v2/test/blobs/sha256:test",
+		http.NoBody,
+	)
+
+	return mux.SetURLVars(req, map[string]string{
+		"name":   "test",
+		"digest": digest.String(),
+	})
+}
+
+func TestCheckBlobStreamOnDemandServesUpstreamStat(t *testing.T) {
+	layerDigest := godigest.FromString("stat-upstream")
+
+	for _, testCase := range []struct {
+		name        string
+		checkBlobFn func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error)
+	}{
+		{
+			name: "blob not found",
+			checkBlobFn: func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
+				return false, 0, zerr.ErrBlobNotFound
+			},
+		},
+		{
+			name: "blob missing without error",
+			checkBlobFn: func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
+				return false, 0, nil
+			},
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctlr := api.NewController(config.New())
+			ctlr.Router = mux.NewRouter()
+			ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
+				CheckBlobFn: testCase.checkBlobFn,
+				GetIndexContentFn: func(repo string) ([]byte, error) {
+					return nil, zerr.ErrManifestNotFound
+				},
+			}
+			ctlr.SyncOnDemand = blobStreamSyncOnDemandMock{
+				statBlobOnDemandFn: func(ctx context.Context, repo string, digest godigest.Digest) (int64, error) {
+					assert.Equal(t, "test", repo)
+					assert.Equal(t, layerDigest, digest)
+
+					return 4096, nil
+				},
+			}
+
+			rec := httptest.NewRecorder()
+			api.NewRouteHandler(ctlr).CheckBlob(rec, newBlobStreamCheckBlobRequest(t, layerDigest))
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			assert.Equal(t, "4096", resp.Header.Get("Content-Length"))
+			assert.Equal(t, constants.BinaryMediaType, resp.Header.Get("Content-Type"))
+			assert.Equal(t, layerDigest.String(), resp.Header.Get(constants.DistContentDigestKey))
+			// Streaming GET cannot serve ranges before the blob is cached.
+			assert.Empty(t, resp.Header.Get("Accept-Ranges"))
+		})
+	}
+}
+
+func TestCheckBlobStreamOnDemandUpstreamMissReturnsBlobUnknown(t *testing.T) {
+	layerDigest := godigest.FromString("stat-upstream-miss")
+
+	ctlr := api.NewController(config.New())
+	ctlr.Router = mux.NewRouter()
+	ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
+		CheckBlobFn: func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
+			return false, 0, zerr.ErrBlobNotFound
+		},
+		GetIndexContentFn: func(repo string) ([]byte, error) {
+			return nil, zerr.ErrManifestNotFound
+		},
+	}
+	ctlr.SyncOnDemand = blobStreamSyncOnDemandMock{
+		statBlobOnDemandFn: func(ctx context.Context, repo string, digest godigest.Digest) (int64, error) {
+			return 0, zerr.ErrBlobNotFound
+		},
+	}
+
+	rec := httptest.NewRecorder()
+	api.NewRouteHandler(ctlr).CheckBlob(rec, newBlobStreamCheckBlobRequest(t, layerDigest))
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+
+	var errList apiErr.ErrorList
+
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&errList))
+	require.Len(t, errList.Errors, 1)
+	assert.Equal(t, apiErr.BLOB_UNKNOWN.String(), errList.Errors[0].Code)
+}
+
+func TestCheckBlobWithoutStreamingDoesNotStatUpstream(t *testing.T) {
+	layerDigest := godigest.FromString("stat-upstream-disabled")
+
+	handler := newBlobTestRouteHandler(t, mocks.MockedImageStore{
+		CheckBlobFn: func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
+			return false, 0, zerr.ErrBlobNotFound
+		},
+		GetIndexContentFn: func(repo string) ([]byte, error) {
+			return nil, zerr.ErrManifestNotFound
+		},
+	})
+
+	rec := httptest.NewRecorder()
+	handler.CheckBlob(rec, newBlobStreamCheckBlobRequest(t, layerDigest))
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 }
 
 func TestGetBlobFallsBackOnInvalidDescriptorContentType(t *testing.T) {

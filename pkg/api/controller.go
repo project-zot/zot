@@ -660,6 +660,7 @@ type SyncOnDemand interface {
 	SyncReferrers(ctx context.Context, repo string, subjectDigestStr string, referenceTypes []string) error
 	SyncBlobOnDemand(ctx context.Context, repo string, digest godigest.Digest,
 		imgStore storageTypes.ImageStore) (io.ReadCloser, int64, bool, <-chan struct{}, error)
+	StatBlobOnDemand(ctx context.Context, repo string, digest godigest.Digest) (int64, error)
 	BlobDownloadDone(repo string, digest godigest.Digest, err error)
 	IsStreamEnabled() bool
 }

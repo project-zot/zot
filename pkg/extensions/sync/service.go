@@ -354,20 +354,17 @@ func (service *BaseService) IsStreamEnabled() bool {
 	return service.config.Stream
 }
 
-func (service *BaseService) GetBlobStream(ctx context.Context, repo string,
-	digest godigest.Digest,
-) (io.ReadCloser, int64, error) {
+// remoteBlobClient resolves the upstream reference for a repo and returns the
+// client to run blob requests against it with.
+func (service *BaseService) remoteBlobClient(repo string) (*regclient.RegClient, ref.Ref, error) {
 	remoteRepo := repo
 
 	if len(service.config.Content) > 0 {
 		remoteRepo = service.contentManager.GetRepoSource(repo)
 		if remoteRepo == "" {
-			return nil, 0, zerr.ErrSyncImageFilteredOut
+			return nil, ref.Ref{}, zerr.ErrSyncImageFilteredOut
 		}
 	}
-
-	service.log.Info().Str("repo", repo).Str("digest", digest.String()).
-		Msg("sync: streaming blob from upstream")
 
 	if err := service.refreshRegistryTemporaryCredentials(); err != nil {
 		service.log.Error().Err(err).Msg("failed to refresh credentials")
@@ -377,16 +374,28 @@ func (service *BaseService) GetBlobStream(ctx context.Context, repo string,
 
 	remoteRef, err := ref.New(remoteURL + "/" + remoteRepo)
 	if err != nil {
-		return nil, 0, err
+		return nil, ref.Ref{}, err
 	}
-
-	desc := descriptor.Descriptor{Digest: digest}
 
 	service.clientLock.RLock()
 	rc := service.rc
 	service.clientLock.RUnlock()
 
-	blobReader, err := rc.BlobGet(ctx, remoteRef, desc)
+	return rc, remoteRef, nil
+}
+
+func (service *BaseService) GetBlobStream(ctx context.Context, repo string,
+	digest godigest.Digest,
+) (io.ReadCloser, int64, error) {
+	service.log.Info().Str("repo", repo).Str("digest", digest.String()).
+		Msg("sync: streaming blob from upstream")
+
+	client, remoteRef, err := service.remoteBlobClient(repo)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	blobReader, err := client.BlobGet(ctx, remoteRef, descriptor.Descriptor{Digest: digest})
 	if err != nil {
 		return nil, 0, err
 	}
@@ -394,6 +403,28 @@ func (service *BaseService) GetBlobStream(ctx context.Context, repo string,
 	size := blobReader.GetDescriptor().Size
 
 	return blobReader, size, nil
+}
+
+func (service *BaseService) StatBlob(ctx context.Context, repo string,
+	digest godigest.Digest,
+) (int64, error) {
+	service.log.Info().Str("repo", repo).Str("digest", digest.String()).
+		Msg("sync: checking blob on upstream")
+
+	client, remoteRef, err := service.remoteBlobClient(repo)
+	if err != nil {
+		return 0, err
+	}
+
+	// BlobHead sends an upstream HEAD, so the blob itself is never transferred.
+	blobReader, err := client.BlobHead(ctx, remoteRef, descriptor.Descriptor{Digest: digest})
+	if err != nil {
+		return 0, err
+	}
+
+	defer blobReader.Close()
+
+	return blobReader.GetDescriptor().Size, nil
 }
 
 func (service *BaseService) SyncReferrers(ctx context.Context, repo string,

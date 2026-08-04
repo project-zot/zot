@@ -13,6 +13,31 @@ import (
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
+// handleBlobStatUpstream answers a HEAD request for a blob that is not cached yet by
+// asking upstream for its size, keeping HEAD consistent with GET, which serves the
+// same blob by streaming it. It reports whether it wrote a response.
+func (rh *RouteHandler) handleBlobStatUpstream(response http.ResponseWriter, request *http.Request,
+	repo string, digest godigest.Digest, imgStore storageTypes.ImageStore,
+) bool {
+	if rh.c.SyncOnDemand == nil || !rh.c.SyncOnDemand.IsStreamEnabled() {
+		return false
+	}
+
+	size, err := rh.c.SyncOnDemand.StatBlobOnDemand(request.Context(), repo, digest)
+	if err != nil {
+		return false
+	}
+
+	// No Accept-Ranges here: until the blob is cached, GET serves it by streaming and
+	// range requests are not supported.
+	response.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+	response.Header().Set("Content-Type", resolveBlobResponseMediaType(imgStore, repo, digest, rh.c.Log))
+	response.Header().Set(constants.DistContentDigestKey, digest.String())
+	response.WriteHeader(http.StatusOK)
+
+	return true
+}
+
 func (rh *RouteHandler) handleBlobStream(response http.ResponseWriter, request *http.Request,
 	repo string, digest godigest.Digest, mediaType string, imgStore storageTypes.ImageStore,
 ) bool {

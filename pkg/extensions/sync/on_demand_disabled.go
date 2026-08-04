@@ -29,6 +29,12 @@ func (onDemand *BaseOnDemand) SyncBlobOnDemand(ctx context.Context, repo string,
 	return nil, 0, false, nil, nil
 }
 
+func (onDemand *BaseOnDemand) StatBlobOnDemand(ctx context.Context, repo string,
+	digest godigest.Digest,
+) (int64, error) {
+	return 0, nil
+}
+
 func (onDemand *BaseOnDemand) BlobDownloadDone(repo string, digest godigest.Digest, err error) {}
 
 func (onDemand *BaseOnDemand) IsStreamEnabled() bool {

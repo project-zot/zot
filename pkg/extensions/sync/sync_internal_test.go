@@ -49,6 +49,7 @@ type blobStreamTestService struct {
 	streamEnabled bool
 	syncTimeout   time.Duration
 	getBlobStream func(ctx context.Context, repo string, digest godigest.Digest) (io.ReadCloser, int64, error)
+	statBlob      func(ctx context.Context, repo string, digest godigest.Digest) (int64, error)
 }
 
 func (service blobStreamTestService) GetNextRepo(lastRepo string) (string, error) {
@@ -89,6 +90,12 @@ func (service blobStreamTestService) GetBlobStream(ctx context.Context, repo str
 	return service.getBlobStream(ctx, repo, digest)
 }
 
+func (service blobStreamTestService) StatBlob(ctx context.Context, repo string,
+	digest godigest.Digest,
+) (int64, error) {
+	return service.statBlob(ctx, repo, digest)
+}
+
 func (service blobStreamTestService) IsStreamEnabled() bool {
 	return service.streamEnabled
 }
@@ -103,6 +110,63 @@ func TestOnDemandBlobStreaming(t *testing.T) {
 
 		onDemand.Add(blobStreamTestService{streamEnabled: true})
 		So(onDemand.IsStreamEnabled(), ShouldBeTrue)
+	})
+
+	Convey("stat blob skips services without streaming and returns the first hit", t, func() {
+		digest := godigest.FromString("stat")
+		statErr := errors.New("upstream does not have it")
+		streamDisabledCalled := false
+
+		onDemand := NewOnDemand(log.NewTestLogger())
+		onDemand.Add(blobStreamTestService{
+			streamEnabled: false,
+			statBlob: func(ctx context.Context, repo string, blobDigest godigest.Digest) (int64, error) {
+				streamDisabledCalled = true
+
+				return 1, nil
+			},
+		})
+		onDemand.Add(blobStreamTestService{
+			streamEnabled: true,
+			statBlob: func(ctx context.Context, repo string, blobDigest godigest.Digest) (int64, error) {
+				return 0, statErr
+			},
+		})
+		onDemand.Add(blobStreamTestService{
+			streamEnabled: true,
+			statBlob: func(ctx context.Context, repo string, blobDigest godigest.Digest) (int64, error) {
+				So(repo, ShouldEqual, "repo")
+				So(blobDigest, ShouldResemble, digest)
+
+				return 42, nil
+			},
+		})
+
+		size, err := onDemand.StatBlobOnDemand(context.Background(), "repo", digest)
+		So(err, ShouldBeNil)
+		So(size, ShouldEqual, 42)
+		So(streamDisabledCalled, ShouldBeFalse)
+	})
+
+	Convey("stat blob reports not found when no service has the blob", t, func() {
+		digest := godigest.FromString("stat-missing")
+
+		onDemand := NewOnDemand(log.NewTestLogger())
+
+		size, err := onDemand.StatBlobOnDemand(context.Background(), "repo", digest)
+		So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
+		So(size, ShouldEqual, 0)
+
+		onDemand.Add(blobStreamTestService{
+			streamEnabled: true,
+			statBlob: func(ctx context.Context, repo string, blobDigest godigest.Digest) (int64, error) {
+				return 0, zerr.ErrBlobNotFound
+			},
+		})
+
+		size, err = onDemand.StatBlobOnDemand(context.Background(), "repo", digest)
+		So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
+		So(size, ShouldEqual, 0)
 	})
 
 	Convey("cache hit returns cached blob without upstream stream", t, func() {

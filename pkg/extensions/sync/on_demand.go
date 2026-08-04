@@ -184,6 +184,34 @@ func (onDemand *BaseOnDemand) SyncBlobOnDemand(ctx context.Context, repo string,
 	return nil, 0, false, nil, err
 }
 
+// StatBlobOnDemand returns the upstream size of a blob without downloading it, so
+// that a HEAD request can be answered for a blob that is not cached yet.
+func (onDemand *BaseOnDemand) StatBlobOnDemand(ctx context.Context, repo string,
+	digest godigest.Digest,
+) (int64, error) {
+	err := zerr.ErrBlobNotFound
+
+	for _, service := range onDemand.services {
+		if !service.IsStreamEnabled() {
+			continue
+		}
+
+		statCtx, cancel := context.WithTimeout(ctx, service.GetSyncTimeout())
+
+		var size int64
+
+		size, err = service.StatBlob(statCtx, repo, digest)
+
+		cancel()
+
+		if err == nil {
+			return size, nil
+		}
+	}
+
+	return 0, err
+}
+
 func (onDemand *BaseOnDemand) BlobDownloadDone(repo string, digest godigest.Digest, err error) {
 	key := repo + "@" + digest.String()
 
