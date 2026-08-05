@@ -21,13 +21,13 @@ jobs:
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
     - name: Install go 1.26
-      uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         cache: false
         check-latest: true
         go-version: 1.26.x
     - name: Checkout this PR
-      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
     - name: Start zot server
@@ -39,7 +39,7 @@ jobs:
           echo "OCI_REGISTRY=${IP}:8080" >> $GITHUB_ENV
     - name: run conformance
       # pinned to opencontainers/distribution-spec main@fcfba1ec55526073f48b2f6d4e3d7eef410ddcbc
-      uses: opencontainers/distribution-spec@967efdc079b91785ad18c77cc4f8991a47feefbf
+      uses: opencontainers/distribution-spec@fee21197eb94360ddfa6dda0b7edabcd12456809
       env:
         OCI_REGISTRY: ${{ env.OCI_REGISTRY }}
         OCI_TLS: "disabled"

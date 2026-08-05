@@ -3,6 +3,7 @@ package meta
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 
 	godigest "github.com/opencontainers/go-digest"
@@ -240,8 +241,15 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 			SignatureType:   signatureType,
 		})
 		if err != nil {
-			log.Error().Err(err).Str("component", "metadb").
-				Msg("failed to check if image is a signature or not")
+			if errors.Is(err, zerr.ErrImageMetaNotFound) {
+				// Expected: RemoveRepoReference already deleted Signatures[signedManifestDigest]
+				// when the last reference to the signed manifest was removed.
+				log.Debug().Err(err).Str("component", "metadb").
+					Msg("signature meta already removed")
+			} else {
+				log.Error().Err(err).Str("component", "metadb").
+					Msg("failed to delete signature meta")
+			}
 
 			manageRepoMetaSuccessfully = false
 		}
@@ -264,6 +272,10 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 	if !manageRepoMetaSuccessfully {
 		log.Info().Str("tag", reference).Str("repository", repo).Str("component", "metadb").
 			Msg("failed to delete image meta was unsuccessful for tag in repo")
+
+		if !isSignature {
+			return fmt.Errorf("%w: %w", zerr.ErrManifestRestoreAttempted, err)
+		}
 
 		return err
 	}

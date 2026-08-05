@@ -21,11 +21,10 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	zerr "zotregistry.dev/zot/v2/errors"
-	"zotregistry.dev/zot/v2/pkg/common"
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	cvecache "zotregistry.dev/zot/v2/pkg/extensions/search/cve/cache"
-	"zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/meta"
 	"zotregistry.dev/zot/v2/pkg/meta/boltdb"
@@ -86,7 +85,7 @@ func (f fakeArtifactRunner) Close(ctx context.Context) error {
 var _ artifact.Runner = fakeArtifactRunner{}
 
 func generateTestImage(storeController storage.StoreController, imageName string) {
-	repoName, tag := common.GetImageDirAndTag(imageName)
+	repoName, tag := zcommon.GetImageDirAndTag(imageName)
 
 	image := CreateRandomImage()
 
@@ -621,7 +620,7 @@ func TestIsIndexScanable(t *testing.T) {
 				cache:           cvecache.NewCveCache(cacheSize, log),
 			}
 
-			scanner.cache.Add("digest", make(map[string]model.CVE))
+			scanner.cache.Add("digest", make(map[string]zcommon.CVE))
 
 			found, err := scanner.isIndexScannable("digest")
 			So(err, ShouldBeNil)

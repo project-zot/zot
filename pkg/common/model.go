@@ -1,6 +1,8 @@
 package common
 
 import (
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -291,4 +293,82 @@ type BookmarkedReposResponse struct {
 type ImageTags struct {
 	Name string   `json:"name"`
 	Tags []string `json:"tags"`
+}
+
+//nolint:tagliatelle // graphQL schema
+type CVE struct {
+	ID          string    `json:"Id"`
+	Description string    `json:"Description"`
+	Severity    string    `json:"Severity"`
+	Title       string    `json:"Title"`
+	Reference   string    `json:"Reference"`
+	PackageList []Package `json:"PackageList"`
+}
+
+func (cve *CVE) ContainsStr(str string) bool {
+	str = strings.ToUpper(str)
+
+	return strings.Contains(strings.ToUpper(cve.Title), str) ||
+		strings.Contains(strings.ToUpper(cve.ID), str) ||
+		strings.Contains(strings.ToUpper(cve.Severity), str) ||
+		strings.Contains(strings.ToUpper(cve.Reference), str) ||
+		strings.Contains(strings.ToUpper(cve.Description), str) ||
+		slices.ContainsFunc(cve.PackageList, func(pack Package) bool {
+			return strings.Contains(strings.ToUpper(pack.Name), str) ||
+				strings.Contains(strings.ToUpper(pack.FixedVersion), str) ||
+				strings.Contains(strings.ToUpper(pack.InstalledVersion), str) ||
+				strings.Contains(strings.ToUpper(pack.PackagePath), str)
+		})
+}
+
+//nolint:tagliatelle // graphQL schema
+type Package struct {
+	Name             string `json:"Name"`
+	PackagePath      string `json:"PackagePath"`
+	InstalledVersion string `json:"InstalledVersion"`
+	FixedVersion     string `json:"FixedVersion"`
+}
+
+type CVEListForImageResponse struct {
+	CVEListForImageResult `json:"data"`
+
+	Errors []ErrorGQL `json:"errors"`
+}
+
+//nolint:tagliatelle // graphQL schema
+type CVEListForImageResult struct {
+	CVEListForImage CVEResultForImage `json:"CVEListForImage"`
+}
+
+//nolint:tagliatelle // graphQL schema
+type CVEResultForImage struct {
+	Tag     string                    `json:"Tag"`
+	CVEList []CVE                     `json:"CVEList"`
+	Summary ImageVulnerabilitySummary `json:"Summary"`
+}
+
+type CVEDiffListForImagesResponse struct {
+	CVEDiffListForImagesResult `json:"data"`
+
+	Errors []ErrorGQL `json:"errors"`
+}
+
+//nolint:tagliatelle // graphQL schema
+type CVEDiffListForImagesResult struct {
+	CVEDiffListForImages CVEDiffListForImages `json:"CVEDiffListForImages"`
+}
+
+//nolint:tagliatelle // graphQL schema
+type CVEDiffListForImages struct {
+	Minuend    ImageIdentifier `json:"Minuend"`
+	Subtrahend ImageIdentifier `json:"Subtrahend"`
+	CVEList    []CVE           `json:"CVEList"`
+}
+
+type SortCriteria string
+
+type PageInput struct {
+	Limit  int
+	Offset int
+	SortBy SortCriteria
 }

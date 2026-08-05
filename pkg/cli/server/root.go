@@ -48,6 +48,17 @@ func metadataConfig(md *mapstructure.Metadata) viper.DecoderConfigOption {
 	}
 }
 
+// configDecodeHook composes the mapstructure decode hooks used to unmarshal the config
+// file. Declared at package level, rather than inline in LoadConfiguration, because that
+// function's "config" parameter shadows the "config" package.
+func configDecodeHook() mapstructure.DecodeHookFunc {
+	return mapstructure.ComposeDecodeHookFunc(
+		mapstructure.StringToTimeDurationHookFunc(),
+		eventsconf.SinkConfigDecoderHook(),
+		config.GCTimeWindowDecodeHook(),
+	)
+}
+
 func newServeCmd(conf *config.Config) *cobra.Command {
 	var forceReparse bool
 
@@ -1256,12 +1267,7 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 
 	decoderOpts := []viper.DecoderConfigOption{
 		metadataConfig(metaData),
-		viper.DecodeHook(
-			mapstructure.ComposeDecodeHookFunc(
-				mapstructure.StringToTimeDurationHookFunc(),
-				eventsconf.SinkConfigDecoderHook(),
-			),
-		),
+		viper.DecodeHook(configDecodeHook()),
 	}
 
 	if err := viperInstance.UnmarshalExact(&config, decoderOpts...); err != nil {
@@ -1607,6 +1613,11 @@ func validateGC(config *config.Config, logger zlog.Logger) error {
 			logger.Warn().Err(zerr.ErrBadConfig).
 				Msg("periodic garbage-collect interval specified without enabling garbage-collect, will be ignored")
 		}
+
+		if storageConfig.GCTimeWindow.IsSet() {
+			logger.Warn().Err(zerr.ErrBadConfig).
+				Msg("garbage-collect time window specified without enabling garbage-collect, will be ignored")
+		}
 	}
 
 	if err := validateGCRules(storageConfig.Retention, logger); err != nil {
@@ -1623,6 +1634,13 @@ func validateGC(config *config.Config, logger zlog.Logger) error {
 
 			return fmt.Errorf("%w: invalid GC delay configuration - cannot be negative or zero: %s",
 				zerr.ErrBadConfig, subPath.GCDelay)
+		}
+
+		if !subPath.GC && subPath.GCTimeWindow.IsSet() {
+			logger.Warn().Err(zerr.ErrBadConfig).
+				Str("subPath", name).
+				Str("gcTimeWindow", subPath.GCTimeWindow.String()).
+				Msg("garbage-collect time window specified without enabling garbage-collect, will be ignored")
 		}
 
 		if err := validateGCRules(subPath.Retention, logger); err != nil {

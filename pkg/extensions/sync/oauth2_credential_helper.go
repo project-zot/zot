@@ -38,6 +38,10 @@ const (
 	jwtBearerGrantType         = "urn:ietf:params:oauth:grant-type:jwt-bearer" //nolint:gosec // not a credential
 	clientAssertionType        = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
 
+	// RFC 8693 token type URNs, used when no explicit type is configured.
+	defaultSubjectTokenType   = "urn:ietf:params:oauth:token-type:jwt"          //nolint:gosec // not a credential
+	defaultRequestedTokenType = "urn:ietf:params:oauth:token-type:access_token" //nolint:gosec // not a credential
+
 	oauth2TokenUser = "<token>"
 )
 
@@ -144,9 +148,19 @@ func (credHelper *oauth2CredentialsHelper) requestValues(assertion, clientSecret
 	grantType := credHelper.grantType()
 	values.Set("grant_type", grantType)
 
-	if grantType == jwtBearerGrantType {
+	switch grantType {
+	case jwtBearerGrantType:
 		values.Set("assertion", assertion)
-	} else {
+	case syncconf.TokenExchangeGrantType:
+		/* RFC 8693 exchanges an existing token for another one, so the assertion identifies
+		the workload being federated rather than proving the client's own identity. */
+		values.Set("subject_token", assertion)
+		values.Set("subject_token_type",
+			firstNonEmpty(credHelper.config.SubjectTokenType, defaultSubjectTokenType))
+		values.Set("requested_token_type",
+			firstNonEmpty(credHelper.config.RequestedTokenType, defaultRequestedTokenType))
+		values.Set("audience", credHelper.config.Audience)
+	default:
 		values.Set("client_assertion_type", clientAssertionType)
 		values.Set("client_assertion", assertion)
 	}

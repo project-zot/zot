@@ -1,7 +1,9 @@
 package meta_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -10,6 +12,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	zerr "zotregistry.dev/zot/v2/errors"
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/meta"
@@ -467,4 +470,91 @@ func TestUpdateErrors(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 	})
+}
+
+// TestOnDeleteManifest_OrphanedSignatureReferrerDeletionSucceeds verifies that
+// OnDeleteManifest returns ErrImageMetaNotFound when deleting a signature referrer
+// whose subject manifest was already untagged.
+func TestOnDeleteManifest_OrphanedSignatureReferrerDeletionSucceeds(t *testing.T) {
+	Convey("Deleting a signature referrer after its subject's last tag is gone fails with ErrImageMetaNotFound",
+		t, func() {
+			rootDir := t.TempDir()
+			storeController := storage.StoreController{}
+			log := log.NewTestLogger()
+			metrics := monitoring.NewMetricsServer(false, log)
+
+			defer metrics.Stop()
+			storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil)
+
+			params := boltdb.DBParameters{RootDir: rootDir}
+			boltDriver, err := boltdb.GetBoltDriver(params)
+			So(err, ShouldBeNil)
+
+			metaDB, err := boltdb.New(boltDriver, log)
+			So(err, ShouldBeNil)
+
+			imgStore := storeController.GetImageStore("repo")
+			ctx := context.Background()
+
+			// Push and register the subject image.
+			image := CreateDefaultImage()
+			subjectDigest := image.Digest()
+			subjectBody := image.ManifestDescriptor.Data
+
+			So(WriteImageToFileSystem(image, "repo", "latest", storeController), ShouldBeNil)
+			So(meta.OnUpdateManifest(ctx, "repo", "latest", ispec.MediaTypeImageManifest, subjectDigest, subjectBody,
+				storeController, metaDB, log), ShouldBeNil)
+
+			// Push and register a sigstore-bundle referrer signing it.
+			emptyConfig := []byte("{}")
+			emptyConfigDigest := godigest.FromBytes(emptyConfig)
+			_, _, err = imgStore.FullBlobUpload(ctx, "repo", bytes.NewReader(emptyConfig), emptyConfigDigest)
+			So(err, ShouldBeNil)
+
+			referrer := ispec.Manifest{
+				MediaType:    ispec.MediaTypeImageManifest,
+				ArtifactType: zcommon.ArtifactTypeCosignBundle,
+				Config: ispec.Descriptor{
+					MediaType: "application/vnd.oci.empty.v1+json",
+					Digest:    emptyConfigDigest,
+					Size:      int64(len(emptyConfig)),
+				},
+				Layers: []ispec.Descriptor{},
+				Subject: &ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    subjectDigest,
+					Size:      int64(len(subjectBody)),
+				},
+			}
+			referrer.SchemaVersion = 2
+
+			referrerBody, err := json.Marshal(referrer)
+			So(err, ShouldBeNil)
+			referrerDigest := godigest.FromBytes(referrerBody)
+
+			_, _, err = imgStore.PutImageManifest(ctx, "repo", referrerDigest.String(), ispec.MediaTypeImageManifest,
+				referrerBody, nil)
+			So(err, ShouldBeNil)
+			So(meta.OnUpdateManifest(ctx, "repo", referrerDigest.String(), ispec.MediaTypeImageManifest, referrerDigest,
+				referrerBody, storeController, metaDB, log), ShouldBeNil)
+
+			repoMeta, err := metaDB.GetRepoMeta(ctx, "repo")
+			So(err, ShouldBeNil)
+			So(repoMeta.Signatures, ShouldContainKey, subjectDigest.String())
+
+			// Delete the subject's only tag.
+			So(imgStore.DeleteImageManifest(ctx, "repo", "latest", false), ShouldBeNil)
+			So(meta.OnDeleteManifest("repo", "latest", ispec.MediaTypeImageManifest, subjectDigest, subjectBody,
+				storeController, metaDB, log), ShouldBeNil)
+
+			repoMeta, err = metaDB.GetRepoMeta(ctx, "repo")
+			So(err, ShouldBeNil)
+			So(repoMeta.Signatures, ShouldNotContainKey, subjectDigest.String())
+
+			// The referrer is still present in the image store; deleting it now fails.
+			So(imgStore.DeleteImageManifest(ctx, "repo", referrerDigest.String(), false), ShouldBeNil)
+			err = meta.OnDeleteManifest("repo", referrerDigest.String(), ispec.MediaTypeImageManifest, referrerDigest,
+				referrerBody, storeController, metaDB, log)
+			So(errors.Is(err, zerr.ErrImageMetaNotFound), ShouldBeTrue)
+		})
 }

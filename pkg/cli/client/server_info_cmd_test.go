@@ -24,10 +24,8 @@ import (
 
 func TestServerStatusCommand(t *testing.T) {
 	Convey("ServerStatusCommand", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.GC = false
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -38,7 +36,7 @@ func TestServerStatusCommand(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		cm := test.NewControllerManager(ctlr)
 
-		cm.StartAndWait(conf.HTTP.Port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
 
 		_ = makeConfigFile(t, fmt.Sprintf(`{"configs":[{"_name":"status-test","url":"%s","showspinner":false}]}`,
@@ -129,18 +127,16 @@ func TestServerStatusCommandErrors(t *testing.T) {
 	})
 
 	Convey("HTTP errors", t, func() {
-		port := test.GetFreePort()
 		result := bytes.NewBuffer([]byte{})
 		searchConfig := SearchConfig{
 			SearchService: newMockService(),
-			ServURL:       fmt.Sprintf("http://127.0.0.1:%v", port),
 			User:          "",
 			OutputFormat:  "text",
 			ResultWriter:  result,
 		}
 
 		Convey("v2 is Unauthorised", func() {
-			server := StartTestHTTPServer(HTTPRoutes{
+			server, baseURL := StartTestHTTPServer(HTTPRoutes{
 				RouteHandler{
 					Route: "/v2/",
 					HandlerFunc: func(w http.ResponseWriter, r *http.Request) {
@@ -148,9 +144,10 @@ func TestServerStatusCommandErrors(t *testing.T) {
 					},
 					AllowedMethods: []string{http.MethodGet},
 				},
-			}, port)
+			})
 			defer server.Close()
 
+			searchConfig.ServURL = baseURL
 			err := GetServerStatus(searchConfig)
 			So(err, ShouldBeNil)
 			So(result.String(), ShouldContainSubstring, "unauthorised access, endpoint requires valid user credentials")
@@ -163,7 +160,7 @@ func TestServerStatusCommandErrors(t *testing.T) {
 		})
 
 		Convey("v2 bad http status code", func() {
-			server := StartTestHTTPServer(HTTPRoutes{
+			server, baseURL := StartTestHTTPServer(HTTPRoutes{
 				RouteHandler{
 					Route: "/v2/",
 					HandlerFunc: func(w http.ResponseWriter, r *http.Request) {
@@ -171,9 +168,10 @@ func TestServerStatusCommandErrors(t *testing.T) {
 					},
 					AllowedMethods: []string{http.MethodGet},
 				},
-			}, port)
+			})
 			defer server.Close()
 
+			searchConfig.ServURL = baseURL
 			err := GetServerStatus(searchConfig)
 			So(err, ShouldBeNil)
 			So(result.String(), ShouldContainSubstring, zerr.ErrAPINotSupported.Error())
@@ -181,7 +179,7 @@ func TestServerStatusCommandErrors(t *testing.T) {
 
 		Convey("MGMT errors", func() {
 			Convey("URL not found", func() {
-				server := StartTestHTTPServer(HTTPRoutes{
+				server, baseURL := StartTestHTTPServer(HTTPRoutes{
 					RouteHandler{
 						Route: "/v2/",
 						HandlerFunc: func(w http.ResponseWriter, r *http.Request) {
@@ -189,16 +187,17 @@ func TestServerStatusCommandErrors(t *testing.T) {
 						},
 						AllowedMethods: []string{http.MethodGet},
 					},
-				}, port)
+				})
 				defer server.Close()
 
+				searchConfig.ServURL = baseURL
 				err := GetServerStatus(searchConfig)
 				So(err, ShouldBeNil)
 				So(result.String(), ShouldContainSubstring, "endpoint is not available")
 			})
 
 			Convey("Unauthorized Access", func() {
-				server := StartTestHTTPServer(HTTPRoutes{
+				server, baseURL := StartTestHTTPServer(HTTPRoutes{
 					RouteHandler{
 						Route: "/v2/",
 						HandlerFunc: func(w http.ResponseWriter, r *http.Request) {
@@ -213,16 +212,17 @@ func TestServerStatusCommandErrors(t *testing.T) {
 						},
 						AllowedMethods: []string{http.MethodGet},
 					},
-				}, port)
+				})
 				defer server.Close()
 
+				searchConfig.ServURL = baseURL
 				err := GetServerStatus(searchConfig)
 				So(err, ShouldBeNil)
 				So(result.String(), ShouldContainSubstring, "unauthorised access")
 			})
 
 			Convey("Bad status code", func() {
-				server := StartTestHTTPServer(HTTPRoutes{
+				server, baseURL := StartTestHTTPServer(HTTPRoutes{
 					RouteHandler{
 						Route: "/v2/",
 						HandlerFunc: func(w http.ResponseWriter, r *http.Request) {
@@ -237,9 +237,10 @@ func TestServerStatusCommandErrors(t *testing.T) {
 						},
 						AllowedMethods: []string{http.MethodGet},
 					},
-				}, port)
+				})
 				defer server.Close()
 
+				searchConfig.ServURL = baseURL
 				err := GetServerStatus(searchConfig)
 				So(err, ShouldBeNil)
 				So(result.String(), ShouldContainSubstring, zerr.ErrAPINotSupported.Error())

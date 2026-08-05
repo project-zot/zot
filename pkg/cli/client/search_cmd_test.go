@@ -32,10 +32,8 @@ func TestReferrerCLI(t *testing.T) {
 	Convey("Test GQL", t, func() {
 		rootDir := t.TempDir()
 
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.GC = false
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -45,7 +43,7 @@ func TestReferrerCLI(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = rootDir
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(conf.HTTP.Port)
+		baseURL := cm.StartAndWait()
 
 		defer cm.StopServer()
 
@@ -127,10 +125,8 @@ func TestReferrerCLI(t *testing.T) {
 	Convey("Test REST", t, func() {
 		rootDir := t.TempDir()
 
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.GC = false
 		defaultVal := false
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -139,7 +135,7 @@ func TestReferrerCLI(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = rootDir
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(conf.HTTP.Port)
+		baseURL := cm.StartAndWait()
 
 		defer cm.StopServer()
 
@@ -220,10 +216,8 @@ func TestFormatsReferrersCLI(t *testing.T) {
 	Convey("Create server", t, func() {
 		rootDir := t.TempDir()
 
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.GC = false
 		defaultVal := false
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -232,7 +226,7 @@ func TestFormatsReferrersCLI(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = rootDir
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(conf.HTTP.Port)
+		baseURL := cm.StartAndWait()
 
 		defer cm.StopServer()
 
@@ -407,10 +401,8 @@ func TestSearchCLI(t *testing.T) {
 	Convey("Test GQL", t, func() {
 		rootDir := t.TempDir()
 
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.GC = false
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -419,7 +411,7 @@ func TestSearchCLI(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = rootDir
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(conf.HTTP.Port)
+		baseURL := cm.StartAndWait()
 
 		defer cm.StopServer()
 
@@ -518,10 +510,8 @@ func TestFormatsSearchCLI(t *testing.T) {
 	Convey("", t, func() {
 		rootDir := t.TempDir()
 
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.GC = false
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -530,7 +520,7 @@ func TestFormatsSearchCLI(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = rootDir
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(conf.HTTP.Port)
+		baseURL := cm.StartAndWait()
 
 		defer cm.StopServer()
 
@@ -689,10 +679,8 @@ func TestSearchCLIErrors(t *testing.T) {
 
 func TestSearchSort(t *testing.T) {
 	rootDir := t.TempDir()
-	port := test.GetFreePort()
-	baseURL := test.GetBaseURL(port)
 	conf := config.New()
-	conf.HTTP.Port = port
+	conf.HTTP.Port = "0"
 
 	defaultVal := true
 	conf.Extensions = &extconf.ExtensionConfig{
@@ -725,7 +713,7 @@ func TestSearchSort(t *testing.T) {
 	}
 
 	cm := test.NewControllerManager(ctlr)
-	cm.StartAndWait(conf.HTTP.Port)
+	baseURL := cm.StartAndWait()
 
 	defer cm.StopServer()
 
