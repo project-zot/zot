@@ -244,7 +244,7 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 		digest, _, err := imageStore.PutImageManifest(context.Background(), repo, reference,
 			desc.MediaType, manifestContent, nil)
 		if err != nil {
-			registry.log.Error().Str("errorType", common.TypeOf(err)).
+			registry.log.Error().Str("errorType", common.TypeOf(err)).Str("mediaType", desc.MediaType).
 				Err(err).Msg("couldn't upload manifest")
 
 			return err
@@ -332,7 +332,7 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 		_, _, err := imageStore.PutImageManifest(context.Background(), repo, reference, desc.MediaType, manifestContent, nil)
 		if err != nil {
 			registry.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).Str("reference", reference).
-				Err(err).Msg("failed to upload manifest")
+				Str("mediaType", desc.MediaType).Err(err).Msg("failed to upload manifest")
 
 			return err
 		}

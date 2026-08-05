@@ -17,6 +17,8 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -795,6 +797,31 @@ func writeOAuth2SigningFile(t *testing.T) string {
 	return signingFile
 }
 
+func TestServiceGCPCredentialHelper(t *testing.T) {
+	Convey("New wires the gcp credential helper", t, func() {
+		/* point the application default credentials at a file that is not there, so that the
+		test neither depends on an ambient Google credential nor reaches the network */
+		t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", path.Join(t.TempDir(), "absent.json"))
+
+		conf := syncconf.RegistryConfig{
+			URLs:             []string{"https://us-central1-docker.pkg.dev"},
+			CredentialHelper: "gcp",
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(service.credentialHelper, ShouldNotBeNil)
+
+		/* the credentials could not be fetched, but the map must still be usable, because the
+		refresh path writes into it without checking */
+		So(service.credentials, ShouldNotBeNil)
+		So(service.credentials, ShouldBeEmpty)
+
+		// a refresh that cannot reach the credentials is swallowed rather than fatal
+		So(service.refreshRegistryTemporaryCredentials(), ShouldBeNil)
+	})
+}
+
 func TestServiceOAuth2CredentialHelper(t *testing.T) {
 	Convey("New wires the oauth2 credential helper", t, func() {
 		tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -973,6 +1000,76 @@ func TestOAuth2HelperConfigValidate(t *testing.T) {
 			SigningFile: "/run/secrets/signing-config.json",
 		}
 		So(config.Validate(), ShouldBeNil)
+	})
+
+	Convey("a blank value counts as unset", t, func() {
+		Convey("for tokenURL", func() {
+			config := &syncconf.OAuth2HelperConfig{
+				TokenURL:    "   ",
+				SigningFile: "/run/secrets/signing-config.json",
+			}
+			So(config.Validate(), ShouldNotBeNil)
+		})
+
+		Convey("for the assertion sources", func() {
+			config := &syncconf.OAuth2HelperConfig{
+				TokenURL:      "https://idp.example.com/token",
+				AssertionFile: "  ",
+				SigningFile:   "\t",
+			}
+			So(config.Validate(), ShouldNotBeNil)
+		})
+
+		Convey("for the token-exchange audience", func() {
+			config := &syncconf.OAuth2HelperConfig{
+				TokenURL:      "https://sts.googleapis.com/v1/token",
+				AssertionFile: "/run/secrets/assertion.jwt",
+				GrantType:     syncconf.TokenExchangeGrantType,
+				Audience:      " ",
+			}
+			So(config.Validate(), ShouldNotBeNil)
+		})
+	})
+
+	Convey("token types are checked for URI shape", t, func() {
+		newConfig := func(subjectTokenType, requestedTokenType string) *syncconf.OAuth2HelperConfig {
+			return &syncconf.OAuth2HelperConfig{
+				TokenURL:           "https://sts.googleapis.com/v1/token",
+				AssertionFile:      "/run/secrets/assertion.jwt",
+				GrantType:          syncconf.TokenExchangeGrantType,
+				Audience:           "//iam.googleapis.com/projects/1/locations/global/workloadIdentityPools/p/providers/v",
+				SubjectTokenType:   subjectTokenType,
+				RequestedTokenType: requestedTokenType,
+			}
+		}
+
+		Convey("a bare word is rejected", func() {
+			So(newConfig("jwt", "").Validate(), ShouldNotBeNil)
+			So(newConfig("", "access_token").Validate(), ShouldNotBeNil)
+		})
+
+		Convey("the registered URNs are accepted", func() {
+			config := newConfig("urn:ietf:params:oauth:token-type:jwt",
+				"urn:ietf:params:oauth:token-type:access_token")
+			So(config.Validate(), ShouldBeNil)
+		})
+
+		/* RFC 8693 section 3 permits token type identifiers outside the urn scheme, so the
+		check must not insist on one. */
+		Convey("a non-urn URI is accepted", func() {
+			So(newConfig("https://schemas.example.com/legacy-token", "").Validate(), ShouldBeNil)
+		})
+
+		Convey("leaving them unset is fine, the defaults apply", func() {
+			So(newConfig("", "").Validate(), ShouldBeNil)
+		})
+
+		/* The audience is a logical name, not a URI: the one Google expects has no scheme,
+		so it must not be held to the same check. */
+		Convey("the scheme-less audience Google expects stays valid", func() {
+			So(newConfig("", "").Audience, ShouldStartWith, "//")
+			So(newConfig("", "").Validate(), ShouldBeNil)
+		})
 	})
 }
 
@@ -1997,6 +2094,359 @@ func TestHTTPRetryDelayBounds(t *testing.T) {
 			So(ok, ShouldBeTrue)
 			So(delayInit, ShouldEqual, retryDelay)
 			So(delayMax, ShouldEqual, maxRetryDelay)
+		})
+	})
+}
+
+func TestRefreshRegistryTemporaryCredentialsConcurrent(t *testing.T) {
+	Convey("Concurrent on-demand credential refresh must not race on the credentials map", t, func() {
+		logger := log.NewTestLogger()
+
+		service := &BaseService{
+			config: syncconf.RegistryConfig{
+				URLs: []string{
+					"https://111111111111.dkr.ecr.us-east-1.amazonaws.com",
+					"https://222222222222.dkr.ecr.us-east-1.amazonaws.com",
+					"https://333333333333.dkr.ecr.us-east-1.amazonaws.com",
+					"https://444444444444.dkr.ecr.us-east-1.amazonaws.com",
+				},
+				CredentialHelper: "ecr",
+			},
+			credentials:      syncconf.CredentialsFile{},
+			credentialHelper: NewECRCredentialHelper(logger, GetMockECRCredentials),
+			log:              logger,
+		}
+
+		So(service.init(), ShouldBeNil)
+		So(len(service.hosts), ShouldEqual, len(service.config.URLs))
+
+		var (
+			wg          sync.WaitGroup
+			errMu       sync.Mutex
+			refreshErrs []error
+		)
+
+		for range 10 {
+			wg.Add(1)
+
+			go func() {
+				defer wg.Done()
+
+				for range 3 {
+					if err := service.refreshRegistryTemporaryCredentials(); err != nil {
+						errMu.Lock()
+						refreshErrs = append(refreshErrs, err)
+						errMu.Unlock()
+					}
+				}
+			}()
+		}
+
+		wg.Wait()
+
+		So(refreshErrs, ShouldBeEmpty)
+		So(len(service.credentials), ShouldEqual, len(service.hosts))
+
+		// Credentials are still valid after the concurrent refresh wave, so further
+		// calls must be a no-op (no client reinit failure path, no map growth).
+		So(service.refreshRegistryTemporaryCredentials(), ShouldBeNil)
+		So(len(service.credentials), ShouldEqual, len(service.hosts))
+	})
+
+	Convey("Nil credential helper is a no-op even when CredentialHelper is set", t, func() {
+		service := &BaseService{
+			config: syncconf.RegistryConfig{
+				URLs:             []string{"https://111111111111.dkr.ecr.us-east-1.amazonaws.com"},
+				CredentialHelper: "ecr",
+			},
+			credentials: syncconf.CredentialsFile{},
+			log:         log.NewTestLogger(),
+		}
+
+		So(service.init(), ShouldBeNil)
+		So(service.refreshRegistryTemporaryCredentials(), ShouldBeNil)
+		So(len(service.credentials), ShouldEqual, 0)
+	})
+}
+
+// stubCredentialHelper is a test double for refreshRegistryTemporaryCredentials branches.
+type stubCredentialHelper struct {
+	validFn    func(url string) bool
+	refreshErr error
+	username   string
+	password   string
+}
+
+func (helper *stubCredentialHelper) AreCredentialsValid(url string) bool {
+	if helper.validFn != nil {
+		return helper.validFn(url)
+	}
+
+	return false
+}
+
+func (helper *stubCredentialHelper) GetCredentials(urls []string) (syncconf.CredentialsFile, error) {
+	return syncconf.CredentialsFile{}, nil
+}
+
+func (helper *stubCredentialHelper) RefreshCredentials(url string) (syncconf.Credentials, error) {
+	if helper.refreshErr != nil {
+		return syncconf.Credentials{}, helper.refreshErr
+	}
+
+	username := helper.username
+	if username == "" {
+		username = "user"
+	}
+
+	password := helper.password
+	if password == "" {
+		password = "token"
+	}
+
+	return syncconf.Credentials{Username: username, Password: password}, nil
+}
+
+func TestRefreshRegistryTemporaryCredentialsBranches(t *testing.T) {
+	Convey("refreshRegistryTemporaryCredentials branch coverage", t, func() {
+		newService := func(helper CredentialHelper) *BaseService {
+			service := &BaseService{
+				config: syncconf.RegistryConfig{
+					URLs:             []string{"https://111111111111.dkr.ecr.us-east-1.amazonaws.com"},
+					CredentialHelper: "ecr",
+				},
+				credentials:      syncconf.CredentialsFile{},
+				credentialHelper: helper,
+				log:              log.NewTestLogger(),
+			}
+
+			So(service.init(), ShouldBeNil)
+
+			return service
+		}
+
+		Convey("Empty CredentialHelper name is a no-op even with a non-nil helper", func() {
+			helper := &stubCredentialHelper{}
+			service := newService(helper)
+			service.config.CredentialHelper = ""
+
+			So(service.refreshRegistryTemporaryCredentials(), ShouldBeNil)
+			So(len(service.credentials), ShouldEqual, 0)
+		})
+
+		Convey("A failed RefreshCredentials leaves the credentials map unchanged", func() {
+			helper := &stubCredentialHelper{refreshErr: errors.New("refresh failed")}
+			service := newService(helper)
+
+			So(service.refreshRegistryTemporaryCredentials(), ShouldBeNil)
+			So(len(service.credentials), ShouldEqual, 0)
+		})
+
+		Convey("Credentials that become valid under the write lock skip reinit", func() {
+			// First AreCredentialsValid (RLock fast path) is false so we take the write lock;
+			// the re-check under the write lock is true, so nothing is updated and initClient
+			// is skipped.
+			var checks atomic.Int64
+			helper := &stubCredentialHelper{
+				validFn: func(string) bool {
+					return checks.Add(1) > 1
+				},
+			}
+			service := newService(helper)
+
+			So(service.refreshRegistryTemporaryCredentials(), ShouldBeNil)
+			So(len(service.credentials), ShouldEqual, 0)
+			So(checks.Load(), ShouldBeGreaterThanOrEqualTo, int64(2))
+		})
+
+		Convey("initClient failure after a successful refresh is returned to the caller", func() {
+			brokenCertDir := path.Join(t.TempDir(), "certs")
+			So(os.WriteFile(brokenCertDir, []byte("not a directory"), 0o600), ShouldBeNil)
+
+			helper := &stubCredentialHelper{username: "user", password: "refreshed"}
+			service := newService(helper)
+			service.config.CertDir = brokenCertDir
+
+			err := service.refreshRegistryTemporaryCredentials()
+			So(err, ShouldNotBeNil)
+			So(service.credentials[service.hosts[0].Hostname].Password, ShouldEqual, "refreshed")
+		})
+	})
+}
+
+func TestECRRefreshCredentialsPersistsExpiry(t *testing.T) {
+	Convey("ECR RefreshCredentials stores expiry so credentials become valid", t, func() {
+		remoteAddress := "111111111111.dkr.ecr.us-east-1.amazonaws.com"
+		helper := NewECRCredentialHelper(log.NewTestLogger(), GetMockECRCredentials)
+
+		So(helper.AreCredentialsValid(remoteAddress), ShouldBeFalse)
+
+		creds, err := helper.RefreshCredentials(remoteAddress)
+		So(err, ShouldBeNil)
+		So(creds.Username, ShouldEqual, "mockUsername")
+		So(helper.AreCredentialsValid(remoteAddress), ShouldBeTrue)
+
+		// GetCredentials also populates the helper map under its mutex.
+		file, err := helper.GetCredentials([]string{"https://" + remoteAddress})
+		So(err, ShouldBeNil)
+		So(file[remoteAddress].Username, ShouldEqual, "mockUsername")
+		So(helper.AreCredentialsValid(remoteAddress), ShouldBeTrue)
+	})
+
+	Convey("ECR RefreshCredentials surfaces retrieval errors", t, func() {
+		helper := NewECRCredentialHelper(log.NewTestLogger(), func(string) (ecrCredential, error) {
+			return ecrCredential{}, errors.New("aws unavailable")
+		})
+
+		_, err := helper.RefreshCredentials("111111111111.dkr.ecr.us-east-1.amazonaws.com")
+		So(err, ShouldNotBeNil)
+		So(helper.AreCredentialsValid("111111111111.dkr.ecr.us-east-1.amazonaws.com"), ShouldBeFalse)
+	})
+}
+
+// countingCredentialHelper records how often each CredentialHelper method is invoked so
+// that tests can assert which sync entry points drive a credential refresh.
+type countingCredentialHelper struct {
+	valid        bool
+	getCalls     atomic.Int64
+	refreshCalls atomic.Int64
+}
+
+func (helper *countingCredentialHelper) GetCredentials(urls []string) (syncconf.CredentialsFile, error) {
+	helper.getCalls.Add(1)
+
+	credentials := make(syncconf.CredentialsFile)
+	for _, url := range urls {
+		credentials[StripRegistryTransport(url)] = syncconf.Credentials{Username: "user", Password: "initial"}
+	}
+
+	return credentials, nil
+}
+
+func (helper *countingCredentialHelper) AreCredentialsValid(_ string) bool {
+	return helper.valid
+}
+
+func (helper *countingCredentialHelper) RefreshCredentials(_ string) (syncconf.Credentials, error) {
+	helper.refreshCalls.Add(1)
+
+	return syncconf.Credentials{Username: "user", Password: "refreshed"}, nil
+}
+
+func TestCredentialRefreshOnEverySyncEntryPoint(t *testing.T) {
+	Convey("Expiring helper credentials are refreshed by every sync entry point", t, func() {
+		// an unroutable upstream: the entry points fail fast, after the refresh has run
+		newService := func(helper CredentialHelper, credentialHelperName string) *BaseService {
+			logger := log.NewTestLogger()
+
+			service := &BaseService{
+				config: syncconf.RegistryConfig{
+					URLs:             []string{"http://127.0.0.1:1"},
+					CredentialHelper: credentialHelperName,
+					SyncTimeout:      time.Second,
+				},
+				credentials:      syncconf.CredentialsFile{},
+				credentialHelper: helper,
+				contentManager:   NewContentManager(nil, logger),
+				tagsCache:        newTagsCache(defaultExpireMinutes),
+				log:              logger,
+			}
+
+			So(service.init(), ShouldBeNil)
+
+			return service
+		}
+
+		Convey("GetNextRepo refreshes them", func() {
+			helper := &countingCredentialHelper{}
+			service := newService(helper, "oauth2")
+
+			_, _ = service.GetNextRepo("")
+			So(helper.refreshCalls.Load(), ShouldBeGreaterThan, 0)
+		})
+
+		Convey("SyncRepo refreshes them", func() {
+			helper := &countingCredentialHelper{}
+			service := newService(helper, "oauth2")
+
+			_ = service.SyncRepo(context.Background(), "some/repo")
+			So(helper.refreshCalls.Load(), ShouldBeGreaterThan, 0)
+		})
+
+		Convey("SyncReferrers refreshes them", func() {
+			helper := &countingCredentialHelper{}
+			service := newService(helper, "oauth2")
+
+			_ = service.SyncReferrers(context.Background(), "some/repo", godigest.FromString("s").String(), nil)
+			So(helper.refreshCalls.Load(), ShouldBeGreaterThan, 0)
+		})
+
+		Convey("SyncImage keeps refreshing them", func() {
+			helper := &countingCredentialHelper{}
+			service := newService(helper, "oauth2")
+
+			_ = service.SyncImage(context.Background(), "some/repo", "latest")
+			So(helper.refreshCalls.Load(), ShouldBeGreaterThan, 0)
+		})
+
+		Convey("Credentials that are still valid are left alone", func() {
+			helper := &countingCredentialHelper{valid: true}
+			service := newService(helper, "oauth2")
+
+			_ = service.SyncRepo(context.Background(), "some/repo")
+			_, _ = service.GetNextRepo("")
+			So(helper.refreshCalls.Load(), ShouldEqual, 0)
+		})
+
+		Convey("No refresh happens when no credential helper is configured", func() {
+			helper := &countingCredentialHelper{}
+			service := newService(helper, "")
+
+			_ = service.SyncRepo(context.Background(), "some/repo")
+			_, _ = service.GetNextRepo("")
+			So(helper.refreshCalls.Load(), ShouldEqual, 0)
+		})
+
+		Convey("A refresh that fails is logged rather than returned to the caller", func() {
+			/* a regular file where a certificate directory is expected makes the client
+			reinitialization at the end of the refresh fail */
+			brokenCertDir := path.Join(t.TempDir(), "certs")
+			So(os.WriteFile(brokenCertDir, []byte("not a directory"), 0o600), ShouldBeNil)
+
+			newBrokenService := func() (*BaseService, string) {
+				service := newService(&countingCredentialHelper{}, "oauth2")
+				service.config.CertDir = brokenCertDir
+
+				refreshErr := service.refreshRegistryTemporaryCredentials()
+				So(refreshErr, ShouldNotBeNil)
+
+				return service, refreshErr.Error()
+			}
+
+			Convey("GetNextRepo goes on to query the upstream", func() {
+				service, refreshErr := newBrokenService()
+
+				_, err := service.GetNextRepo("")
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldNotEqual, refreshErr)
+			})
+
+			Convey("SyncRepo goes on to query the upstream", func() {
+				service, refreshErr := newBrokenService()
+
+				err := service.SyncRepo(context.Background(), "some/repo")
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldNotEqual, refreshErr)
+			})
+
+			Convey("SyncReferrers goes on to query the upstream", func() {
+				service, refreshErr := newBrokenService()
+
+				err := service.SyncReferrers(context.Background(), "some/repo",
+					godigest.FromString("s").String(), nil)
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldNotEqual, refreshErr)
+			})
 		})
 	})
 }

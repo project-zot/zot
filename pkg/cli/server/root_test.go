@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +22,45 @@ import (
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	. "zotregistry.dev/zot/v2/pkg/test/common"
 )
+
+const (
+	// Must match the log message emitted in pkg/api/controller.go when Port is "0".
+	kernelChosenPortMsg   = "port is unspecified, listening on kernel chosen port"
+	kernelPortWaitTimeout = 30 * time.Second
+)
+
+// waitForKernelChosenPortBaseURL polls a zot log file for the kernel-assigned listen
+// port logged when conf.HTTP.Port is "0", then returns http://127.0.0.1:<port>.
+// Used for CLI serve tests that have no ControllerManager to query after bind.
+func waitForKernelChosenPortBaseURL(logPath string) string {
+	deadline := time.Now().Add(kernelPortWaitTimeout)
+
+	for time.Now().Before(deadline) {
+		content, err := os.ReadFile(logPath)
+		if err == nil {
+			for line := range strings.SplitSeq(string(content), "\n") {
+				if !strings.Contains(line, kernelChosenPortMsg) {
+					continue
+				}
+
+				var entry struct {
+					Port int `json:"port"`
+				}
+
+				if err := json.Unmarshal([]byte(line), &entry); err != nil || entry.Port <= 0 {
+					continue
+				}
+
+				return GetBaseURL(strconv.Itoa(entry.Port))
+			}
+		}
+
+		time.Sleep(SleepTime)
+	}
+
+	panic(fmt.Sprintf("timed out after %s waiting for kernel chosen port in %s",
+		kernelPortWaitTimeout, logPath))
+}
 
 // checkAuthLogEntry checks if a log entry with the given message has the expected enabled value.
 func checkAuthLogEntry(logData []byte, message string, expectedEnabled bool) bool {
@@ -278,6 +318,109 @@ func TestLoadConfigurationSyncCredentialHelper(t *testing.T) {
 		}`
 
 		tmpfile := MakeTempFileWithContent(t, "zot-sync-oauth2-bad-key.json", content)
+		cfg := config.New()
+
+		err := cli.LoadConfiguration(cfg, tmpfile)
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("the token-exchange grant loads with its RFC 8693 fields", t, func() {
+		content := `{
+			"storage": {"rootDirectory": "/tmp/zot"},
+			"http": {"address": "127.0.0.1", "port": "8080"},
+			"extensions": {
+				"sync": {
+					"registries": [
+						{
+							"urls": ["https://registry.example.com"],
+							"onDemand": true,
+							"credentialHelper": "oauth2",
+							"oauth2CredentialHelper": {
+								"tokenURL": "https://sts.example.com/v1/token",
+								"assertionFile": "/run/secrets/subject-token",
+								"grantType": "urn:ietf:params:oauth:grant-type:token-exchange",
+								"audience": "//sts.example.com/pools/the-pool/providers/the-provider",
+								"subjectTokenType": "urn:ietf:params:oauth:token-type:jwt",
+								"requestedTokenType": "urn:ietf:params:oauth:token-type:access_token",
+								"username": "oauth2accesstoken"
+							}
+						}
+					]
+				}
+			}
+		}`
+
+		tmpfile := MakeTempFileWithContent(t, "zot-sync-oauth2-token-exchange.json", content)
+		cfg := config.New()
+
+		err := cli.LoadConfiguration(cfg, tmpfile)
+		So(err, ShouldBeNil)
+
+		registries := cfg.Extensions.Sync.Registries
+		So(registries, ShouldHaveLength, 1)
+
+		oauth2Config, err := syncconf.OAuth2HelperConfigFromMap(registries[0].Oauth2CredentialHelper)
+		So(err, ShouldBeNil)
+		So(oauth2Config.GrantType, ShouldEqual, syncconf.TokenExchangeGrantType)
+		So(oauth2Config.Audience, ShouldEqual, "//sts.example.com/pools/the-pool/providers/the-provider")
+		So(oauth2Config.SubjectTokenType, ShouldEqual, "urn:ietf:params:oauth:token-type:jwt")
+		So(oauth2Config.RequestedTokenType, ShouldEqual, "urn:ietf:params:oauth:token-type:access_token")
+		So(oauth2Config.Validate(), ShouldBeNil)
+	})
+
+	Convey("the token-exchange grant without an audience fails at load time", t, func() {
+		content := `{
+			"storage": {"rootDirectory": "/tmp/zot"},
+			"http": {"address": "127.0.0.1", "port": "8080"},
+			"extensions": {
+				"sync": {
+					"registries": [
+						{
+							"urls": ["https://registry.example.com"],
+							"onDemand": true,
+							"credentialHelper": "oauth2",
+							"oauth2CredentialHelper": {
+								"tokenURL": "https://sts.example.com/v1/token",
+								"assertionFile": "/run/secrets/subject-token",
+								"grantType": "urn:ietf:params:oauth:grant-type:token-exchange"
+							}
+						}
+					]
+				}
+			}
+		}`
+
+		tmpfile := MakeTempFileWithContent(t, "zot-sync-oauth2-no-audience.json", content)
+		cfg := config.New()
+
+		err := cli.LoadConfiguration(cfg, tmpfile)
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("an audience without the token-exchange grant fails at load time", t, func() {
+		content := `{
+			"storage": {"rootDirectory": "/tmp/zot"},
+			"http": {"address": "127.0.0.1", "port": "8080"},
+			"extensions": {
+				"sync": {
+					"registries": [
+						{
+							"urls": ["https://registry.example.com"],
+							"onDemand": true,
+							"credentialHelper": "oauth2",
+							"oauth2CredentialHelper": {
+								"tokenURL": "https://idp.example.com/token",
+								"assertionFile": "/run/secrets/assertion.jwt",
+								"grantType": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+								"audience": "//sts.example.com/pools/the-pool/providers/the-provider"
+							}
+						}
+					]
+				}
+			}
+		}`
+
+		tmpfile := MakeTempFileWithContent(t, "zot-sync-oauth2-stray-audience.json", content)
 		cfg := config.New()
 
 		err := cli.LoadConfiguration(cfg, tmpfile)
@@ -2717,7 +2860,7 @@ func TestServeAPIKey(t *testing.T) {
 					},
 					"http": {
 						"address": "127.0.0.1",
-						"port": "%s",
+						"port": "0",
 						"auth": {
 							"apikey": true
 						}
@@ -2755,7 +2898,7 @@ func TestServeAPIKey(t *testing.T) {
 					},
 					"http": {
 						"address": "127.0.0.1",
-						"port": "%s",
+						"port": "0",
 						"auth": {
 							"apikey": false
 						}
@@ -2975,6 +3118,70 @@ func TestGC(t *testing.T) {
 			err = cli.LoadConfiguration(config, file)
 			So(err, ShouldNotBeNil)
 		})
+
+		Convey("Valid GC time window", func() {
+			config := config.New()
+			err = json.Unmarshal(contents, config)
+
+			contents, err = json.MarshalIndent(config, "", " ")
+			So(err, ShouldBeNil)
+
+			file := MakeTempFileWithContent(t, "gc-config.json", string(contents))
+			err = cli.LoadConfiguration(config, file)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Invalid GC time window", func() {
+			config := config.New()
+
+			content := `{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot",
+			"gc": true, "gcDelay": "1h", "gcTimeWindow": "not-a-window"}, "http": {"address": "127.0.0.1", "port": "8080"},
+			"log": {"level": "debug"}}`
+
+			file := MakeTempFileWithContent(t, "gc-time-window-config.json", content)
+			err = cli.LoadConfiguration(config, file)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GC time window when GC = false", func() {
+			config := config.New()
+
+			content := `{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot",
+			"gc": false, "gcTimeWindow": "01:00-08:00"}, "http": {"address": "127.0.0.1", "port": "8080"},
+			"log": {"level": "debug"}}`
+
+			file := MakeTempFileWithContent(t, "gc-time-window-false-config.json", content)
+			err = cli.LoadConfiguration(config, file)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Invalid GC time window in subPath", func() {
+			config := config.New()
+
+			content := `{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot",
+			"subPaths": {"/a": {"rootDirectory": "/tmp/zot-a", "gc": true, "gcDelay": "1h",
+			"gcTimeWindow": "not-a-window"}}},
+			"http": {"address": "127.0.0.1", "port": "8080"},
+			"log": {"level": "debug"}}`
+
+			file := MakeTempFileWithContent(t, "gc-subpath-time-window-config.json", content)
+			err = cli.LoadConfiguration(config, file)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GC time window in subPath when subPath GC = false", func() {
+			config := config.New()
+
+			content := `{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot",
+			"subPaths": {"/a": {"rootDirectory": "/tmp/zot-a", "gc": false,
+			"gcTimeWindow": "01:00-08:00"}}},
+			"http": {"address": "127.0.0.1", "port": "8080"},
+			"log": {"level": "debug"}}`
+
+			file := MakeTempFileWithContent(t, "gc-subpath-time-window-disabled-config.json", content)
+			err = cli.LoadConfiguration(config, file)
+			So(err, ShouldBeNil)
+		})
 	})
 }
 
@@ -3020,16 +3227,19 @@ func TestScrub(t *testing.T) {
 		})
 
 		Convey("server is running", func(c C) {
-			port := GetFreePort()
 			config := config.New()
-			config.HTTP.Port = port
+			config.HTTP.Port = "0"
 			controller := api.NewController(config)
 
 			dir := t.TempDir()
 
 			controller.Config.Storage.RootDirectory = dir
 			ctrlManager := NewControllerManager(controller)
-			ctrlManager.StartAndWait(port)
+			ctrlManager.StartAndWait()
+
+			defer ctrlManager.StopServer()
+
+			port := strconv.Itoa(ctrlManager.Port())
 
 			content := fmt.Sprintf(`{
 				"storage": {
@@ -3048,25 +3258,21 @@ func TestScrub(t *testing.T) {
 			os.Args = []string{"cli_test", "scrub", tmpfile}
 			err := cli.NewServerRootCmd().Execute()
 			So(err, ShouldNotBeNil)
-
-			defer ctrlManager.StopServer()
 		})
 
 		Convey("no image store provided", func(c C) {
-			port := GetFreePort()
-
-			content := fmt.Sprintf(`{
+			content := `{
 				"storage": {
 					"rootDirectory": ""
 				},
 				"http": {
-					"port": %s
+					"port": "0"
 				},
 				"log": {
 					"level": "debug"
 				}
 			}
-			`, port)
+			`
 			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
 
 			os.Args = []string{"cli_test", "scrub", tmpfile}
@@ -3075,8 +3281,6 @@ func TestScrub(t *testing.T) {
 		})
 
 		Convey("bad index.json", func(c C) {
-			port := GetFreePort()
-
 			dir := t.TempDir()
 
 			repoName := "badindex"
@@ -3106,13 +3310,13 @@ func TestScrub(t *testing.T) {
 					"rootDirectory": "%s"
 				},
 				"http": {
-					"port": %s
+					"port": "0"
 				},
 				"log": {
 					"level": "debug"
 				}
 			}
-			`, dir, port)
+			`, dir)
 			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
 
 			os.Args = []string{"cli_test", "scrub", tmpfile}
@@ -3318,13 +3522,12 @@ func TestClusterConfig(t *testing.T) {
 //nolint:unparam // rootDir used by callers waiting for Trivy DB, build tags may not be available.
 func runCLIWithConfig(t *testing.T, config string) (string, string, error) {
 	t.Helper()
-	port := GetFreePort()
-	baseURL := GetBaseURL(port)
-
 	logPath := MakeTempFilePath(t, "zot-log.txt")
 
 	rootDir := t.TempDir()
-	config = fmt.Sprintf(config, rootDir, port, logPath)
+	// config must use fmt placeholders for rootDirectory and log output only;
+	// http.port must be hardcoded as "0" (kernel-assigned).
+	config = fmt.Sprintf(config, rootDir, logPath)
 
 	cfgfile := MakeTempFileWithContent(t, "zot-test.json", config)
 
@@ -3345,6 +3548,7 @@ func runCLIWithConfig(t *testing.T, config string) (string, string, error) {
 	case <-time.After(250 * time.Millisecond): // No startup error
 	}
 
+	baseURL := waitForKernelChosenPortBaseURL(logPath)
 	WaitTillServerReady(baseURL)
 
 	return logPath, rootDir, nil

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -44,6 +45,7 @@ type ecrCredential struct {
 }
 
 type ecrCredentialsHelper struct {
+	mu                 sync.RWMutex
 	credentials        map[string]ecrCredential
 	log                log.Logger
 	getCredentialsFunc func(string) (ecrCredential, error)
@@ -153,7 +155,10 @@ func (credHelper *ecrCredentialsHelper) GetCredentials(urls []string) (syncconf.
 			Username: ecrCred.username,
 			Password: ecrCred.password,
 		}
+
+		credHelper.mu.Lock()
 		credHelper.credentials[remoteAddress] = ecrCred
+		credHelper.mu.Unlock()
 	}
 
 	return ecrCredentials, nil
@@ -161,7 +166,10 @@ func (credHelper *ecrCredentialsHelper) GetCredentials(urls []string) (syncconf.
 
 // AreCredentialsValid checks if the credentials for a given remote address are still valid.
 func (credHelper *ecrCredentialsHelper) AreCredentialsValid(remoteAddress string) bool {
+	credHelper.mu.RLock()
 	expiry := credHelper.credentials[remoteAddress].expiry
+	credHelper.mu.RUnlock()
+
 	expiryDuration := time.Duration(expiryWindow) * time.Hour
 
 	if time.Until(expiry) <= expiryDuration {
@@ -189,6 +197,10 @@ func (credHelper *ecrCredentialsHelper) RefreshCredentials(
 	if err != nil {
 		return syncconf.Credentials{}, fmt.Errorf("%w %s: %w", errFailedToGetECRCredentials, remoteAddress, err)
 	}
+
+	credHelper.mu.Lock()
+	credHelper.credentials[remoteAddress] = ecrCred
+	credHelper.mu.Unlock()
 
 	return syncconf.Credentials{Username: ecrCred.username, Password: ecrCred.password}, nil
 }

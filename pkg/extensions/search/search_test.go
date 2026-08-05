@@ -224,13 +224,13 @@ func uploadNewRepoTag(tag string, repoName string, baseURL string, layers [][]by
 func getMockCveScanner(metaDB mTypes.MetaDB) cveinfo.Scanner {
 	// MetaDB loaded with initial data, mock the scanner
 	// Setup test CVE data in mock scanner
-	getCveResults := func(image string) map[string]cvemodel.CVE {
+	getCveResults := func(image string) map[string]zcommon.CVE {
 		if image == "zot-cve-test:0.0.1" || image == "a/zot-cve-test:0.0.1" ||
 			image == "zot-test:0.0.1" || image == "a/zot-test:0.0.1" ||
 			strings.Contains(image, "sha256:40d1f74918aefed733c590f798d7eafde8fc0a7ec63bb8bc52eaae133cf92495") ||
 			strings.Contains(image, "sha256:db573b0146a853af339bde42256a810b911d89c9252d055e0218de53690e031e") ||
 			strings.Contains(image, "sha256:0d8d7cae58478b43cde65d4fd495e1b4ab3f6404450b17e75d7e04eb2040d297") {
-			return map[string]cvemodel.CVE{
+			return map[string]zcommon.CVE{
 				"CVE1": {
 					ID:          "CVE1",
 					Severity:    "MEDIUM",
@@ -261,7 +261,7 @@ func getMockCveScanner(metaDB mTypes.MetaDB) cveinfo.Scanner {
 		if image == "test-repo:latest" ||
 			strings.Contains(image, "sha256:9f8e1a125c4fb03a0f157d75999b73284ccc5cba18eb772e4643e3499343607e") ||
 			strings.Contains(image, "sha256:5c6e8dd5dce1c488fc79d02690b11ff7a190fad21885297101dbd531f0db3597") {
-			return map[string]cvemodel.CVE{
+			return map[string]zcommon.CVE{
 				"CVE1": {
 					ID:          "CVE1",
 					Severity:    "MEDIUM",
@@ -290,14 +290,14 @@ func getMockCveScanner(metaDB mTypes.MetaDB) cveinfo.Scanner {
 		}
 
 		// By default the image has no vulnerabilities
-		return map[string]cvemodel.CVE{}
+		return map[string]zcommon.CVE{}
 	}
 
 	scanner := mocks.CveScannerMock{
 		ScanImageFn: func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
 			return cvemodel.ScanResult{CVEMap: getCveResults(image)}, nil
 		},
-		GetCachedResultFn: func(digestStr string) map[string]cvemodel.CVE {
+		GetCachedResultFn: func(digestStr string) map[string]zcommon.CVE {
 			return getCveResults(digestStr)
 		},
 		IsResultCachedFn: func(digestStr string) bool {
@@ -6583,7 +6583,9 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 				resp, err = resty.R().Delete(baseURL + "/v2/" + "repo1" + "/manifests/" + "signatureReference")
 				So(resp, ShouldNotBeNil)
 				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+				// the image is already gone from the image store at this point, so a metadb
+				// bookkeeping failure here is not exposed to the client.
+				So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 			})
 
 			Convey("image is a signature, DeleteSignature fails", func() {
@@ -6614,10 +6616,12 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 					"sha256-343ebab94a7674da181c6ea3da013aee4f8cbe357870f8dcaf6268d5343c3474.sig")
 				So(resp, ShouldNotBeNil)
 				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+				// the image is already gone from the image store at this point, so a metadb
+				// bookkeeping failure here is not exposed to the client.
+				So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 			})
 
-			Convey("image is a signature, PutImageManifest fails", func() {
+			Convey("non-signature delete, RemoveRepoReference and restore PutImageManifest both fail", func() {
 				ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
 					NewBlobUploadFn: ctlr.StoreController.DefaultStore.NewBlobUpload,
 					PutBlobChunkFn:  ctlr.StoreController.DefaultStore.PutBlobChunk,
@@ -6652,6 +6656,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 					"343ebab94a7674da181c6ea3da013aee4f8cbe357870f8dcaf6268d5343c3474.sig")
 				So(resp, ShouldNotBeNil)
 				So(err, ShouldBeNil)
+				// A restore may have rolled back the delete, so this must be a 500.
 				So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
 			})
 		})

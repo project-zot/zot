@@ -18,7 +18,9 @@ import (
 	. "zotregistry.dev/zot/v2/pkg/test/common"
 )
 
-const readLogFileTimeout = 5 * time.Second
+const (
+	readLogFileTimeout = 5 * time.Second
+)
 
 func TestVerifyExtensionsConfig(t *testing.T) {
 	oldArgs := os.Args
@@ -315,8 +317,6 @@ func TestServeExtensions(t *testing.T) {
 	defer func() { os.Args = oldArgs }()
 
 	Convey("config file with no extensions", t, func(c C) {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		logPath := MakeTempFilePath(t, "zot-log.txt")
 
 		tmpFile := t.TempDir()
@@ -327,13 +327,13 @@ func TestServeExtensions(t *testing.T) {
 			},
 			"http": {
 				"address": "127.0.0.1",
-				"port": "%s"
+				"port": "0"
 			},
 			"log": {
 				"level": "debug",
 				"output": "%s"
 			}
-		}`, tmpFile, port, logPath)
+		}`, tmpFile, logPath)
 
 		cfgfile := MakeTempFileWithContent(t, "zot-test.json", content)
 
@@ -346,6 +346,7 @@ func TestServeExtensions(t *testing.T) {
 			})
 		}()
 
+		baseURL := waitForKernelChosenPortBaseURL(logPath)
 		WaitTillServerReady(baseURL)
 
 		data, err := os.ReadFile(logPath)
@@ -355,8 +356,6 @@ func TestServeExtensions(t *testing.T) {
 	})
 
 	Convey("config file with empty extensions", t, func(c C) {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		logPath := MakeTempFilePath(t, "zot-log.txt")
 
 		tmpFile := t.TempDir()
@@ -367,7 +366,7 @@ func TestServeExtensions(t *testing.T) {
 			},
 			"http": {
 				"address": "127.0.0.1",
-				"port": "%s"
+				"port": "0"
 			},
 			"log": {
 				"level": "debug",
@@ -375,7 +374,7 @@ func TestServeExtensions(t *testing.T) {
 			},
 			"extensions": {
 			}
-		}`, tmpFile, port, logPath)
+		}`, tmpFile, logPath)
 
 		cfgfile := MakeTempFileWithContent(t, "zot-test.json", content)
 
@@ -388,6 +387,7 @@ func TestServeExtensions(t *testing.T) {
 			})
 		}()
 
+		baseURL := waitForKernelChosenPortBaseURL(logPath)
 		WaitTillServerReady(baseURL)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
@@ -398,11 +398,9 @@ func TestServeExtensions(t *testing.T) {
 
 func testWithMetricsEnabled(t *testing.T, rootDir string, cfgContentFormat string) {
 	t.Helper()
-	port := GetFreePort()
-	baseURL := GetBaseURL(port)
 	logPath := MakeTempFilePath(t, "zot-log.txt")
 
-	content := fmt.Sprintf(cfgContentFormat, rootDir, port, logPath)
+	content := fmt.Sprintf(cfgContentFormat, rootDir, logPath)
 	cfgfile := MakeTempFileWithContent(t, "zot-test.json", content)
 
 	os.Args = []string{"cli_test", "serve", cfgfile}
@@ -413,6 +411,8 @@ func testWithMetricsEnabled(t *testing.T, rootDir string, cfgContentFormat strin
 			So(err, ShouldBeNil)
 		})
 	}()
+
+	baseURL := waitForKernelChosenPortBaseURL(logPath)
 	WaitTillServerReady(baseURL)
 
 	resp, err := resty.R().Get(baseURL + "/metrics")
@@ -443,7 +443,7 @@ func TestServeMetricsExtension(t *testing.T) {
 			},
 			"http": {
 				"address": "127.0.0.1",
-				"port": "%s"
+				"port": "0"
 			},
 			"log": {
 				"level": "debug",
@@ -466,7 +466,7 @@ func TestServeMetricsExtension(t *testing.T) {
 			},
 			"http": {
 				"address": "127.0.0.1",
-				"port": "%s"
+				"port": "0"
 			},
 			"log": {
 				"level": "debug",
@@ -492,7 +492,7 @@ func TestServeMetricsExtension(t *testing.T) {
 			},
 			"http": {
 				"address": "127.0.0.1",
-				"port": "%s"
+				"port": "0"
 			},
 			"log": {
 				"level": "debug",
@@ -508,8 +508,6 @@ func TestServeMetricsExtension(t *testing.T) {
 	})
 
 	Convey("with explicit disable", t, func(c C) {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
 		logPath := MakeTempFilePath(t, "zot-log.txt")
 
 		tmpFile := t.TempDir()
@@ -520,7 +518,7 @@ func TestServeMetricsExtension(t *testing.T) {
 					},
 					"http": {
 						"address": "127.0.0.1",
-						"port": "%s"
+						"port": "0"
 					},
 					"log": {
 						"level": "debug",
@@ -531,7 +529,7 @@ func TestServeMetricsExtension(t *testing.T) {
 							"enable": false
 						}
 					}
-				}`, tmpFile, port, logPath)
+				}`, tmpFile, logPath)
 
 		cfgfile := MakeTempFileWithContent(t, "zot-test.json", content)
 
@@ -544,6 +542,7 @@ func TestServeMetricsExtension(t *testing.T) {
 			})
 		}()
 
+		baseURL := waitForKernelChosenPortBaseURL(logPath)
 		WaitTillServerReady(baseURL)
 
 		resp, err := resty.R().Get(baseURL + "/metrics")
@@ -570,7 +569,7 @@ func TestServeSyncExtension(t *testing.T) {
 				},
 				"http": {
 					"address": "127.0.0.1",
-					"port": "%s"
+					"port": "0"
 				},
 				"log": {
 					"level": "debug",
@@ -615,7 +614,7 @@ func TestServeSyncExtension(t *testing.T) {
 				},
 				"http": {
 					"address": "127.0.0.1",
-					"port": "%s"
+					"port": "0"
 				},
 				"log": {
 					"level": "debug",
@@ -661,7 +660,7 @@ func TestServeSyncExtension(t *testing.T) {
 				},
 				"http": {
 					"address": "127.0.0.1",
-					"port": "%s"
+					"port": "0"
 				},
 				"log": {
 					"level": "debug",
@@ -703,7 +702,7 @@ func TestServeScrubExtension(t *testing.T) {
 					},
 					"http": {
 						"address": "127.0.0.1",
-						"port": "%s"
+						"port": "0"
 					},
 					"log": {
 						"level": "debug",
@@ -734,7 +733,7 @@ func TestServeScrubExtension(t *testing.T) {
 					},
 					"http": {
 						"address": "127.0.0.1",
-						"port": "%s"
+						"port": "0"
 					},
 					"log": {
 						"level": "debug",
@@ -766,7 +765,7 @@ func TestServeScrubExtension(t *testing.T) {
 					},
 					"http": {
 						"address": "127.0.0.1",
-						"port": "%s"
+						"port": "0"
 					},
 					"log": {
 						"level": "debug",
@@ -798,7 +797,7 @@ func TestServeScrubExtension(t *testing.T) {
 				},
 				"http": {
 					"address": "127.0.0.1",
-					"port": "%s"
+					"port": "0"
 				},
 				"log": {
 					"level": "debug",
@@ -836,7 +835,7 @@ func TestServeLintExtension(t *testing.T) {
 					},
 					"http": {
 						"address": "127.0.0.1",
-						"port": "%s"
+						"port": "0"
 					},
 					"log": {
 						"level": "debug",
@@ -866,7 +865,7 @@ func TestServeLintExtension(t *testing.T) {
 					},
 					"http": {
 						"address": "127.0.0.1",
-						"port": "%s"
+						"port": "0"
 					},
 					"log": {
 						"level": "debug",
@@ -901,7 +900,7 @@ func TestServeSearchEnabled(t *testing.T) {
 					},
 					"http": {
 						"address": "127.0.0.1",
-						"port": "%s"
+						"port": "0"
 					},
 					"log": {
 						"level": "debug",
@@ -944,7 +943,7 @@ func TestServeSearchEnabledDefaultCVEDB(t *testing.T) {
 					},
 					"http": {
 						"address": "127.0.0.1",
-						"port": "%s"
+						"port": "0"
 					},
 					"log": {
 						"level": "debug",
@@ -1071,7 +1070,7 @@ func TestServeSearchEnabledNoCVE(t *testing.T) {
 				},
 				"http": {
 					"address": "127.0.0.1",
-					"port": "%s"
+					"port": "0"
 				},
 				"log": {
 					"level": "debug",
@@ -1113,7 +1112,7 @@ func TestServeSearchDisabled(t *testing.T) {
 				},
 				"http": {
 					"address": "127.0.0.1",
-					"port": "%s"
+					"port": "0"
 				},
 				"log": {
 					"level": "debug",
@@ -1155,7 +1154,7 @@ func TestServeMgmtExtension(t *testing.T) {
 					},
 					"http": {
 						"address": "127.0.0.1",
-						"port": "%s"
+						"port": "0"
 					},
 					"log": {
 						"level": "debug",
@@ -1190,7 +1189,7 @@ func TestServeMgmtExtension(t *testing.T) {
 					},
 					"http": {
 						"address": "127.0.0.1",
-						"port": "%s"
+						"port": "0"
 					},
 					"log": {
 						"level": "debug",
@@ -1223,7 +1222,7 @@ func TestServeMgmtExtension(t *testing.T) {
 					},
 					"http": {
 						"address": "127.0.0.1",
-						"port": "%s"
+						"port": "0"
 					},
 					"log": {
 						"level": "debug",
@@ -1260,7 +1259,7 @@ func TestServeImageTrustExtension(t *testing.T) {
 					},
 					"http": {
 						"address": "127.0.0.1",
-						"port": "%s"
+						"port": "0"
 					},
 					"log": {
 						"level": "debug",
@@ -1296,7 +1295,7 @@ func TestServeImageTrustExtension(t *testing.T) {
 					},
 					"http": {
 						"address": "127.0.0.1",
-						"port": "%s"
+						"port": "0"
 					},
 					"log": {
 						"level": "debug",
@@ -1332,7 +1331,7 @@ func TestServeImageTrustExtension(t *testing.T) {
 					},
 					"http": {
 						"address": "127.0.0.1",
-						"port": "%s"
+						"port": "0"
 					},
 					"log": {
 						"level": "debug",
@@ -1407,7 +1406,7 @@ func TestOverlappingSyncRetentionConfig(t *testing.T) {
 			},
 			"http": {
 				"address": "127.0.0.1",
-				"port": "%s"
+				"port": "0"
 			},
 			"log": {
 				"level": "debug",
@@ -1468,7 +1467,7 @@ func TestOverlappingSyncRetentionConfig(t *testing.T) {
 			},
 			"http": {
 				"address": "127.0.0.1",
-				"port": "%s"
+				"port": "0"
 			},
 			"log": {
 				"level": "debug",
@@ -1528,7 +1527,7 @@ func TestOverlappingSyncRetentionConfig(t *testing.T) {
 			},
 			"http": {
 				"address": "127.0.0.1",
-				"port": "%s"
+				"port": "0"
 			},
 			"log": {
 				"level": "debug",
@@ -1591,7 +1590,7 @@ func TestOverlappingSyncRetentionConfig(t *testing.T) {
 			},
 			"http": {
 				"address": "127.0.0.1",
-				"port": "%s"
+				"port": "0"
 			},
 			"log": {
 				"level": "debug",
@@ -1651,7 +1650,7 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 			},
 			"http": {
 				"address": "0.0.0.0",
-				"port": "%s"
+				"port": "0"
 			},
 			"log": {
 				"level": "debug",
@@ -1689,7 +1688,6 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 	})
 
 	Convey("Test verify sync with remote storage panics if sync.tmpdir is not provided", t, func(c C) {
-		port := GetFreePort()
 		logPath := MakeTempFilePath(t, "zot-log.txt")
 
 		content := fmt.Sprintf(`{
@@ -1710,7 +1708,7 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 			},
 			"http": {
 				"address": "0.0.0.0",
-				"port": "%s"
+				"port": "0"
 			},
 			"log": {
 				"level": "debug",
@@ -1734,7 +1732,7 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 					]
 				}
 			}
-		}`, t.TempDir(), port, logPath)
+		}`, t.TempDir(), logPath)
 
 		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
 
@@ -1750,7 +1748,6 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 	})
 
 	Convey("Test verify sync with remote storage on subpath panics if sync.tmpdir is not provided", t, func(c C) {
-		port := GetFreePort()
 		logPath := MakeTempFilePath(t, "zot-log.txt")
 
 		content := fmt.Sprintf(`{
@@ -1775,7 +1772,7 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 			},
 			"http": {
 				"address": "0.0.0.0",
-				"port": "%s"
+				"port": "0"
 			},
 			"log": {
 				"level": "debug",
@@ -1799,7 +1796,7 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 					]
 				}
 			}
-		}`, t.TempDir(), t.TempDir(), port, logPath)
+		}`, t.TempDir(), t.TempDir(), logPath)
 
 		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
 
@@ -1827,7 +1824,7 @@ func TestEventsExtension(t *testing.T) {
 				},
 				"http": {
 					"address": "127.0.0.1",
-					"port": "%s"
+					"port": "0"
 				},
 				"log": {
 					"level": "debug",
@@ -1863,7 +1860,7 @@ func TestEventsExtension(t *testing.T) {
 					},
 					"http": {
 						"address": "127.0.0.1",
-						"port": "%s"
+						"port": "0"
 					},
 					"log": {
 						"level": "debug",

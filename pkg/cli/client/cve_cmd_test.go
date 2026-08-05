@@ -42,10 +42,8 @@ import (
 
 func TestNegativeServerResponse(t *testing.T) {
 	Convey("Test from real server without search endpoint", t, func() {
-		port := test.GetFreePort()
-		url := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		dir := t.TempDir()
 
@@ -80,7 +78,7 @@ func TestNegativeServerResponse(t *testing.T) {
 		ctlr.Log = log.NewLoggerWithWriter("info", writers)
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(conf.HTTP.Port)
+		url := cm.StartAndWait()
 		defer cm.StopServer()
 
 		_, err = test.ReadLogFileAndSearchString(logPath, "CVE config not provided, skipping CVE update", 90*time.Second)
@@ -105,10 +103,8 @@ func TestNegativeServerResponse(t *testing.T) {
 	})
 
 	Convey("Test non-existing manifest blob", t, func() {
-		port := test.GetFreePort()
-		url := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		dir := t.TempDir()
 
@@ -169,7 +165,9 @@ func TestNegativeServerResponse(t *testing.T) {
 
 		defer ctlr.Shutdown()
 
-		test.WaitTillServerReady(url)
+		cm := test.NewControllerManager(ctlr)
+		cm.WaitServerReady()
+		url := cm.BaseURL()
 
 		_, err = test.ReadLogFileAndSearchString(logPath, "cve-db update completed, next update scheduled after interval",
 			90*time.Second)
@@ -192,10 +190,8 @@ func TestNegativeServerResponse(t *testing.T) {
 }
 
 func TestCVEDiffList(t *testing.T) {
-	port := test.GetFreePort()
-	url := test.GetBaseURL(port)
 	conf := config.New()
-	conf.HTTP.Port = port
+	conf.HTTP.Port = "0"
 
 	dir := t.TempDir()
 
@@ -251,63 +247,63 @@ func TestCVEDiffList(t *testing.T) {
 	multiArchImage := CreateMultiarchWith().Images([]Image{image, CreateRandomImage(), CreateRandomImage()}).
 		Build()
 
-	getCveResults := func(digestStr string) map[string]cvemodel.CVE {
+	getCveResults := func(digestStr string) map[string]zcommon.CVE {
 		switch digestStr {
 		case image.DigestStr():
-			return map[string]cvemodel.CVE{
+			return map[string]zcommon.CVE{
 				"CVE1": {
 					ID:          "CVE1",
 					Severity:    "HIGH",
 					Title:       "Title CVE1",
 					Description: "Description CVE1",
-					PackageList: []cvemodel.Package{{}},
+					PackageList: []zcommon.Package{{}},
 				},
 				"CVE2": {
 					ID:          "CVE2",
 					Severity:    "MEDIUM",
 					Title:       "Title CVE2",
 					Description: "Description CVE2",
-					PackageList: []cvemodel.Package{{}},
+					PackageList: []zcommon.Package{{}},
 				},
 				"CVE3": {
 					ID:          "CVE3",
 					Severity:    "LOW",
 					Title:       "Title CVE3",
 					Description: "Description CVE3",
-					PackageList: []cvemodel.Package{{}},
+					PackageList: []zcommon.Package{{}},
 				},
 			}
 		case baseImage.DigestStr():
-			return map[string]cvemodel.CVE{
+			return map[string]zcommon.CVE{
 				"CVE1": {
 					ID:          "CVE1",
 					Severity:    "HIGH",
 					Title:       "Title CVE1",
 					Description: "Description CVE1",
-					PackageList: []cvemodel.Package{{}},
+					PackageList: []zcommon.Package{{}},
 				},
 				"CVE2": {
 					ID:          "CVE2",
 					Severity:    "MEDIUM",
 					Title:       "Title CVE2",
 					Description: "Description CVE2",
-					PackageList: []cvemodel.Package{{}},
+					PackageList: []zcommon.Package{{}},
 				},
 			}
 		case otherImage.DigestStr():
-			return map[string]cvemodel.CVE{
+			return map[string]zcommon.CVE{
 				"CVE1": {
 					ID:          "CVE1",
 					Severity:    "HIGH",
 					Title:       "Title CVE1",
 					Description: "Description CVE1",
-					PackageList: []cvemodel.Package{{}},
+					PackageList: []zcommon.Package{{}},
 				},
 			}
 		}
 
 		// By default the image has no vulnerabilities
-		return map[string]cvemodel.CVE{}
+		return map[string]zcommon.CVE{}
 	}
 
 	// MetaDB loaded with initial data, now mock the scanner
@@ -328,7 +324,7 @@ func TestCVEDiffList(t *testing.T) {
 
 			return cvemodel.ScanResult{CVEMap: getCveResults(repoMeta.Tags[ref].Digest)}, nil
 		},
-		GetCachedResultFn: func(digestStr string) map[string]cvemodel.CVE {
+		GetCachedResultFn: func(digestStr string) map[string]zcommon.CVE {
 			return getCveResults(digestStr)
 		},
 		IsResultCachedFn: func(digestStr string) bool {
@@ -346,7 +342,9 @@ func TestCVEDiffList(t *testing.T) {
 
 	defer ctlr.Shutdown()
 
-	test.WaitTillServerReady(url)
+	cm := test.NewControllerManager(ctlr)
+	cm.WaitServerReady()
+	url := cm.BaseURL()
 
 	ctx := context.Background()
 	_, _ = ociutils.InitializeTestMetaDB(ctx, ctlr.MetaDB,
@@ -477,10 +475,8 @@ func TestCVEDiffList(t *testing.T) {
 
 //nolint:dupl
 func TestServerCVEResponse(t *testing.T) {
-	port := test.GetFreePort()
-	url := test.GetBaseURL(port)
 	conf := config.New()
-	conf.HTTP.Port = port
+	conf.HTTP.Port = "0"
 
 	dir := t.TempDir()
 
@@ -522,7 +518,9 @@ func TestServerCVEResponse(t *testing.T) {
 
 	defer ctlr.Shutdown()
 
-	test.WaitTillServerReady(url)
+	cm := test.NewControllerManager(ctlr)
+	cm.WaitServerReady()
+	url := cm.BaseURL()
 
 	image := CreateDefaultImage()
 
@@ -864,10 +862,8 @@ func TestServerCVEResponse(t *testing.T) {
 
 func TestCVESort(t *testing.T) {
 	rootDir := t.TempDir()
-	port := test.GetFreePort()
-	baseURL := test.GetBaseURL(port)
 	conf := config.New()
-	conf.HTTP.Port = port
+	conf.HTTP.Port = "0"
 
 	defaultVal := true
 	conf.Extensions = &extconf.ExtensionConfig{
@@ -899,7 +895,7 @@ func TestCVESort(t *testing.T) {
 
 	ctlr.CveScanner = mocks.CveScannerMock{
 		ScanImageFn: func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
-			return cvemodel.ScanResult{CVEMap: map[string]cvemodel.CVE{
+			return cvemodel.ScanResult{CVEMap: map[string]zcommon.CVE{
 				"CVE-2023-1255": {
 					ID:       "CVE-2023-1255",
 					Severity: "LOW",
@@ -937,7 +933,9 @@ func TestCVESort(t *testing.T) {
 
 	defer ctlr.Shutdown()
 
-	test.WaitTillServerReady(baseURL)
+	cm := test.NewControllerManager(ctlr)
+	cm.WaitServerReady()
+	baseURL := cm.BaseURL()
 
 	space := regexp.MustCompile(`\s+`)
 
@@ -1035,7 +1033,7 @@ func getMockCveScanner(metaDB mTypes.MetaDB) cveinfo.Scanner {
 		ScanImageFn: func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
 			if strings.Contains(image, "zot-cve-test@sha256:db573b01") ||
 				image == "zot-cve-test:0.0.1" {
-				return cvemodel.ScanResult{CVEMap: map[string]cvemodel.CVE{
+				return cvemodel.ScanResult{CVEMap: map[string]zcommon.CVE{
 					"CVE-1": {
 						ID:          "CVE-1",
 						Severity:    "CRITICAL",
@@ -1070,7 +1068,7 @@ func getMockCveScanner(metaDB mTypes.MetaDB) cveinfo.Scanner {
 			}
 
 			// By default the image has no vulnerabilities
-			return cvemodel.ScanResult{CVEMap: map[string]cvemodel.CVE{}}, nil
+			return cvemodel.ScanResult{CVEMap: map[string]zcommon.CVE{}}, nil
 		},
 		IsImageFormatScannableFn: func(repo string, reference string) (bool, error) {
 			// Almost same logic compared to actual Trivy specific implementation

@@ -43,6 +43,12 @@ type Options struct {
 	// Defaults to 30 seconds if not specified
 	MaxSchedulerDelay time.Duration
 
+	// TimeWindow restricts when a new periodic GC sweep over all repositories may start
+	// to a daily time-of-day window. A sweep that starts inside the window is allowed to
+	// run to completion even past the window's end, so GC work stays amortized and
+	// orphaned blobs don't outpace a narrow window. The zero value means no restriction.
+	TimeWindow config.GCTimeWindow
+
 	ImageRetention config.ImageRetention
 }
 
@@ -87,6 +93,7 @@ func (gc GarbageCollect) CleanImageStorePeriodically(interval time.Duration, sch
 		gc:             gc,
 		processedRepos: processedRepos,
 		maxDelay:       maxDelay,
+		timeWindow:     gc.opts.TimeWindow,
 	}
 
 	sch.SubmitGenerator(generator, interval, scheduler.MediumPriority)
@@ -1096,13 +1103,15 @@ func getDescriptorTag(desc ispec.Descriptor) (string, bool) {
 // and it will execute garbage collection for each repository by creating a task
 // for each repository and pushing it to the task scheduler.
 type GCTaskGenerator struct {
-	imgStore       types.ImageStore
-	gc             GarbageCollect
-	processedRepos map[string]struct{}
-	nextRun        time.Time
-	done           bool
-	rand           *rand.Rand
-	maxDelay       time.Duration
+	imgStore          types.ImageStore
+	gc                GarbageCollect
+	processedRepos    map[string]struct{}
+	nextRun           time.Time
+	done              bool
+	rand              *rand.Rand
+	maxDelay          time.Duration
+	timeWindow        config.GCTimeWindow
+	loggedWindowDefer bool
 }
 
 func (gen *GCTaskGenerator) getRandomDelay() time.Duration {
@@ -1151,7 +1160,33 @@ func (gen *GCTaskGenerator) IsDone() bool {
 }
 
 func (gen *GCTaskGenerator) IsReady() bool {
-	return time.Now().After(gen.nextRun)
+	now := time.Now()
+
+	if !now.After(gen.nextRun) {
+		return false
+	}
+
+	// Only gate the start of a new sweep on the configured time window. Once a sweep
+	// has begun (processedRepos is non-empty), let it run to completion regardless of
+	// the window, so GC work stays amortized instead of stalling mid-sweep until the
+	// window reopens the next day.
+	startingNewSweep := len(gen.processedRepos) == 0 && gen.nextRun.IsZero()
+
+	if startingNewSweep && !gen.timeWindow.Contains(now) {
+		if !gen.loggedWindowDefer {
+			if gen.gc.log.Logger != nil {
+				gen.gc.log.Debug().Msg("gc sweep deferred, outside gcTimeWindow")
+			}
+
+			gen.loggedWindowDefer = true
+		}
+
+		return false
+	}
+
+	gen.loggedWindowDefer = false
+
+	return true
 }
 
 func (gen *GCTaskGenerator) Reset() {

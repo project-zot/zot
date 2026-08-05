@@ -3,6 +3,9 @@
 package events_test
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -150,6 +153,33 @@ func TestHTTPSink(t *testing.T) {
 
 		err = sink.Emit(&event)
 		So(err, ShouldNotBeNil)
+	})
+
+	Convey("HTTPSink.Emit delivers when timeout is unset", t, func() {
+		var hits atomic.Int32
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hits.Add(1)
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+
+		event := cloudevents.NewEvent()
+		event.SetID("1234")
+		event.SetType("test.event")
+		event.SetSource("unit.test")
+
+		cfg := eventsconf.SinkConfig{
+			Type:    eventsconf.HTTP,
+			Address: server.URL,
+		}
+
+		sink, err := events.NewHTTPSink(cfg)
+		So(err, ShouldBeNil)
+
+		result := sink.Emit(&event)
+		So(cloudevents.IsACK(result), ShouldBeTrue)
+		So(hits.Load(), ShouldEqual, 1)
 	})
 
 	Convey("HTTPSink.Close completes successfully", t, func() {

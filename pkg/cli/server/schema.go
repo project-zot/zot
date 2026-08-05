@@ -85,6 +85,10 @@ func (g *schemaGenerator) schemaForType(reflectType reflect.Type) map[string]any
 		return map[string]any{"type": "string"}
 	}
 
+	if reflectType == reflect.TypeFor[config.GCTimeWindow]() {
+		return map[string]any{"type": "string"}
+	}
+
 	switch reflectType.Kind() {
 	case reflect.Bool:
 		return map[string]any{"type": "boolean"}

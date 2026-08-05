@@ -15,7 +15,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	zerr "zotregistry.dev/zot/v2/errors"
-	"zotregistry.dev/zot/v2/pkg/common"
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/extensions/search/convert"
 	cveinfo "zotregistry.dev/zot/v2/pkg/extensions/search/cve"
 	cvemodel "zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
@@ -641,7 +641,10 @@ func TestGetReferrers(t *testing.T) {
 		Convey("referredDigest is empty", func() {
 			testLogger := log.NewTestLogger()
 
-			_, err := getReferrers(mocks.MetaDBMock{}, "test", "", nil, testLogger)
+			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
+				graphql.DefaultRecover)
+
+			_, err := getReferrers(responseContext, mocks.MetaDBMock{}, "test", "", nil, testLogger)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -654,7 +657,10 @@ func TestGetReferrers(t *testing.T) {
 				},
 			}
 
-			_, err := getReferrers(mockedStore, "test", referredDigest, nil, testLogger)
+			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
+				graphql.DefaultRecover)
+
+			_, err := getReferrers(responseContext, mockedStore, "test", referredDigest, nil, testLogger)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -684,7 +690,10 @@ func TestGetReferrers(t *testing.T) {
 				},
 			}
 
-			referrers, err := getReferrers(mockedStore, "test", referredDigest, nil, testLogger)
+			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
+				graphql.DefaultRecover)
+
+			referrers, err := getReferrers(responseContext, mockedStore, "test", referredDigest, nil, testLogger)
 			So(err, ShouldBeNil)
 			So(*referrers[0].ArtifactType, ShouldEqual, referrerDescriptor.ArtifactType)
 			So(*referrers[0].MediaType, ShouldEqual, referrerDescriptor.MediaType)
@@ -1109,9 +1118,9 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 		panic(err)
 	}
 
-	getCveResults := func(digestStr string) map[string]cvemodel.CVE {
+	getCveResults := func(digestStr string) map[string]zcommon.CVE {
 		if digestStr == digest1.String() {
-			return map[string]cvemodel.CVE{
+			return map[string]zcommon.CVE{
 				"CVE1": {
 					ID:          "CVE1",
 					Severity:    "HIGH",
@@ -1140,7 +1149,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 		}
 
 		if digestStr == digest2.String() {
-			return map[string]cvemodel.CVE{
+			return map[string]zcommon.CVE{
 				"CVE2": {
 					ID:          "CVE2",
 					Severity:    "MEDIUM",
@@ -1157,7 +1166,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 		}
 
 		if digestStr == digest3.String() {
-			return map[string]cvemodel.CVE{
+			return map[string]zcommon.CVE{
 				"CVE3": {
 					ID:          "CVE3",
 					Severity:    "LOW",
@@ -1168,16 +1177,16 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 		}
 
 		// By default the image has no vulnerabilities
-		return map[string]cvemodel.CVE{}
+		return map[string]zcommon.CVE{}
 	}
 
 	// MetaDB loaded with initial data, now mock the scanner
 	// Setup test CVE data in mock scanner
 	scanner := mocks.CveScannerMock{
 		ScanImageFn: func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
-			repo, ref, _, _ := common.GetRepoReference(image)
+			repo, ref, _, _ := zcommon.GetRepoReference(image)
 
-			if common.IsDigest(ref) {
+			if zcommon.IsDigest(ref) {
 				return cvemodel.ScanResult{CVEMap: getCveResults(ref)}, nil
 			}
 
@@ -1189,7 +1198,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			return cvemodel.ScanResult{CVEMap: getCveResults(repoMeta.Tags[ref].Digest)}, nil
 		},
-		GetCachedResultFn: func(digestStr string) map[string]cvemodel.CVE {
+		GetCachedResultFn: func(digestStr string) map[string]zcommon.CVE {
 			return getCveResults(digestStr)
 		},
 		IsResultCachedFn: func(digestStr string) bool {
@@ -1975,72 +1984,72 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 		multiArchImage := CreateMultiarchWith().Images([]Image{image, CreateRandomImage(), CreateRandomImage()}).
 			Build()
 
-		getCveResults := func(digestStr string) map[string]cvemodel.CVE {
+		getCveResults := func(digestStr string) map[string]zcommon.CVE {
 			switch digestStr {
 			case image.DigestStr():
-				return map[string]cvemodel.CVE{
+				return map[string]zcommon.CVE{
 					"CVE1": {
 						ID:          "CVE1",
 						Severity:    "HIGH",
 						Title:       "Title CVE1",
 						Description: "Description CVE1",
-						PackageList: []cvemodel.Package{{}},
+						PackageList: []zcommon.Package{{}},
 					},
 					"CVE2": {
 						ID:          "CVE2",
 						Severity:    "MEDIUM",
 						Title:       "Title CVE2",
 						Description: "Description CVE2",
-						PackageList: []cvemodel.Package{{}},
+						PackageList: []zcommon.Package{{}},
 					},
 					"CVE3": {
 						ID:          "CVE3",
 						Severity:    "LOW",
 						Title:       "Title CVE3",
 						Description: "Description CVE3",
-						PackageList: []cvemodel.Package{{}},
+						PackageList: []zcommon.Package{{}},
 					},
 				}
 			case baseImage.DigestStr():
-				return map[string]cvemodel.CVE{
+				return map[string]zcommon.CVE{
 					"CVE1": {
 						ID:          "CVE1",
 						Severity:    "HIGH",
 						Title:       "Title CVE1",
 						Description: "Description CVE1",
-						PackageList: []cvemodel.Package{{}},
+						PackageList: []zcommon.Package{{}},
 					},
 					"CVE2": {
 						ID:          "CVE2",
 						Severity:    "MEDIUM",
 						Title:       "Title CVE2",
 						Description: "Description CVE2",
-						PackageList: []cvemodel.Package{{}},
+						PackageList: []zcommon.Package{{}},
 					},
 				}
 			case otherImage.DigestStr():
-				return map[string]cvemodel.CVE{
+				return map[string]zcommon.CVE{
 					"CVE1": {
 						ID:          "CVE1",
 						Severity:    "HIGH",
 						Title:       "Title CVE1",
 						Description: "Description CVE1",
-						PackageList: []cvemodel.Package{{}},
+						PackageList: []zcommon.Package{{}},
 					},
 				}
 			}
 
 			// By default the image has no vulnerabilities
-			return map[string]cvemodel.CVE{}
+			return map[string]zcommon.CVE{}
 		}
 
 		// MetaDB loaded with initial data, now mock the scanner
 		// Setup test CVE data in mock scanner
 		scanner := mocks.CveScannerMock{
 			ScanImageFn: func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
-				repo, ref, _, _ := common.GetRepoReference(image)
+				repo, ref, _, _ := zcommon.GetRepoReference(image)
 
-				if common.IsDigest(ref) {
+				if zcommon.IsDigest(ref) {
 					return cvemodel.ScanResult{CVEMap: getCveResults(ref)}, nil
 				}
 
@@ -2052,7 +2061,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 				return cvemodel.ScanResult{CVEMap: getCveResults(repoMeta.Tags[ref].Digest)}, nil
 			},
-			GetCachedResultFn: func(digestStr string) map[string]cvemodel.CVE {
+			GetCachedResultFn: func(digestStr string) map[string]zcommon.CVE {
 				return getCveResults(digestStr)
 			},
 			IsResultCachedFn: func(digestStr string) bool {
@@ -2188,9 +2197,9 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 		Convey("GetCVEDiffListForImages errors", func() {
 			cveInfo.GetCVEDiffListForImagesFn = func(ctx context.Context, minuend, subtrahend, searchedCVE, excluded string,
-				pageInput cvemodel.PageInput,
-			) ([]cvemodel.CVE, cvemodel.ImageCVESummary, common.PageInfo, error) {
-				return nil, cvemodel.ImageCVESummary{}, common.PageInfo{}, ErrTestError
+				pageInput zcommon.PageInput,
+			) ([]zcommon.CVE, cvemodel.ImageCVESummary, zcommon.PageInfo, error) {
+				return nil, cvemodel.ImageCVESummary{}, zcommon.PageInfo{}, ErrTestError
 			}
 			minuend := gql_generated.ImageInput{Repo: "test", Tag: "img"}
 			subtrahend := gql_generated.ImageInput{Repo: "sub", Tag: "img"}
