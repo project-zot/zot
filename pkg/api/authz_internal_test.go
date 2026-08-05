@@ -2,6 +2,8 @@ package api
 
 import (
 	"crypto/tls"
+	"errors"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/constants"
 	"zotregistry.dev/zot/v2/pkg/log"
 	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
+	zerr "zotregistry.dev/zot/v2/errors"
 )
 
 // permitted returns just the bool from AccessController.isPermitted; tests
@@ -762,5 +765,294 @@ func TestAdminPolicyConditions(t *testing.T) {
 		bob.SetUsername("bob")
 		can, _ := ac.can(httpReqTLS, bob, constants.ReadPermission, "any/repo", "ref")
 		assert.False(t, can)
+	})
+}
+
+func TestClassifyDigestQueryTags(t *testing.T) {
+	t.Parallel()
+
+	existingRepoTags := []string{"stable", "latest", "dev"}
+
+	existing, newTags := classifyDigestQueryTags(existingRepoTags, []string{"new", "stable"})
+	assert.Equal(t, []string{"stable"}, existing)
+	assert.Equal(t, []string{"new"}, newTags)
+
+	existing, newTags = classifyDigestQueryTags(existingRepoTags, []string{"", "bad/ref", "stable", "latest", "stable"})
+	assert.Equal(t, []string{"stable", "latest"}, existing)
+	assert.Empty(t, newTags)
+
+	existing, newTags = classifyDigestQueryTags(existingRepoTags, []string{"brand-new", "bad/ref", "", "brand-new"})
+	assert.Empty(t, existing)
+	assert.Equal(t, []string{"brand-new"}, newTags)
+
+	existing, newTags = classifyDigestQueryTags(existingRepoTags, nil)
+	assert.Empty(t, existing)
+	assert.Empty(t, newTags)
+
+	existing, newTags = classifyDigestQueryTags(existingRepoTags, []string{"  edge  ", "edge", "stable", "  "})
+	assert.Equal(t, []string{"stable"}, existing)
+	assert.Equal(t, []string{"edge"}, newTags)
+}
+
+func TestManifestWriteAuthzChecks(t *testing.T) {
+	t.Parallel()
+
+	repoTags := []string{"stable", "dev"}
+	digest := "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+	t.Run("tag path overwrite requires update on that tag", func(t *testing.T) {
+		t.Parallel()
+
+		assert.Equal(t, []manifestWriteAuthzCheck{
+			{action: constants.UpdatePermission, reference: "stable"},
+		}, manifestWriteAuthzChecks(repoTags, "stable", []string{"ignored-by-route"}))
+	})
+
+	t.Run("tag path first push requires create on that tag", func(t *testing.T) {
+		t.Parallel()
+
+		assert.Equal(t, []manifestWriteAuthzCheck{
+			{action: constants.CreatePermission, reference: "v1"},
+		}, manifestWriteAuthzChecks(repoTags, "v1", nil))
+	})
+
+	t.Run("digest with only new tags requires create on each tag and digest", func(t *testing.T) {
+		t.Parallel()
+
+		assert.Equal(t, []manifestWriteAuthzCheck{
+			{action: constants.CreatePermission, reference: "brand-new"},
+			{action: constants.CreatePermission, reference: "edge"},
+			{action: constants.CreatePermission, reference: digest},
+		}, manifestWriteAuthzChecks(repoTags, digest, []string{"brand-new", "edge"}))
+	})
+
+	t.Run("digest overwriting existing tags requires update on each tag and digest", func(t *testing.T) {
+		t.Parallel()
+
+		assert.Equal(t, []manifestWriteAuthzCheck{
+			{action: constants.UpdatePermission, reference: "stable"},
+			{action: constants.UpdatePermission, reference: "dev"},
+			{action: constants.UpdatePermission, reference: digest},
+		}, manifestWriteAuthzChecks(repoTags, digest, []string{"stable", "dev"}))
+	})
+
+	t.Run("digest mix requires per-tag create/update plus create and update on digest", func(t *testing.T) {
+		t.Parallel()
+
+		assert.Equal(t, []manifestWriteAuthzCheck{
+			{action: constants.UpdatePermission, reference: "stable"},
+			{action: constants.CreatePermission, reference: "brand-new"},
+			{action: constants.CreatePermission, reference: digest},
+			{action: constants.UpdatePermission, reference: digest},
+		}, manifestWriteAuthzChecks(repoTags, digest, []string{"stable", "brand-new"}))
+	})
+
+	t.Run("digest with no tag query requires create on digest", func(t *testing.T) {
+		t.Parallel()
+
+		assert.Equal(t, []manifestWriteAuthzCheck{
+			{action: constants.CreatePermission, reference: digest},
+		}, manifestWriteAuthzChecks(repoTags, digest, nil))
+	})
+
+	t.Run("digest with only invalid tag query requires create on digest", func(t *testing.T) {
+		t.Parallel()
+
+		assert.Equal(t, []manifestWriteAuthzCheck{
+			{action: constants.CreatePermission, reference: digest},
+		}, manifestWriteAuthzChecks(repoTags, digest, []string{"", "bad/ref"}))
+	})
+}
+
+func TestAuthorizeManifestWrite(t *testing.T) {
+	t.Parallel()
+
+	digest := "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+	repoTags := []string{"stable", "dev"}
+	req := httptest.NewRequest(http.MethodPut, "/v2/repo/manifests/"+digest, nil)
+
+	makeAC := func(actions []string, conditions []config.Condition) *AccessController {
+		cfg := &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				"**": config.PolicyGroup{Policies: []config.Policy{{
+					Users:      []string{"alice"},
+					Actions:    actions,
+					Conditions: conditions,
+				}}},
+			},
+		}
+		programs, err := CompileAccessControl(cfg)
+		if err != nil {
+			t.Fatalf("CompileAccessControl: %v", err)
+		}
+		cfg.StoreCompiledConditions(programs)
+
+		return &AccessController{Config: cfg, Log: log.NewLogger("debug", "")}
+	}
+
+	alice := reqCtx.NewUserAccessControl()
+	alice.SetUsername("alice")
+
+	t.Run("create and update allow digest mix", func(t *testing.T) {
+		t.Parallel()
+
+		ac := makeAC([]string{
+			constants.ReadPermission,
+			constants.CreatePermission,
+			constants.UpdatePermission,
+		}, nil)
+
+		reason, allowed := authorizeManifestWrite(ac, req, alice, "repo", digest, repoTags,
+			[]string{"stable", "brand-new"})
+		assert.True(t, allowed)
+		assert.Empty(t, reason)
+	})
+
+	t.Run("create-only denied when overwriting existing tag", func(t *testing.T) {
+		t.Parallel()
+
+		ac := makeAC([]string{
+			constants.ReadPermission,
+			constants.CreatePermission,
+		}, nil)
+
+		reason, allowed := authorizeManifestWrite(ac, req, alice, "repo", digest, repoTags,
+			[]string{"stable", "brand-new"})
+		assert.False(t, allowed)
+		assert.Empty(t, reason)
+	})
+
+	t.Run("update-only denied when creating new tag", func(t *testing.T) {
+		t.Parallel()
+
+		ac := makeAC([]string{
+			constants.ReadPermission,
+			constants.UpdatePermission,
+		}, nil)
+
+		reason, allowed := authorizeManifestWrite(ac, req, alice, "repo", digest, repoTags,
+			[]string{"stable", "brand-new"})
+		assert.False(t, allowed)
+		assert.Empty(t, reason)
+	})
+
+	t.Run("update-only allows overwrite of existing tags only", func(t *testing.T) {
+		t.Parallel()
+
+		ac := makeAC([]string{
+			constants.ReadPermission,
+			constants.UpdatePermission,
+		}, nil)
+
+		reason, allowed := authorizeManifestWrite(ac, req, alice, "repo", digest, repoTags,
+			[]string{"stable"})
+		assert.True(t, allowed)
+		assert.Empty(t, reason)
+	})
+
+	t.Run("create-only allows new tags only", func(t *testing.T) {
+		t.Parallel()
+
+		ac := makeAC([]string{
+			constants.ReadPermission,
+			constants.CreatePermission,
+		}, nil)
+
+		reason, allowed := authorizeManifestWrite(ac, req, alice, "repo", digest, repoTags,
+			[]string{"brand-new"})
+		assert.True(t, allowed)
+		assert.Empty(t, reason)
+	})
+
+	t.Run("tag path overwrite allowed with update", func(t *testing.T) {
+		t.Parallel()
+
+		ac := makeAC([]string{
+			constants.ReadPermission,
+			constants.UpdatePermission,
+		}, nil)
+
+		reason, allowed := authorizeManifestWrite(ac, req, alice, "repo", "stable", repoTags, nil)
+		assert.True(t, allowed)
+		assert.Empty(t, reason)
+	})
+
+	t.Run("tag path first push allowed with create", func(t *testing.T) {
+		t.Parallel()
+
+		ac := makeAC([]string{
+			constants.ReadPermission,
+			constants.CreatePermission,
+		}, nil)
+
+		reason, allowed := authorizeManifestWrite(ac, req, alice, "repo", "v1", repoTags, nil)
+		assert.True(t, allowed)
+		assert.Empty(t, reason)
+	})
+
+	t.Run("CEL denial on existing query tag surfaces message", func(t *testing.T) {
+		t.Parallel()
+
+		ac := makeAC([]string{
+			constants.ReadPermission,
+			constants.CreatePermission,
+			constants.UpdatePermission,
+		}, []config.Condition{{
+			Expression: `req.action != "update" || req.tag != "stable"`,
+			Message:    "stable tag is immutable",
+		}})
+
+		reason, allowed := authorizeManifestWrite(ac, req, alice, "repo", digest, repoTags,
+			[]string{"stable", "brand-new"})
+		assert.False(t, allowed)
+		assert.Equal(t, "stable tag is immutable", reason)
+	})
+
+	t.Run("CEL denial on digest path surfaces message", func(t *testing.T) {
+		t.Parallel()
+
+		ac := makeAC([]string{
+			constants.ReadPermission,
+			constants.CreatePermission,
+			constants.UpdatePermission,
+		}, []config.Condition{{
+			Expression: `req.referenceType != "digest"`,
+			Message:    "digest path reference not permitted",
+		}})
+
+		reason, allowed := authorizeManifestWrite(ac, req, alice, "repo", digest, repoTags,
+			[]string{"stable"})
+		assert.False(t, allowed)
+		assert.Equal(t, "digest path reference not permitted", reason)
+	})
+}
+
+func TestRepoTagsForManifestWriteAuthz(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no error returns discovered tags", func(t *testing.T) {
+		t.Parallel()
+
+		tags := []string{"stable", "dev"}
+		got, err := repoTagsForManifestWriteAuthz(tags, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, tags, got)
+	})
+
+	t.Run("repo not found maps to empty tags", func(t *testing.T) {
+		t.Parallel()
+
+		got, err := repoTagsForManifestWriteAuthz([]string{"ignored"}, zerr.ErrRepoNotFound)
+		assert.NoError(t, err)
+		assert.Empty(t, got)
+	})
+
+	t.Run("unexpected storage error is returned", func(t *testing.T) {
+		t.Parallel()
+
+		expected := errors.New("storage backend unavailable")
+		got, err := repoTagsForManifestWriteAuthz(nil, expected)
+		assert.Nil(t, got)
+		assert.ErrorIs(t, err, expected)
 	})
 }

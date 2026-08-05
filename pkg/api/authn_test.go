@@ -75,17 +75,15 @@ func TestAllowedMethodsHeaderAPIKey(t *testing.T) {
 
 	Convey("Test http options response", t, func() {
 		conf := config.New()
-		port := test.GetFreePort()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.HTTP.Auth.APIKey = defaultVal
-		baseURL := test.GetBaseURL(port)
 
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		ctrlManager := test.NewControllerManager(ctlr)
 
-		ctrlManager.StartAndWait(port)
+		baseURL := ctrlManager.StartAndWait()
 		defer ctrlManager.StopServer()
 
 		resp, _ := resty.R().Options(baseURL + constants.APIKeyPath)
@@ -159,11 +157,8 @@ func TestValidateCallbackUI(t *testing.T) {
 
 func TestAPIKeys(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = test.GetFreePort()
 
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
@@ -219,9 +214,8 @@ func TestAPIKeys(t *testing.T) {
 
 		cm := test.NewControllerManager(ctlr)
 
-		cm.StartServer()
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
-		test.WaitTillServerReady(baseURL)
 
 		payload := api.APIKeyPayload{
 			Label:  "test",
@@ -936,15 +930,13 @@ func TestMultipleAuthorizationHeaders(t *testing.T) {
 	Convey("Test rejection of multiple Authorization headers", t, func() {
 		Convey("Test multiple and single Authorization headers in basic auth handler", func() {
 			conf := config.New()
-			port := test.GetFreePort()
-			baseURL := test.GetBaseURL(port)
+			conf.HTTP.Port = "0"
 
 			username, _ := test.GenerateRandomString()
 			password, _ := test.GenerateRandomString()
 
 			htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
 
-			conf.HTTP.Port = port
 			conf.HTTP.Auth = &config.AuthConfig{
 				HTPasswd: config.AuthHTPasswd{
 					Path: htpasswdPath,
@@ -955,7 +947,7 @@ func TestMultipleAuthorizationHeaders(t *testing.T) {
 			ctlr := api.NewController(conf)
 			cm := test.NewControllerManager(ctlr)
 
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			Convey("Multiple Authorization headers should be rejected - basic first", func() {
@@ -1051,10 +1043,7 @@ func TestMultipleAuthorizationHeaders(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			conf := config.New()
-			port := test.GetFreePort()
-			baseURL := test.GetBaseURL(port)
-
-			conf.HTTP.Port = port
+			conf.HTTP.Port = "0"
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
 					Cert:    serverCertPath,
@@ -1067,7 +1056,7 @@ func TestMultipleAuthorizationHeaders(t *testing.T) {
 			ctlr := api.NewController(conf)
 			cm := test.NewControllerManager(ctlr)
 
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			// Load the private key to sign the token
@@ -1208,10 +1197,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 
 		Convey("OIDC authentication success", func() {
 			conf := config.New()
-			port := test.GetFreePort()
-			baseURL := test.GetBaseURL(port)
-
-			conf.HTTP.Port = port
+			conf.HTTP.Port = "0"
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
 					OIDC: []config.BearerOIDCConfig{{
@@ -1225,7 +1211,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			ctlr := api.NewController(conf)
 			cm := test.NewControllerManager(ctlr)
 
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			// Create a valid OIDC token
@@ -1248,12 +1234,12 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 		Convey("OIDC token exchange returns the password token", func() {
 			conf := config.New()
 			port := test.GetFreePort()
-			baseURL := test.GetBaseURL(port)
-
 			conf.HTTP.Port = port
+			tokenRealm := test.GetBaseURL(port) + constants.TokenPath
+
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
-					Realm:   baseURL + constants.TokenPath,
+					Realm:   tokenRealm,
 					Service: "test-zot",
 					OIDC: []config.BearerOIDCConfig{{
 						Issuer:    issuer,
@@ -1266,7 +1252,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			ctlr := api.NewController(conf)
 			cm := test.NewControllerManager(ctlr)
 
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			token, err := createWorkloadOIDCToken(privKey, issuer, audience, nil)
@@ -1359,7 +1345,8 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 		Convey("OIDC token exchange refuses to proxy locally owned bearer OIDC tokens that fail authentication", func() {
 			conf := config.New()
 			port := test.GetFreePort()
-			baseURL := test.GetBaseURL(port)
+			conf.HTTP.Port = port
+			tokenRealm := test.GetBaseURL(port) + constants.TokenPath
 
 			proxyHit := false
 			proxyServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -1368,10 +1355,9 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			}))
 			defer proxyServer.Close()
 
-			conf.HTTP.Port = port
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
-					Realm:   baseURL + constants.TokenPath,
+					Realm:   tokenRealm,
 					Service: "zot-service",
 					UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{
 						Realm:             proxyServer.URL + "/token",
@@ -1389,7 +1375,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			ctlr := api.NewController(conf)
 			cm := test.NewControllerManager(ctlr)
 
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			wrongKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -1409,7 +1395,8 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 		Convey("OIDC token exchange refuses to proxy browser OpenID-owned tokens", func() {
 			conf := config.New()
 			port := test.GetFreePort()
-			baseURL := test.GetBaseURL(port)
+			conf.HTTP.Port = port
+			tokenRealm := test.GetBaseURL(port) + constants.TokenPath
 			humanClientID := "human-client"
 
 			proxyHit := false
@@ -1419,10 +1406,9 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			}))
 			defer proxyServer.Close()
 
-			conf.HTTP.Port = port
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
-					Realm:   baseURL + constants.TokenPath,
+					Realm:   tokenRealm,
 					Service: "zot-service",
 					UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{
 						Realm:             proxyServer.URL + "/token",
@@ -1449,7 +1435,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			ctlr := api.NewController(conf)
 			cm := test.NewControllerManager(ctlr)
 
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			humanToken, err := createWorkloadOIDCToken(privKey, issuer, humanClientID, nil)
@@ -1467,7 +1453,8 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 		Convey("OIDC token exchange proxies GET requests when no local backend owns the credential", func() {
 			conf := config.New()
 			port := test.GetFreePort()
-			baseURL := test.GetBaseURL(port)
+			conf.HTTP.Port = port
+			tokenRealm := test.GetBaseURL(port) + constants.TokenPath
 
 			var gotMethod, gotUsername, gotPassword, gotService, gotScope, gotClientID, gotFrom string
 			proxyServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -1485,10 +1472,9 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			}))
 			defer proxyServer.Close()
 
-			conf.HTTP.Port = port
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
-					Realm:   baseURL + constants.TokenPath,
+					Realm:   tokenRealm,
 					Service: "zot-service",
 					UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{
 						Realm:             proxyServer.URL + "/token?from=proxy",
@@ -1506,7 +1492,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			ctlr := api.NewController(conf)
 			cm := test.NewControllerManager(ctlr)
 
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			proxyResp, err := resty.R().
@@ -1532,7 +1518,8 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 		Convey("OIDC token exchange proxies POST form requests when no local backend owns the credential", func() {
 			conf := config.New()
 			port := test.GetFreePort()
-			baseURL := test.GetBaseURL(port)
+			conf.HTTP.Port = port
+			tokenRealm := test.GetBaseURL(port) + constants.TokenPath
 
 			var gotMethod, gotService, gotScope, gotGrantType, gotUsername, gotPassword string
 			proxyServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -1551,10 +1538,9 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			}))
 			defer proxyServer.Close()
 
-			conf.HTTP.Port = port
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
-					Realm:   baseURL + constants.TokenPath,
+					Realm:   tokenRealm,
 					Service: "zot-service",
 					UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{
 						Realm:             proxyServer.URL + "/token",
@@ -1572,7 +1558,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			ctlr := api.NewController(conf)
 			cm := test.NewControllerManager(ctlr)
 
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			proxyResp, err := resty.R().
@@ -1594,10 +1580,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 
 		Convey("OIDC authentication success with groups", func() {
 			conf := config.New()
-			port := test.GetFreePort()
-			baseURL := test.GetBaseURL(port)
-
-			conf.HTTP.Port = port
+			conf.HTTP.Port = "0"
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
 					OIDC: []config.BearerOIDCConfig{{
@@ -1614,7 +1597,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			ctlr := api.NewController(conf)
 			cm := test.NewControllerManager(ctlr)
 
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			// Create a valid OIDC token with groups
@@ -1637,10 +1620,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 
 		Convey("OIDC authentication fails with MetaDB error", func() {
 			conf := config.New()
-			port := test.GetFreePort()
-			baseURL := test.GetBaseURL(port)
-
-			conf.HTTP.Port = port
+			conf.HTTP.Port = "0"
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
 					OIDC: []config.BearerOIDCConfig{{
@@ -1654,9 +1634,8 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			ctlr := api.NewController(conf)
 			cm := test.NewControllerManager(ctlr)
 
-			cm.StartServer()
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
-			test.WaitTillServerReady(baseURL)
 
 			// Replace MetaDB with a mock that returns an error
 			ctlr.MetaDB = mocks.MetaDBMock{
@@ -1698,10 +1677,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			conf := config.New()
-			port := test.GetFreePort()
-			baseURL := test.GetBaseURL(port)
-
-			conf.HTTP.Port = port
+			conf.HTTP.Port = "0"
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
 					Cert:    serverCertPath,
@@ -1718,7 +1694,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			ctlr := api.NewController(conf)
 			cm := test.NewControllerManager(ctlr)
 
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			// Load the private key to sign traditional bearer token
@@ -1765,10 +1741,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 
 		Convey("OIDC authentication with invalid token", func() {
 			conf := config.New()
-			port := test.GetFreePort()
-			baseURL := test.GetBaseURL(port)
-
-			conf.HTTP.Port = port
+			conf.HTTP.Port = "0"
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
 					OIDC: []config.BearerOIDCConfig{{
@@ -1782,7 +1755,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			ctlr := api.NewController(conf)
 			cm := test.NewControllerManager(ctlr)
 
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			// Test with invalid token
@@ -1800,10 +1773,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 
 		Convey("OIDC authentication with no token provided", func() {
 			conf := config.New()
-			port := test.GetFreePort()
-			baseURL := test.GetBaseURL(port)
-
-			conf.HTTP.Port = port
+			conf.HTTP.Port = "0"
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
 					OIDC: []config.BearerOIDCConfig{{
@@ -1817,7 +1787,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			ctlr := api.NewController(conf)
 			cm := test.NewControllerManager(ctlr)
 
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			// Test without any authorization header
@@ -1834,10 +1804,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 
 		Convey("OIDC authentication with wrong audience", func() {
 			conf := config.New()
-			port := test.GetFreePort()
-			baseURL := test.GetBaseURL(port)
-
-			conf.HTTP.Port = port
+			conf.HTTP.Port = "0"
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
 					OIDC: []config.BearerOIDCConfig{{
@@ -1851,7 +1818,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			ctlr := api.NewController(conf)
 			cm := test.NewControllerManager(ctlr)
 
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			// Create a token with wrong audience
@@ -1886,10 +1853,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			conf := config.New()
-			port := test.GetFreePort()
-			baseURL := test.GetBaseURL(port)
-
-			conf.HTTP.Port = port
+			conf.HTTP.Port = "0"
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
 					Cert:    serverCertPath,
@@ -1906,7 +1870,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			ctlr := api.NewController(conf)
 			cm := test.NewControllerManager(ctlr)
 
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			// Load the private key to sign traditional bearer token
@@ -1956,10 +1920,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 
 		Convey("OIDC authentication with OPTIONS method", func() {
 			conf := config.New()
-			port := test.GetFreePort()
-			baseURL := test.GetBaseURL(port)
-
-			conf.HTTP.Port = port
+			conf.HTTP.Port = "0"
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
 					OIDC: []config.BearerOIDCConfig{{
@@ -1973,7 +1934,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			ctlr := api.NewController(conf)
 			cm := test.NewControllerManager(ctlr)
 
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			// Test OPTIONS method - should be allowed without authentication
@@ -1991,10 +1952,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 
 		Convey("OIDC authentication with push action", func() {
 			conf := config.New()
-			port := test.GetFreePort()
-			baseURL := test.GetBaseURL(port)
-
-			conf.HTTP.Port = port
+			conf.HTTP.Port = "0"
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
 					OIDC: []config.BearerOIDCConfig{{
@@ -2008,7 +1966,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			ctlr := api.NewController(conf)
 			cm := test.NewControllerManager(ctlr)
 
-			cm.StartAndWait(port)
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			// Create a valid OIDC token
@@ -2048,10 +2006,7 @@ func TestTraditionalBearerMethodActionMapping(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		conf := config.New()
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.HTTP.Auth = &config.AuthConfig{
 			Bearer: &config.BearerConfig{
 				Cert:    serverCertPath,
@@ -2063,7 +2018,7 @@ func TestTraditionalBearerMethodActionMapping(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
 
 		keyBytes, err := os.ReadFile(serverKeyPath)
@@ -2534,8 +2489,6 @@ func TestCookieSecureFlag(t *testing.T) {
 		Convey("Test with TLS configured - cookies should be Secure=true", func() {
 			conf := config.New()
 			port := test.GetFreePort()
-			baseURL := test.GetSecureBaseURL(port)
-
 			conf.HTTP.Port = port
 			conf.HTTP.TLS = &config.TLSConfig{
 				Cert: serverCertPath,
@@ -2563,9 +2516,9 @@ func TestCookieSecureFlag(t *testing.T) {
 			ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 			cm := test.NewControllerManager(ctlr)
-			cm.StartServer()
-
+			cm.StartAndWait()
 			defer cm.StopServer()
+			baseURL := test.GetSecureBaseURL(port)
 
 			// Load CA certificate for proper TLS verification
 			caCert, err := os.ReadFile(caCertPath)
@@ -2577,15 +2530,6 @@ func TestCookieSecureFlag(t *testing.T) {
 			client := resty.New()
 			client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
 			client.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
-
-			for {
-				if _, err := client.R().Get(baseURL); err == nil {
-					break
-				}
-
-				// wait for server to be ready
-				time.Sleep(test.SleepTime)
-			}
 
 			resp, err := client.R().
 				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
@@ -2604,10 +2548,7 @@ func TestCookieSecureFlag(t *testing.T) {
 		Convey("Test with SecureSession=true configured - cookies should be Secure=true", func() {
 			secureTrue := true
 			conf := config.New()
-			port := test.GetFreePort()
-			baseURL := test.GetBaseURL(port)
-
-			conf.HTTP.Port = port
+			conf.HTTP.Port = test.GetFreePort()
 			conf.HTTP.TLS = nil // No TLS
 			conf.HTTP.Auth = &config.AuthConfig{
 				HTPasswd: config.AuthHTPasswd{
@@ -2633,10 +2574,8 @@ func TestCookieSecureFlag(t *testing.T) {
 
 			cm := test.NewControllerManager(ctlr)
 
-			cm.StartServer()
-
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
-			test.WaitTillServerReady(baseURL)
 
 			client := resty.New()
 			client.SetRedirectPolicy(test.CustomRedirectPolicy(20))

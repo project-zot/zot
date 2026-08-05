@@ -66,14 +66,19 @@ func TestValidateManifest(t *testing.T) {
 
 			_, _, err = imgStore.PutImageManifest(context.Background(), "test", "1.0", ispec.MediaTypeImageConfig, body, nil)
 			So(err, ShouldNotBeNil)
-			So(err, ShouldEqual, zerr.ErrBadManifest)
+			So(errors.Is(err, zerr.ErrBadManifest), ShouldBeTrue)
+
+			var internalErr *zerr.Error
+
+			So(errors.As(err, &internalErr), ShouldBeTrue)
+			So(internalErr.GetDetails()["mediaType"], ShouldEqual, ispec.MediaTypeImageConfig)
 		})
 
 		Convey("empty manifest with bad media type", func() {
 			_, _, err = imgStore.PutImageManifest(context.Background(), "test", "1.0",
 				ispec.MediaTypeImageConfig, []byte(""), nil)
 			So(err, ShouldNotBeNil)
-			So(err, ShouldEqual, zerr.ErrBadManifest)
+			So(errors.Is(err, zerr.ErrBadManifest), ShouldBeTrue)
 		})
 
 		Convey("empty manifest with correct media type", func() {

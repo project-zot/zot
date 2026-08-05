@@ -2137,18 +2137,35 @@ const AwsS3BatchLimit = 100
 
 func (dwr *DynamoDB) fetchImageMetaAttributesByDigest(ctx context.Context, digests []string,
 ) ([]map[string]types.AttributeValue, error) {
-	// AWS S3 as a limit (=100) on number of keys that can retrieved in one
-	// request, so break it up
+	// BatchGetItem fails the whole request with a ValidationException if the same
+	// key is present twice, and callers do pass repeated digests legitimately (for
+	// example several tags, or several repos, referring to one manifest), so ask
+	// for each distinct digest only once. The caller's original order and
+	// repetitions are restored when building orderedResp below.
+	uniqueDigests := make([]string, 0, len(digests))
+	seenDigests := make(map[string]struct{}, len(digests))
+
+	for _, digest := range digests {
+		if _, seen := seenDigests[digest]; seen {
+			continue
+		}
+
+		seenDigests[digest] = struct{}{}
+		uniqueDigests = append(uniqueDigests, digest)
+	}
+
+	// BatchGetItem has a limit (=100) on the number of keys that can be retrieved
+	// in one request, so break it up
 	batchedResp := []map[string]types.AttributeValue{}
 
-	for start := 0; start < len(digests); {
-		size := min(len(digests)-start, AwsS3BatchLimit)
+	for start := 0; start < len(uniqueDigests); {
+		size := min(len(uniqueDigests)-start, AwsS3BatchLimit)
 		end := start + size
 
 		resp, err := dwr.Client.BatchGetItem(ctx, &dynamodb.BatchGetItemInput{
 			RequestItems: map[string]types.KeysAndAttributes{
 				dwr.ImageMetaTablename: {
-					Keys: getBatchImageKeys(digests[start:end]),
+					Keys: getBatchImageKeys(uniqueDigests[start:end]),
 				},
 			},
 		})

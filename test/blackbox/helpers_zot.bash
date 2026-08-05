@@ -6,6 +6,7 @@ ZLI_PATH=${ROOT_DIR}/bin/zli-${OS}-${ARCH}
 ZOT_MINIMAL_PATH=${ROOT_DIR}/bin/zot-${OS}-${ARCH}-minimal
 ZB_PATH=${ROOT_DIR}/bin/zb-${OS}-${ARCH}
 TEST_DATA_DIR=${BATS_FILE_TMPDIR}/test/data
+ZOT_RELEASE_VERSION="latest"
 AUTH_USER=poweruser
 AUTH_PASS=sup*rSecr9T
 # additional creds for sha256/sha512 based password hashes
@@ -28,17 +29,28 @@ function zot_serve() {
     echo -n "$! " >> ${BATS_FILE_TMPDIR}/zot.pid
 }
 
+function zot_download_base_url() {
+    local base="https://github.com/project-zot/zot/releases"
+    local url_version_path="${ZOT_RELEASE_VERSION}/download"
+    if [[ "${ZOT_RELEASE_VERSION}" != "latest" ]]; then
+        url_version_path="download/${ZOT_RELEASE_VERSION}"
+    fi
+
+    echo "${base}/${url_version_path}"
+}
+
 function zot_rel_serve() {
     local config_file=${1}
     local zot_path=${BATS_FILE_TMPDIR}/zot-rel-${OS}-${ARCH}
+    local base_url=$(zot_download_base_url)
 
     if [ ! -f "${zot_path}" ]; then
-        if ! curl -f -L -o "${zot_path}" https://github.com/project-zot/zot/releases/latest/download/zot-${OS}-${ARCH}; then 
+        if ! curl -f -L -o "${zot_path}" "${base_url}/zot-${OS}-${ARCH}"; then
             echo "ERROR: Failed to download zot binary from GitHub." >&2
             return 1
         fi
         # Download checksum file and verify integrity
-        checksum_url="https://github.com/project-zot/zot/releases/latest/download/checksums.sha256.txt"
+        checksum_url="${base_url}/checksums.sha256.txt"
         checksum_file="${BATS_FILE_TMPDIR}/zot-sha256sums.txt"
         curl -L -o "${checksum_file}" "${checksum_url}"
         expected_sum=$(grep "zot-${OS}-${ARCH}$" "${checksum_file}" | awk '{print $1}')
@@ -62,14 +74,15 @@ function zot_rel_serve() {
 function zot_rel_min_serve() {
     local config_file=${1}
     local zot_path=${BATS_FILE_TMPDIR}/zot-rel-${OS}-${ARCH}-minimal
+    local base_url=$(zot_download_base_url)
 
     if [ ! -f "${zot_path}" ]; then
-        if ! curl -f -L -o "${zot_path}" https://github.com/project-zot/zot/releases/latest/download/zot-${OS}-${ARCH}-minimal; then
+        if ! curl -f -L -o "${zot_path}" "${base_url}/zot-${OS}-${ARCH}-minimal"; then
             echo "ERROR: Failed to download zot binary from GitHub." >&2
             return 1
         fi
         # Download checksum file and verify integrity
-        checksum_url="https://github.com/project-zot/zot/releases/latest/download/checksums.sha256.txt"
+        checksum_url="${base_url}/checksums.sha256.txt"
         checksum_file="${BATS_FILE_TMPDIR}/zot-sha256sums.txt"
         curl -L -o "${checksum_file}" "${checksum_url}"
         expected_sum=$(grep "zot-${OS}-${ARCH}-minimal$" "${checksum_file}" | awk '{print $1}')

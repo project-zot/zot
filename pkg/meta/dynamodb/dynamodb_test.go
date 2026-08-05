@@ -241,8 +241,12 @@ func TestWrapperErrors(t *testing.T) {
 				err := dynamoWrapper.SetRepoReference(ctx, "repo", "tag", image.AsImageMeta())
 				So(err, ShouldBeNil)
 
-				_, err = dynamoWrapper.FilterImageMeta(ctx, []string{image.DigestStr(), image.DigestStr()})
-				So(err, ShouldNotBeNil)
+				// BatchGetItem rejects a request containing the same key twice, so the
+				// driver queries each distinct digest once. Repeated digests are valid
+				// input (boltdb accepts them) and must not fail here either.
+				imageMeta, err := dynamoWrapper.FilterImageMeta(ctx, []string{image.DigestStr(), image.DigestStr()})
+				So(err, ShouldBeNil)
+				So(imageMeta, ShouldContainKey, image.DigestStr())
 			})
 
 			Convey("manifest meta unmarshal error", func() {

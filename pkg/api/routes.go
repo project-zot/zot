@@ -1007,9 +1007,15 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 		err := meta.OnDeleteManifest(name, reference, mediaType, manifestDigest, manifestBlob,
 			rh.c.StoreController, rh.c.MetaDB, rh.c.Log)
 		if err != nil {
-			response.WriteHeader(http.StatusInternalServerError)
+			// The image store manifest may have been restored (or restore may itself have
+			// failed), so this must not report success either way.
+			if errors.Is(err, zerr.ErrManifestRestoreAttempted) {
+				rh.c.Log.Error().Err(err).Str("repository", name).Str("reference", reference).
+					Msg("failed to remove manifest from metadb; attempted to restore it in the image store")
+				response.WriteHeader(http.StatusInternalServerError)
 
-			return
+				return
+			}
 		}
 	}
 
