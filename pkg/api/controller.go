@@ -657,4 +657,5 @@ func RunGCTasks(conf *config.Config, storeController storage.StoreController, me
 type SyncOnDemand interface {
 	SyncImage(ctx context.Context, repo, reference string) error
 	SyncReferrers(ctx context.Context, repo string, subjectDigestStr string, referenceTypes []string) error
+	IsSyncInFlight(repo, reference string) bool
 }

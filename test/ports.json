@@ -476,5 +476,23 @@
       "begin": 11550,
       "end": 11559
     }
+  },
+  "blackbox/sync_multireplica_lock.bats": {
+    "redis": {
+      "begin": 11650,
+      "end": 11659
+    },
+    "upstream": {
+      "begin": 11590,
+      "end": 11599
+    },
+    "replica1": {
+      "begin": 11610,
+      "end": 11619
+    },
+    "replica2": {
+      "begin": 11630,
+      "end": 11639
+    }
   }
 }
