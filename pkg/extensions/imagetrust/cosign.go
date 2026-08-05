@@ -16,8 +16,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
 	godigest "github.com/opencontainers/go-digest"
+	"github.com/secure-systems-lab/go-securesystemslib/dsse"
 	"github.com/sigstore/cosign/v3/pkg/cosign/pkcs11key"
 	sigs "github.com/sigstore/cosign/v3/pkg/signature"
+	"github.com/sigstore/sigstore-go/pkg/bundle"
 	"github.com/sigstore/sigstore/pkg/cryptoutils"
 	sigstoreSigs "github.com/sigstore/sigstore/pkg/signature"
 	"github.com/sigstore/sigstore/pkg/signature/options"
@@ -88,6 +90,12 @@ func VerifyCosignSignature(
 		return "", false, err
 	}
 
+	// cosign >= v3 signs using the new sigstore bundle format by default, in which case the
+	// signature is inside the bundle itself and there is no legacy signature-key annotation.
+	if signatureKey == "" {
+		return verifyCosignBundleSignature(cosignStorage, publicKeys, digest, layerContent)
+	}
+
 	for _, publicKey := range publicKeys {
 		// cosign verify the image
 		pubKeyVerifier, pubKeyContent, err := cosignStorage.GetPublicKeyVerifier(publicKey)
@@ -134,6 +142,83 @@ func VerifyCosignSignature(
 	}
 
 	return "", false, nil
+}
+
+// verifyCosignBundleSignature verifies a signature stored using the sigstore bundle format
+// (application/vnd.dev.sigstore.bundle.v0.3+json), which is what cosign v3 produces by default.
+// The bundle embeds a DSSE envelope wrapping an in-toto statement whose subject is the signed
+// image digest.
+func verifyCosignBundleSignature(
+	cosignStorage publicKeyStorage, publicKeys []string, digest godigest.Digest, layerContent []byte,
+) (string, bool, error) {
+	var sigBundle bundle.Bundle
+	if err := sigBundle.UnmarshalJSON(layerContent); err != nil {
+		return "", false, nil //nolint: nilerr // not a bundle, nothing to verify
+	}
+
+	envelope, err := sigBundle.Envelope()
+	if err != nil {
+		return "", false, nil //nolint: nilerr // only DSSE envelopes are supported
+	}
+
+	if len(envelope.Signatures) == 0 {
+		return "", false, nil
+	}
+
+	payload, err := envelope.DecodeB64Payload()
+	if err != nil {
+		return "", false, nil //nolint: nilerr
+	}
+
+	signature, err := base64.StdEncoding.DecodeString(envelope.Signatures[0].Sig)
+	if err != nil {
+		return "", false, nil //nolint: nilerr
+	}
+
+	// the DSSE signature is computed over the pre-authentication encoding of the payload
+	signedContent := dsse.PAE(envelope.PayloadType, payload)
+
+	if !bundleSubjectMatchesDigest(envelope, digest) {
+		return "", false, nil
+	}
+
+	for _, publicKey := range publicKeys {
+		pubKeyVerifier, pubKeyContent, err := cosignStorage.GetPublicKeyVerifier(publicKey)
+		if err != nil {
+			continue
+		}
+
+		if pkcs11Key, ok := pubKeyVerifier.(*pkcs11key.Key); ok {
+			defer pkcs11Key.Close()
+		}
+
+		err = pubKeyVerifier.VerifySignature(bytes.NewReader(signature), bytes.NewReader(signedContent),
+			options.WithContext(context.Background()))
+		if err == nil {
+			return string(pubKeyContent), true, nil
+		}
+	}
+
+	return "", false, nil
+}
+
+// bundleSubjectMatchesDigest checks that the in-toto statement carried by the DSSE envelope
+// refers to the image digest being verified.
+func bundleSubjectMatchesDigest(envelope *bundle.Envelope, digest godigest.Digest) bool {
+	statement, err := envelope.Statement()
+	if err != nil {
+		return false
+	}
+
+	for _, subject := range statement.GetSubject() {
+		for algorithm, encoded := range subject.GetDigest() {
+			if godigest.NewDigestFromEncoded(godigest.Algorithm(algorithm), encoded) == digest {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func (local *PublicKeyLocalStorage) GetPublicKeyVerifier(fileName string) (sigstoreSigs.Verifier, []byte, error) {
