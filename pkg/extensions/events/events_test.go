@@ -3,10 +3,13 @@
 package events_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -44,6 +47,37 @@ func newMockSink() *mockSink {
 	return &mockSink{
 		store: make(chan *cloudevents.Event),
 	}
+}
+
+type failingSink struct{}
+
+func (s *failingSink) Emit(e *cloudevents.Event) cloudevents.Result {
+	return cloudevents.NewReceipt(false, "sink rejected event")
+}
+
+func (s *failingSink) Close() error {
+	return nil
+}
+
+var _ events.Sink = (*failingSink)(nil)
+
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.buf.String()
 }
 
 func TestEventSinkMissing(t *testing.T) {
@@ -84,6 +118,62 @@ func TestEvents(t *testing.T) {
 				events.ImageScanSummary{Count: 1, HighCount: 1, FixableCount: 1, MaxSeverity: "HIGH"}, nil)
 			ev := <-sink.store
 			So(ev.Type(), ShouldEqual, events.ImageScannedEventType.String())
+		})
+	})
+}
+
+func TestEventsSinkFailure(t *testing.T) {
+	Convey("with a failing sink", t, func() {
+		buf := &syncBuffer{}
+		logger := log.NewLoggerWithWriter("debug", buf)
+
+		Convey("does not log success when the sink fails", func() {
+			recorder, err := events.NewRecorder(logger, &failingSink{})
+			So(err, ShouldBeNil)
+
+			recorder.RepositoryCreated("test", nil)
+
+			logged := func() bool { return strings.Contains(buf.String(), "failed to publish event") }
+			for i := 0; i < 100 && !logged(); i++ {
+				time.Sleep(10 * time.Millisecond)
+			}
+			So(logged(), ShouldBeTrue)
+			So(buf.String(), ShouldNotContainSubstring, "event published successfully")
+		})
+
+		Convey("remaining sinks still receive the event and success is not logged", func() {
+			sink := newMockSink()
+			recorder, err := events.NewRecorder(logger, &failingSink{}, sink)
+			So(err, ShouldBeNil)
+
+			recorder.RepositoryCreated("test", nil)
+
+			ev := <-sink.store
+			So(ev.Type(), ShouldEqual, events.RepositoryCreatedEventType.String())
+
+			logged := func() bool { return strings.Contains(buf.String(), "failed to publish event") }
+			for i := 0; i < 100 && !logged(); i++ {
+				time.Sleep(10 * time.Millisecond)
+			}
+			So(logged(), ShouldBeTrue)
+			So(buf.String(), ShouldNotContainSubstring, "event published successfully")
+		})
+
+		Convey("logs success when all sinks accept the event", func() {
+			sink := newMockSink()
+			recorder, err := events.NewRecorder(logger, sink)
+			So(err, ShouldBeNil)
+
+			recorder.RepositoryCreated("test", nil)
+
+			ev := <-sink.store
+			So(ev.Type(), ShouldEqual, events.RepositoryCreatedEventType.String())
+
+			logged := func() bool { return strings.Contains(buf.String(), "event published successfully") }
+			for i := 0; i < 100 && !logged(); i++ {
+				time.Sleep(10 * time.Millisecond)
+			}
+			So(logged(), ShouldBeTrue)
 		})
 	})
 }
