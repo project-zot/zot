@@ -170,11 +170,6 @@ func verifyCosignBundleSignature(
 		return "", false, nil //nolint: nilerr
 	}
 
-	signature, err := base64.StdEncoding.DecodeString(envelope.Signatures[0].Sig)
-	if err != nil {
-		return "", false, nil //nolint: nilerr
-	}
-
 	// the DSSE signature is computed over the pre-authentication encoding of the payload
 	signedContent := dsse.PAE(envelope.PayloadType, payload)
 
@@ -182,20 +177,27 @@ func verifyCosignBundleSignature(
 		return "", false, nil
 	}
 
-	for _, publicKey := range publicKeys {
-		pubKeyVerifier, pubKeyContent, err := cosignStorage.GetPublicKeyVerifier(publicKey)
+	for _, envelopeSignature := range envelope.Signatures {
+		signature, err := base64.StdEncoding.DecodeString(envelopeSignature.Sig)
 		if err != nil {
 			continue
 		}
 
-		if pkcs11Key, ok := pubKeyVerifier.(*pkcs11key.Key); ok {
-			defer pkcs11Key.Close()
-		}
+		for _, publicKey := range publicKeys {
+			pubKeyVerifier, pubKeyContent, err := cosignStorage.GetPublicKeyVerifier(publicKey)
+			if err != nil {
+				continue
+			}
 
-		err = pubKeyVerifier.VerifySignature(bytes.NewReader(signature), bytes.NewReader(signedContent),
-			options.WithContext(context.Background()))
-		if err == nil {
-			return string(pubKeyContent), true, nil
+			if pkcs11Key, ok := pubKeyVerifier.(*pkcs11key.Key); ok {
+				defer pkcs11Key.Close()
+			}
+
+			err = pubKeyVerifier.VerifySignature(bytes.NewReader(signature), bytes.NewReader(signedContent),
+				options.WithContext(context.Background()))
+			if err == nil {
+				return string(pubKeyContent), true, nil
+			}
 		}
 	}
 
