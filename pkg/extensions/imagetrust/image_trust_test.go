@@ -42,6 +42,7 @@ import (
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	"zotregistry.dev/zot/v2/pkg/extensions/imagetrust"
 	"zotregistry.dev/zot/v2/pkg/log"
+	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	test "zotregistry.dev/zot/v2/pkg/test/common"
 	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
@@ -654,6 +655,90 @@ func TestCosignSignatureDigestBinding(t *testing.T) {
 	})
 }
 
+func TestCosignBundleSignatureEndToEnd(t *testing.T) {
+	Convey("cosign sigstore bundle signature is verified through the live ingestion path", t, func() {
+		repo := "repo"
+		tag := "test"
+
+		image := CreateRandomImage()
+
+		rootDir := t.TempDir()
+
+		defaultValue := true
+
+		conf := config.New()
+		conf.HTTP.Port = "0"
+		conf.Storage.GC = false
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Trust = &extconf.ImageTrustConfig{}
+		conf.Extensions.Trust.Enable = &defaultValue
+		conf.Extensions.Trust.Cosign = defaultValue
+
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = rootDir
+
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+		port := strconv.Itoa(cm.Port())
+		defer cm.StopServer()
+
+		err := UploadImage(image, baseURL, repo, tag)
+		So(err, ShouldBeNil)
+
+		keyDir := t.TempDir()
+
+		cwd, err := os.Getwd()
+		So(err, ShouldBeNil)
+
+		func() {
+			So(os.Chdir(keyDir), ShouldBeNil)
+			defer func() {
+				So(os.Chdir(cwd), ShouldBeNil)
+			}()
+
+			t.Setenv("COSIGN_PASSWORD", "")
+			err = generate.GenerateKeyPairCmd(context.TODO(), "", "cosign", nil)
+			So(err, ShouldBeNil)
+		}()
+
+		publicKeyContent, err := os.ReadFile(path.Join(keyDir, "cosign.pub"))
+		So(err, ShouldBeNil)
+
+		// upload the public key before signing, so the running server can verify at push time
+		client := resty.New()
+		resp, err := client.R().SetHeader("Content-type", "application/octet-stream").
+			SetBody(publicKeyContent).Post(baseURL + constants.FullCosign)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		err = sign.SignCmd(context.TODO(),
+			&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
+			options.KeyOpts{KeyRef: path.Join(keyDir, "cosign.key"), PassFunc: generate.GetPass},
+			options.SignOptions{
+				Registry:        options.RegistryOptions{AllowInsecure: true},
+				Upload:          true,
+				NewBundleFormat: true,
+				TlogUpload:      false,
+			},
+			[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repo, image.DigestStr())})
+		So(err, ShouldBeNil)
+
+		repoMeta, err := ctlr.MetaDB.GetRepoMeta(context.Background(), repo)
+		So(err, ShouldBeNil)
+
+		var layerInfo mTypes.LayerInfo
+
+		for _, sigInfo := range repoMeta.Signatures[image.DigestStr()][zcommon.CosignSignature] {
+			if len(sigInfo.LayersInfo) > 0 {
+				layerInfo = sigInfo.LayersInfo[0]
+			}
+		}
+
+		So(layerInfo.SignatureKey, ShouldBeEmpty)
+		So(layerInfo.Signer, ShouldNotBeEmpty)
+	})
+}
+
 func TestCosignBundleSignature(t *testing.T) {
 	Convey("cosign sigstore bundle signature is verified", t, func() {
 		repo := "repo"
@@ -686,13 +771,16 @@ func TestCosignBundleSignature(t *testing.T) {
 		cwd, err := os.Getwd()
 		So(err, ShouldBeNil)
 
-		So(os.Chdir(cosignDir), ShouldBeNil)
+		func() {
+			So(os.Chdir(cosignDir), ShouldBeNil)
+			defer func() {
+				So(os.Chdir(cwd), ShouldBeNil)
+			}()
 
-		t.Setenv("COSIGN_PASSWORD", "")
-		err = generate.GenerateKeyPairCmd(context.TODO(), "", "cosign", nil)
-		So(err, ShouldBeNil)
-
-		So(os.Chdir(cwd), ShouldBeNil)
+			t.Setenv("COSIGN_PASSWORD", "")
+			err = generate.GenerateKeyPairCmd(context.TODO(), "", "cosign", nil)
+			So(err, ShouldBeNil)
+		}()
 
 		err = sign.SignCmd(context.TODO(),
 			&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
