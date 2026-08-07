@@ -69,6 +69,7 @@ type RegistryConfig struct {
 	PreserveDigest         bool           // sync without converting
 	SyncTimeout            time.Duration  // overall HTTP client timeout for all sync operations
 	ResponseHeaderTimeout  time.Duration  `yaml:"-"` // response header timeout; set in root.go
+	Stream                 bool           // stream blobs to clients while fetching from upstream on-demand
 }
 
 // OAuth2HelperConfig holds the options used by the "oauth2" credential helper,
