@@ -150,7 +150,7 @@ func VerifyCosignSignature(
 // image digest.
 func verifyCosignBundleSignature(
 	cosignStorage publicKeyStorage, publicKeys []string, digest godigest.Digest, layerContent []byte,
-) (string, bool, error) {
+) (string, bool, error) { //nolint:unparam // error kept to match VerifyCosignSignature's return signature
 	var sigBundle bundle.Bundle
 	if err := sigBundle.UnmarshalJSON(layerContent); err != nil {
 		return "", false, nil //nolint: nilerr // not a bundle, nothing to verify
@@ -189,12 +189,16 @@ func verifyCosignBundleSignature(
 				continue
 			}
 
-			if pkcs11Key, ok := pubKeyVerifier.(*pkcs11key.Key); ok {
-				defer pkcs11Key.Close()
-			}
+			pkcs11Key, isPKCS11Key := pubKeyVerifier.(*pkcs11key.Key)
 
 			err = pubKeyVerifier.VerifySignature(bytes.NewReader(signature), bytes.NewReader(signedContent),
 				options.WithContext(context.Background()))
+
+			// close explicitly right after this attempt, instead of deferring inside the loop
+			if isPKCS11Key {
+				pkcs11Key.Close()
+			}
+
 			if err == nil {
 				return string(pubKeyContent), true, nil
 			}
