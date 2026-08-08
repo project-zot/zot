@@ -88,7 +88,9 @@ func setup(workingDir string, sizesToPrepare []int) {
 			log.Fatal(err)
 		}
 
-		fhandle.Close() // should flush the write
+		if err := fhandle.Close(); err != nil { // should flush the write
+			log.Fatal(err)
+		}
 
 		// pre-compute the SHA256
 		fhandle, err = os.OpenFile(fname, os.O_RDONLY, defaultFilePerms)

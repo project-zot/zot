@@ -71,13 +71,19 @@ func (driver *Driver) Reader(path string, offset int64) (io.ReadCloser, error) {
 
 	seekPos, err := file.Seek(offset, io.SeekStart)
 	if err != nil {
-		file.Close()
+		if cerr := file.Close(); cerr != nil {
+			return nil, driver.formatErr(errors.Join(err, cerr))
+		}
 
 		return nil, driver.formatErr(err)
 	} else if seekPos < offset {
-		file.Close()
+		err := storagedriver.InvalidOffsetError{Path: path, Offset: offset}
 
-		return nil, storagedriver.InvalidOffsetError{Path: path, Offset: offset}
+		if cerr := file.Close(); cerr != nil {
+			return nil, driver.formatErr(errors.Join(err, cerr))
+		}
+
+		return nil, err
 	}
 
 	return file, nil
@@ -111,7 +117,7 @@ func (driver *Driver) Delete(path string) error {
 }
 
 func (driver *Driver) Stat(path string) (storagedriver.FileInfo, error) {
-	fi, err := os.Stat(path) //nolint: varnamelen
+	finfo, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, storagedriver.PathNotFoundError{Path: path}
@@ -122,7 +128,7 @@ func (driver *Driver) Stat(path string) (storagedriver.FileInfo, error) {
 
 	return fileInfo{
 		path:     path,
-		FileInfo: fi,
+		FileInfo: finfo,
 	}, nil
 }
 
@@ -153,19 +159,23 @@ func (driver *Driver) Writer(filepath string, append bool) (storagedriver.FileWr
 	if !append {
 		err := file.Truncate(0)
 		if err != nil {
-			file.Close()
+			if cerr := file.Close(); cerr != nil {
+				return nil, driver.formatErr(errors.Join(err, cerr))
+			}
 
 			return nil, driver.formatErr(err)
 		}
 	} else {
-		n, err := file.Seek(0, io.SeekEnd) //nolint: varnamelen
+		nbytes, err := file.Seek(0, io.SeekEnd)
 		if err != nil {
-			file.Close()
+			if cerr := file.Close(); cerr != nil {
+				return nil, driver.formatErr(errors.Join(err, cerr))
+			}
 
 			return nil, driver.formatErr(err)
 		}
 
-		offset = n
+		offset = nbytes
 	}
 
 	return newFileWriter(file, offset, driver.commit), nil

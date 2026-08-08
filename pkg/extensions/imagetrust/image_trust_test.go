@@ -153,8 +153,8 @@ func TestInitCosignAndNotationDirs(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(certificateContent, ShouldNotBeNil)
 
-		certStorgae := &imagetrust.CertificateLocalStorage{}
-		err = imagetrust.UploadCertificate(certStorgae, certificateContent, "ca")
+		certStorage := &imagetrust.CertificateLocalStorage{}
+		err = imagetrust.UploadCertificate(certStorage, certificateContent, "ca")
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, zerr.ErrSignConfigDirNotSet)
 	})
