@@ -1016,6 +1016,16 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 
 				return
 			}
+
+			// A signature meta entry may have already been removed together with its
+			// subject's meta, this is expected and not an error.
+			if !errors.Is(err, zerr.ErrImageMetaNotFound) {
+				rh.c.Log.Error().Err(err).Str("repository", name).Str("reference", reference).
+					Msg("failed to remove manifest metadata")
+				response.WriteHeader(http.StatusInternalServerError)
+
+				return
+			}
 		}
 	}
 
