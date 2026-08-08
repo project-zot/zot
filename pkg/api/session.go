@@ -36,6 +36,13 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
+// Unwrap exposes the wrapped ResponseWriter so http.ResponseController can reach the
+// underlying connection (e.g. to set read/write deadlines while streaming blobs). Without it
+// the controller stops at this wrapper and reports http.ErrNotSupported.
+func (w *statusWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
 // RateLimiter limits handling of incoming requests.
 func RateLimiter(ctlr *Controller, rate int) mux.MiddlewareFunc {
 	ctlr.Log.Info().Int("rate", rate).Msg("ratelimiter enabled")
