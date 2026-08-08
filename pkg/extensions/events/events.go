@@ -42,13 +42,19 @@ func (r eventRecorder) closeSinks() error {
 
 func (r eventRecorder) publish(event *cloudevents.Event) {
 	go func() {
+		succeeded := true
+
 		for _, sink := range r.sinks {
 			if response := sink.Emit(event); cloudevents.IsNACK(response) || cloudevents.IsUndelivered(response) {
 				r.log.Error().Err(response).Msg("failed to publish event")
+
+				succeeded = false
 			}
 		}
 
-		r.log.Info().Msgf("event published successfully: %s", event.Type())
+		if succeeded {
+			r.log.Info().Msgf("event published successfully: %s", event.Type())
+		}
 	}()
 }
 
