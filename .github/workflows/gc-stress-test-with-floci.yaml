@@ -1,0 +1,271 @@
+name: "GC stress test with floci"
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches: [main]
+  release:
+    types:
+      - published
+
+permissions: read-all
+
+jobs:
+  gc-referrers-stress-local:
+    name: GC(with referrers) on filesystem with short interval
+    runs-on: cncf-ubuntu-8-32-x86
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          cache: false
+          check-latest: true
+          go-version: 1.26.x
+
+      - name: Run zb
+        id: bench
+        run: |
+            make binary
+            make bench
+            ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-referrers-bench-local.json &
+            sleep 10
+            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080
+
+            killall --wait -r zot-*
+
+            # clean zot storage
+            sudo rm -rf /tmp/zot
+        continue-on-error: true
+
+      - name: Upload zot logs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: gc-referrers-bench-local-floci
+          path: /tmp/gc-referrers-bench-local.log
+          if-no-files-found: error
+
+      - name: Check on failures
+        if: steps.bench.outcome != 'success'
+        run: |
+          cat /tmp/gc-referrers-bench-local.log
+          exit 1
+
+  gc-stress-local:
+    name: GC(without referrers) on filesystem with short interval
+    runs-on: cncf-ubuntu-8-32-x86
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          cache: false
+          check-latest: true
+          go-version: 1.26.x
+
+      - name: Run zb
+        id: bench
+        run: |
+            make binary
+            make bench
+            ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-bench-local.json &
+            sleep 10
+            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080
+
+            killall --wait -r zot-*
+
+            # clean zot storage
+            sudo rm -rf /tmp/zot
+        continue-on-error: true
+
+      - name: Upload zot logs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: gc-bench-local-floci
+          path: /tmp/gc-bench-local.log
+          if-no-files-found: error
+
+      - name: Check on failures
+        if: steps.bench.outcome != 'success'
+        run: |
+          cat /tmp/gc-bench-local.log
+          exit 1
+
+  gc-referrers-stress-s3:
+    name: GC(with referrers) on S3(minio) with short interval
+    runs-on: cncf-ubuntu-8-32-x86
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          cache: false
+          check-latest: true
+          go-version: 1.26.x
+      - uses: ./.github/actions/setup-floci
+      - name: Setup minio service
+        run: |
+            docker run -d -p 9000:9000 --name minio \
+                -e "MINIO_ACCESS_KEY=minioadmin" \
+                -e "MINIO_SECRET_KEY=minioadmin" \
+                -v /tmp/data:/data \
+                -v /tmp/config:/root/.minio \
+                --health-cmd "curl http://localhost:9000/minio/health/live" \
+                ghcr.io/project-zot/ci-images/minio:RELEASE.2024-07-16T23-46-41Z server /data
+      - name: Install py minio
+        run: pip3 install minio==7.2.18
+
+      - name: Wait for minio to come up
+        run: |
+          sleep 10
+          curl --connect-timeout 5 \
+            --max-time 120 \
+            --retry 12 \
+            --retry-max-time 120 \
+            'http://localhost:9000/minio/health/live'
+
+      - name: Create minio bucket
+        run: |
+            python3 - <<'EOF'
+            from minio import Minio
+
+            try:
+                minio = Minio(
+                    'localhost:9000',
+                    access_key='minioadmin',
+                    secret_key='minioadmin',
+                    secure=False
+                )
+            except Exception as ex:
+                raise
+
+            minio.make_bucket('zot-storage')
+            print(f'{minio.list_buckets()}')
+            EOF
+
+      - name: Run zb
+        id: bench
+        run: |
+            make binary
+            make bench
+            ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-referrers-bench-s3-minio.json &
+            sleep 10
+            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080
+
+            killall --wait -r zot-*
+
+            # clean zot storage
+            sudo rm -rf /tmp/zot
+        env:
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
+        continue-on-error: true
+
+      - name: Upload zot logs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: gc-referrers-bench-s3-floci
+          path: /tmp/gc-referrers-bench-s3.log
+          if-no-files-found: error
+
+      - name: Check on failures
+        if: steps.bench.outcome != 'success'
+        run: |
+          cat /tmp/gc-referrers-bench-s3.log
+          exit 1
+
+      - uses: ./.github/actions/teardown-floci
+
+  gc-stress-s3:
+    name: GC(without referrers) on S3(minio) with short interval
+    runs-on: cncf-ubuntu-8-32-x86
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          cache: false
+          check-latest: true
+          go-version: 1.26.x
+      - uses: ./.github/actions/setup-floci
+      - name: Setup minio service
+        run: |
+            docker run -d -p 9000:9000 --name minio \
+                -e "MINIO_ACCESS_KEY=minioadmin" \
+                -e "MINIO_SECRET_KEY=minioadmin" \
+                -v /tmp/data:/data \
+                -v /tmp/config:/root/.minio \
+                --health-cmd "curl http://localhost:9000/minio/health/live" \
+                ghcr.io/project-zot/ci-images/minio:RELEASE.2024-07-16T23-46-41Z server /data
+      - name: Install py minio
+        run: pip3 install minio==7.2.18
+
+      - name: Wait for minio to come up
+        run: |
+          sleep 10
+          curl --connect-timeout 5 \
+            --max-time 120 \
+            --retry 12 \
+            --retry-max-time 120 \
+            'http://localhost:9000/minio/health/live'
+
+      - name: Create minio bucket
+        run: |
+            python3 - <<'EOF'
+            from minio import Minio
+
+            try:
+                minio = Minio(
+                    'localhost:9000',
+                    access_key='minioadmin',
+                    secret_key='minioadmin',
+                    secure=False
+                )
+            except Exception as ex:
+                raise
+
+            minio.make_bucket('zot-storage')
+            print(f'{minio.list_buckets()}')
+            EOF
+
+      - name: Run zb
+        id: bench
+        run: |
+            make binary
+            make bench
+            ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-bench-s3-minio.json &
+            sleep 10
+            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080
+
+            killall --wait -r zot-*
+
+            # clean zot storage
+            sudo rm -rf /tmp/zot
+        env:
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
+        continue-on-error: true
+
+      - name: Upload zot logs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: gc-bench-s3-floci
+          path: /tmp/gc-bench-s3.log
+          if-no-files-found: error
+
+      - name: Check on failures
+        if: steps.bench.outcome != 'success'
+        run: |
+          cat /tmp/gc-bench-s3.log
+          exit 1
+
+      - uses: ./.github/actions/teardown-floci
