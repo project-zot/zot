@@ -9,6 +9,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.etcd.io/bbolt"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/storage/constants"
 )
@@ -61,6 +62,135 @@ func TestBoltDriverErrors(t *testing.T) {
 			// duplicate bucket not exist
 			err = driver.DeleteBlob(goodDigest, "path")
 			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
+// blobRefIndexer mirrors imagestore's unexported interface of the same name (imagestore.go);
+// duplicated here, rather than exported from imagestore, so this package can assert
+// BoltDBDriver satisfies it without imagestore and cache depending on each other.
+type blobRefIndexer interface {
+	PutBlobRef(digest digest.Digest, path string) error
+	DeleteBlobRef(digest digest.Digest, path string) error
+	GetBlobRefs(digest digest.Digest) ([]string, error)
+}
+
+var _ blobRefIndexer = (*BoltDBDriver)(nil)
+
+// GetBlobRefs (and the BlobRefs bucket it reads, kept up to date internally by
+// PutBlob/DeleteBlob via putBlobRef/deleteBlobRef) is reachable from pkg/storage/imagestore:
+// BoltDBDriver satisfies imagestore's blobRefIndexer interface (PutBlobRef/DeleteBlobRef are
+// no-ops here since PutBlob/DeleteBlob already maintain BlobRefs directly), so
+// imagestore.blobRefsForDigest uses GetBlobRefs instead of falling back to a GetAllBlobs scan.
+func TestBoltDBGetBlobRefs(t *testing.T) {
+	Convey("GetBlobRefs", t, func() {
+		tmpDir := t.TempDir()
+
+		cacheDriver, err := NewBoltDBCache(BoltDBDriverParameters{
+			RootDir: tmpDir,
+			Name:    "cache",
+		}, log.NewLoggerWithWriter("debug", io.Discard))
+		So(err, ShouldBeNil)
+
+		Convey("UsesRelativePaths reflects the configured parameter", func() {
+			So(cacheDriver.UsesRelativePaths(), ShouldBeFalse)
+
+			relPathDriver, err := NewBoltDBCache(BoltDBDriverParameters{
+				RootDir:     t.TempDir(),
+				Name:        "cache",
+				UseRelPaths: true,
+			}, log.NewLoggerWithWriter("debug", io.Discard))
+			So(err, ShouldBeNil)
+			So(relPathDriver.UsesRelativePaths(), ShouldBeTrue)
+		})
+
+		Convey("cache miss for a digest with no refs", func() {
+			refs, err := cacheDriver.GetBlobRefs(digest.FromString("missing"))
+			So(err, ShouldEqual, zerr.ErrCacheMiss)
+			So(refs, ShouldBeEmpty)
+		})
+
+		Convey("PutBlobRef/DeleteBlobRef are no-ops that don't disturb BlobRefs", func() {
+			testDigest := digest.FromString("d")
+
+			err := cacheDriver.PutBlob(testDigest, "/repo1/blob")
+			So(err, ShouldBeNil)
+
+			So(cacheDriver.PutBlobRef(testDigest, "/repo1/blob"), ShouldBeNil)
+			So(cacheDriver.DeleteBlobRef(testDigest, "/repo1/blob"), ShouldBeNil)
+
+			refs, err := cacheDriver.GetBlobRefs(testDigest)
+			So(err, ShouldBeNil)
+			So(refs, ShouldContain, "/repo1/blob")
+		})
+
+		Convey("PutBlob populates the BlobRefs bucket, readable via GetBlobRefs", func() {
+			testDigest := digest.FromString("d")
+
+			err := cacheDriver.PutBlob(testDigest, "/repo1/blob")
+			So(err, ShouldBeNil)
+
+			refs, err := cacheDriver.GetBlobRefs(testDigest)
+			So(err, ShouldBeNil)
+			So(refs, ShouldContain, "/repo1/blob")
+
+			Convey("a second PutBlob for the same digest adds another ref", func() {
+				err := cacheDriver.PutBlob(testDigest, "/repo2/blob")
+				So(err, ShouldBeNil)
+
+				refs, err := cacheDriver.GetBlobRefs(testDigest)
+				So(err, ShouldBeNil)
+				So(refs, ShouldContain, "/repo1/blob")
+				So(refs, ShouldContain, "/repo2/blob")
+			})
+
+			Convey("DeleteBlob removes the corresponding ref", func() {
+				err := cacheDriver.DeleteBlob(testDigest, "/repo1/blob")
+				So(err, ShouldBeNil)
+
+				refs, err := cacheDriver.GetBlobRefs(testDigest)
+				So(err, ShouldEqual, zerr.ErrCacheMiss)
+				So(refs, ShouldBeEmpty)
+			})
+		})
+
+		Convey("blob refs root bucket missing surfaces ErrCacheRootBucket", func() {
+			err := cacheDriver.db.Update(func(tx *bbolt.Tx) error {
+				return tx.DeleteBucket([]byte(constants.BlobRefs))
+			})
+			So(err, ShouldBeNil)
+
+			refs, err := cacheDriver.GetBlobRefs(digest.FromString("d"))
+			So(err, ShouldEqual, zerr.ErrCacheRootBucket)
+			So(refs, ShouldBeEmpty)
+		})
+
+		Convey("PutBlob surfaces ErrCacheRootBucket when the blob refs bucket is missing", func() {
+			err := cacheDriver.db.Update(func(tx *bbolt.Tx) error {
+				return tx.DeleteBucket([]byte(constants.BlobRefs))
+			})
+			So(err, ShouldBeNil)
+
+			err = cacheDriver.PutBlob(digest.FromString("d"), "/repo1/blob")
+			So(err, ShouldEqual, zerr.ErrCacheRootBucket)
+		})
+
+		Convey("DeleteBlob propagates deleteBlobRef's ErrCacheRootBucket instead of swallowing it", func() {
+			testDigest := digest.FromString("d")
+
+			err := cacheDriver.PutBlob(testDigest, "/repo1/blob")
+			So(err, ShouldBeNil)
+
+			err = cacheDriver.db.Update(func(tx *bbolt.Tx) error {
+				return tx.DeleteBucket([]byte(constants.BlobRefs))
+			})
+			So(err, ShouldBeNil)
+
+			// the BlobsCache-side delete succeeds; only the BlobRefs bucket is gone, so
+			// DeleteBlob must surface deleteBlobRef's non-ErrCacheMiss failure rather than
+			// reporting overall success.
+			err = cacheDriver.DeleteBlob(testDigest, "/repo1/blob")
+			So(err, ShouldEqual, zerr.ErrCacheRootBucket)
 		})
 	})
 }

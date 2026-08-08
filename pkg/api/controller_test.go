@@ -606,11 +606,22 @@ func TestAutoPortSelection(t *testing.T) {
 	})
 }
 
+// createS3MockBucket creates the S3 bucket a test needs against the mock endpoint. Tolerates
+// StatusConflict as benign in case a previous run left the bucket behind.
+func createS3MockBucket(endpoint, bucket string) {
+	resp, err := resty.R().Put("http://" + endpoint + "/" + bucket)
+	if err != nil {
+		panic(err)
+	}
+
+	if sc := resp.StatusCode(); sc != http.StatusOK && sc != http.StatusConflict {
+		panic(fmt.Sprintf("failed to create bucket: %d %s", sc, resp.String()))
+	}
+}
+
 func TestObjectStorageController(t *testing.T) {
 	tskip.SkipS3(t)
 	tskip.SkipDynamo(t)
-
-	bucket := "zot-storage-test"
 
 	Convey("Negative make a new object storage controller", t, func() {
 		conf := config.New()
@@ -630,11 +641,14 @@ func TestObjectStorageController(t *testing.T) {
 	})
 
 	Convey("Make a new object storage controller", t, func() {
+		bucket := fmt.Sprintf("zot-storage-test-%d", time.Now().UnixNano())
 		conf := config.New()
 		conf.HTTP.Port = "0"
 
 		endpoint := os.Getenv("S3MOCK_ENDPOINT")
 		tmp := t.TempDir()
+
+		createS3MockBucket(endpoint, bucket)
 
 		storageDriverParams := map[string]any{
 			"rootdirectory":  tmp,
@@ -644,6 +658,10 @@ func TestObjectStorageController(t *testing.T) {
 			"regionendpoint": endpoint,
 			"secure":         false,
 			"skipverify":     false,
+			// The S3 driver defaults to virtual-hosted-style addressing, which the mock
+			// endpoint doesn't support; without this, the initial write of _blobstore's
+			// marker file during Init() fails with a spurious NoSuchBucket.
+			"forcepathstyle": true,
 		}
 
 		conf.Storage.StorageDriver = storageDriverParams
@@ -657,6 +675,7 @@ func TestObjectStorageController(t *testing.T) {
 	})
 
 	Convey("Make a new object storage controller with openid", t, func() {
+		bucket := fmt.Sprintf("zot-storage-test-%d", time.Now().UnixNano())
 		conf := config.New()
 		conf.HTTP.Port = "0"
 
@@ -670,6 +689,10 @@ func TestObjectStorageController(t *testing.T) {
 			"regionendpoint": endpoint,
 			"secure":         false,
 			"skipverify":     false,
+			// The S3 driver defaults to virtual-hosted-style addressing, which the mock
+			// endpoint doesn't support; without this, the initial write of _blobstore's
+			// marker file during Init() fails with a spurious NoSuchBucket.
+			"forcepathstyle": true,
 		}
 		conf.Storage.RemoteCache = true
 		conf.Storage.StorageDriver = storageDriverParams
@@ -715,11 +738,7 @@ func TestObjectStorageController(t *testing.T) {
 			},
 		}
 
-		// create s3 bucket
-		_, err = resty.R().Put("http://" + os.Getenv("S3MOCK_ENDPOINT") + "/" + bucket)
-		if err != nil {
-			panic(err)
-		}
+		createS3MockBucket(endpoint, bucket)
 
 		ctlr := makeController(conf, "/")
 		So(ctlr, ShouldNotBeNil)
@@ -734,14 +753,16 @@ func TestObjectStorageController(t *testing.T) {
 func TestObjectStorageControllerSubPaths(t *testing.T) {
 	tskip.SkipS3(t)
 
-	bucket := "zot-storage-test"
-
 	Convey("Make a new object storage controller", t, func() {
+		bucket := fmt.Sprintf("zot-storage-test-%d", time.Now().UnixNano())
+
 		conf := config.New()
 		conf.HTTP.Port = "0"
 
 		endpoint := os.Getenv("S3MOCK_ENDPOINT")
 		tmp := t.TempDir()
+
+		createS3MockBucket(endpoint, bucket)
 
 		storageDriverParams := map[string]any{
 			"rootdirectory":  tmp,
@@ -751,6 +772,10 @@ func TestObjectStorageControllerSubPaths(t *testing.T) {
 			"regionendpoint": endpoint,
 			"secure":         false,
 			"skipverify":     false,
+			// The S3 driver defaults to virtual-hosted-style addressing, which the mock
+			// endpoint doesn't support; without this, the initial write of _blobstore's
+			// marker file during Init() fails with a spurious NoSuchBucket.
+			"forcepathstyle": true,
 		}
 		conf.Storage.StorageDriver = storageDriverParams
 		ctlr := makeController(conf, tmp)

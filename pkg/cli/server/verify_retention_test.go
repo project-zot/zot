@@ -475,7 +475,13 @@ func TestRetentionCheckWithRetentionEnabledAndRedisDriver(t *testing.T) {
 
 		defer ctrlManager.StopServer()
 
-		os.Args = []string{"cli_test", "verify-feature", "retention", "-l", logFile, "-t", "2s", configFile}
+		// -t is a fixed blocking wait, not poll-with-cap: RunGCTasks only submits the GC task to
+		// the scheduler and returns, and nothing sends the command a signal to exit early here, so
+		// it always blocks for the full duration. This is the only test in this file that runs
+		// verify-feature retention concurrently against a live controller with a Redis-backed
+		// metaDB (real round-trips, plus _blobstore bookkeeping on every GC pass), so it gets more
+		// headroom than the 2s used by the non-concurrent cases elsewhere in this file.
+		os.Args = []string{"cli_test", "verify-feature", "retention", "-l", logFile, "-t", "10s", configFile}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
 

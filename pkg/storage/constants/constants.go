@@ -6,13 +6,21 @@ import (
 
 const (
 	// BlobUploadDir defines the upload directory for blob uploads.
-	BlobUploadDir           = ".uploads"
-	SchemaVersion           = 2
-	DefaultFilePerms        = 0o600
-	DefaultDirPerms         = 0o700
-	RLOCK                   = "RLock"
-	RWLOCK                  = "RWLock"
+	BlobUploadDir    = ".uploads"
+	SchemaVersion    = 2
+	DefaultFilePerms = 0o600
+	DefaultDirPerms  = 0o700
+	RLOCK            = "RLock"
+	RWLOCK           = "RWLock"
+	// RepoRLock/RepoRWLock/BlobstoreRLock/BlobstoreRWLock label lock-wait metrics by domain
+	// (per-repository lock vs. the single global blobstore lock), so contention in one
+	// domain is distinguishable from the other now that they're no longer the same mutex.
+	RepoRLock               = "RepoRLock"
+	RepoRWLock              = "RepoRWLock"
+	BlobstoreRLock          = "BlobstoreRLock"
+	BlobstoreRWLock         = "BlobstoreRWLock"
 	BlobsCache              = "blobs"
+	BlobRefs                = "blob_refs"
 	DuplicatesBucket        = "duplicates"
 	OriginalBucket          = "original"
 	DBExtensionName         = ".db"
@@ -38,4 +46,12 @@ const (
 	// DedupeRestoreMarkerInvalid is the content written to DedupeRestoreCompleteMarker to
 	// invalidate a previous completion, forcing the restore scan to run again.
 	DedupeRestoreMarkerInvalid = "0"
+	// GlobalBlobsRepo is the internal directory used as the master copy location for deduped blobs.
+	// It uses a leading underscore to ensure it can never collide with a valid OCI repository name.
+	GlobalBlobsRepo = "_blobstore"
+	// BlobstoreMigratedMarker is written at the image store root, alongside GlobalBlobsRepo,
+	// when the one-time upgrade from per-repo blob layout to the global blobstore has completed.
+	// Its presence on subsequent startups causes the upgrade scan to be skipped entirely, even
+	// when the blobstore is empty (e.g. a fresh install that never had blobs).
+	BlobstoreMigratedMarker = "_global_blobstore_migrated"
 )

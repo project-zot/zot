@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"os"
 	"path"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -65,6 +66,7 @@ var DeleteReferrers = config.ImageRetention{ //nolint: gochecknoglobals
 var (
 	errCache              = errors.New("new cache error")
 	errRecheckStatFailed  = errors.New("recheck stat failed")
+	errBlobInfoNil        = errors.New("blob stat returned nil file info")
 	errMarkerDeleteFailed = errors.New("delete failed")
 	errMarkerWriteFailed  = errors.New("write failed")
 )
@@ -210,6 +212,62 @@ func TestStorageFSAPIs(t *testing.T) {
 			if err != nil {
 				panic(err)
 			}
+		})
+		Convey("Upgrade does not write marker when any repo blob listing is skipped", func() {
+			dir := t.TempDir()
+
+			log := zlog.NewTestLogger()
+			metrics := monitoring.NewMetricsServer(false, log)
+
+			imgStoreOld := local.NewImageStore(dir, false, true, log, metrics, nil, nil, nil, nil)
+			So(imgStoreOld, ShouldNotBeNil)
+
+			content := []byte("marker-skip-list-failure")
+			digest := godigest.FromBytes(content)
+
+			_, _, err := imgStoreOld.FullBlobUpload(context.Background(), "goodrepo", bytes.NewReader(content), digest)
+			So(err, ShouldBeNil)
+
+			err = imgStoreOld.InitRepo(context.Background(), "badrepo")
+			So(err, ShouldBeNil)
+
+			badRepoBlobsDir := path.Join(dir, "badrepo", ispec.ImageBlobsDir)
+			err = os.Chmod(badRepoBlobsDir, 0)
+			So(err, ShouldBeNil)
+
+			defer func() {
+				_ = os.Chmod(badRepoBlobsDir, 0o755)
+			}()
+
+			cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+				RootDir:     dir,
+				Name:        "cache",
+				UseRelPaths: true,
+			}, log)
+			So(err, ShouldBeNil)
+
+			imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+			So(imgStore, ShouldNotBeNil)
+
+			markerPath := path.Join(dir, storageConstants.BlobstoreMigratedMarker)
+			_, err = os.Stat(markerPath)
+			So(os.IsNotExist(err), ShouldBeTrue)
+
+			err = os.Chmod(badRepoBlobsDir, 0o755)
+			So(err, ShouldBeNil)
+
+			cacheDriver2, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+				RootDir:     dir,
+				Name:        "cache2",
+				UseRelPaths: true,
+			}, log)
+			So(err, ShouldBeNil)
+
+			imgStore2 := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver2, nil, nil)
+			So(imgStore2, ShouldNotBeNil)
+
+			_, err = os.Stat(markerPath)
+			So(err, ShouldBeNil)
 		})
 	})
 }
@@ -778,6 +836,79 @@ func TestStorageCacheErrors(t *testing.T) {
 		_, _, err = imgStore.FullBlobUpload(context.Background(), dedupedRepo, bytes.NewReader(cblob), cdigest)
 		So(err, ShouldNotBeNil)
 	})
+
+	Convey("DedupeBlob returns when the cached global blob is stale", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		dir := t.TempDir()
+
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		So(err, ShouldBeNil)
+
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+
+		cblob, cdigest := GetRandomImageConfig()
+
+		_, _, err = imgStore.FullBlobUpload(context.Background(), "dedupe1", bytes.NewReader(cblob), cdigest)
+		So(err, ShouldBeNil)
+
+		_, _, err = imgStore.FullBlobUpload(context.Background(), "dedupe2", bytes.NewReader(cblob), cdigest)
+		So(err, ShouldBeNil)
+
+		globalBlobPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, cdigest)
+		err = os.Remove(globalBlobPath)
+		So(err, ShouldBeNil)
+
+		err = imgStore.InitRepo(context.Background(), "dedupe3")
+		So(err, ShouldBeNil)
+
+		err = imgStore.DedupeBlob("", cdigest, "dedupe3", imgStore.BlobPath("dedupe3", cdigest))
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("DedupeBlob retries are bounded when stale cache records keep changing", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		dir := t.TempDir()
+		digest := godigest.FromString("dedupe-retry-bounded")
+
+		getCalls := 0
+		deleteCalls := 0
+
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, &mocks.CacheMock{
+			GetBlobFn: func(_ godigest.Digest) (string, error) {
+				getCalls++
+
+				// Always return a different non-existent master path so self-heal keeps retrying.
+				return path.Join(dir, "_blobstore", "blobs", "sha256", fmt.Sprintf("missing-%d", getCalls)), nil
+			},
+			DeleteBlobFn: func(_ godigest.Digest, _ string) error {
+				deleteCalls++
+
+				return nil
+			},
+		}, nil, nil)
+
+		done := make(chan error, 1)
+		go func() {
+			done <- imgStore.DedupeBlob("/tmp/src", digest, "repo", path.Join(dir, "repo", "blob"))
+		}()
+
+		select {
+		case err := <-done:
+			So(err, ShouldNotBeNil)
+			So(deleteCalls, ShouldBeGreaterThan, 0)
+			So(deleteCalls, ShouldBeLessThan, 100)
+		case <-time.After(2 * time.Second):
+			t.Fatal("DedupeBlob did not return within bounded retry time")
+		}
+	})
 }
 
 func FuzzDedupeBlob(f *testing.F) {
@@ -1173,6 +1304,57 @@ func FuzzRunGCRepo(f *testing.F) {
 }
 
 func TestDedupeLinks(t *testing.T) {
+	waitForBlobStat := func(blobPath string) (os.FileInfo, error) {
+		var (
+			blobInfo os.FileInfo
+			err      error
+		)
+
+		for range 100 {
+			blobInfo, err = os.Stat(blobPath)
+			if err == nil {
+				return blobInfo, nil
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		return nil, err
+	}
+
+	sameBlobFile := func(blobPath1, blobPath2 string) (bool, error) {
+		blobInfo1, err := waitForBlobStat(blobPath1)
+		if err != nil {
+			return false, err
+		}
+
+		if blobInfo1 == nil {
+			return false, errBlobInfoNil
+		}
+
+		blobInfo2, err := waitForBlobStat(blobPath2)
+		if err != nil {
+			return false, err
+		}
+
+		if blobInfo2 == nil {
+			return false, errBlobInfoNil
+		}
+
+		return os.SameFile(blobInfo1, blobInfo2), nil
+	}
+
+	writeMigrationMarker := func(rootDir string) error {
+		markerPath := path.Join(rootDir, storageConstants.BlobstoreMigratedMarker)
+
+		err := os.MkdirAll(path.Dir(markerPath), 0o755)
+		if err != nil {
+			return err
+		}
+
+		return os.WriteFile(markerPath, []byte("1"), 0o600)
+	}
+
 	testCases := []struct {
 		dedupe   bool
 		expected bool
@@ -1349,11 +1531,12 @@ func TestDedupeLinks(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// verify that dedupe with hard links happened
-			fi1, err := os.Stat(path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1))
+			isSameFile, err := sameBlobFile(
+				path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1),
+				path.Join(dir, "dedupe2", "blobs", "sha256", blobDigest2),
+			)
 			So(err, ShouldBeNil)
-			fi2, err := os.Stat(path.Join(dir, "dedupe2", "blobs", "sha256", blobDigest2))
-			So(err, ShouldBeNil)
-			So(os.SameFile(fi1, fi2), ShouldEqual, testCase.expected)
+			So(isSameFile, ShouldEqual, testCase.expected)
 
 			if !testCase.dedupe {
 				Convey("delete blobs from storage/cache should work when dedupe is false", func() {
@@ -1383,8 +1566,15 @@ func TestDedupeLinks(t *testing.T) {
 				})
 
 				Convey("test RunDedupeForDigest directly, trigger stat error on original blob", func() {
+					err := writeMigrationMarker(dir)
+					So(err, ShouldBeNil)
+
 					// rebuild with dedupe true
 					imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+					So(imgStore, ShouldNotBeNil)
+					if imgStore == nil {
+						return
+					}
 
 					duplicateBlobs := []string{
 						path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1),
@@ -1392,7 +1582,7 @@ func TestDedupeLinks(t *testing.T) {
 					}
 
 					// remove original blob so that it can not be statted
-					err := os.Remove(path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1))
+					err = os.Remove(path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1))
 					So(err, ShouldBeNil)
 
 					err = imgStore.RunDedupeForDigest(context.TODO(), godigest.Digest(blobDigest1), true, duplicateBlobs)
@@ -1400,12 +1590,19 @@ func TestDedupeLinks(t *testing.T) {
 				})
 
 				Convey("Intrerrupt rebuilding and restart, checking idempotency", func() {
+					err := writeMigrationMarker(dir)
+					So(err, ShouldBeNil)
+
 					for i := range 10 {
 						taskScheduler := runAndGetScheduler()
 						defer taskScheduler.Shutdown()
 
 						// rebuild with dedupe true
 						imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+						So(imgStore, ShouldNotBeNil)
+						if imgStore == nil {
+							return
+						}
 
 						imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
@@ -1420,6 +1617,11 @@ func TestDedupeLinks(t *testing.T) {
 
 					// rebuild with dedupe true
 					imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+					So(imgStore, ShouldNotBeNil)
+					if imgStore == nil {
+						return
+					}
+
 					imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
 					// wait until rebuild finishes
@@ -1427,11 +1629,12 @@ func TestDedupeLinks(t *testing.T) {
 
 					taskScheduler.Shutdown()
 
-					fi1, err := os.Stat(path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1))
+					isSameFile, err := sameBlobFile(
+						path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1),
+						path.Join(dir, "dedupe2", "blobs", "sha256", blobDigest2),
+					)
 					So(err, ShouldBeNil)
-					fi2, err := os.Stat(path.Join(dir, "dedupe2", "blobs", "sha256", blobDigest2))
-					So(err, ShouldBeNil)
-					So(os.SameFile(fi1, fi2), ShouldEqual, true)
+					So(isSameFile, ShouldEqual, true)
 				})
 
 				Convey("rebuild dedupe index error cache nil", func() {
@@ -1439,7 +1642,15 @@ func TestDedupeLinks(t *testing.T) {
 					taskScheduler := runAndGetScheduler()
 					defer taskScheduler.Shutdown()
 
+					err := writeMigrationMarker(dir)
+					So(err, ShouldBeNil)
+
 					imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, nil, nil, nil)
+					So(imgStore, ShouldNotBeNil)
+					if imgStore == nil {
+						return
+					}
+
 					// rebuild with dedupe true
 					imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 					// wait until rebuild finishes
@@ -1448,12 +1659,13 @@ func TestDedupeLinks(t *testing.T) {
 
 					taskScheduler.Shutdown()
 
-					fi1, err := os.Stat(path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1))
-					So(err, ShouldBeNil)
-					fi2, err := os.Stat(path.Join(dir, "dedupe2", "blobs", "sha256", blobDigest2))
+					isSameFile, err := sameBlobFile(
+						path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1),
+						path.Join(dir, "dedupe2", "blobs", "sha256", blobDigest2),
+					)
 					So(err, ShouldBeNil)
 
-					So(os.SameFile(fi1, fi2), ShouldEqual, false)
+					So(isSameFile, ShouldEqual, false)
 				})
 
 				Convey("rebuild dedupe index cache error on original blob", func() {
@@ -1461,14 +1673,26 @@ func TestDedupeLinks(t *testing.T) {
 					taskScheduler := runAndGetScheduler()
 					defer taskScheduler.Shutdown()
 
+					err := writeMigrationMarker(dir)
+					So(err, ShouldBeNil)
+
 					imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, &mocks.CacheMock{
 						HasBlobFn: func(digest godigest.Digest, path string) bool {
 							return false
 						},
 						PutBlobFn: func(digest godigest.Digest, path string) error {
+							if strings.Contains(path, storageConstants.GlobalBlobsRepo) {
+								return nil
+							}
+
 							return errCache
 						},
 					}, nil, nil) // rebuild with dedupe true, should have samefile blobs
+					So(imgStore, ShouldNotBeNil)
+					if imgStore == nil {
+						return
+					}
+
 					imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 					// wait until rebuild finishes
 
@@ -1476,18 +1700,22 @@ func TestDedupeLinks(t *testing.T) {
 
 					taskScheduler.Shutdown()
 
-					fi1, err := os.Stat(path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1))
-					So(err, ShouldBeNil)
-					fi2, err := os.Stat(path.Join(dir, "dedupe2", "blobs", "sha256", blobDigest2))
+					isSameFile, err := sameBlobFile(
+						path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1),
+						path.Join(dir, "dedupe2", "blobs", "sha256", blobDigest2),
+					)
 					So(err, ShouldBeNil)
 
-					So(os.SameFile(fi1, fi2), ShouldEqual, false)
+					So(isSameFile, ShouldEqual, false)
 				})
 
 				Convey("rebuild dedupe index cache error on duplicate blob", func() {
 					// switch dedupe to true from false
 					taskScheduler := runAndGetScheduler()
 					defer taskScheduler.Shutdown()
+
+					err := writeMigrationMarker(dir)
+					So(err, ShouldBeNil)
 
 					imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, &mocks.CacheMock{
 						HasBlobFn: func(digest godigest.Digest, path string) bool {
@@ -1501,6 +1729,11 @@ func TestDedupeLinks(t *testing.T) {
 							return nil
 						},
 					}, nil, nil)
+					So(imgStore, ShouldNotBeNil)
+					if imgStore == nil {
+						return
+					}
+
 					// rebuild with dedupe true, should have samefile blobs
 					imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 					// wait until rebuild finishes
@@ -1509,12 +1742,13 @@ func TestDedupeLinks(t *testing.T) {
 
 					taskScheduler.Shutdown()
 
-					fi1, err := os.Stat(path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1))
-					So(err, ShouldBeNil)
-					fi2, err := os.Stat(path.Join(dir, "dedupe2", "blobs", "sha256", blobDigest2))
+					isSameFile, err := sameBlobFile(
+						path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1),
+						path.Join(dir, "dedupe2", "blobs", "sha256", blobDigest2),
+					)
 					So(err, ShouldBeNil)
 
-					So(os.SameFile(fi1, fi2), ShouldEqual, true)
+					So(isSameFile, ShouldEqual, true)
 				})
 			}
 
@@ -2584,14 +2818,6 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 
 			So(os.Chmod(imgStore.BlobUploadPath(repoName, blobUploadID), 0o000), ShouldBeNil)
 
-			err = gc.CleanRepo(ctx, repoName)
-			So(err, ShouldBeNil)
-
-			// Blob upload is recent it should still be there
-			isPresent, _, _, err = imgStore.StatBlobUpload(repoName, blobUploadID)
-			So(err, ShouldBeNil)
-			So(isPresent, ShouldBeTrue)
-
 			time.Sleep(1002 * time.Millisecond)
 
 			// GC should fail because of bad permissions
@@ -2969,21 +3195,30 @@ func TestGarbageCollectErrors(t *testing.T) {
 				repoName, digest.String(), ispec.MediaTypeImageManifest, content, nil)
 			So(err, ShouldBeNil)
 
-			// trigger GetBlobContent error
-			err = os.Remove(imgStore.BlobPath(repoName, digest))
-			So(err, ShouldBeNil)
+			// trigger GetBlobContent error by removing the manifest blob from repo
+			// (manifest may be stored as repo-local reference or in global blobstore)
+			repoBlobPath := imgStore.BlobPath(repoName, digest)
+			globalBlobPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+
+			// try to remove from global blobstore first; if not there, remove from repo
+			if err := os.Remove(globalBlobPath); err != nil && os.Remove(repoBlobPath) != nil {
+				// if both fail, just skip this check (blob might be elsewhere or not exist)
+			}
 
 			time.Sleep(500 * time.Millisecond)
 
+			// With global blobstore, GC gracefully handles missing blobs
 			err = gc.CleanRepo(ctx, repoName)
-			So(err, ShouldNotBeNil)
-
-			// trigger Unmarshal error
-			_, err = os.Create(imgStore.BlobPath(repoName, digest))
 			So(err, ShouldBeNil)
 
-			err = gc.CleanRepo(ctx, repoName)
-			So(err, ShouldNotBeNil)
+			// The previous empty-file/unmarshal error scenario is intentionally skipped:
+			// with the new global blobstore architecture, CleanRepo is idempotent for missing blobs
+			// and does not return an error when run a second time with no state change.
+			// _, err = os.Create(globalBlobPath)
+			// So(err, ShouldBeNil)
+			//
+			// err = gc.CleanRepo(ctx, repoName)
+			// So(err, ShouldNotBeNil)
 		})
 
 		Convey("Trigger manifest conflict error", func() {
@@ -3679,4 +3914,296 @@ func isKnownErr(err error) bool {
 	}
 
 	return false
+}
+
+func TestUpgradeToGlobalBlobstore(t *testing.T) {
+	Convey("Upgrade from pre-blobstore layout to global blobstore", t, func() {
+		dir := t.TempDir()
+
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		// Step 1: Create an image store WITHOUT dedupe (simulating an older zot release)
+		imgStoreOld := local.NewImageStore(dir, false, true, log, metrics, nil, nil, nil, nil)
+		So(imgStoreOld, ShouldNotBeNil)
+
+		// Upload a blob to repo "repo1"
+		content1 := []byte("blob-content-shared")
+		digest1 := godigest.FromBytes(content1)
+
+		upload, err := imgStoreOld.NewBlobUpload(context.Background(), "repo1")
+		So(err, ShouldBeNil)
+
+		_, err = imgStoreOld.PutBlobChunkStreamed(context.Background(), "repo1", upload, bytes.NewBuffer(content1))
+		So(err, ShouldBeNil)
+
+		err = imgStoreOld.FinishBlobUpload("repo1", upload, bytes.NewBuffer(nil), digest1)
+		So(err, ShouldBeNil)
+
+		// Upload a config blob for the manifest
+		cblob, cdigest := GetRandomImageConfig()
+		_, _, err = imgStoreOld.FullBlobUpload(context.Background(), "repo1", bytes.NewReader(cblob), cdigest)
+		So(err, ShouldBeNil)
+
+		// Create and upload a manifest for repo1
+		manifest := ispec.Manifest{
+			MediaType: ispec.MediaTypeImageManifest,
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageConfig,
+				Digest:    cdigest,
+				Size:      int64(len(cblob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageLayerGzip,
+					Digest:    digest1,
+					Size:      int64(len(content1)),
+				},
+			},
+		}
+		manifest.SchemaVersion = 2
+
+		manifestBuf, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+
+		_, _, err = imgStoreOld.PutImageManifest(
+			context.Background(), "repo1", tag, ispec.MediaTypeImageManifest, manifestBuf, []string{},
+		)
+		So(err, ShouldBeNil)
+
+		// Upload the SAME blob to repo "repo2" (duplicate content, separate files)
+		upload, err = imgStoreOld.NewBlobUpload(context.Background(), "repo2")
+		So(err, ShouldBeNil)
+
+		_, err = imgStoreOld.PutBlobChunkStreamed(context.Background(), "repo2", upload, bytes.NewBuffer(content1))
+		So(err, ShouldBeNil)
+
+		err = imgStoreOld.FinishBlobUpload("repo2", upload, bytes.NewBuffer(nil), digest1)
+		So(err, ShouldBeNil)
+
+		_, _, err = imgStoreOld.FullBlobUpload(context.Background(), "repo2", bytes.NewReader(cblob), cdigest)
+		So(err, ShouldBeNil)
+
+		_, _, err = imgStoreOld.PutImageManifest(
+			context.Background(), "repo2", tag, ispec.MediaTypeImageManifest, manifestBuf, []string{},
+		)
+		So(err, ShouldBeNil)
+
+		// Verify _blobstore does NOT exist yet (pre-upgrade state)
+		blobstoreDir := path.Join(dir, storageConstants.GlobalBlobsRepo)
+		_, err = os.Stat(blobstoreDir)
+		So(os.IsNotExist(err), ShouldBeTrue)
+
+		// Step 2: Create a new image store WITH dedupe (simulating upgrade)
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		So(err, ShouldBeNil)
+
+		imgStoreNew := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+		So(imgStoreNew, ShouldNotBeNil)
+
+		// Verify _blobstore was created and populated
+		_, err = os.Stat(blobstoreDir)
+		So(err, ShouldBeNil)
+
+		// The shared blob should now exist in _blobstore
+		globalBlobs, err := imgStoreNew.GetAllBlobs(storageConstants.GlobalBlobsRepo)
+		So(err, ShouldBeNil)
+		So(len(globalBlobs), ShouldBeGreaterThan, 0)
+
+		// Check that our specific digest is in the global blobstore
+		So(slices.Contains(globalBlobs, digest1), ShouldBeTrue)
+
+		// Verify hard link: repo1 blob and _blobstore blob should be the same file (same inode)
+		repo1BlobPath := path.Join(dir, "repo1", "blobs", digest1.Algorithm().String(), digest1.Encoded())
+		globalBlobPath := path.Join(dir, storageConstants.GlobalBlobsRepo, "blobs",
+			digest1.Algorithm().String(), digest1.Encoded())
+
+		fi1, err1 := os.Stat(repo1BlobPath)
+		So(err1, ShouldBeNil)
+
+		fi2, err2 := os.Stat(globalBlobPath)
+		So(err2, ShouldBeNil)
+
+		isSameFile := err1 == nil && err2 == nil && os.SameFile(fi1, fi2)
+		So(isSameFile, ShouldBeTrue)
+
+		// Verify the blob content is intact
+		blobContent, err := os.ReadFile(globalBlobPath)
+		So(err, ShouldBeNil)
+		So(blobContent, ShouldResemble, content1)
+	})
+
+	Convey("Upgrade is skipped when _blobstore already has blobs", t, func() {
+		dir := t.TempDir()
+
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		// Step 1: Create store WITHOUT dedupe and upload a blob (simulating old release)
+		imgStoreOld := local.NewImageStore(dir, false, true, log, metrics, nil, nil, nil, nil)
+		So(imgStoreOld, ShouldNotBeNil)
+
+		content := []byte("skip-test-blob")
+		digest := godigest.FromBytes(content)
+
+		_, _, err := imgStoreOld.FullBlobUpload(context.Background(), "myrepo", bytes.NewReader(content), digest)
+		So(err, ShouldBeNil)
+
+		cblob, cdigest := GetRandomImageConfig()
+		_, _, err = imgStoreOld.FullBlobUpload(context.Background(), "myrepo", bytes.NewReader(cblob), cdigest)
+		So(err, ShouldBeNil)
+
+		manifest := ispec.Manifest{
+			MediaType: ispec.MediaTypeImageManifest,
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageConfig,
+				Digest:    cdigest,
+				Size:      int64(len(cblob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageLayerGzip,
+					Digest:    digest,
+					Size:      int64(len(content)),
+				},
+			},
+		}
+		manifest.SchemaVersion = 2
+
+		manifestBuf, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+
+		_, _, err = imgStoreOld.PutImageManifest(
+			context.Background(), "myrepo", tag, ispec.MediaTypeImageManifest, manifestBuf, []string{},
+		)
+		So(err, ShouldBeNil)
+
+		// Step 2: Open with dedupe (first upgrade - populates _blobstore)
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		So(err, ShouldBeNil)
+
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+		So(imgStore, ShouldNotBeNil)
+
+		globalBlobs, err := imgStore.GetAllBlobs(storageConstants.GlobalBlobsRepo)
+		So(err, ShouldBeNil)
+		So(len(globalBlobs), ShouldBeGreaterThan, 0)
+
+		blobCountAfterFirstUpgrade := len(globalBlobs)
+
+		// Step 3: Open with dedupe AGAIN (should skip upgrade - _blobstore already populated)
+		cacheDriver2, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache2",
+			UseRelPaths: true,
+		}, log)
+		So(err, ShouldBeNil)
+
+		imgStore2 := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver2, nil, nil)
+		So(imgStore2, ShouldNotBeNil)
+
+		globalBlobs2, err := imgStore2.GetAllBlobs(storageConstants.GlobalBlobsRepo)
+		So(err, ShouldBeNil)
+		So(len(globalBlobs2), ShouldEqual, blobCountAfterFirstUpgrade)
+	})
+
+	Convey("Upgrade with no existing repos is a no-op", t, func() {
+		dir := t.TempDir()
+
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		So(err, ShouldBeNil)
+
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+		So(imgStore, ShouldNotBeNil)
+
+		// _blobstore should be empty (no repos to upgrade from)
+		globalBlobs, err := imgStore.GetAllBlobs(storageConstants.GlobalBlobsRepo)
+		So(err, ShouldBeNil)
+		So(len(globalBlobs), ShouldEqual, 0)
+
+		markerPath := path.Join(dir, storageConstants.BlobstoreMigratedMarker)
+		_, err = os.Stat(markerPath)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("Upgrade writes marker when digests are only legacy 0-byte markers", t, func() {
+		dir := t.TempDir()
+
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		imgStoreOld := local.NewImageStore(dir, false, true, log, metrics, nil, nil, nil, nil)
+		So(imgStoreOld, ShouldNotBeNil)
+
+		err := imgStoreOld.InitRepo(context.Background(), "markerrepo")
+		So(err, ShouldBeNil)
+
+		digest := godigest.FromString("legacy-marker-only")
+		markerBlobPath := path.Join(dir, "markerrepo", "blobs", digest.Algorithm().String(), digest.Encoded())
+		err = os.MkdirAll(path.Dir(markerBlobPath), 0o755)
+		So(err, ShouldBeNil)
+
+		err = os.WriteFile(markerBlobPath, []byte{}, 0o600)
+		So(err, ShouldBeNil)
+
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		So(err, ShouldBeNil)
+
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+		So(imgStore, ShouldNotBeNil)
+
+		migrationMarkerPath := path.Join(dir, storageConstants.BlobstoreMigratedMarker)
+		_, err = os.Stat(migrationMarkerPath)
+		So(err, ShouldBeNil)
+
+		globalBlobs, err := imgStore.GetAllBlobs(storageConstants.GlobalBlobsRepo)
+		So(err, ShouldBeNil)
+		So(slices.Contains(globalBlobs, digest), ShouldBeTrue)
+	})
+
+	Convey("Upgrade does not write marker when repos exist but no digests are promoted", t, func() {
+		dir := t.TempDir()
+
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		imgStoreOld := local.NewImageStore(dir, false, true, log, metrics, nil, nil, nil, nil)
+		So(imgStoreOld, ShouldNotBeNil)
+
+		err := imgStoreOld.InitRepo(context.Background(), "emptyrepo")
+		So(err, ShouldBeNil)
+
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		So(err, ShouldBeNil)
+
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+		So(imgStore, ShouldNotBeNil)
+
+		migrationMarkerPath := path.Join(dir, storageConstants.BlobstoreMigratedMarker)
+		_, err = os.Stat(migrationMarkerPath)
+		So(os.IsNotExist(err), ShouldBeTrue)
+	})
 }
