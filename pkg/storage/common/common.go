@@ -559,8 +559,8 @@ func IsBlobReferencedInImageIndex(imgStore storageTypes.ImageStore, repo string,
 	for _, desc := range index.Manifests {
 		var found bool
 
-		switch desc.MediaType {
-		case ispec.MediaTypeImageIndex:
+		switch {
+		case IsImageIndexMediaType(desc.MediaType):
 			if digest == desc.Digest {
 				// no need to look further if we have a match
 				return true, nil
@@ -583,9 +583,17 @@ func IsBlobReferencedInImageIndex(imgStore storageTypes.ImageStore, repo string,
 				return false, err
 			}
 
-			found, _ = IsBlobReferencedInImageIndex(imgStore, repo, digest, indexImage, log)
-		case ispec.MediaTypeImageManifest:
-			found, _ = isBlobReferencedInImageManifest(imgStore, repo, digest, desc.Digest, log)
+			found, err = IsBlobReferencedInImageIndex(imgStore, repo, digest, indexImage, log)
+			if err != nil {
+				return false, err
+			}
+		case IsImageManifestMediaType(desc.MediaType):
+			var err error
+
+			found, err = isBlobReferencedInImageManifest(imgStore, repo, digest, desc.Digest, log)
+			if err != nil {
+				return false, err
+			}
 		default:
 			// should return true for digests found in index.json even if we don't know it's mediatype
 			if digest == desc.Digest {
@@ -617,6 +625,110 @@ func IsBlobReferenced(imgStore storageTypes.ImageStore, repo string,
 	}
 
 	return IsBlobReferencedInImageIndex(imgStore, repo, digest, index, log)
+}
+
+/*
+GetReferencedBlobs returns the set of all blob digests referenced by the repo's index.json:
+manifest digests themselves plus the config and layer digests of every (possibly nested) manifest.
+
+It mirrors the traversal of IsBlobReferencedInImageIndex, but reads each manifest only once,
+so callers checking many digests (e.g. GC) avoid re-reading every manifest per digest.
+Missing manifests (ErrBlobNotFound / PathNotFound) are skipped; any other read/unmarshal error
+is returned to the caller.
+*/
+func GetReferencedBlobs(imgStore storageTypes.ImageStore, repo string, log zlog.Logger,
+) (map[godigest.Digest]struct{}, error) {
+	dir := path.Join(imgStore.RootDir(), repo)
+	if !imgStore.DirExists(dir) {
+		return nil, zerr.ErrRepoNotFound
+	}
+
+	index, err := GetIndex(imgStore, repo, log)
+	if err != nil {
+		return nil, err
+	}
+
+	referenced := map[godigest.Digest]struct{}{}
+	seen := map[godigest.Digest]struct{}{}
+
+	if err := collectReferencedBlobs(imgStore, repo, index, referenced, seen, log); err != nil {
+		return nil, err
+	}
+
+	return referenced, nil
+}
+
+// IsImageIndexMediaType reports whether mediaType is an OCI image index or a compat manifest-list type.
+func IsImageIndexMediaType(mediaType string) bool {
+	return mediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(mediaType)
+}
+
+// IsImageManifestMediaType reports whether mediaType is an OCI image manifest or a compat manifest type.
+func IsImageManifestMediaType(mediaType string) bool {
+	return mediaType == ispec.MediaTypeImageManifest || compat.IsCompatibleManifestMediaType(mediaType)
+}
+
+func collectReferencedBlobs(imgStore storageTypes.ImageStore, repo string,
+	index ispec.Index, referenced map[godigest.Digest]struct{}, seen map[godigest.Digest]struct{}, log zlog.Logger,
+) error {
+	for _, desc := range index.Manifests {
+		referenced[desc.Digest] = struct{}{}
+
+		if _, ok := seen[desc.Digest]; ok {
+			continue
+		}
+
+		seen[desc.Digest] = struct{}{}
+
+		switch {
+		case IsImageIndexMediaType(desc.MediaType):
+			indexImage, err := GetImageIndex(imgStore, repo, desc.Digest, log)
+			if err != nil {
+				var pathNotFoundErr driver.PathNotFoundError
+				if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
+					log.Warn().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
+						Msg("skipping missing image index blob while collecting referenced blobs")
+
+					continue
+				}
+
+				log.Error().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
+					Msg("failed to read multiarch(index) image while collecting referenced blobs")
+
+				return err
+			}
+
+			if err := collectReferencedBlobs(imgStore, repo, indexImage, referenced, seen, log); err != nil {
+				return err
+			}
+		case IsImageManifestMediaType(desc.MediaType):
+			manifestContent, err := GetImageManifest(imgStore, repo, desc.Digest, log)
+			if err != nil {
+				var pathNotFoundErr driver.PathNotFoundError
+				if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
+					log.Warn().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
+						Msg("skipping missing manifest blob while collecting referenced blobs")
+
+					continue
+				}
+
+				log.Error().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
+					Msg("failed to read manifest image while collecting referenced blobs")
+
+				return err
+			}
+
+			referenced[manifestContent.Config.Digest] = struct{}{}
+
+			for _, layer := range manifestContent.Layers {
+				referenced[layer.Digest] = struct{}{}
+			}
+		default:
+			// unknown media-types only match by their own digest, already recorded above
+		}
+	}
+
+	return nil
 }
 
 func ApplyLinter(imgStore storageTypes.ImageStore, linter Lint, repo string, descriptor ispec.Descriptor,

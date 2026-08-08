@@ -55,6 +55,21 @@ func cleanupStorage(store driver.StorageDriver, name string) {
 	_ = store.Delete(context.Background(), name)
 }
 
+// emptyIndexContent returns the marshaled bytes of a valid, empty OCI index.json,
+// so mocked GetContentFn hooks can make common.GetIndex succeed instead of hitting
+// ErrRepoBadVersion on an empty/unparseable index.
+func emptyIndexContent() []byte {
+	var index ispec.Index
+	index.SchemaVersion = 2
+
+	content, err := json.Marshal(index)
+	if err != nil {
+		panic(err)
+	}
+
+	return content
+}
+
 func createMockStorage(rootDir string, cacheDir string, dedupe bool, store driver.StorageDriver,
 ) storageTypes.ImageStore {
 	log := log.NewTestLogger()
@@ -4031,6 +4046,8 @@ func TestDeleteBlobDeferredDuringDedupeRebuild(t *testing.T) {
 	contentDigest := godigest.FromBytes(content)
 	contentBlobPath := path.Join(testDir, repoName, "blobs",
 		contentDigest.Algorithm().String(), contentDigest.Encoded())
+	repoDirPath := path.Join(testDir, repoName)
+	indexPath := path.Join(testDir, repoName, ispec.ImageIndexFile)
 
 	newStoppedScheduler := func() *scheduler.Scheduler {
 		log := log.NewTestLogger()
@@ -4050,7 +4067,18 @@ func TestDeleteBlobDeferredDuringDedupeRebuild(t *testing.T) {
 					return &mocks.FileInfoMock{SizeFn: func() int64 { return int64(len(content)) }}, nil
 				}
 
+				if statPath == repoDirPath {
+					return &mocks.FileInfoMock{IsDirFn: func() bool { return true }}, nil
+				}
+
 				return nil, driver.PathNotFoundError{Path: statPath}
+			},
+			GetContentFn: func(ctx context.Context, readPath string) ([]byte, error) {
+				if readPath == indexPath {
+					return emptyIndexContent(), nil
+				}
+
+				return nil, driver.PathNotFoundError{Path: readPath}
 			},
 			DeleteFn: func(ctx context.Context, deletePath string) error {
 				if deletePath == contentBlobPath {
@@ -4104,7 +4132,18 @@ func TestDeleteBlobDeferredDuringDedupeRebuild(t *testing.T) {
 					return &mocks.FileInfoMock{SizeFn: func() int64 { return 0 }}, nil
 				}
 
+				if statPath == repoDirPath {
+					return &mocks.FileInfoMock{IsDirFn: func() bool { return true }}, nil
+				}
+
 				return nil, driver.PathNotFoundError{Path: statPath}
+			},
+			GetContentFn: func(ctx context.Context, readPath string) ([]byte, error) {
+				if readPath == indexPath {
+					return emptyIndexContent(), nil
+				}
+
+				return nil, driver.PathNotFoundError{Path: readPath}
 			},
 			DeleteFn: func(ctx context.Context, deletePath string) error {
 				if deletePath == contentBlobPath {
@@ -4141,7 +4180,18 @@ func TestDeleteBlobDeferredDuringDedupeRebuild(t *testing.T) {
 					return &mocks.FileInfoMock{SizeFn: func() int64 { return int64(len(content)) }}, nil
 				}
 
+				if statPath == repoDirPath {
+					return &mocks.FileInfoMock{IsDirFn: func() bool { return true }}, nil
+				}
+
 				return nil, driver.PathNotFoundError{Path: statPath}
+			},
+			GetContentFn: func(ctx context.Context, readPath string) ([]byte, error) {
+				if readPath == indexPath {
+					return emptyIndexContent(), nil
+				}
+
+				return nil, driver.PathNotFoundError{Path: readPath}
 			},
 			DeleteFn: func(ctx context.Context, deletePath string) error {
 				if deletePath == contentBlobPath {
@@ -4189,6 +4239,8 @@ func TestDeleteBlobDeferredDuringRestoreWalk(t *testing.T) {
 	contentDigest := godigest.FromBytes(content)
 	contentBlobPath := path.Join(testDir, repoName, "blobs",
 		contentDigest.Algorithm().String(), contentDigest.Encoded())
+	repoDirPath := path.Join(testDir, repoName)
+	indexPath := path.Join(testDir, repoName, ispec.ImageIndexFile)
 
 	newStoppedScheduler := func() *scheduler.Scheduler {
 		log := log.NewTestLogger()
@@ -4207,11 +4259,19 @@ func TestDeleteBlobDeferredDuringRestoreWalk(t *testing.T) {
 					return &mocks.FileInfoMock{SizeFn: func() int64 { return int64(len(content)) }}, nil
 				}
 
+				if statPath == repoDirPath {
+					return &mocks.FileInfoMock{IsDirFn: func() bool { return true }}, nil
+				}
+
 				return nil, driver.PathNotFoundError{Path: statPath}
 			},
 			GetContentFn: func(ctx context.Context, readPath string) ([]byte, error) {
 				if markerContent != "" && strings.HasSuffix(readPath, storageConstants.DedupeRestoreCompleteMarker) {
 					return []byte(markerContent), nil
+				}
+
+				if readPath == indexPath {
+					return emptyIndexContent(), nil
 				}
 
 				return nil, driver.PathNotFoundError{Path: readPath}
@@ -4329,6 +4389,10 @@ func TestDeleteBlobDeferredIssue2625CrossRepoOriginal(t *testing.T) {
 		digest.Algorithm().String(), digest.Encoded())
 	placeholderPath := path.Join(testDir, repoB, ispec.ImageBlobsDir,
 		digest.Algorithm().String(), digest.Encoded())
+	repoADirPath := path.Join(testDir, repoA)
+	repoBDirPath := path.Join(testDir, repoB)
+	indexPathA := path.Join(testDir, repoA, ispec.ImageIndexFile)
+	indexPathB := path.Join(testDir, repoB, ispec.ImageIndexFile)
 
 	newStoppedScheduler := func() *scheduler.Scheduler {
 		log := log.NewTestLogger()
@@ -4345,8 +4409,19 @@ func TestDeleteBlobDeferredIssue2625CrossRepoOriginal(t *testing.T) {
 			return &mocks.FileInfoMock{SizeFn: func() int64 { return int64(len(content)) }}, nil
 		case placeholderPath:
 			return &mocks.FileInfoMock{SizeFn: func() int64 { return 0 }}, nil
+		case repoADirPath, repoBDirPath:
+			return &mocks.FileInfoMock{IsDirFn: func() bool { return true }}, nil
 		default:
 			return nil, driver.PathNotFoundError{Path: statPath}
+		}
+	}
+
+	getContentFn := func(_ context.Context, readPath string) ([]byte, error) {
+		switch readPath {
+		case indexPathA, indexPathB:
+			return emptyIndexContent(), nil
+		default:
+			return nil, driver.PathNotFoundError{Path: readPath}
 		}
 	}
 
@@ -4354,7 +4429,8 @@ func TestDeleteBlobDeferredIssue2625CrossRepoOriginal(t *testing.T) {
 		var deletedOriginal, deletedPlaceholder atomic.Bool
 
 		imgStore := createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
-			StatFn: statFn,
+			StatFn:       statFn,
+			GetContentFn: getContentFn,
 			DeleteFn: func(ctx context.Context, deletePath string) error {
 				switch deletePath {
 				case originalPath:
