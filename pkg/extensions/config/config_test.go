@@ -44,6 +44,22 @@ func buildSearchConfigWithCVE(enabled bool) *config.ExtensionConfig {
 	return ext
 }
 
+func buildSearchConfigWithCVEDisabled(enabled bool) *config.ExtensionConfig {
+	disabled := false
+	ext := &config.ExtensionConfig{}
+	ext.Search = &config.SearchConfig{
+		BaseConfig: config.BaseConfig{
+			Enable: &enabled,
+		},
+		CVE: &config.CVEConfig{
+			Enable: &disabled,
+			Trivy:  &config.TrivyConfig{},
+		},
+	}
+
+	return ext
+}
+
 func buildEventsConfig(enabled bool) *config.ExtensionConfig {
 	ext := &config.ExtensionConfig{}
 	ext.Events = &events.Config{
@@ -302,6 +318,12 @@ func TestExtensionConfig(t *testing.T) {
 			testMethodWithNilEnable("Search", (*config.ExtensionConfig).IsCveScanningEnabled)
 			testMethodWithDisabledEnable("Search", (*config.ExtensionConfig).IsCveScanningEnabled, buildSearchConfig)
 			testMethodWithEnabledEnable("Search", (*config.ExtensionConfig).IsCveScanningEnabled, buildSearchConfigWithCVE)
+
+			Convey("Test with search enabled but cve explicitly disabled", func() {
+				enabled := true
+				extensionConfig := buildSearchConfigWithCVEDisabled(enabled)
+				So(extensionConfig.IsCveScanningEnabled(), ShouldBeFalse)
+			})
 		})
 
 		Convey("Test IsEventRecorderEnabled()", func() {
