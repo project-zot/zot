@@ -271,7 +271,7 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 
 	if !manageRepoMetaSuccessfully {
 		log.Info().Str("tag", reference).Str("repository", repo).Str("component", "metadb").
-			Msg("failed to delete image meta was unsuccessful for tag in repo")
+			Msg("failed to delete image meta for tag in repo")
 
 		if !isSignature {
 			return fmt.Errorf("%w: %w", zerr.ErrManifestRestoreAttempted, err)
