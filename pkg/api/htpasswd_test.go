@@ -236,6 +236,39 @@ func TestHTPasswdWatcherAtomicReplace(t *testing.T) {
 		So(ok, ShouldBeFalse)
 		So(present, ShouldBeTrue)
 	})
+
+	Convey("reload htpasswd after Close when file changed while stopped", t, func() {
+		username, _ := test.GenerateRandomString()
+		password1, _ := test.GenerateRandomString()
+		password2, _ := test.GenerateRandomString()
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password1))
+
+		htp := api.NewHTPasswd(logger)
+		htw, err := api.NewHTPasswdWatcher(htp, htpasswdPath)
+		So(err, ShouldBeNil)
+
+		So(htw.Run(), ShouldBeNil)
+		So(waitForHTPasswdAuth(htp, username, password1), ShouldBeTrue)
+
+		// Stop watching, rotate credentials, then restart. Inotify will not emit
+		// an event for the change that already happened; the always-on fingerprint
+		// poller must pick it up.
+		So(htw.Close(), ShouldBeNil)
+
+		So(os.WriteFile(htpasswdPath, []byte(test.GetBcryptCredString(username, password2)), 0o600),
+			ShouldBeNil)
+		newModTime := time.Now().Add(2 * time.Second)
+		So(os.Chtimes(htpasswdPath, newModTime, newModTime), ShouldBeNil)
+
+		So(htw.Run(), ShouldBeNil)
+		defer htw.Close() //nolint: errcheck
+
+		So(waitForHTPasswdAuth(htp, username, password2), ShouldBeTrue)
+
+		ok, present := htp.Authenticate(username, password1)
+		So(ok, ShouldBeFalse)
+		So(present, ShouldBeTrue)
+	})
 }
 
 func TestHTPasswdWatcher(t *testing.T) {

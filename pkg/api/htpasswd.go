@@ -168,7 +168,6 @@ type HTPasswdWatcher struct {
 	// (it is cleared by the loop itself). While set, Run() refuses to start a
 	// second generation, so loops can never overlap even if Run() races Close().
 	stopped       chan struct{}
-	useInotify    bool
 	debounceTimer *time.Timer
 	// fileInfo is the stat fingerprint of the last successfully loaded file.
 	// Polling compares identity (os.SameFile), size and mtime against it, so
@@ -189,28 +188,27 @@ func NewHTPasswdWatcher(htp *HTPasswd, filePath string) (*HTPasswdWatcher, error
 
 // Run starts the watcher goroutine.
 // Returns ErrHTPasswdWatcherAlreadyRunning if the watcher is already running.
-// If inotify setup fails, the watcher still starts and falls back to stat-based polling.
+// Inotify only lowers reload latency; the loop always fingerprint-polls as a
+// backstop, so the watcher works (more slowly) even if inotify setup fails.
 func (s *HTPasswdWatcher) Run() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	// s.stopped stays non-nil until the previous loop goroutine has fully
 	// exited, so a Run() racing an in-progress Close() cannot start a second
-	// generation that would share the debounce timer and useInotify state.
+	// generation that would share the debounce timer with the dying one.
 	if s.done != nil || s.stopped != nil {
 		return zerr.ErrHTPasswdWatcherAlreadyRunning
 	}
 
 	// Create fresh fsnotify watcher for this run. On failure continue without it,
-	// the loop still runs and reloads via stat-based polling.
+	// the loop still reloads via the periodic fingerprint check.
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		s.log.Error().Err(err).Msg("failed to create fsnotify watcher, falling back to stat-based polling")
+		s.log.Error().Err(err).Msg("failed to create fsnotify watcher, relying on stat-based polling")
 
 		watcher = nil
 	}
-
-	useInotify := false
 
 	// Watch the file and its parent directory. Directory watches are required for
 	// Kubernetes Secret/ConfigMap mounts, where the file is a symlink and updates
@@ -218,9 +216,7 @@ func (s *HTPasswdWatcher) Run() error {
 	if watcher != nil && s.filePath != "" {
 		if err := s.addWatches(watcher, s.filePath); err != nil {
 			s.log.Error().Err(err).Str("htpasswd-file", s.filePath).
-				Msg("failed to add file to watcher, falling back to stat-based polling")
-		} else {
-			useInotify = true
+				Msg("failed to add file to watcher, relying on stat-based polling")
 		}
 	}
 
@@ -229,7 +225,6 @@ func (s *HTPasswdWatcher) Run() error {
 	s.done = done
 	s.stopped = stopped
 	s.watcher = watcher
-	s.useInotify = useInotify
 
 	go s.loop(done, stopped, watcher)
 
@@ -252,8 +247,6 @@ func (s *HTPasswdWatcher) loop(done chan struct{}, stopped chan struct{}, watche
 				s.watcher.Close() //nolint: errcheck
 				s.watcher = nil
 			}
-
-			s.useInotify = false
 		}
 		s.mu.Unlock()
 
@@ -301,15 +294,10 @@ func (s *HTPasswdWatcher) loop(done chan struct{}, stopped chan struct{}, watche
 
 			if event.Op&(fsnotify.Remove|fsnotify.Rename|fsnotify.Create) != 0 {
 				if !s.retryAddWatch(filePath, watcher, done) {
-					s.mu.Lock()
-					// Only fall back to polling when this path is still current;
-					// a concurrent ChangeFile may already own inotify for a new path.
-					if s.filePath == filePath {
-						s.log.Warn().Str("htpasswd-file", filePath).
-							Msg("failed to re-add watch after retries, switching to stat-based polling")
-						s.useInotify = false
-					}
-					s.mu.Unlock()
+					// Retries exhausted for the still-current path. Periodic
+					// fingerprint polling remains the backstop; log and continue.
+					s.log.Warn().Str("htpasswd-file", filePath).
+						Msg("failed to re-add watch after retries, relying on stat-based polling")
 				}
 			}
 
@@ -335,16 +323,10 @@ func (s *HTPasswdWatcher) loop(done chan struct{}, stopped chan struct{}, watche
 			s.reloadWatchedFile("debounced file change")
 
 		case <-statTicker.C:
-			// Always select the ticker so ChangeFile can flip useInotify off and
-			// have polling take effect on the next tick without needing a wake signal.
-			s.mu.Lock()
-			useInotify := s.useInotify
-			s.mu.Unlock()
-
-			if useInotify {
-				continue
-			}
-
+			// Always fingerprint-poll, even when inotify is healthy: that closes
+			// the gap when the file changes while the watcher is stopped (or
+			// between Reload and watch install in ChangeFile), when no event is
+			// emitted for the transition that already happened.
 			if s.checkFileChanged() {
 				s.reloadWatchedFile("stat-based polling")
 			}
@@ -361,13 +343,9 @@ func (s *HTPasswdWatcher) loop(done chan struct{}, stopped chan struct{}, watche
 				s.log.Error().Err(err).Str("htpasswd-file", s.getFilePath()).
 					Msg("failed to fsnotify, got error while watching file")
 
-				// Events may have been dropped (e.g. inotify queue overflow),
-				// so inotify can no longer be trusted for this run: fall back
-				// to stat-based polling and reload to resynchronize.
-				s.mu.Lock()
-				s.useInotify = false
-				s.mu.Unlock()
-
+				// Events may have been dropped (e.g. inotify queue overflow).
+				// Periodic fingerprint polling is the backstop; schedule an
+				// immediate reload to resynchronize sooner than the next tick.
 				s.scheduleReload()
 			}
 		}
@@ -418,8 +396,8 @@ func (s *HTPasswdWatcher) scheduleReload() {
 // The parent directory watch is required to detect Kubernetes Secret/ConfigMap
 // updates, which atomically retarget the ..data symlink instead of writing to
 // the watched inode. Either both watches are established or an error is
-// returned, so callers never treat partial coverage as working inotify and
-// keep the stat-based polling fallback active instead.
+// returned; callers treat a failure as "no inotify for this path" and rely on
+// the always-on fingerprint poller.
 func (s *HTPasswdWatcher) addWatches(watcher *fsnotify.Watcher, filePath string) error {
 	if err := watcher.Add(filePath); err != nil {
 		return err
@@ -468,12 +446,12 @@ func (s *HTPasswdWatcher) eventAffectsWatchedFile(eventName, filePath string) bo
 // It blocks the watcher loop for up to ~750ms total; that is acceptable since
 // fsnotify buffers events in the meantime and htpasswd changes are infrequent.
 // Returns false only when retries are exhausted for a path that is still current.
-// If ChangeFile switches the watched path mid-retry, returns true without touching
-// watches or useInotify, so it cannot clobber the new path's state.
+// If ChangeFile switches the watched path mid-retry, returns true without
+// touching watches, so it cannot clobber the new path's state.
 //
-// The path check, addWatches and useInotify update happen under s.mu as one unit
-// (mirroring ChangeFile): re-adding watches without the lock could race with a
-// concurrent ChangeFile to a sibling file and remove the shared parent-dir watch.
+// The path check and addWatches happen under s.mu as one unit (mirroring
+// ChangeFile): re-adding watches without the lock could race with a concurrent
+// ChangeFile to a sibling file and remove the shared parent-dir watch.
 func (s *HTPasswdWatcher) retryAddWatch(file string, watcher *fsnotify.Watcher, done <-chan struct{}) bool {
 	for attempt := range 5 {
 		select {
@@ -491,17 +469,15 @@ func (s *HTPasswdWatcher) retryAddWatch(file string, watcher *fsnotify.Watcher, 
 			return true
 		}
 
-		if err := s.addWatches(watcher, file); err == nil {
-			s.useInotify = true
-			s.mu.Unlock()
+		err := s.addWatches(watcher, file)
+		s.mu.Unlock()
 
+		if err == nil {
 			s.log.Debug().Str("htpasswd-file", file).Int("attempt", attempt+1).
 				Msg("re-added watch after file removal/rename")
 
 			return true
 		}
-
-		s.mu.Unlock()
 
 		s.log.Debug().Str("htpasswd-file", file).Int("attempt", attempt+1).
 			Msg("retrying watch add after failure")
@@ -544,8 +520,8 @@ func (s *HTPasswdWatcher) reloadWatchedFile(reason string) {
 // catches atomic-rename replacements even when the new file preserves the old
 // timestamp; size catches same-inode rewrites within one coarse-timestamp
 // granule; mtime catches plain in-place edits. An in-place rewrite with equal
-// size inside the same timestamp granule remains undetectable without hashing,
-// and is covered by inotify in all but the polling-only degraded mode.
+// size inside the same timestamp granule remains undetectable without hashing;
+// inotify covers that case when watches are healthy.
 func (s *HTPasswdWatcher) checkFileChanged() bool {
 	filePath := s.getFilePath()
 	if filePath == "" {
@@ -592,7 +568,6 @@ func (s *HTPasswdWatcher) ChangeFile(filePath string) error {
 
 		s.filePath = ""
 		s.fileInfo = nil
-		s.useInotify = false
 		s.htp.Clear()
 
 		return nil
@@ -608,20 +583,17 @@ func (s *HTPasswdWatcher) ChangeFile(filePath string) error {
 		return err
 	}
 
-	// Use s.done (not s.watcher) to detect a running watcher: in polling-only
-	// mode the loop is running but s.watcher is nil.
+	// Use s.done (not s.watcher) to detect a running watcher: when fsnotify
+	// setup failed the loop is running but s.watcher is nil.
 	if s.done != nil && s.watcher != nil {
 		if s.filePath != "" {
 			s.removeWatchesLocked(s.filePath)
 		}
 
 		if err := s.addWatches(s.watcher, filePath); err != nil {
-			// Degrade to stat-based polling rather than failing the change
+			// Periodic fingerprint polling remains the backstop.
 			s.log.Warn().Err(err).Str("htpasswd-file", filePath).
-				Msg("failed to watch htpasswd file, falling back to stat-based polling")
-			s.useInotify = false
-		} else {
-			s.useInotify = true
+				Msg("failed to watch htpasswd file, relying on stat-based polling")
 		}
 	}
 
@@ -687,7 +659,6 @@ func (s *HTPasswdWatcher) Close() error {
 	capturedStopped := s.stopped
 	s.done = nil
 	s.watcher = nil
-	s.useInotify = false
 	s.mu.Unlock()
 
 	// Close fsnotify watcher to terminate the goroutine promptly
