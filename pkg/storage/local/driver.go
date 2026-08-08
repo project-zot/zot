@@ -153,14 +153,18 @@ func (driver *Driver) Writer(filepath string, append bool) (storagedriver.FileWr
 	if !append {
 		err := file.Truncate(0)
 		if err != nil {
-			file.Close()
+			if cerr := file.Close(); cerr != nil {
+				return nil, driver.formatErr(errors.Join(err, cerr))
+			}
 
 			return nil, driver.formatErr(err)
 		}
 	} else {
 		n, err := file.Seek(0, io.SeekEnd) //nolint: varnamelen
 		if err != nil {
-			file.Close()
+			if cerr := file.Close(); cerr != nil {
+				return nil, driver.formatErr(errors.Join(err, cerr))
+			}
 
 			return nil, driver.formatErr(err)
 		}
