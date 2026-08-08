@@ -42,6 +42,7 @@ import (
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	"zotregistry.dev/zot/v2/pkg/extensions/imagetrust"
 	"zotregistry.dev/zot/v2/pkg/log"
+	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	test "zotregistry.dev/zot/v2/pkg/test/common"
 	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
@@ -647,6 +648,213 @@ func TestCosignSignatureDigestBinding(t *testing.T) {
 
 			author, isTrusted, err := imagetrust.VerifyCosignSignature(pubKeyStorage, repo, otherImage.Digest(), sigKey,
 				rawSignature)
+			So(err, ShouldBeNil)
+			So(isTrusted, ShouldBeFalse)
+			So(author, ShouldBeEmpty)
+		})
+	})
+}
+
+func TestCosignBundleSignatureEndToEnd(t *testing.T) {
+	Convey("cosign sigstore bundle signature is verified through the live ingestion path", t, func() {
+		repo := "repo"
+		tag := "test"
+
+		image := CreateRandomImage()
+
+		rootDir := t.TempDir()
+
+		defaultValue := true
+
+		conf := config.New()
+		conf.HTTP.Port = "0"
+		conf.Storage.GC = false
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Trust = &extconf.ImageTrustConfig{}
+		conf.Extensions.Trust.Enable = &defaultValue
+		conf.Extensions.Trust.Cosign = defaultValue
+
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = rootDir
+
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+		port := strconv.Itoa(cm.Port())
+		defer cm.StopServer()
+
+		err := UploadImage(image, baseURL, repo, tag)
+		So(err, ShouldBeNil)
+
+		keyDir := t.TempDir()
+
+		cwd, err := os.Getwd()
+		So(err, ShouldBeNil)
+
+		func() {
+			So(os.Chdir(keyDir), ShouldBeNil)
+			defer func() {
+				So(os.Chdir(cwd), ShouldBeNil)
+			}()
+
+			t.Setenv("COSIGN_PASSWORD", "")
+			err = generate.GenerateKeyPairCmd(context.TODO(), "", "cosign", nil)
+			So(err, ShouldBeNil)
+		}()
+
+		publicKeyContent, err := os.ReadFile(path.Join(keyDir, "cosign.pub"))
+		So(err, ShouldBeNil)
+
+		// upload the public key before signing, so the running server can verify at push time
+		client := resty.New()
+		resp, err := client.R().SetHeader("Content-type", "application/octet-stream").
+			SetBody(publicKeyContent).Post(baseURL + constants.FullCosign)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		err = sign.SignCmd(context.TODO(),
+			&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
+			options.KeyOpts{KeyRef: path.Join(keyDir, "cosign.key"), PassFunc: generate.GetPass},
+			options.SignOptions{
+				Registry:        options.RegistryOptions{AllowInsecure: true},
+				Upload:          true,
+				NewBundleFormat: true,
+				TlogUpload:      false,
+			},
+			[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repo, image.DigestStr())})
+		So(err, ShouldBeNil)
+
+		repoMeta, err := ctlr.MetaDB.GetRepoMeta(context.Background(), repo)
+		So(err, ShouldBeNil)
+
+		var layerInfo mTypes.LayerInfo
+
+		for _, sigInfo := range repoMeta.Signatures[image.DigestStr()][zcommon.CosignSignature] {
+			if len(sigInfo.LayersInfo) > 0 {
+				layerInfo = sigInfo.LayersInfo[0]
+			}
+		}
+
+		So(layerInfo.SignatureKey, ShouldBeEmpty)
+		So(layerInfo.Signer, ShouldNotBeEmpty)
+	})
+}
+
+func TestCosignBundleSignature(t *testing.T) {
+	Convey("cosign sigstore bundle signature is verified", t, func() {
+		repo := "repo"
+		tag := "test"
+
+		image := CreateRandomImage()
+
+		rootDir := t.TempDir()
+
+		conf := config.New()
+		conf.HTTP.Port = "0"
+		conf.Storage.GC = false
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = rootDir
+
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+		port := strconv.Itoa(cm.Port())
+		defer cm.StopServer()
+
+		err := UploadImage(image, baseURL, repo, tag)
+		So(err, ShouldBeNil)
+
+		pubKeyStorage, err := imagetrust.NewPublicKeyLocalStorage(rootDir)
+		So(err, ShouldBeNil)
+
+		cosignDir, err := pubKeyStorage.GetCosignDirPath()
+		So(err, ShouldBeNil)
+
+		cwd, err := os.Getwd()
+		So(err, ShouldBeNil)
+
+		func() {
+			So(os.Chdir(cosignDir), ShouldBeNil)
+			defer func() {
+				So(os.Chdir(cwd), ShouldBeNil)
+			}()
+
+			t.Setenv("COSIGN_PASSWORD", "")
+			err = generate.GenerateKeyPairCmd(context.TODO(), "", "cosign", nil)
+			So(err, ShouldBeNil)
+		}()
+
+		err = sign.SignCmd(context.TODO(),
+			&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
+			options.KeyOpts{KeyRef: path.Join(cosignDir, "cosign.key"), PassFunc: generate.GetPass},
+			options.SignOptions{
+				Registry:        options.RegistryOptions{AllowInsecure: true},
+				Upload:          true,
+				NewBundleFormat: true,
+				TlogUpload:      false,
+			},
+			[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repo, image.DigestStr())})
+		So(err, ShouldBeNil)
+
+		err = os.Remove(path.Join(cosignDir, "cosign.key"))
+		So(err, ShouldBeNil)
+
+		indexContent, err := ctlr.StoreController.DefaultStore.GetIndexContent(repo)
+		So(err, ShouldBeNil)
+
+		var index ispec.Index
+
+		err = json.Unmarshal(indexContent, &index)
+		So(err, ShouldBeNil)
+
+		var rawSignature []byte
+
+		for _, manifest := range index.Manifests {
+			if manifest.Digest == image.Digest() {
+				continue
+			}
+
+			blobContent, err := ctlr.StoreController.DefaultStore.GetBlobContent(repo, manifest.Digest)
+			So(err, ShouldBeNil)
+
+			var cosignSig ispec.Manifest
+
+			err = json.Unmarshal(blobContent, &cosignSig)
+			So(err, ShouldBeNil)
+
+			if cosignSig.ArtifactType != zcommon.ArtifactTypeCosignBundle {
+				continue
+			}
+
+			// the sigstore bundle format has no legacy signature-key annotation
+			So(cosignSig.Layers[0].Annotations[zcommon.CosignSigKey], ShouldBeEmpty)
+
+			rawSignature, err = ctlr.StoreController.DefaultStore.GetBlobContent(repo, cosignSig.Layers[0].Digest)
+			So(err, ShouldBeNil)
+		}
+
+		So(rawSignature, ShouldNotBeEmpty)
+
+		Convey("bundle signature verifies against the manifest it signed", func() {
+			author, isTrusted, err := imagetrust.VerifyCosignSignature(pubKeyStorage, repo, image.Digest(), "",
+				rawSignature)
+			So(err, ShouldBeNil)
+			So(isTrusted, ShouldBeTrue)
+			So(author, ShouldNotBeEmpty)
+		})
+
+		Convey("bundle signature transplanted onto a different manifest is not trusted", func() {
+			otherImage := CreateRandomImage()
+			So(otherImage.Digest(), ShouldNotEqual, image.Digest())
+
+			author, isTrusted, err := imagetrust.VerifyCosignSignature(pubKeyStorage, repo, otherImage.Digest(), "",
+				rawSignature)
+			So(err, ShouldBeNil)
+			So(isTrusted, ShouldBeFalse)
+			So(author, ShouldBeEmpty)
+		})
+
+		Convey("garbage content is not trusted", func() {
+			author, isTrusted, err := imagetrust.VerifyCosignSignature(pubKeyStorage, repo, image.Digest(), "",
+				[]byte("not a bundle"))
 			So(err, ShouldBeNil)
 			So(isTrusted, ShouldBeFalse)
 			So(author, ShouldBeEmpty)
