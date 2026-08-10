@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -47,6 +48,8 @@ import (
 )
 
 const sessionStr = "session"
+
+var errTest = errors.New("test error")
 
 func TestRoutes(t *testing.T) {
 	Convey("Make a new controller", t, func() {
@@ -3612,6 +3615,76 @@ func TestDeleteManifestSucceedsDespiteMetaDBHookFailure(t *testing.T) {
 		defer resp.Body.Close()
 
 		So(resp.StatusCode, ShouldEqual, http.StatusAccepted)
+	})
+}
+
+// TestDeleteManifestFailsOnUnexpectedSignatureMetaError verifies that an unexpected
+// DeleteSignature failure is reported as an internal server error instead of a success.
+func TestDeleteManifestFailsOnUnexpectedSignatureMetaError(t *testing.T) {
+	Convey("Deleting a signature referrer whose metaDB cleanup fails unexpectedly returns 500", t, func() {
+		subjectDigest := godigest.FromString("subject-manifest")
+
+		manifest := ispec.Manifest{
+			Versioned:    specs.Versioned{SchemaVersion: 2},
+			MediaType:    ispec.MediaTypeImageManifest,
+			ArtifactType: zcommon.ArtifactTypeCosignBundle,
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.empty.v1+json",
+				Digest:    godigest.FromString("empty-config"),
+				Size:      2,
+			},
+			Subject: &ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageManifest,
+				Digest:    subjectDigest,
+				Size:      10,
+			},
+		}
+
+		manifestJSON, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+
+		referrerDigest := godigest.FromBytes(manifestJSON)
+
+		store := mocks.MockedImageStore{
+			GetImageManifestFn: func(repo, reference string) ([]byte, godigest.Digest, string, error) {
+				return manifestJSON, referrerDigest, ispec.MediaTypeImageManifest, nil
+			},
+			DeleteImageManifestFn: func(ctx context.Context, repo, reference string, detectCollision bool) error {
+				return nil
+			},
+		}
+
+		ctlr := api.NewController(config.New())
+		ctlr.Router = mux.NewRouter()
+		ctlr.StoreController.DefaultStore = store
+		ctlr.MetaDB = mocks.MetaDBMock{
+			DeleteSignatureFn: func(repo string, signedManifestDigest godigest.Digest,
+				sigMeta mTypes.SignatureMetadata,
+			) error {
+				return errTest
+			},
+		}
+
+		handler := api.NewRouteHandler(ctlr)
+
+		req := httptest.NewRequestWithContext(
+			context.Background(),
+			http.MethodDelete,
+			"http://example.com/v2/test/manifests/"+referrerDigest.String(),
+			http.NoBody,
+		)
+		req = mux.SetURLVars(req, map[string]string{
+			"name":      "test",
+			"reference": referrerDigest.String(),
+		})
+
+		rec := httptest.NewRecorder()
+		handler.DeleteManifest(rec, req)
+
+		resp := rec.Result()
+		defer resp.Body.Close()
+
+		So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
 	})
 }
 
