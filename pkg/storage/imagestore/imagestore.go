@@ -2187,15 +2187,27 @@ func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []g
 		}
 
 		if fileInfo.IsDir() {
-			// skip repositories not found in repos
-			baseName := path.Base(fileInfo.Path())
-			if slices.Contains(repos, baseName) || baseName == ispec.ImageBlobsDir {
-				return nil
+			// Descend into this directory only if it lies on the path to some
+			// repo's blobs: it is the repo itself, an ancestor of a repo
+			// (e.g. "org" for "org/team"), or inside a repo (blobs/algorithm dir).
+			rel, relErr := filepath.Rel(is.rootDir, fileInfo.Path())
+			if relErr != nil {
+				return nil //nolint:nilerr // ignore paths that are not under root dir
 			}
 
-			candidateAlgorithm := godigest.Algorithm(baseName)
+			rel = filepath.ToSlash(rel)
 
-			if !candidateAlgorithm.Available() {
+			descend := false
+
+			for _, r := range repos {
+				if rel == r || strings.HasPrefix(r, rel+"/") || strings.HasPrefix(rel, r+"/") {
+					descend = true
+
+					break
+				}
+			}
+
+			if !descend {
 				return driver.ErrSkipDir
 			}
 
