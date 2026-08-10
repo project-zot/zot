@@ -3660,6 +3660,62 @@ func TestGetNextDigestWithBlobPathsPathNotFound(t *testing.T) {
 	})
 }
 
+func TestGetNextDigestWithBlobPathsNestedRepo(t *testing.T) {
+	Convey("GetNextDigestWithBlobPaths must visit nested-namespace repositories", t, func() {
+		dir := t.TempDir()
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+
+		blobContent := []byte("shared-blob-content")
+		dgst := godigest.FromBytes(blobContent)
+		algo := dgst.Algorithm().String()
+		enc := dgst.Encoded()
+
+		// Two valid OCI repos sharing one blob: one single-level, one nested.
+		for _, repo := range []string{"repo1", "org/team"} {
+			repoDir := path.Join(dir, repo)
+			So(os.MkdirAll(path.Join(repoDir, ispec.ImageBlobsDir), storageConstants.DefaultDirPerms), ShouldBeNil)
+
+			ilBuf, err := json.Marshal(ispec.ImageLayout{Version: ispec.ImageLayoutVersion})
+			So(err, ShouldBeNil)
+			So(os.WriteFile(path.Join(repoDir, ispec.ImageLayoutFile), ilBuf, storageConstants.DefaultFilePerms), ShouldBeNil)
+
+			idxBuf, err := json.Marshal(ispec.Index{Versioned: imeta.Versioned{SchemaVersion: 2}})
+			So(err, ShouldBeNil)
+			So(os.WriteFile(path.Join(repoDir, ispec.ImageIndexFile), idxBuf, storageConstants.DefaultFilePerms), ShouldBeNil)
+
+			blobPath := path.Join(repoDir, ispec.ImageBlobsDir, algo, enc)
+			So(os.MkdirAll(path.Dir(blobPath), storageConstants.DefaultDirPerms), ShouldBeNil)
+			So(os.WriteFile(blobPath, blobContent, storageConstants.DefaultFilePerms), ShouldBeNil)
+		}
+
+		// A directory that matches no repo must be pruned via ErrSkipDir,
+		// not descend (and contain no blobs when walked).
+		So(os.MkdirAll(path.Join(dir, "unrelated-dir"), storageConstants.DefaultDirPerms), ShouldBeNil)
+
+		// GetRepositories returns full relative paths including the nested one.
+		repos, err := imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		So(repos, ShouldContain, "repo1")
+		So(repos, ShouldContain, "org/team")
+
+		// The dedupe walk must discover BOTH copies of the shared blob.
+		// Before the fix, "$root/org" was pruned via ErrSkipDir (path.Base("org")
+		// matched nothing in repos), so the nested copy was never collected.
+		gotDigest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths(repos, []godigest.Digest{})
+		So(err, ShouldBeNil)
+		So(gotDigest, ShouldEqual, dgst)
+		So(len(duplicateBlobs), ShouldEqual, 2)
+	})
+}
+
 func newRandomBlobForFuzz(data []byte) (godigest.Digest, []byte, error) { //nolint:unparam
 	return godigest.FromBytes(data), data, nil
 }
