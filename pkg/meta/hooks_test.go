@@ -472,10 +472,10 @@ func TestUpdateErrors(t *testing.T) {
 	})
 }
 
-// TestOnDeleteManifest_OrphanedSignatureReferrerDeletionSucceeds verifies that
+// TestOnDeleteManifest_OrphanedSignatureReferrerReturnsErrImageMetaNotFound verifies that
 // OnDeleteManifest returns ErrImageMetaNotFound when deleting a signature referrer
 // whose subject manifest was already untagged.
-func TestOnDeleteManifest_OrphanedSignatureReferrerDeletionSucceeds(t *testing.T) {
+func TestOnDeleteManifest_OrphanedSignatureReferrerReturnsErrImageMetaNotFound(t *testing.T) {
 	Convey("Deleting a signature referrer after its subject's last tag is gone fails with ErrImageMetaNotFound",
 		t, func() {
 			rootDir := t.TempDir()

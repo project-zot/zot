@@ -10,7 +10,6 @@ CONTAINER_RUNTIME := $(shell command -v podman 2> /dev/null || echo docker)
 TMPDIR := $(shell mktemp -d)
 TOOLSDIR := $(shell pwd)/hack/tools
 PATH := bin:$(TOOLSDIR)/bin:$(PATH)
-STACKER := $(shell which stacker)
 GOLINTER := $(TOOLSDIR)/bin/golangci-lint
 GOLINTER_VERSION := v2.12.2
 NOTATION := $(TOOLSDIR)/bin/notation
@@ -113,8 +112,8 @@ modtidy:
 
 .PHONY: modcheck
 modcheck: modtidy
-	$(eval UNCOMMITED_FILES = $(shell git status --porcelain | grep -c 'go.mod\|go.sum'))
-	@if [ $(UNCOMMITED_FILES) != 0 ]; then \
+	$(eval UNCOMMITTED_FILES = $(shell git status --porcelain | grep -c 'go.mod\|go.sum'))
+	@if [ $(UNCOMMITTED_FILES) != 0 ]; then \
 		echo "Updated go.mod and/or go.sum have uncommitted changes, commit the changes accordingly ";\
 		git status;\
 		exit 1;\
@@ -122,8 +121,8 @@ modcheck: modtidy
 
 .PHONY: swaggercheck
 swaggercheck: swagger
-	$(eval UNCOMMITED_FILES = $(shell git status --porcelain | grep -c swagger))
-	@if [ $(UNCOMMITED_FILES) != 0 ]; then \
+	$(eval UNCOMMITTED_FILES = $(shell git status --porcelain | grep -c swagger))
+	@if [ $(UNCOMMITTED_FILES) != 0 ]; then \
 		echo "Updated swagger files uncommitted, make sure all swagger files are committed:";\
 		git status;\
 		exit 1;\
@@ -372,8 +371,8 @@ update-licenses: check-linux
 	@echo "Detecting and updating licenses ... please be patient!"
 	go install github.com/google/go-licenses@latest
 	./scripts/update_licenses.sh
-	$(eval UNCOMMITED_FILES = $(shell git status --porcelain | grep -c THIRD-PARTY-LICENSES.md))
-	@if [ $(UNCOMMITED_FILES) != 0 ]; then \
+	$(eval UNCOMMITTED_FILES = $(shell git status --porcelain | grep -c THIRD-PARTY-LICENSES.md))
+	@if [ $(UNCOMMITTED_FILES) != 0 ]; then \
 		echo "THIRD-PARTY-LICENSES.md file needs to be updated";\
 		git status;\
 		exit 1;\
@@ -425,7 +424,7 @@ run: binary
 	./bin/zot-$(OS)-$(ARCH) serve examples/config-test.json
 
 .PHONY: verify-config
-verify-config: _verify-config verify-config-warnings verify-config-commited verify-config-schema
+verify-config: _verify-config verify-config-warnings verify-config-committed verify-config-schema
 
 .PHONY: _verify-config
 _verify-config: binary
@@ -443,11 +442,11 @@ verify-config-warnings: _verify-config
 	fi
 	rm -f output.txt
 
-.PHONY: verify-config-commited
-verify-config-commited: _verify-config
-	$(eval UNCOMMITED_FILES = $(shell git status --porcelain | grep -c examples/config-))
-	@if [ $(UNCOMMITED_FILES) != 0 ]; then \
-		echo "Uncommited config files, make sure all config files are commited. Verify might have changed a config file.";\
+.PHONY: verify-config-committed
+verify-config-committed: _verify-config
+	$(eval UNCOMMITTED_FILES = $(shell git status --porcelain | grep -c examples/config-))
+	@if [ $(UNCOMMITTED_FILES) != 0 ]; then \
+		echo "Uncommitted config files, make sure all config files are committed. Verify might have changed a config file.";\
 		exit 1;\
 	fi; \
 
@@ -468,8 +467,8 @@ gqlgen:
 
 .PHONY: verify-gql-committed
 verify-gql-committed:
-	$(eval UNCOMMITED_FILES = $(shell git status --porcelain | grep -c extensions/search))
-	@if [ $(UNCOMMITED_FILES) != 0 ]; then \
+	$(eval UNCOMMITTED_FILES = $(shell git status --porcelain | grep -c extensions/search))
+	@if [ $(UNCOMMITTED_FILES) != 0 ]; then \
 		echo "Updated gql files uncommitted, make sure all gql files are committed:";\
 		git status;\
 		exit 1;\
@@ -625,12 +624,12 @@ $(KIND): check-linux
 .PHONY: ui
 ui:
 	echo $(BUILD_LABELS);\
-	if [ -n $(ZUI_BUILD_PATH) ]; then\
+	if [ -n "$(ZUI_BUILD_PATH)" ]; then\
 		rm -rf ./pkg/extensions/build;\
-		cp -R $(ZUI_BUILD_PATH) ./pkg/extensions/;\
+		cp -R "$(ZUI_BUILD_PATH)" ./pkg/extensions/;\
 		exit 0;\
 	fi;\
-	if [ -z $(ZUI_VERSION) ]; then\
+	if [ -z "$(ZUI_VERSION)" ]; then\
 		pwd=$$(pwd);\
 		tdir=$$(mktemp -d);\
 		cd $$tdir;\
@@ -647,9 +646,9 @@ ui:
 			pwd=$$(pwd);\
 			tdir=$$(mktemp -d);\
 			cd $$tdir;\
-			git clone --depth=1 --branch $(ZUI_VERSION) https://github.com/$(ZUI_REPO_OWNER)/$(ZUI_REPO_NAME).git zui;\
+			git clone --depth=1 --branch "$(ZUI_VERSION)" https://github.com/$(ZUI_REPO_OWNER)/$(ZUI_REPO_NAME).git zui;\
 			cd zui;\
-			git checkout $(ZUI_VERSION);\
+			git checkout "$(ZUI_VERSION)";\
 			npm install;\
 			npm run build;\
 			cd $$pwd;\
