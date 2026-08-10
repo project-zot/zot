@@ -530,7 +530,7 @@ func TestHTPasswdWatcher(t *testing.T) {
 			So(test.WaitForLogMessages(logBuffer, "htpasswd watcher terminating...", 1, 5*time.Second), ShouldBeTrue)
 			time.Sleep(100 * time.Millisecond) // let watcher goroutine finish cleanup before restart
 
-			// Test Run() and ChangeFile() truly concurrently
+			// Test Run() and ChangeFile() concurrently
 			var wg sync.WaitGroup
 
 			wg.Add(2)
