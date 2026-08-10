@@ -2516,9 +2516,8 @@ func TestCookieSecureFlag(t *testing.T) {
 			ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait()
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
-			baseURL := test.GetSecureBaseURL(port)
 
 			// Load CA certificate for proper TLS verification
 			caCert, err := os.ReadFile(caCertPath)

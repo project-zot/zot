@@ -553,16 +553,19 @@ func TestCreateMetaDBDriver(t *testing.T) {
 
 func TestRunAlreadyRunningServer(t *testing.T) {
 	Convey("Run server on unavailable port", t, func() {
-		port := test.GetFreePort()
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		ctlr := makeController(conf, t.TempDir())
-		cm := test.NewControllerManager(ctlr)
+		ctlrManager := test.NewControllerManager(ctlr)
 
-		cm.StartAndWait(port)
+		ctlrManager.StartAndWait()
 
-		defer cm.StopServer()
+		defer ctlrManager.StopServer()
+
+		// Config stays "0" after bind; pin it so a second Run() hits EADDRINUSE
+		// instead of another ephemeral listen that would block in Serve.
+		conf.HTTP.Port = strconv.Itoa(ctlrManager.Port())
 
 		err := ctlr.Init()
 		So(err, ShouldNotBeNil)
@@ -1224,7 +1227,7 @@ func TestScaleOutRequestProxy(t *testing.T) {
 
 		ctrlr := makeController(conf, t.TempDir())
 		cm := test.NewControllerManager(ctrlr)
-		cm.StartAndWait(port)
+		cm.StartAndWait()
 
 		defer cm.StopServer()
 
@@ -1281,7 +1284,7 @@ func TestScaleOutRequestProxy(t *testing.T) {
 		ctrlr := makeController(conf, t.TempDir())
 
 		cm := test.NewControllerManager(ctrlr)
-		cm.StartAndWait(port)
+		cm.StartAndWait()
 
 		defer cm.StopServer()
 
@@ -1331,7 +1334,7 @@ func TestScaleOutRequestProxy(t *testing.T) {
 
 			ctrlr := makeController(conf, t.TempDir())
 			cm := test.NewControllerManager(ctrlr)
-			cm.StartAndWait(port)
+			cm.StartAndWait()
 
 			defer func(cm test.ControllerManager) {
 				cm.StopServer()
@@ -1427,7 +1430,7 @@ func TestScaleOutRequestProxy(t *testing.T) {
 
 			ctrlr := makeController(conf, t.TempDir())
 			cm := test.NewControllerManager(ctrlr)
-			cm.StartAndWait(port)
+			cm.StartAndWait()
 
 			defer func(cm test.ControllerManager) {
 				cm.StopServer()
@@ -1508,7 +1511,7 @@ func TestScaleOutRequestProxy(t *testing.T) {
 
 			ctrlr := makeController(conf, t.TempDir())
 			cm := test.NewControllerManager(ctrlr)
-			cm.StartAndWait(port)
+			cm.StartAndWait()
 
 			defer func(cm test.ControllerManager) {
 				cm.StopServer()
@@ -1574,7 +1577,7 @@ func TestScaleOutRequestProxy(t *testing.T) {
 			ctrlr := makeController(conf, t.TempDir())
 
 			cm := test.NewControllerManager(ctrlr)
-			cm.StartAndWait(port)
+			cm.StartAndWait()
 
 			defer func(cm test.ControllerManager) {
 				cm.StopServer()
@@ -1640,7 +1643,7 @@ func TestScaleOutRequestProxy(t *testing.T) {
 			ctrlr := makeController(conf, t.TempDir())
 
 			cm := test.NewControllerManager(ctrlr)
-			cm.StartAndWait(port)
+			cm.StartAndWait()
 
 			defer func(cm test.ControllerManager) {
 				cm.StopServer()
@@ -2118,8 +2121,8 @@ func TestTLSWithBasicAuth(t *testing.T) {
 		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
 
 		cm := test.NewControllerManager(ctlr)
-		baseURL := cm.StartAndWait()
-		secureBaseURL := test.GetSecureBaseURL(strconv.Itoa(cm.Port()))
+		secureBaseURL := cm.StartAndWait()
+		baseURL := test.GetBaseURL(strconv.Itoa(cm.Port()))
 
 		defer cm.StopServer()
 
@@ -2192,8 +2195,8 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
 
 		cm := test.NewControllerManager(ctlr)
-		baseURL := cm.StartAndWait()
-		secureBaseURL := test.GetSecureBaseURL(strconv.Itoa(cm.Port()))
+		secureBaseURL := cm.StartAndWait()
+		baseURL := test.GetBaseURL(strconv.Itoa(cm.Port()))
 
 		defer cm.StopServer()
 
@@ -2425,23 +2428,42 @@ func newTestLDAPServer() *testLDAPServer {
 	return ldaps
 }
 
-func (l *testLDAPServer) Start(port int) {
+func (l *testLDAPServer) Start() int {
+	lc := net.ListenConfig{}
+
+	listener, err := lc.Listen(context.Background(), "tcp", net.JoinHostPort(LDAPAddress, "0"))
+	if err != nil {
+		panic(err)
+	}
+
+	tcpAddr, ok := listener.Addr().(*net.TCPAddr)
+	if !ok {
+		_ = listener.Close()
+
+		panic("ldap test server: unexpected listener addr type")
+	}
+
+	port := tcpAddr.Port
 	addr := net.JoinHostPort(LDAPAddress, strconv.Itoa(port))
 
 	go func() {
-		if err := l.server.ListenAndServe(addr); err != nil {
+		if err := l.server.Serve(listener); err != nil {
 			panic(err)
 		}
 	}()
 
 	for {
-		_, err := net.Dial("tcp", addr) //nolint: noctx
+		conn, err := net.Dial("tcp", addr) //nolint: noctx
 		if err == nil {
+			_ = conn.Close()
+
 			break
 		}
 
 		time.Sleep(10 * time.Millisecond)
 	}
+
+	return port
 }
 
 func (l *testLDAPServer) Stop() {
@@ -2518,9 +2540,7 @@ func (l *testLDAPServer) Search(boundDN string, req vldap.SearchRequest,
 func TestBasicAuthWithLDAP(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		ldapServer := newTestLDAPServer()
-		ldapPort, err := strconv.Atoi(test.GetFreePort())
-		So(err, ShouldBeNil)
-		ldapServer.Start(ldapPort)
+		ldapPort := ldapServer.Start()
 
 		defer ldapServer.Stop()
 
@@ -2572,9 +2592,7 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 func TestBasicAuthWithReloadedCredentials(t *testing.T) {
 	Convey("Start server with bad credentials", t, func() {
 		l := newTestLDAPServer()
-		ldapPort, err := strconv.Atoi(test.GetFreePort())
-		So(err, ShouldBeNil)
-		l.Start(ldapPort)
+		ldapPort := l.Start()
 
 		defer l.Stop()
 
@@ -2582,7 +2600,7 @@ func TestBasicAuthWithReloadedCredentials(t *testing.T) {
 		ldapConfigContent := fmt.Sprintf(`{"BindDN": "%s", "BindPassword": "%s"}`, LDAPBindDN, LDAPBindPassword)
 		ldapConfigPath := filepath.Join(tempDir, "ldap.json")
 
-		err = os.WriteFile(ldapConfigPath, []byte(ldapConfigContent), 0o600)
+		err := os.WriteFile(ldapConfigPath, []byte(ldapConfigContent), 0o600)
 		So(err, ShouldBeNil)
 
 		configTemplate := `
@@ -2750,9 +2768,7 @@ func TestBasicAuthWithReloadedCredentials(t *testing.T) {
 func TestLDAPWithoutCreds(t *testing.T) {
 	Convey("Make a new LDAP server", t, func() {
 		ldapServer := newTestLDAPServer()
-		ldapPort, err := strconv.Atoi(test.GetFreePort())
-		So(err, ShouldBeNil)
-		ldapServer.Start(ldapPort)
+		ldapPort := ldapServer.Start()
 
 		defer ldapServer.Stop()
 
@@ -2828,15 +2844,12 @@ func TestLDAPWithoutCreds(t *testing.T) {
 func TestBasicAuthWithLDAPFromFile(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		ldapServer := newTestLDAPServer()
-		ldapPort, err := strconv.Atoi(test.GetFreePort())
-		So(err, ShouldBeNil)
-		ldapServer.Start(ldapPort)
+		ldapPort := ldapServer.Start()
 
 		defer ldapServer.Stop()
 
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		tempDir := t.TempDir()
+		logPath := test.MakeTempFilePath(t, "zot-ldap-from-file-log.txt")
 
 		ldapConfigContent := fmt.Sprintf(`
 		{
@@ -2846,7 +2859,7 @@ func TestBasicAuthWithLDAPFromFile(t *testing.T) {
 
 		ldapConfigPath := filepath.Join(tempDir, "ldap.json")
 
-		err = os.WriteFile(ldapConfigPath, []byte(ldapConfigContent), 0o600)
+		err := os.WriteFile(ldapConfigPath, []byte(ldapConfigContent), 0o600)
 		So(err, ShouldBeNil)
 
 		configStr := fmt.Sprintf(`
@@ -2856,7 +2869,7 @@ func TestBasicAuthWithLDAPFromFile(t *testing.T) {
 			},
 			"HTTP": {
 				"Address": "%s",
-				"Port": "%s",
+				"Port": "0",
 				"Auth": {
 					"LDAP": {
 						"CredentialsFile":     "%s",
@@ -2868,8 +2881,12 @@ func TestBasicAuthWithLDAPFromFile(t *testing.T) {
 						"Port":               %v
 					}
 				}
+			},
+			"Log": {
+				"Level": "debug",
+				"Output": "%s"
 			}
-		}`, tempDir, "127.0.0.1", port, ldapConfigPath, LDAPBaseDN, LDAPAddress, ldapPort)
+		}`, tempDir, "127.0.0.1", ldapConfigPath, LDAPBaseDN, LDAPAddress, ldapPort, logPath)
 
 		configPath := filepath.Join(tempDir, "config.json")
 
@@ -2886,6 +2903,7 @@ func TestBasicAuthWithLDAPFromFile(t *testing.T) {
 			}
 		}()
 
+		baseURL := test.WaitForKernelChosenPortBaseURL(logPath)
 		test.WaitTillServerReady(baseURL)
 
 		// without creds, should get access error
@@ -3038,9 +3056,7 @@ func TestLDAPConfigErrors(t *testing.T) {
 func TestGroupsPermissionsForLDAP(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		ldapServer := newTestLDAPServer()
-		ldapPort, err := strconv.Atoi(test.GetFreePort())
-		So(err, ShouldBeNil)
-		ldapServer.Start(ldapPort)
+		ldapPort := ldapServer.Start()
 
 		defer ldapServer.Stop()
 
@@ -3093,7 +3109,7 @@ func TestGroupsPermissionsForLDAP(t *testing.T) {
 
 		img := CreateDefaultImage()
 
-		err = UploadImageWithBasicAuth(
+		err := UploadImageWithBasicAuth(
 			img, baseURL, repoName, img.DigestStr(),
 			username, password)
 		So(err, ShouldBeNil)
@@ -3103,15 +3119,12 @@ func TestGroupsPermissionsForLDAP(t *testing.T) {
 func TestLDAPConfigFromFile(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		ldapServer := newTestLDAPServer()
-		ldapPort, err := strconv.Atoi(test.GetFreePort())
-		So(err, ShouldBeNil)
-		ldapServer.Start(ldapPort)
+		ldapPort := ldapServer.Start()
 
 		defer ldapServer.Stop()
 
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		tempDir := t.TempDir()
+		logPath := test.MakeTempFilePath(t, "zot-ldap-config-from-file-log.txt")
 
 		ldapConfigContent := fmt.Sprintf(`
 		{
@@ -3121,7 +3134,7 @@ func TestLDAPConfigFromFile(t *testing.T) {
 
 		ldapConfigPath := filepath.Join(tempDir, "ldap.json")
 
-		err = os.WriteFile(ldapConfigPath, []byte(ldapConfigContent), 0o600)
+		err := os.WriteFile(ldapConfigPath, []byte(ldapConfigContent), 0o600)
 		So(err, ShouldBeNil)
 
 		configStr := fmt.Sprintf(`
@@ -3131,7 +3144,7 @@ func TestLDAPConfigFromFile(t *testing.T) {
 			},
 			"HTTP": {
 				"Address": "%s",
-				"Port": "%s",
+				"Port": "0",
 				"Auth": {
 					"LDAP": {
 						"CredentialsFile": "%s",
@@ -3168,8 +3181,12 @@ func TestLDAPConfigFromFile(t *testing.T) {
 						}
 					}
 				}
+			},
+			"Log": {
+				"Level": "debug",
+				"Output": "%s"
 			}
-		}`, tempDir, "127.0.0.1", port, ldapConfigPath, LDAPBaseDN, LDAPAddress, ldapPort)
+		}`, tempDir, "127.0.0.1", ldapConfigPath, LDAPBaseDN, LDAPAddress, ldapPort, logPath)
 
 		configPath := filepath.Join(tempDir, "config.json")
 
@@ -3186,6 +3203,7 @@ func TestLDAPConfigFromFile(t *testing.T) {
 			}
 		}()
 
+		baseURL := test.WaitForKernelChosenPortBaseURL(logPath)
 		test.WaitTillServerReady(baseURL)
 
 		repo := "test-ldap"
@@ -3199,9 +3217,7 @@ func TestLDAPConfigFromFile(t *testing.T) {
 func TestLDAPFailures(t *testing.T) {
 	Convey("Make a LDAP conn", t, func() {
 		ldapServer := newTestLDAPServer()
-		ldapPort, err := strconv.Atoi(test.GetFreePort())
-		So(err, ShouldBeNil)
-		ldapServer.Start(ldapPort)
+		ldapPort := ldapServer.Start()
 
 		defer ldapServer.Stop()
 
@@ -3237,9 +3253,7 @@ func TestLDAPFailures(t *testing.T) {
 func TestLDAPClient(t *testing.T) {
 	Convey("LDAP Client", t, func() {
 		ldapServer := newTestLDAPServer()
-		ldapPort, err := strconv.Atoi(test.GetFreePort())
-		So(err, ShouldBeNil)
-		ldapServer.Start(ldapPort)
+		ldapPort := ldapServer.Start()
 
 		defer ldapServer.Stop()
 
@@ -3253,7 +3267,7 @@ func TestLDAPClient(t *testing.T) {
 			Log:          log.NewTestLogger(),
 		}
 
-		_, _, _, err = lClient.Authenticate("bad-user", "bad-pass")
+		_, _, _, err := lClient.Authenticate("bad-user", "bad-pass")
 		So(err, ShouldNotBeNil)
 
 		// bad credentials with anonymous authentication
@@ -3943,14 +3957,7 @@ func TestOpenIDMiddleware(t *testing.T) {
 	htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(htpasswdUsername, htpasswdPassword))
 
 	ldapServer := newTestLDAPServer()
-	port = test.GetFreePort()
-
-	ldapPort, err := strconv.Atoi(port)
-	if err != nil {
-		panic(err)
-	}
-
-	ldapServer.Start(ldapPort)
+	ldapPort := ldapServer.Start()
 	defer ldapServer.Stop()
 
 	mockOIDCServer, err := authutils.MockOIDCRun()
@@ -4030,10 +4037,9 @@ func TestOpenIDMiddleware(t *testing.T) {
 				ctlr.Config.HTTP.Address = testcase.address
 				cm := test.NewControllerManager(ctlr)
 
-				cm.StartServer()
+				cm.StartAndWait()
 
 				defer cm.StopServer()
-				test.WaitTillServerReady(baseURL)
 
 				Convey("browser client requests", func() {
 					Convey("login with no provider supplied", func() {
@@ -4401,14 +4407,7 @@ func TestOpenIDMiddlewareWithRedisSessionDriver(t *testing.T) {
 	htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(htpasswdUsername, htpasswdPassword))
 
 	ldapServer := newTestLDAPServer()
-	port = test.GetFreePort()
-
-	ldapPort, err := strconv.Atoi(port)
-	if err != nil {
-		panic(err)
-	}
-
-	ldapServer.Start(ldapPort)
+	ldapPort := ldapServer.Start()
 	defer ldapServer.Stop()
 
 	mockOIDCServer, err := authutils.MockOIDCRun()
@@ -4493,10 +4492,9 @@ func TestOpenIDMiddlewareWithRedisSessionDriver(t *testing.T) {
 
 				cm := test.NewControllerManager(ctlr)
 
-				cm.StartServer()
+				cm.StartAndWait()
 
 				defer cm.StopServer()
-				test.WaitTillServerReady(baseURL)
 
 				Convey("browser client requests", func() {
 					Convey("login with no provider supplied", func() {
@@ -4820,11 +4818,8 @@ func TestOpenIDMiddlewareWithRedisSessionDriver(t *testing.T) {
 
 func TestIsOpenIDEnabled(t *testing.T) {
 	Convey("make oidc server", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		mockOIDCServer, err := authutils.MockOIDCRun()
 		if err != nil {
@@ -4862,10 +4857,8 @@ func TestIsOpenIDEnabled(t *testing.T) {
 
 			cm := test.NewControllerManager(ctlr)
 
-			cm.StartServer()
-
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
-			test.WaitTillServerReady(baseURL)
 
 			resp, err := resty.R().
 				Get(baseURL + "/v2/")
@@ -4896,10 +4889,8 @@ func TestIsOpenIDEnabled(t *testing.T) {
 
 			cm := test.NewControllerManager(ctlr)
 
-			cm.StartServer()
-
+			baseURL := cm.StartAndWait()
 			defer cm.StopServer()
-			test.WaitTillServerReady(baseURL)
 
 			// it will work because we have an invalid provider, and no other authn enabled, so no authn enabled
 			// normally an invalid provider will exit with error in cli validations
@@ -4929,12 +4920,7 @@ func TestAuthnSessionErrors(t *testing.T) {
 		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(htpasswdUsername, htpasswdPassword))
 
 		ldapServer := newTestLDAPServer()
-		ldapPort, err := strconv.Atoi(test.GetFreePort())
-		if err != nil {
-			panic(err)
-		}
-
-		ldapServer.Start(ldapPort)
+		ldapPort := ldapServer.Start()
 		defer ldapServer.Stop()
 
 		mockOIDCServer, err := authutils.MockOIDCRun()
@@ -4996,10 +4982,9 @@ func TestAuthnSessionErrors(t *testing.T) {
 
 		cm := test.NewControllerManager(ctlr)
 
-		cm.StartServer()
+		cm.StartAndWait()
 
 		defer cm.StopServer()
-		test.WaitTillServerReady(baseURL)
 
 		Convey("trigger basic authn middle(htpasswd) error", func() {
 			client := resty.New()

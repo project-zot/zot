@@ -145,19 +145,16 @@ func setupTestCertsForSync(t *testing.T, tempDir string) (
 }
 
 // makeUpstreamServerWithCerts creates an upstream server using shared certificates.
+// Callers must obtain the base URL after bind via scm.StartAndWait() (scheme follows TLS config).
 func makeUpstreamServerWithCerts(
 	t *testing.T, secure, basicAuth bool, certDir string, caCertPEM []byte,
-) (*api.Controller, string, string, *resty.Client) {
+) (*api.Controller, string, *resty.Client) {
 	t.Helper()
 
-	srcPort := test.GetFreePort()
 	srcConfig := config.New()
 	client := resty.New()
 
-	var srcBaseURL string
 	if secure {
-		srcBaseURL = test.GetSecureBaseURL(srcPort)
-
 		// Use shared certificates
 		caCertPath := path.Join(certDir, "ca.crt")
 		serverCertPath := path.Join(certDir, "server.cert")
@@ -182,8 +179,6 @@ func makeUpstreamServerWithCerts(
 		}
 
 		client.SetCertificates(cert)
-	} else {
-		srcBaseURL = test.GetBaseURL(srcPort)
 	}
 
 	var htpasswdPath string
@@ -196,7 +191,7 @@ func makeUpstreamServerWithCerts(
 		}
 	}
 
-	srcConfig.HTTP.Port = srcPort
+	srcConfig.HTTP.Port = "0"
 	srcConfig.Storage.GC = false
 
 	srcDir := t.TempDir()
@@ -222,12 +217,12 @@ func makeUpstreamServerWithCerts(
 
 	sctlr := api.NewController(srcConfig)
 
-	return sctlr, srcBaseURL, srcDir, client
+	return sctlr, srcDir, client
 }
 
 func makeUpstreamServer(
 	t *testing.T, secure, basicAuth bool,
-) (*api.Controller, string, string, *resty.Client) {
+) (*api.Controller, string, *resty.Client) {
 	t.Helper()
 
 	// Generate certificates and delegate to makeUpstreamServerWithCerts
@@ -242,19 +237,16 @@ func makeUpstreamServer(
 }
 
 // makeDownstreamServerWithCerts creates a downstream server using shared certificates.
+// Callers must obtain the base URL after bind via dcm.StartAndWait() (scheme follows TLS config).
 func makeDownstreamServerWithCerts(
 	t *testing.T, secure bool, syncConfig *syncconf.Config, certDir string, caCertPEM []byte,
-) (*api.Controller, string, string, *resty.Client) {
+) (*api.Controller, string, *resty.Client) {
 	t.Helper()
 
-	destPort := test.GetFreePort()
 	destConfig := config.New()
 	client := resty.New()
 
-	var destBaseURL string
 	if secure {
-		destBaseURL = test.GetSecureBaseURL(destPort)
-
 		// Use shared certificates (same CA as upstream)
 		caCertPath := path.Join(certDir, "ca.crt")
 		serverCertPath := path.Join(certDir, "server.cert")
@@ -279,11 +271,9 @@ func makeDownstreamServerWithCerts(
 		}
 
 		client.SetCertificates(cert)
-	} else {
-		destBaseURL = test.GetBaseURL(destPort)
 	}
 
-	destConfig.HTTP.Port = destPort
+	destConfig.HTTP.Port = "0"
 
 	destDir := t.TempDir()
 
@@ -302,12 +292,12 @@ func makeDownstreamServerWithCerts(
 
 	dctlr := api.NewController(destConfig)
 
-	return dctlr, destBaseURL, destDir, client
+	return dctlr, destDir, client
 }
 
 func makeDownstreamServer(
 	t *testing.T, secure bool, syncConfig *syncconf.Config,
-) (*api.Controller, string, string, *resty.Client) {
+) (*api.Controller, string, *resty.Client) {
 	t.Helper()
 
 	// Generate certificates and delegate to makeDownstreamServerWithCerts
@@ -358,9 +348,9 @@ func makeInsecureDownstreamServerFixedPort(
 
 func TestOnDemand(t *testing.T) {
 	Convey("Verify sync on demand feature", t, func() {
-		sctlr, srcBaseURL, _, srcClient := makeUpstreamServer(t, false, false)
+		sctlr, _, srcClient := makeUpstreamServer(t, false, false)
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -393,10 +383,10 @@ func TestOnDemand(t *testing.T) {
 				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 			}
 
-			dctlr, destBaseURL, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
+			dctlr, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
 
 			dcm := test.NewControllerManager(dctlr)
-			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			destBaseURL := dcm.StartAndWait()
 			defer dcm.StopServer()
 
 			var (
@@ -503,9 +493,9 @@ func TestOnDemand(t *testing.T) {
 		})
 		Convey("Verify sync on demand feature with multiple registryConfig", func() {
 			// make a new upstream server
-			sctlr, newSrcBaseURL, srcDir, srcClient := makeUpstreamServer(t, false, false)
+			sctlr, srcDir, srcClient := makeUpstreamServer(t, false, false)
 			scm := test.NewControllerManager(sctlr)
-			scm.StartAndWait(sctlr.Config.HTTP.Port)
+			newSrcBaseURL := scm.StartAndWait()
 
 			defer scm.StopServer()
 
@@ -522,10 +512,10 @@ func TestOnDemand(t *testing.T) {
 				Registries: []syncconf.RegistryConfig{newRegistryConfig, syncRegistryConfig},
 			}
 
-			dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+			dctlr, _, destClient := makeDownstreamServer(t, false, syncConfig)
 
 			dcm := test.NewControllerManager(dctlr)
-			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			destBaseURL := dcm.StartAndWait()
 			defer dcm.StopServer()
 
 			var (
@@ -571,17 +561,16 @@ func TestOnDemand(t *testing.T) {
 		Convey("Signature copier errors", func() {
 			// start upstream server
 			rootDir := t.TempDir()
-			port := test.GetFreePort()
-			srcBaseURL := test.GetBaseURL(port)
 			conf := config.New()
-			conf.HTTP.Port = port
+			conf.HTTP.Port = "0"
 			conf.Storage.GC = false
 			ctlr := api.NewController(conf)
 			ctlr.Config.Storage.RootDirectory = rootDir
 
 			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(conf.HTTP.Port)
+			srcBaseURL := cm.StartAndWait()
 			defer cm.StopServer()
+			port := strconv.Itoa(cm.Port())
 
 			image := CreateRandomImage()
 			manifestBlob := image.ManifestDescriptor.Data
@@ -642,6 +631,7 @@ func TestOnDemand(t *testing.T) {
 			regex := ".*"
 			semver := true
 
+			// Keep GetFreePort: destPort is embedded in sync RegistryConfig.URLs before bind.
 			destPort := test.GetFreePort()
 			destConfig := config.New()
 
@@ -718,7 +708,7 @@ func TestOnDemand(t *testing.T) {
 			}
 
 			dcm := test.NewControllerManager(dctlr)
-			dcm.StartAndWait(destPort)
+			dcm.StartAndWait()
 			defer dcm.StopServer()
 
 			resp, err = resty.R().Get(destBaseURL + "/v2/remote-repo/manifests/test")
@@ -729,16 +719,14 @@ func TestOnDemand(t *testing.T) {
 		Convey("Sync referrers tag errors", func() {
 			// start upstream server
 			rootDir := t.TempDir()
-			port := test.GetFreePort()
-			srcBaseURL := test.GetBaseURL(port)
 			conf := config.New()
-			conf.HTTP.Port = port
+			conf.HTTP.Port = "0"
 			conf.Storage.GC = false
 			ctlr := api.NewController(conf)
 			ctlr.Config.Storage.RootDirectory = rootDir
 
 			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(conf.HTTP.Port)
+			srcBaseURL := cm.StartAndWait()
 			defer cm.StopServer()
 
 			image := CreateRandomImage()
@@ -794,6 +782,7 @@ func TestOnDemand(t *testing.T) {
 			regex := ".*"
 			semver := true
 
+			// Keep GetFreePort: destPort is embedded in sync RegistryConfig.URLs before bind.
 			destPort := test.GetFreePort()
 			destConfig := config.New()
 
@@ -854,7 +843,7 @@ func TestOnDemand(t *testing.T) {
 			}
 
 			dcm := test.NewControllerManager(dctlr)
-			dcm.StartAndWait(destPort)
+			dcm.StartAndWait()
 			defer dcm.StopServer()
 
 			resp, err = resty.R().Get(destBaseURL + "/v2/remote-repo/manifests/test")
@@ -870,10 +859,10 @@ func TestOnDemand(t *testing.T) {
 
 func TestOnDemandWithScaleOutCluster(t *testing.T) {
 	Convey("Given 2 downstream zots and one upstream, test that the cluster can sync images", t, func() {
-		sctlr, srcBaseURL, _, srcClient := makeUpstreamServer(t, false, false)
+		sctlr, _, srcClient := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -901,6 +890,7 @@ func TestOnDemandWithScaleOutCluster(t *testing.T) {
 		}
 
 		// Get dynamic ports for cluster members
+		// Keep GetFreePorts: cluster member ports must be known before bind.
 		clusterPorts := test.GetFreePorts(2)
 
 		// cluster config for member 1.
@@ -923,10 +913,10 @@ func TestOnDemandWithScaleOutCluster(t *testing.T) {
 			t, clusterPorts[1], syncConfig, &clusterCfgDownstream2)
 		dctrl2Scm := test.NewControllerManager(dctrl2)
 
-		dctrl1Scm.StartAndWait(dctrl1.Config.HTTP.Port)
+		dctrl1Scm.StartAndWait()
 		defer dctrl1Scm.StopServer()
 
-		dctrl2Scm.StartAndWait(dctrl2.Config.HTTP.Port)
+		dctrl2Scm.StartAndWait()
 		defer dctrl2Scm.StopServer()
 
 		// verify that all servers are up.
@@ -1045,9 +1035,9 @@ func TestOnDemandWithScaleOutCluster(t *testing.T) {
 
 func TestOnDemandWithScaleOutClusterWithReposNotAddedForSync(t *testing.T) {
 	Convey("When repos are not added for sync, cluster should not sync images", t, func() {
-		sctlr, srcBaseURL, _, srcClient := makeUpstreamServer(t, false, false)
+		sctlr, _, srcClient := makeUpstreamServer(t, false, false)
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -1073,6 +1063,7 @@ func TestOnDemandWithScaleOutClusterWithReposNotAddedForSync(t *testing.T) {
 		}
 
 		// Get dynamic ports for cluster members
+		// Keep GetFreePorts: cluster member ports must be known before bind.
 		clusterPorts := test.GetFreePorts(2)
 
 		// cluster config for member 1.
@@ -1095,10 +1086,10 @@ func TestOnDemandWithScaleOutClusterWithReposNotAddedForSync(t *testing.T) {
 			t, clusterPorts[1], syncConfig, &clusterCfgDownstream2)
 		dctrl2Scm := test.NewControllerManager(dctrl2)
 
-		dctrl1Scm.StartAndWait(dctrl1.Config.HTTP.Port)
+		dctrl1Scm.StartAndWait()
 		defer dctrl1Scm.StopServer()
 
-		dctrl2Scm.StartAndWait(dctrl2.Config.HTTP.Port)
+		dctrl2Scm.StartAndWait()
 		defer dctrl2Scm.StopServer()
 
 		// verify that all servers are up.
@@ -1180,10 +1171,10 @@ func TestOnDemandWithScaleOutClusterWithReposNotAddedForSync(t *testing.T) {
 
 func TestSyncReferenceInLoop(t *testing.T) {
 	Convey("Verify sync doesn't end up in an infinite loop when syncing image references", t, func() {
-		sctlr, srcBaseURL, srcDir, _ := makeUpstreamServer(t, false, false)
+		sctlr, srcDir, _ := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -1211,10 +1202,10 @@ func TestSyncReferenceInLoop(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, _, _ := makeDownstreamServer(t, false, syncConfig)
+		dctlr, _, _ := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -1228,7 +1219,7 @@ func TestSyncReferenceInLoop(t *testing.T) {
 		imageDigest := godigest.FromBytes(resp.Body())
 
 		// attach sbom
-		attachSBOM(srcDir, sctlr.Config.HTTP.Port, testImage, imageDigest)
+		attachSBOM(srcDir, strconv.Itoa(scm.Port()), testImage, imageDigest)
 
 		// sbom tag
 		sbomTag := strings.Replace(imageDigest.String(), ":", "-", 1) + "." + remote.SBOMTagSuffix
@@ -1326,10 +1317,10 @@ func TestSyncReferenceInLoop(t *testing.T) {
 
 func TestSyncWithNonDistributableBlob(t *testing.T) {
 	Convey("Verify sync doesn't copy non distributable blobs", t, func() {
-		sctlr, srcBaseURL, srcDir, _ := makeUpstreamServer(t, false, false)
+		sctlr, srcDir, _ := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -1359,7 +1350,7 @@ func TestSyncWithNonDistributableBlob(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+		dctlr, _, destClient := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
 
@@ -1381,7 +1372,7 @@ func TestSyncWithNonDistributableBlob(t *testing.T) {
 			nonDistributableLayerData, 0o600)
 		So(err, ShouldBeNil)
 
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -1434,10 +1425,10 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 		Convey("Verify docker images are skipped when they are already synced, preserveDigest: "+testCase.name, t, func() {
 			updateDuration, _ := time.ParseDuration("30m")
 
-			sctlr, srcBaseURL, srcDir, _ := makeUpstreamServer(t, false, false)
+			sctlr, srcDir, _ := makeUpstreamServer(t, false, false)
 
 			scm := test.NewControllerManager(sctlr)
-			scm.StartAndWait(sctlr.Config.HTTP.Port)
+			srcBaseURL := scm.StartAndWait()
 
 			defer scm.StopServer()
 
@@ -1473,7 +1464,7 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 			}
 
-			dctlr, destBaseURL, destDir, _ := makeDownstreamServer(t, false, syncConfig)
+			dctlr, destDir, _ := makeDownstreamServer(t, false, syncConfig)
 
 			if testCase.preserveDigest {
 				dctlr.Config.HTTP.Compat = append(dctlr.Config.HTTP.Compat, "docker2s2")
@@ -1532,7 +1523,7 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 				So(err, ShouldBeNil)
 
 				dcm := test.NewControllerManager(dctlr)
-				dcm.StartAndWait(dctlr.Config.HTTP.Port)
+				destBaseURL := dcm.StartAndWait()
 				defer dcm.StopServer()
 
 				resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
@@ -1695,7 +1686,7 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 				So(err, ShouldBeNil)
 
 				dcm := test.NewControllerManager(dctlr)
-				dcm.StartAndWait(dctlr.Config.HTTP.Port)
+				destBaseURL := dcm.StartAndWait()
 				defer dcm.StopServer()
 
 				// sync
@@ -1759,10 +1750,10 @@ func TestPeriodically(t *testing.T) {
 	Convey("Verify sync feature", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sctlr, srcBaseURL, _, srcClient := makeUpstreamServer(t, false, false)
+		sctlr, _, srcClient := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -1798,10 +1789,10 @@ func TestPeriodically(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+		dctlr, _, destClient := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -1876,10 +1867,10 @@ func TestPeriodically(t *testing.T) {
 				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 			}
 
-			dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+			dctlr, _, destClient := makeDownstreamServer(t, false, syncConfig)
 
 			dcm := test.NewControllerManager(dctlr)
-			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			destBaseURL := dcm.StartAndWait()
 			defer dcm.StopServer()
 
 			var (
@@ -1944,10 +1935,10 @@ func TestPeriodicallyWithScaleOutCluster(t *testing.T) {
 
 		const zotAlpineTestImageName = "zot-alpine-test"
 
-		sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, false)
+		sctlr, _, _ := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -1996,6 +1987,7 @@ func TestPeriodicallyWithScaleOutCluster(t *testing.T) {
 		// zot-alpine-test is managed by member index 1.
 
 		// Get dynamic ports for cluster members
+		// Keep GetFreePorts: cluster member ports must be known before bind.
 		clusterPorts := test.GetFreePorts(2)
 
 		clusterCfg := config.ClusterConfig{
@@ -2010,7 +2002,7 @@ func TestPeriodicallyWithScaleOutCluster(t *testing.T) {
 			clusterPorts[1], syncConfig, &clusterCfg)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -2064,10 +2056,10 @@ func TestPermsDenied(t *testing.T) {
 	Convey("Verify sync feature without perm on sync cache", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, false)
+		sctlr, _, _ := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -2100,11 +2092,9 @@ func TestPermsDenied(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		destPort := test.GetFreePort()
 		destConfig := config.New()
-		destBaseURL := test.GetBaseURL(destPort)
 
-		destConfig.HTTP.Port = destPort
+		destConfig.HTTP.Port = "0"
 
 		destDir := t.TempDir()
 
@@ -2136,7 +2126,7 @@ func TestPermsDenied(t *testing.T) {
 			_ = os.Chmod(path.Join(destDir, testImage), 0o755)
 		}()
 
-		dcm.StartAndWait(destPort)
+		destBaseURL := dcm.StartAndWait()
 
 		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
 			"failed to sync image", 50*time.Second)
@@ -2168,11 +2158,11 @@ func TestPermsDenied(t *testing.T) {
 
 func TestConfigReloader(t *testing.T) {
 	Convey("Verify periodically sync config reloader works", t, func() {
-		sctlr, srcBaseURL, srcDir, _ := makeUpstreamServer(t, false, false)
+		sctlr, srcDir, _ := makeUpstreamServer(t, false, false)
 		defer os.RemoveAll(srcDir)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -2201,6 +2191,7 @@ func TestConfigReloader(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
+		// Keep GetFreePort: reload JSON must embed the listen port before/during server life.
 		destPort := test.GetFreePort()
 		destConfig := config.New()
 		destBaseURL := test.GetBaseURL(destPort)
@@ -2438,10 +2429,10 @@ func TestMandatoryAnnotations(t *testing.T) {
 	Convey("Verify mandatory annotations failing - on demand disabled", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, false)
+		sctlr, _, _ := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -2473,13 +2464,10 @@ func TestMandatoryAnnotations(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		destPort := test.GetFreePort()
 		destConfig := config.New()
 		destClient := resty.New()
 
-		destBaseURL := test.GetBaseURL(destPort)
-
-		destConfig.HTTP.Port = destPort
+		destConfig.HTTP.Port = "0"
 
 		destDir := t.TempDir()
 
@@ -2502,7 +2490,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 		dctlr := api.NewController(destConfig)
 		dcm := test.NewControllerManager(dctlr)
 
-		dcm.StartAndWait(destPort)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -2534,10 +2522,10 @@ func TestBadTLS(t *testing.T) {
 	Convey("Verify sync TLS feature", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, true, false)
+		sctlr, _, _ := makeUpstreamServer(t, true, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -2569,10 +2557,10 @@ func TestBadTLS(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, true, syncConfig)
+		dctlr, _, destClient := makeDownstreamServer(t, true, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -2615,10 +2603,10 @@ func TestTLS(t *testing.T) {
 		caCertPath, _, _, clientCertPath, clientKeyPath, caCertPEM := setupTestCertsForSync(t, sharedCertDir)
 
 		// Create upstream server with shared certificates
-		sctlr, srcBaseURL, srcDir, _ := makeUpstreamServerWithCerts(t, true, false, sharedCertDir, caCertPEM)
+		sctlr, srcDir, _ := makeUpstreamServerWithCerts(t, true, false, sharedCertDir, caCertPEM)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -2699,11 +2687,11 @@ func TestTLS(t *testing.T) {
 		}
 
 		// Create downstream server with shared certificates (same CA as upstream)
-		dctlr, destBaseURL, destDir, destClient := makeDownstreamServerWithCerts(
+		dctlr, destDir, destClient := makeDownstreamServerWithCerts(
 			t, true, syncConfig, sharedCertDir, caCertPEM)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -2752,7 +2740,7 @@ func TestBearerAuth(t *testing.T) {
 		authTestServer := authutils.MakeAuthTestServer(serverKeyPath, "RS256", unauthorizedNamespace)
 		defer authTestServer.Close()
 
-		sctlr, srcBaseURL, _, srcClient := makeUpstreamServer(t, false, false)
+		sctlr, _, srcClient := makeUpstreamServer(t, false, false)
 
 		aurl, err := url.Parse(authTestServer.URL)
 		So(err, ShouldBeNil)
@@ -2766,7 +2754,7 @@ func TestBearerAuth(t *testing.T) {
 		}
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -2796,10 +2784,10 @@ func TestBearerAuth(t *testing.T) {
 			Registries:      []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+		dctlr, _, destClient := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -2905,7 +2893,7 @@ func TestBearerAuth(t *testing.T) {
 		authTestServer := authutils.MakeAuthTestServer(serverKeyPath, "RS256", unauthorizedNamespace)
 		defer authTestServer.Close()
 
-		sctlr, srcBaseURL, _, srcClient := makeUpstreamServer(t, false, false)
+		sctlr, _, srcClient := makeUpstreamServer(t, false, false)
 
 		aurl, err := url.Parse(authTestServer.URL)
 		So(err, ShouldBeNil)
@@ -2919,7 +2907,7 @@ func TestBearerAuth(t *testing.T) {
 		}
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -2949,10 +2937,10 @@ func TestBearerAuth(t *testing.T) {
 			Registries:      []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+		dctlr, _, destClient := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -3044,10 +3032,10 @@ func TestBasicAuth(t *testing.T) {
 		updateDuration, _ := time.ParseDuration("1h")
 
 		Convey("Verify sync basic auth with file credentials", func() {
-			sctlr, srcBaseURL, _, srcClient := makeUpstreamServer(t, false, true)
+			sctlr, _, srcClient := makeUpstreamServer(t, false, true)
 
 			scm := test.NewControllerManager(sctlr)
-			scm.StartAndWait(sctlr.Config.HTTP.Port)
+			srcBaseURL := scm.StartAndWait()
 			defer scm.StopServer()
 
 			registryName := sync.StripRegistryTransport(srcBaseURL)
@@ -3076,10 +3064,10 @@ func TestBasicAuth(t *testing.T) {
 				Registries:      []syncconf.RegistryConfig{syncRegistryConfig},
 			}
 
-			dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+			dctlr, _, destClient := makeDownstreamServer(t, false, syncConfig)
 
 			dcm := test.NewControllerManager(dctlr)
-			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			destBaseURL := dcm.StartAndWait()
 			defer dcm.StopServer()
 
 			var (
@@ -3120,17 +3108,14 @@ func TestBasicAuth(t *testing.T) {
 		})
 
 		Convey("Verify sync basic auth with wrong file credentials", func() {
-			sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, true)
+			sctlr, _, _ := makeUpstreamServer(t, false, true)
 
 			scm := test.NewControllerManager(sctlr)
-			scm.StartAndWait(sctlr.Config.HTTP.Port)
+			srcBaseURL := scm.StartAndWait()
 			defer scm.StopServer()
 
-			destPort := test.GetFreePort()
-			destBaseURL := test.GetBaseURL(destPort)
-
 			destConfig := config.New()
-			destConfig.HTTP.Port = destPort
+			destConfig.HTTP.Port = "0"
 
 			destDir := t.TempDir()
 
@@ -3188,7 +3173,7 @@ func TestBasicAuth(t *testing.T) {
 
 			dctlr := api.NewController(destConfig)
 			dcm := test.NewControllerManager(dctlr)
-			dcm.StartAndWait(destPort)
+			destBaseURL := dcm.StartAndWait()
 
 			defer dcm.StopServer()
 
@@ -3213,10 +3198,10 @@ func TestBasicAuth(t *testing.T) {
 		})
 
 		Convey("Verify sync basic auth with bad file credentials", func() {
-			sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, true)
+			sctlr, _, _ := makeUpstreamServer(t, false, true)
 
 			scm := test.NewControllerManager(sctlr)
-			scm.StartAndWait(sctlr.Config.HTTP.Port)
+			srcBaseURL := scm.StartAndWait()
 			defer scm.StopServer()
 
 			registryName := sync.StripRegistryTransport(srcBaseURL)
@@ -3263,10 +3248,10 @@ func TestBasicAuth(t *testing.T) {
 				Registries:      []syncconf.RegistryConfig{syncRegistryConfig},
 			}
 
-			dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+			dctlr, _, destClient := makeDownstreamServer(t, false, syncConfig)
 
 			dcm := test.NewControllerManager(dctlr)
-			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			destBaseURL := dcm.StartAndWait()
 			defer dcm.StopServer()
 
 			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
@@ -3290,10 +3275,10 @@ func TestBasicAuth(t *testing.T) {
 		})
 
 		Convey("Verify on demand sync with basic auth", func() {
-			sctlr, srcBaseURL, _, srcClient := makeUpstreamServer(t, false, true)
+			sctlr, _, srcClient := makeUpstreamServer(t, false, true)
 
 			scm := test.NewControllerManager(sctlr)
-			scm.StartAndWait(sctlr.Config.HTTP.Port)
+			srcBaseURL := scm.StartAndWait()
 			defer scm.StopServer()
 
 			registryName := sync.StripRegistryTransport(srcBaseURL)
@@ -3332,10 +3317,10 @@ func TestBasicAuth(t *testing.T) {
 				},
 			}
 
-			dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+			dctlr, _, destClient := makeDownstreamServer(t, false, syncConfig)
 
 			dcm := test.NewControllerManager(dctlr)
-			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			destBaseURL := dcm.StartAndWait()
 			defer dcm.StopServer()
 
 			var (
@@ -3429,10 +3414,10 @@ func TestBadURL(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+		dctlr, _, destClient := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -3446,10 +3431,10 @@ func TestNoImagesByRegex(t *testing.T) {
 	Convey("Verify sync with no images on source based on regex", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
 
-		sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, false)
+		sctlr, _, _ := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -3479,10 +3464,10 @@ func TestNoImagesByRegex(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+		dctlr, _, destClient := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -3510,10 +3495,10 @@ func TestInvalidRegex(t *testing.T) {
 	Convey("Verify sync with invalid regex", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
 
-		sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, false)
+		sctlr, _, _ := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -3544,10 +3529,10 @@ func TestInvalidRegex(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, _, _, _ := makeDownstreamServer(t, false, syncConfig)
+		dctlr, _, _ := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -3572,10 +3557,10 @@ func TestNotSemver(t *testing.T) {
 	Convey("Verify sync feature semver compliant", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, false)
+		sctlr, _, _ := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -3620,10 +3605,10 @@ func TestNotSemver(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+		dctlr, _, destClient := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -3655,10 +3640,10 @@ func TestInvalidCerts(t *testing.T) {
 	Convey("Verify sync with bad certs", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
 
-		sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, true, false)
+		sctlr, _, _ := makeUpstreamServer(t, true, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -3702,9 +3687,9 @@ func TestInvalidCerts(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+		dctlr, _, destClient := makeDownstreamServer(t, false, syncConfig)
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -3749,22 +3734,10 @@ func TestCertsWithWrongPerms(t *testing.T) {
 		}
 
 		// can't create http client because of no perms on ca cert
-		destPort := test.GetFreePort()
-		destConfig := config.New()
-		destConfig.HTTP.Port = destPort
-
-		destDir := t.TempDir()
-
-		destConfig.Storage.RootDirectory = destDir
-
-		destConfig.Extensions = &extconf.ExtensionConfig{}
-		destConfig.Extensions.Search = nil
-		destConfig.Extensions.Sync = syncConfig
-
-		dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+		dctlr, _, destClient := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -3823,10 +3796,10 @@ func TestInvalidUrl(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+		dctlr, _, destClient := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -3840,10 +3813,10 @@ func TestInvalidTags(t *testing.T) {
 	Convey("Verify sync invalid tags", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, false)
+		sctlr, _, _ := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -3879,10 +3852,10 @@ func TestInvalidTags(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+		dctlr, _, destClient := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -3896,11 +3869,9 @@ func TestSubPaths(t *testing.T) {
 	Convey("Verify sync with storage subPaths", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		srcPort := test.GetFreePort()
 		srcConfig := config.New()
-		srcBaseURL := test.GetBaseURL(srcPort)
 
-		srcConfig.HTTP.Port = srcPort
+		srcConfig.HTTP.Port = "0"
 
 		srcConfig.Storage.GC = false
 
@@ -3920,7 +3891,7 @@ func TestSubPaths(t *testing.T) {
 		sctlr := api.NewController(srcConfig)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(srcPort)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -3955,7 +3926,6 @@ func TestSubPaths(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		destPort := test.GetFreePort()
 		destConfig := config.New()
 
 		destDir := t.TempDir()
@@ -3974,8 +3944,7 @@ func TestSubPaths(t *testing.T) {
 			},
 		}
 
-		destBaseURL := test.GetBaseURL(destPort)
-		destConfig.HTTP.Port = destPort
+		destConfig.HTTP.Port = "0"
 
 		destConfig.Extensions = &extconf.ExtensionConfig{}
 		destConfig.Extensions.Search = nil
@@ -3984,7 +3953,7 @@ func TestSubPaths(t *testing.T) {
 		dctlr := api.NewController(destConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(destPort)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -4045,10 +4014,10 @@ func TestOnDemandRepoErr(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, _, _ := makeDownstreamServer(t, false, syncConfig)
+		dctlr, _, _ := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -4060,10 +4029,10 @@ func TestOnDemandRepoErr(t *testing.T) {
 
 func TestOnDemandContentFiltering(t *testing.T) {
 	Convey("Verify sync on demand feature", t, func() {
-		sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, false)
+		sctlr, _, _ := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -4099,10 +4068,10 @@ func TestOnDemandContentFiltering(t *testing.T) {
 				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 			}
 
-			dctlr, destBaseURL, _, _ := makeDownstreamServer(t, false, syncConfig)
+			dctlr, _, _ := makeDownstreamServer(t, false, syncConfig)
 
 			dcm := test.NewControllerManager(dctlr)
-			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			destBaseURL := dcm.StartAndWait()
 
 			defer dcm.StopServer()
 
@@ -4141,10 +4110,10 @@ func TestOnDemandContentFiltering(t *testing.T) {
 				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 			}
 
-			dctlr, destBaseURL, _, _ := makeDownstreamServer(t, false, syncConfig)
+			dctlr, _, _ := makeDownstreamServer(t, false, syncConfig)
 
 			dcm := test.NewControllerManager(dctlr)
-			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			destBaseURL := dcm.StartAndWait()
 			defer dcm.StopServer()
 
 			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
@@ -4156,10 +4125,10 @@ func TestOnDemandContentFiltering(t *testing.T) {
 
 func TestConfigRules(t *testing.T) {
 	Convey("Verify sync config rules", t, func() {
-		sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, false)
+		sctlr, _, _ := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -4194,10 +4163,10 @@ func TestConfigRules(t *testing.T) {
 				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 			}
 
-			dctlr, destBaseURL, _, _ := makeDownstreamServer(t, false, syncConfig)
+			dctlr, _, _ := makeDownstreamServer(t, false, syncConfig)
 
 			dcm := test.NewControllerManager(dctlr)
-			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			destBaseURL := dcm.StartAndWait()
 			defer dcm.StopServer()
 
 			// image should not be synced
@@ -4226,10 +4195,10 @@ func TestConfigRules(t *testing.T) {
 				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 			}
 
-			dctlr, destBaseURL, _, _ := makeDownstreamServer(t, false, syncConfig)
+			dctlr, _, _ := makeDownstreamServer(t, false, syncConfig)
 
 			dcm := test.NewControllerManager(dctlr)
-			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			destBaseURL := dcm.StartAndWait()
 			defer dcm.StopServer()
 
 			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
@@ -4253,10 +4222,10 @@ func TestConfigRules(t *testing.T) {
 				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 			}
 
-			dctlr, destBaseURL, _, _ := makeDownstreamServer(t, false, syncConfig)
+			dctlr, _, _ := makeDownstreamServer(t, false, syncConfig)
 
 			dcm := test.NewControllerManager(dctlr)
-			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			destBaseURL := dcm.StartAndWait()
 			defer dcm.StopServer()
 
 			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
@@ -4270,10 +4239,10 @@ func TestMultipleURLs(t *testing.T) {
 	Convey("Verify sync feature", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sctlr, srcBaseURL, _, srcClient := makeUpstreamServer(t, false, false)
+		sctlr, _, srcClient := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -4305,10 +4274,10 @@ func TestMultipleURLs(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+		dctlr, _, destClient := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -4382,10 +4351,10 @@ func TestNoURLsLeftInConfig(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+		dctlr, _, destClient := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -4400,10 +4369,10 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 	Convey("Verify sync periodically signatures errors", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sctlr, srcBaseURL, srcDir, _ := makeUpstreamServer(t, false, false)
+		sctlr, srcDir, _ := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -4480,10 +4449,10 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			err = os.Chmod(manifestPath, 0o000)
 			So(err, ShouldBeNil)
 
-			dctlr, destBaseURL, _, _ := makeDownstreamServer(t, false, syncConfig)
+			dctlr, _, _ := makeDownstreamServer(t, false, syncConfig)
 
 			dcm := test.NewControllerManager(dctlr)
-			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			destBaseURL := dcm.StartAndWait()
 
 			defer dcm.StopServer()
 
@@ -4529,10 +4498,10 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			}
 
 			// start downstream server
-			dctlr, destBaseURL, _, _ := makeDownstreamServer(t, false, syncConfig)
+			dctlr, _, _ := makeDownstreamServer(t, false, syncConfig)
 
 			dcm := test.NewControllerManager(dctlr)
-			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			destBaseURL := dcm.StartAndWait()
 			defer dcm.StopServer()
 
 			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
@@ -4599,10 +4568,10 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			}
 
 			// start downstream server
-			dctlr, destBaseURL, _, _ := makeDownstreamServer(t, false, syncConfig)
+			dctlr, _, _ := makeDownstreamServer(t, false, syncConfig)
 
 			dcm := test.NewControllerManager(dctlr)
-			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			destBaseURL := dcm.StartAndWait()
 			defer dcm.StopServer()
 
 			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
@@ -4676,10 +4645,10 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			// syncConfig.Registries[0].OnDemand = false
 
 			// start downstream server
-			dctlr, destBaseURL, _, _ := makeDownstreamServer(t, false, syncConfig)
+			dctlr, _, _ := makeDownstreamServer(t, false, syncConfig)
 
 			dcm := test.NewControllerManager(dctlr)
-			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			destBaseURL := dcm.StartAndWait()
 			defer dcm.StopServer()
 
 			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
@@ -4712,11 +4681,11 @@ func TestSignatures(t *testing.T) {
 	Convey("Verify sync signatures", t, func() {
 		updateDuration, _ := time.ParseDuration("1m")
 
-		sctlr, srcBaseURL, srcDir, _ := makeUpstreamServer(t, false, false)
+		sctlr, srcDir, _ := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
 
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -4742,7 +4711,7 @@ func TestSignatures(t *testing.T) {
 		So(func() { signImage(tdir, srcPort, repoName, digest) }, ShouldNotPanic)
 
 		// attach sbom
-		attachSBOM(srcDir, sctlr.Config.HTTP.Port, repoName, digest)
+		attachSBOM(srcDir, strconv.Itoa(scm.Port()), repoName, digest)
 
 		// sbom tag
 		sbomTag := strings.Replace(digest.String(), ":", "-", 1) + "." + remote.SBOMTagSuffix
@@ -4835,10 +4804,10 @@ func TestSignatures(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
+		dctlr, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -5241,10 +5210,10 @@ func TestSignatures(t *testing.T) {
 	Convey("Verify sync oci1.1 cosign signatures", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, false)
+		sctlr, _, _ := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -5296,10 +5265,10 @@ func TestSignatures(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+		dctlr, _, destClient := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -5355,12 +5324,12 @@ func TestSyncedSignaturesMetaDB(t *testing.T) {
 
 		// Create source registry
 
-		sctlr, srcBaseURL, srcDir, _ := makeUpstreamServer(t, false, false)
+		sctlr, srcDir, _ := makeUpstreamServer(t, false, false)
 		t.Log(srcDir)
-		srcPort := getPortFromBaseURL(srcBaseURL)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
+		srcPort := getPortFromBaseURL(srcBaseURL)
 
 		defer scm.StopServer()
 
@@ -5405,11 +5374,11 @@ func TestSyncedSignaturesMetaDB(t *testing.T) {
 			},
 		}
 
-		dctlr, destBaseURL, dstDir, _ := makeDownstreamServer(t, false, syncConfig)
+		dctlr, dstDir, _ := makeDownstreamServer(t, false, syncConfig)
 		t.Log(dstDir)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -5442,9 +5411,9 @@ func TestSyncedSignaturesMetaDB(t *testing.T) {
 
 func TestSyncLegacyCosignTags(t *testing.T) {
 	Convey("SyncLegacyCosignTags controls whether legacy cosign/SBOM tags are synced", t, func() {
-		sctlr, srcBaseURL, srcDir, _ := makeUpstreamServer(t, false, false)
+		sctlr, srcDir, _ := makeUpstreamServer(t, false, false)
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 		defer scm.StopServer()
 
 		// Get image digest and add legacy SBOM tag on source (sha256-<digest>.sbom)
@@ -5481,9 +5450,9 @@ func TestSyncLegacyCosignTags(t *testing.T) {
 				Enable:     &defaultVal,
 				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 			}
-			dctlr, destBaseURL, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
+			dctlr, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
 			dcm := test.NewControllerManager(dctlr)
-			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			destBaseURL := dcm.StartAndWait()
 			defer dcm.StopServer()
 
 			// Trigger image sync
@@ -5546,9 +5515,9 @@ func TestSyncLegacyCosignTags(t *testing.T) {
 				Enable:     &defaultVal,
 				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 			}
-			dctlr, destBaseURL, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
+			dctlr, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
 			dcm := test.NewControllerManager(dctlr)
-			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			destBaseURL := dcm.StartAndWait()
 			defer dcm.StopServer()
 
 			// Wait for periodic sync to complete (do not call GET manifest for legacy tag to avoid on-demand sync)
@@ -5591,9 +5560,9 @@ func TestSyncLegacyCosignTags(t *testing.T) {
 
 func TestSyncLegacyCosignTagsWithSignatures(t *testing.T) {
 	Convey("SyncLegacyCosignTags controls whether legacy cosign signature tags (.sig) are synced", t, func() {
-		sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, false)
+		sctlr, _, _ := makeUpstreamServer(t, false, false)
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 		defer scm.StopServer()
 
 		// Push image and sign it (adds legacy .sig tag on source)
@@ -5630,9 +5599,9 @@ func TestSyncLegacyCosignTagsWithSignatures(t *testing.T) {
 				Enable:     &defaultVal,
 				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 			}
-			dctlr, destBaseURL, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
+			dctlr, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
 			dcm := test.NewControllerManager(dctlr)
-			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			destBaseURL := dcm.StartAndWait()
 			defer dcm.StopServer()
 
 			// Trigger image sync
@@ -5695,9 +5664,9 @@ func TestSyncLegacyCosignTagsWithSignatures(t *testing.T) {
 				Enable:     &defaultVal,
 				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 			}
-			dctlr, destBaseURL, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
+			dctlr, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
 			dcm := test.NewControllerManager(dctlr)
-			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			destBaseURL := dcm.StartAndWait()
 			defer dcm.StopServer()
 
 			// Wait for periodic sync to complete for this repo (do not call GET manifest for legacy tag to avoid on-demand sync)
@@ -5740,6 +5709,7 @@ func TestSyncLegacyCosignTagsWithSignatures(t *testing.T) {
 
 func TestOnDemandRetryGoroutine(t *testing.T) {
 	Convey("Verify ondemand sync retries in background on error", t, func() {
+		// Keep GetFreePort for src: sync config must reference srcBaseURL before upstream starts.
 		srcPort := test.GetFreePort()
 		srcConfig := config.New()
 		srcBaseURL := test.GetBaseURL(srcPort)
@@ -5794,10 +5764,10 @@ func TestOnDemandRetryGoroutine(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
+		dctlr, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -5839,10 +5809,10 @@ func TestOnDemandRetryGoroutine(t *testing.T) {
 
 func TestOnDemandWithDigest(t *testing.T) {
 	Convey("Verify ondemand sync works with both digests and tags", t, func() {
-		sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, false)
+		sctlr, _, _ := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -5874,10 +5844,10 @@ func TestOnDemandWithDigest(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+		dctlr, _, destClient := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -5929,10 +5899,10 @@ func TestOnDemandRetryGoroutineErr(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+		dctlr, _, destClient := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -5963,6 +5933,7 @@ func TestOnDemandRetryGoroutineErr(t *testing.T) {
 
 func TestOnDemandMultipleImage(t *testing.T) {
 	Convey("Verify ondemand sync retries in background on error, multiple calls should spawn one routine", t, func() {
+		// Keep GetFreePort for src: sync config must reference srcBaseURL before upstream starts.
 		srcPort := test.GetFreePort()
 		srcConfig := config.New()
 		srcBaseURL := test.GetBaseURL(srcPort)
@@ -6005,11 +5976,11 @@ func TestOnDemandMultipleImage(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
+		dctlr, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
 		defer os.RemoveAll(destDir)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -6047,7 +6018,7 @@ func TestOnDemandMultipleImage(t *testing.T) {
 		}()
 
 		// start upstream server
-		scm.StartAndWait(srcPort)
+		scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -6077,10 +6048,10 @@ func TestOnDemandMultipleImage(t *testing.T) {
 
 func TestOnDemandPullsReferrersOnce(t *testing.T) {
 	Convey("Verify sync on demand pulls only one time", t, func(conv C) {
-		sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, false)
+		sctlr, _, _ := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -6158,10 +6129,10 @@ func TestOnDemandPullsReferrersOnce(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
-		dctlr, destBaseURL, destDir, _ := makeDownstreamServer(t, false, syncConfig)
+		dctlr, destDir, _ := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -6255,10 +6226,10 @@ func TestOnDemandPullsReferrersOnce(t *testing.T) {
 
 func TestOnDemandPullsOnce(t *testing.T) {
 	Convey("Verify sync on demand pulls only one time", t, func(conv C) {
-		sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, false)
+		sctlr, _, _ := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -6290,10 +6261,10 @@ func TestOnDemandPullsOnce(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, destDir, _ := makeDownstreamServer(t, false, syncConfig)
+		dctlr, destDir, _ := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -6370,10 +6341,10 @@ func TestOnDemandPullsOnce(t *testing.T) {
 
 func TestSignaturesOnDemand(t *testing.T) {
 	Convey("Verify sync signatures on demand feature", t, func() {
-		sctlr, srcBaseURL, srcDir, _ := makeUpstreamServer(t, false, false)
+		sctlr, srcDir, _ := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -6414,10 +6385,10 @@ func TestSignaturesOnDemand(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, destDir, _ := makeDownstreamServer(t, false, syncConfig)
+		dctlr, destDir, _ := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -6497,10 +6468,10 @@ func TestSignaturesOnDemand(t *testing.T) {
 	})
 
 	Convey("Verify sync signatures on demand feature: notation - negative cases", t, func() {
-		sctlr, srcBaseURL, srcDir, _ := makeUpstreamServer(t, false, false)
+		sctlr, srcDir, _ := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -6541,10 +6512,8 @@ func TestSignaturesOnDemand(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		destPort := test.GetFreePort()
 		destConfig := config.New()
-		destBaseURL := test.GetBaseURL(destPort)
-		destConfig.HTTP.Port = destPort
+		destConfig.HTTP.Port = "0"
 
 		destDir := t.TempDir()
 
@@ -6560,7 +6529,7 @@ func TestSignaturesOnDemand(t *testing.T) {
 		dctlr := api.NewController(destConfig)
 		dcm := test.NewControllerManager(dctlr)
 
-		dcm.StartAndWait(destPort)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -6616,10 +6585,10 @@ func TestSignaturesOnDemand(t *testing.T) {
 
 func TestOnlySignaturesOnDemand(t *testing.T) {
 	Convey("Verify sync signatures on demand feature when we already have the image", t, func() {
-		sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, false)
+		sctlr, _, _ := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -6660,10 +6629,10 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 			},
 		}
 
-		dctlr, destBaseURL, _, _ := makeDownstreamServer(t, false, syncConfig)
+		dctlr, _, _ := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -6731,10 +6700,10 @@ func TestSyncOnlyDiff(t *testing.T) {
 	Convey("Verify sync only difference between local and upstream", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, false)
+		sctlr, _, _ := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -6760,10 +6729,8 @@ func TestSyncOnlyDiff(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		destPort := test.GetFreePort()
 		destConfig := config.New()
-		destBaseURL := test.GetBaseURL(destPort)
-		destConfig.HTTP.Port = destPort
+		destConfig.HTTP.Port = "0"
 
 		destDir := t.TempDir()
 
@@ -6788,7 +6755,7 @@ func TestSyncOnlyDiff(t *testing.T) {
 		dctlr := api.NewController(destConfig)
 		dcm := test.NewControllerManager(dctlr)
 
-		dcm.StartAndWait(destPort)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -6819,10 +6786,10 @@ func TestSyncWithDiffDigest(t *testing.T) {
 	Convey("Verify sync correctly detects changes in upstream images", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, false)
+		sctlr, _, _ := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -6848,10 +6815,8 @@ func TestSyncWithDiffDigest(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		destPort := test.GetFreePort()
 		destConfig := config.New()
-		destBaseURL := test.GetBaseURL(destPort)
-		destConfig.HTTP.Port = destPort
+		destConfig.HTTP.Port = "0"
 
 		destDir := t.TempDir()
 
@@ -6938,11 +6903,9 @@ func TestSyncWithDiffDigest(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
-		dcm.StartServer()
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
-
-		test.WaitTillServerReady(destBaseURL)
 
 		// wait generator to finish generating tasks.
 		waitSyncFinish(dctlr.Config.Log.Output)
@@ -6966,11 +6929,11 @@ func TestSyncSignaturesDiff(t *testing.T) {
 	Convey("Verify sync detects changes in the upstream signatures", t, func() {
 		updateDuration, _ := time.ParseDuration("10s")
 
-		sctlr, srcBaseURL, srcDir, _ := makeUpstreamServer(t, false, false)
+		sctlr, srcDir, _ := makeUpstreamServer(t, false, false)
 		defer os.RemoveAll(srcDir)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -7026,10 +6989,10 @@ func TestSyncSignaturesDiff(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
+		dctlr, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -7213,10 +7176,10 @@ func TestSyncSignaturesDiff(t *testing.T) {
 func TestOnlySignedFlag(t *testing.T) {
 	updateDuration, _ := time.ParseDuration("30m")
 
-	sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, false) //nolint: dogsled
+	sctlr, _, _ := makeUpstreamServer(t, false, false)
 
 	scm := test.NewControllerManager(sctlr)
-	scm.StartAndWait(sctlr.Config.HTTP.Port)
+	srcBaseURL := scm.StartAndWait()
 
 	defer scm.StopServer()
 
@@ -7253,10 +7216,10 @@ func TestOnlySignedFlag(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, _, client := makeDownstreamServer(t, false, syncConfig)
+		dctlr, _, client := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -7289,10 +7252,10 @@ func TestOnlySignedFlag(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, _, client := makeDownstreamServer(t, false, syncConfig)
+		dctlr, _, client := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -7346,7 +7309,7 @@ func TestSyncWithDestination(t *testing.T) {
 			},
 		}
 
-		sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, false)
+		sctlr, _, _ := makeUpstreamServer(t, false, false)
 
 		err := os.MkdirAll(path.Join(sctlr.Config.Storage.RootDirectory, "/zot-fold"), storageConstants.DefaultDirPerms)
 		So(err, ShouldBeNil)
@@ -7359,7 +7322,7 @@ func TestSyncWithDestination(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -7403,10 +7366,10 @@ func TestSyncWithDestination(t *testing.T) {
 					Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 				}
 
-				dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+				dctlr, _, destClient := makeDownstreamServer(t, false, syncConfig)
 
 				dcm := test.NewControllerManager(dctlr)
-				dcm.StartAndWait(dctlr.Config.HTTP.Port)
+				destBaseURL := dcm.StartAndWait()
 				defer dcm.StopServer()
 
 				time.Sleep(2 * time.Second)
@@ -7465,10 +7428,10 @@ func TestSyncWithDestination(t *testing.T) {
 					Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 				}
 
-				dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+				dctlr, _, destClient := makeDownstreamServer(t, false, syncConfig)
 
 				dcm := test.NewControllerManager(dctlr)
-				dcm.StartAndWait(dctlr.Config.HTTP.Port)
+				destBaseURL := dcm.StartAndWait()
 				defer dcm.StopServer()
 
 				resp, err := destClient.R().Get(destBaseURL + "/v2/" + testCase.expected + "/manifests/0.0.1")
@@ -7511,10 +7474,10 @@ func TestSyncImageIndex(t *testing.T) {
 	Convey("Verify syncing image indexes works", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, false)
+		sctlr, _, _ := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -7569,10 +7532,10 @@ func TestSyncImageIndex(t *testing.T) {
 
 			Convey("sync periodically", func() {
 				// start downstream server
-				dctlr, destBaseURL, _, _ := makeDownstreamServer(t, false, syncConfig)
+				dctlr, _, _ := makeDownstreamServer(t, false, syncConfig)
 
 				dcm := test.NewControllerManager(dctlr)
-				dcm.StartAndWait(dctlr.Config.HTTP.Port)
+				destBaseURL := dcm.StartAndWait()
 				defer dcm.StopServer()
 
 				// give it time to set up sync
@@ -7600,10 +7563,10 @@ func TestSyncImageIndex(t *testing.T) {
 				syncConfig.Registries[0].OnDemand = true
 				syncConfig.Registries[0].PollInterval = 0
 
-				dctlr, destBaseURL, _, _ := makeDownstreamServer(t, false, syncConfig)
+				dctlr, _, _ := makeDownstreamServer(t, false, syncConfig)
 
 				dcm := test.NewControllerManager(dctlr)
-				dcm.StartAndWait(dctlr.Config.HTTP.Port)
+				destBaseURL := dcm.StartAndWait()
 				defer dcm.StopServer()
 
 				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
@@ -7696,10 +7659,10 @@ func TestSyncImageIndex(t *testing.T) {
 
 			Convey("sync periodically", func() {
 				// start downstream server
-				dctlr, destBaseURL, _, _ := makeDownstreamServer(t, false, syncConfig)
+				dctlr, _, _ := makeDownstreamServer(t, false, syncConfig)
 
 				dcm := test.NewControllerManager(dctlr)
-				dcm.StartAndWait(dctlr.Config.HTTP.Port)
+				destBaseURL := dcm.StartAndWait()
 				defer dcm.StopServer()
 
 				// Wait for SyncRepo to finish processing all tags for the "index" repo.
@@ -7750,10 +7713,10 @@ func TestSyncImageIndex(t *testing.T) {
 				syncConfig.Registries[0].OnDemand = true
 				syncConfig.Registries[0].PollInterval = 0
 
-				dctlr, destBaseURL, _, _ := makeDownstreamServer(t, false, syncConfig)
+				dctlr, _, _ := makeDownstreamServer(t, false, syncConfig)
 
 				dcm := test.NewControllerManager(dctlr)
-				dcm.StartAndWait(dctlr.Config.HTTP.Port)
+				destBaseURL := dcm.StartAndWait()
 				defer dcm.StopServer()
 
 				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
@@ -7835,10 +7798,10 @@ func TestECRCredentialsHelper(t *testing.T) {
 // recursive referrer sync is done only in periodic sync.
 func TestOnDemandReferrerSyncFlags(t *testing.T) {
 	Convey("SyncLegacyCosignTags=false syncs OCI referrers but not digest-tag referrers", t, func() {
-		sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, false)
+		sctlr, _, _ := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -7950,10 +7913,10 @@ func TestOnDemandReferrerSyncFlags(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, _, _ := makeDownstreamServer(t, false, syncConfig)
+		dctlr, _, _ := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 
@@ -7981,10 +7944,10 @@ func TestOnDemandReferrerSyncFlags(t *testing.T) {
 	})
 
 	Convey("On-demand SyncReferrers syncs only direct referrers (no recursion)", t, func() {
-		sctlr, srcBaseURL, _, _ := makeUpstreamServer(t, false, false)
+		sctlr, _, _ := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		srcBaseURL := scm.StartAndWait()
 
 		defer scm.StopServer()
 
@@ -8105,10 +8068,10 @@ func TestOnDemandReferrerSyncFlags(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, _, _ := makeDownstreamServer(t, false, syncConfig)
+		dctlr, _, _ := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		destBaseURL := dcm.StartAndWait()
 
 		defer dcm.StopServer()
 

@@ -40,15 +40,13 @@ func TestAuditLogMessages(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		dir := t.TempDir()
 
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
 
 		outputPath := dir + "/zot.log"
 		auditPath := dir + "/zot-audit.log"
 		conf.Log = &config.LogConfig{Level: "debug", Output: outputPath, Audit: auditPath}
 
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
@@ -65,7 +63,7 @@ func TestAuditLogMessages(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = dir
 
 		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		Convey("Open auditLog file", func() {

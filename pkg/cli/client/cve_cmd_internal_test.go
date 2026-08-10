@@ -23,10 +23,8 @@ import (
 )
 
 func TestSearchCVECmd(t *testing.T) {
-	port := test.GetFreePort()
-	baseURL := test.GetBaseURL(port)
 	conf := config.New()
-	conf.HTTP.Port = port
+	conf.HTTP.Port = "0"
 	rootDir := t.TempDir()
 	conf.Storage.RootDirectory = rootDir
 
@@ -40,7 +38,7 @@ func TestSearchCVECmd(t *testing.T) {
 	ctlr := api.NewController(conf)
 	cm := test.NewControllerManager(ctlr)
 
-	cm.StartAndWait(port)
+	baseURL := cm.StartAndWait()
 	defer cm.StopServer()
 
 	Convey("Test CVE help", t, func() {
@@ -479,10 +477,8 @@ func TestSearchCVECmd(t *testing.T) {
 }
 
 func TestCVECommandGQL(t *testing.T) {
-	port := test.GetFreePort()
-	baseURL := test.GetBaseURL(port)
 	conf := config.New()
-	conf.HTTP.Port = port
+	conf.HTTP.Port = "0"
 
 	defaultVal := true
 	conf.Extensions = &extconf.ExtensionConfig{
@@ -495,7 +491,7 @@ func TestCVECommandGQL(t *testing.T) {
 	ctlr.Config.Storage.RootDirectory = t.TempDir()
 	cm := test.NewControllerManager(ctlr)
 
-	cm.StartAndWait(conf.HTTP.Port)
+	baseURL := cm.StartAndWait()
 	defer cm.StopServer()
 
 	Convey("commands without gql", t, func() {
@@ -654,10 +650,8 @@ func TestCVECommandGQL(t *testing.T) {
 }
 
 func TestCVECommandErrors(t *testing.T) {
-	port := test.GetFreePort()
-	baseURL := test.GetBaseURL(port)
 	conf := config.New()
-	conf.HTTP.Port = port
+	conf.HTTP.Port = "0"
 
 	conf.Extensions = &extconf.ExtensionConfig{
 		Search: &extconf.SearchConfig{
@@ -669,7 +663,7 @@ func TestCVECommandErrors(t *testing.T) {
 	ctlr.Config.Storage.RootDirectory = t.TempDir()
 	cm := test.NewControllerManager(ctlr)
 
-	cm.StartAndWait(conf.HTTP.Port)
+	baseURL := cm.StartAndWait()
 	defer cm.StopServer()
 
 	Convey("commands without gql", t, func() {

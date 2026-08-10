@@ -79,7 +79,7 @@ func TestConfigReloader(t *testing.T) {
 			conveyCtx.So(err, ShouldBeNil)
 		}()
 
-		baseURL := waitForKernelChosenPortBaseURL(logPath)
+		baseURL := test.WaitForKernelChosenPortBaseURL(logPath)
 		test.WaitTillServerReady(baseURL)
 
 		// verify initial startup authentication logs
@@ -212,7 +212,7 @@ func TestConfigReloader(t *testing.T) {
 			ctx.So(err, ShouldBeNil)
 		}()
 
-		baseURL := waitForKernelChosenPortBaseURL(logFile.Name())
+		baseURL := test.WaitForKernelChosenPortBaseURL(logFile.Name())
 		test.WaitTillServerReady(baseURL)
 
 		// verify initial startup authentication logs (no auth configured)
@@ -348,7 +348,7 @@ func TestConfigReloader(t *testing.T) {
 			ctx.So(err, ShouldBeNil)
 		}()
 
-		baseURL := waitForKernelChosenPortBaseURL(logPath)
+		baseURL := test.WaitForKernelChosenPortBaseURL(logPath)
 		test.WaitTillServerReady(baseURL)
 
 		// verify initial startup authentication logs (no auth configured)
@@ -489,7 +489,7 @@ func TestConfigReloader(t *testing.T) {
 			ctx.So(err, ShouldBeNil)
 		}()
 
-		baseURL := waitForKernelChosenPortBaseURL(logPath)
+		baseURL := test.WaitForKernelChosenPortBaseURL(logPath)
 		test.WaitTillServerReady(baseURL)
 
 		// verify initial startup authentication logs (no auth configured)
@@ -635,7 +635,7 @@ func TestConfigReloader(t *testing.T) {
 			conveyCtx.So(err, ShouldBeNil)
 		}()
 
-		baseURL := waitForKernelChosenPortBaseURL(logPath)
+		baseURL := test.WaitForKernelChosenPortBaseURL(logPath)
 		test.WaitTillServerReady(baseURL)
 
 		content = "[]"

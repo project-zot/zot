@@ -20,16 +20,14 @@ import (
 
 func TestReposCommand(t *testing.T) {
 	Convey("repos", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		cm := test.NewControllerManager(ctlr)
 
-		cm.StartAndWait(conf.HTTP.Port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
 
 		err := UploadImage(CreateRandomImage(), baseURL, "repo1", "tag1")

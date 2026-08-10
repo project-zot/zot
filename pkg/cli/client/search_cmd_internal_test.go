@@ -19,10 +19,8 @@ import (
 )
 
 func TestSearchCommandGQL(t *testing.T) {
-	port := test.GetFreePort()
-	baseURL := test.GetBaseURL(port)
 	conf := config.New()
-	conf.HTTP.Port = port
+	conf.HTTP.Port = "0"
 
 	defaultVal := true
 	conf.Extensions = &extconf.ExtensionConfig{
@@ -35,7 +33,7 @@ func TestSearchCommandGQL(t *testing.T) {
 	ctlr.Config.Storage.RootDirectory = t.TempDir()
 	cm := test.NewControllerManager(ctlr)
 
-	cm.StartAndWait(conf.HTTP.Port)
+	baseURL := cm.StartAndWait()
 	defer cm.StopServer()
 
 	Convey("commands without gql", t, func() {
@@ -105,16 +103,14 @@ func TestSearchCommandGQL(t *testing.T) {
 }
 
 func TestSearchCommandREST(t *testing.T) {
-	port := test.GetFreePort()
-	baseURL := test.GetBaseURL(port)
 	conf := config.New()
-	conf.HTTP.Port = port
+	conf.HTTP.Port = "0"
 
 	ctlr := api.NewController(conf)
 	ctlr.Config.Storage.RootDirectory = t.TempDir()
 	cm := test.NewControllerManager(ctlr)
 
-	cm.StartAndWait(conf.HTTP.Port)
+	baseURL := cm.StartAndWait()
 	defer cm.StopServer()
 
 	Convey("commands without gql", t, func() {

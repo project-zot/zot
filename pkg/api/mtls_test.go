@@ -176,9 +176,8 @@ func runMTLSTest(t *testing.T, testCase mTLSTestCase) {
 	ctlr := api.NewController(conf)
 	cm := test.NewControllerManager(ctlr)
 
-	cm.StartAndWait()
+	baseURL := cm.StartAndWait()
 	defer cm.StopServer()
-	baseURL := test.GetSecureBaseURL(strconv.Itoa(cm.Port()))
 
 	// Set up client
 	caCertPEM, err := os.ReadFile(caCertPath)
@@ -655,9 +654,8 @@ func TestMTLSAuthentication(t *testing.T) {
 		ctlr := api.NewController(conf)
 		cm := test.NewControllerManager(ctlr)
 
-		cm.StartAndWait()
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
-		baseURL := test.GetSecureBaseURL(strconv.Itoa(cm.Port()))
 
 		// Test without client certificate - should fail
 		caCertPEM, err := os.ReadFile(caCertPath)
@@ -759,9 +757,8 @@ func TestMTLSAuthentication(t *testing.T) {
 		ctlr := api.NewController(conf)
 		cm := test.NewControllerManager(ctlr)
 
-		cm.StartAndWait()
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
-		baseURL := test.GetSecureBaseURL(strconv.Itoa(cm.Port()))
 
 		// Load server CA certificate
 		caCertPEM, err := os.ReadFile(caCertPath)
@@ -911,9 +908,8 @@ func TestMTLSAuthenticationWithCertificateChain(t *testing.T) {
 		ctlr := api.NewController(conf)
 		cm := test.NewControllerManager(ctlr)
 
-		cm.StartAndWait()
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
-		baseURL := test.GetSecureBaseURL(strconv.Itoa(cm.Port()))
 
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(rootCACert)
@@ -1039,9 +1035,8 @@ func TestMTLSAuthenticationWithExpiredCertificate(t *testing.T) {
 		ctlr := api.NewController(conf)
 		cm := test.NewControllerManager(ctlr)
 
-		cm.StartAndWait()
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
-		baseURL := test.GetSecureBaseURL(strconv.Itoa(cm.Port()))
 
 		// Set up client with expired certificate
 		caCertPEM, err := os.ReadFile(caCertPath)
@@ -1131,9 +1126,8 @@ func TestMTLSAuthenticationWithUnknownCA(t *testing.T) {
 		ctlr := api.NewController(conf)
 		cm := test.NewControllerManager(ctlr)
 
-		cm.StartAndWait()
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
-		baseURL := test.GetSecureBaseURL(strconv.Itoa(cm.Port()))
 
 		// Set up client with certificate signed by unknown CA
 		serverCACertPEM, err := os.ReadFile(serverCACertPath)
@@ -1225,9 +1219,8 @@ func TestMTLSAuthenticationWithMetaDBError(t *testing.T) {
 		ctlr := api.NewController(conf)
 		cm := test.NewControllerManager(ctlr)
 
-		cm.StartAndWait()
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
-		baseURL := test.GetSecureBaseURL(strconv.Itoa(cm.Port()))
 
 		// Set up client with valid certificate
 		caCertPEM, err := os.ReadFile(caCertPath)
@@ -1297,8 +1290,8 @@ func TestMutualTLSAuthWithUserPermissions(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		cm := test.NewControllerManager(ctlr)
-		baseURL := cm.StartAndWait()
-		secureBaseURL := test.GetSecureBaseURL(strconv.Itoa(cm.Port()))
+		secureBaseURL := cm.StartAndWait()
+		baseURL := test.GetBaseURL(strconv.Itoa(cm.Port()))
 
 		defer cm.StopServer()
 
@@ -1375,8 +1368,8 @@ func TestTLSMutualAuth(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		cm := test.NewControllerManager(ctlr)
-		baseURL := cm.StartAndWait()
-		secureBaseURL := test.GetSecureBaseURL(strconv.Itoa(cm.Port()))
+		secureBaseURL := cm.StartAndWait()
+		baseURL := test.GetBaseURL(strconv.Itoa(cm.Port()))
 
 		defer cm.StopServer()
 
@@ -1488,8 +1481,8 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		cm := test.NewControllerManager(ctlr)
-		baseURL := cm.StartAndWait()
-		secureBaseURL := test.GetSecureBaseURL(strconv.Itoa(cm.Port()))
+		secureBaseURL := cm.StartAndWait()
+		baseURL := test.GetBaseURL(strconv.Itoa(cm.Port()))
 
 		defer cm.StopServer()
 
@@ -1588,8 +1581,8 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
 
 		cm := test.NewControllerManager(ctlr)
-		baseURL := cm.StartAndWait()
-		secureBaseURL := test.GetSecureBaseURL(strconv.Itoa(cm.Port()))
+		secureBaseURL := cm.StartAndWait()
+		baseURL := test.GetBaseURL(strconv.Itoa(cm.Port()))
 
 		defer cm.StopServer()
 
@@ -1681,8 +1674,8 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
 
 		cm := test.NewControllerManager(ctlr)
-		baseURL := cm.StartAndWait()
-		secureBaseURL := test.GetSecureBaseURL(strconv.Itoa(cm.Port()))
+		secureBaseURL := cm.StartAndWait()
+		baseURL := test.GetBaseURL(strconv.Itoa(cm.Port()))
 
 		defer cm.StopServer()
 

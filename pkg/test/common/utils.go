@@ -2,6 +2,8 @@ package common
 
 import (
 	"bytes"
+	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -26,6 +28,9 @@ const (
 	SleepTime             = 100 * time.Millisecond
 	boundPortWaitTimeout  = 30 * time.Second
 	AuthorizationAllRepos = "**"
+	// Must match the log message in pkg/api/controller.go when Port is "0".
+	kernelChosenPortMsg   = "port is unspecified, listening on kernel chosen port"
+	kernelPortWaitTimeout = 30 * time.Second
 )
 
 type isser interface {
@@ -72,6 +77,7 @@ type Controller interface {
 	Run() error
 	Shutdown()
 	GetPort() int
+	TLSEnabled() bool
 }
 
 type ControllerManager struct {
@@ -99,17 +105,17 @@ func (cm *ControllerManager) StopServer() {
 	cm.controller.Shutdown()
 }
 
-// StartAndWait starts the controller and blocks until the server responds to HTTP GET.
-// It returns the HTTP base URL (http://127.0.0.1:<port>).
+// StartAndWait starts the controller and blocks until the server responds to GET.
+// It returns the base URL with the correct scheme (http or https) for the bound port.
 //
 // The listen port comes from the controller config. After bind, the port is
 // read from the controller (including kernel-chosen ports when config uses "0").
 // Prefer conf.HTTP.Port = "0" in new tests to avoid port-allocation races.
-//
-// Optional port arguments are deprecated and ignored; kept for call-site compatibility.
-func (cm *ControllerManager) StartAndWait(_ ...string) string {
+// Controllers with TLSEnabled() true yield an https URL;
+// readiness probing uses InsecureSkipVerify so self-signed test certs work.
+func (cm *ControllerManager) StartAndWait() string {
 	cm.StartServer()
-	baseURL := GetBaseURL(cm.waitForBoundPort())
+	baseURL := cm.baseURLForPort(cm.waitForBoundPort())
 	WaitTillServerReady(baseURL)
 
 	return baseURL
@@ -120,14 +126,23 @@ func (cm *ControllerManager) Port() int {
 	return cm.controller.GetPort()
 }
 
-// BaseURL returns http://127.0.0.1:<port> from the bound listen port, or "" if not listening yet.
+// BaseURL returns http(s)://127.0.0.1:<port> from the bound listen port, or "" if not listening yet.
+// The scheme is https when TLSEnabled() is true.
 func (cm *ControllerManager) BaseURL() string {
 	port := cm.Port()
 	if port <= 0 {
 		return ""
 	}
 
-	return GetBaseURL(strconv.Itoa(port))
+	return cm.baseURLForPort(strconv.Itoa(port))
+}
+
+func (cm *ControllerManager) baseURLForPort(port string) string {
+	if cm.controller.TLSEnabled() {
+		return GetSecureBaseURL(port)
+	}
+
+	return GetBaseURL(port)
 }
 
 func (cm *ControllerManager) waitForBoundPort() string {
@@ -144,9 +159,9 @@ func (cm *ControllerManager) waitForBoundPort() string {
 	panic(fmt.Sprintf("timed out after %s waiting for controller to bind a port", boundPortWaitTimeout))
 }
 
-// WaitServerReady blocks until the server responds to HTTP GET on the bound port.
+// WaitServerReady blocks until the server responds to GET on the bound port (http or https).
 func (cm *ControllerManager) WaitServerReady() {
-	WaitTillServerReady(GetBaseURL(cm.waitForBoundPort()))
+	WaitTillServerReady(cm.baseURLForPort(cm.waitForBoundPort()))
 }
 
 func NewControllerManager(controller Controller) ControllerManager {
@@ -158,8 +173,18 @@ func NewControllerManager(controller Controller) ControllerManager {
 }
 
 func WaitTillServerReady(url string) {
+	client := resty.New()
+
+	if strings.HasPrefix(url, "https://") {
+		// Test servers use self-signed certs; this probe only checks that ServeTLS is accepting.
+		client.SetTLSClientConfig(&tls.Config{
+			InsecureSkipVerify: true, //nolint:gosec // test readiness probe only
+			MinVersion:         tls.VersionTLS12,
+		})
+	}
+
 	for {
-		_, err := resty.R().Get(url)
+		_, err := client.R().Get(url)
 		if err == nil {
 			break
 		}
@@ -210,6 +235,43 @@ func GetBaseURL(port string) string {
 
 func GetSecureBaseURL(port string) string {
 	return fmt.Sprintf(BaseSecureURL, port)
+}
+
+// WaitForKernelChosenPortBaseURL polls a zot log file for the kernel-assigned listen
+// port logged when conf.HTTP.Port is "0", then returns http://127.0.0.1:<port>.
+// Used for CLI serve tests that have no ControllerManager to query after bind.
+func WaitForKernelChosenPortBaseURL(logPath string) string {
+	return waitForKernelChosenPortBaseURL(logPath, kernelPortWaitTimeout)
+}
+
+func waitForKernelChosenPortBaseURL(logPath string, timeout time.Duration) string {
+	deadline := time.Now().Add(timeout)
+
+	for time.Now().Before(deadline) {
+		content, err := os.ReadFile(logPath)
+		if err == nil {
+			for line := range strings.SplitSeq(string(content), "\n") {
+				if !strings.Contains(line, kernelChosenPortMsg) {
+					continue
+				}
+
+				var entry struct {
+					Port int `json:"port"`
+				}
+
+				if err := json.Unmarshal([]byte(line), &entry); err != nil || entry.Port <= 0 {
+					continue
+				}
+
+				return GetBaseURL(strconv.Itoa(entry.Port))
+			}
+		}
+
+		time.Sleep(SleepTime)
+	}
+
+	panic(fmt.Sprintf("timed out after %s waiting for kernel chosen port in %s",
+		timeout, logPath))
 }
 
 func CustomRedirectPolicy(noOfRedirect int) resty.RedirectPolicy {
