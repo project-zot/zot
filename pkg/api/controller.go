@@ -140,6 +140,13 @@ func (c *Controller) GetPort() int {
 	return int(c.chosenPort.Load())
 }
 
+// TLSEnabled reports whether the controller is configured to serve HTTPS (ServeTLS).
+func (c *Controller) TLSEnabled() bool {
+	tlsConfig := c.Config.CopyTLSConfig()
+
+	return tlsConfig != nil && tlsConfig.Key != "" && tlsConfig.Cert != ""
+}
+
 func (c *Controller) Run() error {
 	if err := c.initCookieStore(); err != nil {
 		return err

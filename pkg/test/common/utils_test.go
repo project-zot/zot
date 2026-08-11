@@ -84,6 +84,16 @@ func TestControllerManager(t *testing.T) {
 	})
 }
 
+func TestWaitForKernelChosenPortBaseURL(t *testing.T) {
+	Convey("parses kernel-chosen port from log file", t, func() {
+		logPath := path.Join(t.TempDir(), "zot-log.txt")
+		line := `{"level":"info","message":"port is unspecified, listening on kernel chosen port","port":34567}` + "\n"
+		So(os.WriteFile(logPath, []byte(line), 0o600), ShouldBeNil)
+
+		So(tcommon.WaitForKernelChosenPortBaseURL(logPath), ShouldEqual, tcommon.GetBaseURL("34567"))
+	})
+}
+
 func TestWaitForLogMessages(t *testing.T) {
 	Convey("Test WaitForLogMessages", t, func() {
 		Convey("should return true when message count reaches minimum", func() {

@@ -346,7 +346,7 @@ func TestServeExtensions(t *testing.T) {
 			})
 		}()
 
-		baseURL := waitForKernelChosenPortBaseURL(logPath)
+		baseURL := WaitForKernelChosenPortBaseURL(logPath)
 		WaitTillServerReady(baseURL)
 
 		data, err := os.ReadFile(logPath)
@@ -387,7 +387,7 @@ func TestServeExtensions(t *testing.T) {
 			})
 		}()
 
-		baseURL := waitForKernelChosenPortBaseURL(logPath)
+		baseURL := WaitForKernelChosenPortBaseURL(logPath)
 		WaitTillServerReady(baseURL)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
@@ -412,7 +412,7 @@ func testWithMetricsEnabled(t *testing.T, rootDir string, cfgContentFormat strin
 		})
 	}()
 
-	baseURL := waitForKernelChosenPortBaseURL(logPath)
+	baseURL := WaitForKernelChosenPortBaseURL(logPath)
 	WaitTillServerReady(baseURL)
 
 	resp, err := resty.R().Get(baseURL + "/metrics")
@@ -542,7 +542,7 @@ func TestServeMetricsExtension(t *testing.T) {
 			})
 		}()
 
-		baseURL := waitForKernelChosenPortBaseURL(logPath)
+		baseURL := WaitForKernelChosenPortBaseURL(logPath)
 		WaitTillServerReady(baseURL)
 
 		resp, err := resty.R().Get(baseURL + "/metrics")

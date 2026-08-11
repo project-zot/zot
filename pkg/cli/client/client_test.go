@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -25,16 +26,32 @@ import (
 	tlsutils "zotregistry.dev/zot/v2/pkg/test/tls"
 )
 
-const (
-	BaseSecureURL1 = "https://127.0.0.1:8088"
-	HOST1          = "127.0.0.1:8088"
-	SecurePort1    = "8088"
-	BaseSecureURL2 = "https://127.0.0.1:8089"
-	SecurePort2    = "8089"
-	BaseSecureURL3 = "https://127.0.0.1:8090"
-	SecurePort3    = "8090"
-	certsDir1      = ".config/containers/certs.d/127.0.0.1:8088"
-)
+func homeCertsDir(hostPort string) string {
+	return filepath.Join(".config", "containers", "certs.d", hostPort)
+}
+
+func writeHomeClientCerts(t *testing.T, home, hostPort string, caCertPEM, caKeyPEM []byte) {
+	t.Helper()
+
+	destCertsDir := filepath.Join(home, homeCertsDir(hostPort))
+	//nolint:gosec // test path is tempdir-scoped via HOME override
+	err := os.MkdirAll(destCertsDir, 0o755)
+	So(err, ShouldBeNil)
+
+	//nolint:gosec // test path is tempdir-scoped via HOME override
+	err = os.WriteFile(filepath.Join(destCertsDir, "ca.crt"), caCertPEM, 0o600)
+	So(err, ShouldBeNil)
+
+	clientCertPath := filepath.Join(destCertsDir, "client.cert")
+	clientKeyPath := filepath.Join(destCertsDir, "client.key")
+	clientOpts := &tlsutils.CertificateOptions{
+		CommonName:         "testclient",
+		OrganizationalUnit: "TestClient",
+		NotAfter:           time.Now().AddDate(10, 0, 0),
+	}
+	err = tlsutils.GenerateClientCertToFile(caCertPEM, caKeyPEM, clientCertPath, clientKeyPath, clientOpts)
+	So(err, ShouldBeNil)
+}
 
 func TestTLSWithAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
@@ -73,7 +90,7 @@ func TestTLSWithAuth(t *testing.T) {
 		defer func() { resty.SetTLSClientConfig(nil) }()
 
 		conf := config.New()
-		conf.HTTP.Port = SecurePort1
+		conf.HTTP.Port = "0"
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
@@ -101,38 +118,17 @@ func TestTLSWithAuth(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(conf.HTTP.Port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
 
+		hostPort := "127.0.0.1:" + strconv.Itoa(cm.Port())
+
 		Convey("Test with htpassw auth", func() {
-			t.Setenv("HOME", t.TempDir())
-
 			// Client certs are resolved under $HOME; isolate from the real home directory.
-			home := os.Getenv("HOME")
-			destCertsDir := filepath.Join(home, certsDir1)
-			//nolint:gosec // test path is tempdir-scoped via HOME override
-			err := os.MkdirAll(destCertsDir, 0o755)
-			So(err, ShouldBeNil)
+			t.Setenv("HOME", t.TempDir())
+			writeHomeClientCerts(t, os.Getenv("HOME"), hostPort, caCertPEM, caKeyPEM)
 
-			// Write CA certificate to client certs directory (needed for server verification)
-			//nolint:gosec // test path is tempdir-scoped via HOME override
-			err = os.WriteFile(filepath.Join(destCertsDir, "ca.crt"), caCertPEM, 0o600)
-			So(err, ShouldBeNil)
-
-			// Generate and write client certificate and key (needed for mTLS client authentication)
-			clientCertPath := filepath.Join(destCertsDir, "client.cert")
-			clientKeyPath := filepath.Join(destCertsDir, "client.key")
-			clientOpts := &tlsutils.CertificateOptions{
-				CommonName:         "testclient",
-				OrganizationalUnit: "TestClient",
-				NotAfter:           time.Now().AddDate(10, 0, 0),
-			}
-			err = tlsutils.GenerateClientCertToFile(caCertPEM, caKeyPEM, clientCertPath, clientKeyPath, clientOpts)
-			So(err, ShouldBeNil)
-
-			defer os.RemoveAll(destCertsDir)
-
-			args := []string{"name", "dummyImageName", "--url", HOST1}
+			args := []string{"name", "dummyImageName", "--url", hostPort}
 			imageCmd := client.NewImageCommand(client.NewSearchService())
 			imageBuff := bytes.NewBufferString("")
 			imageCmd.SetOut(imageBuff)
@@ -147,28 +143,10 @@ func TestTLSWithAuth(t *testing.T) {
 
 			_ = makeConfigFile(t,
 				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s%s%s","showspinner":false}]}`,
-					BaseSecureURL1, constants.RoutePrefix, constants.ExtCatalogPrefix))
+					baseURL, constants.RoutePrefix, constants.ExtCatalogPrefix))
 
 			// Ensure certificates are in the HOME directory that makeConfigFile set
-			home = os.Getenv("HOME")
-			destCertsDir = filepath.Join(home, certsDir1)
-			//nolint:gosec // test path is tempdir-scoped via HOME override
-			err = os.MkdirAll(destCertsDir, 0o755)
-			So(err, ShouldBeNil)
-
-			// Write CA certificate to client certs directory (needed for server verification)
-			//nolint:gosec // test path is tempdir-scoped via HOME override
-			err = os.WriteFile(filepath.Join(destCertsDir, "ca.crt"), caCertPEM, 0o600)
-			So(err, ShouldBeNil)
-
-			// Generate and write client certificate and key (needed for mTLS client authentication)
-			clientCertPath = filepath.Join(destCertsDir, "client.cert")
-			clientKeyPath = filepath.Join(destCertsDir, "client.key")
-			clientOpts = &tlsutils.CertificateOptions{
-				CommonName: "testclient",
-			}
-			err = tlsutils.GenerateClientCertToFile(caCertPEM, caKeyPEM, clientCertPath, clientKeyPath, clientOpts)
-			So(err, ShouldBeNil)
+			writeHomeClientCerts(t, os.Getenv("HOME"), hostPort, caCertPEM, caKeyPEM)
 
 			imageCmd = client.NewImageCommand(client.NewSearchService())
 			imageBuff = bytes.NewBufferString("")
@@ -184,7 +162,9 @@ func TestTLSWithAuth(t *testing.T) {
 
 			_ = makeConfigFile(t,
 				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s%s%s","showspinner":false}]}`,
-					BaseSecureURL1, constants.RoutePrefix, constants.ExtCatalogPrefix))
+					baseURL, constants.RoutePrefix, constants.ExtCatalogPrefix))
+
+			writeHomeClientCerts(t, os.Getenv("HOME"), hostPort, caCertPEM, caKeyPEM)
 
 			imageCmd = client.NewImageCommand(client.NewSearchService())
 			imageBuff = bytes.NewBufferString("")
@@ -234,7 +214,7 @@ func TestTLSWithoutAuth(t *testing.T) {
 		defer func() { resty.SetTLSClientConfig(nil) }()
 
 		conf := config.New()
-		conf.HTTP.Port = SecurePort1
+		conf.HTTP.Port = "0"
 		conf.HTTP.TLS = &config.TLSConfig{
 			Cert:   serverCertPath,
 			Key:    serverKeyPath,
@@ -250,38 +230,17 @@ func TestTLSWithoutAuth(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(conf.HTTP.Port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
+
+		hostPort := "127.0.0.1:" + strconv.Itoa(cm.Port())
 
 		Convey("Certs in user's home", func() {
 			_ = makeConfigFile(t,
 				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s%s%s","showspinner":false}]}`,
-					BaseSecureURL1, constants.RoutePrefix, constants.ExtCatalogPrefix))
+					baseURL, constants.RoutePrefix, constants.ExtCatalogPrefix))
 
-			home := os.Getenv("HOME")
-			destCertsDir := filepath.Join(home, certsDir1)
-
-			//nolint:gosec // test path is tempdir-scoped via HOME override
-			err := os.MkdirAll(destCertsDir, 0o755)
-			So(err, ShouldBeNil)
-
-			// Write CA certificate to client certs directory (needed for server verification)
-			//nolint:gosec // test path is tempdir-scoped via HOME override
-			err = os.WriteFile(filepath.Join(destCertsDir, "ca.crt"), caCertPEM, 0o600)
-			So(err, ShouldBeNil)
-
-			// Generate and write client certificate and key (needed for mTLS client authentication)
-			clientCertPath := filepath.Join(destCertsDir, "client.cert")
-			clientKeyPath := filepath.Join(destCertsDir, "client.key")
-			clientOpts := &tlsutils.CertificateOptions{
-				CommonName:         "testclient",
-				OrganizationalUnit: "TestClient",
-				NotAfter:           time.Now().AddDate(10, 0, 0),
-			}
-			err = tlsutils.GenerateClientCertToFile(caCertPEM, caKeyPEM, clientCertPath, clientKeyPath, clientOpts)
-			So(err, ShouldBeNil)
-
-			defer os.RemoveAll(destCertsDir)
+			writeHomeClientCerts(t, os.Getenv("HOME"), hostPort, caCertPEM, caKeyPEM)
 
 			args := []string{"list", "--config", "imagetest"}
 			imageCmd := client.NewImageCommand(client.NewSearchService())
@@ -339,7 +298,7 @@ func TestTLSBadCerts(t *testing.T) {
 		defer func() { resty.SetTLSClientConfig(nil) }()
 
 		conf := config.New()
-		conf.HTTP.Port = SecurePort3
+		conf.HTTP.Port = "0"
 		conf.HTTP.TLS = &config.TLSConfig{
 			Cert:   serverCertPath,
 			Key:    serverKeyPath,
@@ -350,13 +309,13 @@ func TestTLSBadCerts(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(conf.HTTP.Port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
 
 		Convey("Test with system certs", func() {
 			_ = makeConfigFile(t,
 				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s%s%s","showspinner":false}]}`,
-					BaseSecureURL3, constants.RoutePrefix, constants.ExtCatalogPrefix))
+					baseURL, constants.RoutePrefix, constants.ExtCatalogPrefix))
 
 			args := []string{"list", "--config", "imagetest"}
 			imageCmd := client.NewImageCommand(client.NewSearchService())

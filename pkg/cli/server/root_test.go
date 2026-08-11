@@ -23,45 +23,6 @@ import (
 	. "zotregistry.dev/zot/v2/pkg/test/common"
 )
 
-const (
-	// Must match the log message emitted in pkg/api/controller.go when Port is "0".
-	kernelChosenPortMsg   = "port is unspecified, listening on kernel chosen port"
-	kernelPortWaitTimeout = 30 * time.Second
-)
-
-// waitForKernelChosenPortBaseURL polls a zot log file for the kernel-assigned listen
-// port logged when conf.HTTP.Port is "0", then returns http://127.0.0.1:<port>.
-// Used for CLI serve tests that have no ControllerManager to query after bind.
-func waitForKernelChosenPortBaseURL(logPath string) string {
-	deadline := time.Now().Add(kernelPortWaitTimeout)
-
-	for time.Now().Before(deadline) {
-		content, err := os.ReadFile(logPath)
-		if err == nil {
-			for line := range strings.SplitSeq(string(content), "\n") {
-				if !strings.Contains(line, kernelChosenPortMsg) {
-					continue
-				}
-
-				var entry struct {
-					Port int `json:"port"`
-				}
-
-				if err := json.Unmarshal([]byte(line), &entry); err != nil || entry.Port <= 0 {
-					continue
-				}
-
-				return GetBaseURL(strconv.Itoa(entry.Port))
-			}
-		}
-
-		time.Sleep(SleepTime)
-	}
-
-	panic(fmt.Sprintf("timed out after %s waiting for kernel chosen port in %s",
-		kernelPortWaitTimeout, logPath))
-}
-
 // checkAuthLogEntry checks if a log entry with the given message has the expected enabled value.
 func checkAuthLogEntry(logData []byte, message string, expectedEnabled bool) bool {
 	//nolint:modernize // strings.Split is compatible with older Go versions
@@ -3548,7 +3509,7 @@ func runCLIWithConfig(t *testing.T, config string) (string, string, error) {
 	case <-time.After(250 * time.Millisecond): // No startup error
 	}
 
-	baseURL := waitForKernelChosenPortBaseURL(logPath)
+	baseURL := WaitForKernelChosenPortBaseURL(logPath)
 	WaitTillServerReady(baseURL)
 
 	return logPath, rootDir, nil

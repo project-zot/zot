@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -23,10 +24,6 @@ import (
 	"zotregistry.dev/zot/v2/pkg/cli/client"
 	test "zotregistry.dev/zot/v2/pkg/test/common"
 	tlsutils "zotregistry.dev/zot/v2/pkg/test/tls"
-)
-
-const (
-	privilegedCertsDir = "/etc/containers/certs.d/127.0.0.1:8089"
 )
 
 func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
@@ -69,6 +66,31 @@ func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 		err = tlsutils.GenerateClientCertToFile(caCertPEM, caKeyPEM, clientCertPath, clientKeyPath, clientOpts)
 		So(err, ShouldBeNil)
 
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCertPEM)
+
+		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
+
+		defer func() { resty.SetTLSClientConfig(nil) }()
+
+		conf := config.New()
+		conf.HTTP.Port = "0"
+		conf.HTTP.TLS = &config.TLSConfig{
+			Cert:   serverCertPath,
+			Key:    serverKeyPath,
+			CACert: caCertPath,
+		}
+
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+
+		defer cm.StopServer()
+
+		privilegedCertsDir := filepath.Join("/etc/containers/certs.d", "127.0.0.1:"+strconv.Itoa(cm.Port()))
+
 		//nolint: noctx // old code, no context available
 		cmd := exec.Command("mkdir", "-p", privilegedCertsDir+"/") //nolint: gosec
 
@@ -78,7 +100,9 @@ func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 		}
 
 		//nolint: noctx // old code, no context available
-		defer exec.Command("rm", "-rf", privilegedCertsDir+"/")
+		defer func() {
+			_ = exec.Command("rm", "-rf", privilegedCertsDir+"/").Run() //nolint: gosec
+		}()
 
 		// Copy generated certificates to privileged location
 		//nolint: noctx // old code, no context available
@@ -121,33 +145,10 @@ func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 			}
 		}
 
-		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCertPEM)
-
-		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
-
-		defer func() { resty.SetTLSClientConfig(nil) }()
-
-		conf := config.New()
-		conf.HTTP.Port = SecurePort2
-		conf.HTTP.TLS = &config.TLSConfig{
-			Cert:   serverCertPath,
-			Key:    serverKeyPath,
-			CACert: caCertPath,
-		}
-
-		ctlr := api.NewController(conf)
-		ctlr.Config.Storage.RootDirectory = t.TempDir()
-
-		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(conf.HTTP.Port)
-
-		defer cm.StopServer()
-
 		Convey("Certs in privileged path", func() {
 			_ = makeConfigFile(t,
 				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s%s%s","showspinner":false}]}`,
-					BaseSecureURL2, constants.RoutePrefix, constants.ExtCatalogPrefix))
+					baseURL, constants.RoutePrefix, constants.ExtCatalogPrefix))
 
 			args := []string{"list", "--config", "imagetest"}
 			imageCmd := client.NewImageCommand(client.NewSearchService())

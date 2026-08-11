@@ -19,15 +19,13 @@ import (
 func TestSyncExtension(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		conf := config.New()
-		port := test.GetFreePort()
 
-		baseURL := test.GetBaseURL(port)
 		globalDir := t.TempDir()
 		defaultValue := true
 
 		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = globalDir
 		conf.Storage.Commit = true
 		conf.Extensions = &extconf.ExtensionConfig{}
@@ -40,7 +38,7 @@ func TestSyncExtension(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlrManager := test.NewControllerManager(ctlr)
 
-		ctlrManager.StartAndWait(port)
+		baseURL := ctlrManager.StartAndWait()
 		defer ctlrManager.StopServer()
 
 		Convey("verify sync is skipped when binary doesn't include it", func() {

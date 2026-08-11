@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"syscall"
 	"testing"
@@ -38,9 +39,8 @@ func TestStressTooManyOpenFiles(t *testing.T) {
 		initialLimit, err := setMaxOpenFilesLimit(MaxFileDescriptors)
 		So(err, ShouldBeNil)
 
-		port := test.GetFreePort()
 		conf := config.New()
-		conf.HTTP.Port = port
+		conf.HTTP.Port = "0"
 		conf.Storage.Dedupe = false
 		conf.Storage.GC = true
 
@@ -76,7 +76,8 @@ func TestStressTooManyOpenFiles(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = dir
 
 		ctrlManager := test.NewControllerManager(ctlr)
-		ctrlManager.StartAndWait(port)
+		ctrlManager.StartAndWait()
+		port := strconv.Itoa(ctrlManager.Port())
 
 		content := fmt.Sprintf(`{
 				"storage": {

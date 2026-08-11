@@ -97,10 +97,9 @@ func TestRoutes(t *testing.T) {
 		ctlr.Config.Storage.Commit = true
 
 		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(conf.HTTP.Port)
+		baseURL := cm.StartAndWait()
 		defer cm.StopServer()
 
-		baseURL := test.GetBaseURL(strconv.Itoa(ctlr.GetPort()))
 		rthdlr := api.NewRouteHandler(ctlr)
 
 		// NOTE: the url or method itself doesn't matter below since we are calling the handlers directly,

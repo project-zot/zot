@@ -482,10 +482,8 @@ func TestOutputFormat(t *testing.T) {
 }
 
 func TestImagesCommandGQL(t *testing.T) {
-	port := test.GetFreePort()
-	baseURL := test.GetBaseURL(port)
 	conf := config.New()
-	conf.HTTP.Port = port
+	conf.HTTP.Port = "0"
 
 	defaultVal := true
 	conf.Extensions = &extconf.ExtensionConfig{
@@ -497,7 +495,7 @@ func TestImagesCommandGQL(t *testing.T) {
 	ctlr.Config.Storage.RootDirectory = t.TempDir()
 	cm := test.NewControllerManager(ctlr)
 
-	cm.StartAndWait(conf.HTTP.Port)
+	baseURL := cm.StartAndWait()
 	defer cm.StopServer()
 
 	Convey("commands with gql", t, func() {
@@ -884,16 +882,14 @@ func TestImagesCommandGQL(t *testing.T) {
 }
 
 func TestImageCommandREST(t *testing.T) {
-	port := test.GetFreePort()
-	baseURL := test.GetBaseURL(port)
 	conf := config.New()
-	conf.HTTP.Port = port
+	conf.HTTP.Port = "0"
 
 	ctlr := api.NewController(conf)
 	ctlr.Config.Storage.RootDirectory = t.TempDir()
 	cm := test.NewControllerManager(ctlr)
 
-	cm.StartAndWait(conf.HTTP.Port)
+	baseURL := cm.StartAndWait()
 	defer cm.StopServer()
 
 	Convey("commands without gql", t, func() {

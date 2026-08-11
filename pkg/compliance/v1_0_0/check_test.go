@@ -2,12 +2,9 @@ package v1_0_0_test
 
 import (
 	"context"
-	"net/http"
 	"os"
+	"strconv"
 	"testing"
-	"time"
-
-	"gopkg.in/resty.v1"
 
 	"zotregistry.dev/zot/v2/pkg/api"
 	"zotregistry.dev/zot/v2/pkg/api/config"
@@ -51,15 +48,13 @@ func TestWorkflowsOutputJSON(t *testing.T) {
 	})
 }
 
-// start local server on random open port.
+// start local server on a kernel-chosen port.
 func startServer(t *testing.T) (*api.Controller, string) {
 	t.Helper()
 
-	port := GetFreePort()
-	baseURL := GetBaseURL(port)
 	conf := config.New()
 	conf.HTTP.Address = listenAddress
-	conf.HTTP.Port = port
+	conf.HTTP.Port = "0"
 	ctrl := api.NewController(conf)
 
 	dir := t.TempDir()
@@ -80,26 +75,10 @@ func startServer(t *testing.T) (*api.Controller, string) {
 
 	ctrl.Config.Storage.SubPaths = subPaths
 
-	go func() {
-		if err := ctrl.Init(); err != nil {
-			return
-		}
+	cm := NewControllerManager(ctrl)
+	_ = cm.StartAndWait()
 
-		// this blocks
-		if err := ctrl.Run(); err != nil {
-			return
-		}
-	}()
-
-	for {
-		// poll until ready
-		resp, _ := resty.R().Get(baseURL)
-		if resp.StatusCode() == http.StatusNotFound {
-			break
-		}
-
-		time.Sleep(100 * time.Millisecond)
-	}
+	port := strconv.Itoa(cm.Port())
 
 	return ctrl, port
 }
