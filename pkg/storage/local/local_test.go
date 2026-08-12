@@ -2926,50 +2926,11 @@ func TestGarbageCollectErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("Trigger error on GetBlobContent and Unmarshal for untagged manifest", func() {
-			// upload image config blob
-			upload, err = imgStore.NewBlobUpload(context.Background(), repoName)
-			So(err, ShouldBeNil)
-			So(upload, ShouldNotBeEmpty)
+		Convey("Missing untagged manifest blob aborts GC on StatBlob", func() {
+			digest = putUntaggedManifestForGCErrors(imgStore, repoName, bdgst1, bsize1)
 
-			cblob, cdigest := GetRandomImageConfig()
-			buf = bytes.NewBuffer(cblob)
-			buflen = buf.Len()
-			blob, err = imgStore.PutBlobChunkStreamed(context.Background(), repoName, upload, buf)
-			So(err, ShouldBeNil)
-			So(blob, ShouldEqual, buflen)
-
-			err = imgStore.FinishBlobUpload(repoName, upload, buf, cdigest)
-			So(err, ShouldBeNil)
-			So(blob, ShouldEqual, buflen)
-
-			// create a manifest
-			manifest := ispec.Manifest{
-				Config: ispec.Descriptor{
-					MediaType: ispec.MediaTypeImageConfig,
-					Digest:    cdigest,
-					Size:      int64(len(cblob)),
-				},
-				Layers: []ispec.Descriptor{
-					{
-						MediaType: ispec.MediaTypeImageLayer,
-						Digest:    bdgst1,
-						Size:      int64(bsize1),
-					},
-				},
-			}
-			manifest.SchemaVersion = 2
-			content, err = json.Marshal(manifest)
-			So(err, ShouldBeNil)
-
-			digest = godigest.FromBytes(content)
-			So(digest, ShouldNotBeNil)
-
-			_, _, err = imgStore.PutImageManifest(context.Background(),
-				repoName, digest.String(), ispec.MediaTypeImageManifest, content, nil)
-			So(err, ShouldBeNil)
-
-			// trigger GetBlobContent error
+			// Identify soft-continues on Get miss, but untagged removal still Stats the digest
+			// for the retention delay; StatBlob miss fails closed (same as main).
 			err = os.Remove(imgStore.BlobPath(repoName, digest))
 			So(err, ShouldBeNil)
 
@@ -2977,10 +2938,17 @@ func TestGarbageCollectErrors(t *testing.T) {
 
 			err = gc.CleanRepo(ctx, repoName)
 			So(err, ShouldNotBeNil)
+		})
 
-			// trigger Unmarshal error
-			_, err = os.Create(imgStore.BlobPath(repoName, digest))
+		Convey("Corrupt untagged manifest blob aborts GC", func() {
+			digest = putUntaggedManifestForGCErrors(imgStore, repoName, bdgst1, bsize1)
+
+			// Non-empty corrupt content: size 0 is treated as a dedupe placeholder (blob not found)
+			// and soft-continues; invalid JSON must fail closed in identify.
+			err = os.WriteFile(imgStore.BlobPath(repoName, digest), []byte("not-a-manifest"), 0o600)
 			So(err, ShouldBeNil)
+
+			time.Sleep(500 * time.Millisecond)
 
 			err = gc.CleanRepo(ctx, repoName)
 			So(err, ShouldNotBeNil)
@@ -3044,6 +3012,52 @@ func TestGarbageCollectErrors(t *testing.T) {
 			So(found, ShouldEqual, true)
 		})
 	})
+}
+
+func putUntaggedManifestForGCErrors(imgStore storageTypes.ImageStore, repoName string,
+	layerDigest godigest.Digest, layerSize int,
+) godigest.Digest {
+	upload, err := imgStore.NewBlobUpload(context.Background(), repoName)
+	So(err, ShouldBeNil)
+	So(upload, ShouldNotBeEmpty)
+
+	cblob, cdigest := GetRandomImageConfig()
+	buf := bytes.NewBuffer(cblob)
+	buflen := buf.Len()
+	blob, err := imgStore.PutBlobChunkStreamed(context.Background(), repoName, upload, buf)
+	So(err, ShouldBeNil)
+	So(blob, ShouldEqual, buflen)
+
+	err = imgStore.FinishBlobUpload(repoName, upload, buf, cdigest)
+	So(err, ShouldBeNil)
+	So(blob, ShouldEqual, buflen)
+
+	manifest := ispec.Manifest{
+		Config: ispec.Descriptor{
+			MediaType: ispec.MediaTypeImageConfig,
+			Digest:    cdigest,
+			Size:      int64(len(cblob)),
+		},
+		Layers: []ispec.Descriptor{
+			{
+				MediaType: ispec.MediaTypeImageLayer,
+				Digest:    layerDigest,
+				Size:      int64(layerSize),
+			},
+		},
+	}
+	manifest.SchemaVersion = 2
+	content, err := json.Marshal(manifest)
+	So(err, ShouldBeNil)
+
+	digest := godigest.FromBytes(content)
+	So(digest, ShouldNotBeNil)
+
+	_, _, err = imgStore.PutImageManifest(context.Background(),
+		repoName, digest.String(), ispec.MediaTypeImageManifest, content, nil)
+	So(err, ShouldBeNil)
+
+	return digest
 }
 
 func randSeq(n int) string {
