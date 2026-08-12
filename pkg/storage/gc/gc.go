@@ -190,8 +190,8 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 
 	// update repos's index.json in storage
 	if !gc.opts.ImageRetention.DryRun {
-		/* this will update the index.json with manifests deleted above
-		and the manifests blobs will be removed by gc.removeUnreferencedBlobs()*/
+		/* this will update the index.json with manifest references removed above;
+		orphan manifest/config/layer blobs are deleted by gc.deleteUnreferencedBlobs() */
 		if err := gc.imgStore.PutIndexContent(repo, index); err != nil {
 			return err
 		}
@@ -205,14 +205,14 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 	// must not delete anything either - it re-reads the on-disk index.json, so running it here would
 	// delete blobs for real (e.g. orphaned by manifest-pass edits) while their index entries survive.
 	if !gc.opts.ImageRetention.DryRun {
-		// gc unreferenced blobs
-		blobsDeleted, err = gc.removeUnreferencedBlobs(repo, gc.opts.Delay, gc.log)
+		// delete unreferenced blobs from storage
+		blobsDeleted, err = gc.deleteUnreferencedBlobs(repo, gc.opts.Delay, gc.log)
 		if err != nil {
 			return err
 		}
 
-		// gc old blob uploads
-		uploadsDeleted, err = gc.removeBlobUploads(repo, gc.opts.Delay)
+		// delete old blob uploads from storage
+		uploadsDeleted, err = gc.deleteBlobUploads(repo, gc.opts.Delay)
 		if err != nil {
 			return err
 		}
@@ -490,8 +490,9 @@ func (gc GarbageCollect) removeManifestsPerRepoPolicy(ctx context.Context, repo 
 }
 
 // removeReferrersWithMissingSubject recursively walks index (starting from index.json) and
-// GCs manifests/indexes whose subject is no longer present in rootIndex.
-// seen ensures each digest is fetched and recursed into at most once per walk.
+// removes from rootIndex any manifest/index whose subject is no longer present there.
+// It does not delete blobs from storage. seen ensures each digest is fetched and recursed
+// into at most once per walk.
 func (gc GarbageCollect) removeReferrersWithMissingSubject(repo string, rootIndex *ispec.Index, index ispec.Index,
 	seen map[godigest.Digest]struct{},
 ) (bool, error) {
@@ -598,7 +599,7 @@ func (gc GarbageCollect) removeReferrer(repo string, index *ispec.Index, manifes
 		}
 
 		if !referenced {
-			gced, err = gc.gcManifest(repo, index, manifestDesc, signatureType, subject.Digest, gc.opts.ImageRetention.Delay)
+			gced, err = gc.removeManifestIfOlderThan(repo, index, manifestDesc, signatureType, subject.Digest, gc.opts.ImageRetention.Delay)
 			if err != nil {
 				return false, err
 			}
@@ -631,7 +632,7 @@ func (gc GarbageCollect) removeReferrer(repo string, index *ispec.Index, manifes
 			referenced := isManifestReferencedInIndex(index, subjectDigest)
 
 			if !referenced {
-				gced, err = gc.gcManifest(repo, index, manifestDesc, storage.CosignType, subjectDigest, gc.opts.Delay)
+				gced, err = gc.removeManifestIfOlderThan(repo, index, manifestDesc, storage.CosignType, subjectDigest, gc.opts.Delay)
 				if err != nil {
 					return false, err
 				}
@@ -703,8 +704,9 @@ func (gc GarbageCollect) removeTagsPerRetentionPolicy(ctx context.Context, repo 
 	return nil
 }
 
-// gcManifest removes a manifest entry from an index and syncs metaDB accordingly if the blob is older than gc.Delay.
-func (gc GarbageCollect) gcManifest(repo string, index *ispec.Index, desc ispec.Descriptor,
+// removeManifestIfOlderThan removes a manifest reference from an index (and syncs metaDB) when
+// the blob is older than delay. It does not delete the blob from storage.
+func (gc GarbageCollect) removeManifestIfOlderThan(repo string, index *ispec.Index, desc ispec.Descriptor,
 	signatureType string, subjectDigest godigest.Digest, delay time.Duration,
 ) (bool, error) {
 	var gced bool
@@ -726,7 +728,8 @@ func (gc GarbageCollect) gcManifest(repo string, index *ispec.Index, desc ispec.
 	return gced, nil
 }
 
-// removeManifest removes a manifest entry from an index and syncs metaDB accordingly.
+// removeManifest removes a manifest reference from an index and syncs metaDB. It does not delete
+// the blob from storage (orphan blobs are deleted later by deleteUnreferencedBlobs).
 func (gc GarbageCollect) removeManifest(repo string, index *ispec.Index,
 	desc ispec.Descriptor, reference string, signatureType string, subjectDigest godigest.Digest,
 ) (bool, error) {
@@ -814,7 +817,7 @@ func (gc GarbageCollect) removeUntaggedManifests(ctx context.Context, repo strin
 					continue
 				}
 
-				gced, err = gc.gcManifest(repo, index, desc, "", "", gc.opts.ImageRetention.Delay)
+				gced, err = gc.removeManifestIfOlderThan(repo, index, desc, "", "", gc.opts.ImageRetention.Delay)
 				if err != nil {
 					return false, err
 				}
@@ -912,8 +915,8 @@ func (gc GarbageCollect) identifyManifestsReferencedInIndex(index ispec.Index, r
 	return nil
 }
 
-// removeBlobUploads gc all temporary uploads which are past their gc delay.
-func (gc GarbageCollect) removeBlobUploads(repo string, delay time.Duration) (int, error) {
+// deleteBlobUploads deletes temporary blob uploads from storage that are past their gc delay.
+func (gc GarbageCollect) deleteBlobUploads(repo string, delay time.Duration) (int, error) {
 	gc.log.Debug().Str("module", "gc").Str("repository", repo).Msg("cleaning unclaimed blob uploads")
 
 	if dir := path.Join(gc.imgStore.RootDir(), repo); !gc.imgStore.DirExists(dir) {
@@ -962,8 +965,9 @@ func (gc GarbageCollect) removeBlobUploads(repo string, delay time.Duration) (in
 	return deleted, aggregatedErr
 }
 
-// removeUnreferencedBlobs gc all blobs which are not referenced by any manifest found in repo's index.json.
-func (gc GarbageCollect) removeUnreferencedBlobs(repo string, delay time.Duration, log zlog.Logger,
+// deleteUnreferencedBlobs deletes from storage all blobs not referenced by the repo's index.json
+// (and nested manifests/indexes), when older than delay.
+func (gc GarbageCollect) deleteUnreferencedBlobs(repo string, delay time.Duration, log zlog.Logger,
 ) (int, error) {
 	gc.log.Debug().Str("module", "gc").Str("repository", repo).Msg("cleaning orphan blobs")
 
