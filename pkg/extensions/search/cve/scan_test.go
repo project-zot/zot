@@ -56,7 +56,7 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 
 		cfg := config.New()
 		cfg.Scheduler = &config.SchedulerConfig{NumWorkers: 3}
-		metrics := monitoring.NewMetricsServer(true, logger)
+		metrics := monitoring.NewNopMetricServer()
 		sch := scheduler.NewScheduler(cfg, metrics, logger)
 
 		params := boltdb.DBParameters{
@@ -501,7 +501,7 @@ func TestScanGeneratorWithRealData(t *testing.T) {
 		metaDB, err := boltdb.New(boltDriver, logger)
 		So(err, ShouldBeNil)
 
-		metrics := monitoring.NewMetricsServer(true, logger)
+		metrics := monitoring.NewNopMetricServer()
 		imageStore := local.NewImageStore(rootDir, false, false,
 			logger, metrics, nil, nil, nil, nil)
 		storeController := storage.StoreController{DefaultStore: imageStore}

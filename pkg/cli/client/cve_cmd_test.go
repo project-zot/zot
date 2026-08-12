@@ -109,7 +109,7 @@ func TestNegativeServerResponse(t *testing.T) {
 		dir := t.TempDir()
 
 		imageStore := local.NewImageStore(dir, false, false,
-			log.NewTestLogger(), monitoring.NewMetricsServer(false, log.NewTestLogger()), nil, nil, nil, nil)
+			log.NewTestLogger(), monitoring.NewNopMetricServer(), nil, nil, nil, nil)
 
 		storeController := storage.StoreController{
 			DefaultStore: imageStore,

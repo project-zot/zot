@@ -79,9 +79,8 @@ func TestOnUpdateManifestDigestTags_success(t *testing.T) {
 		rootDir := t.TempDir()
 		storeController := storage.StoreController{}
 		log := log.NewTestLogger()
-		metrics := monitoring.NewMetricsServer(false, log)
+		metrics := monitoring.NewNopMetricServer()
 
-		defer metrics.Stop()
 		storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil)
 
 		params := boltdb.DBParameters{RootDir: rootDir}
@@ -135,9 +134,8 @@ func TestOnUpdateManifestDigestTags_rollbackPartialMeta(t *testing.T) {
 			rootDir := t.TempDir()
 			storeController := storage.StoreController{}
 			log := log.NewTestLogger()
-			metrics := monitoring.NewMetricsServer(false, log)
+			metrics := monitoring.NewNopMetricServer()
 
-			defer metrics.Stop()
 			storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil)
 
 			params := boltdb.DBParameters{RootDir: rootDir}
@@ -203,9 +201,8 @@ func TestOnUpdateManifestDigestTags_rollbackRestoresMovedTag(t *testing.T) {
 			rootDir := t.TempDir()
 			storeController := storage.StoreController{}
 			log := log.NewTestLogger()
-			metrics := monitoring.NewMetricsServer(false, log)
+			metrics := monitoring.NewNopMetricServer()
 
-			defer metrics.Stop()
 			storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil)
 
 			params := boltdb.DBParameters{RootDir: rootDir}
@@ -298,9 +295,8 @@ func TestOnUpdateManifestDigestTags_whenRepoMetaMissing(t *testing.T) {
 		rootDir := t.TempDir()
 		storeController := storage.StoreController{}
 		log := log.NewTestLogger()
-		metrics := monitoring.NewMetricsServer(false, log)
+		metrics := monitoring.NewNopMetricServer()
 
-		defer metrics.Stop()
 		storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil)
 
 		params := boltdb.DBParameters{RootDir: rootDir}
@@ -351,9 +347,8 @@ func TestOnUpdateManifest_setRepoReferenceFailsRemovesManifest(t *testing.T) {
 		rootDir := t.TempDir()
 		storeController := storage.StoreController{}
 		log := log.NewTestLogger()
-		metrics := monitoring.NewMetricsServer(false, log)
+		metrics := monitoring.NewNopMetricServer()
 
-		defer metrics.Stop()
 		storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil)
 
 		metaDB := mocks.MetaDBMock{
@@ -387,9 +382,8 @@ func TestOnUpdateManifest_whenDeleteAfterMetaFailureFails(t *testing.T) {
 		rootDir := t.TempDir()
 		storeController := storage.StoreController{}
 		log := log.NewTestLogger()
-		metrics := monitoring.NewMetricsServer(false, log)
+		metrics := monitoring.NewNopMetricServer()
 
-		defer metrics.Stop()
 		baseStore := local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil)
 		storeController.DefaultStore = &failDeleteImageStore{
 			ImageStore: baseStore,
@@ -422,9 +416,8 @@ func TestOnUpdateManifest(t *testing.T) {
 		rootDir := t.TempDir()
 		storeController := storage.StoreController{}
 		log := log.NewTestLogger()
-		metrics := monitoring.NewMetricsServer(false, log)
+		metrics := monitoring.NewNopMetricServer()
 
-		defer metrics.Stop() // Clean up metrics server to prevent resource leaks
 		storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil)
 
 		params := boltdb.DBParameters{
@@ -481,9 +474,8 @@ func TestOnDeleteManifest_OrphanedSignatureReferrerReturnsErrImageMetaNotFound(t
 			rootDir := t.TempDir()
 			storeController := storage.StoreController{}
 			log := log.NewTestLogger()
-			metrics := monitoring.NewMetricsServer(false, log)
+			metrics := monitoring.NewNopMetricServer()
 
-			defer metrics.Stop()
 			storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil)
 
 			params := boltdb.DBParameters{RootDir: rootDir}

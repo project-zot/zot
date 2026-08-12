@@ -141,7 +141,7 @@ func TestScheduler(t *testing.T) {
 		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		logger := log.NewLogger("debug", logPath)
-		metrics := monitoring.NewMetricsServer(true, logger)
+		metrics := monitoring.NewNopMetricServer()
 		sch := scheduler.NewScheduler(config.New(), metrics, logger)
 
 		genH := &shortGenerator{log: logger, priority: "high priority"}
@@ -163,7 +163,7 @@ func TestScheduler(t *testing.T) {
 		logger := log.NewLogger("debug", logPath)
 		cfg := config.New()
 		cfg.Scheduler = &config.SchedulerConfig{NumWorkers: 3}
-		metrics := monitoring.NewMetricsServer(true, logger)
+		metrics := monitoring.NewNopMetricServer()
 		sch := scheduler.NewScheduler(cfg, metrics, logger)
 		sch.RateLimit = 5 * time.Second
 
@@ -195,7 +195,7 @@ func TestScheduler(t *testing.T) {
 		logger := log.NewLogger("debug", logPath)
 		cfg := config.New()
 		cfg.Scheduler = &config.SchedulerConfig{NumWorkers: 3}
-		metrics := monitoring.NewMetricsServer(true, logger)
+		metrics := monitoring.NewNopMetricServer()
 		sch := scheduler.NewScheduler(cfg, metrics, logger)
 		sch.RateLimit = 1 * time.Nanosecond
 
@@ -293,7 +293,7 @@ func TestScheduler(t *testing.T) {
 		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		logger := log.NewLogger("debug", logPath)
-		metrics := monitoring.NewMetricsServer(true, logger)
+		metrics := monitoring.NewNopMetricServer()
 		sch := scheduler.NewScheduler(config.New(), metrics, logger)
 
 		t := &task{log: logger, msg: "", err: true}
@@ -313,7 +313,7 @@ func TestScheduler(t *testing.T) {
 		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		logger := log.NewLogger("debug", logPath)
-		metrics := monitoring.NewMetricsServer(true, logger)
+		metrics := monitoring.NewNopMetricServer()
 		sch := scheduler.NewScheduler(config.New(), metrics, logger)
 
 		genL := &generator{log: logger, priority: "low priority", limit: 100, taskDelay: 100 * time.Millisecond}
@@ -333,7 +333,7 @@ func TestScheduler(t *testing.T) {
 		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		logger := log.NewLogger("debug", logPath)
-		metrics := monitoring.NewMetricsServer(true, logger)
+		metrics := monitoring.NewNopMetricServer()
 		sch := scheduler.NewScheduler(config.New(), metrics, logger)
 
 		t := &task{log: logger, msg: "", err: false}
@@ -348,7 +348,7 @@ func TestScheduler(t *testing.T) {
 		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		logger := log.NewLogger("debug", logPath)
-		metrics := monitoring.NewMetricsServer(true, logger)
+		metrics := monitoring.NewNopMetricServer()
 		sch := scheduler.NewScheduler(config.New(), metrics, logger)
 
 		sch.RunScheduler()
@@ -367,7 +367,7 @@ func TestScheduler(t *testing.T) {
 		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		logger := log.NewLogger("debug", logPath)
-		metrics := monitoring.NewMetricsServer(true, logger)
+		metrics := monitoring.NewNopMetricServer()
 		sch := scheduler.NewScheduler(config.New(), metrics, logger)
 
 		genL := &generator{log: logger, priority: "medium priority", limit: 100, taskDelay: 100 * time.Millisecond}
@@ -416,7 +416,7 @@ func TestGetNumWorkers(t *testing.T) {
 		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 		logger := log.NewLogger("debug", logPath)
 
-		metrics := monitoring.NewMetricsServer(true, logger)
+		metrics := monitoring.NewNopMetricServer()
 		sch := scheduler.NewScheduler(config.New(), metrics, logger)
 
 		So(sch.NumWorkers, ShouldEqual, runtime.NumCPU()*4)
@@ -427,7 +427,7 @@ func TestGetNumWorkers(t *testing.T) {
 		cfg.Scheduler = &config.SchedulerConfig{NumWorkers: 3}
 		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 		logger := log.NewLogger("debug", logPath)
-		metrics := monitoring.NewMetricsServer(true, logger)
+		metrics := monitoring.NewNopMetricServer()
 		sch := scheduler.NewScheduler(cfg, metrics, logger)
 
 		So(sch.NumWorkers, ShouldEqual, 3)

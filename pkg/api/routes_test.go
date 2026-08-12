@@ -3620,8 +3620,7 @@ func TestDeleteManifestSucceedsAfterSignatureSubjectOrphaned(t *testing.T) {
 	Convey("Deleting a signature referrer whose subject was already untagged", t, func() {
 		rootDir := t.TempDir()
 		testLog := log.NewTestLogger()
-		metrics := monitoring.NewMetricsServer(false, testLog)
-		defer metrics.Stop()
+		metrics := monitoring.NewNopMetricServer()
 
 		imgStore := local.NewImageStore(rootDir, true, true, testLog, metrics, nil, nil, nil, nil)
 

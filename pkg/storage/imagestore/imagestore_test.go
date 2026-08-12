@@ -25,7 +25,7 @@ var errDeleteFailed = errors.New("delete failed") //nolint: gochecknoglobals
 func TestGetBlobRedirectURL(t *testing.T) {
 	Convey("GetBlobRedirectURL", t, func() {
 		log := zlog.NewTestLogger()
-		metrics := monitoring.NewMetricsServer(false, log)
+		metrics := monitoring.NewNopMetricServer()
 
 		Convey("returns bad digest for invalid digest", func() {
 			store := imagestore.NewImageStore(t.TempDir(), "", false, false, log, metrics, nil,
@@ -104,8 +104,7 @@ func TestGetBlobRedirectURL(t *testing.T) {
 func TestCleanupRepoToleratesDeletePathNotFound(t *testing.T) {
 	Convey("CleanupRepo tolerates PathNotFound on delete", t, func() {
 		log := zlog.NewTestLogger()
-		metrics := monitoring.NewMetricsServer(false, log)
-		defer metrics.Stop()
+		metrics := monitoring.NewNopMetricServer()
 
 		rootDir := t.TempDir()
 		storeMock := &mocks.StorageDriverMock{}
@@ -149,8 +148,7 @@ func TestCleanupRepoToleratesDeletePathNotFound(t *testing.T) {
 func TestCleanupRepoFailsOnUnexpectedDeleteBlobError(t *testing.T) {
 	Convey("CleanupRepo returns error when deleteBlob fails unexpectedly", t, func() {
 		log := zlog.NewTestLogger()
-		metrics := monitoring.NewMetricsServer(false, log)
-		defer metrics.Stop()
+		metrics := monitoring.NewNopMetricServer()
 
 		rootDir := t.TempDir()
 		storeMock := &mocks.StorageDriverMock{}

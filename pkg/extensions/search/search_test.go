@@ -1145,7 +1145,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		imageStore := local.NewImageStore(tempDir, false, false,
-			log.NewTestLogger(), monitoring.NewMetricsServer(false, log.NewTestLogger()), nil, nil, nil, nil)
+			log.NewTestLogger(), monitoring.NewNopMetricServer(), nil, nil, nil, nil)
 
 		storeController := storage.StoreController{
 			DefaultStore: imageStore,
@@ -1265,7 +1265,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		log := log.NewTestLogger()
-		metrics := monitoring.NewMetricsServer(false, log)
+		metrics := monitoring.NewNopMetricServer()
 		testStorage := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
 
 		resp, err := resty.R().Get(baseURL + "/v2/")
@@ -1617,7 +1617,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		imageStore := local.NewImageStore(conf.Storage.RootDirectory, false, false,
-			log.NewTestLogger(), monitoring.NewMetricsServer(false, log.NewTestLogger()), nil, nil, nil, nil)
+			log.NewTestLogger(), monitoring.NewNopMetricServer(), nil, nil, nil, nil)
 
 		storeController := storage.StoreController{
 			DefaultStore: imageStore,
@@ -1777,7 +1777,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		log := log.NewTestLogger()
-		metrics := monitoring.NewMetricsServer(false, log)
+		metrics := monitoring.NewNopMetricServer()
 		testStorage := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
 
 		resp, err := resty.R().Get(baseURL + "/v2/")
@@ -6345,7 +6345,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 
 			// get signatur digest
 			log := log.NewTestLogger()
-			metrics := monitoring.NewMetricsServer(false, log)
+			metrics := monitoring.NewNopMetricServer()
 			storage := local.NewImageStore(dir, false, false, log, metrics, nil, nil, nil, nil)
 
 			indexBlob, err := storage.GetIndexContent(repo)
@@ -6419,7 +6419,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 
 			// get signatur digest
 			log := log.NewTestLogger()
-			metrics := monitoring.NewMetricsServer(false, log)
+			metrics := monitoring.NewNopMetricServer()
 			storage := local.NewImageStore(dir, false, false, log, metrics, nil, nil, nil, nil)
 
 			indexBlob, err := storage.GetIndexContent(repo)

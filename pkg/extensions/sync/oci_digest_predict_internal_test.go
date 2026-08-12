@@ -422,7 +422,7 @@ func newTestStore(t *testing.T) (string, stypes.StoreController) {
 	logger := log.NewTestLogger()
 
 	store := local.NewImageStore(root, false, false, logger,
-		monitoring.NewMetricsServer(false, logger),
+		monitoring.NewNopMetricServer(),
 		mocks.MockedLint{
 			LintFn: func(repo string, manifestDigest godigest.Digest, imageStore stypes.ImageStore) (bool, error) {
 				return true, nil

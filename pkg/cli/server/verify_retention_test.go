@@ -345,7 +345,7 @@ func TestRetentionCheckWithRetentionEnabledAndRedisDriver(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// Initialize storage and metaDB using the same approach as gc tests
-		metricsServer := monitoring.NewMetricsServer(false, zlog.NewLogger("info", ""))
+		metricsServer := monitoring.NewNopMetricServer()
 		// Create ImageStore directly (like gc tests)
 		imgStore := local.NewImageStore(storageDir, false, false, zlog.NewLogger("info", ""), metricsServer,
 			nil, nil, nil, nil)
@@ -575,7 +575,7 @@ func TestRetentionCheckWithRetentionEnabled(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// Initialize storage and metaDB using the same approach as gc tests
-		metricsServer := monitoring.NewMetricsServer(false, zlog.NewLogger("info", ""))
+		metricsServer := monitoring.NewNopMetricServer()
 		// Create ImageStore directly (like gc tests)
 		imgStore := local.NewImageStore(storageDir, false, false, zlog.NewLogger("info", ""), metricsServer,
 			nil, nil, nil, nil)
@@ -864,7 +864,7 @@ func TestRetentionCheckWithDeleteReferrers(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// Initialize storage and metaDB
-		metricsServer := monitoring.NewMetricsServer(false, zlog.NewLogger("info", ""))
+		metricsServer := monitoring.NewNopMetricServer()
 		imgStore := local.NewImageStore(storageDir, false, false, zlog.NewLogger("info", ""), metricsServer,
 			nil, nil, nil, nil)
 		params := boltdb.DBParameters{
@@ -1027,7 +1027,7 @@ func TestRetentionCheckWithRetentionDisabled(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// Initialize storage only (no MetaDB needed when retention is disabled)
-		metricsServer := monitoring.NewMetricsServer(false, zlog.NewLogger("info", ""))
+		metricsServer := monitoring.NewNopMetricServer()
 		imgStore := local.NewImageStore(storageDir, false, false, zlog.NewLogger("info", ""), metricsServer,
 			nil, nil, nil, nil)
 		storeController := storage.StoreController{}
@@ -1219,7 +1219,7 @@ func TestRetentionCheckWithSubpaths(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// Initialize storage and metaDB
-		metricsServer := monitoring.NewMetricsServer(false, zlog.NewLogger("info", ""))
+		metricsServer := monitoring.NewNopMetricServer()
 		imgStore := local.NewImageStore(storageDir, false, false, zlog.NewLogger("info", ""), metricsServer,
 			nil, nil, nil, nil)
 		subpathStore := local.NewImageStore(subpathStoreDir, false, false,

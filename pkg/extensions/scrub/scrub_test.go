@@ -169,7 +169,7 @@ func TestRunScrubRepo(t *testing.T) {
 
 		dir := t.TempDir()
 		log := log.NewLogger("debug", logPath)
-		metrics := monitoring.NewMetricsServer(false, log)
+		metrics := monitoring.NewNopMetricServer()
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
 			Name:        "cache",
@@ -202,7 +202,7 @@ func TestRunScrubRepo(t *testing.T) {
 
 		dir := t.TempDir()
 		log := log.NewLogger("debug", logPath)
-		metrics := monitoring.NewMetricsServer(false, log)
+		metrics := monitoring.NewNopMetricServer()
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
 			Name:        "cache",
@@ -241,7 +241,7 @@ func TestRunScrubRepo(t *testing.T) {
 
 		dir := t.TempDir()
 		log := log.NewLogger("debug", logPath)
-		metrics := monitoring.NewMetricsServer(false, log)
+		metrics := monitoring.NewNopMetricServer()
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
 			Name:        "cache",

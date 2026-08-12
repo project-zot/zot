@@ -111,7 +111,7 @@ func createObjectsStore(options createObjectStoreOpts) (
 		}, log)
 	}
 
-	metrics := monitoring.NewMetricsServer(false, log)
+	metrics := monitoring.NewNopMetricServer()
 
 	if options.storageType == storageConstants.AzureStorageDriverName {
 		params := azurite.DriverParams(options.rootDir)
@@ -206,14 +206,14 @@ func newLocalImageStoreWithEventRecorderAndLinter(t *testing.T, recorder events.
 	}
 
 	storeDriver := local.New(true)
-	metrics := monitoring.NewMetricsServer(false, log)
+	metrics := monitoring.NewNopMetricServer()
 
 	return imagestore.NewImageStore(rootDir, cacheDir, true, true, log, metrics, linter,
 		storeDriver, cacheDriver, nil, recorder)
 }
 
 // newLocalImageStoreWithDriver builds a filesystem-backed image store for tests with a configurable
-// storage driver (nil means local.New(true)). The returned cleanup stops the metrics server and must be deferred.
+// storage driver (nil means local.New(true)). The returned cleanup is a no-op retained for call-site compatibility.
 func newLocalImageStoreWithDriver(t *testing.T, storeDriver storageTypes.Driver) (
 	string, storageTypes.ImageStore, func(),
 ) {
@@ -221,8 +221,8 @@ func newLocalImageStoreWithDriver(t *testing.T, storeDriver storageTypes.Driver)
 
 	rootDir := t.TempDir()
 	log := zlog.NewTestLogger()
-	metrics := monitoring.NewMetricsServer(false, log)
-	cleanup := func() { metrics.Stop() }
+	metrics := monitoring.NewNopMetricServer()
+	cleanup := func() {}
 
 	cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
 		RootDir:     rootDir,
@@ -1690,7 +1690,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 			)
 
 			log := zlog.NewTestLogger()
-			metrics := monitoring.NewMetricsServer(false, log)
+			metrics := monitoring.NewNopMetricServer()
 
 			cacheDir := t.TempDir()
 
@@ -2650,8 +2650,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 		t.Run(testcase.testCaseName, func(t *testing.T) {
 			log := zlog.NewTestLogger()
 			audit := zlog.NewAuditLogger("debug", "")
-			metrics := monitoring.NewMetricsServer(false, log)
-			defer metrics.Stop()
+			metrics := monitoring.NewNopMetricServer()
 
 			ctx := context.Background()
 
@@ -3398,8 +3397,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 		t.Run(testcase.testCaseName, func(t *testing.T) {
 			log := zlog.NewTestLogger()
 			audit := zlog.NewAuditLogger("debug", "")
-			metrics := monitoring.NewMetricsServer(false, log)
-			defer metrics.Stop()
+			metrics := monitoring.NewNopMetricServer()
 
 			ctx := context.Background()
 
@@ -3849,8 +3847,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 		t.Run(testcase.testCaseName, func(t *testing.T) {
 			log := zlog.NewTestLogger()
 			audit := zlog.NewAuditLogger("debug", "")
-			metrics := monitoring.NewMetricsServer(false, log)
-			defer metrics.Stop()
+			metrics := monitoring.NewNopMetricServer()
 
 			ctx := context.Background()
 

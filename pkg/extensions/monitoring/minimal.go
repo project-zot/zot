@@ -492,7 +492,9 @@ func SetStorageUsage(ms MetricServer, rootDir, repo string) {
 
 	repoSize, err := GetDirSize(dir)
 	if err != nil {
-		ms.(*metricServer).log.Error().Err(err).Msg("failed to set storage usage")
+		if server, ok := ms.(*metricServer); ok {
+			server.log.Error().Err(err).Msg("failed to set storage usage")
+		}
 	}
 
 	storage := GaugeValue{

@@ -44,9 +44,8 @@ func TestLocalCheckAllBlobsIntegrity(t *testing.T) {
 	Convey("test with local storage", t, func() {
 		tdir := t.TempDir()
 		log := log.NewTestLogger()
-		metrics := monitoring.NewMetricsServer(false, log)
+		metrics := monitoring.NewNopMetricServer()
 
-		defer metrics.Stop() // Clean up metrics server to prevent resource leaks
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     tdir,
 			Name:        "cache",
@@ -66,7 +65,7 @@ func TestRedisCheckAllBlobsIntegrity(t *testing.T) {
 		tdir := t.TempDir()
 		log := log.NewTestLogger()
 
-		metrics := monitoring.NewMetricsServer(false, log)
+		metrics := monitoring.NewNopMetricServer()
 
 		client, _ := rediscfg.GetRedisClient(map[string]any{"url": "redis://" + miniRedis.Addr()}, log)
 
@@ -140,9 +139,7 @@ func TestScrubDetectsCorruptedConfigContent(t *testing.T) {
 	Convey("scrub detects config corruption that stays valid JSON", t, func() {
 		tdir := t.TempDir()
 		log := log.NewTestLogger()
-		metrics := monitoring.NewMetricsServer(false, log)
-
-		defer metrics.Stop()
+		metrics := monitoring.NewNopMetricServer()
 
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     tdir,

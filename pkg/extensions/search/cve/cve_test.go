@@ -318,7 +318,7 @@ func TestImageFormat(t *testing.T) {
 		imgDir := "../../../../test/data"
 		dbDir := t.TempDir()
 
-		metrics := monitoring.NewMetricsServer(false, log)
+		metrics := monitoring.NewNopMetricServer()
 		defaultStore := local.NewImageStore(imgDir, false, false, log, metrics, nil, nil, nil, nil)
 		storeController := storage.StoreController{DefaultStore: defaultStore}
 

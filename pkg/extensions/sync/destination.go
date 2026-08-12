@@ -439,7 +439,6 @@ func getImageStoreFromImageReference(repo string, imageReference ref.Ref, log lo
 }
 
 func getImageStore(rootDir string, log log.Logger) storageTypes.ImageStore {
-	metrics := monitoring.NewMetricsServer(false, log)
-
-	return local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+	// Temp sync layouts are short-lived and don't need an active metrics server.
+	return local.NewImageStore(rootDir, false, false, log, monitoring.NewNopMetricServer(), nil, nil, nil, nil)
 }

@@ -65,15 +65,6 @@ var testCases = []struct {
 	},
 }
 
-func newTestMetricsServer(t *testing.T, log zlog.Logger) monitoring.MetricServer {
-	t.Helper()
-
-	metrics := monitoring.NewMetricsServer(false, log)
-	t.Cleanup(metrics.Stop)
-
-	return metrics
-}
-
 // The backend subtests run in parallel, but the top-level test stays sequential on
 // purpose: parallelising it too would run this and the other retention test's backends
 // concurrently, multiplying the load on the runner and the storage emulators.
@@ -83,7 +74,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 	log := zlog.NewTestLogger()
 	audit := zlog.NewAuditLogger("debug", "/dev/null")
 
-	metrics := newTestMetricsServer(t, log)
+	metrics := monitoring.NewNopMetricServer()
 
 	trueVal := true
 
@@ -1388,7 +1379,7 @@ func TestGarbageCollectDeletion(t *testing.T) {
 		log := zlog.NewTestLogger()
 		audit := zlog.NewAuditLogger("debug", "/dev/null")
 
-		metrics := newTestMetricsServer(t, log)
+		metrics := monitoring.NewNopMetricServer()
 
 		trueVal := true
 		falseVal := false
@@ -1831,7 +1822,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 	log := zlog.NewTestLogger()
 	audit := zlog.NewAuditLogger("debug", "/dev/null")
 
-	metrics := newTestMetricsServer(t, log)
+	metrics := monitoring.NewNopMetricServer()
 
 	trueVal := true
 
@@ -2757,7 +2748,7 @@ func TestGCMultiArchIndexKeepsNestedConfigAndLayers(t *testing.T) {
 	Convey("tagged image index whose platform manifests are nested-only", t, func() {
 		log := zlog.NewTestLogger()
 		audit := zlog.NewAuditLogger("debug", "/dev/null")
-		metrics := newTestMetricsServer(t, log)
+		metrics := monitoring.NewNopMetricServer()
 
 		rootDir := t.TempDir()
 		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
@@ -2871,7 +2862,7 @@ func TestGCDockerSchema2ListNotOverDeleted(t *testing.T) {
 	Convey("tagged docker manifest-list image", t, func() {
 		log := zlog.NewTestLogger()
 		audit := zlog.NewAuditLogger("debug", "/dev/null")
-		metrics := newTestMetricsServer(t, log)
+		metrics := monitoring.NewNopMetricServer()
 
 		rootDir := t.TempDir()
 		compatMediaTypes := []compat.MediaCompatibility{compat.DockerManifestV2SchemaV2}
@@ -2932,7 +2923,7 @@ func TestGCUnknownMediaTypeManifestPruned(t *testing.T) {
 	Convey("index.json entry with unsupported manifest media type", t, func() {
 		log := zlog.NewTestLogger()
 		audit := zlog.NewAuditLogger("debug", "/dev/null")
-		metrics := newTestMetricsServer(t, log)
+		metrics := monitoring.NewNopMetricServer()
 
 		rootDir := t.TempDir()
 		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
@@ -3089,7 +3080,7 @@ func TestGCUnknownMediaTypePruneReason(t *testing.T) {
 		auditPath := path.Join(t.TempDir(), "audit.log")
 		audit := zlog.NewAuditLogger("debug", auditPath)
 
-		metrics := newTestMetricsServer(t, log)
+		metrics := monitoring.NewNopMetricServer()
 
 		rootDir := t.TempDir()
 		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
@@ -3190,7 +3181,7 @@ func TestGCStaleManifestPruneReason(t *testing.T) {
 		auditPath := path.Join(t.TempDir(), "audit.log")
 		audit := zlog.NewAuditLogger("debug", auditPath)
 
-		metrics := newTestMetricsServer(t, log)
+		metrics := monitoring.NewNopMetricServer()
 
 		rootDir := t.TempDir()
 		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
@@ -3248,7 +3239,7 @@ func TestGCDryRunDeletesNothing(t *testing.T) {
 	Convey("DryRun with a true orphan blob and an unknown media type entry", t, func() {
 		log := zlog.NewTestLogger()
 		audit := zlog.NewAuditLogger("debug", "/dev/null")
-		metrics := newTestMetricsServer(t, log)
+		metrics := monitoring.NewNopMetricServer()
 
 		rootDir := t.TempDir()
 		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
@@ -3371,7 +3362,7 @@ func TestGCRemoveRepoAfterAllBlobsGCed(t *testing.T) {
 	Convey("repo directory is removed once every blob is GCed and no upload is in progress", t, func() {
 		log := zlog.NewTestLogger()
 		audit := zlog.NewAuditLogger("debug", "/dev/null")
-		metrics := newTestMetricsServer(t, log)
+		metrics := monitoring.NewNopMetricServer()
 
 		rootDir := t.TempDir()
 		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
@@ -3410,7 +3401,7 @@ func TestGCRemoveRepoAfterAllBlobsGCed(t *testing.T) {
 	Convey("repo directory is kept when a blob upload is in progress even though every blob was GCed", t, func() {
 		log := zlog.NewTestLogger()
 		audit := zlog.NewAuditLogger("debug", "/dev/null")
-		metrics := newTestMetricsServer(t, log)
+		metrics := monitoring.NewNopMetricServer()
 
 		rootDir := t.TempDir()
 		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
@@ -3458,7 +3449,7 @@ func TestGCUnknownMediaTypeManifestPrunedSharedBlobKept(t *testing.T) {
 	Convey("unknown media type manifest sharing a config blob with a healthy image", t, func() {
 		log := zlog.NewTestLogger()
 		audit := zlog.NewAuditLogger("debug", "/dev/null")
-		metrics := newTestMetricsServer(t, log)
+		metrics := monitoring.NewNopMetricServer()
 
 		rootDir := t.TempDir()
 		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)

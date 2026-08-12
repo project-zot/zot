@@ -13,7 +13,7 @@ import (
 
 func GetDefaultImageStore(rootDir string, log zLog.Logger) stypes.ImageStore {
 	return local.NewImageStore(rootDir, false, false, log,
-		monitoring.NewMetricsServer(false, log),
+		monitoring.NewNopMetricServer(),
 		mocks.MockedLint{
 			LintFn: func(repo string, manifestDigest godigest.Digest, imageStore stypes.ImageStore) (bool, error) {
 				return true, nil

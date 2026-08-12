@@ -175,7 +175,7 @@ func TestSessionLogger_redactsAuthorizationAndLogsUsernameFromContext(t *testing
 
 	ctlr := &zotapi.Controller{
 		Log:     log.NewLoggerWithWriter("info", &buf),
-		Metrics: monitoring.NewMetricsServer(false, log.NewTestLogger()),
+		Metrics: monitoring.NewNopMetricServer(),
 	}
 	t.Cleanup(ctlr.Metrics.Stop)
 
@@ -213,7 +213,7 @@ func TestSessionLogger_omitsUsernameWhenAnonymous(t *testing.T) {
 
 	ctlr := &zotapi.Controller{
 		Log:     log.NewLoggerWithWriter("info", &buf),
-		Metrics: monitoring.NewMetricsServer(false, log.NewTestLogger()),
+		Metrics: monitoring.NewNopMetricServer(),
 	}
 	t.Cleanup(ctlr.Metrics.Stop)
 
