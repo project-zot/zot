@@ -458,7 +458,7 @@ func (gc GarbageCollect) removeManifestsPerRepoPolicy(ctx context.Context, repo 
 		if gc.policyMgr.HasDeleteReferrer(repo) {
 			gc.log.Debug().Str("module", "gc").Str("repository", repo).Msg("manifests with missing referrers")
 
-			gcedReferrer, err = gc.removeIndexReferrers(repo, index, *index)
+			gcedReferrer, err = gc.removeReferrersWithMissingSubject(repo, index, *index, map[godigest.Digest]struct{}{})
 			if err != nil {
 				return err
 			}
@@ -469,7 +469,8 @@ func (gc GarbageCollect) removeManifestsPerRepoPolicy(ctx context.Context, repo 
 
 			/* gather all manifests referenced in multiarch images/by other manifests
 			so that we can skip them in cleanUntaggedManifests */
-			if err := gc.identifyManifestsReferencedInIndex(*index, repo, referenced); err != nil {
+			if err := gc.identifyManifestsReferencedInIndex(*index, repo, referenced,
+				map[godigest.Digest]struct{}{}); err != nil {
 				return err
 			}
 
@@ -488,19 +489,23 @@ func (gc GarbageCollect) removeManifestsPerRepoPolicy(ctx context.Context, repo 
 	return nil
 }
 
-/*
-garbageCollectIndexReferrers will gc all referrers with a missing subject recursively
-
-rootIndex is indexJson, need to pass it down to garbageCollectReferrer()
-rootIndex is the place we look for referrers.
-*/
-func (gc GarbageCollect) removeIndexReferrers(repo string, rootIndex *ispec.Index, index ispec.Index,
+// removeReferrersWithMissingSubject recursively walks index (starting from index.json) and
+// GCs manifests/indexes whose subject is no longer present in rootIndex.
+// seen ensures each digest is fetched and recursed into at most once per walk.
+func (gc GarbageCollect) removeReferrersWithMissingSubject(repo string, rootIndex *ispec.Index, index ispec.Index,
+	seen map[godigest.Digest]struct{},
 ) (bool, error) {
 	var count int
 
 	var err error
 
 	for _, desc := range index.Manifests {
+		if _, ok := seen[desc.Digest]; ok {
+			continue
+		}
+
+		seen[desc.Digest] = struct{}{}
+
 		if common.IsImageIndexMediaType(desc.MediaType) {
 			indexImage, err := common.GetImageIndex(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
@@ -531,7 +536,7 @@ func (gc GarbageCollect) removeIndexReferrers(repo string, rootIndex *ispec.Inde
 				return true, nil
 			}
 
-			gced, err = gc.removeIndexReferrers(repo, rootIndex, indexImage)
+			gced, err = gc.removeReferrersWithMissingSubject(repo, rootIndex, indexImage, seen)
 			if err != nil {
 				return false, err
 			}
@@ -839,10 +844,18 @@ func (gc GarbageCollect) removeUntaggedManifests(ctx context.Context, repo strin
 }
 
 // Adds both referenced manifests and referrers from an index.
+// seen ensures each digest is fetched and recursed into at most once per walk,
+// so an index DAG with shared/duplicate child digests stays O(distinct objects).
 func (gc GarbageCollect) identifyManifestsReferencedInIndex(index ispec.Index, repo string,
-	referenced map[godigest.Digest]bool,
+	referenced map[godigest.Digest]bool, seen map[godigest.Digest]struct{},
 ) error {
 	for _, desc := range index.Manifests {
+		if _, ok := seen[desc.Digest]; ok {
+			continue
+		}
+
+		seen[desc.Digest] = struct{}{}
+
 		if common.IsImageIndexMediaType(desc.MediaType) {
 			indexImage, err := common.GetImageIndex(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
@@ -869,7 +882,7 @@ func (gc GarbageCollect) identifyManifestsReferencedInIndex(index ispec.Index, r
 				referenced[indexDesc.Digest] = true
 			}
 
-			if err := gc.identifyManifestsReferencedInIndex(indexImage, repo, referenced); err != nil {
+			if err := gc.identifyManifestsReferencedInIndex(indexImage, repo, referenced, seen); err != nil {
 				return err
 			}
 		} else if common.IsImageManifestMediaType(desc.MediaType) {

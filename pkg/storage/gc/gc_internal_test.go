@@ -531,7 +531,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("Missing nested index blob in removeIndexReferrers is skipped gracefully", func() {
+		Convey("Missing nested index blob in removeReferrersWithMissingSubject is skipped gracefully", func() {
 			// Create a top-level index that contains a nested index
 			// The nested index blob will be missing
 			topLevelIndex := ispec.Index{
@@ -563,8 +563,9 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
 
-			// removeIndexReferrers should skip the missing nested index and continue
-			gced, err := gc.removeIndexReferrers(repoName, &topLevelIndex, topLevelIndex)
+			// removeReferrersWithMissingSubject should skip the missing nested index and continue
+			gced, err := gc.removeReferrersWithMissingSubject(repoName, &topLevelIndex, topLevelIndex,
+				map[godigest.Digest]struct{}{})
 			So(err, ShouldBeNil)
 			So(gced, ShouldBeFalse)
 		})
@@ -594,10 +595,306 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 
 			// identifyManifestsReferencedInIndex should skip the missing nested index and continue
 			referenced := make(map[godigest.Digest]bool)
-			err := gc.identifyManifestsReferencedInIndex(topLevelIndex, repoName, referenced)
+			err := gc.identifyManifestsReferencedInIndex(topLevelIndex, repoName, referenced,
+				map[godigest.Digest]struct{}{})
 			So(err, ShouldBeNil)
 			// No manifests should be marked as referenced since the nested index is missing
 			So(len(referenced), ShouldEqual, 0)
+		})
+
+		Convey("identifyManifestsReferencedInIndex reads a shared nested index once", func() {
+			childManifestDigest := godigest.FromString("leaf-manifest")
+			subjectDigest := godigest.FromString("referrer-subject")
+
+			sharedIndex := ispec.Index{
+				MediaType: ispec.MediaTypeImageIndex,
+				Subject: &ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    subjectDigest,
+					Size:      1,
+				},
+				Manifests: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageManifest,
+						Digest:    childManifestDigest,
+						Size:      10,
+					},
+				},
+			}
+			sharedIndexBuf, err := json.Marshal(sharedIndex)
+			So(err, ShouldBeNil)
+			sharedIndexDigest := godigest.FromBytes(sharedIndexBuf)
+
+			// Parent index names the same nested index digest twice (duplicate sibling refs).
+			parentIndex := ispec.Index{
+				MediaType: ispec.MediaTypeImageIndex,
+				Manifests: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageIndex,
+						Digest:    sharedIndexDigest,
+						Size:      int64(len(sharedIndexBuf)),
+					},
+					{
+						MediaType: ispec.MediaTypeImageIndex,
+						Digest:    sharedIndexDigest,
+						Size:      int64(len(sharedIndexBuf)),
+					},
+				},
+			}
+
+			readCount := 0
+			imgStore := mocks.MockedImageStore{
+				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+					if digest == sharedIndexDigest {
+						readCount++
+
+						return sharedIndexBuf, nil
+					}
+
+					return nil, zerr.ErrBlobNotFound
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			referenced := make(map[godigest.Digest]bool)
+			err = gc.identifyManifestsReferencedInIndex(parentIndex, repoName, referenced,
+				map[godigest.Digest]struct{}{})
+			So(err, ShouldBeNil)
+			So(readCount, ShouldEqual, 1)
+			So(referenced[childManifestDigest], ShouldBeTrue)
+			// Nested index with a subject is itself marked as referenced (referrer).
+			So(referenced[sharedIndexDigest], ShouldBeTrue)
+		})
+
+		Convey("removeReferrersWithMissingSubject keeps a shared referrer whose subject is present", func() {
+			subjectDigest := godigest.FromString("present-subject")
+
+			sharedIndex := ispec.Index{
+				MediaType: ispec.MediaTypeImageIndex,
+				Subject: &ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    subjectDigest,
+					Size:      1,
+				},
+				Manifests: []ispec.Descriptor{},
+			}
+			sharedIndexBuf, err := json.Marshal(sharedIndex)
+			So(err, ShouldBeNil)
+			sharedIndexDigest := godigest.FromBytes(sharedIndexBuf)
+
+			// rootIndex / parent lists the subject and duplicate refs to the shared referrer index.
+			parentIndex := ispec.Index{
+				MediaType: ispec.MediaTypeImageIndex,
+				Manifests: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageManifest,
+						Digest:    subjectDigest,
+						Size:      1,
+					},
+					{
+						MediaType: ispec.MediaTypeImageIndex,
+						Digest:    sharedIndexDigest,
+						Size:      int64(len(sharedIndexBuf)),
+					},
+					{
+						MediaType: ispec.MediaTypeImageIndex,
+						Digest:    sharedIndexDigest,
+						Size:      int64(len(sharedIndexBuf)),
+					},
+				},
+			}
+
+			readCount := 0
+			imgStore := mocks.MockedImageStore{
+				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+					if digest == sharedIndexDigest {
+						readCount++
+
+						return sharedIndexBuf, nil
+					}
+
+					return nil, zerr.ErrBlobNotFound
+				},
+			}
+
+			gcOptions.ImageRetention = config.ImageRetention{
+				Delay: 0,
+				Policies: []config.RetentionPolicy{
+					{
+						Repositories:    []string{"**"},
+						DeleteReferrers: true,
+					},
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			gced, err := gc.removeReferrersWithMissingSubject(repoName, &parentIndex, parentIndex,
+				map[godigest.Digest]struct{}{})
+			So(err, ShouldBeNil)
+			So(gced, ShouldBeFalse)
+			So(readCount, ShouldEqual, 1)
+			So(len(parentIndex.Manifests), ShouldEqual, 3)
+		})
+
+		Convey("removeReferrersWithMissingSubject GCs an orphaned referrer with missing subject", func() {
+			missingSubject := godigest.FromString("missing-subject")
+
+			orphanedReferrer := ispec.Index{
+				MediaType: ispec.MediaTypeImageIndex,
+				Subject: &ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    missingSubject,
+					Size:      1,
+				},
+				Manifests: []ispec.Descriptor{},
+			}
+			orphanedBuf, err := json.Marshal(orphanedReferrer)
+			So(err, ShouldBeNil)
+			orphanedDigest := godigest.FromBytes(orphanedBuf)
+
+			// Single index.json entry: RemoveManifestDescByReference rejects duplicate digests
+			// (ErrManifestConflict), so the successful GC path uses one descriptor.
+			parentIndex := ispec.Index{
+				MediaType: ispec.MediaTypeImageIndex,
+				Manifests: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageIndex,
+						Digest:    orphanedDigest,
+						Size:      int64(len(orphanedBuf)),
+					},
+				},
+			}
+
+			readCount := 0
+			statCount := 0
+			imgStore := mocks.MockedImageStore{
+				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+					if digest == orphanedDigest {
+						readCount++
+
+						return orphanedBuf, nil
+					}
+
+					return nil, zerr.ErrBlobNotFound
+				},
+				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+					if digest == orphanedDigest {
+						statCount++
+					}
+
+					// Old enough to pass the retention delay check.
+					return true, int64(len(orphanedBuf)), time.Now().Add(-24 * time.Hour), nil
+				},
+			}
+
+			gcOptions.ImageRetention = config.ImageRetention{
+				Delay: 0,
+				Policies: []config.RetentionPolicy{
+					{
+						Repositories:    []string{"**"},
+						DeleteReferrers: true,
+					},
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			gced, err := gc.removeReferrersWithMissingSubject(repoName, &parentIndex, parentIndex,
+				map[godigest.Digest]struct{}{})
+			So(err, ShouldBeNil)
+			So(gced, ShouldBeTrue)
+			So(readCount, ShouldEqual, 1)
+			So(statCount, ShouldEqual, 1)
+			So(len(parentIndex.Manifests), ShouldEqual, 0)
+		})
+
+		Convey("identifyManifestsReferencedInIndex walks a diamond DAG once per node", func() {
+			leafDigest := godigest.FromString("diamond-leaf")
+			subjectDigest := godigest.FromString("leaf-subject")
+
+			midLeft := ispec.Index{
+				MediaType: ispec.MediaTypeImageIndex,
+				Manifests: []ispec.Descriptor{{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    leafDigest,
+					Size:      1,
+				}},
+			}
+			midLeftBuf, err := json.Marshal(midLeft)
+			So(err, ShouldBeNil)
+			midLeftDigest := godigest.FromBytes(midLeftBuf)
+
+			midRight := ispec.Index{
+				MediaType: ispec.MediaTypeImageIndex,
+				Manifests: []ispec.Descriptor{{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    leafDigest,
+					Size:      1,
+				}},
+			}
+			midRightBuf, err := json.Marshal(midRight)
+			So(err, ShouldBeNil)
+			midRightDigest := godigest.FromBytes(midRightBuf)
+
+			root := ispec.Index{
+				MediaType: ispec.MediaTypeImageIndex,
+				Manifests: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageIndex,
+						Digest:    midLeftDigest,
+						Size:      int64(len(midLeftBuf)),
+					},
+					{
+						MediaType: ispec.MediaTypeImageIndex,
+						Digest:    midRightDigest,
+						Size:      int64(len(midRightBuf)),
+					},
+				},
+			}
+
+			leafManifest := ispec.Manifest{
+				MediaType: ispec.MediaTypeImageManifest,
+				Config:    ispec.Descriptor{Digest: godigest.FromString("cfg"), Size: 1},
+				Subject: &ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    subjectDigest,
+					Size:      1,
+				},
+			}
+			leafBuf, err := json.Marshal(leafManifest)
+			So(err, ShouldBeNil)
+
+			reads := map[godigest.Digest]int{}
+			imgStore := mocks.MockedImageStore{
+				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+					reads[digest]++
+
+					switch digest {
+					case midLeftDigest:
+						return midLeftBuf, nil
+					case midRightDigest:
+						return midRightBuf, nil
+					case leafDigest:
+						return leafBuf, nil
+					default:
+						return nil, zerr.ErrBlobNotFound
+					}
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			referenced := make(map[godigest.Digest]bool)
+			err = gc.identifyManifestsReferencedInIndex(root, repoName, referenced,
+				map[godigest.Digest]struct{}{})
+			So(err, ShouldBeNil)
+			So(reads[midLeftDigest], ShouldEqual, 1)
+			So(reads[midRightDigest], ShouldEqual, 1)
+			So(reads[leafDigest], ShouldEqual, 1)
+			// Leaf is referenced both as a nested manifest and as a referrer (has subject).
+			So(referenced[leafDigest], ShouldBeTrue)
 		})
 
 		Convey("Error on ListBlobUploads in removeBlobUploads", func() {
