@@ -1667,3 +1667,620 @@ func TestGetReferencedBlobsReadsSharedManifestOnce(t *testing.T) {
 		So(ok, ShouldBeTrue)
 	})
 }
+
+func TestIsBlobReferencedInImageIndexReadsSharedNestedIndexOnce(t *testing.T) {
+	log := log.NewTestLogger()
+
+	Convey("A nested index digest referenced twice is fetched exactly once", t, func(c C) {
+		configDigest := godigest.FromString("leaf-config")
+		layerDigest := godigest.FromString("leaf-layer")
+		targetDigest := godigest.FromString("unrelated-target")
+
+		leafManifest := ispec.Manifest{
+			Config: ispec.Descriptor{Digest: configDigest},
+			Layers: []ispec.Descriptor{{Digest: layerDigest}},
+		}
+		leafBuf, err := json.Marshal(leafManifest)
+		So(err, ShouldBeNil)
+		leafDigest := godigest.FromBytes(leafBuf)
+
+		sharedNested := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageManifest, Digest: leafDigest},
+			},
+		}
+		sharedNestedBuf, err := json.Marshal(sharedNested)
+		So(err, ShouldBeNil)
+		sharedNestedDigest := godigest.FromBytes(sharedNestedBuf)
+
+		// Diamond: root points at the same nested index twice (duplicate siblings).
+		root := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageIndex, Digest: sharedNestedDigest},
+				{MediaType: ispec.MediaTypeImageIndex, Digest: sharedNestedDigest},
+			},
+		}
+
+		nestedReadCount := 0
+		leafReadCount := 0
+
+		imgStore := &mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				switch digest {
+				case sharedNestedDigest:
+					nestedReadCount++
+
+					return sharedNestedBuf, nil
+				case leafDigest:
+					leafReadCount++
+
+					return leafBuf, nil
+				default:
+					return nil, zerr.ErrBlobNotFound
+				}
+			},
+		}
+
+		referenced, err := common.IsBlobReferencedInImageIndex(imgStore, "repo", targetDigest, root, log)
+		So(err, ShouldBeNil)
+		So(referenced, ShouldBeFalse)
+		So(nestedReadCount, ShouldEqual, 1)
+		So(leafReadCount, ShouldEqual, 1)
+
+		referenced, err = common.IsBlobReferencedInImageIndex(imgStore, "repo", layerDigest, root, log)
+		So(err, ShouldBeNil)
+		So(referenced, ShouldBeTrue)
+	})
+}
+
+func TestIsBlobReferencedUsesMemoizedWalker(t *testing.T) {
+	log := log.NewTestLogger()
+
+	Convey("IsBlobReferenced finds nested config and stops without needing a full blob set", t, func(c C) {
+		configDigest := godigest.FromString("cfg")
+		layerDigest := godigest.FromString("lyr")
+		manifest := ispec.Manifest{
+			Config: ispec.Descriptor{Digest: configDigest},
+			Layers: []ispec.Descriptor{{Digest: layerDigest}},
+		}
+		manifestBuf, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		manifestDigest := godigest.FromBytes(manifestBuf)
+
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageManifest, Digest: manifestDigest},
+			},
+		}
+		indexBuf, err := json.Marshal(index)
+		So(err, ShouldBeNil)
+
+		imgStore := &mocks.MockedImageStore{
+			DirExistsFn: func(d string) bool { return true },
+			GetIndexContentFn: func(repo string) ([]byte, error) {
+				return indexBuf, nil
+			},
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				if digest == manifestDigest {
+					return manifestBuf, nil
+				}
+
+				return nil, zerr.ErrBlobNotFound
+			},
+		}
+
+		ok, err := common.IsBlobReferenced(imgStore, "repo", configDigest, log)
+		So(err, ShouldBeNil)
+		So(ok, ShouldBeTrue)
+
+		ok, err = common.IsBlobReferenced(imgStore, "repo", godigest.FromString("missing"), log)
+		So(err, ShouldBeNil)
+		So(ok, ShouldBeFalse)
+	})
+
+	Convey("IsBlobReferenced returns ErrRepoNotFound when the repo dir is missing", t, func(c C) {
+		imgStore := &mocks.MockedImageStore{
+			DirExistsFn: func(d string) bool { return false },
+		}
+
+		ok, err := common.IsBlobReferenced(imgStore, "missing-repo", godigest.FromString("x"), log)
+		So(err, ShouldEqual, zerr.ErrRepoNotFound)
+		So(ok, ShouldBeFalse)
+	})
+}
+
+func TestGetBlobDescriptorFromIndexReadsSharedNestedIndexOnce(t *testing.T) {
+	log := log.NewTestLogger()
+
+	Convey("A nested index digest referenced twice is fetched exactly once", t, func(c C) {
+		configDigest := godigest.FromString("cfg-for-desc")
+		layerDigest := godigest.FromString("lyr-for-desc")
+
+		leafManifest := ispec.Manifest{
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageConfig,
+				Digest:    configDigest,
+				Size:      1,
+			},
+			Layers: []ispec.Descriptor{{
+				MediaType: ispec.MediaTypeImageLayer,
+				Digest:    layerDigest,
+				Size:      1,
+			}},
+		}
+		leafBuf, err := json.Marshal(leafManifest)
+		So(err, ShouldBeNil)
+		leafDigest := godigest.FromBytes(leafBuf)
+
+		sharedNested := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageManifest, Digest: leafDigest, Size: int64(len(leafBuf))},
+			},
+		}
+		sharedNestedBuf, err := json.Marshal(sharedNested)
+		So(err, ShouldBeNil)
+		sharedNestedDigest := godigest.FromBytes(sharedNestedBuf)
+
+		root := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageIndex, Digest: sharedNestedDigest},
+				{MediaType: ispec.MediaTypeImageIndex, Digest: sharedNestedDigest},
+			},
+		}
+
+		nestedReadCount := 0
+
+		imgStore := &mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				switch digest {
+				case sharedNestedDigest:
+					nestedReadCount++
+
+					return sharedNestedBuf, nil
+				case leafDigest:
+					return leafBuf, nil
+				default:
+					return nil, zerr.ErrBlobNotFound
+				}
+			},
+		}
+
+		desc, err := common.GetBlobDescriptorFromIndex(imgStore, root, "repo", layerDigest, log)
+		So(err, ShouldBeNil)
+		So(desc.Digest, ShouldEqual, layerDigest)
+		So(nestedReadCount, ShouldEqual, 1)
+	})
+}
+
+func TestIsBlobReferencedInImageIndexExactDescriptorMatch(t *testing.T) {
+	log := log.NewTestLogger()
+
+	Convey("Exact match on an index descriptor digest does not fetch the index blob", t, func(c C) {
+		indexDigest := godigest.FromString("exact-index")
+		fetched := false
+
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageIndex, Digest: indexDigest},
+			},
+		}
+
+		imgStore := &mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				fetched = true
+
+				return nil, zerr.ErrBlobNotFound
+			},
+		}
+
+		referenced, err := common.IsBlobReferencedInImageIndex(imgStore, "repo", indexDigest, index, log)
+		So(err, ShouldBeNil)
+		So(referenced, ShouldBeTrue)
+		So(fetched, ShouldBeFalse)
+	})
+
+	Convey("Exact match on a manifest descriptor digest does not fetch the manifest blob", t, func(c C) {
+		manifestDigest := godigest.FromString("exact-manifest")
+		fetched := false
+
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageManifest, Digest: manifestDigest},
+			},
+		}
+
+		imgStore := &mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				fetched = true
+
+				return nil, zerr.ErrBlobNotFound
+			},
+		}
+
+		referenced, err := common.IsBlobReferencedInImageIndex(imgStore, "repo", manifestDigest, index, log)
+		So(err, ShouldBeNil)
+		So(referenced, ShouldBeTrue)
+		So(fetched, ShouldBeFalse)
+	})
+}
+
+func TestIsBlobReferencedInImageIndexSeenStillMatchesDescriptorDigest(t *testing.T) {
+	log := log.NewTestLogger()
+
+	Convey("After walking a shared manifest for its config, a second tag still matches the manifest digest", t, func(c C) {
+		configDigest := godigest.FromString("shared-cfg")
+		layerDigest := godigest.FromString("shared-lyr")
+
+		manifest := ispec.Manifest{
+			Config: ispec.Descriptor{Digest: configDigest},
+			Layers: []ispec.Descriptor{{Digest: layerDigest}},
+		}
+		manifestBuf, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		manifestDigest := godigest.FromBytes(manifestBuf)
+
+		// Parent index lists the same child digest twice (duplicate siblings).
+		parent := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageManifest, Digest: manifestDigest},
+				{MediaType: ispec.MediaTypeImageManifest, Digest: manifestDigest},
+			},
+		}
+		parentBuf, err := json.Marshal(parent)
+		So(err, ShouldBeNil)
+		parentDigest := godigest.FromBytes(parentBuf)
+
+		root := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageIndex, Digest: parentDigest},
+			},
+		}
+
+		readCount := 0
+		imgStore := &mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				switch digest {
+				case parentDigest:
+					return parentBuf, nil
+				case manifestDigest:
+					readCount++
+
+					return manifestBuf, nil
+				default:
+					return nil, zerr.ErrBlobNotFound
+				}
+			},
+		}
+
+		// Walk marks manifestDigest seen while searching for config.
+		referenced, err := common.IsBlobReferencedInImageIndex(imgStore, "repo", configDigest, root, log)
+		So(err, ShouldBeNil)
+		So(referenced, ShouldBeTrue)
+		So(readCount, ShouldEqual, 1)
+
+		// Searching for the manifest digest itself must hit digest==desc before seen-skip.
+		referenced, err = common.IsBlobReferencedInImageIndex(imgStore, "repo", manifestDigest, root, log)
+		So(err, ShouldBeNil)
+		So(referenced, ShouldBeTrue)
+	})
+}
+
+func TestIsBlobReferencedInImageIndexSkipsMissingNestedFindsSibling(t *testing.T) {
+	log := log.NewTestLogger()
+
+	Convey("Missing nested index is skipped; blob referenced via a sibling manifest is found", t, func(c C) {
+		configDigest := godigest.FromString("sib-cfg")
+		layerDigest := godigest.FromString("sib-lyr")
+		missingIndexDigest := godigest.FromString("missing-nested")
+
+		manifest := ispec.Manifest{
+			Config: ispec.Descriptor{Digest: configDigest},
+			Layers: []ispec.Descriptor{{Digest: layerDigest}},
+		}
+		manifestBuf, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		manifestDigest := godigest.FromBytes(manifestBuf)
+
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageIndex, Digest: missingIndexDigest},
+				{MediaType: ispec.MediaTypeImageManifest, Digest: manifestDigest},
+			},
+		}
+
+		imgStore := &mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				if digest == missingIndexDigest {
+					return nil, zerr.ErrBlobNotFound
+				}
+				if digest == manifestDigest {
+					return manifestBuf, nil
+				}
+
+				return nil, zerr.ErrBlobNotFound
+			},
+		}
+
+		referenced, err := common.IsBlobReferencedInImageIndex(imgStore, "repo", layerDigest, index, log)
+		So(err, ShouldBeNil)
+		So(referenced, ShouldBeTrue)
+	})
+
+	Convey("PathNotFound for a nested index is also skipped", t, func(c C) {
+		configDigest := godigest.FromString("pnf-cfg")
+		manifest := ispec.Manifest{
+			Config: ispec.Descriptor{Digest: configDigest},
+			Layers: []ispec.Descriptor{{Digest: godigest.FromString("pnf-lyr")}},
+		}
+		manifestBuf, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		manifestDigest := godigest.FromBytes(manifestBuf)
+		missingIndexDigest := godigest.FromString("missing-pnf-index")
+
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageIndex, Digest: missingIndexDigest},
+				{MediaType: ispec.MediaTypeImageManifest, Digest: manifestDigest},
+			},
+		}
+
+		imgStore := &mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				if digest == missingIndexDigest {
+					return nil, driver.PathNotFoundError{Path: "blobs/sha256/missing"}
+				}
+				if digest == manifestDigest {
+					return manifestBuf, nil
+				}
+
+				return nil, zerr.ErrBlobNotFound
+			},
+		}
+
+		referenced, err := common.IsBlobReferencedInImageIndex(imgStore, "repo", configDigest, index, log)
+		So(err, ShouldBeNil)
+		So(referenced, ShouldBeTrue)
+	})
+}
+
+func TestGetBlobDescriptorFromIndexCoverage(t *testing.T) {
+	log := log.NewTestLogger()
+
+	Convey("Exact match returns the root descriptor without fetching children", t, func(c C) {
+		manifestDigest := godigest.FromString("root-manifest-desc")
+		fetched := false
+
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    manifestDigest,
+					Size:      42,
+				},
+			},
+		}
+
+		imgStore := &mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				fetched = true
+
+				return nil, zerr.ErrBlobNotFound
+			},
+		}
+
+		desc, err := common.GetBlobDescriptorFromIndex(imgStore, index, "repo", manifestDigest, log)
+		So(err, ShouldBeNil)
+		So(desc.Digest, ShouldEqual, manifestDigest)
+		So(desc.Size, ShouldEqual, 42)
+		So(fetched, ShouldBeFalse)
+	})
+
+	Convey("Config digest is returned from an image manifest", t, func(c C) {
+		configDigest := godigest.FromString("cfg-desc")
+		layerDigest := godigest.FromString("lyr-desc")
+		manifest := ispec.Manifest{
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageConfig,
+				Digest:    configDigest,
+				Size:      7,
+			},
+			Layers: []ispec.Descriptor{{
+				MediaType: ispec.MediaTypeImageLayer,
+				Digest:    layerDigest,
+				Size:      9,
+			}},
+		}
+		manifestBuf, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		manifestDigest := godigest.FromBytes(manifestBuf)
+
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageManifest, Digest: manifestDigest},
+			},
+		}
+
+		imgStore := &mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				if digest == manifestDigest {
+					return manifestBuf, nil
+				}
+
+				return nil, zerr.ErrBlobNotFound
+			},
+		}
+
+		desc, err := common.GetBlobDescriptorFromIndex(imgStore, index, "repo", configDigest, log)
+		So(err, ShouldBeNil)
+		So(desc.Digest, ShouldEqual, configDigest)
+		So(desc.Size, ShouldEqual, 7)
+	})
+
+	Convey("Docker manifest-list children are searched (compat media types)", t, func(c C) {
+		configDigest := godigest.FromString("docker-cfg-desc")
+		layerDigest := godigest.FromString("docker-lyr-desc")
+
+		dockerManifest := ispec.Manifest{
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageConfig,
+				Digest:    configDigest,
+				Size:      3,
+			},
+			Layers: []ispec.Descriptor{{
+				MediaType: ispec.MediaTypeImageLayer,
+				Digest:    layerDigest,
+				Size:      4,
+			}},
+		}
+		dockerManifestBuf, err := json.Marshal(dockerManifest)
+		So(err, ShouldBeNil)
+		dockerManifestDigest := godigest.FromBytes(dockerManifestBuf)
+
+		dockerList := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: docker.MediaTypeManifest, Digest: dockerManifestDigest},
+			},
+		}
+		dockerListBuf, err := json.Marshal(dockerList)
+		So(err, ShouldBeNil)
+		dockerListDigest := godigest.FromBytes(dockerListBuf)
+
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: manifestlist.MediaTypeManifestList, Digest: dockerListDigest},
+			},
+		}
+
+		imgStore := &mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				if digest == dockerListDigest {
+					return dockerListBuf, nil
+				}
+				if digest == dockerManifestDigest {
+					return dockerManifestBuf, nil
+				}
+
+				return nil, zerr.ErrBlobNotFound
+			},
+		}
+
+		desc, err := common.GetBlobDescriptorFromIndex(imgStore, index, "repo", layerDigest, log)
+		So(err, ShouldBeNil)
+		So(desc.Digest, ShouldEqual, layerDigest)
+	})
+
+	Convey("Hard error reading a nested index propagates", t, func(c C) {
+		nestedDigest := godigest.FromString("hard-fail-index")
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageIndex, Digest: nestedDigest},
+			},
+		}
+
+		imgStore := &mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				return nil, ErrTestError
+			},
+		}
+
+		_, err := common.GetBlobDescriptorFromIndex(imgStore, index, "repo", godigest.FromString("x"), log)
+		So(err, ShouldEqual, ErrTestError)
+	})
+
+	Convey("Missing nested index is skipped; sibling manifest supplies the descriptor", t, func(c C) {
+		layerDigest := godigest.FromString("after-missing-lyr")
+		missingIndexDigest := godigest.FromString("missing-for-desc")
+
+		manifest := ispec.Manifest{
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageConfig,
+				Digest:    godigest.FromString("after-missing-cfg"),
+				Size:      1,
+			},
+			Layers: []ispec.Descriptor{{
+				MediaType: ispec.MediaTypeImageLayer,
+				Digest:    layerDigest,
+				Size:      2,
+			}},
+		}
+		manifestBuf, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		manifestDigest := godigest.FromBytes(manifestBuf)
+
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageIndex, Digest: missingIndexDigest},
+				{MediaType: ispec.MediaTypeImageManifest, Digest: manifestDigest},
+			},
+		}
+
+		imgStore := &mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				if digest == missingIndexDigest {
+					return nil, zerr.ErrBlobNotFound
+				}
+				if digest == manifestDigest {
+					return manifestBuf, nil
+				}
+
+				return nil, zerr.ErrBlobNotFound
+			},
+		}
+
+		desc, err := common.GetBlobDescriptorFromIndex(imgStore, index, "repo", layerDigest, log)
+		So(err, ShouldBeNil)
+		So(desc.Digest, ShouldEqual, layerDigest)
+	})
+
+	Convey("Shared manifest digest across two root descriptors is read once", t, func(c C) {
+		layerDigest := godigest.FromString("shared-desc-lyr")
+		manifest := ispec.Manifest{
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageConfig,
+				Digest:    godigest.FromString("shared-desc-cfg"),
+				Size:      1,
+			},
+			Layers: []ispec.Descriptor{{
+				MediaType: ispec.MediaTypeImageLayer,
+				Digest:    layerDigest,
+				Size:      2,
+			}},
+		}
+		manifestBuf, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		manifestDigest := godigest.FromBytes(manifestBuf)
+
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{
+					MediaType:   ispec.MediaTypeImageManifest,
+					Digest:      manifestDigest,
+					Annotations: map[string]string{ispec.AnnotationRefName: "v1"},
+				},
+				{
+					MediaType:   ispec.MediaTypeImageManifest,
+					Digest:      manifestDigest,
+					Annotations: map[string]string{ispec.AnnotationRefName: "v2"},
+				},
+			},
+		}
+
+		readCount := 0
+		imgStore := &mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				if digest == manifestDigest {
+					readCount++
+
+					return manifestBuf, nil
+				}
+
+				return nil, zerr.ErrBlobNotFound
+			},
+		}
+
+		desc, err := common.GetBlobDescriptorFromIndex(imgStore, index, "repo", layerDigest, log)
+		So(err, ShouldBeNil)
+		So(desc.Digest, ShouldEqual, layerDigest)
+		So(readCount, ShouldEqual, 1)
+	})
+}
