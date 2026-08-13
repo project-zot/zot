@@ -1210,8 +1210,7 @@ func TestDestinationRegistry(t *testing.T) {
 		dir := t.TempDir()
 
 		log := log.NewTestLogger()
-		metrics := monitoring.NewMetricsServer(false, log)
-		defer metrics.Stop() // Clean up metrics server to prevent resource leaks
+		metrics := monitoring.NewNopMetricServer()
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
 			Name:        "cache",
@@ -1798,8 +1797,7 @@ func TestSyncTempLayoutPathHelpers(t *testing.T) {
 func TestDestinationRegistryCommitAllErrors(t *testing.T) {
 	Convey("CommitAll and CleanupImage temp path errors", t, func() {
 		log := log.NewTestLogger()
-		metrics := monitoring.NewMetricsServer(false, log)
-		defer metrics.Stop()
+		metrics := monitoring.NewNopMetricServer()
 
 		dir := t.TempDir()
 		store := local.NewImageStore(dir, true, true, log, metrics, nil, nil, nil, nil)
@@ -1837,8 +1835,7 @@ func TestDestinationRegistryCommitAllErrors(t *testing.T) {
 func TestCopyManifestInvalidJSON(t *testing.T) {
 	Convey("copyManifest rejects invalid manifest JSON", t, func() {
 		log := log.NewTestLogger()
-		metrics := monitoring.NewMetricsServer(false, log)
-		defer metrics.Stop()
+		metrics := monitoring.NewNopMetricServer()
 
 		tempDir := t.TempDir()
 		destDir := t.TempDir()
@@ -1868,8 +1865,7 @@ func TestCopyManifestInvalidJSON(t *testing.T) {
 func TestCopyManifestReferrersTag(t *testing.T) {
 	Convey("referrers-shaped layout entries are not committed as tags", t, func() {
 		log := log.NewTestLogger()
-		metrics := monitoring.NewMetricsServer(false, log)
-		defer metrics.Stop()
+		metrics := monitoring.NewNopMetricServer()
 
 		repoName := "repo"
 		subjectImage := CreateImageWith().RandomLayers(1, 10).RandomConfig().Build()

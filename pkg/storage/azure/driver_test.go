@@ -424,7 +424,7 @@ func TestNewImageStore(t *testing.T) {
 	Convey("NewImageStore", t, func() {
 		storeMock := &mocks.StorageDriverMock{}
 		log := zlog.NewTestLogger()
-		metrics := monitoring.NewMetricsServer(false, log)
+		metrics := monitoring.NewNopMetricServer()
 		imgStore := azure.NewImageStore("/tmp", "/tmp", true, true, log, metrics, nil, storeMock, nil, nil, nil)
 		So(imgStore, ShouldNotBeNil)
 	})

@@ -16,6 +16,8 @@ import (
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
@@ -651,6 +653,10 @@ func TestPopulateStorageMetrics(t *testing.T) {
 		rootDir := t.TempDir()
 
 		conf.Storage.RootDirectory = rootDir
+		// This test asserts scraped storage gauges against a live GetDirSize. Default GC
+		// rewrites index.json via a .uploads staging file, so GetDirSize can briefly
+		// include an extra index.json-sized file and disagree with the gauge.
+		conf.Storage.GC = false
 		conf.Extensions = &extconf.ExtensionConfig{}
 		enabled := true
 		conf.Extensions.Metrics = &extconf.MetricsConfig{
@@ -669,7 +675,6 @@ func TestPopulateStorageMetrics(t *testing.T) {
 		So(ctlr, ShouldNotBeNil)
 		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
 
-		// Write images before starting controller to avoid race condition with garbage collection
 		srcStorageCtlr := ociutils.GetDefaultStoreController(rootDir, ctlr.Log)
 		err := WriteImageToFileSystem(CreateDefaultImage(), "alpine", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
@@ -681,6 +686,7 @@ func TestPopulateStorageMetrics(t *testing.T) {
 		defer cm.StopServer()
 
 		metrics := monitoring.NewMetricsServer(true, ctlr.Log)
+		defer metrics.Stop()
 		sch := scheduler.NewScheduler(conf, metrics, ctlr.Log)
 		sch.RunScheduler()
 
@@ -771,6 +777,186 @@ func TestGCMetrics(t *testing.T) {
 		So(respStr, ShouldContainSubstring, "zot_gc_duration_seconds")
 		So(respStr, ShouldContainSubstring, "zot_gc_deleted_total{type=\"blob\"}")
 	})
+}
+
+func TestMetricHelpersUpdateWhenEnabled(t *testing.T) {
+	Convey("Metric helpers update prometheus when the metrics server is active", t, func() {
+		logger := log.NewTestLogger()
+
+		Convey("IncDownloadCounter", func() {
+			repo := uniqueMetricLabel("download")
+			assertCounterDelta(logger, func(metricsServer monitoring.MetricServer) {
+				monitoring.IncDownloadCounter(metricsServer, repo)
+			}, "zot_repo_downloads_total", map[string]string{"repo": repo}, 1)
+		})
+
+		Convey("IncUploadCounter", func() {
+			repo := uniqueMetricLabel("upload")
+			assertCounterDelta(logger, func(metricsServer monitoring.MetricServer) {
+				monitoring.IncUploadCounter(metricsServer, repo)
+			}, "zot_repo_uploads_total", map[string]string{"repo": repo}, 1)
+		})
+
+		Convey("IncHTTPConnRequests", func() {
+			code := uniqueMetricLabel("code")
+			assertCounterDelta(logger, func(metricsServer monitoring.MetricServer) {
+				monitoring.IncHTTPConnRequests(metricsServer, "GET", code)
+			}, "zot_http_requests_total", map[string]string{"method": "GET", "code": code}, 1)
+		})
+
+		Convey("ObserveHTTPMethodLatency", func() {
+			method := uniqueMetricLabel("method")
+			assertHistogramCountDelta(logger, func(metricsServer monitoring.MetricServer) {
+				monitoring.ObserveHTTPMethodLatency(metricsServer, method, time.Millisecond)
+			}, "zot_http_method_latency_seconds", map[string]string{"method": method}, 1)
+		})
+
+		Convey("IncGCRuns", func() {
+			assertCounterDelta(logger, func(metricsServer monitoring.MetricServer) {
+				monitoring.IncGCRuns(metricsServer, false)
+			}, "zot_gc_runs_total", map[string]string{"error": "false"}, 1)
+		})
+
+		Convey("IncGCDeleted", func() {
+			artifactType := uniqueMetricLabel("artifact")
+			assertCounterDelta(logger, func(metricsServer monitoring.MetricServer) {
+				monitoring.IncGCDeleted(metricsServer, artifactType, 3)
+			}, "zot_gc_deleted_total", map[string]string{"type": artifactType}, 3)
+		})
+
+		Convey("SetSchedulerWorkers", func() {
+			state := uniqueMetricLabel("state")
+			assertGaugeSet(logger, func(metricsServer monitoring.MetricServer) {
+				monitoring.SetSchedulerWorkers(metricsServer, map[string]int{state: 7})
+			}, "zot_scheduler_workers", map[string]string{"state": state}, 7)
+		})
+	})
+}
+
+func assertCounterDelta(logger log.Logger, emit func(monitoring.MetricServer),
+	metricName string, labels map[string]string, delta float64,
+) {
+	activeMetricsServer := monitoring.NewMetricsServer(true, logger)
+	inactiveMetricsServer := monitoring.NewMetricsServer(false, logger)
+
+	before := prometheusCounter(metricName, labels)
+
+	emit(inactiveMetricsServer)
+	So(prometheusCounter(metricName, labels), ShouldEqual, before)
+
+	emit(activeMetricsServer)
+	So(prometheusCounter(metricName, labels), ShouldEqual, before+delta)
+}
+
+func assertHistogramCountDelta(logger log.Logger, emit func(monitoring.MetricServer),
+	metricName string, labels map[string]string, delta uint64,
+) {
+	activeMetricsServer := monitoring.NewMetricsServer(true, logger)
+	inactiveMetricsServer := monitoring.NewMetricsServer(false, logger)
+
+	before := prometheusHistogramCount(metricName, labels)
+
+	emit(inactiveMetricsServer)
+	So(prometheusHistogramCount(metricName, labels), ShouldEqual, before)
+
+	emit(activeMetricsServer)
+	So(prometheusHistogramCount(metricName, labels), ShouldEqual, before+delta)
+}
+
+func assertGaugeSet(logger log.Logger, emit func(monitoring.MetricServer),
+	metricName string, labels map[string]string, want float64,
+) {
+	activeMetricsServer := monitoring.NewMetricsServer(true, logger)
+	inactiveMetricsServer := monitoring.NewMetricsServer(false, logger)
+
+	before := prometheusGauge(metricName, labels)
+
+	emit(inactiveMetricsServer)
+	So(prometheusGauge(metricName, labels), ShouldEqual, before)
+
+	emit(activeMetricsServer)
+	So(prometheusGauge(metricName, labels), ShouldEqual, want)
+}
+
+func uniqueMetricLabel(prefix string) string {
+	return fmt.Sprintf("%s_%s_%d", prefix, generateRandomString(), time.Now().UnixNano())
+}
+
+func prometheusCounter(name string, labels map[string]string) float64 {
+	metric := findPrometheusMetric(name, labels)
+	if metric == nil || metric.Counter == nil {
+		return 0
+	}
+
+	return metric.GetCounter().GetValue()
+}
+
+func prometheusGauge(name string, labels map[string]string) float64 {
+	metric := findPrometheusMetric(name, labels)
+	if metric == nil || metric.Gauge == nil {
+		return 0
+	}
+
+	return metric.GetGauge().GetValue()
+}
+
+func prometheusHistogramCount(name string, labels map[string]string) uint64 {
+	metric := findPrometheusMetric(name, labels)
+	if metric == nil || metric.Histogram == nil {
+		return 0
+	}
+
+	return metric.GetHistogram().GetSampleCount()
+}
+
+func findPrometheusMetric(name string, labels map[string]string) *dto.Metric {
+	families, err := prometheus.DefaultGatherer.Gather()
+	So(err, ShouldBeNil)
+
+	for _, family := range families {
+		if family.GetName() != name {
+			continue
+		}
+
+		for _, metric := range family.GetMetric() {
+			if prometheusLabelsMatch(metric.GetLabel(), labels) {
+				return metric
+			}
+		}
+	}
+
+	return nil
+}
+
+func prometheusLabelsMatch(pairs []*dto.LabelPair, want map[string]string) bool {
+	if len(pairs) < len(want) {
+		return false
+	}
+
+	for _, pair := range pairs {
+		value, ok := want[pair.GetName()]
+		if ok && pair.GetValue() != value {
+			return false
+		}
+	}
+
+	for name := range want {
+		found := false
+
+		for _, pair := range pairs {
+			if pair.GetName() == name {
+				found = true
+
+				break
+			}
+		}
+
+		if !found {
+			return false
+		}
+	}
+
+	return true
 }
 
 func generateRandomString() string {

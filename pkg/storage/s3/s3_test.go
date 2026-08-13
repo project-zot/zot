@@ -73,7 +73,7 @@ func emptyIndexContent() []byte {
 func createMockStorage(rootDir string, cacheDir string, dedupe bool, store driver.StorageDriver,
 ) storageTypes.ImageStore {
 	log := log.NewTestLogger()
-	metrics := monitoring.NewMetricsServer(true, log)
+	metrics := monitoring.NewNopMetricServer()
 
 	var cacheDriver storageTypes.Cache
 
@@ -96,7 +96,7 @@ func createMockStorageWithMockCache(rootDir string, store driver.StorageDriver,
 	cacheDriver storageTypes.Cache,
 ) storageTypes.ImageStore {
 	log := log.NewTestLogger()
-	metrics := monitoring.NewMetricsServer(false, log)
+	metrics := monitoring.NewNopMetricServer()
 
 	il := s3.NewImageStore(rootDir, "", true, false, log, metrics, nil, store, cacheDriver, nil, nil)
 
@@ -143,7 +143,7 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 	store := createStoreDriver(rootDir)
 
 	log := log.NewTestLogger()
-	metrics := monitoring.NewMetricsServer(false, log)
+	metrics := monitoring.NewNopMetricServer()
 
 	var cacheDriver storageTypes.Cache
 
@@ -173,7 +173,7 @@ func createObjectsStoreDynamo(rootDir string, cacheDir string, dedupe bool, tabl
 	store := createStoreDriver(rootDir)
 
 	log := log.NewTestLogger()
-	metrics := monitoring.NewMetricsServer(false, log)
+	metrics := monitoring.NewNopMetricServer()
 
 	var cacheDriver storageTypes.Cache
 
@@ -201,7 +201,7 @@ func createObjectsStoreDynamo(rootDir string, cacheDir string, dedupe bool, tabl
 
 func runAndGetScheduler() *scheduler.Scheduler {
 	log := log.NewTestLogger()
-	metrics := monitoring.NewMetricsServer(false, log)
+	metrics := monitoring.NewNopMetricServer()
 	taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
 	taskScheduler.RateLimit = 50 * time.Millisecond
 
@@ -1866,7 +1866,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 		Convey("Intrerrupt rebuilding and restart, checking idempotency", func() {
 			for i := range 10 {
 				log := log.NewTestLogger()
-				metrics := monitoring.NewMetricsServer(false, log)
+				metrics := monitoring.NewNopMetricServer()
 				taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
 				taskScheduler.RateLimit = 1 * time.Millisecond
 
@@ -1908,7 +1908,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			// now from dedupe false to true
 			for i := range 10 {
 				log := log.NewTestLogger()
-				metrics := monitoring.NewMetricsServer(false, log)
+				metrics := monitoring.NewNopMetricServer()
 				taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
 				taskScheduler.RateLimit = 1 * time.Millisecond
 
@@ -4051,7 +4051,7 @@ func TestDeleteBlobDeferredDuringDedupeRebuild(t *testing.T) {
 
 	newStoppedScheduler := func() *scheduler.Scheduler {
 		log := log.NewTestLogger()
-		metrics := monitoring.NewMetricsServer(false, log)
+		metrics := monitoring.NewNopMetricServer()
 		taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
 		taskScheduler.RateLimit = 50 * time.Millisecond
 
@@ -4244,7 +4244,7 @@ func TestDeleteBlobDeferredDuringRestoreWalk(t *testing.T) {
 
 	newStoppedScheduler := func() *scheduler.Scheduler {
 		log := log.NewTestLogger()
-		metrics := monitoring.NewMetricsServer(false, log)
+		metrics := monitoring.NewNopMetricServer()
 		taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
 		taskScheduler.RateLimit = 50 * time.Millisecond
 
@@ -4396,7 +4396,7 @@ func TestDeleteBlobDeferredIssue2625CrossRepoOriginal(t *testing.T) {
 
 	newStoppedScheduler := func() *scheduler.Scheduler {
 		log := log.NewTestLogger()
-		metrics := monitoring.NewMetricsServer(false, log)
+		metrics := monitoring.NewNopMetricServer()
 		taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
 		taskScheduler.RateLimit = 50 * time.Millisecond
 

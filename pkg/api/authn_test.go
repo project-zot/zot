@@ -2272,9 +2272,7 @@ func TestAPIKeysGeneratorErrors(t *testing.T) {
 
 func TestCookiestoreCleanup(t *testing.T) {
 	log := log.NewTestLogger()
-	metrics := monitoring.NewMetricsServer(true, log)
-
-	defer metrics.Stop() // Clean up metrics server to prevent resource leaks
+	metrics := monitoring.NewNopMetricServer()
 
 	authCfgTestCases := []struct {
 		name string

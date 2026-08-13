@@ -100,6 +100,7 @@ func newVerifyFeatureRetentionCmd(conf *config.Config) *cobra.Command {
 
 			// Initialize metrics server
 			metricsServer := monitoring.NewMetricsServer(false, logger)
+			defer metricsServer.Stop()
 
 			// Initialize store controller
 			storeController, err := storage.New(conf, nil, metricsServer, logger, nil)

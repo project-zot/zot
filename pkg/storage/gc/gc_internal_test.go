@@ -112,8 +112,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 	Convey("Cover gc error paths", t, func(c C) {
 		log := zlog.NewTestLogger()
 		audit := zlog.NewAuditLogger("debug", "")
-		metrics := monitoring.NewMetricsServer(false, log)
-		defer metrics.Stop()
+		metrics := monitoring.NewNopMetricServer()
 
 		gcOptions := Options{
 			Delay: storageConstants.DefaultGCDelay,
@@ -1357,8 +1356,7 @@ func TestCleanRepoWithStaleManifestEntries(t *testing.T) {
 	Convey("cleanRepo end-to-end prunes stale manifest entries", t, func() {
 		log := zlog.NewTestLogger()
 		audit := zlog.NewAuditLogger("debug", "")
-		metrics := monitoring.NewMetricsServer(false, log)
-		defer metrics.Stop()
+		metrics := monitoring.NewNopMetricServer()
 
 		existingDigest := godigest.FromString("existing-blob")
 		missingDigest := godigest.FromString("missing-blob")
@@ -1479,8 +1477,7 @@ func TestCleanupRepoMissingBlob(t *testing.T) {
 
 		log := zlog.NewTestLogger()
 
-		metrics := monitoring.NewMetricsServer(false, log)
-		defer metrics.Stop()
+		metrics := monitoring.NewNopMetricServer()
 
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,

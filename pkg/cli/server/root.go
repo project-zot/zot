@@ -169,6 +169,7 @@ func newScrubCmd(conf *config.Config) *cobra.Command {
 				// server is down
 				ctlr := api.NewController(conf)
 				ctlr.Metrics = monitoring.NewMetricsServer(false, ctlr.Log)
+				defer ctlr.Metrics.Stop()
 
 				if err := ctlr.InitImageStore(); err != nil {
 					return err

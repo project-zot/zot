@@ -144,7 +144,7 @@ func TestRunTrivySBOMGenerationFailureIsNonFatal(t *testing.T) {
 		err = os.WriteFile(metadata.Path(dbDir), []byte(`{"Version":2}`), 0o600)
 		So(err, ShouldBeNil)
 
-		store := local.NewImageStore(rootDir, false, false, logger, monitoring.NewMetricsServer(false, logger), nil, nil, nil, nil)
+		store := local.NewImageStore(rootDir, false, false, logger, monitoring.NewNopMetricServer(), nil, nil, nil, nil)
 		storeController := storage.StoreController{DefaultStore: store}
 
 		scanner := Scanner{
@@ -189,7 +189,7 @@ func TestMultipleStoragePath(t *testing.T) {
 		thirdRootDir := t.TempDir()
 
 		log := log.NewTestLogger()
-		metrics := monitoring.NewMetricsServer(false, log)
+		metrics := monitoring.NewNopMetricServer()
 
 		// Create ImageStore
 
@@ -315,7 +315,7 @@ func TestTrivyLibraryErrors(t *testing.T) {
 		rootDir := t.TempDir()
 
 		log := log.NewTestLogger()
-		metrics := monitoring.NewMetricsServer(false, log)
+		metrics := monitoring.NewNopMetricServer()
 
 		// Create ImageStore
 		store := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
@@ -481,7 +481,7 @@ func TestImageScannable(t *testing.T) {
 	}
 
 	// Continue with initializing the objects the scanner depends on
-	metrics := monitoring.NewMetricsServer(false, log)
+	metrics := monitoring.NewNopMetricServer()
 
 	store := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
 
@@ -544,7 +544,7 @@ func TestTrivyDBUrl(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		log := log.NewTestLogger()
-		metrics := monitoring.NewMetricsServer(false, log)
+		metrics := monitoring.NewNopMetricServer()
 
 		// Create ImageStore
 		store := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
@@ -725,8 +725,7 @@ func TestStoreSBOMAsOCIArtifact(t *testing.T) {
 		rootDir := t.TempDir()
 
 		logger := log.NewTestLogger()
-		metrics := monitoring.NewMetricsServer(false, logger)
-		defer metrics.Stop()
+		metrics := monitoring.NewNopMetricServer()
 		store := local.NewImageStore(rootDir, false, false, logger, metrics, nil, nil, nil, nil)
 
 		storeController := storage.StoreController{

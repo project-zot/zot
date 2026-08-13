@@ -236,7 +236,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		logger := log.NewLoggerWithWriter("debug", writers)
 
 		imageStore := local.NewImageStore(globalDir, false, false,
-			logger, monitoring.NewMetricsServer(false, logger), nil, nil, nil, nil)
+			logger, monitoring.NewNopMetricServer(), nil, nil, nil, nil)
 
 		storeController := storage.StoreController{
 			DefaultStore: imageStore,
@@ -353,7 +353,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		logger := log.NewLoggerWithWriter("debug", writers)
 
 		imageStore := local.NewImageStore(globalDir, false, false,
-			logger, monitoring.NewMetricsServer(false, logger), nil, nil, nil, nil)
+			logger, monitoring.NewNopMetricServer(), nil, nil, nil, nil)
 
 		storeController := storage.StoreController{
 			DefaultStore: imageStore,
@@ -455,7 +455,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		logger := log.NewLoggerWithWriter("debug", writers)
 
 		imageStore := local.NewImageStore(globalDir, false, false,
-			logger, monitoring.NewMetricsServer(false, logger), nil, nil, nil, nil)
+			logger, monitoring.NewNopMetricServer(), nil, nil, nil, nil)
 
 		storeController := storage.StoreController{
 			DefaultStore: imageStore,
@@ -614,7 +614,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		logger := log.NewLoggerWithWriter("debug", writers)
 
 		imageStore := local.NewImageStore(globalDir, false, false,
-			logger, monitoring.NewMetricsServer(false, logger), nil, nil, nil, nil)
+			logger, monitoring.NewNopMetricServer(), nil, nil, nil, nil)
 
 		storeController := storage.StoreController{
 			DefaultStore: imageStore,
@@ -868,7 +868,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		logger := log.NewLoggerWithWriter("debug", writers)
 
 		imageStore := local.NewImageStore(globalDir, false, false,
-			logger, monitoring.NewMetricsServer(false, logger), nil, nil, nil, nil)
+			logger, monitoring.NewNopMetricServer(), nil, nil, nil, nil)
 
 		storeController := storage.StoreController{
 			DefaultStore: imageStore,

@@ -180,7 +180,7 @@ func TestVulnerableLayer(t *testing.T) {
 
 		log := log.NewTestLogger()
 		imageStore := local.NewImageStore(tempDir, false, false,
-			log, monitoring.NewMetricsServer(false, log), nil, nil, nil, nil)
+			log, monitoring.NewNopMetricServer(), nil, nil, nil, nil)
 
 		storeController := storage.StoreController{
 			DefaultStore: imageStore,
@@ -256,7 +256,7 @@ func TestVulnerableLayer(t *testing.T) {
 
 		log := log.NewTestLogger()
 		imageStore := local.NewImageStore(tempDir, false, false,
-			log, monitoring.NewMetricsServer(false, log), nil, nil, nil, nil)
+			log, monitoring.NewNopMetricServer(), nil, nil, nil, nil)
 
 		storeController := storage.StoreController{
 			DefaultStore: imageStore,
@@ -342,7 +342,7 @@ func TestWithTempDirErrorHandling(t *testing.T) {
 
 		log := log.NewTestLogger()
 		imageStore := local.NewImageStore(tempDir, false, false,
-			log, monitoring.NewMetricsServer(false, log), nil, nil, nil, nil)
+			log, monitoring.NewNopMetricServer(), nil, nil, nil, nil)
 
 		storeController := storage.StoreController{
 			DefaultStore: imageStore,

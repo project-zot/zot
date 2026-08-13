@@ -27,7 +27,7 @@ func TestElevatedPrivilegesInvalidDedupe(t *testing.T) {
 		dir := t.TempDir()
 
 		log := log.NewTestLogger()
-		metrics := monitoring.NewMetricsServer(false, log)
+		metrics := monitoring.NewNopMetricServer()
 
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,

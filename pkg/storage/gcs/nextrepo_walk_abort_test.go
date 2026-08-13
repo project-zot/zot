@@ -152,7 +152,7 @@ func TestGetNextRepositoryVisitsAllReposDespiteGhostUploadsPrefix(t *testing.T) 
 	}
 
 	log := zlog.NewTestLogger()
-	metrics := monitoring.NewMetricsServer(false, log)
+	metrics := monitoring.NewNopMetricServer()
 
 	// iterate exactly like GCTaskGenerator.Next: stop on repo == "" (done)
 	collectRepos := func(memfs *memFS) []string {

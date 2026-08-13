@@ -36,7 +36,7 @@ func TestCVEDBGenerator(t *testing.T) {
 
 		cfg := config.New()
 		cfg.Scheduler = &config.SchedulerConfig{NumWorkers: 3}
-		metrics := monitoring.NewMetricsServer(true, logger)
+		metrics := monitoring.NewNopMetricServer()
 		sch := scheduler.NewScheduler(cfg, metrics, logger)
 
 		metaDB := &mocks.MetaDBMock{
