@@ -70,6 +70,14 @@ type RegistryConfig struct {
 	PreserveDigest         bool           // sync without converting
 	SyncTimeout            time.Duration  // overall HTTP client timeout for all sync operations
 	ResponseHeaderTimeout  time.Duration  `yaml:"-"` // response header timeout; set in root.go
+	// ReqConcurrent caps the number of in-flight requests to the upstream registry (and each of its
+	// mirrors). When unset it defaults to regclient's default (3). Raising it helps when a single zot
+	// proxies many concurrent on-demand pulls of different images from one upstream, where the default
+	// causes head-of-line blocking.
+	ReqConcurrent *int
+	// ReqPerSec caps the request rate (requests/second) to the upstream registry (and each of its
+	// mirrors). When unset it defaults to regclient's default (0, i.e. unlimited).
+	ReqPerSec *float64
 }
 
 // OAuth2HelperConfig holds the options used by the "oauth2" credential helper,

@@ -1734,6 +1734,22 @@ func validateSync(config *config.Config, logger zlog.Logger) error {
 				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 			}
 
+			if regCfg.ReqConcurrent != nil && *regCfg.ReqConcurrent <= 0 {
+				msg := "reqConcurrent must be greater than 0"
+				logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
+					extensionsConfig.Sync.Registries[regID]).Msg(msg)
+
+				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+			}
+
+			if regCfg.ReqPerSec != nil && *regCfg.ReqPerSec <= 0 {
+				msg := "reqPerSec must be greater than 0"
+				logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
+					extensionsConfig.Sync.Registries[regID]).Msg(msg)
+
+				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+			}
+
 			// check the oauth2 credential helper config is complete and consistent
 			if regCfg.CredentialHelper == "oauth2" {
 				oauth2Config, err := syncconf.OAuth2HelperConfigFromMap(regCfg.Oauth2CredentialHelper)
