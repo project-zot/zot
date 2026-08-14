@@ -25,6 +25,12 @@ type ChunkedBlobReader struct {
 	onDiskPath string
 	onDiskFile *os.File
 
+	// skipDiskWriteBytes is the number of leading bytes from the reader that
+	// are already on disk (prefix from a partial resume). These bytes are
+	// passed through to the caller (regclient) for digest verification but
+	// are NOT written to disk again.
+	skipDiskWriteBytes int64
+
 	inFlightReader *blob.BReader
 	clientMu       sync.RWMutex
 	clientCond     *sync.Cond
@@ -126,6 +132,38 @@ func (cbr *ChunkedBlobReader) InitReader(blobReader *blob.BReader, desc descript
 	return false
 }
 
+// InitReaderComplete marks this blob as already fully downloaded.
+// It signals readiness and notifies all waiting clients that the full blob is on disk.
+// The caller should NOT call Read() after this — the blob file is complete.
+func (cbr *ChunkedBlobReader) InitReaderComplete(blobReader *blob.BReader, desc descriptor.Descriptor) bool {
+	cbr.bytesMu.Lock()
+	defer cbr.bytesMu.Unlock()
+
+	if cbr.inFlightReader == nil {
+		cbr.numBytesTotal = desc.Size
+		cbr.numBytesReadToDisk = desc.Size
+		cbr.inFlightReader = blobReader
+		cbr.blobDesc = desc
+		close(cbr.readerReady)
+
+		// Close the on-disk file since no more writing is needed.
+		if cbr.onDiskFile != nil {
+			cbr.onDiskFile.Close()
+		}
+
+		return true
+	}
+
+	return false
+}
+
+// SetSkipDiskWriteBytes sets the number of leading bytes in the reader stream
+// that should be passed through for digest verification but NOT written to disk
+// (because they are already on disk from a previous partial download).
+func (cbr *ChunkedBlobReader) SetSkipDiskWriteBytes(n int64) {
+	cbr.skipDiskWriteBytes = n
+}
+
 func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 	// InitReader is called inside the regclient callback
 	// When Read is called the reader will always be initialized.
@@ -158,27 +196,43 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 	}
 
 	if n > 0 {
-		if _, werr := cbr.onDiskFile.Write(buff[:n]); werr != nil {
-			cbr.logger.Error().Err(werr).Msg("failed to write blob data to disk")
-			cbr.bytesMu.Unlock()
-
-			cbr.clientMu.RLock()
-
-			clientIDs := make([]int, 0, len(cbr.clients))
-			for id := range cbr.clients {
-				clientIDs = append(clientIDs, id)
-			}
-			cbr.clientMu.RUnlock()
-
-			// drain all clients and close their channels so they don't hang
-			for _, clientId := range clientIDs {
-				cbr.Unsubscribe(clientId)
+		// Determine how many of these bytes should actually be written to disk.
+		// When resuming with MultiReader, the leading bytes (the disk prefix) are
+		// passed through for regclient digest verification but already exist on disk.
+		writeBytes := buff[:n]
+		if cbr.skipDiskWriteBytes > 0 {
+			skip := int64(n)
+			if skip > cbr.skipDiskWriteBytes {
+				skip = cbr.skipDiskWriteBytes
 			}
 
-			return n, werr
+			cbr.skipDiskWriteBytes -= skip
+			writeBytes = buff[skip:n]
 		}
 
-		cbr.numBytesReadToDisk += int64(n)
+		if len(writeBytes) > 0 {
+			if _, werr := cbr.onDiskFile.Write(writeBytes); werr != nil {
+				cbr.logger.Error().Err(werr).Msg("failed to write blob data to disk")
+				cbr.bytesMu.Unlock()
+
+				cbr.clientMu.RLock()
+
+				clientIDs := make([]int, 0, len(cbr.clients))
+				for id := range cbr.clients {
+					clientIDs = append(clientIDs, id)
+				}
+				cbr.clientMu.RUnlock()
+
+				// drain all clients and close their channels so they don't hang
+				for _, clientId := range clientIDs {
+					cbr.Unsubscribe(clientId)
+				}
+
+				return n, werr
+			}
+
+			cbr.numBytesReadToDisk += int64(len(writeBytes))
+		}
 	}
 
 	if cbr.numBytesReadToDisk >= cbr.numBytesTotal {

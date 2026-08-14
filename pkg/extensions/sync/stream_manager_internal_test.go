@@ -5,6 +5,8 @@ package sync
 import (
 	"bytes"
 	"errors"
+	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -184,6 +186,109 @@ func TestChunkingStreamManagerStreamingBlobReader(t *testing.T) {
 			result, err := sm.StreamingBlobReader(reader)
 			So(err, ShouldBeNil)
 			So(result, ShouldNotBeNil)
+		})
+
+		Convey("Plan A: serves already-complete blob from disk without re-downloading", func() {
+			data := []byte("already complete blob data on disk")
+			desc := descriptor.Descriptor{
+				Digest:    godigest.FromBytes(data),
+				Size:      int64(len(data)),
+				MediaType: "application/octet-stream",
+			}
+
+			// Prepare the active stream — this creates a ChunkedBlobReader.
+			err := sm.prepareActiveStreamForBlob(desc)
+			So(err, ShouldBeNil)
+
+			// Simulate complete blob already on disk by writing all data to the temp file.
+			blobPath := sm.tempStore.BlobPath(desc.Digest)
+			writeErr := os.WriteFile(blobPath, data, 0o644)
+			So(writeErr, ShouldBeNil)
+
+			// Re-create the ChunkedBlobReader so it detects the existing complete file.
+			cbr, cbrErr := NewChunkedBlobReader(blobPath, sm.logger)
+			So(cbrErr, ShouldBeNil)
+			sm.activeStreams[desc.Digest.String()] = cbr
+
+			// Verify resumeOffset == desc.Size (blob is complete).
+			So(cbr.ResumeOffset(), ShouldEqual, desc.Size)
+
+			// Call StreamingBlobReader — it should return a reader over the disk file.
+			reader := newTestBReader(data)
+			result, err := sm.StreamingBlobReader(reader)
+			So(err, ShouldBeNil)
+			So(result, ShouldNotBeNil)
+
+			// Read all data from the returned reader — should be the full blob.
+			readBuf := make([]byte, desc.Size)
+			n, readErr := result.Read(readBuf)
+			So(n, ShouldEqual, len(data))
+			So(readBuf[:n], ShouldResemble, data)
+			// Accept EOF or nil (depends on whether file returns EOF with last read or separately)
+			if readErr != nil {
+				So(readErr, ShouldEqual, io.EOF)
+			}
+
+			// ChunkedBlobReader should report complete.
+			cbr.bytesMu.RLock()
+			So(cbr.numBytesReadToDisk, ShouldEqual, desc.Size)
+			So(cbr.numBytesTotal, ShouldEqual, desc.Size)
+			cbr.bytesMu.RUnlock()
+		})
+
+		Convey("Plan B: resumes partial blob with MultiReader prefix+suffix", func() {
+			// Full blob data: prefix (already on disk) + suffix (from upstream).
+			prefix := []byte("AAAAAAAAAA") // 10 bytes already downloaded
+			suffix := []byte("BBBBBBBBBB") // 10 bytes remaining
+			fullData := append(prefix, suffix...)
+			desc := descriptor.Descriptor{
+				Digest:    godigest.FromBytes(fullData),
+				Size:      int64(len(fullData)),
+				MediaType: "application/octet-stream",
+			}
+
+			// Prepare the active stream.
+			err := sm.prepareActiveStreamForBlob(desc)
+			So(err, ShouldBeNil)
+
+			// Write only the prefix to disk (partial download).
+			blobPath := sm.tempStore.BlobPath(desc.Digest)
+			writeErr := os.WriteFile(blobPath, prefix, 0o644)
+			So(writeErr, ShouldBeNil)
+
+			// Re-create the ChunkedBlobReader so it detects the partial file.
+			cbr, cbrErr := NewChunkedBlobReader(blobPath, sm.logger)
+			So(cbrErr, ShouldBeNil)
+			sm.activeStreams[desc.Digest.String()] = cbr
+
+			// Verify resumeOffset == prefix length.
+			So(cbr.ResumeOffset(), ShouldEqual, int64(len(prefix)))
+
+			// The upstream reader provides the FULL data (regclient always fetches full).
+			reader := newTestBReader(fullData)
+			result, err := sm.StreamingBlobReader(reader)
+			So(err, ShouldBeNil)
+			So(result, ShouldNotBeNil)
+
+			// Read all data through the ChunkedBlobReader (which is wrapped as the result).
+			readBuf := make([]byte, desc.Size+10) // extra space
+			totalRead := 0
+			for {
+				n, readErr := result.Read(readBuf[totalRead:])
+				totalRead += n
+				if readErr != nil {
+					So(readErr, ShouldEqual, io.EOF)
+					break
+				}
+			}
+
+			So(int64(totalRead), ShouldEqual, desc.Size)
+			So(readBuf[:totalRead], ShouldResemble, fullData)
+
+			// On-disk file should now contain the full blob (prefix + suffix appended).
+			onDisk, diskErr := os.ReadFile(blobPath)
+			So(diskErr, ShouldBeNil)
+			So(onDisk, ShouldResemble, fullData)
 		})
 	})
 }

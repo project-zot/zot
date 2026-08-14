@@ -441,3 +441,147 @@ type errReaderFunc func(p []byte) (int, error)
 func (f errReaderFunc) Read(p []byte) (int, error) {
 	return f(p)
 }
+
+func TestInitReaderComplete(t *testing.T) {
+	Convey("InitReaderComplete", t, func() {
+		dir := t.TempDir()
+		blobPath := filepath.Join(dir, "blob.bin")
+
+		// Write some data to simulate a complete file.
+		fullData := []byte("complete blob on disk")
+		writeErr := os.WriteFile(blobPath, fullData, 0o644)
+		So(writeErr, ShouldBeNil)
+
+		cbr, err := NewChunkedBlobReader(blobPath, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		data := fullData
+		reader := newTestBReader(data)
+		desc := reader.GetDescriptor()
+
+		Convey("marks blob as complete and sets numBytesReadToDisk to full size", func() {
+			result := cbr.InitReaderComplete(reader, desc)
+			So(result, ShouldBeTrue)
+
+			cbr.bytesMu.RLock()
+			So(cbr.numBytesTotal, ShouldEqual, desc.Size)
+			So(cbr.numBytesReadToDisk, ShouldEqual, desc.Size)
+			So(cbr.inFlightReader, ShouldNotBeNil)
+			cbr.bytesMu.RUnlock()
+		})
+
+		Convey("is idempotent — second call returns false", func() {
+			cbr.InitReaderComplete(reader, desc)
+
+			secondReader := newTestBReader([]byte("other"))
+			result := cbr.InitReaderComplete(secondReader, secondReader.GetDescriptor())
+			So(result, ShouldBeFalse)
+
+			// Original values unchanged.
+			cbr.bytesMu.RLock()
+			So(cbr.numBytesTotal, ShouldEqual, desc.Size)
+			cbr.bytesMu.RUnlock()
+		})
+
+		Convey("signals readerReady so Descriptor() unblocks", func() {
+			resultCh := make(chan descriptor.Descriptor, 1)
+			go func() {
+				resultCh <- cbr.Descriptor()
+			}()
+
+			cbr.InitReaderComplete(reader, desc)
+
+			gotDesc := <-resultCh
+			So(gotDesc.Digest, ShouldEqual, desc.Digest)
+			So(gotDesc.Size, ShouldEqual, desc.Size)
+		})
+
+		Convey("Subscribe sends full size offset immediately after InitReaderComplete", func() {
+			cbr.InitReaderComplete(reader, desc)
+
+			ch, id := cbr.Subscribe()
+			defer cbr.Unsubscribe(id)
+
+			offset := <-ch
+			So(offset, ShouldEqual, desc.Size)
+		})
+	})
+}
+
+func TestReadWithSkipDiskWriteBytes(t *testing.T) {
+	Convey("Read with skipDiskWriteBytes (partial resume)", t, func() {
+		dir := t.TempDir()
+		blobPath := filepath.Join(dir, "blob.bin")
+
+		// Simulate partial file: prefix already on disk.
+		prefix := []byte("XXXXX") // 5 bytes
+		suffix := []byte("YYYYY") // 5 bytes
+		fullData := append(prefix, suffix...)
+
+		// Write prefix to disk.
+		writeErr := os.WriteFile(blobPath, prefix, 0o644)
+		So(writeErr, ShouldBeNil)
+
+		cbr, err := NewChunkedBlobReader(blobPath, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		// Verify it detected the existing bytes.
+		So(cbr.ResumeOffset(), ShouldEqual, int64(len(prefix)))
+
+		// Set skip bytes (prefix already on disk, don't re-write).
+		cbr.SetSkipDiskWriteBytes(int64(len(prefix)))
+
+		// InitReader with a combined reader that has full data.
+		combinedReader := newTestBReader(fullData)
+		desc := descriptor.Descriptor{
+			Digest:    godigest.FromBytes(fullData),
+			Size:      int64(len(fullData)),
+			MediaType: "application/octet-stream",
+		}
+		cbr.InitReader(combinedReader, desc)
+
+		Convey("reads full data but only appends suffix to disk", func() {
+			buf := make([]byte, len(fullData)+10)
+			totalRead := 0
+
+			for {
+				n, readErr := cbr.Read(buf[totalRead:])
+				totalRead += n
+				if readErr != nil {
+					So(readErr, ShouldEqual, io.EOF)
+					break
+				}
+			}
+
+			So(totalRead, ShouldEqual, len(fullData))
+			So(buf[:totalRead], ShouldResemble, fullData)
+
+			// On-disk file should contain prefix + suffix (appended).
+			onDisk, diskErr := os.ReadFile(blobPath)
+			So(diskErr, ShouldBeNil)
+			So(onDisk, ShouldResemble, fullData)
+		})
+
+		Convey("skipDiskWriteBytes crossing buffer boundary works correctly", func() {
+			// Read in small chunks smaller than prefix.
+			chunk := make([]byte, 3) // smaller than prefix (5)
+			var allRead []byte
+
+			for {
+				n, readErr := cbr.Read(chunk)
+				allRead = append(allRead, chunk[:n]...)
+				if readErr != nil {
+					So(readErr, ShouldEqual, io.EOF)
+					break
+				}
+			}
+
+			So(allRead, ShouldResemble, fullData)
+
+			// On-disk should have full blob (prefix was already there + suffix appended).
+			onDisk, diskErr := os.ReadFile(blobPath)
+			So(diskErr, ShouldBeNil)
+			So(onDisk, ShouldResemble, fullData)
+		})
+	})
+}

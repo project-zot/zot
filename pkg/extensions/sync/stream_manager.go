@@ -208,13 +208,40 @@ func (sm *ChunkingStreamManager) StreamingBlobReader(reader *blob.BReader) (*blo
 		return nil, zerr.ErrBlobReaderMissing
 	}
 
-	// If the chunked reader has bytes from a previous partial download, we need
-	// to discard that many bytes from the upstream reader so the file append is correct.
 	resumeOffset := chunkingReader.ResumeOffset()
-	if resumeOffset > 0 {
-		sm.logger.Info().Str("blob", digest).Int64("resumeOffset", resumeOffset).
-			Msg("resuming blob download: discarding already-downloaded prefix from upstream")
 
+	// Plan A: blob is already fully on disk — skip the upstream BlobCopy entirely.
+	// Signal the ChunkedBlobReader as complete so waiting clients get served from
+	// the existing file. Return a reader over the full on-disk file so regclient
+	// can verify the digest without re-downloading.
+	if resumeOffset > 0 && resumeOffset >= desc.Size {
+		sm.logger.Info().Str("blob", digest).Int64("size", desc.Size).
+			Msg("blob already complete on disk, serving from file")
+
+		chunkingReader.InitReaderComplete(reader, desc)
+
+		diskFile, err := os.Open(sm.tempStore.BlobPath(godigest.Digest(desc.Digest.String())))
+		if err != nil {
+			return nil, err
+		}
+
+		fullReader := blob.NewReader(
+			blob.WithHeader(reader.RawHeaders()),
+			blob.WithDesc(desc),
+			blob.WithReader(diskFile),
+		)
+
+		return fullReader, nil
+	}
+
+	// Plan B: partial file on disk — construct a MultiReader (disk prefix + upstream suffix)
+	// so that regclient sees the full blob for digest verification, while the
+	// ChunkedBlobReader only appends the new suffix bytes to disk.
+	if resumeOffset > 0 {
+		sm.logger.Info().Str("blob", digest).Int64("resumeOffset", resumeOffset).Int64("totalSize", desc.Size).
+			Msg("resuming blob download: using MultiReader for prefix+suffix")
+
+		// Discard the already-downloaded prefix from the upstream reader.
 		discarded, err := io.CopyN(io.Discard, reader, resumeOffset)
 		if err != nil {
 			sm.logger.Error().Err(err).Str("blob", digest).
@@ -223,8 +250,41 @@ func (sm *ChunkingStreamManager) StreamingBlobReader(reader *blob.BReader) (*blo
 
 			return nil, err
 		}
+
+		// Open the partial file for reading the prefix.
+		diskFile, err := os.Open(sm.tempStore.BlobPath(godigest.Digest(desc.Digest.String())))
+		if err != nil {
+			return nil, err
+		}
+
+		// Tell the ChunkedBlobReader to skip writing the first resumeOffset bytes
+		// that come from the disk prefix (they are already on disk).
+		chunkingReader.SetSkipDiskWriteBytes(resumeOffset)
+
+		// Combine: disk prefix (already downloaded) + upstream suffix (new data).
+		combined := io.MultiReader(diskFile, reader)
+
+		// Wrap combined as a blob.BReader for the ChunkedBlobReader.
+		combinedBlobReader := blob.NewReader(
+			blob.WithHeader(reader.RawHeaders()),
+			blob.WithDesc(desc),
+			blob.WithReader(combined),
+		)
+
+		readerModified := chunkingReader.InitReader(combinedBlobReader, desc)
+		if !readerModified {
+			sm.logger.Debug().Str("blob", digest).
+				Msg("blob reader is already set up for stream. skipping init and wrap")
+
+			return reader, nil
+		}
+
+		sm.logger.Debug().Str("blob", digest).Msg("finished init chunked blob reader (resumed)")
+
+		return chunkingReader.ToBReader(), nil
 	}
 
+	// Normal path: no resume, fresh download.
 	readerModified := chunkingReader.InitReader(reader, desc)
 	if !readerModified {
 		// This blob's reader is already set up for stream.
