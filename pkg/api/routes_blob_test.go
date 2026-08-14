@@ -109,6 +109,14 @@ func (m *mockStreamManager) CachedBlobInfo(digest string) (int64, string, error)
 	return 0, "", zerr.ErrBlobNotFound
 }
 
+func (m *mockStreamManager) StreamBlobPath(_ string) string {
+	return ""
+}
+
+func (m *mockStreamManager) PartialBlobDigests() map[string]int64 {
+	return nil
+}
+
 func newStreamingBlobTestRouteHandler(
 	t *testing.T,
 	store mocks.MockedImageStore,

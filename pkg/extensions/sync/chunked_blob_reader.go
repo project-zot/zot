@@ -35,22 +35,55 @@ type ChunkedBlobReader struct {
 }
 
 func NewChunkedBlobReader(onDiskPath string, logger log.Logger) (*ChunkedBlobReader, error) {
-	createdFile, err := os.OpenFile(onDiskPath, os.O_CREATE|os.O_WRONLY, 0o644)
+	// Check if a partial file already exists from a previous incomplete download.
+	var existingBytes int64
+
+	if info, statErr := os.Stat(onDiskPath); statErr == nil && info.Size() > 0 {
+		existingBytes = info.Size()
+		logger.Info().Str("path", onDiskPath).Int64("existingBytes", existingBytes).
+			Msg("found partial blob file from previous download, will resume")
+	}
+
+	// Open in append mode if resuming, create/truncate otherwise.
+	flags := os.O_CREATE | os.O_WRONLY
+	if existingBytes > 0 {
+		flags |= os.O_APPEND
+	} else {
+		flags |= os.O_TRUNC
+	}
+
+	createdFile, err := os.OpenFile(onDiskPath, flags, 0o644)
 	if err != nil {
 		return nil, err
 	}
 
 	cbr := &ChunkedBlobReader{
-		clients:     make(map[int]chan int64),
-		logger:      logger,
-		onDiskPath:  onDiskPath,
-		onDiskFile:  createdFile,
-		readerReady: make(chan struct{}),
+		clients:            make(map[int]chan int64),
+		logger:             logger,
+		onDiskPath:         onDiskPath,
+		onDiskFile:         createdFile,
+		numBytesReadToDisk: existingBytes,
+		readerReady:        make(chan struct{}),
 	}
 
 	cbr.clientCond = sync.NewCond(&cbr.clientMu)
 
 	return cbr, nil
+}
+
+// ResumeOffset returns the number of bytes already written to disk from a
+// previous incomplete download. If zero, no resume is needed.
+func (cbr *ChunkedBlobReader) ResumeOffset() int64 {
+	cbr.bytesMu.RLock()
+	defer cbr.bytesMu.RUnlock()
+
+	// Only meaningful before InitReader is called — once the reader is active,
+	// numBytesReadToDisk grows as data arrives.
+	if cbr.inFlightReader != nil {
+		return 0
+	}
+
+	return cbr.numBytesReadToDisk
 }
 
 // Descriptor returns the descriptor of the blob being read.

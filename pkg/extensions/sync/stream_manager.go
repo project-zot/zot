@@ -39,6 +39,9 @@ type StreamManager interface {
 	// temp store, or an empty string if the blob is not available (still in-flight or
 	// already cleaned up).
 	StreamBlobPath(blobDigest string) string
+	// PartialBlobDigests returns the digests of blobs that have partial (incomplete)
+	// downloads in the stream temp store. These are candidates for Range-based resume.
+	PartialBlobDigests() map[string]int64
 }
 
 type ChunkingStreamManager struct {
@@ -67,6 +70,37 @@ func NewChunkingStreamManager(config *config.Config, logger log.Logger) *Chunkin
 		blobInfoMap:   map[string]descriptor.Descriptor{},
 		logger:        logger,
 	}
+}
+
+// PartialBlobDigests returns digests of blobs that have partial (incomplete) downloads
+// in the stream temp store, along with their current byte count on disk. These are
+// candidates for Range-based resume on retry.
+func (sm *ChunkingStreamManager) PartialBlobDigests() map[string]int64 {
+	sm.streamLock.Lock()
+	defer sm.streamLock.Unlock()
+
+	partials := make(map[string]int64)
+
+	for digest, desc := range sm.blobInfoMap {
+		dig, err := godigest.Parse(digest)
+		if err != nil {
+			continue
+		}
+
+		blobPath := sm.tempStore.BlobPath(dig)
+
+		info, err := os.Stat(blobPath)
+		if err != nil {
+			continue
+		}
+
+		// Only include blobs that are partially downloaded (size > 0 but less than expected).
+		if info.Size() > 0 && info.Size() < desc.Size {
+			partials[digest] = info.Size()
+		}
+	}
+
+	return partials
 }
 
 func (sm *ChunkingStreamManager) ConnectClient(blobDigest string, writer io.Writer) (*InFlightBlobCopier, error) {
@@ -146,6 +180,23 @@ func (sm *ChunkingStreamManager) StreamingBlobReader(reader *blob.BReader) (*blo
 	chunkingReader, ok := sm.activeStreams[digest]
 	if !ok {
 		return nil, zerr.ErrBlobReaderMissing
+	}
+
+	// If the chunked reader has bytes from a previous partial download, we need
+	// to discard that many bytes from the upstream reader so the file append is correct.
+	resumeOffset := chunkingReader.ResumeOffset()
+	if resumeOffset > 0 {
+		sm.logger.Info().Str("blob", digest).Int64("resumeOffset", resumeOffset).
+			Msg("resuming blob download: discarding already-downloaded prefix from upstream")
+
+		discarded, err := io.CopyN(io.Discard, reader, resumeOffset)
+		if err != nil {
+			sm.logger.Error().Err(err).Str("blob", digest).
+				Int64("expected", resumeOffset).Int64("discarded", discarded).
+				Msg("failed to discard prefix bytes for resume")
+
+			return nil, err
+		}
 	}
 
 	readerModified := chunkingReader.InitReader(reader, desc)
