@@ -9,6 +9,7 @@ import (
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
+	"github.com/regclient/regclient/types/manifest"
 	"github.com/regclient/regclient/types/ref"
 
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
@@ -36,6 +37,10 @@ type Service interface {
 	CanRetryOnError() bool // used by sync on demand to retry in background
 	// Get the sync timeout configured for this service
 	GetSyncTimeout() time.Duration
+
+	FetchManifest(ctx context.Context, repo, reference string) (manifest.Manifest, []manifest.Manifest, error)
+	// Returns whether streaming is enabled for the given local repo on this service.
+	IsStreamingForRepo(repo string) bool
 }
 
 // Registry interface must be implemented by local and remote registries.

@@ -67,6 +67,20 @@ func buildSyncConfig(enabled bool) *config.ExtensionConfig {
 	return ext
 }
 
+func buildSyncConfigWithStreaming(streamEnabled bool) *config.ExtensionConfig {
+	ext := &config.ExtensionConfig{}
+	ext.Sync = &sync.Config{
+		Registries: []sync.RegistryConfig{
+			{
+				URLs:   []string{"localhost"},
+				Stream: &streamEnabled,
+			},
+		},
+	}
+
+	return ext
+}
+
 func buildScrubConfig(enabled bool) *config.ExtensionConfig {
 	ext := &config.ExtensionConfig{}
 	ext.Scrub = &config.ScrubConfig{
@@ -326,6 +340,60 @@ func TestExtensionConfig(t *testing.T) {
 			testMethodWithNilEnable("Sync", (*config.ExtensionConfig).IsSyncEnabled)
 			testMethodWithDisabledEnable("Sync", (*config.ExtensionConfig).IsSyncEnabled, buildSyncConfig)
 			testMethodWithEnabledEnable("Sync", (*config.ExtensionConfig).IsSyncEnabled, buildSyncConfig)
+		})
+
+		Convey("Test IsStreamingEnabled()", func() {
+			Convey("returns false with nil ExtensionConfig", func() {
+				var extensionConfig *config.ExtensionConfig
+				So(extensionConfig.IsStreamingEnabled(), ShouldBeFalse)
+			})
+
+			Convey("returns false with nil Sync", func() {
+				extensionConfig := &config.ExtensionConfig{}
+				So(extensionConfig.IsStreamingEnabled(), ShouldBeFalse)
+			})
+
+			Convey("returns false when Sync has no registries", func() {
+				extensionConfig := &config.ExtensionConfig{
+					Sync: &sync.Config{},
+				}
+				So(extensionConfig.IsStreamingEnabled(), ShouldBeFalse)
+			})
+
+			Convey("returns false when no registry has streaming enabled", func() {
+				So(buildSyncConfigWithStreaming(false).IsStreamingEnabled(), ShouldBeFalse)
+			})
+
+			Convey("returns true when a registry has streaming enabled", func() {
+				So(buildSyncConfigWithStreaming(true).IsStreamingEnabled(), ShouldBeTrue)
+			})
+
+			Convey("returns true when only one of multiple registries has streaming enabled", func() {
+				streamEnabled := true
+				streamDisabled := false
+				extensionConfig := &config.ExtensionConfig{
+					Sync: &sync.Config{
+						Registries: []sync.RegistryConfig{
+							{URLs: []string{"localhost:5000"}, Stream: &streamDisabled},
+							{URLs: []string{"localhost:5001"}, Stream: &streamEnabled},
+						},
+					},
+				}
+				So(extensionConfig.IsStreamingEnabled(), ShouldBeTrue)
+			})
+
+			Convey("returns false when all registries have streaming disabled", func() {
+				streamDisabled := false
+				extensionConfig := &config.ExtensionConfig{
+					Sync: &sync.Config{
+						Registries: []sync.RegistryConfig{
+							{URLs: []string{"localhost:5000"}, Stream: &streamDisabled},
+							{URLs: []string{"localhost:5001"}, Stream: &streamDisabled},
+						},
+					},
+				}
+				So(extensionConfig.IsStreamingEnabled(), ShouldBeFalse)
+			})
 		})
 
 		Convey("Test IsScrubEnabled()", func() {
