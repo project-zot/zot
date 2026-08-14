@@ -40,6 +40,7 @@ var (
 type DestinationRegistry struct {
 	storeController storage.StoreController
 	tempStorage     OciLayoutStorage
+	streamManager   StreamManager
 	metaDB          mTypes.MetaDB
 	log             log.Logger
 }
@@ -47,12 +48,14 @@ type DestinationRegistry struct {
 func NewDestinationRegistry(
 	storeController storage.StoreController, // local store controller
 	tempStoreController storage.StoreController, // temp store controller
+	streamManager StreamManager,
 	metaDB mTypes.MetaDB,
 	log log.Logger,
 ) Destination {
 	return &DestinationRegistry{
 		storeController: storeController,
 		tempStorage:     NewOciLayoutStorage(tempStoreController),
+		streamManager:   streamManager,
 		metaDB:          metaDB,
 		// first we sync from remote (using containers/image copy from docker:// to oci:) to a temp imageStore
 		// then we copy the image from tempStorage to zot's storage using ImageStore APIs
@@ -353,6 +356,8 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 }
 
 // Copy a blob from one image store to another image store.
+// When streaming is active, it first tries to read the blob from the stream temp store
+// to avoid re-reading the same data that was already downloaded from the upstream registry.
 func (registry *DestinationRegistry) copyBlob(repo string, blobDigest godigest.Digest, blobMediaType string,
 	tempImageStore storageTypes.ImageStore,
 ) error {
@@ -363,6 +368,30 @@ func (registry *DestinationRegistry) copyBlob(repo string, blobDigest godigest.D
 		return nil
 	}
 
+	// Try to use the stream temp store blob directly to avoid the double-write
+	// (reading the same bytes from the regclient temp ocidir that were already on disk).
+	if registry.streamManager != nil {
+		if streamPath := registry.streamManager.StreamBlobPath(blobDigest.String()); streamPath != "" {
+			streamFile, err := os.Open(streamPath)
+			if err == nil {
+				defer streamFile.Close()
+
+				registry.log.Debug().Str("blob", blobDigest.String()).
+					Msg("using stream temp store blob for commit (avoiding double-read)")
+
+				_, _, err = imageStore.FullBlobUpload(ctx, repo, streamFile, blobDigest)
+				if err != nil {
+					registry.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+						Str("blob digest", blobDigest.String()).Str("media type", blobMediaType).
+						Msg("couldn't upload blob from stream store")
+				}
+
+				return err
+			}
+		}
+	}
+
+	// Fallback to reading from the regclient temp ocidir store.
 	blobReadCloser, _, err := tempImageStore.GetBlob(repo, blobDigest, blobMediaType)
 	if err != nil {
 		registry.log.Error().Str("errorType", common.TypeOf(err)).Err(err).

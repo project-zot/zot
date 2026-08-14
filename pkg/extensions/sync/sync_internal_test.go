@@ -811,7 +811,7 @@ func TestServiceGCPCredentialHelper(t *testing.T) {
 			CredentialHelper: "gcp",
 		}
 
-		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 		So(service.credentialHelper, ShouldNotBeNil)
 
@@ -1226,7 +1226,7 @@ func TestDestinationRegistry(t *testing.T) {
 		repoName := "repo"
 
 		storeController := storage.StoreController{DefaultStore: syncImgStore}
-		registry := NewDestinationRegistry(storeController, storeController, nil, log)
+		registry := NewDestinationRegistry(storeController, storeController, nil, nil, log)
 		imageReference, err := registry.GetImageReference(repoName, "1.0")
 		So(err, ShouldBeNil)
 		So(imageReference, ShouldNotBeNil)
@@ -1359,7 +1359,7 @@ func TestDestinationRegistry(t *testing.T) {
 			repoName := "repo"
 
 			storeController := storage.StoreController{DefaultStore: syncImgStore}
-			registry := NewDestinationRegistry(storeController, storeController, nil, log)
+			registry := NewDestinationRegistry(storeController, storeController, nil, nil, log)
 
 			err = registry.CommitAll(repoName, imageReference)
 			So(err, ShouldBeNil)
@@ -1394,7 +1394,7 @@ func TestDestinationRegistry(t *testing.T) {
 
 		Convey("trigger metaDB error on index manifest in CommitImage()", func() {
 			storeController := storage.StoreController{DefaultStore: syncImgStore}
-			registry := NewDestinationRegistry(storeController, storeController, mocks.MetaDBMock{
+			registry := NewDestinationRegistry(storeController, storeController, nil, mocks.MetaDBMock{
 				SetRepoReferenceFn: func(ctx context.Context, repo string, reference string, imageMeta mTypes.ImageMeta) error {
 					if reference == "1.0" {
 						return zerr.ErrRepoMetaNotFound
@@ -1410,7 +1410,7 @@ func TestDestinationRegistry(t *testing.T) {
 
 		Convey("trigger metaDB error on image manifest in CommitImage()", func() {
 			storeController := storage.StoreController{DefaultStore: syncImgStore}
-			registry := NewDestinationRegistry(storeController, storeController, mocks.MetaDBMock{
+			registry := NewDestinationRegistry(storeController, storeController, nil, mocks.MetaDBMock{
 				SetRepoReferenceFn: func(ctx context.Context, repo, reference string, imageMeta mTypes.ImageMeta) error {
 					return zerr.ErrRepoMetaNotFound
 				},
@@ -1426,7 +1426,7 @@ func TestDestinationRegistry(t *testing.T) {
 
 			// Create a destination registry using the existing syncImgStore as temp storage
 			storeController := storage.StoreController{DefaultStore: syncImgStore}
-			registry := NewDestinationRegistry(storeController, storeController, nil, log)
+			registry := NewDestinationRegistry(storeController, storeController, nil, nil, log)
 
 			// Get an image reference - this will create a temp session directory
 			imageReference, err := registry.GetImageReference(repoName, "test-index")
@@ -1633,7 +1633,7 @@ func TestDestinationRegistry(t *testing.T) {
 
 		Convey("CommitAll with non-existent directory", func() {
 			// Create a registry and get an image reference
-			registry := NewDestinationRegistry(storeController, storeController, nil, log)
+			registry := NewDestinationRegistry(storeController, storeController, nil, nil, log)
 			imageReference, err := registry.GetImageReference("nonexistent-repo", "1.0")
 			So(err, ShouldBeNil)
 
@@ -1651,7 +1651,7 @@ func TestDestinationRegistry(t *testing.T) {
 
 		Convey("CommitAll with empty directory", func() {
 			// Create a registry and get an image reference
-			registry := NewDestinationRegistry(storeController, storeController, nil, log)
+			registry := NewDestinationRegistry(storeController, storeController, nil, nil, log)
 			imageReference, err := registry.GetImageReference("empty-repo", "1.0")
 			So(err, ShouldBeNil)
 
@@ -1669,7 +1669,7 @@ func TestDestinationRegistry(t *testing.T) {
 
 		Convey("CommitAll with directory containing files but no index.json", func() {
 			// Create a registry and get an image reference
-			registry := NewDestinationRegistry(storeController, storeController, nil, log)
+			registry := NewDestinationRegistry(storeController, storeController, nil, nil, log)
 			imageReference, err := registry.GetImageReference("inconsistent-repo", "1.0")
 			So(err, ShouldBeNil)
 
@@ -1693,7 +1693,7 @@ func TestDestinationRegistry(t *testing.T) {
 
 		Convey("CommitAll with ReadDir error (non-ErrNotExist)", func() {
 			// Create a registry and get an image reference
-			registry := NewDestinationRegistry(storeController, storeController, nil, log)
+			registry := NewDestinationRegistry(storeController, storeController, nil, nil, log)
 			imageReference, err := registry.GetImageReference("error-repo", "1.0")
 			So(err, ShouldBeNil)
 
@@ -1807,7 +1807,7 @@ func TestDestinationRegistryCommitAllErrors(t *testing.T) {
 		dir := t.TempDir()
 		store := local.NewImageStore(dir, true, true, log, metrics, nil, nil, nil, nil)
 		sc := storage.StoreController{DefaultStore: store}
-		registry := NewDestinationRegistry(sc, sc, nil, log)
+		registry := NewDestinationRegistry(sc, sc, nil, nil, log)
 
 		Convey("CommitAll with unresolvable temp ref", func() {
 			err := registry.CommitAll("repo", ref.Ref{})
@@ -1850,6 +1850,7 @@ func TestCopyManifestInvalidJSON(t *testing.T) {
 			storage.StoreController{DefaultStore: destStore},
 			storage.StoreController{DefaultStore: tempStore},
 			nil,
+			nil,
 			log,
 		).(*DestinationRegistry)
 
@@ -1884,7 +1885,7 @@ func TestCopyManifestReferrersTag(t *testing.T) {
 			destStore := local.NewImageStore(destDir, true, true, log, metrics, nil, nil, nil, nil)
 			tempController := storage.StoreController{DefaultStore: tempStore}
 			destController := storage.StoreController{DefaultStore: destStore}
-			destReg := NewDestinationRegistry(destController, tempController, nil, log).(*DestinationRegistry)
+			destReg := NewDestinationRegistry(destController, tempController, nil, nil, log).(*DestinationRegistry)
 
 			referrerImage := CreateImageWith().RandomLayers(1, 10).RandomConfig().
 				Subject(&ispec.Descriptor{
@@ -1919,7 +1920,7 @@ func TestCopyManifestReferrersTag(t *testing.T) {
 			destStore := local.NewImageStore(destDir, true, true, log, metrics, nil, nil, nil, nil)
 			tempController := storage.StoreController{DefaultStore: tempStore}
 			destController := storage.StoreController{DefaultStore: destStore}
-			destReg := NewDestinationRegistry(destController, tempController, nil, log).(*DestinationRegistry)
+			destReg := NewDestinationRegistry(destController, tempController, nil, nil, log).(*DestinationRegistry)
 
 			referrerImage := CreateImageWith().RandomLayers(1, 10).RandomConfig().
 				Subject(&ispec.Descriptor{
@@ -2632,6 +2633,10 @@ func (m *mockStreamManager) StreamingBlobReader(reader *blob.BReader) (*blob.BRe
 
 func (m *mockStreamManager) CachedBlobInfo(_ string) (int64, string, error) {
 	return 0, "", nil
+}
+
+func (m *mockStreamManager) StreamBlobPath(_ string) string {
+	return ""
 }
 
 type mockSyncService struct {

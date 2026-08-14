@@ -35,6 +35,10 @@ type StreamManager interface {
 	StreamingImageManifest(repo, reference string) (*StreamableManifest, bool)
 	RemoveStreamingImage(repo, reference string)
 	CachedBlobInfo(blobDigest string) (blen int64, mediaType string, err error)
+	// StreamBlobPath returns the on-disk path of a fully-downloaded blob in the stream
+	// temp store, or an empty string if the blob is not available (still in-flight or
+	// already cleaned up).
+	StreamBlobPath(blobDigest string) string
 }
 
 type ChunkingStreamManager struct {
@@ -96,6 +100,37 @@ func (sm *ChunkingStreamManager) CachedBlobInfo(blobDigest string) (int64, strin
 	}
 
 	return desc.Size, desc.MediaType, nil
+}
+
+// StreamBlobPath returns the path of a fully-downloaded blob in the stream temp store.
+// Returns empty string if the blob file does not exist or has not finished downloading.
+func (sm *ChunkingStreamManager) StreamBlobPath(blobDigest string) string {
+	sm.streamLock.Lock()
+	defer sm.streamLock.Unlock()
+
+	desc, ok := sm.blobInfoMap[blobDigest]
+	if !ok {
+		return ""
+	}
+
+	dig, err := godigest.Parse(blobDigest)
+	if err != nil {
+		return ""
+	}
+
+	blobPath := sm.tempStore.BlobPath(dig)
+
+	info, err := os.Stat(blobPath)
+	if err != nil {
+		return ""
+	}
+
+	// Only return the path if the file is complete (size matches expected).
+	if info.Size() < desc.Size {
+		return ""
+	}
+
+	return blobPath
 }
 
 // StreamingBlobReader is executed inside regclient as part of the reader hook.
@@ -302,15 +337,20 @@ func (sm *ChunkingStreamManager) RemoveStreamingImage(repo, reference string) {
 
 	sm.logger.Info().Str("repo", repo).Str("reference", reference).Msg("removing streaming image")
 
+	// Track which blob digests have already been cleaned up to avoid
+	// duplicate waitForClientDrainAndDeleteStream calls for shared layers
+	// across multi-arch manifests.
+	purged := make(map[string]struct{})
+
 	manifestMediaType := manifestpkg.GetMediaType(manifest.referenceManifest)
 	switch manifestMediaType {
 	case manifestpkg.MediaTypeOCI1Manifest:
-		sm.purgeManifestFromStreamCache(repo, reference, manifest.referenceManifest)
+		sm.purgeManifestFromStreamCache(repo, reference, manifest.referenceManifest, purged)
 	case manifestpkg.MediaTypeOCI1ManifestList:
 		// For multi-arch images, the manifest is actually an index.
 		// The individual manifests inside must be purged as well.
 		for _, subManifest := range manifest.subManifests {
-			sm.purgeManifestFromStreamCache(repo, reference, subManifest)
+			sm.purgeManifestFromStreamCache(repo, reference, subManifest, purged)
 		}
 	default:
 		sm.logger.Error().Str("repo", repo).Str("reference", reference).
@@ -324,7 +364,9 @@ func (sm *ChunkingStreamManager) RemoveStreamingImage(repo, reference string) {
 }
 
 // purgeManifestFromStreamCache cleans up an individual manifest and its contents from the stream cache.
-func (sm *ChunkingStreamManager) purgeManifestFromStreamCache(repo, reference string, manifest manifestpkg.Manifest) {
+func (sm *ChunkingStreamManager) purgeManifestFromStreamCache(
+	repo, reference string, manifest manifestpkg.Manifest, purged map[string]struct{},
+) {
 	imager, ok := manifest.(manifestpkg.Imager)
 	if !ok {
 		sm.logger.Error().Str("repo", repo).Str("reference", reference).
@@ -340,7 +382,7 @@ func (sm *ChunkingStreamManager) purgeManifestFromStreamCache(repo, reference st
 			Msg("failed to get config descriptor from manifest")
 	}
 
-	sm.waitForClientDrainAndDeleteStream(configDesc.Digest.String())
+	sm.cleanupActiveStream(configDesc.Digest.String(), purged)
 
 	layers, err := imager.GetLayers()
 	if err != nil {
@@ -348,17 +390,26 @@ func (sm *ChunkingStreamManager) purgeManifestFromStreamCache(repo, reference st
 	}
 
 	for _, layer := range layers {
-		sm.waitForClientDrainAndDeleteStream(layer.Digest.String())
+		sm.cleanupActiveStream(layer.Digest.String(), purged)
 	}
 
 	// finally, remove the manifest
-	sm.waitForClientDrainAndDeleteStream(manifest.GetDescriptor().Digest.String())
+	sm.cleanupActiveStream(manifest.GetDescriptor().Digest.String(), purged)
 }
 
-func (sm *ChunkingStreamManager) waitForClientDrainAndDeleteStream(blobDigest string) {
+func (sm *ChunkingStreamManager) cleanupActiveStream(blobDigest string, purged map[string]struct{}) {
+	if _, done := purged[blobDigest]; done {
+		return
+	}
+
+	purged[blobDigest] = struct{}{}
+
 	reader, ok := sm.activeStreams[blobDigest]
 	if !ok {
-		sm.logger.Warn().Str("blob", blobDigest).Msg("no active stream found for blob")
+		// Stream was already removed (e.g. clients were unsubscribed due to an
+		// upstream/disk error in ChunkedBlobReader.Read and the entry was never
+		// created, or this is a shared layer already cleaned by another manifest).
+		sm.logger.Debug().Str("blob", blobDigest).Msg("no active stream found for blob, already cleaned up")
 
 		return
 	}
@@ -387,8 +438,9 @@ func (sm *ChunkingStreamManager) waitForClientDrainAndDeleteStream(blobDigest st
 		return
 	}
 
-	err = os.Remove(sm.tempStore.BlobPath(dgst))
+	err = os.Remove(blobPath)
 	if err != nil {
 		sm.logger.Error().Err(err).Str("blob", blobDigest).Msg("failed to remove blob from temp store")
 	}
 }
+

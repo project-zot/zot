@@ -129,6 +129,19 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 			cbr.logger.Error().Err(werr).Msg("failed to write blob data to disk")
 			cbr.bytesMu.Unlock()
 
+			cbr.clientMu.RLock()
+
+			clientIDs := make([]int, 0, len(cbr.clients))
+			for id := range cbr.clients {
+				clientIDs = append(clientIDs, id)
+			}
+			cbr.clientMu.RUnlock()
+
+			// drain all clients and close their channels so they don't hang
+			for _, clientId := range clientIDs {
+				cbr.Unsubscribe(clientId)
+			}
+
 			return n, werr
 		}
 
