@@ -553,18 +553,37 @@ func isBlobReferencedInImageManifest(imgStore storageTypes.ImageStore, repo stri
 	return false, nil
 }
 
+// IsBlobReferencedInImageIndex reports whether digest is referenced by index (including nested
+// indexes and image-manifest config/layers). Each distinct digest is fetched and walked at most
+// once so a DAG with shared/duplicate child digests stays O(distinct objects).
 func IsBlobReferencedInImageIndex(imgStore storageTypes.ImageStore, repo string,
 	digest godigest.Digest, index ispec.Index, log zlog.Logger,
 ) (bool, error) {
+	return isBlobReferencedInImageIndex(imgStore, repo, digest, index, map[godigest.Digest]struct{}{}, log)
+}
+
+func isBlobReferencedInImageIndex(imgStore storageTypes.ImageStore, repo string,
+	digest godigest.Digest, index ispec.Index, seen map[godigest.Digest]struct{}, log zlog.Logger,
+) (bool, error) {
 	for _, desc := range index.Manifests {
+		if digest == desc.Digest {
+			if !IsImageIndexMediaType(desc.MediaType) && !IsImageManifestMediaType(desc.MediaType) {
+				log.Debug().Str("mediatype", desc.MediaType).Str("digest", digest.String()).
+					Msg("unexpected media-type found in image index manifest list")
+			}
+
+			return true, nil
+		}
+
+		if _, ok := seen[desc.Digest]; ok {
+			continue
+		}
+
 		var found bool
 
 		switch {
 		case IsImageIndexMediaType(desc.MediaType):
-			if digest == desc.Digest {
-				// no need to look further if we have a match
-				return true, nil
-			}
+			seen[desc.Digest] = struct{}{}
 
 			indexImage, err := GetImageIndex(imgStore, repo, desc.Digest, log)
 			if err != nil {
@@ -583,11 +602,13 @@ func IsBlobReferencedInImageIndex(imgStore storageTypes.ImageStore, repo string,
 				return false, err
 			}
 
-			found, err = IsBlobReferencedInImageIndex(imgStore, repo, digest, indexImage, log)
+			found, err = isBlobReferencedInImageIndex(imgStore, repo, digest, indexImage, seen, log)
 			if err != nil {
 				return false, err
 			}
 		case IsImageManifestMediaType(desc.MediaType):
+			seen[desc.Digest] = struct{}{}
+
 			var err error
 
 			found, err = isBlobReferencedInImageManifest(imgStore, repo, digest, desc.Digest, log)
@@ -595,12 +616,7 @@ func IsBlobReferencedInImageIndex(imgStore storageTypes.ImageStore, repo string,
 				return false, err
 			}
 		default:
-			// should return true for digests found in index.json even if we don't know it's mediatype
-			if digest == desc.Digest {
-				log.Debug().Str("mediatype", desc.MediaType).Str("digest", digest.String()).
-					Msg("unexpected media-type found in image index manifest list")
-				found = true
-			}
+			// Unknown media type: only the descriptor digest itself can match (handled above).
 		}
 
 		if found {
@@ -611,6 +627,9 @@ func IsBlobReferencedInImageIndex(imgStore storageTypes.ImageStore, repo string,
 	return false, nil
 }
 
+// IsBlobReferenced reports whether digest is referenced by the repo's index.json graph
+// (manifests, nested indexes, configs, layers). Uses the memoized index walker so a
+// crafted DAG stays O(distinct objects), and returns as soon as a match is found.
 func IsBlobReferenced(imgStore storageTypes.ImageStore, repo string,
 	digest godigest.Digest, log zlog.Logger,
 ) (bool, error) {
@@ -914,20 +933,37 @@ func GetBlobDescriptorFromRepo(imgStore storageTypes.ImageStore, repo string, bl
 	return GetBlobDescriptorFromIndex(imgStore, index, repo, blobDigest, log)
 }
 
+// GetBlobDescriptorFromIndex finds a descriptor for blobDigest in index (including nested
+// indexes and image-manifest config/layers). Each distinct digest is fetched and walked at
+// most once so a DAG with shared/duplicate child digests stays O(distinct objects).
 func GetBlobDescriptorFromIndex(imgStore storageTypes.ImageStore, index ispec.Index, repo string,
 	blobDigest godigest.Digest, log zlog.Logger,
+) (ispec.Descriptor, error) {
+	return getBlobDescriptorFromIndex(imgStore, index, repo, blobDigest, map[godigest.Digest]struct{}{}, log)
+}
+
+func getBlobDescriptorFromIndex(imgStore storageTypes.ImageStore, index ispec.Index, repo string,
+	blobDigest godigest.Digest, seen map[godigest.Digest]struct{}, log zlog.Logger,
 ) (ispec.Descriptor, error) {
 	for _, desc := range index.Manifests {
 		if desc.Digest == blobDigest {
 			return desc, nil
 		}
 
-		switch desc.MediaType {
-		case ispec.MediaTypeImageManifest:
+		if _, ok := seen[desc.Digest]; ok {
+			continue
+		}
+
+		switch {
+		case IsImageManifestMediaType(desc.MediaType):
+			seen[desc.Digest] = struct{}{}
+
 			if foundDescriptor, err := getBlobDescriptorFromManifest(imgStore, repo, blobDigest, desc, log); err == nil {
 				return foundDescriptor, nil
 			}
-		case ispec.MediaTypeImageIndex:
+		case IsImageIndexMediaType(desc.MediaType):
+			seen[desc.Digest] = struct{}{}
+
 			indexImage, err := GetImageIndex(imgStore, repo, desc.Digest, log)
 			if err != nil {
 				// Handle missing blobs gracefully - skip this index and continue searching
@@ -942,7 +978,8 @@ func GetBlobDescriptorFromIndex(imgStore storageTypes.ImageStore, index ispec.In
 				return ispec.Descriptor{}, err
 			}
 
-			if foundDescriptor, err := GetBlobDescriptorFromIndex(imgStore, indexImage, repo, blobDigest, log); err == nil {
+			foundDescriptor, err := getBlobDescriptorFromIndex(imgStore, indexImage, repo, blobDigest, seen, log)
+			if err == nil {
 				return foundDescriptor, nil
 			}
 		}
