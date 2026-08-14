@@ -42,6 +42,10 @@ type StreamManager interface {
 	// PartialBlobDigests returns the digests of blobs that have partial (incomplete)
 	// downloads in the stream temp store. These are candidates for Range-based resume.
 	PartialBlobDigests() map[string]int64
+	// RemoveStreamBlob deletes a specific blob's temp file from the stream store.
+	// Used to evict corrupt blobs that fail digest verification, so the next retry
+	// downloads from scratch instead of resuming from bad data.
+	RemoveStreamBlob(blobDigest string)
 }
 
 type ChunkingStreamManager struct {
@@ -101,6 +105,28 @@ func (sm *ChunkingStreamManager) PartialBlobDigests() map[string]int64 {
 	}
 
 	return partials
+}
+
+// RemoveStreamBlob deletes a specific blob's temp file from the stream store.
+// This is used to evict corrupt blobs (e.g. after a digest mismatch) so the next
+// retry downloads from scratch instead of resuming from bad data.
+func (sm *ChunkingStreamManager) RemoveStreamBlob(blobDigest string) {
+	dig, err := godigest.Parse(blobDigest)
+	if err != nil {
+		sm.logger.Error().Err(err).Str("blob", blobDigest).
+			Msg("failed to parse digest for stream blob removal")
+
+		return
+	}
+
+	blobPath := sm.tempStore.BlobPath(dig)
+	if err := os.Remove(blobPath); err != nil && !os.IsNotExist(err) {
+		sm.logger.Error().Err(err).Str("blob", blobDigest).Str("path", blobPath).
+			Msg("failed to remove corrupt stream blob")
+	} else {
+		sm.logger.Info().Str("blob", blobDigest).
+			Msg("removed corrupt stream blob to force fresh download on retry")
+	}
 }
 
 func (sm *ChunkingStreamManager) ConnectClient(blobDigest string, writer io.Writer) (*InFlightBlobCopier, error) {

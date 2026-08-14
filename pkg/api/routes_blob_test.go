@@ -117,6 +117,8 @@ func (m *mockStreamManager) PartialBlobDigests() map[string]int64 {
 	return nil
 }
 
+func (m *mockStreamManager) RemoveStreamBlob(_ string) {}
+
 func newStreamingBlobTestRouteHandler(
 	t *testing.T,
 	store mocks.MockedImageStore,

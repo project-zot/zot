@@ -379,12 +379,18 @@ func (registry *DestinationRegistry) copyBlob(repo string, blobDigest godigest.D
 				registry.log.Debug().Str("blob", blobDigest.String()).
 					Msg("using stream temp store blob for commit (avoiding double-read)")
 
-				_, _, err = imageStore.FullBlobUpload(ctx, repo, streamFile, blobDigest)
-				if err != nil {
-					registry.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
-						Str("blob digest", blobDigest.String()).Str("media type", blobMediaType).
-						Msg("couldn't upload blob from stream store")
+			_, _, err = imageStore.FullBlobUpload(ctx, repo, streamFile, blobDigest)
+			if err != nil {
+				registry.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+					Str("blob digest", blobDigest.String()).Str("media type", blobMediaType).
+					Msg("couldn't upload blob from stream store")
+
+				// If the blob failed digest verification, the stream temp file is corrupt
+				// (e.g. bad resume splice). Remove it so the next retry downloads from scratch.
+				if errors.Is(err, zerr.ErrBadBlobDigest) {
+					registry.streamManager.RemoveStreamBlob(blobDigest.String())
 				}
+			}
 
 				return err
 			}

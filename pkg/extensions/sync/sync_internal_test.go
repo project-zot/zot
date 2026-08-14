@@ -2643,6 +2643,8 @@ func (m *mockStreamManager) PartialBlobDigests() map[string]int64 {
 	return nil
 }
 
+func (m *mockStreamManager) RemoveStreamBlob(_ string) {}
+
 type mockSyncService struct {
 	fetchManifestFn      func(ctx context.Context, repo, reference string) (rcManifest.Manifest, []rcManifest.Manifest, error)
 	isStreamingForRepoFn func(repo string) bool
