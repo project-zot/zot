@@ -1576,6 +1576,12 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 					response.Header().Set("Content-Type", desc.MediaType)
 					response.WriteHeader(http.StatusOK)
 
+					// Flush headers immediately so the client knows the blob is available
+					// and does not time out waiting for the first byte.
+					if flusher, ok := response.(http.Flusher); ok {
+						flusher.Flush()
+					}
+
 					clientCopyErr := copier.Copy()
 					if clientCopyErr != nil {
 						rh.c.Log.Error().Err(clientCopyErr).Str("digest", digest.String()).Msg("unexpected error during stream copy")

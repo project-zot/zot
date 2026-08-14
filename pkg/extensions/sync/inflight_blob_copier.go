@@ -2,6 +2,7 @@ package sync
 
 import (
 	"io"
+	"net/http"
 	"os"
 	"sync/atomic"
 
@@ -16,6 +17,7 @@ type InFlightBlobCopier struct {
 	Source     *ChunkedBlobReader
 	onDiskPath string
 	dest       io.Writer
+	flusher    http.Flusher // nil if dest does not implement http.Flusher
 	log        log.Logger
 
 	// latestOffset holds the latest byte offset announced by the ChunkedBlobReader.
@@ -26,10 +28,13 @@ type InFlightBlobCopier struct {
 func NewInFlightBlobCopier(
 	source *ChunkedBlobReader, onDiskPath string, dest io.Writer, logger log.Logger,
 ) *InFlightBlobCopier {
+	flusher, _ := dest.(http.Flusher)
+
 	return &InFlightBlobCopier{
 		Source:     source,
 		onDiskPath: onDiskPath,
 		dest:       dest,
+		flusher:    flusher,
 		log:        logger,
 	}
 }
@@ -128,6 +133,13 @@ func (ifbc *InFlightBlobCopier) Copy() error {
 
 			numBytesCopied += written
 
+			// Flush immediately so the client receives bytes without waiting for
+			// Go's default HTTP response buffering to fill up. This reduces
+			// perceived latency and prevents client-side idle timeouts.
+			if ifbc.flusher != nil {
+				ifbc.flusher.Flush()
+			}
+
 			if numBytesCopied >= blobSize {
 				copied = true
 			}
@@ -146,6 +158,10 @@ func (ifbc *InFlightBlobCopier) Copy() error {
 			ifbc.log.Error().Err(err).Msg("failed to copy data to downstream client")
 
 			return err
+		}
+
+		if ifbc.flusher != nil {
+			ifbc.flusher.Flush()
 		}
 	}
 
