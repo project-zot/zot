@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -1699,125 +1700,152 @@ func validateSync(config *config.Config, logger zlog.Logger) error {
 	// check glob patterns in sync config are compilable
 	extensionsConfig := config.CopyExtensionsConfig()
 	// can't check with IsSyncEnabled(), because it can't test invalid sync configs
-	if extensionsConfig != nil && extensionsConfig.Sync != nil && len(extensionsConfig.Sync.Registries) > 0 {
-		for regID, regCfg := range extensionsConfig.Sync.Registries {
-			if intervalValidationErr := validateRegistryManifestCheckInterval(regCfg); intervalValidationErr != nil {
-				logger.Error().Err(intervalValidationErr).Int("id", regID).Interface("extensions.sync.registries[id]",
-					extensionsConfig.Sync.Registries[regID]).Msg("invalid config for manifestCheckInterval")
+	if extensionsConfig == nil || extensionsConfig.Sync == nil || len(extensionsConfig.Sync.Registries) == 0 {
+		return nil
+	}
 
-				return intervalValidationErr
-			}
+	for regID, regCfg := range extensionsConfig.Sync.Registries {
+		if err := validateSyncRegistry(config, regID, regCfg, logger); err != nil {
+			return err
+		}
+	}
 
-			// check retry options are configured for sync
-			if regCfg.MaxRetries != nil && regCfg.RetryDelay == nil {
-				msg := "retryDelay is required when using maxRetries"
-				logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
-					extensionsConfig.Sync.Registries[regID]).Msg(msg)
+	return nil
+}
 
-				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
-			}
+func validateSyncRegistry(config *config.Config, regID int, regCfg syncconf.RegistryConfig, logger zlog.Logger) error {
+	if intervalValidationErr := validateRegistryManifestCheckInterval(regCfg); intervalValidationErr != nil {
+		logger.Error().Err(intervalValidationErr).Int("id", regID).Interface("extensions.sync.registries[id]",
+			regCfg).Msg("invalid config for manifestCheckInterval")
 
-			if regCfg.MaxRetryDelay != nil && regCfg.RetryDelay == nil {
-				msg := "retryDelay is required when using maxRetryDelay"
-				logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
-					extensionsConfig.Sync.Registries[regID]).Msg(msg)
+		return intervalValidationErr
+	}
 
-				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
-			}
+	// check retry options are configured for sync
+	if regCfg.MaxRetries != nil && regCfg.RetryDelay == nil {
+		msg := "retryDelay is required when using maxRetries"
+		logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
+			regCfg).Msg(msg)
 
-			if regCfg.MaxRetryDelay != nil && regCfg.RetryDelay != nil &&
-				*regCfg.MaxRetryDelay < *regCfg.RetryDelay {
-				msg := "maxRetryDelay must be greater than or equal to retryDelay"
-				logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
-					extensionsConfig.Sync.Registries[regID]).Msg(msg)
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+	}
 
-				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
-			}
+	if regCfg.MaxRetryDelay != nil && regCfg.RetryDelay == nil {
+		msg := "retryDelay is required when using maxRetryDelay"
+		logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
+			regCfg).Msg(msg)
 
-			if regCfg.ReqConcurrent != nil && *regCfg.ReqConcurrent <= 0 {
-				msg := "reqConcurrent must be greater than 0"
-				logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
-					extensionsConfig.Sync.Registries[regID]).Msg(msg)
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+	}
 
-				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
-			}
+	if regCfg.MaxRetryDelay != nil && regCfg.RetryDelay != nil &&
+		*regCfg.MaxRetryDelay < *regCfg.RetryDelay {
+		msg := "maxRetryDelay must be greater than or equal to retryDelay"
+		logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
+			regCfg).Msg(msg)
 
-			if regCfg.ReqPerSec != nil && *regCfg.ReqPerSec <= 0 {
-				msg := "reqPerSec must be greater than 0"
-				logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
-					extensionsConfig.Sync.Registries[regID]).Msg(msg)
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+	}
 
-				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
-			}
+	if err := validateSyncReqLimits(regID, regCfg, logger); err != nil {
+		return err
+	}
 
-			// check the oauth2 credential helper config is complete and consistent
-			if regCfg.CredentialHelper == "oauth2" {
-				oauth2Config, err := syncconf.OAuth2HelperConfigFromMap(regCfg.Oauth2CredentialHelper)
-				if err == nil {
-					err = oauth2Config.Validate()
-				}
+	// check the oauth2 credential helper config is complete and consistent
+	if regCfg.CredentialHelper == "oauth2" {
+		oauth2Config, err := syncconf.OAuth2HelperConfigFromMap(regCfg.Oauth2CredentialHelper)
+		if err == nil {
+			err = oauth2Config.Validate()
+		}
 
-				if err != nil {
-					msg := "invalid oauth2CredentialHelper config"
-					logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
-						extensionsConfig.Sync.Registries[regID]).Msg(msg)
+		if err != nil {
+			msg := "invalid oauth2CredentialHelper config"
+			logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
+				regCfg).Msg(msg)
 
-					return fmt.Errorf("%w: %s: %w", zerr.ErrBadConfig, msg, err)
-				}
-			}
+			return fmt.Errorf("%w: %s: %w", zerr.ErrBadConfig, msg, err)
+		}
+	}
 
-			// check preserveDigest without compat
-			if regCfg.PreserveDigest && !config.IsCompatEnabled() {
-				msg := "can not use PreserveDigest option without enabling http.Compat"
-				logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
-					extensionsConfig.Sync.Registries[regID]).Msg(msg)
+	// check preserveDigest without compat
+	if regCfg.PreserveDigest && !config.IsCompatEnabled() {
+		msg := "can not use PreserveDigest option without enabling http.Compat"
+		logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
+			regCfg).Msg(msg)
 
-				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
-			}
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+	}
 
-			if regCfg.Content != nil {
-				for _, content := range regCfg.Content {
-					ok := glob.ValidatePattern(content.Prefix)
-					if !ok {
-						msg := "sync prefix could not be compiled"
-						logger.Error().Err(glob.ErrBadPattern).Str("prefix", content.Prefix).Msg(msg)
+	return validateSyncContent(config, regCfg, logger)
+}
 
-						return fmt.Errorf("%w: %s: %s", zerr.ErrBadConfig, msg, content.Prefix)
-					}
+// invalidOptionalPositiveFloat reports whether an optional float setting is set to a value that is
+// not a finite number strictly greater than zero. NaN and +/-Inf bypass a naive `*v <= 0` check
+// (NaN compares false against everything), so they are rejected explicitly.
+func invalidOptionalPositiveFloat(value *float64) bool {
+	return value != nil && (*value <= 0 || math.IsNaN(*value) || math.IsInf(*value, 0))
+}
 
-					if content.Tags != nil && content.Tags.Regex != nil {
-						_, err := regexp.Compile(*content.Tags.Regex)
-						if err != nil {
-							msg := "sync content regex could not be compiled"
-							logger.Error().Err(glob.ErrBadPattern).Str("regex", *content.Tags.Regex).Msg(msg)
+func validateSyncReqLimits(regID int, regCfg syncconf.RegistryConfig, logger zlog.Logger) error {
+	if regCfg.ReqConcurrent != nil && *regCfg.ReqConcurrent <= 0 {
+		msg := "reqConcurrent must be greater than 0"
+		logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
+			regCfg).Msg(msg)
 
-							return fmt.Errorf("%w: %s: %s", zerr.ErrBadConfig, msg, *content.Tags.Regex)
-						}
-					}
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+	}
 
-					if content.Tags != nil && content.Tags.ExcludeRegex != nil {
-						_, err := regexp.Compile(*content.Tags.ExcludeRegex)
-						if err != nil {
-							msg := "sync content excludeRegex could not be compiled"
-							logger.Error().Err(glob.ErrBadPattern).Str("excludeRegex", *content.Tags.ExcludeRegex).Msg(msg)
+	if invalidOptionalPositiveFloat(regCfg.ReqPerSec) {
+		msg := "reqPerSec must be a finite value greater than 0"
+		logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
+			regCfg).Msg(msg)
 
-							return fmt.Errorf("%w: %s: %s", zerr.ErrBadConfig, msg, *content.Tags.ExcludeRegex)
-						}
-					}
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+	}
 
-					if content.StripPrefix && !strings.Contains(content.Prefix, "/*") && content.Destination == "/" {
-						msg := "can not use stripPrefix true and destination '/' without using glob patterns in prefix"
-						logger.Error().Err(zerr.ErrBadConfig).
-							Interface("sync content", content).Str("component", "sync").Msg(msg)
+	return nil
+}
 
-						return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
-					}
+func validateSyncContent(config *config.Config, regCfg syncconf.RegistryConfig, logger zlog.Logger) error {
+	for _, content := range regCfg.Content {
+		ok := glob.ValidatePattern(content.Prefix)
+		if !ok {
+			msg := "sync prefix could not be compiled"
+			logger.Error().Err(glob.ErrBadPattern).Str("prefix", content.Prefix).Msg(msg)
 
-					// check sync config doesn't overlap with retention config
-					validateRetentionSyncOverlaps(config, content, regCfg.URLs, logger)
-				}
+			return fmt.Errorf("%w: %s: %s", zerr.ErrBadConfig, msg, content.Prefix)
+		}
+
+		if content.Tags != nil && content.Tags.Regex != nil {
+			_, err := regexp.Compile(*content.Tags.Regex)
+			if err != nil {
+				msg := "sync content regex could not be compiled"
+				logger.Error().Err(glob.ErrBadPattern).Str("regex", *content.Tags.Regex).Msg(msg)
+
+				return fmt.Errorf("%w: %s: %s", zerr.ErrBadConfig, msg, *content.Tags.Regex)
 			}
 		}
+
+		if content.Tags != nil && content.Tags.ExcludeRegex != nil {
+			_, err := regexp.Compile(*content.Tags.ExcludeRegex)
+			if err != nil {
+				msg := "sync content excludeRegex could not be compiled"
+				logger.Error().Err(glob.ErrBadPattern).Str("excludeRegex", *content.Tags.ExcludeRegex).Msg(msg)
+
+				return fmt.Errorf("%w: %s: %s", zerr.ErrBadConfig, msg, *content.Tags.ExcludeRegex)
+			}
+		}
+
+		if content.StripPrefix && !strings.Contains(content.Prefix, "/*") && content.Destination == "/" {
+			msg := "can not use stripPrefix true and destination '/' without using glob patterns in prefix"
+			logger.Error().Err(zerr.ErrBadConfig).
+				Interface("sync content", content).Str("component", "sync").Msg(msg)
+
+			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+		}
+
+		// check sync config doesn't overlap with retention config
+		validateRetentionSyncOverlaps(config, content, regCfg.URLs, logger)
 	}
 
 	return nil

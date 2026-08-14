@@ -974,9 +974,10 @@ func newClient(opts syncconf.RegistryConfig, credentials syncconf.CredentialsFil
 	hostConfig.Mirrors = mirrorsHosts
 	hostConfig.RepoAuth = true
 
-	// Override regclient's per-host concurrency/rate limits when configured. These apply to the
-	// upstream host; mirrors below inherit them via the hostConfig copy. When unset, regclient's
-	// defaults are kept (ReqConcurrent=3, ReqPerSec=0 i.e. unlimited).
+	// Override regclient's per-host concurrency/rate limits when configured. regclient applies these
+	// limits independently per host: the value set here on the upstream host is also copied onto each
+	// mirror, so the effective cap is per host, not a shared total across the upstream and its mirrors.
+	// When unset, regclient's defaults are kept (ReqConcurrent=3, ReqPerSec=0 i.e. unlimited).
 	if opts.ReqConcurrent != nil {
 		hostConfig.ReqConcurrent = int64(*opts.ReqConcurrent)
 	}

@@ -1399,8 +1399,8 @@ Configure each registry sync:
 				"maxRetries": 5,                    # maxRetries in case of temporary errors (default: no retries)
 				"retryDelay": "1s",                 # initial HTTP retry delay; mandatory when using maxRetries
 				"maxRetryDelay": "30s",             # max HTTP retry backoff; optional, defaults to retryDelay (fixed interval). Set higher than retryDelay for exponential backoff.
-				"reqConcurrent": 30,                # max concurrent in-flight requests to this upstream and its mirrors (default: 3); raise it when one zot proxies many concurrent on-demand pulls from a single upstream
-				"reqPerSec": 100,                   # max request rate (requests/second) to this upstream and its mirrors (default: unlimited)
+				"reqConcurrent": 30,                # max concurrent in-flight requests per host, applied independently to this upstream and to each of its mirrors, not shared across them (default: 3); raise it when one zot proxies many concurrent on-demand pulls from a single upstream
+				"reqPerSec": 100,                   # max request rate (requests/second) per host, applied independently to this upstream and to each of its mirrors, not shared across them (default: unlimited)
 				"onlySigned": true,                 # sync only signed images (either notary or cosign)
 				"content":[                         # which content to periodically pull, also it's used for filtering ondemand images, if not set then periodically polling will not run
 					{
