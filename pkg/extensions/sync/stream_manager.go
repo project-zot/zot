@@ -206,7 +206,7 @@ func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string,
 
 	manifestMediaType := manifestpkg.GetMediaType(manifest.referenceManifest)
 	switch manifestMediaType {
-	case manifestpkg.MediaTypeOCI1Manifest:
+	case manifestpkg.MediaTypeOCI1Manifest, manifestpkg.MediaTypeDocker2Manifest:
 		prepErr := sm.prepareManifestAndContentsForStream(repo, reference, manifest.referenceManifest)
 		if prepErr != nil {
 			sm.logger.Error().Err(prepErr).
@@ -217,7 +217,7 @@ func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string,
 
 			return zerr.ErrSyncFailedToPrepareManifest
 		}
-	case manifestpkg.MediaTypeOCI1ManifestList:
+	case manifestpkg.MediaTypeOCI1ManifestList, manifestpkg.MediaTypeDocker2ManifestList:
 		// For multi-arch images, the manifest is actually an index.
 		// The individual manifests inside must be prepared as well.
 		for _, subManifest := range manifest.subManifests {
@@ -344,9 +344,9 @@ func (sm *ChunkingStreamManager) RemoveStreamingImage(repo, reference string) {
 
 	manifestMediaType := manifestpkg.GetMediaType(manifest.referenceManifest)
 	switch manifestMediaType {
-	case manifestpkg.MediaTypeOCI1Manifest:
+	case manifestpkg.MediaTypeOCI1Manifest, manifestpkg.MediaTypeDocker2Manifest:
 		sm.purgeManifestFromStreamCache(repo, reference, manifest.referenceManifest, purged)
-	case manifestpkg.MediaTypeOCI1ManifestList:
+	case manifestpkg.MediaTypeOCI1ManifestList, manifestpkg.MediaTypeDocker2ManifestList:
 		// For multi-arch images, the manifest is actually an index.
 		// The individual manifests inside must be purged as well.
 		for _, subManifest := range manifest.subManifests {

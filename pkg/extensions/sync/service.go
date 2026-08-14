@@ -15,7 +15,6 @@ import (
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
-	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/regclient/regclient"
 	"github.com/regclient/regclient/config"
 	"github.com/regclient/regclient/mod"
@@ -432,7 +431,7 @@ func (service *BaseService) FetchManifest(ctx context.Context, repo, reference s
 
 	// For a manifest list, each individual manifest inside it also needs
 	// to be downloaded.
-	if fetchedManifest.GetDescriptor().MediaType == ispec.MediaTypeImageIndex {
+	if fetchedManifest.IsList() {
 		indexer, ok := fetchedManifest.(manifest.Indexer)
 		if !ok {
 			service.log.Error().Str("remote", remoteURL).Str("repo", repo).Str("reference", reference).
