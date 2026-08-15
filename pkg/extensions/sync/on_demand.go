@@ -44,6 +44,20 @@ func (onDemand *BaseOnDemand) Add(service Service) {
 	onDemand.services = append(onDemand.services, service)
 }
 
+// ShouldCheckUpstreamManifest reports whether the manifest for repo:reference has to be
+// validated against upstream. Only a service that completed a successful check records a
+// timestamp, so a single service reporting that the interval has not elapsed means this
+// reference was verified recently and can be served from local storage.
+func (onDemand *BaseOnDemand) ShouldCheckUpstreamManifest(repo, reference string) bool {
+	for _, service := range onDemand.services {
+		if !service.ShouldCheckUpstream(repo, reference) {
+			return false
+		}
+	}
+
+	return true
+}
+
 func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference string) error {
 	req := request{
 		repo:      repo,

@@ -13,6 +13,7 @@ import (
 
 	"github.com/gorilla/mux"
 	godigest "github.com/opencontainers/go-digest"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	rcmanifest "github.com/regclient/regclient/types/manifest"
 	rcOCIV1 "github.com/regclient/regclient/types/oci/v1"
 	. "github.com/smartystreets/goconvey/convey"
@@ -244,6 +245,125 @@ func TestCheckManifestStreaming(t *testing.T) {
 			So(json.NewDecoder(resp.Body).Decode(&errList), ShouldBeNil)
 			So(errList.Errors, ShouldHaveLength, 1)
 			So(errList.Errors[0].Code, ShouldEqual, apiErr.MANIFEST_UNKNOWN.String())
+		})
+	})
+}
+
+func TestGetManifestCheckInterval(t *testing.T) {
+	Convey("GetManifest honours the manifest check interval", t, func() {
+		const reference = "v1.0"
+
+		newReq := func() *http.Request {
+			req := httptest.NewRequestWithContext(
+				context.Background(),
+				http.MethodGet,
+				"http://example.com/v2/test/manifests/"+reference,
+				http.NoBody,
+			)
+
+			return mux.SetURLVars(req, map[string]string{
+				"name":      "test",
+				"reference": reference,
+			})
+		}
+
+		localManifest := []byte(`{"schemaVersion":2}`)
+		localDigest := godigest.FromBytes(localManifest)
+
+		localStore := mocks.MockedImageStore{
+			GetImageManifestFn: func(_ string, _ string) ([]byte, godigest.Digest, string, error) {
+				return localManifest, localDigest, ispec.MediaTypeImageManifest, nil
+			},
+		}
+
+		Convey("serves the local manifest without syncing while the interval has not elapsed", func() {
+			syncCalls := 0
+			streamCalls := 0
+
+			syncOnDemand := &mockSyncOnDemand{
+				shouldCheckUpstreamManifestFn: func(_, _ string) bool { return false },
+				isStreamingEnabledForRepoFn:   func(_ string) bool { return true },
+				syncImageFn: func(_ context.Context, _, _ string) error {
+					syncCalls++
+
+					return nil
+				},
+				fetchManifestForStreamFn: func(_ context.Context, _, _ string) ([]byte, godigest.Digest, string, error) {
+					streamCalls++
+
+					return nil, "", "", zerr.ErrBlobNotFound
+				},
+			}
+			handler := newStreamingBlobTestRouteHandler(t, localStore, syncOnDemand)
+
+			rec := httptest.NewRecorder()
+			handler.GetManifest(rec, newReq())
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+			So(resp.Header.Get(constants.DistContentDigestKey), ShouldEqual, localDigest.String())
+
+			body, readErr := io.ReadAll(resp.Body)
+			So(readErr, ShouldBeNil)
+			So(body, ShouldResemble, localManifest)
+
+			// neither the plain nor the streaming upstream path was taken
+			So(syncCalls, ShouldEqual, 0)
+			So(streamCalls, ShouldEqual, 0)
+		})
+
+		Convey("falls through to sync when the local manifest is missing", func() {
+			syncCalls := 0
+
+			syncOnDemand := &mockSyncOnDemand{
+				shouldCheckUpstreamManifestFn: func(_, _ string) bool { return false },
+				isStreamingEnabledForRepoFn:   func(_ string) bool { return false },
+				syncImageFn: func(_ context.Context, _, _ string) error {
+					syncCalls++
+
+					return nil
+				},
+			}
+			handler := newStreamingBlobTestRouteHandler(t, mocks.MockedImageStore{
+				GetImageManifestFn: func(_ string, _ string) ([]byte, godigest.Digest, string, error) {
+					return nil, "", "", zerr.ErrManifestNotFound
+				},
+			}, syncOnDemand)
+
+			rec := httptest.NewRecorder()
+			handler.GetManifest(rec, newReq())
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+			So(syncCalls, ShouldEqual, 1)
+		})
+
+		Convey("syncs when the interval has elapsed even though the manifest is local", func() {
+			syncCalls := 0
+
+			syncOnDemand := &mockSyncOnDemand{
+				shouldCheckUpstreamManifestFn: func(_, _ string) bool { return true },
+				isStreamingEnabledForRepoFn:   func(_ string) bool { return false },
+				syncImageFn: func(_ context.Context, _, _ string) error {
+					syncCalls++
+
+					return nil
+				},
+			}
+			handler := newStreamingBlobTestRouteHandler(t, localStore, syncOnDemand)
+
+			rec := httptest.NewRecorder()
+			handler.GetManifest(rec, newReq())
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+			So(syncCalls, ShouldEqual, 1)
 		})
 	})
 }

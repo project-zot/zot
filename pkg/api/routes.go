@@ -2789,6 +2789,19 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 	}
 
 	if syncEnabled {
+		// When manifestCheckInterval is configured and a recent upstream check already
+		// validated this reference, serve the local manifest instead of contacting upstream.
+		// A local miss (for instance after garbage collection) falls through to a normal sync.
+		if !routeHandler.c.SyncOnDemand.ShouldCheckUpstreamManifest(name, reference) {
+			content, digest, mediaType, err := imgStore.GetImageManifest(name, reference)
+			if err == nil {
+				routeHandler.c.Log.Debug().Str("repository", name).Str("reference", reference).
+					Msg("manifest check interval has not elapsed, serving local manifest")
+
+				return content, digest, mediaType, nil
+			}
+		}
+
 		routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
 			Msg("trying to get updated image by syncing on demand")
 

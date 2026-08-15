@@ -35,13 +35,29 @@ import (
 // mockSyncOnDemand implements api.SyncOnDemand plus the optional streaming
 // methods the route handlers discover via type assertion.
 type mockSyncOnDemand struct {
-	isStreamingEnabledForRepoFn func(repo string) bool
-	fetchManifestForStreamFn    func(ctx context.Context, name, reference string) ([]byte, godigest.Digest, string, error)
-	cachedBlobInfoFn            func(digest string) (int64, string, error)
-	connectBlobStreamFn         func(repo, digest string, writer io.Writer) (func(ctx context.Context, start, end int64) error, error)
+	isStreamingEnabledForRepoFn   func(repo string) bool
+	fetchManifestForStreamFn      func(ctx context.Context, name, reference string) ([]byte, godigest.Digest, string, error)
+	cachedBlobInfoFn              func(digest string) (int64, string, error)
+	connectBlobStreamFn           func(repo, digest string, writer io.Writer) (func(ctx context.Context, start, end int64) error, error)
+	shouldCheckUpstreamManifestFn func(repo, reference string) bool
+	syncImageFn                   func(ctx context.Context, repo, reference string) error
 }
 
-func (m *mockSyncOnDemand) SyncImage(_ context.Context, _, _ string) error { return nil }
+func (m *mockSyncOnDemand) SyncImage(ctx context.Context, repo, reference string) error {
+	if m.syncImageFn != nil {
+		return m.syncImageFn(ctx, repo, reference)
+	}
+
+	return nil
+}
+
+func (m *mockSyncOnDemand) ShouldCheckUpstreamManifest(repo, reference string) bool {
+	if m.shouldCheckUpstreamManifestFn != nil {
+		return m.shouldCheckUpstreamManifestFn(repo, reference)
+	}
+
+	return true
+}
 
 func (m *mockSyncOnDemand) SyncReferrers(_ context.Context, _, _ string, _ []string) error {
 	return nil
