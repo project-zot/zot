@@ -1517,6 +1517,86 @@ func normalizeBlobRedirectURL(rawURL string) (string, bool) {
 	return rawURL, true
 }
 
+// tryStreamBlob attempts to serve a blob (fully, or a single byte range) from
+// an active streaming sync download. It returns true if a response has been
+// written (successfully or not); false means the blob is not part of any
+// active stream and the caller should continue with its regular error handling.
+//
+// Range support is essential here: when a streamed download is interrupted,
+// docker reconnects with "Range: bytes=<received>-" to resume the layer pull.
+// Without a 206 answer from the stream path, those resume attempts would fail
+// and the pull would abort with the original error (e.g. unexpected EOF).
+func (rh *RouteHandler) tryStreamBlob(response http.ResponseWriter, name string, digest godigest.Digest,
+	contentRange string, rangeHeaderPresent bool,
+) bool {
+	if rh.c.SyncOnDemand == nil || !rh.c.SyncOnDemand.IsStreamingEnabledForRepo(name) {
+		return false
+	}
+
+	streamMgr := rh.c.SyncOnDemand.StreamManager()
+
+	blobSize, mediaType, err := streamMgr.CachedBlobInfo(digest.String())
+	if err != nil {
+		rh.c.Log.Debug().Str("repo", name).Str("digest", digest.String()).
+			Msg("blob not found in active streams")
+
+		return false
+	}
+
+	start, end := int64(0), int64(-1)
+
+	if rangeHeaderPresent {
+		ranges, err := parseRangeHeader(contentRange, blobSize)
+		if err != nil || len(ranges) != 1 {
+			// Multi-range responses are not supported for in-flight blobs.
+			response.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", blobSize))
+			response.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+
+			return true
+		}
+
+		start, end = ranges[0].start, ranges[0].end
+	}
+
+	rh.c.Log.Debug().Str("repo", name).Str("digest", digest.String()).
+		Int64("start", start).Int64("end", end).Msg("connecting client to stream")
+
+	copier, err := streamMgr.ConnectClient(digest.String(), response)
+	if err != nil {
+		// The stream may have been cleaned up between CachedBlobInfo and here.
+		rh.c.Log.Warn().Err(err).Str("digest", digest.String()).
+			Msg("failed to connect client to stream")
+
+		return false
+	}
+
+	response.Header().Set(constants.DistContentDigestKey, digest.String())
+	response.Header().Set("Content-Type", mediaType)
+	response.Header().Set("Accept-Ranges", "bytes")
+
+	if rangeHeaderPresent {
+		response.Header().Set("Content-Length", strconv.FormatInt(end-start+1, 10))
+		response.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, blobSize))
+		response.WriteHeader(http.StatusPartialContent)
+	} else {
+		response.Header().Set("Content-Length", strconv.FormatInt(blobSize, 10))
+		response.WriteHeader(http.StatusOK)
+	}
+
+	// Flush headers immediately so the client knows the blob is available
+	// and does not time out waiting for the first byte.
+	if flusher, ok := response.(http.Flusher); ok {
+		flusher.Flush()
+	}
+
+	if copyErr := copier.CopyRange(start, end); copyErr != nil {
+		rh.c.Log.Error().Err(copyErr).Str("digest", digest.String()).
+			Msg("unexpected error during stream copy")
+	}
+
+	return true
+}
+
 // GetBlob godoc
 // @Summary Get image blob/layer
 // @Description Get an image's blob/layer given a digest
@@ -1555,42 +1635,9 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 	writeBlobError := func(err error) {
 		details := zerr.GetDetails(err)
 
-		if rh.c.SyncOnDemand != nil && rh.c.SyncOnDemand.IsStreamingEnabledForRepo(name) {
-			rh.c.Log.Debug().Str("repo", name).Msg("streaming enabled for repo. using stream logic for blob.")
-
-			if errors.Is(err, zerr.ErrRepoNotFound) || errors.Is(err, zerr.ErrBlobNotFound) {
-				rh.c.Log.Debug().Str("repo", name).Str("digest", digest.String()).Msg("connecting client to stream")
-
-				copier, clientConnErr := rh.c.SyncOnDemand.StreamManager().ConnectClient(digest.String(), response)
-				if clientConnErr != nil {
-					if !errors.Is(clientConnErr, zerr.ErrBlobNotFoundInActiveStreams) {
-						rh.c.Log.Error().Err(clientConnErr).Str("digest", digest.String()).Msg("failed to connect client to stream")
-						response.WriteHeader(http.StatusInternalServerError)
-
-						return
-					}
-				} else {
-					desc := copier.Source.Descriptor()
-					response.Header().Set("Content-Length", strconv.FormatInt(desc.Size, 10))
-					response.Header().Set(constants.DistContentDigestKey, digest.String())
-					response.Header().Set("Content-Type", desc.MediaType)
-					response.WriteHeader(http.StatusOK)
-
-					// Flush headers immediately so the client knows the blob is available
-					// and does not time out waiting for the first byte.
-					if flusher, ok := response.(http.Flusher); ok {
-						flusher.Flush()
-					}
-
-					clientCopyErr := copier.Copy()
-					if clientCopyErr != nil {
-						rh.c.Log.Error().Err(clientCopyErr).Str("digest", digest.String()).Msg("unexpected error during stream copy")
-
-						return
-					}
-
-					return
-				}
+		if errors.Is(err, zerr.ErrRepoNotFound) || errors.Is(err, zerr.ErrBlobNotFound) {
+			if rh.tryStreamBlob(response, name, digest, contentRange, rangeHeaderPresent) {
+				return
 			}
 		}
 
@@ -1650,6 +1697,12 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 		}
 
 		if !ok {
+			// The blob may still be downloading via streaming sync; docker uses
+			// ranged requests to resume interrupted layer pulls.
+			if rh.tryStreamBlob(response, name, digest, contentRange, rangeHeaderPresent) {
+				return
+			}
+
 			e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(map[string]string{"digest": digest.String()})
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 

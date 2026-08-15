@@ -585,3 +585,86 @@ func TestReadWithSkipDiskWriteBytes(t *testing.T) {
 		})
 	})
 }
+
+func TestFailedAndReinitReader(t *testing.T) {
+	Convey("Failed and ReinitReader", t, func() {
+		dir := t.TempDir()
+		blobPath := filepath.Join(dir, "blob.bin")
+		cbr, err := NewChunkedBlobReader(blobPath, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		prefix := []byte("AAAAA")
+		suffix := []byte("BBBBB")
+		fullData := append(append([]byte{}, prefix...), suffix...)
+		desc := descriptor.Descriptor{
+			Digest:    godigest.FromBytes(fullData),
+			Size:      int64(len(fullData)),
+			MediaType: "application/octet-stream",
+		}
+
+		Convey("ReinitReader returns false when reader is not initialized", func() {
+			So(cbr.ReinitReader(newTestBReader(fullData), desc), ShouldBeFalse)
+		})
+
+		Convey("ReinitReader returns false when reader is active and not failed", func() {
+			cbr.InitReader(newTestBReader(fullData), desc)
+			So(cbr.ReinitReader(newTestBReader(fullData), desc), ShouldBeFalse)
+		})
+
+		Convey("upstream failure marks the reader failed; ReinitReader re-arms it", func() {
+			// First attempt: delivers the prefix, then fails mid-download.
+			failingReader := blob.NewReader(
+				blob.WithDesc(desc),
+				blob.WithReader(io.MultiReader(
+					bytes.NewReader(prefix),
+					errReaderFunc(func(p []byte) (int, error) {
+						return 0, zerr.ErrSyncUpstreamDownloadFailed
+					}),
+				)),
+			)
+			cbr.InitReader(failingReader, desc)
+			So(cbr.Initialized(), ShouldBeTrue)
+			So(cbr.Failed(), ShouldBeFalse)
+
+			buf := make([]byte, len(prefix))
+			n, readErr := cbr.Read(buf)
+			So(readErr, ShouldBeNil)
+			So(n, ShouldEqual, len(prefix))
+
+			_, readErr = cbr.Read(buf)
+			So(readErr, ShouldNotBeNil)
+			So(cbr.Failed(), ShouldBeTrue)
+			So(cbr.Completed(), ShouldBeFalse)
+
+			// Re-arm with a fresh reader that re-delivers the blob from byte 0.
+			So(cbr.ReinitReader(newTestBReader(fullData), desc), ShouldBeTrue)
+			So(cbr.Failed(), ShouldBeFalse)
+
+			// A second re-init without a new failure is refused.
+			So(cbr.ReinitReader(newTestBReader(fullData), desc), ShouldBeFalse)
+
+			// The full stream passes through for digest verification, but only
+			// the missing suffix is appended to disk.
+			out := make([]byte, 0, len(fullData))
+			chunk := make([]byte, 3)
+
+			for {
+				n, readErr := cbr.Read(chunk)
+				out = append(out, chunk[:n]...)
+
+				if readErr != nil {
+					So(readErr, ShouldEqual, io.EOF)
+
+					break
+				}
+			}
+
+			So(out, ShouldResemble, fullData)
+			So(cbr.Completed(), ShouldBeTrue)
+
+			onDisk, diskErr := os.ReadFile(blobPath)
+			So(diskErr, ShouldBeNil)
+			So(onDisk, ShouldResemble, fullData)
+		})
+	})
+}

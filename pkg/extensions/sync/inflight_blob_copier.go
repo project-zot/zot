@@ -51,8 +51,18 @@ func NewInFlightBlobCopier(
 	}
 }
 
+// Copy streams the entire blob to the destination writer.
 func (ifbc *InFlightBlobCopier) Copy() error {
-	ifbc.log.Debug().Str("onDiskPath", ifbc.onDiskPath).Msg("starting inflight copy")
+	return ifbc.CopyRange(0, -1)
+}
+
+// CopyRange streams the byte range [start, end] (inclusive, absolute offsets)
+// of the blob to the destination writer, waiting for in-flight bytes as needed.
+// An end of -1 means "until the last byte of the blob". This is used to serve
+// HTTP Range requests (e.g. docker resuming an interrupted layer download).
+func (ifbc *InFlightBlobCopier) CopyRange(start, end int64) error {
+	ifbc.log.Debug().Str("onDiskPath", ifbc.onDiskPath).
+		Int64("start", start).Int64("end", end).Msg("starting inflight copy")
 
 	onDiskFile, err := os.Open(ifbc.onDiskPath)
 	if err != nil {
@@ -62,11 +72,25 @@ func (ifbc *InFlightBlobCopier) Copy() error {
 	}
 	defer onDiskFile.Close()
 
+	if start > 0 {
+		if _, err := onDiskFile.Seek(start, io.SeekStart); err != nil {
+			ifbc.log.Error().Err(err).Str("onDiskPath", ifbc.onDiskPath).Msg("failed to seek on disk file")
+
+			return err
+		}
+	}
+
 	// Use the channel registered at construction time (in ConnectClient/NewInFlightBlobCopier).
 	byteAnnounceChan := ifbc.announceChan
 	defer ifbc.Source.Unsubscribe(ifbc.clientID)
 
 	blobSize := ifbc.Source.Descriptor().Size
+
+	// limit is the absolute exclusive end offset of the copy.
+	limit := blobSize
+	if end >= 0 && end+1 < limit {
+		limit = end + 1
+	}
 
 	// copyChan signals Copy() that new bytes are available.
 	copyChan := make(chan struct{}, 1)
@@ -120,21 +144,21 @@ func (ifbc *InFlightBlobCopier) Copy() error {
 	copied := false
 	copierDone := false
 
-	// numBytesCopied tracks how many bytes have been copied from disk to the client so far
-	numBytesCopied := int64(0)
+	// numBytesCopied tracks the absolute offset copied to the client so far.
+	numBytesCopied := start
 
 	for !copied && !copierDone {
 		select {
 		case <-copyChan:
-			latest := ifbc.latestOffset.Load()
+			target := min(ifbc.latestOffset.Load(), limit)
 
-			if latest <= numBytesCopied {
+			if target <= numBytesCopied {
 				continue
 			}
 
 			// As the blob size is known ahead of time, CopyN is not expected
 			// to encounter a partial read if the onDiskFile is healthy.
-			written, err := io.CopyN(ifbc.dest, onDiskFile, latest-numBytesCopied)
+			written, err := io.CopyN(ifbc.dest, onDiskFile, target-numBytesCopied)
 			if err != nil {
 				ifbc.log.Error().Err(err).Msg("failed to copy data to downstream client")
 
@@ -153,7 +177,7 @@ func (ifbc *InFlightBlobCopier) Copy() error {
 				ifbc.flusher.Flush()
 			}
 
-			if numBytesCopied >= blobSize {
+			if numBytesCopied >= limit {
 				copied = true
 			}
 
@@ -163,23 +187,36 @@ func (ifbc *InFlightBlobCopier) Copy() error {
 	}
 
 	// Drain any remaining bytes that arrived after the last copyChan signal.
-	latest := ifbc.latestOffset.Load()
+	target := min(ifbc.latestOffset.Load(), limit)
 
-	if latest > numBytesCopied {
-		_, err := io.CopyN(ifbc.dest, onDiskFile, latest-numBytesCopied)
+	if target > numBytesCopied {
+		written, err := io.CopyN(ifbc.dest, onDiskFile, target-numBytesCopied)
 		if err != nil {
 			ifbc.log.Error().Err(err).Msg("failed to copy data to downstream client")
 
+			close(shutdown)
+			<-done
+
 			return err
 		}
+
+		numBytesCopied += written
 
 		if ifbc.flusher != nil {
 			ifbc.flusher.Flush()
 		}
 	}
 
-	// Wait for the announcement goroutine to finish before returning.
+	// Stop the announcement goroutine (it may still be running when a bounded
+	// range finished before the blob download did) and wait for it to exit.
+	close(shutdown)
 	<-done
+
+	// The requested range was fully served; a late upstream failure no longer
+	// affects this client.
+	if numBytesCopied >= limit {
+		return nil
+	}
 
 	return copierErr
 }

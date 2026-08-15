@@ -208,6 +208,52 @@ func (sm *ChunkingStreamManager) StreamingBlobReader(reader *blob.BReader) (*blo
 		return nil, zerr.ErrBlobReaderMissing
 	}
 
+	// Retry path: a previous attempt already initialized this reader.
+	// The ChunkedBlobReader survives across sync retries (regclient-level and
+	// on-demand background retries both re-invoke this hook with a fresh
+	// upstream reader), so it must be handled explicitly here instead of
+	// silently returning the raw reader — otherwise subscribed clients would
+	// never receive further byte announcements and would hang forever.
+	if chunkingReader.Initialized() {
+		// Blob already fully on disk from a previous attempt: serve regclient
+		// from the local file and drop the fresh upstream stream.
+		if chunkingReader.Completed() {
+			sm.logger.Info().Str("blob", digest).
+				Msg("blob already complete on disk from previous attempt, serving from file")
+
+			diskFile, err := os.Open(sm.tempStore.BlobPath(desc.Digest))
+			if err != nil {
+				return nil, err
+			}
+
+			rawHeaders := reader.RawHeaders()
+			// Drop the fresh upstream connection; it will not be read.
+			_ = reader.Close()
+
+			return blob.NewReader(
+				blob.WithHeader(rawHeaders),
+				blob.WithDesc(desc),
+				blob.WithReader(diskFile),
+			), nil
+		}
+
+		// Previous attempt failed mid-download: re-arm the reader in place so
+		// the retry continues appending to disk and announcing to clients.
+		if chunkingReader.ReinitReader(reader, desc) {
+			sm.logger.Info().Str("blob", digest).
+				Msg("re-armed failed blob reader for retry")
+
+			return chunkingReader.ToBReader(), nil
+		}
+
+		// Download is still actively in flight (e.g. multi-arch manifests
+		// sharing the same layer). Do not wrap to avoid double reads.
+		sm.logger.Debug().Str("blob", digest).
+			Msg("blob reader is already set up for stream. skipping init and wrap")
+
+		return reader, nil
+	}
+
 	resumeOffset := chunkingReader.ResumeOffset()
 
 	// Plan A: blob is already fully on disk — skip the upstream BlobCopy entirely.
@@ -580,4 +626,3 @@ func (sm *ChunkingStreamManager) cleanupActiveStream(blobDigest string, purged m
 		sm.logger.Error().Err(err).Str("blob", blobDigest).Msg("failed to remove blob from temp store")
 	}
 }
-

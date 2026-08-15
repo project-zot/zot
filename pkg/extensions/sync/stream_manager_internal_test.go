@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	godigest "github.com/opencontainers/go-digest"
+	"github.com/regclient/regclient/types/blob"
 	"github.com/regclient/regclient/types/descriptor"
 	rcManifest "github.com/regclient/regclient/types/manifest"
 	rcOCIV1 "github.com/regclient/regclient/types/oci/v1"
@@ -501,6 +502,127 @@ func TestChunkingStreamManagerMultiArchStoreImageForStreaming(t *testing.T) {
 			streamableManifest := NewStreamableManifest(index, subManifests)
 			err := sm.StoreImageForStreaming("multi-arch-repo", "latest", streamableManifest)
 			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
+func TestChunkingStreamManagerStreamingBlobReaderRetry(t *testing.T) {
+	Convey("StreamingBlobReader on sync retry", t, func() {
+		sm := newTestChunkingStreamManager(t.TempDir())
+
+		prefix := []byte("AAAAAAAAAA") // delivered by the failed first attempt
+		suffix := []byte("BBBBBBBBBB")
+		fullData := append(append([]byte{}, prefix...), suffix...)
+		desc := descriptor.Descriptor{
+			Digest:    godigest.FromBytes(fullData),
+			Size:      int64(len(fullData)),
+			MediaType: "application/octet-stream",
+		}
+
+		err := sm.prepareActiveStreamForBlob(desc)
+		So(err, ShouldBeNil)
+
+		Convey("re-arms a failed reader in place and resumes appending to disk", func() {
+			// First attempt: upstream fails after delivering the prefix.
+			failingReader := blob.NewReader(
+				blob.WithDesc(desc),
+				blob.WithReader(io.MultiReader(
+					bytes.NewReader(prefix),
+					errReaderFunc(func(p []byte) (int, error) {
+						return 0, zerr.ErrSyncUpstreamDownloadFailed
+					}),
+				)),
+			)
+
+			result1, err := sm.StreamingBlobReader(failingReader)
+			So(err, ShouldBeNil)
+
+			buf := make([]byte, len(prefix))
+			n, readErr := result1.Read(buf)
+			So(readErr, ShouldBeNil)
+			So(n, ShouldEqual, len(prefix))
+
+			_, readErr = result1.Read(buf)
+			So(readErr, ShouldNotBeNil)
+
+			cbr := sm.activeStreams[desc.Digest.String()]
+			So(cbr.Failed(), ShouldBeTrue)
+
+			// Retry: the hook is invoked again with a fresh full upstream reader.
+			result2, err := sm.StreamingBlobReader(newTestBReader(fullData))
+			So(err, ShouldBeNil)
+			So(cbr.Failed(), ShouldBeFalse)
+
+			// Reading through the re-armed reader yields the full blob.
+			readBuf := make([]byte, desc.Size+10)
+			totalRead := 0
+
+			for {
+				n, readErr := result2.Read(readBuf[totalRead:])
+				totalRead += n
+
+				if readErr != nil {
+					So(readErr, ShouldEqual, io.EOF)
+
+					break
+				}
+			}
+
+			So(int64(totalRead), ShouldEqual, desc.Size)
+			So(readBuf[:totalRead], ShouldResemble, fullData)
+
+			// The on-disk file contains the full blob with no duplicated prefix.
+			onDisk, diskErr := os.ReadFile(sm.tempStore.BlobPath(desc.Digest))
+			So(diskErr, ShouldBeNil)
+			So(onDisk, ShouldResemble, fullData)
+		})
+
+		Convey("serves an already-completed blob from disk on retry", func() {
+			// First attempt completes the download.
+			result1, err := sm.StreamingBlobReader(newTestBReader(fullData))
+			So(err, ShouldBeNil)
+
+			// Slightly larger than the blob so the read loop hits EOF.
+			readBuf := make([]byte, desc.Size+10)
+			totalRead := 0
+
+			for {
+				n, readErr := result1.Read(readBuf[totalRead:])
+				totalRead += n
+
+				if readErr != nil {
+					So(readErr, ShouldEqual, io.EOF)
+
+					break
+				}
+			}
+
+			So(int64(totalRead), ShouldEqual, desc.Size)
+
+			cbr := sm.activeStreams[desc.Digest.String()]
+			So(cbr.Completed(), ShouldBeTrue)
+
+			// Retry (e.g. another blob in the image failed): the hook must serve
+			// this blob from disk instead of re-downloading or hanging.
+			result2, err := sm.StreamingBlobReader(newTestBReader(fullData))
+			So(err, ShouldBeNil)
+
+			onDisk := make([]byte, desc.Size+10)
+			totalRead = 0
+
+			for {
+				n, readErr := result2.Read(onDisk[totalRead:])
+				totalRead += n
+
+				if readErr != nil {
+					So(readErr, ShouldEqual, io.EOF)
+
+					break
+				}
+			}
+
+			So(int64(totalRead), ShouldEqual, desc.Size)
+			So(onDisk[:totalRead], ShouldResemble, fullData)
 		})
 	})
 }

@@ -22,6 +22,10 @@ type ChunkedBlobReader struct {
 	readerReady        chan struct{}
 	blobDesc           descriptor.Descriptor
 
+	// failed is set when the in-flight upstream read (or the disk write) fails.
+	// A failed reader can be re-armed with ReinitReader on the next sync retry.
+	failed bool
+
 	onDiskPath string
 	onDiskFile *os.File
 
@@ -157,6 +161,59 @@ func (cbr *ChunkedBlobReader) InitReaderComplete(blobReader *blob.BReader, desc 
 	return false
 }
 
+// Initialized returns true once InitReader or InitReaderComplete has been called.
+func (cbr *ChunkedBlobReader) Initialized() bool {
+	cbr.bytesMu.RLock()
+	defer cbr.bytesMu.RUnlock()
+
+	return cbr.inFlightReader != nil
+}
+
+// Completed returns true if the full blob has been written to disk.
+func (cbr *ChunkedBlobReader) Completed() bool {
+	cbr.bytesMu.RLock()
+	defer cbr.bytesMu.RUnlock()
+
+	return cbr.inFlightReader != nil && cbr.numBytesTotal > 0 &&
+		cbr.numBytesReadToDisk >= cbr.numBytesTotal
+}
+
+// Failed returns true if the in-flight download failed and the reader
+// is waiting to be re-armed by a sync retry.
+func (cbr *ChunkedBlobReader) Failed() bool {
+	cbr.bytesMu.RLock()
+	defer cbr.bytesMu.RUnlock()
+
+	return cbr.failed
+}
+
+// ReinitReader re-arms a failed reader with a fresh upstream stream so that a
+// sync retry can continue the download in-place. The new stream re-delivers the
+// blob from byte 0; bytes already on disk are passed through to the caller for
+// digest verification but are not written to disk again. Announcements to
+// subscribed clients resume from the current disk offset.
+// Returns false if the reader is not in a failed state.
+func (cbr *ChunkedBlobReader) ReinitReader(blobReader *blob.BReader, desc descriptor.Descriptor) bool {
+	cbr.bytesMu.Lock()
+	defer cbr.bytesMu.Unlock()
+
+	if cbr.inFlightReader == nil || !cbr.failed {
+		return false
+	}
+
+	cbr.inFlightReader = blobReader
+	cbr.blobDesc = desc
+	cbr.numBytesTotal = desc.Size
+	cbr.skipDiskWriteBytes = cbr.numBytesReadToDisk
+	cbr.failed = false
+
+	cbr.logger.Info().Str("path", cbr.onDiskPath).
+		Int64("resumeFrom", cbr.numBytesReadToDisk).Int64("totalSize", desc.Size).
+		Msg("re-armed failed blob reader for retry, resuming from disk offset")
+
+	return true
+}
+
 // SetSkipDiskWriteBytes sets the number of leading bytes in the reader stream
 // that should be passed through for digest verification but NOT written to disk
 // (because they are already on disk from a previous partial download).
@@ -174,6 +231,7 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 		if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 			// upstream download error
 			cbr.logger.Error().Err(err).Msg("failed to read from in flight reader")
+			cbr.failed = true
 			cbr.bytesMu.Unlock()
 
 			cbr.clientMu.RLock()
@@ -213,6 +271,7 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 		if len(writeBytes) > 0 {
 			if _, werr := cbr.onDiskFile.Write(writeBytes); werr != nil {
 				cbr.logger.Error().Err(werr).Msg("failed to write blob data to disk")
+				cbr.failed = true
 				cbr.bytesMu.Unlock()
 
 				cbr.clientMu.RLock()

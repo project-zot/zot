@@ -5,6 +5,7 @@ package sync
 import (
 	"bytes"
 	"io"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -261,6 +262,108 @@ func TestInFlightBlobCopierCopy(t *testing.T) {
 				So(<-copyResults[i], ShouldBeNil)
 				So(dests[i].Bytes(), ShouldResemble, data)
 			}
+		})
+	})
+}
+
+func TestInFlightBlobCopierCopyRange(t *testing.T) {
+	Convey("InFlightBlobCopier.CopyRange", t, func() {
+		data := []byte("0123456789abcdefghij") // 20 bytes
+
+		newCompleteCBR := func(dir string) (*ChunkedBlobReader, string) {
+			blobPath := filepath.Join(dir, "blob.bin")
+			writeErr := os.WriteFile(blobPath, data, 0o644)
+			So(writeErr, ShouldBeNil)
+
+			cbr, err := NewChunkedBlobReader(blobPath, log.NewTestLogger())
+			So(err, ShouldBeNil)
+
+			testBReader := newTestBReader(data)
+			cbr.InitReaderComplete(testBReader, testBReader.GetDescriptor())
+
+			return cbr, blobPath
+		}
+
+		Convey("serves an open-ended suffix range of a completed blob", func() {
+			cbr, blobPath := newCompleteCBR(t.TempDir())
+
+			var dest bytes.Buffer
+			ifbc := NewInFlightBlobCopier(cbr, blobPath, &dest, log.NewTestLogger())
+
+			So(ifbc.CopyRange(5, -1), ShouldBeNil)
+			So(dest.Bytes(), ShouldResemble, data[5:])
+		})
+
+		Convey("serves a bounded middle range of a completed blob", func() {
+			cbr, blobPath := newCompleteCBR(t.TempDir())
+
+			var dest bytes.Buffer
+			ifbc := NewInFlightBlobCopier(cbr, blobPath, &dest, log.NewTestLogger())
+
+			So(ifbc.CopyRange(5, 9), ShouldBeNil)
+			So(dest.Bytes(), ShouldResemble, data[5:10])
+		})
+
+		Convey("bounded range finishes before the blob download completes", func() {
+			dir := t.TempDir()
+			blobPath := filepath.Join(dir, "blob.bin")
+
+			cbr, err := NewChunkedBlobReader(blobPath, log.NewTestLogger())
+			So(err, ShouldBeNil)
+
+			testBReader := newTestBReader(data)
+			cbr.InitReader(testBReader, testBReader.GetDescriptor())
+
+			var dest bytes.Buffer
+			ifbc := NewInFlightBlobCopier(cbr, blobPath, &dest, log.NewTestLogger())
+
+			copyResult := make(chan error, 1)
+			go func() {
+				copyResult <- ifbc.CopyRange(0, 7)
+			}()
+
+			// Deliver only the first half of the blob.
+			buf := make([]byte, 10)
+			n, readErr := cbr.Read(buf)
+			So(readErr, ShouldBeNil)
+			So(n, ShouldEqual, 10)
+
+			// The copier must complete with the requested range even though the
+			// download is still in flight.
+			So(<-copyResult, ShouldBeNil)
+			So(dest.Bytes(), ShouldResemble, data[:8])
+		})
+
+		Convey("range starting beyond current progress waits for bytes", func() {
+			dir := t.TempDir()
+			blobPath := filepath.Join(dir, "blob.bin")
+
+			cbr, err := NewChunkedBlobReader(blobPath, log.NewTestLogger())
+			So(err, ShouldBeNil)
+
+			testBReader := newTestBReader(data)
+			cbr.InitReader(testBReader, testBReader.GetDescriptor())
+
+			var dest bytes.Buffer
+			ifbc := NewInFlightBlobCopier(cbr, blobPath, &dest, log.NewTestLogger())
+
+			copyResult := make(chan error, 1)
+			go func() {
+				copyResult <- ifbc.CopyRange(15, -1)
+			}()
+
+			// Deliver the blob in two chunks; the second read hits EOF.
+			buf := make([]byte, 10)
+			n1, readErr1 := cbr.Read(buf)
+			So(readErr1, ShouldBeNil)
+			So(n1, ShouldEqual, 10)
+
+			n2, readErr2 := cbr.Read(buf)
+			So(readErr2, ShouldEqual, io.EOF)
+			So(n2, ShouldEqual, 10)
+
+			So(<-copyResult, ShouldBeNil)
+			So(dest.Bytes(), ShouldResemble, data[15:])
 		})
 	})
 }
