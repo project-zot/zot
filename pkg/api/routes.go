@@ -1629,6 +1629,15 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 	digest := godigest.Digest(digestStr)
 
+	// Blob downloads of multi-GB layers can legitimately exceed the server's
+	// WriteTimeout, which is an absolute deadline for the whole response.
+	// Replace it with a rolling per-write deadline: transfers that keep making
+	// progress are never cut off mid-stream, while stalled clients still time
+	// out after the configured duration of write inactivity.
+	if writeTimeout := rh.c.Config.GetHTTPWriteTimeout(); writeTimeout > 0 {
+		response = newRollingDeadlineWriter(response, writeTimeout, rh.c.Log)
+	}
+
 	contentRange := request.Header.Get("Range")
 	_, rangeHeaderPresent := request.Header["Range"]
 
