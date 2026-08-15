@@ -38,7 +38,7 @@ type mockSyncOnDemand struct {
 	isStreamingEnabledForRepoFn func(repo string) bool
 	fetchManifestForStreamFn    func(ctx context.Context, name, reference string) ([]byte, godigest.Digest, string, error)
 	cachedBlobInfoFn            func(digest string) (int64, string, error)
-	connectBlobStreamFn         func(digest string, writer io.Writer) (func(ctx context.Context, start, end int64) error, error)
+	connectBlobStreamFn         func(repo, digest string, writer io.Writer) (func(ctx context.Context, start, end int64) error, error)
 }
 
 func (m *mockSyncOnDemand) SyncImage(_ context.Context, _, _ string) error { return nil }
@@ -73,10 +73,10 @@ func (m *mockSyncOnDemand) CachedBlobInfo(digest string) (int64, string, error) 
 	return 0, "", zerr.ErrBlobNotFound
 }
 
-func (m *mockSyncOnDemand) ConnectBlobStream(digest string, writer io.Writer,
+func (m *mockSyncOnDemand) ConnectBlobStream(repo, digest string, writer io.Writer,
 ) (func(ctx context.Context, start, end int64) error, error) {
 	if m.connectBlobStreamFn != nil {
-		return m.connectBlobStreamFn(digest, writer)
+		return m.connectBlobStreamFn(repo, digest, writer)
 	}
 
 	return nil, zerr.ErrBlobNotFoundInActiveStreams
@@ -180,7 +180,7 @@ func TestGetBlobStreaming(t *testing.T) {
 				cachedBlobInfoFn: func(_ string) (int64, string, error) {
 					return 42, "application/octet-stream", nil
 				},
-				connectBlobStreamFn: func(_ string, _ io.Writer) (func(context.Context, int64, int64) error, error) {
+				connectBlobStreamFn: func(_, _ string, _ io.Writer) (func(context.Context, int64, int64) error, error) {
 					return nil, zerr.ErrBlobNotFoundInActiveStreams
 				},
 			}
@@ -221,7 +221,7 @@ func TestGetBlobStreaming(t *testing.T) {
 				cachedBlobInfoFn: func(_ string) (int64, string, error) {
 					return 42, "application/octet-stream", nil
 				},
-				connectBlobStreamFn: func(_ string, _ io.Writer) (func(context.Context, int64, int64) error, error) {
+				connectBlobStreamFn: func(_, _ string, _ io.Writer) (func(context.Context, int64, int64) error, error) {
 					return nil, zerr.ErrBlobNotFoundInActiveStreams
 				},
 			}
@@ -262,7 +262,7 @@ func TestGetBlobStreaming(t *testing.T) {
 				cachedBlobInfoFn: func(_ string) (int64, string, error) {
 					return 42, "application/octet-stream", nil
 				},
-				connectBlobStreamFn: func(_ string, _ io.Writer) (func(context.Context, int64, int64) error, error) {
+				connectBlobStreamFn: func(_, _ string, _ io.Writer) (func(context.Context, int64, int64) error, error) {
 					return nil, ErrUnexpectedError
 				},
 			}
@@ -325,7 +325,7 @@ func TestGetBlobStreaming(t *testing.T) {
 				cachedBlobInfoFn: func(_ string) (int64, string, error) {
 					return int64(len(blobData)), blobMediaType, nil
 				},
-				connectBlobStreamFn: func(_ string, writer io.Writer) (func(context.Context, int64, int64) error, error) {
+				connectBlobStreamFn: func(_, _ string, writer io.Writer) (func(context.Context, int64, int64) error, error) {
 					copier := stream.NewInFlightBlobCopier(cbr, blobPath, writer, log.NewTestLogger())
 
 					return copier.CopyRange, nil
@@ -391,7 +391,7 @@ func TestGetBlobStreaming(t *testing.T) {
 				cachedBlobInfoFn: func(_ string) (int64, string, error) {
 					return int64(len(blobData)), blobMediaType, nil
 				},
-				connectBlobStreamFn: func(_ string, writer io.Writer) (func(context.Context, int64, int64) error, error) {
+				connectBlobStreamFn: func(_, _ string, writer io.Writer) (func(context.Context, int64, int64) error, error) {
 					// Use a non-existent on-disk path so the copy fails at os.Open,
 					// after the handler has already written the 200 headers.
 					copier := stream.NewInFlightBlobCopier(

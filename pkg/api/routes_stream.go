@@ -35,9 +35,11 @@ type syncStreamer interface {
 	// active stream, or zerr.ErrBlobNotFound.
 	CachedBlobInfo(blobDigest string) (int64, string, error)
 	// ConnectBlobStream subscribes the writer to an in-flight blob download
-	// and returns a function that copies the requested byte range to it, or
-	// zerr.ErrBlobNotFoundInActiveStreams when the blob has no active stream.
-	ConnectBlobStream(blobDigest string, writer io.Writer) (func(ctx context.Context, start, end int64) error, error)
+	// of the given repo and returns a function that copies the requested byte
+	// range to it, or zerr.ErrBlobNotFoundInActiveStreams when the blob has no
+	// active stream. It also prioritizes the blob's upstream download, since a
+	// client is now waiting on it.
+	ConnectBlobStream(repo, blobDigest string, writer io.Writer) (func(ctx context.Context, start, end int64) error, error)
 }
 
 // streamer returns the syncStreamer when streaming sync is available and
@@ -165,7 +167,7 @@ func (rh *RouteHandler) tryStreamBlob(streamer syncStreamer, response http.Respo
 	rh.c.Log.Debug().Str("repo", name).Str("digest", digest.String()).
 		Int64("start", start).Int64("end", end).Msg("connecting client to stream")
 
-	copyRange, err := streamer.ConnectBlobStream(digest.String(), response)
+	copyRange, err := streamer.ConnectBlobStream(name, digest.String(), response)
 	if err != nil {
 		if errors.Is(err, zerr.ErrBlobNotFoundInActiveStreams) {
 			// The stream may have been cleaned up between CachedBlobInfo and

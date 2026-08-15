@@ -952,3 +952,109 @@ func TestChunkingManagerEarlyClientBeforePlanAInit(t *testing.T) {
 		So(clientBuf.Bytes(), ShouldResemble, data)
 	})
 }
+
+func TestChunkingManagerClaimBlobStream(t *testing.T) {
+	Convey("ClaimBlobStream", t, func() {
+		sm := newTestChunkingManager(t.TempDir())
+
+		data := []byte("priority fetched blob data")
+		desc := descriptor.Descriptor{
+			Digest:    godigest.FromBytes(data),
+			Size:      int64(len(data)),
+			MediaType: "application/octet-stream",
+		}
+
+		Convey("does not claim a blob without an active stream", func() {
+			So(sm.NeedsUpstreamData(desc.Digest.String()), ShouldBeFalse)
+
+			wrapped, claimed, err := sm.ClaimBlobStream(newTestBReader(data))
+			So(err, ShouldBeNil)
+			So(claimed, ShouldBeFalse)
+			So(wrapped, ShouldBeNil)
+		})
+
+		Convey("claims an uninitialized stream and pumps data to disk and clients", func() {
+			So(sm.prepareActiveStreamForBlob(desc), ShouldBeNil)
+			So(sm.NeedsUpstreamData(desc.Digest.String()), ShouldBeTrue)
+
+			cbr := sm.activeStreams[desc.Digest.String()]
+			offsets, _ := cbr.Subscribe()
+
+			wrapped, claimed, err := sm.ClaimBlobStream(newTestBReader(data))
+			So(err, ShouldBeNil)
+			So(claimed, ShouldBeTrue)
+			So(wrapped, ShouldNotBeNil)
+
+			// The claim marks the stream as being fed.
+			So(sm.NeedsUpstreamData(desc.Digest.String()), ShouldBeFalse)
+
+			// A concurrent claim of the same blob must fail.
+			dupWrapped, dupClaimed, dupErr := sm.ClaimBlobStream(newTestBReader(data))
+			So(dupErr, ShouldBeNil)
+			So(dupClaimed, ShouldBeFalse)
+			So(dupWrapped, ShouldBeNil)
+
+			// Pumping the wrapped reader writes the bytes to the temp file.
+			written, copyErr := io.Copy(io.Discard, wrapped)
+			So(copyErr, ShouldBeNil)
+			So(written, ShouldEqual, desc.Size)
+
+			onDisk, readErr := os.ReadFile(sm.tempStore.BlobPath(desc.Digest))
+			So(readErr, ShouldBeNil)
+			So(onDisk, ShouldResemble, data)
+
+			// The subscriber received the final on-disk offset.
+			So(<-offsets, ShouldEqual, desc.Size)
+			So(cbr.Completed(), ShouldBeTrue)
+		})
+
+		Convey("does not claim a stream already initialized by the sync hook", func() {
+			So(sm.prepareActiveStreamForBlob(desc), ShouldBeNil)
+
+			hooked, err := sm.StreamingBlobReader(newTestBReader(data))
+			So(err, ShouldBeNil)
+			So(hooked, ShouldNotBeNil)
+
+			wrapped, claimed, err := sm.ClaimBlobStream(newTestBReader(data))
+			So(err, ShouldBeNil)
+			So(claimed, ShouldBeFalse)
+			So(wrapped, ShouldBeNil)
+		})
+
+		Convey("marks an already-complete on-disk blob complete instead of claiming", func() {
+			So(sm.prepareActiveStreamForBlob(desc), ShouldBeNil)
+
+			// Simulate a complete file left by a previous attempt, then
+			// re-create the chunked reader so it picks up the resume offset.
+			blobPath := sm.tempStore.BlobPath(desc.Digest)
+			So(os.WriteFile(blobPath, data, 0o644), ShouldBeNil)
+
+			cbr, cbrErr := NewChunkedBlobReader(blobPath, sm.logger)
+			So(cbrErr, ShouldBeNil)
+			sm.activeStreams[desc.Digest.String()] = cbr
+
+			offsets, _ := cbr.Subscribe()
+
+			wrapped, claimed, err := sm.ClaimBlobStream(newTestBReader(data))
+			So(err, ShouldBeNil)
+			So(claimed, ShouldBeFalse)
+			So(wrapped, ShouldBeNil)
+
+			// Waiting clients were notified that the whole blob is on disk.
+			So(<-offsets, ShouldEqual, desc.Size)
+			So(cbr.Completed(), ShouldBeTrue)
+			So(sm.NeedsUpstreamData(desc.Digest.String()), ShouldBeFalse)
+		})
+
+		Convey("does not claim an aborted stream", func() {
+			So(sm.prepareActiveStreamForBlob(desc), ShouldBeNil)
+			sm.activeStreams[desc.Digest.String()].Abort()
+
+			wrapped, claimed, err := sm.ClaimBlobStream(newTestBReader(data))
+			So(err, ShouldBeNil)
+			So(claimed, ShouldBeFalse)
+			So(wrapped, ShouldBeNil)
+			So(sm.NeedsUpstreamData(desc.Digest.String()), ShouldBeFalse)
+		})
+	})
+}

@@ -52,6 +52,12 @@ type BaseService struct {
 	tagsCache        *tagsCache
 	streamManager    stream.Manager
 
+	// Priority fetching of streamed blobs (see stream_priority.go): the
+	// engine lives in the stream package; this service only holds the
+	// dedicated upstream client and the fetcher handle.
+	prioClient      *regclient.RegClient
+	priorityFetcher *stream.PriorityFetcher
+
 	clientLock sync.RWMutex
 	log        log.Logger
 }
@@ -75,6 +81,7 @@ func New(
 	service.storeController = storeController
 	service.tagsCache = newTagsCache(defaultExpireMinutes)
 	service.streamManager = streamManager
+	service.initPriorityFetcher()
 
 	var err error
 
@@ -211,7 +218,7 @@ func (service *BaseService) initClient() error {
 		service.log,
 	)
 
-	return nil
+	return service.initPriorityClient()
 }
 
 // refreshRegistryTemporaryCredentials refreshes the temporary credentials for the registry if necessary.
@@ -942,6 +949,7 @@ func httpRetryDelayBounds(opts syncconf.RegistryConfig) (time.Duration, time.Dur
 }
 
 func newClient(opts syncconf.RegistryConfig, credentials syncconf.CredentialsFile, logger log.Logger,
+	hostMods ...func(*config.Host),
 ) (*regclient.RegClient, []config.Host, error) {
 	urls, err := parseRegistryURLs(opts.URLs)
 	if err != nil {
@@ -1012,6 +1020,12 @@ func newClient(opts syncconf.RegistryConfig, credentials syncconf.CredentialsFil
 		}
 
 		hostConfigOpts = append(hostConfigOpts, mirrorHostConfig)
+	}
+
+	for i := range hostConfigOpts {
+		for _, mod := range hostMods {
+			mod(&hostConfigOpts[i])
+		}
 	}
 
 	regOpts := []reg.Opts{}

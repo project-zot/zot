@@ -56,7 +56,7 @@ func (onDemand *BaseOnDemand) CachedBlobInfo(blobDigest string) (int64, string, 
 // returns a copy function that streams the requested byte range to it. It
 // returns zerr.ErrBlobNotFoundInActiveStreams when the blob has no active
 // stream (e.g. it was just committed to storage).
-func (onDemand *BaseOnDemand) ConnectBlobStream(blobDigest string, writer io.Writer,
+func (onDemand *BaseOnDemand) ConnectBlobStream(repo, blobDigest string, writer io.Writer,
 ) (func(ctx context.Context, start, end int64) error, error) {
 	if onDemand.streamManager == nil {
 		return nil, zerr.ErrBlobNotFoundInActiveStreams
@@ -67,7 +67,45 @@ func (onDemand *BaseOnDemand) ConnectBlobStream(blobDigest string, writer io.Wri
 		return nil, err
 	}
 
+	// A client is now waiting on this blob: make sure its upstream download
+	// is not stuck behind unrelated blobs in the background sync queue.
+	onDemand.prioritizeStreamedBlob(repo, blobDigest)
+
 	return copier.CopyRange, nil
+}
+
+// streamPrioritizerFor returns the first streaming-enabled service for the
+// repo that supports priority fetching, or nil when there is none.
+func (onDemand *BaseOnDemand) streamPrioritizerFor(repo string) streamPrioritizer {
+	for _, service := range onDemand.services {
+		if !service.IsStreamingForRepo(repo) {
+			continue
+		}
+
+		if prioritizer, ok := service.(streamPrioritizer); ok {
+			return prioritizer
+		}
+	}
+
+	return nil
+}
+
+// prioritizeStreamedBlob asks the streaming service handling this repo to
+// start an out-of-band upstream download for a blob a client is waiting on,
+// when nothing is feeding its stream yet.
+func (onDemand *BaseOnDemand) prioritizeStreamedBlob(repo, blobDigest string) {
+	if !onDemand.streamManager.NeedsUpstreamData(blobDigest) {
+		return
+	}
+
+	digest, err := godigest.Parse(blobDigest)
+	if err != nil {
+		return
+	}
+
+	if prioritizer := onDemand.streamPrioritizerFor(repo); prioritizer != nil {
+		prioritizer.PrioritizeBlobForStream(repo, digest)
+	}
 }
 
 // FetchManifestForStream directly fetches the manifest from the upstream
@@ -85,7 +123,12 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(
 		onDemand.log.Debug().Str("repo", repo).Str("reference", reference).
 			Msg("streaming manifest already present in cache.")
 
-		return rawManifestResponse(cachedManifest.ReferenceManifest())
+		// A digest lookup of a concrete platform manifest reveals which
+		// architecture the client is about to pull: prefetch its blobs so
+		// they do not queue behind other platforms in the background sync.
+		onDemand.prefetchPlatformForStream(repo, reference, cachedManifest.ReferenceManifest())
+
+		return stream.RawManifestResponse(cachedManifest.ReferenceManifest())
 	}
 
 	var resultManifest manifest.Manifest
@@ -132,7 +175,7 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(
 		}
 	}()
 
-	return rawManifestResponse(resultManifest)
+	return stream.RawManifestResponse(resultManifest)
 }
 
 // abortStreaming tears down any streaming state for the image after a terminal
@@ -146,15 +189,19 @@ func (onDemand *BaseOnDemand) abortStreaming(repo, reference string) {
 	onDemand.streamManager.AbortStreamingImage(repo, reference)
 }
 
-// rawManifestResponse converts a regclient manifest into the raw form
-// (content, digest, media type) served by the API layer.
-func rawManifestResponse(mfst manifest.Manifest) ([]byte, godigest.Digest, string, error) {
-	content, err := mfst.RawBody()
-	if err != nil {
-		return nil, "", "", err
+// prefetchPlatformForStream schedules priority downloads for the blobs of a
+// platform manifest the client resolved by digest. Tag lookups and manifest
+// lists carry no platform choice and are ignored.
+func (onDemand *BaseOnDemand) prefetchPlatformForStream(repo, reference string, mfst manifest.Manifest) {
+	if _, err := godigest.Parse(reference); err != nil {
+		return
 	}
 
-	desc := mfst.GetDescriptor()
+	if mfst.IsList() {
+		return
+	}
 
-	return content, desc.Digest, desc.MediaType, nil
+	if prioritizer := onDemand.streamPrioritizerFor(repo); prioritizer != nil {
+		prioritizer.PrefetchManifestBlobsForStream(repo, mfst)
+	}
 }

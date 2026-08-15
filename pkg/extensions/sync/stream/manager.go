@@ -39,9 +39,32 @@ func (sm *StreamableManifest) SubManifests() []manifestpkg.Manifest {
 	return sm.subManifests
 }
 
+// RawManifestResponse converts a regclient manifest into the raw form
+// (content, digest, media type) served by the API layer.
+func RawManifestResponse(mfst manifestpkg.Manifest) ([]byte, godigest.Digest, string, error) {
+	content, err := mfst.RawBody()
+	if err != nil {
+		return nil, "", "", err
+	}
+
+	desc := mfst.GetDescriptor()
+
+	return content, desc.Digest, desc.MediaType, nil
+}
+
 type Manager interface {
 	ConnectClient(blobDigest string, writer io.Writer) (*InFlightBlobCopier, error)
 	StreamingBlobReader(reader *blob.BReader) (*blob.BReader, error)
+	// NeedsUpstreamData reports whether the blob has an active stream that no
+	// downloader has started feeding yet. Used by the priority fetcher to
+	// decide whether an out-of-band upstream download is worth starting.
+	NeedsUpstreamData(blobDigest string) bool
+	// ClaimBlobStream atomically claims the blob's active stream for the given
+	// upstream reader and returns a wrapped reader that tees the bytes to disk
+	// and announces progress to connected clients; the caller must pump the
+	// wrapped reader to completion. claimed=false means another downloader is
+	// (or finished) feeding the stream and the caller must close its reader.
+	ClaimBlobStream(reader *blob.BReader) (wrapped *blob.BReader, claimed bool, err error)
 	StoreImageForStreaming(repo, reference string, streamManifest *StreamableManifest) error
 	StreamingImageManifest(repo, reference string) (*StreamableManifest, bool)
 	RemoveStreamingImage(repo, reference string)
@@ -272,9 +295,39 @@ func (sm *ChunkingManager) StreamingBlobReader(reader *blob.BReader) (*blob.BRea
 		return fullReader, nil
 	}
 
-	// Plan B: partial file on disk — construct a MultiReader (disk prefix + upstream suffix)
-	// so that regclient sees the full blob for digest verification, while the
-	// ChunkedBlobReader only appends the new suffix bytes to disk.
+	wrapped, err := sm.armChunkedReader(chunkingReader, reader, desc, resumeOffset)
+	if err != nil {
+		return nil, err
+	}
+
+	if wrapped == nil {
+		// This blob's reader is already set up for stream.
+		// This can happen during multi-arch downloads if multiple os/arch
+		// share the same layers.
+		// To avoid double reads, do not wrap the reader.
+		sm.logger.Debug().Str("blob", digest).
+			Msg("blob reader is already set up for stream. skipping init and wrap")
+
+		return reader, nil
+	}
+
+	return wrapped, nil
+}
+
+// armChunkedReader initializes chunkingReader with the given upstream reader —
+// resuming from a partial on-disk file when resumeOffset > 0 — and returns the
+// wrapped reader that tees bytes to disk and announces progress to clients.
+// It returns nil (and no error) when the chunked reader was already claimed by
+// another downloader. Must be called with streamLock held.
+func (sm *ChunkingManager) armChunkedReader(chunkingReader *ChunkedBlobReader, reader *blob.BReader,
+	desc descriptor.Descriptor, resumeOffset int64,
+) (*blob.BReader, error) {
+	digest := desc.Digest.String()
+
+	// Resume path: partial file on disk — construct a MultiReader (disk prefix
+	// + upstream suffix) so that the consumer sees the full blob for digest
+	// verification, while the ChunkedBlobReader only appends the new suffix
+	// bytes to disk.
 	if resumeOffset > 0 {
 		sm.logger.Info().Str("blob", digest).Int64("resumeOffset", resumeOffset).Int64("totalSize", desc.Size).
 			Msg("resuming blob download: using MultiReader for prefix+suffix")
@@ -309,12 +362,10 @@ func (sm *ChunkingManager) StreamingBlobReader(reader *blob.BReader) (*blob.BRea
 			blob.WithReader(combined),
 		)
 
-		readerModified := chunkingReader.InitReader(combinedBlobReader, desc)
-		if !readerModified {
-			sm.logger.Debug().Str("blob", digest).
-				Msg("blob reader is already set up for stream. skipping init and wrap")
+		if !chunkingReader.InitReader(combinedBlobReader, desc) {
+			diskFile.Close()
 
-			return reader, nil
+			return nil, nil
 		}
 
 		sm.logger.Debug().Str("blob", digest).Msg("finished init chunked blob reader (resumed)")
@@ -323,21 +374,69 @@ func (sm *ChunkingManager) StreamingBlobReader(reader *blob.BReader) (*blob.BRea
 	}
 
 	// Normal path: no resume, fresh download.
-	readerModified := chunkingReader.InitReader(reader, desc)
-	if !readerModified {
-		// This blob's reader is already set up for stream.
-		// This can happen during multi-arch downloads if multiple os/arch
-		// share the same layers.
-		// To avoid double reads, do not wrap the reader.
-		sm.logger.Debug().Str("blob", digest).
-			Msg("blob reader is already set up for stream. skipping init and wrap")
-
-		return reader, nil
+	if !chunkingReader.InitReader(reader, desc) {
+		return nil, nil
 	}
 
 	sm.logger.Debug().Str("blob", digest).Msg("finished init chunked blob reader")
 
 	return chunkingReader.ToBReader(), nil
+}
+
+// NeedsUpstreamData reports whether the blob has an active stream that no
+// downloader (the background sync or a previous priority fetch) has started
+// feeding yet.
+func (sm *ChunkingManager) NeedsUpstreamData(blobDigest string) bool {
+	sm.streamLock.Lock()
+	defer sm.streamLock.Unlock()
+
+	chunkingReader, ok := sm.activeStreams[blobDigest]
+
+	return ok && !chunkingReader.Initialized() && !chunkingReader.Aborted()
+}
+
+// ClaimBlobStream atomically claims the blob's active stream for the given
+// upstream reader. On success the returned wrapped reader tees the upstream
+// bytes to the stream temp file and announces progress to connected clients;
+// the caller must read it to completion. claimed=false means the stream is
+// gone, aborted, already being fed by another downloader, or already complete
+// on disk (in which case waiting clients have been notified); the caller must
+// close its upstream reader and do nothing else.
+func (sm *ChunkingManager) ClaimBlobStream(reader *blob.BReader) (*blob.BReader, bool, error) {
+	sm.streamLock.Lock()
+	defer sm.streamLock.Unlock()
+
+	desc := reader.GetDescriptor()
+	digest := desc.Digest.String()
+
+	chunkingReader, ok := sm.activeStreams[digest]
+	if !ok || chunkingReader.Aborted() || chunkingReader.Initialized() {
+		return nil, false, nil
+	}
+
+	// Blob already fully on disk from a previous attempt: mark the stream
+	// complete so that waiting clients are served from the file; there is
+	// nothing left to download.
+	resumeOffset := chunkingReader.ResumeOffset()
+	if resumeOffset > 0 && resumeOffset >= desc.Size {
+		sm.logger.Info().Str("blob", digest).Int64("size", desc.Size).
+			Msg("blob already complete on disk, no priority fetch needed")
+
+		chunkingReader.InitReaderComplete(reader, desc)
+
+		return nil, false, nil
+	}
+
+	wrapped, err := sm.armChunkedReader(chunkingReader, reader, desc, resumeOffset)
+	if err != nil {
+		return nil, false, err
+	}
+
+	if wrapped == nil {
+		return nil, false, nil
+	}
+
+	return wrapped, true, nil
 }
 
 func (sm *ChunkingManager) prepareActiveStreamForBlob(desc descriptor.Descriptor) error {

@@ -2600,6 +2600,7 @@ type mockStreamManager struct {
 	streamingImageManifestFn func(repo, reference string) (*stream.StreamableManifest, bool)
 	storeImageForStreamingFn func(repo, reference string, manifest *stream.StreamableManifest) error
 	removeStreamingImageFn   func(repo, reference string)
+	needsUpstreamDataFn      func(blobDigest string) bool
 }
 
 func (m *mockStreamManager) StreamingImageManifest(repo, reference string) (*stream.StreamableManifest, bool) {
@@ -2632,6 +2633,18 @@ func (m *mockStreamManager) ConnectClient(_ string, _ io.Writer) (*stream.InFlig
 
 func (m *mockStreamManager) StreamingBlobReader(reader *blob.BReader) (*blob.BReader, error) {
 	return reader, nil
+}
+
+func (m *mockStreamManager) NeedsUpstreamData(blobDigest string) bool {
+	if m.needsUpstreamDataFn != nil {
+		return m.needsUpstreamDataFn(blobDigest)
+	}
+
+	return false
+}
+
+func (m *mockStreamManager) ClaimBlobStream(_ *blob.BReader) (*blob.BReader, bool, error) {
+	return nil, false, nil
 }
 
 func (m *mockStreamManager) CachedBlobInfo(_ string) (int64, string, error) {
@@ -3186,5 +3199,155 @@ func TestOnDemandMultiArchSubManifestsForwarding(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(len(layers), ShouldBeGreaterThan, 0)
 		}
+	})
+}
+
+// mockPrioritizerService is a mockSyncService that also implements the
+// streamPrioritizer interface discovered by BaseOnDemand.
+type mockPrioritizerService struct {
+	mockSyncService
+
+	prioritizeBlobFn        func(repo string, digest godigest.Digest)
+	prefetchManifestBlobsFn func(repo string, mfst rcManifest.Manifest)
+}
+
+func (s *mockPrioritizerService) PrioritizeBlobForStream(repo string, digest godigest.Digest) {
+	if s.prioritizeBlobFn != nil {
+		s.prioritizeBlobFn(repo, digest)
+	}
+}
+
+func (s *mockPrioritizerService) PrefetchManifestBlobsForStream(repo string, mfst rcManifest.Manifest) {
+	if s.prefetchManifestBlobsFn != nil {
+		s.prefetchManifestBlobsFn(repo, mfst)
+	}
+}
+
+var _ streamPrioritizer = (*BaseService)(nil)
+
+func TestOnDemandConnectBlobStreamPrioritizesBlob(t *testing.T) {
+	testDigest := godigest.FromString("some blob")
+
+	Convey("ConnectBlobStream prioritizes a blob nothing is feeding yet", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+		onDemand.SetStreamManager(&mockStreamManager{
+			needsUpstreamDataFn: func(_ string) bool { return true },
+		})
+
+		prioritized := make(chan string, 1)
+		onDemand.Add(&mockPrioritizerService{
+			mockSyncService: mockSyncService{
+				isStreamingForRepoFn: func(_ string) bool { return true },
+			},
+			prioritizeBlobFn: func(repo string, digest godigest.Digest) {
+				prioritized <- repo + "@" + digest.String()
+			},
+		})
+
+		_, err := onDemand.ConnectBlobStream("myrepo", testDigest.String(), io.Discard)
+		So(err, ShouldBeNil)
+		So(<-prioritized, ShouldEqual, "myrepo@"+testDigest.String())
+	})
+
+	Convey("ConnectBlobStream skips prioritization when the stream is already fed", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+		onDemand.SetStreamManager(&mockStreamManager{
+			needsUpstreamDataFn: func(_ string) bool { return false },
+		})
+
+		called := false
+		onDemand.Add(&mockPrioritizerService{
+			mockSyncService: mockSyncService{
+				isStreamingForRepoFn: func(_ string) bool { return true },
+			},
+			prioritizeBlobFn: func(_ string, _ godigest.Digest) { called = true },
+		})
+
+		_, err := onDemand.ConnectBlobStream("myrepo", testDigest.String(), io.Discard)
+		So(err, ShouldBeNil)
+		So(called, ShouldBeFalse)
+	})
+
+	Convey("ConnectBlobStream works with services that do not implement the prioritizer", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+		onDemand.SetStreamManager(&mockStreamManager{
+			needsUpstreamDataFn: func(_ string) bool { return true },
+		})
+		onDemand.Add(&mockSyncService{
+			isStreamingForRepoFn: func(_ string) bool { return true },
+		})
+
+		_, err := onDemand.ConnectBlobStream("myrepo", testDigest.String(), io.Discard)
+		So(err, ShouldBeNil)
+	})
+}
+
+func TestOnDemandFetchManifestForStreamPrefetchesPlatform(t *testing.T) {
+	Convey("digest lookup of a cached platform manifest prefetches its blobs", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+		cached := newTestManifest(t)
+		digestRef := cached.GetDescriptor().Digest.String()
+
+		onDemand.SetStreamManager(&mockStreamManager{
+			streamingImageManifestFn: func(_, _ string) (*stream.StreamableManifest, bool) {
+				return stream.NewStreamableManifest(cached, nil), true
+			},
+		})
+
+		prefetched := make(chan string, 1)
+		onDemand.Add(&mockPrioritizerService{
+			mockSyncService: mockSyncService{
+				isStreamingForRepoFn: func(_ string) bool { return true },
+			},
+			prefetchManifestBlobsFn: func(repo string, mfst rcManifest.Manifest) {
+				prefetched <- repo + "@" + mfst.GetDescriptor().Digest.String()
+			},
+		})
+
+		_, _, _, err := onDemand.FetchManifestForStream(context.Background(), "myrepo", digestRef)
+		So(err, ShouldBeNil)
+		So(<-prefetched, ShouldEqual, "myrepo@"+digestRef)
+	})
+
+	Convey("tag lookup of a cached manifest does not prefetch", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+		cached := newTestManifest(t)
+
+		onDemand.SetStreamManager(&mockStreamManager{
+			streamingImageManifestFn: func(_, _ string) (*stream.StreamableManifest, bool) {
+				return stream.NewStreamableManifest(cached, nil), true
+			},
+		})
+
+		called := false
+		onDemand.Add(&mockPrioritizerService{
+			mockSyncService: mockSyncService{
+				isStreamingForRepoFn: func(_ string) bool { return true },
+			},
+			prefetchManifestBlobsFn: func(_ string, _ rcManifest.Manifest) { called = true },
+		})
+
+		_, _, _, err := onDemand.FetchManifestForStream(context.Background(), "myrepo", "v1.0")
+		So(err, ShouldBeNil)
+		So(called, ShouldBeFalse)
+	})
+}
+
+func TestBaseServicePriorityFetcherDisabled(t *testing.T) {
+	Convey("initPriorityFetcher is a no-op when streaming is disabled", t, func() {
+		service := &BaseService{log: log.NewTestLogger()}
+		service.initPriorityFetcher()
+		So(service.priorityFetcher, ShouldBeNil)
+	})
+
+	Convey("prioritizer entry points are safe without an initialized fetcher", t, func() {
+		service := &BaseService{log: log.NewTestLogger()}
+
+		So(func() {
+			service.PrioritizeBlobForStream("myrepo", godigest.FromString("blob"))
+		}, ShouldNotPanic)
+		So(func() {
+			service.PrefetchManifestBlobsForStream("myrepo", newTestManifest(t))
+		}, ShouldNotPanic)
 	})
 }
