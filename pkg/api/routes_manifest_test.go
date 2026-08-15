@@ -90,8 +90,8 @@ func TestGetManifestStreaming(t *testing.T) {
 
 			syncOnDemand := &mockSyncOnDemand{
 				isStreamingEnabledForRepoFn: func(_ string) bool { return true },
-				fetchManifestForStreamFn: func(_ context.Context, _, _ string) (rcmanifest.Manifest, error) {
-					return testManifest, nil
+				fetchManifestForStreamFn: func(_ context.Context, _, _ string) ([]byte, godigest.Digest, string, error) {
+					return rawBody, desc.Digest, desc.MediaType, nil
 				},
 			}
 			handler := newStreamingBlobTestRouteHandler(t, mocks.MockedImageStore{
@@ -119,8 +119,8 @@ func TestGetManifestStreaming(t *testing.T) {
 		Convey("falls back to 404 when FetchManifestForStream fails and GetImageManifest also fails", func() {
 			syncOnDemand := &mockSyncOnDemand{
 				isStreamingEnabledForRepoFn: func(_ string) bool { return true },
-				fetchManifestForStreamFn: func(_ context.Context, _, _ string) (rcmanifest.Manifest, error) {
-					return nil, zerr.ErrSyncMissingCatalog
+				fetchManifestForStreamFn: func(_ context.Context, _, _ string) ([]byte, godigest.Digest, string, error) {
+					return nil, "", "", zerr.ErrSyncMissingCatalog
 				},
 			}
 			handler := newStreamingBlobTestRouteHandler(t, mocks.MockedImageStore{
@@ -197,8 +197,8 @@ func TestCheckManifestStreaming(t *testing.T) {
 
 			syncOnDemand := &mockSyncOnDemand{
 				isStreamingEnabledForRepoFn: func(_ string) bool { return true },
-				fetchManifestForStreamFn: func(_ context.Context, _, _ string) (rcmanifest.Manifest, error) {
-					return testManifest, nil
+				fetchManifestForStreamFn: func(_ context.Context, _, _ string) ([]byte, godigest.Digest, string, error) {
+					return rawBody, desc.Digest, desc.MediaType, nil
 				},
 			}
 			handler := newStreamingBlobTestRouteHandler(t, mocks.MockedImageStore{
@@ -222,8 +222,8 @@ func TestCheckManifestStreaming(t *testing.T) {
 		Convey("falls back to 404 when FetchManifestForStream fails and GetImageManifest also fails", func() {
 			syncOnDemand := &mockSyncOnDemand{
 				isStreamingEnabledForRepoFn: func(_ string) bool { return true },
-				fetchManifestForStreamFn: func(_ context.Context, _, _ string) (rcmanifest.Manifest, error) {
-					return nil, zerr.ErrSyncMissingCatalog
+				fetchManifestForStreamFn: func(_ context.Context, _, _ string) ([]byte, godigest.Digest, string, error) {
+					return nil, "", "", zerr.ErrSyncMissingCatalog
 				},
 			}
 			handler := newStreamingBlobTestRouteHandler(t, mocks.MockedImageStore{

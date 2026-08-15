@@ -1,4 +1,6 @@
-package sync
+//go:build sync
+
+package stream
 
 import (
 	"errors"
@@ -10,7 +12,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
-type StreamTempStore interface {
+type TempStore interface {
 	BlobPath(digest godigest.Digest) string
 }
 

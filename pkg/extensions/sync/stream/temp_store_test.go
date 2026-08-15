@@ -1,6 +1,6 @@
 //go:build sync
 
-package sync_test
+package stream_test
 
 import (
 	"os"
@@ -10,7 +10,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
 
-	pkgsync "zotregistry.dev/zot/v2/pkg/extensions/sync"
+	stream "zotregistry.dev/zot/v2/pkg/extensions/sync/stream"
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
@@ -21,7 +21,7 @@ func TestNewLocalTempStore(t *testing.T) {
 		Convey("returns a non-nil store when the root directory already exists", func() {
 			dir := t.TempDir()
 
-			store := pkgsync.NewLocalTempStore(dir, logger)
+			store := stream.NewLocalTempStore(dir, logger)
 			So(store, ShouldNotBeNil)
 
 			info, err := os.Stat(dir)
@@ -35,7 +35,7 @@ func TestNewLocalTempStore(t *testing.T) {
 			_, err := os.Stat(dir)
 			So(os.IsNotExist(err), ShouldBeTrue)
 
-			store := pkgsync.NewLocalTempStore(dir, logger)
+			store := stream.NewLocalTempStore(dir, logger)
 			So(store, ShouldNotBeNil)
 
 			info, err := os.Stat(dir)
@@ -48,7 +48,7 @@ func TestNewLocalTempStore(t *testing.T) {
 func TestLocalTempStoreBlobPath(t *testing.T) {
 	Convey("LocalTempStore.BlobPath", t, func() {
 		dir := t.TempDir()
-		store := pkgsync.NewLocalTempStore(dir, log.NewTestLogger())
+		store := stream.NewLocalTempStore(dir, log.NewTestLogger())
 
 		data := []byte("blob payload")
 		dig := godigest.FromBytes(data)

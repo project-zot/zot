@@ -41,6 +41,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/extensions/lint"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	syncConstants "zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
+	"zotregistry.dev/zot/v2/pkg/extensions/sync/stream"
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/storage"
@@ -2596,12 +2597,12 @@ func TestBaseServiceFetchManifestWithStreaming(t *testing.T) {
 }
 
 type mockStreamManager struct {
-	streamingImageManifestFn func(repo, reference string) (*StreamableManifest, bool)
-	storeImageForStreamingFn func(repo, reference string, manifest *StreamableManifest) error
+	streamingImageManifestFn func(repo, reference string) (*stream.StreamableManifest, bool)
+	storeImageForStreamingFn func(repo, reference string, manifest *stream.StreamableManifest) error
 	removeStreamingImageFn   func(repo, reference string)
 }
 
-func (m *mockStreamManager) StreamingImageManifest(repo, reference string) (*StreamableManifest, bool) {
+func (m *mockStreamManager) StreamingImageManifest(repo, reference string) (*stream.StreamableManifest, bool) {
 	if m.streamingImageManifestFn != nil {
 		return m.streamingImageManifestFn(repo, reference)
 	}
@@ -2609,7 +2610,7 @@ func (m *mockStreamManager) StreamingImageManifest(repo, reference string) (*Str
 	return nil, false
 }
 
-func (m *mockStreamManager) StoreImageForStreaming(repo, reference string, manifest *StreamableManifest) error {
+func (m *mockStreamManager) StoreImageForStreaming(repo, reference string, manifest *stream.StreamableManifest) error {
 	if m.storeImageForStreamingFn != nil {
 		return m.storeImageForStreamingFn(repo, reference, manifest)
 	}
@@ -2625,7 +2626,7 @@ func (m *mockStreamManager) RemoveStreamingImage(repo, reference string) {
 
 func (m *mockStreamManager) AbortStreamingImage(_, _ string) {}
 
-func (m *mockStreamManager) ConnectClient(_ string, _ io.Writer) (*InFlightBlobCopier, error) {
+func (m *mockStreamManager) ConnectClient(_ string, _ io.Writer) (*stream.InFlightBlobCopier, error) {
 	return nil, nil
 }
 
@@ -2639,10 +2640,6 @@ func (m *mockStreamManager) CachedBlobInfo(_ string) (int64, string, error) {
 
 func (m *mockStreamManager) StreamBlobPath(_ string) string {
 	return ""
-}
-
-func (m *mockStreamManager) PartialBlobDigests() map[string]int64 {
-	return nil
 }
 
 func (m *mockStreamManager) RemoveStreamBlob(_ string) {}
@@ -2742,10 +2739,10 @@ func TestOnDemandFetchManifestForStream(t *testing.T) {
 	Convey("returns cached manifest when StreamingImageManifest has image in cache", t, func() {
 		onDemand := NewOnDemand(log.NewTestLogger())
 		cached := newTestManifest(t)
-		streamableCached := NewStreamableManifest(cached, nil)
+		streamableCached := stream.NewStreamableManifest(cached, nil)
 
 		sm := &mockStreamManager{
-			streamingImageManifestFn: func(repo, reference string) (*StreamableManifest, bool) {
+			streamingImageManifestFn: func(repo, reference string) (*stream.StreamableManifest, bool) {
 				So(repo, ShouldEqual, "myrepo")
 				So(reference, ShouldEqual, "v1.0")
 
@@ -2754,22 +2751,27 @@ func TestOnDemandFetchManifestForStream(t *testing.T) {
 		}
 		onDemand.SetStreamManager(sm)
 
-		result, err := onDemand.FetchManifestForStream(context.Background(), "myrepo", "v1.0")
+		result, resultDigest, resultMediaType, err := onDemand.FetchManifestForStream(context.Background(), "myrepo", "v1.0")
 		So(err, ShouldBeNil)
-		So(result, ShouldEqual, cached)
+
+		expectedContent, expectedErr := cached.RawBody()
+		So(expectedErr, ShouldBeNil)
+		So(result, ShouldResemble, expectedContent)
+		So(resultDigest, ShouldEqual, cached.GetDescriptor().Digest)
+		So(resultMediaType, ShouldEqual, cached.GetDescriptor().MediaType)
 	})
 
 	Convey("returns ErrBlobNotFound when no services are registered", t, func() {
 		onDemand := NewOnDemand(log.NewTestLogger())
 
 		sm := &mockStreamManager{
-			streamingImageManifestFn: func(_, _ string) (*StreamableManifest, bool) {
+			streamingImageManifestFn: func(_, _ string) (*stream.StreamableManifest, bool) {
 				return nil, false
 			},
 		}
 		onDemand.SetStreamManager(sm)
 
-		result, err := onDemand.FetchManifestForStream(context.Background(), "myrepo", "v1.0")
+		result, _, _, err := onDemand.FetchManifestForStream(context.Background(), "myrepo", "v1.0")
 		So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
 		So(result, ShouldBeNil)
 	})
@@ -2778,7 +2780,7 @@ func TestOnDemandFetchManifestForStream(t *testing.T) {
 		onDemand := NewOnDemand(log.NewTestLogger())
 
 		sm := &mockStreamManager{
-			streamingImageManifestFn: func(_, _ string) (*StreamableManifest, bool) {
+			streamingImageManifestFn: func(_, _ string) (*stream.StreamableManifest, bool) {
 				return nil, false
 			},
 		}
@@ -2792,7 +2794,7 @@ func TestOnDemandFetchManifestForStream(t *testing.T) {
 		}
 		onDemand.Add(svc)
 
-		result, err := onDemand.FetchManifestForStream(context.Background(), "myrepo", "v1.0")
+		result, _, _, err := onDemand.FetchManifestForStream(context.Background(), "myrepo", "v1.0")
 		So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
 		So(result, ShouldBeNil)
 	})
@@ -2802,13 +2804,13 @@ func TestOnDemandFetchManifestForStream(t *testing.T) {
 		fetched := newTestManifest(t)
 
 		var storeRepo, storeRef string
-		var storedManifest *StreamableManifest
+		var storedManifest *stream.StreamableManifest
 
 		sm := &mockStreamManager{
-			streamingImageManifestFn: func(_, _ string) (*StreamableManifest, bool) {
+			streamingImageManifestFn: func(_, _ string) (*stream.StreamableManifest, bool) {
 				return nil, false
 			},
-			storeImageForStreamingFn: func(repo, reference string, m *StreamableManifest) error {
+			storeImageForStreamingFn: func(repo, reference string, m *stream.StreamableManifest) error {
 				storeRepo = repo
 				storeRef = reference
 				storedManifest = m
@@ -2832,12 +2834,17 @@ func TestOnDemandFetchManifestForStream(t *testing.T) {
 		}
 		onDemand.Add(svc)
 
-		result, err := onDemand.FetchManifestForStream(context.Background(), "myrepo", "latest")
+		result, resultDigest, resultMediaType, err := onDemand.FetchManifestForStream(context.Background(), "myrepo", "latest")
 		So(err, ShouldBeNil)
-		So(result, ShouldEqual, fetched)
+
+		expectedContent, expectedErr := fetched.RawBody()
+		So(expectedErr, ShouldBeNil)
+		So(result, ShouldResemble, expectedContent)
+		So(resultDigest, ShouldEqual, fetched.GetDescriptor().Digest)
+		So(resultMediaType, ShouldEqual, fetched.GetDescriptor().MediaType)
 		So(storeRepo, ShouldEqual, "myrepo")
 		So(storeRef, ShouldEqual, "latest")
-		So(storedManifest.referenceManifest, ShouldEqual, fetched)
+		So(storedManifest.ReferenceManifest(), ShouldEqual, fetched)
 
 		select {
 		case <-syncCalled:
@@ -2852,7 +2859,7 @@ func TestOnDemandFetchManifestForStream(t *testing.T) {
 		fetched := newTestManifest(t)
 
 		sm := &mockStreamManager{
-			streamingImageManifestFn: func(_, _ string) (*StreamableManifest, bool) {
+			streamingImageManifestFn: func(_, _ string) (*stream.StreamableManifest, bool) {
 				return nil, false
 			},
 		}
@@ -2877,9 +2884,14 @@ func TestOnDemandFetchManifestForStream(t *testing.T) {
 		onDemand.Add(svc1)
 		onDemand.Add(svc2)
 
-		result, err := onDemand.FetchManifestForStream(context.Background(), "myrepo", "v2.0")
+		result, resultDigest, resultMediaType, err := onDemand.FetchManifestForStream(context.Background(), "myrepo", "v2.0")
 		So(err, ShouldBeNil)
-		So(result, ShouldEqual, fetched)
+
+		expectedContent, expectedErr := fetched.RawBody()
+		So(expectedErr, ShouldBeNil)
+		So(result, ShouldResemble, expectedContent)
+		So(resultDigest, ShouldEqual, fetched.GetDescriptor().Digest)
+		So(resultMediaType, ShouldEqual, fetched.GetDescriptor().MediaType)
 		So(secondFetchCalled, ShouldBeFalse)
 	})
 
@@ -2889,10 +2901,10 @@ func TestOnDemandFetchManifestForStream(t *testing.T) {
 		storeErr := errors.New("disk full")
 
 		sm := &mockStreamManager{
-			streamingImageManifestFn: func(_, _ string) (*StreamableManifest, bool) {
+			streamingImageManifestFn: func(_, _ string) (*stream.StreamableManifest, bool) {
 				return nil, false
 			},
-			storeImageForStreamingFn: func(_, _ string, _ *StreamableManifest) error {
+			storeImageForStreamingFn: func(_, _ string, _ *stream.StreamableManifest) error {
 				return storeErr
 			},
 		}
@@ -2906,7 +2918,7 @@ func TestOnDemandFetchManifestForStream(t *testing.T) {
 		}
 		onDemand.Add(svc)
 
-		result, err := onDemand.FetchManifestForStream(context.Background(), "myrepo", "v1.0")
+		result, _, _, err := onDemand.FetchManifestForStream(context.Background(), "myrepo", "v1.0")
 		So(errors.Is(err, storeErr), ShouldBeTrue)
 		So(result, ShouldBeNil)
 	})
@@ -2970,11 +2982,11 @@ func TestOnDemandFetchManifestForStream(t *testing.T) {
 		var capturedSubManifests []rcManifest.Manifest
 
 		sm := &mockStreamManager{
-			streamingImageManifestFn: func(_, _ string) (*StreamableManifest, bool) {
+			streamingImageManifestFn: func(_, _ string) (*stream.StreamableManifest, bool) {
 				return nil, false
 			},
-			storeImageForStreamingFn: func(repo, reference string, m *StreamableManifest) error {
-				capturedSubManifests = m.subManifests
+			storeImageForStreamingFn: func(repo, reference string, m *stream.StreamableManifest) error {
+				capturedSubManifests = m.SubManifests()
 
 				return nil
 			},
@@ -2989,9 +3001,14 @@ func TestOnDemandFetchManifestForStream(t *testing.T) {
 		}
 		onDemand.Add(svc)
 
-		result, err := onDemand.FetchManifestForStream(context.Background(), "multi-arch-repo", "latest")
+		result, resultDigest, resultMediaType, err := onDemand.FetchManifestForStream(context.Background(), "multi-arch-repo", "latest")
 		So(err, ShouldBeNil)
-		So(result, ShouldEqual, indexManifest)
+
+		expectedContent, expectedErr := indexManifest.RawBody()
+		So(expectedErr, ShouldBeNil)
+		So(result, ShouldResemble, expectedContent)
+		So(resultDigest, ShouldEqual, indexManifest.GetDescriptor().Digest)
+		So(resultMediaType, ShouldEqual, indexManifest.GetDescriptor().MediaType)
 
 		// Verify sub-manifests were forwarded.
 		So(len(capturedSubManifests), ShouldEqual, 2)
@@ -3034,7 +3051,7 @@ func TestOnDemandFetchManifestForStreamMultiArchWithLayeredFailure(t *testing.T)
 		So(err, ShouldBeNil)
 
 		sm := &mockStreamManager{
-			streamingImageManifestFn: func(_, _ string) (*StreamableManifest, bool) {
+			streamingImageManifestFn: func(_, _ string) (*stream.StreamableManifest, bool) {
 				return nil, false
 			},
 		}
@@ -3062,9 +3079,14 @@ func TestOnDemandFetchManifestForStreamMultiArchWithLayeredFailure(t *testing.T)
 		onDemand.Add(svc1)
 		onDemand.Add(svc2)
 
-		result, err := onDemand.FetchManifestForStream(context.Background(), "multi-arch-repo", "v2.0")
+		result, resultDigest, resultMediaType, err := onDemand.FetchManifestForStream(context.Background(), "multi-arch-repo", "v2.0")
 		So(err, ShouldBeNil)
-		So(result, ShouldEqual, indexManifest)
+
+		expectedContent, expectedErr := indexManifest.RawBody()
+		So(expectedErr, ShouldBeNil)
+		So(result, ShouldResemble, expectedContent)
+		So(resultDigest, ShouldEqual, indexManifest.GetDescriptor().Digest)
+		So(resultMediaType, ShouldEqual, indexManifest.GetDescriptor().MediaType)
 		So(firstFetchCalled, ShouldBeTrue)
 	})
 }
@@ -3119,11 +3141,11 @@ func TestOnDemandMultiArchSubManifestsForwarding(t *testing.T) {
 		var capturedSubManifests []rcManifest.Manifest
 
 		sm := &mockStreamManager{
-			streamingImageManifestFn: func(_, _ string) (*StreamableManifest, bool) {
+			streamingImageManifestFn: func(_, _ string) (*stream.StreamableManifest, bool) {
 				return nil, false
 			},
-			storeImageForStreamingFn: func(repo, reference string, m *StreamableManifest) error {
-				capturedSubManifests = m.subManifests
+			storeImageForStreamingFn: func(repo, reference string, m *stream.StreamableManifest) error {
+				capturedSubManifests = m.SubManifests()
 
 				return nil
 			},
@@ -3138,9 +3160,14 @@ func TestOnDemandMultiArchSubManifestsForwarding(t *testing.T) {
 		}
 		onDemand.Add(svc)
 
-		result, err := onDemand.FetchManifestForStream(context.Background(), "multi-arch-repo", "latest")
+		result, resultDigest, resultMediaType, err := onDemand.FetchManifestForStream(context.Background(), "multi-arch-repo", "latest")
 		So(err, ShouldBeNil)
-		So(result, ShouldEqual, indexManifest)
+
+		expectedContent, expectedErr := indexManifest.RawBody()
+		So(expectedErr, ShouldBeNil)
+		So(result, ShouldResemble, expectedContent)
+		So(resultDigest, ShouldEqual, indexManifest.GetDescriptor().Digest)
+		So(resultMediaType, ShouldEqual, indexManifest.GetDescriptor().MediaType)
 
 		// All sub-manifests must be forwarded.
 		So(len(capturedSubManifests), ShouldEqual, len(subManifests))

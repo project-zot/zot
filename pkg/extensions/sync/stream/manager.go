@@ -1,9 +1,10 @@
-package sync
+//go:build sync
+
+package stream
 
 import (
 	"io"
 	"os"
-	"path"
 	"strings"
 	"sync"
 
@@ -13,7 +14,6 @@ import (
 	manifestpkg "github.com/regclient/regclient/types/manifest"
 
 	zerr "zotregistry.dev/zot/v2/errors"
-	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
@@ -29,7 +29,17 @@ func NewStreamableManifest(mainManifest manifestpkg.Manifest, subManifests []man
 	}
 }
 
-type StreamManager interface {
+// ReferenceManifest returns the main (reference) manifest of this streamable image.
+func (sm *StreamableManifest) ReferenceManifest() manifestpkg.Manifest {
+	return sm.referenceManifest
+}
+
+// SubManifests returns the per-platform manifests of a multi-arch streamable image.
+func (sm *StreamableManifest) SubManifests() []manifestpkg.Manifest {
+	return sm.subManifests
+}
+
+type Manager interface {
 	ConnectClient(blobDigest string, writer io.Writer) (*InFlightBlobCopier, error)
 	StreamingBlobReader(reader *blob.BReader) (*blob.BReader, error)
 	StoreImageForStreaming(repo, reference string, streamManifest *StreamableManifest) error
@@ -45,17 +55,14 @@ type StreamManager interface {
 	// temp store, or an empty string if the blob is not available (still in-flight or
 	// already cleaned up).
 	StreamBlobPath(blobDigest string) string
-	// PartialBlobDigests returns the digests of blobs that have partial (incomplete)
-	// downloads in the stream temp store. These are candidates for Range-based resume.
-	PartialBlobDigests() map[string]int64
 	// RemoveStreamBlob deletes a specific blob's temp file from the stream store.
 	// Used to evict corrupt blobs that fail digest verification, so the next retry
 	// downloads from scratch instead of resuming from bad data.
 	RemoveStreamBlob(blobDigest string)
 }
 
-type ChunkingStreamManager struct {
-	tempStore StreamTempStore
+type ChunkingManager struct {
+	tempStore TempStore
 	// activeStreams maps blob digest to the corresponding chunked blob reader
 	// that is currently active and receiving data for that blob.
 	activeStreams map[string]*ChunkedBlobReader
@@ -70,10 +77,10 @@ type ChunkingStreamManager struct {
 	streamLock  sync.Mutex
 }
 
-func NewChunkingStreamManager(config *config.Config, logger log.Logger) *ChunkingStreamManager {
-	store := NewLocalTempStore(path.Join(config.Storage.RootDirectory, "_stream"), logger)
+func NewChunkingManager(rootDir string, logger log.Logger) *ChunkingManager {
+	store := NewLocalTempStore(rootDir, logger)
 
-	return &ChunkingStreamManager{
+	return &ChunkingManager{
 		tempStore:     store,
 		activeStreams: map[string]*ChunkedBlobReader{},
 		streamingRefs: map[string]*StreamableManifest{},
@@ -82,41 +89,10 @@ func NewChunkingStreamManager(config *config.Config, logger log.Logger) *Chunkin
 	}
 }
 
-// PartialBlobDigests returns digests of blobs that have partial (incomplete) downloads
-// in the stream temp store, along with their current byte count on disk. These are
-// candidates for Range-based resume on retry.
-func (sm *ChunkingStreamManager) PartialBlobDigests() map[string]int64 {
-	sm.streamLock.Lock()
-	defer sm.streamLock.Unlock()
-
-	partials := make(map[string]int64)
-
-	for digest, desc := range sm.blobInfoMap {
-		dig, err := godigest.Parse(digest)
-		if err != nil {
-			continue
-		}
-
-		blobPath := sm.tempStore.BlobPath(dig)
-
-		info, err := os.Stat(blobPath)
-		if err != nil {
-			continue
-		}
-
-		// Only include blobs that are partially downloaded (size > 0 but less than expected).
-		if info.Size() > 0 && info.Size() < desc.Size {
-			partials[digest] = info.Size()
-		}
-	}
-
-	return partials
-}
-
 // RemoveStreamBlob deletes a specific blob's temp file from the stream store.
 // This is used to evict corrupt blobs (e.g. after a digest mismatch) so the next
 // retry downloads from scratch instead of resuming from bad data.
-func (sm *ChunkingStreamManager) RemoveStreamBlob(blobDigest string) {
+func (sm *ChunkingManager) RemoveStreamBlob(blobDigest string) {
 	dig, err := godigest.Parse(blobDigest)
 	if err != nil {
 		sm.logger.Error().Err(err).Str("blob", blobDigest).
@@ -135,7 +111,7 @@ func (sm *ChunkingStreamManager) RemoveStreamBlob(blobDigest string) {
 	}
 }
 
-func (sm *ChunkingStreamManager) ConnectClient(blobDigest string, writer io.Writer) (*InFlightBlobCopier, error) {
+func (sm *ChunkingManager) ConnectClient(blobDigest string, writer io.Writer) (*InFlightBlobCopier, error) {
 	// Creates a new inflight blob copier if the blobDigest is an active stream
 	sm.streamLock.Lock()
 	defer sm.streamLock.Unlock()
@@ -156,7 +132,7 @@ func (sm *ChunkingStreamManager) ConnectClient(blobDigest string, writer io.Writ
 	return copier, nil
 }
 
-func (sm *ChunkingStreamManager) CachedBlobInfo(blobDigest string) (int64, string, error) {
+func (sm *ChunkingManager) CachedBlobInfo(blobDigest string) (int64, string, error) {
 	sm.streamLock.Lock()
 	defer sm.streamLock.Unlock()
 
@@ -170,7 +146,7 @@ func (sm *ChunkingStreamManager) CachedBlobInfo(blobDigest string) (int64, strin
 
 // StreamBlobPath returns the path of a fully-downloaded blob in the stream temp store.
 // Returns empty string if the blob file does not exist or has not finished downloading.
-func (sm *ChunkingStreamManager) StreamBlobPath(blobDigest string) string {
+func (sm *ChunkingManager) StreamBlobPath(blobDigest string) string {
 	sm.streamLock.Lock()
 	defer sm.streamLock.Unlock()
 
@@ -200,7 +176,7 @@ func (sm *ChunkingStreamManager) StreamBlobPath(blobDigest string) string {
 }
 
 // StreamingBlobReader is executed inside regclient as part of the reader hook.
-func (sm *ChunkingStreamManager) StreamingBlobReader(reader *blob.BReader) (*blob.BReader, error) {
+func (sm *ChunkingManager) StreamingBlobReader(reader *blob.BReader) (*blob.BReader, error) {
 	sm.streamLock.Lock()
 	defer sm.streamLock.Unlock()
 
@@ -364,7 +340,7 @@ func (sm *ChunkingStreamManager) StreamingBlobReader(reader *blob.BReader) (*blo
 	return chunkingReader.ToBReader(), nil
 }
 
-func (sm *ChunkingStreamManager) prepareActiveStreamForBlob(desc descriptor.Descriptor) error {
+func (sm *ChunkingManager) prepareActiveStreamForBlob(desc descriptor.Descriptor) error {
 	_, ok := sm.activeStreams[desc.Digest.String()]
 	if ok {
 		sm.logger.Warn().Str("blob", desc.Digest.String()).Msg("active stream already exists for blob")
@@ -385,7 +361,7 @@ func (sm *ChunkingStreamManager) prepareActiveStreamForBlob(desc descriptor.Desc
 	return nil
 }
 
-func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string,
+func (sm *ChunkingManager) StoreImageForStreaming(repo, reference string,
 	manifest *StreamableManifest,
 ) error {
 	sm.streamLock.Lock()
@@ -441,7 +417,7 @@ func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string,
 	return nil
 }
 
-func (sm *ChunkingStreamManager) prepareManifestAndContentsForStream(repo, reference string,
+func (sm *ChunkingManager) prepareManifestAndContentsForStream(repo, reference string,
 	manifest manifestpkg.Manifest,
 ) error {
 	key := repo + ":" + reference
@@ -510,7 +486,7 @@ func (sm *ChunkingStreamManager) prepareManifestAndContentsForStream(repo, refer
 	return nil
 }
 
-func (sm *ChunkingStreamManager) StreamingImageManifest(repo, reference string) (*StreamableManifest, bool) {
+func (sm *ChunkingManager) StreamingImageManifest(repo, reference string) (*StreamableManifest, bool) {
 	sm.streamLock.Lock()
 	defer sm.streamLock.Unlock()
 
@@ -552,7 +528,7 @@ func (sm *ChunkingStreamManager) StreamingImageManifest(repo, reference string) 
 	return nil, false
 }
 
-func (sm *ChunkingStreamManager) RemoveStreamingImage(repo, reference string) {
+func (sm *ChunkingManager) RemoveStreamingImage(repo, reference string) {
 	sm.streamLock.Lock()
 
 	key := repo + ":" + reference
@@ -593,7 +569,7 @@ func (sm *ChunkingStreamManager) RemoveStreamingImage(repo, reference string) {
 // never waits for clients: every subscriber is closed immediately so that no
 // downstream client hangs on a stream that will never advance. Partial temp
 // files are kept so a future on-demand sync can resume from them.
-func (sm *ChunkingStreamManager) AbortStreamingImage(repo, reference string) {
+func (sm *ChunkingManager) AbortStreamingImage(repo, reference string) {
 	sm.streamLock.Lock()
 
 	key := repo + ":" + reference
@@ -627,7 +603,7 @@ func (sm *ChunkingStreamManager) AbortStreamingImage(repo, reference string) {
 // (and its sub-manifests) from the manager maps and returns the detached
 // readers keyed by blob digest. Shared layers already detached (or already
 // cleaned by another manifest) are skipped. Must be called with streamLock held.
-func (sm *ChunkingStreamManager) detachStreams(
+func (sm *ChunkingManager) detachStreams(
 	repo, reference string, manifest *StreamableManifest,
 ) map[string]*ChunkedBlobReader {
 	detached := map[string]*ChunkedBlobReader{}
@@ -652,7 +628,7 @@ func (sm *ChunkingStreamManager) detachStreams(
 
 // detachManifestStreams detaches an individual manifest and its contents from
 // the stream cache. Must be called with streamLock held.
-func (sm *ChunkingStreamManager) detachManifestStreams(
+func (sm *ChunkingManager) detachManifestStreams(
 	repo, reference string, manifest manifestpkg.Manifest, detached map[string]*ChunkedBlobReader,
 ) {
 	imager, ok := manifest.(manifestpkg.Imager)
@@ -687,7 +663,7 @@ func (sm *ChunkingStreamManager) detachManifestStreams(
 
 // detachActiveStream removes a single blob's stream entry from the manager
 // maps and records its reader in detached. Must be called with streamLock held.
-func (sm *ChunkingStreamManager) detachActiveStream(blobDigest string, detached map[string]*ChunkedBlobReader) {
+func (sm *ChunkingManager) detachActiveStream(blobDigest string, detached map[string]*ChunkedBlobReader) {
 	if _, done := detached[blobDigest]; done {
 		return
 	}
@@ -710,7 +686,7 @@ func (sm *ChunkingStreamManager) detachActiveStream(blobDigest string, detached 
 // removeStreamTempFile deletes a blob's temp file from the stream store, unless
 // a new stream re-registered the same digest while the caller was waiting for
 // the old clients to drain (in that case the file belongs to the new stream).
-func (sm *ChunkingStreamManager) removeStreamTempFile(blobDigest string) {
+func (sm *ChunkingManager) removeStreamTempFile(blobDigest string) {
 	dgst, err := godigest.Parse(blobDigest)
 	if err != nil {
 		sm.logger.Error().Err(err).Str("blob", blobDigest).Msg("failed to parse blob digest")
@@ -740,7 +716,7 @@ func (sm *ChunkingStreamManager) removeStreamTempFile(blobDigest string) {
 // already in flight. The fresh upstream connection is dropped, and the caller
 // is fed from the in-progress on-disk file through an InFlightBlobCopier via a
 // pipe, so the same bytes are never downloaded from upstream twice.
-func (sm *ChunkingStreamManager) inFlightDuplicateReader(
+func (sm *ChunkingManager) inFlightDuplicateReader(
 	chunkingReader *ChunkedBlobReader, reader *blob.BReader,
 ) (*blob.BReader, error) {
 	desc := reader.GetDescriptor()

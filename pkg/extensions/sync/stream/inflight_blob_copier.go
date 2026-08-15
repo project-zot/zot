@@ -1,4 +1,6 @@
-package sync
+//go:build sync
+
+package stream
 
 import (
 	"context"

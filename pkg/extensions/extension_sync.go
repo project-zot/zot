@@ -5,6 +5,7 @@ package extensions
 import (
 	"net"
 	"net/url"
+	"path"
 	"slices"
 	"strings"
 
@@ -12,6 +13,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
 	"zotregistry.dev/zot/v2/pkg/extensions/sync"
+	"zotregistry.dev/zot/v2/pkg/extensions/sync/stream"
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/scheduler"
@@ -32,11 +34,11 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 		onDemand := sync.NewOnDemand(log)
 		syncConfig := extensionsConfig.GetSyncConfig()
 
-		var streamManager sync.StreamManager
+		var streamManager stream.Manager
 
 		if extensionsConfig.IsStreamingEnabled() {
 			log.Info().Msg("streaming sync enabled. Initializing stream manager.")
-			streamManager = sync.NewChunkingStreamManager(config, log)
+			streamManager = stream.NewChunkingManager(path.Join(config.Storage.RootDirectory, "_stream"), log)
 			onDemand.SetStreamManager(streamManager)
 		}
 
@@ -66,7 +68,7 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 			clusterConfig := config.CopyClusterConfig()
 
 			// Only pass the stream manager to services that have streaming enabled on their registry config.
-			var svcStreamManager sync.StreamManager
+			var svcStreamManager stream.Manager
 			if registryConfig.IsStreamEnabled() {
 				svcStreamManager = streamManager
 			}

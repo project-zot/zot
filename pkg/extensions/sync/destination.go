@@ -21,6 +21,7 @@ import (
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
+	"zotregistry.dev/zot/v2/pkg/extensions/sync/stream"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/meta"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
@@ -40,7 +41,7 @@ var (
 type DestinationRegistry struct {
 	storeController storage.StoreController
 	tempStorage     OciLayoutStorage
-	streamManager   StreamManager
+	streamManager   stream.Manager
 	metaDB          mTypes.MetaDB
 	log             log.Logger
 }
@@ -48,7 +49,7 @@ type DestinationRegistry struct {
 func NewDestinationRegistry(
 	storeController storage.StoreController, // local store controller
 	tempStoreController storage.StoreController, // temp store controller
-	streamManager StreamManager,
+	streamManager stream.Manager,
 	metaDB mTypes.MetaDB,
 	log log.Logger,
 ) Destination {
@@ -368,33 +369,10 @@ func (registry *DestinationRegistry) copyBlob(repo string, blobDigest godigest.D
 		return nil
 	}
 
-	// Try to use the stream temp store blob directly to avoid the double-write
-	// (reading the same bytes from the regclient temp ocidir that were already on disk).
-	if registry.streamManager != nil {
-		if streamPath := registry.streamManager.StreamBlobPath(blobDigest.String()); streamPath != "" {
-			streamFile, err := os.Open(streamPath)
-			if err == nil {
-				defer streamFile.Close()
-
-				registry.log.Debug().Str("blob", blobDigest.String()).
-					Msg("using stream temp store blob for commit (avoiding double-read)")
-
-				_, _, err = imageStore.FullBlobUpload(ctx, repo, streamFile, blobDigest)
-				if err != nil {
-					registry.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
-						Str("blob digest", blobDigest.String()).Str("media type", blobMediaType).
-						Msg("couldn't upload blob from stream store")
-
-					// If the blob failed digest verification, the stream temp file is corrupt
-					// (e.g. bad resume splice). Remove it so the next retry downloads from scratch.
-					if errors.Is(err, zerr.ErrBadBlobDigest) {
-						registry.streamManager.RemoveStreamBlob(blobDigest.String())
-					}
-				}
-
-				return err
-			}
-		}
+	// Prefer committing the blob directly from the stream temp store, avoiding
+	// a second read of bytes that streaming sync already wrote to disk.
+	if handled, err := registry.tryCopyBlobFromStreamStore(ctx, repo, blobDigest, blobMediaType, imageStore); handled {
+		return err
 	}
 
 	// Fallback to reading from the regclient temp ocidir store.

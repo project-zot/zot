@@ -1,6 +1,6 @@
 //go:build sync
 
-package sync
+package stream
 
 import (
 	"bytes"

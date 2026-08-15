@@ -1151,21 +1151,15 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrRepoNotFound) {
-			if rh.c.SyncOnDemand != nil && rh.c.SyncOnDemand.IsStreamingEnabledForRepo(name) {
-				streamErr := rh.getBlobInfoFromStreamCache(digest.String(), response)
-				if streamErr == nil {
-					return
-				}
+			if rh.tryStreamBlobInfo(name, digest.String(), response) {
+				return
 			}
 			details["name"] = name
 			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrBlobNotFound) {
-			if rh.c.SyncOnDemand != nil && rh.c.SyncOnDemand.IsStreamingEnabledForRepo(name) {
-				streamErr := rh.getBlobInfoFromStreamCache(digest.String(), response)
-				if streamErr == nil {
-					return
-				}
+			if rh.tryStreamBlobInfo(name, digest.String(), response) {
+				return
 			}
 			details["digest"] = digest.String()
 			e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(details)
@@ -1190,37 +1184,6 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 	response.Header().Set("Content-Type", resolveBlobResponseMediaType(imgStore, name, digest, rh.c.Log))
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
 	response.WriteHeader(http.StatusOK)
-}
-
-// getBlobInfoFromStreamCache checks if a blob exists in the stream cache
-// and writes appropriate headers to the response if it does.
-// This is only applicable when streaming is enabled.
-func (rh *RouteHandler) getBlobInfoFromStreamCache(digest string, response http.ResponseWriter) error {
-	rh.c.Log.Debug().Str("digest", digest).Msg("checking stream cache for blob existence")
-
-	streamMgr := rh.c.SyncOnDemand.StreamManager()
-
-	// when streaming is enabled, the blob might exist in the stream cache
-	blobSize, blobMediaType, err := streamMgr.CachedBlobInfo(digest)
-	if err != nil {
-		if errors.Is(err, zerr.ErrBlobNotFound) {
-			rh.c.Log.Debug().Str("digest", digest).Msg("blob not found in stream cache")
-
-			return err
-		}
-
-		rh.c.Log.Error().Err(err).Str("digest", digest).Msg("failed to check stream cache for blob existence")
-
-		return err
-	}
-
-	response.Header().Set("Content-Length", strconv.FormatInt(blobSize, 10))
-	response.Header().Set("Accept-Ranges", "bytes")
-	response.Header().Set("Content-Type", blobMediaType)
-	response.Header().Set(constants.DistContentDigestKey, digest)
-	response.WriteHeader(http.StatusOK)
-
-	return nil
 }
 
 type httpRange struct {
@@ -1517,160 +1480,6 @@ func normalizeBlobRedirectURL(rawURL string) (string, bool) {
 	return rawURL, true
 }
 
-// serveBlobFromStoreRetry re-checks local storage for a blob after a stream
-// lookup miss and serves it if present. It covers the window where a streaming
-// sync commits the blob to storage and tears down the stream entry between the
-// caller's original (failed) storage lookup and the stream lookup; without this
-// re-check the client would get a spurious 404 for a blob that is available.
-// Returns true if the response was written.
-func (rh *RouteHandler) serveBlobFromStoreRetry(response http.ResponseWriter, request *http.Request,
-	imgStore storageTypes.ImageStore, name string, digest godigest.Digest,
-	contentRange string, rangeHeaderPresent bool,
-) bool {
-	mediaType := resolveBlobResponseMediaType(imgStore, name, digest, rh.c.Log)
-
-	if !rangeHeaderPresent {
-		reader, blen, err := imgStore.GetBlob(name, digest, mediaType)
-		if err != nil {
-			return false
-		}
-
-		defer reader.Close()
-
-		response.Header().Set("Content-Length", strconv.FormatInt(blen, 10))
-		response.Header().Set(constants.DistContentDigestKey, digest.String())
-
-		WriteDataFromReader(response, http.StatusOK, blen, mediaType, reader, rh.c.Log)
-
-		return true
-	}
-
-	ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
-
-	ok, bsize, err := imgStore.CheckBlob(ctx, name, digest)
-	if err != nil || !ok {
-		return false
-	}
-
-	ranges, err := parseRangeHeader(contentRange, bsize)
-	if err != nil || len(ranges) != 1 {
-		// Multi-range retries are not supported here; let the caller 404.
-		return false
-	}
-
-	rng := ranges[0]
-
-	reader, blen, _, err := imgStore.GetBlobPartial(name, digest, mediaType, rng.start, rng.end)
-	if err != nil {
-		return false
-	}
-
-	defer reader.Close()
-
-	if blen != rng.length() {
-		rh.c.Log.Error().Int64("expected", rng.length()).Int64("actual", blen).
-			Msg("unexpected partial blob length on storage re-check")
-
-		return false
-	}
-
-	response.Header().Set(constants.DistContentDigestKey, digest.String())
-	response.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", rng.start, rng.end, bsize))
-	WriteDataFromReader(response, http.StatusPartialContent, rng.length(), mediaType, reader, rh.c.Log)
-
-	return true
-}
-
-// tryStreamBlob attempts to serve a blob (fully, or a single byte range) from
-// an active streaming sync download. It returns true if a response has been
-// written (successfully or not); false means the blob is not part of any
-// active stream and the caller should continue with its regular error handling.
-//
-// Range support is essential here: when a streamed download is interrupted,
-// docker reconnects with "Range: bytes=<received>-" to resume the layer pull.
-// Without a 206 answer from the stream path, those resume attempts would fail
-// and the pull would abort with the original error (e.g. unexpected EOF).
-func (rh *RouteHandler) tryStreamBlob(response http.ResponseWriter, request *http.Request,
-	name string, digest godigest.Digest, contentRange string, rangeHeaderPresent bool,
-) bool {
-	if rh.c.SyncOnDemand == nil || !rh.c.SyncOnDemand.IsStreamingEnabledForRepo(name) {
-		return false
-	}
-
-	streamMgr := rh.c.SyncOnDemand.StreamManager()
-
-	blobSize, mediaType, err := streamMgr.CachedBlobInfo(digest.String())
-	if err != nil {
-		rh.c.Log.Debug().Str("repo", name).Str("digest", digest.String()).
-			Msg("blob not found in active streams")
-
-		return false
-	}
-
-	start, end := int64(0), int64(-1)
-
-	if rangeHeaderPresent {
-		ranges, err := parseRangeHeader(contentRange, blobSize)
-		if err != nil || len(ranges) != 1 {
-			// Multi-range responses are not supported for in-flight blobs.
-			response.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", blobSize))
-			response.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
-
-			return true
-		}
-
-		start, end = ranges[0].start, ranges[0].end
-	}
-
-	rh.c.Log.Debug().Str("repo", name).Str("digest", digest.String()).
-		Int64("start", start).Int64("end", end).Msg("connecting client to stream")
-
-	copier, err := streamMgr.ConnectClient(digest.String(), response)
-	if err != nil {
-		if errors.Is(err, zerr.ErrBlobNotFoundInActiveStreams) {
-			// The stream may have been cleaned up between CachedBlobInfo and
-			// here; let the caller fall back to storage / 404.
-			rh.c.Log.Warn().Err(err).Str("digest", digest.String()).
-				Msg("failed to connect client to stream")
-
-			return false
-		}
-
-		rh.c.Log.Error().Err(err).Str("digest", digest.String()).
-			Msg("unexpected error connecting client to stream")
-
-		response.WriteHeader(http.StatusInternalServerError)
-
-		return true
-	}
-
-	response.Header().Set(constants.DistContentDigestKey, digest.String())
-	response.Header().Set("Content-Type", mediaType)
-	response.Header().Set("Accept-Ranges", "bytes")
-
-	if rangeHeaderPresent {
-		response.Header().Set("Content-Length", strconv.FormatInt(end-start+1, 10))
-		response.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, blobSize))
-		response.WriteHeader(http.StatusPartialContent)
-	} else {
-		response.Header().Set("Content-Length", strconv.FormatInt(blobSize, 10))
-		response.WriteHeader(http.StatusOK)
-	}
-
-	// Flush headers immediately so the client knows the blob is available
-	// and does not time out waiting for the first byte.
-	if flusher, ok := response.(http.Flusher); ok {
-		flusher.Flush()
-	}
-
-	if copyErr := copier.CopyRange(request.Context(), start, end); copyErr != nil {
-		rh.c.Log.Error().Err(copyErr).Str("digest", digest.String()).
-			Msg("unexpected error during stream copy")
-	}
-
-	return true
-}
-
 // GetBlob godoc
 // @Summary Get image blob/layer
 // @Description Get an image's blob/layer given a digest
@@ -1703,14 +1512,9 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 	digest := godigest.Digest(digestStr)
 
-	// Blob downloads of multi-GB layers can legitimately exceed the server's
-	// WriteTimeout, which is an absolute deadline for the whole response.
-	// Replace it with a rolling per-write deadline: transfers that keep making
-	// progress are never cut off mid-stream, while stalled clients still time
-	// out after the configured duration of write inactivity.
-	if writeTimeout := rh.c.Config.GetHTTPWriteTimeout(); writeTimeout > 0 {
-		response = newRollingDeadlineWriter(response, writeTimeout, rh.c.Log)
-	}
+	// For streaming-enabled repos, replace the absolute WriteTimeout with a
+	// rolling per-write deadline (multi-GB layers legitimately exceed it).
+	response = rh.wrapStreamingBlobWriter(response, name)
 
 	contentRange := request.Header.Get("Range")
 	_, rangeHeaderPresent := request.Header["Range"]
@@ -1719,13 +1523,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 		details := zerr.GetDetails(err)
 
 		if errors.Is(err, zerr.ErrRepoNotFound) || errors.Is(err, zerr.ErrBlobNotFound) {
-			if rh.tryStreamBlob(response, request, name, digest, contentRange, rangeHeaderPresent) {
-				return
-			}
-
-			// The stream may have completed and committed the blob to storage
-			// between the original storage lookup and the stream lookup.
-			if rh.serveBlobFromStoreRetry(response, request, imgStore, name, digest,
+			if rh.tryServeStreamedBlob(response, request, imgStore, name, digest,
 				contentRange, rangeHeaderPresent) {
 				return
 			}
@@ -1789,13 +1587,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 		if !ok {
 			// The blob may still be downloading via streaming sync; docker uses
 			// ranged requests to resume interrupted layer pulls.
-			if rh.tryStreamBlob(response, request, name, digest, contentRange, rangeHeaderPresent) {
-				return
-			}
-
-			// The stream may have completed and committed the blob to storage
-			// between the CheckBlob above and the stream lookup.
-			if rh.serveBlobFromStoreRetry(response, request, imgStore, name, digest,
+			if rh.tryServeStreamedBlob(response, request, imgStore, name, digest,
 				contentRange, rangeHeaderPresent) {
 				return
 			}
@@ -3000,28 +2792,11 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 		routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
 			Msg("trying to get updated image by syncing on demand")
 
-		// If streaming is enabled for this repo, return manifest immediately.
-		if routeHandler.c.SyncOnDemand.IsStreamingEnabledForRepo(name) {
-			routeHandler.c.Log.Debug().Str("repository", name).Str("reference", reference).
-				Msg("streaming is enabled for repo. Direct fetching manifest.")
-
-			fetchedManifest, err := routeHandler.c.SyncOnDemand.FetchManifestForStream(ctx, name, reference)
-			if err != nil {
-				routeHandler.c.Log.Err(err).Str("repository", name).Str("reference", reference).
-					Msg("failed to fetch manifest")
-
-				return imgStore.GetImageManifest(name, reference)
-			}
-
-			content, err := fetchedManifest.RawBody()
-			if err != nil {
-				routeHandler.c.Log.Err(err).Str("repository", name).Str("reference", reference).
-					Msg("failed to read manifest")
-
-				return imgStore.GetImageManifest(name, reference)
-			}
-
-			return content, fetchedManifest.GetDescriptor().Digest, fetchedManifest.GetDescriptor().MediaType, nil
+		// Streaming fast path: return the upstream manifest immediately and
+		// sync the image in the background.
+		if handled, mContent, mDigest, mMediaType, mErr := routeHandler.streamedManifestFastPath(
+			ctx, imgStore, name, reference); handled {
+			return mContent, mDigest, mMediaType, mErr
 		}
 
 		if errSync := routeHandler.c.SyncOnDemand.SyncImage(ctx, name, reference); errSync != nil {

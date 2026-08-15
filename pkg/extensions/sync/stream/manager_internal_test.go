@@ -1,6 +1,6 @@
 //go:build sync
 
-package sync
+package stream
 
 import (
 	"bytes"
@@ -22,11 +22,11 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
-type mockStreamTempStore struct {
+type mockTempStore struct {
 	blobPathFn func(godigest.Digest) string
 }
 
-func (m *mockStreamTempStore) BlobPath(dig godigest.Digest) string {
+func (m *mockTempStore) BlobPath(dig godigest.Digest) string {
 	if m.blobPathFn != nil {
 		return m.blobPathFn(dig)
 	}
@@ -34,10 +34,10 @@ func (m *mockStreamTempStore) BlobPath(dig godigest.Digest) string {
 	return "/nonexistent/dir/" + dig.Encoded()
 }
 
-func newTestChunkingStreamManager(dir string) *ChunkingStreamManager {
+func newTestChunkingManager(dir string) *ChunkingManager {
 	logger := log.NewTestLogger()
 
-	return &ChunkingStreamManager{
+	return &ChunkingManager{
 		tempStore:     NewLocalTempStore(dir, logger),
 		activeStreams: map[string]*ChunkedBlobReader{},
 		streamingRefs: map[string]*StreamableManifest{},
@@ -96,9 +96,9 @@ func newTestOCIImageIndex(t *testing.T, subManifests []rcManifest.Manifest) rcMa
 	return idx
 }
 
-func TestChunkingStreamManagerConnectClient(t *testing.T) {
+func TestChunkingManagerConnectClient(t *testing.T) {
 	Convey("ConnectClient", t, func() {
-		sm := newTestChunkingStreamManager(t.TempDir())
+		sm := newTestChunkingManager(t.TempDir())
 
 		Convey("returns ErrBlobNotFoundInActiveStreams when blob is not active", func() {
 			digest := "sha256:" + strings.Repeat("a", 64)
@@ -131,9 +131,9 @@ func TestChunkingStreamManagerConnectClient(t *testing.T) {
 	})
 }
 
-func TestChunkingStreamManagerCachedBlobInfo(t *testing.T) {
+func TestChunkingManagerCachedBlobInfo(t *testing.T) {
 	Convey("CachedBlobInfo", t, func() {
-		sm := newTestChunkingStreamManager(t.TempDir())
+		sm := newTestChunkingManager(t.TempDir())
 
 		Convey("returns ErrBlobNotFound for an unknown blob", func() {
 			digest := "sha256:" + strings.Repeat("b", 64)
@@ -161,9 +161,9 @@ func TestChunkingStreamManagerCachedBlobInfo(t *testing.T) {
 	})
 }
 
-func TestChunkingStreamManagerStreamingBlobReader(t *testing.T) {
+func TestChunkingManagerStreamingBlobReader(t *testing.T) {
 	Convey("StreamingBlobReader", t, func() {
-		sm := newTestChunkingStreamManager(t.TempDir())
+		sm := newTestChunkingManager(t.TempDir())
 
 		Convey("falls back to the raw upstream reader when blob has no active stream", func() {
 			data := []byte("some blob")
@@ -296,9 +296,9 @@ func TestChunkingStreamManagerStreamingBlobReader(t *testing.T) {
 	})
 }
 
-func TestChunkingStreamManagerStoreImageForStreaming(t *testing.T) {
+func TestChunkingManagerStoreImageForStreaming(t *testing.T) {
 	Convey("StoreImageForStreaming", t, func() {
-		sm := newTestChunkingStreamManager(t.TempDir())
+		sm := newTestChunkingManager(t.TempDir())
 
 		configData := []byte("config-payload")
 		layerData := []byte("layer-payload")
@@ -342,7 +342,7 @@ func TestChunkingStreamManagerStoreImageForStreaming(t *testing.T) {
 		})
 
 		Convey("propagates error when the temp store cannot create a blob path", func() {
-			sm.tempStore = &mockStreamTempStore{
+			sm.tempStore = &mockTempStore{
 				blobPathFn: func(_ godigest.Digest) string {
 					return "/nonexistent/dir/blob"
 				},
@@ -354,9 +354,9 @@ func TestChunkingStreamManagerStoreImageForStreaming(t *testing.T) {
 	})
 }
 
-func TestChunkingStreamManagerStreamingImageManifest(t *testing.T) {
+func TestChunkingManagerStreamingImageManifest(t *testing.T) {
 	Convey("StreamingImageManifest", t, func() {
-		sm := newTestChunkingStreamManager(t.TempDir())
+		sm := newTestChunkingManager(t.TempDir())
 
 		manifest := newTestOCIManifestWithBlobs(t, []byte("cfg"), []byte("lyr"))
 
@@ -378,9 +378,9 @@ func TestChunkingStreamManagerStreamingImageManifest(t *testing.T) {
 	})
 }
 
-func TestChunkingStreamManagerRemoveStreamingImage(t *testing.T) {
+func TestChunkingManagerRemoveStreamingImage(t *testing.T) {
 	Convey("RemoveStreamingImage", t, func() {
-		sm := newTestChunkingStreamManager(t.TempDir())
+		sm := newTestChunkingManager(t.TempDir())
 
 		Convey("does not panic when no entry exists for the given repo:reference", func() {
 			So(func() { sm.RemoveStreamingImage("nothere", "v0") }, ShouldNotPanic)
@@ -421,9 +421,9 @@ func TestChunkingStreamManagerRemoveStreamingImage(t *testing.T) {
 	})
 }
 
-func TestChunkingStreamManagerMultiArchStoreImageForStreaming(t *testing.T) {
+func TestChunkingManagerMultiArchStoreImageForStreaming(t *testing.T) {
 	Convey("StoreImageForStreaming with multi-arch image index", t, func() {
-		sm := newTestChunkingStreamManager(t.TempDir())
+		sm := newTestChunkingManager(t.TempDir())
 
 		// Create two platform-specific sub-manifests.
 		amd64Config := []byte("amd64-config-data")
@@ -496,7 +496,7 @@ func TestChunkingStreamManagerMultiArchStoreImageForStreaming(t *testing.T) {
 		})
 
 		Convey("returns error when preparing a sub-manifest fails due to bad temp store", func() {
-			sm.tempStore = &mockStreamTempStore{
+			sm.tempStore = &mockTempStore{
 				blobPathFn: func(_ godigest.Digest) string {
 					return "/nonexistent/dir/blob"
 				},
@@ -508,9 +508,9 @@ func TestChunkingStreamManagerMultiArchStoreImageForStreaming(t *testing.T) {
 	})
 }
 
-func TestChunkingStreamManagerStreamingBlobReaderRetry(t *testing.T) {
+func TestChunkingManagerStreamingBlobReaderRetry(t *testing.T) {
 	Convey("StreamingBlobReader on sync retry", t, func() {
-		sm := newTestChunkingStreamManager(t.TempDir())
+		sm := newTestChunkingManager(t.TempDir())
 
 		prefix := []byte("AAAAAAAAAA") // delivered by the failed first attempt
 		suffix := []byte("BBBBBBBBBB")
@@ -629,9 +629,9 @@ func TestChunkingStreamManagerStreamingBlobReaderRetry(t *testing.T) {
 	})
 }
 
-func TestChunkingStreamManagerRemoveStreamingImageNonBlocking(t *testing.T) {
+func TestChunkingManagerRemoveStreamingImageNonBlocking(t *testing.T) {
 	Convey("RemoveStreamingImage waits for clients without freezing the manager", t, func() {
-		sm := newTestChunkingStreamManager(t.TempDir())
+		sm := newTestChunkingManager(t.TempDir())
 
 		layerData := bytes.Repeat([]byte("z"), 32)
 		configData := []byte("cfg-nb")
@@ -733,9 +733,9 @@ func TestChunkingStreamManagerRemoveStreamingImageNonBlocking(t *testing.T) {
 	})
 }
 
-func TestChunkingStreamManagerAbortStreamingImage(t *testing.T) {
+func TestChunkingManagerAbortStreamingImage(t *testing.T) {
 	Convey("AbortStreamingImage", t, func() {
-		sm := newTestChunkingStreamManager(t.TempDir())
+		sm := newTestChunkingManager(t.TempDir())
 
 		layerData := bytes.Repeat([]byte("q"), 32)
 		configData := []byte("cfg-abort")
@@ -789,9 +789,9 @@ func TestChunkingStreamManagerAbortStreamingImage(t *testing.T) {
 	})
 }
 
-func TestChunkingStreamManagerDuplicateInFlightSync(t *testing.T) {
+func TestChunkingManagerDuplicateInFlightSync(t *testing.T) {
 	Convey("a duplicate sync of an in-flight blob is served from disk, not upstream", t, func() {
-		sm := newTestChunkingStreamManager(t.TempDir())
+		sm := newTestChunkingManager(t.TempDir())
 
 		data := bytes.Repeat([]byte("d"), 128)
 		desc := descriptor.Descriptor{
@@ -847,9 +847,9 @@ func TestChunkingStreamManagerDuplicateInFlightSync(t *testing.T) {
 	})
 }
 
-func TestChunkingStreamManagerStreamingImageManifestDigestLookup(t *testing.T) {
+func TestChunkingManagerStreamingImageManifestDigestLookup(t *testing.T) {
 	Convey("StreamingImageManifest matches digests of cached indexes and sub-manifests", t, func() {
-		sm := newTestChunkingStreamManager(t.TempDir())
+		sm := newTestChunkingManager(t.TempDir())
 
 		amd64Manifest := newTestOCIManifestWithBlobs(t, []byte("amd64-cfg"), []byte("amd64-layer"))
 		arm64Manifest := newTestOCIManifestWithBlobs(t, []byte("arm64-cfg"), []byte("arm64-layer"))
@@ -898,13 +898,13 @@ func TestChunkingStreamManagerStreamingImageManifestDigestLookup(t *testing.T) {
 	})
 }
 
-func TestChunkingStreamManagerEarlyClientBeforePlanAInit(t *testing.T) {
+func TestChunkingManagerEarlyClientBeforePlanAInit(t *testing.T) {
 	Convey("a client that connects before InitReaderComplete still gets the blob", t, func() {
 		// Regression: with a leftover complete file in the stream temp store
 		// (Plan A), the sync hook calls InitReaderComplete and never Read().
 		// A client that subscribed BEFORE the hook ran must still be notified,
 		// otherwise it waits forever (docker hangs at "Pulling fs layer").
-		sm := newTestChunkingStreamManager(t.TempDir())
+		sm := newTestChunkingManager(t.TempDir())
 
 		data := bytes.Repeat([]byte("p"), 64)
 		desc := descriptor.Descriptor{

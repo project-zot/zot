@@ -18,7 +18,6 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	rcblob "github.com/regclient/regclient/types/blob"
 	rcdesc "github.com/regclient/regclient/types/descriptor"
-	rcmanifest "github.com/regclient/regclient/types/manifest"
 	. "github.com/smartystreets/goconvey/convey"
 
 	zerr "zotregistry.dev/zot/v2/errors"
@@ -28,39 +27,23 @@ import (
 	apiErr "zotregistry.dev/zot/v2/pkg/api/errors"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
-	"zotregistry.dev/zot/v2/pkg/extensions/sync"
-	sync_pkg "zotregistry.dev/zot/v2/pkg/extensions/sync"
+	"zotregistry.dev/zot/v2/pkg/extensions/sync/stream"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
 
+// mockSyncOnDemand implements api.SyncOnDemand plus the optional streaming
+// methods the route handlers discover via type assertion.
 type mockSyncOnDemand struct {
 	isStreamingEnabledForRepoFn func(repo string) bool
-	streamManagerFn             func() sync_pkg.StreamManager
-	fetchManifestForStreamFn    func(ctx context.Context, name, reference string) (rcmanifest.Manifest, error)
+	fetchManifestForStreamFn    func(ctx context.Context, name, reference string) ([]byte, godigest.Digest, string, error)
+	cachedBlobInfoFn            func(digest string) (int64, string, error)
+	connectBlobStreamFn         func(digest string, writer io.Writer) (func(ctx context.Context, start, end int64) error, error)
 }
 
 func (m *mockSyncOnDemand) SyncImage(_ context.Context, _, _ string) error { return nil }
 
 func (m *mockSyncOnDemand) SyncReferrers(_ context.Context, _, _ string, _ []string) error {
-	return nil
-}
-
-func (m *mockSyncOnDemand) FetchManifestForStream(
-	ctx context.Context, name, reference string,
-) (rcmanifest.Manifest, error) {
-	if m.fetchManifestForStreamFn != nil {
-		return m.fetchManifestForStreamFn(ctx, name, reference)
-	}
-
-	return nil, zerr.ErrBlobNotFound
-}
-
-func (m *mockSyncOnDemand) StreamManager() sync_pkg.StreamManager {
-	if m.streamManagerFn != nil {
-		return m.streamManagerFn()
-	}
-
 	return nil
 }
 
@@ -72,38 +55,17 @@ func (m *mockSyncOnDemand) IsStreamingEnabledForRepo(repo string) bool {
 	return false
 }
 
-type mockStreamManager struct {
-	connectClientFn  func(blobDigest string, writer io.Writer) (*sync_pkg.InFlightBlobCopier, error)
-	cachedBlobInfoFn func(digest string) (int64, string, error)
-}
-
-func (m *mockStreamManager) ConnectClient(
-	blobDigest string, writer io.Writer,
-) (*sync_pkg.InFlightBlobCopier, error) {
-	if m.connectClientFn != nil {
-		return m.connectClientFn(blobDigest, writer)
+func (m *mockSyncOnDemand) FetchManifestForStream(
+	ctx context.Context, name, reference string,
+) ([]byte, godigest.Digest, string, error) {
+	if m.fetchManifestForStreamFn != nil {
+		return m.fetchManifestForStreamFn(ctx, name, reference)
 	}
 
-	return nil, zerr.ErrBlobNotFoundInActiveStreams
+	return nil, "", "", zerr.ErrBlobNotFound
 }
 
-func (m *mockStreamManager) StreamingBlobReader(r *rcblob.BReader) (*rcblob.BReader, error) {
-	return r, nil
-}
-
-func (m *mockStreamManager) StoreImageForStreaming(_, _ string, _ *sync.StreamableManifest) error {
-	return nil
-}
-
-func (m *mockStreamManager) StreamingImageManifest(_, _ string) (*sync.StreamableManifest, bool) {
-	return nil, false
-}
-
-func (m *mockStreamManager) RemoveStreamingImage(_, _ string) {}
-
-func (m *mockStreamManager) AbortStreamingImage(_, _ string) {}
-
-func (m *mockStreamManager) CachedBlobInfo(digest string) (int64, string, error) {
+func (m *mockSyncOnDemand) CachedBlobInfo(digest string) (int64, string, error) {
 	if m.cachedBlobInfoFn != nil {
 		return m.cachedBlobInfoFn(digest)
 	}
@@ -111,15 +73,14 @@ func (m *mockStreamManager) CachedBlobInfo(digest string) (int64, string, error)
 	return 0, "", zerr.ErrBlobNotFound
 }
 
-func (m *mockStreamManager) StreamBlobPath(_ string) string {
-	return ""
-}
+func (m *mockSyncOnDemand) ConnectBlobStream(digest string, writer io.Writer,
+) (func(ctx context.Context, start, end int64) error, error) {
+	if m.connectBlobStreamFn != nil {
+		return m.connectBlobStreamFn(digest, writer)
+	}
 
-func (m *mockStreamManager) PartialBlobDigests() map[string]int64 {
-	return nil
+	return nil, zerr.ErrBlobNotFoundInActiveStreams
 }
-
-func (m *mockStreamManager) RemoveStreamBlob(_ string) {}
 
 func newStreamingBlobTestRouteHandler(
 	t *testing.T,
@@ -181,9 +142,6 @@ func TestGetBlobStreaming(t *testing.T) {
 		Convey("falls through to 400 for non-streamable error even when streaming enabled", func() {
 			syncOnDemand := &mockSyncOnDemand{
 				isStreamingEnabledForRepoFn: func(_ string) bool { return true },
-				streamManagerFn: func() sync_pkg.StreamManager {
-					return &mockStreamManager{}
-				},
 			}
 			handler := newStreamingBlobTestRouteHandler(t, mocks.MockedImageStore{
 				GetBlobFn: func(_ string, _ godigest.Digest, _ string) (io.ReadCloser, int64, error) {
@@ -219,12 +177,11 @@ func TestGetBlobStreaming(t *testing.T) {
 		Convey("returns 404 BLOB_UNKNOWN when no active stream for blob", func() {
 			syncOnDemand := &mockSyncOnDemand{
 				isStreamingEnabledForRepoFn: func(_ string) bool { return true },
-				streamManagerFn: func() sync_pkg.StreamManager {
-					return &mockStreamManager{
-						connectClientFn: func(_ string, _ io.Writer) (*sync_pkg.InFlightBlobCopier, error) {
-							return nil, zerr.ErrBlobNotFoundInActiveStreams
-						},
-					}
+				cachedBlobInfoFn: func(_ string) (int64, string, error) {
+					return 42, "application/octet-stream", nil
+				},
+				connectBlobStreamFn: func(_ string, _ io.Writer) (func(context.Context, int64, int64) error, error) {
+					return nil, zerr.ErrBlobNotFoundInActiveStreams
 				},
 			}
 			handler := newStreamingBlobTestRouteHandler(t, mocks.MockedImageStore{
@@ -261,12 +218,11 @@ func TestGetBlobStreaming(t *testing.T) {
 		Convey("returns 404 NAME_UNKNOWN when no active stream for repo", func() {
 			syncOnDemand := &mockSyncOnDemand{
 				isStreamingEnabledForRepoFn: func(_ string) bool { return true },
-				streamManagerFn: func() sync_pkg.StreamManager {
-					return &mockStreamManager{
-						connectClientFn: func(_ string, _ io.Writer) (*sync_pkg.InFlightBlobCopier, error) {
-							return nil, zerr.ErrBlobNotFoundInActiveStreams
-						},
-					}
+				cachedBlobInfoFn: func(_ string) (int64, string, error) {
+					return 42, "application/octet-stream", nil
+				},
+				connectBlobStreamFn: func(_ string, _ io.Writer) (func(context.Context, int64, int64) error, error) {
+					return nil, zerr.ErrBlobNotFoundInActiveStreams
 				},
 			}
 			handler := newStreamingBlobTestRouteHandler(t, mocks.MockedImageStore{
@@ -303,15 +259,11 @@ func TestGetBlobStreaming(t *testing.T) {
 		Convey("returns 500 on unexpected ConnectClient error", func() {
 			syncOnDemand := &mockSyncOnDemand{
 				isStreamingEnabledForRepoFn: func(_ string) bool { return true },
-				streamManagerFn: func() sync_pkg.StreamManager {
-					return &mockStreamManager{
-						cachedBlobInfoFn: func(_ string) (int64, string, error) {
-							return 42, "application/octet-stream", nil
-						},
-						connectClientFn: func(_ string, _ io.Writer) (*sync_pkg.InFlightBlobCopier, error) {
-							return nil, ErrUnexpectedError
-						},
-					}
+				cachedBlobInfoFn: func(_ string) (int64, string, error) {
+					return 42, "application/octet-stream", nil
+				},
+				connectBlobStreamFn: func(_ string, _ io.Writer) (func(context.Context, int64, int64) error, error) {
+					return nil, ErrUnexpectedError
 				},
 			}
 			handler := newStreamingBlobTestRouteHandler(t, mocks.MockedImageStore{
@@ -349,7 +301,7 @@ func TestGetBlobStreaming(t *testing.T) {
 			dir := t.TempDir()
 			blobPath := filepath.Join(dir, "blob.bin")
 
-			cbr, err := sync_pkg.NewChunkedBlobReader(blobPath, log.NewTestLogger())
+			cbr, err := stream.NewChunkedBlobReader(blobPath, log.NewTestLogger())
 			So(err, ShouldBeNil)
 
 			bReader := rcblob.NewReader(
@@ -370,15 +322,13 @@ func TestGetBlobStreaming(t *testing.T) {
 
 			syncOnDemand := &mockSyncOnDemand{
 				isStreamingEnabledForRepoFn: func(_ string) bool { return true },
-				streamManagerFn: func() sync_pkg.StreamManager {
-					return &mockStreamManager{
-						cachedBlobInfoFn: func(_ string) (int64, string, error) {
-							return int64(len(blobData)), blobMediaType, nil
-						},
-						connectClientFn: func(_ string, writer io.Writer) (*sync_pkg.InFlightBlobCopier, error) {
-							return sync_pkg.NewInFlightBlobCopier(cbr, blobPath, writer, log.NewTestLogger()), nil
-						},
-					}
+				cachedBlobInfoFn: func(_ string) (int64, string, error) {
+					return int64(len(blobData)), blobMediaType, nil
+				},
+				connectBlobStreamFn: func(_ string, writer io.Writer) (func(context.Context, int64, int64) error, error) {
+					copier := stream.NewInFlightBlobCopier(cbr, blobPath, writer, log.NewTestLogger())
+
+					return copier.CopyRange, nil
 				},
 			}
 			handler := newStreamingBlobTestRouteHandler(t, mocks.MockedImageStore{
@@ -423,7 +373,7 @@ func TestGetBlobStreaming(t *testing.T) {
 			dir := t.TempDir()
 			blobPath := filepath.Join(dir, "blob.bin")
 
-			cbr, err := sync_pkg.NewChunkedBlobReader(blobPath, log.NewTestLogger())
+			cbr, err := stream.NewChunkedBlobReader(blobPath, log.NewTestLogger())
 			So(err, ShouldBeNil)
 
 			bReader := rcblob.NewReader(
@@ -438,22 +388,20 @@ func TestGetBlobStreaming(t *testing.T) {
 
 			syncOnDemand := &mockSyncOnDemand{
 				isStreamingEnabledForRepoFn: func(_ string) bool { return true },
-				streamManagerFn: func() sync_pkg.StreamManager {
-					return &mockStreamManager{
-						cachedBlobInfoFn: func(_ string) (int64, string, error) {
-							return int64(len(blobData)), blobMediaType, nil
-						},
-						connectClientFn: func(_ string, writer io.Writer) (*sync_pkg.InFlightBlobCopier, error) {
-							// Use a non-existent on-disk path so Copy() fails at os.Open,
-							// after the handler has already written the 200 headers.
-							return sync_pkg.NewInFlightBlobCopier(
-								cbr,
-								filepath.Join(dir, "nonexistent.bin"),
-								writer,
-								log.NewTestLogger(),
-							), nil
-						},
-					}
+				cachedBlobInfoFn: func(_ string) (int64, string, error) {
+					return int64(len(blobData)), blobMediaType, nil
+				},
+				connectBlobStreamFn: func(_ string, writer io.Writer) (func(context.Context, int64, int64) error, error) {
+					// Use a non-existent on-disk path so the copy fails at os.Open,
+					// after the handler has already written the 200 headers.
+					copier := stream.NewInFlightBlobCopier(
+						cbr,
+						filepath.Join(dir, "nonexistent.bin"),
+						writer,
+						log.NewTestLogger(),
+					)
+
+					return copier.CopyRange, nil
 				},
 			}
 			handler := newStreamingBlobTestRouteHandler(t, mocks.MockedImageStore{
@@ -502,10 +450,7 @@ func TestGetBlobStreaming(t *testing.T) {
 
 			syncOnDemand := &mockSyncOnDemand{
 				isStreamingEnabledForRepoFn: func(_ string) bool { return true },
-				streamManagerFn: func() sync_pkg.StreamManager {
-					// Stream entry is gone: CachedBlobInfo misses.
-					return &mockStreamManager{}
-				},
+				// Stream entry is gone: CachedBlobInfo misses (default mock behavior).
 			}
 			handler := newStreamingBlobTestRouteHandler(t, mocks.MockedImageStore{
 				GetBlobFn: func(_ string, _ godigest.Digest, _ string) (io.ReadCloser, int64, error) {
@@ -590,7 +535,6 @@ func TestCheckBlobStreaming(t *testing.T) {
 		Convey("falls through to 400 for non-streamable error even when streaming enabled", func() {
 			syncOnDemand := &mockSyncOnDemand{
 				isStreamingEnabledForRepoFn: func(_ string) bool { return true },
-				streamManagerFn:             func() sync_pkg.StreamManager { return &mockStreamManager{} },
 			}
 			handler := newStreamingBlobTestRouteHandler(t, mocks.MockedImageStore{
 				CheckBlobFn: func(_ context.Context, _ string, _ godigest.Digest) (bool, int64, error) {
@@ -615,7 +559,6 @@ func TestCheckBlobStreaming(t *testing.T) {
 		Convey("returns 404 BLOB_UNKNOWN when blob not found in stream cache", func() {
 			syncOnDemand := &mockSyncOnDemand{
 				isStreamingEnabledForRepoFn: func(_ string) bool { return true },
-				streamManagerFn:             func() sync_pkg.StreamManager { return &mockStreamManager{} },
 			}
 			handler := newStreamingBlobTestRouteHandler(t, mocks.MockedImageStore{
 				CheckBlobFn: func(_ context.Context, _ string, _ godigest.Digest) (bool, int64, error) {
@@ -640,7 +583,6 @@ func TestCheckBlobStreaming(t *testing.T) {
 		Convey("returns 404 NAME_UNKNOWN when repo not found in stream cache", func() {
 			syncOnDemand := &mockSyncOnDemand{
 				isStreamingEnabledForRepoFn: func(_ string) bool { return true },
-				streamManagerFn:             func() sync_pkg.StreamManager { return &mockStreamManager{} },
 			}
 			handler := newStreamingBlobTestRouteHandler(t, mocks.MockedImageStore{
 				CheckBlobFn: func(_ context.Context, _ string, _ godigest.Digest) (bool, int64, error) {
@@ -669,12 +611,8 @@ func TestCheckBlobStreaming(t *testing.T) {
 
 			syncOnDemand := &mockSyncOnDemand{
 				isStreamingEnabledForRepoFn: func(_ string) bool { return true },
-				streamManagerFn: func() sync_pkg.StreamManager {
-					return &mockStreamManager{
-						cachedBlobInfoFn: func(_ string) (int64, string, error) {
-							return blobSize, blobMediaType, nil
-						},
-					}
+				cachedBlobInfoFn: func(_ string) (int64, string, error) {
+					return blobSize, blobMediaType, nil
 				},
 			}
 			handler := newStreamingBlobTestRouteHandler(t, mocks.MockedImageStore{
@@ -703,12 +641,8 @@ func TestCheckBlobStreaming(t *testing.T) {
 
 			syncOnDemand := &mockSyncOnDemand{
 				isStreamingEnabledForRepoFn: func(_ string) bool { return true },
-				streamManagerFn: func() sync_pkg.StreamManager {
-					return &mockStreamManager{
-						cachedBlobInfoFn: func(_ string) (int64, string, error) {
-							return blobSize, blobMediaType, nil
-						},
-					}
+				cachedBlobInfoFn: func(_ string) (int64, string, error) {
+					return blobSize, blobMediaType, nil
 				},
 			}
 			handler := newStreamingBlobTestRouteHandler(t, mocks.MockedImageStore{
@@ -733,12 +667,8 @@ func TestCheckBlobStreaming(t *testing.T) {
 		Convey("returns 404 error when stream cache cannot be read", func() {
 			syncOnDemand := &mockSyncOnDemand{
 				isStreamingEnabledForRepoFn: func(_ string) bool { return true },
-				streamManagerFn: func() sync_pkg.StreamManager {
-					return &mockStreamManager{
-						cachedBlobInfoFn: func(_ string) (int64, string, error) {
-							return 0, "", zerr.ErrUnknownCode
-						},
-					}
+				cachedBlobInfoFn: func(_ string) (int64, string, error) {
+					return 0, "", zerr.ErrUnknownCode
 				},
 			}
 			handler := newStreamingBlobTestRouteHandler(t, mocks.MockedImageStore{
