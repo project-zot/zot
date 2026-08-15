@@ -1681,12 +1681,33 @@ func validateGCRules(retention config.ImageRetention, logger zlog.Logger) error 
 	return nil
 }
 
+// validateRegistryManifestCheckInterval rejects a manifestCheckInterval that cannot take effect.
+// The interval only throttles on-demand manifest checks, so it is meaningless without onDemand.
+func validateRegistryManifestCheckInterval(regCfg syncconf.RegistryConfig) error {
+	if regCfg.ManifestCheckInterval < 0 {
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "manifestCheckInterval cannot be negative")
+	}
+
+	if regCfg.ManifestCheckInterval > 0 && !regCfg.OnDemand {
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "manifestCheckInterval requires onDemand to be enabled")
+	}
+
+	return nil
+}
+
 func validateSync(config *config.Config, logger zlog.Logger) error {
 	// check glob patterns in sync config are compilable
 	extensionsConfig := config.CopyExtensionsConfig()
 	// can't check with IsSyncEnabled(), because it can't test invalid sync configs
 	if extensionsConfig != nil && extensionsConfig.Sync != nil && len(extensionsConfig.Sync.Registries) > 0 {
 		for regID, regCfg := range extensionsConfig.Sync.Registries {
+			if intervalValidationErr := validateRegistryManifestCheckInterval(regCfg); intervalValidationErr != nil {
+				logger.Error().Err(intervalValidationErr).Int("id", regID).Interface("extensions.sync.registries[id]",
+					extensionsConfig.Sync.Registries[regID]).Msg("invalid config for manifestCheckInterval")
+
+				return intervalValidationErr
+			}
+
 			// check retry options are configured for sync
 			if regCfg.MaxRetries != nil && regCfg.RetryDelay == nil {
 				msg := "retryDelay is required when using maxRetries"

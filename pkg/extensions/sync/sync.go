@@ -36,6 +36,9 @@ type Service interface {
 	CanRetryOnError() bool // used by sync on demand to retry in background
 	// Get the sync timeout configured for this service
 	GetSyncTimeout() time.Duration
+	// Returns whether an upstream manifest check is due for repo:reference.
+	// Always true unless manifestCheckInterval is configured and a recent check succeeded.
+	ShouldCheckUpstream(repo, reference string) bool
 }
 
 // Registry interface must be implemented by local and remote registries.
