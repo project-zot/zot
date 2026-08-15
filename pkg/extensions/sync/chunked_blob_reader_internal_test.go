@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/regclient/regclient/types/blob"
@@ -665,6 +666,164 @@ func TestFailedAndReinitReader(t *testing.T) {
 			onDisk, diskErr := os.ReadFile(blobPath)
 			So(diskErr, ShouldBeNil)
 			So(onDisk, ShouldResemble, fullData)
+		})
+	})
+}
+
+func TestAnnounceNonBlocking(t *testing.T) {
+	Convey("announcements never block on subscribers that do not consume", t, func() {
+		dir := t.TempDir()
+		blobPath := filepath.Join(dir, "blob.bin")
+		cbr, err := NewChunkedBlobReader(blobPath, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		data := bytes.Repeat([]byte("x"), 64)
+		So(cbr.InitReader(newTestBReader(data), descriptor.Descriptor{
+			Digest: godigest.FromBytes(data),
+			Size:   int64(len(data)),
+		}), ShouldBeTrue)
+
+		// Subscribe a client that never consumes announcements. Its channel
+		// (capacity 1) fills up after the initial announcement; every further
+		// announcement must overwrite the stale value instead of blocking.
+		channel, clientID := cbr.Subscribe()
+		defer cbr.Unsubscribe(clientID)
+
+		done := make(chan struct{})
+
+		go func() {
+			defer close(done)
+
+			buff := make([]byte, 8)
+
+			for {
+				_, rerr := cbr.Read(buff)
+				if rerr != nil {
+					return
+				}
+			}
+		}()
+
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("Read blocked on a subscriber that does not consume announcements")
+		}
+
+		// The channel must hold the latest offset (the full blob size).
+		select {
+		case latest := <-channel:
+			So(latest, ShouldEqual, int64(len(data)))
+		default:
+			t.Fatal("expected the latest offset to be queued on the client channel")
+		}
+	})
+}
+
+func TestAbort(t *testing.T) {
+	Convey("Abort", t, func() {
+		dir := t.TempDir()
+
+		Convey("closes current subscribers and refuses new ones", func() {
+			blobPath := filepath.Join(dir, "blob1.bin")
+			cbr, err := NewChunkedBlobReader(blobPath, log.NewTestLogger())
+			So(err, ShouldBeNil)
+
+			data := []byte("some data")
+			So(cbr.InitReader(newTestBReader(data), descriptor.Descriptor{
+				Digest: godigest.FromBytes(data),
+				Size:   int64(len(data)),
+			}), ShouldBeTrue)
+
+			channel, _ := cbr.Subscribe()
+
+			cbr.Abort()
+			So(cbr.Aborted(), ShouldBeTrue)
+
+			// The existing subscriber channel must be closed (after draining
+			// the initial announcement).
+			closedSeen := false
+
+			for range 2 {
+				if _, ok := <-channel; !ok {
+					closedSeen = true
+
+					break
+				}
+			}
+
+			So(closedSeen, ShouldBeTrue)
+
+			// WaitForClientEmpty returns promptly: the map was emptied.
+			waitDone := make(chan struct{})
+			go func() {
+				cbr.WaitForClientEmpty()
+				close(waitDone)
+			}()
+
+			select {
+			case <-waitDone:
+			case <-time.After(2 * time.Second):
+				t.Fatal("WaitForClientEmpty blocked after Abort")
+			}
+
+			// New subscriptions get an already-closed channel.
+			lateChannel, lateID := cbr.Subscribe()
+			So(lateID, ShouldEqual, -1)
+
+			_, ok := <-lateChannel
+			So(ok, ShouldBeFalse)
+
+			// A re-arm attempt must be refused.
+			So(cbr.ReinitReader(newTestBReader(data), descriptor.Descriptor{
+				Digest: godigest.FromBytes(data),
+				Size:   int64(len(data)),
+			}), ShouldBeFalse)
+		})
+
+		Convey("unblocks Descriptor waiters when aborted before init", func() {
+			blobPath := filepath.Join(dir, "blob2.bin")
+			cbr, err := NewChunkedBlobReader(blobPath, log.NewTestLogger())
+			So(err, ShouldBeNil)
+
+			descDone := make(chan descriptor.Descriptor, 1)
+			go func() {
+				descDone <- cbr.Descriptor()
+			}()
+
+			// Give the goroutine time to block on readerReady.
+			time.Sleep(50 * time.Millisecond)
+
+			cbr.Abort()
+
+			select {
+			case desc := <-descDone:
+				So(desc.Size, ShouldEqual, 0)
+			case <-time.After(2 * time.Second):
+				t.Fatal("Descriptor still blocked after Abort")
+			}
+		})
+
+		Convey("keeps the partial on-disk file for a future resume", func() {
+			blobPath := filepath.Join(dir, "blob3.bin")
+			cbr, err := NewChunkedBlobReader(blobPath, log.NewTestLogger())
+			So(err, ShouldBeNil)
+
+			data := bytes.Repeat([]byte("y"), 32)
+			So(cbr.InitReader(newTestBReader(data), descriptor.Descriptor{
+				Digest: godigest.FromBytes(data),
+				Size:   64, // pretend the blob is larger so the download stays partial
+			}), ShouldBeTrue)
+
+			buff := make([]byte, 32)
+			_, rerr := cbr.Read(buff)
+			So(rerr, ShouldBeNil)
+
+			cbr.Abort()
+
+			info, statErr := os.Stat(blobPath)
+			So(statErr, ShouldBeNil)
+			So(info.Size(), ShouldEqual, int64(32))
 		})
 	})
 }

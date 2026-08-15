@@ -271,6 +271,12 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference str
 
 	var err error
 
+	// retryScheduled tracks whether a background retry routine now owns this
+	// failure. If nobody does, the streaming state must be aborted below so
+	// that connected clients are not left hanging on a stream that will never
+	// advance.
+	retryScheduled := false
+
 	for serviceID, service := range onDemand.services {
 		timeout := service.GetSyncTimeout()
 
@@ -307,11 +313,15 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference str
 
 			// if there is already a background routine, skip
 			if _, requested := onDemand.requestStore.LoadOrStore(req, struct{}{}); requested {
+				// an earlier background routine already owns this failure
+				retryScheduled = true
+
 				continue
 			}
 
 			if service.CanRetryOnError() {
 				retryErr := err
+				retryScheduled = true
 
 				// retry in background
 				go func(service Service, serviceTimeout time.Duration) {
@@ -333,13 +343,38 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference str
 					if err != nil {
 						onDemand.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).Str("reference", reference).
 							Err(err).Msg("sync routine: error while copying image")
+
+						// The retry was the last chance for this image: tear
+						// down its streaming state so connected clients fail
+						// fast instead of waiting for a re-arm that will
+						// never come.
+						onDemand.abortStreaming(repo, reference)
 					}
 				}(service, timeout)
+			} else {
+				onDemand.requestStore.Delete(req)
 			}
 		} else {
 			break
 		}
 	}
 
+	if err != nil && !retryScheduled {
+		// No background retry owns this failure: abort the streaming state so
+		// connected and late clients are not left hanging.
+		onDemand.abortStreaming(repo, reference)
+	}
+
 	syncResult <- err
+}
+
+// abortStreaming tears down any streaming state for the image after a terminal
+// sync failure so that connected (and late) clients fail fast instead of
+// hanging on a stream that will never advance.
+func (onDemand *BaseOnDemand) abortStreaming(repo, reference string) {
+	if onDemand.streamManager == nil {
+		return
+	}
+
+	onDemand.streamManager.AbortStreamingImage(repo, reference)
 }

@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/regclient/regclient/types/blob"
@@ -164,12 +165,13 @@ func TestChunkingStreamManagerStreamingBlobReader(t *testing.T) {
 	Convey("StreamingBlobReader", t, func() {
 		sm := newTestChunkingStreamManager(t.TempDir())
 
-		Convey("returns ErrBlobReaderMissing when blob has no active stream", func() {
+		Convey("falls back to the raw upstream reader when blob has no active stream", func() {
 			data := []byte("some blob")
 			reader := newTestBReader(data)
 			result, err := sm.StreamingBlobReader(reader)
-			So(errors.Is(err, zerr.ErrBlobReaderMissing), ShouldBeTrue)
-			So(result, ShouldBeNil)
+			So(err, ShouldBeNil)
+			// pass-through: the very same reader is returned unwrapped
+			So(result, ShouldEqual, reader)
 		})
 
 		Convey("initialises the chunked reader and returns a wrapped BReader for an active stream", func() {
@@ -624,5 +626,223 @@ func TestChunkingStreamManagerStreamingBlobReaderRetry(t *testing.T) {
 			So(int64(totalRead), ShouldEqual, desc.Size)
 			So(onDisk[:totalRead], ShouldResemble, fullData)
 		})
+	})
+}
+
+func TestChunkingStreamManagerRemoveStreamingImageNonBlocking(t *testing.T) {
+	Convey("RemoveStreamingImage waits for clients without freezing the manager", t, func() {
+		sm := newTestChunkingStreamManager(t.TempDir())
+
+		layerData := bytes.Repeat([]byte("z"), 32)
+		configData := []byte("cfg-nb")
+		manifest := newTestOCIManifestWithBlobs(t, configData, layerData)
+		So(sm.StoreImageForStreaming("r1", "v1", NewStreamableManifest(manifest, nil)), ShouldBeNil)
+
+		layerDigest := godigest.FromBytes(layerData)
+		layerDesc := descriptor.Descriptor{
+			Digest:    layerDigest,
+			Size:      int64(len(layerData)),
+			MediaType: "application/octet-stream",
+		}
+
+		layerReader := sm.activeStreams[layerDigest.String()]
+		So(layerReader, ShouldNotBeNil)
+		So(layerReader.InitReader(newTestBReader(layerData), layerDesc), ShouldBeTrue)
+
+		// Connect a client and start copying; it will wait for the download.
+		var clientBuf bytes.Buffer
+		copier, err := sm.ConnectClient(layerDigest.String(), &clientBuf)
+		So(err, ShouldBeNil)
+
+		copyErr := make(chan error, 1)
+		go func() { copyErr <- copier.Copy() }()
+
+		// Deliver only the first half so the client stays connected.
+		buff := make([]byte, 16)
+		_, rerr := layerReader.Read(buff)
+		So(rerr, ShouldBeNil)
+
+		// Start the removal; it must detach the entries immediately and then
+		// wait for the connected client WITHOUT holding streamLock.
+		removeDone := make(chan struct{})
+		go func() {
+			sm.RemoveStreamingImage("r1", "v1")
+			close(removeDone)
+		}()
+
+		// Wait until the entries are detached (removal has passed the locked phase).
+		detached := false
+		for range 100 {
+			if _, found := sm.StreamingImageManifest("r1", "v1"); !found {
+				detached = true
+
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		So(detached, ShouldBeTrue)
+
+		select {
+		case <-removeDone:
+			t.Fatal("RemoveStreamingImage returned before the client drained")
+		default:
+		}
+
+		// While the removal is still waiting for the client, other manager
+		// operations must complete promptly.
+		otherLayer := []byte("other-layer-data")
+		otherManifest := newTestOCIManifestWithBlobs(t, []byte("other-cfg"), otherLayer)
+
+		opsDone := make(chan error, 1)
+		go func() {
+			opsDone <- sm.StoreImageForStreaming("r2", "v2", NewStreamableManifest(otherManifest, nil))
+		}()
+
+		select {
+		case err := <-opsDone:
+			So(err, ShouldBeNil)
+		case <-time.After(3 * time.Second):
+			t.Fatal("StoreImageForStreaming blocked while RemoveStreamingImage was waiting for clients")
+		}
+
+		_, _, infoErr := sm.CachedBlobInfo(godigest.FromBytes(otherLayer).String())
+		So(infoErr, ShouldBeNil)
+
+		// Deliver the second half; the client finishes and the removal completes.
+		_, rerr = layerReader.Read(buff)
+		So(errors.Is(rerr, io.EOF), ShouldBeTrue)
+
+		select {
+		case err := <-copyErr:
+			So(err, ShouldBeNil)
+		case <-time.After(5 * time.Second):
+			t.Fatal("client copy did not finish")
+		}
+
+		select {
+		case <-removeDone:
+		case <-time.After(5 * time.Second):
+			t.Fatal("RemoveStreamingImage did not finish after the client drained")
+		}
+
+		So(clientBuf.Bytes(), ShouldResemble, layerData)
+
+		// The temp file of the layer must be gone.
+		_, statErr := os.Stat(sm.tempStore.BlobPath(layerDigest))
+		So(os.IsNotExist(statErr), ShouldBeTrue)
+	})
+}
+
+func TestChunkingStreamManagerAbortStreamingImage(t *testing.T) {
+	Convey("AbortStreamingImage", t, func() {
+		sm := newTestChunkingStreamManager(t.TempDir())
+
+		layerData := bytes.Repeat([]byte("q"), 32)
+		configData := []byte("cfg-abort")
+		manifest := newTestOCIManifestWithBlobs(t, configData, layerData)
+		So(sm.StoreImageForStreaming("r1", "v1", NewStreamableManifest(manifest, nil)), ShouldBeNil)
+
+		layerDigest := godigest.FromBytes(layerData)
+		layerDesc := descriptor.Descriptor{
+			Digest:    layerDigest,
+			Size:      int64(len(layerData)),
+			MediaType: "application/octet-stream",
+		}
+
+		layerReader := sm.activeStreams[layerDigest.String()]
+		So(layerReader, ShouldNotBeNil)
+		So(layerReader.InitReader(newTestBReader(layerData), layerDesc), ShouldBeTrue)
+
+		var clientBuf bytes.Buffer
+		copier, err := sm.ConnectClient(layerDigest.String(), &clientBuf)
+		So(err, ShouldBeNil)
+
+		copyErr := make(chan error, 1)
+		go func() { copyErr <- copier.Copy() }()
+
+		// Deliver only the first half, then abort (terminal sync failure).
+		buff := make([]byte, 16)
+		_, rerr := layerReader.Read(buff)
+		So(rerr, ShouldBeNil)
+
+		sm.AbortStreamingImage("r1", "v1")
+
+		// The connected client fails fast instead of hanging.
+		select {
+		case err := <-copyErr:
+			So(errors.Is(err, zerr.ErrSyncUpstreamDownloadFailed), ShouldBeTrue)
+		case <-time.After(5 * time.Second):
+			t.Fatal("client copy still hanging after AbortStreamingImage")
+		}
+
+		// The stream state is gone.
+		_, found := sm.StreamingImageManifest("r1", "v1")
+		So(found, ShouldBeFalse)
+
+		_, err = sm.ConnectClient(layerDigest.String(), &clientBuf)
+		So(errors.Is(err, zerr.ErrBlobNotFoundInActiveStreams), ShouldBeTrue)
+
+		// The partial temp file is kept for a future resume.
+		info, statErr := os.Stat(sm.tempStore.BlobPath(layerDigest))
+		So(statErr, ShouldBeNil)
+		So(info.Size(), ShouldEqual, int64(16))
+	})
+}
+
+func TestChunkingStreamManagerDuplicateInFlightSync(t *testing.T) {
+	Convey("a duplicate sync of an in-flight blob is served from disk, not upstream", t, func() {
+		sm := newTestChunkingStreamManager(t.TempDir())
+
+		data := bytes.Repeat([]byte("d"), 128)
+		desc := descriptor.Descriptor{
+			Digest:    godigest.FromBytes(data),
+			Size:      int64(len(data)),
+			MediaType: "application/octet-stream",
+		}
+
+		So(sm.prepareActiveStreamForBlob(desc), ShouldBeNil)
+
+		// First sync initializes the chunked reader (primary download).
+		primary, err := sm.StreamingBlobReader(newTestBReader(data))
+		So(err, ShouldBeNil)
+		So(primary, ShouldNotBeNil)
+
+		// Second sync arrives while the download is in flight: it must be fed
+		// from the in-progress on-disk file instead of upstream.
+		duplicate, err := sm.StreamingBlobReader(newTestBReader(data))
+		So(err, ShouldBeNil)
+		So(duplicate, ShouldNotBeNil)
+		So(duplicate, ShouldNotEqual, primary)
+
+		// Drive the primary download to completion.
+		primaryDone := make(chan error, 1)
+		go func() {
+			_, cerr := io.Copy(io.Discard, primary)
+			primaryDone <- cerr
+		}()
+
+		// The duplicate reader must deliver the exact same bytes.
+		gotChan := make(chan []byte, 1)
+		dupErr := make(chan error, 1)
+		go func() {
+			got, derr := io.ReadAll(duplicate)
+			gotChan <- got
+			dupErr <- derr
+		}()
+
+		select {
+		case err := <-primaryDone:
+			So(err, ShouldBeNil)
+		case <-time.After(5 * time.Second):
+			t.Fatal("primary download did not finish")
+		}
+
+		select {
+		case got := <-gotChan:
+			So(got, ShouldResemble, data)
+			So(<-dupErr, ShouldBeNil)
+		case <-time.After(5 * time.Second):
+			t.Fatal("duplicate sync reader did not finish")
+		}
 	})
 }

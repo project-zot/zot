@@ -816,9 +816,15 @@ func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo
 	// just in case there is an error before commit() which cleans up.
 	defer service.destination.CleanupImage(localImageRef, localRepo) //nolint: errcheck
 
-	// clears the stream cache after the sync is done in both error as well as committed cases.
+	// Clears the stream cache after a successful sync. On failure the stream
+	// state is intentionally kept in place so that an on-demand background
+	// retry can re-arm the readers (ReinitReader) and resume serving connected
+	// clients; terminal cleanup after exhausted retries is handled by the
+	// on-demand layer via AbortStreamingImage.
+	syncOK := false
+
 	defer func() {
-		if service.streamManager != nil {
+		if service.streamManager != nil && syncOK {
 			service.log.Debug().Str("repo", localRepo).Str("reference", tag).Msg("cleaning up stream cache after sync")
 			// run in a goroutine as the cleanup waits for clients to drain
 			go service.streamManager.RemoveStreamingImage(localRepo, tag)
@@ -863,6 +869,8 @@ func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo
 	}
 
 	service.log.Info().Str("repo", localRepo).Str("reference", tag).Msg("successfully synced image")
+
+	syncOK = true
 
 	return nil
 }

@@ -34,6 +34,11 @@ type StreamManager interface {
 	StoreImageForStreaming(repo, reference string, streamManifest *StreamableManifest) error
 	StreamingImageManifest(repo, reference string) (*StreamableManifest, bool)
 	RemoveStreamingImage(repo, reference string)
+	// AbortStreamingImage tears down the stream state for an image whose sync
+	// terminally failed (all retries exhausted): subscribers are closed
+	// immediately instead of waiting for them, and partial temp files are kept
+	// for a future resume.
+	AbortStreamingImage(repo, reference string)
 	CachedBlobInfo(blobDigest string) (blen int64, mediaType string, err error)
 	// StreamBlobPath returns the on-disk path of a fully-downloaded blob in the stream
 	// temp store, or an empty string if the blob is not available (still in-flight or
@@ -205,7 +210,14 @@ func (sm *ChunkingStreamManager) StreamingBlobReader(reader *blob.BReader) (*blo
 	// as the code here only supplies the reader and the descriptor.
 	chunkingReader, ok := sm.activeStreams[digest]
 	if !ok {
-		return nil, zerr.ErrBlobReaderMissing
+		// No stream state for this blob (e.g. it was torn down after a terminal
+		// failure, purged as a shared layer of another manifest, or this copy
+		// does not belong to a streaming pull at all). Fall back to a plain
+		// upstream copy instead of failing the sync.
+		sm.logger.Warn().Str("blob", digest).
+			Msg("no active stream for blob, falling back to plain upstream copy")
+
+		return reader, nil
 	}
 
 	// Retry path: a previous attempt already initialized this reader.
@@ -246,12 +258,15 @@ func (sm *ChunkingStreamManager) StreamingBlobReader(reader *blob.BReader) (*blo
 			return chunkingReader.ToBReader(), nil
 		}
 
-		// Download is still actively in flight (e.g. multi-arch manifests
-		// sharing the same layer). Do not wrap to avoid double reads.
-		sm.logger.Debug().Str("blob", digest).
-			Msg("blob reader is already set up for stream. skipping init and wrap")
+		// Download is still actively in flight: another sync of the same image
+		// (e.g. a concurrent pull by tag and by digest, or multi-arch manifests
+		// sharing a layer) is already feeding this blob from upstream. Serve
+		// this copy from the in-progress on-disk file instead of opening a
+		// second upstream download of the same bytes.
+		sm.logger.Info().Str("blob", digest).
+			Msg("blob download already in flight, serving duplicate sync from the in-progress file")
 
-		return reader, nil
+		return sm.inFlightDuplicateReader(chunkingReader, reader)
 	}
 
 	resumeOffset := chunkingReader.ResumeOffset()
@@ -506,12 +521,13 @@ func (sm *ChunkingStreamManager) StreamingImageManifest(repo, reference string) 
 
 func (sm *ChunkingStreamManager) RemoveStreamingImage(repo, reference string) {
 	sm.streamLock.Lock()
-	defer sm.streamLock.Unlock()
 
 	key := repo + ":" + reference
 
 	manifest, ok := sm.streamingRefs[key]
 	if !ok {
+		sm.streamLock.Unlock()
+
 		sm.logger.Warn().Str("repo", repo).Str("reference", reference).
 			Msg("no streaming manifest found for repo:reference")
 
@@ -520,35 +536,91 @@ func (sm *ChunkingStreamManager) RemoveStreamingImage(repo, reference string) {
 
 	sm.logger.Info().Str("repo", repo).Str("reference", reference).Msg("removing streaming image")
 
-	// Track which blob digests have already been cleaned up to avoid
-	// duplicate waitForClientDrainAndDeleteStream calls for shared layers
-	// across multi-arch manifests.
-	purged := make(map[string]struct{})
+	// Detach all stream entries belonging to this image while holding the lock,
+	// but do NOT wait for clients here: waiting under streamLock would freeze
+	// every stream operation (client connects, HEAD lookups, sync hooks) until
+	// the slowest client of this image finished downloading.
+	detached := sm.detachStreams(repo, reference, manifest)
+
+	delete(sm.streamingRefs, key)
+	sm.streamLock.Unlock()
+
+	// Wait for the remaining clients of each blob to drain, then delete the
+	// temp files, all without holding streamLock.
+	for digest, reader := range detached {
+		reader.WaitForClientEmpty()
+		sm.removeStreamTempFile(digest)
+	}
+
+	sm.logger.Info().Str("repo", repo).Str("reference", reference).Msg("finished removing streaming image")
+}
+
+// AbortStreamingImage tears down the stream state for an image whose sync has
+// terminally failed (all retries exhausted). Unlike RemoveStreamingImage it
+// never waits for clients: every subscriber is closed immediately so that no
+// downstream client hangs on a stream that will never advance. Partial temp
+// files are kept so a future on-demand sync can resume from them.
+func (sm *ChunkingStreamManager) AbortStreamingImage(repo, reference string) {
+	sm.streamLock.Lock()
+
+	key := repo + ":" + reference
+
+	manifest, ok := sm.streamingRefs[key]
+	if !ok {
+		sm.streamLock.Unlock()
+
+		sm.logger.Debug().Str("repo", repo).Str("reference", reference).
+			Msg("no streaming manifest found for repo:reference, nothing to abort")
+
+		return
+	}
+
+	sm.logger.Warn().Str("repo", repo).Str("reference", reference).
+		Msg("aborting streaming image after terminal sync failure")
+
+	detached := sm.detachStreams(repo, reference, manifest)
+
+	delete(sm.streamingRefs, key)
+	sm.streamLock.Unlock()
+
+	// Abort closes all subscriber channels, unblocks Descriptor() waiters and
+	// refuses new subscriptions; it is fast and never waits for clients.
+	for _, reader := range detached {
+		reader.Abort()
+	}
+}
+
+// detachStreams removes all active stream entries belonging to the manifest
+// (and its sub-manifests) from the manager maps and returns the detached
+// readers keyed by blob digest. Shared layers already detached (or already
+// cleaned by another manifest) are skipped. Must be called with streamLock held.
+func (sm *ChunkingStreamManager) detachStreams(
+	repo, reference string, manifest *StreamableManifest,
+) map[string]*ChunkedBlobReader {
+	detached := map[string]*ChunkedBlobReader{}
 
 	manifestMediaType := manifestpkg.GetMediaType(manifest.referenceManifest)
 	switch manifestMediaType {
 	case manifestpkg.MediaTypeOCI1Manifest, manifestpkg.MediaTypeDocker2Manifest:
-		sm.purgeManifestFromStreamCache(repo, reference, manifest.referenceManifest, purged)
+		sm.detachManifestStreams(repo, reference, manifest.referenceManifest, detached)
 	case manifestpkg.MediaTypeOCI1ManifestList, manifestpkg.MediaTypeDocker2ManifestList:
 		// For multi-arch images, the manifest is actually an index.
-		// The individual manifests inside must be purged as well.
+		// The individual manifests inside must be detached as well.
 		for _, subManifest := range manifest.subManifests {
-			sm.purgeManifestFromStreamCache(repo, reference, subManifest, purged)
+			sm.detachManifestStreams(repo, reference, subManifest, detached)
 		}
 	default:
 		sm.logger.Error().Str("repo", repo).Str("reference", reference).
 			Str("mediaType", manifestMediaType).Msg("invalid manifest mediatype")
 	}
 
-	// remove the active streams for the manifest and its blobs
-	delete(sm.streamingRefs, key)
-
-	sm.logger.Info().Str("repo", repo).Str("reference", reference).Msg("finished removing streaming image")
+	return detached
 }
 
-// purgeManifestFromStreamCache cleans up an individual manifest and its contents from the stream cache.
-func (sm *ChunkingStreamManager) purgeManifestFromStreamCache(
-	repo, reference string, manifest manifestpkg.Manifest, purged map[string]struct{},
+// detachManifestStreams detaches an individual manifest and its contents from
+// the stream cache. Must be called with streamLock held.
+func (sm *ChunkingStreamManager) detachManifestStreams(
+	repo, reference string, manifest manifestpkg.Manifest, detached map[string]*ChunkedBlobReader,
 ) {
 	imager, ok := manifest.(manifestpkg.Imager)
 	if !ok {
@@ -565,7 +637,7 @@ func (sm *ChunkingStreamManager) purgeManifestFromStreamCache(
 			Msg("failed to get config descriptor from manifest")
 	}
 
-	sm.cleanupActiveStream(configDesc.Digest.String(), purged)
+	sm.detachActiveStream(configDesc.Digest.String(), detached)
 
 	layers, err := imager.GetLayers()
 	if err != nil {
@@ -573,35 +645,39 @@ func (sm *ChunkingStreamManager) purgeManifestFromStreamCache(
 	}
 
 	for _, layer := range layers {
-		sm.cleanupActiveStream(layer.Digest.String(), purged)
+		sm.detachActiveStream(layer.Digest.String(), detached)
 	}
 
-	// finally, remove the manifest
-	sm.cleanupActiveStream(manifest.GetDescriptor().Digest.String(), purged)
+	// finally, the manifest itself
+	sm.detachActiveStream(manifest.GetDescriptor().Digest.String(), detached)
 }
 
-func (sm *ChunkingStreamManager) cleanupActiveStream(blobDigest string, purged map[string]struct{}) {
-	if _, done := purged[blobDigest]; done {
+// detachActiveStream removes a single blob's stream entry from the manager
+// maps and records its reader in detached. Must be called with streamLock held.
+func (sm *ChunkingStreamManager) detachActiveStream(blobDigest string, detached map[string]*ChunkedBlobReader) {
+	if _, done := detached[blobDigest]; done {
 		return
 	}
 
-	purged[blobDigest] = struct{}{}
-
 	reader, ok := sm.activeStreams[blobDigest]
 	if !ok {
-		// Stream was already removed (e.g. clients were unsubscribed due to an
-		// upstream/disk error in ChunkedBlobReader.Read and the entry was never
-		// created, or this is a shared layer already cleaned by another manifest).
+		// Stream was already removed (e.g. this is a shared layer already
+		// cleaned by another manifest).
 		sm.logger.Debug().Str("blob", blobDigest).Msg("no active stream found for blob, already cleaned up")
 
 		return
 	}
 
-	reader.WaitForClientEmpty()
+	detached[blobDigest] = reader
 
 	delete(sm.activeStreams, blobDigest)
 	delete(sm.blobInfoMap, blobDigest)
+}
 
+// removeStreamTempFile deletes a blob's temp file from the stream store, unless
+// a new stream re-registered the same digest while the caller was waiting for
+// the old clients to drain (in that case the file belongs to the new stream).
+func (sm *ChunkingStreamManager) removeStreamTempFile(blobDigest string) {
 	dgst, err := godigest.Parse(blobDigest)
 	if err != nil {
 		sm.logger.Error().Err(err).Str("blob", blobDigest).Msg("failed to parse blob digest")
@@ -609,20 +685,49 @@ func (sm *ChunkingStreamManager) cleanupActiveStream(blobDigest string, purged m
 		return
 	}
 
-	blobPath := sm.tempStore.BlobPath(dgst)
-	_, err = os.Stat(blobPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return
-		}
+	sm.streamLock.Lock()
+	_, reRegistered := sm.activeStreams[blobDigest]
+	sm.streamLock.Unlock()
 
-		sm.logger.Error().Err(err).Str("blob", blobDigest).Msg("failed to stat blob in temp store")
+	if reRegistered {
+		sm.logger.Info().Str("blob", blobDigest).
+			Msg("blob was re-registered by a new stream, keeping temp file")
 
 		return
 	}
 
-	err = os.Remove(blobPath)
-	if err != nil {
+	blobPath := sm.tempStore.BlobPath(dgst)
+
+	if err := os.Remove(blobPath); err != nil && !os.IsNotExist(err) {
 		sm.logger.Error().Err(err).Str("blob", blobDigest).Msg("failed to remove blob from temp store")
 	}
+}
+
+// inFlightDuplicateReader serves a duplicate sync of a blob whose download is
+// already in flight. The fresh upstream connection is dropped, and the caller
+// is fed from the in-progress on-disk file through an InFlightBlobCopier via a
+// pipe, so the same bytes are never downloaded from upstream twice.
+func (sm *ChunkingStreamManager) inFlightDuplicateReader(
+	chunkingReader *ChunkedBlobReader, reader *blob.BReader,
+) (*blob.BReader, error) {
+	desc := reader.GetDescriptor()
+	rawHeaders := reader.RawHeaders()
+	// Drop the duplicate upstream connection; it will not be read.
+	_ = reader.Close()
+
+	pipeReader, pipeWriter := io.Pipe()
+	copier := NewInFlightBlobCopier(chunkingReader, sm.tempStore.BlobPath(desc.Digest), pipeWriter, sm.logger)
+
+	go func() {
+		// Copy returns nil on success; CloseWithError(nil) yields io.EOF on the
+		// read side. If the primary download fails, the error propagates to
+		// this sync, which will retry and re-arm the reader via the hook.
+		pipeWriter.CloseWithError(copier.Copy())
+	}()
+
+	return blob.NewReader(
+		blob.WithHeader(rawHeaders),
+		blob.WithDesc(desc),
+		blob.WithReader(pipeReader),
+	), nil
 }

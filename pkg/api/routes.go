@@ -1517,6 +1517,70 @@ func normalizeBlobRedirectURL(rawURL string) (string, bool) {
 	return rawURL, true
 }
 
+// serveBlobFromStoreRetry re-checks local storage for a blob after a stream
+// lookup miss and serves it if present. It covers the window where a streaming
+// sync commits the blob to storage and tears down the stream entry between the
+// caller's original (failed) storage lookup and the stream lookup; without this
+// re-check the client would get a spurious 404 for a blob that is available.
+// Returns true if the response was written.
+func (rh *RouteHandler) serveBlobFromStoreRetry(response http.ResponseWriter, request *http.Request,
+	imgStore storageTypes.ImageStore, name string, digest godigest.Digest,
+	contentRange string, rangeHeaderPresent bool,
+) bool {
+	mediaType := resolveBlobResponseMediaType(imgStore, name, digest, rh.c.Log)
+
+	if !rangeHeaderPresent {
+		reader, blen, err := imgStore.GetBlob(name, digest, mediaType)
+		if err != nil {
+			return false
+		}
+
+		defer reader.Close()
+
+		response.Header().Set("Content-Length", strconv.FormatInt(blen, 10))
+		response.Header().Set(constants.DistContentDigestKey, digest.String())
+
+		WriteDataFromReader(response, http.StatusOK, blen, mediaType, reader, rh.c.Log)
+
+		return true
+	}
+
+	ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
+
+	ok, bsize, err := imgStore.CheckBlob(ctx, name, digest)
+	if err != nil || !ok {
+		return false
+	}
+
+	ranges, err := parseRangeHeader(contentRange, bsize)
+	if err != nil || len(ranges) != 1 {
+		// Multi-range retries are not supported here; let the caller 404.
+		return false
+	}
+
+	rng := ranges[0]
+
+	reader, blen, _, err := imgStore.GetBlobPartial(name, digest, mediaType, rng.start, rng.end)
+	if err != nil {
+		return false
+	}
+
+	defer reader.Close()
+
+	if blen != rng.length() {
+		rh.c.Log.Error().Int64("expected", rng.length()).Int64("actual", blen).
+			Msg("unexpected partial blob length on storage re-check")
+
+		return false
+	}
+
+	response.Header().Set(constants.DistContentDigestKey, digest.String())
+	response.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", rng.start, rng.end, bsize))
+	WriteDataFromReader(response, http.StatusPartialContent, rng.length(), mediaType, reader, rh.c.Log)
+
+	return true
+}
+
 // tryStreamBlob attempts to serve a blob (fully, or a single byte range) from
 // an active streaming sync download. It returns true if a response has been
 // written (successfully or not); false means the blob is not part of any
@@ -1526,8 +1590,8 @@ func normalizeBlobRedirectURL(rawURL string) (string, bool) {
 // docker reconnects with "Range: bytes=<received>-" to resume the layer pull.
 // Without a 206 answer from the stream path, those resume attempts would fail
 // and the pull would abort with the original error (e.g. unexpected EOF).
-func (rh *RouteHandler) tryStreamBlob(response http.ResponseWriter, name string, digest godigest.Digest,
-	contentRange string, rangeHeaderPresent bool,
+func (rh *RouteHandler) tryStreamBlob(response http.ResponseWriter, request *http.Request,
+	name string, digest godigest.Digest, contentRange string, rangeHeaderPresent bool,
 ) bool {
 	if rh.c.SyncOnDemand == nil || !rh.c.SyncOnDemand.IsStreamingEnabledForRepo(name) {
 		return false
@@ -1563,11 +1627,21 @@ func (rh *RouteHandler) tryStreamBlob(response http.ResponseWriter, name string,
 
 	copier, err := streamMgr.ConnectClient(digest.String(), response)
 	if err != nil {
-		// The stream may have been cleaned up between CachedBlobInfo and here.
-		rh.c.Log.Warn().Err(err).Str("digest", digest.String()).
-			Msg("failed to connect client to stream")
+		if errors.Is(err, zerr.ErrBlobNotFoundInActiveStreams) {
+			// The stream may have been cleaned up between CachedBlobInfo and
+			// here; let the caller fall back to storage / 404.
+			rh.c.Log.Warn().Err(err).Str("digest", digest.String()).
+				Msg("failed to connect client to stream")
 
-		return false
+			return false
+		}
+
+		rh.c.Log.Error().Err(err).Str("digest", digest.String()).
+			Msg("unexpected error connecting client to stream")
+
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return true
 	}
 
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
@@ -1645,7 +1719,14 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 		details := zerr.GetDetails(err)
 
 		if errors.Is(err, zerr.ErrRepoNotFound) || errors.Is(err, zerr.ErrBlobNotFound) {
-			if rh.tryStreamBlob(response, name, digest, contentRange, rangeHeaderPresent) {
+			if rh.tryStreamBlob(response, request, name, digest, contentRange, rangeHeaderPresent) {
+				return
+			}
+
+			// The stream may have completed and committed the blob to storage
+			// between the original storage lookup and the stream lookup.
+			if rh.serveBlobFromStoreRetry(response, request, imgStore, name, digest,
+				contentRange, rangeHeaderPresent) {
 				return
 			}
 		}
@@ -1708,7 +1789,14 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 		if !ok {
 			// The blob may still be downloading via streaming sync; docker uses
 			// ranged requests to resume interrupted layer pulls.
-			if rh.tryStreamBlob(response, name, digest, contentRange, rangeHeaderPresent) {
+			if rh.tryStreamBlob(response, request, name, digest, contentRange, rangeHeaderPresent) {
+				return
+			}
+
+			// The stream may have completed and committed the blob to storage
+			// between the CheckBlob above and the stream lookup.
+			if rh.serveBlobFromStoreRetry(response, request, imgStore, name, digest,
+				contentRange, rangeHeaderPresent) {
 				return
 			}
 

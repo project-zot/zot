@@ -2623,6 +2623,8 @@ func (m *mockStreamManager) RemoveStreamingImage(repo, reference string) {
 	}
 }
 
+func (m *mockStreamManager) AbortStreamingImage(_, _ string) {}
+
 func (m *mockStreamManager) ConnectClient(_ string, _ io.Writer) (*InFlightBlobCopier, error) {
 	return nil, nil
 }
