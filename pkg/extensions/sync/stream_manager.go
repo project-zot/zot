@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"strings"
 	"sync"
 
 	godigest "github.com/opencontainers/go-digest"
@@ -514,9 +515,41 @@ func (sm *ChunkingStreamManager) StreamingImageManifest(repo, reference string) 
 	defer sm.streamLock.Unlock()
 
 	key := repo + ":" + reference
-	manifest, ok := sm.streamingRefs[key]
+	if manifest, ok := sm.streamingRefs[key]; ok {
+		return manifest, ok
+	}
 
-	return manifest, ok
+	// Digest lookups may target an image that is already streaming under a
+	// different reference: clients pulling a multi-arch image by tag follow up
+	// with GETs of the sub-manifests by digest, and k8s nodes may pin the same
+	// image by digest. Match the digest against each cached index and its
+	// sub-manifests so no duplicate background sync is started for content
+	// that is already being streamed.
+	if _, err := godigest.Parse(reference); err != nil {
+		return nil, false
+	}
+
+	prefix := repo + ":"
+
+	for entryKey, manifest := range sm.streamingRefs {
+		if !strings.HasPrefix(entryKey, prefix) {
+			continue
+		}
+
+		if manifest.referenceManifest.GetDescriptor().Digest.String() == reference {
+			return manifest, true
+		}
+
+		for _, subManifest := range manifest.subManifests {
+			if subManifest.GetDescriptor().Digest.String() == reference {
+				// Return the sub-manifest as a standalone streamable manifest;
+				// its blobs already belong to the parent's active streams.
+				return NewStreamableManifest(subManifest, nil), true
+			}
+		}
+	}
+
+	return nil, false
 }
 
 func (sm *ChunkingStreamManager) RemoveStreamingImage(repo, reference string) {

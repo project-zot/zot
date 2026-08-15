@@ -846,3 +846,109 @@ func TestChunkingStreamManagerDuplicateInFlightSync(t *testing.T) {
 		}
 	})
 }
+
+func TestChunkingStreamManagerStreamingImageManifestDigestLookup(t *testing.T) {
+	Convey("StreamingImageManifest matches digests of cached indexes and sub-manifests", t, func() {
+		sm := newTestChunkingStreamManager(t.TempDir())
+
+		amd64Manifest := newTestOCIManifestWithBlobs(t, []byte("amd64-cfg"), []byte("amd64-layer"))
+		arm64Manifest := newTestOCIManifestWithBlobs(t, []byte("arm64-cfg"), []byte("arm64-layer"))
+		index := newTestOCIImageIndex(t, []rcManifest.Manifest{amd64Manifest, arm64Manifest})
+
+		streamable := NewStreamableManifest(index, []rcManifest.Manifest{amd64Manifest, arm64Manifest})
+		So(sm.StoreImageForStreaming("myrepo", "latest", streamable), ShouldBeNil)
+
+		Convey("exact repo:tag key still matches", func() {
+			got, found := sm.StreamingImageManifest("myrepo", "latest")
+			So(found, ShouldBeTrue)
+			So(got.referenceManifest.GetDescriptor().Digest, ShouldEqual, index.GetDescriptor().Digest)
+		})
+
+		Convey("index digest matches the cached entry", func() {
+			got, found := sm.StreamingImageManifest("myrepo", index.GetDescriptor().Digest.String())
+			So(found, ShouldBeTrue)
+			So(got.referenceManifest.GetDescriptor().Digest, ShouldEqual, index.GetDescriptor().Digest)
+			// The full streamable manifest (with sub-manifests) is returned.
+			So(len(got.subManifests), ShouldEqual, 2)
+		})
+
+		Convey("sub-manifest digest matches and returns that sub-manifest", func() {
+			for _, sub := range []rcManifest.Manifest{amd64Manifest, arm64Manifest} {
+				got, found := sm.StreamingImageManifest("myrepo", sub.GetDescriptor().Digest.String())
+				So(found, ShouldBeTrue)
+				So(got.referenceManifest.GetDescriptor().Digest, ShouldEqual, sub.GetDescriptor().Digest)
+			}
+		})
+
+		Convey("unknown digest does not match", func() {
+			unknown := godigest.FromBytes([]byte("something else")).String()
+			_, found := sm.StreamingImageManifest("myrepo", unknown)
+			So(found, ShouldBeFalse)
+		})
+
+		Convey("digest of a cached image does not match under a different repo", func() {
+			_, found := sm.StreamingImageManifest("otherrepo", index.GetDescriptor().Digest.String())
+			So(found, ShouldBeFalse)
+		})
+
+		Convey("non-digest references only match the exact key", func() {
+			_, found := sm.StreamingImageManifest("myrepo", "someothertag")
+			So(found, ShouldBeFalse)
+		})
+	})
+}
+
+func TestChunkingStreamManagerEarlyClientBeforePlanAInit(t *testing.T) {
+	Convey("a client that connects before InitReaderComplete still gets the blob", t, func() {
+		// Regression: with a leftover complete file in the stream temp store
+		// (Plan A), the sync hook calls InitReaderComplete and never Read().
+		// A client that subscribed BEFORE the hook ran must still be notified,
+		// otherwise it waits forever (docker hangs at "Pulling fs layer").
+		sm := newTestChunkingStreamManager(t.TempDir())
+
+		data := bytes.Repeat([]byte("p"), 64)
+		desc := descriptor.Descriptor{
+			Digest:    godigest.FromBytes(data),
+			Size:      int64(len(data)),
+			MediaType: "application/octet-stream",
+		}
+
+		// Leftover complete file from a previous run.
+		blobPath := sm.tempStore.BlobPath(desc.Digest)
+		So(os.WriteFile(blobPath, data, 0o600), ShouldBeNil)
+
+		So(sm.prepareActiveStreamForBlob(desc), ShouldBeNil)
+
+		// Client connects while the reader is still uninitialized.
+		var clientBuf bytes.Buffer
+		copier, err := sm.ConnectClient(desc.Digest.String(), &clientBuf)
+		So(err, ShouldBeNil)
+
+		copyErr := make(chan error, 1)
+		go func() { copyErr <- copier.Copy() }()
+
+		// Give the copier time to block waiting for the descriptor/announcements.
+		time.Sleep(100 * time.Millisecond)
+
+		select {
+		case err := <-copyErr:
+			t.Fatalf("copy finished before init: %v", err)
+		default:
+		}
+
+		// The sync hook arrives late and takes the Plan A path
+		// (blob already complete on disk -> InitReaderComplete).
+		wrapped, err := sm.StreamingBlobReader(newTestBReader(data))
+		So(err, ShouldBeNil)
+		So(wrapped, ShouldNotBeNil)
+
+		select {
+		case err := <-copyErr:
+			So(err, ShouldBeNil)
+		case <-time.After(5 * time.Second):
+			t.Fatal("client copy still hanging after InitReaderComplete")
+		}
+
+		So(clientBuf.Bytes(), ShouldResemble, data)
+	})
+}
