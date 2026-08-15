@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -108,22 +109,35 @@ func (cbr *ChunkedBlobReader) ResumeOffset() int64 {
 // Descriptor returns the descriptor of the blob being read.
 // If the descriptor is not yet available, it waits until it is set by InitReader.
 func (cbr *ChunkedBlobReader) Descriptor() descriptor.Descriptor {
+	desc, _ := cbr.DescriptorContext(context.Background())
+
+	return desc
+}
+
+// DescriptorContext is like Descriptor but aborts the wait when ctx is
+// cancelled (e.g. the downstream HTTP client disconnected before the reader
+// was initialized).
+func (cbr *ChunkedBlobReader) DescriptorContext(ctx context.Context) (descriptor.Descriptor, error) {
 	cbr.bytesMu.RLock()
 	if cbr.inFlightReader != nil {
 		desc := cbr.blobDesc
 		cbr.bytesMu.RUnlock()
 
-		return desc
+		return desc, nil
 	}
 	cbr.bytesMu.RUnlock()
 
 	// Block without holding any lock until InitReader signals readiness.
-	<-cbr.readerReady
+	select {
+	case <-cbr.readerReady:
+	case <-ctx.Done():
+		return descriptor.Descriptor{}, ctx.Err()
+	}
 
 	cbr.bytesMu.RLock()
 	defer cbr.bytesMu.RUnlock()
 
-	return cbr.blobDesc
+	return cbr.blobDesc, nil
 }
 
 // InitReader sets the regclient blob reader and the total number of bytes to read for the blob.

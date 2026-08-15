@@ -4,10 +4,13 @@ package sync
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/regclient/regclient/types/blob"
@@ -290,7 +293,7 @@ func TestInFlightBlobCopierCopyRange(t *testing.T) {
 			var dest bytes.Buffer
 			ifbc := NewInFlightBlobCopier(cbr, blobPath, &dest, log.NewTestLogger())
 
-			So(ifbc.CopyRange(5, -1), ShouldBeNil)
+			So(ifbc.CopyRange(context.Background(), 5, -1), ShouldBeNil)
 			So(dest.Bytes(), ShouldResemble, data[5:])
 		})
 
@@ -300,7 +303,7 @@ func TestInFlightBlobCopierCopyRange(t *testing.T) {
 			var dest bytes.Buffer
 			ifbc := NewInFlightBlobCopier(cbr, blobPath, &dest, log.NewTestLogger())
 
-			So(ifbc.CopyRange(5, 9), ShouldBeNil)
+			So(ifbc.CopyRange(context.Background(), 5, 9), ShouldBeNil)
 			So(dest.Bytes(), ShouldResemble, data[5:10])
 		})
 
@@ -319,7 +322,7 @@ func TestInFlightBlobCopierCopyRange(t *testing.T) {
 
 			copyResult := make(chan error, 1)
 			go func() {
-				copyResult <- ifbc.CopyRange(0, 7)
+				copyResult <- ifbc.CopyRange(context.Background(), 0, 7)
 			}()
 
 			// Deliver only the first half of the blob.
@@ -349,7 +352,7 @@ func TestInFlightBlobCopierCopyRange(t *testing.T) {
 
 			copyResult := make(chan error, 1)
 			go func() {
-				copyResult <- ifbc.CopyRange(15, -1)
+				copyResult <- ifbc.CopyRange(context.Background(), 15, -1)
 			}()
 
 			// Deliver the blob in two chunks; the second read hits EOF.
@@ -364,6 +367,80 @@ func TestInFlightBlobCopierCopyRange(t *testing.T) {
 
 			So(<-copyResult, ShouldBeNil)
 			So(dest.Bytes(), ShouldResemble, data[15:])
+		})
+	})
+}
+
+func TestInFlightBlobCopierContextCancel(t *testing.T) {
+	Convey("CopyRange aborts when the client context is cancelled", t, func() {
+		dir := t.TempDir()
+		blobPath := filepath.Join(dir, "blob.bin")
+
+		cbr, err := NewChunkedBlobReader(blobPath, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		Convey("while waiting for the descriptor (reader not yet initialized)", func() {
+			var buf bytes.Buffer
+			copier := NewInFlightBlobCopier(cbr, blobPath, &buf, log.NewTestLogger())
+
+			ctx, cancel := context.WithCancel(context.Background())
+
+			copyErr := make(chan error, 1)
+			go func() { copyErr <- copier.CopyRange(ctx, 0, -1) }()
+
+			time.Sleep(50 * time.Millisecond)
+			cancel()
+
+			select {
+			case err := <-copyErr:
+				So(errors.Is(err, context.Canceled), ShouldBeTrue)
+			case <-time.After(5 * time.Second):
+				t.Fatal("CopyRange still hanging after context cancel")
+			}
+
+			// The client must have unsubscribed so cleanup can proceed.
+			waitDone := make(chan struct{})
+			go func() {
+				cbr.WaitForClientEmpty()
+				close(waitDone)
+			}()
+
+			select {
+			case <-waitDone:
+			case <-time.After(2 * time.Second):
+				t.Fatal("client still subscribed after cancelled copy")
+			}
+		})
+
+		Convey("while waiting for more bytes mid-download", func() {
+			data := bytes.Repeat([]byte("c"), 32)
+			So(cbr.InitReader(newTestBReader(data), descriptor.Descriptor{
+				Digest: godigest.FromBytes(data),
+				Size:   int64(len(data)),
+			}), ShouldBeTrue)
+
+			// Deliver only half so the copier has to wait for the rest.
+			buff := make([]byte, 16)
+			_, rerr := cbr.Read(buff)
+			So(rerr, ShouldBeNil)
+
+			var buf bytes.Buffer
+			copier := NewInFlightBlobCopier(cbr, blobPath, &buf, log.NewTestLogger())
+
+			ctx, cancel := context.WithCancel(context.Background())
+
+			copyErr := make(chan error, 1)
+			go func() { copyErr <- copier.CopyRange(ctx, 0, -1) }()
+
+			time.Sleep(100 * time.Millisecond)
+			cancel()
+
+			select {
+			case err := <-copyErr:
+				So(errors.Is(err, context.Canceled), ShouldBeTrue)
+			case <-time.After(5 * time.Second):
+				t.Fatal("CopyRange still hanging after context cancel")
+			}
 		})
 	})
 }

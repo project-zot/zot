@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"os"
@@ -53,14 +54,16 @@ func NewInFlightBlobCopier(
 
 // Copy streams the entire blob to the destination writer.
 func (ifbc *InFlightBlobCopier) Copy() error {
-	return ifbc.CopyRange(0, -1)
+	return ifbc.CopyRange(context.Background(), 0, -1)
 }
 
 // CopyRange streams the byte range [start, end] (inclusive, absolute offsets)
 // of the blob to the destination writer, waiting for in-flight bytes as needed.
 // An end of -1 means "until the last byte of the blob". This is used to serve
 // HTTP Range requests (e.g. docker resuming an interrupted layer download).
-func (ifbc *InFlightBlobCopier) CopyRange(start, end int64) error {
+// A cancelled ctx (e.g. the HTTP client disconnected) aborts the wait so the
+// handler goroutine does not linger and stream cleanup is never held up.
+func (ifbc *InFlightBlobCopier) CopyRange(ctx context.Context, start, end int64) error {
 	ifbc.log.Debug().Str("onDiskPath", ifbc.onDiskPath).
 		Int64("start", start).Int64("end", end).Msg("starting inflight copy")
 
@@ -84,7 +87,15 @@ func (ifbc *InFlightBlobCopier) CopyRange(start, end int64) error {
 	byteAnnounceChan := ifbc.announceChan
 	defer ifbc.Source.Unsubscribe(ifbc.clientID)
 
-	blobSize := ifbc.Source.Descriptor().Size
+	desc, err := ifbc.Source.DescriptorContext(ctx)
+	if err != nil {
+		ifbc.log.Debug().Err(err).Str("onDiskPath", ifbc.onDiskPath).
+			Msg("client context cancelled while waiting for blob descriptor")
+
+		return err
+	}
+
+	blobSize := desc.Size
 
 	// limit is the absolute exclusive end offset of the copy.
 	limit := blobSize
@@ -149,6 +160,15 @@ func (ifbc *InFlightBlobCopier) CopyRange(start, end int64) error {
 
 	for !copied && !copierDone {
 		select {
+		case <-ctx.Done():
+			ifbc.log.Debug().Str("onDiskPath", ifbc.onDiskPath).
+				Msg("client context cancelled during inflight copy")
+
+			close(shutdown)
+			<-done
+
+			return ctx.Err()
+
 		case <-copyChan:
 			target := min(ifbc.latestOffset.Load(), limit)
 

@@ -1663,7 +1663,7 @@ func (rh *RouteHandler) tryStreamBlob(response http.ResponseWriter, request *htt
 		flusher.Flush()
 	}
 
-	if copyErr := copier.CopyRange(start, end); copyErr != nil {
+	if copyErr := copier.CopyRange(request.Context(), start, end); copyErr != nil {
 		rh.c.Log.Error().Err(copyErr).Str("digest", digest.String()).
 			Msg("unexpected error during stream copy")
 	}
