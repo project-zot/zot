@@ -20,6 +20,13 @@ type InFlightBlobCopier struct {
 	flusher    http.Flusher // nil if dest does not implement http.Flusher
 	log        log.Logger
 
+	// announceChan and clientID are set at construction time (during ConnectClient)
+	// so that the client is registered with the ChunkedBlobReader before Copy() is
+	// called. This prevents a race where WaitForClientEmpty passes between
+	// ConnectClient returning and Copy starting.
+	announceChan chan int64
+	clientID     int
+
 	// latestOffset holds the latest byte offset announced by the ChunkedBlobReader.
 	// Updated atomically by the announcement goroutine.
 	latestOffset atomic.Int64
@@ -30,12 +37,17 @@ func NewInFlightBlobCopier(
 ) *InFlightBlobCopier {
 	flusher, _ := dest.(http.Flusher)
 
+	// Subscribe eagerly so that WaitForClientEmpty cannot pass before Copy() runs.
+	announceChan, clientID := source.Subscribe()
+
 	return &InFlightBlobCopier{
-		Source:     source,
-		onDiskPath: onDiskPath,
-		dest:       dest,
-		flusher:    flusher,
-		log:        logger,
+		Source:       source,
+		onDiskPath:   onDiskPath,
+		dest:         dest,
+		flusher:      flusher,
+		log:          logger,
+		announceChan: announceChan,
+		clientID:     clientID,
 	}
 }
 
@@ -50,8 +62,9 @@ func (ifbc *InFlightBlobCopier) Copy() error {
 	}
 	defer onDiskFile.Close()
 
-	byteAnnounceChan, id := ifbc.Source.Subscribe()
-	defer ifbc.Source.Unsubscribe(id)
+	// Use the channel registered at construction time (in ConnectClient/NewInFlightBlobCopier).
+	byteAnnounceChan := ifbc.announceChan
+	defer ifbc.Source.Unsubscribe(ifbc.clientID)
 
 	blobSize := ifbc.Source.Descriptor().Size
 

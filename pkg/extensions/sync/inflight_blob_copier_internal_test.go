@@ -61,18 +61,15 @@ func TestInFlightBlobCopierCopy(t *testing.T) {
 			var dest bytes.Buffer
 			ifbc := NewInFlightBlobCopier(cbr, blobPath, &dest, log.NewTestLogger())
 
+			// NewInFlightBlobCopier already subscribed — verify client is registered.
+			cbr.clientMu.Lock()
+			So(len(cbr.clients), ShouldEqual, 1)
+			cbr.clientMu.Unlock()
+
 			copyResult := make(chan error, 1)
 			go func() {
 				copyResult <- ifbc.Copy()
 			}()
-
-			// Wait until Copy() has subscribed so it sees each chunk notification
-			// individually rather than only the final byte count.
-			cbr.clientMu.Lock()
-			for len(cbr.clients) == 0 {
-				cbr.clientCond.Wait()
-			}
-			cbr.clientMu.Unlock()
 
 			// First chunk: exactly firstChunk bytes — returns (firstChunk, nil).
 			buf1 := make([]byte, firstChunk)
@@ -126,27 +123,144 @@ func TestInFlightBlobCopierCopy(t *testing.T) {
 			var dest bytes.Buffer
 			ifbc := NewInFlightBlobCopier(errCBR, errPath, &dest, log.NewTestLogger())
 
+			// NewInFlightBlobCopier already subscribed — verify.
+			errCBR.clientMu.Lock()
+			So(len(errCBR.clients), ShouldEqual, 1)
+			errCBR.clientMu.Unlock()
+
 			copyResult := make(chan error, 1)
 			go func() {
 				copyResult <- ifbc.Copy()
 			}()
-
-			// Wait until Copy() has subscribed so that the Read() error below is
-			// guaranteed to close Copy's channel.
-			// Whether Copy() has already consumed the initial 0 from Subscribe or
-			// it is still buffered, the channel close returns (0, false) which
-			// causes Copy() to return ErrSyncUpstreamDownloadFailed.
-			errCBR.clientMu.Lock()
-			for len(errCBR.clients) == 0 {
-				errCBR.clientCond.Wait()
-			}
-			errCBR.clientMu.Unlock()
 
 			// Trigger the upstream error; Read() closes all subscriber channels.
 			buf := make([]byte, 50)
 			_, _ = errCBR.Read(buf)
 
 			So(<-copyResult, ShouldEqual, zerr.ErrSyncUpstreamDownloadFailed)
+		})
+
+		Convey("WaitForClientEmpty blocks until Copy finishes (race fix verification)", func() {
+			dir := t.TempDir()
+			blobPath := filepath.Join(dir, "blob.bin")
+			data := []byte("race-fix-test-data-0123456789")
+
+			cbr, err := NewChunkedBlobReader(blobPath, log.NewTestLogger())
+			So(err, ShouldBeNil)
+			testBReader := newTestBReader(data)
+			cbr.InitReader(testBReader, testBReader.GetDescriptor())
+
+			var dest bytes.Buffer
+			ifbc := NewInFlightBlobCopier(cbr, blobPath, &dest, log.NewTestLogger())
+
+			// Key assertion: after NewInFlightBlobCopier, the client is already
+			// subscribed, so WaitForClientEmpty must block.
+			cbr.clientMu.Lock()
+			So(len(cbr.clients), ShouldEqual, 1)
+			cbr.clientMu.Unlock()
+
+			// Start WaitForClientEmpty in a goroutine — it must not return until
+			// Copy() completes and Unsubscribes.
+			waitDone := make(chan struct{})
+			go func() {
+				cbr.WaitForClientEmpty()
+				close(waitDone)
+			}()
+
+			// Verify WaitForClientEmpty is actually blocked.
+			select {
+			case <-waitDone:
+				So("WaitForClientEmpty returned too early", ShouldBeEmpty)
+			default:
+				// Expected — still waiting
+			}
+
+			// Now run Copy + Read to completion.
+			copyResult := make(chan error, 1)
+			go func() {
+				copyResult <- ifbc.Copy()
+			}()
+
+			buf := make([]byte, len(data))
+			_, _ = cbr.Read(buf)
+
+			So(<-copyResult, ShouldBeNil)
+			So(dest.Bytes(), ShouldResemble, data)
+
+			// Now WaitForClientEmpty should return.
+			<-waitDone
+		})
+
+		Convey("Copy succeeds when blob is already complete at Subscribe time", func() {
+			dir := t.TempDir()
+			blobPath := filepath.Join(dir, "blob.bin")
+			data := []byte("already-complete-blob-data!!!")
+
+			// Write full blob to disk and set up ChunkedBlobReader as complete.
+			cbr, err := NewChunkedBlobReader(blobPath, log.NewTestLogger())
+			So(err, ShouldBeNil)
+			testBReader := newTestBReader(data)
+			cbr.InitReader(testBReader, testBReader.GetDescriptor())
+
+			// Read the entire blob (simulates regclient reading it).
+			buf := make([]byte, len(data))
+			n, readErr := cbr.Read(buf)
+			So(readErr, ShouldEqual, io.EOF)
+			So(n, ShouldEqual, len(data))
+
+			// At this point the blob is fully on disk and numBytesReadToDisk == blobSize.
+			// All previously-subscribed clients have already been notified of blobSize.
+			// A NEW client connecting now (late joiner) should still get the full data.
+			var dest bytes.Buffer
+			ifbc := NewInFlightBlobCopier(cbr, blobPath, &dest, log.NewTestLogger())
+
+			copyErr := ifbc.Copy()
+			So(copyErr, ShouldBeNil)
+			So(dest.Bytes(), ShouldResemble, data)
+		})
+
+		Convey("multiple concurrent clients all receive full data", func() {
+			dir := t.TempDir()
+			blobPath := filepath.Join(dir, "blob.bin")
+			data := []byte("concurrent-client-test-with-enough-data-to-matter!")
+
+			cbr, err := NewChunkedBlobReader(blobPath, log.NewTestLogger())
+			So(err, ShouldBeNil)
+			testBReader := newTestBReader(data)
+			cbr.InitReader(testBReader, testBReader.GetDescriptor())
+
+			const numClients = 5
+			dests := make([]*bytes.Buffer, numClients)
+			copyResults := make([]chan error, numClients)
+
+			for i := range numClients {
+				dests[i] = &bytes.Buffer{}
+				copyResults[i] = make(chan error, 1)
+				copier := NewInFlightBlobCopier(cbr, blobPath, dests[i], log.NewTestLogger())
+
+				go func(c *InFlightBlobCopier, ch chan error) {
+					ch <- c.Copy()
+				}(copier, copyResults[i])
+			}
+
+			// Verify all clients are subscribed.
+			cbr.clientMu.Lock()
+			So(len(cbr.clients), ShouldEqual, numClients)
+			cbr.clientMu.Unlock()
+
+			// Feed data in two chunks.
+			half := len(data) / 2
+			buf1 := make([]byte, half)
+			_, _ = cbr.Read(buf1)
+
+			buf2 := make([]byte, len(data)-half)
+			_, _ = cbr.Read(buf2)
+
+			// All clients should succeed with full data.
+			for i := range numClients {
+				So(<-copyResults[i], ShouldBeNil)
+				So(dests[i].Bytes(), ShouldResemble, data)
+			}
 		})
 	})
 }
