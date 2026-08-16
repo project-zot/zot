@@ -38,6 +38,7 @@ import (
 
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/gcs"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
@@ -229,6 +230,24 @@ func TestGetNextRepositoryVisitsAllReposDespiteGhostUploadsPrefix(t *testing.T) 
 			}
 
 			So(reservedListed, ShouldBeEmpty)
+		})
+
+		Convey("AC-5: the global blobstore is skipped and never listed", func() {
+			// _blobstore can hold one entry per digest ever deduped, dwarfing every real repo
+			// combined. GetNextRepository is called once per repo per GC/scrub/dedupe run, so it
+			// must skip this prefix outright rather than pay that listing cost on every call.
+			objectsWithGlobalBlobstore := append([]string{
+				"/zot/" + constants.GlobalBlobsRepo + "/blobs/sha256/deadbeef",
+			}, objects...)
+
+			memfs := &memFS{objects: objectsWithGlobalBlobstore}
+
+			got := collectRepos(memfs)
+			So(got, ShouldResemble, wantAll)
+
+			for _, listed := range memfs.listed {
+				So(strings.HasPrefix(listed, "/zot/"+constants.GlobalBlobsRepo), ShouldBeFalse)
+			}
 		})
 	})
 }

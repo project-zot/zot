@@ -25,10 +25,19 @@ type ImageStore interface { //nolint:interfacebloat
 	Name() string
 	DirExists(d string) bool
 	RootDir() string
-	RLock(*time.Time)
-	RUnlock(*time.Time)
-	Lock(*time.Time)
-	Unlock(*time.Time)
+	WithRepoLock(repo string, wrappedFunc func() error) error
+	WithRepoReadLock(repo string, wrappedFunc func() error) error
+	// WithBlobstoreLock holds the shared global blobstore's write lock for wrappedFunc's
+	// duration. Must be acquired before any repo lock, never after - use
+	// WithBlobstoreAndRepoLock when both are needed.
+	WithBlobstoreLock(wrappedFunc func() error) error
+	// WithBlobstoreReadLock is WithBlobstoreLock's read-lock counterpart; same ordering rule.
+	WithBlobstoreReadLock(wrappedFunc func() error) error
+	// WithBlobstoreAndRepoLock acquires both locks in the mandated blobstore-before-repo
+	// order, so callers don't have to get it right themselves.
+	WithBlobstoreAndRepoLock(repo string, wrappedFunc func() error) error
+	// WithBlobstoreReadAndRepoLock is WithBlobstoreAndRepoLock's read-lock counterpart.
+	WithBlobstoreReadAndRepoLock(repo string, wrappedFunc func() error) error
 	InitRepo(ctx context.Context, name string) error
 	ValidateRepo(name string) (bool, error)
 	GetRepositories() ([]string, error)
