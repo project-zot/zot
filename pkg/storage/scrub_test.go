@@ -20,6 +20,7 @@ import (
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	rediscfg "zotregistry.dev/zot/v2/pkg/api/config/redis"
+	"zotregistry.dev/zot/v2/pkg/compat"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/storage"
@@ -185,6 +186,84 @@ func TestScrubDetectsCorruptedConfigContent(t *testing.T) {
 		space := regexp.MustCompile(`\s+`)
 		actual := strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
 		So(actual, ShouldContainSubstring, fmt.Sprintf("test 1.0 affected %s bad blob digest", configDig))
+	})
+}
+
+// TestScrubDockerCompat guards D4: scrub must recurse into a docker manifest-list and
+// validate its nested docker manifests' layers/config the same way it does for an OCI
+// index, instead of rejecting every docker manifest as a bad manifest media type.
+func TestScrubDockerCompat(t *testing.T) {
+	Convey("scrub a healthy docker manifest-list image", t, func() {
+		tdir := t.TempDir()
+		log := log.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+
+		compatMediaTypes := []compat.MediaCompatibility{compat.DockerManifestV2SchemaV2}
+		imgStore := local.NewImageStore(tdir, false, false, log, metrics, nil, nil, compatMediaTypes, nil)
+
+		storeCtlr := storage.StoreController{}
+		storeCtlr.DefaultStore = imgStore
+
+		dockerRepo := "docker-compat-scrub"
+
+		dockerList := CreateRandomMultiarch().AsDockerImage()
+
+		err := WriteMultiArchImageToFileSystem(dockerList, dockerRepo, "0.0.1", storeCtlr)
+		So(err, ShouldBeNil)
+
+		buff := bytes.NewBufferString("")
+
+		res, err := storeCtlr.CheckAllBlobsIntegrity(context.Background())
+		res.PrintScrubResults(buff)
+		So(err, ShouldBeNil)
+
+		space := regexp.MustCompile(`\s+`)
+		actual := strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
+		So(actual, ShouldContainSubstring, dockerRepo+" 0.0.1 ok")
+		So(actual, ShouldNotContainSubstring, "affected")
+	})
+
+	Convey("scrub detects a corrupted docker manifest's config content", t, func() {
+		tdir := t.TempDir()
+		log := log.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+
+		compatMediaTypes := []compat.MediaCompatibility{compat.DockerManifestV2SchemaV2}
+		imgStore := local.NewImageStore(tdir, true, true, log, metrics, nil, nil, compatMediaTypes, nil)
+		driver := local.New(true)
+
+		storeCtlr := storage.StoreController{}
+		storeCtlr.DefaultStore = imgStore
+
+		dockerRepo := "docker-compat-scrub-corrupted"
+
+		dockerList := CreateRandomMultiarch().AsDockerImage()
+
+		err := WriteMultiArchImageToFileSystem(dockerList, dockerRepo, "0.0.1", storeCtlr)
+		So(err, ShouldBeNil)
+
+		// corrupt the first nested docker manifest's config blob on disk, keeping it valid JSON
+		corruptedConfig := dockerList.Images[0].Config
+		corruptedConfig.Architecture += "-corrupted"
+
+		corruptedContent, err := json.Marshal(corruptedConfig)
+		So(err, ShouldBeNil)
+
+		configDig := dockerList.Images[0].ConfigDescriptor.Digest.Encoded()
+		configFile := path.Join(imgStore.RootDir(), dockerRepo, "/blobs/sha256", configDig)
+		_, err = driver.WriteFile(configFile, corruptedContent)
+		So(err, ShouldBeNil)
+
+		buff := bytes.NewBufferString("")
+
+		res, err := storeCtlr.CheckAllBlobsIntegrity(context.Background())
+		res.PrintScrubResults(buff)
+		So(err, ShouldBeNil)
+
+		space := regexp.MustCompile(`\s+`)
+		actual := strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
+		So(actual, ShouldContainSubstring,
+			fmt.Sprintf("%s 0.0.1 affected %s bad blob digest", dockerRepo, configDig))
 	})
 }
 

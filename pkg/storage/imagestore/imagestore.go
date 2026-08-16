@@ -844,9 +844,9 @@ func (is *ImageStore) deleteImageManifest(ctx context.Context, repo, reference s
 	/* check if manifest is referenced in image indexes, do not allow index images manipulations
 	(ie. remove manifest being part of an image index)	*/
 	if zcommon.IsDigest(reference) &&
-		(manifestDesc.MediaType == ispec.MediaTypeImageManifest || manifestDesc.MediaType == ispec.MediaTypeImageIndex) {
+		(common.IsImageManifestMediaType(manifestDesc.MediaType) || common.IsImageIndexMediaType(manifestDesc.MediaType)) {
 		for _, mDesc := range index.Manifests {
-			if mDesc.MediaType == ispec.MediaTypeImageIndex {
+			if common.IsImageIndexMediaType(mDesc.MediaType) {
 				ok, err := common.IsBlobReferencedInImageIndex(is, repo, manifestDesc.Digest, ispec.Index{
 					Manifests: []ispec.Descriptor{mDesc},
 				}, is.log)

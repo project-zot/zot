@@ -16,7 +16,8 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	zerr "zotregistry.dev/zot/v2/errors"
-	"zotregistry.dev/zot/v2/pkg/common"
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
+	common "zotregistry.dev/zot/v2/pkg/storage/common"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
@@ -112,7 +113,7 @@ func CheckRepo(ctx context.Context, imageName string, imgStore storageTypes.Imag
 	scrubbedManifests := make(map[godigest.Digest]ScrubImageResult)
 
 	for _, manifest := range index.Manifests {
-		if common.IsContextDone(ctx) {
+		if zcommon.IsContextDone(ctx) {
 			return results, ctx.Err()
 		}
 
@@ -198,8 +199,8 @@ func scrubManifest(
 		return layers, nil
 	}
 
-	switch manifest.MediaType {
-	case ispec.MediaTypeImageIndex:
+	switch {
+	case common.IsImageIndexMediaType(manifest.MediaType):
 		var idx ispec.Index
 		if err := json.Unmarshal(manifestContent, &idx); err != nil {
 			imgRes := getResult(imageName, tag, manifest.Digest, zerr.ErrBadBlobDigest)
@@ -296,7 +297,7 @@ func scrubManifest(
 		}
 
 		return layers, nil
-	case ispec.MediaTypeImageManifest:
+	case common.IsImageManifestMediaType(manifest.MediaType):
 		affectedBlob, man, err := CheckManifestAndConfig(imageName, manifest, manifestContent, imgStore)
 		if err == nil {
 			layers = append(layers, man.Layers...)
@@ -349,7 +350,7 @@ func scrubManifest(
 func CheckManifestAndConfig(
 	imageName string, manifestDesc ispec.Descriptor, manifestContent []byte, imgStore storageTypes.ImageStore,
 ) (godigest.Digest, ispec.Manifest, error) {
-	if manifestDesc.MediaType != ispec.MediaTypeImageManifest {
+	if !common.IsImageManifestMediaType(manifestDesc.MediaType) {
 		return manifestDesc.Digest, ispec.Manifest{}, zerr.ErrBadManifest
 	}
 
