@@ -272,7 +272,7 @@ func TestDynamoOwnershipReadsUseConsistentRead(t *testing.T) {
 func TestGetBlobRefsPartialItemIsCacheMiss(t *testing.T) {
 	tskip.SkipDynamo(t)
 
-	Convey("GetBlobRefs on an item with no usable path is a cache miss, not empty-success", t, func() {
+	Convey("GetBlobRefs on an item with no usable path is a cache miss", t, func() {
 		endpoint := os.Getenv("DYNAMODBMOCK_ENDPOINT")
 
 		cfg, err := awsconfig.LoadDefaultConfig(context.Background(), awsconfig.WithRegion("us-east-2"))
