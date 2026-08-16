@@ -25,6 +25,7 @@ type ImageStore interface { //nolint:interfacebloat
 	Name() string
 	DirExists(d string) bool
 	RootDir() string
+	RepoExists(repo string) bool
 	WithRepoLock(repo string, wrappedFunc func() error) error
 	WithRepoReadLock(repo string, wrappedFunc func() error) error
 	// WithBlobstoreLock holds the shared global blobstore's write lock for wrappedFunc's

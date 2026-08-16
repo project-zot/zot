@@ -178,6 +178,10 @@ func (is *ImageStore) RootDir() string {
 	return is.rootDir
 }
 
+func (is *ImageStore) RepoExists(repo string) bool {
+	return is.statRepoDir(repo) == nil
+}
+
 func (is *ImageStore) DirExists(d string) bool {
 	return is.storeDriver.DirExists(d)
 }
