@@ -63,7 +63,11 @@ type blobLifecycle interface {
 	) (bool, error)
 
 	// UsesLogicalRepoRefs reports whether dedupe ownership is represented only in
-	// metadata. Local storage returns false because each repo has a hardlink.
+	// metadata. Local storage returns false because each repo structurally has a real
+	// hardlink - but that's about representation, not every deletion decision: when
+	// ShouldDeleteGlobalBlob can't read Nlink (see hardLinkCount), even local falls back
+	// to the same cache-based isDigestReferenced check remote always uses, and is gated
+	// on the cache the same way in that fallback.
 	UsesLogicalRepoRefs() bool
 
 	// IncludeRepoInMountCandidates reports whether repo should be considered a candidate
