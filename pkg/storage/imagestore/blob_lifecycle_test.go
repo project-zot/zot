@@ -15,6 +15,7 @@ import (
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
 
+	zlog "zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/storage/constants"
 )
 
@@ -141,7 +142,7 @@ func (w *lifecycleWriterStub) Cancel(_ context.Context) error {
 
 func TestBlobLifecycleSelection(t *testing.T) {
 	localDriver := &lifecycleStubDriver{nameFn: func() string { return constants.LocalStorageDriverName }}
-	localLifecycle := newBlobLifecycle(localDriver)
+	localLifecycle := newBlobLifecycle(localDriver, zlog.NewTestLogger())
 
 	if localLifecycle.IncludeRepoInMountCandidates(constants.GlobalBlobsRepo) {
 		t.Fatal("local lifecycle should exclude _blobstore from mount candidates")
@@ -152,7 +153,7 @@ func TestBlobLifecycleSelection(t *testing.T) {
 	}
 
 	remoteDriver := &lifecycleStubDriver{nameFn: func() string { return constants.S3StorageDriverName }}
-	remoteLifecycle := newBlobLifecycle(remoteDriver)
+	remoteLifecycle := newBlobLifecycle(remoteDriver, zlog.NewTestLogger())
 
 	if remoteLifecycle.IncludeRepoInMountCandidates(constants.GlobalBlobsRepo) {
 		t.Fatal("remote lifecycle should exclude _blobstore from mount candidates")
@@ -178,7 +179,7 @@ func TestLocalBlobLifecycleDelegatesToLink(t *testing.T) {
 		},
 	}
 
-	lifecycle := newBlobLifecycle(driverStub)
+	lifecycle := newBlobLifecycle(driverStub, zlog.NewTestLogger())
 
 	if err := lifecycle.PromoteCandidate("src/blob", "dst/blob"); err != nil {
 		t.Fatalf("promote candidate: %v", err)
@@ -204,7 +205,7 @@ func TestLocalBlobLifecycleRemoveMigratedRepoBlobIsNoOp(t *testing.T) {
 		},
 	}
 
-	lifecycle := newBlobLifecycle(driverStub)
+	lifecycle := newBlobLifecycle(driverStub, zlog.NewTestLogger())
 
 	if err := lifecycle.RemoveMigratedRepoBlob("global/blob", "repo/blob"); err != nil {
 		t.Fatalf("expected nil error, got %v", err)
@@ -256,7 +257,7 @@ func TestRemoteBlobLifecyclePromoteStreamsContent(t *testing.T) {
 		},
 	}
 
-	lifecycle := newBlobLifecycle(driverStub)
+	lifecycle := newBlobLifecycle(driverStub, zlog.NewTestLogger())
 
 	if err := lifecycle.PromoteCandidate("src/blob", "dst/blob"); err != nil {
 		t.Fatalf("promote remote candidate: %v", err)
@@ -326,7 +327,7 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 			},
 		}
 
-		lifecycle := newBlobLifecycle(driverStub)
+		lifecycle := newBlobLifecycle(driverStub, zlog.NewTestLogger())
 
 		if err := lifecycle.PromoteCandidate("src", "dst"); !errors.Is(err, errInjectedPromote) {
 			t.Fatalf("expected injected error, got %v", err)
@@ -349,7 +350,7 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 			},
 		}
 
-		lifecycle := newBlobLifecycle(driverStub)
+		lifecycle := newBlobLifecycle(driverStub, zlog.NewTestLogger())
 
 		if err := lifecycle.PromoteCandidate("src", "dst"); !errors.Is(err, errInjectedPromote) {
 			t.Fatalf("expected injected error, got %v", err)
@@ -384,7 +385,7 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 			},
 		}
 
-		lifecycle := newBlobLifecycle(driverStub)
+		lifecycle := newBlobLifecycle(driverStub, zlog.NewTestLogger())
 
 		if err := lifecycle.PromoteCandidate("src", "dst"); !errors.Is(err, errInjectedPromote) {
 			t.Fatalf("expected injected error, got %v", err)
@@ -423,7 +424,7 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 			},
 		}
 
-		lifecycle := newBlobLifecycle(driverStub)
+		lifecycle := newBlobLifecycle(driverStub, zlog.NewTestLogger())
 
 		if err := lifecycle.PromoteCandidate("src", "dst"); !errors.Is(err, errInjectedPromote) {
 			t.Fatalf("expected injected error, got %v", err)
@@ -456,7 +457,7 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 			},
 		}
 
-		lifecycle := newBlobLifecycle(driverStub)
+		lifecycle := newBlobLifecycle(driverStub, zlog.NewTestLogger())
 
 		if err := lifecycle.PromoteCandidate("src", "dst"); !errors.Is(err, errInjectedPromote) {
 			t.Fatalf("expected injected error, got %v", err)
@@ -479,7 +480,7 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 			},
 		}
 
-		lifecycle := newBlobLifecycle(driverStub)
+		lifecycle := newBlobLifecycle(driverStub, zlog.NewTestLogger())
 
 		if err := lifecycle.PromoteCandidate("src", "dst"); !errors.Is(err, errInjectedPromote) {
 			t.Fatalf("expected injected error, got %v", err)
@@ -497,7 +498,7 @@ func TestRemoteBlobLifecycleLinkDoesNotCreateRepoObject(t *testing.T) {
 		},
 	}
 
-	lifecycle := newBlobLifecycle(driverStub)
+	lifecycle := newBlobLifecycle(driverStub, zlog.NewTestLogger())
 
 	if err := lifecycle.LinkBlob("src/blob", "dst/blob"); err != nil {
 		t.Fatalf("remote link: %v", err)
@@ -514,12 +515,12 @@ func TestBlobLifecycleResolveReadPath(t *testing.T) {
 	newLocalLifecycle := func() blobLifecycle {
 		return newBlobLifecycle(&lifecycleStubDriver{
 			nameFn: func() string { return constants.LocalStorageDriverName },
-		})
+		}, zlog.NewTestLogger())
 	}
 	newRemoteLifecycle := func() blobLifecycle {
 		return newBlobLifecycle(&lifecycleStubDriver{
 			nameFn: func() string { return constants.S3StorageDriverName },
-		})
+		}, zlog.NewTestLogger())
 	}
 
 	testCases := []struct {
@@ -553,7 +554,7 @@ func TestBlobLifecycleResolveReadPath(t *testing.T) {
 
 					return nil, driver.PathNotFoundError{Path: path}
 				},
-			}),
+			}, zlog.NewTestLogger()),
 			digest:        nonEmptyDigest,
 			blobSize:      0,
 			globalPath:    "_blobstore/blobs/sha256/content",
@@ -632,7 +633,7 @@ func TestBlobLifecycleResolveReadPath(t *testing.T) {
 func TestBlobLifecycleShouldDeleteGlobalBlobLocal(t *testing.T) {
 	lifecycle := newBlobLifecycle(&lifecycleStubDriver{
 		nameFn: func() string { return constants.LocalStorageDriverName },
-	})
+	}, zlog.NewTestLogger())
 
 	t.Run("missing path is not deleted", func(t *testing.T) {
 		deleteDecision, err := lifecycle.ShouldDeleteGlobalBlob(
@@ -753,7 +754,7 @@ func TestBlobLifecycleShouldDeleteGlobalBlobLocal(t *testing.T) {
 func TestBlobLifecycleShouldDeleteGlobalBlobRemote(t *testing.T) {
 	lifecycle := newBlobLifecycle(&lifecycleStubDriver{
 		nameFn: func() string { return constants.S3StorageDriverName },
-	})
+	}, zlog.NewTestLogger())
 
 	t.Run("delete when digest is unreferenced", func(t *testing.T) {
 		callbackCalled := false
