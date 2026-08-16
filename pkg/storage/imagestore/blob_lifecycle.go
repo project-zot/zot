@@ -39,11 +39,12 @@ type blobLifecycle interface {
 	LinkBlob(srcPath, dstPath string) error
 
 	// ResolveReadPath picks which path a read should actually use for blobPath. Local:
-	// delegates to resolveReadPathWithCache, using blobSize to tell a real hardlink apart
-	// from a zero-byte placeholder (see that function's comment for the full case
-	// breakdown). Remote: prefers globalBlobPath if it exists (the usual case, since
-	// content lives centrally there), falling back to blobPath only for blobs that
-	// predate the global blobstore or are mid-upload; ignores resolveFromCache entirely.
+	// delegates to resolveReadPathWithCache, using blobSize to tell a real hardlink with
+	// content apart from a zero-byte stub left by an interrupted or legacy write (see
+	// that function's comment for the full case breakdown). Remote: prefers
+	// globalBlobPath if it exists (the usual case, since content lives centrally there),
+	// falling back to blobPath only for blobs that predate the global blobstore or are
+	// mid-upload; ignores resolveFromCache entirely.
 	ResolveReadPath(blobPath, globalBlobPath string, digest godigest.Digest, blobSize int64,
 		resolveFromCache func(godigest.Digest) (string, error),
 	) (string, error)
