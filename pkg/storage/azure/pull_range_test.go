@@ -21,7 +21,7 @@ func TestAzurePullRange(t *testing.T) {
 	Convey("Pull range", t, func() {
 		uuid, err := guuid.NewV4()
 		if err != nil {
-			panic(err)
+			t.Fatalf("failed to generate uuid: %v", err)
 		}
 
 		testDir := path.Join("/oci-repo-test", uuid.String())
@@ -88,7 +88,7 @@ func TestAzurePullRangeDedupedBlob(t *testing.T) {
 	Convey("Pull range of a deduped blob shared across repos", t, func() {
 		uuid, err := guuid.NewV4()
 		if err != nil {
-			panic(err)
+			t.Fatalf("failed to generate uuid: %v", err)
 		}
 
 		testDir := path.Join("/oci-repo-test", uuid.String())
