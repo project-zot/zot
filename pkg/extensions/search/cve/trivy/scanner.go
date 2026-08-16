@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/aquasecurity/trivy-db/pkg/metadata"
 	dbTypes "github.com/aquasecurity/trivy-db/pkg/types"
@@ -650,11 +649,11 @@ func (scanner Scanner) cachedIndexAggregateSeen(repo, digest string, seen map[st
 
 	for _, manifest := range indexData.Index.Manifests {
 		if imgStore != nil {
-			var lockLatency time.Time
+			err := imgStore.WithRepoReadLock(repo, func() error {
+				_, _, _, err := imgStore.StatBlob(repo, manifest.Digest)
 
-			imgStore.RLock(&lockLatency)
-			_, _, _, err := imgStore.StatBlob(repo, manifest.Digest)
-			imgStore.RUnlock(&lockLatency)
+				return err
+			})
 
 			if err != nil {
 				if errors.Is(err, zerr.ErrManifestNotFound) || errors.Is(err, zerr.ErrBlobNotFound) {
@@ -1174,11 +1173,11 @@ func (scanner Scanner) scanIndexSeen(ctx context.Context, repo, digest string, s
 
 	for _, manifest := range indexData.Index.Manifests {
 		if imgStore != nil {
-			var lockLatency time.Time
+			err := imgStore.WithRepoReadLock(repo, func() error {
+				_, _, _, err := imgStore.StatBlob(repo, manifest.Digest)
 
-			imgStore.RLock(&lockLatency)
-			_, _, _, err := imgStore.StatBlob(repo, manifest.Digest)
-			imgStore.RUnlock(&lockLatency)
+				return err
+			})
 
 			if err != nil {
 				if errors.Is(err, zerr.ErrManifestNotFound) || errors.Is(err, zerr.ErrBlobNotFound) {

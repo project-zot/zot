@@ -26,6 +26,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/scheduler"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	common "zotregistry.dev/zot/v2/pkg/storage/common"
+	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 	"zotregistry.dev/zot/v2/pkg/storage/types"
 )
@@ -137,11 +138,16 @@ func (gc GarbageCollect) CleanRepo(ctx context.Context, repo string) error {
 }
 
 func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
-	var lockLatency time.Time
+	// Needs the blobstore lock, not just the repo lock: removeUnreferencedBlobs deletes
+	// blobs one at a time, and each delete may reclaim the shared global blobstore copy.
+	// Taking both here (blobstore-then-repo) keeps the order consistent with
+	// DedupeBlob/CheckBlob/DeleteBlob.
+	return gc.imgStore.WithBlobstoreAndRepoLock(repo, func() error {
+		return gc.cleanRepoLocked(ctx, repo)
+	})
+}
 
-	gc.imgStore.Lock(&lockLatency)
-	defer gc.imgStore.Unlock(&lockLatency)
-
+func (gc GarbageCollect) cleanRepoLocked(ctx context.Context, repo string) error {
 	/* this index (which represents the index.json of this repo) is the root point from which we
 	search for dangling manifests/blobs
 	so this index is passed by reference in all functions that modifies it
@@ -782,6 +788,11 @@ func (gc GarbageCollect) removeReferrer(repo string, index *ispec.Index, manifes
 }
 
 func (gc GarbageCollect) removeTagsPerRetentionPolicy(ctx context.Context, repo string, index *ispec.Index) error {
+	// skip the global blobs repo - it has no tags to retain
+	if repo == storageConstants.GlobalBlobsRepo {
+		return nil
+	}
+
 	if !gc.policyMgr.HasTagRetention(repo) {
 		return nil
 	}

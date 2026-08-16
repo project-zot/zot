@@ -6,7 +6,6 @@ import (
 	"context"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/regclient/regclient/types/descriptor"
@@ -182,12 +181,17 @@ func (seeder *refSeeder) fetchManifest(ctx context.Context, digest godigest.Dige
 // localBlobContent reads a manifest-sized blob from the local store, taking
 // the read lock GetBlobContent requires its caller to hold.
 func (seeder *refSeeder) localBlobContent(digest godigest.Digest) ([]byte, error) {
-	var lockLatency time.Time
+	var content []byte
 
-	seeder.imageStore.RLock(&lockLatency)
-	defer seeder.imageStore.RUnlock(&lockLatency)
+	err := seeder.imageStore.WithRepoReadLock(seeder.localRepo, func() error {
+		var err error
 
-	return seeder.imageStore.GetBlobContent(seeder.localRepo, digest)
+		content, err = seeder.imageStore.GetBlobContent(seeder.localRepo, digest)
+
+		return err
+	})
+
+	return content, err
 }
 
 // localBlobStat reports whether localRepo itself holds digest, taking the
@@ -196,12 +200,15 @@ func (seeder *refSeeder) localBlobContent(digest godigest.Digest) ([]byte, error
 // any other repository in the store, without the access checks the blob API
 // routes apply to such cross-repo copies.
 func (seeder *refSeeder) localBlobStat(digest godigest.Digest) bool {
-	var lockLatency time.Time
+	var found bool
 
-	seeder.imageStore.RLock(&lockLatency)
-	defer seeder.imageStore.RUnlock(&lockLatency)
+	err := seeder.imageStore.WithRepoReadLock(seeder.localRepo, func() error {
+		var err error
 
-	found, _, _, err := seeder.imageStore.StatBlob(seeder.localRepo, digest)
+		found, _, _, err = seeder.imageStore.StatBlob(seeder.localRepo, digest)
+
+		return err
+	})
 
 	return err == nil && found
 }
