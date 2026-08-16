@@ -180,6 +180,13 @@ func (l *localHardlinkBlobLifecycle) ShouldDeleteGlobalBlob(globalBlobPath strin
 	return !isReferenced, nil
 }
 
+// hardLinkCount reads Nlink off fileInfo.Sys() via reflection since its static type is
+// platform-specific: on linux/darwin/freebsd it's *syscall.Stat_t, which does have an
+// Nlink field (an unsigned int of varying width per platform/arch, but always something
+// CanUint() accepts). On windows, Sys() is *syscall.Win32FileAttributeData, which has no
+// Nlink field at all - FieldByName returns an invalid reflect.Value there, so this
+// returns (0, false) rather than panicking, and the caller falls back to a
+// cache-based isDigestReferenced check instead of trusting a link count.
 func hardLinkCount(fileInfo os.FileInfo) (uint64, bool) {
 	fileInfoValue := reflect.Indirect(reflect.ValueOf(fileInfo.Sys()))
 	if !fileInfoValue.IsValid() || fileInfoValue.Kind() != reflect.Struct {
