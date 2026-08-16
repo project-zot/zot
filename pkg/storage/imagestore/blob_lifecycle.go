@@ -87,6 +87,11 @@ type blobLifecycle interface {
 //     something's off (e.g. an interrupted or legacy write left a stub) - fall back to
 //     fallbackResolverFunc (checkCacheBlob), which looks up a path elsewhere in the store that
 //     actually has the bytes for this digest, rather than serving up the empty stub.
+//
+// fallbackResolverFunc is a parameter, not a call to is.checkCacheBlob directly, because this
+// is a plain package-level function with no ImageStore reference - the same reason
+// ShouldDeleteGlobalBlob takes isDigestReferenced as a parameter. It also keeps this function
+// unit-testable with a stub resolver, independent of any real cache driver.
 func resolveReadPathWithCache(blobPath string, digest godigest.Digest, blobSize int64,
 	fallbackResolverFunc func(godigest.Digest) (string, error),
 ) (string, error) {
