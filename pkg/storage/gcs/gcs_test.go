@@ -3016,7 +3016,6 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 			actual, err = waitForScrubContains(fmt.Sprintf("test 1.0 affected %s invalid server config", configDig))
 			So(err, ShouldBeNil)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
-			So(actual, ShouldContainSubstring, fmt.Sprintf("test 1.0 affected %s invalid server config", configDig))
 		})
 
 		Convey("Layers integrity affected", func() {
@@ -3039,7 +3038,6 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 			actual, err := waitForScrubContains(fmt.Sprintf("test 1.0 affected %s bad blob digest", layerDig))
 			So(err, ShouldBeNil)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
-			So(actual, ShouldContainSubstring, fmt.Sprintf("test 1.0 affected %s bad blob digest", layerDig))
 		})
 
 		Convey("Layer not found", func() {
