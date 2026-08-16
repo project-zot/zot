@@ -88,7 +88,29 @@ func (d *RedisDriver) SetClient(client redis.UniversalClient) {
 	d.db = client
 }
 
-func (d *RedisDriver) putBlobLike(digest godigest.Digest, path, rootBucket, putLogMsg string) error {
+// lockKeySuffix distinguishes the lock namespace per caller (see PutBlob/PutBlobRef) so a
+// blob's cache entry and its blob-ref entry serialize independently, matching rootBucket.
+func (d *RedisDriver) putBlobLike(digest godigest.Digest, path, rootBucket, lockKeySuffix, putLogMsg string) error {
+	lockKeyParts := []string{constants.RedisLocksBucket}
+	if lockKeySuffix != "" {
+		lockKeyParts = append(lockKeyParts, lockKeySuffix)
+	}
+
+	lockKeyParts = append(lockKeyParts, digest.String())
+
+	lock := d.rs.NewMutex(d.join(lockKeyParts...))
+	if err := lock.Lock(); err != nil {
+		d.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to acquire redis lock")
+
+		return err
+	}
+
+	defer func() {
+		if _, err := lock.Unlock(); err != nil {
+			d.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to release redis lock")
+		}
+	}()
+
 	ctx := context.TODO()
 
 	exists, err := d.db.HExists(ctx, d.join(rootBucket, constants.OriginalBucket), digest.String()).Result()
@@ -193,21 +215,7 @@ func (d *RedisDriver) PutBlob(digest godigest.Digest, path string) error {
 		return zerr.ErrEmptyValue
 	}
 
-	lock := d.rs.NewMutex(d.join(constants.RedisLocksBucket, digest.String()))
-	err = lock.Lock()
-	if err != nil {
-		d.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to acquire redis lock")
-
-		return err
-	}
-
-	defer func() {
-		if _, err := lock.Unlock(); err != nil {
-			d.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to release redis lock")
-		}
-	}()
-
-	return d.putBlobLike(digest, path, constants.BlobsCache, "unable to put record")
+	return d.putBlobLike(digest, path, constants.BlobsCache, "", "unable to put record")
 }
 
 func (d *RedisDriver) PutBlobRef(digest godigest.Digest, path string) error {
@@ -229,21 +237,7 @@ func (d *RedisDriver) PutBlobRef(digest godigest.Digest, path string) error {
 		return zerr.ErrEmptyValue
 	}
 
-	lock := d.rs.NewMutex(d.join(constants.RedisLocksBucket, constants.BlobRefs, digest.String()))
-	err = lock.Lock()
-	if err != nil {
-		d.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to acquire redis lock")
-
-		return err
-	}
-
-	defer func() {
-		if _, err := lock.Unlock(); err != nil {
-			d.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to release redis lock")
-		}
-	}()
-
-	return d.putBlobLike(digest, path, constants.BlobRefs, "unable to put blob ref")
+	return d.putBlobLike(digest, path, constants.BlobRefs, constants.BlobRefs, "unable to put blob ref")
 }
 
 func (d *RedisDriver) GetBlob(digest godigest.Digest) (string, error) {
