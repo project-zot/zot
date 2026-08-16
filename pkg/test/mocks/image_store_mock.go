@@ -17,6 +17,7 @@ type MockedImageStore struct {
 	NameFn                func() string
 	DirExistsFn           func(d string) bool
 	RootDirFn             func() string
+	RepoExistsFn          func(repo string) bool
 	InitRepoFn            func(ctx context.Context, name string) error
 	ValidateRepoFn        func(name string) (bool, error)
 	GetRepositoriesFn     func() ([]string, error)
@@ -122,6 +123,14 @@ func (is MockedImageStore) RootDir() string {
 	}
 
 	return ""
+}
+
+func (is MockedImageStore) RepoExists(repo string) bool {
+	if is.RepoExistsFn != nil {
+		return is.RepoExistsFn(repo)
+	}
+
+	return true
 }
 
 func (is MockedImageStore) InitRepo(ctx context.Context, name string) error {

@@ -1138,7 +1138,7 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 	} else {
 		// Check existence before locking: WithRepoReadLock creates a lock-map entry
 		// for any name, so locking first would let this grow unbounded.
-		if !imgStore.DirExists(path.Join(imgStore.RootDir(), name)) {
+		if !imgStore.RepoExists(name) {
 			err = zerr.ErrRepoNotFound
 		} else {
 			err = imgStore.WithRepoReadLock(name, func() error {
