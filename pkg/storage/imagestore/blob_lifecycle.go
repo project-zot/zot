@@ -141,6 +141,11 @@ func (l *localHardlinkBlobLifecycle) ResolveReadPath(blobPath, _ string, digest 
 	return resolveReadPathWithCache(blobPath, digest, blobSize, fallbackResolverFunc)
 }
 
+// isDigestReferenced stays a parameter here too, even though this method is already
+// local-specific: newBlobLifecycle(storeDriver) runs inside NewImageStore's own struct
+// literal (see the lifecycle field there), before the *ImageStore value it would need to
+// close over exists, so there's no is.isDigestReferencedAcrossRepos to capture at
+// construction time without a second, later wiring step.
 func (l *localHardlinkBlobLifecycle) ShouldDeleteGlobalBlob(globalBlobPath string, digest godigest.Digest,
 	isDigestReferenced func(godigest.Digest) (bool, error),
 ) (bool, error) {
