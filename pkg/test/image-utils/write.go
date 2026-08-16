@@ -4,11 +4,36 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	stypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
+
+const manifestVisibilityPollInterval = 100 * time.Millisecond
+
+func waitForManifest(store stypes.ImageStore, repoName, ref string) error {
+	for range 100 {
+		_, _, _, err := store.GetImageManifest(repoName, ref) //nolint:dogsled // Only readiness matters here.
+		if err == nil {
+			return nil
+		}
+
+		if !errors.Is(err, zerr.ErrManifestNotFound) && !errors.Is(err, zerr.ErrRepoNotFound) {
+			return err
+		}
+
+		// Remote storage emulators may expose the updated repository index after the write returns.
+		time.Sleep(manifestVisibilityPollInterval)
+	}
+
+	_, _, _, err := store.GetImageManifest(repoName, ref) //nolint:dogsled // Return the final readiness error.
+
+	return err
+}
 
 func WriteImageToFileSystem(image Image, repoName, ref string, storeController stypes.StoreController) error {
 	store := storeController.GetImageStore(repoName)
@@ -57,7 +82,7 @@ func WriteImageToFileSystem(image Image, repoName, ref string, storeController s
 		return err
 	}
 
-	return nil
+	return waitForManifest(store, repoName, ref)
 }
 
 func WriteMultiArchImageToFileSystem(multiarchImage MultiarchImage, repoName, ref string,
@@ -84,6 +109,9 @@ func WriteMultiArchImageToFileSystem(multiarchImage MultiarchImage, repoName, re
 
 	_, _, err = store.PutImageManifest(context.Background(), repoName, ref, multiarchImage.Index.MediaType,
 		indexBlob, nil)
+	if err != nil {
+		return err
+	}
 
-	return err
+	return waitForManifest(store, repoName, ref)
 }

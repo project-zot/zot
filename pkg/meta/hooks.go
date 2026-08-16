@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
@@ -291,21 +290,29 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 // reclaims the orphan blobs the deletes left behind. Failures are logged, not returned: the
 // manifest delete already succeeded, and ParseStorage corrects a stale record on next start.
 func releaseIdleRepository(repo string, imgStore storageTypes.ImageStore, metaDB mTypes.MetaDB, log log.Logger) {
-	var lockLatency time.Time
+	// Needs the blobstore lock, not just the repo lock: RemoveIdleRepository deletes blobs
+	// one at a time, and each delete may reclaim the shared global blobstore copy. Taking both
+	// here (blobstore-then-repo) keeps the order consistent with gc.go's cleanRepo.
+	err := imgStore.WithBlobstoreAndRepoLock(repo, func() error {
+		return releaseIdleRepositoryLocked(repo, imgStore, metaDB, log)
+	})
+	if err != nil {
+		log.Error().Err(err).Str("repository", repo).Str("component", "metadb").
+			Msg("failed to release idle repository")
+	}
+}
 
-	imgStore.Lock(&lockLatency)
-	defer imgStore.Unlock(&lockLatency)
-
+func releaseIdleRepositoryLocked(repo string, imgStore storageTypes.ImageStore, metaDB mTypes.MetaDB, log log.Logger) error {
 	removed, err := imgStore.RemoveIdleRepository(repo, 0)
 	if err != nil {
 		log.Error().Err(err).Str("repository", repo).Str("component", "metadb").
 			Msg("failed to remove repo emptied by manifest deletes")
 
-		return
+		return err
 	}
 
 	if !removed {
-		return
+		return nil
 	}
 
 	if err := metaDB.DeleteRepoMeta(repo); err != nil {
@@ -313,11 +320,13 @@ func releaseIdleRepository(repo string, imgStore storageTypes.ImageStore, metaDB
 		log.Error().Err(err).Str("repository", repo).Str("component", "metadb").
 			Msg("removed repo layout but failed to delete its meta record")
 
-		return
+		return err
 	}
 
 	log.Debug().Str("repository", repo).Str("component", "metadb").
 		Msg("removed repo emptied by manifest deletes")
+
+	return nil
 }
 
 // OnGetManifest is called when a manifest is downloaded. It increments the download counter on that manifest.

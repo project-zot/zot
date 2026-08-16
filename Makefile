@@ -214,12 +214,12 @@ test-prereq: check-skopeo $(TESTDATA) $(ORAS)
 .PHONY: test-extended
 test-extended: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 test-extended: testdata-images
-	env GOEXPERIMENT=jsonv2 go test -failfast $(GO_CMD_TAGS) -trimpath -race -timeout 20m -cover -coverpkg ./... -coverprofile=coverage-extended.txt -covermode=atomic ./...
+	env GOEXPERIMENT=jsonv2 go test -failfast $(GO_CMD_TAGS) -trimpath -race -timeout 30m -cover -coverpkg ./... -coverprofile=coverage-extended.txt -covermode=atomic ./...
 	rm -rf /tmp/getter*; rm -rf /tmp/trivy*
 
 .PHONY: test-minimal
 test-minimal: testdata-images
-	env GOEXPERIMENT=jsonv2 go test -failfast -trimpath -race -timeout 12m -cover -coverpkg ./... -coverprofile=coverage-minimal.txt -covermode=atomic ./...
+	env GOEXPERIMENT=jsonv2 go test -failfast -trimpath -race -timeout 30m -cover -coverpkg ./... -coverprofile=coverage-minimal.txt -covermode=atomic ./...
 	rm -rf /tmp/getter*; rm -rf /tmp/trivy*
 
 .PHONY: test-devmode
