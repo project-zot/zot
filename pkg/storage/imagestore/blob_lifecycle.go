@@ -54,7 +54,10 @@ type blobLifecycle interface {
 	// the filesystem's hardlink count (nlink) when the platform reports it - if this was
 	// the last link, it's safe; falls back to isDigestReferenced (a cache-based scan)
 	// otherwise. Remote: always uses isDigestReferenced, since there is no hardlink count
-	// to consult.
+	// to consult. isDigestReferenced is a parameter rather than a field on blobLifecycle
+	// because it needs ImageStore's cache (blobRefsForDigest) - a blobLifecycle is
+	// constructed from just a storeDriver (see newBlobLifecycle) and has no reference
+	// back to the ImageStore that owns it.
 	ShouldDeleteGlobalBlob(globalBlobPath string, digest godigest.Digest,
 		isDigestReferenced func(godigest.Digest) (bool, error),
 	) (bool, error)
