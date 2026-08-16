@@ -44,9 +44,9 @@ type blobLifecycle interface {
 	// that function's comment for the full case breakdown). Remote: prefers
 	// globalBlobPath if it exists (the usual case, since content lives centrally there),
 	// falling back to blobPath only for blobs that predate the global blobstore or are
-	// mid-upload; ignores resolveFromCache entirely.
+	// mid-upload; ignores fallbackResolverFunc entirely.
 	ResolveReadPath(blobPath, globalBlobPath string, digest godigest.Digest, blobSize int64,
-		resolveFromCache func(godigest.Digest) (string, error),
+		fallbackResolverFunc func(godigest.Digest) (string, error),
 	) (string, error)
 
 	// ShouldDeleteGlobalBlob reports whether the global blobstore's copy of digest is
@@ -82,10 +82,10 @@ type blobLifecycle interface {
 //     a genuine empty blob and blobPath (still zero bytes, correctly) is the right answer.
 //     Otherwise, a real hardlink to non-empty content can't legitimately be zero bytes, so
 //     something's off (e.g. an interrupted or legacy write left a stub) - fall back to
-//     resolveFromCache (checkCacheBlob), which looks up a path elsewhere in the store that
+//     fallbackResolverFunc (checkCacheBlob), which looks up a path elsewhere in the store that
 //     actually has the bytes for this digest, rather than serving up the empty stub.
 func resolveReadPathWithCache(blobPath string, digest godigest.Digest, blobSize int64,
-	resolveFromCache func(godigest.Digest) (string, error),
+	fallbackResolverFunc func(godigest.Digest) (string, error),
 ) (string, error) {
 	if blobSize > 0 {
 		return blobPath, nil
@@ -95,7 +95,7 @@ func resolveReadPathWithCache(blobPath string, digest godigest.Digest, blobSize 
 		return blobPath, nil
 	}
 
-	return resolveFromCache(digest)
+	return fallbackResolverFunc(digest)
 }
 
 func newBlobLifecycle(storeDriver storageTypes.Driver) blobLifecycle {
@@ -128,9 +128,9 @@ func (l *localHardlinkBlobLifecycle) LinkBlob(srcPath, dstPath string) error {
 }
 
 func (l *localHardlinkBlobLifecycle) ResolveReadPath(blobPath, _ string, digest godigest.Digest, blobSize int64,
-	resolveFromCache func(godigest.Digest) (string, error),
+	fallbackResolverFunc func(godigest.Digest) (string, error),
 ) (string, error) {
-	return resolveReadPathWithCache(blobPath, digest, blobSize, resolveFromCache)
+	return resolveReadPathWithCache(blobPath, digest, blobSize, fallbackResolverFunc)
 }
 
 func (l *localHardlinkBlobLifecycle) ShouldDeleteGlobalBlob(globalBlobPath string, digest godigest.Digest,
