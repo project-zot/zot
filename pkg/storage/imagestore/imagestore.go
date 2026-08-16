@@ -177,6 +177,10 @@ func (is *ImageStore) RootDir() string {
 	return is.rootDir
 }
 
+func (is *ImageStore) RepoExists(repo string) bool {
+	return is.repoExists(repo)
+}
+
 func (is *ImageStore) DirExists(d string) bool {
 	return is.storeDriver.DirExists(d)
 }
