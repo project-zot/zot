@@ -208,7 +208,7 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 		linter:        linter,
 		commit:        commit,
 		cache:         cacheDriver,
-		lifecycle:     newBlobLifecycle(storeDriver),
+		lifecycle:     newBlobLifecycle(storeDriver, log),
 		compat:        compat,
 		events:        recorder,
 	}
