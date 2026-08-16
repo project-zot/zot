@@ -112,7 +112,7 @@ func TestAzureDedupeGlobalBlobResolve(t *testing.T) {
 	Convey("Dedupe across repos resolves through the global blobstore", t, func() {
 		uuid, err := guuid.NewV4()
 		if err != nil {
-			panic(err)
+			t.Fatalf("failed to generate uuid: %v", err)
 		}
 
 		testDir := path.Join("/oci-repo-test", uuid.String())
@@ -172,7 +172,7 @@ func TestAzureDedupeReclaimOnDelete(t *testing.T) {
 	Convey("Deleting one repo's blob does not reclaim a still-referenced global copy", t, func() {
 		uuid, err := guuid.NewV4()
 		if err != nil {
-			panic(err)
+			t.Fatalf("failed to generate uuid: %v", err)
 		}
 
 		testDir := path.Join("/oci-repo-test", uuid.String())
@@ -213,7 +213,7 @@ func TestAzureMigrationMarkerPersistence(t *testing.T) {
 	Convey("A second store over the same root sees the migration marker without erroring", t, func() {
 		uuid, err := guuid.NewV4()
 		if err != nil {
-			panic(err)
+			t.Fatalf("failed to generate uuid: %v", err)
 		}
 
 		testDir := path.Join("/oci-repo-test", uuid.String())
