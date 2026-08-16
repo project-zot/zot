@@ -862,10 +862,9 @@ func TestGCSGetAllDedupeReposCandidates(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// _blobstore is internal-only and must never be exposed as a mount candidate
-		expectedRepos := append([]string{}, repoNames...)
-		slices.Sort(expectedRepos)
+		slices.Sort(repoNames)
 		slices.Sort(repos)
-		So(repos, ShouldResemble, expectedRepos)
+		So(repos, ShouldResemble, repoNames)
 	})
 }
 
