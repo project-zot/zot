@@ -11,6 +11,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 
 	zerr "zotregistry.dev/zot/v2/errors"
+	zlog "zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/storage/constants"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
@@ -110,12 +111,12 @@ func resolveReadPathWithCache(blobPath string, digest godigest.Digest, blobSize 
 	return fallbackResolverFunc(digest)
 }
 
-func newBlobLifecycle(storeDriver storageTypes.Driver) blobLifecycle {
+func newBlobLifecycle(storeDriver storageTypes.Driver, log zlog.Logger) blobLifecycle {
 	if storeDriver.Name() == constants.LocalStorageDriverName {
 		return &localHardlinkBlobLifecycle{storeDriver: storeDriver, statFn: os.Stat}
 	}
 
-	return &remoteSharedBlobLifecycle{storeDriver: storeDriver}
+	return &remoteSharedBlobLifecycle{storeDriver: storeDriver, log: log}
 }
 
 type localHardlinkBlobLifecycle struct {
@@ -215,6 +216,25 @@ func (l *localHardlinkBlobLifecycle) IncludeRepoInMountCandidates(repo string) b
 
 type remoteSharedBlobLifecycle struct {
 	storeDriver storageTypes.Driver
+	log         zlog.Logger
+}
+
+// abortWrite is PromoteCandidate's cleanup path once io.Copy or Commit has failed: the
+// write is no longer salvageable, so every step here is best-effort, but a failure is
+// still logged instead of silently dropped since it can leave a partial/orphaned object
+// behind in the driver.
+func (r *remoteSharedBlobLifecycle) abortWrite(blobWriter driver.FileWriter, blobReader io.ReadCloser) {
+	if err := blobWriter.Cancel(context.Background()); err != nil {
+		r.log.Error().Err(err).Msg("failed to cancel blob writer")
+	}
+
+	if err := blobReader.Close(); err != nil {
+		r.log.Error().Err(err).Msg("failed to close blob reader")
+	}
+
+	if err := blobWriter.Close(); err != nil {
+		r.log.Error().Err(err).Msg("failed to close blob writer")
+	}
 }
 
 func (r *remoteSharedBlobLifecycle) PromoteCandidate(srcPath, dstPath string) error {
@@ -225,29 +245,29 @@ func (r *remoteSharedBlobLifecycle) PromoteCandidate(srcPath, dstPath string) er
 
 	blobWriter, err := r.storeDriver.Writer(dstPath, false)
 	if err != nil {
-		_ = blobReader.Close()
+		if closeErr := blobReader.Close(); closeErr != nil {
+			r.log.Error().Err(closeErr).Msg("failed to close blob reader")
+		}
 
 		return err
 	}
 
 	if _, err := io.Copy(blobWriter, blobReader); err != nil {
-		_ = blobWriter.Cancel(context.Background())
-		_ = blobReader.Close()
-		_ = blobWriter.Close()
+		r.abortWrite(blobWriter, blobReader)
 
 		return err
 	}
 
 	if err := blobWriter.Commit(context.Background()); err != nil {
-		_ = blobWriter.Cancel(context.Background())
-		_ = blobReader.Close()
-		_ = blobWriter.Close()
+		r.abortWrite(blobWriter, blobReader)
 
 		return err
 	}
 
 	if err := blobReader.Close(); err != nil {
-		_ = blobWriter.Close()
+		if closeErr := blobWriter.Close(); closeErr != nil {
+			r.log.Error().Err(closeErr).Msg("failed to close blob writer")
+		}
 
 		return err
 	}
