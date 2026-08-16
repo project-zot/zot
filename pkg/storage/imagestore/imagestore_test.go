@@ -33,6 +33,19 @@ var (
 	errWalkFailed   = errors.New("walk failed")
 ) //nolint: gochecknoglobals
 
+func TestRepoExists(t *testing.T) {
+	Convey("RepoExists resolves repository names under the image store root", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+		store := imagestore.NewImageStore(t.TempDir(), "", false, false, log, metrics, nil,
+			local.New(true), nil, nil, nil)
+
+		So(store.RepoExists("repo"), ShouldBeFalse)
+		So(store.InitRepo(context.Background(), "repo"), ShouldBeNil)
+		So(store.RepoExists("repo"), ShouldBeTrue)
+	})
+}
+
 func TestGetBlobRedirectURL(t *testing.T) {
 	Convey("GetBlobRedirectURL", t, func() {
 		log := zlog.NewTestLogger()
