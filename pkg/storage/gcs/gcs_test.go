@@ -1706,6 +1706,12 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 	// Wrap driver for WriteFile access
 	gcsDriver := gcs.New(rawDriver)
 
+	// overwriteUntilSizeChanges corrupts the global blobstore copy at blobPath by
+	// overwriting it with content of a different size, then polls Stat until the
+	// new size is actually visible - the emulator can be slow to propagate a write,
+	// and a stale Stat would make the corruption-detection assertions that follow
+	// flaky. Each attempt grows the corrupted content further so a failed WriteFile
+	// (also retried) never collides with a size an earlier attempt already tried.
 	overwriteUntilSizeChanges := func(blobPath string, originalSize int) bool {
 		for attempt := range 20 {
 			corruptedBlob := bytes.Repeat([]byte("c"), originalSize+attempt+1)
