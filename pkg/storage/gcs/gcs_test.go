@@ -1665,28 +1665,18 @@ func TestGCSStorageAPIs(t *testing.T) {
 			// Concurrent mix of repo/blobstore read and write locks, exercised for coverage.
 			var wg sync.WaitGroup
 			for range 1000 {
-				wg.Add(4)
-
-				go func() {
-					defer wg.Done()
-
+				wg.Go(func() {
 					_ = imgStore.WithRepoLock("replace", func() error { return nil })
-				}()
-				go func() {
-					defer wg.Done()
-
+				})
+				wg.Go(func() {
 					_ = imgStore.WithRepoReadLock("replace", func() error { return nil })
-				}()
-				go func() {
-					defer wg.Done()
-
+				})
+				wg.Go(func() {
 					_ = imgStore.WithBlobstoreLock(func() error { return nil })
-				}()
-				go func() {
-					defer wg.Done()
-
+				})
+				wg.Go(func() {
 					_ = imgStore.WithBlobstoreReadLock(func() error { return nil })
-				}()
+				})
 			}
 
 			wg.Wait()
