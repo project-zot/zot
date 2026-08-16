@@ -103,10 +103,8 @@ func TestLockOrderFuzz(t *testing.T) {
 		var wg sync.WaitGroup
 
 		for goroutineIdx := range numGoroutines {
-			wg.Add(1)
-
-			go func(seed int) {
-				defer wg.Done()
+			wg.Go(func() {
+				seed := goroutineIdx
 
 				for i := range numIterations {
 					repo := repos[(seed+i)%len(repos)]
@@ -123,7 +121,7 @@ func TestLockOrderFuzz(t *testing.T) {
 						_ = imgStore.DeleteBlob(repo, digest)
 					}
 				}
-			}(goroutineIdx)
+			})
 		}
 
 		wg.Wait()
@@ -150,25 +148,19 @@ func TestLockOrderReversedRolesDedupe(t *testing.T) {
 	withDeadline(t, 60*time.Second, func() {
 		var wg sync.WaitGroup
 
-		wg.Add(2)
-
-		go func() {
-			defer wg.Done()
-
+		wg.Go(func() {
 			for range iterations {
 				_, _, _ = imgStore.FullBlobUpload(context.Background(), "repo-a", bytes.NewReader(contentA), digestA)
 				_, _, _ = imgStore.FullBlobUpload(context.Background(), "repo-b", bytes.NewReader(contentB), digestB)
 			}
-		}()
+		})
 
-		go func() {
-			defer wg.Done()
-
+		wg.Go(func() {
 			for range iterations {
 				_, _, _ = imgStore.FullBlobUpload(context.Background(), "repo-b", bytes.NewReader(contentB), digestB)
 				_, _, _ = imgStore.FullBlobUpload(context.Background(), "repo-a", bytes.NewReader(contentA), digestA)
 			}
-		}()
+		})
 
 		wg.Wait()
 	})
@@ -250,10 +242,8 @@ func TestLockOrderDedupeRebuildStress(t *testing.T) {
 		var wg sync.WaitGroup
 
 		for workerIdx := range numWorkers {
-			wg.Add(1)
-
-			go func(seed int) {
-				defer wg.Done()
+			wg.Go(func() {
+				seed := workerIdx
 
 				i := 0
 				for !stop.Load() {
@@ -273,7 +263,7 @@ func TestLockOrderDedupeRebuildStress(t *testing.T) {
 
 					i++
 				}
-			}(workerIdx)
+			})
 		}
 
 		// Drive several rebuild passes, mirroring what RunDedupeBlobs's scheduled
@@ -320,13 +310,9 @@ func TestLockOrderDedupeFastPathRace(t *testing.T) {
 			// Round 1: every repo races to push this brand-new digest at once, forcing
 			// the first-writer race onto the slow (write-locked) path.
 			for _, repo := range repos {
-				wg.Add(1)
-
-				go func(repo string) {
-					defer wg.Done()
-
+				wg.Go(func() {
 					_, _, _ = imgStore.FullBlobUpload(context.Background(), repo, bytes.NewReader(content), digest)
-				}(repo)
+				})
 			}
 
 			wg.Wait()
@@ -335,19 +321,13 @@ func TestLockOrderDedupeFastPathRace(t *testing.T) {
 			// mostly take the fast (read-locked) path, concurrently with CheckBlob reads
 			// racing the same digest across the same repos.
 			for _, repo := range repos {
-				wg.Add(2)
-
-				go func(repo string) {
-					defer wg.Done()
-
+				wg.Go(func() {
 					_, _, _ = imgStore.FullBlobUpload(context.Background(), repo, bytes.NewReader(content), digest)
-				}(repo)
+				})
 
-				go func(repo string) {
-					defer wg.Done()
-
+				wg.Go(func() {
 					_, _, _ = imgStore.CheckBlob(context.Background(), repo, digest)
-				}(repo)
+				})
 			}
 
 			wg.Wait()
