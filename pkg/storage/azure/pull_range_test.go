@@ -13,7 +13,7 @@ import (
 	tskip "zotregistry.dev/zot/v2/pkg/test/skip"
 )
 
-// TestAzurePullRange covers GetBlobPartial against a real Azure backend: a range read from
+// TestAzurePullRange covers GetBlobPartial against a real Azurite backend: a range read from
 // the start, a range read from an interior offset, and a negative offset, which must error.
 func TestAzurePullRange(t *testing.T) {
 	tskip.SkipAzure(t)
