@@ -611,14 +611,16 @@ func TestAutoPortSelection(t *testing.T) {
 
 // createS3MockBucket creates the S3 bucket a test needs against the mock endpoint. Tolerates
 // StatusConflict as benign in case a previous run left the bucket behind.
-func createS3MockBucket(endpoint, bucket string) {
+func createS3MockBucket(t *testing.T, endpoint, bucket string) {
+	t.Helper()
+
 	resp, err := resty.R().Put("http://" + endpoint + "/" + bucket)
 	if err != nil {
-		panic(err)
+		t.Fatalf("failed to create bucket: %v", err)
 	}
 
 	if sc := resp.StatusCode(); sc != http.StatusOK && sc != http.StatusConflict {
-		panic(fmt.Sprintf("failed to create bucket: %d %s", sc, resp.String()))
+		t.Fatalf("failed to create bucket: %d %s", sc, resp.String())
 	}
 }
 
@@ -651,7 +653,7 @@ func TestObjectStorageController(t *testing.T) {
 		endpoint := os.Getenv("S3MOCK_ENDPOINT")
 		tmp := t.TempDir()
 
-		createS3MockBucket(endpoint, bucket)
+		createS3MockBucket(t, endpoint, bucket)
 
 		storageDriverParams := map[string]any{
 			"rootdirectory":  tmp,
@@ -738,7 +740,7 @@ func TestObjectStorageController(t *testing.T) {
 			},
 		}
 
-		createS3MockBucket(endpoint, bucket)
+		createS3MockBucket(t, endpoint, bucket)
 
 		ctlr := makeController(conf, "/")
 		So(ctlr, ShouldNotBeNil)
@@ -762,7 +764,7 @@ func TestObjectStorageControllerSubPaths(t *testing.T) {
 		endpoint := os.Getenv("S3MOCK_ENDPOINT")
 		tmp := t.TempDir()
 
-		createS3MockBucket(endpoint, bucket)
+		createS3MockBucket(t, endpoint, bucket)
 
 		storageDriverParams := map[string]any{
 			"rootdirectory":  tmp,
