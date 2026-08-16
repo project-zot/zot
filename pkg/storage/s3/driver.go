@@ -64,7 +64,13 @@ func (driver *Driver) Delete(path string) error {
 	// Not idempotent today: PathNotFound / Missing is returned to the caller
 	// (unlike GCS/Azure). Making S3 Delete idempotent like those wrappers is a
 	// planned follow-up; local stays non-idempotent.
-	return driver.formatErr(driver.store.Delete(context.Background(), path), path)
+	return driver.DeleteContext(context.Background(), path)
+}
+
+// DeleteContext is Delete bounded by ctx, for callers that must not have a delete (or the
+// SDK's retries of one) land after a deadline.
+func (driver *Driver) DeleteContext(ctx context.Context, path string) error {
+	return driver.formatErr(driver.store.Delete(ctx, path), path)
 }
 
 func (driver *Driver) Stat(path string) (storagedriver.FileInfo, error) {

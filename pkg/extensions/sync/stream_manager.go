@@ -467,12 +467,15 @@ func (sm *ChunkingStreamManager) isBlobLocal(repo string, digest godigest.Digest
 		return false
 	}
 
-	var lockLatency time.Time
+	var found bool
 
-	imgStore.RLock(&lockLatency)
-	defer imgStore.RUnlock(&lockLatency)
+	err := imgStore.WithRepoReadLock(repo, func() error {
+		var err error
 
-	found, _, _, err := imgStore.StatBlob(repo, digest)
+		found, _, _, err = imgStore.StatBlob(repo, digest)
+
+		return err
+	})
 
 	return err == nil && found
 }

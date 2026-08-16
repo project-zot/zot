@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -11,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/smithy-go"
+	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
 
 	zerr "zotregistry.dev/zot/v2/errors"
@@ -49,6 +53,10 @@ func (d *DynamoDBDriver) tableExists(tableName string) (bool, error) {
 	}
 
 	return false, err
+}
+
+func (d *DynamoDBDriver) blobRefDigest(digest godigest.Digest) string {
+	return "blob_refs:" + digest.String()
 }
 
 // isAccessDenied reports whether err is an AWS AccessDeniedException. This isn't a
@@ -182,6 +190,7 @@ func (d *DynamoDBDriver) GetBlob(digest godigest.Digest) (string, error) {
 		Key: map[string]types.AttributeValue{
 			"Digest": &types.AttributeValueMemberS{Value: digest.String()},
 		},
+		ConsistentRead: aws.Bool(true),
 	})
 	if err != nil {
 		d.log.Error().Err(err).Str("tableName", d.tableName).Msg("failed to get blob")
@@ -236,6 +245,331 @@ func (d *DynamoDBDriver) GetAllBlobs(digest godigest.Digest) ([]string, error) {
 	return blobPaths, nil
 }
 
+func (d *DynamoDBDriver) PutBlobRef(digest godigest.Digest, path string) error {
+	if path == "" {
+		d.log.Error().Err(zerr.ErrEmptyValue).Str("digest", digest.String()).
+			Msg("failed to put blob ref because the path provided is empty")
+
+		return zerr.ErrEmptyValue
+	}
+
+	refDigest := d.blobRefDigest(digest)
+
+	var originBlob string
+
+	// optimistic-concurrency loop: retry until one writer establishes the origin
+	// and this reader observes stable state
+	for {
+		var err error
+
+		originBlob, err = d.GetBlob(godigest.Digest(refDigest))
+		if err != nil {
+			if !errors.Is(err, zerr.ErrCacheMiss) {
+				return err
+			}
+
+			if err := d.putOriginBlob(godigest.Digest(refDigest), path); err != nil {
+				if _, ok := errors.AsType[*types.ConditionalCheckFailedException](err); ok {
+					continue
+				}
+
+				return err
+			}
+
+			return nil
+		}
+
+		if originBlob == "" {
+			if err := d.putOriginBlob(godigest.Digest(refDigest), path); err != nil {
+				if _, ok := errors.AsType[*types.ConditionalCheckFailedException](err); ok {
+					continue
+				}
+
+				return err
+			}
+
+			return nil
+		}
+
+		break
+	}
+
+	if originBlob == path {
+		return nil
+	}
+
+	expression := "ADD DuplicateBlobPath :i"
+	attrPath := types.AttributeValueMemberSS{Value: []string{path}}
+
+	if err := d.updateItem(
+		godigest.Digest(refDigest),
+		expression,
+		map[string]types.AttributeValue{":i": &attrPath},
+		nil,
+	); err != nil {
+		d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("failed to put blob ref")
+
+		return err
+	}
+
+	return nil
+}
+
+func (d *DynamoDBDriver) GetBlobRefs(digest godigest.Digest) ([]string, error) {
+	refDigest := d.blobRefDigest(digest)
+
+	resp, err := d.client.GetItem(context.TODO(), &dynamodb.GetItemInput{
+		TableName: aws.String(d.tableName),
+		Key: map[string]types.AttributeValue{
+			"Digest": &types.AttributeValueMemberS{Value: refDigest},
+		},
+		// blob refs gate global-blob reclamation; a stale read could make live ownership appear absent
+		ConsistentRead: aws.Bool(true),
+	})
+	if err != nil {
+		d.log.Error().Err(err).Str("tableName", d.tableName).Msg("failed to get blob ref")
+
+		return nil, err
+	}
+
+	out := Blob{}
+
+	if resp.Item == nil {
+		return nil, zerr.ErrCacheMiss
+	}
+
+	_ = attributevalue.UnmarshalMap(resp.Item, &out)
+
+	blobPaths := []string{}
+
+	// skip a missing/empty origin: an "" entry would surface as a phantom blob ref downstream
+	if out.OriginalBlobPath != "" {
+		blobPaths = append(blobPaths, out.OriginalBlobPath)
+	}
+
+	for _, item := range out.DuplicateBlobPath {
+		if item != "" && item != out.OriginalBlobPath {
+			blobPaths = append(blobPaths, item)
+		}
+	}
+
+	// No usable path left (e.g. a stale/partial record from a race with DeleteBlobRef):
+	// report a miss so callers fall back to the authoritative GetAllBlobs scan instead of
+	// treating "no paths" as "definitely unreferenced" and reclaiming a blob still in use.
+	if len(blobPaths) == 0 {
+		return nil, zerr.ErrCacheMiss
+	}
+
+	return blobPaths, nil
+}
+
+func (d *DynamoDBDriver) GetAllBlobRefs() (map[godigest.Digest][]string, error) {
+	allRefs := map[godigest.Digest][]string{}
+
+	var startKey map[string]types.AttributeValue
+
+	for {
+		resp, err := d.client.Scan(context.TODO(), &dynamodb.ScanInput{
+			TableName:         aws.String(d.tableName),
+			ExclusiveStartKey: startKey,
+			ConsistentRead:    aws.Bool(true),
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		for _, item := range resp.Items {
+			blob := Blob{}
+			if err := attributevalue.UnmarshalMap(item, &blob); err != nil {
+				return nil, err
+			}
+
+			digestString, ok := strings.CutPrefix(blob.Digest, "blob_refs:")
+			if !ok {
+				continue
+			}
+
+			digest := godigest.Digest(digestString)
+			if err := digest.Validate(); err != nil {
+				continue
+			}
+
+			if blob.OriginalBlobPath != "" {
+				allRefs[digest] = append(allRefs[digest], blob.OriginalBlobPath)
+			}
+
+			for _, ref := range blob.DuplicateBlobPath {
+				if ref != "" && ref != blob.OriginalBlobPath {
+					allRefs[digest] = append(allRefs[digest], ref)
+				}
+			}
+		}
+
+		if len(resp.LastEvaluatedKey) == 0 {
+			return allRefs, nil
+		}
+
+		startKey = resp.LastEvaluatedKey
+	}
+}
+
+func (d *DynamoDBDriver) DeleteBlobRef(digest godigest.Digest, path string) error {
+	refDigest := d.blobRefDigest(digest)
+	m_marshaledKey, _ := attributevalue.MarshalMap(map[string]any{"Digest": refDigest})
+
+	duplicateBlob, err := d.GetDuplicateBlob(godigest.Digest(refDigest))
+	if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+		return err
+	}
+
+	if duplicateBlob != "" {
+		resp, err := d.client.GetItem(context.TODO(), &dynamodb.GetItemInput{
+			TableName: aws.String(d.tableName),
+			Key: map[string]types.AttributeValue{
+				"Digest": &types.AttributeValueMemberS{Value: refDigest},
+			},
+			ConsistentRead: aws.Bool(true),
+		})
+		if err != nil {
+			return err
+		}
+
+		out := Blob{}
+		if resp.Item != nil {
+			_ = attributevalue.UnmarshalMap(resp.Item, &out)
+
+			if slices.Contains(out.DuplicateBlobPath, path) {
+				expression := "DELETE DuplicateBlobPath :i"
+				attrPath := types.AttributeValueMemberSS{Value: []string{path}}
+
+				if err := d.updateItem(
+					godigest.Digest(refDigest),
+					expression,
+					map[string]types.AttributeValue{":i": &attrPath},
+					nil,
+				); err != nil {
+					d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("failed to delete blob ref")
+
+					return err
+				}
+
+				return nil
+			}
+		}
+	}
+
+	originBlob, err := d.GetBlob(godigest.Digest(refDigest))
+	if err != nil {
+		return err
+	}
+
+	if originBlob == path {
+		// promote a duplicate to origin so GetBlobRefs stops reporting this deleted path,
+		// or drop the item when no duplicate is left
+		return d.removeOrigin(godigest.Digest(refDigest), path)
+	}
+
+	if originBlob == "" {
+		_, _ = d.client.DeleteItem(context.TODO(), &dynamodb.DeleteItemInput{
+			Key:       m_marshaledKey,
+			TableName: &d.tableName,
+		})
+
+		return zerr.ErrCacheMiss
+	}
+
+	return zerr.ErrCacheMiss
+}
+
+// removeOrigin drops oldOrigin as the origin of digest: a remaining duplicate is promoted
+// in its place, or the whole item is deleted when no duplicate is left.
+//
+// The item is read first, so both writes are conditioned on what that read saw and are
+// retried when a concurrent writer got in between:
+//   - promotion requires the chosen duplicate to still be in the set. DELETE on a set is a
+//     no-op for a missing member, so without this a duplicate removed by a concurrent
+//     DeleteBlob/DeleteBlobRef would be resurrected as the origin.
+//   - deletion requires the set to still be empty, so a duplicate added by a concurrent
+//     PutBlob is promoted on the next pass instead of being dropped with the item.
+//
+// The loop ends without writing once OriginalBlobPath is no longer oldOrigin (or the item
+// is gone): another writer already replaced or removed it.
+func (d *DynamoDBDriver) removeOrigin(digest godigest.Digest, oldOrigin string) error {
+	marshaledKey, _ := attributevalue.MarshalMap(map[string]any{"Digest": digest.String()})
+	oldPath := types.AttributeValueMemberS{Value: oldOrigin}
+
+	for {
+		resp, err := d.client.GetItem(context.TODO(), &dynamodb.GetItemInput{
+			TableName:      aws.String(d.tableName),
+			Key:            marshaledKey,
+			ConsistentRead: aws.Bool(true),
+		})
+		if err != nil {
+			d.log.Error().Err(err).Str("tableName", d.tableName).Msg("failed to get blob")
+
+			return err
+		}
+
+		if resp.Item == nil {
+			return nil
+		}
+
+		out := Blob{}
+		_ = attributevalue.UnmarshalMap(resp.Item, &out)
+
+		if out.OriginalBlobPath != oldOrigin {
+			return nil
+		}
+
+		if len(out.DuplicateBlobPath) > 0 {
+			duplicate := out.DuplicateBlobPath[0]
+			expression := "SET OriginalBlobPath = :new DELETE DuplicateBlobPath :i"
+			conditionExpression := "OriginalBlobPath = :old AND contains(DuplicateBlobPath, :new)"
+			newPath := types.AttributeValueMemberS{Value: duplicate}
+			removedSet := types.AttributeValueMemberSS{Value: []string{duplicate}}
+
+			_, err = d.client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
+				Key:              marshaledKey,
+				TableName:        &d.tableName,
+				UpdateExpression: &expression,
+				ExpressionAttributeValues: map[string]types.AttributeValue{
+					":new": &newPath,
+					":i":   &removedSet,
+					":old": &oldPath,
+				},
+				ConditionExpression: &conditionExpression,
+			})
+		} else {
+			conditionExpression := "OriginalBlobPath = :old AND " +
+				"(attribute_not_exists(DuplicateBlobPath) OR size(DuplicateBlobPath) = :zero)"
+			zero := types.AttributeValueMemberN{Value: "0"}
+
+			_, err = d.client.DeleteItem(context.TODO(), &dynamodb.DeleteItemInput{
+				Key:                 marshaledKey,
+				TableName:           &d.tableName,
+				ConditionExpression: &conditionExpression,
+				ExpressionAttributeValues: map[string]types.AttributeValue{
+					":old":  &oldPath,
+					":zero": &zero,
+				},
+			})
+		}
+
+		if err == nil {
+			return nil
+		}
+
+		if _, ok := errors.AsType[*types.ConditionalCheckFailedException](err); ok {
+			continue
+		}
+
+		d.log.Error().Err(err).Str("digest", digest.String()).Str("path", oldOrigin).
+			Msg("failed to remove origin blob")
+
+		return err
+	}
+}
+
 func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
 	if path == "" {
 		d.log.Error().Err(zerr.ErrEmptyValue).Str("digest", digest.String()).
@@ -244,17 +578,55 @@ func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
 		return zerr.ErrEmptyValue
 	}
 
-	if originBlob, _ := d.GetBlob(digest); originBlob == "" {
-		// first entry, so add original blob
-		if err := d.putOriginBlob(digest, path); err != nil {
-			return err
+	var originBlob string
+
+	for {
+		var err error
+
+		originBlob, err = d.GetBlob(digest)
+		if err != nil {
+			if !errors.Is(err, zerr.ErrCacheMiss) {
+				return err
+			}
+
+			// first entry, so add original blob only
+			if err := d.putOriginBlob(digest, path); err != nil {
+				if _, ok := errors.AsType[*types.ConditionalCheckFailedException](err); ok {
+					continue
+				}
+
+				return err
+			}
+
+			return nil
 		}
+
+		if originBlob == "" {
+			// item exists but has no origin path (partial/legacy state); repair it
+			if err := d.putOriginBlob(digest, path); err != nil {
+				if _, ok := errors.AsType[*types.ConditionalCheckFailedException](err); ok {
+					continue
+				}
+
+				return err
+			}
+
+			return nil
+		}
+
+		// Origin exists and is visible; safe to exit retry loop.
+		break
+	}
+
+	// if same as original, this is idempotent
+	if originBlob == path {
+		return nil
 	}
 
 	expression := "ADD DuplicateBlobPath :i"
 	attrPath := types.AttributeValueMemberSS{Value: []string{path}}
 
-	if err := d.updateItem(digest, expression, map[string]types.AttributeValue{":i": &attrPath}); err != nil {
+	if err := d.updateItem(digest, expression, map[string]types.AttributeValue{":i": &attrPath}, nil); err != nil {
 		d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("failed to put blob")
 
 		return err
@@ -271,31 +643,62 @@ func (d *DynamoDBDriver) SetOrigin(digest godigest.Digest, originPath string) er
 		return zerr.ErrEmptyValue
 	}
 
-	// Single UpdateItem with a strongly consistent condition: write only when the
-	// origin or set membership needs repair. Avoids eventually-consistent GetBlob
-	// no-ops and skips WCU burn when rebuild already points at the right path.
+	// OriginalBlobPath and DuplicateBlobPath are disjoint (see PutBlob), so a replaced
+	// origin has to be demoted into the duplicate set or it drops out of the cache. The
+	// stale path is only known after a (strongly consistent) read, hence the conditional
+	// write and the retry when a concurrent writer changed the origin in between.
 	marshaledKey, _ := attributevalue.MarshalMap(map[string]any{"Digest": digest.String()})
-	expression := "SET OriginalBlobPath = :s ADD DuplicateBlobPath :i"
-	condition := "attribute_not_exists(OriginalBlobPath) OR OriginalBlobPath <> :s OR " +
-		"NOT contains(DuplicateBlobPath, :p)"
-	attrVals := map[string]types.AttributeValue{
-		":s": &types.AttributeValueMemberS{Value: originPath},
-		":i": &types.AttributeValueMemberSS{Value: []string{originPath}},
-		":p": &types.AttributeValueMemberS{Value: originPath},
-	}
 
-	_, err := d.client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
-		Key:                       marshaledKey,
-		TableName:                 &d.tableName,
-		UpdateExpression:          &expression,
-		ConditionExpression:       &condition,
-		ExpressionAttributeValues: attrVals,
-	})
-	if err != nil {
-		if _, ok := errors.AsType[*types.ConditionalCheckFailedException](err); ok {
+	for {
+		current, err := d.GetBlob(digest)
+		if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+			return err
+		}
+
+		if current == originPath {
 			return nil
 		}
 
+		expression := "SET OriginalBlobPath = :s"
+		condition := "attribute_not_exists(OriginalBlobPath) OR OriginalBlobPath = :cur"
+		attrVals := map[string]types.AttributeValue{
+			":s":   &types.AttributeValueMemberS{Value: originPath},
+			":cur": &types.AttributeValueMemberS{Value: current},
+		}
+
+		if current != "" {
+			expression += " ADD DuplicateBlobPath :old"
+			condition = "OriginalBlobPath = :cur"
+			attrVals[":old"] = &types.AttributeValueMemberSS{Value: []string{current}}
+		}
+
+		_, err = d.client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
+			Key:                       marshaledKey,
+			TableName:                 &d.tableName,
+			UpdateExpression:          &expression,
+			ConditionExpression:       &condition,
+			ExpressionAttributeValues: attrVals,
+		})
+		if err != nil {
+			if _, ok := errors.AsType[*types.ConditionalCheckFailedException](err); ok {
+				continue
+			}
+
+			d.log.Error().Err(err).Str("digest", digest.String()).Str("path", originPath).Msg("failed to set origin")
+
+			return err
+		}
+
+		break
+	}
+
+	// The new origin must not stay behind as a duplicate: DeleteBlob checks the set first
+	// and would otherwise leave the origin pointing at a deleted path. A separate call
+	// because one update expression cannot both ADD to and DELETE from the same attribute.
+	expression := "DELETE DuplicateBlobPath :i"
+	attrPath := types.AttributeValueMemberSS{Value: []string{originPath}}
+
+	if err := d.updateItem(digest, expression, map[string]types.AttributeValue{":i": &attrPath}, nil); err != nil {
 		d.log.Error().Err(err).Str("digest", digest.String()).Str("path", originPath).Msg("failed to set origin")
 
 		return err
@@ -343,27 +746,59 @@ func (d *DynamoDBDriver) HasBlob(digest godigest.Digest, path string) bool {
 func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 	marshaledKey, _ := attributevalue.MarshalMap(map[string]any{"Digest": digest.String()})
 
-	expression := "DELETE DuplicateBlobPath :i"
-	attrPath := types.AttributeValueMemberSS{Value: []string{path}}
-
-	if err := d.updateItem(digest, expression, map[string]types.AttributeValue{":i": &attrPath}); err != nil {
-		d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("failed to delete")
-
+	duplicateBlob, err := d.GetDuplicateBlob(digest)
+	if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
 		return err
 	}
 
-	originBlob, _ := d.GetBlob(digest)
-	// if original blob is the one deleted
-	if originBlob == path {
-		// move duplicate blob to original, storage will move content here
-		originBlob, _ = d.GetDuplicateBlob(digest)
-		if originBlob != "" {
-			if err := d.putOriginBlob(digest, originBlob); err != nil {
-				return err
+	if duplicateBlob != "" {
+		resp, err := d.client.GetItem(context.TODO(), &dynamodb.GetItemInput{
+			TableName: aws.String(d.tableName),
+			Key: map[string]types.AttributeValue{
+				"Digest": &types.AttributeValueMemberS{Value: digest.String()},
+			},
+		})
+		if err != nil {
+			return err
+		}
+
+		out := Blob{}
+		if resp.Item != nil {
+			_ = attributevalue.UnmarshalMap(resp.Item, &out)
+
+			if slices.Contains(out.DuplicateBlobPath, path) {
+				expression := "DELETE DuplicateBlobPath :i"
+				attrPath := types.AttributeValueMemberSS{Value: []string{path}}
+
+				if err := d.updateItem(digest, expression, map[string]types.AttributeValue{":i": &attrPath}, nil); err != nil {
+					d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("failed to delete")
+
+					return err
+				}
+
+				return nil
 			}
 		}
 	}
 
+	originBlob, err := d.GetBlob(digest)
+	if err != nil {
+		if errors.Is(err, zerr.ErrCacheMiss) {
+			// digest isn't tracked at all - nothing to delete
+			return nil
+		}
+
+		return err
+	}
+
+	// if original blob is the one being deleted
+	if originBlob == path {
+		// promote a duplicate to origin so GetAllBlobs/HasBlob stop reporting this deleted path,
+		// or drop the item when no duplicate is left
+		return d.removeOrigin(digest, path)
+	}
+
+	// originBlob is empty but record exists (orphaned entry) — clean up
 	if originBlob == "" {
 		d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("deleting empty bucket")
 
@@ -371,8 +806,11 @@ func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 			Key:       marshaledKey,
 			TableName: &d.tableName,
 		})
+
+		return nil
 	}
 
+	// path not found in duplicates or original - nothing to delete
 	return nil
 }
 
@@ -382,6 +820,7 @@ func (d *DynamoDBDriver) GetDuplicateBlob(digest godigest.Digest) (string, error
 		Key: map[string]types.AttributeValue{
 			"Digest": &types.AttributeValueMemberS{Value: digest.String()},
 		},
+		ConsistentRead: aws.Bool(true),
 	})
 	if err != nil {
 		d.log.Error().Err(err).Str("tableName", d.tableName).Msg("failed to get blob")
@@ -407,8 +846,13 @@ func (d *DynamoDBDriver) GetDuplicateBlob(digest godigest.Digest) (string, error
 func (d *DynamoDBDriver) putOriginBlob(digest godigest.Digest, path string) error {
 	expression := "SET OriginalBlobPath = :s"
 	attrPath := types.AttributeValueMemberS{Value: path}
+	emptyPath := types.AttributeValueMemberS{Value: ""}
+	conditionExpression := "attribute_not_exists(OriginalBlobPath) OR OriginalBlobPath = :empty"
 
-	if err := d.updateItem(digest, expression, map[string]types.AttributeValue{":s": &attrPath}); err != nil {
+	if err := d.updateItem(digest, expression, map[string]types.AttributeValue{
+		":empty": &emptyPath,
+		":s":     &attrPath,
+	}, &conditionExpression); err != nil {
 		d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("failed to put original blob")
 
 		return err
@@ -418,7 +862,7 @@ func (d *DynamoDBDriver) putOriginBlob(digest godigest.Digest, path string) erro
 }
 
 func (d *DynamoDBDriver) updateItem(digest godigest.Digest, expression string,
-	expressionAttVals map[string]types.AttributeValue,
+	expressionAttVals map[string]types.AttributeValue, conditionExpression *string,
 ) error {
 	marshaledKey, _ := attributevalue.MarshalMap(map[string]any{"Digest": digest.String()})
 
@@ -427,7 +871,75 @@ func (d *DynamoDBDriver) updateItem(digest godigest.Digest, expression string,
 		TableName:                 &d.tableName,
 		UpdateExpression:          &expression,
 		ExpressionAttributeValues: expressionAttVals,
+		ConditionExpression:       conditionExpression,
 	})
 
 	return err
+}
+
+func (d *DynamoDBDriver) reclaimLockKey(digest godigest.Digest) map[string]types.AttributeValue {
+	return map[string]types.AttributeValue{
+		"Digest": &types.AttributeValueMemberS{Value: "reclaim_lock:" + digest.String()},
+	}
+}
+
+// TryLockBlobReclaim takes the cross-instance lock a global blob reclaim sweep holds while it
+// decides on and deletes digest's payload. It makes one attempt and reports false, not an
+// error, if another instance holds the lock.
+//
+// The lock is an item written only if absent or expired. DynamoDB conditions cannot see the
+// server's clock, so expiry is judged by the caller's: ttl must therefore be longer than the
+// time the lock is really needed for plus the clock skew between instances. A sweep that
+// crashed while holding it only delays that digest's next sweep by ttl.
+func (d *DynamoDBDriver) TryLockBlobReclaim(digest godigest.Digest, ttl time.Duration) (func(), bool, error) {
+	ownerID, err := guuid.NewV4()
+	if err != nil {
+		return nil, false, err
+	}
+
+	now := time.Now()
+	owner := ownerID.String()
+	key := d.reclaimLockKey(digest)
+
+	item := d.reclaimLockKey(digest)
+	item["LockOwner"] = &types.AttributeValueMemberS{Value: owner}
+	item["LockExpiresAt"] = &types.AttributeValueMemberN{Value: strconv.FormatInt(now.Add(ttl).UnixMilli(), 10)}
+
+	_, err = d.client.PutItem(context.TODO(), &dynamodb.PutItemInput{
+		TableName:           &d.tableName,
+		Item:                item,
+		ConditionExpression: aws.String("attribute_not_exists(Digest) OR LockExpiresAt < :now"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":now": &types.AttributeValueMemberN{Value: strconv.FormatInt(now.UnixMilli(), 10)},
+		},
+	})
+	if err != nil {
+		if _, held := errors.AsType[*types.ConditionalCheckFailedException](err); held {
+			return nil, false, nil
+		}
+
+		d.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to acquire blob reclaim lock")
+
+		return nil, false, err
+	}
+
+	return func() {
+		// Only our own lock: it may have expired and been taken over by another instance.
+		_, err := d.client.DeleteItem(context.TODO(), &dynamodb.DeleteItemInput{
+			TableName:           &d.tableName,
+			Key:                 key,
+			ConditionExpression: aws.String("LockOwner = :owner"),
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				":owner": &types.AttributeValueMemberS{Value: owner},
+			},
+		})
+		if err != nil {
+			if _, lost := errors.AsType[*types.ConditionalCheckFailedException](err); lost {
+				return
+			}
+
+			// Not fatal: the lock expires on its own.
+			d.log.Warn().Err(err).Str("digest", digest.String()).Msg("failed to release blob reclaim lock")
+		}
+	}, true, nil
 }

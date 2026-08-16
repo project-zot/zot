@@ -1220,11 +1220,23 @@ func (rh *RouteHandler) resolveBlobPresence(
 		// Mount not allowed: fall through to repo-local StatBlob.
 	}
 
-	var lockLatency time.Time
+	// Check existence before locking: a repo that isn't there has nothing to lock. StatRepo
+	// rather than RepoExists, so a storage outage is reported as one instead of as a 404.
+	if err := imgStore.StatRepo(repo); err != nil {
+		return false, -1, err
+	}
 
-	imgStore.RLock(&lockLatency)
-	ok, size, _, err := imgStore.StatBlob(repo, digest)
-	imgStore.RUnlock(&lockLatency)
+	var ok bool
+
+	var size int64
+
+	err := imgStore.WithRepoReadLock(repo, func() error {
+		var statErr error
+
+		ok, size, _, statErr = imgStore.StatBlob(repo, digest)
+
+		return statErr
+	})
 
 	return ok, size, err
 }

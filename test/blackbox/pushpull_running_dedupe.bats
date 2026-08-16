@@ -188,10 +188,10 @@ function get_zot_port() {
 
 @test "push image index - dedupe running" {
     zot_port=$(get_zot_port)
-    # --multi-arch below pushes an image index (containing many images) instead
+    # --all below pushes an image index (containing many images) instead
     # of an image manifest (single image)
     start=`date +%s`
-    run skopeo --insecure-policy copy --format=oci --dest-tls-verify=false --multi-arch=all \
+    run skopeo --insecure-policy copy --format=oci --dest-tls-verify=false --all \
         docker://public.ecr.aws/docker/library/busybox:latest \
         docker://127.0.0.1:${zot_port}/busybox:latest
     [ "$status" -eq 0 ]
@@ -208,7 +208,7 @@ function get_zot_port() {
     zot_port=$(get_zot_port)
     local oci_data_dir=${BATS_FILE_TMPDIR}/oci
     start=`date +%s`
-    run skopeo --insecure-policy copy --src-tls-verify=false --multi-arch=all \
+    run skopeo --insecure-policy copy --src-tls-verify=false --all \
         docker://127.0.0.1:${zot_port}/busybox:latest \
         oci:${oci_data_dir}/busybox:latest
     [ "$status" -eq 0 ]
@@ -219,7 +219,7 @@ function get_zot_port() {
     run cat ${BATS_FILE_TMPDIR}/oci/busybox/index.json
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.manifests[].annotations."org.opencontainers.image.ref.name"') = '"latest"' ]
-    run skopeo --insecure-policy --override-arch=arm64 --override-os=linux copy --src-tls-verify=false --multi-arch=all \
+    run skopeo --insecure-policy --override-arch=arm64 --override-os=linux copy --src-tls-verify=false --all \
         docker://127.0.0.1:${zot_port}/busybox:latest \
         oci:${oci_data_dir}/busybox:latest
     [ "$status" -eq 0 ]
