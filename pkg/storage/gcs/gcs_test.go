@@ -1736,6 +1736,13 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 		return false
 	}
 
+	// waitForExpectedBlobSize polls after a repair reupload until the repaired size is
+	// visible through every read path (StatBlob's cache-backed resolution, CheckBlob,
+	// and a direct driver Stat on the global blobstore copy) - the emulator can take a
+	// moment to propagate the overwrite, and stale cache state can make one path settle
+	// before another. Requiring 3 consecutive matches guards against a path flickering
+	// between the corrupted and repaired size mid-propagation instead of just catching
+	// a lucky single read.
 	waitForExpectedBlobSize := func(repo string, digest godigest.Digest, expectedSize int64) bool {
 		globalBlobPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, digest)
 		stableMatches := 0
