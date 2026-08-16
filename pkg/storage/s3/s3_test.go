@@ -220,7 +220,7 @@ func TestS3LargeBlobStreamingWithDedupe(t *testing.T) {
 
 	uuid, err := guuid.NewV4()
 	if err != nil {
-		panic(err)
+		t.Fatalf("failed to generate uuid: %v", err)
 	}
 
 	testDir := path.Join("/oci-repo-test", uuid.String())
