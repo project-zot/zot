@@ -35,12 +35,16 @@ function setup_file() {
 
     # Download test data to folder common for the entire suite, not just this file
     skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.20 oci:${TEST_DATA_DIR}/golang:1.20
+    # A second, distinct image used to mutate an upstream tag in the manifestCheckInterval test
+    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/test-images/busybox:1.36 oci:${TEST_DATA_DIR}/busybox:1.36
     # Setup zot server
     local zot_sync_per_root_dir=${BATS_FILE_TMPDIR}/zot-per
     local zot_sync_ondemand_root_dir=${BATS_FILE_TMPDIR}/zot-ondemand
+    local zot_sync_interval_root_dir=${BATS_FILE_TMPDIR}/zot-interval
 
     local zot_sync_per_config_file=${BATS_FILE_TMPDIR}/zot_sync_per_config.json
     local zot_sync_ondemand_config_file=${BATS_FILE_TMPDIR}/zot_sync_ondemand_config.json
+    local zot_sync_interval_config_file=${BATS_FILE_TMPDIR}/zot_sync_interval_config.json
 
     local zot_minimal_root_dir=${BATS_FILE_TMPDIR}/zot-minimal
     local zot_minimal_config_file=${BATS_FILE_TMPDIR}/zot_minimal_config.json
@@ -48,6 +52,7 @@ function setup_file() {
     local oci_data_dir=${BATS_FILE_TMPDIR}/oci
     mkdir -p ${zot_sync_per_root_dir}
     mkdir -p ${zot_sync_ondemand_root_dir}
+    mkdir -p ${zot_sync_interval_root_dir}
     mkdir -p ${zot_minimal_root_dir}
     mkdir -p ${oci_data_dir}
     zot_port1=$(get_free_port_for_service "zot1")
@@ -56,6 +61,8 @@ function setup_file() {
     echo ${zot_port2} > ${BATS_FILE_TMPDIR}/zot.port2
     zot_port3=$(get_free_port_for_service "zot3")
     echo ${zot_port3} > ${BATS_FILE_TMPDIR}/zot.port3
+    zot_port4=$(get_free_port_for_service "zot4")
+    echo ${zot_port4} > ${BATS_FILE_TMPDIR}/zot.port4
 
     cat >${zot_sync_per_config_file} <<EOF
 {
@@ -140,6 +147,40 @@ EOF
     }
 }
 EOF
+    cat >${zot_sync_interval_config_file} <<EOF
+{
+    "distSpecVersion": "1.1.1",
+    "storage": {
+        "rootDirectory": "${zot_sync_interval_root_dir}"
+    },
+    "http": {
+        "address": "0.0.0.0",
+        "port": "${zot_port4}"
+    },
+    "log": {
+        "level": "debug"
+    },
+    "extensions": {
+        "sync": {
+            "registries": [
+                {
+                    "urls": [
+                        "http://localhost:${zot_port3}"
+                    ],
+                    "onDemand": true,
+                    "tlsVerify": false,
+                    "manifestCheckInterval": "30s",
+                    "content": [
+                        {
+                            "prefix": "**"
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+}
+EOF
     git -C ${BATS_FILE_TMPDIR} clone https://github.com/project-zot/helm-charts.git
 
     zot_serve ${ZOT_MINIMAL_PATH} ${zot_minimal_config_file}
@@ -150,6 +191,9 @@ EOF
 
     zot_serve ${ZOT_PATH} ${zot_sync_ondemand_config_file}
     wait_zot_reachable ${zot_port2}
+
+    zot_serve ${ZOT_PATH} ${zot_sync_interval_config_file}
+    wait_zot_reachable ${zot_port4}
 }
 
 function teardown_file() {
@@ -210,6 +254,55 @@ function teardown_file() {
     run curl http://127.0.0.1:${zot_port2}/v2/golang/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.20"' ]
+}
+
+# returns the manifest digest a registry serves for repo:reference on stdout
+function manifest_digest() {
+    local url=$1
+    curl -s -D - -o /dev/null \
+        -H "Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json" \
+        "${url}" | grep -i "docker-content-digest" | tr -d '\r' | awk '{print $2}'
+}
+
+# manifestCheckInterval: within the interval a locally-present manifest is served without
+# re-checking upstream, so a tag mutated upstream is only picked up after the interval elapses.
+@test "sync image ondemand honors manifestCheckInterval" {
+    zot_port3=`cat ${BATS_FILE_TMPDIR}/zot.port3`
+    zot_port4=`cat ${BATS_FILE_TMPDIR}/zot.port4`
+
+    # push image A (golang) upstream under a dedicated repo:tag
+    run skopeo --insecure-policy copy --dest-tls-verify=false \
+        oci:${TEST_DATA_DIR}/golang:1.20 \
+        docker://127.0.0.1:${zot_port3}/interval-test:latest
+    [ "$status" -eq 0 ]
+
+    digest_a=$(manifest_digest http://127.0.0.1:${zot_port3}/v2/interval-test/manifests/latest)
+    [ -n "${digest_a}" ]
+
+    # first on-demand pull contacts upstream and caches image A
+    downstream_digest=$(manifest_digest http://127.0.0.1:${zot_port4}/v2/interval-test/manifests/latest)
+    [ "${downstream_digest}" = "${digest_a}" ]
+
+    # mutate upstream: overwrite the SAME tag with a different image B (busybox)
+    run skopeo --insecure-policy copy --dest-tls-verify=false \
+        oci:${TEST_DATA_DIR}/busybox:1.36 \
+        docker://127.0.0.1:${zot_port3}/interval-test:latest
+    [ "$status" -eq 0 ]
+
+    digest_b=$(manifest_digest http://127.0.0.1:${zot_port3}/v2/interval-test/manifests/latest)
+    [ -n "${digest_b}" ]
+    [ "${digest_b}" != "${digest_a}" ]
+
+    # within the interval the downstream must keep serving cached image A (no upstream re-check)
+    downstream_digest=$(manifest_digest http://127.0.0.1:${zot_port4}/v2/interval-test/manifests/latest)
+    [ "${downstream_digest}" = "${digest_a}" ]
+
+    # wait for manifestCheckInterval (30s) to elapse
+    run sleep 40s
+
+    # after the interval the downstream re-checks upstream and serves the updated image B
+    downstream_digest=$(manifest_digest http://127.0.0.1:${zot_port4}/v2/interval-test/manifests/latest)
+    [ "${downstream_digest}" = "${digest_b}" ]
 }
 
 # sync index
