@@ -1955,6 +1955,13 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 			}
 		}
 
+		// 16 is a generous, arbitrary safety cap, not a value derived from a hard
+		// invariant like max repo count - each iteration clears out every currently-known
+		// stale cache entry for this digest in one pass (see the GetAllBlobs cleanup
+		// below), so a real staleness chain is expected to resolve in 1-2 iterations;
+		// this just bounds the previously-unbounded loop against a pathological case
+		// (e.g. something keeps re-writing a stale record between reads) without
+		// looping forever.
 		const maxDedupeSelfHealRetries = 16
 
 		var lastRetryErr error
