@@ -564,7 +564,7 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 
 		rel, err := filepath.Rel(is.rootDir, fileInfo.Path())
 		if err != nil {
-			return nil //nolint:nilerr
+			return nil //nolint:nilerr // ignore paths that are not under root dir
 		}
 
 		rel = filepath.ToSlash(rel)
@@ -573,8 +573,12 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 			return driver.ErrSkipDir
 		}
 
+		// not every dir under root is a repo - it can be an intermediate path segment
+		// of a nested repo (e.g. "org" before "org/repo") - so skip it as a repo
+		// candidate without aborting the walk; Walk still descends into it looking
+		// for a valid repo further down.
 		if ok, _ := is.ValidateRepo(rel); !ok {
-			return nil //nolint:nilerr
+			return nil //nolint:nilerr // ignore invalid repos
 		}
 
 		repos = append(repos, rel)
