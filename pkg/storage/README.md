@@ -30,7 +30,7 @@ Both new-write paths below are gated the same way, on the store's `dedupe` setti
 This repository uses a single global blob namespace named `_blobstore` for both local and remote dedupe flows.
 
 1. Blob content is promoted to `_blobstore/blobs/<algorithm>/<digest>`.
-2. Repository blob paths keep per-repo ownership semantics.
+2. Repository blob paths keep per-repo ownership semantics: each repository's ownership of a digest is tracked independently of every other repository's, so deleting or losing one repository's copy never affects another repository's ability to read the same shared content (see the Blob Lifecycle sections above for the exact mechanism per backend).
 3. On remote backends with dedupe enabled, repository ownership is durable cache metadata; no per-repository blob object is created.
 4. On local filesystems, dedupe still relies on hardlinks.
 5. On remote backends with dedupe disabled, each repository stores a complete blob payload.
