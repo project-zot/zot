@@ -180,10 +180,8 @@ function teardown_file() {
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
     local zot_port=$(get_zot_port)
 
-    # The global-blobstore migration (see pkg/storage/imagestore.go's
-    # upgradeToGlobalBlobstore) runs synchronously before the HTTP server starts
-    # listening, so the reachability wait below *is* the migration duration - not
-    # asserted against a threshold (CI runner variance), just logged for visibility.
+    # The global-blobstore migration runs synchronously before the HTTP server starts listening.
+    # This allows the reachability wait below to be used to measure the migration duration.
     local start=$(date +%s)
     zot_serve ${ZOT_MINIMAL_PATH} ${zot_config_file}
     wait_zot_reachable ${zot_port}
