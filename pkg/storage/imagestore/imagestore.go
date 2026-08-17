@@ -1887,19 +1887,22 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 	// over from past operations, not concurrent-with-this-call ones, so there's no
 	// need to release and reacquire between retries.
 	return is.WithBlobstoreAndRepoLock(dstRepo, func() error {
-		// 16 is a generous, arbitrary safety cap, not a value derived from a hard
-		// invariant like max repo count - each iteration clears out every currently-known
-		// stale cache entry for this digest in one pass (see the GetAllBlobs cleanup
-		// below), so a real staleness chain is expected to resolve in 1-2 iterations;
-		// this just bounds the previously-unbounded loop against a pathological case
-		// (e.g. something keeps re-writing a stale record between reads) without
-		// looping forever.
+		// This is not an open-ended "keep retrying until something sticks" self-heal -
+		// each single pass already leaves the cache fully consistent, and all three real
+		// cache drivers (BoltDB, DynamoDB, Redis) promote a duplicate to "original"
+		// immediately on delete rather than the sticky/no-op behavior
+		// TestDedupeBlobRecoversWhenStaleOriginalIsKeptByCache exercises for defense.
+		// Combined with the delete-duplicates-then-original ordering below, one iteration's
+		// cleanup clears every currently-known stale entry for this digest via GetAllBlobs;
+		// the loop only needs a second pass to re-fetch and observe that the cache is now
+		// empty, then proceed on the now-clean state (first-writer path). So this converges
+		// in at most 2 iterations for every currently-known driver and test scenario. 16 is
+		// generous headroom against an unknown future driver's behavior, not a value tied to
+		// how many retries are actually expected to be used.
 		const maxDedupeSelfHealRetries = 16
 
 		var lastRetryErr error
 
-		// Retry loop is intentional: cache records can temporarily point to stale paths
-		// during GC/migration windows, and one pass may only partially heal references.
 		for range maxDedupeSelfHealRetries {
 			is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe begin")
 
