@@ -1903,8 +1903,9 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 
 		var lastRetryErr error
 
-		for range maxDedupeSelfHealRetries {
-			is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe begin")
+		for attempt := range maxDedupeSelfHealRetries {
+			is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).
+				Int("attempt", attempt).Msg("dedupe begin")
 
 			dstRecord, err := is.cache.GetBlob(dstDigest)
 			if err := inject.Error(err); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
