@@ -1571,9 +1571,6 @@ func TestDedupeLinks(t *testing.T) {
 					// rebuild with dedupe true
 					imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
 					So(imgStore, ShouldNotBeNil)
-					if imgStore == nil {
-						return
-					}
 
 					duplicateBlobs := []string{
 						path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1),
@@ -1630,9 +1627,6 @@ func TestDedupeLinks(t *testing.T) {
 						// rebuild with dedupe true
 						imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
 						So(imgStore, ShouldNotBeNil)
-						if imgStore == nil {
-							return
-						}
 
 						imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
@@ -1648,9 +1642,6 @@ func TestDedupeLinks(t *testing.T) {
 					// rebuild with dedupe true
 					imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
 					So(imgStore, ShouldNotBeNil)
-					if imgStore == nil {
-						return
-					}
 
 					imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
@@ -1677,9 +1668,6 @@ func TestDedupeLinks(t *testing.T) {
 
 					imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, nil, nil, nil)
 					So(imgStore, ShouldNotBeNil)
-					if imgStore == nil {
-						return
-					}
 
 					// rebuild with dedupe true
 					imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
@@ -1719,9 +1707,6 @@ func TestDedupeLinks(t *testing.T) {
 						},
 					}, nil, nil) // rebuild with dedupe true, should have samefile blobs
 					So(imgStore, ShouldNotBeNil)
-					if imgStore == nil {
-						return
-					}
 
 					imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 					// wait until rebuild finishes
@@ -1760,9 +1745,6 @@ func TestDedupeLinks(t *testing.T) {
 						},
 					}, nil, nil)
 					So(imgStore, ShouldNotBeNil)
-					if imgStore == nil {
-						return
-					}
 
 					// rebuild with dedupe true, should have samefile blobs
 					imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
