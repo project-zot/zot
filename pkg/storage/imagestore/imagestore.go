@@ -286,8 +286,7 @@ func (is *ImageStore) unlockRepo(repo string, lockStart *time.Time) {
 
 // WithRepoLock runs wrappedFunc while holding repo's write lock. Callers must not
 // call this, or WithRepoReadLock, for a second repo from within wrappedFunc: only one
-// repo's lock may be held at a time in a given goroutine (see ImageStore's lock
-// ordering doc comment).
+// repo's lock may be held at a time in a given goroutine.
 func (is *ImageStore) WithRepoLock(repo string, wrappedFunc func() error) error {
 	lockStart := time.Now()
 	repoLock := is.getRepoLock(repo)
@@ -3577,8 +3576,8 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 	var originalBlob string
 
 	// rebuild from dedupe false to true. duplicateBlobs can span many repos for one
-	// digest - take one repo's lock per iteration, never more than one at a time (see
-	// ImageStore's lock ordering doc comment), releasing it before moving to the next.
+	// digest - take one repo's lock per iteration, never more than one at a time,
+	// releasing it before moving to the next.
 	// Note: LinkBlob below reads originalBlob's content/existence, which can be a
 	// *different* repo than the one locked for this iteration, with no lock of its
 	// own protecting that read - a concurrent delete/reclaim of originalBlob elsewhere
