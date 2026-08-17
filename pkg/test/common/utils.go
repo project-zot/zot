@@ -413,6 +413,31 @@ func WaitForLogMessages(logBuffer *ThreadSafeLogBuffer, message string, minCount
 	return false
 }
 
+// WaitForStableCondition polls check up to maxRounds times at the given interval,
+// requiring stableRounds consecutive true results before declaring success. This guards
+// against a condition flickering between stale and converged state during eventual
+// consistency (e.g. a remote backend still propagating a write) rather than accepting a
+// single lucky read as proof of convergence. stableRounds=1 makes this a plain
+// poll-until-true loop.
+func WaitForStableCondition(maxRounds, stableRounds int, interval time.Duration, check func() bool) bool {
+	stable := 0
+
+	for range maxRounds {
+		if check() {
+			stable++
+			if stable >= stableRounds {
+				return true
+			}
+		} else {
+			stable = 0
+		}
+
+		time.Sleep(interval)
+	}
+
+	return false
+}
+
 // CreateLogCapturingWriter creates a multi-writer that captures log output to a thread-safe buffer
 // while also writing to the original writer (typically os.Stdout). This is useful for
 // tests that need to programmatically verify log messages.
