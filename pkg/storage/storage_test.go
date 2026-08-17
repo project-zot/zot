@@ -47,6 +47,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage/s3"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 	"zotregistry.dev/zot/v2/pkg/test/azurite"
+	test "zotregistry.dev/zot/v2/pkg/test/common"
 	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 	tskip "zotregistry.dev/zot/v2/pkg/test/skip"
@@ -2621,17 +2622,17 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 					statErr  error
 				)
 
-				for range 20 {
+				converged := test.WaitForStableCondition(20, 1, 100*time.Millisecond, func() bool {
 					ok, size, checkErr = imgStore.CheckBlob(context.Background(), repoName, digest)
 					statOK, statSize, _, statErr = imgStore.StatBlob(repoName, digest)
 
-					if checkErr == nil && statErr == nil && ok && statOK &&
-						size == int64(expectedSize) && statSize == int64(expectedSize) {
-						// Return the stat-confirmed size to avoid asserting on a stale CheckBlob read.
-						return statOK, statSize, nil
-					}
+					return checkErr == nil && statErr == nil && ok && statOK &&
+						size == int64(expectedSize) && statSize == int64(expectedSize)
+				})
 
-					time.Sleep(100 * time.Millisecond)
+				if converged {
+					// Return the stat-confirmed size to avoid asserting on a stale CheckBlob read.
+					return statOK, statSize, nil
 				}
 
 				if checkErr != nil {
