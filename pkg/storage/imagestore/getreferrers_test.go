@@ -16,10 +16,6 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage/local"
 )
 
-// TestGetReferrers covers ImageStore.GetReferrers (a thin WithRepoReadLock wrapper
-// around common.GetReferrers), previously untested: it pushes a subject manifest and
-// an artifact manifest whose Subject points at it, then confirms the artifact is
-// returned as a referrer and a manifest with no referrers returns an empty index.
 func TestGetReferrers(t *testing.T) {
 	Convey("GetReferrers", t, func() {
 		log := zlog.NewTestLogger()
