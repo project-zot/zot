@@ -2292,8 +2292,11 @@ func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]str
 	rootDirSlash := filepath.ToSlash(is.rootDir)
 
 	for _, blobPath := range blobsPaths {
-		// Cache entries may be absolute or relative, and format can vary across restarts.
-		// Normalize to a repo-relative slash path before extracting repo candidates.
+		// Normalize unconditionally rather than trusting is.cache.UsesRelativePaths():
+		// that reports the cache's current configured format, but an individual entry
+		// can still be absolute regardless of it (e.g. left over from before a config
+		// change). Normalize to a repo-relative slash path before extracting repo
+		// candidates.
 		if filepath.IsAbs(blobPath) {
 			relPath, relErr := filepath.Rel(is.rootDir, blobPath)
 			if relErr == nil {
