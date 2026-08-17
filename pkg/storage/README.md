@@ -39,7 +39,7 @@ A genuine empty blob is represented by a zero-byte payload whose digest is the h
 
 ## Migration Behavior
 
-Legacy layouts are upgraded automatically at startup when dedupe is enabled.
+Legacy layouts are upgraded automatically at startup when dedupe is enabled. The upgrade runs synchronously inside `Controller.Init()` (via `InitImageStore()`), before `InitMetaDB()`, `InitCVEInfo()`, and the health check is marked started - and `Init()` completes entirely before `Controller.Run()` sets up the HTTP router and starts accepting connections. So no request can reach a store before its migration for that startup has finished; if migration fails, `Init()` returns an error and the server never starts serving.
 
 1. Migration is marker-guarded by `_global_blobstore_migrated` at the image store root.
 2. If the marker exists, startup skips migration.
