@@ -7,6 +7,24 @@ zot supports two classes of storage backends:
 
 The storage backend stores repos, artifact blobs, and referrers. The cache database is configured independently of the storage backend.
 
+Both new-write paths below are gated the same way, on the store's `dedupe` setting; what differs between local and remote is what the dedupe path actually does. Switching a store between dedupe enabled and disabled triggers a one-time migration or restore pass (see [Migration Behavior](#migration-behavior)) that reconciles existing content to the new mode - the lifecycles below describe new-write behavior under a fixed setting.
+
+## Local Filesystem Blob Lifecycle
+
+1. **Upload**: content is streamed to a temporary `.uploads/` location in the repository, then finalized.
+   - Dedupe enabled: the content is promoted into `_blobstore/blobs/<algorithm>/<digest>` (first writer for that digest) or hardlinked to the already-promoted copy (subsequent writers). The repository's own `blobs/<algorithm>/<digest>` path is a real hardlink into that same inode, so it has real, independently readable content at all times and uses no extra disk space.
+   - Dedupe disabled: content is moved directly into the repository's own path; `_blobstore` is never touched.
+2. **Read**: reads resolve the repository's own path directly - a hardlink is indistinguishable from a normal file to any reader, so no indirection is needed.
+3. **Delete**: removing a repository's blob removes only that repository's hardlink. The shared `_blobstore` copy is physically deleted only once its hardlink count reaches zero, checked via the filesystem's own link count where the platform reports it, falling back to a cache-based cross-repository reference scan otherwise.
+
+## Remote Object Store Blob Lifecycle (S3/GCS/Azure)
+
+1. **Upload**: content is streamed to a temporary `.uploads/` object, then finalized.
+   - Dedupe enabled: the content is promoted into `_blobstore/blobs/<algorithm>/<digest>` (first writer for that digest). For subsequent writers, no bytes are copied at all - repository ownership is recorded purely as metadata (a logical reference) in the cache, and the repository's own blob path has no physical object.
+   - Dedupe disabled: content is written directly to the repository's own path as a full, independent object; `_blobstore` is not used for new pushes.
+2. **Read**: the global blobstore copy is preferred when it exists (the normal case for deduped content), falling back to the repository's own path only for blobs that predate the global blobstore or are mid-upload.
+3. **Delete**: removing a repository's blob clears its logical reference from the cache. The shared `_blobstore` copy is physically deleted only once no other repository still holds a logical reference to that digest, determined via a cache-based cross-repository reference scan - there is no hardlink count on remote storage to consult.
+
 ## Dedupe Design
 
 This repository uses a single global blob namespace named `_blobstore` for both local and remote dedupe flows.
