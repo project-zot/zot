@@ -461,9 +461,6 @@ func (is *ImageStore) initRepo(ctx context.Context, name string) error {
 	return nil
 }
 
-// promoteBlobCandidate handles the core logic of copying/linking a single blob candidate
-// into the global blobstore and registering it in the cache.
-//
 // blobCandidate holds metadata for a blob selected from the pre-blobstore layout.
 type blobCandidate struct {
 	repoName string
@@ -479,6 +476,8 @@ type repoBlobRef struct {
 	size     int64
 }
 
+// promoteBlobCandidate handles the core logic of copying/linking a single blob candidate
+// into the global blobstore and registering it in the cache.
 func (is *ImageStore) promoteBlobCandidate(
 	candidate blobCandidate,
 	digest godigest.Digest,
