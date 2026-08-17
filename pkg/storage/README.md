@@ -52,7 +52,7 @@ Legacy layouts are upgraded automatically at startup when dedupe is enabled. The
 
 Downgrade across this dedupe migration is unsupported for both local and remote backends.
 
-After migration to the `_blobstore` layout, running an older release against that same storage path is not a supported path, regardless of backend. There is no dedicated rollback flow, and behavior would depend on the older release's expectations and (for local filesystems) hardlink semantics. If you need to go from a new zot back to an older one, run a separate zot instance on the old layout and sync content into it from the new instance rather than downgrading in place.
+After migration to the `_blobstore` layout, running an older release against that same storage path is not a supported path, regardless of backend. There is no dedicated rollback flow to a release that does not have the new storage system. If you need to go from a new zot back to an older one, run a separate zot instance on the old layout and sync content into it from the new instance rather than downgrading in place.
 
 ## Migration Matrix
 
