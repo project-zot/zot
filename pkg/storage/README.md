@@ -5,7 +5,7 @@ zot supports two classes of storage backends:
 1. local filesystems
 2. remote object stores (for example S3, GCS, Azure)
 
-The cache database is configured independently of the blob backend. Examples: `examples/config-boltdb.json`, `examples/config-redis.json`, `examples/config-dynamodb.json`.
+The storage backend stores repos, artifact blobs, and referrers. The cache database is configured independently of the storage backend. Examples: `examples/config-boltdb.json`, `examples/config-redis.json`, `examples/config-dynamodb.json`.
 
 ## Dedupe Design
 
