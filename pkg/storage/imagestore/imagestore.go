@@ -529,7 +529,7 @@ func (is *ImageStore) promoteBlobCandidate(
 	// so that subsequent writes for per-repo paths are tracked alongside it.
 	if err := is.putBlobRef(digest, globalBlobPath); err != nil {
 		is.log.Error().Err(err).Str("digest", digest.String()).
-			Msg("failed to update blob refs with global blobstore path during upgrade")
+			Msg("failed to update blob refs with global blobstore path during promotion")
 
 		return err
 	}
