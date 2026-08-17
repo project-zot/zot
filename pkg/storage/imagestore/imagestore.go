@@ -1745,7 +1745,7 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 
 	dst := is.BlobPath(repo, dstDigest)
 
-	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+	if is.dedupe && !is.isCacheNil() {
 		// DedupeBlob acquires its own blobstore+repo locking.
 		err = is.DedupeBlob(src, dstDigest, repo, dst)
 		if err := inject.Error(err); err != nil {
@@ -1843,7 +1843,7 @@ func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.R
 
 	dst := is.BlobPath(repo, dstDigest)
 
-	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+	if is.dedupe && !is.isCacheNil() {
 		// DedupeBlob acquires its own blobstore+repo locking.
 		if err := is.DedupeBlob(src, dstDigest, repo, dst); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
@@ -2434,7 +2434,7 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 
 	var err error
 
-	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+	if is.dedupe && !is.isCacheNil() {
 		// Dedupe mode can update cache refs (self-heal) by linking blobPath to the
 		// resolved original: reads _blobstore (if that's where content resolves) and
 		// writes into this repo, so blobstore-read then repo-write, in that order.
@@ -2468,7 +2468,7 @@ func (is *ImageStore) checkCacheBlob(digest godigest.Digest) (string, error) {
 		return "", err
 	}
 
-	if fmt.Sprintf("%v", is.cache) == fmt.Sprintf("%v", nil) {
+	if is.isCacheNil() {
 		return "", zerr.ErrBlobNotFound
 	}
 
@@ -2883,7 +2883,7 @@ func (is *ImageStore) DeleteBlob(repo string, digest godigest.Digest) error {
 	// deleteBlob's global-blob reclaim step (see there) touches _blobstore only when
 	// a cache is configured - match that here so we don't take the blobstore lock
 	// (and pay its contention cost) for stores that never touch _blobstore at all.
-	if fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+	if !is.isCacheNil() {
 		return is.WithBlobstoreAndRepoLock(repo, func() error {
 			return is.deleteBlob(repo, digest)
 		})
@@ -3015,7 +3015,7 @@ func (is *ImageStore) deleteBlobChecked(repo string, digest godigest.Digest, isR
 		return is.deletePhysicalBlob(repo, digest, blobPath)
 	}
 
-	if fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+	if !is.isCacheNil() {
 		_, err := is.cache.GetBlob(digest)
 		if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
 			is.log.Error().Err(err).Str("digest", digest.String()).Str("component", "dedupe").
@@ -3419,7 +3419,7 @@ func (is *ImageStore) getOriginalBlob(digest godigest.Digest, duplicateBlobs []s
 }
 
 func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, duplicateBlobs []string) error {
-	if fmt.Sprintf("%v", is.cache) == fmt.Sprintf("%v", nil) {
+	if is.isCacheNil() {
 		is.log.Error().Err(zerr.ErrDedupeRebuild).Msg("failed to dedupe blobs, no cache driver found")
 
 		return zerr.ErrDedupeRebuild
