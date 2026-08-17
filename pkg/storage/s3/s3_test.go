@@ -1079,6 +1079,101 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 	})
 }
 
+// waitForBlobStatSize polls storeDrv for digest's stat size under repo, tolerating
+// eventual consistency: it requires 3 consecutive observations at expectedSize before
+// declaring success, guarding against a size that briefly matches mid-write.
+func waitForBlobStatSize(storeDrv driver.StorageDriver, rootDir, repo string,
+	digest godigest.Digest, expectedSize int64,
+) error {
+	var (
+		statErr      error
+		observedSize int64 = -1
+		matches      int
+	)
+
+	for range 300 {
+		fi, err := storeDrv.Stat(context.Background(), path.Join(rootDir, repo, "blobs", "sha256", digest.Encoded()))
+		if err == nil {
+			observedSize = fi.Size()
+			if observedSize == expectedSize {
+				matches++
+				if matches >= 3 {
+					return nil
+				}
+			} else {
+				matches = 0
+			}
+		} else {
+			statErr = err
+			matches = 0
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	if statErr != nil {
+		return fmt.Errorf("timed out waiting for size %d on blob %s/%s: %w",
+			expectedSize, repo, digest.Encoded(), statErr)
+	}
+
+	return fmt.Errorf("%w: size %d not reached on blob %s/%s (observed %d)",
+		context.DeadlineExceeded, expectedSize, repo, digest.Encoded(), observedSize)
+}
+
+// waitForBlobStatMissing polls until storeDrv no longer reports a stat for digest
+// under "dedupe2" (the only repo every caller ever waits on), tolerating eventual
+// consistency during a delete/reclaim.
+func waitForBlobStatMissing(storeDrv driver.StorageDriver, rootDir string,
+	digest godigest.Digest,
+) error {
+	const repo = "dedupe2"
+
+	for range 300 {
+		_, err := storeDrv.Stat(context.Background(), path.Join(rootDir, repo, "blobs", "sha256", digest.Encoded()))
+		if err != nil {
+			return nil //nolint:nilerr // Any stat error means the blob is no longer observable.
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	return fmt.Errorf("%w: repository blob still exists for %s/%s",
+		context.DeadlineExceeded, repo, digest.Encoded())
+}
+
+// waitForBlobContentNonEmpty polls until imgStore.GetBlobContent returns non-empty
+// content for digest under "dedupe2" (the only repo every caller ever waits on).
+// During mode transitions physical materialization and logical reads can converge at
+// different times, so wait for content to become readable.
+func waitForBlobContentNonEmpty(imgStore storageTypes.ImageStore, digest godigest.Digest) error {
+	const repo = "dedupe2"
+
+	var lastErr error
+
+	for range 300 {
+		blobContent, err := imgStore.GetBlobContent(repo, digest)
+		if err == nil {
+			if len(blobContent) > 0 {
+				return nil
+			}
+
+			lastErr = nil
+		} else {
+			lastErr = err
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	if lastErr != nil {
+		return fmt.Errorf("%w: non-empty content not reached on blob %s/%s: %w",
+			context.DeadlineExceeded, repo, digest.Encoded(), lastErr)
+	}
+
+	return fmt.Errorf("%w: non-empty content not reached on blob %s/%s",
+		context.DeadlineExceeded, repo, digest.Encoded())
+}
+
 //nolint:gocyclo // Integration-style dedupe matrix test intentionally covers many scenarios.
 func TestS3Dedupe(t *testing.T) {
 	tskip.SkipS3(t)
@@ -1111,91 +1206,6 @@ func TestS3Dedupe(t *testing.T) {
 		}
 
 		return fmt.Errorf("timed out waiting for stat on blob %s/%s: %w", repo, digest.Encoded(), statErr)
-	}
-
-	waitForBlobStatSize := func(storeDrv driver.StorageDriver, rootDir string, repo string,
-		digest godigest.Digest, expectedSize int64,
-	) error {
-		var (
-			statErr      error
-			observedSize int64 = -1
-			matches      int
-		)
-
-		for range 300 {
-			fi, err := storeDrv.Stat(context.Background(), path.Join(rootDir, repo, "blobs", "sha256", digest.Encoded()))
-			if err == nil {
-				observedSize = fi.Size()
-				if observedSize == expectedSize {
-					matches++
-					if matches >= 3 {
-						return nil
-					}
-				} else {
-					matches = 0
-				}
-			} else {
-				statErr = err
-				matches = 0
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		if statErr != nil {
-			return fmt.Errorf("timed out waiting for size %d on blob %s/%s: %w",
-				expectedSize, repo, digest.Encoded(), statErr)
-		}
-
-		return fmt.Errorf("%w: size %d not reached on blob %s/%s (observed %d)",
-			context.DeadlineExceeded, expectedSize, repo, digest.Encoded(), observedSize)
-	}
-
-	waitForBlobStatMissing := func(storeDrv driver.StorageDriver, rootDir, repo string,
-		digest godigest.Digest,
-	) error {
-		for range 300 {
-			_, err := storeDrv.Stat(context.Background(), path.Join(rootDir, repo, "blobs", "sha256", digest.Encoded()))
-			if err != nil {
-				return nil //nolint:nilerr // Any stat error means the blob is no longer observable.
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		return fmt.Errorf("%w: repository blob still exists for %s/%s",
-			context.DeadlineExceeded, repo, digest.Encoded())
-	}
-
-	waitForBlobContentNonEmpty := func(imgStore storageTypes.ImageStore, repo string,
-		digest godigest.Digest,
-	) error {
-		// During mode transitions physical materialization and logical reads can
-		// converge at different times, so wait for content to become readable.
-		var lastErr error
-
-		for range 300 {
-			blobContent, err := imgStore.GetBlobContent(repo, digest)
-			if err == nil {
-				if len(blobContent) > 0 {
-					return nil
-				}
-
-				lastErr = nil
-			} else {
-				lastErr = err
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		if lastErr != nil {
-			return fmt.Errorf("%w: non-empty content not reached on blob %s/%s: %w",
-				context.DeadlineExceeded, repo, digest.Encoded(), lastErr)
-		}
-
-		return fmt.Errorf("%w: non-empty content not reached on blob %s/%s",
-			context.DeadlineExceeded, repo, digest.Encoded())
 	}
 
 	assertDeleteBlockedOrAlreadyGone := func(err error) {
@@ -1411,7 +1421,7 @@ func TestS3Dedupe(t *testing.T) {
 		fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 			blobDigest2.Encoded()))
 		So(err, ShouldNotBeNil)
-		err = waitForBlobStatMissing(storeDriver, testDir, "dedupe2", blobDigest2)
+		err = waitForBlobStatMissing(storeDriver, testDir, blobDigest2)
 		So(err, ShouldBeNil)
 
 		globalBlobInfo, err := storeDriver.Stat(context.Background(), path.Join(testDir,
@@ -1706,7 +1716,7 @@ func TestS3Dedupe(t *testing.T) {
 				err = waitForBlobStatSize(storeDriver, testDir, "dedupe2", blobDigest2, int64(buflen))
 				So(err, ShouldBeNil)
 
-				err = waitForBlobContentNonEmpty(imgStore, "dedupe2", blobDigest2)
+				err = waitForBlobContentNonEmpty(imgStore, blobDigest2)
 				So(err, ShouldBeNil)
 
 				taskScheduler.Shutdown()
@@ -1736,7 +1746,7 @@ func TestS3Dedupe(t *testing.T) {
 					// rebuild with dedupe false, should have all blobs with content
 					imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
-					err = waitForBlobStatMissing(storeDriver, testDir, "dedupe2", blobDigest2)
+					err = waitForBlobStatMissing(storeDriver, testDir, blobDigest2)
 					So(err, ShouldBeNil)
 
 					taskScheduler.Shutdown()
@@ -1955,7 +1965,7 @@ func TestS3Dedupe(t *testing.T) {
 		fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 			blobDigest2.Encoded()))
 		So(err, ShouldNotBeNil)
-		err = waitForBlobStatMissing(storeDriver, testDir, "dedupe2", blobDigest2)
+		err = waitForBlobStatMissing(storeDriver, testDir, blobDigest2)
 		So(err, ShouldBeNil)
 
 		globalBlobInfo, err := storeDriver.Stat(context.Background(), path.Join(testDir,
@@ -2021,7 +2031,7 @@ func TestS3Dedupe(t *testing.T) {
 			err = waitForBlobStatSize(storeDriver, testDir, "dedupe2", blobDigest2, int64(buflen))
 			So(err, ShouldBeNil)
 
-			err = waitForBlobContentNonEmpty(imgStore, "dedupe2", blobDigest2)
+			err = waitForBlobContentNonEmpty(imgStore, blobDigest2)
 			So(err, ShouldBeNil)
 
 			taskScheduler.Shutdown()
@@ -2108,7 +2118,7 @@ func TestS3Dedupe(t *testing.T) {
 				// rebuild with dedupe false, should have all blobs with content
 				imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
-				err = waitForBlobStatMissing(storeDriver, testDir, "dedupe2", blobDigest2)
+				err = waitForBlobStatMissing(storeDriver, testDir, blobDigest2)
 				So(err, ShouldBeNil)
 
 				taskScheduler.Shutdown()
@@ -2230,89 +2240,6 @@ func TestS3Dedupe(t *testing.T) {
 
 func TestRebuildDedupeIndex(t *testing.T) {
 	tskip.SkipS3(t)
-
-	waitForBlobStatSize := func(storeDrv driver.StorageDriver, rootDir string, repo string,
-		digest godigest.Digest, expectedSize int64,
-	) error {
-		var (
-			statErr      error
-			observedSize int64 = -1
-			matches      int
-		)
-
-		for range 300 {
-			fi, err := storeDrv.Stat(context.Background(), path.Join(rootDir, repo, "blobs", "sha256", digest.Encoded()))
-			if err == nil {
-				observedSize = fi.Size()
-				if observedSize == expectedSize {
-					matches++
-					if matches >= 3 {
-						return nil
-					}
-				} else {
-					matches = 0
-				}
-			} else {
-				statErr = err
-				matches = 0
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		if statErr != nil {
-			return fmt.Errorf("timed out waiting for size %d on blob %s/%s: %w",
-				expectedSize, repo, digest.Encoded(), statErr)
-		}
-
-		return fmt.Errorf("%w: size %d not reached on blob %s/%s (observed %d)",
-			context.DeadlineExceeded, expectedSize, repo, digest.Encoded(), observedSize)
-	}
-
-	waitForBlobStatMissing := func(storeDrv driver.StorageDriver, rootDir, repo string,
-		digest godigest.Digest,
-	) error {
-		for range 300 {
-			_, err := storeDrv.Stat(context.Background(), path.Join(rootDir, repo, "blobs", "sha256", digest.Encoded()))
-			if err != nil {
-				return nil //nolint:nilerr // Any stat error means the blob is no longer observable.
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		return fmt.Errorf("%w: repository blob still exists for %s/%s",
-			context.DeadlineExceeded, repo, digest.Encoded())
-	}
-
-	waitForBlobContentNonEmpty := func(imgStore storageTypes.ImageStore, repo string,
-		digest godigest.Digest,
-	) error {
-		var lastErr error
-
-		for range 300 {
-			blobContent, err := imgStore.GetBlobContent(repo, digest)
-			if err == nil {
-				if len(blobContent) > 0 {
-					return nil
-				}
-
-				lastErr = nil
-			} else {
-				lastErr = err
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		if lastErr != nil {
-			return fmt.Errorf("%w: non-empty content not reached on blob %s/%s: %w",
-				context.DeadlineExceeded, repo, digest.Encoded(), lastErr)
-		}
-
-		return fmt.Errorf("%w: non-empty content not reached on blob %s/%s",
-			context.DeadlineExceeded, repo, digest.Encoded())
-	}
 
 	Convey("Push images with dedupe true", t, func() {
 		uuid, err := guuid.NewV4()
@@ -2518,10 +2445,10 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Logical reads and physical copies can converge at different times.
-			err = waitForBlobContentNonEmpty(imgStore, "dedupe2", blobDigest2)
+			err = waitForBlobContentNonEmpty(imgStore, blobDigest2)
 			So(err, ShouldBeNil)
 
-			err = waitForBlobContentNonEmpty(imgStore, "dedupe2", cdigest)
+			err = waitForBlobContentNonEmpty(imgStore, cdigest)
 			So(err, ShouldBeNil)
 
 			taskScheduler.Shutdown()
@@ -2564,10 +2491,10 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			// rebuild with dedupe false, should have all blobs with content
 			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
-			err = waitForBlobStatMissing(storeDriver, testDir, "dedupe2", blobDigest2)
+			err = waitForBlobStatMissing(storeDriver, testDir, blobDigest2)
 			So(err, ShouldBeNil)
 
-			err = waitForBlobStatMissing(storeDriver, testDir, "dedupe2", cdigest)
+			err = waitForBlobStatMissing(storeDriver, testDir, cdigest)
 			So(err, ShouldBeNil)
 
 			taskScheduler.Shutdown()
@@ -2728,7 +2655,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Rebuild correctness here is that blob payload is retrievable, not exact marker size.
-			err = waitForBlobContentNonEmpty(imgStore, "dedupe2", blobDigest2)
+			err = waitForBlobContentNonEmpty(imgStore, blobDigest2)
 			So(err, ShouldBeNil)
 
 			taskScheduler.Shutdown()
