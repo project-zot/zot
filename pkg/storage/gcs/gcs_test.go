@@ -39,6 +39,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage/gc"
 	"zotregistry.dev/zot/v2/pkg/storage/gcs"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
+	test "zotregistry.dev/zot/v2/pkg/test/common"
 	"zotregistry.dev/zot/v2/pkg/test/gcsemulator"
 	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
@@ -1590,9 +1591,8 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 	// a lucky single read.
 	waitForExpectedBlobSize := func(repo string, digest godigest.Digest, expectedSize int64) bool {
 		globalBlobPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, digest)
-		stableMatches := 0
 
-		for range 300 {
+		return test.WaitForStableCondition(300, 3, 100*time.Millisecond, func() bool {
 			matched := false
 
 			ok, size, _, err := imgStore.StatBlob(repo, digest)
@@ -1610,39 +1610,16 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 				matched = true
 			}
 
-			if matched {
-				stableMatches++
-				if stableMatches >= 3 {
-					return true
-				}
-			} else {
-				stableMatches = 0
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		return false
+			return matched
+		})
 	}
 
 	waitForCorruptionDetection := func(repo string, digest godigest.Digest, expectedSize int64) bool {
-		stableMismatches := 0
-
-		for range 300 {
+		return test.WaitForStableCondition(300, 3, 100*time.Millisecond, func() bool {
 			ok, size, err := imgStore.CheckBlob(context.Background(), repo, digest)
-			if (!ok && errors.Is(err, zerr.ErrBlobNotFound)) || (ok && size != expectedSize) {
-				stableMismatches++
-				if stableMismatches >= 3 {
-					return true
-				}
-			} else {
-				stableMismatches = 0
-			}
 
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		return false
+			return (!ok && errors.Is(err, zerr.ErrBlobNotFound)) || (ok && size != expectedSize)
+		})
 	}
 
 	Convey("Test errors paths", t, func() {
