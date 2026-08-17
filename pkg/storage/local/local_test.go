@@ -837,7 +837,7 @@ func TestStorageCacheErrors(t *testing.T) {
 		So(err, ShouldNotBeNil)
 	})
 
-	Convey("DedupeBlob returns when the cached global blob is stale", t, func() {
+	Convey("DedupeBlob returns error when the cached global blob is stale", t, func() {
 		log := zlog.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 
