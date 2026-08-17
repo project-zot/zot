@@ -69,6 +69,7 @@ function teardown_file() {
     local zot_port=$(get_zot_port)
     local digests_file=${BATS_FILE_TMPDIR}/migration-digests.txt
 
+    # create the file, or empty it if it already exists
     : > ${digests_file}
 
     for repo in migration-dup1 migration-dup2; do
