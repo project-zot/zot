@@ -32,6 +32,7 @@ import (
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	rediscfg "zotregistry.dev/zot/v2/pkg/api/config/redis"
+	"zotregistry.dev/zot/v2/pkg/compat"
 	"zotregistry.dev/zot/v2/pkg/extensions/events"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
@@ -2376,6 +2377,44 @@ func TestDeleteBlobsInUse(t *testing.T) {
 			})
 		})
 	}
+}
+
+// TestDeleteImageManifestDockerCompatReferenced guards D3: a docker schema2 manifest
+// referenced by a tagged docker manifest-list must be protected from digest-delete the
+// same way an OCI manifest referenced by an OCI index already is (see the "Try to
+// delete manifest being referenced by image index" case above); the manifest-list
+// itself must be deletable once nothing references it anymore.
+func TestDeleteImageManifestDockerCompatReferenced(t *testing.T) {
+	Convey("tagged docker manifest-list image", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+
+		compatMediaTypes := []compat.MediaCompatibility{compat.DockerManifestV2SchemaV2}
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, compatMediaTypes, nil)
+
+		storeController := storage.StoreController{}
+		storeController.DefaultStore = imgStore
+
+		repoName := "docker-compat-referenced"
+
+		dockerList := CreateRandomMultiarch().AsDockerImage()
+
+		err := WriteMultiArchImageToFileSystem(dockerList, repoName, "0.0.1", storeController)
+		So(err, ShouldBeNil)
+
+		Convey("deleting a nested docker manifest by digest is blocked", func() {
+			err := imgStore.DeleteImageManifest(context.Background(), repoName,
+				dockerList.Images[0].ManifestDescriptor.Digest.String(), false)
+			So(err, ShouldEqual, zerr.ErrManifestReferenced)
+		})
+
+		Convey("deleting the tagged manifest-list by digest succeeds once it is the target", func() {
+			err := imgStore.DeleteImageManifest(context.Background(), repoName,
+				dockerList.IndexDescriptor.Digest.String(), false)
+			So(err, ShouldBeNil)
+		})
+	})
 }
 
 func TestReuploadCorruptedBlob(t *testing.T) {

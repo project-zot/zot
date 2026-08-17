@@ -1547,6 +1547,132 @@ func TestIsBlobReferencedInImageIndexDockerCompat(t *testing.T) {
 	})
 }
 
+func TestUpdateIndexWithPrunedImageManifestsDockerCompat(t *testing.T) {
+	log := log.NewTestLogger()
+
+	Convey("Deleting a tagged docker manifest-list triggers pruning of its own children", t, func(c C) {
+		childDigest := godigest.FromString("docker-child-manifest")
+		deletedIndexDigest := godigest.FromString("docker-deleted-index")
+
+		deletedIndex := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: docker.MediaTypeManifest, Digest: childDigest},
+			},
+		}
+		deletedIndexBlob, err := json.Marshal(deletedIndex)
+		So(err, ShouldBeNil)
+
+		getBlobContentCalls := 0
+
+		imgStore := &mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				getBlobContentCalls++
+
+				return deletedIndexBlob, nil
+			},
+		}
+
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: docker.MediaTypeManifest, Digest: childDigest},
+			},
+		}
+
+		desc := ispec.Descriptor{MediaType: manifestlist.MediaTypeManifestList, Digest: deletedIndexDigest}
+
+		err = common.UpdateIndexWithPrunedImageManifests(imgStore, &index, "repo", desc, deletedIndexDigest, log)
+		So(err, ShouldBeNil)
+		// PruneImageManifestsFromIndex must have run (fetched the deleted docker manifest-list's
+		// own content to compute in-use counts) - before the fix, desc.MediaType being a docker
+		// type meant this whole block was skipped and index.Manifests was left untouched.
+		So(getBlobContentCalls, ShouldBeGreaterThan, 0)
+	})
+}
+
+func TestPruneImageManifestsFromIndexDockerCompat(t *testing.T) {
+	log := log.NewTestLogger()
+
+	Convey("An untagged docker manifest with no other referrer is pruned", t, func(c C) {
+		mainIndexDigest := godigest.FromString("docker-main-index")
+		manifest1Digest := godigest.FromString("docker-manifest1")
+		mainIndex := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: docker.MediaTypeManifest, Digest: manifest1Digest},
+			},
+		}
+		mainIndexBlob, err := json.Marshal(mainIndex)
+		So(err, ShouldBeNil)
+
+		// one other index in the repo, missing on disk - gracefully skipped, so it
+		// contributes nothing to the in-use count.
+		otherImgIndexes := []ispec.Descriptor{
+			{
+				MediaType: manifestlist.MediaTypeManifestList,
+				Digest:    godigest.FromString("missing-docker-index"),
+				Size:      100,
+			},
+		}
+
+		imgStore := &mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				if digest == mainIndexDigest {
+					return mainIndexBlob, nil
+				}
+
+				return nil, zerr.ErrBlobNotFound
+			},
+		}
+
+		outIndex := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{
+					MediaType: docker.MediaTypeManifest,
+					Digest:    manifest1Digest,
+					// no tag annotation, and referenced nowhere else, so it should be pruned
+				},
+			},
+		}
+
+		prunedManifests, err := common.PruneImageManifestsFromIndex(
+			imgStore, "repo", mainIndexDigest, outIndex, otherImgIndexes, log)
+		So(err, ShouldBeNil)
+		So(len(prunedManifests), ShouldEqual, 0)
+	})
+
+	Convey("A tagged docker manifest is preserved regardless of use count", t, func(c C) {
+		mainIndexDigest := godigest.FromString("docker-main-index-2")
+		manifest1Digest := godigest.FromString("docker-manifest2")
+		mainIndex := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: docker.MediaTypeManifest, Digest: manifest1Digest},
+			},
+		}
+		mainIndexBlob, err := json.Marshal(mainIndex)
+		So(err, ShouldBeNil)
+
+		imgStore := &mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				return mainIndexBlob, nil
+			},
+		}
+
+		outIndex := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{
+					MediaType:   docker.MediaTypeManifest,
+					Digest:      manifest1Digest,
+					Annotations: map[string]string{ispec.AnnotationRefName: "v1"},
+				},
+			},
+		}
+
+		prunedManifests, err := common.PruneImageManifestsFromIndex(
+			imgStore, "repo", mainIndexDigest, outIndex, nil, log)
+		So(err, ShouldBeNil)
+		So(len(prunedManifests), ShouldEqual, 1)
+	})
+}
+
 func TestGetReferencedBlobsDockerCompatManifestList(t *testing.T) {
 	log := log.NewTestLogger()
 
