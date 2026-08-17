@@ -83,6 +83,12 @@ func (is *ImageStore) isCacheNil() bool {
 	return fmt.Sprintf("%v", is.cache) == fmt.Sprintf("%v", nil)
 }
 
+// blobRefs returns nil, not an error, when there is no usable blob-ref index - this is
+// an expected state, not a failure: CreateCacheDatabaseDriver deliberately leaves
+// is.cache nil for local storage with dedupe disabled, since local ownership is
+// represented by real hardlinks (see localHardlinkBlobLifecycle.UsesLogicalRepoRefs)
+// and needs no cache-backed index at all. Callers must treat a nil return as a no-op,
+// not a fatal condition.
 func (is *ImageStore) blobRefs() blobRefIndexer {
 	if is.isCacheNil() {
 		return nil
