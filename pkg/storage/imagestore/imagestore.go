@@ -2338,10 +2338,12 @@ func (is *ImageStore) repoFromBlobPath(blobPath string) (string, error) {
 	return strings.Join(parts[:len(parts)-3], "/"), nil
 }
 
-// GetAllDedupeReposCandidates does not take a lock: it only reads the dedupe cache
-// (blobRefsForDigest), which has its own internal synchronization (BoltDB
-// transactions, DynamoDB conditional writes, Redis distributed mutexes) and never
-// touches per-repo filesystem state directly.
+// GetAllDedupeReposCandidates reads the dedupe cache (blobRefsForDigest) and returns
+// the repos that already hold digest, as candidates for cross-repo mount/dedupe. No
+// additional locking is needed here: the underlying cache implementation (BoltDB
+// transactions, DynamoDB conditional writes, Redis distributed mutexes) already
+// handles its own synchronization, and this never touches per-repo filesystem state
+// directly.
 func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]string, error) {
 	if err := digest.Validate(); err != nil {
 		return nil, err
