@@ -6,6 +6,8 @@ import (
 	"errors"
 	"io"
 	"testing"
+
+	. "github.com/smartystreets/goconvey/convey"
 )
 
 var errInjectedStreamClose = errors.New("injected close failure") //nolint:gochecknoglobals
@@ -24,55 +26,41 @@ func (c *closeCountingReadCloser) Close() error {
 }
 
 func TestNewBlobStream(t *testing.T) {
-	t.Run("negative from is rejected", func(t *testing.T) {
-		if _, err := newBlobStream(io.NopCloser(bytes.NewReader(nil)), -1, 4); err == nil {
-			t.Fatal("expected an error for negative from")
-		}
-	})
+	Convey("newBlobStream", t, func() {
+		Convey("negative from is rejected", func() {
+			_, err := newBlobStream(io.NopCloser(bytes.NewReader(nil)), -1, 4)
+			So(err, ShouldNotBeNil)
+		})
 
-	t.Run("to before from is rejected", func(t *testing.T) {
-		if _, err := newBlobStream(io.NopCloser(bytes.NewReader(nil)), 5, 4); err == nil {
-			t.Fatal("expected an error for to < from")
-		}
-	})
+		Convey("to before from is rejected", func() {
+			_, err := newBlobStream(io.NopCloser(bytes.NewReader(nil)), 5, 4)
+			So(err, ShouldNotBeNil)
+		})
 
-	t.Run("Read is limited to the requested range and Close delegates to the source", func(t *testing.T) {
-		underlying := &closeCountingReadCloser{Reader: bytes.NewReader([]byte("0123456789"))}
+		Convey("Read is limited to the requested range and Close delegates to the source", func() {
+			underlying := &closeCountingReadCloser{Reader: bytes.NewReader([]byte("0123456789"))}
 
-		stream, err := newBlobStream(underlying, 0, 4)
-		if err != nil {
-			t.Fatalf("newBlobStream: %v", err)
-		}
+			stream, err := newBlobStream(underlying, 0, 4)
+			So(err, ShouldBeNil)
 
-		buf, err := io.ReadAll(stream)
-		if err != nil {
-			t.Fatalf("ReadAll: %v", err)
-		}
+			buf, err := io.ReadAll(stream)
+			So(err, ShouldBeNil)
 
-		// to-from+1 = 5 bytes, even though the underlying reader has 10.
-		if string(buf) != "01234" {
-			t.Fatalf("expected \"01234\", got %q", buf)
-		}
+			// to-from+1 = 5 bytes, even though the underlying reader has 10.
+			So(string(buf), ShouldEqual, "01234")
 
-		if err := stream.Close(); err != nil {
-			t.Fatalf("expected nil error, got %v", err)
-		}
+			So(stream.Close(), ShouldBeNil)
+			So(underlying.closed, ShouldEqual, 1)
+		})
 
-		if underlying.closed != 1 {
-			t.Fatalf("expected Close to delegate to the underlying reader once, got %d", underlying.closed)
-		}
-	})
+		Convey("Close propagates the underlying error", func() {
+			underlying := &closeCountingReadCloser{Reader: bytes.NewReader(nil), closeErr: errInjectedStreamClose}
 
-	t.Run("Close propagates the underlying error", func(t *testing.T) {
-		underlying := &closeCountingReadCloser{Reader: bytes.NewReader(nil), closeErr: errInjectedStreamClose}
+			stream, err := newBlobStream(underlying, 0, 0)
+			So(err, ShouldBeNil)
 
-		stream, err := newBlobStream(underlying, 0, 0)
-		if err != nil {
-			t.Fatalf("newBlobStream: %v", err)
-		}
-
-		if err := stream.Close(); !errors.Is(err, errInjectedStreamClose) {
-			t.Fatalf("expected injected close error, got %v", err)
-		}
+			err = stream.Close()
+			So(errors.Is(err, errInjectedStreamClose), ShouldBeTrue)
+		})
 	})
 }
