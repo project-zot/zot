@@ -5,7 +5,7 @@ zot supports two classes of storage backends:
 1. local filesystems
 2. remote object stores (for example S3, GCS, Azure)
 
-The cache database is configured independently of the blob backend.
+The storage backend stores repos, artifact blobs, and referrers. The cache database is configured independently of the storage backend.
 
 ## Dedupe Design
 
