@@ -4612,7 +4612,13 @@ func TestUpgradeToGlobalBlobstore(t *testing.T) {
 		So(blobContent, ShouldResemble, content1)
 	})
 
-	Convey("Upgrade is skipped on a second open once the migration marker exists", t, func() {
+	// This checks blob-count stability across a real two-open sequence on an
+	// already-upgraded store, not that the migration scan was literally skipped -
+	// a count staying the same is also consistent with the upgrade re-running
+	// idempotently. That the scan is actually skipped is proven separately, via a
+	// Walk-counting mock, by TestNewImageStoreSkipsMigrationScanWhenMarkerExists in
+	// pkg/storage/imagestore.
+	Convey("Blob state is stable across repeated opens of an already-upgraded store", t, func() {
 		dir := t.TempDir()
 
 		log := zlog.NewTestLogger()
