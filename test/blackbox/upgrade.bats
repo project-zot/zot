@@ -84,6 +84,7 @@ function teardown_file() {
     local zot_port=$(get_zot_port)
     local digests_file=${BATS_FILE_TMPDIR}/migration-digests.txt
 
+    # create the file, or empty it if it already exists
     : > ${digests_file}
 
     for repo in migration-dup1 migration-dup2; do
@@ -220,10 +221,8 @@ function teardown_file() {
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
     local zot_port=$(get_zot_port)
 
-    # The global-blobstore migration (see pkg/storage/imagestore.go's
-    # upgradeToGlobalBlobstore) runs synchronously before the HTTP server starts
-    # listening, so the reachability wait below *is* the migration duration - not
-    # asserted against a threshold (CI runner variance), just logged for visibility.
+    # The global-blobstore migration runs synchronously before the HTTP server starts listening.
+    # This allows the reachability wait below to be used to measure the migration duration.
     local start=$(date +%s)
     zot_serve ${ZOT_PATH} ${zot_config_file}
     wait_zot_reachable ${zot_port}
@@ -292,6 +291,7 @@ function teardown_file() {
     [ -s "${digests_file}" ]
 
     local checked=0
+    local expected_count=$(wc -l < "${digests_file}")
 
     while IFS='=' read -r repo expected_digest; do
         helper_pull_image ${repo} 1.20
@@ -300,7 +300,7 @@ function teardown_file() {
         checked=$((checked + 1))
     done < "${digests_file}"
 
-    [ "${checked}" -eq 2 ]
+    [ "${checked}" -eq "${expected_count}" ]
 }
 
 @test "[new] existing pull image index" {
