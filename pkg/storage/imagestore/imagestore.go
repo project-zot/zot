@@ -302,8 +302,7 @@ func (is *ImageStore) WithRepoLock(repo string, wrappedFunc func() error) error 
 	return wrappedFunc()
 }
 
-// WithRepoReadLock runs wrappedFunc while holding repo's read lock. Same
-// one-repo-at-a-time restriction as WithRepoLock.
+// WithRepoReadLock runs wrappedFunc while holding repo's read lock.
 func (is *ImageStore) WithRepoReadLock(repo string, wrappedFunc func() error) error {
 	lockStart := time.Now()
 	repoLock := is.getRepoLock(repo)
