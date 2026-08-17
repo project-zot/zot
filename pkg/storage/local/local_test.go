@@ -4612,7 +4612,7 @@ func TestUpgradeToGlobalBlobstore(t *testing.T) {
 		So(blobContent, ShouldResemble, content1)
 	})
 
-	Convey("Upgrade is skipped when _blobstore already has blobs", t, func() {
+	Convey("Upgrade is skipped on a second open once the migration marker exists", t, func() {
 		dir := t.TempDir()
 
 		log := zlog.NewTestLogger()
@@ -4674,7 +4674,9 @@ func TestUpgradeToGlobalBlobstore(t *testing.T) {
 
 		blobCountAfterFirstUpgrade := len(globalBlobs)
 
-		// Second open with dedupe: _blobstore is already populated, so upgrade must be skipped.
+		// Second open with dedupe: the first open already wrote the migration marker,
+		// so upgrade must be skipped (a populated _blobstore alone doesn't gate this -
+		// see upgradeToGlobalBlobstore's marker check).
 		cacheDriver2, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
 			Name:        "cache2",
