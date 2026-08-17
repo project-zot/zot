@@ -83,6 +83,17 @@ func (is *ImageStore) isCacheNil() bool {
 	return fmt.Sprintf("%v", is.cache) == fmt.Sprintf("%v", nil)
 }
 
+// absCacheRecordPath resolves a cache record to an absolute path when the cache
+// driver stores relative ones: a record already absolute, or already rooted under
+// is.rootDir, is returned unchanged.
+func (is *ImageStore) absCacheRecordPath(recordPath string) string {
+	if is.cache.UsesRelativePaths() && !path.IsAbs(recordPath) && !strings.HasPrefix(recordPath, is.rootDir+"/") {
+		return path.Join(is.rootDir, recordPath)
+	}
+
+	return recordPath
+}
+
 // blobRefs returns nil, not an error, when there is no usable blob-ref index - this is
 // an expected state, not a failure: CreateCacheDatabaseDriver deliberately leaves
 // is.cache nil for local storage with dedupe disabled, since local ownership is
@@ -1954,9 +1965,7 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 
 			// cache record exists, but due to GC and upgrades from older versions,
 			// disk content and cache records may go out of sync
-			if is.cache.UsesRelativePaths() && !path.IsAbs(dstRecord) && !strings.HasPrefix(dstRecord, is.rootDir+"/") {
-				dstRecord = path.Join(is.rootDir, dstRecord)
-			}
+			dstRecord = is.absCacheRecordPath(dstRecord)
 
 			blobInfo, err := is.storeDriver.Stat(dstRecord)
 			if err != nil {
@@ -1979,9 +1988,7 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 					return err
 				}
 
-				if is.cache.UsesRelativePaths() && !path.IsAbs(updatedRecord) && !strings.HasPrefix(updatedRecord, is.rootDir+"/") {
-					updatedRecord = path.Join(is.rootDir, updatedRecord)
-				}
+				updatedRecord = is.absCacheRecordPath(updatedRecord)
 
 				if updatedRecord != "" {
 					// Deleting dstRecord may promote a logical repository ref to take its
@@ -1996,13 +2003,7 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 
 					normalizedPaths := make([]string, 0, len(allRecords))
 					for _, recordPath := range allRecords {
-						normalized := recordPath
-						if is.cache.UsesRelativePaths() && !path.IsAbs(normalized) &&
-							!strings.HasPrefix(normalized, is.rootDir+"/") {
-							normalized = path.Join(is.rootDir, normalized)
-						}
-
-						normalizedPaths = append(normalizedPaths, normalized)
+						normalizedPaths = append(normalizedPaths, is.absCacheRecordPath(recordPath))
 					}
 
 					// Delete non-stale entries first, then stale original path last.
@@ -2026,10 +2027,7 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 						return err
 					}
 
-					if is.cache.UsesRelativePaths() && !path.IsAbs(updatedRecord) &&
-						!strings.HasPrefix(updatedRecord, is.rootDir+"/") {
-						updatedRecord = path.Join(is.rootDir, updatedRecord)
-					}
+					updatedRecord = is.absCacheRecordPath(updatedRecord)
 
 					if updatedRecord == dstRecord {
 						return statErr
@@ -2148,9 +2146,7 @@ func (is *ImageStore) dedupeBlobFastPath(src string, dstDigest godigest.Digest, 
 			return nil
 		}
 
-		if is.cache.UsesRelativePaths() && !path.IsAbs(dstRecord) && !strings.HasPrefix(dstRecord, is.rootDir+"/") {
-			dstRecord = path.Join(is.rootDir, dstRecord)
-		}
+		dstRecord = is.absCacheRecordPath(dstRecord)
 
 		blobInfo, err := is.storeDriver.Stat(dstRecord)
 		if err != nil {
@@ -2473,9 +2469,7 @@ func (is *ImageStore) checkCacheBlob(digest godigest.Digest) (string, error) {
 		return "", err
 	}
 
-	if is.cache.UsesRelativePaths() && !path.IsAbs(dstRecord) && !strings.HasPrefix(dstRecord, is.rootDir+"/") {
-		dstRecord = path.Join(is.rootDir, dstRecord)
-	}
+	dstRecord = is.absCacheRecordPath(dstRecord)
 
 	if _, err := is.storeDriver.Stat(dstRecord); err != nil {
 		is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to stat blob")
