@@ -1,4 +1,4 @@
-This document reflects the storage design decisions for proposal #3750.
+# Storage Subsystem Design
 
 zot supports two classes of storage backends:
 
