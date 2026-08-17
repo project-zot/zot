@@ -2412,7 +2412,10 @@ func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]str
 }
 
 // CheckBlob verifies a blob and returns true if the blob is correct.
-// If the blob is not found but it's found in cache then it will be copied over.
+// If the blob is not found in repo but is found in cache, self-heals via copyBlob:
+// local storage gets a real hardlink into the repo; remote storage does no physical
+// copy at all (blobLifecycle.LinkBlob no-ops there) - only a logical cache ref
+// pointing repo at the existing global blobstore content is recorded.
 func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 	if err := digest.Validate(); err != nil {
 		return false, -1, err
