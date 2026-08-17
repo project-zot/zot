@@ -215,6 +215,7 @@ function teardown_file() {
     [ -s "${digests_file}" ]
 
     local checked=0
+    local expected_count=$(wc -l < "${digests_file}")
 
     while IFS='=' read -r repo expected_digest; do
         helper_pull_image ${repo} 1.20
@@ -223,7 +224,7 @@ function teardown_file() {
         checked=$((checked + 1))
     done < "${digests_file}"
 
-    [ "${checked}" -eq 2 ]
+    [ "${checked}" -eq "${expected_count}" ]
 }
 
 @test "[new] existing pull image index" {
