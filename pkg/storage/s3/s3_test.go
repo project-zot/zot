@@ -1746,35 +1746,49 @@ func TestS3Dedupe(t *testing.T) {
 					So(err, ShouldNotBeNil)
 					So(fi2, ShouldBeNil)
 
+					// All three locations must independently resolve, not just one - each read
+					// path (dedupe2's logical ref, dedupe1's logical ref sharing the same digest,
+					// and the global blobstore copy directly) is asynchronously restored, so poll
+					// each until it succeeds, tolerating eventual consistency, rather than
+					// stopping at the first one that happens to resolve first.
 					var blobContent []byte
-					foundBlobContent := false
+
+					foundDedupe2 := false
+					foundDedupe1 := false
+					foundGlobalBlobstore := false
 
 					for range 240 {
-						blobContent, err = imgStore.GetBlobContent("dedupe2", blobDigest2)
-						if err == nil && len(blobContent) > 0 {
-							foundBlobContent = true
-
-							break
+						if !foundDedupe2 {
+							blobContent, err = imgStore.GetBlobContent("dedupe2", blobDigest2)
+							if err == nil && len(blobContent) > 0 {
+								foundDedupe2 = true
+							}
 						}
 
-						blobContent, err = imgStore.GetBlobContent("dedupe1", blobDigest1)
-						if err == nil && len(blobContent) > 0 {
-							foundBlobContent = true
-
-							break
+						if !foundDedupe1 {
+							blobContent, err = imgStore.GetBlobContent("dedupe1", blobDigest1)
+							if err == nil && len(blobContent) > 0 {
+								foundDedupe1 = true
+							}
 						}
 
-						blobContent, err = imgStore.GetBlobContent(storageConstants.GlobalBlobsRepo, blobDigest2)
-						if err == nil && len(blobContent) > 0 {
-							foundBlobContent = true
+						if !foundGlobalBlobstore {
+							blobContent, err = imgStore.GetBlobContent(storageConstants.GlobalBlobsRepo, blobDigest2)
+							if err == nil && len(blobContent) > 0 {
+								foundGlobalBlobstore = true
+							}
+						}
 
+						if foundDedupe2 && foundDedupe1 && foundGlobalBlobstore {
 							break
 						}
 
 						time.Sleep(250 * time.Millisecond)
 					}
 
-					So(foundBlobContent, ShouldBeTrue)
+					So(foundDedupe2, ShouldBeTrue)
+					So(foundDedupe1, ShouldBeTrue)
+					So(foundGlobalBlobstore, ShouldBeTrue)
 				})
 			})
 		})
@@ -2021,35 +2035,40 @@ func TestS3Dedupe(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(fi2.Size(), ShouldBeGreaterThanOrEqualTo, int64(0))
 
+			// This is the true->false (dedupe-disabling) direction: restoreLogicalRemoteBlob
+			// deliberately deletes the global blobstore copy once every repo has its own
+			// materialized content, so only dedupe1 and dedupe2 - not the global blobstore
+			// path - are expected to resolve here. Both are restored by separate generator
+			// tasks for the same digest, so poll each independently until it succeeds.
 			var blobContent []byte
-			foundBlobContent := false
+
+			foundDedupe2 := false
+			foundDedupe1 := false
 
 			for range 240 {
-				blobContent, err = imgStore.GetBlobContent("dedupe2", blobDigest2)
-				if err == nil && len(blobContent) > 0 {
-					foundBlobContent = true
-
-					break
+				if !foundDedupe2 {
+					blobContent, err = imgStore.GetBlobContent("dedupe2", blobDigest2)
+					if err == nil && len(blobContent) > 0 {
+						foundDedupe2 = true
+					}
 				}
 
-				blobContent, err = imgStore.GetBlobContent("dedupe1", blobDigest1)
-				if err == nil && len(blobContent) > 0 {
-					foundBlobContent = true
-
-					break
+				if !foundDedupe1 {
+					blobContent, err = imgStore.GetBlobContent("dedupe1", blobDigest1)
+					if err == nil && len(blobContent) > 0 {
+						foundDedupe1 = true
+					}
 				}
 
-				blobContent, err = imgStore.GetBlobContent(storageConstants.GlobalBlobsRepo, blobDigest2)
-				if err == nil && len(blobContent) > 0 {
-					foundBlobContent = true
-
+				if foundDedupe2 && foundDedupe1 {
 					break
 				}
 
 				time.Sleep(250 * time.Millisecond)
 			}
 
-			So(foundBlobContent, ShouldBeTrue)
+			So(foundDedupe2, ShouldBeTrue)
+			So(foundDedupe1, ShouldBeTrue)
 
 			Convey("delete blobs from storage/cache should work when dedupe is false", func() {
 				So(blobDigest1, ShouldEqual, blobDigest2)
@@ -2099,35 +2118,49 @@ func TestS3Dedupe(t *testing.T) {
 				So(err, ShouldNotBeNil)
 				So(fi2, ShouldBeNil)
 
+				// All three locations must independently resolve, not just one - each read
+				// path (dedupe2's logical ref, dedupe1's logical ref sharing the same digest,
+				// and the global blobstore copy directly) is asynchronously restored, so poll
+				// each until it succeeds, tolerating eventual consistency, rather than
+				// stopping at the first one that happens to resolve first.
 				var blobContent []byte
-				foundBlobContent := false
+
+				foundDedupe2 := false
+				foundDedupe1 := false
+				foundGlobalBlobstore := false
 
 				for range 240 {
-					blobContent, err = imgStore.GetBlobContent("dedupe2", blobDigest2)
-					if err == nil && len(blobContent) > 0 {
-						foundBlobContent = true
-
-						break
+					if !foundDedupe2 {
+						blobContent, err = imgStore.GetBlobContent("dedupe2", blobDigest2)
+						if err == nil && len(blobContent) > 0 {
+							foundDedupe2 = true
+						}
 					}
 
-					blobContent, err = imgStore.GetBlobContent("dedupe1", blobDigest1)
-					if err == nil && len(blobContent) > 0 {
-						foundBlobContent = true
-
-						break
+					if !foundDedupe1 {
+						blobContent, err = imgStore.GetBlobContent("dedupe1", blobDigest1)
+						if err == nil && len(blobContent) > 0 {
+							foundDedupe1 = true
+						}
 					}
 
-					blobContent, err = imgStore.GetBlobContent(storageConstants.GlobalBlobsRepo, blobDigest2)
-					if err == nil && len(blobContent) > 0 {
-						foundBlobContent = true
+					if !foundGlobalBlobstore {
+						blobContent, err = imgStore.GetBlobContent(storageConstants.GlobalBlobsRepo, blobDigest2)
+						if err == nil && len(blobContent) > 0 {
+							foundGlobalBlobstore = true
+						}
+					}
 
+					if foundDedupe2 && foundDedupe1 && foundGlobalBlobstore {
 						break
 					}
 
 					time.Sleep(250 * time.Millisecond)
 				}
 
-				So(foundBlobContent, ShouldBeTrue)
+				So(foundDedupe2, ShouldBeTrue)
+				So(foundDedupe1, ShouldBeTrue)
+				So(foundGlobalBlobstore, ShouldBeTrue)
 			})
 		})
 
