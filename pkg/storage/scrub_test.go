@@ -401,6 +401,9 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			// delete content of config file
 			configDig := image.ConfigDescriptor.Digest.Encoded()
 			configRepo := repoName
+			// On remote backends physical content lives under _blobstore, not the repo's own
+			// path (which has no physical object at all - see blob_lifecycle.go), so corrupt
+			// the actual location content resolves to for whichever backend this test runs against.
 			if driver.Name() != storageConstants.LocalStorageDriverName {
 				configRepo = storageConstants.GlobalBlobsRepo
 			}
@@ -450,6 +453,9 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			// delete content of layer file
 			layerDig := image.Manifest.Layers[0].Digest.Encoded()
 			layerRepo := repoName
+			// On remote backends physical content lives under _blobstore, not the repo's own
+			// path (which has no physical object at all - see blob_lifecycle.go), so corrupt
+			// the actual location content resolves to for whichever backend this test runs against.
 			if driver.Name() != storageConstants.LocalStorageDriverName {
 				layerRepo = storageConstants.GlobalBlobsRepo
 			}
@@ -483,9 +489,11 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			content, err := imgStore.GetBlobContent(repoName, digest)
 			So(err, ShouldBeNil)
 
-			// change layer file permissions
 			layerDig := image.Manifest.Layers[0].Digest.Encoded()
 			layerRepo := repoName
+			// On remote backends physical content lives under _blobstore, not the repo's own
+			// path (which has no physical object at all - see blob_lifecycle.go), so delete
+			// the actual location content resolves to for whichever backend this test runs against.
 			if driver.Name() != storageConstants.LocalStorageDriverName {
 				layerRepo = storageConstants.GlobalBlobsRepo
 			}
