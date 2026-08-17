@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	godigest "github.com/opencontainers/go-digest"
+	. "github.com/smartystreets/goconvey/convey"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
@@ -26,110 +27,87 @@ func TestIsDigestReferencedAcrossRepos(t *testing.T) {
 
 	digest := godigest.FromString("test-digest")
 
-	t.Run("cache miss returns not referenced, no error", func(t *testing.T) {
-		imgStore := &ImageStore{
-			rootDir: rootDir,
-			cache: mocks.CacheMock{
-				GetAllBlobsFn: func(godigest.Digest) ([]string, error) {
-					return nil, zerr.ErrCacheMiss
+	Convey("isDigestReferencedAcrossRepos", t, func() {
+		Convey("cache miss returns not referenced, no error", func() {
+			imgStore := &ImageStore{
+				rootDir: rootDir,
+				cache: mocks.CacheMock{
+					GetAllBlobsFn: func(godigest.Digest) ([]string, error) {
+						return nil, zerr.ErrCacheMiss
+					},
 				},
-			},
-		}
+			}
 
-		referenced, err := imgStore.isDigestReferencedAcrossRepos(digest)
-		if err != nil {
-			t.Fatalf("expected nil error, got %v", err)
-		}
+			referenced, err := imgStore.isDigestReferencedAcrossRepos(digest)
+			So(err, ShouldBeNil)
+			So(referenced, ShouldBeFalse)
+		})
 
-		if referenced {
-			t.Fatalf("expected not referenced")
-		}
-	})
-
-	t.Run("non-cache-miss error propagates", func(t *testing.T) {
-		imgStore := &ImageStore{
-			rootDir: rootDir,
-			cache: mocks.CacheMock{
-				GetAllBlobsFn: func(godigest.Digest) ([]string, error) {
-					return nil, errInjectedCacheFailure
+		Convey("non-cache-miss error propagates", func() {
+			imgStore := &ImageStore{
+				rootDir: rootDir,
+				cache: mocks.CacheMock{
+					GetAllBlobsFn: func(godigest.Digest) ([]string, error) {
+						return nil, errInjectedCacheFailure
+					},
 				},
-			},
-		}
+			}
 
-		referenced, err := imgStore.isDigestReferencedAcrossRepos(digest)
-		if !errors.Is(err, errInjectedCacheFailure) {
-			t.Fatalf("expected injected error, got %v", err)
-		}
+			referenced, err := imgStore.isDigestReferencedAcrossRepos(digest)
+			So(errors.Is(err, errInjectedCacheFailure), ShouldBeTrue)
+			So(referenced, ShouldBeFalse)
+		})
 
-		if referenced {
-			t.Fatalf("expected not referenced on error")
-		}
-	})
+		Convey("only _blobstore paths referenced is not cross-repo referenced", func() {
+			globalBlobPath := path.Join(rootDir, storageConstants.GlobalBlobsRepo, "blobs/sha256", digest.Encoded())
 
-	t.Run("only _blobstore paths referenced is not cross-repo referenced", func(t *testing.T) {
-		globalBlobPath := path.Join(rootDir, storageConstants.GlobalBlobsRepo, "blobs/sha256", digest.Encoded())
-
-		imgStore := &ImageStore{
-			rootDir: rootDir,
-			cache: mocks.CacheMock{
-				GetAllBlobsFn: func(godigest.Digest) ([]string, error) {
-					return []string{globalBlobPath}, nil
+			imgStore := &ImageStore{
+				rootDir: rootDir,
+				cache: mocks.CacheMock{
+					GetAllBlobsFn: func(godigest.Digest) ([]string, error) {
+						return []string{globalBlobPath}, nil
+					},
 				},
-			},
-		}
+			}
 
-		referenced, err := imgStore.isDigestReferencedAcrossRepos(digest)
-		if err != nil {
-			t.Fatalf("expected nil error, got %v", err)
-		}
+			referenced, err := imgStore.isDigestReferencedAcrossRepos(digest)
+			So(err, ShouldBeNil)
+			So(referenced, ShouldBeFalse)
+		})
 
-		if referenced {
-			t.Fatalf("expected not referenced when only _blobstore holds the digest")
-		}
-	})
+		Convey("a real repo path alongside the _blobstore copy is cross-repo referenced", func() {
+			globalBlobPath := path.Join(rootDir, storageConstants.GlobalBlobsRepo, "blobs/sha256", digest.Encoded())
+			repoBlobPath := path.Join(rootDir, "myrepo/blobs/sha256", digest.Encoded())
 
-	t.Run("a real repo path alongside the _blobstore copy is cross-repo referenced", func(t *testing.T) {
-		globalBlobPath := path.Join(rootDir, storageConstants.GlobalBlobsRepo, "blobs/sha256", digest.Encoded())
-		repoBlobPath := path.Join(rootDir, "myrepo/blobs/sha256", digest.Encoded())
-
-		imgStore := &ImageStore{
-			rootDir: rootDir,
-			cache: mocks.CacheMock{
-				GetAllBlobsFn: func(godigest.Digest) ([]string, error) {
-					return []string{globalBlobPath, repoBlobPath}, nil
+			imgStore := &ImageStore{
+				rootDir: rootDir,
+				cache: mocks.CacheMock{
+					GetAllBlobsFn: func(godigest.Digest) ([]string, error) {
+						return []string{globalBlobPath, repoBlobPath}, nil
+					},
 				},
-			},
-		}
+			}
 
-		referenced, err := imgStore.isDigestReferencedAcrossRepos(digest)
-		if err != nil {
-			t.Fatalf("expected nil error, got %v", err)
-		}
+			referenced, err := imgStore.isDigestReferencedAcrossRepos(digest)
+			So(err, ShouldBeNil)
+			So(referenced, ShouldBeTrue)
+		})
 
-		if !referenced {
-			t.Fatalf("expected referenced when a real repo also holds the digest")
-		}
-	})
+		Convey("relative and dot-prefixed paths normalize the same as absolute ones", func() {
+			repoBlobPath := "./myrepo/blobs/sha256/" + digest.Encoded()
 
-	t.Run("relative and dot-prefixed paths normalize the same as absolute ones", func(t *testing.T) {
-		repoBlobPath := "./myrepo/blobs/sha256/" + digest.Encoded()
-
-		imgStore := &ImageStore{
-			rootDir: rootDir,
-			cache: mocks.CacheMock{
-				GetAllBlobsFn: func(godigest.Digest) ([]string, error) {
-					return []string{repoBlobPath}, nil
+			imgStore := &ImageStore{
+				rootDir: rootDir,
+				cache: mocks.CacheMock{
+					GetAllBlobsFn: func(godigest.Digest) ([]string, error) {
+						return []string{repoBlobPath}, nil
+					},
 				},
-			},
-		}
+			}
 
-		referenced, err := imgStore.isDigestReferencedAcrossRepos(digest)
-		if err != nil {
-			t.Fatalf("expected nil error, got %v", err)
-		}
-
-		if !referenced {
-			t.Fatalf("expected referenced for a dot-relative repo path")
-		}
+			referenced, err := imgStore.isDigestReferencedAcrossRepos(digest)
+			So(err, ShouldBeNil)
+			So(referenced, ShouldBeTrue)
+		})
 	})
 }
