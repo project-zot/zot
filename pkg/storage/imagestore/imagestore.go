@@ -1966,7 +1966,6 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 				// the actual blob on disk may have been removed by GC, so sync the cache
 				err := is.deleteBlobRef(dstDigest, dstRecord)
 				if err = inject.Error(err); err != nil {
-					//nolint:lll
 					is.log.Error().Err(err).Str("dstDigest", dstDigest.String()).Str("dst", dst).
 						Str("component", "dedupe").Msg("failed to delete blob record")
 
