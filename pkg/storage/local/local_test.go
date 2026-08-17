@@ -2800,6 +2800,16 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 
 			So(os.Chmod(imgStore.BlobUploadPath(repoName, blobUploadID), 0o000), ShouldBeNil)
 
+			// GC should still succeed - the upload is too recent to be collected, so GC's
+			// delay gate skips it before ever touching the permission-denied path.
+			err = gc.CleanRepo(ctx, repoName)
+			So(err, ShouldBeNil)
+
+			// Blob upload is recent it should still be there
+			isPresent, _, _, err = imgStore.StatBlobUpload(repoName, blobUploadID)
+			So(err, ShouldBeNil)
+			So(isPresent, ShouldBeTrue)
+
 			time.Sleep(1002 * time.Millisecond)
 
 			// GC should fail because of bad permissions
