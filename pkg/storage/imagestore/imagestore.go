@@ -1004,7 +1004,9 @@ func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filte
 // GetRepositories returns a list of all the repositories under this store.
 // Transient/Permanent ValidateRepo failures abort (inventory fail-closed for dedupe / scrub).
 // HTTP catalog soft-skips per-path outages via GetNextRepositories. Does not take a
-// lock - see GetNextRepositories' doc comment.
+// lock: it's a read-only, whole-tree Walk, so observing a repo set that changes
+// mid-walk is expected, not a bug, and no storage backend offers an atomic multi-key
+// listing for a lock to usefully enforce anyway.
 func (is *ImageStore) GetRepositories() ([]string, error) {
 	dir := is.rootDir
 
@@ -1150,8 +1152,10 @@ func (is *ImageStore) isDigestReferencedAcrossRepos(digest godigest.Digest) (boo
 
 // GetNextRepository returns next repository under this store.
 // Transient/Permanent ValidateRepo failures abort (inventory fail-closed for GC / metrics).
-// HTTP catalog soft-skips per-path outages via GetNextRepositories.
-// GetNextRepository does not take a lock - see GetNextRepositories' doc comment.
+// HTTP catalog soft-skips per-path outages via GetNextRepositories. Does not take a
+// lock: it's a read-only, whole-tree Walk, so observing a repo set that changes
+// mid-walk is expected, not a bug, and no storage backend offers an atomic multi-key
+// listing for a lock to usefully enforce anyway.
 func (is *ImageStore) GetNextRepository(processedRepos map[string]struct{}) (string, error) {
 	dir := is.rootDir
 
@@ -3754,8 +3758,10 @@ func (is *ImageStore) getLogicalRepoBlobDigests(repo string) ([]godigest.Digest,
 	return digests, nil
 }
 
-// GetNextDigestWithBlobPaths does not take a lock - see GetNextRepositories' doc
-// comment; this is the same kind of whole-tree read-only Walk.
+// GetNextDigestWithBlobPaths does not take a lock: like GetNextRepositories, it's a
+// read-only, whole-tree Walk, so observing state that changes mid-walk is expected,
+// not a bug, and no storage backend offers an atomic multi-key listing for a lock to
+// usefully enforce anyway.
 func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []godigest.Digest,
 ) (godigest.Digest, []string, error) {
 	if !is.dedupe && is.lifecycle.UsesLogicalRepoRefs() {
