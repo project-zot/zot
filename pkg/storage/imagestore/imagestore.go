@@ -523,7 +523,7 @@ func (is *ImageStore) promoteBlobCandidate(
 	}
 
 	is.log.Info().Str("digest", digest.String()).Str("repo", candidate.repoName).
-		Msg("upgraded blob to global blobstore")
+		Msg("promoted blob to global blobstore")
 
 	return nil
 }
