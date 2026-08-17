@@ -2899,6 +2899,15 @@ CleanupRepo removes blobs from the repository and removes repo if flag is true a
 the caller function MUST lock from outside (both the repo lock, and - if a cache is
 configured, since deleteBlob's global-blob reclaim step needs it - the blobstore lock,
 acquired outer-to-inner in that order; see gc.go's cleanRepo).
+
+Unlike the rest of this interface, CleanupRepo deliberately does not hide its own
+locking: it has a single caller today (gc.go's cleanRepo, via cleanRepoLocked), which
+needs the *entire* GC pass over a repo - manifest removal, referrer removal, retention,
+and this blob cleanup - to run under one continuous blobstore+repo lock hold, so nothing
+else can mutate the repo mid-pass. Making CleanupRepo self-lock would mean splitting
+that single hold into a separate acquisition per GC step, opening a window for a
+concurrent write to interleave between them - a real consistency regression, not just
+an API cleanup.
 */
 func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRepo bool) (int, error) {
 	count := 0
