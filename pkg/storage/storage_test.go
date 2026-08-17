@@ -970,10 +970,9 @@ func TestGetAllDedupeReposCandidates(t *testing.T) {
 				So(err, ShouldBeNil)
 
 				// _blobstore is internal-only and must never be exposed as a mount candidate
-				expectedRepos := append([]string{}, repoNames...)
-				slices.Sort(expectedRepos)
+				slices.Sort(repoNames)
 				slices.Sort(repos)
-				So(repos, ShouldResemble, expectedRepos)
+				So(repos, ShouldResemble, repoNames)
 			})
 
 			Convey("A digest with no cached blob returns no candidates and no error", t, func(c C) {
