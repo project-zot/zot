@@ -822,11 +822,12 @@ func (is *ImageStore) ValidateRepo(name string) (bool, error) {
 	return true, nil
 }
 
-// GetNextRepositories does not take a lock: it's a read-only, whole-tree Walk that
-// already tolerates a concurrently-changing repo set (e.g. InitRepo creating a repo
-// mid-walk) the same way it does today - no backend offers an atomic multi-key
-// listing, so a whole-store lock never made this walk atomic, it only serialized
-// unrelated writes against it for no consistency benefit.
+// GetNextRepositories does not take a lock. It's a read-only, whole-tree Walk, so it
+// can observe a repo set that changes mid-walk (e.g. InitRepo creating a new repo
+// while this Walk is in progress) - that's expected, not a bug: no storage backend
+// offers an atomic multi-key listing, so a whole-store lock could never make this
+// walk atomic anyway. Locking here would only serialize unrelated writes against it,
+// for no consistency benefit.
 func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filterFn storageTypes.FilterRepoFunc,
 ) ([]string, bool, error) {
 	dir := is.rootDir
