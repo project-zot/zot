@@ -10,59 +10,44 @@ import (
 	"testing"
 
 	godigest "github.com/opencontainers/go-digest"
+	. "github.com/smartystreets/goconvey/convey"
 )
 
 func TestCheckBlobSelfHealsViaCopyBlob(t *testing.T) {
-	imgStore := newDedupeStoreForLockTests(t)
+	Convey("CheckBlob self-heals a repo's missing local copy via the cache", t, func() {
+		imgStore := newDedupeStoreForLockTests(t)
 
-	content := []byte("copyblob-selfheal-content")
-	digest := godigest.FromBytes(content)
+		content := []byte("copyblob-selfheal-content")
+		digest := godigest.FromBytes(content)
 
-	if _, _, err := imgStore.FullBlobUpload(context.Background(), "repoa", bytes.NewReader(content), digest); err != nil {
-		t.Fatalf("seed upload: %v", err)
-	}
+		_, _, err := imgStore.FullBlobUpload(context.Background(), "repoa", bytes.NewReader(content), digest)
+		So(err, ShouldBeNil)
 
-	ok, size, err := imgStore.CheckBlob(context.Background(), "repob", digest)
-	if err != nil {
-		t.Fatalf("CheckBlob: %v", err)
-	}
+		ok, size, err := imgStore.CheckBlob(context.Background(), "repob", digest)
+		So(err, ShouldBeNil)
+		So(ok, ShouldBeTrue)
+		So(size, ShouldEqual, int64(len(content)))
 
-	if !ok {
-		t.Fatal("expected blob to be found via cache self-heal")
-	}
-
-	if size != int64(len(content)) {
-		t.Fatalf("expected size %d, got %d", len(content), size)
-	}
-
-	blobContent, err := imgStore.GetBlobContent("repob", digest)
-	if err != nil {
-		t.Fatalf("GetBlobContent: %v", err)
-	}
-
-	if !bytes.Equal(blobContent, content) {
-		t.Fatal("content copied into repob does not match original")
-	}
+		blobContent, err := imgStore.GetBlobContent("repob", digest)
+		So(err, ShouldBeNil)
+		So(blobContent, ShouldResemble, content)
+	})
 }
 
 func TestCheckBlobSelfHealCopyBlobFailsOnInvalidRepo(t *testing.T) {
-	imgStore := newDedupeStoreForLockTests(t)
+	Convey("copyBlob's initRepo call fails fast on an invalid repo name", t, func() {
+		imgStore := newDedupeStoreForLockTests(t)
 
-	content := []byte("copyblob-invalid-repo-content")
-	digest := godigest.FromBytes(content)
+		content := []byte("copyblob-invalid-repo-content")
+		digest := godigest.FromBytes(content)
 
-	if _, _, err := imgStore.FullBlobUpload(context.Background(), "repoa", bytes.NewReader(content), digest); err != nil {
-		t.Fatalf("seed upload: %v", err)
-	}
+		_, _, err := imgStore.FullBlobUpload(context.Background(), "repoa", bytes.NewReader(content), digest)
+		So(err, ShouldBeNil)
 
-	// copyBlob's initRepo call must fail fast on an invalid repo name, surfacing as
-	// a not-found result rather than a partial/successful self-heal.
-	ok, _, err := imgStore.CheckBlob(context.Background(), "!!!invalid!!!", digest)
-	if err == nil {
-		t.Fatal("expected an error for an invalid repo name")
-	}
-
-	if ok {
-		t.Fatal("expected blob not found for an invalid repo name")
-	}
+		// copyBlob's initRepo call must fail fast on an invalid repo name, surfacing as
+		// a not-found result rather than a partial/successful self-heal.
+		ok, _, err := imgStore.CheckBlob(context.Background(), "!!!invalid!!!", digest)
+		So(err, ShouldNotBeNil)
+		So(ok, ShouldBeFalse)
+	})
 }
