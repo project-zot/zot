@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/fsnotify/fsnotify"
@@ -19,6 +20,9 @@ type HotReloader struct {
 	ldapCredentialsPath string
 	ctlr                *api.Controller
 	logger              log.Logger
+
+	done     chan struct{}
+	stopOnce sync.Once
 }
 
 func NewHotReloader(ctlr *api.Controller, filePath, ldapCredentialsPath string) (*HotReloader, error) {
@@ -34,25 +38,27 @@ func NewHotReloader(ctlr *api.Controller, filePath, ldapCredentialsPath string) 
 		ldapCredentialsPath: ldapCredentialsPath,
 		ctlr:                ctlr,
 		logger:              log.NewLogger("info", ""),
+		done:                make(chan struct{}),
 	}
 
 	return hotReloader, nil
 }
 
-func signalHandler(ctlr *api.Controller, sigCh chan os.Signal) {
+func signalHandler(ctlr *api.Controller, hr *HotReloader, sigCh chan os.Signal) {
 	// if signal then shutdown
 	if sig, ok := <-sigCh; ok {
 		ctlr.Log.Info().Interface("signal", sig).Msg("received signal")
 
+		hr.Stop()
 		// gracefully shutdown http server
 		ctlr.Shutdown() //nolint: contextcheck
 	}
 }
 
-func initShutDownRoutine(ctlr *api.Controller) {
+func initShutDownRoutine(ctlr *api.Controller, hr *HotReloader) {
 	sigCh := make(chan os.Signal, 1)
 
-	go signalHandler(ctlr, sigCh)
+	go signalHandler(ctlr, hr, sigCh)
 
 	// block all async signals to this server
 	signal.Ignore()
@@ -61,9 +67,18 @@ func initShutDownRoutine(ctlr *api.Controller) {
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
 }
 
-func (hr *HotReloader) Start() {
-	done := make(chan bool)
+func (hr *HotReloader) Stop() {
+	hr.stopOnce.Do(func() {
+		if hr.done != nil {
+			close(hr.done)
+		}
+		if hr.watcher != nil {
+			_ = hr.watcher.Close()
+		}
+	})
+}
 
+func (hr *HotReloader) Start() {
 	// run watcher
 	go func() {
 		defer hr.watcher.Close()
@@ -71,8 +86,13 @@ func (hr *HotReloader) Start() {
 		go func() {
 			for {
 				select {
+				case <-hr.done:
+					return
 				// watch for events
-				case event := <-hr.watcher.Events:
+				case event, ok := <-hr.watcher.Events:
+					if !ok {
+						return
+					}
 					if event.Op == fsnotify.Write {
 						hr.logger.Info().Msg("config file changed, trying to reload config")
 
@@ -110,7 +130,10 @@ func (hr *HotReloader) Start() {
 						hr.ctlr.StartBackgroundTasks()
 					}
 				// watch for errors
-				case err := <-hr.watcher.Errors:
+				case err, ok := <-hr.watcher.Errors:
+					if !ok {
+						return
+					}
 					hr.logger.Panic().Err(err).Str("config", hr.configPath).Msg("fsnotfy error while watching config")
 				}
 			}
@@ -127,6 +150,6 @@ func (hr *HotReloader) Start() {
 			}
 		}
 
-		<-done
+		<-hr.done
 	}()
 }

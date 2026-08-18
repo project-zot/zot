@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"maps"
 	"os"
 	"path"
@@ -22,6 +23,7 @@ import (
 	fanalTypes "github.com/aquasecurity/trivy/pkg/fanal/types"
 	"github.com/aquasecurity/trivy/pkg/flag"
 	"github.com/aquasecurity/trivy/pkg/javadb"
+	trivylog "github.com/aquasecurity/trivy/pkg/log"
 	"github.com/aquasecurity/trivy/pkg/types"
 	xos "github.com/aquasecurity/trivy/pkg/x/os"
 	xstrings "github.com/aquasecurity/trivy/pkg/x/strings"
@@ -54,6 +56,27 @@ const (
 	cycloneDXArtifactType     = "application/vnd.cyclonedx+json"
 	cycloneDXLayerMediaType   = "application/vnd.cyclonedx+json"
 )
+
+var initTrivyLoggerOnce sync.Once //nolint: gochecknoglobals // trivylog.SetDefault modifies slog.Default()
+
+func initTrivyLogger(logger log.Logger) {
+	initTrivyLoggerOnce.Do(func() {
+		// Trivy CLI InitLogger (after flags) installs a ColorHandler on slog.Default()
+		// (stderr, not JSON). As a library, attach zot's handler so Trivy follows zot's
+		// level/format/output, and replace trivy's non-thread-safe DeferredHandler, which
+		// data-races when scanners log concurrently. trivylog.SetDefault is slog.SetDefault;
+		handler := logger.Handler()
+		oldHandler := slog.Default().Handler()
+
+		// SetDefault before Flush: Handle and Flush share an unlocked buffer;
+		// afterwards new slog.Default() calls no longer append to it.
+		trivylog.SetDefault(trivylog.New(handler))
+
+		if deferred, ok := oldHandler.(*trivylog.DeferredHandler); ok {
+			deferred.Flush(handler)
+		}
+	})
+}
 
 var errImageStoreNotFound = errors.New("image store not found")
 
@@ -144,6 +167,8 @@ type generatedSBOM struct {
 func NewScanner(storeController storage.StoreController,
 	metaDB mTypes.MetaDB, cveConfig *extconf.CVEConfig, log log.Logger,
 ) *Scanner {
+	initTrivyLogger(log)
+
 	var trivyCfg *extconf.TrivyConfig
 	if cveConfig != nil && cveConfig.Trivy != nil {
 		trivyCfg = cveConfig.Trivy

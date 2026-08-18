@@ -84,30 +84,14 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 				conf.Storage.FastRestart = &disable
 			}
 
-			ctlr := api.NewController(conf)
-
-			ldapCredentials := ""
-
-			if conf.HTTP.Auth != nil && conf.HTTP.Auth.LDAP != nil {
-				ldapCredentials = conf.HTTP.Auth.LDAP.CredentialsFile
-			}
-			// config reloader
-			hotReloader, err := NewHotReloader(ctlr, args[0], ldapCredentials)
+			ctlr, hotReloader, err := InitController(conf, args[0])
 			if err != nil {
-				ctlr.Log.Error().Err(err).Msg("failed to create a new hot reloader")
-
 				return err
 			}
 
-			hotReloader.Start()
+			defer hotReloader.Stop()
 
-			if err := ctlr.Init(); err != nil {
-				ctlr.Log.Error().Err(err).Msg("failed to init controller")
-
-				return err
-			}
-
-			initShutDownRoutine(ctlr)
+			initShutDownRoutine(ctlr, hotReloader)
 
 			if err := ctlr.Run(); err != nil {
 				logger.Error().Err(err).Msg("failed to start controller, exiting")
@@ -121,6 +105,37 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 		"force a full storage->metaDB reparse on startup, ignoring the fast-restart stamp")
 
 	return serveCmd
+}
+
+// InitController creates a controller, initializes it, then starts the config hot-reloader.
+// On init failure it shuts down the controller and stops the reloader before returning.
+// After a successful return the caller must stop both the controller and the hot reloader.
+func InitController(conf *config.Config, configPath string) (*api.Controller, *HotReloader, error) {
+	ctlr := api.NewController(conf)
+
+	ldapCredentials := ""
+	if conf.HTTP.Auth != nil && conf.HTTP.Auth.LDAP != nil {
+		ldapCredentials = conf.HTTP.Auth.LDAP.CredentialsFile
+	}
+
+	hotReloader, err := NewHotReloader(ctlr, configPath, ldapCredentials)
+	if err != nil {
+		ctlr.Log.Error().Err(err).Msg("failed to create a new hot reloader")
+
+		return nil, nil, err
+	}
+
+	if err := ctlr.Init(); err != nil {
+		hotReloader.Stop()
+		ctlr.Shutdown() //nolint: contextcheck
+		ctlr.Log.Error().Err(err).Msg("failed to init controller")
+
+		return nil, nil, err
+	}
+
+	hotReloader.Start()
+
+	return ctlr, hotReloader, nil
 }
 
 func newScrubCmd(conf *config.Config) *cobra.Command {
