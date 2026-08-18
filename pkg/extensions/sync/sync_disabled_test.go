@@ -3,6 +3,7 @@
 package sync_test
 
 import (
+	"context"
 	"os"
 	"testing"
 
@@ -13,8 +14,19 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
+	"zotregistry.dev/zot/v2/pkg/extensions/sync"
 	test "zotregistry.dev/zot/v2/pkg/test/common"
 )
+
+func TestOnDemandStub(t *testing.T) {
+	Convey("stubbed on demand always allows upstream manifest checks", t, func() {
+		onDemand := &sync.BaseOnDemand{}
+
+		So(onDemand.SyncImage(context.Background(), "repo", "latest"), ShouldBeNil)
+		So(onDemand.SyncReferrers(context.Background(), "repo", "sha256:digest", nil), ShouldBeNil)
+		So(onDemand.ShouldCheckUpstreamManifest("repo", "latest"), ShouldBeTrue)
+	})
+}
 
 func TestSyncExtension(t *testing.T) {
 	Convey("Make a new controller", t, func() {
