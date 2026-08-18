@@ -405,11 +405,11 @@ func RemoveManifestDescByReference(index *ispec.Index, reference string, detectC
 func UpdateIndexWithPrunedImageManifests(imgStore storageTypes.ImageStore, index *ispec.Index, repo string,
 	desc ispec.Descriptor, oldDgst godigest.Digest, log zlog.Logger,
 ) error {
-	if (desc.MediaType == ispec.MediaTypeImageIndex) && (oldDgst != "") {
+	if IsImageIndexMediaType(desc.MediaType) && (oldDgst != "") {
 		otherImgIndexes := []ispec.Descriptor{}
 
 		for _, manifest := range index.Manifests {
-			if manifest.MediaType == ispec.MediaTypeImageIndex {
+			if IsImageIndexMediaType(manifest.MediaType) {
 				otherImgIndexes = append(otherImgIndexes, manifest)
 			}
 		}
@@ -485,7 +485,7 @@ func PruneImageManifestsFromIndex(imgStore storageTypes.ImageStore, repo string,
 	// for all manifests in the index, skip those that either have a tag or
 	// are used in other imgIndexes
 	for _, outManifest := range outIndex.Manifests {
-		if outManifest.MediaType != ispec.MediaTypeImageManifest {
+		if !IsImageManifestMediaType(outManifest.MediaType) {
 			prunedManifests = append(prunedManifests, outManifest)
 
 			continue
