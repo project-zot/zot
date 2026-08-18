@@ -1874,7 +1874,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
 					return true, 100, time.Now().Add(-2 * time.Hour), nil
 				},
-				CleanupRepoFn: func(repo string, blobs []godigest.Digest, removeRepo bool) (int, error) {
+				CleanupRepoFn: func(repo string, blobs []godigest.Digest) (int, error) {
 					return 0, errGC
 				},
 			}
@@ -2494,7 +2494,7 @@ func TestCleanRepoWithStaleManifestEntries(t *testing.T) {
 
 				return nil
 			},
-			CleanupRepoFn: func(repo string, blobs []godigest.Digest, removeRepo bool) (int, error) {
+			CleanupRepoFn: func(repo string, blobs []godigest.Digest) (int, error) {
 				return 0, nil
 			},
 			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
@@ -2599,7 +2599,7 @@ func TestCleanupRepoMissingBlob(t *testing.T) {
 		err = os.Remove(blobPath)
 		So(err, ShouldBeNil)
 
-		count, err := imgStore.CleanupRepo(repoName, []godigest.Digest{digest}, false)
+		count, err := imgStore.CleanupRepo(repoName, []godigest.Digest{digest})
 		So(err, ShouldBeNil)
 		So(count, ShouldEqual, 1)
 	})

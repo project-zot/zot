@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -257,6 +258,45 @@ func TestRollbackDigestManifestTags(t *testing.T) {
 			sc := storage.StoreController{DefaultStore: &is}
 			rollbackDigestManifestTags(ctx, "repo", []string{"t"}, []string{"t"}, mediaType, dgst, body, sc,
 				metaDB, testLog, prior)
+		})
+	})
+}
+
+func TestReleaseIdleRepository(t *testing.T) {
+	Convey("releaseIdleRepository", t, func() {
+		logger := log.NewTestLogger()
+
+		Convey("A store failure is swallowed, since the manifest delete already succeeded", func() {
+			imgStore := mocks.MockedImageStore{
+				RemoveIdleRepositoryFn: func(repo string, maxBlobAge time.Duration,
+					metaDB mTypes.MetaDB,
+				) (bool, error) {
+					return false, errHookInternal
+				},
+			}
+
+			So(func() { releaseIdleRepository("repo", imgStore, mocks.MetaDBMock{}, logger) }, ShouldNotPanic)
+		})
+
+		Convey("The repo is handed to the store with a zero max blob age", func() {
+			var gotRepo string
+
+			var gotAge time.Duration
+
+			imgStore := mocks.MockedImageStore{
+				RemoveIdleRepositoryFn: func(repo string, maxBlobAge time.Duration,
+					metaDB mTypes.MetaDB,
+				) (bool, error) {
+					gotRepo = repo
+					gotAge = maxBlobAge
+
+					return true, nil
+				},
+			}
+
+			releaseIdleRepository("repo", imgStore, mocks.MetaDBMock{}, logger)
+			So(gotRepo, ShouldEqual, "repo")
+			So(gotAge, ShouldEqual, 0)
 		})
 	})
 }

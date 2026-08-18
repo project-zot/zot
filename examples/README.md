@@ -165,6 +165,11 @@ When the limit is reached, pushes that would create a new repository are
 rejected with HTTP 429. Pushes to existing repositories are always allowed.
 Setting maxRepos to 0 or omitting it disables enforcement.
 
+A repository stops counting towards the limit when it is removed from
+storage: immediately when its last manifest is deleted and no blobs or
+uploads remain, or otherwise in a garbage collection cycle once its
+remaining blobs pass the GC delay.
+
 It is also possible to store and serve images from multiple filesystems with
 their own repository paths, dedupe and garbage collection settings with:
 
