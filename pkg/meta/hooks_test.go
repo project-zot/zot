@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"path"
 	"testing"
 
 	godigest "github.com/opencontainers/go-digest"
@@ -465,11 +466,156 @@ func TestUpdateErrors(t *testing.T) {
 	})
 }
 
-// TestOnDeleteManifest_OrphanedSignatureReferrerReturnsErrImageMetaNotFound verifies that
-// OnDeleteManifest returns ErrImageMetaNotFound when deleting a signature referrer
-// whose subject manifest was already untagged.
-func TestOnDeleteManifest_OrphanedSignatureReferrerReturnsErrImageMetaNotFound(t *testing.T) {
-	Convey("Deleting a signature referrer after its subject's last tag is gone fails with ErrImageMetaNotFound",
+// TestOnDeleteManifest_EmptiedRepoStopsCountingTowardsQuota verifies that deleting the last manifest in
+// a repo removes the repo itself, layout and meta together, so it stops counting towards maxRepos.
+func TestOnDeleteManifest_EmptiedRepoStopsCountingTowardsQuota(t *testing.T) {
+	Convey("Deleting the last manifest in a repo removes its layout and its meta", t, func() {
+		rootDir := t.TempDir()
+		storeController := storage.StoreController{}
+		log := log.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+
+		storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil)
+
+		params := boltdb.DBParameters{RootDir: rootDir}
+		boltDriver, err := boltdb.GetBoltDriver(params)
+		So(err, ShouldBeNil)
+
+		metaDB, err := boltdb.New(boltDriver, log)
+		So(err, ShouldBeNil)
+
+		imgStore := storeController.GetImageStore("repo")
+		ctx := context.Background()
+
+		image := CreateDefaultImage()
+		digest := image.Digest()
+		body := image.ManifestDescriptor.Data
+
+		So(WriteImageToFileSystem(image, "repo", "latest", storeController), ShouldBeNil)
+		So(meta.OnUpdateManifest(ctx, "repo", "latest", ispec.MediaTypeImageManifest, digest, body,
+			storeController, metaDB, log), ShouldBeNil)
+
+		count, err := metaDB.CountRepos(ctx)
+		So(err, ShouldBeNil)
+		So(count, ShouldEqual, 1)
+
+		So(imgStore.DeleteImageManifest(ctx, "repo", digest.String(), false), ShouldBeNil)
+		So(meta.OnDeleteManifest("repo", digest.String(), ispec.MediaTypeImageManifest, digest, body,
+			storeController, metaDB, log), ShouldBeNil)
+
+		_, err = metaDB.GetRepoMeta(ctx, "repo")
+		So(err, ShouldEqual, zerr.ErrRepoMetaNotFound)
+
+		count, err = metaDB.CountRepos(ctx)
+		So(err, ShouldBeNil)
+		So(count, ShouldEqual, 0)
+	})
+
+	Convey("A repo still holding another tagged manifest keeps its meta", t, func() {
+		rootDir := t.TempDir()
+		storeController := storage.StoreController{}
+		log := log.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+
+		storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil)
+
+		params := boltdb.DBParameters{RootDir: rootDir}
+		boltDriver, err := boltdb.GetBoltDriver(params)
+		So(err, ShouldBeNil)
+
+		metaDB, err := boltdb.New(boltDriver, log)
+		So(err, ShouldBeNil)
+
+		imgStore := storeController.GetImageStore("repo")
+		ctx := context.Background()
+
+		first := CreateRandomImage()
+		second := CreateRandomImage()
+
+		So(WriteImageToFileSystem(first, "repo", "first", storeController), ShouldBeNil)
+		So(meta.OnUpdateManifest(ctx, "repo", "first", ispec.MediaTypeImageManifest, first.Digest(),
+			first.ManifestDescriptor.Data, storeController, metaDB, log), ShouldBeNil)
+
+		So(WriteImageToFileSystem(second, "repo", "second", storeController), ShouldBeNil)
+		So(meta.OnUpdateManifest(ctx, "repo", "second", ispec.MediaTypeImageManifest, second.Digest(),
+			second.ManifestDescriptor.Data, storeController, metaDB, log), ShouldBeNil)
+
+		So(imgStore.DeleteImageManifest(ctx, "repo", first.Digest().String(), false), ShouldBeNil)
+		So(meta.OnDeleteManifest("repo", first.Digest().String(), ispec.MediaTypeImageManifest, first.Digest(),
+			first.ManifestDescriptor.Data, storeController, metaDB, log), ShouldBeNil)
+
+		_, err = metaDB.GetRepoMeta(ctx, "repo")
+		So(err, ShouldBeNil)
+
+		count, err := metaDB.CountRepos(ctx)
+		So(err, ShouldBeNil)
+		So(count, ShouldEqual, 1)
+
+		repos, err := imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		So(repos, ShouldContain, "repo")
+	})
+
+	Convey("A repo holding only an untagged manifest keeps its meta", t, func() {
+		rootDir := t.TempDir()
+		storeController := storage.StoreController{}
+		log := log.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+
+		storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil)
+
+		params := boltdb.DBParameters{RootDir: rootDir}
+		boltDriver, err := boltdb.GetBoltDriver(params)
+		So(err, ShouldBeNil)
+
+		metaDB, err := boltdb.New(boltDriver, log)
+		So(err, ShouldBeNil)
+
+		imgStore := storeController.GetImageStore("repo")
+		ctx := context.Background()
+
+		tagged := CreateRandomImage()
+		untagged := CreateRandomImage()
+
+		So(WriteImageToFileSystem(tagged, "repo", "v1", storeController), ShouldBeNil)
+		So(meta.OnUpdateManifest(ctx, "repo", "v1", ispec.MediaTypeImageManifest, tagged.Digest(),
+			tagged.ManifestDescriptor.Data, storeController, metaDB, log), ShouldBeNil)
+
+		// Referenced by digest, so it carries no tag, which is how a signature
+		// referrer or an attached artifact sits in a repo.
+		So(WriteImageToFileSystem(untagged, "repo", untagged.Digest().String(), storeController), ShouldBeNil)
+		So(meta.OnUpdateManifest(ctx, "repo", untagged.Digest().String(), ispec.MediaTypeImageManifest,
+			untagged.Digest(), untagged.ManifestDescriptor.Data, storeController, metaDB, log), ShouldBeNil)
+
+		So(imgStore.DeleteImageManifest(ctx, "repo", tagged.Digest().String(), false), ShouldBeNil)
+		So(meta.OnDeleteManifest("repo", tagged.Digest().String(), ispec.MediaTypeImageManifest, tagged.Digest(),
+			tagged.ManifestDescriptor.Data, storeController, metaDB, log), ShouldBeNil)
+
+		// No tag is left, but the untagged manifest still holds the repo, so its
+		// meta must survive and keep counting towards maxRepos.
+		repoMeta, err := metaDB.GetRepoMeta(ctx, "repo")
+		So(err, ShouldBeNil)
+
+		for tag := range repoMeta.Tags {
+			So(tag, ShouldBeEmpty)
+		}
+
+		count, err := metaDB.CountRepos(ctx)
+		So(err, ShouldBeNil)
+		So(count, ShouldEqual, 1)
+
+		repos, err := imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		So(repos, ShouldContain, "repo")
+	})
+}
+
+// TestOnDeleteManifest_OrphanedSignatureReferrerReleasesRepo verifies that deleting a signature
+// referrer whose subject manifest was already untagged is not treated as a failure: the signature
+// meta is already gone (an expected miss), and since the delete emptied the repo, the layout and
+// the meta record are released so the repo stops counting towards maxRepos.
+func TestOnDeleteManifest_OrphanedSignatureReferrerReleasesRepo(t *testing.T) {
+	Convey("Deleting the last leftover signature referrer releases the emptied repo",
 		t, func() {
 			rootDir := t.TempDir()
 			storeController := storage.StoreController{}
@@ -534,19 +680,29 @@ func TestOnDeleteManifest_OrphanedSignatureReferrerReturnsErrImageMetaNotFound(t
 			So(err, ShouldBeNil)
 			So(repoMeta.Signatures, ShouldContainKey, subjectDigest.String())
 
-			// Delete the subject's only tag.
-			So(imgStore.DeleteImageManifest(ctx, "repo", "latest", false), ShouldBeNil)
-			So(meta.OnDeleteManifest("repo", "latest", ispec.MediaTypeImageManifest, subjectDigest, subjectBody,
-				storeController, metaDB, log), ShouldBeNil)
+			// Delete the subject by digest, so only the signature referrer is left in the index.
+			So(imgStore.DeleteImageManifest(ctx, "repo", subjectDigest.String(), false), ShouldBeNil)
+			So(meta.OnDeleteManifest("repo", subjectDigest.String(), ispec.MediaTypeImageManifest, subjectDigest,
+				subjectBody, storeController, metaDB, log), ShouldBeNil)
 
 			repoMeta, err = metaDB.GetRepoMeta(ctx, "repo")
 			So(err, ShouldBeNil)
 			So(repoMeta.Signatures, ShouldNotContainKey, subjectDigest.String())
 
-			// The referrer is still present in the image store; deleting it now fails.
+			// The referrer is still present in the image store; deleting it finds its signature
+			// meta already gone, which is expected and must not surface as an error. The repo is
+			// now empty, so both the layout and the meta record are released.
 			So(imgStore.DeleteImageManifest(ctx, "repo", referrerDigest.String(), false), ShouldBeNil)
-			err = meta.OnDeleteManifest("repo", referrerDigest.String(), ispec.MediaTypeImageManifest, referrerDigest,
-				referrerBody, storeController, metaDB, log)
-			So(errors.Is(err, zerr.ErrImageMetaNotFound), ShouldBeTrue)
+			So(meta.OnDeleteManifest("repo", referrerDigest.String(), ispec.MediaTypeImageManifest, referrerDigest,
+				referrerBody, storeController, metaDB, log), ShouldBeNil)
+
+			So(imgStore.DirExists(path.Join(rootDir, "repo")), ShouldBeFalse)
+
+			_, err = metaDB.GetRepoMeta(ctx, "repo")
+			So(errors.Is(err, zerr.ErrRepoMetaNotFound), ShouldBeTrue)
+
+			count, err := metaDB.CountRepos(ctx)
+			So(err, ShouldBeNil)
+			So(count, ShouldEqual, 0)
 		})
 }

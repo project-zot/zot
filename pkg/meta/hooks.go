@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
@@ -15,6 +16,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/storage"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
 // priorTagManifest records where MetaDB believed each tag pointed before a digest PUT with tag=
@@ -220,6 +222,10 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 	storeController storage.StoreController, metaDB mTypes.MetaDB, log log.Logger,
 ) error {
 	if zcommon.IsReferrersTag(reference) {
+		// The store already deleted the referrers tag entry, which may have emptied the
+		// index; still attempt idle release (a no-op while content remains).
+		releaseIdleRepository(repo, storeController.GetImageStore(repo), metaDB, log)
+
 		return nil
 	}
 
@@ -233,29 +239,29 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 		return err
 	}
 
-	manageRepoMetaSuccessfully := true
+	var metaErr error
 
 	if isSignature {
-		err = metaDB.DeleteSignature(repo, signedManifestDigest, mTypes.SignatureMetadata{
+		metaErr = metaDB.DeleteSignature(repo, signedManifestDigest, mTypes.SignatureMetadata{
 			SignatureDigest: digest.String(),
 			SignatureType:   signatureType,
 		})
-		if err != nil {
-			if errors.Is(err, zerr.ErrImageMetaNotFound) {
-				// Expected: RemoveRepoReference already deleted Signatures[signedManifestDigest]
-				// when the last reference to the signed manifest was removed.
-				log.Debug().Err(err).Str("component", "metadb").
-					Msg("signature meta already removed")
-			} else {
-				log.Error().Err(err).Str("component", "metadb").
-					Msg("failed to delete signature meta")
-			}
 
-			manageRepoMetaSuccessfully = false
+		switch {
+		case errors.Is(metaErr, zerr.ErrImageMetaNotFound):
+			// Expected: RemoveRepoReference already deleted Signatures[signedManifestDigest]
+			// when the last reference to the signed manifest was removed.
+			log.Debug().Err(metaErr).Str("component", "metadb").
+				Msg("signature meta already removed")
+
+			metaErr = nil
+		case metaErr != nil:
+			log.Error().Err(metaErr).Str("tag", reference).Str("repository", repo).Str("component", "metadb").
+				Msg("failed to delete signature meta")
 		}
 	} else {
-		err = metaDB.RemoveRepoReference(repo, reference, digest)
-		if err != nil {
+		metaErr = metaDB.RemoveRepoReference(repo, reference, digest)
+		if metaErr != nil {
 			log.Info().Str("component", "metadb").Msg("restoring image store")
 
 			// restore image store
@@ -265,22 +271,53 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 					Msg("failed to restore manifest to image store, database is not consistent")
 			}
 
-			manageRepoMetaSuccessfully = false
+			log.Info().Str("tag", reference).Str("repository", repo).Str("component", "metadb").
+				Msg("failed to delete image meta for tag in repo")
+
+			return fmt.Errorf("%w: %w", zerr.ErrManifestRestoreAttempted, metaErr)
 		}
 	}
 
-	if !manageRepoMetaSuccessfully {
-		log.Info().Str("tag", reference).Str("repository", repo).Str("component", "metadb").
-			Msg("failed to delete image meta for tag in repo")
+	// The store delete has already gone through even when signature meta cleanup failed, so the
+	// index may be empty; always attempt idle release (a no-op while manifests or blobs remain).
+	releaseIdleRepository(repo, imgStore, metaDB, log)
 
-		if !isSignature {
-			return fmt.Errorf("%w: %w", zerr.ErrManifestRestoreAttempted, err)
-		}
+	return metaErr
+}
 
-		return err
+// releaseIdleRepository removes a repo left empty by a manifest delete: the storage layout goes
+// first, and only once it is gone the meta record follows, so the repo stops counting towards
+// maxRepos immediately without _catalog and the quota count diverging. A zero max blob age
+// reclaims the orphan blobs the deletes left behind. Failures are logged, not returned: the
+// manifest delete already succeeded, and ParseStorage corrects a stale record on next start.
+func releaseIdleRepository(repo string, imgStore storageTypes.ImageStore, metaDB mTypes.MetaDB, log log.Logger) {
+	var lockLatency time.Time
+
+	imgStore.Lock(&lockLatency)
+	defer imgStore.Unlock(&lockLatency)
+
+	removed, err := imgStore.RemoveIdleRepository(repo, 0)
+	if err != nil {
+		log.Error().Err(err).Str("repository", repo).Str("component", "metadb").
+			Msg("failed to remove repo emptied by manifest deletes")
+
+		return
 	}
 
-	return nil
+	if !removed {
+		return
+	}
+
+	if err := metaDB.DeleteRepoMeta(repo); err != nil {
+		// the layout is already gone; ParseStorage drops the stale record on next start
+		log.Error().Err(err).Str("repository", repo).Str("component", "metadb").
+			Msg("removed repo layout but failed to delete its meta record")
+
+		return
+	}
+
+	log.Debug().Str("repository", repo).Str("component", "metadb").
+		Msg("removed repo emptied by manifest deletes")
 }
 
 // OnGetManifest is called when a manifest is downloaded. It increments the download counter on that manifest.

@@ -58,7 +58,8 @@ type ImageStore interface { //nolint:interfacebloat
 	GetBlobPartial(repo string, digest godigest.Digest, mediaType string, from, to int64,
 	) (io.ReadCloser, int64, int64, error)
 	DeleteBlob(repo string, digest godigest.Digest) error
-	CleanupRepo(repo string, blobs []godigest.Digest, removeRepo bool) (int, error)
+	CleanupRepo(repo string, blobs []godigest.Digest) (int, error)
+	RemoveIdleRepository(repo string, maxBlobAge time.Duration) (bool, error)
 	GetIndexContent(repo string) ([]byte, error)
 	PutIndexContent(repo string, index ispec.Index) error
 	StatIndex(repo string) (bool, int64, time.Time, error)

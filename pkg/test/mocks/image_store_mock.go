@@ -59,7 +59,8 @@ type MockedImageStore struct {
 		duplicateBlobs []string) error
 	GetNextDigestWithBlobPathsFn  func(repos []string, lastDigests []godigest.Digest) (godigest.Digest, []string, error)
 	GetAllBlobsFn                 func(repo string) ([]godigest.Digest, error)
-	CleanupRepoFn                 func(repo string, blobs []godigest.Digest, removeRepo bool) (int, error)
+	CleanupRepoFn                 func(repo string, blobs []godigest.Digest) (int, error)
+	RemoveIdleRepositoryFn        func(repo string, maxBlobAge time.Duration) (bool, error)
 	PutIndexContentFn             func(repo string, index ispec.Index) error
 	PopulateStorageMetricsFn      func(interval time.Duration, sch *scheduler.Scheduler)
 	StatIndexFn                   func(repo string) (bool, int64, time.Time, error)
@@ -444,12 +445,20 @@ func (is MockedImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigest
 	return "", []string{}, nil
 }
 
-func (is MockedImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRepo bool) (int, error) {
+func (is MockedImageStore) CleanupRepo(repo string, blobs []godigest.Digest) (int, error) {
 	if is.CleanupRepoFn != nil {
-		return is.CleanupRepoFn(repo, blobs, removeRepo)
+		return is.CleanupRepoFn(repo, blobs)
 	}
 
 	return 0, nil
+}
+
+func (is MockedImageStore) RemoveIdleRepository(repo string, maxBlobAge time.Duration) (bool, error) {
+	if is.RemoveIdleRepositoryFn != nil {
+		return is.RemoveIdleRepositoryFn(repo, maxBlobAge)
+	}
+
+	return false, nil
 }
 
 func (is MockedImageStore) PutIndexContent(repo string, index ispec.Index) error {

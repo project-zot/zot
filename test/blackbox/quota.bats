@@ -122,3 +122,47 @@ function teardown_file() {
         docker://127.0.0.1:${zot_port}/repo1:v2
     [ "$status" -eq 0 ]
 }
+
+@test "deleting a repo at the limit frees a slot for a new repo" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+
+    # repo2 holds one tag; remove its manifest so the repo is empty.
+    digest=$(curl -s -o /dev/null -D - \
+        -H "Accept: application/vnd.oci.image.manifest.v1+json" \
+        "http://127.0.0.1:${zot_port}/v2/repo2/manifests/v1" \
+        | tr -d '\r' | grep -i '^docker-content-digest:' | awk '{print $2}')
+    [ -n "$digest" ]
+
+    run curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+        "http://127.0.0.1:${zot_port}/v2/repo2/manifests/${digest}"
+    [ "$status" -eq 0 ]
+    [ "${lines[-1]}" -eq 202 ]
+
+    # The layout goes with the quota slot, so the catalog must not list repo2 anymore.
+    run curl -s http://127.0.0.1:${zot_port}/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq 'any(.repositories[]; . == "repo2") | not') = "true" ]
+
+    # The freed slot lets a differently named repo be created.
+    run skopeo --insecure-policy copy --dest-tls-verify=false \
+        oci:${TEST_DATA_DIR}/golang:1.20 \
+        docker://127.0.0.1:${zot_port}/repo4:v1
+    [ "$status" -eq 0 ]
+
+    run curl -s http://127.0.0.1:${zot_port}/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.repositories | sort | join(",")') = '"repo1,repo4"' ]
+}
+
+# Guards the opposite direction to the test above: releasing a slot must not
+# release more than one, so the quota still applies once the freed slot is taken.
+@test "quota still applies after the freed slot is taken" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run curl -s -o /dev/null -w "%{http_code}" \
+        -X PUT \
+        -H "Content-Type: application/vnd.oci.image.manifest.v1+json" \
+        -d "${MINIMAL_MANIFEST}" \
+        "http://127.0.0.1:${zot_port}/v2/repo5/manifests/v1"
+    [ "$status" -eq 0 ]
+    [ "${lines[-1]}" -eq 429 ]
+}
