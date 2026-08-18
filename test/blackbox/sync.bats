@@ -309,9 +309,9 @@ function manifest_digest() {
 @test "sync image index periodically" {
     zot_port1=`cat ${BATS_FILE_TMPDIR}/zot.port1`
     zot_port3=`cat ${BATS_FILE_TMPDIR}/zot.port3`
-    # --multi-arch below pushes an image index (containing many images) instead
+    # --all below pushes an image index (containing many images) instead
     # of an image manifest (single image)
-    run skopeo --insecure-policy copy --format=oci --dest-tls-verify=false --multi-arch=all \
+    run skopeo --insecure-policy copy --format=oci --dest-tls-verify=false --all \
         docker://public.ecr.aws/docker/library/busybox:latest \
         docker://127.0.0.1:${zot_port3}/busybox:latest
     [ "$status" -eq 0 ]
@@ -336,9 +336,9 @@ function manifest_digest() {
 @test "sync image index on demand" {
     zot_port2=`cat ${BATS_FILE_TMPDIR}/zot.port2`
     zot_port3=`cat ${BATS_FILE_TMPDIR}/zot.port3`
-    # --multi-arch below pushes an image index (containing many images) instead
+    # --all below pushes an image index (containing many images) instead
     # of an image manifest (single image)
-    run skopeo --insecure-policy copy --format=oci --dest-tls-verify=false --multi-arch=all \
+    run skopeo --insecure-policy copy --format=oci --dest-tls-verify=false --all \
         docker://public.ecr.aws/docker/library/busybox:latest \
         docker://127.0.0.1:${zot_port3}/busybox:latest
     [ "$status" -eq 0 ]

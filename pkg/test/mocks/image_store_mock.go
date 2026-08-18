@@ -17,6 +17,7 @@ type MockedImageStore struct {
 	NameFn                func() string
 	DirExistsFn           func(d string) bool
 	RootDirFn             func() string
+	RepoExistsFn          func(repo string) bool
 	InitRepoFn            func(ctx context.Context, name string) error
 	ValidateRepoFn        func(name string) (bool, error)
 	GetRepositoriesFn     func() ([]string, error)
@@ -76,16 +77,28 @@ func (is MockedImageStore) StatIndex(repo string) (bool, int64, time.Time, error
 	return true, 0, time.Time{}, nil
 }
 
-func (is MockedImageStore) Lock(t *time.Time) {
+func (is MockedImageStore) WithRepoLock(repo string, wrappedFunc func() error) error {
+	return wrappedFunc()
 }
 
-func (is MockedImageStore) Unlock(t *time.Time) {
+func (is MockedImageStore) WithRepoReadLock(repo string, wrappedFunc func() error) error {
+	return wrappedFunc()
 }
 
-func (is MockedImageStore) RUnlock(t *time.Time) {
+func (is MockedImageStore) WithBlobstoreLock(wrappedFunc func() error) error {
+	return wrappedFunc()
 }
 
-func (is MockedImageStore) RLock(t *time.Time) {
+func (is MockedImageStore) WithBlobstoreReadLock(wrappedFunc func() error) error {
+	return wrappedFunc()
+}
+
+func (is MockedImageStore) WithBlobstoreAndRepoLock(repo string, wrappedFunc func() error) error {
+	return wrappedFunc()
+}
+
+func (is MockedImageStore) WithBlobstoreReadAndRepoLock(repo string, wrappedFunc func() error) error {
+	return wrappedFunc()
 }
 
 func (is MockedImageStore) Name() string {
@@ -110,6 +123,14 @@ func (is MockedImageStore) RootDir() string {
 	}
 
 	return ""
+}
+
+func (is MockedImageStore) RepoExists(repo string) bool {
+	if is.RepoExistsFn != nil {
+		return is.RepoExistsFn(repo)
+	}
+
+	return true
 }
 
 func (is MockedImageStore) InitRepo(ctx context.Context, name string) error {

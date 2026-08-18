@@ -51,8 +51,9 @@ func TestBoltDBCache(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(val, ShouldNotBeEmpty)
 
+		// DeleteBlob is idempotent: deleting an untracked digest or path is a no-op, not an error.
 		err = cacheDriver.DeleteBlob("bogusKey", "bogusValue")
-		So(err, ShouldEqual, errors.ErrCacheMiss)
+		So(err, ShouldBeNil)
 
 		err = cacheDriver.DeleteBlob("key", "bogusValue")
 		So(err, ShouldBeNil)
@@ -85,6 +86,7 @@ func TestBoltDBCache(t *testing.T) {
 		err = cacheDriver.PutBlob("key1", "duplicateBlobPath")
 		So(err, ShouldBeNil)
 
+		// deleting the origin while a duplicate exists promotes the duplicate to origin
 		err = cacheDriver.DeleteBlob("key1", "originalBlobPath")
 		So(err, ShouldBeNil)
 
@@ -92,6 +94,7 @@ func TestBoltDBCache(t *testing.T) {
 		So(val, ShouldEqual, "duplicateBlobPath")
 		So(err, ShouldBeNil)
 
+		// no more duplicates left; deleting the (promoted) origin removes the entry
 		err = cacheDriver.DeleteBlob("key1", "duplicateBlobPath")
 		So(err, ShouldBeNil)
 
@@ -138,24 +141,33 @@ func TestBoltDBCache(t *testing.T) {
 		err = cacheDriver.PutBlob("digest", "first")
 		So(err, ShouldBeNil)
 
+		blobs, err := cacheDriver.GetAllBlobs("digest")
+		So(err, ShouldBeNil)
+		So(blobs, ShouldResemble, []string{"first"})
+
 		err = cacheDriver.PutBlob("digest", "second")
 		So(err, ShouldBeNil)
 
 		err = cacheDriver.PutBlob("digest", "third")
 		So(err, ShouldBeNil)
 
-		blobs, err := cacheDriver.GetAllBlobs("digest")
+		blobs, err = cacheDriver.GetAllBlobs("digest")
 		So(err, ShouldBeNil)
 
+		// "first" is the original, "second" and "third" are duplicates
 		So(blobs, ShouldResemble, []string{"first", "second", "third"})
 
+		// deleting "first" (the origin) promotes a remaining duplicate to origin
 		err = cacheDriver.DeleteBlob("digest", "first")
 		So(err, ShouldBeNil)
 
 		blobs, err = cacheDriver.GetAllBlobs("digest")
 		So(err, ShouldBeNil)
 
-		So(blobs, ShouldResemble, []string{"second", "third"})
+		So(len(blobs), ShouldEqual, 2)
+		So(blobs, ShouldContain, "second")
+		So(blobs, ShouldContain, "third")
+		So(blobs, ShouldNotContain, "first")
 
 		err = cacheDriver.DeleteBlob("digest", "third")
 		So(err, ShouldBeNil)
@@ -163,7 +175,8 @@ func TestBoltDBCache(t *testing.T) {
 		blobs, err = cacheDriver.GetAllBlobs("digest")
 		So(err, ShouldBeNil)
 
-		So(blobs, ShouldResemble, []string{"second"})
+		So(len(blobs), ShouldEqual, 1)
+		So(blobs, ShouldContain, "second")
 	})
 }
 

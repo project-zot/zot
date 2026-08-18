@@ -1136,12 +1136,19 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 		ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
 		ok, blen, err = imgStore.CheckBlob(ctx, name, digest)
 	} else {
-		var lockLatency time.Time
+		// Check existence before locking: WithRepoReadLock creates a lock-map entry
+		// for any name, so locking first would let this grow unbounded.
+		if !imgStore.RepoExists(name) {
+			err = zerr.ErrRepoNotFound
+		} else {
+			err = imgStore.WithRepoReadLock(name, func() error {
+				var statErr error
 
-		imgStore.RLock(&lockLatency)
-		defer imgStore.RUnlock(&lockLatency)
+				ok, blen, _, statErr = imgStore.StatBlob(name, digest)
 
-		ok, blen, _, err = imgStore.StatBlob(name, digest)
+				return statErr
+			})
+		}
 	}
 
 	if err != nil {

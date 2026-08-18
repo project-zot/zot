@@ -47,6 +47,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage/s3"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 	"zotregistry.dev/zot/v2/pkg/test/azurite"
+	test "zotregistry.dev/zot/v2/pkg/test/common"
 	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 	tskip "zotregistry.dev/zot/v2/pkg/test/skip"
@@ -147,7 +148,7 @@ func createObjectsStore(options createObjectStoreOpts) (
 	bucket := "zot-storage-test"
 	endpoint := os.Getenv("S3MOCK_ENDPOINT")
 	storageDriverParams := map[string]any{
-		"rootDir":        options.rootDir,
+		"rootdirectory":  options.rootDir,
 		"name":           "s3",
 		"region":         "us-east-2",
 		"bucket":         bucket,
@@ -294,6 +295,86 @@ func TestStorageNew(t *testing.T) {
 
 		_, err := storage.New(conf, nil, nil, zlog.NewTestLogger(), nil)
 		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestStorageNewDisablesDedupeWhenHardlinkValidationFails(t *testing.T) {
+	rootDir := t.TempDir()
+
+	if err := os.Chmod(rootDir, 0o555); err != nil {
+		t.Fatalf("failed to make temp root read-only: %v", err)
+	}
+
+	t.Cleanup(func() {
+		_ = os.Chmod(rootDir, 0o755)
+	})
+
+	conf := config.New()
+	conf.Storage.RootDirectory = rootDir
+	conf.Storage.Dedupe = true
+
+	// storage.New flips conf.Storage.Dedupe to false in place when ValidateHardLink fails,
+	// so the checks below read the post-call value, not the "true" set above.
+	storeController, err := storage.New(conf, nil, nil, zlog.NewTestLogger(), nil)
+	if err != nil {
+		if conf.Storage.Dedupe {
+			t.Skip("environment did not trigger hardlink validation failure for read-only root")
+		}
+
+		t.Fatalf("storage.New() failed unexpectedly: %v", err)
+	}
+
+	if conf.Storage.Dedupe {
+		t.Skip("environment allows hardlinks/writes despite read-only permissions; cannot assert auto-disable path")
+	}
+
+	if storeController.DefaultStore == nil {
+		t.Fatal("expected default store to be created despite hardlink validation failure")
+	}
+
+	// NewImageStore only creates the global blobstore dir when dedupe is enabled, so its
+	// absence confirms the disabled flag propagated into store construction, not just conf.
+	globalBlobstoreDir := filepath.Join(rootDir, storageConstants.GlobalBlobsRepo)
+	if _, statErr := os.Stat(globalBlobstoreDir); !os.IsNotExist(statErr) {
+		t.Errorf("expected global blobstore dir to not be created when dedupe is auto-disabled, stat err: %v", statErr)
+	}
+}
+
+// TestStorageNewDefaultStoreCreateFails covers the nil-check guards around the image-store
+// constructors: imagestore.NewImageStore returns nil (not an error) when it can't create its
+// root dir, so New/getSubStore must translate that into ErrDefaultImgStoreCreate/
+// ErrSubpathImgStoreCreate instead of handing callers a nil ImageStore.
+func TestStorageNewDefaultStoreCreateFails(t *testing.T) {
+	Convey("New returns ErrDefaultImgStoreCreate when the root dir can't be created", t, func() {
+		// A regular file as an ancestor of RootDirectory makes MkdirAll fail with ENOTDIR,
+		// regardless of the test process' privileges (unlike permission-bit failures).
+		blocker := filepath.Join(t.TempDir(), "blocker")
+		So(os.WriteFile(blocker, []byte(""), 0o600), ShouldBeNil)
+
+		conf := config.New()
+		conf.Storage.RootDirectory = filepath.Join(blocker, "root")
+
+		_, err := storage.New(conf, nil, nil, zlog.NewTestLogger(), nil)
+		So(err, ShouldEqual, zerr.ErrDefaultImgStoreCreate)
+	})
+}
+
+func TestGetSubStoreCreateFails(t *testing.T) {
+	Convey("getSubStore returns ErrSubpathImgStoreCreate when a subpath root dir can't be created", t, func() {
+		blocker := filepath.Join(t.TempDir(), "blocker")
+		So(os.WriteFile(blocker, []byte(""), 0o600), ShouldBeNil)
+
+		conf := &config.Config{
+			Storage: config.GlobalStorageConfig{
+				StorageConfig: config.StorageConfig{RootDirectory: t.TempDir()},
+				SubPaths: map[string]config.StorageConfig{
+					"a/": {RootDirectory: filepath.Join(blocker, "sub")},
+				},
+			},
+		}
+
+		_, err := storage.New(conf, nil, nil, zlog.NewTestLogger(), nil)
+		So(errors.Is(err, zerr.ErrSubpathImgStoreCreate), ShouldBeTrue)
 	})
 }
 
@@ -888,9 +969,11 @@ func TestGetAllDedupeReposCandidates(t *testing.T) {
 
 				repos, err := imgStore.GetAllDedupeReposCandidates(randomBlobDigest)
 				So(err, ShouldBeNil)
+
+				// _blobstore is internal-only and must never be exposed as a mount candidate
 				slices.Sort(repoNames)
 				slices.Sort(repos)
-				So(repoNames, ShouldResemble, repos)
+				So(repos, ShouldResemble, repoNames)
 			})
 
 			Convey("A digest with no cached blob returns no candidates and no error", t, func(c C) {
@@ -1651,27 +1734,21 @@ func TestStorageAPIs(t *testing.T) {
 				})
 
 				Convey("Locks", func() {
-					// in parallel, a mix of read and write locks - mainly for coverage
+					// Concurrent mix of repo/blobstore read and write locks, exercised for coverage.
 					var wg sync.WaitGroup
 					for range 1000 {
-						wg.Add(2)
-
-						go func() {
-							var lockLatency time.Time
-
-							defer wg.Done()
-							imgStore.Lock(&lockLatency)
-							func() {}()
-							imgStore.Unlock(&lockLatency)
-						}()
-						go func() {
-							var lockLatency time.Time
-
-							defer wg.Done()
-							imgStore.RLock(&lockLatency)
-							func() {}()
-							imgStore.RUnlock(&lockLatency)
-						}()
+						wg.Go(func() {
+							_ = imgStore.WithRepoLock("replace", func() error { return nil })
+						})
+						wg.Go(func() {
+							_ = imgStore.WithRepoReadLock("replace", func() error { return nil })
+						})
+						wg.Go(func() {
+							_ = imgStore.WithBlobstoreLock(func() error { return nil })
+						})
+						wg.Go(func() {
+							_ = imgStore.WithBlobstoreReadLock(func() error { return nil })
+						})
 					}
 
 					wg.Wait()
@@ -2417,6 +2494,7 @@ func TestDeleteImageManifestDockerCompatReferenced(t *testing.T) {
 	})
 }
 
+//nolint:gocyclo // Integration-style matrix test intentionally covers multiple backends and repair paths.
 func TestReuploadCorruptedBlob(t *testing.T) {
 	for _, testcase := range testCases {
 		t.Run(testcase.testCaseName, func(t *testing.T) {
@@ -2480,6 +2558,74 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 				So(err, ShouldBeNil)
 			})
 
+			waitForCorruptionDetection := func(digest godigest.Digest, expectedSize int) (bool, int64, error) {
+				var (
+					ok       bool
+					size     int64
+					checkErr error
+				)
+
+				for range 100 {
+					ok, size, checkErr = imgStore.CheckBlob(context.Background(), repoName, digest)
+					if !ok && errors.Is(checkErr, zerr.ErrBlobNotFound) {
+						return ok, size, checkErr
+					}
+
+					if ok && size != int64(expectedSize) {
+						return false, size, zerr.ErrBlobNotFound
+					}
+
+					time.Sleep(100 * time.Millisecond)
+				}
+
+				return ok, size, checkErr
+			}
+
+			// DedupeBlob repairs a corrupted global blobstore copy synchronously (see the
+			// !SameFile branch), so reupload converges immediately; this bounded poll is just
+			// a margin for real network latency against cloud backends, not eventual consistency.
+			waitForExpectedBlobSize := func(digest godigest.Digest, expectedSize int) (bool, int64, error) {
+				var (
+					ok       bool
+					size     int64
+					checkErr error
+					statOK   bool
+					statSize int64
+					statErr  error
+				)
+
+				converged := test.WaitForStableCondition(20, 1, 100*time.Millisecond, func() bool {
+					ok, size, checkErr = imgStore.CheckBlob(context.Background(), repoName, digest)
+					statOK, statSize, _, statErr = imgStore.StatBlob(repoName, digest)
+
+					return checkErr == nil && statErr == nil && ok && statOK &&
+						size == int64(expectedSize) && statSize == int64(expectedSize)
+				})
+
+				if converged {
+					// Return the stat-confirmed size to avoid asserting on a stale CheckBlob read.
+					return statOK, statSize, nil
+				}
+
+				if checkErr != nil {
+					return ok, size, checkErr
+				}
+
+				if statErr != nil {
+					return statOK, statSize, statErr
+				}
+
+				if statOK {
+					return statOK, statSize,
+						fmt.Errorf("%w: blob %s size convergence failed: check=%d stat=%d expected=%d",
+							context.DeadlineExceeded, digest.String(), size, statSize, expectedSize)
+				}
+
+				return ok, size,
+					fmt.Errorf("%w: blob %s not present with expected size %d",
+						context.DeadlineExceeded, digest.String(), expectedSize)
+			}
+
 			Convey("Test reupload repair corrupted image", t, func() {
 				storeController := storage.StoreController{DefaultStore: imgStore}
 
@@ -2492,6 +2638,10 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 				blobDigest := godigest.FromBytes(blob)
 				blobSize := len(blob)
 				blobPath := imgStore.BlobPath(repoName, blobDigest)
+				if testcase.storageType != storageConstants.LocalStorageDriverName {
+					// For remote dedupe backends the content source of truth is _blobstore.
+					blobPath = imgStore.BlobPath(storageConstants.GlobalBlobsRepo, blobDigest)
+				}
 
 				ok, size, err := imgStore.CheckBlob(context.Background(), repoName, blobDigest)
 				So(ok, ShouldBeTrue)
@@ -2501,13 +2651,23 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 				_, err = driver.WriteFile(blobPath, []byte("corrupted"))
 				So(err, ShouldBeNil)
 
-				ok, size, err = imgStore.CheckBlob(context.Background(), repoName, blobDigest)
+				if testcase.storageType == storageConstants.LocalStorageDriverName {
+					ok, size, err = imgStore.CheckBlob(context.Background(), repoName, blobDigest)
+				} else {
+					ok, size, err = waitForCorruptionDetection(blobDigest, blobSize)
+				}
 				So(ok, ShouldBeFalse)
 				So(size, ShouldNotEqual, blobSize)
 				So(err, ShouldEqual, zerr.ErrBlobNotFound)
 
 				err = WriteImageToFileSystem(image, repoName, tag, storeController)
 				So(err, ShouldBeNil)
+
+				if testcase.storageType != storageConstants.LocalStorageDriverName {
+					ok, _, err = waitForExpectedBlobSize(blobDigest, blobSize)
+					So(ok, ShouldBeTrue)
+					So(err, ShouldBeNil)
+				}
 
 				ok, size, _, err = imgStore.StatBlob(repoName, blobDigest)
 				So(ok, ShouldBeTrue)
@@ -2534,6 +2694,10 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 				blobDigest := godigest.FromBytes(blob)
 				blobSize := len(blob)
 				blobPath := imgStore.BlobPath(repoName, blobDigest)
+				if testcase.storageType != storageConstants.LocalStorageDriverName {
+					// For remote dedupe backends the content source of truth is _blobstore.
+					blobPath = imgStore.BlobPath(storageConstants.GlobalBlobsRepo, blobDigest)
+				}
 
 				ok, size, err := imgStore.CheckBlob(context.Background(), repoName, blobDigest)
 				So(ok, ShouldBeTrue)
@@ -2543,13 +2707,23 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 				_, err = driver.WriteFile(blobPath, []byte("corrupted"))
 				So(err, ShouldBeNil)
 
-				ok, size, err = imgStore.CheckBlob(context.Background(), repoName, blobDigest)
+				if testcase.storageType == storageConstants.LocalStorageDriverName {
+					ok, size, err = imgStore.CheckBlob(context.Background(), repoName, blobDigest)
+				} else {
+					ok, size, err = waitForCorruptionDetection(blobDigest, blobSize)
+				}
 				So(ok, ShouldBeFalse)
 				So(size, ShouldNotEqual, blobSize)
 				So(err, ShouldEqual, zerr.ErrBlobNotFound)
 
 				err = WriteMultiArchImageToFileSystem(image, repoName, tag, storeController)
 				So(err, ShouldBeNil)
+
+				if testcase.storageType != storageConstants.LocalStorageDriverName {
+					ok, _, err = waitForExpectedBlobSize(blobDigest, blobSize)
+					So(ok, ShouldBeTrue)
+					So(err, ShouldBeNil)
+				}
 
 				ok, size, _, err = imgStore.StatBlob(repoName, blobDigest)
 				So(ok, ShouldBeTrue)
@@ -4668,14 +4842,13 @@ func TestPutIndexContent_atomicReplace(t *testing.T) {
 	})
 }
 
-// TestCheckBlobEmptyBlob covers the zero-size blob branch added to CheckBlob and
-// originalBlobInfo.  Three sub-cases are tested for the local (filesystem) driver:
+// TestCheckBlobEmptyBlob covers the zero-size blob branch in CheckBlob and
+// originalBlobInfo:
 //
 //  1. A genuine empty blob uploaded via the normal path returns (true, 0, nil).
 //  2. StatBlob on the same genuine empty blob also returns (true, 0, ...).
 //  3. A zero-size file planted at a blob path whose digest does NOT match the
-//     hash of empty content (simulating an S3-style deduplication placeholder
-//     without a backing cache entry) is reported as not found.
+//     hash of empty content is reported as not found.
 func TestCheckBlobEmptyBlob(t *testing.T) {
 	const repo = "empty-blob-test"
 

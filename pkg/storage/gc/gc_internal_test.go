@@ -2705,3 +2705,15 @@ func TestGCTaskGeneratorTimeWindow(t *testing.T) {
 		})
 	})
 }
+
+// The zero-value GarbageCollect (policyMgr left nil) is deliberate: if the _blobstore
+// guard didn't fire before reaching gc.policyMgr.HasTagRetention, this would panic on
+// the nil interface, proving the guard actually short-circuits.
+func TestRemoveTagsPerRetentionPolicySkipsGlobalBlobsRepo(t *testing.T) {
+	Convey("removeTagsPerRetentionPolicy no-ops for _blobstore", t, func() {
+		gc := GarbageCollect{}
+
+		err := gc.removeTagsPerRetentionPolicy(context.Background(), storageConstants.GlobalBlobsRepo, &ispec.Index{})
+		So(err, ShouldBeNil)
+	})
+}
