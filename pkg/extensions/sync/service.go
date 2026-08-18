@@ -49,6 +49,7 @@ type BaseService struct {
 	rc               *regclient.RegClient
 	hosts            []config.Host
 	tagsCache        *tagsCache
+	checkTracker     *manifestCheckTracker
 
 	clientLock sync.RWMutex
 	log        log.Logger
@@ -71,6 +72,10 @@ func New(
 	service.contentManager = NewContentManager(config.Content, log)
 	service.storeController = storeController
 	service.tagsCache = newTagsCache(defaultExpireMinutes)
+
+	if config.ManifestCheckInterval > 0 {
+		service.checkTracker = newManifestCheckTracker(config.ManifestCheckInterval)
+	}
 
 	var err error
 
@@ -283,6 +288,27 @@ func (service *BaseService) CanRetryOnError() bool {
 	return false
 }
 
+// ShouldCheckUpstream reports whether an upstream manifest check is due for repo:reference.
+// It is always true when manifestCheckInterval is not configured, which keeps the default
+// behaviour of validating every on-demand request against upstream.
+func (service *BaseService) ShouldCheckUpstream(repo, reference string) bool {
+	if service.checkTracker == nil {
+		return true
+	}
+
+	return service.checkTracker.ShouldCheckUpstream(repo, reference)
+}
+
+// markUpstreamChecked records a successful upstream check, so that subsequent on-demand
+// requests for the same reference can be served locally until the interval elapses.
+func (service *BaseService) markUpstreamChecked(repo, reference string) {
+	if service.checkTracker == nil {
+		return
+	}
+
+	service.checkTracker.MarkChecked(repo, reference)
+}
+
 func (service *BaseService) GetSyncTimeout() time.Duration {
 	if service.config.SyncTimeout == 0 {
 		return syncConstants.DefaultSyncTimeout
@@ -395,7 +421,13 @@ func (service *BaseService) SyncImage(ctx context.Context, repo, reference strin
 		service.log.Error().Err(err).Msg("failed to refresh credentials")
 	}
 
-	return service.syncImage(ctx, repo, remoteRepo, reference, nil, false)
+	if err := service.syncImage(ctx, repo, remoteRepo, reference, nil, false); err != nil {
+		return err
+	}
+
+	service.markUpstreamChecked(repo, reference)
+
+	return nil
 }
 
 func (service *BaseService) SyncReferrers(ctx context.Context, repo string,
@@ -544,6 +576,10 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 
 			return err
 		}
+
+		// periodic sync just validated this tag against upstream, so on-demand requests
+		// arriving right after do not need to check it again.
+		service.markUpstreamChecked(localRepo, tag)
 	}
 
 	service.log.Info().Str("repo", repo).Msg("sync: finished syncing repo")

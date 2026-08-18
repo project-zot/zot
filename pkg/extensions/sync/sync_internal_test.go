@@ -16,6 +16,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -2442,5 +2443,183 @@ func TestCredentialRefreshOnEverySyncEntryPoint(t *testing.T) {
 				So(err.Error(), ShouldNotEqual, refreshErr)
 			})
 		})
+	})
+}
+
+// mockCheckService is a minimal Service implementation for exercising
+// BaseOnDemand.ShouldCheckUpstreamManifest.
+type mockCheckService struct {
+	shouldCheckUpstreamFn func(repo, reference string) bool
+}
+
+func (s *mockCheckService) GetNextRepo(_ string) (string, error) { return "", nil }
+
+func (s *mockCheckService) SyncRepo(_ context.Context, _ string) error { return nil }
+
+func (s *mockCheckService) SyncImage(_ context.Context, _, _ string) error { return nil }
+
+func (s *mockCheckService) SyncReferrers(_ context.Context, _ string, _ string, _ []string) error {
+	return nil
+}
+
+func (s *mockCheckService) ResetCatalog() {}
+
+func (s *mockCheckService) CanRetryOnError() bool { return false }
+
+func (s *mockCheckService) GetSyncTimeout() time.Duration { return time.Minute }
+
+func (s *mockCheckService) ShouldCheckUpstream(repo, reference string) bool {
+	if s.shouldCheckUpstreamFn != nil {
+		return s.shouldCheckUpstreamFn(repo, reference)
+	}
+
+	return true
+}
+
+func TestManifestCheckTracker(t *testing.T) {
+	Convey("A reference that was never checked is due for an upstream check", t, func() {
+		tracker := newManifestCheckTracker(time.Hour)
+
+		So(tracker.ShouldCheckUpstream("repo", "latest"), ShouldBeTrue)
+	})
+
+	Convey("A reference checked within the interval is served locally", t, func() {
+		tracker := newManifestCheckTracker(time.Hour)
+		tracker.MarkChecked("repo", "latest")
+
+		So(tracker.ShouldCheckUpstream("repo", "latest"), ShouldBeFalse)
+
+		Convey("Only the marked reference is throttled", func() {
+			So(tracker.ShouldCheckUpstream("repo", "v1"), ShouldBeTrue)
+			So(tracker.ShouldCheckUpstream("other", "latest"), ShouldBeTrue)
+		})
+	})
+
+	Convey("A reference checked before the interval elapsed is due again and dropped", t, func() {
+		tracker := newManifestCheckTracker(time.Millisecond)
+		tracker.MarkChecked("repo", "latest")
+
+		time.Sleep(5 * time.Millisecond)
+
+		So(tracker.ShouldCheckUpstream("repo", "latest"), ShouldBeTrue)
+		So(tracker.store, ShouldNotContainKey, trackerKey("repo", "latest"))
+	})
+
+	Convey("Keys of different repo and reference pairs never collide", t, func() {
+		tracker := newManifestCheckTracker(time.Hour)
+		tracker.MarkChecked("a", "b/c")
+
+		So(tracker.ShouldCheckUpstream("a/b", "c"), ShouldBeTrue)
+	})
+
+	Convey("The sweep period is never shorter than the minimum", t, func() {
+		So(newManifestCheckTracker(time.Second).evictPeriod(), ShouldEqual, minEvictPeriod)
+		So(newManifestCheckTracker(24*time.Hour).evictPeriod(), ShouldEqual, 24*time.Hour)
+	})
+
+	Convey("MarkChecked sweeps expired entries once the sweep period has passed", t, func() {
+		tracker := newManifestCheckTracker(time.Millisecond)
+
+		for i := range 100 {
+			tracker.MarkChecked("repo", "tag"+strconv.Itoa(i))
+		}
+
+		So(len(tracker.store), ShouldEqual, 100)
+
+		time.Sleep(5 * time.Millisecond)
+
+		// force the sweep to be due, then mark one more reference
+		tracker.lastEvict = time.Now().Add(-2 * minEvictPeriod)
+		tracker.MarkChecked("repo", "fresh")
+
+		So(len(tracker.store), ShouldEqual, 1)
+		So(tracker.store, ShouldContainKey, trackerKey("repo", "fresh"))
+	})
+
+	Convey("Concurrent access is safe", t, func() {
+		tracker := newManifestCheckTracker(time.Hour)
+
+		var waitGroup sync.WaitGroup
+
+		for i := range 50 {
+			waitGroup.Add(2)
+
+			go func(idx int) {
+				defer waitGroup.Done()
+				tracker.MarkChecked("repo", "tag"+strconv.Itoa(idx))
+			}(i)
+
+			go func(idx int) {
+				defer waitGroup.Done()
+				tracker.ShouldCheckUpstream("repo", "tag"+strconv.Itoa(idx))
+			}(i)
+		}
+
+		waitGroup.Wait()
+
+		So(len(tracker.store), ShouldEqual, 50)
+	})
+}
+
+func TestBaseServiceShouldCheckUpstream(t *testing.T) {
+	Convey("Without manifestCheckInterval every request checks upstream", t, func() {
+		service := &BaseService{config: syncconf.RegistryConfig{}}
+
+		So(service.checkTracker, ShouldBeNil)
+		So(service.ShouldCheckUpstream("repo", "latest"), ShouldBeTrue)
+
+		Convey("Marking a check is a no-op", func() {
+			service.markUpstreamChecked("repo", "latest")
+			So(service.ShouldCheckUpstream("repo", "latest"), ShouldBeTrue)
+		})
+	})
+
+	Convey("With manifestCheckInterval a marked reference is throttled", t, func() {
+		service := &BaseService{checkTracker: newManifestCheckTracker(time.Hour)}
+
+		So(service.ShouldCheckUpstream("repo", "latest"), ShouldBeTrue)
+
+		service.markUpstreamChecked("repo", "latest")
+		So(service.ShouldCheckUpstream("repo", "latest"), ShouldBeFalse)
+	})
+
+	Convey("New wires the tracker only when the interval is configured", t, func() {
+		withInterval, err := New(syncconf.RegistryConfig{
+			URLs:                  []string{"http://localhost:9999"},
+			ManifestCheckInterval: time.Hour,
+		}, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(withInterval.checkTracker, ShouldNotBeNil)
+
+		withoutInterval, err := New(syncconf.RegistryConfig{
+			URLs: []string{"http://localhost:9999"},
+		}, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(withoutInterval.checkTracker, ShouldBeNil)
+	})
+}
+
+func TestOnDemandShouldCheckUpstreamManifest(t *testing.T) {
+	Convey("With no services configured the check is due", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+
+		So(onDemand.ShouldCheckUpstreamManifest("repo", "latest"), ShouldBeTrue)
+	})
+
+	Convey("A single service reporting a recent check is enough to serve locally", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+		onDemand.Add(&mockCheckService{})
+		onDemand.Add(&mockCheckService{
+			shouldCheckUpstreamFn: func(_, _ string) bool { return false },
+		})
+
+		So(onDemand.ShouldCheckUpstreamManifest("repo", "latest"), ShouldBeFalse)
+	})
+
+	Convey("All services reporting a due check means upstream is contacted", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+		onDemand.Add(&mockCheckService{})
+
+		So(onDemand.ShouldCheckUpstreamManifest("repo", "latest"), ShouldBeTrue)
 	})
 }

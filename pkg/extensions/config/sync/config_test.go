@@ -2,6 +2,7 @@ package sync_test
 
 import (
 	"testing"
+	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -26,6 +27,20 @@ func TestRegistryConfig_ShouldSyncLegacyCosignTags(t *testing.T) {
 			v := false
 			cfg := syncconf.RegistryConfig{SyncLegacyCosignTags: &v}
 			So(cfg.ShouldSyncLegacyCosignTags(), ShouldBeFalse)
+		})
+	})
+}
+
+func TestRegistryConfig_ManifestCheckInterval(t *testing.T) {
+	Convey("ManifestCheckInterval", t, func() {
+		Convey("defaults to zero, which keeps checking upstream on every request", func() {
+			cfg := syncconf.RegistryConfig{}
+			So(cfg.ManifestCheckInterval, ShouldEqual, time.Duration(0))
+		})
+
+		Convey("holds the configured duration", func() {
+			cfg := syncconf.RegistryConfig{ManifestCheckInterval: 10 * time.Minute}
+			So(cfg.ManifestCheckInterval, ShouldEqual, 10*time.Minute)
 		})
 	})
 }

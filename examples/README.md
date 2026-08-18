@@ -1393,6 +1393,7 @@ Configure each registry sync:
 				"urls": ["https://registry1:5000"],
 				"onDemand": false,                  # pull any image which the local registry doesn't have
 				"pollInterval": "6h",               # polling interval, if not set then periodically polling will not run
+				"manifestCheckInterval": "1h",      # minimum interval between upstream manifest checks for the same repo:tag when serving on-demand requests; when 0 or unset every request checks upstream. Requires onDemand.
 				"tlsVerify": true,                  # whether or not to verify tls (default is true)
 				"certDir": "/home/user/certs",      # use certificates at certDir path similar to Docker's /etc/docker/certs.d., if not specified then use the default certs dir,
 				"maxRetries": 5,                    # maxRetries in case of temporary errors (default: no retries)
@@ -1451,6 +1452,30 @@ Configure each registry sync:
 		}
 ```
 Prefixes can be strings that exactly match repositories or they can be [glob](https://en.wikipedia.org/wiki/Glob_(programming)) patterns.
+
+### Sync's manifestCheckInterval option
+
+With `onDemand` enabled, every request for a tag validates the manifest against the upstream
+registry, because a tag is mutable and may have been repushed. When pulls are frequent and
+upstream rarely changes, `manifestCheckInterval` throttles that validation:
+
+```
+			"registries": [{
+				"urls": ["https://registry-1.docker.io"],
+				"onDemand": true,
+				"manifestCheckInterval": "10m"
+			}]
+```
+
+While the interval has not elapsed since the last successful upstream check, a locally present
+manifest is served without contacting upstream, which makes already synced images effectively
+local. Notes:
+
+ - the default is 0, which keeps checking upstream on every request
+ - it requires `onDemand`, since it only affects on-demand requests, never periodic sync
+ - requests by digest are unaffected, a locally present digest is already served without contacting upstream
+ - a local miss, for instance after garbage collection, always falls back to a normal sync
+ - the last check time is kept in memory, so the first request after a restart checks upstream again
 
 ### Sync's certDir option
 
