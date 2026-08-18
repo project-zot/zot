@@ -2010,6 +2010,74 @@ storage:
 		So(err, ShouldNotBeNil)
 	})
 
+	Convey("Test verify with non-positive sync reqConcurrent", t, func(c C) {
+		content := `{"storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+							"reqConcurrent": 0}]}}}`
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+		os.Args = []string{"cli_test", "verify", tmpfile}
+		err := cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Test verify with non-positive sync reqPerSec", t, func(c C) {
+		content := `{"storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+							"reqPerSec": 0}]}}}`
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+		os.Args = []string{"cli_test", "verify", tmpfile}
+		err := cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Test verify rejects non-finite sync reqPerSec", t, func(c C) {
+		// JSON can't express NaN/Inf, so use YAML where `.nan`/`.inf` are valid floats that
+		// would otherwise slip past a naive `<= 0` check.
+		for _, badValue := range []string{".nan", ".inf", "-.inf"} {
+			content := `
+storage:
+  rootDirectory: /tmp/zot
+http:
+  address: 127.0.0.1
+  port: "8080"
+  realm: zot
+  auth:
+    htpasswd:
+      path: test/data/htpasswd
+    failDelay: 1
+extensions:
+  sync:
+    registries:
+      - urls:
+          - localhost:9999
+        reqPerSec: ` + badValue
+			tmpfile := MakeTempFileWithContent(t, "zot-test.yaml", content)
+
+			os.Args = []string{"cli_test", "verify", tmpfile}
+			err := cli.NewServerRootCmd().Execute()
+			So(err, ShouldNotBeNil)
+		}
+	})
+
+	Convey("Test verify with valid sync reqConcurrent and reqPerSec", t, func(c C) {
+		content := `{"storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+							"reqConcurrent": 30, "reqPerSec": 100}]}}}`
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+		os.Args = []string{"cli_test", "verify", tmpfile}
+		err := cli.NewServerRootCmd().Execute()
+		So(err, ShouldBeNil)
+	})
+
 	Convey("Test verify with good sync content config", t, func(c C) {
 		content := `{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",

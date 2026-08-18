@@ -76,7 +76,9 @@
 					"maxRetries": 5,
 					"retryDelay": "1s",
 					"maxRetryDelay": "30s",
-					"syncTimeout": "10m"
+					"syncTimeout": "10m",
+					"reqConcurrent": 30,
+					"reqPerSec": 100
 				},
 				{
 					"urls": [

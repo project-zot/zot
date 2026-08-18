@@ -2062,6 +2062,60 @@ func TestNewClientTimeoutBehavior(t *testing.T) {
 	})
 }
 
+// TestNewClientReqConcurrentReqPerSec verifies that reqConcurrent/reqPerSec from the sync config
+// override regclient's per-host defaults, and that configured mirrors inherit the same limits.
+func TestNewClientReqConcurrentReqPerSec(t *testing.T) {
+	Convey("Test newClient reqConcurrent/reqPerSec overrides", t, func() {
+		logger := log.NewTestLogger()
+		regclientDefaults := regconfig.HostNew()
+
+		Convey("Unset keeps regclient defaults", func() {
+			opts := syncconf.RegistryConfig{URLs: []string{"http://localhost:9000"}}
+
+			_, hosts, err := newClient(opts, syncconf.CredentialsFile{}, logger)
+			So(err, ShouldBeNil)
+			So(hosts, ShouldNotBeEmpty)
+			So(hosts[0].ReqConcurrent, ShouldEqual, regclientDefaults.ReqConcurrent)
+			So(hosts[0].ReqPerSec, ShouldEqual, regclientDefaults.ReqPerSec)
+		})
+
+		Convey("Set values override the defaults on the main host", func() {
+			reqConcurrent := 42
+			reqPerSec := 100.0
+			opts := syncconf.RegistryConfig{
+				URLs:          []string{"http://localhost:9000"},
+				ReqConcurrent: &reqConcurrent,
+				ReqPerSec:     &reqPerSec,
+			}
+
+			_, hosts, err := newClient(opts, syncconf.CredentialsFile{}, logger)
+			So(err, ShouldBeNil)
+			So(hosts, ShouldNotBeEmpty)
+			So(hosts[0].ReqConcurrent, ShouldEqual, int64(reqConcurrent))
+			So(hosts[0].ReqPerSec, ShouldEqual, reqPerSec)
+		})
+
+		Convey("Mirrors inherit the configured limits", func() {
+			reqConcurrent := 20
+			reqPerSec := 50.0
+			opts := syncconf.RegistryConfig{
+				// first URL is the main host, the rest are mirrors
+				URLs:          []string{"http://localhost:9000", "http://localhost:9001"},
+				ReqConcurrent: &reqConcurrent,
+				ReqPerSec:     &reqPerSec,
+			}
+
+			_, hosts, err := newClient(opts, syncconf.CredentialsFile{}, logger)
+			So(err, ShouldBeNil)
+			So(len(hosts), ShouldEqual, 2)
+			for _, host := range hosts {
+				So(host.ReqConcurrent, ShouldEqual, int64(reqConcurrent))
+				So(host.ReqPerSec, ShouldEqual, reqPerSec)
+			}
+		})
+	})
+}
+
 func TestHTTPRetryDelayBounds(t *testing.T) {
 	Convey("httpRetryDelayBounds maps sync config to regclient delay args", t, func() {
 		retryDelay := 1 * time.Second
