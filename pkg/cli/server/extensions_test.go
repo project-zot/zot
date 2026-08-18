@@ -317,11 +317,7 @@ func TestServeExtensions(t *testing.T) {
 	defer func() { os.Args = oldArgs }()
 
 	Convey("config file with no extensions", t, func(c C) {
-		logPath := MakeTempFilePath(t, "zot-log.txt")
-
-		tmpFile := t.TempDir()
-
-		content := fmt.Sprintf(`{
+		content := `{
 			"storage": {
 				"rootDirectory": "%s"
 			},
@@ -333,21 +329,10 @@ func TestServeExtensions(t *testing.T) {
 				"level": "debug",
 				"output": "%s"
 			}
-		}`, tmpFile, logPath)
+		}`
 
-		cfgfile := MakeTempFileWithContent(t, "zot-test.json", content)
-
-		os.Args = []string{"cli_test", "serve", cfgfile}
-
-		go func() {
-			Convey("run", t, func() {
-				err := cli.NewServerRootCmd().Execute()
-				So(err, ShouldBeNil)
-			})
-		}()
-
-		baseURL := WaitForKernelChosenPortBaseURL(logPath)
-		WaitTillServerReady(baseURL)
+		logPath, _, err := runCLIWithConfig(t, content)
+		So(err, ShouldBeNil)
 
 		data, err := os.ReadFile(logPath)
 
@@ -356,11 +341,7 @@ func TestServeExtensions(t *testing.T) {
 	})
 
 	Convey("config file with empty extensions", t, func(c C) {
-		logPath := MakeTempFilePath(t, "zot-log.txt")
-
-		tmpFile := t.TempDir()
-
-		content := fmt.Sprintf(`{
+		content := `{
 			"storage": {
 				"rootDirectory": "%s"
 			},
@@ -374,21 +355,11 @@ func TestServeExtensions(t *testing.T) {
 			},
 			"extensions": {
 			}
-		}`, tmpFile, logPath)
+		}`
 
-		cfgfile := MakeTempFileWithContent(t, "zot-test.json", content)
+		logPath, _, err := runCLIWithConfig(t, content)
+		So(err, ShouldBeNil)
 
-		os.Args = []string{"cli_test", "serve", cfgfile}
-
-		go func() {
-			Convey("run", t, func() {
-				err := cli.NewServerRootCmd().Execute()
-				So(err, ShouldBeNil)
-			})
-		}()
-
-		baseURL := WaitForKernelChosenPortBaseURL(logPath)
-		WaitTillServerReady(baseURL)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring,
@@ -396,24 +367,13 @@ func TestServeExtensions(t *testing.T) {
 	})
 }
 
-func testWithMetricsEnabled(t *testing.T, rootDir string, cfgContentFormat string) {
+func testWithMetricsEnabled(t *testing.T, cfgContentFormat string) {
 	t.Helper()
-	logPath := MakeTempFilePath(t, "zot-log.txt")
 
-	content := fmt.Sprintf(cfgContentFormat, rootDir, logPath)
-	cfgfile := MakeTempFileWithContent(t, "zot-test.json", content)
-
-	os.Args = []string{"cli_test", "serve", cfgfile}
-
-	go func() {
-		Convey("run", t, func() {
-			err := cli.NewServerRootCmd().Execute()
-			So(err, ShouldBeNil)
-		})
-	}()
+	logPath, _, err := runCLIWithConfig(t, cfgContentFormat)
+	So(err, ShouldBeNil)
 
 	baseURL := WaitForKernelChosenPortBaseURL(logPath)
-	WaitTillServerReady(baseURL)
 
 	resp, err := resty.R().Get(baseURL + "/metrics")
 	So(err, ShouldBeNil)
@@ -435,8 +395,6 @@ func TestServeMetricsExtension(t *testing.T) {
 	defer func() { os.Args = oldArgs }()
 
 	Convey("no explicit enable", t, func(c C) {
-		tmpFile := t.TempDir()
-
 		content := `{
 			"storage": {
 				"rootDirectory": "%s"
@@ -454,12 +412,10 @@ func TestServeMetricsExtension(t *testing.T) {
 				}
 			}
 		}`
-		testWithMetricsEnabled(t, tmpFile, content)
+		testWithMetricsEnabled(t, content)
 	})
 
 	Convey("no explicit enable but with prometheus parameter", t, func(c C) {
-		tmpFile := t.TempDir()
-
 		content := `{
 			"storage": {
 				"rootDirectory": "%s"
@@ -480,12 +436,10 @@ func TestServeMetricsExtension(t *testing.T) {
 				}
 			}
 		}`
-		testWithMetricsEnabled(t, tmpFile, content)
+		testWithMetricsEnabled(t, content)
 	})
 
 	Convey("with explicit enable, but without prometheus parameter", t, func(c C) {
-		tmpFile := t.TempDir()
-
 		content := `{
 			"storage": {
 				"rootDirectory": "%s"
@@ -504,15 +458,11 @@ func TestServeMetricsExtension(t *testing.T) {
 				}
 			}
 		}`
-		testWithMetricsEnabled(t, tmpFile, content)
+		testWithMetricsEnabled(t, content)
 	})
 
 	Convey("with explicit disable", t, func(c C) {
-		logPath := MakeTempFilePath(t, "zot-log.txt")
-
-		tmpFile := t.TempDir()
-
-		content := fmt.Sprintf(`{
+		content := `{
 					"storage": {
 						"rootDirectory": "%s"
 					},
@@ -529,21 +479,12 @@ func TestServeMetricsExtension(t *testing.T) {
 							"enable": false
 						}
 					}
-				}`, tmpFile, logPath)
+				}`
 
-		cfgfile := MakeTempFileWithContent(t, "zot-test.json", content)
-
-		os.Args = []string{"cli_test", "serve", cfgfile}
-
-		go func() {
-			Convey("run", t, func() {
-				err := cli.NewServerRootCmd().Execute()
-				So(err, ShouldBeNil)
-			})
-		}()
+		logPath, _, err := runCLIWithConfig(t, content)
+		So(err, ShouldBeNil)
 
 		baseURL := WaitForKernelChosenPortBaseURL(logPath)
-		WaitTillServerReady(baseURL)
 
 		resp, err := resty.R().Get(baseURL + "/metrics")
 		So(err, ShouldBeNil)
@@ -1736,8 +1677,8 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 
 		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
 
-		os.Args = []string{"cli_test", "serve", tmpfile}
-		err := cli.NewServerRootCmd().Execute()
+		conf := config.New()
+		err := cli.LoadConfiguration(conf, tmpfile)
 		So(err, ShouldNotBeNil)
 
 		data, err := os.ReadFile(logPath)
@@ -1800,8 +1741,8 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 
 		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
 
-		os.Args = []string{"cli_test", "serve", tmpfile}
-		err := cli.NewServerRootCmd().Execute()
+		conf := config.New()
+		err := cli.LoadConfiguration(conf, tmpfile)
 		So(err, ShouldNotBeNil)
 
 		data, err := os.ReadFile(logPath)

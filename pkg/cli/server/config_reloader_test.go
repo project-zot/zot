@@ -11,16 +11,11 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	cli "zotregistry.dev/zot/v2/pkg/cli/server"
 	test "zotregistry.dev/zot/v2/pkg/test/common"
 )
 
 func TestConfigReloader(t *testing.T) {
-	oldArgs := os.Args
-
-	defer func() { os.Args = oldArgs }()
-
-	Convey("reload access control config", t, func(conveyCtx C) {
+	Convey("reload access control config", t, func() {
 		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		username := "alice"
@@ -72,15 +67,7 @@ func TestConfigReloader(t *testing.T) {
 		_, err := cfgfile.WriteString(content)
 		So(err, ShouldBeNil)
 
-		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
-
-		go func() {
-			err = cli.NewServerRootCmd().Execute()
-			conveyCtx.So(err, ShouldBeNil)
-		}()
-
-		baseURL := test.WaitForKernelChosenPortBaseURL(logPath)
-		test.WaitTillServerReady(baseURL)
+		So(startServerFromConfigFile(t, cfgfile.Name()), ShouldBeNil)
 
 		// verify initial startup authentication logs
 		initialData, err := os.ReadFile(logPath)
@@ -171,7 +158,7 @@ func TestConfigReloader(t *testing.T) {
 		})
 	})
 
-	Convey("reload gc config", t, func(ctx C) {
+	Convey("reload gc config", t, func() {
 		logFile := test.MakeTempFile(t, "zot-log.txt")
 		defer logFile.Close()
 
@@ -205,15 +192,7 @@ func TestConfigReloader(t *testing.T) {
 		_, err := cfgfile.WriteString(content)
 		So(err, ShouldBeNil)
 
-		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
-
-		go func() {
-			err = cli.NewServerRootCmd().Execute()
-			ctx.So(err, ShouldBeNil)
-		}()
-
-		baseURL := test.WaitForKernelChosenPortBaseURL(logFile.Name())
-		test.WaitTillServerReady(baseURL)
+		So(startServerFromConfigFile(t, cfgfile.Name()), ShouldBeNil)
 
 		// verify initial startup authentication logs (no auth configured)
 		initialData, err := os.ReadFile(logFile.Name())
@@ -296,7 +275,7 @@ func TestConfigReloader(t *testing.T) {
 		})
 	})
 
-	Convey("reload sync config", t, func(ctx C) {
+	Convey("reload sync config", t, func() {
 		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		content := fmt.Sprintf(`{
@@ -341,15 +320,7 @@ func TestConfigReloader(t *testing.T) {
 		_, err := cfgfile.WriteString(content)
 		So(err, ShouldBeNil)
 
-		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
-
-		go func() {
-			err = cli.NewServerRootCmd().Execute()
-			ctx.So(err, ShouldBeNil)
-		}()
-
-		baseURL := test.WaitForKernelChosenPortBaseURL(logPath)
-		test.WaitTillServerReady(baseURL)
+		So(startServerFromConfigFile(t, cfgfile.Name()), ShouldBeNil)
 
 		// verify initial startup authentication logs (no auth configured)
 		initialData, err := os.ReadFile(logPath)
@@ -444,7 +415,7 @@ func TestConfigReloader(t *testing.T) {
 		})
 	})
 
-	Convey("reload scrub and CVE config", t, func(ctx C) {
+	Convey("reload scrub and CVE config", t, func() {
 		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		content := fmt.Sprintf(`{
@@ -482,15 +453,7 @@ func TestConfigReloader(t *testing.T) {
 		_, err := cfgfile.WriteString(content)
 		So(err, ShouldBeNil)
 
-		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
-
-		go func() {
-			err = cli.NewServerRootCmd().Execute()
-			ctx.So(err, ShouldBeNil)
-		}()
-
-		baseURL := test.WaitForKernelChosenPortBaseURL(logPath)
-		test.WaitTillServerReady(baseURL)
+		So(startServerFromConfigFile(t, cfgfile.Name()), ShouldBeNil)
 
 		// verify initial startup authentication logs (no auth configured)
 		initialData, err := os.ReadFile(logPath)
@@ -583,7 +546,7 @@ func TestConfigReloader(t *testing.T) {
 		So(found, ShouldBeTrue)
 	})
 
-	Convey("reload bad config", t, func(conveyCtx C) {
+	Convey("reload bad config", t, func() {
 		logPath := test.MakeTempFilePath(t, "zot-log.txt")
 
 		content := fmt.Sprintf(`{
@@ -628,15 +591,7 @@ func TestConfigReloader(t *testing.T) {
 		_, err := cfgfile.WriteString(content)
 		So(err, ShouldBeNil)
 
-		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
-
-		go func() {
-			err = cli.NewServerRootCmd().Execute()
-			conveyCtx.So(err, ShouldBeNil)
-		}()
-
-		baseURL := test.WaitForKernelChosenPortBaseURL(logPath)
-		test.WaitTillServerReady(baseURL)
+		So(startServerFromConfigFile(t, cfgfile.Name()), ShouldBeNil)
 
 		content = "[]"
 
