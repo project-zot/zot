@@ -1445,7 +1445,8 @@ Configure each registry sync:
 				"tlsVerify": true,
 				"maxRetries": 3,                      
 				"retryDelay": "15m",                # initial HTTP retry delay; fixed 15m interval unless maxRetryDelay is set higher
-				"maxRetryDelay": "15m"              # optional; omit or set equal to retryDelay for fixed interval (as here)
+				"maxRetryDelay": "15m",             # optional; omit or set equal to retryDelay for fixed interval (as here)
+				"stream": true                      # stream blobs to clients while fetching from upstream on-demand (requires onDemand: true)
 			}
 		]
 		}

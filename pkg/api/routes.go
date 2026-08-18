@@ -1155,6 +1155,10 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrBlobNotFound) {
+			if rh.handleBlobStatUpstream(response, request, name, digest, imgStore) {
+				return
+			}
+
 			details["digest"] = digest.String()
 			e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
@@ -1167,6 +1171,10 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 	}
 
 	if !ok {
+		if rh.handleBlobStatUpstream(response, request, name, digest, imgStore) {
+			return
+		}
+
 		e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(map[string]string{"digest": digest.String()})
 		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
@@ -1520,6 +1528,13 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrBlobNotFound) {
+			if !rangeHeaderPresent && rh.c.SyncOnDemand != nil && rh.c.SyncOnDemand.IsStreamEnabled() {
+				mediaType := resolveBlobResponseMediaType(imgStore, name, digest, rh.c.Log)
+				if rh.handleBlobStream(response, request, name, digest, mediaType, imgStore) {
+					return
+				}
+			}
+
 			details["digest"] = digest.String()
 			e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
