@@ -139,6 +139,10 @@ func TestEventsSinkFailure(t *testing.T) {
 			}
 			So(logged(), ShouldBeTrue)
 			So(buf.String(), ShouldContainSubstring, "0 out of 1 sinks")
+			// zero success must not claim "successfully", and must be logged at Warn, not Info
+			So(buf.String(), ShouldNotContainSubstring, "published successfully")
+			So(buf.String(), ShouldContainSubstring, "event publish failed")
+			So(buf.String(), ShouldContainSubstring, `"level":"warn"`)
 		})
 
 		Convey("remaining sinks still receive the event and count reflects partial success", func() {
@@ -157,6 +161,9 @@ func TestEventsSinkFailure(t *testing.T) {
 			}
 			So(logged(), ShouldBeTrue)
 			So(buf.String(), ShouldContainSubstring, "1 out of 2 sinks")
+			// partial success must not claim "successfully" either, only full success does
+			So(buf.String(), ShouldNotContainSubstring, "published successfully")
+			So(buf.String(), ShouldContainSubstring, "event publish incomplete")
 		})
 
 		Convey("logs 1 out of 1 when all sinks accept the event", func() {
@@ -175,6 +182,9 @@ func TestEventsSinkFailure(t *testing.T) {
 			}
 			So(logged(), ShouldBeTrue)
 			So(buf.String(), ShouldContainSubstring, "1 out of 1 sinks")
+			So(buf.String(), ShouldNotContainSubstring, "publish incomplete")
+			So(buf.String(), ShouldNotContainSubstring, "publish failed")
+			So(buf.String(), ShouldContainSubstring, `"level":"info"`)
 		})
 	})
 }
