@@ -591,6 +591,8 @@ func (is *ImageStore) GetRepositories() ([]string, error) {
 			return nil, walkErr
 		}
 
+		is.log.Debug().Msg("empty rootDir")
+
 		return stores, nil
 	}
 
