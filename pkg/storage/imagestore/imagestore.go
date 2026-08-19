@@ -51,10 +51,12 @@ type ImageStore struct {
 	metrics     monitoring.MetricServer
 	events      events.Recorder
 	cache       storageTypes.Cache
-	dedupe      bool
-	linter      common.Lint
-	commit      bool
-	compat      []compat.MediaCompatibility
+	// repoLock is always set; drivers that cannot lock get a no-op.
+	repoLock storageTypes.RepoLocker
+	dedupe   bool
+	linter   common.Lint
+	commit   bool
+	compat   []compat.MediaCompatibility
 	// dedupeRebuildDone is set once RunDedupeBlobs has walked all blobs, i.e. the
 	// cache accounts for every pre-existing blob; see deleteBlob.
 	dedupeRebuildDone atomic.Bool
@@ -95,6 +97,7 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 		linter:      linter,
 		commit:      commit,
 		cache:       cacheDriver,
+		repoLock:    repoLockerFor(cacheDriver),
 		compat:      compat,
 		events:      recorder,
 	}
@@ -104,6 +107,33 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 
 	return imgStore
 }
+
+// repoLockerFor returns the driver's cross-process lock, or a no-op for
+// drivers without one, which only a single instance can use anyway.
+func repoLockerFor(cacheDriver storageTypes.Cache) storageTypes.RepoLocker {
+	if locker, ok := cacheDriver.(storageTypes.RepoLocker); ok && locker != nil {
+		return locker
+	}
+
+	return noopRepoLocker{}
+}
+
+// LockRepo takes the cross-process lock for one repository.
+func (is *ImageStore) LockRepo(ctx context.Context, repo string) (storageTypes.RepoLock, error) {
+	return is.repoLock.LockRepo(ctx, repo)
+}
+
+type noopRepoLocker struct{}
+
+func (noopRepoLocker) LockRepo(context.Context, string) (storageTypes.RepoLock, error) {
+	return noopRepoLock{}, nil
+}
+
+type noopRepoLock struct{}
+
+func (noopRepoLock) Release() {}
+
+func (noopRepoLock) StillHeld(context.Context) bool { return true }
 
 // RLock read-lock.
 func (is *ImageStore) RLock(lockStart *time.Time) {
@@ -155,7 +185,17 @@ func (is *ImageStore) validateRepoName(name string) error {
 	return nil
 }
 
-func (is *ImageStore) initRepo(ctx context.Context, name string) error {
+func (is *ImageStore) initRepo(ctx context.Context, name string, repoLock storageTypes.RepoLock) error {
+	if err := is.initRepoDirs(name); err != nil {
+		return err
+	}
+
+	return is.initRepoIndex(ctx, name, repoLock)
+}
+
+// initRepoDirs creates a repository's directories and layout marker, stopping
+// short of the index, which only a caller holding the repo lock may write.
+func (is *ImageStore) initRepoDirs(name string) error {
 	repoDir := path.Join(is.rootDir, name)
 
 	if err := is.validateRepoName(name); err != nil {
@@ -196,6 +236,14 @@ func (is *ImageStore) initRepo(ctx context.Context, name string) error {
 		}
 	}
 
+	return nil
+}
+
+// initRepoIndex creates a repository's index if it has none. The caller must
+// hold the repo lock, or this can erase an index another process just wrote.
+func (is *ImageStore) initRepoIndex(ctx context.Context, name string, repoLock storageTypes.RepoLock) error {
+	repoDir := path.Join(is.rootDir, name)
+
 	// "index.json" file - create if it doesn't exist
 	indexPath := path.Join(repoDir, ispec.ImageIndexFile)
 	if _, err := is.storeDriver.Stat(indexPath); err != nil {
@@ -209,8 +257,13 @@ func (is *ImageStore) initRepo(ctx context.Context, name string) error {
 			return err
 		}
 
+		// fence: revalidate the repo lock immediately before committing the index
+		if !repoLock.StillHeld(ctx) {
+			return zerr.ErrRepoLockUnavailable
+		}
+
 		if _, err := is.storeDriver.WriteFile(indexPath, buf); err != nil {
-			is.log.Error().Err(err).Str("file", ilPath).Msg("failed to write file")
+			is.log.Error().Err(err).Str("file", indexPath).Msg("failed to write file")
 
 			return err
 		}
@@ -225,12 +278,19 @@ func (is *ImageStore) initRepo(ctx context.Context, name string) error {
 
 // InitRepo creates an image repository under this store.
 func (is *ImageStore) InitRepo(ctx context.Context, name string) error {
+	repoLock, err := is.repoLock.LockRepo(ctx, name)
+	if err != nil {
+		return err
+	}
+
+	defer repoLock.Release()
+
 	var lockLatency time.Time
 
 	is.Lock(&lockLatency)
 	defer is.Unlock(&lockLatency)
 
-	return is.initRepo(ctx, name)
+	return is.initRepo(ctx, name, repoLock)
 }
 
 // ValidateRepo validates that the repository layout is complaint with the OCI repo layout.
@@ -571,15 +631,16 @@ func (is *ImageStore) GetImageManifest(repo, reference string) ([]byte, godigest
 func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, mediaType string, //nolint: gocyclo,cyclop
 	body []byte, extraTags []string,
 ) (godigest.Digest, godigest.Digest, error) {
-	if err := is.InitRepo(ctx, repo); err != nil {
-		is.log.Debug().Err(err).Msg("init repo")
-
+	// Must be outside is.Lock: that mutex is store-wide, and gc takes it before
+	// its own index write, so the reverse order deadlocks.
+	repoLock, err := is.repoLock.LockRepo(ctx, repo)
+	if err != nil {
 		return "", "", err
 	}
 
-	var lockLatency time.Time
+	defer repoLock.Release()
 
-	var err error
+	var lockLatency time.Time
 
 	is.Lock(&lockLatency)
 	defer func() {
@@ -593,6 +654,12 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 			monitoring.IncUploadCounter(is.metrics, repo)
 		}
 	}()
+
+	if err := is.initRepo(ctx, repo, repoLock); err != nil {
+		is.log.Debug().Err(err).Msg("init repo")
+
+		return "", "", err
+	}
 
 	refIsDigest := true
 
@@ -798,6 +865,13 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 		return "", "", err
 	}
 
+	// fence: revalidate the repo lock immediately before committing the index,
+	// so a holder that lost the lock mid-write fails instead of clobbering
+	// another instance's commit
+	if !repoLock.StillHeld(ctx) {
+		return "", "", zerr.ErrRepoLockUnavailable
+	}
+
 	if err := is.PutIndexContent(repo, index); err != nil {
 		return "", "", err
 	}
@@ -819,20 +893,28 @@ func (is *ImageStore) DeleteImageManifest(ctx context.Context, repo, reference s
 		return zerr.ErrRepoNotFound
 	}
 
+	repoLock, err := is.repoLock.LockRepo(ctx, repo)
+	if err != nil {
+		return err
+	}
+
+	defer repoLock.Release()
+
 	var lockLatency time.Time
 
 	is.Lock(&lockLatency)
 	defer is.Unlock(&lockLatency)
 
-	err := is.deleteImageManifest(ctx, repo, reference, detectCollisions)
-	if err != nil {
+	if err := is.deleteImageManifest(ctx, repo, reference, detectCollisions, repoLock); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (is *ImageStore) deleteImageManifest(ctx context.Context, repo, reference string, detectCollisions bool) error {
+func (is *ImageStore) deleteImageManifest(ctx context.Context, repo, reference string, detectCollisions bool,
+	repoLock storageTypes.RepoLock,
+) error {
 	defer func() {
 		if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
 			monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
@@ -881,6 +963,11 @@ func (is *ImageStore) deleteImageManifest(ctx context.Context, repo, reference s
 	buf, err := json.Marshal(index)
 	if err != nil {
 		return err
+	}
+
+	// fence: revalidate the repo lock immediately before committing the index
+	if !repoLock.StillHeld(ctx) {
+		return zerr.ErrRepoLockUnavailable
 	}
 
 	if _, err := is.storeDriver.WriteFile(file, buf); err != nil {
@@ -1175,7 +1262,7 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 	// Recreate the OCI layout here, while we already hold the store lock for the move,
 	// so a blob finished after GC deleted the repo is still a walkable repository.
 	// Use initRepo, not InitRepo: InitRepo takes this same lock and would deadlock.
-	if err := is.initRepo(context.Background(), repo); err != nil {
+	if err := is.initRepo(context.Background(), repo, noopRepoLock{}); err != nil {
 		return err
 	}
 
@@ -1285,7 +1372,7 @@ func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.R
 	is.Lock(&lockLatency)
 	defer is.Unlock(&lockLatency)
 
-	if err := is.initRepo(ctx, repo); err != nil {
+	if err := is.initRepo(ctx, repo, noopRepoLock{}); err != nil {
 		return "", -1, err
 	}
 
@@ -1649,7 +1736,9 @@ func (is *ImageStore) checkCacheBlob(digest godigest.Digest) (string, error) {
 }
 
 func (is *ImageStore) copyBlob(ctx context.Context, repo string, blobPath, dstRecord string) (int64, error) {
-	if err := is.initRepo(ctx, repo); err != nil {
+	// unfenced: this runs under is.Lock, so taking the repo lock would invert
+	// the order, and it only ever creates an index that is not there yet
+	if err := is.initRepo(ctx, repo, noopRepoLock{}); err != nil {
 		is.log.Error().Err(err).Str("repository", repo).Msg("failed to initialize an empty repo")
 
 		return -1, err
