@@ -133,7 +133,12 @@ func TestEventsSinkFailure(t *testing.T) {
 
 			recorder.RepositoryCreated("test", nil)
 
-			logged := func() bool { return strings.Contains(buf.String(), "failed to publish event") }
+			// wait for the summary line, not just the per-sink error: it's a separate, later log
+			// statement in the same goroutine, so the error alone doesn't guarantee it's written yet
+			logged := func() bool {
+				return strings.Contains(buf.String(), "failed to publish event") &&
+					strings.Contains(buf.String(), "event publish failed")
+			}
 			for i := 0; i < 100 && !logged(); i++ {
 				time.Sleep(10 * time.Millisecond)
 			}
@@ -155,7 +160,12 @@ func TestEventsSinkFailure(t *testing.T) {
 			ev := <-sink.store
 			So(ev.Type(), ShouldEqual, events.RepositoryCreatedEventType.String())
 
-			logged := func() bool { return strings.Contains(buf.String(), "failed to publish event") }
+			// wait for the summary line, not just the per-sink error: see the comment in the
+			// "0 out of 1" scenario above for why the error alone isn't enough to poll on.
+			logged := func() bool {
+				return strings.Contains(buf.String(), "failed to publish event") &&
+					strings.Contains(buf.String(), "event publish incomplete")
+			}
 			for i := 0; i < 100 && !logged(); i++ {
 				time.Sleep(10 * time.Millisecond)
 			}
