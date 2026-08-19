@@ -139,6 +139,15 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 		return zerr.ErrRepoNotFound
 	}
 
+	// Rewrites the index like a push does, so it takes the same lock in the same
+	// order: before the store-wide one.
+	repoLock, err := gc.imgStore.LockRepo(ctx, repo)
+	if err != nil {
+		return err
+	}
+
+	defer repoLock.Release()
+
 	gc.imgStore.Lock(&lockLatency)
 	defer gc.imgStore.Unlock(&lockLatency)
 
@@ -190,6 +199,12 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 
 	// update repos's index.json in storage
 	if !gc.opts.ImageRetention.DryRun {
+		// fence: revalidate the repo lock immediately before committing the index,
+		// so a sweep that lost the lock mid-run fails instead of clobbering a push
+		if !repoLock.StillHeld(ctx) {
+			return zerr.ErrRepoLockUnavailable
+		}
+
 		/* this will update the index.json with manifest references removed above;
 		orphan manifest/config/layer blobs are deleted by gc.deleteUnreferencedBlobs() */
 		if err := gc.imgStore.PutIndexContent(repo, index); err != nil {
