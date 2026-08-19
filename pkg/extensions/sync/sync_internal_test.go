@@ -2116,6 +2116,82 @@ func TestNewClientReqConcurrentReqPerSec(t *testing.T) {
 	})
 }
 
+// TestNewClientDisableHTTP2 verifies that DisableHTTP2 pins the upstream connection to
+// HTTP/1.1 even against a server that supports and would otherwise negotiate HTTP/2.
+func TestNewClientDisableHTTP2(t *testing.T) {
+	Convey("Test newClient DisableHTTP2 behavior", t, func() {
+		logger := log.NewTestLogger()
+
+		negotiatedProto := make(chan string, 1)
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			negotiatedProto <- r.Proto
+			w.WriteHeader(http.StatusOK)
+		})
+
+		server := httptest.NewUnstartedServer(handler)
+		server.EnableHTTP2 = true // advertise "h2" via ALPN, like a real HTTP/2-capable registry
+		server.StartTLS()
+		defer server.Close()
+
+		host := strings.TrimPrefix(server.URL, "https://")
+
+		// httptest's TLS cert is self-signed, so skip verification to isolate this test
+		// from cert trust; DisableHTTP2/ALPN pinning is orthogonal to cert validation.
+		insecure := false
+		insecureVerify := &insecure
+
+		Convey("DisableHTTP2 forces HTTP/1.1 against an HTTP/2-capable server", func() {
+			disableHTTP2 := true
+			opts := syncconf.RegistryConfig{
+				URLs:                  []string{server.URL},
+				TLSVerify:             insecureVerify,
+				SyncTimeout:           syncConstants.DefaultSyncTimeout,
+				ResponseHeaderTimeout: syncConstants.DefaultResponseHeaderTimeout,
+				DisableHTTP2:          &disableHTTP2,
+			}
+
+			client, _, err := newClient(opts, syncconf.CredentialsFile{}, logger)
+			So(err, ShouldBeNil)
+
+			r, err := ref.New(host + "/repo:tag")
+			So(err, ShouldBeNil)
+
+			_, _ = client.ManifestHead(context.Background(), r)
+
+			select {
+			case proto := <-negotiatedProto:
+				So(proto, ShouldEqual, "HTTP/1.1")
+			case <-time.After(5 * time.Second):
+				t.Fatal("server never received a request")
+			}
+		})
+
+		Convey("without DisableHTTP2, an HTTP/2-capable server negotiates HTTP/2", func() {
+			opts := syncconf.RegistryConfig{
+				URLs:                  []string{server.URL},
+				TLSVerify:             insecureVerify,
+				SyncTimeout:           syncConstants.DefaultSyncTimeout,
+				ResponseHeaderTimeout: syncConstants.DefaultResponseHeaderTimeout,
+			}
+
+			client, _, err := newClient(opts, syncconf.CredentialsFile{}, logger)
+			So(err, ShouldBeNil)
+
+			r, err := ref.New(host + "/repo:tag")
+			So(err, ShouldBeNil)
+
+			_, _ = client.ManifestHead(context.Background(), r)
+
+			select {
+			case proto := <-negotiatedProto:
+				So(proto, ShouldEqual, "HTTP/2.0")
+			case <-time.After(5 * time.Second):
+				t.Fatal("server never received a request")
+			}
+		})
+	})
+}
+
 func TestHTTPRetryDelayBounds(t *testing.T) {
 	Convey("httpRetryDelayBounds maps sync config to regclient delay args", t, func() {
 		retryDelay := 1 * time.Second

@@ -4,6 +4,7 @@ package sync
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net/http"
@@ -987,8 +988,8 @@ func newClient(opts syncconf.RegistryConfig, credentials syncconf.CredentialsFil
 	}
 
 	// set TLS configuration
-	tls := getTLSConfigOption(urls[0], opts.TLSVerify)
-	hostConfig.TLS = tls
+	tlsConf := getTLSConfigOption(urls[0], opts.TLSVerify)
+	hostConfig.TLS = tlsConf
 
 	if opts.CertDir != "" {
 		clientCert, clientKey, regCert, err := getCertificates(opts.CertDir)
@@ -1060,6 +1061,28 @@ func newClient(opts syncconf.RegistryConfig, credentials syncconf.CredentialsFil
 	// which are separate component timeouts. Doesn't cover body transfer time, which is expected
 	// to be slow for large images.
 	transport.ResponseHeaderTimeout = opts.ResponseHeaderTimeout
+
+	// DisableHTTP2: net/http multiplexes every request to a host onto a single HTTP/2 connection,
+	// so all of it shares one TCP congestion window regardless of client-side concurrency. Forcing
+	// HTTP/1.1 makes each concurrent request open its own TCP connection instead. Clearing
+	// TLSNextProto alone isn't enough, since the server can still select "h2" during the TLS
+	// handshake; NextProtos must be pinned so ALPN negotiation itself excludes it.
+	if opts.DisableHTTP2 != nil && *opts.DisableHTTP2 {
+		transport.ForceAttemptHTTP2 = false
+		transport.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
+
+		if transport.TLSClientConfig == nil {
+			// No fields set here diverge from http.DefaultTransport's TLS behavior (e.g. MinVersion
+			// stays at Go's secure default); this only exists as a place to pin NextProtos below.
+			transport.TLSClientConfig = &tls.Config{} //nolint:gosec
+		}
+
+		transport.TLSClientConfig.NextProtos = []string{"http/1.1"}
+	}
+
+	if opts.MaxIdleConnsPerHost != nil {
+		transport.MaxIdleConnsPerHost = *opts.MaxIdleConnsPerHost
+	}
 
 	// Use SyncTimeout for overall HTTP client timeout. This is the maximum time for the entire
 	// HTTP request, covering all stages: DialContext (connection establishment), TLSHandshakeTimeout

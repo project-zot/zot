@@ -80,6 +80,15 @@ type RegistryConfig struct {
 	// upstream registry and to each of its mirrors (a per-host cap, not a shared total across hosts).
 	// When unset it defaults to regclient's default (0, i.e. unlimited).
 	ReqPerSec *float64
+	// DisableHTTP2 forces HTTP/1.1 to the upstream, so each concurrent request opens its own TCP
+	// connection instead of sharing the single connection (and congestion window) HTTP/2 multiplexes
+	// requests onto. Useful for saturating high-bandwidth links where ReqConcurrent alone can't help
+	// because everything still funnels through one HTTP/2 connection.
+	DisableHTTP2 *bool
+	// MaxIdleConnsPerHost overrides the transport's per-host idle connection pool size (Go default: 2).
+	// Only useful alongside DisableHTTP2, so that concurrent HTTP/1.1 connections are pooled/reused
+	// instead of being closed once the pool is full.
+	MaxIdleConnsPerHost *int
 }
 
 // OAuth2HelperConfig holds the options used by the "oauth2" credential helper,
