@@ -54,15 +54,23 @@ func (r eventRecorder) publish(event *cloudevents.Event) {
 			succeeded++
 		}
 
-		// Always logged, even on failure, as a summary line; level and wording reflect the actual outcome.
-		switch {
-		case succeeded == len(r.sinks):
-			r.log.Info().Msgf("event published successfully: %s (%d out of %d sinks)", event.Type(), succeeded, len(r.sinks))
-		case succeeded > 0:
-			r.log.Warn().Msgf("event publish incomplete: %s (%d out of %d sinks)", event.Type(), succeeded, len(r.sinks))
-		default:
-			r.log.Warn().Msgf("event publish failed: %s (0 out of %d sinks)", event.Type(), len(r.sinks))
+		logEvent := r.log.Info()
+		msg := "event published successfully"
+
+		if succeeded < len(r.sinks) {
+			logEvent = r.log.Warn()
+			msg = "event publish incomplete"
+
+			if succeeded == 0 {
+				msg = "event publish failed"
+			}
 		}
+
+		logEvent.Str("eventType", event.Type()).
+			Int("totalSinks", len(r.sinks)).
+			Int("sinksSucceeded", succeeded).
+			Int("sinksFailed", len(r.sinks)-succeeded).
+			Msg(msg)
 	}()
 }
 

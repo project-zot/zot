@@ -122,6 +122,28 @@ func TestEvents(t *testing.T) {
 	})
 }
 
+// waitForLogMessage polls buf (up to 1s) until it contains every substring in want, then reports
+// whether it did. The publish summary is logged from a background goroutine after the per-sink
+// error logs, so callers must wait for the exact line(s) they assert on next, not an earlier one.
+func waitForLogMessage(buf *syncBuffer, want ...string) bool {
+	logged := func() bool {
+		content := buf.String()
+		for _, w := range want {
+			if !strings.Contains(content, w) {
+				return false
+			}
+		}
+
+		return true
+	}
+
+	for i := 0; i < 100 && !logged(); i++ {
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	return logged()
+}
+
 func TestEventsSinkFailure(t *testing.T) {
 	Convey("with a failing sink", t, func() {
 		buf := &syncBuffer{}
@@ -133,17 +155,10 @@ func TestEventsSinkFailure(t *testing.T) {
 
 			recorder.RepositoryCreated("test", nil)
 
-			// wait for the summary line, not just the per-sink error: it's a separate, later log
-			// statement in the same goroutine, so the error alone doesn't guarantee it's written yet
-			logged := func() bool {
-				return strings.Contains(buf.String(), "failed to publish event") &&
-					strings.Contains(buf.String(), "event publish failed")
-			}
-			for i := 0; i < 100 && !logged(); i++ {
-				time.Sleep(10 * time.Millisecond)
-			}
-			So(logged(), ShouldBeTrue)
-			So(buf.String(), ShouldContainSubstring, "0 out of 1 sinks")
+			So(waitForLogMessage(buf, "failed to publish event", "event publish failed"), ShouldBeTrue)
+			So(buf.String(), ShouldContainSubstring, `"totalSinks":1`)
+			So(buf.String(), ShouldContainSubstring, `"sinksSucceeded":0`)
+			So(buf.String(), ShouldContainSubstring, `"sinksFailed":1`)
 			// zero success must not claim "successfully", and must be logged at Warn, not Info
 			So(buf.String(), ShouldNotContainSubstring, "published successfully")
 			So(buf.String(), ShouldContainSubstring, "event publish failed")
@@ -160,17 +175,10 @@ func TestEventsSinkFailure(t *testing.T) {
 			ev := <-sink.store
 			So(ev.Type(), ShouldEqual, events.RepositoryCreatedEventType.String())
 
-			// wait for the summary line, not just the per-sink error: see the comment in the
-			// "0 out of 1" scenario above for why the error alone isn't enough to poll on.
-			logged := func() bool {
-				return strings.Contains(buf.String(), "failed to publish event") &&
-					strings.Contains(buf.String(), "event publish incomplete")
-			}
-			for i := 0; i < 100 && !logged(); i++ {
-				time.Sleep(10 * time.Millisecond)
-			}
-			So(logged(), ShouldBeTrue)
-			So(buf.String(), ShouldContainSubstring, "1 out of 2 sinks")
+			So(waitForLogMessage(buf, "failed to publish event", "event publish incomplete"), ShouldBeTrue)
+			So(buf.String(), ShouldContainSubstring, `"totalSinks":2`)
+			So(buf.String(), ShouldContainSubstring, `"sinksSucceeded":1`)
+			So(buf.String(), ShouldContainSubstring, `"sinksFailed":1`)
 			// partial success must not claim "successfully" either, only full success does
 			So(buf.String(), ShouldNotContainSubstring, "published successfully")
 			So(buf.String(), ShouldContainSubstring, "event publish incomplete")
@@ -186,12 +194,10 @@ func TestEventsSinkFailure(t *testing.T) {
 			ev := <-sink.store
 			So(ev.Type(), ShouldEqual, events.RepositoryCreatedEventType.String())
 
-			logged := func() bool { return strings.Contains(buf.String(), "event published successfully") }
-			for i := 0; i < 100 && !logged(); i++ {
-				time.Sleep(10 * time.Millisecond)
-			}
-			So(logged(), ShouldBeTrue)
-			So(buf.String(), ShouldContainSubstring, "1 out of 1 sinks")
+			So(waitForLogMessage(buf, "event published successfully"), ShouldBeTrue)
+			So(buf.String(), ShouldContainSubstring, `"totalSinks":1`)
+			So(buf.String(), ShouldContainSubstring, `"sinksSucceeded":1`)
+			So(buf.String(), ShouldContainSubstring, `"sinksFailed":0`)
 			So(buf.String(), ShouldNotContainSubstring, "publish incomplete")
 			So(buf.String(), ShouldNotContainSubstring, "publish failed")
 			So(buf.String(), ShouldContainSubstring, `"level":"info"`)
