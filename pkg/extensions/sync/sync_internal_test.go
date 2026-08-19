@@ -2116,15 +2116,30 @@ func TestNewClientReqConcurrentReqPerSec(t *testing.T) {
 	})
 }
 
+// drainNegotiatedProto discards any value left over from a previous request on the channel,
+// so a subtest only ever observes the protocol of the request it is about to issue.
+func drainNegotiatedProto(negotiatedProto chan string) {
+	select {
+	case <-negotiatedProto:
+	default:
+	}
+}
+
 // TestNewClientDisableHTTP2 verifies that DisableHTTP2 pins the upstream connection to
 // HTTP/1.1 even against a server that supports and would otherwise negotiate HTTP/2.
 func TestNewClientDisableHTTP2(t *testing.T) {
 	Convey("Test newClient DisableHTTP2 behavior", t, func() {
 		logger := log.NewTestLogger()
 
-		negotiatedProto := make(chan string, 1)
+		// Buffered well past one: a HEAD request can hit the handler more than once (e.g. an
+		// auth-challenge round trip before the real request), and the send below must never
+		// block on a slow/absent reader or the handler goroutine hangs.
+		negotiatedProto := make(chan string, 8)
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			negotiatedProto <- r.Proto
+			select {
+			case negotiatedProto <- r.Proto:
+			default:
+			}
 			w.WriteHeader(http.StatusOK)
 		})
 
@@ -2137,14 +2152,14 @@ func TestNewClientDisableHTTP2(t *testing.T) {
 
 		// httptest's TLS cert is self-signed, so skip verification to isolate this test
 		// from cert trust; DisableHTTP2/ALPN pinning is orthogonal to cert validation.
-		insecure := false
-		insecureVerify := &insecure
+		tlsVerifyOff := false
+		tlsVerify := &tlsVerifyOff
 
 		Convey("DisableHTTP2 forces HTTP/1.1 against an HTTP/2-capable server", func() {
 			disableHTTP2 := true
 			opts := syncconf.RegistryConfig{
 				URLs:                  []string{server.URL},
-				TLSVerify:             insecureVerify,
+				TLSVerify:             tlsVerify,
 				SyncTimeout:           syncConstants.DefaultSyncTimeout,
 				ResponseHeaderTimeout: syncConstants.DefaultResponseHeaderTimeout,
 				DisableHTTP2:          &disableHTTP2,
@@ -2156,20 +2171,26 @@ func TestNewClientDisableHTTP2(t *testing.T) {
 			r, err := ref.New(host + "/repo:tag")
 			So(err, ShouldBeNil)
 
-			_, _ = client.ManifestHead(context.Background(), r)
+			drainNegotiatedProto(negotiatedProto)
+
+			// The handler returns a bare 200 with no manifest body/headers, so regclient is
+			// expected to fail parsing it as a manifest; only the transport-level protocol
+			// the request actually reached the server on is under test here.
+			_, err = client.ManifestHead(context.Background(), r)
+			t.Logf("ManifestHead (expected to fail on the stub response): %v", err)
 
 			select {
 			case proto := <-negotiatedProto:
 				So(proto, ShouldEqual, "HTTP/1.1")
 			case <-time.After(5 * time.Second):
-				t.Fatal("server never received a request")
+				t.Fatalf("server never received a request; ManifestHead error: %v", err)
 			}
 		})
 
 		Convey("without DisableHTTP2, an HTTP/2-capable server negotiates HTTP/2", func() {
 			opts := syncconf.RegistryConfig{
 				URLs:                  []string{server.URL},
-				TLSVerify:             insecureVerify,
+				TLSVerify:             tlsVerify,
 				SyncTimeout:           syncConstants.DefaultSyncTimeout,
 				ResponseHeaderTimeout: syncConstants.DefaultResponseHeaderTimeout,
 			}
@@ -2180,13 +2201,17 @@ func TestNewClientDisableHTTP2(t *testing.T) {
 			r, err := ref.New(host + "/repo:tag")
 			So(err, ShouldBeNil)
 
-			_, _ = client.ManifestHead(context.Background(), r)
+			drainNegotiatedProto(negotiatedProto)
+
+			// See the comment in the sibling Convey above: the parse failure is expected.
+			_, err = client.ManifestHead(context.Background(), r)
+			t.Logf("ManifestHead (expected to fail on the stub response): %v", err)
 
 			select {
 			case proto := <-negotiatedProto:
 				So(proto, ShouldEqual, "HTTP/2.0")
 			case <-time.After(5 * time.Second):
-				t.Fatal("server never received a request")
+				t.Fatalf("server never received a request; ManifestHead error: %v", err)
 			}
 		})
 	})
