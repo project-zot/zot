@@ -41,10 +41,12 @@ function setup_file() {
     local zot_sync_per_root_dir=${BATS_FILE_TMPDIR}/zot-per
     local zot_sync_ondemand_root_dir=${BATS_FILE_TMPDIR}/zot-ondemand
     local zot_sync_interval_root_dir=${BATS_FILE_TMPDIR}/zot-interval
+    local zot_sync_disablehttp2_root_dir=${BATS_FILE_TMPDIR}/zot-disablehttp2
 
     local zot_sync_per_config_file=${BATS_FILE_TMPDIR}/zot_sync_per_config.json
     local zot_sync_ondemand_config_file=${BATS_FILE_TMPDIR}/zot_sync_ondemand_config.json
     local zot_sync_interval_config_file=${BATS_FILE_TMPDIR}/zot_sync_interval_config.json
+    local zot_sync_disablehttp2_config_file=${BATS_FILE_TMPDIR}/zot_sync_disablehttp2_config.json
 
     local zot_minimal_root_dir=${BATS_FILE_TMPDIR}/zot-minimal
     local zot_minimal_config_file=${BATS_FILE_TMPDIR}/zot_minimal_config.json
@@ -53,6 +55,7 @@ function setup_file() {
     mkdir -p ${zot_sync_per_root_dir}
     mkdir -p ${zot_sync_ondemand_root_dir}
     mkdir -p ${zot_sync_interval_root_dir}
+    mkdir -p ${zot_sync_disablehttp2_root_dir}
     mkdir -p ${zot_minimal_root_dir}
     mkdir -p ${oci_data_dir}
     zot_port1=$(get_free_port_for_service "zot1")
@@ -63,6 +66,8 @@ function setup_file() {
     echo ${zot_port3} > ${BATS_FILE_TMPDIR}/zot.port3
     zot_port4=$(get_free_port_for_service "zot4")
     echo ${zot_port4} > ${BATS_FILE_TMPDIR}/zot.port4
+    zot_port5=$(get_free_port_for_service "zot5")
+    echo ${zot_port5} > ${BATS_FILE_TMPDIR}/zot.port5
 
     cat >${zot_sync_per_config_file} <<EOF
 {
@@ -181,6 +186,42 @@ EOF
     }
 }
 EOF
+    cat >${zot_sync_disablehttp2_config_file} <<EOF
+{
+    "distSpecVersion": "1.1.1",
+    "storage": {
+        "rootDirectory": "${zot_sync_disablehttp2_root_dir}"
+    },
+    "http": {
+        "address": "0.0.0.0",
+        "port": "${zot_port5}"
+    },
+    "log": {
+        "level": "debug"
+    },
+    "extensions": {
+        "sync": {
+            "registries": [
+                {
+                    "urls": [
+                        "http://localhost:${zot_port3}"
+                    ],
+                    "onDemand": false,
+                    "tlsVerify": false,
+                    "PollInterval": "10s",
+                    "disableHTTP2": true,
+                    "maxIdleConnsPerHost": 20,
+                    "content": [
+                        {
+                            "prefix": "**"
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+}
+EOF
     git -C ${BATS_FILE_TMPDIR} clone https://github.com/project-zot/helm-charts.git
 
     zot_serve ${ZOT_MINIMAL_PATH} ${zot_minimal_config_file}
@@ -194,6 +235,9 @@ EOF
 
     zot_serve ${ZOT_PATH} ${zot_sync_interval_config_file}
     wait_zot_reachable ${zot_port4}
+
+    zot_serve ${ZOT_PATH} ${zot_sync_disablehttp2_config_file}
+    wait_zot_reachable ${zot_port5}
 }
 
 function teardown_file() {
@@ -226,6 +270,31 @@ function teardown_file() {
     run curl http://127.0.0.1:${zot_port1}/v2/golang/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.20"' ]
+}
+
+# disableHTTP2 only changes upstream transport plumbing, not sync correctness, so this is a
+# functional smoke test (config accepted, sync still completes) rather than a throughput check -
+# verifying HTTP/1.1 actually gets negotiated needs the unit test in sync_internal_test.go.
+@test "sync golang image periodically with disableHTTP2" {
+    zot_port3=`cat ${BATS_FILE_TMPDIR}/zot.port3`
+    zot_port5=`cat ${BATS_FILE_TMPDIR}/zot.port5`
+    run skopeo --insecure-policy copy --dest-tls-verify=false \
+        oci:${TEST_DATA_DIR}/golang:1.20 \
+        docker://127.0.0.1:${zot_port3}/disablehttp2-test:latest
+    [ "$status" -eq 0 ]
+    run curl http://127.0.0.1:${zot_port3}/v2/disablehttp2-test/tags/list
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
+
+    run sleep 20s
+
+    run curl http://127.0.0.1:${zot_port5}/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"disablehttp2-test"' ]
+
+    run curl http://127.0.0.1:${zot_port5}/v2/disablehttp2-test/tags/list
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
 }
 
 @test "sync golang image ondemand" {
