@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -2119,9 +2120,12 @@ func TestNewClientReqConcurrentReqPerSec(t *testing.T) {
 // drainNegotiatedProto discards any value left over from a previous request on the channel,
 // so a subtest only ever observes the protocol of the request it is about to issue.
 func drainNegotiatedProto(negotiatedProto chan string) {
-	select {
-	case <-negotiatedProto:
-	default:
+	for {
+		select {
+		case <-negotiatedProto:
+		default:
+			return
+		}
 	}
 }
 
@@ -2244,6 +2248,120 @@ func TestHTTPRetryDelayBounds(t *testing.T) {
 			So(ok, ShouldBeTrue)
 			So(delayInit, ShouldEqual, retryDelay)
 			So(delayMax, ShouldEqual, maxRetryDelay)
+		})
+	})
+}
+
+// TestEffectiveMaxIdleConnsPerHost verifies that DisableHTTP2 without an explicit
+// maxIdleConnsPerHost defaults the idle pool to reqConcurrent, so DisableHTTP2 alone is enough
+// to keep concurrent HTTP/1.1 connections pooled instead of being closed at Go's default of 2.
+func TestEffectiveMaxIdleConnsPerHost(t *testing.T) {
+	Convey("effectiveMaxIdleConnsPerHost", t, func() {
+		Convey("neither set leaves the Go default (0: caller doesn't override)", func() {
+			got := effectiveMaxIdleConnsPerHost(syncconf.RegistryConfig{}, 3)
+			So(got, ShouldEqual, 0)
+		})
+
+		Convey("DisableHTTP2 alone defaults to reqConcurrent", func() {
+			disableHTTP2 := true
+			got := effectiveMaxIdleConnsPerHost(syncconf.RegistryConfig{DisableHTTP2: &disableHTTP2}, 16)
+			So(got, ShouldEqual, 16)
+		})
+
+		Convey("DisableHTTP2 false does not default", func() {
+			disableHTTP2 := false
+			got := effectiveMaxIdleConnsPerHost(syncconf.RegistryConfig{DisableHTTP2: &disableHTTP2}, 16)
+			So(got, ShouldEqual, 0)
+		})
+
+		Convey("explicit maxIdleConnsPerHost always wins, with or without DisableHTTP2", func() {
+			disableHTTP2 := true
+			maxIdle := 42
+			got := effectiveMaxIdleConnsPerHost(syncconf.RegistryConfig{
+				DisableHTTP2:        &disableHTTP2,
+				MaxIdleConnsPerHost: &maxIdle,
+			}, 16)
+			So(got, ShouldEqual, 42)
+
+			got = effectiveMaxIdleConnsPerHost(syncconf.RegistryConfig{MaxIdleConnsPerHost: &maxIdle}, 16)
+			So(got, ShouldEqual, 42)
+		})
+	})
+}
+
+// TestPinHTTP1ALPN covers the nil-TLSClientConfig branch directly: http.Transport.Clone() sets a
+// non-nil TLSClientConfig in virtually every real build (Go's own lazy HTTP/2 auto-configuration
+// runs on the source transport first), so that branch is unreachable through newClient in
+// practice; this exercises it without depending on that net/http implementation detail.
+func TestPinHTTP1ALPN(t *testing.T) {
+	Convey("pinHTTP1ALPN", t, func() {
+		Convey("nil input gets a fresh config with NextProtos pinned", func() {
+			got := pinHTTP1ALPN(nil)
+			So(got, ShouldNotBeNil)
+			So(got.NextProtos, ShouldResemble, []string{"http/1.1"})
+		})
+
+		Convey("existing config is reused and NextProtos overwritten", func() {
+			existing := &tls.Config{InsecureSkipVerify: true, NextProtos: []string{"h2", "http/1.1"}} //nolint:gosec
+			got := pinHTTP1ALPN(existing)
+			So(got, ShouldEqual, existing) // same pointer: mutated in place, not replaced
+			So(got.NextProtos, ShouldResemble, []string{"http/1.1"})
+			So(got.InsecureSkipVerify, ShouldBeTrue) // untouched
+		})
+	})
+}
+
+// TestApplySyncTransportOptions verifies the exact DisableHTTP2 x MaxIdleConnsPerHost x
+// ReqConcurrent combinations that determine the idle connection pool size on the real
+// *http.Transport newClient builds (newClient itself doesn't expose the transport - it only
+// returns a *regclient.RegClient - so this is what actually covers the assignment).
+func TestApplySyncTransportOptions(t *testing.T) {
+	Convey("applySyncTransportOptions", t, func() {
+		Convey("DisableHTTP2 true, ReqConcurrent and MaxIdleConnsPerHost both unset: idle pool is regclient's default of 3", func() {
+			disableHTTP2 := true
+			transport := &http.Transport{}
+
+			applySyncTransportOptions(transport, syncconf.RegistryConfig{DisableHTTP2: &disableHTTP2}, 3)
+
+			So(transport.MaxIdleConnsPerHost, ShouldEqual, 3)
+			So(transport.ForceAttemptHTTP2, ShouldBeFalse)
+			So(transport.TLSNextProto, ShouldNotBeNil)
+			So(transport.TLSNextProto, ShouldBeEmpty)
+			So(transport.TLSClientConfig, ShouldNotBeNil)
+			So(transport.TLSClientConfig.NextProtos, ShouldResemble, []string{"http/1.1"})
+		})
+
+		Convey("DisableHTTP2 true, ReqConcurrent 16, MaxIdleConnsPerHost unset: idle pool follows ReqConcurrent", func() {
+			disableHTTP2 := true
+			transport := &http.Transport{}
+
+			applySyncTransportOptions(transport, syncconf.RegistryConfig{DisableHTTP2: &disableHTTP2}, 16)
+
+			So(transport.MaxIdleConnsPerHost, ShouldEqual, 16)
+		})
+
+		Convey("explicit MaxIdleConnsPerHost wins over the ReqConcurrent-derived default", func() {
+			disableHTTP2 := true
+			maxIdle := 20
+			transport := &http.Transport{}
+
+			applySyncTransportOptions(transport, syncconf.RegistryConfig{
+				DisableHTTP2:        &disableHTTP2,
+				MaxIdleConnsPerHost: &maxIdle,
+			}, 16)
+
+			So(transport.MaxIdleConnsPerHost, ShouldEqual, 20)
+		})
+
+		Convey("DisableHTTP2 unset leaves HTTP/2 transport fields untouched", func() {
+			transport := &http.Transport{ForceAttemptHTTP2: true}
+
+			applySyncTransportOptions(transport, syncconf.RegistryConfig{}, 3)
+
+			So(transport.ForceAttemptHTTP2, ShouldBeTrue)
+			So(transport.TLSNextProto, ShouldBeNil)
+			So(transport.TLSClientConfig, ShouldBeNil)
+			So(transport.MaxIdleConnsPerHost, ShouldEqual, 0)
 		})
 	})
 }

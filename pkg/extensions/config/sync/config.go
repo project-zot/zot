@@ -75,6 +75,12 @@ type RegistryConfig struct {
 	// host), so it is a per-host cap, not a shared total across hosts. When unset it defaults to
 	// regclient's default (3). Raising it helps when a single zot proxies many concurrent on-demand pulls
 	// of different images from one upstream, where the default causes head-of-line blocking.
+	//
+	// ReqConcurrent and DisableHTTP2 compose, and both are usually needed together: ReqConcurrent
+	// alone still funnels every request through one HTTP/2 connection (one TCP congestion window) if
+	// the upstream negotiates h2, while DisableHTTP2 alone still caps concurrency at ReqConcurrent's
+	// default of 3 connections. To actually open more than 3 parallel connections to an HTTP/2
+	// upstream, raise ReqConcurrent and set DisableHTTP2.
 	ReqConcurrent *int
 	// ReqPerSec caps the request rate (requests/second) per upstream host, applied independently to the
 	// upstream registry and to each of its mirrors (a per-host cap, not a shared total across hosts).
@@ -82,12 +88,18 @@ type RegistryConfig struct {
 	ReqPerSec *float64
 	// DisableHTTP2 forces HTTP/1.1 to the upstream, so each concurrent request opens its own TCP
 	// connection instead of sharing the single connection (and congestion window) HTTP/2 multiplexes
-	// requests onto. Useful for saturating high-bandwidth links where ReqConcurrent alone can't help
-	// because everything still funnels through one HTTP/2 connection.
+	// requests onto. See the ReqConcurrent doc comment above: the two settings compose, and raising
+	// ReqConcurrent is what actually lets more than 3 connections open.
 	DisableHTTP2 *bool
-	// MaxIdleConnsPerHost overrides the transport's per-host idle connection pool size (Go default: 2).
-	// Only useful alongside DisableHTTP2, so that concurrent HTTP/1.1 connections are pooled/reused
-	// instead of being closed once the pool is full.
+	// MaxIdleConnsPerHost overrides the transport's per-host idle connection pool size (Go default: 2),
+	// applied whether or not DisableHTTP2 is set (it also helps a plain-HTTP or already-HTTP/1.1
+	// upstream keep its connections pooled). An explicit value here always wins.
+	//
+	// When DisableHTTP2 is true and this is left unset, it defaults to ReqConcurrent's effective
+	// value (the configured value, or regclient's default of 3) instead of Go's default of 2 —
+	// otherwise DisableHTTP2 alone would still hit the handshake-per-request pattern this option
+	// exists to avoid, since concurrent HTTP/1.1 connections beyond 2 would get closed instead of
+	// pooled.
 	MaxIdleConnsPerHost *int
 }
 
