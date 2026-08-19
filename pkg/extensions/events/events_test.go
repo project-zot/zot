@@ -127,7 +127,7 @@ func TestEventsSinkFailure(t *testing.T) {
 		buf := &syncBuffer{}
 		logger := log.NewLoggerWithWriter("debug", buf)
 
-		Convey("does not log success when the sink fails", func() {
+		Convey("logs 0 out of 1 when the only sink fails", func() {
 			recorder, err := events.NewRecorder(logger, &failingSink{})
 			So(err, ShouldBeNil)
 
@@ -138,10 +138,10 @@ func TestEventsSinkFailure(t *testing.T) {
 				time.Sleep(10 * time.Millisecond)
 			}
 			So(logged(), ShouldBeTrue)
-			So(buf.String(), ShouldNotContainSubstring, "event published successfully")
+			So(buf.String(), ShouldContainSubstring, "0 out of 1 sinks")
 		})
 
-		Convey("remaining sinks still receive the event and success is not logged", func() {
+		Convey("remaining sinks still receive the event and count reflects partial success", func() {
 			sink := newMockSink()
 			recorder, err := events.NewRecorder(logger, &failingSink{}, sink)
 			So(err, ShouldBeNil)
@@ -156,10 +156,10 @@ func TestEventsSinkFailure(t *testing.T) {
 				time.Sleep(10 * time.Millisecond)
 			}
 			So(logged(), ShouldBeTrue)
-			So(buf.String(), ShouldNotContainSubstring, "event published successfully")
+			So(buf.String(), ShouldContainSubstring, "1 out of 2 sinks")
 		})
 
-		Convey("logs success when all sinks accept the event", func() {
+		Convey("logs 1 out of 1 when all sinks accept the event", func() {
 			sink := newMockSink()
 			recorder, err := events.NewRecorder(logger, sink)
 			So(err, ShouldBeNil)
@@ -174,6 +174,7 @@ func TestEventsSinkFailure(t *testing.T) {
 				time.Sleep(10 * time.Millisecond)
 			}
 			So(logged(), ShouldBeTrue)
+			So(buf.String(), ShouldContainSubstring, "1 out of 1 sinks")
 		})
 	})
 }
