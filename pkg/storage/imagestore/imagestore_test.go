@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path"
 	"testing"
 	"time"
@@ -505,6 +506,76 @@ func TestRemoveIdleRepository(t *testing.T) {
 			removed, err := removeIdle(newMockStore(storeMock), repo, 0)
 			So(err, ShouldNotBeNil)
 			So(removed, ShouldBeFalse)
+		})
+	})
+}
+
+func TestInitRepoErrors(t *testing.T) {
+	Convey("InitRepo error paths", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		ctx := context.Background()
+
+		Convey("rejects an invalid UTF-8 repo name", func() {
+			store := imagestore.NewImageStore(t.TempDir(), "", false, false, log, metrics, nil,
+				local.New(true), nil, nil, nil)
+
+			So(errors.Is(store.InitRepo(ctx, "\xff"), zerr.ErrInvalidRepositoryName), ShouldBeTrue)
+		})
+
+		Convey("rejects a repo name outside the distribution grammar", func() {
+			store := imagestore.NewImageStore(t.TempDir(), "", false, false, log, metrics, nil,
+				local.New(true), nil, nil, nil)
+
+			So(errors.Is(store.InitRepo(ctx, "INVALID??"), zerr.ErrInvalidRepositoryName), ShouldBeTrue)
+		})
+
+		Convey("fails when the repo directory cannot be created", func() {
+			rootDir := t.TempDir()
+
+			// a regular file where the repo's parent directory must be created
+			So(os.WriteFile(path.Join(rootDir, "repo"), []byte("file"), 0o600), ShouldBeNil)
+
+			store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+				local.New(true), nil, nil, nil)
+
+			So(store.InitRepo(ctx, "repo"), ShouldNotBeNil)
+		})
+
+		Convey("fails when the oci-layout marker cannot be written", func() {
+			rootDir := t.TempDir()
+			repoDir := path.Join(rootDir, "repo")
+
+			// directories in place, but the repo dir is read-only, so the marker write fails
+			So(os.MkdirAll(path.Join(repoDir, "blobs", "sha256"), 0o755), ShouldBeNil)
+			So(os.MkdirAll(path.Join(repoDir, ".uploads"), 0o755), ShouldBeNil)
+			So(os.Chmod(repoDir, 0o555), ShouldBeNil)
+
+			t.Cleanup(func() { _ = os.Chmod(repoDir, 0o755) })
+
+			store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+				local.New(true), nil, nil, nil)
+
+			So(store.InitRepo(ctx, "repo"), ShouldNotBeNil)
+		})
+
+		Convey("fails when the index cannot be written", func() {
+			rootDir := t.TempDir()
+			repoDir := path.Join(rootDir, "repo")
+
+			// marker present, directories in place, read-only repo dir: the index write fails
+			So(os.MkdirAll(path.Join(repoDir, "blobs", "sha256"), 0o755), ShouldBeNil)
+			So(os.MkdirAll(path.Join(repoDir, ".uploads"), 0o755), ShouldBeNil)
+			So(os.WriteFile(path.Join(repoDir, "oci-layout"),
+				[]byte(`{"imageLayoutVersion":"1.0.0"}`), 0o600), ShouldBeNil)
+			So(os.Chmod(repoDir, 0o555), ShouldBeNil)
+
+			t.Cleanup(func() { _ = os.Chmod(repoDir, 0o755) })
+
+			store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+				local.New(true), nil, nil, nil)
+
+			So(store.InitRepo(ctx, "repo"), ShouldNotBeNil)
 		})
 	})
 }
