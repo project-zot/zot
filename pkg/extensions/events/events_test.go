@@ -3,10 +3,13 @@
 package events_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -44,6 +47,37 @@ func newMockSink() *mockSink {
 	return &mockSink{
 		store: make(chan *cloudevents.Event),
 	}
+}
+
+type failingSink struct{}
+
+func (s *failingSink) Emit(e *cloudevents.Event) cloudevents.Result {
+	return cloudevents.NewReceipt(false, "sink rejected event")
+}
+
+func (s *failingSink) Close() error {
+	return nil
+}
+
+var _ events.Sink = (*failingSink)(nil)
+
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.buf.String()
 }
 
 func TestEventSinkMissing(t *testing.T) {
@@ -84,6 +118,88 @@ func TestEvents(t *testing.T) {
 				events.ImageScanSummary{Count: 1, HighCount: 1, FixableCount: 1, MaxSeverity: "HIGH"}, nil)
 			ev := <-sink.store
 			So(ev.Type(), ShouldEqual, events.ImageScannedEventType.String())
+		})
+	})
+}
+
+// waitForLogMessage polls buf (up to 1s) until it contains every substring in want, then reports
+// whether it did. The publish summary is logged from a background goroutine after the per-sink
+// error logs, so callers must wait for the exact line(s) they assert on next, not an earlier one.
+func waitForLogMessage(buf *syncBuffer, want ...string) bool {
+	logged := func() bool {
+		content := buf.String()
+		for _, w := range want {
+			if !strings.Contains(content, w) {
+				return false
+			}
+		}
+
+		return true
+	}
+
+	for i := 0; i < 100 && !logged(); i++ {
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	return logged()
+}
+
+func TestEventsSinkFailure(t *testing.T) {
+	Convey("with a failing sink", t, func() {
+		buf := &syncBuffer{}
+		logger := log.NewLoggerWithWriter("debug", buf)
+
+		Convey("logs 0 out of 1 when the only sink fails", func() {
+			recorder, err := events.NewRecorder(logger, &failingSink{})
+			So(err, ShouldBeNil)
+
+			recorder.RepositoryCreated("test", nil)
+
+			So(waitForLogMessage(buf, "failed to publish event", "event publish failed"), ShouldBeTrue)
+			So(buf.String(), ShouldContainSubstring, `"totalSinks":1`)
+			So(buf.String(), ShouldContainSubstring, `"sinksSucceeded":0`)
+			So(buf.String(), ShouldContainSubstring, `"sinksFailed":1`)
+			// zero success must not claim "successfully", and must be logged at Warn, not Info
+			So(buf.String(), ShouldNotContainSubstring, "published successfully")
+			So(buf.String(), ShouldContainSubstring, `"level":"warn"`)
+		})
+
+		Convey("remaining sinks still receive the event and count reflects partial success", func() {
+			sink := newMockSink()
+			recorder, err := events.NewRecorder(logger, &failingSink{}, sink)
+			So(err, ShouldBeNil)
+
+			recorder.RepositoryCreated("test", nil)
+
+			ev := <-sink.store
+			So(ev.Type(), ShouldEqual, events.RepositoryCreatedEventType.String())
+
+			So(waitForLogMessage(buf, "failed to publish event", "event publish incomplete"), ShouldBeTrue)
+			So(buf.String(), ShouldContainSubstring, `"totalSinks":2`)
+			So(buf.String(), ShouldContainSubstring, `"sinksSucceeded":1`)
+			So(buf.String(), ShouldContainSubstring, `"sinksFailed":1`)
+			// partial success must not claim "successfully" either, only full success does
+			So(buf.String(), ShouldNotContainSubstring, "published successfully")
+			So(buf.String(), ShouldContainSubstring, `"level":"warn"`)
+		})
+
+		Convey("logs 1 out of 1 when all sinks accept the event", func() {
+			sink := newMockSink()
+			recorder, err := events.NewRecorder(logger, sink)
+			So(err, ShouldBeNil)
+
+			recorder.RepositoryCreated("test", nil)
+
+			ev := <-sink.store
+			So(ev.Type(), ShouldEqual, events.RepositoryCreatedEventType.String())
+
+			So(waitForLogMessage(buf, "event published successfully"), ShouldBeTrue)
+			So(buf.String(), ShouldContainSubstring, `"totalSinks":1`)
+			So(buf.String(), ShouldContainSubstring, `"sinksSucceeded":1`)
+			So(buf.String(), ShouldContainSubstring, `"sinksFailed":0`)
+			So(buf.String(), ShouldNotContainSubstring, "publish incomplete")
+			So(buf.String(), ShouldNotContainSubstring, "publish failed")
+			So(buf.String(), ShouldContainSubstring, `"level":"info"`)
 		})
 	})
 }
