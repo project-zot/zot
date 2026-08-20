@@ -1818,6 +1818,17 @@ func validateSyncReqLimits(regID int, regCfg syncconf.RegistryConfig, logger zlo
 		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 	}
 
+	// Only checked when the pointer is set: 0 silently means DefaultMaxIdleConnsPerHost (2) to Go's
+	// transport, and a negative value would otherwise pass straight through to it. disableHTTP2 with
+	// maxIdleConnsPerHost omitted is unaffected by this check; newClient fills the idle pool itself.
+	if regCfg.MaxIdleConnsPerHost != nil && *regCfg.MaxIdleConnsPerHost <= 0 {
+		msg := "maxIdleConnsPerHost must be greater than 0"
+		logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
+			regCfg).Msg(msg)
+
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+	}
+
 	return nil
 }
 

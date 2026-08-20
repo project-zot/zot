@@ -78,7 +78,9 @@
 					"maxRetryDelay": "30s",
 					"syncTimeout": "10m",
 					"reqConcurrent": 30,
-					"reqPerSec": 100
+					"reqPerSec": 100,
+					"disableHTTP2": true,
+					"maxIdleConnsPerHost": 30
 				},
 				{
 					"urls": [

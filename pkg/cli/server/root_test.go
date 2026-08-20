@@ -2072,6 +2072,47 @@ extensions:
 		So(err, ShouldBeNil)
 	})
 
+	Convey("Test verify with non-positive sync maxIdleConnsPerHost", t, func(c C) {
+		content := `{"storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+							"maxIdleConnsPerHost": 0}]}}}`
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+		os.Args = []string{"cli_test", "verify", tmpfile}
+		err := cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Test verify with valid sync disableHTTP2 and maxIdleConnsPerHost", t, func(c C) {
+		content := `{"storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+							"reqConcurrent": 16, "disableHTTP2": true, "maxIdleConnsPerHost": 30}]}}}`
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+		os.Args = []string{"cli_test", "verify", tmpfile}
+		err := cli.NewServerRootCmd().Execute()
+		So(err, ShouldBeNil)
+	})
+
+	Convey("Test verify with disableHTTP2 and maxIdleConnsPerHost omitted", t, func(c C) {
+		// newClient defaults the idle pool to reqConcurrent in this case (see service.go), so
+		// verify must not require maxIdleConnsPerHost to be set alongside disableHTTP2.
+		content := `{"storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+							"disableHTTP2": true}]}}}`
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+		os.Args = []string{"cli_test", "verify", tmpfile}
+		err := cli.NewServerRootCmd().Execute()
+		So(err, ShouldBeNil)
+	})
+
 	Convey("Test verify with good sync content config", t, func(c C) {
 		content := `{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",

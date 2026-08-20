@@ -87,6 +87,8 @@ function setup_file() {
                     "onDemand": false,
                     "tlsVerify": false,
                     "PollInterval": "10s",
+                    "disableHTTP2": true,
+                    "maxIdleConnsPerHost": 20,
                     "content": [
                         {
                             "prefix": "**"

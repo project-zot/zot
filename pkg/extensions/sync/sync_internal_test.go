@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -2116,6 +2117,110 @@ func TestNewClientReqConcurrentReqPerSec(t *testing.T) {
 	})
 }
 
+// drainNegotiatedProto discards any value left over from a previous request on the channel,
+// so a subtest only ever observes the protocol of the request it is about to issue.
+func drainNegotiatedProto(negotiatedProto chan string) {
+	for {
+		select {
+		case <-negotiatedProto:
+		default:
+			return
+		}
+	}
+}
+
+// TestNewClientDisableHTTP2 verifies that DisableHTTP2 pins the upstream connection to
+// HTTP/1.1 even against a server that supports and would otherwise negotiate HTTP/2.
+func TestNewClientDisableHTTP2(t *testing.T) {
+	Convey("Test newClient DisableHTTP2 behavior", t, func() {
+		logger := log.NewTestLogger()
+
+		// Buffered well past one: a HEAD request can hit the handler more than once (e.g. an
+		// auth-challenge round trip before the real request), and the send below must never
+		// block on a slow/absent reader or the handler goroutine hangs.
+		negotiatedProto := make(chan string, 8)
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			select {
+			case negotiatedProto <- r.Proto:
+			default:
+			}
+			w.WriteHeader(http.StatusOK)
+		})
+
+		server := httptest.NewUnstartedServer(handler)
+		server.EnableHTTP2 = true // advertise "h2" via ALPN, like a real HTTP/2-capable registry
+		server.StartTLS()
+		defer server.Close()
+
+		host := strings.TrimPrefix(server.URL, "https://")
+
+		// httptest's TLS cert is self-signed, so skip verification to isolate this test
+		// from cert trust; DisableHTTP2/ALPN pinning is orthogonal to cert validation.
+		tlsVerifyOff := false
+		tlsVerify := &tlsVerifyOff
+
+		Convey("DisableHTTP2 forces HTTP/1.1 against an HTTP/2-capable server", func() {
+			disableHTTP2 := true
+			opts := syncconf.RegistryConfig{
+				URLs:                  []string{server.URL},
+				TLSVerify:             tlsVerify,
+				SyncTimeout:           syncConstants.DefaultSyncTimeout,
+				ResponseHeaderTimeout: syncConstants.DefaultResponseHeaderTimeout,
+				DisableHTTP2:          &disableHTTP2,
+			}
+
+			client, _, err := newClient(opts, syncconf.CredentialsFile{}, logger)
+			So(err, ShouldBeNil)
+
+			r, err := ref.New(host + "/repo:tag")
+			So(err, ShouldBeNil)
+
+			drainNegotiatedProto(negotiatedProto)
+
+			// The handler returns a bare 200 with no manifest body/headers, so regclient is
+			// expected to fail parsing it as a manifest; only the transport-level protocol
+			// the request actually reached the server on is under test here.
+			_, err = client.ManifestHead(context.Background(), r)
+			t.Logf("ManifestHead (expected to fail on the stub response): %v", err)
+
+			select {
+			case proto := <-negotiatedProto:
+				So(proto, ShouldEqual, "HTTP/1.1")
+			case <-time.After(5 * time.Second):
+				t.Fatalf("server never received a request; ManifestHead error: %v", err)
+			}
+		})
+
+		Convey("without DisableHTTP2, an HTTP/2-capable server negotiates HTTP/2", func() {
+			opts := syncconf.RegistryConfig{
+				URLs:                  []string{server.URL},
+				TLSVerify:             tlsVerify,
+				SyncTimeout:           syncConstants.DefaultSyncTimeout,
+				ResponseHeaderTimeout: syncConstants.DefaultResponseHeaderTimeout,
+			}
+
+			client, _, err := newClient(opts, syncconf.CredentialsFile{}, logger)
+			So(err, ShouldBeNil)
+
+			r, err := ref.New(host + "/repo:tag")
+			So(err, ShouldBeNil)
+
+			drainNegotiatedProto(negotiatedProto)
+
+			// See the comment in the sibling Convey above: the parse failure is expected.
+			_, err = client.ManifestHead(context.Background(), r)
+			t.Logf("ManifestHead (expected to fail on the stub response): %v", err)
+
+			select {
+			case proto := <-negotiatedProto:
+				So(proto, ShouldEqual, "HTTP/2.0")
+			case <-time.After(5 * time.Second):
+				t.Fatalf("server never received a request; ManifestHead error: %v", err)
+			}
+		})
+	})
+}
+
 func TestHTTPRetryDelayBounds(t *testing.T) {
 	Convey("httpRetryDelayBounds maps sync config to regclient delay args", t, func() {
 		retryDelay := 1 * time.Second
@@ -2143,6 +2248,120 @@ func TestHTTPRetryDelayBounds(t *testing.T) {
 			So(ok, ShouldBeTrue)
 			So(delayInit, ShouldEqual, retryDelay)
 			So(delayMax, ShouldEqual, maxRetryDelay)
+		})
+	})
+}
+
+// TestEffectiveMaxIdleConnsPerHost verifies that DisableHTTP2 without an explicit
+// maxIdleConnsPerHost defaults the idle pool to reqConcurrent, so DisableHTTP2 alone is enough
+// to keep concurrent HTTP/1.1 connections pooled instead of being closed at Go's default of 2.
+func TestEffectiveMaxIdleConnsPerHost(t *testing.T) {
+	Convey("effectiveMaxIdleConnsPerHost", t, func() {
+		Convey("neither set leaves the Go default (0: caller doesn't override)", func() {
+			got := effectiveMaxIdleConnsPerHost(syncconf.RegistryConfig{}, 3)
+			So(got, ShouldEqual, 0)
+		})
+
+		Convey("DisableHTTP2 alone defaults to reqConcurrent", func() {
+			disableHTTP2 := true
+			got := effectiveMaxIdleConnsPerHost(syncconf.RegistryConfig{DisableHTTP2: &disableHTTP2}, 16)
+			So(got, ShouldEqual, 16)
+		})
+
+		Convey("DisableHTTP2 false does not default", func() {
+			disableHTTP2 := false
+			got := effectiveMaxIdleConnsPerHost(syncconf.RegistryConfig{DisableHTTP2: &disableHTTP2}, 16)
+			So(got, ShouldEqual, 0)
+		})
+
+		Convey("explicit maxIdleConnsPerHost always wins, with or without DisableHTTP2", func() {
+			disableHTTP2 := true
+			maxIdle := 42
+			got := effectiveMaxIdleConnsPerHost(syncconf.RegistryConfig{
+				DisableHTTP2:        &disableHTTP2,
+				MaxIdleConnsPerHost: &maxIdle,
+			}, 16)
+			So(got, ShouldEqual, 42)
+
+			got = effectiveMaxIdleConnsPerHost(syncconf.RegistryConfig{MaxIdleConnsPerHost: &maxIdle}, 16)
+			So(got, ShouldEqual, 42)
+		})
+	})
+}
+
+// TestPinHTTP1ALPN covers the nil-TLSClientConfig branch directly: http.Transport.Clone() sets a
+// non-nil TLSClientConfig in virtually every real build (Go's own lazy HTTP/2 auto-configuration
+// runs on the source transport first), so that branch is unreachable through newClient in
+// practice; this exercises it without depending on that net/http implementation detail.
+func TestPinHTTP1ALPN(t *testing.T) {
+	Convey("pinHTTP1ALPN", t, func() {
+		Convey("nil input gets a fresh config with NextProtos pinned", func() {
+			got := pinHTTP1ALPN(nil)
+			So(got, ShouldNotBeNil)
+			So(got.NextProtos, ShouldResemble, []string{"http/1.1"})
+		})
+
+		Convey("existing config is reused and NextProtos overwritten", func() {
+			existing := &tls.Config{InsecureSkipVerify: true, NextProtos: []string{"h2", "http/1.1"}} //nolint:gosec
+			got := pinHTTP1ALPN(existing)
+			So(got, ShouldEqual, existing) // same pointer: mutated in place, not replaced
+			So(got.NextProtos, ShouldResemble, []string{"http/1.1"})
+			So(got.InsecureSkipVerify, ShouldBeTrue) // untouched
+		})
+	})
+}
+
+// TestApplySyncTransportOptions verifies the exact DisableHTTP2 x MaxIdleConnsPerHost x
+// ReqConcurrent combinations that determine the idle connection pool size on the real
+// *http.Transport newClient builds (newClient itself doesn't expose the transport - it only
+// returns a *regclient.RegClient - so this is what actually covers the assignment).
+func TestApplySyncTransportOptions(t *testing.T) {
+	Convey("applySyncTransportOptions", t, func() {
+		Convey("DisableHTTP2 true, ReqConcurrent and MaxIdleConnsPerHost both unset: idle pool is regclient's default of 3", func() {
+			disableHTTP2 := true
+			transport := &http.Transport{}
+
+			applySyncTransportOptions(transport, syncconf.RegistryConfig{DisableHTTP2: &disableHTTP2}, 3)
+
+			So(transport.MaxIdleConnsPerHost, ShouldEqual, 3)
+			So(transport.ForceAttemptHTTP2, ShouldBeFalse)
+			So(transport.TLSNextProto, ShouldNotBeNil)
+			So(transport.TLSNextProto, ShouldBeEmpty)
+			So(transport.TLSClientConfig, ShouldNotBeNil)
+			So(transport.TLSClientConfig.NextProtos, ShouldResemble, []string{"http/1.1"})
+		})
+
+		Convey("DisableHTTP2 true, ReqConcurrent 16, MaxIdleConnsPerHost unset: idle pool follows ReqConcurrent", func() {
+			disableHTTP2 := true
+			transport := &http.Transport{}
+
+			applySyncTransportOptions(transport, syncconf.RegistryConfig{DisableHTTP2: &disableHTTP2}, 16)
+
+			So(transport.MaxIdleConnsPerHost, ShouldEqual, 16)
+		})
+
+		Convey("explicit MaxIdleConnsPerHost wins over the ReqConcurrent-derived default", func() {
+			disableHTTP2 := true
+			maxIdle := 20
+			transport := &http.Transport{}
+
+			applySyncTransportOptions(transport, syncconf.RegistryConfig{
+				DisableHTTP2:        &disableHTTP2,
+				MaxIdleConnsPerHost: &maxIdle,
+			}, 16)
+
+			So(transport.MaxIdleConnsPerHost, ShouldEqual, 20)
+		})
+
+		Convey("DisableHTTP2 unset leaves HTTP/2 transport fields untouched", func() {
+			transport := &http.Transport{ForceAttemptHTTP2: true}
+
+			applySyncTransportOptions(transport, syncconf.RegistryConfig{}, 3)
+
+			So(transport.ForceAttemptHTTP2, ShouldBeTrue)
+			So(transport.TLSNextProto, ShouldBeNil)
+			So(transport.TLSClientConfig, ShouldBeNil)
+			So(transport.MaxIdleConnsPerHost, ShouldEqual, 0)
 		})
 	})
 }
