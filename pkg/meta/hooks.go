@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
@@ -15,6 +16,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/storage"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
 // priorTagManifest records where MetaDB believed each tag pointed before a digest PUT with tag=
@@ -280,7 +282,34 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 		return err
 	}
 
+	releaseIdleRepository(repo, imgStore, metaDB, log)
+
 	return nil
+}
+
+// releaseIdleRepository removes a repo left empty by a manifest delete: the storage layout and the
+// meta record go together, so the repo stops counting towards maxRepos immediately without _catalog
+// and the quota count diverging. A zero max blob age reclaims the orphan blobs the deletes left
+// behind. Failures are logged, not returned: the manifest delete already succeeded, and ParseStorage
+// corrects a stale record on next start.
+func releaseIdleRepository(repo string, imgStore storageTypes.ImageStore, metaDB mTypes.MetaDB, log log.Logger) {
+	var lockLatency time.Time
+
+	imgStore.Lock(&lockLatency)
+	defer imgStore.Unlock(&lockLatency)
+
+	removed, err := imgStore.RemoveIdleRepository(repo, 0, metaDB)
+	if err != nil {
+		log.Error().Err(err).Str("repository", repo).Str("component", "metadb").
+			Msg("failed to remove repo emptied by manifest deletes")
+
+		return
+	}
+
+	if removed {
+		log.Debug().Str("repository", repo).Str("component", "metadb").
+			Msg("removed repo emptied by manifest deletes")
+	}
 }
 
 // OnGetManifest is called when a manifest is downloaded. It increments the download counter on that manifest.

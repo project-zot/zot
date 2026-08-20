@@ -36,6 +36,7 @@ import (
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 	"zotregistry.dev/zot/v2/pkg/test/azurite"
 	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
+	"zotregistry.dev/zot/v2/pkg/test/mocks"
 	tskip "zotregistry.dev/zot/v2/pkg/test/skip"
 )
 
@@ -3438,6 +3439,155 @@ func TestGCRemoveRepoAfterAllBlobsGCed(t *testing.T) {
 		repos, err := imgStore.GetRepositories()
 		So(err, ShouldBeNil)
 		So(repos, ShouldContain, repoName)
+	})
+}
+
+// TestGCRemoveRepoDropsRepoMeta covers the repository-level metadata GC: when GC removes a repo's
+// layout, the repo's meta record goes with it, so storage and metadb keep the same lifetime and a
+// reaped repo stops counting towards storage.maxRepos.
+func TestGCRemoveRepoDropsRepoMeta(t *testing.T) {
+	Convey("GC deletes the meta record together with the repo layout", t, func() {
+		log := zlog.NewTestLogger()
+		audit := zlog.NewAuditLogger("debug", "/dev/null")
+		metrics := monitoring.NewNopMetricServer()
+
+		rootDir := t.TempDir()
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+
+		storeController := storage.StoreController{}
+		storeController.DefaultStore = imgStore
+
+		ctx := context.Background()
+		repoName := "gc-remove-repo-meta"
+
+		img := CreateRandomImage()
+		err := WriteImageToFileSystem(img, repoName, "v1", storeController)
+		So(err, ShouldBeNil)
+
+		err = imgStore.DeleteImageManifest(ctx, repoName, "v1", true)
+		So(err, ShouldBeNil)
+
+		time.Sleep(1 * time.Second)
+
+		var metaDeleted string
+		metaDB := mocks.MetaDBMock{
+			DeleteRepoMetaFn: func(repo string) error {
+				metaDeleted = repo
+
+				return nil
+			},
+		}
+
+		gcInstance := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
+			Delay: 1 * time.Second,
+			ImageRetention: config.ImageRetention{
+				Delay: 1 * time.Second,
+			},
+		}, audit, log, metrics)
+
+		err = gcInstance.CleanRepo(ctx, repoName)
+		So(err, ShouldBeNil)
+
+		So(metaDeleted, ShouldEqual, repoName)
+
+		repos, err := imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		So(repos, ShouldNotContain, repoName)
+	})
+
+	Convey("GC removes a blobless empty layout and its meta record", t, func() {
+		log := zlog.NewTestLogger()
+		audit := zlog.NewAuditLogger("debug", "/dev/null")
+		metrics := monitoring.NewNopMetricServer()
+
+		rootDir := t.TempDir()
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+
+		ctx := context.Background()
+		repoName := "gc-remove-blobless-repo"
+
+		// a layout with an empty index and no blobs at all: nothing for blob GC to reap,
+		// so the old removeRepo predicate (len(gcBlobs) > 0) could never fire
+		err := imgStore.InitRepo(ctx, repoName)
+		So(err, ShouldBeNil)
+
+		var metaDeleted string
+		metaDB := mocks.MetaDBMock{
+			DeleteRepoMetaFn: func(repo string) error {
+				metaDeleted = repo
+
+				return nil
+			},
+		}
+
+		gcInstance := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
+			Delay: 1 * time.Second,
+			ImageRetention: config.ImageRetention{
+				Delay: 1 * time.Second,
+			},
+		}, audit, log, metrics)
+
+		err = gcInstance.CleanRepo(ctx, repoName)
+		So(err, ShouldBeNil)
+
+		So(metaDeleted, ShouldEqual, repoName)
+
+		repos, err := imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		So(repos, ShouldNotContain, repoName)
+	})
+
+	Convey("dry-run GC removes neither the layout nor the meta record", t, func() {
+		log := zlog.NewTestLogger()
+		audit := zlog.NewAuditLogger("debug", "/dev/null")
+		metrics := monitoring.NewNopMetricServer()
+
+		rootDir := t.TempDir()
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+
+		storeController := storage.StoreController{}
+		storeController.DefaultStore = imgStore
+
+		ctx := context.Background()
+		repoName := "gc-dry-run-repo"
+
+		img := CreateRandomImage()
+		err := WriteImageToFileSystem(img, repoName, "v1", storeController)
+		So(err, ShouldBeNil)
+
+		err = imgStore.DeleteImageManifest(ctx, repoName, "v1", true)
+		So(err, ShouldBeNil)
+
+		time.Sleep(1 * time.Second)
+
+		metaDeleteCalled := false
+		metaDB := mocks.MetaDBMock{
+			DeleteRepoMetaFn: func(repo string) error {
+				metaDeleteCalled = true
+
+				return nil
+			},
+		}
+
+		gcInstance := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
+			Delay: 1 * time.Second,
+			ImageRetention: config.ImageRetention{
+				Delay:  1 * time.Second,
+				DryRun: true,
+			},
+		}, audit, log, metrics)
+
+		err = gcInstance.CleanRepo(ctx, repoName)
+		So(err, ShouldBeNil)
+		So(metaDeleteCalled, ShouldBeFalse)
+
+		repos, err := imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		So(repos, ShouldContain, repoName)
+
+		blobs, err := imgStore.GetAllBlobs(repoName)
+		So(err, ShouldBeNil)
+		So(blobs, ShouldNotBeEmpty)
 	})
 }
 
