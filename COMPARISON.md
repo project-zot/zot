@@ -47,7 +47,7 @@ and the possible attack surface.
 
 [7] https://github.com/parabuzzle/craneoperator
 
-[8] https://github.com/project-zot/zot-ui
+[8] https://github.com/project-zot/zui
 
 [9] https://www.docker.com/blog/donating-docker-distribution-to-the-cncf/
 
