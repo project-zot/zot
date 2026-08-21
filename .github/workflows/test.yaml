@@ -57,7 +57,9 @@ jobs:
           name: coverage-minimal
           path: coverage-minimal.txt
       - uses: ./.github/actions/teardown-localstack
+        if: always()
       - uses: ./.github/actions/teardown-azurite
+        if: always()
   test-run-extensions:
     name: Run zot with extensions tests
     runs-on: cncf-ubuntu-16-64-x86
@@ -102,7 +104,9 @@ jobs:
           name: coverage-extended
           path: coverage-extended.txt
       - uses: ./.github/actions/teardown-localstack
+        if: always()
       - uses: ./.github/actions/teardown-azurite
+        if: always()
   test-run-devmode:
     name: Running development-mode tests on Linux
     runs-on: ubuntu-latest
@@ -179,6 +183,7 @@ jobs:
           name: coverage-needprivileges
           path: coverage-needprivileges-*.txt
       - uses: ./.github/actions/teardown-gcs-storage-testbench
+        if: always()
   test-coverage:
     name: Collect all test coverage
     runs-on: ubuntu-latest

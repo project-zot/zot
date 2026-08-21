@@ -175,13 +175,14 @@ jobs:
           path: /tmp/gc-referrers-bench-s3.log
           if-no-files-found: error
 
+      - uses: ./.github/actions/teardown-localstack
+        if: always()
+
       - name: Check on failures
         if: steps.bench.outcome != 'success'
         run: |
           cat /tmp/gc-referrers-bench-s3.log
           exit 1
-
-      - uses: ./.github/actions/teardown-localstack
 
   gc-stress-s3:
     name: GC(without referrers) on S3(minio) with short interval
@@ -262,10 +263,11 @@ jobs:
           path: /tmp/gc-bench-s3.log
           if-no-files-found: error
 
+      - uses: ./.github/actions/teardown-localstack
+        if: always()
+
       - name: Check on failures
         if: steps.bench.outcome != 'success'
         run: |
           cat /tmp/gc-bench-s3.log
           exit 1
-
-      - uses: ./.github/actions/teardown-localstack

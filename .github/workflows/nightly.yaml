@@ -48,6 +48,7 @@ jobs:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
       - uses: ./.github/actions/teardown-localstack
+        if: always()
 
   sync:
     name: Sync harness
@@ -109,12 +110,13 @@ jobs:
           AWS_SECRET_ACCESS_KEY: fake
         continue-on-error: true
 
+      - uses: ./.github/actions/teardown-localstack
+        if: always()
       - name: Check on failures
         if: steps.bench.outcome != 'success'
         run: |
           cat /tmp/gc-referrers-bench-s3.log
           exit 1
-      - uses: ./.github/actions/teardown-localstack
 
   gc-stress-s3:
     name: GC(without referrers) on S3(localstack) with short interval
@@ -155,12 +157,13 @@ jobs:
           AWS_SECRET_ACCESS_KEY: fake
         continue-on-error: true
 
+      - uses: ./.github/actions/teardown-localstack
+        if: always()
       - name: Check on failures
         if: steps.bench.outcome != 'success'
         run: |
           cat /tmp/gc-bench-s3.log
           exit 1
-      - uses: ./.github/actions/teardown-localstack
 
   docker-image:
     name: Build docker image (for users still using Docker environments)
@@ -344,6 +347,8 @@ jobs:
       - name: clean up logs
         run: |
           rm -r /tmp/zot-ft-logs/dynamo-scale
+      - uses: ./.github/actions/teardown-localstack
+        if: always()
       - name: fail job if error
         if: ${{ steps.scale.outcome != 'success' || steps.multihop.outcome != 'success' }}
         run: |
@@ -354,7 +359,6 @@ jobs:
         with:
           name: zb-cloud-scale-out-perf-results-${{ github.sha }}
           path: ./zb-results/
-      - uses: ./.github/actions/teardown-localstack
 
   cloud-scale-out-redis:
     name: s3+redis scale-out
@@ -415,6 +419,8 @@ jobs:
       - name: clean up logs
         run: |
           rm -r /tmp/zot-ft-logs/redis-scale
+      - uses: ./.github/actions/teardown-localstack
+        if: always()
       - name: fail job if error
         if: ${{ steps.scale.outcome != 'success' || steps.multihop.outcome != 'success' }}
         run: |
@@ -425,4 +431,3 @@ jobs:
         with:
           name: zb-cloud-scale-out-redis-results-${{ github.sha }}
           path: ./zb-results/
-      - uses: ./.github/actions/teardown-localstack

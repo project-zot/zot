@@ -164,3 +164,4 @@ jobs:
           name: zb-cloud-scale-out-functional-results-${{ github.sha }}
           path: ./zb-results/
       - uses: ./.github/actions/teardown-localstack
+        if: always()
