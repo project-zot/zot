@@ -129,6 +129,7 @@ var (
 	ErrSortCriteriaNotSupported         = errors.New("the pagination sort criteria is not supported")
 	ErrMediaTypeNotSupported            = errors.New("media type is not supported")
 	ErrTimeout                          = errors.New("operation timeout")
+	ErrRepoLockUnavailable              = errors.New("storage: could not obtain exclusive access to the repository")
 	ErrNotImplemented                   = errors.New("not implemented")
 	ErrDedupeRebuild                    = errors.New("couldn't rebuild dedupe index")
 	ErrDedupeRebuildInProgress          = errors.New("dedupe cache rebuild in progress, blob delete deferred")

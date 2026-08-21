@@ -14,6 +14,7 @@ import (
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/go-viper/mapstructure/v2"
 	godigest "github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -27,6 +28,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage/cache"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
 
@@ -1898,6 +1900,53 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			err := gc.CleanRepo(ctx, repoName)
 			So(err, ShouldNotBeNil)
 			So(errors.Is(err, zerr.ErrRepoNotFound), ShouldBeTrue)
+		})
+
+		Convey("CleanRepo fails when the repo lock is unavailable", func() {
+			imgStore := mocks.MockedImageStore{
+				DirExistsFn: func(d string) bool {
+					return true
+				},
+				LockRepoFn: func(ctx context.Context, repo string) (storageTypes.RepoLock, error) {
+					return nil, errGC
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			err := gc.CleanRepo(ctx, repoName)
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, errGC), ShouldBeTrue)
+		})
+
+		Convey("CleanRepo fails before the index write when the repo lock was lost mid-sweep", func() {
+			indexWritten := false
+			emptyIndex, err := json.Marshal(ispec.Index{Versioned: specs.Versioned{SchemaVersion: 2}})
+			So(err, ShouldBeNil)
+
+			imgStore := mocks.MockedImageStore{
+				DirExistsFn: func(d string) bool {
+					return true
+				},
+				LockRepoFn: func(ctx context.Context, repo string) (storageTypes.RepoLock, error) {
+					return mocks.RepoLockMock{StillHeldFn: func(context.Context) bool { return false }}, nil
+				},
+				GetIndexContentFn: func(repo string) ([]byte, error) {
+					return emptyIndex, nil
+				},
+				PutIndexContentFn: func(repo string, index ispec.Index) error {
+					indexWritten = true
+
+					return nil
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			err = gc.CleanRepo(ctx, repoName)
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrRepoLockUnavailable), ShouldBeTrue)
+			So(indexWritten, ShouldBeFalse)
 		})
 
 		Convey("removeStaleManifestEntries removes entries whose blobs are missing", func() {
