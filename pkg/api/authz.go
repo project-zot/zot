@@ -17,6 +17,7 @@ import (
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/api/constants"
+	apiErr "zotregistry.dev/zot/v2/pkg/api/errors"
 	"zotregistry.dev/zot/v2/pkg/cel"
 	"zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/log"
@@ -638,7 +639,7 @@ func BaseAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			// get access control context made in authn.go
 			userAc, err := reqCtx.UserAcFromContext(request.Context())
 			if err != nil { // should never happen
-				authFail(response, request, realm, failDelay)
+				authzFailWithReason(response, request, "", authConfig, realm, failDelay, "")
 
 				return
 			}
@@ -683,7 +684,7 @@ func DistSpecAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			// get userAc built in authn and previous authz middlewares
 			userAc, err := reqCtx.UserAcFromContext(request.Context())
 			if err != nil { // should never happen
-				authFail(response, request, realm, failDelay)
+				authzFailWithReason(response, request, "", authConfig, realm, failDelay, "")
 
 				return
 			}
@@ -715,8 +716,8 @@ func DistSpecAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 					denyReason, allowed := authorizeManifestWrite(
 						acCtrlr, request, userAc, resource, reference, repoTags, request.URL.Query()["tag"])
 					if !allowed {
-						common.AuthzFailWithReason(response, request, userAc.GetUsername(),
-							realm, failDelay, denyReason)
+						authzFailWithReason(response, request, userAc.GetUsername(),
+							authConfig, realm, failDelay, denyReason)
 
 						return
 					}
@@ -733,12 +734,48 @@ func DistSpecAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			can, denyReason := acCtrlr.can(request, userAc, action, resource, reference) //nolint:contextcheck
 			if !can {
-				common.AuthzFailWithReason(response, request, userAc.GetUsername(), realm, failDelay, denyReason)
+				authzFailWithReason(response, request, userAc.GetUsername(),
+					authConfig, realm, failDelay, denyReason)
 			} else {
 				next.ServeHTTP(response, request) //nolint:contextcheck
 			}
 		})
 	}
+}
+
+func authzFailWithReason(
+	w http.ResponseWriter, r *http.Request, identity string, authConfig *config.AuthConfig,
+	realm string, delay int, reason string,
+) {
+	if authConfig.ShouldAdvertiseBearerChallenge() {
+		bearerAuthzFailWithReason(w, r, identity, authConfig, delay, reason)
+
+		return
+	}
+
+	common.AuthzFailWithReason(w, r, identity, realm, delay, reason)
+}
+
+func bearerAuthzFailWithReason(
+	w http.ResponseWriter, r *http.Request, identity string, authConfig *config.AuthConfig, delay int, reason string,
+) {
+	time.Sleep(time.Duration(delay) * time.Second)
+	setBearerAuthChallengeForNonSessionClient(w, r, authConfig, requestedBearerResourceAction(r))
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if identity == "" {
+		common.WriteJSON(w, http.StatusUnauthorized, apiErr.NewErrorList(apiErr.NewError(apiErr.UNAUTHORIZED)))
+
+		return
+	}
+
+	denied := apiErr.NewError(apiErr.DENIED)
+	if reason != "" {
+		denied.AddDetail(map[string]string{"reason": reason})
+	}
+
+	common.WriteJSON(w, http.StatusForbidden, apiErr.NewErrorList(denied))
 }
 
 // manifestWriteAuthzCheck is one (permission, reference) pair required for a manifest write.
@@ -903,7 +940,7 @@ func MetricsAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			// get access control context made in authn.go
 			userAc, err := reqCtx.UserAcFromContext(request.Context())
 			if err != nil { // should never happen
-				common.AuthzFail(response, request, "", realm, failDelay)
+				authzFailWithReason(response, request, "", authConfig, realm, failDelay, "")
 
 				return
 			}
@@ -913,7 +950,7 @@ func MetricsAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			if userAc.IsAnonymous() {
 				// If anonymous read is not specified in access control, deny.
 				if !slices.Contains(metricsAccessConfig.AnonymousPolicy, constants.ReadPermission) {
-					common.AuthzFail(response, request, "", realm, failDelay)
+					authzFailWithReason(response, request, "", authConfig, realm, failDelay, "")
 
 					return
 				}
@@ -923,13 +960,13 @@ func MetricsAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 					log := ctlr.Log
 					log.Warn().Msg("no users configured in metrics user list; " +
 						"metrics are not accessible to any authenticated user.")
-					common.AuthzFail(response, request, username, realm, failDelay)
+					authzFailWithReason(response, request, username, authConfig, realm, failDelay, "")
 
 					return
 				}
 
 				if !slices.Contains(metricsAccessConfig.Users, username) {
-					common.AuthzFail(response, request, username, realm, failDelay)
+					authzFailWithReason(response, request, username, authConfig, realm, failDelay, "")
 
 					return
 				}

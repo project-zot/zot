@@ -5,16 +5,18 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/assert"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/api/constants"
 	"zotregistry.dev/zot/v2/pkg/log"
 	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
-	zerr "zotregistry.dev/zot/v2/errors"
 )
 
 // permitted returns just the bool from AccessController.isPermitted; tests
@@ -22,6 +24,75 @@ import (
 func permitted(ac *AccessController, evalReq *evalRequest, pg config.PolicyGroup) bool {
 	ok, _ := ac.isPermitted(evalReq, pg)
 	return ok
+}
+
+func TestAuthzFailWithReasonChallengeHeaders(t *testing.T) {
+	t.Parallel()
+
+	request := httptest.NewRequest(http.MethodPost, "/v2/repo/blobs/uploads/", nil)
+	request = mux.SetURLVars(request, map[string]string{"name": "repo"})
+
+	basicResponse := httptest.NewRecorder()
+	authzFailWithReason(
+		basicResponse,
+		request,
+		"",
+		&config.AuthConfig{HTPasswd: config.AuthHTPasswd{Path: "/tmp/htpasswd"}},
+		"zot",
+		0,
+		"",
+	)
+
+	assert.Equal(t, http.StatusUnauthorized, basicResponse.Code)
+	assert.Equal(t, `Basic realm="zot"`, basicResponse.Header().Get("WWW-Authenticate"))
+
+	bearerResponse := httptest.NewRecorder()
+	authzFailWithReason(
+		bearerResponse,
+		request,
+		"alice",
+		&config.AuthConfig{
+			Bearer: &config.BearerConfig{
+				Realm:   "https://auth.example.test/token",
+				Service: "zot",
+				Cert:    "/tmp/server.cert",
+			},
+		},
+		"zot",
+		0,
+		"write denied",
+	)
+
+	assert.Equal(t, http.StatusForbidden, bearerResponse.Code)
+	assert.Equal(t,
+		`Bearer realm="https://auth.example.test/token",service="zot",scope="repository:repo:push"`,
+		bearerResponse.Header().Get("WWW-Authenticate"),
+	)
+	assert.True(t, strings.Contains(bearerResponse.Body.String(), "write denied"))
+
+	sessionRequest := httptest.NewRequest(http.MethodPost, "/v2/repo/blobs/uploads/", nil)
+	sessionRequest = mux.SetURLVars(sessionRequest, map[string]string{"name": "repo"})
+	sessionRequest.Header.Set(constants.SessionClientHeaderName, constants.SessionClientHeaderValue)
+
+	sessionResponse := httptest.NewRecorder()
+	authzFailWithReason(
+		sessionResponse,
+		sessionRequest,
+		"alice",
+		&config.AuthConfig{
+			Bearer: &config.BearerConfig{
+				Realm:   "https://auth.example.test/token",
+				Service: "zot",
+				Cert:    "/tmp/server.cert",
+			},
+		},
+		"zot",
+		0,
+		"",
+	)
+
+	assert.Equal(t, http.StatusForbidden, sessionResponse.Code)
+	assert.Empty(t, sessionResponse.Header().Get("WWW-Authenticate"))
 }
 
 func TestPolicyConditions(t *testing.T) {
