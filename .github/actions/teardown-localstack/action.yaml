@@ -5,4 +5,4 @@ runs:
   steps:
     - shell: bash
       if: always()
-      run: localstack stop
+      run: localstack stop || true
