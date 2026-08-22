@@ -1,0 +1,54 @@
+name: 'Setup floci service'
+description: 'Download & run floci container (does not create S3 buckets; tests or workflows should create resources they need)'
+inputs:
+  # inputs for https://github.com/docker/login-action
+  username:
+    description: 'Username used to log against the github registry'
+    required: false
+    default: ${{ github.actor }}
+  password:
+    description: 'Password or personal access token used to log against the github registry'
+    required: false
+    default: ${{ github.token }}
+  persistent_mode:
+    description: 'Whether to use persistent storage mode for floci ("0" for no, "1" for yes)'
+    required: false
+    default: "0"
+runs:
+  using: "composite"
+  steps:
+    - uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+      with:
+        registry: ghcr.io
+        username: ${{ inputs.username }}
+        password: ${{ inputs.password }}
+    - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      with:
+        python-version: '3.11'
+    - shell: bash
+      run: |
+        pip install --upgrade pyopenssl
+        pip install 'awscli-local[ver1]'
+
+        # install floci-cli to manage floci
+        curl -fsSL "https://github.com/floci-io/floci-cli/raw/refs/tags/${FLOCI_INSTALLER_VERSION_TAG}/installer/install.sh" | sh
+        floci version
+
+        if [[ "1" == "${{ inputs.persistent_mode }}" ]]; then
+          mkdir -p ./floci-data
+          floci start --image "${IMAGE_NAME}" --services "${SERVICES_TO_START}" --persist ./floci-data
+        else
+          floci start --image "${IMAGE_NAME}" --services "${SERVICES_TO_START}"
+        fi
+        for svc in ${SERVICES_TO_START//,/ }; do
+          echo "Waiting for ${svc}"
+          # Default timeout is 30 seconds
+          floci wait --service "${svc}"
+        done
+      env:
+        AWS_ACCESS_KEY_ID: fake
+        AWS_SECRET_ACCESS_KEY: fake
+        IMAGE_NAME: ghcr.io/project-zot/ci-images/floci:1.5.34
+        FLOCI_INSTALLER_VERSION_TAG: 0.2.0
+        FLOCI_CLI_VERSION: 0.2.0
+        SERVICES_TO_START: 's3,dynamodb,secretsmanager'
