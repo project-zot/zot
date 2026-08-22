@@ -1,0 +1,109 @@
+name: "Running tests with floci"
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches: [main]
+  release:
+    types:
+      - published
+
+permissions: read-all
+
+jobs:
+  floci-test-run-minimal:
+    name: floci Running zot without extensions tests
+    runs-on: cncf-ubuntu-8-32-x86
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          cache: false
+          check-latest: true
+          go-version: 1.26.x
+      - name: Cache go dependencies
+        id: cache-go-dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-mod-
+      - name: Install go dependencies
+        if: steps.cache-go-dependencies.outputs.cache-hit != 'true'
+        run: |
+          cd $GITHUB_WORKSPACE
+          go mod download
+      - uses: ./.github/actions/setup-floci
+      - uses: ./.github/actions/setup-azurite
+      - name: run zot minimal tests
+        run: |
+          cd $GITHUB_WORKSPACE
+          make test-minimal
+        env:
+          S3MOCK_ENDPOINT: localhost:4566
+          DYNAMODBMOCK_ENDPOINT: http://localhost:4566
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
+          AZURITEMOCK_ENDPOINT: http://127.0.0.1:10000/devstoreaccount1
+      - name: upload coverage
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-minimal-floci
+          path: coverage-minimal.txt
+      - uses: ./.github/actions/teardown-floci
+        if: always()
+      - uses: ./.github/actions/teardown-azurite
+        if: always()
+  floci-test-run-extensions:
+    name: floci Run zot with extensions tests
+    runs-on: cncf-ubuntu-16-64-x86
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          cache: false
+          check-latest: true
+          go-version: 1.26.x
+      - name: Cache go dependencies
+        id: cache-go-dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-mod-
+      - name: Install go dependencies
+        if: steps.cache-go-dependencies.outputs.cache-hit != 'true'
+        run: |
+          cd $GITHUB_WORKSPACE
+          go mod download
+      - uses: ./.github/actions/setup-floci
+      - uses: ./.github/actions/setup-azurite
+      - name: run zot extended tests
+        run: |
+          cd $GITHUB_WORKSPACE
+          make test-extended
+        env:
+          S3MOCK_ENDPOINT: localhost:4566
+          DYNAMODBMOCK_ENDPOINT: http://localhost:4566
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
+          AZURITEMOCK_ENDPOINT: http://127.0.0.1:10000/devstoreaccount1
+      - name: upload coverage
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-extended-floci
+          path: coverage-extended.txt
+      - uses: ./.github/actions/teardown-floci
+        if: always()
+      - uses: ./.github/actions/teardown-azurite
+        if: always()
