@@ -2,6 +2,8 @@ name: 'Nightly jobs with floci'
 
 # Runs every 12 hours or on workflow dispatch
 on:
+  pull_request:
+    branches: [main]
   schedule:
     - cron: '0 */12 * * *'
   workflow_dispatch:
