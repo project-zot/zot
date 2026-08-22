@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -519,15 +520,47 @@ func TestHTPasswdWatcher(t *testing.T) {
 
 			go func() {
 				for range 5 {
-					htw.Close()
+					_ = htw.Close()
 					time.Sleep(1 * time.Millisecond)
 				}
 			}()
 
 			time.Sleep(50 * time.Millisecond)
-			So(func() { htw.Close() }, ShouldNotPanic)
+			So(func() { _ = htw.Close() }, ShouldNotPanic)
 			So(test.WaitForLogMessages(logBuffer, "htpasswd watcher terminating...", 1, 5*time.Second), ShouldBeTrue)
 			time.Sleep(100 * time.Millisecond) // let watcher goroutine finish cleanup before restart
+
+			// Test Run() and ChangeFile() concurrently
+			var wg sync.WaitGroup
+
+			wg.Add(2)
+
+			go func() {
+				defer wg.Done()
+
+				for range 10 {
+					_ = htw.Run()
+
+					time.Sleep(1 * time.Millisecond)
+				}
+			}()
+
+			go func() {
+				defer wg.Done()
+
+				for i := range 10 {
+					if i%2 == 0 {
+						_ = htw.ChangeFile(htpasswdPath1)
+					} else {
+						_ = htw.ChangeFile(htpasswdPath2)
+					}
+
+					time.Sleep(1 * time.Millisecond)
+				}
+			}()
+
+			wg.Wait()
+			So(func() { _ = htw.Close() }, ShouldNotPanic)
 
 			// Test concurrent ChangeFile() operations
 			So(htw.Run(), ShouldBeNil)
