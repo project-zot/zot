@@ -1503,7 +1503,9 @@ A minimal configuration only sets how often the DB is refreshed; zot applies def
 
 To set those options explicitly (for example to mirror standalone Trivy’s `--vuln-severity-source` behavior), use a `trivy` object under `cve`:
 
-- [config-cve-trivy.json](config-cve-trivy.json) — shows optional `dbRepository`, `javaDBRepository`, `vulnSeveritySources`, and `sbom`.
+- [config-cve-trivy.json](config-cve-trivy.json) — shows optional `dbRepository`, `javaDBRepository`, `ignoreFile`, `vulnSeveritySources`, and `sbom`.
+
+`ignoreFile` specifies the path to a [Trivy ignore file](https://trivy.dev/docs/latest/configuration/filtering/#trivyignore) and supports the same plain-text and YAML formats as Trivy's `--ignorefile` option. The file must be accessible to the zot process.
 
 `vulnSeveritySources` is a list of source names in priority order (for example `auto`, `nvd`, or vendor IDs such as `redhat`, `alpine`). If omitted, zot defaults it to `["auto"]`, consistent with the Trivy CLI. See [Trivy: severity selection](https://trivy.dev/docs/latest/scanner/vulnerability/#severity-selection).
 

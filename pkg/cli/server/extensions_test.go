@@ -908,7 +908,7 @@ func TestServeSearchEnabledDefaultCVEDB(t *testing.T) {
 		// The default config handling logic will convert the 1h interval to a 2h interval
 		substring := "\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":7200000000000,\"Trivy\":" +
 			"{\"DBRepository\":\"ghcr.io/aquasecurity/trivy-db\",\"JavaDBRepository\":\"ghcr.io/aquasecurity/trivy-java-db\"," +
-			"\"VulnSeveritySources\":[\"auto\"],\"SBOM\":null}}}"
+			"\"IgnoreFile\":\"\",\"VulnSeveritySources\":[\"auto\"],\"SBOM\":null}}}"
 
 		found, err := ReadLogFileAndSearchString(logPath, substring, readLogFileTimeout)
 
@@ -974,6 +974,27 @@ func TestServeSearchEnabledDefaultCVEDB(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		So(cfg.Extensions.Search.CVE.Trivy.VulnSeveritySources, ShouldResemble, []string{"nvd", "ghsa"})
+	})
+
+	Convey("IgnoreFile respects an explicit path", t, func(c C) {
+		cfg := config.New()
+
+		content := `{
+				"storage": { "rootDirectory": "/tmp/zot" },
+				"http": { "address": "127.0.0.1", "port": "8080" },
+				"extensions": {
+					"search": {
+						"enable": true,
+						"cve": { "trivy": { "ignoreFile": "/etc/zot/.trivyignore.yaml" } }
+					}
+				}
+			}`
+		configPath := MakeTempFileWithContent(t, "zot-test.json", content)
+
+		err := cli.LoadConfiguration(cfg, configPath)
+		So(err, ShouldBeNil)
+
+		So(cfg.Extensions.Search.CVE.Trivy.IgnoreFile, ShouldEqual, "/etc/zot/.trivyignore.yaml")
 	})
 
 	Convey("CVE with only updateInterval (no trivy key) gets VulnSeveritySources [auto]", t, func(c C) {

@@ -720,6 +720,16 @@ func TestVulnSeveritySourcesDefaulting(t *testing.T) {
 	})
 }
 
+func TestIgnoreFileConfiguration(t *testing.T) {
+	Convey("getNewScanOptions passes the configured ignore file to Trivy", t, func() {
+		const ignoreFile = "/etc/zot/.trivyignore.yaml"
+
+		opts := getNewScanOptions(t.TempDir(), nil, nil, []dbTypes.SourceID{"auto"}, ignoreFile, false)
+
+		So(opts.ReportOptions.IgnoreFile, ShouldEqual, ignoreFile)
+	})
+}
+
 func TestStoreSBOMAsOCIArtifact(t *testing.T) {
 	Convey("storeSBOMAsOCIArtifact stores SBOM once as OCI referrer", t, func() {
 		rootDir := t.TempDir()
