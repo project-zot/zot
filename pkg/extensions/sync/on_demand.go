@@ -62,7 +62,12 @@ func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference str
 		reference: reference,
 	}
 
-	syncResult := make(chan error)
+	// Keep result delivery and requestStore cleanup independent of this call's own receive
+	// below (see the syncImage() comment): today the caller always waits synchronously and
+	// this doesn't come into play, but a future caller that stops waiting some other way
+	// (an outer select/timeout, a leaked goroutine) must not be able to leave a stale
+	// requestStore entry or block the sync worker's result send.
+	syncResult := make(chan error, 1)
 	val, loaded := onDemand.requestStore.LoadOrStore(req, syncResult)
 
 	if loaded {
@@ -76,9 +81,7 @@ func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference str
 		return err
 	}
 
-	defer onDemand.requestStore.Delete(req)
-
-	go onDemand.syncImage(ctx, repo, reference, syncResult)
+	go onDemand.syncImage(ctx, repo, reference, req, syncResult)
 
 	err := <-syncResult
 
@@ -93,7 +96,12 @@ func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 		reference: subjectDigestStr,
 	}
 
-	syncResult := make(chan error)
+	// Keep result delivery and requestStore cleanup independent of this call's own receive
+	// below (see the syncReferrers() comment): today the caller always waits synchronously
+	// and this doesn't come into play, but a future caller that stops waiting some other way
+	// (an outer select/timeout, a leaked goroutine) must not be able to leave a stale
+	// requestStore entry or block the sync worker's result send.
+	syncResult := make(chan error, 1)
 	val, loaded := onDemand.requestStore.LoadOrStore(req, syncResult)
 
 	if loaded {
@@ -107,9 +115,7 @@ func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 		return err
 	}
 
-	defer onDemand.requestStore.Delete(req)
-
-	go onDemand.syncReferrers(ctx, repo, subjectDigestStr, referenceTypes, syncResult)
+	go onDemand.syncReferrers(ctx, repo, subjectDigestStr, referenceTypes, req, syncResult)
 
 	err := <-syncResult
 
@@ -117,8 +123,15 @@ func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 }
 
 func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDigestStr string,
-	referenceTypes []string, syncResult chan error,
+	referenceTypes []string, mainReq request, syncResult chan error,
 ) {
+	// Cleanup and result delivery are owned here, by the goroutine that knows the work is
+	// done, rather than in the original SyncImage()/SyncReferrers() caller's defer. Canceling
+	// that caller's context does not by itself stop its blocked `<-syncResult` receive, and
+	// today it always waits synchronously so this is defensive: it protects against a future
+	// caller that stops waiting some other way (an outer select/timeout, a leaked goroutine)
+	// without depending on that caller ever resuming.
+	defer onDemand.requestStore.Delete(mainReq)
 	defer close(syncResult)
 
 	var err error
@@ -196,7 +209,16 @@ func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDi
 	syncResult <- err
 }
 
-func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference string, syncResult chan error) {
+func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference string,
+	mainReq request, syncResult chan error,
+) {
+	// Cleanup and result delivery are owned here, by the goroutine that knows the work is
+	// done, rather than in the original SyncImage()/SyncReferrers() caller's defer. Canceling
+	// that caller's context does not by itself stop its blocked `<-syncResult` receive, and
+	// today it always waits synchronously so this is defensive: it protects against a future
+	// caller that stops waiting some other way (an outer select/timeout, a leaked goroutine)
+	// without depending on that caller ever resuming.
+	defer onDemand.requestStore.Delete(mainReq)
 	defer close(syncResult)
 
 	var err error

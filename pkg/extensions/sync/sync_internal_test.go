@@ -753,6 +753,89 @@ func TestService(t *testing.T) {
 			So(err.Error(), ShouldEqual, "guaranteed referrer channel error")
 		})
 	})
+
+	Convey("test requestStore cleanup does not depend on the original caller reading the channel", t, func() {
+		// Defensive-hardening test: an original caller that never reaches the code after its
+		// blocking receive on syncResult must not permanently poison the requestStore entry
+		// for that (repo, reference). This test simulates that end state directly (a stored
+		// channel nobody will ever read) rather than reproducing how a caller ends up in it —
+		// with today's caller (a synchronous, non-canceling receive) it doesn't; context
+		// cancellation alone does not stop a goroutine blocked on a plain channel receive, so
+		// the caller would need to give up some other way (e.g. an outer select/timeout
+		// wrapped around the call, or its own goroutine leaking). Owning cleanup in the
+		// goroutine doing the sync work, rather than the caller's continued execution, means
+		// this failure mode can't happen regardless of how a future caller might be lost.
+
+		newAbandonedOnDemand := func(prefix string) *BaseOnDemand {
+			maxRetries := 0
+			conf := syncconf.RegistryConfig{
+				URLs:       []string{"http://localhost:32768"}, // unused port, no listener - fails fast
+				MaxRetries: &maxRetries,
+				Content:    []syncconf.Content{{Prefix: prefix}},
+			}
+
+			service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+			So(err, ShouldBeNil)
+
+			onDemand := NewOnDemand(log.NewTestLogger())
+			onDemand.Add(service)
+
+			return onDemand
+		}
+
+		Convey("syncImage", func() {
+			onDemand := newAbandonedOnDemand("abandoned-repo")
+
+			req := request{repo: "abandoned-repo", reference: "abandoned-tag"}
+			syncResult := make(chan error, 1)
+
+			// Simulate the state left behind by an original SyncImage() caller that stored the
+			// channel but was abandoned before ever reading from it.
+			onDemand.requestStore.Store(req, syncResult)
+
+			done := make(chan struct{})
+			go func() {
+				onDemand.syncImage(context.Background(), "abandoned-repo", "abandoned-tag", req, syncResult)
+				close(done)
+			}()
+
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				t.Fatal("syncImage blocked sending its result with no receiver present")
+			}
+
+			_, exists := onDemand.requestStore.Load(req)
+			So(exists, ShouldBeFalse)
+		})
+
+		Convey("syncReferrers", func() {
+			onDemand := newAbandonedOnDemand("abandoned-referrer-repo")
+
+			req := request{repo: "abandoned-referrer-repo", reference: "sha256:abandoned"}
+			syncResult := make(chan error, 1)
+
+			// Simulate the state left behind by an original SyncReferrers() caller that stored
+			// the channel but was abandoned before ever reading from it.
+			onDemand.requestStore.Store(req, syncResult)
+
+			done := make(chan struct{})
+			go func() {
+				onDemand.syncReferrers(context.Background(), "abandoned-referrer-repo", "sha256:abandoned",
+					[]string{"signature"}, req, syncResult)
+				close(done)
+			}()
+
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				t.Fatal("syncReferrers blocked sending its result with no receiver present")
+			}
+
+			_, exists := onDemand.requestStore.Load(req)
+			So(exists, ShouldBeFalse)
+		})
+	})
 }
 
 func writeKeyFile(t *testing.T, content string) string {
