@@ -14,11 +14,13 @@ import (
 type eventBuilder struct {
 	data      map[string]any
 	eventType EventType
+	identity  Identity
 }
 
-func newEventBuilder() *eventBuilder {
+func newEventBuilder(identity Identity) *eventBuilder {
 	return &eventBuilder{
-		data: make(map[string]any),
+		data:     make(map[string]any),
+		identity: identity,
 	}
 }
 
@@ -55,10 +57,10 @@ func (b *eventBuilder) Build() (*cloudevents.Event, error) {
 		return nil, zerr.ErrEventTypeEmpty
 	}
 	event := cloudevents.NewEvent()
-	event.SetType(b.eventType.String())
+	event.SetType(b.identity.TypeOf(b.eventType))
 	event.SetID(uuid.New().String())
 	event.SetTime(time.Now())
-	event.SetSource(EventSource)
+	event.SetSource(b.identity.SourceOrDefault())
 
 	if b.data != nil {
 		if err := event.SetData(cloudevents.ApplicationJSON, b.data); err != nil {

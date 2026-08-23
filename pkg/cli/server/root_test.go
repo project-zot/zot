@@ -4269,6 +4269,47 @@ func TestMetricsConfigurationValidation(t *testing.T) {
 	})
 }
 
+func TestVerifyEventsConfig(t *testing.T) {
+	Convey("events typePrefix validation", t, func() {
+		makeContent := func(typePrefix string) string {
+			return `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1", "port": "8080"
+				},
+				"extensions": {
+					"events": {
+						"enable": true,
+						"typePrefix": "` + typePrefix + `",
+						"sinks": [{
+							"type": "http",
+							"address": "http://127.0.0.1:8000",
+							"timeout": "10s"
+						}]
+					}
+				}
+			}`
+		}
+
+		for _, typePrefix := range []string{".example", "example.", "com..example"} {
+			Convey("Reject typePrefix "+typePrefix, func() {
+				cfg := config.New()
+				tmpfile := MakeTempFileWithContent(t, "zot-test.json", makeContent(typePrefix))
+				err := cli.LoadConfiguration(cfg, tmpfile)
+				So(err, ShouldNotBeNil)
+				So(err, ShouldWrap, zerr.ErrBadConfig)
+			})
+		}
+
+		Convey("Allow a valid typePrefix", func() {
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", makeContent("com.example.registry"))
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldBeNil)
+		})
+	})
+}
+
 func TestManifestCheckIntervalConfig(t *testing.T) {
 	Convey("manifestCheckInterval validation", t, func() {
 		Convey("Parse a valid manifestCheckInterval", func() {

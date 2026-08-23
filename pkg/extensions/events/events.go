@@ -15,8 +15,9 @@ import (
 )
 
 type eventRecorder struct {
-	log   log.Logger
-	sinks []Sink
+	log      log.Logger
+	sinks    []Sink
+	identity Identity
 }
 
 var _ Recorder = (*eventRecorder)(nil)
@@ -75,7 +76,7 @@ func (r eventRecorder) publish(event *cloudevents.Event) {
 }
 
 func (r eventRecorder) RepositoryCreated(name string, ectx *EventContext) {
-	event, err := newEventBuilder().
+	event, err := newEventBuilder(r.identity).
 		WithEventType(RepositoryCreatedEventType).
 		WithDataField("name", name).
 		WithEventContext(ectx).
@@ -90,7 +91,7 @@ func (r eventRecorder) RepositoryCreated(name string, ectx *EventContext) {
 }
 
 func (r eventRecorder) ImageUpdated(name, reference, digest, mediaType, manifest string, ectx *EventContext) {
-	event, err := newEventBuilder().
+	event, err := newEventBuilder(r.identity).
 		WithEventType(ImageUpdatedEventType).
 		WithDataField("name", name).
 		WithDataField("reference", reference).
@@ -109,7 +110,7 @@ func (r eventRecorder) ImageUpdated(name, reference, digest, mediaType, manifest
 }
 
 func (r eventRecorder) ImageDeleted(name, reference, digest, mediaType string, ectx *EventContext) {
-	event, err := newEventBuilder().
+	event, err := newEventBuilder(r.identity).
 		WithEventType(ImageDeletedEventType).
 		WithDataField("name", name).
 		WithDataField("reference", reference).
@@ -127,7 +128,7 @@ func (r eventRecorder) ImageDeleted(name, reference, digest, mediaType string, e
 }
 
 func (r eventRecorder) ImageLintFailed(name, reference, digest, mediaType, manifest string, ectx *EventContext) {
-	event, err := newEventBuilder().
+	event, err := newEventBuilder(r.identity).
 		WithEventType(ImageLintFailedEventType).
 		WithDataField("name", name).
 		WithDataField("reference", reference).
@@ -148,7 +149,7 @@ func (r eventRecorder) ImageLintFailed(name, reference, digest, mediaType, manif
 func (r eventRecorder) ImageScanned(name, reference, digest, mediaType string,
 	summary ImageScanSummary, ectx *EventContext,
 ) {
-	event, err := newEventBuilder().
+	event, err := newEventBuilder(r.identity).
 		WithEventType(ImageScannedEventType).
 		WithDataField("name", name).
 		WithDataField("reference", reference).

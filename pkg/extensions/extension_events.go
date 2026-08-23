@@ -57,5 +57,10 @@ func NewEventRecorder(config *config.Config, log log.Logger) (events.Recorder, e
 		return nil, zerr.ErrExtensionNotEnabled
 	}
 
-	return events.NewRecorder(log, sinks...)
+	identity := events.Identity{
+		Source:     eventConfig.Source,
+		TypePrefix: eventConfig.TypePrefix,
+	}
+
+	return events.NewRecorderWithIdentity(log, identity, sinks...)
 }
