@@ -140,13 +140,13 @@ func (hr *HotReloader) Start() {
 		}()
 
 		if err := hr.watcher.Add(hr.configPath); err != nil {
-			hr.logger.Panic().Err(err).Str("config", hr.configPath).Msg("failed to add config file to fsnotity watcher")
+			hr.logger.Panic().Err(err).Str("config", hr.configPath).Msg("failed to add config file to fsnotify watcher")
 		}
 
 		if hr.ldapCredentialsPath != "" {
 			if err := hr.watcher.Add(hr.ldapCredentialsPath); err != nil {
 				hr.logger.Panic().Err(err).Str("ldap-credentials", hr.ldapCredentialsPath).
-					Msg("failed to add ldap-credentials to fsnotity watcher")
+					Msg("failed to add ldap-credentials to fsnotify watcher")
 			}
 		}
 

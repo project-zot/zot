@@ -582,7 +582,7 @@ EOF
 @test "sync OCI artifact references periodically" {
     zot_port1=`cat ${BATS_FILE_TMPDIR}/zot.port1`
     # wait for OCI artifacts to be copied
-    run sleep 20
+    run sleep 20s
     run regctl artifact get localhost:${zot_port1}/manifest-ref:demo
     [ "$status" -eq 0 ]
     [ "${lines[-1]}" == "test artifact" ]
