@@ -33,6 +33,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/scheduler"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	"zotregistry.dev/zot/v2/pkg/storage/cache"
+	storageCommon "zotregistry.dev/zot/v2/pkg/storage/common"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/gc"
 	"zotregistry.dev/zot/v2/pkg/storage/imagestore"
@@ -3727,6 +3728,105 @@ func TestGetNextDigestWithBlobPathsNestedRepo(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(gotDigest, ShouldEqual, dgst)
 		So(len(duplicateBlobs), ShouldEqual, 2)
+	})
+}
+
+func TestBlobPathsByDigest(t *testing.T) {
+	Convey("BlobPathsByDigest groups blob paths by digest, one listing per repo", t, func() {
+		dir := t.TempDir()
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+
+		shared := []byte("shared-blob-content")
+		pair := []byte("two-repo-blob-content")
+		onlyFirst := []byte("only-in-the-first-repo")
+		onlyLast := []byte("only-in-the-last-repo")
+
+		sharedDigest := godigest.FromBytes(shared)
+		pairDigest := godigest.FromBytes(pair)
+		onlyFirstDigest := godigest.FromBytes(onlyFirst)
+		onlyLastDigest := godigest.FromBytes(onlyLast)
+
+		// one repo is nested, to prove a namespace is handled like any other repo
+		layout := map[string][][]byte{
+			"aaa-repo": {shared, pair, onlyFirst},
+			"org/team": {shared},
+			"zzz-repo": {shared, pair, onlyLast},
+		}
+
+		for repo, blobs := range layout {
+			repoDir := path.Join(dir, repo)
+			So(os.MkdirAll(path.Join(repoDir, ispec.ImageBlobsDir), storageConstants.DefaultDirPerms), ShouldBeNil)
+
+			ilBuf, err := json.Marshal(ispec.ImageLayout{Version: ispec.ImageLayoutVersion})
+			So(err, ShouldBeNil)
+			So(os.WriteFile(path.Join(repoDir, ispec.ImageLayoutFile), ilBuf, storageConstants.DefaultFilePerms),
+				ShouldBeNil)
+
+			idxBuf, err := json.Marshal(ispec.Index{Versioned: imeta.Versioned{SchemaVersion: 2}})
+			So(err, ShouldBeNil)
+			So(os.WriteFile(path.Join(repoDir, ispec.ImageIndexFile), idxBuf, storageConstants.DefaultFilePerms),
+				ShouldBeNil)
+
+			for _, blob := range blobs {
+				digest := godigest.FromBytes(blob)
+				blobPath := path.Join(repoDir, ispec.ImageBlobsDir, digest.Algorithm().String(), digest.Encoded())
+				So(os.MkdirAll(path.Dir(blobPath), storageConstants.DefaultDirPerms), ShouldBeNil)
+				So(os.WriteFile(blobPath, blob, storageConstants.DefaultFilePerms), ShouldBeNil)
+			}
+		}
+
+		repos, err := imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		So(len(repos), ShouldEqual, len(layout))
+
+		digests, blobPaths, err := storageCommon.BlobPathsByDigest(imgStore, repos)
+		So(err, ShouldBeNil)
+
+		// every digest collected exactly once, and the slice agrees with the map
+		So(len(digests), ShouldEqual, 4)
+		So(len(blobPaths), ShouldEqual, len(digests))
+
+		occurrences := map[godigest.Digest]int{}
+		for _, digest := range digests {
+			occurrences[digest]++
+			So(blobPaths, ShouldContainKey, digest)
+		}
+
+		for _, digest := range digests {
+			So(occurrences[digest], ShouldEqual, 1)
+		}
+
+		// path groups are complete, and single-copy blobs are included: the dedupe pass
+		// records a cache entry for those too, so dropping them would leave the cache short
+		So(len(blobPaths[sharedDigest]), ShouldEqual, 3)
+		So(len(blobPaths[pairDigest]), ShouldEqual, 2)
+		So(len(blobPaths[onlyFirstDigest]), ShouldEqual, 1)
+		So(len(blobPaths[onlyLastDigest]), ShouldEqual, 1)
+
+		// the paths are the real ones on disk
+		for _, blobPath := range blobPaths[sharedDigest] {
+			_, err := os.Stat(blobPath)
+			So(err, ShouldBeNil)
+		}
+
+		So(blobPaths[onlyFirstDigest][0], ShouldContainSubstring, "aaa-repo")
+		So(blobPaths[onlyLastDigest][0], ShouldContainSubstring, "zzz-repo")
+
+		// a missing blobs directory must not curtail the rest of the listing
+		So(os.RemoveAll(path.Join(dir, "org/team", ispec.ImageBlobsDir)), ShouldBeNil)
+
+		afterRemoval, afterPaths, err := storageCommon.BlobPathsByDigest(imgStore, repos)
+		So(err, ShouldBeNil)
+		So(len(afterRemoval), ShouldEqual, 4)
+		So(len(afterPaths[sharedDigest]), ShouldEqual, 2)
 	})
 }
 
