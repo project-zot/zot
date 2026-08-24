@@ -2341,12 +2341,9 @@ func TestWriteDataFromReader(t *testing.T) {
 
 // Content-Type tests for blob HEAD/GET.
 //
-// Blob responses always advertise application/octet-stream. They used to derive
-// the type from the blob's OCI descriptor by way of the repo's index and manifest
-// chain, which cost one storage read per manifest on every request
-// (project-zot/zot#4344). These tests use mock image stores that still serve that
-// chain, so they can assert both the constant header and that the blob path never
-// reads the index.
+// Blob responses always advertise application/octet-stream. These tests use mock
+// image stores that serve an index and manifest chain, so they can assert both the
+// constant header and that the blob path never reads the index.
 
 // descriptorTestDigests returns deterministic layer, manifest, and
 // config digests (in that order) used by the blob Content-Type tests.
