@@ -1054,7 +1054,7 @@ func canMount(userAc *reqCtx.UserAccessControl, imgStore storageTypes.ImageStore
 // @Summary Check image blob/layer
 // @Description Check an image's blob/layer given a digest
 // @Accept  json
-// @Produce json
+// @Produce application/octet-stream
 // @Param   name     path    string     true        "repository name"
 // @Param   digest   path    string     true        "blob/layer digest"
 // @Success 200 {object} api.ImageManifest
@@ -1313,10 +1313,10 @@ func buildMultipartPartHeader(rng httpRange, mediaType string, size int64) textp
 	partHeader := textproto.MIMEHeader{}
 	partHeader.Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", rng.start, rng.end, size))
 
-	// RFC 9110 §15.3.7 lets us omit per-part Content-Type, but when the
-	// caller has resolved a real media type (descriptor lookup succeeded
-	// or fell back to application/octet-stream) we propagate it so OCI
-	// clients don't have to re-derive it from the index for every part.
+	// RFC 9110 §15.3.7 lets us omit per-part Content-Type, but when the caller
+	// has a media type for the blob we propagate it to each part so clients do
+	// not have to derive one themselves. Blob responses always carry
+	// application/octet-stream.
 	if mediaType != "" {
 		partHeader.Set("Content-Type", mediaType)
 	}
@@ -1447,7 +1447,7 @@ func normalizeBlobRedirectURL(rawURL string) (string, bool) {
 // @Summary Get image blob/layer
 // @Description Get an image's blob/layer given a digest
 // @Accept  json
-// @Produce application/vnd.oci.image.layer.v1.tar+gzip
+// @Produce application/octet-stream
 // @Param   name     path    string     true        "repository name"
 // @Param   digest   path    string     true        "blob/layer digest"
 // @Header  200 {string} Docker-Content-Digest "Manifest digest of the content"
