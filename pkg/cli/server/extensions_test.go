@@ -799,7 +799,7 @@ func TestServeLintExtension(t *testing.T) {
 			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":{\"Enable\":true,\"MandatoryAnnotations\":") //nolint:lll // gofumpt conflicts with lll
 	})
 
-	Convey("lint enabled", t, func(c C) {
+	Convey("lint disabled", t, func(c C) {
 		content := `{
 					"storage": {
 						"rootDirectory": "%s"
