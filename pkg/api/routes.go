@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
@@ -1051,36 +1050,6 @@ func canMount(userAc *reqCtx.UserAccessControl, imgStore storageTypes.ImageStore
 	return canMount, nil
 }
 
-// resolveBlobResponseMediaType resolves the OCI media type to advertise for a blob via
-// the repo's index/manifests. If the descriptor lookup fails (or the descriptor
-// has no media type), it falls back to application/octet-stream.
-//
-// Use this for Content-Type on HEAD/GET blob responses to satisfy OCI
-// distribution-spec conformance and consumers like stargz-snapshotter that
-// require a non-empty, well-formed media type.
-func resolveBlobResponseMediaType(
-	imgStore storageTypes.ImageStore,
-	repo string,
-	digest godigest.Digest,
-	logger log.Logger,
-) string {
-	desc, err := storageCommon.GetBlobDescriptorFromRepo(imgStore, repo, digest, logger)
-	if err == nil && desc.MediaType != "" {
-		// Descriptor media types originate from manifest JSON and are not
-		// necessarily validated. Ensure we only emit a header-safe, parseable
-		// media type; otherwise fall back to application/octet-stream.
-		//
-		// ParseMediaType also strips parameters so we only propagate the base
-		// type (e.g. "application/vnd.oci.image.layer.v1.tar+gzip").
-		mediaType, _, parseErr := mime.ParseMediaType(desc.MediaType)
-		if parseErr == nil && mediaType != "" {
-			return mediaType
-		}
-	}
-
-	return constants.BinaryMediaType
-}
-
 // CheckBlob godoc
 // @Summary Check image blob/layer
 // @Description Check an image's blob/layer given a digest
@@ -1175,7 +1144,7 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 
 	response.Header().Set("Content-Length", strconv.FormatInt(blen, 10))
 	response.Header().Set("Accept-Ranges", "bytes")
-	response.Header().Set("Content-Type", resolveBlobResponseMediaType(imgStore, name, digest, rh.c.Log))
+	response.Header().Set("Content-Type", constants.BinaryMediaType)
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
 	response.WriteHeader(http.StatusOK)
 }
@@ -1573,9 +1542,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 			return
 		}
 
-		// Resolve the response Content-Type from the blob's OCI descriptor (if
-		// any), with a fallback to application/octet-stream.
-		mediaType := resolveBlobResponseMediaType(imgStore, name, digest, rh.c.Log)
+		mediaType := constants.BinaryMediaType
 
 		ranges, err := parseRangeHeader(contentRange, bsize)
 		if err != nil {
@@ -1641,11 +1608,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 	var blen int64
 
-	// Resolve the response Content-Type from the blob's OCI descriptor
-	// (if any), with a fallback to application/octet-stream. This lookup
-	// may require an additional repo index/manifest walk before we read
-	// the blob, but preserves a more specific Content-Type when available.
-	mediaType := resolveBlobResponseMediaType(imgStore, name, digest, rh.c.Log)
+	mediaType := constants.BinaryMediaType
 
 	repo, blen, err := imgStore.GetBlob(name, digest, mediaType)
 	if err != nil {

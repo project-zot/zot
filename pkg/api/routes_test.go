@@ -2446,8 +2446,24 @@ func descriptorStore(t *testing.T) mocks.MockedImageStore {
 	}
 }
 
-func TestCheckBlobUsesDescriptorContentType(t *testing.T) {
+func TestCheckBlobAlwaysBinaryContentType(t *testing.T) {
 	store := descriptorStore(t)
+
+	// The blob path must not walk the repo index: that lookup was
+	// O(manifests) and cost minutes on remote storage with a large repo
+	// (project-zot/zot#4344).
+	var indexReads atomic.Int32
+
+	store.GetIndexContentFn = func(repo string) ([]byte, error) {
+		indexReads.Add(1)
+
+		return []byte("{}"), nil
+	}
+	store.GetBlobContentFn = func(repo string, digest godigest.Digest) ([]byte, error) {
+		indexReads.Add(1)
+
+		return []byte("{}"), nil
+	}
 	store.CheckBlobFn = func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 		return true, 42, nil
 	}
@@ -2475,9 +2491,11 @@ func TestCheckBlobUsesDescriptorContentType(t *testing.T) {
 	defer resp.Body.Close()
 
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	assert.Equal(t, ispec.MediaTypeImageLayerGzip, resp.Header.Get("Content-Type"))
+	assert.Equal(t, constants.BinaryMediaType, resp.Header.Get("Content-Type"))
 	assert.Equal(t, "bytes", resp.Header.Get("Accept-Ranges"))
 	assert.Equal(t, layerDigest.String(), resp.Header.Get(constants.DistContentDigestKey))
+
+	assert.Zero(t, indexReads.Load(), "blob path must not walk the repo index")
 }
 
 func TestCheckBlobFallsBackToBinaryContentType(t *testing.T) {
@@ -2517,13 +2535,29 @@ func TestCheckBlobFallsBackToBinaryContentType(t *testing.T) {
 	assert.Equal(t, constants.BinaryMediaType, resp.Header.Get("Content-Type"))
 }
 
-func TestGetBlobUsesDescriptorContentType(t *testing.T) {
+func TestGetBlobAlwaysBinaryContentType(t *testing.T) {
 	store := descriptorStore(t)
+
+	// The blob path must not walk the repo index: that lookup was
+	// O(manifests) and cost minutes on remote storage with a large repo
+	// (project-zot/zot#4344).
+	var indexReads atomic.Int32
+
+	store.GetIndexContentFn = func(repo string) ([]byte, error) {
+		indexReads.Add(1)
+
+		return []byte("{}"), nil
+	}
+	store.GetBlobContentFn = func(repo string, digest godigest.Digest) ([]byte, error) {
+		indexReads.Add(1)
+
+		return []byte("{}"), nil
+	}
 	store.GetBlobFn = func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error) {
 		// The mediaType argument forwarded to the storage layer is a
 		// hint and is currently ignored; we still feed it the resolved
 		// value so the surface stays consistent.
-		assert.Equal(t, ispec.MediaTypeImageLayerGzip, mediaType)
+		assert.Equal(t, constants.BinaryMediaType, mediaType)
 
 		return io.NopCloser(strings.NewReader("blob")), 4, nil
 	}
@@ -2552,58 +2586,9 @@ func TestGetBlobUsesDescriptorContentType(t *testing.T) {
 	defer resp.Body.Close()
 
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	assert.Equal(t, ispec.MediaTypeImageLayerGzip, resp.Header.Get("Content-Type"))
-}
-
-func TestGetBlobFallsBackOnInvalidDescriptorContentType(t *testing.T) {
-	// Descriptor media types are user-supplied and may be invalid as HTTP
-	// header values. resolveBlobResponseMediaType must sanitize/validate
-	// and fall back to application/octet-stream on parse failure.
-	store := descriptorStore(t)
-	store.GetBlobFn = func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error) {
-		assert.Equal(t, constants.BinaryMediaType, mediaType)
-
-		return io.NopCloser(strings.NewReader("blob")), 4, nil
-	}
-
-	// Force descriptor lookup success but with an invalid media type string.
-	store.GetBlobContentFn = func(repo string, digest godigest.Digest) ([]byte, error) {
-		_, manifestJSON := descriptorFixture(t)
-
-		var manifest ispec.Manifest
-		require.NoError(t, json.Unmarshal(manifestJSON, &manifest))
-		require.Len(t, manifest.Layers, 1)
-		manifest.Layers[0].MediaType = "bad\r\nvalue"
-
-		out, err := json.Marshal(manifest)
-		require.NoError(t, err)
-
-		return out, nil
-	}
-
-	handler := newBlobTestRouteHandler(t, store)
-
-	layerDigest, _, _ := descriptorTestDigests()
-
-	req := httptest.NewRequestWithContext(
-		context.Background(),
-		http.MethodGet,
-		"http://example.com/v2/test/blobs/sha256:test",
-		http.NoBody,
-	)
-	req = mux.SetURLVars(req, map[string]string{
-		"name":   "test",
-		"digest": layerDigest.String(),
-	})
-
-	rec := httptest.NewRecorder()
-	handler.GetBlob(rec, req)
-
-	resp := rec.Result()
-	defer resp.Body.Close()
-
-	require.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, constants.BinaryMediaType, resp.Header.Get("Content-Type"))
+
+	assert.Zero(t, indexReads.Load(), "blob path must not walk the repo index")
 }
 
 func TestGetBlobFallsBackToBinaryContentType(t *testing.T) {
@@ -2645,8 +2630,24 @@ func TestGetBlobFallsBackToBinaryContentType(t *testing.T) {
 	assert.Equal(t, constants.BinaryMediaType, resp.Header.Get("Content-Type"))
 }
 
-func TestGetBlobPartialUsesDescriptorContentType(t *testing.T) {
+func TestGetBlobPartialAlwaysBinaryContentType(t *testing.T) {
 	store := descriptorStore(t)
+
+	// The blob path must not walk the repo index: that lookup was
+	// O(manifests) and cost minutes on remote storage with a large repo
+	// (project-zot/zot#4344).
+	var indexReads atomic.Int32
+
+	store.GetIndexContentFn = func(repo string) ([]byte, error) {
+		indexReads.Add(1)
+
+		return []byte("{}"), nil
+	}
+	store.GetBlobContentFn = func(repo string, digest godigest.Digest) ([]byte, error) {
+		indexReads.Add(1)
+
+		return []byte("{}"), nil
+	}
 	store.GetBlobPartialFn = func(
 		repo string,
 		digest godigest.Digest,
@@ -2654,7 +2655,7 @@ func TestGetBlobPartialUsesDescriptorContentType(t *testing.T) {
 		from,
 		to int64,
 	) (io.ReadCloser, int64, int64, error) {
-		assert.Equal(t, ispec.MediaTypeImageLayerGzip, mediaType)
+		assert.Equal(t, constants.BinaryMediaType, mediaType)
 		assert.Equal(t, int64(0), from)
 		assert.Equal(t, int64(1), to)
 
@@ -2684,9 +2685,11 @@ func TestGetBlobPartialUsesDescriptorContentType(t *testing.T) {
 	defer resp.Body.Close()
 
 	require.Equal(t, http.StatusPartialContent, resp.StatusCode)
-	assert.Equal(t, ispec.MediaTypeImageLayerGzip, resp.Header.Get("Content-Type"))
+	assert.Equal(t, constants.BinaryMediaType, resp.Header.Get("Content-Type"))
 	assert.Equal(t, "bytes 0-1/4", resp.Header.Get("Content-Range"))
 	assert.Equal(t, layerDigest.String(), resp.Header.Get(constants.DistContentDigestKey))
+
+	assert.Zero(t, indexReads.Load(), "blob path must not walk the repo index")
 }
 
 func TestGetBlobPartialFallsBackToBinaryContentType(t *testing.T) {
@@ -2735,13 +2738,29 @@ func TestGetBlobPartialFallsBackToBinaryContentType(t *testing.T) {
 	assert.Equal(t, constants.BinaryMediaType, resp.Header.Get("Content-Type"))
 }
 
-// TestGetBlobMultipartPartHasDescriptorContentType verifies that each
-// part of a multipart/byteranges response carries the descriptor-
-// derived Content-Type alongside the per-part Content-Range.
-func TestGetBlobMultipartPartHasDescriptorContentType(t *testing.T) {
+// TestGetBlobMultipartPartBinaryContentType verifies that each part of a
+// multipart/byteranges response carries application/octet-stream
+// alongside the per-part Content-Range.
+func TestGetBlobMultipartPartBinaryContentType(t *testing.T) {
 	const blobBody = "0123456789"
 
 	store := descriptorStore(t)
+
+	// The blob path must not walk the repo index: that lookup was
+	// O(manifests) and cost minutes on remote storage with a large repo
+	// (project-zot/zot#4344).
+	var indexReads atomic.Int32
+
+	store.GetIndexContentFn = func(repo string) ([]byte, error) {
+		indexReads.Add(1)
+
+		return []byte("{}"), nil
+	}
+	store.GetBlobContentFn = func(repo string, digest godigest.Digest) ([]byte, error) {
+		indexReads.Add(1)
+
+		return []byte("{}"), nil
+	}
 	store.CheckBlobFn = func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 		return true, int64(len(blobBody)), nil
 	}
@@ -2752,7 +2771,7 @@ func TestGetBlobMultipartPartHasDescriptorContentType(t *testing.T) {
 		from,
 		to int64,
 	) (io.ReadCloser, int64, int64, error) {
-		assert.Equal(t, ispec.MediaTypeImageLayerGzip, mediaType)
+		assert.Equal(t, constants.BinaryMediaType, mediaType)
 
 		return io.NopCloser(strings.NewReader(blobBody[from : to+1])), to - from + 1, int64(len(blobBody)), nil
 	}
@@ -2801,7 +2820,7 @@ func TestGetBlobMultipartPartHasDescriptorContentType(t *testing.T) {
 		require.NoError(t, err, "read part %d", i)
 
 		assert.Equal(t, want.contentRange, part.Header.Get("Content-Range"), "part %d content-range", i)
-		assert.Equal(t, ispec.MediaTypeImageLayerGzip, part.Header.Get("Content-Type"),
+		assert.Equal(t, constants.BinaryMediaType, part.Header.Get("Content-Type"),
 			"part %d content-type", i)
 
 		body, err := io.ReadAll(part)
@@ -2813,6 +2832,8 @@ func TestGetBlobMultipartPartHasDescriptorContentType(t *testing.T) {
 	require.ErrorIs(t, err, io.EOF)
 
 	assert.Equal(t, layerDigest.String(), resp.Header.Get(constants.DistContentDigestKey))
+
+	assert.Zero(t, indexReads.Load(), "blob path must not walk the repo index")
 }
 
 // Streaming-multipart tests for the lazy-fan-out path.
