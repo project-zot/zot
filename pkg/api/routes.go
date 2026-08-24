@@ -1054,6 +1054,7 @@ func canMount(userAc *reqCtx.UserAccessControl, imgStore storageTypes.ImageStore
 // @Summary Check image blob/layer
 // @Description Check an image's blob/layer given a digest
 // @Accept  json
+// @Produce json
 // @Produce application/octet-stream
 // @Param   name     path    string     true        "repository name"
 // @Param   digest   path    string     true        "blob/layer digest"

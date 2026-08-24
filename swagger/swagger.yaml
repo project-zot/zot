@@ -491,6 +491,7 @@ paths:
         required: true
         type: string
       produces:
+      - application/json
       - application/octet-stream
       responses:
         "200":

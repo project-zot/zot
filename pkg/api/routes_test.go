@@ -2339,17 +2339,17 @@ func TestWriteDataFromReader(t *testing.T) {
 	})
 }
 
-// Descriptor-aware Content-Type tests for blob HEAD/GET.
+// Content-Type tests for blob HEAD/GET.
 //
-// The blob endpoints derive the response Content-Type from the OCI
-// descriptor associated with the blob (via the repo's index/manifest
-// chain), and fall back to application/octet-stream when no such
-// descriptor is available. These tests use mock image stores to drive
-// both branches independently of the on-disk storage layer.
+// Blob responses always advertise application/octet-stream. They used to derive
+// the type from the blob's OCI descriptor by way of the repo's index and manifest
+// chain, which cost one storage read per manifest on every request
+// (project-zot/zot#4344). These tests use mock image stores that still serve that
+// chain, so they can assert both the constant header and that the blob path never
+// reads the index.
 
 // descriptorTestDigests returns deterministic layer, manifest, and
-// config digests (in that order) used by the descriptor-aware
-// Content-Type tests.
+// config digests (in that order) used by the blob Content-Type tests.
 func descriptorTestDigests() (godigest.Digest, godigest.Digest, godigest.Digest) {
 	return godigest.FromString("layer"), godigest.FromString("manifest"), godigest.FromString("config")
 }
@@ -2369,9 +2369,9 @@ func newBlobTestRouteHandler(t *testing.T, store mocks.MockedImageStore) *api.Ro
 	return api.NewRouteHandler(ctlr)
 }
 
-// descriptorFixture builds a minimal index -> manifest -> layer chain
-// that resolves the layer digest from descriptorTestDigests to
-// MediaTypeImageLayerGzip.
+// descriptorFixture builds a minimal index -> manifest -> layer chain that would
+// resolve the layer digest from descriptorTestDigests to MediaTypeImageLayerGzip.
+// It exists so the tests can prove the blob path leaves it untouched.
 func descriptorFixture(t *testing.T) ([]byte, []byte) {
 	t.Helper()
 
@@ -2416,10 +2416,11 @@ func descriptorFixture(t *testing.T) ([]byte, []byte) {
 	return indexJSON, manifestJSON
 }
 
-// descriptorStore returns a mock store backed by descriptorFixture.
-// Looking up the layer digest from descriptorTestDigests resolves to a
-// layer with media type MediaTypeImageLayerGzip via the index walk;
-// other digests fall through to the binary fallback.
+// descriptorStore returns a mock store backed by descriptorFixture, whose index
+// and manifest would resolve the layer digest from descriptorTestDigests to
+// MediaTypeImageLayerGzip. Blob responses no longer consult it: the tests below
+// keep the fixture so they can assert that the blob path never reads it, since
+// that lookup was O(manifests) per request (project-zot/zot#4344).
 func descriptorStore(t *testing.T) mocks.MockedImageStore {
 	t.Helper()
 
@@ -2449,9 +2450,6 @@ func descriptorStore(t *testing.T) mocks.MockedImageStore {
 func TestCheckBlobAlwaysBinaryContentType(t *testing.T) {
 	store := descriptorStore(t)
 
-	// The blob path must not walk the repo index: that lookup was
-	// O(manifests) and cost minutes on remote storage with a large repo
-	// (project-zot/zot#4344).
 	var indexReads atomic.Int32
 
 	store.GetIndexContentFn = func(repo string) ([]byte, error) {
@@ -2538,9 +2536,6 @@ func TestCheckBlobFallsBackToBinaryContentType(t *testing.T) {
 func TestGetBlobAlwaysBinaryContentType(t *testing.T) {
 	store := descriptorStore(t)
 
-	// The blob path must not walk the repo index: that lookup was
-	// O(manifests) and cost minutes on remote storage with a large repo
-	// (project-zot/zot#4344).
 	var indexReads atomic.Int32
 
 	store.GetIndexContentFn = func(repo string) ([]byte, error) {
@@ -2633,9 +2628,6 @@ func TestGetBlobFallsBackToBinaryContentType(t *testing.T) {
 func TestGetBlobPartialAlwaysBinaryContentType(t *testing.T) {
 	store := descriptorStore(t)
 
-	// The blob path must not walk the repo index: that lookup was
-	// O(manifests) and cost minutes on remote storage with a large repo
-	// (project-zot/zot#4344).
 	var indexReads atomic.Int32
 
 	store.GetIndexContentFn = func(repo string) ([]byte, error) {
@@ -2746,9 +2738,6 @@ func TestGetBlobMultipartPartBinaryContentType(t *testing.T) {
 
 	store := descriptorStore(t)
 
-	// The blob path must not walk the repo index: that lookup was
-	// O(manifests) and cost minutes on remote storage with a large repo
-	// (project-zot/zot#4344).
 	var indexReads atomic.Int32
 
 	store.GetIndexContentFn = func(repo string) ([]byte, error) {
