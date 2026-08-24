@@ -1,0 +1,8 @@
+name: 'Stop floci'
+description: 'Stop floci'
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      run: |
+        floci stop --remove || true
