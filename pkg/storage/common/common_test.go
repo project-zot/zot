@@ -2514,7 +2514,9 @@ func TestDedupeTaskGeneratorDiscardsPartialEnumeration(t *testing.T) {
 				duplicateBlobs []string,
 			) error {
 				processedMutex.Lock()
+
 				processed = append(processed, digest)
+
 				processedMutex.Unlock()
 
 				return nil

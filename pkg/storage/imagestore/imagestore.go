@@ -2282,6 +2282,16 @@ func (is *ImageStore) getOriginalBlobFromDisk(duplicateBlobs []string) (string, 
 	for _, blobPath := range duplicateBlobs {
 		binfo, err := is.storeDriver.Stat(blobPath)
 		if err != nil {
+			// The paths come from a listing taken earlier in the run, so a blob may have
+			// been deleted since. Keep looking: another copy may still hold the content.
+			var pathNotFound driver.PathNotFoundError
+			if errors.As(err, &pathNotFound) {
+				is.log.Debug().Str("path", blobPath).Str("component", "storage").
+					Msg("blob deleted since it was listed, skipping")
+
+				continue
+			}
+
 			is.log.Error().Err(err).Str("path", blobPath).Str("component", "storage").Msg("failed to stat blob")
 
 			return "", zerr.ErrBlobNotFound
@@ -2343,6 +2353,18 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 
 		binfo, err := is.storeDriver.Stat(blobPath)
 		if err != nil {
+			/* duplicateBlobs comes from a listing taken once at the start of the run, so a
+			blob may have been deleted since. Skipping keeps the run progressing: failing the
+			task instead leaves its completion callback unrun, so OnRunComplete never fires
+			and the restore marker or the deferred-delete gate stays stuck. */
+			var pathNotFound driver.PathNotFoundError
+			if errors.As(err, &pathNotFound) {
+				is.log.Debug().Str("path", blobPath).Str("component", "dedupe").
+					Msg("blob deleted since it was listed, skipping")
+
+				continue
+			}
+
 			is.log.Error().Err(err).Str("path", blobPath).Str("component", "dedupe").Msg("failed to stat blob")
 
 			return err
@@ -2420,6 +2442,18 @@ func (is *ImageStore) restoreDedupedBlobs(ctx context.Context, digest godigest.D
 
 		binfo, err := is.storeDriver.Stat(blobPath)
 		if err != nil {
+			/* duplicateBlobs comes from a listing taken once at the start of the run, so a
+			blob may have been deleted since. Skipping keeps the run progressing: failing the
+			task instead leaves its completion callback unrun, so OnRunComplete never fires
+			and the restore marker or the deferred-delete gate stays stuck. */
+			var pathNotFound driver.PathNotFoundError
+			if errors.As(err, &pathNotFound) {
+				is.log.Debug().Str("path", blobPath).Str("component", "dedupe").
+					Msg("blob deleted since it was listed, skipping")
+
+				continue
+			}
+
 			is.log.Error().Err(err).Str("path", blobPath).Str("component", "dedupe").Msg("failed to stat blob")
 
 			return err

@@ -1383,7 +1383,7 @@ func TestDedupeLinks(t *testing.T) {
 					So(err, ShouldBeNil)
 				})
 
-				Convey("test RunDedupeForDigest directly, trigger stat error on original blob", func() {
+				Convey("test RunDedupeForDigest directly, blob deleted after listing", func() {
 					// rebuild with dedupe true
 					imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
 
@@ -1396,8 +1396,39 @@ func TestDedupeLinks(t *testing.T) {
 					err := os.Remove(path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1))
 					So(err, ShouldBeNil)
 
+					/* The paths come from a listing taken at the start of the run, so a blob
+					may have been deleted since. That is skipped rather than failing the
+					digest: a failed task is never retried and its completion callback never
+					runs, which would leave OnRunComplete unfired (project-zot/zot#4349). */
 					err = imgStore.RunDedupeForDigest(context.TODO(), godigest.Digest(blobDigest1), true, duplicateBlobs)
-					So(err, ShouldNotBeNil)
+					So(err, ShouldBeNil)
+				})
+
+				Convey("test RunDedupeForDigest directly, unreadable blob still fails", func() {
+					// rebuild with dedupe true
+					imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+
+					duplicateBlobs := []string{
+						path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1),
+						path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest2),
+					}
+
+					// only a missing blob is skipped; a real I/O error must still fail the
+					// digest, so that the run does not quietly write off unreadable content
+					if os.Geteuid() != 0 {
+						blobsDir := path.Join(dir, "dedupe1", "blobs", "sha256")
+
+						err := os.Chmod(blobsDir, 0o000)
+						So(err, ShouldBeNil)
+
+						defer func() {
+							_ = os.Chmod(blobsDir, 0o700)
+						}()
+
+						err = imgStore.RunDedupeForDigest(context.TODO(), godigest.Digest(blobDigest1),
+							true, duplicateBlobs)
+						So(err, ShouldNotBeNil)
+					}
 				})
 
 				Convey("Intrerrupt rebuilding and restart, checking idempotency", func() {
@@ -3827,6 +3858,66 @@ func TestBlobPathsByDigest(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(afterRemoval), ShouldEqual, 4)
 		So(len(afterPaths[sharedDigest]), ShouldEqual, 2)
+	})
+}
+
+func TestRunDedupeForDigestSkipsDeletedPaths(t *testing.T) {
+	Convey("A blob deleted after the listing must not fail the whole digest", t, func() {
+		newStore := func(dir string) storageTypes.ImageStore {
+			log := zlog.NewTestLogger()
+			metrics := monitoring.NewNopMetricServer()
+			cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+				RootDir:     dir,
+				Name:        "cache",
+				UseRelPaths: true,
+			}, log)
+
+			return local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+		}
+
+		content := []byte("blob-content-for-dedupe")
+		digest := godigest.FromBytes(content)
+
+		writeBlob := func(dir, repo string, body []byte) string {
+			blobPath := path.Join(dir, repo, ispec.ImageBlobsDir, digest.Algorithm().String(), digest.Encoded())
+			So(os.MkdirAll(path.Dir(blobPath), storageConstants.DefaultDirPerms), ShouldBeNil)
+			So(os.WriteFile(blobPath, body, storageConstants.DefaultFilePerms), ShouldBeNil)
+
+			return blobPath
+		}
+
+		Convey("dedupe direction", func() {
+			dir := t.TempDir()
+			imgStore := newStore(dir)
+
+			survivor := writeBlob(dir, "repo-keep", content)
+			deleted := writeBlob(dir, "repo-gone", content)
+			So(os.Remove(deleted), ShouldBeNil)
+
+			// the vanished path is listed first, which is what the old code choked on
+			err := imgStore.RunDedupeForDigest(context.Background(), digest, true, []string{deleted, survivor})
+			So(err, ShouldBeNil)
+		})
+
+		Convey("restore direction", func() {
+			dir := t.TempDir()
+			imgStore := newStore(dir)
+
+			original := writeBlob(dir, "repo-original", content)
+			placeholder := writeBlob(dir, "repo-placeholder", []byte{})
+			deleted := writeBlob(dir, "repo-gone", content)
+			So(os.Remove(deleted), ShouldBeNil)
+
+			err := imgStore.RunDedupeForDigest(context.Background(), digest, false,
+				[]string{deleted, original, placeholder})
+			So(err, ShouldBeNil)
+
+			// the surviving copy was still found as the content source, so the
+			// zero-size placeholder got restored
+			restored, err := os.ReadFile(placeholder)
+			So(err, ShouldBeNil)
+			So(restored, ShouldResemble, content)
+		})
 	})
 }
 
