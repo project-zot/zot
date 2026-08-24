@@ -1503,9 +1503,11 @@ A minimal configuration only sets how often the DB is refreshed; zot applies def
 
 To set those options explicitly (for example to mirror standalone Trivy’s `--vuln-severity-source` behavior), use a `trivy` object under `cve`:
 
-- [config-cve-trivy.json](config-cve-trivy.json) — shows optional `dbRepository`, `javaDBRepository`, `ignoreFile`, `vulnSeveritySources`, and `sbom`.
+- [config-cve-trivy.json](config-cve-trivy.json) — shows optional `dbRepository`, `javaDBRepository`, `vulnSeveritySources`, and `sbom`.
 
-`ignoreFile` specifies the path to a [Trivy ignore file](https://trivy.dev/docs/latest/configuration/filtering/#trivyignore) and supports the same plain-text and YAML formats as Trivy's `--ignorefile` option. The file must be accessible to the zot process.
+`ignoreFile` specifies the path to a [Trivy ignore file](https://trivy.dev/docs/latest/configuration/filtering/#trivyignore) and supports the same plain-text and YAML formats as Trivy's `--ignorefile` option. The file must exist and be readable when zot loads its configuration. Relative paths are resolved from zot's process working directory, not from the directory containing the zot configuration file, so use an absolute path in deployments, for example `"ignoreFile": "/etc/zot/.trivyignore"`. A sample [`.trivyignore`](.trivyignore) is included in this directory.
+
+Scan results are cached by manifest digest. Editing an ignore file does not invalidate existing cached results: newly ignored vulnerabilities can remain visible, and newly unignored vulnerabilities can remain hidden, until the CVE database refresh purges the scan cache or zot restarts. The minimum database `updateInterval` is two hours.
 
 `vulnSeveritySources` is a list of source names in priority order (for example `auto`, `nvd`, or vendor IDs such as `redhat`, `alpine`). If omitted, zot defaults it to `["auto"]`, consistent with the Trivy CLI. See [Trivy: severity selection](https://trivy.dev/docs/latest/scanner/vulnerability/#severity-selection).
 
