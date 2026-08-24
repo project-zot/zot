@@ -633,6 +633,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "produces": [
+                    "application/json",
                     "application/octet-stream"
                 ],
                 "summary": "Get image blob/layer",

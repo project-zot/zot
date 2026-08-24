@@ -1448,6 +1448,7 @@ func normalizeBlobRedirectURL(rawURL string) (string, bool) {
 // @Summary Get image blob/layer
 // @Description Get an image's blob/layer given a digest
 // @Accept  json
+// @Produce json
 // @Produce application/octet-stream
 // @Param   name     path    string     true        "repository name"
 // @Param   digest   path    string     true        "blob/layer digest"
