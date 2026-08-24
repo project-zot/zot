@@ -4,9 +4,13 @@ package api_test
 
 import (
 	"context"
+	"crypto/x509"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/gorilla/mux"
@@ -173,5 +177,122 @@ func TestGetManifestCheckInterval(t *testing.T) {
 			So(resp.StatusCode, ShouldEqual, http.StatusOK)
 			So(syncCalls, ShouldEqual, 1)
 		})
+	})
+}
+
+func TestGetManifestOnDemandSyncErrors(t *testing.T) {
+	Convey("GetManifest surfaces a classified sync error only when the cache is empty", t, func() {
+		const reference = "v1.0"
+
+		newReq := func() *http.Request {
+			req := httptest.NewRequestWithContext(
+				context.Background(),
+				http.MethodGet,
+				"http://example.com/v2/test/manifests/"+reference,
+				http.NoBody,
+			)
+
+			return mux.SetURLVars(req, map[string]string{
+				"name":      "test",
+				"reference": reference,
+			})
+		}
+
+		tlsErr := &url.Error{
+			Op:  http.MethodGet,
+			URL: "https://upstream.example/v2/test/manifests/v1.0",
+			Err: x509.UnknownAuthorityError{},
+		}
+
+		Convey("returns the TLS failure when no cached manifest exists", func() {
+			handler := newSyncTestRouteHandler(t, mocks.MockedImageStore{
+				GetImageManifestFn: func(_ string, _ string) ([]byte, godigest.Digest, string, error) {
+					return nil, "", "", zerr.ErrManifestNotFound
+				},
+			}, &mockSyncOnDemand{
+				syncImageFn: func(_ context.Context, _, _ string) error { return tlsErr },
+			})
+
+			rec := httptest.NewRecorder()
+			handler.GetManifest(rec, newReq())
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			body, readErr := io.ReadAll(resp.Body)
+			So(readErr, ShouldBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusBadGateway)
+			So(string(body), ShouldContainSubstring, "upstream TLS verification failed")
+			So(string(body), ShouldContainSubstring, "certificate signed by unknown authority")
+			So(string(body), ShouldNotContainSubstring, tlsErr.URL)
+		})
+
+		Convey("serves a cached manifest when the upstream refresh fails", func() {
+			localManifest := []byte(`{"schemaVersion":2}`)
+			localDigest := godigest.FromBytes(localManifest)
+			handler := newSyncTestRouteHandler(t, mocks.MockedImageStore{
+				GetImageManifestFn: func(_ string, _ string) ([]byte, godigest.Digest, string, error) {
+					return localManifest, localDigest, ispec.MediaTypeImageManifest, nil
+				},
+			}, &mockSyncOnDemand{
+				syncImageFn: func(_ context.Context, _, _ string) error { return tlsErr },
+			})
+
+			rec := httptest.NewRecorder()
+			handler.GetManifest(rec, newReq())
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			body, readErr := io.ReadAll(resp.Body)
+			So(readErr, ShouldBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+			So(strings.TrimSpace(string(body)), ShouldEqual, string(localManifest))
+		})
+
+		for _, testCase := range []struct {
+			name    string
+			syncErr error
+			message string
+		}{
+			{
+				name:    "authentication failure",
+				syncErr: zerr.ErrUnauthorizedAccess,
+				message: "upstream authentication failed",
+			},
+			{
+				name:    "timeout",
+				syncErr: context.DeadlineExceeded,
+				message: "upstream registry unavailable",
+			},
+			{
+				name:    "unclassified failure",
+				syncErr: errors.New("sensitive internal failure"),
+				message: "upstream synchronization failed",
+			},
+		} {
+			testCase := testCase
+			Convey("classifies "+testCase.name, func() {
+				handler := newSyncTestRouteHandler(t, mocks.MockedImageStore{
+					GetImageManifestFn: func(_ string, _ string) ([]byte, godigest.Digest, string, error) {
+						return nil, "", "", zerr.ErrManifestNotFound
+					},
+				}, &mockSyncOnDemand{
+					syncImageFn: func(_ context.Context, _, _ string) error { return testCase.syncErr },
+				})
+
+				rec := httptest.NewRecorder()
+				handler.GetManifest(rec, newReq())
+
+				resp := rec.Result()
+				defer resp.Body.Close()
+
+				body, readErr := io.ReadAll(resp.Body)
+				So(readErr, ShouldBeNil)
+				So(resp.StatusCode, ShouldEqual, http.StatusBadGateway)
+				So(string(body), ShouldContainSubstring, testCase.message)
+				So(string(body), ShouldNotContainSubstring, "sensitive internal failure")
+			})
+		}
 	})
 }

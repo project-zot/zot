@@ -9,12 +9,15 @@ package api
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/textproto"
 	"net/url"
@@ -489,6 +492,9 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 		} else if errors.Is(err, zerr.ErrSyncParseRemoteRepo) {
 			e := apiErr.NewError(apiErr.DENIED).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusForbidden, apiErr.NewErrorList(e))
+		} else if isUpstreamSyncError(err) {
+			e := newUpstreamSyncAPIError(err)
+			zcommon.WriteJSON(response, http.StatusBadGateway, apiErr.NewErrorList(e))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 
@@ -570,6 +576,9 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 		} else if errors.Is(err, zerr.ErrSyncParseRemoteRepo) {
 			e := apiErr.NewError(apiErr.DENIED).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusForbidden, apiErr.NewErrorList(e))
+		} else if isUpstreamSyncError(err) {
+			e := newUpstreamSyncAPIError(err)
+			zcommon.WriteJSON(response, http.StatusBadGateway, apiErr.NewErrorList(e))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			response.WriteHeader(http.StatusInternalServerError)
@@ -2763,6 +2772,8 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 		}
 	}
 
+	var syncErr error
+
 	if syncEnabled {
 		// When manifestCheckInterval is configured and a recent upstream check already
 		// validated this reference, serve the local manifest instead of contacting upstream.
@@ -2780,13 +2791,71 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 		routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
 			Msg("trying to get updated image by syncing on demand")
 
-		if errSync := routeHandler.c.SyncOnDemand.SyncImage(ctx, name, reference); errSync != nil {
-			routeHandler.c.Log.Err(errSync).Str("repository", name).Str("reference", reference).
+		syncErr = routeHandler.c.SyncOnDemand.SyncImage(ctx, name, reference)
+		if syncErr != nil {
+			routeHandler.c.Log.Err(syncErr).Str("repository", name).Str("reference", reference).
 				Msg("failed to sync image")
 		}
 	}
 
-	return imgStore.GetImageManifest(name, reference)
+	content, digest, mediaType, localErr := imgStore.GetImageManifest(name, reference)
+	if localErr == nil {
+		return content, digest, mediaType, nil
+	}
+	if syncErr != nil {
+		return nil, "", "", classifySyncError(syncErr)
+	}
+
+	return nil, "", "", localErr
+}
+
+func classifySyncError(err error) error {
+	var certificateVerificationErr *tls.CertificateVerificationError
+	var unknownAuthorityErr x509.UnknownAuthorityError
+	var certificateInvalidErr x509.CertificateInvalidError
+	var hostnameErr x509.HostnameError
+
+	switch {
+	case errors.As(err, &certificateVerificationErr):
+		return zerr.NewError(zerr.ErrSyncUpstreamTLS).AddDetail("reason", certificateVerificationErr.Err.Error())
+	case errors.As(err, &unknownAuthorityErr):
+		return zerr.NewError(zerr.ErrSyncUpstreamTLS).AddDetail("reason", unknownAuthorityErr.Error())
+	case errors.As(err, &certificateInvalidErr):
+		return zerr.NewError(zerr.ErrSyncUpstreamTLS).AddDetail("reason", certificateInvalidErr.Error())
+	case errors.As(err, &hostnameErr):
+		return zerr.NewError(zerr.ErrSyncUpstreamTLS).AddDetail("reason", hostnameErr.Error())
+	case errors.Is(err, zerr.ErrUnauthorizedAccess):
+		return zerr.NewError(zerr.ErrSyncUpstreamAuth)
+	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
+		return zerr.NewError(zerr.ErrSyncUpstreamUnavailable)
+	}
+
+	var networkErr net.Error
+	if errors.As(err, &networkErr) {
+		return zerr.NewError(zerr.ErrSyncUpstreamUnavailable)
+	}
+
+	return zerr.NewError(zerr.ErrSyncUpstream)
+}
+
+func isUpstreamSyncError(err error) bool {
+	return errors.Is(err, zerr.ErrSyncUpstreamTLS) ||
+		errors.Is(err, zerr.ErrSyncUpstreamAuth) ||
+		errors.Is(err, zerr.ErrSyncUpstreamUnavailable) ||
+		errors.Is(err, zerr.ErrSyncUpstream)
+}
+
+func newUpstreamSyncAPIError(err error) *apiErr.Error {
+	details := zerr.GetDetails(err)
+	message := err.Error()
+	if reason := details["reason"]; reason != "" {
+		message += ": " + reason
+	}
+
+	responseErr := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(details)
+	responseErr.Message = message
+
+	return responseErr
 }
 
 type APIKeyPayload struct { //nolint:revive,gosec
