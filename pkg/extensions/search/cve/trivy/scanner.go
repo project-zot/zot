@@ -85,7 +85,7 @@ var newArtifactRunner = artifact.NewRunner //nolint:gochecknoglobals // test sea
 // getNewScanOptions sets trivy configuration values for our scans and returns them as
 // a trivy Options structure.
 func getNewScanOptions(dir string, dbRepositoryRef, javaDBRepositoryRef name.Reference,
-	vulnSeveritySources []dbTypes.SourceID, sbomEnabled bool,
+	vulnSeveritySources []dbTypes.SourceID, ignoreFile string, sbomEnabled bool,
 ) *flag.Options {
 	scanOptions := flag.Options{
 		GlobalOptions: flag.GlobalOptions{
@@ -111,7 +111,8 @@ func getNewScanOptions(dir string, dbRepositoryRef, javaDBRepositoryRef name.Ref
 			VulnSeveritySources: vulnSeveritySources,
 		},
 		ReportOptions: flag.ReportOptions{
-			Format: "table",
+			Format:     "table",
+			IgnoreFile: ignoreFile,
 			Severities: []dbTypes.Severity{
 				dbTypes.SeverityUnknown,
 				dbTypes.SeverityLow,
@@ -183,6 +184,7 @@ func NewScanner(storeController storage.StoreController,
 	dbRepository := trivyCfg.DBRepository
 	javaDBRepository := trivyCfg.JavaDBRepository
 	vulnSeveritySources := trivyCfg.VulnSeveritySources
+	ignoreFile := trivyCfg.IgnoreFile
 
 	// The logic to set defaults is similar to what trivy itself uses:
 	// https://github.com/aquasecurity/trivy/blob/v0.51.4/pkg/flag/db_flags.go#L152
@@ -226,7 +228,7 @@ func NewScanner(storeController storage.StoreController,
 		rootDir := imageStore.RootDir()
 
 		cacheDir := path.Join(rootDir, "_trivy")
-		opts := getNewScanOptions(cacheDir, dbRepositoryRef, javaDBRepositoryRef, sevSources, sbomOpts.enabled)
+		opts := getNewScanOptions(cacheDir, dbRepositoryRef, javaDBRepositoryRef, sevSources, ignoreFile, sbomOpts.enabled)
 
 		cveController.DefaultCveConfig = opts
 	}
@@ -236,7 +238,7 @@ func NewScanner(storeController storage.StoreController,
 			rootDir := storage.RootDir()
 
 			cacheDir := path.Join(rootDir, "_trivy")
-			opts := getNewScanOptions(cacheDir, dbRepositoryRef, javaDBRepositoryRef, sevSources, sbomOpts.enabled)
+			opts := getNewScanOptions(cacheDir, dbRepositoryRef, javaDBRepositoryRef, sevSources, ignoreFile, sbomOpts.enabled)
 
 			subCveConfig[route] = opts
 		}

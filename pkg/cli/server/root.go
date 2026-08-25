@@ -610,6 +610,42 @@ func validateExtensionsConfig(cfg *config.Config, logger zlog.Logger) error {
 
 			return joinedErr
 		}
+
+		if extensionsConfig.Search != nil && extensionsConfig.Search.CVE != nil &&
+			extensionsConfig.Search.CVE.Trivy != nil && extensionsConfig.Search.CVE.Trivy.IgnoreFile != "" {
+			ignoreFile := extensionsConfig.Search.CVE.Trivy.IgnoreFile
+
+			file, err := os.Open(ignoreFile)
+			if err != nil {
+				wrappedErr := fmt.Errorf("%w: failed to open Trivy ignore file %q: %w", zerr.ErrBadConfig, ignoreFile, err)
+				logger.Error().Err(wrappedErr).Msg("invalid Trivy ignore file")
+
+				return wrappedErr
+			}
+
+			fileInfo, statErr := file.Stat()
+			closeErr := file.Close()
+			if statErr != nil {
+				wrappedErr := fmt.Errorf("%w: failed to stat Trivy ignore file %q: %w", zerr.ErrBadConfig, ignoreFile, statErr)
+				logger.Error().Err(wrappedErr).Msg("invalid Trivy ignore file")
+
+				return wrappedErr
+			}
+
+			if closeErr != nil {
+				wrappedErr := fmt.Errorf("%w: failed to close Trivy ignore file %q: %w", zerr.ErrBadConfig, ignoreFile, closeErr)
+				logger.Error().Err(wrappedErr).Msg("invalid Trivy ignore file")
+
+				return wrappedErr
+			}
+
+			if !fileInfo.Mode().IsRegular() {
+				wrappedErr := fmt.Errorf("%w: Trivy ignore file %q is not a regular file", zerr.ErrBadConfig, ignoreFile)
+				logger.Error().Err(wrappedErr).Msg("invalid Trivy ignore file")
+
+				return wrappedErr
+			}
+		}
 	}
 
 	if extensionsConfig.IsUIEnabled() {

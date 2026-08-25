@@ -60,6 +60,8 @@ type CVEConfig struct {
 type TrivyConfig struct {
 	DBRepository     string // default is "ghcr.io/aquasecurity/trivy-db"
 	JavaDBRepository string // default is "ghcr.io/aquasecurity/trivy-java-db"
+	// IgnoreFile specifies the path to a Trivy ignore file (same as Trivy's --ignorefile).
+	IgnoreFile string
 	// VulnSeveritySources controls Trivy's severity source selection (same as Trivy's --vuln-severity-source).
 	// If empty, zot will default it to ["auto"].
 	VulnSeveritySources []string

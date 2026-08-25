@@ -873,6 +873,8 @@ func TestServeSearchEnabled(t *testing.T) {
 }
 
 func TestServeSearchEnabledDefaultCVEDB(t *testing.T) {
+	const ignoreFileContent = "# Add one reviewed vulnerability ID per line.\nGO-2026-5932\n"
+
 	oldArgs := os.Args
 
 	defer func() { os.Args = oldArgs }()
@@ -908,7 +910,7 @@ func TestServeSearchEnabledDefaultCVEDB(t *testing.T) {
 		// The default config handling logic will convert the 1h interval to a 2h interval
 		substring := "\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":7200000000000,\"Trivy\":" +
 			"{\"DBRepository\":\"ghcr.io/aquasecurity/trivy-db\",\"JavaDBRepository\":\"ghcr.io/aquasecurity/trivy-java-db\"," +
-			"\"VulnSeveritySources\":[\"auto\"],\"SBOM\":null}}}"
+			"\"IgnoreFile\":\"\",\"VulnSeveritySources\":[\"auto\"],\"SBOM\":null}}}"
 
 		found, err := ReadLogFileAndSearchString(logPath, substring, readLogFileTimeout)
 
@@ -974,6 +976,74 @@ func TestServeSearchEnabledDefaultCVEDB(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		So(cfg.Extensions.Search.CVE.Trivy.VulnSeveritySources, ShouldResemble, []string{"nvd", "ghsa"})
+	})
+
+	Convey("IgnoreFile accepts an existing readable file", t, func(c C) {
+		cfg := config.New()
+		ignoreFile := MakeTempFileWithContent(t, ".trivyignore", ignoreFileContent)
+
+		content := fmt.Sprintf(`{
+				"storage": { "rootDirectory": "/tmp/zot" },
+				"http": { "address": "127.0.0.1", "port": "8080" },
+				"extensions": {
+					"search": {
+						"enable": true,
+						"cve": { "trivy": { "ignoreFile": %q } }
+					}
+				}
+			}`, ignoreFile)
+		configPath := MakeTempFileWithContent(t, "zot-test.json", content)
+
+		err := cli.LoadConfiguration(cfg, configPath)
+		So(err, ShouldBeNil)
+
+		So(cfg.Extensions.Search.CVE.Trivy.IgnoreFile, ShouldEqual, ignoreFile)
+	})
+
+	Convey("IgnoreFile rejects a missing file", t, func(c C) {
+		cfg := config.New()
+		ignoreFile := MakeTempFilePath(t, ".trivyignore")
+
+		content := fmt.Sprintf(`{
+				"storage": { "rootDirectory": "/tmp/zot" },
+				"http": { "address": "127.0.0.1", "port": "8080" },
+				"extensions": {
+					"search": {
+						"enable": true,
+						"cve": { "trivy": { "ignoreFile": %q } }
+					}
+				}
+			}`, ignoreFile)
+		configPath := MakeTempFileWithContent(t, "zot-test.json", content)
+
+		err := cli.LoadConfiguration(cfg, configPath)
+		So(err, ShouldNotBeNil)
+		So(err, ShouldWrap, zerr.ErrBadConfig)
+	})
+
+	Convey("IgnoreFile rejects an unreadable file", t, func(c C) {
+		cfg := config.New()
+		ignoreFile := MakeTempFileWithContent(t, ".trivyignore", ignoreFileContent)
+		So(os.Chmod(ignoreFile, 0o000), ShouldBeNil)
+		defer func() {
+			So(os.Chmod(ignoreFile, 0o600), ShouldBeNil)
+		}()
+
+		content := fmt.Sprintf(`{
+				"storage": { "rootDirectory": "/tmp/zot" },
+				"http": { "address": "127.0.0.1", "port": "8080" },
+				"extensions": {
+					"search": {
+						"enable": true,
+						"cve": { "trivy": { "ignoreFile": %q } }
+					}
+				}
+			}`, ignoreFile)
+		configPath := MakeTempFileWithContent(t, "zot-test.json", content)
+
+		err := cli.LoadConfiguration(cfg, configPath)
+		So(err, ShouldNotBeNil)
+		So(err, ShouldWrap, zerr.ErrBadConfig)
 	})
 
 	Convey("CVE with only updateInterval (no trivy key) gets VulnSeveritySources [auto]", t, func(c C) {
