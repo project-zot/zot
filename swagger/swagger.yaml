@@ -468,7 +468,8 @@ paths:
         required: true
         type: string
       produces:
-      - application/vnd.oci.image.layer.v1.tar+gzip
+      - application/json
+      - application/octet-stream
       responses:
         "200":
           description: OK
@@ -492,6 +493,7 @@ paths:
         type: string
       produces:
       - application/json
+      - application/octet-stream
       responses:
         "200":
           description: OK
