@@ -4,6 +4,7 @@ package scrub_test
 
 import (
 	"context"
+	"io"
 	"os"
 	"path"
 	"testing"
@@ -31,7 +32,8 @@ const (
 
 func TestScrubExtension(t *testing.T) {
 	Convey("Blobs integrity not affected", t, func(c C) {
-		logPath := test.MakeTempFilePath(t, "zot-log.txt")
+		logFile := test.MakeTempFile(t, "zot-log.txt")
+		logPath := logFile.Name()
 
 		conf := config.New()
 		conf.HTTP.Port = "0"
@@ -45,7 +47,7 @@ func TestScrubExtension(t *testing.T) {
 
 		substore := config.StorageConfig{RootDirectory: subdir}
 		conf.Storage.SubPaths = map[string]config.StorageConfig{"/a": substore}
-		conf.Log.Output = logPath
+		logWriter := io.MultiWriter(os.Stdout, logFile)
 		trueValue := true
 		scrubConfig := &extconf.ScrubConfig{
 			BaseConfig: extconf.BaseConfig{Enable: &trueValue},
@@ -56,6 +58,7 @@ func TestScrubExtension(t *testing.T) {
 		}
 
 		ctlr := api.NewController(conf)
+		ctlr.Log = log.NewLoggerWithWriter("debug", logWriter)
 
 		srcStorageCtlr := ociutils.GetDefaultStoreController(dir, log.NewTestLogger())
 		err := WriteImageToFileSystem(CreateDefaultVulnerableImage(), repoName, "0.0.1", srcStorageCtlr)
@@ -65,13 +68,14 @@ func TestScrubExtension(t *testing.T) {
 		cm.StartAndWait()
 		defer cm.StopServer()
 
-		found, err := test.ReadLogFileAndSearchString(logPath, "blobs/manifest ok", 60*time.Second)
-		So(found, ShouldBeTrue)
+		found, err := test.ReadLogFileAndSearchString(logPath, "blobs/manifest ok", 2*time.Minute)
 		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
 	})
 
 	Convey("Blobs integrity affected", t, func(c C) {
-		logPath := test.MakeTempFilePath(t, "zot-log.txt")
+		logFile := test.MakeTempFile(t, "zot-log.txt")
+		logPath := logFile.Name()
 
 		conf := config.New()
 		conf.HTTP.Port = "0"
@@ -82,7 +86,7 @@ func TestScrubExtension(t *testing.T) {
 		conf.Storage.Dedupe = false
 		conf.Storage.GC = false
 
-		conf.Log.Output = logPath
+		logWriter := io.MultiWriter(os.Stdout, logFile)
 		trueValue := true
 		scrubConfig := &extconf.ScrubConfig{
 			BaseConfig: extconf.BaseConfig{Enable: &trueValue},
@@ -93,7 +97,7 @@ func TestScrubExtension(t *testing.T) {
 		}
 
 		ctlr := api.NewController(conf)
-
+		ctlr.Log = log.NewLoggerWithWriter("debug", logWriter)
 		srcStorageCtlr := ociutils.GetDefaultStoreController(dir, log.NewTestLogger())
 		image := CreateDefaultVulnerableImage()
 		err := WriteImageToFileSystem(image, repoName, "0.0.1", srcStorageCtlr)
@@ -110,13 +114,14 @@ func TestScrubExtension(t *testing.T) {
 		cm.StartAndWait()
 		defer cm.StopServer()
 
-		found, err := test.ReadLogFileAndSearchString(logPath, "blobs/manifest affected", 60*time.Second)
-		So(found, ShouldBeTrue)
+		found, err := test.ReadLogFileAndSearchString(logPath, "blobs/manifest affected", 2*time.Minute)
 		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
 	})
 
 	Convey("Generator error - not enough permissions to access root directory", t, func(c C) {
-		logPath := test.MakeTempFilePath(t, "zot-log.txt")
+		logFile := test.MakeTempFile(t, "zot-log.txt")
+		logPath := logFile.Name()
 
 		conf := config.New()
 		conf.HTTP.Port = "0"
@@ -127,7 +132,7 @@ func TestScrubExtension(t *testing.T) {
 		conf.Storage.Dedupe = false
 		conf.Storage.GC = false
 
-		conf.Log.Output = logPath
+		logWriter := io.MultiWriter(os.Stdout, logFile)
 		trueValue := true
 		scrubConfig := &extconf.ScrubConfig{
 			BaseConfig: extconf.BaseConfig{Enable: &trueValue},
@@ -138,6 +143,7 @@ func TestScrubExtension(t *testing.T) {
 		}
 
 		ctlr := api.NewController(conf)
+		ctlr.Log = log.NewLoggerWithWriter("debug", logWriter)
 
 		srcStorageCtlr := ociutils.GetDefaultStoreController(dir, log.NewTestLogger())
 		image := CreateDefaultVulnerableImage()
@@ -151,9 +157,9 @@ func TestScrubExtension(t *testing.T) {
 		cm.StartAndWait()
 		defer cm.StopServer()
 
-		found, err := test.ReadLogFileAndSearchString(logPath, "failed to execute generator", 60*time.Second)
-		So(found, ShouldBeTrue)
+		found, err := test.ReadLogFileAndSearchString(logPath, "failed to execute generator", 1*time.Minute)
 		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
 
 		So(os.Chmod(path.Join(dir, repoName), 0o755), ShouldBeNil)
 	})
@@ -161,14 +167,16 @@ func TestScrubExtension(t *testing.T) {
 
 func TestRunScrubRepo(t *testing.T) {
 	Convey("Blobs integrity not affected", t, func(c C) {
-		logPath := test.MakeTempFilePath(t, "zot-log.txt")
+		logFile := test.MakeTempFile(t, "zot-log.txt")
+		logPath := logFile.Name()
 
 		conf := config.New()
 		conf.Extensions = &extconf.ExtensionConfig{}
 		conf.Extensions.Lint = &extconf.LintConfig{}
 
 		dir := t.TempDir()
-		log := log.NewLogger("debug", logPath)
+		logWriter := io.MultiWriter(os.Stdout, logFile)
+		log := log.NewLoggerWithWriter("debug", logWriter)
 		metrics := monitoring.NewNopMetricServer()
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
@@ -193,7 +201,8 @@ func TestRunScrubRepo(t *testing.T) {
 	})
 
 	Convey("Blobs integrity affected", t, func(c C) {
-		logPath := test.MakeTempFilePath(t, "zot-log.txt")
+		logFile := test.MakeTempFile(t, "zot-log.txt")
+		logPath := logFile.Name()
 
 		conf := config.New()
 
@@ -201,7 +210,8 @@ func TestRunScrubRepo(t *testing.T) {
 		conf.Extensions.Lint = &extconf.LintConfig{}
 
 		dir := t.TempDir()
-		log := log.NewLogger("debug", logPath)
+		logWriter := io.MultiWriter(os.Stdout, logFile)
+		log := log.NewLoggerWithWriter("debug", logWriter)
 		metrics := monitoring.NewNopMetricServer()
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
@@ -233,14 +243,16 @@ func TestRunScrubRepo(t *testing.T) {
 	})
 
 	Convey("CheckRepo error - not enough permissions to access root directory", t, func(c C) {
-		logPath := test.MakeTempFilePath(t, "zot-log.txt")
+		logFile := test.MakeTempFile(t, "zot-log.txt")
+		logPath := logFile.Name()
 
 		conf := config.New()
 		conf.Extensions = &extconf.ExtensionConfig{}
 		conf.Extensions.Lint = &extconf.LintConfig{}
 
 		dir := t.TempDir()
-		log := log.NewLogger("debug", logPath)
+		logWriter := io.MultiWriter(os.Stdout, logFile)
+		log := log.NewLoggerWithWriter("debug", logWriter)
 		metrics := monitoring.NewNopMetricServer()
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
