@@ -634,7 +634,7 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 
 	artifactType := ""
 
-	if mediaType == ispec.MediaTypeImageManifest {
+	if mediaType == ispec.MediaTypeImageManifest || compat.IsCompatibleManifestMediaType(mediaType) {
 		var manifest ispec.Manifest
 
 		err := json.Unmarshal(body, &manifest)
@@ -647,7 +647,7 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 		}
 
 		artifactType = zcommon.GetManifestArtifactType(manifest)
-	} else if mediaType == ispec.MediaTypeImageIndex {
+	} else if mediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(mediaType) {
 		var imgIndex ispec.Index
 
 		err := json.Unmarshal(body, &imgIndex)

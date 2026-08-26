@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	dockerList "github.com/distribution/distribution/v3/manifest/manifestlist"
+	docker "github.com/distribution/distribution/v3/manifest/schema2"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
@@ -611,6 +613,96 @@ func TestUtils(t *testing.T) {
 			So(len(resultBlobs.Blobs[digestStr].SubBlobs), ShouldEqual, 2) // config + layer
 			So(resultBlobs.Blobs[configDigest.String()], ShouldNotBeNil)
 			So(resultBlobs.Blobs[layerDigest.String()], ShouldNotBeNil)
+		})
+
+		Convey("should handle Docker schema2 ImageManifest media type", func() {
+			repoMeta := &proto_go.RepoMeta{
+				Name: "test-repo",
+				Tags: map[string]*proto_go.TagDescriptor{},
+			}
+
+			repoBlobs := &proto_go.RepoBlobs{
+				Blobs: map[string]*proto_go.BlobInfo{},
+			}
+
+			testDigest := godigest.FromString("sha256:dockertestdigest")
+			configDigest := godigest.FromString("sha256:dockerconfigdigest")
+			layerDigest := godigest.FromString("sha256:dockerlayerdigest")
+
+			imageMeta := mTypes.ImageMeta{
+				MediaType: docker.MediaTypeManifest,
+				Digest:    testDigest,
+				Size:      1000,
+				Manifests: []mTypes.ManifestMeta{
+					{
+						Digest: testDigest,
+						Size:   1000,
+						Manifest: ispec.Manifest{
+							Config: ispec.Descriptor{
+								Digest: configDigest,
+								Size:   500,
+							},
+							Layers: []ispec.Descriptor{
+								{
+									Digest: layerDigest,
+									Size:   300,
+								},
+							},
+						},
+						Config: ispec.Image{},
+					},
+				},
+			}
+
+			resultMeta, resultBlobs := common.AddImageMetaToRepoMeta(repoMeta, repoBlobs, "tag1", imageMeta)
+			So(resultMeta, ShouldNotBeNil)
+			So(resultBlobs, ShouldNotBeNil)
+
+			digestStr := testDigest.String()
+			So(resultBlobs.Blobs[digestStr], ShouldNotBeNil)
+			So(resultBlobs.Blobs[digestStr].Size, ShouldEqual, 1000)
+			So(len(resultBlobs.Blobs[digestStr].SubBlobs), ShouldEqual, 2)
+			So(resultBlobs.Blobs[configDigest.String()], ShouldNotBeNil)
+			So(resultBlobs.Blobs[layerDigest.String()], ShouldNotBeNil)
+		})
+
+		Convey("should handle Docker schema2 manifest list media type", func() {
+			repoMeta := &proto_go.RepoMeta{
+				Name: "test-repo",
+				Tags: map[string]*proto_go.TagDescriptor{},
+			}
+
+			repoBlobs := &proto_go.RepoBlobs{
+				Blobs: map[string]*proto_go.BlobInfo{},
+			}
+
+			indexDigest := godigest.FromString("sha256:dockerindexdigest")
+			childDigest := godigest.FromString("sha256:dockerchilddigest")
+
+			imageMeta := mTypes.ImageMeta{
+				MediaType: dockerList.MediaTypeManifestList,
+				Digest:    indexDigest,
+				Size:      2000,
+				Index: &ispec.Index{
+					MediaType: dockerList.MediaTypeManifestList,
+					Manifests: []ispec.Descriptor{
+						{
+							MediaType: docker.MediaTypeManifest,
+							Digest:    childDigest,
+							Size:      1000,
+						},
+					},
+				},
+			}
+
+			resultMeta, resultBlobs := common.AddImageMetaToRepoMeta(repoMeta, repoBlobs, "tag1", imageMeta)
+			So(resultMeta, ShouldNotBeNil)
+			So(resultBlobs, ShouldNotBeNil)
+
+			digestStr := indexDigest.String()
+			So(resultBlobs.Blobs[digestStr], ShouldNotBeNil)
+			So(resultBlobs.Blobs[digestStr].Size, ShouldEqual, 2000)
+			So(resultBlobs.Blobs[digestStr].SubBlobs, ShouldContain, childDigest.String())
 		})
 	})
 }

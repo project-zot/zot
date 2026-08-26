@@ -331,10 +331,14 @@ func GetImageStatistics(stats *proto_go.DescriptorStatistics) mTypes.DescriptorS
 }
 
 func GetImageManifestMeta(manifestContent ispec.Manifest, configContent ispec.Image, size int64,
-	digest godigest.Digest,
+	digest godigest.Digest, mediaType string,
 ) mTypes.ImageMeta {
+	if mediaType == "" {
+		mediaType = ispec.MediaTypeImageManifest
+	}
+
 	return mTypes.ImageMeta{
-		MediaType: ispec.MediaTypeImageManifest,
+		MediaType: mediaType,
 		Digest:    digest,
 		Size:      size,
 		Manifests: []mTypes.ManifestMeta{
@@ -348,9 +352,14 @@ func GetImageManifestMeta(manifestContent ispec.Manifest, configContent ispec.Im
 	}
 }
 
-func GetImageIndexMeta(indexContent ispec.Index, size int64, digest godigest.Digest) mTypes.ImageMeta {
+func GetImageIndexMeta(indexContent ispec.Index, size int64, digest godigest.Digest, mediaType string,
+) mTypes.ImageMeta {
+	if mediaType == "" {
+		mediaType = ispec.MediaTypeImageIndex
+	}
+
 	return mTypes.ImageMeta{
-		MediaType: ispec.MediaTypeImageIndex,
+		MediaType: mediaType,
 		Index:     &indexContent,
 		Manifests: GetManifests(indexContent.Manifests),
 		Size:      size,
@@ -569,9 +578,15 @@ func GetImageMeta(dbImageMeta *proto_go.ImageMeta) mTypes.ImageMeta {
 			manifests = append(manifests, desc)
 		}
 
+		// Prefer nested index JSON media type; fall back to the top-level descriptor type.
+		indexMediaType := dbImageMeta.GetIndex().GetIndex().GetMediaType()
+		if indexMediaType == "" {
+			indexMediaType = dbImageMeta.GetMediaType()
+		}
+
 		imageMeta.Index = &ispec.Index{
 			Versioned:    specs.Versioned{SchemaVersion: int(dbImageMeta.GetIndex().GetIndex().Versioned.GetSchemaVersion())},
-			MediaType:    ispec.MediaTypeImageIndex,
+			MediaType:    indexMediaType,
 			Manifests:    manifests,
 			Subject:      GetImageSubject(dbImageMeta),
 			ArtifactType: GetImageArtifactType(dbImageMeta),

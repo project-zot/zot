@@ -2417,6 +2417,34 @@ func TestDeleteImageManifestDockerCompatReferenced(t *testing.T) {
 	})
 }
 
+func TestPutImageManifestDockerCompatSubject(t *testing.T) {
+	Convey("docker schema2 manifest with subject returns subject digest", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+
+		compatMediaTypes := []compat.MediaCompatibility{compat.DockerManifestV2SchemaV2}
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, compatMediaTypes, nil)
+
+		storeController := storage.StoreController{DefaultStore: imgStore}
+		repoName := "docker-compat-subject"
+
+		subject := CreateRandomImage().AsDockerImage()
+		err := WriteImageToFileSystem(subject, repoName, "subject", storeController)
+		So(err, ShouldBeNil)
+
+		referrer := CreateImageWith().RandomLayers(1, 10).DefaultConfig().
+			Subject(subject.DescriptorRef()).Build().AsDockerImage()
+		err = WriteImageToFileSystem(referrer, repoName, "referrer", storeController)
+		So(err, ShouldBeNil)
+
+		_, subjectDigest, err := imgStore.PutImageManifest(context.Background(), repoName, "referrer-again",
+			referrer.ManifestDescriptor.MediaType, referrer.ManifestDescriptor.Data, nil)
+		So(err, ShouldBeNil)
+		So(subjectDigest, ShouldEqual, subject.Digest())
+	})
+}
+
 func TestReuploadCorruptedBlob(t *testing.T) {
 	for _, testcase := range testCases {
 		t.Run(testcase.testCaseName, func(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/compat"
 	proto_go "zotregistry.dev/zot/v2/pkg/meta/proto/gen"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 )
@@ -29,8 +30,9 @@ func GetProtoRepoMeta(repo mTypes.RepoMeta) *proto_go.RepoMeta {
 }
 
 func GetProtoImageMeta(imageMeta mTypes.ImageMeta) *proto_go.ImageMeta {
-	switch imageMeta.MediaType {
-	case ispec.MediaTypeImageManifest:
+	switch {
+	case imageMeta.MediaType == ispec.MediaTypeImageManifest ||
+		compat.IsCompatibleManifestMediaType(imageMeta.MediaType):
 		if len(imageMeta.Manifests) == 0 {
 			return nil
 		}
@@ -38,29 +40,40 @@ func GetProtoImageMeta(imageMeta mTypes.ImageMeta) *proto_go.ImageMeta {
 		manifestData := imageMeta.Manifests[0]
 
 		return GetProtoImageManifestData(manifestData.Manifest, manifestData.Config, manifestData.Size,
-			manifestData.Digest.String())
-	case ispec.MediaTypeImageIndex:
+			manifestData.Digest.String(), imageMeta.MediaType)
+	case imageMeta.MediaType == ispec.MediaTypeImageIndex ||
+		compat.IsCompatibleManifestListMediaType(imageMeta.MediaType):
 		if imageMeta.Index == nil {
 			return nil
 		}
 
-		return GetProtoImageIndexMeta(*imageMeta.Index, imageMeta.Size, imageMeta.Digest.String())
+		return GetProtoImageIndexMeta(*imageMeta.Index, imageMeta.Size, imageMeta.Digest.String(), imageMeta.MediaType)
 	default:
 		return nil
 	}
 }
 
 func GetProtoImageManifestData(manifestContent ispec.Manifest, configContent ispec.Image, size int64, digest string,
+	mediaType string,
 ) *proto_go.ImageMeta {
 	return &proto_go.ImageMeta{
-		MediaType: ispec.MediaTypeImageManifest,
-		Manifests: []*proto_go.ManifestMeta{GetProtoManifestMeta(manifestContent, configContent, size, digest)},
-		Index:     nil,
+		MediaType: mediaType,
+		Manifests: []*proto_go.ManifestMeta{
+			GetProtoManifestMeta(manifestContent, configContent, size, digest, mediaType),
+		},
+		Index: nil,
 	}
 }
 
 func GetProtoManifestMeta(manifestContent ispec.Manifest, configContent ispec.Image, size int64, digest string,
+	mediaType string,
 ) *proto_go.ManifestMeta {
+	// Prefer the media type from the manifest JSON; fall back to the descriptor/wire type when omitted.
+	nestedMediaType := manifestContent.MediaType
+	if nestedMediaType == "" {
+		nestedMediaType = mediaType
+	}
+
 	return &proto_go.ManifestMeta{
 		Digest: digest,
 		Size:   size,
@@ -71,7 +84,7 @@ func GetProtoManifestMeta(manifestContent ispec.Manifest, configContent ispec.Im
 				Size:      manifestContent.Config.Size,
 				MediaType: manifestContent.Config.MediaType,
 			},
-			MediaType:    ref(ispec.MediaTypeImageManifest),
+			MediaType:    ref(nestedMediaType),
 			ArtifactType: &manifestContent.ArtifactType,
 			Layers:       getProtoManifestLayers(manifestContent.Layers),
 			Subject:      getProtoDesc(manifestContent.Subject),
@@ -101,15 +114,22 @@ func GetProtoManifestMeta(manifestContent ispec.Manifest, configContent ispec.Im
 	}
 }
 
-func GetProtoImageIndexMeta(indexContent ispec.Index, size int64, digest string) *proto_go.ImageMeta {
+func GetProtoImageIndexMeta(indexContent ispec.Index, size int64, digest string, mediaType string,
+) *proto_go.ImageMeta {
+	// Prefer the media type from the index JSON; fall back to the descriptor/wire type when omitted.
+	nestedMediaType := indexContent.MediaType
+	if nestedMediaType == "" {
+		nestedMediaType = mediaType
+	}
+
 	return &proto_go.ImageMeta{
-		MediaType: ispec.MediaTypeImageIndex,
+		MediaType: mediaType,
 		Index: &proto_go.IndexMeta{
 			Size:   size,
 			Digest: digest,
 			Index: &proto_go.Index{
 				Versioned:    &proto_go.Versioned{SchemaVersion: int32(indexContent.Versioned.SchemaVersion)}, //nolint:gosec,lll // ignore overflow
-				MediaType:    ref(ispec.MediaTypeImageIndex),
+				MediaType:    ref(nestedMediaType),
 				ArtifactType: ref(common.GetIndexArtifactType(indexContent)),
 				Manifests:    getProtoManifestList(indexContent.Manifests),
 				Subject:      getProtoDesc(indexContent.Subject),

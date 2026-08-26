@@ -10,6 +10,7 @@ import (
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/compat"
 	mConvert "zotregistry.dev/zot/v2/pkg/meta/convert"
 	proto_go "zotregistry.dev/zot/v2/pkg/meta/proto/gen"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
@@ -176,8 +177,8 @@ func CheckImageLastUpdated(repoLastUpdated time.Time, isSigned bool, noImageChec
 func AddImageMetaToRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.RepoBlobs, reference string,
 	imageMeta mTypes.ImageMeta,
 ) (*proto_go.RepoMeta, *proto_go.RepoBlobs) {
-	switch imageMeta.MediaType {
-	case ispec.MediaTypeImageManifest:
+	switch {
+	case imageMeta.MediaType == ispec.MediaTypeImageManifest || compat.IsCompatibleManifestMediaType(imageMeta.MediaType):
 		if len(imageMeta.Manifests) == 0 {
 			// Empty manifests is an invalid state for ImageManifest, but we still add basic blob info
 			// to avoid skipping all metadata processing (e.g., LastUpdatedImage update)
@@ -224,7 +225,7 @@ func AddImageMetaToRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.Rep
 			SubBlobs:    subBlobs,
 			LastUpdated: mConvert.GetProtoTime(&lastUpdated),
 		}
-	case ispec.MediaTypeImageIndex:
+	case imageMeta.MediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(imageMeta.MediaType):
 		subBlobs := []string{}
 		lastUpdated := time.Time{}
 

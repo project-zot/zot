@@ -12,6 +12,7 @@ import (
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/compat"
 	cveinfo "zotregistry.dev/zot/v2/pkg/extensions/search/cve"
 	"zotregistry.dev/zot/v2/pkg/extensions/search/gql_generated"
 	"zotregistry.dev/zot/v2/pkg/extensions/search/pagination"
@@ -389,10 +390,12 @@ type (
 
 func FullImageMeta2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullImageMeta,
 ) (*gql_generated.ImageSummary, map[BlobDigest]int64, error) {
-	switch fullImageMeta.MediaType {
-	case ispec.MediaTypeImageManifest:
+	switch {
+	case fullImageMeta.MediaType == ispec.MediaTypeImageManifest ||
+		compat.IsCompatibleManifestMediaType(fullImageMeta.MediaType):
 		return ImageManifest2ImageSummary(ctx, fullImageMeta)
-	case ispec.MediaTypeImageIndex:
+	case fullImageMeta.MediaType == ispec.MediaTypeImageIndex ||
+		compat.IsCompatibleManifestListMediaType(fullImageMeta.MediaType):
 		return ImageIndex2ImageSummary(ctx, fullImageMeta)
 	default:
 		return nil, nil, zerr.ErrMediaTypeNotSupported
@@ -412,7 +415,7 @@ func ImageIndex2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullImage
 		indexBlobs          = map[string]int64{}
 
 		indexDigestStr    = fullImageMeta.Digest.String()
-		indexMediaType    = ispec.MediaTypeImageIndex
+		indexMediaType    = fullImageMeta.MediaType
 		lastPullTimestamp = fullImageMeta.Statistics.LastPullTimestamp
 		pushTimestamp     = fullImageMeta.Statistics.PushTimestamp
 		pushedBy          = fullImageMeta.Statistics.PushedBy
@@ -430,7 +433,7 @@ func ImageIndex2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullImage
 		imageManifestSummary, manifestBlobs, err := ImageManifest2ImageSummary(ctx, mTypes.FullImageMeta{
 			Repo:            fullImageMeta.Repo,
 			Tag:             fullImageMeta.Tag,
-			MediaType:       ispec.MediaTypeImageManifest,
+			MediaType:       imageManifest.Manifest.MediaType,
 			Digest:          imageManifest.Digest,
 			Size:            imageManifest.Size,
 			Manifests:       []mTypes.FullManifestMeta{imageManifest},
@@ -529,7 +532,7 @@ func ImageManifest2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullIm
 		configSize        = manifest.Manifest.Config.Size
 		manifestDigest    = manifest.Digest.String()
 		manifestSize      = manifest.Size
-		mediaType         = manifest.Manifest.MediaType
+		mediaType         = fullImageMeta.MediaType
 		artifactType      = zcommon.GetManifestArtifactType(fullImageMeta.Manifests[0].Manifest)
 		platform          = getPlatform(manifest.Config.Platform)
 		downloadCount     = fullImageMeta.Statistics.DownloadCount
@@ -539,6 +542,10 @@ func ImageManifest2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullIm
 		pushedBy          = fullImageMeta.Statistics.PushedBy
 		taggedTimestamp   = fullImageMeta.TaggedTimestamp
 	)
+
+	if mediaType == "" {
+		mediaType = manifest.Manifest.MediaType
+	}
 
 	// Fallback to PushTimestamp if TaggedTimestamp is not available
 	if taggedTimestamp.IsZero() {

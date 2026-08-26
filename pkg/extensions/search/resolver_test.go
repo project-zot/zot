@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/99designs/gqlgen/graphql"
+	dockerList "github.com/distribution/distribution/v3/manifest/manifestlist"
+	docker "github.com/distribution/distribution/v3/manifest/schema2"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
@@ -288,9 +290,9 @@ func TestRepoListWithNewestImage(t *testing.T) {
 				) (map[string]mTypes.ImageMeta, error) {
 					return map[string]mTypes.ImageMeta{
 						img1.DigestStr(): mConvert.GetImageManifestMeta(img1.Manifest, img1.Config,
-							img1.ManifestDescriptor.Size, img1.ManifestDescriptor.Digest),
+							img1.ManifestDescriptor.Size, img1.ManifestDescriptor.Digest, img1.Manifest.MediaType),
 						img2.DigestStr(): mConvert.GetImageManifestMeta(img2.Manifest, img2.Config,
-							img2.ManifestDescriptor.Size, img2.ManifestDescriptor.Digest),
+							img2.ManifestDescriptor.Size, img2.ManifestDescriptor.Digest, img2.Manifest.MediaType),
 					}, nil
 				},
 			}
@@ -3228,4 +3230,47 @@ func getGQLPageInput(limit int, offset int) *gql_generated.PageInput {
 		Offset: &offset,
 		SortBy: &sortCriteria,
 	}
+}
+
+func TestFilterByTagInfoDockerMediaTypes(t *testing.T) {
+	Convey("FilterByTagInfo accepts Docker schema2 media types", t, func() {
+		childDigest := godigest.FromString("docker-child")
+		indexDigest := godigest.FromString("docker-list")
+		imageMeta := mTypes.ImageMeta{
+			Manifests: []mTypes.ManifestMeta{
+				{Digest: childDigest},
+			},
+		}
+
+		Convey("Docker manifest list matches child digests", func() {
+			filter := FilterByTagInfo([]cvemodel.TagInfo{
+				{
+					Tag: "latest",
+					Descriptor: cvemodel.Descriptor{
+						Digest:    indexDigest,
+						MediaType: dockerList.MediaTypeManifestList,
+					},
+					Manifests: []cvemodel.DescriptorInfo{
+						{Descriptor: cvemodel.Descriptor{Digest: childDigest}},
+					},
+				},
+			})
+
+			So(filter(mTypes.RepoMeta{}, imageMeta), ShouldBeTrue)
+		})
+
+		Convey("Docker schema2 manifest matches descriptor digest", func() {
+			filter := FilterByTagInfo([]cvemodel.TagInfo{
+				{
+					Tag: "v1",
+					Descriptor: cvemodel.Descriptor{
+						Digest:    childDigest,
+						MediaType: docker.MediaTypeManifest,
+					},
+				},
+			})
+
+			So(filter(mTypes.RepoMeta{}, imageMeta), ShouldBeTrue)
+		})
+	})
 }
