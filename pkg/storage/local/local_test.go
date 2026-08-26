@@ -3914,6 +3914,37 @@ func TestRunDedupeForDigestSkipsDeletedPaths(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 
+		Convey("restore direction, every path deleted", func() {
+			dir := t.TempDir()
+			imgStore := newStore(dir)
+
+			first := writeBlob(dir, "repo-one", content)
+			second := writeBlob(dir, "repo-two", []byte{})
+			So(os.Remove(first), ShouldBeNil)
+			So(os.Remove(second), ShouldBeNil)
+
+			// nothing survives, so there is nothing to restore. Failing here would stop the
+			// run reporting completion, which would wedge the restore marker.
+			err := imgStore.RunDedupeForDigest(context.Background(), digest, false,
+				[]string{first, second})
+			So(err, ShouldBeNil)
+		})
+
+		Convey("restore direction, placeholder survives with no content source", func() {
+			dir := t.TempDir()
+			imgStore := newStore(dir)
+
+			original := writeBlob(dir, "repo-original", content)
+			placeholder := writeBlob(dir, "repo-placeholder", []byte{})
+			So(os.Remove(original), ShouldBeNil)
+
+			// the placeholder is still there and nothing holds the content, so this must
+			// fail rather than leave it zero-size
+			err := imgStore.RunDedupeForDigest(context.Background(), digest, false,
+				[]string{original, placeholder})
+			So(err, ShouldNotBeNil)
+		})
+
 		Convey("restore direction", func() {
 			dir := t.TempDir()
 			imgStore := newStore(dir)

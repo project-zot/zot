@@ -2424,12 +2424,43 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 	return nil
 }
 
+// anyBlobExists reports whether any of these paths is still present. A path that has gone
+// counts as absent; anything else, such as a permission error, counts as present so that a
+// real I/O problem is not mistaken for a deleted blob.
+func (is *ImageStore) anyBlobExists(blobPaths []string) bool {
+	for _, blobPath := range blobPaths {
+		if _, err := is.storeDriver.Stat(blobPath); err != nil {
+			var pathNotFound driver.PathNotFoundError
+			if errors.As(err, &pathNotFound) {
+				continue
+			}
+		}
+
+		return true
+	}
+
+	return false
+}
+
 func (is *ImageStore) restoreDedupedBlobs(ctx context.Context, digest godigest.Digest, duplicateBlobs []string) error {
 	is.log.Info().Str("digest", digest.String()).Str("component", "dedupe").Msg("restoring deduped blobs for digest")
 
 	// first we need to find the original blob, either in cache or by checking each blob size
 	originalBlob, err := is.getOriginalBlob(digest, duplicateBlobs)
 	if err != nil {
+		/* Every path in the listing may have been deleted since it was taken, for instance
+		because the repository was removed. There is then nothing left to restore, and failing
+		would stop the run reporting completion, so treat it as a no-op. A placeholder that
+		still exists with no content source anywhere is a different matter and must fail,
+		otherwise it would be left zero-size and the restore-complete marker would suppress
+		the scan that would notice. */
+		if !is.anyBlobExists(duplicateBlobs) {
+			is.log.Debug().Str("digest", digest.String()).Str("component", "dedupe").
+				Msg("all blobs for digest deleted since they were listed, nothing to restore")
+
+			return nil
+		}
+
 		is.log.Error().Err(err).Str("component", "dedupe").Msg("failed to find original blob")
 
 		return zerr.ErrDedupeRebuild
