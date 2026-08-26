@@ -65,6 +65,9 @@ type TrivyConfig struct {
 	// VulnSeveritySources controls Trivy's severity source selection (same as Trivy's --vuln-severity-source).
 	// If empty, zot will default it to ["auto"].
 	VulnSeveritySources []string
+	DetectionPriority   string // default is "precise", same as Trivy's --detection-priority flag
+	ScanRemovedPkgs     bool   // default is false, same as Trivy's --removed-pkgs flag
+	IncludeDevDeps      bool   // default is false, same as Trivy's --include-dev-deps flag
 	SBOM                *SBOMConfig
 }
 

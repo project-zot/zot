@@ -85,7 +85,7 @@ var newArtifactRunner = artifact.NewRunner //nolint:gochecknoglobals // test sea
 // getNewScanOptions sets trivy configuration values for our scans and returns them as
 // a trivy Options structure.
 func getNewScanOptions(dir string, dbRepositoryRef, javaDBRepositoryRef name.Reference,
-	vulnSeveritySources []dbTypes.SourceID, ignoreFile string, sbomEnabled bool,
+	vulnSeveritySources []dbTypes.SourceID, ignoreFile string, sbomEnabled bool, tuning trivyScanTuning,
 ) *flag.Options {
 	scanOptions := flag.Options{
 		GlobalOptions: flag.GlobalOptions{
@@ -123,15 +123,43 @@ func getNewScanOptions(dir string, dbRepositoryRef, javaDBRepositoryRef name.Ref
 		},
 	}
 
+	scanOptions.ImageOptions.ScanRemovedPkgs = tuning.scanRemovedPkgs
+	scanOptions.PackageOptions.IncludeDevDeps = tuning.includeDevDeps
+	scanOptions.ScanOptions.DetectionPriority = tuning.detectionPriority
+
+	// trivy report feeds SBOM and CVE API, so sbomEnabled alone should not set detectionPriority,
+	// scanRemovedPkgs, and includeDevDeps. Blindly setting those to "true" will usually result in
+	// false positive CVEs on RHEL images. We set those above separately as configurable options.
 	if sbomEnabled {
 		scanOptions.ScanOptions.Scanners = types.Scanners{types.VulnerabilityScanner, types.LicenseScanner}
-		scanOptions.ScanOptions.DetectionPriority = fanalTypes.PriorityComprehensive
-		scanOptions.ImageOptions.ScanRemovedPkgs = true
 		scanOptions.LicenseOptions.LicenseFull = true
-		scanOptions.PackageOptions.IncludeDevDeps = true
 	}
 
 	return &scanOptions
+}
+
+type trivyScanTuning struct {
+	scanRemovedPkgs   bool
+	includeDevDeps    bool
+	detectionPriority fanalTypes.DetectionPriority
+}
+
+func getTrivyScanTuning(trivyCfg *extconf.TrivyConfig, logger log.Logger) trivyScanTuning {
+	var scanTuning trivyScanTuning
+	scanTuning.scanRemovedPkgs = trivyCfg.ScanRemovedPkgs
+	scanTuning.includeDevDeps = trivyCfg.IncludeDevDeps
+	scanTuning.detectionPriority = fanalTypes.PriorityPrecise
+
+	switch strings.ToLower(trivyCfg.DetectionPriority) {
+	case "", string(fanalTypes.PriorityPrecise):
+	case string(fanalTypes.PriorityComprehensive):
+		scanTuning.detectionPriority = fanalTypes.PriorityComprehensive
+	default:
+		logger.Warn().Str("detectionPriority", trivyCfg.DetectionPriority).
+			Msg("unsupported trivy detection priority, defaulting to precise")
+	}
+
+	return scanTuning
 }
 
 type cveTrivyController struct {
@@ -186,6 +214,8 @@ func NewScanner(storeController storage.StoreController,
 	vulnSeveritySources := trivyCfg.VulnSeveritySources
 	ignoreFile := trivyCfg.IgnoreFile
 
+	scanTuning := getTrivyScanTuning(trivyCfg, log)
+
 	// The logic to set defaults is similar to what trivy itself uses:
 	// https://github.com/aquasecurity/trivy/blob/v0.51.4/pkg/flag/db_flags.go#L152
 	var dbRepositoryRef name.Reference
@@ -228,7 +258,8 @@ func NewScanner(storeController storage.StoreController,
 		rootDir := imageStore.RootDir()
 
 		cacheDir := path.Join(rootDir, "_trivy")
-		opts := getNewScanOptions(cacheDir, dbRepositoryRef, javaDBRepositoryRef, sevSources, ignoreFile, sbomOpts.enabled)
+		opts := getNewScanOptions(cacheDir, dbRepositoryRef, javaDBRepositoryRef, sevSources,
+			ignoreFile, sbomOpts.enabled, scanTuning)
 
 		cveController.DefaultCveConfig = opts
 	}
@@ -238,7 +269,8 @@ func NewScanner(storeController storage.StoreController,
 			rootDir := storage.RootDir()
 
 			cacheDir := path.Join(rootDir, "_trivy")
-			opts := getNewScanOptions(cacheDir, dbRepositoryRef, javaDBRepositoryRef, sevSources, ignoreFile, sbomOpts.enabled)
+			opts := getNewScanOptions(cacheDir, dbRepositoryRef, javaDBRepositoryRef, sevSources,
+				ignoreFile, sbomOpts.enabled, scanTuning)
 
 			subCveConfig[route] = opts
 		}
