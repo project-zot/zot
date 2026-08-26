@@ -3485,6 +3485,279 @@ func TestPutBlobChunkStreamed(t *testing.T) {
 	})
 }
 
+func TestBlobChunkUploadDoesNotBlockOnStoreLock(t *testing.T) {
+	Convey("chunk PUT/PATCH copy the body while the store write lock is held", t, func() {
+		dir := t.TempDir()
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		imgStore := local.NewImageStore(dir, false, false, log, metrics, nil, nil, nil, nil)
+		ctx := context.Background()
+		repo := "chunk-under-lock"
+
+		assertCopyWhileLocked := func(put func() (int64, error)) {
+			var lockLatency time.Time
+			imgStore.Lock(&lockLatency)
+
+			done := make(chan error, 1)
+
+			go func() {
+				_, err := put()
+				done <- err
+			}()
+
+			blocked := true
+
+			select {
+			case err := <-done:
+				imgStore.Unlock(&lockLatency)
+				blocked = false
+				So(err, ShouldBeNil)
+			case <-time.After(5 * time.Second):
+				imgStore.Unlock(&lockLatency)
+			}
+
+			So(blocked, ShouldBeFalse)
+		}
+
+		Convey("PutBlobChunkStreamed", func() {
+			uuid, err := imgStore.NewBlobUpload(ctx, repo)
+			So(err, ShouldBeNil)
+
+			content := []byte("streamed-under-lock")
+			assertCopyWhileLocked(func() (int64, error) {
+				return imgStore.PutBlobChunkStreamed(ctx, repo, uuid, bytes.NewReader(content))
+			})
+		})
+
+		Convey("PutBlobChunk", func() {
+			uuid, err := imgStore.NewBlobUpload(ctx, repo)
+			So(err, ShouldBeNil)
+
+			content := []byte("chunk-under-lock")
+			assertCopyWhileLocked(func() (int64, error) {
+				return imgStore.PutBlobChunk(ctx, repo, uuid, 0, int64(len(content)), bytes.NewReader(content))
+			})
+		})
+	})
+}
+
+func TestFinishBlobUploadRecreatesRepoLayout(t *testing.T) {
+	Convey("FinishBlobUpload restores oci-layout and index.json if GC removed them", t, func() {
+		dir := t.TempDir()
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		imgStore := local.NewImageStore(dir, false, false, log, metrics, nil, nil, nil, nil)
+		ctx := context.Background()
+		repo := "finish-after-gc"
+
+		uuid, err := imgStore.NewBlobUpload(ctx, repo)
+		So(err, ShouldBeNil)
+
+		content := []byte("blob-survives-gc-layout-delete")
+		digest := godigest.FromBytes(content)
+		n, err := imgStore.PutBlobChunk(ctx, repo, uuid, 0, int64(len(content)), bytes.NewReader(content))
+		So(err, ShouldBeNil)
+		So(n, ShouldEqual, len(content))
+
+		So(os.Remove(path.Join(dir, repo, ispec.ImageIndexFile)), ShouldBeNil)
+		So(os.Remove(path.Join(dir, repo, ispec.ImageLayoutFile)), ShouldBeNil)
+		So(os.RemoveAll(path.Join(dir, repo, ispec.ImageBlobsDir)), ShouldBeNil)
+
+		ok, _ := imgStore.ValidateRepo(repo)
+		So(ok, ShouldBeFalse)
+
+		err = imgStore.FinishBlobUpload(repo, uuid, bytes.NewReader(nil), digest)
+		So(err, ShouldBeNil)
+
+		ok, err = imgStore.ValidateRepo(repo)
+		So(err, ShouldBeNil)
+		So(ok, ShouldBeTrue)
+
+		hasBlob, size, err := imgStore.CheckBlob(ctx, repo, digest)
+		So(err, ShouldBeNil)
+		So(hasBlob, ShouldBeTrue)
+		So(size, ShouldEqual, int64(len(content)))
+	})
+}
+
+func TestFullBlobUploadDoesNotBlockOnStoreLock(t *testing.T) {
+	Convey("FullBlobUpload reads the body while the store write lock is held", t, func() {
+		dir := t.TempDir()
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		imgStore := local.NewImageStore(dir, false, false, log, metrics, nil, nil, nil, nil)
+		ctx := context.Background()
+		repo := "full-under-lock"
+		content := []byte("full-blob-under-lock")
+		digest := godigest.FromBytes(content)
+
+		pipeReader, pipeWriter := io.Pipe()
+
+		var lockLatency time.Time
+		imgStore.Lock(&lockLatency)
+
+		errCh := make(chan error, 1)
+
+		go func() {
+			_, _, err := imgStore.FullBlobUpload(ctx, repo, pipeReader, digest)
+			errCh <- err
+		}()
+
+		wrote := make(chan error, 1)
+
+		go func() {
+			_, err := pipeWriter.Write(content)
+			_ = pipeWriter.Close()
+			wrote <- err
+		}()
+
+		blocked := true
+
+		select {
+		case err := <-wrote:
+			blocked = false
+			So(err, ShouldBeNil)
+		case <-time.After(5 * time.Second):
+			_ = pipeWriter.Close()
+		}
+
+		imgStore.Unlock(&lockLatency)
+		So(blocked, ShouldBeFalse)
+		So(<-errCh, ShouldBeNil)
+	})
+}
+
+func TestFullBlobUploadCreatesRepoLayout(t *testing.T) {
+	Convey("FullBlobUpload creates the OCI layout after copying, including if GC removed it", t, func() {
+		dir := t.TempDir()
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		imgStore := local.NewImageStore(dir, false, false, log, metrics, nil, nil, nil, nil)
+		ctx := context.Background()
+		repo := "full-creates-layout"
+
+		content := []byte("monolith-first-push")
+		digest := godigest.FromBytes(content)
+
+		_, nbytes, err := imgStore.FullBlobUpload(ctx, repo, bytes.NewReader(content), digest)
+		So(err, ShouldBeNil)
+		So(nbytes, ShouldEqual, int64(len(content)))
+
+		ok, err := imgStore.ValidateRepo(repo)
+		So(err, ShouldBeNil)
+		So(ok, ShouldBeTrue)
+
+		So(os.Remove(path.Join(dir, repo, ispec.ImageIndexFile)), ShouldBeNil)
+		So(os.Remove(path.Join(dir, repo, ispec.ImageLayoutFile)), ShouldBeNil)
+		So(os.RemoveAll(path.Join(dir, repo, ispec.ImageBlobsDir)), ShouldBeNil)
+
+		content2 := []byte("monolith-after-gc")
+		digest2 := godigest.FromBytes(content2)
+		_, nbytes, err = imgStore.FullBlobUpload(ctx, repo, bytes.NewReader(content2), digest2)
+		So(err, ShouldBeNil)
+		So(nbytes, ShouldEqual, int64(len(content2)))
+
+		ok, err = imgStore.ValidateRepo(repo)
+		So(err, ShouldBeNil)
+		So(ok, ShouldBeTrue)
+
+		hasBlob, size, err := imgStore.CheckBlob(ctx, repo, digest2)
+		So(err, ShouldBeNil)
+		So(hasBlob, ShouldBeTrue)
+		So(size, ShouldEqual, int64(len(content2)))
+	})
+}
+
+func TestBlobUploadPrepareAndInitRepoErrors(t *testing.T) {
+	Convey("prepareBlobUploadDir and post-copy initRepo error paths", t, func() {
+		dir := t.TempDir()
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		imgStore := local.NewImageStore(dir, false, false, log, metrics, nil, nil, nil, nil)
+		content := []byte("upload-error-path")
+		digest := godigest.FromBytes(content)
+
+		Convey("canceled context fails before opening the upload writer", func() {
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+
+			_, err := imgStore.PutBlobChunkStreamed(ctx, "canceled-chunk", "unused-uuid", bytes.NewReader(content))
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, context.Canceled), ShouldBeTrue)
+
+			_, _, err = imgStore.FullBlobUpload(ctx, "canceled-full", bytes.NewReader(content), digest)
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, context.Canceled), ShouldBeTrue)
+		})
+
+		Convey("invalid repository name fails prepareBlobUploadDir", func() {
+			ctx := context.Background()
+
+			_, err := imgStore.PutBlobChunk(ctx, "_badname", "unused-uuid", 0, int64(len(content)), bytes.NewReader(content))
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrInvalidRepositoryName), ShouldBeTrue)
+
+			_, _, err = imgStore.FullBlobUpload(ctx, "_badname", bytes.NewReader(content), digest)
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrInvalidRepositoryName), ShouldBeTrue)
+		})
+
+		Convey("EnsureDir for .uploads fails when .uploads is a file", func() {
+			ctx := context.Background()
+			repoChunk := "ensure-uploads-fail"
+			repoFull := "ensure-uploads-fail-full"
+
+			for _, repo := range []string{repoChunk, repoFull} {
+				So(os.MkdirAll(path.Join(dir, repo), 0o755), ShouldBeNil)
+				So(os.WriteFile(path.Join(dir, repo, storageConstants.BlobUploadDir), []byte("not-a-dir"), 0o600), ShouldBeNil)
+			}
+
+			_, err := imgStore.PutBlobChunkStreamed(ctx, repoChunk, "unused-uuid", bytes.NewReader(content))
+			So(err, ShouldNotBeNil)
+
+			_, _, err = imgStore.FullBlobUpload(ctx, repoFull, bytes.NewReader(content), digest)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("FinishBlobUpload returns initRepo errors under the move lock", func() {
+			ctx := context.Background()
+			repo := "finish-init-fail"
+
+			uuid, err := imgStore.NewBlobUpload(ctx, repo)
+			So(err, ShouldBeNil)
+
+			n, err := imgStore.PutBlobChunk(ctx, repo, uuid, 0, int64(len(content)), bytes.NewReader(content))
+			So(err, ShouldBeNil)
+			So(n, ShouldEqual, len(content))
+
+			So(os.RemoveAll(path.Join(dir, repo, ispec.ImageBlobsDir)), ShouldBeNil)
+			So(os.WriteFile(path.Join(dir, repo, ispec.ImageBlobsDir), []byte("not-a-dir"), 0o600), ShouldBeNil)
+
+			err = imgStore.FinishBlobUpload(repo, uuid, bytes.NewReader(nil), digest)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("FullBlobUpload returns initRepo errors after the body is copied", func() {
+			ctx := context.Background()
+			repo := "full-init-fail"
+
+			_, nbytes, err := imgStore.FullBlobUpload(ctx, repo, bytes.NewReader(content), digest)
+			So(err, ShouldBeNil)
+			So(nbytes, ShouldEqual, int64(len(content)))
+
+			So(os.Remove(path.Join(dir, repo, ispec.ImageIndexFile)), ShouldBeNil)
+			So(os.Remove(path.Join(dir, repo, ispec.ImageLayoutFile)), ShouldBeNil)
+			So(os.RemoveAll(path.Join(dir, repo, ispec.ImageBlobsDir)), ShouldBeNil)
+			So(os.WriteFile(path.Join(dir, repo, ispec.ImageBlobsDir), []byte("not-a-dir"), 0o600), ShouldBeNil)
+
+			content2 := []byte("full-init-fail-second")
+			digest2 := godigest.FromBytes(content2)
+			_, _, err = imgStore.FullBlobUpload(ctx, repo, bytes.NewReader(content2), digest2)
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
 func TestPullRange(t *testing.T) {
 	Convey("Repo layout", t, func(c C) {
 		dir := t.TempDir()
