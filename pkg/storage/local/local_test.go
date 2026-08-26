@@ -3818,7 +3818,7 @@ func TestBlobPathsByDigest(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(repos), ShouldEqual, len(layout))
 
-		digests, blobPaths, err := storageCommon.BlobPathsByDigest(imgStore, repos)
+		digests, blobPaths, err := storageCommon.BlobPathsByDigest(imgStore, repos, log)
 		So(err, ShouldBeNil)
 
 		// every digest collected exactly once, and the slice agrees with the map
@@ -3851,10 +3851,25 @@ func TestBlobPathsByDigest(t *testing.T) {
 		So(blobPaths[onlyFirstDigest][0], ShouldContainSubstring, "aaa-repo")
 		So(blobPaths[onlyLastDigest][0], ShouldContainSubstring, "zzz-repo")
 
+		// a file whose name is not a valid digest must be skipped rather than becoming a
+		// task that can never succeed
+		strayPath := path.Join(dir, "aaa-repo", ispec.ImageBlobsDir, "sha256", "not-a-valid-digest")
+		So(os.WriteFile(strayPath, []byte("junk"), storageConstants.DefaultFilePerms), ShouldBeNil)
+
+		withStray, strayPaths, err := storageCommon.BlobPathsByDigest(imgStore, repos, log)
+		So(err, ShouldBeNil)
+		So(len(withStray), ShouldEqual, 4)
+
+		for digest := range strayPaths {
+			So(digest.Validate(), ShouldBeNil)
+		}
+
+		So(os.Remove(strayPath), ShouldBeNil)
+
 		// a missing blobs directory must not curtail the rest of the listing
 		So(os.RemoveAll(path.Join(dir, "org/team", ispec.ImageBlobsDir)), ShouldBeNil)
 
-		afterRemoval, afterPaths, err := storageCommon.BlobPathsByDigest(imgStore, repos)
+		afterRemoval, afterPaths, err := storageCommon.BlobPathsByDigest(imgStore, repos, log)
 		So(err, ShouldBeNil)
 		So(len(afterRemoval), ShouldEqual, 4)
 		So(len(afterPaths[sharedDigest]), ShouldEqual, 2)

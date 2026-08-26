@@ -1159,7 +1159,7 @@ func (gen *DedupeTaskGenerator) checkCompletion(run *restoreRunState) {
 // aborts the walk after some repositories have already been collected (see
 // pkg/storage/gcs/nextrepo_walk_abort_test.go). GetAllBlobs treats a missing blobs
 // directory as empty for that one repository, so it cannot curtail the whole result.
-func BlobPathsByDigest(imgStore storageTypes.ImageStore, repos []string,
+func BlobPathsByDigest(imgStore storageTypes.ImageStore, repos []string, log zlog.Logger,
 ) ([]godigest.Digest, map[godigest.Digest][]string, error) {
 	digests := []godigest.Digest{}
 	blobPaths := map[godigest.Digest][]string{}
@@ -1171,6 +1171,17 @@ func BlobPathsByDigest(imgStore storageTypes.ImageStore, repos []string,
 		}
 
 		for _, digest := range blobs {
+			/* GetAllBlobs builds a digest from every filename under blobs/<alg>/ without
+			validating it, so a stray file would otherwise become a task that can never
+			succeed: it fails in checkCacheBlob, and a failed task never runs its completion
+			callback, leaving OnRunComplete unfired. */
+			if err := digest.Validate(); err != nil {
+				log.Debug().Str("repository", repo).Str("digest", digest.String()).
+					Str("component", "dedupe").Msg("skipping blob with an invalid digest")
+
+				continue
+			}
+
 			if _, seen := blobPaths[digest]; !seen {
 				digests = append(digests, digest)
 			}
@@ -1212,7 +1223,7 @@ func (gen *DedupeTaskGenerator) Next() (scheduler.Task, error) {
 
 	// group every blob path by digest, once per run rather than once per digest
 	if gen.blobPaths == nil {
-		digests, blobPaths, listErr := BlobPathsByDigest(gen.ImgStore, gen.repos)
+		digests, blobPaths, listErr := BlobPathsByDigest(gen.ImgStore, gen.repos, gen.Log)
 		if listErr != nil {
 			gen.Log.Error().Err(listErr).Str("component", "dedupe").Msg("failed to get blob paths by digest")
 
