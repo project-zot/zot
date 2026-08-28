@@ -707,16 +707,6 @@ func TestAPIKeys(t *testing.T) {
 		})
 
 		Convey("API key retrieved with openID and with short expire", func() {
-			expirationDate := time.Now().Add(1 * time.Second).Local().Round(time.Second)
-			payload := api.APIKeyPayload{
-				Label:          "test",
-				Scopes:         []string{"test"},
-				ExpirationDate: expirationDate.Format(constants.APIKeyTimeFormat),
-			}
-
-			reqBody, err := json.Marshal(payload)
-			So(err, ShouldBeNil)
-
 			client := resty.New()
 
 			client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
@@ -730,6 +720,19 @@ func TestAPIKeys(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
 			client.SetCookies(resp.Cookies())
+
+			// Set expiry after login. RFC3339 has second precision, and Round can
+			// shorten a 1s window enough that a slow OIDC round-trip already
+			// expires the key before the first list (IsExpired expected false).
+			expirationDate := time.Now().Add(3 * time.Second).Local().Round(time.Second)
+			payload := api.APIKeyPayload{
+				Label:          "test",
+				Scopes:         []string{"test"},
+				ExpirationDate: expirationDate.Format(constants.APIKeyTimeFormat),
+			}
+
+			reqBody, err := json.Marshal(payload)
+			So(err, ShouldBeNil)
 
 			// call endpoint with session (added to client after previous request)
 			resp, err = client.R().
@@ -777,7 +780,7 @@ func TestAPIKeys(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 			// sleep past expire time
-			time.Sleep(1500 * time.Millisecond)
+			time.Sleep(time.Until(expirationDate) + 200*time.Millisecond)
 
 			resp, err = client.R().
 				SetBasicAuth(email, apiKeyResponse.APIKey).
