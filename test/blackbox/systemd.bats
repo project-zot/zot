@@ -43,7 +43,9 @@ function wait_socket_activation_ready() {
 function wait_for_log() {
     local log_file=${1}
     local pattern=${2}
-    local max_attempts=50
+    # createListener runs only after Init and StartBackgroundTasks. Under
+    # parallel blackbox CI that routinely exceeds 5s, so poll longer.
+    local max_attempts=300
     local attempt=1
 
     while [ $attempt -le $max_attempts ]; do
@@ -54,7 +56,7 @@ function wait_for_log() {
         ((attempt++))
     done
 
-    echo "ERROR: pattern '${pattern}' not found in ${log_file} after 5 seconds" >&3
+    echo "ERROR: pattern '${pattern}' not found in ${log_file} after 30 seconds" >&3
     return 1
 }
 
