@@ -190,10 +190,10 @@ EOF
     echo -n "${act_pid} " >> "${BATS_FILE_TMPDIR}/zot.pid"
     echo "${port}" > "${BATS_FILE_TMPDIR}/zot.port"
 
-    # Wait until zot is activated and responding on port 3000
+    # Wait until zot is activated and responding
     wait_socket_activation_ready "${port}"
 
-    # Query the socket-activated zot instance on port 3000
+    # Query the socket-activated zot instance
     run curl -s -f -o /dev/null -w "%{http_code}" "http://127.0.0.1:${port}/v2/"
     [ "$status" -eq 0 ]
     [ "$output" = "200" ]
@@ -237,9 +237,6 @@ EOF
     # Wait for systemd-socket-activate to bind the port before sending traffic
     wait_for_listen "${activated_port}" || true
 
-    # Wait for systemd-socket-activate to bind the port before sending traffic
-    wait_for_listen "${activated_port}" || true
-
     # Trigger activation via curl
     curl -s -m 2 "http://127.0.0.1:${activated_port}/v2/" || true
 
@@ -276,9 +273,6 @@ EOF
     # Wait for systemd-socket-activate to bind the port before sending traffic
     wait_for_listen "${activated_port}" || true
 
-    # Wait for systemd-socket-activate to bind the port before sending traffic
-    wait_for_listen "${activated_port}" || true
-
     # Trigger activation via curl
     curl -s -m 2 "http://127.0.0.1:${activated_port}/v2/" || true
 
@@ -291,8 +285,13 @@ EOF
 @test "socket activation fails when multiple listeners are passed" {
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot-multi
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config_multi.json
-    local port1=$(get_free_port_for_service "systemd")
-    local port2="4002"
+    local port1
+    local port2
+    port1=$(get_free_port_for_service "systemd")
+    port2=$(get_free_port_for_service "systemd")
+    while [ "${port2}" = "${port1}" ]; do
+        port2=$(get_free_port_for_service "systemd")
+    done
 
     mkdir -p "${zot_root_dir}"
 
