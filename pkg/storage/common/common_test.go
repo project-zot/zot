@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -600,15 +602,13 @@ func TestDedupeGeneratorErrors(t *testing.T) {
 
 	// Ideally this would be covered by the end-to-end test,
 	// but the coverage for the error is unpredictable, prone to race conditions
-	Convey("GetNextDigestWithBlobPaths errors", t, func(c C) {
+	Convey("Blob listing errors", t, func(c C) {
 		imgStore := &mocks.MockedImageStore{
 			GetRepositoriesFn: func() ([]string, error) {
 				return []string{"repo1", "repo2"}, nil
 			},
-			GetNextDigestWithBlobPathsFn: func(repos []string, lastDigests []godigest.Digest) (
-				godigest.Digest, []string, error,
-			) {
-				return "sha256:123", []string{}, ErrTestError
+			GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
+				return nil, ErrTestError
 			},
 		}
 
@@ -629,23 +629,22 @@ func TestDedupeTaskGeneratorRestoreComplete(t *testing.T) {
 
 	Convey("OnRunComplete fires once after all restore tasks finish successfully", t, func(c C) {
 		digest := godigest.FromString("blob1")
-		duplicateBlobs := []string{"/repo/blob1-a", "/repo/blob1-b"}
+		// two repositories hold the digest, so it has two paths to act on
+		repos := []string{"repo1", "repo2"}
 
-		getNextCalls := 0
+		listCalls := 0
 
 		imgStore := &mocks.MockedImageStore{
 			GetRepositoriesFn: func() ([]string, error) {
-				return []string{"repo1"}, nil
+				return repos, nil
 			},
-			GetNextDigestWithBlobPathsFn: func(repos []string, lastDigests []godigest.Digest) (
-				godigest.Digest, []string, error,
-			) {
-				getNextCalls++
-				if getNextCalls == 1 {
-					return digest, duplicateBlobs, nil
-				}
+			GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
+				listCalls++
 
-				return "", nil, nil
+				return []godigest.Digest{digest}, nil
+			},
+			BlobPathFn: func(repo string, blobDigest godigest.Digest) string {
+				return fmt.Sprintf("/%s/blobs/%s/%s", repo, blobDigest.Algorithm(), blobDigest.Encoded())
 			},
 			RunDedupeForDigestFn: func(ctx context.Context, digest godigest.Digest, dedupe bool,
 				duplicateBlobs []string,
@@ -708,23 +707,22 @@ func TestDedupeTaskGeneratorRestoreComplete(t *testing.T) {
 
 	Convey("OnRunComplete fires once after all dedupe tasks finish successfully", t, func(c C) {
 		digest := godigest.FromString("blob-dedupe")
-		duplicateBlobs := []string{"/repo/blob-dedupe-a", "/repo/blob-dedupe-b"}
+		// two repositories hold the digest, so it has two paths to act on
+		repos := []string{"repo1", "repo2"}
 
-		getNextCalls := 0
+		listCalls := 0
 
 		imgStore := &mocks.MockedImageStore{
 			GetRepositoriesFn: func() ([]string, error) {
-				return []string{"repo1"}, nil
+				return repos, nil
 			},
-			GetNextDigestWithBlobPathsFn: func(repos []string, lastDigests []godigest.Digest) (
-				godigest.Digest, []string, error,
-			) {
-				getNextCalls++
-				if getNextCalls == 1 {
-					return digest, duplicateBlobs, nil
-				}
+			GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
+				listCalls++
 
-				return "", nil, nil
+				return []godigest.Digest{digest}, nil
+			},
+			BlobPathFn: func(repo string, blobDigest godigest.Digest) string {
+				return fmt.Sprintf("/%s/blobs/%s/%s", repo, blobDigest.Algorithm(), blobDigest.Encoded())
 			},
 			RunDedupeForDigestFn: func(ctx context.Context, digest godigest.Digest, dedupe bool,
 				duplicateBlobs []string,
@@ -778,23 +776,22 @@ func TestDedupeTaskGeneratorRestoreComplete(t *testing.T) {
 
 	Convey("Reset keeps the same run while a restore task is in-flight", t, func(c C) {
 		digest := godigest.FromString("blob2")
-		duplicateBlobs := []string{"/repo/blob2-a"}
+		// two repositories hold the digest, so it has two paths to act on
+		repos := []string{"repo1", "repo2"}
 
-		getNextCalls := 0
+		listCalls := 0
 
 		imgStore := &mocks.MockedImageStore{
 			GetRepositoriesFn: func() ([]string, error) {
-				return []string{"repo1"}, nil
+				return repos, nil
 			},
-			GetNextDigestWithBlobPathsFn: func(repos []string, lastDigests []godigest.Digest) (
-				godigest.Digest, []string, error,
-			) {
-				getNextCalls++
-				if getNextCalls == 1 {
-					return digest, duplicateBlobs, nil
-				}
+			GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
+				listCalls++
 
-				return "", nil, nil
+				return []godigest.Digest{digest}, nil
+			},
+			BlobPathFn: func(repo string, blobDigest godigest.Digest) string {
+				return fmt.Sprintf("/%s/blobs/%s/%s", repo, blobDigest.Algorithm(), blobDigest.Encoded())
 			},
 			RunDedupeForDigestFn: func(ctx context.Context, digest godigest.Digest, dedupe bool,
 				duplicateBlobs []string,
@@ -854,23 +851,22 @@ func TestDedupeTaskGeneratorRestoreComplete(t *testing.T) {
 
 	Convey("checkCompletion recovers if OnRunComplete panics", t, func(c C) {
 		digest := godigest.FromString("blob3")
-		duplicateBlobs := []string{"/repo/blob3-a"}
+		// two repositories hold the digest, so it has two paths to act on
+		repos := []string{"repo1", "repo2"}
 
-		getNextCalls := 0
+		listCalls := 0
 
 		imgStore := &mocks.MockedImageStore{
 			GetRepositoriesFn: func() ([]string, error) {
-				return []string{"repo1"}, nil
+				return repos, nil
 			},
-			GetNextDigestWithBlobPathsFn: func(repos []string, lastDigests []godigest.Digest) (
-				godigest.Digest, []string, error,
-			) {
-				getNextCalls++
-				if getNextCalls == 1 {
-					return digest, duplicateBlobs, nil
-				}
+			GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
+				listCalls++
 
-				return "", nil, nil
+				return []godigest.Digest{digest}, nil
+			},
+			BlobPathFn: func(repo string, blobDigest godigest.Digest) string {
+				return fmt.Sprintf("/%s/blobs/%s/%s", repo, blobDigest.Algorithm(), blobDigest.Encoded())
 			},
 			RunDedupeForDigestFn: func(ctx context.Context, digest godigest.Digest, dedupe bool,
 				duplicateBlobs []string,
@@ -2408,5 +2404,169 @@ func TestGetBlobDescriptorFromIndexCoverage(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(desc.Digest, ShouldEqual, layerDigest)
 		So(readCount, ShouldEqual, 1)
+	})
+}
+
+func TestDedupeTaskGeneratorListsStorageOncePerRun(t *testing.T) {
+	testLog := log.NewTestLogger()
+
+	Convey("The generator lists storage once per run, not once per digest", t, func(c C) {
+		repos := []string{"repo1", "repo2"}
+
+		digests := []godigest.Digest{
+			godigest.FromString("blob1"),
+			godigest.FromString("blob2"),
+			godigest.FromString("blob3"),
+		}
+
+		listCalls := 0
+
+		imgStore := &mocks.MockedImageStore{
+			GetRepositoriesFn: func() ([]string, error) {
+				return repos, nil
+			},
+			GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
+				listCalls++
+
+				return digests, nil
+			},
+			BlobPathFn: func(repo string, blobDigest godigest.Digest) string {
+				return fmt.Sprintf("/%s/blobs/%s/%s", repo, blobDigest.Algorithm(), blobDigest.Encoded())
+			},
+			RunDedupeForDigestFn: func(ctx context.Context, digest godigest.Digest, dedupe bool,
+				duplicateBlobs []string,
+			) error {
+				return nil
+			},
+		}
+
+		generator := &common.DedupeTaskGenerator{
+			ImgStore: imgStore,
+			Dedupe:   true,
+			Log:      testLog,
+		}
+
+		for range digests {
+			task, err := generator.Next()
+			So(err, ShouldBeNil)
+			So(task, ShouldNotBeNil)
+		}
+
+		task, err := generator.Next()
+		So(err, ShouldBeNil)
+		So(task, ShouldBeNil)
+		So(generator.IsDone(), ShouldBeTrue)
+
+		// the point of the change: one listing per repository for the whole run, rather
+		// than a fresh enumeration for every digest
+		So(listCalls, ShouldEqual, len(repos))
+
+		// a fresh run must list again, since storage may have changed
+		generator.Reset()
+
+		task, err = generator.Next()
+		So(err, ShouldBeNil)
+		So(task, ShouldNotBeNil)
+		So(listCalls, ShouldEqual, 2*len(repos))
+	})
+}
+
+func TestDedupeTaskGeneratorDiscardsPartialEnumeration(t *testing.T) {
+	testLog := log.NewTestLogger()
+
+	Convey("A failed listing must not leave a partial snapshot behind", t, func(c C) {
+		repos := []string{"repo1", "repo2"}
+
+		first := godigest.FromString("blob1")
+		second := godigest.FromString("blob2")
+
+		attempts := 0
+
+		var (
+			processedMutex sync.Mutex
+			processed      []godigest.Digest
+		)
+
+		var completions atomic.Int32
+
+		imgStore := &mocks.MockedImageStore{
+			GetRepositoriesFn: func() ([]string, error) {
+				return repos, nil
+			},
+			// the first attempt lists repo1 and then fails on repo2, so the caller is
+			// offered a snapshot covering only part of storage
+			GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
+				if repo == "repo1" {
+					return []godigest.Digest{first}, nil
+				}
+
+				attempts++
+				if attempts == 1 {
+					return nil, ErrTestError
+				}
+
+				return []godigest.Digest{second}, nil
+			},
+			BlobPathFn: func(repo string, blobDigest godigest.Digest) string {
+				return fmt.Sprintf("/%s/blobs/%s/%s", repo, blobDigest.Algorithm(), blobDigest.Encoded())
+			},
+			RunDedupeForDigestFn: func(ctx context.Context, digest godigest.Digest, dedupe bool,
+				duplicateBlobs []string,
+			) error {
+				processedMutex.Lock()
+
+				processed = append(processed, digest)
+
+				processedMutex.Unlock()
+
+				return nil
+			},
+		}
+
+		generator := &common.DedupeTaskGenerator{
+			ImgStore: imgStore,
+			Dedupe:   false,
+			Log:      testLog,
+			OnRunComplete: func() {
+				completions.Add(1)
+			},
+		}
+
+		// the failed listing surfaces the error and generates no task
+		task, err := generator.Next()
+		So(err, ShouldNotBeNil)
+		So(task, ShouldBeNil)
+		So(generator.IsDone(), ShouldBeFalse)
+
+		// the scheduler retries: the listing must run again rather than resuming the
+		// partial snapshot, so the digest from the repo that failed is not skipped
+		for range 2 {
+			task, err = generator.Next()
+			So(err, ShouldBeNil)
+			So(task, ShouldNotBeNil)
+			So(task.DoWork(context.Background()), ShouldBeNil)
+		}
+
+		task, err = generator.Next()
+		So(err, ShouldBeNil)
+		So(task, ShouldBeNil)
+		So(generator.IsDone(), ShouldBeTrue)
+
+		processedMutex.Lock()
+		So(processed, ShouldResemble, []godigest.Digest{first, second})
+		processedMutex.Unlock()
+
+		// completion must reflect the full run, not the one that errored
+		So(func() int32 {
+			for range 50 {
+				if completions.Load() > 0 {
+					break
+				}
+
+				time.Sleep(100 * time.Millisecond)
+			}
+
+			return completions.Load()
+		}(), ShouldEqual, 1)
 	})
 }

@@ -33,6 +33,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/scheduler"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	"zotregistry.dev/zot/v2/pkg/storage/cache"
+	storageCommon "zotregistry.dev/zot/v2/pkg/storage/common"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/gc"
 	"zotregistry.dev/zot/v2/pkg/storage/imagestore"
@@ -1382,7 +1383,7 @@ func TestDedupeLinks(t *testing.T) {
 					So(err, ShouldBeNil)
 				})
 
-				Convey("test RunDedupeForDigest directly, trigger stat error on original blob", func() {
+				Convey("test RunDedupeForDigest directly, blob deleted after listing", func() {
 					// rebuild with dedupe true
 					imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
 
@@ -1395,8 +1396,39 @@ func TestDedupeLinks(t *testing.T) {
 					err := os.Remove(path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1))
 					So(err, ShouldBeNil)
 
+					/* The paths come from a listing taken at the start of the run, so a blob
+					may have been deleted since. That is skipped rather than failing the
+					digest: a failed task is never retried and its completion callback never
+					runs, which would leave OnRunComplete unfired (project-zot/zot#4349). */
 					err = imgStore.RunDedupeForDigest(context.TODO(), godigest.Digest(blobDigest1), true, duplicateBlobs)
-					So(err, ShouldNotBeNil)
+					So(err, ShouldBeNil)
+				})
+
+				Convey("test RunDedupeForDigest directly, unreadable blob still fails", func() {
+					// rebuild with dedupe true
+					imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+
+					duplicateBlobs := []string{
+						path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1),
+						path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest2),
+					}
+
+					// only a missing blob is skipped; a real I/O error must still fail the
+					// digest, so that the run does not quietly write off unreadable content
+					if os.Geteuid() != 0 {
+						blobsDir := path.Join(dir, "dedupe1", "blobs", "sha256")
+
+						err := os.Chmod(blobsDir, 0o000)
+						So(err, ShouldBeNil)
+
+						defer func() {
+							_ = os.Chmod(blobsDir, 0o700)
+						}()
+
+						err = imgStore.RunDedupeForDigest(context.TODO(), godigest.Digest(blobDigest1),
+							true, duplicateBlobs)
+						So(err, ShouldNotBeNil)
+					}
 				})
 
 				Convey("Intrerrupt rebuilding and restart, checking idempotency", func() {
@@ -3727,6 +3759,211 @@ func TestGetNextDigestWithBlobPathsNestedRepo(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(gotDigest, ShouldEqual, dgst)
 		So(len(duplicateBlobs), ShouldEqual, 2)
+	})
+}
+
+func TestBlobPathsByDigest(t *testing.T) {
+	Convey("BlobPathsByDigest groups blob paths by digest, one listing per repo", t, func() {
+		dir := t.TempDir()
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+
+		shared := []byte("shared-blob-content")
+		pair := []byte("two-repo-blob-content")
+		onlyFirst := []byte("only-in-the-first-repo")
+		onlyLast := []byte("only-in-the-last-repo")
+
+		sharedDigest := godigest.FromBytes(shared)
+		pairDigest := godigest.FromBytes(pair)
+		onlyFirstDigest := godigest.FromBytes(onlyFirst)
+		onlyLastDigest := godigest.FromBytes(onlyLast)
+
+		// one repo is nested, to prove a namespace is handled like any other repo
+		layout := map[string][][]byte{
+			"aaa-repo": {shared, pair, onlyFirst},
+			"org/team": {shared},
+			"zzz-repo": {shared, pair, onlyLast},
+		}
+
+		for repo, blobs := range layout {
+			repoDir := path.Join(dir, repo)
+			So(os.MkdirAll(path.Join(repoDir, ispec.ImageBlobsDir), storageConstants.DefaultDirPerms), ShouldBeNil)
+
+			ilBuf, err := json.Marshal(ispec.ImageLayout{Version: ispec.ImageLayoutVersion})
+			So(err, ShouldBeNil)
+			So(os.WriteFile(path.Join(repoDir, ispec.ImageLayoutFile), ilBuf, storageConstants.DefaultFilePerms),
+				ShouldBeNil)
+
+			idxBuf, err := json.Marshal(ispec.Index{Versioned: imeta.Versioned{SchemaVersion: 2}})
+			So(err, ShouldBeNil)
+			So(os.WriteFile(path.Join(repoDir, ispec.ImageIndexFile), idxBuf, storageConstants.DefaultFilePerms),
+				ShouldBeNil)
+
+			for _, blob := range blobs {
+				digest := godigest.FromBytes(blob)
+				blobPath := path.Join(repoDir, ispec.ImageBlobsDir, digest.Algorithm().String(), digest.Encoded())
+				So(os.MkdirAll(path.Dir(blobPath), storageConstants.DefaultDirPerms), ShouldBeNil)
+				So(os.WriteFile(blobPath, blob, storageConstants.DefaultFilePerms), ShouldBeNil)
+			}
+		}
+
+		repos, err := imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		So(len(repos), ShouldEqual, len(layout))
+
+		digests, blobPaths, err := storageCommon.BlobPathsByDigest(imgStore, repos, log)
+		So(err, ShouldBeNil)
+
+		// every digest collected exactly once, and the slice agrees with the map
+		So(len(digests), ShouldEqual, 4)
+		So(len(blobPaths), ShouldEqual, len(digests))
+
+		occurrences := map[godigest.Digest]int{}
+		for _, digest := range digests {
+			occurrences[digest]++
+			So(blobPaths, ShouldContainKey, digest)
+		}
+
+		for _, digest := range digests {
+			So(occurrences[digest], ShouldEqual, 1)
+		}
+
+		// path groups are complete, and single-copy blobs are included: the dedupe pass
+		// records a cache entry for those too, so dropping them would leave the cache short
+		So(len(blobPaths[sharedDigest]), ShouldEqual, 3)
+		So(len(blobPaths[pairDigest]), ShouldEqual, 2)
+		So(len(blobPaths[onlyFirstDigest]), ShouldEqual, 1)
+		So(len(blobPaths[onlyLastDigest]), ShouldEqual, 1)
+
+		// the paths are the real ones on disk
+		for _, blobPath := range blobPaths[sharedDigest] {
+			_, err := os.Stat(blobPath)
+			So(err, ShouldBeNil)
+		}
+
+		So(blobPaths[onlyFirstDigest][0], ShouldContainSubstring, "aaa-repo")
+		So(blobPaths[onlyLastDigest][0], ShouldContainSubstring, "zzz-repo")
+
+		// a file whose name is not a valid digest must be skipped rather than becoming a
+		// task that can never succeed
+		strayPath := path.Join(dir, "aaa-repo", ispec.ImageBlobsDir, "sha256", "not-a-valid-digest")
+		So(os.WriteFile(strayPath, []byte("junk"), storageConstants.DefaultFilePerms), ShouldBeNil)
+
+		withStray, strayPaths, err := storageCommon.BlobPathsByDigest(imgStore, repos, log)
+		So(err, ShouldBeNil)
+		So(len(withStray), ShouldEqual, 4)
+
+		for digest := range strayPaths {
+			So(digest.Validate(), ShouldBeNil)
+		}
+
+		So(os.Remove(strayPath), ShouldBeNil)
+
+		// a missing blobs directory must not curtail the rest of the listing
+		So(os.RemoveAll(path.Join(dir, "org/team", ispec.ImageBlobsDir)), ShouldBeNil)
+
+		afterRemoval, afterPaths, err := storageCommon.BlobPathsByDigest(imgStore, repos, log)
+		So(err, ShouldBeNil)
+		So(len(afterRemoval), ShouldEqual, 4)
+		So(len(afterPaths[sharedDigest]), ShouldEqual, 2)
+	})
+}
+
+func TestRunDedupeForDigestSkipsDeletedPaths(t *testing.T) {
+	Convey("A blob deleted after the listing must not fail the whole digest", t, func() {
+		newStore := func(dir string) storageTypes.ImageStore {
+			log := zlog.NewTestLogger()
+			metrics := monitoring.NewNopMetricServer()
+			cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+				RootDir:     dir,
+				Name:        "cache",
+				UseRelPaths: true,
+			}, log)
+
+			return local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+		}
+
+		content := []byte("blob-content-for-dedupe")
+		digest := godigest.FromBytes(content)
+
+		writeBlob := func(dir, repo string, body []byte) string {
+			blobPath := path.Join(dir, repo, ispec.ImageBlobsDir, digest.Algorithm().String(), digest.Encoded())
+			So(os.MkdirAll(path.Dir(blobPath), storageConstants.DefaultDirPerms), ShouldBeNil)
+			So(os.WriteFile(blobPath, body, storageConstants.DefaultFilePerms), ShouldBeNil)
+
+			return blobPath
+		}
+
+		Convey("dedupe direction", func() {
+			dir := t.TempDir()
+			imgStore := newStore(dir)
+
+			survivor := writeBlob(dir, "repo-keep", content)
+			deleted := writeBlob(dir, "repo-gone", content)
+			So(os.Remove(deleted), ShouldBeNil)
+
+			// the vanished path is listed first, which is what the old code choked on
+			err := imgStore.RunDedupeForDigest(context.Background(), digest, true, []string{deleted, survivor})
+			So(err, ShouldBeNil)
+		})
+
+		Convey("restore direction, every path deleted", func() {
+			dir := t.TempDir()
+			imgStore := newStore(dir)
+
+			first := writeBlob(dir, "repo-one", content)
+			second := writeBlob(dir, "repo-two", []byte{})
+			So(os.Remove(first), ShouldBeNil)
+			So(os.Remove(second), ShouldBeNil)
+
+			// nothing survives, so there is nothing to restore. Failing here would stop the
+			// run reporting completion, which would wedge the restore marker.
+			err := imgStore.RunDedupeForDigest(context.Background(), digest, false,
+				[]string{first, second})
+			So(err, ShouldBeNil)
+		})
+
+		Convey("restore direction, placeholder survives with no content source", func() {
+			dir := t.TempDir()
+			imgStore := newStore(dir)
+
+			original := writeBlob(dir, "repo-original", content)
+			placeholder := writeBlob(dir, "repo-placeholder", []byte{})
+			So(os.Remove(original), ShouldBeNil)
+
+			// the placeholder is still there and nothing holds the content, so this must
+			// fail rather than leave it zero-size
+			err := imgStore.RunDedupeForDigest(context.Background(), digest, false,
+				[]string{original, placeholder})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("restore direction", func() {
+			dir := t.TempDir()
+			imgStore := newStore(dir)
+
+			original := writeBlob(dir, "repo-original", content)
+			placeholder := writeBlob(dir, "repo-placeholder", []byte{})
+			deleted := writeBlob(dir, "repo-gone", content)
+			So(os.Remove(deleted), ShouldBeNil)
+
+			err := imgStore.RunDedupeForDigest(context.Background(), digest, false,
+				[]string{deleted, original, placeholder})
+			So(err, ShouldBeNil)
+
+			// the surviving copy was still found as the content source, so the
+			// zero-size placeholder got restored
+			restored, err := os.ReadFile(placeholder)
+			So(err, ShouldBeNil)
+			So(restored, ShouldResemble, content)
+		})
 	})
 }
 

@@ -1087,11 +1087,14 @@ type DedupeTaskGenerator struct {
 	// store blobs paths grouped by digest
 	digest         godigest.Digest
 	duplicateBlobs []string
-	/* store processed digest, used for iterating duplicateBlobs one by one
-	and generating a task for each unprocessed one*/
-	lastDigests []godigest.Digest
-	repos       []string // list of repos on which we run dedupe
-	Log         zlog.Logger
+	/* every blob path in storage grouped by digest, listed once per run. Enumerating
+	storage costs one listing per repository, which is slow on a remote driver, so the
+	generator must not redo it for each digest. */
+	digests   []godigest.Digest
+	blobPaths map[godigest.Digest][]string
+	nextIndex int
+	repos     []string // list of repos on which we run dedupe
+	Log       zlog.Logger
 	// OnRunComplete is called exactly once after all tasks of a run have
 	// succeeded, whether the run dedupes blobs (Dedupe=true) or restores them
 	// (Dedupe=false). Restore runs use it to write the restore-complete marker;
@@ -1146,6 +1149,50 @@ func (gen *DedupeTaskGenerator) checkCompletion(run *restoreRunState) {
 	}
 }
 
+// BlobPathsByDigest groups every blob path in the given repositories by digest, using one
+// blobs-directory listing per repository. Digests come back in first-seen order so callers
+// process them deterministically.
+//
+// This deliberately does not walk the storage root. On a remote driver that is a full
+// prefix listing which then discards everything that is not a blob, and drivers such as
+// GCS report an empty or concurrently removed nested prefix as PathNotFoundError, which
+// aborts the walk after some repositories have already been collected (see
+// pkg/storage/gcs/nextrepo_walk_abort_test.go). GetAllBlobs treats a missing blobs
+// directory as empty for that one repository, so it cannot curtail the whole result.
+func BlobPathsByDigest(imgStore storageTypes.ImageStore, repos []string, log zlog.Logger,
+) ([]godigest.Digest, map[godigest.Digest][]string, error) {
+	digests := []godigest.Digest{}
+	blobPaths := map[godigest.Digest][]string{}
+
+	for _, repo := range repos {
+		blobs, err := imgStore.GetAllBlobs(repo)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		for _, digest := range blobs {
+			/* GetAllBlobs builds a digest from every filename under blobs/<alg>/ without
+			validating it, so a stray file would otherwise become a task that can never
+			succeed: it fails in checkCacheBlob, and a failed task never runs its completion
+			callback, leaving OnRunComplete unfired. */
+			if err := digest.Validate(); err != nil {
+				log.Debug().Str("repository", repo).Str("digest", digest.String()).
+					Str("component", "dedupe").Msg("skipping blob with an invalid digest")
+
+				continue
+			}
+
+			if _, seen := blobPaths[digest]; !seen {
+				digests = append(digests, digest)
+			}
+
+			blobPaths[digest] = append(blobPaths[digest], imgStore.BlobPath(repo, digest))
+		}
+	}
+
+	return digests, blobPaths, nil
+}
+
 func (gen *DedupeTaskGenerator) Next() (scheduler.Task, error) {
 	var err error
 
@@ -1174,12 +1221,30 @@ func (gen *DedupeTaskGenerator) Next() (scheduler.Task, error) {
 		}
 	}
 
-	// get all blobs from storage.imageStore and group them by digest
-	gen.digest, gen.duplicateBlobs, err = gen.ImgStore.GetNextDigestWithBlobPaths(gen.repos, gen.lastDigests)
-	if err != nil {
-		gen.Log.Error().Err(err).Str("component", "dedupe").Msg("failed to get next digest")
+	// group every blob path by digest, once per run rather than once per digest
+	if gen.blobPaths == nil {
+		digests, blobPaths, listErr := BlobPathsByDigest(gen.ImgStore, gen.repos, gen.Log)
+		if listErr != nil {
+			gen.Log.Error().Err(listErr).Str("component", "dedupe").Msg("failed to get blob paths by digest")
 
-		return nil, err
+			return nil, listErr
+		}
+
+		/* assign only once the listing has completed: keeping a partial snapshot would make
+		the scheduler's next call treat it as the whole of storage, so the run would report
+		itself complete having skipped digests. For a restore run that writes the
+		restore-complete marker, permanently suppressing later restore scans; for a dedupe run
+		it lets deferred blob deletes proceed against an incomplete cache. */
+		gen.digests, gen.blobPaths = digests, blobPaths
+	}
+
+	gen.digest = ""
+	gen.duplicateBlobs = []string{}
+
+	if gen.nextIndex < len(gen.digests) {
+		gen.digest = gen.digests[gen.nextIndex]
+		gen.duplicateBlobs = gen.blobPaths[gen.digest]
+		gen.nextIndex++
 	}
 
 	// if no digests left, then mark the task generator as done
@@ -1191,9 +1256,6 @@ func (gen *DedupeTaskGenerator) Next() (scheduler.Task, error) {
 
 		return nil, nil //nolint:nilnil
 	}
-
-	// mark digest as processed before running its task
-	gen.lastDigests = append(gen.lastDigests, gen.digest)
 
 	// Track each task so completion fires only after all of them succeed.
 	var onDone func()
@@ -1232,10 +1294,12 @@ func (gen *DedupeTaskGenerator) Reset() {
 		gen.run.Store(&restoreRunState{})
 	}
 
-	gen.lastDigests = []godigest.Digest{}
 	gen.duplicateBlobs = []string{}
 	gen.repos = []string{}
 	gen.digest = ""
+	gen.digests = nil
+	gen.blobPaths = nil
+	gen.nextIndex = 0
 }
 
 type dedupeTask struct {
