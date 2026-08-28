@@ -2722,14 +2722,22 @@ func TestCredentialRefreshOnEverySyncEntryPoint(t *testing.T) {
 // mockCheckService is a minimal Service implementation for exercising
 // BaseOnDemand.ShouldCheckUpstreamManifest.
 type mockCheckService struct {
-	shouldCheckUpstreamFn func(repo, reference string) bool
+	shouldCheckUpstreamFn    func(repo, reference string) bool
+	syncImageFn              func(ctx context.Context, repo, reference string) error
+	isAsyncOnDemandForRepoFn func(repo string) bool
 }
 
 func (s *mockCheckService) GetNextRepo(_ string) (string, error) { return "", nil }
 
 func (s *mockCheckService) SyncRepo(_ context.Context, _ string) error { return nil }
 
-func (s *mockCheckService) SyncImage(_ context.Context, _, _ string) error { return nil }
+func (s *mockCheckService) SyncImage(ctx context.Context, repo, reference string) error {
+	if s.syncImageFn != nil {
+		return s.syncImageFn(ctx, repo, reference)
+	}
+
+	return nil
+}
 
 func (s *mockCheckService) SyncReferrers(_ context.Context, _ string, _ string, _ []string) error {
 	return nil
@@ -2747,6 +2755,107 @@ func (s *mockCheckService) ShouldCheckUpstream(repo, reference string) bool {
 	}
 
 	return true
+}
+
+func (s *mockCheckService) IsAsyncOnDemandForRepo(repo string) bool {
+	if s.isAsyncOnDemandForRepoFn != nil {
+		return s.isAsyncOnDemandForRepoFn(repo)
+	}
+
+	return false
+}
+
+func TestOnDemandQueueImage(t *testing.T) {
+	var syncCalls atomic.Int32
+
+	started := make(chan context.Context, 1)
+	release := make(chan struct{})
+	finished := make(chan struct{}, 2)
+
+	service := &mockCheckService{
+		isAsyncOnDemandForRepoFn: func(repo string) bool {
+			return repo == "library/test"
+		},
+		syncImageFn: func(ctx context.Context, _, _ string) error {
+			syncCalls.Add(1)
+			started <- ctx
+			<-release
+			finished <- struct{}{}
+
+			return nil
+		},
+	}
+	onDemand := NewOnDemand(log.NewTestLogger())
+	onDemand.Add(service)
+
+	if !onDemand.IsAsyncOnDemandEnabledForRepo("library/test") {
+		t.Fatal("expected async on-demand sync to be enabled")
+	}
+
+	if onDemand.IsAsyncOnDemandEnabledForRepo("library/other") {
+		t.Fatal("expected async on-demand sync to respect the repository filter")
+	}
+
+	requestContext, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	onDemand.QueueImage(requestContext, "library/test", "latest")
+
+	var syncContext context.Context
+	select {
+	case syncContext = <-started:
+	case <-time.After(time.Second):
+		t.Fatal("background sync did not start")
+	}
+
+	if syncContext.Err() != nil {
+		t.Fatalf("background sync inherited request cancellation: %v", syncContext.Err())
+	}
+
+	onDemand.QueueImage(requestContext, "library/test", "latest")
+	time.Sleep(50 * time.Millisecond)
+
+	if syncCalls.Load() != 1 {
+		t.Fatalf("expected one deduplicated sync, got %d", syncCalls.Load())
+	}
+
+	close(release)
+
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("background sync did not finish")
+	}
+}
+
+func TestBaseServiceIsAsyncOnDemandForRepo(t *testing.T) {
+	enabled := true
+	content := []syncconf.Content{{Prefix: "library/test"}}
+	service := &BaseService{
+		config: syncconf.RegistryConfig{
+			AsyncOnDemand: &enabled,
+			Content:       content,
+		},
+		contentManager: NewContentManager(content, log.NewTestLogger()),
+	}
+
+	if !service.IsAsyncOnDemandForRepo("library/test") {
+		t.Fatal("expected configured repository to use async on-demand sync")
+	}
+
+	if service.IsAsyncOnDemandForRepo("library/other") {
+		t.Fatal("expected content filtering to exclude repository")
+	}
+
+	service.config.Content = nil
+	if !service.IsAsyncOnDemandForRepo("library/other") {
+		t.Fatal("expected empty content rules to allow any repository")
+	}
+
+	enabled = false
+	if service.IsAsyncOnDemandForRepo("library/test") {
+		t.Fatal("expected disabled async on-demand sync to reject repository")
+	}
 }
 
 func TestManifestCheckTracker(t *testing.T) {

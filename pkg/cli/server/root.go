@@ -1747,6 +1747,15 @@ func validateRegistryManifestCheckInterval(regCfg syncconf.RegistryConfig) error
 	return nil
 }
 
+func validateRegistryAsyncOnDemand(regCfg syncconf.RegistryConfig) error {
+	if regCfg.IsAsyncOnDemandEnabled() && !regCfg.OnDemand {
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig,
+			"asyncOnDemand requires onDemand to be enabled")
+	}
+
+	return nil
+}
+
 func validateSync(config *config.Config, logger zlog.Logger) error {
 	// check glob patterns in sync config are compilable
 	extensionsConfig := config.CopyExtensionsConfig()
@@ -1765,6 +1774,13 @@ func validateSync(config *config.Config, logger zlog.Logger) error {
 }
 
 func validateSyncRegistry(config *config.Config, regID int, regCfg syncconf.RegistryConfig, logger zlog.Logger) error {
+	if asyncValidationErr := validateRegistryAsyncOnDemand(regCfg); asyncValidationErr != nil {
+		logger.Error().Err(asyncValidationErr).Int("id", regID).Interface("extensions.sync.registries[id]",
+			regCfg).Msg("invalid config for asyncOnDemand")
+
+		return asyncValidationErr
+	}
+
 	if intervalValidationErr := validateRegistryManifestCheckInterval(regCfg); intervalValidationErr != nil {
 		logger.Error().Err(intervalValidationErr).Int("id", regID).Interface("extensions.sync.registries[id]",
 			regCfg).Msg("invalid config for manifestCheckInterval")

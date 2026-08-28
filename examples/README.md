@@ -1392,6 +1392,7 @@ Configure each registry sync:
 			"registries": [{
 				"urls": ["https://registry1:5000"],
 				"onDemand": false,                  # pull any image which the local registry doesn't have
+				"asyncOnDemand": false,             # return 404 on a miss and fill the cache in the background
 				"pollInterval": "6h",               # polling interval, if not set then periodically polling will not run
 				"manifestCheckInterval": "1h",      # minimum interval between upstream manifest checks for the same repo:tag when serving on-demand requests; when 0 or unset every request checks upstream. Requires onDemand.
 				"tlsVerify": true,                  # whether or not to verify tls (default is true)
@@ -1480,6 +1481,17 @@ local. Notes:
  - requests by digest are unaffected, a locally present digest is already served without contacting upstream
  - a local miss, for instance after garbage collection, always falls back to a normal sync
  - the last check time is kept in memory, so the first request after a restart checks upstream again
+
+### Asynchronous on-demand mirror cache
+
+Set `"onDemand": true` and `"asyncOnDemand": true` when zot is a containerd mirror in front of an
+upstream registry. Zot serves cache hits normally. On a manifest miss, it starts an image sync in the
+background and immediately returns `404`, allowing containerd to fall back to the upstream registry
+while zot fills its cache for later pulls.
+
+Configure zot as a mirror host with `pull` capability only and keep the upstream registry as
+containerd's `server`. The upstream remains responsible for resolving mutable tags. Ordinary blob
+misses continue to return `404`; the manifest-level background sync fills the image cache.
 
 ### Sync's certDir option
 

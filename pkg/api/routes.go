@@ -2718,6 +2718,16 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 	reference string,
 ) ([]byte, godigest.Digest, string, error) {
 	syncEnabled := isSyncOnDemandEnabled(routeHandler.c)
+	if syncEnabled {
+		if asyncSync, ok := routeHandler.asyncOnDemand(name); ok {
+			content, digest, mediaType, err := imgStore.GetImageManifest(name, reference)
+			if isManifestCacheMiss(err) {
+				asyncSync.QueueImage(ctx, name, reference)
+			}
+
+			return content, digest, mediaType, err
+		}
+	}
 
 	_, digestErr := godigest.Parse(reference)
 	if digestErr == nil {
