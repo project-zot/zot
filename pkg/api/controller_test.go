@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/go-github/v62/github"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/securecookie"
@@ -5724,6 +5725,345 @@ func TestAuthorizationMountBlob(t *testing.T) {
 	})
 }
 
+func signBearerTestToken(t *testing.T, serverKeyPath string, access []api.ResourceAccess) string {
+	t.Helper()
+
+	keyBytes, err := os.ReadFile(serverKeyPath)
+	So(err, ShouldBeNil)
+
+	privateKey, err := jwt.ParseRSAPrivateKeyFromPEM(keyBytes)
+	So(err, ShouldBeNil)
+
+	now := time.Now()
+	claims := api.ClaimsWithAccess{
+		Access: access,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(now),
+		},
+	}
+
+	token, err := jwt.NewWithClaims(jwt.SigningMethodRS256, claims).SignedString(privateKey)
+	So(err, ShouldBeNil)
+
+	return token
+}
+
+func TestBearerAuthorizationMountBlob(t *testing.T) {
+	Convey("traditional bearer requires source-repo read before dedupe mount", t, func() {
+		serverCertPath, serverKeyPath, _, _ := setupBearerAuthServerCerts(t, tlsutils.KeyTypeRSA)
+
+		authTestServer := authutils.MakeAuthTestServer(serverKeyPath, "RS256", UnauthorizedNamespace)
+		defer authTestServer.Close()
+
+		conf := config.New()
+		conf.HTTP.Port = "0"
+
+		aurl, err := url.Parse(authTestServer.URL)
+		So(err, ShouldBeNil)
+
+		conf.HTTP.Auth = &config.AuthConfig{
+			Bearer: &config.BearerConfig{
+				Cert:    serverCertPath,
+				Realm:   authTestServer.URL + "/auth/token",
+				Service: aurl.Host,
+			},
+		}
+
+		ctlr := makeController(conf, t.TempDir())
+		ctlr.Config.Storage.Dedupe = true
+
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+
+		defer cm.StopServer()
+
+		getToken := func(method, challengeURL string) string {
+			resp, err := resty.R().Execute(method, challengeURL)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+			authorizationHeader := authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
+			resp, err = resty.R().
+				SetQueryParam("service", authorizationHeader.Service).
+				SetQueryParam("scope", authorizationHeader.Scope).
+				Get(authorizationHeader.Realm)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			var token authutils.AccessTokenResponse
+
+			err = json.Unmarshal(resp.Body(), &token)
+			So(err, ShouldBeNil)
+
+			return token.AccessToken
+		}
+
+		blob := []byte("bearer-mount-authz-test")
+		digest := godigest.FromBytes(blob)
+		srcRepo := "victim/private/app"
+		destRepo := "attacker/allowed/app"
+
+		token := getToken(http.MethodPost, baseURL+"/v2/"+srcRepo+"/blobs/uploads/")
+		resp, err := resty.R().
+			SetHeader("Authorization", "Bearer "+token).
+			Post(baseURL + "/v2/" + srcRepo + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc := resp.Header().Get("Location")
+
+		putURL := baseURL + loc + "?digest=" + digest.String()
+		token = getToken(http.MethodPut, putURL)
+		resp, err = resty.R().
+			SetHeader("Authorization", "Bearer "+token).
+			SetHeader("Content-Length", strconv.Itoa(len(blob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", digest.String()).
+			SetBody(blob).
+			Put(baseURL + loc)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		headURL := baseURL + fmt.Sprintf("/v2/%s/blobs/%s", destRepo, digest)
+		token = getToken(http.MethodHead, headURL)
+		resp, err = resty.R().
+			SetHeader("Authorization", "Bearer "+token).
+			Head(headURL)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+		mountURL := baseURL + "/v2/" + destRepo + "/blobs/uploads/"
+		token = getToken(http.MethodPost, mountURL+"?mount="+digest.String())
+		resp, err = resty.R().
+			SetHeader("Authorization", "Bearer "+token).
+			SetQueryParam("mount", digest.String()).
+			Post(mountURL)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+		token = signBearerTestToken(t, serverKeyPath, []api.ResourceAccess{
+			{
+				Type:    "repository",
+				Name:    destRepo,
+				Actions: []string{"push"},
+			},
+			{
+				Type:    "repository",
+				Name:    srcRepo,
+				Actions: []string{"pull"},
+			},
+		})
+		resp, err = resty.R().
+			SetHeader("Authorization", "Bearer "+token).
+			SetQueryParam("mount", digest.String()).
+			Post(mountURL)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		token = getToken(http.MethodHead, headURL)
+		resp, err = resty.R().
+			SetHeader("Authorization", "Bearer "+token).
+			Head(headURL)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+	})
+}
+
+func TestBearerAuthorizationHydrateOnRead(t *testing.T) {
+	Convey("traditional bearer enforces source-repo read for hydrate-on-read", t, func() {
+		serverCertPath, serverKeyPath, _, _ := setupBearerAuthServerCerts(t, tlsutils.KeyTypeRSA)
+
+		authTestServer := authutils.MakeAuthTestServer(serverKeyPath, "RS256", UnauthorizedNamespace)
+		defer authTestServer.Close()
+
+		conf := config.New()
+		conf.HTTP.Port = "0"
+
+		aurl, err := url.Parse(authTestServer.URL)
+		So(err, ShouldBeNil)
+
+		conf.HTTP.Auth = &config.AuthConfig{
+			Bearer: &config.BearerConfig{
+				Cert:    serverCertPath,
+				Realm:   authTestServer.URL + "/auth/token",
+				Service: aurl.Host,
+			},
+		}
+
+		rootDir := t.TempDir()
+		ctlr := makeController(conf, rootDir)
+		ctlr.Config.Storage.Dedupe = true
+		ctlr.Config.Storage.HydrateBlobOnRead = true
+
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+
+		defer cm.StopServer()
+
+		getToken := func(method, challengeURL string) string {
+			resp, err := resty.R().Execute(method, challengeURL)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+			authorizationHeader := authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
+			resp, err = resty.R().
+				SetQueryParam("service", authorizationHeader.Service).
+				SetQueryParam("scope", authorizationHeader.Scope).
+				Get(authorizationHeader.Realm)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			var token authutils.AccessTokenResponse
+
+			err = json.Unmarshal(resp.Body(), &token)
+			So(err, ShouldBeNil)
+
+			return token.AccessToken
+		}
+
+		blob := []byte("bearer-hydrate-on-read-test")
+		digest := godigest.FromBytes(blob)
+		srcRepo := "bearer/src"
+		destRepo := "bearer/dest"
+
+		token := getToken(http.MethodPost, baseURL+"/v2/"+srcRepo+"/blobs/uploads/")
+		resp, err := resty.R().
+			SetHeader("Authorization", "Bearer "+token).
+			Post(baseURL + "/v2/" + srcRepo + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc := resp.Header().Get("Location")
+
+		putURL := baseURL + loc + "?digest=" + digest.String()
+		token = getToken(http.MethodPut, putURL)
+		resp, err = resty.R().
+			SetHeader("Authorization", "Bearer "+token).
+			SetHeader("Content-Length", strconv.Itoa(len(blob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", digest.String()).
+			SetBody(blob).
+			Put(baseURL + loc)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		headURL := baseURL + fmt.Sprintf("/v2/%s/blobs/%s", destRepo, digest)
+		destBlobPath := filepath.Join(rootDir, destRepo, "blobs", string(digest.Algorithm()), digest.Encoded())
+
+		Convey("challenge-scoped dest pull only does not hydrate on HEAD or ranged GET", func() {
+			token := getToken(http.MethodHead, headURL)
+			resp, err := resty.R().
+				SetHeader("Authorization", "Bearer "+token).
+				Head(headURL)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			resp, err = resty.R().
+				SetHeader("Authorization", "Bearer "+token).
+				SetHeader("Range", "bytes=0-0").
+				Get(headURL)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			_, err = os.Stat(destBlobPath)
+			So(os.IsNotExist(err), ShouldBeTrue)
+		})
+
+		Convey("dest pull and push without src pull does not hydrate", func() {
+			token := signBearerTestToken(t, serverKeyPath, []api.ResourceAccess{
+				{
+					Type:    "repository",
+					Name:    destRepo,
+					Actions: []string{"pull", "push"},
+				},
+			})
+			resp, err := resty.R().
+				SetHeader("Authorization", "Bearer "+token).
+				Head(headURL)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			resp, err = resty.R().
+				SetHeader("Authorization", "Bearer "+token).
+				SetHeader("Range", "bytes=0-0").
+				Get(headURL)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			_, err = os.Stat(destBlobPath)
+			So(os.IsNotExist(err), ShouldBeTrue)
+		})
+
+		Convey("src pull and dest pull+push hydrates on HEAD and ranged GET", func() {
+			token := signBearerTestToken(t, serverKeyPath, []api.ResourceAccess{
+				{
+					Type:    "repository",
+					Name:    srcRepo,
+					Actions: []string{"pull"},
+				},
+				{
+					Type:    "repository",
+					Name:    destRepo,
+					Actions: []string{"pull", "push"},
+				},
+			})
+			resp, err := resty.R().
+				SetHeader("Authorization", "Bearer "+token).
+				Head(headURL)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().
+				SetHeader("Authorization", "Bearer "+token).
+				SetHeader("Range", "bytes=0-0").
+				Get(headURL)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusPartialContent)
+
+			_, err = os.Stat(destBlobPath)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("dest push without src pull rejects dedupe mount POST", func() {
+			mountURL := baseURL + "/v2/" + destRepo + "/blobs/uploads/"
+			token := signBearerTestToken(t, serverKeyPath, []api.ResourceAccess{
+				{
+					Type:    "repository",
+					Name:    destRepo,
+					Actions: []string{"push"},
+				},
+			})
+			resp, err := resty.R().
+				SetHeader("Authorization", "Bearer "+token).
+				SetQueryParam("mount", digest.String()).
+				Post(mountURL)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		})
+
+		Convey("src pull and dest push allows dedupe mount POST", func() {
+			mountURL := baseURL + "/v2/" + destRepo + "/blobs/uploads/"
+			token := signBearerTestToken(t, serverKeyPath, []api.ResourceAccess{
+				{
+					Type:    "repository",
+					Name:    destRepo,
+					Actions: []string{"push"},
+				},
+				{
+					Type:    "repository",
+					Name:    srcRepo,
+					Actions: []string{"pull"},
+				},
+			})
+			resp, err := resty.R().
+				SetHeader("Authorization", "Bearer "+token).
+				SetQueryParam("mount", digest.String()).
+				Post(mountURL)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+		})
+	})
+}
+
 func TestAuthorizationMountBlobRematerializeOnRead(t *testing.T) {
 	Convey("With hydrateBlobOnRead, HEAD/range may rematerialize when permitted", t, func() {
 		conf := config.New()
@@ -5994,115 +6334,6 @@ func TestAuthorizationMountBlobCELConditions(t *testing.T) {
 			Post(baseURL + "/v2/allowed/dest2/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-	})
-}
-
-func TestBearerAuthMountBlobWithAccessControl(t *testing.T) {
-	Convey("traditional bearer can mount/rematerialize when accessControl is also set", t, func() {
-		serverCertPath, serverKeyPath, _, _ := setupBearerAuthServerCerts(t, tlsutils.KeyTypeRSA)
-
-		authTestServer := authutils.MakeAuthTestServer(serverKeyPath, "RS256", UnauthorizedNamespace)
-		defer authTestServer.Close()
-
-		conf := config.New()
-		conf.HTTP.Port = "0"
-
-		aurl, err := url.Parse(authTestServer.URL)
-		So(err, ShouldBeNil)
-
-		conf.HTTP.Auth = &config.AuthConfig{
-			Bearer: &config.BearerConfig{
-				Cert:    serverCertPath,
-				Realm:   authTestServer.URL + "/auth/token",
-				Service: aurl.Host,
-			},
-		}
-		conf.HTTP.AccessControl = &config.AccessControlConfig{
-			Repositories: config.Repositories{
-				"**": config.PolicyGroup{
-					Policies: []config.Policy{
-						{
-							Users: []string{"alice"},
-							Actions: []string{
-								constants.ReadPermission,
-								constants.CreatePermission,
-							},
-						},
-					},
-				},
-			},
-		}
-
-		ctlr := makeController(conf, t.TempDir())
-		ctlr.Config.Storage.Dedupe = true
-		ctlr.Config.Storage.HydrateBlobOnRead = true
-
-		cm := test.NewControllerManager(ctlr)
-		baseURL := cm.StartAndWait()
-		defer cm.StopServer()
-
-		getToken := func(method, challengeURL string) string {
-			resp, err := resty.R().Execute(method, challengeURL)
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
-
-			authorizationHeader := authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
-			resp, err = resty.R().
-				SetQueryParam("service", authorizationHeader.Service).
-				SetQueryParam("scope", authorizationHeader.Scope).
-				Get(authorizationHeader.Realm)
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-			var token authutils.AccessTokenResponse
-			err = json.Unmarshal(resp.Body(), &token)
-			So(err, ShouldBeNil)
-
-			return token.AccessToken
-		}
-
-		blob := []byte("bearer-mount-with-ac")
-		digest := godigest.FromBytes(blob)
-		srcRepo := "bearer/src"
-		destRepo := "bearer/dest"
-		rematRepo := "bearer/remat"
-
-		token := getToken(http.MethodPost, baseURL+"/v2/"+srcRepo+"/blobs/uploads/")
-		resp, err := resty.R().
-			SetHeader("Authorization", "Bearer "+token).
-			Post(baseURL + "/v2/" + srcRepo + "/blobs/uploads/")
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-		loc := resp.Header().Get("Location")
-
-		putURL := baseURL + loc + "?digest=" + digest.String()
-		token = getToken(http.MethodPut, putURL)
-		resp, err = resty.R().
-			SetHeader("Authorization", "Bearer "+token).
-			SetHeader("Content-Length", strconv.Itoa(len(blob))).
-			SetHeader("Content-Type", "application/octet-stream").
-			SetQueryParam("digest", digest.String()).
-			SetBody(blob).
-			Put(baseURL + loc)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-
-		mountURL := baseURL + "/v2/" + destRepo + "/blobs/uploads/?mount=" + digest.String()
-		token = getToken(http.MethodPost, mountURL)
-		resp, err = resty.R().
-			SetHeader("Authorization", "Bearer "+token).
-			SetQueryParam("mount", digest.String()).
-			Post(baseURL + "/v2/" + destRepo + "/blobs/uploads/")
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-
-		headURL := baseURL + fmt.Sprintf("/v2/%s/blobs/%s", rematRepo, digest)
-		token = getToken(http.MethodHead, headURL)
-		resp, err = resty.R().
-			SetHeader("Authorization", "Bearer "+token).
-			Head(headURL)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 	})
 }
 

@@ -651,6 +651,47 @@ func TestSetGlobPatternsOrderIndependence(t *testing.T) {
 	assert.True(t, uac2.IsAdmin())
 }
 
+func TestCanOnResourceUsesPermissionEvaluator(t *testing.T) {
+	t.Parallel()
+
+	cfg := &config.AccessControlConfig{
+		Repositories: config.Repositories{
+			"**": config.PolicyGroup{
+				Policies: []config.Policy{
+					{
+						Users:   []string{"limited"},
+						Actions: []string{constants.ReadPermission, constants.CreatePermission},
+						Conditions: []config.Condition{
+							{
+								Expression: `req.action != "read" || !req.repository.startsWith("private/")`,
+								Message:    "read under private/ not permitted",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	programs, err := CompileAccessControl(cfg)
+	assert.NoError(t, err)
+	cfg.StoreCompiledConditions(programs)
+
+	uac := reqCtx.NewUserAccessControl()
+	uac.SetUsername("limited")
+	uac.SetIsAdmin(false)
+	uac.SetGlobPatterns(constants.ReadPermission, map[string]bool{"**": true})
+
+	// Optimistic glob patterns allow read on private/src.
+	assert.True(t, uac.Can(constants.ReadPermission, "private/src"))
+
+	ac := &AccessController{Config: cfg, Log: log.NewLogger("debug", "")}
+	req := httptest.NewRequest(http.MethodHead, "/v2/private/src/blobs/sha256:abc", nil)
+	ac.attachPermissionEvaluator(req, uac)
+
+	assert.False(t, uac.CanOnResource(constants.ReadPermission, "private/src", "sha256:abc"))
+	assert.True(t, uac.CanOnResource(constants.ReadPermission, "public/src", "sha256:abc"))
+}
+
 func TestPolicyConditionsAnonymousAndAdminFlags(t *testing.T) {
 	t.Parallel()
 

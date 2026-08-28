@@ -1021,34 +1021,27 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 	response.WriteHeader(http.StatusAccepted)
 }
 
+// shouldCheckMountSourceAccess reports whether dedupe mount must verify the
+// caller can read a source repository that already holds the digest.
+func shouldCheckMountSourceAccess(
+	accessControlConfig *config.AccessControlConfig, userAc *reqCtx.UserAccessControl,
+) bool {
+	if accessControlConfig.IsAuthzEnabled() {
+		return true
+	}
+
+	return userAc.HasScopedPermissions()
+}
+
 // canMount reports whether the caller may materialize digest into destRepo from
 // the dedupe cache. That requires create on destRepo and read on at least
-// one repository that already holds the digest. Permissions are evaluated with
-// AccessController.can so policy CEL conditions apply. Call only when authz is
-// enabled.
-func (rh *RouteHandler) canMount(
-	request *http.Request, userAc *reqCtx.UserAccessControl, imgStore storageTypes.ImageStore,
+// one repository that already holds the digest.
+func canMount(userAc *reqCtx.UserAccessControl, imgStore storageTypes.ImageStore,
 	digest godigest.Digest, destRepo string,
 ) (bool, error) {
-	authnMwCtx, err := reqCtx.GetAuthnMiddlewareContext(request.Context())
-	if err == nil && authnMwCtx != nil && authnMwCtx.AuthnType == BEARER {
-		return true, nil
-	}
-
-	// Snapshot AC config and reuse the controller logger (avoid opening Log.Output per call).
-	accessControlConfig := rh.c.Config.CopyAccessControlConfig()
-	if accessControlConfig == nil {
-		accessControlConfig = &config.AccessControlConfig{}
-	}
-
-	acCtrlr := &AccessController{
-		Config: accessControlConfig,
-		Log:    rh.c.Log,
-	}
-
 	digestRef := digest.String()
 
-	if ok, _ := acCtrlr.can(request, userAc, constants.CreatePermission, destRepo, digestRef); !ok {
+	if !userAc.CanOnResource(constants.CreatePermission, destRepo, digestRef) {
 		return false, nil
 	}
 
@@ -1058,7 +1051,7 @@ func (rh *RouteHandler) canMount(
 	}
 
 	for _, repo := range repos {
-		if ok, _ := acCtrlr.can(request, userAc, constants.ReadPermission, repo, digestRef); ok {
+		if userAc.CanOnResource(constants.ReadPermission, repo, digestRef) {
 			return true, nil
 		}
 	}
@@ -1084,11 +1077,11 @@ func (rh *RouteHandler) userMayMountBlob(
 	}
 
 	accessControlConfig := rh.c.Config.CopyAccessControlConfig()
-	if !accessControlConfig.IsAuthzEnabled() {
+	if !shouldCheckMountSourceAccess(accessControlConfig, userAc) {
 		return true, nil
 	}
 
-	allowed, err := rh.canMount(request, userAc, imgStore, digest, destRepo)
+	allowed, err := canMount(userAc, imgStore, digest, destRepo)
 	if err != nil {
 		rh.c.Log.Error().Err(err).Msg("unexpected error")
 
@@ -1784,8 +1777,8 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 		userCanMount := true
 		accessControlConfig := rh.c.Config.CopyAccessControlConfig()
 
-		if accessControlConfig.IsAuthzEnabled() {
-			userCanMount, err = rh.canMount(request, userAc, imgStore, mountDigest, name)
+		if shouldCheckMountSourceAccess(accessControlConfig, userAc) {
+			userCanMount, err = canMount(userAc, imgStore, mountDigest, name)
 			if err != nil {
 				rh.c.Log.Error().Err(err).Msg("unexpected error")
 			}
