@@ -139,9 +139,7 @@ func (is *ImageStore) Unlock(lockStart *time.Time) {
 	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), storageConstants.RWLOCK) // histogram
 }
 
-func (is *ImageStore) initRepo(ctx context.Context, name string) error {
-	repoDir := path.Join(is.rootDir, name)
-
+func (is *ImageStore) validateRepoName(name string) error {
 	if !utf8.ValidString(name) {
 		is.log.Error().Msg("invalid UTF-8 input")
 
@@ -152,6 +150,16 @@ func (is *ImageStore) initRepo(ctx context.Context, name string) error {
 		is.log.Error().Str("repository", name).Msg("invalid repository name")
 
 		return zerr.ErrInvalidRepositoryName
+	}
+
+	return nil
+}
+
+func (is *ImageStore) initRepo(ctx context.Context, name string) error {
+	repoDir := path.Join(is.rootDir, name)
+
+	if err := is.validateRepoName(name); err != nil {
+		return err
 	}
 
 	// create "blobs" subdir
@@ -1009,23 +1017,52 @@ func (is *ImageStore) GetBlobUpload(repo, uuid string) (int64, error) {
 	return writer.Size(), nil
 }
 
-// PutBlobChunkStreamed appends another chunk of data to the specified blob. It returns
-// the number of actual bytes to the blob.
-func (is *ImageStore) PutBlobChunkStreamed(ctx context.Context, repo, uuid string, body io.Reader) (int64, error) {
-	if err := is.InitRepo(ctx, repo); err != nil {
-		return -1, err
+func (is *ImageStore) prepareBlobUploadDir(ctx context.Context, repo string) error {
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
-	blobUploadPath := is.BlobUploadPath(repo, uuid)
+	if err := is.validateRepoName(repo); err != nil {
+		return err
+	}
 
-	file, err := is.storeDriver.Writer(blobUploadPath, true)
+	if err := is.storeDriver.EnsureDir(path.Join(is.rootDir, repo, storageConstants.BlobUploadDir)); err != nil {
+		is.log.Error().Err(err).Msg("failed to create blob upload subdir")
+
+		return err
+	}
+
+	return nil
+}
+
+func (is *ImageStore) openBlobUploadWriter(ctx context.Context, repo, uuid string) (driver.FileWriter, error) {
+	// NewBlobUpload already created the repo. Avoid InitRepo: it takes the store write
+	// lock before the request body is read, which races http.Server.ReadTimeout.
+	// FinishBlobUpload and FullBlobUpload restore oci-layout/index.json under the lock after the copy.
+	if err := is.prepareBlobUploadDir(ctx, repo); err != nil {
+		return nil, err
+	}
+
+	file, err := is.storeDriver.Writer(is.BlobUploadPath(repo, uuid), true)
 	if err != nil {
 		if errors.As(err, &driver.PathNotFoundError{}) {
-			return -1, zerr.ErrUploadNotFound
+			return nil, zerr.ErrUploadNotFound
 		}
 
 		is.log.Error().Err(err).Msg("failed to continue multipart upload")
 
+		return nil, err
+	}
+
+	return file, nil
+}
+
+// PutBlobChunkStreamed appends another chunk of data to the specified blob. It returns
+// the number of actual bytes to the blob.
+func (is *ImageStore) PutBlobChunkStreamed(ctx context.Context, repo, uuid string, body io.Reader) (int64, error) {
+	// Validates the repo name and ensures .uploads exists without InitRepo's store lock.
+	file, err := is.openBlobUploadWriter(ctx, repo, uuid)
+	if err != nil {
 		return -1, err
 	}
 
@@ -1045,20 +1082,9 @@ func (is *ImageStore) PutBlobChunkStreamed(ctx context.Context, repo, uuid strin
 func (is *ImageStore) PutBlobChunk(ctx context.Context, repo, uuid string, from, to int64,
 	body io.Reader,
 ) (int64, error) {
-	if err := is.InitRepo(ctx, repo); err != nil {
-		return -1, err
-	}
-
-	blobUploadPath := is.BlobUploadPath(repo, uuid)
-
-	file, err := is.storeDriver.Writer(blobUploadPath, true)
+	// Validates the repo name and ensures .uploads exists without InitRepo's store lock.
+	file, err := is.openBlobUploadWriter(ctx, repo, uuid)
 	if err != nil {
-		if errors.As(err, &driver.PathNotFoundError{}) {
-			return -1, zerr.ErrUploadNotFound
-		}
-
-		is.log.Error().Err(err).Msg("failed to continue multipart upload")
-
 		return -1, err
 	}
 
@@ -1138,6 +1164,21 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 		return zerr.ErrBadBlobDigest
 	}
 
+	dst := is.BlobPath(repo, dstDigest)
+
+	var lockLatency time.Time
+
+	is.Lock(&lockLatency)
+	defer is.Unlock(&lockLatency)
+
+	// Chunk PUT/PATCH no longer call InitRepo (that lock stalled unread bodies vs GC).
+	// Recreate the OCI layout here, while we already hold the store lock for the move,
+	// so a blob finished after GC deleted the repo is still a walkable repository.
+	// Use initRepo, not InitRepo: InitRepo takes this same lock and would deadlock.
+	if err := is.initRepo(context.Background(), repo); err != nil {
+		return err
+	}
+
 	dir := path.Join(is.rootDir, repo, ispec.ImageBlobsDir, dstDigest.Algorithm().String())
 
 	err = is.storeDriver.EnsureDir(dir)
@@ -1146,13 +1187,6 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 
 		return err
 	}
-
-	dst := is.BlobPath(repo, dstDigest)
-
-	var lockLatency time.Time
-
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
 
 	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
 		err = is.DedupeBlob(src, dstDigest, repo, dst)
@@ -1182,10 +1216,6 @@ func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.R
 		return "", -1, err
 	}
 
-	if err := is.InitRepo(ctx, repo); err != nil {
-		return "", -1, err
-	}
-
 	u, err := guuid.NewV4()
 	if err != nil {
 		return "", -1, err
@@ -1193,6 +1223,12 @@ func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.R
 
 	uuid := u.String()
 	src := is.BlobUploadPath(repo, uuid)
+
+	// Do not InitRepo before reading the body: that store write lock races GC vs ReadTimeout.
+	// Create .uploads without the lock; initRepo runs after the copy, under the move lock.
+	if err := is.prepareBlobUploadDir(ctx, repo); err != nil {
+		return "", -1, err
+	}
 
 	dstDigestAlgorithm := dstDigest.Algorithm()
 
@@ -1242,15 +1278,23 @@ func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.R
 		return "", -1, zerr.ErrBadBlobDigest
 	}
 
-	dir := path.Join(is.rootDir, repo, ispec.ImageBlobsDir, dstDigestAlgorithm.String())
-	_ = is.storeDriver.EnsureDir(dir)
+	dst := is.BlobPath(repo, dstDigest)
 
 	var lockLatency time.Time
 
 	is.Lock(&lockLatency)
 	defer is.Unlock(&lockLatency)
 
-	dst := is.BlobPath(repo, dstDigest)
+	if err := is.initRepo(ctx, repo); err != nil {
+		return "", -1, err
+	}
+
+	dir := path.Join(is.rootDir, repo, ispec.ImageBlobsDir, dstDigestAlgorithm.String())
+	if err := is.storeDriver.EnsureDir(dir); err != nil {
+		is.log.Error().Str("directory", dir).Err(err).Msg("failed to create dir")
+
+		return "", -1, err
+	}
 
 	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
 		if err := is.DedupeBlob(src, dstDigest, repo, dst); err != nil {
