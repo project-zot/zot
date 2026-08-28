@@ -480,5 +480,11 @@
       "begin": 11550,
       "end": 11559
     }
+  },
+  "blackbox/systemd.bats": {
+    "systemd": {
+      "begin": 11560,
+      "end": 11569
+    }
   }
 }
