@@ -1052,3 +1052,74 @@ func TestAllowedMethodsHeaderMgmt(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
 	})
 }
+
+func TestMgmtAllowAnonymousAccess(t *testing.T) {
+	defaultValue := true
+
+	setupMgmtController := func(t *testing.T, accessControl *config.AccessControlConfig) (string, func()) {
+		t.Helper()
+
+		conf := config.New()
+		conf.HTTP.Port = "0"
+		conf.HTTP.Auth = &config.AuthConfig{APIKey: true}
+		conf.HTTP.AccessControl = accessControl
+
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Search = &extconf.SearchConfig{}
+		conf.Extensions.Search.Enable = &defaultValue
+		conf.Extensions.Search.CVE = nil
+		conf.Extensions.UI = &extconf.UIConfig{}
+		conf.Extensions.UI.Enable = &defaultValue
+
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+		ctrlManager := test.NewControllerManager(ctlr)
+		baseURL := ctrlManager.StartAndWait()
+
+		return baseURL, ctrlManager.StopServer
+	}
+
+	Convey("mgmt reports allowAnonymousAccess when anonymous policies exist", t, func() {
+		baseURL, stop := setupMgmtController(t, &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				"repo": config.PolicyGroup{
+					AnonymousPolicy: []string{"read"},
+				},
+			},
+		})
+		defer stop()
+
+		resp, err := resty.R().Get(baseURL + constants.FullMgmt)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		mgmtResp := extensions.StrippedConfig{}
+		err = json.Unmarshal(resp.Body(), &mgmtResp)
+		So(err, ShouldBeNil)
+		So(mgmtResp.HTTP.Auth, ShouldNotBeNil)
+		So(mgmtResp.HTTP.Auth.AllowAnonymousAccess, ShouldBeTrue)
+	})
+
+	Convey("mgmt omits allowAnonymousAccess without anonymous policies", t, func() {
+		baseURL, stop := setupMgmtController(t, &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				"repo": config.PolicyGroup{
+					DefaultPolicy: []string{"read"},
+				},
+			},
+		})
+		defer stop()
+
+		resp, err := resty.R().Get(baseURL + constants.FullMgmt)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		mgmtResp := extensions.StrippedConfig{}
+		err = json.Unmarshal(resp.Body(), &mgmtResp)
+		So(err, ShouldBeNil)
+		So(mgmtResp.HTTP.Auth, ShouldNotBeNil)
+		So(mgmtResp.HTTP.Auth.AllowAnonymousAccess, ShouldBeFalse)
+		So(string(resp.Body()), ShouldNotContainSubstring, "allowAnonymousAccess")
+	})
+}
