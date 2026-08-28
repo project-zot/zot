@@ -817,7 +817,10 @@ func getRelyingPartyArgs(cfg *config.Config, provider string, hashKey, encryptKe
 }
 
 func authFail(w http.ResponseWriter, r *http.Request, realm string, delay int) {
-	if !isAuthorizationHeaderEmpty(r) || hasSessionHeader(r) {
+	// Only delay when credentials were supplied. UI probes (X-ZOT-API-CLIENT without
+	// Authorization) and expired-session checks must not sleep, or a stale 401 can race
+	// with a later successful login
+	if !isAuthorizationHeaderEmpty(r) {
 		time.Sleep(time.Duration(delay) * time.Second)
 	}
 

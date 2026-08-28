@@ -1,13 +1,17 @@
 package api
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
 
 	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/api/constants"
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
@@ -333,4 +337,40 @@ func TestAppendOpenIDGroups(t *testing.T) {
 			assert.Equal(t, test.expected, groups)
 		})
 	}
+}
+
+func TestAuthFailDelay(t *testing.T) {
+	t.Parallel()
+
+	const failDelay = 1
+
+	t.Run("no delay for UI probe without credentials", func(t *testing.T) {
+		t.Parallel()
+
+		request := httptest.NewRequest(http.MethodGet, "/v2/", nil)
+		request.Header.Set(constants.SessionClientHeaderName, constants.SessionClientHeaderValue)
+
+		recorder := httptest.NewRecorder()
+		start := time.Now()
+		authFail(recorder, request, "zot", failDelay)
+		elapsed := time.Since(start)
+
+		assert.Less(t, elapsed, 200*time.Millisecond)
+		assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+	})
+
+	t.Run("delay for failed credential attempt", func(t *testing.T) {
+		t.Parallel()
+
+		request := httptest.NewRequest(http.MethodGet, "/v2/", nil)
+		request.Header.Set("Authorization", "Basic dXNlcjp3cm9uZw==")
+
+		recorder := httptest.NewRecorder()
+		start := time.Now()
+		authFail(recorder, request, "zot", failDelay)
+		elapsed := time.Since(start)
+
+		assert.GreaterOrEqual(t, elapsed, 900*time.Millisecond)
+		assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+	})
 }
