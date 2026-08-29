@@ -1099,10 +1099,20 @@ func isBlobOlderThan(imgStore types.ImageStore, repo string,
 ) (bool, error) {
 	_, _, modtime, err := imgStore.StatBlob(repo, digest)
 	if err != nil {
-		// Fail closed: ImageStore.StatBlob maps any underlying Stat failure (including
-		// transient S3/network errors) to ErrBlobNotFound, so treating "missing" as
-		// GC-eligible would risk deleting live index rows during storage blips.
-		// Stale prune can still remove truly absent blobs later when CleanRepo succeeds.
+		var pathNotFoundErr driver.PathNotFoundError
+		if errors.As(err, &pathNotFoundErr) {
+			// Blob is missing from storage but referenced in index.json - treat as
+			// GC-eligible so the stale index entry gets removed.
+			log.Warn().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", digest.String()).
+				Msg("blob missing from storage, treating as GC-eligible to clean up stale index entry")
+
+			return true, nil
+		}
+
+		// Fail closed for other errors (transient S3/network issues): we can't
+		// distinguish them from permanently missing blobs, so don't risk deleting
+		// live index rows during storage blips. Stale prune can still remove truly
+		// absent blobs later when CleanRepo succeeds.
 		log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", digest.String()).
 			Msg("failed to stat blob")
 

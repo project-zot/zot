@@ -1639,7 +1639,7 @@ func (is *ImageStore) checkCacheBlob(digest godigest.Digest) (string, error) {
 			return "", err
 		}
 
-		return "", zerr.ErrBlobNotFound
+		return "", fmt.Errorf("%w: %w", zerr.ErrBlobNotFound, err)
 	}
 
 	is.log.Debug().Str("digest", digest.String()).Str("dstRecord", dstRecord).Str("component", "cache").
@@ -1731,11 +1731,15 @@ func (is *ImageStore) originalBlobInfo(repo string, digest godigest.Digest) (dri
 
 		if errors.As(err, &pathNotFoundErr) {
 			is.log.Debug().Err(err).Str("blob", blobPath).Str("digest", digest.String()).Msg("blob not found")
-		} else {
-			is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
+
+			// Wrap to preserve error chain for callers that need to distinguish
+			// genuine "not found" from transient errors.
+			return nil, fmt.Errorf("%w: %w", zerr.ErrBlobNotFound, err)
 		}
 
-		return nil, zerr.ErrBlobNotFound
+		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
+
+		return nil, fmt.Errorf("%w: %w", zerr.ErrBlobNotFound, err)
 	}
 
 	if binfo.Size() == 0 {
@@ -1753,14 +1757,14 @@ func (is *ImageStore) originalBlobInfo(repo string, digest godigest.Digest) (dri
 		if err != nil {
 			is.log.Debug().Err(err).Str("digest", digest.String()).Msg("not found in cache")
 
-			return nil, zerr.ErrBlobNotFound
+			return nil, fmt.Errorf("%w: %w", zerr.ErrBlobNotFound, err)
 		}
 
 		binfo, err = is.storeDriver.Stat(dstRecord)
 		if err != nil {
 			is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to stat blob")
 
-			return nil, zerr.ErrBlobNotFound
+			return nil, fmt.Errorf("%w: %w", zerr.ErrBlobNotFound, err)
 		}
 	}
 

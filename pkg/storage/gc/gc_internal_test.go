@@ -1565,20 +1565,31 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			So(hasTag, ShouldBeFalse)
 		})
 
-		Convey("removeReferrersWithMissingSubject aborts when StatBlob reports missing", func() {
-			// Match main: StatBlob errors (including ErrBlobNotFound from ImageStore's
-			// error collapsing) fail closed in isBlobOlderThan.
+		Convey("removeReferrersWithMissingSubject treats missing referrer blob as GC-eligible", func() {
+			// When a referrer's blob is missing from storage, isBlobOlderThan returns (true, nil)
+			// so the stale referrer entry gets removed.
 			missingSubject := godigest.FromString("missing-subject")
 			cosignTag := "sha256-" + missingSubject.Encoded() + ".sig"
-			missingDigest := godigest.FromString("missing-cosign-blob")
+			referrerDigest := godigest.FromString("referrer-blob")
+
+			cosignManifest := ispec.Manifest{
+				MediaType: ispec.MediaTypeImageManifest,
+				Subject: &ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    missingSubject,
+					Size:      100,
+				},
+				ArtifactType: zcommon.ArtifactTypeCosign,
+			}
+			cosignManifestBlob, _ := json.Marshal(cosignManifest)
 
 			parentIndex := ispec.Index{
 				MediaType: ispec.MediaTypeImageIndex,
 				Manifests: []ispec.Descriptor{
 					{
 						MediaType: ispec.MediaTypeImageManifest,
-						Digest:    missingDigest,
-						Size:      10,
+						Digest:    referrerDigest,
+						Size:      int64(len(cosignManifestBlob)),
 						Annotations: map[string]string{
 							ispec.AnnotationRefName: cosignTag,
 						},
@@ -1588,10 +1599,16 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 
 			imgStore := mocks.MockedImageStore{
 				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+					if digest == referrerDigest {
+						return cosignManifestBlob, nil
+					}
 					return nil, driver.PathNotFoundError{Path: digest.String(), DriverName: "local"}
 				},
 				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
-					return false, -1, time.Time{}, driver.PathNotFoundError{Path: digest.String(), DriverName: "local"}
+					if digest == referrerDigest {
+						return false, -1, time.Time{}, driver.PathNotFoundError{Path: digest.String(), DriverName: "local"}
+					}
+					return true, 100, time.Now(), nil
 				},
 			}
 
@@ -1609,9 +1626,13 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
 
 			gced, err := gc.removeReferrersWithMissingSubject(repoName, &parentIndex)
-			So(err, ShouldNotBeNil)
-			So(gced, ShouldBeFalse)
+			So(err, ShouldBeNil)
+			So(gced, ShouldBeTrue)
+			// Last-tag delete re-adds an untagged row (RemoveManifestDescByReference semantics);
+			// the outer removeManifestsPerRepoPolicy loop clears it on a later pass.
 			So(len(parentIndex.Manifests), ShouldEqual, 1)
+			_, hasTag := parentIndex.Manifests[0].Annotations[ispec.AnnotationRefName]
+			So(hasTag, ShouldBeFalse)
 		})
 
 		Convey("identifyManifestsReferencedInIndex walks a diamond DAG once per node", func() {

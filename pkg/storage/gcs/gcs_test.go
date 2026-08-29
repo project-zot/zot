@@ -3118,7 +3118,7 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 			// get content of layer
 			imageRes := storage.CheckLayers(repoName, "1.0", []ispec.Descriptor{{Digest: digest}}, imgStore)
 			So(imageRes.Status, ShouldEqual, "affected")
-			So(imageRes.Error, ShouldEqual, "blob not found")
+			So(imageRes.Error, ShouldContainSubstring, "blob not found")
 
 			buff := bytes.NewBufferString("")
 

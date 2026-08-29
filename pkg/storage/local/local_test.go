@@ -2958,18 +2958,19 @@ func TestGarbageCollectErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("Missing untagged manifest blob aborts GC on StatBlob", func() {
+		Convey("Missing untagged manifest blob is treated as GC-eligible", func() {
 			digest = putUntaggedManifestForGCErrors(imgStore, repoName, bdgst1, bsize1)
 
 			// Identify soft-continues on Get miss, but untagged removal still Stats the digest
-			// for the retention delay; StatBlob miss fails closed (same as main).
+			// for the retention delay; StatBlob miss treats missing blobs as GC-eligible so
+			// the stale index entry gets cleaned up instead of aborting GC.
 			err = os.Remove(imgStore.BlobPath(repoName, digest))
 			So(err, ShouldBeNil)
 
 			time.Sleep(500 * time.Millisecond)
 
 			err = gc.CleanRepo(ctx, repoName)
-			So(err, ShouldNotBeNil)
+			So(err, ShouldBeNil)
 		})
 
 		Convey("Corrupt untagged manifest blob aborts GC", func() {
