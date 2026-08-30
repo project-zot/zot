@@ -32,6 +32,7 @@ import (
 	regTypes "github.com/google/go-containerregistry/pkg/v1/types"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"golang.org/x/sync/singleflight"
 	_ "modernc.org/sqlite"
 
 	zerr "zotregistry.dev/zot/v2/errors"
@@ -166,6 +167,10 @@ type Scanner struct {
 	javaDBRepositoryRef name.Reference
 	vulnSeveritySources []dbTypes.SourceID
 	sbomOptions         sbomOptions
+
+	// SingleFlightGroup is used to prevent multiple requests
+	// running a trivy scan for the same digest repeatedly.
+	scanSingleFlightGroup *singleflight.Group
 }
 
 type sbomOptions struct {
@@ -267,16 +272,17 @@ func NewScanner(storeController storage.StoreController,
 	cveController.SubCveConfig = subCveConfig
 
 	return &Scanner{
-		log:                 log,
-		metaDB:              metaDB,
-		cveController:       cveController,
-		storeController:     storeController,
-		dbLock:              &sync.Mutex{},
-		cache:               cvecache.NewCveCache(cacheSize, log),
-		dbRepositoryRef:     dbRepositoryRef,
-		javaDBRepositoryRef: javaDBRepositoryRef,
-		vulnSeveritySources: sevSources,
-		sbomOptions:         sbomOpts,
+		log:                   log,
+		metaDB:                metaDB,
+		cveController:         cveController,
+		storeController:       storeController,
+		dbLock:                &sync.Mutex{},
+		cache:                 cvecache.NewCveCache(cacheSize, log),
+		dbRepositoryRef:       dbRepositoryRef,
+		javaDBRepositoryRef:   javaDBRepositoryRef,
+		vulnSeveritySources:   sevSources,
+		sbomOptions:           sbomOpts,
+		scanSingleFlightGroup: &singleflight.Group{},
 	}
 }
 
@@ -773,98 +779,119 @@ func (scanner Scanner) scanManifest(ctx context.Context, repo, digest string) (m
 		return cachedMap, true, nil
 	}
 
-	cveidMap := map[string]zcommon.CVE{}
-	image := repo + "@" + digest
+	// prevent multiple requests running trivy multiple times
+	result, err, _ := scanner.scanSingleFlightGroup.Do(digest, func() (any, error) {
+		// Double check the cache under flight group lock to prevent a race
+		// where a caller just sees a cache miss before the cache is updated.
+		// In this case, the caller initiates a fresh flight even though a scan just finished up.
+		// This avoids a double scan of the image.
+		if cachedMap := scanner.cache.Get(digest); cachedMap != nil {
+			return cacheableScanResult{cachedMap, true}, nil
+		}
 
-	scanner.dbLock.Lock()
-	opts := scanner.getTrivyOptions(image)
-	report, sbom, err := scanner.runTrivy(ctx, opts)
-	scanner.dbLock.Unlock()
-	if sbom != nil && sbom.filePath != "" {
-		defer os.Remove(sbom.filePath)
-	}
+		cveidMap := map[string]zcommon.CVE{}
+		image := repo + "@" + digest
 
-	if err != nil { //nolint: wsl
-		return cveidMap, false, err
-	}
+		// Use separate context without cancellation for scanning
+		scanCtx := context.WithoutCancel(ctx)
+		scanner.dbLock.Lock()
+		opts := scanner.getTrivyOptions(image)
+		report, sbom, err := scanner.runTrivy(scanCtx, opts)
+		scanner.dbLock.Unlock()
+		if sbom != nil && sbom.filePath != "" {
+			defer os.Remove(sbom.filePath)
+		}
 
-	// SBOM persistence is best-effort: CVE scanning should still complete even if
-	// SBOM artifact upload fails.
-	if err = scanner.storeSBOMAsOCIArtifact(ctx, repo, digest, sbom); err != nil {
-		scanner.log.Warn().Err(err).Str("image", image).Msg("failed to store generated sbom as OCI artifact")
-	}
+		if err != nil {
+			return cveidMap, err
+		}
 
-	for _, result := range report.Results {
-		for _, vulnerability := range result.Vulnerabilities {
-			pkgName := vulnerability.PkgName
+		// SBOM persistence is best-effort: CVE scanning should still complete even if
+		// SBOM artifact upload fails.
+		if err = scanner.storeSBOMAsOCIArtifact(scanCtx, repo, digest, sbom); err != nil {
+			scanner.log.Warn().Err(err).Str("image", image).Msg("failed to store generated sbom as OCI artifact")
+		}
 
-			installedVersion := vulnerability.InstalledVersion
+		for _, result := range report.Results {
+			for _, vulnerability := range result.Vulnerabilities {
+				pkgName := vulnerability.PkgName
 
-			var fixedVersion string
-			if vulnerability.FixedVersion != "" {
-				fixedVersion = vulnerability.FixedVersion
-			} else {
-				fixedVersion = cvemodel.NotSpecified
-			}
+				installedVersion := vulnerability.InstalledVersion
 
-			var packagePath string
-			if vulnerability.PkgPath != "" {
-				packagePath = vulnerability.PkgPath
-			} else {
-				packagePath = cvemodel.NotSpecified
-			}
+				var fixedVersion string
+				if vulnerability.FixedVersion != "" {
+					fixedVersion = vulnerability.FixedVersion
+				} else {
+					fixedVersion = cvemodel.NotSpecified
+				}
 
-			_, ok := cveidMap[vulnerability.VulnerabilityID]
-			if ok {
-				cveDetailStruct := cveidMap[vulnerability.VulnerabilityID]
+				var packagePath string
+				if vulnerability.PkgPath != "" {
+					packagePath = vulnerability.PkgPath
+				} else {
+					packagePath = cvemodel.NotSpecified
+				}
 
-				pkgList := cveDetailStruct.PackageList
+				_, ok := cveidMap[vulnerability.VulnerabilityID]
+				if ok {
+					cveDetailStruct := cveidMap[vulnerability.VulnerabilityID]
 
-				pkgList = append(
-					pkgList,
-					zcommon.Package{
-						Name:             pkgName,
-						PackagePath:      packagePath,
-						InstalledVersion: installedVersion,
-						FixedVersion:     fixedVersion,
-					},
-				)
+					pkgList := cveDetailStruct.PackageList
 
-				cveDetailStruct.PackageList = pkgList
+					pkgList = append(
+						pkgList,
+						zcommon.Package{
+							Name:             pkgName,
+							PackagePath:      packagePath,
+							InstalledVersion: installedVersion,
+							FixedVersion:     fixedVersion,
+						},
+					)
 
-				cveidMap[vulnerability.VulnerabilityID] = cveDetailStruct
-			} else {
-				newPkgList := make([]zcommon.Package, 0)
+					cveDetailStruct.PackageList = pkgList
 
-				newPkgList = append(
-					newPkgList,
-					zcommon.Package{
-						Name:             pkgName,
-						PackagePath:      packagePath,
-						InstalledVersion: installedVersion,
-						FixedVersion:     fixedVersion,
-					},
-				)
+					cveidMap[vulnerability.VulnerabilityID] = cveDetailStruct
+				} else {
+					newPkgList := make([]zcommon.Package, 0)
 
-				cveidMap[vulnerability.VulnerabilityID] = zcommon.CVE{
-					ID:          vulnerability.VulnerabilityID,
-					Title:       vulnerability.Title,
-					Description: vulnerability.Description,
-					Reference: getCVEReference(
-						vulnerability.VulnerabilityID,
-						vulnerability.PrimaryURL,
-						vulnerability.References,
-					),
-					Severity:    convertSeverity(vulnerability.Severity),
-					PackageList: newPkgList,
+					newPkgList = append(
+						newPkgList,
+						zcommon.Package{
+							Name:             pkgName,
+							PackagePath:      packagePath,
+							InstalledVersion: installedVersion,
+							FixedVersion:     fixedVersion,
+						},
+					)
+
+					cveidMap[vulnerability.VulnerabilityID] = zcommon.CVE{
+						ID:          vulnerability.VulnerabilityID,
+						Title:       vulnerability.Title,
+						Description: vulnerability.Description,
+						Reference: getCVEReference(
+							vulnerability.VulnerabilityID,
+							vulnerability.PrimaryURL,
+							vulnerability.References,
+						),
+						Severity:    convertSeverity(vulnerability.Severity),
+						PackageList: newPkgList,
+					}
 				}
 			}
 		}
+
+		scanner.cache.Add(digest, cveidMap)
+
+		return cacheableScanResult{cveidMap, false}, nil
+	})
+	if err != nil {
+		return map[string]zcommon.CVE{}, false, err
 	}
 
-	scanner.cache.Add(digest, cveidMap)
+	scanResult, _ := result.(cacheableScanResult)
+	resultingMap := scanResult.cachedMap
 
-	return cveidMap, false, nil
+	return resultingMap, scanResult.wasCached, nil
 }
 
 func (scanner Scanner) storeSBOMAsOCIArtifact(ctx context.Context,
@@ -1049,6 +1076,11 @@ func getNVDReference(references []string) (string, bool) {
 	return "", false
 }
 
+type cacheableScanResult struct {
+	cachedMap map[string]zcommon.CVE
+	wasCached bool
+}
+
 func (scanner Scanner) scanIndex(ctx context.Context, repo, digest string) (map[string]zcommon.CVE, bool, error) {
 	return scanner.scanIndexSeen(ctx, repo, digest, map[string]struct{}{})
 }
@@ -1066,84 +1098,94 @@ func (scanner Scanner) scanIndexSeen(ctx context.Context, repo, digest string, s
 
 	seen[digest] = struct{}{}
 
-	indexData, err := scanner.metaDB.GetImageMeta(godigest.Digest(digest))
-	if err != nil {
-		return map[string]zcommon.CVE{}, false, err
-	}
+	// prevent multiple requests running trivy multiple times for the same index
+	result, err, _ := scanner.scanSingleFlightGroup.Do(digest, func() (any, error) {
+		indexData, err := scanner.metaDB.GetImageMeta(godigest.Digest(digest))
+		if err != nil {
+			return nil, err
+		}
 
-	if indexData.Index == nil {
-		return map[string]zcommon.CVE{}, false, zerr.ErrUnexpectedMediaType
-	}
+		if indexData.Index == nil {
+			return nil, zerr.ErrUnexpectedMediaType
+		}
 
-	indexCveIDMap := map[string]zcommon.CVE{}
-	wasCached := true
+		indexCveIDMap := map[string]zcommon.CVE{}
+		wasCached := true
 
-	imgStore := scanner.storeController.GetImageStore(repo)
+		imgStore := scanner.storeController.GetImageStore(repo)
 
-	for _, manifest := range indexData.Index.Manifests {
-		if imgStore != nil {
-			var lockLatency time.Time
+		for _, manifest := range indexData.Index.Manifests {
+			if imgStore != nil {
+				var lockLatency time.Time
 
-			imgStore.RLock(&lockLatency)
-			_, _, _, err := imgStore.StatBlob(repo, manifest.Digest)
-			imgStore.RUnlock(&lockLatency)
+				imgStore.RLock(&lockLatency)
+				_, _, _, err := imgStore.StatBlob(repo, manifest.Digest)
+				imgStore.RUnlock(&lockLatency)
 
+				if err != nil {
+					if errors.Is(err, zerr.ErrManifestNotFound) || errors.Is(err, zerr.ErrBlobNotFound) {
+						scanner.log.Warn().Err(err).Str("repo", repo).Str("index", digest).
+							Str("manifest", manifest.Digest.String()).
+							Msg("skipping missing child while scanning image index")
+
+						continue
+					}
+
+					return nil, err
+				}
+			}
+
+			digestStr := manifest.Digest.String()
+
+			if scanner.indexChildIsIndex(manifest) {
+				nestedCveIDMap, childCached, err := scanner.scanIndexSeen(ctx, repo, digestStr, seen)
+				if err != nil {
+					return nil, err
+				}
+
+				if !childCached {
+					wasCached = false
+				}
+
+				maps.Copy(indexCveIDMap, nestedCveIDMap)
+
+				continue
+			}
+
+			isScannable, err := scanner.isManifestScannable(digestStr)
 			if err != nil {
-				if errors.Is(err, zerr.ErrManifestNotFound) || errors.Is(err, zerr.ErrBlobNotFound) {
-					scanner.log.Warn().Err(err).Str("repo", repo).Str("index", digest).
-						Str("manifest", manifest.Digest.String()).
-						Msg("skipping missing child while scanning image index")
-
+				if errors.Is(err, zerr.ErrScanNotSupported) {
 					continue
 				}
 
-				return map[string]zcommon.CVE{}, false, err
+				return nil, err
 			}
-		}
 
-		digestStr := manifest.Digest.String()
+			if !isScannable {
+				continue
+			}
 
-		if scanner.indexChildIsIndex(manifest) {
-			nestedCveIDMap, childCached, err := scanner.scanIndexSeen(ctx, repo, digestStr, seen)
+			manifestCveIDMap, childCached, err := scanner.scanManifest(ctx, repo, digestStr)
 			if err != nil {
-				return map[string]zcommon.CVE{}, false, err
+				return nil, err
 			}
 
 			if !childCached {
 				wasCached = false
 			}
 
-			maps.Copy(indexCveIDMap, nestedCveIDMap)
-
-			continue
+			maps.Copy(indexCveIDMap, manifestCveIDMap)
 		}
 
-		isScannable, err := scanner.isManifestScannable(digestStr)
-		if err != nil {
-			if errors.Is(err, zerr.ErrScanNotSupported) {
-				continue
-			}
-
-			return map[string]zcommon.CVE{}, false, err
-		}
-
-		if !isScannable {
-			continue
-		}
-
-		manifestCveIDMap, childCached, err := scanner.scanManifest(ctx, repo, digestStr)
-		if err != nil {
-			return map[string]zcommon.CVE{}, false, err
-		}
-
-		if !childCached {
-			wasCached = false
-		}
-
-		maps.Copy(indexCveIDMap, manifestCveIDMap)
+		return cacheableScanResult{indexCveIDMap, wasCached}, nil
+	})
+	if err != nil {
+		return map[string]zcommon.CVE{}, false, err
 	}
 
-	return indexCveIDMap, wasCached, nil
+	scanResult, _ := result.(cacheableScanResult)
+
+	return scanResult.cachedMap, scanResult.wasCached, nil
 }
 
 // UpdateDB downloads the Trivy DB / Cache under the store root directory.
