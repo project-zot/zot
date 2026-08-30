@@ -533,7 +533,7 @@ func SetImageMetaFromInput(ctx context.Context, repo, reference, mediaType strin
 			return nil
 		}
 
-		imageMeta = convert.GetImageManifestMeta(manifestContent, configContent, int64(len(blob)), digest)
+		imageMeta = convert.GetImageManifestMeta(manifestContent, configContent, int64(len(blob)), digest, mediaType)
 	} else if mediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(mediaType) {
 		indexContent := ispec.Index{}
 
@@ -542,7 +542,7 @@ func SetImageMetaFromInput(ctx context.Context, repo, reference, mediaType strin
 			return err
 		}
 
-		imageMeta = convert.GetImageIndexMeta(indexContent, int64(len(blob)), digest)
+		imageMeta = convert.GetImageIndexMeta(indexContent, int64(len(blob)), digest, mediaType)
 	} else {
 		return nil
 	}

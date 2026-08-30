@@ -1292,6 +1292,8 @@ func (dwr *DynamoDB) UpdateSignaturesValidity(ctx context.Context, repo string, 
 		return err
 	}
 
+	verifyImageMeta := mConvert.GetImageMeta(protoImageMeta)
+
 	// update signatures with details about validity and author
 	protoRepoMeta, err := dwr.getProtoRepoMeta(ctx, repo)
 	if err != nil {
@@ -1311,8 +1313,14 @@ func (dwr *DynamoDB) UpdateSignaturesValidity(ctx context.Context, repo string, 
 			layersInfo := []*proto_go.LayersInfo{}
 
 			for _, layerInfo := range sigInfo.LayersInfo {
-				author, date, isTrusted, _ := imgTrustStore.VerifySignature(sigType, layerInfo.LayerContent,
-					layerInfo.SignatureKey, manifestDigest, mConvert.GetImageMeta(protoImageMeta), repo)
+				author, date, isTrusted, err := imgTrustStore.VerifySignature(sigType, layerInfo.LayerContent,
+					layerInfo.SignatureKey, manifestDigest, verifyImageMeta, repo)
+				if err != nil {
+					dwr.Log.Error().Err(err).Str("repo", repo).Str("signatureType", sigType).
+						Str("manifestDigest", manifestDigest.String()).
+						Str("mediaType", verifyImageMeta.MediaType).
+						Msg("failed to verify signature validity")
+				}
 
 				if isTrusted {
 					layerInfo.Signer = author
