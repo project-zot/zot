@@ -39,7 +39,7 @@ jobs:
           echo "OCI_REGISTRY=${IP}:8080" >> $GITHUB_ENV
     - name: run conformance
       # pinned to opencontainers/distribution-spec main@fcfba1ec55526073f48b2f6d4e3d7eef410ddcbc
-      uses: opencontainers/distribution-spec@fee21197eb94360ddfa6dda0b7edabcd12456809
+      uses: opencontainers/distribution-spec@3ecd27b5c78d09d83a09bf4d3fbf5af7ff1bded8
       env:
         OCI_REGISTRY: ${{ env.OCI_REGISTRY }}
         OCI_TLS: "disabled"
