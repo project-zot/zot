@@ -2444,6 +2444,17 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 		if err != nil {
 			dstRecord, err := is.checkCacheBlob(digest)
 			if err != nil {
+				// Same recovery as originalBlobInfo: no repo object and no cache record can
+				// still mean a migrated repository whose ownership records were lost, so let
+				// the global blobstore answer if the repo's own graph vouches for the digest.
+				// resolveGlobalBlobFallback restores the ref itself, and remote storage has
+				// no physical repo copy to make, so there is nothing for copyBlob to do here.
+				if globalInfo, fallbackErr := is.resolveGlobalBlobFallback(repo, digest); fallbackErr == nil {
+					found, size = true, globalInfo.Size()
+
+					return nil
+				}
+
 				if errors.Is(err, zerr.ErrCacheMiss) || errors.Is(err, zerr.ErrBlobNotFound) {
 					is.log.Debug().Err(err).Str("digest", digest.String()).Msg("cache miss for blob")
 				} else {
@@ -2670,6 +2681,94 @@ func (is *ImageStore) GetBlobPartial(repo string, digest godigest.Digest, mediaT
 	return blobReadCloser, contentLength, totalSize, nil
 }
 
+// globalBlobstoreReadView is the storageTypes.ImageStore handed to the manifest graph walk in
+// resolveGlobalBlobFallback. Its GetBlobContent reads a manifest from the repo path or the
+// global blobstore directly instead of going through originalBlobInfo: every digest the walk
+// reads was already reached from repo's own index.json, so it needs no further gating, and
+// bypassing originalBlobInfo keeps the walk from re-entering the fallback once per descriptor,
+// which would cost a fresh index walk for every manifest ahead of the one being resolved.
+type globalBlobstoreReadView struct {
+	*ImageStore
+}
+
+func (view globalBlobstoreReadView) GetBlobContent(repo string, digest godigest.Digest) ([]byte, error) {
+	if err := digest.Validate(); err != nil {
+		return nil, err
+	}
+
+	for _, blobPath := range []string{
+		view.BlobPath(repo, digest),
+		view.BlobPath(storageConstants.GlobalBlobsRepo, digest),
+	} {
+		buf, err := view.storeDriver.ReadFile(blobPath)
+		if err == nil {
+			return buf, nil
+		}
+
+		var pathNotFoundErr driver.PathNotFoundError
+		if !errors.As(err, &pathNotFoundErr) {
+			return nil, err
+		}
+	}
+
+	return nil, zerr.ErrBlobNotFound
+}
+
+// resolveGlobalBlobFallback answers whether repo may serve digest out of the global blobstore
+// when repo holds no object of its own for it and no blob ref claims one. That is exactly the
+// state the global blobstore migration leaves a repository in once the blob-ref index is lost
+// or was never local to this instance: the migration deletes each repo's blob objects after
+// promoting them, and records ownership only in the cache, so the payload is present and only
+// the ownership record is gone.
+//
+// The blobstore is shared across repositories, so resolving from it unconditionally would let
+// any repo read any digest any other repo pushed. The fallback is therefore gated on digest
+// being reachable from this repo's own index.json manifest graph, the same reachability every
+// repo-local read implies. The walk is not cheap, so it runs only here - after both the blob
+// ref lookup and the repo-path stat have missed - and never on the hot path. The global object
+// is stat'd first so a digest that is genuinely absent costs no walk at all.
+//
+// A successful resolution writes the ownership record back, so the next read of this digest
+// takes the blob-ref fast path and the repository heals one blob at a time as it is read.
+func (is *ImageStore) resolveGlobalBlobFallback(repo string, digest godigest.Digest) (driver.FileInfo, error) {
+	if !is.lifecycle.UsesLogicalRepoRefs() || repo == storageConstants.GlobalBlobsRepo {
+		return nil, zerr.ErrBlobNotFound
+	}
+
+	globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+
+	binfo, err := is.storeDriver.Stat(globalBlobPath)
+	if err != nil {
+		return nil, zerr.ErrBlobNotFound
+	}
+
+	referenced, err := common.IsBlobReferenced(globalBlobstoreReadView{is}, repo, digest, is.log)
+	if err != nil {
+		is.log.Debug().Err(err).Str("repository", repo).Str("digest", digest.String()).
+			Msg("failed to check whether the global blobstore blob is referenced by this repository")
+
+		return nil, zerr.ErrBlobNotFound
+	}
+
+	if !referenced {
+		is.log.Debug().Str("repository", repo).Str("digest", digest.String()).
+			Msg("blob exists in the global blobstore but is not referenced by this repository")
+
+		return nil, zerr.ErrBlobNotFound
+	}
+
+	// A failed write-back only costs the next read another walk, so it must not fail the read.
+	if err := is.putBlobRef(digest, is.BlobPath(repo, digest)); err != nil {
+		is.log.Error().Err(err).Str("repository", repo).Str("digest", digest.String()).
+			Str("component", "dedupe").Msg("failed to restore blob reference from the global blobstore")
+	}
+
+	is.log.Info().Str("repository", repo).Str("digest", digest.String()).
+		Msg("restored blob reference from the global blobstore")
+
+	return binfo, nil
+}
+
 // originalBlobInfo returns the physical object that contains repo's blob payload.
 // Remote deduped blobs resolve to the global payload after their logical repository
 // reference is verified; directly stored repository blobs such as manifests have no
@@ -2700,6 +2799,13 @@ func (is *ImageStore) originalBlobInfo(repo string, digest godigest.Digest) (dri
 		var pathNotFoundErr driver.PathNotFoundError
 
 		if errors.As(err, &pathNotFoundErr) {
+			// No repo object and no blob ref: on a store that keeps payloads only in the
+			// global blobstore this is the post-migration state of a repository whose
+			// ownership records are missing, so try to re-establish them from the graph.
+			if globalInfo, fallbackErr := is.resolveGlobalBlobFallback(repo, digest); fallbackErr == nil {
+				return globalInfo, nil
+			}
+
 			is.log.Debug().Err(err).Str("blob", blobPath).Str("digest", digest.String()).Msg("blob not found")
 		} else {
 			is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")

@@ -988,3 +988,138 @@ func TestRemoteLogicalRefsReadableWithDedupeDisabled(t *testing.T) {
 		So(err, ShouldBeNil)
 	})
 }
+
+// TestGlobalBlobstoreFallbackAfterBlobRefLoss covers the state a repository is left in when a
+// migrated bucket is opened with a local root that has no blob refs: the migration deleted the
+// repo's blob objects after promoting them into the global blobstore and recorded ownership only
+// in the cache, so nothing but index.json is left under the repo. Reads must recover from the
+// blobstore, but only for digests this repo's own manifest graph reaches - the blobstore is
+// shared, so an ungated fallback would let any repo serve any other repo's blobs.
+func TestGlobalBlobstoreFallbackAfterBlobRefLoss(t *testing.T) {
+	Convey("A migrated repo with no blob refs resolves reads through the global blobstore", t, func() {
+		rootDir := "/oci-repo-test/blobstore-fallback"
+		repo := "repo"
+		ctx := context.Background()
+
+		layerContent := []byte("referenced-layer-content")
+		layerDigest := godigest.FromBytes(layerContent)
+		configContent := []byte(`{"architecture":"amd64","os":"linux"}`)
+		configDigest := godigest.FromBytes(configContent)
+
+		manifest := ispec.Manifest{
+			MediaType: ispec.MediaTypeImageManifest,
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageConfig,
+				Digest:    configDigest,
+				Size:      int64(len(configContent)),
+			},
+			Layers: []ispec.Descriptor{{
+				MediaType: ispec.MediaTypeImageLayerGzip,
+				Digest:    layerDigest,
+				Size:      int64(len(layerContent)),
+			}},
+		}
+		manifest.SchemaVersion = 2
+
+		manifestContent, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		manifestDigest := godigest.FromBytes(manifestContent)
+
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{{
+				MediaType: ispec.MediaTypeImageManifest,
+				Digest:    manifestDigest,
+				Size:      int64(len(manifestContent)),
+			}},
+		}
+		index.SchemaVersion = 2
+
+		indexContent, err := json.Marshal(index)
+		So(err, ShouldBeNil)
+
+		globalPath := func(digest godigest.Digest) string {
+			return path.Join(rootDir, constants.GlobalBlobsRepo, ispec.ImageBlobsDir,
+				digest.Algorithm().String(), digest.Encoded())
+		}
+		repoPath := func(digest godigest.Digest) string {
+			return path.Join(rootDir, repo, ispec.ImageBlobsDir,
+				digest.Algorithm().String(), digest.Encoded())
+		}
+
+		// Post-migration bucket: every payload lives in the global blobstore, the repo keeps
+		// only index.json, and the migration marker stops the upgrade from running again.
+		storeMock := makeStatefulMigrationStoreMock(rootDir, repo, globalPath(manifestDigest), manifestContent)
+		So(storeMock.PutContent(ctx, path.Join(rootDir, constants.BlobstoreMigratedMarker), []byte("1")), ShouldBeNil)
+		So(storeMock.PutContent(ctx, path.Join(rootDir, repo, ispec.ImageIndexFile), indexContent), ShouldBeNil)
+		So(storeMock.PutContent(ctx, globalPath(configDigest), configContent), ShouldBeNil)
+		So(storeMock.PutContent(ctx, globalPath(layerDigest), layerContent), ShouldBeNil)
+
+		// A digest another repository pushed: present in the shared blobstore, unreachable
+		// from this repo's index.json.
+		foreignContent := []byte("blob-owned-by-another-repository")
+		foreignDigest := godigest.FromBytes(foreignContent)
+		So(storeMock.PutContent(ctx, globalPath(foreignDigest), foreignContent), ShouldBeNil)
+
+		// Empty cache: this is a fresh local root pointed at an already migrated bucket.
+		cache := newMapBackedCache()
+
+		testLog := log.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, testLog)
+		t.Cleanup(metrics.Stop)
+
+		store := imagestore.NewImageStore(rootDir, "", true, false, testLog, metrics, nil,
+			gcs.New(storeMock), cache, nil, nil)
+		So(store, ShouldNotBeNil)
+
+		Convey("blobs referenced by the repo's index are served from the global blobstore", func() {
+			actual, err := store.GetBlobContent(repo, manifestDigest)
+			So(err, ShouldBeNil)
+			So(actual, ShouldResemble, manifestContent)
+
+			actual, err = store.GetBlobContent(repo, configDigest)
+			So(err, ShouldBeNil)
+			So(actual, ShouldResemble, configContent)
+
+			actual, err = store.GetBlobContent(repo, layerDigest)
+			So(err, ShouldBeNil)
+			So(actual, ShouldResemble, layerContent)
+
+			found, size, err := store.CheckBlob(ctx, repo, layerDigest)
+			So(err, ShouldBeNil)
+			So(found, ShouldBeTrue)
+			So(size, ShouldEqual, int64(len(layerContent)))
+		})
+
+		Convey("a blobstore blob this repo does not reference stays unreadable", func() {
+			_, err := store.GetBlobContent(repo, foreignDigest)
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
+
+			found, _, err := store.CheckBlob(ctx, repo, foreignDigest)
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
+			So(found, ShouldBeFalse)
+
+			_, err = cache.GetAllBlobs(foreignDigest)
+			So(errors.Is(err, zerr.ErrCacheMiss), ShouldBeTrue)
+		})
+
+		Convey("a successful fallback restores the blob ref so the next read is a fast path", func() {
+			_, err := cache.GetAllBlobs(layerDigest)
+			So(errors.Is(err, zerr.ErrCacheMiss), ShouldBeTrue)
+
+			_, err = store.GetBlobContent(repo, layerDigest)
+			So(err, ShouldBeNil)
+
+			refs, err := cache.GetAllBlobs(layerDigest)
+			So(err, ShouldBeNil)
+			So(refs, ShouldContain, repoPath(layerDigest))
+
+			// The restored ref alone resolves the read now: the index walk is not needed
+			// again, and the payload still comes from the global blobstore.
+			actual, err := store.GetBlobContent(repo, layerDigest)
+			So(err, ShouldBeNil)
+			So(actual, ShouldResemble, layerContent)
+		})
+	})
+}
