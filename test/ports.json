@@ -486,5 +486,11 @@
       "begin": 11560,
       "end": 11569
     }
+  },
+  "blackbox/s3_fresh_root_recovery.bats": {
+    "zot": {
+      "begin": 11570,
+      "end": 11579
+    }
   }
 }

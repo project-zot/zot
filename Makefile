@@ -578,6 +578,7 @@ run-blackbox-cloud-ci: check-blackbox-prerequisites check-awslocal binary $(BATS
 	$(BATS) $(BATS_FLAGS) test/blackbox/cloud_only.bats
 	$(BATS) $(BATS_FLAGS) test/blackbox/sync_cloud.bats
 	$(BATS) $(BATS_FLAGS) test/blackbox/redis_s3.bats
+	$(BATS) $(BATS_FLAGS) test/blackbox/s3_fresh_root_recovery.bats
 
 .PHONY: run-blackbox-dedupe-nightly
 run-blackbox-dedupe-nightly: check-blackbox-prerequisites check-awslocal binary binary-minimal
