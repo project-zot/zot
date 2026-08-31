@@ -18,6 +18,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/api/constants"
+	ext "zotregistry.dev/zot/v2/pkg/extensions"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
@@ -51,7 +52,7 @@ func (m *mockSyncOnDemand) ShouldCheckUpstreamManifest(repo, reference string) b
 func newSyncTestRouteHandler(
 	t *testing.T,
 	store mocks.MockedImageStore,
-	syncOnDemand api.SyncOnDemand,
+	syncOnDemand ext.SyncOnDemand,
 ) *api.RouteHandler {
 	t.Helper()
 

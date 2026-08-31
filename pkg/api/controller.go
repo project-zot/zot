@@ -49,7 +49,7 @@ type Controller struct {
 	Metrics         monitoring.MetricServer
 	EventRecorder   events.Recorder
 	CveScanner      ext.CveScanner
-	SyncOnDemand    SyncOnDemand
+	SyncOnDemand    ext.SyncOnDemand
 	RelyingParties  map[string]rp.RelyingParty
 	CookieStore     *CookieStore
 	HTPasswd        *HTPasswd
@@ -594,8 +594,9 @@ func (c *Controller) StartBackgroundTasks() {
 		c.Log.Error().Err(err).Msg("failed to start sync extension")
 	}
 
-	// Only set SyncOnDemand if sync is actually enabled
-	if extensionsConfig.IsSyncEnabled() {
+	// EnableSyncExtension returns ext.SyncOnDemand (an interface), so failure/disabled
+	// paths yield a true nil interface — safe for isSyncOnDemandEnabled's != nil check.
+	if extensionsConfig.IsSyncEnabled() && syncOnDemand != nil {
 		c.SyncOnDemand = syncOnDemand
 	}
 
@@ -641,10 +642,4 @@ func RunGCTasks(conf *config.Config, storeController storage.StoreController, me
 			}
 		}
 	}
-}
-
-type SyncOnDemand interface {
-	SyncImage(ctx context.Context, repo, reference string) error
-	SyncReferrers(ctx context.Context, repo string, subjectDigestStr string, referenceTypes []string) error
-	ShouldCheckUpstreamManifest(repo, reference string) bool
 }
