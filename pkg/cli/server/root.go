@@ -1077,6 +1077,13 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, logge
 
 					config.Extensions.Search.CVE.Trivy.VulnSeveritySources = defaultVulnSeveritySources
 				}
+
+				if config.Extensions.Search.CVE.Trivy.DetectionPriority == "" {
+					defaultDetectionPriority := "precise"
+					logger.Info().Str("detectionPriority", defaultDetectionPriority).Str("component", "config").
+						Msg("using default trivy detection priority.")
+					config.Extensions.Search.CVE.Trivy.DetectionPriority = defaultDetectionPriority
+				}
 			}
 		}
 
