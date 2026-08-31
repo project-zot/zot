@@ -253,4 +253,5 @@ var (
 	ErrSyncNoStreamingRegistry          = errors.New("no sync registry streams the repo")
 	ErrSyncJoinedStreamFailed           = errors.New("the streaming sync this request joined failed")
 	ErrSyncImageAlreadyLocal            = errors.New("image is already synced locally at the upstream digest")
+	ErrBlobRefIndexUnavailable          = errors.New("blob reference index is unavailable")
 )
