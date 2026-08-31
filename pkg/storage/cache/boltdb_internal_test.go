@@ -154,6 +154,28 @@ func TestBoltDBGetBlobRefs(t *testing.T) {
 				So(err, ShouldEqual, zerr.ErrCacheMiss)
 				So(refs, ShouldBeEmpty)
 			})
+
+			// The BlobRefs bucket is a plain set, so the first-inserted ref carries no
+			// special status: deleting it must drop it and leave the other repo's ref,
+			// matching what redis and dynamodb achieve by promoting a duplicate to origin.
+			Convey("deleting the first repo's ref leaves only the second repo's ref", func() {
+				err := cacheDriver.PutBlob(testDigest, "/repo2/blob")
+				So(err, ShouldBeNil)
+
+				err = cacheDriver.DeleteBlob(testDigest, "/repo1/blob")
+				So(err, ShouldBeNil)
+
+				refs, err := cacheDriver.GetBlobRefs(testDigest)
+				So(err, ShouldBeNil)
+				So(refs, ShouldContain, "/repo2/blob")
+				So(refs, ShouldNotContain, "/repo1/blob")
+				So(len(refs), ShouldEqual, 1)
+
+				allRefs, err := cacheDriver.GetAllBlobRefs()
+				So(err, ShouldBeNil)
+				So(allRefs[testDigest], ShouldContain, "/repo2/blob")
+				So(allRefs[testDigest], ShouldNotContain, "/repo1/blob")
+			})
 		})
 
 		Convey("blob refs root bucket missing surfaces ErrCacheRootBucket", func() {

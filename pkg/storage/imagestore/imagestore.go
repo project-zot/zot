@@ -992,6 +992,10 @@ func (is *ImageStore) GetRepositories() ([]string, error) {
 // without yet being referenced by any manifest (e.g. mid-upload, or a raw
 // dedupe'd blob), so a manifest-only scan can miss live ownership and cause
 // the shared global copy to be reclaimed while still owned by a repository.
+// The listed paths are deliberately taken at face value rather than stat'ed against the
+// store: under remote storage LinkBlob is a no-op (see remoteSharedBlobLifecycle), so a
+// repo that legitimately owns the digest has no object of its own at all, and an
+// existence check would read every such owner as absent and reclaim the global copy.
 func (is *ImageStore) isDigestReferencedAcrossRepos(digest godigest.Digest) (bool, error) {
 	blobPaths, err := is.blobRefsForDigest(digest)
 	if err != nil {
