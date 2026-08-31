@@ -3,26 +3,23 @@
     "storage": {
         "rootDirectory": "/tmp/zot",
         "dedupe": true,
-        "gc": true,
+        "hydrateBlobOnRead": true,
         "subPaths": {
             "/a": {
-                "rootDirectory": "/tmp/zot1",
-                "dedupe": true
+                "rootDirectory": "/tmp/zot-a",
+                "dedupe": true,
+                "hydrateBlobOnRead": false
             },
             "/b": {
-                "rootDirectory": "/tmp/zot2",
+                "rootDirectory": "/tmp/zot-b",
                 "dedupe": true,
                 "hydrateBlobOnRead": true
-            },
-            "/c": {
-                "rootDirectory": "/tmp/zot3",
-                "dedupe": false
             }
         }
     },
     "http": {
         "address": "127.0.0.1",
-        "port": "5000"
+        "port": "8080"
     },
     "log": {
         "level": "debug"

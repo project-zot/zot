@@ -475,7 +475,7 @@ func (is MockedImageStore) VerifyBlobDigestValue(repo string, digest godigest.Di
 }
 
 func (is MockedImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]string, error) {
-	if is.GetAllBlobsFn != nil {
+	if is.GetAllDedupeReposCandidatesFn != nil {
 		return is.GetAllDedupeReposCandidatesFn(digest)
 	}
 

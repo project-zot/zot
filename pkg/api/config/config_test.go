@@ -126,6 +126,14 @@ func TestConfig(t *testing.T) {
 
 		So(firstStorageConfig.ParamsEqual(secondStorageConfig), ShouldBeTrue)
 
+		firstStorageConfig.HydrateBlobOnRead = true
+
+		So(firstStorageConfig.ParamsEqual(secondStorageConfig), ShouldBeFalse)
+
+		firstStorageConfig.HydrateBlobOnRead = false
+
+		So(firstStorageConfig.ParamsEqual(secondStorageConfig), ShouldBeTrue)
+
 		So(firstStorageConfig.GCTimeWindow.UnmarshalJSON([]byte(`"01:00-08:00"`)), ShouldBeNil)
 
 		So(firstStorageConfig.ParamsEqual(secondStorageConfig), ShouldBeFalse)
@@ -1804,6 +1812,38 @@ func TestConfig(t *testing.T) {
 			})
 		})
 
+		Convey("Test IsHydrateBlobOnReadEnabled()", func() {
+			Convey("returns global setting for default store path", func() {
+				cfg := &config.Config{
+					Storage: config.GlobalStorageConfig{
+						StorageConfig: config.StorageConfig{HydrateBlobOnRead: true},
+					},
+				}
+
+				So(cfg.IsHydrateBlobOnReadEnabled("/"), ShouldBeTrue)
+			})
+
+			Convey("returns subpath setting when subpath exists", func() {
+				cfg := &config.Config{
+					Storage: config.GlobalStorageConfig{
+						StorageConfig: config.StorageConfig{HydrateBlobOnRead: false},
+						SubPaths: map[string]config.StorageConfig{
+							"/a": {HydrateBlobOnRead: true},
+						},
+					},
+				}
+
+				So(cfg.IsHydrateBlobOnReadEnabled("/a"), ShouldBeTrue)
+				So(cfg.IsHydrateBlobOnReadEnabled("/b"), ShouldBeFalse)
+			})
+
+			Convey("nil config returns false", func() {
+				var nilCfg *config.Config
+
+				So(nilCfg.IsHydrateBlobOnReadEnabled("/"), ShouldBeFalse)
+			})
+		})
+
 		Convey("Test CopyLogConfig()", func() {
 			Convey("Test with non-nil Log", func() {
 				cfg := &config.Config{
@@ -2515,22 +2555,24 @@ func TestConfig(t *testing.T) {
 			cfg := &config.Config{
 				Storage: config.GlobalStorageConfig{
 					StorageConfig: config.StorageConfig{
-						GC:              true,
-						Dedupe:          false,
-						RedirectBlobURL: false,
-						GCDelay:         time.Hour,
-						GCInterval:      2 * time.Hour,
+						GC:                true,
+						Dedupe:            false,
+						RedirectBlobURL:   false,
+						HydrateBlobOnRead: false,
+						GCDelay:           time.Hour,
+						GCInterval:        2 * time.Hour,
 					},
 				},
 			}
 			newConfig := &config.Config{
 				Storage: config.GlobalStorageConfig{
 					StorageConfig: config.StorageConfig{
-						GC:              false,
-						Dedupe:          true,
-						RedirectBlobURL: true,
-						GCDelay:         3 * time.Hour,
-						GCInterval:      4 * time.Hour,
+						GC:                false,
+						Dedupe:            true,
+						RedirectBlobURL:   true,
+						HydrateBlobOnRead: true,
+						GCDelay:           3 * time.Hour,
+						GCInterval:        4 * time.Hour,
 					},
 				},
 			}
@@ -2540,6 +2582,7 @@ func TestConfig(t *testing.T) {
 			So(cfg.Storage.GC, ShouldBeFalse)
 			So(cfg.Storage.Dedupe, ShouldBeTrue)
 			So(cfg.Storage.RedirectBlobURL, ShouldBeTrue)
+			So(cfg.Storage.HydrateBlobOnRead, ShouldBeTrue)
 			So(cfg.Storage.GCDelay, ShouldEqual, 3*time.Hour)
 			So(cfg.Storage.GCInterval, ShouldEqual, 4*time.Hour)
 		})
@@ -3475,18 +3518,20 @@ func TestConfig(t *testing.T) {
 					},
 					SubPaths: map[string]config.StorageConfig{
 						"/path1": {
-							GC:              true,
-							Dedupe:          false,
-							RedirectBlobURL: false,
-							GCDelay:         time.Hour,
-							GCInterval:      time.Hour * 24,
+							GC:                true,
+							Dedupe:            false,
+							RedirectBlobURL:   false,
+							HydrateBlobOnRead: false,
+							GCDelay:           time.Hour,
+							GCInterval:        time.Hour * 24,
 						},
 						"/path2": {
-							GC:              false,
-							Dedupe:          true,
-							RedirectBlobURL: true,
-							GCDelay:         time.Hour * 2,
-							GCInterval:      time.Hour * 48,
+							GC:                false,
+							Dedupe:            true,
+							RedirectBlobURL:   true,
+							HydrateBlobOnRead: true,
+							GCDelay:           time.Hour * 2,
+							GCInterval:        time.Hour * 48,
 						},
 					},
 				},
@@ -3496,24 +3541,27 @@ func TestConfig(t *testing.T) {
 			newConfig := &config.Config{
 				Storage: config.GlobalStorageConfig{
 					StorageConfig: config.StorageConfig{
-						GC:              true,
-						Dedupe:          false,
-						RedirectBlobURL: true,
+						GC:                true,
+						Dedupe:            false,
+						RedirectBlobURL:   true,
+						HydrateBlobOnRead: true,
 					},
 					SubPaths: map[string]config.StorageConfig{
 						"/path1": {
-							GC:              false,          // Changed
-							Dedupe:          true,           // Changed
-							RedirectBlobURL: true,           // Changed
-							GCDelay:         time.Hour * 2,  // Changed
-							GCInterval:      time.Hour * 12, // Changed
+							GC:                false,          // Changed
+							Dedupe:            true,           // Changed
+							RedirectBlobURL:   true,           // Changed
+							HydrateBlobOnRead: true,           // Changed
+							GCDelay:           time.Hour * 2,  // Changed
+							GCInterval:        time.Hour * 12, // Changed
 						},
 						"/path2": {
-							GC:              true,           // Changed
-							Dedupe:          false,          // Changed
-							RedirectBlobURL: false,          // Changed
-							GCDelay:         time.Hour * 3,  // Changed
-							GCInterval:      time.Hour * 36, // Changed
+							GC:                true,           // Changed
+							Dedupe:            false,          // Changed
+							RedirectBlobURL:   false,          // Changed
+							HydrateBlobOnRead: false,          // Changed
+							GCDelay:           time.Hour * 3,  // Changed
+							GCInterval:        time.Hour * 36, // Changed
 						},
 					},
 				},
@@ -3530,6 +3578,7 @@ func TestConfig(t *testing.T) {
 			So(path1Config.GC, ShouldBeFalse)
 			So(path1Config.Dedupe, ShouldBeTrue)
 			So(path1Config.RedirectBlobURL, ShouldBeTrue)
+			So(path1Config.HydrateBlobOnRead, ShouldBeTrue)
 			So(path1Config.GCDelay, ShouldEqual, time.Hour*2)
 			So(path1Config.GCInterval, ShouldEqual, time.Hour*12)
 
@@ -3538,6 +3587,7 @@ func TestConfig(t *testing.T) {
 			So(path2Config.GC, ShouldBeTrue)
 			So(path2Config.Dedupe, ShouldBeFalse)
 			So(path2Config.RedirectBlobURL, ShouldBeFalse)
+			So(path2Config.HydrateBlobOnRead, ShouldBeFalse)
 			So(path2Config.GCDelay, ShouldEqual, time.Hour*3)
 			So(path2Config.GCInterval, ShouldEqual, time.Hour*36)
 		})

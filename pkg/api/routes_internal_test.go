@@ -1,13 +1,24 @@
 package api
 
 import (
+	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
 
+	godigest "github.com/opencontainers/go-digest"
+	"github.com/stretchr/testify/require"
+
 	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/api/constants"
+	"zotregistry.dev/zot/v2/pkg/log"
+	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
+	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
 
 func TestParseRangeHeader(t *testing.T) {
@@ -201,4 +212,181 @@ func TestIsBlobRedirectEnabled(t *testing.T) {
 	if routeHandler.isBlobRedirectEnabled("b/repo") {
 		t.Fatal("expected redirect to be disabled for default storage")
 	}
+}
+
+func TestCanMountTraditionalBearer(t *testing.T) {
+	t.Parallel()
+
+	conf := config.New()
+	conf.HTTP.AccessControl = &config.AccessControlConfig{
+		Repositories: config.Repositories{
+			"**": config.PolicyGroup{
+				Policies: []config.Policy{
+					{
+						Users: []string{"alice"},
+						Actions: []string{
+							constants.ReadPermission,
+							constants.CreatePermission,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	rh := &RouteHandler{c: &Controller{Config: conf, Log: log.NewTestLogger()}}
+	imgStore := mocks.MockedImageStore{
+		GetAllDedupeReposCandidatesFn: func(_ godigest.Digest) ([]string, error) {
+			return []string{"src/repo"}, nil
+		},
+	}
+	digest := godigest.FromString("bearer-mount-test")
+	emptyUser := reqCtx.NewUserAccessControl()
+
+	req := httptest.NewRequest(http.MethodPost, "/v2/dest/blobs/uploads/", nil)
+	ok, err := rh.canMount(req, emptyUser, imgStore, digest, "dest")
+	require.NoError(t, err)
+	require.False(t, ok)
+
+	acCtrlr := NewAccessController(conf)
+	bearerReq := req.WithContext(acCtrlr.getAuthnMiddlewareContext(BEARER, req))
+	ok, err = rh.canMount(bearerReq, emptyUser, imgStore, digest, "dest")
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	oidcReq := req.WithContext(acCtrlr.getAuthnMiddlewareContext(BEARER_OIDC, req))
+	ok, err = rh.canMount(oidcReq, emptyUser, imgStore, digest, "dest")
+	require.NoError(t, err)
+	require.False(t, ok)
+}
+
+func TestCanMountDedupeCandidatesError(t *testing.T) {
+	t.Parallel()
+
+	conf := config.New()
+	conf.HTTP.AccessControl = &config.AccessControlConfig{
+		Repositories: config.Repositories{
+			"**": config.PolicyGroup{
+				Policies: []config.Policy{
+					{
+						Users: []string{"alice"},
+						Actions: []string{
+							constants.ReadPermission,
+							constants.CreatePermission,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	candidatesErr := errors.New("candidates failed")
+	rh := &RouteHandler{c: &Controller{Config: conf, Log: log.NewTestLogger()}}
+	imgStore := mocks.MockedImageStore{
+		GetAllDedupeReposCandidatesFn: func(_ godigest.Digest) ([]string, error) {
+			return nil, candidatesErr
+		},
+	}
+
+	userAc := reqCtx.NewUserAccessControl()
+	userAc.SetUsername("alice")
+	req := httptest.NewRequest(http.MethodPost, "/v2/dest/blobs/uploads/", nil)
+
+	ok, err := rh.canMount(req, userAc, imgStore, godigest.FromString("candidates-err"), "dest")
+	require.ErrorIs(t, err, candidatesErr)
+	require.False(t, ok)
+}
+
+func TestUserMayMountBlobErrorPaths(t *testing.T) {
+	t.Parallel()
+
+	conf := config.New()
+	conf.HTTP.AccessControl = &config.AccessControlConfig{
+		Repositories: config.Repositories{
+			"**": config.PolicyGroup{
+				Policies: []config.Policy{
+					{
+						Users: []string{"alice"},
+						Actions: []string{
+							constants.ReadPermission,
+							constants.CreatePermission,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	rh := &RouteHandler{c: &Controller{Config: conf, Log: log.NewTestLogger()}}
+	digest := godigest.FromString("user-may-mount-err")
+
+	t.Run("bad user access control type", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := context.WithValue(context.Background(), reqCtx.GetContextKey(), "not-a-user-ac")
+		req := httptest.NewRequestWithContext(ctx, http.MethodHead, "/v2/dest/blobs/"+digest.String(), nil)
+
+		ok, err := rh.userMayMountBlob(req, mocks.MockedImageStore{}, digest, "dest")
+		require.Error(t, err)
+		require.False(t, ok)
+	})
+
+	t.Run("canMount candidates error is denied", func(t *testing.T) {
+		t.Parallel()
+
+		userAc := reqCtx.NewUserAccessControl()
+		userAc.SetUsername("alice")
+		req := httptest.NewRequest(http.MethodHead, "/v2/dest/blobs/"+digest.String(), nil)
+		userAc.SaveOnRequest(req)
+
+		candidatesErr := errors.New("candidates failed")
+		imgStore := mocks.MockedImageStore{
+			GetAllDedupeReposCandidatesFn: func(_ godigest.Digest) ([]string, error) {
+				return nil, candidatesErr
+			},
+		}
+
+		ok, err := rh.userMayMountBlob(req, imgStore, digest, "dest")
+		require.NoError(t, err)
+		require.False(t, ok)
+	})
+}
+
+func TestResolveBlobPresenceUserMayMountError(t *testing.T) {
+	t.Parallel()
+
+	conf := config.New()
+	conf.Storage.HydrateBlobOnRead = true
+	conf.HTTP.AccessControl = &config.AccessControlConfig{
+		Repositories: config.Repositories{
+			"**": config.PolicyGroup{
+				Policies: []config.Policy{
+					{
+						Users: []string{"alice"},
+						Actions: []string{
+							constants.ReadPermission,
+							constants.CreatePermission,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	rh := &RouteHandler{
+		c: &Controller{
+			Config:          conf,
+			Log:             log.NewTestLogger(),
+			StoreController: storage.StoreController{},
+		},
+	}
+
+	digest := godigest.FromString("resolve-presence-err")
+	ctx := context.WithValue(context.Background(), reqCtx.GetContextKey(), "not-a-user-ac")
+	req := httptest.NewRequestWithContext(ctx, http.MethodHead, "/v2/dest/blobs/"+digest.String(), nil)
+
+	ok, size, err := rh.resolveBlobPresence(req, mocks.MockedImageStore{}, "dest", digest)
+	require.Error(t, err)
+	require.False(t, ok)
+	require.Equal(t, int64(-1), size)
 }

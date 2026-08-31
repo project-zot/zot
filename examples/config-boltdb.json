@@ -3,6 +3,7 @@
     "storage": {
         "rootDirectory": "/tmp/zot",
         "dedupe": true,
+        "hydrateBlobOnRead": false,
         "remoteCache": false
     },
     "http": {

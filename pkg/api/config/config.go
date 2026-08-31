@@ -32,10 +32,17 @@ type StorageConfig struct {
 	Dedupe          bool
 	RemoteCache     bool
 	RedirectBlobURL bool
-	GC              bool
-	Commit          bool
-	GCDelay         time.Duration // applied for blobs
-	GCInterval      time.Duration
+	// HydrateBlobOnRead restores the pre-conformance behavior where HEAD and ranged
+	// GET may call CheckBlob and hard-link a digest from this store's dedupe cache
+	// into the destination repository. The zero value (false) keeps blob reads
+	// repo-local via StatBlob (OCI AtomicDelete / distribution-spec). Explicit
+	// mounts via POST .../blobs/uploads/?mount= are unaffected. Only applies within
+	// a single store/substore (not across SubPaths).
+	HydrateBlobOnRead bool
+	GC                bool
+	Commit            bool
+	GCDelay           time.Duration // applied for blobs
+	GCInterval        time.Duration
 	// GCTimeWindow restricts periodic garbage-collection runs to a daily time-of-day
 	// window, e.g. "01:00-08:00". The zero value means GC can run at any time.
 	GCTimeWindow  GCTimeWindow
@@ -838,7 +845,9 @@ func New() *Config {
 
 func (expConfig StorageConfig) ParamsEqual(actConfig StorageConfig) bool {
 	return expConfig.GC == actConfig.GC && expConfig.Dedupe == actConfig.Dedupe &&
-		expConfig.RedirectBlobURL == actConfig.RedirectBlobURL && expConfig.GCDelay == actConfig.GCDelay &&
+		expConfig.RedirectBlobURL == actConfig.RedirectBlobURL &&
+		expConfig.HydrateBlobOnRead == actConfig.HydrateBlobOnRead &&
+		expConfig.GCDelay == actConfig.GCDelay &&
 		expConfig.GCInterval == actConfig.GCInterval && expConfig.GCTimeWindow == actConfig.GCTimeWindow
 }
 
@@ -1073,6 +1082,7 @@ func (c *Config) UpdateReloadableConfig(newConfig *Config) {
 	c.Storage.GC = newConfig.Storage.GC
 	c.Storage.Dedupe = newConfig.Storage.Dedupe
 	c.Storage.RedirectBlobURL = newConfig.Storage.RedirectBlobURL
+	c.Storage.HydrateBlobOnRead = newConfig.Storage.HydrateBlobOnRead
 	c.Storage.GCDelay = newConfig.Storage.GCDelay
 	c.Storage.GCInterval = newConfig.Storage.GCInterval
 	c.Storage.GCTimeWindow = newConfig.Storage.GCTimeWindow
@@ -1092,6 +1102,7 @@ func (c *Config) UpdateReloadableConfig(newConfig *Config) {
 		subPathConfig.GC = storageConfig.GC
 		subPathConfig.Dedupe = storageConfig.Dedupe
 		subPathConfig.RedirectBlobURL = storageConfig.RedirectBlobURL
+		subPathConfig.HydrateBlobOnRead = storageConfig.HydrateBlobOnRead
 		subPathConfig.GCDelay = storageConfig.GCDelay
 		subPathConfig.GCInterval = storageConfig.GCInterval
 		subPathConfig.GCTimeWindow = storageConfig.GCTimeWindow
@@ -1240,6 +1251,26 @@ func (c *Config) IsBlobRedirectEnabled(storePath string) bool {
 	}
 
 	return c.Storage.RedirectBlobURL
+}
+
+// IsHydrateBlobOnReadEnabled returns whether HEAD / ranged GET may hydrate blobs
+// from this store's dedupe cache into the destination repository. If a matching
+// subpath exists, its setting takes precedence over the global one.
+func (c *Config) IsHydrateBlobOnReadEnabled(storePath string) bool {
+	if c == nil {
+		return false
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if storePath != "/" {
+		if subPathConfig, ok := c.Storage.SubPaths[storePath]; ok {
+			return subPathConfig.HydrateBlobOnRead
+		}
+	}
+
+	return c.Storage.HydrateBlobOnRead
 }
 
 // CopyExtensionsConfig returns a copy of the extensions config if it exists.

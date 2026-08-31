@@ -5686,6 +5686,13 @@ func TestAuthorizationMountBlob(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
+		/* ranged GET must not mount from the global cache either */
+		resp, err = userClient2.R().
+			SetHeader("Range", "bytes=0-7").
+			Get(baseURL + fmt.Sprintf("/v2/%s/blobs/%s", repoName2, blobDigest))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
 		params := make(map[string]string)
 		params["mount"] = blobDigest.String()
 
@@ -5695,11 +5702,16 @@ func TestAuthorizationMountBlob(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 
-		/* a HEAD request by user1 on blob digest (found in user1Repo) should return 200
-		because user1 has permission to read user1Repo */
-		resp, err = userClient1.R().Head(baseURL + fmt.Sprintf("/v2/%s/blobs/%s", username1+"/"+"mysecondrepo", blobDigest))
+		/* a HEAD request by user1 on the blob in repoName1 should return 200;
+		blob reads are repo-local (StatBlob), not satisfied via cross-repo cache */
+		resp, err = userClient1.R().Head(baseURL + fmt.Sprintf("/v2/%s/blobs/%s", repoName1, blobDigest))
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		/* the same digest is not known to a different repository until mounted there */
+		resp, err = userClient1.R().Head(baseURL + fmt.Sprintf("/v2/%s/blobs/%s", username1+"/"+"mysecondrepo", blobDigest))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 		// user2 can upload without dedupe
 		err = UploadImageWithBasicAuth(img, baseURL, repoName2, tag, username2, password2)
@@ -5709,6 +5721,388 @@ func TestAuthorizationMountBlob(t *testing.T) {
 		resp, err = userClient2.R().SetQueryParams(params).Post(baseURL + "/v2/" + repoName2 + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+	})
+}
+
+func TestAuthorizationMountBlobRematerializeOnRead(t *testing.T) {
+	Convey("With hydrateBlobOnRead, HEAD/range may rematerialize when permitted", t, func() {
+		conf := config.New()
+		conf.HTTP.Port = "0"
+		username1, _ := test.GenerateRandomString()
+		password1, _ := test.GenerateRandomString()
+		username1 = strings.ToLower(username1)
+
+		content := test.GetBcryptCredString(username1, password1)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, content)
+
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+
+		user1Repo := username1 + "/**"
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				user1Repo: config.PolicyGroup{
+					Policies: []config.Policy{
+						{
+							Users: []string{username1},
+							Actions: []string{
+								constants.ReadPermission,
+								constants.CreatePermission,
+							},
+						},
+					},
+				},
+			},
+		}
+
+		dir := t.TempDir()
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.Dedupe = true
+		ctlr.Config.Storage.HydrateBlobOnRead = true
+
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+		defer cm.StopServer()
+
+		userClient1 := resty.New()
+		userClient1.SetBasicAuth(username1, password1)
+
+		img := CreateImageWith().RandomLayers(1, 2).DefaultConfig().Build()
+		repoName1 := username1 + "/" + "myrepo"
+		err := UploadImageWithBasicAuth(img, baseURL, repoName1, "1.0", username1, password1)
+		So(err, ShouldBeNil)
+
+		blobDigest := img.Manifest.Layers[0].Digest
+		secondRepo := username1 + "/" + "mysecondrepo"
+
+		resp, err := userClient1.R().Head(baseURL + fmt.Sprintf("/v2/%s/blobs/%s", secondRepo, blobDigest))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		thirdRepo := username1 + "/" + "mythirdrepo"
+		resp, err = userClient1.R().
+			SetHeader("Range", "bytes=0-0").
+			Get(baseURL + fmt.Sprintf("/v2/%s/blobs/%s", thirdRepo, blobDigest))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusPartialContent)
+	})
+}
+
+func TestAuthorizationReadOnlyCannotMaterializeBlob(t *testing.T) {
+	Convey("defaultPolicy read alone does not materialize blobs on HEAD or ranged GET", t, func() {
+		conf := config.New()
+		conf.HTTP.Port = "0"
+
+		writerUser, _ := test.GenerateRandomString()
+		writerPass, _ := test.GenerateRandomString()
+		readerUser, _ := test.GenerateRandomString()
+		readerPass, _ := test.GenerateRandomString()
+		writerUser = strings.ToLower(writerUser)
+		readerUser = strings.ToLower(readerUser)
+
+		content := test.GetBcryptCredString(writerUser, writerPass) +
+			test.GetBcryptCredString(readerUser, readerPass)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, content)
+
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				"**": config.PolicyGroup{
+					DefaultPolicy: []string{constants.ReadPermission},
+					Policies: []config.Policy{
+						{
+							Users: []string{writerUser},
+							Actions: []string{
+								constants.ReadPermission,
+								constants.CreatePermission,
+								constants.UpdatePermission,
+							},
+						},
+					},
+				},
+			},
+		}
+
+		dir := t.TempDir()
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.Dedupe = true
+		ctlr.Config.Storage.HydrateBlobOnRead = true
+
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+		defer cm.StopServer()
+
+		img := CreateImageWith().RandomLayers(1, 2).DefaultConfig().Build()
+		writerRepo := "writer/repo"
+		err := UploadImageWithBasicAuth(img, baseURL, writerRepo, "1.0", writerUser, writerPass)
+		So(err, ShouldBeNil)
+
+		blobDigest := img.Manifest.Layers[0].Digest
+		junkRepo := "reader-junk"
+
+		readerClient := resty.New()
+		readerClient.SetBasicAuth(readerUser, readerPass)
+
+		resp, err := readerClient.R().Post(baseURL + "/v2/" + junkRepo + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		resp, err = readerClient.R().Head(baseURL + fmt.Sprintf("/v2/%s/blobs/%s", junkRepo, blobDigest))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+		_, err = os.Stat(filepath.Join(dir, junkRepo))
+		So(os.IsNotExist(err), ShouldBeTrue)
+
+		resp, err = readerClient.R().
+			SetHeader("Range", "bytes=0-7").
+			Get(baseURL + fmt.Sprintf("/v2/%s/blobs/%s", junkRepo, blobDigest))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+		_, err = os.Stat(filepath.Join(dir, junkRepo))
+		So(os.IsNotExist(err), ShouldBeTrue)
+
+		// Missing local blob: ranged GET returns 404.
+		resp, err = readerClient.R().
+			SetHeader("Range", "bytes=0-64").
+			Get(baseURL + fmt.Sprintf("/v2/%s/blobs/%s", "other/empty", blobDigest))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+		_, err = os.Stat(filepath.Join(dir, "other"))
+		So(os.IsNotExist(err), ShouldBeTrue)
+	})
+}
+
+func TestAuthorizationMountBlobCELConditions(t *testing.T) {
+	Convey("canMount evaluates CEL policy conditions", t, func() {
+		conf := config.New()
+		conf.HTTP.Port = "0"
+
+		writer, _ := test.GenerateRandomString()
+		writerPass, _ := test.GenerateRandomString()
+		limited, _ := test.GenerateRandomString()
+		limitedPass, _ := test.GenerateRandomString()
+		writer = strings.ToLower(writer)
+		limited = strings.ToLower(limited)
+
+		content := test.GetBcryptCredString(writer, writerPass) +
+			test.GetBcryptCredString(limited, limitedPass)
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, content)
+
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+
+		// Writer seeds private/; limited has CEL limits on blocked/ and private/.
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				"**": config.PolicyGroup{
+					Policies: []config.Policy{
+						{
+							Users: []string{writer},
+							Actions: []string{
+								constants.ReadPermission,
+								constants.CreatePermission,
+							},
+						},
+						{
+							Users: []string{limited},
+							Actions: []string{
+								constants.ReadPermission,
+								constants.CreatePermission,
+							},
+							Conditions: []config.Condition{
+								{
+									Expression: `req.action != "create" || !req.repository.startsWith("blocked/")`,
+									Message:    "create under blocked/ not permitted",
+								},
+								{
+									Expression: `req.action != "read" || !req.repository.startsWith("private/")`,
+									Message:    "read under private/ not permitted",
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		dir := t.TempDir()
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.Dedupe = true
+		ctlr.Config.Storage.HydrateBlobOnRead = true
+
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+		defer cm.StopServer()
+
+		limitedClient := resty.New()
+		limitedClient.SetBasicAuth(limited, limitedPass)
+
+		img := CreateImageWith().RandomLayers(1, 2).DefaultConfig().Build()
+		err := UploadImageWithBasicAuth(img, baseURL, "allowed/src", "1.0", writer, writerPass)
+		So(err, ShouldBeNil)
+
+		privateImg := CreateImageWith().RandomLayers(1, 2).DefaultConfig().Build()
+		err = UploadImageWithBasicAuth(privateImg, baseURL, "private/src", "1.0", writer, writerPass)
+		So(err, ShouldBeNil)
+
+		allowedDigest := img.Manifest.Layers[0].Digest
+		privateDigest := privateImg.Manifest.Layers[0].Digest
+
+		// Middleware already denies POST create under blocked/ (403). HEAD only
+		// requires read, so rematerialize is gated by canMount's CEL create check.
+		resp, err := limitedClient.R().
+			SetQueryParam("mount", allowedDigest.String()).
+			Post(baseURL + "/v2/blocked/dest/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		resp, err = limitedClient.R().Head(baseURL + fmt.Sprintf("/v2/blocked/dest/blobs/%s", allowedDigest))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+		// Middleware allows create on allowed/dest; canMount applies CEL source-read.
+		resp, err = limitedClient.R().
+			SetQueryParam("mount", privateDigest.String()).
+			Post(baseURL + "/v2/allowed/dest/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+		resp, err = limitedClient.R().Head(baseURL + fmt.Sprintf("/v2/allowed/dest/blobs/%s", privateDigest))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+		// Control: limited can mount allowed → allowed when CEL permits create+read.
+		resp, err = limitedClient.R().
+			SetQueryParam("mount", allowedDigest.String()).
+			Post(baseURL + "/v2/allowed/dest2/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+	})
+}
+
+func TestBearerAuthMountBlobWithAccessControl(t *testing.T) {
+	Convey("traditional bearer can mount/rematerialize when accessControl is also set", t, func() {
+		serverCertPath, serverKeyPath, _, _ := setupBearerAuthServerCerts(t, tlsutils.KeyTypeRSA)
+
+		authTestServer := authutils.MakeAuthTestServer(serverKeyPath, "RS256", UnauthorizedNamespace)
+		defer authTestServer.Close()
+
+		conf := config.New()
+		conf.HTTP.Port = "0"
+
+		aurl, err := url.Parse(authTestServer.URL)
+		So(err, ShouldBeNil)
+
+		conf.HTTP.Auth = &config.AuthConfig{
+			Bearer: &config.BearerConfig{
+				Cert:    serverCertPath,
+				Realm:   authTestServer.URL + "/auth/token",
+				Service: aurl.Host,
+			},
+		}
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				"**": config.PolicyGroup{
+					Policies: []config.Policy{
+						{
+							Users: []string{"alice"},
+							Actions: []string{
+								constants.ReadPermission,
+								constants.CreatePermission,
+							},
+						},
+					},
+				},
+			},
+		}
+
+		ctlr := makeController(conf, t.TempDir())
+		ctlr.Config.Storage.Dedupe = true
+		ctlr.Config.Storage.HydrateBlobOnRead = true
+
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+		defer cm.StopServer()
+
+		getToken := func(method, challengeURL string) string {
+			resp, err := resty.R().Execute(method, challengeURL)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+			authorizationHeader := authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
+			resp, err = resty.R().
+				SetQueryParam("service", authorizationHeader.Service).
+				SetQueryParam("scope", authorizationHeader.Scope).
+				Get(authorizationHeader.Realm)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			var token authutils.AccessTokenResponse
+			err = json.Unmarshal(resp.Body(), &token)
+			So(err, ShouldBeNil)
+
+			return token.AccessToken
+		}
+
+		blob := []byte("bearer-mount-with-ac")
+		digest := godigest.FromBytes(blob)
+		srcRepo := "bearer/src"
+		destRepo := "bearer/dest"
+		rematRepo := "bearer/remat"
+
+		token := getToken(http.MethodPost, baseURL+"/v2/"+srcRepo+"/blobs/uploads/")
+		resp, err := resty.R().
+			SetHeader("Authorization", "Bearer "+token).
+			Post(baseURL + "/v2/" + srcRepo + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc := resp.Header().Get("Location")
+
+		putURL := baseURL + loc + "?digest=" + digest.String()
+		token = getToken(http.MethodPut, putURL)
+		resp, err = resty.R().
+			SetHeader("Authorization", "Bearer "+token).
+			SetHeader("Content-Length", strconv.Itoa(len(blob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", digest.String()).
+			SetBody(blob).
+			Put(baseURL + loc)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		mountURL := baseURL + "/v2/" + destRepo + "/blobs/uploads/?mount=" + digest.String()
+		token = getToken(http.MethodPost, mountURL)
+		resp, err = resty.R().
+			SetHeader("Authorization", "Bearer "+token).
+			SetQueryParam("mount", digest.String()).
+			Post(baseURL + "/v2/" + destRepo + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		headURL := baseURL + fmt.Sprintf("/v2/%s/blobs/%s", rematRepo, digest)
+		token = getToken(http.MethodHead, headURL)
+		resp, err = resty.R().
+			SetHeader("Authorization", "Bearer "+token).
+			Head(headURL)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 	})
 }
 
@@ -7366,10 +7760,16 @@ func TestCrossRepoMount(t *testing.T) {
 
 		So(os.SameFile(cacheFi, linkFi), ShouldEqual, true)
 
+		// Blob reads are repo-local: HEAD succeeds only where the blob was mounted.
+		headResponse, err = client.R().SetBasicAuth(username, password).
+			Head(fmt.Sprintf("%s/v2/zot-mount-test/blobs/%s", baseURL, manifestDigest))
+		So(err, ShouldBeNil)
+		So(headResponse.StatusCode(), ShouldEqual, http.StatusOK)
+
 		headResponse, err = client.R().SetBasicAuth(username, password).
 			Head(fmt.Sprintf("%s/v2/zot-cv-test/blobs/%s", baseURL, manifestDigest))
 		So(err, ShouldBeNil)
-		So(headResponse.StatusCode(), ShouldEqual, http.StatusOK)
+		So(headResponse.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 		// Invalid request
 		params = make(map[string]string)
@@ -7426,6 +7826,154 @@ func TestCrossRepoMount(t *testing.T) {
 			Head(fmt.Sprintf("%s/v2/%s/blobs/%s", baseURL, name, digest))
 		So(err, ShouldBeNil)
 		So(headResponse.StatusCode(), ShouldEqual, http.StatusNotFound)
+	})
+}
+
+func TestBlobReadRepoLocalAfterMountDelete(t *testing.T) {
+	Convey("blob HEAD and GET are repo-local after cross-repo mount and delete", t, func() {
+		conf := config.New()
+		conf.HTTP.Port = "0"
+
+		dir := t.TempDir()
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.Dedupe = true
+		ctlr.Config.Storage.GC = false
+
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+
+		defer cm.StopServer()
+
+		client := resty.New()
+
+		const (
+			repoDest = "oci-conformance/distribution-test"
+			repoSrc  = "oci-conformance/crossmount-test"
+		)
+
+		blob := []byte("mount-atomic-delete-test")
+		digest := godigest.FromBytes(blob).String()
+
+		resp, err := client.R().
+			SetHeader("Content-Type", "application/octet-stream").
+			SetHeader("Content-Length", strconv.Itoa(len(blob))).
+			SetQueryParam("digest", digest).
+			SetBody(blob).
+			Post(baseURL + "/v2/" + repoSrc + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		resp, err = client.R().
+			SetQueryParam("mount", digest).
+			Post(baseURL + "/v2/" + repoDest + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		headBlob := func(repo string) int {
+			head, headErr := client.R().Head(baseURL + "/v2/" + repo + "/blobs/" + digest)
+			So(headErr, ShouldBeNil)
+
+			return head.StatusCode()
+		}
+
+		getBlob := func(repo string, rangeHeader string) (int, []byte) {
+			req := client.R()
+			if rangeHeader != "" {
+				req.SetHeader("Range", rangeHeader)
+			}
+
+			get, getErr := req.Get(baseURL + "/v2/" + repo + "/blobs/" + digest)
+			So(getErr, ShouldBeNil)
+
+			return get.StatusCode(), get.Body()
+		}
+
+		So(headBlob(repoDest), ShouldEqual, http.StatusOK)
+
+		status, body := getBlob(repoDest, "")
+		So(status, ShouldEqual, http.StatusOK)
+		So(body, ShouldResemble, blob)
+
+		status, body = getBlob(repoDest, "bytes=0-4")
+		So(status, ShouldEqual, http.StatusPartialContent)
+		So(body, ShouldResemble, blob[:5])
+
+		resp, err = client.R().Delete(baseURL + "/v2/" + repoDest + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+		So(headBlob(repoDest), ShouldEqual, http.StatusNotFound)
+		So(headBlob(repoSrc), ShouldEqual, http.StatusOK)
+
+		status, _ = getBlob(repoDest, "")
+		So(status, ShouldEqual, http.StatusNotFound)
+
+		status, _ = getBlob(repoDest, "bytes=0-4")
+		So(status, ShouldEqual, http.StatusNotFound)
+
+		status, body = getBlob(repoSrc, "")
+		So(status, ShouldEqual, http.StatusOK)
+		So(body, ShouldResemble, blob)
+	})
+}
+
+func TestBlobReadRematerializeAfterMountDelete(t *testing.T) {
+	Convey("with hydrateBlobOnRead, HEAD rematerializes after delete", t, func() {
+		conf := config.New()
+		conf.HTTP.Port = "0"
+
+		dir := t.TempDir()
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.Dedupe = true
+		ctlr.Config.Storage.GC = false
+		ctlr.Config.Storage.HydrateBlobOnRead = true
+
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+		defer cm.StopServer()
+
+		client := resty.New()
+
+		const (
+			repoDest = "oci-conformance/distribution-test"
+			repoSrc  = "oci-conformance/crossmount-test"
+		)
+
+		blob := []byte("mount-rematerialize-on-read-test")
+		digest := godigest.FromBytes(blob).String()
+
+		resp, err := client.R().
+			SetHeader("Content-Type", "application/octet-stream").
+			SetHeader("Content-Length", strconv.Itoa(len(blob))).
+			SetQueryParam("digest", digest).
+			SetBody(blob).
+			Post(baseURL + "/v2/" + repoSrc + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		resp, err = client.R().
+			SetQueryParam("mount", digest).
+			Post(baseURL + "/v2/" + repoDest + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		resp, err = client.R().Delete(baseURL + "/v2/" + repoDest + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+		// Legacy path: HEAD rematerializes from the dedupe cache into dest.
+		head, err := client.R().Head(baseURL + "/v2/" + repoDest + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(head.StatusCode(), ShouldEqual, http.StatusOK)
+
+		get, err := client.R().
+			SetHeader("Range", "bytes=0-4").
+			Get(baseURL + "/v2/" + repoDest + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(get.StatusCode(), ShouldEqual, http.StatusPartialContent)
+		So(get.Body(), ShouldResemble, blob[:5])
 	})
 }
 
@@ -12582,7 +13130,7 @@ func TestPeriodicGC(t *testing.T) {
 
 		// periodic GC is enabled for sub store
 		So(string(data), ShouldContainSubstring,
-			fmt.Sprintf("\"SubPaths\":{\"/a\":{\"RootDirectory\":\"%s\",\"MaxRepos\":0,\"Dedupe\":false,\"RemoteCache\":false,\"RedirectBlobURL\":false,\"GC\":true,\"Commit\":false,\"GCDelay\":1000000000,\"GCInterval\":86400000000000", subDir)) //nolint:lll // gofumpt conflicts with lll
+			fmt.Sprintf("\"SubPaths\":{\"/a\":{\"RootDirectory\":\"%s\",\"MaxRepos\":0,\"Dedupe\":false,\"RemoteCache\":false,\"RedirectBlobURL\":false,\"HydrateBlobOnRead\":false,\"GC\":true,\"Commit\":false,\"GCDelay\":1000000000,\"GCInterval\":86400000000000", subDir)) //nolint:lll // gofumpt conflicts with lll
 	})
 
 	Convey("Periodic gc error", t, func() {
