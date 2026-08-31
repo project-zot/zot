@@ -49,6 +49,10 @@ type Options struct {
 	TimeWindow config.GCTimeWindow
 
 	ImageRetention config.ImageRetention
+
+	// StagingRoot is the local filesystem root whose <repo>/.sync/<uuid> trees block
+	// idle-repository removal during GC for this image store. Populated by RunGCTasks.
+	StagingRoot string
 }
 
 type GarbageCollect struct {
@@ -218,20 +222,25 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 		keep their grace period. This runs before deleteBlobUploads so that an upload not yet
 		old enough to be reaped still counts as in progress and keeps the repo, as
 		CleanupRepo's guard used to. */
-		removed, err := gc.imgStore.RemoveIdleRepository(repo, gc.opts.Delay)
-		if err != nil {
-			gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
-				Msg("failed to remove idle repo")
-
-			return err
-		}
-
-		if removed && gc.metaDB != nil {
-			if err := gc.metaDB.DeleteRepoMeta(repo); err != nil {
-				/* log, don't fail: the layout is already gone, so aborting the rest of cleanRepo
-				would not bring it back, and ParseStorage drops the stale record on next start */
+		if gc.opts.StagingRoot != "" && HasInProgressSessions(gc.opts.StagingRoot, repo, gc.log) {
+			gc.log.Info().Str("module", "gc").Str("repository", repo).
+				Msg("skipping repository removal: blocked by removal guard")
+		} else {
+			removed, err := gc.imgStore.RemoveIdleRepository(repo, gc.opts.Delay)
+			if err != nil {
 				gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
-					Msg("removed repo layout but failed to delete its meta record")
+					Msg("failed to remove idle repo")
+
+				return err
+			}
+
+			if removed && gc.metaDB != nil {
+				if err := gc.metaDB.DeleteRepoMeta(repo); err != nil {
+					/* log, don't fail: the layout is already gone, so aborting the rest of cleanRepo
+					would not bring it back, and ParseStorage drops the stale record on next start */
+					gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
+						Msg("removed repo layout but failed to delete its meta record")
+				}
 			}
 		}
 

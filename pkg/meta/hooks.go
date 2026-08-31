@@ -16,7 +16,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/storage"
-	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
+	"zotregistry.dev/zot/v2/pkg/storage/gc"
 )
 
 // priorTagManifest records where MetaDB believed each tag pointed before a digest PUT with tag=
@@ -224,7 +224,7 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 	if zcommon.IsReferrersTag(reference) {
 		// The store already deleted the referrers tag entry, which may have emptied the
 		// index; still attempt idle release (a no-op while content remains).
-		releaseIdleRepository(repo, storeController.GetImageStore(repo), metaDB, log)
+		releaseIdleRepository(repo, storeController, metaDB, log)
 
 		return nil
 	}
@@ -280,7 +280,7 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 
 	// The store delete has already gone through even when signature meta cleanup failed, so the
 	// index may be empty; always attempt idle release (a no-op while manifests or blobs remain).
-	releaseIdleRepository(repo, imgStore, metaDB, log)
+	releaseIdleRepository(repo, storeController, metaDB, log)
 
 	return metaErr
 }
@@ -290,7 +290,17 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 // maxRepos immediately without _catalog and the quota count diverging. A zero max blob age
 // reclaims the orphan blobs the deletes left behind. Failures are logged, not returned: the
 // manifest delete already succeeded, and ParseStorage corrects a stale record on next start.
-func releaseIdleRepository(repo string, imgStore storageTypes.ImageStore, metaDB mTypes.MetaDB, log log.Logger) {
+func releaseIdleRepository(repo string, storeController storage.StoreController, metaDB mTypes.MetaDB, log log.Logger,
+) {
+	if gc.HasInProgressSessions(storeController.SyncStagingRootForRepo(repo), repo, log) {
+		log.Info().Str("repository", repo).Str("component", "metadb").
+			Msg("skipping repository removal: blocked by removal guard")
+
+		return
+	}
+
+	imgStore := storeController.GetImageStore(repo)
+
 	var lockLatency time.Time
 
 	imgStore.Lock(&lockLatency)

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"path"
 	"testing"
 
@@ -15,6 +16,7 @@ import (
 	zerr "zotregistry.dev/zot/v2/errors"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
+	syncConstants "zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/meta"
 	"zotregistry.dev/zot/v2/pkg/meta/boltdb"
@@ -705,4 +707,90 @@ func TestOnDeleteManifest_OrphanedSignatureReferrerReleasesRepo(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(count, ShouldEqual, 0)
 		})
+}
+
+func TestOnDeleteManifest_syncStagingBlocksRepoRemoval(t *testing.T) {
+	Convey("OnDeleteManifest does not remove a repo while a sync staging session is active", t, func() {
+		rootDir := t.TempDir()
+		storeController := storage.StoreController{}
+		log := log.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+
+		storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil)
+
+		params := boltdb.DBParameters{RootDir: rootDir}
+		boltDriver, err := boltdb.GetBoltDriver(params)
+		So(err, ShouldBeNil)
+
+		metaDB, err := boltdb.New(boltDriver, log)
+		So(err, ShouldBeNil)
+
+		imgStore := storeController.GetImageStore("repo")
+		ctx := context.Background()
+		repo := "repo"
+
+		image := CreateDefaultImage()
+		digest := image.Digest()
+		body := image.ManifestDescriptor.Data
+
+		So(WriteImageToFileSystem(image, repo, "latest", storeController), ShouldBeNil)
+		So(meta.OnUpdateManifest(ctx, repo, "latest", ispec.MediaTypeImageManifest, digest, body,
+			storeController, metaDB, log), ShouldBeNil)
+
+		So(imgStore.DeleteImageManifest(ctx, repo, digest.String(), false), ShouldBeNil)
+
+		session := path.Join(rootDir, repo, syncConstants.SyncBlobUploadDir, "session-uuid")
+		So(os.MkdirAll(session, 0o755), ShouldBeNil)
+
+		So(meta.OnDeleteManifest(repo, digest.String(), ispec.MediaTypeImageManifest, digest, body,
+			storeController, metaDB, log), ShouldBeNil)
+
+		repos, err := imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		So(repos, ShouldContain, repo)
+
+		_, err = metaDB.GetRepoMeta(ctx, repo)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("OnDeleteManifest blocks removal when staging lives only under SyncDownloadDir", t, func() {
+		rootDir := t.TempDir()
+		downloadDir := t.TempDir()
+		storeController := storage.StoreController{SyncDownloadDir: downloadDir}
+		log := log.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+
+		storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil)
+
+		params := boltdb.DBParameters{RootDir: rootDir}
+		boltDriver, err := boltdb.GetBoltDriver(params)
+		So(err, ShouldBeNil)
+
+		metaDB, err := boltdb.New(boltDriver, log)
+		So(err, ShouldBeNil)
+
+		imgStore := storeController.GetImageStore("repo")
+		ctx := context.Background()
+		repo := "repo"
+
+		image := CreateDefaultImage()
+		digest := image.Digest()
+		body := image.ManifestDescriptor.Data
+
+		So(WriteImageToFileSystem(image, repo, "latest", storeController), ShouldBeNil)
+		So(meta.OnUpdateManifest(ctx, repo, "latest", ispec.MediaTypeImageManifest, digest, body,
+			storeController, metaDB, log), ShouldBeNil)
+
+		So(imgStore.DeleteImageManifest(ctx, repo, digest.String(), false), ShouldBeNil)
+
+		session := path.Join(downloadDir, repo, syncConstants.SyncBlobUploadDir, "session-uuid")
+		So(os.MkdirAll(session, 0o755), ShouldBeNil)
+
+		So(meta.OnDeleteManifest(repo, digest.String(), ispec.MediaTypeImageManifest, digest, body,
+			storeController, metaDB, log), ShouldBeNil)
+
+		repos, err := imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		So(repos, ShouldContain, repo)
+	})
 }

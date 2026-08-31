@@ -547,7 +547,7 @@ func (c *Controller) StartBackgroundTasks() {
 		}
 	}
 
-	// Run GC and retention tasks
+	// Run GC and retention tasks (includes local .sync staging guard and orphan reaper).
 	RunGCTasks(c.Config, c.StoreController, c.MetaDB, c.taskScheduler, c.Log, c.Audit, c.Metrics)
 
 	// Enable running dedupe blobs both ways (dedupe or restore deduped blobs)
@@ -612,14 +612,17 @@ func (c *Controller) StartBackgroundTasks() {
 func RunGCTasks(conf *config.Config, storeController storage.StoreController, metaDB mTypes.MetaDB,
 	taskScheduler *scheduler.Scheduler, logger log.Logger, audit *log.Logger, metrics monitoring.MetricServer,
 ) {
+	gc.RunSyncSessionReaperPeriodically(conf, storeController, taskScheduler, logger)
+
 	// Enable running garbage-collect periodically for DefaultStore
 	storageConfig := conf.CopyStorageConfig()
 	if storageConfig.GC {
 		gc := gc.NewGarbageCollect(storeController.DefaultStore, metaDB, gc.Options{
 			Delay:             storageConfig.GCDelay,
-			ImageRetention:    storageConfig.Retention,
 			MaxSchedulerDelay: storageConfig.GCMaxSchedulerDelay,
 			TimeWindow:        storageConfig.GCTimeWindow,
+			ImageRetention:    storageConfig.Retention,
+			StagingRoot:       storeController.SyncStagingRootForImageStore(storeController.DefaultStore),
 		}, audit, logger, metrics)
 
 		gc.CleanImageStorePeriodically(storageConfig.GCInterval, taskScheduler)
@@ -633,9 +636,11 @@ func RunGCTasks(conf *config.Config, storeController storage.StoreController, me
 				gc := gc.NewGarbageCollect(storeController.SubStore[route], metaDB,
 					gc.Options{
 						Delay:             subStorageConfig.GCDelay,
-						ImageRetention:    subStorageConfig.Retention,
 						MaxSchedulerDelay: subStorageConfig.GCMaxSchedulerDelay,
 						TimeWindow:        subStorageConfig.GCTimeWindow,
+						ImageRetention:    subStorageConfig.Retention,
+						StagingRoot: storeController.SyncStagingRootForImageStore(
+							storeController.SubStore[route]),
 					}, audit, logger, metrics)
 
 				gc.CleanImageStorePeriodically(subStorageConfig.GCInterval, taskScheduler)

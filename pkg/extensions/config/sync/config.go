@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/mitchellh/mapstructure"
+
+	syncConstants "zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 )
 
 // TokenExchangeGrantType is the RFC 8693 token exchange grant, used to trade a subject
@@ -222,6 +224,37 @@ func (config *OAuth2HelperConfig) Validate() error {
 // Default is true when SyncLegacyCosignTags is unset (nil).
 func (r RegistryConfig) ShouldSyncLegacyCosignTags() bool {
 	return r.SyncLegacyCosignTags == nil || *r.SyncLegacyCosignTags
+}
+
+// SyncTimeoutOrDefault returns the configured sync timeout, or DefaultSyncTimeout when unset.
+func (r RegistryConfig) SyncTimeoutOrDefault() time.Duration {
+	if r.SyncTimeout <= 0 {
+		return syncConstants.DefaultSyncTimeout
+	}
+
+	return r.SyncTimeout
+}
+
+// LargestSyncTimeout returns the largest SyncTimeout across registries, with per-registry
+// defaults applied. When sync is not configured it returns DefaultSyncTimeout.
+func (c *Config) LargestSyncTimeout() time.Duration {
+	if c == nil {
+		return syncConstants.DefaultSyncTimeout
+	}
+
+	maxTimeout := time.Duration(0)
+
+	for _, reg := range c.Registries {
+		if timeout := reg.SyncTimeoutOrDefault(); timeout > maxTimeout {
+			maxTimeout = timeout
+		}
+	}
+
+	if maxTimeout == 0 {
+		return syncConstants.DefaultSyncTimeout
+	}
+
+	return maxTimeout
 }
 
 type Content struct {

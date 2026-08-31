@@ -552,6 +552,24 @@ type GlobalStorageConfig struct {
 	FastRestart *bool `mapstructure:",omitempty"`
 }
 
+// LargestGCDelay returns the largest GCDelay across the default store and substores,
+// falling back to DefaultGCDelay when none is configured.
+func (g GlobalStorageConfig) LargestGCDelay() time.Duration {
+	maxDelay := g.GCDelay
+
+	for _, sub := range g.SubPaths {
+		if sub.GCDelay > maxDelay {
+			maxDelay = sub.GCDelay
+		}
+	}
+
+	if maxDelay <= 0 {
+		return storageConstants.DefaultGCDelay
+	}
+
+	return maxDelay
+}
+
 type AccessControlConfig struct {
 	Repositories Repositories `json:"repositories" mapstructure:"repositories"`
 	AdminPolicy  Policy
@@ -1291,6 +1309,30 @@ func (c *Config) CopyExtensionsConfig() *extconf.ExtensionConfig {
 	_ = deepcopy.Copy(extensionsCopy, c.Extensions)
 
 	return extensionsCopy
+}
+
+// SyncStagingDownloadDir returns extensions.sync.downloadDir when configured.
+func (c *Config) SyncStagingDownloadDir() string {
+	if c == nil {
+		return ""
+	}
+
+	extensionsConfig := c.CopyExtensionsConfig()
+	if extensionsConfig == nil {
+		return ""
+	}
+
+	return extensionsConfig.SyncStagingDownloadDir()
+}
+
+// LargestSyncTimeout returns the largest configured sync registry timeout.
+func (c *Config) LargestSyncTimeout() time.Duration {
+	var extensionsConfig *extconf.ExtensionConfig
+	if c != nil {
+		extensionsConfig = c.CopyExtensionsConfig()
+	}
+
+	return extensionsConfig.LargestSyncTimeout()
 }
 
 // CopyLogConfig returns a copy of the log config if it exists.

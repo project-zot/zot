@@ -22,6 +22,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/compat"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
+	syncConstants "zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/meta"
 	"zotregistry.dev/zot/v2/pkg/meta/boltdb"
@@ -3439,6 +3440,132 @@ func TestGCRemoveRepoAfterAllBlobsGCed(t *testing.T) {
 		repos, err := imgStore.GetRepositories()
 		So(err, ShouldBeNil)
 		So(repos, ShouldContain, repoName)
+	})
+
+	Convey("repo kept when a .sync staging session is in progress after all blobs were GCed", t, func() {
+		log := zlog.NewTestLogger()
+		audit := zlog.NewAuditLogger("debug", "/dev/null")
+		metrics := monitoring.NewNopMetricServer()
+
+		rootDir := t.TempDir()
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+
+		storeController := storage.StoreController{}
+		storeController.DefaultStore = imgStore
+
+		ctx := context.Background()
+		repoName := "gc-remove-repo-sync-guard"
+
+		img := CreateRandomImage()
+		err := WriteImageToFileSystem(img, repoName, "v1", storeController)
+		So(err, ShouldBeNil)
+
+		err = imgStore.DeleteImageManifest(ctx, repoName, "v1", true)
+		So(err, ShouldBeNil)
+
+		syncSession := path.Join(rootDir, repoName, syncConstants.SyncBlobUploadDir, "session-uuid")
+		So(os.MkdirAll(syncSession, 0o755), ShouldBeNil)
+
+		time.Sleep(1 * time.Second)
+
+		gcInstance := gc.NewGarbageCollect(imgStore, nil, gc.Options{
+			Delay: 1 * time.Second,
+			ImageRetention: config.ImageRetention{
+				Delay: 1 * time.Second,
+			},
+			StagingRoot: rootDir,
+		}, audit, log, metrics)
+
+		err = gcInstance.CleanRepo(ctx, repoName)
+		So(err, ShouldBeNil)
+
+		repos, err := imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		So(repos, ShouldContain, repoName)
+	})
+
+	Convey("repo directory is removed when an empty .sync dir does not block removal", t, func() {
+		log := zlog.NewTestLogger()
+		audit := zlog.NewAuditLogger("debug", "/dev/null")
+		metrics := monitoring.NewNopMetricServer()
+
+		rootDir := t.TempDir()
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+
+		storeController := storage.StoreController{}
+		storeController.DefaultStore = imgStore
+
+		ctx := context.Background()
+		repoName := "gc-remove-repo-empty-sync"
+
+		img := CreateRandomImage()
+		err := WriteImageToFileSystem(img, repoName, "v1", storeController)
+		So(err, ShouldBeNil)
+
+		err = imgStore.DeleteImageManifest(ctx, repoName, "v1", true)
+		So(err, ShouldBeNil)
+
+		syncDir := path.Join(rootDir, repoName, syncConstants.SyncBlobUploadDir)
+		So(os.MkdirAll(syncDir, 0o755), ShouldBeNil)
+
+		time.Sleep(1 * time.Second)
+
+		gcInstance := gc.NewGarbageCollect(imgStore, nil, gc.Options{
+			Delay: 1 * time.Second,
+			ImageRetention: config.ImageRetention{
+				Delay: 1 * time.Second,
+			},
+			StagingRoot: rootDir,
+		}, audit, log, metrics)
+
+		err = gcInstance.CleanRepo(ctx, repoName)
+		So(err, ShouldBeNil)
+
+		repos, err := imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		So(repos, ShouldNotContain, repoName)
+	})
+
+	Convey("repo directory is removed when StagingRoot is empty even if a .sync session exists", t, func() {
+		log := zlog.NewTestLogger()
+		audit := zlog.NewAuditLogger("debug", "/dev/null")
+		metrics := monitoring.NewNopMetricServer()
+
+		rootDir := t.TempDir()
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+
+		storeController := storage.StoreController{}
+		storeController.DefaultStore = imgStore
+
+		ctx := context.Background()
+		repoName := "gc-remove-repo-no-staging-root"
+
+		img := CreateRandomImage()
+		err := WriteImageToFileSystem(img, repoName, "v1", storeController)
+		So(err, ShouldBeNil)
+
+		err = imgStore.DeleteImageManifest(ctx, repoName, "v1", true)
+		So(err, ShouldBeNil)
+
+		syncSession := path.Join(rootDir, repoName, syncConstants.SyncBlobUploadDir, "session-uuid")
+		So(os.MkdirAll(syncSession, 0o755), ShouldBeNil)
+
+		time.Sleep(1 * time.Second)
+
+		gcInstance := gc.NewGarbageCollect(imgStore, nil, gc.Options{
+			Delay: 1 * time.Second,
+			ImageRetention: config.ImageRetention{
+				Delay: 1 * time.Second,
+			},
+			StagingRoot: "",
+		}, audit, log, metrics)
+
+		err = gcInstance.CleanRepo(ctx, repoName)
+		So(err, ShouldBeNil)
+
+		repos, err := imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		So(repos, ShouldNotContain, repoName)
 	})
 }
 

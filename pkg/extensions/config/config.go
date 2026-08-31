@@ -5,6 +5,7 @@ import (
 
 	"zotregistry.dev/zot/v2/pkg/extensions/config/events"
 	"zotregistry.dev/zot/v2/pkg/extensions/config/sync"
+	syncConstants "zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 )
 
 // BaseConfig has params applicable to all extensions.
@@ -238,6 +239,24 @@ func (e *ExtensionConfig) GetSyncConfig() *sync.Config {
 	}
 
 	return e.Sync
+}
+
+// SyncStagingDownloadDir returns extensions.sync.downloadDir when configured.
+func (e *ExtensionConfig) SyncStagingDownloadDir() string {
+	if e == nil || e.Sync == nil {
+		return ""
+	}
+
+	return e.Sync.DownloadDir
+}
+
+// LargestSyncTimeout returns the largest configured sync registry timeout.
+func (e *ExtensionConfig) LargestSyncTimeout() time.Duration {
+	if e == nil || e.Sync == nil {
+		return syncConstants.DefaultSyncTimeout
+	}
+
+	return e.Sync.LargestSyncTimeout()
 }
 
 // GetMetricsPrometheusConfig returns the metrics prometheus config.

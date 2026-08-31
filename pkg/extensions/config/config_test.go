@@ -3,12 +3,14 @@ package config_test
 import (
 	"errors"
 	"testing"
+	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.dev/zot/v2/pkg/extensions/config"
 	"zotregistry.dev/zot/v2/pkg/extensions/config/events"
 	"zotregistry.dev/zot/v2/pkg/extensions/config/sync"
+	syncConstants "zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 )
 
 var (
@@ -553,6 +555,35 @@ func TestExtensionConfig(t *testing.T) {
 		Convey("Test GetSyncConfig()", func() {
 			testGetterWithNilConfig((*config.ExtensionConfig).GetSyncConfig, nil)
 			testGetterWithValidConfig("Sync", (*config.ExtensionConfig).GetSyncConfig, buildSyncConfig)
+		})
+
+		Convey("Test SyncStagingDownloadDir()", func() {
+			testGetterWithNilConfig((*config.ExtensionConfig).SyncStagingDownloadDir, "")
+			testGetterWithNilSubConfig("Sync", (*config.ExtensionConfig).SyncStagingDownloadDir, "")
+
+			Convey("Test with sync downloadDir configured", func() {
+				enabled := true
+				extensionConfig := buildSyncConfig(enabled)
+				extensionConfig.Sync.DownloadDir = "/tmp/sync-staging"
+
+				So(extensionConfig.SyncStagingDownloadDir(), ShouldEqual, "/tmp/sync-staging")
+			})
+		})
+
+		Convey("Test LargestSyncTimeout()", func() {
+			testGetterWithNilConfig((*config.ExtensionConfig).LargestSyncTimeout, syncConstants.DefaultSyncTimeout)
+			testGetterWithNilSubConfig("Sync", (*config.ExtensionConfig).LargestSyncTimeout, syncConstants.DefaultSyncTimeout)
+
+			Convey("returns largest configured registry timeout", func() {
+				enabled := true
+				extensionConfig := buildSyncConfig(enabled)
+				extensionConfig.Sync.Registries = []sync.RegistryConfig{
+					{SyncTimeout: 2 * time.Hour},
+					{SyncTimeout: 5 * time.Hour},
+				}
+
+				So(extensionConfig.LargestSyncTimeout(), ShouldEqual, 5*time.Hour)
+			})
 		})
 
 		Convey("Test GetMetricsPrometheusConfig()", func() {
