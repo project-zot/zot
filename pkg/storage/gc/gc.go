@@ -297,6 +297,29 @@ func isKnownManifestMediaType(mediaType string) bool {
 	return common.IsImageIndexMediaType(mediaType) || common.IsImageManifestMediaType(mediaType)
 }
 
+// logicalRepoRefsStore is implemented by image stores that keep repository blob ownership
+// only in the blob-ref index instead of as objects under the repo's own blobs dir. It is an
+// optional interface rather than part of storageTypes.ImageStore so stores (and mocks) that
+// do not know about it keep the historical behaviour of a physical, authoritative listing.
+type logicalRepoRefsStore interface {
+	UsesLogicalRepoRefs() bool
+}
+
+func (gc GarbageCollect) usesLogicalRepoRefs() bool {
+	store, ok := gc.imgStore.(logicalRepoRefsStore)
+
+	return ok && store.UsesLogicalRepoRefs()
+}
+
+// removeStaleManifestEntries prunes index.Manifests descriptors whose blobs are gone from storage.
+//
+// It refuses to run at all when the repo's blob enumeration comes back empty while index.json still
+// lists manifests, and the store resolves repo blobs through the blob-ref index: there, GetAllBlobs
+// reads that index rather than the backing store, so an empty answer means the index is unavailable
+// (a fresh or lost cache against an already migrated bucket, say), not that every manifest went
+// stale. Pruning on that reading would rewrite index.json to an empty manifest list and lose the
+// repo irrecoverably. Stores that enumerate the blobs dir itself are left alone: an empty listing
+// really is authoritative there, and the prune is the repair path for it.
 func (gc GarbageCollect) removeStaleManifestEntries(repo string, index *ispec.Index) error {
 	if gc.opts.ImageRetention.DryRun {
 		return nil
@@ -310,6 +333,14 @@ func (gc GarbageCollect) removeStaleManifestEntries(repo string, index *ispec.In
 		}
 
 		allBlobs = []godigest.Digest{}
+	}
+
+	if len(allBlobs) == 0 && len(index.Manifests) > 0 && gc.usesLogicalRepoRefs() {
+		gc.log.Error().Str("module", "gc").Str("repository", repo).
+			Int("manifests", len(index.Manifests)).
+			Msg("blob resolution index unavailable for repository, skipping stale manifest prune")
+
+		return fmt.Errorf("%w: repository %s", zerr.ErrBlobRefIndexUnavailable, repo)
 	}
 
 	existingBlobs := make(map[string]bool, len(allBlobs))

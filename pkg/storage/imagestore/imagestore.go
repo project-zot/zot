@@ -202,6 +202,14 @@ func (is *ImageStore) DirExists(d string) bool {
 	return is.storeDriver.DirExists(d)
 }
 
+// UsesLogicalRepoRefs reports whether this store represents repository blob ownership only
+// as metadata in the blob-ref index rather than as objects under the repo's own blobs dir
+// (see blobLifecycle.UsesLogicalRepoRefs). Callers outside this package consume it through
+// a narrow optional interface, so it is not part of storageTypes.ImageStore.
+func (is *ImageStore) UsesLogicalRepoRefs() bool {
+	return is.lifecycle.UsesLogicalRepoRefs()
+}
+
 // NewImageStore returns a new image store backed by cloud storages.
 // see https://github.com/docker/docker.github.io/tree/master/registry/storage-drivers
 // Use the last argument to properly set a cache database, or it will default to boltDB local storage.
