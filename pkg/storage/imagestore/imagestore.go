@@ -3737,6 +3737,17 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 
 	is.log.Info().Str("digest", digest.String()).Str("component", "dedupe").Msg("deduping blobs for digest")
 
+	if is.lifecycle.UsesLogicalRepoRefs() {
+		if err := is.dedupeLogicalRemoteBlob(ctx, digest, duplicateBlobs); err != nil {
+			return err
+		}
+
+		is.log.Info().Str("digest", digest.String()).Str("component", "dedupe").
+			Msg("deduping blobs for digest finished successfully")
+
+		return nil
+	}
+
 	var originalBlob string
 
 	// rebuild from dedupe false to true. duplicateBlobs can span many repos for one
@@ -3835,6 +3846,91 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 
 	is.log.Info().Str("digest", digest.String()).Str("component", "dedupe").
 		Msg("deduping blobs for digest finished successfully")
+
+	return nil
+}
+
+// dedupeLogicalRemoteBlob is dedupeBlobs' counterpart for a logical-repo-refs backend
+// (see restoreLogicalRemoteBlob, its mirror image in the other direction). LinkBlob is a
+// no-op on these backends, so dedupeBlobs' plain "link the rest to whichever copy came
+// first" loop would leave every per-repo duplicate's real content in place forever - this
+// promotes one real copy into the global blobstore (matching upgradeToGlobalBlobstore's
+// promote-then-reclaim pattern) and physically removes every repo's now-redundant copy.
+func (is *ImageStore) dedupeLogicalRemoteBlob(ctx context.Context, digest godigest.Digest, duplicateBlobs []string) error {
+	globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+
+	if _, err := is.storeDriver.Stat(globalBlobPath); err != nil {
+		var pathNotFound driver.PathNotFoundError
+		if !errors.As(err, &pathNotFound) {
+			return err
+		}
+
+		originalBlob, err := is.getOriginalBlob(digest, duplicateBlobs)
+		if err != nil {
+			// Every path in the listing may have been deleted since it was taken - see
+			// restoreDedupedBlobs' identical handling of this same race.
+			if !is.anyBlobExists(duplicateBlobs) {
+				is.log.Debug().Str("digest", digest.String()).Str("component", "dedupe").
+					Msg("all blobs for digest deleted since they were listed, nothing to dedupe")
+
+				return nil
+			}
+
+			is.log.Error().Err(err).Str("component", "dedupe").Msg("failed to find original blob")
+
+			return zerr.ErrDedupeRebuild
+		}
+
+		algoDir := path.Join(is.rootDir, storageConstants.GlobalBlobsRepo,
+			ispec.ImageBlobsDir, digest.Algorithm().String())
+		if err := is.storeDriver.EnsureDir(algoDir); err != nil {
+			is.log.Error().Str("directory", algoDir).Err(err).Msg("failed to create dir")
+
+			return err
+		}
+
+		if err := is.lifecycle.PromoteCandidate(originalBlob, globalBlobPath); err != nil {
+			is.log.Error().Err(err).Str("src", originalBlob).Str("dst", globalBlobPath).
+				Str("component", "dedupe").Msg("failed to promote blob to global blobstore")
+
+			return err
+		}
+
+		if err := is.putBlobRef(digest, globalBlobPath); err != nil {
+			return err
+		}
+	}
+
+	for _, blobPath := range duplicateBlobs {
+		if zcommon.IsContextDone(ctx) {
+			return ctx.Err()
+		}
+
+		repo, err := is.repoFromBlobPath(blobPath)
+		if err != nil {
+			return err
+		}
+
+		if repo == storageConstants.GlobalBlobsRepo {
+			continue
+		}
+
+		err = is.WithRepoLock(repo, func() error {
+			if ok := is.cache.HasBlob(digest, blobPath); !ok {
+				if err := is.putBlobRef(digest, blobPath); err != nil {
+					return err
+				}
+			}
+
+			return is.lifecycle.RemoveMigratedRepoBlob(globalBlobPath, blobPath)
+		})
+		if err != nil {
+			var pathNotFound driver.PathNotFoundError
+			if !errors.As(err, &pathNotFound) {
+				return err
+			}
+		}
+	}
 
 	return nil
 }
