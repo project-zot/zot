@@ -681,76 +681,99 @@ func TestService(t *testing.T) {
 		})
 	})
 
-	Convey("test assured channel waiting path", t, func() {
-		// Strategy: Pre-populate requestStore with a channel to GUARANTEE the channel waiting code path
-		// This ensures the "waiting on channel" message is logged and the channel receive happens
+	Convey("test singleflight deduplicates concurrent on-demand sync calls", t, func() {
+		runConcurrentDedup := func(t *testing.T, syncFn func(*BaseOnDemand) error, syncCalls *atomic.Int32, wantErr error) {
+			t.Helper()
 
-		Convey("SyncImage assured channel waiting", func() {
+			entered := make(chan struct{})
+			release := make(chan struct{})
 			onDemand := NewOnDemand(log.NewTestLogger())
+			onDemand.Add(&countingOnDemandService{
+				syncCalls: syncCalls,
+				entered:   entered,
+				release:   release,
+				retErr:    wantErr,
+			})
 
-			// Create request and pre-populate with a channel that we control
-			req := request{
-				repo:         "test-guaranteed-channel-image",
-				reference:    "guaranteed-image-tag",
-				serviceID:    0,
-				isBackground: false,
+			const numCallers = 4
+			errCh := make(chan error, numCallers)
+
+			run := func() {
+				errCh <- syncFn(onDemand)
 			}
 
-			// Create a channel that we control completely
-			pendingChannel := make(chan error, 1)
-			onDemand.requestStore.Store(req, pendingChannel)
+			// Start the leader first; it registers the in-flight singleflight entry and
+			// blocks in the mock service until release.
+			go run()
 
-			// Start request that will wait on our channel
-			requestCompleted := make(chan error)
-			go func() {
-				err := onDemand.SyncImage(context.Background(), "test-guaranteed-channel-image", "guaranteed-image-tag")
-				requestCompleted <- err
-			}()
+			select {
+			case <-entered:
+			case <-time.After(5 * time.Second):
+				t.Fatal("timed out waiting for in-flight sync to start")
+			}
 
-			// Wait a moment for the request to reach the channel waiting code
-			time.Sleep(50 * time.Millisecond)
+			var waitersStarted sync.WaitGroup
+			waitersStarted.Add(numCallers - 1)
 
-			// Send error through our controlled channel - this proves channel waiting worked
-			pendingChannel <- errors.New("guaranteed channel error")
+			for range numCallers - 1 {
+				go func() {
+					waitersStarted.Done()
+					run()
+				}()
+			}
 
-			// Verify the request got our controlled error
-			err := <-requestCompleted
-			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldEqual, "guaranteed channel error")
+			// Wait until every waiter goroutine is running; the leader still holds the flight open.
+			waitersStarted.Wait()
+			close(release)
+
+			for range numCallers {
+				select {
+				case err := <-errCh:
+					if wantErr == nil {
+						So(err, ShouldBeNil)
+					} else {
+						So(err, ShouldEqual, wantErr)
+					}
+				case <-time.After(5 * time.Second):
+					t.Fatal("timed out waiting for concurrent on-demand sync")
+				}
+			}
+
+			So(syncCalls.Load(), ShouldEqual, 1)
+		}
+
+		Convey("SyncImage success", func() {
+			var syncCalls atomic.Int32
+
+			runConcurrentDedup(t, func(onDemand *BaseOnDemand) error {
+				return onDemand.SyncImage(context.Background(), "dedup-repo", "dedup-tag")
+			}, &syncCalls, nil)
 		})
 
-		Convey("SyncReferrers assured channel waiting", func() {
-			onDemand := NewOnDemand(log.NewTestLogger())
+		Convey("SyncReferrers success", func() {
+			var syncCalls atomic.Int32
 
-			// Create request and pre-populate with a channel that we control
-			req := request{
-				repo:         "test-guaranteed-channel-referrers",
-				reference:    "sha256:guaranteed",
-				serviceID:    0,
-				isBackground: false,
-			}
+			runConcurrentDedup(t, func(onDemand *BaseOnDemand) error {
+				return onDemand.SyncReferrers(context.Background(), "dedup-referrer-repo", "sha256:dedup", nil)
+			}, &syncCalls, nil)
+		})
 
-			// Create a channel that we control completely
-			pendingChannel := make(chan error, 1)
-			onDemand.requestStore.Store(req, pendingChannel)
+		Convey("SyncImage shares leader error", func() {
+			var syncCalls atomic.Int32
+			wantErr := errors.New("sentinel sync image error")
 
-			// Start request that will wait on our channel
-			requestCompleted := make(chan error)
-			go func() {
-				err := onDemand.SyncReferrers(context.Background(), "test-guaranteed-channel-referrers", "sha256:guaranteed", []string{"signature"})
-				requestCompleted <- err
-			}()
+			runConcurrentDedup(t, func(onDemand *BaseOnDemand) error {
+				return onDemand.SyncImage(context.Background(), "dedup-repo-err", "dedup-tag")
+			}, &syncCalls, wantErr)
+		})
 
-			// Wait a moment for the request to reach the channel waiting code
-			time.Sleep(50 * time.Millisecond)
+		Convey("SyncReferrers shares leader error", func() {
+			var syncCalls atomic.Int32
+			wantErr := errors.New("sentinel sync referrers error")
 
-			// Send error through our controlled channel - this proves channel waiting worked
-			pendingChannel <- errors.New("guaranteed referrer channel error")
-
-			// Verify the request got our controlled error
-			err := <-requestCompleted
-			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldEqual, "guaranteed referrer channel error")
+			runConcurrentDedup(t, func(onDemand *BaseOnDemand) error {
+				return onDemand.SyncReferrers(context.Background(), "dedup-referrer-repo-err", "sha256:dedup", nil)
+			}, &syncCalls, wantErr)
 		})
 	})
 }
@@ -2718,6 +2741,44 @@ func TestCredentialRefreshOnEverySyncEntryPoint(t *testing.T) {
 		})
 	})
 }
+
+// countingOnDemandService is a minimal Service that counts SyncImage/SyncReferrers calls.
+type countingOnDemandService struct {
+	syncCalls *atomic.Int32
+	entered   chan struct{}
+	release   chan struct{}
+	retErr    error
+}
+
+func (s *countingOnDemandService) GetNextRepo(_ string) (string, error) { return "", nil }
+
+func (s *countingOnDemandService) SyncRepo(_ context.Context, _ string) error { return nil }
+
+func (s *countingOnDemandService) waitUntilReleased() {
+	s.syncCalls.Add(1)
+	s.entered <- struct{}{}
+	<-s.release
+}
+
+func (s *countingOnDemandService) SyncImage(_ context.Context, _, _ string) error {
+	s.waitUntilReleased()
+
+	return s.retErr
+}
+
+func (s *countingOnDemandService) SyncReferrers(_ context.Context, _, _ string, _ []string) error {
+	s.waitUntilReleased()
+
+	return s.retErr
+}
+
+func (s *countingOnDemandService) ResetCatalog() {}
+
+func (s *countingOnDemandService) CanRetryOnError() bool { return false }
+
+func (s *countingOnDemandService) GetSyncTimeout() time.Duration { return time.Minute }
+
+func (s *countingOnDemandService) ShouldCheckUpstream(_, _ string) bool { return true }
 
 // mockCheckService is a minimal Service implementation for exercising
 // BaseOnDemand.ShouldCheckUpstreamManifest.
