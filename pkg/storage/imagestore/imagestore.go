@@ -1959,17 +1959,18 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 	// over from past operations, not concurrent-with-this-call ones, so there's no
 	// need to release and reacquire between retries.
 	return is.WithBlobstoreAndRepoLock(dstRepo, func() error {
-		// Local hardlinks dst below (first-writer promotion links it too, not just
-		// repeat dedupes), so it needs dstRepo's OCI layout and digest-algorithm blobs
-		// dir to physically exist - dstRepo may have been GC'd, or never held this
-		// algorithm yet. Remote backends track ownership only in metadata (LinkBlob is
-		// a no-op there), so this is unneeded - and dstRepo may not even be a real
-		// on-disk repo, e.g. in error-injection tests.
-		if !is.lifecycle.UsesLogicalRepoRefs() {
-			if err := is.initRepo(context.Background(), dstRepo); err != nil {
-				return err
-			}
+		// Recreate dstRepo's OCI layout (oci-layout, index.json) regardless of backend:
+		// every repo needs this skeleton to be walkable/queryable, and dstRepo may have
+		// been GC'd, or this may be its first write ever (first-writer promotion links
+		// dst too, not just repeat dedupes).
+		if err := is.initRepo(context.Background(), dstRepo); err != nil {
+			return err
+		}
 
+		// The digest-algorithm blobs dir is only needed physically for local hardlinks
+		// below; remote backends track ownership only in metadata (LinkBlob is a no-op
+		// there), so skip it there.
+		if !is.lifecycle.UsesLogicalRepoRefs() {
 			dstDir := path.Join(is.rootDir, dstRepo, ispec.ImageBlobsDir, dstDigest.Algorithm().String())
 			if err := is.storeDriver.EnsureDir(dstDir); err != nil {
 				is.log.Error().Str("directory", dstDir).Err(err).Msg("failed to create dir")
