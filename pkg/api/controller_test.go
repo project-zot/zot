@@ -5423,6 +5423,7 @@ func TestAuthnMetaDBErrors(t *testing.T) {
 func TestAuthorization(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		conf := config.New()
+		conf.Storage.GC = false
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
@@ -5602,6 +5603,7 @@ func TestGetUsername(t *testing.T) {
 func TestAuthorizationMountBlob(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		conf := config.New()
+		conf.Storage.GC = false
 		conf.HTTP.Port = "0"
 		// have two users: one for  user Policy, and another for default policy
 		username1, _ := test.GenerateRandomString()
@@ -5757,6 +5759,7 @@ func TestBearerAuthorizationMountBlob(t *testing.T) {
 		defer authTestServer.Close()
 
 		conf := config.New()
+		conf.Storage.GC = false
 		conf.HTTP.Port = "0"
 
 		aurl, err := url.Parse(authTestServer.URL)
@@ -5877,6 +5880,7 @@ func TestBearerAuthorizationHydrateOnRead(t *testing.T) {
 		defer authTestServer.Close()
 
 		conf := config.New()
+		conf.Storage.GC = false
 		conf.HTTP.Port = "0"
 
 		aurl, err := url.Parse(authTestServer.URL)
@@ -6067,6 +6071,7 @@ func TestBearerAuthorizationHydrateOnRead(t *testing.T) {
 func TestAuthorizationMountBlobRematerializeOnRead(t *testing.T) {
 	Convey("With hydrateBlobOnRead, HEAD/range may rematerialize when permitted", t, func() {
 		conf := config.New()
+		conf.Storage.GC = false
 		conf.HTTP.Port = "0"
 		username1, _ := test.GenerateRandomString()
 		password1, _ := test.GenerateRandomString()
@@ -6135,6 +6140,7 @@ func TestAuthorizationMountBlobRematerializeOnRead(t *testing.T) {
 func TestAuthorizationReadOnlyCannotMaterializeBlob(t *testing.T) {
 	Convey("defaultPolicy read alone does not materialize blobs on HEAD or ranged GET", t, func() {
 		conf := config.New()
+		conf.Storage.GC = false
 		conf.HTTP.Port = "0"
 
 		writerUser, _ := test.GenerateRandomString()
@@ -6228,6 +6234,7 @@ func TestAuthorizationReadOnlyCannotMaterializeBlob(t *testing.T) {
 func TestAuthorizationMountBlobCELConditions(t *testing.T) {
 	Convey("canMount evaluates CEL policy conditions", t, func() {
 		conf := config.New()
+		conf.Storage.GC = false
 		conf.HTTP.Port = "0"
 
 		writer, _ := test.GenerateRandomString()
@@ -6340,6 +6347,7 @@ func TestAuthorizationMountBlobCELConditions(t *testing.T) {
 func TestAuthorizationForTagUpdate(t *testing.T) {
 	Convey("Test authorization for updating tags including latest", t, func() {
 		conf := config.New()
+		conf.Storage.GC = false
 		conf.HTTP.Port = "0"
 
 		username, seedUser := test.GenerateRandomString()
@@ -7079,6 +7087,7 @@ func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 		const TestRepo = "my-repos/repo"
 
 		conf := config.New()
+		conf.Storage.GC = false
 		conf.HTTP.Port = "0"
 		conf.HTTP.Auth = &config.AuthConfig{}
 		conf.HTTP.AccessControl = &config.AccessControlConfig{
@@ -7330,6 +7339,7 @@ func TestAuthorizationWithAnonymousPolicyBasicAuthAndSessionHeader(t *testing.T)
 		tagUnauth := "1.0-unauth"
 
 		conf := config.New()
+		conf.Storage.GC = false
 		conf.HTTP.Port = "0"
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
@@ -7521,6 +7531,7 @@ func TestAuthorizationWithAnonymousPolicyBasicAuthAndSessionHeader(t *testing.T)
 func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		conf := config.New()
+		conf.Storage.GC = false
 		// have two users: one for  user Policy, and another for default policy
 		username1, seedUser1 := test.GenerateRandomString()
 		password1, seedPass1 := test.GenerateRandomString()
@@ -9987,6 +9998,7 @@ func TestRouteFailures(t *testing.T) {
 
 func TestPagedRepositoriesWithAuthorization(t *testing.T) {
 	conf := config.New()
+	conf.Storage.GC = false
 	conf.HTTP.Port = "0"
 	username, _ := test.GenerateRandomString()
 	password, _ := test.GenerateRandomString()
