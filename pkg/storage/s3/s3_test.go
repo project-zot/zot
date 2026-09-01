@@ -4789,12 +4789,12 @@ func TestInjectDedupe(t *testing.T) {
 		}
 
 		imgStore := newStore()
-		err := imgStore.DedupeBlob("blob", digest, "", "newblob")
+		err := imgStore.DedupeBlob("blob", digest, "dedupe-inject-repo", "newblob")
 		So(err, ShouldBeNil)
 
 		imgStore = newStore()
 		injected := inject.InjectFailure(0)
-		err = imgStore.DedupeBlob("blob", digest, "", "newblob")
+		err = imgStore.DedupeBlob("blob", digest, "dedupe-inject-repo", "newblob")
 
 		if injected {
 			So(err, ShouldNotBeNil)
@@ -4804,7 +4804,7 @@ func TestInjectDedupe(t *testing.T) {
 
 		imgStore = newStore()
 		inject.InjectFailure(1)
-		err = imgStore.DedupeBlob("blob", digest, "", "newblob")
+		err = imgStore.DedupeBlob("blob", digest, "dedupe-inject-repo", "newblob")
 		So(err, ShouldBeNil)
 	})
 }
