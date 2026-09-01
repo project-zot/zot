@@ -196,6 +196,26 @@ jobs:
             sudo ./scripts/enable_userns.sh
             ./examples/kind/kind-ci.sh
 
+  kind-config-reload:
+    name: Config hot reload on ConfigMap update
+    needs: build-binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          check-latest: true
+          go-version-file: .go-version
+      - uses: ./.github/actions/install-prebuilt-binaries
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # main
+      - name: Run config hot reload ConfigMap test
+        run: |
+          sudo ./scripts/enable_userns.sh
+          make USE_PREBUILT=1 run-kind-config-reload
+
   kind-sync-ondemand:
     name: On-demand sync mirror regression (issue 4184)
     needs: build-binaries

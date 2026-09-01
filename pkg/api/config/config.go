@@ -1193,6 +1193,25 @@ func (c *Config) UpdateReloadableConfig(newConfig *Config) {
 	}
 }
 
+// Copy returns a deep copy of the whole config taken under the read lock, with
+// secrets left as they are, for callers that compare values rather than show
+// them. Use Sanitize for anything that reaches a log or an API response.
+func (c *Config) Copy() *Config {
+	if c == nil {
+		return nil
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	snapshot := &Config{}
+	if err := DeepCopy(c, snapshot); err != nil {
+		return nil
+	}
+
+	return snapshot
+}
+
 // CopyAuthConfig returns a copy of the auth config if it exists.
 func (c *Config) CopyAuthConfig() *AuthConfig {
 	if c == nil {

@@ -5,6 +5,9 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path"
+	"strings"
 	"testing"
 	"time"
 
@@ -544,6 +547,155 @@ func TestControllerLoadNewConfigRecompilesConditions(t *testing.T) {
 	_, hasOld := updated[`req.repository == "old"`]
 	assert.False(t, hasOld, "old expression should be evicted after reload")
 }
+
+// TestControllerLoadNewConfigWarnsWhenLdapHasNoClient verifies that ldap turned
+// on by a reload is reported once, by the reload, rather than on every request
+// that reaches the ldap branch of the auth middleware.
+func TestControllerLoadNewConfigWarnsWhenLdapHasNoClient(t *testing.T) {
+	t.Parallel()
+
+	logPath := path.Join(t.TempDir(), "zot.log")
+
+	htp := NewHTPasswd(log.NewLogger("debug", ""))
+	htw, err := NewHTPasswdWatcher(htp, "")
+	assert.NoError(t, err)
+
+	original := config.New()
+	original.HTTP.Auth = &config.AuthConfig{}
+
+	ctlr := &Controller{
+		Config:          original,
+		Log:             log.NewLogger("debug", logPath),
+		HTPasswd:        htp,
+		HTPasswdWatcher: htw,
+	}
+
+	// the client is built during startup, which this config had no ldap for
+	assert.Nil(t, ctlr.LDAPClient)
+
+	newConfig := config.New()
+	newConfig.HTTP.Auth = &config.AuthConfig{LDAP: &config.LDAPConfig{}}
+
+	ctlr.LoadNewConfig(newConfig)
+
+	logs, err := os.ReadFile(logPath)
+	assert.NoError(t, err)
+	assert.Equal(t, 1,
+		strings.Count(string(logs), "ldap auth enabled by config reload requires a restart to take effect"),
+		"the warning belongs to the reload, not to every request reaching ldap")
+}
+
+// TestControllerLoadNewConfigWarnsOnStartupOnlyLdapFields verifies that ldap
+// settings a reload cannot push into the live client are reported. Only the
+// bind credentials reach it, so an address or baseDN change is applied to the
+// config and nowhere else.
+func TestControllerLoadNewConfigWarnsOnStartupOnlyLdapFields(t *testing.T) {
+	t.Parallel()
+
+	logPath := path.Join(t.TempDir(), "zot.log")
+
+	htp := NewHTPasswd(log.NewLogger("debug", ""))
+	htw, err := NewHTPasswdWatcher(htp, "")
+	assert.NoError(t, err)
+
+	original := config.New()
+	original.HTTP.Auth = &config.AuthConfig{LDAP: &config.LDAPConfig{
+		Address: "ldap.example.com",
+		Port:    389,
+		BaseDN:  "ou=users,dc=example,dc=org",
+	}}
+
+	ctlr := &Controller{
+		Config:          original,
+		Log:             log.NewLogger("debug", logPath),
+		HTPasswd:        htp,
+		HTPasswdWatcher: htw,
+		// the client the server is actually authenticating against
+		LDAPClient: &LDAPClient{
+			Host:       "ldap.example.com",
+			Port:       389,
+			Base:       "ou=users,dc=example,dc=org",
+			UseSSL:     true,
+			CACertPath: "/etc/zot/ldap-ca.pem",
+			Log:        log.NewLogger("debug", ""),
+		},
+	}
+
+	newConfig := config.New()
+	newConfig.HTTP.Auth = &config.AuthConfig{LDAP: &config.LDAPConfig{
+		Address: "ldap-2.example.com",
+		Port:    636,
+		BaseDN:  "ou=people,dc=example,dc=org",
+		CACert:  "/etc/zot/ldap-ca-2.pem",
+	}}
+
+	ctlr.LoadNewConfig(newConfig)
+
+	logs, err := os.ReadFile(logPath)
+	assert.NoError(t, err)
+
+	line := string(logs)
+	assert.Contains(t, line, "ldap changes are outside the reloadable set")
+	for _, field := range []string{"address", "port", "baseDN", "caCert"} {
+		assert.Contains(t, line, field, "the changed field should be named in the warning")
+	}
+}
+
+// TestLdapRestartRequiredFields pins which ldap settings a reload can and
+// cannot apply to a client that is already serving.
+func TestLdapRestartRequiredFields(t *testing.T) {
+	t.Parallel()
+
+	client := &LDAPClient{
+		Host:               "ldap.example.com",
+		Port:               389,
+		Base:               "ou=users,dc=example,dc=org",
+		UseSSL:             true,
+		SkipTLS:            true,
+		InsecureSkipVerify: false,
+		SubtreeSearch:      false,
+		UserAttribute:      "uid",
+		UserGroupAttribute: "memberOf",
+		UserFilter:         "(!(nsaccountlock=TRUE))",
+	}
+
+	matching := &config.LDAPConfig{
+		Address:            "ldap.example.com",
+		Port:               389,
+		BaseDN:             "ou=users,dc=example,dc=org",
+		Insecure:           false,
+		StartTLS:           false,
+		SkipVerify:         false,
+		SubtreeSearch:      false,
+		UserAttribute:      "uid",
+		UserGroupAttribute: "memberOf",
+		UserFilter:         "(!(nsaccountlock=TRUE))",
+	}
+
+	assert.Empty(t, ldapRestartRequiredFields(client, matching),
+		"a config the client already matches needs no restart")
+
+	assert.Nil(t, ldapRestartRequiredFields(nil, matching))
+	assert.Nil(t, ldapRestartRequiredFields(client, nil))
+
+	// the bind credentials are the part a reload does apply, so changing them
+	// alone must not ask for a restart
+	credsOnly := *matching
+	credsOnly.CredentialsFile = "/etc/zot/ldap-creds.json"
+	assert.Empty(t, ldapRestartRequiredFields(client, &credsOnly))
+
+	changed := *matching
+	changed.Address = "ldap-2.example.com"
+	changed.SubtreeSearch = true
+	assert.Equal(t, []string{"address", "subtreeSearch"}, ldapRestartRequiredFields(client, &changed))
+
+	// the trust anchors are read into a pool at startup, so pointing caCert at a
+	// new file leaves the client verifying against the old one
+	rotatedCA := *matching
+	rotatedCA.CACert = "/etc/zot/ldap-ca-2.pem"
+	assert.Equal(t, []string{"caCert"}, ldapRestartRequiredFields(client, &rotatedCA))
+}
+
 
 // TestPolicyConditionForwardedFor verifies that req.client.forwardedFor
 // exposes the X-Forwarded-For chain split into a list, and that conditions

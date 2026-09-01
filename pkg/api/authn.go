@@ -231,8 +231,10 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 		return true, nil
 	}
 
-	// next, LDAP if configured (network-based which can lose connectivity)
-	if authConfig.IsLdapAuthEnabled() {
+	// next, LDAP if configured (network-based which can lose connectivity). A
+	// reload can enable ldap without a client existing to serve it, which
+	// LoadNewConfig warns about once rather than on every request through here.
+	if authConfig.IsLdapAuthEnabled() && amw.ldapClient != nil {
 		ok, _, ldapgroups, err := amw.ldapClient.Authenticate(identity, passphrase)
 		if ok && err == nil {
 			// Process request
@@ -359,6 +361,7 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 			ServerName:         ldapConfig.Address,
 			Log:                ctlr.Log,
 			SubtreeSearch:      ldapConfig.SubtreeSearch,
+			CACertPath:         ldapConfig.CACert,
 		}
 
 		amw.ldapClient = ctlr.LDAPClient

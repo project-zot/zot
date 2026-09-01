@@ -3616,18 +3616,30 @@ func tryInitControllerFromConfigFile(t *testing.T, cfgPath string) error {
 }
 
 // startServerFromConfigFile loads config, starts a hot-reloading controller, and
-// registers shutdown on both Convey Reset (per-case) and t.Cleanup (test end).
+// waits until it serves. It registers shutdown on both Convey Reset (per-case)
+// and t.Cleanup (test end).
 func startServerFromConfigFile(t *testing.T, cfgPath string) error {
+	t.Helper()
+
+	_, err := startServerFromConfigFileURL(t, cfgPath)
+
+	return err
+}
+
+// startServerFromConfigFileURL is startServerFromConfigFile returning the base
+// URL the server bound to, so a test that talks to it can leave the port as "0"
+// rather than reserving one before the bind.
+func startServerFromConfigFileURL(t *testing.T, cfgPath string) (string, error) {
 	t.Helper()
 
 	conf := config.New()
 	if err := cli.LoadConfiguration(conf, cfgPath); err != nil {
-		return err
+		return "", err
 	}
 
 	ctlr, hotReloader, err := cli.InitController(conf, cfgPath)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	ctrlManager := NewControllerManager(ctlr)
@@ -3642,7 +3654,7 @@ func startServerFromConfigFile(t *testing.T, cfgPath string) error {
 
 	ctrlManager.WaitServerReady()
 
-	return nil
+	return ctrlManager.BaseURL(), nil
 }
 
 func TestRetentionDelayDefaults(t *testing.T) {
