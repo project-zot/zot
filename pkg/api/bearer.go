@@ -10,6 +10,9 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/api/constants"
+	zreg "zotregistry.dev/zot/v2/pkg/regexp"
+	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
 )
 
 var bearerTokenMatch = regexp.MustCompile("(?i)bearer (.*)")
@@ -85,10 +88,84 @@ func NewBearerAuthorizer(realm string, service string, keyFunc BearerAuthorizerK
 	}
 }
 
-// Authorize verifies whether the bearer token in the given Authorization header is valid, and whether it has sufficient
-// scope for the requested resource action. If an authorization error occurs (e.g. no token is given or the token has
-// insufficient scope), an AuthChallengeError is returned as the error.
-func (a *BearerAuthorizer) Authorize(ctx context.Context, header string, requested *ResourceAction) error {
+// UserAccessControlFromBearerAccess maps distribution token access entries to
+// UserAccessControl glob patterns so secondary authorization checks (e.g. dedupe
+// mount source-repo read) can reuse the same permission model as config-based authz.
+//
+// Authenticate matches access names exactly; only map OCI-valid repository names
+// here so glob-based Can() cannot widen scope (e.g. a "**" entry must not imply
+// read on every repository). Catalog uses repository::pull and registry:catalog:*
+// scopes whose names are not valid repository paths and are skipped.
+func UserAccessControlFromBearerAccess(access []ResourceAccess) *reqCtx.UserAccessControl {
+	userAc := reqCtx.NewUserAccessControl()
+
+	readPatterns := map[string]bool{}
+	createPatterns := map[string]bool{}
+	updatePatterns := map[string]bool{}
+	deletePatterns := map[string]bool{}
+
+	now := time.Now()
+
+	for _, resourceAccess := range access {
+		if resourceAccess.Type != "repository" {
+			continue
+		}
+
+		if !zreg.FullNameRegexp.MatchString(resourceAccess.Name) {
+			continue
+		}
+
+		if resourceAccess.ExpiresAt != nil && resourceAccess.ExpiresAt.Time.Before(now) {
+			continue
+		}
+
+		for _, action := range resourceAccess.Actions {
+			switch action {
+			case "pull":
+				readPatterns[resourceAccess.Name] = true
+			case "push":
+				createPatterns[resourceAccess.Name] = true
+				updatePatterns[resourceAccess.Name] = true
+			case "delete":
+				deletePatterns[resourceAccess.Name] = true
+			}
+		}
+	}
+
+	// Token has no valid repository names (common for catalog-only scopes such as
+	// repository::pull on /v2/_catalog). Skip installing permissions: empty glob
+	// maps would list no repos in _catalog and still mark the caller as scoped.
+	if !hasNonEmptyGlobPatterns(readPatterns, createPatterns, updatePatterns, deletePatterns) {
+		return userAc
+	}
+
+	userAc.SetIsAdmin(false)
+	userAc.SetGlobPatterns(constants.ReadPermission, readPatterns)
+	userAc.SetGlobPatterns(constants.CreatePermission, createPatterns)
+	userAc.SetGlobPatterns(constants.UpdatePermission, updatePatterns)
+	userAc.SetGlobPatterns(constants.DeletePermission, deletePatterns)
+
+	return userAc
+}
+
+// hasNonEmptyGlobPatterns reports whether any action map contains at least one
+// repository pattern (used to distinguish scoped repo grants from catalog-only tokens).
+func hasNonEmptyGlobPatterns(patterns ...map[string]bool) bool {
+	for _, patternMap := range patterns {
+		if len(patternMap) > 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
+// Authenticate verifies the bearer token and, when requested is non-nil, that
+// the token scope covers the requested resource action. On success it returns
+// the parsed access claims.
+func (a *BearerAuthorizer) Authenticate(
+	ctx context.Context, header string, requested *ResourceAction,
+) (*ClaimsWithAccess, error) {
 	challenge := &AuthChallengeError{
 		realm:          a.realm,
 		service:        a.service,
@@ -99,7 +176,7 @@ func (a *BearerAuthorizer) Authorize(ctx context.Context, header string, request
 		// if no bearer token is set in the authorization header, return the authentication challenge
 		challenge.err = zerr.ErrNoBearerToken
 
-		return challenge
+		return nil, challenge
 	}
 
 	signedString := bearerTokenMatch.ReplaceAllString(header, "$1")
@@ -108,17 +185,17 @@ func (a *BearerAuthorizer) Authorize(ctx context.Context, header string, request
 		return a.keyFunc(ctx, token)
 	}, jwt.WithValidMethods(a.allowedSigningAlgorithms()), jwt.WithIssuedAt())
 	if err != nil {
-		return fmt.Errorf("%w: %w", zerr.ErrInvalidBearerToken, err)
-	}
-
-	if requested == nil {
-		// the token is valid and no access is requested, so we do not have to validate the access claim
-		return nil
+		return nil, fmt.Errorf("%w: %w", zerr.ErrInvalidBearerToken, err)
 	}
 
 	claims, ok := token.Claims.(*ClaimsWithAccess)
 	if !ok {
-		return fmt.Errorf("%w: invalid claims type", zerr.ErrInvalidBearerToken)
+		return nil, fmt.Errorf("%w: invalid claims type", zerr.ErrInvalidBearerToken)
+	}
+
+	if requested == nil {
+		// the token is valid and no access is requested, so we do not have to validate the access claim
+		return claims, nil
 	}
 
 	// check whether the requested access is allowed by the scope of the token
@@ -140,12 +217,21 @@ func (a *BearerAuthorizer) Authorize(ctx context.Context, header string, request
 		}
 
 		// requested action is allowed, so don't return an error
-		return nil
+		return claims, nil
 	}
 
 	challenge.err = zerr.ErrInsufficientScope
 
-	return challenge
+	return nil, challenge
+}
+
+// Authorize verifies whether the bearer token in the given Authorization header is valid, and whether it has sufficient
+// scope for the requested resource action. If an authorization error occurs (e.g. no token is given or the token has
+// insufficient scope), an AuthChallengeError is returned as the error.
+func (a *BearerAuthorizer) Authorize(ctx context.Context, header string, requested *ResourceAction) error {
+	_, err := a.Authenticate(ctx, header, requested)
+
+	return err
 }
 
 func (a *BearerAuthorizer) allowedSigningAlgorithms() []string {

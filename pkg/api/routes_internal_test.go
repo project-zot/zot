@@ -234,28 +234,60 @@ func TestCanMountTraditionalBearer(t *testing.T) {
 		},
 	}
 
-	rh := &RouteHandler{c: &Controller{Config: conf, Log: log.NewTestLogger()}}
 	imgStore := mocks.MockedImageStore{
 		GetAllDedupeReposCandidatesFn: func(_ godigest.Digest) ([]string, error) {
 			return []string{"src/repo"}, nil
 		},
 	}
 	digest := godigest.FromString("bearer-mount-test")
-	emptyUser := reqCtx.NewUserAccessControl()
 
 	req := httptest.NewRequest(http.MethodPost, "/v2/dest/blobs/uploads/", nil)
-	ok, err := rh.canMount(req, emptyUser, imgStore, digest, "dest")
-	require.NoError(t, err)
-	require.False(t, ok)
-
 	acCtrlr := NewAccessController(conf)
-	bearerReq := req.WithContext(acCtrlr.getAuthnMiddlewareContext(BEARER, req))
-	ok, err = rh.canMount(bearerReq, emptyUser, imgStore, digest, "dest")
+
+	configUser := reqCtx.NewUserAccessControl()
+	configUser.SetUsername("alice")
+	acCtrlr.updateUserAccessControl(req, configUser)
+	acCtrlr.attachPermissionEvaluator(req, configUser)
+
+	ok, err := canMount(configUser, imgStore, digest, "dest")
 	require.NoError(t, err)
 	require.True(t, ok)
 
-	oidcReq := req.WithContext(acCtrlr.getAuthnMiddlewareContext(BEARER_OIDC, req))
-	ok, err = rh.canMount(oidcReq, emptyUser, imgStore, digest, "dest")
+	emptyConfigUser := reqCtx.NewUserAccessControl()
+	acCtrlr.attachPermissionEvaluator(req, emptyConfigUser)
+
+	ok, err = canMount(emptyConfigUser, imgStore, digest, "dest")
+	require.NoError(t, err)
+	require.False(t, ok)
+
+	destOnlyBearer := UserAccessControlFromBearerAccess([]ResourceAccess{
+		{Type: "repository", Name: "dest", Actions: []string{"push"}},
+	})
+	ok, err = canMount(destOnlyBearer, imgStore, digest, "dest")
+	require.NoError(t, err)
+	require.False(t, ok)
+
+	authorizedBearer := UserAccessControlFromBearerAccess([]ResourceAccess{
+		{Type: "repository", Name: "dest", Actions: []string{"push"}},
+		{Type: "repository", Name: "src/repo", Actions: []string{"pull"}},
+	})
+	ok, err = canMount(authorizedBearer, imgStore, digest, "dest")
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	catalogBearer := UserAccessControlFromBearerAccess([]ResourceAccess{
+		{Type: "repository", Name: "dest", Actions: []string{"push"}},
+		{Type: "repository", Name: "", Actions: []string{"pull"}},
+	})
+	ok, err = canMount(catalogBearer, imgStore, digest, "dest")
+	require.NoError(t, err)
+	require.False(t, ok)
+
+	wildcardBearer := UserAccessControlFromBearerAccess([]ResourceAccess{
+		{Type: "repository", Name: "dest", Actions: []string{"push"}},
+		{Type: "repository", Name: "**", Actions: []string{"pull"}},
+	})
+	ok, err = canMount(wildcardBearer, imgStore, digest, "dest")
 	require.NoError(t, err)
 	require.False(t, ok)
 }
@@ -281,7 +313,6 @@ func TestCanMountDedupeCandidatesError(t *testing.T) {
 	}
 
 	candidatesErr := errors.New("candidates failed")
-	rh := &RouteHandler{c: &Controller{Config: conf, Log: log.NewTestLogger()}}
 	imgStore := mocks.MockedImageStore{
 		GetAllDedupeReposCandidatesFn: func(_ godigest.Digest) ([]string, error) {
 			return nil, candidatesErr
@@ -291,10 +322,222 @@ func TestCanMountDedupeCandidatesError(t *testing.T) {
 	userAc := reqCtx.NewUserAccessControl()
 	userAc.SetUsername("alice")
 	req := httptest.NewRequest(http.MethodPost, "/v2/dest/blobs/uploads/", nil)
+	acCtrlr := NewAccessController(conf)
+	acCtrlr.attachPermissionEvaluator(req, userAc)
 
-	ok, err := rh.canMount(req, userAc, imgStore, godigest.FromString("candidates-err"), "dest")
+	ok, err := canMount(userAc, imgStore, godigest.FromString("candidates-err"), "dest")
 	require.ErrorIs(t, err, candidatesErr)
 	require.False(t, ok)
+}
+
+func TestShouldCheckMountSourceAccess(t *testing.T) {
+	t.Parallel()
+
+	t.Run("config authz always checks regardless of scoped permissions", func(t *testing.T) {
+		t.Parallel()
+
+		require.True(t, shouldCheckMountSourceAccess(
+			&config.AccessControlConfig{},
+			reqCtx.NewUserAccessControl(),
+		))
+	})
+
+	t.Run("no config authz: catalog-only bearer skips mount source check", func(t *testing.T) {
+		t.Parallel()
+
+		catalogOnly := UserAccessControlFromBearerAccess([]ResourceAccess{
+			{Type: "repository", Name: "", Actions: []string{"pull"}},
+		})
+		require.False(t, catalogOnly.HasScopedPermissions())
+		require.False(t, shouldCheckMountSourceAccess(nil, catalogOnly))
+	})
+
+	t.Run("no config authz: scoped bearer enables mount source check", func(t *testing.T) {
+		t.Parallel()
+
+		scoped := UserAccessControlFromBearerAccess([]ResourceAccess{
+			{Type: "repository", Name: "dest", Actions: []string{"push"}},
+		})
+		require.True(t, scoped.HasScopedPermissions())
+		require.True(t, shouldCheckMountSourceAccess(nil, scoped))
+	})
+}
+
+func TestUserMayMountBlobGate(t *testing.T) {
+	t.Parallel()
+
+	digest := godigest.FromString("user-may-mount-gate")
+
+	t.Run("catalog-only bearer skips canMount and allows remount", func(t *testing.T) {
+		t.Parallel()
+
+		// Traditional bearer without AccessControl: catalog-only tokens must not
+		// install empty glob maps, so hydrate remount is not gated on source pull.
+		conf := config.New()
+		rh := &RouteHandler{c: &Controller{Config: conf, Log: log.NewTestLogger()}}
+
+		userAc := UserAccessControlFromBearerAccess([]ResourceAccess{
+			{Type: "repository", Name: "", Actions: []string{"pull"}},
+		})
+		req := httptest.NewRequest(http.MethodHead, "/v2/dest/blobs/"+digest.String(), nil)
+		userAc.SaveOnRequest(req)
+
+		candidatesCalled := false
+		imgStore := mocks.MockedImageStore{
+			GetAllDedupeReposCandidatesFn: func(_ godigest.Digest) ([]string, error) {
+				candidatesCalled = true
+
+				return nil, errors.New("should not be consulted")
+			},
+		}
+
+		ok, err := rh.userMayMountBlob(req, imgStore, digest, "dest")
+		require.NoError(t, err)
+		require.True(t, ok)
+		require.False(t, candidatesCalled)
+	})
+
+	t.Run("scoped bearer without source pull denies remount", func(t *testing.T) {
+		t.Parallel()
+
+		conf := config.New()
+		rh := &RouteHandler{c: &Controller{Config: conf, Log: log.NewTestLogger()}}
+
+		userAc := UserAccessControlFromBearerAccess([]ResourceAccess{
+			{Type: "repository", Name: "dest", Actions: []string{"push"}},
+		})
+		req := httptest.NewRequest(http.MethodHead, "/v2/dest/blobs/"+digest.String(), nil)
+		userAc.SaveOnRequest(req)
+
+		candidatesCalled := false
+		imgStore := mocks.MockedImageStore{
+			GetAllDedupeReposCandidatesFn: func(_ godigest.Digest) ([]string, error) {
+				candidatesCalled = true
+
+				return []string{"src/repo"}, nil
+			},
+		}
+
+		ok, err := rh.userMayMountBlob(req, imgStore, digest, "dest")
+		require.NoError(t, err)
+		require.False(t, ok)
+		require.True(t, candidatesCalled)
+	})
+
+	t.Run("scoped bearer with dest pull only denies remount", func(t *testing.T) {
+		t.Parallel()
+
+		conf := config.New()
+		rh := &RouteHandler{c: &Controller{Config: conf, Log: log.NewTestLogger()}}
+
+		userAc := UserAccessControlFromBearerAccess([]ResourceAccess{
+			{Type: "repository", Name: "dest", Actions: []string{"pull"}},
+		})
+		req := httptest.NewRequest(http.MethodHead, "/v2/dest/blobs/"+digest.String(), nil)
+		userAc.SaveOnRequest(req)
+
+		imgStore := mocks.MockedImageStore{
+			GetAllDedupeReposCandidatesFn: func(_ godigest.Digest) ([]string, error) {
+				return []string{"src/repo"}, nil
+			},
+		}
+
+		ok, err := rh.userMayMountBlob(req, imgStore, digest, "dest")
+		require.NoError(t, err)
+		require.False(t, ok)
+	})
+
+	t.Run("scoped bearer with dest pull and push but no src pull denies remount", func(t *testing.T) {
+		t.Parallel()
+
+		conf := config.New()
+		rh := &RouteHandler{c: &Controller{Config: conf, Log: log.NewTestLogger()}}
+
+		userAc := UserAccessControlFromBearerAccess([]ResourceAccess{
+			{Type: "repository", Name: "dest", Actions: []string{"pull", "push"}},
+		})
+		req := httptest.NewRequest(http.MethodHead, "/v2/dest/blobs/"+digest.String(), nil)
+		userAc.SaveOnRequest(req)
+
+		imgStore := mocks.MockedImageStore{
+			GetAllDedupeReposCandidatesFn: func(_ godigest.Digest) ([]string, error) {
+				return []string{"src/repo"}, nil
+			},
+		}
+
+		ok, err := rh.userMayMountBlob(req, imgStore, digest, "dest")
+		require.NoError(t, err)
+		require.False(t, ok)
+	})
+
+	t.Run("scoped bearer with source pull allows remount", func(t *testing.T) {
+		t.Parallel()
+
+		conf := config.New()
+		rh := &RouteHandler{c: &Controller{Config: conf, Log: log.NewTestLogger()}}
+
+		userAc := UserAccessControlFromBearerAccess([]ResourceAccess{
+			{Type: "repository", Name: "dest", Actions: []string{"push"}},
+			{Type: "repository", Name: "src/repo", Actions: []string{"pull"}},
+		})
+		req := httptest.NewRequest(http.MethodHead, "/v2/dest/blobs/"+digest.String(), nil)
+		userAc.SaveOnRequest(req)
+
+		imgStore := mocks.MockedImageStore{
+			GetAllDedupeReposCandidatesFn: func(_ godigest.Digest) ([]string, error) {
+				return []string{"src/repo"}, nil
+			},
+		}
+
+		ok, err := rh.userMayMountBlob(req, imgStore, digest, "dest")
+		require.NoError(t, err)
+		require.True(t, ok)
+	})
+
+	t.Run("config authz always consults canMount", func(t *testing.T) {
+		t.Parallel()
+
+		conf := config.New()
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				"**": config.PolicyGroup{
+					Policies: []config.Policy{
+						{
+							Users: []string{"alice"},
+							Actions: []string{
+								constants.ReadPermission,
+								constants.CreatePermission,
+							},
+						},
+					},
+				},
+			},
+		}
+
+		rh := &RouteHandler{c: &Controller{Config: conf, Log: log.NewTestLogger()}}
+		req := httptest.NewRequest(http.MethodHead, "/v2/dest/blobs/"+digest.String(), nil)
+
+		userAc := reqCtx.NewUserAccessControl()
+		userAc.SetUsername("alice")
+		acCtrlr := NewAccessController(conf)
+		acCtrlr.updateUserAccessControl(req, userAc)
+		acCtrlr.attachPermissionEvaluator(req, userAc)
+		userAc.SaveOnRequest(req)
+
+		candidatesCalled := false
+		imgStore := mocks.MockedImageStore{
+			GetAllDedupeReposCandidatesFn: func(_ godigest.Digest) ([]string, error) {
+				candidatesCalled = true
+
+				return []string{"src/repo"}, nil
+			},
+		}
+
+		ok, err := rh.userMayMountBlob(req, imgStore, digest, "dest")
+		require.NoError(t, err)
+		require.True(t, ok)
+		require.True(t, candidatesCalled)
+	})
 }
 
 func TestUserMayMountBlobErrorPaths(t *testing.T) {

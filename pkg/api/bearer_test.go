@@ -16,6 +16,7 @@ import (
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api"
+	"zotregistry.dev/zot/v2/pkg/api/constants"
 )
 
 func TestBearerAuthorizer(t *testing.T) {
@@ -391,5 +392,145 @@ func TestBearerAuthorizerJWKSEdDSA(t *testing.T) {
 			err := authorizer.Authorize(context.Background(), authHeader, nil)
 			So(err, ShouldBeNil)
 		})
+	})
+}
+
+func TestUserAccessControlFromBearerAccess(t *testing.T) {
+	Convey("UserAccessControlFromBearerAccess maps distribution scopes", t, func() {
+		access := []api.ResourceAccess{
+			{
+				Type:    "repository",
+				Name:    "allowed/repo",
+				Actions: []string{"pull", "push"},
+			},
+			{
+				Type:    "repository",
+				Name:    "other/repo",
+				Actions: []string{"delete"},
+			},
+			{
+				Type:    "registry",
+				Name:    "catalog",
+				Actions: []string{"pull"},
+			},
+			{
+				Type:      "repository",
+				Name:      "expired/repo",
+				Actions:   []string{"pull"},
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(-time.Hour)),
+			},
+		}
+
+		userAc := api.UserAccessControlFromBearerAccess(access)
+
+		So(userAc.IsAdmin(), ShouldBeFalse)
+		So(userAc.HasScopedPermissions(), ShouldBeTrue)
+		So(userAc.Can(constants.ReadPermission, "allowed/repo"), ShouldBeTrue)
+		So(userAc.Can(constants.ReadPermission, "private/repo"), ShouldBeFalse)
+		So(userAc.Can(constants.CreatePermission, "allowed/repo"), ShouldBeTrue)
+		So(userAc.Can(constants.UpdatePermission, "allowed/repo"), ShouldBeTrue)
+		So(userAc.Can(constants.DeletePermission, "other/repo"), ShouldBeTrue)
+		So(userAc.Can(constants.ReadPermission, "expired/repo"), ShouldBeFalse)
+	})
+
+	Convey("catalog scope with empty repository name does not grant repo read", t, func() {
+		userAc := api.UserAccessControlFromBearerAccess([]api.ResourceAccess{
+			{
+				Type:    "repository",
+				Name:    "",
+				Actions: []string{"pull"},
+			},
+			{
+				Type:    "repository",
+				Name:    "dest",
+				Actions: []string{"push"},
+			},
+		})
+
+		So(userAc.HasScopedPermissions(), ShouldBeTrue)
+		So(userAc.Can(constants.CreatePermission, "dest"), ShouldBeTrue)
+		So(userAc.Can(constants.ReadPermission, "private/src"), ShouldBeFalse)
+		So(userAc.Can(constants.ReadPermission, "src/repo"), ShouldBeFalse)
+	})
+
+	Convey("catalog-only bearer scope does not install scoped repo permissions", t, func() {
+		userAc := api.UserAccessControlFromBearerAccess([]api.ResourceAccess{
+			{
+				Type:    "repository",
+				Name:    "",
+				Actions: []string{"pull"},
+			},
+		})
+
+		So(userAc.HasScopedPermissions(), ShouldBeFalse)
+		So(userAc.Can(constants.ReadPermission, "zot-test"), ShouldBeTrue)
+	})
+
+	Convey("glob metacharacters in access names are not mapped to repo permissions", t, func() {
+		userAc := api.UserAccessControlFromBearerAccess([]api.ResourceAccess{
+			{
+				Type:    "repository",
+				Name:    "**",
+				Actions: []string{"pull"},
+			},
+			{
+				Type:    "repository",
+				Name:    "dest",
+				Actions: []string{"push"},
+			},
+		})
+
+		So(userAc.Can(constants.CreatePermission, "dest"), ShouldBeTrue)
+		So(userAc.Can(constants.ReadPermission, "private/src"), ShouldBeFalse)
+		So(userAc.Can(constants.ReadPermission, "src/repo"), ShouldBeFalse)
+	})
+}
+
+func TestBearerAuthorizerAuthenticate(t *testing.T) {
+	Convey("Authenticate returns parsed access claims on success", t, func() {
+		signingMethod := jwt.SigningMethodRS256
+
+		privKey, err := rsa.GenerateKey(rand.Reader, 2048)
+		So(err, ShouldBeNil)
+
+		pubKey := privKey.Public()
+		keyFunc := func(_ context.Context, token *jwt.Token) (any, error) {
+			return pubKey, nil
+		}
+
+		authorizer := api.NewBearerAuthorizer("realm", "service", keyFunc)
+
+		access := []api.ResourceAccess{
+			{
+				Name:    "authorized-repository",
+				Type:    "repository",
+				Actions: []string{"pull", "push"},
+			},
+		}
+
+		now := time.Now()
+		claims := api.ClaimsWithAccess{
+			Access: access,
+			RegisteredClaims: jwt.RegisteredClaims{
+				ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute)),
+				IssuedAt:  jwt.NewNumericDate(now),
+			},
+		}
+
+		token, err := jwt.NewWithClaims(signingMethod, claims).SignedString(privKey)
+		So(err, ShouldBeNil)
+
+		gotClaims, err := authorizer.Authenticate(context.Background(), "Bearer "+token, &api.ResourceAction{
+			Type:   "repository",
+			Name:   "authorized-repository",
+			Action: "pull",
+		})
+		So(err, ShouldBeNil)
+		So(gotClaims, ShouldNotBeNil)
+		So(gotClaims.Access, ShouldResemble, access)
+
+		userAc := api.UserAccessControlFromBearerAccess(gotClaims.Access)
+		So(userAc.Can(constants.ReadPermission, "authorized-repository"), ShouldBeTrue)
+		So(userAc.Can(constants.ReadPermission, "other-repository"), ShouldBeFalse)
 	})
 }
