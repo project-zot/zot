@@ -2260,11 +2260,21 @@ func (is *ImageStore) dedupeBlobFastPath(src string, dstDigest godigest.Digest, 
 				}
 			}
 
-			// Local hardlinks below need dstRepo's digest-algorithm blobs dir to physically
-			// exist; creating it if absent needs the write lock (dstRepo may never have
-			// held this algorithm, or may have been GC'd) - defer to the slow path rather
-			// than risk it under only a read lock. Remote LinkBlob is a no-op, so this
-			// never matters there.
+			// dstRepo's OCI layout (oci-layout, index.json) must already exist - every repo
+			// needs it to be walkable/queryable regardless of backend, and recreating it if
+			// absent needs the write lock (dstRepo may have been GC'd, or this may be its
+			// first write ever) - defer to the slow path rather than risk it under only a
+			// read lock. prepareBlobUploadDir's .uploads creation means the repo's directory
+			// can already exist at this point even when index.json does not, so check
+			// index.json itself rather than the directory.
+			indexPath := path.Join(is.rootDir, dstRepo, ispec.ImageIndexFile)
+			if _, err := is.storeDriver.Stat(indexPath); err != nil {
+				return nil //nolint: nilerr
+			}
+
+			// Local hardlinks below also need dstRepo's digest-algorithm blobs dir to
+			// physically exist; creating it if absent needs the write lock too. Remote
+			// LinkBlob is a no-op, so this never matters there.
 			if !is.lifecycle.UsesLogicalRepoRefs() {
 				dstDir := path.Join(is.rootDir, dstRepo, ispec.ImageBlobsDir, dstDigest.Algorithm().String())
 				if !is.storeDriver.DirExists(dstDir) {
