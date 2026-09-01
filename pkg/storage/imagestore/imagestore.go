@@ -1980,10 +1980,12 @@ func (is *ImageStore) DeleteBlob(repo string, digest godigest.Digest) error {
 }
 
 /*
-CleanupRepo removes blobs from the repository and removes repo if flag is true and all blobs were removed
-the caller function MUST lock from outside.
+CleanupRepo removes blobs from the repository. Repository-level removal lives in
+RemoveIdleRepository, so that every path that deletes a repo directory goes through
+the same idle checks.
+The caller function MUST lock from outside.
 */
-func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRepo bool) (int, error) {
+func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest) (int, error) {
 	count := 0
 
 	for _, digest := range blobs {
@@ -2012,17 +2014,93 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 		}
 	}
 
-	blobUploads, _ := is.ListBlobUploads(repo)
+	// finally update metrics
+	if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
+		monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
+	}
 
-	// if removeRepo flag is true and we cleanup all blobs and there are no blobs currently being uploaded.
-	if removeRepo && count == len(blobs) && count > 0 && len(blobUploads) == 0 {
-		is.log.Info().Str("repository", repo).Msg("removed all blobs, removing repo")
+	return count, nil
+}
 
-		if err := is.storeDriver.Delete(path.Join(is.rootDir, repo)); err != nil {
-			is.log.Error().Err(err).Str("repository", repo).Msg("failed to remove repo")
+/*
+RemoveIdleRepository removes a repository's layout once the repository holds no manifests and no
+blob upload is in progress. Any blobs still present are unreferenced by definition (the index is
+empty), so those older than maxBlobAge are deleted first; the layout is removed only if no blobs
+remain afterwards. A zero maxBlobAge reclaims a repo emptied by manifest deletes immediately,
+while GC passes its configured delay so recently uploaded blobs keep their grace period.
 
-			return count, err
+Only the layout is touched here: callers that also track the repository elsewhere (such as a meta
+record counting towards storage.maxRepos) are expected to drop that state themselves when this
+returns true, so the repo stops existing everywhere at once.
+
+The caller function MUST lock from outside.
+
+Returns true when the layout was removed.
+*/
+func (is *ImageStore) RemoveIdleRepository(repo string, maxBlobAge time.Duration) (bool, error) {
+	dir := path.Join(is.rootDir, repo)
+	if !is.DirExists(dir) {
+		return false, nil
+	}
+
+	index, err := common.GetIndex(is, repo, is.log)
+	if err != nil {
+		return false, err
+	}
+
+	if len(index.Manifests) > 0 {
+		return false, nil
+	}
+
+	blobUploads, err := is.ListBlobUploads(repo)
+	if err != nil {
+		return false, err
+	}
+
+	if len(blobUploads) > 0 {
+		return false, nil
+	}
+
+	blobs, err := is.GetAllBlobs(repo)
+	if err != nil {
+		return false, err
+	}
+
+	for _, digest := range blobs {
+		if maxBlobAge > 0 {
+			_, _, modtime, err := is.StatBlob(repo, digest)
+			if err != nil {
+				return false, err
+			}
+
+			if modtime.Add(maxBlobAge).After(time.Now()) {
+				// too young: leave the blob and the repo in place
+				continue
+			}
 		}
+
+		// unconditional delete: the index is empty, so no blob is referenced
+		if err := is.deleteBlobChecked(repo, digest, func() (bool, error) { return false, nil }); err != nil {
+			return false, err
+		}
+	}
+
+	// fail closed on partial sweeps and eventually-consistent listings
+	blobs, err = is.GetAllBlobs(repo)
+	if err != nil {
+		return false, err
+	}
+
+	if len(blobs) > 0 {
+		return false, nil
+	}
+
+	is.log.Info().Str("repository", repo).Msg("removing idle repo")
+
+	if err := is.storeDriver.Delete(dir); err != nil {
+		is.log.Error().Err(err).Str("repository", repo).Msg("failed to remove repo")
+
+		return false, err
 	}
 
 	// finally update metrics
@@ -2030,7 +2108,7 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 		monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
 	}
 
-	return count, nil
+	return true, nil
 }
 
 func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {

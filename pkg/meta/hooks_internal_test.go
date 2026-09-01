@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
 	zerr "zotregistry.dev/zot/v2/errors"
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/storage"
@@ -258,5 +260,141 @@ func TestRollbackDigestManifestTags(t *testing.T) {
 			rollbackDigestManifestTags(ctx, "repo", []string{"t"}, []string{"t"}, mediaType, dgst, body, sc,
 				metaDB, testLog, prior)
 		})
+	})
+}
+
+func TestReleaseIdleRepository(t *testing.T) {
+	Convey("releaseIdleRepository", t, func() {
+		logger := log.NewTestLogger()
+
+		Convey("A store failure is swallowed and keeps the meta record", func() {
+			metaDeleted := false
+			metaDB := mocks.MetaDBMock{
+				DeleteRepoMetaFn: func(repo string) error {
+					metaDeleted = true
+
+					return nil
+				},
+			}
+
+			imgStore := mocks.MockedImageStore{
+				RemoveIdleRepositoryFn: func(repo string, maxBlobAge time.Duration) (bool, error) {
+					return false, errHookInternal
+				},
+			}
+
+			So(func() { releaseIdleRepository("repo", imgStore, metaDB, logger) }, ShouldNotPanic)
+			So(metaDeleted, ShouldBeFalse)
+		})
+
+		Convey("The meta record goes only when the layout was removed", func() {
+			var gotRepo string
+
+			var gotAge time.Duration
+
+			var metaDeleted string
+
+			imgStore := mocks.MockedImageStore{
+				RemoveIdleRepositoryFn: func(repo string, maxBlobAge time.Duration) (bool, error) {
+					gotRepo = repo
+					gotAge = maxBlobAge
+
+					return true, nil
+				},
+			}
+
+			metaDB := mocks.MetaDBMock{
+				DeleteRepoMetaFn: func(repo string) error {
+					metaDeleted = repo
+
+					return nil
+				},
+			}
+
+			releaseIdleRepository("repo", imgStore, metaDB, logger)
+			So(gotRepo, ShouldEqual, "repo")
+			So(gotAge, ShouldEqual, 0)
+			So(metaDeleted, ShouldEqual, "repo")
+		})
+
+		Convey("A kept layout keeps its meta record", func() {
+			metaDeleted := false
+			metaDB := mocks.MetaDBMock{
+				DeleteRepoMetaFn: func(repo string) error {
+					metaDeleted = true
+
+					return nil
+				},
+			}
+
+			imgStore := mocks.MockedImageStore{
+				RemoveIdleRepositoryFn: func(repo string, maxBlobAge time.Duration) (bool, error) {
+					return false, nil
+				},
+			}
+
+			releaseIdleRepository("repo", imgStore, metaDB, logger)
+			So(metaDeleted, ShouldBeFalse)
+		})
+
+		Convey("A meta delete failure after layout removal is swallowed", func() {
+			imgStore := mocks.MockedImageStore{
+				RemoveIdleRepositoryFn: func(repo string, maxBlobAge time.Duration) (bool, error) {
+					return true, nil
+				},
+			}
+
+			metaDB := mocks.MetaDBMock{
+				DeleteRepoMetaFn: func(repo string) error { return errHookInternal },
+			}
+
+			So(func() { releaseIdleRepository("repo", imgStore, metaDB, logger) }, ShouldNotPanic)
+		})
+	})
+}
+
+func TestOnDeleteManifestSignatureMetaFailure(t *testing.T) {
+	Convey("An unexpected signature meta delete failure still attempts the release", t, func() {
+		logger := log.NewTestLogger()
+
+		subjectDigest := godigest.FromString("subject")
+
+		referrer := ispec.Manifest{
+			MediaType:    ispec.MediaTypeImageManifest,
+			ArtifactType: zcommon.ArtifactTypeCosignBundle,
+			Subject: &ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageManifest,
+				Digest:    subjectDigest,
+			},
+		}
+		referrer.SchemaVersion = 2
+
+		referrerBody, err := json.Marshal(referrer)
+		So(err, ShouldBeNil)
+		referrerDigest := godigest.FromBytes(referrerBody)
+
+		released := false
+		imgStore := mocks.MockedImageStore{
+			RemoveIdleRepositoryFn: func(repo string, maxBlobAge time.Duration) (bool, error) {
+				released = true
+
+				return false, nil
+			},
+		}
+
+		metaDB := mocks.MetaDBMock{
+			DeleteSignatureFn: func(repo string, signedManifestDigest godigest.Digest,
+				sigMeta mTypes.SignatureMetadata,
+			) error {
+				return errHookInternal
+			},
+		}
+
+		sc := storage.StoreController{DefaultStore: &imgStore}
+		err = OnDeleteManifest("repo", referrerDigest.String(), ispec.MediaTypeImageManifest, referrerDigest,
+			referrerBody, sc, metaDB, logger)
+
+		So(errors.Is(err, errHookInternal), ShouldBeTrue)
+		So(released, ShouldBeTrue)
 	})
 }

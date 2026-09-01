@@ -211,6 +211,30 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 			return err
 		}
 
+		/* remove the repo layout once nothing is left: no manifests, no blobs, no uploads.
+		This is the repository-level analogue of the manifest pruning above; the meta record
+		is dropped right after, keeping metadb on the same lifetime as storage, so a reaped
+		repo also stops counting towards storage.maxRepos. Blobs younger than the GC delay
+		keep their grace period. This runs before deleteBlobUploads so that an upload not yet
+		old enough to be reaped still counts as in progress and keeps the repo, as
+		CleanupRepo's guard used to. */
+		removed, err := gc.imgStore.RemoveIdleRepository(repo, gc.opts.Delay)
+		if err != nil {
+			gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
+				Msg("failed to remove idle repo")
+
+			return err
+		}
+
+		if removed && gc.metaDB != nil {
+			if err := gc.metaDB.DeleteRepoMeta(repo); err != nil {
+				/* log, don't fail: the layout is already gone, so aborting the rest of cleanRepo
+				would not bring it back, and ParseStorage drops the stale record on next start */
+				gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
+					Msg("removed repo layout but failed to delete its meta record")
+			}
+		}
+
 		// delete old blob uploads from storage
 		uploadsDeleted, err = gc.deleteBlobUploads(repo, gc.opts.Delay)
 		if err != nil {
@@ -1070,10 +1094,7 @@ func (gc GarbageCollect) deleteUnreferencedBlobs(repo string, delay time.Duratio
 		}
 	}
 
-	// if we removed all blobs from repo
-	removeRepo := len(gcBlobs) > 0 && len(gcBlobs) == len(allBlobs)
-
-	reaped, err := gc.imgStore.CleanupRepo(repo, gcBlobs, removeRepo)
+	reaped, err := gc.imgStore.CleanupRepo(repo, gcBlobs)
 	if err != nil {
 		return 0, err
 	}
