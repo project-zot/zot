@@ -3469,7 +3469,12 @@ func (is *ImageStore) GetAllBlobs(repo string) ([]godigest.Digest, error) {
 }
 
 func (is *ImageStore) getLogicalRepoBlobDigests(repo string) ([]godigest.Digest, error) {
-	if !is.dedupe || !is.lifecycle.UsesLogicalRepoRefs() || repo == storageConstants.GlobalBlobsRepo {
+	// Deliberately does not gate on is.dedupe: DedupeBlob only adds new logical refs
+	// while dedupe is on, but refs left over from an earlier dedupe=true period still
+	// need to surface here after a dedupe=false switch (e.g. RunDedupeBlobs' restore
+	// path relies on GetAllBlobs to discover them for every repo that logically owns a
+	// digest whose only physical copy lives in the global blobstore).
+	if !is.lifecycle.UsesLogicalRepoRefs() || repo == storageConstants.GlobalBlobsRepo {
 		return nil, nil
 	}
 
