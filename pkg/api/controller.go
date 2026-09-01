@@ -7,8 +7,10 @@ import (
 	"crypto/x509"
 	goerrors "errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -484,6 +486,40 @@ func (c *Controller) reloadEventRecorder() {
 	c.Log.Info().Bool("enabled", eventRecorder != nil).Msg("reloaded event recorder")
 }
 
+// ldapRestartRequiredFields reports the ldap settings the running client was
+// built from that differ from the new config. A reload refreshes only the bind
+// credentials, so these are applied to the config while the live client keeps
+// serving with the old ones, which is worth telling the operator about.
+func ldapRestartRequiredFields(client *LDAPClient, ldapConf *config.LDAPConfig) []string {
+	if client == nil || ldapConf == nil {
+		return nil
+	}
+
+	changed := map[string]bool{
+		"address":            client.Host != ldapConf.Address,
+		"caCert":             client.CACertPath != ldapConf.CACert,
+		"port":               client.Port != ldapConf.Port,
+		"baseDN":             client.Base != ldapConf.BaseDN,
+		"insecure":           client.UseSSL == ldapConf.Insecure,
+		"startTLS":           client.SkipTLS == ldapConf.StartTLS,
+		"skipVerify":         client.InsecureSkipVerify != ldapConf.SkipVerify,
+		"subtreeSearch":      client.SubtreeSearch != ldapConf.SubtreeSearch,
+		"userAttribute":      client.UserAttribute != ldapConf.UserAttribute,
+		"userGroupAttribute": client.UserGroupAttribute != ldapConf.UserGroupAttribute,
+		"userFilter":         client.UserFilter != ldapConf.UserFilter,
+	}
+
+	fields := []string{}
+
+	for _, field := range slices.Sorted(maps.Keys(changed)) {
+		if changed[field] {
+			fields = append(fields, field)
+		}
+	}
+
+	return fields
+}
+
 func (c *Controller) LoadNewConfig(newConfig *config.Config) {
 	// Update only reloadable config fields atomically
 	c.Config.UpdateReloadableConfig(newConfig)
@@ -507,11 +543,24 @@ func (c *Controller) LoadNewConfig(newConfig *config.Config) {
 		_ = c.HTPasswdWatcher.ChangeFile("")
 	}
 
-	if c.LDAPClient != nil && authConfig.IsLdapAuthEnabled() {
-		c.LDAPClient.lock.Lock()
-		c.LDAPClient.BindDN = authConfig.LDAP.BindDN()
-		c.LDAPClient.BindPassword = authConfig.LDAP.BindPassword()
-		c.LDAPClient.lock.Unlock()
+	if authConfig.IsLdapAuthEnabled() {
+		if c.LDAPClient != nil {
+			// only the bind credentials reach the live client, so anything else
+			// the client was built from is applied to the config and nowhere else
+			if fields := ldapRestartRequiredFields(c.LDAPClient, authConfig.LDAP); len(fields) > 0 {
+				c.Log.Warn().Strs("fields", fields).
+					Msg("ldap changes are outside the reloadable set and need a restart to take effect")
+			}
+
+			c.LDAPClient.lock.Lock()
+			c.LDAPClient.BindDN = authConfig.LDAP.BindDN()
+			c.LDAPClient.BindPassword = authConfig.LDAP.BindPassword()
+			c.LDAPClient.lock.Unlock()
+		} else {
+			// the client is built at startup, so ldap turned on by a reload has
+			// none to authenticate against
+			c.Log.Warn().Msg("ldap auth enabled by config reload requires a restart to take effect")
+		}
 	}
 
 	c.reloadEventRecorder()

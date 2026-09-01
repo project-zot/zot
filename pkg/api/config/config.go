@@ -1193,6 +1193,22 @@ func (c *Config) UpdateReloadableConfig(newConfig *Config) {
 	}
 }
 
+// SnapshotJSON returns the config serialized under the read lock with secrets
+// left unmasked, for callers that compare two configs and report only which
+// fields differ. It is a view, not a clone: whatever JSON does not carry is
+// absent, session keys and ldap bind credentials among it. Use Sanitize for
+// anything shown to a user, and the Copy* accessors for real values.
+func (c *Config) SnapshotJSON() ([]byte, error) {
+	if c == nil {
+		return nil, nil
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return json.Marshal(c)
+}
+
 // CopyAuthConfig returns a copy of the auth config if it exists.
 func (c *Config) CopyAuthConfig() *AuthConfig {
 	if c == nil {

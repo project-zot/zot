@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -3904,6 +3905,50 @@ func TestConfigSyncStagingHelpers(t *testing.T) {
 			So(config.GlobalStorageConfig{}.LargestGCDelay(), ShouldBeGreaterThan, 0)
 		})
 	})
+}
+
+func TestSnapshotJSON(t *testing.T) {
+	Convey("A nil config has no snapshot", t, func() {
+		var conf *config.Config
+
+		blob, err := conf.SnapshotJSON()
+		So(err, ShouldBeNil)
+		So(blob, ShouldBeNil)
+	})
+
+	Convey("Secrets are left unmasked, so a rotation still reads as a change", t, func() {
+		conf := config.New()
+		conf.Storage.StorageDriver = map[string]any{"name": "s3", "secretkey": "rotate-me"}
+
+		blob, err := conf.SnapshotJSON()
+		So(err, ShouldBeNil)
+		So(string(blob), ShouldContainSubstring, "rotate-me")
+
+		// Sanitize is the masking one; comparing two masked configs would make
+		// a rotated secret look unchanged
+		So(string(mustJSON(conf.Sanitize())), ShouldNotContainSubstring, "rotate-me")
+	})
+
+	Convey("It is a view, not a clone: what JSON drops is absent", t, func() {
+		conf := config.New()
+		conf.HTTP.Auth = &config.AuthConfig{LDAP: &config.LDAPConfig{Address: "ldap.example.com"}}
+		conf.HTTP.Auth.LDAP.SetBindPassword("super-secret")
+		conf.HTTP.Auth.SessionHashKey = []byte("hash-key-material")
+
+		blob, err := conf.SnapshotJSON()
+		So(err, ShouldBeNil)
+
+		So(string(blob), ShouldContainSubstring, "ldap.example.com")
+		So(string(blob), ShouldNotContainSubstring, "super-secret")
+		So(string(blob), ShouldNotContainSubstring, "hash-key-material")
+	})
+}
+
+func mustJSON(conf *config.Config) []byte {
+	blob, err := json.Marshal(conf)
+	So(err, ShouldBeNil)
+
+	return blob
 }
 
 func TestEventsFingerprint(t *testing.T) {

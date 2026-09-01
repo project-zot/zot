@@ -32,6 +32,7 @@ type LDAPClient struct {
 	Conn               *ldap.Conn
 	ClientCertificates []tls.Certificate // Adding client certificates
 	ClientCAs          *x509.CertPool
+	CACertPath         string // the caCert ClientCAs was built from, for restart-required detection
 	Log                log.Logger
 	lock               sync.Mutex
 }

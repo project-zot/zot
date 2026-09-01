@@ -118,12 +118,7 @@ func InitController(conf *config.Config, configPath string) (*api.Controller, *H
 		ldapCredentials = conf.HTTP.Auth.LDAP.CredentialsFile
 	}
 
-	hotReloader, err := NewHotReloader(ctlr, configPath, ldapCredentials)
-	if err != nil {
-		ctlr.Log.Error().Err(err).Msg("failed to create a new hot reloader")
-
-		return nil, nil, err
-	}
+	hotReloader := NewHotReloader(ctlr, configPath, ldapCredentials)
 
 	if err := ctlr.Init(); err != nil {
 		hotReloader.Stop()

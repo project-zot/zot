@@ -634,6 +634,10 @@ run-blackbox-sync-nightly: check-blackbox-prerequisites $(ZOT_BIN_DEP) $(ZOT_MIN
 run-kind-sync-ondemand: $(KIND) $(ZOT_BIN_DEP)
 	./examples/kind/kind-sync-ondemand.sh
 
+.PHONY: run-kind-config-reload
+run-kind-config-reload: $(KIND) $(ZOT_BIN_DEP)
+	./examples/kind/kind-config-reload.sh
+
 # When USE_PREBUILT=1, assert compile outputs already exist so test targets
 # can reuse a downloaded bin/ without invoking the phony binary/bench/cli targets.
 .PHONY: require-binary

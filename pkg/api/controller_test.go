@@ -2641,8 +2641,7 @@ func TestBasicAuthWithReloadedCredentials(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlrManager := test.NewControllerManager(ctlr)
 
-		hotReloader, err := server.NewHotReloader(ctlr, configPath, ldapConfigPath)
-		So(err, ShouldBeNil)
+		hotReloader := server.NewHotReloader(ctlr, configPath, ldapConfigPath)
 
 		hotReloader.Start()
 
