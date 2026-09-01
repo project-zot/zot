@@ -4981,11 +4981,11 @@ func TestS3DedupeErr(t *testing.T) {
 		})
 
 		// trigger unable to rename blob
-		err = imgStore.DedupeBlob("", digest, "", "dst")
+		err = imgStore.DedupeBlob("", digest, "repo", "dst")
 		So(err, ShouldNotBeNil)
 
 		// trigger retry
-		err = imgStore.DedupeBlob("", digest, "", "dst")
+		err = imgStore.DedupeBlob("", digest, "repo", "dst")
 		So(err, ShouldNotBeNil)
 	})
 
@@ -5003,11 +5003,11 @@ func TestS3DedupeErr(t *testing.T) {
 
 		digest := godigest.NewDigestFromEncoded(godigest.SHA256,
 			testDigestHex)
-		err := imgStore.DedupeBlob("", digest, "", "dst")
+		err := imgStore.DedupeBlob("", digest, "repo", "dst")
 		So(err, ShouldBeNil)
 
 		// error will be triggered in driver.SameFile()
-		err = imgStore.DedupeBlob("", digest, "", "dst2")
+		err = imgStore.DedupeBlob("", digest, "repo2", "dst2")
 		So(err, ShouldBeNil)
 	})
 
@@ -5039,10 +5039,10 @@ func TestS3DedupeErr(t *testing.T) {
 
 		digest := godigest.NewDigestFromEncoded(godigest.SHA256,
 			testDigestHex)
-		err := imgStore.DedupeBlob("", digest, "", "dst")
+		err := imgStore.DedupeBlob("", digest, "repo", "dst")
 		So(err, ShouldBeNil)
 
-		err = imgStore.DedupeBlob("", digest, "", "dst2")
+		err = imgStore.DedupeBlob("", digest, "repo2", "dst2")
 		So(err, ShouldNotBeNil)
 	})
 
@@ -5056,7 +5056,7 @@ func TestS3DedupeErr(t *testing.T) {
 
 		hash := testDigestHex //nolint:gosec
 		digest := godigest.NewDigestFromEncoded(godigest.SHA256, hash)
-		err := imgStore.DedupeBlob("", digest, "", "dst")
+		err := imgStore.DedupeBlob("", digest, "repo", "dst")
 		So(err, ShouldBeNil)
 
 		err = imgStore.DedupeBlob("", digest, "", "")
@@ -5076,10 +5076,10 @@ func TestS3DedupeErr(t *testing.T) {
 
 		hash := testDigestHex //nolint:gosec
 		digest := godigest.NewDigestFromEncoded(godigest.SHA256, hash)
-		err := imgStore.DedupeBlob("", digest, "", "dst")
+		err := imgStore.DedupeBlob("", digest, "repo", "dst")
 		So(err, ShouldBeNil)
 
-		err = imgStore.DedupeBlob("", digest, "", "dst")
+		err = imgStore.DedupeBlob("", digest, "repo", "dst")
 		So(err, ShouldNotBeNil)
 	})
 
@@ -5197,10 +5197,10 @@ func TestS3DedupeErr(t *testing.T) {
 		digest := godigest.NewDigestFromEncoded(godigest.SHA256,
 			testDigestHex)
 
-		err := imgStore.DedupeBlob("/src/dst", digest, "", "/repo1/dst1")
+		err := imgStore.DedupeBlob("/src/dst", digest, "repo1", "/repo1/dst1")
 		So(err, ShouldBeNil)
 
-		err = imgStore.DedupeBlob("/src/dst", digest, "", "/repo2/dst2")
+		err = imgStore.DedupeBlob("/src/dst", digest, "repo2", "/repo2/dst2")
 		So(err, ShouldBeNil)
 
 		// copy cache db to the new imagestore
@@ -5275,10 +5275,10 @@ func TestS3DedupeErr(t *testing.T) {
 		digest := godigest.NewDigestFromEncoded(godigest.SHA256,
 			testDigestHex)
 
-		err := imgStore.DedupeBlob("/src/dst", digest, "", "/repo1/dst1")
+		err := imgStore.DedupeBlob("/src/dst", digest, "repo1", "/repo1/dst1")
 		So(err, ShouldBeNil)
 
-		err = imgStore.DedupeBlob("/src/dst", digest, "", "/repo2/dst2")
+		err = imgStore.DedupeBlob("/src/dst", digest, "repo2", "/repo2/dst2")
 		So(err, ShouldBeNil)
 
 		// copy cache db to the new imagestore
@@ -5398,7 +5398,7 @@ func TestS3DedupeErr(t *testing.T) {
 			},
 		})
 
-		err := imgStore.DedupeBlob("repo", digest, "", blobPath)
+		err := imgStore.DedupeBlob("repo", digest, "repo", blobPath)
 		So(err, ShouldBeNil)
 
 		_, _, err = imgStore.CheckBlob(context.Background(), "repo2", digest)
