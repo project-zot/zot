@@ -313,7 +313,9 @@ func releaseIdleRepository(repo string, storeController storage.StoreController,
 	}
 }
 
-func releaseIdleRepositoryLocked(repo string, imgStore storageTypes.ImageStore, metaDB mTypes.MetaDB, log log.Logger) error {
+func releaseIdleRepositoryLocked(repo string, imgStore storageTypes.ImageStore,
+	metaDB mTypes.MetaDB, log log.Logger,
+) error {
 	removed, err := imgStore.RemoveIdleRepository(repo, 0)
 	if err != nil {
 		log.Error().Err(err).Str("repository", repo).Str("component", "metadb").
