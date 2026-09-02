@@ -578,11 +578,15 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 	}
 
 	if rh.c.MetaDB != nil {
-		err := meta.OnGetManifest(name, reference, mediaType, content, rh.c.StoreController, rh.c.MetaDB, rh.c.Log)
-		if err != nil && !errors.Is(err, zerr.ErrImageMetaNotFound) && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
-			response.WriteHeader(http.StatusInternalServerError)
-
-			return
+		// OnGetManifest only updates best-effort download bookkeeping (download count and
+		// last-pull timestamp). The manifest has already been retrieved and verified above, so a
+		// failure here must not fail the client's read. In particular, a burst of concurrent
+		// pulls of the same repo (e.g. a large fan-out job) contends the per-repo metaDB lock and
+		// UpdateStatsOnDownload returns a lock error; turning that into a 500 discards a perfectly
+		// good manifest and causes spurious ImagePullBackOff. Log it and serve the manifest.
+		if err := meta.OnGetManifest(name, reference, mediaType, content, rh.c.StoreController, rh.c.MetaDB, rh.c.Log); err != nil {
+			rh.c.Log.Warn().Err(err).Str("name", name).Str("reference", reference).
+				Msg("failed to update download stats; serving manifest anyway")
 		}
 	}
 
