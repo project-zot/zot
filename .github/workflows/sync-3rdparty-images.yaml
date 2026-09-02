@@ -50,8 +50,8 @@ jobs:
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # setup oras
-          make $PWD/hack/tools/bin/oras
+          # setup oras (OS/ARCH avoid Makefile `go env`; $PWD matches $(ORAS))
+          OS=linux ARCH=amd64 make "$PWD/hack/tools/bin/oras"
           export PATH=$PATH:$PWD/hack/tools/bin
           test -n "${GHCR_TOKEN}" || { echo "Missing GHCR token"; exit 1; }
           echo "${GHCR_TOKEN}" | oras login -u "${GITHUB_ACTOR}" --password-stdin ghcr.io

@@ -313,6 +313,8 @@ function teardown_file() {
 
 @test "sign/verify with notation" {
     zot_port3=`cat ${BATS_FILE_TMPDIR}/zot.port3`
+    run notation cert generate-test "notation-sign-sync-test"
+    [ "$status" -eq 0 ]
 
     local trust_policy_file=/tmp/trustpolicy.json
 

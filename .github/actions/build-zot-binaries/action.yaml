@@ -18,10 +18,6 @@ inputs:
     description: 'Newline-separated paths under bin/ to upload (required when upload-artifact is true)'
     required: false
     default: ''
-  include-oras:
-    description: 'Also fetch oras into hack/tools/bin and upload as artifact "oras"'
-    required: false
-    default: 'false'
   go-version:
     description: 'Go version for setup-go'
     required: false
@@ -71,23 +67,11 @@ runs:
     - name: Build binaries
       shell: bash
       run: make ${{ inputs.make-targets }}
-    - name: Fetch oras
-      if: ${{ inputs.include-oras == 'true' }}
-      shell: bash
-      run: make "$PWD/hack/tools/bin/oras"
     - name: Upload binaries
       if: ${{ inputs.upload-artifact == 'true' }}
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: ${{ inputs.artifact-name }}
         path: ${{ inputs.artifact-path }}
-        if-no-files-found: error
-        retention-days: ${{ inputs.retention-days }}
-    - name: Upload oras
-      if: ${{ inputs.upload-artifact == 'true' && inputs.include-oras == 'true' }}
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-      with:
-        name: oras
-        path: hack/tools/bin/oras
         if-no-files-found: error
         retention-days: ${{ inputs.retention-days }}
