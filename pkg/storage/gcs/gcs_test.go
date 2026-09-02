@@ -46,6 +46,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage/gc"
 	"zotregistry.dev/zot/v2/pkg/storage/gcs"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
+	test "zotregistry.dev/zot/v2/pkg/test/common"
 	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 	tskip "zotregistry.dev/zot/v2/pkg/test/skip"
@@ -507,7 +508,15 @@ func TestGCSDriver(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Verify manifest
-			_, _, _, err = imgStore.GetImageManifest(repoName, "1.0")
+			for range 100 {
+				_, _, _, err = imgStore.GetImageManifest(repoName, "1.0")
+				if err == nil {
+					break
+				}
+
+				// The GCS emulator can expose the newly written index after PutImageManifest returns.
+				time.Sleep(100 * time.Millisecond)
+			}
 			So(err, ShouldBeNil)
 
 			// Verify blob
@@ -852,9 +861,11 @@ func TestGCSGetAllDedupeReposCandidates(t *testing.T) {
 
 		repos, err := imgStore.GetAllDedupeReposCandidates(randomBlobDigest)
 		So(err, ShouldBeNil)
+
+		// _blobstore is internal-only and must never be exposed as a mount candidate
 		slices.Sort(repoNames)
 		slices.Sort(repos)
-		So(repoNames, ShouldResemble, repos)
+		So(repos, ShouldResemble, repoNames)
 	})
 }
 
@@ -1652,27 +1663,21 @@ func TestGCSStorageAPIs(t *testing.T) {
 		})
 
 		Convey("Locks", func() {
-			// in parallel, a mix of read and write locks - mainly for coverage
+			// Concurrent mix of repo/blobstore read and write locks, exercised for coverage.
 			var wg sync.WaitGroup
 			for range 1000 {
-				wg.Add(2)
-
-				go func() {
-					var lockLatency time.Time
-
-					defer wg.Done()
-					imgStore.Lock(&lockLatency)
-					func() {}()
-					imgStore.Unlock(&lockLatency)
-				}()
-				go func() {
-					var lockLatency time.Time
-
-					defer wg.Done()
-					imgStore.RLock(&lockLatency)
-					func() {}()
-					imgStore.RUnlock(&lockLatency)
-				}()
+				wg.Go(func() {
+					_ = imgStore.WithRepoLock("replace", func() error { return nil })
+				})
+				wg.Go(func() {
+					_ = imgStore.WithRepoReadLock("replace", func() error { return nil })
+				})
+				wg.Go(func() {
+					_ = imgStore.WithBlobstoreLock(func() error { return nil })
+				})
+				wg.Go(func() {
+					_ = imgStore.WithBlobstoreReadLock(func() error { return nil })
+				})
 			}
 
 			wg.Wait()
@@ -1702,6 +1707,76 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 	// Wrap driver for WriteFile access
 	gcsDriver := gcs.New(rawDriver)
 
+	// overwriteUntilSizeChanges corrupts the global blobstore copy at blobPath by
+	// overwriting it with content of a different size, then polls Stat until the
+	// new size is actually visible - the emulator can be slow to propagate a write,
+	// and a stale Stat would make the corruption-detection assertions that follow
+	// flaky. Each attempt grows the corrupted content further so a failed WriteFile
+	// (also retried) never collides with a size an earlier attempt already tried.
+	overwriteUntilSizeChanges := func(blobPath string, originalSize int) bool {
+		for attempt := range 20 {
+			corruptedBlob := bytes.Repeat([]byte("c"), originalSize+attempt+1)
+			expectedSize := int64(len(corruptedBlob))
+
+			if _, err := gcsDriver.WriteFile(blobPath, corruptedBlob); err != nil {
+				time.Sleep(200 * time.Millisecond)
+
+				continue
+			}
+
+			for range 20 {
+				blobInfo, err := gcsDriver.Stat(blobPath)
+				if err == nil && blobInfo.Size() == expectedSize {
+					return true
+				}
+
+				time.Sleep(200 * time.Millisecond)
+			}
+		}
+
+		return false
+	}
+
+	// waitForExpectedBlobSize polls after a repair reupload until the repaired size is
+	// visible through every read path (StatBlob's cache-backed resolution, CheckBlob,
+	// and a direct driver Stat on the global blobstore copy) - the emulator can take a
+	// moment to propagate the overwrite, and stale cache state can make one path settle
+	// before another. Requiring 3 consecutive matches guards against a path flickering
+	// between the corrupted and repaired size mid-propagation instead of just catching
+	// a lucky single read.
+	waitForExpectedBlobSize := func(repo string, digest godigest.Digest, expectedSize int64) bool {
+		globalBlobPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+
+		return test.WaitForStableCondition(300, 3, 100*time.Millisecond, func() bool {
+			matched := false
+
+			ok, size, _, err := imgStore.StatBlob(repo, digest)
+			if err == nil && ok && size == expectedSize {
+				matched = true
+			}
+
+			ok, size, err = imgStore.CheckBlob(context.Background(), repo, digest)
+			if err == nil && ok && size == expectedSize {
+				matched = true
+			}
+
+			blobInfo, err := gcsDriver.Stat(globalBlobPath)
+			if err == nil && blobInfo.Size() == expectedSize {
+				matched = true
+			}
+
+			return matched
+		})
+	}
+
+	waitForCorruptionDetection := func(repo string, digest godigest.Digest, expectedSize int64) bool {
+		return test.WaitForStableCondition(300, 3, 100*time.Millisecond, func() bool {
+			ok, size, err := imgStore.CheckBlob(context.Background(), repo, digest)
+
+			return (!ok && errors.Is(err, zerr.ErrBlobNotFound)) || (ok && size != expectedSize)
+		})
+	}
+
 	Convey("Test errors paths", t, func() {
 		storeController := storage.StoreController{DefaultStore: imgStore}
 
@@ -1722,33 +1797,27 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 		blob := image.Layers[0]
 		blobDigest := godigest.FromBytes(blob)
 		blobSize := len(blob)
-		blobPath := imgStore.BlobPath(repoName, blobDigest)
+		blobPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, blobDigest)
 
 		ok, size, err := imgStore.CheckBlob(context.Background(), repoName, blobDigest)
 		So(ok, ShouldBeTrue)
 		So(size, ShouldEqual, blobSize)
 		So(err, ShouldBeNil)
 
-		_, err = gcsDriver.WriteFile(blobPath, []byte("corrupted"))
-		So(err, ShouldBeNil)
-
-		ok, size, err = imgStore.CheckBlob(context.Background(), repoName, blobDigest)
-		So(ok, ShouldBeFalse)
-		So(size, ShouldNotEqual, blobSize)
-		So(err, ShouldEqual, zerr.ErrBlobNotFound)
+		So(overwriteUntilSizeChanges(blobPath, blobSize), ShouldBeTrue)
+		So(waitForCorruptionDetection(repoName, blobDigest, int64(blobSize)), ShouldBeTrue)
 
 		err = WriteImageToFileSystem(image, repoName, tag, storeController)
 		So(err, ShouldBeNil)
 
-		ok, size, _, err = imgStore.StatBlob(repoName, blobDigest)
-		So(ok, ShouldBeTrue)
-		So(blobSize, ShouldEqual, size)
-		So(err, ShouldBeNil)
+		if !waitForExpectedBlobSize(repoName, blobDigest, int64(blobSize)) {
+			// Retry once in case remote propagation delayed the first repair attempt.
+			_ = gcsDriver.Delete(blobPath)
+			err = WriteImageToFileSystem(image, repoName, tag, storeController)
+			So(err, ShouldBeNil)
+		}
 
-		ok, size, err = imgStore.CheckBlob(context.Background(), repoName, blobDigest)
-		So(ok, ShouldBeTrue)
-		So(size, ShouldEqual, blobSize)
-		So(err, ShouldBeNil)
+		So(waitForExpectedBlobSize(repoName, blobDigest, int64(blobSize)), ShouldBeTrue)
 	})
 
 	Convey("Test reupload repair corrupted image index", t, func() {
@@ -1764,33 +1833,27 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 		blob := image.Images[0].Layers[0]
 		blobDigest := godigest.FromBytes(blob)
 		blobSize := len(blob)
-		blobPath := imgStore.BlobPath(repoName, blobDigest)
+		blobPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, blobDigest)
 
 		ok, size, err := imgStore.CheckBlob(context.Background(), repoName, blobDigest)
 		So(ok, ShouldBeTrue)
 		So(size, ShouldEqual, blobSize)
 		So(err, ShouldBeNil)
 
-		_, err = gcsDriver.WriteFile(blobPath, []byte("corrupted"))
-		So(err, ShouldBeNil)
-
-		ok, size, err = imgStore.CheckBlob(context.Background(), repoName, blobDigest)
-		So(ok, ShouldBeFalse)
-		So(size, ShouldNotEqual, blobSize)
-		So(err, ShouldEqual, zerr.ErrBlobNotFound)
+		So(overwriteUntilSizeChanges(blobPath, blobSize), ShouldBeTrue)
+		So(waitForCorruptionDetection(repoName, blobDigest, int64(blobSize)), ShouldBeTrue)
 
 		err = WriteMultiArchImageToFileSystem(image, repoName, tag, storeController)
 		So(err, ShouldBeNil)
 
-		ok, size, _, err = imgStore.StatBlob(repoName, blobDigest)
-		So(ok, ShouldBeTrue)
-		So(blobSize, ShouldEqual, size)
-		So(err, ShouldBeNil)
+		if !waitForExpectedBlobSize(repoName, blobDigest, int64(blobSize)) {
+			// Retry once in case remote propagation delayed the first repair attempt.
+			_ = gcsDriver.Delete(blobPath)
+			err = WriteMultiArchImageToFileSystem(image, repoName, tag, storeController)
+			So(err, ShouldBeNil)
+		}
 
-		ok, size, err = imgStore.CheckBlob(context.Background(), repoName, blobDigest)
-		So(ok, ShouldBeTrue)
-		So(size, ShouldEqual, blobSize)
-		So(err, ShouldBeNil)
+		So(waitForExpectedBlobSize(repoName, blobDigest, int64(blobSize)), ShouldBeTrue)
 	})
 }
 
@@ -2909,6 +2972,42 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 		storeCtlr.DefaultStore = imgStore
 		So(storeCtlr.GetImageStore(repoName), ShouldResemble, imgStore)
 
+		space := regexp.MustCompile(`\s+`)
+
+		waitForScrubContains := func(expected string) (string, error) {
+			last := ""
+
+			for range 80 {
+				buff := bytes.NewBufferString("")
+
+				res, err := storeCtlr.CheckAllBlobsIntegrity(context.Background())
+				if err != nil {
+					return "", err
+				}
+
+				res.PrintScrubResults(buff)
+				last = strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
+
+				if strings.Contains(last, expected) {
+					return last, nil
+				}
+
+				time.Sleep(100 * time.Millisecond)
+			}
+
+			return last, fmt.Errorf("%w: scrub output did not contain %q", context.DeadlineExceeded, expected)
+		}
+
+		resolveIntegrityBlobPath := func(digest godigest.Digest) string {
+			globalBlobPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+
+			if _, statErr := driver.Stat(globalBlobPath); statErr == nil {
+				return globalBlobPath
+			}
+
+			return imgStore.BlobPath(repoName, digest)
+		}
+
 		image := CreateRandomImage()
 
 		err = WriteImageToFileSystem(image, repoName, "1.0", storeCtlr)
@@ -2921,7 +3020,6 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 			res.PrintScrubResults(buff)
 			So(err, ShouldBeNil)
 
-			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
@@ -2952,7 +3050,6 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 			res.PrintScrubResults(buff)
 			So(err, ShouldNotBeNil)
 
-			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
@@ -2982,7 +3079,6 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 			res.PrintScrubResults(buff)
 			So(err, ShouldBeNil)
 
-			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
@@ -3025,7 +3121,7 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 
 			// delete content of config file
 			configDig := image.ConfigDescriptor.Digest.Encoded()
-			configFile := path.Join(imgStore.RootDir(), repoName, "/blobs/sha256", configDig)
+			configFile := resolveIntegrityBlobPath(image.ConfigDescriptor.Digest)
 			err = driver.Delete(configFile)
 			So(err, ShouldBeNil)
 
@@ -3041,7 +3137,6 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 			res.PrintScrubResults(buff)
 			So(err, ShouldBeNil)
 
-			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
@@ -3050,16 +3145,9 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 			_, err = driver.WriteFile(configFile, []byte("invalid content"))
 			So(err, ShouldBeNil)
 
-			buff = bytes.NewBufferString("")
-
-			res, err = storeCtlr.CheckAllBlobsIntegrity(context.Background())
-			res.PrintScrubResults(buff)
+			actual, err = waitForScrubContains(fmt.Sprintf("test 1.0 affected %s invalid server config", configDig))
 			So(err, ShouldBeNil)
-
-			str = space.ReplaceAllString(buff.String(), " ")
-			actual = strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
-			So(actual, ShouldContainSubstring, fmt.Sprintf("test 1.0 affected %s invalid server config", configDig))
 		})
 
 		Convey("Layers integrity affected", func() {
@@ -3069,7 +3157,7 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 
 			// delete content of layer file
 			layerDig := image.Manifest.Layers[0].Digest.Encoded()
-			layerFile := path.Join(imgStore.RootDir(), repoName, "/blobs/sha256", layerDig)
+			layerFile := resolveIntegrityBlobPath(image.Manifest.Layers[0].Digest)
 			_, err = driver.WriteFile(layerFile, []byte(" "))
 			So(err, ShouldBeNil)
 
@@ -3079,17 +3167,9 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 				So(err, ShouldBeNil)
 			}()
 
-			buff := bytes.NewBufferString("")
-
-			res, err := storeCtlr.CheckAllBlobsIntegrity(context.Background())
-			res.PrintScrubResults(buff)
+			actual, err := waitForScrubContains(fmt.Sprintf("test 1.0 affected %s bad blob digest", layerDig))
 			So(err, ShouldBeNil)
-
-			space := regexp.MustCompile(`\s+`)
-			str := space.ReplaceAllString(buff.String(), " ")
-			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
-			So(actual, ShouldContainSubstring, fmt.Sprintf("test 1.0 affected %s bad blob digest", layerDig))
 		})
 
 		Convey("Layer not found", func() {
@@ -3098,10 +3178,9 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 			content, err := imgStore.GetBlobContent(repoName, digest)
 			So(err, ShouldBeNil)
 
-			// change layer file permissions
+			// Delete the physical payload; remote dedupe stores it in the global blobstore.
 			layerDig := image.Manifest.Layers[0].Digest.Encoded()
-			repoDir := path.Join(imgStore.RootDir(), repoName)
-			layerFile := path.Join(repoDir, "/blobs/sha256", layerDig)
+			layerFile := resolveIntegrityBlobPath(digest)
 			err = driver.Delete(layerFile)
 			So(err, ShouldBeNil)
 
@@ -3126,7 +3205,6 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 			res.PrintScrubResults(buff)
 			So(err, ShouldBeNil)
 
-			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")

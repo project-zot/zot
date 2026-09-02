@@ -29,6 +29,7 @@ import (
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	"zotregistry.dev/zot/v2/pkg/storage/azure"
+	"zotregistry.dev/zot/v2/pkg/storage/cache"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/gc"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
@@ -64,6 +65,21 @@ var testCases = []struct {
 		testCaseName: azureTestName,
 		storageType:  storageConstants.AzureStorageDriverName,
 	},
+}
+
+func newTestBlobCache(t *testing.T, cacheDir string, log zlog.Logger) storageTypes.Cache {
+	t.Helper()
+
+	cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+		RootDir:     cacheDir,
+		Name:        "cache",
+		UseRelPaths: false,
+	}, log)
+	if err != nil {
+		t.Fatalf("failed to create blob cache: %v", err)
+	}
+
+	return cacheDriver
 }
 
 // The backend subtests run in parallel, but the top-level test stays sequential on
@@ -103,6 +119,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 
 				rootDir := path.Join("/oci-repo-test", uuid.String())
 				cacheDir := t.TempDir()
+				cacheDriver := newTestBlobCache(t, cacheDir, log)
 
 				bucket := "zot-storage-test"
 
@@ -160,7 +177,8 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					panic(err)
 				}
 
-				imgStore = s3.NewImageStore(rootDir, cacheDir, true, false, log, metrics, nil, store, nil, compat, nil)
+				imgStore = s3.NewImageStore(rootDir, cacheDir, true, false, log, metrics, nil, store,
+					cacheDriver, compat, nil)
 			case storageConstants.AzureStorageDriverName:
 				tskip.SkipAzure(t)
 
@@ -171,6 +189,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 
 				rootDir := path.Join("/oci-repo-test", uuid.String())
 				cacheDir := t.TempDir()
+				cacheDriver := newTestBlobCache(t, cacheDir, log)
 
 				driverParams := azurite.DriverParams(rootDir)
 				storage.NormalizeRootDirectory(storageConstants.AzureStorageDriverName, driverParams)
@@ -202,7 +221,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 				}
 
 				imgStore = azure.NewImageStore(storage.RootDir(storageConstants.AzureStorageDriverName, driverParams),
-					cacheDir, true, false, log, metrics, nil, store, nil, compat, nil)
+					cacheDir, true, false, log, metrics, nil, store, cacheDriver, compat, nil)
 			default:
 				// Create temporary directory
 				rootDir := t.TempDir()
@@ -1851,6 +1870,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 
 				rootDir := path.Join("/oci-repo-test", uuid.String())
 				cacheDir := t.TempDir()
+				cacheDriver := newTestBlobCache(t, cacheDir, log)
 
 				bucket := "zot-storage-test"
 
@@ -1882,7 +1902,8 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 					panic(err)
 				}
 
-				imgStore = s3.NewImageStore(rootDir, cacheDir, true, false, log, metrics, nil, store, nil, nil, nil)
+				imgStore = s3.NewImageStore(rootDir, cacheDir, true, false, log, metrics, nil, store,
+					cacheDriver, nil, nil)
 			case storageConstants.AzureStorageDriverName:
 				tskip.SkipAzure(t)
 
@@ -1893,6 +1914,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 
 				rootDir := path.Join("/oci-repo-test", uuid.String())
 				cacheDir := t.TempDir()
+				cacheDriver := newTestBlobCache(t, cacheDir, log)
 
 				driverParams := azurite.DriverParams(rootDir)
 				storage.NormalizeRootDirectory(storageConstants.AzureStorageDriverName, driverParams)
@@ -1909,7 +1931,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 				defer store.Delete(context.Background(), "/") //nolint: errcheck
 
 				imgStore = azure.NewImageStore(storage.RootDir(storageConstants.AzureStorageDriverName, driverParams),
-					cacheDir, true, false, log, metrics, nil, store, nil, nil, nil)
+					cacheDir, true, false, log, metrics, nil, store, cacheDriver, nil, nil)
 			default:
 				// Create temporary directory
 				rootDir := t.TempDir()
