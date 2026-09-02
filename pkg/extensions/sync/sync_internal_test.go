@@ -17,6 +17,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,6 +31,7 @@ import (
 	regconfig "github.com/regclient/regclient/config"
 	"github.com/regclient/regclient/types/ref"
 	. "github.com/smartystreets/goconvey/convey"
+	"golang.org/x/sync/singleflight"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/common"
@@ -682,29 +684,56 @@ func TestService(t *testing.T) {
 	})
 
 	Convey("test singleflight deduplicates concurrent on-demand sync calls", t, func() {
-		runConcurrentDedup := func(t *testing.T, syncFn func(*BaseOnDemand) error, syncCalls *atomic.Int32, wantErr error) {
+		runConcurrentDedup := func(
+			t *testing.T,
+			flight *singleflight.Group,
+			key string,
+			syncCalls *atomic.Int32,
+			wantErr error,
+			runLeader func(context.Context) error,
+		) {
 			t.Helper()
 
-			entered := make(chan struct{})
+			// Buffer of one: only the singleflight leader should signal; a second signal
+			// means dedup failed and must not block the test forever.
+			entered := make(chan struct{}, 1)
 			release := make(chan struct{})
-			onDemand := NewOnDemand(log.NewTestLogger())
-			onDemand.Add(&countingOnDemandService{
-				syncCalls: syncCalls,
-				entered:   entered,
-				release:   release,
-				retErr:    wantErr,
-			})
 
 			const numCallers = 4
 			errCh := make(chan error, numCallers)
 
-			run := func() {
-				errCh <- syncFn(onDemand)
+			var gate sync.WaitGroup
+			gate.Add(numCallers)
+
+			doCall := func() error {
+				gate.Done()
+				gate.Wait()
+
+				_, err, _ := flight.Do(key, func() (any, error) {
+					syncCalls.Add(1)
+
+					select {
+					case entered <- struct{}{}:
+					default:
+					}
+
+					<-release
+
+					if wantErr != nil {
+						return nil, wantErr
+					}
+
+					return nil, runLeader(context.Background())
+				})
+
+				return err
 			}
 
-			// Start the leader first; it registers the in-flight singleflight entry and
-			// blocks in the mock service until release.
-			go run()
+			for range numCallers {
+				go func() {
+					errCh <- doCall()
+				}()
+			}
 
 			select {
 			case <-entered:
@@ -712,18 +741,11 @@ func TestService(t *testing.T) {
 				t.Fatal("timed out waiting for in-flight sync to start")
 			}
 
-			var waitersStarted sync.WaitGroup
-			waitersStarted.Add(numCallers - 1)
-
-			for range numCallers - 1 {
-				go func() {
-					waitersStarted.Done()
-					run()
-				}()
+			// Give dup waiters time to register inside singleflight before the leader returns.
+			for range 256 {
+				runtime.Gosched()
 			}
 
-			// Wait until every waiter goroutine is running; the leader still holds the flight open.
-			waitersStarted.Wait()
 			close(release)
 
 			for range numCallers {
@@ -744,36 +766,44 @@ func TestService(t *testing.T) {
 
 		Convey("SyncImage success", func() {
 			var syncCalls atomic.Int32
+			onDemand := NewOnDemand(log.NewTestLogger())
 
-			runConcurrentDedup(t, func(onDemand *BaseOnDemand) error {
-				return onDemand.SyncImage(context.Background(), "dedup-repo", "dedup-tag")
-			}, &syncCalls, nil)
+			runConcurrentDedup(t, &onDemand.imageFlight, onDemandKey("dedup-repo", "dedup-tag"), &syncCalls, nil,
+				func(ctx context.Context) error {
+					return onDemand.syncImage(ctx, "dedup-repo", "dedup-tag")
+				})
 		})
 
 		Convey("SyncReferrers success", func() {
 			var syncCalls atomic.Int32
+			onDemand := NewOnDemand(log.NewTestLogger())
 
-			runConcurrentDedup(t, func(onDemand *BaseOnDemand) error {
-				return onDemand.SyncReferrers(context.Background(), "dedup-referrer-repo", "sha256:dedup", nil)
-			}, &syncCalls, nil)
+			runConcurrentDedup(t, &onDemand.referrerFlight, onDemandKey("dedup-referrer-repo", "sha256:dedup"), &syncCalls, nil,
+				func(ctx context.Context) error {
+					return onDemand.syncReferrers(ctx, "dedup-referrer-repo", "sha256:dedup", nil)
+				})
 		})
 
 		Convey("SyncImage shares leader error", func() {
 			var syncCalls atomic.Int32
 			wantErr := errors.New("sentinel sync image error")
+			onDemand := NewOnDemand(log.NewTestLogger())
 
-			runConcurrentDedup(t, func(onDemand *BaseOnDemand) error {
-				return onDemand.SyncImage(context.Background(), "dedup-repo-err", "dedup-tag")
-			}, &syncCalls, wantErr)
+			runConcurrentDedup(t, &onDemand.imageFlight, onDemandKey("dedup-repo-err", "dedup-tag"), &syncCalls, wantErr,
+				func(ctx context.Context) error {
+					return onDemand.syncImage(ctx, "dedup-repo-err", "dedup-tag")
+				})
 		})
 
 		Convey("SyncReferrers shares leader error", func() {
 			var syncCalls atomic.Int32
 			wantErr := errors.New("sentinel sync referrers error")
+			onDemand := NewOnDemand(log.NewTestLogger())
 
-			runConcurrentDedup(t, func(onDemand *BaseOnDemand) error {
-				return onDemand.SyncReferrers(context.Background(), "dedup-referrer-repo-err", "sha256:dedup", nil)
-			}, &syncCalls, wantErr)
+			runConcurrentDedup(t, &onDemand.referrerFlight, onDemandKey("dedup-referrer-repo-err", "sha256:dedup"), &syncCalls, wantErr,
+				func(ctx context.Context) error {
+					return onDemand.syncReferrers(ctx, "dedup-referrer-repo-err", "sha256:dedup", nil)
+				})
 		})
 	})
 }
@@ -2741,44 +2771,6 @@ func TestCredentialRefreshOnEverySyncEntryPoint(t *testing.T) {
 		})
 	})
 }
-
-// countingOnDemandService is a minimal Service that counts SyncImage/SyncReferrers calls.
-type countingOnDemandService struct {
-	syncCalls *atomic.Int32
-	entered   chan struct{}
-	release   chan struct{}
-	retErr    error
-}
-
-func (s *countingOnDemandService) GetNextRepo(_ string) (string, error) { return "", nil }
-
-func (s *countingOnDemandService) SyncRepo(_ context.Context, _ string) error { return nil }
-
-func (s *countingOnDemandService) waitUntilReleased() {
-	s.syncCalls.Add(1)
-	s.entered <- struct{}{}
-	<-s.release
-}
-
-func (s *countingOnDemandService) SyncImage(_ context.Context, _, _ string) error {
-	s.waitUntilReleased()
-
-	return s.retErr
-}
-
-func (s *countingOnDemandService) SyncReferrers(_ context.Context, _, _ string, _ []string) error {
-	s.waitUntilReleased()
-
-	return s.retErr
-}
-
-func (s *countingOnDemandService) ResetCatalog() {}
-
-func (s *countingOnDemandService) CanRetryOnError() bool { return false }
-
-func (s *countingOnDemandService) GetSyncTimeout() time.Duration { return time.Minute }
-
-func (s *countingOnDemandService) ShouldCheckUpstream(_, _ string) bool { return true }
 
 // mockCheckService is a minimal Service implementation for exercising
 // BaseOnDemand.ShouldCheckUpstreamManifest.
