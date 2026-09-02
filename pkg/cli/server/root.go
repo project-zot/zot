@@ -592,6 +592,22 @@ func validateMetricsConfig(cfg *extconf.ExtensionConfig) error {
 	return nil
 }
 
+func validateEventsConfig(cfg *extconf.ExtensionConfig) error {
+	eventsCfg := cfg.GetEventsConfig()
+	if eventsCfg == nil {
+		return nil
+	}
+
+	// The prefix replaces the leading segment of dot-separated event types,
+	// so it must not create empty segments in the rendered type.
+	prefix := eventsCfg.TypePrefix
+	if strings.HasPrefix(prefix, ".") || strings.HasSuffix(prefix, ".") || strings.Contains(prefix, "..") {
+		return fmt.Errorf("%w: events typePrefix must not contain a leading, trailing or double dot", zerr.ErrBadConfig)
+	}
+
+	return nil
+}
+
 func validateExtensionsConfig(cfg *config.Config, logger zlog.Logger) error {
 	extensionsConfig := cfg.CopyExtensionsConfig()
 	if extensionsConfig != nil && extensionsConfig.Mgmt != nil {
@@ -609,6 +625,12 @@ func validateExtensionsConfig(cfg *config.Config, logger zlog.Logger) error {
 			logger.Error().Err(joinedErr).Msg("invalid metrics config")
 
 			return joinedErr
+		}
+
+		if eventsValErr := validateEventsConfig(extensionsConfig); eventsValErr != nil {
+			logger.Error().Err(eventsValErr).Msg("invalid events config")
+
+			return eventsValErr
 		}
 
 		if extensionsConfig.Search != nil && extensionsConfig.Search.CVE != nil &&
