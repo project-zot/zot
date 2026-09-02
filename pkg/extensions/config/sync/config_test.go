@@ -9,6 +9,24 @@ import (
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
 )
 
+func TestRegistryConfig_IsAsyncOnDemandEnabled(t *testing.T) {
+	Convey("IsAsyncOnDemandEnabled", t, func() {
+		Convey("returns false when AsyncOnDemand is nil", func() {
+			cfg := syncconf.RegistryConfig{}
+			So(cfg.IsAsyncOnDemandEnabled(), ShouldBeFalse)
+		})
+
+		Convey("returns the configured value", func() {
+			enabled := true
+			cfg := syncconf.RegistryConfig{AsyncOnDemand: &enabled}
+			So(cfg.IsAsyncOnDemandEnabled(), ShouldBeTrue)
+
+			enabled = false
+			So(cfg.IsAsyncOnDemandEnabled(), ShouldBeFalse)
+		})
+	})
+}
+
 func TestRegistryConfig_ShouldSyncLegacyCosignTags(t *testing.T) {
 	Convey("ShouldSyncLegacyCosignTags", t, func() {
 		Convey("returns true when SyncLegacyCosignTags is nil (default)", func() {

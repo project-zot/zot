@@ -101,6 +101,7 @@ type RegistryConfig struct {
 	// exists to avoid, since concurrent HTTP/1.1 connections beyond 2 would get closed instead of
 	// pooled.
 	MaxIdleConnsPerHost *int
+	AsyncOnDemand       *bool
 }
 
 // OAuth2HelperConfig holds the options used by the "oauth2" credential helper,
@@ -222,6 +223,10 @@ func (config *OAuth2HelperConfig) Validate() error {
 // Default is true when SyncLegacyCosignTags is unset (nil).
 func (r RegistryConfig) ShouldSyncLegacyCosignTags() bool {
 	return r.SyncLegacyCosignTags == nil || *r.SyncLegacyCosignTags
+}
+
+func (r RegistryConfig) IsAsyncOnDemandEnabled() bool {
+	return r.AsyncOnDemand != nil && *r.AsyncOnDemand
 }
 
 type Content struct {
