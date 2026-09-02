@@ -3474,7 +3474,7 @@ func (is *ImageStore) getLogicalRepoBlobDigests(repo string) ([]godigest.Digest,
 	// need to surface here after a dedupe=false switch (e.g. RunDedupeBlobs' restore
 	// path relies on GetAllBlobs to discover them for every repo that logically owns a
 	// digest whose only physical copy lives in the global blobstore).
-	if !is.lifecycle.UsesLogicalRepoRefs() || repo == storageConstants.GlobalBlobsRepo {
+	if !is.lifecycle.UsesLogicalRepoRefs() || repo == storageConstants.GlobalBlobsRepo || is.isCacheNil() {
 		return nil, nil
 	}
 
@@ -3515,7 +3515,7 @@ func (is *ImageStore) getLogicalRepoBlobDigests(repo string) ([]godigest.Digest,
 // usefully enforce anyway.
 func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []godigest.Digest,
 ) (godigest.Digest, []string, error) {
-	if !is.dedupe && is.lifecycle.UsesLogicalRepoRefs() {
+	if !is.dedupe && is.lifecycle.UsesLogicalRepoRefs() && !is.isCacheNil() {
 		if enumerator, ok := is.cache.(blobRefEnumerator); ok {
 			return is.getNextDigestFromBlobRefs(enumerator, lastDigests)
 		}
@@ -3856,7 +3856,9 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 // first" loop would leave every per-repo duplicate's real content in place forever - this
 // promotes one real copy into the global blobstore (matching upgradeToGlobalBlobstore's
 // promote-then-reclaim pattern) and physically removes every repo's now-redundant copy.
-func (is *ImageStore) dedupeLogicalRemoteBlob(ctx context.Context, digest godigest.Digest, duplicateBlobs []string) error {
+func (is *ImageStore) dedupeLogicalRemoteBlob(ctx context.Context, digest godigest.Digest,
+	duplicateBlobs []string,
+) error {
 	globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
 
 	if _, err := is.storeDriver.Stat(globalBlobPath); err != nil {
