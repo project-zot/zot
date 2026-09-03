@@ -12,6 +12,7 @@ Flags:
   -c, --concurrency int              Number of multiple requests to make at a time (default 1)
   -h, --help                         help for zb
   -l, --list-tests                   Print a list of all available tests. When used together with test regex, lists the tests that match the regex.
+      --max-timeout-failures int     Max timeout failures allowed across the run (default 0); non-timeout failures always fail
   -o, --output-format string         Output format of test results: stdout (default), json, ci-cd
   -r, --repo string                  Use specified repo on remote registry for test data
   -n, --requests int                 Number of requests to perform (default 1)
@@ -23,6 +24,8 @@ Flags:
   -v, --version                      Show the version and exit
   -d, --working-dir string           Use specified directory to store test data
 ```
+
+`--max-timeout-failures` is a run-wide budget for timeout-related request failures only (including client errors that look like server read/write timeouts, such as `use of closed network connection`). Failures are still reported per test. Non-timeout failures always cause a non-zero exit. With default `0`, any timeout failure also fails the run.
   
 ## Command example
 ```
