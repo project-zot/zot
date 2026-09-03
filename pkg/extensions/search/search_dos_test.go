@@ -122,11 +122,15 @@ func TestSearchGQLResourceLimits(t *testing.T) {
 				SetBody(body).
 				Post(baseURL + "/v2/_zot/ext/search")
 
-			isRejectedByClosingConnection := err != nil
 			// A body-size rejection may close the connection instead of returning a well-formed
-			// response; either outcome proves the server didn't buffer and process the oversized
-			// body as a normal request.
-			if isRejectedByClosingConnection {
+			// response; if that happens, assert it's a connection-close style error so an
+			// unrelated failure (e.g. DNS, unreachable server) can't masquerade as a pass.
+			if err != nil {
+				msg := strings.ToLower(err.Error())
+				isConnClose := strings.Contains(msg, "eof") || strings.Contains(msg, "connection reset") ||
+					strings.Contains(msg, "broken pipe") || strings.Contains(msg, "closed network connection")
+				So(isConnClose, ShouldBeTrue)
+
 				return
 			}
 

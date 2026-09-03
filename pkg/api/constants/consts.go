@@ -32,8 +32,8 @@ const (
 	// MaxSearchBodySize is the maximum number of bytes accepted for a GraphQL search request body.
 	// The richest query zot's own CLI/UI issue is a few hundred bytes; 1 MiB leaves generous headroom
 	// for hand-written queries while bounding the memory a single request can force the server to
-	// buffer before GraphQL parsing (which has its own, tighter token budget - see
-	// extensions.searchParserTokenLimit) even gets a chance to run.
+	// buffer before GraphQL parsing (which has its own, tighter token budget; see
+	// searchParserTokenLimit in pkg/extensions/extension_search.go) even gets a chance to run.
 	MaxSearchBodySize            = 1 * 1024 * 1024
 	BlobUploadUUID               = "Blob-Upload-UUID"
 	DefaultMediaType             = "application/json"
