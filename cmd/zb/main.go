@@ -17,7 +17,7 @@ func NewPerfRootCmd() *cobra.Command {
 
 	var auth, workdir, repo, outFmt, srcIPs, srcCIDR, testRegexStr, upstreamServerURL string
 
-	var concurrency, requests int
+	var concurrency, requests, maxTimeoutFailures int
 
 	var skipCleanup, listTests bool
 
@@ -50,6 +50,10 @@ func NewPerfRootCmd() *cobra.Command {
 				panic("requests cannot be less than concurrency")
 			}
 
+			if maxTimeoutFailures < 0 {
+				panic("max-timeout-failures cannot be negative")
+			}
+
 			var testRegex *regexp.Regexp
 
 			if testRegexStr != "" {
@@ -69,7 +73,7 @@ func NewPerfRootCmd() *cobra.Command {
 
 			Perf(
 				workdir, url, auth, repo, concurrency, requests, outFmt,
-				srcIPs, srcCIDR, skipCleanup, testRegex, upstreamServerURL,
+				srcIPs, srcCIDR, skipCleanup, testRegex, upstreamServerURL, maxTimeoutFailures,
 			)
 		},
 	}
@@ -88,6 +92,8 @@ func NewPerfRootCmd() *cobra.Command {
 		"Number of multiple requests to make at a time")
 	rootCmd.Flags().IntVarP(&requests, "requests", "n", 1,
 		"Number of requests to perform")
+	rootCmd.Flags().IntVar(&maxTimeoutFailures, "max-timeout-failures", 0,
+		"Max timeout failures allowed across the run (default 0); non-timeout failures always fail")
 	rootCmd.Flags().StringVarP(&outFmt, "output-format", "o", "",
 		"Output format of test results: stdout (default), json, ci-cd")
 	rootCmd.Flags().BoolVar(&skipCleanup, "skip-cleanup", false,
