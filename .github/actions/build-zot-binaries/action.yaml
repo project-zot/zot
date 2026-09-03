@@ -1,0 +1,93 @@
+name: 'Build and upload zot linux/amd64 binaries'
+description: >
+  setup-go, restore build.yaml go caches (read-only), and run make targets.
+  Optionally upload bin/ artifacts. Caller must checkout the repo first.
+inputs:
+  make-targets:
+    description: 'Space-separated make targets (e.g. "binary bench")'
+    required: true
+  upload-artifact:
+    description: 'Upload built binaries as a workflow artifact'
+    required: false
+    default: 'true'
+  artifact-name:
+    description: 'upload-artifact name for zot binaries'
+    required: false
+    default: zot-linux-amd64-binaries
+  artifact-path:
+    description: 'Newline-separated paths under bin/ to upload (required when upload-artifact is true)'
+    required: false
+    default: ''
+  include-oras:
+    description: 'Also fetch oras into hack/tools/bin and upload as artifact "oras"'
+    required: false
+    default: 'false'
+  go-version:
+    description: 'Go version for setup-go'
+    required: false
+    default: '1.26.x'
+  retention-days:
+    description: 'Artifact retention in days'
+    required: false
+    default: '1'
+runs:
+  using: "composite"
+  steps:
+    - name: Require artifact-path when uploading
+      if: ${{ inputs.upload-artifact == 'true' }}
+      shell: bash
+      run: |
+        if [ -z "$(echo "${{ inputs.artifact-path }}" | tr -d '[:space:]')" ]; then
+          echo "artifact-path is required when upload-artifact is true" >&2
+          exit 1
+        fi
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        cache: false
+        check-latest: true
+        go-version: ${{ inputs.go-version }}
+    - name: Restore go dependencies
+      id: cache-go-dependencies
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-mod-
+    - name: Restore go build output
+      id: cache-go-build
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/.cache/go-build
+        key: linux-amd64-go-build-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          linux-amd64-go-build-
+    - name: Install go dependencies
+      if: steps.cache-go-dependencies.outputs.cache-hit != 'true'
+      shell: bash
+      run: go mod download
+    - name: Build binaries
+      shell: bash
+      run: make ${{ inputs.make-targets }}
+    - name: Fetch oras
+      if: ${{ inputs.include-oras == 'true' }}
+      shell: bash
+      run: make "$PWD/hack/tools/bin/oras"
+    - name: Upload binaries
+      if: ${{ inputs.upload-artifact == 'true' }}
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ inputs.artifact-path }}
+        if-no-files-found: error
+        retention-days: ${{ inputs.retention-days }}
+    - name: Upload oras
+      if: ${{ inputs.upload-artifact == 'true' && inputs.include-oras == 'true' }}
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: oras
+        path: hack/tools/bin/oras
+        if-no-files-found: error
+        retention-days: ${{ inputs.retention-days }}

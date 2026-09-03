@@ -95,7 +95,7 @@ jobs:
       - name: Generate zot config schema on Release
         if: github.event_name == 'release' && github.event.action == 'published' && matrix.os == 'linux' && matrix.arch == 'amd64'
         run: |
-          make verify-config-schema
+          make USE_PREBUILT=1 verify-config-schema
 
       - if: github.event_name == 'release' && github.event.action == 'published'
         name: Publish artifacts on releases

@@ -13,26 +13,26 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - name: Build PR binaries
+        uses: ./.github/actions/build-zot-binaries
         with:
-          cache: false
-          check-latest: true
-          go-version: 1.26.x
+          make-targets: binary-minimal bench cli
+          upload-artifact: "false"
       - name: Checkout zot (main branch)
         run: |
           mkdir -p $GITHUB_WORKSPACE/zot_main
           git clone https://github.com/project-zot/zot zot_main/
       - name: Check if zot-minimal binary increased with more than 1%
         run: |
-          echo "Building zot-minimal and check size"
-          cd $GITHUB_WORKSPACE
-          make binary-minimal
-          BINSIZE=$(stat -c%s "bin/zot-linux-amd64-minimal")
+          PR_BIN="$GITHUB_WORKSPACE/bin/zot-linux-amd64-minimal"
+          MAIN_BIN="$GITHUB_WORKSPACE/zot_main/bin/zot-linux-amd64-minimal"
 
-          echo "Building zot-minimal on main branch and check size"
-          cd zot_main
-          make binary-minimal
-          BINSIZE_MAIN=$(stat -c%s "bin/zot-linux-amd64-minimal")
+          echo "PR binary (already built): $PR_BIN"
+          BINSIZE=$(stat -c%s "$PR_BIN")
+
+          echo "Building zot-minimal on main branch"
+          make -C "$GITHUB_WORKSPACE/zot_main" binary-minimal
+          BINSIZE_MAIN=$(stat -c%s "$MAIN_BIN")
 
           echo "PR binary size: $BINSIZE Bytes"
           echo "main branch binary size: $BINSIZE_MAIN Bytes"
@@ -49,15 +49,15 @@ jobs:
       - if: always()
         name: Check if zb binary increased with more than 1%
         run: |
-          echo "Building zb and check size"
-          cd $GITHUB_WORKSPACE
-          make bench
-          BINSIZE=$(stat -c%s "bin/zb-linux-amd64")
+          PR_BIN="$GITHUB_WORKSPACE/bin/zb-linux-amd64"
+          MAIN_BIN="$GITHUB_WORKSPACE/zot_main/bin/zb-linux-amd64"
 
-          echo "Building zb on main branch and check size"
-          cd zot_main
-          make bench
-          BINSIZE_MAIN=$(stat -c%s "bin/zb-linux-amd64")
+          echo "PR binary (already built): $PR_BIN"
+          BINSIZE=$(stat -c%s "$PR_BIN")
+
+          echo "Building zb on main branch"
+          make -C "$GITHUB_WORKSPACE/zot_main" bench
+          BINSIZE_MAIN=$(stat -c%s "$MAIN_BIN")
 
           echo "PR binary size: $BINSIZE Bytes"
           echo "main branch binary size: $BINSIZE_MAIN Bytes"
@@ -74,15 +74,15 @@ jobs:
       - if: always()
         name: Check if zli binary increased with more than 1%
         run: |
-          echo "Building zli and check size"
-          cd $GITHUB_WORKSPACE
-          make cli
-          BINSIZE=$(stat -c%s "bin/zli-linux-amd64")
+          PR_BIN="$GITHUB_WORKSPACE/bin/zli-linux-amd64"
+          MAIN_BIN="$GITHUB_WORKSPACE/zot_main/bin/zli-linux-amd64"
 
-          echo "Building zli on main branch and check size"
-          cd zot_main
-          make cli
-          BINSIZE_MAIN=$(stat -c%s "bin/zli-linux-amd64")
+          echo "PR binary (already built): $PR_BIN"
+          BINSIZE=$(stat -c%s "$PR_BIN")
+
+          echo "Building zli on main branch"
+          make -C "$GITHUB_WORKSPACE/zot_main" cli
+          BINSIZE_MAIN=$(stat -c%s "$MAIN_BIN")
 
           echo "PR binary size: $BINSIZE Bytes"
           echo "main branch binary size: $BINSIZE_MAIN Bytes"
