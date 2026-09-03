@@ -3871,3 +3871,37 @@ func TestHTTPTimeoutAccessors(t *testing.T) {
 		So(cfg.GetHTTPWriteTimeout(), ShouldEqual, positive)
 	})
 }
+
+func TestConfigSyncStagingHelpers(t *testing.T) {
+	Convey("Config sync staging helpers", t, func() {
+		Convey("SyncStagingDownloadDir on nil config returns empty", func() {
+			var nilConf *config.Config
+
+			So(nilConf.SyncStagingDownloadDir(), ShouldEqual, "")
+		})
+
+		Convey("SyncStagingDownloadDir returns configured downloadDir", func() {
+			conf := config.New()
+			conf.Extensions = &extconf.ExtensionConfig{
+				Sync: &syncconf.Config{DownloadDir: "/tmp/sync-staging"},
+			}
+
+			So(conf.SyncStagingDownloadDir(), ShouldEqual, "/tmp/sync-staging")
+		})
+
+		Convey("GlobalStorageConfig.LargestGCDelay uses max across substores", func() {
+			storageConfig := config.GlobalStorageConfig{
+				StorageConfig: config.StorageConfig{GCDelay: time.Hour},
+				SubPaths: map[string]config.StorageConfig{
+					"/a": {GCDelay: 3 * time.Hour},
+				},
+			}
+
+			So(storageConfig.LargestGCDelay(), ShouldEqual, 3*time.Hour)
+		})
+
+		Convey("GlobalStorageConfig.LargestGCDelay falls back to default when unset", func() {
+			So(config.GlobalStorageConfig{}.LargestGCDelay(), ShouldBeGreaterThan, 0)
+		})
+	})
+}

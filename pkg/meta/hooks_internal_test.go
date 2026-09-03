@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path"
 	"testing"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
+	syncConstants "zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/storage"
@@ -283,7 +286,9 @@ func TestReleaseIdleRepository(t *testing.T) {
 				},
 			}
 
-			So(func() { releaseIdleRepository("repo", imgStore, metaDB, logger) }, ShouldNotPanic)
+			sc := storage.StoreController{DefaultStore: imgStore}
+
+			So(func() { releaseIdleRepository("repo", sc, metaDB, logger) }, ShouldNotPanic)
 			So(metaDeleted, ShouldBeFalse)
 		})
 
@@ -311,7 +316,9 @@ func TestReleaseIdleRepository(t *testing.T) {
 				},
 			}
 
-			releaseIdleRepository("repo", imgStore, metaDB, logger)
+			sc := storage.StoreController{DefaultStore: imgStore}
+
+			releaseIdleRepository("repo", sc, metaDB, logger)
 			So(gotRepo, ShouldEqual, "repo")
 			So(gotAge, ShouldEqual, 0)
 			So(metaDeleted, ShouldEqual, "repo")
@@ -333,7 +340,9 @@ func TestReleaseIdleRepository(t *testing.T) {
 				},
 			}
 
-			releaseIdleRepository("repo", imgStore, metaDB, logger)
+			sc := storage.StoreController{DefaultStore: imgStore}
+
+			releaseIdleRepository("repo", sc, metaDB, logger)
 			So(metaDeleted, ShouldBeFalse)
 		})
 
@@ -348,7 +357,32 @@ func TestReleaseIdleRepository(t *testing.T) {
 				DeleteRepoMetaFn: func(repo string) error { return errHookInternal },
 			}
 
-			So(func() { releaseIdleRepository("repo", imgStore, metaDB, logger) }, ShouldNotPanic)
+			sc := storage.StoreController{DefaultStore: imgStore}
+
+			So(func() { releaseIdleRepository("repo", sc, metaDB, logger) }, ShouldNotPanic)
+		})
+
+		Convey("An active sync staging session blocks layout removal", func() {
+			root := t.TempDir()
+			repo := "repo"
+			session := path.Join(root, repo, syncConstants.SyncBlobUploadDir, "session-uuid")
+			So(os.MkdirAll(session, 0o755), ShouldBeNil)
+
+			removed := false
+			imgStore := mocks.MockedImageStore{
+				NameFn:    func() string { return "local" },
+				RootDirFn: func() string { return root },
+				RemoveIdleRepositoryFn: func(repo string, maxBlobAge time.Duration) (bool, error) {
+					removed = true
+
+					return true, nil
+				},
+			}
+
+			sc := storage.StoreController{DefaultStore: imgStore}
+
+			releaseIdleRepository(repo, sc, mocks.MetaDBMock{}, logger)
+			So(removed, ShouldBeFalse)
 		})
 	})
 }
