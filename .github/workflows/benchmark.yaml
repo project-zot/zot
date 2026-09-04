@@ -17,14 +17,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: ./.github/actions/build-zot-binaries
         with:
-          cache: false
-          check-latest: true
-          go-version: 1.26.x
-      # Run benchmark with `go test -bench` and stores the output to a file
+          make-targets: binary bench
+          upload-artifact: "false"
+      # Cache restore unpacks ~2GB onto disk; settle before the short bench so
+      # the first suite (Get Catalog) is not dominated by writeback.
+      - name: Flush disk after cache restore
+        run: sync
       - name: Run benchmark
-        run: make BENCH_OUTPUT=ci-cd run-bench
+        run: make USE_PREBUILT=1 BENCH_OUTPUT=ci-cd run-bench
       # Download previous benchmark result from cache (if exists)
       - name: Download previous benchmark data
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

@@ -39,6 +39,17 @@ BATS := $(TOOLSDIR)/bin/bats
 TESTDATA := $(TOP_LEVEL)/test/data
 OS ?= $(shell go env GOOS)
 ARCH ?= $(shell go env GOARCH)
+# 1: reuse existing bin/ (CI after artifact download). 0: compile via phony binary/bench.
+USE_PREBUILT ?= 0
+ifeq ($(USE_PREBUILT),1)
+ZOT_BIN_DEP := require-binary
+ZOT_MIN_DEP := require-binary-minimal
+ZB_DEP := require-bench
+else
+ZOT_BIN_DEP := binary
+ZOT_MIN_DEP := binary-minimal
+ZB_DEP := bench
+endif
 GREP_BIN_PATH ?= $(shell which grep)
 BLACKBOX_DOCKER_ENV = BUILDX_NO_DEFAULT_ATTESTATIONS=1 DOCKER_DEFAULT_PLATFORM=linux/amd64
 
@@ -263,9 +274,11 @@ $(TESTDATA): testdata-certs testdata-images
 	ls -R -l ${TESTDATA}
 
 .PHONY: run-bench
-run-bench: binary bench
+run-bench: $(ZOT_BIN_DEP) $(ZB_DEP)
 	bin/zot-$(OS)-$(ARCH) serve examples/config-bench.json & echo $$! > zot.PID
 	curl --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 180 --retry-connrefused http://localhost:8080/v2/
+	curl -fsS --retry 5 --retry-delay 1 http://localhost:8080/v2/_catalog
+	curl -fsS http://localhost:8080/v2/_catalog
 	bin/zb-$(OS)-$(ARCH) -c 10 -n 100 -o $(BENCH_OUTPUT) http://localhost:8080
 	@if [ -e zot.PID ]; then \
 		kill -TERM $$(cat zot.PID) || true; \
@@ -427,7 +440,7 @@ run: binary
 verify-config: _verify-config verify-config-warnings verify-config-committed verify-config-schema
 
 .PHONY: _verify-config
-_verify-config: binary
+_verify-config: $(ZOT_BIN_DEP)
 	rm -f output.txt
 	$(foreach file, $(filter-out $(wildcard examples/config-*-credentials.json), $(wildcard examples/config-*)), ./bin/zot-$(OS)-$(ARCH) verify $(file) 2>&1 | tee -a output.txt || exit 1;)
 
@@ -455,7 +468,7 @@ check-jsonschema:
 	jsonschema --version || (echo "You need python3-jsonschema to validate config examples against generated schema"; exit 1)
 
 .PHONY: verify-config-schema
-verify-config-schema: binary check-jsonschema
+verify-config-schema: $(ZOT_BIN_DEP) check-jsonschema
 	./bin/zot-$(OS)-$(ARCH) schema > bin/zot-schema.json
 	for i in $(filter-out $(wildcard examples/config-*-credentials.json), $(wildcard examples/config-*.json)); do echo $$i; jsonschema bin/zot-schema.json -i "$$i" -o pretty; done
 
@@ -547,23 +560,23 @@ run-blackbox-tests: $(BATS_TEST_FILE_PATH) check-blackbox-prerequisites binary b
 	$(BLACKBOX_DOCKER_ENV) $(BATS) $(BATS_FLAGS) $(BATS_TEST_FILE_PATH)
 
 .PHONY: run-cloud-scale-out-tests
-run-cloud-scale-out-tests: check-blackbox-prerequisites check-awslocal binary bench test-prereq
+run-cloud-scale-out-tests: check-blackbox-prerequisites check-awslocal $(ZOT_BIN_DEP) $(ZB_DEP) test-prereq
 	echo running scale out bats test; \
 	$(BATS) $(BATS_FLAGS) test/scale-out/cloud_scale_out_no_auth.bats; \
 	$(BATS) $(BATS_FLAGS) test/scale-out/cloud_scale_out_basic_auth_tls.bats
 
 .PHONY: run-cloud-scale-out-redis-tests
-run-cloud-scale-out-redis-tests: check-blackbox-prerequisites check-awslocal binary bench test-prereq
+run-cloud-scale-out-redis-tests: check-blackbox-prerequisites check-awslocal $(ZOT_BIN_DEP) $(ZB_DEP) test-prereq
 	echo running redis scale out bats test; \
 	$(BATS) $(BATS_FLAGS) test/scale-out/cloud_scale_out_redis.bats
 
 .PHONY: run-cloud-scale-out-high-scale-tests
-run-cloud-scale-out-high-scale-tests: check-blackbox-prerequisites check-awslocal binary bench test-prereq
+run-cloud-scale-out-high-scale-tests: check-blackbox-prerequisites check-awslocal $(ZOT_BIN_DEP) $(ZB_DEP) test-prereq
 	echo running cloud scale out bats high scale test; \
 	$(BATS) $(BATS_FLAGS) test/scale-out/cloud_scale_out_basic_auth_tls_scale.bats
 
 .PHONY: run-cloud-scale-out-redis-high-scale-tests
-run-cloud-scale-out-redis-high-scale-tests: check-blackbox-prerequisites check-awslocal binary bench test-prereq
+run-cloud-scale-out-redis-high-scale-tests: check-blackbox-prerequisites check-awslocal $(ZOT_BIN_DEP) $(ZB_DEP) test-prereq
 	echo running redis scale out high scale bats test; \
 	$(BATS) $(BATS_FLAGS) test/scale-out/cloud_scale_out_redis_scale.bats
 
@@ -580,19 +593,33 @@ run-blackbox-cloud-ci: check-blackbox-prerequisites check-awslocal binary $(BATS
 	$(BATS) $(BATS_FLAGS) test/blackbox/redis_s3.bats
 
 .PHONY: run-blackbox-dedupe-nightly
-run-blackbox-dedupe-nightly: check-blackbox-prerequisites check-awslocal binary binary-minimal
+run-blackbox-dedupe-nightly: check-blackbox-prerequisites check-awslocal $(ZOT_BIN_DEP) $(ZOT_MIN_DEP)
 	echo running nightly dedupe tests; \
 	$(BATS) $(BATS_FLAGS) test/blackbox/restore_s3_blobs.bats && \
 	$(BATS) $(BATS_FLAGS) test/blackbox/pushpull_running_dedupe.bats
 
 .PHONY: run-blackbox-sync-nightly
-run-blackbox-sync-nightly: check-blackbox-prerequisites binary binary-minimal bench
+run-blackbox-sync-nightly: check-blackbox-prerequisites $(ZOT_BIN_DEP) $(ZOT_MIN_DEP) $(ZB_DEP)
 	echo running nightly sync tests; \
 	$(BATS) $(BATS_FLAGS) test/blackbox/sync_harness.bats
 
 .PHONY: run-kind-sync-ondemand
-run-kind-sync-ondemand: check-blackbox-prerequisites binary
+run-kind-sync-ondemand: check-blackbox-prerequisites $(ZOT_BIN_DEP)
 	./examples/kind/kind-sync-ondemand.sh
+
+# When USE_PREBUILT=1, assert compile outputs already exist so test targets
+# can reuse a downloaded bin/ without invoking the phony binary/bench targets.
+.PHONY: require-binary
+require-binary:
+	@test -x bin/zot-$(OS)-$(ARCH)$(BIN_EXT) || { echo "missing prebuilt bin/zot-$(OS)-$(ARCH)$(BIN_EXT)" >&2; exit 1; }
+
+.PHONY: require-binary-minimal
+require-binary-minimal:
+	@test -x bin/zot-$(OS)-$(ARCH)-minimal$(BIN_EXT) || { echo "missing prebuilt bin/zot-$(OS)-$(ARCH)-minimal$(BIN_EXT)" >&2; exit 1; }
+
+.PHONY: require-bench
+require-bench:
+	@test -x bin/zb-$(OS)-$(ARCH)$(BIN_EXT) || { echo "missing prebuilt bin/zb-$(OS)-$(ARCH)$(BIN_EXT)" >&2; exit 1; }
 
 .PHONY: fuzz-all
 fuzz-all: fuzztime=${1}
