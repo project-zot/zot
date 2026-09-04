@@ -1,0 +1,152 @@
+name: 'Setup ecosystem client tools'
+description: >
+  Shared install for ecosystem-tools workflows. Optional components are gated
+  so parallel jobs only pay for what they need.
+inputs:
+  with-docker:
+    description: 'Install Docker CE and plugins'
+    required: false
+    default: 'true'
+  with-crio:
+    description: 'Install and start CRI-O (for crictl / upgrade bats)'
+    required: false
+    default: 'false'
+  with-npm:
+    description: 'Install npm and global oidc-provider/express (openid claim mapping)'
+    required: false
+    default: 'false'
+  with-dex:
+    description: 'Build and start Dex in the background (cloud_only.bats)'
+    required: false
+    default: 'false'
+  with-userns:
+    description: 'Run scripts/enable_userns.sh (stacker / annotations)'
+    required: false
+    default: 'false'
+  with-haproxy:
+    description: 'Install haproxy (scale-out bats)'
+    required: false
+    default: 'false'
+  with-valkey:
+    description: 'Install valkey-tools (redis scale-out / redis bats helpers)'
+    required: false
+    default: 'false'
+  with-go:
+    description: >
+      Install swag and download Go modules for this repo. Set false when using
+      prebuilt zot bins; setup-go is still required if this action builds Dex.
+    required: false
+    default: 'true'
+  with-skopeo:
+    description: >
+      Build skopeo from source into /usr/bin. Set false when skopeo was restored
+      from the ecosystem-bins artifact (hack/tools/bin/skopeo).
+    required: false
+    default: 'true'
+runs:
+  using: "composite"
+  steps:
+    - name: Go modules and swag
+      if: ${{ inputs.with-go == 'true' }}
+      shell: bash
+      run: |
+        cd "$GITHUB_WORKSPACE"
+        go install github.com/swaggo/swag/cmd/swag@v1.16.2
+        go mod download
+
+    - name: Apt base packages
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo apt-get update
+        pkgs=(
+          libgpgme-dev libassuan-dev libbtrfs-dev
+          libdevmapper-dev pkg-config rpm uidmap jq whois
+        )
+        if [ "${{ inputs.with-haproxy }}" = "true" ]; then
+          pkgs+=(haproxy)
+        fi
+        if [ "${{ inputs.with-valkey }}" = "true" ]; then
+          pkgs+=(valkey-tools)
+        fi
+        if [ "${{ inputs.with-npm }}" = "true" ]; then
+          pkgs+=(npm)
+        fi
+        sudo apt-get install -y "${pkgs[@]}"
+
+    - name: Install skopeo
+      if: ${{ inputs.with-skopeo == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        cd "$GITHUB_WORKSPACE"
+        git clone -b v1.12.0 https://github.com/containers/skopeo.git
+        cd skopeo
+        make bin/skopeo
+        sudo cp bin/skopeo /usr/bin
+        skopeo -v
+
+    - name: Verify prebuilt skopeo
+      if: ${{ inputs.with-skopeo != 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ -x "$GITHUB_WORKSPACE/hack/tools/bin/skopeo" ] && ! command -v skopeo >/dev/null 2>&1; then
+          sudo cp "$GITHUB_WORKSPACE/hack/tools/bin/skopeo" /usr/bin/skopeo
+        fi
+        skopeo -v
+
+    - name: Install CRI-O
+      if: ${{ inputs.with-crio == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        curl -fsSL https://download.opensuse.org/repositories/isv:/kubernetes:/addons:/cri-o:/prerelease:/main:/build/deb/Release.key \
+          | sudo gpg --dearmor -o /etc/apt/keyrings/cri-o-apt-keyring.gpg
+        echo "deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] https://download.opensuse.org/repositories/isv:/kubernetes:/addons:/cri-o:/prerelease:/main:/build/deb/ /" \
+          | sudo tee /etc/apt/sources.list.d/cri-o.list
+        sudo apt update
+        sudo apt install -y cri-o runc
+        sudo systemctl enable crio.service
+        sudo systemctl start crio.service
+        sudo chmod 0777 /var/run/crio/crio.sock
+
+    - name: Install Docker
+      if: ${{ inputs.with-docker == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+        sudo chmod a+r /etc/apt/keyrings/docker.asc
+        echo \
+          "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+          $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+          sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+        sudo apt update
+        sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+        docker version
+
+    - name: Install npm OIDC packages
+      if: ${{ inputs.with-npm == 'true' }}
+      shell: bash
+      run: |
+        sudo npm install -g oidc-provider express
+
+    - name: Build and start Dex
+      if: ${{ inputs.with-dex == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        cd "$GITHUB_WORKSPACE"
+        git clone https://github.com/dexidp/dex.git
+        cd dex/
+        git checkout v2.39.1
+        make bin/dex
+        ./bin/dex serve "$GITHUB_WORKSPACE/test/dex/config-dev.yaml" &
+
+    - name: Enable user namespaces for stacker
+      if: ${{ inputs.with-userns == 'true' }}
+      shell: bash
+      run: |
+        cd "$GITHUB_WORKSPACE"
+        sudo ./scripts/enable_userns.sh

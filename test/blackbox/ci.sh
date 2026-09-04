@@ -11,15 +11,53 @@ SCRIPTPATH="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 BATS=${SCRIPTPATH}/../../hack/tools/bin/bats
 PATH=$PATH:${SCRIPTPATH}/../../hack/tools/bin
 
-# Pre-download Docker images before running tests
-echo "Setting up Docker images..."
-${SCRIPTPATH}/setup_images.sh
+# BLACKBOX_CI_SHARD selects a subset for parallel GitHub Actions jobs.
+# Shards are CI-oriented (deps / theme), not zot build-tag "extensions":
+#   registry  — dist-spec / auth / client push-pull style suites (+ systemd)
+#   sync      — sync and related GC/scrub suites
+#   host-deps — needs Docker helper images, npm OIDC provider, and/or stacker userns
+#   upgrade   — release→new binary upgrade matrix (needs CRI-O)
+# "all" is the ordered reunion of those shards.
+shard_registry=("pushpull" "pushpull_authn" "pushpull_mount" "pushpull_mount_hydrate"
+      "delete_images" "referrers" "sbom" "metadata" "anonymous_policy"
+      "detect_manifest_collision" "cve" "metrics" "metrics_minimal"
+      "multiarch_index" "docker_compat" "fips140" "fips140_authn"
+      "dynamic_tls" "quota" "systemd")
+shard_sync=("sync" "sync_docker" "sync_replica_cluster" "scrub" "garbage_collect")
+shard_host_deps=("annotations" "redis_local" "redis_session_store"
+      "events_nats" "events_http" "events_nats_lint_failure" "events_http_lint_failure"
+      "events_sink_failure" "events_config_decoding" "openid_claim_mapping"
+      "events_http_scan")
+shard_upgrade=("upgrade" "upgrade_minimal")
 
-tests=("pushpull" "pushpull_authn" "pushpull_mount" "pushpull_mount_hydrate" "delete_images" "referrers" "sbom" "metadata" "anonymous_policy"
-      "annotations" "detect_manifest_collision" "cve" "sync" "sync_docker" "sync_replica_cluster"
-      "scrub" "garbage_collect" "metrics" "metrics_minimal" "multiarch_index" "docker_compat" "redis_local" "redis_session_store"
-      "events_nats" "events_http" "events_nats_lint_failure" "events_http_lint_failure" "events_sink_failure" "events_config_decoding"
-      "fips140" "fips140_authn" "openid_claim_mapping" "upgrade" "upgrade_minimal" "dynamic_tls" "quota" "events_http_scan" "systemd")
+case "${BLACKBOX_CI_SHARD:-all}" in
+  upgrade)
+    tests=("${shard_upgrade[@]}")
+    ;;
+  sync)
+    tests=("${shard_sync[@]}")
+    ;;
+  registry)
+    tests=("${shard_registry[@]}")
+    ;;
+  host-deps)
+    tests=("${shard_host_deps[@]}")
+    ;;
+  all)
+    tests=("${shard_registry[@]}" "${shard_sync[@]}" "${shard_host_deps[@]}" "${shard_upgrade[@]}")
+    ;;
+  *)
+    echo "unknown BLACKBOX_CI_SHARD=${BLACKBOX_CI_SHARD}" >&2
+    echo "expected one of: upgrade, sync, registry, host-deps, all" >&2
+    exit 1
+    ;;
+esac
+
+# Preload helper images after shard selection so each matrix job only pulls what it needs.
+echo "Setting up Docker images for shard '${BLACKBOX_CI_SHARD:-all}'..."
+${SCRIPTPATH}/setup_images.sh "${BLACKBOX_CI_SHARD:-all}"
+
+echo "Running blackbox CI shard '${BLACKBOX_CI_SHARD:-all}': ${tests[*]}"
 
 for test in ${tests[*]}; do
     ${BATS} ${BATS_FLAGS} ${SCRIPTPATH}/${test}.bats > ${test}.log & pids+=($!)
