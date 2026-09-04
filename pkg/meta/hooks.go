@@ -346,7 +346,7 @@ func OnGetManifest(name, reference, mediaType string, body []byte,
 		return nil
 	}
 
-	if !(compat.IsImageManifestMediaType(mediaType) || compat.IsImageIndexMediaType(mediaType)) {
+	if !compat.IsImageManifestMediaType(mediaType) && !compat.IsImageIndexMediaType(mediaType) {
 		return nil
 	}
 
