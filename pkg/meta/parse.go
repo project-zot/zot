@@ -476,7 +476,7 @@ func SetImageMetaFromInput(ctx context.Context, repo, reference, mediaType strin
 ) error {
 	var imageMeta mTypes.ImageMeta
 
-	if mediaType == ispec.MediaTypeImageManifest || compat.IsCompatibleManifestMediaType(mediaType) { //nolint:gocritic,lll // mixing checking mechanisms
+	if compat.IsImageManifestMediaType(mediaType) { //nolint:gocritic // not converting to switch-case
 		manifestContent := ispec.Manifest{}
 		configContent := ispec.Image{}
 
@@ -534,7 +534,7 @@ func SetImageMetaFromInput(ctx context.Context, repo, reference, mediaType strin
 		}
 
 		imageMeta = convert.GetImageManifestMeta(manifestContent, configContent, int64(len(blob)), digest, mediaType)
-	} else if mediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(mediaType) {
+	} else if compat.IsImageIndexMediaType(mediaType) {
 		indexContent := ispec.Index{}
 
 		err := json.Unmarshal(blob, &indexContent)

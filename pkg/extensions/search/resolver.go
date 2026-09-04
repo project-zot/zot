@@ -507,13 +507,11 @@ func resolveImageData(ctx context.Context, imageInput gql_generated.ImageInput, 
 	}
 
 	switch {
-	case descriptor.MediaType == ispec.MediaTypeImageManifest ||
-		compat.IsCompatibleManifestMediaType(descriptor.MediaType):
+	case compat.IsImageManifestMediaType(descriptor.MediaType):
 		imageInput.Digest = ref(descriptor.Digest)
 
 		return imageInput, nil
-	case descriptor.MediaType == ispec.MediaTypeImageIndex ||
-		compat.IsCompatibleManifestListMediaType(descriptor.MediaType):
+	case compat.IsImageIndexMediaType(descriptor.MediaType):
 		if dderef(imageInput.Digest) == "" && !isPlatformSpecified(imageInput.Platform) {
 			return gql_generated.ImageInput{},
 				fmt.Errorf("%w: platform or specific manifest digest needed", zerr.ErrAmbiguousInput)
@@ -607,13 +605,11 @@ func FilterByTagInfo(tagsInfo []cvemodel.TagInfo) mTypes.FilterFunc {
 
 		for _, tagInfo := range tagsInfo {
 			switch {
-			case tagInfo.Descriptor.MediaType == ispec.MediaTypeImageManifest ||
-				compat.IsCompatibleManifestMediaType(tagInfo.Descriptor.MediaType):
+			case compat.IsImageManifestMediaType(tagInfo.Descriptor.MediaType):
 				if tagInfo.Descriptor.Digest.String() == manifestDigest {
 					return true
 				}
-			case tagInfo.Descriptor.MediaType == ispec.MediaTypeImageIndex ||
-				compat.IsCompatibleManifestListMediaType(tagInfo.Descriptor.MediaType):
+			case compat.IsImageIndexMediaType(tagInfo.Descriptor.MediaType):
 				for _, manifestDesc := range tagInfo.Manifests {
 					if manifestDesc.Digest.String() == manifestDigest {
 						return true
@@ -636,13 +632,11 @@ func FilterByRepoAndTagInfo(repo string, tagsInfo []cvemodel.TagInfo) mTypes.Fil
 
 		for _, tagInfo := range tagsInfo {
 			switch {
-			case tagInfo.Descriptor.MediaType == ispec.MediaTypeImageManifest ||
-				compat.IsCompatibleManifestMediaType(tagInfo.Descriptor.MediaType):
+			case compat.IsImageManifestMediaType(tagInfo.Descriptor.MediaType):
 				if tagInfo.Descriptor.Digest.String() == manifestDigest {
 					return true
 				}
-			case tagInfo.Descriptor.MediaType == ispec.MediaTypeImageIndex ||
-				compat.IsCompatibleManifestListMediaType(tagInfo.Descriptor.MediaType):
+			case compat.IsImageIndexMediaType(tagInfo.Descriptor.MediaType):
 				for _, manifestDesc := range tagInfo.Manifests {
 					if manifestDesc.Digest.String() == manifestDigest {
 						return true

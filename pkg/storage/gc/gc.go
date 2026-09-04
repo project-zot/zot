@@ -18,6 +18,7 @@ import (
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/compat"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
@@ -297,7 +298,7 @@ func (gc GarbageCollect) removeUnknownMediaTypeManifestEntries(repo string, inde
 }
 
 func isKnownManifestMediaType(mediaType string) bool {
-	return common.IsImageIndexMediaType(mediaType) || common.IsImageManifestMediaType(mediaType)
+	return compat.IsImageIndexMediaType(mediaType) || compat.IsImageManifestMediaType(mediaType)
 }
 
 func (gc GarbageCollect) removeStaleManifestEntries(repo string, index *ispec.Index) error {
@@ -332,7 +333,7 @@ func (gc GarbageCollect) removeStaleManifestEntries(repo string, index *ispec.In
 			continue
 		}
 
-		if common.IsImageIndexMediaType(desc.MediaType) {
+		if compat.IsImageIndexMediaType(desc.MediaType) {
 			stale, err := gc.imageIndexHasStaleNestedManifests(repo, desc, existingBlobs)
 			if err != nil {
 				return err
@@ -550,9 +551,9 @@ func (gc GarbageCollect) removeReferrersWithMissingSubject(repo string, rootInde
 		var err error
 
 		switch {
-		case common.IsImageIndexMediaType(desc.MediaType):
+		case compat.IsImageIndexMediaType(desc.MediaType):
 			gced, err = gc.removeReferrerByIndexDesc(repo, rootIndex, desc, missing, indexes)
-		case common.IsImageManifestMediaType(desc.MediaType):
+		case compat.IsImageManifestMediaType(desc.MediaType):
 			gced, err = gc.removeReferrerByManifestDesc(repo, rootIndex, desc, missing, manifests)
 		default:
 			continue
@@ -946,7 +947,7 @@ func (gc GarbageCollect) identifyManifestsReferencedInIndex(index ispec.Index, r
 
 		seen[desc.Digest] = struct{}{}
 
-		if common.IsImageIndexMediaType(desc.MediaType) {
+		if compat.IsImageIndexMediaType(desc.MediaType) {
 			indexImage, err := common.GetImageIndex(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
 				if isMissingBlobErr(err) {
@@ -975,7 +976,7 @@ func (gc GarbageCollect) identifyManifestsReferencedInIndex(index ispec.Index, r
 			if err := gc.identifyManifestsReferencedInIndex(indexImage, repo, referenced, seen); err != nil {
 				return err
 			}
-		} else if common.IsImageManifestMediaType(desc.MediaType) {
+		} else if compat.IsImageManifestMediaType(desc.MediaType) {
 			image, err := common.GetImageManifest(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
 				if isMissingBlobErr(err) {

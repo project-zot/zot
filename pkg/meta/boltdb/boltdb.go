@@ -10,7 +10,6 @@ import (
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
-	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"go.etcd.io/bbolt"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -156,13 +155,11 @@ func (bdw *BoltDB) SetImageMeta(digest godigest.Digest, imageMeta mTypes.ImageMe
 
 		protoImageMeta := &proto_go.ImageMeta{}
 
-		if imageMeta.MediaType == ispec.MediaTypeImageManifest ||
-			compat.IsCompatibleManifestMediaType(imageMeta.MediaType) {
+		if compat.IsImageManifestMediaType(imageMeta.MediaType) {
 			manifest := imageMeta.Manifests[0]
 			protoImageMeta = mConvert.GetProtoImageManifestData(manifest.Manifest, manifest.Config,
 				manifest.Size, manifest.Digest.String(), imageMeta.MediaType)
-		} else if imageMeta.MediaType == ispec.MediaTypeImageIndex ||
-			compat.IsCompatibleManifestListMediaType(imageMeta.MediaType) {
+		} else if compat.IsImageIndexMediaType(imageMeta.MediaType) {
 			protoImageMeta = mConvert.GetProtoImageIndexMeta(*imageMeta.Index, imageMeta.Size, imageMeta.Digest.String(),
 				imageMeta.MediaType)
 		}
@@ -441,8 +438,7 @@ func (bdw *BoltDB) FilterImageMeta(ctx context.Context, digests []string,
 				return err
 			}
 
-			if protoImageMeta.MediaType == ispec.MediaTypeImageIndex ||
-				compat.IsCompatibleManifestListMediaType(protoImageMeta.MediaType) {
+			if compat.IsImageIndexMediaType(protoImageMeta.MediaType) {
 				_, manifestDataList, err := getAllContainedMeta(imageBuck, protoImageMeta)
 				if err != nil {
 					return err
@@ -530,10 +526,7 @@ func getAllContainedMeta(imageBuck *bbolt.Bucket, imageIndexData *proto_go.Image
 	imageMetaList := make([]*proto_go.ImageMeta, 0, len(imageIndexData.Index.Index.Manifests))
 
 	for _, manifest := range imageIndexData.Index.Index.Manifests {
-		if manifest.MediaType != ispec.MediaTypeImageManifest &&
-			manifest.MediaType != ispec.MediaTypeImageIndex &&
-			!compat.IsCompatibleManifestMediaType(manifest.MediaType) &&
-			!compat.IsCompatibleManifestListMediaType(manifest.MediaType) {
+		if !compat.IsImageManifestMediaType(manifest.MediaType) && !compat.IsImageIndexMediaType(manifest.MediaType) {
 			// filter out unexpected media types from the manifest lists,
 			// this could be the case of buildkit cache entries for example
 			continue
@@ -549,12 +542,10 @@ func getAllContainedMeta(imageBuck *bbolt.Bucket, imageIndexData *proto_go.Image
 			return imageMetaList, manifestDataList, err
 		}
 
-		if imageManifestData.MediaType == ispec.MediaTypeImageManifest ||
-			compat.IsCompatibleManifestMediaType(imageManifestData.MediaType) {
+		if compat.IsImageManifestMediaType(imageManifestData.MediaType) {
 			imageMetaList = append(imageMetaList, imageManifestData)
 			manifestDataList = append(manifestDataList, imageManifestData.Manifests[0])
-		} else if imageManifestData.MediaType == ispec.MediaTypeImageIndex ||
-			compat.IsCompatibleManifestListMediaType(imageManifestData.MediaType) {
+		} else if compat.IsImageIndexMediaType(imageManifestData.MediaType) {
 			partialImageDataList, partialManifestDataList, err := getAllContainedMeta(imageBuck, imageManifestData)
 			if err != nil {
 				// getAllContainedMeta skips missing items internally, so any error returned
@@ -615,8 +606,7 @@ func (bdw *BoltDB) SearchTags(ctx context.Context, searchText string,
 
 			var protoImageMeta *proto_go.ImageMeta
 
-			if descriptor.MediaType == ispec.MediaTypeImageManifest || //nolint:gocritic
-				compat.IsCompatibleManifestMediaType(descriptor.MediaType) {
+			if compat.IsImageManifestMediaType(descriptor.MediaType) { //nolint:gocritic
 				manifestDigest := descriptor.Digest
 
 				imageManifestData, err := getProtoImageMeta(imageBuck, manifestDigest)
@@ -626,8 +616,7 @@ func (bdw *BoltDB) SearchTags(ctx context.Context, searchText string,
 				}
 
 				protoImageMeta = imageManifestData
-			} else if descriptor.MediaType == ispec.MediaTypeImageIndex ||
-				compat.IsCompatibleManifestListMediaType(descriptor.MediaType) {
+			} else if compat.IsImageIndexMediaType(descriptor.MediaType) {
 				indexDigest := descriptor.Digest
 
 				imageIndexData, err := getProtoImageMeta(imageBuck, indexDigest)
@@ -698,8 +687,7 @@ func (bdw *BoltDB) FilterTags(ctx context.Context, filterRepoTag mTypes.FilterRe
 					continue
 				}
 
-				if descriptor.MediaType == ispec.MediaTypeImageManifest || //nolint:gocritic
-					compat.IsCompatibleManifestMediaType(descriptor.MediaType) {
+				if compat.IsImageManifestMediaType(descriptor.MediaType) { //nolint:gocritic
 					manifestDigest := descriptor.Digest
 
 					imageManifestData, err := getProtoImageMeta(imageMetaBuck, manifestDigest)
@@ -714,8 +702,7 @@ func (bdw *BoltDB) FilterTags(ctx context.Context, filterRepoTag mTypes.FilterRe
 					if filterFunc(repoMeta, imageMeta) {
 						images = append(images, mConvert.GetFullImageMetaFromProto(tag, protoRepoMeta, imageManifestData))
 					}
-				} else if descriptor.MediaType == ispec.MediaTypeImageIndex ||
-					compat.IsCompatibleManifestListMediaType(descriptor.MediaType) {
+				} else if compat.IsImageIndexMediaType(descriptor.MediaType) {
 					indexDigest := descriptor.Digest
 
 					protoImageIndexMeta, err := getProtoImageMeta(imageMetaBuck, indexDigest)
@@ -874,8 +861,7 @@ func (bdw *BoltDB) GetFullImageMeta(ctx context.Context, repo string, tag string
 			return err
 		}
 
-		if protoImageMeta.MediaType == ispec.MediaTypeImageIndex ||
-			compat.IsCompatibleManifestListMediaType(protoImageMeta.MediaType) {
+		if compat.IsImageIndexMediaType(protoImageMeta.MediaType) {
 			_, manifestDataList, err := getAllContainedMeta(imageBuck, protoImageMeta)
 			if err != nil {
 				return err
@@ -901,8 +887,7 @@ func (bdw *BoltDB) GetImageMeta(digest godigest.Digest) (mTypes.ImageMeta, error
 			return err
 		}
 
-		if protoImageMeta.MediaType == ispec.MediaTypeImageIndex ||
-			compat.IsCompatibleManifestListMediaType(protoImageMeta.MediaType) {
+		if compat.IsImageIndexMediaType(protoImageMeta.MediaType) {
 			_, manifestDataList, err := getAllContainedMeta(imageBuck, protoImageMeta)
 			if err != nil {
 				return err

@@ -391,11 +391,9 @@ type (
 func FullImageMeta2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullImageMeta,
 ) (*gql_generated.ImageSummary, map[BlobDigest]int64, error) {
 	switch {
-	case fullImageMeta.MediaType == ispec.MediaTypeImageManifest ||
-		compat.IsCompatibleManifestMediaType(fullImageMeta.MediaType):
+	case compat.IsImageManifestMediaType(fullImageMeta.MediaType):
 		return ImageManifest2ImageSummary(ctx, fullImageMeta)
-	case fullImageMeta.MediaType == ispec.MediaTypeImageIndex ||
-		compat.IsCompatibleManifestListMediaType(fullImageMeta.MediaType):
+	case compat.IsImageIndexMediaType(fullImageMeta.MediaType):
 		return ImageIndex2ImageSummary(ctx, fullImageMeta)
 	default:
 		return nil, nil, zerr.ErrMediaTypeNotSupported
