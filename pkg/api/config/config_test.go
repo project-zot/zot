@@ -3905,3 +3905,60 @@ func TestConfigSyncStagingHelpers(t *testing.T) {
 		})
 	})
 }
+
+func TestEventsFingerprint(t *testing.T) {
+	newConf := func(address string) *config.Config {
+		enabled := true
+		conf := config.New()
+		conf.Extensions = &extconf.ExtensionConfig{
+			Events: &eventsconf.Config{
+				Enable: &enabled,
+				Sinks: []eventsconf.SinkConfig{{
+					Type:    eventsconf.HTTP,
+					Address: address,
+					Timeout: 5 * time.Second,
+				}},
+			},
+		}
+
+		return conf
+	}
+
+	Convey("EventsFingerprint", t, func() {
+		Convey("nil config yields an empty fingerprint", func() {
+			var nilConf *config.Config
+
+			So(nilConf.EventsFingerprint(), ShouldEqual, "")
+		})
+
+		Convey("no extensions or no events yields an empty fingerprint", func() {
+			So(config.New().EventsFingerprint(), ShouldEqual, "")
+
+			conf := config.New()
+			conf.Extensions = &extconf.ExtensionConfig{}
+			So(conf.EventsFingerprint(), ShouldEqual, "")
+		})
+
+		Convey("identical events config yields an identical, non-empty fingerprint", func() {
+			fingerprint := newConf("http://receiver").EventsFingerprint()
+
+			So(fingerprint, ShouldNotEqual, "")
+			So(newConf("http://receiver").EventsFingerprint(), ShouldEqual, fingerprint)
+		})
+
+		Convey("changing a sink changes the fingerprint", func() {
+			base := newConf("http://receiver").EventsFingerprint()
+
+			So(newConf("http://elsewhere").EventsFingerprint(), ShouldNotEqual, base)
+
+			credentials := newConf("http://receiver")
+			credentials.Extensions.Events.Sinks[0].Credentials = &eventsconf.Credentials{Token: "rotated"}
+			So(credentials.EventsFingerprint(), ShouldNotEqual, base)
+
+			disabled := newConf("http://receiver")
+			off := false
+			disabled.Extensions.Events.Enable = &off
+			So(disabled.EventsFingerprint(), ShouldNotEqual, base)
+		})
+	})
+}
