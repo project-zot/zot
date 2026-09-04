@@ -249,7 +249,7 @@ func (p *requestsPool) doJob(ctx context.Context, job *httpJob) {
 	verbose := job.config.Verbose
 
 	switch contentType := header.Get("Content-Type"); {
-	case contentType == ispec.MediaTypeImageManifest || compat.IsCompatibleManifestMediaType(contentType):
+	case compat.IsImageManifestMediaType(contentType):
 		image, err := fetchImageManifestStruct(ctx, job, contentType)
 		if err != nil {
 			if common.IsContextDone(ctx) {
@@ -276,7 +276,7 @@ func (p *requestsPool) doJob(ctx context.Context, job *httpJob) {
 		}
 
 		p.outputCh <- stringResult{str, nil}
-	case contentType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(contentType):
+	case compat.IsImageIndexMediaType(contentType):
 		image, err := fetchImageIndexStruct(ctx, job, contentType)
 		if err != nil {
 			if common.IsContextDone(ctx) {

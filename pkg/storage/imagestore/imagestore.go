@@ -634,7 +634,7 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 
 	artifactType := ""
 
-	if mediaType == ispec.MediaTypeImageManifest || compat.IsCompatibleManifestMediaType(mediaType) {
+	if compat.IsImageManifestMediaType(mediaType) {
 		var manifest ispec.Manifest
 
 		err := json.Unmarshal(body, &manifest)
@@ -647,7 +647,7 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 		}
 
 		artifactType = zcommon.GetManifestArtifactType(manifest)
-	} else if mediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(mediaType) {
+	} else if compat.IsImageIndexMediaType(mediaType) {
 		var imgIndex ispec.Index
 
 		err := json.Unmarshal(body, &imgIndex)
@@ -852,9 +852,9 @@ func (is *ImageStore) deleteImageManifest(ctx context.Context, repo, reference s
 	/* check if manifest is referenced in image indexes, do not allow index images manipulations
 	(ie. remove manifest being part of an image index)	*/
 	if zcommon.IsDigest(reference) &&
-		(common.IsImageManifestMediaType(manifestDesc.MediaType) || common.IsImageIndexMediaType(manifestDesc.MediaType)) {
+		(compat.IsImageManifestMediaType(manifestDesc.MediaType) || compat.IsImageIndexMediaType(manifestDesc.MediaType)) {
 		for _, mDesc := range index.Manifests {
-			if common.IsImageIndexMediaType(mDesc.MediaType) {
+			if compat.IsImageIndexMediaType(mDesc.MediaType) {
 				ok, err := common.IsBlobReferencedInImageIndex(is, repo, manifestDesc.Digest, ispec.Index{
 					Manifests: []ispec.Descriptor{mDesc},
 				}, is.log)

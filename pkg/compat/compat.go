@@ -35,6 +35,18 @@ func IsCompatibleManifestListMediaType(mediatype string) bool {
 	return slices.Contains(CompatibleManifestListMediaTypes(), mediatype)
 }
 
+// IsImageManifestMediaType reports whether mediatype is an OCI image manifest
+// or a compatible (non-OCI) manifest media type.
+func IsImageManifestMediaType(mediatype string) bool {
+	return mediatype == v1.MediaTypeImageManifest || IsCompatibleManifestMediaType(mediatype)
+}
+
+// IsImageIndexMediaType reports whether mediatype is an OCI image index
+// or a compatible (non-OCI) manifest list media type.
+func IsImageIndexMediaType(mediatype string) bool {
+	return mediatype == v1.MediaTypeImageIndex || IsCompatibleManifestListMediaType(mediatype)
+}
+
 func CompatibleConfigMediaTypes() []string {
 	return []string{docker.MediaTypeImageConfig}
 }

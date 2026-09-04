@@ -1181,9 +1181,9 @@ func addImageToTable(table *tablewriter.Table, img *imageStruct,
 	imageName, tagName string, verbose bool,
 ) error {
 	switch {
-	case img.MediaType == ispec.MediaTypeImageManifest || compat.IsCompatibleManifestMediaType(img.MediaType):
+	case compat.IsImageManifestMediaType(img.MediaType):
 		return addManifestToTable(table, imageName, tagName, &img.Manifests[0], verbose)
-	case img.MediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(img.MediaType):
+	case compat.IsImageIndexMediaType(img.MediaType):
 		return addImageIndexToTable(table, img, imageName, tagName, verbose)
 	}
 

@@ -503,16 +503,14 @@ func (scanner Scanner) IsImageFormatScannable(repo, ref string) (bool, error) {
 func (scanner Scanner) IsImageMediaScannable(repo, digestStr, mediaType string) (bool, error) {
 	image := repo + "@" + digestStr
 
-	if mediaType == ispec.MediaTypeImageManifest || //nolint:gocritic // not converting to switch-case
-		compat.IsCompatibleManifestMediaType(mediaType) {
+	if compat.IsImageManifestMediaType(mediaType) { //nolint:gocritic // not converting to switch-case
 		ok, err := scanner.isManifestScannable(digestStr)
 		if err != nil {
 			return ok, fmt.Errorf("image '%s' %w", image, err)
 		}
 
 		return ok, nil
-	} else if mediaType == ispec.MediaTypeImageIndex ||
-		compat.IsCompatibleManifestListMediaType(mediaType) {
+	} else if compat.IsImageIndexMediaType(mediaType) {
 		ok, err := scanner.isIndexScannable(digestStr)
 		if err != nil {
 			return ok, fmt.Errorf("image '%s' %w", image, err)
@@ -646,11 +644,9 @@ func (scanner Scanner) ScanImage(ctx context.Context, image string) (cvemodel.Sc
 		err       error
 	)
 
-	if mediaType == ispec.MediaTypeImageIndex ||
-		compat.IsCompatibleManifestListMediaType(mediaType) {
+	if compat.IsImageIndexMediaType(mediaType) {
 		cveIDMap, wasCached, err = scanner.scanIndex(ctx, repo, digest)
-	} else if mediaType == ispec.MediaTypeImageManifest ||
-		compat.IsCompatibleManifestMediaType(mediaType) {
+	} else if compat.IsImageManifestMediaType(mediaType) {
 		cveIDMap, wasCached, err = scanner.scanManifest(ctx, repo, digest)
 	}
 

@@ -83,9 +83,7 @@ func isUntaggedRetentionDescriptor(manifest ispec.Descriptor) bool {
 		return false
 	}
 
-	return manifest.MediaType == ispec.MediaTypeImageManifest || manifest.MediaType == ispec.MediaTypeImageIndex ||
-		compat.IsCompatibleManifestMediaType(manifest.MediaType) ||
-		compat.IsCompatibleManifestListMediaType(manifest.MediaType)
+	return compat.IsImageManifestMediaType(manifest.MediaType) || compat.IsImageIndexMediaType(manifest.MediaType)
 }
 
 func GetCandidatesFromIndex(index ispec.Index) []*types.Candidate {

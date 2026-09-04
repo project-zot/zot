@@ -178,7 +178,7 @@ func AddImageMetaToRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.Rep
 	imageMeta mTypes.ImageMeta,
 ) (*proto_go.RepoMeta, *proto_go.RepoBlobs) {
 	switch {
-	case imageMeta.MediaType == ispec.MediaTypeImageManifest || compat.IsCompatibleManifestMediaType(imageMeta.MediaType):
+	case compat.IsImageManifestMediaType(imageMeta.MediaType):
 		if len(imageMeta.Manifests) == 0 {
 			// Empty manifests is an invalid state for ImageManifest, but we still add basic blob info
 			// to avoid skipping all metadata processing (e.g., LastUpdatedImage update)
@@ -225,7 +225,7 @@ func AddImageMetaToRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.Rep
 			SubBlobs:    subBlobs,
 			LastUpdated: mConvert.GetProtoTime(&lastUpdated),
 		}
-	case imageMeta.MediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(imageMeta.MediaType):
+	case compat.IsImageIndexMediaType(imageMeta.MediaType):
 		subBlobs := []string{}
 		lastUpdated := time.Time{}
 

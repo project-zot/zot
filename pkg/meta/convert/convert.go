@@ -38,14 +38,14 @@ func GetImageArtifactType(imageMeta *proto_go.ImageMeta) string {
 	mediaType := imageMeta.GetMediaType()
 
 	switch {
-	case mediaType == ispec.MediaTypeImageManifest || compat.IsCompatibleManifestMediaType(mediaType):
+	case compat.IsImageManifestMediaType(mediaType):
 		manifestArtifactType := imageMeta.GetManifests()[0].GetManifest().GetArtifactType()
 		if manifestArtifactType != "" {
 			return manifestArtifactType
 		}
 
 		return imageMeta.GetManifests()[0].GetManifest().GetConfig().GetMediaType()
-	case mediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(mediaType):
+	case compat.IsImageIndexMediaType(mediaType):
 		return imageMeta.GetIndex().GetIndex().GetArtifactType()
 	default:
 		return ""
@@ -56,9 +56,9 @@ func GetImageManifestSize(imageMeta *proto_go.ImageMeta) int64 {
 	mediaType := imageMeta.GetMediaType()
 
 	switch {
-	case mediaType == ispec.MediaTypeImageManifest || compat.IsCompatibleManifestMediaType(mediaType):
+	case compat.IsImageManifestMediaType(mediaType):
 		return imageMeta.GetManifests()[0].GetSize()
-	case mediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(mediaType):
+	case compat.IsImageIndexMediaType(mediaType):
 		return imageMeta.GetIndex().GetSize()
 	default:
 		return 0
@@ -69,9 +69,9 @@ func GetImageDigest(imageMeta *proto_go.ImageMeta) godigest.Digest {
 	mediaType := imageMeta.GetMediaType()
 
 	switch {
-	case mediaType == ispec.MediaTypeImageManifest || compat.IsCompatibleManifestMediaType(mediaType):
+	case compat.IsImageManifestMediaType(mediaType):
 		return godigest.Digest(imageMeta.GetManifests()[0].GetDigest())
-	case mediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(mediaType):
+	case compat.IsImageIndexMediaType(mediaType):
 		return godigest.Digest(imageMeta.GetIndex().GetDigest())
 	default:
 		return ""
@@ -82,9 +82,9 @@ func GetImageDigestStr(imageMeta *proto_go.ImageMeta) string {
 	mediaType := imageMeta.GetMediaType()
 
 	switch {
-	case mediaType == ispec.MediaTypeImageManifest || compat.IsCompatibleManifestMediaType(mediaType):
+	case compat.IsImageManifestMediaType(mediaType):
 		return imageMeta.GetManifests()[0].GetDigest()
-	case mediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(mediaType):
+	case compat.IsImageIndexMediaType(mediaType):
 		return imageMeta.GetIndex().GetDigest()
 	default:
 		return ""
@@ -95,9 +95,9 @@ func GetImageAnnotations(imageMeta *proto_go.ImageMeta) map[string]string {
 	mediaType := imageMeta.GetMediaType()
 
 	switch {
-	case mediaType == ispec.MediaTypeImageManifest || compat.IsCompatibleManifestMediaType(mediaType):
+	case compat.IsImageManifestMediaType(mediaType):
 		return imageMeta.GetManifests()[0].GetManifest().GetAnnotations()
-	case mediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(mediaType):
+	case compat.IsImageIndexMediaType(mediaType):
 		return imageMeta.GetIndex().GetIndex().GetAnnotations()
 	default:
 		return map[string]string{}
@@ -108,13 +108,13 @@ func GetImageSubject(imageMeta *proto_go.ImageMeta) *ispec.Descriptor {
 	mediaType := imageMeta.GetMediaType()
 
 	switch {
-	case mediaType == ispec.MediaTypeImageManifest || compat.IsCompatibleManifestMediaType(mediaType):
+	case compat.IsImageManifestMediaType(mediaType):
 		if imageMeta.GetManifests()[0].GetManifest().GetSubject() == nil {
 			return nil
 		}
 
 		return GetDescriptorRef(imageMeta.GetManifests()[0].GetManifest().GetSubject())
-	case mediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(mediaType):
+	case compat.IsImageIndexMediaType(mediaType):
 		return GetDescriptorRef(imageMeta.GetIndex().GetIndex().GetSubject())
 	default:
 		return nil
@@ -393,8 +393,7 @@ func GetManifests(descriptors []ispec.Descriptor) []mTypes.ManifestMeta {
 
 		// let's filter out unexpected media types from the manifest lists,
 		// this could be the case of buildkit cache entries for example
-		if mediaType == ispec.MediaTypeImageManifest || compat.IsCompatibleManifestMediaType(mediaType) ||
-			mediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(mediaType) {
+		if compat.IsImageManifestMediaType(mediaType) || compat.IsImageIndexMediaType(mediaType) {
 			manifestList = append(manifestList, mTypes.ManifestMeta{
 				Digest: manifest.Digest,
 				Size:   manifest.Size,
@@ -558,8 +557,7 @@ func GetImageMeta(dbImageMeta *proto_go.ImageMeta) mTypes.ImageMeta {
 		Digest:    GetImageDigest(dbImageMeta),
 	}
 
-	if dbImageMeta.GetMediaType() == ispec.MediaTypeImageIndex ||
-		compat.IsCompatibleManifestListMediaType(dbImageMeta.GetMediaType()) {
+	if compat.IsImageIndexMediaType(dbImageMeta.GetMediaType()) {
 		manifests := make([]ispec.Descriptor, 0, len(dbImageMeta.GetManifests()))
 
 		for _, manifest := range dbImageMeta.GetIndex().GetIndex().GetManifests() {

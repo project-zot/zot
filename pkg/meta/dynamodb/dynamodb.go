@@ -13,7 +13,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	godigest "github.com/opencontainers/go-digest"
-	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -276,10 +275,7 @@ func (dwr *DynamoDB) getAllContainedMeta(ctx context.Context, imageIndexData *pr
 	manifestDigests := make([]string, 0, len(imageIndexData.Index.Index.Manifests))
 
 	for _, manifest := range imageIndexData.Index.Index.Manifests {
-		if manifest.MediaType != ispec.MediaTypeImageManifest &&
-			manifest.MediaType != ispec.MediaTypeImageIndex &&
-			!compat.IsCompatibleManifestMediaType(manifest.MediaType) &&
-			!compat.IsCompatibleManifestListMediaType(manifest.MediaType) {
+		if !compat.IsImageManifestMediaType(manifest.MediaType) && !compat.IsImageIndexMediaType(manifest.MediaType) {
 			// filter out unexpected media types from the manifest lists,
 			// this could be the case of buildkit cache entries for example
 			continue
@@ -299,12 +295,10 @@ func (dwr *DynamoDB) getAllContainedMeta(ctx context.Context, imageIndexData *pr
 			return imageMetaList, manifestDataList, err
 		}
 
-		if imageManifestData.MediaType == ispec.MediaTypeImageManifest ||
-			compat.IsCompatibleManifestMediaType(imageManifestData.MediaType) {
+		if compat.IsImageManifestMediaType(imageManifestData.MediaType) {
 			imageMetaList = append(imageMetaList, imageManifestData)
 			manifestDataList = append(manifestDataList, imageManifestData.Manifests[0])
-		} else if imageManifestData.MediaType == ispec.MediaTypeImageIndex ||
-			compat.IsCompatibleManifestListMediaType(imageManifestData.MediaType) {
+		} else if compat.IsImageIndexMediaType(imageManifestData.MediaType) {
 			partialImageDataList, partialManifestDataList, err := dwr.getAllContainedMeta(ctx, imageManifestData)
 			if err != nil {
 				return imageMetaList, manifestDataList, err
@@ -740,8 +734,7 @@ func (dwr *DynamoDB) SearchTags(ctx context.Context, searchText string) ([]mType
 
 		var protoImageMeta *proto_go.ImageMeta
 
-		if descriptor.MediaType == ispec.MediaTypeImageManifest || //nolint:gocritic
-			compat.IsCompatibleManifestMediaType(descriptor.MediaType) {
+		if compat.IsImageManifestMediaType(descriptor.MediaType) { //nolint:gocritic
 			manifestDigest := descriptor.Digest
 
 			imageManifestData, err := dwr.GetProtoImageMeta(ctx, godigest.Digest(manifestDigest))
@@ -751,8 +744,7 @@ func (dwr *DynamoDB) SearchTags(ctx context.Context, searchText string) ([]mType
 			}
 
 			protoImageMeta = imageManifestData
-		} else if descriptor.MediaType == ispec.MediaTypeImageIndex ||
-			compat.IsCompatibleManifestListMediaType(descriptor.MediaType) {
+		} else if compat.IsImageIndexMediaType(descriptor.MediaType) {
 			indexDigest := godigest.Digest(descriptor.Digest)
 
 			imageIndexData, err := dwr.GetProtoImageMeta(ctx, indexDigest)
@@ -823,8 +815,7 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterRepoTag mTypes.Filter
 				continue
 			}
 
-			if descriptor.MediaType == ispec.MediaTypeImageManifest || //nolint:gocritic
-				compat.IsCompatibleManifestMediaType(descriptor.MediaType) {
+			if compat.IsImageManifestMediaType(descriptor.MediaType) { //nolint:gocritic
 				manifestDigest := descriptor.Digest
 
 				imageManifestData, err := dwr.GetProtoImageMeta(ctx, godigest.Digest(manifestDigest))
@@ -839,8 +830,7 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterRepoTag mTypes.Filter
 				if filterFunc(repoMeta, imageMeta) {
 					images = append(images, mConvert.GetFullImageMetaFromProto(tag, protoRepoMeta, imageManifestData))
 				}
-			} else if descriptor.MediaType == ispec.MediaTypeImageIndex ||
-				compat.IsCompatibleManifestListMediaType(descriptor.MediaType) {
+			} else if compat.IsImageIndexMediaType(descriptor.MediaType) {
 				indexDigest := descriptor.Digest
 
 				protoImageIndexMeta, err := dwr.GetProtoImageMeta(ctx, godigest.Digest(indexDigest))
@@ -999,8 +989,7 @@ func (dwr *DynamoDB) GetFullImageMeta(ctx context.Context, repo string, tag stri
 		return mTypes.FullImageMeta{}, err
 	}
 
-	if protoImageMeta.MediaType == ispec.MediaTypeImageIndex ||
-		compat.IsCompatibleManifestListMediaType(protoImageMeta.MediaType) {
+	if compat.IsImageIndexMediaType(protoImageMeta.MediaType) {
 		_, manifestDataList, err := dwr.getAllContainedMeta(ctx, protoImageMeta)
 		if err != nil {
 			return mTypes.FullImageMeta{}, err
@@ -1027,8 +1016,7 @@ func (dwr *DynamoDB) GetImageMeta(digest godigest.Digest) (mTypes.ImageMeta, err
 		return mTypes.ImageMeta{}, err
 	}
 
-	if protoImageMeta.MediaType == ispec.MediaTypeImageIndex ||
-		compat.IsCompatibleManifestListMediaType(protoImageMeta.MediaType) {
+	if compat.IsImageIndexMediaType(protoImageMeta.MediaType) {
 		_, manifestDataList, err := dwr.getAllContainedMeta(context.Background(), protoImageMeta)
 		if err != nil {
 			return mTypes.ImageMeta{}, err
@@ -1509,8 +1497,7 @@ func (dwr *DynamoDB) FilterImageMeta(ctx context.Context, digests []string,
 			return nil, err
 		}
 
-		if protoImageMeta.MediaType == ispec.MediaTypeImageIndex ||
-			compat.IsCompatibleManifestListMediaType(protoImageMeta.MediaType) {
+		if compat.IsImageIndexMediaType(protoImageMeta.MediaType) {
 			_, manifestDataList, err := dwr.getAllContainedMeta(context.Background(), protoImageMeta)
 			if err != nil {
 				return nil, err

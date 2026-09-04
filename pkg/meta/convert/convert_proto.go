@@ -31,8 +31,7 @@ func GetProtoRepoMeta(repo mTypes.RepoMeta) *proto_go.RepoMeta {
 
 func GetProtoImageMeta(imageMeta mTypes.ImageMeta) *proto_go.ImageMeta {
 	switch {
-	case imageMeta.MediaType == ispec.MediaTypeImageManifest ||
-		compat.IsCompatibleManifestMediaType(imageMeta.MediaType):
+	case compat.IsImageManifestMediaType(imageMeta.MediaType):
 		if len(imageMeta.Manifests) == 0 {
 			return nil
 		}
@@ -41,8 +40,7 @@ func GetProtoImageMeta(imageMeta mTypes.ImageMeta) *proto_go.ImageMeta {
 
 		return GetProtoImageManifestData(manifestData.Manifest, manifestData.Config, manifestData.Size,
 			manifestData.Digest.String(), imageMeta.MediaType)
-	case imageMeta.MediaType == ispec.MediaTypeImageIndex ||
-		compat.IsCompatibleManifestListMediaType(imageMeta.MediaType):
+	case compat.IsImageIndexMediaType(imageMeta.MediaType):
 		if imageMeta.Index == nil {
 			return nil
 		}
