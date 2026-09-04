@@ -19,14 +19,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Install libs for skopeo build
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgpgme-dev libassuan-dev libbtrfs-dev \
-            libdevmapper-dev pkg-config
       - uses: ./.github/actions/build-zot-binaries
         with:
           make-targets: binary binary-minimal cli bench blackbox-tools
+          with-skopeo-build-deps: "true"
           artifact-name: ecosystem-bins-${{ github.sha }}
           artifact-path: |
             bin/
@@ -40,7 +36,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/download-ecosystem-bins
+      - uses: ./.github/actions/install-prebuilt-binaries
         with:
           artifact-name: ecosystem-bins-${{ github.sha }}
       # Needed for Dex build in setup-ecosystem-tools and for Makefile/helpers `go env`.
@@ -48,13 +44,12 @@ jobs:
         with:
           cache: false
           check-latest: true
-          go-version: 1.26.x
+          go-version-file: .go-version
       - uses: ./.github/actions/setup-ecosystem-tools
         with:
           with-docker: "true"
           with-dex: "true"
-          with-go: "false"
-          with-skopeo: "false"
+
       - uses: ./.github/actions/setup-floci
       - name: Run cloud-only tests
         run: |
@@ -73,7 +68,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/download-ecosystem-bins
+      - uses: ./.github/actions/install-prebuilt-binaries
         with:
           artifact-name: ecosystem-bins-${{ github.sha }}
       # Makefile and bats helpers resolve bin paths via `go env GOOS/GOARCH`.
@@ -81,13 +76,12 @@ jobs:
         with:
           cache: false
           check-latest: true
-          go-version: 1.26.x
+          go-version-file: .go-version
       - uses: ./.github/actions/setup-ecosystem-tools
         with:
           with-docker: "true"
           with-haproxy: "true"
-          with-go: "false"
-          with-skopeo: "false"
+
       - uses: ./.github/actions/setup-floci
       - name: Run cloud scale-out DynamoDB tests
         id: dynamodb_scale
@@ -97,38 +91,15 @@ jobs:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
         continue-on-error: true
-      - name: Print service logs for DynamoDB scale-out
-        run: |
-          find /tmp/zot-ft-logs -name '*.log' -print0 | xargs -0 cat
-      - name: Upload DynamoDB zot logs as build artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: ./.github/actions/scale-out-collect-results
         if: always()
         with:
-          name: zot-scale-out-dynamodb-logs-floci
-          path: /tmp/zot-ft-logs
-          if-no-files-found: ignore
-      - name: DynamoDB multi-hop detection
-        id: dynamodb_multihop
-        run: |
-          if find /tmp/zot-ft-logs -name '*.log' -print0 | xargs -0 cat | grep 'cannot proxy an already proxied request'; then
-            echo "detected multi-hop in DynamoDB tests"
-            exit 1
-          else
-            exit 0
-          fi
-        continue-on-error: true
-      - name: Upload zb test results zip as build artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: always()
-        with:
-          name: zb-cloud-scale-out-dynamodb-results-floci-${{ github.sha }}
-          path: ./zb-results/
-          if-no-files-found: ignore
-      - name: Fail job if DynamoDB error
-        if: ${{ steps.dynamodb_scale.outcome != 'success' || steps.dynamodb_multihop.outcome != 'success' }}
-        run: |
-          echo "DynamoDB scale-out tests failed"
-          exit 1
+          scale-outcome: ${{ steps.dynamodb_scale.outcome }}
+          logs-search-path: /tmp/zot-ft-logs
+          zot-logs-artifact-name: zot-scale-out-dynamodb-logs-floci
+          zot-logs-artifact-path: /tmp/zot-ft-logs
+          zb-results-artifact-name: zb-cloud-scale-out-dynamodb-results-floci-${{ github.sha }}
+          fail-message: DynamoDB scale-out tests failed
       - uses: ./.github/actions/teardown-floci
         if: always()
 
@@ -140,7 +111,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/download-ecosystem-bins
+      - uses: ./.github/actions/install-prebuilt-binaries
         with:
           artifact-name: ecosystem-bins-${{ github.sha }}
       # Makefile and bats helpers resolve bin paths via `go env GOOS/GOARCH`.
@@ -148,14 +119,13 @@ jobs:
         with:
           cache: false
           check-latest: true
-          go-version: 1.26.x
+          go-version-file: .go-version
       - uses: ./.github/actions/setup-ecosystem-tools
         with:
           with-docker: "true"
           with-haproxy: "true"
           with-valkey: "true"
-          with-go: "false"
-          with-skopeo: "false"
+
       - uses: ./.github/actions/setup-floci
       - name: Run cloud scale-out Redis tests
         id: redis_scale
@@ -165,37 +135,14 @@ jobs:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
         continue-on-error: true
-      - name: Print service logs for Redis scale-out
-        run: |
-          find /tmp/zot-ft-logs/redis -name '*.log' -print0 | xargs -0 cat
-      - name: Upload Redis zot logs as build artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: ./.github/actions/scale-out-collect-results
         if: always()
         with:
-          name: zot-scale-out-redis-logs-floci
-          path: /tmp/zot-ft-logs
-          if-no-files-found: ignore
-      - name: Redis multi-hop detection
-        id: redis_multihop
-        run: |
-          if find /tmp/zot-ft-logs/redis -name '*.log' -print0 | xargs -0 cat | grep 'cannot proxy an already proxied request'; then
-            echo "detected multi-hop in Redis tests"
-            exit 1
-          else
-            exit 0
-          fi
-        continue-on-error: true
-      - name: Upload zb test results zip as build artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: always()
-        with:
-          name: zb-cloud-scale-out-redis-results-floci-${{ github.sha }}
-          path: ./zb-results/
-          if-no-files-found: ignore
-      - name: Fail job if Redis error
-        if: ${{ steps.redis_scale.outcome != 'success' || steps.redis_multihop.outcome != 'success' }}
-        run: |
-          echo "Redis scale-out tests failed"
-          exit 1
+          scale-outcome: ${{ steps.redis_scale.outcome }}
+          logs-search-path: /tmp/zot-ft-logs/redis
+          zot-logs-artifact-name: zot-scale-out-redis-logs-floci
+          zot-logs-artifact-path: /tmp/zot-ft-logs
+          zb-results-artifact-name: zb-cloud-scale-out-redis-results-floci-${{ github.sha }}
+          fail-message: Redis scale-out tests failed
       - uses: ./.github/actions/teardown-floci
         if: always()

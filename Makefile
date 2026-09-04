@@ -377,9 +377,12 @@ check: ./.golangci.yaml $(GOLINTER)
 	$(GOLINTER) run --output.text.colors --build-tags needprivileges,$(BUILD_LABELS) ./pkg/cli/client/ ./pkg/storage/local/ ./pkg/storage/gcs/ ./pkg/api/config/
 	rm pkg/extensions/build/.empty
 
-.PHONY: swagger
-swagger:
+.PHONY: install-swag
+install-swag:
 	swag -v || go install github.com/swaggo/swag/cmd/swag@$(SWAGGER_VERSION)
+
+.PHONY: swagger
+swagger: install-swag
 	swag init --parseDependency --exclude pkg/extensions/search/cve/trivy -o swagger -g pkg/api/routes.go -q
 
 .PHONY: update-licenses
@@ -546,7 +549,7 @@ $(BATS):
 	cd bats-core; ./install.sh $(TOOLSDIR); cd ..; \
 	rm -rf bats-core
 
-# Build skopeo into hack/tools/bin for the ecosystem-tools shared CI artifact.
+# Build skopeo into hack/tools/bin for shared CI artifacts.
 $(SKOPEO):
 	mkdir -p $(TOOLSDIR)/bin
 	rm -rf skopeo-src
@@ -628,7 +631,7 @@ run-blackbox-sync-nightly: check-blackbox-prerequisites $(ZOT_BIN_DEP) $(ZOT_MIN
 	$(BATS) $(BATS_FLAGS) test/blackbox/sync_harness.bats
 
 .PHONY: run-kind-sync-ondemand
-run-kind-sync-ondemand: check-blackbox-prerequisites $(ZOT_BIN_DEP)
+run-kind-sync-ondemand: $(KIND) $(ZOT_BIN_DEP)
 	./examples/kind/kind-sync-ondemand.sh
 
 # When USE_PREBUILT=1, assert compile outputs already exist so test targets

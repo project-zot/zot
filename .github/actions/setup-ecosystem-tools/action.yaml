@@ -31,38 +31,15 @@ inputs:
     description: 'Install valkey-tools (redis scale-out / redis bats helpers)'
     required: false
     default: 'false'
-  with-go:
-    description: >
-      Install swag and download Go modules for this repo. Set false when using
-      prebuilt zot bins; setup-go is still required if this action builds Dex.
-    required: false
-    default: 'true'
-  with-skopeo:
-    description: >
-      Build skopeo from source into /usr/bin. Set false when skopeo was restored
-      from the ecosystem-bins artifact (hack/tools/bin/skopeo).
-    required: false
-    default: 'true'
 runs:
   using: "composite"
   steps:
-    - name: Go modules and swag
-      if: ${{ inputs.with-go == 'true' }}
-      shell: bash
-      run: |
-        cd "$GITHUB_WORKSPACE"
-        go install github.com/swaggo/swag/cmd/swag@v1.16.2
-        go mod download
-
     - name: Apt base packages
       shell: bash
       run: |
         set -euo pipefail
         sudo apt-get update
-        pkgs=(
-          libgpgme-dev libassuan-dev libbtrfs-dev
-          libdevmapper-dev pkg-config rpm uidmap jq whois
-        )
+        pkgs=(uidmap jq whois)
         if [ "${{ inputs.with-haproxy }}" = "true" ]; then
           pkgs+=(haproxy)
         fi
@@ -73,28 +50,6 @@ runs:
           pkgs+=(npm)
         fi
         sudo apt-get install -y "${pkgs[@]}"
-
-    - name: Install skopeo
-      if: ${{ inputs.with-skopeo == 'true' }}
-      shell: bash
-      run: |
-        set -euo pipefail
-        cd "$GITHUB_WORKSPACE"
-        git clone -b v1.12.0 https://github.com/containers/skopeo.git
-        cd skopeo
-        make bin/skopeo
-        sudo cp bin/skopeo /usr/bin
-        skopeo -v
-
-    - name: Verify prebuilt skopeo
-      if: ${{ inputs.with-skopeo != 'true' }}
-      shell: bash
-      run: |
-        set -euo pipefail
-        if [ -x "$GITHUB_WORKSPACE/hack/tools/bin/skopeo" ] && ! command -v skopeo >/dev/null 2>&1; then
-          sudo cp "$GITHUB_WORKSPACE/hack/tools/bin/skopeo" /usr/bin/skopeo
-        fi
-        skopeo -v
 
     - name: Install CRI-O
       if: ${{ inputs.with-crio == 'true' }}
