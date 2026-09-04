@@ -99,14 +99,20 @@ func TestSearchGQLResourceLimits(t *testing.T) {
 
 			var result struct {
 				Errors []struct {
-					Message string `json:"message"`
+					Message    string `json:"message"`
+					Extensions struct {
+						Code string `json:"code"`
+					} `json:"extensions"`
 				} `json:"errors"`
 			}
 			So(json.Unmarshal(resp.Body(), &result), ShouldBeNil)
 			So(len(result.Errors), ShouldBeGreaterThan, 0)
-			// Rejected at parse time, not at the resolver: the disabled-CVE message must not
-			// appear, since that would mean every repeated field was individually resolved.
+			// Assert the parse-time error code specifically, not just "some error, no
+			// resolution": FixedComplexityLimit(500) would reject this same document (400
+			// repetitions cost ~800 complexity) even without SetParserTokenLimit, so a looser
+			// assertion wouldn't catch the parser token limit being removed or misconfigured.
 			for _, gqlErr := range result.Errors {
+				So(gqlErr.Extensions.Code, ShouldEqual, "GRAPHQL_PARSE_FAILED")
 				So(gqlErr.Message, ShouldNotContainSubstring, "cve search is disabled")
 			}
 		})

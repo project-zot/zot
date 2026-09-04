@@ -40,6 +40,13 @@ const (
 	// dispatch an unbounded number of resolvers - each of which may hit the CVE scanner or metadb -
 	// concurrently. The richest known real query costs on the order of 30; 500 leaves ample headroom.
 	searchComplexityLimit = 500
+	// searchQueryCacheSize bounds the query cache's entry count. gqlgen keys each entry on the raw
+	// query text and stores the parsed document as the value, so a single entry can retain a
+	// document close to the full MaxSearchBodySize (a valid, low-token document can still pack long
+	// string literals into most of that body) - a large entry count would let an unauthenticated
+	// client hold many distinct such documents in memory at once. 64 keeps the worst case in the
+	// tens of MiB while still caching the handful of distinct queries zot's own CLI/UI issue.
+	searchQueryCacheSize = 64
 )
 
 type CveScanner cveinfo.Scanner
@@ -145,7 +152,7 @@ func newSearchGQLHandler(resConfig gql_generated.Config) *gqlHandler.Server {
 	srv.AddTransport(transport.GET{})
 	srv.AddTransport(transport.POST{})
 
-	srv.SetQueryCache(lru.New[*ast.QueryDocument](1000))
+	srv.SetQueryCache(lru.New[*ast.QueryDocument](searchQueryCacheSize))
 	srv.SetParserTokenLimit(searchParserTokenLimit)
 
 	srv.Use(extension.Introspection{})
