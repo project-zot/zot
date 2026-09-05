@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -730,4 +731,63 @@ func randomString() string {
 	}
 
 	return string(buf)
+}
+
+// blockingSink holds a publish open until released.
+type blockingSink struct {
+	emitting chan struct{}
+	release  chan struct{}
+	closed   atomic.Bool
+}
+
+func (s *blockingSink) Emit(*cloudevents.Event) cloudevents.Result {
+	close(s.emitting)
+	<-s.release
+
+	return nil
+}
+
+func (s *blockingSink) Close() error {
+	s.closed.Store(true)
+
+	return nil
+}
+
+var _ events.Sink = (*blockingSink)(nil)
+
+func TestRecorderCloseWaitsForInFlightPublishes(t *testing.T) {
+	Convey("Close does not tear a sink down under an event still going out", t, func() {
+		sink := &blockingSink{emitting: make(chan struct{}), release: make(chan struct{})}
+
+		recorder, err := events.NewRecorder(log.NewTestLogger(), sink)
+		So(err, ShouldBeNil)
+
+		recorder.RepositoryCreated("test", nil)
+		<-sink.emitting
+
+		closed := make(chan struct{})
+
+		go func() {
+			recorder.Close()
+			close(closed)
+		}()
+
+		select {
+		case <-closed:
+			t.Fatal("Close returned while a publish was still in flight")
+		case <-time.After(200 * time.Millisecond):
+		}
+
+		So(sink.closed.Load(), ShouldBeFalse)
+
+		close(sink.release)
+
+		select {
+		case <-closed:
+		case <-time.After(5 * time.Second):
+			t.Fatal("Close did not return after the publish finished")
+		}
+
+		So(sink.closed.Load(), ShouldBeTrue)
+	})
 }

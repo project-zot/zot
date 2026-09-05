@@ -48,15 +48,19 @@ type Controller struct {
 	Server          *http.Server
 	Metrics         monitoring.MetricServer
 	EventRecorder   events.Recorder
-	CveScanner      ext.CveScanner
-	SyncOnDemand    ext.SyncOnDemand
-	RelyingParties  map[string]rp.RelyingParty
-	CookieStore     *CookieStore
-	HTPasswd        *HTPasswd
-	HTPasswdWatcher *HTPasswdWatcher
-	LDAPClient      *LDAPClient
-	taskScheduler   *scheduler.Scheduler
-	Healthz         *common.Healthz
+	// EventRecorder, typed so a reload can replace what it points at
+	eventReloader *events.ReloadableRecorder
+	// events config the installed recorder was built from
+	eventsFingerprint string
+	CveScanner        ext.CveScanner
+	SyncOnDemand      ext.SyncOnDemand
+	RelyingParties    map[string]rp.RelyingParty
+	CookieStore       *CookieStore
+	HTPasswd          *HTPasswd
+	HTPasswdWatcher   *HTPasswdWatcher
+	LDAPClient        *LDAPClient
+	taskScheduler     *scheduler.Scheduler
+	Healthz           *common.Healthz
 	// runtime params (atomic: Run may set the port concurrently with GetPort readers, e.g. tests)
 	chosenPort atomic.Int64
 	// TLS certificate management
@@ -448,9 +452,36 @@ func (c *Controller) InitEventRecorder() error {
 		return err
 	}
 
-	c.EventRecorder = eventRecorder
+	// wrapped even when disabled, so a reload can enable events
+	c.eventReloader = events.NewReloadableRecorder(eventRecorder)
+	c.EventRecorder = c.eventReloader
+	c.eventsFingerprint = c.Config.EventsFingerprint()
 
 	return nil
+}
+
+// reloadEventRecorder rebuilds the recorder when the events config changed.
+func (c *Controller) reloadEventRecorder() {
+	fingerprint := c.Config.EventsFingerprint()
+	if c.eventReloader == nil || fingerprint == c.eventsFingerprint {
+		return
+	}
+
+	eventRecorder, err := ext.NewEventRecorder(c.Config, c.Log)
+	if err != nil && !goerrors.Is(err, errors.ErrExtensionNotEnabled) {
+		// the fingerprint stays behind so a later reload retries
+		c.Log.Error().Err(err).Msg("failed to rebuild event recorder, keeping the previous one")
+
+		return
+	}
+
+	if replaced := c.eventReloader.Swap(eventRecorder); replaced != nil {
+		replaced.Close()
+	}
+
+	c.eventsFingerprint = fingerprint
+
+	c.Log.Info().Bool("enabled", eventRecorder != nil).Msg("reloaded event recorder")
 }
 
 func (c *Controller) LoadNewConfig(newConfig *config.Config) {
@@ -482,6 +513,8 @@ func (c *Controller) LoadNewConfig(newConfig *config.Config) {
 		c.LDAPClient.BindPassword = authConfig.LDAP.BindPassword()
 		c.LDAPClient.lock.Unlock()
 	}
+
+	c.reloadEventRecorder()
 
 	c.InitCVEInfo()
 
@@ -516,6 +549,11 @@ func (c *Controller) Shutdown() {
 	if c.Server != nil {
 		ctx := context.Background()
 		_ = c.Server.Shutdown(ctx)
+	}
+
+	// close event sinks
+	if c.EventRecorder != nil {
+		c.EventRecorder.Close()
 	}
 
 	// close metadb
