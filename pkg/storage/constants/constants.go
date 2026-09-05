@@ -21,6 +21,7 @@ const (
 	DynamoDBDriverName      = "dynamodb"
 	RedisDriverName         = "redis"
 	RedisLocksBucket        = "locks"
+	RedisRepoLocksBucket    = "repolocks"
 	DefaultGCDelay          = 1 * time.Hour
 	DefaultGCInterval       = 1 * time.Hour
 	S3StorageDriverName     = "s3"
