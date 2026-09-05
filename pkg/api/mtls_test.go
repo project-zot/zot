@@ -1501,11 +1501,11 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		password, seedPass := test.GenerateRandomString()
 
 		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
-		// with creds but without certs, reads are allowed via anonymous access
-		// (Authorization header is ignored when basic auth is disabled, so the request succeeds via anonymous policy)
+		// with creds but without certs, reads are rejected because basic auth is disabled
+		// and Authorization credentials should not fall through to anonymous policy.
 		resp, err = client.R().SetBasicAuth(username, password).Get(secureBaseURL + "/v2/")
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		// without creds, writes should fail
 		resp, err = client.R().Post(secureBaseURL + "/v2/repo/blobs/uploads/")
