@@ -3,7 +3,9 @@
 package api_test
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -21,8 +23,12 @@ import (
 	ext "zotregistry.dev/zot/v2/pkg/extensions"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
+	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
+
+// Stand-in for a contended redis/redsync lock error from UpdateStatsOnDownload.
+var errStatsLockContention = errors.New("failed to acquire redis lock")
 
 type mockSyncOnDemand struct {
 	syncImageFn                   func(ctx context.Context, repo, reference string) error
@@ -67,6 +73,82 @@ func newSyncTestRouteHandler(
 	ctlr.SyncOnDemand = syncOnDemand
 
 	return api.NewRouteHandler(ctlr)
+}
+
+func TestGetManifestServesDespiteStatsError(t *testing.T) {
+	Convey("GetManifest serves the manifest when download-stats update fails", t, func() {
+		const (
+			reference    = "v1.0"
+			statsFailMsg = "failed to update stats on download image"
+		)
+
+		manifest := []byte(`{"schemaVersion":2}`)
+		digest := godigest.FromBytes(manifest)
+
+		newHandler := func(statsErr error) (*api.RouteHandler, *bytes.Buffer) {
+			var logBuf bytes.Buffer
+
+			ctlr := api.NewController(config.New())
+			ctlr.Log = log.NewLoggerWithWriter("debug", &logBuf)
+			ctlr.Router = mux.NewRouter()
+			ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
+				GetImageManifestFn: func(_ string, _ string) ([]byte, godigest.Digest, string, error) {
+					return manifest, digest, ispec.MediaTypeImageManifest, nil
+				},
+			}
+			ctlr.MetaDB = mocks.MetaDBMock{
+				UpdateStatsOnDownloadFn: func(_ string, _ string) error {
+					return statsErr
+				},
+			}
+
+			return api.NewRouteHandler(ctlr), &logBuf
+		}
+
+		newReq := func() *http.Request {
+			req := httptest.NewRequestWithContext(
+				context.Background(),
+				http.MethodGet,
+				"http://example.com/v2/test/manifests/"+reference,
+				http.NoBody,
+			)
+
+			return mux.SetURLVars(req, map[string]string{
+				"name":      "test",
+				"reference": reference,
+			})
+		}
+
+		assertServed := func(handler *api.RouteHandler) {
+			rec := httptest.NewRecorder()
+			handler.GetManifest(rec, newReq())
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+			So(resp.Header.Get(constants.DistContentDigestKey), ShouldEqual, digest.String())
+			So(resp.Header.Get("Content-Type"), ShouldEqual, ispec.MediaTypeImageManifest)
+
+			body, readErr := io.ReadAll(resp.Body)
+			So(readErr, ShouldBeNil)
+			So(body, ShouldResemble, manifest)
+		}
+
+		Convey("when UpdateStatsOnDownload returns ErrRepoMetaNotFound", func() {
+			handler, logBuf := newHandler(zerr.ErrRepoMetaNotFound)
+			assertServed(handler)
+			So(logBuf.String(), ShouldNotContainSubstring, statsFailMsg)
+		})
+
+		Convey("when UpdateStatsOnDownload returns a lock-style error", func() {
+			handler, logBuf := newHandler(errStatsLockContention)
+			assertServed(handler)
+			So(logBuf.String(), ShouldContainSubstring, `"level":"warn"`)
+			So(logBuf.String(), ShouldContainSubstring, statsFailMsg)
+			So(logBuf.String(), ShouldNotContainSubstring, `"level":"error"`)
+		})
+	})
 }
 
 func TestGetManifestCheckInterval(t *testing.T) {
