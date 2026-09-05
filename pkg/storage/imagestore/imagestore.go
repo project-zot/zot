@@ -415,6 +415,8 @@ func (is *ImageStore) GetRepositories() ([]string, error) {
 	// if the root directory is not yet created then return an empty slice of repositories
 	var perr driver.PathNotFoundError
 	if errors.As(err, &perr) {
+		is.log.Debug().Err(err).Str("rootDir", dir).Msg("empty rootDir")
+
 		return stores, nil
 	}
 
