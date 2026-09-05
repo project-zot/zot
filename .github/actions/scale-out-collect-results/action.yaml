@@ -1,0 +1,91 @@
+name: 'Collect scale-out results'
+description: >
+  After a soft-fail scale-out make step: print logs, upload zot logs and zb-results,
+  detect multi-hop proxy errors, then hard-fail if scale or multihop failed.
+  Caller keeps localstack/floci teardown outside this action.
+inputs:
+  scale-outcome:
+    description: 'Outcome of the soft-fail make step (e.g. steps.scale.outcome)'
+    required: true
+  logs-search-path:
+    description: 'Directory to find *.log files for print and multi-hop detection'
+    required: true
+  zot-logs-artifact-name:
+    description: 'upload-artifact name for zot logs'
+    required: true
+  zot-logs-artifact-path:
+    description: 'Path uploaded as the zot logs artifact'
+    required: true
+  zb-results-artifact-name:
+    description: 'upload-artifact name for ./zb-results/'
+    required: true
+  print-dmesg:
+    description: 'If true, run sudo dmesg before printing log files'
+    required: false
+    default: 'false'
+  zot-logs-if-no-files-found:
+    description: >
+      upload-artifact if-no-files-found for zot logs (ignore|warn|error).
+      Nightly uses error; ecosystem keeps ignore.
+    required: false
+    default: 'ignore'
+  fail-message:
+    description: 'Message printed when hard-failing the job'
+    required: false
+    default: 'Scale-out tests failed'
+runs:
+  using: "composite"
+  steps:
+    - name: Print service logs
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ "${{ inputs.print-dmesg }}" = "true" ]; then
+          sudo dmesg
+        fi
+        if [ -d "${{ inputs.logs-search-path }}" ]; then
+          find "${{ inputs.logs-search-path }}" -name '*.log' -print0 | xargs -0 -r cat
+        else
+          echo "logs search path missing: ${{ inputs.logs-search-path }}"
+        fi
+
+    - name: Upload zot logs as build artifact
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      if: always()
+      with:
+        name: ${{ inputs.zot-logs-artifact-name }}
+        path: ${{ inputs.zot-logs-artifact-path }}
+        if-no-files-found: ${{ inputs.zot-logs-if-no-files-found }}
+
+    - name: Upload zb test results zip as build artifact
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      if: always()
+      with:
+        name: ${{ inputs.zb-results-artifact-name }}
+        path: ./zb-results/
+        if-no-files-found: ignore
+
+    - name: Multi-hop detection
+      id: multihop
+      shell: bash
+      continue-on-error: true
+      run: |
+        set -euo pipefail
+        if [ ! -d "${{ inputs.logs-search-path }}" ]; then
+          echo "logs search path missing; skipping multi-hop detection"
+          exit 0
+        fi
+        if grep -Rql --include='*.log' \
+            'cannot proxy an already proxied request' \
+            "${{ inputs.logs-search-path }}"; then
+          echo "detected multi-hop"
+          exit 1
+        fi
+        exit 0
+
+    - name: Fail job if scale-out or multi-hop error
+      if: ${{ inputs.scale-outcome != 'success' || steps.multihop.outcome != 'success' }}
+      shell: bash
+      run: |
+        echo "${{ inputs.fail-message }}"
+        exit 1

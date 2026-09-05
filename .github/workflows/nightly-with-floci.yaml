@@ -17,7 +17,7 @@ permissions: read-all
 #  to achieve a long-running sustained load on the system. The system is expected to perform well without errors and return performance data after the test.
 jobs:
   build-binaries:
-    name: Build zot and zb (linux/amd64)
+    name: Build binaries
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -25,11 +25,13 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/build-zot-binaries
         with:
-          make-targets: binary binary-minimal bench
+          # Shared zot/zb + blackbox client tools (incl. skopeo) so parallel jobs
+          # reuse the artifact instead of each re-downloading check-blackbox tools.
+          make-targets: binary binary-minimal bench blackbox-tools
+          with-skopeo-build-deps: "true"
           artifact-path: |
-            bin/zot-linux-amd64
-            bin/zb-linux-amd64
-            bin/zot-linux-amd64-minimal
+            bin/
+            hack/tools/
 
   floci-dedupe:
     name: floci Dedupe/restore blobs
@@ -42,27 +44,8 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           check-latest: true
-          go-version: 1.26.x
-      - name: Download prebuilt binaries
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: zot-linux-amd64-binaries
-          path: bin
-      - name: Mark binaries executable
-        run: chmod +x bin/zot-linux-amd64 bin/zb-linux-amd64 bin/zot-linux-amd64-minimal
-      - name: Install dependencies
-        run: |
-          cd $GITHUB_WORKSPACE
-          go install github.com/swaggo/swag/cmd/swag@v1.16.2
-          go mod download
-          sudo apt-get update
-          sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config rpm uidmap
-          # install skopeo
-          git clone -b v1.12.0 https://github.com/containers/skopeo.git
-          cd skopeo
-          make bin/skopeo
-          sudo cp bin/skopeo /usr/bin
-          skopeo -v
+          go-version-file: .go-version
+      - uses: ./.github/actions/install-prebuilt-binaries
       - uses: ./.github/actions/setup-floci
       - name: Run blackbox nightly dedupe tests
         run: |
@@ -87,19 +70,8 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           check-latest: true
-          go-version: 1.26.x
-      - name: Download prebuilt binaries
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: zot-linux-amd64-binaries
-          path: bin
-      - name: Mark binaries executable
-        run: chmod +x bin/zot-linux-amd64 bin/zb-linux-amd64 bin/zot-linux-amd64-minimal
-      - name: Install dependencies
-        run: |
-          cd $GITHUB_WORKSPACE
-          go install github.com/swaggo/swag/cmd/swag@v1.16.2
-          go mod download
+          go-version-file: .go-version
+      - uses: ./.github/actions/install-prebuilt-binaries
       - name: Run sync harness
         run: |
             make USE_PREBUILT=1 run-blackbox-sync-nightly
@@ -112,13 +84,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Download prebuilt binaries
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: zot-linux-amd64-binaries
-          path: bin
-      - name: Mark binaries executable
-        run: chmod +x bin/zot-linux-amd64 bin/zb-linux-amd64
+      - uses: ./.github/actions/install-prebuilt-binaries
       - uses: ./.github/actions/setup-floci
         with:
           persistent_mode: "1"
@@ -148,7 +114,7 @@ jobs:
       - uses: ./.github/actions/teardown-floci
         if: always()
       - name: Check on failures
-        if: steps.bench.outcome != 'success'
+        if: ${{ steps.bench.outcome != 'success' }}
         run: |
           cat /tmp/gc-referrers-bench-s3.log
           exit 1
@@ -162,13 +128,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Download prebuilt binaries
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: zot-linux-amd64-binaries
-          path: bin
-      - name: Mark binaries executable
-        run: chmod +x bin/zot-linux-amd64 bin/zb-linux-amd64
+      - uses: ./.github/actions/install-prebuilt-binaries
       - uses: ./.github/actions/setup-floci
         with:
           persistent_mode: "1"
@@ -198,7 +158,7 @@ jobs:
       - uses: ./.github/actions/teardown-floci
         if: always()
       - name: Check on failures
-        if: steps.bench.outcome != 'success'
+        if: ${{ steps.bench.outcome != 'success' }}
         run: |
           cat /tmp/gc-bench-s3.log
           exit 1
@@ -213,7 +173,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           check-latest: true
-          go-version: 1.26.x
+          go-version-file: .go-version
       - uses: ./.github/actions/setup-floci
       - name: Install crane
         run: |
@@ -236,28 +196,10 @@ jobs:
         with:
           cache: false
           check-latest: true
-          go-version: 1.26.x
-      - name: Download prebuilt binaries
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: zot-linux-amd64-binaries
-          path: bin
-      - name: Mark binaries executable
-        run: chmod +x bin/zot-linux-amd64 bin/zb-linux-amd64
-      - name: Install dependencies
-        run: |
-          cd $GITHUB_WORKSPACE
-          go install github.com/swaggo/swag/cmd/swag@v1.16.2
-          go mod download
-          sudo apt-get update
-          sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config rpm uidmap haproxy jq
-          # install skopeo
-          git clone -b v1.12.0 https://github.com/containers/skopeo.git
-          cd skopeo
-          make bin/skopeo
-          sudo cp bin/skopeo /usr/bin
-          skopeo -v
-          cd $GITHUB_WORKSPACE
+          go-version-file: .go-version
+      - uses: ./.github/actions/install-prebuilt-binaries
+      - name: Install haproxy
+        run: sudo apt-get install -y haproxy
       - uses: ./.github/actions/setup-floci
         with:
           persistent_mode: "1"
@@ -269,42 +211,18 @@ jobs:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
         continue-on-error: true
-      - name: Upload zot logs as build artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: ./.github/actions/scale-out-collect-results
         if: always()
         with:
-          name: zot-scale-out-dynamodb-logs-floci
-          path: /tmp/zot-ft-logs
-          if-no-files-found: error
-      - name: print service logs
-        run: |
-          sudo dmesg
-          cat /tmp/zot-ft-logs/dynamo-scale/*.log
-      - name: multi-hop detection
-        id: multihop
-        run: |
-          if cat /tmp/zot-ft-logs/dynamo-scale/*.log | grep 'cannot proxy an already proxied request'; then
-            echo "detected multi-hop"
-            exit 1
-          else
-            exit 0
-          fi
-        continue-on-error: true
+          scale-outcome: ${{ steps.scale.outcome }}
+          logs-search-path: /tmp/zot-ft-logs/dynamo-scale
+          zot-logs-artifact-name: zot-scale-out-dynamodb-logs-floci
+          zot-logs-artifact-path: /tmp/zot-ft-logs
+          zb-results-artifact-name: zb-cloud-scale-out-perf-results-floci-${{ github.sha }}
+          zot-logs-if-no-files-found: error
+          print-dmesg: "true"
       - uses: ./.github/actions/teardown-floci
         if: always()
-      - name: clean up logs
-        run: |
-          rm -r /tmp/zot-ft-logs/dynamo-scale
-      - name: fail job if error
-        if: ${{ steps.scale.outcome != 'success' || steps.multihop.outcome != 'success' }}
-        run: |
-          exit 1
-      - name: Upload zb test results zip as build artifact
-        if: steps.scale.outcome == 'success'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: zb-cloud-scale-out-perf-results-floci-${{ github.sha }}
-          path: ./zb-results/
 
   floci-cloud-scale-out-redis:
     name: floci s3+redis scale-out
@@ -318,28 +236,10 @@ jobs:
         with:
           cache: false
           check-latest: true
-          go-version: 1.26.x
-      - name: Download prebuilt binaries
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: zot-linux-amd64-binaries
-          path: bin
-      - name: Mark binaries executable
-        run: chmod +x bin/zot-linux-amd64 bin/zb-linux-amd64
-      - name: Install dependencies
-        run: |
-          cd $GITHUB_WORKSPACE
-          go install github.com/swaggo/swag/cmd/swag@v1.16.2
-          go mod download
-          sudo apt-get update
-          sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config rpm uidmap haproxy jq
-          # install skopeo
-          git clone -b v1.12.0 https://github.com/containers/skopeo.git
-          cd skopeo
-          make bin/skopeo
-          sudo cp bin/skopeo /usr/bin
-          skopeo -v
-          cd $GITHUB_WORKSPACE
+          go-version-file: .go-version
+      - uses: ./.github/actions/install-prebuilt-binaries
+      - name: Install haproxy
+        run: sudo apt-get install -y haproxy
       - uses: ./.github/actions/setup-floci
         with:
           persistent_mode: "1"
@@ -351,39 +251,15 @@ jobs:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
         continue-on-error: true
-      - name: Upload zot logs as build artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: ./.github/actions/scale-out-collect-results
         if: always()
         with:
-          name: zot-scale-out-redis-logs-floci
-          path: /tmp/zot-ft-logs/redis-scale
-          if-no-files-found: error
-      - name: print service logs
-        run: |
-          sudo dmesg
-          cat /tmp/zot-ft-logs/redis-scale/*.log
-      - name: multi-hop detection
-        id: multihop
-        run: |
-          if cat /tmp/zot-ft-logs/redis-scale/*.log | grep 'cannot proxy an already proxied request'; then
-            echo "detected multi-hop"
-            exit 1
-          else
-            exit 0
-          fi
-        continue-on-error: true
-      - name: clean up logs
-        run: |
-          rm -r /tmp/zot-ft-logs/redis-scale
+          scale-outcome: ${{ steps.scale.outcome }}
+          logs-search-path: /tmp/zot-ft-logs/redis-scale
+          zot-logs-artifact-name: zot-scale-out-redis-logs-floci
+          zot-logs-artifact-path: /tmp/zot-ft-logs/redis-scale
+          zb-results-artifact-name: zb-cloud-scale-out-redis-results-floci-${{ github.sha }}
+          zot-logs-if-no-files-found: error
+          print-dmesg: "true"
       - uses: ./.github/actions/teardown-floci
         if: always()
-      - name: fail job if error
-        if: ${{ steps.scale.outcome != 'success' || steps.multihop.outcome != 'success' }}
-        run: |
-          exit 1
-      - name: Upload zb test results zip as build artifact
-        if: steps.scale.outcome == 'success'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: zb-cloud-scale-out-redis-results-floci-${{ github.sha }}
-          path: ./zb-results/

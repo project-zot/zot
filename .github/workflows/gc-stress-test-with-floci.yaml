@@ -22,9 +22,7 @@ jobs:
       - uses: ./.github/actions/build-zot-binaries
         with:
           make-targets: binary bench
-          artifact-path: |
-            bin/zot-linux-amd64
-            bin/zb-linux-amd64
+          artifact-path: bin/
 
   floci-gc-referrers-stress-s3:
     name: floci GC(with referrers) on S3(minio) with short interval
@@ -34,13 +32,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Download prebuilt binaries
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: ./.github/actions/install-prebuilt-binaries
         with:
-          name: zot-linux-amd64-binaries
-          path: bin
-      - name: Mark binaries executable
-        run: chmod +x bin/zot-linux-amd64 bin/zb-linux-amd64
+          with-runtime-deps: "false"
       - uses: ./.github/actions/setup-floci
       - name: Setup minio service
         run: |
@@ -110,7 +104,7 @@ jobs:
         if: always()
 
       - name: Check on failures
-        if: steps.bench.outcome != 'success'
+        if: ${{ steps.bench.outcome != 'success' }}
         run: |
           cat /tmp/gc-referrers-bench-s3.log
           exit 1
@@ -123,13 +117,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Download prebuilt binaries
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: ./.github/actions/install-prebuilt-binaries
         with:
-          name: zot-linux-amd64-binaries
-          path: bin
-      - name: Mark binaries executable
-        run: chmod +x bin/zot-linux-amd64 bin/zb-linux-amd64
+          with-runtime-deps: "false"
       - uses: ./.github/actions/setup-floci
       - name: Setup minio service
         run: |
@@ -199,7 +189,7 @@ jobs:
         if: always()
 
       - name: Check on failures
-        if: steps.bench.outcome != 'success'
+        if: ${{ steps.bench.outcome != 'success' }}
         run: |
           cat /tmp/gc-bench-s3.log
           exit 1

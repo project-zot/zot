@@ -1,4 +1,4 @@
-name: 'Build and upload zot linux/amd64 binaries'
+name: 'Build and upload zot binaries'
 description: >
   setup-go, restore build.yaml go caches (read-only), and run make targets.
   Optionally upload bin/ artifacts. Caller must checkout the repo first.
@@ -13,19 +13,21 @@ inputs:
   artifact-name:
     description: 'upload-artifact name for zot binaries'
     required: false
-    default: zot-linux-amd64-binaries
+    default: zot-binaries
   artifact-path:
     description: 'Newline-separated paths under bin/ to upload (required when upload-artifact is true)'
     required: false
     default: ''
-  go-version:
-    description: 'Go version for setup-go'
-    required: false
-    default: '1.26.x'
   retention-days:
     description: 'Artifact retention in days'
     required: false
     default: '1'
+  with-skopeo-build-deps:
+    description: >
+      Install apt -dev packages needed to compile skopeo (libgpgme-dev, etc.).
+      Set true when make-targets builds skopeo or blackbox-tools.
+    required: false
+    default: 'false'
 runs:
   using: "composite"
   steps:
@@ -41,7 +43,7 @@ runs:
       with:
         cache: false
         check-latest: true
-        go-version: ${{ inputs.go-version }}
+        go-version-file: .go-version
     - name: Restore go dependencies
       id: cache-go-dependencies
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -64,6 +66,14 @@ runs:
       if: steps.cache-go-dependencies.outputs.cache-hit != 'true'
       shell: bash
       run: go mod download
+    - name: Install skopeo build dependencies
+      if: ${{ inputs.with-skopeo-build-deps == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo apt-get update
+        sudo apt-get install -y libgpgme-dev libassuan-dev libbtrfs-dev \
+          libdevmapper-dev pkg-config
     - name: Build binaries
       shell: bash
       run: make ${{ inputs.make-targets }}
