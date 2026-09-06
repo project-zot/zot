@@ -98,7 +98,6 @@ EOF
                 {
                     "urls": ["http://localhost:${zot_minimal_port}"],
                     "onDemand": true,
-                    "tlsVerify": false,
                     "preserveDigest": true,
                     "stream": true,
                     "content": [{"prefix": "**"}]
