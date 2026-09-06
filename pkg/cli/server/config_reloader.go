@@ -2,10 +2,14 @@ package server
 
 import (
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"os/signal"
+	"runtime"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 
@@ -65,6 +69,28 @@ func initShutDownRoutine(ctlr *api.Controller, hr *HotReloader) {
 
 	// handle SIGINT and SIGHUP.
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
+
+	// SIGUSR1 writes every goroutine's stack to stderr without stopping the
+	// server. signal.Ignore() above swallows SIGQUIT, so the runtime's own dump
+	// can never fire, and the pprof endpoint is behind authentication in most
+	// deployments; this keeps a stack trace of a live stall one signal away.
+	dumpCh := make(chan os.Signal, 1)
+	signal.Notify(dumpCh, syscall.SIGUSR1)
+
+	go dumpGoroutinesOnSignal(dumpCh, os.Stderr)
+}
+
+// dumpGoroutinesOnSignal writes all goroutine stacks to out each time a signal
+// arrives on ch. It never exits the process.
+func dumpGoroutinesOnSignal(ch <-chan os.Signal, out io.Writer) {
+	const bufSize = 64 << 20
+
+	for range ch {
+		buf := make([]byte, bufSize)
+		n := runtime.Stack(buf, true)
+		fmt.Fprintf(out, "=== goroutine dump (SIGUSR1) %s ===\n%s\n=== end goroutine dump ===\n",
+			time.Now().UTC().Format(time.RFC3339), buf[:n])
+	}
 }
 
 func (hr *HotReloader) Stop() {
