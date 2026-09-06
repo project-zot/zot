@@ -114,6 +114,16 @@ type RegistryConfig struct {
 	// Entries are validated with regclient platform.Parse (os/arch[/variant]); extra slash
 	// components beyond three are ignored by that parser, not rejected by zot.
 	Platforms []string `mapstructure:",omitempty"`
+	// Stream, when true, streams a blob to the client as it is being downloaded from this
+	// upstream, instead of waiting for the full download and local commit to finish first.
+	// Requires OnDemand; see validateRegistryStreamingSyncConfig for the full set of
+	// restrictions (incompatible with MaxRetries/RetryDelay and TLSVerify: false).
+	Stream *bool
+	// MaxConcurrentStreams caps how many distinct blobs this registry's stream manager will
+	// stream to clients at once. Once the cap is reached, a new on-demand request for this
+	// registry falls back to the ordinary (non-streaming) on-demand path. When unset, a small
+	// built-in default is used (see defaultMaxConcurrentStreams in pkg/extensions/sync).
+	MaxConcurrentStreams *int
 	// dockerCompat is set at runtime from http.compat (docker2s2), not from sync config JSON.
 	dockerCompat bool
 }
@@ -130,6 +140,11 @@ func (r *RegistryConfig) SetDockerCompat(enabled bool) {
 // IsDockerCompatEnabled reports whether Docker media types may be synced as-is.
 func (r RegistryConfig) IsDockerCompatEnabled() bool {
 	return r.dockerCompat
+}
+
+// IsStreamEnabled returns true if streaming is enabled for this registry config.
+func (r RegistryConfig) IsStreamEnabled() bool {
+	return r.Stream != nil && *r.Stream
 }
 
 // OAuth2HelperConfig holds the options used by the "oauth2" credential helper,

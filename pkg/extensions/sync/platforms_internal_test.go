@@ -393,7 +393,7 @@ func TestSyncRefReferenceSelection(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			err = service.syncRef(context.Background(), "repo", remoteRef, localRef, remoteDigest,
-				ispec.MediaTypeImageManifest, copyDigestComplete)
+				nil, ispec.MediaTypeImageManifest, copyDigestComplete)
 			So(err, ShouldBeNil)
 			So(seenRef, ShouldEqual, "local-tag")
 		})
@@ -404,7 +404,7 @@ func TestSyncRefReferenceSelection(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			err = service.syncRef(context.Background(), "repo", remoteRef, localRef, remoteDigest,
-				ispec.MediaTypeImageManifest, copyDigestComplete)
+				nil, ispec.MediaTypeImageManifest, copyDigestComplete)
 			So(err, ShouldBeNil)
 			So(seenRef, ShouldEqual, "remote-tag")
 		})
@@ -415,7 +415,7 @@ func TestSyncRefReferenceSelection(t *testing.T) {
 			remoteRef := ref.Ref{Repository: "repo", Digest: godigest.FromString("remote-pin").String()}
 
 			err := service.syncRef(context.Background(), "repo", remoteRef, localRef, remoteDigest,
-				ispec.MediaTypeImageManifest, copyDigestComplete)
+				nil, ispec.MediaTypeImageManifest, copyDigestComplete)
 			So(err, ShouldBeNil)
 			So(seenRef, ShouldEqual, dig)
 		})
@@ -426,7 +426,7 @@ func TestSyncRefReferenceSelection(t *testing.T) {
 			remoteRef := ref.Ref{Repository: "repo", Digest: dig}
 
 			err := service.syncRef(context.Background(), "repo", remoteRef, localRef, remoteDigest,
-				ispec.MediaTypeImageManifest, copyDigestComplete)
+				nil, ispec.MediaTypeImageManifest, copyDigestComplete)
 			So(err, ShouldBeNil)
 			So(seenRef, ShouldEqual, dig)
 		})

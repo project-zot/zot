@@ -1145,6 +1145,26 @@ func (rh *RouteHandler) writeBlobReadError(
 	}
 }
 
+// writeBlobInfoFromStreamCache checks whether digest is a blob currently being streamed for a
+// streaming-enabled repo, and if so writes the same headers a local hit would, without a body
+// (used from CheckBlob/HEAD). Returns a non-nil error - never written to response - when digest
+// is not in the stream cache either, so the caller can fall through to its normal not-found
+// response.
+func (rh *RouteHandler) writeBlobInfoFromStreamCache(digest godigest.Digest, response http.ResponseWriter) error {
+	blobSize, blobMediaType, err := rh.c.SyncOnDemand.StreamManager().CachedBlobInfo(digest.String())
+	if err != nil {
+		return err
+	}
+
+	response.Header().Set("Content-Length", strconv.FormatInt(blobSize, 10))
+	response.Header().Set("Accept-Ranges", "bytes")
+	response.Header().Set("Content-Type", blobMediaType)
+	response.Header().Set(constants.DistContentDigestKey, digest.String())
+	response.WriteHeader(http.StatusOK)
+
+	return nil
+}
+
 // CheckBlob godoc
 // @Summary Check image blob/layer
 // @Description Check an image's blob/layer given a digest
@@ -1192,6 +1212,12 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 	}
 
 	if !ok {
+		if isSyncOnDemandEnabled(rh.c) && rh.c.SyncOnDemand.IsStreamingEnabledForRepo(name) {
+			if streamErr := rh.writeBlobInfoFromStreamCache(digest, response); streamErr == nil {
+				return
+			}
+		}
+
 		e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(map[string]string{"digest": digest.String()})
 		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
@@ -1649,6 +1675,18 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 	repo, blen, err := imgStore.GetBlob(name, digest, mediaType)
 	if err != nil {
+		// Not found locally: a streaming-enabled repo may still be downloading this blob from
+		// upstream. Range requests are not covered by this fallback (a still-streaming blob has
+		// no stable byte range to serve from yet) - only a plain GET can attach to an active
+		// stream, which is what container clients issue for a first pull anyway. Note this means a
+		// HEAD (CheckBlob, which does consult the stream cache via writeBlobInfoFromStreamCache)
+		// can report a blob as present while a concurrent Range GET for the same digest still 404s.
+		if isSyncOnDemandEnabled(rh.c) && rh.c.SyncOnDemand.IsStreamingEnabledForRepo(name) {
+			if rh.streamBlobToClient(response, name, digest) {
+				return
+			}
+		}
+
 		rh.writeBlobReadError(response, name, digest, err)
 
 		return
@@ -1660,6 +1698,33 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
 
 	WriteDataFromReader(response, http.StatusOK, blen, mediaType, repo, rh.c.Log)
+}
+
+// streamBlobToClient attaches to digest's active stream, if there is one, and copies it to
+// response as it continues arriving from upstream. Returns false (writing nothing to response)
+// when digest is not an active stream, so the caller falls through to its normal not-found
+// handling; any other outcome is final - the response has already been written to (headers, and
+// generally at least some body bytes), so a caller must not write anything more to it.
+func (rh *RouteHandler) streamBlobToClient(response http.ResponseWriter, repo string, digest godigest.Digest) bool {
+	copier, err := rh.c.SyncOnDemand.StreamManager().ConnectClient(digest.String(), response)
+	if err != nil {
+		return false
+	}
+
+	// Blocks (no timeout) until the background sync's StreamingBlobReader hook actually reaches
+	// this blob and initializes its reader - see ChunkedBlobReader.Descriptor's doc comment.
+	desc := copier.Descriptor()
+	response.Header().Set("Content-Length", strconv.FormatInt(desc.Size, 10))
+	response.Header().Set(constants.DistContentDigestKey, digest.String())
+	response.Header().Set("Content-Type", desc.MediaType)
+	response.WriteHeader(http.StatusOK)
+
+	if err := copier.Copy(); err != nil {
+		rh.c.Log.Error().Err(err).Str("repo", repo).Str("digest", digest.String()).
+			Msg("error while streaming blob to client")
+	}
+
+	return true
 }
 
 // DeleteBlob godoc
@@ -2775,6 +2840,50 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 
 				return content, digest, mediaType, nil
 			}
+		}
+
+		// A streaming-enabled repo fetches the manifest directly from upstream and returns it to
+		// this caller immediately; the real sync into local storage (including every blob) keeps
+		// running in the background, so the below imgStore.GetImageManifest fallback - which
+		// would only see whatever is already committed locally - is deliberately skipped here.
+		if routeHandler.c.SyncOnDemand.IsStreamingEnabledForRepo(name) {
+			routeHandler.c.Log.Debug().Str("repository", name).Str("reference", reference).
+				Msg("streaming enabled for repo, fetching manifest directly from upstream")
+
+			fetchedManifest, errFetch := routeHandler.c.SyncOnDemand.FetchManifestForStream(ctx, name, reference)
+			if errFetch != nil {
+				if errors.Is(errFetch, zerr.ErrTooManyConcurrentStreams) {
+					// Honor RegistryConfig.MaxConcurrentStreams' documented behavior: once the cap
+					// is hit, fall back to an ordinary (non-streaming) on-demand sync rather than
+					// failing the request.
+					routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
+						Msg("max concurrent streams reached, falling back to non-streaming on-demand sync")
+
+					if errSync := routeHandler.c.SyncOnDemand.SyncImage(ctx, name, reference); errSync != nil {
+						routeHandler.c.Log.Err(errSync).Str("repository", name).Str("reference", reference).
+							Msg("failed to sync image")
+					}
+
+					return imgStore.GetImageManifest(name, reference)
+				}
+
+				routeHandler.c.Log.Err(errFetch).Str("repository", name).Str("reference", reference).
+					Msg("failed to fetch manifest for stream")
+
+				return imgStore.GetImageManifest(name, reference)
+			}
+
+			content, err := fetchedManifest.RawBody()
+			if err != nil {
+				routeHandler.c.Log.Err(err).Str("repository", name).Str("reference", reference).
+					Msg("failed to read fetched manifest body")
+
+				return imgStore.GetImageManifest(name, reference)
+			}
+
+			desc := fetchedManifest.GetDescriptor()
+
+			return content, desc.Digest, desc.MediaType, nil
 		}
 
 		routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).

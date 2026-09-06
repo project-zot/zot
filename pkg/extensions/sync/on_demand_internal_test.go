@@ -11,6 +11,8 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
+	"github.com/regclient/regclient/types/manifest"
+
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/log"
 )
@@ -51,6 +53,12 @@ func (s *stubOnDemandService) GetSyncTimeout() time.Duration {
 }
 
 func (s *stubOnDemandService) ShouldCheckUpstream(_, _ string) bool { return true }
+
+func (s *stubOnDemandService) FetchManifest(_ context.Context, _, _ string) (manifest.Manifest, []manifest.Manifest, error) {
+	return nil, nil, zerr.ErrManifestNotFound
+}
+
+func (s *stubOnDemandService) IsStreamingForRepo(_ string) bool { return false }
 
 func TestOnDemandDockerCompatPreference(t *testing.T) {
 	Convey("SyncImage prefers docker-compat over a later skippable miss", t, func() {

@@ -4469,3 +4469,71 @@ func TestSyncPlatformsConfig(t *testing.T) {
 		})
 	})
 }
+
+func TestStreamingSyncConfig(t *testing.T) {
+	Convey("stream validation", t, func() {
+		validRegistry := `{"urls":["localhost:9999"], "onDemand": true, "stream": true}`
+
+		loadWithRegistry := func(t *testing.T, registryJSON string) error {
+			t.Helper()
+
+			content := `{"storage":{"rootDirectory":"/tmp/zot"},
+				"http":{"address":"127.0.0.1","port":"8080","realm":"zot","compat": ["docker2s2"],
+				"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+				"extensions":{"sync": {"registries": [` + registryJSON + `]}}}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+			return cli.LoadConfiguration(cfg, tmpfile)
+		}
+
+		Convey("A valid stream config is accepted", func() {
+			err := loadWithRegistry(t, validRegistry)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("stream: false is unaffected by the extra restrictions", func() {
+			err := loadWithRegistry(t,
+				`{"urls":["localhost:9999"], "onDemand": true, "maxRetries": 3, "retryDelay": "5s", "stream": false}`)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Reject stream without onDemand", func() {
+			err := loadWithRegistry(t,
+				`{"urls":["localhost:9999"], "onDemand": false, "pollInterval": "12h", "stream": true}`)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err.Error(), ShouldContainSubstring, "stream requires onDemand to be enabled")
+		})
+
+		Convey("Reject stream combined with maxRetries", func() {
+			err := loadWithRegistry(t,
+				`{"urls":["localhost:9999"], "onDemand": true, "stream": true, "maxRetries": 3, "retryDelay": "5s"}`)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err.Error(), ShouldContainSubstring, "stream cannot be combined with maxRetries/retryDelay")
+		})
+
+		Convey("Reject stream combined with tlsVerify: false", func() {
+			err := loadWithRegistry(t,
+				`{"urls":["localhost:9999"], "onDemand": true, "stream": true, "tlsVerify": false}`)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err.Error(), ShouldContainSubstring, "stream cannot be combined with tlsVerify: false")
+		})
+
+		Convey("Reject a non-positive maxConcurrentStreams", func() {
+			err := loadWithRegistry(t,
+				`{"urls":["localhost:9999"], "onDemand": true, "stream": true, "maxConcurrentStreams": 0}`)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err.Error(), ShouldContainSubstring, "maxConcurrentStreams must be greater than 0")
+		})
+
+		Convey("A positive maxConcurrentStreams is accepted", func() {
+			err := loadWithRegistry(t,
+				`{"urls":["localhost:9999"], "onDemand": true, "stream": true, "maxConcurrentStreams": 8}`)
+			So(err, ShouldBeNil)
+		})
+	})
+}

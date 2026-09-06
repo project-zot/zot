@@ -1831,12 +1831,51 @@ func validateSync(config *config.Config, logger zlog.Logger) error {
 	return nil
 }
 
+// validateRegistryStreamingSyncConfig rejects a Stream config that cannot work safely.
+// Streaming forwards bytes to a client before the blob's digest is fully verified (the digest
+// only checks out on the final byte), so it additionally requires a guarantee a plain sync does
+// not: a TLS-verified upstream (there is no room for an unauthenticated upstream identity when
+// bytes are already leaving zot before their integrity is confirmed). Sync never converts a
+// manifest anymore (docker media types are stored as-is, or rejected without http.compat
+// docker2s2), so the manifest streamed to the client always matches what the background sync
+// eventually commits, without needing a separate PreserveDigest guarantee.
+func validateRegistryStreamingSyncConfig(regCfg syncconf.RegistryConfig) error {
+	if !regCfg.IsStreamEnabled() {
+		return nil
+	}
+
+	if !regCfg.OnDemand {
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "stream requires onDemand to be enabled")
+	}
+
+	if regCfg.MaxRetries != nil || regCfg.RetryDelay != nil {
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "stream cannot be combined with maxRetries/retryDelay")
+	}
+
+	if regCfg.TLSVerify != nil && !*regCfg.TLSVerify {
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "stream cannot be combined with tlsVerify: false")
+	}
+
+	if regCfg.MaxConcurrentStreams != nil && *regCfg.MaxConcurrentStreams <= 0 {
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "maxConcurrentStreams must be greater than 0")
+	}
+
+	return nil
+}
+
 func validateSyncRegistry(config *config.Config, regID int, regCfg syncconf.RegistryConfig, logger zlog.Logger) error {
 	if intervalValidationErr := validateRegistryManifestCheckInterval(regCfg); intervalValidationErr != nil {
 		logger.Error().Err(intervalValidationErr).Int("id", regID).Interface("extensions.sync.registries[id]",
 			regCfg).Msg("invalid config for manifestCheckInterval")
 
 		return intervalValidationErr
+	}
+
+	if streamValidationErr := validateRegistryStreamingSyncConfig(regCfg); streamValidationErr != nil {
+		logger.Error().Err(streamValidationErr).Int("id", regID).Interface("extensions.sync.registries[id]",
+			regCfg).Msg("invalid config for stream")
+
+		return streamValidationErr
 	}
 
 	// check retry options are configured for sync
