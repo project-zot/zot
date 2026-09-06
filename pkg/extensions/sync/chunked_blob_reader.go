@@ -231,7 +231,7 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 // classifyReadErr categories it falls into.
 func (cbr *ChunkedBlobReader) logIntegrityOrUpstreamError(err error) {
 	if isIntegrityErr(err) {
-		cbr.logger.Error().Err(err).Msg("blob integrity check failed, aborting stream")
+		cbr.logger.Error().Err(err).Msg("failed to verify blob integrity, aborting stream")
 
 		return
 	}
