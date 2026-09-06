@@ -95,6 +95,10 @@ func (onDemand *BaseOnDemand) IsStreamingEnabledForRepo(repo string) bool {
 // SyncImage below - which is deduplicated via flight - so at most one real sync ever runs.
 func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, reference string,
 ) (manifest.Manifest, error) {
+	if onDemand.streamManager == nil {
+		return nil, zerr.ErrStreamManagerNotInitialized
+	}
+
 	if cached, ok := onDemand.streamManager.StreamingImageManifest(repo, reference); ok {
 		onDemand.log.Debug().Str("repo", repo).Str("reference", reference).
 			Msg("streaming manifest already present in cache")
