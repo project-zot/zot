@@ -41,10 +41,12 @@ function setup_file() {
     local zot_sync_per_root_dir=${BATS_FILE_TMPDIR}/zot-per
     local zot_sync_ondemand_root_dir=${BATS_FILE_TMPDIR}/zot-ondemand
     local zot_sync_interval_root_dir=${BATS_FILE_TMPDIR}/zot-interval
+    local zot_sync_platforms_root_dir=${BATS_FILE_TMPDIR}/zot-platforms
 
     local zot_sync_per_config_file=${BATS_FILE_TMPDIR}/zot_sync_per_config.json
     local zot_sync_ondemand_config_file=${BATS_FILE_TMPDIR}/zot_sync_ondemand_config.json
     local zot_sync_interval_config_file=${BATS_FILE_TMPDIR}/zot_sync_interval_config.json
+    local zot_sync_platforms_config_file=${BATS_FILE_TMPDIR}/zot_sync_platforms_config.json
 
     local zot_minimal_root_dir=${BATS_FILE_TMPDIR}/zot-minimal
     local zot_minimal_config_file=${BATS_FILE_TMPDIR}/zot_minimal_config.json
@@ -53,6 +55,7 @@ function setup_file() {
     mkdir -p ${zot_sync_per_root_dir}
     mkdir -p ${zot_sync_ondemand_root_dir}
     mkdir -p ${zot_sync_interval_root_dir}
+    mkdir -p ${zot_sync_platforms_root_dir}
     mkdir -p ${zot_minimal_root_dir}
     mkdir -p ${oci_data_dir}
     zot_port1=$(get_free_port_for_service "zot1")
@@ -63,6 +66,8 @@ function setup_file() {
     echo ${zot_port3} > ${BATS_FILE_TMPDIR}/zot.port3
     zot_port4=$(get_free_port_for_service "zot4")
     echo ${zot_port4} > ${BATS_FILE_TMPDIR}/zot.port4
+    zot_port5=$(get_free_port_for_service "zot5")
+    echo ${zot_port5} > ${BATS_FILE_TMPDIR}/zot.port5
 
     cat >${zot_sync_per_config_file} <<EOF
 {
@@ -75,7 +80,8 @@ function setup_file() {
         "port": "${zot_port1}"
     },
     "log": {
-        "level": "debug"
+        "level": "debug",
+        "output": "${BATS_FILE_TMPDIR}/zot-per.log"
     },
     "extensions": {
         "sync": {
@@ -112,7 +118,8 @@ EOF
         "port": "${zot_port2}"
     },
     "log": {
-        "level": "debug"
+        "level": "debug",
+        "output": "${BATS_FILE_TMPDIR}/zot-ondemand.log"
     },
     "extensions": {
         "sync": {
@@ -145,7 +152,8 @@ EOF
         "port": "${zot_port3}"
     },
     "log": {
-        "level": "debug"
+        "level": "debug",
+        "output": "${BATS_FILE_TMPDIR}/zot-minimal.log"
     }
 }
 EOF
@@ -160,7 +168,8 @@ EOF
         "port": "${zot_port4}"
     },
     "log": {
-        "level": "debug"
+        "level": "debug",
+        "output": "${BATS_FILE_TMPDIR}/zot-interval.log"
     },
     "extensions": {
         "sync": {
@@ -183,6 +192,42 @@ EOF
     }
 }
 EOF
+    cat >${zot_sync_platforms_config_file} <<EOF
+{
+    "distSpecVersion": "1.1.1",
+    "storage": {
+        "rootDirectory": "${zot_sync_platforms_root_dir}"
+    },
+    "http": {
+        "address": "0.0.0.0",
+        "port": "${zot_port5}"
+    },
+    "log": {
+        "level": "debug",
+        "output": "${BATS_FILE_TMPDIR}/zot-platforms.log"
+    },
+    "extensions": {
+        "sync": {
+            "registries": [
+                {
+                    "urls": [
+                        "http://localhost:${zot_port3}"
+                    ],
+                    "onDemand": false,
+                    "tlsVerify": false,
+                    "PollInterval": "10s",
+                    "platforms": ["linux/amd64"],
+                    "content": [
+                        {
+                            "prefix": "busybox-filtered"
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+}
+EOF
     git -C ${BATS_FILE_TMPDIR} clone https://github.com/project-zot/helm-charts.git
 
     zot_serve ${ZOT_MINIMAL_PATH} ${zot_minimal_config_file}
@@ -196,6 +241,19 @@ EOF
 
     zot_serve ${ZOT_PATH} ${zot_sync_interval_config_file}
     wait_zot_reachable ${zot_port4}
+
+    zot_serve ${ZOT_PATH} ${zot_sync_platforms_config_file}
+    wait_zot_reachable ${zot_port5}
+}
+
+# Print zot logs only when a test fails (see dump_zot_logs_on_failure).
+function teardown() {
+    dump_zot_logs_on_failure \
+        "${BATS_FILE_TMPDIR}/zot-minimal.log" \
+        "${BATS_FILE_TMPDIR}/zot-per.log" \
+        "${BATS_FILE_TMPDIR}/zot-ondemand.log" \
+        "${BATS_FILE_TMPDIR}/zot-interval.log" \
+        "${BATS_FILE_TMPDIR}/zot-platforms.log"
 }
 
 function teardown_file() {
@@ -362,6 +420,69 @@ function manifest_digest() {
     run curl http://127.0.0.1:${zot_port2}/v2/busybox/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
+}
+
+# returns Docker-Content-Digest for an OCI index (or manifest) reference
+function index_digest() {
+    local url=$1
+    curl -s -D - -o /dev/null \
+        -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json" \
+        "${url}" | grep -i "docker-content-digest" | tr -d '\r' | awk '{print $2}'
+}
+
+# periodic platforms allowlist: full upstream index digest preserved; only linux/amd64 child materialized
+@test "sync image index platforms filter periodically" {
+    zot_port3=`cat ${BATS_FILE_TMPDIR}/zot.port3`
+    zot_port5=`cat ${BATS_FILE_TMPDIR}/zot.port5`
+
+    run skopeo --insecure-policy copy --format=oci --dest-tls-verify=false --multi-arch=all \
+        docker://public.ecr.aws/docker/library/busybox:latest \
+        docker://127.0.0.1:${zot_port3}/busybox-filtered:latest
+    [ "$status" -eq 0 ]
+
+    upstream_index=$(curl -s \
+        -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json" \
+        http://127.0.0.1:${zot_port3}/v2/busybox-filtered/manifests/latest)
+    [ -n "${upstream_index}" ]
+
+    amd64_digest=$(echo "${upstream_index}" | jq -r '
+        .manifests[]
+        | select(.platform.os=="linux" and .platform.architecture=="amd64"
+                 and ((.platform.variant // "") == "" or .platform.variant == "v1"))
+        | .digest' | head -n1)
+    arm64_digest=$(echo "${upstream_index}" | jq -r '
+        .manifests[]
+        | select(.platform.os=="linux" and .platform.architecture=="arm64")
+        | .digest' | head -n1)
+    [ -n "${amd64_digest}" ]
+    [ -n "${arm64_digest}" ]
+    [ "${amd64_digest}" != "${arm64_digest}" ]
+
+    upstream_digest=$(index_digest http://127.0.0.1:${zot_port3}/v2/busybox-filtered/manifests/latest)
+    [ -n "${upstream_digest}" ]
+
+    # wait until periodic sync has copied the tag (PollInterval 10s)
+    run sleep 30s
+
+    run curl http://127.0.0.1:${zot_port5}/v2/busybox-filtered/tags/list
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
+
+    downstream_digest=$(index_digest http://127.0.0.1:${zot_port5}/v2/busybox-filtered/manifests/latest)
+    [ "${downstream_digest}" = "${upstream_digest}" ]
+
+    run curl -s -o /dev/null -w "%{http_code}" \
+        -H "Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json" \
+        http://127.0.0.1:${zot_port5}/v2/busybox-filtered/manifests/${amd64_digest}
+    [ "$status" -eq 0 ]
+    [ "$output" = "200" ]
+
+    # onDemand is false, so a missing allowlisted-out arch stays 404
+    run curl -s -o /dev/null -w "%{http_code}" \
+        -H "Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json" \
+        http://127.0.0.1:${zot_port5}/v2/busybox-filtered/manifests/${arm64_digest}
+    [ "$status" -eq 0 ]
+    [ "$output" = "404" ]
 }
 
 # sign signatures

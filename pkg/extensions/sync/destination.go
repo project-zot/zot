@@ -374,7 +374,7 @@ func (registry *DestinationRegistry) copyBlob(repo string, blobDigest godigest.D
 }
 
 // ocidirLayoutPath returns the on-disk OCI layout directory for a temp sync ref.
-// regclient may clear Path after mod.Apply while Reference still holds the ocidir URL.
+// regclient may clear Path while Reference still holds the ocidir URL.
 func ocidirLayoutPath(imageReference ref.Ref) (string, error) {
 	if imageReference.Path != "" {
 		return imageReference.Path, nil

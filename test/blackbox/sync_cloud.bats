@@ -79,7 +79,8 @@ function setup_file() {
         "port": "${zot_port1}"
     },
     "log": {
-        "level": "debug"
+        "level": "debug",
+        "output": "${BATS_FILE_TMPDIR}/zot-per.log"
     },
     "extensions": {
         "sync": {
@@ -126,7 +127,8 @@ EOF
         "port": "${zot_port2}"
     },
     "log": {
-        "level": "debug"
+        "level": "debug",
+        "output": "${BATS_FILE_TMPDIR}/zot-ondemand.log"
     },
     "extensions": {
         "sync": {
@@ -160,7 +162,8 @@ EOF
         "port": "${zot_port3}"
     },
     "log": {
-        "level": "debug"
+        "level": "debug",
+        "output": "${BATS_FILE_TMPDIR}/zot-minimal.log"
     }
 }
 EOF
@@ -176,6 +179,14 @@ EOF
 
     zot_serve ${ZOT_PATH} ${zot_sync_ondemand_config_file}
     wait_zot_reachable ${zot_port2}
+}
+
+# Print zot logs only when a test fails (see dump_zot_logs_on_failure).
+function teardown() {
+    dump_zot_logs_on_failure \
+        "${BATS_FILE_TMPDIR}/zot-minimal.log" \
+        "${BATS_FILE_TMPDIR}/zot-per.log" \
+        "${BATS_FILE_TMPDIR}/zot-ondemand.log"
 }
 
 function teardown_file() {

@@ -20,7 +20,8 @@ eg: "content": [
 	{
 		"prefix": "/repo1/repo",
 		"destination": "/repo",
-		"stripPrefix": true
+		"stripPrefix": true,
+		"platforms": ["linux/amd64"],
 		"tags": {
 			"regex": "4.*",
 			"semver": true
@@ -46,6 +47,22 @@ func (cm ContentManager) MatchesContent(repo string) bool {
 	content := cm.getContentByUpstreamRepo(repo)
 
 	return content != nil
+}
+
+// EffectivePlatforms returns the periodic platforms allowlist for upstream repo.
+// content[].platforms wins when set; otherwise registryDefault is used (empty = all).
+func (cm ContentManager) EffectivePlatforms(repo string, registryDefault []string) []string {
+	return effectivePeriodicPlatforms(cm.getContentByUpstreamRepo(repo), registryDefault)
+}
+
+// effectivePeriodicPlatforms returns content.platforms if set, otherwise registryDefault.
+// An empty list means all platforms.
+func effectivePeriodicPlatforms(content *syncconf.Content, registryDefault []string) []string {
+	if content != nil && content.Platforms != nil {
+		return *content.Platforms
+	}
+
+	return registryDefault
 }
 
 // FilterTags filters a repo tags based on content config rules (semver, regex).

@@ -21,6 +21,7 @@
 					],
 					"onDemand": false,
 					"pollInterval": "6h",
+					"platforms": ["linux/amd64", "linux/arm64"],
 					"tlsVerify": true,
 					"certDir": "/home/user/certs",
 					"maxRetries": 3,
@@ -44,6 +45,7 @@
 						},
 						{
 							"prefix": "/repo4/**",
+							"platforms": ["linux/amd64"],
 							"tags": {
 								"excludeRegex": ".*-(amd64|arm64)$"
 							}

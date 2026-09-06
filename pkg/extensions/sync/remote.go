@@ -11,6 +11,7 @@ import (
 	"github.com/regclient/regclient"
 	"github.com/regclient/regclient/config"
 	"github.com/regclient/regclient/scheme"
+	"github.com/regclient/regclient/types/descriptor"
 	"github.com/regclient/regclient/types/errs"
 	"github.com/regclient/regclient/types/manifest"
 	"github.com/regclient/regclient/types/ref"
@@ -133,75 +134,108 @@ func (registry *RemoteRegistry) GetImageReference(repo, reference string) (ref.R
 	return imageRef, nil
 }
 
-// translateManifestErr maps regclient manifest fetch errors to zot errors for sync/on-demand callers.
-func (registry *RemoteRegistry) translateManifestErr(imageReference ref.Ref, err error) error {
+// mapRegclientManifestErr maps regclient manifest fetch failures to zot errors so
+// sync skippable/unresolved allowlists stay zot-only. All Remote manifest helpers
+// (HeadManifest, HeadManifestRef, GetManifestList) must return errors through this
+// path via translateManifestErr.
+func mapRegclientManifestErr(err error) error {
 	if err == nil {
 		return nil
 	}
 
-	/* public registries may return 401 for image not found
-	they will try to check private registries as a fallback => 401 */
 	if errors.Is(err, errs.ErrHTTPUnauthorized) {
-		registry.log.Info().Str("errorType", common.TypeOf(err)).
-			Str("repository", imageReference.Repository).Str("reference", imageReference.Reference).
-			Err(err).Msg("failed to get manifest: unauthorized")
-
 		return zerr.ErrUnauthorizedAccess
 	}
 
 	if errors.Is(err, errs.ErrNotFound) {
-		registry.log.Info().Str("errorType", common.TypeOf(err)).
-			Str("repository", imageReference.Repository).Str("reference", imageReference.Reference).
-			Err(err).Msg("failed to find manifest")
-
 		return zerr.ErrManifestNotFound
 	}
 
 	return err
 }
 
-func (registry *RemoteRegistry) headManifest(ctx context.Context, imageReference ref.Ref,
-) (manifest.Manifest, error) {
-	man, err := registry.client.ManifestHead(ctx, imageReference)
-	if err != nil {
-		return nil, registry.translateManifestErr(imageReference, err)
+// translateManifestErr maps regclient manifest fetch errors to zot errors for sync/on-demand callers.
+func (registry *RemoteRegistry) translateManifestErr(imageReference ref.Ref, err error) error {
+	mapped := mapRegclientManifestErr(err)
+	if errors.Is(mapped, err) {
+		return err
 	}
 
-	return man, nil
+	registry.log.Info().Str("errorType", common.TypeOf(err)).
+		Str("repository", imageReference.Repository).Str("reference", imageReference.Reference).
+		Err(err).Msg("failed to get remote manifest")
+
+	return mapped
 }
 
-func (registry *RemoteRegistry) GetDigest(ctx context.Context, repo, tag string,
-) (godigest.Digest, error) {
+// HeadManifest returns the remote digest and media type for repo:tag.
+// Tries ManifestHead first; on not-found falls back to ManifestGet so registries that
+// materialize tags on GET but not HEAD (e.g. some ECR pull-through caches) still work.
+// Transport / dial failures are returned immediately — a second ManifestGet would only
+// repeat the same backoff (see TestOnDemandMultipleImage).
+func (registry *RemoteRegistry) HeadManifest(ctx context.Context, repo, tag string,
+) (godigest.Digest, string, error) {
 	imageReference, err := registry.GetImageReference(repo, tag)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
-	man, err := registry.headManifest(ctx, imageReference)
+	return registry.HeadManifestRef(ctx, imageReference)
+}
+
+// HeadManifestRef is HeadManifest for an already-built remote ref.
+func (registry *RemoteRegistry) HeadManifestRef(ctx context.Context, imageReference ref.Ref,
+) (godigest.Digest, string, error) {
+	man, err := registry.client.ManifestHead(ctx, imageReference)
 	if err != nil {
-		return "", err
+		if !shouldFallbackManifestGet(err) {
+			return "", "", registry.translateManifestErr(imageReference, err)
+		}
+
+		man, err = registry.client.ManifestGet(ctx, imageReference)
+		if err != nil {
+			return "", "", registry.translateManifestErr(imageReference, err)
+		}
 	}
 	defer registry.client.Close(ctx, man.GetRef())
 
-	return man.GetDescriptor().Digest, nil
+	desc := man.GetDescriptor()
+
+	return desc.Digest, desc.MediaType, nil
 }
 
-// GetOCIDigest returns the digest predictOCIDigest computes after regclient
-// mod.WithManifestToOCI conversion, the original remote digest, and whether
-// mod.Apply would modify the image.
-func (registry *RemoteRegistry) GetOCIDigest(ctx context.Context, repo, tag string,
-) (godigest.Digest, godigest.Digest, bool, error) {
-	imageReference, err := registry.GetImageReference(repo, tag)
+// GetManifestList returns child descriptors when reference is an index/manifest list.
+// Non-list images return nil, nil. Errors are mapped via translateManifestErr.
+func (registry *RemoteRegistry) GetManifestList(ctx context.Context, repo, reference string,
+) ([]descriptor.Descriptor, error) {
+	imageReference, err := registry.GetImageReference(repo, reference)
 	if err != nil {
-		return "", "", false, err
+		return nil, err
 	}
 
-	predicted, original, isConverted, err := predictOCIDigest(ctx, registry.client, imageReference)
+	man, err := registry.client.ManifestGet(ctx, imageReference)
 	if err != nil {
-		return "", "", false, registry.translateManifestErr(imageReference, err)
+		return nil, registry.translateManifestErr(imageReference, err)
+	}
+	defer registry.client.Close(ctx, man.GetRef())
+
+	if !man.IsList() {
+		return nil, nil
 	}
 
-	return predicted, original, isConverted, nil
+	indexer, ok := man.(manifest.Indexer)
+	if !ok {
+		return nil, nil
+	}
+
+	return indexer.GetManifestList()
+}
+
+// shouldFallbackManifestGet reports whether a ManifestHead failure is worth retrying
+// with ManifestGet (not-found / not-materialized). Connection and other transport
+// errors are not — GET would pay another full regclient backoff.
+func shouldFallbackManifestGet(err error) bool {
+	return errors.Is(err, errs.ErrNotFound)
 }
 
 func (registry *RemoteRegistry) GetTags(ctx context.Context, repo string) ([]string, error) {

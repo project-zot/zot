@@ -55,21 +55,23 @@ type Config struct {
 }
 
 type RegistryConfig struct {
-	URLs                   []string
-	PollInterval           time.Duration
-	Content                []Content
-	TLSVerify              *bool
-	OnDemand               bool
-	ManifestCheckInterval  time.Duration
-	CertDir                string
-	MaxRetries             *int
-	RetryDelay             *time.Duration
-	MaxRetryDelay          *time.Duration // max HTTP retry backoff; when unset defaults to retryDelay (fixed delay)
+	URLs                  []string
+	PollInterval          time.Duration
+	Content               []Content
+	TLSVerify             *bool
+	OnDemand              bool
+	ManifestCheckInterval time.Duration
+	CertDir               string
+	MaxRetries            *int
+	RetryDelay            *time.Duration
+	MaxRetryDelay         *time.Duration // max HTTP retry backoff; when unset defaults to retryDelay (fixed delay)
+	// OnlySigned: tag sync requires remote signatures; on-demand digest pulls skip that check
+	// (see examples/README.md).
 	OnlySigned             *bool
 	SyncLegacyCosignTags   *bool // when unset, defaults to true
 	CredentialHelper       string
 	Oauth2CredentialHelper map[string]any `mapstructure:",omitempty"` // decoded per CredentialHelper
-	PreserveDigest         bool           // sync without converting
+	PreserveDigest         bool           // deprecated: ignored; docker media types need http.compat docker2s2
 	SyncTimeout            time.Duration  // overall HTTP client timeout for all sync operations
 	ResponseHeaderTimeout  time.Duration  `yaml:"-"` // response header timeout; set in root.go
 	// ReqConcurrent caps the number of in-flight requests per upstream host. The limit is applied
@@ -103,6 +105,31 @@ type RegistryConfig struct {
 	// exists to avoid, since concurrent HTTP/1.1 connections beyond 2 would get closed instead of
 	// pooled.
 	MaxIdleConnsPerHost *int
+	// Platforms is the default allowlist of OS/arch children copied during periodic sync of a
+	// multi-arch index (e.g. "linux/amd64", "linux/arm64", or bare "amd64"). The upstream index
+	// digest is preserved; omitted children are left absent (sparse). Empty/unset means all
+	// platforms. A matching content[].platforms value overrides this for that prefix (see Content).
+	// On-demand sync ignores this list and materializes only children the client requests.
+	// Use "" in the list to also copy index entries that have no platform (regclient convention).
+	// Entries are validated with regclient platform.Parse (os/arch[/variant]); extra slash
+	// components beyond three are ignored by that parser, not rejected by zot.
+	Platforms []string `mapstructure:",omitempty"`
+	// dockerCompat is set at runtime from http.compat (docker2s2), not from sync config JSON.
+	dockerCompat bool
+}
+
+// SetDockerCompat records whether http.compat includes docker2s2 for this registry's sync path.
+func (r *RegistryConfig) SetDockerCompat(enabled bool) {
+	if r == nil {
+		return
+	}
+
+	r.dockerCompat = enabled
+}
+
+// IsDockerCompatEnabled reports whether Docker media types may be synced as-is.
+func (r RegistryConfig) IsDockerCompatEnabled() bool {
+	return r.dockerCompat
 }
 
 // OAuth2HelperConfig holds the options used by the "oauth2" credential helper,
@@ -262,6 +289,11 @@ type Content struct {
 	Tags        *Tags
 	Destination string `mapstructure:",omitempty"`
 	StripPrefix bool
+	// Platforms when non-nil overrides registries[].platforms for periodic sync of repos that
+	// match this content prefix. Nil means inherit the registry default. A non-nil empty list
+	// means all platforms (same as an empty registry platforms list). On-demand sync ignores
+	// this field.
+	Platforms *[]string `mapstructure:",omitempty"`
 }
 
 type Tags struct {

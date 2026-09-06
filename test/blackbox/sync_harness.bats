@@ -30,7 +30,9 @@ function setup_file() {
     mkdir -p ${zot_minimal_root_dir}
     mkdir -p ${oci_data_dir}
 
-    local ZOT_LOG_FILE=${zot_sync_per_root_dir}/zot.log
+    # Keep the log outside storage.rootDirectory — files under the store root can
+    # disappear (and teardown then reports "zot log missing").
+    local ZOT_LOG_FILE=${BATS_FILE_TMPDIR}/zot-per.log
 
     zot_sync_per_cfg_port=$(get_free_port_for_service "zot_sync")
     echo ${zot_sync_per_cfg_port} > ${BATS_FILE_TMPDIR}/zot_sync.port
@@ -86,7 +88,7 @@ EOF
     },
     "log": {
         "level": "debug",
-        "output": "${zot_minimal_root_dir}/zot.log"
+        "output": "${BATS_FILE_TMPDIR}/zot-minimal.log"
     }
 }
 EOF
@@ -99,12 +101,9 @@ function teardown_file() {
 }
 
 function teardown() {
-    local zot_minimal_log_file="${BATS_FILE_TMPDIR}/zot-minimal/zot.log"
-    local zot_sync_log_file="${BATS_FILE_TMPDIR}/zot-per/zot.log"
-    echo "zot minimal logs"
-    cat ${zot_minimal_log_file}
-    echo "zot sync logs"
-    cat ${zot_sync_log_file}
+    dump_zot_logs_on_failure \
+        "${BATS_FILE_TMPDIR}/zot-minimal.log" \
+        "${BATS_FILE_TMPDIR}/zot-per.log"
 }
 
 # sync zb images
@@ -115,7 +114,7 @@ function teardown() {
     local zot_sync_per_root_dir=${BATS_FILE_TMPDIR}/zot-per
     local zot_sync_per_config_file=${BATS_FILE_TMPDIR}/zot_sync_per_config.json
     local zot_minimal_root_dir=${BATS_FILE_TMPDIR}/zot-minimal
-    local ZOT_LOG_FILE=${zot_sync_per_root_dir}/zot.log
+    local ZOT_LOG_FILE=${BATS_FILE_TMPDIR}/zot-per.log
 
     zb_run "http://127.0.0.1:${zot_minimal_port}"
 
