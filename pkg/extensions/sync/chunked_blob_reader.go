@@ -47,7 +47,7 @@ type ChunkedBlobReader struct {
 const streamInitTimeout = 2 * time.Minute
 
 func NewChunkedBlobReader(onDiskPath string, logger log.Logger) (*ChunkedBlobReader, error) {
-	createdFile, err := os.OpenFile(onDiskPath, os.O_CREATE|os.O_WRONLY, 0o644)
+	createdFile, err := os.OpenFile(onDiskPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		return nil, err
 	}
