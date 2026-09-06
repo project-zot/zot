@@ -202,9 +202,15 @@ func fetchManifestNode(ctx context.Context, regClient *regclient.RegClient, imag
 
 			child, err := fetchManifestNode(ctx, regClient, childRef, false, walkState)
 			if err != nil {
-				closeManifestTree(ctx, regClient, node)
+				// Still abort on tree integrity limits; only tolerate unresolved remote children
+				// (e.g. provenance attestation not yet materialized in a pull-through cache).
+				if errors.Is(err, errManifestTreeCycle) || errors.Is(err, errManifestTreeLimitExceeded) {
+					closeManifestTree(ctx, regClient, node)
 
-				return nil, err
+					return nil, err
+				}
+
+				continue
 			}
 
 			node.children = append(node.children, child)

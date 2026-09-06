@@ -1470,9 +1470,8 @@ func TestDestinationRegistry(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("trigger GetBlobContent error on manifest within image index in copyManifest()", func() {
-			// This test specifically targets the error where GetBlobContent fails for a manifest
-			// that is part of an image index.
+		Convey("trigger GetBlobContent missing child in image index in copyManifest()", func() {
+			// Sparse indexes: GetBlobContent fails for a child manifest; copy continues and commits.
 
 			// Create a destination registry using the existing syncImgStore as temp storage
 			storeController := storage.StoreController{DefaultStore: syncImgStore}
@@ -1592,13 +1591,11 @@ func TestDestinationRegistry(t *testing.T) {
 			// Initialize the seen slice
 			seen := &[]godigest.Digest{}
 
-			// Call copyManifest directly with the index manifest - this should trigger the error path at lines 234-239
-			// when it tries to get blob content for the child manifest with the removed blob
+			// Call copyManifest directly with the index manifest - missing child blobs are
+			// skipped so the sparse index can still be committed.
 			err = registry.(*DestinationRegistry).copyManifest(repoName, desc, indexDigest.String(), tempImgStore, seen)
 
-			// Verify the error is returned and contains the expected message
-			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldContainSubstring, "blob not found")
+			So(err, ShouldBeNil)
 		})
 
 		Convey("push image", func() {

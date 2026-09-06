@@ -140,23 +140,14 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 			return zerr.NewError(zerr.ErrBadManifest).AddDetail("jsonSchemaValidation", err.Error())
 		}
 
-		var indexManifest ispec.Index
-		if err := json.Unmarshal(body, &indexManifest); err != nil {
+		// Sparse indexes are allowed: listed child manifests need not exist yet.
+		// Config/layer presence is enforced when those children are pushed as images.
+		if err := json.Unmarshal(body, new(ispec.Index)); err != nil {
 			log.Error().Err(err).Msg("failed to unmarshal JSON")
 
 			return zerr.ErrBadManifest
 		}
-
-		for _, manifest := range indexManifest.Manifests {
-			if ok, _, _, err := imgStore.StatBlob(repo, manifest.Digest); !ok || err != nil {
-				log.Error().Err(err).Str("digest", manifest.Digest.String()).
-					Msg("failed to stat manifest due to missing manifest blob")
-
-				return zerr.ErrBadManifest
-			}
-		}
-	default:
-		// non-OCI compatible
+	case docker.MediaTypeManifest:
 		descriptors, err := compat.Validate(body, mediaType)
 		if err != nil {
 			log.Error().Err(err).Msg("failed to unmarshal JSON")
@@ -165,13 +156,30 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 		}
 
 		for _, desc := range descriptors {
-			if ok, _, _, err := imgStore.StatBlob(repo, desc.Digest); !ok || err != nil {
+			if IsNonDistributable(desc.MediaType) {
+				log.Debug().Str("digest", desc.Digest.String()).Str("mediaType", desc.MediaType).
+					Msg("skip checking non-distributable blob exists")
+
+				continue
+			}
+
+			ok, _, _, err := imgStore.StatBlob(repo, desc.Digest)
+			if !ok || err != nil {
 				log.Error().Err(err).Str("digest", desc.Digest.String()).
 					Msg("failed to stat non-OCI descriptor due to missing blob")
 
 				return zerr.ErrBadManifest
 			}
 		}
+	case dockerList.MediaTypeManifestList:
+		// Sparse lists may omit children (same policy as OCI indexes).
+		if _, err := compat.Validate(body, mediaType); err != nil {
+			log.Error().Err(err).Msg("failed to unmarshal JSON")
+
+			return zerr.ErrBadManifest
+		}
+	default:
+		// Media type already accepted by IsSupportedMediaType; no further checks.
 	}
 
 	return nil
@@ -827,11 +835,15 @@ func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godiges
 
 		buf, err := imgStore.GetBlobContent(repo, descriptor.Digest)
 		if err != nil {
-			log.Error().Err(err).Str("blob", imgStore.BlobPath(repo, descriptor.Digest)).Msg("failed to read manifest")
+			var pathNotFoundErr driver.PathNotFoundError
+			if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
+				log.Warn().Err(err).Str("blob", imgStore.BlobPath(repo, descriptor.Digest)).
+					Msg("skipping missing blob while listing referrers")
 
-			if errors.Is(err, zerr.ErrBlobNotFound) {
-				return nilIndex, zerr.ErrManifestNotFound
+				continue
 			}
+
+			log.Error().Err(err).Str("blob", imgStore.BlobPath(repo, descriptor.Digest)).Msg("failed to read manifest")
 
 			return nilIndex, err
 		}
@@ -1015,7 +1027,8 @@ func IsSupportedMediaType(compats []compat.MediaCompatibility, mediaType string)
 func IsNonDistributable(mediaType string) bool {
 	return mediaType == ispec.MediaTypeImageLayerNonDistributable || //nolint:staticcheck
 		mediaType == ispec.MediaTypeImageLayerNonDistributableGzip || //nolint:staticcheck
-		mediaType == ispec.MediaTypeImageLayerNonDistributableZstd //nolint:staticcheck
+		mediaType == ispec.MediaTypeImageLayerNonDistributableZstd || //nolint:staticcheck
+		mediaType == docker.MediaTypeForeignLayer
 }
 
 func ValidateManifestSchema(buf []byte) error {

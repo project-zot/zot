@@ -68,8 +68,9 @@ func (gen *scanTaskGenerator) getMatcherFunc() mTypes.FilterFunc {
 			return false
 		}
 
-		if gen.scanner.IsResultCached(manifestDigest) {
-			// We skip this manifest, it was already scanned
+		// Manifests: digest cache hit. Indexes: all present scannable members cached
+		// (index digests are never cache keys; repo is used for presence checks).
+		if gen.scanner.IsResultCached(repoName, manifestDigest) {
 			return false
 		}
 

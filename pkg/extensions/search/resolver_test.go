@@ -1200,10 +1200,10 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			return cvemodel.ScanResult{CVEMap: getCveResults(repoMeta.Tags[ref].Digest)}, nil
 		},
-		GetCachedResultFn: func(digestStr string) map[string]zcommon.CVE {
+		GetCachedResultFn: func(repo, digestStr string) map[string]zcommon.CVE {
 			return getCveResults(digestStr)
 		},
-		IsResultCachedFn: func(digestStr string) bool {
+		IsResultCachedFn: func(repo, digestStr string) bool {
 			return true
 		},
 	}
@@ -2063,10 +2063,10 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 				return cvemodel.ScanResult{CVEMap: getCveResults(repoMeta.Tags[ref].Digest)}, nil
 			},
-			GetCachedResultFn: func(digestStr string) map[string]zcommon.CVE {
+			GetCachedResultFn: func(repo, digestStr string) map[string]zcommon.CVE {
 				return getCveResults(digestStr)
 			},
-			IsResultCachedFn: func(digestStr string) bool {
+			IsResultCachedFn: func(repo, digestStr string) bool {
 				return true
 			},
 		}

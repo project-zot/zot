@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/url"
 	"os"
 	"path"
@@ -1046,11 +1047,13 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 						},
 					}
 
-					// Simulate scanning an index results in scanning its manifests
+					// Index scan only populates per-manifest cache entries (matches scanIndex).
 					if ref == indexDigest {
 						cache.Add(indexM1Digest, result)
 						cache.Add(indexM2Digest, map[string]zcommon.CVE{})
 						cache.Add(indexM3Digest, map[string]zcommon.CVE{})
+
+						return cvemodel.ScanResult{CVEMap: result}, nil
 					}
 
 					cache.Add(ref, result)
@@ -1172,13 +1175,40 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 
 				return true, nil
 			},
-			IsResultCachedFn: func(digest string) bool {
-				t.Logf("IsResultCachedFn found in cache for digest %s: %v", digest, cache.Get(digest))
+			IsResultCachedFn: func(repo, digest string) bool {
+				t.Logf("IsResultCachedFn repo %s digest %s: %v", repo, digest, cache.Get(digest))
+
+				imgMeta, err := metaDB.GetImageMeta(godigest.Digest(digest))
+				if err == nil && imgMeta.Index != nil {
+					for _, desc := range imgMeta.Index.Manifests {
+						if cache.Get(desc.Digest.String()) == nil {
+							return false
+						}
+					}
+
+					return true
+				}
 
 				return cache.Contains(digest)
 			},
-			GetCachedResultFn: func(digest string) map[string]zcommon.CVE {
-				t.Logf("GetCachedResultFn found in cache for digest %s: %v", digest, cache.Get(digest))
+			GetCachedResultFn: func(repo, digest string) map[string]zcommon.CVE {
+				t.Logf("GetCachedResultFn repo %s digest %s: %v", repo, digest, cache.Get(digest))
+
+				imgMeta, err := metaDB.GetImageMeta(godigest.Digest(digest))
+				if err == nil && imgMeta.Index != nil {
+					result := map[string]zcommon.CVE{}
+
+					for _, desc := range imgMeta.Index.Manifests {
+						cached := cache.Get(desc.Digest.String())
+						if cached == nil {
+							return map[string]zcommon.CVE{}
+						}
+
+						maps.Copy(result, cached)
+					}
+
+					return result
+				}
 
 				return cache.Get(digest)
 			},

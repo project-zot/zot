@@ -511,7 +511,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("Error on gc.gcReferrer() in gc.cleanManifests() with image index", func() {
+		Convey("StatBlob failure in gcReferrer skips age check and continues (image index)", func() {
 			manifestDesc := ispec.Descriptor{
 				MediaType: ispec.MediaTypeImageIndex,
 				Digest:    godigest.FromBytes([]byte("digest")),
@@ -542,10 +542,11 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
 
 			err = gc.removeManifestsPerRepoPolicy(ctx, repoName, &returnedIndexImage)
-			So(err, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(len(returnedIndexImage.Manifests), ShouldEqual, 1)
 		})
 
-		Convey("Error on gc.gcReferrer() in gc.cleanManifests() with image", func() {
+		Convey("StatBlob failure in gcReferrer skips age check and continues (image)", func() {
 			manifestDesc := ispec.Descriptor{
 				MediaType: ispec.MediaTypeImageManifest,
 				Digest:    godigest.FromBytes([]byte("digest")),
@@ -570,14 +571,17 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 				},
 			}
 
-			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
-
-			err = gc.removeManifestsPerRepoPolicy(ctx, repoName, &ispec.Index{
+			index := &ispec.Index{
 				Manifests: []ispec.Descriptor{
 					manifestDesc,
 				},
-			})
-			So(err, ShouldNotBeNil)
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			err = gc.removeManifestsPerRepoPolicy(ctx, repoName, index)
+			So(err, ShouldBeNil)
+			So(len(index.Manifests), ShouldEqual, 1)
 		})
 
 		Convey("Missing nested index blob in removeReferrersWithMissingSubject is skipped gracefully", func() {
@@ -772,7 +776,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			So(len(parentIndex.Manifests), ShouldEqual, 0)
 		})
 
-		Convey("removeReferrer returns error when cosign path cannot stat blob", func() {
+		Convey("removeReferrer skips cosign row when StatBlob fails (fail-closed age check)", func() {
 			missingSubject := godigest.FromString("missing-subject")
 			cosignTag := "sha256-" + missingSubject.Encoded() + ".sig"
 
@@ -799,7 +803,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
 
 			gced, err := gc.removeReferrer(repoName, &parentIndex, desc, nil, "")
-			So(err, ShouldNotBeNil)
+			So(err, ShouldBeNil)
 			So(gced, ShouldBeFalse)
 			So(len(parentIndex.Manifests), ShouldEqual, 1)
 		})
@@ -1608,9 +1612,9 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			So(hasTag, ShouldBeFalse)
 		})
 
-		Convey("removeReferrersWithMissingSubject aborts when StatBlob reports missing", func() {
-			// Match main: StatBlob errors (including ErrBlobNotFound from ImageStore's
-			// error collapsing) fail closed in isBlobOlderThan.
+		Convey("removeReferrersWithMissingSubject continues when StatBlob reports missing", func() {
+			// StatBlob errors fail closed for age eligibility (do not delete the row here);
+			// CleanRepo must not abort so removeStaleManifestEntries can still run later.
 			missingSubject := godigest.FromString("missing-subject")
 			cosignTag := "sha256-" + missingSubject.Encoded() + ".sig"
 			missingDigest := godigest.FromString("missing-cosign-blob")
@@ -1652,7 +1656,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
 
 			gced, err := gc.removeReferrersWithMissingSubject(repoName, &parentIndex)
-			So(err, ShouldNotBeNil)
+			So(err, ShouldBeNil)
 			So(gced, ShouldBeFalse)
 			So(len(parentIndex.Manifests), ShouldEqual, 1)
 		})
@@ -1874,7 +1878,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			So(deleted, ShouldEqual, 0)
 		})
 
-		Convey("StatBlob error in deleteUnreferencedBlobs", func() {
+		Convey("StatBlob error in deleteUnreferencedBlobs skips candidate and continues", func() {
 			blobDigest := godigest.FromBytes([]byte("blob-content"))
 
 			returnedIndex := ispec.Index{}
@@ -1896,7 +1900,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
 
 			deleted, err := gc.deleteUnreferencedBlobs(repoName, time.Hour, log)
-			So(err, ShouldNotBeNil)
+			So(err, ShouldBeNil)
 			So(deleted, ShouldEqual, 0)
 		})
 

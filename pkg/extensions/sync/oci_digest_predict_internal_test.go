@@ -276,6 +276,27 @@ func TestPredictOCIDigestErrorPaths(t *testing.T) {
 		_, err = fetchManifestNode(ctx, regClient, srcRef, true, walkState)
 		require.ErrorIs(t, err, errManifestTreeCycle)
 	})
+
+	t.Run("skips missing index child during prediction", func(t *testing.T) {
+		t.Parallel()
+
+		storeRoot, storeCtrl := newTestStore(t)
+		repo := "sparse-predict"
+		images := platformImagesPair()
+		multiarch := CreateMultiarchWith().Images(images).Build()
+		require.NoError(t, WriteMultiArchImageToFileSystem(multiarch, repo, predictTestTag, storeCtrl))
+
+		missingChild := multiarch.Index.Manifests[1].Digest
+		blobPath := filepath.Join(storeRoot, repo, "blobs", missingChild.Algorithm().String(), missingChild.Encoded())
+		require.NoError(t, os.Remove(blobPath))
+
+		srcRef := mustOCIDirRef(t, repoPath(storeRoot, repo), predictTestTag)
+
+		predicted, original, _, err := predictOCIDigest(ctx, regClient, srcRef)
+		require.NoError(t, err)
+		assert.NotEmpty(t, predicted.String())
+		assert.Equal(t, multiarch.Digest(), original)
+	})
 }
 
 func TestPredictOCIDigestDockerLayerMediaTypes(t *testing.T) {

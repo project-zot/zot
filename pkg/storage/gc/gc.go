@@ -792,10 +792,14 @@ func (gc GarbageCollect) removeManifestIfOlderThan(repo string, index *ispec.Ind
 
 	canGC, err := isBlobOlderThan(gc.imgStore, repo, desc.Digest, delay, gc.log)
 	if err != nil {
-		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", desc.Digest.String()).
-			Str("delay", delay.String()).Msg("failed to check if blob is older than delay")
+		// Do not abort CleanRepo: StatBlob collapses transient storage errors into
+		// ErrBlobNotFound, so we must not treat a miss as age-eligible here. Skip this
+		// row and let removeStaleManifestEntries (GetAllBlobs inventory) drop truly
+		// absent descriptors later in the same CleanRepo pass.
+		gc.log.Warn().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", desc.Digest.String()).
+			Str("delay", delay.String()).Msg("skipping age check after blob stat failure, continuing GC")
 
-		return false, err
+		return false, nil
 	}
 
 	if canGC {
@@ -1092,10 +1096,11 @@ func (gc GarbageCollect) deleteUnreferencedBlobs(repo string, delay time.Duratio
 		if _, ok := refBlobs[digest]; !ok {
 			canGC, err := isBlobOlderThan(gc.imgStore, repo, digest, delay, log)
 			if err != nil {
-				log.Error().Err(err).Str("module", "gc").Str("repository", repo).
-					Str("digest", digest.String()).Msg("failed to determine GC delay")
+				// Skip this candidate; do not abort orphan cleanup for the rest of the repo.
+				log.Warn().Err(err).Str("module", "gc").Str("repository", repo).
+					Str("digest", digest.String()).Msg("skipping orphan blob after StatBlob failure, continuing GC")
 
-				return 0, err
+				continue
 			}
 
 			if canGC {

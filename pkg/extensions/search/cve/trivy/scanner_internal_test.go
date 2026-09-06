@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/aquasecurity/trivy/pkg/flag"
 	trivyTypes "github.com/aquasecurity/trivy/pkg/types"
 	godigest "github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -31,7 +33,6 @@ import (
 	"zotregistry.dev/zot/v2/pkg/meta/boltdb"
 	"zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/storage"
-	"zotregistry.dev/zot/v2/pkg/storage/imagestore"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 	test "zotregistry.dev/zot/v2/pkg/test/common"
@@ -608,24 +609,29 @@ func TestTrivyDBUrl(t *testing.T) {
 func TestIsIndexScanable(t *testing.T) {
 	Convey("IsIndexScanable", t, func() {
 		storeController := storage.StoreController{}
-		storeController.DefaultStore = &imagestore.ImageStore{}
-
-		metaDB := &boltdb.BoltDB{}
+		storeController.DefaultStore = mocks.MockedImageStore{}
 		log := log.NewTestLogger()
 
-		Convey("Find index in cache", func() {
+		Convey("Index digests are not cache keys for scannability", func() {
+			metaDBMock := mocks.MetaDBMock{
+				GetImageMetaFn: func(digest godigest.Digest) (types.ImageMeta, error) {
+					return types.ImageMeta{}, zerr.ErrManifestNotFound
+				},
+			}
+
 			scanner := Scanner{
 				log:             log,
-				metaDB:          metaDB,
+				metaDB:          metaDBMock,
 				storeController: storeController,
 				cache:           cvecache.NewCveCache(cacheSize, log),
 			}
 
+			// Caching under an index digest must not short-circuit isIndexScannable.
 			scanner.cache.Add("digest", make(map[string]zcommon.CVE))
 
 			found, err := scanner.isIndexScannable("digest")
-			So(err, ShouldBeNil)
-			So(found, ShouldBeTrue)
+			So(err, ShouldNotBeNil)
+			So(found, ShouldBeFalse)
 		})
 	})
 }
@@ -663,6 +669,596 @@ func TestIsIndexScannableErrors(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(ok, ShouldBeFalse)
 		})
+	})
+}
+
+func TestScanIndexSkipsFailingChild(t *testing.T) {
+	Convey("scanIndex continues when one child is missing from storage", t, func() {
+		log := log.NewTestLogger()
+
+		img1 := CreateImageWith().DefaultLayers().PlatformConfig("amd64", "linux").Build()
+		img2 := CreateImageWith().DefaultLayers().PlatformConfig("arm64", "linux").Build()
+		multiarch := CreateMultiarchWith().Images([]Image{img1, img2}).Build()
+
+		metaDB := mocks.MetaDBMock{
+			GetImageMetaFn: func(digest godigest.Digest) (types.ImageMeta, error) {
+				return map[string]types.ImageMeta{
+					img1.DigestStr():      img1.AsImageMeta(),
+					img2.DigestStr():      img2.AsImageMeta(),
+					multiarch.DigestStr(): multiarch.AsImageMeta(),
+				}[digest.String()], nil
+			},
+		}
+
+		store := mocks.MockedImageStore{
+			StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+				if digest.String() == img2.DigestStr() {
+					return false, -1, time.Time{}, zerr.ErrBlobNotFound
+				}
+
+				return true, 1, time.Time{}, nil
+			},
+		}
+
+		scanner := Scanner{
+			log:             log,
+			metaDB:          metaDB,
+			storeController: storage.StoreController{DefaultStore: store},
+			cache:           cvecache.NewCveCache(cacheSize, log),
+		}
+
+		cachedCVE := map[string]zcommon.CVE{
+			"CVE-2024-1": {ID: "CVE-2024-1", Severity: "HIGH"},
+		}
+		scanner.cache.Add(img1.DigestStr(), cachedCVE)
+
+		result, wasCached, err := scanner.scanIndex(context.Background(), "repo", multiarch.DigestStr())
+		So(err, ShouldBeNil)
+		So(result["CVE-2024-1"].ID, ShouldEqual, "CVE-2024-1")
+		So(wasCached, ShouldBeTrue)
+		// Index aggregates are never cached under the index digest (presence is repo-local).
+		So(scanner.cache.Get(multiarch.DigestStr()), ShouldBeNil)
+
+		// Missing img2 is skipped; only present scannable img1 must be cached.
+		So(scanner.IsResultCached("repo", multiarch.DigestStr()), ShouldBeTrue)
+		agg := scanner.GetCachedResult("repo", multiarch.DigestStr())
+		So(agg["CVE-2024-1"].ID, ShouldEqual, "CVE-2024-1")
+	})
+
+	Convey("IsResultCached/GetCachedResult incomplete when a present child is uncached", t, func() {
+		log := log.NewTestLogger()
+
+		img1 := CreateImageWith().DefaultLayers().PlatformConfig("amd64", "linux").Build()
+		img2 := CreateImageWith().DefaultLayers().PlatformConfig("arm64", "linux").Build()
+		multiarch := CreateMultiarchWith().Images([]Image{img1, img2}).Build()
+
+		metaDB := mocks.MetaDBMock{
+			GetImageMetaFn: func(digest godigest.Digest) (types.ImageMeta, error) {
+				return map[string]types.ImageMeta{
+					img1.DigestStr():      img1.AsImageMeta(),
+					img2.DigestStr():      img2.AsImageMeta(),
+					multiarch.DigestStr(): multiarch.AsImageMeta(),
+				}[digest.String()], nil
+			},
+		}
+
+		store := mocks.MockedImageStore{
+			StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+				return true, 1, time.Time{}, nil
+			},
+		}
+
+		scanner := Scanner{
+			log:             log,
+			metaDB:          metaDB,
+			storeController: storage.StoreController{DefaultStore: store},
+			cache:           cvecache.NewCveCache(cacheSize, log),
+		}
+
+		scanner.cache.Add(img1.DigestStr(), map[string]zcommon.CVE{
+			"CVE-2024-1": {ID: "CVE-2024-1", Severity: "HIGH"},
+		})
+
+		So(scanner.IsResultCached("repo", multiarch.DigestStr()), ShouldBeFalse)
+
+		scanner.cache.Add(img2.DigestStr(), map[string]zcommon.CVE{})
+		So(scanner.IsResultCached("repo", multiarch.DigestStr()), ShouldBeTrue)
+		agg := scanner.GetCachedResult("repo", multiarch.DigestStr())
+		So(agg["CVE-2024-1"].ID, ShouldEqual, "CVE-2024-1")
+
+		_, wasCached, err := scanner.scanIndex(context.Background(), "repo", multiarch.DigestStr())
+		So(err, ShouldBeNil)
+		So(wasCached, ShouldBeTrue)
+	})
+
+	Convey("IsResultCached incomplete when present child scannability lookup fails", t, func() {
+		log := log.NewTestLogger()
+
+		img1 := CreateImageWith().DefaultLayers().PlatformConfig("amd64", "linux").Build()
+		img2 := CreateImageWith().DefaultLayers().PlatformConfig("arm64", "linux").Build()
+		multiarch := CreateMultiarchWith().Images([]Image{img1, img2}).Build()
+
+		metaDB := mocks.MetaDBMock{
+			GetImageMetaFn: func(digest godigest.Digest) (types.ImageMeta, error) {
+				if digest.String() == img2.DigestStr() {
+					return types.ImageMeta{}, zerr.ErrRepoMetaNotFound
+				}
+
+				return map[string]types.ImageMeta{
+					img1.DigestStr():      img1.AsImageMeta(),
+					multiarch.DigestStr(): multiarch.AsImageMeta(),
+				}[digest.String()], nil
+			},
+		}
+
+		store := mocks.MockedImageStore{
+			StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+				return true, 1, time.Time{}, nil
+			},
+		}
+
+		scanner := Scanner{
+			log:             log,
+			metaDB:          metaDB,
+			storeController: storage.StoreController{DefaultStore: store},
+			cache:           cvecache.NewCveCache(cacheSize, log),
+		}
+
+		scanner.cache.Add(img1.DigestStr(), map[string]zcommon.CVE{
+			"CVE-2024-1": {ID: "CVE-2024-1", Severity: "HIGH"},
+		})
+
+		So(scanner.IsResultCached("repo", multiarch.DigestStr()), ShouldBeFalse)
+
+		_, _, err := scanner.scanIndex(context.Background(), "repo", multiarch.DigestStr())
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("IsResultCached skips unscannable present children", t, func() {
+		log := log.NewTestLogger()
+
+		unscannableLayer := []Layer{{MediaType: "unscannable-layer-type", Digest: godigest.FromString("123")}}
+		img1 := CreateImageWith().DefaultLayers().PlatformConfig("amd64", "linux").Build()
+		img2 := CreateImageWith().Layers(unscannableLayer).RandomConfig().Build()
+		multiarch := CreateMultiarchWith().Images([]Image{img1, img2}).Build()
+
+		metaDB := mocks.MetaDBMock{
+			GetImageMetaFn: func(digest godigest.Digest) (types.ImageMeta, error) {
+				return map[string]types.ImageMeta{
+					img1.DigestStr():      img1.AsImageMeta(),
+					img2.DigestStr():      img2.AsImageMeta(),
+					multiarch.DigestStr(): multiarch.AsImageMeta(),
+				}[digest.String()], nil
+			},
+		}
+
+		store := mocks.MockedImageStore{
+			StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+				return true, 1, time.Time{}, nil
+			},
+		}
+
+		scanner := Scanner{
+			log:             log,
+			metaDB:          metaDB,
+			storeController: storage.StoreController{DefaultStore: store},
+			cache:           cvecache.NewCveCache(cacheSize, log),
+		}
+
+		scanner.cache.Add(img1.DigestStr(), map[string]zcommon.CVE{
+			"CVE-2024-1": {ID: "CVE-2024-1", Severity: "HIGH"},
+		})
+
+		So(scanner.IsResultCached("repo", multiarch.DigestStr()), ShouldBeTrue)
+		agg := scanner.GetCachedResult("repo", multiarch.DigestStr())
+		So(agg["CVE-2024-1"].ID, ShouldEqual, "CVE-2024-1")
+	})
+
+	Convey("scanIndex recurses into nested indexes without caching under nested digest", t, func() {
+		log := log.NewTestLogger()
+
+		leaf1 := CreateImageWith().DefaultLayers().PlatformConfig("amd64", "linux").Build()
+		leaf2 := CreateImageWith().DefaultLayers().PlatformConfig("arm64", "linux").Build()
+		inner := CreateMultiarchWith().Images([]Image{leaf1, leaf2}).Build()
+
+		topLeaf := CreateImageWith().DefaultLayers().PlatformConfig("amd64", "linux").Build()
+
+		outerIndex := ispec.Index{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			MediaType: ispec.MediaTypeImageIndex,
+			Manifests: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageIndex,
+					Digest:    inner.Digest(),
+					Size:      inner.IndexDescriptor.Size,
+				},
+				{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    topLeaf.ManifestDescriptor.Digest,
+					Size:      topLeaf.ManifestDescriptor.Size,
+				},
+			},
+		}
+		outerBlob, err := json.Marshal(outerIndex)
+		So(err, ShouldBeNil)
+		outerDigest := godigest.FromBytes(outerBlob)
+		outerMeta := types.ImageMeta{
+			MediaType: ispec.MediaTypeImageIndex,
+			Digest:    outerDigest,
+			Size:      int64(len(outerBlob)),
+			Index:     &outerIndex,
+			Manifests: append(inner.AsImageMeta().Manifests, topLeaf.AsImageMeta().Manifests...),
+		}
+
+		metaDB := mocks.MetaDBMock{
+			GetImageMetaFn: func(digest godigest.Digest) (types.ImageMeta, error) {
+				return map[string]types.ImageMeta{
+					leaf1.DigestStr():    leaf1.AsImageMeta(),
+					leaf2.DigestStr():    leaf2.AsImageMeta(),
+					inner.DigestStr():    inner.AsImageMeta(),
+					topLeaf.DigestStr():  topLeaf.AsImageMeta(),
+					outerDigest.String(): outerMeta,
+				}[digest.String()], nil
+			},
+		}
+
+		store := mocks.MockedImageStore{
+			StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+				// Sparse: leaf2 under the nested index is absent in this repo.
+				if digest.String() == leaf2.DigestStr() {
+					return false, -1, time.Time{}, zerr.ErrBlobNotFound
+				}
+
+				return true, 1, time.Time{}, nil
+			},
+		}
+
+		scanner := Scanner{
+			log:             log,
+			metaDB:          metaDB,
+			storeController: storage.StoreController{DefaultStore: store},
+			cache:           cvecache.NewCveCache(cacheSize, log),
+		}
+
+		// Poison: a full nested-index "scan" result that must not be reused as a cache key.
+		scanner.cache.Add(inner.DigestStr(), map[string]zcommon.CVE{
+			"CVE-POISON": {ID: "CVE-POISON", Severity: "CRITICAL"},
+		})
+		scanner.cache.Add(leaf1.DigestStr(), map[string]zcommon.CVE{
+			"CVE-2024-1": {ID: "CVE-2024-1", Severity: "HIGH"},
+		})
+		scanner.cache.Add(topLeaf.DigestStr(), map[string]zcommon.CVE{
+			"CVE-2024-2": {ID: "CVE-2024-2", Severity: "LOW"},
+		})
+
+		result, wasCached, err := scanner.scanIndex(context.Background(), "repo", outerDigest.String())
+		So(err, ShouldBeNil)
+		So(wasCached, ShouldBeTrue)
+		So(result["CVE-2024-1"].ID, ShouldEqual, "CVE-2024-1")
+		So(result["CVE-2024-2"].ID, ShouldEqual, "CVE-2024-2")
+		So(result["CVE-POISON"].ID, ShouldEqual, "")
+		So(scanner.cache.Get(outerDigest.String()), ShouldBeNil)
+
+		So(scanner.IsResultCached("repo", outerDigest.String()), ShouldBeTrue)
+		agg := scanner.GetCachedResult("repo", outerDigest.String())
+		So(agg["CVE-POISON"].ID, ShouldEqual, "")
+		So(agg["CVE-2024-1"].ID, ShouldEqual, "CVE-2024-1")
+	})
+
+	Convey("GetCachedResult returns empty map when index aggregate incomplete", t, func() {
+		img1 := CreateImageWith().DefaultLayers().PlatformConfig("amd64", "linux").Build()
+		img2 := CreateImageWith().DefaultLayers().PlatformConfig("arm64", "linux").Build()
+		multiarch := CreateMultiarchWith().Images([]Image{img1, img2}).Build()
+
+		scanner := Scanner{
+			log: log.NewTestLogger(),
+			metaDB: mocks.MetaDBMock{
+				GetImageMetaFn: func(digest godigest.Digest) (types.ImageMeta, error) {
+					return map[string]types.ImageMeta{
+						img1.DigestStr():      img1.AsImageMeta(),
+						img2.DigestStr():      img2.AsImageMeta(),
+						multiarch.DigestStr(): multiarch.AsImageMeta(),
+					}[digest.String()], nil
+				},
+			},
+			storeController: storage.StoreController{DefaultStore: mocks.MockedImageStore{
+				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+					return true, 1, time.Time{}, nil
+				},
+			}},
+			cache: cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+		}
+		scanner.cache.Add(img1.DigestStr(), map[string]zcommon.CVE{"CVE-1": {ID: "CVE-1"}})
+
+		agg := scanner.GetCachedResult("repo", multiarch.DigestStr())
+		So(agg, ShouldBeEmpty)
+	})
+
+	Convey("isIndexDigest false when meta lookup fails", t, func() {
+		scanner := Scanner{
+			log: log.NewTestLogger(),
+			metaDB: mocks.MetaDBMock{
+				GetImageMetaFn: func(digest godigest.Digest) (types.ImageMeta, error) {
+					return types.ImageMeta{}, zerr.ErrRepoMetaNotFound
+				},
+			},
+			cache: cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+		}
+		So(scanner.isIndexDigest("sha256:"+strings.Repeat("a", 64)), ShouldBeFalse)
+		So(scanner.IsResultCached("repo", "sha256:"+strings.Repeat("a", 64)), ShouldBeFalse)
+	})
+
+	Convey("cachedIndexAggregate/scanIndex incomplete on StatBlob storage errors", t, func() {
+		img1 := CreateImageWith().DefaultLayers().PlatformConfig("amd64", "linux").Build()
+		multiarch := CreateMultiarchWith().Images([]Image{img1}).Build()
+
+		scanner := Scanner{
+			log: log.NewTestLogger(),
+			metaDB: mocks.MetaDBMock{
+				GetImageMetaFn: func(digest godigest.Digest) (types.ImageMeta, error) {
+					return map[string]types.ImageMeta{
+						img1.DigestStr():      img1.AsImageMeta(),
+						multiarch.DigestStr(): multiarch.AsImageMeta(),
+					}[digest.String()], nil
+				},
+			},
+			storeController: storage.StoreController{DefaultStore: mocks.MockedImageStore{
+				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+					return false, -1, time.Time{}, errors.New("s3 unavailable")
+				},
+			}},
+			cache: cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+		}
+		scanner.cache.Add(img1.DigestStr(), map[string]zcommon.CVE{})
+
+		So(scanner.IsResultCached("repo", multiarch.DigestStr()), ShouldBeFalse)
+		_, _, err := scanner.scanIndex(context.Background(), "repo", multiarch.DigestStr())
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("cachedIndexAggregate incomplete when nested child aggregate incomplete", t, func() {
+		leaf1 := CreateImageWith().DefaultLayers().PlatformConfig("amd64", "linux").Build()
+		leaf2 := CreateImageWith().DefaultLayers().PlatformConfig("arm64", "linux").Build()
+		inner := CreateMultiarchWith().Images([]Image{leaf1, leaf2}).Build()
+
+		outerIndex := ispec.Index{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			MediaType: ispec.MediaTypeImageIndex,
+			Manifests: []ispec.Descriptor{{
+				MediaType: ispec.MediaTypeImageIndex,
+				Digest:    inner.Digest(),
+				Size:      inner.IndexDescriptor.Size,
+			}},
+		}
+		outerBlob, err := json.Marshal(outerIndex)
+		So(err, ShouldBeNil)
+		outerDigest := godigest.FromBytes(outerBlob)
+
+		scanner := Scanner{
+			log: log.NewTestLogger(),
+			metaDB: mocks.MetaDBMock{
+				GetImageMetaFn: func(digest godigest.Digest) (types.ImageMeta, error) {
+					return map[string]types.ImageMeta{
+						leaf1.DigestStr(): leaf1.AsImageMeta(),
+						leaf2.DigestStr(): leaf2.AsImageMeta(),
+						inner.DigestStr(): inner.AsImageMeta(),
+						outerDigest.String(): {
+							MediaType: ispec.MediaTypeImageIndex,
+							Digest:    outerDigest,
+							Index:     &outerIndex,
+						},
+					}[digest.String()], nil
+				},
+			},
+			storeController: storage.StoreController{DefaultStore: mocks.MockedImageStore{
+				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+					return true, 1, time.Time{}, nil
+				},
+			}},
+			cache: cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+		}
+		scanner.cache.Add(leaf1.DigestStr(), map[string]zcommon.CVE{})
+
+		So(scanner.IsResultCached("repo", outerDigest.String()), ShouldBeFalse)
+	})
+
+	Convey("indexChildIsIndex falls back to meta when media type unknown", t, func() {
+		leaf := CreateImageWith().DefaultLayers().PlatformConfig("amd64", "linux").Build()
+		inner := CreateMultiarchWith().Images([]Image{leaf}).Build()
+
+		outerIndex := ispec.Index{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			MediaType: ispec.MediaTypeImageIndex,
+			Manifests: []ispec.Descriptor{{
+				MediaType: "application/vnd.unknown.manifest.v1+json",
+				Digest:    inner.Digest(),
+				Size:      inner.IndexDescriptor.Size,
+			}},
+		}
+		outerBlob, err := json.Marshal(outerIndex)
+		So(err, ShouldBeNil)
+		outerDigest := godigest.FromBytes(outerBlob)
+
+		scanner := Scanner{
+			log: log.NewTestLogger(),
+			metaDB: mocks.MetaDBMock{
+				GetImageMetaFn: func(digest godigest.Digest) (types.ImageMeta, error) {
+					return map[string]types.ImageMeta{
+						leaf.DigestStr():  leaf.AsImageMeta(),
+						inner.DigestStr(): inner.AsImageMeta(),
+						outerDigest.String(): {
+							MediaType: ispec.MediaTypeImageIndex,
+							Digest:    outerDigest,
+							Index:     &outerIndex,
+						},
+					}[digest.String()], nil
+				},
+			},
+			storeController: storage.StoreController{DefaultStore: mocks.MockedImageStore{
+				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+					return true, 1, time.Time{}, nil
+				},
+			}},
+			cache: cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+		}
+		scanner.cache.Add(leaf.DigestStr(), map[string]zcommon.CVE{"CVE-1": {ID: "CVE-1"}})
+
+		So(scanner.indexChildIsIndex(outerIndex.Manifests[0]), ShouldBeTrue)
+		So(scanner.IsResultCached("repo", outerDigest.String()), ShouldBeTrue)
+	})
+
+	Convey("scanIndex/cachedIndexAggregate break cycles in nested indexes", t, func() {
+		leaf := CreateImageWith().DefaultLayers().PlatformConfig("amd64", "linux").Build()
+
+		digA := godigest.FromString("cycle-index-a")
+		digB := godigest.FromString("cycle-index-b")
+		indexA := ispec.Index{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			MediaType: ispec.MediaTypeImageIndex,
+			Manifests: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageIndex, Digest: digB, Size: 1},
+				{MediaType: ispec.MediaTypeImageManifest, Digest: leaf.ManifestDescriptor.Digest, Size: leaf.ManifestDescriptor.Size},
+			},
+		}
+		indexB := ispec.Index{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			MediaType: ispec.MediaTypeImageIndex,
+			Manifests: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageIndex, Digest: digA, Size: 1},
+			},
+		}
+
+		scanner := Scanner{
+			log: log.NewTestLogger(),
+			metaDB: mocks.MetaDBMock{
+				GetImageMetaFn: func(digest godigest.Digest) (types.ImageMeta, error) {
+					switch digest.String() {
+					case digA.String():
+						return types.ImageMeta{MediaType: ispec.MediaTypeImageIndex, Digest: digA, Index: &indexA}, nil
+					case digB.String():
+						return types.ImageMeta{MediaType: ispec.MediaTypeImageIndex, Digest: digB, Index: &indexB}, nil
+					case leaf.DigestStr():
+						return leaf.AsImageMeta(), nil
+					default:
+						return types.ImageMeta{}, zerr.ErrRepoMetaNotFound
+					}
+				},
+			},
+			storeController: storage.StoreController{DefaultStore: mocks.MockedImageStore{
+				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+					return true, 1, time.Time{}, nil
+				},
+			}},
+			cache: cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+		}
+		scanner.cache.Add(leaf.DigestStr(), map[string]zcommon.CVE{"CVE-1": {ID: "CVE-1"}})
+
+		result, wasCached, err := scanner.scanIndex(context.Background(), "repo", digA.String())
+		So(err, ShouldBeNil)
+		So(wasCached, ShouldBeTrue)
+		So(result["CVE-1"].ID, ShouldEqual, "CVE-1")
+		So(scanner.IsResultCached("repo", digA.String()), ShouldBeTrue)
+	})
+
+	Convey("scanIndex errors when index meta missing or nested meta fails", t, func() {
+		scanner := Scanner{
+			log: log.NewTestLogger(),
+			metaDB: mocks.MetaDBMock{
+				GetImageMetaFn: func(digest godigest.Digest) (types.ImageMeta, error) {
+					return types.ImageMeta{}, zerr.ErrRepoMetaNotFound
+				},
+			},
+			cache: cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+		}
+		_, _, err := scanner.scanIndex(context.Background(), "repo", "sha256:"+strings.Repeat("b", 64))
+		So(err, ShouldNotBeNil)
+
+		leaf := CreateImageWith().DefaultLayers().PlatformConfig("amd64", "linux").Build()
+		innerDig := godigest.FromString("nested-missing-meta")
+		outerIndex := ispec.Index{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			MediaType: ispec.MediaTypeImageIndex,
+			Manifests: []ispec.Descriptor{{
+				MediaType: ispec.MediaTypeImageIndex,
+				Digest:    innerDig,
+				Size:      1,
+			}},
+		}
+		outerBlob, err := json.Marshal(outerIndex)
+		So(err, ShouldBeNil)
+		outerDigest := godigest.FromBytes(outerBlob)
+
+		scanner = Scanner{
+			log: log.NewTestLogger(),
+			metaDB: mocks.MetaDBMock{
+				GetImageMetaFn: func(digest godigest.Digest) (types.ImageMeta, error) {
+					if digest.String() == outerDigest.String() {
+						return types.ImageMeta{
+							MediaType: ispec.MediaTypeImageIndex,
+							Digest:    outerDigest,
+							Index:     &outerIndex,
+						}, nil
+					}
+
+					return types.ImageMeta{}, zerr.ErrRepoMetaNotFound
+				},
+			},
+			storeController: storage.StoreController{DefaultStore: mocks.MockedImageStore{
+				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+					return true, 1, time.Time{}, nil
+				},
+			}},
+			cache: cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+		}
+		_, _, err = scanner.scanIndex(context.Background(), "repo", outerDigest.String())
+		So(err, ShouldNotBeNil)
+		_ = leaf
+	})
+
+	Convey("scanIndex skips ErrScanNotSupported children", t, func() {
+		unscannableLayer := []Layer{{MediaType: "unscannable-layer-type", Digest: godigest.FromString("123")}}
+		img1 := CreateImageWith().DefaultLayers().PlatformConfig("amd64", "linux").Build()
+		img2 := CreateImageWith().Layers(unscannableLayer).RandomConfig().Build()
+		multiarch := CreateMultiarchWith().Images([]Image{img1, img2}).Build()
+
+		scanner := Scanner{
+			log: log.NewTestLogger(),
+			metaDB: mocks.MetaDBMock{
+				GetImageMetaFn: func(digest godigest.Digest) (types.ImageMeta, error) {
+					return map[string]types.ImageMeta{
+						img1.DigestStr():      img1.AsImageMeta(),
+						img2.DigestStr():      img2.AsImageMeta(),
+						multiarch.DigestStr(): multiarch.AsImageMeta(),
+					}[digest.String()], nil
+				},
+			},
+			storeController: storage.StoreController{DefaultStore: mocks.MockedImageStore{
+				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+					return true, 1, time.Time{}, nil
+				},
+			}},
+			cache: cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+		}
+		scanner.cache.Add(img1.DigestStr(), map[string]zcommon.CVE{"CVE-1": {ID: "CVE-1"}})
+
+		result, wasCached, err := scanner.scanIndex(context.Background(), "repo", multiarch.DigestStr())
+		So(err, ShouldBeNil)
+		So(wasCached, ShouldBeTrue)
+		So(result["CVE-1"].ID, ShouldEqual, "CVE-1")
+	})
+
+	Convey("cachedIndexAggregate false when index meta missing Index", t, func() {
+		dig := godigest.FromString("index-without-body")
+		scanner := Scanner{
+			log: log.NewTestLogger(),
+			metaDB: mocks.MetaDBMock{
+				GetImageMetaFn: func(digest godigest.Digest) (types.ImageMeta, error) {
+					return types.ImageMeta{MediaType: ispec.MediaTypeImageIndex, Digest: dig}, nil
+				},
+			},
+			cache: cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+		}
+		So(scanner.IsResultCached("repo", dig.String()), ShouldBeFalse)
 	})
 }
 

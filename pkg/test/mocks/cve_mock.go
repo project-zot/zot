@@ -78,8 +78,8 @@ func (cveInfo CveInfoMock) GetCVESummaryForImageMedia(ctx context.Context, repo,
 type CveScannerMock struct {
 	IsImageFormatScannableFn func(repo string, reference string) (bool, error)
 	IsImageMediaScannableFn  func(repo string, digest, mediaType string) (bool, error)
-	IsResultCachedFn         func(digest string) bool
-	GetCachedResultFn        func(digest string) map[string]zcommon.CVE
+	IsResultCachedFn         func(repo, digest string) bool
+	GetCachedResultFn        func(repo, digest string) map[string]zcommon.CVE
 	ScanImageFn              func(ctx context.Context, image string) (cvemodel.ScanResult, error)
 	UpdateDBFn               func(ctx context.Context) error
 }
@@ -100,17 +100,17 @@ func (scanner CveScannerMock) IsImageMediaScannable(repo string, digest, mediaTy
 	return true, nil
 }
 
-func (scanner CveScannerMock) IsResultCached(digest string) bool {
+func (scanner CveScannerMock) IsResultCached(repo, digest string) bool {
 	if scanner.IsResultCachedFn != nil {
-		return scanner.IsResultCachedFn(digest)
+		return scanner.IsResultCachedFn(repo, digest)
 	}
 
 	return false
 }
 
-func (scanner CveScannerMock) GetCachedResult(digest string) map[string]zcommon.CVE {
+func (scanner CveScannerMock) GetCachedResult(repo, digest string) map[string]zcommon.CVE {
 	if scanner.GetCachedResultFn != nil {
-		return scanner.GetCachedResultFn(digest)
+		return scanner.GetCachedResultFn(repo, digest)
 	}
 
 	return map[string]zcommon.CVE{}
@@ -168,7 +168,7 @@ func (scanner *TestCveScanner) IsImageMediaScannable(repo string, digest, mediaT
 	return true, nil
 }
 
-func (scanner *TestCveScanner) IsResultCached(digest string) bool {
+func (scanner *TestCveScanner) IsResultCached(repo, digest string) bool {
 	scanner.RLock()
 	defer scanner.RUnlock()
 	_, exists := scanner.cveDataStore[digest]
@@ -176,7 +176,7 @@ func (scanner *TestCveScanner) IsResultCached(digest string) bool {
 	return exists
 }
 
-func (scanner *TestCveScanner) GetCachedResult(digest string) map[string]zcommon.CVE {
+func (scanner *TestCveScanner) GetCachedResult(repo, digest string) map[string]zcommon.CVE {
 	scanner.RLock()
 	defer scanner.RUnlock()
 	if cveData, exists := scanner.cveDataStore[digest]; exists {
