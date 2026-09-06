@@ -13,6 +13,7 @@ import (
 	"github.com/regclient/regclient/types/descriptor"
 	"github.com/regclient/regclient/types/errs"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
@@ -39,6 +40,12 @@ type ChunkedBlobReader struct {
 	logger log.Logger
 }
 
+// streamInitTimeout bounds how long Descriptor waits for InitReader to run before giving up.
+// Without a bound, a background sync that errors out or is cancelled before its regclient copy
+// reaches this particular blob would leave a client already attached (via ConnectClient) blocked
+// in Descriptor forever - see its doc comment.
+const streamInitTimeout = 2 * time.Minute
+
 func NewChunkedBlobReader(onDiskPath string, logger log.Logger) (*ChunkedBlobReader, error) {
 	createdFile, err := os.OpenFile(onDiskPath, os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
@@ -63,29 +70,41 @@ func (cbr *ChunkedBlobReader) OnDiskPath() string {
 	return cbr.onDiskPath
 }
 
-// Descriptor returns the descriptor of the blob being read.
-// If the descriptor is not yet available, it waits until it is set by InitReader.
+// Descriptor returns the descriptor of the blob being read, waiting up to streamInitTimeout for
+// InitReader to set it if it is not yet available. See DescriptorWithTimeout.
+func (cbr *ChunkedBlobReader) Descriptor() (descriptor.Descriptor, error) {
+	return cbr.DescriptorWithTimeout(streamInitTimeout)
+}
+
+// DescriptorWithTimeout is Descriptor with an explicit timeout, split out so tests don't have to
+// wait streamInitTimeout out in full - the same reason WaitForClientEmpty takes its timeout as a
+// parameter rather than a package constant.
 //
-// This wait has no timeout and is not tied to any context: InitReader only runs once regclient's
-// copy actually reaches this blob (via the StreamingBlobReader hook), so a caller blocked here
-// hangs indefinitely if the background sync errors out or is cancelled before that point.
-func (cbr *ChunkedBlobReader) Descriptor() descriptor.Descriptor {
+// If the descriptor is not yet available, it waits until InitReader sets it or timeout elapses.
+// InitReader only runs once regclient's copy actually reaches this blob (via the
+// StreamingBlobReader hook), so without a bound a caller blocked here would hang indefinitely if
+// the background sync errors out or is cancelled before reaching this blob.
+func (cbr *ChunkedBlobReader) DescriptorWithTimeout(timeout time.Duration) (descriptor.Descriptor, error) {
 	cbr.bytesMu.RLock()
 	if cbr.inFlightReader != nil {
 		desc := cbr.blobDesc
 		cbr.bytesMu.RUnlock()
 
-		return desc
+		return desc, nil
 	}
 	cbr.bytesMu.RUnlock()
 
-	// Block without holding any lock until InitReader signals readiness.
-	<-cbr.readerReady
+	// Block without holding any lock until InitReader signals readiness, or timeout elapses.
+	select {
+	case <-cbr.readerReady:
+	case <-time.After(timeout):
+		return descriptor.Descriptor{}, zerr.ErrStreamInitTimeout
+	}
 
 	cbr.bytesMu.RLock()
 	defer cbr.bytesMu.RUnlock()
 
-	return cbr.blobDesc
+	return cbr.blobDesc, nil
 }
 
 // InitReader sets the regclient blob reader and the total number of bytes to read for the blob.
@@ -191,6 +210,10 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 	// return until every client's send completes - a single stalled client backpressures the
 	// entire download, not just its own connection. There is no mid-stream timeout for this; only
 	// WaitForClientEmpty (run during cleanup) force-disconnects a stalled client.
+	//
+	// wg.Go (sync.WaitGroup.Go, added in Go 1.25) runs f in a new goroutine with wg.Add(1)/
+	// Done() handled automatically - equivalent to the older wg.Add(1); go func() { defer
+	// wg.Done(); f() }() pattern, just without the boilerplate.
 	var wg sync.WaitGroup
 	for _, c := range cbr.clients {
 		wg.Go(func() {
@@ -207,13 +230,23 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 // logIntegrityOrUpstreamError logs err with detail appropriate to which of the two real-error
 // classifyReadErr categories it falls into.
 func (cbr *ChunkedBlobReader) logIntegrityOrUpstreamError(err error) {
-	if errors.Is(err, errs.ErrDigestMismatch) || errors.Is(err, errs.ErrShortRead) || errors.Is(err, errs.ErrSizeLimitExceeded) {
+	if isIntegrityErr(err) {
 		cbr.logger.Error().Err(err).Msg("blob integrity check failed, aborting stream")
 
 		return
 	}
 
 	cbr.logger.Error().Err(err).Msg("failed to read from in flight reader")
+}
+
+// isIntegrityErr reports whether err is one of the upstream blob reader's own digest/size
+// checks failing - shared by logIntegrityOrUpstreamError and classifyReadErr, which must agree
+// on exactly which errors count as an integrity failure rather than a plain EOF or a generic
+// upstream error.
+func isIntegrityErr(err error) bool {
+	return errors.Is(err, errs.ErrDigestMismatch) ||
+		errors.Is(err, errs.ErrShortRead) ||
+		errors.Is(err, errs.ErrSizeLimitExceeded)
 }
 
 // readErrClass categorizes the error returned by a read from the upstream blob reader.
@@ -236,7 +269,7 @@ func classifyReadErr(err error) readErrClass {
 	switch {
 	case err == nil:
 		return readErrNone
-	case errors.Is(err, errs.ErrDigestMismatch), errors.Is(err, errs.ErrShortRead), errors.Is(err, errs.ErrSizeLimitExceeded):
+	case isIntegrityErr(err):
 		return readErrIntegrityFailure
 	case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF):
 		return readErrEOF

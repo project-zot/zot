@@ -4508,7 +4508,8 @@ func TestStreamingSyncConfig(t *testing.T) {
 
 		Convey("Reject stream combined with maxRetries", func() {
 			err := loadWithRegistry(t,
-				`{"urls":["localhost:9999"], "onDemand": true, "stream": true, "maxRetries": 3, "retryDelay": "5s"}`)
+				`{"urls":["localhost:9999"], "onDemand": true, "stream": true,`+
+					` "maxRetries": 3, "retryDelay": "5s"}`)
 			So(err, ShouldNotBeNil)
 			So(err, ShouldWrap, zerr.ErrBadConfig)
 			So(err.Error(), ShouldContainSubstring, "stream cannot be combined with maxRetries/retryDelay")

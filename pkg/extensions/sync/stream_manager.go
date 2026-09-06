@@ -42,7 +42,13 @@ type ChunkingStreamManager struct {
 	// manifests.
 	streamingRefs map[string]*StreamableManifest
 	// blobInfo holds blobs and their corresponding descriptor.
-	blobInfoMap          map[string]descriptor.Descriptor
+	blobInfoMap map[string]descriptor.Descriptor
+	// refCounts tracks how many staged repo:reference entries (see streamingRefs) currently
+	// reference each digest in activeStreams/blobInfoMap. A blob shared across repos/tags (see
+	// activeStreams' doc above) is only actually torn down, in releaseStreams, once its count
+	// reaches zero - so cleaning up one repo:reference's stream never disrupts another
+	// repo:reference still relying on the same shared blob.
+	refCounts            map[string]int
 	maxConcurrentStreams int
 	logger               log.Logger
 	streamLock           sync.Mutex
@@ -64,6 +70,7 @@ func NewChunkingStreamManager(storeController storage.StoreController, maxConcur
 		activeStreams:        map[string]*ChunkedBlobReader{},
 		streamingRefs:        map[string]*StreamableManifest{},
 		blobInfoMap:          map[string]descriptor.Descriptor{},
+		refCounts:            map[string]int{},
 		maxConcurrentStreams: maxConcurrentStreams,
 		logger:               logger,
 	}
@@ -135,11 +142,16 @@ func (sm *ChunkingStreamManager) StreamingBlobReader(reader *blob.BReader) (*blo
 }
 
 // prepareActiveStreamForBlob creates an active stream for desc, rooted under repo's own storage,
-// unless one already exists for this digest (shared across repos/tags, see activeStreams' doc).
+// unless one already exists for this digest (shared across repos/tags, see activeStreams' doc) -
+// in which case it just adds a reference (refCounts), so the shared entry is only torn down (see
+// releaseStreams) once every repo:reference that registered it has itself been removed.
 func (sm *ChunkingStreamManager) prepareActiveStreamForBlob(repo string, desc descriptor.Descriptor) error {
-	_, ok := sm.activeStreams[desc.Digest.String()]
-	if ok {
-		sm.logger.Warn().Str("blob", desc.Digest.String()).Msg("active stream already exists for blob")
+	digest := desc.Digest.String()
+
+	if _, ok := sm.activeStreams[digest]; ok {
+		sm.refCounts[digest]++
+		sm.logger.Debug().Str("blob", digest).Int("refCount", sm.refCounts[digest]).
+			Msg("active stream already exists for blob, adding reference")
 
 		return nil
 	}
@@ -148,15 +160,16 @@ func (sm *ChunkingStreamManager) prepareActiveStreamForBlob(repo string, desc de
 		return zerr.ErrTooManyConcurrentStreams
 	}
 
-	sm.logger.Debug().Str("blob", desc.Digest.String()).Msg("adding blob to active stream")
+	sm.logger.Debug().Str("blob", digest).Msg("adding blob to active stream")
 
 	r, err := NewChunkedBlobReader(sm.tempStore.BlobPath(repo, desc.Digest), sm.logger)
 	if err != nil {
 		return err
 	}
 
-	sm.activeStreams[desc.Digest.String()] = r
-	sm.blobInfoMap[desc.Digest.String()] = desc
+	sm.activeStreams[digest] = r
+	sm.blobInfoMap[digest] = desc
+	sm.refCounts[digest] = 1
 
 	return nil
 }
@@ -165,28 +178,30 @@ func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string,
 	manifest *StreamableManifest,
 ) error {
 	sm.streamLock.Lock()
-	defer sm.streamLock.Unlock()
 
 	key := repo + ":" + reference
 
 	// A concurrent request for the same repo:reference may already have staged it (no
 	// singleflight guard upstream) - treat this as success rather than re-preparing/erroring.
 	if _, ok := sm.streamingRefs[key]; ok {
+		sm.streamLock.Unlock()
 		sm.logger.Warn().Str("repo", repo).Str("reference", reference).
 			Msg("streaming manifest already exists for repo:reference")
 
 		return nil
 	}
 
-	// populate the manifest into streamingRefs
-	sm.streamingRefs[key] = manifest
+	// Collect every blob this repo:reference needs, deduplicated by digest, before preparing any
+	// of them - a layer shared across two platforms of the same multi-arch image must only be
+	// reference-counted once per StoreImageForStreaming call (see collectManifestDescriptorsForStream).
+	descs := map[string]descriptor.Descriptor{}
 
 	manifestMediaType := manifestpkg.GetMediaType(manifest.referenceManifest)
 	switch manifestMediaType {
 	case manifestpkg.MediaTypeOCI1Manifest:
-		prepErr := sm.prepareManifestAndContentsForStream(repo, reference, manifest.referenceManifest)
-		if prepErr != nil {
-			sm.logger.Error().Err(prepErr).
+		if err := sm.collectManifestDescriptorsForStream(repo, reference, manifest.referenceManifest, descs); err != nil {
+			sm.streamLock.Unlock()
+			sm.logger.Error().Err(err).
 				Str("repo", repo).
 				Str("reference", reference).
 				Str("manifest", manifest.referenceManifest.GetDescriptor().Digest.String()).
@@ -196,11 +211,11 @@ func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string,
 		}
 	case manifestpkg.MediaTypeOCI1ManifestList:
 		// For multi-arch images, the manifest is actually an index.
-		// The individual manifests inside must be prepared as well.
+		// The individual manifests inside must be collected as well.
 		for _, subManifest := range manifest.subManifests {
-			prepErr := sm.prepareManifestAndContentsForStream(repo, reference, subManifest)
-			if prepErr != nil {
-				sm.logger.Error().Err(prepErr).
+			if err := sm.collectManifestDescriptorsForStream(repo, reference, subManifest, descs); err != nil {
+				sm.streamLock.Unlock()
+				sm.logger.Error().Err(err).
 					Str("repo", repo).
 					Str("reference", reference).
 					Str("manifest", subManifest.GetDescriptor().Digest.String()).
@@ -210,36 +225,62 @@ func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string,
 			}
 		}
 	default:
+		sm.streamLock.Unlock()
 		sm.logger.Error().Str("repo", repo).Str("reference", reference).
 			Str("mediaType", manifestMediaType).Msg("invalid manifest mediatype")
 
 		return zerr.ErrSyncInvalidManifestMediaType
 	}
 
+	// Prepare (or add a reference to) each unique blob. On a mid-way failure (e.g. hitting
+	// maxConcurrentStreams on a later blob), roll back exactly the digests THIS call added a
+	// reference to via releaseStreams - which only tears a digest's ChunkedBlobReader/temp file
+	// down once its count reaches zero, so a digest already staged by another repo:reference
+	// before this call is left untouched.
+	prepared := make(map[string]struct{}, len(descs))
+
+	for digest, desc := range descs {
+		if err := sm.prepareActiveStreamForBlob(repo, desc); err != nil {
+			sm.logger.Error().Err(err).Str("repo", repo).Str("reference", reference).
+				Str("blob", digest).Msg("failed to prepare active stream for blob")
+
+			readers := sm.releaseStreams(prepared)
+			sm.streamLock.Unlock()
+
+			sm.drainAndDeleteStreams(readers)
+
+			sm.streamLock.Lock()
+			sm.finalizeRelease(readers)
+			sm.streamLock.Unlock()
+
+			return zerr.ErrSyncFailedToPrepareManifest
+		}
+
+		prepared[digest] = struct{}{}
+	}
+
+	// Only register in streamingRefs once every blob is successfully prepared, so
+	// StreamingImageManifest/RemoveStreamingImage never observe a partially-staged entry.
+	sm.streamingRefs[key] = manifest
+
+	sm.streamLock.Unlock()
+
 	return nil
 }
 
-// prepareManifestAndContentsForStream stages the manifest, config, and layer blobs, in that
-// order. On a mid-way failure (e.g. hitting maxConcurrentStreams on a later blob) only the
-// streamingRefs entry is dropped here - activeStreams/blobInfoMap entries already created for
-// earlier blobs in this same manifest are left in place, since without the streamingRefs key
-// nothing will later call RemoveStreamingImage to clean them up.
-func (sm *ChunkingStreamManager) prepareManifestAndContentsForStream(repo, reference string,
-	manifest manifestpkg.Manifest,
+// collectManifestDescriptorsForStream adds the descriptor of manifest itself, plus (if manifest
+// is an Imager) its config and every layer, to out - keyed by digest, so a blob referenced
+// multiple times within the same manifest tree (e.g. shared across platforms in a multi-arch
+// image) is only prepared, and reference-counted, once per StoreImageForStreaming call.
+//
+// Unlike collectManifestBlobDigests (best-effort, used for cleanup in RemoveStreamingImage), a
+// GetConfig/GetLayers failure here is fatal: StoreImageForStreaming must not partially stage a
+// manifest it couldn't fully introspect.
+func (sm *ChunkingStreamManager) collectManifestDescriptorsForStream(repo, reference string,
+	manifest manifestpkg.Manifest, out map[string]descriptor.Descriptor,
 ) error {
-	key := repo + ":" + reference
-
-	// pre-load the individual blobs into activeStreams
-	// first, the manifest
-	err := sm.prepareActiveStreamForBlob(repo, manifest.GetDescriptor())
-	if err != nil {
-		sm.logger.Error().Err(err).Str("blob", manifest.GetDescriptor().Digest.String()).
-			Msg("failed to prepare active stream for blob")
-
-		delete(sm.streamingRefs, key)
-
-		return err
-	}
+	desc := manifest.GetDescriptor()
+	out[desc.Digest.String()] = desc
 
 	imager, ok := manifest.(manifestpkg.Imager)
 	if !ok {
@@ -249,44 +290,24 @@ func (sm *ChunkingStreamManager) prepareManifestAndContentsForStream(repo, refer
 		return nil
 	}
 
-	// then, the config blob
 	configDesc, err := imager.GetConfig()
 	if err != nil {
 		sm.logger.Error().Err(err).Msg("failed to get config descriptor from manifest")
 
-		delete(sm.streamingRefs, key)
-
 		return err
 	}
 
-	err = sm.prepareActiveStreamForBlob(repo, configDesc)
-	if err != nil {
-		sm.logger.Error().Err(err).Str("blob", configDesc.Digest.String()).Msg("failed to prepare active stream for blob")
+	out[configDesc.Digest.String()] = configDesc
 
-		delete(sm.streamingRefs, key)
-
-		return err
-	}
-
-	// finally, the layer blobs
 	layers, err := imager.GetLayers()
 	if err != nil {
 		sm.logger.Error().Err(err).Msg("failed to get layers from manifest")
-
-		delete(sm.streamingRefs, key)
 
 		return err
 	}
 
 	for _, layer := range layers {
-		err = sm.prepareActiveStreamForBlob(repo, layer)
-		if err != nil {
-			sm.logger.Error().Err(err).Str("blob", layer.Digest.String()).Msg("failed to prepare active stream for blob")
-
-			delete(sm.streamingRefs, key)
-
-			return err
-		}
+		out[layer.Digest.String()] = layer
 	}
 
 	return nil
@@ -302,15 +323,14 @@ func (sm *ChunkingStreamManager) StreamingImageManifest(repo, reference string) 
 	return manifest, ok
 }
 
-// RemoveStreamingImage purges repo:reference's manifest(s) and blobs from the stream cache.
+// RemoveStreamingImage purges repo:reference's manifest(s) from the stream cache, and releases
+// its reference to each of their blobs - a blob still referenced by another repo:reference that
+// shares it (see activeStreams' doc) is left completely untouched; see releaseStreams.
+//
 // The manager-wide streamLock is only held while collecting the readers to purge and while
 // applying the final map deletes - never across the drain of a slow/abandoned client, so one
 // stalled client on this blob cannot block ConnectClient/StreamingBlobReader/CachedBlobInfo for
 // any other repo or blob being streamed concurrently.
-//
-// Note: this purges activeStreams/blobInfoMap by bare digest regardless of whether another
-// still-streaming repo:reference also references the same shared blob - the cross-repo dedup
-// documented on activeStreams only collapses the download side, not the cleanup side.
 func (sm *ChunkingStreamManager) RemoveStreamingImage(repo, reference string) {
 	sm.streamLock.Lock()
 
@@ -347,35 +367,72 @@ func (sm *ChunkingStreamManager) RemoveStreamingImage(repo, reference string) {
 			Str("mediaType", manifestMediaType).Msg("invalid manifest mediatype")
 	}
 
-	// Snapshot the readers to drain, then release streamLock before waiting on any of them -
-	// draining must never block other repos/blobs.
-	readers := make(map[string]*ChunkedBlobReader, len(blobDigests))
+	delete(sm.streamingRefs, key)
 
-	for digest := range blobDigests {
+	// Release this repo:reference's reference to each blob - only the digests no other
+	// repo:reference still needs (refCount reaching zero) are actually returned for teardown.
+	readers := sm.releaseStreams(blobDigests)
+
+	sm.streamLock.Unlock()
+
+	sm.drainAndDeleteStreams(readers)
+
+	sm.streamLock.Lock()
+	sm.finalizeRelease(readers)
+	sm.streamLock.Unlock()
+
+	sm.logger.Info().Str("repo", repo).Str("reference", reference).Msg("finished removing streaming image")
+}
+
+// releaseStreams decrements the reference count (refCounts) for each of the given digests and
+// returns the readers whose count reached zero - the only ones actually going away; a digest
+// still referenced by another repo:reference sharing the same blob is left untouched. Must be
+// called with streamLock held. The returned readers must then be drained and deleted WITHOUT the
+// lock (drainAndDeleteStreams) before their map entries are finally removed WITH the lock again
+// (finalizeRelease) - see RemoveStreamingImage's doc comment for why draining must never happen
+// while holding streamLock.
+func (sm *ChunkingStreamManager) releaseStreams(digests map[string]struct{}) map[string]*ChunkedBlobReader {
+	readers := make(map[string]*ChunkedBlobReader, len(digests))
+
+	for digest := range digests {
+		count, ok := sm.refCounts[digest]
+		if !ok {
+			continue
+		}
+
+		count--
+		if count > 0 {
+			sm.refCounts[digest] = count
+
+			continue
+		}
+
 		if reader, ok := sm.activeStreams[digest]; ok {
 			readers[digest] = reader
 		}
 	}
 
-	delete(sm.streamingRefs, key)
+	return readers
+}
 
-	sm.streamLock.Unlock()
-
+// drainAndDeleteStreams waits for every client still connected to each reader to disconnect
+// (forcing it after streamDrainTimeout) and deletes its on-disk temp file. Must be called
+// WITHOUT streamLock held - see RemoveStreamingImage's doc comment.
+func (sm *ChunkingStreamManager) drainAndDeleteStreams(readers map[string]*ChunkedBlobReader) {
 	for digest, reader := range readers {
 		reader.WaitForClientEmpty(streamDrainTimeout)
 		sm.deleteStreamFile(digest, reader.OnDiskPath())
 	}
+}
 
-	sm.streamLock.Lock()
-
+// finalizeRelease removes readers' entries from activeStreams/blobInfoMap/refCounts. Must be
+// called with streamLock held, strictly after drainAndDeleteStreams has already run without it.
+func (sm *ChunkingStreamManager) finalizeRelease(readers map[string]*ChunkedBlobReader) {
 	for digest := range readers {
 		delete(sm.activeStreams, digest)
 		delete(sm.blobInfoMap, digest)
+		delete(sm.refCounts, digest)
 	}
-
-	sm.streamLock.Unlock()
-
-	sm.logger.Info().Str("repo", repo).Str("reference", reference).Msg("finished removing streaming image")
 }
 
 // collectManifestBlobDigests adds the digests of manifest's config and layers (and the manifest

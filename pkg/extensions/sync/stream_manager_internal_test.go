@@ -16,6 +16,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	stypes "zotregistry.dev/zot/v2/pkg/storage/types"
+	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
 )
 
 // newTestStreamManager adapts newTestStore's stypes.StoreController (an interface) back to the
@@ -164,7 +165,7 @@ func TestChunkingStreamManagerMaxConcurrentStreams(t *testing.T) {
 	writeOCISingleManifest(t, storeCtrl, root, "repo-a", predictTestTag)
 
 	// A single manifest registers itself, its config, and each layer as separate active
-	// streams (see prepareManifestAndContentsForStream) - several blobs, comfortably exceeding
+	// streams (see collectManifestDescriptorsForStream) - several blobs, comfortably exceeding
 	// a cap of 1, so registering it must hit the cap before finishing.
 	sm := newTestStreamManager(t, storeCtrl, 1)
 
@@ -175,10 +176,83 @@ func TestChunkingStreamManagerMaxConcurrentStreams(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, zerr.ErrSyncFailedToPrepareManifest)
 
+	// Regression test: a mid-way failure must roll back every stream this call created, not
+	// just stay under the cap - otherwise the entry created before hitting the cap leaks
+	// forever (nothing will ever call RemoveStreamingImage for a repo:reference that never made
+	// it into streamingRefs).
 	sm.streamLock.Lock()
 	activeCount := len(sm.activeStreams)
+	blobInfoCount := len(sm.blobInfoMap)
+	refCount := len(sm.refCounts)
+	_, staged := sm.streamingRefs["repo-a:"+predictTestTag]
 	sm.streamLock.Unlock()
-	assert.LessOrEqual(t, activeCount, 1, "must never exceed the configured concurrent-stream cap")
+
+	assert.Equal(t, 0, activeCount, "a failed StoreImageForStreaming must roll back every stream it created")
+	assert.Equal(t, 0, blobInfoCount)
+	assert.Equal(t, 0, refCount)
+	assert.False(t, staged, "a failed StoreImageForStreaming must not register in streamingRefs")
+}
+
+// TestChunkingStreamManagerSharedBlobAcrossRepos is the regression test for the reference-
+// counting fix: a blob shared by two different repo:reference entries must only be torn down
+// once BOTH have been removed, since it's the same shared ChunkedBlobReader/temp file serving
+// clients for either one (see activeStreams' doc comment).
+func TestChunkingStreamManagerSharedBlobAcrossRepos(t *testing.T) {
+	t.Parallel()
+
+	root, storeCtrl := newTestStore(t)
+	regClient := regclient.New()
+
+	// Both repos get the exact same manifest/config/layer content (the same built Image written
+	// to each), so every digest they reference is identical - i.e. genuinely shared, not just
+	// coincidentally similar. writeOCISingleManifest can't be reused for this: each call builds
+	// a fresh Image with its own randomized layer content, which would give repo-a and repo-b
+	// different digests.
+	image := CreateImageWith().DefaultLayers().PlatformConfig("amd64", "linux").Build()
+	require.NoError(t, WriteImageToFileSystem(image, "repo-a", predictTestTag, storeCtrl))
+	require.NoError(t, WriteImageToFileSystem(image, "repo-b", predictTestTag, storeCtrl))
+
+	sm := newTestStreamManager(t, storeCtrl, 0)
+
+	streamableA, closeA := newTestStreamableManifest(t, regClient, root, "repo-a", predictTestTag)
+	defer closeA()
+	streamableB, closeB := newTestStreamableManifest(t, regClient, root, "repo-b", predictTestTag)
+	defer closeB()
+
+	require.NoError(t, sm.StoreImageForStreaming("repo-a", predictTestTag, streamableA))
+	require.NoError(t, sm.StoreImageForStreaming("repo-b", predictTestTag, streamableB))
+
+	manifestDigest := streamableA.referenceManifest.GetDescriptor().Digest.String()
+	require.Equal(t, manifestDigest, streamableB.referenceManifest.GetDescriptor().Digest.String(),
+		"test setup: both repos must reference the identical manifest digest")
+
+	sm.streamLock.Lock()
+	refCount := sm.refCounts[manifestDigest]
+	sm.streamLock.Unlock()
+	assert.Equal(t, 2, refCount, "both repo:reference registrations must be counted")
+
+	// Removing repo-a must NOT tear down the shared blob - repo-b still needs it.
+	sm.RemoveStreamingImage("repo-a", predictTestTag)
+
+	sm.streamLock.Lock()
+	_, stillActive := sm.activeStreams[manifestDigest]
+	refCount = sm.refCounts[manifestDigest]
+	sm.streamLock.Unlock()
+	assert.True(t, stillActive, "a blob still referenced by repo-b must survive repo-a's removal")
+	assert.Equal(t, 1, refCount)
+
+	_, err := sm.ConnectClient(manifestDigest, nil)
+	assert.NoError(t, err, "repo-b's clients must still be able to attach to the shared blob")
+
+	// Removing repo-b too must finally tear it down.
+	sm.RemoveStreamingImage("repo-b", predictTestTag)
+
+	sm.streamLock.Lock()
+	_, stillActive = sm.activeStreams[manifestDigest]
+	_, refExists := sm.refCounts[manifestDigest]
+	sm.streamLock.Unlock()
+	assert.False(t, stillActive, "the blob must be torn down once every referencing repo:reference is removed")
+	assert.False(t, refExists)
 }
 
 func TestChunkingStreamManagerConnectClientUnknownDigest(t *testing.T) {

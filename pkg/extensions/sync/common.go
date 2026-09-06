@@ -53,8 +53,10 @@ type BlobCopier interface {
 	// Copy streams the blob to the client, returning once the blob is fully copied or an error
 	// (including an upstream download failure) ends the stream.
 	Copy() error
-	// Descriptor returns the descriptor of the blob being streamed.
-	Descriptor() descriptor.Descriptor
+	// Descriptor returns the descriptor of the blob being streamed, or an error if it does not
+	// become available within a bounded wait (e.g. the background sync errored out or was
+	// cancelled before reaching this blob).
+	Descriptor() (descriptor.Descriptor, error)
 }
 
 // StreamableManifest holds a manifest staged for streaming, plus (for a multi-arch image) the

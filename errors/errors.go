@@ -237,4 +237,5 @@ var (
 	ErrSyncFailedToPrepareManifest      = errors.New("failed to prepare manifest for streaming")
 	ErrSyncFailedToPurgeManifestStream  = errors.New("failed to purge manifest from stream cache")
 	ErrTooManyConcurrentStreams         = errors.New("too many concurrent blob streams")
+	ErrStreamInitTimeout                = errors.New("timed out waiting for streamed blob to become available")
 )

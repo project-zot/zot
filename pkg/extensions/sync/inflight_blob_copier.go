@@ -39,7 +39,7 @@ func NewInFlightBlobCopier(
 }
 
 // Descriptor returns the descriptor of the blob being streamed.
-func (ifbc *InFlightBlobCopier) Descriptor() descriptor.Descriptor {
+func (ifbc *InFlightBlobCopier) Descriptor() (descriptor.Descriptor, error) {
 	return ifbc.Source.Descriptor()
 }
 
@@ -57,7 +57,15 @@ func (ifbc *InFlightBlobCopier) Copy() error {
 	byteAnnounceChan, id := ifbc.Source.Subscribe()
 	defer ifbc.Source.Unsubscribe(id)
 
-	blobSize := ifbc.Source.Descriptor().Size
+	// By the time Copy is called, a caller normally already resolved Descriptor once (e.g.
+	// streamBlobToClient does, to set response headers before ever calling Copy) - the reader is
+	// then already initialized, so this hits the fast path with no meaningful further wait.
+	desc, err := ifbc.Source.Descriptor()
+	if err != nil {
+		return err
+	}
+
+	blobSize := desc.Size
 
 	// copyChan signals Copy() that new bytes are available.
 	copyChan := make(chan struct{}, 1)

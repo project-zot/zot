@@ -1702,18 +1702,28 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 // streamBlobToClient attaches to digest's active stream, if there is one, and copies it to
 // response as it continues arriving from upstream. Returns false (writing nothing to response)
-// when digest is not an active stream, so the caller falls through to its normal not-found
-// handling; any other outcome is final - the response has already been written to (headers, and
-// generally at least some body bytes), so a caller must not write anything more to it.
+// when digest is not an active stream, or when it never becomes ready within
+// ChunkedBlobReader's bounded wait (e.g. the background sync errored out or was cancelled before
+// reaching this blob) - either way the caller falls through to its normal not-found handling.
+// Any other outcome is final - the response has already been written to (headers, and generally
+// at least some body bytes), so a caller must not write anything more to it.
 func (rh *RouteHandler) streamBlobToClient(response http.ResponseWriter, repo string, digest godigest.Digest) bool {
 	copier, err := rh.c.SyncOnDemand.StreamManager().ConnectClient(digest.String(), response)
 	if err != nil {
 		return false
 	}
 
-	// Blocks (no timeout) until the background sync's StreamingBlobReader hook actually reaches
-	// this blob and initializes its reader - see ChunkedBlobReader.Descriptor's doc comment.
-	desc := copier.Descriptor()
+	// Waits (bounded - see ChunkedBlobReader.DescriptorWithTimeout) until the background sync's
+	// StreamingBlobReader hook actually reaches this blob and initializes its reader. Nothing has
+	// been written to response yet, so on error/timeout it's still safe to fall through.
+	desc, err := copier.Descriptor()
+	if err != nil {
+		rh.c.Log.Error().Err(err).Str("repo", repo).Str("digest", digest.String()).
+			Msg("failed to wait for streamed blob to become ready")
+
+		return false
+	}
+
 	response.Header().Set("Content-Length", strconv.FormatInt(desc.Size, 10))
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
 	response.Header().Set("Content-Type", desc.MediaType)

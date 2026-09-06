@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
@@ -178,6 +179,38 @@ func TestChunkedBlobReaderSubscribeUnsubscribe(t *testing.T) {
 	// Unsubscribing a still-open channel (a successful stream never closes it) must not panic.
 	cbr.Unsubscribe(id1)
 	cbr.Unsubscribe(id2)
+}
+
+// TestChunkedBlobReaderDescriptorTimeout is the regression test for the streaming timeout fix:
+// a caller waiting on Descriptor for a blob whose InitReader never runs (e.g. the background
+// sync errored out or was cancelled before its regclient copy reached this blob) must get a
+// bounded error instead of hanging forever - see DescriptorWithTimeout's doc comment.
+func TestChunkedBlobReaderDescriptorTimeout(t *testing.T) {
+	t.Parallel()
+
+	onDiskPath := filepath.Join(t.TempDir(), "blob")
+	cbr, err := NewChunkedBlobReader(onDiskPath, log.NewTestLogger())
+	require.NoError(t, err)
+
+	// InitReader deliberately never called.
+	start := time.Now()
+	_, descErr := cbr.DescriptorWithTimeout(50 * time.Millisecond)
+	elapsed := time.Since(start)
+
+	require.Error(t, descErr)
+	assert.ErrorIs(t, descErr, zerr.ErrStreamInitTimeout)
+	assert.Less(t, elapsed, 2*time.Second, "DescriptorWithTimeout must not block far past its timeout")
+}
+
+func TestChunkedBlobReaderDescriptorSucceedsOnceInitialized(t *testing.T) {
+	t.Parallel()
+
+	content := []byte("descriptor success test content")
+	cbr := newTestChunkedBlobReader(t, content, godigest.FromBytes(content))
+
+	desc, err := cbr.Descriptor()
+	require.NoError(t, err)
+	assert.Equal(t, int64(len(content)), desc.Size)
 }
 
 func TestChunkedBlobReaderWaitForClientEmptyTimeout(t *testing.T) {
