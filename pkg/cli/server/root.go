@@ -1828,6 +1828,40 @@ func validateSync(config *config.Config, logger zlog.Logger) error {
 		}
 	}
 
+	if err := validateStreamingMaxConcurrentStreams(extensionsConfig.Sync.Registries); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateStreamingMaxConcurrentStreams rejects a streaming config whose registries disagree on
+// maxConcurrentStreams. The concurrent-stream cap is a property of the single stream manager
+// shared by every streaming-enabled registry (see EnableSyncExtension), not of any individual
+// registry, so only the first streaming registry's value (in config order) actually takes effect;
+// silently ignoring a different value set on a later registry would contradict what that
+// registry's own config says. Registries that agree, or that leave it unset, are unaffected.
+func validateStreamingMaxConcurrentStreams(registries []syncconf.RegistryConfig) error {
+	var first *int
+
+	for _, regCfg := range registries {
+		if !regCfg.IsStreamEnabled() || regCfg.MaxConcurrentStreams == nil {
+			continue
+		}
+
+		if first == nil {
+			first = regCfg.MaxConcurrentStreams
+
+			continue
+		}
+
+		if *regCfg.MaxConcurrentStreams != *first {
+			return fmt.Errorf("%w: %s", zerr.ErrBadConfig,
+				"maxConcurrentStreams must be the same across every streaming registry - it is a single "+
+					"limit shared by all of them, not set per registry")
+		}
+	}
+
 	return nil
 }
 

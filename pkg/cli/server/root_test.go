@@ -4544,5 +4544,27 @@ func TestStreamingSyncConfig(t *testing.T) {
 				`{"urls":["localhost:9999"], "onDemand": true, "stream": true, "maxConcurrentStreams": 8}`)
 			So(err, ShouldBeNil)
 		})
+
+		Convey("Reject disagreeing maxConcurrentStreams across streaming registries", func() {
+			regA := `{"urls":["localhost:9999"], "onDemand": true, "preserveDigest": true, "stream": true,` +
+				` "maxConcurrentStreams": 8, "content": [{"prefix": "a/**"}]}`
+			regB := `{"urls":["localhost:9998"], "onDemand": true, "preserveDigest": true, "stream": true,` +
+				` "maxConcurrentStreams": 4, "content": [{"prefix": "b/**"}]}`
+
+			err := loadWithRegistry(t, regA+","+regB)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err.Error(), ShouldContainSubstring, "maxConcurrentStreams must be the same across every streaming registry")
+		})
+
+		Convey("Streaming registries that agree on maxConcurrentStreams are accepted", func() {
+			regA := `{"urls":["localhost:9999"], "onDemand": true, "preserveDigest": true, "stream": true,` +
+				` "maxConcurrentStreams": 8, "content": [{"prefix": "a/**"}]}`
+			regB := `{"urls":["localhost:9998"], "onDemand": true, "preserveDigest": true, "stream": true,` +
+				` "maxConcurrentStreams": 8, "content": [{"prefix": "b/**"}]}`
+
+			err := loadWithRegistry(t, regA+","+regB)
+			So(err, ShouldBeNil)
+		})
 	})
 }
