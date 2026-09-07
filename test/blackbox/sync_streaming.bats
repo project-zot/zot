@@ -369,3 +369,62 @@ function manifest_digest() {
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.repositories | length') -ge 2 ]
 }
+
+@test "sync streaming: referrers lookup racing an in-progress background sync never gets a 500" {
+    zot_stream_port=$(cat ${BATS_FILE_TMPDIR}/zot_stream.port)
+
+    # "busybox" on zot-stream has not been touched by any earlier test in this file (only
+    # "golang" has, in the first test above) - this manifest GET is the very first client
+    # request for it, so it really does trigger streaming + a background sync from scratch,
+    # rather than being served from an already-committed local copy.
+    local repo="busybox"
+    local ref="1.36"
+    local downstream_manifest_url="http://127.0.0.1:${zot_stream_port}/v2/${repo}/manifests/${ref}"
+
+    local subject_digest
+    subject_digest=$(manifest_digest "${downstream_manifest_url}")
+    [ -n "${subject_digest}" ]
+
+    local downstream_referrers_url="http://127.0.0.1:${zot_stream_port}/v2/${repo}/referrers/${subject_digest}"
+
+    # Docker/OCI clients issue this referrers lookup automatically right after receiving a
+    # manifest. With streaming, the manifest above was served before the background sync
+    # finished committing the image locally, so this races that commit: the repo directory may
+    # already exist (blobs mid-copy) while index.json does not yet - the exact window
+    # pkg/storage/common/common.go's GetReferrers must answer with an empty 200 index for
+    # (previously a 500, see the fix). Fire bursts of concurrent lookups for as long as the
+    # background sync is still running, recording every status code seen.
+    local codes_dir="${BATS_TEST_TMPDIR}/referrers_codes"
+    mkdir -p "${codes_dir}"
+    local n=0
+
+    local deadline=$((SECONDS + 30))
+    while [ ${SECONDS} -lt ${deadline} ]; do
+        local pids=()
+        for i in $(seq 1 10); do
+            n=$((n+1))
+            (
+                code=$(curl -s -o /dev/null -w "%{http_code}" "${downstream_referrers_url}")
+                echo "${code}" > "${codes_dir}/${n}.code"
+            ) &
+            pids+=($!)
+        done
+
+        for pid in "${pids[@]}"; do
+            wait "${pid}"
+        done
+
+        if grep "successfully synced image" "${BATS_FILE_TMPDIR}/zot-stream/zot.log" \
+            | grep -q "\"repo\":\"${repo}\""; then
+            break
+        fi
+    done
+
+    run bash -c "grep -h -c '^500$' '${codes_dir}'/*.code | awk '{sum+=\$1} END{print sum+0}'"
+    echo "500 responses seen: ${output}"
+    [ "${output}" = "0" ]
+
+    run bash -c "grep -h -c '^200$' '${codes_dir}'/*.code | awk '{sum+=\$1} END{print sum+0}'"
+    echo "200 responses seen: ${output}"
+    [ "${output}" -gt "0" ]
+}
