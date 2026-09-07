@@ -112,7 +112,18 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, 
 
 	var lastErr error
 
-	for _, service := range onDemand.services {
+	// selectedIdx pins the background sync below to the exact service that supplied the
+	// manifest. Restricting candidates here to IsStreamingForRepo matters beyond consistency:
+	// with overlapping registry content rules, an earlier non-streaming service (which may not
+	// meet validateRegistryStreamingSyncConfig's TLS requirements) could otherwise supply a
+	// manifest that gets staged and served as if it came from a TLS-verified upstream.
+	selectedIdx := -1
+
+	for idx, service := range onDemand.services {
+		if !service.IsStreamingForRepo(repo) {
+			continue
+		}
+
 		onDemand.log.Debug().Str("repo", repo).Str("reference", reference).Msg("attempting to fetch manifest")
 
 		fetchedManifest, subs, err := service.FetchManifest(ctx, repo, reference)
@@ -123,6 +134,7 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, 
 		}
 
 		resultManifest, subManifests = fetchedManifest, subs
+		selectedIdx = idx
 
 		break
 	}
@@ -147,7 +159,7 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, 
 
 	go func() {
 		syncCtx := context.WithoutCancel(ctx)
-		if err := onDemand.SyncImage(syncCtx, repo, reference); err != nil {
+		if err := onDemand.syncImageDeduped(syncCtx, repo, reference, selectedIdx); err != nil {
 			onDemand.log.Err(err).Str("repository", repo).Str("reference", reference).
 				Msg("background sync after streaming failed")
 		}
@@ -178,10 +190,22 @@ func onDemandKey(kind, repo, reference string) string {
 type onDemandSyncFn func(ctx context.Context, service Service) error
 
 func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference string) error {
+	return onDemand.syncImageDeduped(ctx, repo, reference, -1)
+}
+
+// syncImageDeduped runs the singleflight-deduped image sync for repo:reference, optionally
+// pinned to a single service by its index into onDemand.services (pinnedIdx < 0 means try every
+// service in order, as SyncImage always does). FetchManifestForStream's background sync pins to
+// the exact streaming-eligible service that supplied the manifest, so that service - the one
+// validateRegistryStreamingSyncConfig verified is TLS-verified - is also the one whose syncRef
+// installs the stream manager's reader hook for the blobs already staged under that manifest;
+// letting a different, unpinned service win the sync would leave those staged blobs with no
+// reader hook, hanging every attached client until DescriptorWithTimeout gives up.
+func (onDemand *BaseOnDemand) syncImageDeduped(ctx context.Context, repo, reference string, pinnedIdx int) error {
 	return onDemand.doOnDemandFlight(onDemandKey(onDemandKindImage, repo, reference), repo, reference,
 		"image already demanded, on-demand sync result was shared",
 		func() error {
-			return onDemand.syncImage(ctx, repo, reference, true)
+			return onDemand.syncImage(ctx, repo, reference, pinnedIdx, true)
 		})
 }
 
@@ -219,7 +243,7 @@ func (onDemand *BaseOnDemand) doOnDemandFlight(key, repo, reference, sharedMsg s
 func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDigestStr string,
 	referenceTypes []string, scheduleBackground bool,
 ) error {
-	return onDemand.runOnDemand(ctx, repo, subjectDigestStr, "starting on-demand referrer sync",
+	return onDemand.runOnDemand(ctx, repo, subjectDigestStr, "starting on-demand referrer sync", -1,
 		func(syncCtx context.Context, service Service) error {
 			err := service.SyncReferrers(syncCtx, repo, subjectDigestStr, referenceTypes)
 			if scheduleBackground && err != nil && !isSkippableSyncImageErr(err) {
@@ -235,11 +259,12 @@ func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDi
 		})
 }
 
-func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference string, scheduleBackground bool,
+func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference string, pinnedIdx int,
+	scheduleBackground bool,
 ) error {
 	var dockerCompatErr error
 
-	err := onDemand.runOnDemand(ctx, repo, reference, "starting on-demand image sync",
+	err := onDemand.runOnDemand(ctx, repo, reference, "starting on-demand image sync", pinnedIdx,
 		func(syncCtx context.Context, service Service) error {
 			err := service.SyncImage(syncCtx, repo, reference)
 			if errors.Is(err, zerr.ErrSyncDockerCompatRequired) {
@@ -251,7 +276,7 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference str
 					"image already demanded, on-demand sync result was shared",
 					service, err,
 					func(retryCtx context.Context) error {
-						return onDemand.syncImage(retryCtx, repo, reference, false)
+						return onDemand.syncImage(retryCtx, repo, reference, pinnedIdx, false)
 					})
 			}
 
@@ -268,13 +293,19 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference str
 	return err
 }
 
-// runOnDemand tries each configured registry until one succeeds.
+// runOnDemand tries each configured registry until one succeeds. pinnedIdx < 0 tries every
+// service in onDemand.services order; pinnedIdx >= 0 restricts the attempt to that single
+// service index.
 func (onDemand *BaseOnDemand) runOnDemand(ctx context.Context, repo, reference, startMsg string,
-	syncFn onDemandSyncFn,
+	pinnedIdx int, syncFn onDemandSyncFn,
 ) error {
 	var err error
 
 	for serviceID, service := range onDemand.services {
+		if pinnedIdx >= 0 && serviceID != pinnedIdx {
+			continue
+		}
+
 		timeout := service.GetSyncTimeout()
 
 		onDemand.log.Debug().

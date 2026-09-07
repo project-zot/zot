@@ -1049,9 +1049,18 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 			return zerr.ErrStreamManagerNotInitialized
 		}
 
-		service.log.Debug().Str("repo", localRepo).Str("reference", reference).
-			Msg("streaming is enabled. Enabling reader hook")
-		copyOpts = append(copyOpts, regclient.ImageWithBlobReaderHook(service.streamManager.StreamingBlobReader))
+		// Only install the hook when THIS repo:reference was actually staged for streaming -
+		// not merely because this registry has streaming enabled. Without this check, the
+		// maxConcurrentStreams fallback path (StoreImageForStreaming rolls back, then calls the
+		// ordinary SyncImage on the same stream-enabled registry) would still install the hook;
+		// StreamingBlobReader would then find no activeStreams entry for any of this image's
+		// blobs and return ErrBlobReaderMissing, failing the very sync that fallback exists to
+		// let succeed.
+		if _, staged := service.streamManager.StreamingImageManifest(localRepo, reference); staged {
+			service.log.Debug().Str("repo", localRepo).Str("reference", reference).
+				Msg("streaming is enabled. Enabling reader hook")
+			copyOpts = append(copyOpts, regclient.ImageWithBlobReaderHook(service.streamManager.StreamingBlobReader))
+		}
 	}
 
 	// check if image is already synced

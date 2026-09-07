@@ -906,7 +906,7 @@ func TestService(t *testing.T) {
 
 			runConcurrentDedup(t, &onDemand.flight, onDemandKey(onDemandKindImage, "dedup-repo", "dedup-tag"), &syncCalls, nil,
 				func(ctx context.Context) error {
-					return onDemand.syncImage(ctx, "dedup-repo", "dedup-tag", false)
+					return onDemand.syncImage(ctx, "dedup-repo", "dedup-tag", -1, false)
 				})
 		})
 
@@ -929,7 +929,7 @@ func TestService(t *testing.T) {
 			runConcurrentDedup(t, &onDemand.flight, onDemandKey(onDemandKindImage, "dedup-repo-err", "dedup-tag"),
 				&syncCalls, wantErr,
 				func(ctx context.Context) error {
-					return onDemand.syncImage(ctx, "dedup-repo-err", "dedup-tag", false)
+					return onDemand.syncImage(ctx, "dedup-repo-err", "dedup-tag", -1, false)
 				})
 		})
 
@@ -3295,7 +3295,7 @@ func TestFetchManifestForStream(t *testing.T) {
 		// By now every FetchManifestForStream call has returned (each only waits for
 		// StoreImageForStreaming, not for the background sync it kicks off), and every one of
 		// them has launched its own goroutine racing to call the exported, singleflight-deduped
-		// SyncImage. Give them a moment to all reach imageFlight.Do before releasing the leader,
+		// SyncImage. Give them a moment to all reach flight.Do before releasing the leader,
 		// so a late straggler can't slip in as a second leader after the first already finished.
 		for i := 0; i < 50 && atomic.LoadInt32(&service.syncImageCalls) < 1; i++ {
 			time.Sleep(10 * time.Millisecond)
