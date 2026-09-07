@@ -331,20 +331,25 @@ jobs:
           fetch-depth: '0'
           persist-credentials: false
 
+      - name: Generate helm-charts token
+        id: helm-app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.HELM_APP_CLIENT_ID }}
+          private-key: ${{ secrets.HELM_APP_PRIVATE_KEY }}
+          owner: project-zot
+          repositories: helm-charts
+
       - name: Checkout project-zot/helm-charts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: project-zot/helm-charts
           ref: main
           fetch-depth: '0'
-          token: ${{ secrets.HELM_PUSH_TOKEN }}
+          token: ${{ steps.helm-app-token.outputs.token }}
           path: ./helm-charts
-          persist-credentials: true
+          persist-credentials: false
 
-      - name: Configure Git
-        run: |
-          git config --global user.name 'github-actions'
-          git config --global user.email 'github-actions@users.noreply.github.com'
       - name: Update appVersion
         uses: mikefarah/yq@1b9b4ac5187171d2e5e3129be0cfa827c7f9d53d # v4.53.3
         with:
@@ -368,8 +373,14 @@ jobs:
           sudo apt-get install pip
           pip install pybump
           pybump bump --file helm-charts/charts/zot/Chart.yaml --level patch
-      - name: Push changes to project-zot/helm-charts
-        run: |
-          cd ./helm-charts
-          git commit -am "build: automated update of Helm Chart"
-          git push
+      # Commit via GitHub API so the commit is signed/verified as the GitHub App (not git+GPG).
+      - name: Commit changes to project-zot/helm-charts
+        uses: planetscale/ghcommit-action@a6b150b81dca5dd027baa898604418eec9e11465 # v0.2.22
+        with:
+          commit_message: 'build: automated update of Helm Chart'
+          repo: project-zot/helm-charts
+          branch: main
+          repository: helm-charts
+          file_pattern: 'charts/zot/Chart.yaml charts/zot/values.yaml'
+        env:
+          GITHUB_TOKEN: ${{ steps.helm-app-token.outputs.token }}
