@@ -122,7 +122,7 @@ type RegistryConfig struct {
 	// MaxConcurrentStreams caps how many distinct blobs this registry's stream manager will
 	// stream to clients at once. Once the cap is reached, a new on-demand request for this
 	// registry falls back to the ordinary (non-streaming) on-demand path. When unset, a small
-	// built-in default is used (see defaultMaxConcurrentStreams in pkg/extensions/sync).
+	// built-in default is used (see syncConstants.DefaultMaxConcurrentStreams).
 	MaxConcurrentStreams *int
 	// dockerCompat is set at runtime from http.compat (docker2s2), not from sync config JSON.
 	dockerCompat bool

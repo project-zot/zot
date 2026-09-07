@@ -204,23 +204,20 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 
 	cbr.clientMu.Lock()
 	// Update all clients about the latest byte offset available on disk. Each client's channel is
-	// buffer-1 (see Subscribe), so a client that hasn't drained its previous notification blocks
-	// its own send; one goroutine per client lets the others still get delivered concurrently, but
-	// Wait() below still means this Read call (and so the upstream copy driving it) does not
-	// return until every client's send completes - a single stalled client backpressures the
-	// entire download, not just its own connection. There is no mid-stream timeout for this; only
-	// WaitForClientEmpty (run during cleanup) force-disconnects a stalled client.
-	//
-	// wg.Go (sync.WaitGroup.Go, added in Go 1.25) runs f in a new goroutine with wg.Add(1)/
-	// Done() handled automatically - equivalent to the older wg.Add(1); go func() { defer
-	// wg.Done(); f() }() pattern, just without the boilerplate.
-	var wg sync.WaitGroup
-	for _, c := range cbr.clients {
-		wg.Go(func() {
-			c <- numBytesRead
-		})
+	// buffer-1 (see Subscribe); a client only ever cares about the newest offset (InFlightBlobCopier
+	// just reads latestOffset.Load()), so a stale, undrained notification is discarded before
+	// sending the new one instead of blocking on it. This must never block while clientMu is held:
+	// a blocking send here would let one stalled/disconnected client wedge this Read call - and so
+	// the upstream copy driving it - forever, since the only things that could unblock it
+	// (Unsubscribe, WaitForClientEmpty) need this same lock to run.
+	for _, clientChan := range cbr.clients {
+		select {
+		case <-clientChan:
+		default:
+		}
+
+		clientChan <- numBytesRead
 	}
-	wg.Wait()
 
 	cbr.clientMu.Unlock()
 

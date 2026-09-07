@@ -64,6 +64,12 @@ func (ifbc *InFlightBlobCopier) Descriptor() (descriptor.Descriptor, error) {
 func (ifbc *InFlightBlobCopier) Copy() error {
 	ifbc.log.Debug().Str("onDiskPath", ifbc.onDiskPath).Msg("starting inflight copy")
 
+	// Deferred before the temp file is even opened: ConnectClient already registered this
+	// subscription (see its doc comment) before Copy was ever called, so every early return below
+	// - os.Open failing included - must still release it, or it lingers until
+	// RemoveStreamingImage's drain timeout forces it out instead.
+	defer ifbc.Source.Unsubscribe(ifbc.subscriptionID)
+
 	onDiskFile, err := os.Open(ifbc.onDiskPath)
 	if err != nil {
 		ifbc.log.Error().Err(err).Str("onDiskPath", ifbc.onDiskPath).Msg("failed to open on disk path")
@@ -73,7 +79,6 @@ func (ifbc *InFlightBlobCopier) Copy() error {
 	defer onDiskFile.Close()
 
 	byteAnnounceChan := ifbc.announceChan
-	defer ifbc.Source.Unsubscribe(ifbc.subscriptionID)
 
 	// By the time Copy is called, a caller normally already resolved Descriptor once (e.g.
 	// streamBlobToClient does, to set response headers before ever calling Copy) - the reader is

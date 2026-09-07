@@ -1840,25 +1840,36 @@ func validateSync(config *config.Config, logger zlog.Logger) error {
 // shared by every streaming-enabled registry (see EnableSyncExtension), not of any individual
 // registry, so only the first streaming registry's value (in config order) actually takes effect;
 // silently ignoring a different value set on a later registry would contradict what that
-// registry's own config says. Registries that agree, or that leave it unset, are unaffected.
+// registry's own config says. Compares effective values (an unset MaxConcurrentStreams falls back
+// to syncConstants.DefaultMaxConcurrentStreams - the same default NewChunkingStreamManager
+// applies) rather than skipping unset entries outright: otherwise [unset, 8] would pass here while
+// EnableSyncExtension actually built the shared manager off the first registry's (unset ->
+// default 32) value, silently dropping the second registry's explicit 8.
 func validateStreamingMaxConcurrentStreams(registries []syncconf.RegistryConfig) error {
 	var first *int
 
-	for _, regCfg := range registries {
-		if !regCfg.IsStreamEnabled() || regCfg.MaxConcurrentStreams == nil {
+	for idx := range registries {
+		regCfg := &registries[idx]
+
+		if !regCfg.IsStreamEnabled() {
 			continue
+		}
+
+		effective := syncConstants.DefaultMaxConcurrentStreams
+		if regCfg.MaxConcurrentStreams != nil {
+			effective = *regCfg.MaxConcurrentStreams
 		}
 
 		if first == nil {
-			first = regCfg.MaxConcurrentStreams
+			first = &effective
 
 			continue
 		}
 
-		if *regCfg.MaxConcurrentStreams != *first {
+		if effective != *first {
 			return fmt.Errorf("%w: %s", zerr.ErrBadConfig,
 				"maxConcurrentStreams must be the same across every streaming registry - it is a single "+
-					"limit shared by all of them, not set per registry")
+					"limit shared by all of them, not set per registry (an unset value counts as its default)")
 		}
 	}
 

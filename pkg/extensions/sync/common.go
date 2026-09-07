@@ -40,7 +40,11 @@ type StreamManager interface {
 	StreamingBlobReader(reader *blob.BReader) (*blob.BReader, error)
 	// StoreImageForStreaming registers a manifest (and, for multi-arch images, its child
 	// manifests) as streamable, pre-creating active streams for the manifest, config, and layers.
-	StoreImageForStreaming(repo, reference string, streamManifest *StreamableManifest) error
+	// Returns the manifest actually staged for repo:reference, which is streamManifest itself on
+	// a fresh stage, but a DIFFERENT, already-staged manifest if a concurrent caller (racing on a
+	// mutable tag) won first - callers must use the returned manifest, not streamManifest, from
+	// this point on: the stream cache's blob digests belong to whichever one is returned.
+	StoreImageForStreaming(repo, reference string, streamManifest *StreamableManifest) (*StreamableManifest, error)
 	// StreamingImageManifest returns the manifest staged for repo:reference, if any.
 	StreamingImageManifest(repo, reference string) (*StreamableManifest, bool)
 	// RemoveStreamingImage purges repo:reference and its blobs from the stream cache once the

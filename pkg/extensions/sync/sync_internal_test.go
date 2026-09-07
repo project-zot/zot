@@ -3122,16 +3122,26 @@ func (f *fakeStreamManagerForOnDemand) StreamingBlobReader(r *blob.BReader) (*bl
 	return r, nil
 }
 
-func (f *fakeStreamManagerForOnDemand) StoreImageForStreaming(repo, reference string, m *StreamableManifest) error {
+// StoreImageForStreaming mirrors ChunkingStreamManager's real "already staged wins" behavior
+// (see stream_manager.go) so tests can exercise FetchManifestForStream's race handling: a second
+// call for the same repo:reference returns whatever the first call staged, not m.
+func (f *fakeStreamManagerForOnDemand) StoreImageForStreaming(repo, reference string, m *StreamableManifest,
+) (*StreamableManifest, error) {
 	if f.storeErr != nil {
-		return f.storeErr
+		return nil, f.storeErr
 	}
 
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.staged[repo+":"+reference] = m
 
-	return nil
+	key := repo + ":" + reference
+	if existing, ok := f.staged[key]; ok {
+		return existing, nil
+	}
+
+	f.staged[key] = m
+
+	return m, nil
 }
 
 func (f *fakeStreamManagerForOnDemand) StreamingImageManifest(repo, reference string) (*StreamableManifest, bool) {
@@ -3229,7 +3239,8 @@ func TestFetchManifestForStream(t *testing.T) {
 		onDemand.SetStreamManager(fakeSM)
 
 		man := newTestManifestForStream(t)
-		So(fakeSM.StoreImageForStreaming("repo", "latest", NewStreamableManifest(man, nil)), ShouldBeNil)
+		_, storeErr := fakeSM.StoreImageForStreaming("repo", "latest", NewStreamableManifest(man, nil))
+		So(storeErr, ShouldBeNil)
 
 		called := false
 		onDemand.Add(&fakeStreamService{
@@ -3309,5 +3320,78 @@ func TestFetchManifestForStream(t *testing.T) {
 		time.Sleep(200 * time.Millisecond)
 
 		So(atomic.LoadInt32(&service.syncImageCalls), ShouldEqual, 1)
+	})
+
+	Convey("A race on a mutable tag's first touch serves every caller the manifest that actually got staged", t, func(conv C) {
+		// Regression test: two callers whose "already staged?" check (StreamingImageManifest)
+		// both miss - the only way that happens is two genuinely concurrent first-touch requests
+		// for the same repo:reference - independently fetch the manifest from upstream. For a
+		// mutable tag updated between those two fetches, they can get DIFFERENT manifest content
+		// (manA vs manB below); only one of them can win StoreImageForStreaming's race and have
+		// its blob digests actually registered with the stream manager. Before the fix, the loser
+		// still returned its own (unregistered) manifest to its own client - whose subsequent blob
+		// requests would then find nothing staged for them. After the fix, every caller must
+		// return whichever manifest actually won, matching what StoreImageForStreaming registered.
+		onDemand := NewOnDemand(log.NewTestLogger())
+		fakeSM := newFakeStreamManagerForOnDemand()
+		onDemand.SetStreamManager(fakeSM)
+
+		manA := newTestManifestForStream(t)
+		manB := newTestManifestForStream(t)
+		So(manA.GetDescriptor().Digest, ShouldNotEqual, manB.GetDescriptor().Digest)
+
+		const numConcurrent = 2
+
+		var fetchCount int32
+
+		release := make(chan struct{})
+
+		service := &fakeStreamService{
+			fetchManifestFn: func(_ context.Context, _, _ string) (manifest.Manifest, []manifest.Manifest, error) {
+				// Barrier: block every caller here until numConcurrent are simultaneously in
+				// flight, so both really do pass FetchManifestForStream's "already staged?" check
+				// before either one calls StoreImageForStreaming - the actual race being tested,
+				// not just two sequential calls that happen to land one after another. seq is
+				// captured before waiting so each goroutine's manA/manB choice is its own, not a
+				// re-read of the shared counter after every caller has already been released.
+				seq := atomic.AddInt32(&fetchCount, 1)
+				if seq == numConcurrent {
+					close(release)
+				}
+				<-release
+
+				if seq%2 == 1 {
+					return manA, nil, nil
+				}
+
+				return manB, nil, nil
+			},
+		}
+		onDemand.Add(service)
+
+		results := make([]manifest.Manifest, numConcurrent)
+
+		var wg sync.WaitGroup
+
+		wg.Add(numConcurrent)
+
+		for i := range numConcurrent {
+			go func(i int) {
+				defer wg.Done()
+
+				result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest")
+				conv.So(err, ShouldBeNil)
+				results[i] = result
+			}(i)
+		}
+
+		wg.Wait()
+
+		staged, ok := fakeSM.StreamingImageManifest("repo", "latest")
+		So(ok, ShouldBeTrue)
+
+		for i := range numConcurrent {
+			So(results[i], ShouldEqual, staged.referenceManifest)
+		}
 	})
 }

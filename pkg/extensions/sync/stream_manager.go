@@ -16,6 +16,7 @@ import (
 	manifestpkg "github.com/regclient/regclient/types/manifest"
 
 	zerr "zotregistry.dev/zot/v2/errors"
+	syncConstants "zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/storage"
 )
@@ -25,10 +26,6 @@ import (
 // client could block cleanup of its blob indefinitely; the streamLock-scoping in
 // RemoveStreamingImage keeps that wait from blocking any other blob/repo in the meantime.
 const streamDrainTimeout = 30 * time.Second
-
-// defaultMaxConcurrentStreams bounds how many distinct blobs may be streamed to clients at once
-// when a registry config does not set MaxConcurrentStreams explicitly.
-const defaultMaxConcurrentStreams = 32
 
 type ChunkingStreamManager struct {
 	tempStore StreamTempStore
@@ -59,12 +56,12 @@ type ChunkingStreamManager struct {
 // NewChunkingStreamManager creates a ChunkingStreamManager backed by a per-repo temp directory
 // (each repo's own ImageStore root, not one global config-wide root), so streaming staging files
 // land on whatever volume that repo's real storage already uses. maxConcurrentStreams <= 0 falls
-// back to defaultMaxConcurrentStreams.
+// back to syncConstants.DefaultMaxConcurrentStreams.
 func NewChunkingStreamManager(storeController storage.StoreController, maxConcurrentStreams int,
 	logger log.Logger,
 ) *ChunkingStreamManager {
 	if maxConcurrentStreams <= 0 {
-		maxConcurrentStreams = defaultMaxConcurrentStreams
+		maxConcurrentStreams = syncConstants.DefaultMaxConcurrentStreams
 	}
 
 	return &ChunkingStreamManager{
@@ -131,11 +128,14 @@ func (sm *ChunkingStreamManager) digestBelongsToRepo(repo, blobDigest string) bo
 
 		digests := map[string]struct{}{}
 
+		// Docker schema2 types are handled alongside their OCI equivalents (PreserveDigest, which
+		// streaming requires, keeps the manifest in whatever media type upstream actually served -
+		// Docker registries commonly serve schema2, not OCI).
 		manifestMediaType := manifestpkg.GetMediaType(staged.referenceManifest)
 		switch manifestMediaType {
-		case manifestpkg.MediaTypeOCI1Manifest:
+		case manifestpkg.MediaTypeOCI1Manifest, manifestpkg.MediaTypeDocker2Manifest:
 			sm.collectManifestBlobDigests(repo, reference, staged.referenceManifest, digests)
-		case manifestpkg.MediaTypeOCI1ManifestList:
+		case manifestpkg.MediaTypeOCI1ManifestList, manifestpkg.MediaTypeDocker2ManifestList:
 			for _, subManifest := range staged.subManifests {
 				sm.collectManifestBlobDigests(repo, reference, subManifest, digests)
 			}
@@ -232,19 +232,24 @@ func (sm *ChunkingStreamManager) prepareActiveStreamForBlob(repo string, desc de
 
 func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string,
 	manifest *StreamableManifest,
-) error {
+) (*StreamableManifest, error) {
 	sm.streamLock.Lock()
 
 	key := repo + ":" + reference
 
 	// A concurrent request for the same repo:reference may already have staged it (no
-	// singleflight guard upstream) - treat this as success rather than re-preparing/erroring.
-	if _, ok := sm.streamingRefs[key]; ok {
+	// singleflight guard upstream) - treat this as success rather than re-preparing/erroring, but
+	// return the WINNING (already-staged) manifest rather than the caller's own: for a mutable
+	// tag raced by two first-touch requests, the two may have independently fetched different
+	// manifest content, and only the winner's blob digests are actually staged here. A caller
+	// that ignored this and returned its own manifest to its client would hand out a manifest
+	// whose blobs the stream cache never registered - see FetchManifestForStream.
+	if existing, ok := sm.streamingRefs[key]; ok {
 		sm.streamLock.Unlock()
 		sm.logger.Warn().Str("repo", repo).Str("reference", reference).
 			Msg("streaming manifest already exists for repo:reference")
 
-		return nil
+		return existing, nil
 	}
 
 	// Collect every blob this repo:reference needs, deduplicated by digest, before preparing any
@@ -252,9 +257,12 @@ func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string,
 	// reference-counted once per StoreImageForStreaming call (see collectManifestDescriptorsForStream).
 	descs := map[string]descriptor.Descriptor{}
 
+	// Docker schema2 types are handled alongside their OCI equivalents (PreserveDigest, which
+	// streaming requires, keeps the manifest in whatever media type upstream actually served -
+	// Docker registries commonly serve schema2, not OCI).
 	manifestMediaType := manifestpkg.GetMediaType(manifest.referenceManifest)
 	switch manifestMediaType {
-	case manifestpkg.MediaTypeOCI1Manifest:
+	case manifestpkg.MediaTypeOCI1Manifest, manifestpkg.MediaTypeDocker2Manifest:
 		if err := sm.collectManifestDescriptorsForStream(repo, reference, manifest.referenceManifest, descs); err != nil {
 			sm.streamLock.Unlock()
 			sm.logger.Error().Err(err).
@@ -263,9 +271,9 @@ func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string,
 				Str("manifest", manifest.referenceManifest.GetDescriptor().Digest.String()).
 				Msg("failed to prepare manifest for stream")
 
-			return zerr.ErrSyncFailedToPrepareManifest
+			return nil, zerr.ErrSyncFailedToPrepareManifest
 		}
-	case manifestpkg.MediaTypeOCI1ManifestList:
+	case manifestpkg.MediaTypeOCI1ManifestList, manifestpkg.MediaTypeDocker2ManifestList:
 		// For multi-arch images, the manifest is actually an index.
 		// The individual manifests inside must be collected as well.
 		for _, subManifest := range manifest.subManifests {
@@ -277,7 +285,7 @@ func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string,
 					Str("manifest", subManifest.GetDescriptor().Digest.String()).
 					Msg("failed to prepare manifest for stream")
 
-				return zerr.ErrSyncFailedToPrepareManifest
+				return nil, zerr.ErrSyncFailedToPrepareManifest
 			}
 		}
 	default:
@@ -285,7 +293,7 @@ func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string,
 		sm.logger.Error().Str("repo", repo).Str("reference", reference).
 			Str("mediaType", manifestMediaType).Msg("invalid manifest mediatype")
 
-		return zerr.ErrSyncInvalidManifestMediaType
+		return nil, zerr.ErrSyncInvalidManifestMediaType
 	}
 
 	// Prepare (or add a reference to) each unique blob. On a mid-way failure (e.g. hitting
@@ -308,10 +316,10 @@ func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string,
 			// Preserve ErrTooManyConcurrentStreams so callers (e.g. FetchManifestForStream) can
 			// fall back to a non-streaming on-demand sync instead of failing the request outright.
 			if errors.Is(err, zerr.ErrTooManyConcurrentStreams) {
-				return err
+				return nil, err
 			}
 
-			return zerr.ErrSyncFailedToPrepareManifest
+			return nil, zerr.ErrSyncFailedToPrepareManifest
 		}
 
 		prepared[digest] = struct{}{}
@@ -323,7 +331,7 @@ func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string,
 
 	sm.streamLock.Unlock()
 
-	return nil
+	return manifest, nil
 }
 
 // collectManifestDescriptorsForStream adds the descriptor of manifest itself, plus (if manifest
@@ -410,11 +418,12 @@ func (sm *ChunkingStreamManager) RemoveStreamingImage(repo, reference string) {
 
 	blobDigests := map[string]struct{}{}
 
+	// Docker schema2 types are handled alongside their OCI equivalents (see StoreImageForStreaming).
 	manifestMediaType := manifestpkg.GetMediaType(manifest.referenceManifest)
 	switch manifestMediaType {
-	case manifestpkg.MediaTypeOCI1Manifest:
+	case manifestpkg.MediaTypeOCI1Manifest, manifestpkg.MediaTypeDocker2Manifest:
 		sm.collectManifestBlobDigests(repo, reference, manifest.referenceManifest, blobDigests)
-	case manifestpkg.MediaTypeOCI1ManifestList:
+	case manifestpkg.MediaTypeOCI1ManifestList, manifestpkg.MediaTypeDocker2ManifestList:
 		// For multi-arch images, the manifest is actually an index.
 		// The individual manifests inside must be purged as well.
 		for _, subManifest := range manifest.subManifests {

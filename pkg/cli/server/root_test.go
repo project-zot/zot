@@ -4566,5 +4566,33 @@ func TestStreamingSyncConfig(t *testing.T) {
 			err := loadWithRegistry(t, regA+","+regB)
 			So(err, ShouldBeNil)
 		})
+
+		Convey("Reject an unset maxConcurrentStreams followed by an explicit one that differs from the default", func() {
+			// Regression test: EnableSyncExtension builds the single shared stream manager off
+			// the FIRST streaming registry in config order, defaulting an unset
+			// MaxConcurrentStreams to syncConstants.DefaultMaxConcurrentStreams (32) - so regA
+			// here silently decides the real limit is 32, and regB's explicit 8 is never applied.
+			// Comparing only registries that set an explicit value would miss this entirely (regA
+			// would never be compared against anything).
+			regA := `{"urls":["localhost:9999"], "onDemand": true, "preserveDigest": true, "stream": true,` +
+				` "content": [{"prefix": "a/**"}]}`
+			regB := `{"urls":["localhost:9998"], "onDemand": true, "preserveDigest": true, "stream": true,` +
+				` "maxConcurrentStreams": 8, "content": [{"prefix": "b/**"}]}`
+
+			err := loadWithRegistry(t, regA+","+regB)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err.Error(), ShouldContainSubstring, "maxConcurrentStreams must be the same across every streaming registry")
+		})
+
+		Convey("Streaming registries that all leave maxConcurrentStreams unset are accepted", func() {
+			regA := `{"urls":["localhost:9999"], "onDemand": true, "preserveDigest": true, "stream": true,` +
+				` "content": [{"prefix": "a/**"}]}`
+			regB := `{"urls":["localhost:9998"], "onDemand": true, "preserveDigest": true, "stream": true,` +
+				` "content": [{"prefix": "b/**"}]}`
+
+			err := loadWithRegistry(t, regA+","+regB)
+			So(err, ShouldBeNil)
+		})
 	})
 }

@@ -86,6 +86,18 @@ func writeOCISingleManifest(t *testing.T, storeCtrl stypes.StoreController, root
 	return repoPath(root, repo)
 }
 
+// writeDockerSingleManifest is writeOCISingleManifest's Docker schema2 counterpart, for tests
+// exercising streaming's Docker media-type support (PreserveDigest keeps whatever media type
+// upstream actually served, and Docker registries commonly serve schema2, not OCI).
+func writeDockerSingleManifest(t *testing.T, storeCtrl stypes.StoreController, root, repo, tag string) string {
+	t.Helper()
+
+	image := CreateImageWith().DefaultLayers().PlatformConfig("amd64", "linux").Build().AsDockerImage()
+	assert.NoError(t, WriteImageToFileSystem(image, repo, tag, storeCtrl))
+
+	return repoPath(root, repo)
+}
+
 func TestPreseedLocalBlobs(t *testing.T) {
 	t.Parallel()
 

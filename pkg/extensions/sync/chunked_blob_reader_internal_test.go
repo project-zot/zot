@@ -181,6 +181,34 @@ func TestChunkedBlobReaderSubscribeUnsubscribe(t *testing.T) {
 	cbr.Unsubscribe(id2)
 }
 
+// TestChunkedBlobReaderReadNeverBlocksOnStalledClient is the regression test for the clientMu
+// deadlock fix: a subscriber whose channel is never drained (a stalled or abandoned client) must
+// never make Read block waiting to notify it, since the only things that could unblock such a
+// wait - Unsubscribe, WaitForClientEmpty - need the very same lock Read holds while blocked. Read
+// must always coalesce to the latest offset instead.
+func TestChunkedBlobReaderReadNeverBlocksOnStalledClient(t *testing.T) {
+	t.Parallel()
+
+	// Long enough, and read in readAllChunks' small (4-byte) chunks, to force several Read calls:
+	// a stalled client's 1-slot channel buffer fills on the very first announce, so every
+	// announce after it would block forever under the old blocking-send behavior.
+	content := bytes.Repeat([]byte("x"), 64)
+	cbr := newTestChunkedBlobReader(t, content, godigest.FromBytes(content))
+
+	// A stalled/abandoned client: subscribed, but nothing ever receives from its channel.
+	_, _ = cbr.Subscribe()
+
+	done := make(chan error, 1)
+	go func() { done <- readAllChunks(cbr) }()
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, io.EOF)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Read blocked indefinitely notifying a stalled client's undrained channel")
+	}
+}
+
 // TestChunkedBlobReaderDescriptorTimeout is the regression test for the streaming timeout fix:
 // a caller waiting on Descriptor for a blob whose InitReader never runs (e.g. the background
 // sync errored out or was cancelled before its regclient copy reached this blob) must get a

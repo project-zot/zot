@@ -1158,14 +1158,16 @@ func (rh *RouteHandler) writeBlobInfoFromStreamCache(repo string, digest godiges
 		return zerr.ErrStreamManagerNotInitialized
 	}
 
-	blobSize, blobMediaType, err := streamManager.CachedBlobInfo(repo, digest.String())
+	blobSize, _, err := streamManager.CachedBlobInfo(repo, digest.String())
 	if err != nil {
 		return err
 	}
 
+	// Match the local blob path's contract (constants.BinaryMediaType, no Accept-Ranges - range
+	// requests against an in-flight stream aren't supported, see streamBlobToClient) rather than
+	// exposing the manifest's own media type, which every non-streaming blob response omits.
 	response.Header().Set("Content-Length", strconv.FormatInt(blobSize, 10))
-	response.Header().Set("Accept-Ranges", "bytes")
-	response.Header().Set("Content-Type", blobMediaType)
+	response.Header().Set("Content-Type", constants.BinaryMediaType)
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
 	response.WriteHeader(http.StatusOK)
 
@@ -1740,9 +1742,11 @@ func (rh *RouteHandler) streamBlobToClient(response http.ResponseWriter, repo st
 		return false
 	}
 
+	// constants.BinaryMediaType, not desc.MediaType: every non-streaming blob response uses it
+	// regardless of the blob's real media type (see GetBlob), so the streaming path must match.
 	response.Header().Set("Content-Length", strconv.FormatInt(desc.Size, 10))
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
-	response.Header().Set("Content-Type", desc.MediaType)
+	response.Header().Set("Content-Type", constants.BinaryMediaType)
 	response.WriteHeader(http.StatusOK)
 
 	if err := copier.Copy(); err != nil {

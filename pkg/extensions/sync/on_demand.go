@@ -91,8 +91,11 @@ func (onDemand *BaseOnDemand) IsStreamingEnabledForRepo(repo string) bool {
 // If repo:reference is already staged for streaming (e.g. a second client requesting the same
 // image while the first client's background sync is still running), the cached manifest is
 // returned directly and no second background sync is started. In the remaining race where two
-// callers both pass that check before either stages the manifest, both still call the exported
-// SyncImage below - which is deduplicated via flight - so at most one real sync ever runs.
+// callers both pass that check before either stages the manifest - only reachable with different
+// manifest content per caller, since a mutable tag can be updated between their two independent
+// upstream fetches - StoreImageForStreaming's own single-writer semantics pick one winner; the
+// loser adopts the winning manifest and skips its own background sync entirely, rather than
+// returning a manifest whose blobs the stream cache never staged.
 func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, reference string,
 ) (manifest.Manifest, error) {
 	if onDemand.streamManager == nil {
@@ -150,9 +153,27 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, 
 		return nil, zerr.ErrBlobNotFound
 	}
 
-	if err := onDemand.streamManager.StoreImageForStreaming(repo, reference,
-		NewStreamableManifest(resultManifest, subManifests)); err != nil {
+	streamable := NewStreamableManifest(resultManifest, subManifests)
+
+	staged, err := onDemand.streamManager.StoreImageForStreaming(repo, reference, streamable)
+	if err != nil {
 		return nil, err
+	}
+
+	// StoreImageForStreaming returns a DIFFERENT StreamableManifest than streamable when a
+	// concurrent caller (also racing this repo:reference's first touch) staged first - only
+	// possible for a mutable tag whose upstream content actually changed between the two
+	// independent fetches above, since an immutable digest reference always resolves to the same
+	// content either way. The stream cache's blob digests belong to whichever manifest is staged,
+	// so this caller must serve ITS client that one, not resultManifest - and must not launch a
+	// second background sync pinned to a service/manifest the stream cache no longer reflects;
+	// the winning caller's own FetchManifestForStream call already launched (or is launching) the
+	// one background sync that matters.
+	if staged != streamable {
+		onDemand.log.Debug().Str("repo", repo).Str("reference", reference).
+			Msg("lost race to stage streaming manifest, serving the manifest that won instead")
+
+		return staged.referenceManifest, nil
 	}
 
 	onDemand.log.Debug().Str("repo", repo).Str("reference", reference).Msg("syncing image in the background")

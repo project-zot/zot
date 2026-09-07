@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/regclient/regclient"
+	"github.com/regclient/regclient/types/manifest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -59,7 +60,9 @@ func TestChunkingStreamManagerStoreAndRemove(t *testing.T) {
 	streamable, closeManifest := newTestStreamableManifest(t, regClient, root, "repo-a", predictTestTag)
 	defer closeManifest()
 
-	require.NoError(t, sm.StoreImageForStreaming("repo-a", predictTestTag, streamable))
+	staged, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable)
+	require.NoError(t, err)
+	assert.Same(t, streamable, staged, "a fresh stage must return the caller's own manifest")
 
 	cached, ok := sm.StreamingImageManifest("repo-a", predictTestTag)
 	require.True(t, ok)
@@ -81,6 +84,39 @@ func TestChunkingStreamManagerStoreAndRemove(t *testing.T) {
 	_, isActive = sm.activeStreams[manifestDigest]
 	sm.streamLock.Unlock()
 	assert.False(t, isActive, "the manifest's blob stream must be gone after removal")
+}
+
+// TestChunkingStreamManagerStoreDockerManifest is the regression test for Docker schema2 support:
+// PreserveDigest (required by every streaming registry) keeps a manifest in whatever media type
+// upstream actually served, and Docker registries commonly serve schema2, not OCI -
+// StoreImageForStreaming must accept that media type the same way it already accepts OCI's,
+// rather than rejecting it with ErrSyncInvalidManifestMediaType.
+func TestChunkingStreamManagerStoreDockerManifest(t *testing.T) {
+	t.Parallel()
+
+	root, storeCtrl := newTestStore(t)
+	regClient := regclient.New()
+
+	writeDockerSingleManifest(t, storeCtrl, root, "repo-a", predictTestTag)
+
+	sm := newTestStreamManager(t, storeCtrl, 0)
+
+	streamable, closeManifest := newTestStreamableManifest(t, regClient, root, "repo-a", predictTestTag)
+	defer closeManifest()
+
+	require.Equal(t, manifest.MediaTypeDocker2Manifest, manifest.GetMediaType(streamable.referenceManifest),
+		"test setup: must actually produce a Docker schema2 manifest, not OCI")
+
+	staged, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable)
+	require.NoError(t, err)
+	assert.Same(t, streamable, staged)
+
+	manifestDigest := streamable.referenceManifest.GetDescriptor().Digest.String()
+
+	sm.streamLock.Lock()
+	_, isActive := sm.activeStreams[manifestDigest]
+	sm.streamLock.Unlock()
+	assert.True(t, isActive, "the Docker manifest's own digest must become an active stream")
 }
 
 // TestChunkingStreamManagerRemoveDoesNotBlockOtherBlobs is the regression test for the
@@ -105,8 +141,10 @@ func TestChunkingStreamManagerRemoveDoesNotBlockOtherBlobs(t *testing.T) {
 	streamableB, closeB := newTestStreamableManifest(t, regClient, root, "repo-b", predictTestTag)
 	defer closeB()
 
-	require.NoError(t, sm.StoreImageForStreaming("repo-a", predictTestTag, streamableA))
-	require.NoError(t, sm.StoreImageForStreaming("repo-b", predictTestTag, streamableB))
+	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamableA)
+	require.NoError(t, err)
+	_, err = sm.StoreImageForStreaming("repo-b", predictTestTag, streamableB)
+	require.NoError(t, err)
 
 	digestA := streamableA.referenceManifest.GetDescriptor().Digest.String()
 	digestB := streamableB.referenceManifest.GetDescriptor().Digest.String()
@@ -172,7 +210,7 @@ func TestChunkingStreamManagerMaxConcurrentStreams(t *testing.T) {
 	streamable, closeManifest := newTestStreamableManifest(t, regClient, root, "repo-a", predictTestTag)
 	defer closeManifest()
 
-	err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable)
+	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable)
 	require.Error(t, err)
 	// The specific cap error must survive (not be masked as a generic failure) so callers like
 	// FetchManifestForStream can fall back to a non-streaming on-demand sync.
@@ -221,8 +259,10 @@ func TestChunkingStreamManagerSharedBlobAcrossRepos(t *testing.T) {
 	streamableB, closeB := newTestStreamableManifest(t, regClient, root, "repo-b", predictTestTag)
 	defer closeB()
 
-	require.NoError(t, sm.StoreImageForStreaming("repo-a", predictTestTag, streamableA))
-	require.NoError(t, sm.StoreImageForStreaming("repo-b", predictTestTag, streamableB))
+	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamableA)
+	require.NoError(t, err)
+	_, err = sm.StoreImageForStreaming("repo-b", predictTestTag, streamableB)
+	require.NoError(t, err)
 
 	manifestDigest := streamableA.referenceManifest.GetDescriptor().Digest.String()
 	require.Equal(t, manifestDigest, streamableB.referenceManifest.GetDescriptor().Digest.String(),
@@ -243,7 +283,7 @@ func TestChunkingStreamManagerSharedBlobAcrossRepos(t *testing.T) {
 	assert.True(t, stillActive, "a blob still referenced by repo-b must survive repo-a's removal")
 	assert.Equal(t, 1, refCount)
 
-	_, err := sm.ConnectClient("repo-b", manifestDigest, nil)
+	_, err = sm.ConnectClient("repo-b", manifestDigest, nil)
 	assert.NoError(t, err, "repo-b's clients must still be able to attach to the shared blob")
 
 	// Removing repo-b too must finally tear it down.
