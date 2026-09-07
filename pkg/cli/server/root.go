@@ -1856,6 +1856,13 @@ func validateRegistryStreamingSyncConfig(regCfg syncconf.RegistryConfig) error {
 		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "stream cannot be combined with tlsVerify: false")
 	}
 
+	for _, rawURL := range regCfg.URLs {
+		parsed, err := url.Parse(rawURL)
+		if err == nil && strings.EqualFold(parsed.Scheme, "http") {
+			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "stream requires https upstream URLs")
+		}
+	}
+
 	if regCfg.MaxConcurrentStreams != nil && *regCfg.MaxConcurrentStreams <= 0 {
 		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "maxConcurrentStreams must be greater than 0")
 	}

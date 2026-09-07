@@ -4523,6 +4523,14 @@ func TestStreamingSyncConfig(t *testing.T) {
 			So(err.Error(), ShouldContainSubstring, "stream cannot be combined with tlsVerify: false")
 		})
 
+		Convey("Reject stream combined with an http upstream URL", func() {
+			err := loadWithRegistry(t,
+				`{"urls":["http://localhost:9999"], "onDemand": true, "stream": true}`)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err.Error(), ShouldContainSubstring, "stream requires https upstream URLs")
+		})
+
 		Convey("Reject a non-positive maxConcurrentStreams", func() {
 			err := loadWithRegistry(t,
 				`{"urls":["localhost:9999"], "onDemand": true, "stream": true, "maxConcurrentStreams": 0}`)
