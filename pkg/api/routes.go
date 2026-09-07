@@ -1151,7 +1151,12 @@ func (rh *RouteHandler) writeBlobReadError(
 // is not in the stream cache either, so the caller can fall through to its normal not-found
 // response.
 func (rh *RouteHandler) writeBlobInfoFromStreamCache(digest godigest.Digest, response http.ResponseWriter) error {
-	blobSize, blobMediaType, err := rh.c.SyncOnDemand.StreamManager().CachedBlobInfo(digest.String())
+	streamManager := rh.c.SyncOnDemand.StreamManager()
+	if streamManager == nil {
+		return zerr.ErrStreamManagerNotInitialized
+	}
+
+	blobSize, blobMediaType, err := streamManager.CachedBlobInfo(digest.String())
 	if err != nil {
 		return err
 	}
@@ -1708,7 +1713,12 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 // Any other outcome is final - the response has already been written to (headers, and generally
 // at least some body bytes), so a caller must not write anything more to it.
 func (rh *RouteHandler) streamBlobToClient(response http.ResponseWriter, repo string, digest godigest.Digest) bool {
-	copier, err := rh.c.SyncOnDemand.StreamManager().ConnectClient(digest.String(), response)
+	streamManager := rh.c.SyncOnDemand.StreamManager()
+	if streamManager == nil {
+		return false
+	}
+
+	copier, err := streamManager.ConnectClient(digest.String(), response)
 	if err != nil {
 		return false
 	}
