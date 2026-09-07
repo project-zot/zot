@@ -250,10 +250,6 @@ func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string,
 
 			sm.drainAndDeleteStreams(readers)
 
-			sm.streamLock.Lock()
-			sm.finalizeRelease(readers)
-			sm.streamLock.Unlock()
-
 			// Preserve ErrTooManyConcurrentStreams so callers (e.g. FetchManifestForStream) can
 			// fall back to a non-streaming on-demand sync instead of failing the request outright.
 			if errors.Is(err, zerr.ErrTooManyConcurrentStreams) {
@@ -384,20 +380,20 @@ func (sm *ChunkingStreamManager) RemoveStreamingImage(repo, reference string) {
 
 	sm.drainAndDeleteStreams(readers)
 
-	sm.streamLock.Lock()
-	sm.finalizeRelease(readers)
-	sm.streamLock.Unlock()
-
 	sm.logger.Info().Str("repo", repo).Str("reference", reference).Msg("finished removing streaming image")
 }
 
 // releaseStreams decrements the reference count (refCounts) for each of the given digests and
 // returns the readers whose count reached zero - the only ones actually going away; a digest
-// still referenced by another repo:reference sharing the same blob is left untouched. Must be
-// called with streamLock held. The returned readers must then be drained and deleted WITHOUT the
-// lock (drainAndDeleteStreams) before their map entries are finally removed WITH the lock again
-// (finalizeRelease) - see RemoveStreamingImage's doc comment for why draining must never happen
-// while holding streamLock.
+// still referenced by another repo:reference sharing the same blob is left untouched. A digest
+// whose count reaches zero has its activeStreams/blobInfoMap/refCounts entries removed
+// immediately, before the lock is released - not deferred until after the reader is drained -
+// so a concurrent prepareActiveStreamForBlob can never observe the digest as still-live and add
+// a reference to a reader that is already being torn down; it instead falls into the "not
+// found" branch and starts a fresh stream. Must be called with streamLock held. The returned
+// readers must then be drained and have their temp file deleted WITHOUT the lock
+// (drainAndDeleteStreams) - see RemoveStreamingImage's doc comment for why draining must never
+// happen while holding streamLock.
 func (sm *ChunkingStreamManager) releaseStreams(digests map[string]struct{}) map[string]*ChunkedBlobReader {
 	readers := make(map[string]*ChunkedBlobReader, len(digests))
 
@@ -417,6 +413,10 @@ func (sm *ChunkingStreamManager) releaseStreams(digests map[string]struct{}) map
 		if reader, ok := sm.activeStreams[digest]; ok {
 			readers[digest] = reader
 		}
+
+		delete(sm.activeStreams, digest)
+		delete(sm.blobInfoMap, digest)
+		delete(sm.refCounts, digest)
 	}
 
 	return readers
@@ -424,21 +424,12 @@ func (sm *ChunkingStreamManager) releaseStreams(digests map[string]struct{}) map
 
 // drainAndDeleteStreams waits for every client still connected to each reader to disconnect
 // (forcing it after streamDrainTimeout) and deletes its on-disk temp file. Must be called
-// WITHOUT streamLock held - see RemoveStreamingImage's doc comment.
+// WITHOUT streamLock held - see RemoveStreamingImage's doc comment. releaseStreams has already
+// removed these readers' map entries, so no further map cleanup is needed once this returns.
 func (sm *ChunkingStreamManager) drainAndDeleteStreams(readers map[string]*ChunkedBlobReader) {
 	for digest, reader := range readers {
 		reader.WaitForClientEmpty(streamDrainTimeout)
 		sm.deleteStreamFile(digest, reader.OnDiskPath())
-	}
-}
-
-// finalizeRelease removes readers' entries from activeStreams/blobInfoMap/refCounts. Must be
-// called with streamLock held, strictly after drainAndDeleteStreams has already run without it.
-func (sm *ChunkingStreamManager) finalizeRelease(readers map[string]*ChunkedBlobReader) {
-	for digest := range readers {
-		delete(sm.activeStreams, digest)
-		delete(sm.blobInfoMap, digest)
-		delete(sm.refCounts, digest)
 	}
 }
 
