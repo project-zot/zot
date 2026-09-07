@@ -1150,7 +1150,9 @@ func (rh *RouteHandler) writeBlobReadError(
 // (used from CheckBlob/HEAD). Returns a non-nil error - never written to response - when digest
 // is not in the stream cache either, so the caller can fall through to its normal not-found
 // response.
-func (rh *RouteHandler) writeBlobInfoFromStreamCache(repo string, digest godigest.Digest, response http.ResponseWriter) error {
+func (rh *RouteHandler) writeBlobInfoFromStreamCache(repo string, digest godigest.Digest,
+	response http.ResponseWriter,
+) error {
 	streamManager := rh.c.SyncOnDemand.StreamManager()
 	if streamManager == nil {
 		return zerr.ErrStreamManagerNotInitialized
