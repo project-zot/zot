@@ -258,6 +258,51 @@ function manifest_digest() {
         [ "$output" = "200" ]
     done
 
+    # Pull every blob (config + each layer) the manifest above references, from several
+    # concurrent clients each, while the background sync from the manifest pulls above is still
+    # in flight - this is what actually exercises streamBlobToClient/ConnectClient (the manifest
+    # GETs alone never touch /blobs/<digest>). Digest-checking the downloaded bytes verifies
+    # chunked delivery didn't corrupt or truncate content while it was still arriving upstream.
+    local manifest_json
+    manifest_json=$(curl -s \
+        -H "Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json" \
+        "${downstream_url}")
+
+    local blob_digests
+    blob_digests=$(echo "${manifest_json}" | jq -r '[.config.digest] + [.layers[].digest] | .[]')
+    [ -n "${blob_digests}" ]
+
+    local blob_results_dir="${BATS_TEST_TMPDIR}/blob_results"
+    mkdir -p "${blob_results_dir}"
+
+    local blob_pids=()
+    local blob_idx=0
+
+    for digest in ${blob_digests}; do
+        for c in 1 2 3; do
+            blob_idx=$((blob_idx+1))
+            (
+                expected="${digest#sha256:}"
+                actual=$(curl -s "http://127.0.0.1:${zot_stream_port}/v2/golang/blobs/${digest}" | sha256sum | awk '{print $1}')
+                if [ "${actual}" = "${expected}" ]; then
+                    echo "ok" > "${blob_results_dir}/blob_${blob_idx}.result"
+                else
+                    echo "mismatch: digest ${digest} got sha256:${actual}" > "${blob_results_dir}/blob_${blob_idx}.result"
+                fi
+            ) &
+            blob_pids+=($!)
+        done
+    done
+
+    for pid in "${blob_pids[@]}"; do
+        wait "${pid}"
+    done
+
+    for f in "${blob_results_dir}"/blob_*.result; do
+        run cat "${f}"
+        [ "$output" = "ok" ]
+    done
+
     # the background sync started by streaming needs a moment to finish committing the full
     # image (config + every layer) to local storage
     run wait_for_string "successfully synced image" "${BATS_FILE_TMPDIR}/zot-stream/zot.log" "2m"
