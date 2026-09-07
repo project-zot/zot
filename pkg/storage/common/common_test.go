@@ -405,6 +405,23 @@ func TestGetReferrersErrors(t *testing.T) {
 			So(idx.MediaType, ShouldEqual, ispec.MediaTypeImageIndex)
 		})
 
+		Convey("repo dir exists but index.json missing returns empty index", func(c C) {
+			// e.g. a streaming on-demand sync has started committing blobs into the repo dir but
+			// hasn't written index.json yet - this must not surface as an error.
+			mockedStore := &mocks.MockedImageStore{
+				DirExistsFn: func(d string) bool { return true },
+				GetIndexContentFn: func(repo string) ([]byte, error) {
+					return nil, driver.PathNotFoundError{}
+				},
+			}
+
+			idx, err := common.GetReferrers(mockedStore, "zot-test", validDigest,
+				[]string{artifactType}, log)
+			So(err, ShouldBeNil)
+			So(idx.Manifests, ShouldBeEmpty)
+			So(idx.MediaType, ShouldEqual, ispec.MediaTypeImageIndex)
+		})
+
 		storageCtlr := storage.StoreController{DefaultStore: imgStore}
 		err := WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", storageCtlr)
 		So(err, ShouldBeNil)
