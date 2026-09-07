@@ -3,6 +3,7 @@
 package sync
 
 import (
+	"errors"
 	"io"
 	"os"
 	"sync"
@@ -252,6 +253,12 @@ func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string,
 			sm.streamLock.Lock()
 			sm.finalizeRelease(readers)
 			sm.streamLock.Unlock()
+
+			// Preserve ErrTooManyConcurrentStreams so callers (e.g. FetchManifestForStream) can
+			// fall back to a non-streaming on-demand sync instead of failing the request outright.
+			if errors.Is(err, zerr.ErrTooManyConcurrentStreams) {
+				return err
+			}
 
 			return zerr.ErrSyncFailedToPrepareManifest
 		}

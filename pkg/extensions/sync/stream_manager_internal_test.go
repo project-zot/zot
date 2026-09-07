@@ -174,7 +174,9 @@ func TestChunkingStreamManagerMaxConcurrentStreams(t *testing.T) {
 
 	err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, zerr.ErrSyncFailedToPrepareManifest)
+	// The specific cap error must survive (not be masked as a generic failure) so callers like
+	// FetchManifestForStream can fall back to a non-streaming on-demand sync.
+	assert.ErrorIs(t, err, zerr.ErrTooManyConcurrentStreams)
 
 	// Regression test: a mid-way failure must roll back every stream this call created, not
 	// just stay under the cap - otherwise the entry created before hitting the cap leaks
