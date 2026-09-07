@@ -14,17 +14,36 @@ load helpers_wait
 load ../port_helper
 
 function verify_prerequisites() {
-    if [ ! $(command -v curl) ]; then
+    if ! command -v curl >/dev/null 2>&1; then
         echo "you need to install curl as a prerequisite to running the tests" >&3
         return 1
     fi
 
-    if [ ! $(command -v jq) ]; then
+    if ! command -v jq >/dev/null 2>&1; then
         echo "you need to install jq as a prerequisite to running the tests" >&3
         return 1
     fi
 
+    if ! command -v openssl >/dev/null 2>&1; then
+        echo "you need to install openssl as a prerequisite to running the tests" >&3
+        return 1
+    fi
+
     return 0
+}
+
+# Generate a self-signed certificate with the given CN/SAN. Go's TLS client (used by zot's sync
+# client for real, non-insecure hostname verification below) requires a SAN entry - a CN alone is
+# not enough since Go 1.15.
+function generate_self_signed_cert() {
+    local cert_path=${1}
+    local key_path=${2}
+    local common_name=${3:-"localhost"}
+
+    openssl req -x509 -newkey rsa:2048 -keyout "${key_path}" -out "${cert_path}" \
+        -days 365 -nodes \
+        -subj "/C=US/ST=Test/L=Test/O=Zot/CN=${common_name}" \
+        -addext "subjectAltName=DNS:${common_name},IP:127.0.0.1"
 }
 
 function setup_file() {
@@ -37,16 +56,30 @@ function setup_file() {
 
     local zot_minimal_root_dir=${BATS_FILE_TMPDIR}/zot-minimal
     local zot_minimal_config_file=${BATS_FILE_TMPDIR}/zot_minimal_config.json
+    local zot_minimal_cert_file=${BATS_FILE_TMPDIR}/zot_minimal_server.cert
+    local zot_minimal_key_file=${BATS_FILE_TMPDIR}/zot_minimal_server.key
 
     local zot_stream_root_dir=${BATS_FILE_TMPDIR}/zot-stream
     local zot_stream_config_file=${BATS_FILE_TMPDIR}/zot_stream_config.json
+    local zot_stream_cert_dir=${BATS_FILE_TMPDIR}/zot-stream-certs
 
     local zot_stream_capped_root_dir=${BATS_FILE_TMPDIR}/zot-stream-capped
     local zot_stream_capped_config_file=${BATS_FILE_TMPDIR}/zot_stream_capped_config.json
+    local zot_stream_capped_cert_dir=${BATS_FILE_TMPDIR}/zot-stream-capped-certs
 
     mkdir -p ${zot_minimal_root_dir}
     mkdir -p ${zot_stream_root_dir}
     mkdir -p ${zot_stream_capped_root_dir}
+    mkdir -p ${zot_stream_cert_dir}
+    mkdir -p ${zot_stream_capped_cert_dir}
+
+    # Streaming requires a TLS-verified upstream (see validateRegistryStreamingSyncConfig) - a
+    # self-signed cert for the upstream zot_minimal, trusted by each downstream via its sync
+    # registry's certDir, so the sync client performs real certificate/hostname verification
+    # rather than turning it off.
+    generate_self_signed_cert "${zot_minimal_cert_file}" "${zot_minimal_key_file}" "localhost"
+    cp "${zot_minimal_cert_file}" "${zot_stream_cert_dir}/ca.crt"
+    cp "${zot_minimal_cert_file}" "${zot_stream_capped_cert_dir}/ca.crt"
 
     zot_minimal_port=$(get_free_port_for_service "zot_min")
     echo ${zot_minimal_port} > ${BATS_FILE_TMPDIR}/zot_min.port
@@ -65,7 +98,11 @@ function setup_file() {
     },
     "http": {
         "address": "0.0.0.0",
-        "port": "${zot_minimal_port}"
+        "port": "${zot_minimal_port}",
+        "tls": {
+            "cert": "${zot_minimal_cert_file}",
+            "key": "${zot_minimal_key_file}"
+        }
     },
     "log": {
         "level": "debug",
@@ -96,10 +133,11 @@ EOF
         "sync": {
             "registries": [
                 {
-                    "urls": ["http://localhost:${zot_minimal_port}"],
+                    "urls": ["https://localhost:${zot_minimal_port}"],
                     "onDemand": true,
                     "preserveDigest": true,
                     "stream": true,
+                    "certDir": "${zot_stream_cert_dir}",
                     "content": [{"prefix": "**"}]
                 }
             ]
@@ -130,12 +168,12 @@ EOF
         "sync": {
             "registries": [
                 {
-                    "urls": ["http://localhost:${zot_minimal_port}"],
+                    "urls": ["https://localhost:${zot_minimal_port}"],
                     "onDemand": true,
-                    "tlsVerify": false,
                     "preserveDigest": true,
                     "stream": true,
                     "maxConcurrentStreams": 1,
+                    "certDir": "${zot_stream_capped_cert_dir}",
                     "content": [{"prefix": "**"}]
                 }
             ]
@@ -145,9 +183,10 @@ EOF
 EOF
 
     zot_serve ${ZOT_MINIMAL_PATH} ${zot_minimal_config_file}
-    wait_zot_reachable ${zot_minimal_port}
+    wait_zot_reachable ${zot_minimal_port} https
 
-    # seed the upstream with both images before any downstream sync starts
+    # seed the upstream with both images before any downstream sync starts. Pushing here is just
+    # test-data setup (not the streaming sync path under test), so --dest-tls-verify=false is fine.
     skopeo --insecure-policy copy --dest-tls-verify=false \
         oci:${TEST_DATA_DIR}/golang:1.20 \
         docker://127.0.0.1:${zot_minimal_port}/golang:1.20
@@ -175,10 +214,11 @@ function teardown() {
     cat ${BATS_FILE_TMPDIR}/zot-stream-capped/zot.log
 }
 
-# returns the manifest digest a registry serves for repo:reference on stdout
+# returns the manifest digest a registry serves for repo:reference on stdout. -k is a no-op
+# against the plain-http downstream URLs and lets this also hit the TLS upstream (self-signed).
 function manifest_digest() {
     local url=$1
-    curl -s -D - -o /dev/null \
+    curl -s -k -D - -o /dev/null \
         -H "Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json" \
         "${url}" | grep -i "docker-content-digest" | tr -d '\r' | awk '{print $2}'
 }
@@ -187,7 +227,7 @@ function manifest_digest() {
     zot_minimal_port=$(cat ${BATS_FILE_TMPDIR}/zot_min.port)
     zot_stream_port=$(cat ${BATS_FILE_TMPDIR}/zot_stream.port)
 
-    local upstream_url="http://127.0.0.1:${zot_minimal_port}/v2/golang/manifests/1.20"
+    local upstream_url="https://127.0.0.1:${zot_minimal_port}/v2/golang/manifests/1.20"
     local downstream_url="http://127.0.0.1:${zot_stream_port}/v2/golang/manifests/1.20"
 
     local upstream_digest

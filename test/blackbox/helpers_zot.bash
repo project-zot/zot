@@ -160,7 +160,10 @@ function zot_stop_all() {
 # Exits with 1 and a clear message if zot did not start or response is not from zot.
 function wait_zot_reachable() {
     local zot_port=${1}
-    local zot_url=http://127.0.0.1:${zot_port}/v2/_catalog
+    local zot_scheme=${2:-http}
+    local zot_url=${zot_scheme}://127.0.0.1:${zot_port}/v2/_catalog
+    local curl_insecure=()
+    [ "${zot_scheme}" = "https" ] && curl_insecure=(-k)
 
     # If we have zot PIDs, ensure at least one process is still running (zot didn't exit on startup, e.g. bind failure).
     # When multiple zots run in the same test (e.g. sync.bats), zot.pid holds all PIDs; we only require one alive here.
@@ -191,6 +194,7 @@ function wait_zot_reachable() {
         set +e
         response="$(curl -sS --connect-timeout 3 \
             --max-time 5 \
+            "${curl_insecure[@]}" \
             -w "\n%{http_code}" \
             "${zot_url}" 2>"${curl_err_file}")"
         curl_ret=$?
