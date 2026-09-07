@@ -1150,13 +1150,13 @@ func (rh *RouteHandler) writeBlobReadError(
 // (used from CheckBlob/HEAD). Returns a non-nil error - never written to response - when digest
 // is not in the stream cache either, so the caller can fall through to its normal not-found
 // response.
-func (rh *RouteHandler) writeBlobInfoFromStreamCache(digest godigest.Digest, response http.ResponseWriter) error {
+func (rh *RouteHandler) writeBlobInfoFromStreamCache(repo string, digest godigest.Digest, response http.ResponseWriter) error {
 	streamManager := rh.c.SyncOnDemand.StreamManager()
 	if streamManager == nil {
 		return zerr.ErrStreamManagerNotInitialized
 	}
 
-	blobSize, blobMediaType, err := streamManager.CachedBlobInfo(digest.String())
+	blobSize, blobMediaType, err := streamManager.CachedBlobInfo(repo, digest.String())
 	if err != nil {
 		return err
 	}
@@ -1218,7 +1218,7 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 
 	if !ok {
 		if isSyncOnDemandEnabled(rh.c) && rh.c.SyncOnDemand.IsStreamingEnabledForRepo(name) {
-			if streamErr := rh.writeBlobInfoFromStreamCache(digest, response); streamErr == nil {
+			if streamErr := rh.writeBlobInfoFromStreamCache(name, digest, response); streamErr == nil {
 				return
 			}
 		}
@@ -1718,7 +1718,7 @@ func (rh *RouteHandler) streamBlobToClient(response http.ResponseWriter, repo st
 		return false
 	}
 
-	copier, err := streamManager.ConnectClient(digest.String(), response)
+	copier, err := streamManager.ConnectClient(repo, digest.String(), response)
 	if err != nil {
 		return false
 	}
@@ -1730,6 +1730,10 @@ func (rh *RouteHandler) streamBlobToClient(response http.ResponseWriter, repo st
 	if err != nil {
 		rh.c.Log.Error().Err(err).Str("repo", repo).Str("digest", digest.String()).
 			Msg("failed to wait for streamed blob to become ready")
+
+		// Copy() is never going to run on this path, so release the subscription ConnectClient
+		// already registered.
+		copier.Close()
 
 		return false
 	}

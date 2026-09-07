@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -77,7 +78,7 @@ func NewChunkingStreamManager(storeController storage.StoreController, maxConcur
 	}
 }
 
-func (sm *ChunkingStreamManager) ConnectClient(blobDigest string, writer io.Writer) (BlobCopier, error) {
+func (sm *ChunkingStreamManager) ConnectClient(repo, blobDigest string, writer io.Writer) (BlobCopier, error) {
 	// Creates a new inflight blob copier if the blobDigest is an active stream
 	sm.streamLock.Lock()
 	defer sm.streamLock.Unlock()
@@ -92,15 +93,69 @@ func (sm *ChunkingStreamManager) ConnectClient(blobDigest string, writer io.Writ
 		return nil, err
 	}
 
-	copier := NewInFlightBlobCopier(stream, stream.OnDiskPath(), writer, sm.logger)
-	sm.logger.Debug().Str("blob", blobDigest).Msg("connected client for blob")
+	// activeStreams is shared across repos that happen to reference the same digest (see its
+	// doc comment), but HTTP access must stay scoped to repos the caller is actually authorized
+	// for - without this, a caller authorized only for repo B could fetch a digest currently
+	// streaming for private repo A, as long as they knew (or guessed) the digest, by requesting
+	// it through B's blob endpoint. Report the same "not found" error as an unknown digest so a
+	// mismatched repo does not confirm the digest is streaming for someone else.
+	if !sm.digestBelongsToRepo(repo, blobDigest) {
+		return nil, zerr.ErrBlobNotFoundInActiveStreams
+	}
+
+	// Subscribe now, while streamLock is held, rather than leaving it to Copy(): ConnectClient
+	// returning is what lets the caller write response headers (committing to a 200), so the
+	// client must already be a registered subscriber by then. Otherwise a background sync that
+	// finishes in the window between ConnectClient returning and Copy() actually subscribing
+	// would let RemoveStreamingImage's drain see zero subscribers, delete the on-disk temp file,
+	// and leave this already-accepted request with a missing/truncated body.
+	announceChan, subscriptionID := stream.Subscribe()
+
+	copier := NewInFlightBlobCopier(stream, stream.OnDiskPath(), writer, announceChan, subscriptionID, sm.logger)
+	sm.logger.Debug().Str("repo", repo).Str("blob", blobDigest).Msg("connected client for blob")
 
 	return copier, nil
 }
 
-func (sm *ChunkingStreamManager) CachedBlobInfo(blobDigest string) (int64, string, error) {
+// digestBelongsToRepo reports whether blobDigest is referenced by a manifest currently staged
+// for streaming under repo. Must be called with streamLock held.
+func (sm *ChunkingStreamManager) digestBelongsToRepo(repo, blobDigest string) bool {
+	prefix := repo + ":"
+
+	for key, staged := range sm.streamingRefs {
+		if !strings.HasPrefix(key, prefix) {
+			continue
+		}
+
+		reference := strings.TrimPrefix(key, prefix)
+
+		digests := map[string]struct{}{}
+
+		manifestMediaType := manifestpkg.GetMediaType(staged.referenceManifest)
+		switch manifestMediaType {
+		case manifestpkg.MediaTypeOCI1Manifest:
+			sm.collectManifestBlobDigests(repo, reference, staged.referenceManifest, digests)
+		case manifestpkg.MediaTypeOCI1ManifestList:
+			for _, subManifest := range staged.subManifests {
+				sm.collectManifestBlobDigests(repo, reference, subManifest, digests)
+			}
+		}
+
+		if _, ok := digests[blobDigest]; ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (sm *ChunkingStreamManager) CachedBlobInfo(repo, blobDigest string) (int64, string, error) {
 	sm.streamLock.Lock()
 	defer sm.streamLock.Unlock()
+
+	if !sm.digestBelongsToRepo(repo, blobDigest) {
+		return 0, "", zerr.ErrBlobNotFound
+	}
 
 	desc, ok := sm.blobInfoMap[blobDigest]
 	if !ok {

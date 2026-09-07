@@ -31,8 +31,10 @@ type OnDemand interface {
 // concurrently with that download, plus the manifests that are staged for streaming.
 type StreamManager interface {
 	// ConnectClient attaches a client to the active stream for blobDigest, returning a copier
-	// that forwards bytes already on disk and new bytes as they arrive.
-	ConnectClient(blobDigest string, writer io.Writer) (BlobCopier, error)
+	// that forwards bytes already on disk and new bytes as they arrive. repo scopes the lookup:
+	// blobDigest must belong to a manifest currently staged for streaming under repo, even
+	// though the underlying stream may be shared with other repos referencing the same digest.
+	ConnectClient(repo, blobDigest string, writer io.Writer) (BlobCopier, error)
 	// StreamingBlobReader is invoked by regclient as each blob is read from upstream; it wraps
 	// the reader so bytes are simultaneously written to disk and made available to clients.
 	StreamingBlobReader(reader *blob.BReader) (*blob.BReader, error)
@@ -44,8 +46,9 @@ type StreamManager interface {
 	// RemoveStreamingImage purges repo:reference and its blobs from the stream cache once the
 	// background sync into real storage has finished.
 	RemoveStreamingImage(repo, reference string)
-	// CachedBlobInfo returns the size and media type of a blob known to the stream cache.
-	CachedBlobInfo(blobDigest string) (size int64, mediaType string, err error)
+	// CachedBlobInfo returns the size and media type of a blob known to the stream cache, scoped
+	// to repo the same way ConnectClient is.
+	CachedBlobInfo(repo, blobDigest string) (size int64, mediaType string, err error)
 }
 
 // BlobCopier copies a single streamed blob to one connected client.
@@ -57,6 +60,10 @@ type BlobCopier interface {
 	// become available within a bounded wait (e.g. the background sync errored out or was
 	// cancelled before reaching this blob).
 	Descriptor() (descriptor.Descriptor, error)
+	// Close releases resources reserved by ConnectClient (e.g. the reader subscription) when
+	// Copy is never going to be called - e.g. because Descriptor returned an error. Safe (and
+	// unnecessary) to call after Copy as well.
+	Close()
 }
 
 // StreamableManifest holds a manifest staged for streaming, plus (for a multi-arch image) the

@@ -3114,7 +3114,7 @@ func newFakeStreamManagerForOnDemand() *fakeStreamManagerForOnDemand {
 	return &fakeStreamManagerForOnDemand{staged: map[string]*StreamableManifest{}}
 }
 
-func (f *fakeStreamManagerForOnDemand) ConnectClient(_ string, _ io.Writer) (BlobCopier, error) {
+func (f *fakeStreamManagerForOnDemand) ConnectClient(_, _ string, _ io.Writer) (BlobCopier, error) {
 	return nil, zerr.ErrBlobNotFoundInActiveStreams
 }
 
@@ -3148,7 +3148,7 @@ func (f *fakeStreamManagerForOnDemand) RemoveStreamingImage(repo, reference stri
 	delete(f.staged, repo+":"+reference)
 }
 
-func (f *fakeStreamManagerForOnDemand) CachedBlobInfo(_ string) (int64, string, error) {
+func (f *fakeStreamManagerForOnDemand) CachedBlobInfo(_, _ string) (int64, string, error) {
 	return 0, "", zerr.ErrBlobNotFound
 }
 

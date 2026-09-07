@@ -22,20 +22,38 @@ type InFlightBlobCopier struct {
 	dest       io.Writer
 	log        log.Logger
 
+	// announceChan/subscriptionID are obtained via Source.Subscribe() by ConnectClient, before
+	// this copier is even constructed - not lazily in Copy() - so the caller is already a
+	// registered subscriber by the time ConnectClient returns and response headers get written.
+	// See ConnectClient's doc comment for the truncated-body race this avoids.
+	announceChan   chan int64
+	subscriptionID int
+
 	// latestOffset holds the latest byte offset announced by the ChunkedBlobReader.
 	// Updated atomically by the announcement goroutine.
 	latestOffset atomic.Int64
 }
 
 func NewInFlightBlobCopier(
-	source *ChunkedBlobReader, onDiskPath string, dest io.Writer, logger log.Logger,
+	source *ChunkedBlobReader, onDiskPath string, dest io.Writer,
+	announceChan chan int64, subscriptionID int, logger log.Logger,
 ) *InFlightBlobCopier {
 	return &InFlightBlobCopier{
-		Source:     source,
-		onDiskPath: onDiskPath,
-		dest:       dest,
-		log:        logger,
+		Source:         source,
+		onDiskPath:     onDiskPath,
+		dest:           dest,
+		announceChan:   announceChan,
+		subscriptionID: subscriptionID,
+		log:            logger,
 	}
+}
+
+// Close releases this copier's subscription without streaming any bytes - used when a caller
+// obtains a copier (registering a subscription as of ConnectClient) but then never calls Copy(),
+// e.g. because Descriptor() timed out. Calling this is unnecessary, but harmless, if Copy() has
+// already run (Unsubscribe on an already-removed subscription is a no-op).
+func (ifbc *InFlightBlobCopier) Close() {
+	ifbc.Source.Unsubscribe(ifbc.subscriptionID)
 }
 
 // Descriptor returns the descriptor of the blob being streamed.
@@ -54,8 +72,8 @@ func (ifbc *InFlightBlobCopier) Copy() error {
 	}
 	defer onDiskFile.Close()
 
-	byteAnnounceChan, id := ifbc.Source.Subscribe()
-	defer ifbc.Source.Unsubscribe(id)
+	byteAnnounceChan := ifbc.announceChan
+	defer ifbc.Source.Unsubscribe(ifbc.subscriptionID)
 
 	// By the time Copy is called, a caller normally already resolved Descriptor once (e.g.
 	// streamBlobToClient does, to set response headers before ever calling Copy) - the reader is

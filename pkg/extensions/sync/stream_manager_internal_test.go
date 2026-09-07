@@ -134,7 +134,7 @@ func TestChunkingStreamManagerRemoveDoesNotBlockOtherBlobs(t *testing.T) {
 	bResult := make(chan error, 1)
 
 	go func() {
-		_, _, err := sm.CachedBlobInfo(digestB)
+		_, _, err := sm.CachedBlobInfo("repo-b", digestB)
 		bResult <- err
 	}()
 
@@ -243,7 +243,7 @@ func TestChunkingStreamManagerSharedBlobAcrossRepos(t *testing.T) {
 	assert.True(t, stillActive, "a blob still referenced by repo-b must survive repo-a's removal")
 	assert.Equal(t, 1, refCount)
 
-	_, err := sm.ConnectClient(manifestDigest, nil)
+	_, err := sm.ConnectClient("repo-b", manifestDigest, nil)
 	assert.NoError(t, err, "repo-b's clients must still be able to attach to the shared blob")
 
 	// Removing repo-b too must finally tear it down.
@@ -263,7 +263,7 @@ func TestChunkingStreamManagerConnectClientUnknownDigest(t *testing.T) {
 	_, storeCtrl := newTestStore(t)
 	sm := newTestStreamManager(t, storeCtrl, 0)
 
-	_, err := sm.ConnectClient("sha256:"+strings.Repeat("0", 64), nil)
+	_, err := sm.ConnectClient("repo", "sha256:"+strings.Repeat("0", 64), nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, zerr.ErrBlobNotFoundInActiveStreams)
 }
