@@ -567,8 +567,13 @@ func (service *BaseService) FetchManifest(ctx context.Context, repo, reference s
 		}
 	}
 
-	service.markUpstreamChecked(repo, reference)
-
+	// Deliberately no markUpstreamChecked here: unlike SyncImage/SyncImageAtDigest, which only
+	// mark a reference checked after their sync has actually committed it locally, this only
+	// fetched from upstream - the real sync into local storage happens separately, later, in the
+	// background (see FetchManifestForStream). Marking it checked now, before that background
+	// sync even starts, would let ShouldCheckUpstreamManifest skip the upstream check for the rest
+	// of the interval even if that sync then fails, serving a stale (or missing) local manifest
+	// instead of retrying upstream.
 	return fetchedManifest, childManifests, nil
 }
 

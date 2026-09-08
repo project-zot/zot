@@ -492,6 +492,12 @@ func (sm *ChunkingStreamManager) releaseStreams(digests map[string]struct{}) map
 // removed these readers' map entries, so no further map cleanup is needed once this returns.
 func (sm *ChunkingStreamManager) drainAndDeleteStreams(readers map[string]*ChunkedBlobReader) {
 	for digest, reader := range readers {
+		// A client parked in Descriptor/DescriptorWithTimeout is waiting on a different signal
+		// (readerReady) than the announcement channels WaitForClientEmpty drains below, so it
+		// would otherwise sit out streamInitTimeout's full duration even though the outcome - this
+		// blob is never coming - is already known now that the owning sync is finished. Abort is a
+		// no-op if InitReader already resolved this reader.
+		reader.Abort(zerr.ErrStreamNeverInitialized)
 		reader.WaitForClientEmpty(streamDrainTimeout)
 		sm.deleteStreamFile(digest, reader.OnDiskPath())
 	}

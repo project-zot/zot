@@ -25,6 +25,8 @@ type ChunkedBlobReader struct {
 	numBytesReadToDisk int64
 	bytesMu            sync.RWMutex
 	readerReady        chan struct{}
+	readerClosed       bool
+	abortErr           error
 	blobDesc           descriptor.Descriptor
 
 	onDiskPath string
@@ -40,11 +42,16 @@ type ChunkedBlobReader struct {
 	logger log.Logger
 }
 
-// streamInitTimeout bounds how long Descriptor waits for InitReader to run before giving up.
-// Without a bound, a background sync that errors out or is cancelled before its regclient copy
-// reaches this particular blob would leave a client already attached (via ConnectClient) blocked
-// in Descriptor forever - see its doc comment.
-const streamInitTimeout = 2 * time.Minute
+// streamInitTimeout is a last-resort bound on how long Descriptor waits for InitReader to run,
+// covering only the case where nothing else ever unblocks it - ordinarily Abort (called once the
+// owning background sync is known to be finished, successfully or not, without ever reaching this
+// blob - see stream_manager.go's drainAndDeleteStreams) does that promptly instead. It has to be
+// generous: regclient's ImageCopy launches every blob's copy concurrently, but the default
+// per-host request concurrency (3) still queues most blobs behind others, so a blob that is
+// perfectly healthy - the sync is still running and will get to it - can easily wait several
+// minutes behind large earlier layers, well within a sync that's allowed to run for hours (see
+// RegistryConfig.SyncTimeout).
+const streamInitTimeout = 15 * time.Minute
 
 func NewChunkedBlobReader(onDiskPath string, logger log.Logger) (*ChunkedBlobReader, error) {
 	createdFile, err := os.OpenFile(onDiskPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
@@ -80,10 +87,11 @@ func (cbr *ChunkedBlobReader) Descriptor() (descriptor.Descriptor, error) {
 // wait streamInitTimeout out in full - the same reason WaitForClientEmpty takes its timeout as a
 // parameter rather than a package constant.
 //
-// If the descriptor is not yet available, it waits until InitReader sets it or timeout elapses.
-// InitReader only runs once regclient's copy actually reaches this blob (via the
-// StreamingBlobReader hook), so without a bound a caller blocked here would hang indefinitely if
-// the background sync errors out or is cancelled before reaching this blob.
+// If the descriptor is not yet available, it waits until InitReader or Abort resolves it, or
+// timeout elapses - whichever comes first. InitReader only runs once regclient's copy actually
+// reaches this blob (via the StreamingBlobReader hook); Abort runs once the owning background
+// sync is known to be finished without ever reaching it (see its doc comment). Without either of
+// those, or the timeout, a caller blocked here would hang indefinitely.
 func (cbr *ChunkedBlobReader) DescriptorWithTimeout(timeout time.Duration) (descriptor.Descriptor, error) {
 	cbr.bytesMu.RLock()
 	if cbr.inFlightReader != nil {
@@ -94,7 +102,7 @@ func (cbr *ChunkedBlobReader) DescriptorWithTimeout(timeout time.Duration) (desc
 	}
 	cbr.bytesMu.RUnlock()
 
-	// Block without holding any lock until InitReader signals readiness, or timeout elapses.
+	// Block without holding any lock until InitReader/Abort signals resolution, or timeout elapses.
 	select {
 	case <-cbr.readerReady:
 	case <-time.After(timeout):
@@ -104,26 +112,50 @@ func (cbr *ChunkedBlobReader) DescriptorWithTimeout(timeout time.Duration) (desc
 	cbr.bytesMu.RLock()
 	defer cbr.bytesMu.RUnlock()
 
+	if cbr.inFlightReader == nil {
+		// readerReady was closed by Abort, not InitReader - the blob is never coming.
+		return descriptor.Descriptor{}, cbr.abortErr
+	}
+
 	return cbr.blobDesc, nil
 }
 
 // InitReader sets the regclient blob reader and the total number of bytes to read for the blob.
-// Returns true if the init modified the reader, else false if the reader was already
-// initialized.
+// Returns true if the init modified the reader, else false if the reader was already initialized
+// or already aborted (see Abort).
 func (cbr *ChunkedBlobReader) InitReader(blobReader *blob.BReader, desc descriptor.Descriptor) bool {
 	cbr.bytesMu.Lock()
 	defer cbr.bytesMu.Unlock()
 
-	if cbr.inFlightReader == nil {
-		cbr.numBytesTotal = desc.Size
-		cbr.inFlightReader = blobReader
-		cbr.blobDesc = desc
-		close(cbr.readerReady)
-
-		return true
+	if cbr.readerClosed {
+		return false
 	}
 
-	return false
+	cbr.numBytesTotal = desc.Size
+	cbr.inFlightReader = blobReader
+	cbr.blobDesc = desc
+	cbr.readerClosed = true
+	close(cbr.readerReady)
+
+	return true
+}
+
+// Abort unblocks any waiter in Descriptor/DescriptorWithTimeout with err, for a reader whose
+// InitReader is now known to never run - the background sync that would have reached this blob
+// has finished (successfully, having skipped the copy entirely, or with a failure/cancellation)
+// without doing so. Called from drainAndDeleteStreams for every reader RemoveStreamingImage is
+// tearing down. A no-op if InitReader (or an earlier Abort) already resolved this reader.
+func (cbr *ChunkedBlobReader) Abort(err error) {
+	cbr.bytesMu.Lock()
+	defer cbr.bytesMu.Unlock()
+
+	if cbr.readerClosed {
+		return
+	}
+
+	cbr.abortErr = err
+	cbr.readerClosed = true
+	close(cbr.readerReady)
 }
 
 // Read reads the next chunk from the upstream blob reader, writes it to disk, and announces the
@@ -163,6 +195,10 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 		if _, werr := cbr.onDiskFile.Write(buff[:n]); werr != nil {
 			cbr.logger.Error().Err(werr).Msg("failed to write blob data to disk")
 			cbr.bytesMu.Unlock()
+			// Same reasoning as the integrity/upstream error branch above: subscribers waiting on
+			// an announcement would otherwise block until RemoveStreamingImage's drain timeout
+			// forces them out, well after this Read loop has already given up.
+			cbr.abortAllClients()
 
 			return n, werr
 		}
