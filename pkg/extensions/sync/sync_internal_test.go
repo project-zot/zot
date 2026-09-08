@@ -906,7 +906,7 @@ func TestService(t *testing.T) {
 
 			runConcurrentDedup(t, &onDemand.flight, onDemandKey(onDemandKindImage, "dedup-repo", "dedup-tag"), &syncCalls, nil,
 				func(ctx context.Context) error {
-					return onDemand.syncImage(ctx, "dedup-repo", "dedup-tag", -1, false)
+					return onDemand.syncImage(ctx, "dedup-repo", "dedup-tag", -1, "", false)
 				})
 		})
 
@@ -929,7 +929,7 @@ func TestService(t *testing.T) {
 			runConcurrentDedup(t, &onDemand.flight, onDemandKey(onDemandKindImage, "dedup-repo-err", "dedup-tag"),
 				&syncCalls, wantErr,
 				func(ctx context.Context) error {
-					return onDemand.syncImage(ctx, "dedup-repo-err", "dedup-tag", -1, false)
+					return onDemand.syncImage(ctx, "dedup-repo-err", "dedup-tag", -1, "", false)
 				})
 		})
 
@@ -3402,6 +3402,10 @@ func TestFetchManifestForStream(t *testing.T) {
 
 				return manB, nil, nil
 			},
+			// Holds the winner's background SyncImage in flight, so its RemoveStreamingImage
+			// cleanup (owned by that same background goroutine, see on_demand.go) can't fire
+			// before this test inspects the still-staged cache entry below.
+			syncImageBlock: make(chan struct{}),
 		}
 		onDemand.Add(service)
 
@@ -3423,11 +3427,19 @@ func TestFetchManifestForStream(t *testing.T) {
 
 		wg.Wait()
 
+		// Wait for the winner's background sync to reach (and block in) SyncImage, so its
+		// RemoveStreamingImage cleanup is guaranteed not to have run yet.
+		for i := 0; i < 50 && atomic.LoadInt32(&service.syncImageCalls) < 1; i++ {
+			time.Sleep(10 * time.Millisecond)
+		}
+
 		staged, ok := fakeSM.StreamingImageManifest("repo", "latest")
 		So(ok, ShouldBeTrue)
 
 		for i := range numConcurrent {
 			So(results[i], ShouldEqual, staged.referenceManifest)
 		}
+
+		close(service.syncImageBlock)
 	})
 }

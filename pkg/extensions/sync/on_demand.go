@@ -7,6 +7,7 @@ import (
 	"errors"
 	"sync"
 
+	godigest "github.com/opencontainers/go-digest"
 	"github.com/regclient/regclient/types/manifest"
 	"golang.org/x/sync/singleflight"
 
@@ -178,9 +179,25 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, 
 
 	onDemand.log.Debug().Str("repo", repo).Str("reference", reference).Msg("syncing image in the background")
 
+	// Pin the background sync to the exact digest just fetched and staged, rather than letting it
+	// re-resolve reference (possibly a mutable tag) against upstream again - a tag that moved
+	// between the FetchManifest call above and this background sync would otherwise let it copy
+	// content different from what's staged, desyncing the blob-reader hook from the digests
+	// streaming clients actually received. See PinnedSyncer's doc comment.
+	pinnedDigest := resultManifest.GetDescriptor().Digest
+
 	go func() {
+		// This goroutine is the sole owner of the entry StoreImageForStreaming just staged: it is
+		// the only caller that will ever run a background sync for this repo:reference while that
+		// entry exists (a concurrent request for the same key returns the cached manifest above
+		// instead of staging or syncing again), so it - and only it - purges the stream cache once
+		// its sync finishes, success or failure. Deferred immediately (before the sync call) so it
+		// always runs, unlike registering it deep inside the sync only after earlier fallible steps
+		// have already returned.
+		defer onDemand.streamManager.RemoveStreamingImage(repo, reference)
+
 		syncCtx := context.WithoutCancel(ctx)
-		if err := onDemand.syncImageDeduped(syncCtx, repo, reference, selectedIdx); err != nil {
+		if err := onDemand.syncImageDeduped(syncCtx, repo, reference, selectedIdx, pinnedDigest); err != nil {
 			onDemand.log.Err(err).Str("repository", repo).Str("reference", reference).
 				Msg("background sync after streaming failed")
 		}
@@ -211,7 +228,7 @@ func onDemandKey(kind, repo, reference string) string {
 type onDemandSyncFn func(ctx context.Context, service Service) error
 
 func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference string) error {
-	return onDemand.syncImageDeduped(ctx, repo, reference, -1)
+	return onDemand.syncImageDeduped(ctx, repo, reference, -1, "")
 }
 
 // syncImageDeduped runs the singleflight-deduped image sync for repo:reference, optionally
@@ -222,11 +239,28 @@ func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference str
 // installs the stream manager's reader hook for the blobs already staged under that manifest;
 // letting a different, unpinned service win the sync would leave those staged blobs with no
 // reader hook, hanging every attached client until DescriptorWithTimeout gives up.
-func (onDemand *BaseOnDemand) syncImageDeduped(ctx context.Context, repo, reference string, pinnedIdx int) error {
-	return onDemand.doOnDemandFlight(onDemandKey(onDemandKindImage, repo, reference), repo, reference,
+//
+// pinnedDigest, when set, is additionally passed to the pinned service via PinnedSyncer (if it
+// implements that optional interface) so the sync's remote fetch targets that exact digest
+// instead of re-resolving reference - see PinnedSyncer's doc comment for why.
+//
+// A pinned call uses a singleflight key distinct from the plain repo:reference key that ordinary
+// (unpinned) SyncImage calls share: without that, an ordinary sync already in flight for the same
+// repo:reference would win the singleflight race, and the pinned caller would just be handed that
+// unrelated, unpinned sync's result - silently skipping the pinned service and its reader-hook
+// install rather than ever running its own closure.
+func (onDemand *BaseOnDemand) syncImageDeduped(ctx context.Context, repo, reference string,
+	pinnedIdx int, pinnedDigest godigest.Digest,
+) error {
+	key := onDemandKey(onDemandKindImage, repo, reference)
+	if pinnedIdx >= 0 {
+		key += "\x00pinned"
+	}
+
+	return onDemand.doOnDemandFlight(key, repo, reference,
 		"image already demanded, on-demand sync result was shared",
 		func() error {
-			return onDemand.syncImage(ctx, repo, reference, pinnedIdx, true)
+			return onDemand.syncImage(ctx, repo, reference, pinnedIdx, pinnedDigest, true)
 		})
 }
 
@@ -280,14 +314,14 @@ func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDi
 		})
 }
 
-func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference string, pinnedIdx int,
-	scheduleBackground bool,
+func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference string,
+	pinnedIdx int, pinnedDigest godigest.Digest, scheduleBackground bool,
 ) error {
 	var dockerCompatErr error
 
 	err := onDemand.runOnDemand(ctx, repo, reference, "starting on-demand image sync", pinnedIdx,
 		func(syncCtx context.Context, service Service) error {
-			err := service.SyncImage(syncCtx, repo, reference)
+			err := syncImageOnService(syncCtx, service, repo, reference, pinnedDigest)
 			if errors.Is(err, zerr.ErrSyncDockerCompatRequired) {
 				dockerCompatErr = err
 			}
@@ -297,7 +331,7 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference str
 					"image already demanded, on-demand sync result was shared",
 					service, err,
 					func(retryCtx context.Context) error {
-						return onDemand.syncImage(retryCtx, repo, reference, pinnedIdx, false)
+						return onDemand.syncImage(retryCtx, repo, reference, pinnedIdx, pinnedDigest, false)
 					})
 			}
 
@@ -312,6 +346,21 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference str
 	}
 
 	return err
+}
+
+// syncImageOnService runs service's sync of repo:reference, using PinnedSyncer's
+// SyncImageAtDigest instead of the plain SyncImage when pinnedDigest is set and service
+// implements that optional interface.
+func syncImageOnService(ctx context.Context, service Service, repo, reference string,
+	pinnedDigest godigest.Digest,
+) error {
+	if pinnedDigest != "" {
+		if pinnedSyncer, ok := service.(PinnedSyncer); ok {
+			return pinnedSyncer.SyncImageAtDigest(ctx, repo, reference, pinnedDigest)
+		}
+	}
+
+	return service.SyncImage(ctx, repo, reference)
 }
 
 // runOnDemand tries each configured registry until one succeeds. pinnedIdx < 0 tries every

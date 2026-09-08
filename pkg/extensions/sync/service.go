@@ -618,6 +618,55 @@ func (service *BaseService) SyncImage(ctx context.Context, repo, reference strin
 	return nil
 }
 
+// SyncImageAtDigest is SyncImage, except the remote fetch is pinned to digest instead of being
+// resolved fresh from tag - see PinnedSyncer's doc comment for why a caller would want that. The
+// local commit is still keyed by tag, exactly as SyncImage does.
+func (service *BaseService) SyncImageAtDigest(ctx context.Context, repo, tag string, digest godigest.Digest) error {
+	remoteRepo := repo
+
+	// Content rules are local config — apply them before credential refresh or upstream I/O.
+	if len(service.config.Content) > 0 {
+		remoteRepo = service.contentManager.GetRepoSource(repo)
+		if remoteRepo == "" {
+			service.log.Info().Str("remote", service.remoteHostName()).Str("repo", repo).Str("reference", tag).
+				Msg("will not sync image, filtered out by content")
+
+			return zerr.ErrSyncImageFilteredOut
+		}
+	}
+
+	/* Refresh before taking the read lock: a refresh reinitializes the client under the
+	write lock, which a held read lock would deadlock against. */
+	if err := service.refreshRegistryTemporaryCredentials(); err != nil {
+		service.log.Error().Err(err).Msg("failed to refresh credentials")
+	}
+
+	service.log.Info().Str("remote", service.remoteHostName()).Str("repo", repo).Str("reference", tag).
+		Str("digest", digest.String()).Msg("sync: syncing image pinned to digest")
+
+	opts := syncImageOptions{
+		WithReferrers: false,
+		// Always sparse for on-demand (any tag/digest): indexes copy root only;
+		// image manifests still get config+layers via full ImageCopy.
+		Strategy:         copySparseIndex,
+		TagContentDigest: digest,
+	}
+
+	// Multi-arch signatures cover the index, not each platform child. Digest pulls skip
+	// OnlySigned so tag→digest client flows work; tags still enforce signatures.
+	if _, parseErr := godigest.Parse(tag); parseErr == nil {
+		opts.SkipOnlySigned = true
+	}
+
+	if err := service.ensureImage(ctx, repo, remoteRepo, tag, nil, opts); err != nil {
+		return err
+	}
+
+	service.markUpstreamChecked(repo, tag)
+
+	return nil
+}
+
 func (service *BaseService) SyncReferrers(ctx context.Context, repo string,
 	subjectDigestStr string, referenceTypes []string,
 ) error {
@@ -1275,6 +1324,9 @@ func (service *BaseService) enforceOnlySigned(ctx context.Context, remoteRepo, t
 	return nil
 }
 
+// syncImage syncs localRepo:tag from remoteRepo:tag, unless pinnedDigest is set, in which case
+// the remote fetch targets that exact digest instead of re-resolving tag - see PinnedSyncer's doc
+// comment for why a caller would want that. Either way the local commit is keyed by tag.
 func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo, tag string,
 	repoTags []string, opts syncImageOptions,
 ) error {
@@ -1299,16 +1351,13 @@ func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo
 	// Clean up temp layout on all exit paths after we have a local ref.
 	defer service.destination.CleanupImage(localImageRef, localRepo) //nolint: errcheck
 
-	// Purge the stream cache only once this sync finishes (success or failure), since only then
-	// do streaming clients have a complete, verified blob or a reason for this background sync to
-	// retry independently. Deferred so it runs after syncRef (below) has actually copied the
-	// image, rather than racing the download/streaming-blob-reader setup it's meant to clean up
-	// after.
-	if service.streamManager != nil {
-		defer func() {
-			go service.streamManager.RemoveStreamingImage(localRepo, tag)
-		}()
-	}
+	// Deliberately no stream-cache cleanup here: this syncImage is shared by SyncRepo's periodic
+	// sync and plain on-demand SyncImage, either of which can run for localRepo:tag concurrently
+	// with an unrelated streaming background sync of the very same reference. Purging the stream
+	// cache from here would race that background sync's own copy, potentially removing the active
+	// readers/blob-reader hook it's still using and truncating attached clients. Only the
+	// FetchManifestForStream background goroutine that actually staged the entry owns removing it
+	// - see its defer in on_demand.go.
 
 	err = func() error {
 		service.clientLock.RLock()

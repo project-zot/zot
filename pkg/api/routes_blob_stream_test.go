@@ -92,7 +92,12 @@ func (c *fakeBlobCopier) Copy() error {
 
 func (c *fakeBlobCopier) Close() { c.closed = true }
 
-func newBlobStreamTestRouteHandlerRequest(method, name, digest string) *http.Request {
+func newBlobStreamTestRouteHandlerRequest(method string) *http.Request {
+	const (
+		name   = "test"
+		digest = "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+	)
+
 	req := httptest.NewRequestWithContext(
 		context.Background(),
 		method,
@@ -127,7 +132,7 @@ func TestCheckBlobStreamingFallback(t *testing.T) {
 			}, syncOnDemand)
 
 			rec := httptest.NewRecorder()
-			handler.CheckBlob(rec, newBlobStreamTestRouteHandlerRequest(http.MethodHead, "test", digest))
+			handler.CheckBlob(rec, newBlobStreamTestRouteHandlerRequest(http.MethodHead))
 
 			resp := rec.Result()
 			defer resp.Body.Close()
@@ -150,7 +155,7 @@ func TestCheckBlobStreamingFallback(t *testing.T) {
 			}, syncOnDemand)
 
 			rec := httptest.NewRecorder()
-			handler.CheckBlob(rec, newBlobStreamTestRouteHandlerRequest(http.MethodHead, "test", digest))
+			handler.CheckBlob(rec, newBlobStreamTestRouteHandlerRequest(http.MethodHead))
 
 			resp := rec.Result()
 			defer resp.Body.Close()
@@ -170,7 +175,7 @@ func TestCheckBlobStreamingFallback(t *testing.T) {
 			}, syncOnDemand)
 
 			rec := httptest.NewRecorder()
-			handler.CheckBlob(rec, newBlobStreamTestRouteHandlerRequest(http.MethodHead, "test", digest))
+			handler.CheckBlob(rec, newBlobStreamTestRouteHandlerRequest(http.MethodHead))
 
 			resp := rec.Result()
 			defer resp.Body.Close()
@@ -210,7 +215,7 @@ func TestGetBlobStreamingFallback(t *testing.T) {
 			handler := newSyncTestRouteHandler(t, notFoundStore, syncOnDemand)
 
 			rec := httptest.NewRecorder()
-			handler.GetBlob(rec, newBlobStreamTestRouteHandlerRequest(http.MethodGet, "test", digest))
+			handler.GetBlob(rec, newBlobStreamTestRouteHandlerRequest(http.MethodGet))
 
 			resp := rec.Result()
 			defer resp.Body.Close()
@@ -241,7 +246,7 @@ func TestGetBlobStreamingFallback(t *testing.T) {
 			handler := newSyncTestRouteHandler(t, notFoundStore, syncOnDemand)
 
 			rec := httptest.NewRecorder()
-			handler.GetBlob(rec, newBlobStreamTestRouteHandlerRequest(http.MethodGet, "test", digest))
+			handler.GetBlob(rec, newBlobStreamTestRouteHandlerRequest(http.MethodGet))
 
 			resp := rec.Result()
 			defer resp.Body.Close()
@@ -259,7 +264,7 @@ func TestGetBlobStreamingFallback(t *testing.T) {
 			handler := newSyncTestRouteHandler(t, notFoundStore, syncOnDemand)
 
 			rec := httptest.NewRecorder()
-			handler.GetBlob(rec, newBlobStreamTestRouteHandlerRequest(http.MethodGet, "test", digest))
+			handler.GetBlob(rec, newBlobStreamTestRouteHandlerRequest(http.MethodGet))
 
 			resp := rec.Result()
 			defer resp.Body.Close()

@@ -10,6 +10,7 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/regclient/regclient"
+	"github.com/regclient/regclient/types/descriptor"
 	"github.com/regclient/regclient/types/manifest"
 	"github.com/regclient/regclient/types/ref"
 	"github.com/stretchr/testify/assert"
@@ -57,13 +58,16 @@ func (f *fakeFetchManifestRemote) GetTags(_ context.Context, _ string) ([]string
 	return nil, nil
 }
 
-func (f *fakeFetchManifestRemote) GetOCIDigest(_ context.Context, _, _ string,
-) (godigest.Digest, godigest.Digest, bool, []godigest.Digest, error) {
-	return "", "", false, nil, nil
+func (f *fakeFetchManifestRemote) HeadManifest(_ context.Context, _, _ string) (godigest.Digest, string, error) {
+	return "", "", nil
 }
 
-func (f *fakeFetchManifestRemote) GetDigest(_ context.Context, _, _ string) (godigest.Digest, error) {
-	return "", nil
+func (f *fakeFetchManifestRemote) HeadManifestRef(_ context.Context, _ ref.Ref) (godigest.Digest, string, error) {
+	return "", "", nil
+}
+
+func (f *fakeFetchManifestRemote) GetManifestList(_ context.Context, _, _ string) ([]descriptor.Descriptor, error) {
+	return nil, nil
 }
 
 func newFetchManifestTestService(root string, content []syncconf.Content, onlySigned *bool) *BaseService {

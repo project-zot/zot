@@ -98,6 +98,25 @@ func writeDockerSingleManifest(t *testing.T, storeCtrl stypes.StoreController, r
 	return repoPath(root, repo)
 }
 
+// platformImages returns one image per platform for building a multi-arch index/list.
+func platformImages() []Image {
+	return []Image{
+		CreateImageWith().DefaultLayers().PlatformConfig("amd64", "linux").Build(),
+		CreateImageWith().DefaultLayers().PlatformConfig("arm64", "linux").Build(),
+		CreateImageWith().DefaultLayers().PlatformConfig("arm", "linux").Build(),
+	}
+}
+
+// writeOCIMultiPlatformIndex writes a multi-arch OCI image index for repo:tag into storeCtrl.
+func writeOCIMultiPlatformIndex(t *testing.T, storeCtrl stypes.StoreController, root, repo, tag string) string {
+	t.Helper()
+
+	multiarch := CreateMultiarchWith().Images(platformImages()).Build()
+	assert.NoError(t, WriteMultiArchImageToFileSystem(multiarch, repo, tag, storeCtrl))
+
+	return repoPath(root, repo)
+}
+
 func TestPreseedLocalBlobs(t *testing.T) {
 	t.Parallel()
 

@@ -35,6 +35,9 @@ import (
 // Stand-in for a contended redis/redsync lock error from UpdateStatsOnDownload.
 var errStatsLockContention = errors.New("failed to acquire redis lock")
 
+// Stand-in for an on-demand sync failure reaching upstream.
+var errUpstreamUnreachable = errors.New("upstream unreachable")
+
 type mockSyncOnDemand struct {
 	syncImageFn                   func(ctx context.Context, repo, reference string) error
 	syncReferrersFn               func(ctx context.Context, repo, subjectDigestStr string, referenceTypes []string) error
@@ -483,7 +486,7 @@ func TestGetReferrers(t *testing.T) {
 		Convey("still serves the local store's referrers when the on-demand sync fails", func() {
 			syncOnDemand := &mockSyncOnDemand{
 				syncReferrersFn: func(_ context.Context, _, _ string, _ []string) error {
-					return errors.New("upstream unreachable")
+					return errUpstreamUnreachable
 				},
 			}
 			handler := newSyncTestRouteHandler(t, mocks.MockedImageStore{

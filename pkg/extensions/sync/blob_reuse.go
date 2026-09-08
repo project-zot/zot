@@ -77,13 +77,23 @@ func preseedBlob(imageStore storageTypes.ImageStore, localRepo string,
 	}
 	defer src.Close()
 
-	dest, err := os.Create(destPath)
+	dest, err := os.CreateTemp(path.Dir(destPath), ".preseed-*")
 	if err != nil {
 		return err
 	}
-	defer dest.Close()
 
-	_, err = io.Copy(dest, src)
+	tempPath := dest.Name()
+	defer os.Remove(tempPath)
 
-	return err
+	if _, err := io.Copy(dest, src); err != nil {
+		dest.Close()
+
+		return err
+	}
+
+	if err := dest.Close(); err != nil {
+		return err
+	}
+
+	return os.Rename(tempPath, destPath)
 }
