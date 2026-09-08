@@ -1163,10 +1163,12 @@ func (rh *RouteHandler) writeBlobInfoFromStreamCache(repo string, digest godiges
 		return err
 	}
 
-	// Match the local blob path's contract (constants.BinaryMediaType, no Accept-Ranges - range
-	// requests against an in-flight stream aren't supported, see streamBlobToClient) rather than
-	// exposing the manifest's own media type, which every non-streaming blob response omits.
+	// Match the local blob path's contract (constants.BinaryMediaType rather than exposing the
+	// manifest's own media type, which every non-streaming blob response omits; Accept-Ranges,
+	// since a single-range GET against an in-flight stream is supported - see
+	// streamBlobRangeToClient. Multi-range is not, but Accept-Ranges never promised that either).
 	response.Header().Set("Content-Length", strconv.FormatInt(blobSize, 10))
+	response.Header().Set("Accept-Ranges", "bytes")
 	response.Header().Set("Content-Type", constants.BinaryMediaType)
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
 	response.WriteHeader(http.StatusOK)
@@ -1608,6 +1610,17 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 		}
 
 		if !ok {
+			// Not found locally: a streaming-enabled repo may still be downloading this blob from
+			// upstream, same as the plain-GET fallback below - but only for a single requested
+			// range, see streamBlobRangeToClient's doc comment. A malformed/out-of-bounds range (or
+			// digest genuinely unknown to streaming too) falls through to the same 404 as before
+			// this existed.
+			if isSyncOnDemandEnabled(rh.c) && rh.c.SyncOnDemand.IsStreamingEnabledForRepo(name) {
+				if rh.streamBlobRangeToClient(response, name, digest, contentRange) {
+					return
+				}
+			}
+
 			e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(map[string]string{"digest": digest.String()})
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
@@ -1752,6 +1765,69 @@ func (rh *RouteHandler) streamBlobToClient(response http.ResponseWriter, repo st
 	if err := copier.Copy(); err != nil {
 		rh.c.Log.Error().Err(err).Str("repo", repo).Str("digest", digest.String()).
 			Msg("error while streaming blob to client")
+	}
+
+	return true
+}
+
+// streamBlobRangeToClient is streamBlobToClient's Range-request counterpart: it attaches to
+// digest's active stream and serves a single-range 206 response sourced from bytes already on
+// disk plus new bytes as they continue arriving from upstream.
+//
+// Only a single range is supported - multi-range (multipart/byteranges) against a live, still-
+// growing file would need to read several disjoint, concurrently-arriving windows in one
+// response, which isn't implemented. A multi-range request, like an unknown digest, returns false
+// so the caller falls through to its normal not-found handling, same as before range support
+// existed for a streaming blob at all.
+//
+// Unlike streamBlobToClient, the size needed to validate the range is available immediately via
+// CachedBlobInfo (from the descriptor already staged with the manifest), without waiting for the
+// download to even start - so a malformed or out-of-bounds range against a digest that IS staged
+// for streaming gets a proper 416 (returns true - response written) rather than falling through to
+// a plain 404.
+func (rh *RouteHandler) streamBlobRangeToClient(
+	response http.ResponseWriter, repo string, digest godigest.Digest, contentRange string,
+) bool {
+	streamManager := rh.c.SyncOnDemand.StreamManager()
+	if streamManager == nil {
+		return false
+	}
+
+	size, _, err := streamManager.CachedBlobInfo(repo, digest.String())
+	if err != nil {
+		return false
+	}
+
+	ranges, err := parseRangeHeader(contentRange, size)
+	if err != nil {
+		response.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", size))
+		response.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+
+		return true
+	}
+
+	if len(ranges) > 1 {
+		return false
+	}
+
+	rng := ranges[0]
+
+	copier, err := streamManager.ConnectClient(repo, digest.String(), response)
+	if err != nil {
+		return false
+	}
+
+	// constants.BinaryMediaType, not the manifest-declared media type: matches streamBlobToClient
+	// and every non-streaming blob response.
+	response.Header().Set(constants.DistContentDigestKey, digest.String())
+	response.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", rng.start, rng.end, size))
+	response.Header().Set("Content-Length", strconv.FormatInt(rng.length(), 10))
+	response.Header().Set("Content-Type", constants.BinaryMediaType)
+	response.WriteHeader(http.StatusPartialContent)
+
+	if err := copier.CopyRange(rng.start, rng.end); err != nil {
+		rh.c.Log.Error().Err(err).Str("repo", repo).Str("digest", digest.String()).
+			Msg("error while streaming blob range to client")
 	}
 
 	return true

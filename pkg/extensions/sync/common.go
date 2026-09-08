@@ -55,11 +55,17 @@ type StreamManager interface {
 	CachedBlobInfo(repo, blobDigest string) (size int64, mediaType string, err error)
 }
 
-// BlobCopier copies a single streamed blob to one connected client.
+// BlobCopier copies a single streamed blob (or a byte range of one) to one connected client.
 type BlobCopier interface {
 	// Copy streams the blob to the client, returning once the blob is fully copied or an error
 	// (including an upstream download failure) ends the stream.
 	Copy() error
+	// CopyRange streams bytes [start, end] (inclusive) of the blob to the client, returning once
+	// that range is fully copied or an error ends the stream - it can finish as soon as its own
+	// end has arrived, without waiting for the rest of the blob to finish downloading. The caller
+	// must validate start/end against the blob's actual size (e.g. via
+	// StreamManager.CachedBlobInfo) before calling this.
+	CopyRange(start, end int64) error
 	// Descriptor returns the descriptor of the blob being streamed, or an error if it does not
 	// become available within a bounded wait (e.g. the background sync errored out or was
 	// cancelled before reaching this blob).
