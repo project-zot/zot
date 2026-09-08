@@ -2155,6 +2155,42 @@ func TestTLSWithBasicAuth(t *testing.T) {
 	})
 }
 
+func TestStrictTransportSecurityOnUnmatchedRoute(t *testing.T) {
+	Convey("Make a new TLS controller", t, func() {
+		_, serverCertPath, serverKeyPath, _, _, caCertPEM := setupTestCerts(t)
+
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCertPEM)
+
+		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
+
+		defer func() { resty.SetTLSClientConfig(nil) }()
+
+		conf := config.New()
+		conf.HTTP.Port = "0"
+		conf.HTTP.TLS = &config.TLSConfig{
+			Cert: serverCertPath,
+			Key:  serverKeyPath,
+		}
+
+		ctlr := makeController(conf, t.TempDir())
+
+		cm := test.NewControllerManager(ctlr)
+		secureBaseURL := cm.StartAndWait()
+
+		defer cm.StopServer()
+
+		// this path doesn't match any registered route, so mux.Router falls back to
+		// its NotFoundHandler, which never runs router.Use() middlewares - HSTS must
+		// still be set because it's applied at the http.Server.Handler boundary.
+		resp, err := resty.R().Get(secureBaseURL + "/this-route-does-not-exist")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+		So(resp.Header().Get("Strict-Transport-Security"), ShouldEqual, "max-age=63072000; includeSubDomains")
+	})
+}
+
 func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		// Generate certificates dynamically for the test

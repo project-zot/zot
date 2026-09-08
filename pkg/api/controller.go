@@ -200,8 +200,11 @@ func (c *Controller) Run() error {
 		return err
 	}
 	server := &http.Server{
-		Addr:              addr,
-		Handler:           c.Router,
+		Addr: addr,
+		// mux.Router only runs its Use() middlewares for matched routes, so
+		// unmatched requests (404/405) would otherwise skip HSTS. Wrap the
+		// whole router here so every response gets it.
+		Handler:           StrictTransportSecurityHandler()(c.Router),
 		ReadTimeout:       c.Config.GetHTTPReadTimeout(),
 		WriteTimeout:      c.Config.GetHTTPWriteTimeout(),
 		IdleTimeout:       idleTimeout,
