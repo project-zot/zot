@@ -4,6 +4,7 @@ package sync
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -51,6 +52,11 @@ type ChunkingStreamManager struct {
 	maxConcurrentStreams int
 	logger               log.Logger
 	streamLock           sync.Mutex
+	// nextStreamGen is a per-manager counter appended to every new reader's on-disk path (see
+	// prepareActiveStreamForBlob), so a digest's path is unique per ChunkedBlobReader instance
+	// rather than deterministic from (repo, digest) alone. Only ever read/written under
+	// streamLock, which every caller of prepareActiveStreamForBlob already holds.
+	nextStreamGen uint64
 }
 
 // NewChunkingStreamManager creates a ChunkingStreamManager backed by a per-repo temp directory
@@ -218,7 +224,18 @@ func (sm *ChunkingStreamManager) prepareActiveStreamForBlob(repo string, desc de
 
 	sm.logger.Debug().Str("blob", digest).Msg("adding blob to active stream")
 
-	r, err := NewChunkedBlobReader(sm.tempStore.BlobPath(repo, desc.Digest), sm.logger)
+	// tempStore.BlobPath alone is deterministic from (repo, digest), so a digest torn down here
+	// (releaseStreams below deletes it from activeStreams before drainAndDeleteStreams gets around
+	// to actually deleting its file - see RemoveStreamingImage) and immediately re-requested would
+	// otherwise collide with the very file the old, still-draining reader is using: the new
+	// reader's O_TRUNC on that same path corrupts any of the old reader's clients still reading
+	// it, and the old cleanup's later os.Remove can then delete out from under the new reader
+	// instead. Suffix a per-manager generation counter so every reader instance gets its own path,
+	// regardless of how creation and teardown for the same digest interleave.
+	sm.nextStreamGen++
+	onDiskPath := fmt.Sprintf("%s.%d", sm.tempStore.BlobPath(repo, desc.Digest), sm.nextStreamGen)
+
+	r, err := NewChunkedBlobReader(onDiskPath, sm.logger)
 	if err != nil {
 		return err
 	}
