@@ -3077,6 +3077,42 @@ func TestBaseServiceShouldCheckUpstream(t *testing.T) {
 	})
 }
 
+func TestBaseServiceIsStreamingForRepo(t *testing.T) {
+	Convey("Streaming disabled means no repo streams, regardless of Content", t, func() {
+		service := &BaseService{config: syncconf.RegistryConfig{}}
+		So(service.IsStreamingForRepo("any/repo"), ShouldBeFalse)
+	})
+
+	stream := true
+
+	Convey("Streaming enabled with no Content rules streams every repo", t, func() {
+		service := &BaseService{config: syncconf.RegistryConfig{Stream: &stream}}
+		So(service.IsStreamingForRepo("any/repo"), ShouldBeTrue)
+	})
+
+	Convey("Streaming enabled with Content rules is gated per repo", t, func() {
+		content := []syncconf.Content{{Prefix: "streamed/**"}}
+		service := &BaseService{
+			config:         syncconf.RegistryConfig{Stream: &stream, Content: content},
+			contentManager: NewContentManager(content, log.NewTestLogger()),
+		}
+		So(service.IsStreamingForRepo("streamed/foo"), ShouldBeTrue)
+		So(service.IsStreamingForRepo("other/foo"), ShouldBeFalse)
+	})
+}
+
+func TestBaseServiceGetSyncTimeout(t *testing.T) {
+	Convey("An unset SyncTimeout falls back to the default", t, func() {
+		service := &BaseService{config: syncconf.RegistryConfig{}}
+		So(service.GetSyncTimeout(), ShouldEqual, syncConstants.DefaultSyncTimeout)
+	})
+
+	Convey("A configured SyncTimeout is used as-is", t, func() {
+		service := &BaseService{config: syncconf.RegistryConfig{SyncTimeout: 5 * time.Minute}}
+		So(service.GetSyncTimeout(), ShouldEqual, 5*time.Minute)
+	})
+}
+
 func TestOnDemandShouldCheckUpstreamManifest(t *testing.T) {
 	Convey("With no services configured the check is due", t, func() {
 		onDemand := NewOnDemand(log.NewTestLogger())

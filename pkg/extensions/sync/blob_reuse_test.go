@@ -167,6 +167,74 @@ func TestPreseedLocalBlobs(t *testing.T) {
 	assert.Equal(t, len(presentDigests), seededAgain)
 }
 
+// singlePresentBlobDigest writes a single-manifest image into repo and returns one of its blob
+// digests (the config), which preseedLocalBlobs will find present via CheckBlob.
+func singlePresentBlobDigest(t *testing.T, storeCtrl storage.StoreController, root, repo string) godigest.Digest {
+	t.Helper()
+
+	writeOCISingleManifest(t, storeCtrl, root, repo, predictTestTag)
+
+	regClient := regclient.New()
+	srcRef := mustOCIDirRef(t, repoPath(root, repo), predictTestTag)
+
+	man, err := regClient.ManifestGet(context.Background(), srcRef)
+	require.NoError(t, err)
+
+	defer regClient.Close(context.Background(), man.GetRef())
+
+	imager, ok := man.(manifest.Imager)
+	require.True(t, ok)
+
+	configDesc, err := imager.GetConfig()
+	require.NoError(t, err)
+
+	return configDesc.Digest
+}
+
+func TestPreseedLocalBlobsErrorPathsFailOpen(t *testing.T) {
+	t.Parallel()
+
+	root, storeCtrl := newTestStore(t)
+	concrete, ok := storeCtrl.(storage.StoreController)
+	require.True(t, ok)
+
+	service := newTestBaseService(t, concrete)
+
+	digest := singlePresentBlobDigest(t, concrete, root, "repo-a")
+
+	t.Run("destination directory collides with a plain file", func(t *testing.T) {
+		t.Parallel()
+
+		localRoot := t.TempDir()
+		localImageRef := mustOCIDirRef(t, path.Join(localRoot, "repo-a"), predictTestTag)
+
+		// preseedBlob's target directory is <path>/blobs/<algo>; pre-creating it as a plain file
+		// makes its os.MkdirAll fail, which preseedLocalBlobs must treat as fail-open (skip this
+		// digest, keep going) rather than propagate the error to the caller.
+		blobsDir := path.Join(localImageRef.Path, "blobs")
+		require.NoError(t, os.MkdirAll(blobsDir, 0o755))
+		require.NoError(t, os.WriteFile(path.Join(blobsDir, digest.Algorithm().String()), []byte("not a directory"), 0o600))
+
+		seeded := service.preseedLocalBlobs(context.Background(), "repo-a", localImageRef, []godigest.Digest{digest})
+		assert.Equal(t, 0, seeded, "a digest whose destination cannot be created must be skipped, not fail the batch")
+	})
+
+	t.Run("destination directory is not writable", func(t *testing.T) {
+		t.Parallel()
+
+		localRoot := t.TempDir()
+		localImageRef := mustOCIDirRef(t, path.Join(localRoot, "repo-a"), predictTestTag)
+
+		blobAlgoDir := path.Join(localImageRef.Path, "blobs", digest.Algorithm().String())
+		require.NoError(t, os.MkdirAll(blobAlgoDir, 0o755))
+		require.NoError(t, os.Chmod(blobAlgoDir, 0o555))
+		t.Cleanup(func() { _ = os.Chmod(blobAlgoDir, 0o755) }) // restore so t.TempDir() can clean up
+
+		seeded := service.preseedLocalBlobs(context.Background(), "repo-a", localImageRef, []godigest.Digest{digest})
+		assert.Equal(t, 0, seeded, "a digest whose destination file cannot be created must be skipped, not fail the batch")
+	})
+}
+
 func TestPreseedLocalBlobsNoOpCases(t *testing.T) {
 	t.Parallel()
 
