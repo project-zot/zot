@@ -103,6 +103,8 @@ func (cbr *ChunkedBlobReader) DescriptorWithTimeout(timeout time.Duration) (desc
 	cbr.bytesMu.RUnlock()
 
 	// Block without holding any lock until InitReader/Abort signals resolution, or timeout elapses.
+	// readerReady is only ever closed, never reassigned, so reading the field here without the
+	// lock is safe - its value is fixed for this reader's whole lifetime.
 	select {
 	case <-cbr.readerReady:
 	case <-time.After(timeout):
@@ -123,6 +125,21 @@ func (cbr *ChunkedBlobReader) DescriptorWithTimeout(timeout time.Duration) (desc
 // InitReader sets the regclient blob reader and the total number of bytes to read for the blob.
 // Returns true if the init modified the reader, else false if the reader was already initialized
 // or already aborted (see Abort).
+//
+// A digest shared by two concurrent syncs of different repo:references (e.g. a common base layer)
+// only ever has one live producer here: the first sync whose copy reaches this blob claims it, and
+// a second, concurrent one is handed back its own reader unwrapped (see StreamingBlobReader)
+// rather than double-writing the same bytes to disk. If that first producer then fails partway,
+// every later producer for this digest - including a retry of the very same sync - is still
+// turned away (readerClosed stays permanently true; see Read's failure paths): reusing this
+// reader's on-disk file for a second attempt would race any client still reading the first
+// attempt's (now truncated) bytes through its own independently-opened file handle, and there is
+// no cheap way to detect "every such client has definitely stopped touching the file" without
+// blocking this call - which runs on the sync's own upstream-copy goroutine - for as long as the
+// slowest attached client takes to notice the abort. So a shared digest whose sole producer fails
+// simply fails for every repo:reference relying on it; each recovers independently through its own
+// sync's normal retry, which (via a fresh manifest fetch, when eventually restaged) creates this
+// reader over from scratch.
 func (cbr *ChunkedBlobReader) InitReader(blobReader *blob.BReader, desc descriptor.Descriptor) bool {
 	cbr.bytesMu.Lock()
 	defer cbr.bytesMu.Unlock()
@@ -144,7 +161,10 @@ func (cbr *ChunkedBlobReader) InitReader(blobReader *blob.BReader, desc descript
 // InitReader is now known to never run - the background sync that would have reached this blob
 // has finished (successfully, having skipped the copy entirely, or with a failure/cancellation)
 // without doing so. Called from drainAndDeleteStreams for every reader RemoveStreamingImage is
-// tearing down. A no-op if InitReader (or an earlier Abort) already resolved this reader.
+// tearing down. A no-op if InitReader (or an earlier Abort) already resolved this reader. Also
+// closes the on-disk temp file if it's still open at this point (a producer that never started, so
+// never hit one of Read's own closeDiskFileLocked calls), so the caller's subsequent delete
+// doesn't leak the descriptor (or, on platforms that refuse to remove an open file, fail outright).
 func (cbr *ChunkedBlobReader) Abort(err error) {
 	cbr.bytesMu.Lock()
 	defer cbr.bytesMu.Unlock()
@@ -156,6 +176,21 @@ func (cbr *ChunkedBlobReader) Abort(err error) {
 	cbr.abortErr = err
 	cbr.readerClosed = true
 	close(cbr.readerReady)
+	cbr.closeDiskFileLocked()
+}
+
+// closeDiskFileLocked closes onDiskFile if a prior call (this one, Read's own successful-EOF
+// close, or one of Read's failure paths) hasn't already. Must be called with bytesMu held.
+func (cbr *ChunkedBlobReader) closeDiskFileLocked() {
+	if cbr.diskFileClosed {
+		return
+	}
+
+	if err := cbr.onDiskFile.Close(); err != nil {
+		cbr.logger.Error().Err(err).Str("onDiskPath", cbr.onDiskPath).Msg("failed to close blob temp file")
+	}
+
+	cbr.diskFileClosed = true
 }
 
 // Read reads the next chunk from the upstream blob reader, writes it to disk, and announces the
@@ -179,8 +214,11 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 	case readErrIntegrityFailure, readErrUpstream:
 		// Real error: either a failed integrity check, or a genuine upstream/network failure.
 		// Never write these bytes to disk or announce them as if the blob completed successfully
-		// - abort every subscriber with the real error instead.
+		// - abort every subscriber with the real error instead, and close the temp file now
+		// rather than leaving that to whenever RemoveStreamingImage eventually tears this reader
+		// down (see InitReader's doc comment for why this digest itself isn't retried here).
 		cbr.logIntegrityOrUpstreamError(err)
+		cbr.closeDiskFileLocked()
 		cbr.bytesMu.Unlock()
 		cbr.abortAllClients()
 
@@ -194,6 +232,7 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 	if n > 0 {
 		if _, werr := cbr.onDiskFile.Write(buff[:n]); werr != nil {
 			cbr.logger.Error().Err(werr).Msg("failed to write blob data to disk")
+			cbr.closeDiskFileLocked()
 			cbr.bytesMu.Unlock()
 			// Same reasoning as the integrity/upstream error branch above: subscribers waiting on
 			// an announcement would otherwise block until RemoveStreamingImage's drain timeout
@@ -219,6 +258,7 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 			_, verifyErr := cbr.inFlightReader.Read(probe[:])
 			if class := classifyReadErr(verifyErr); class == readErrIntegrityFailure || class == readErrUpstream {
 				cbr.logIntegrityOrUpstreamError(verifyErr)
+				cbr.closeDiskFileLocked()
 				cbr.bytesMu.Unlock()
 				cbr.abortAllClients()
 
@@ -226,12 +266,8 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 			}
 		}
 
-		clsErr := cbr.onDiskFile.Close()
-		if clsErr != nil {
-			cbr.logger.Error().Err(clsErr).Msg("failed to close on disk file")
-		}
+		cbr.closeDiskFileLocked()
 
-		cbr.diskFileClosed = true
 		err = io.EOF
 	}
 

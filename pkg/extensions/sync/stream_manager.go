@@ -188,10 +188,13 @@ func (sm *ChunkingStreamManager) StreamingBlobReader(reader *blob.BReader) (*blo
 
 	readerModified := chunkingReader.InitReader(reader, desc)
 	if !readerModified {
-		// This blob's reader is already set up for stream.
-		// This can happen during multi-arch downloads if multiple os/arch
-		// share the same layers.
-		// To avoid double reads, do not wrap the reader.
+		// This blob's reader is already claimed by another, still-live producer - can happen
+		// during multi-arch downloads sharing layers across os/arch, or two concurrent syncs of
+		// different repo:references sharing a base layer. Returning this reader unwrapped avoids
+		// double-writing the same bytes to disk/announcing them twice; regclient still reads
+		// (network-fetches) it independently either way, so no data is lost. If the reader that
+		// did win ever fails, this digest is not retried here (see InitReader's doc comment for
+		// why) - each sync sharing it recovers independently through its own normal retry path.
 		sm.logger.Debug().Str("blob", digest).
 			Msg("blob reader is already set up for stream. skipping init and wrap")
 
