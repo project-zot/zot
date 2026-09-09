@@ -7357,6 +7357,84 @@ func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 	})
 }
 
+// anonymous-only (no CookieStore) + UI X-ZOT-API-CLIENT must not panic on search.
+func TestAnonymousOnlyWithUIClientHeader(t *testing.T) {
+	Convey("anonymous-only access with UI client header does not panic", t, func() {
+		const testRepo = "docker.com/library/nginx"
+
+		defaultVal := true
+		conf := config.New()
+		conf.Storage.GC = false
+		conf.HTTP.Port = "0"
+		conf.HTTP.Auth = &config.AuthConfig{}
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				"**": config.PolicyGroup{
+					AnonymousPolicy: []string{"read", "create", "update"},
+				},
+			},
+		}
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			UI:     &extconf.UIConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+		}
+
+		ctlr := makeController(conf, t.TempDir())
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+
+		defer cm.StopServer()
+
+		So(ctlr.CookieStore, ShouldBeNil)
+
+		err := UploadImage(CreateRandomImage(), baseURL, testRepo, "alpine")
+		So(err, ShouldBeNil)
+
+		uiClient := resty.R().
+			SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue)
+
+		resp, err := uiClient.Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		resp, err = uiClient.Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		query := `{RepoListWithNewestImage{Results{Name NewestImage{Tag}}}}`
+		resp, err = uiClient.Get(baseURL + constants.FullSearchPrefix + "?query=" + url.QueryEscape(query))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(string(resp.Body()), ShouldContainSubstring, testRepo)
+	})
+
+	Convey("open registry (no accessControl) with UI client header does not panic", t, func() {
+		defaultVal := true
+		conf := config.New()
+		conf.Storage.GC = false
+		conf.HTTP.Port = "0"
+		conf.HTTP.Auth = &config.AuthConfig{}
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+		}
+
+		ctlr := makeController(conf, t.TempDir())
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+
+		defer cm.StopServer()
+
+		So(ctlr.CookieStore, ShouldBeNil)
+
+		resp, err := resty.R().
+			SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+			Get(baseURL + constants.FullSearchPrefix + "?query=" +
+				url.QueryEscape(`{RepoListWithNewestImage{Results{Name}}}`))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+	})
+}
+
 func TestAuthorizationWithAnonymousPolicyBasicAuthAndSessionHeader(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		const TestRepo = "my-repos/repo"

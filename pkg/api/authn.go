@@ -468,8 +468,11 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 			case !isAuthorizationHeaderEmpty(request) && authConfig.IsBasicAuthnEnabled():
 				authenticated, err = amw.basicAuthn(ctlr, userAc, response, request)
 
-			// The session header is an explicit attempt to use session authentication
-			case hasSessionHeader(request):
+			// The session header is an explicit attempt to use session authentication.
+			// CookieStore is only created when basic authn is enabled; without it, skip session
+			// handling so open/anonymous access still works for UI clients that send
+			// X-ZOT-API-CLIENT (see allowAnonymousAccess in mgmt → zot-ui).
+			case hasSessionHeader(request) && ctlr.CookieStore != nil:
 				authenticated, err = amw.sessionAuthn(ctlr, userAc, response, request)
 				if err != nil {
 					break
