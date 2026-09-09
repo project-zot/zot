@@ -236,6 +236,19 @@ function teardown() {
     cat ${BATS_FILE_TMPDIR}/zot-stream-capped/zot.log
 }
 
+# true once the given registry's catalog holds at least $2 repositories - used to poll for both
+# images having finished committing locally (see retry_until_success below), since with a real
+# cap in play one of them goes through the slower streaming-background-sync path rather than the
+# plain non-streaming fallback, so a single "successfully synced image" log hit is no longer
+# reliably both of them.
+function catalog_has_at_least() {
+    local port=$1
+    local want=$2
+    local count
+    count=$(curl -s "http://127.0.0.1:${port}/v2/_catalog" | jq '.repositories | length')
+    [ "${count}" -ge "${want}" ]
+}
+
 # returns the manifest digest a registry serves for repo:reference on stdout. -k is a no-op
 # against the plain-http downstream URLs and lets this also hit the TLS upstream (self-signed).
 function manifest_digest() {
@@ -390,8 +403,11 @@ function manifest_digest() {
         [ "$output" = "200" ]
     done
 
-    # both images must eventually be fully committed locally, regardless of the low cap
-    run wait_for_string "successfully synced image" "${BATS_FILE_TMPDIR}/zot-stream-capped/zot.log" "2m"
+    # both images must eventually be fully committed locally, regardless of the low cap - poll
+    # rather than a single wait_for_string hit, since whichever tag won the cap now goes through
+    # the slower streaming-background-sync path instead of the plain non-streaming fallback both
+    # used to take unconditionally when the cap was always exceeded.
+    run retry_until_success 24 5 catalog_has_at_least "${zot_stream_capped_port}" 2
     [ "$status" -eq 0 ]
 
     # confirm the cap was actually exercised: at least one tag must have hit it and fallen back
@@ -404,10 +420,6 @@ function manifest_digest() {
 
     run grep -c "syncing image in the background" "${BATS_FILE_TMPDIR}/zot-stream-capped/zot.log"
     [ "${output}" -ge 1 ]
-
-    run curl -s http://127.0.0.1:${zot_stream_capped_port}/v2/_catalog
-    [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.repositories | length') -ge 2 ]
 }
 
 @test "sync streaming: referrers lookup racing an in-progress background sync never gets a 500" {
