@@ -370,10 +370,10 @@ func (sm *ChunkingStreamManager) collectManifestDescriptorsForStream(repo, refer
 
 	imager, ok := manifest.(manifestpkg.Imager)
 	if !ok {
-		sm.logger.Warn().Str("repo", repo).Str("reference", reference).
-			Msg("failed to cast manifest to imager, skipping pre-loading config and layers for streaming")
+		sm.logger.Error().Str("repo", repo).Str("reference", reference).
+			Msg("failed to cast manifest to imager")
 
-		return nil
+		return zerr.ErrBadManifest
 	}
 
 	configDesc, err := imager.GetConfig()

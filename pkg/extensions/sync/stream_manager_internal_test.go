@@ -332,8 +332,9 @@ func TestChunkingStreamManagerSharedBlobAcrossRepos(t *testing.T) {
 	assert.True(t, stillActive, "a blob still referenced by repo-b must survive repo-a's removal")
 	assert.Equal(t, 1, refCount)
 
-	_, err = sm.ConnectClient("repo-b", manifestDigest, nil)
-	assert.NoError(t, err, "repo-b's clients must still be able to attach to the shared blob")
+	copier, err := sm.ConnectClient("repo-b", manifestDigest, nil)
+	require.NoError(t, err, "repo-b's clients must still be able to attach to the shared blob")
+	copier.Close()
 
 	// Removing repo-b too must finally tear it down.
 	sm.RemoveStreamingImage("repo-b", predictTestTag)

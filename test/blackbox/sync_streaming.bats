@@ -54,6 +54,27 @@ function setup_file() {
     skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.20 oci:${TEST_DATA_DIR}/golang:1.20
     skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/test-images/busybox:1.36 oci:${TEST_DATA_DIR}/busybox:1.36
 
+    # Derive maxConcurrentStreams from the fixtures themselves rather than hardcoding it: it must
+    # be big enough to fully stage ONE of these images (manifest + config + every layer, all
+    # staged as distinct blobs by StoreImageForStreaming) but too small for both at once, so the
+    # "different tags" test below actually forces one tag to win the cap while the other falls
+    # back - a cap of 1 would make every single request (even non-concurrent) exceed the cap on
+    # its own second blob, never exercising real cross-tag contention.
+    # Query via skopeo (same "oci:<dir>:<tag>" ref used everywhere else in this file) rather than
+    # hand-parsing the OCI layout on disk: skopeo's oci: destination strips the trailing ":<tag>"
+    # into the image ref, so the layout actually lands at "${TEST_DATA_DIR}/golang" (no colon),
+    # not a directory literally named "golang:1.20" - inspect avoids depending on that layout
+    # detail at all.
+    local golang_blob_count busybox_blob_count
+    golang_blob_count=$(skopeo inspect --raw "oci:${TEST_DATA_DIR}/golang:1.20" |
+        jq '([.config.digest] + [.layers[].digest]) | unique | length')
+    busybox_blob_count=$(skopeo inspect --raw "oci:${TEST_DATA_DIR}/busybox:1.36" |
+        jq '([.config.digest] + [.layers[].digest]) | unique | length')
+
+    # +1 for each manifest itself, which is staged as a blob in its own right too.
+    local zot_stream_max_concurrent_streams
+    zot_stream_max_concurrent_streams=$(( (golang_blob_count > busybox_blob_count ? golang_blob_count : busybox_blob_count) + 1 ))
+
     local zot_minimal_root_dir=${BATS_FILE_TMPDIR}/zot-minimal
     local zot_minimal_config_file=${BATS_FILE_TMPDIR}/zot_minimal_config.json
     local zot_minimal_cert_file=${BATS_FILE_TMPDIR}/zot_minimal_server.cert
@@ -146,9 +167,10 @@ EOF
 }
 EOF
 
-    # maxConcurrentStreams deliberately set to 1: concurrent pulls of DIFFERENT tags below will
-    # exceed it, so this proves the graceful-fallback path (once the cap is hit, on-demand serves
-    # via the ordinary non-streaming sync instead of failing the request).
+    # Sized to stage one of golang:1.20/busybox:1.36 in full but not both together (see
+    # zot_stream_max_concurrent_streams above): concurrent pulls of DIFFERENT tags below then
+    # genuinely contend for the cap, so this proves the graceful-fallback path (once the cap is
+    # hit, on-demand serves via the ordinary non-streaming sync instead of failing the request).
     cat >${zot_stream_capped_config_file} <<EOF
 {
     "distSpecVersion": "1.1.1",
@@ -172,7 +194,7 @@ EOF
                     "onDemand": true,
                     "preserveDigest": true,
                     "stream": true,
-                    "maxConcurrentStreams": 1,
+                    "maxConcurrentStreams": ${zot_stream_max_concurrent_streams},
                     "certDir": "${zot_stream_capped_cert_dir}",
                     "content": [{"prefix": "**"}]
                 }
@@ -340,9 +362,9 @@ function manifest_digest() {
     local pids=()
     local idx=0
 
-    # each tag pulled by several concurrent clients at once, all tags started together: with
-    # maxConcurrentStreams=1, this guarantees more than one tag's blobs are contending for the
-    # single streaming slot at some point during the run.
+    # each tag pulled by several concurrent clients at once, all tags started together: the cap
+    # (sized in setup_file to fit one of these images but not both) guarantees the two tags'
+    # blobs contend for the shared streaming slots at some point during the run.
     for tag in "${tags[@]}"; do
         local repo="${tag%%:*}"
         local ref="${tag##*:}"
@@ -371,6 +393,17 @@ function manifest_digest() {
     # both images must eventually be fully committed locally, regardless of the low cap
     run wait_for_string "successfully synced image" "${BATS_FILE_TMPDIR}/zot-stream-capped/zot.log" "2m"
     [ "$status" -eq 0 ]
+
+    # confirm the cap was actually exercised: at least one tag must have hit it and fallen back
+    # to a non-streaming sync (the whole point of this test), while at least one other must have
+    # gone through the normal streaming path - otherwise the cap sizing above isn't doing its job
+    # and this test would degrade back into never really testing contention.
+    run grep -c "max concurrent streams reached, falling back to non-streaming on-demand sync" \
+        "${BATS_FILE_TMPDIR}/zot-stream-capped/zot.log"
+    [ "${output}" -ge 1 ]
+
+    run grep -c "syncing image in the background" "${BATS_FILE_TMPDIR}/zot-stream-capped/zot.log"
+    [ "${output}" -ge 1 ]
 
     run curl -s http://127.0.0.1:${zot_stream_capped_port}/v2/_catalog
     [ "$status" -eq 0 ]
