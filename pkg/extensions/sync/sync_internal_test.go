@@ -2881,6 +2881,29 @@ func TestOnDemandQueueImage(t *testing.T) {
 	}
 }
 
+func TestOnDemandQueueImageLogsSyncError(t *testing.T) {
+	finished := make(chan struct{})
+
+	service := &mockCheckService{
+		isAsyncOnDemandForRepoFn: func(string) bool { return true },
+		syncImageFn: func(context.Context, string, string) error {
+			defer close(finished)
+
+			return zerr.ErrManifestNotFound
+		},
+	}
+	onDemand := NewOnDemand(log.NewTestLogger())
+	onDemand.Add(service)
+
+	onDemand.QueueImage(context.Background(), "library/test", "latest")
+
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("background sync did not finish")
+	}
+}
+
 func TestBaseServiceIsAsyncOnDemandForRepo(t *testing.T) {
 	enabled := true
 	content := []syncconf.Content{{Prefix: "library/test"}}
