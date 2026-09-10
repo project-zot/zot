@@ -588,8 +588,73 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 	return nil
 }
 
+/*
+seedRef pre-seeds the temp OCI layout behind localImageRef with blobs the local
+store already holds for localRepo, so that the ImageCopy that follows only
+downloads content actually missing: regclient checks for existing content on
+the copy target before fetching from upstream.
+
+The manifest tree rooted at localDigest (the digest the image is expected to
+have locally, per CanSkipImage) is walked local-first: manifests are ordinary
+blobs in the local store, so walking an already stored image needs no upstream
+requests. Manifests missing locally (e.g. a new tag sharing most layers with an
+already synced one) are fetched from upstream by digest instead. If that walk
+finds nothing and the digests differ, the walk is repeated from remoteDigest.
+
+Seeding is best-effort: any blob that cannot be seeded is simply downloaded by
+ImageCopy as before.
+*/
+func (service *BaseService) seedRef(
+	ctx context.Context,
+	localRepo string,
+	remoteImageRef, localImageRef ref.Ref,
+	localDigest, remoteDigest godigest.Digest,
+) error {
+	tempStore, err := getImageStoreFromImageReference(localRepo, localImageRef, service.log)
+	if err != nil {
+		return err
+	}
+
+	// A valid empty layout (in particular index.json) must exist up front for
+	// regclient to answer the presence checks ImageCopy runs.
+	if err := tempStore.InitRepo(ctx, localRepo); err != nil {
+		return err
+	}
+
+	// regclient's defaultConcurrent (unexported); regclient likewise treats a
+	// configured 0 as this default
+	reqConcurrent := 3
+	if service.config.ReqConcurrent != nil && *service.config.ReqConcurrent > 0 {
+		reqConcurrent = *service.config.ReqConcurrent
+	}
+
+	seeder := &refSeeder{
+		service:        service,
+		imageStore:     service.storeController.GetImageStore(localRepo),
+		tempStore:      tempStore,
+		localRepo:      localRepo,
+		remoteImageRef: remoteImageRef,
+		slots:          make(chan struct{}, reqConcurrent),
+	}
+
+	seeder.seedManifest(ctx, localDigest)
+	// Try again with the remote digests, to catch manifests present locally
+	// with `preserveDigests` disabled.
+	if seeder.seeded.Load() == 0 && remoteDigest != localDigest {
+		seeder.seedManifest(ctx, remoteDigest)
+	}
+
+	if seeded := seeder.seeded.Load(); seeded > 0 {
+		service.log.Info().Str("repo", localRepo).Str("digest", localDigest.String()).
+			Int64("blobs", seeded).
+			Msg("seeded temp sync dir with blobs already present in local storage")
+	}
+
+	return nil
+}
+
 func (service *BaseService) syncRef(ctx context.Context, localRepo string, remoteImageRef, localImageRef ref.Ref,
-	remoteDigest godigest.Digest,
+	localDigest, remoteDigest godigest.Digest,
 ) (bool, error) {
 	var reference string
 
@@ -606,7 +671,7 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 	copyOpts := []regclient.ImageOpts{}
 
 	// check if image is already synced
-	skipImage, err = service.destination.CanSkipImage(localRepo, reference, remoteDigest)
+	skipImage, err = service.destination.CanSkipImage(localRepo, reference, localDigest)
 	if err != nil {
 		service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
 			Str("repo", localRepo).Str("reference", remoteImageRef.Tag).
@@ -616,6 +681,14 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 	if !skipImage {
 		service.log.Info().Str("remote image", remoteImageRef.CommonName()).
 			Str("local image", fmt.Sprintf("%s:%s", localRepo, remoteImageRef.Tag)).Msg("syncing image")
+
+		// best-effort: seed the temp layout with blobs the local store already
+		// holds, so ImageCopy only downloads content actually missing
+		if err := service.seedRef(ctx, localRepo, remoteImageRef, localImageRef, localDigest, remoteDigest); err != nil {
+			service.log.Warn().Err(err).Str("errortype", common.TypeOf(err)).
+				Str("repo", localRepo).Str("reference", reference).
+				Msg("failed to seed temp sync dir from local storage")
+		}
 
 		err = service.rc.ImageCopy(ctx, remoteImageRef, localImageRef, copyOpts...)
 		if err != nil {
@@ -745,7 +818,7 @@ func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo
 	defer service.destination.CleanupImage(localImageRef, localRepo) //nolint: errcheck
 
 	// first sync image
-	skipped, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, localDigest)
+	skipped, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, localDigest, remoteDigest)
 	if err != nil {
 		return err
 	}
@@ -865,7 +938,8 @@ func (service *BaseService) syncReferrers(ctx context.Context, tags []string, lo
 
 			localImageRef = localImageRef.SetDigest(desc.Digest.String())
 
-			_, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, desc.Digest)
+			// referrers are copied by their upstream digest, so the local and remote digests coincide
+			_, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, desc.Digest, desc.Digest)
 			if err != nil {
 				service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
 					Str("repo", localRepo).Str("local reference", localImageRef.Tag).
@@ -886,7 +960,7 @@ func (service *BaseService) syncReferrers(ctx context.Context, tags []string, lo
 
 					localImageRef = localImageRef.SetTag(tag)
 
-					_, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, remoteDigest)
+					_, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, remoteDigest, remoteDigest)
 					if err != nil {
 						service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
 							Str("repo", localRepo).Str("local reference", localImageRef.Tag).
