@@ -425,7 +425,8 @@ func TestNewImageStore(t *testing.T) {
 		storeMock := &mocks.StorageDriverMock{}
 		log := zlog.NewTestLogger()
 		metrics := monitoring.NewNopMetricServer()
-		imgStore := gcs.NewImageStore("/tmp", "/tmp", true, true, log, metrics, nil, storeMock, nil, nil, nil)
+		imgStore := gcs.NewImageStore("/tmp", "/tmp", true, true, log, metrics, nil, storeMock,
+			&mocks.CacheMock{}, nil, nil)
 		So(imgStore, ShouldNotBeNil)
 	})
 }

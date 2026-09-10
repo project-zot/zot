@@ -9,6 +9,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
@@ -76,5 +77,38 @@ func TestWriteImageToFileSystem(t *testing.T) {
 				},
 			})
 		So(err, ShouldNotBeNil)
+	})
+
+	Convey("WriteImageToFileSystem waits for manifest visibility", t, func() {
+		manifestReads := 0
+		store := mocks.MockedImageStore{
+			GetImageManifestFn: func(repo, reference string) ([]byte, godigest.Digest, string, error) {
+				manifestReads++
+				if manifestReads == 1 {
+					return nil, "", "", zerr.ErrManifestNotFound
+				}
+
+				return nil, "", "", nil
+			},
+		}
+
+		err := WriteImageToFileSystem(Image{}, "repo", "tag", storage.StoreController{DefaultStore: store})
+		So(err, ShouldBeNil)
+		So(manifestReads, ShouldEqual, 2)
+	})
+
+	Convey("WriteImageToFileSystem returns non-transient manifest errors", t, func() {
+		manifestReads := 0
+		store := mocks.MockedImageStore{
+			GetImageManifestFn: func(repo, reference string) ([]byte, godigest.Digest, string, error) {
+				manifestReads++
+
+				return nil, "", "", ErrTestError
+			},
+		}
+
+		err := WriteImageToFileSystem(Image{}, "repo", "tag", storage.StoreController{DefaultStore: store})
+		So(err, ShouldEqual, ErrTestError)
+		So(manifestReads, ShouldEqual, 1)
 	})
 }

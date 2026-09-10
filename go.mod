@@ -12,6 +12,7 @@ require (
 	github.com/aquasecurity/trivy-db v0.0.0-20260813095258-0e0340a01b57
 	github.com/aws/aws-sdk-go-v2 v1.44.0
 	github.com/aws/aws-sdk-go-v2/config v1.32.40
+	github.com/aws/aws-sdk-go-v2/credentials v1.19.39
 	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.20.64
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.64.0
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.61.0
@@ -180,7 +181,6 @@ require (
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/aws/aws-sdk-go v1.55.8 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.16 // indirect
-	github.com/aws/aws-sdk-go-v2/credentials v1.19.39 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.40 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.40 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.40 // indirect

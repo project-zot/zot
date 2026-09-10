@@ -46,6 +46,8 @@ func TestDynamoDB(t *testing.T) {
 		returnedName := cacheDriver.Name()
 		So(returnedName, ShouldEqual, "dynamodb")
 
+		So(cacheDriver.UsesRelativePaths(), ShouldBeFalse)
+
 		val, err := cacheDriver.GetBlob(keyDigest)
 		So(err, ShouldNotBeNil)
 		So(val, ShouldBeEmpty)
@@ -75,6 +77,7 @@ func TestDynamoDB(t *testing.T) {
 		err = cacheDriver.PutBlob(keyDigest, path.Join(dir, "value2"))
 		So(err, ShouldBeNil)
 
+		// deleting the origin ("value1") while a duplicate exists promotes value2 to origin
 		err = cacheDriver.DeleteBlob(keyDigest, path.Join(dir, "value1"))
 		So(err, ShouldBeNil)
 
@@ -107,6 +110,7 @@ func TestDynamoDB(t *testing.T) {
 		err = cacheDriver.PutBlob("key1", "duplicateBlobPath")
 		So(err, ShouldBeNil)
 
+		// deleting the origin while a duplicate exists promotes the duplicate to origin
 		err = cacheDriver.DeleteBlob("key1", "originalBlobPath")
 		So(err, ShouldBeNil)
 
@@ -114,10 +118,10 @@ func TestDynamoDB(t *testing.T) {
 		So(val, ShouldEqual, "duplicateBlobPath")
 		So(err, ShouldBeNil)
 
+		// no duplicates left; deleting the (promoted) origin removes the entry
 		err = cacheDriver.DeleteBlob("key1", "duplicateBlobPath")
 		So(err, ShouldBeNil)
 
-		// should be empty
 		val, err = cacheDriver.GetBlob("key1")
 		So(err, ShouldNotBeNil)
 		So(val, ShouldBeEmpty)
@@ -170,13 +174,17 @@ func TestDynamoDB(t *testing.T) {
 
 		So(blobs, ShouldResemble, []string{"first", "second", "third"})
 
+		// deleting the origin ("first") promotes a remaining duplicate to origin
 		err = cacheDriver.DeleteBlob("digest", "first")
 		So(err, ShouldBeNil)
 
 		blobs, err = cacheDriver.GetAllBlobs("digest")
 		So(err, ShouldBeNil)
 
-		So(blobs, ShouldResemble, []string{"second", "third"})
+		So(len(blobs), ShouldEqual, 2)
+		So(blobs, ShouldContain, "second")
+		So(blobs, ShouldContain, "third")
+		So(blobs, ShouldNotContain, "first")
 
 		err = cacheDriver.DeleteBlob("digest", "third")
 		So(err, ShouldBeNil)
@@ -184,7 +192,8 @@ func TestDynamoDB(t *testing.T) {
 		blobs, err = cacheDriver.GetAllBlobs("digest")
 		So(err, ShouldBeNil)
 
-		So(blobs, ShouldResemble, []string{"second"})
+		So(len(blobs), ShouldEqual, 1)
+		So(blobs, ShouldContain, "second")
 	})
 }
 

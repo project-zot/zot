@@ -38,6 +38,7 @@ import (
 
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/gcs"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
@@ -136,7 +137,7 @@ func TestGetNextRepositoryVisitsAllReposDespiteGhostUploadsPrefix(t *testing.T) 
 	// Healthy fixture: three repos, each with a blobs/ dir. repo-b additionally
 	// carries a .uploads/ session object and a .sync/ tmp object so that all
 	// three reserved dir types actually surface as child prefixes during the
-	// walk — otherwise the reserved-dir assertions (AC-4) would be vacuous.
+	// walk — otherwise the "reserved dirs are never listed" assertions below would be vacuous.
 	objects := []string{
 		"/zot/repo-a/repo-a/blobs/sha256/aaa",
 		"/zot/repo-a/repo-a/index.json",
@@ -180,12 +181,12 @@ func TestGetNextRepositoryVisitsAllReposDespiteGhostUploadsPrefix(t *testing.T) 
 	wantAll := []string{"repo-a/repo-a", "repo-b/repo-b", "repo-c/repo-c"}
 
 	Convey("GetNextRepository enumerates every repository", t, func() {
-		Convey("AC-3: healthy bucket -> all three repos in order", func() {
+		Convey("healthy bucket -> all three repos in order", func() {
 			got := collectRepos(&memFS{objects: objects})
 			So(got, ShouldResemble, wantAll)
 		})
 
-		Convey("AC-1: a ghost .uploads under an already-processed repo does not abort the walk", func() {
+		Convey("a ghost .uploads under an already-processed repo does not abort the walk", func() {
 			// While walking towards repo-c the walk descends into the ALREADY
 			// processed repo-b, and List(.uploads) returns PathNotFoundError
 			// (empty prefix). All three repos must still be returned.
@@ -196,7 +197,7 @@ func TestGetNextRepositoryVisitsAllReposDespiteGhostUploadsPrefix(t *testing.T) 
 			So(got, ShouldResemble, wantAll)
 		})
 
-		Convey("AC-2: a ghost .uploads under the FIRST repo does not hide the rest", func() {
+		Convey("a ghost .uploads under the FIRST repo does not hide the rest", func() {
 			// The extra .uploads object under repo-a is mandatory: memFS.list
 			// only surfaces a child prefix when an object exists beneath it, so
 			// without it the poison would never fire.
@@ -211,7 +212,7 @@ func TestGetNextRepositoryVisitsAllReposDespiteGhostUploadsPrefix(t *testing.T) 
 			So(got, ShouldResemble, wantAll)
 		})
 
-		Convey("AC-4: reserved dirs (blobs/.uploads/.sync) are never listed during enumeration", func() {
+		Convey("reserved dirs (blobs/.uploads/.sync) are never listed during enumeration", func() {
 			memfs := &memFS{objects: objects}
 
 			got := collectRepos(memfs)
@@ -229,6 +230,24 @@ func TestGetNextRepositoryVisitsAllReposDespiteGhostUploadsPrefix(t *testing.T) 
 			}
 
 			So(reservedListed, ShouldBeEmpty)
+		})
+
+		Convey("the global blobstore is skipped and never listed", func() {
+			// _blobstore can hold one entry per digest ever deduped, dwarfing every real repo
+			// combined. GetNextRepository is called once per repo per GC/scrub/dedupe run, so it
+			// must skip this prefix outright rather than pay that listing cost on every call.
+			objectsWithGlobalBlobstore := append([]string{
+				"/zot/" + constants.GlobalBlobsRepo + "/blobs/sha256/deadbeef",
+			}, objects...)
+
+			memfs := &memFS{objects: objectsWithGlobalBlobstore}
+
+			got := collectRepos(memfs)
+			So(got, ShouldResemble, wantAll)
+
+			for _, listed := range memfs.listed {
+				So(strings.HasPrefix(listed, "/zot/"+constants.GlobalBlobsRepo), ShouldBeFalse)
+			}
 		})
 	})
 }

@@ -105,19 +105,39 @@ function teardown_file() {
     zli_delete_config ${REGISTRY_NAME}
 }
 
+# Waits for at least $expected_count event files, then keeps polling until the
+# count holds steady for $settle_seconds before returning. Event delivery is
+# asynchronous - each publish() call fires its own goroutine per sink (see
+# pkg/extensions/events/events.go) - so a single action can trigger several
+# distinct events that land at different times. Settling here avoids returning
+# on a partial count while a still-in-flight event would otherwise be
+# miscounted as belonging to whatever the caller does next (e.g. resets the
+# counter for the following phase of the test).
 function wait_for_event_count() {
     local output_path="$1"
     local expected_count="$2"
     local timeout_seconds="${3:-30}"
+    local settle_seconds="${4:-3}"
     local elapsed=0
     local count=0
+    local last_count=-1
+    local stable_for=0
 
     while [ "$elapsed" -lt "$timeout_seconds" ]; do
         count=$(find "${output_path}" -type f | wc -l)
-        if [ "$count" -eq "$expected_count" ]; then
-            return 0
+
+        if [ "$count" -ge "$expected_count" ]; then
+            if [ "$count" -eq "$last_count" ]; then
+                stable_for=$((stable_for + 1))
+                if [ "$stable_for" -ge "$settle_seconds" ]; then
+                    return 0
+                fi
+            else
+                stable_for=0
+            fi
         fi
 
+        last_count=$count
         sleep 1
         elapsed=$((elapsed + 1))
     done
@@ -142,8 +162,9 @@ function wait_for_event_count() {
 
     # Event delivery is asynchronous (fired from a goroutine per publish), so wait for the
     # push-triggered events (RepositoryCreated + ImageUpdated, this being a new repo's first
-    # push) to actually arrive before resetting, or a late arrival could be miscounted as the
-    # scan-triggered event below.
+    # push) to actually arrive and settle before resetting, or a late arrival could be
+    # miscounted as the scan-triggered event below. wait_for_event_count doesn't fail if the
+    # count ends up above 2 since only the scan-triggered count below is under test here.
     wait_for_event_count "${output_path}" 2
 
     # Reset the event counter so only the scan-triggered event is counted

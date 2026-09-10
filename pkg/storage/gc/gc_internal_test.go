@@ -35,6 +35,17 @@ var (
 	repoName = "test" //nolint: gochecknoglobals
 )
 
+// logicalRepoRefsImageStoreMock is a MockedImageStore that also satisfies logicalRepoRefsStore,
+// standing in for a store whose repo blob enumeration comes from the blob-ref index (remote
+// storage with a global blobstore) rather than from a listing of the repo's own blobs dir.
+type logicalRepoRefsImageStoreMock struct {
+	mocks.MockedImageStore
+}
+
+func (m logicalRepoRefsImageStoreMock) UsesLogicalRepoRefs() bool {
+	return true
+}
+
 type retentionPolicyMock struct {
 	retainedUntagged []string
 }
@@ -2165,6 +2176,69 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			So(len(index.Manifests), ShouldEqual, 0)
 		})
 
+		Convey("removeStaleManifestEntries refuses to prune when the blob ref index is unavailable", func() {
+			removedRef := ""
+			metaDB := mocks.MetaDBMock{
+				RemoveRepoReferenceFn: func(repo, reference string, manifestDigest godigest.Digest) error {
+					removedRef = reference
+
+					return nil
+				},
+			}
+
+			imgStore := logicalRepoRefsImageStoreMock{
+				MockedImageStore: mocks.MockedImageStore{
+					GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
+						return nil, nil
+					},
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, metaDB, gcOptions, audit, log, metrics)
+
+			index := &ispec.Index{
+				Manifests: []ispec.Descriptor{
+					{
+						Digest:    godigest.FromString("manifest"),
+						MediaType: ispec.MediaTypeImageManifest,
+					},
+				},
+			}
+
+			err := gc.removeStaleManifestEntries(repoName, index)
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrBlobRefIndexUnavailable), ShouldBeTrue)
+			So(len(index.Manifests), ShouldEqual, 1)
+			So(removedRef, ShouldBeEmpty)
+		})
+
+		Convey("removeStaleManifestEntries still prunes a logical ref store with a partial enumeration", func() {
+			existingDigest := godigest.FromString("existing-blob")
+			missingDigest := godigest.FromString("missing-blob")
+
+			imgStore := logicalRepoRefsImageStoreMock{
+				MockedImageStore: mocks.MockedImageStore{
+					GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
+						return []godigest.Digest{existingDigest}, nil
+					},
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			index := &ispec.Index{
+				Manifests: []ispec.Descriptor{
+					{Digest: existingDigest, MediaType: ispec.MediaTypeImageManifest},
+					{Digest: missingDigest, MediaType: ispec.MediaTypeImageManifest},
+				},
+			}
+
+			err := gc.removeStaleManifestEntries(repoName, index)
+			So(err, ShouldBeNil)
+			So(len(index.Manifests), ShouldEqual, 1)
+			So(index.Manifests[0].Digest, ShouldEqual, existingDigest)
+		})
+
 		Convey("removeStaleManifestEntries continues despite metaDB errors", func() {
 			missingDigest := godigest.FromString("missing-blob")
 
@@ -2746,5 +2820,17 @@ func TestGCTaskGeneratorTimeWindow(t *testing.T) {
 			So(gen.IsReady(), ShouldBeTrue)
 			So(gen.loggedWindowDefer, ShouldBeFalse)
 		})
+	})
+}
+
+// The zero-value GarbageCollect (policyMgr left nil) is deliberate: if the _blobstore
+// guard didn't fire before reaching gc.policyMgr.HasTagRetention, this would panic on
+// the nil interface, proving the guard actually short-circuits.
+func TestRemoveTagsPerRetentionPolicySkipsGlobalBlobsRepo(t *testing.T) {
+	Convey("removeTagsPerRetentionPolicy no-ops for _blobstore", t, func() {
+		gc := GarbageCollect{}
+
+		err := gc.removeTagsPerRetentionPolicy(context.Background(), storageConstants.GlobalBlobsRepo, &ispec.Index{})
+		So(err, ShouldBeNil)
 	})
 }

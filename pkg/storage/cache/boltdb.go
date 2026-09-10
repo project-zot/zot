@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -65,10 +66,17 @@ func NewBoltDBCache(parameters any, log zlog.Logger) (*BoltDBDriver, error) {
 		return nil, err
 	}
 
-	if err := cacheDB.Update(func(tx *bbolt.Tx) error {
-		if _, err := tx.CreateBucketIfNotExists([]byte(constants.BlobsCache)); err != nil {
+	if err := cacheDB.Update(func(txn *bbolt.Tx) error {
+		if _, err := txn.CreateBucketIfNotExists([]byte(constants.BlobsCache)); err != nil {
 			// this is a serious failure
 			log.Error().Err(err).Str("dbPath", dbPath).Msg("failed to create a root bucket")
+
+			return err
+		}
+
+		if _, err := txn.CreateBucketIfNotExists([]byte(constants.BlobRefs)); err != nil {
+			// this is a serious failure
+			log.Error().Err(err).Str("dbPath", dbPath).Msg("failed to create a blob refs root bucket")
 
 			return err
 		}
@@ -114,60 +122,103 @@ func (d *BoltDBDriver) PutBlob(digest godigest.Digest, path string) error {
 		}
 	}
 
-	if err := d.db.Update(func(tx *bbolt.Tx) error {
-		root := tx.Bucket([]byte(constants.BlobsCache))
-		if root == nil {
-			// this is a serious failure
-			err := zerr.ErrCacheRootBucket
-			d.log.Error().Err(err).Msg("failed to access root bucket")
+	if len(path) == 0 {
+		return zerr.ErrEmptyValue
+	}
 
+	// write both buckets in one transaction so a failure partway through can't leave
+	// BlobsCache and BlobRefs out of sync
+	return d.db.Update(func(tx *bbolt.Tx) error {
+		if err := d.putBlobCacheEntry(tx, digest, path); err != nil {
 			return err
 		}
 
-		bucket, err := root.CreateBucketIfNotExists([]byte(digest.String()))
+		return d.putBlobRef(tx, digest, path)
+	})
+}
+
+func (d *BoltDBDriver) putBlobCacheEntry(tx *bbolt.Tx, digest godigest.Digest, path string) error {
+	root := tx.Bucket([]byte(constants.BlobsCache))
+	if root == nil {
+		// this is a serious failure
+		err := zerr.ErrCacheRootBucket
+		d.log.Error().Err(err).Msg("failed to access root bucket")
+
+		return err
+	}
+
+	bucket, err := root.CreateBucketIfNotExists([]byte(digest.String()))
+	if err != nil {
+		// this is a serious failure
+		d.log.Error().Err(err).Str("bucket", digest.String()).Msg("failed to create a bucket")
+
+		return err
+	}
+
+	// create origin bucket and insert only the original blob
+	origin := bucket.Bucket([]byte(constants.OriginalBucket))
+	if origin == nil {
+		// if the bucket doesn't exist yet then 'path' is the original blob
+		origin, err := bucket.CreateBucket([]byte(constants.OriginalBucket))
 		if err != nil {
 			// this is a serious failure
-			d.log.Error().Err(err).Str("bucket", digest.String()).Msg("failed to create a bucket")
+			d.log.Error().Err(err).Str("bucket", constants.OriginalBucket).Msg("failed to create a bucket")
 
 			return err
 		}
 
-		// create nested deduped bucket where we store all the deduped blobs + original blob
-		deduped, err := bucket.CreateBucketIfNotExists([]byte(constants.DuplicatesBucket))
-		if err != nil {
-			// this is a serious failure
-			d.log.Error().Err(err).Str("bucket", constants.DuplicatesBucket).Msg("failed to create a bucket")
+		if err := origin.Put([]byte(path), nil); err != nil {
+			d.log.Error().Err(err).Str("bucket", constants.OriginalBucket).Str("value", path).Msg("failed to put record")
 
 			return err
-		}
-
-		if err := deduped.Put([]byte(path), nil); err != nil {
-			d.log.Error().Err(err).Str("bucket", constants.DuplicatesBucket).Str("value", path).Msg("failed to put record")
-
-			return err
-		}
-
-		// create origin bucket and insert only the original blob
-		origin := bucket.Bucket([]byte(constants.OriginalBucket))
-		if origin == nil {
-			// if the bucket doesn't exist yet then 'path' is the original blob
-			origin, err := bucket.CreateBucket([]byte(constants.OriginalBucket))
-			if err != nil {
-				// this is a serious failure
-				d.log.Error().Err(err).Str("bucket", constants.OriginalBucket).Msg("failed to create a bucket")
-
-				return err
-			}
-
-			if err := origin.Put([]byte(path), nil); err != nil {
-				d.log.Error().Err(err).Str("bucket", constants.OriginalBucket).Str("value", path).Msg("failed to put record")
-
-				return err
-			}
 		}
 
 		return nil
-	}); err != nil {
+	}
+
+	// bbolt Get returns nil only for a missing key; an existing "key-only" entry (Put with
+	// a nil value) still returns a non-nil zero-length slice, so this is a valid existence check.
+	if origin.Get([]byte(path)) != nil {
+		return nil
+	}
+
+	// otherwise, this is a duplicate blob - add to the duplicates bucket
+	deduped, err := bucket.CreateBucketIfNotExists([]byte(constants.DuplicatesBucket))
+	if err != nil {
+		// this is a serious failure
+		d.log.Error().Err(err).Str("bucket", constants.DuplicatesBucket).Msg("failed to create a bucket")
+
+		return err
+	}
+
+	if err := deduped.Put([]byte(path), nil); err != nil {
+		d.log.Error().Err(err).Str("bucket", constants.DuplicatesBucket).Str("value", path).Msg("failed to put record")
+
+		return err
+	}
+
+	return nil
+}
+
+func (d *BoltDBDriver) putBlobRef(tx *bbolt.Tx, digest godigest.Digest, path string) error {
+	root := tx.Bucket([]byte(constants.BlobRefs))
+	if root == nil {
+		err := zerr.ErrCacheRootBucket
+		d.log.Error().Err(err).Msg("failed to access blob refs root bucket")
+
+		return err
+	}
+
+	bucket, err := root.CreateBucketIfNotExists([]byte(digest.String()))
+	if err != nil {
+		d.log.Error().Err(err).Str("bucket", digest.String()).Msg("failed to create a blob refs bucket")
+
+		return err
+	}
+
+	if err := bucket.Put([]byte(path), nil); err != nil {
+		d.log.Error().Err(err).Str("bucket", digest.String()).Str("value", path).Msg("failed to put blob ref")
+
 		return err
 	}
 
@@ -195,7 +246,10 @@ func (d *BoltDBDriver) GetAllBlobs(digest godigest.Digest) ([]string, error) {
 			blobPath.Write(d.getOne(origin))
 			originBlob := blobPath.String()
 
-			blobPaths = append(blobPaths, originBlob)
+			// skip a missing/empty origin: an "" entry would surface as a phantom blob ref downstream
+			if originBlob != "" {
+				blobPaths = append(blobPaths, originBlob)
+			}
 
 			deduped := bucket.Bucket([]byte(constants.DuplicatesBucket))
 			if deduped != nil {
@@ -208,13 +262,13 @@ func (d *BoltDBDriver) GetAllBlobs(digest godigest.Digest) ([]string, error) {
 
 					duplicateBlob := blobPath.String()
 
-					if duplicateBlob != originBlob {
+					if duplicateBlob != "" && duplicateBlob != originBlob {
 						blobPaths = append(blobPaths, duplicateBlob)
 					}
 				}
-
-				return nil
 			}
+
+			return nil
 		}
 
 		return zerr.ErrCacheMiss
@@ -223,6 +277,82 @@ func (d *BoltDBDriver) GetAllBlobs(digest godigest.Digest) ([]string, error) {
 	}
 
 	return blobPaths, nil
+}
+
+func (d *BoltDBDriver) GetBlobRefs(digest godigest.Digest) ([]string, error) {
+	blobPaths := []string{}
+
+	if err := d.db.View(func(tx *bbolt.Tx) error {
+		root := tx.Bucket([]byte(constants.BlobRefs))
+		if root == nil {
+			err := zerr.ErrCacheRootBucket
+			d.log.Error().Err(err).Msg("failed to access blob refs root bucket")
+
+			return err
+		}
+
+		bucket := root.Bucket([]byte(digest.String()))
+		if bucket == nil {
+			return zerr.ErrCacheMiss
+		}
+
+		cursor := bucket.Cursor()
+		for k, _ := cursor.First(); k != nil; k, _ = cursor.Next() {
+			blobPaths = append(blobPaths, string(k))
+		}
+
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return blobPaths, nil
+}
+
+func (d *BoltDBDriver) GetAllBlobRefs() (map[godigest.Digest][]string, error) {
+	allRefs := map[godigest.Digest][]string{}
+
+	err := d.db.View(func(tx *bbolt.Tx) error {
+		root := tx.Bucket([]byte(constants.BlobRefs))
+		if root == nil {
+			return zerr.ErrCacheRootBucket
+		}
+
+		return root.ForEach(func(key, value []byte) error {
+			if value != nil {
+				return nil
+			}
+
+			digest := godigest.Digest(string(key))
+			if err := digest.Validate(); err != nil {
+				return nil //nolint:nilerr // Ignore invalid keys while enumerating valid blob references.
+			}
+
+			bucket := root.Bucket(key)
+			if bucket == nil {
+				return nil
+			}
+
+			return bucket.ForEach(func(ref, _ []byte) error {
+				allRefs[digest] = append(allRefs[digest], string(ref))
+
+				return nil
+			})
+		})
+	})
+
+	return allRefs, err
+}
+
+// PutBlobRef and DeleteBlobRef are no-ops here: PutBlob/DeleteBlob already maintain the
+// BlobRefs entry in the same transaction. They only exist to satisfy imagestore's
+// blobRefIndexer interface so callers can reach GetBlobRefs instead of scanning GetAllBlobs.
+func (d *BoltDBDriver) PutBlobRef(_ godigest.Digest, _ string) error {
+	return nil
+}
+
+func (d *BoltDBDriver) DeleteBlobRef(_ godigest.Digest, _ string) error {
+	return nil
 }
 
 func (d *BoltDBDriver) GetBlob(digest godigest.Digest) (string, error) {
@@ -241,11 +371,14 @@ func (d *BoltDBDriver) GetBlob(digest godigest.Digest) (string, error) {
 		bucket := root.Bucket([]byte(digest.String()))
 		if bucket != nil {
 			origin := bucket.Bucket([]byte(constants.OriginalBucket))
-			blobPath.Write(d.getOne(origin))
+			if originPath := d.getOne(origin); len(originPath) > 0 {
+				blobPath.Write(originPath)
 
-			return nil
+				return nil
+			}
 		}
 
+		// an empty origin path is treated as a miss, not a record with an empty value
 		return zerr.ErrCacheMiss
 	}); err != nil {
 		return "", err
@@ -275,18 +408,18 @@ func (d *BoltDBDriver) HasBlob(digest godigest.Digest, blob string) bool {
 			return zerr.ErrCacheMiss
 		}
 
-		deduped := bucket.Bucket([]byte(constants.DuplicatesBucket))
-		if deduped == nil {
-			return zerr.ErrCacheMiss
+		if origin.Get([]byte(blob)) != nil {
+			return nil
 		}
 
-		if origin.Get([]byte(blob)) == nil {
-			if deduped.Get([]byte(blob)) == nil {
-				return zerr.ErrCacheMiss
+		deduped := bucket.Bucket([]byte(constants.DuplicatesBucket))
+		if deduped != nil {
+			if deduped.Get([]byte(blob)) != nil {
+				return nil
 			}
 		}
 
-		return nil
+		return zerr.ErrCacheMiss
 	}); err != nil {
 		return false
 	}
@@ -315,72 +448,140 @@ func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 		}
 	}
 
-	if err := d.db.Update(func(tx *bbolt.Tx) error {
-		root := tx.Bucket([]byte(constants.BlobsCache))
-		if root == nil {
-			// this is a serious failure
-			err := zerr.ErrCacheRootBucket
-			d.log.Error().Err(err).Msg("failed to access root bucket")
-
+	// Both buckets are updated in one transaction so they can't disagree about whether this
+	// ref still exists; a miss from either bucket is treated as success since deletion is idempotent.
+	return d.db.Update(func(tx *bbolt.Tx) error {
+		if err := d.deleteBlobCacheEntry(tx, digest, path); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
 			return err
 		}
 
-		bucket := root.Bucket([]byte(digest.String()))
-		if bucket == nil {
-			return zerr.ErrCacheMiss
-		}
-
-		deduped := bucket.Bucket([]byte(constants.DuplicatesBucket))
-		if deduped == nil {
-			return zerr.ErrCacheMiss
-		}
-
-		if err := deduped.Delete([]byte(path)); err != nil {
-			d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", constants.DuplicatesBucket).
-				Str("path", path).Msg("failed to delete")
-
+		if err := d.deleteBlobRef(tx, digest, path); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
 			return err
-		}
-
-		origin := bucket.Bucket([]byte(constants.OriginalBucket))
-		if origin != nil {
-			originBlob := d.getOne(origin)
-			if originBlob != nil && string(originBlob) == path {
-				if err := origin.Delete([]byte(path)); err != nil {
-					d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", constants.OriginalBucket).
-						Str("path", path).Msg("failed to delete")
-
-					return err
-				}
-
-				// move next candidate to origin bucket, next GetKey will return this one and storage will move the content here
-				dedupedBlob := d.getOne(deduped)
-				if dedupedBlob != nil {
-					if err := origin.Put(dedupedBlob, nil); err != nil {
-						d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", constants.OriginalBucket).Str("path", path).
-							Msg("failed to put")
-
-						return err
-					}
-				}
-			}
-		}
-
-		// if no key in origin bucket then digest bucket is empty, remove it
-		k := d.getOne(origin)
-		if k == nil {
-			d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("deleting empty bucket")
-			if err := root.DeleteBucket([]byte(digest)); err != nil {
-				d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", digest.String()).Str("path", path).
-					Msg("failed to delete")
-
-				return err
-			}
 		}
 
 		return nil
-	}); err != nil {
+	})
+}
+
+func (d *BoltDBDriver) deleteBlobCacheEntry(tx *bbolt.Tx, digest godigest.Digest, path string) error {
+	root := tx.Bucket([]byte(constants.BlobsCache))
+	if root == nil {
+		// this is a serious failure
+		err := zerr.ErrCacheRootBucket
+		d.log.Error().Err(err).Msg("failed to access root bucket")
+
 		return err
+	}
+
+	bucket := root.Bucket([]byte(digest.String()))
+	if bucket == nil {
+		return zerr.ErrCacheMiss
+	}
+
+	deduped := bucket.Bucket([]byte(constants.DuplicatesBucket))
+	if deduped != nil {
+		if deduped.Get([]byte(path)) != nil {
+			if err := deduped.Delete([]byte(path)); err != nil {
+				d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", constants.DuplicatesBucket).
+					Str("path", path).Msg("failed to delete")
+
+				return err
+			}
+
+			return nil
+		}
+	}
+
+	origin := bucket.Bucket([]byte(constants.OriginalBucket))
+	deleted := false
+
+	if origin != nil {
+		if origin.Get([]byte(path)) != nil {
+			// promote a duplicate to origin, if any, so GetAllBlobs/HasBlob don't keep
+			// reporting this now-deleted path
+			if deduped != nil {
+				if promotedKey := d.getOne(deduped); promotedKey != nil {
+					promoted := append([]byte{}, promotedKey...)
+
+					if err := deduped.Delete(promoted); err != nil {
+						d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", constants.DuplicatesBucket).
+							Msg("failed to promote duplicate to origin")
+
+						return err
+					}
+
+					if err := origin.Delete([]byte(path)); err != nil {
+						d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", constants.OriginalBucket).
+							Str("path", path).Msg("failed to delete")
+
+						return err
+					}
+
+					if err := origin.Put(promoted, nil); err != nil {
+						d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", constants.OriginalBucket).
+							Msg("failed to promote duplicate to origin")
+
+						return err
+					}
+
+					return nil
+				}
+			}
+
+			// no more duplicates, safe to remove the original
+			if err := origin.Delete([]byte(path)); err != nil {
+				d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", constants.OriginalBucket).
+					Str("path", path).Msg("failed to delete")
+
+				return err
+			}
+
+			deleted = true
+		}
+	}
+
+	if !deleted {
+		return zerr.ErrCacheMiss
+	}
+
+	// if no key in origin bucket then digest bucket is empty, remove it
+	k := d.getOne(origin)
+	if k == nil {
+		d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("deleting empty bucket")
+		if err := root.DeleteBucket([]byte(digest.String())); err != nil {
+			d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", digest.String()).Str("path", path).
+				Msg("failed to delete")
+
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (d *BoltDBDriver) deleteBlobRef(tx *bbolt.Tx, digest godigest.Digest, path string) error {
+	root := tx.Bucket([]byte(constants.BlobRefs))
+	if root == nil {
+		return zerr.ErrCacheRootBucket
+	}
+
+	bucket := root.Bucket([]byte(digest.String()))
+	if bucket == nil {
+		return zerr.ErrCacheMiss
+	}
+
+	if err := bucket.Delete([]byte(path)); err != nil {
+		d.log.Error().Err(err).Str("bucket", digest.String()).Str("value", path).Msg("failed to delete blob ref")
+
+		return err
+	}
+
+	if d.getOne(bucket) == nil {
+		if err := root.DeleteBucket([]byte(digest.String())); err != nil {
+			d.log.Error().Err(err).Str("bucket", digest.String()).Msg("failed to delete empty blob refs bucket")
+
+			return err
+		}
 	}
 
 	return nil
