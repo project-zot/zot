@@ -13,6 +13,8 @@
   "extensions": {
     "events": {
       "enable": true,
+      "source": "registry.example.com/tenant-a",
+      "typePrefix": "com.example.registry",
       "sinks": [{
           "type": "nats",
           "address": "nats://127.0.0.1:4222",

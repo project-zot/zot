@@ -1,7 +1,9 @@
 {
   "distSpecVersion": "1.1.1",
   "storage": {
-    "rootDirectory": "/tmp/zot"
+    "rootDirectory": "/tmp/zot",
+    "dedupe": true,
+    "hydrateBlobOnRead": false
   },
   "http": {
     "address": "127.0.0.1",

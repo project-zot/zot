@@ -5,6 +5,7 @@ import (
 
 	"zotregistry.dev/zot/v2/pkg/extensions/config/events"
 	"zotregistry.dev/zot/v2/pkg/extensions/config/sync"
+	syncConstants "zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 )
 
 // BaseConfig has params applicable to all extensions.
@@ -65,6 +66,9 @@ type TrivyConfig struct {
 	// VulnSeveritySources controls Trivy's severity source selection (same as Trivy's --vuln-severity-source).
 	// If empty, zot will default it to ["auto"].
 	VulnSeveritySources []string
+	DetectionPriority   string // default is "precise", same as Trivy's --detection-priority flag
+	ScanRemovedPkgs     bool   // default is false, same as Trivy's --removed-pkgs flag
+	IncludeDevDeps      bool   // default is false, same as Trivy's --include-dev-deps flag
 	SBOM                *SBOMConfig
 }
 
@@ -235,6 +239,24 @@ func (e *ExtensionConfig) GetSyncConfig() *sync.Config {
 	}
 
 	return e.Sync
+}
+
+// SyncStagingDownloadDir returns extensions.sync.downloadDir when configured.
+func (e *ExtensionConfig) SyncStagingDownloadDir() string {
+	if e == nil || e.Sync == nil {
+		return ""
+	}
+
+	return e.Sync.DownloadDir
+}
+
+// LargestSyncTimeout returns the largest configured sync registry timeout.
+func (e *ExtensionConfig) LargestSyncTimeout() time.Duration {
+	if e == nil || e.Sync == nil {
+		return syncConstants.DefaultSyncTimeout
+	}
+
+	return e.Sync.LargestSyncTimeout()
 }
 
 // GetMetricsPrometheusConfig returns the metrics prometheus config.

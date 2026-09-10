@@ -17,6 +17,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,6 +31,7 @@ import (
 	regconfig "github.com/regclient/regclient/config"
 	"github.com/regclient/regclient/types/ref"
 	. "github.com/smartystreets/goconvey/convey"
+	"golang.org/x/sync/singleflight"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/common"
@@ -681,76 +683,127 @@ func TestService(t *testing.T) {
 		})
 	})
 
-	Convey("test assured channel waiting path", t, func() {
-		// Strategy: Pre-populate requestStore with a channel to GUARANTEE the channel waiting code path
-		// This ensures the "waiting on channel" message is logged and the channel receive happens
+	Convey("test singleflight deduplicates concurrent on-demand sync calls", t, func() {
+		runConcurrentDedup := func(
+			t *testing.T,
+			flight *singleflight.Group,
+			key string,
+			syncCalls *atomic.Int32,
+			wantErr error,
+			runLeader func(context.Context) error,
+		) {
+			t.Helper()
 
-		Convey("SyncImage assured channel waiting", func() {
-			onDemand := NewOnDemand(log.NewTestLogger())
+			// Buffer of one: only the singleflight leader should signal; a second signal
+			// means dedup failed and must not block the test forever.
+			entered := make(chan struct{}, 1)
+			release := make(chan struct{})
 
-			// Create request and pre-populate with a channel that we control
-			req := request{
-				repo:         "test-guaranteed-channel-image",
-				reference:    "guaranteed-image-tag",
-				serviceID:    0,
-				isBackground: false,
+			const numCallers = 4
+			errCh := make(chan error, numCallers)
+
+			var gate sync.WaitGroup
+			gate.Add(numCallers)
+
+			doCall := func() error {
+				gate.Done()
+				gate.Wait()
+
+				_, err, _ := flight.Do(key, func() (any, error) {
+					syncCalls.Add(1)
+
+					select {
+					case entered <- struct{}{}:
+					default:
+					}
+
+					<-release
+
+					if wantErr != nil {
+						return nil, wantErr
+					}
+
+					return nil, runLeader(context.Background())
+				})
+
+				return err
 			}
 
-			// Create a channel that we control completely
-			pendingChannel := make(chan error, 1)
-			onDemand.requestStore.Store(req, pendingChannel)
+			for range numCallers {
+				go func() {
+					errCh <- doCall()
+				}()
+			}
 
-			// Start request that will wait on our channel
-			requestCompleted := make(chan error)
-			go func() {
-				err := onDemand.SyncImage(context.Background(), "test-guaranteed-channel-image", "guaranteed-image-tag")
-				requestCompleted <- err
-			}()
+			select {
+			case <-entered:
+			case <-time.After(5 * time.Second):
+				t.Fatal("timed out waiting for in-flight sync to start")
+			}
 
-			// Wait a moment for the request to reach the channel waiting code
-			time.Sleep(50 * time.Millisecond)
+			// Give dup waiters time to register inside singleflight before the leader returns.
+			for range 256 {
+				runtime.Gosched()
+			}
 
-			// Send error through our controlled channel - this proves channel waiting worked
-			pendingChannel <- errors.New("guaranteed channel error")
+			close(release)
 
-			// Verify the request got our controlled error
-			err := <-requestCompleted
-			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldEqual, "guaranteed channel error")
+			for range numCallers {
+				select {
+				case err := <-errCh:
+					if wantErr == nil {
+						So(err, ShouldBeNil)
+					} else {
+						So(err, ShouldEqual, wantErr)
+					}
+				case <-time.After(5 * time.Second):
+					t.Fatal("timed out waiting for concurrent on-demand sync")
+				}
+			}
+
+			So(syncCalls.Load(), ShouldEqual, 1)
+		}
+
+		Convey("SyncImage success", func() {
+			var syncCalls atomic.Int32
+			onDemand := NewOnDemand(log.NewTestLogger())
+
+			runConcurrentDedup(t, &onDemand.imageFlight, onDemandKey("dedup-repo", "dedup-tag"), &syncCalls, nil,
+				func(ctx context.Context) error {
+					return onDemand.syncImage(ctx, "dedup-repo", "dedup-tag")
+				})
 		})
 
-		Convey("SyncReferrers assured channel waiting", func() {
+		Convey("SyncReferrers success", func() {
+			var syncCalls atomic.Int32
 			onDemand := NewOnDemand(log.NewTestLogger())
 
-			// Create request and pre-populate with a channel that we control
-			req := request{
-				repo:         "test-guaranteed-channel-referrers",
-				reference:    "sha256:guaranteed",
-				serviceID:    0,
-				isBackground: false,
-			}
+			runConcurrentDedup(t, &onDemand.referrerFlight, onDemandKey("dedup-referrer-repo", "sha256:dedup"), &syncCalls, nil,
+				func(ctx context.Context) error {
+					return onDemand.syncReferrers(ctx, "dedup-referrer-repo", "sha256:dedup", nil)
+				})
+		})
 
-			// Create a channel that we control completely
-			pendingChannel := make(chan error, 1)
-			onDemand.requestStore.Store(req, pendingChannel)
+		Convey("SyncImage shares leader error", func() {
+			var syncCalls atomic.Int32
+			wantErr := errors.New("sentinel sync image error")
+			onDemand := NewOnDemand(log.NewTestLogger())
 
-			// Start request that will wait on our channel
-			requestCompleted := make(chan error)
-			go func() {
-				err := onDemand.SyncReferrers(context.Background(), "test-guaranteed-channel-referrers", "sha256:guaranteed", []string{"signature"})
-				requestCompleted <- err
-			}()
+			runConcurrentDedup(t, &onDemand.imageFlight, onDemandKey("dedup-repo-err", "dedup-tag"), &syncCalls, wantErr,
+				func(ctx context.Context) error {
+					return onDemand.syncImage(ctx, "dedup-repo-err", "dedup-tag")
+				})
+		})
 
-			// Wait a moment for the request to reach the channel waiting code
-			time.Sleep(50 * time.Millisecond)
+		Convey("SyncReferrers shares leader error", func() {
+			var syncCalls atomic.Int32
+			wantErr := errors.New("sentinel sync referrers error")
+			onDemand := NewOnDemand(log.NewTestLogger())
 
-			// Send error through our controlled channel - this proves channel waiting worked
-			pendingChannel <- errors.New("guaranteed referrer channel error")
-
-			// Verify the request got our controlled error
-			err := <-requestCompleted
-			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldEqual, "guaranteed referrer channel error")
+			runConcurrentDedup(t, &onDemand.referrerFlight, onDemandKey("dedup-referrer-repo-err", "sha256:dedup"), &syncCalls, wantErr,
+				func(ctx context.Context) error {
+					return onDemand.syncReferrers(ctx, "dedup-referrer-repo-err", "sha256:dedup", nil)
+				})
 		})
 	})
 }

@@ -126,6 +126,8 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 		}
 	}
 
+	storeController.SyncDownloadDir = config.SyncStagingDownloadDir()
+
 	return storeController, nil
 }
 

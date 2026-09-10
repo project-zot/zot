@@ -202,7 +202,7 @@ func (b *BearerAuth) Middleware(ctlr *Controller) mux.MiddlewareFunc {
 
 			// Fall back to traditional bearer token auth if OIDC didn't succeed.
 			if b.traditional != nil {
-				err := b.traditional.Authorize(request.Context(), header, requestedAccess)
+				claims, err := b.traditional.Authenticate(request.Context(), header, requestedAccess)
 				if err != nil {
 					var challenge *AuthChallengeError
 					if errors.As(err, &challenge) {
@@ -219,6 +219,11 @@ func (b *BearerAuth) Middleware(ctlr *Controller) mux.MiddlewareFunc {
 					zcommon.WriteJSON(response, http.StatusUnauthorized, apiErr.NewError(apiErr.UNSUPPORTED))
 
 					return
+				}
+
+				if claims != nil {
+					userAc := UserAccessControlFromBearerAccess(claims.Access)
+					userAc.SaveOnRequest(request)
 				}
 
 				amCtx := acCtrlr.getAuthnMiddlewareContext(BEARER, request)

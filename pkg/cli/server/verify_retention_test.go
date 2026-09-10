@@ -475,7 +475,10 @@ func TestRetentionCheckWithRetentionEnabledAndRedisDriver(t *testing.T) {
 
 		defer ctrlManager.StopServer()
 
-		os.Args = []string{"cli_test", "verify-feature", "retention", "-l", logFile, "-t", "2s", configFile}
+		// -t is a fixed blocking wait (not poll-with-cap), and this is the only test in the file
+		// running verify-feature retention concurrently against a live controller with a
+		// Redis-backed metaDB, so it needs more headroom than the 2s used elsewhere.
+		os.Args = []string{"cli_test", "verify-feature", "retention", "-l", logFile, "-t", "10s", configFile}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
 

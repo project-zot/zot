@@ -486,5 +486,17 @@
       "begin": 11560,
       "end": 11569
     }
+  },
+  "blackbox/pushpull_mount.bats": {
+    "zot": {
+      "begin": 11580,
+      "end": 11589
+    }
+  },
+  "blackbox/pushpull_mount_hydrate.bats": {
+    "zot": {
+      "begin": 11600,
+      "end": 11609
+    }
   }
 }

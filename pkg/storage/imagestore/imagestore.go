@@ -327,8 +327,17 @@ func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filte
 
 		rel = filepath.ToSlash(rel)
 
-		if ok, err := is.ValidateRepo(rel); !ok || err != nil {
-			return nil //nolint:nilerr // ignore invalid repos
+		ok, err := is.ValidateRepo(rel)
+		if errors.Is(err, zerr.ErrInvalidRepositoryName) {
+			// Names that can never be repos (e.g. lost+found): do not descend —
+			// listing unreadable FS dirs would fail the whole walk.
+			return driver.ErrSkipDir
+		}
+
+		if !ok || err != nil {
+			// Not an OCI layout yet, but the name is valid — keep walking children
+			// so nested repos (path "org" → "org/team") are still discovered.
+			return nil //nolint:nilerr
 		}
 
 		if lastRepo == rel {
@@ -341,7 +350,7 @@ func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filte
 			found = true
 		}
 
-		ok, err := filterFn(rel)
+		ok, err = filterFn(rel)
 		if err != nil {
 			return err
 		}
@@ -403,8 +412,17 @@ func (is *ImageStore) GetRepositories() ([]string, error) {
 
 		rel = filepath.ToSlash(rel)
 
-		if ok, err := is.ValidateRepo(rel); !ok || err != nil {
-			return nil //nolint:nilerr // ignore invalid repos
+		ok, err := is.ValidateRepo(rel)
+		if errors.Is(err, zerr.ErrInvalidRepositoryName) {
+			// Names that can never be repos (e.g. lost+found): do not descend —
+			// listing unreadable FS dirs would fail the whole walk.
+			return driver.ErrSkipDir
+		}
+
+		if !ok || err != nil {
+			// Not an OCI layout yet, but the name is valid — keep walking children
+			// so nested repos (path "org" → "org/team") are still discovered.
+			return nil //nolint:nilerr
 		}
 
 		stores = append(stores, rel)
@@ -468,8 +486,16 @@ func (is *ImageStore) GetNextRepository(processedRepos map[string]struct{}) (str
 		}
 
 		ok, err := is.ValidateRepo(rel)
+		if errors.Is(err, zerr.ErrInvalidRepositoryName) {
+			// Names that can never be repos (e.g. lost+found): do not descend —
+			// listing unreadable FS dirs would fail the whole walk.
+			return driver.ErrSkipDir
+		}
+
 		if !ok || err != nil {
-			return nil //nolint:nilerr // ignore invalid repos
+			// Not an OCI layout yet, but the name is valid — keep walking children
+			// so nested repos (path "org" → "org/team") are still discovered.
+			return nil //nolint:nilerr
 		}
 
 		store = rel
@@ -634,7 +660,7 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 
 	artifactType := ""
 
-	if mediaType == ispec.MediaTypeImageManifest {
+	if compat.IsImageManifestMediaType(mediaType) {
 		var manifest ispec.Manifest
 
 		err := json.Unmarshal(body, &manifest)
@@ -647,7 +673,7 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 		}
 
 		artifactType = zcommon.GetManifestArtifactType(manifest)
-	} else if mediaType == ispec.MediaTypeImageIndex {
+	} else if compat.IsImageIndexMediaType(mediaType) {
 		var imgIndex ispec.Index
 
 		err := json.Unmarshal(body, &imgIndex)
@@ -852,9 +878,9 @@ func (is *ImageStore) deleteImageManifest(ctx context.Context, repo, reference s
 	/* check if manifest is referenced in image indexes, do not allow index images manipulations
 	(ie. remove manifest being part of an image index)	*/
 	if zcommon.IsDigest(reference) &&
-		(common.IsImageManifestMediaType(manifestDesc.MediaType) || common.IsImageIndexMediaType(manifestDesc.MediaType)) {
+		(compat.IsImageManifestMediaType(manifestDesc.MediaType) || compat.IsImageIndexMediaType(manifestDesc.MediaType)) {
 		for _, mDesc := range index.Manifests {
-			if common.IsImageIndexMediaType(mDesc.MediaType) {
+			if compat.IsImageIndexMediaType(mDesc.MediaType) {
 				ok, err := common.IsBlobReferencedInImageIndex(is, repo, manifestDesc.Digest, ispec.Index{
 					Manifests: []ispec.Descriptor{mDesc},
 				}, is.log)
@@ -1980,10 +2006,12 @@ func (is *ImageStore) DeleteBlob(repo string, digest godigest.Digest) error {
 }
 
 /*
-CleanupRepo removes blobs from the repository and removes repo if flag is true and all blobs were removed
-the caller function MUST lock from outside.
+CleanupRepo removes blobs from the repository. Repository-level removal lives in
+RemoveIdleRepository, so that every path that deletes a repo directory goes through
+the same idle checks.
+The caller function MUST lock from outside.
 */
-func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRepo bool) (int, error) {
+func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest) (int, error) {
 	count := 0
 
 	for _, digest := range blobs {
@@ -2012,17 +2040,93 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 		}
 	}
 
-	blobUploads, _ := is.ListBlobUploads(repo)
+	// finally update metrics
+	if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
+		monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
+	}
 
-	// if removeRepo flag is true and we cleanup all blobs and there are no blobs currently being uploaded.
-	if removeRepo && count == len(blobs) && count > 0 && len(blobUploads) == 0 {
-		is.log.Info().Str("repository", repo).Msg("removed all blobs, removing repo")
+	return count, nil
+}
 
-		if err := is.storeDriver.Delete(path.Join(is.rootDir, repo)); err != nil {
-			is.log.Error().Err(err).Str("repository", repo).Msg("failed to remove repo")
+/*
+RemoveIdleRepository removes a repository's layout once the repository holds no manifests and no
+blob upload is in progress. Any blobs still present are unreferenced by definition (the index is
+empty), so those older than maxBlobAge are deleted first; the layout is removed only if no blobs
+remain afterwards. A zero maxBlobAge reclaims a repo emptied by manifest deletes immediately,
+while GC passes its configured delay so recently uploaded blobs keep their grace period.
 
-			return count, err
+Only the layout is touched here: callers that also track the repository elsewhere (such as a meta
+record counting towards storage.maxRepos) are expected to drop that state themselves when this
+returns true, so the repo stops existing everywhere at once.
+
+The caller function MUST lock from outside.
+
+Returns true when the layout was removed.
+*/
+func (is *ImageStore) RemoveIdleRepository(repo string, maxBlobAge time.Duration) (bool, error) {
+	dir := path.Join(is.rootDir, repo)
+	if !is.DirExists(dir) {
+		return false, nil
+	}
+
+	index, err := common.GetIndex(is, repo, is.log)
+	if err != nil {
+		return false, err
+	}
+
+	if len(index.Manifests) > 0 {
+		return false, nil
+	}
+
+	blobUploads, err := is.ListBlobUploads(repo)
+	if err != nil {
+		return false, err
+	}
+
+	if len(blobUploads) > 0 {
+		return false, nil
+	}
+
+	blobs, err := is.GetAllBlobs(repo)
+	if err != nil {
+		return false, err
+	}
+
+	for _, digest := range blobs {
+		if maxBlobAge > 0 {
+			_, _, modtime, err := is.StatBlob(repo, digest)
+			if err != nil {
+				return false, err
+			}
+
+			if modtime.Add(maxBlobAge).After(time.Now()) {
+				// too young: leave the blob and the repo in place
+				continue
+			}
 		}
+
+		// unconditional delete: the index is empty, so no blob is referenced
+		if err := is.deleteBlobChecked(repo, digest, func() (bool, error) { return false, nil }); err != nil {
+			return false, err
+		}
+	}
+
+	// fail closed on partial sweeps and eventually-consistent listings
+	blobs, err = is.GetAllBlobs(repo)
+	if err != nil {
+		return false, err
+	}
+
+	if len(blobs) > 0 {
+		return false, nil
+	}
+
+	is.log.Info().Str("repository", repo).Msg("removing idle repo")
+
+	if err := is.storeDriver.Delete(dir); err != nil {
+		is.log.Error().Err(err).Str("repository", repo).Msg("failed to remove repo")
+
+		return false, err
 	}
 
 	// finally update metrics
@@ -2030,7 +2134,7 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 		monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
 	}
 
-	return count, nil
+	return true, nil
 }
 
 func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {

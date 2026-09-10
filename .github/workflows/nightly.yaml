@@ -14,8 +14,26 @@ permissions: read-all
 #  3. run many, many, many instances of zot with shared storage and metadata front-ended by HAProxy. start a long-running zb run with high concurrency and number of requests
 #  to achieve a long-running sustained load on the system. The system is expected to perform well without errors and return performance data after the test.
 jobs:
+  build-binaries:
+    name: Build binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/build-zot-binaries
+        with:
+          # Shared zot/zb + blackbox client tools (incl. skopeo) so parallel jobs
+          # reuse the artifact instead of each re-downloading check-blackbox tools.
+          make-targets: binary binary-minimal bench blackbox-tools
+          with-skopeo-build-deps: "true"
+          artifact-path: |
+            bin/
+            hack/tools/
+
   dedupe:
     name: Dedupe/restore blobs
+    needs: build-binaries
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -24,26 +42,14 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           check-latest: true
-          go-version: 1.26.x
-      - name: Install dependencies
-        run: |
-          cd $GITHUB_WORKSPACE
-          go install github.com/swaggo/swag/cmd/swag@v1.16.2
-          go mod download
-          sudo apt-get update
-          sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config rpm uidmap
-          # install skopeo
-          git clone -b v1.12.0 https://github.com/containers/skopeo.git
-          cd skopeo
-          make bin/skopeo
-          sudo cp bin/skopeo /usr/bin
-          skopeo -v
+          go-version-file: .go-version
+      - uses: ./.github/actions/install-prebuilt-binaries
       - uses: ./.github/actions/setup-localstack
       - name: Run blackbox nightly dedupe tests
         run: |
             # test restoring s3 blobs after cache is deleted
             # test deduping filesystem blobs after switching dedupe to enable
-            make run-blackbox-dedupe-nightly
+            make USE_PREBUILT=1 run-blackbox-dedupe-nightly
         env:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
@@ -52,6 +58,7 @@ jobs:
 
   sync:
     name: Sync harness
+    needs: build-binaries
     runs-on: ubuntu-latest
     steps:
       - name: Check out source code
@@ -61,28 +68,21 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           check-latest: true
-          go-version: 1.26.x
-      - name: Install dependencies
-        run: |
-          cd $GITHUB_WORKSPACE
-          go install github.com/swaggo/swag/cmd/swag@v1.16.2
-          go mod download
+          go-version-file: .go-version
+      - uses: ./.github/actions/install-prebuilt-binaries
       - name: Run sync harness
         run: |
-            make run-blackbox-sync-nightly
+            make USE_PREBUILT=1 run-blackbox-sync-nightly
 
   gc-referrers-stress-s3:
     name: GC(with referrers) on S3(localstack) with short interval
+    needs: build-binaries
     runs-on: cncf-ubuntu-16-64-x86
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          cache: false
-          check-latest: true
-          go-version: 1.26.x
+      - uses: ./.github/actions/install-prebuilt-binaries
       - uses: ./.github/actions/setup-localstack
       - name: Create zot-storage bucket on LocalStack
         run: |
@@ -95,8 +95,6 @@ jobs:
         timeout-minutes: 240
         id: bench
         run: |
-            make binary
-            make bench
             ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-referrers-bench-s3-localstack.json &
             sleep 10
             bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080 --skip-cleanup
@@ -113,23 +111,20 @@ jobs:
       - uses: ./.github/actions/teardown-localstack
         if: always()
       - name: Check on failures
-        if: steps.bench.outcome != 'success'
+        if: ${{ steps.bench.outcome != 'success' }}
         run: |
           cat /tmp/gc-referrers-bench-s3.log
           exit 1
 
   gc-stress-s3:
     name: GC(without referrers) on S3(localstack) with short interval
+    needs: build-binaries
     runs-on: cncf-ubuntu-16-64-x86
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          cache: false
-          check-latest: true
-          go-version: 1.26.x
+      - uses: ./.github/actions/install-prebuilt-binaries
       - uses: ./.github/actions/setup-localstack
       - name: Create zot-storage bucket on LocalStack
         run: |
@@ -142,8 +137,6 @@ jobs:
         timeout-minutes: 240
         id: bench
         run: |
-            make binary
-            make bench
             ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-bench-s3-localstack.json &
             sleep 10
             bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080 --skip-cleanup
@@ -160,7 +153,7 @@ jobs:
       - uses: ./.github/actions/teardown-localstack
         if: always()
       - name: Check on failures
-        if: steps.bench.outcome != 'success'
+        if: ${{ steps.bench.outcome != 'success' }}
         run: |
           cat /tmp/gc-bench-s3.log
           exit 1
@@ -179,6 +172,7 @@ jobs:
 
   kind-setup:
     name: Prometheus setup
+    needs: build-binaries
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -187,20 +181,8 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           check-latest: true
-          go-version: 1.26.x
-      - name: Install dependencies
-        run: |
-          cd $GITHUB_WORKSPACE
-          make check-blackbox-prerequisites
-          go mod download
-          sudo apt-get update
-          sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config rpm uidmap
-          # install skopeo
-          git clone -b v1.12.0 https://github.com/containers/skopeo.git
-          cd skopeo
-          make bin/skopeo
-          sudo cp bin/skopeo /usr/bin
-          skopeo -v
+          go-version-file: .go-version
+      - uses: ./.github/actions/install-prebuilt-binaries
       - name: Log in to GitHub Docker Registry
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
@@ -214,8 +196,9 @@ jobs:
             sudo ./scripts/enable_userns.sh
             ./examples/kind/kind-ci.sh
 
-  kind-sync-ondemand:
-    name: On-demand sync mirror regression (issue 4184)
+  kind-config-reload:
+    name: Config hot reload on ConfigMap update
+    needs: build-binaries
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -224,25 +207,38 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           check-latest: true
-          go-version: 1.26.x
-      - name: Install dependencies
-        run: |
-          cd $GITHUB_WORKSPACE
-          make check-blackbox-prerequisites
-          go mod download
-          sudo apt-get update
-          sudo apt-get install -y libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config rpm uidmap jq
+          go-version-file: .go-version
+      - uses: ./.github/actions/install-prebuilt-binaries
       - name: Free up disk space
         uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # main
-      - name: Build zot binary
-        run: make binary
+      - name: Run config hot reload ConfigMap test
+        run: |
+          sudo ./scripts/enable_userns.sh
+          make USE_PREBUILT=1 run-kind-config-reload
+
+  kind-sync-ondemand:
+    name: On-demand sync mirror regression (issue 4184)
+    needs: build-binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          check-latest: true
+          go-version-file: .go-version
+      - uses: ./.github/actions/install-prebuilt-binaries
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # main
       - name: Run on-demand sync mirror regression test
         run: |
           sudo ./scripts/enable_userns.sh
-          ./examples/kind/kind-sync-ondemand.sh
+          make USE_PREBUILT=1 run-kind-sync-ondemand
 
   oidc-workload-identity:
     name: OIDC Workload Identity E2E
+    needs: build-binaries
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -251,14 +247,8 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           check-latest: true
-          go-version: 1.26.x
-      - name: Install dependencies
-        run: |
-          cd $GITHUB_WORKSPACE
-          make check-blackbox-prerequisites
-          go mod download
-          sudo apt-get update
-          sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config rpm uidmap jq
+          go-version-file: .go-version
+      - uses: ./.github/actions/install-prebuilt-binaries
       - name: Log in to GitHub Docker Registry
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
@@ -280,7 +270,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           check-latest: true
-          go-version: 1.26.x
+          go-version-file: .go-version
       - name: Install crane
         run: |
           go install github.com/google/go-containerregistry/cmd/crane@latest
@@ -290,6 +280,7 @@ jobs:
 
   cloud-scale-out:
     name: s3+dynamodb scale-out
+    needs: build-binaries
     runs-on: cncf-ubuntu-16-64-x86
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -299,69 +290,35 @@ jobs:
         with:
           cache: false
           check-latest: true
-          go-version: 1.26.x
-      - name: Install dependencies
-        run: |
-          cd $GITHUB_WORKSPACE
-          go install github.com/swaggo/swag/cmd/swag@v1.16.2
-          go mod download
-          sudo apt-get update
-          sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config rpm uidmap haproxy jq
-          # install skopeo
-          git clone -b v1.12.0 https://github.com/containers/skopeo.git
-          cd skopeo
-          make bin/skopeo
-          sudo cp bin/skopeo /usr/bin
-          skopeo -v
-          cd $GITHUB_WORKSPACE
+          go-version-file: .go-version
+      - uses: ./.github/actions/install-prebuilt-binaries
+      - name: Install haproxy
+        run: sudo apt-get install -y haproxy
       - uses: ./.github/actions/setup-localstack
       - name: Run cloud scale-out high scale performance tests
         id: scale
         run: |
-          make run-cloud-scale-out-high-scale-tests
+          make USE_PREBUILT=1 run-cloud-scale-out-high-scale-tests
         env:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
         continue-on-error: true
-      - name: Upload zot logs as build artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: ./.github/actions/scale-out-collect-results
         if: always()
         with:
-          name: zot-scale-out-dynamodb-logs
-          path: /tmp/zot-ft-logs
-          if-no-files-found: error
-      - name: print service logs
-        run: |
-          sudo dmesg
-          cat /tmp/zot-ft-logs/dynamo-scale/*.log
-      - name: multi-hop detection
-        id: multihop
-        run: |
-          if cat /tmp/zot-ft-logs/dynamo-scale/*.log | grep 'cannot proxy an already proxied request'; then
-            echo "detected multi-hop"
-            exit 1
-          else
-            exit 0
-          fi
-        continue-on-error: true
-      - name: clean up logs
-        run: |
-          rm -r /tmp/zot-ft-logs/dynamo-scale
+          scale-outcome: ${{ steps.scale.outcome }}
+          logs-search-path: /tmp/zot-ft-logs/dynamo-scale
+          zot-logs-artifact-name: zot-scale-out-dynamodb-logs
+          zot-logs-artifact-path: /tmp/zot-ft-logs
+          zb-results-artifact-name: zb-cloud-scale-out-perf-results-${{ github.sha }}
+          zot-logs-if-no-files-found: error
+          print-dmesg: "true"
       - uses: ./.github/actions/teardown-localstack
         if: always()
-      - name: fail job if error
-        if: ${{ steps.scale.outcome != 'success' || steps.multihop.outcome != 'success' }}
-        run: |
-          exit 1
-      - name: Upload zb test results zip as build artifact
-        if: steps.scale.outcome == 'success'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: zb-cloud-scale-out-perf-results-${{ github.sha }}
-          path: ./zb-results/
 
   cloud-scale-out-redis:
     name: s3+redis scale-out
+    needs: build-binaries
     runs-on: cncf-ubuntu-16-64-x86
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -371,63 +328,28 @@ jobs:
         with:
           cache: false
           check-latest: true
-          go-version: 1.26.x
-      - name: Install dependencies
-        run: |
-          cd $GITHUB_WORKSPACE
-          go install github.com/swaggo/swag/cmd/swag@v1.16.2
-          go mod download
-          sudo apt-get update
-          sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config rpm uidmap haproxy jq
-          # install skopeo
-          git clone -b v1.12.0 https://github.com/containers/skopeo.git
-          cd skopeo
-          make bin/skopeo
-          sudo cp bin/skopeo /usr/bin
-          skopeo -v
-          cd $GITHUB_WORKSPACE
+          go-version-file: .go-version
+      - uses: ./.github/actions/install-prebuilt-binaries
+      - name: Install haproxy
+        run: sudo apt-get install -y haproxy
       - uses: ./.github/actions/setup-localstack
       - name: Run cloud scale-out Redis tests
         id: scale
         run: |
-          make run-cloud-scale-out-redis-high-scale-tests
+          make USE_PREBUILT=1 run-cloud-scale-out-redis-high-scale-tests
         env:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
         continue-on-error: true
-      - name: Upload zot logs as build artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: ./.github/actions/scale-out-collect-results
         if: always()
         with:
-          name: zot-scale-out-redis-logs
-          path: /tmp/zot-ft-logs/redis-scale
-          if-no-files-found: error
-      - name: print service logs
-        run: |
-          sudo dmesg
-          cat /tmp/zot-ft-logs/redis-scale/*.log
-      - name: multi-hop detection
-        id: multihop
-        run: |
-          if cat /tmp/zot-ft-logs/redis-scale/*.log | grep 'cannot proxy an already proxied request'; then
-            echo "detected multi-hop"
-            exit 1
-          else
-            exit 0
-          fi
-        continue-on-error: true
-      - name: clean up logs
-        run: |
-          rm -r /tmp/zot-ft-logs/redis-scale
+          scale-outcome: ${{ steps.scale.outcome }}
+          logs-search-path: /tmp/zot-ft-logs/redis-scale
+          zot-logs-artifact-name: zot-scale-out-redis-logs
+          zot-logs-artifact-path: /tmp/zot-ft-logs/redis-scale
+          zb-results-artifact-name: zb-cloud-scale-out-redis-results-${{ github.sha }}
+          zot-logs-if-no-files-found: error
+          print-dmesg: "true"
       - uses: ./.github/actions/teardown-localstack
         if: always()
-      - name: fail job if error
-        if: ${{ steps.scale.outcome != 'success' || steps.multihop.outcome != 'success' }}
-        run: |
-          exit 1
-      - name: Upload zb test results zip as build artifact
-        if: steps.scale.outcome == 'success'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: zb-cloud-scale-out-redis-results-${{ github.sha }}
-          path: ./zb-results/

@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"os"
+	"sync"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 
@@ -15,20 +16,25 @@ import (
 )
 
 type eventRecorder struct {
-	log   log.Logger
-	sinks []Sink
+	log      log.Logger
+	sinks    []Sink
+	identity Identity
+	// publish dispatches asynchronously, so wait before tearing sinks down
+	inFlight sync.WaitGroup
 }
 
 var _ Recorder = (*eventRecorder)(nil)
 
-func (r eventRecorder) Close() {
+func (r *eventRecorder) Close() {
+	r.inFlight.Wait()
+
 	err := r.closeSinks()
 	if err != nil {
 		r.log.Error().Err(err).Msg("failed to close sinks")
 	}
 }
 
-func (r eventRecorder) closeSinks() error {
+func (r *eventRecorder) closeSinks() error {
 	var retErr error
 
 	for _, sink := range r.sinks {
@@ -40,8 +46,8 @@ func (r eventRecorder) closeSinks() error {
 	return retErr
 }
 
-func (r eventRecorder) publish(event *cloudevents.Event) {
-	go func() {
+func (r *eventRecorder) publish(event *cloudevents.Event) {
+	r.inFlight.Go(func() {
 		succeeded := 0
 
 		for _, sink := range r.sinks {
@@ -71,11 +77,11 @@ func (r eventRecorder) publish(event *cloudevents.Event) {
 			Int("sinksSucceeded", succeeded).
 			Int("sinksFailed", len(r.sinks)-succeeded).
 			Msg(msg)
-	}()
+	})
 }
 
-func (r eventRecorder) RepositoryCreated(name string, ectx *EventContext) {
-	event, err := newEventBuilder().
+func (r *eventRecorder) RepositoryCreated(name string, ectx *EventContext) {
+	event, err := newEventBuilder(r.identity).
 		WithEventType(RepositoryCreatedEventType).
 		WithDataField("name", name).
 		WithEventContext(ectx).
@@ -89,8 +95,8 @@ func (r eventRecorder) RepositoryCreated(name string, ectx *EventContext) {
 	r.publish(event)
 }
 
-func (r eventRecorder) ImageUpdated(name, reference, digest, mediaType, manifest string, ectx *EventContext) {
-	event, err := newEventBuilder().
+func (r *eventRecorder) ImageUpdated(name, reference, digest, mediaType, manifest string, ectx *EventContext) {
+	event, err := newEventBuilder(r.identity).
 		WithEventType(ImageUpdatedEventType).
 		WithDataField("name", name).
 		WithDataField("reference", reference).
@@ -108,8 +114,8 @@ func (r eventRecorder) ImageUpdated(name, reference, digest, mediaType, manifest
 	r.publish(event)
 }
 
-func (r eventRecorder) ImageDeleted(name, reference, digest, mediaType string, ectx *EventContext) {
-	event, err := newEventBuilder().
+func (r *eventRecorder) ImageDeleted(name, reference, digest, mediaType string, ectx *EventContext) {
+	event, err := newEventBuilder(r.identity).
 		WithEventType(ImageDeletedEventType).
 		WithDataField("name", name).
 		WithDataField("reference", reference).
@@ -126,8 +132,8 @@ func (r eventRecorder) ImageDeleted(name, reference, digest, mediaType string, e
 	r.publish(event)
 }
 
-func (r eventRecorder) ImageLintFailed(name, reference, digest, mediaType, manifest string, ectx *EventContext) {
-	event, err := newEventBuilder().
+func (r *eventRecorder) ImageLintFailed(name, reference, digest, mediaType, manifest string, ectx *EventContext) {
+	event, err := newEventBuilder(r.identity).
 		WithEventType(ImageLintFailedEventType).
 		WithDataField("name", name).
 		WithDataField("reference", reference).
@@ -145,10 +151,10 @@ func (r eventRecorder) ImageLintFailed(name, reference, digest, mediaType, manif
 	r.publish(event)
 }
 
-func (r eventRecorder) ImageScanned(name, reference, digest, mediaType string,
+func (r *eventRecorder) ImageScanned(name, reference, digest, mediaType string,
 	summary ImageScanSummary, ectx *EventContext,
 ) {
-	event, err := newEventBuilder().
+	event, err := newEventBuilder(r.identity).
 		WithEventType(ImageScannedEventType).
 		WithDataField("name", name).
 		WithDataField("reference", reference).

@@ -11,7 +11,8 @@
             },
             "/b": {
                 "rootDirectory": "/tmp/zot2",
-                "dedupe": true
+                "dedupe": true,
+                "hydrateBlobOnRead": true
             },
             "/c": {
                 "rootDirectory": "/tmp/zot3",

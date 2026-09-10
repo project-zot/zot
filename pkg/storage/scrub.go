@@ -17,7 +17,7 @@ import (
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
-	common "zotregistry.dev/zot/v2/pkg/storage/common"
+	"zotregistry.dev/zot/v2/pkg/compat"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
@@ -200,7 +200,7 @@ func scrubManifest(
 	}
 
 	switch {
-	case common.IsImageIndexMediaType(manifest.MediaType):
+	case compat.IsImageIndexMediaType(manifest.MediaType):
 		var idx ispec.Index
 		if err := json.Unmarshal(manifestContent, &idx); err != nil {
 			imgRes := getResult(imageName, tag, manifest.Digest, zerr.ErrBadBlobDigest)
@@ -297,7 +297,7 @@ func scrubManifest(
 		}
 
 		return layers, nil
-	case common.IsImageManifestMediaType(manifest.MediaType):
+	case compat.IsImageManifestMediaType(manifest.MediaType):
 		affectedBlob, man, err := CheckManifestAndConfig(imageName, manifest, manifestContent, imgStore)
 		if err == nil {
 			layers = append(layers, man.Layers...)
@@ -350,7 +350,7 @@ func scrubManifest(
 func CheckManifestAndConfig(
 	imageName string, manifestDesc ispec.Descriptor, manifestContent []byte, imgStore storageTypes.ImageStore,
 ) (godigest.Digest, ispec.Manifest, error) {
-	if !common.IsImageManifestMediaType(manifestDesc.MediaType) {
+	if !compat.IsImageManifestMediaType(manifestDesc.MediaType) {
 		return manifestDesc.Digest, ispec.Manifest{}, zerr.ErrBadManifest
 	}
 

@@ -12,27 +12,36 @@ on:
 permissions: read-all
 
 jobs:
+  build-binaries:
+    name: Build zot and zb (linux/amd64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/build-zot-binaries
+        with:
+          make-targets: binary bench
+          artifact-path: bin/
+
   gc-referrers-stress-local:
     name: GC(with referrers) on filesystem with short interval
+    needs: build-binaries
     runs-on: cncf-ubuntu-8-32-x86
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: ./.github/actions/install-prebuilt-binaries
         with:
-          cache: false
-          check-latest: true
-          go-version: 1.26.x
+          with-runtime-deps: "false"
 
       - name: Run zb
         id: bench
         run: |
-            make binary
-            make bench
             ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-referrers-bench-local.json &
             sleep 10
-            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080
+            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd --max-timeout-failures 1 http://localhost:8080
 
             killall --wait -r zot-*
 
@@ -49,32 +58,29 @@ jobs:
           if-no-files-found: error
 
       - name: Check on failures
-        if: steps.bench.outcome != 'success'
+        if: ${{ steps.bench.outcome != 'success' }}
         run: |
           cat /tmp/gc-referrers-bench-local.log
           exit 1
 
   gc-stress-local:
     name: GC(without referrers) on filesystem with short interval
+    needs: build-binaries
     runs-on: cncf-ubuntu-8-32-x86
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: ./.github/actions/install-prebuilt-binaries
         with:
-          cache: false
-          check-latest: true
-          go-version: 1.26.x
+          with-runtime-deps: "false"
 
       - name: Run zb
         id: bench
         run: |
-            make binary
-            make bench
             ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-bench-local.json &
             sleep 10
-            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080
+            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd --max-timeout-failures 1 http://localhost:8080
 
             killall --wait -r zot-*
 
@@ -91,23 +97,22 @@ jobs:
           if-no-files-found: error
 
       - name: Check on failures
-        if: steps.bench.outcome != 'success'
+        if: ${{ steps.bench.outcome != 'success' }}
         run: |
           cat /tmp/gc-bench-local.log
           exit 1
 
   gc-referrers-stress-s3:
     name: GC(with referrers) on S3(minio) with short interval
+    needs: build-binaries
     runs-on: cncf-ubuntu-8-32-x86
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: ./.github/actions/install-prebuilt-binaries
         with:
-          cache: false
-          check-latest: true
-          go-version: 1.26.x
+          with-runtime-deps: "false"
       - uses: ./.github/actions/setup-localstack
       - name: Setup minio service
         run: |
@@ -152,11 +157,9 @@ jobs:
       - name: Run zb
         id: bench
         run: |
-            make binary
-            make bench
             ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-referrers-bench-s3-minio.json &
             sleep 10
-            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080
+            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd --max-timeout-failures 1 http://localhost:8080
 
             killall --wait -r zot-*
 
@@ -179,23 +182,22 @@ jobs:
         if: always()
 
       - name: Check on failures
-        if: steps.bench.outcome != 'success'
+        if: ${{ steps.bench.outcome != 'success' }}
         run: |
           cat /tmp/gc-referrers-bench-s3.log
           exit 1
 
   gc-stress-s3:
     name: GC(without referrers) on S3(minio) with short interval
+    needs: build-binaries
     runs-on: cncf-ubuntu-8-32-x86
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: ./.github/actions/install-prebuilt-binaries
         with:
-          cache: false
-          check-latest: true
-          go-version: 1.26.x
+          with-runtime-deps: "false"
       - uses: ./.github/actions/setup-localstack
       - name: Setup minio service
         run: |
@@ -240,11 +242,9 @@ jobs:
       - name: Run zb
         id: bench
         run: |
-            make binary
-            make bench
             ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-bench-s3-minio.json &
             sleep 10
-            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080
+            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd --max-timeout-failures 1 http://localhost:8080
 
             killall --wait -r zot-*
 
@@ -267,7 +267,7 @@ jobs:
         if: always()
 
       - name: Check on failures
-        if: steps.bench.outcome != 'success'
+        if: ${{ steps.bench.outcome != 'success' }}
         run: |
           cat /tmp/gc-bench-s3.log
           exit 1

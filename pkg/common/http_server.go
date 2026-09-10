@@ -56,6 +56,19 @@ func ACHeadersMiddleware(config *config.Config, allowedMethods ...string) mux.Mi
 	}
 }
 
+// MaxBodySizeMiddleware caps the request body at maxBytes before it reaches the wrapped
+// handler, so a handler that buffers its whole body into memory (e.g. io.ReadAll) can't be
+// forced to allocate an unbounded amount for a single request.
+func MaxBodySizeMiddleware(maxBytes int64) mux.MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
+			req.Body = http.MaxBytesReader(resp, req.Body, maxBytes)
+
+			next.ServeHTTP(resp, req)
+		})
+	}
+}
+
 func CORSHeadersMiddleware(allowOrigin string) mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {

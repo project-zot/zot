@@ -405,11 +405,11 @@ func RemoveManifestDescByReference(index *ispec.Index, reference string, detectC
 func UpdateIndexWithPrunedImageManifests(imgStore storageTypes.ImageStore, index *ispec.Index, repo string,
 	desc ispec.Descriptor, oldDgst godigest.Digest, log zlog.Logger,
 ) error {
-	if IsImageIndexMediaType(desc.MediaType) && (oldDgst != "") {
+	if compat.IsImageIndexMediaType(desc.MediaType) && (oldDgst != "") {
 		otherImgIndexes := []ispec.Descriptor{}
 
 		for _, manifest := range index.Manifests {
-			if IsImageIndexMediaType(manifest.MediaType) {
+			if compat.IsImageIndexMediaType(manifest.MediaType) {
 				otherImgIndexes = append(otherImgIndexes, manifest)
 			}
 		}
@@ -485,7 +485,7 @@ func PruneImageManifestsFromIndex(imgStore storageTypes.ImageStore, repo string,
 	// for all manifests in the index, skip those that either have a tag or
 	// are used in other imgIndexes
 	for _, outManifest := range outIndex.Manifests {
-		if !IsImageManifestMediaType(outManifest.MediaType) {
+		if !compat.IsImageManifestMediaType(outManifest.MediaType) {
 			prunedManifests = append(prunedManifests, outManifest)
 
 			continue
@@ -567,7 +567,7 @@ func isBlobReferencedInImageIndex(imgStore storageTypes.ImageStore, repo string,
 ) (bool, error) {
 	for _, desc := range index.Manifests {
 		if digest == desc.Digest {
-			if !IsImageIndexMediaType(desc.MediaType) && !IsImageManifestMediaType(desc.MediaType) {
+			if !compat.IsImageIndexMediaType(desc.MediaType) && !compat.IsImageManifestMediaType(desc.MediaType) {
 				log.Debug().Str("mediatype", desc.MediaType).Str("digest", digest.String()).
 					Msg("unexpected media-type found in image index manifest list")
 			}
@@ -582,7 +582,7 @@ func isBlobReferencedInImageIndex(imgStore storageTypes.ImageStore, repo string,
 		var found bool
 
 		switch {
-		case IsImageIndexMediaType(desc.MediaType):
+		case compat.IsImageIndexMediaType(desc.MediaType):
 			seen[desc.Digest] = struct{}{}
 
 			indexImage, err := GetImageIndex(imgStore, repo, desc.Digest, log)
@@ -606,7 +606,7 @@ func isBlobReferencedInImageIndex(imgStore storageTypes.ImageStore, repo string,
 			if err != nil {
 				return false, err
 			}
-		case IsImageManifestMediaType(desc.MediaType):
+		case compat.IsImageManifestMediaType(desc.MediaType):
 			seen[desc.Digest] = struct{}{}
 
 			var err error
@@ -677,16 +677,6 @@ func GetReferencedBlobs(imgStore storageTypes.ImageStore, repo string, log zlog.
 	return referenced, nil
 }
 
-// IsImageIndexMediaType reports whether mediaType is an OCI image index or a compat manifest-list type.
-func IsImageIndexMediaType(mediaType string) bool {
-	return mediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(mediaType)
-}
-
-// IsImageManifestMediaType reports whether mediaType is an OCI image manifest or a compat manifest type.
-func IsImageManifestMediaType(mediaType string) bool {
-	return mediaType == ispec.MediaTypeImageManifest || compat.IsCompatibleManifestMediaType(mediaType)
-}
-
 func collectReferencedBlobs(imgStore storageTypes.ImageStore, repo string,
 	index ispec.Index, referenced map[godigest.Digest]struct{}, seen map[godigest.Digest]struct{}, log zlog.Logger,
 ) error {
@@ -700,7 +690,7 @@ func collectReferencedBlobs(imgStore storageTypes.ImageStore, repo string,
 		seen[desc.Digest] = struct{}{}
 
 		switch {
-		case IsImageIndexMediaType(desc.MediaType):
+		case compat.IsImageIndexMediaType(desc.MediaType):
 			indexImage, err := GetImageIndex(imgStore, repo, desc.Digest, log)
 			if err != nil {
 				var pathNotFoundErr driver.PathNotFoundError
@@ -720,7 +710,7 @@ func collectReferencedBlobs(imgStore storageTypes.ImageStore, repo string,
 			if err := collectReferencedBlobs(imgStore, repo, indexImage, referenced, seen, log); err != nil {
 				return err
 			}
-		case IsImageManifestMediaType(desc.MediaType):
+		case compat.IsImageManifestMediaType(desc.MediaType):
 			manifestContent, err := GetImageManifest(imgStore, repo, desc.Digest, log)
 			if err != nil {
 				var pathNotFoundErr driver.PathNotFoundError
@@ -955,13 +945,13 @@ func getBlobDescriptorFromIndex(imgStore storageTypes.ImageStore, index ispec.In
 		}
 
 		switch {
-		case IsImageManifestMediaType(desc.MediaType):
+		case compat.IsImageManifestMediaType(desc.MediaType):
 			seen[desc.Digest] = struct{}{}
 
 			if foundDescriptor, err := getBlobDescriptorFromManifest(imgStore, repo, blobDigest, desc, log); err == nil {
 				return foundDescriptor, nil
 			}
-		case IsImageIndexMediaType(desc.MediaType):
+		case compat.IsImageIndexMediaType(desc.MediaType):
 			seen[desc.Digest] = struct{}{}
 
 			indexImage, err := GetImageIndex(imgStore, repo, desc.Digest, log)

@@ -3380,6 +3380,139 @@ func TestGetRepositories(t *testing.T) {
 		t.Logf("repos %v", repos)
 		So(len(repos), ShouldEqual, 0)
 	})
+
+	Convey("GetRepositories ignores unreadable lost+found", t, func() {
+		// Regression for https://github.com/project-zot/zot/issues/4413:
+		// ext4 mount roots often contain a root-owned lost+found. Walking into it
+		// used to fail GetRepositories with permission denied.
+		dir := t.TempDir()
+
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+
+		repoDir := path.Join(dir, "myrepo")
+		So(os.MkdirAll(path.Join(repoDir, ispec.ImageBlobsDir), 0o755), ShouldBeNil)
+
+		il := ispec.ImageLayout{Version: ispec.ImageLayoutVersion}
+		layoutFileContent, err := json.Marshal(il)
+		So(err, ShouldBeNil)
+
+		err = os.WriteFile(path.Join(repoDir, ispec.ImageIndexFile), []byte("{}"),
+			storageConstants.DefaultFilePerms)
+		So(err, ShouldBeNil)
+		err = os.WriteFile(path.Join(repoDir, ispec.ImageLayoutFile), layoutFileContent,
+			storageConstants.DefaultFilePerms)
+		So(err, ShouldBeNil)
+
+		lostFound := path.Join(dir, "lost+found")
+		So(os.MkdirAll(path.Join(lostFound, "orphan"), 0o755), ShouldBeNil)
+		So(os.Chmod(lostFound, 0o000), ShouldBeNil)
+
+		defer func() {
+			_ = os.Chmod(lostFound, 0o755)
+		}()
+
+		repos, err := imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		So(repos, ShouldResemble, []string{"myrepo"})
+	})
+
+	Convey("Skip invalid repo names (lost+found) without failing; still find nested repos", t, func() {
+		dir := t.TempDir()
+
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+
+		writeMinimalOCILayout := func(repo string) {
+			repoDir := path.Join(dir, repo)
+			So(os.MkdirAll(path.Join(repoDir, ispec.ImageBlobsDir), 0o755), ShouldBeNil)
+
+			il := ispec.ImageLayout{Version: ispec.ImageLayoutVersion}
+			layoutFileContent, err := json.Marshal(il)
+			So(err, ShouldBeNil)
+
+			err = os.WriteFile(path.Join(repoDir, ispec.ImageIndexFile), []byte("{}"),
+				storageConstants.DefaultFilePerms)
+			So(err, ShouldBeNil)
+			err = os.WriteFile(path.Join(repoDir, ispec.ImageLayoutFile), layoutFileContent,
+				storageConstants.DefaultFilePerms)
+			So(err, ShouldBeNil)
+		}
+
+		// Nested valid repos under a namespace prefix that is not itself a layout.
+		writeMinimalOCILayout("org/team")
+		writeMinimalOCILayout("org/group/app")
+		writeMinimalOCILayout("toplevel")
+
+		// ext4-style junk: invalid distribution name with nested contents, unreadable
+		// like a root-owned lost+found. Without ErrSkipDir on invalid names, Walk
+		// would List this dir and fail the whole GetRepositories call.
+		lostFound := path.Join(dir, "lost+found")
+		So(os.MkdirAll(path.Join(lostFound, "orphan-inode"), 0o755), ShouldBeNil)
+		err := os.WriteFile(path.Join(lostFound, "orphan-inode", "data"), []byte("x"),
+			storageConstants.DefaultFilePerms)
+		So(err, ShouldBeNil)
+		So(os.Chmod(lostFound, 0o000), ShouldBeNil)
+
+		defer func() {
+			_ = os.Chmod(lostFound, 0o755)
+		}()
+
+		// Another invalid-name tree with nested folders (readable): must be skipped,
+		// not mistaken for repos and not break discovery of valid nested paths.
+		So(os.MkdirAll(path.Join(dir, "_invalid", "nested", "deep"), 0o755), ShouldBeNil)
+		err = os.WriteFile(path.Join(dir, "_invalid", "nested", "deep", "file"), []byte("x"),
+			storageConstants.DefaultFilePerms)
+		So(err, ShouldBeNil)
+
+		repos, err := imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		So(repos, ShouldContain, "org/team")
+		So(repos, ShouldContain, "org/group/app")
+		So(repos, ShouldContain, "toplevel")
+		So(len(repos), ShouldEqual, 3)
+		So(repos, ShouldNotContain, "lost+found")
+		So(repos, ShouldNotContain, "_invalid")
+		So(repos, ShouldNotContain, "org") // namespace prefix only, not a layout
+
+		nextRepos, more, err := imgStore.GetNextRepositories("", 10, func(repo string) (bool, error) {
+			return true, nil
+		})
+		So(err, ShouldBeNil)
+		So(more, ShouldBeFalse)
+		So(nextRepos, ShouldContain, "org/team")
+		So(nextRepos, ShouldContain, "org/group/app")
+		So(nextRepos, ShouldContain, "toplevel")
+		So(len(nextRepos), ShouldEqual, 3)
+
+		found := map[string]struct{}{}
+		for range 5 {
+			repo, err := imgStore.GetNextRepository(found)
+			So(err, ShouldBeNil)
+			if repo == "" {
+				break
+			}
+			found[repo] = struct{}{}
+		}
+		So(found, ShouldContainKey, "org/team")
+		So(found, ShouldContainKey, "org/group/app")
+		So(found, ShouldContainKey, "toplevel")
+		So(len(found), ShouldEqual, 3)
+	})
 }
 
 func TestGetNextRepository(t *testing.T) {

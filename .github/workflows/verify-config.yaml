@@ -22,27 +22,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Install go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: ./.github/actions/build-zot-binaries
         with:
-          cache: false
-          check-latest: true
-          go-version: 1.26.x
-      - name: Cache go dependencies
-        id: cache-go-dependencies
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-mod-
-      - name: Install go dependencies
-        if: steps.cache-go-dependencies.outputs.cache-hit != 'true'
-        run: |
-          cd $GITHUB_WORKSPACE
-          go mod download
+          make-targets: binary
+          upload-artifact: "false"
       - name: run verify-config
         run: |
           cd $GITHUB_WORKSPACE
-          make verify-config
+          make USE_PREBUILT=1 verify-config

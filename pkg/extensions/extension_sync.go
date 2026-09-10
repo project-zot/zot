@@ -20,7 +20,7 @@ import (
 
 func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 	storeController storage.StoreController, sch *scheduler.Scheduler, log log.Logger,
-) (*sync.BaseOnDemand, error) {
+) (SyncOnDemand, error) {
 	// Get extensions config safely
 	extensionsConfig := config.CopyExtensionsConfig()
 	httpAddress := config.GetHTTPAddress()

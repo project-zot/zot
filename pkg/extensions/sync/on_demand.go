@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/singleflight"
+
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/log"
@@ -22,16 +24,19 @@ type request struct {
 }
 
 /*
-BaseOnDemand tracks requests that can be an image/signature/sbom.
+BaseOnDemand tracks on-demand image/referrer sync requests.
 
-It keeps track of all parallel requests, if two requests of same image/signature/sbom comes at the same time,
-process just the first one, also keep track of all background retrying routines.
+Concurrent SyncImage/SyncReferrers calls for the same key are deduplicated with
+singleflight (one upstream sync, shared result). requestStore tracks in-flight
+background retry goroutines so at most one retry runs per service/key.
 */
 type BaseOnDemand struct {
 	services []Service
-	// map[request]chan err
-	requestStore *sync.Map
-	log          log.Logger
+	// background retry dedup: map[request]struct{}
+	requestStore   *sync.Map
+	imageFlight    singleflight.Group
+	referrerFlight singleflight.Group
+	log            log.Logger
 }
 
 func NewOnDemand(log log.Logger) *BaseOnDemand {
@@ -56,31 +61,27 @@ func (onDemand *BaseOnDemand) ShouldCheckUpstreamManifest(repo, reference string
 	return true
 }
 
+func onDemandKey(repo, reference string) string {
+	return repo + "\x00" + reference
+}
+
 func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference string) error {
-	req := request{
-		repo:      repo,
-		reference: reference,
-	}
+	key := onDemandKey(repo, reference)
 
-	syncResult := make(chan error)
-	val, loaded := onDemand.requestStore.LoadOrStore(req, syncResult)
+	// leader is set only in the closure that actually runs; waiters never execute it.
+	leader := false
 
-	if loaded {
+	_, err, shared := onDemand.imageFlight.Do(key, func() (any, error) {
+		leader = true
+
+		return nil, onDemand.syncImage(ctx, repo, reference)
+	})
+
+	// singleflight sets shared for every participant when dups > 0, including the leader.
+	if shared && !leader {
 		onDemand.log.Info().Str("repo", repo).Str("reference", reference).
-			Msg("image already demanded, waiting on channel")
-
-		syncResult, _ := val.(chan error)
-
-		err := <-syncResult
-
-		return err
+			Msg("image already demanded, on-demand sync result was shared")
 	}
-
-	defer onDemand.requestStore.Delete(req)
-
-	go onDemand.syncImage(ctx, repo, reference, syncResult)
-
-	err := <-syncResult
 
 	return err
 }
@@ -88,39 +89,29 @@ func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference str
 func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 	subjectDigestStr string, referenceTypes []string,
 ) error {
-	req := request{
-		repo:      repo,
-		reference: subjectDigestStr,
-	}
+	key := onDemandKey(repo, subjectDigestStr)
 
-	syncResult := make(chan error)
-	val, loaded := onDemand.requestStore.LoadOrStore(req, syncResult)
+	// leader is set only in the closure that actually runs; waiters never execute it.
+	leader := false
 
-	if loaded {
+	_, err, shared := onDemand.referrerFlight.Do(key, func() (any, error) {
+		leader = true
+
+		return nil, onDemand.syncReferrers(ctx, repo, subjectDigestStr, referenceTypes)
+	})
+
+	// singleflight sets shared for every participant when dups > 0, including the leader.
+	if shared && !leader {
 		onDemand.log.Info().Str("repo", repo).Str("reference", subjectDigestStr).
-			Msg("referrers for image already demanded, waiting on channel")
-
-		syncResult, _ := val.(chan error)
-
-		err := <-syncResult
-
-		return err
+			Msg("referrers for image already demanded, on-demand sync result was shared")
 	}
-
-	defer onDemand.requestStore.Delete(req)
-
-	go onDemand.syncReferrers(ctx, repo, subjectDigestStr, referenceTypes, syncResult)
-
-	err := <-syncResult
 
 	return err
 }
 
 func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDigestStr string,
-	referenceTypes []string, syncResult chan error,
-) {
-	defer close(syncResult)
-
+	referenceTypes []string,
+) error {
 	var err error
 
 	for serviceID, service := range onDemand.services {
@@ -193,12 +184,10 @@ func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDi
 		}
 	}
 
-	syncResult <- err
+	return err
 }
 
-func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference string, syncResult chan error) {
-	defer close(syncResult)
-
+func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference string) error {
 	var err error
 
 	for serviceID, service := range onDemand.services {
@@ -271,5 +260,5 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference str
 		}
 	}
 
-	syncResult <- err
+	return err
 }

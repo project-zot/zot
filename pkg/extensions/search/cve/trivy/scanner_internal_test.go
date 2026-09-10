@@ -14,6 +14,7 @@ import (
 	"github.com/aquasecurity/trivy-db/pkg/metadata"
 	dbTypes "github.com/aquasecurity/trivy-db/pkg/types"
 	"github.com/aquasecurity/trivy/pkg/commands/artifact"
+	fanalTypes "github.com/aquasecurity/trivy/pkg/fanal/types"
 	"github.com/aquasecurity/trivy/pkg/flag"
 	trivyTypes "github.com/aquasecurity/trivy/pkg/types"
 	godigest "github.com/opencontainers/go-digest"
@@ -724,9 +725,88 @@ func TestIgnoreFileConfiguration(t *testing.T) {
 	Convey("getNewScanOptions passes the configured ignore file to Trivy", t, func() {
 		const ignoreFile = "/etc/zot/.trivyignore.yaml"
 
-		opts := getNewScanOptions(t.TempDir(), nil, nil, []dbTypes.SourceID{"auto"}, ignoreFile, false)
+		opts := getNewScanOptions(t.TempDir(), nil, nil, []dbTypes.SourceID{"auto"}, ignoreFile, false, trivyScanTuning{})
 
 		So(opts.ReportOptions.IgnoreFile, ShouldEqual, ignoreFile)
+	})
+}
+
+func TestScanTuningConfiguration(t *testing.T) {
+	// Regression test: enabling SBOM generation used to imply comprehensive CVE detection, which stops
+	// Trivy filtering OS-owned files and re-reports them as language packages matched against NVD.
+	Convey("enabling SBOM generation does not widen vulnerability detection", t, func() {
+		tuning := getTrivyScanTuning(&extconf.TrivyConfig{
+			SBOM: &extconf.SBOMConfig{Enable: true},
+		}, log.NewTestLogger())
+
+		opts := getNewScanOptions(t.TempDir(), nil, nil, []dbTypes.SourceID{"auto"}, "", true, tuning)
+
+		So(opts.ScanOptions.DetectionPriority, ShouldEqual, fanalTypes.PriorityPrecise)
+		So(opts.ImageOptions.ScanRemovedPkgs, ShouldBeFalse)
+		So(opts.PackageOptions.IncludeDevDeps, ShouldBeFalse)
+
+		So(opts.LicenseOptions.LicenseFull, ShouldBeTrue)
+		So(opts.ScanOptions.Scanners, ShouldContain, trivyTypes.LicenseScanner)
+	})
+
+	Convey("scan tuning defaults to precise detection", t, func() {
+		tuning := getTrivyScanTuning(&extconf.TrivyConfig{}, log.NewTestLogger())
+
+		So(tuning.detectionPriority, ShouldEqual, fanalTypes.PriorityPrecise)
+		So(tuning.scanRemovedPkgs, ShouldBeFalse)
+		So(tuning.includeDevDeps, ShouldBeFalse)
+	})
+
+	Convey("scan tuning honors explicit configuration", t, func() {
+		tuning := getTrivyScanTuning(&extconf.TrivyConfig{
+			DetectionPriority: string(fanalTypes.PriorityComprehensive),
+			ScanRemovedPkgs:   true,
+			IncludeDevDeps:    true,
+		}, log.NewTestLogger())
+
+		opts := getNewScanOptions(t.TempDir(), nil, nil, []dbTypes.SourceID{"auto"}, "", false, tuning)
+
+		So(opts.ScanOptions.DetectionPriority, ShouldEqual, fanalTypes.PriorityComprehensive)
+		So(opts.ImageOptions.ScanRemovedPkgs, ShouldBeTrue)
+		So(opts.PackageOptions.IncludeDevDeps, ShouldBeTrue)
+	})
+
+	Convey("detection priority is case insensitive", t, func() {
+		tuning := getTrivyScanTuning(&extconf.TrivyConfig{
+			DetectionPriority: "COMPREHENSIVE",
+		}, log.NewTestLogger())
+
+		So(tuning.detectionPriority, ShouldEqual, fanalTypes.PriorityComprehensive)
+	})
+
+	Convey("unsupported detection priority falls back to precise", t, func() {
+		tuning := getTrivyScanTuning(&extconf.TrivyConfig{
+			DetectionPriority: "aggressive",
+		}, log.NewTestLogger())
+
+		So(tuning.detectionPriority, ShouldEqual, fanalTypes.PriorityPrecise)
+	})
+
+	Convey("NewScanner propagates scan tuning to the store scan options", t, func() {
+		logger := log.NewTestLogger()
+		store := local.NewImageStore(t.TempDir(), false, false, logger,
+			monitoring.NewNopMetricServer(), nil, nil, nil, nil)
+
+		scanner := NewScanner(storage.StoreController{DefaultStore: store}, nil, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository:      "ghcr.io/project-zot/trivy-db",
+				DetectionPriority: string(fanalTypes.PriorityComprehensive),
+				ScanRemovedPkgs:   true,
+				IncludeDevDeps:    true,
+			},
+		}, logger)
+		So(scanner, ShouldNotBeNil)
+
+		opts := scanner.cveController.DefaultCveConfig
+		So(opts, ShouldNotBeNil)
+		So(opts.ScanOptions.DetectionPriority, ShouldEqual, fanalTypes.PriorityComprehensive)
+		So(opts.ImageOptions.ScanRemovedPkgs, ShouldBeTrue)
+		So(opts.PackageOptions.IncludeDevDeps, ShouldBeTrue)
 	})
 }
 

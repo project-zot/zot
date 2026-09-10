@@ -30,6 +30,17 @@ func IsSupportedSink(sinkType SinkType) bool {
 type Config struct {
 	Enable *bool
 	Sinks  []SinkConfig
+
+	// Source overrides the CloudEvents source attribute on every event this
+	// instance publishes. Empty keeps the built-in value. Set it when a
+	// receiver has to tell one deployment, or one tenant, from another: the
+	// built-in value is the same for every zot in existence.
+	Source string
+
+	// TypePrefix overrides the namespace event types are published under, so
+	// image.updated becomes "<TypePrefix>.image.updated". Empty keeps the
+	// built-in namespace.
+	TypePrefix string
 }
 
 type SinkConfig struct {

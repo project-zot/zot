@@ -17,6 +17,7 @@ import (
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/compat"
 	"zotregistry.dev/zot/v2/pkg/extensions/search/convert"
 	cveinfo "zotregistry.dev/zot/v2/pkg/extensions/search/cve"
 	cvemodel "zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
@@ -173,15 +174,23 @@ func getImageSummary(ctx context.Context, repo, tag string, digest *string, skip
 	imageDigest := manifestDescriptor.Digest
 	if digest != nil {
 		imageDigest = *digest
-		repoMeta.Tags[tag] = mTypes.Descriptor{
-			Digest:    imageDigest,
-			MediaType: ispec.MediaTypeImageManifest,
-		}
 	}
 
 	imageMetaMap, err := metaDB.FilterImageMeta(ctx, []string{imageDigest})
 	if err != nil {
 		return &gql_generated.ImageSummary{}, err
+	}
+
+	if digest != nil {
+		mediaType := ispec.MediaTypeImageManifest
+		if imageMeta, ok := imageMetaMap[imageDigest]; ok && imageMeta.MediaType != "" {
+			mediaType = imageMeta.MediaType
+		}
+
+		repoMeta.Tags[tag] = mTypes.Descriptor{
+			Digest:    imageDigest,
+			MediaType: mediaType,
+		}
 	}
 
 	imageSummaries := convert.RepoMeta2ImageSummaries(ctx, repoMeta, imageMetaMap, skipCVE, cveInfo)
@@ -497,12 +506,12 @@ func resolveImageData(ctx context.Context, imageInput gql_generated.ImageInput, 
 		return gql_generated.ImageInput{}, zerr.ErrImageNotFound
 	}
 
-	switch descriptor.MediaType {
-	case ispec.MediaTypeImageManifest:
+	switch {
+	case compat.IsImageManifestMediaType(descriptor.MediaType):
 		imageInput.Digest = ref(descriptor.Digest)
 
 		return imageInput, nil
-	case ispec.MediaTypeImageIndex:
+	case compat.IsImageIndexMediaType(descriptor.MediaType):
 		if dderef(imageInput.Digest) == "" && !isPlatformSpecified(imageInput.Platform) {
 			return gql_generated.ImageInput{},
 				fmt.Errorf("%w: platform or specific manifest digest needed", zerr.ErrAmbiguousInput)
@@ -595,12 +604,12 @@ func FilterByTagInfo(tagsInfo []cvemodel.TagInfo) mTypes.FilterFunc {
 		manifestDigest := imageMeta.Manifests[0].Digest.String()
 
 		for _, tagInfo := range tagsInfo {
-			switch tagInfo.Descriptor.MediaType {
-			case ispec.MediaTypeImageManifest:
+			switch {
+			case compat.IsImageManifestMediaType(tagInfo.Descriptor.MediaType):
 				if tagInfo.Descriptor.Digest.String() == manifestDigest {
 					return true
 				}
-			case ispec.MediaTypeImageIndex:
+			case compat.IsImageIndexMediaType(tagInfo.Descriptor.MediaType):
 				for _, manifestDesc := range tagInfo.Manifests {
 					if manifestDesc.Digest.String() == manifestDigest {
 						return true
@@ -622,12 +631,12 @@ func FilterByRepoAndTagInfo(repo string, tagsInfo []cvemodel.TagInfo) mTypes.Fil
 		manifestDigest := imageMeta.Manifests[0].Digest.String()
 
 		for _, tagInfo := range tagsInfo {
-			switch tagInfo.Descriptor.MediaType {
-			case ispec.MediaTypeImageManifest:
+			switch {
+			case compat.IsImageManifestMediaType(tagInfo.Descriptor.MediaType):
 				if tagInfo.Descriptor.Digest.String() == manifestDigest {
 					return true
 				}
-			case ispec.MediaTypeImageIndex:
+			case compat.IsImageIndexMediaType(tagInfo.Descriptor.MediaType):
 				for _, manifestDesc := range tagInfo.Manifests {
 					if manifestDesc.Digest.String() == manifestDigest {
 						return true

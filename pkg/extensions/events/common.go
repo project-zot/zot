@@ -2,13 +2,59 @@ package events
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
 const (
 	DefaultHTTPTimeout = 30 * time.Second
 	EventSource        = "zotregistry.dev"
+
+	// DefaultEventTypePrefix is the namespace every built-in event type is
+	// published under. It is the leading segment of the EventType constants
+	// below, and Identity replaces it when an operator configures their own.
+	DefaultEventTypePrefix = "zotregistry"
 )
+
+// Identity is the CloudEvents source and type namespace a recorder publishes
+// under. Both fields are optional and fall back to the built-in values, so a
+// zero Identity reproduces the previous behaviour exactly.
+//
+// An operator running zot as part of a larger service needs these: the source
+// identifies the producer to a receiver, and a single hardcoded value cannot
+// distinguish one deployment, or one tenant, from another.
+type Identity struct {
+	// Source is the CloudEvents source attribute. Defaults to EventSource.
+	Source string
+
+	// TypePrefix replaces the leading namespace of each event type, so
+	// image.updated is published as "<TypePrefix>.image.updated". Defaults to
+	// DefaultEventTypePrefix.
+	TypePrefix string
+}
+
+// SourceOrDefault returns the configured source, or the built-in one.
+func (i Identity) SourceOrDefault() string {
+	if i.Source == "" {
+		return EventSource
+	}
+
+	return i.Source
+}
+
+// TypeOf renders an event type under the configured namespace.
+func (i Identity) TypeOf(eventType EventType) string {
+	name := eventType.String()
+	if i.TypePrefix == "" || i.TypePrefix == DefaultEventTypePrefix {
+		return name
+	}
+
+	if suffix, found := strings.CutPrefix(name, DefaultEventTypePrefix+"."); found {
+		return i.TypePrefix + "." + suffix
+	}
+
+	return name
+}
 
 type EventType string
 

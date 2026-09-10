@@ -36,9 +36,10 @@ type Auth struct {
 	Bearer   *BearerConfig `json:"bearer,omitempty"   mapstructure:"bearer"`
 	LDAP     *struct {
 		Address string `json:"address,omitempty" mapstructure:"address"`
-	} `json:"ldap,omitempty"   mapstructure:"ldap"`
-	OpenID *OpenIDConfig `json:"openid,omitempty" mapstructure:"openid"`
-	APIKey bool          `json:"apikey,omitempty" mapstructure:"apikey"`
+	} `json:"ldap,omitempty"                 mapstructure:"ldap"`
+	OpenID               *OpenIDConfig `json:"openid,omitempty"               mapstructure:"openid"`
+	APIKey               bool          `json:"apikey,omitempty"               mapstructure:"apikey"`
+	AllowAnonymousAccess bool          `json:"allowAnonymousAccess,omitempty" mapstructure:"allowAnonymousAccess"`
 }
 
 type StrippedConfig struct {
@@ -60,7 +61,7 @@ func (auth Auth) MarshalJSON() ([]byte, error) {
 	type localAuth Auth
 
 	if auth.Bearer == nil && auth.LDAP == nil &&
-		auth.HTPasswd.Path == "" &&
+		(auth.HTPasswd == nil || auth.HTPasswd.Path == "") &&
 		(auth.OpenID == nil || len(auth.OpenID.Providers) == 0) {
 		auth.HTPasswd = nil
 		auth.OpenID = nil
@@ -68,10 +69,12 @@ func (auth Auth) MarshalJSON() ([]byte, error) {
 		return json.Marshal((localAuth)(auth))
 	}
 
-	if auth.HTPasswd.Path == "" && auth.LDAP == nil {
-		auth.HTPasswd = nil
+	// HTPasswd is a value on AuthConfig, so MarshalThroughStruct always yields a
+	// non-nil pointer. Only advertise basic auth when LDAP is set or a path exists.
+	if auth.LDAP != nil || (auth.HTPasswd != nil && auth.HTPasswd.Path != "") {
+		auth.HTPasswd = &HTPasswd{}
 	} else {
-		auth.HTPasswd.Path = ""
+		auth.HTPasswd = nil
 	}
 
 	if auth.OpenID != nil && len(auth.OpenID.Providers) == 0 {
@@ -122,12 +125,29 @@ type Mgmt struct {
 // @Success 200 {object}   extensions.StrippedConfig
 // @Failure 500 {string}   string   "internal server error"
 func (mgmt *Mgmt) HandleGetConfig(w http.ResponseWriter, r *http.Request) {
+	var stripped StrippedConfig
+
 	sanitizedConfig := mgmt.Conf.Sanitize()
 
-	buf, err := zcommon.MarshalThroughStruct(sanitizedConfig, &StrippedConfig{})
+	if _, err := zcommon.MarshalThroughStruct(sanitizedConfig, &stripped); err != nil {
+		mgmt.Log.Error().Err(err).Str("component", "mgmt").Msg("failed to marshal config response")
+		w.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	if stripped.HTTP.Auth != nil &&
+		sanitizedConfig.HTTP.AccessControl != nil &&
+		sanitizedConfig.HTTP.AccessControl.AnonymousPolicyExists() {
+		stripped.HTTP.Auth.AllowAnonymousAccess = true
+	}
+
+	buf, err := json.Marshal(stripped)
 	if err != nil {
 		mgmt.Log.Error().Err(err).Str("component", "mgmt").Msg("failed to marshal config response")
 		w.WriteHeader(http.StatusInternalServerError)
+
+		return
 	}
 
 	_, _ = w.Write(buf)

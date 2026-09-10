@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	dockerList "github.com/distribution/distribution/v3/manifest/manifestlist"
+	docker "github.com/distribution/distribution/v3/manifest/schema2"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
@@ -1370,5 +1372,92 @@ func TestConvertErrors(t *testing.T) {
 			)
 			So(len(imgSums), ShouldEqual, 0)
 		})
+	})
+}
+
+func TestDockerIndexMediaTypeConversion(t *testing.T) {
+	Convey("Docker manifest lists retain their media type in image summaries", t, func() {
+		digest := godigest.FromString("docker-index")
+		imageMeta := mTypes.ImageMeta{
+			MediaType: dockerList.MediaTypeManifestList,
+			Digest:    digest,
+			Index: &ispec.Index{
+				MediaType: dockerList.MediaTypeManifestList,
+			},
+		}
+		repoMeta := mTypes.RepoMeta{
+			Name: "repo",
+			Tags: map[string]mTypes.Descriptor{
+				"latest": {Digest: digest.String()},
+			},
+		}
+
+		fullImageMeta := convert.GetFullImageMeta("latest", repoMeta, imageMeta)
+		So(fullImageMeta.MediaType, ShouldEqual, dockerList.MediaTypeManifestList)
+		So(fullImageMeta.Index.MediaType, ShouldEqual, dockerList.MediaTypeManifestList)
+
+		summary, _, err := convert.FullImageMeta2ImageSummary(context.Background(), fullImageMeta)
+		So(err, ShouldBeNil)
+		So(summary, ShouldNotBeNil)
+		So(summary.MediaType, ShouldNotBeNil)
+		So(*summary.MediaType, ShouldEqual, dockerList.MediaTypeManifestList)
+	})
+
+	Convey("Docker manifests prefer descriptor media type over empty nested JSON", t, func() {
+		digest := godigest.FromString("docker-manifest")
+		imageMeta := mTypes.ImageMeta{
+			MediaType: docker.MediaTypeManifest,
+			Digest:    digest,
+			Manifests: []mTypes.ManifestMeta{
+				{
+					Digest:   digest,
+					Manifest: ispec.Manifest{},
+					Config:   ispec.Image{},
+				},
+			},
+		}
+		repoMeta := mTypes.RepoMeta{
+			Name: "repo",
+			Tags: map[string]mTypes.Descriptor{
+				"latest": {Digest: digest.String()},
+			},
+		}
+
+		fullImageMeta := convert.GetFullImageMeta("latest", repoMeta, imageMeta)
+		summary, _, err := convert.FullImageMeta2ImageSummary(context.Background(), fullImageMeta)
+		So(err, ShouldBeNil)
+		So(summary, ShouldNotBeNil)
+		So(summary.MediaType, ShouldNotBeNil)
+		So(*summary.MediaType, ShouldEqual, docker.MediaTypeManifest)
+	})
+
+	Convey("empty top-level media type falls back to nested manifest JSON", t, func() {
+		digest := godigest.FromString("nested-media-type")
+		summary, _, err := convert.ImageManifest2ImageSummary(context.Background(), mTypes.FullImageMeta{
+			Repo:      "repo",
+			Tag:       "latest",
+			MediaType: "",
+			Digest:    digest,
+			Manifests: []mTypes.FullManifestMeta{
+				{
+					ManifestMeta: mTypes.ManifestMeta{
+						Digest: digest,
+						Size:   10,
+						Manifest: ispec.Manifest{
+							MediaType: docker.MediaTypeManifest,
+							Config: ispec.Descriptor{
+								Digest: godigest.FromString("config"),
+								Size:   2,
+							},
+						},
+						Config: ispec.Image{},
+					},
+				},
+			},
+		})
+		So(err, ShouldBeNil)
+		So(summary, ShouldNotBeNil)
+		So(summary.MediaType, ShouldNotBeNil)
+		So(*summary.MediaType, ShouldEqual, docker.MediaTypeManifest)
 	})
 }

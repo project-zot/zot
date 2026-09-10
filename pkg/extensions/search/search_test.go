@@ -6132,7 +6132,7 @@ func TestMetaDBWhenReadingImages(t *testing.T) {
 			So(repoResponseStruct.Repos[0].DownloadCount, ShouldEqual, 3)
 		})
 
-		Convey("Error when incrementing", func() {
+		Convey("Stats increment error does not fail manifest GET", func() {
 			ctlr.MetaDB = mocks.MetaDBMock{
 				UpdateStatsOnDownloadFn: func(repo string, tag string) error {
 					return ErrTestError
@@ -6141,7 +6141,7 @@ func TestMetaDBWhenReadingImages(t *testing.T) {
 
 			resp, err := resty.R().Get(baseURL + "/v2/" + "repo1" + "/manifests/" + "1.0.1")
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		})
 	})
 

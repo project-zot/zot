@@ -161,9 +161,50 @@ func TestDoHTTPRequest(t *testing.T) {
 			imageName: "repo",
 			tagName:   "tag",
 			config:    searchConf,
-		})
+		}, ispec.MediaTypeImageManifest)
 
 		So(err, ShouldNotBeNil)
+	})
+
+	Convey("fetchImageManifestStruct preserves docker Content-Type", t, func() {
+		server, baseURL := StartTestHTTPServer(HTTPRoutes{
+			{
+				Route: "/v2/{name}/manifests/{reference}",
+				HandlerFunc: func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Add("Docker-Content-Digest", godigest.FromString("manifest").String())
+					w.Header().Add("Content-Length", "64")
+					_, err := w.Write([]byte(`{"config":{"digest":"sha256:config","size":2},"layers":[]}`))
+					if err != nil {
+						return
+					}
+				},
+				AllowedMethods: []string{http.MethodGet},
+			},
+			{
+				Route: "/v2/{name}/blobs/{digest}",
+				HandlerFunc: func(w http.ResponseWriter, r *http.Request) {
+					_, err := w.Write([]byte(`{}`))
+					if err != nil {
+						return
+					}
+				},
+				AllowedMethods: []string{http.MethodGet},
+			},
+		})
+		defer server.Close()
+
+		searchConf := getDefaultSearchConf(baseURL)
+		image, err := fetchImageManifestStruct(context.Background(), &httpJob{
+			url:       baseURL + "/v2/repo/manifests/tag",
+			username:  "",
+			password:  "",
+			imageName: "repo",
+			tagName:   "tag",
+			config:    searchConf,
+		}, "application/vnd.docker.distribution.manifest.v2+json")
+		So(err, ShouldBeNil)
+		So(image, ShouldNotBeNil)
+		So(image.MediaType, ShouldEqual, "application/vnd.docker.distribution.manifest.v2+json")
 	})
 
 	Convey("fetchManifestStruct errors", t, func() {
@@ -340,7 +381,7 @@ func TestDoHTTPRequest(t *testing.T) {
 				imageName: "repo",
 				tagName:   "tag",
 				config:    searchConf,
-			})
+			}, ispec.MediaTypeImageIndex)
 			So(err, ShouldBeNil)
 			So(imageStruct, ShouldNotBeNil)
 		})
@@ -363,7 +404,7 @@ func TestDoHTTPRequest(t *testing.T) {
 				imageName: "repo",
 				tagName:   "tag",
 				config:    searchConf,
-			})
+			}, ispec.MediaTypeImageIndex)
 			So(err, ShouldNotBeNil)
 			So(imageStruct, ShouldBeNil)
 		})
@@ -382,7 +423,7 @@ func TestDoHTTPRequest(t *testing.T) {
 				imageName: "repo",
 				tagName:   "tag",
 				config:    searchConf,
-			})
+			}, ispec.MediaTypeImageIndex)
 			So(err, ShouldNotBeNil)
 			So(imageStruct, ShouldBeNil)
 		})

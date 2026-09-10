@@ -30,6 +30,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/api/constants"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/compat"
 	"zotregistry.dev/zot/v2/pkg/extensions"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
@@ -207,7 +208,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 	imageQuery := `
 		{
 			Image(image:"%s:%s"){
-				RepoName Tag Digest IsSigned
+				RepoName Tag Digest MediaType IsSigned
 				Manifests {
 					Digest
 					SignatureInfo { Tool IsTrusted Author }
@@ -589,6 +590,264 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		resp, err = client.R().Post(baseURL + constants.FullNotation)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+	})
+
+	Convey("Verify notation signatures on docker schema2 images", func() {
+		globalDir := t.TempDir()
+		conf := config.New()
+		conf.HTTP.Port = "0"
+		conf.HTTP.Compat = []compat.MediaCompatibility{compat.DockerManifestV2SchemaV2}
+
+		if cacheDriverParams != nil {
+			conf.Storage.CacheDriver = cacheDriverParams
+		}
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Search = &extconf.SearchConfig{}
+		conf.Extensions.Search.Enable = &defaultValue
+		conf.Extensions.Search.CVE = nil
+		conf.Extensions.Trust = &extconf.ImageTrustConfig{}
+		conf.Extensions.Trust.Enable = &defaultValue
+		conf.Extensions.Trust.Notation = defaultValue
+
+		logFile := test.MakeTempFile(t, "zot-log.txt")
+		defer logFile.Close()
+
+		writers := io.MultiWriter(os.Stdout, logFile)
+		logger := log.NewLoggerWithWriter("debug", writers)
+
+		imageStore := local.NewImageStore(globalDir, false, false,
+			logger, monitoring.NewNopMetricServer(), nil, nil, conf.HTTP.Compat, nil)
+
+		storeController := storage.StoreController{
+			DefaultStore: imageStore,
+		}
+
+		image := CreateRandomImage().AsDockerImage()
+		err := WriteImageToFileSystem(image, repo, tag, storeController)
+		So(err, ShouldBeNil)
+
+		ctlr := api.NewController(conf)
+		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
+		ctlr.Config.Storage.RootDirectory = globalDir
+
+		ctlrManager := test.NewControllerManager(ctlr)
+		baseURL := ctlrManager.StartAndWait()
+		port := strconv.Itoa(ctlrManager.Port())
+		defer ctlrManager.StopServer()
+
+		gqlEndpoint := fmt.Sprintf("%s%s?query=", baseURL, constants.FullSearchPrefix)
+
+		found, err := test.ReadLogFileAndSearchString(logFile.Name(), "setting up image trust routes", time.Second)
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
+
+		strQuery := fmt.Sprintf(imageQuery, repo, tag)
+		gqlTargetURL := fmt.Sprintf("%s%s", gqlEndpoint, url.QueryEscape(strQuery))
+
+		resp, err := resty.R().Get(gqlTargetURL)
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.Body(), ShouldNotBeNil)
+
+		imgSummaryResponse := zcommon.ImageSummaryResult{}
+		err = json.Unmarshal(resp.Body(), &imgSummaryResponse)
+		So(err, ShouldBeNil)
+		So(imgSummaryResponse, ShouldNotBeNil)
+		So(imgSummaryResponse.ImageSummary, ShouldNotBeNil)
+		imgSummary := imgSummaryResponse.SingleImageSummary.ImageSummary
+		So(imgSummary.RepoName, ShouldContainSubstring, repo)
+		So(imgSummary.Tag, ShouldContainSubstring, tag)
+		So(imgSummary.Digest, ShouldContainSubstring, image.Digest().Encoded())
+		So(imgSummary.Manifests[0].Digest, ShouldContainSubstring, image.Digest().Encoded())
+		So(imgSummary.IsSigned, ShouldEqual, false)
+		So(imgSummary.SignatureInfo, ShouldNotBeNil)
+		So(len(imgSummary.SignatureInfo), ShouldEqual, 0)
+
+		rootDir := t.TempDir()
+
+		signature.NotationPathLock.Lock()
+		defer signature.NotationPathLock.Unlock()
+
+		signature.LoadNotationPath(rootDir)
+
+		err = signature.GenerateNotationCerts(rootDir, certName)
+		So(err, ShouldBeNil)
+
+		certificateContent, err := os.ReadFile(path.Join(rootDir, "notation/localkeys", certName+".crt"))
+		So(err, ShouldBeNil)
+		So(certificateContent, ShouldNotBeNil)
+
+		client := resty.New()
+		resp, err = client.R().SetHeader("Content-type", "application/octet-stream").
+			SetBody(certificateContent).Post(baseURL + constants.FullNotation)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		imageURL := fmt.Sprintf("localhost:%s/%s", port, fmt.Sprintf("%s:%s", repo, tag))
+
+		err = signature.SignWithNotation(certName, imageURL, rootDir, false)
+		So(err, ShouldBeNil)
+
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity", 30*time.Second)
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
+
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity completed", time.Second)
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
+
+		resp, err = resty.R().Get(gqlTargetURL)
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.Body(), ShouldNotBeNil)
+
+		imgSummaryResponse = zcommon.ImageSummaryResult{}
+		err = json.Unmarshal(resp.Body(), &imgSummaryResponse)
+		So(err, ShouldBeNil)
+		So(imgSummaryResponse, ShouldNotBeNil)
+		So(imgSummaryResponse.ImageSummary, ShouldNotBeNil)
+		imgSummary = imgSummaryResponse.SingleImageSummary.ImageSummary
+		So(imgSummary.RepoName, ShouldContainSubstring, repo)
+		So(imgSummary.Tag, ShouldContainSubstring, tag)
+		So(imgSummary.Digest, ShouldContainSubstring, image.Digest().Encoded())
+		So(imgSummary.Manifests[0].Digest, ShouldContainSubstring, image.Digest().Encoded())
+		So(imgSummary.MediaType, ShouldEqual, image.ManifestDescriptor.MediaType)
+		t.Log(imgSummary.SignatureInfo)
+		So(imgSummary.IsSigned, ShouldEqual, true)
+		So(imgSummary.SignatureInfo, ShouldNotBeNil)
+		So(len(imgSummary.SignatureInfo), ShouldEqual, 1)
+		So(imgSummary.SignatureInfo[0].IsTrusted, ShouldEqual, true)
+		So(imgSummary.SignatureInfo[0].Tool, ShouldEqual, "notation")
+		So(imgSummary.SignatureInfo[0].Author,
+			ShouldEqual, "CN=cert,O=Notary,L=Seattle,ST=WA,C=US")
+		So(imgSummary.Manifests[0].SignatureInfo, ShouldNotBeNil)
+		So(len(imgSummary.Manifests[0].SignatureInfo), ShouldEqual, 1)
+		So(imgSummary.Manifests[0].SignatureInfo[0].IsTrusted, ShouldEqual, true)
+		So(imgSummary.Manifests[0].SignatureInfo[0].Tool, ShouldEqual, "notation")
+		So(imgSummary.Manifests[0].SignatureInfo[0].Author,
+			ShouldEqual, "CN=cert,O=Notary,L=Seattle,ST=WA,C=US")
+	})
+
+	Convey("Verify notation signatures on docker schema2 manifest lists", func() {
+		globalDir := t.TempDir()
+		conf := config.New()
+		conf.HTTP.Port = "0"
+		conf.HTTP.Compat = []compat.MediaCompatibility{compat.DockerManifestV2SchemaV2}
+
+		if cacheDriverParams != nil {
+			conf.Storage.CacheDriver = cacheDriverParams
+		}
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Search = &extconf.SearchConfig{}
+		conf.Extensions.Search.Enable = &defaultValue
+		conf.Extensions.Search.CVE = nil
+		conf.Extensions.Trust = &extconf.ImageTrustConfig{}
+		conf.Extensions.Trust.Enable = &defaultValue
+		conf.Extensions.Trust.Notation = defaultValue
+
+		logFile := test.MakeTempFile(t, "zot-log.txt")
+		defer logFile.Close()
+
+		writers := io.MultiWriter(os.Stdout, logFile)
+		logger := log.NewLoggerWithWriter("debug", writers)
+
+		imageStore := local.NewImageStore(globalDir, false, false,
+			logger, monitoring.NewNopMetricServer(), nil, nil, conf.HTTP.Compat, nil)
+
+		storeController := storage.StoreController{
+			DefaultStore: imageStore,
+		}
+
+		multiarch := CreateRandomMultiarch().AsDockerImage()
+		err := WriteMultiArchImageToFileSystem(multiarch, repo, tag, storeController)
+		So(err, ShouldBeNil)
+
+		ctlr := api.NewController(conf)
+		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
+		ctlr.Config.Storage.RootDirectory = globalDir
+
+		ctlrManager := test.NewControllerManager(ctlr)
+		baseURL := ctlrManager.StartAndWait()
+		port := strconv.Itoa(ctlrManager.Port())
+		defer ctlrManager.StopServer()
+
+		found, err := test.ReadLogFileAndSearchString(logFile.Name(), "setting up image trust routes", time.Second)
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
+
+		rootDir := t.TempDir()
+
+		signature.NotationPathLock.Lock()
+		defer signature.NotationPathLock.Unlock()
+
+		signature.LoadNotationPath(rootDir)
+
+		err = signature.GenerateNotationCerts(rootDir, certName)
+		So(err, ShouldBeNil)
+
+		certificateContent, err := os.ReadFile(path.Join(rootDir, "notation/localkeys", certName+".crt"))
+		So(err, ShouldBeNil)
+		So(certificateContent, ShouldNotBeNil)
+
+		client := resty.New()
+		resp, err := client.R().SetHeader("Content-type", "application/octet-stream").
+			SetBody(certificateContent).Post(baseURL + constants.FullNotation)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		imageURL := fmt.Sprintf("localhost:%s/%s", port, fmt.Sprintf("%s:%s", repo, tag))
+
+		err = signature.SignWithNotation(certName, imageURL, rootDir, true)
+		So(err, ShouldBeNil)
+
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity", 30*time.Second)
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
+
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity completed", time.Second)
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
+
+		fullImageMeta, err := ctlr.MetaDB.GetFullImageMeta(context.Background(), repo, tag)
+		So(err, ShouldBeNil)
+		So(fullImageMeta.MediaType, ShouldEqual, multiarch.IndexDescriptor.MediaType)
+		So(fullImageMeta.Signatures, ShouldContainKey, zcommon.NotationSignature)
+
+		notationSignatures := fullImageMeta.Signatures[zcommon.NotationSignature]
+		So(len(notationSignatures), ShouldEqual, 1)
+		So(len(notationSignatures[0].LayersInfo), ShouldEqual, 1)
+		So(notationSignatures[0].LayersInfo[0].Signer,
+			ShouldEqual, "CN=cert,O=Notary,L=Seattle,ST=WA,C=US")
+
+		gqlEndpoint := fmt.Sprintf("%s%s?query=", baseURL, constants.FullSearchPrefix)
+		strQuery := fmt.Sprintf(imageQuery, repo, tag)
+		gqlTargetURL := fmt.Sprintf("%s%s", gqlEndpoint, url.QueryEscape(strQuery))
+
+		resp, err = resty.R().Get(gqlTargetURL)
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.Body(), ShouldNotBeNil)
+
+		imgSummaryResponse := zcommon.ImageSummaryResult{}
+		err = json.Unmarshal(resp.Body(), &imgSummaryResponse)
+		So(err, ShouldBeNil)
+		So(imgSummaryResponse, ShouldNotBeNil)
+		So(imgSummaryResponse.ImageSummary, ShouldNotBeNil)
+		imgSummary := imgSummaryResponse.SingleImageSummary.ImageSummary
+		So(imgSummary.RepoName, ShouldContainSubstring, repo)
+		So(imgSummary.Tag, ShouldContainSubstring, tag)
+		So(imgSummary.Digest, ShouldContainSubstring, multiarch.Digest().Encoded())
+		So(imgSummary.MediaType, ShouldEqual, multiarch.IndexDescriptor.MediaType)
+		So(imgSummary.IsSigned, ShouldEqual, true)
+		So(imgSummary.SignatureInfo, ShouldNotBeNil)
+		So(len(imgSummary.SignatureInfo), ShouldEqual, 1)
+		So(imgSummary.SignatureInfo[0].IsTrusted, ShouldEqual, true)
+		So(imgSummary.SignatureInfo[0].Tool, ShouldEqual, "notation")
+		So(imgSummary.SignatureInfo[0].Author,
+			ShouldEqual, "CN=cert,O=Notary,L=Seattle,ST=WA,C=US")
 	})
 
 	Convey("Verify uploading cosign public keys", func() {

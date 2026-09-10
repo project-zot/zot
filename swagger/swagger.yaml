@@ -106,6 +106,8 @@ definitions:
     type: object
   extensions.Auth:
     properties:
+      allowAnonymousAccess:
+        type: boolean
       apikey:
         type: boolean
       bearer:

@@ -3,6 +3,7 @@
 package events_test
 
 import (
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -193,5 +194,57 @@ func TestHTTPSink(t *testing.T) {
 
 		err = sink.Close()
 		So(err, ShouldBeNil)
+	})
+
+	Convey("HTTPSink.Close drops the connections it pooled", t, func() {
+		var open atomic.Int32
+
+		server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+		server.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+			if state == http.StateNew {
+				open.Add(1)
+			}
+
+			if state == http.StateClosed || state == http.StateHijacked {
+				open.Add(-1)
+			}
+		}
+		server.Start()
+
+		defer server.Close()
+
+		event := cloudevents.NewEvent()
+		event.SetID("1234")
+		event.SetType("test.event")
+		event.SetSource("unit.test")
+
+		cfg := eventsconf.SinkConfig{
+			Type:    eventsconf.HTTP,
+			Address: server.URL,
+		}
+
+		sink, err := events.NewHTTPSink(cfg)
+		So(err, ShouldBeNil)
+
+		So(cloudevents.IsACK(sink.Emit(&event)), ShouldBeTrue)
+
+		So(open.Load(), ShouldEqual, 1)
+
+		So(sink.Close(), ShouldBeNil)
+
+		var remaining int32
+
+		for range 100 {
+			remaining = open.Load()
+			if remaining == 0 {
+				break
+			}
+
+			time.Sleep(50 * time.Millisecond)
+		}
+
+		So(remaining, ShouldEqual, 0)
 	})
 }

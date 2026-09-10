@@ -253,6 +253,16 @@ func (ac *AccessController) updateUserAccessControl(httpReq *http.Request, userA
 		ac.getGlobPatterns(mkER(constants.DetectManifestCollisionPermission)))
 }
 
+// attachPermissionEvaluator wires config-based policy evaluation into userAc so
+// handlers can use CanOnResource without constructing AccessController.
+func (ac *AccessController) attachPermissionEvaluator(httpReq *http.Request, userAc *reqCtx.UserAccessControl) {
+	userAc.SetPermissionEvaluator(func(action, repository, reference string) bool {
+		ok, _ := ac.can(httpReq, userAc, action, repository, reference)
+
+		return ok
+	})
+}
+
 // getAuthnMiddlewareContext builds ac context(allowed to read repos and if user is admin) and returns it.
 func (ac *AccessController) getAuthnMiddlewareContext(authnType string, request *http.Request) context.Context {
 	amwCtx := reqCtx.AuthnMiddlewareContext{
@@ -644,6 +654,7 @@ func BaseAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			}
 
 			aCtlr.updateUserAccessControl(request, userAc)
+			aCtlr.attachPermissionEvaluator(request, userAc)
 			userAc.SaveOnRequest(request)
 
 			next.ServeHTTP(response, request) //nolint:contextcheck

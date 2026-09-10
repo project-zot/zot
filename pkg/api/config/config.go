@@ -18,6 +18,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/buildinfo"
 	"zotregistry.dev/zot/v2/pkg/compat"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
+	eventsconf "zotregistry.dev/zot/v2/pkg/extensions/config/events"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 )
 
@@ -32,10 +33,17 @@ type StorageConfig struct {
 	Dedupe          bool
 	RemoteCache     bool
 	RedirectBlobURL bool
-	GC              bool
-	Commit          bool
-	GCDelay         time.Duration // applied for blobs
-	GCInterval      time.Duration
+	// HydrateBlobOnRead restores the pre-conformance behavior where HEAD and ranged
+	// GET may call CheckBlob and hard-link a digest from this store's dedupe cache
+	// into the destination repository. The zero value (false) keeps blob reads
+	// repo-local via StatBlob (OCI AtomicDelete / distribution-spec). Explicit
+	// mounts via POST .../blobs/uploads/?mount= are unaffected. Only applies within
+	// a single store/substore (not across SubPaths).
+	HydrateBlobOnRead bool
+	GC                bool
+	Commit            bool
+	GCDelay           time.Duration // applied for blobs
+	GCInterval        time.Duration
 	// GCTimeWindow restricts periodic garbage-collection runs to a daily time-of-day
 	// window, e.g. "01:00-08:00". The zero value means GC can run at any time.
 	GCTimeWindow  GCTimeWindow
@@ -545,6 +553,24 @@ type GlobalStorageConfig struct {
 	FastRestart *bool `mapstructure:",omitempty"`
 }
 
+// LargestGCDelay returns the largest GCDelay across the default store and substores,
+// falling back to DefaultGCDelay when none is configured.
+func (g GlobalStorageConfig) LargestGCDelay() time.Duration {
+	maxDelay := g.GCDelay
+
+	for _, sub := range g.SubPaths {
+		if sub.GCDelay > maxDelay {
+			maxDelay = sub.GCDelay
+		}
+	}
+
+	if maxDelay <= 0 {
+		return storageConstants.DefaultGCDelay
+	}
+
+	return maxDelay
+}
+
 type AccessControlConfig struct {
 	Repositories Repositories `json:"repositories" mapstructure:"repositories"`
 	AdminPolicy  Policy
@@ -838,7 +864,9 @@ func New() *Config {
 
 func (expConfig StorageConfig) ParamsEqual(actConfig StorageConfig) bool {
 	return expConfig.GC == actConfig.GC && expConfig.Dedupe == actConfig.Dedupe &&
-		expConfig.RedirectBlobURL == actConfig.RedirectBlobURL && expConfig.GCDelay == actConfig.GCDelay &&
+		expConfig.RedirectBlobURL == actConfig.RedirectBlobURL &&
+		expConfig.HydrateBlobOnRead == actConfig.HydrateBlobOnRead &&
+		expConfig.GCDelay == actConfig.GCDelay &&
 		expConfig.GCInterval == actConfig.GCInterval && expConfig.GCTimeWindow == actConfig.GCTimeWindow
 }
 
@@ -1073,6 +1101,7 @@ func (c *Config) UpdateReloadableConfig(newConfig *Config) {
 	c.Storage.GC = newConfig.Storage.GC
 	c.Storage.Dedupe = newConfig.Storage.Dedupe
 	c.Storage.RedirectBlobURL = newConfig.Storage.RedirectBlobURL
+	c.Storage.HydrateBlobOnRead = newConfig.Storage.HydrateBlobOnRead
 	c.Storage.GCDelay = newConfig.Storage.GCDelay
 	c.Storage.GCInterval = newConfig.Storage.GCInterval
 	c.Storage.GCTimeWindow = newConfig.Storage.GCTimeWindow
@@ -1092,6 +1121,7 @@ func (c *Config) UpdateReloadableConfig(newConfig *Config) {
 		subPathConfig.GC = storageConfig.GC
 		subPathConfig.Dedupe = storageConfig.Dedupe
 		subPathConfig.RedirectBlobURL = storageConfig.RedirectBlobURL
+		subPathConfig.HydrateBlobOnRead = storageConfig.HydrateBlobOnRead
 		subPathConfig.GCDelay = storageConfig.GCDelay
 		subPathConfig.GCInterval = storageConfig.GCInterval
 		subPathConfig.GCTimeWindow = storageConfig.GCTimeWindow
@@ -1157,7 +1187,26 @@ func (c *Config) UpdateReloadableConfig(newConfig *Config) {
 
 		// Update scrub extension
 		c.Extensions.Scrub = newConfig.Extensions.Scrub
+
+		// Update events extension
+		c.Extensions.Events = newConfig.Extensions.Events
 	}
+}
+
+// SnapshotJSON returns the config serialized under the read lock with secrets
+// left unmasked, for callers that compare two configs and report only which
+// fields differ. It is a view, not a clone: whatever JSON does not carry is
+// absent, session keys and ldap bind credentials among it. Use Sanitize for
+// anything shown to a user, and the Copy* accessors for real values.
+func (c *Config) SnapshotJSON() ([]byte, error) {
+	if c == nil {
+		return nil, nil
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return json.Marshal(c)
 }
 
 // CopyAuthConfig returns a copy of the auth config if it exists.
@@ -1242,6 +1291,26 @@ func (c *Config) IsBlobRedirectEnabled(storePath string) bool {
 	return c.Storage.RedirectBlobURL
 }
 
+// IsHydrateBlobOnReadEnabled returns whether HEAD / ranged GET may hydrate blobs
+// from this store's dedupe cache into the destination repository. If a matching
+// subpath exists, its setting takes precedence over the global one.
+func (c *Config) IsHydrateBlobOnReadEnabled(storePath string) bool {
+	if c == nil {
+		return false
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if storePath != "/" {
+		if subPathConfig, ok := c.Storage.SubPaths[storePath]; ok {
+			return subPathConfig.HydrateBlobOnRead
+		}
+	}
+
+	return c.Storage.HydrateBlobOnRead
+}
+
 // CopyExtensionsConfig returns a copy of the extensions config if it exists.
 func (c *Config) CopyExtensionsConfig() *extconf.ExtensionConfig {
 	if c == nil {
@@ -1260,6 +1329,30 @@ func (c *Config) CopyExtensionsConfig() *extconf.ExtensionConfig {
 	_ = deepcopy.Copy(extensionsCopy, c.Extensions)
 
 	return extensionsCopy
+}
+
+// SyncStagingDownloadDir returns extensions.sync.downloadDir when configured.
+func (c *Config) SyncStagingDownloadDir() string {
+	if c == nil {
+		return ""
+	}
+
+	extensionsConfig := c.CopyExtensionsConfig()
+	if extensionsConfig == nil {
+		return ""
+	}
+
+	return extensionsConfig.SyncStagingDownloadDir()
+}
+
+// LargestSyncTimeout returns the largest configured sync registry timeout.
+func (c *Config) LargestSyncTimeout() time.Duration {
+	var extensionsConfig *extconf.ExtensionConfig
+	if c != nil {
+		extensionsConfig = c.CopyExtensionsConfig()
+	}
+
+	return extensionsConfig.LargestSyncTimeout()
 }
 
 // CopyLogConfig returns a copy of the log config if it exists.
@@ -1425,6 +1518,35 @@ func (c *Config) StorageFingerprint() string {
 	for name, subPath := range norm.SubPaths {
 		subPath.GCMaxSchedulerDelay = 0
 		norm.SubPaths[name] = subPath
+	}
+
+	// encoding/json sorts map keys, so the serialization is deterministic across restarts.
+	blob, err := json.Marshal(norm)
+	if err != nil {
+		return ""
+	}
+
+	sum := sha256.Sum256(blob)
+
+	return hex.EncodeToString(sum[:])
+}
+
+// EventsFingerprint returns a stable SHA-256 of the events extension config.
+func (c *Config) EventsFingerprint() string {
+	if c == nil {
+		return ""
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.Extensions == nil || c.Extensions.Events == nil {
+		return ""
+	}
+
+	var norm eventsconf.Config
+	if err := DeepCopy(c.Extensions.Events, &norm); err != nil {
+		return ""
 	}
 
 	// encoding/json sorts map keys, so the serialization is deterministic across restarts.

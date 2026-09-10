@@ -1406,6 +1406,9 @@ const docTemplate = `{
         "extensions.Auth": {
             "type": "object",
             "properties": {
+                "allowAnonymousAccess": {
+                    "type": "boolean"
+                },
                 "apikey": {
                     "type": "boolean"
                 },

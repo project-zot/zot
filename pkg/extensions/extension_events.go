@@ -35,6 +35,8 @@ func NewEventRecorder(config *config.Config, log log.Logger) (events.Recorder, e
 		case eventsconfig.HTTP:
 			sink, err := events.NewHTTPSink(sinkConfig)
 			if err != nil {
+				closeSinks(sinks, log)
+
 				return nil, err
 			}
 
@@ -42,6 +44,8 @@ func NewEventRecorder(config *config.Config, log log.Logger) (events.Recorder, e
 		case eventsconfig.NATS:
 			sink, err := events.NewNATSSink(sinkConfig)
 			if err != nil {
+				closeSinks(sinks, log)
+
 				return nil, err
 			}
 
@@ -57,5 +61,19 @@ func NewEventRecorder(config *config.Config, log log.Logger) (events.Recorder, e
 		return nil, zerr.ErrExtensionNotEnabled
 	}
 
-	return events.NewRecorder(log, sinks...)
+	identity := events.Identity{
+		Source:     eventConfig.Source,
+		TypePrefix: eventConfig.TypePrefix,
+	}
+
+	return events.NewRecorderWithIdentity(log, identity, sinks...)
+}
+
+// closeSinks releases sinks already built when a later one fails.
+func closeSinks(sinks []events.Sink, log log.Logger) {
+	for _, sink := range sinks {
+		if err := sink.Close(); err != nil {
+			log.Error().Err(err).Msg("failed to close event sink")
+		}
+	}
 }

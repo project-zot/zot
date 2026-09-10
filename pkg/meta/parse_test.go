@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	dockerList "github.com/distribution/distribution/v3/manifest/manifestlist"
+	docker "github.com/distribution/distribution/v3/manifest/schema2"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
@@ -344,6 +346,57 @@ func TestParseStorageErrors(t *testing.T) {
 				So(err, ShouldNotBeNil)
 			})
 		})
+	})
+}
+
+func TestSetImageMetaFromInputPreservesDescriptorMediaType(t *testing.T) {
+	ctx := context.Background()
+	logger := log.NewTestLogger()
+
+	Convey("Docker manifest media type", t, func() {
+		image := CreateRandomImage().AsDockerImage()
+		configBlob, err := json.Marshal(image.Config)
+		So(err, ShouldBeNil)
+
+		var storedImageMeta mTypes.ImageMeta
+
+		imageStore := mocks.MockedImageStore{
+			GetBlobContentFn: func(string, godigest.Digest) ([]byte, error) {
+				return configBlob, nil
+			},
+		}
+		metaDB := mocks.MetaDBMock{
+			SetRepoReferenceFn: func(_ context.Context, _, _ string, imageMeta mTypes.ImageMeta) error {
+				storedImageMeta = imageMeta
+
+				return nil
+			},
+		}
+
+		err = meta.SetImageMetaFromInput(ctx, "repo", "tag", docker.MediaTypeManifest, image.Digest(),
+			image.ManifestDescriptor.Data, imageStore, metaDB, logger)
+		So(err, ShouldBeNil)
+		So(storedImageMeta.MediaType, ShouldEqual, docker.MediaTypeManifest)
+	})
+
+	Convey("Docker manifest-list media type", t, func() {
+		multiarch := CreateRandomMultiarch().AsDockerImage()
+
+		var storedImageMeta mTypes.ImageMeta
+
+		metaDB := mocks.MetaDBMock{
+			SetRepoReferenceFn: func(_ context.Context, _, _ string, imageMeta mTypes.ImageMeta) error {
+				storedImageMeta = imageMeta
+
+				return nil
+			},
+		}
+
+		err := meta.SetImageMetaFromInput(ctx, "repo", "tag", dockerList.MediaTypeManifestList,
+			multiarch.Digest(), multiarch.IndexDescriptor.Data, mocks.MockedImageStore{}, metaDB, logger)
+		So(err, ShouldBeNil)
+		So(storedImageMeta.MediaType, ShouldEqual, dockerList.MediaTypeManifestList)
+		So(storedImageMeta.Index.MediaType, ShouldEqual, dockerList.MediaTypeManifestList)
 	})
 }
 

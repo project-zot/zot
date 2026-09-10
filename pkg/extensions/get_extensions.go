@@ -6,10 +6,14 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/api/constants"
 	"zotregistry.dev/zot/v2/pkg/buildinfo"
+	"zotregistry.dev/zot/v2/pkg/extensions/sync"
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/scheduler"
 )
+
+// SyncOnDemand is the on-demand sync handler exposed to the API layer.
+type SyncOnDemand sync.OnDemand
 
 func GetExtensions(config *config.Config) distext.ExtensionList {
 	extensionList := distext.ExtensionList{}

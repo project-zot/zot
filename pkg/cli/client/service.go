@@ -24,6 +24,7 @@ import (
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/constants"
 	"zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/compat"
 )
 
 const (
@@ -1179,10 +1180,10 @@ func (img imageStruct) stringPlainText(maxImgNameLen, maxTagLen, maxPlatformLen 
 func addImageToTable(table *tablewriter.Table, img *imageStruct,
 	imageName, tagName string, verbose bool,
 ) error {
-	switch img.MediaType {
-	case ispec.MediaTypeImageManifest:
+	switch {
+	case compat.IsImageManifestMediaType(img.MediaType):
 		return addManifestToTable(table, imageName, tagName, &img.Manifests[0], verbose)
-	case ispec.MediaTypeImageIndex:
+	case compat.IsImageIndexMediaType(img.MediaType):
 		return addImageIndexToTable(table, img, imageName, tagName, verbose)
 	}
 

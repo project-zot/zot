@@ -170,3 +170,22 @@ function teardown_file() {
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq -r '.data.BookmarkedRepos.Results') = '[]' ]
 }
+
+@test "mgmt reports allowAnonymousAccess and basic auth methods" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+
+    run curl -s -w "\n%{http_code}" "http://127.0.0.1:${zot_port}/v2/_zot/ext/mgmt"
+    [ "$status" -eq 0 ]
+    http_code=$(echo "${output}" | tail -n1)
+    body=$(echo "${output}" | sed '$d')
+    [ "${http_code}" = "200" ]
+
+    # htpasswd is exposed as an empty object (path stripped); LDAP details are never returned
+    [ $(echo "${body}" | jq -r 'has("http")') = "true" ]
+    [ $(echo "${body}" | jq -r '.http.auth | has("htpasswd")') = "true" ]
+    [ $(echo "${body}" | jq -c '.http.auth.htpasswd') = '{}' ]
+    [ $(echo "${body}" | jq -r '.http.auth | has("ldap")') = "false" ]
+
+    # anonymousPolicy is configured in this suite, so guest login is advertised
+    [ $(echo "${body}" | jq -r '.http.auth.allowAnonymousAccess') = "true" ]
+}

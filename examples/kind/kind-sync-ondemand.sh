@@ -23,7 +23,9 @@
 #      - "remote image digest changed, syncing again" does NOT appear (no loop).
 #
 # Prerequisites:
-#   make check-blackbox-prerequisites binary
+#   make binary
+#   kind (installed by `make run-kind-sync-ondemand` via $(KIND), or on PATH)
+#   docker, kubectl, jq, git
 #
 # Usage:
 #   make run-kind-sync-ondemand
@@ -39,13 +41,13 @@ OS=$(go env GOOS)
 ARCH=$(go env GOARCH)
 ZOT_BINARY="${ROOT_DIR}/bin/zot-${OS}-${ARCH}"
 
-# Prefer the project-local kind binary installed by check-blackbox-prerequisites.
+# Prefer the project-local kind binary installed by the Makefile $(KIND) target.
 if [ -x "${ROOT_DIR}/hack/tools/bin/kind" ]; then
     KIND="${ROOT_DIR}/hack/tools/bin/kind"
 elif command -v kind &>/dev/null; then
     KIND="kind"
 else
-    echo "Error: kind not found. Run 'make check-blackbox-prerequisites' first." >&2
+    echo "Error: kind not found. Run 'make run-kind-sync-ondemand' (or install kind)." >&2
     exit 1
 fi
 

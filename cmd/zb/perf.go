@@ -3,6 +3,7 @@ package main
 import (
 	crand "crypto/rand"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"log"
 	"math/big"
@@ -129,6 +130,7 @@ type statsSummary struct {
 	rps                  float32
 	mixedSize, mixedType bool
 	errorCount           int
+	timeoutErrorCount    int
 	errors               map[string]int
 	manifestHeadTTFBs    []time.Duration
 	manifestGetTTFBs     []time.Duration
@@ -171,6 +173,10 @@ type statsRecord struct {
 func updateStats(summary *statsSummary, record statsRecord) {
 	if record.isConnFail || record.isErr {
 		summary.errorCount++
+
+		if isTimeoutError(record.err) {
+			summary.timeoutErrorCount++
+		}
 	}
 
 	if record.err != nil {
@@ -778,7 +784,7 @@ func Perf(
 	workdir, url, auth, repo string,
 	concurrency int, requests int,
 	outFmt string, srcIPs string, srcCIDR string, skipCleanup bool,
-	testRegex *regexp.Regexp, upstreamServerURL string,
+	testRegex *regexp.Regexp, upstreamServerURL string, maxTimeoutFailures int,
 ) {
 	// logging
 	log.SetFlags(0)
@@ -794,6 +800,7 @@ func Perf(
 	}
 	log.Printf("Concurrency Level:\t%v", concurrency)
 	log.Printf("Total requests:\t%v", requests)
+	log.Printf("Max timeout failures:\t%v", maxTimeoutFailures)
 
 	if workdir == "" {
 		cwd, err := os.Getwd()
@@ -851,7 +858,8 @@ func Perf(
 
 	var err error
 
-	zbError := false
+	totalFailures := 0
+	timeoutFailures := 0
 
 	// get host ips from command line to make requests from
 	var ips []string
@@ -920,9 +928,8 @@ func Perf(
 		printStats(requests, &summary)
 		statsSummaries = append(statsSummaries, summary)
 
-		if summary.errorCount != 0 && !zbError {
-			zbError = true
-		}
+		totalFailures += summary.errorCount
+		timeoutFailures += summary.timeoutErrorCount
 	}
 
 	if err = outputTestResults(statsSummaries, outFmt); err != nil {
@@ -934,9 +941,68 @@ func Perf(
 		teardown(workdir)
 	})
 
-	if zbError {
+	hardFailures := totalFailures - timeoutFailures
+
+	printFailureBudget(hardFailures, timeoutFailures, maxTimeoutFailures)
+
+	if shouldFailRun(hardFailures, timeoutFailures, maxTimeoutFailures) {
 		os.Exit(1)
 	}
+}
+
+// isTimeoutError reports whether err looks like a request timeout (or the common
+// client-side symptom when a server closes the connection after its own timeout).
+func isTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+
+	if errors.Is(err, os.ErrDeadlineExceeded) {
+		return true
+	}
+
+	msg := strings.ToLower(err.Error())
+
+	return strings.Contains(msg, "timeout") ||
+		strings.Contains(msg, "deadline exceeded") ||
+		strings.Contains(msg, "use of closed network connection")
+}
+
+// shouldFailRun reports whether the run should exit non-zero.
+// Non-timeout failures always fail the run; timeout failures use the budget.
+func shouldFailRun(hardFailures, timeoutFailures, maxTimeoutFailures int) bool {
+	return hardFailures > 0 || timeoutFailures > maxTimeoutFailures
+}
+
+func printFailureBudget(hardFailures, timeoutFailures, maxTimeoutFailures int) {
+	log.Printf("\n============")
+	log.Printf("Total failed requests:\t%v", hardFailures+timeoutFailures)
+	log.Printf("Timeout failures:\t%v", timeoutFailures)
+	log.Printf("Other failures:\t%v", hardFailures)
+	log.Printf("Timeout failure budget:\t%v", maxTimeoutFailures)
+
+	if hardFailures == 0 && timeoutFailures == 0 {
+		return
+	}
+
+	if shouldFailRun(hardFailures, timeoutFailures, maxTimeoutFailures) {
+		if hardFailures > 0 {
+			log.Printf("Non-timeout failures present:\t%v", hardFailures)
+		}
+
+		if timeoutFailures > maxTimeoutFailures {
+			log.Printf("Timeout failure budget exceeded:\t%v/%v", timeoutFailures, maxTimeoutFailures)
+		}
+
+		return
+	}
+
+	log.Printf("Timeout failure budget used:\t%v/%v", timeoutFailures, maxTimeoutFailures)
 }
 
 // outputTestResults outputs the test results in the specified format.

@@ -31,12 +31,15 @@ curl http://localhost:8080/v2/_zot/ext/mgmt | jq
       "bearer": {
         "realm": "https://auth.myreg.io/auth/token",
         "service": "myauth"
-      }
+      },
+      "allowAnonymousAccess": true
     }
   }
 }
 ```
 
-If ldap or htpasswd are enabled mgmt will return `{"htpasswd": {}}` indicating that clients can authenticate with basic auth credentials.
+If ldap or htpasswd are enabled mgmt will return `{"htpasswd": {}}` indicating that clients can authenticate with basic auth credentials. An empty `htpasswd` object from a disabled (pathless) htpasswd config is omitted.
+
+If `accessControl` contains any repository `anonymousPolicy`, mgmt sets `allowAnonymousAccess: true` so clients can offer guest login without probing `GET /v2/`.
 
 If any key is present under `'auth'` key, in the mgmt response, it means that particular authentication method is enabled.

@@ -1,0 +1,66 @@
+name: 'Install prebuilt binaries'
+description: >
+  Restore bin/ and optional hack/tools/ from a single workflow build artifact,
+  mark executables under bin/ and hack/tools/, optionally install common runtime
+  packages (uidmap, jq), and when prebuilt skopeo is present install its runtime
+  shared libs and copy it to /usr/bin.
+inputs:
+  artifact-name:
+    description: 'Name of the upload-artifact produced by the build job'
+    required: false
+    default: zot-binaries
+  with-runtime-deps:
+    description: >
+      If true, apt-install uidmap/jq and (when skopeo is in the artifact) its
+      shared libs, then install skopeo to /usr/bin. Set false for jobs that only
+      need chmod'd binaries from the artifact.
+    required: false
+    default: 'true'
+runs:
+  using: "composite"
+  steps:
+    - name: Download prebuilt bins
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      with:
+        name: ${{ inputs.artifact-name }}
+    - name: Fix executable bits and install runtime deps
+      shell: bash
+      run: |
+        set -euo pipefail
+        # upload-artifact strips a single-directory path prefix (LCA = that
+        # dir), so artifact-path: bin/ lands as ./zot-* ./zb-* at the workspace
+        # root. Multi-path uploads (bin/ + hack/tools/) keep bin/. Normalize.
+        if [ ! -d bin ]; then
+          mkdir -p bin
+          shopt -s nullglob
+          for f in zot-* zb-*; do
+            mv "$f" bin/
+          done
+          shopt -u nullglob
+        fi
+        if [ -d bin ]; then
+          chmod -R a+x bin
+          ls -la bin
+        fi
+        if [ -d hack/tools/bin ]; then
+          chmod -R a+x hack/tools/bin
+          ls -la hack/tools/bin
+        fi
+        # bats libexec helpers must be executable too
+        if [ -d hack/tools/libexec ]; then
+          chmod -R a+x hack/tools/libexec
+        fi
+        if [ "${{ inputs.with-runtime-deps }}" != "true" ]; then
+          exit 0
+        fi
+        sudo apt-get update
+        pkgs=(uidmap jq)
+        if [ -x hack/tools/bin/skopeo ]; then
+          # Ubuntu 24.04 (noble) package name after the t64 time_t transition.
+          pkgs+=(libgpgme11t64 libassuan0 libdevmapper1.02.1)
+        fi
+        sudo apt-get install -y "${pkgs[@]}"
+        if [ -x hack/tools/bin/skopeo ]; then
+          sudo cp hack/tools/bin/skopeo /usr/bin/skopeo
+          skopeo -v
+        fi

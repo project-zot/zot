@@ -1,0 +1,27 @@
+{
+    "distSpecVersion": "1.1.1",
+    "storage": {
+        "rootDirectory": "/tmp/zot",
+        "dedupe": true,
+        "hydrateBlobOnRead": true,
+        "subPaths": {
+            "/a": {
+                "rootDirectory": "/tmp/zot-a",
+                "dedupe": true,
+                "hydrateBlobOnRead": false
+            },
+            "/b": {
+                "rootDirectory": "/tmp/zot-b",
+                "dedupe": true,
+                "hydrateBlobOnRead": true
+            }
+        }
+    },
+    "http": {
+        "address": "127.0.0.1",
+        "port": "8080"
+    },
+    "log": {
+        "level": "debug"
+    }
+}

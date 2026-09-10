@@ -910,7 +910,8 @@ func TestServeSearchEnabledDefaultCVEDB(t *testing.T) {
 		// The default config handling logic will convert the 1h interval to a 2h interval
 		substring := "\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":7200000000000,\"Trivy\":" +
 			"{\"DBRepository\":\"ghcr.io/aquasecurity/trivy-db\",\"JavaDBRepository\":\"ghcr.io/aquasecurity/trivy-java-db\"," +
-			"\"IgnoreFile\":\"\",\"VulnSeveritySources\":[\"auto\"],\"SBOM\":null}}}"
+			"\"IgnoreFile\":\"\",\"VulnSeveritySources\":[\"auto\"],\"DetectionPriority\":\"precise\"," +
+			"\"ScanRemovedPkgs\":false,\"IncludeDevDeps\":false,\"SBOM\":null}}}"
 
 		found, err := ReadLogFileAndSearchString(logPath, substring, readLogFileTimeout)
 

@@ -18,6 +18,7 @@ import (
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/compat"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
@@ -49,6 +50,10 @@ type Options struct {
 	TimeWindow config.GCTimeWindow
 
 	ImageRetention config.ImageRetention
+
+	// StagingRoot is the local filesystem root whose <repo>/.sync/<uuid> trees block
+	// idle-repository removal during GC for this image store. Populated by RunGCTasks.
+	StagingRoot string
 }
 
 type GarbageCollect struct {
@@ -211,6 +216,35 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 			return err
 		}
 
+		/* remove the repo layout once nothing is left: no manifests, no blobs, no uploads.
+		This is the repository-level analogue of the manifest pruning above; the meta record
+		is dropped right after, keeping metadb on the same lifetime as storage, so a reaped
+		repo also stops counting towards storage.maxRepos. Blobs younger than the GC delay
+		keep their grace period. This runs before deleteBlobUploads so that an upload not yet
+		old enough to be reaped still counts as in progress and keeps the repo, as
+		CleanupRepo's guard used to. */
+		if gc.opts.StagingRoot != "" && HasInProgressSessions(gc.opts.StagingRoot, repo, gc.log) {
+			gc.log.Info().Str("module", "gc").Str("repository", repo).
+				Msg("skipping repository removal: blocked by removal guard")
+		} else {
+			removed, err := gc.imgStore.RemoveIdleRepository(repo, gc.opts.Delay)
+			if err != nil {
+				gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
+					Msg("failed to remove idle repo")
+
+				return err
+			}
+
+			if removed && gc.metaDB != nil {
+				if err := gc.metaDB.DeleteRepoMeta(repo); err != nil {
+					/* log, don't fail: the layout is already gone, so aborting the rest of cleanRepo
+					would not bring it back, and ParseStorage drops the stale record on next start */
+					gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
+						Msg("removed repo layout but failed to delete its meta record")
+				}
+			}
+		}
+
 		// delete old blob uploads from storage
 		uploadsDeleted, err = gc.deleteBlobUploads(repo, gc.opts.Delay)
 		if err != nil {
@@ -264,7 +298,7 @@ func (gc GarbageCollect) removeUnknownMediaTypeManifestEntries(repo string, inde
 }
 
 func isKnownManifestMediaType(mediaType string) bool {
-	return common.IsImageIndexMediaType(mediaType) || common.IsImageManifestMediaType(mediaType)
+	return compat.IsImageIndexMediaType(mediaType) || compat.IsImageManifestMediaType(mediaType)
 }
 
 func (gc GarbageCollect) removeStaleManifestEntries(repo string, index *ispec.Index) error {
@@ -299,7 +333,7 @@ func (gc GarbageCollect) removeStaleManifestEntries(repo string, index *ispec.In
 			continue
 		}
 
-		if common.IsImageIndexMediaType(desc.MediaType) {
+		if compat.IsImageIndexMediaType(desc.MediaType) {
 			stale, err := gc.imageIndexHasStaleNestedManifests(repo, desc, existingBlobs)
 			if err != nil {
 				return err
@@ -517,9 +551,9 @@ func (gc GarbageCollect) removeReferrersWithMissingSubject(repo string, rootInde
 		var err error
 
 		switch {
-		case common.IsImageIndexMediaType(desc.MediaType):
+		case compat.IsImageIndexMediaType(desc.MediaType):
 			gced, err = gc.removeReferrerByIndexDesc(repo, rootIndex, desc, missing, indexes)
-		case common.IsImageManifestMediaType(desc.MediaType):
+		case compat.IsImageManifestMediaType(desc.MediaType):
 			gced, err = gc.removeReferrerByManifestDesc(repo, rootIndex, desc, missing, manifests)
 		default:
 			continue
@@ -913,7 +947,7 @@ func (gc GarbageCollect) identifyManifestsReferencedInIndex(index ispec.Index, r
 
 		seen[desc.Digest] = struct{}{}
 
-		if common.IsImageIndexMediaType(desc.MediaType) {
+		if compat.IsImageIndexMediaType(desc.MediaType) {
 			indexImage, err := common.GetImageIndex(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
 				if isMissingBlobErr(err) {
@@ -942,7 +976,7 @@ func (gc GarbageCollect) identifyManifestsReferencedInIndex(index ispec.Index, r
 			if err := gc.identifyManifestsReferencedInIndex(indexImage, repo, referenced, seen); err != nil {
 				return err
 			}
-		} else if common.IsImageManifestMediaType(desc.MediaType) {
+		} else if compat.IsImageManifestMediaType(desc.MediaType) {
 			image, err := common.GetImageManifest(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
 				if isMissingBlobErr(err) {
@@ -1070,10 +1104,7 @@ func (gc GarbageCollect) deleteUnreferencedBlobs(repo string, delay time.Duratio
 		}
 	}
 
-	// if we removed all blobs from repo
-	removeRepo := len(gcBlobs) > 0 && len(gcBlobs) == len(allBlobs)
-
-	reaped, err := gc.imgStore.CleanupRepo(repo, gcBlobs, removeRepo)
+	reaped, err := gc.imgStore.CleanupRepo(repo, gcBlobs)
 	if err != nil {
 		return 0, err
 	}

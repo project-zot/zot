@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	dockerList "github.com/distribution/distribution/v3/manifest/manifestlist"
+	docker "github.com/distribution/distribution/v3/manifest/schema2"
 	guuid "github.com/gofrs/uuid"
 	"github.com/notaryproject/notation-core-go/signature/jws"
 	"github.com/notaryproject/notation-go"
@@ -556,6 +558,30 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			retrievedImgMultiData, err := metaDB.GetImageMeta(imgMulti.Digest())
 			So(err, ShouldBeNil)
 			So(imgMulti.AsImageMeta(), ShouldEqual, retrievedImgMultiData)
+
+			dockerImage := CreateRandomImage().AsDockerImage()
+			err = metaDB.SetImageMeta(dockerImage.Digest(), dockerImage.AsImageMeta())
+			So(err, ShouldBeNil)
+
+			retrievedDockerImage, err := metaDB.GetImageMeta(dockerImage.Digest())
+			So(err, ShouldBeNil)
+			So(retrievedDockerImage.MediaType, ShouldEqual, docker.MediaTypeManifest)
+			So(retrievedDockerImage.Manifests[0].Manifest.MediaType, ShouldEqual, docker.MediaTypeManifest)
+
+			dockerMultiarch := CreateRandomMultiarch().AsDockerImage()
+
+			for i := range dockerMultiarch.Images {
+				err = metaDB.SetImageMeta(dockerMultiarch.Images[i].Digest(), dockerMultiarch.Images[i].AsImageMeta())
+				So(err, ShouldBeNil)
+			}
+
+			err = metaDB.SetImageMeta(dockerMultiarch.Digest(), dockerMultiarch.AsImageMeta())
+			So(err, ShouldBeNil)
+
+			retrievedDockerMultiarch, err := metaDB.GetImageMeta(dockerMultiarch.Digest())
+			So(err, ShouldBeNil)
+			So(retrievedDockerMultiarch.MediaType, ShouldEqual, dockerList.MediaTypeManifestList)
+			So(retrievedDockerMultiarch.Index.MediaType, ShouldEqual, dockerList.MediaTypeManifestList)
 		})
 
 		Convey("GetFullImageMeta", func() {

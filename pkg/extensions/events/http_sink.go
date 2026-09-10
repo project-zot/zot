@@ -18,6 +18,7 @@ import (
 type HTTPSink struct {
 	cloudevents.Client
 
+	client *http.Client
 	config eventsconf.SinkConfig
 }
 
@@ -75,6 +76,7 @@ func NewHTTPSink(config eventsconf.SinkConfig) (*HTTPSink, error) {
 
 	return &HTTPSink{
 		Client: ceClient,
+		client: httpClient,
 		config: config,
 	}, nil
 }
@@ -96,10 +98,12 @@ func (s *HTTPSink) Emit(event *cloudevents.Event) cloudevents.Result {
 	return s.Send(ctx, *event)
 }
 
-// Close implements a method to clean up resources.
+// Close releases the connections this sink pooled from its cloned transport.
 func (s *HTTPSink) Close() error {
-	// For HTTP clients, typically no specific cleanup is needed
-	// We could cancel any in-flight requests if we tracked them
+	if s.client != nil {
+		s.client.CloseIdleConnections()
+	}
+
 	return nil
 }
 

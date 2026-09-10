@@ -35,6 +35,7 @@ Examples of working configurations for various use cases are available [here](..
   - [Top-level Configuration Map](#top-level-configuration-map)
   - [Network](#network)
   - [Storage](#storage)
+    - [Hydrate blob on read](#hydrate-blob-on-read)
     - [Fast restart](#fast-restart)
   - [Authentication](#authentication)
     - [TLS Mutual Authentication](#tls-mutual-authentication)
@@ -69,7 +70,7 @@ includes supported field aliases where the config loader accepts them.
 | Key | Type | Purpose |
 | --- | --- | --- |
 | `distSpecVersion` | string | Distribution spec version declared by the config. zot warns if it differs from the supported version and then uses the supported version. |
-| `storage` | object | Registry storage root, dedupe, garbage collection, retention, storage drivers, cache drivers, and repository subpaths. |
+| `storage` | object | Registry storage root, dedupe, hydrate blob on read, garbage collection, retention, storage drivers, cache drivers, and repository subpaths. |
 | `http` | object | Listener address and port, TLS, authentication, authorization, CORS, rate limits, realm, and client compatibility settings. |
 | `log` | object | Log level, primary log output, and audit log output. |
 | `extensions` | object | Optional sync, search, UI, metrics, scrub, lint, image trust, API key, management, and event-recorder settings. |
@@ -123,6 +124,32 @@ support hard links, inline deduplication can be enabled with:
         "dedupe": true,
 ```
 
+### Hydrate blob on read
+
+With `dedupe` enabled, `POST /v2/<name>/blobs/uploads/?mount=<digest>` can still
+link a blob from this store's dedupe cache into another repository. By default,
+blob **reads** (`HEAD` and ranged `GET`) only look at the repository-local blob
+path, so a digest deleted from one repository stays missing there even if the
+same digest remains in another repository or in the cache (OCI distribution-spec
+AtomicDelete behavior).
+
+To restore the older behavior where `HEAD` / ranged `GET` may materialize a
+cached digest into the target repository when it is not present locally, set:
+
+```
+        "hydrateBlobOnRead": true,
+```
+
+The default is `false` (omit the field or set it explicitly). The setting is
+per store: it can be set under top-level `storage` or under a `subPaths` entry,
+and it only applies within that store (not across different `subPaths` /
+storage drivers). Explicit mounts via `POST ...?mount=` are unchanged.
+When `accessControl` is enabled, both hydration and explicit mounts also require
+`create` on the destination repository and `read` on at least one repository that
+already holds the digest; otherwise `HEAD` / ranged `GET` stay repo-local
+(`StatBlob`) and can still return 404 for digests missing from the destination.
+A complete example is in [config-hydrate-blob-on-read.json](config-hydrate-blob-on-read.json).
+
 When an image is deleted (either by tag or reference), orphaned blobs can lead
 to wasted storage, and background garbage collection can be enabled with:
 
@@ -165,6 +192,11 @@ When the limit is reached, pushes that would create a new repository are
 rejected with HTTP 429. Pushes to existing repositories are always allowed.
 Setting maxRepos to 0 or omitting it disables enforcement.
 
+A repository stops counting towards the limit when it is removed from
+storage: immediately when its last manifest is deleted and no blobs or
+uploads remain, or otherwise in a garbage collection cycle once its
+remaining blobs pass the GC delay.
+
 It is also possible to store and serve images from multiple filesystems with
 their own repository paths, dedupe and garbage collection settings with:
 
@@ -177,7 +209,8 @@ their own repository paths, dedupe and garbage collection settings with:
             },
             "/b": {
                 "rootDirectory": "/tmp/zot2",
-                "dedupe": true
+                "dedupe": true,
+                "hydrateBlobOnRead": true
             },
             "/c": {
                 "rootDirectory": "/tmp/zot3",
@@ -1515,12 +1548,17 @@ A minimal configuration only sets how often the DB is refreshed; zot applies def
 
 To set those options explicitly (for example to mirror standalone Trivy’s `--vuln-severity-source` behavior), use a `trivy` object under `cve`:
 
-- [config-cve-trivy.json](config-cve-trivy.json) — shows optional `dbRepository`, `javaDBRepository`, `vulnSeveritySources`, and `sbom`.
+- [config-cve-trivy.json](config-cve-trivy.json) — shows optional `dbRepository`, `javaDBRepository`, `vulnSeveritySources`, `detectionPriority`, `scanRemovedPkgs`, and `includeDevDeps`.
+- [config-sbom-trivy.json](config-sbom-trivy.json) — adds `sbom` to generate SBOMs during scanning.
 
 `ignoreFile` specifies the path to a [Trivy ignore file](https://trivy.dev/docs/latest/configuration/filtering/#trivyignore) and supports the same plain-text and YAML formats as Trivy's `--ignorefile` option. The file must exist and be readable when zot loads its configuration. Relative paths are resolved from zot's process working directory, not from the directory containing the zot configuration file, so use an absolute path in deployments, for example `"ignoreFile": "/etc/zot/.trivyignore"`. A sample [`.trivyignore`](.trivyignore) is included in this directory.
 
 Scan results are cached by manifest digest. Editing an ignore file does not invalidate existing cached results: newly ignored vulnerabilities can remain visible, and newly unignored vulnerabilities can remain hidden, until the CVE database refresh purges the scan cache or zot restarts. The minimum database `updateInterval` is two hours.
 
 `vulnSeveritySources` is a list of source names in priority order (for example `auto`, `nvd`, or vendor IDs such as `redhat`, `alpine`). If omitted, zot defaults it to `["auto"]`, consistent with the Trivy CLI. See [Trivy: severity selection](https://trivy.dev/docs/latest/scanner/vulnerability/#severity-selection).
+
+`detectionPriority` mirrors Trivy's [`--detection-priority`](https://trivy.dev/docs/latest/scanner/vulnerability/#detection-priority) and accepts `precise` (default) or `comprehensive`. `comprehensive` stops Trivy filtering files owned by the OS package manager, so those files are reported a second time as language packages matched against NVD. On distributions that backport security fixes (RHEL, SLES) this typically results in reported vulnerabilities that the vendor has already patched.
+
+`scanRemovedPkgs` mirrors Trivy's `--removed-pkgs` and reports vulnerabilities for packages deleted in later image layers. `includeDevDeps` mirrors Trivy's `--include-dev-deps` and reports development dependencies. Both default to `false`.
 
 `sbom.enable` lets zot generate SBOMs while scanning and store them as OCI artifacts attached to the scanned image. `sbom.format` supports `spdx-json` (default) and `cyclonedx`.

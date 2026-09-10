@@ -68,7 +68,7 @@ func (mi MultiarchImage) AsImageMeta() mTypes.ImageMeta {
 	}
 
 	return mTypes.ImageMeta{
-		MediaType: ispec.MediaTypeImageIndex,
+		MediaType: mi.IndexDescriptor.MediaType,
 		Digest:    mi.IndexDescriptor.Digest,
 		Size:      mi.IndexDescriptor.Size,
 		Index:     &index,

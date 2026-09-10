@@ -7,8 +7,10 @@ import (
 	"crypto/x509"
 	goerrors "errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -48,15 +50,19 @@ type Controller struct {
 	Server          *http.Server
 	Metrics         monitoring.MetricServer
 	EventRecorder   events.Recorder
-	CveScanner      ext.CveScanner
-	SyncOnDemand    SyncOnDemand
-	RelyingParties  map[string]rp.RelyingParty
-	CookieStore     *CookieStore
-	HTPasswd        *HTPasswd
-	HTPasswdWatcher *HTPasswdWatcher
-	LDAPClient      *LDAPClient
-	taskScheduler   *scheduler.Scheduler
-	Healthz         *common.Healthz
+	// EventRecorder, typed so a reload can replace what it points at
+	eventReloader *events.ReloadableRecorder
+	// events config the installed recorder was built from
+	eventsFingerprint string
+	CveScanner        ext.CveScanner
+	SyncOnDemand      ext.SyncOnDemand
+	RelyingParties    map[string]rp.RelyingParty
+	CookieStore       *CookieStore
+	HTPasswd          *HTPasswd
+	HTPasswdWatcher   *HTPasswdWatcher
+	LDAPClient        *LDAPClient
+	taskScheduler     *scheduler.Scheduler
+	Healthz           *common.Healthz
 	// runtime params (atomic: Run may set the port concurrently with GetPort readers, e.g. tests)
 	chosenPort atomic.Int64
 	// TLS certificate management
@@ -194,8 +200,11 @@ func (c *Controller) Run() error {
 		return err
 	}
 	server := &http.Server{
-		Addr:              addr,
-		Handler:           c.Router,
+		Addr: addr,
+		// mux.Router only runs its Use() middlewares for matched routes, so
+		// unmatched requests (404/405) would otherwise skip HSTS. Wrap the
+		// whole router here so every response gets it.
+		Handler:           StrictTransportSecurityHandler()(c.Router),
 		ReadTimeout:       c.Config.GetHTTPReadTimeout(),
 		WriteTimeout:      c.Config.GetHTTPWriteTimeout(),
 		IdleTimeout:       idleTimeout,
@@ -448,9 +457,70 @@ func (c *Controller) InitEventRecorder() error {
 		return err
 	}
 
-	c.EventRecorder = eventRecorder
+	// wrapped even when disabled, so a reload can enable events
+	c.eventReloader = events.NewReloadableRecorder(eventRecorder)
+	c.EventRecorder = c.eventReloader
+	c.eventsFingerprint = c.Config.EventsFingerprint()
 
 	return nil
+}
+
+// reloadEventRecorder rebuilds the recorder when the events config changed.
+func (c *Controller) reloadEventRecorder() {
+	fingerprint := c.Config.EventsFingerprint()
+	if c.eventReloader == nil || fingerprint == c.eventsFingerprint {
+		return
+	}
+
+	eventRecorder, err := ext.NewEventRecorder(c.Config, c.Log)
+	if err != nil && !goerrors.Is(err, errors.ErrExtensionNotEnabled) {
+		// the fingerprint stays behind so a later reload retries
+		c.Log.Error().Err(err).Msg("failed to rebuild event recorder, keeping the previous one")
+
+		return
+	}
+
+	if replaced := c.eventReloader.Swap(eventRecorder); replaced != nil {
+		replaced.Close()
+	}
+
+	c.eventsFingerprint = fingerprint
+
+	c.Log.Info().Bool("enabled", eventRecorder != nil).Msg("reloaded event recorder")
+}
+
+// ldapRestartRequiredFields reports the ldap settings the running client was
+// built from that differ from the new config. A reload refreshes only the bind
+// credentials, so these are applied to the config while the live client keeps
+// serving with the old ones, which is worth telling the operator about.
+func ldapRestartRequiredFields(client *LDAPClient, ldapConf *config.LDAPConfig) []string {
+	if client == nil || ldapConf == nil {
+		return nil
+	}
+
+	changed := map[string]bool{
+		"address":            client.Host != ldapConf.Address,
+		"caCert":             client.CACertPath != ldapConf.CACert,
+		"port":               client.Port != ldapConf.Port,
+		"baseDN":             client.Base != ldapConf.BaseDN,
+		"insecure":           client.UseSSL == ldapConf.Insecure,
+		"startTLS":           client.SkipTLS == ldapConf.StartTLS,
+		"skipVerify":         client.InsecureSkipVerify != ldapConf.SkipVerify,
+		"subtreeSearch":      client.SubtreeSearch != ldapConf.SubtreeSearch,
+		"userAttribute":      client.UserAttribute != ldapConf.UserAttribute,
+		"userGroupAttribute": client.UserGroupAttribute != ldapConf.UserGroupAttribute,
+		"userFilter":         client.UserFilter != ldapConf.UserFilter,
+	}
+
+	fields := []string{}
+
+	for _, field := range slices.Sorted(maps.Keys(changed)) {
+		if changed[field] {
+			fields = append(fields, field)
+		}
+	}
+
+	return fields
 }
 
 func (c *Controller) LoadNewConfig(newConfig *config.Config) {
@@ -476,12 +546,27 @@ func (c *Controller) LoadNewConfig(newConfig *config.Config) {
 		_ = c.HTPasswdWatcher.ChangeFile("")
 	}
 
-	if c.LDAPClient != nil && authConfig.IsLdapAuthEnabled() {
-		c.LDAPClient.lock.Lock()
-		c.LDAPClient.BindDN = authConfig.LDAP.BindDN()
-		c.LDAPClient.BindPassword = authConfig.LDAP.BindPassword()
-		c.LDAPClient.lock.Unlock()
+	if authConfig.IsLdapAuthEnabled() {
+		if c.LDAPClient != nil {
+			// only the bind credentials reach the live client, so anything else
+			// the client was built from is applied to the config and nowhere else
+			if fields := ldapRestartRequiredFields(c.LDAPClient, authConfig.LDAP); len(fields) > 0 {
+				c.Log.Warn().Strs("fields", fields).
+					Msg("ldap changes are outside the reloadable set and need a restart to take effect")
+			}
+
+			c.LDAPClient.lock.Lock()
+			c.LDAPClient.BindDN = authConfig.LDAP.BindDN()
+			c.LDAPClient.BindPassword = authConfig.LDAP.BindPassword()
+			c.LDAPClient.lock.Unlock()
+		} else {
+			// the client is built at startup, so ldap turned on by a reload has
+			// none to authenticate against
+			c.Log.Warn().Msg("ldap auth enabled by config reload requires a restart to take effect")
+		}
 	}
+
+	c.reloadEventRecorder()
 
 	c.InitCVEInfo()
 
@@ -518,6 +603,11 @@ func (c *Controller) Shutdown() {
 		_ = c.Server.Shutdown(ctx)
 	}
 
+	// close event sinks
+	if c.EventRecorder != nil {
+		c.EventRecorder.Close()
+	}
+
 	// close metadb
 	if c.MetaDB != nil {
 		c.MetaDB.Close()
@@ -547,7 +637,7 @@ func (c *Controller) StartBackgroundTasks() {
 		}
 	}
 
-	// Run GC and retention tasks
+	// Run GC and retention tasks (includes local .sync staging guard and orphan reaper).
 	RunGCTasks(c.Config, c.StoreController, c.MetaDB, c.taskScheduler, c.Log, c.Audit, c.Metrics)
 
 	// Enable running dedupe blobs both ways (dedupe or restore deduped blobs)
@@ -594,8 +684,9 @@ func (c *Controller) StartBackgroundTasks() {
 		c.Log.Error().Err(err).Msg("failed to start sync extension")
 	}
 
-	// Only set SyncOnDemand if sync is actually enabled
-	if extensionsConfig.IsSyncEnabled() {
+	// EnableSyncExtension returns ext.SyncOnDemand (an interface), so failure/disabled
+	// paths yield a true nil interface — safe for isSyncOnDemandEnabled's != nil check.
+	if extensionsConfig.IsSyncEnabled() && syncOnDemand != nil {
 		c.SyncOnDemand = syncOnDemand
 	}
 
@@ -611,14 +702,17 @@ func (c *Controller) StartBackgroundTasks() {
 func RunGCTasks(conf *config.Config, storeController storage.StoreController, metaDB mTypes.MetaDB,
 	taskScheduler *scheduler.Scheduler, logger log.Logger, audit *log.Logger, metrics monitoring.MetricServer,
 ) {
+	gc.RunSyncSessionReaperPeriodically(conf, storeController, taskScheduler, logger)
+
 	// Enable running garbage-collect periodically for DefaultStore
 	storageConfig := conf.CopyStorageConfig()
 	if storageConfig.GC {
 		gc := gc.NewGarbageCollect(storeController.DefaultStore, metaDB, gc.Options{
 			Delay:             storageConfig.GCDelay,
-			ImageRetention:    storageConfig.Retention,
 			MaxSchedulerDelay: storageConfig.GCMaxSchedulerDelay,
 			TimeWindow:        storageConfig.GCTimeWindow,
+			ImageRetention:    storageConfig.Retention,
+			StagingRoot:       storeController.SyncStagingRootForImageStore(storeController.DefaultStore),
 		}, audit, logger, metrics)
 
 		gc.CleanImageStorePeriodically(storageConfig.GCInterval, taskScheduler)
@@ -632,19 +726,15 @@ func RunGCTasks(conf *config.Config, storeController storage.StoreController, me
 				gc := gc.NewGarbageCollect(storeController.SubStore[route], metaDB,
 					gc.Options{
 						Delay:             subStorageConfig.GCDelay,
-						ImageRetention:    subStorageConfig.Retention,
 						MaxSchedulerDelay: subStorageConfig.GCMaxSchedulerDelay,
 						TimeWindow:        subStorageConfig.GCTimeWindow,
+						ImageRetention:    subStorageConfig.Retention,
+						StagingRoot: storeController.SyncStagingRootForImageStore(
+							storeController.SubStore[route]),
 					}, audit, logger, metrics)
 
 				gc.CleanImageStorePeriodically(subStorageConfig.GCInterval, taskScheduler)
 			}
 		}
 	}
-}
-
-type SyncOnDemand interface {
-	SyncImage(ctx context.Context, repo, reference string) error
-	SyncReferrers(ctx context.Context, repo string, subjectDigestStr string, referenceTypes []string) error
-	ShouldCheckUpstreamManifest(repo, reference string) bool
 }
