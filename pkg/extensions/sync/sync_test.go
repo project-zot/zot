@@ -8410,6 +8410,311 @@ func pushRepo(url, repoName string) godigest.Digest {
 	return digest
 }
 
+func TestOnDemandBlobSeeding(t *testing.T) {
+	Convey("Verify on-demand sync seeds already stored blobs instead of re-downloading them", t, func() {
+		// upstream with only synthetic images, so no test/data fixtures are needed
+		srcConfig := config.New()
+		srcConfig.HTTP.Port = "0"
+		srcConfig.Storage.GC = false
+		srcConfig.Storage.Dedupe = false
+		// accept docker-format manifest pushes (third subtest)
+		srcConfig.HTTP.Compat = append(srcConfig.HTTP.Compat, "docker2s2")
+
+		srcDir := t.TempDir()
+		srcConfig.Storage.RootDirectory = srcDir
+
+		sctlr := api.NewController(srcConfig)
+		scm := test.NewControllerManager(sctlr)
+		srcBaseURL := scm.StartAndWait()
+
+		defer scm.StopServer()
+
+		defaultVal := true
+
+		var tlsVerify bool
+
+		Convey("shared layers of a new tag are not fetched from upstream", func() {
+			syncRegistryConfig := syncconf.RegistryConfig{
+				URLs:       []string{srcBaseURL},
+				OnDemand:   true,
+				TLSVerify:  &tlsVerify,
+				MaxRetries: &maxRetries,
+			}
+
+			syncConfig := &syncconf.Config{
+				Enable:     &defaultVal,
+				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+			}
+
+			dctlr, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
+			defer os.RemoveAll(destDir)
+
+			dcm := test.NewControllerManager(dctlr)
+			destBaseURL := dcm.StartAndWait()
+
+			defer dcm.StopServer()
+
+			repoName := "seed-test"
+
+			sharedLayers := make([][]byte, 3)
+			for i := range sharedLayers {
+				sharedLayers[i] = fmt.Appendf(nil, "shared layer %d for seeding test", i)
+			}
+
+			image1 := CreateImageWith().LayerBlobs(sharedLayers).RandomConfig().Build()
+
+			err := UploadImage(image1, srcBaseURL, repoName, "1.0")
+			So(err, ShouldBeNil)
+
+			// sync tag 1.0 on demand; the response is served only after commit
+			resp, err := destClient.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// a second tag sharing all layers, differing in config (and thus manifest)
+			image2 := CreateImageWith().LayerBlobs(sharedLayers).RandomConfig().Build()
+			So(image2.DigestStr(), ShouldNotEqual, image1.DigestStr())
+
+			err = UploadImage(image2, srcBaseURL, repoName, "2.0")
+			So(err, ShouldBeNil)
+
+			// remove the shared layers from upstream storage: syncing tag 2.0 can
+			// only succeed if the downstream seeds them from its own store instead
+			// of downloading them again
+			for _, layer := range image2.Manifest.Layers {
+				err := os.Remove(path.Join(srcDir, repoName, "blobs",
+					layer.Digest.Algorithm().String(), layer.Digest.Encoded()))
+				So(err, ShouldBeNil)
+			}
+
+			// sanity check: upstream can no longer serve them
+			resp, err = resty.R().Get(srcBaseURL + "/v2/" + repoName + "/blobs/" +
+				image2.Manifest.Layers[0].Digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldNotEqual, http.StatusOK)
+
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/2.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// the synced image is complete: every layer and the config are servable
+			for _, layer := range image2.Manifest.Layers {
+				resp, err := destClient.R().Get(destBaseURL + "/v2/" + repoName + "/blobs/" + layer.Digest.String())
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			}
+
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + repoName + "/blobs/" +
+				image2.ConfigDescriptor.Digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		})
+
+		Convey("already stored child images of a new index are not fetched at all", func() {
+			syncRegistryConfig := syncconf.RegistryConfig{
+				URLs:           []string{srcBaseURL},
+				OnDemand:       true,
+				TLSVerify:      &tlsVerify,
+				MaxRetries:     &maxRetries,
+				PreserveDigest: true,
+			}
+
+			syncConfig := &syncconf.Config{
+				Enable:     &defaultVal,
+				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+			}
+
+			dctlr, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
+			defer os.RemoveAll(destDir)
+
+			dcm := test.NewControllerManager(dctlr)
+			destBaseURL := dcm.StartAndWait()
+
+			defer dcm.StopServer()
+
+			repoName := "seed-index"
+
+			img1 := CreateRandomImage()
+			img2 := CreateRandomImage()
+
+			index1 := CreateMultiarchWith().Images([]Image{img1, img2}).Build()
+
+			err := UploadMultiarchImage(index1, srcBaseURL, repoName, "1.0")
+			So(err, ShouldBeNil)
+
+			resp, err := destClient.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+				Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// a second index containing the already synced images plus a new one
+			img3 := CreateRandomImage()
+			index2 := CreateMultiarchWith().Images([]Image{img1, img2, img3}).Build()
+			So(index2.DigestStr(), ShouldNotEqual, index1.DigestStr())
+
+			err = UploadMultiarchImage(index2, srcBaseURL, repoName, "2.0")
+			So(err, ShouldBeNil)
+
+			// remove the already synced child images completely from upstream
+			// (manifests, configs and layers): syncing tag 2.0 can only succeed if
+			// the downstream seeds both child subtrees whole, making ImageCopy skip
+			// them without a single upstream request
+			for _, img := range []Image{img1, img2} {
+				digests := []godigest.Digest{img.ManifestDescriptor.Digest, img.ConfigDescriptor.Digest}
+				for _, layer := range img.Manifest.Layers {
+					digests = append(digests, layer.Digest)
+				}
+
+				for _, digest := range digests {
+					err := os.Remove(path.Join(srcDir, repoName, "blobs",
+						digest.Algorithm().String(), digest.Encoded()))
+					So(err, ShouldBeNil)
+				}
+			}
+
+			// sanity check: upstream can no longer serve a synced child manifest
+			resp, err = resty.R().Get(srcBaseURL + "/v2/" + repoName + "/manifests/" +
+				img1.ManifestDescriptor.Digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldNotEqual, http.StatusOK)
+
+			resp, err = destClient.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+				Get(destBaseURL + "/v2/" + repoName + "/manifests/2.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			var syncedIndex ispec.Index
+
+			err = json.Unmarshal(resp.Body(), &syncedIndex)
+			So(err, ShouldBeNil)
+			So(reflect.DeepEqual(syncedIndex, index2.Index), ShouldEqual, true)
+
+			// every child image is complete downstream
+			for _, img := range index2.Images {
+				resp, err := destClient.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" +
+					img.ManifestDescriptor.Digest.String())
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+				for _, layer := range img.Manifest.Layers {
+					resp, err := destClient.R().Get(destBaseURL + "/v2/" + repoName + "/blobs/" + layer.Digest.String())
+					So(err, ShouldBeNil)
+					So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+				}
+			}
+		})
+
+		Convey("shared layers of a docker-format image are seeded despite digest conversion", func() {
+			// default sync config, so PreserveDigest is off: docker manifests are
+			// converted to OCI on commit and change digest in the local store,
+			// making them unreachable through the local (converted) digest walk
+			syncRegistryConfig := syncconf.RegistryConfig{
+				URLs:       []string{srcBaseURL},
+				OnDemand:   true,
+				TLSVerify:  &tlsVerify,
+				MaxRetries: &maxRetries,
+			}
+
+			syncConfig := &syncconf.Config{
+				Enable:     &defaultVal,
+				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+			}
+
+			dctlr, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
+			defer os.RemoveAll(destDir)
+
+			dcm := test.NewControllerManager(dctlr)
+			destBaseURL := dcm.StartAndWait()
+
+			defer dcm.StopServer()
+
+			repoName := "seed-docker"
+
+			// re-push an image built by image-utils as a docker2 manifest under tag
+			uploadDockerImage := func(image Image, tag string) {
+				err := UploadImage(image, srcBaseURL, repoName, tag)
+				So(err, ShouldBeNil)
+
+				manifest := image.Manifest
+				manifest.MediaType = dockerManifestMediaType
+				manifest.Config.MediaType = dockerManifestConfigMediaType
+
+				layers := make([]ispec.Descriptor, len(manifest.Layers))
+				for i, layer := range manifest.Layers {
+					layer.MediaType = dockerLayerMediaType
+					layers[i] = layer
+				}
+
+				manifest.Layers = layers
+
+				buf, err := json.Marshal(manifest)
+				So(err, ShouldBeNil)
+
+				resp, err := resty.R().SetHeader("Content-Type", dockerManifestMediaType).
+					SetBody(buf).Put(srcBaseURL + "/v2/" + repoName + "/manifests/" + tag)
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+			}
+
+			sharedLayers := make([][]byte, 3)
+			for i := range sharedLayers {
+				sharedLayers[i] = fmt.Appendf(nil, "shared docker layer %d for seeding test", i)
+			}
+
+			image1 := CreateImageWith().LayerBlobs(sharedLayers).RandomConfig().Build()
+			uploadDockerImage(image1, "1.0")
+
+			resp, err := destClient.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// a second image sharing all layers but a new topmost one (and a new
+			// config); its converted manifest exists neither downstream nor
+			// upstream, so only the walk from the original remote digest can
+			// discover the shared layers
+			newLayers := make([][]byte, 0, len(sharedLayers)+1)
+			newLayers = append(newLayers, sharedLayers...)
+			newLayers = append(newLayers, []byte("new top layer for seeding test"))
+
+			image2 := CreateImageWith().LayerBlobs(newLayers).RandomConfig().Build()
+			uploadDockerImage(image2, "2.0")
+
+			// remove the shared layers from upstream storage: syncing tag 2.0 can
+			// only succeed if the downstream seeds them from its own store instead
+			// of downloading them again
+			for _, layerBlob := range sharedLayers {
+				digest := godigest.FromBytes(layerBlob)
+				err := os.Remove(path.Join(srcDir, repoName, "blobs",
+					digest.Algorithm().String(), digest.Encoded()))
+				So(err, ShouldBeNil)
+			}
+
+			// sanity check: upstream can no longer serve them
+			resp, err = resty.R().Get(srcBaseURL + "/v2/" + repoName + "/blobs/" +
+				godigest.FromBytes(sharedLayers[0]).String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldNotEqual, http.StatusOK)
+
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/2.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// the synced (converted) image is complete: layer and config digests
+			// are unchanged by the docker→OCI conversion
+			for _, layer := range image2.Manifest.Layers {
+				resp, err := destClient.R().Get(destBaseURL + "/v2/" + repoName + "/blobs/" + layer.Digest.String())
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			}
+
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + repoName + "/blobs/" +
+				image2.ConfigDescriptor.Digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		})
+	})
+}
+
 // will wait until .sync temp dir is removed and the image is moved into local imagestore.
 func waitSync(rootDir, repoName string) {
 	// wait for .sync subdirs to be removed
