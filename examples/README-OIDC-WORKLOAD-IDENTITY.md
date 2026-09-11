@@ -448,6 +448,10 @@ Use Zot's access control policies to grant permissions based on the OIDC identit
 
 ## Compatibility
 
+For a broader overview of how OIDC workload identity can run alongside browser
+OpenID/OAuth2 login, API keys, mTLS, anonymous access, and traditional Bearer
+token services, see [Combined Authentication](README-COMBINED-AUTHENTICATION.md).
+
 ### Traditional Bearer Authentication
 
 OIDC workload identity can coexist with traditional bearer authentication. If both are configured, Zot will try OIDC authentication first, then fall back to traditional bearer token authentication.
