@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"maps"
 	"os"
 	"slices"
 	"testing"
@@ -19,6 +20,7 @@ import (
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/compat"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	cveinfo "zotregistry.dev/zot/v2/pkg/extensions/search/cve"
@@ -329,11 +331,13 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 						},
 					}
 
-					// Simulate scanning an index results in scanning its manifests
+					// Index scan only populates per-manifest cache entries (matches scanIndex).
 					if ref == indexDigest {
 						cache.Add(indexM1Digest, result)
 						cache.Add(indexM2Digest, map[string]zcommon.CVE{})
 						cache.Add(indexM3Digest, map[string]zcommon.CVE{})
+
+						return cvemodel.ScanResult{CVEMap: result}, nil
 					}
 
 					cache.Add(ref, result)
@@ -408,8 +412,38 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 
 				return true, nil
 			},
-			IsResultCachedFn: func(digest string) bool {
+			IsResultCachedFn: func(repo, digest string) bool {
+				imgMeta, err := metaDB.GetImageMeta(godigest.Digest(digest))
+				if err == nil && imgMeta.Index != nil {
+					for _, desc := range imgMeta.Index.Manifests {
+						if cache.Get(desc.Digest.String()) == nil {
+							return false
+						}
+					}
+
+					return true
+				}
+
 				return cache.Contains(digest)
+			},
+			GetCachedResultFn: func(repo, digest string) map[string]zcommon.CVE {
+				imgMeta, err := metaDB.GetImageMeta(godigest.Digest(digest))
+				if err == nil && imgMeta.Index != nil {
+					result := map[string]zcommon.CVE{}
+
+					for _, desc := range imgMeta.Index.Manifests {
+						cached := cache.Get(desc.Digest.String())
+						if cached == nil {
+							return map[string]zcommon.CVE{}
+						}
+
+						maps.Copy(result, cached)
+					}
+
+					return result
+				}
+
+				return cache.Get(digest)
 			},
 			UpdateDBFn: func(ctx context.Context) error {
 				cache.Purge()
@@ -425,8 +459,9 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 		t.Log("verify cache is initially empty")
 
 		for image, digestStr := range imageMap {
+			repo, _, _ := zcommon.GetImageDirAndReference(image)
 			t.Log("expecting " + image + " " + digestStr + " to be absent from cache")
-			So(scanner.IsResultCached(digestStr), ShouldBeFalse)
+			So(scanner.IsResultCached(repo, digestStr), ShouldBeFalse)
 		}
 
 		// Start the generator
@@ -446,18 +481,32 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 
 		t.Log("verify cache is up to date after scanner generator ran")
 
-		// Verify all of the entries are cached
+		// Verify manifest digests are cached; indexes report cached via member aggregate
 		for image, digestStr := range imageMap {
 			repo, _, _ := zcommon.GetImageDirAndReference(image)
+
+			imgMeta, metaErr := metaDB.GetImageMeta(godigest.Digest(digestStr))
+			if metaErr == nil && compat.IsImageIndexMediaType(imgMeta.MediaType) {
+				t.Log("expecting index digest " + image + " " + digestStr + " not to be a cache key")
+				So(cache.Contains(digestStr), ShouldBeFalse)
+
+				ok, err := scanner.IsImageFormatScannable(repo, digestStr)
+				if ok && err == nil {
+					t.Log("expecting index " + image + " members to be fully cached")
+					So(scanner.IsResultCached(repo, digestStr), ShouldBeTrue)
+				}
+
+				continue
+			}
 
 			ok, err := scanner.IsImageFormatScannable(repo, digestStr)
 			if ok && err == nil && repo != "repo7" {
 				t.Log("expecting " + image + " " + digestStr + " to be present in cache")
-				So(scanner.IsResultCached(digestStr), ShouldBeTrue)
+				So(scanner.IsResultCached(repo, digestStr), ShouldBeTrue)
 			} else {
 				// We don't cache results for un-scannable manifests
 				t.Log("expecting " + image + " " + digestStr + " to be absent from cache")
-				So(scanner.IsResultCached(digestStr), ShouldBeFalse)
+				So(scanner.IsResultCached(repo, digestStr), ShouldBeFalse)
 			}
 		}
 
@@ -522,7 +571,7 @@ func TestScanGeneratorWithRealData(t *testing.T) {
 		err = scanner.UpdateDB(context.Background())
 		So(err, ShouldBeNil)
 
-		So(scanner.IsResultCached(image.DigestStr()), ShouldBeFalse)
+		So(scanner.IsResultCached("zot-test", image.DigestStr()), ShouldBeFalse)
 
 		sch := scheduler.NewScheduler(cfg, metrics, logger)
 
@@ -551,7 +600,7 @@ func TestScanGeneratorWithRealData(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
-		So(scanner.IsResultCached(image.DigestStr()), ShouldBeTrue)
+		So(scanner.IsResultCached("zot-test", image.DigestStr()), ShouldBeTrue)
 
 		scanResult, err := scanner.ScanImage(context.Background(), "zot-test:0.0.1")
 		cveMap := scanResult.CVEMap

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
+	"github.com/regclient/regclient/types/descriptor"
 	"github.com/regclient/regclient/types/ref"
 
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
@@ -80,11 +81,12 @@ type Remote interface {
 	GetRepositories(ctx context.Context) ([]string, error)
 	// Get a list of tags given a repo
 	GetTags(ctx context.Context, repo string) ([]string, error)
-	/* Get oci digest for repo:tag as regclient mod.WithManifestToOCI would produce:
-	predicted digest, original remote digest, whether mod.Apply would modify the image, error */
-	GetOCIDigest(ctx context.Context, repo, tag string) (godigest.Digest, godigest.Digest, bool, error)
-	// Get remote digest for repo:tag
-	GetDigest(ctx context.Context, repo, tag string) (godigest.Digest, error)
+	/* Get remote digest and media type for repo:tag (one ManifestHead). */
+	HeadManifest(ctx context.Context, repo, tag string) (godigest.Digest, string, error)
+	// HeadManifestRef is HeadManifest for an already-built remote ref (no second GetImageReference).
+	HeadManifestRef(ctx context.Context, imageReference ref.Ref) (godigest.Digest, string, error)
+	// GetManifestList returns index/list child descriptors. Non-list roots return nil, nil.
+	GetManifestList(ctx context.Context, repo, reference string) ([]descriptor.Descriptor, error)
 }
 
 // Destination is a local registry.

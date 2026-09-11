@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"sync"
-	"time"
 
 	"golang.org/x/sync/singleflight"
 
@@ -15,11 +14,16 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
+const (
+	onDemandKindImage     = "image"
+	onDemandKindReferrers = "referrers"
+)
+
+// request keys in-flight background retries (one per kind+repo+reference).
 type request struct {
-	repo      string
-	reference string
-	// used for background retries, at most one background retry per service
-	serviceID    int
+	kind         string
+	repo         string
+	reference    string
 	isBackground bool
 }
 
@@ -27,16 +31,18 @@ type request struct {
 BaseOnDemand tracks on-demand image/referrer sync requests.
 
 Concurrent SyncImage/SyncReferrers calls for the same key are deduplicated with
-singleflight (one upstream sync, shared result). requestStore tracks in-flight
-background retry goroutines so at most one retry runs per service/key.
+singleflight (one upstream sync, shared result). Background retries re-enter the
+same flight so a later request for the same kind+repo+reference waits on that work.
+requestStore ensures at most one background goroutine is scheduled per key.
+Image and referrer keys are prefixed so a digest pull and a referrer sync for the
+same subject do not share results.
 */
 type BaseOnDemand struct {
 	services []Service
-	// background retry dedup: map[request]struct{}
-	requestStore   *sync.Map
-	imageFlight    singleflight.Group
-	referrerFlight singleflight.Group
-	log            log.Logger
+	// background retry scheduling dedup: map[request]struct{}
+	requestStore *sync.Map
+	flight       singleflight.Group
+	log          log.Logger
 }
 
 func NewOnDemand(log log.Logger) *BaseOnDemand {
@@ -61,133 +67,108 @@ func (onDemand *BaseOnDemand) ShouldCheckUpstreamManifest(repo, reference string
 	return true
 }
 
-func onDemandKey(repo, reference string) string {
-	return repo + "\x00" + reference
+func onDemandKey(kind, repo, reference string) string {
+	return kind + "\x00" + repo + "\x00" + reference
 }
 
+// onDemandSyncFn runs one registry sync attempt (image or referrers) under a timeout ctx.
+type onDemandSyncFn func(ctx context.Context, service Service) error
+
 func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference string) error {
-	key := onDemandKey(repo, reference)
-
-	// leader is set only in the closure that actually runs; waiters never execute it.
-	leader := false
-
-	_, err, shared := onDemand.imageFlight.Do(key, func() (any, error) {
-		leader = true
-
-		return nil, onDemand.syncImage(ctx, repo, reference)
-	})
-
-	// singleflight sets shared for every participant when dups > 0, including the leader.
-	if shared && !leader {
-		onDemand.log.Info().Str("repo", repo).Str("reference", reference).
-			Msg("image already demanded, on-demand sync result was shared")
-	}
-
-	return err
+	return onDemand.doOnDemandFlight(onDemandKey(onDemandKindImage, repo, reference), repo, reference,
+		"image already demanded, on-demand sync result was shared",
+		func() error {
+			return onDemand.syncImage(ctx, repo, reference, true)
+		})
 }
 
 func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 	subjectDigestStr string, referenceTypes []string,
 ) error {
-	key := onDemandKey(repo, subjectDigestStr)
+	return onDemand.doOnDemandFlight(onDemandKey(onDemandKindReferrers, repo, subjectDigestStr),
+		repo, subjectDigestStr,
+		"referrers for image already demanded, on-demand sync result was shared",
+		func() error {
+			return onDemand.syncReferrers(ctx, repo, subjectDigestStr, referenceTypes, true)
+		})
+}
 
+func (onDemand *BaseOnDemand) doOnDemandFlight(key, repo, reference, sharedMsg string,
+	syncFn func() error,
+) error {
 	// leader is set only in the closure that actually runs; waiters never execute it.
 	leader := false
 
-	_, err, shared := onDemand.referrerFlight.Do(key, func() (any, error) {
+	_, err, shared := onDemand.flight.Do(key, func() (any, error) {
 		leader = true
 
-		return nil, onDemand.syncReferrers(ctx, repo, subjectDigestStr, referenceTypes)
+		return nil, syncFn()
 	})
 
 	// singleflight sets shared for every participant when dups > 0, including the leader.
 	if shared && !leader {
-		onDemand.log.Info().Str("repo", repo).Str("reference", subjectDigestStr).
-			Msg("referrers for image already demanded, on-demand sync result was shared")
+		onDemand.log.Info().Str("repo", repo).Str("reference", reference).Msg(sharedMsg)
 	}
 
 	return err
 }
 
 func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDigestStr string,
-	referenceTypes []string,
+	referenceTypes []string, scheduleBackground bool,
 ) error {
-	var err error
-
-	for serviceID, service := range onDemand.services {
-		timeout := service.GetSyncTimeout()
-
-		onDemand.log.Debug().
-			Str("repo", repo).
-			Str("reference", subjectDigestStr).
-			Int("serviceID", serviceID).
-			Dur("timeout", timeout).
-			Msg("starting on-demand referrer sync")
-
-		// Create a detached context with timeout to ensure sync completes even if HTTP client disconnects.
-		// This prevents Kubernetes timeout/retries from aborting in-progress referrer downloads.
-		syncCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
-		err = service.SyncReferrers(syncCtx, repo, subjectDigestStr, referenceTypes)
-
-		cancel()
-
-		if err != nil {
-			if errors.Is(err, zerr.ErrManifestNotFound) ||
-				errors.Is(err, zerr.ErrSyncImageFilteredOut) ||
-				errors.Is(err, zerr.ErrSyncImageNotSigned) ||
-				errors.Is(err, zerr.ErrRepoNotFound) ||
-				// some public registries may return 401 for not found.
-				errors.Is(err, zerr.ErrUnauthorizedAccess) {
-				continue
+	return onDemand.runOnDemand(ctx, repo, subjectDigestStr, "starting on-demand referrer sync",
+		func(syncCtx context.Context, service Service) error {
+			err := service.SyncReferrers(syncCtx, repo, subjectDigestStr, referenceTypes)
+			if scheduleBackground && err != nil && !isSkippableSyncImageErr(err) {
+				onDemand.maybeRetryInBackground(ctx, onDemandKindReferrers, repo, subjectDigestStr,
+					"referrers for image already demanded, on-demand sync result was shared",
+					service, err,
+					func(retryCtx context.Context) error {
+						return onDemand.syncReferrers(retryCtx, repo, subjectDigestStr, referenceTypes, false)
+					})
 			}
 
-			req := request{
-				repo:         repo,
-				reference:    subjectDigestStr,
-				serviceID:    serviceID,
-				isBackground: true,
+			return err
+		})
+}
+
+func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference string, scheduleBackground bool,
+) error {
+	var dockerCompatErr error
+
+	err := onDemand.runOnDemand(ctx, repo, reference, "starting on-demand image sync",
+		func(syncCtx context.Context, service Service) error {
+			err := service.SyncImage(syncCtx, repo, reference)
+			if errors.Is(err, zerr.ErrSyncDockerCompatRequired) {
+				dockerCompatErr = err
 			}
 
-			// if there is already a background routine, skip
-			if _, requested := onDemand.requestStore.LoadOrStore(req, struct{}{}); requested {
-				continue
+			if scheduleBackground && err != nil && !isSkippableSyncImageErr(err) {
+				onDemand.maybeRetryInBackground(ctx, onDemandKindImage, repo, reference,
+					"image already demanded, on-demand sync result was shared",
+					service, err,
+					func(retryCtx context.Context) error {
+						return onDemand.syncImage(retryCtx, repo, reference, false)
+					})
 			}
 
-			if service.CanRetryOnError() {
-				retryErr := err
+			return err
+		})
 
-				// retry in background
-				go func(service Service, serviceTimeout time.Duration) {
-					// remove image after syncing
-					defer func() {
-						onDemand.requestStore.Delete(req)
-						onDemand.log.Info().Str("repo", repo).Str("reference", subjectDigestStr).
-							Msg("sync routine for image exited")
-					}()
-
-					onDemand.log.Info().Str("repo", repo).Str("reference", subjectDigestStr).Str("err", retryErr.Error()).
-						Msg("sync routine: starting routine to copy image, because of error")
-
-					// Use detached context with timeout for background retry
-					retryCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), serviceTimeout)
-					defer cancel()
-
-					err := service.SyncReferrers(retryCtx, repo, subjectDigestStr, referenceTypes)
-					if err != nil {
-						onDemand.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).Str("reference", subjectDigestStr).
-							Err(err).Msg("sync routine: starting routine to retry copy image due to error")
-					}
-				}(service, timeout)
-			}
-		} else {
-			break
-		}
+	// Prefer docker-compat over a later content-filter miss from an unrelated registry.
+	if err != nil && dockerCompatErr != nil &&
+		(errors.Is(err, zerr.ErrSyncImageFilteredOut) || errors.Is(err, zerr.ErrManifestNotFound) ||
+			errors.Is(err, zerr.ErrRepoNotFound) || errors.Is(err, zerr.ErrUnauthorizedAccess)) {
+		return dockerCompatErr
 	}
 
 	return err
 }
 
-func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference string) error {
+// runOnDemand tries each configured registry until one succeeds.
+func (onDemand *BaseOnDemand) runOnDemand(ctx context.Context, repo, reference, startMsg string,
+	syncFn onDemandSyncFn,
+) error {
 	var err error
 
 	for serviceID, service := range onDemand.services {
@@ -198,67 +179,78 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference str
 			Str("reference", reference).
 			Int("serviceID", serviceID).
 			Dur("timeout", timeout).
-			Msg("starting on-demand image sync")
+			Msg(startMsg)
 
-		// Create a detached context with timeout to ensure sync completes even if HTTP client disconnects.
-		// This prevents Kubernetes timeout/retries from aborting in-progress image downloads.
+		// Detached context with timeout so sync can finish if the HTTP client disconnects.
 		syncCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
-		err = service.SyncImage(syncCtx, repo, reference)
+		err = syncFn(syncCtx, service)
 
 		cancel()
 
-		if err != nil {
-			if errors.Is(err, zerr.ErrManifestNotFound) ||
-				errors.Is(err, zerr.ErrSyncImageFilteredOut) ||
-				errors.Is(err, zerr.ErrSyncImageNotSigned) ||
-				errors.Is(err, zerr.ErrRepoNotFound) ||
-				// some public registries may return 401 for not found.
-				errors.Is(err, zerr.ErrUnauthorizedAccess) {
-				continue
-			}
-
-			req := request{
-				repo:         repo,
-				reference:    reference,
-				serviceID:    serviceID,
-				isBackground: true,
-			}
-
-			// if there is already a background routine, skip
-			if _, requested := onDemand.requestStore.LoadOrStore(req, struct{}{}); requested {
-				continue
-			}
-
-			if service.CanRetryOnError() {
-				retryErr := err
-
-				// retry in background
-				go func(service Service, serviceTimeout time.Duration) {
-					// remove image after syncing
-					defer func() {
-						onDemand.requestStore.Delete(req)
-						onDemand.log.Info().Str("repo", repo).Str("reference", reference).
-							Msg("sync routine for image exited")
-					}()
-
-					onDemand.log.Info().Str("repo", repo).Str("reference", reference).Str("err", retryErr.Error()).
-						Msg("sync routine: starting routine to retry copy image due to error")
-
-					// Use detached context with timeout for background retry
-					retryCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), serviceTimeout)
-					defer cancel()
-
-					err := service.SyncImage(retryCtx, repo, reference)
-					if err != nil {
-						onDemand.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).Str("reference", reference).
-							Err(err).Msg("sync routine: error while copying image")
-					}
-				}(service, timeout)
-			}
-		} else {
+		if err == nil {
 			break
 		}
 	}
 
 	return err
+}
+
+// maybeRetryInBackground schedules at most one background retry for kind+repo+reference.
+// The retry re-enters the same singleflight so a later matching request waits on it.
+func (onDemand *BaseOnDemand) maybeRetryInBackground(ctx context.Context, kind, repo, reference, sharedMsg string,
+	service Service, retryErr error, backgroundFullSync func(context.Context) error,
+) {
+	if !service.CanRetryOnError() {
+		return
+	}
+
+	req := request{
+		kind:         kind,
+		repo:         repo,
+		reference:    reference,
+		isBackground: true,
+	}
+
+	if _, requested := onDemand.requestStore.LoadOrStore(req, struct{}{}); requested {
+		return
+	}
+
+	key := onDemandKey(kind, repo, reference)
+
+	go func() {
+		defer func() {
+			onDemand.requestStore.Delete(req)
+			onDemand.log.Info().Str("repo", repo).Str("reference", reference).
+				Msg("sync routine for image exited")
+		}()
+
+		onDemand.log.Info().Str("repo", repo).Str("reference", reference).Str("err", retryErr.Error()).
+			Msg("sync routine: starting routine to retry copy image due to error")
+
+		// Loop until we are the flight leader (or a concurrent request already succeeded):
+		// a Do started while the failed call still holds the key shares that failure and
+		// would otherwise skip the retry while still holding requestStore.
+		for {
+			leader := false
+
+			err := onDemand.doOnDemandFlight(key, repo, reference, sharedMsg, func() error {
+				leader = true
+
+				return backgroundFullSync(context.WithoutCancel(ctx))
+			})
+			if leader {
+				if err != nil {
+					onDemand.log.Error().Str("errorType", common.TypeOf(err)).
+						Str("repo", repo).Str("reference", reference).
+						Err(err).Msg("sync routine: error while copying image")
+				}
+
+				return
+			}
+
+			if err == nil {
+				return
+			}
+		}
+	}()
 }

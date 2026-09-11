@@ -1976,7 +1976,7 @@ storage:
 		So(err, ShouldNotBeNil)
 	})
 
-	Convey("Test verify with bad preserve digest and no compat", t, func(c C) {
+	Convey("Test verify with deprecated preserveDigest warns but loads", t, func(c C) {
 		content := `{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
@@ -1987,7 +1987,7 @@ storage:
 
 		os.Args = []string{"cli_test", "verify", tmpfile}
 		err := cli.NewServerRootCmd().Execute()
-		So(err, ShouldNotBeNil)
+		So(err, ShouldBeNil)
 	})
 
 	Convey("Test verify with bad sync content config", t, func(c C) {
@@ -4402,6 +4402,70 @@ func TestManifestCheckIntervalConfig(t *testing.T) {
 			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
 			err := cli.LoadConfiguration(cfg, tmpfile)
 			So(err, ShouldBeNil)
+		})
+	})
+}
+
+func TestSyncPlatformsConfig(t *testing.T) {
+	Convey("platforms validation", t, func() {
+		Convey("Accept valid platforms including empty string", func() {
+			content := `{"storage":{"rootDirectory":"/tmp/zot"},
+				"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+				"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+				"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+				"onDemand": false, "pollInterval": "12h",
+				"platforms": ["linux/amd64", "linux/arm64", "amd64", ""]}]}}}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldBeNil)
+			So(cfg.Extensions.Sync.Registries[0].Platforms, ShouldResemble,
+				[]string{"linux/amd64", "linux/arm64", "amd64", ""})
+		})
+
+		Convey("Reject invalid platforms entry", func() {
+			content := `{"storage":{"rootDirectory":"/tmp/zot"},
+				"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+				"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+				"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+				"onDemand": false, "pollInterval": "12h",
+				"platforms": ["linux/amd64", "not a platform!!!"]}]}}}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err.Error(), ShouldContainSubstring, "invalid platforms entry")
+		})
+
+		Convey("Accept content platforms override and reject invalid content platforms", func() {
+			valid := `{"storage":{"rootDirectory":"/tmp/zot"},
+				"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+				"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+				"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+				"onDemand": false, "pollInterval": "12h",
+				"platforms": ["linux/amd64"],
+				"content": [{"prefix": "special/**", "platforms": ["linux/arm64", ""]}]}]}}}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", valid)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldBeNil)
+			So(cfg.Extensions.Sync.Registries[0].Content[0].Platforms, ShouldNotBeNil)
+			So(*cfg.Extensions.Sync.Registries[0].Content[0].Platforms, ShouldResemble,
+				[]string{"linux/arm64", ""})
+
+			invalid := `{"storage":{"rootDirectory":"/tmp/zot"},
+				"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+				"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+				"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+				"onDemand": false, "pollInterval": "12h",
+				"content": [{"prefix": "special/**", "platforms": ["bad!!!"]}]}]}}}`
+			cfg = config.New()
+			tmpfile = MakeTempFileWithContent(t, "zot-test-bad.json", invalid)
+			err = cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err.Error(), ShouldContainSubstring, "invalid platforms entry")
 		})
 	})
 }

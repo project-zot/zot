@@ -1703,6 +1703,15 @@ func (c *Config) IsCompatEnabled() bool {
 	return len(c.HTTP.Compat) > 0
 }
 
+// IsDockerCompatEnabled reports whether http.compat includes docker2s2.
+func (c *Config) IsDockerCompatEnabled() bool {
+	if c == nil {
+		return false
+	}
+
+	return slices.Contains(c.GetCompat(), compat.DockerManifestV2SchemaV2)
+}
+
 // UseSecureSession returns whether cookies should have the Secure flag set.
 // If TLS is configured, always returns true. Otherwise, returns the value
 // of SecureSession if set, or false by default.

@@ -20,6 +20,7 @@ import (
 	glob "github.com/bmatcuk/doublestar/v4"
 	"github.com/go-viper/mapstructure/v2"
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
+	"github.com/regclient/regclient/types/platform"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -1049,6 +1050,13 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, logge
 				if regCfg.ResponseHeaderTimeout == 0 {
 					regCfg.ResponseHeaderTimeout = syncConstants.DefaultResponseHeaderTimeout
 				}
+
+				if regCfg.PreserveDigest {
+					logger.Warn().Int("registryIndex", idx).
+						Msg("extensions.sync.registries[].preserveDigest is deprecated and ignored; " +
+							"docker media types are stored as-is when http.compat includes docker2s2, " +
+							"otherwise sync rejects them")
+				}
 			}
 		}
 
@@ -1771,6 +1779,41 @@ func validateRegistryManifestCheckInterval(regCfg syncconf.RegistryConfig) error
 	return nil
 }
 
+func validateRegistryPlatforms(regCfg syncconf.RegistryConfig) error {
+	if err := validatePlatformsList(regCfg.Platforms); err != nil {
+		return err
+	}
+
+	for _, content := range regCfg.Content {
+		if content.Platforms == nil {
+			continue
+		}
+
+		if err := validatePlatformsList(*content.Platforms); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func validatePlatformsList(platforms []string) error {
+	for _, platformEntry := range platforms {
+		if platformEntry == "" {
+			// Empty string is intentional: copy index children that have no platform.
+			continue
+		}
+
+		// Rely on regclient platform.Parse (os/arch[/variant]). It ignores slash tokens
+		// beyond the first three rather than rejecting them.
+		if _, err := platform.Parse(platformEntry); err != nil {
+			return fmt.Errorf("%w: invalid platforms entry %q: %w", zerr.ErrBadConfig, platformEntry, err)
+		}
+	}
+
+	return nil
+}
+
 func validateSync(config *config.Config, logger zlog.Logger) error {
 	// check glob patterns in sync config are compilable
 	extensionsConfig := config.CopyExtensionsConfig()
@@ -1826,6 +1869,13 @@ func validateSyncRegistry(config *config.Config, regID int, regCfg syncconf.Regi
 		return err
 	}
 
+	if err := validateRegistryPlatforms(regCfg); err != nil {
+		logger.Error().Err(err).Int("id", regID).Interface("extensions.sync.registries[id]",
+			regCfg).Msg("invalid config for platforms")
+
+		return err
+	}
+
 	// check the oauth2 credential helper config is complete and consistent
 	if regCfg.CredentialHelper == "oauth2" {
 		oauth2Config, err := syncconf.OAuth2HelperConfigFromMap(regCfg.Oauth2CredentialHelper)
@@ -1840,15 +1890,6 @@ func validateSyncRegistry(config *config.Config, regID int, regCfg syncconf.Regi
 
 			return fmt.Errorf("%w: %s: %w", zerr.ErrBadConfig, msg, err)
 		}
-	}
-
-	// check preserveDigest without compat
-	if regCfg.PreserveDigest && !config.IsCompatEnabled() {
-		msg := "can not use PreserveDigest option without enabling http.Compat"
-		logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
-			regCfg).Msg(msg)
-
-		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 	}
 
 	return validateSyncContent(config, regCfg, logger)

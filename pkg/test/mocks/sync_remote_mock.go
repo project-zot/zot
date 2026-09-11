@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/opencontainers/go-digest"
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/regclient/regclient/types/descriptor"
 	"github.com/regclient/regclient/types/ref"
 )
 
@@ -12,8 +14,9 @@ type SyncRemoteMock struct {
 	GetHostNameFn       func() string
 	GetRepositoriesFn   func(ctx context.Context) ([]string, error)
 	GetTagsFn           func(ctx context.Context, repo string) ([]string, error)
-	GetOCIDigestFn      func(ctx context.Context, repo, tag string) (digest.Digest, digest.Digest, bool, error)
-	GetDigestFn         func(ctx context.Context, repo, tag string) (digest.Digest, error)
+	HeadManifestFn      func(ctx context.Context, repo, tag string) (digest.Digest, string, error)
+	HeadManifestRefFn   func(ctx context.Context, imageReference ref.Ref) (digest.Digest, string, error)
+	GetManifestListFn   func(ctx context.Context, repo, reference string) ([]descriptor.Descriptor, error)
 	GetImageReferenceFn func(repo string, tag string) (ref.Ref, error)
 }
 
@@ -43,22 +46,40 @@ func (remote SyncRemoteMock) GetTags(ctx context.Context, repo string) ([]string
 	return []string{}, nil
 }
 
-func (remote SyncRemoteMock) GetOCIDigest(ctx context.Context, repo, tag string) (
-	digest.Digest, digest.Digest, bool, error,
-) {
-	if remote.GetOCIDigestFn != nil {
-		return remote.GetOCIDigestFn(ctx, repo, tag)
+func (remote SyncRemoteMock) HeadManifest(ctx context.Context, repo, tag string) (digest.Digest, string, error) {
+	if remote.HeadManifestFn != nil {
+		return remote.HeadManifestFn(ctx, repo, tag)
 	}
 
-	return digest.Digest("sha256:abc123"), digest.Digest("sha256:def456"), false, nil
+	return digest.Digest("sha256:abc123"), v1.MediaTypeImageManifest, nil
 }
 
-func (remote SyncRemoteMock) GetDigest(ctx context.Context, repo, tag string) (digest.Digest, error) {
-	if remote.GetDigestFn != nil {
-		return remote.GetDigestFn(ctx, repo, tag)
+func (remote SyncRemoteMock) HeadManifestRef(ctx context.Context, imageReference ref.Ref,
+) (digest.Digest, string, error) {
+	if remote.HeadManifestRefFn != nil {
+		return remote.HeadManifestRefFn(ctx, imageReference)
 	}
 
-	return digest.Digest("sha256:abc123"), nil
+	// Fall back so existing tests that only stub HeadManifestFn keep working.
+	if remote.HeadManifestFn != nil {
+		reference := imageReference.Digest
+		if reference == "" {
+			reference = imageReference.Tag
+		}
+
+		return remote.HeadManifestFn(ctx, imageReference.Repository, reference)
+	}
+
+	return digest.Digest("sha256:abc123"), v1.MediaTypeImageManifest, nil
+}
+
+func (remote SyncRemoteMock) GetManifestList(ctx context.Context, repo, reference string,
+) ([]descriptor.Descriptor, error) {
+	if remote.GetManifestListFn != nil {
+		return remote.GetManifestListFn(ctx, repo, reference)
+	}
+
+	return nil, nil
 }
 
 func (remote SyncRemoteMock) GetImageReference(repo string, tag string) (ref.Ref, error) {

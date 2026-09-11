@@ -558,6 +558,48 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			So(actual, ShouldContainSubstring, missingManifestDig)
 		})
 
+		Convey("Scrub index walks remaining siblings after an affected child", func() {
+			// Present-but-corrupt child used to early-return and skip later siblings.
+			// Corrupt the first child's config, then remove the second child's config so
+			// continuing the walk surfaces the second digest on the tag row (last wins).
+			multiarchImage := CreateMultiarchWith().RandomImages(2).Build()
+			err = WriteMultiArchImageToFileSystem(multiarchImage, repoName, "2.2", storeCtlr)
+			So(err, ShouldBeNil)
+
+			So(len(multiarchImage.Images), ShouldEqual, 2)
+
+			firstConfig := multiarchImage.Images[0].Config
+			firstConfig.Architecture += "-corrupted"
+			corruptedContent, err := json.Marshal(firstConfig)
+			So(err, ShouldBeNil)
+
+			firstConfigDig := multiarchImage.Images[0].ConfigDescriptor.Digest.Encoded()
+			firstConfigFile := path.Join(imgStore.RootDir(), repoName, "/blobs/sha256", firstConfigDig)
+			_, err = driver.WriteFile(firstConfigFile, corruptedContent)
+			So(err, ShouldBeNil)
+
+			secondConfigDig := multiarchImage.Images[1].ConfigDescriptor.Digest.Encoded()
+			secondConfigFile := path.Join(imgStore.RootDir(), repoName, "/blobs/sha256", secondConfigDig)
+			err = driver.Delete(secondConfigFile)
+			So(err, ShouldBeNil)
+
+			buff := bytes.NewBufferString("")
+
+			res, err := storeCtlr.CheckAllBlobsIntegrity(context.Background())
+			res.PrintScrubResults(buff)
+			So(err, ShouldBeNil)
+
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+
+			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
+			So(actual, ShouldContainSubstring, "test 2.2 affected")
+			// Sibling walk reached the second child; tag row reports its missing config.
+			So(actual, ShouldContainSubstring, secondConfigDig)
+			So(actual, ShouldContainSubstring, "blob not found")
+		})
+
 		Convey("Scrub index with non-missing error on manifest blob via file permissions", func() {
 			// Skip for non-local storage (S3/DynamoDB) since we can't chmod remote files
 			if driver.Name() != storageConstants.LocalStorageDriverName {

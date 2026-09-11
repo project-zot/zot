@@ -32,9 +32,13 @@ function setup_file() {
 
     # Setup zot server
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
+    # Keep the log outside storage.rootDirectory — files under the store root can
+    # disappear (and teardown then reports "zot log missing").
+    local zot_log_file=${BATS_FILE_TMPDIR}/zot-ondemand.log
     local zot_sync_ondemand_config_file=${BATS_FILE_TMPDIR}/zot_sync_ondemand_config.json
     zot_port=$(get_free_port_for_service "zot")
     echo ${zot_port} > ${BATS_FILE_TMPDIR}/zot.port
+    echo ${zot_log_file} > ${BATS_FILE_TMPDIR}/zot.logpath
 
     mkdir -p ${zot_root_dir}
 
@@ -46,11 +50,12 @@ function setup_file() {
     },
     "http": {
         "address": "0.0.0.0",
-        "port": "${zot_port}"
+        "port": "${zot_port}",
+        "compat": ["docker2s2"]
     },
     "log": {
         "level": "debug",
-        "output": "/tmp/blackbox.log"
+        "output": "${zot_log_file}"
     },
     "extensions": {
         "sync": {
@@ -170,6 +175,11 @@ EOF
     wait_zot_reachable ${zot_port}
 }
 
+# Print zot logs only when a test fails (see dump_zot_logs_on_failure).
+function teardown() {
+    dump_zot_logs_on_failure "$(cat ${BATS_FILE_TMPDIR}/zot.logpath)"
+}
+
 function teardown_file() {
     zot_stop_all
 }
@@ -195,7 +205,8 @@ function teardown_file() {
         oci:${TEST_DATA_DIR}
     [ "$status" -eq 0 ]
 
-    run $("cat /tmp/blackbox.log | grep -q registry:latest.*.skipping image because it's already synced")
+    run bash -c 'grep -F "skipping image because it'\''s already synced" "$1" | grep -F "registry:latest"' \
+        -- "$(cat ${BATS_FILE_TMPDIR}/zot.logpath)"
     [ "$status" -eq 0 ]
 }
 
@@ -219,7 +230,8 @@ function teardown_file() {
         oci:${TEST_DATA_DIR}
     [ "$status" -eq 0 ]
 
-    run $("cat /tmp/blackbox.log | grep -q archlinux:latest.*.skipping image because it's already synced")
+    run bash -c 'grep -F "skipping image because it'\''s already synced" "$1" | grep -F "archlinux:latest"' \
+        -- "$(cat ${BATS_FILE_TMPDIR}/zot.logpath)"
     [ "$status" -eq 0 ]
 }
 

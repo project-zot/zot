@@ -243,6 +243,10 @@
     "zot4": {
       "begin": 3080,
       "end": 3089
+    },
+    "zot5": {
+      "begin": 3100,
+      "end": 3109
     }
   },
   "scale-out/cloud_scale_out_basic_auth_tls_scale.bats": {

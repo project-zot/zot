@@ -10,6 +10,24 @@ import (
 	syncConstants "zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 )
 
+func TestRegistryConfig_SetDockerCompat(t *testing.T) {
+	Convey("SetDockerCompat", t, func() {
+		Convey("nil receiver is a no-op", func() {
+			var nilCfg *syncconf.RegistryConfig
+			So(func() { nilCfg.SetDockerCompat(true) }, ShouldNotPanic)
+		})
+
+		Convey("sets dockerCompat on a real config", func() {
+			cfg := &syncconf.RegistryConfig{}
+			So(cfg.IsDockerCompatEnabled(), ShouldBeFalse)
+			cfg.SetDockerCompat(true)
+			So(cfg.IsDockerCompatEnabled(), ShouldBeTrue)
+			cfg.SetDockerCompat(false)
+			So(cfg.IsDockerCompatEnabled(), ShouldBeFalse)
+		})
+	})
+}
+
 func TestRegistryConfig_ShouldSyncLegacyCosignTags(t *testing.T) {
 	Convey("ShouldSyncLegacyCosignTags", t, func() {
 		Convey("returns true when SyncLegacyCosignTags is nil (default)", func() {

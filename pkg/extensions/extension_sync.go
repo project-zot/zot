@@ -57,6 +57,8 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 			// Get cluster config safely
 			clusterConfig := config.CopyClusterConfig()
 
+			registryConfig.SetDockerCompat(config.IsDockerCompatEnabled())
+
 			service, err := sync.New(registryConfig, credsPath, clusterConfig, tmpDir, storeController, metaDB, log)
 			if err != nil {
 				log.Error().Err(err).Msg("failed to initialize sync extension")

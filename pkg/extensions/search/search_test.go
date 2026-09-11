@@ -297,10 +297,10 @@ func getMockCveScanner(metaDB mTypes.MetaDB) cveinfo.Scanner {
 		ScanImageFn: func(ctx context.Context, image string) (cvemodel.ScanResult, error) {
 			return cvemodel.ScanResult{CVEMap: getCveResults(image)}, nil
 		},
-		GetCachedResultFn: func(digestStr string) map[string]zcommon.CVE {
+		GetCachedResultFn: func(repo, digestStr string) map[string]zcommon.CVE {
 			return getCveResults(digestStr)
 		},
-		IsResultCachedFn: func(digestStr string) bool {
+		IsResultCachedFn: func(repo, digestStr string) bool {
 			return true
 		},
 		IsImageFormatScannableFn: func(repo string, reference string) (bool, error) {

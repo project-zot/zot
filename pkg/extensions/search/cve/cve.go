@@ -34,8 +34,14 @@ type Scanner interface {
 	ScanImage(ctx context.Context, image string) (cvemodel.ScanResult, error)
 	IsImageFormatScannable(repo, ref string) (bool, error)
 	IsImageMediaScannable(repo, digestStr, mediaType string) (bool, error)
-	IsResultCached(digestStr string) bool
-	GetCachedResult(digestStr string) map[string]zcommon.CVE
+	// IsResultCached reports whether scan work for digest in repo is already covered by
+	// the per-manifest CVE cache. For manifests this is a direct cache lookup. For indexes
+	// the index digest is never a cache key; complete means every present scannable member
+	// is cached (repo is used for blob presence checks).
+	IsResultCached(repo, digestStr string) bool
+	// GetCachedResult returns cached CVE results for digest in repo. For indexes it returns
+	// the union of present scannable members' cached results when IsResultCached is true.
+	GetCachedResult(repo, digestStr string) map[string]zcommon.CVE
 	UpdateDB(ctx context.Context) error
 }
 
@@ -504,23 +510,18 @@ func (cveinfo BaseCveInfo) GetCVESummaryForImageMedia(ctx context.Context, repo,
 	// scannable no issues found           - max severity "NONE"        - cve count 0   - no Errors
 	// scannable issues found              - max severity from Scanner  - cve count >0  - no Errors
 	// For this call we only look at the scanner cache, we skip the actual scanning to save time
-	if !cveinfo.Scanner.IsResultCached(digestStr) {
+	if !cveinfo.Scanner.IsResultCached(repo, digestStr) {
 		isValidImage, err := cveinfo.Scanner.IsImageMediaScannable(repo, digestStr, mediaType)
 		if !isValidImage {
 			cveinfo.Log.Debug().Str("digest", digestStr).Str("mediaType", mediaType).
 				Err(err).Msg("image is not scannable")
 		}
 
-		// Counters are initialized with 0 by default
-		imageCVESummary := cvemodel.ImageCVESummary{
-			MaxSeverity: cvemodel.SeverityNotScanned,
-		}
-
-		return imageCVESummary, err
+		return cvemodel.ImageCVESummary{MaxSeverity: cvemodel.SeverityNotScanned}, err
 	}
 
-	// We will make due with cached results
-	cveMap := cveinfo.Scanner.GetCachedResult(digestStr)
+	// We will make do with cached results (indexes: union of member manifest caches)
+	cveMap := cveinfo.Scanner.GetCachedResult(repo, digestStr)
 
 	return initCVESummaryFromCVEMap(cveMap), nil
 }

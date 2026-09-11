@@ -8916,7 +8916,12 @@ func TestImageSignatures(t *testing.T) {
 				resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
 					fmt.Sprintf("%s/v2/%s/referrers/%s", baseURL, repoName, digest.String()))
 				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+				// Missing referrer blobs are skipped (sparse-index tolerance); list is still OK.
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+				err = json.Unmarshal(resp.Body(), &refs)
+				So(err, ShouldBeNil)
+				So(len(refs.Manifests), ShouldEqual, 0)
 
 				err = signature.VerifyWithNotation(image, tdir)
 				So(err, ShouldNotBeNil)
@@ -9111,7 +9116,7 @@ func TestManifestValidation(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 		})
 
-		Convey("multiarch image with missing manifest should fail validation", func() {
+		Convey("multiarch image with missing manifest should succeed (sparse index)", func() {
 			index := ispec.Index{
 				MediaType: ispec.MediaTypeImageIndex,
 				Manifests: []ispec.Descriptor{
@@ -9136,7 +9141,7 @@ func TestManifestValidation(t *testing.T) {
 			resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
 				SetBody(indexContent).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/index", repoName))
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 		})
 	})
 }

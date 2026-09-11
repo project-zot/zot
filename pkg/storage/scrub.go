@@ -240,14 +240,16 @@ func scrubManifest(
 				layers = append(layers, layersToScrub...)
 			}
 
-			// if the manifest is affected then this index is also affected
+			// if the manifest is affected then this index is also affected; keep walking
+			// siblings so every listed arch/attestation child is scrubbed in this pass
 			if scrubbedManifests[man.Digest].Error != "" {
 				mRes := scrubbedManifests[man.Digest]
 
 				scrubbedManifests[manifest.Digest] = newScrubImageResult(imageName, tag, mRes.Status,
 					mRes.AffectedBlob, mRes.Error)
+				indexAffected = true
 
-				return layers, err
+				continue
 			}
 		}
 

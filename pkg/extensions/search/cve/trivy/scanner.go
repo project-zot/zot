@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/aquasecurity/trivy-db/pkg/metadata"
 	dbTypes "github.com/aquasecurity/trivy-db/pkg/types"
@@ -567,10 +568,6 @@ func (scanner Scanner) isManifestDataScannable(manifestData mTypes.ManifestMeta)
 }
 
 func (scanner Scanner) isIndexScannable(digestStr string) (bool, error) {
-	if scanner.cache.Get(digestStr) != nil {
-		return true, nil
-	}
-
 	indexData, err := scanner.metaDB.GetImageMeta(godigest.Digest(digestStr))
 	if err != nil {
 		return false, err
@@ -601,13 +598,131 @@ func (scanner Scanner) isIndexScannable(digestStr string) (bool, error) {
 	return false, nil
 }
 
-func (scanner Scanner) IsResultCached(digest string) bool {
+func (scanner Scanner) IsResultCached(repo, digest string) bool {
+	if scanner.isIndexDigest(digest) {
+		_, complete := scanner.cachedIndexAggregate(repo, digest)
+
+		return complete
+	}
+
 	// Check if the entry exists in cache without updating the recent-ness
 	return scanner.cache.Contains(digest)
 }
 
-func (scanner Scanner) GetCachedResult(digest string) map[string]zcommon.CVE {
+func (scanner Scanner) GetCachedResult(repo, digest string) map[string]zcommon.CVE {
+	if scanner.isIndexDigest(digest) {
+		cveMap, complete := scanner.cachedIndexAggregate(repo, digest)
+		if !complete {
+			return map[string]zcommon.CVE{}
+		}
+
+		return cveMap
+	}
+
 	return scanner.cache.Get(digest)
+}
+
+func (scanner Scanner) isIndexDigest(digest string) bool {
+	imageMeta, err := scanner.metaDB.GetImageMeta(godigest.Digest(digest))
+	if err != nil {
+		return false
+	}
+
+	return compat.IsImageIndexMediaType(imageMeta.MediaType)
+}
+
+// cachedIndexAggregate returns the union of cached CVE results for every present,
+// scannable index member. complete is false if any such member is uncached.
+// Missing blobs are skipped (same as scanIndex). The index digest is never a cache key.
+// Nested index children are aggregated recursively (never cached under the nested digest).
+func (scanner Scanner) cachedIndexAggregate(repo, digest string) (map[string]zcommon.CVE, bool) {
+	return scanner.cachedIndexAggregateSeen(repo, digest, map[string]struct{}{})
+}
+
+func (scanner Scanner) cachedIndexAggregateSeen(repo, digest string, seen map[string]struct{},
+) (map[string]zcommon.CVE, bool) {
+	if _, ok := seen[digest]; ok {
+		return map[string]zcommon.CVE{}, true
+	}
+
+	seen[digest] = struct{}{}
+
+	indexData, err := scanner.metaDB.GetImageMeta(godigest.Digest(digest))
+	if err != nil || indexData.Index == nil {
+		return nil, false
+	}
+
+	indexCveIDMap := map[string]zcommon.CVE{}
+	imgStore := scanner.storeController.GetImageStore(repo)
+
+	for _, manifest := range indexData.Index.Manifests {
+		if imgStore != nil {
+			var lockLatency time.Time
+
+			imgStore.RLock(&lockLatency)
+			_, _, _, err := imgStore.StatBlob(repo, manifest.Digest)
+			imgStore.RUnlock(&lockLatency)
+
+			if err != nil {
+				if errors.Is(err, zerr.ErrManifestNotFound) || errors.Is(err, zerr.ErrBlobNotFound) {
+					continue
+				}
+
+				return nil, false
+			}
+		}
+
+		digestStr := manifest.Digest.String()
+
+		if scanner.indexChildIsIndex(manifest) {
+			nestedMap, complete := scanner.cachedIndexAggregateSeen(repo, digestStr, seen)
+			if !complete {
+				return nil, false
+			}
+
+			maps.Copy(indexCveIDMap, nestedMap)
+
+			continue
+		}
+
+		isScannable, err := scanner.isManifestScannable(digestStr)
+		if err != nil {
+			// Definitively unscannable children need no cache entry; other lookup
+			// failures leave the aggregate incomplete so callers do not treat the
+			// index as scanned.
+			if errors.Is(err, zerr.ErrScanNotSupported) {
+				continue
+			}
+
+			return nil, false
+		}
+
+		if !isScannable {
+			continue
+		}
+
+		cachedMap := scanner.cache.Get(digestStr)
+		if cachedMap == nil {
+			return nil, false
+		}
+
+		maps.Copy(indexCveIDMap, cachedMap)
+	}
+
+	return indexCveIDMap, true
+}
+
+// indexChildIsIndex reports whether an index descriptor refers to a nested index.
+func (scanner Scanner) indexChildIsIndex(desc ispec.Descriptor) bool {
+	if compat.IsImageIndexMediaType(desc.MediaType) {
+		return true
+	}
+
+	if compat.IsImageManifestMediaType(desc.MediaType) {
+		return false
+	}
+
+	return scanner.isIndexDigest(desc.Digest.String())
 }
 
 func (scanner Scanner) ScanImage(ctx context.Context, image string) (cvemodel.ScanResult, error) {
@@ -645,6 +760,8 @@ func (scanner Scanner) ScanImage(ctx context.Context, image string) (cvemodel.Sc
 	)
 
 	if compat.IsImageIndexMediaType(mediaType) {
+		// Index aggregates are never stored under the index digest; WasCached is true when
+		// every present scannable member was already in the per-manifest cache.
 		cveIDMap, wasCached, err = scanner.scanIndex(ctx, repo, digest)
 	} else if compat.IsImageManifestMediaType(mediaType) {
 		cveIDMap, wasCached, err = scanner.scanManifest(ctx, repo, digest)
@@ -946,9 +1063,21 @@ func getNVDReference(references []string) (string, bool) {
 }
 
 func (scanner Scanner) scanIndex(ctx context.Context, repo, digest string) (map[string]zcommon.CVE, bool, error) {
-	if cachedMap := scanner.cache.Get(digest); cachedMap != nil {
-		return cachedMap, true, nil
+	return scanner.scanIndexSeen(ctx, repo, digest, map[string]struct{}{})
+}
+
+func (scanner Scanner) scanIndexSeen(ctx context.Context, repo, digest string, seen map[string]struct{},
+) (map[string]zcommon.CVE, bool, error) {
+	// Do not cache index aggregates under the index digest: the same digest can be
+	// fully present in one repo and sparse in another (or change after GC / on-demand
+	// sync). Always Stat children in this repo and aggregate; per-manifest CVE results
+	// (and Trivy's own cache) still avoid re-scanning children. Nested indexes recurse
+	// here instead of scanManifest so their digests are never used as cache keys.
+	if _, ok := seen[digest]; ok {
+		return map[string]zcommon.CVE{}, true, nil
 	}
+
+	seen[digest] = struct{}{}
 
 	indexData, err := scanner.metaDB.GetImageMeta(godigest.Digest(digest))
 	if err != nil {
@@ -960,23 +1089,74 @@ func (scanner Scanner) scanIndex(ctx context.Context, repo, digest string) (map[
 	}
 
 	indexCveIDMap := map[string]zcommon.CVE{}
+	wasCached := true
+
+	imgStore := scanner.storeController.GetImageStore(repo)
 
 	for _, manifest := range indexData.Index.Manifests {
-		if isScannable, err := scanner.isManifestScannable(manifest.Digest.String()); isScannable && err == nil {
-			// the per-manifest cache status doesn't matter here: it's the aggregate index-level
-			// cache check above that determines whether this ScanImage call is a cache hit
-			manifestCveIDMap, _, err := scanner.scanManifest(ctx, repo, manifest.Digest.String())
+		if imgStore != nil {
+			var lockLatency time.Time
+
+			imgStore.RLock(&lockLatency)
+			_, _, _, err := imgStore.StatBlob(repo, manifest.Digest)
+			imgStore.RUnlock(&lockLatency)
+
 			if err != nil {
-				return nil, false, err
+				if errors.Is(err, zerr.ErrManifestNotFound) || errors.Is(err, zerr.ErrBlobNotFound) {
+					scanner.log.Warn().Err(err).Str("repo", repo).Str("index", digest).
+						Str("manifest", manifest.Digest.String()).
+						Msg("skipping missing child while scanning image index")
+
+					continue
+				}
+
+				return map[string]zcommon.CVE{}, false, err
+			}
+		}
+
+		digestStr := manifest.Digest.String()
+
+		if scanner.indexChildIsIndex(manifest) {
+			nestedCveIDMap, childCached, err := scanner.scanIndexSeen(ctx, repo, digestStr, seen)
+			if err != nil {
+				return map[string]zcommon.CVE{}, false, err
 			}
 
-			maps.Copy(indexCveIDMap, manifestCveIDMap)
+			if !childCached {
+				wasCached = false
+			}
+
+			maps.Copy(indexCveIDMap, nestedCveIDMap)
+
+			continue
 		}
+
+		isScannable, err := scanner.isManifestScannable(digestStr)
+		if err != nil {
+			if errors.Is(err, zerr.ErrScanNotSupported) {
+				continue
+			}
+
+			return map[string]zcommon.CVE{}, false, err
+		}
+
+		if !isScannable {
+			continue
+		}
+
+		manifestCveIDMap, childCached, err := scanner.scanManifest(ctx, repo, digestStr)
+		if err != nil {
+			return map[string]zcommon.CVE{}, false, err
+		}
+
+		if !childCached {
+			wasCached = false
+		}
+
+		maps.Copy(indexCveIDMap, manifestCveIDMap)
 	}
 
-	scanner.cache.Add(digest, indexCveIDMap)
-
-	return indexCveIDMap, false, nil
+	return indexCveIDMap, wasCached, nil
 }
 
 // UpdateDB downloads the Trivy DB / Cache under the store root directory.

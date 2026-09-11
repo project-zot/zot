@@ -1426,6 +1426,7 @@ Configure each registry sync:
 				"urls": ["https://registry1:5000"],
 				"onDemand": false,                  # pull any image which the local registry doesn't have
 				"pollInterval": "6h",               # polling interval, if not set then periodically polling will not run
+				"platforms": ["linux/amd64"],       # periodic sync default: sparse-copy these OS/arch[/variant] children; omit/empty = all. Overridden by content[].platforms when set. On-demand ignores both. Extra slash tokens beyond three are ignored by platform.Parse (not rejected).
 				"manifestCheckInterval": "1h",      # minimum interval between upstream manifest checks for the same repo:tag when serving on-demand requests; when 0 or unset every request checks upstream. Requires onDemand.
 				"tlsVerify": true,                  # whether or not to verify tls (default is true)
 				"certDir": "/home/user/certs",      # use certificates at certDir path similar to Docker's /etc/docker/certs.d., if not specified then use the default certs dir,
@@ -1436,7 +1437,7 @@ Configure each registry sync:
 				"reqPerSec": 100,                   # max request rate (requests/second) per host, applied independently to this upstream and to each of its mirrors, not shared across them (default: unlimited)
 				"disableHTTP2": true,               # force HTTP/1.1 to the upstream, so each concurrent request opens its own TCP connection instead of sharing the single connection (and congestion window) HTTP/2 multiplexes requests onto (default: false, i.e. HTTP/2 is negotiated when the upstream supports it)
 				"maxIdleConnsPerHost": 30,           # per-host idle connection pool size (default: 2; when disableHTTP2 is true and this is unset, defaults to reqConcurrent instead, so pooled HTTP/1.1 connections aren't closed under concurrency)
-				"onlySigned": true,                 # sync only signed images (either notary or cosign)
+				"onlySigned": true,                 # when true, tag sync requires a remote signature (notary/cosign/referrers). On-demand digest pulls skip that check so multi-arch tag→digest client flows work (signatures normally cover the index, not each platform child). A client that already knows an upstream digest can therefore sync that manifest without a per-manifest signature. Periodic child digests after a signed tag also skip re-checking.
 				"content":[                         # which content to periodically pull, also it's used for filtering ondemand images, if not set then periodically polling will not run
 					{
 						"prefix":"/repo1/repo",         # pull image repo1/repo
@@ -1450,6 +1451,10 @@ Configure each registry sync:
 					},
 					{
 						"prefix":"/repo3/**"            # pull all images under repo3/ (matches recursively all repos under repo3/)
+					},
+					{
+						"prefix":"/repo4/**",           # pull all images under repo4/
+						"platforms": ["linux/amd64"]   # optional: overrides registries[].platforms for this prefix only (periodic); omit to inherit; [] means all platforms
 					},
           {
             "prefix":"/repo1/repo",          # pull /repo1/repo

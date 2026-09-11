@@ -2274,6 +2274,21 @@ func TestConfig(t *testing.T) {
 			So(cfg.IsMTLSAuthEnabled(), ShouldBeTrue)
 		})
 
+		Convey("Test IsDockerCompatEnabled()", func() {
+			var nilCfg *config.Config
+			So(nilCfg.IsDockerCompatEnabled(), ShouldBeFalse)
+
+			cfg := &config.Config{}
+			So(cfg.IsDockerCompatEnabled(), ShouldBeFalse)
+
+			cfg = &config.Config{
+				HTTP: config.HTTPConfig{
+					Compat: []compat.MediaCompatibility{compat.DockerManifestV2SchemaV2},
+				},
+			}
+			So(cfg.IsDockerCompatEnabled(), ShouldBeTrue)
+		})
+
 		Convey("Test UseSecureSession()", func() {
 			// Test with nil Config
 			var cfg *config.Config = nil
