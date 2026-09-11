@@ -452,7 +452,7 @@ func (e *SortCriteria) UnmarshalGQL(v any) error {
 }
 
 func (e SortCriteria) MarshalGQL(w io.Writer) {
-	fmt.Fprint(w, strconv.Quote(e.String()))
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
 }
 
 func (e *SortCriteria) UnmarshalJSON(b []byte) error {
