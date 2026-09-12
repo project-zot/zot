@@ -9,7 +9,6 @@ import (
 	"context"
 
 	"github.com/vektah/gqlparser/v2/gqlerror"
-	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/extensions/search/convert"
 	"zotregistry.dev/zot/v2/pkg/extensions/search/gql_generated"
@@ -18,7 +17,10 @@ import (
 // CVEListForImage is the resolver for the CVEListForImage field.
 func (r *queryResolver) CVEListForImage(ctx context.Context, image string, requestedPage *gql_generated.PageInput, searchedCve *string, excludedCve *string, severity *string) (*gql_generated.CVEResultForImage, error) {
 	if r.cveInfo == nil {
-		return &gql_generated.CVEResultForImage{}, zerr.ErrCVESearchDisabled
+		return &gql_generated.CVEResultForImage{
+			CVEList: []*gql_generated.Cve{},
+			Page:    &gql_generated.PageInfo{},
+		}, nil
 	}
 
 	return getCVEListForImage(ctx, image, r.cveInfo, requestedPage, deref(searchedCve, ""), deref(excludedCve, ""), deref(severity, ""), r.log)
@@ -27,7 +29,20 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, image string, reque
 // CVEDiffListForImages is the resolver for the CVEDiffListForImages field.
 func (r *queryResolver) CVEDiffListForImages(ctx context.Context, minuend gql_generated.ImageInput, subtrahend gql_generated.ImageInput, requestedPage *gql_generated.PageInput, searchedCve *string, excludedCve *string) (*gql_generated.CVEDiffResult, error) {
 	if r.cveInfo == nil {
-		return &gql_generated.CVEDiffResult{}, zerr.ErrCVESearchDisabled
+		return &gql_generated.CVEDiffResult{
+			Minuend: &gql_generated.ImageIdentifier{
+				Repo:   minuend.Repo,
+				Tag:    minuend.Tag,
+				Digest: minuend.Digest,
+			},
+			Subtrahend: &gql_generated.ImageIdentifier{
+				Repo:   subtrahend.Repo,
+				Tag:    subtrahend.Tag,
+				Digest: subtrahend.Digest,
+			},
+			CVEList: []*gql_generated.Cve{},
+			Page:    &gql_generated.PageInfo{},
+		}, nil
 	}
 
 	return getCVEDiffListForImages(ctx, minuend, subtrahend, r.metaDB, r.cveInfo, requestedPage,
@@ -37,7 +52,10 @@ func (r *queryResolver) CVEDiffListForImages(ctx context.Context, minuend gql_ge
 // ImageListForCve is the resolver for the ImageListForCVE field.
 func (r *queryResolver) ImageListForCve(ctx context.Context, id string, filter *gql_generated.Filter, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedImagesResult, error) {
 	if r.cveInfo == nil {
-		return &gql_generated.PaginatedImagesResult{}, zerr.ErrCVESearchDisabled
+		return &gql_generated.PaginatedImagesResult{
+			Page:    &gql_generated.PageInfo{},
+			Results: []*gql_generated.ImageSummary{},
+		}, nil
 	}
 
 	filter = cleanFilter(filter)
@@ -48,7 +66,10 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string, filter *
 // ImageListWithCVEFixed is the resolver for the ImageListWithCVEFixed field.
 func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, image string, filter *gql_generated.Filter, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedImagesResult, error) {
 	if r.cveInfo == nil {
-		return &gql_generated.PaginatedImagesResult{}, zerr.ErrCVESearchDisabled
+		return &gql_generated.PaginatedImagesResult{
+			Page:    &gql_generated.PageInfo{},
+			Results: []*gql_generated.ImageSummary{},
+		}, nil
 	}
 
 	filter = cleanFilter(filter)
