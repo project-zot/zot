@@ -349,7 +349,8 @@ cat > "${BUILD_CTX}/config.json" <<EOF
     },
     "http": {
         "address": "0.0.0.0",
-        "port": "${ZOT_LISTEN_PORT}"
+        "port": "${ZOT_LISTEN_PORT}",
+        "compat": ["docker2s2"]
     },
     "log": {
         "level": "info"
