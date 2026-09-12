@@ -204,4 +204,26 @@ func TestMaybeParseStorageGate(t *testing.T) {
 		err := meta.MaybeParseStorage(mock, store, false, "v1", logger)
 		So(err, ShouldBeNil)
 	})
+
+	Convey("a suspiciously empty storage walk is not stamped (issue #4336)", t, func() {
+		// metaDB already knows about a repo, but the storage walk comes back empty - the guard
+		// in parseStorage should skip deleting it and MaybeParseStorage must not lock that state
+		// in via the fast-restart stamp, or the next restart would take the fast path and skip
+		// reparsing, permanently hiding the repo.
+		store := storage.StoreController{DefaultStore: mocks.MockedImageStore{
+			GetRepositoriesFn: func() ([]string, error) { return []string{}, nil },
+		}}
+
+		mock := mocks.MetaDBMock{
+			GetAllRepoNamesFn: func() ([]string, error) { return []string{repo}, nil },
+			SetFastRestartStampFn: func(string) error {
+				t.Fatal("must not stamp when the storage walk looked suspiciously empty")
+
+				return nil
+			},
+		}
+
+		err := meta.MaybeParseStorage(mock, store, false, "v1", logger)
+		So(err, ShouldBeNil)
+	})
 }

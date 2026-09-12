@@ -38,11 +38,32 @@ func indexBlobFor(digest godigest.Digest, tag string) []byte {
 }
 
 func TestParseStatsComplete(t *testing.T) {
-	Convey("parseStats.complete is true only with no failed or partial repos", t, func() {
+	Convey("parseStats.complete is true only with no failed or partial repos and no suspect empty walk", t, func() {
 		So(parseStats{}.complete(), ShouldBeTrue)
 		So(parseStats{failedRepos: 1}.complete(), ShouldBeFalse)
 		So(parseStats{partialRepos: 1}.complete(), ShouldBeFalse)
 		So(parseStats{failedRepos: 2, partialRepos: 3}.complete(), ShouldBeFalse)
+		So(parseStats{suspectEmptyWalk: true}.complete(), ShouldBeFalse)
+	})
+}
+
+func TestGetReposToBeDeleted(t *testing.T) {
+	Convey("getReposToBeDeleted returns metaDB repos absent from storage", t, func() {
+		Convey("no repos in either set", func() {
+			So(getReposToBeDeleted(nil, nil), ShouldBeEmpty)
+		})
+
+		Convey("metaDB repo present in storage is kept", func() {
+			So(getReposToBeDeleted([]string{"repo1"}, []string{"repo1"}), ShouldBeEmpty)
+		})
+
+		Convey("metaDB repo absent from storage is marked for deletion", func() {
+			So(getReposToBeDeleted([]string{"repo1"}, []string{"repo1", "repo2"}), ShouldResemble, []string{"repo2"})
+		})
+
+		Convey("empty storage marks every metaDB repo for deletion", func() {
+			So(getReposToBeDeleted(nil, []string{"repo1", "repo2"}), ShouldResemble, []string{"repo1", "repo2"})
+		})
 	})
 }
 
@@ -168,5 +189,53 @@ func TestParseStorageStats(t *testing.T) {
 		So(stats.failedRepos, ShouldEqual, 1)
 		So(stats.partialRepos, ShouldEqual, 1)
 		So(stats.complete(), ShouldBeFalse)
+	})
+
+	Convey("a storage walk that returns no repos while metaDB has entries skips deletion (issue #4336)", t, func() {
+		deleteCalled := false
+
+		metaDBWithRepos := mocks.MetaDBMock{
+			GetAllRepoNamesFn: func() ([]string, error) { return []string{"myorg/myapp", "otherrepo"}, nil },
+			DeleteRepoMetaFn: func(repo string) error {
+				deleteCalled = true
+
+				return nil
+			},
+		}
+
+		store := storage.StoreController{DefaultStore: mocks.MockedImageStore{
+			// simulates a failed/empty storage walk (e.g. a swallowed PathNotFoundError, or a
+			// scoped/misconfigured prefix) even though metaDB already knows about two repos.
+			GetRepositoriesFn: func() ([]string, error) { return []string{}, nil },
+		}}
+
+		stats, err := parseStorage(metaDBWithRepos, store, logger)
+		So(err, ShouldBeNil)
+		So(deleteCalled, ShouldBeFalse)
+		So(stats.suspectEmptyWalk, ShouldBeTrue)
+		So(stats.complete(), ShouldBeFalse)
+	})
+
+	Convey("an empty storage walk with an already-empty metaDB is not treated as suspect", t, func() {
+		deleteCalled := false
+
+		emptyMetaDB := mocks.MetaDBMock{
+			GetAllRepoNamesFn: func() ([]string, error) { return []string{}, nil },
+			DeleteRepoMetaFn: func(repo string) error {
+				deleteCalled = true
+
+				return nil
+			},
+		}
+
+		store := storage.StoreController{DefaultStore: mocks.MockedImageStore{
+			GetRepositoriesFn: func() ([]string, error) { return []string{}, nil },
+		}}
+
+		stats, err := parseStorage(emptyMetaDB, store, logger)
+		So(err, ShouldBeNil)
+		So(deleteCalled, ShouldBeFalse)
+		So(stats.suspectEmptyWalk, ShouldBeFalse)
+		So(stats.complete(), ShouldBeTrue)
 	})
 }
