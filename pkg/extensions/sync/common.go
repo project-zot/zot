@@ -1,6 +1,13 @@
 package sync
 
-import "context"
+import (
+	"context"
+	"io"
+
+	"github.com/regclient/regclient/types/blob"
+	"github.com/regclient/regclient/types/descriptor"
+	"github.com/regclient/regclient/types/manifest"
+)
 
 // OnDemand pulls images and referrers from upstream registries on client request.
 type OnDemand interface {
@@ -10,4 +17,84 @@ type OnDemand interface {
 	SyncReferrers(ctx context.Context, repo string, subjectDigestStr string, referenceTypes []string) error
 	// ShouldCheckUpstreamManifest reports whether repo:reference still needs an upstream check.
 	ShouldCheckUpstreamManifest(repo, reference string) bool
+	// FetchManifestForStream fetches repo:reference directly from upstream and prepares it for
+	// streaming, returning the manifest immediately while the full image syncs in the background.
+	// onSynced, if non-nil, is invoked once with the synced manifest after this call's own
+	// background sync commits successfully - the caller's hook to record bookkeeping (e.g.
+	// download stats) that depends on metadata this sync creates and that did not exist yet when
+	// the manifest was first handed back. Not invoked when this call instead adopts a manifest
+	// staged by a concurrent caller (see FetchManifestForStream's doc comment) - that caller's own
+	// onSynced, if any, covers it.
+	FetchManifestForStream(ctx context.Context, repo, reference string,
+		onSynced func(manifest.Manifest)) (manifest.Manifest, error)
+	// StreamManager returns the manager tracking active blob streams, or nil when streaming is
+	// not configured for any registry.
+	StreamManager() StreamManager
+	// IsStreamingEnabledForRepo reports whether any on-demand service streams blobs for repo.
+	IsStreamingEnabledForRepo(repo string) bool
+}
+
+// StreamManager tracks blobs that are being downloaded from upstream and streamed to clients
+// concurrently with that download, plus the manifests that are staged for streaming.
+type StreamManager interface {
+	// ConnectClient attaches a client to the active stream for blobDigest, returning a copier
+	// that forwards bytes already on disk and new bytes as they arrive. repo scopes the lookup:
+	// blobDigest must belong to a manifest currently staged for streaming under repo, even
+	// though the underlying stream may be shared with other repos referencing the same digest.
+	ConnectClient(repo, blobDigest string, writer io.Writer) (BlobCopier, error)
+	// StreamingBlobReader is invoked by regclient as each blob is read from upstream; it wraps
+	// the reader so bytes are simultaneously written to disk and made available to clients.
+	StreamingBlobReader(reader *blob.BReader) (*blob.BReader, error)
+	// StoreImageForStreaming registers a manifest (and, for multi-arch images, its child
+	// manifests) as streamable, pre-creating active streams for the manifest, config, and layers.
+	// Returns the manifest actually staged for repo:reference, which is streamManifest itself on
+	// a fresh stage, but a DIFFERENT, already-staged manifest if a concurrent caller (racing on a
+	// mutable tag) won first - callers must use the returned manifest, not streamManifest, from
+	// this point on: the stream cache's blob digests belong to whichever one is returned.
+	StoreImageForStreaming(repo, reference string, streamManifest *StreamableManifest) (*StreamableManifest, error)
+	// StreamingImageManifest returns the manifest staged for repo:reference, if any.
+	StreamingImageManifest(repo, reference string) (*StreamableManifest, bool)
+	// RemoveStreamingImage purges repo:reference and its blobs from the stream cache once the
+	// background sync into real storage has finished.
+	RemoveStreamingImage(repo, reference string)
+	// CachedBlobInfo returns the size and media type of a blob known to the stream cache, scoped
+	// to repo the same way ConnectClient is.
+	CachedBlobInfo(repo, blobDigest string) (size int64, mediaType string, err error)
+}
+
+// BlobCopier copies a single streamed blob (or a byte range of one) to one connected client.
+type BlobCopier interface {
+	// Copy streams the blob to the client, returning once the blob is fully copied or an error
+	// (including an upstream download failure) ends the stream.
+	Copy() error
+	// CopyRange streams bytes [start, end] (inclusive) of the blob to the client, returning once
+	// that range is fully copied or an error ends the stream - it can finish as soon as its own
+	// end has arrived, without waiting for the rest of the blob to finish downloading. The caller
+	// must validate start/end against the blob's actual size (e.g. via
+	// StreamManager.CachedBlobInfo) before calling this.
+	CopyRange(start, end int64) error
+	// Descriptor returns the descriptor of the blob being streamed, or an error if it does not
+	// become available within a bounded wait (e.g. the background sync errored out or was
+	// cancelled before reaching this blob).
+	Descriptor() (descriptor.Descriptor, error)
+	// Close releases resources reserved by ConnectClient (e.g. the reader subscription) when
+	// Copy is never going to be called - e.g. because Descriptor returned an error. Safe (and
+	// unnecessary) to call after Copy as well.
+	Close()
+}
+
+// StreamableManifest holds a manifest staged for streaming, plus (for a multi-arch image) the
+// per-platform manifests nested inside it, since each of those must be pre-staged individually.
+type StreamableManifest struct {
+	referenceManifest manifest.Manifest
+	subManifests      []manifest.Manifest
+}
+
+// NewStreamableManifest wraps a manifest (and, for a multi-arch image, its child manifests) for
+// registration with a StreamManager.
+func NewStreamableManifest(mainManifest manifest.Manifest, subManifests []manifest.Manifest) *StreamableManifest {
+	return &StreamableManifest{
+		referenceManifest: mainManifest,
+		subManifests:      subManifests,
+	}
 }

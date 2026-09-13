@@ -23,7 +23,7 @@ shard_registry=("pushpull" "pushpull_authn" "pushpull_mount" "pushpull_mount_hyd
       "detect_manifest_collision" "cve" "metrics" "metrics_minimal"
       "multiarch_index" "docker_compat" "fips140" "fips140_authn"
       "dynamic_tls" "quota" "systemd")
-shard_sync=("sync" "sync_docker" "sync_replica_cluster" "scrub" "garbage_collect")
+shard_sync=("sync" "sync_streaming" "sync_docker" "sync_replica_cluster" "scrub" "garbage_collect")
 shard_host_deps=("annotations" "redis_local" "redis_session_store"
       "events_nats" "events_http" "events_nats_lint_failure" "events_http_lint_failure"
       "events_sink_failure" "events_config_decoding" "openid_claim_mapping"

@@ -814,6 +814,14 @@ func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godiges
 
 	index, err := GetIndex(imgStore, repo, log)
 	if err != nil {
+		// The repo directory exists but index.json doesn't yet - e.g. a streaming on-demand sync
+		// has started committing blobs but hasn't written index.json yet. Per this function's
+		// contract (see GetReferrers godoc), a repo with nothing committed is indistinguishable
+		// from one with no referrers: both return an empty index, not an error.
+		if errors.Is(err, zerr.ErrRepoNotFound) {
+			return newEmptyReferrersIndex(), nil
+		}
+
 		return nilIndex, err
 	}
 

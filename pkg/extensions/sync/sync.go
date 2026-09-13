@@ -10,6 +10,7 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/regclient/regclient/types/descriptor"
+	"github.com/regclient/regclient/types/manifest"
 	"github.com/regclient/regclient/types/ref"
 
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
@@ -40,6 +41,26 @@ type Service interface {
 	// Returns whether an upstream manifest check is due for repo:reference.
 	// Always true unless manifestCheckInterval is configured and a recent check succeeded.
 	ShouldCheckUpstream(repo, reference string) bool
+	// FetchManifest fetches repo:reference's manifest directly from upstream, without touching
+	// local storage. For a multi-arch reference the second return value carries each platform's
+	// child manifest, since a streaming caller needs those staged individually. Applies the same
+	// OnlySigned/content-filter policy SyncImage applies, so a manifest that would be rejected by
+	// a plain sync is never returned here either. Used by on-demand streaming.
+	FetchManifest(ctx context.Context, repo, reference string) (manifest.Manifest, []manifest.Manifest, error)
+	// IsStreamingForRepo reports whether this service streams blobs to clients for repo while
+	// syncing them from upstream, rather than only serving them once fully synced.
+	IsStreamingForRepo(repo string) bool
+}
+
+// PinnedSyncer is implemented by a Service that can sync an image while pinning the remote fetch
+// to an exact digest, rather than letting SyncImage re-resolve a possibly-since-moved mutable
+// tag - while still committing the result locally under tag, same as SyncImage does. Used by the
+// on-demand streaming background sync so the blobs it copies always match the manifest
+// FetchManifest already fetched and staged for streaming clients, even if the tag moves upstream
+// between that fetch and this call. A Service that doesn't implement this interface is simply
+// used with ordinary SyncImage instead, without the pinning guarantee.
+type PinnedSyncer interface {
+	SyncImageAtDigest(ctx context.Context, repo, tag string, digest godigest.Digest) error
 }
 
 // Registry interface must be implemented by local and remote registries.
