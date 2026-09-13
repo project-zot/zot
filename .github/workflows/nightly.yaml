@@ -89,6 +89,8 @@ jobs:
           check-latest: true
           go-version-file: .go-version
       - uses: ./.github/actions/install-prebuilt-binaries
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # main
       - name: Run streaming sync stress test
         timeout-minutes: 120
         run: |

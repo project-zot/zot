@@ -164,6 +164,10 @@ EOF
         "${big_layer_file}:application/octet-stream"
     [ "${status}" -eq 0 ]
 
+    # zot_minimal now holds its own copy under zot_minimal_root_dir; freeing the source promptly
+    # keeps peak disk usage down to roughly two copies (upstream + downstream) instead of three.
+    rm -f "${big_layer_file}"
+
     zot_serve ${ZOT_PATH} ${zot_stream_config_file}
     wait_zot_reachable ${zot_stream_port}
 }
