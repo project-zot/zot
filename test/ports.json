@@ -502,5 +502,29 @@
       "begin": 11600,
       "end": 11609
     }
+  },
+  "blackbox/sync_streaming.bats": {
+    "zot_min": {
+      "begin": 11620,
+      "end": 11629
+    },
+    "zot_stream": {
+      "begin": 11640,
+      "end": 11649
+    },
+    "zot_stream_capped": {
+      "begin": 11660,
+      "end": 11669
+    }
+  },
+  "blackbox/sync_streaming_stress.bats": {
+    "zot_min": {
+      "begin": 20040,
+      "end": 20049
+    },
+    "zot_stream": {
+      "begin": 20060,
+      "end": 20069
+    }
   }
 }

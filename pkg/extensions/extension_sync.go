@@ -32,6 +32,12 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 		onDemand := sync.NewOnDemand(log)
 		syncConfig := extensionsConfig.GetSyncConfig()
 
+		// One stream manager is shared by every streaming-enabled registry (streams are keyed by
+		// blob digest, not by registry, so pulls of the same blob from different upstreams still
+		// collapse onto one in-flight download). Built lazily, and only once, on first use below,
+		// so a config with no streaming registries never creates the "_stream" staging directory.
+		var streamManager sync.StreamManager
+
 		for _, registryConfig := range syncConfig.Registries {
 			if len(registryConfig.URLs) > 1 {
 				if err := removeSelfURLs(httpAddress, httpPort, &registryConfig, log); err != nil {
@@ -59,7 +65,31 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 
 			registryConfig.SetDockerCompat(config.IsDockerCompatEnabled())
 
-			service, err := sync.New(registryConfig, credsPath, clusterConfig, tmpDir, storeController, metaDB, log)
+			// The concurrent-stream cap is a property of the single shared stream manager, not of
+			// a registry, so only the FIRST streaming-enabled registry's MaxConcurrentStreams (in
+			// config order) takes effect; a different value on a later streaming registry is
+			// ignored, since by then the manager already exists.
+			if registryConfig.IsStreamEnabled() && streamManager == nil {
+				maxConcurrentStreams := 0
+				if registryConfig.MaxConcurrentStreams != nil {
+					maxConcurrentStreams = *registryConfig.MaxConcurrentStreams
+				}
+
+				streamManager = sync.NewChunkingStreamManager(storeController, maxConcurrentStreams, log)
+				onDemand.SetStreamManager(streamManager)
+			}
+
+			// streamManager, once created, is passed to every registry's service from here on -
+			// including ones with Stream unset - since it is a single shared instance rather than
+			// built per-registry. BaseService.syncImage deliberately gates its RemoveStreamingImage
+			// purge on "streamManager != nil" rather than this registry's own IsStreamEnabled():
+			// BaseOnDemand's background sync (after FetchManifestForStream stages a manifest) can
+			// end up completing via a different, non-streaming registry's service - see the "known
+			// gap" noted on IsStreamingEnabledForRepo - so every service sharing this manager must
+			// still attempt the purge for cleanup to be reliable. The common case where nothing was
+			// ever staged is a cheap no-op (goroutine + lock + a Debug-level log), not a warning.
+			service, err := sync.New(registryConfig, credsPath, clusterConfig, tmpDir, storeController,
+				streamManager, metaDB, log)
 			if err != nil {
 				log.Error().Err(err).Msg("failed to initialize sync extension")
 

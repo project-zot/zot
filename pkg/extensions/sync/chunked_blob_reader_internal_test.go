@@ -1,0 +1,375 @@
+//go:build sync
+
+package sync
+
+import (
+	"bytes"
+	"errors"
+	"io"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	godigest "github.com/opencontainers/go-digest"
+	"github.com/regclient/regclient/types/blob"
+	"github.com/regclient/regclient/types/descriptor"
+	"github.com/regclient/regclient/types/errs"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/log"
+)
+
+// readAllChunks drains cbr with a small buffer (mimicking a real io.Copy loop, whose buffer is
+// almost always far smaller than a blob), returning the final error once Read stops advancing.
+func readAllChunks(cbr *ChunkedBlobReader) error {
+	buf := make([]byte, 4)
+
+	for {
+		_, err := cbr.Read(buf)
+		if err != nil {
+			return err
+		}
+	}
+}
+
+// newTestChunkedBlobReader builds a ChunkedBlobReader whose upstream is content, with desc.Digest
+// set to expectedDigest (which may deliberately not match content, to exercise the mismatch
+// path) and desc.Size set to content's length.
+func newTestChunkedBlobReader(t *testing.T, content []byte, expectedDigest godigest.Digest) *ChunkedBlobReader {
+	t.Helper()
+
+	onDiskPath := filepath.Join(t.TempDir(), "blob")
+
+	cbr, err := NewChunkedBlobReader(onDiskPath, log.NewTestLogger())
+	require.NoError(t, err)
+
+	desc := descriptor.Descriptor{Digest: expectedDigest, Size: int64(len(content))}
+	upstream := blob.NewReader(blob.WithDesc(desc), blob.WithReader(bytes.NewReader(content)))
+
+	require.True(t, cbr.InitReader(upstream, desc))
+
+	return cbr
+}
+
+func TestChunkedBlobReaderIntegrityFailures(t *testing.T) {
+	content := []byte("hello streaming world, this is more than four bytes")
+
+	t.Run("digest mismatch is never reported as a clean EOF", func(t *testing.T) {
+		t.Parallel()
+
+		wrongDigest := godigest.FromString("not-the-real-content")
+		cbr := newTestChunkedBlobReader(t, content, wrongDigest)
+
+		ch, _ := cbr.Subscribe()
+
+		// Drain concurrently: the reader announces every successful chunk to subscribers before
+		// the eventual failure, and the channel is only buffer-1, so nothing must block it.
+		lastOffset := int64(-1)
+		drained := make(chan struct{})
+
+		go func() {
+			defer close(drained)
+			for offset := range ch {
+				lastOffset = offset
+			}
+		}()
+
+		err := readAllChunks(cbr)
+		<-drained
+
+		require.Error(t, err)
+		// regclient wraps the mismatch around the underlying io.EOF (errors.Is(err, io.EOF) is
+		// legitimately still true), which is exactly the conflation this fix defeats - not by
+		// breaking that wrap chain, but by checking ErrDigestMismatch before treating anything as
+		// a plain EOF. What matters is that this reader's own classification never lets the
+		// mismatch read as success (asserted below), not that the wrapping itself changes.
+		assert.True(t, errors.Is(err, errs.ErrDigestMismatch), "expected ErrDigestMismatch, got %v", err)
+
+		// The subscriber must observe the stream ending in failure, never a final offset
+		// announcement claiming the blob completed. Checked against content's known length, not
+		// cbr.numBytesTotal: a failed producer's resetProducer (see its doc comment) zeroes that
+		// field back out so a later producer can retry, so it's no longer a stable "the real size"
+		// reference once the failure this test is about has already happened.
+		assert.Less(t, lastOffset, int64(len(content)), "offset must never reach the full size on a failed stream")
+	})
+
+	t.Run("short read is never reported as a clean EOF", func(t *testing.T) {
+		t.Parallel()
+
+		// A descriptor claiming more bytes than are actually available triggers ErrShortRead
+		// once the real content is exhausted, wrapped (like ErrDigestMismatch) around an
+		// underlying io.EOF/io.ErrUnexpectedEOF - the same conflation this fix guards against.
+		desc := descriptor.Descriptor{Digest: godigest.FromBytes(content), Size: int64(len(content) + 16)}
+
+		onDiskPath := filepath.Join(t.TempDir(), "blob")
+		cbr, err := NewChunkedBlobReader(onDiskPath, log.NewTestLogger())
+		require.NoError(t, err)
+
+		upstream := blob.NewReader(blob.WithDesc(desc), blob.WithReader(bytes.NewReader(content)))
+		require.True(t, cbr.InitReader(upstream, desc))
+
+		readErr := readAllChunks(cbr)
+		require.Error(t, readErr)
+		assert.True(t, errors.Is(readErr, errs.ErrShortRead), "expected ErrShortRead, got %v", readErr)
+	})
+
+	t.Run("normal completion still announces the final offset and closes the file", func(t *testing.T) {
+		t.Parallel()
+
+		cbr := newTestChunkedBlobReader(t, content, godigest.FromBytes(content))
+
+		err := readAllChunks(cbr)
+		require.ErrorIs(t, err, io.EOF)
+		assert.Equal(t, int64(len(content)), cbr.numBytesReadToDisk)
+		assert.True(t, cbr.diskFileClosed)
+
+		written, err := os.ReadFile(cbr.OnDiskPath())
+		require.NoError(t, err)
+		assert.Equal(t, content, written)
+	})
+}
+
+func TestChunkedBlobReaderSubscribeUnsubscribe(t *testing.T) {
+	t.Parallel()
+
+	content := []byte("subscribe test content, more than four bytes long")
+	cbr := newTestChunkedBlobReader(t, content, godigest.FromBytes(content))
+
+	ch1, id1 := cbr.Subscribe()
+	ch2, id2 := cbr.Subscribe()
+
+	done := make(chan error, 1)
+	go func() { done <- readAllChunks(cbr) }()
+
+	// Both subscribers must see the offset reach the full size. Mirrors how
+	// InFlightBlobCopier.Copy actually decides it's done (offset >= blobSize), rather than
+	// relying on channel closure - a successful stream never closes subscriber channels, only
+	// an aborted one does (see abortAllClients).
+	total := int64(len(content))
+	drain := func(ch chan int64) int64 {
+		last := int64(0)
+		for last < total {
+			offset, ok := <-ch
+			if !ok {
+				break
+			}
+
+			last = offset
+		}
+
+		return last
+	}
+
+	// Drain both subscribers concurrently: each cbr.Read() call fans announcements out to every
+	// subscriber and waits for all of those sends before returning (see the wg.Wait() in Read),
+	// so draining them one at a time here would itself deadlock the producer as soon as the
+	// second channel's 1-slot buffer fills - exactly as two real concurrent clients never would,
+	// since each has its own goroutine.
+	results := make(chan int64, 2)
+	go func() { results <- drain(ch1) }()
+	go func() { results <- drain(ch2) }()
+
+	last1 := <-results
+	last2 := <-results
+
+	assert.Equal(t, total, last1)
+	assert.Equal(t, total, last2)
+	require.ErrorIs(t, <-done, io.EOF)
+
+	// Unsubscribing a still-open channel (a successful stream never closes it) must not panic.
+	cbr.Unsubscribe(id1)
+	cbr.Unsubscribe(id2)
+}
+
+// TestChunkedBlobReaderReadNeverBlocksOnStalledClient is the regression test for the clientMu
+// deadlock fix: a subscriber whose channel is never drained (a stalled or abandoned client) must
+// never make Read block waiting to notify it, since the only things that could unblock such a
+// wait - Unsubscribe, WaitForClientEmpty - need the very same lock Read holds while blocked. Read
+// must always coalesce to the latest offset instead.
+func TestChunkedBlobReaderReadNeverBlocksOnStalledClient(t *testing.T) {
+	t.Parallel()
+
+	// Long enough, and read in readAllChunks' small (4-byte) chunks, to force several Read calls:
+	// a stalled client's 1-slot channel buffer fills on the very first announce, so every
+	// announce after it would block forever under the old blocking-send behavior.
+	content := bytes.Repeat([]byte("x"), 64)
+	cbr := newTestChunkedBlobReader(t, content, godigest.FromBytes(content))
+
+	// A stalled/abandoned client: subscribed, but nothing ever receives from its channel.
+	_, _ = cbr.Subscribe()
+
+	done := make(chan error, 1)
+	go func() { done <- readAllChunks(cbr) }()
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, io.EOF)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Read blocked indefinitely notifying a stalled client's undrained channel")
+	}
+}
+
+// TestChunkedBlobReaderDescriptorTimeout is the regression test for the streaming timeout fix:
+// a caller waiting on Descriptor for a blob whose InitReader never runs (e.g. the background
+// sync errored out or was cancelled before its regclient copy reached this blob) must get a
+// bounded error instead of hanging forever - see DescriptorWithTimeout's doc comment.
+func TestChunkedBlobReaderDescriptorTimeout(t *testing.T) {
+	t.Parallel()
+
+	onDiskPath := filepath.Join(t.TempDir(), "blob")
+	cbr, err := NewChunkedBlobReader(onDiskPath, log.NewTestLogger())
+	require.NoError(t, err)
+
+	// InitReader deliberately never called.
+	start := time.Now()
+	_, descErr := cbr.DescriptorWithTimeout(50 * time.Millisecond)
+	elapsed := time.Since(start)
+
+	require.Error(t, descErr)
+	assert.ErrorIs(t, descErr, zerr.ErrStreamInitTimeout)
+	assert.Less(t, elapsed, 2*time.Second, "DescriptorWithTimeout must not block far past its timeout")
+}
+
+func TestChunkedBlobReaderDescriptorSucceedsOnceInitialized(t *testing.T) {
+	t.Parallel()
+
+	content := []byte("descriptor success test content")
+	cbr := newTestChunkedBlobReader(t, content, godigest.FromBytes(content))
+
+	desc, err := cbr.Descriptor()
+	require.NoError(t, err)
+	assert.Equal(t, int64(len(content)), desc.Size)
+}
+
+func TestChunkedBlobReaderWaitForClientEmptyTimeout(t *testing.T) {
+	t.Parallel()
+
+	content := []byte("wait for client empty timeout test content")
+	cbr := newTestChunkedBlobReader(t, content, godigest.FromBytes(content))
+
+	// A client subscribes and never unsubscribes (simulating a stalled/abandoned connection).
+	_, _ = cbr.Subscribe()
+
+	start := time.Now()
+	cbr.WaitForClientEmpty(200 * time.Millisecond)
+	elapsed := time.Since(start)
+
+	assert.Less(t, elapsed, 2*time.Second, "WaitForClientEmpty must not block far past its timeout")
+
+	cbr.clientMu.Lock()
+	remaining := len(cbr.clients)
+	cbr.clientMu.Unlock()
+
+	assert.Equal(t, 0, remaining, "a stalled client must be force-unsubscribed once the timeout elapses")
+}
+
+func TestChunkedBlobReaderWaitForClientEmptyReturnsEarly(t *testing.T) {
+	t.Parallel()
+
+	content := []byte("returns early test content")
+	cbr := newTestChunkedBlobReader(t, content, godigest.FromBytes(content))
+
+	_, id := cbr.Subscribe()
+
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		cbr.Unsubscribe(id)
+	}()
+
+	start := time.Now()
+	cbr.WaitForClientEmpty(5 * time.Second)
+	elapsed := time.Since(start)
+
+	assert.Less(t, elapsed, time.Second, "WaitForClientEmpty must return promptly once clients drain on their own")
+}
+
+// erroringAfterReader serves content normally, then a fixed error once exhausted - standing in
+// for a genuine upstream/network failure (not an integrity mismatch) partway through a download.
+type erroringAfterReader struct {
+	content []byte
+	pos     int
+	err     error
+}
+
+func (r *erroringAfterReader) Read(p []byte) (int, error) {
+	if r.pos >= len(r.content) {
+		return 0, r.err
+	}
+
+	n := copy(p, r.content[r.pos:])
+	r.pos += n
+
+	return n, nil
+}
+
+// TestChunkedBlobReaderFailureClosesFileImmediatelyAndEndsRetriesForGood is the regression test
+// for the file-descriptor leak on a failed stream: previously only a fully successful download
+// closed the on-disk temp file, so an aborted one stayed open until Go's GC finalizer eventually
+// caught up (or, on platforms that refuse to remove an open file, made the eventual cleanup
+// os.Remove fail outright). It also documents the deliberate limitation in InitReader's doc
+// comment: a digest whose one producer fails is not retried on this same reader - readerClosed
+// stays permanently true, so even a second producer for the very same digest (e.g. a concurrent
+// sync of a different repo:reference sharing this layer) is turned away, not just the failed one.
+func TestChunkedBlobReaderFailureClosesFileImmediatelyAndEndsRetriesForGood(t *testing.T) {
+	t.Parallel()
+
+	content := []byte("this is more than four bytes of content")
+	digest := godigest.FromBytes(content)
+
+	onDiskPath := filepath.Join(t.TempDir(), "blob")
+	cbr, err := NewChunkedBlobReader(onDiskPath, log.NewTestLogger())
+	require.NoError(t, err)
+
+	desc := descriptor.Descriptor{Digest: digest, Size: int64(len(content))}
+	wantErr := errors.New("simulated upstream network failure")
+	producer := blob.NewReader(blob.WithDesc(desc),
+		blob.WithReader(&erroringAfterReader{content: []byte("this"), err: wantErr}))
+
+	require.True(t, cbr.InitReader(producer, desc))
+
+	readErr := readAllChunks(cbr)
+	require.ErrorIs(t, readErr, wantErr)
+
+	cbr.bytesMu.RLock()
+	closedAfterFailure := cbr.diskFileClosed
+	readerClosedAfterFailure := cbr.readerClosed
+	cbr.bytesMu.RUnlock()
+
+	assert.True(t, closedAfterFailure, "a failed stream must close its temp file immediately, not leak the descriptor")
+	assert.True(t, readerClosedAfterFailure, "a failed digest must not accept a later producer - see InitReader's doc comment")
+
+	_, writeErr := cbr.onDiskFile.Write([]byte("x"))
+	assert.Error(t, writeErr, "the underlying file descriptor must actually be closed, not just flagged")
+
+	// A second producer for the same digest - e.g. a concurrent sync of a different
+	// repo:reference sharing this layer - must be turned away, exactly like the multi-arch
+	// double-init case StreamingBlobReader already handles, not silently allowed to retry.
+	secondProducer := blob.NewReader(blob.WithDesc(desc), blob.WithReader(bytes.NewReader(content)))
+	assert.False(t, cbr.InitReader(secondProducer, desc), "a second producer must not be able to claim a failed digest")
+}
+
+// TestChunkedBlobReaderAbortClosesOnDiskFile covers the "never even started" teardown case: a
+// digest staged for streaming whose sync never reaches it before RemoveStreamingImage gives up
+// (see stream_manager.go's drainAndDeleteStreams) must still have its temp file closed.
+func TestChunkedBlobReaderAbortClosesOnDiskFile(t *testing.T) {
+	t.Parallel()
+
+	onDiskPath := filepath.Join(t.TempDir(), "blob")
+	cbr, err := NewChunkedBlobReader(onDiskPath, log.NewTestLogger())
+	require.NoError(t, err)
+
+	// InitReader deliberately never called.
+	cbr.Abort(zerr.ErrStreamNeverInitialized)
+
+	cbr.bytesMu.RLock()
+	closed := cbr.diskFileClosed
+	cbr.bytesMu.RUnlock()
+
+	assert.True(t, closed)
+
+	_, writeErr := cbr.onDiskFile.Write([]byte("x"))
+	assert.Error(t, writeErr, "the underlying file descriptor must actually be closed")
+}

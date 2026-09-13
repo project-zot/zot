@@ -10,6 +10,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
@@ -25,6 +26,13 @@ func TestOnDemandStub(t *testing.T) {
 		So(onDemand.SyncImage(context.Background(), "repo", "latest"), ShouldBeNil)
 		So(onDemand.SyncReferrers(context.Background(), "repo", "sha256:digest", nil), ShouldBeNil)
 		So(onDemand.ShouldCheckUpstreamManifest("repo", "latest"), ShouldBeTrue)
+
+		manifest, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", nil)
+		So(manifest, ShouldBeNil)
+		So(err, ShouldEqual, zerr.ErrSyncOnDemandDisabled)
+
+		So(onDemand.StreamManager(), ShouldBeNil)
+		So(onDemand.IsStreamingEnabledForRepo("repo"), ShouldBeFalse)
 	})
 }
 

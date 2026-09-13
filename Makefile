@@ -630,6 +630,11 @@ run-blackbox-sync-nightly: check-blackbox-prerequisites $(ZOT_BIN_DEP) $(ZOT_MIN
 	echo running nightly sync tests; \
 	$(BATS) $(BATS_FLAGS) test/blackbox/sync_harness.bats
 
+.PHONY: run-blackbox-sync-streaming-stress
+run-blackbox-sync-streaming-stress: check-blackbox-prerequisites $(ZOT_BIN_DEP) $(ZOT_MIN_DEP)
+	echo running nightly sync streaming stress tests; \
+	$(BATS) $(BATS_FLAGS) test/blackbox/sync_streaming_stress.bats
+
 .PHONY: run-kind-sync-ondemand
 run-kind-sync-ondemand: $(KIND) $(ZOT_BIN_DEP)
 	./examples/kind/kind-sync-ondemand.sh
