@@ -74,6 +74,26 @@ jobs:
         run: |
             make USE_PREBUILT=1 run-blackbox-sync-nightly
 
+  sync-streaming-stress:
+    name: Streaming sync - large layer, many concurrent clients
+    needs: build-binaries
+    # Self-hosted for disk: a 20GiB layer plus its synced local copy plus upstream storage needs
+    # well over the ~14GB usable on a GitHub-hosted ubuntu-latest runner.
+    runs-on: cncf-ubuntu-16-64-x86
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          check-latest: true
+          go-version-file: .go-version
+      - uses: ./.github/actions/install-prebuilt-binaries
+      - name: Run streaming sync stress test
+        timeout-minutes: 120
+        run: |
+            make USE_PREBUILT=1 run-blackbox-sync-streaming-stress
+
   gc-referrers-stress-s3:
     name: GC(with referrers) on S3(localstack) with short interval
     needs: build-binaries
