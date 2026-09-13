@@ -30,6 +30,7 @@ import (
 	"github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/regclient/regclient/types/manifest"
 	"github.com/zitadel/oidc/v3/pkg/client/rp"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
 
@@ -2956,7 +2957,34 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 			routeHandler.c.Log.Debug().Str("repository", name).Str("reference", reference).
 				Msg("streaming enabled for repo, fetching manifest directly from upstream")
 
-			fetchedManifest, errFetch := routeHandler.c.SyncOnDemand.FetchManifestForStream(ctx, name, reference)
+			// The immediate meta.OnGetManifest call below this branch (see the caller of
+			// getImageManifest) always misses: metadata for repo:reference does not exist yet
+			// until the background sync this call kicks off commits it, so UpdateStatsOnDownload
+			// returns ErrImageMetaNotFound and this download is never counted. Replay it once
+			// that sync succeeds and the metadata it needs exists. Known gap: a concurrent
+			// request that instead adopts an in-flight/staged manifest (see
+			// FetchManifestForStream's doc comment) does not get its own replay, so a burst of
+			// duplicate requests during the staging window undercounts.
+			onSynced := func(syncedManifest manifest.Manifest) {
+				if routeHandler.c.MetaDB == nil {
+					return
+				}
+
+				body, err := syncedManifest.RawBody()
+				if err != nil {
+					routeHandler.c.Log.Err(err).Str("repository", name).Str("reference", reference).
+						Msg("failed to read synced manifest body for download stats")
+
+					return
+				}
+
+				desc := syncedManifest.GetDescriptor()
+
+				_ = meta.OnGetManifest(name, reference, desc.MediaType, body,
+					routeHandler.c.StoreController, routeHandler.c.MetaDB, routeHandler.c.Log)
+			}
+
+			fetchedManifest, errFetch := routeHandler.c.SyncOnDemand.FetchManifestForStream(ctx, name, reference, onSynced)
 			if errFetch != nil {
 				if errors.Is(errFetch, zerr.ErrTooManyConcurrentStreams) {
 					// Honor RegistryConfig.MaxConcurrentStreams' documented behavior: once the cap

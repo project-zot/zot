@@ -3287,7 +3287,7 @@ func TestFetchManifestForStream(t *testing.T) {
 			},
 		})
 
-		result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest")
+		result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", nil)
 		So(err, ShouldBeNil)
 		So(result, ShouldEqual, man)
 		So(called, ShouldBeFalse)
@@ -3302,7 +3302,7 @@ func TestFetchManifestForStream(t *testing.T) {
 			},
 		})
 
-		_, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest")
+		_, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", nil)
 		So(err, ShouldNotBeNil)
 		So(errors.Is(err, zerr.ErrSyncImageNotSigned), ShouldBeTrue)
 		So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeFalse)
@@ -3332,7 +3332,7 @@ func TestFetchManifestForStream(t *testing.T) {
 			go func() {
 				defer wg.Done()
 
-				_, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest")
+				_, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", nil)
 				conv.So(err, ShouldBeNil)
 			}()
 		}
@@ -3419,7 +3419,7 @@ func TestFetchManifestForStream(t *testing.T) {
 			go func(i int) {
 				defer wg.Done()
 
-				result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest")
+				result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", nil)
 				conv.So(err, ShouldBeNil)
 				results[i] = result
 			}(i)

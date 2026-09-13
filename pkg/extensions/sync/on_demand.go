@@ -97,7 +97,13 @@ func (onDemand *BaseOnDemand) IsStreamingEnabledForRepo(repo string) bool {
 // upstream fetches - StoreImageForStreaming's own single-writer semantics pick one winner; the
 // loser adopts the winning manifest and skips its own background sync entirely, rather than
 // returning a manifest whose blobs the stream cache never staged.
+//
+// onSynced, when non-nil, is invoked with the synced manifest once this call's own background
+// sync commits successfully - see OnDemand's doc comment for why a caller wants that. It is not
+// invoked for a cache-hit or race-loser return above, since this call launches no sync of its own
+// in either case.
 func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, reference string,
+	onSynced func(manifest.Manifest),
 ) (manifest.Manifest, error) {
 	if onDemand.streamManager == nil {
 		return nil, zerr.ErrStreamManagerNotInitialized
@@ -200,6 +206,12 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, 
 		if err := onDemand.syncImageDeduped(syncCtx, repo, reference, selectedIdx, pinnedDigest); err != nil {
 			onDemand.log.Err(err).Str("repository", repo).Str("reference", reference).
 				Msg("background sync after streaming failed")
+
+			return
+		}
+
+		if onSynced != nil {
+			onSynced(resultManifest)
 		}
 	}()
 

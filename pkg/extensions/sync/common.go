@@ -19,7 +19,14 @@ type OnDemand interface {
 	ShouldCheckUpstreamManifest(repo, reference string) bool
 	// FetchManifestForStream fetches repo:reference directly from upstream and prepares it for
 	// streaming, returning the manifest immediately while the full image syncs in the background.
-	FetchManifestForStream(ctx context.Context, repo, reference string) (manifest.Manifest, error)
+	// onSynced, if non-nil, is invoked once with the synced manifest after this call's own
+	// background sync commits successfully - the caller's hook to record bookkeeping (e.g.
+	// download stats) that depends on metadata this sync creates and that did not exist yet when
+	// the manifest was first handed back. Not invoked when this call instead adopts a manifest
+	// staged by a concurrent caller (see FetchManifestForStream's doc comment) - that caller's own
+	// onSynced, if any, covers it.
+	FetchManifestForStream(ctx context.Context, repo, reference string,
+		onSynced func(manifest.Manifest)) (manifest.Manifest, error)
 	// StreamManager returns the manager tracking active blob streams, or nil when streaming is
 	// not configured for any registry.
 	StreamManager() StreamManager

@@ -27,6 +27,7 @@ func (onDemand *BaseOnDemand) ShouldCheckUpstreamManifest(repo, reference string
 }
 
 func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, reference string,
+	onSynced func(manifest.Manifest),
 ) (manifest.Manifest, error) {
 	return nil, zerr.ErrSyncOnDemandDisabled
 }

@@ -27,7 +27,7 @@ func TestOnDemandStub(t *testing.T) {
 		So(onDemand.SyncReferrers(context.Background(), "repo", "sha256:digest", nil), ShouldBeNil)
 		So(onDemand.ShouldCheckUpstreamManifest("repo", "latest"), ShouldBeTrue)
 
-		manifest, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest")
+		manifest, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", nil)
 		So(manifest, ShouldBeNil)
 		So(err, ShouldEqual, zerr.ErrSyncOnDemandDisabled)
 
