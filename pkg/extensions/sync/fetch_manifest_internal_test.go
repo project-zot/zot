@@ -87,7 +87,7 @@ func TestFetchManifestHappyPath(t *testing.T) {
 	t.Parallel()
 
 	root, storeCtrl := newTestStore(t)
-	writeOCISingleManifest(t, storeCtrl, root, "repo-a", predictTestTag)
+	writeOCISingleManifest(t, storeCtrl, "repo-a")
 
 	service := newFetchManifestTestService(root, nil, nil)
 
@@ -101,7 +101,7 @@ func TestFetchManifestMultiArchFetchesEveryChild(t *testing.T) {
 	t.Parallel()
 
 	root, storeCtrl := newTestStore(t)
-	writeOCIMultiPlatformIndex(t, storeCtrl, root, "repo-multiarch", predictTestTag)
+	writeOCIMultiPlatformIndex(t, storeCtrl, "repo-multiarch")
 
 	service := newFetchManifestTestService(root, nil, nil)
 
@@ -127,7 +127,7 @@ func TestFetchManifestContentFilteredOut(t *testing.T) {
 	t.Parallel()
 
 	root, storeCtrl := newTestStore(t)
-	writeOCISingleManifest(t, storeCtrl, root, "repo-a", predictTestTag)
+	writeOCISingleManifest(t, storeCtrl, "repo-a")
 
 	// A Content rule whose Prefix never matches "repo-a" makes GetRepoSource return "", which
 	// FetchManifest must treat as "this repo is filtered out", not attempt to fetch anyway.
@@ -142,7 +142,7 @@ func TestFetchManifestOnlySignedRejectsUnsigned(t *testing.T) {
 	t.Parallel()
 
 	root, storeCtrl := newTestStore(t)
-	writeOCISingleManifest(t, storeCtrl, root, "repo-a", predictTestTag)
+	writeOCISingleManifest(t, storeCtrl, "repo-a")
 
 	onlySigned := true
 	service := newFetchManifestTestService(root, nil, &onlySigned)
@@ -155,7 +155,7 @@ func TestFetchManifestGetImageReferenceError(t *testing.T) {
 	t.Parallel()
 
 	root, storeCtrl := newTestStore(t)
-	writeOCISingleManifest(t, storeCtrl, root, "repo-a", predictTestTag)
+	writeOCISingleManifest(t, storeCtrl, "repo-a")
 
 	logger := log.NewTestLogger()
 	service := &BaseService{
@@ -173,7 +173,7 @@ func TestFetchManifestUpstreamManifestMissing(t *testing.T) {
 	t.Parallel()
 
 	root, storeCtrl := newTestStore(t)
-	writeOCISingleManifest(t, storeCtrl, root, "repo-a", predictTestTag)
+	writeOCISingleManifest(t, storeCtrl, "repo-a")
 
 	service := newFetchManifestTestService(root, nil, nil)
 

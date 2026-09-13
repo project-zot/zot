@@ -76,26 +76,23 @@ func repoPath(root, repo string) string {
 	return filepath.Join(root, repo)
 }
 
-// writeOCISingleManifest writes a single-platform OCI image manifest for repo:tag into storeCtrl.
-func writeOCISingleManifest(t *testing.T, storeCtrl stypes.StoreController, root, repo, tag string) string {
+// writeOCISingleManifest writes a single-platform OCI image manifest for repo:predictTestTag into
+// storeCtrl.
+func writeOCISingleManifest(t *testing.T, storeCtrl stypes.StoreController, repo string) {
 	t.Helper()
 
 	image := CreateImageWith().DefaultLayers().PlatformConfig("amd64", "linux").Build()
-	assert.NoError(t, WriteImageToFileSystem(image, repo, tag, storeCtrl))
-
-	return repoPath(root, repo)
+	require.NoError(t, WriteImageToFileSystem(image, repo, predictTestTag, storeCtrl))
 }
 
 // writeDockerSingleManifest is writeOCISingleManifest's Docker schema2 counterpart, for tests
 // exercising streaming's Docker media-type support (PreserveDigest keeps whatever media type
 // upstream actually served, and Docker registries commonly serve schema2, not OCI).
-func writeDockerSingleManifest(t *testing.T, storeCtrl stypes.StoreController, root, repo, tag string) string {
+func writeDockerSingleManifest(t *testing.T, storeCtrl stypes.StoreController, repo string) {
 	t.Helper()
 
 	image := CreateImageWith().DefaultLayers().PlatformConfig("amd64", "linux").Build().AsDockerImage()
-	assert.NoError(t, WriteImageToFileSystem(image, repo, tag, storeCtrl))
-
-	return repoPath(root, repo)
+	require.NoError(t, WriteImageToFileSystem(image, repo, predictTestTag, storeCtrl))
 }
 
 // platformImages returns one image per platform for building a multi-arch index/list.
@@ -107,21 +104,20 @@ func platformImages() []Image {
 	}
 }
 
-// writeOCIMultiPlatformIndex writes a multi-arch OCI image index for repo:tag into storeCtrl.
-func writeOCIMultiPlatformIndex(t *testing.T, storeCtrl stypes.StoreController, root, repo, tag string) string {
+// writeOCIMultiPlatformIndex writes a multi-arch OCI image index for repo:predictTestTag into
+// storeCtrl.
+func writeOCIMultiPlatformIndex(t *testing.T, storeCtrl stypes.StoreController, repo string) {
 	t.Helper()
 
 	multiarch := CreateMultiarchWith().Images(platformImages()).Build()
-	assert.NoError(t, WriteMultiArchImageToFileSystem(multiarch, repo, tag, storeCtrl))
-
-	return repoPath(root, repo)
+	require.NoError(t, WriteMultiArchImageToFileSystem(multiarch, repo, predictTestTag, storeCtrl))
 }
 
 func TestPreseedLocalBlobs(t *testing.T) {
 	t.Parallel()
 
 	root, storeCtrl := newTestStore(t)
-	writeOCISingleManifest(t, storeCtrl, root, "repo-a", predictTestTag)
+	writeOCISingleManifest(t, storeCtrl, "repo-a")
 
 	concrete, ok := storeCtrl.(storage.StoreController)
 	require.True(t, ok)
@@ -191,7 +187,7 @@ func TestPreseedLocalBlobs(t *testing.T) {
 func singlePresentBlobDigest(t *testing.T, storeCtrl storage.StoreController, root, repo string) godigest.Digest {
 	t.Helper()
 
-	writeOCISingleManifest(t, storeCtrl, root, repo, predictTestTag)
+	writeOCISingleManifest(t, storeCtrl, repo)
 
 	regClient := regclient.New()
 	srcRef := mustOCIDirRef(t, repoPath(root, repo), predictTestTag)

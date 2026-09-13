@@ -102,7 +102,7 @@ func TestChunkingStreamManagerStoreAndRemove(t *testing.T) {
 	root, storeCtrl := newTestStore(t)
 	regClient := regclient.New()
 
-	writeOCISingleManifest(t, storeCtrl, root, "repo-a", predictTestTag)
+	writeOCISingleManifest(t, storeCtrl, "repo-a")
 
 	sm := newTestStreamManager(t, storeCtrl, 0)
 
@@ -146,7 +146,7 @@ func TestChunkingStreamManagerStoreDockerManifest(t *testing.T) {
 	root, storeCtrl := newTestStore(t)
 	regClient := regclient.New()
 
-	writeDockerSingleManifest(t, storeCtrl, root, "repo-a", predictTestTag)
+	writeDockerSingleManifest(t, storeCtrl, "repo-a")
 
 	sm := newTestStreamManager(t, storeCtrl, 0)
 
@@ -180,8 +180,8 @@ func TestChunkingStreamManagerRemoveDoesNotBlockOtherBlobs(t *testing.T) {
 	root, storeCtrl := newTestStore(t)
 	regClient := regclient.New()
 
-	writeOCISingleManifest(t, storeCtrl, root, "repo-a", predictTestTag)
-	writeOCISingleManifest(t, storeCtrl, root, "repo-b", predictTestTag)
+	writeOCISingleManifest(t, storeCtrl, "repo-a")
+	writeOCISingleManifest(t, storeCtrl, "repo-b")
 
 	sm := newTestStreamManager(t, storeCtrl, 0)
 
@@ -249,7 +249,7 @@ func TestChunkingStreamManagerMaxConcurrentStreams(t *testing.T) {
 	root, storeCtrl := newTestStore(t)
 	regClient := regclient.New()
 
-	writeOCISingleManifest(t, storeCtrl, root, "repo-a", predictTestTag)
+	writeOCISingleManifest(t, storeCtrl, "repo-a")
 
 	// A single manifest registers itself, its config, and each layer as separate active
 	// streams (see collectManifestDescriptorsForStream) - several blobs, comfortably exceeding
@@ -368,7 +368,7 @@ func TestChunkingStreamManagerConnectClientCrossRepoDenied(t *testing.T) {
 	root, storeCtrl := newTestStore(t)
 	regClient := regclient.New()
 
-	writeOCISingleManifest(t, storeCtrl, root, "repo-a", predictTestTag)
+	writeOCISingleManifest(t, storeCtrl, "repo-a")
 
 	sm := newTestStreamManager(t, storeCtrl, 0)
 
@@ -398,7 +398,7 @@ func TestChunkingStreamManagerCachedBlobInfo(t *testing.T) {
 	root, storeCtrl := newTestStore(t)
 	regClient := regclient.New()
 
-	writeOCISingleManifest(t, storeCtrl, root, "repo-a", predictTestTag)
+	writeOCISingleManifest(t, storeCtrl, "repo-a")
 
 	sm := newTestStreamManager(t, storeCtrl, 0)
 
@@ -444,7 +444,7 @@ func TestChunkingStreamManagerRemoveStreamingImageDeletesTempFile(t *testing.T) 
 	root, storeCtrl := newTestStore(t)
 	regClient := regclient.New()
 
-	writeOCISingleManifest(t, storeCtrl, root, "repo-a", predictTestTag)
+	writeOCISingleManifest(t, storeCtrl, "repo-a")
 
 	sm := newTestStreamManager(t, storeCtrl, 0)
 
@@ -495,7 +495,7 @@ func TestChunkingStreamManagerStreamingBlobReaderSkipsDoubleInit(t *testing.T) {
 	root, storeCtrl := newTestStore(t)
 	regClient := regclient.New()
 
-	writeOCISingleManifest(t, storeCtrl, root, "repo-a", predictTestTag)
+	writeOCISingleManifest(t, storeCtrl, "repo-a")
 
 	sm := newTestStreamManager(t, storeCtrl, 0)
 
@@ -533,7 +533,7 @@ func TestChunkingStreamManagerStoreMultiArchManifest(t *testing.T) {
 	root, storeCtrl := newTestStore(t)
 	regClient := regclient.New()
 
-	writeOCIMultiPlatformIndex(t, storeCtrl, root, "repo-a", predictTestTag)
+	writeOCIMultiPlatformIndex(t, storeCtrl, "repo-a")
 
 	sm := newTestStreamManager(t, storeCtrl, 0)
 
@@ -591,7 +591,7 @@ func TestChunkingStreamManagerDeleteStreamFilePermissionError(t *testing.T) {
 	root, storeCtrl := newTestStore(t)
 	regClient := regclient.New()
 
-	writeOCISingleManifest(t, storeCtrl, root, "repo-a", predictTestTag)
+	writeOCISingleManifest(t, storeCtrl, "repo-a")
 
 	sm := newTestStreamManager(t, storeCtrl, 0)
 

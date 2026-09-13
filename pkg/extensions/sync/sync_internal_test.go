@@ -3253,7 +3253,7 @@ func newTestManifestForStream(t *testing.T) manifest.Manifest {
 	t.Helper()
 
 	root, storeCtrl := newTestStore(t)
-	writeOCISingleManifest(t, storeCtrl, root, "stream-repo", predictTestTag)
+	writeOCISingleManifest(t, storeCtrl, "stream-repo")
 
 	regClient := regclient.New()
 	srcRef := mustOCIDirRef(t, repoPath(root, "stream-repo"), predictTestTag)

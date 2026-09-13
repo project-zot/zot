@@ -73,6 +73,7 @@ func (m *mockSyncOnDemand) ShouldCheckUpstreamManifest(repo, reference string) b
 }
 
 func (m *mockSyncOnDemand) FetchManifestForStream(ctx context.Context, repo, reference string,
+	_ func(manifest.Manifest),
 ) (manifest.Manifest, error) {
 	if m.fetchManifestForStreamFn != nil {
 		return m.fetchManifestForStreamFn(ctx, repo, reference)
