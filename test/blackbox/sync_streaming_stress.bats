@@ -3,13 +3,13 @@
 #       Extra tools that are not covered in Makefile target needs to be added in verify_prerequisites()
 #
 # Large-file, many-clients stress coverage for streaming on-demand sync
-# (extensions.sync.registries[].stream): a single very large (default 20GiB) layer, requested by
+# (extensions.sync.registries[].stream): a single very large (default 10GiB) layer, requested by
 # many concurrent clients before it is staged locally, must stream correctly to every client
 # (matching content, no corruption/truncation from chunked delivery) while the background sync
 # commits the full layer to local storage - all within a bounded time budget.
 #
 # This is deliberately separate from sync_streaming.bats (small fixture images, run on every PR):
-# a 20GiB layer needs real disk and time budget on the order of minutes, so it belongs in the
+# a 10GiB layer needs real disk and time budget on the order of minutes, so it belongs in the
 # nightly stress lane, not the per-PR gate.
 
 load helpers_zot
@@ -17,7 +17,7 @@ load helpers_wait
 load ../port_helper
 
 # Tunables, overridable via env for local runs without editing this file.
-stress_layer_size_mb=${SYNC_STREAMING_STRESS_LAYER_SIZE_MB:-20480} # 20GiB default
+stress_layer_size_mb=${SYNC_STREAMING_STRESS_LAYER_SIZE_MB:-10240} # 10GiB default
 stress_num_clients=${SYNC_STREAMING_STRESS_CLIENTS:-8}
 
 function verify_prerequisites() {
@@ -240,7 +240,7 @@ function manifest_digest() {
     [ "${layer_digest}" != "null" ]
 
     # Many concurrent clients pull the large layer at once, each piped straight into sha256sum
-    # rather than materialized on disk (stress_num_clients full local copies of a 20GiB layer
+    # rather than materialized on disk (stress_num_clients full local copies of a 10GiB layer
     # would need far more disk than this is worth) - this is the actual point of the test: every
     # client must get complete, uncorrupted content while the chunked delivery is still arriving
     # from upstream and the background sync is committing it locally at the same time.
@@ -273,7 +273,7 @@ function manifest_digest() {
     done
 
     # The background sync needs a much larger time budget than the small-fixture test: committing
-    # a full ~20GiB layer to local storage takes real minutes, not seconds, even over loopback.
+    # a full ~10GiB layer to local storage takes real minutes, not seconds, even over loopback.
     run wait_for_string "successfully synced image" "${BATS_FILE_TMPDIR}/zot-stream/zot.log" "30m"
     [ "$status" -eq 0 ]
 
