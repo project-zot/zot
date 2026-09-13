@@ -160,7 +160,10 @@ function zot_stop_all() {
 # Exits with 1 and a clear message if zot did not start or response is not from zot.
 function wait_zot_reachable() {
     local zot_port=${1}
-    local zot_url=http://127.0.0.1:${zot_port}/v2/_catalog
+    local zot_scheme=${2:-http}
+    local zot_url=${zot_scheme}://127.0.0.1:${zot_port}/v2/_catalog
+    local curl_insecure=()
+    [ "${zot_scheme}" = "https" ] && curl_insecure=(-k)
 
     # If we have zot PIDs, ensure at least one process is still running (zot didn't exit on startup, e.g. bind failure).
     # When multiple zots run in the same test (e.g. sync.bats), zot.pid holds all PIDs; we only require one alive here.
@@ -182,19 +185,19 @@ function wait_zot_reachable() {
     local start_ts=$SECONDS
     while true; do
         curl_err_file="$(mktemp "${BATS_FILE_TMPDIR}/curl_err.XXXXXX")"
-        # Be robust if the test harness enables `set -e` (errexit): a failing `curl` inside
-        # command substitution can otherwise abort the function before we can retry.
-        local errexit_was_set=0
-        case "$-" in
-            *e*) errexit_was_set=1 ;;
-        esac
-        set +e
-        response="$(curl -sS --connect-timeout 3 \
+        # A transient curl failure here (e.g. connection refused before zot's listener is up) is
+        # expected and retried below - using it as an `if` condition (a real bash ERR-trap
+        # exemption) keeps bats from misreporting the retried failure as the whole setup_file's
+        # outcome, which a bare `set +e`/`set -e` toggle around it does not reliably prevent.
+        if response="$(curl -sS --connect-timeout 3 \
             --max-time 5 \
+            "${curl_insecure[@]}" \
             -w "\n%{http_code}" \
-            "${zot_url}" 2>"${curl_err_file}")"
-        curl_ret=$?
-        [ "$errexit_was_set" -eq 1 ] && set -e
+            "${zot_url}" 2>"${curl_err_file}")"; then
+            curl_ret=0
+        else
+            curl_ret=$?
+        fi
         curl_err="$(cat "${curl_err_file}" 2>/dev/null || true)"
         rm -f "${curl_err_file}"
 

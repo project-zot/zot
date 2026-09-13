@@ -8,11 +8,13 @@ import (
 	"testing"
 
 	godigest "github.com/opencontainers/go-digest"
+	"github.com/regclient/regclient/types/manifest"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
+	"zotregistry.dev/zot/v2/pkg/extensions/sync"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
@@ -56,6 +58,20 @@ func (mock *onDemandInBackgroundMock) QueueImage(ctx context.Context, repo, refe
 	if mock.queueImageFn != nil {
 		mock.queueImageFn(ctx, repo, reference)
 	}
+}
+
+func (mock *onDemandInBackgroundMock) FetchManifestForStream(context.Context, string, string,
+	func(manifest.Manifest),
+) (manifest.Manifest, error) {
+	return nil, zerr.ErrSyncOnDemandDisabled
+}
+
+func (mock *onDemandInBackgroundMock) StreamManager() sync.StreamManager {
+	return nil
+}
+
+func (mock *onDemandInBackgroundMock) IsStreamingEnabledForRepo(string) bool {
+	return false
 }
 
 func TestGetImageManifestOnDemandInBackground(t *testing.T) {
