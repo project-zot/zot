@@ -79,7 +79,7 @@ jobs:
     needs: build-binaries
     # Self-hosted for disk: a 20GiB layer plus its synced local copy plus upstream storage needs
     # well over the ~14GB usable on a GitHub-hosted ubuntu-latest runner.
-    runs-on: cncf-ubuntu-16-64-x86
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
