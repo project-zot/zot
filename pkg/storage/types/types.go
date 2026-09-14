@@ -26,6 +26,12 @@ type ImageStore interface { //nolint:interfacebloat
 	DirExists(d string) bool
 	RootDir() string
 	RLock(*time.Time)
+	RLockRepo(string, *time.Time)
+	RUnlockRepo(string, *time.Time)
+	LockRepo(string, *time.Time)
+	UnlockRepo(string, *time.Time)
+	GCLock(string, *time.Time)
+	GCUnlock(string, *time.Time)
 	RUnlock(*time.Time)
 	Lock(*time.Time)
 	Unlock(*time.Time)
