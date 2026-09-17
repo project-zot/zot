@@ -85,7 +85,7 @@ func NewPerfRootCmd() *cobra.Command {
 	rootCmd.Flags().StringVarP(&srcCIDR, "src-cidr", "s", "",
 		"Use specified cidr to obtain ips to make requests from, src-ips and src-cidr are mutually exclusive")
 	rootCmd.Flags().StringVarP(&workdir, "working-dir", "d", "",
-		"Use specified directory to store test data")
+		"Use specified directory to store test data (a temporary zb-* subdirectory is created and removed on exit)")
 	rootCmd.Flags().StringVarP(&repo, "repo", "r", "",
 		"Use specified repo on remote registry for test data")
 	rootCmd.Flags().IntVarP(&concurrency, "concurrency", "c", 1,

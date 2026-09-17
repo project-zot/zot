@@ -22,7 +22,7 @@ Flags:
   -t, --test-regex string            Optional regex for selectively running tests. If blank, all tests are run by default.
   -u, --upstream-server-url string   Sets the upstream server URL for sync tests. Must be provided for sync tests.
   -v, --version                      Show the version and exit
-  -d, --working-dir string           Use specified directory to store test data
+  -d, --working-dir string           Use specified directory to store test data (a temporary zb-* subdirectory is created and removed on exit)
 ```
 
 `--max-timeout-failures` is a run-wide budget for timeout-related request failures only (including client errors that look like server read/write timeouts, such as `use of closed network connection`). Failures are still reported per test. Non-timeout failures always cause a non-zero exit. With default `0`, any timeout failure also fails the run.
@@ -43,7 +43,7 @@ $ zb -c 2 -n 100 http://localhost:8080
 Registry URL:      http://localhost:8080
 Concurrency Level: 2
 Total requests:    100
-Working dir:       /home/user/test
+Working dir:       /home/user/test/zb-1234567890
 
 Skipping test On-demand Sync 100MB
 Skipping test On-demand Sync 1GB
@@ -123,7 +123,7 @@ $ zb --src-cidr 127.0.0.0/8 --test-regex "^Push Monolith 1MB$" http://localhost:
 Registry URL:      http://localhost:9000
 Concurrency Level: 1
 Total requests:    1
-Working dir:       /home/user/test
+Working dir:       /home/user/test/zb-1234567890
 
 Skipping test Get Catalog
 Skipping test Push Monolith 10MB
@@ -168,7 +168,7 @@ $ zb --src-cidr 127.0.0.0/8 --test-regex "^(Push Monolith|Pull) 1MB$" http://loc
 Registry URL:      http://localhost:9000
 Concurrency Level: 1
 Total requests:    1
-Working dir:       /home/user/test
+Working dir:       /home/user/test/zb-1234567890
 
 Skipping test Get Catalog
 Skipping test Push Monolith 10MB
@@ -252,7 +252,7 @@ Registry URL:          http://localhost:8080
 Upstream Registry URL: http://localhost:9000
 Concurrency Level:     1
 Total requests:        1
-Working dir:           /home/user/test
+Working dir:           /home/user/test/zb-1234567890
 
 Skipping test Get Catalog
 Skipping test Push Monolith 1MB
