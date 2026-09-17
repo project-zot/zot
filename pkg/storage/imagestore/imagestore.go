@@ -1556,6 +1556,13 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 			return false, -1, zerr.ErrBlobNotFound
 		}
 
+		if blobSize == 0 && !isEmptyContentDigest(digest) {
+			is.log.Debug().Str("digest", digest.String()).Str("dstRecord", dstRecord).
+				Msg("dedupe origin is empty for non-empty digest")
+
+			return false, -1, zerr.ErrBlobNotFound
+		}
+
 		// put deduped blob in cache
 		if err := is.cache.PutBlob(digest, blobPath); err != nil {
 			is.log.Error().Err(err).Str("blobPath", blobPath).Str("component", "dedupe").Msg("failed to insert blob record")
@@ -1586,8 +1593,7 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 	// Size == 0: either a genuine empty blob, or an S3-style deduped placeholder.
 	// Distinguish by comparing the digest against the hash of empty content for
 	// the same algorithm (cheap single-pass hash over 0 bytes).
-	emptyDigest := digest.Algorithm().FromBytes(nil)
-	if emptyDigest == digest {
+	if isEmptyContentDigest(digest) {
 		// Genuine empty blob (e.g. sha256:e3b0c44... or sha512:cf83e13...).
 		is.log.Debug().Str("blob path", blobPath).Msg("empty blob found")
 
@@ -1609,6 +1615,16 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 
 	blobSize, err := is.copyBlob(ctx, repo, blobPath, dstRecord)
 	if err != nil {
+		return false, -1, zerr.ErrBlobNotFound
+	}
+
+	// Fail closed whether or not dedupe is enabled: never treat a zero-size
+	// cache origin as readable content for a non-empty digest (would be HTTP 200
+	// with a body that does not hash to the requested digest).
+	if blobSize == 0 {
+		is.log.Debug().Str("digest", digest.String()).Str("dstRecord", dstRecord).
+			Msg("dedupe origin is empty for non-empty digest")
+
 		return false, -1, zerr.ErrBlobNotFound
 	}
 
@@ -1769,8 +1785,7 @@ func (is *ImageStore) originalBlobInfo(repo string, digest godigest.Digest) (dri
 		// deduplication placeholder pointing into the cache.  Distinguish the
 		// two by checking whether the digest matches the hash of zero bytes for
 		// the same algorithm (cheap single-pass hash over 0 bytes).
-		emptyDigest := digest.Algorithm().FromBytes(nil)
-		if emptyDigest == digest {
+		if isEmptyContentDigest(digest) {
 			// Genuine empty blob – return its FileInfo as-is.
 			return binfo, nil
 		}
@@ -1788,9 +1803,25 @@ func (is *ImageStore) originalBlobInfo(repo string, digest godigest.Digest) (dri
 
 			return nil, zerr.ErrBlobNotFound
 		}
+
+		// Fail closed whether or not dedupe is enabled: a cache "origin" that is
+		// itself empty cannot be served for a non-empty digest (HTTP 200 with a
+		// body that does not match the digest). Prefer ErrBlobNotFound so clients
+		// can fall back instead of consuming a bogus empty body.
+		if binfo.Size() == 0 {
+			is.log.Debug().Str("digest", digest.String()).Str("blob", dstRecord).
+				Msg("dedupe origin is empty for non-empty digest")
+
+			return nil, zerr.ErrBlobNotFound
+		}
 	}
 
 	return binfo, nil
+}
+
+// isEmptyContentDigest reports whether digest is the algorithm's hash of zero bytes.
+func isEmptyContentDigest(digest godigest.Digest) bool {
+	return digest.Algorithm().FromBytes(nil) == digest
 }
 
 // GetBlob returns a stream to read the blob.

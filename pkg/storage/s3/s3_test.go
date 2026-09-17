@@ -95,10 +95,16 @@ func createMockStorage(rootDir string, cacheDir string, dedupe bool, store drive
 func createMockStorageWithMockCache(rootDir string, store driver.StorageDriver,
 	cacheDriver storageTypes.Cache,
 ) storageTypes.ImageStore {
+	return createMockStorageWithMockCacheDedupe(rootDir, true, store, cacheDriver)
+}
+
+func createMockStorageWithMockCacheDedupe(rootDir string, dedupe bool, store driver.StorageDriver,
+	cacheDriver storageTypes.Cache,
+) storageTypes.ImageStore {
 	log := log.NewTestLogger()
 	metrics := monitoring.NewNopMetricServer()
 
-	il := s3.NewImageStore(rootDir, "", true, false, log, metrics, nil, store, cacheDriver, nil, nil)
+	il := s3.NewImageStore(rootDir, "", dedupe, false, log, metrics, nil, store, cacheDriver, nil, nil)
 
 	return il
 }
@@ -3696,7 +3702,34 @@ func TestS3DedupeErr(t *testing.T) {
 					return driver.FileInfoInternal{}, driver.PathNotFoundError{}
 				}
 
-				return driver.FileInfoInternal{}, nil
+				// Only the surviving cache origin holds content. The repo-local
+				// blob path must stay a zero-size placeholder so GetBlob still
+				// walks the cache (and fails while origin is missing).
+				if strings.Contains(path, "repo2/dst2") {
+					return &mocks.FileInfoMock{
+						SizeFn: func() int64 { return 1 },
+						PathFn: func() string { return path },
+					}, nil
+				}
+
+				return &mocks.FileInfoMock{
+					SizeFn: func() int64 { return 0 },
+					PathFn: func() string { return path },
+				}, nil
+			},
+			GetContentFn: func(ctx context.Context, path string) ([]byte, error) {
+				if strings.Contains(path, "repo2/dst2") {
+					return []byte{0x1}, nil
+				}
+
+				return []byte{}, nil
+			},
+			ReaderFn: func(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
+				if strings.Contains(path, "repo2/dst2") {
+					return io.NopCloser(strings.NewReader("\x01")), nil
+				}
+
+				return io.NopCloser(strings.NewReader("")), nil
 			},
 		})
 
@@ -3710,9 +3743,8 @@ func TestS3DedupeErr(t *testing.T) {
 		_, _, _, err = imgStore.StatBlob("repo2", digest)
 		So(err, ShouldBeNil)
 
-		// it errors out because of bad range, as mock store returns a driver.FileInfo with 0 size
-		_, _, _, err = imgStore.GetBlobPartial("repo2", digest, "application/vnd.oci.image.layer.v1.tar+gzip", 0, 1)
-		So(err, ShouldNotBeNil)
+		_, _, _, err = imgStore.GetBlobPartial("repo2", digest, "application/vnd.oci.image.layer.v1.tar+gzip", 0, 0)
+		So(err, ShouldBeNil)
 	})
 
 	Convey("Test GetBlob() - error on store.Reader()", t, func(c C) {
@@ -3870,8 +3902,8 @@ func TestS3DedupeErr(t *testing.T) {
 }
 
 // TestS3DedupeZeroSizeBlob covers the zero-size blob branches in CheckBlob and
-// StatBlob (via originalBlobInfo) for the S3+dedupe configuration.  Four
-// sub-cases are exercised using mock storage so no real S3 endpoint is needed:
+// StatBlob (via originalBlobInfo) for the S3+dedupe configuration.  Sub-cases
+// are exercised using mock storage so no real S3 endpoint is needed:
 //
 //  1. A genuine empty blob (digest == hash-of-zero-bytes) is short-circuited:
 //     CheckBlob returns (true, 0, nil) and the cache is never consulted.
@@ -3882,6 +3914,9 @@ func TestS3DedupeErr(t *testing.T) {
 //     is resolved via the cache: CheckBlob falls through to the cache lookup
 //     and returns the real blob size.
 //  4. The same deduplication-placeholder path exercised through StatBlob.
+//  5. A cache "origin" that is itself empty must not be served as HTTP 200 for
+//     a non-empty digest (dedupe on or off) — StatBlob/GetBlob/CheckBlob return
+//     ErrBlobNotFound instead.
 func TestS3DedupeZeroSizeBlob(t *testing.T) {
 	testDir := "/oci-repo-test/dedupe-zero-size"
 
@@ -3995,6 +4030,64 @@ func TestS3DedupeZeroSizeBlob(t *testing.T) {
 		So(statSize, ShouldEqual, realSize)
 		So(statErr, ShouldBeNil)
 	})
+
+	// ------------------------------------------------------------------ //
+	// Case 5: cache "origin" is itself a zero-size stub. Serving that as
+	// HTTP 200 would return a body that does not match the digest. Both
+	// StatBlob/GetBlob and CheckBlob must fail closed with ErrBlobNotFound,
+	// whether or not the store's dedupe flag is enabled.
+	// ------------------------------------------------------------------ //
+	for _, dedupe := range []bool{true, false} {
+		Convey(fmt.Sprintf("StatBlob/GetBlob reject empty cache origin (dedupe=%t)", dedupe), t, func() {
+			nonEmptyContent := []byte("non-empty-blob-content")
+			nonEmptyDigest := godigest.FromBytes(nonEmptyContent)
+			emptyOrigin := testDir + "/dedupe-src/blobs/sha256/empty-origin"
+
+			imgStore := createMockStorageWithMockCacheDedupe(testDir, dedupe, &mocks.StorageDriverMock{
+				StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+					return &mocks.FileInfoMock{SizeFn: func() int64 { return 0 }}, nil
+				},
+			}, &mocks.CacheMock{
+				GetBlobFn: func(digest godigest.Digest) (string, error) {
+					return emptyOrigin, nil
+				},
+			})
+
+			statOk, _, _, statErr := imgStore.StatBlob(repo, nonEmptyDigest)
+			So(statOk, ShouldBeFalse)
+			So(statErr, ShouldEqual, zerr.ErrBlobNotFound)
+
+			_, _, getErr := imgStore.GetBlob(repo, nonEmptyDigest, "application/octet-stream")
+			So(getErr, ShouldEqual, zerr.ErrBlobNotFound)
+		})
+
+		Convey(fmt.Sprintf("CheckBlob rejects empty cache origin (dedupe=%t)", dedupe), t, func() {
+			nonEmptyContent := []byte("non-empty-blob-content")
+			nonEmptyDigest := godigest.FromBytes(nonEmptyContent)
+			emptyOrigin := testDir + "/dedupe-src/blobs/sha256/empty-origin"
+
+			imgStore := createMockStorageWithMockCacheDedupe(testDir, dedupe, &mocks.StorageDriverMock{
+				StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+					return &mocks.FileInfoMock{SizeFn: func() int64 { return 0 }}, nil
+				},
+				PutContentFn: func(ctx context.Context, path string, content []byte) error {
+					return nil
+				},
+			}, &mocks.CacheMock{
+				GetBlobFn: func(digest godigest.Digest) (string, error) {
+					return emptyOrigin, nil
+				},
+				PutBlobFn: func(digest godigest.Digest, path string) error {
+					return nil
+				},
+			})
+
+			ok, size, err := imgStore.CheckBlob(context.Background(), repo, nonEmptyDigest)
+			So(ok, ShouldBeFalse)
+			So(size, ShouldEqual, int64(-1))
+			So(err, ShouldEqual, zerr.ErrBlobNotFound)
+		})
+	}
 }
 
 func TestInjectDedupe(t *testing.T) {
