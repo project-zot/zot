@@ -22,7 +22,7 @@ Flags:
   -t, --test-regex string            Optional regex for selectively running tests. If blank, all tests are run by default.
   -u, --upstream-server-url string   Sets the upstream server URL for sync tests. Must be provided for sync tests.
   -v, --version                      Show the version and exit
-  -d, --working-dir string           Use specified directory to store test data
+  -d, --working-dir string           Use specified directory to store test data (a temporary zb-* subdirectory is created and removed on exit)
 ```
 
 `--max-timeout-failures` is a run-wide budget for timeout-related request failures only (including client errors that look like server read/write timeouts, such as `use of closed network connection`). Failures are still reported per test. Non-timeout failures always cause a non-zero exit. With default `0`, any timeout failure also fails the run.

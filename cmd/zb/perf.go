@@ -110,6 +110,27 @@ func setup(workingDir string, sizesToPrepare []int) {
 	}
 }
 
+// createWorkDir creates a unique temporary directory under baseDir (or under the
+// current working directory when baseDir is empty) to hold the test blobs.
+// Keeping the blobs in a dedicated directory lets teardown remove exactly what
+// zb created without touching anything else in the user-provided directory.
+func createWorkDir(baseDir string) (string, error) {
+	if baseDir == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "", err
+		}
+
+		baseDir = cwd
+	}
+
+	if err := os.MkdirAll(baseDir, defaultDirPerms); err != nil {
+		return "", err
+	}
+
+	return os.MkdirTemp(baseDir, "zb-*")
+}
+
 func teardown(workingDir string) {
 	_ = os.RemoveAll(workingDir)
 }
@@ -802,16 +823,13 @@ func Perf(
 	log.Printf("Total requests:\t%v", requests)
 	log.Printf("Max timeout failures:\t%v", maxTimeoutFailures)
 
-	if workdir == "" {
-		cwd, err := os.Getwd()
-		if err != nil {
-			log.Fatal("unable to get current working dir")
-		}
-
-		log.Printf("Working dir:\t%v", cwd)
-	} else {
-		log.Printf("Working dir:\t%v", workdir)
+	// test data goes into a dedicated temp dir so that teardown only removes what zb created
+	workdir, err := createWorkDir(workdir)
+	if err != nil {
+		log.Fatal("unable to create working dir: ", err)
 	}
+
+	log.Printf("Working dir:\t%v", workdir)
 
 	log.Printf("\n")
 
@@ -855,8 +873,6 @@ func Perf(
 	setup(workdir, sizesToPrepare)
 
 	log.Printf("Starting tests ...\n")
-
-	var err error
 
 	totalFailures := 0
 	timeoutFailures := 0
