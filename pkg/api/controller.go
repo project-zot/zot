@@ -651,6 +651,9 @@ func (c *Controller) StartBackgroundTasks() {
 	storageConfig := c.Config.CopyStorageConfig()
 	ext.EnableMetricsExtension(c.Config, c.Log, storageConfig.RootDirectory)
 
+	// Always call EnableMetricsExpiry to ensure proper logging, even when disabled
+	ext.EnableMetricsExpiry(c.Config, c.taskScheduler, c.Metrics, c.Log)
+
 	// runs once if metrics are enabled & imagestore is local
 	extensionsConfig := c.Config.CopyExtensionsConfig()
 	if extensionsConfig.IsMetricsEnabled() && storageConfig.StorageDriver == nil {

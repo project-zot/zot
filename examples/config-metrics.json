@@ -15,7 +15,8 @@
             "enable": true,
             "prometheus": {
                 "path": "/metrics"
-            }
+            },
+            "repoLabelExpiry": "1h"
         }
     }
 }

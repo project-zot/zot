@@ -592,6 +592,19 @@ func TestExtensionConfig(t *testing.T) {
 			testGetterWithValidConfig("Metrics", (*config.ExtensionConfig).GetMetricsPrometheusConfig, buildMetricsConfig)
 		})
 
+		Convey("Test GetMetricsRepoLabelExpiry()", func() {
+			testGetterWithNilConfig((*config.ExtensionConfig).GetMetricsRepoLabelExpiry, 0)
+			testGetterWithNilSubConfig("Metrics", (*config.ExtensionConfig).GetMetricsRepoLabelExpiry, 0)
+
+			Convey("Test with repoLabelExpiry configured", func() {
+				enabled := true
+				extensionConfig := buildMetricsConfig(enabled)
+				extensionConfig.Metrics.RepoLabelExpiry = 5 * time.Minute
+
+				So(extensionConfig.GetMetricsRepoLabelExpiry(), ShouldEqual, 5*time.Minute)
+			})
+		})
+
 		Convey("Test GetEventsConfig()", func() {
 			testGetterWithNilConfig((*config.ExtensionConfig).GetEventsConfig, nil)
 			testGetterWithValidConfig("Events", (*config.ExtensionConfig).GetEventsConfig, buildEventsConfig)
