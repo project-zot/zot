@@ -45,16 +45,22 @@ const (
 )
 
 type metricServer struct {
-	enabled    bool
-	lastCheck  time.Time
-	reqChan    chan any
-	cache      *MetricsInfo
-	cacheChan  chan MetricsCopy
-	bucketsF2S map[float64]string // float64 to string conversion of buckets label
-	log        log.Logger
-	lock       *sync.RWMutex
-	stopChan   chan struct{} // Channel to signal shutdown
+	enabled       bool
+	lastCheck     time.Time
+	reqChan       chan any
+	cache         *MetricsInfo
+	cacheChan     chan MetricsCopy
+	bucketsF2S    map[float64]string // float64 to string conversion of buckets label
+	log           log.Logger
+	lock          *sync.RWMutex
+	stopChan      chan struct{}       // Channel to signal shutdown
+	touchedRepos  map[string]struct{} // repos observed on repo-labeled metrics since the last expiry sweep
+	previousRepos map[string]struct{} // repos observed during the prior expiry window
 }
+
+// expireRepoMetrics is a sentinel request handled by Run() to evict stale
+// per-repo entries for repoDownloads, repoUploads and httpRepoLatencySeconds.
+type expireRepoMetrics struct{}
 
 func GetDefaultBuckets() []float64 {
 	return []float64{.05, .5, 1, 5, 30, 60, 600, math.MaxFloat64}
@@ -156,15 +162,25 @@ func (ms *metricServer) Run() {
 			case CounterValue:
 				cv := m.(CounterValue)
 				ms.CounterInc(&cv)
+
+				if (cv.Name == repoDownloads || cv.Name == repoUploads) && len(cv.LabelValues) > 0 {
+					ms.touchedRepos[cv.LabelValues[0]] = struct{}{}
+				}
 			case GaugeValue:
 				gv := m.(GaugeValue)
 				ms.GaugeSet(&gv)
 			case SummaryValue:
 				sv := m.(SummaryValue)
 				ms.SummaryObserve(&sv)
+
+				if sv.Name == httpRepoLatencySeconds && len(sv.LabelValues) > 0 {
+					ms.touchedRepos[sv.LabelValues[0]] = struct{}{}
+				}
 			case HistogramValue:
 				hv := m.(HistogramValue)
 				ms.HistogramObserve(&hv)
+			case expireRepoMetrics:
+				ms.expireRepoMetrics()
 			default:
 				ms.log.Error().Str("type", fmt.Sprintf("%T", v)).Msg("unexpected type")
 			}
@@ -181,6 +197,51 @@ func (ms *metricServer) Run() {
 			ms.lock.Unlock()
 		}
 	}
+}
+
+// expireRepoMetrics evicts cache entries for repos that were not observed
+// during either of the last two expiry windows, then rotates the tracking sets.
+func (ms *metricServer) expireRepoMetrics() {
+	staleRepos := make(map[string]struct{})
+
+	for repo := range ms.previousRepos {
+		if _, touched := ms.touchedRepos[repo]; !touched {
+			staleRepos[repo] = struct{}{}
+		}
+	}
+
+	isStaleRepoMetric := func(name string, labelValues []string) bool {
+		if name != repoDownloads && name != repoUploads && name != httpRepoLatencySeconds {
+			return false
+		}
+
+		if len(labelValues) == 0 {
+			return false
+		}
+
+		_, stale := staleRepos[labelValues[0]]
+
+		return stale
+	}
+
+	ms.cache.Counters = slices.DeleteFunc(ms.cache.Counters, func(cv *CounterValue) bool {
+		return isStaleRepoMetric(cv.Name, cv.LabelValues)
+	})
+
+	ms.cache.Summaries = slices.DeleteFunc(ms.cache.Summaries, func(sv *SummaryValue) bool {
+		return isStaleRepoMetric(sv.Name, sv.LabelValues)
+	})
+
+	ms.previousRepos = ms.touchedRepos
+	ms.touchedRepos = make(map[string]struct{})
+}
+
+// ExpireRepoMetrics triggers a mark-and-sweep eviction of stale per-repo metric
+// entries (repoDownloads, repoUploads, httpRepoLatencySeconds). It uses
+// ForceSendMetric so expiry still runs even when metrics collection is
+// currently disabled/idle.
+func ExpireRepoMetrics(ms MetricServer) {
+	ms.ForceSendMetric(expireRepoMetrics{})
 }
 
 func NewMetricsServer(enabled bool, log log.Logger) MetricServer {
@@ -206,14 +267,16 @@ func NewMetricsServer(enabled bool, log log.Logger) MetricServer {
 	}
 
 	ms := &metricServer{
-		enabled:    enabled,
-		reqChan:    make(chan any),
-		cacheChan:  make(chan MetricsCopy),
-		cache:      mi,
-		bucketsF2S: bucketsFloat2String,
-		log:        log,
-		lock:       &sync.RWMutex{},
-		stopChan:   make(chan struct{}),
+		enabled:       enabled,
+		reqChan:       make(chan any),
+		cacheChan:     make(chan MetricsCopy),
+		cache:         mi,
+		bucketsF2S:    bucketsFloat2String,
+		log:           log,
+		lock:          &sync.RWMutex{},
+		stopChan:      make(chan struct{}),
+		touchedRepos:  make(map[string]struct{}),
+		previousRepos: make(map[string]struct{}),
 	}
 
 	go ms.Run()

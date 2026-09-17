@@ -563,6 +563,11 @@ func validateRemoteSessionStoreConfig(cfg *config.Config, logger zlog.Logger) er
 }
 
 func validateMetricsConfig(cfg *extconf.ExtensionConfig) error {
+	repoLabelExpiry := cfg.GetMetricsRepoLabelExpiry()
+	if repoLabelExpiry < 0 || (repoLabelExpiry != 0 && repoLabelExpiry < time.Minute) {
+		return zerr.ErrInvalidMetricsRepoLabelExpiry
+	}
+
 	metricsCfg := cfg.GetMetricsPrometheusConfig()
 	if metricsCfg == nil {
 		return nil

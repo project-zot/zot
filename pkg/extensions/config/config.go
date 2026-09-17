@@ -83,6 +83,9 @@ type MetricsConfig struct {
 	BaseConfig `mapstructure:",squash"`
 
 	Prometheus *PrometheusConfig
+	// RepoLabelExpiry is the interval at which stale per-repo label values are evicted.
+	// 0 disables repo label expiry
+	RepoLabelExpiry time.Duration
 }
 
 type PrometheusConfig struct {
@@ -270,6 +273,19 @@ func (e *ExtensionConfig) GetMetricsPrometheusConfig() *PrometheusConfig {
 	}
 
 	return nil
+}
+
+// GetMetricsRepoLabelExpiry returns the metrics repo label expiry interval.
+func (e *ExtensionConfig) GetMetricsRepoLabelExpiry() time.Duration {
+	if e == nil {
+		return 0
+	}
+
+	if e.Metrics != nil {
+		return e.Metrics.RepoLabelExpiry
+	}
+
+	return 0
 }
 
 // GetEventsConfig returns the events config.
