@@ -3995,6 +3995,78 @@ func TestS3DedupeZeroSizeBlob(t *testing.T) {
 		So(statSize, ShouldEqual, realSize)
 		So(statErr, ShouldBeNil)
 	})
+
+	// ------------------------------------------------------------------ //
+	// Case 5: GetBlob (the actual HTTP GET blob download path) must resolve
+	// the same S3-style deduplication placeholder as CheckBlob/StatBlob and
+	// stream back the real content instead of a 200 response with an empty
+	// (digest-mismatched) body. See https://github.com/project-zot/zot/issues/4427.
+	// ------------------------------------------------------------------ //
+	Convey("GetBlob with S3-style deduplication placeholder in S3+dedupe mode", t, func() {
+		nonEmptyContent := []byte("non-empty-blob-content")
+		nonEmptyDigest := godigest.FromBytes(nonEmptyContent)
+		dstRecord := testDir + "/dedupe-src/blobs/sha256/real-blob"
+		realSize := int64(len(nonEmptyContent))
+
+		imgStore := createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+				if path == dstRecord {
+					return &mocks.FileInfoMock{
+						SizeFn: func() int64 { return realSize },
+						PathFn: func() string { return dstRecord },
+					}, nil
+				}
+
+				return &mocks.FileInfoMock{SizeFn: func() int64 { return 0 }}, nil
+			},
+			ReaderFn: func(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
+				So(path, ShouldEqual, dstRecord)
+
+				return io.NopCloser(bytes.NewReader(nonEmptyContent)), nil
+			},
+		}, &mocks.CacheMock{
+			GetBlobFn: func(digest godigest.Digest) (string, error) {
+				return dstRecord, nil
+			},
+		})
+
+		reader, size, err := imgStore.GetBlob(repo, nonEmptyDigest, "application/octet-stream")
+		So(err, ShouldBeNil)
+		So(size, ShouldEqual, realSize)
+
+		content, err := io.ReadAll(reader)
+		So(err, ShouldBeNil)
+		So(reader.Close(), ShouldBeNil)
+		So(content, ShouldResemble, nonEmptyContent)
+		So(godigest.FromBytes(content), ShouldEqual, nonEmptyDigest)
+	})
+
+	// ------------------------------------------------------------------ //
+	// Case 6: when the repo-local copy is a zero-size placeholder and the
+	// cache has no usable record for it (e.g. dedupe index lost/unreachable),
+	// GetBlob must fail (so the route layer maps it to 404) instead of
+	// returning success with the empty placeholder body.
+	// ------------------------------------------------------------------ //
+	Convey("GetBlob with unresolvable S3-style deduplication placeholder in S3+dedupe mode", t, func() {
+		nonEmptyContent := []byte("non-empty-blob-content")
+		nonEmptyDigest := godigest.FromBytes(nonEmptyContent)
+
+		imgStore := createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+				return &mocks.FileInfoMock{SizeFn: func() int64 { return 0 }}, nil
+			},
+		}, &mocks.CacheMock{
+			GetBlobFn: func(digest godigest.Digest) (string, error) {
+				return "", zerr.ErrCacheMiss
+			},
+		})
+
+		reader, size, err := imgStore.GetBlob(repo, nonEmptyDigest, "application/octet-stream")
+		So(err, ShouldNotBeNil)
+		So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
+		So(size, ShouldEqual, int64(-1))
+		So(reader, ShouldBeNil)
+	})
 }
 
 func TestInjectDedupe(t *testing.T) {
