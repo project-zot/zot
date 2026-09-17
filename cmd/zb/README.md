@@ -43,7 +43,7 @@ $ zb -c 2 -n 100 http://localhost:8080
 Registry URL:      http://localhost:8080
 Concurrency Level: 2
 Total requests:    100
-Working dir:       /home/user/test
+Working dir:       /home/user/test/zb-1234567890
 
 Skipping test On-demand Sync 100MB
 Skipping test On-demand Sync 1GB
@@ -123,7 +123,7 @@ $ zb --src-cidr 127.0.0.0/8 --test-regex "^Push Monolith 1MB$" http://localhost:
 Registry URL:      http://localhost:9000
 Concurrency Level: 1
 Total requests:    1
-Working dir:       /home/user/test
+Working dir:       /home/user/test/zb-1234567890
 
 Skipping test Get Catalog
 Skipping test Push Monolith 10MB
@@ -168,7 +168,7 @@ $ zb --src-cidr 127.0.0.0/8 --test-regex "^(Push Monolith|Pull) 1MB$" http://loc
 Registry URL:      http://localhost:9000
 Concurrency Level: 1
 Total requests:    1
-Working dir:       /home/user/test
+Working dir:       /home/user/test/zb-1234567890
 
 Skipping test Get Catalog
 Skipping test Push Monolith 10MB
@@ -252,7 +252,7 @@ Registry URL:          http://localhost:8080
 Upstream Registry URL: http://localhost:9000
 Concurrency Level:     1
 Total requests:        1
-Working dir:           /home/user/test
+Working dir:           /home/user/test/zb-1234567890
 
 Skipping test Get Catalog
 Skipping test Push Monolith 1MB

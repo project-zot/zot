@@ -57,7 +57,7 @@ func TestCreateWorkDir(t *testing.T) {
 		So(filepath.Dir(workDir), ShouldEqual, baseDir)
 		So(strings.HasPrefix(filepath.Base(workDir), "zb-"), ShouldBeTrue)
 
-		setup(workDir, []int{smallBlob})
+		So(setup(workDir, []int{smallBlob}), ShouldBeNil)
 		_, err = os.Stat(filepath.Join(workDir, "1048576.blob"))
 		So(err, ShouldBeNil)
 
@@ -99,6 +99,28 @@ func TestCreateWorkDir(t *testing.T) {
 		So(filepath.Dir(workDir), ShouldEqual, baseDir)
 
 		teardown(workDir)
+	})
+
+	if os.Getuid() == 0 {
+		// root ignores directory permission bits, so the read-only dir would not fail
+		return
+	}
+
+	Convey("setup returns an error instead of exiting so the caller can clean up", t, func() {
+		workDir, err := createWorkDir(t.TempDir())
+		So(err, ShouldBeNil)
+
+		// make the work dir read-only so blob creation fails
+		So(os.Chmod(workDir, 0o500), ShouldBeNil)
+
+		err = setup(workDir, []int{smallBlob})
+		So(err, ShouldNotBeNil)
+
+		So(os.Chmod(workDir, defaultDirPerms), ShouldBeNil)
+		teardown(workDir)
+
+		_, err = os.Stat(workDir)
+		So(os.IsNotExist(err), ShouldBeTrue)
 	})
 }
 

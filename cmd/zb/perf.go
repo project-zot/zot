@@ -52,62 +52,69 @@ var blobHash map[string]godigest.Digest = map[string]godigest.Digest{}
 //nolint:gochecknoglobals // used only in this test
 var statusRequests sync.Map
 
-func setup(workingDir string, sizesToPrepare []int) {
-	_ = os.MkdirAll(workingDir, defaultDirPerms)
-
-	const rndPageSize = 4 * KiB
+// setup creates the test blobs in workingDir and pre-computes their digests.
+// Errors are returned rather than terminating the process so the caller can
+// clean up the working directory before exiting.
+func setup(workingDir string, sizesToPrepare []int) error {
+	if err := os.MkdirAll(workingDir, defaultDirPerms); err != nil {
+		return err
+	}
 
 	for _, size := range sizesToPrepare {
 		fname := path.Join(workingDir, fmt.Sprintf("%d.blob", size))
 
-		fhandle, err := os.OpenFile(fname, os.O_RDWR|os.O_CREATE|os.O_TRUNC, defaultFilePerms)
+		digest, err := createBlob(fname, size)
 		if err != nil {
-			log.Fatal(err)
-		}
-
-		err = fhandle.Truncate(int64(size))
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		_, err = fhandle.Seek(0, 0)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		// write a random first page so every test run has different blob content
-		rnd := make([]byte, rndPageSize)
-		if _, err := crand.Read(rnd); err != nil {
-			log.Fatal(err)
-		}
-
-		if _, err := fhandle.Write(rnd); err != nil {
-			log.Fatal(err)
-		}
-
-		if _, err := fhandle.Seek(0, 0); err != nil {
-			log.Fatal(err)
-		}
-
-		if err := fhandle.Close(); err != nil { // should flush the write
-			log.Fatal(err)
-		}
-
-		// pre-compute the SHA256
-		fhandle, err = os.OpenFile(fname, os.O_RDONLY, defaultFilePerms)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		defer fhandle.Close()
-
-		digest, err := godigest.FromReader(fhandle)
-		if err != nil {
-			log.Fatal(err) //nolint:gocritic // file closed on exit
+			return err
 		}
 
 		blobHash[fname] = digest
 	}
+
+	return nil
+}
+
+// createBlob creates a sparse file of the given size with a random first page,
+// so every test run has different blob content, and returns its digest.
+func createBlob(fname string, size int) (godigest.Digest, error) {
+	const rndPageSize = 4 * KiB
+
+	fhandle, err := os.OpenFile(fname, os.O_RDWR|os.O_CREATE|os.O_TRUNC, defaultFilePerms)
+	if err != nil {
+		return "", err
+	}
+
+	if err := fhandle.Truncate(int64(size)); err != nil {
+		fhandle.Close()
+
+		return "", err
+	}
+
+	rnd := make([]byte, rndPageSize)
+	if _, err := crand.Read(rnd); err != nil {
+		fhandle.Close()
+
+		return "", err
+	}
+
+	if _, err := fhandle.Write(rnd); err != nil {
+		fhandle.Close()
+
+		return "", err
+	}
+
+	if err := fhandle.Close(); err != nil { // should flush the write
+		return "", err
+	}
+
+	// pre-compute the SHA256
+	fhandle, err = os.OpenFile(fname, os.O_RDONLY, defaultFilePerms)
+	if err != nil {
+		return "", err
+	}
+	defer fhandle.Close()
+
+	return godigest.FromReader(fhandle)
 }
 
 // createWorkDir creates a unique temporary directory under baseDir (or under the
@@ -870,7 +877,9 @@ func Perf(
 		sizesToPrepare = append(sizesToPrepare, size)
 	}
 
-	setup(workdir, sizesToPrepare)
+	if err := setup(workdir, sizesToPrepare); err != nil {
+		fatalWithCleanup(&teardownOnce, workdir, err)
+	}
 
 	log.Printf("Starting tests ...\n")
 
@@ -1094,7 +1103,7 @@ func getRandomClientIPs(auth string, url string, ips []string) (*resty.Client, e
 
 	parsedURL, err := urlparser.Parse(url)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	//nolint: gosec
