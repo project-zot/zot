@@ -1111,8 +1111,12 @@ func (scanner Scanner) scanIndex(ctx context.Context, repo, digest string) (map[
 	// of them an incomplete aggregate (an ancestor wrongly treated as already visited), or,
 	// for cyclic index metadata, let two concurrent top-level scans each hold the flight the
 	// other's traversal is blocked waiting on and deadlock.
+	// The traversal itself runs with cancellation detached from this specific caller: an
+	// uncached child is scanned via scanManifest, which errors with ctx.Err() the moment its
+	// own wait is abandoned, and that error would otherwise surface as *this shared flight's*
+	// result for every waiter, not just the one whose ctx was canceled.
 	resultChan := scanner.scanSingleFlightGroup.DoChan(repo+"@"+digest, func() (any, error) {
-		cveIDMap, wasCached, err := scanner.scanIndexSeen(ctx, repo, digest, map[string]struct{}{})
+		cveIDMap, wasCached, err := scanner.scanIndexSeen(context.WithoutCancel(ctx), repo, digest, map[string]struct{}{})
 		if err != nil {
 			return cacheableScanResult{}, err
 		}
