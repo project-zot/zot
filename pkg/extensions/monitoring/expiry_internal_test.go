@@ -5,6 +5,7 @@ package monitoring
 import (
 	"fmt"
 	"math/rand"
+	"sync"
 	"testing"
 	"time"
 
@@ -135,6 +136,67 @@ func TestExpireRepoMetricsBlastRadius(t *testing.T) {
 	})
 }
 
+// TestExpireRepoMetricsConcurrentTouchNeverLosesUpdates is a regression test for a race
+// where sweep() computed the stale set and released its lock before the caller ran
+// DeleteLabelValues, letting a concurrent touch+observe land in between: the series would
+// be recreated by the observe and then immediately wiped by the delete that had already
+// decided (under the old, narrower lock) that the repo was stale. touchAndObserve and
+// expire now share one critical section covering the entire operation, including the
+// actual metric mutation/deletion, so a repo touched immediately before every sweep can
+// never be evicted.
+//
+// The two goroutines below run on real, separate goroutines (so -race actually exercises
+// concurrent access to the shared vecs and the tracker's mutex) but are lockstepped
+// through unbuffered channels so that, deterministically, every touch happens-before the
+// next sweep. That makes the repo un-stale by construction on every single iteration: if
+// the old, narrower critical section were still in place, the sweep could still observe a
+// stale snapshot from before the handshake and delete the series the touch just wrote,
+// which this test would catch as a counter value less than increments or a missing series.
+func TestExpireRepoMetricsConcurrentTouchNeverLosesUpdates(t *testing.T) {
+	Convey("A repo touched immediately before every sweep is never evicted or zeroed", t, func() {
+		logger := log.NewTestLogger()
+		ms := NewMetricsServer(true, logger)
+
+		repo := uniqueExpiryRepo("race")
+
+		const rounds = 500
+
+		touched := make(chan struct{})
+		swept := make(chan struct{})
+
+		var wg sync.WaitGroup
+
+		wg.Add(2)
+
+		go func() {
+			defer wg.Done()
+			defer close(touched)
+
+			for i := 0; i < rounds; i++ {
+				IncUploadCounter(ms, repo)
+				touched <- struct{}{}
+				<-swept
+			}
+		}()
+
+		go func() {
+			defer wg.Done()
+			defer close(swept)
+
+			for range touched {
+				ExpireRepoMetrics(ms)
+				swept <- struct{}{}
+			}
+		}()
+
+		wg.Wait()
+
+		metric := repoSeries(uploadsMetricName, repo)
+		So(metric, ShouldNotBeNil)
+		So(metric.GetCounter().GetValue(), ShouldEqual, rounds)
+	})
+}
+
 func touchExpiryRepo(ms MetricServer, repo string, latency time.Duration) {
 	IncUploadCounter(ms, repo)
 	IncDownloadCounter(ms, repo)
@@ -179,6 +241,68 @@ func metricLabelsMatch(pairs []*dto.LabelPair, want map[string]string) bool {
 	}
 
 	return true
+}
+
+// BenchmarkIncUploadCounter measures the cost the tracker's lock adds to the hot
+// request path (touchAndObserve now holds t.mu for the WithLabelValues(...).Inc() call
+// too, not just the bookkeeping map write).
+func BenchmarkIncUploadCounter(b *testing.B) {
+	logger := log.NewTestLogger()
+	ms := NewMetricsServer(true, logger)
+	repo := uniqueExpiryRepo("bench-inc")
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		IncUploadCounter(ms, repo)
+	}
+}
+
+// BenchmarkIncUploadCounterParallel measures the same hot path under concurrent callers,
+// since touchAndObserve serializes all writers on t.mu regardless of label value.
+func BenchmarkIncUploadCounterParallel(b *testing.B) {
+	logger := log.NewTestLogger()
+	ms := NewMetricsServer(true, logger)
+	repo := uniqueExpiryRepo("bench-inc-parallel")
+
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			IncUploadCounter(ms, repo)
+		}
+	})
+}
+
+// BenchmarkExpireRepoMetrics measures one sweep's cost at a realistic cardinality
+// (1000 distinct repos, half stale) to quantify the eviction pass itself, separate from
+// the per-request touch cost measured above.
+func BenchmarkExpireRepoMetrics(b *testing.B) {
+	logger := log.NewTestLogger()
+	ms := NewMetricsServer(true, logger)
+
+	const repoCount = 1000
+
+	repos := make([]string, repoCount)
+
+	for i := range repos {
+		repos[i] = uniqueExpiryRepo(fmt.Sprintf("bench-expire-%d", i))
+		IncUploadCounter(ms, repos[i])
+	}
+
+	// age every repo out of the "current" generation once, then re-touch half of them
+	// so each benchmark iteration has a realistic 50% stale ratio to evict.
+	ExpireRepoMetrics(ms)
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		for j := 0; j < repoCount; j += 2 {
+			IncUploadCounter(ms, repos[j])
+		}
+
+		ExpireRepoMetrics(ms)
+	}
 }
 
 func uniqueExpiryRepo(prefix string) string {
