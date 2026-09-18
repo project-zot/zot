@@ -163,7 +163,8 @@ func (ms *metricServer) Run() {
 				cv := m.(CounterValue)
 				ms.CounterInc(&cv)
 
-				if (cv.Name == repoDownloads || cv.Name == repoUploads) && len(cv.LabelValues) > 0 {
+				if repoLabelExpiryTrackingEnabled() &&
+					(cv.Name == repoDownloads || cv.Name == repoUploads) && len(cv.LabelValues) > 0 {
 					ms.touchedRepos[cv.LabelValues[0]] = struct{}{}
 				}
 			case GaugeValue:
@@ -173,7 +174,8 @@ func (ms *metricServer) Run() {
 				sv := m.(SummaryValue)
 				ms.SummaryObserve(&sv)
 
-				if sv.Name == httpRepoLatencySeconds && len(sv.LabelValues) > 0 {
+				if repoLabelExpiryTrackingEnabled() &&
+					sv.Name == httpRepoLatencySeconds && len(sv.LabelValues) > 0 {
 					ms.touchedRepos[sv.LabelValues[0]] = struct{}{}
 				}
 			case HistogramValue:

@@ -16,6 +16,12 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
+func init() {
+	// Tracking is off until a deployment actually configures repoLabelExpiry; these
+	// tests exercise the sweep, so turn it on once for the whole test binary.
+	EnableRepoLabelExpiryTracking()
+}
+
 const (
 	uploadsMetricName   = "zot_repo_uploads_total"
 	downloadsMetricName = "zot_repo_downloads_total"
@@ -99,6 +105,33 @@ func TestExpireRepoMetricsGraceWindow(t *testing.T) {
 			ExpireRepoMetrics(ms)
 			So(repoSeries(uploadsMetricName, repo), ShouldNotBeNil)
 		})
+	})
+}
+
+// Deterministic, isolated from any global/test-ordering state: touchAndObserve takes
+// its tracking decision as an explicit argument, so this exercises the disabled path
+// directly on a fresh tracker rather than depending on the package-level flag.
+func TestTouchAndObserveDisabledSkipsTracking(t *testing.T) {
+	Convey("With tracking disabled, touchAndObserve runs observe but never writes to current", t, func() {
+		tracker := &repoLabelTracker{current: map[string]struct{}{}, previous: map[string]struct{}{}}
+
+		observed := 0
+		for i := 0; i < 100; i++ {
+			tracker.touchAndObserve(false, fmt.Sprintf("repo-%d", i), func() {
+				observed++
+			})
+		}
+
+		So(observed, ShouldEqual, 100)
+		So(len(tracker.current), ShouldEqual, 0)
+	})
+
+	Convey("With tracking enabled, the same repo is recorded in current", t, func() {
+		tracker := &repoLabelTracker{current: map[string]struct{}{}, previous: map[string]struct{}{}}
+
+		tracker.touchAndObserve(true, "repo-x", func() {})
+
+		So(len(tracker.current), ShouldEqual, 1)
 	})
 }
 

@@ -4,9 +4,24 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sync/atomic"
 )
 
 var re = regexp.MustCompile(`\/v2\/(.*?)\/(blobs|tags|manifests)\/(.*)$`)
+
+//nolint:gochecknoglobals
+var repoLabelExpiryEnabled atomic.Bool
+
+// EnableRepoLabelExpiryTracking turns on repo-label touch tracking, so ExpireRepoMetrics
+// has something to sweep. Called once at startup only when repoLabelExpiry is configured;
+// left off, touch tracking is skipped entirely and costs nothing beyond this flag check.
+func EnableRepoLabelExpiryTracking() {
+	repoLabelExpiryEnabled.Store(true)
+}
+
+func repoLabelExpiryTrackingEnabled() bool {
+	return repoLabelExpiryEnabled.Load()
+}
 
 type MetricServer interface {
 	SendMetric(any)
