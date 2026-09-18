@@ -10,7 +10,9 @@ import (
 )
 
 // EnableMetricsExpiry enables the periodic sweep that evicts stale per-repo metric label values.
-func EnableMetricsExpiry(cfg *config.Config, sch *scheduler.Scheduler, ms monitoring.MetricServer, log log.Logger) {
+func EnableMetricsExpiry(cfg *config.Config, sch *scheduler.Scheduler, metricServer monitoring.MetricServer,
+	log log.Logger,
+) {
 	extensionsConfig := cfg.CopyExtensionsConfig()
 
 	if !extensionsConfig.IsMetricsEnabled() || extensionsConfig.GetMetricsRepoLabelExpiry() == 0 {
@@ -24,7 +26,7 @@ func EnableMetricsExpiry(cfg *config.Config, sch *scheduler.Scheduler, ms monito
 	monitoring.EnableRepoLabelExpiryTracking()
 
 	generator := &metricsExpiryGenerator{
-		ms: ms,
+		ms: metricServer,
 	}
 
 	sch.SubmitGenerator(generator, interval, scheduler.LowPriority)

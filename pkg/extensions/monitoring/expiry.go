@@ -36,13 +36,13 @@ func (t *repoLabelTracker) touchAndObserve(tracking bool, repo string, observe f
 }
 
 // expire deletes repos untouched across the last two generations, then rotates.
-func (t *repoLabelTracker) expire(delete func(repo string)) {
+func (t *repoLabelTracker) expire(evict func(repo string)) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	for repo := range t.previous {
 		if _, ok := t.current[repo]; !ok {
-			delete(repo)
+			evict(repo)
 		}
 	}
 
