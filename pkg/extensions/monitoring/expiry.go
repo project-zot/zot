@@ -19,8 +19,15 @@ var labelTracker = &repoLabelTracker{ //nolint: gochecknoglobals
 }
 
 // touchAndObserve marks repo active for the current generation and runs observe
-// atomically with that bookkeeping.
-func (t *repoLabelTracker) touchAndObserve(repo string, observe func()) {
+// atomically with that bookkeeping. If tracking is disabled, it just runs observe -
+// no map write, no lock.
+func (t *repoLabelTracker) touchAndObserve(tracking bool, repo string, observe func()) {
+	if !tracking {
+		observe()
+
+		return
+	}
+
 	t.mu.Lock()
 	defer t.mu.Unlock()
 

@@ -21,6 +21,8 @@ func EnableMetricsExpiry(cfg *config.Config, sch *scheduler.Scheduler, ms monito
 
 	interval := extensionsConfig.GetMetricsRepoLabelExpiry()
 
+	monitoring.EnableRepoLabelExpiryTracking()
+
 	generator := &metricsExpiryGenerator{
 		ms: ms,
 	}

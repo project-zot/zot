@@ -16,6 +16,12 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
+func init() {
+	// Tracking is off until a deployment actually configures repoLabelExpiry; these
+	// tests exercise the sweep, so turn it on once for the whole test binary.
+	monitoring.EnableRepoLabelExpiryTracking()
+}
+
 func TestExpireRepoMetricsMinimalMarkAndSweep(t *testing.T) {
 	Convey("Mark-and-sweep drops the stale repo, keeps the active one and unrelated metrics", t, func() {
 		logger := log.NewTestLogger()
