@@ -781,7 +781,9 @@ func (scanner Scanner) scanManifest(ctx context.Context, repo, digest string) (m
 
 	// prevent multiple requests running trivy multiple times; DoChan lets each caller
 	// stop waiting on its own ctx without canceling the shared scan for the other callers.
-	resultChan := scanner.scanSingleFlightGroup.DoChan(digest, func() (any, error) {
+	// The key includes repo since the same digest can be scanned concurrently through
+	// different repos, each resolving to its own store config and SBOM persistence target.
+	resultChan := scanner.scanSingleFlightGroup.DoChan(repo+"@"+digest, func() (any, error) {
 		return scanner.scanManifestUncached(ctx, repo, digest)
 	})
 
@@ -1116,7 +1118,9 @@ func (scanner Scanner) scanIndexSeen(ctx context.Context, repo, digest string, s
 
 	// prevent multiple requests running trivy multiple times for the same index; DoChan lets
 	// each caller stop waiting on its own ctx without canceling the shared scan for the others.
-	resultChan := scanner.scanSingleFlightGroup.DoChan(digest, func() (any, error) {
+	// The key includes repo: as noted above, the same index digest can differ in child
+	// presence across repos, so a scan for one repo must never be shared with another.
+	resultChan := scanner.scanSingleFlightGroup.DoChan(repo+"@"+digest, func() (any, error) {
 		return scanner.scanIndexUncached(ctx, repo, digest, seen)
 	})
 
