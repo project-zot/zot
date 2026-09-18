@@ -136,22 +136,9 @@ func TestExpireRepoMetricsBlastRadius(t *testing.T) {
 	})
 }
 
-// TestExpireRepoMetricsConcurrentTouchNeverLosesUpdates is a regression test for a race
-// where sweep() computed the stale set and released its lock before the caller ran
-// DeleteLabelValues, letting a concurrent touch+observe land in between: the series would
-// be recreated by the observe and then immediately wiped by the delete that had already
-// decided (under the old, narrower lock) that the repo was stale. touchAndObserve and
-// expire now share one critical section covering the entire operation, including the
-// actual metric mutation/deletion, so a repo touched immediately before every sweep can
-// never be evicted.
-//
-// The two goroutines below run on real, separate goroutines (so -race actually exercises
-// concurrent access to the shared vecs and the tracker's mutex) but are lockstepped
-// through unbuffered channels so that, deterministically, every touch happens-before the
-// next sweep. That makes the repo un-stale by construction on every single iteration: if
-// the old, narrower critical section were still in place, the sweep could still observe a
-// stale snapshot from before the handshake and delete the series the touch just wrote,
-// which this test would catch as a counter value less than increments or a missing series.
+// Regression test for a race where sweep() released its lock before DeleteLabelValues
+// ran, letting a concurrent touch land in between and get wiped anyway. Lockstepped via
+// channels so every touch happens-before the next sweep (deterministic, run with -race).
 func TestExpireRepoMetricsConcurrentTouchNeverLosesUpdates(t *testing.T) {
 	Convey("A repo touched immediately before every sweep is never evicted or zeroed", t, func() {
 		logger := log.NewTestLogger()
