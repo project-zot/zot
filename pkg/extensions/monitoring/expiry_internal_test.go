@@ -263,9 +263,11 @@ func metricLabelsMatch(pairs []*dto.LabelPair, want map[string]string) bool {
 	return true
 }
 
-// BenchmarkIncUploadCounter measures the cost the tracker's lock adds to the hot
-// request path (touchAndObserve now holds t.mu for the WithLabelValues(...).Inc() call
-// too, not just the bookkeeping map write).
+// BenchmarkIncUploadCounter measures the hot request path with tracking enabled (this
+// file's init() turns EnableRepoLabelExpiryTracking on for the whole test binary, so
+// this reflects a deployment that has repoLabelExpiry configured). See
+// BenchmarkTouchAndObserveDisabled/Enabled below for the isolated with/without-the-flag
+// comparison, benchmarked directly against a local tracker instead of the global one.
 func BenchmarkIncUploadCounter(b *testing.B) {
 	logger := log.NewTestLogger()
 	ms := NewMetricsServer(true, logger)
@@ -292,6 +294,31 @@ func BenchmarkIncUploadCounterParallel(b *testing.B) {
 			IncUploadCounter(ms, repo)
 		}
 	})
+}
+
+// BenchmarkTouchAndObserveDisabled/Enabled isolate exactly what the feature flag costs:
+// same call, same repo, only the tracking bool differs. Uses a fresh local tracker so
+// the result doesn't depend on this file's init() having turned the global flag on.
+func BenchmarkTouchAndObserveDisabled(b *testing.B) {
+	tracker := &repoLabelTracker{current: map[string]struct{}{}, previous: map[string]struct{}{}}
+	repo := "bench-repo"
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		tracker.touchAndObserve(false, repo, func() {})
+	}
+}
+
+func BenchmarkTouchAndObserveEnabled(b *testing.B) {
+	tracker := &repoLabelTracker{current: map[string]struct{}{}, previous: map[string]struct{}{}}
+	repo := "bench-repo"
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		tracker.touchAndObserve(true, repo, func() {})
+	}
 }
 
 // BenchmarkExpireRepoMetrics measures one sweep's cost at a realistic cardinality
