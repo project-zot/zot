@@ -10,6 +10,7 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -2050,5 +2051,98 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 		So(len(scanCallMap), ShouldEqual, 1)
 		// Should be called a second time since the cache was purged
 		So(scanCallMap[scanPath], ShouldEqual, 2)
+	})
+}
+
+func TestScanManifestCallerCancellationDoesNotAffectSharedScan(t *testing.T) {
+	Convey("A caller whose ctx is canceled while waiting returns promptly "+
+		"without canceling or waiting for the shared scan", t, func() {
+		tempDir := t.TempDir()
+		logger := log.NewTestLogger()
+
+		storeController, err := initMockStoreWithFakeScannerDB(tempDir)
+		So(err, ShouldBeNil)
+
+		metaDB := mocks.MetaDBMock{}
+		img1 := CreateRandomImage()
+
+		metaDB.GetImageMetaFn = func(digest godigest.Digest) (types.ImageMeta, error) {
+			return map[string]types.ImageMeta{
+				img1.DigestStr(): img1.AsImageMeta(),
+			}[digest.String()], nil
+		}
+
+		scanner := NewScanner(storeController, metaDB, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository: "ghcr.io/project-zot/trivy-db",
+			},
+		}, logger)
+
+		var scanCalls int32
+
+		scanStarted := make(chan struct{})
+		release := make(chan struct{})
+
+		oldNewArtifactRunner := newArtifactRunner
+		newArtifactRunner = func(ctx context.Context, opts flag.Options, target artifact.TargetKind,
+			runnerOpts ...artifact.RunnerOption,
+		) (artifact.Runner, error) {
+			return fakeArtifactRunner{
+				scanImageFn: func(ctx context.Context, opts flag.Options) (trivyTypes.Report, error) {
+					atomic.AddInt32(&scanCalls, 1)
+					close(scanStarted)
+					<-release
+
+					return trivyTypes.Report{}, nil
+				},
+			}, nil
+		}
+		defer func() {
+			newArtifactRunner = oldNewArtifactRunner
+		}()
+
+		leaderDone := make(chan struct{})
+
+		// Leader: enters the flight group and blocks inside the fake runner until released.
+		go func() {
+			_, _, _ = scanner.scanManifest(context.Background(), "repo", img1.DigestStr())
+			close(leaderDone)
+		}()
+
+		select {
+		case <-scanStarted:
+		case <-time.After(2 * time.Second):
+			t.Fatal("leader scan did not start")
+		}
+
+		// Follower: joins the same singleflight key, then abandons the wait via its
+		// own ctx while the leader's scan is still blocked on release.
+		followerCtx, cancel := context.WithCancel(context.Background())
+		followerDone := make(chan error, 1)
+
+		go func() {
+			_, _, scanErr := scanner.scanManifest(followerCtx, "repo", img1.DigestStr())
+			followerDone <- scanErr
+		}()
+
+		cancel()
+
+		select {
+		case scanErr := <-followerDone:
+			So(errors.Is(scanErr, context.Canceled), ShouldBeTrue)
+		case <-time.After(2 * time.Second):
+			t.Fatal("follower did not return promptly after its ctx was canceled")
+		}
+
+		// The shared scan must be unaffected by the follower giving up.
+		close(release)
+
+		select {
+		case <-leaderDone:
+		case <-time.After(2 * time.Second):
+			t.Fatal("leader scan did not complete after being released")
+		}
+
+		So(atomic.LoadInt32(&scanCalls), ShouldEqual, 1)
 	})
 }
