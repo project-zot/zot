@@ -26,13 +26,14 @@ const (
 
 // parseStats tracks per-repo outcomes of a storage walk.
 type parseStats struct {
-	failedRepos  int // skipped on a StatIndex or ParseRepo error
-	partialRepos int // parsed, but a manifest blob was missing
+	failedRepos      int  // skipped on a StatIndex or ParseRepo error
+	partialRepos     int  // parsed, but a manifest blob was missing
+	suspectEmptyWalk bool // storage walk returned no repos while metaDB had some; deletion pass was skipped
 }
 
 // complete reports whether the walk fully populated the metaDB.
 func (s parseStats) complete() bool {
-	return s.failedRepos == 0 && s.partialRepos == 0
+	return s.failedRepos == 0 && s.partialRepos == 0 && !s.suspectEmptyWalk
 }
 
 // ParseStorage will sync all repos found in the rootdirectory of the oci layout that zot was deployed on with the
@@ -65,13 +66,26 @@ func parseStorage(metaDB mTypes.MetaDB, storeController stypes.StoreController, 
 		return parseStats{}, err
 	}
 
-	for _, repo := range getReposToBeDeleted(allStorageRepos, allMetaDBRepos) {
-		err := metaDB.DeleteRepoMeta(repo)
-		if err != nil {
-			log.Error().Err(err).Str("rootDir", storeController.GetImageStore(repo).RootDir()).Str("component", "metadb").
-				Str("repo", repo).Msg("failed to delete repo meta")
+	// A storage walk that comes back empty while metaDB already has entries is far more likely to be
+	// a failed or partial walk (a storage backend error swallowed upstream, a scoped/misconfigured
+	// prefix, transient unavailability) than every previously-known repo disappearing from storage at
+	// once. Deleting metaDB's repos on that signal turns a storage hiccup into permanent data loss, so
+	// skip the deletion pass and leave metaDB untouched rather than trusting an empty walk here.
+	if len(allStorageRepos) == 0 && len(allMetaDBRepos) > 0 {
+		stats.suspectEmptyWalk = true
 
-			return parseStats{}, err
+		log.Warn().Str("component", "metadb").Int("metaDBRepos", len(allMetaDBRepos)).
+			Msg("storage walk returned no repositories while metaDB has existing entries; " +
+				"skipping repo deletion to avoid wiping metaDB on a possibly-failed walk")
+	} else {
+		for _, repo := range getReposToBeDeleted(allStorageRepos, allMetaDBRepos) {
+			err := metaDB.DeleteRepoMeta(repo)
+			if err != nil {
+				log.Error().Err(err).Str("rootDir", storeController.GetImageStore(repo).RootDir()).Str("component", "metadb").
+					Str("repo", repo).Msg("failed to delete repo meta")
+
+				return parseStats{}, err
+			}
 		}
 	}
 
