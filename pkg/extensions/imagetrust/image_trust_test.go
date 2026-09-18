@@ -302,9 +302,9 @@ func TestVerifySignatures(t *testing.T) {
 				&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
 				options.KeyOpts{KeyRef: path.Join(cosignDir, "cosign.key"), PassFunc: generate.GetPass},
 				options.SignOptions{
-					Registry:          options.RegistryOptions{AllowInsecure: true},
-					AnnotationOptions: options.AnnotationOptions{Annotations: []string{"tag=" + tag}},
-					Upload:            true,
+					Registry:    options.RegistryOptions{AllowInsecure: true},
+					Annotations: []string{"tag=" + tag},
+					Upload:      true,
 				},
 				[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repo, image.DigestStr())})
 			So(err, ShouldBeNil)
@@ -592,9 +592,9 @@ func TestCosignSignatureDigestBinding(t *testing.T) {
 			&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
 			options.KeyOpts{KeyRef: path.Join(cosignDir, "cosign.key"), PassFunc: generate.GetPass},
 			options.SignOptions{
-				Registry:          options.RegistryOptions{AllowInsecure: true},
-				AnnotationOptions: options.AnnotationOptions{Annotations: []string{"tag=" + tag}},
-				Upload:            true,
+				Registry:    options.RegistryOptions{AllowInsecure: true},
+				Annotations: []string{"tag=" + tag},
+				Upload:      true,
 			},
 			[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repo, image.DigestStr())})
 		So(err, ShouldBeNil)
@@ -1619,9 +1619,9 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]any) { //nolin
 				&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
 				options.KeyOpts{KeyRef: path.Join(keyDir, "cosign.key"), PassFunc: generate.GetPass},
 				options.SignOptions{
-					Registry:          options.RegistryOptions{AllowInsecure: true},
-					AnnotationOptions: options.AnnotationOptions{Annotations: []string{"tag=" + tag}},
-					Upload:            true,
+					Registry:    options.RegistryOptions{AllowInsecure: true},
+					Annotations: []string{"tag=" + tag},
+					Upload:      true,
 				},
 				[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repo, image.DigestStr())})
 			So(err, ShouldBeNil)

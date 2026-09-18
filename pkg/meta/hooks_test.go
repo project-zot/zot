@@ -652,8 +652,9 @@ func TestOnDeleteManifest_OrphanedSignatureReferrerReleasesRepo(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			referrer := ispec.Manifest{
-				MediaType:    ispec.MediaTypeImageManifest,
-				ArtifactType: zcommon.ArtifactTypeCosignBundle,
+				SchemaVersion: 2,
+				MediaType:     ispec.MediaTypeImageManifest,
+				ArtifactType:  zcommon.ArtifactTypeCosignBundle,
 				Config: ispec.Descriptor{
 					MediaType: "application/vnd.oci.empty.v1+json",
 					Digest:    emptyConfigDigest,
@@ -666,7 +667,6 @@ func TestOnDeleteManifest_OrphanedSignatureReferrerReleasesRepo(t *testing.T) {
 					Size:      int64(len(subjectBody)),
 				},
 			}
-			referrer.SchemaVersion = 2
 
 			referrerBody, err := json.Marshal(referrer)
 			So(err, ShouldBeNil)

@@ -51,13 +51,11 @@ func TestBearerAuthorizer(t *testing.T) {
 
 			now := time.Now()
 			claims := api.ClaimsWithAccess{
-				Access: access,
-				RegisteredClaims: jwt.RegisteredClaims{
-					ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute * 1)),
-					IssuedAt:  jwt.NewNumericDate(now),
-					Issuer:    "Zot",
-					Audience:  []string{"Zot Registry"},
-				},
+				Access:    access,
+				ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute * 1)),
+				IssuedAt:  jwt.NewNumericDate(now),
+				Issuer:    "Zot",
+				Audience:  []string{"Zot Registry"},
 			}
 
 			token, err := jwt.NewWithClaims(signingMethod, claims).SignedString(privKey)
@@ -134,13 +132,11 @@ func TestBearerAuthorizer(t *testing.T) {
 				}
 
 				claims := api.ClaimsWithAccess{
-					Access: access,
-					RegisteredClaims: jwt.RegisteredClaims{
-						ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
-						IssuedAt:  jwt.NewNumericDate(now),
-						Issuer:    "Zot",
-						Audience:  []string{"Zot Registry"},
-					},
+					Access:    access,
+					ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+					IssuedAt:  jwt.NewNumericDate(now),
+					Issuer:    "Zot",
+					Audience:  []string{"Zot Registry"},
 				}
 
 				token, err := jwt.NewWithClaims(signingMethod, claims).SignedString(privKey)
@@ -167,13 +163,11 @@ func TestBearerAuthorizer(t *testing.T) {
 				}
 
 				claims := api.ClaimsWithAccess{
-					Access: access,
-					RegisteredClaims: jwt.RegisteredClaims{
-						ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
-						IssuedAt:  jwt.NewNumericDate(now),
-						Issuer:    "Zot",
-						Audience:  []string{"Zot Registry"},
-					},
+					Access:    access,
+					ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+					IssuedAt:  jwt.NewNumericDate(now),
+					Issuer:    "Zot",
+					Audience:  []string{"Zot Registry"},
 				}
 
 				token, err := jwt.NewWithClaims(signingMethod, claims).SignedString(privKey)
@@ -206,13 +200,11 @@ func TestBearerAuthorizer(t *testing.T) {
 				}
 
 				claims := api.ClaimsWithAccess{
-					Access: access,
-					RegisteredClaims: jwt.RegisteredClaims{
-						ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
-						IssuedAt:  jwt.NewNumericDate(now),
-						Issuer:    "Zot",
-						Audience:  []string{"Zot Registry"},
-					},
+					Access:    access,
+					ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+					IssuedAt:  jwt.NewNumericDate(now),
+					Issuer:    "Zot",
+					Audience:  []string{"Zot Registry"},
 				}
 
 				token, err := jwt.NewWithClaims(signingMethod, claims).SignedString(privKey)
@@ -245,13 +237,11 @@ func TestBearerAuthorizer(t *testing.T) {
 				}
 
 				claims := api.ClaimsWithAccess{
-					Access: access,
-					RegisteredClaims: jwt.RegisteredClaims{
-						ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
-						IssuedAt:  jwt.NewNumericDate(now),
-						Issuer:    "Zot",
-						Audience:  []string{"Zot Registry"},
-					},
+					Access:    access,
+					ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+					IssuedAt:  jwt.NewNumericDate(now),
+					Issuer:    "Zot",
+					Audience:  []string{"Zot Registry"},
 				}
 
 				token, err := jwt.NewWithClaims(signingMethod, claims).SignedString(privKey)
@@ -359,11 +349,9 @@ func TestBearerAuthorizerJWKSEdDSA(t *testing.T) {
 						Actions: []string{"pull"},
 					},
 				},
-				RegisteredClaims: jwt.RegisteredClaims{
-					ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute)),
-					IssuedAt:  jwt.NewNumericDate(now),
-					Issuer:    "https://test-issuer",
-				},
+				ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute)),
+				IssuedAt:  jwt.NewNumericDate(now),
+				Issuer:    "https://test-issuer",
 			}
 
 			token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
@@ -510,11 +498,9 @@ func TestBearerAuthorizerAuthenticate(t *testing.T) {
 
 		now := time.Now()
 		claims := api.ClaimsWithAccess{
-			Access: access,
-			RegisteredClaims: jwt.RegisteredClaims{
-				ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute)),
-				IssuedAt:  jwt.NewNumericDate(now),
-			},
+			Access:    access,
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute)),
+			IssuedAt:  jwt.NewNumericDate(now),
 		}
 
 		token, err := jwt.NewWithClaims(signingMethod, claims).SignedString(privKey)

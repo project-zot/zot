@@ -47,7 +47,7 @@ func TestScanBigTestFile(t *testing.T) {
 		conf.Storage.RootDirectory = tempDir
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: &extconf.SearchConfig{
-				BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+				Enable: &defaultVal,
 			},
 		}
 		ctlr := api.NewController(conf)
@@ -86,7 +86,7 @@ func TestScanningByDigest(t *testing.T) {
 		conf.Storage.RootDirectory = tempDir
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: &extconf.SearchConfig{
-				BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+				Enable: &defaultVal,
 			},
 		}
 		ctlr := api.NewController(conf)
@@ -156,11 +156,9 @@ func TestVulnerableLayer(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		config := ispec.Image{
-			Created: &created,
-			Platform: ispec.Platform{
-				Architecture: "amd64",
-				OS:           "linux",
-			},
+			Created:      &created,
+			Architecture: "amd64",
+			OS:           "linux",
 			Config: ispec.ImageConfig{
 				Env: []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"},
 				Cmd: []string{"/bin/sh"},
@@ -233,11 +231,9 @@ func TestVulnerableLayer(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		config := ispec.Image{
-			Created: &created,
-			Platform: ispec.Platform{
-				Architecture: "amd64",
-				OS:           "linux",
-			},
+			Created:      &created,
+			Architecture: "amd64",
+			OS:           "linux",
 			Config: ispec.ImageConfig{
 				Env: []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"},
 			},
@@ -318,11 +314,9 @@ func TestWithTempDirErrorHandling(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		config := ispec.Image{
-			Created: &created,
-			Platform: ispec.Platform{
-				Architecture: "amd64",
-				OS:           "linux",
-			},
+			Created:      &created,
+			Architecture: "amd64",
+			OS:           "linux",
 			Config: ispec.ImageConfig{
 				Env: []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"},
 				Cmd: []string{"/bin/sh"},

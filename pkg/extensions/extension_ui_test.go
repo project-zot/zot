@@ -38,7 +38,7 @@ func TestUIExtension(t *testing.T) {
 
 		conf.Extensions = &extconf.ExtensionConfig{}
 		conf.Extensions.UI = &extconf.UIConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defaultValue},
+			Enable: &defaultValue,
 		}
 		conf.Storage.RootDirectory = t.TempDir()
 

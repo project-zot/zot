@@ -2546,8 +2546,9 @@ func TestCleanRepoWithStaleManifestEntries(t *testing.T) {
 			},
 			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
 				if digest == existingDigest {
-					m := ispec.Manifest{}
-					m.SchemaVersion = 2
+					m := ispec.Manifest{
+						SchemaVersion: 2,
+					}
 					b, _ := json.Marshal(m)
 
 					return b, nil

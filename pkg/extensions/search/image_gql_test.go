@@ -38,7 +38,7 @@ func TestImageGql(t *testing.T) {
 		defaultVal := true
 
 		searchConfig := &extconf.SearchConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+			Enable: &defaultVal,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: searchConfig,

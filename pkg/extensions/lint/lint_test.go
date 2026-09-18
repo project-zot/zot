@@ -453,7 +453,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		enable := false
 
 		lintConfig := &extconf.LintConfig{
-			BaseConfig:           extconf.BaseConfig{Enable: &enable},
+			Enable:               &enable,
 			MandatoryAnnotations: []string{},
 		}
 
@@ -485,7 +485,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		enable := true
 
 		lintConfig := &extconf.LintConfig{
-			BaseConfig:           extconf.BaseConfig{Enable: &enable},
+			Enable:               &enable,
 			MandatoryAnnotations: []string{},
 		}
 
@@ -517,7 +517,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		enable := true
 
 		lintConfig := &extconf.LintConfig{
-			BaseConfig:           extconf.BaseConfig{Enable: &enable},
+			Enable:               &enable,
 			MandatoryAnnotations: []string{"annotation1", "annotation2", "annotation3"},
 		}
 
@@ -580,7 +580,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		enable := true
 
 		lintConfig := &extconf.LintConfig{
-			BaseConfig:           extconf.BaseConfig{Enable: &enable},
+			Enable:               &enable,
 			MandatoryAnnotations: []string{"annotation1", "annotation2", "annotation3"},
 		}
 
@@ -642,7 +642,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		enable := true
 
 		lintConfig := &extconf.LintConfig{
-			BaseConfig:           extconf.BaseConfig{Enable: &enable},
+			Enable:               &enable,
 			MandatoryAnnotations: []string{"annotation1", "annotation2", "annotation3"},
 		}
 
@@ -706,7 +706,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		enable := true
 
 		lintConfig := &extconf.LintConfig{
-			BaseConfig:           extconf.BaseConfig{Enable: &enable},
+			Enable:               &enable,
 			MandatoryAnnotations: []string{"annotation1", "annotation2", "annotation3"},
 		}
 
@@ -779,7 +779,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		enable := true
 
 		lintConfig := &extconf.LintConfig{
-			BaseConfig:           extconf.BaseConfig{Enable: &enable},
+			Enable:               &enable,
 			MandatoryAnnotations: []string{"annotation1", "annotation2", "annotation3"},
 		}
 

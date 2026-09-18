@@ -249,10 +249,8 @@ func TestRepoListWithNewestImage(t *testing.T) {
 							},
 							StarCount: 100,
 							LastUpdatedImage: &mTypes.LastUpdatedImage{
-								Descriptor: mTypes.Descriptor{
-									Digest:    img1.DigestStr(),
-									MediaType: ispec.MediaTypeImageManifest,
-								},
+								Digest:      img1.DigestStr(),
+								MediaType:   ispec.MediaTypeImageManifest,
 								Tag:         "1.0.1",
 								LastUpdated: &createTime,
 							},
@@ -274,10 +272,8 @@ func TestRepoListWithNewestImage(t *testing.T) {
 							},
 							StarCount: 100,
 							LastUpdatedImage: &mTypes.LastUpdatedImage{
-								Descriptor: mTypes.Descriptor{
-									Digest:    img2.DigestStr(),
-									MediaType: ispec.MediaTypeImageManifest,
-								},
+								Digest:      img2.DigestStr(),
+								MediaType:   ispec.MediaTypeImageManifest,
 								Tag:         "1.0.2",
 								LastUpdated: &createTime2,
 							},
@@ -1065,29 +1061,23 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 	}
 
 	image1 := CreateImageWith().RandomLayers(5, 2).ImageConfig(ispec.Image{
-		Created: DateRef(2008, 1, 1, 12, 0, 0, 0, time.UTC),
-		Platform: ispec.Platform{
-			Architecture: AMD,
-			OS:           LINUX,
-		},
+		Created:      DateRef(2008, 1, 1, 12, 0, 0, 0, time.UTC),
+		Architecture: AMD,
+		OS:           LINUX,
 	}).Build()
 	digest1 := image1.Digest()
 
 	image2 := CreateImageWith().RandomLayers(5, 2).ImageConfig(ispec.Image{
-		Created: DateRef(2009, 1, 1, 12, 0, 0, 0, time.UTC),
-		Platform: ispec.Platform{
-			Architecture: AMD,
-			OS:           LINUX,
-		},
+		Created:      DateRef(2009, 1, 1, 12, 0, 0, 0, time.UTC),
+		Architecture: AMD,
+		OS:           LINUX,
 	}).Build()
 	digest2 := image2.Digest()
 
 	image3 := CreateImageWith().RandomLayers(5, 2).ImageConfig(ispec.Image{
-		Created: DateRef(2010, 1, 1, 12, 0, 0, 0, time.UTC),
-		Platform: ispec.Platform{
-			Architecture: ARM,
-			OS:           LINUX,
-		},
+		Created:      DateRef(2010, 1, 1, 12, 0, 0, 0, time.UTC),
+		Architecture: ARM,
+		OS:           LINUX,
 	}).Build()
 	digest3 := image3.Digest()
 
@@ -3174,7 +3164,7 @@ func TestUtils(t *testing.T) {
 						Manifests: []mTypes.ManifestMeta{
 							{
 								Digest: manifestDigest,
-								Config: ispec.Image{Platform: ispec.Platform{OS: "linux", Architecture: "amd64"}},
+								Config: ispec.Image{OS: "linux", Architecture: "amd64"},
 							},
 						},
 					}, nil
@@ -3251,7 +3241,7 @@ func TestFilterByTagInfoDockerMediaTypes(t *testing.T) {
 						MediaType: dockerList.MediaTypeManifestList,
 					},
 					Manifests: []cvemodel.DescriptorInfo{
-						{Descriptor: cvemodel.Descriptor{Digest: childDigest}},
+						{Digest: childDigest},
 					},
 				},
 			})

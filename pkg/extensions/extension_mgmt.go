@@ -66,7 +66,7 @@ func (auth Auth) MarshalJSON() ([]byte, error) {
 		auth.HTPasswd = nil
 		auth.OpenID = nil
 
-		return json.Marshal((localAuth)(auth))
+		return json.Marshal(localAuth(auth))
 	}
 
 	// HTPasswd is a value on AuthConfig, so MarshalThroughStruct always yields a
@@ -83,7 +83,7 @@ func (auth Auth) MarshalJSON() ([]byte, error) {
 
 	auth.LDAP = nil
 
-	return json.Marshal((localAuth)(auth))
+	return json.Marshal(localAuth(auth))
 }
 
 func SetupMgmtRoutes(conf *config.Config, router *mux.Router, log log.Logger) {

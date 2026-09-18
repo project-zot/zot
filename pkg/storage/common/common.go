@@ -19,7 +19,6 @@ import (
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/schema"
-	imeta "github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	jsonschemaV5 "github.com/santhosh-tekuri/jsonschema/v5"
 
@@ -906,19 +905,19 @@ func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godiges
 	}
 
 	return ispec.Index{
-		Versioned:   imeta.Versioned{SchemaVersion: storageConstants.SchemaVersion},
-		MediaType:   ispec.MediaTypeImageIndex,
-		Manifests:   result,
-		Annotations: map[string]string{},
+		SchemaVersion: storageConstants.SchemaVersion,
+		MediaType:     ispec.MediaTypeImageIndex,
+		Manifests:     result,
+		Annotations:   map[string]string{},
 	}, nil
 }
 
 func newEmptyReferrersIndex() ispec.Index {
 	return ispec.Index{
-		Versioned:   imeta.Versioned{SchemaVersion: storageConstants.SchemaVersion},
-		MediaType:   ispec.MediaTypeImageIndex,
-		Manifests:   []ispec.Descriptor{},
-		Annotations: map[string]string{},
+		SchemaVersion: storageConstants.SchemaVersion,
+		MediaType:     ispec.MediaTypeImageIndex,
+		Manifests:     []ispec.Descriptor{},
+		Annotations:   map[string]string{},
 	}
 }
 

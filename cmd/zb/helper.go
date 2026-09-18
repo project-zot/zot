@@ -19,7 +19,6 @@ import (
 
 	"github.com/google/uuid"
 	godigest "github.com/opencontainers/go-digest"
-	imeta "github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"gopkg.in/resty.v1"
 
@@ -511,9 +510,7 @@ func pushMonolithImage(workdir, url, trepo string, repos []string, config testCo
 
 	// create a manifest
 	manifest := ispec.Manifest{
-		Versioned: imeta.Versioned{
-			SchemaVersion: defaultSchemaVersion,
-		},
+		SchemaVersion: defaultSchemaVersion,
 		Config: ispec.Descriptor{
 			MediaType: "application/vnd.oci.image.config.v1+json",
 			Digest:    cdigest,
@@ -717,9 +714,7 @@ func pushMonolithAndCollect(workdir, url, trepo string, count int,
 
 		// create a manifest
 		manifest := ispec.Manifest{
-			Versioned: imeta.Versioned{
-				SchemaVersion: defaultSchemaVersion,
-			},
+			SchemaVersion: defaultSchemaVersion,
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.oci.image.config.v1+json",
 				Digest:    cdigest,
@@ -1000,9 +995,7 @@ func pushChunkAndCollect(workdir, url, trepo string, count int,
 
 		// create a manifest
 		manifest := ispec.Manifest{
-			Versioned: imeta.Versioned{
-				SchemaVersion: defaultSchemaVersion,
-			},
+			SchemaVersion: defaultSchemaVersion,
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.oci.image.config.v1+json",
 				Digest:    cdigest,
@@ -1133,12 +1126,10 @@ func getImageConfig() ([]byte, godigest.Digest) {
 	createdTime := time.Date(2011, time.Month(1), 1, 1, 1, 1, 0, time.UTC)
 
 	config := ispec.Image{
-		Created: &createdTime,
-		Author:  "ZotUser",
-		Platform: ispec.Platform{
-			OS:           "linux",
-			Architecture: "amd64",
-		},
+		Created:      &createdTime,
+		Author:       "ZotUser",
+		OS:           "linux",
+		Architecture: "amd64",
 		RootFS: ispec.RootFS{
 			Type:    "layers",
 			DiffIDs: []godigest.Digest{},

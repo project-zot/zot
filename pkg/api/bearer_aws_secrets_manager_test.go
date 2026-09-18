@@ -398,10 +398,8 @@ func TestAWSSecretsManagerBearerAuthorizerE2E(t *testing.T) {
 						Actions: []string{"pull"},
 					},
 				},
-				RegisteredClaims: jwt.RegisteredClaims{
-					ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute)),
-					IssuedAt:  jwt.NewNumericDate(now),
-				},
+				ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute)),
+				IssuedAt:  jwt.NewNumericDate(now),
 			}
 
 			token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
@@ -423,10 +421,8 @@ func TestAWSSecretsManagerBearerAuthorizerE2E(t *testing.T) {
 		Convey("Token without kid header is rejected", func() {
 			now := time.Now()
 			claims := api.ClaimsWithAccess{
-				RegisteredClaims: jwt.RegisteredClaims{
-					ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute)),
-					IssuedAt:  jwt.NewNumericDate(now),
-				},
+				ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute)),
+				IssuedAt:  jwt.NewNumericDate(now),
 			}
 
 			token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
@@ -442,10 +438,8 @@ func TestAWSSecretsManagerBearerAuthorizerE2E(t *testing.T) {
 		Convey("Token with unknown kid is rejected", func() {
 			now := time.Now()
 			claims := api.ClaimsWithAccess{
-				RegisteredClaims: jwt.RegisteredClaims{
-					ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute)),
-					IssuedAt:  jwt.NewNumericDate(now),
-				},
+				ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute)),
+				IssuedAt:  jwt.NewNumericDate(now),
 			}
 
 			token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)

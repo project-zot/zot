@@ -264,8 +264,8 @@ func getTagInfoForManifest(tag, manifestDigestStr string, metaDB mTypes.MetaDB) 
 		Descriptor: cvemodel.Descriptor{Digest: manifestDigest, MediaType: ispec.MediaTypeImageManifest},
 		Manifests: []cvemodel.DescriptorInfo{
 			{
-				Descriptor: cvemodel.Descriptor{Digest: manifestDigest, MediaType: ispec.MediaTypeImageManifest},
-				Timestamp:  lastUpdated,
+				Digest: manifestDigest, MediaType: ispec.MediaTypeImageManifest,
+				Timestamp: lastUpdated,
 			},
 		},
 		Timestamp: lastUpdated,

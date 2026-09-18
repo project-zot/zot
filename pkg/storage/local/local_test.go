@@ -21,7 +21,6 @@ import (
 
 	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
-	imeta "github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -138,9 +137,9 @@ func TestStorageFSAPIs(t *testing.T) {
 					},
 				},
 				Annotations: annotationsMap,
-			}
 
-			manifest.SchemaVersion = 2
+				SchemaVersion: 2,
+			}
 			manifestBuf, err := json.Marshal(manifest)
 			So(err, ShouldBeNil)
 
@@ -1271,8 +1270,9 @@ func TestDedupeLinks(t *testing.T) {
 						Size:      int64(buflen),
 					},
 				},
+
+				SchemaVersion: 2,
 			}
-			manifest.SchemaVersion = 2
 			manifestBuf, err := json.Marshal(manifest)
 			So(err, ShouldBeNil)
 
@@ -1335,8 +1335,9 @@ func TestDedupeLinks(t *testing.T) {
 						Size:      int64(buflen),
 					},
 				},
+
+				SchemaVersion: 2,
 			}
-			manifest.SchemaVersion = 2
 			manifestBuf, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
 
@@ -2919,8 +2920,9 @@ func TestGarbageCollectErrors(t *testing.T) {
 							Size:      int64(bsize1),
 						},
 					},
+
+					SchemaVersion: 2,
 				}
-				manifest.SchemaVersion = 2
 				content, err = json.Marshal(manifest)
 				So(err, ShouldBeNil)
 
@@ -3017,8 +3019,9 @@ func TestGarbageCollectErrors(t *testing.T) {
 						Size:      int64(bsize1),
 					},
 				},
+
+				SchemaVersion: 2,
 			}
-			manifest.SchemaVersion = 2
 			content, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
 
@@ -3077,8 +3080,9 @@ func putUntaggedManifestForGCErrors(imgStore storageTypes.ImageStore, repoName s
 				Size:      int64(layerSize),
 			},
 		},
+
+		SchemaVersion: 2,
 	}
-	manifest.SchemaVersion = 2
 	content, err := json.Marshal(manifest)
 	So(err, ShouldBeNil)
 
@@ -4076,10 +4080,8 @@ func NewRandomImgManifest(data []byte, cdigest, ldigest godigest.Digest, cblob, 
 				Size:      int64(len(lblob)),
 			},
 		},
-		Annotations: annotationsMap,
-		Versioned: imeta.Versioned{
-			SchemaVersion: schemaVersion,
-		},
+		Annotations:   annotationsMap,
+		SchemaVersion: schemaVersion,
 	}
 
 	return &manifest, nil
@@ -4139,7 +4141,7 @@ func TestGetNextDigestWithBlobPathsNestedRepo(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(os.WriteFile(path.Join(repoDir, ispec.ImageLayoutFile), ilBuf, storageConstants.DefaultFilePerms), ShouldBeNil)
 
-			idxBuf, err := json.Marshal(ispec.Index{Versioned: imeta.Versioned{SchemaVersion: 2}})
+			idxBuf, err := json.Marshal(ispec.Index{SchemaVersion: 2})
 			So(err, ShouldBeNil)
 			So(os.WriteFile(path.Join(repoDir, ispec.ImageIndexFile), idxBuf, storageConstants.DefaultFilePerms), ShouldBeNil)
 
@@ -4207,7 +4209,7 @@ func TestBlobPathsByDigest(t *testing.T) {
 			So(os.WriteFile(path.Join(repoDir, ispec.ImageLayoutFile), ilBuf, storageConstants.DefaultFilePerms),
 				ShouldBeNil)
 
-			idxBuf, err := json.Marshal(ispec.Index{Versioned: imeta.Versioned{SchemaVersion: 2}})
+			idxBuf, err := json.Marshal(ispec.Index{SchemaVersion: 2})
 			So(err, ShouldBeNil)
 			So(os.WriteFile(path.Join(repoDir, ispec.ImageIndexFile), idxBuf, storageConstants.DefaultFilePerms),
 				ShouldBeNil)

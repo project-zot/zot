@@ -316,7 +316,7 @@ func (cloud *PublicKeyAWSStorage) GetPublicKeys() ([]string, error) {
 	publicKeys := []string{}
 
 	for _, secret := range secrets.SecretList {
-		publicKeys = append(publicKeys, *(secret.Name))
+		publicKeys = append(publicKeys, *secret.Name)
 	}
 
 	return publicKeys, nil

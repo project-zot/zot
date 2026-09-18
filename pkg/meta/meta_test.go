@@ -20,7 +20,6 @@ import (
 	"github.com/notaryproject/notation-go"
 	"github.com/notaryproject/notation-go/signer"
 	godigest "github.com/opencontainers/go-digest"
-	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -518,15 +517,13 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			imgData := CreateImageWith().
 				DefaultLayers().
 				ImageConfig(ispec.Image{
-					Created: DateRef(2000, 10, 10, 10, 10, 10, 10, time.UTC),
-					Author:  "author",
-					Platform: ispec.Platform{
-						Architecture: "arch",
-						OS:           "os",
-						OSVersion:    "os-vers",
-						OSFeatures:   []string{"os-features"},
-						Variant:      "variant",
-					},
+					Created:      DateRef(2000, 10, 10, 10, 10, 10, 10, time.UTC),
+					Author:       "author",
+					Architecture: "arch",
+					OS:           "os",
+					OSVersion:    "os-vers",
+					OSFeatures:   []string{"os-features"},
+					Variant:      "variant",
 					Config: ispec.ImageConfig{
 						Labels:       map[string]string{"test": "test"},
 						Env:          []string{"test"},
@@ -620,8 +617,8 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			// 1. The nested index (with missing manifests)
 			// 2. The valid manifest
 			topLevelIndexContent := ispec.Index{
-				Versioned: specs.Versioned{SchemaVersion: 2},
-				MediaType: ispec.MediaTypeImageIndex,
+				SchemaVersion: 2,
+				MediaType:     ispec.MediaTypeImageIndex,
 				Manifests: []ispec.Descriptor{
 					{
 						MediaType: ispec.MediaTypeImageManifest,
@@ -703,11 +700,11 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 			multiImages := []Image{
 				CreateImageWith().RandomLayers(2, 10).
-					ImageConfig(ispec.Image{Platform: ispec.Platform{OS: "multi-os1", Architecture: "multi-arch1"}}).
+					ImageConfig(ispec.Image{OS: "multi-os1", Architecture: "multi-arch1"}).
 					Annotations(map[string]string{ispec.AnnotationVendor: "vendor1"}).
 					Build(),
 				CreateImageWith().RandomLayers(2, 10).
-					ImageConfig(ispec.Image{Platform: ispec.Platform{OS: "multi-os2", Architecture: "multi-arch2"}}).
+					ImageConfig(ispec.Image{OS: "multi-os2", Architecture: "multi-arch2"}).
 					Annotations(map[string]string{ispec.AnnotationVendor: "vendor2"}).
 					Build(),
 			}
@@ -783,7 +780,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 			Convey("Check repo blobs info for manifest image", func() {
 				image1 := CreateImageWith().RandomLayers(2, 10).
-					ImageConfig(ispec.Image{Platform: ispec.Platform{OS: "os1", Architecture: "arch1"}}).
+					ImageConfig(ispec.Image{OS: "os1", Architecture: "arch1"}).
 					Annotations(map[string]string{ispec.AnnotationVendor: "vendor1"}).
 					Build()
 				imageMeta1 := image1.AsImageMeta()
@@ -802,7 +799,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 				image2 := CreateImageWith().
 					LayerBlobs(image1.Layers).
-					ImageConfig(ispec.Image{Platform: ispec.Platform{OS: "os2", Architecture: "arch2"}}).
+					ImageConfig(ispec.Image{OS: "os2", Architecture: "arch2"}).
 					Annotations(map[string]string{ispec.AnnotationVendor: "vendor2"}).
 					Build()
 				imageMeta2 := image2.AsImageMeta()
@@ -983,7 +980,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 			image1 := CreateImageWith().
 				RandomLayers(2, 10).
-				ImageConfig(ispec.Image{Platform: ispec.Platform{OS: "os1", Architecture: "arch1"}}).
+				ImageConfig(ispec.Image{OS: "os1", Architecture: "arch1"}).
 				Annotations(map[string]string{ispec.AnnotationVendor: "vendor1"}).
 				Build()
 			imageMeta1 := image1.AsImageMeta()
@@ -991,7 +988,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 			image2 := CreateImageWith().
 				LayerBlobs(image1.Layers).
-				ImageConfig(ispec.Image{Platform: ispec.Platform{OS: "os2", Architecture: "arch2"}}).
+				ImageConfig(ispec.Image{OS: "os2", Architecture: "arch2"}).
 				Annotations(map[string]string{ispec.AnnotationVendor: "vendor2", "annotation": "test"}).
 				Build()
 			imageMeta2 := image2.AsImageMeta()
@@ -1083,21 +1080,21 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 			image1 := CreateImageWith().
 				RandomLayers(2, 10).
-				ImageConfig(ispec.Image{Platform: ispec.Platform{OS: "os1", Architecture: "arch1"}}).
+				ImageConfig(ispec.Image{OS: "os1", Architecture: "arch1"}).
 				Annotations(map[string]string{ispec.AnnotationVendor: "vendor1"}).
 				Build()
 			imageMeta1 := image1.AsImageMeta()
 
 			image2 := CreateImageWith().
 				LayerBlobs(image1.Layers).
-				ImageConfig(ispec.Image{Platform: ispec.Platform{OS: "os2", Architecture: "arch2"}}).
+				ImageConfig(ispec.Image{OS: "os2", Architecture: "arch2"}).
 				Annotations(map[string]string{ispec.AnnotationVendor: "vendor2"}).
 				Build()
 			imageMeta2 := image2.AsImageMeta()
 
 			image3 := CreateImageWith().
 				LayerBlobs(image1.Layers).
-				ImageConfig(ispec.Image{Platform: ispec.Platform{OS: "os3", Architecture: "arch3"}}).
+				ImageConfig(ispec.Image{OS: "os3", Architecture: "arch3"}).
 				Annotations(map[string]string{ispec.AnnotationVendor: "vendor3"}).
 				Build()
 			imageMeta3 := image3.AsImageMeta()
@@ -2967,8 +2964,8 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			So(err, ShouldBeNil)
 
 			indexMultiArchMiddle1 := ispec.Index{
-				Versioned: specs.Versioned{SchemaVersion: 2},
-				MediaType: ispec.MediaTypeImageIndex,
+				SchemaVersion: 2,
+				MediaType:     ispec.MediaTypeImageIndex,
 				Manifests: []ispec.Descriptor{
 					{
 						Digest:    multiArchBottom11.IndexDescriptor.Digest,
@@ -3009,8 +3006,8 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			So(err, ShouldBeNil)
 
 			indexMultiArchMiddle2 := ispec.Index{
-				Versioned: specs.Versioned{SchemaVersion: 2},
-				MediaType: ispec.MediaTypeImageIndex,
+				SchemaVersion: 2,
+				MediaType:     ispec.MediaTypeImageIndex,
 				Manifests: []ispec.Descriptor{
 					{
 						Digest:    multiArchBottom21.IndexDescriptor.Digest,
@@ -3047,8 +3044,8 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			So(err, ShouldBeNil)
 
 			indexMultiArchTop := ispec.Index{
-				Versioned: specs.Versioned{SchemaVersion: 2},
-				MediaType: ispec.MediaTypeImageIndex,
+				SchemaVersion: 2,
+				MediaType:     ispec.MediaTypeImageIndex,
 				Manifests: []ispec.Descriptor{
 					{
 						Digest:    indexMultiArchMiddle1Digest,

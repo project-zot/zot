@@ -97,8 +97,8 @@ func TestBearerAuthCatalogRequiresLegacyScope(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			token, err := jwt.NewWithClaims(jwt.SigningMethodEdDSA, ClaimsWithAccess{
-				RegisteredClaims: jwt.RegisteredClaims{ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour))},
-				Access:           testCase.access,
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+				Access:    testCase.access,
 			}).SignedString(privateKey)
 			if err != nil {
 				t.Fatal(err)

@@ -22,7 +22,6 @@ import (
 	regTypes "github.com/google/go-containerregistry/pkg/v1/types"
 	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
-	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
@@ -175,11 +174,9 @@ func verifyImageSummaryFields(t *testing.T,
 func uploadNewRepoTag(tag string, repoName string, baseURL string, layers [][]byte) error {
 	created := time.Now()
 	config := ispec.Image{
-		Created: &created,
-		Platform: ispec.Platform{
-			Architecture: "amd64",
-			OS:           "linux",
-		},
+		Created:      &created,
+		Architecture: "amd64",
+		OS:           "linux",
 		RootFS: ispec.RootFS{
 			Type:    "layers",
 			DiffIDs: []godigest.Digest{},
@@ -193,9 +190,7 @@ func uploadNewRepoTag(tag string, repoName string, baseURL string, layers [][]by
 	configDigest := godigest.FromBytes(configBlob)
 
 	manifest := ispec.Manifest{
-		Versioned: specs.Versioned{
-			SchemaVersion: 2,
-		},
+		SchemaVersion: 2,
 		Config: ispec.Descriptor{
 			MediaType: "application/vnd.oci.image.config.v1+json",
 			Digest:    configDigest,
@@ -364,7 +359,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		conf.Extensions.Search.CVE = nil
@@ -665,8 +660,8 @@ func TestRepoListWithNewestImage(t *testing.T) {
 			Trivy:          trivyConfig,
 		}
 		searchConfig := &extconf.SearchConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
-			CVE:        cveConfig,
+			Enable: &defaultVal,
+			CVE:    cveConfig,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: searchConfig,
@@ -794,11 +789,9 @@ func TestGetReferrersGQL(t *testing.T) {
 
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 			Lint: &extconf.LintConfig{
-				BaseConfig: extconf.BaseConfig{
-					Enable: &defaultVal,
-				},
+				Enable: &defaultVal,
 			},
 		}
 
@@ -916,11 +909,9 @@ func TestGetReferrersGQL(t *testing.T) {
 
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 			Lint: &extconf.LintConfig{
-				BaseConfig: extconf.BaseConfig{
-					Enable: &defaultVal,
-				},
+				Enable: &defaultVal,
 			},
 		}
 
@@ -979,9 +970,9 @@ func TestGetReferrersGQL(t *testing.T) {
 			Annotations: map[string]string{
 				"com.artifact.format": "test",
 			},
-		}
 
-		artifactManifest.SchemaVersion = 2
+			SchemaVersion: 2,
+		}
 
 		artifactManifestBlob, err := json.Marshal(artifactManifest)
 		So(err, ShouldBeNil)
@@ -1042,11 +1033,9 @@ func TestGetReferrersGQL(t *testing.T) {
 
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 			Lint: &extconf.LintConfig{
-				BaseConfig: extconf.BaseConfig{
-					Enable: &defaultVal,
-				},
+				Enable: &defaultVal,
 			},
 		}
 
@@ -1137,7 +1126,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		conf.Storage.RootDirectory = tempDir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		conf.Extensions.Search.CVE = nil
@@ -1234,7 +1223,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		conf.Extensions.Search.CVE = nil
@@ -1465,7 +1454,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		conf.Storage.GC = false
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		conf.Extensions.Search.CVE = nil
@@ -1538,7 +1527,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		conf.Extensions.Search.CVE = nil
@@ -1610,7 +1599,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		conf.Extensions.Search.CVE = nil
@@ -1625,17 +1614,13 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		// ------- Create test images
 		indexSubImage11 := CreateImageWith().RandomLayers(1, 100).ImageConfig(ispec.Image{
-			Platform: ispec.Platform{
-				OS:           "os11",
-				Architecture: "arch11",
-			},
+			OS:           "os11",
+			Architecture: "arch11",
 		}).Build()
 
 		indexSubImage12 := CreateImageWith().RandomLayers(1, 100).ImageConfig(ispec.Image{
-			Platform: ispec.Platform{
-				OS:           "os12",
-				Architecture: "arch12",
-			},
+			OS:           "os12",
+			Architecture: "arch12",
 		}).Build()
 
 		multiImage1 := CreateMultiarchWith().Images([]Image{
@@ -1643,24 +1628,18 @@ func TestExpandedRepoInfo(t *testing.T) {
 		}).Build()
 
 		indexSubImage21 := CreateImageWith().RandomLayers(1, 100).ImageConfig(ispec.Image{
-			Platform: ispec.Platform{
-				OS:           "os21",
-				Architecture: "arch21",
-			},
+			OS:           "os21",
+			Architecture: "arch21",
 		}).Build()
 
 		indexSubImage22 := CreateImageWith().RandomLayers(1, 100).ImageConfig(ispec.Image{
-			Platform: ispec.Platform{
-				OS:           "os22",
-				Architecture: "arch22",
-			},
+			OS:           "os22",
+			Architecture: "arch22",
 		}).Build()
 
 		indexSubImage23 := CreateImageWith().RandomLayers(1, 100).ImageConfig(ispec.Image{
-			Platform: ispec.Platform{
-				OS:           "os23",
-				Architecture: "arch23",
-			},
+			OS:           "os23",
+			Architecture: "arch23",
 		}).Build()
 
 		multiImage2 := CreateMultiarchWith().Images([]Image{
@@ -1742,7 +1721,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		conf.Extensions.Search.CVE = nil
@@ -1989,7 +1968,7 @@ func TestDerivedImageList(t *testing.T) {
 	conf.Storage.RootDirectory = rootDir
 	defaultVal := true
 	conf.Extensions = &extconf.ExtensionConfig{
-		Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+		Search: &extconf.SearchConfig{Enable: &defaultVal},
 	}
 
 	conf.Extensions.Search.CVE = nil
@@ -2003,10 +1982,8 @@ func TestDerivedImageList(t *testing.T) {
 	Convey("Test dependency list for image working", t, func() {
 		// create test images
 		config := ispec.Image{
-			Platform: ispec.Platform{
-				Architecture: "amd64",
-				OS:           "linux",
-			},
+			Architecture: "amd64",
+			OS:           "linux",
 			RootFS: ispec.RootFS{
 				Type:    "layers",
 				DiffIDs: []godigest.Digest{},
@@ -2026,9 +2003,7 @@ func TestDerivedImageList(t *testing.T) {
 		}
 
 		manifest := ispec.Manifest{
-			Versioned: specs.Versioned{
-				SchemaVersion: 2,
-			},
+			SchemaVersion: 2,
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.oci.image.config.v1+json",
 				Digest:    configDigest,
@@ -2066,9 +2041,7 @@ func TestDerivedImageList(t *testing.T) {
 
 		// create image with the same layers
 		manifest = ispec.Manifest{
-			Versioned: specs.Versioned{
-				SchemaVersion: 2,
-			},
+			SchemaVersion: 2,
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.oci.image.config.v1+json",
 				Digest:    configDigest,
@@ -2111,9 +2084,7 @@ func TestDerivedImageList(t *testing.T) {
 		}
 
 		manifest = ispec.Manifest{
-			Versioned: specs.Versioned{
-				SchemaVersion: 2,
-			},
+			SchemaVersion: 2,
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.oci.image.config.v1+json",
 				Digest:    configDigest,
@@ -2155,9 +2126,7 @@ func TestDerivedImageList(t *testing.T) {
 		}
 
 		manifest = ispec.Manifest{
-			Versioned: specs.Versioned{
-				SchemaVersion: 2,
-			},
+			SchemaVersion: 2,
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.oci.image.config.v1+json",
 				Digest:    configDigest,
@@ -2204,9 +2173,7 @@ func TestDerivedImageList(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		manifest = ispec.Manifest{
-			Versioned: specs.Versioned{
-				SchemaVersion: 2,
-			},
+			SchemaVersion: 2,
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.oci.image.config.v1+json",
 				Digest:    configDigest,
@@ -2382,7 +2349,7 @@ func TestDerivedImageListNoRepos(t *testing.T) {
 		conf.Storage.RootDirectory = t.TempDir()
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		conf.Extensions.Search.CVE = nil
@@ -2458,7 +2425,7 @@ func TestBaseImageList(t *testing.T) {
 	conf.Storage.RootDirectory = rootDir
 	defaultVal := true
 	conf.Extensions = &extconf.ExtensionConfig{
-		Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+		Search: &extconf.SearchConfig{Enable: &defaultVal},
 	}
 
 	conf.Extensions.Search.CVE = nil
@@ -2472,10 +2439,8 @@ func TestBaseImageList(t *testing.T) {
 	Convey("Test base image list for image working", t, func() {
 		// create test images
 		config := ispec.Image{
-			Platform: ispec.Platform{
-				Architecture: "amd64",
-				OS:           "linux",
-			},
+			Architecture: "amd64",
+			OS:           "linux",
 			RootFS: ispec.RootFS{
 				Type:    "layers",
 				DiffIDs: []godigest.Digest{},
@@ -2496,9 +2461,7 @@ func TestBaseImageList(t *testing.T) {
 		}
 
 		manifest := ispec.Manifest{
-			Versioned: specs.Versioned{
-				SchemaVersion: 2,
-			},
+			SchemaVersion: 2,
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.oci.image.config.v1+json",
 				Digest:    configDigest,
@@ -2541,9 +2504,7 @@ func TestBaseImageList(t *testing.T) {
 
 		// create image with the same layers
 		manifest = ispec.Manifest{
-			Versioned: specs.Versioned{
-				SchemaVersion: 2,
-			},
+			SchemaVersion: 2,
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.oci.image.config.v1+json",
 				Digest:    configDigest,
@@ -2591,9 +2552,7 @@ func TestBaseImageList(t *testing.T) {
 		}
 
 		manifest = ispec.Manifest{
-			Versioned: specs.Versioned{
-				SchemaVersion: 2,
-			},
+			SchemaVersion: 2,
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.oci.image.config.v1+json",
 				Digest:    configDigest,
@@ -2630,9 +2589,7 @@ func TestBaseImageList(t *testing.T) {
 		}
 
 		manifest = ispec.Manifest{
-			Versioned: specs.Versioned{
-				SchemaVersion: 2,
-			},
+			SchemaVersion: 2,
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.oci.image.config.v1+json",
 				Digest:    configDigest,
@@ -2662,9 +2619,7 @@ func TestBaseImageList(t *testing.T) {
 		}
 
 		manifest = ispec.Manifest{
-			Versioned: specs.Versioned{
-				SchemaVersion: 2,
-			},
+			SchemaVersion: 2,
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.oci.image.config.v1+json",
 				Digest:    configDigest,
@@ -2694,9 +2649,7 @@ func TestBaseImageList(t *testing.T) {
 		}
 
 		manifest = ispec.Manifest{
-			Versioned: specs.Versioned{
-				SchemaVersion: 2,
-			},
+			SchemaVersion: 2,
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.oci.image.config.v1+json",
 				Digest:    configDigest,
@@ -2728,9 +2681,7 @@ func TestBaseImageList(t *testing.T) {
 		}
 
 		manifest = ispec.Manifest{
-			Versioned: specs.Versioned{
-				SchemaVersion: 2,
-			},
+			SchemaVersion: 2,
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.oci.image.config.v1+json",
 				Digest:    configDigest,
@@ -2763,9 +2714,7 @@ func TestBaseImageList(t *testing.T) {
 		}
 
 		manifest = ispec.Manifest{
-			Versioned: specs.Versioned{
-				SchemaVersion: 2,
-			},
+			SchemaVersion: 2,
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.oci.image.config.v1+json",
 				Digest:    configDigest,
@@ -2806,9 +2755,7 @@ func TestBaseImageList(t *testing.T) {
 		}
 
 		manifest = ispec.Manifest{
-			Versioned: specs.Versioned{
-				SchemaVersion: 2,
-			},
+			SchemaVersion: 2,
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.oci.image.config.v1+json",
 				Digest:    configDigest,
@@ -2861,9 +2808,7 @@ func TestBaseImageList(t *testing.T) {
 		}
 
 		manifest = ispec.Manifest{
-			Versioned: specs.Versioned{
-				SchemaVersion: 2,
-			},
+			SchemaVersion: 2,
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.oci.image.config.v1+json",
 				Digest:    configDigest,
@@ -3025,7 +2970,7 @@ func TestBaseImageListNoRepos(t *testing.T) {
 		conf.Storage.RootDirectory = t.TempDir()
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		conf.Extensions.Search.CVE = nil
@@ -3098,7 +3043,7 @@ func TestGlobalSearchImageAuthor(t *testing.T) {
 
 	defaultVal := true
 	conf.Extensions = &extconf.ExtensionConfig{
-		Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+		Search: &extconf.SearchConfig{Enable: &defaultVal},
 	}
 
 	conf.Extensions.Search.CVE = nil
@@ -3238,7 +3183,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		conf.Extensions.Search.CVE = nil
@@ -3253,11 +3198,9 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		createdTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
 		createdTimeL2 := time.Date(2010, 2, 1, 12, 0, 0, 0, time.UTC)
 		config1 := ispec.Image{
-			Created: &createdTimeL2,
-			Platform: ispec.Platform{
-				Architecture: "amd64",
-				OS:           "linux",
-			},
+			Created:      &createdTimeL2,
+			Architecture: "amd64",
+			OS:           "linux",
 			RootFS: ispec.RootFS{
 				Type:    "layers",
 				DiffIDs: []godigest.Digest{},
@@ -3297,11 +3240,9 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		createdTimeL2 = time.Date(2009, 2, 1, 12, 0, 0, 0, time.UTC)
 
 		config2 := ispec.Image{
-			Created: &createdTimeL2,
-			Platform: ispec.Platform{
-				Architecture: "amd64",
-				OS:           "linux",
-			},
+			Created:      &createdTimeL2,
+			Architecture: "amd64",
+			OS:           "linux",
 			RootFS: ispec.RootFS{
 				Type:    "layers",
 				DiffIDs: []godigest.Digest{},
@@ -3339,11 +3280,9 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		// push test images to repo 2 image 1
 		createdTime3 := time.Date(2009, 2, 1, 12, 0, 0, 0, time.UTC)
 		config3 := ispec.Image{
-			Created: &createdTime3,
-			Platform: ispec.Platform{
-				Architecture: "amd64",
-				OS:           "linux",
-			},
+			Created:      &createdTime3,
+			Architecture: "amd64",
+			OS:           "linux",
 			RootFS: ispec.RootFS{
 				Type:    "layers",
 				DiffIDs: []godigest.Digest{},
@@ -3599,8 +3538,8 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 			Trivy:          trivyConfig,
 		}
 		searchConfig := &extconf.SearchConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
-			CVE:        cveConfig,
+			Enable: &defaultVal,
+			CVE:    cveConfig,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: searchConfig,
@@ -3656,11 +3595,9 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		// push test images to repo 1 image 1
 		createdTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
 		config1 := ispec.Image{
-			Created: &createdTime,
-			Platform: ispec.Platform{
-				Architecture: "amd64",
-				OS:           "linux",
-			},
+			Created:      &createdTime,
+			Architecture: "amd64",
+			OS:           "linux",
 			RootFS: ispec.RootFS{
 				Type:    "layers",
 				DiffIDs: []godigest.Digest{},
@@ -3683,10 +3620,8 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		// push test images to repo 1 image 2
 		createdTime2 := time.Date(2009, 1, 1, 12, 0, 0, 0, time.UTC)
 		config2 := ispec.Image{
-			Platform: ispec.Platform{
-				Architecture: "amd64",
-				OS:           "linux",
-			},
+			Architecture: "amd64",
+			OS:           "linux",
 			RootFS: ispec.RootFS{
 				Type:    "layers",
 				DiffIDs: []godigest.Digest{},
@@ -3709,10 +3644,8 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		// push test images to repo 2 image 1
 		createdTime3 := time.Date(2009, 2, 1, 12, 0, 0, 0, time.UTC)
 		config3 := ispec.Image{
-			Platform: ispec.Platform{
-				Architecture: "amd64",
-				OS:           "linux",
-			},
+			Architecture: "amd64",
+			OS:           "linux",
 			RootFS: ispec.RootFS{
 				Type:    "layers",
 				DiffIDs: []godigest.Digest{},
@@ -3962,7 +3895,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		conf.Storage.RootDirectory = rootDir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 		conf.Extensions.Search.CVE = nil
 
@@ -4025,7 +3958,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		conf.Storage.RootDirectory = rootDir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 		conf.Extensions.Search.CVE = nil
 
@@ -4180,7 +4113,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 		conf.Extensions.Search.CVE = nil
 
@@ -4214,8 +4147,8 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		So(err, ShouldBeNil)
 
 		indexMultiArchMiddle1 := ispec.Index{
-			Versioned: specs.Versioned{SchemaVersion: 2},
-			MediaType: ispec.MediaTypeImageIndex,
+			SchemaVersion: 2,
+			MediaType:     ispec.MediaTypeImageIndex,
 			Manifests: []ispec.Descriptor{
 				{
 					Digest:    multiArchBottom11.IndexDescriptor.Digest,
@@ -4244,8 +4177,8 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		So(err, ShouldBeNil)
 
 		indexMultiArchMiddle2 := ispec.Index{
-			Versioned: specs.Versioned{SchemaVersion: 2},
-			MediaType: ispec.MediaTypeImageIndex,
+			SchemaVersion: 2,
+			MediaType:     ispec.MediaTypeImageIndex,
 			Manifests: []ispec.Descriptor{
 				{
 					Digest:    multiArchBottom21.IndexDescriptor.Digest,
@@ -4269,8 +4202,8 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		So(err, ShouldBeNil)
 
 		indexMultiArchTop := ispec.Index{
-			Versioned: specs.Versioned{SchemaVersion: 2},
-			MediaType: ispec.MediaTypeImageIndex,
+			SchemaVersion: 2,
+			MediaType:     ispec.MediaTypeImageIndex,
 			Manifests: []ispec.Descriptor{
 				{
 					Digest:    indexMultiArchMiddle1Digest,
@@ -4350,8 +4283,8 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 			Trivy:          trivyConfig,
 		}
 		searchConfig := &extconf.SearchConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
-			CVE:        cveConfig,
+			Enable: &defaultVal,
+			CVE:    cveConfig,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: searchConfig,
@@ -4384,8 +4317,8 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		So(err, ShouldBeNil)
 
 		indexMultiArchMiddle1 := ispec.Index{
-			Versioned: specs.Versioned{SchemaVersion: 2},
-			MediaType: ispec.MediaTypeImageIndex,
+			SchemaVersion: 2,
+			MediaType:     ispec.MediaTypeImageIndex,
 			Manifests: []ispec.Descriptor{
 				{
 					Digest:    multiArchBottom11.IndexDescriptor.Digest,
@@ -4414,8 +4347,8 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		So(err, ShouldBeNil)
 
 		indexMultiArchMiddle2 := ispec.Index{
-			Versioned: specs.Versioned{SchemaVersion: 2},
-			MediaType: ispec.MediaTypeImageIndex,
+			SchemaVersion: 2,
+			MediaType:     ispec.MediaTypeImageIndex,
 			Manifests: []ispec.Descriptor{
 				{
 					Digest:    multiArchBottom21.IndexDescriptor.Digest,
@@ -4439,8 +4372,8 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		So(err, ShouldBeNil)
 
 		indexMultiArchTop := ispec.Index{
-			Versioned: specs.Versioned{SchemaVersion: 2},
-			MediaType: ispec.MediaTypeImageIndex,
+			SchemaVersion: 2,
+			MediaType:     ispec.MediaTypeImageIndex,
 			Manifests: []ispec.Descriptor{
 				{
 					Digest:    indexMultiArchMiddle1Digest,
@@ -4516,7 +4449,7 @@ func TestCleaningFilteringParamsGlobalSearch(t *testing.T) {
 		conf.Storage.RootDirectory = dir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		ctlr := api.NewController(conf)
@@ -4526,19 +4459,19 @@ func TestCleaningFilteringParamsGlobalSearch(t *testing.T) {
 		defer ctlrManager.StopServer()
 
 		image := CreateImageWith().RandomLayers(1, 100).
-			ImageConfig(ispec.Image{Platform: ispec.Platform{
+			ImageConfig(ispec.Image{
 				OS:           "windows",
 				Architecture: "amd64",
-			}}).Build()
+			}).Build()
 
 		err := UploadImage(image, baseURL, "repo1", image.DigestStr())
 		So(err, ShouldBeNil)
 
 		image = CreateImageWith().RandomLayers(1, 100).
-			ImageConfig(ispec.Image{Platform: ispec.Platform{
+			ImageConfig(ispec.Image{
 				OS:           "linux",
 				Architecture: "amd64",
-			}}).Build()
+			}).Build()
 
 		err = UploadImage(image, baseURL, "repo2", image.DigestStr())
 		So(err, ShouldBeNil)
@@ -4574,7 +4507,7 @@ func TestGlobalSearchFiltering(t *testing.T) {
 
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		ctlr := api.NewController(conf)
@@ -4630,7 +4563,7 @@ func TestGlobalSearchWithInvalidInput(t *testing.T) {
 		conf.Storage.RootDirectory = dir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		ctlr := api.NewController(conf)
@@ -4718,7 +4651,7 @@ func TestImageList(t *testing.T) {
 		conf.Storage.RootDirectory = rootDir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		conf.Extensions.Search.CVE = nil
@@ -4732,10 +4665,8 @@ func TestImageList(t *testing.T) {
 		createdTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
 		createdTimeL2 := time.Date(2010, 2, 1, 12, 0, 0, 0, time.UTC)
 		config := ispec.Image{
-			Platform: ispec.Platform{
-				Architecture: "amd64",
-				OS:           "linux",
-			},
+			Architecture: "amd64",
+			OS:           "linux",
 			RootFS: ispec.RootFS{
 				Type:    "layers",
 				DiffIDs: []godigest.Digest{},
@@ -4879,7 +4810,7 @@ func TestGlobalSearchPagination(t *testing.T) {
 		conf.Storage.RootDirectory = dir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		ctlr := api.NewController(conf)
@@ -5064,7 +4995,7 @@ func TestMetaDBWhenSigningImages(t *testing.T) {
 		conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		conf.Extensions.Search.CVE = nil
@@ -5277,7 +5208,7 @@ func TestMetaDBWhenPushingImages(t *testing.T) {
 		conf.Storage.RootDirectory = dir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		ctlr := api.NewController(conf)
@@ -5320,7 +5251,7 @@ func TestMetaDBIndexOperations(t *testing.T) {
 		conf.Storage.GC = false
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		ctlr := api.NewController(conf)
@@ -5634,20 +5565,16 @@ func RunMetaDBIndexTests(baseURL, port string) {
 			{10, 20, 30},
 			{11, 21, 31},
 		}).ImageConfig(ispec.Image{
-			Platform: ispec.Platform{
-				OS:           "linux",
-				Architecture: "amd64",
-			},
+			OS:           "linux",
+			Architecture: "amd64",
 		}).Build()
 
 		imageSomeArch := CreateImageWith().LayerBlobs([][]byte{
 			{18, 28, 38},
 			{12, 22, 32},
 		}).ImageConfig(ispec.Image{
-			Platform: ispec.Platform{
-				OS:           "linux",
-				Architecture: "someArch",
-			},
+			OS:           "linux",
+			Architecture: "someArch",
 		}).Build()
 
 		multiImage := CreateMultiarchWith().Images([]Image{imageAMD64, imageSomeArch}).Build()
@@ -5753,10 +5680,8 @@ func RunMetaDBIndexTests(baseURL, port string) {
 			{10, 20, 30},
 			{11, 21, 31},
 		}).ImageConfig(ispec.Image{
-			Platform: ispec.Platform{
-				OS:           "linux",
-				Architecture: "amd64",
-			},
+			OS:           "linux",
+			Architecture: "amd64",
 		}).Build()
 
 		baseLinuxAMD64Digest := imageAMD64.ManifestDescriptor.Digest
@@ -5765,10 +5690,8 @@ func RunMetaDBIndexTests(baseURL, port string) {
 			{18, 28, 38},
 			{12, 22, 32},
 		}).ImageConfig(ispec.Image{
-			Platform: ispec.Platform{
-				OS:           "linux",
-				Architecture: "someArch",
-			},
+			OS:           "linux",
+			Architecture: "someArch",
 		}).Build()
 
 		baseLinuxSomeArchDigest := imageSomeArch.ManifestDescriptor.Digest
@@ -5843,20 +5766,16 @@ func RunMetaDBIndexTests(baseURL, port string) {
 			{10, 20, 30},
 			{11, 21, 31},
 		}).ImageConfig(ispec.Image{
-			Platform: ispec.Platform{
-				OS:           "linux",
-				Architecture: "amd64",
-			},
+			OS:           "linux",
+			Architecture: "amd64",
 		}).Build()
 
 		imageSomeArch := CreateImageWith().LayerBlobs([][]byte{
 			{18, 28, 38},
 			{12, 22, 32},
 		}).ImageConfig(ispec.Image{
-			Platform: ispec.Platform{
-				OS:           "linux",
-				Architecture: "someArch",
-			},
+			OS:           "linux",
+			Architecture: "someArch",
 		}).Build()
 
 		multiImage := CreateMultiarchWith().Images([]Image{imageAMD64, imageSomeArch}).Build()
@@ -5965,10 +5884,8 @@ func RunMetaDBIndexTests(baseURL, port string) {
 			{10, 20, 30},
 			{11, 21, 31},
 		}).ImageConfig(ispec.Image{
-			Platform: ispec.Platform{
-				OS:           "linux",
-				Architecture: "amd64",
-			},
+			OS:           "linux",
+			Architecture: "amd64",
 		}).Build()
 
 		baseLinuxAMD64Digest := imageAMD64.ManifestDescriptor.Digest
@@ -5977,10 +5894,8 @@ func RunMetaDBIndexTests(baseURL, port string) {
 			{18, 28, 38},
 			{12, 22, 32},
 		}).ImageConfig(ispec.Image{
-			Platform: ispec.Platform{
-				OS:           "linux",
-				Architecture: "someArch",
-			},
+			OS:           "linux",
+			Architecture: "someArch",
 		}).Build()
 
 		baseLinuxSomeArchDigest := imageSomeArch.ManifestDescriptor.Digest
@@ -6063,7 +5978,7 @@ func TestMetaDBWhenReadingImages(t *testing.T) {
 		conf.Storage.RootDirectory = dir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		ctlr := api.NewController(conf)
@@ -6154,7 +6069,7 @@ func TestMetaDBWhenReadingImages(t *testing.T) {
 		conf.Storage.RootDirectory = dir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		ctlr := api.NewController(conf)
@@ -6236,7 +6151,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		conf.Extensions.Search.CVE = nil
@@ -6669,7 +6584,7 @@ func TestSearchSize(t *testing.T) {
 		conf.HTTP.Port = "0"
 		tr := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &tr}},
+			Search: &extconf.SearchConfig{Enable: &tr},
 		}
 
 		ctlr := api.NewController(conf)
@@ -6854,7 +6769,7 @@ func TestImageSummary(t *testing.T) {
 
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		conf.Extensions.Search.CVE = nil
@@ -6923,11 +6838,9 @@ func TestImageSummary(t *testing.T) {
 		createdTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
 
 		image := CreateImageWith().RandomLayers(1, 100).ImageConfig(ispec.Image{
-			History: []ispec.History{{Created: &createdTime}},
-			Platform: ispec.Platform{
-				Architecture: "amd64",
-				OS:           "linux",
-			},
+			History:      []ispec.History{{Created: &createdTime}},
+			Architecture: "amd64",
+			OS:           "linux",
 		}).Build()
 
 		manifestDigest := image.ManifestDescriptor.Digest
@@ -7087,8 +7000,8 @@ func TestImageSummary(t *testing.T) {
 			Trivy:          trivyConfig,
 		}
 		searchConfig := &extconf.SearchConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
-			CVE:        cveConfig,
+			Enable: &defaultVal,
+			CVE:    cveConfig,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: searchConfig,
@@ -7123,11 +7036,9 @@ func TestImageSummary(t *testing.T) {
 		createdTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
 
 		image := CreateImageWith().DefaultLayers().ImageConfig(ispec.Image{
-			History: []ispec.History{{Created: &createdTime}},
-			Platform: ispec.Platform{
-				Architecture: "amd64",
-				OS:           "linux",
-			},
+			History:      []ispec.History{{Created: &createdTime}},
+			Architecture: "amd64",
+			OS:           "linux",
 		}).Build()
 
 		manifestDigest := image.ManifestDescriptor.Digest
@@ -7213,7 +7124,7 @@ func TestImageSummary(t *testing.T) {
 
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		conf.Extensions.Search.CVE = nil
@@ -7355,7 +7266,7 @@ func TestUploadingArtifactsWithDifferentMediaType(t *testing.T) {
 
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}, CVE: nil},
+			Search: &extconf.SearchConfig{Enable: &defaultVal, CVE: nil},
 		}
 		conf.Log = &config.LogConfig{Level: "debug", Output: "/dev/null"}
 
@@ -7451,7 +7362,7 @@ func TestReadUploadDeleteDynamoDB(t *testing.T) {
 
 	defaultVal := true
 	conf.Extensions = &extconf.ExtensionConfig{
-		Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}, CVE: nil},
+		Search: &extconf.SearchConfig{Enable: &defaultVal, CVE: nil},
 	}
 
 	ctlr := api.NewController(conf)
@@ -7472,7 +7383,7 @@ func TestReadUploadDeleteBoltDB(t *testing.T) {
 
 	defaultVal := true
 	conf.Extensions = &extconf.ExtensionConfig{
-		Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}, CVE: nil},
+		Search: &extconf.SearchConfig{Enable: &defaultVal, CVE: nil},
 	}
 
 	ctlr := api.NewController(conf)
@@ -7758,7 +7669,7 @@ func TestSearchWithMissingManifest(t *testing.T) {
 		conf.Storage.RootDirectory = dir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		conf.Extensions.Search.CVE = nil

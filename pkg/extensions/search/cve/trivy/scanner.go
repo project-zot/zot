@@ -31,7 +31,6 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	regTypes "github.com/google/go-containerregistry/pkg/v1/types"
 	godigest "github.com/opencontainers/go-digest"
-	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	_ "modernc.org/sqlite"
 
@@ -89,38 +88,26 @@ func getNewScanOptions(dir string, dbRepositoryRef, javaDBRepositoryRef name.Ref
 	vulnSeveritySources []dbTypes.SourceID, ignoreFile string, sbomEnabled bool, tuning trivyScanTuning,
 ) *flag.Options {
 	scanOptions := flag.Options{
-		GlobalOptions: flag.GlobalOptions{
-			CacheDir: dir,
-		},
-		ScanOptions: flag.ScanOptions{
-			Scanners:         types.Scanners{types.VulnerabilityScanner},
-			SkipVersionCheck: true,
-			DisableTelemetry: true,
-			OfflineScan:      true,
-		},
-		PackageOptions: flag.PackageOptions{
-			PkgRelationships: fanalTypes.Relationships,
-			PkgTypes:         []string{types.PkgTypeOS, types.PkgTypeLibrary},
-		},
-		DBOptions: flag.DBOptions{
-			DBRepositories:     []name.Reference{dbRepositoryRef},
-			JavaDBRepositories: []name.Reference{javaDBRepositoryRef},
-			SkipDBUpdate:       true,
-			SkipJavaDBUpdate:   true,
-		},
-		VulnerabilityOptions: flag.VulnerabilityOptions{
-			VulnSeveritySources: vulnSeveritySources,
-		},
-		ReportOptions: flag.ReportOptions{
-			Format:     "table",
-			IgnoreFile: ignoreFile,
-			Severities: []dbTypes.Severity{
-				dbTypes.SeverityUnknown,
-				dbTypes.SeverityLow,
-				dbTypes.SeverityMedium,
-				dbTypes.SeverityHigh,
-				dbTypes.SeverityCritical,
-			},
+		CacheDir:            dir,
+		Scanners:            types.Scanners{types.VulnerabilityScanner},
+		SkipVersionCheck:    true,
+		DisableTelemetry:    true,
+		OfflineScan:         true,
+		PkgRelationships:    fanalTypes.Relationships,
+		PkgTypes:            []string{types.PkgTypeOS, types.PkgTypeLibrary},
+		DBRepositories:      []name.Reference{dbRepositoryRef},
+		JavaDBRepositories:  []name.Reference{javaDBRepositoryRef},
+		SkipDBUpdate:        true,
+		SkipJavaDBUpdate:    true,
+		VulnSeveritySources: vulnSeveritySources,
+		Format:              "table",
+		IgnoreFile:          ignoreFile,
+		Severities: []dbTypes.Severity{
+			dbTypes.SeverityUnknown,
+			dbTypes.SeverityLow,
+			dbTypes.SeverityMedium,
+			dbTypes.SeverityHigh,
+			dbTypes.SeverityCritical,
 		},
 	}
 
@@ -960,9 +947,9 @@ func (scanner Scanner) storeSBOMAsOCIArtifact(ctx context.Context,
 	}
 
 	sbomManifest := ispec.Manifest{
-		Versioned:    specs.Versioned{SchemaVersion: storageConstants.SchemaVersion},
-		MediaType:    ispec.MediaTypeImageManifest,
-		ArtifactType: scanner.sbomOptions.artifactType,
+		SchemaVersion: storageConstants.SchemaVersion,
+		MediaType:     ispec.MediaTypeImageManifest,
+		ArtifactType:  scanner.sbomOptions.artifactType,
 		Subject: &ispec.Descriptor{
 			MediaType: subjectMediaType,
 			Digest:    subject,

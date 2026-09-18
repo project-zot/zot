@@ -631,6 +631,7 @@ func TestGCSDedupe(t *testing.T) {
 		So(hasBlob, ShouldEqual, true)
 
 		manifest := ispec.Manifest{
+			SchemaVersion: 2,
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.oci.image.config.v1+json",
 				Digest:    cdigest,
@@ -645,7 +646,6 @@ func TestGCSDedupe(t *testing.T) {
 			},
 		}
 
-		manifest.SchemaVersion = 2
 		manifestBuf, err := json.Marshal(manifest)
 		So(err, ShouldBeNil)
 
@@ -706,6 +706,7 @@ func TestGCSDedupe(t *testing.T) {
 		So(hasBlob, ShouldEqual, true)
 
 		manifest = ispec.Manifest{
+			SchemaVersion: 2,
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.oci.image.config.v1+json",
 				Digest:    cdigest,
@@ -720,7 +721,6 @@ func TestGCSDedupe(t *testing.T) {
 			},
 		}
 
-		manifest.SchemaVersion = 2
 		manifestBuf, err = json.Marshal(manifest)
 		So(err, ShouldBeNil)
 
@@ -901,6 +901,7 @@ func TestGCSDeleteBlobsInUse(t *testing.T) {
 		annotationsMap[ispec.AnnotationRefName] = tag
 
 		manifest := ispec.Manifest{
+			SchemaVersion: 2,
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.oci.image.config.v1+json",
 				Digest:    cdigest,
@@ -916,7 +917,6 @@ func TestGCSDeleteBlobsInUse(t *testing.T) {
 			Annotations: annotationsMap,
 		}
 
-		manifest.SchemaVersion = 2
 		manifestBuf, err := json.Marshal(manifest)
 		So(err, ShouldBeNil)
 
@@ -1199,8 +1199,7 @@ func TestGCSStorageAPIs(t *testing.T) {
 				err = blob.Close()
 				So(err, ShouldBeNil)
 
-				manifest := ispec.Manifest{}
-				manifest.SchemaVersion = 2
+				manifest := ispec.Manifest{SchemaVersion: 2}
 				manifestBuf, err := json.Marshal(manifest)
 				So(err, ShouldBeNil)
 
@@ -1241,6 +1240,7 @@ func TestGCSStorageAPIs(t *testing.T) {
 					annotationsMap := make(map[string]string)
 					annotationsMap[ispec.AnnotationRefName] = "1.0"
 					manifest := ispec.Manifest{
+						SchemaVersion: 2,
 						Config: ispec.Descriptor{
 							MediaType: "application/vnd.oci.image.config.v1+json",
 							Digest:    cdigest,
@@ -1256,7 +1256,6 @@ func TestGCSStorageAPIs(t *testing.T) {
 						Annotations: annotationsMap,
 					}
 
-					manifest.SchemaVersion = 2
 					manifestBuf, err = json.Marshal(manifest)
 					So(err, ShouldBeNil)
 
@@ -1438,8 +1437,7 @@ func TestGCSStorageAPIs(t *testing.T) {
 				_, err = imgStore.GetBlobContent("inexistent", digest)
 				So(err, ShouldNotBeNil)
 
-				manifest := ispec.Manifest{}
-				manifest.SchemaVersion = 2
+				manifest := ispec.Manifest{SchemaVersion: 2}
 				manifestBuf, err := json.Marshal(manifest)
 				So(err, ShouldBeNil)
 
@@ -1478,6 +1476,7 @@ func TestGCSStorageAPIs(t *testing.T) {
 					So(hasBlob, ShouldEqual, true)
 
 					manifest := ispec.Manifest{
+						SchemaVersion: 2,
 						Config: ispec.Descriptor{
 							MediaType: "application/vnd.oci.image.config.v1+json",
 							Digest:    cdigest,
@@ -1491,7 +1490,6 @@ func TestGCSStorageAPIs(t *testing.T) {
 							},
 						},
 					}
-					manifest.SchemaVersion = 2
 					manifestBuf, err = json.Marshal(manifest)
 					So(err, ShouldBeNil)
 
@@ -1571,6 +1569,7 @@ func TestGCSStorageAPIs(t *testing.T) {
 			So(hasBlob, ShouldEqual, true)
 
 			manifest := ispec.Manifest{
+				SchemaVersion: 2,
 				Config: ispec.Descriptor{
 					MediaType: "application/vnd.oci.image.config.v1+json",
 					Digest:    cdigest,
@@ -1584,7 +1583,6 @@ func TestGCSStorageAPIs(t *testing.T) {
 					},
 				},
 			}
-			manifest.SchemaVersion = 2
 			manifestBuf, err := json.Marshal(manifest)
 			So(err, ShouldBeNil)
 
@@ -1627,6 +1625,7 @@ func TestGCSStorageAPIs(t *testing.T) {
 			So(hasBlob, ShouldEqual, true)
 
 			manifest = ispec.Manifest{
+				SchemaVersion: 2,
 				Config: ispec.Descriptor{
 					MediaType: "application/vnd.oci.image.config.v1+json",
 					Digest:    cdigest,
@@ -1640,7 +1639,6 @@ func TestGCSStorageAPIs(t *testing.T) {
 					},
 				},
 			}
-			manifest.SchemaVersion = 2
 			manifestBuf, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
 
@@ -1886,6 +1884,7 @@ func TestGCSMandatoryAnnotations(t *testing.T) {
 		annotationsMap[ispec.AnnotationRefName] = "1.0"
 
 		manifest := ispec.Manifest{
+			SchemaVersion: 2,
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.oci.image.config.v1+json",
 				Digest:    cdigest,
@@ -1901,7 +1900,6 @@ func TestGCSMandatoryAnnotations(t *testing.T) {
 			Annotations: annotationsMap,
 		}
 
-		manifest.SchemaVersion = 2
 		manifestBuf, err := json.Marshal(manifest)
 		So(err, ShouldBeNil)
 
@@ -1959,9 +1957,10 @@ func pushRandomImageIndexGCS(imgStore storageTypes.ImageStore, repoName string,
 	So(err, ShouldBeNil)
 	So(bsize, ShouldEqual, len(content))
 
-	var index ispec.Index
-	index.SchemaVersion = 2
-	index.MediaType = ispec.MediaTypeImageIndex
+	index := ispec.Index{
+		SchemaVersion: 2,
+		MediaType:     ispec.MediaTypeImageIndex,
+	}
 
 	var digest godigest.Digest
 
@@ -1984,6 +1983,7 @@ func pushRandomImageIndexGCS(imgStore storageTypes.ImageStore, repoName string,
 
 		// create a manifest
 		manifest := ispec.Manifest{
+			SchemaVersion: 2,
 			Config: ispec.Descriptor{
 				MediaType: ispec.MediaTypeImageConfig,
 				Digest:    cdigest,
@@ -1997,7 +1997,6 @@ func pushRandomImageIndexGCS(imgStore storageTypes.ImageStore, repoName string,
 				},
 			},
 		}
-		manifest.SchemaVersion = 2
 		content, err = json.Marshal(manifest)
 		So(err, ShouldBeNil)
 
@@ -2121,6 +2120,7 @@ func TestGCSGarbageCollectImageManifest(t *testing.T) {
 		So(hasBlob, ShouldEqual, true)
 
 		manifest := ispec.Manifest{
+			SchemaVersion: 2,
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.oci.image.config.v1+json",
 				Digest:    cdigest,
@@ -2136,7 +2136,6 @@ func TestGCSGarbageCollectImageManifest(t *testing.T) {
 			Annotations: annotationsMap,
 		}
 
-		manifest.SchemaVersion = 2
 		manifestBuf, err := json.Marshal(manifest)
 		So(err, ShouldBeNil)
 
@@ -2160,7 +2159,8 @@ func TestGCSGarbageCollectImageManifest(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		artifactManifest := ispec.Manifest{
-			MediaType: ispec.MediaTypeImageManifest,
+			SchemaVersion: 2,
+			MediaType:     ispec.MediaTypeImageManifest,
 			Layers: []ispec.Descriptor{
 				{
 					MediaType: "application/octet-stream",
@@ -2175,8 +2175,6 @@ func TestGCSGarbageCollectImageManifest(t *testing.T) {
 				Size:      int64(len(manifestBuf)),
 			},
 		}
-		artifactManifest.SchemaVersion = 2
-
 		artifactManifestBuf, err := json.Marshal(artifactManifest)
 		So(err, ShouldBeNil)
 
@@ -2327,7 +2325,8 @@ func TestGCSGarbageCollectImageIndex(t *testing.T) {
 
 		// push artifact manifest pointing to index
 		artifactManifest := ispec.Manifest{
-			MediaType: ispec.MediaTypeImageManifest,
+			SchemaVersion: 2,
+			MediaType:     ispec.MediaTypeImageManifest,
 			Layers: []ispec.Descriptor{
 				{
 					MediaType: "application/octet-stream",
@@ -2343,8 +2342,6 @@ func TestGCSGarbageCollectImageIndex(t *testing.T) {
 			},
 			ArtifactType: "application/forIndex",
 		}
-		artifactManifest.SchemaVersion = 2
-
 		artifactManifestBuf, err := json.Marshal(artifactManifest)
 		So(err, ShouldBeNil)
 
@@ -2484,9 +2481,10 @@ func TestGCSGarbageCollectChainedImageIndexes(t *testing.T) {
 			ispec.DescriptorEmptyJSON.Digest)
 		So(err, ShouldBeNil)
 
-		var index ispec.Index
-		index.SchemaVersion = 2
-		index.MediaType = ispec.MediaTypeImageIndex
+		index := ispec.Index{
+			SchemaVersion: 2,
+			MediaType:     ispec.MediaTypeImageIndex,
+		}
 
 		var digest godigest.Digest
 
@@ -2509,6 +2507,7 @@ func TestGCSGarbageCollectChainedImageIndexes(t *testing.T) {
 
 			// create a manifest
 			manifest := ispec.Manifest{
+				SchemaVersion: 2,
 				Config: ispec.Descriptor{
 					MediaType: ispec.MediaTypeImageConfig,
 					Digest:    cdigest,
@@ -2522,7 +2521,6 @@ func TestGCSGarbageCollectChainedImageIndexes(t *testing.T) {
 					},
 				},
 			}
-			manifest.SchemaVersion = 2
 			content, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
 
@@ -2541,7 +2539,8 @@ func TestGCSGarbageCollectChainedImageIndexes(t *testing.T) {
 
 			// for each manifest inside index, push an artifact
 			artifactManifest := ispec.Manifest{
-				MediaType: ispec.MediaTypeImageManifest,
+				SchemaVersion: 2,
+				MediaType:     ispec.MediaTypeImageManifest,
 				Layers: []ispec.Descriptor{
 					{
 						MediaType: "application/octet-stream",
@@ -2557,8 +2556,6 @@ func TestGCSGarbageCollectChainedImageIndexes(t *testing.T) {
 				},
 				ArtifactType: "application/forManifestInInnerIndex",
 			}
-			artifactManifest.SchemaVersion = 2
-
 			artifactManifestBuf, err := json.Marshal(artifactManifest)
 			So(err, ShouldBeNil)
 
@@ -2572,9 +2569,10 @@ func TestGCSGarbageCollectChainedImageIndexes(t *testing.T) {
 		}
 
 		// also add a new image index inside this one
-		var innerIndex ispec.Index
-		innerIndex.SchemaVersion = 2
-		innerIndex.MediaType = ispec.MediaTypeImageIndex
+		innerIndex := ispec.Index{
+			SchemaVersion: 2,
+			MediaType:     ispec.MediaTypeImageIndex,
+		}
 
 		for range 3 {
 			// upload image config blob
@@ -2595,6 +2593,7 @@ func TestGCSGarbageCollectChainedImageIndexes(t *testing.T) {
 
 			// create a manifest
 			manifest := ispec.Manifest{
+				SchemaVersion: 2,
 				Config: ispec.Descriptor{
 					MediaType: ispec.MediaTypeImageConfig,
 					Digest:    cdigest,
@@ -2608,7 +2607,6 @@ func TestGCSGarbageCollectChainedImageIndexes(t *testing.T) {
 					},
 				},
 			}
-			manifest.SchemaVersion = 2
 			content, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
 
@@ -2657,7 +2655,8 @@ func TestGCSGarbageCollectChainedImageIndexes(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		artifactManifest := ispec.Manifest{
-			MediaType: ispec.MediaTypeImageManifest,
+			SchemaVersion: 2,
+			MediaType:     ispec.MediaTypeImageManifest,
 			Layers: []ispec.Descriptor{
 				{
 					MediaType: "application/octet-stream",
@@ -2673,8 +2672,6 @@ func TestGCSGarbageCollectChainedImageIndexes(t *testing.T) {
 			},
 			ArtifactType: "application/forIndex",
 		}
-		artifactManifest.SchemaVersion = 2
-
 		artifactManifestBuf, err := json.Marshal(artifactManifest)
 		So(err, ShouldBeNil)
 
@@ -3262,14 +3259,15 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 			manifestDescriptor, ok := common.GetManifestDescByReference(idx, image.ManifestDescriptor.Digest.String())
 			So(ok, ShouldBeTrue)
 
-			var index ispec.Index
-			index.SchemaVersion = 2
-			index.Subject = &manifestDescriptor
-			index.Manifests = []ispec.Descriptor{
-				{
-					MediaType: ispec.MediaTypeImageManifest,
-					Digest:    newManifestDigest,
-					Size:      newImage.ManifestDescriptor.Size,
+			index := ispec.Index{
+				SchemaVersion: 2,
+				Subject:       &manifestDescriptor,
+				Manifests: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageManifest,
+						Digest:    newManifestDigest,
+						Size:      newImage.ManifestDescriptor.Size,
+					},
 				},
 			}
 
@@ -3602,14 +3600,15 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 					return []string{repoName}, nil
 				},
 				GetIndexContentFn: func(repo string) ([]byte, error) {
-					var index ispec.Index
-					index.SchemaVersion = 2
-					index.Manifests = []ispec.Descriptor{
-						{
-							MediaType:   "InvalidMediaType",
-							Digest:      manifestDigest,
-							Size:        int64(100),
-							Annotations: map[string]string{ispec.AnnotationRefName: "1.0"},
+					index := ispec.Index{
+						SchemaVersion: 2,
+						Manifests: []ispec.Descriptor{
+							{
+								MediaType:   "InvalidMediaType",
+								Digest:      manifestDigest,
+								Size:        int64(100),
+								Annotations: map[string]string{ispec.AnnotationRefName: "1.0"},
+							},
 						},
 					}
 

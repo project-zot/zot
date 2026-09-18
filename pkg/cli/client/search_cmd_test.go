@@ -37,7 +37,7 @@ func TestReferrerCLI(t *testing.T) {
 		conf.Storage.GC = false
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = rootDir
@@ -130,7 +130,7 @@ func TestReferrerCLI(t *testing.T) {
 		conf.Storage.GC = false
 		defaultVal := false
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = rootDir
@@ -221,7 +221,7 @@ func TestFormatsReferrersCLI(t *testing.T) {
 		conf.Storage.GC = false
 		defaultVal := false
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = rootDir
@@ -406,7 +406,7 @@ func TestSearchCLI(t *testing.T) {
 		conf.Storage.GC = false
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = rootDir
@@ -432,8 +432,8 @@ func TestSearchCLI(t *testing.T) {
 		image1 := CreateImageWith().
 			RandomLayers(1, 10).
 			ImageConfig(ispec.Image{
-				Created:  DefaultTimeRef(),
-				Platform: ispec.Platform{OS: "Os", Architecture: "Arch"},
+				Created: DefaultTimeRef(),
+				OS:      "Os", Architecture: "Arch",
 			}).
 			Build()
 		formatterDigest1 := image1.Digest().Encoded()[:8]
@@ -515,7 +515,7 @@ func TestFormatsSearchCLI(t *testing.T) {
 		conf.Storage.GC = false
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = rootDir
@@ -685,8 +685,8 @@ func TestSearchSort(t *testing.T) {
 	defaultVal := true
 	conf.Extensions = &extconf.ExtensionConfig{
 		Search: &extconf.SearchConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
-			CVE:        nil,
+			Enable: &defaultVal,
+			CVE:    nil,
 		},
 	}
 	ctlr := api.NewController(conf)

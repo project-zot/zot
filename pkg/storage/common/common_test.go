@@ -95,6 +95,7 @@ func TestValidateManifest(t *testing.T) {
 
 		Convey("bad manifest schema version", func() {
 			manifest := ispec.Manifest{
+				SchemaVersion: 999,
 				Config: ispec.Descriptor{
 					MediaType: ispec.MediaTypeImageConfig,
 					Digest:    cdigest,
@@ -108,8 +109,6 @@ func TestValidateManifest(t *testing.T) {
 					},
 				},
 			}
-
-			manifest.SchemaVersion = 999
 
 			body, err := json.Marshal(manifest)
 			So(err, ShouldBeNil)
@@ -126,6 +125,7 @@ func TestValidateManifest(t *testing.T) {
 
 		Convey("bad config blob", func() {
 			manifest := ispec.Manifest{
+				SchemaVersion: 2,
 				Config: ispec.Descriptor{
 					MediaType: ispec.MediaTypeImageConfig,
 					Digest:    cdigest,
@@ -139,8 +139,6 @@ func TestValidateManifest(t *testing.T) {
 					},
 				},
 			}
-
-			manifest.SchemaVersion = 2
 
 			configBlobPath := imgStore.BlobPath("test", cdigest)
 
@@ -174,9 +172,9 @@ func TestValidateManifest(t *testing.T) {
 						Size:      int64(len(content)),
 					},
 				},
-			}
 
-			manifest.SchemaVersion = 2
+				SchemaVersion: 2,
+			}
 
 			body, err := json.Marshal(manifest)
 			So(err, ShouldBeNil)
@@ -193,9 +191,9 @@ func TestValidateManifest(t *testing.T) {
 					Size:      int64(len(cblob)),
 				},
 				Layers: []ispec.Descriptor{},
-			}
 
-			manifest.SchemaVersion = 2
+				SchemaVersion: 2,
+			}
 
 			body, err := json.Marshal(manifest)
 			So(err, ShouldBeNil)
@@ -218,8 +216,9 @@ func TestValidateManifest(t *testing.T) {
 						Size:      int64(len(content)),
 					},
 				},
+
+				SchemaVersion: 2,
 			}
-			manifest.SchemaVersion = 2
 
 			body, err := json.Marshal(manifest)
 			So(err, ShouldBeNil)
@@ -242,8 +241,9 @@ func TestValidateManifest(t *testing.T) {
 						Size:      10,
 					},
 				},
+
+				SchemaVersion: 2,
 			}
-			index.SchemaVersion = 2
 
 			indexBody, err := json.Marshal(index)
 			So(err, ShouldBeNil)
@@ -259,17 +259,16 @@ func TestValidateManifest(t *testing.T) {
 			list := manifestlist.ManifestList{
 				Manifests: []manifestlist.ManifestDescriptor{
 					{
-						Descriptor: ispec.Descriptor{
-							MediaType: docker.MediaTypeManifest,
-							Digest:    godigest.FromString("missing-docker-child"),
-							Size:      10,
-						},
-						Platform: manifestlist.PlatformSpec{Architecture: "amd64", OS: "linux"},
+						MediaType: docker.MediaTypeManifest,
+						Digest:    godigest.FromString("missing-docker-child"),
+						Size:      10,
+						Platform:  manifestlist.PlatformSpec{Architecture: "amd64", OS: "linux"},
 					},
 				},
+
+				SchemaVersion: 2,
+				MediaType:     manifestlist.MediaTypeManifestList,
 			}
-			list.SchemaVersion = 2
-			list.MediaType = manifestlist.MediaTypeManifestList
 
 			listBody, err := json.Marshal(list)
 			So(err, ShouldBeNil)
@@ -295,9 +294,10 @@ func TestValidateManifest(t *testing.T) {
 						Size:      10,
 					},
 				},
+
+				SchemaVersion: 2,
+				MediaType:     docker.MediaTypeManifest,
 			}
-			man.SchemaVersion = 2
-			man.MediaType = docker.MediaTypeManifest
 
 			manBody, err := json.Marshal(man)
 			So(err, ShouldBeNil)
@@ -324,9 +324,10 @@ func TestValidateManifest(t *testing.T) {
 						Size:      10,
 					},
 				},
+
+				SchemaVersion: 2,
+				MediaType:     docker.MediaTypeManifest,
 			}
-			man.SchemaVersion = 2
-			man.MediaType = docker.MediaTypeManifest
 
 			manBody, err := json.Marshal(man)
 			So(err, ShouldBeNil)
@@ -361,8 +362,9 @@ func TestValidateManifest(t *testing.T) {
 						Size:      1,
 					},
 				},
+
+				SchemaVersion: 2,
 			}
-			index.SchemaVersion = 2
 			body, err := json.Marshal(index)
 			So(err, ShouldBeNil)
 

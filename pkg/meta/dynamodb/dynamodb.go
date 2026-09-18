@@ -2349,8 +2349,7 @@ func (dwr *DynamoDB) tableExists(tableName string) (bool, error) {
 		return true, nil
 	}
 
-	var notFoundErr *types.ResourceNotFoundException
-	if errors.As(err, &notFoundErr) {
+	if _, ok := errors.AsType[*types.ResourceNotFoundException](err); ok {
 		return false, nil
 	}
 
@@ -2375,8 +2374,7 @@ func ignoreResourceInUseError(err error) error {
 		return nil
 	}
 
-	var inUseException *types.ResourceInUseException
-	if errors.As(err, &inUseException) {
+	if _, ok := errors.AsType[*types.ResourceInUseException](err); ok {
 		return nil
 	}
 

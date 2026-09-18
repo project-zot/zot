@@ -297,7 +297,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		conf.Storage.RootDirectory = dir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		conf.Extensions.Search.CVE = nil
@@ -342,7 +342,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		conf.Storage.RootDirectory = dir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		conf.Extensions.Search.CVE = nil
@@ -388,7 +388,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		conf.Storage.RootDirectory = dir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		conf.Extensions.Search.CVE = nil

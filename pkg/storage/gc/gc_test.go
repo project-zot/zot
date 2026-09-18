@@ -14,7 +14,6 @@ import (
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/s3-aws"
 	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
-	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
@@ -1428,8 +1427,8 @@ func TestGarbageCollectDeletion(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			topIndex := ispec.Index{
-				Versioned: specs.Versioned{SchemaVersion: 2},
-				MediaType: ispec.MediaTypeImageIndex,
+				SchemaVersion: 2,
+				MediaType:     ispec.MediaTypeImageIndex,
 				Manifests: []ispec.Descriptor{
 					{
 						Digest:    bottomIndex1.IndexDescriptor.Digest,
@@ -2794,8 +2793,8 @@ func TestGCMultiArchIndexKeepsNestedConfigAndLayers(t *testing.T) {
 		writeNestedOnly(platform2)
 
 		topIndex := ispec.Index{
-			Versioned: specs.Versioned{SchemaVersion: 2},
-			MediaType: ispec.MediaTypeImageIndex,
+			SchemaVersion: 2,
+			MediaType:     ispec.MediaTypeImageIndex,
 			Manifests: []ispec.Descriptor{
 				{
 					Digest:    platform1.ManifestDescriptor.Digest,
@@ -3752,9 +3751,9 @@ func TestGCUnknownMediaTypeManifestPrunedSharedBlobKept(t *testing.T) {
 
 		// the unknown manifest reuses the healthy image's config digest - this blob must survive
 		unknownManifest := ispec.Manifest{
-			Versioned: specs.Versioned{SchemaVersion: 2},
-			MediaType: unsupportedMediaType,
-			Config:    healthy.Manifest.Config,
+			SchemaVersion: 2,
+			MediaType:     unsupportedMediaType,
+			Config:        healthy.Manifest.Config,
 			Layers: []ispec.Descriptor{{
 				MediaType: ispec.MediaTypeImageLayer,
 				Digest:    exclusiveLayerDigest,

@@ -56,7 +56,7 @@ func TestDigestSearchHTTP(t *testing.T) {
 		conf.Storage.RootDirectory = rootDir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		ctlr := api.NewController(conf)
@@ -93,11 +93,9 @@ func TestDigestSearchHTTP(t *testing.T) {
 		image2 := CreateImageWith().
 			LayerBlobs([][]byte{{0, 0, 2}}).
 			ImageConfig(ispec.Image{
-				History: []ispec.History{{Created: &createdTime2}},
-				Platform: ispec.Platform{
-					Architecture: "amd64",
-					OS:           "linux",
-				},
+				History:      []ispec.History{{Created: &createdTime2}},
+				Architecture: "amd64",
+				OS:           "linux",
 			}).Build()
 
 		manifestDigest := image2.Digest()
@@ -186,7 +184,7 @@ func TestDigestSearchHTTP(t *testing.T) {
 
 		// Call should return {"data":{"ImageListForDigest":[{"Name":"zot-cve-test","Tags":["0.0.1"]}]}}
 		// GetTestBlobDigest("zot-cve-test", "layer").Encoded() should match the layer of 1 image
-		layerDigest1 := godigest.FromBytes((layers1[0]))
+		layerDigest1 := godigest.FromBytes(layers1[0])
 		gqlQuery = url.QueryEscape(`{ImageListForDigest(id:"` + layerDigest1.Encoded() + `")
 		{Results{RepoName Tag Manifests {Digest ConfigDigest Size Layers { Digest }}}}}`)
 		targetURL = baseURL + constants.FullSearchPrefix + `?query=` + gqlQuery
@@ -262,7 +260,7 @@ func TestDigestSearchHTTPSubPaths(t *testing.T) {
 		conf.HTTP.Port = "0"
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		ctlr := api.NewController(conf)
@@ -335,7 +333,7 @@ func TestDigestSearchDisabled(t *testing.T) {
 		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = t.TempDir()
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &disabled}},
+			Search: &extconf.SearchConfig{Enable: &disabled},
 		}
 
 		ctlr := api.NewController(conf)

@@ -199,8 +199,7 @@ func (is *ImageStore) initRepo(ctx context.Context, name string) error {
 	// "index.json" file - create if it doesn't exist
 	indexPath := path.Join(repoDir, ispec.ImageIndexFile)
 	if _, err := is.storeDriver.Stat(indexPath); err != nil {
-		index := ispec.Index{}
-		index.SchemaVersion = 2
+		index := ispec.Index{SchemaVersion: 2}
 
 		buf, err := json.Marshal(index)
 		if err != nil {
@@ -431,8 +430,7 @@ func (is *ImageStore) GetRepositories() ([]string, error) {
 	})
 
 	// if the root directory is not yet created then return an empty slice of repositories
-	var perr driver.PathNotFoundError
-	if errors.As(err, &perr) {
+	if _, ok := errors.AsType[driver.PathNotFoundError](err); ok {
 		return stores, nil
 	}
 
@@ -1769,9 +1767,7 @@ func (is *ImageStore) originalBlobInfo(repo string, digest godigest.Digest) (dri
 
 	binfo, err := is.storeDriver.Stat(blobPath)
 	if err != nil {
-		var pathNotFoundErr driver.PathNotFoundError
-
-		if errors.As(err, &pathNotFoundErr) {
+		if _, ok := errors.AsType[driver.PathNotFoundError](err); ok {
 			is.log.Debug().Err(err).Str("blob", blobPath).Str("digest", digest.String()).Msg("blob not found")
 		} else {
 			is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
@@ -2183,8 +2179,7 @@ func (is *ImageStore) deleteBlobChecked(repo string, digest godigest.Digest, isR
 
 	binfo, err := is.storeDriver.Stat(blobPath)
 	if err != nil {
-		var pathNotFoundErr driver.PathNotFoundError
-		if errors.As(err, &pathNotFoundErr) {
+		if _, ok := errors.AsType[driver.PathNotFoundError](err); ok {
 			return zerr.ErrBlobNotFound
 		}
 
@@ -2279,8 +2274,7 @@ func (is *ImageStore) deleteBlobChecked(repo string, digest godigest.Digest, isR
 	}
 
 	if err := is.storeDriver.Delete(blobPath); err != nil {
-		var pathNotFoundErr driver.PathNotFoundError
-		if errors.As(err, &pathNotFoundErr) {
+		if _, ok := errors.AsType[driver.PathNotFoundError](err); ok {
 			is.log.Warn().Str("repository", repo).Str("digest", digest.String()).
 				Str("blobPath", blobPath).Msg("blob already removed from storage, skipping")
 
@@ -2448,9 +2442,7 @@ func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []g
 	})
 
 	// if the root directory is not yet created
-	var perr driver.PathNotFoundError
-
-	if errors.As(err, &perr) {
+	if _, ok := errors.AsType[driver.PathNotFoundError](err); ok {
 		return digest, duplicateBlobs, nil
 	}
 
@@ -2463,8 +2455,7 @@ func (is *ImageStore) getOriginalBlobFromDisk(duplicateBlobs []string) (string, 
 		if err != nil {
 			// The paths come from a listing taken earlier in the run, so a blob may have
 			// been deleted since. Keep looking: another copy may still hold the content.
-			var pathNotFound driver.PathNotFoundError
-			if errors.As(err, &pathNotFound) {
+			if _, ok := errors.AsType[driver.PathNotFoundError](err); ok {
 				is.log.Debug().Str("path", blobPath).Str("component", "storage").
 					Msg("blob deleted since it was listed, skipping")
 
@@ -2536,8 +2527,7 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 			blob may have been deleted since. Skipping keeps the run progressing: failing the
 			task instead leaves its completion callback unrun, so OnRunComplete never fires
 			and the restore marker or the deferred-delete gate stays stuck. */
-			var pathNotFound driver.PathNotFoundError
-			if errors.As(err, &pathNotFound) {
+			if _, ok := errors.AsType[driver.PathNotFoundError](err); ok {
 				is.log.Debug().Str("path", blobPath).Str("component", "dedupe").
 					Msg("blob deleted since it was listed, skipping")
 
@@ -2609,8 +2599,7 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 func (is *ImageStore) anyBlobExists(blobPaths []string) bool {
 	for _, blobPath := range blobPaths {
 		if _, err := is.storeDriver.Stat(blobPath); err != nil {
-			var pathNotFound driver.PathNotFoundError
-			if errors.As(err, &pathNotFound) {
+			if _, ok := errors.AsType[driver.PathNotFoundError](err); ok {
 				continue
 			}
 		}
@@ -2656,8 +2645,7 @@ func (is *ImageStore) restoreDedupedBlobs(ctx context.Context, digest godigest.D
 			blob may have been deleted since. Skipping keeps the run progressing: failing the
 			task instead leaves its completion callback unrun, so OnRunComplete never fires
 			and the restore marker or the deferred-delete gate stays stuck. */
-			var pathNotFound driver.PathNotFoundError
-			if errors.As(err, &pathNotFound) {
+			if _, ok := errors.AsType[driver.PathNotFoundError](err); ok {
 				is.log.Debug().Str("path", blobPath).Str("component", "dedupe").
 					Msg("blob deleted since it was listed, skipping")
 
@@ -2701,8 +2689,7 @@ func (is *ImageStore) restoreDedupedBlobs(ctx context.Context, digest godigest.D
 						return nil
 					}
 				} else {
-					var pathNotFound driver.PathNotFoundError
-					if !errors.As(serr, &pathNotFound) {
+					if _, ok := errors.AsType[driver.PathNotFoundError](serr); !ok {
 						return serr
 					}
 				}
@@ -2751,8 +2738,7 @@ func (is *ImageStore) RunDedupeBlobs(interval time.Duration, sch *scheduler.Sche
 		// Dedupe is active: remove the restore-complete marker so that a future dedupe→false
 		// transition knows it must run restore again.
 		if err := is.storeDriver.Delete(markerPath); err != nil {
-			var pathNotFound driver.PathNotFoundError
-			if !errors.As(err, &pathNotFound) {
+			if _, ok := errors.AsType[driver.PathNotFoundError](err); !ok {
 				is.log.Warn().Err(err).Str("component", "dedupe").
 					Msg("failed to remove restore-complete marker")
 
@@ -2784,8 +2770,7 @@ func (is *ImageStore) RunDedupeBlobs(interval time.Duration, sch *scheduler.Sche
 			is.log.Debug().Str("component", "dedupe").Str("content", content).
 				Msg("restore-complete marker present but not complete, continuing with dedupe restore scan")
 		} else {
-			var pathNotFound driver.PathNotFoundError
-			if !errors.As(err, &pathNotFound) {
+			if _, ok := errors.AsType[driver.PathNotFoundError](err); !ok {
 				is.log.Warn().Err(err).Str("component", "dedupe").
 					Msg("failed to check restore-complete marker; continuing with dedupe restore scan")
 			}

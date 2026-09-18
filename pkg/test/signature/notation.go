@@ -202,11 +202,9 @@ func SignWithNotation(keyName, reference, tdir string, referrersCapability bool)
 	sigRepo := notreg.NewRepositoryWithOptions(remoteRepo, repositoryOpts)
 
 	sigOpts := notation.SignOptions{
-		SignerSignOptions: notation.SignerSignOptions{
-			SignatureMediaType: mediaType,
-			PluginConfig:       map[string]string{},
-		},
-		ArtifactReference: ref.String(),
+		SignatureMediaType: mediaType,
+		PluginConfig:       map[string]string{},
+		ArtifactReference:  ref.String(),
 	}
 
 	_, err = notation.Sign(ctx, newSigner, sigRepo, sigOpts)

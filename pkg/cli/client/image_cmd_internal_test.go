@@ -488,7 +488,7 @@ func TestImagesCommandGQL(t *testing.T) {
 	defaultVal := true
 	conf.Extensions = &extconf.ExtensionConfig{
 		Search: &extconf.SearchConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+			Enable: &defaultVal,
 		},
 	}
 	ctlr := api.NewController(conf)
@@ -1161,14 +1161,12 @@ func (service *mockService) getReferrersGQL(ctx context.Context, config SearchCo
 	}
 
 	return &common.ReferrersResp{
-		ReferrersResult: common.ReferrersResult{
-			Referrers: []common.Referrer{
-				{
-					MediaType:    "MediaType",
-					ArtifactType: "ArtifactType",
-					Size:         100,
-					Digest:       "Digest",
-				},
+		Referrers: []common.Referrer{
+			{
+				MediaType:    "MediaType",
+				ArtifactType: "ArtifactType",
+				Size:         100,
+				Digest:       "Digest",
 			},
 		},
 	}, nil

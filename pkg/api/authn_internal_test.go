@@ -143,10 +143,8 @@ func TestGetOpenIDClaimMapping(t *testing.T) {
 		}
 
 		info := &oidc.UserInfo{
-			UserInfoProfile: oidc.UserInfoProfile{
-				PreferredUsername: "",
-			},
-			UserInfoEmail: oidc.UserInfoEmail{Email: "user@example.com"},
+			PreferredUsername: "",
+			Email:             "user@example.com",
 		}
 
 		identity, groups, ok := extractOpenIDIdentity(logger, authConfig, "oidc", info, nil)
@@ -171,7 +169,7 @@ func TestGetOpenIDClaimMapping(t *testing.T) {
 		}
 
 		info := &oidc.UserInfo{
-			UserInfoEmail: oidc.UserInfoEmail{Email: ""},
+			Email: "",
 		}
 
 		identity, groups, ok := extractOpenIDIdentity(logger, authConfig, "oidc", info, nil)
@@ -184,7 +182,7 @@ func TestGetOpenIDClaimMapping(t *testing.T) {
 		t.Parallel()
 
 		info := &oidc.UserInfo{
-			UserInfoEmail: oidc.UserInfoEmail{Email: "user@example.com"},
+			Email: "user@example.com",
 			Claims: map[string]any{
 				"groups": []any{"b", "a", "", nil, "a"},
 			},
@@ -206,12 +204,10 @@ func TestGetOpenIDIdentity(t *testing.T) {
 	t.Parallel()
 
 	info := &oidc.UserInfo{
-		Subject: "subject-id",
-		UserInfoProfile: oidc.UserInfoProfile{
-			Name:              "Full Name",
-			PreferredUsername: "preferred-user",
-		},
-		UserInfoEmail: oidc.UserInfoEmail{Email: "user@example.com"},
+		Subject:           "subject-id",
+		Name:              "Full Name",
+		PreferredUsername: "preferred-user",
+		Email:             "user@example.com",
 		Claims: map[string]any{
 			"custom_username": "custom-user",
 			"numeric":         42,

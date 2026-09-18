@@ -105,7 +105,7 @@ func TestMetricsExtension(t *testing.T) {
 
 		conf.Extensions = &extconf.ExtensionConfig{}
 		conf.Extensions.Metrics = &extconf.MetricsConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defaultValue},
+			Enable:     &defaultValue,
 			Prometheus: &extconf.PrometheusConfig{},
 		}
 		conf.Log.Level = "info"

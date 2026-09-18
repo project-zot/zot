@@ -614,7 +614,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			next := resp.Header().Get("Link")
 			So(next, ShouldNotBeEmpty)
 
-			nextURL := strings.Split(next, ";")[0]
+			nextURL, _, _ := strings.Cut(next, ";")
 			if strings.HasPrefix(nextURL, "<") || strings.HasPrefix(nextURL, "\"") {
 				nextURL = nextURL[1:]
 			}

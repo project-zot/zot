@@ -248,8 +248,8 @@ func (b *BearerAuth) Authenticate(
 	if b.traditional != nil {
 		claims, err := b.traditional.Authenticate(request.Context(), header, requestedAccess)
 		if err != nil {
-			var challenge *AuthChallengeError
-			if errors.As(err, &challenge) {
+			challenge, ok := errors.AsType[*AuthChallengeError](err)
+			if ok {
 				ctlr.Log.Debug().Err(challenge).Msg("bearer token authorization failed")
 				result.challengeHeader = challenge.Header()
 

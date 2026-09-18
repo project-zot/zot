@@ -41,8 +41,8 @@ func TestImageListGql(t *testing.T) {
 			Trivy:          trivyConfig,
 		}
 		searchConfig := &extconf.SearchConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
-			CVE:        cveConfig,
+			Enable: &defaultVal,
+			CVE:    cveConfig,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: searchConfig,
@@ -73,10 +73,8 @@ func TestImageListGql(t *testing.T) {
 		createdTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
 		createdTimeL2 := time.Date(2010, 2, 1, 12, 0, 0, 0, time.UTC)
 		config := ispec.Image{
-			Platform: ispec.Platform{
-				Architecture: "amd64",
-				OS:           "linux",
-			},
+			Architecture: "amd64",
+			OS:           "linux",
 			RootFS: ispec.RootFS{
 				Type:    "layers",
 				DiffIDs: []godigest.Digest{},

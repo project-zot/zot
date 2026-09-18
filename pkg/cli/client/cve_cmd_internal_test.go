@@ -31,7 +31,7 @@ func TestSearchCVECmd(t *testing.T) {
 	defaultVal := true
 	conf.Extensions = &extconf.ExtensionConfig{
 		Search: &extconf.SearchConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+			Enable: &defaultVal,
 		},
 	}
 
@@ -483,7 +483,7 @@ func TestCVECommandGQL(t *testing.T) {
 	defaultVal := true
 	conf.Extensions = &extconf.ExtensionConfig{
 		Search: &extconf.SearchConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+			Enable: &defaultVal,
 		},
 	}
 
@@ -655,7 +655,7 @@ func TestCVECommandErrors(t *testing.T) {
 
 	conf.Extensions = &extconf.ExtensionConfig{
 		Search: &extconf.SearchConfig{
-			BaseConfig: extconf.BaseConfig{Enable: ref(true)},
+			Enable: ref(true),
 		},
 	}
 

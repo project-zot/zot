@@ -621,13 +621,13 @@ func TestPaginatedConvert(t *testing.T) {
 
 	var (
 		badBothImage = CreateImageWith().DefaultLayers().ImageConfig(
-			ispec.Image{Platform: ispec.Platform{OS: "bad-os", Architecture: "bad-arch"}}).Build()
+			ispec.Image{OS: "bad-os", Architecture: "bad-arch"}).Build()
 		badOsImage = CreateImageWith().DefaultLayers().ImageConfig(
-			ispec.Image{Platform: ispec.Platform{OS: "bad-os", Architecture: "good-arch"}}).Build()
+			ispec.Image{OS: "bad-os", Architecture: "good-arch"}).Build()
 		badArchImage = CreateImageWith().DefaultLayers().ImageConfig(
-			ispec.Image{Platform: ispec.Platform{OS: "good-os", Architecture: "bad-arch"}}).Build()
+			ispec.Image{OS: "good-os", Architecture: "bad-arch"}).Build()
 		goodImage = CreateImageWith().DefaultLayers().ImageConfig(
-			ispec.Image{Platform: ispec.Platform{OS: "good-os", Architecture: "good-arch"}}).Build()
+			ispec.Image{OS: "good-os", Architecture: "good-arch"}).Build()
 
 		randomImage1    = CreateRandomImage()
 		randomImage2    = CreateRandomImage()
@@ -1201,10 +1201,8 @@ func TestRepoMeta2RepoSummary(t *testing.T) {
 				},
 			},
 			LastUpdatedImage: &mTypes.LastUpdatedImage{
-				Descriptor: mTypes.Descriptor{
-					Digest:    "sha256:digest2",
-					MediaType: "application/vnd.oci.image.manifest.v1+json",
-				},
+				Digest:      "sha256:digest2",
+				MediaType:   "application/vnd.oci.image.manifest.v1+json",
 				Tag:         "tag2",
 				LastUpdated: &newestTime, // This is newer than olderTime and newerTime, but older than futureTime
 			},
@@ -1248,10 +1246,8 @@ func TestRepoMeta2RepoSummary(t *testing.T) {
 				},
 			},
 			LastUpdatedImage: &mTypes.LastUpdatedImage{
-				Descriptor: mTypes.Descriptor{
-					Digest:    "sha256:digest1",
-					MediaType: "application/vnd.oci.image.manifest.v1+json",
-				},
+				Digest:      "sha256:digest1",
+				MediaType:   "application/vnd.oci.image.manifest.v1+json",
 				Tag:         "tag1",
 				LastUpdated: &newestTime,
 			},
@@ -1293,10 +1289,8 @@ func TestRepoMeta2RepoSummary(t *testing.T) {
 				},
 			},
 			LastUpdatedImage: &mTypes.LastUpdatedImage{
-				Descriptor: mTypes.Descriptor{
-					Digest:    "sha256:digest1",
-					MediaType: "application/vnd.oci.image.manifest.v1+json",
-				},
+				Digest:      "sha256:digest1",
+				MediaType:   "application/vnd.oci.image.manifest.v1+json",
 				Tag:         "tag1",
 				LastUpdated: nil,
 			},
@@ -1440,18 +1434,16 @@ func TestDockerIndexMediaTypeConversion(t *testing.T) {
 			Digest:    digest,
 			Manifests: []mTypes.FullManifestMeta{
 				{
-					ManifestMeta: mTypes.ManifestMeta{
-						Digest: digest,
-						Size:   10,
-						Manifest: ispec.Manifest{
-							MediaType: docker.MediaTypeManifest,
-							Config: ispec.Descriptor{
-								Digest: godigest.FromString("config"),
-								Size:   2,
-							},
+					Digest: digest,
+					Size:   10,
+					Manifest: ispec.Manifest{
+						MediaType: docker.MediaTypeManifest,
+						Config: ispec.Descriptor{
+							Digest: godigest.FromString("config"),
+							Size:   2,
 						},
-						Config: ispec.Image{},
 					},
+					Config: ispec.Image{},
 				},
 			},
 		})
