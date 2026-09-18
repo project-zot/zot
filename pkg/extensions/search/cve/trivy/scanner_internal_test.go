@@ -2145,3 +2145,98 @@ func TestScanManifestCallerCancellationDoesNotAffectSharedScan(t *testing.T) {
 		So(atomic.LoadInt32(&scanCalls), ShouldEqual, 1)
 	})
 }
+
+func TestScanIndexConcurrentCyclicRootsDoNotDeadlock(t *testing.T) {
+	Convey("Concurrent top-level scans rooted at two indexes that cyclically reference "+
+		"each other must not deadlock", t, func() {
+		leaf := CreateImageWith().DefaultLayers().PlatformConfig("amd64", "linux").Build()
+
+		digA := godigest.FromString("concurrent-cycle-index-a")
+		digB := godigest.FromString("concurrent-cycle-index-b")
+		indexA := ispec.Index{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			MediaType: ispec.MediaTypeImageIndex,
+			Manifests: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageIndex, Digest: digB, Size: 1},
+				{MediaType: ispec.MediaTypeImageManifest, Digest: leaf.ManifestDescriptor.Digest, Size: leaf.ManifestDescriptor.Size},
+			},
+		}
+		indexB := ispec.Index{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			MediaType: ispec.MediaTypeImageIndex,
+			Manifests: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageIndex, Digest: digA, Size: 1},
+			},
+		}
+
+		scanner := Scanner{
+			log: log.NewTestLogger(),
+			metaDB: mocks.MetaDBMock{
+				GetImageMetaFn: func(digest godigest.Digest) (types.ImageMeta, error) {
+					switch digest.String() {
+					case digA.String():
+						return types.ImageMeta{MediaType: ispec.MediaTypeImageIndex, Digest: digA, Index: &indexA}, nil
+					case digB.String():
+						return types.ImageMeta{MediaType: ispec.MediaTypeImageIndex, Digest: digB, Index: &indexB}, nil
+					case leaf.DigestStr():
+						return leaf.AsImageMeta(), nil
+					default:
+						return types.ImageMeta{}, zerr.ErrRepoMetaNotFound
+					}
+				},
+			},
+			storeController: storage.StoreController{DefaultStore: mocks.MockedImageStore{
+				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+					return true, 1, time.Time{}, nil
+				},
+			}},
+			cache:                 cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+			scanSingleFlightGroup: &singleflight.Group{},
+		}
+		// Pre-cache the leaf manifest so scanManifest short-circuits on its top cache
+		// check: this test targets the index-traversal dedup logic, not a real trivy scan.
+		scanner.cache.Add(leaf.DigestStr(), map[string]zcommon.CVE{"CVE-1": {ID: "CVE-1"}})
+
+		type scanOutcome struct {
+			result    map[string]zcommon.CVE
+			wasCached bool
+			err       error
+		}
+
+		var outcomeA, outcomeB scanOutcome
+
+		done := make(chan struct{})
+
+		go func() {
+			var wg sync.WaitGroup
+
+			wg.Add(2)
+
+			go func() {
+				defer wg.Done()
+
+				result, wasCached, err := scanner.scanIndex(context.Background(), "repo", digA.String())
+				outcomeA = scanOutcome{result, wasCached, err}
+			}()
+
+			go func() {
+				defer wg.Done()
+
+				result, wasCached, err := scanner.scanIndex(context.Background(), "repo", digB.String())
+				outcomeB = scanOutcome{result, wasCached, err}
+			}()
+
+			wg.Wait()
+			close(done)
+		}()
+
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("concurrent scans rooted at cyclically referencing indexes deadlocked")
+		}
+
+		So(outcomeA.err, ShouldBeNil)
+		So(outcomeB.err, ShouldBeNil)
+	})
+}
