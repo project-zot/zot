@@ -1113,9 +1113,45 @@ type cacheableScanResult struct {
 }
 
 func (scanner Scanner) scanIndex(ctx context.Context, repo, digest string) (map[string]zcommon.CVE, bool, error) {
-	return scanner.scanIndexSeen(ctx, repo, digest, map[string]struct{}{})
+	// prevent multiple requests running trivy multiple times for the same top-level index;
+	// DoChan lets each caller stop waiting on its own ctx without canceling the shared scan
+	// for the others. The key includes repo: the same index digest can differ in child
+	// presence across repos, so a scan for one repo must never be shared with another.
+	//
+	// Dedup applies only at this top level, never inside scanIndexSeen's recursion into
+	// nested indexes: a nested step's result depends on the ancestor `seen` set as well as
+	// (repo, digest), so sharing its flight across two independent traversals could hand one
+	// of them an incomplete aggregate (an ancestor wrongly treated as already visited), or,
+	// for cyclic index metadata, let two concurrent top-level scans each hold the flight the
+	// other's traversal is blocked waiting on and deadlock.
+	resultChan := scanner.scanSingleFlightGroup.DoChan(repo+"@"+digest, func() (any, error) {
+		cveIDMap, wasCached, err := scanner.scanIndexSeen(ctx, repo, digest, map[string]struct{}{})
+		if err != nil {
+			return cacheableScanResult{}, err
+		}
+
+		return cacheableScanResult{cveIDMap, wasCached}, nil
+	})
+
+	select {
+	case result := <-resultChan:
+		if result.Err != nil {
+			return map[string]zcommon.CVE{}, false, result.Err
+		}
+
+		// the singleflight function above always returns a cacheableScanResult, so this
+		// type assertion cannot fail.
+		scanResult, _ := result.Val.(cacheableScanResult)
+
+		return scanResult.cachedMap, scanResult.wasCached, nil
+	case <-ctx.Done():
+		return map[string]zcommon.CVE{}, false, ctx.Err()
+	}
 }
 
+// scanIndexSeen aggregates CVEs for an index's children, recursing into nested indexes by
+// plain call (not through scanSingleFlightGroup: see scanIndex) since a nested traversal
+// step's result depends on the ancestor `seen` set, not just (repo, digest).
 func (scanner Scanner) scanIndexSeen(ctx context.Context, repo, digest string, seen map[string]struct{},
 ) (map[string]zcommon.CVE, bool, error) {
 	// Do not cache index aggregates under the index digest: the same digest can be
@@ -1129,33 +1165,17 @@ func (scanner Scanner) scanIndexSeen(ctx context.Context, repo, digest string, s
 
 	seen[digest] = struct{}{}
 
-	// prevent multiple requests running trivy multiple times for the same index; DoChan lets
-	// each caller stop waiting on its own ctx without canceling the shared scan for the others.
-	// The key includes repo: as noted above, the same index digest can differ in child
-	// presence across repos, so a scan for one repo must never be shared with another.
-	resultChan := scanner.scanSingleFlightGroup.DoChan(repo+"@"+digest, func() (any, error) {
-		return scanner.scanIndexUncached(ctx, repo, digest, seen)
-	})
-
-	select {
-	case result := <-resultChan:
-		if result.Err != nil {
-			return map[string]zcommon.CVE{}, false, result.Err
-		}
-
-		// the singleflight function above always returns a cacheableScanResult, so this
-		// type assertion cannot fail; a compile-time check lives in scanIndexUncached's
-		// own return type.
-		scanResult, _ := result.Val.(cacheableScanResult)
-
-		return scanResult.cachedMap, scanResult.wasCached, nil
-	case <-ctx.Done():
-		return map[string]zcommon.CVE{}, false, ctx.Err()
+	scanResult, err := scanner.scanIndexUncached(ctx, repo, digest, seen)
+	if err != nil {
+		return map[string]zcommon.CVE{}, false, err
 	}
+
+	return scanResult.cachedMap, scanResult.wasCached, nil
 }
 
-// scanIndexUncached aggregates CVEs for an index's children. It is only ever invoked once per
-// digest at a time, via scanSingleFlightGroup, so it is safe to test in isolation.
+// scanIndexUncached aggregates CVEs for an index's children by iterating its manifests,
+// recursing into scanIndexSeen for nested indexes and delegating to scanManifest (itself
+// deduped and cache-checked) for leaves.
 func (scanner Scanner) scanIndexUncached(ctx context.Context, repo, digest string, seen map[string]struct{},
 ) (cacheableScanResult, error) {
 	indexData, err := scanner.metaDB.GetImageMeta(godigest.Digest(digest))
