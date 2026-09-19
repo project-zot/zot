@@ -1476,8 +1476,8 @@ func TestDestinationRegistry(t *testing.T) {
 						Size:      int64(bsize1),
 					},
 				},
-			}
-			manifest.SchemaVersion = 2
+
+				SchemaVersion: 2}
 			content, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
 			digest = godigest.FromBytes(content)
@@ -1535,9 +1535,7 @@ func TestDestinationRegistry(t *testing.T) {
 		Convey("trigger linter error in CommitImage()", func() {
 			defaultVal := true
 			linter := lint.NewLinter(&config.LintConfig{
-				BaseConfig: config.BaseConfig{
-					Enable: &defaultVal,
-				},
+				Enable:               &defaultVal,
 				MandatoryAnnotations: []string{"annot1"},
 			}, log)
 
@@ -1678,8 +1676,8 @@ func TestDestinationRegistry(t *testing.T) {
 							Size:      int64(buflen),
 						},
 					},
-				}
-				manifest.SchemaVersion = 2
+
+					SchemaVersion: 2}
 
 				manifestContent, err := json.Marshal(manifest)
 				So(err, ShouldBeNil)
@@ -1794,8 +1792,8 @@ func TestDestinationRegistry(t *testing.T) {
 						Size:      int64(bsize1),
 					},
 				},
-			}
-			manifest.SchemaVersion = 2
+
+				SchemaVersion: 2}
 			content, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
 			digest = godigest.FromBytes(content)

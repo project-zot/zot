@@ -50,8 +50,8 @@ func TestScrubExtension(t *testing.T) {
 		logWriter := io.MultiWriter(os.Stdout, logFile)
 		trueValue := true
 		scrubConfig := &extconf.ScrubConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &trueValue},
-			Interval:   2,
+			Enable:   &trueValue,
+			Interval: 2,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
 			Scrub: scrubConfig,
@@ -89,8 +89,8 @@ func TestScrubExtension(t *testing.T) {
 		logWriter := io.MultiWriter(os.Stdout, logFile)
 		trueValue := true
 		scrubConfig := &extconf.ScrubConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &trueValue},
-			Interval:   2,
+			Enable:   &trueValue,
+			Interval: 2,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
 			Scrub: scrubConfig,
@@ -135,8 +135,8 @@ func TestScrubExtension(t *testing.T) {
 		logWriter := io.MultiWriter(os.Stdout, logFile)
 		trueValue := true
 		scrubConfig := &extconf.ScrubConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &trueValue},
-			Interval:   2,
+			Enable:   &trueValue,
+			Interval: 2,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
 			Scrub: scrubConfig,

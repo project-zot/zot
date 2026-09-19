@@ -12,7 +12,6 @@ import (
 
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
-	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -240,7 +239,7 @@ func TestRemoveIdleRepository(t *testing.T) {
 		So(store.InitRepo(ctx, "repo"), ShouldBeNil)
 
 		index := ispec.Index{
-			Versioned: specs.Versioned{SchemaVersion: 2},
+			SchemaVersion: 2,
 			Manifests: []ispec.Descriptor{{
 				MediaType: ispec.MediaTypeImageManifest,
 				Digest:    godigest.FromString("manifest"),

@@ -48,7 +48,7 @@ func TestExtensionMetrics(t *testing.T) {
 		conf.Extensions = &extconf.ExtensionConfig{}
 		enabled := true
 		conf.Extensions.Metrics = &extconf.MetricsConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &enabled},
+			Enable:     &enabled,
 			Prometheus: &extconf.PrometheusConfig{Path: "/metrics"},
 		}
 
@@ -101,7 +101,7 @@ func TestExtensionMetrics(t *testing.T) {
 
 		conf.Storage.RootDirectory = t.TempDir()
 		conf.Extensions = &extconf.ExtensionConfig{}
-		conf.Extensions.Metrics = &extconf.MetricsConfig{BaseConfig: extconf.BaseConfig{Enable: &disabled}}
+		conf.Extensions.Metrics = &extconf.MetricsConfig{Enable: &disabled}
 
 		ctlr := api.NewController(conf)
 		So(ctlr, ShouldNotBeNil)
@@ -142,7 +142,7 @@ func TestMetricsAuthentication(t *testing.T) {
 		conf.HTTP.Port = "0"
 		enabled := true
 		metricsConfig := &extconf.MetricsConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &enabled},
+			Enable:     &enabled,
 			Prometheus: &extconf.PrometheusConfig{Path: "/metrics"},
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -182,7 +182,7 @@ func TestMetricsAuthentication(t *testing.T) {
 
 		enabled := true
 		metricsConfig := &extconf.MetricsConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &enabled},
+			Enable:     &enabled,
 			Prometheus: &extconf.PrometheusConfig{Path: "/metrics"},
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -244,7 +244,7 @@ func TestMetricsAuthorization(t *testing.T) {
 
 		enabled := true
 		metricsConfig := &extconf.MetricsConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &enabled},
+			Enable:     &enabled,
 			Prometheus: &extconf.PrometheusConfig{Path: "/metrics"},
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -564,7 +564,7 @@ func TestMetricsAuthorization(t *testing.T) {
 		enabled := true
 		conf.Extensions = &extconf.ExtensionConfig{
 			Metrics: &extconf.MetricsConfig{
-				BaseConfig: extconf.BaseConfig{Enable: &enabled},
+				Enable:     &enabled,
 				Prometheus: &extconf.PrometheusConfig{Path: "/metrics"},
 			},
 		}
@@ -611,7 +611,7 @@ func TestMetricsAnonymousAccessNoAuth(t *testing.T) {
 		enabled := true
 		conf.Extensions = &extconf.ExtensionConfig{
 			Metrics: &extconf.MetricsConfig{
-				BaseConfig: extconf.BaseConfig{Enable: &enabled},
+				Enable:     &enabled,
 				Prometheus: &extconf.PrometheusConfig{Path: "/metrics"},
 			},
 		}
@@ -660,7 +660,7 @@ func TestPopulateStorageMetrics(t *testing.T) {
 		conf.Extensions = &extconf.ExtensionConfig{}
 		enabled := true
 		conf.Extensions.Metrics = &extconf.MetricsConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &enabled},
+			Enable:     &enabled,
 			Prometheus: &extconf.PrometheusConfig{Path: "/metrics"},
 		}
 
@@ -739,7 +739,7 @@ func TestGCMetrics(t *testing.T) {
 		enabled := true
 		conf.Extensions = &extconf.ExtensionConfig{}
 		conf.Extensions.Metrics = &extconf.MetricsConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &enabled},
+			Enable:     &enabled,
 			Prometheus: &extconf.PrometheusConfig{Path: "/metrics"},
 		}
 

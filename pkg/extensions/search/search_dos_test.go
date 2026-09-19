@@ -45,7 +45,7 @@ func TestSearchGQLResourceLimits(t *testing.T) {
 		conf.Storage.RootDirectory = rootDir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		ctlr := api.NewController(conf)

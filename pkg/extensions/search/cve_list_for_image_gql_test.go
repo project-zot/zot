@@ -48,8 +48,8 @@ func TestCVEListForImageGql(t *testing.T) {
 			Trivy:          trivyConfig,
 		}
 		searchConfig := &extconf.SearchConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
-			CVE:        cveConfig,
+			Enable: &defaultVal,
+			CVE:    cveConfig,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: searchConfig,

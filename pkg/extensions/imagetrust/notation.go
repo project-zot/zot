@@ -249,7 +249,7 @@ func (cloud *CertificateAWSStorage) GetCertificates(
 
 	for _, secret := range secrets.SecretList {
 		// get key
-		raw, err := cloud.secretsManagerCache.GetSecretString(*(secret.Name))
+		raw, err := cloud.secretsManagerCache.GetSecretString(*secret.Name)
 		if err != nil {
 			return []*x509.Certificate{}, err
 		}

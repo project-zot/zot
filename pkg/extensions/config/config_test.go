@@ -24,9 +24,7 @@ var (
 func buildSearchConfig(enabled bool) *config.ExtensionConfig {
 	ext := &config.ExtensionConfig{}
 	ext.Search = &config.SearchConfig{
-		BaseConfig: config.BaseConfig{
-			Enable: &enabled,
-		},
+		Enable: &enabled,
 	}
 
 	return ext
@@ -35,9 +33,7 @@ func buildSearchConfig(enabled bool) *config.ExtensionConfig {
 func buildSearchConfigWithCVE(enabled bool) *config.ExtensionConfig {
 	ext := &config.ExtensionConfig{}
 	ext.Search = &config.SearchConfig{
-		BaseConfig: config.BaseConfig{
-			Enable: &enabled,
-		},
+		Enable: &enabled,
 		CVE: &config.CVEConfig{
 			Trivy: &config.TrivyConfig{},
 		},
@@ -72,9 +68,7 @@ func buildSyncConfig(enabled bool) *config.ExtensionConfig {
 func buildScrubConfig(enabled bool) *config.ExtensionConfig {
 	ext := &config.ExtensionConfig{}
 	ext.Scrub = &config.ScrubConfig{
-		BaseConfig: config.BaseConfig{
-			Enable: &enabled,
-		},
+		Enable: &enabled,
 	}
 
 	return ext
@@ -83,9 +77,7 @@ func buildScrubConfig(enabled bool) *config.ExtensionConfig {
 func buildMetricsConfig(enabled bool) *config.ExtensionConfig {
 	ext := &config.ExtensionConfig{}
 	ext.Metrics = &config.MetricsConfig{
-		BaseConfig: config.BaseConfig{
-			Enable: &enabled,
-		},
+		Enable: &enabled,
 		Prometheus: &config.PrometheusConfig{
 			Path: "/metrics",
 		},
@@ -97,9 +89,7 @@ func buildMetricsConfig(enabled bool) *config.ExtensionConfig {
 func buildTrustConfig(enabled bool) *config.ExtensionConfig {
 	ext := &config.ExtensionConfig{}
 	ext.Trust = &config.ImageTrustConfig{
-		BaseConfig: config.BaseConfig{
-			Enable: &enabled,
-		},
+		Enable: &enabled,
 	}
 
 	return ext
@@ -108,9 +98,7 @@ func buildTrustConfig(enabled bool) *config.ExtensionConfig {
 func buildUIConfig(enabled bool) *config.ExtensionConfig {
 	ext := &config.ExtensionConfig{}
 	ext.UI = &config.UIConfig{
-		BaseConfig: config.BaseConfig{
-			Enable: &enabled,
-		},
+		Enable: &enabled,
 	}
 
 	return ext
@@ -119,14 +107,10 @@ func buildUIConfig(enabled bool) *config.ExtensionConfig {
 func buildSearchAndUIConfig(enabled bool) *config.ExtensionConfig {
 	ext := &config.ExtensionConfig{}
 	ext.Search = &config.SearchConfig{
-		BaseConfig: config.BaseConfig{
-			Enable: &enabled,
-		},
+		Enable: &enabled,
 	}
 	ext.UI = &config.UIConfig{
-		BaseConfig: config.BaseConfig{
-			Enable: &enabled,
-		},
+		Enable: &enabled,
 	}
 
 	return ext
@@ -135,9 +119,7 @@ func buildSearchAndUIConfig(enabled bool) *config.ExtensionConfig {
 func buildTrustConfigWithCosign(enabled bool) *config.ExtensionConfig {
 	ext := &config.ExtensionConfig{}
 	ext.Trust = &config.ImageTrustConfig{
-		BaseConfig: config.BaseConfig{
-			Enable: &enabled,
-		},
+		Enable: &enabled,
 		Cosign: true,
 	}
 
@@ -147,9 +129,7 @@ func buildTrustConfigWithCosign(enabled bool) *config.ExtensionConfig {
 func buildTrustConfigWithNotation(enabled bool) *config.ExtensionConfig {
 	ext := &config.ExtensionConfig{}
 	ext.Trust = &config.ImageTrustConfig{
-		BaseConfig: config.BaseConfig{
-			Enable: &enabled,
-		},
+		Enable:   &enabled,
 		Notation: true,
 	}
 
@@ -394,26 +374,18 @@ func TestExtensionConfig(t *testing.T) {
 		uiEnabled := true
 		searchConfig := &config.ExtensionConfig{}
 		searchConfig.Search = &config.SearchConfig{
-			BaseConfig: config.BaseConfig{
-				Enable: &searchEnabled,
-			},
+			Enable: &searchEnabled,
 		}
 		uiConfig := &config.ExtensionConfig{}
 		uiConfig.UI = &config.UIConfig{
-			BaseConfig: config.BaseConfig{
-				Enable: &uiEnabled,
-			},
+			Enable: &uiEnabled,
 		}
 		searchAndUIConfig := &config.ExtensionConfig{}
 		searchAndUIConfig.Search = &config.SearchConfig{
-			BaseConfig: config.BaseConfig{
-				Enable: &searchEnabled,
-			},
+			Enable: &searchEnabled,
 		}
 		searchAndUIConfig.UI = &config.UIConfig{
-			BaseConfig: config.BaseConfig{
-				Enable: &uiEnabled,
-			},
+			Enable: &uiEnabled,
 		}
 
 		testConcurrentAccessWithConfig(
@@ -440,14 +412,10 @@ func TestExtensionConfig(t *testing.T) {
 			uiEnabled := true
 			extensionConfig := &config.ExtensionConfig{}
 			extensionConfig.Search = &config.SearchConfig{
-				BaseConfig: config.BaseConfig{
-					Enable: &searchEnabled,
-				},
+				Enable: &searchEnabled,
 			}
 			extensionConfig.UI = &config.UIConfig{
-				BaseConfig: config.BaseConfig{
-					Enable: &uiEnabled,
-				},
+				Enable: &uiEnabled,
 			}
 
 			// Test mixed concurrent access to verify thread-safety across all methods

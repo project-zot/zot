@@ -64,8 +64,7 @@ func (driver *Driver) Delete(path string) error {
 	formattedErr := driver.formatErr(err, path)
 
 	// Check if the formatted error is PathNotFoundError.
-	var pathNotFoundErr storagedriver.PathNotFoundError
-	if errors.As(formattedErr, &pathNotFoundErr) {
+	if _, ok := errors.AsType[storagedriver.PathNotFoundError](formattedErr); ok {
 		// In Azure Blob, directories are just blob-name prefixes, so once all blobs under a
 		// prefix are gone the "directory" no longer exists. Treat deleting a missing path as a
 		// no-op so Delete is idempotent (mirrors the gcs driver behavior).
@@ -129,8 +128,7 @@ func isEOF(err error) bool {
 		return true
 	}
 
-	var storageErr storagedriver.Error
-	if errors.As(err, &storageErr) {
+	if storageErr, ok := errors.AsType[storagedriver.Error](err); ok {
 		return errors.Is(storageErr.Detail, io.EOF)
 	}
 

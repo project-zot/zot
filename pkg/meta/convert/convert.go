@@ -5,7 +5,6 @@ import (
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
-	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -537,10 +536,8 @@ func GetLastUpdatedImage(protoLastUpdated *proto_go.RepoLastUpdatedImage) *mType
 	}
 
 	return &mTypes.LastUpdatedImage{
-		Descriptor: mTypes.Descriptor{
-			Digest:    protoLastUpdated.GetDigest(),
-			MediaType: protoLastUpdated.GetMediaType(),
-		},
+		Digest:      protoLastUpdated.GetDigest(),
+		MediaType:   protoLastUpdated.GetMediaType(),
 		Tag:         protoLastUpdated.GetTag(),
 		LastUpdated: GetTime(protoLastUpdated.GetLastUpdated()),
 	}
@@ -583,12 +580,12 @@ func GetImageMeta(dbImageMeta *proto_go.ImageMeta) mTypes.ImageMeta {
 		}
 
 		imageMeta.Index = &ispec.Index{
-			Versioned:    specs.Versioned{SchemaVersion: int(dbImageMeta.GetIndex().GetIndex().Versioned.GetSchemaVersion())},
-			MediaType:    indexMediaType,
-			Manifests:    manifests,
-			Subject:      GetImageSubject(dbImageMeta),
-			ArtifactType: GetImageArtifactType(dbImageMeta),
-			Annotations:  GetImageAnnotations(dbImageMeta),
+			SchemaVersion: int(dbImageMeta.GetIndex().GetIndex().Versioned.GetSchemaVersion()),
+			MediaType:     indexMediaType,
+			Manifests:     manifests,
+			Subject:       GetImageSubject(dbImageMeta),
+			ArtifactType:  GetImageArtifactType(dbImageMeta),
+			Annotations:   GetImageAnnotations(dbImageMeta),
 		}
 	}
 
@@ -599,9 +596,9 @@ func GetImageMeta(dbImageMeta *proto_go.ImageMeta) mTypes.ImageMeta {
 			Size:   manifest.GetSize(),
 			Digest: godigest.Digest(manifest.GetDigest()),
 			Manifest: ispec.Manifest{
-				Versioned:    specs.Versioned{SchemaVersion: int(manifest.GetManifest().GetVersioned().GetSchemaVersion())},
-				MediaType:    manifest.GetManifest().GetMediaType(),
-				ArtifactType: manifest.GetManifest().GetArtifactType(),
+				SchemaVersion: int(manifest.GetManifest().GetVersioned().GetSchemaVersion()),
+				MediaType:     manifest.GetManifest().GetMediaType(),
+				ArtifactType:  manifest.GetManifest().GetArtifactType(),
 				Config: ispec.Descriptor{
 					MediaType: manifest.GetManifest().GetConfig().GetMediaType(),
 					Size:      manifest.GetManifest().GetConfig().GetSize(),

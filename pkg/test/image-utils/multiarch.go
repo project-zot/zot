@@ -5,7 +5,6 @@ import (
 
 	dockerList "github.com/distribution/distribution/v3/manifest/manifestlist"
 	godigest "github.com/opencontainers/go-digest"
-	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
@@ -209,12 +208,12 @@ func (mb *BaseMultiarchBuilder) Build() MultiarchImage {
 	version := 2
 
 	index := ispec.Index{
-		Versioned:    specs.Versioned{SchemaVersion: version},
-		MediaType:    ispec.MediaTypeImageIndex,
-		Manifests:    manifests,
-		Annotations:  mb.annotations,
-		Subject:      mb.subject,
-		ArtifactType: mb.artifactType,
+		SchemaVersion: version,
+		MediaType:     ispec.MediaTypeImageIndex,
+		Manifests:     manifests,
+		Annotations:   mb.annotations,
+		Subject:       mb.subject,
+		ArtifactType:  mb.artifactType,
 	}
 
 	indexBlob, err := json.Marshal(index)

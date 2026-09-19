@@ -404,9 +404,9 @@ func TestGetOCIReferrers(t *testing.T) {
 					Size:      int64(mbuflen),
 					Digest:    mdigest,
 				},
-			}
 
-			artifactManifest.SchemaVersion = 2
+				SchemaVersion: 2,
+			}
 
 			manBuf, err := json.Marshal(artifactManifest)
 			So(err, ShouldBeNil)
@@ -510,11 +510,9 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 			endpoint := os.Getenv("S3MOCK_ENDPOINT")
 
 			storageDriverParams := config.GlobalStorageConfig{
-				StorageConfig: config.StorageConfig{
-					Dedupe:        true,
-					RootDirectory: t.TempDir(),
-					RemoteCache:   false,
-				},
+				Dedupe:        true,
+				RootDirectory: t.TempDir(),
+				RemoteCache:   false,
 				SubPaths: map[string]config.StorageConfig{
 					"/a": {
 						Dedupe:        true,
@@ -1059,9 +1057,9 @@ func TestS3Dedupe(t *testing.T) {
 					Size:      int64(buflen),
 				},
 			},
-		}
 
-		manifest.SchemaVersion = 2
+			SchemaVersion: 2,
+		}
 		manifestBuf, err := json.Marshal(manifest)
 		So(err, ShouldBeNil)
 
@@ -1140,8 +1138,9 @@ func TestS3Dedupe(t *testing.T) {
 					Size:      int64(buflen),
 				},
 			},
+
+			SchemaVersion: 2,
 		}
-		manifest.SchemaVersion = 2
 		manifestBuf, err = json.Marshal(manifest)
 		So(err, ShouldBeNil)
 
@@ -1321,8 +1320,9 @@ func TestS3Dedupe(t *testing.T) {
 						Size:      int64(buflen),
 					},
 				},
+
+				SchemaVersion: 2,
 			}
-			manifest.SchemaVersion = 2
 			manifestBuf, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
 
@@ -1496,9 +1496,9 @@ func TestS3Dedupe(t *testing.T) {
 					Size:      int64(buflen),
 				},
 			},
-		}
 
-		manifest.SchemaVersion = 2
+			SchemaVersion: 2,
+		}
 		manifestBuf, err := json.Marshal(manifest)
 		So(err, ShouldBeNil)
 
@@ -1568,8 +1568,9 @@ func TestS3Dedupe(t *testing.T) {
 					Size:      int64(buflen),
 				},
 			},
+
+			SchemaVersion: 2,
 		}
-		manifest.SchemaVersion = 2
 		manifestBuf, err = json.Marshal(manifest)
 		So(err, ShouldBeNil)
 
@@ -1793,9 +1794,9 @@ func TestRebuildDedupeIndex(t *testing.T) {
 					Size:      int64(buflen),
 				},
 			},
-		}
 
-		manifest.SchemaVersion = 2
+			SchemaVersion: 2,
+		}
 		manifestBuf, err := json.Marshal(manifest)
 		So(err, ShouldBeNil)
 
@@ -2924,8 +2925,9 @@ func TestS3ManifestImageIndex(t *testing.T) {
 					Size:      int64(bsize1),
 				},
 			},
+
+			SchemaVersion: 2,
 		}
-		manifest.SchemaVersion = 2
 		content, err = json.Marshal(manifest)
 		So(err, ShouldBeNil)
 
@@ -2970,8 +2972,9 @@ func TestS3ManifestImageIndex(t *testing.T) {
 					Size:      int64(bsize1),
 				},
 			},
+
+			SchemaVersion: 2,
 		}
-		manifest.SchemaVersion = 2
 		content, err = json.Marshal(manifest)
 		So(err, ShouldBeNil)
 
@@ -3015,8 +3018,9 @@ func TestS3ManifestImageIndex(t *testing.T) {
 						Size:      int64(bsize1),
 					},
 				},
+
+				SchemaVersion: 2,
 			}
-			manifest.SchemaVersion = 2
 			content, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
 
@@ -3085,8 +3089,9 @@ func TestS3ManifestImageIndex(t *testing.T) {
 						Size:      int64(bsize1),
 					},
 				},
+
+				SchemaVersion: 2,
 			}
-			manifest.SchemaVersion = 2
 			content, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
 
@@ -3249,8 +3254,9 @@ func TestS3ManifestImageIndex(t *testing.T) {
 							Size:      int64(len(content)),
 						},
 					},
+
+					SchemaVersion: 2,
 				}
-				manifest.SchemaVersion = 2
 				content, err = json.Marshal(manifest)
 				So(err, ShouldBeNil)
 
@@ -3400,8 +3406,9 @@ func TestS3ManifestImageIndex(t *testing.T) {
 					Size:      int64(bsize),
 				},
 			},
+
+			SchemaVersion: 2,
 		}
-		manifest.SchemaVersion = 2
 		content, err = json.Marshal(manifest)
 		So(err, ShouldBeNil)
 
@@ -3437,8 +3444,9 @@ func TestS3ManifestImageIndex(t *testing.T) {
 					Size:      int64(bsize),
 				},
 			},
+
+			SchemaVersion: 2,
 		}
-		manifest.SchemaVersion = 2
 		content, err = json.Marshal(manifest)
 		So(err, ShouldBeNil)
 

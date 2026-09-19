@@ -20,7 +20,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	godigest "github.com/opencontainers/go-digest"
-	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/project-zot/mockoidc"
 	. "github.com/smartystreets/goconvey/convey"
@@ -148,7 +147,7 @@ func TestRoutes(t *testing.T) {
 					"email":  "test@test.com",
 					"groups": []any{"group1", "group2"},
 				},
-				UserInfoEmail: oidc.UserInfoEmail{Email: "test@test.com"},
+				Email: "test@test.com",
 			}
 
 			callback(response, request, tokens, "state", relyingParty, userinfo)
@@ -199,14 +198,14 @@ func TestRoutes(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			userinfo := &oidc.UserInfo{
-				Subject:         "sub",
-				UserInfoProfile: oidc.UserInfoProfile{PreferredUsername: "mapped-user"},
+				Subject:           "sub",
+				PreferredUsername: "mapped-user",
 				Claims: map[string]any{
 					"email":  "test@test.com",
 					"groups": []any{"ignored-userinfo-group"},
 					"roles":  []any{"dev", "ops"},
 				},
-				UserInfoEmail: oidc.UserInfoEmail{Email: "test@test.com"},
+				Email: "test@test.com",
 			}
 
 			callback(response, request, tokens, state, relyingParty, userinfo)
@@ -263,7 +262,7 @@ func TestRoutes(t *testing.T) {
 				Claims: map[string]any{
 					"roles": []any{"dev"},
 				},
-				UserInfoEmail: oidc.UserInfoEmail{Email: "fallback@test.com"},
+				Email: "fallback@test.com",
 			}
 
 			callback(response, request, tokens, state, relyingParty, userinfo)
@@ -316,10 +315,10 @@ func TestRoutes(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			userinfo := &oidc.UserInfo{
-				Subject:         "sub",
-				UserInfoProfile: oidc.UserInfoProfile{PreferredUsername: "mapped-user"},
-				Claims:          map[string]any{},
-				UserInfoEmail:   oidc.UserInfoEmail{Email: "mapped@test.com"},
+				Subject:           "sub",
+				PreferredUsername: "mapped-user",
+				Claims:            map[string]any{},
+				Email:             "mapped@test.com",
 			}
 
 			callback(response, request, tokens, state, relyingParty, userinfo)
@@ -592,7 +591,7 @@ func TestRoutes(t *testing.T) {
 			configDigest := godigest.FromBytes(configBlob)
 
 			manifest := ispec.Manifest{
-				Versioned: specs.Versioned{SchemaVersion: 2},
+				SchemaVersion: 2,
 				Config: ispec.Descriptor{
 					MediaType: ispec.MediaTypeImageConfig,
 					Digest:    configDigest,
@@ -2403,8 +2402,9 @@ func descriptorFixture(t *testing.T) ([]byte, []byte) {
 				Size:      4,
 			},
 		},
+
+		SchemaVersion: 2,
 	}
-	manifest.SchemaVersion = 2
 
 	manifestJSON, err := json.Marshal(manifest)
 	require.NoError(t, err)
@@ -2420,8 +2420,9 @@ func descriptorFixture(t *testing.T) ([]byte, []byte) {
 				},
 			},
 		},
+
+		SchemaVersion: 2,
 	}
-	index.SchemaVersion = 2
 
 	indexJSON, err := json.Marshal(index)
 	require.NoError(t, err)
@@ -3573,9 +3574,9 @@ func TestDeleteManifestSucceedsDespiteMetaDBHookFailure(t *testing.T) {
 		subjectDigest := godigest.FromString("subject-manifest")
 
 		manifest := ispec.Manifest{
-			Versioned:    specs.Versioned{SchemaVersion: 2},
-			MediaType:    ispec.MediaTypeImageManifest,
-			ArtifactType: zcommon.ArtifactTypeCosignBundle,
+			SchemaVersion: 2,
+			MediaType:     ispec.MediaTypeImageManifest,
+			ArtifactType:  zcommon.ArtifactTypeCosignBundle,
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.oci.empty.v1+json",
 				Digest:    godigest.FromString("empty-config"),
@@ -3688,8 +3689,8 @@ func TestDeleteManifestSucceedsAfterSignatureSubjectOrphaned(t *testing.T) {
 
 		// Push and tag the subject image through the real hook path.
 		subjectManifest := ispec.Manifest{
-			Versioned: specs.Versioned{SchemaVersion: 2},
-			MediaType: ispec.MediaTypeImageManifest,
+			SchemaVersion: 2,
+			MediaType:     ispec.MediaTypeImageManifest,
 			Config: ispec.Descriptor{
 				MediaType: ispec.MediaTypeImageConfig,
 				Digest:    godigest.FromString("{}"),
@@ -3714,9 +3715,9 @@ func TestDeleteManifestSucceedsAfterSignatureSubjectOrphaned(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		referrer := ispec.Manifest{
-			Versioned:    specs.Versioned{SchemaVersion: 2},
-			MediaType:    ispec.MediaTypeImageManifest,
-			ArtifactType: zcommon.ArtifactTypeCosignBundle,
+			SchemaVersion: 2,
+			MediaType:     ispec.MediaTypeImageManifest,
+			ArtifactType:  zcommon.ArtifactTypeCosignBundle,
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.oci.empty.v1+json",
 				Digest:    emptyConfigDigest,

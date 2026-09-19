@@ -296,7 +296,7 @@ func TestNewExporter(t *testing.T) {
 
 				err = pmMetric.Write(&metric)
 				So(err, ShouldBeNil)
-				So(*metric.Counter.Value, ShouldEqual, (latency1.Seconds())+(latency2.Seconds()))
+				So(*metric.Counter.Value, ShouldEqual, latency1.Seconds()+latency2.Seconds())
 
 				So(isChannelDrained(chMetric), ShouldEqual, true)
 			})

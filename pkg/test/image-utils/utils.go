@@ -77,12 +77,10 @@ func GetDefaultLayersBlobs() [][]byte {
 
 func GetDefaultConfig() ispec.Image {
 	return ispec.Image{
-		Created: DefaultTimeRef(),
-		Author:  "ZotUser",
-		Platform: ispec.Platform{
-			OS:           "linux",
-			Architecture: "amd64",
-		},
+		Created:      DefaultTimeRef(),
+		Author:       "ZotUser",
+		OS:           "linux",
+		Architecture: "amd64",
 		RootFS: ispec.RootFS{
 			Type:    "layers",
 			DiffIDs: []godigest.Digest{},
@@ -126,12 +124,10 @@ func RandomDateRef(loc *time.Location) *time.Time {
 
 func GetDefaultVulnConfig() ispec.Image {
 	return ispec.Image{
-		Created: DefaultTimeRef(),
-		Author:  "ZotUser",
-		Platform: ispec.Platform{
-			Architecture: "amd64",
-			OS:           "linux",
-		},
+		Created:      DefaultTimeRef(),
+		Author:       "ZotUser",
+		Architecture: "amd64",
+		OS:           "linux",
 		Config: ispec.ImageConfig{
 			Env: []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"},
 			Cmd: []string{"/bin/sh"},
@@ -168,10 +164,8 @@ func GetRandomImageConfig() ([]byte, godigest.Digest) {
 	randomAuthor := RandomString(maxLen)
 
 	config := ispec.Image{
-		Platform: ispec.Platform{
-			Architecture: "amd64",
-			OS:           "linux",
-		},
+		Architecture: "amd64",
+		OS:           "linux",
 		RootFS: ispec.RootFS{
 			Type:    "layers",
 			DiffIDs: []godigest.Digest{},

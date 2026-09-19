@@ -25,7 +25,7 @@ func TestSearchCommandGQL(t *testing.T) {
 	defaultVal := true
 	conf.Extensions = &extconf.ExtensionConfig{
 		Search: &extconf.SearchConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+			Enable: &defaultVal,
 		},
 	}
 

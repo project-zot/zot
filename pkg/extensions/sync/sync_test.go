@@ -23,7 +23,6 @@ import (
 
 	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
-	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/sigstore/cosign/v3/cmd/cosign/cli/attach"
 	"github.com/sigstore/cosign/v3/cmd/cosign/cli/generate"
@@ -212,7 +211,7 @@ func makeUpstreamServerWithCerts(
 	defVal := true
 	srcConfig.Extensions = &extconf.ExtensionConfig{}
 	srcConfig.Extensions.Search = &extconf.SearchConfig{
-		BaseConfig: extconf.BaseConfig{Enable: &defVal},
+		Enable: &defVal,
 	}
 
 	sctlr := api.NewController(srcConfig)
@@ -284,7 +283,7 @@ func makeDownstreamServerWithCerts(
 	destConfig.Extensions = &extconf.ExtensionConfig{}
 	defVal := true
 	destConfig.Extensions.Search = &extconf.SearchConfig{
-		BaseConfig: extconf.BaseConfig{Enable: &defVal},
+		Enable: &defVal,
 	}
 	destConfig.Extensions.Sync = syncConfig
 	destConfig.Log.Output = path.Join(destDir, "sync.log")
@@ -333,7 +332,7 @@ func makeInsecureDownstreamServerFixedPort(
 	destConfig.Extensions = &extconf.ExtensionConfig{}
 	defVal := true
 	destConfig.Extensions.Search = &extconf.SearchConfig{
-		BaseConfig: extconf.BaseConfig{Enable: &defVal},
+		Enable: &defVal,
 	}
 	destConfig.Extensions.Sync = syncConfig
 	destConfig.Log.Output = path.Join(destDir, "sync.log")
@@ -590,9 +589,7 @@ func TestOnDemand(t *testing.T) {
 			_ = pushBlob(srcBaseURL, "remote-repo", ispec.DescriptorEmptyJSON.Data)
 
 			OCIRefManifest := ispec.Manifest{
-				Versioned: specs.Versioned{
-					SchemaVersion: 2,
-				},
+				SchemaVersion: 2,
 				Subject: &ispec.Descriptor{
 					MediaType: ispec.MediaTypeImageManifest,
 					Digest:    manifestDigest,
@@ -751,7 +748,8 @@ func TestOnDemand(t *testing.T) {
 
 			// add index with referrers tag
 			tagRefIndex := ispec.Index{
-				MediaType: ispec.MediaTypeImageIndex,
+				SchemaVersion: 2,
+				MediaType:     ispec.MediaTypeImageIndex,
 				Manifests: []ispec.Descriptor{
 					{
 						MediaType: ispec.MediaTypeImageManifest,
@@ -761,8 +759,6 @@ func TestOnDemand(t *testing.T) {
 				},
 				Annotations: map[string]string{ispec.AnnotationRefName: tag},
 			}
-
-			tagRefIndex.SchemaVersion = 2
 
 			tagRefIndexBlob, err := json.Marshal(tagRefIndex)
 			So(err, ShouldBeNil)
@@ -1238,9 +1234,7 @@ func TestSyncReferenceInLoop(t *testing.T) {
 		_ = pushBlob(srcBaseURL, testImage, ispec.DescriptorEmptyJSON.Data)
 
 		OCIRefManifest := ispec.Manifest{
-			Versioned: specs.Versioned{
-				SchemaVersion: 2,
-			},
+			SchemaVersion: 2,
 			Subject: &ispec.Descriptor{
 				MediaType: ispec.MediaTypeImageManifest,
 				Digest:    sbomDigest,
@@ -4715,9 +4709,7 @@ func TestSignatures(t *testing.T) {
 		_ = pushBlob(srcBaseURL, repoName, ispec.DescriptorEmptyJSON.Data)
 
 		OCIRefManifest := ispec.Manifest{
-			Versioned: specs.Versioned{
-				SchemaVersion: 2,
-			},
+			SchemaVersion: 2,
 			Subject: &ispec.Descriptor{
 				MediaType: ispec.MediaTypeImageManifest,
 				Digest:    sbomDigest,
@@ -4806,10 +4798,10 @@ func TestSignatures(t *testing.T) {
 		image := fmt.Sprintf("localhost:%s/%s@%s", destPort, repoName, digest)
 
 		vrfy := verify.VerifyCommand{
-			RegistryOptions: options.RegistryOptions{AllowInsecure: true},
-			CheckClaims:     true,
-			KeyRef:          path.Join(tdir, "cosign.pub"),
-			IgnoreTlog:      true,
+			AllowInsecure: true,
+			CheckClaims:   true,
+			KeyRef:        path.Join(tdir, "cosign.pub"),
+			IgnoreTlog:    true,
 		}
 
 		signature.LoadNotationPath(tdir)
@@ -4853,10 +4845,10 @@ func TestSignatures(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		vrfy = verify.VerifyCommand{
-			RegistryOptions: options.RegistryOptions{AllowInsecure: true},
-			CheckClaims:     true,
-			KeyRef:          path.Join(tdir, "cosign.pub"),
-			IgnoreTlog:      true,
+			AllowInsecure: true,
+			CheckClaims:   true,
+			KeyRef:        path.Join(tdir, "cosign.pub"),
+			IgnoreTlog:    true,
 		}
 
 		// cosign verify signed sbom
@@ -6106,9 +6098,7 @@ func TestOnDemandPullsReferrersOnce(t *testing.T) {
 		_ = pushBlob(srcBaseURL, testImage, ispec.DescriptorEmptyJSON.Data)
 
 		OCIRefManifest := ispec.Manifest{
-			Versioned: specs.Versioned{
-				SchemaVersion: 2,
-			},
+			SchemaVersion: 2,
 			Subject: &ispec.Descriptor{
 				MediaType: ispec.MediaTypeImageManifest,
 				Digest:    godigest.Digest(digest),
@@ -6419,10 +6409,10 @@ func TestSignaturesOnDemand(t *testing.T) {
 
 		// cosign verify the synced image
 		vrfy := verify.VerifyCommand{
-			RegistryOptions: options.RegistryOptions{AllowInsecure: true},
-			CheckClaims:     true,
-			KeyRef:          path.Join(tdir, "cosign.pub"),
-			IgnoreTlog:      true,
+			AllowInsecure: true,
+			CheckClaims:   true,
+			KeyRef:        path.Join(tdir, "cosign.pub"),
+			IgnoreTlog:    true,
 		}
 		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)})
 		So(err, ShouldBeNil)
@@ -6667,10 +6657,10 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 
 		// cosign verify the synced image
 		vrfy := verify.VerifyCommand{
-			RegistryOptions: options.RegistryOptions{AllowInsecure: true},
-			CheckClaims:     true,
-			KeyRef:          path.Join(tdir, "cosign.pub"),
-			IgnoreTlog:      true,
+			AllowInsecure: true,
+			CheckClaims:   true,
+			KeyRef:        path.Join(tdir, "cosign.pub"),
+			IgnoreTlog:    true,
 		}
 
 		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)})
@@ -6686,10 +6676,10 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 
 		// cosign verify the synced image
 		vrfy = verify.VerifyCommand{
-			RegistryOptions: options.RegistryOptions{AllowInsecure: true},
-			CheckClaims:     true,
-			KeyRef:          path.Join(tdir, "cosign.pub"),
-			IgnoreTlog:      true,
+			AllowInsecure: true,
+			CheckClaims:   true,
+			KeyRef:        path.Join(tdir, "cosign.pub"),
+			IgnoreTlog:    true,
 		}
 
 		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)})
@@ -7041,10 +7031,10 @@ func TestSyncSignaturesDiff(t *testing.T) {
 
 		// cosign verify the image
 		vrfy := verify.VerifyCommand{
-			RegistryOptions: options.RegistryOptions{AllowInsecure: true},
-			CheckClaims:     true,
-			KeyRef:          path.Join(tdir, "cosign.pub"),
-			IgnoreTlog:      true,
+			AllowInsecure: true,
+			CheckClaims:   true,
+			KeyRef:        path.Join(tdir, "cosign.pub"),
+			IgnoreTlog:    true,
 		}
 		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)})
 		So(err, ShouldBeNil)
@@ -7069,10 +7059,10 @@ func TestSyncSignaturesDiff(t *testing.T) {
 
 		// cosign verify the image
 		vrfy = verify.VerifyCommand{
-			RegistryOptions: options.RegistryOptions{AllowInsecure: true},
-			CheckClaims:     true,
-			KeyRef:          path.Join(tdir, "cosign.pub"),
-			IgnoreTlog:      true,
+			AllowInsecure: true,
+			CheckClaims:   true,
+			KeyRef:        path.Join(tdir, "cosign.pub"),
+			IgnoreTlog:    true,
 		}
 
 		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)})
@@ -7411,10 +7401,10 @@ func TestSyncWithDestination(t *testing.T) {
 
 				// cosign verify the synced image
 				vrfy := verify.VerifyCommand{
-					RegistryOptions: options.RegistryOptions{AllowInsecure: true},
-					CheckClaims:     true,
-					KeyRef:          path.Join(tdir, "cosign.pub"),
-					IgnoreTlog:      true,
+					AllowInsecure: true,
+					CheckClaims:   true,
+					KeyRef:        path.Join(tdir, "cosign.pub"),
+					IgnoreTlog:    true,
 				}
 				err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort,
 					testCase.expected, testImageTag)})
@@ -7469,10 +7459,10 @@ func TestSyncWithDestination(t *testing.T) {
 
 				// cosign verify the synced image
 				vrfy := verify.VerifyCommand{
-					RegistryOptions: options.RegistryOptions{AllowInsecure: true},
-					CheckClaims:     true,
-					KeyRef:          path.Join(tdir, "cosign.pub"),
-					IgnoreTlog:      true,
+					AllowInsecure: true,
+					CheckClaims:   true,
+					KeyRef:        path.Join(tdir, "cosign.pub"),
+					IgnoreTlog:    true,
 				}
 				err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort,
 					testCase.expected, testImageTag)})
@@ -7965,7 +7955,7 @@ func TestOnDemandReferrerSyncFlags(t *testing.T) {
 		_ = pushBlob(srcBaseURL, testImage, ispec.DescriptorEmptyJSON.Data)
 
 		ociRef := ispec.Manifest{
-			Versioned: specs.Versioned{SchemaVersion: 2},
+			SchemaVersion: 2,
 			Subject: &ispec.Descriptor{
 				MediaType: ispec.MediaTypeImageManifest,
 				Digest:    godigest.Digest(subjectDigest),
@@ -8002,7 +7992,7 @@ func TestOnDemandReferrerSyncFlags(t *testing.T) {
 		_ = pushBlob(srcBaseURL, testImage, ispec.DescriptorEmptyJSON.Data)
 
 		sigManifest := ispec.Manifest{
-			Versioned: specs.Versioned{SchemaVersion: 2},
+			SchemaVersion: 2,
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.dev.cosign.simplesigning.v1+json",
 				Digest:    ispec.DescriptorEmptyJSON.Digest,
@@ -8111,7 +8101,7 @@ func TestOnDemandReferrerSyncFlags(t *testing.T) {
 		_ = pushBlob(srcBaseURL, testImage, ispec.DescriptorEmptyJSON.Data)
 
 		directRef := ispec.Manifest{
-			Versioned: specs.Versioned{SchemaVersion: 2},
+			SchemaVersion: 2,
 			Subject: &ispec.Descriptor{
 				MediaType: ispec.MediaTypeImageManifest,
 				Digest:    godigest.Digest(subjectDigest),
@@ -8145,7 +8135,7 @@ func TestOnDemandReferrerSyncFlags(t *testing.T) {
 
 		// ── 3. Push a nested referrer (referrer-of-referrer) ─────────────────
 		nestedRef := ispec.Manifest{
-			Versioned: specs.Versioned{SchemaVersion: 2},
+			SchemaVersion: 2,
 			Subject: &ispec.Descriptor{
 				MediaType: ispec.MediaTypeImageManifest,
 				Digest:    godigest.Digest(directRefDigest),
@@ -8323,10 +8313,10 @@ func signImage(tdir, port, repoName string, digest godigest.Digest) {
 	}
 
 	vrfy := verify.VerifyCommand{
-		RegistryOptions: options.RegistryOptions{AllowInsecure: true},
-		CheckClaims:     true,
-		KeyRef:          path.Join(tdir, "cosign.pub"),
-		IgnoreTlog:      true,
+		AllowInsecure: true,
+		CheckClaims:   true,
+		KeyRef:        path.Join(tdir, "cosign.pub"),
+		IgnoreTlog:    true,
 	}
 
 	err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s@%s", port, repoName, digest.String())})
@@ -8436,10 +8426,8 @@ func pushRepo(url, repoName string) godigest.Digest {
 
 	// create a manifest
 	manifest := ispec.Manifest{
-		Versioned: specs.Versioned{
-			SchemaVersion: 2,
-		},
-		MediaType: ispec.MediaTypeImageManifest,
+		SchemaVersion: 2,
+		MediaType:     ispec.MediaTypeImageManifest,
 		Config: ispec.Descriptor{
 			MediaType: "application/vnd.oci.image.config.v1+json",
 			Digest:    cdigest,
@@ -8453,8 +8441,6 @@ func pushRepo(url, repoName string) godigest.Digest {
 			},
 		},
 	}
-
-	manifest.SchemaVersion = 2
 
 	content, err = json.Marshal(manifest)
 	if err != nil {
@@ -8479,10 +8465,8 @@ func pushRepo(url, repoName string) godigest.Digest {
 
 	// push a referrer artifact
 	manifest = ispec.Manifest{
-		Versioned: specs.Versioned{
-			SchemaVersion: 2,
-		},
-		MediaType: ispec.MediaTypeImageManifest,
+		SchemaVersion: 2,
+		MediaType:     ispec.MediaTypeImageManifest,
 		Config: ispec.Descriptor{
 			MediaType: "application/vnd.cncf.icecream",
 			Digest:    acdigest,
@@ -8503,11 +8487,9 @@ func pushRepo(url, repoName string) godigest.Digest {
 	}
 
 	artifactManifest := ispec.Manifest{
-		Versioned: specs.Versioned{
-			SchemaVersion: 2,
-		},
-		MediaType:    ispec.MediaTypeImageManifest,
-		ArtifactType: "application/vnd.cncf.icecream",
+		SchemaVersion: 2,
+		MediaType:     ispec.MediaTypeImageManifest,
+		ArtifactType:  "application/vnd.cncf.icecream",
 		Config: ispec.Descriptor{
 			MediaType: ispec.MediaTypeEmptyJSON,
 			Digest:    ispec.DescriptorEmptyJSON.Digest,

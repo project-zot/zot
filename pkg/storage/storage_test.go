@@ -353,8 +353,7 @@ func TestPutImageManifestExtraTagsAndEvents(t *testing.T) {
 		_, _, err = imgStore.FullBlobUpload(context.Background(), repo, bytes.NewReader(layerBytes), layerDigest)
 		So(err, ShouldBeNil)
 
-		manifest := ispec.Manifest{}
-		manifest.SchemaVersion = 2
+		manifest := ispec.Manifest{SchemaVersion: 2}
 		manifest.Config = ispec.Descriptor{
 			MediaType: "application/vnd.oci.image.config.v1+json",
 			Digest:    cdigest,
@@ -387,8 +386,7 @@ func TestPutImageManifestExtraTagsAndEvents(t *testing.T) {
 		_, _, err = imgStore.FullBlobUpload(context.Background(), repo, bytes.NewReader(layerBytes), layerDigest)
 		So(err, ShouldBeNil)
 
-		manifest := ispec.Manifest{}
-		manifest.SchemaVersion = 2
+		manifest := ispec.Manifest{SchemaVersion: 2}
 		manifest.Config = ispec.Descriptor{
 			MediaType: "application/vnd.oci.image.config.v1+json",
 			Digest:    cdigest,
@@ -462,8 +460,7 @@ func TestPutImageManifestExtraTagsAndEvents(t *testing.T) {
 		_, _, err = imgStore.FullBlobUpload(context.Background(), repo, bytes.NewReader(layerBytes), layerDigest)
 		So(err, ShouldBeNil)
 
-		manifest := ispec.Manifest{}
-		manifest.SchemaVersion = 2
+		manifest := ispec.Manifest{SchemaVersion: 2}
 		manifest.Config = ispec.Descriptor{
 			MediaType: "application/vnd.oci.image.config.v1+json",
 			Digest:    cdigest,
@@ -525,8 +522,7 @@ func TestPutImageManifestExtraTagsAndEvents(t *testing.T) {
 		_, _, err = imgStore.FullBlobUpload(context.Background(), repo, bytes.NewReader(layerBytes), layerDigest)
 		So(err, ShouldBeNil)
 
-		manifest := ispec.Manifest{}
-		manifest.SchemaVersion = 2
+		manifest := ispec.Manifest{SchemaVersion: 2}
 		manifest.Config = ispec.Descriptor{
 			MediaType: "application/vnd.oci.image.config.v1+json",
 			Digest:    cdigest,
@@ -610,8 +606,7 @@ func TestDeleteImageManifestEvents(t *testing.T) {
 		_, _, err = imgStore.FullBlobUpload(context.Background(), repo, bytes.NewReader(layerBytes), layerDigest)
 		So(err, ShouldBeNil)
 
-		manifest := ispec.Manifest{}
-		manifest.SchemaVersion = 2
+		manifest := ispec.Manifest{SchemaVersion: 2}
 		manifest.Config = ispec.Descriptor{
 			MediaType: "application/vnd.oci.image.config.v1+json",
 			Digest:    cdigest,
@@ -656,8 +651,7 @@ func TestDeleteImageManifestEvents(t *testing.T) {
 		_, _, err = imgStore.FullBlobUpload(context.Background(), repo, bytes.NewReader(layerBytes), layerDigest)
 		So(err, ShouldBeNil)
 
-		manifest := ispec.Manifest{}
-		manifest.SchemaVersion = 2
+		manifest := ispec.Manifest{SchemaVersion: 2}
 		manifest.Config = ispec.Descriptor{
 			MediaType: "application/vnd.oci.image.config.v1+json",
 			Digest:    cdigest,
@@ -701,8 +695,7 @@ func TestDeleteImageManifestEvents(t *testing.T) {
 		_, _, err = imgStore.FullBlobUpload(context.Background(), repo, bytes.NewReader(layerBytes), layerDigest)
 		So(err, ShouldBeNil)
 
-		manifest := ispec.Manifest{}
-		manifest.SchemaVersion = 2
+		manifest := ispec.Manifest{SchemaVersion: 2}
 		manifest.Config = ispec.Descriptor{
 			MediaType: "application/vnd.oci.image.config.v1+json",
 			Digest:    cdigest,
@@ -747,8 +740,7 @@ func TestImageLintFailedEvents(t *testing.T) {
 		_, _, err = imgStore.FullBlobUpload(context.Background(), repo, bytes.NewReader(layerBytes), layerDigest)
 		So(err, ShouldBeNil)
 
-		manifest := ispec.Manifest{}
-		manifest.SchemaVersion = 2
+		manifest := ispec.Manifest{SchemaVersion: 2}
 		manifest.Config = ispec.Descriptor{
 			MediaType: "application/vnd.oci.image.config.v1+json",
 			Digest:    cdigest,
@@ -1186,8 +1178,7 @@ func TestStorageAPIs(t *testing.T) {
 						err = blob.Close()
 						So(err, ShouldBeNil)
 
-						manifest := ispec.Manifest{}
-						manifest.SchemaVersion = 2
+						manifest := ispec.Manifest{SchemaVersion: 2}
 						manifestBuf, err := json.Marshal(manifest)
 						So(err, ShouldBeNil)
 
@@ -1231,6 +1222,7 @@ func TestStorageAPIs(t *testing.T) {
 							annotationsMap := make(map[string]string)
 							annotationsMap[ispec.AnnotationRefName] = "1.0"
 							manifest := ispec.Manifest{
+								SchemaVersion: 2,
 								Config: ispec.Descriptor{
 									MediaType: "application/vnd.oci.image.config.v1+json",
 									Digest:    cdigest,
@@ -1245,8 +1237,6 @@ func TestStorageAPIs(t *testing.T) {
 								},
 								Annotations: annotationsMap,
 							}
-
-							manifest.SchemaVersion = 2
 							manifestBuf, err = json.Marshal(manifest)
 							So(err, ShouldBeNil)
 
@@ -1428,8 +1418,7 @@ func TestStorageAPIs(t *testing.T) {
 						_, err = imgStore.GetBlobContent("inexistent", digest)
 						So(err, ShouldNotBeNil)
 
-						manifest := ispec.Manifest{}
-						manifest.SchemaVersion = 2
+						manifest := ispec.Manifest{SchemaVersion: 2}
 						manifestBuf, err := json.Marshal(manifest)
 						So(err, ShouldBeNil)
 
@@ -1468,6 +1457,7 @@ func TestStorageAPIs(t *testing.T) {
 							So(hasBlob, ShouldEqual, true)
 
 							manifest := ispec.Manifest{
+								SchemaVersion: 2,
 								Config: ispec.Descriptor{
 									MediaType: "application/vnd.oci.image.config.v1+json",
 									Digest:    cdigest,
@@ -1481,7 +1471,6 @@ func TestStorageAPIs(t *testing.T) {
 									},
 								},
 							}
-							manifest.SchemaVersion = 2
 							manifestBuf, err = json.Marshal(manifest)
 							So(err, ShouldBeNil)
 
@@ -1570,6 +1559,7 @@ func TestStorageAPIs(t *testing.T) {
 					So(hasBlob, ShouldEqual, true)
 
 					manifest := ispec.Manifest{
+						SchemaVersion: 2,
 						Config: ispec.Descriptor{
 							MediaType: "application/vnd.oci.image.config.v1+json",
 							Digest:    cdigest,
@@ -1583,7 +1573,6 @@ func TestStorageAPIs(t *testing.T) {
 							},
 						},
 					}
-					manifest.SchemaVersion = 2
 					manifestBuf, err := json.Marshal(manifest)
 					So(err, ShouldBeNil)
 
@@ -1638,8 +1627,9 @@ func TestStorageAPIs(t *testing.T) {
 								Size:      int64(buflen),
 							},
 						},
+
+						SchemaVersion: 2,
 					}
-					manifest.SchemaVersion = 2
 					manifestBuf, err = json.Marshal(manifest)
 					So(err, ShouldBeNil)
 
@@ -1786,6 +1776,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 				annotationsMap[ispec.AnnotationRefName] = "1.0"
 
 				manifest := ispec.Manifest{
+					SchemaVersion: 2,
 					Config: ispec.Descriptor{
 						MediaType: "application/vnd.oci.image.config.v1+json",
 						Digest:    cdigest,
@@ -1800,8 +1791,6 @@ func TestMandatoryAnnotations(t *testing.T) {
 					},
 					Annotations: annotationsMap,
 				}
-
-				manifest.SchemaVersion = 2
 				manifestBuf, err := json.Marshal(manifest)
 				So(err, ShouldBeNil)
 
@@ -2097,6 +2086,7 @@ func TestDeleteBlobsInUse(t *testing.T) {
 				annotationsMap[ispec.AnnotationRefName] = tag
 
 				manifest := ispec.Manifest{
+					SchemaVersion: 2,
 					Config: ispec.Descriptor{
 						MediaType: "application/vnd.oci.image.config.v1+json",
 						Digest:    cdigest,
@@ -2111,8 +2101,6 @@ func TestDeleteBlobsInUse(t *testing.T) {
 					},
 					Annotations: annotationsMap,
 				}
-
-				manifest.SchemaVersion = 2
 				manifestBuf, err := json.Marshal(manifest)
 				So(err, ShouldBeNil)
 
@@ -2240,6 +2228,7 @@ func TestDeleteBlobsInUse(t *testing.T) {
 
 					// create a manifest
 					manifest := ispec.Manifest{
+						SchemaVersion: 2,
 						Config: ispec.Descriptor{
 							MediaType: ispec.MediaTypeImageConfig,
 							Digest:    cdigest,
@@ -2253,7 +2242,6 @@ func TestDeleteBlobsInUse(t *testing.T) {
 							},
 						},
 					}
-					manifest.SchemaVersion = 2
 					content, err = json.Marshal(manifest)
 					So(err, ShouldBeNil)
 
@@ -2820,6 +2808,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					So(hasBlob, ShouldEqual, true)
 
 					manifest := ispec.Manifest{
+						SchemaVersion: 2,
 						Config: ispec.Descriptor{
 							MediaType: "application/vnd.oci.image.config.v1+json",
 							Digest:    cdigest,
@@ -2834,8 +2823,6 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 						},
 						Annotations: annotationsMap,
 					}
-
-					manifest.SchemaVersion = 2
 					manifestBuf, err := json.Marshal(manifest)
 					So(err, ShouldBeNil)
 
@@ -2877,8 +2864,9 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 							Digest:    digest,
 							Size:      int64(len(manifestBuf)),
 						},
+
+						SchemaVersion: 2,
 					}
-					artifactManifest.SchemaVersion = 2
 
 					artifactManifestBuf, err := json.Marshal(artifactManifest)
 					So(err, ShouldBeNil)
@@ -3021,6 +3009,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					So(hasBlob, ShouldEqual, true)
 
 					manifest := ispec.Manifest{
+						SchemaVersion: 2,
 						Config: ispec.Descriptor{
 							MediaType: "application/vnd.oci.image.config.v1+json",
 							Digest:    cdigest,
@@ -3035,8 +3024,6 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 						},
 						Annotations: annotationsMap,
 					}
-
-					manifest.SchemaVersion = 2
 					manifestBuf, err := json.Marshal(manifest)
 					So(err, ShouldBeNil)
 
@@ -3075,8 +3062,9 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 							Digest:    digest,
 							Size:      int64(len(manifestBuf)),
 						},
+
+						SchemaVersion: 2,
 					}
-					artifactManifest.SchemaVersion = 2
 
 					artifactManifestBuf, err := json.Marshal(artifactManifest)
 					So(err, ShouldBeNil)
@@ -3295,6 +3283,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					So(hasBlob, ShouldEqual, true)
 
 					manifest := ispec.Manifest{
+						SchemaVersion: 2,
 						Config: ispec.Descriptor{
 							MediaType: "application/vnd.oci.image.config.v1+json",
 							Digest:    cdigest,
@@ -3309,8 +3298,6 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 						},
 						Annotations: annotationsMap,
 					}
-
-					manifest.SchemaVersion = 2
 					manifestBuf, err := json.Marshal(manifest)
 					So(err, ShouldBeNil)
 
@@ -3373,9 +3360,9 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 							},
 						},
 						Annotations: annotationsMap,
-					}
 
-					manifest.SchemaVersion = 2
+						SchemaVersion: 2,
+					}
 					manifestBuf, err = json.Marshal(manifest)
 					So(err, ShouldBeNil)
 
@@ -3431,9 +3418,9 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 							},
 						},
 						Annotations: annotationsMap,
-					}
 
-					manifest.SchemaVersion = 2
+						SchemaVersion: 2,
+					}
 					manifestBuf, err = json.Marshal(manifest)
 					So(err, ShouldBeNil)
 
@@ -3561,8 +3548,9 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 							Digest:    indexDigest,
 							Size:      indexSize,
 						},
+
+						SchemaVersion: 2,
 					}
-					artifactManifest.SchemaVersion = 2
 
 					artifactManifestBuf, err := json.Marshal(artifactManifest)
 					So(err, ShouldBeNil)
@@ -3726,8 +3714,9 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 							Size:      indexSize,
 						},
 						ArtifactType: "application/forIndex",
+
+						SchemaVersion: 2,
 					}
-					artifactManifest.SchemaVersion = 2
 
 					artifactManifestBuf, err := json.Marshal(artifactManifest)
 					So(err, ShouldBeNil)
@@ -4052,6 +4041,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 
 					// create a manifest
 					manifest := ispec.Manifest{
+						SchemaVersion: 2,
 						Config: ispec.Descriptor{
 							MediaType: ispec.MediaTypeImageConfig,
 							Digest:    cdigest,
@@ -4065,7 +4055,6 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 							},
 						},
 					}
-					manifest.SchemaVersion = 2
 					content, err = json.Marshal(manifest)
 					So(err, ShouldBeNil)
 
@@ -4099,8 +4088,9 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 							Size:      int64(len(content)),
 						},
 						ArtifactType: "application/forManifestInInnerIndex",
+
+						SchemaVersion: 2,
 					}
-					artifactManifest.SchemaVersion = 2
 
 					artifactManifestBuf, err := json.Marshal(artifactManifest)
 					So(err, ShouldBeNil)
@@ -4138,6 +4128,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 
 					// create a manifest
 					manifest := ispec.Manifest{
+						SchemaVersion: 2,
 						Config: ispec.Descriptor{
 							MediaType: ispec.MediaTypeImageConfig,
 							Digest:    cdigest,
@@ -4151,7 +4142,6 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 							},
 						},
 					}
-					manifest.SchemaVersion = 2
 					content, err = json.Marshal(manifest)
 					So(err, ShouldBeNil)
 
@@ -4215,8 +4205,9 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 						Size:      int64(len(indexContent)),
 					},
 					ArtifactType: "application/forIndex",
+
+					SchemaVersion: 2,
 				}
-				artifactManifest.SchemaVersion = 2
 
 				artifactManifestBuf, err := json.Marshal(artifactManifest)
 				So(err, ShouldBeNil)
@@ -4452,6 +4443,7 @@ func pushRandomImageIndex(imgStore storageTypes.ImageStore, repoName string,
 
 		// create a manifest
 		manifest := ispec.Manifest{
+			SchemaVersion: 2,
 			Config: ispec.Descriptor{
 				MediaType: ispec.MediaTypeImageConfig,
 				Digest:    cdigest,
@@ -4465,7 +4457,6 @@ func pushRandomImageIndex(imgStore storageTypes.ImageStore, repoName string,
 				},
 			},
 		}
-		manifest.SchemaVersion = 2
 		content, err = json.Marshal(manifest)
 		So(err, ShouldBeNil)
 

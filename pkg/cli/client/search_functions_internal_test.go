@@ -53,11 +53,8 @@ func TestSearchAllImagesGQL(t *testing.T) {
 			httpClient: NewHTTPClient(),
 			getImagesGQLFn: func(ctx context.Context, config SearchConfig, username, password, imageName string,
 			) (*common.ImageListResponse, error) {
-				return &common.ImageListResponse{ImageList: common.ImageList{
-					PaginatedImagesResult: common.PaginatedImagesResult{
-						Results: []common.ImageSummary{getMockImageSummary()},
-					},
-				}}, nil
+				return &common.ImageListResponse{
+					Results: []common.ImageSummary{getMockImageSummary()}}, nil
 			},
 		})
 
@@ -75,11 +72,8 @@ func TestSearchAllImagesGQL(t *testing.T) {
 			httpClient: NewHTTPClient(),
 			getImagesGQLFn: func(ctx context.Context, config SearchConfig, username, password, imageName string,
 			) (*common.ImageListResponse, error) {
-				return &common.ImageListResponse{ImageList: common.ImageList{
-					PaginatedImagesResult: common.PaginatedImagesResult{
-						Results: []common.ImageSummary{getMockImageSummary()},
-					},
-				}}, zerr.ErrInjected
+				return &common.ImageListResponse{
+					Results: []common.ImageSummary{getMockImageSummary()}}, zerr.ErrInjected
 			},
 		})
 
@@ -133,11 +127,8 @@ func TestSearchImageByNameGQL(t *testing.T) {
 			httpClient: NewHTTPClient(),
 			getImagesGQLFn: func(ctx context.Context, config SearchConfig, username, password, imageName string,
 			) (*common.ImageListResponse, error) {
-				return &common.ImageListResponse{ImageList: common.ImageList{
-					PaginatedImagesResult: common.PaginatedImagesResult{
-						Results: []common.ImageSummary{getMockImageSummary()},
-					},
-				}}, nil
+				return &common.ImageListResponse{
+					Results: []common.ImageSummary{getMockImageSummary()}}, nil
 			},
 		})
 
@@ -155,11 +146,8 @@ func TestSearchImageByNameGQL(t *testing.T) {
 			httpClient: NewHTTPClient(),
 			getImagesGQLFn: func(ctx context.Context, config SearchConfig, username, password, imageName string,
 			) (*common.ImageListResponse, error) {
-				return &common.ImageListResponse{ImageList: common.ImageList{
-					PaginatedImagesResult: common.PaginatedImagesResult{
-						Results: []common.ImageSummary{getMockImageSummary()},
-					},
-				}}, zerr.ErrInjected
+				return &common.ImageListResponse{
+					Results: []common.ImageSummary{getMockImageSummary()}}, zerr.ErrInjected
 			},
 		})
 
@@ -214,13 +202,10 @@ func TestSearchDerivedImageListGQL(t *testing.T) {
 			getDerivedImageListGQLFn: func(ctx context.Context, config SearchConfig, username string, password string,
 				derivedImage string) (*common.DerivedImageListResponse, error,
 			) {
-				return &common.DerivedImageListResponse{DerivedImageList: common.DerivedImageList{
-					PaginatedImagesResult: common.PaginatedImagesResult{
-						Results: []common.ImageSummary{
-							getMockImageSummary(),
-						},
-					},
-				}}, nil
+				return &common.DerivedImageListResponse{
+					Results: []common.ImageSummary{
+						getMockImageSummary(),
+					}}, nil
 			},
 		})
 
@@ -239,9 +224,8 @@ func TestSearchDerivedImageListGQL(t *testing.T) {
 			getDerivedImageListGQLFn: func(ctx context.Context, config SearchConfig, username string, password string,
 				derivedImage string) (*common.DerivedImageListResponse, error,
 			) {
-				return &common.DerivedImageListResponse{DerivedImageList: common.DerivedImageList{
-					PaginatedImagesResult: common.PaginatedImagesResult{Results: []common.ImageSummary{}},
-				}}, zerr.ErrInjected
+				return &common.DerivedImageListResponse{
+					Results: []common.ImageSummary{}}, zerr.ErrInjected
 			},
 		})
 
@@ -258,11 +242,10 @@ func TestSearchBaseImageListGQL(t *testing.T) {
 			getBaseImageListGQLFn: func(ctx context.Context, config SearchConfig, username string, password string,
 				derivedImage string) (*common.BaseImageListResponse, error,
 			) {
-				return &common.BaseImageListResponse{BaseImageList: common.BaseImageList{
-					PaginatedImagesResult: common.PaginatedImagesResult{Results: []common.ImageSummary{
+				return &common.BaseImageListResponse{
+					Results: []common.ImageSummary{
 						getMockImageSummary(),
-					}},
-				}}, nil
+					}}, nil
 			},
 		})
 
@@ -281,9 +264,8 @@ func TestSearchBaseImageListGQL(t *testing.T) {
 			getBaseImageListGQLFn: func(ctx context.Context, config SearchConfig, username string, password string,
 				derivedImage string) (*common.BaseImageListResponse, error,
 			) {
-				return &common.BaseImageListResponse{BaseImageList: common.BaseImageList{
-					PaginatedImagesResult: common.PaginatedImagesResult{Results: []common.ImageSummary{}},
-				}}, zerr.ErrInjected
+				return &common.BaseImageListResponse{
+					Results: []common.ImageSummary{}}, zerr.ErrInjected
 			},
 		})
 
@@ -300,11 +282,8 @@ func TestSearchImagesForDigestGQL(t *testing.T) {
 			getImagesForDigestGQLFn: func(ctx context.Context, config SearchConfig, username string,
 				password string, digest string) (*common.ImagesForDigest, error,
 			) {
-				return &common.ImagesForDigest{ImagesForDigestList: common.ImagesForDigestList{
-					PaginatedImagesResult: common.PaginatedImagesResult{
-						Results: []common.ImageSummary{getMockImageSummary()},
-					},
-				}}, nil
+				return &common.ImagesForDigest{
+					Results: []common.ImageSummary{getMockImageSummary()}}, nil
 			},
 		})
 
@@ -323,9 +302,8 @@ func TestSearchImagesForDigestGQL(t *testing.T) {
 			getImagesForDigestGQLFn: func(ctx context.Context, config SearchConfig, username string,
 				password string, digest string) (*common.ImagesForDigest, error,
 			) {
-				return &common.ImagesForDigest{ImagesForDigestList: common.ImagesForDigestList{
-					PaginatedImagesResult: common.PaginatedImagesResult{},
-				}}, zerr.ErrInjected
+				return &common.ImagesForDigest{
+					PaginatedImagesResult: common.PaginatedImagesResult{}}, zerr.ErrInjected
 			},
 		})
 
@@ -622,12 +600,8 @@ func TestSearchImagesByCVEIDGQL(t *testing.T) {
 				imageName, cveID string) (*common.ImagesForCve, error,
 			) {
 				return &common.ImagesForCve{
-					ImagesForCVEList: common.ImagesForCVEList{
-						PaginatedImagesResult: common.PaginatedImagesResult{
-							Results: []common.ImageSummary{
-								getMockImageSummary(),
-							},
-						},
+					Results: []common.ImageSummary{
+						getMockImageSummary(),
 					},
 				}, nil
 			},
@@ -649,9 +623,7 @@ func TestSearchImagesByCVEIDGQL(t *testing.T) {
 				imageName, cveID string) (*common.ImagesForCve, error,
 			) {
 				return &common.ImagesForCve{
-					ImagesForCVEList: common.ImagesForCVEList{
-						PaginatedImagesResult: common.PaginatedImagesResult{},
-					},
+					PaginatedImagesResult: common.PaginatedImagesResult{},
 				}, zerr.ErrInjected
 			},
 		})
@@ -670,11 +642,7 @@ func TestSearchFixedTagsGQL(t *testing.T) {
 				imageName, cveID string) (*common.ImageListWithCVEFixedResponse, error,
 			) {
 				return &common.ImageListWithCVEFixedResponse{
-					ImageListWithCVEFixed: common.ImageListWithCVEFixed{
-						PaginatedImagesResult: common.PaginatedImagesResult{
-							Results: []common.ImageSummary{getMockImageSummary()},
-						},
-					},
+					Results: []common.ImageSummary{getMockImageSummary()},
 				}, nil
 			},
 		})
@@ -695,9 +663,7 @@ func TestSearchFixedTagsGQL(t *testing.T) {
 				imageName, cveID string) (*common.ImageListWithCVEFixedResponse, error,
 			) {
 				return &common.ImageListWithCVEFixedResponse{
-					ImageListWithCVEFixed: common.ImageListWithCVEFixed{
-						PaginatedImagesResult: common.PaginatedImagesResult{},
-					},
+					PaginatedImagesResult: common.PaginatedImagesResult{},
 				}, zerr.ErrInjected
 			},
 		})
@@ -716,14 +682,12 @@ func TestSearchReferrersGQL(t *testing.T) {
 				repo, digest string) (*common.ReferrersResp, error,
 			) {
 				return &common.ReferrersResp{
-					ReferrersResult: common.ReferrersResult{
-						Referrers: []common.Referrer{{
-							MediaType:    ispec.MediaTypeImageManifest,
-							Size:         100,
-							ArtifactType: "art.type",
-							Digest:       godigest.FromString("123").String(),
-						}},
-					},
+					Referrers: []common.Referrer{{
+						MediaType:    ispec.MediaTypeImageManifest,
+						Size:         100,
+						ArtifactType: "art.type",
+						Digest:       godigest.FromString("123").String(),
+					}},
 				}, nil
 			},
 		})

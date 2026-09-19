@@ -113,8 +113,7 @@ func generateTestData(dbDir string) error { //nolint: gocyclo
 		return err
 	}
 
-	index := ispec.Index{}
-	index.SchemaVersion = 2
+	index := ispec.Index{SchemaVersion: 2}
 
 	buf, err := json.Marshal(index)
 	if err != nil {
@@ -444,7 +443,7 @@ func TestCVESearchDisabled(t *testing.T) {
 		conf.Storage.RootDirectory = dbDir
 		defaultVal := true
 		searchConfig := &extconf.SearchConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+			Enable: &defaultVal,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: searchConfig,
@@ -516,8 +515,8 @@ func TestCVESearch(t *testing.T) {
 		}
 		defaultVal := true
 		searchConfig := &extconf.SearchConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
-			CVE:        cveConfig,
+			Enable: &defaultVal,
+			CVE:    cveConfig,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: searchConfig,
@@ -1768,7 +1767,7 @@ func TestFixedTagsWithIndex(t *testing.T) {
 		conf.Storage.GC = false
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: &extconf.SearchConfig{
-				BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+				Enable: &defaultVal,
 				CVE: &extconf.CVEConfig{
 					UpdateInterval: 24 * time.Hour,
 					Trivy: &extconf.TrivyConfig{

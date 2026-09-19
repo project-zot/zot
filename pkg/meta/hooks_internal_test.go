@@ -400,8 +400,9 @@ func TestOnDeleteManifestSignatureMetaFailure(t *testing.T) {
 				MediaType: ispec.MediaTypeImageManifest,
 				Digest:    subjectDigest,
 			},
+
+			SchemaVersion: 2,
 		}
-		referrer.SchemaVersion = 2
 
 		referrerBody, err := json.Marshal(referrer)
 		So(err, ShouldBeNil)

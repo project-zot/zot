@@ -11,7 +11,6 @@ import (
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
-	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
@@ -42,8 +41,8 @@ func TestDerivedImageListGql(t *testing.T) {
 		Trivy:          trivyConfig,
 	}
 	searchConfig := &extconf.SearchConfig{
-		BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
-		CVE:        cveConfig,
+		Enable: &defaultVal,
+		CVE:    cveConfig,
 	}
 	conf.Extensions = &extconf.ExtensionConfig{
 		Search: searchConfig,
@@ -74,10 +73,8 @@ func TestDerivedImageListGql(t *testing.T) {
 	Convey("Derived image with vulnerability should have correct data in response", t, func() {
 		// create test images
 		config := ispec.Image{
-			Platform: ispec.Platform{
-				Architecture: "amd64",
-				OS:           "linux",
-			},
+			Architecture: "amd64",
+			OS:           "linux",
 			RootFS: ispec.RootFS{
 				Type:    "layers",
 				DiffIDs: []godigest.Digest{},
@@ -96,9 +93,7 @@ func TestDerivedImageListGql(t *testing.T) {
 		}
 
 		manifest := ispec.Manifest{
-			Versioned: specs.Versioned{
-				SchemaVersion: 2,
-			},
+			SchemaVersion: 2,
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.oci.image.config.v1+json",
 				Digest:    configDigest,
@@ -135,9 +130,7 @@ func TestDerivedImageListGql(t *testing.T) {
 		}
 
 		manifest = ispec.Manifest{
-			Versioned: specs.Versioned{
-				SchemaVersion: 2,
-			},
+			SchemaVersion: 2,
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.oci.image.config.v1+json",
 				Digest:    configDigest,
@@ -253,7 +246,7 @@ func TestDerivedImageListGqlAuthorization(t *testing.T) {
 		defaultVal := true
 
 		searchConfig := &extconf.SearchConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+			Enable: &defaultVal,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: searchConfig,

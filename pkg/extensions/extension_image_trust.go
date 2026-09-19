@@ -87,8 +87,7 @@ type ImageTrust struct {
 func (trust *ImageTrust) HandleCosignPublicKeyUpload(response http.ResponseWriter, request *http.Request) {
 	body, err := io.ReadAll(http.MaxBytesReader(response, request.Body, constants.MaxImageTrustBodySize))
 	if err != nil {
-		var mbe *http.MaxBytesError
-		if errors.As(err, &mbe) {
+		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 			response.WriteHeader(http.StatusRequestEntityTooLarge)
 		} else {
 			trust.Log.Error().Err(err).Str("component", "image-trust").Msg("failed to read cosign key body")
@@ -136,8 +135,7 @@ func (trust *ImageTrust) HandleNotationCertificateUpload(response http.ResponseW
 
 	body, err := io.ReadAll(http.MaxBytesReader(response, request.Body, constants.MaxImageTrustBodySize))
 	if err != nil {
-		var mbe *http.MaxBytesError
-		if errors.As(err, &mbe) {
+		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 			response.WriteHeader(http.StatusRequestEntityTooLarge)
 		} else {
 			trust.Log.Error().Err(err).Str("component", "image-trust").Msg("failed to read notation certificate body")

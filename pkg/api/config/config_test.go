@@ -2451,9 +2451,7 @@ func TestConfig(t *testing.T) {
 			cfg = &config.Config{
 				Extensions: &extconf.ExtensionConfig{
 					Search: &extconf.SearchConfig{
-						BaseConfig: extconf.BaseConfig{
-							Enable: &disabled,
-						},
+						Enable: &disabled,
 					},
 				},
 			}
@@ -2464,9 +2462,7 @@ func TestConfig(t *testing.T) {
 			cfg = &config.Config{
 				Extensions: &extconf.ExtensionConfig{
 					Search: &extconf.SearchConfig{
-						BaseConfig: extconf.BaseConfig{
-							Enable: &enabled,
-						},
+						Enable: &enabled,
 					},
 				},
 			}
@@ -2542,9 +2538,7 @@ func TestConfig(t *testing.T) {
 			cfg := &config.Config{
 				Extensions: &extconf.ExtensionConfig{
 					Search: &extconf.SearchConfig{
-						BaseConfig: extconf.BaseConfig{
-							Enable: &enabled,
-						},
+						Enable: &enabled,
 					},
 				},
 			}
@@ -2553,9 +2547,7 @@ func TestConfig(t *testing.T) {
 			newConfig := &config.Config{
 				Extensions: &extconf.ExtensionConfig{
 					Search: &extconf.SearchConfig{
-						BaseConfig: extconf.BaseConfig{
-							Enable: &enabled,
-						},
+						Enable: &enabled,
 						CVE: &extconf.CVEConfig{
 							UpdateInterval: time.Hour * 2,
 						},
@@ -2609,9 +2601,7 @@ func TestConfig(t *testing.T) {
 			cfg := &config.Config{
 				Extensions: &extconf.ExtensionConfig{
 					Search: &extconf.SearchConfig{
-						BaseConfig: extconf.BaseConfig{
-							Enable: &enabled,
-						},
+						Enable: &enabled,
 						CVE: &extconf.CVEConfig{
 							UpdateInterval: time.Hour,
 						},
@@ -2625,10 +2615,8 @@ func TestConfig(t *testing.T) {
 			newConfig := &config.Config{
 				Extensions: &extconf.ExtensionConfig{
 					Search: &extconf.SearchConfig{
-						BaseConfig: extconf.BaseConfig{
-							Enable: &enabled,
-						},
-						CVE: nil, // This should trigger the removal
+						Enable: &enabled,
+						CVE:    nil, // This should trigger the removal
 					},
 				},
 			}
@@ -2646,9 +2634,7 @@ func TestConfig(t *testing.T) {
 			cfg := &config.Config{
 				Extensions: &extconf.ExtensionConfig{
 					Search: &extconf.SearchConfig{
-						BaseConfig: extconf.BaseConfig{
-							Enable: &enabled,
-						},
+						Enable: &enabled,
 						CVE: &extconf.CVEConfig{
 							UpdateInterval: time.Hour,
 						},
@@ -3032,9 +3018,7 @@ func TestConfig(t *testing.T) {
 			cfg := &config.Config{
 				Extensions: &extconf.ExtensionConfig{
 					Search: &extconf.SearchConfig{
-						BaseConfig: extconf.BaseConfig{
-							Enable: &enabled,
-						},
+						Enable: &enabled,
 						CVE: &extconf.CVEConfig{
 							UpdateInterval: time.Hour,
 							Trivy: &extconf.TrivyConfig{
@@ -3051,23 +3035,17 @@ func TestConfig(t *testing.T) {
 						},
 					},
 					Metrics: &extconf.MetricsConfig{
-						BaseConfig: extconf.BaseConfig{
-							Enable: &enabled,
-						},
+						Enable: &enabled,
 						Prometheus: &extconf.PrometheusConfig{
 							Path: "/metrics",
 						},
 					},
 					Scrub: &extconf.ScrubConfig{
-						BaseConfig: extconf.BaseConfig{
-							Enable: &enabled,
-						},
+						Enable:   &enabled,
 						Interval: 24 * time.Hour,
 					},
 					UI: &extconf.UIConfig{
-						BaseConfig: extconf.BaseConfig{
-							Enable: &enabled,
-						},
+						Enable: &enabled,
 					},
 				},
 			}
@@ -3119,14 +3097,10 @@ func TestConfig(t *testing.T) {
 			enabled := true
 			newExtensionConfig := &extconf.ExtensionConfig{
 				Search: &extconf.SearchConfig{
-					BaseConfig: extconf.BaseConfig{
-						Enable: &enabled,
-					},
+					Enable: &enabled,
 				},
 				Metrics: &extconf.MetricsConfig{
-					BaseConfig: extconf.BaseConfig{
-						Enable: &enabled,
-					},
+					Enable: &enabled,
 					Prometheus: &extconf.PrometheusConfig{
 						Path: "/metrics",
 					},
@@ -3156,14 +3130,10 @@ func TestConfig(t *testing.T) {
 			cfg := &config.Config{
 				Extensions: &extconf.ExtensionConfig{
 					Search: &extconf.SearchConfig{
-						BaseConfig: extconf.BaseConfig{
-							Enable: &enabled,
-						},
+						Enable: &enabled,
 					},
 					Metrics: &extconf.MetricsConfig{
-						BaseConfig: extconf.BaseConfig{
-							Enable: &enabled,
-						},
+						Enable: &enabled,
 						Prometheus: &extconf.PrometheusConfig{
 							Path: "/metrics",
 						},
@@ -3185,9 +3155,7 @@ func TestConfig(t *testing.T) {
 			newConfig := &config.Config{
 				Extensions: &extconf.ExtensionConfig{
 					Search: &extconf.SearchConfig{
-						BaseConfig: extconf.BaseConfig{
-							Enable: &enabled,
-						},
+						Enable: &enabled,
 						CVE: &extconf.CVEConfig{
 							UpdateInterval: time.Hour * 2,
 							Trivy: &extconf.TrivyConfig{
@@ -3196,9 +3164,7 @@ func TestConfig(t *testing.T) {
 						},
 					},
 					Metrics: &extconf.MetricsConfig{
-						BaseConfig: extconf.BaseConfig{
-							Enable: &enabled,
-						},
+						Enable: &enabled,
 						Prometheus: &extconf.PrometheusConfig{
 							Path: "/custom/metrics",
 						},
@@ -3212,9 +3178,7 @@ func TestConfig(t *testing.T) {
 						},
 					},
 					Scrub: &extconf.ScrubConfig{
-						BaseConfig: extconf.BaseConfig{
-							Enable: &enabled,
-						},
+						Enable:   &enabled,
 						Interval: time.Hour * 12,
 					},
 				},
@@ -3255,14 +3219,10 @@ func TestConfig(t *testing.T) {
 			newConfig := &config.Config{
 				Extensions: &extconf.ExtensionConfig{
 					Search: &extconf.SearchConfig{
-						BaseConfig: extconf.BaseConfig{
-							Enable: &enabled,
-						},
+						Enable: &enabled,
 					},
 					Metrics: &extconf.MetricsConfig{
-						BaseConfig: extconf.BaseConfig{
-							Enable: &enabled,
-						},
+						Enable: &enabled,
 						Prometheus: &extconf.PrometheusConfig{
 							Path: "/new/metrics",
 						},
@@ -3290,9 +3250,7 @@ func TestConfig(t *testing.T) {
 			cfg := &config.Config{
 				Extensions: &extconf.ExtensionConfig{
 					Search: &extconf.SearchConfig{
-						BaseConfig: extconf.BaseConfig{
-							Enable: &enabled,
-						},
+						Enable: &enabled,
 					},
 				},
 			}
@@ -3907,7 +3865,7 @@ func TestConfigSyncStagingHelpers(t *testing.T) {
 
 		Convey("GlobalStorageConfig.LargestGCDelay uses max across substores", func() {
 			storageConfig := config.GlobalStorageConfig{
-				StorageConfig: config.StorageConfig{GCDelay: time.Hour},
+				GCDelay: time.Hour,
 				SubPaths: map[string]config.StorageConfig{
 					"/a": {GCDelay: 3 * time.Hour},
 				},

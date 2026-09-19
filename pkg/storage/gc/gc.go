@@ -308,8 +308,7 @@ func (gc GarbageCollect) removeStaleManifestEntries(repo string, index *ispec.In
 
 	allBlobs, err := gc.imgStore.GetAllBlobs(repo)
 	if err != nil {
-		var pathNotFoundErr driver.PathNotFoundError
-		if !errors.As(err, &pathNotFoundErr) {
+		if _, ok := errors.AsType[driver.PathNotFoundError](err); !ok {
 			return err
 		}
 
@@ -1153,8 +1152,7 @@ func isBlobOlderThan(imgStore types.ImageStore, repo string,
 }
 
 func getSubjectFromCosignTag(tag string) godigest.Digest {
-	alg := strings.Split(tag, "-")[0]
-	encoded := strings.Split(tag, "-")[1]
+	alg, encoded, _ := strings.Cut(tag, "-")
 	encoded = strings.TrimSuffix(encoded, "."+cosignSignatureTagSuffix)
 	encoded = strings.TrimSuffix(encoded, "."+SBOMTagSuffix)
 

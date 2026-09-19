@@ -1211,10 +1211,8 @@ func TestMultipleAuthorizationHeaders(t *testing.T) {
 			// For /v2/_catalog, the requestedAccess will have Name="" (no repository name in URL)
 			// So we need to provide access to repository with empty name or use wildcard
 			claims := &api.ClaimsWithAccess{
-				RegisteredClaims: jwt.RegisteredClaims{
-					IssuedAt:  jwt.NewNumericDate(time.Now()),
-					ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
-				},
+				IssuedAt:  jwt.NewNumericDate(time.Now()),
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 				Access: []api.ResourceAccess{
 					{
 						Type:    "repository",
@@ -1847,10 +1845,8 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 
 			// Create a traditional bearer token (not OIDC)
 			claims := &api.ClaimsWithAccess{
-				RegisteredClaims: jwt.RegisteredClaims{
-					IssuedAt:  jwt.NewNumericDate(time.Now()),
-					ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
-				},
+				IssuedAt:  jwt.NewNumericDate(time.Now()),
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 				Access: []api.ResourceAccess{
 					{
 						Type:    "repository",
@@ -2023,10 +2019,8 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 
 			// Create a traditional bearer token with access to different repository (insufficient scope)
 			claims := &api.ClaimsWithAccess{
-				RegisteredClaims: jwt.RegisteredClaims{
-					IssuedAt:  jwt.NewNumericDate(time.Now()),
-					ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
-				},
+				IssuedAt:  jwt.NewNumericDate(time.Now()),
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 				Access: []api.ResourceAccess{
 					{
 						Type:    "repository",
@@ -2171,10 +2165,8 @@ func TestTraditionalBearerMethodActionMapping(t *testing.T) {
 		// Keep the token valid but scoped to another repository so requests fail with
 		// insufficient scope and expose the requested action in WWW-Authenticate.
 		claims := &api.ClaimsWithAccess{
-			RegisteredClaims: jwt.RegisteredClaims{
-				IssuedAt:  jwt.NewNumericDate(time.Now()),
-				ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
-			},
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 			Access: []api.ResourceAccess{
 				{
 					Type:    "repository",

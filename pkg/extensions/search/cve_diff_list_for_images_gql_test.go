@@ -12,7 +12,6 @@ import (
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
-	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
@@ -29,10 +28,8 @@ import (
 func testImageCreateHelper(t *testing.T, layers [][]byte) Image {
 	t.Helper()
 	config := ispec.Image{
-		Platform: ispec.Platform{
-			Architecture: "amd64",
-			OS:           "linux",
-		},
+		Architecture: "amd64",
+		OS:           "linux",
 		RootFS: ispec.RootFS{
 			Type:    "layers",
 			DiffIDs: []godigest.Digest{},
@@ -46,9 +43,7 @@ func testImageCreateHelper(t *testing.T, layers [][]byte) Image {
 	configDigest := godigest.FromBytes(configBlob)
 
 	manifest := ispec.Manifest{
-		Versioned: specs.Versioned{
-			SchemaVersion: 2,
-		},
+		SchemaVersion: 2,
 		Config: ispec.Descriptor{
 			MediaType: "application/vnd.oci.image.config.v1+json",
 			Digest:    configDigest,
@@ -98,8 +93,8 @@ func TestCVEDiffListForImagesGqlAuthorization(t *testing.T) {
 		}
 
 		searchConfig := &extconf.SearchConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
-			CVE:        cveConfig,
+			Enable: &defaultVal,
+			CVE:    cveConfig,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: searchConfig,

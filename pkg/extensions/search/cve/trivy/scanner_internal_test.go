@@ -19,7 +19,6 @@ import (
 	"github.com/aquasecurity/trivy/pkg/flag"
 	trivyTypes "github.com/aquasecurity/trivy/pkg/types"
 	godigest "github.com/opencontainers/go-digest"
-	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -174,7 +173,7 @@ func TestRunTrivySBOMGenerationFailureIsNonFatal(t *testing.T) {
 		}()
 
 		report, generated, err := scanner.runTrivy(context.Background(), flag.Options{
-			ImageOptions: flag.ImageOptions{Input: "repo:tag"},
+			Input: "repo:tag",
 		})
 
 		So(err, ShouldBeNil)
@@ -864,8 +863,8 @@ func TestScanIndexSkipsFailingChild(t *testing.T) {
 		topLeaf := CreateImageWith().DefaultLayers().PlatformConfig("amd64", "linux").Build()
 
 		outerIndex := ispec.Index{
-			Versioned: specs.Versioned{SchemaVersion: 2},
-			MediaType: ispec.MediaTypeImageIndex,
+			SchemaVersion: 2,
+			MediaType:     ispec.MediaTypeImageIndex,
 			Manifests: []ispec.Descriptor{
 				{
 					MediaType: ispec.MediaTypeImageIndex,
@@ -1022,8 +1021,8 @@ func TestScanIndexSkipsFailingChild(t *testing.T) {
 		inner := CreateMultiarchWith().Images([]Image{leaf1, leaf2}).Build()
 
 		outerIndex := ispec.Index{
-			Versioned: specs.Versioned{SchemaVersion: 2},
-			MediaType: ispec.MediaTypeImageIndex,
+			SchemaVersion: 2,
+			MediaType:     ispec.MediaTypeImageIndex,
 			Manifests: []ispec.Descriptor{{
 				MediaType: ispec.MediaTypeImageIndex,
 				Digest:    inner.Digest(),
@@ -1067,8 +1066,8 @@ func TestScanIndexSkipsFailingChild(t *testing.T) {
 		inner := CreateMultiarchWith().Images([]Image{leaf}).Build()
 
 		outerIndex := ispec.Index{
-			Versioned: specs.Versioned{SchemaVersion: 2},
-			MediaType: ispec.MediaTypeImageIndex,
+			SchemaVersion: 2,
+			MediaType:     ispec.MediaTypeImageIndex,
 			Manifests: []ispec.Descriptor{{
 				MediaType: "application/vnd.unknown.manifest.v1+json",
 				Digest:    inner.Digest(),
@@ -1113,16 +1112,16 @@ func TestScanIndexSkipsFailingChild(t *testing.T) {
 		digA := godigest.FromString("cycle-index-a")
 		digB := godigest.FromString("cycle-index-b")
 		indexA := ispec.Index{
-			Versioned: specs.Versioned{SchemaVersion: 2},
-			MediaType: ispec.MediaTypeImageIndex,
+			SchemaVersion: 2,
+			MediaType:     ispec.MediaTypeImageIndex,
 			Manifests: []ispec.Descriptor{
 				{MediaType: ispec.MediaTypeImageIndex, Digest: digB, Size: 1},
 				{MediaType: ispec.MediaTypeImageManifest, Digest: leaf.ManifestDescriptor.Digest, Size: leaf.ManifestDescriptor.Size},
 			},
 		}
 		indexB := ispec.Index{
-			Versioned: specs.Versioned{SchemaVersion: 2},
-			MediaType: ispec.MediaTypeImageIndex,
+			SchemaVersion: 2,
+			MediaType:     ispec.MediaTypeImageIndex,
 			Manifests: []ispec.Descriptor{
 				{MediaType: ispec.MediaTypeImageIndex, Digest: digA, Size: 1},
 			},
@@ -1176,8 +1175,8 @@ func TestScanIndexSkipsFailingChild(t *testing.T) {
 		leaf := CreateImageWith().DefaultLayers().PlatformConfig("amd64", "linux").Build()
 		innerDig := godigest.FromString("nested-missing-meta")
 		outerIndex := ispec.Index{
-			Versioned: specs.Versioned{SchemaVersion: 2},
-			MediaType: ispec.MediaTypeImageIndex,
+			SchemaVersion: 2,
+			MediaType:     ispec.MediaTypeImageIndex,
 			Manifests: []ispec.Descriptor{{
 				MediaType: ispec.MediaTypeImageIndex,
 				Digest:    innerDig,

@@ -60,9 +60,9 @@ func SignImageUsingCosign(repoTag, port string, withReferrers bool) error {
 	const timeoutPeriod = 5
 
 	signOpts := options.SignOptions{
-		Registry:          options.RegistryOptions{AllowInsecure: true},
-		AnnotationOptions: options.AnnotationOptions{Annotations: []string{"tag=1.0"}},
-		Upload:            true,
+		Registry:    options.RegistryOptions{AllowInsecure: true},
+		Annotations: []string{"tag=1.0"},
+		Upload:      true,
 	}
 
 	if withReferrers {

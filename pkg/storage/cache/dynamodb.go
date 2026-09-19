@@ -44,8 +44,7 @@ func (d *DynamoDBDriver) tableExists(tableName string) (bool, error) {
 		return true, nil
 	}
 
-	var notFoundErr *types.ResourceNotFoundException
-	if errors.As(err, &notFoundErr) {
+	if _, ok := errors.AsType[*types.ResourceNotFoundException](err); ok {
 		return false, nil
 	}
 
@@ -93,16 +92,14 @@ func (d *DynamoDBDriver) NewTable(tableName string) error {
 				WriteCapacityUnits: aws.Int64(5),
 			},
 		})
-
 		// tableExists and CreateTable aren't atomic, so still tolerate a benign race where
 		// another zot instance created the table between the check above and this call.
 		// ResourceInUseException can also occur while a table is being deleted, so confirm
 		// the table actually exists before treating the error as benign. If the caller isn't
 		// permitted to call DescribeTable either (dynamodb:CreateTable-only IAM policies),
 		// there's no way to confirm further, so fall back to treating it as benign.
-		var inUseErr *types.ResourceInUseException
 		if err != nil {
-			if !errors.As(err, &inUseErr) {
+			if _, ok := errors.AsType[*types.ResourceInUseException](err); !ok {
 				return err
 			}
 

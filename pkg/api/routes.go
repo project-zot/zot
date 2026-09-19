@@ -782,8 +782,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 	// hard to reach test case, injected error (simulates an interrupted image manifest upload)
 	// err could be io.ErrUnexpectedEOF or *http.MaxBytesError
 	if err := inject.Error(err); err != nil {
-		var mbe *http.MaxBytesError
-		if errors.As(err, &mbe) {
+		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 			e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(map[string]string{
 				"reason": fmt.Sprintf("manifest body exceeds maximum allowed size of %d bytes", constants.MaxManifestBodySize),
 			})
@@ -2852,8 +2851,7 @@ func (rh *RouteHandler) CreateAPIKey(resp http.ResponseWriter, req *http.Request
 
 	body, err := io.ReadAll(http.MaxBytesReader(resp, req.Body, constants.MaxAPIKeyBodySize))
 	if err != nil {
-		var mbe *http.MaxBytesError
-		if errors.As(err, &mbe) {
+		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 			resp.WriteHeader(http.StatusRequestEntityTooLarge)
 		} else {
 			rh.c.Log.Error().Msg("failed to read request body")

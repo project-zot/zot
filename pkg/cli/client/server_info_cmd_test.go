@@ -29,7 +29,7 @@ func TestServerStatusCommand(t *testing.T) {
 		conf.Storage.GC = false
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		ctlr := api.NewController(conf)

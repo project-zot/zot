@@ -66,8 +66,7 @@ func (driver *Driver) Delete(path string) error {
 	formattedErr := driver.formatErr(err, path)
 
 	// Check if the formatted error is PathNotFoundError
-	var pathNotFoundErr storagedriver.PathNotFoundError
-	if errors.As(formattedErr, &pathNotFoundErr) {
+	if _, ok := errors.AsType[storagedriver.PathNotFoundError](formattedErr); ok {
 		// For directory deletion, if the path doesn't exist, treat it as success (idempotent delete)
 		// In GCS, directories are just prefixes, so if all objects are deleted,
 		// the directory may already be gone (especially with eventual consistency in storage-testbench)
@@ -132,8 +131,7 @@ func isEOF(err error) bool {
 		return true
 	}
 
-	var storageErr storagedriver.Error
-	if errors.As(err, &storageErr) {
+	if storageErr, ok := errors.AsType[storagedriver.Error](err); ok {
 		return errors.Is(storageErr.Detail, io.EOF)
 	}
 

@@ -62,13 +62,11 @@ func MakeAuthTestServer(serverKey, signAlg string, unauthorizedNamespace string)
 
 		now := time.Now()
 		claims := api.ClaimsWithAccess{
-			Access: access,
-			RegisteredClaims: jwt.RegisteredClaims{
-				ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute * 1)),
-				IssuedAt:  jwt.NewNumericDate(now),
-				Issuer:    "Zot",
-				Audience:  []string{"Zot Registry"},
-			},
+			Access:    access,
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute * 1)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			Issuer:    "Zot",
+			Audience:  []string{"Zot Registry"},
 		}
 
 		token := jwt.NewWithClaims(signingMethod, claims)
