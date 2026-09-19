@@ -2581,6 +2581,102 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 	}
 }
 
+func TestReuploadEqualSizeCorruptedManifest(t *testing.T) {
+	Convey("Equal-size corrupted manifests are repaired", t, func() {
+		for _, reference := range []string{"1.0", "digest"} {
+			Convey(reference, func() {
+				rootDir := t.TempDir()
+				log := zlog.NewTestLogger()
+				metrics := monitoring.NewNopMetricServer()
+				imgStore := local.NewImageStore(rootDir, false, true, log, metrics, nil, nil, nil, nil)
+				storeController := storage.StoreController{DefaultStore: imgStore}
+
+				image := CreateRandomImage()
+				image.Manifest.Annotations = map[string]string{"probe": "good"}
+				So(WriteImageToFileSystem(image, repoName, "1.0", storeController), ShouldBeNil)
+
+				manifestBody, manifestDigest, mediaType, err := imgStore.GetImageManifest(repoName, "1.0")
+				So(err, ShouldBeNil)
+				So(imgStore.VerifyBlobDigestValue(repoName, manifestDigest), ShouldBeNil)
+
+				corruptedBody := bytes.Replace(manifestBody, []byte("good"), []byte("baad"), 1)
+				So(corruptedBody, ShouldNotResemble, manifestBody)
+				So(len(corruptedBody), ShouldEqual, len(manifestBody))
+
+				manifestPath := imgStore.BlobPath(repoName, manifestDigest)
+				storeDriver := local.New(true)
+				_, err = storeDriver.WriteFile(manifestPath, corruptedBody)
+				So(err, ShouldBeNil)
+				So(imgStore.VerifyBlobDigestValue(repoName, manifestDigest), ShouldEqual, zerr.ErrBadBlobDigest)
+
+				requestReference := "1.0"
+				if reference == "digest" {
+					requestReference = manifestDigest.String()
+				}
+
+				_, _, err = imgStore.PutImageManifest(context.Background(), repoName, requestReference,
+					mediaType, manifestBody, nil)
+				So(err, ShouldBeNil)
+
+				storedBody, err := storeDriver.ReadFile(manifestPath)
+				So(err, ShouldBeNil)
+				So(storedBody, ShouldResemble, manifestBody)
+				So(imgStore.VerifyBlobDigestValue(repoName, manifestDigest), ShouldBeNil)
+			})
+		}
+	})
+}
+
+func TestReuploadManifestMoveErrorAfterCommit(t *testing.T) {
+	Convey("A post-commit Move error does not fail manifest repair", t, func() {
+		const repo = "manifest-move-error"
+
+		baseDriver := local.New(true)
+		failAfterCommit := false
+		hookDriver := &stagingHookDriver{Driver: baseDriver}
+		hookDriver.moveHook = func(src, dst string) (error, bool) {
+			if !failAfterCommit || path.Base(path.Dir(path.Dir(dst))) != ispec.ImageBlobsDir {
+				return nil, false
+			}
+
+			if err := baseDriver.Move(src, dst); err != nil {
+				return err, true
+			}
+
+			//nolint: err113
+			return errors.New("forced post-commit move failure"), true
+		}
+
+		_, imgStore, cleanup := newLocalImageStoreWithDriver(t, hookDriver)
+		defer cleanup()
+
+		storeController := storage.StoreController{DefaultStore: imgStore}
+		image := CreateRandomImage()
+		image.Manifest.Annotations = map[string]string{"probe": "good"}
+		So(WriteImageToFileSystem(image, repo, "1.0", storeController), ShouldBeNil)
+
+		manifestBody, manifestDigest, mediaType, err := imgStore.GetImageManifest(repo, "1.0")
+		So(err, ShouldBeNil)
+
+		corruptedBody := bytes.Replace(manifestBody, []byte("good"), []byte("baad"), 1)
+		So(corruptedBody, ShouldNotResemble, manifestBody)
+		So(len(corruptedBody), ShouldEqual, len(manifestBody))
+
+		manifestPath := imgStore.BlobPath(repo, manifestDigest)
+		_, err = baseDriver.WriteFile(manifestPath, corruptedBody)
+		So(err, ShouldBeNil)
+
+		failAfterCommit = true
+		_, _, err = imgStore.PutImageManifest(context.Background(), repo, "1.0", mediaType, manifestBody, nil)
+		So(err, ShouldBeNil)
+
+		storedBody, err := baseDriver.ReadFile(manifestPath)
+		So(err, ShouldBeNil)
+		So(storedBody, ShouldResemble, manifestBody)
+		So(imgStore.VerifyBlobDigestValue(repo, manifestDigest), ShouldBeNil)
+	})
+}
+
 func TestStorageHandler(t *testing.T) {
 	for _, testcase := range testCases {
 		t.Run(testcase.testCaseName, func(t *testing.T) {
@@ -4555,15 +4651,15 @@ func DumpKeys(t *testing.T, redisURL string) {
 	}
 }
 
-// putIndexHookDriver wraps the local driver so PutIndexContent tests can inject WriteFile / Move failures.
-type putIndexHookDriver struct {
+// stagingHookDriver wraps the local driver so staged-write tests can inject WriteFile / Move failures.
+type stagingHookDriver struct {
 	*local.Driver
 
 	writeFileHook func(filePath string, content []byte) (n int, err error, handled bool)
 	moveHook      func(src, dst string) (err error, handled bool)
 }
 
-func (h *putIndexHookDriver) WriteFile(filePath string, content []byte) (int, error) {
+func (h *stagingHookDriver) WriteFile(filePath string, content []byte) (int, error) {
 	if h.writeFileHook != nil {
 		if n, err, ok := h.writeFileHook(filePath, content); ok {
 			return n, err
@@ -4573,7 +4669,7 @@ func (h *putIndexHookDriver) WriteFile(filePath string, content []byte) (int, er
 	return h.Driver.WriteFile(filePath, content)
 }
 
-func (h *putIndexHookDriver) Move(src, dst string) error {
+func (h *stagingHookDriver) Move(src, dst string) error {
 	if h.moveHook != nil {
 		if err, ok := h.moveHook(src, dst); ok {
 			return err
@@ -4588,7 +4684,7 @@ func TestPutIndexContent_atomicReplace(t *testing.T) {
 		const repo = "r1"
 
 		Convey("staging WriteFile failure leaves index.json unchanged", func() {
-			hookDriver := &putIndexHookDriver{
+			hookDriver := &stagingHookDriver{
 				Driver: local.New(true),
 				writeFileHook: func(filePath string, content []byte) (int, error, bool) {
 					if filepath.Base(filepath.Dir(filePath)) == storageConstants.BlobUploadDir {
@@ -4624,7 +4720,7 @@ func TestPutIndexContent_atomicReplace(t *testing.T) {
 		})
 
 		Convey("Move into index.json failure leaves index.json unchanged", func() {
-			hookDriver := &putIndexHookDriver{
+			hookDriver := &stagingHookDriver{
 				Driver: local.New(true),
 				moveHook: func(src, dst string) (error, bool) {
 					if filepath.Base(dst) == ispec.ImageIndexFile {
@@ -4653,6 +4749,47 @@ func TestPutIndexContent_atomicReplace(t *testing.T) {
 			after, err := os.ReadFile(path.Join(root, repo, ispec.ImageIndexFile))
 			So(err, ShouldBeNil)
 			So(string(after), ShouldEqual, string(before))
+
+			uploadOrphans, err := filepath.Glob(path.Join(root, repo, storageConstants.BlobUploadDir, "*"))
+			So(err, ShouldBeNil)
+			So(uploadOrphans, ShouldBeEmpty)
+		})
+
+		Convey("Move error after replacing index.json is treated as committed", func() {
+			baseDriver := local.New(true)
+			hookDriver := &stagingHookDriver{Driver: baseDriver}
+			hookDriver.moveHook = func(src, dst string) (error, bool) {
+				if filepath.Base(dst) != ispec.ImageIndexFile {
+					return nil, false
+				}
+
+				if err := baseDriver.Move(src, dst); err != nil {
+					return err, true
+				}
+
+				//nolint: err113
+				return errors.New("forced post-commit move failure"), true
+			}
+
+			root, imgStore, cleanup := newLocalImageStoreWithDriver(t, hookDriver)
+			defer cleanup()
+
+			So(imgStore.InitRepo(context.Background(), repo), ShouldBeNil)
+
+			var idx ispec.Index
+			before, err := os.ReadFile(path.Join(root, repo, ispec.ImageIndexFile))
+			So(err, ShouldBeNil)
+			So(json.Unmarshal(before, &idx), ShouldBeNil)
+
+			idx.SchemaVersion = 43
+			So(imgStore.PutIndexContent(repo, idx), ShouldBeNil)
+
+			after, err := os.ReadFile(path.Join(root, repo, ispec.ImageIndexFile))
+			So(err, ShouldBeNil)
+
+			var got ispec.Index
+			So(json.Unmarshal(after, &got), ShouldBeNil)
+			So(got.SchemaVersion, ShouldEqual, 43)
 
 			uploadOrphans, err := filepath.Glob(path.Join(root, repo, storageConstants.BlobUploadDir, "*"))
 			So(err, ShouldBeNil)
