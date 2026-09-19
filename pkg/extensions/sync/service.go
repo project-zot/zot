@@ -20,6 +20,7 @@ import (
 	"github.com/regclient/regclient/config"
 	"github.com/regclient/regclient/scheme/reg"
 	"github.com/regclient/regclient/types/descriptor"
+	"github.com/regclient/regclient/types/manifest"
 	"github.com/regclient/regclient/types/mediatype"
 	"github.com/regclient/regclient/types/platform"
 	"github.com/regclient/regclient/types/ref"
@@ -36,6 +37,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/storage"
+	storageCommon "zotregistry.dev/zot/v2/pkg/storage/common"
 )
 
 const (
@@ -87,7 +89,8 @@ type BaseService struct {
 	// imageFlight dedupes concurrent ensures of the same
 	// localRepo+remoteRepo+reference+opts (shared by on-demand SyncImage and periodic
 	// SyncRepo index/child ensures).
-	imageFlight singleflight.Group
+	imageFlight   singleflight.Group
+	streamManager StreamManager
 
 	clientLock sync.RWMutex
 	log        log.Logger
@@ -99,6 +102,7 @@ func New(
 	clusterConfig *zconfig.ClusterConfig,
 	tmpDir string,
 	storeController storage.StoreController,
+	streamManager StreamManager,
 	metadb mTypes.MetaDB,
 	log log.Logger,
 ) (*BaseService, error) {
@@ -109,6 +113,7 @@ func New(
 	service.metaDB = metadb
 	service.contentManager = NewContentManager(config.Content, log)
 	service.storeController = storeController
+	service.streamManager = streamManager
 	service.tagsCache = newTagsCache(defaultExpireMinutes)
 
 	if config.ManifestCheckInterval > 0 {
@@ -335,6 +340,21 @@ func (service *BaseService) CanRetryOnError() bool {
 	return false
 }
 
+// IsStreamingForRepo reports whether streaming is enabled for the given local repo on this
+// service. Streaming is enabled if the registry config has Stream set to true and the repo
+// matches the content config (or no content filter is configured, in which case all repos match).
+func (service *BaseService) IsStreamingForRepo(repo string) bool {
+	if !service.config.IsStreamEnabled() {
+		return false
+	}
+
+	if len(service.config.Content) == 0 {
+		return true
+	}
+
+	return service.contentManager.GetContentByLocalRepo(repo) != nil
+}
+
 // ShouldCheckUpstream reports whether an upstream manifest check is due for repo:reference.
 // It is always true when manifestCheckInterval is not configured, which keeps the default
 // behaviour of validating every on-demand request against upstream.
@@ -445,6 +465,118 @@ func (service *BaseService) GetNextRepo(lastRepo string) (string, error) {
 	return lastRepo, nil
 }
 
+// FetchManifest fetches repo:reference's manifest (and, for a multi-arch reference, each
+// platform's child manifest) directly from upstream, without syncing anything into local
+// storage. Used by on-demand streaming, where the manifest must reach the client immediately
+// while the real sync into local storage happens separately, in the background.
+//
+// Applies the same content-filter and OnlySigned gates SyncImage applies, and in the same order
+// relative to the fetch, so a manifest this rejects would also have been rejected by a plain
+// on-demand sync - streaming must never hand a client something the non-streaming path would
+// have refused to serve.
+func (service *BaseService) FetchManifest(ctx context.Context, repo, reference string) (
+	manifest.Manifest, []manifest.Manifest, error,
+) {
+	remoteRepo := repo
+
+	remoteURL := service.remote.GetHostName()
+
+	if len(service.config.Content) > 0 {
+		remoteRepo = service.contentManager.GetRepoSource(repo)
+		if remoteRepo == "" {
+			service.log.Info().Str("remote", remoteURL).Str("repo", repo).Str("reference", reference).
+				Msg("will not sync image, filtered out by content")
+
+			return nil, nil, zerr.ErrSyncImageFilteredOut
+		}
+	}
+
+	service.log.Info().Str("remote", remoteURL).Str("repo", repo).Str("reference", reference).
+		Msg("sync: fetching manifest for stream")
+
+	/* Refresh before taking the read lock: a refresh reinitializes the client under the
+	write lock, which a held read lock would deadlock against - same pattern as SyncReferrers. */
+	if err := service.refreshRegistryTemporaryCredentials(); err != nil {
+		service.log.Error().Err(err).Msg("failed to refresh credentials")
+	}
+
+	service.clientLock.RLock()
+	defer service.clientLock.RUnlock()
+
+	remoteImageRef, err := service.remote.GetImageReference(remoteRepo, reference)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	fetchedManifest, err := service.rc.ManifestGet(ctx, remoteImageRef)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if err := service.rejectUnsupportedRootMedia(remoteRepo, reference,
+		fetchedManifest.GetDescriptor().MediaType); err != nil {
+		return nil, nil, err
+	}
+
+	if err := service.enforceOnlySigned(ctx, remoteRepo, reference, remoteImageRef,
+		fetchedManifest.GetDescriptor().Digest, nil, false); err != nil {
+		return nil, nil, err
+	}
+
+	var childManifests []manifest.Manifest
+
+	// A multi-arch reference (an index) has no config/layers of its own to stream - each
+	// platform's own manifest underneath it does, so those need fetching (and later, staging for
+	// streaming) individually.
+	if fetchedManifest.IsList() {
+		indexer, ok := fetchedManifest.(manifest.Indexer)
+		if !ok {
+			service.log.Error().Str("remote", remoteURL).Str("repo", repo).Str("reference", reference).
+				Msg("failed to cast manifest to index")
+
+			return nil, nil, zerr.ErrBadManifest
+		}
+
+		childDescriptors, err := indexer.GetManifestList()
+		if err != nil {
+			service.log.Error().Err(err).Str("remote", remoteURL).Str("repo", repo).
+				Str("reference", reference).Msg("failed to get manifest list")
+
+			return nil, nil, zerr.ErrBadManifest
+		}
+
+		// Fetched sequentially, one upstream round trip per platform - on a many-platform index
+		// this adds up before the manifest is returned to the streaming caller, working against
+		// the "hand the client the manifest immediately" goal this function otherwise serves.
+		for _, childDesc := range childDescriptors {
+			childRef, err := service.remote.GetImageReference(remoteRepo, childDesc.Digest.String())
+			if err != nil {
+				return nil, nil, err
+			}
+
+			childManifest, err := service.rc.ManifestGet(ctx, childRef)
+			if err != nil {
+				service.log.Error().Err(err).Str("remote", remoteURL).Str("repo", repo).
+					Str("reference", reference).Str("childDigest", childDesc.Digest.String()).
+					Msg("failed to fetch child manifest")
+
+				return nil, nil, err
+			}
+
+			childManifests = append(childManifests, childManifest)
+		}
+	}
+
+	// Deliberately no markUpstreamChecked here: unlike SyncImage/SyncImageAtDigest, which only
+	// mark a reference checked after their sync has actually committed it locally, this only
+	// fetched from upstream - the real sync into local storage happens separately, later, in the
+	// background (see FetchManifestForStream). Marking it checked now, before that background
+	// sync even starts, would let ShouldCheckUpstreamManifest skip the upstream check for the rest
+	// of the interval even if that sync then fails, serving a stale (or missing) local manifest
+	// instead of retrying upstream.
+	return fetchedManifest, childManifests, nil
+}
+
 // SyncImage on demand.
 func (service *BaseService) SyncImage(ctx context.Context, repo, reference string) error {
 	remoteRepo := repo
@@ -487,6 +619,55 @@ func (service *BaseService) SyncImage(ctx context.Context, repo, reference strin
 	}
 
 	service.markUpstreamChecked(repo, reference)
+
+	return nil
+}
+
+// SyncImageAtDigest is SyncImage, except the remote fetch is pinned to digest instead of being
+// resolved fresh from tag - see PinnedSyncer's doc comment for why a caller would want that. The
+// local commit is still keyed by tag, exactly as SyncImage does.
+func (service *BaseService) SyncImageAtDigest(ctx context.Context, repo, tag string, digest godigest.Digest) error {
+	remoteRepo := repo
+
+	// Content rules are local config — apply them before credential refresh or upstream I/O.
+	if len(service.config.Content) > 0 {
+		remoteRepo = service.contentManager.GetRepoSource(repo)
+		if remoteRepo == "" {
+			service.log.Info().Str("remote", service.remoteHostName()).Str("repo", repo).Str("reference", tag).
+				Msg("will not sync image, filtered out by content")
+
+			return zerr.ErrSyncImageFilteredOut
+		}
+	}
+
+	/* Refresh before taking the read lock: a refresh reinitializes the client under the
+	write lock, which a held read lock would deadlock against. */
+	if err := service.refreshRegistryTemporaryCredentials(); err != nil {
+		service.log.Error().Err(err).Msg("failed to refresh credentials")
+	}
+
+	service.log.Info().Str("remote", service.remoteHostName()).Str("repo", repo).Str("reference", tag).
+		Str("digest", digest.String()).Msg("sync: syncing image pinned to digest")
+
+	opts := syncImageOptions{
+		WithReferrers: false,
+		// Always sparse for on-demand (any tag/digest): indexes copy root only;
+		// image manifests still get config+layers via full ImageCopy.
+		Strategy:         copySparseIndex,
+		TagContentDigest: digest,
+	}
+
+	// Multi-arch signatures cover the index, not each platform child. Digest pulls skip
+	// OnlySigned so tag→digest client flows work; tags still enforce signatures.
+	if _, parseErr := godigest.Parse(tag); parseErr == nil {
+		opts.SkipOnlySigned = true
+	}
+
+	if err := service.ensureImage(ctx, repo, remoteRepo, tag, nil, opts); err != nil {
+		return err
+	}
+
+	service.markUpstreamChecked(repo, tag)
 
 	return nil
 }
@@ -894,7 +1075,7 @@ func descriptorMatchesPlatforms(target *platform.Platform, allowlist []string) (
 }
 
 func (service *BaseService) syncRef(ctx context.Context, localRepo string, remoteImageRef, localImageRef ref.Ref,
-	remoteDigest godigest.Digest, mediaType string, strategy copyStrategy,
+	remoteDigest godigest.Digest, blobDigests []godigest.Digest, mediaType string, strategy copyStrategy,
 ) error {
 	var reference string
 
@@ -915,6 +1096,27 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 		reference = remoteImageRef.Digest
 	}
 
+	copyOpts := []regclient.ImageOpts{}
+
+	if service.config.IsStreamEnabled() {
+		if service.streamManager == nil {
+			return zerr.ErrStreamManagerNotInitialized
+		}
+
+		// Only install the hook when THIS repo:reference was actually staged for streaming -
+		// not merely because this registry has streaming enabled. Without this check, the
+		// maxConcurrentStreams fallback path (StoreImageForStreaming rolls back, then calls the
+		// ordinary SyncImage on the same stream-enabled registry) would still install the hook;
+		// StreamingBlobReader would then find no activeStreams entry for any of this image's
+		// blobs and return ErrBlobReaderMissing, failing the very sync that fallback exists to
+		// let succeed.
+		if _, staged := service.streamManager.StreamingImageManifest(localRepo, reference); staged {
+			service.log.Debug().Str("repo", localRepo).Str("reference", reference).
+				Msg("streaming is enabled. Enabling reader hook")
+			copyOpts = append(copyOpts, regclient.ImageWithBlobReaderHook(service.streamManager.StreamingBlobReader))
+		}
+	}
+
 	// check if image is already synced
 	skipImage, err = service.destination.CanSkipImage(localRepo, reference, remoteDigest)
 	if err != nil {
@@ -924,6 +1126,11 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 	}
 
 	if !skipImage {
+		if seeded := service.preseedLocalBlobs(ctx, localRepo, localImageRef, blobDigests); seeded > 0 {
+			service.log.Debug().Str("repo", localRepo).Str("reference", reference).
+				Int("seededBlobs", seeded).Msg("reused blobs already present in local storage")
+		}
+
 		service.log.Info().Str("remote image", remoteImageRef.CommonName()).
 			Str("local image", fmt.Sprintf("%s:%s", localRepo, reference)).Msg("syncing image")
 
@@ -932,7 +1139,7 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 			err = service.copySparseIndexManifest(ctx, remoteImageRef, localImageRef)
 		} else {
 			// Image manifests (and copyDigestComplete): full config + layers.
-			err = service.rc.ImageCopy(ctx, remoteImageRef, localImageRef)
+			err = service.rc.ImageCopy(ctx, remoteImageRef, localImageRef, copyOpts...)
 		}
 
 		if err != nil {
@@ -1006,6 +1213,125 @@ func (service *BaseService) rejectUnsupportedRootMedia(repo, reference, mediaTyp
 	return fmt.Errorf("%w: mediaType %q", zerr.ErrMediaTypeNotSupported, mediaType)
 }
 
+// blobDigestsForReuse returns the config+layer digests referenced by remoteImageRef's manifest
+// (skipping non-distributable layers), for preseedLocalBlobs to try reusing from local storage
+// before ImageCopy fetches them from upstream - see blob_reuse.go and issue #4386. Returns nil
+// (never an error: reuse is a best-effort optimization, never a correctness requirement) when
+// reuse does not apply: a sparse index copy fetches no blobs of its own, and a streaming-enabled
+// registry must never preseed, since the blob-reader hook that forwards bytes to a waiting client
+// never runs for a blob ImageCopy skips because it was already found at the destination.
+func (service *BaseService) blobDigestsForReuse(ctx context.Context, remoteImageRef ref.Ref,
+	mediaType string, strategy copyStrategy,
+) []godigest.Digest {
+	if service.config.IsStreamEnabled() {
+		return nil
+	}
+
+	if strategy == copySparseIndex && compat.IsImageIndexMediaType(mediaType) {
+		return nil
+	}
+
+	man, err := service.rc.ManifestGet(ctx, remoteImageRef)
+	if err != nil {
+		service.log.Debug().Err(err).Str("image", remoteImageRef.CommonName()).
+			Msg("failed to fetch manifest for blob reuse, continuing without preseeding local blobs")
+
+		return nil
+	}
+	defer service.rc.Close(ctx, man.GetRef())
+
+	imager, ok := man.(manifest.Imager)
+	if !ok {
+		return nil
+	}
+
+	configDesc, err := imager.GetConfig()
+	if err != nil {
+		return nil
+	}
+
+	layers, err := imager.GetLayers()
+	if err != nil {
+		return nil
+	}
+
+	blobDigests := make([]godigest.Digest, 0, len(layers)+1)
+	blobDigests = append(blobDigests, configDesc.Digest)
+
+	for _, layer := range layers {
+		if storageCommon.IsNonDistributable(layer.MediaType) {
+			continue
+		}
+
+		blobDigests = append(blobDigests, layer.Digest)
+	}
+
+	return blobDigests
+}
+
+// enforceOnlySigned rejects tag with zerr.ErrSyncImageNotSigned when the config requires signed
+// images (OnlySigned) and tag has no signature referrer (or, when legacy cosign tags are synced,
+// no matching cosign signature tag). It is a no-op otherwise, including for a signature/referrers
+// tag itself (which can never be "signed" in this sense), and whenever skipOnlySigned is set - see
+// syncImageOptions.SkipOnlySigned.
+//
+// Shared between syncImage (the plain periodic/on-demand path, where a rejection here simply
+// means the tag was already excluded from the local store) and FetchManifest (the streaming
+// path, where this check MUST run before the manifest is handed back to a client, not just
+// before the eventual local commit - otherwise an unsigned image could be fully streamed to a
+// client before the normal on-demand sync would have rejected it).
+func (service *BaseService) enforceOnlySigned(ctx context.Context, remoteRepo, tag string,
+	remoteImageRef ref.Ref, remoteDigest godigest.Digest, repoTags []string, skipOnlySigned bool,
+) error {
+	checkIsSigned := service.config.OnlySigned != nil && *service.config.OnlySigned &&
+		!skipOnlySigned &&
+		!common.IsCosignSignature(tag) && !common.IsReferrersTag(tag)
+
+	if !checkIsSigned {
+		return nil
+	}
+
+	referrers, err := service.rc.ReferrerList(ctx, remoteImageRef)
+	if err != nil {
+		service.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", remoteRepo).
+			Err(err).Msg("failed to get referrers for repo")
+
+		return err
+	}
+
+	isSigned := hasSignatureReferrers(referrers)
+	if service.config.ShouldSyncLegacyCosignTags() {
+		// legacy fallback: verify repo contains a cosign signature tag for this manifest
+		if len(repoTags) == 0 {
+			repoTags, err = service.getTagsUnlocked(ctx, remoteRepo, false)
+			if err != nil {
+				service.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", remoteRepo).
+					Err(err).Msg("error while getting tags for repo")
+
+				return err
+			}
+		}
+
+		hasCosignSignature := slices.Contains(repoTags, fmt.Sprintf("%s-%s.sig", remoteDigest.Algorithm(),
+			remoteDigest.Encoded()))
+
+		isSigned = isSigned || hasCosignSignature
+	}
+
+	if !isSigned {
+		// skip unsigned images
+		service.log.Info().Str("image", remoteImageRef.CommonName()).
+			Msg("skipping image without mandatory signature")
+
+		return zerr.ErrSyncImageNotSigned
+	}
+
+	return nil
+}
+
+// syncImage syncs localRepo:tag from remoteRepo:tag, unless pinnedDigest is set, in which case
+// the remote fetch targets that exact digest instead of re-resolving tag - see PinnedSyncer's doc
+// comment for why a caller would want that. Either way the local commit is keyed by tag.
 func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo, tag string,
 	repoTags []string, opts syncImageOptions,
 ) error {
@@ -1029,6 +1355,14 @@ func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo
 
 	// Clean up temp layout on all exit paths after we have a local ref.
 	defer service.destination.CleanupImage(localImageRef, localRepo) //nolint: errcheck
+
+	// Deliberately no stream-cache cleanup here: this syncImage is shared by SyncRepo's periodic
+	// sync and plain on-demand SyncImage, either of which can run for localRepo:tag concurrently
+	// with an unrelated streaming background sync of the very same reference. Purging the stream
+	// cache from here would race that background sync's own copy, potentially removing the active
+	// readers/blob-reader hook it's still using and truncating attached clients. Only the
+	// FetchManifestForStream background goroutine that actually staged the entry owns removing it
+	// - see its defer in on_demand.go.
 
 	err = func() error {
 		service.clientLock.RLock()
@@ -1074,50 +1408,16 @@ func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo
 
 		defer service.rc.Close(ctx, remoteImageRef)
 
-		checkIsSigned := service.config.OnlySigned != nil && *service.config.OnlySigned &&
-			!opts.SkipOnlySigned &&
-			!common.IsCosignSignature(tag) && !common.IsReferrersTag(tag)
-
-		// if onlySigned flag true in config and the image is not itself a signature
-		if checkIsSigned {
-			referrers, err := service.rc.ReferrerList(ctx, remoteImageRef)
-			if err != nil {
-				service.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", remoteRepo).
-					Err(err).Msg("failed to get referrers for repo")
-
-				return err
-			}
-
-			isSigned := hasSignatureReferrers(referrers)
-			if service.config.ShouldSyncLegacyCosignTags() {
-				// legacy fallback: verify repo contains a cosign signature tag for this manifest
-				if len(repoTags) == 0 {
-					repoTags, err = service.getTagsUnlocked(ctx, remoteRepo, false)
-					if err != nil {
-						service.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", remoteRepo).
-							Err(err).Msg("error while getting tags for repo")
-
-						return err
-					}
-				}
-
-				hasCosignSignature := slices.Contains(repoTags, fmt.Sprintf("%s-%s.sig", remoteDigest.Algorithm(),
-					remoteDigest.Encoded()))
-
-				isSigned = isSigned || hasCosignSignature
-			}
-			if !isSigned {
-				// skip unsigned images
-				service.log.Info().Str("image", remoteImageRef.CommonName()).
-					Msg("skipping image without mandatory signature")
-
-				return zerr.ErrSyncImageNotSigned
-			}
+		if err := service.enforceOnlySigned(ctx, remoteRepo, tag, remoteImageRef, remoteDigest,
+			repoTags, opts.SkipOnlySigned); err != nil {
+			return err
 		}
+
+		blobDigests := service.blobDigestsForReuse(ctx, remoteImageRef, mediaType, opts.Strategy)
 
 		// first sync image (CanSkip uses upstream digest; no Docker→OCI conversion).
 		err = service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, remoteDigest,
-			mediaType, opts.Strategy)
+			blobDigests, mediaType, opts.Strategy)
 		if err != nil {
 			return err
 		}
@@ -1242,7 +1542,7 @@ func (service *BaseService) syncReferrers(ctx context.Context, tags []string, lo
 			localImageRef = localImageRef.SetDigest(desc.Digest.String())
 
 			err = service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, desc.Digest,
-				desc.MediaType, copyDigestComplete)
+				nil, desc.MediaType, copyDigestComplete)
 			if err != nil {
 				service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
 					Str("repo", localRepo).Str("local reference", localImageRef.Tag).
@@ -1264,7 +1564,7 @@ func (service *BaseService) syncReferrers(ctx context.Context, tags []string, lo
 					localImageRef = localImageRef.SetTag(tag)
 
 					err = service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, remoteDigest,
-						"", copyDigestComplete)
+						nil, "", copyDigestComplete)
 					if err != nil {
 						service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
 							Str("repo", localRepo).Str("local reference", localImageRef.Tag).

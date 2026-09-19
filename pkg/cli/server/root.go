@@ -1828,6 +1828,90 @@ func validateSync(config *config.Config, logger zlog.Logger) error {
 		}
 	}
 
+	if err := validateStreamingMaxConcurrentStreams(extensionsConfig.Sync.Registries); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateStreamingMaxConcurrentStreams rejects a streaming config whose registries disagree on
+// maxConcurrentStreams. The concurrent-stream cap is a property of the single stream manager
+// shared by every streaming-enabled registry (see EnableSyncExtension), not of any individual
+// registry, so only the first streaming registry's value (in config order) actually takes effect;
+// silently ignoring a different value set on a later registry would contradict what that
+// registry's own config says. Compares effective values (an unset MaxConcurrentStreams falls back
+// to syncConstants.DefaultMaxConcurrentStreams - the same default NewChunkingStreamManager
+// applies) rather than skipping unset entries outright: otherwise [unset, 8] would pass here while
+// EnableSyncExtension actually built the shared manager off the first registry's (unset ->
+// default 32) value, silently dropping the second registry's explicit 8.
+func validateStreamingMaxConcurrentStreams(registries []syncconf.RegistryConfig) error {
+	var first *int
+
+	for idx := range registries {
+		regCfg := &registries[idx]
+
+		if !regCfg.IsStreamEnabled() {
+			continue
+		}
+
+		effective := syncConstants.DefaultMaxConcurrentStreams
+		if regCfg.MaxConcurrentStreams != nil {
+			effective = *regCfg.MaxConcurrentStreams
+		}
+
+		if first == nil {
+			first = &effective
+
+			continue
+		}
+
+		if effective != *first {
+			return fmt.Errorf("%w: %s", zerr.ErrBadConfig,
+				"maxConcurrentStreams must be the same across every streaming registry - it is a single "+
+					"limit shared by all of them, not set per registry (an unset value counts as its default)")
+		}
+	}
+
+	return nil
+}
+
+// validateRegistryStreamingSyncConfig rejects a Stream config that cannot work safely.
+// Streaming forwards bytes to a client before the blob's digest is fully verified (the digest
+// only checks out on the final byte), so it additionally requires a guarantee a plain sync does
+// not: a TLS-verified upstream (there is no room for an unauthenticated upstream identity when
+// bytes are already leaving zot before their integrity is confirmed). Sync never converts a
+// manifest anymore (docker media types are stored as-is, or rejected without http.compat
+// docker2s2), so the manifest streamed to the client always matches what the background sync
+// eventually commits, without needing a separate PreserveDigest guarantee.
+func validateRegistryStreamingSyncConfig(regCfg syncconf.RegistryConfig) error {
+	if !regCfg.IsStreamEnabled() {
+		return nil
+	}
+
+	if !regCfg.OnDemand {
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "stream requires onDemand to be enabled")
+	}
+
+	if regCfg.MaxRetries != nil || regCfg.RetryDelay != nil {
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "stream cannot be combined with maxRetries/retryDelay")
+	}
+
+	if regCfg.TLSVerify != nil && !*regCfg.TLSVerify {
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "stream cannot be combined with tlsVerify: false")
+	}
+
+	for _, rawURL := range regCfg.URLs {
+		parsed, err := url.Parse(rawURL)
+		if err == nil && strings.EqualFold(parsed.Scheme, "http") {
+			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "stream requires https upstream URLs")
+		}
+	}
+
+	if regCfg.MaxConcurrentStreams != nil && *regCfg.MaxConcurrentStreams <= 0 {
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "maxConcurrentStreams must be greater than 0")
+	}
+
 	return nil
 }
 
@@ -1837,6 +1921,13 @@ func validateSyncRegistry(config *config.Config, regID int, regCfg syncconf.Regi
 			regCfg).Msg("invalid config for manifestCheckInterval")
 
 		return intervalValidationErr
+	}
+
+	if streamValidationErr := validateRegistryStreamingSyncConfig(regCfg); streamValidationErr != nil {
+		logger.Error().Err(streamValidationErr).Int("id", regID).Interface("extensions.sync.registries[id]",
+			regCfg).Msg("invalid config for stream")
+
+		return streamValidationErr
 	}
 
 	// check retry options are configured for sync
