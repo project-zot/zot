@@ -4279,6 +4279,55 @@ func TestMetricsConfigurationValidation(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 	})
+
+	Convey("Test metrics repo label expiry validation", t, func() {
+		makeContent := func(repoLabelExpiry string) string {
+			return `{
+				"storage": {"rootDirectory": "/tmp/zot"},
+				"http": {
+					"address": "127.0.0.1", "port": "8080"
+				},
+				"extensions": {
+					"metrics": {
+						"enable": true,
+						"repoLabelExpiry": "` + repoLabelExpiry + `"
+					}
+				}
+			}`
+		}
+
+		Convey("Reject negative repoLabelExpiry", func() {
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", makeContent("-1m"))
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err, ShouldWrap, zerr.ErrInvalidMetricsRepoLabelExpiry)
+		})
+
+		Convey("Reject sub-1-minute positive repoLabelExpiry", func() {
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", makeContent("30s"))
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err, ShouldWrap, zerr.ErrInvalidMetricsRepoLabelExpiry)
+		})
+
+		Convey("Allow zero repoLabelExpiry", func() {
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", makeContent("0s"))
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Allow repoLabelExpiry of at least 1 minute", func() {
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", makeContent("1m"))
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldBeNil)
+		})
+	})
 }
 
 func TestVerifyEventsConfig(t *testing.T) {

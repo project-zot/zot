@@ -225,10 +225,16 @@ func ObserveHTTPRepoLatency(ms MetricServer, path string, latency time.Duration)
 	ms.SendMetric(func() {
 		match := re.FindStringSubmatch(path)
 
+		tracking := repoLabelExpiryTrackingEnabled()
+
 		if len(match) > 1 {
-			httpRepoLatency.WithLabelValues(match[1]).Observe(latency.Seconds())
+			labelTracker.touchAndObserve(tracking, match[1], func() {
+				httpRepoLatency.WithLabelValues(match[1]).Observe(latency.Seconds())
+			})
 		} else {
-			httpRepoLatency.WithLabelValues("N/A").Observe(latency.Seconds())
+			labelTracker.touchAndObserve(tracking, "N/A", func() {
+				httpRepoLatency.WithLabelValues("N/A").Observe(latency.Seconds())
+			})
 		}
 	})
 }
@@ -241,7 +247,9 @@ func ObserveHTTPMethodLatency(ms MetricServer, method string, latency time.Durat
 
 func IncDownloadCounter(ms MetricServer, repo string) {
 	ms.SendMetric(func() {
-		downloadCounter.WithLabelValues(repo).Inc()
+		labelTracker.touchAndObserve(repoLabelExpiryTrackingEnabled(), repo, func() {
+			downloadCounter.WithLabelValues(repo).Inc()
+		})
 	})
 }
 
@@ -258,7 +266,9 @@ func SetStorageUsage(ms MetricServer, rootDir, repo string) {
 
 func IncUploadCounter(ms MetricServer, repo string) {
 	ms.SendMetric(func() {
-		uploadCounter.WithLabelValues(repo).Inc()
+		labelTracker.touchAndObserve(repoLabelExpiryTrackingEnabled(), repo, func() {
+			uploadCounter.WithLabelValues(repo).Inc()
+		})
 	})
 }
 
