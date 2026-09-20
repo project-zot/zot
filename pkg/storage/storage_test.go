@@ -2684,7 +2684,8 @@ func TestReuploadMissingManifestRecordsMetrics(t *testing.T) {
 		_, _, err = imgStore.PutImageManifest(context.Background(), repo, "1.0", mediaType, manifestBody, nil)
 		So(err, ShouldBeNil)
 		So(imgStore.VerifyBlobDigestValue(repo, manifestDigest), ShouldBeNil)
-		So(metrics.sendMetricCalls, ShouldEqual, sendMetricCalls+1)
+		// Re-upload emits two lock-latency metrics and one upload metric.
+		So(metrics.sendMetricCalls, ShouldEqual, sendMetricCalls+3)
 		So(metrics.forceSendMetricCalls, ShouldEqual, forceSendMetricCalls+1)
 	})
 }
