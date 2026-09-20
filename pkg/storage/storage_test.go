@@ -2581,6 +2581,208 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 	}
 }
 
+func TestReuploadEqualSizeCorruptedManifest(t *testing.T) {
+	Convey("Equal-size corrupted manifests are repaired", t, func() {
+		for _, reference := range []string{"1.0", "digest"} {
+			Convey(reference, func() {
+				rootDir := t.TempDir()
+				log := zlog.NewTestLogger()
+				metrics := monitoring.NewNopMetricServer()
+				imgStore := local.NewImageStore(rootDir, false, true, log, metrics, nil, nil, nil, nil)
+				storeController := storage.StoreController{DefaultStore: imgStore}
+
+				image := CreateRandomImage()
+				image.Manifest.Annotations = map[string]string{"probe": "good"}
+				So(WriteImageToFileSystem(image, repoName, "1.0", storeController), ShouldBeNil)
+
+				manifestBody, manifestDigest, mediaType, err := imgStore.GetImageManifest(repoName, "1.0")
+				So(err, ShouldBeNil)
+				So(imgStore.VerifyBlobDigestValue(repoName, manifestDigest), ShouldBeNil)
+
+				corruptedBody := bytes.Replace(manifestBody, []byte("good"), []byte("baad"), 1)
+				So(corruptedBody, ShouldNotResemble, manifestBody)
+				So(len(corruptedBody), ShouldEqual, len(manifestBody))
+
+				manifestPath := imgStore.BlobPath(repoName, manifestDigest)
+				storeDriver := local.New(true)
+				_, err = storeDriver.WriteFile(manifestPath, corruptedBody)
+				So(err, ShouldBeNil)
+				So(imgStore.VerifyBlobDigestValue(repoName, manifestDigest), ShouldEqual, zerr.ErrBadBlobDigest)
+
+				requestReference := "1.0"
+				if reference == "digest" {
+					requestReference = manifestDigest.String()
+				}
+
+				_, _, err = imgStore.PutImageManifest(context.Background(), repoName, requestReference,
+					mediaType, manifestBody, nil)
+				So(err, ShouldBeNil)
+
+				storedBody, err := storeDriver.ReadFile(manifestPath)
+				So(err, ShouldBeNil)
+				So(storedBody, ShouldResemble, manifestBody)
+				So(imgStore.VerifyBlobDigestValue(repoName, manifestDigest), ShouldBeNil)
+			})
+		}
+	})
+}
+
+type recordingMetricServer struct {
+	sendMetricCalls      int
+	forceSendMetricCalls int
+}
+
+func (m *recordingMetricServer) SendMetric(any) {
+	m.sendMetricCalls++
+}
+
+func (m *recordingMetricServer) ForceSendMetric(any) {
+	m.forceSendMetricCalls++
+}
+
+func (*recordingMetricServer) ReceiveMetrics() any {
+	return nil
+}
+
+func (*recordingMetricServer) IsEnabled() bool {
+	return true
+}
+
+func (*recordingMetricServer) Stop() {}
+
+func TestReuploadMissingManifestRecordsMetrics(t *testing.T) {
+	Convey("A missing manifest repaired by re-upload records success metrics", t, func() {
+		const repo = "manifest-missing"
+
+		rootDir := t.TempDir()
+		log := zlog.NewTestLogger()
+		metrics := &recordingMetricServer{}
+		storeDriver := local.New(true)
+
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     rootDir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		So(err, ShouldBeNil)
+
+		imgStore := imagestore.NewImageStore(rootDir, rootDir, true, true, log, metrics, nil,
+			storeDriver, cacheDriver, nil, nil)
+		storeController := storage.StoreController{DefaultStore: imgStore}
+		image := CreateRandomImage()
+
+		So(WriteImageToFileSystem(image, repo, "1.0", storeController), ShouldBeNil)
+
+		manifestBody, manifestDigest, mediaType, err := imgStore.GetImageManifest(repo, "1.0")
+		So(err, ShouldBeNil)
+		manifestPath := imgStore.BlobPath(repo, manifestDigest)
+		sendMetricCalls := metrics.sendMetricCalls
+		forceSendMetricCalls := metrics.forceSendMetricCalls
+
+		So(storeDriver.Delete(manifestPath), ShouldBeNil)
+
+		_, _, err = imgStore.PutImageManifest(context.Background(), repo, "1.0", mediaType, manifestBody, nil)
+		So(err, ShouldBeNil)
+		So(imgStore.VerifyBlobDigestValue(repo, manifestDigest), ShouldBeNil)
+		// Re-upload emits two lock-latency metrics and one upload metric.
+		So(metrics.sendMetricCalls, ShouldEqual, sendMetricCalls+3)
+		So(metrics.forceSendMetricCalls, ShouldEqual, forceSendMetricCalls+1)
+	})
+}
+
+func TestReuploadEqualSizeCorruptedManifestWithDedupe(t *testing.T) {
+	Convey("Equal-size corrupted hard-linked manifests are repaired for every repository", t, func() {
+		const (
+			repoA = "manifest-dedupe-a"
+			repoB = "manifest-dedupe-b"
+		)
+
+		storeDriver := local.New(true)
+		_, imgStore, cleanup := newLocalImageStoreWithDriver(t, storeDriver)
+		defer cleanup()
+
+		storeController := storage.StoreController{DefaultStore: imgStore}
+		image := CreateRandomImage()
+		image.Manifest.Annotations = map[string]string{"probe": "good"}
+
+		So(WriteImageToFileSystem(image, repoA, "1.0", storeController), ShouldBeNil)
+		So(WriteImageToFileSystem(image, repoB, "1.0", storeController), ShouldBeNil)
+
+		manifestBody, manifestDigest, mediaType, err := imgStore.GetImageManifest(repoA, "1.0")
+		So(err, ShouldBeNil)
+
+		manifestPathA := imgStore.BlobPath(repoA, manifestDigest)
+		manifestPathB := imgStore.BlobPath(repoB, manifestDigest)
+		So(storeDriver.Link(manifestPathA, manifestPathB), ShouldBeNil)
+		So(storeDriver.SameFile(manifestPathA, manifestPathB), ShouldBeTrue)
+
+		corruptedBody := bytes.Replace(manifestBody, []byte("good"), []byte("baad"), 1)
+		So(corruptedBody, ShouldNotResemble, manifestBody)
+		So(len(corruptedBody), ShouldEqual, len(manifestBody))
+
+		_, err = storeDriver.WriteFile(manifestPathA, corruptedBody)
+		So(err, ShouldBeNil)
+		So(imgStore.VerifyBlobDigestValue(repoA, manifestDigest), ShouldEqual, zerr.ErrBadBlobDigest)
+		So(imgStore.VerifyBlobDigestValue(repoB, manifestDigest), ShouldEqual, zerr.ErrBadBlobDigest)
+
+		_, _, err = imgStore.PutImageManifest(context.Background(), repoA, "1.0", mediaType, manifestBody, nil)
+		So(err, ShouldBeNil)
+
+		storedBodyA, err := storeDriver.ReadFile(manifestPathA)
+		So(err, ShouldBeNil)
+		So(storedBodyA, ShouldResemble, manifestBody)
+
+		storedBodyB, err := storeDriver.ReadFile(manifestPathB)
+		So(err, ShouldBeNil)
+		So(storedBodyB, ShouldResemble, manifestBody)
+		So(storeDriver.SameFile(manifestPathA, manifestPathB), ShouldBeTrue)
+		So(imgStore.VerifyBlobDigestValue(repoA, manifestDigest), ShouldBeNil)
+		So(imgStore.VerifyBlobDigestValue(repoB, manifestDigest), ShouldBeNil)
+	})
+}
+
+func TestReuploadManifestShortWrite(t *testing.T) {
+	Convey("A short manifest repair write returns an error", t, func() {
+		const repo = "manifest-short-write"
+
+		baseDriver := local.New(true)
+		hookDriver := &stagingHookDriver{Driver: baseDriver}
+		_, imgStore, cleanup := newLocalImageStoreWithDriver(t, hookDriver)
+		defer cleanup()
+
+		storeController := storage.StoreController{DefaultStore: imgStore}
+		image := CreateRandomImage()
+		image.Manifest.Annotations = map[string]string{"probe": "good"}
+		So(WriteImageToFileSystem(image, repo, "1.0", storeController), ShouldBeNil)
+
+		manifestBody, manifestDigest, mediaType, err := imgStore.GetImageManifest(repo, "1.0")
+		So(err, ShouldBeNil)
+
+		corruptedBody := bytes.Replace(manifestBody, []byte("good"), []byte("baad"), 1)
+		So(corruptedBody, ShouldNotResemble, manifestBody)
+		So(len(corruptedBody), ShouldEqual, len(manifestBody))
+
+		manifestPath := imgStore.BlobPath(repo, manifestDigest)
+		_, err = baseDriver.WriteFile(manifestPath, corruptedBody)
+		So(err, ShouldBeNil)
+
+		hookDriver.writeFileHook = func(filePath string, content []byte) (int, error, bool) {
+			if filePath == manifestPath {
+				return len(content) - 1, nil, true
+			}
+
+			return 0, nil, false
+		}
+
+		_, _, err = imgStore.PutImageManifest(context.Background(), repo, "1.0", mediaType, manifestBody, nil)
+		So(errors.Is(err, io.ErrShortWrite), ShouldBeTrue)
+
+		storedBody, err := baseDriver.ReadFile(manifestPath)
+		So(err, ShouldBeNil)
+		So(storedBody, ShouldResemble, corruptedBody)
+	})
+}
+
 func TestStorageHandler(t *testing.T) {
 	for _, testcase := range testCases {
 		t.Run(testcase.testCaseName, func(t *testing.T) {
@@ -4555,15 +4757,15 @@ func DumpKeys(t *testing.T, redisURL string) {
 	}
 }
 
-// putIndexHookDriver wraps the local driver so PutIndexContent tests can inject WriteFile / Move failures.
-type putIndexHookDriver struct {
+// stagingHookDriver wraps the local driver so staged-write tests can inject WriteFile / Move failures.
+type stagingHookDriver struct {
 	*local.Driver
 
 	writeFileHook func(filePath string, content []byte) (n int, err error, handled bool)
 	moveHook      func(src, dst string) (err error, handled bool)
 }
 
-func (h *putIndexHookDriver) WriteFile(filePath string, content []byte) (int, error) {
+func (h *stagingHookDriver) WriteFile(filePath string, content []byte) (int, error) {
 	if h.writeFileHook != nil {
 		if n, err, ok := h.writeFileHook(filePath, content); ok {
 			return n, err
@@ -4573,7 +4775,7 @@ func (h *putIndexHookDriver) WriteFile(filePath string, content []byte) (int, er
 	return h.Driver.WriteFile(filePath, content)
 }
 
-func (h *putIndexHookDriver) Move(src, dst string) error {
+func (h *stagingHookDriver) Move(src, dst string) error {
 	if h.moveHook != nil {
 		if err, ok := h.moveHook(src, dst); ok {
 			return err
@@ -4588,7 +4790,7 @@ func TestPutIndexContent_atomicReplace(t *testing.T) {
 		const repo = "r1"
 
 		Convey("staging WriteFile failure leaves index.json unchanged", func() {
-			hookDriver := &putIndexHookDriver{
+			hookDriver := &stagingHookDriver{
 				Driver: local.New(true),
 				writeFileHook: func(filePath string, content []byte) (int, error, bool) {
 					if filepath.Base(filepath.Dir(filePath)) == storageConstants.BlobUploadDir {
@@ -4623,8 +4825,43 @@ func TestPutIndexContent_atomicReplace(t *testing.T) {
 			So(uploadOrphans, ShouldBeEmpty)
 		})
 
+		Convey("short staging write leaves index.json unchanged", func() {
+			hookDriver := &stagingHookDriver{
+				Driver: local.New(true),
+				writeFileHook: func(filePath string, content []byte) (int, error, bool) {
+					if filepath.Base(filepath.Dir(filePath)) == storageConstants.BlobUploadDir {
+						return len(content) - 1, nil, true
+					}
+
+					return 0, nil, false
+				},
+			}
+
+			root, imgStore, cleanup := newLocalImageStoreWithDriver(t, hookDriver)
+			defer cleanup()
+
+			So(imgStore.InitRepo(context.Background(), repo), ShouldBeNil)
+
+			before, err := os.ReadFile(path.Join(root, repo, ispec.ImageIndexFile))
+			So(err, ShouldBeNil)
+
+			var idx ispec.Index
+			So(json.Unmarshal(before, &idx), ShouldBeNil)
+			idx.SchemaVersion = 1000
+
+			So(errors.Is(imgStore.PutIndexContent(repo, idx), io.ErrShortWrite), ShouldBeTrue)
+
+			after, err := os.ReadFile(path.Join(root, repo, ispec.ImageIndexFile))
+			So(err, ShouldBeNil)
+			So(string(after), ShouldEqual, string(before))
+
+			uploadOrphans, err := filepath.Glob(path.Join(root, repo, storageConstants.BlobUploadDir, "*"))
+			So(err, ShouldBeNil)
+			So(uploadOrphans, ShouldBeEmpty)
+		})
+
 		Convey("Move into index.json failure leaves index.json unchanged", func() {
-			hookDriver := &putIndexHookDriver{
+			hookDriver := &stagingHookDriver{
 				Driver: local.New(true),
 				moveHook: func(src, dst string) (error, bool) {
 					if filepath.Base(dst) == ispec.ImageIndexFile {
@@ -4653,6 +4890,47 @@ func TestPutIndexContent_atomicReplace(t *testing.T) {
 			after, err := os.ReadFile(path.Join(root, repo, ispec.ImageIndexFile))
 			So(err, ShouldBeNil)
 			So(string(after), ShouldEqual, string(before))
+
+			uploadOrphans, err := filepath.Glob(path.Join(root, repo, storageConstants.BlobUploadDir, "*"))
+			So(err, ShouldBeNil)
+			So(uploadOrphans, ShouldBeEmpty)
+		})
+
+		Convey("Move error after replacing index.json is treated as committed", func() {
+			baseDriver := local.New(true)
+			hookDriver := &stagingHookDriver{Driver: baseDriver}
+			hookDriver.moveHook = func(src, dst string) (error, bool) {
+				if filepath.Base(dst) != ispec.ImageIndexFile {
+					return nil, false
+				}
+
+				if err := baseDriver.Move(src, dst); err != nil {
+					return err, true
+				}
+
+				//nolint: err113
+				return errors.New("forced post-commit move failure"), true
+			}
+
+			root, imgStore, cleanup := newLocalImageStoreWithDriver(t, hookDriver)
+			defer cleanup()
+
+			So(imgStore.InitRepo(context.Background(), repo), ShouldBeNil)
+
+			var idx ispec.Index
+			before, err := os.ReadFile(path.Join(root, repo, ispec.ImageIndexFile))
+			So(err, ShouldBeNil)
+			So(json.Unmarshal(before, &idx), ShouldBeNil)
+
+			idx.SchemaVersion = 43
+			So(imgStore.PutIndexContent(repo, idx), ShouldBeNil)
+
+			after, err := os.ReadFile(path.Join(root, repo, ispec.ImageIndexFile))
+			So(err, ShouldBeNil)
+
+			var got ispec.Index
+			So(json.Unmarshal(after, &got), ShouldBeNil)
+			So(got.SchemaVersion, ShouldEqual, 43)
 
 			uploadOrphans, err := filepath.Glob(path.Join(root, repo, storageConstants.BlobUploadDir, "*"))
 			So(err, ShouldBeNil)
