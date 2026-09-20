@@ -1570,23 +1570,116 @@ func initMockStoreWithFakeScannerDB(tempDir string) (storage.StoreController, er
 	return storeController, err
 }
 
-// newArrivalBarrier returns arrive, to be called once by each of n expected concurrent callers,
-// and allArrived, which unblocks once all n have called arrive. A fake scan held open on
-// allArrived is guaranteed to still be in flight when every caller joins its singleflight,
-// instead of relying on a fixed sleep to outlast worst-case goroutine scheduling delay.
-func newArrivalBarrier(n int) (arrive func(), allArrived <-chan struct{}) {
+// flightGate holds the shared trivy scan open from the first scanImageFn entry until Release.
+// Launch concurrent ScanImage callers only after WaitStarted (or while the leader is blocked
+// in Hold) so they join the in-progress singleflight. Do not signal arrival before ScanImage:
+// that can unblock the leader before anyone has joined and lets stragglers start another flight.
+type flightGate struct {
+	started chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func newFlightGate() *flightGate {
+	return &flightGate{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+}
+
+func (g *flightGate) Hold() {
+	g.once.Do(func() { close(g.started) })
+	<-g.release
+}
+
+func (g *flightGate) WaitStarted(t *testing.T) {
+	t.Helper()
+
+	select {
+	case <-g.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("shared scan did not start")
+	}
+}
+
+func (g *flightGate) Release() {
+	close(g.release)
+}
+
+// callCounter is a mutex-protected map of trivy target -> invocation count.
+type callCounter struct {
+	mu sync.Mutex
+	m  map[string]int
+}
+
+func newCallCounter() *callCounter {
+	return &callCounter{m: map[string]int{}}
+}
+
+func (c *callCounter) Incr(target string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.m[target]++
+}
+
+func (c *callCounter) Get(target string) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.m[target]
+}
+
+func (c *callCounter) Len() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return len(c.m)
+}
+
+// runCoalescedScanWave starts one ScanImage to become the singleflight leader (blocked in
+// gate.Hold), then starts the remaining callers so they join that flight, then releases.
+// Failed scans are not cached, so followers that miss the open flight each start another
+// uncached scan — hence the settle sleep while the leader still holds.
+func runCoalescedScanWave(t *testing.T, n int, gate *flightGate,
+	scan func() (model.ScanResult, error),
+) ([]model.ScanResult, []error) {
+	t.Helper()
+
+	results := make([]model.ScanResult, 0, n)
+	errs := make([]error, 0, n)
+	var mu sync.Mutex
 	var wg sync.WaitGroup
 
-	wg.Add(n)
+	collect := func() {
+		defer wg.Done()
 
-	done := make(chan struct{})
+		res, err := scan()
 
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
+		mu.Lock()
+		results = append(results, res)
+		errs = append(errs, err)
+		mu.Unlock()
+	}
 
-	return wg.Done, done
+	// Leader: enters the flight and blocks inside the fake runner's Hold.
+	wg.Add(1)
+	go collect()
+
+	gate.WaitStarted(t)
+
+	// Followers join the in-progress flight while the leader is still holding it open.
+	for range n - 1 {
+		wg.Add(1)
+		go collect()
+	}
+
+	time.Sleep(100 * time.Millisecond)
+
+	gate.Release()
+	wg.Wait()
+
+	return results, errs
 }
 
 func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
@@ -1627,12 +1720,9 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 			},
 		}, logger)
 
-		scanCallMap := map[string]int{}
-
-		var (
-			arrive     func()
-			allArrived <-chan struct{}
-		)
+		calls := newCallCounter()
+		var gate atomic.Pointer[flightGate]
+		gate.Store(newFlightGate())
 
 		oldNewArtifactRunner := newArtifactRunner
 		newArtifactRunner = func(ctx context.Context, opts flag.Options, target artifact.TargetKind,
@@ -1640,14 +1730,8 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 		) (artifact.Runner, error) {
 			return fakeArtifactRunner{
 				scanImageFn: func(ctx context.Context, opts flag.Options) (trivyTypes.Report, error) {
-					if _, ok := scanCallMap[opts.Target]; !ok {
-						scanCallMap[opts.Target] = 0
-					}
-					scanCallMap[opts.Target] += 1
-
-					// Hold the scan open until every concurrent caller has joined this
-					// flight, so a straggler can never start a second one.
-					<-allArrived
+					calls.Incr(opts.Target)
+					gate.Load().Hold()
 
 					return trivyTypes.Report{}, nil
 				},
@@ -1657,69 +1741,34 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 			newArtifactRunner = oldNewArtifactRunner
 		}()
 
-		var wg sync.WaitGroup
-		numRoutines := 50
-		results := make(chan model.ScanResult, numRoutines)
-		errs := make(chan error, numRoutines)
+		runWave := func() {
+			g := newFlightGate()
+			gate.Store(g)
 
-		arrive, allArrived = newArrivalBarrier(numRoutines)
-
-		for range 50 {
-			wg.Go(func() {
-				arrive()
-
-				res, err := scanner.ScanImage(context.Background(), "repo:1.0")
-				results <- res
-				errs <- err
+			results, errs := runCoalescedScanWave(t, 50, g, func() (model.ScanResult, error) {
+				return scanner.ScanImage(context.Background(), "repo:1.0")
 			})
-		}
-		wg.Wait()
-		close(results)
-		close(errs)
 
-		for scanErr := range errs {
-			So(scanErr, ShouldBeNil)
-		}
+			for _, scanErr := range errs {
+				So(scanErr, ShouldBeNil)
+			}
 
-		for r := range results {
-			So(r.Digest, ShouldNotBeEmpty)
+			for _, r := range results {
+				So(r.Digest, ShouldNotBeEmpty)
+			}
 		}
 
-		So(len(scanCallMap), ShouldEqual, 1)
+		runWave()
+
+		So(calls.Len(), ShouldEqual, 1)
 		scanPath := path.Join(tempDir, "repo@"+img1.DigestStr())
-		So(scanCallMap[scanPath], ShouldEqual, 1)
+		So(calls.Get(scanPath), ShouldEqual, 1)
 
-		// Purging the cache should allow it to run again
 		scanner.cache.Purge()
+		runWave()
 
-		results = make(chan model.ScanResult, numRoutines)
-		errs = make(chan error, numRoutines)
-		arrive, allArrived = newArrivalBarrier(numRoutines)
-
-		for range 50 {
-			wg.Go(func() {
-				arrive()
-
-				res, err := scanner.ScanImage(context.Background(), "repo:1.0")
-				results <- res
-				errs <- err
-			})
-		}
-		wg.Wait()
-		close(results)
-		close(errs)
-
-		for scanErr := range errs {
-			So(scanErr, ShouldBeNil)
-		}
-
-		for r := range results {
-			So(r.Digest, ShouldNotBeEmpty)
-		}
-
-		So(len(scanCallMap), ShouldEqual, 1)
-		// Should be called a second time since the cache was purged
-		So(scanCallMap[scanPath], ShouldEqual, 2)
+		So(calls.Len(), ShouldEqual, 1)
+		So(calls.Get(scanPath), ShouldEqual, 2)
 	})
 
 	Convey("Multiple concurrent scans for the same uncached index should trigger only one scan", t, func() {
@@ -1763,12 +1812,9 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 			},
 		}, logger)
 
-		scanCallMap := map[string]int{}
-
-		var (
-			arrive     func()
-			allArrived <-chan struct{}
-		)
+		calls := newCallCounter()
+		var gate atomic.Pointer[flightGate]
+		gate.Store(newFlightGate())
 
 		oldNewArtifactRunner := newArtifactRunner
 		newArtifactRunner = func(ctx context.Context, opts flag.Options, target artifact.TargetKind,
@@ -1776,14 +1822,10 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 		) (artifact.Runner, error) {
 			return fakeArtifactRunner{
 				scanImageFn: func(ctx context.Context, opts flag.Options) (trivyTypes.Report, error) {
-					if _, ok := scanCallMap[opts.Target]; !ok {
-						scanCallMap[opts.Target] = 0
-					}
-					scanCallMap[opts.Target] += 1
-
-					// Hold the scan open until every concurrent caller has joined this
-					// flight, so a straggler can never start a second one.
-					<-allArrived
+					calls.Incr(opts.Target)
+					// First child holds until Release; later children see a closed release
+					// channel and proceed immediately (index scans children sequentially).
+					gate.Load().Hold()
 
 					return trivyTypes.Report{}, nil
 				},
@@ -1793,73 +1835,37 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 			newArtifactRunner = oldNewArtifactRunner
 		}()
 
-		var wg sync.WaitGroup
-		numRoutines := 50
-		results := make(chan model.ScanResult, numRoutines)
-		errs := make(chan error, numRoutines)
+		runWave := func() {
+			g := newFlightGate()
+			gate.Store(g)
 
-		arrive, allArrived = newArrivalBarrier(numRoutines)
-
-		for range 50 {
-			wg.Go(func() {
-				arrive()
-
-				res, err := scanner.ScanImage(context.Background(), "repo:3.0")
-				results <- res
-				errs <- err
+			results, errs := runCoalescedScanWave(t, 50, g, func() (model.ScanResult, error) {
+				return scanner.ScanImage(context.Background(), "repo:3.0")
 			})
-		}
-		wg.Wait()
-		close(results)
-		close(errs)
 
-		for scanErr := range errs {
-			So(scanErr, ShouldBeNil)
-		}
+			for _, scanErr := range errs {
+				So(scanErr, ShouldBeNil)
+			}
 
-		for r := range results {
-			So(r.Digest, ShouldNotBeEmpty)
+			for _, r := range results {
+				So(r.Digest, ShouldNotBeEmpty)
+			}
 		}
 
-		So(len(scanCallMap), ShouldEqual, 2)
+		runWave()
+
+		So(calls.Len(), ShouldEqual, 2)
 		scanPath := path.Join(tempDir, "repo@"+img1.DigestStr())
-		So(scanCallMap[scanPath], ShouldEqual, 1)
+		So(calls.Get(scanPath), ShouldEqual, 1)
 		scanPath2 := path.Join(tempDir, "repo@"+img2.DigestStr())
-		So(scanCallMap[scanPath2], ShouldEqual, 1)
+		So(calls.Get(scanPath2), ShouldEqual, 1)
 
-		// Purging the cache should allow it to run again
 		scanner.cache.Purge()
+		runWave()
 
-		results = make(chan model.ScanResult, numRoutines)
-		errs = make(chan error, numRoutines)
-		arrive, allArrived = newArrivalBarrier(numRoutines)
-
-		for range 50 {
-			wg.Go(func() {
-				arrive()
-
-				res, err := scanner.ScanImage(context.Background(), "repo:3.0")
-				results <- res
-				errs <- err
-			})
-		}
-		wg.Wait()
-		close(results)
-		close(errs)
-
-		for scanErr := range errs {
-			So(scanErr, ShouldBeNil)
-		}
-
-		for r := range results {
-			So(r.Digest, ShouldNotBeEmpty)
-		}
-
-		So(len(scanCallMap), ShouldEqual, 2)
-
-		// Should be called a second time since the cache was purged
-		So(scanCallMap[scanPath], ShouldEqual, 2)
-		So(scanCallMap[scanPath2], ShouldEqual, 2)
+		So(calls.Len(), ShouldEqual, 2)
+		So(calls.Get(scanPath), ShouldEqual, 2)
+		So(calls.Get(scanPath2), ShouldEqual, 2)
 	})
 
 	Convey("Concurrent scans on an index resulting in an error should return the error for all callers", t, func() {
@@ -1903,12 +1909,9 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 			},
 		}, logger)
 
-		scanCallMap := map[string]int{}
-
-		var (
-			arrive     func()
-			allArrived <-chan struct{}
-		)
+		calls := newCallCounter()
+		var gate atomic.Pointer[flightGate]
+		gate.Store(newFlightGate())
 
 		oldNewArtifactRunner := newArtifactRunner
 		newArtifactRunner = func(ctx context.Context, opts flag.Options, target artifact.TargetKind,
@@ -1916,16 +1919,8 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 		) (artifact.Runner, error) {
 			return fakeArtifactRunner{
 				scanImageFn: func(ctx context.Context, opts flag.Options) (trivyTypes.Report, error) {
-					if _, ok := scanCallMap[opts.Target]; !ok {
-						scanCallMap[opts.Target] = 0
-					}
-					scanCallMap[opts.Target] += 1
-
-					// Hold the failing scan open until every concurrent caller has
-					// joined this flight. Failed scans are never cached, so a straggler
-					// that only reaches the flight after it already completed would
-					// start a second one and inflate scanCallMap.
-					<-allArrived
+					calls.Incr(opts.Target)
+					gate.Load().Hold()
 
 					return trivyTypes.Report{}, errors.New("fake scan error")
 				},
@@ -1935,71 +1930,35 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 			newArtifactRunner = oldNewArtifactRunner
 		}()
 
-		var wg sync.WaitGroup
-		numRoutines := 50
-		results := make(chan model.ScanResult, numRoutines)
-		errs := make(chan error, numRoutines)
+		runWave := func() {
+			g := newFlightGate()
+			gate.Store(g)
 
-		arrive, allArrived = newArrivalBarrier(numRoutines)
-
-		for range 50 {
-			wg.Go(func() {
-				arrive()
-
-				res, err := scanner.ScanImage(context.Background(), "repo:3.0")
-				results <- res
-				errs <- err
+			results, errs := runCoalescedScanWave(t, 50, g, func() (model.ScanResult, error) {
+				return scanner.ScanImage(context.Background(), "repo:3.0")
 			})
-		}
-		wg.Wait()
-		close(results)
-		close(errs)
 
-		for scanErr := range errs {
-			So(scanErr, ShouldNotBeNil)
+			for _, scanErr := range errs {
+				So(scanErr, ShouldNotBeNil)
+			}
+
+			for _, r := range results {
+				So(r.Digest, ShouldBeEmpty)
+			}
 		}
 
-		for r := range results {
-			So(r.Digest, ShouldBeEmpty)
-		}
+		runWave()
 
 		// Since the first manifest errors out, the scan doesn't continue.
-		So(len(scanCallMap), ShouldEqual, 1)
+		So(calls.Len(), ShouldEqual, 1)
 		scanPath := path.Join(tempDir, "repo@"+img1.DigestStr())
-		So(scanCallMap[scanPath], ShouldEqual, 1)
+		So(calls.Get(scanPath), ShouldEqual, 1)
 
-		// Purging the cache should allow it to run again
 		scanner.cache.Purge()
+		runWave()
 
-		results = make(chan model.ScanResult, numRoutines)
-		errs = make(chan error, numRoutines)
-		arrive, allArrived = newArrivalBarrier(numRoutines)
-
-		for range 50 {
-			wg.Go(func() {
-				arrive()
-
-				res, err := scanner.ScanImage(context.Background(), "repo:3.0")
-				results <- res
-				errs <- err
-			})
-		}
-		wg.Wait()
-		close(results)
-		close(errs)
-
-		for scanErr := range errs {
-			So(scanErr, ShouldNotBeNil)
-		}
-
-		for r := range results {
-			So(r.Digest, ShouldBeEmpty)
-		}
-
-		So(len(scanCallMap), ShouldEqual, 1)
-
-		// Should be called a second time since the cache was purged
-		So(scanCallMap[scanPath], ShouldEqual, 2)
+		So(calls.Len(), ShouldEqual, 1)
+		So(calls.Get(scanPath), ShouldEqual, 2)
 	})
 
 	Convey("Concurrent scans for a manifest with an error should return error for all waiting callers", t, func() {
@@ -2039,12 +1998,9 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 			},
 		}, logger)
 
-		scanCallMap := map[string]int{}
-
-		var (
-			arrive     func()
-			allArrived <-chan struct{}
-		)
+		calls := newCallCounter()
+		var gate atomic.Pointer[flightGate]
+		gate.Store(newFlightGate())
 
 		oldNewArtifactRunner := newArtifactRunner
 		newArtifactRunner = func(ctx context.Context, opts flag.Options, target artifact.TargetKind,
@@ -2052,16 +2008,8 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 		) (artifact.Runner, error) {
 			return fakeArtifactRunner{
 				scanImageFn: func(ctx context.Context, opts flag.Options) (trivyTypes.Report, error) {
-					if _, ok := scanCallMap[opts.Target]; !ok {
-						scanCallMap[opts.Target] = 0
-					}
-					scanCallMap[opts.Target] += 1
-
-					// Hold the failing scan open until every concurrent caller has
-					// joined this flight. Failed scans are never cached, so a straggler
-					// that only reaches the flight after it already completed would
-					// start a second one and inflate scanCallMap.
-					<-allArrived
+					calls.Incr(opts.Target)
+					gate.Load().Hold()
 
 					return trivyTypes.Report{}, errors.New("fake scan error")
 				},
@@ -2071,69 +2019,34 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 			newArtifactRunner = oldNewArtifactRunner
 		}()
 
-		var wg sync.WaitGroup
-		numRoutines := 50
-		results := make(chan model.ScanResult, numRoutines)
-		errs := make(chan error, numRoutines)
+		runWave := func() {
+			g := newFlightGate()
+			gate.Store(g)
 
-		arrive, allArrived = newArrivalBarrier(numRoutines)
-
-		for range 50 {
-			wg.Go(func() {
-				arrive()
-
-				res, err := scanner.ScanImage(context.Background(), "repo:1.0")
-				results <- res
-				errs <- err
+			results, errs := runCoalescedScanWave(t, 50, g, func() (model.ScanResult, error) {
+				return scanner.ScanImage(context.Background(), "repo:1.0")
 			})
-		}
-		wg.Wait()
-		close(results)
-		close(errs)
 
-		for scanErr := range errs {
-			So(scanErr, ShouldNotBeNil)
-		}
+			for _, scanErr := range errs {
+				So(scanErr, ShouldNotBeNil)
+			}
 
-		for r := range results {
-			So(r.Digest, ShouldBeEmpty)
+			for _, r := range results {
+				So(r.Digest, ShouldBeEmpty)
+			}
 		}
 
-		So(len(scanCallMap), ShouldEqual, 1)
+		runWave()
+
+		So(calls.Len(), ShouldEqual, 1)
 		scanPath := path.Join(tempDir, "repo@"+img1.DigestStr())
-		So(scanCallMap[scanPath], ShouldEqual, 1)
+		So(calls.Get(scanPath), ShouldEqual, 1)
 
-		// Purging the cache should allow it to run again
 		scanner.cache.Purge()
+		runWave()
 
-		results = make(chan model.ScanResult, numRoutines)
-		errs = make(chan error, numRoutines)
-		arrive, allArrived = newArrivalBarrier(numRoutines)
-
-		for range 50 {
-			wg.Go(func() {
-				arrive()
-
-				res, err := scanner.ScanImage(context.Background(), "repo:1.0")
-				results <- res
-				errs <- err
-			})
-		}
-		wg.Wait()
-		close(results)
-		close(errs)
-
-		for scanErr := range errs {
-			So(scanErr, ShouldNotBeNil)
-		}
-
-		for r := range results {
-			So(r.Digest, ShouldBeEmpty)
-		}
-
-		So(len(scanCallMap), ShouldEqual, 1)
-		// Should be called a second time since the cache was purged
-		So(scanCallMap[scanPath], ShouldEqual, 2)
+		So(calls.Len(), ShouldEqual, 1)
+		So(calls.Get(scanPath), ShouldEqual, 2)
 	})
 }
 
