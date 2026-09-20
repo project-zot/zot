@@ -1140,9 +1140,11 @@ func (scanner Scanner) scanIndex(ctx context.Context, repo, digest string) (map[
 	}
 }
 
-// scanIndexSeen aggregates CVEs for an index's children, recursing into nested indexes by
-// plain call (not through scanSingleFlightGroup: see scanIndex) since a nested traversal
-// step's result depends on the ancestor `seen` set, not just (repo, digest).
+// scanIndexSeen aggregates CVEs for an index's children by iterating its manifests, recursing
+// into itself for nested indexes (by plain call, not through scanSingleFlightGroup: see
+// scanIndex) since a nested traversal step's result depends on the ancestor `seen` set, not
+// just (repo, digest), and delegating to scanManifest (itself deduped and cache-checked) for
+// leaves.
 func (scanner Scanner) scanIndexSeen(ctx context.Context, repo, digest string, seen map[string]struct{},
 ) (map[string]zcommon.CVE, bool, error) {
 	// Do not cache index aggregates under the index digest: the same digest can be
@@ -1156,26 +1158,13 @@ func (scanner Scanner) scanIndexSeen(ctx context.Context, repo, digest string, s
 
 	seen[digest] = struct{}{}
 
-	scanResult, err := scanner.scanIndexUncached(ctx, repo, digest, seen)
+	indexData, err := scanner.metaDB.GetImageMeta(godigest.Digest(digest))
 	if err != nil {
 		return map[string]zcommon.CVE{}, false, err
 	}
 
-	return scanResult.cachedMap, scanResult.wasCached, nil
-}
-
-// scanIndexUncached aggregates CVEs for an index's children by iterating its manifests,
-// recursing into scanIndexSeen for nested indexes and delegating to scanManifest (itself
-// deduped and cache-checked) for leaves.
-func (scanner Scanner) scanIndexUncached(ctx context.Context, repo, digest string, seen map[string]struct{},
-) (cacheableScanResult, error) {
-	indexData, err := scanner.metaDB.GetImageMeta(godigest.Digest(digest))
-	if err != nil {
-		return cacheableScanResult{}, err
-	}
-
 	if indexData.Index == nil {
-		return cacheableScanResult{}, zerr.ErrUnexpectedMediaType
+		return map[string]zcommon.CVE{}, false, zerr.ErrUnexpectedMediaType
 	}
 
 	indexCveIDMap := map[string]zcommon.CVE{}
@@ -1200,7 +1189,7 @@ func (scanner Scanner) scanIndexUncached(ctx context.Context, repo, digest strin
 					continue
 				}
 
-				return cacheableScanResult{}, err
+				return map[string]zcommon.CVE{}, false, err
 			}
 		}
 
@@ -1209,7 +1198,7 @@ func (scanner Scanner) scanIndexUncached(ctx context.Context, repo, digest strin
 		if scanner.indexChildIsIndex(manifest) {
 			nestedCveIDMap, childCached, err := scanner.scanIndexSeen(ctx, repo, digestStr, seen)
 			if err != nil {
-				return cacheableScanResult{}, err
+				return map[string]zcommon.CVE{}, false, err
 			}
 
 			if !childCached {
@@ -1227,7 +1216,7 @@ func (scanner Scanner) scanIndexUncached(ctx context.Context, repo, digest strin
 				continue
 			}
 
-			return cacheableScanResult{}, err
+			return map[string]zcommon.CVE{}, false, err
 		}
 
 		if !isScannable {
@@ -1236,7 +1225,7 @@ func (scanner Scanner) scanIndexUncached(ctx context.Context, repo, digest strin
 
 		manifestCveIDMap, childCached, err := scanner.scanManifest(ctx, repo, digestStr)
 		if err != nil {
-			return cacheableScanResult{}, err
+			return map[string]zcommon.CVE{}, false, err
 		}
 
 		if !childCached {
@@ -1246,7 +1235,7 @@ func (scanner Scanner) scanIndexUncached(ctx context.Context, repo, digest strin
 		maps.Copy(indexCveIDMap, manifestCveIDMap)
 	}
 
-	return cacheableScanResult{indexCveIDMap, wasCached}, nil
+	return indexCveIDMap, wasCached, nil
 }
 
 // UpdateDB downloads the Trivy DB / Cache under the store root directory.
