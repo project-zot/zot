@@ -32,6 +32,7 @@ import (
 	regTypes "github.com/google/go-containerregistry/pkg/v1/types"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"golang.org/x/sync/singleflight"
 	_ "modernc.org/sqlite"
 
 	zerr "zotregistry.dev/zot/v2/errors"
@@ -166,6 +167,10 @@ type Scanner struct {
 	javaDBRepositoryRef name.Reference
 	vulnSeveritySources []dbTypes.SourceID
 	sbomOptions         sbomOptions
+
+	// SingleFlightGroup is used to prevent multiple requests
+	// running a trivy scan for the same digest repeatedly.
+	scanSingleFlightGroup *singleflight.Group
 }
 
 type sbomOptions struct {
@@ -267,16 +272,17 @@ func NewScanner(storeController storage.StoreController,
 	cveController.SubCveConfig = subCveConfig
 
 	return &Scanner{
-		log:                 log,
-		metaDB:              metaDB,
-		cveController:       cveController,
-		storeController:     storeController,
-		dbLock:              &sync.Mutex{},
-		cache:               cvecache.NewCveCache(cacheSize, log),
-		dbRepositoryRef:     dbRepositoryRef,
-		javaDBRepositoryRef: javaDBRepositoryRef,
-		vulnSeveritySources: sevSources,
-		sbomOptions:         sbomOpts,
+		log:                   log,
+		metaDB:                metaDB,
+		cveController:         cveController,
+		storeController:       storeController,
+		dbLock:                &sync.Mutex{},
+		cache:                 cvecache.NewCveCache(cacheSize, log),
+		dbRepositoryRef:       dbRepositoryRef,
+		javaDBRepositoryRef:   javaDBRepositoryRef,
+		vulnSeveritySources:   sevSources,
+		sbomOptions:           sbomOpts,
+		scanSingleFlightGroup: &singleflight.Group{},
 	}
 }
 
@@ -773,24 +779,63 @@ func (scanner Scanner) scanManifest(ctx context.Context, repo, digest string) (m
 		return cachedMap, true, nil
 	}
 
+	// prevent multiple requests running trivy multiple times; DoChan lets each caller
+	// stop waiting on its own ctx without canceling the shared scan for the other callers.
+	// The key includes repo since the same digest can be scanned concurrently through
+	// different repos, each resolving to its own store config and SBOM persistence target.
+	resultChan := scanner.scanSingleFlightGroup.DoChan(repo+"@"+digest, func() (any, error) {
+		return scanner.scanManifestUncached(ctx, repo, digest)
+	})
+
+	select {
+	case result := <-resultChan:
+		if result.Err != nil {
+			return map[string]zcommon.CVE{}, false, result.Err
+		}
+
+		// the singleflight function above always returns a cacheableScanResult, so this
+		// type assertion cannot fail; a compile-time check lives in scanManifestUncached's
+		// own return type.
+		scanResult, _ := result.Val.(cacheableScanResult)
+
+		return scanResult.cachedMap, scanResult.wasCached, nil
+	case <-ctx.Done():
+		return map[string]zcommon.CVE{}, false, ctx.Err()
+	}
+}
+
+// scanManifestUncached scans a single manifest digest, or returns the cached result if one
+// appeared while this call was queued behind the flight group. It is only ever invoked once
+// per digest at a time, via scanSingleFlightGroup, so it is safe to test in isolation.
+func (scanner Scanner) scanManifestUncached(ctx context.Context, repo, digest string) (cacheableScanResult, error) {
+	// Double check the cache under flight group lock to prevent a race
+	// where a caller just sees a cache miss before the cache is updated.
+	// In this case, the caller initiates a fresh flight even though a scan just finished up.
+	// This avoids a double scan of the image.
+	if cachedMap := scanner.cache.Get(digest); cachedMap != nil {
+		return cacheableScanResult{cachedMap, true}, nil
+	}
+
 	cveidMap := map[string]zcommon.CVE{}
 	image := repo + "@" + digest
 
+	// Use separate context without cancellation for scanning
+	scanCtx := context.WithoutCancel(ctx)
 	scanner.dbLock.Lock()
 	opts := scanner.getTrivyOptions(image)
-	report, sbom, err := scanner.runTrivy(ctx, opts)
+	report, sbom, err := scanner.runTrivy(scanCtx, opts)
 	scanner.dbLock.Unlock()
 	if sbom != nil && sbom.filePath != "" {
 		defer os.Remove(sbom.filePath)
 	}
 
-	if err != nil { //nolint: wsl
-		return cveidMap, false, err
+	if err != nil {
+		return cacheableScanResult{}, err
 	}
 
 	// SBOM persistence is best-effort: CVE scanning should still complete even if
 	// SBOM artifact upload fails.
-	if err = scanner.storeSBOMAsOCIArtifact(ctx, repo, digest, sbom); err != nil {
+	if err = scanner.storeSBOMAsOCIArtifact(scanCtx, repo, digest, sbom); err != nil {
 		scanner.log.Warn().Err(err).Str("image", image).Msg("failed to store generated sbom as OCI artifact")
 	}
 
@@ -864,7 +909,7 @@ func (scanner Scanner) scanManifest(ctx context.Context, repo, digest string) (m
 
 	scanner.cache.Add(digest, cveidMap)
 
-	return cveidMap, false, nil
+	return cacheableScanResult{cveidMap, false}, nil
 }
 
 func (scanner Scanner) storeSBOMAsOCIArtifact(ctx context.Context,
@@ -1049,10 +1094,57 @@ func getNVDReference(references []string) (string, bool) {
 	return "", false
 }
 
-func (scanner Scanner) scanIndex(ctx context.Context, repo, digest string) (map[string]zcommon.CVE, bool, error) {
-	return scanner.scanIndexSeen(ctx, repo, digest, map[string]struct{}{})
+type cacheableScanResult struct {
+	cachedMap map[string]zcommon.CVE
+	wasCached bool
 }
 
+func (scanner Scanner) scanIndex(ctx context.Context, repo, digest string) (map[string]zcommon.CVE, bool, error) {
+	// prevent multiple requests running trivy multiple times for the same top-level index;
+	// DoChan lets each caller stop waiting on its own ctx without canceling the shared scan
+	// for the others. The key includes repo: the same index digest can differ in child
+	// presence across repos, so a scan for one repo must never be shared with another.
+	//
+	// Dedup applies only at this top level, never inside scanIndexSeen's recursion into
+	// nested indexes: a nested step's result depends on the ancestor `seen` set as well as
+	// (repo, digest), so sharing its flight across two independent traversals could hand one
+	// of them an incomplete aggregate (an ancestor wrongly treated as already visited), or,
+	// for cyclic index metadata, let two concurrent top-level scans each hold the flight the
+	// other's traversal is blocked waiting on and deadlock.
+	// The traversal itself runs with cancellation detached from this specific caller: an
+	// uncached child is scanned via scanManifest, which errors with ctx.Err() the moment its
+	// own wait is abandoned, and that error would otherwise surface as *this shared flight's*
+	// result for every waiter, not just the one whose ctx was canceled.
+	resultChan := scanner.scanSingleFlightGroup.DoChan(repo+"@"+digest, func() (any, error) {
+		cveIDMap, wasCached, err := scanner.scanIndexSeen(context.WithoutCancel(ctx), repo, digest, map[string]struct{}{})
+		if err != nil {
+			return cacheableScanResult{}, err
+		}
+
+		return cacheableScanResult{cveIDMap, wasCached}, nil
+	})
+
+	select {
+	case result := <-resultChan:
+		if result.Err != nil {
+			return map[string]zcommon.CVE{}, false, result.Err
+		}
+
+		// the singleflight function above always returns a cacheableScanResult, so this
+		// type assertion cannot fail.
+		scanResult, _ := result.Val.(cacheableScanResult)
+
+		return scanResult.cachedMap, scanResult.wasCached, nil
+	case <-ctx.Done():
+		return map[string]zcommon.CVE{}, false, ctx.Err()
+	}
+}
+
+// scanIndexSeen aggregates CVEs for an index's children by iterating its manifests, recursing
+// into itself for nested indexes (by plain call, not through scanSingleFlightGroup: see
+// scanIndex) since a nested traversal step's result depends on the ancestor `seen` set, not
+// just (repo, digest), and delegating to scanManifest (itself deduped and cache-checked) for
+// leaves.
 func (scanner Scanner) scanIndexSeen(ctx context.Context, repo, digest string, seen map[string]struct{},
 ) (map[string]zcommon.CVE, bool, error) {
 	// Do not cache index aggregates under the index digest: the same digest can be

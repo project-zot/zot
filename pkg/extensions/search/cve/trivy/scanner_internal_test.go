@@ -9,6 +9,8 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,14 +21,17 @@ import (
 	"github.com/aquasecurity/trivy/pkg/flag"
 	trivyTypes "github.com/aquasecurity/trivy/pkg/types"
 	godigest "github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
+	"golang.org/x/sync/singleflight"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	cvecache "zotregistry.dev/zot/v2/pkg/extensions/search/cve/cache"
+	"zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/meta"
 	"zotregistry.dev/zot/v2/pkg/meta/boltdb"
@@ -40,10 +45,15 @@ import (
 )
 
 type fakeArtifactRunner struct {
-	reportFn func(ctx context.Context, opts flag.Options, report trivyTypes.Report) error
+	reportFn    func(ctx context.Context, opts flag.Options, report trivyTypes.Report) error
+	scanImageFn func(ctx context.Context, opts flag.Options) (trivyTypes.Report, error)
 }
 
 func (f fakeArtifactRunner) ScanImage(ctx context.Context, opts flag.Options) (trivyTypes.Report, error) {
+	if f.scanImageFn != nil {
+		return f.scanImageFn(ctx, opts)
+	}
+
 	return trivyTypes.Report{}, nil
 }
 
@@ -85,7 +95,7 @@ func (f fakeArtifactRunner) Close(ctx context.Context) error {
 
 var _ artifact.Runner = fakeArtifactRunner{}
 
-func generateTestImage(storeController storage.StoreController, imageName string) {
+func generateTestImage(storeController storage.StoreController, imageName string) Image {
 	repoName, tag := zcommon.GetImageDirAndTag(imageName)
 
 	image := CreateRandomImage()
@@ -93,6 +103,8 @@ func generateTestImage(storeController storage.StoreController, imageName string
 	err := WriteImageToFileSystem(
 		image, repoName, tag, storeController)
 	So(err, ShouldBeNil)
+
+	return image
 }
 
 func TestGenerateSBOM(t *testing.T) {
@@ -106,6 +118,7 @@ func TestGenerateSBOM(t *testing.T) {
 				artifactType:   defaultSBOMArtifactType,
 				layerMediaType: defaultSBOMLayerMediaType,
 			},
+			scanSingleFlightGroup: &singleflight.Group{},
 		}
 
 		expectedSBOM := []byte(`{"spdxVersion":"SPDX-2.3"}`)
@@ -155,6 +168,7 @@ func TestRunTrivySBOMGenerationFailureIsNonFatal(t *testing.T) {
 				enabled:      true,
 				reportFormat: trivyTypes.FormatSPDXJSON,
 			},
+			scanSingleFlightGroup: &singleflight.Group{},
 		}
 
 		sbomErr := errors.New("sbom generation failed")
@@ -619,10 +633,11 @@ func TestIsIndexScanable(t *testing.T) {
 			}
 
 			scanner := Scanner{
-				log:             log,
-				metaDB:          metaDBMock,
-				storeController: storeController,
-				cache:           cvecache.NewCveCache(cacheSize, log),
+				log:                   log,
+				metaDB:                metaDBMock,
+				storeController:       storeController,
+				cache:                 cvecache.NewCveCache(cacheSize, log),
+				scanSingleFlightGroup: &singleflight.Group{},
 			}
 
 			// Caching under an index digest must not short-circuit isIndexScannable.
@@ -658,10 +673,11 @@ func TestIsIndexScannableErrors(t *testing.T) {
 			}
 
 			scanner := Scanner{
-				log:             log,
-				metaDB:          metaDB,
-				storeController: storeController,
-				cache:           cvecache.NewCveCache(cacheSize, log),
+				log:                   log,
+				metaDB:                metaDB,
+				storeController:       storeController,
+				cache:                 cvecache.NewCveCache(cacheSize, log),
+				scanSingleFlightGroup: &singleflight.Group{},
 			}
 
 			ok, err := scanner.isIndexScannable(multiarch.DigestStr())
@@ -700,10 +716,11 @@ func TestScanIndexSkipsFailingChild(t *testing.T) {
 		}
 
 		scanner := Scanner{
-			log:             log,
-			metaDB:          metaDB,
-			storeController: storage.StoreController{DefaultStore: store},
-			cache:           cvecache.NewCveCache(cacheSize, log),
+			log:                   log,
+			metaDB:                metaDB,
+			storeController:       storage.StoreController{DefaultStore: store},
+			cache:                 cvecache.NewCveCache(cacheSize, log),
+			scanSingleFlightGroup: &singleflight.Group{},
 		}
 
 		cachedCVE := map[string]zcommon.CVE{
@@ -748,10 +765,11 @@ func TestScanIndexSkipsFailingChild(t *testing.T) {
 		}
 
 		scanner := Scanner{
-			log:             log,
-			metaDB:          metaDB,
-			storeController: storage.StoreController{DefaultStore: store},
-			cache:           cvecache.NewCveCache(cacheSize, log),
+			log:                   log,
+			metaDB:                metaDB,
+			storeController:       storage.StoreController{DefaultStore: store},
+			cache:                 cvecache.NewCveCache(cacheSize, log),
+			scanSingleFlightGroup: &singleflight.Group{},
 		}
 
 		scanner.cache.Add(img1.DigestStr(), map[string]zcommon.CVE{
@@ -797,10 +815,11 @@ func TestScanIndexSkipsFailingChild(t *testing.T) {
 		}
 
 		scanner := Scanner{
-			log:             log,
-			metaDB:          metaDB,
-			storeController: storage.StoreController{DefaultStore: store},
-			cache:           cvecache.NewCveCache(cacheSize, log),
+			log:                   log,
+			metaDB:                metaDB,
+			storeController:       storage.StoreController{DefaultStore: store},
+			cache:                 cvecache.NewCveCache(cacheSize, log),
+			scanSingleFlightGroup: &singleflight.Group{},
 		}
 
 		scanner.cache.Add(img1.DigestStr(), map[string]zcommon.CVE{
@@ -838,10 +857,11 @@ func TestScanIndexSkipsFailingChild(t *testing.T) {
 		}
 
 		scanner := Scanner{
-			log:             log,
-			metaDB:          metaDB,
-			storeController: storage.StoreController{DefaultStore: store},
-			cache:           cvecache.NewCveCache(cacheSize, log),
+			log:                   log,
+			metaDB:                metaDB,
+			storeController:       storage.StoreController{DefaultStore: store},
+			cache:                 cvecache.NewCveCache(cacheSize, log),
+			scanSingleFlightGroup: &singleflight.Group{},
 		}
 
 		scanner.cache.Add(img1.DigestStr(), map[string]zcommon.CVE{
@@ -913,10 +933,11 @@ func TestScanIndexSkipsFailingChild(t *testing.T) {
 		}
 
 		scanner := Scanner{
-			log:             log,
-			metaDB:          metaDB,
-			storeController: storage.StoreController{DefaultStore: store},
-			cache:           cvecache.NewCveCache(cacheSize, log),
+			log:                   log,
+			metaDB:                metaDB,
+			storeController:       storage.StoreController{DefaultStore: store},
+			cache:                 cvecache.NewCveCache(cacheSize, log),
+			scanSingleFlightGroup: &singleflight.Group{},
 		}
 
 		// Poison: a full nested-index "scan" result that must not be reused as a cache key.
@@ -965,7 +986,8 @@ func TestScanIndexSkipsFailingChild(t *testing.T) {
 					return true, 1, time.Time{}, nil
 				},
 			}},
-			cache: cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+			cache:                 cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+			scanSingleFlightGroup: &singleflight.Group{},
 		}
 		scanner.cache.Add(img1.DigestStr(), map[string]zcommon.CVE{"CVE-1": {ID: "CVE-1"}})
 
@@ -981,7 +1003,8 @@ func TestScanIndexSkipsFailingChild(t *testing.T) {
 					return types.ImageMeta{}, zerr.ErrRepoMetaNotFound
 				},
 			},
-			cache: cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+			cache:                 cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+			scanSingleFlightGroup: &singleflight.Group{},
 		}
 		So(scanner.isIndexDigest("sha256:"+strings.Repeat("a", 64)), ShouldBeFalse)
 		So(scanner.IsResultCached("repo", "sha256:"+strings.Repeat("a", 64)), ShouldBeFalse)
@@ -1006,7 +1029,8 @@ func TestScanIndexSkipsFailingChild(t *testing.T) {
 					return false, -1, time.Time{}, errors.New("s3 unavailable")
 				},
 			}},
-			cache: cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+			cache:                 cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+			scanSingleFlightGroup: &singleflight.Group{},
 		}
 		scanner.cache.Add(img1.DigestStr(), map[string]zcommon.CVE{})
 
@@ -1054,7 +1078,8 @@ func TestScanIndexSkipsFailingChild(t *testing.T) {
 					return true, 1, time.Time{}, nil
 				},
 			}},
-			cache: cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+			cache:                 cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+			scanSingleFlightGroup: &singleflight.Group{},
 		}
 		scanner.cache.Add(leaf1.DigestStr(), map[string]zcommon.CVE{})
 
@@ -1098,7 +1123,8 @@ func TestScanIndexSkipsFailingChild(t *testing.T) {
 					return true, 1, time.Time{}, nil
 				},
 			}},
-			cache: cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+			cache:                 cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+			scanSingleFlightGroup: &singleflight.Group{},
 		}
 		scanner.cache.Add(leaf.DigestStr(), map[string]zcommon.CVE{"CVE-1": {ID: "CVE-1"}})
 
@@ -1148,7 +1174,8 @@ func TestScanIndexSkipsFailingChild(t *testing.T) {
 					return true, 1, time.Time{}, nil
 				},
 			}},
-			cache: cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+			cache:                 cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+			scanSingleFlightGroup: &singleflight.Group{},
 		}
 		scanner.cache.Add(leaf.DigestStr(), map[string]zcommon.CVE{"CVE-1": {ID: "CVE-1"}})
 
@@ -1167,7 +1194,8 @@ func TestScanIndexSkipsFailingChild(t *testing.T) {
 					return types.ImageMeta{}, zerr.ErrRepoMetaNotFound
 				},
 			},
-			cache: cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+			cache:                 cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+			scanSingleFlightGroup: &singleflight.Group{},
 		}
 		_, _, err := scanner.scanIndex(context.Background(), "repo", "sha256:"+strings.Repeat("b", 64))
 		So(err, ShouldNotBeNil)
@@ -1207,7 +1235,8 @@ func TestScanIndexSkipsFailingChild(t *testing.T) {
 					return true, 1, time.Time{}, nil
 				},
 			}},
-			cache: cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+			cache:                 cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+			scanSingleFlightGroup: &singleflight.Group{},
 		}
 		_, _, err = scanner.scanIndex(context.Background(), "repo", outerDigest.String())
 		So(err, ShouldNotBeNil)
@@ -1236,7 +1265,8 @@ func TestScanIndexSkipsFailingChild(t *testing.T) {
 					return true, 1, time.Time{}, nil
 				},
 			}},
-			cache: cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+			cache:                 cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+			scanSingleFlightGroup: &singleflight.Group{},
 		}
 		scanner.cache.Add(img1.DigestStr(), map[string]zcommon.CVE{"CVE-1": {ID: "CVE-1"}})
 
@@ -1255,7 +1285,8 @@ func TestScanIndexSkipsFailingChild(t *testing.T) {
 					return types.ImageMeta{MediaType: ispec.MediaTypeImageIndex, Digest: dig}, nil
 				},
 			},
-			cache: cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+			cache:                 cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+			scanSingleFlightGroup: &singleflight.Group{},
 		}
 		So(scanner.IsResultCached("repo", dig.String()), ShouldBeFalse)
 	})
@@ -1518,5 +1549,981 @@ func TestGetCVEReference(t *testing.T) {
 
 		ref = getCVEReference("GHSA-abcd-1234", "https://avd.aquasec.com/nvd/cve-2026-42496", []string{})
 		So(ref, ShouldResemble, "https://avd.aquasec.com/nvd/cve-2026-42496")
+	})
+}
+
+func initMockStoreWithFakeScannerDB(tempDir string) (storage.StoreController, error) {
+	storeController := storage.StoreController{}
+	store := mocks.MockedImageStore{}
+	store.RootDirFn = func() string {
+		return tempDir
+	}
+	storeController.DefaultStore = store
+
+	err := os.MkdirAll(path.Join(tempDir, "_trivy", "db"), 0o755)
+	if err != nil {
+		return storeController, err
+	}
+
+	err = os.WriteFile(path.Join(tempDir, "_trivy", "db", "metadata.json"), []byte{1}, 0o644)
+
+	return storeController, err
+}
+
+// newArrivalBarrier returns arrive, to be called once by each of n expected concurrent callers,
+// and allArrived, which unblocks once all n have called arrive. A fake scan held open on
+// allArrived is guaranteed to still be in flight when every caller joins its singleflight,
+// instead of relying on a fixed sleep to outlast worst-case goroutine scheduling delay.
+func newArrivalBarrier(n int) (arrive func(), allArrived <-chan struct{}) {
+	var wg sync.WaitGroup
+
+	wg.Add(n)
+
+	done := make(chan struct{})
+
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	return wg.Done, done
+}
+
+func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
+	Convey("Multiple concurrent scans for the same uncached digest should trigger only one scan", t, func() {
+		tempDir := t.TempDir()
+		logger := log.NewTestLogger()
+
+		storeController, err := initMockStoreWithFakeScannerDB(tempDir)
+		So(err, ShouldBeNil)
+
+		metaDB := mocks.MetaDBMock{}
+
+		img1 := CreateRandomImage()
+
+		metaDB.GetImageMetaFn = func(digest godigest.Digest) (types.ImageMeta, error) {
+			return map[string]types.ImageMeta{
+				img1.DigestStr(): img1.AsImageMeta(),
+			}[digest.String()], nil
+		}
+
+		metaDB.GetRepoMetaFn = func(ctx context.Context, repo string) (types.RepoMeta, error) {
+			imgDesc := types.Descriptor{
+				Digest:          img1.DigestStr(),
+				MediaType:       img1.Manifest.MediaType,
+				TaggedTimestamp: time.Now(),
+			}
+			return types.RepoMeta{
+				Name: repo,
+				Tags: map[types.Tag]types.Descriptor{
+					"1.0": imgDesc,
+				},
+			}, nil
+		}
+
+		scanner := NewScanner(storeController, metaDB, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository: "ghcr.io/project-zot/trivy-db",
+			},
+		}, logger)
+
+		scanCallMap := map[string]int{}
+
+		var (
+			arrive     func()
+			allArrived <-chan struct{}
+		)
+
+		oldNewArtifactRunner := newArtifactRunner
+		newArtifactRunner = func(ctx context.Context, opts flag.Options, target artifact.TargetKind,
+			runnerOpts ...artifact.RunnerOption,
+		) (artifact.Runner, error) {
+			return fakeArtifactRunner{
+				scanImageFn: func(ctx context.Context, opts flag.Options) (trivyTypes.Report, error) {
+					if _, ok := scanCallMap[opts.Target]; !ok {
+						scanCallMap[opts.Target] = 0
+					}
+					scanCallMap[opts.Target] += 1
+
+					// Hold the scan open until every concurrent caller has joined this
+					// flight, so a straggler can never start a second one.
+					<-allArrived
+
+					return trivyTypes.Report{}, nil
+				},
+			}, nil
+		}
+		defer func() {
+			newArtifactRunner = oldNewArtifactRunner
+		}()
+
+		var wg sync.WaitGroup
+		numRoutines := 50
+		results := make(chan model.ScanResult, numRoutines)
+		errs := make(chan error, numRoutines)
+
+		arrive, allArrived = newArrivalBarrier(numRoutines)
+
+		for range 50 {
+			wg.Go(func() {
+				arrive()
+
+				res, err := scanner.ScanImage(context.Background(), "repo:1.0")
+				results <- res
+				errs <- err
+			})
+		}
+		wg.Wait()
+		close(results)
+		close(errs)
+
+		for scanErr := range errs {
+			So(scanErr, ShouldBeNil)
+		}
+
+		for r := range results {
+			So(r.Digest, ShouldNotBeEmpty)
+		}
+
+		So(len(scanCallMap), ShouldEqual, 1)
+		scanPath := path.Join(tempDir, "repo@"+img1.DigestStr())
+		So(scanCallMap[scanPath], ShouldEqual, 1)
+
+		// Purging the cache should allow it to run again
+		scanner.cache.Purge()
+
+		results = make(chan model.ScanResult, numRoutines)
+		errs = make(chan error, numRoutines)
+		arrive, allArrived = newArrivalBarrier(numRoutines)
+
+		for range 50 {
+			wg.Go(func() {
+				arrive()
+
+				res, err := scanner.ScanImage(context.Background(), "repo:1.0")
+				results <- res
+				errs <- err
+			})
+		}
+		wg.Wait()
+		close(results)
+		close(errs)
+
+		for scanErr := range errs {
+			So(scanErr, ShouldBeNil)
+		}
+
+		for r := range results {
+			So(r.Digest, ShouldNotBeEmpty)
+		}
+
+		So(len(scanCallMap), ShouldEqual, 1)
+		// Should be called a second time since the cache was purged
+		So(scanCallMap[scanPath], ShouldEqual, 2)
+	})
+
+	Convey("Multiple concurrent scans for the same uncached index should trigger only one scan", t, func() {
+		tempDir := t.TempDir()
+		logger := log.NewTestLogger()
+
+		storeController, err := initMockStoreWithFakeScannerDB(tempDir)
+		So(err, ShouldBeNil)
+
+		metaDB := mocks.MetaDBMock{}
+
+		img1 := CreateRandomImage()
+		img2 := CreateRandomImage()
+		multiarch := CreateMultiarchWith().Images([]Image{img1, img2}).Build()
+
+		metaDB.GetImageMetaFn = func(digest godigest.Digest) (types.ImageMeta, error) {
+			return map[string]types.ImageMeta{
+				img1.DigestStr():      img1.AsImageMeta(),
+				img2.DigestStr():      img2.AsImageMeta(),
+				multiarch.DigestStr(): multiarch.AsImageMeta(),
+			}[digest.String()], nil
+		}
+
+		metaDB.GetRepoMetaFn = func(ctx context.Context, repo string) (types.RepoMeta, error) {
+			multiDesc := types.Descriptor{
+				Digest:          multiarch.DigestStr(),
+				MediaType:       multiarch.Index.MediaType,
+				TaggedTimestamp: time.Now(),
+			}
+			return types.RepoMeta{
+				Name: repo,
+				Tags: map[types.Tag]types.Descriptor{
+					"3.0": multiDesc,
+				},
+			}, nil
+		}
+
+		scanner := NewScanner(storeController, metaDB, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository: "ghcr.io/project-zot/trivy-db",
+			},
+		}, logger)
+
+		scanCallMap := map[string]int{}
+
+		var (
+			arrive     func()
+			allArrived <-chan struct{}
+		)
+
+		oldNewArtifactRunner := newArtifactRunner
+		newArtifactRunner = func(ctx context.Context, opts flag.Options, target artifact.TargetKind,
+			runnerOpts ...artifact.RunnerOption,
+		) (artifact.Runner, error) {
+			return fakeArtifactRunner{
+				scanImageFn: func(ctx context.Context, opts flag.Options) (trivyTypes.Report, error) {
+					if _, ok := scanCallMap[opts.Target]; !ok {
+						scanCallMap[opts.Target] = 0
+					}
+					scanCallMap[opts.Target] += 1
+
+					// Hold the scan open until every concurrent caller has joined this
+					// flight, so a straggler can never start a second one.
+					<-allArrived
+
+					return trivyTypes.Report{}, nil
+				},
+			}, nil
+		}
+		defer func() {
+			newArtifactRunner = oldNewArtifactRunner
+		}()
+
+		var wg sync.WaitGroup
+		numRoutines := 50
+		results := make(chan model.ScanResult, numRoutines)
+		errs := make(chan error, numRoutines)
+
+		arrive, allArrived = newArrivalBarrier(numRoutines)
+
+		for range 50 {
+			wg.Go(func() {
+				arrive()
+
+				res, err := scanner.ScanImage(context.Background(), "repo:3.0")
+				results <- res
+				errs <- err
+			})
+		}
+		wg.Wait()
+		close(results)
+		close(errs)
+
+		for scanErr := range errs {
+			So(scanErr, ShouldBeNil)
+		}
+
+		for r := range results {
+			So(r.Digest, ShouldNotBeEmpty)
+		}
+
+		So(len(scanCallMap), ShouldEqual, 2)
+		scanPath := path.Join(tempDir, "repo@"+img1.DigestStr())
+		So(scanCallMap[scanPath], ShouldEqual, 1)
+		scanPath2 := path.Join(tempDir, "repo@"+img2.DigestStr())
+		So(scanCallMap[scanPath2], ShouldEqual, 1)
+
+		// Purging the cache should allow it to run again
+		scanner.cache.Purge()
+
+		results = make(chan model.ScanResult, numRoutines)
+		errs = make(chan error, numRoutines)
+		arrive, allArrived = newArrivalBarrier(numRoutines)
+
+		for range 50 {
+			wg.Go(func() {
+				arrive()
+
+				res, err := scanner.ScanImage(context.Background(), "repo:3.0")
+				results <- res
+				errs <- err
+			})
+		}
+		wg.Wait()
+		close(results)
+		close(errs)
+
+		for scanErr := range errs {
+			So(scanErr, ShouldBeNil)
+		}
+
+		for r := range results {
+			So(r.Digest, ShouldNotBeEmpty)
+		}
+
+		So(len(scanCallMap), ShouldEqual, 2)
+
+		// Should be called a second time since the cache was purged
+		So(scanCallMap[scanPath], ShouldEqual, 2)
+		So(scanCallMap[scanPath2], ShouldEqual, 2)
+	})
+
+	Convey("Concurrent scans on an index resulting in an error should return the error for all callers", t, func() {
+		tempDir := t.TempDir()
+		logger := log.NewTestLogger()
+
+		storeController, err := initMockStoreWithFakeScannerDB(tempDir)
+		So(err, ShouldBeNil)
+
+		metaDB := mocks.MetaDBMock{}
+
+		img1 := CreateRandomImage()
+		img2 := CreateRandomImage()
+		multiarch := CreateMultiarchWith().Images([]Image{img1, img2}).Build()
+
+		metaDB.GetImageMetaFn = func(digest godigest.Digest) (types.ImageMeta, error) {
+			return map[string]types.ImageMeta{
+				img1.DigestStr():      img1.AsImageMeta(),
+				img2.DigestStr():      img2.AsImageMeta(),
+				multiarch.DigestStr(): multiarch.AsImageMeta(),
+			}[digest.String()], nil
+		}
+
+		metaDB.GetRepoMetaFn = func(ctx context.Context, repo string) (types.RepoMeta, error) {
+			multiDesc := types.Descriptor{
+				Digest:          multiarch.DigestStr(),
+				MediaType:       multiarch.Index.MediaType,
+				TaggedTimestamp: time.Now(),
+			}
+			return types.RepoMeta{
+				Name: repo,
+				Tags: map[types.Tag]types.Descriptor{
+					"3.0": multiDesc,
+				},
+			}, nil
+		}
+
+		scanner := NewScanner(storeController, metaDB, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository: "ghcr.io/project-zot/trivy-db",
+			},
+		}, logger)
+
+		scanCallMap := map[string]int{}
+
+		var (
+			arrive     func()
+			allArrived <-chan struct{}
+		)
+
+		oldNewArtifactRunner := newArtifactRunner
+		newArtifactRunner = func(ctx context.Context, opts flag.Options, target artifact.TargetKind,
+			runnerOpts ...artifact.RunnerOption,
+		) (artifact.Runner, error) {
+			return fakeArtifactRunner{
+				scanImageFn: func(ctx context.Context, opts flag.Options) (trivyTypes.Report, error) {
+					if _, ok := scanCallMap[opts.Target]; !ok {
+						scanCallMap[opts.Target] = 0
+					}
+					scanCallMap[opts.Target] += 1
+
+					// Hold the failing scan open until every concurrent caller has
+					// joined this flight. Failed scans are never cached, so a straggler
+					// that only reaches the flight after it already completed would
+					// start a second one and inflate scanCallMap.
+					<-allArrived
+
+					return trivyTypes.Report{}, errors.New("fake scan error")
+				},
+			}, nil
+		}
+		defer func() {
+			newArtifactRunner = oldNewArtifactRunner
+		}()
+
+		var wg sync.WaitGroup
+		numRoutines := 50
+		results := make(chan model.ScanResult, numRoutines)
+		errs := make(chan error, numRoutines)
+
+		arrive, allArrived = newArrivalBarrier(numRoutines)
+
+		for range 50 {
+			wg.Go(func() {
+				arrive()
+
+				res, err := scanner.ScanImage(context.Background(), "repo:3.0")
+				results <- res
+				errs <- err
+			})
+		}
+		wg.Wait()
+		close(results)
+		close(errs)
+
+		for scanErr := range errs {
+			So(scanErr, ShouldNotBeNil)
+		}
+
+		for r := range results {
+			So(r.Digest, ShouldBeEmpty)
+		}
+
+		// Since the first manifest errors out, the scan doesn't continue.
+		So(len(scanCallMap), ShouldEqual, 1)
+		scanPath := path.Join(tempDir, "repo@"+img1.DigestStr())
+		So(scanCallMap[scanPath], ShouldEqual, 1)
+
+		// Purging the cache should allow it to run again
+		scanner.cache.Purge()
+
+		results = make(chan model.ScanResult, numRoutines)
+		errs = make(chan error, numRoutines)
+		arrive, allArrived = newArrivalBarrier(numRoutines)
+
+		for range 50 {
+			wg.Go(func() {
+				arrive()
+
+				res, err := scanner.ScanImage(context.Background(), "repo:3.0")
+				results <- res
+				errs <- err
+			})
+		}
+		wg.Wait()
+		close(results)
+		close(errs)
+
+		for scanErr := range errs {
+			So(scanErr, ShouldNotBeNil)
+		}
+
+		for r := range results {
+			So(r.Digest, ShouldBeEmpty)
+		}
+
+		So(len(scanCallMap), ShouldEqual, 1)
+
+		// Should be called a second time since the cache was purged
+		So(scanCallMap[scanPath], ShouldEqual, 2)
+	})
+
+	Convey("Concurrent scans for a manifest with an error should return error for all waiting callers", t, func() {
+		tempDir := t.TempDir()
+		logger := log.NewTestLogger()
+
+		storeController, err := initMockStoreWithFakeScannerDB(tempDir)
+		So(err, ShouldBeNil)
+
+		metaDB := mocks.MetaDBMock{}
+
+		img1 := CreateRandomImage()
+
+		metaDB.GetImageMetaFn = func(digest godigest.Digest) (types.ImageMeta, error) {
+			return map[string]types.ImageMeta{
+				img1.DigestStr(): img1.AsImageMeta(),
+			}[digest.String()], nil
+		}
+
+		metaDB.GetRepoMetaFn = func(ctx context.Context, repo string) (types.RepoMeta, error) {
+			imgDesc := types.Descriptor{
+				Digest:          img1.DigestStr(),
+				MediaType:       img1.Manifest.MediaType,
+				TaggedTimestamp: time.Now(),
+			}
+			return types.RepoMeta{
+				Name: repo,
+				Tags: map[types.Tag]types.Descriptor{
+					"1.0": imgDesc,
+				},
+			}, nil
+		}
+
+		scanner := NewScanner(storeController, metaDB, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository: "ghcr.io/project-zot/trivy-db",
+			},
+		}, logger)
+
+		scanCallMap := map[string]int{}
+
+		var (
+			arrive     func()
+			allArrived <-chan struct{}
+		)
+
+		oldNewArtifactRunner := newArtifactRunner
+		newArtifactRunner = func(ctx context.Context, opts flag.Options, target artifact.TargetKind,
+			runnerOpts ...artifact.RunnerOption,
+		) (artifact.Runner, error) {
+			return fakeArtifactRunner{
+				scanImageFn: func(ctx context.Context, opts flag.Options) (trivyTypes.Report, error) {
+					if _, ok := scanCallMap[opts.Target]; !ok {
+						scanCallMap[opts.Target] = 0
+					}
+					scanCallMap[opts.Target] += 1
+
+					// Hold the failing scan open until every concurrent caller has
+					// joined this flight. Failed scans are never cached, so a straggler
+					// that only reaches the flight after it already completed would
+					// start a second one and inflate scanCallMap.
+					<-allArrived
+
+					return trivyTypes.Report{}, errors.New("fake scan error")
+				},
+			}, nil
+		}
+		defer func() {
+			newArtifactRunner = oldNewArtifactRunner
+		}()
+
+		var wg sync.WaitGroup
+		numRoutines := 50
+		results := make(chan model.ScanResult, numRoutines)
+		errs := make(chan error, numRoutines)
+
+		arrive, allArrived = newArrivalBarrier(numRoutines)
+
+		for range 50 {
+			wg.Go(func() {
+				arrive()
+
+				res, err := scanner.ScanImage(context.Background(), "repo:1.0")
+				results <- res
+				errs <- err
+			})
+		}
+		wg.Wait()
+		close(results)
+		close(errs)
+
+		for scanErr := range errs {
+			So(scanErr, ShouldNotBeNil)
+		}
+
+		for r := range results {
+			So(r.Digest, ShouldBeEmpty)
+		}
+
+		So(len(scanCallMap), ShouldEqual, 1)
+		scanPath := path.Join(tempDir, "repo@"+img1.DigestStr())
+		So(scanCallMap[scanPath], ShouldEqual, 1)
+
+		// Purging the cache should allow it to run again
+		scanner.cache.Purge()
+
+		results = make(chan model.ScanResult, numRoutines)
+		errs = make(chan error, numRoutines)
+		arrive, allArrived = newArrivalBarrier(numRoutines)
+
+		for range 50 {
+			wg.Go(func() {
+				arrive()
+
+				res, err := scanner.ScanImage(context.Background(), "repo:1.0")
+				results <- res
+				errs <- err
+			})
+		}
+		wg.Wait()
+		close(results)
+		close(errs)
+
+		for scanErr := range errs {
+			So(scanErr, ShouldNotBeNil)
+		}
+
+		for r := range results {
+			So(r.Digest, ShouldBeEmpty)
+		}
+
+		So(len(scanCallMap), ShouldEqual, 1)
+		// Should be called a second time since the cache was purged
+		So(scanCallMap[scanPath], ShouldEqual, 2)
+	})
+}
+
+func TestScanManifestCallerCancellationDoesNotAffectSharedScan(t *testing.T) {
+	Convey("A caller whose ctx is canceled while waiting returns promptly "+
+		"without canceling or waiting for the shared scan", t, func() {
+		tempDir := t.TempDir()
+		logger := log.NewTestLogger()
+
+		storeController, err := initMockStoreWithFakeScannerDB(tempDir)
+		So(err, ShouldBeNil)
+
+		metaDB := mocks.MetaDBMock{}
+		img1 := CreateRandomImage()
+
+		metaDB.GetImageMetaFn = func(digest godigest.Digest) (types.ImageMeta, error) {
+			return map[string]types.ImageMeta{
+				img1.DigestStr(): img1.AsImageMeta(),
+			}[digest.String()], nil
+		}
+
+		scanner := NewScanner(storeController, metaDB, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository: "ghcr.io/project-zot/trivy-db",
+			},
+		}, logger)
+
+		var scanCalls int32
+
+		scanStarted := make(chan struct{})
+		release := make(chan struct{})
+
+		oldNewArtifactRunner := newArtifactRunner
+		newArtifactRunner = func(ctx context.Context, opts flag.Options, target artifact.TargetKind,
+			runnerOpts ...artifact.RunnerOption,
+		) (artifact.Runner, error) {
+			return fakeArtifactRunner{
+				scanImageFn: func(ctx context.Context, opts flag.Options) (trivyTypes.Report, error) {
+					atomic.AddInt32(&scanCalls, 1)
+					close(scanStarted)
+					<-release
+
+					return trivyTypes.Report{}, nil
+				},
+			}, nil
+		}
+		defer func() {
+			newArtifactRunner = oldNewArtifactRunner
+		}()
+
+		leaderDone := make(chan struct{})
+
+		// Leader: enters the flight group and blocks inside the fake runner until released.
+		go func() {
+			_, _, _ = scanner.scanManifest(context.Background(), "repo", img1.DigestStr())
+			close(leaderDone)
+		}()
+
+		select {
+		case <-scanStarted:
+		case <-time.After(2 * time.Second):
+			t.Fatal("leader scan did not start")
+		}
+
+		// Follower: joins the same singleflight key, then abandons the wait via its
+		// own ctx while the leader's scan is still blocked on release.
+		followerCtx, cancel := context.WithCancel(context.Background())
+		followerDone := make(chan error, 1)
+
+		go func() {
+			_, _, scanErr := scanner.scanManifest(followerCtx, "repo", img1.DigestStr())
+			followerDone <- scanErr
+		}()
+
+		cancel()
+
+		select {
+		case scanErr := <-followerDone:
+			So(errors.Is(scanErr, context.Canceled), ShouldBeTrue)
+		case <-time.After(2 * time.Second):
+			t.Fatal("follower did not return promptly after its ctx was canceled")
+		}
+
+		// The shared scan must be unaffected by the follower giving up.
+		close(release)
+
+		select {
+		case <-leaderDone:
+		case <-time.After(2 * time.Second):
+			t.Fatal("leader scan did not complete after being released")
+		}
+
+		So(atomic.LoadInt32(&scanCalls), ShouldEqual, 1)
+	})
+}
+
+func TestScanIndexCallerCancellationDoesNotAffectSharedScan(t *testing.T) {
+	Convey("A follower whose ctx is canceled while waiting returns promptly "+
+		"without affecting the shared index scan", t, func() {
+		tempDir := t.TempDir()
+		logger := log.NewTestLogger()
+
+		storeController, err := initMockStoreWithFakeScannerDB(tempDir)
+		So(err, ShouldBeNil)
+
+		img1 := CreateRandomImage()
+		multiarch := CreateMultiarchWith().Images([]Image{img1}).Build()
+
+		metaDB := mocks.MetaDBMock{}
+		metaDB.GetImageMetaFn = func(digest godigest.Digest) (types.ImageMeta, error) {
+			return map[string]types.ImageMeta{
+				img1.DigestStr():      img1.AsImageMeta(),
+				multiarch.DigestStr(): multiarch.AsImageMeta(),
+			}[digest.String()], nil
+		}
+
+		scanner := NewScanner(storeController, metaDB, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository: "ghcr.io/project-zot/trivy-db",
+			},
+		}, logger)
+
+		var scanCalls int32
+
+		scanStarted := make(chan struct{})
+		release := make(chan struct{})
+
+		oldNewArtifactRunner := newArtifactRunner
+		newArtifactRunner = func(ctx context.Context, opts flag.Options, target artifact.TargetKind,
+			runnerOpts ...artifact.RunnerOption,
+		) (artifact.Runner, error) {
+			return fakeArtifactRunner{
+				scanImageFn: func(ctx context.Context, opts flag.Options) (trivyTypes.Report, error) {
+					atomic.AddInt32(&scanCalls, 1)
+					close(scanStarted)
+					<-release
+
+					return trivyTypes.Report{}, nil
+				},
+			}, nil
+		}
+		defer func() {
+			newArtifactRunner = oldNewArtifactRunner
+		}()
+
+		leaderDone := make(chan struct{})
+
+		// Leader: enters the index-level flight group and, via its traversal of the
+		// index's single child, blocks inside the fake runner until released.
+		go func() {
+			_, _, _ = scanner.scanIndex(context.Background(), "repo", multiarch.DigestStr())
+			close(leaderDone)
+		}()
+
+		select {
+		case <-scanStarted:
+		case <-time.After(2 * time.Second):
+			t.Fatal("leader scan did not start")
+		}
+
+		// Follower: joins the same singleflight key, then abandons the wait via its
+		// own ctx while the leader's traversal is still blocked on release.
+		followerCtx, cancel := context.WithCancel(context.Background())
+		followerDone := make(chan error, 1)
+
+		go func() {
+			_, _, scanErr := scanner.scanIndex(followerCtx, "repo", multiarch.DigestStr())
+			followerDone <- scanErr
+		}()
+
+		cancel()
+
+		select {
+		case scanErr := <-followerDone:
+			So(errors.Is(scanErr, context.Canceled), ShouldBeTrue)
+		case <-time.After(2 * time.Second):
+			t.Fatal("follower did not return promptly after its ctx was canceled")
+		}
+
+		// The shared scan must be unaffected by the follower giving up.
+		close(release)
+
+		select {
+		case <-leaderDone:
+		case <-time.After(2 * time.Second):
+			t.Fatal("leader scan did not complete after being released")
+		}
+
+		So(atomic.LoadInt32(&scanCalls), ShouldEqual, 1)
+	})
+
+	Convey("The leader's own ctx being canceled must not poison the shared index scan's "+
+		"result for other waiters still waiting on the same flight", t, func() {
+		tempDir := t.TempDir()
+		logger := log.NewTestLogger()
+
+		storeController, err := initMockStoreWithFakeScannerDB(tempDir)
+		So(err, ShouldBeNil)
+
+		img1 := CreateRandomImage()
+		multiarch := CreateMultiarchWith().Images([]Image{img1}).Build()
+
+		metaDB := mocks.MetaDBMock{}
+		metaDB.GetImageMetaFn = func(digest godigest.Digest) (types.ImageMeta, error) {
+			return map[string]types.ImageMeta{
+				img1.DigestStr():      img1.AsImageMeta(),
+				multiarch.DigestStr(): multiarch.AsImageMeta(),
+			}[digest.String()], nil
+		}
+
+		scanner := NewScanner(storeController, metaDB, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository: "ghcr.io/project-zot/trivy-db",
+			},
+		}, logger)
+
+		var scanCalls int32
+
+		scanStarted := make(chan struct{})
+		release := make(chan struct{})
+
+		oldNewArtifactRunner := newArtifactRunner
+		newArtifactRunner = func(ctx context.Context, opts flag.Options, target artifact.TargetKind,
+			runnerOpts ...artifact.RunnerOption,
+		) (artifact.Runner, error) {
+			return fakeArtifactRunner{
+				scanImageFn: func(ctx context.Context, opts flag.Options) (trivyTypes.Report, error) {
+					atomic.AddInt32(&scanCalls, 1)
+					close(scanStarted)
+					<-release
+
+					return trivyTypes.Report{}, nil
+				},
+			}, nil
+		}
+		defer func() {
+			newArtifactRunner = oldNewArtifactRunner
+		}()
+
+		leaderCtx, cancelLeader := context.WithCancel(context.Background())
+
+		leaderDone := make(chan error, 1)
+
+		// Leader: the first caller for this key, so its ctx is the one captured by the
+		// index-level singleflight closure (see scanIndex's use of context.WithoutCancel).
+		go func() {
+			_, _, scanErr := scanner.scanIndex(leaderCtx, "repo", multiarch.DigestStr())
+			leaderDone <- scanErr
+		}()
+
+		select {
+		case <-scanStarted:
+		case <-time.After(2 * time.Second):
+			t.Fatal("leader scan did not start")
+		}
+
+		// Follower: joins the same flight with its own, never-canceled ctx while the
+		// leader's traversal is still blocked on release.
+		followerDone := make(chan struct {
+			wasCached bool
+			err       error
+		}, 1)
+
+		go func() {
+			_, wasCached, scanErr := scanner.scanIndex(context.Background(), "repo", multiarch.DigestStr())
+			followerDone <- struct {
+				wasCached bool
+				err       error
+			}{wasCached, scanErr}
+		}()
+
+		// Cancel the LEADER's own ctx (not the follower's) while the shared traversal is
+		// still blocked. Without context.WithoutCancel wrapping the traversal, this ctx
+		// cancellation would surface as the *shared* flight's result and poison the
+		// still-waiting follower with context.Canceled even though its own ctx is fine.
+		cancelLeader()
+
+		select {
+		case scanErr := <-leaderDone:
+			So(errors.Is(scanErr, context.Canceled), ShouldBeTrue)
+		case <-time.After(2 * time.Second):
+			t.Fatal("leader did not return promptly after its own ctx was canceled")
+		}
+
+		// The underlying traversal must be unaffected by the leader's own cancellation.
+		close(release)
+
+		select {
+		case result := <-followerDone:
+			So(result.err, ShouldBeNil)
+			So(result.wasCached, ShouldBeFalse)
+		case <-time.After(2 * time.Second):
+			t.Fatal("follower did not receive the shared scan's successful result")
+		}
+
+		So(atomic.LoadInt32(&scanCalls), ShouldEqual, 1)
+	})
+}
+
+func TestScanIndexConcurrentCyclicRootsDoNotDeadlock(t *testing.T) {
+	Convey("Concurrent top-level scans rooted at two indexes that cyclically reference "+
+		"each other must not deadlock", t, func() {
+		leaf := CreateImageWith().DefaultLayers().PlatformConfig("amd64", "linux").Build()
+
+		digA := godigest.FromString("concurrent-cycle-index-a")
+		digB := godigest.FromString("concurrent-cycle-index-b")
+		indexA := ispec.Index{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			MediaType: ispec.MediaTypeImageIndex,
+			Manifests: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageIndex, Digest: digB, Size: 1},
+				{MediaType: ispec.MediaTypeImageManifest, Digest: leaf.ManifestDescriptor.Digest, Size: leaf.ManifestDescriptor.Size},
+			},
+		}
+		indexB := ispec.Index{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			MediaType: ispec.MediaTypeImageIndex,
+			Manifests: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageIndex, Digest: digA, Size: 1},
+			},
+		}
+
+		scanner := Scanner{
+			log: log.NewTestLogger(),
+			metaDB: mocks.MetaDBMock{
+				GetImageMetaFn: func(digest godigest.Digest) (types.ImageMeta, error) {
+					switch digest.String() {
+					case digA.String():
+						return types.ImageMeta{MediaType: ispec.MediaTypeImageIndex, Digest: digA, Index: &indexA}, nil
+					case digB.String():
+						return types.ImageMeta{MediaType: ispec.MediaTypeImageIndex, Digest: digB, Index: &indexB}, nil
+					case leaf.DigestStr():
+						return leaf.AsImageMeta(), nil
+					default:
+						return types.ImageMeta{}, zerr.ErrRepoMetaNotFound
+					}
+				},
+			},
+			storeController: storage.StoreController{DefaultStore: mocks.MockedImageStore{
+				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+					return true, 1, time.Time{}, nil
+				},
+			}},
+			cache:                 cvecache.NewCveCache(cacheSize, log.NewTestLogger()),
+			scanSingleFlightGroup: &singleflight.Group{},
+		}
+		// Pre-cache the leaf manifest so scanManifest short-circuits on its top cache
+		// check: this test targets the index-traversal dedup logic, not a real trivy scan.
+		scanner.cache.Add(leaf.DigestStr(), map[string]zcommon.CVE{"CVE-1": {ID: "CVE-1"}})
+
+		type scanOutcome struct {
+			result    map[string]zcommon.CVE
+			wasCached bool
+			err       error
+		}
+
+		var outcomeA, outcomeB scanOutcome
+
+		done := make(chan struct{})
+
+		go func() {
+			var wg sync.WaitGroup
+
+			wg.Add(2)
+
+			go func() {
+				defer wg.Done()
+
+				result, wasCached, err := scanner.scanIndex(context.Background(), "repo", digA.String())
+				outcomeA = scanOutcome{result, wasCached, err}
+			}()
+
+			go func() {
+				defer wg.Done()
+
+				result, wasCached, err := scanner.scanIndex(context.Background(), "repo", digB.String())
+				outcomeB = scanOutcome{result, wasCached, err}
+			}()
+
+			wg.Wait()
+			close(done)
+		}()
+
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("concurrent scans rooted at cyclically referencing indexes deadlocked")
+		}
+
+		So(outcomeA.err, ShouldBeNil)
+		So(outcomeB.err, ShouldBeNil)
 	})
 }
