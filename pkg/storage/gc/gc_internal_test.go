@@ -1105,6 +1105,69 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			So(hasTag, ShouldBeFalse)
 		})
 
+		Convey("removeReferrer skips legacy cosign tag prune when subject digest is malformed", func() {
+			malformedCosignTag := "sha256-not-a-valid-digest.sig"
+
+			sharedManifest := ispec.Manifest{
+				MediaType: ispec.MediaTypeImageManifest,
+				Config:    ispec.Descriptor{Digest: godigest.FromString("cfg"), Size: 1},
+			}
+			sharedBuf, err := json.Marshal(sharedManifest)
+			So(err, ShouldBeNil)
+			sharedDigest := godigest.FromBytes(sharedBuf)
+
+			parentIndex := ispec.Index{
+				MediaType: ispec.MediaTypeImageIndex,
+				Manifests: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageManifest,
+						Digest:    sharedDigest,
+						Size:      int64(len(sharedBuf)),
+						Annotations: map[string]string{
+							ispec.AnnotationRefName: malformedCosignTag,
+						},
+					},
+				},
+			}
+			cosignDesc := parentIndex.Manifests[0]
+
+			statCalled := false
+			imgStore := mocks.MockedImageStore{
+				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+					statCalled = true
+
+					return true, int64(len(sharedBuf)), time.Now().Add(-24 * time.Hour), nil
+				},
+			}
+
+			deletedSig := false
+			removedRef := false
+			metaDB := mocks.MetaDBMock{
+				DeleteSignatureFn: func(repo string, signedManifestDigest godigest.Digest, sm types.SignatureMetadata) error {
+					deletedSig = true
+
+					return nil
+				},
+				RemoveRepoReferenceFn: func(repo, reference string, manifestDigest godigest.Digest) error {
+					removedRef = true
+
+					return nil
+				},
+			}
+
+			gcOptions.Delay = 0
+			gc := NewGarbageCollect(imgStore, metaDB, gcOptions, audit, log, metrics)
+
+			gced, err := gc.removeReferrer(repoName, &parentIndex, cosignDesc, nil, "")
+			So(err, ShouldBeNil)
+			So(gced, ShouldBeFalse)
+			So(statCalled, ShouldBeFalse)
+			So(deletedSig, ShouldBeFalse)
+			So(removedRef, ShouldBeFalse)
+			So(len(parentIndex.Manifests), ShouldEqual, 1)
+			So(parentIndex.Manifests[0].Annotations[ispec.AnnotationRefName], ShouldEqual, malformedCosignTag)
+		})
+
 		Convey("removeReferrersWithMissingSubject GCs cosign .sig when digest is also listed untagged", func() {
 			missingSubject := godigest.FromString("missing-subject")
 			cosignTag := "sha256-" + missingSubject.Encoded() + ".sig"
