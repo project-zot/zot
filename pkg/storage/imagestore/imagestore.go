@@ -690,8 +690,8 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 	dir := path.Join(is.rootDir, repo, ispec.ImageBlobsDir, mDigest.Algorithm().String())
 	manifestPath := path.Join(dir, mDigest.Encoded())
 
-	binfo, err := is.storeDriver.Stat(manifestPath)
-	needsWrite := err != nil
+	binfo, statErr := is.storeDriver.Stat(manifestPath)
+	needsWrite := statErr != nil
 	if !needsWrite {
 		needsWrite = binfo.Size() != desc.Size
 	}
@@ -727,7 +727,7 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 
 		if nbytes != len(body) {
 			err = io.ErrShortWrite
-			is.log.Error().Err(err).Str("file", manifestPath).Msg("short write")
+			is.log.Error().Err(err).Str("file", manifestPath).Msg("failed to write manifest: short write")
 
 			return "", "", err
 		}

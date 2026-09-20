@@ -2627,6 +2627,68 @@ func TestReuploadEqualSizeCorruptedManifest(t *testing.T) {
 	})
 }
 
+type recordingMetricServer struct {
+	sendMetricCalls      int
+	forceSendMetricCalls int
+}
+
+func (m *recordingMetricServer) SendMetric(any) {
+	m.sendMetricCalls++
+}
+
+func (m *recordingMetricServer) ForceSendMetric(any) {
+	m.forceSendMetricCalls++
+}
+
+func (*recordingMetricServer) ReceiveMetrics() any {
+	return nil
+}
+
+func (*recordingMetricServer) IsEnabled() bool {
+	return true
+}
+
+func (*recordingMetricServer) Stop() {}
+
+func TestReuploadMissingManifestRecordsMetrics(t *testing.T) {
+	Convey("A missing manifest repaired by re-upload records success metrics", t, func() {
+		const repo = "manifest-missing"
+
+		rootDir := t.TempDir()
+		log := zlog.NewTestLogger()
+		metrics := &recordingMetricServer{}
+		storeDriver := local.New(true)
+
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     rootDir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		So(err, ShouldBeNil)
+
+		imgStore := imagestore.NewImageStore(rootDir, rootDir, true, true, log, metrics, nil,
+			storeDriver, cacheDriver, nil, nil)
+		storeController := storage.StoreController{DefaultStore: imgStore}
+		image := CreateRandomImage()
+
+		So(WriteImageToFileSystem(image, repo, "1.0", storeController), ShouldBeNil)
+
+		manifestBody, manifestDigest, mediaType, err := imgStore.GetImageManifest(repo, "1.0")
+		So(err, ShouldBeNil)
+		manifestPath := imgStore.BlobPath(repo, manifestDigest)
+		sendMetricCalls := metrics.sendMetricCalls
+		forceSendMetricCalls := metrics.forceSendMetricCalls
+
+		So(storeDriver.Delete(manifestPath), ShouldBeNil)
+
+		_, _, err = imgStore.PutImageManifest(context.Background(), repo, "1.0", mediaType, manifestBody, nil)
+		So(err, ShouldBeNil)
+		So(imgStore.VerifyBlobDigestValue(repo, manifestDigest), ShouldBeNil)
+		So(metrics.sendMetricCalls, ShouldEqual, sendMetricCalls+1)
+		So(metrics.forceSendMetricCalls, ShouldEqual, forceSendMetricCalls+1)
+	})
+}
+
 func TestReuploadEqualSizeCorruptedManifestWithDedupe(t *testing.T) {
 	Convey("Equal-size corrupted hard-linked manifests are repaired for every repository", t, func() {
 		const (
