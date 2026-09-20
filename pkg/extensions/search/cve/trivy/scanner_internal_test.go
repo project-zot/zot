@@ -21,6 +21,7 @@ import (
 	"github.com/aquasecurity/trivy/pkg/flag"
 	trivyTypes "github.com/aquasecurity/trivy/pkg/types"
 	godigest "github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 	"golang.org/x/sync/singleflight"
@@ -1569,6 +1570,25 @@ func initMockStoreWithFakeScannerDB(tempDir string) (storage.StoreController, er
 	return storeController, err
 }
 
+// newArrivalBarrier returns arrive, to be called once by each of n expected concurrent callers,
+// and allArrived, which unblocks once all n have called arrive. A fake scan held open on
+// allArrived is guaranteed to still be in flight when every caller joins its singleflight,
+// instead of relying on a fixed sleep to outlast worst-case goroutine scheduling delay.
+func newArrivalBarrier(n int) (arrive func(), allArrived <-chan struct{}) {
+	var wg sync.WaitGroup
+
+	wg.Add(n)
+
+	done := make(chan struct{})
+
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	return wg.Done, done
+}
+
 func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 	Convey("Multiple concurrent scans for the same uncached digest should trigger only one scan", t, func() {
 		tempDir := t.TempDir()
@@ -1609,6 +1629,11 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 
 		scanCallMap := map[string]int{}
 
+		var (
+			arrive     func()
+			allArrived <-chan struct{}
+		)
+
 		oldNewArtifactRunner := newArtifactRunner
 		newArtifactRunner = func(ctx context.Context, opts flag.Options, target artifact.TargetKind,
 			runnerOpts ...artifact.RunnerOption,
@@ -1619,7 +1644,10 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 						scanCallMap[opts.Target] = 0
 					}
 					scanCallMap[opts.Target] += 1
-					time.Sleep(1 * time.Second)
+
+					// Hold the scan open until every concurrent caller has joined this
+					// flight, so a straggler can never start a second one.
+					<-allArrived
 
 					return trivyTypes.Report{}, nil
 				},
@@ -1634,8 +1662,12 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 		results := make(chan model.ScanResult, numRoutines)
 		errs := make(chan error, numRoutines)
 
+		arrive, allArrived = newArrivalBarrier(numRoutines)
+
 		for range 50 {
 			wg.Go(func() {
+				arrive()
+
 				res, err := scanner.ScanImage(context.Background(), "repo:1.0")
 				results <- res
 				errs <- err
@@ -1662,9 +1694,12 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 
 		results = make(chan model.ScanResult, numRoutines)
 		errs = make(chan error, numRoutines)
+		arrive, allArrived = newArrivalBarrier(numRoutines)
 
 		for range 50 {
 			wg.Go(func() {
+				arrive()
+
 				res, err := scanner.ScanImage(context.Background(), "repo:1.0")
 				results <- res
 				errs <- err
@@ -1730,6 +1765,11 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 
 		scanCallMap := map[string]int{}
 
+		var (
+			arrive     func()
+			allArrived <-chan struct{}
+		)
+
 		oldNewArtifactRunner := newArtifactRunner
 		newArtifactRunner = func(ctx context.Context, opts flag.Options, target artifact.TargetKind,
 			runnerOpts ...artifact.RunnerOption,
@@ -1740,7 +1780,10 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 						scanCallMap[opts.Target] = 0
 					}
 					scanCallMap[opts.Target] += 1
-					time.Sleep(1 * time.Second)
+
+					// Hold the scan open until every concurrent caller has joined this
+					// flight, so a straggler can never start a second one.
+					<-allArrived
 
 					return trivyTypes.Report{}, nil
 				},
@@ -1755,8 +1798,12 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 		results := make(chan model.ScanResult, numRoutines)
 		errs := make(chan error, numRoutines)
 
+		arrive, allArrived = newArrivalBarrier(numRoutines)
+
 		for range 50 {
 			wg.Go(func() {
+				arrive()
+
 				res, err := scanner.ScanImage(context.Background(), "repo:3.0")
 				results <- res
 				errs <- err
@@ -1785,9 +1832,12 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 
 		results = make(chan model.ScanResult, numRoutines)
 		errs = make(chan error, numRoutines)
+		arrive, allArrived = newArrivalBarrier(numRoutines)
 
 		for range 50 {
 			wg.Go(func() {
+				arrive()
+
 				res, err := scanner.ScanImage(context.Background(), "repo:3.0")
 				results <- res
 				errs <- err
@@ -1855,6 +1905,11 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 
 		scanCallMap := map[string]int{}
 
+		var (
+			arrive     func()
+			allArrived <-chan struct{}
+		)
+
 		oldNewArtifactRunner := newArtifactRunner
 		newArtifactRunner = func(ctx context.Context, opts flag.Options, target artifact.TargetKind,
 			runnerOpts ...artifact.RunnerOption,
@@ -1865,7 +1920,12 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 						scanCallMap[opts.Target] = 0
 					}
 					scanCallMap[opts.Target] += 1
-					time.Sleep(1 * time.Second)
+
+					// Hold the failing scan open until every concurrent caller has
+					// joined this flight. Failed scans are never cached, so a straggler
+					// that only reaches the flight after it already completed would
+					// start a second one and inflate scanCallMap.
+					<-allArrived
 
 					return trivyTypes.Report{}, errors.New("fake scan error")
 				},
@@ -1880,8 +1940,12 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 		results := make(chan model.ScanResult, numRoutines)
 		errs := make(chan error, numRoutines)
 
+		arrive, allArrived = newArrivalBarrier(numRoutines)
+
 		for range 50 {
 			wg.Go(func() {
+				arrive()
+
 				res, err := scanner.ScanImage(context.Background(), "repo:3.0")
 				results <- res
 				errs <- err
@@ -1909,9 +1973,12 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 
 		results = make(chan model.ScanResult, numRoutines)
 		errs = make(chan error, numRoutines)
+		arrive, allArrived = newArrivalBarrier(numRoutines)
 
 		for range 50 {
 			wg.Go(func() {
+				arrive()
+
 				res, err := scanner.ScanImage(context.Background(), "repo:3.0")
 				results <- res
 				errs <- err
@@ -1974,6 +2041,11 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 
 		scanCallMap := map[string]int{}
 
+		var (
+			arrive     func()
+			allArrived <-chan struct{}
+		)
+
 		oldNewArtifactRunner := newArtifactRunner
 		newArtifactRunner = func(ctx context.Context, opts flag.Options, target artifact.TargetKind,
 			runnerOpts ...artifact.RunnerOption,
@@ -1984,7 +2056,12 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 						scanCallMap[opts.Target] = 0
 					}
 					scanCallMap[opts.Target] += 1
-					time.Sleep(1 * time.Second)
+
+					// Hold the failing scan open until every concurrent caller has
+					// joined this flight. Failed scans are never cached, so a straggler
+					// that only reaches the flight after it already completed would
+					// start a second one and inflate scanCallMap.
+					<-allArrived
 
 					return trivyTypes.Report{}, errors.New("fake scan error")
 				},
@@ -1999,8 +2076,12 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 		results := make(chan model.ScanResult, numRoutines)
 		errs := make(chan error, numRoutines)
 
+		arrive, allArrived = newArrivalBarrier(numRoutines)
+
 		for range 50 {
 			wg.Go(func() {
+				arrive()
+
 				res, err := scanner.ScanImage(context.Background(), "repo:1.0")
 				results <- res
 				errs <- err
@@ -2027,9 +2108,12 @@ func TestScannerCacheMissWithMultipleCallersSynchronization(t *testing.T) {
 
 		results = make(chan model.ScanResult, numRoutines)
 		errs = make(chan error, numRoutines)
+		arrive, allArrived = newArrivalBarrier(numRoutines)
 
 		for range 50 {
 			wg.Go(func() {
+				arrive()
+
 				res, err := scanner.ScanImage(context.Background(), "repo:1.0")
 				results <- res
 				errs <- err
@@ -2140,6 +2224,209 @@ func TestScanManifestCallerCancellationDoesNotAffectSharedScan(t *testing.T) {
 		case <-leaderDone:
 		case <-time.After(2 * time.Second):
 			t.Fatal("leader scan did not complete after being released")
+		}
+
+		So(atomic.LoadInt32(&scanCalls), ShouldEqual, 1)
+	})
+}
+
+func TestScanIndexCallerCancellationDoesNotAffectSharedScan(t *testing.T) {
+	Convey("A follower whose ctx is canceled while waiting returns promptly "+
+		"without affecting the shared index scan", t, func() {
+		tempDir := t.TempDir()
+		logger := log.NewTestLogger()
+
+		storeController, err := initMockStoreWithFakeScannerDB(tempDir)
+		So(err, ShouldBeNil)
+
+		img1 := CreateRandomImage()
+		multiarch := CreateMultiarchWith().Images([]Image{img1}).Build()
+
+		metaDB := mocks.MetaDBMock{}
+		metaDB.GetImageMetaFn = func(digest godigest.Digest) (types.ImageMeta, error) {
+			return map[string]types.ImageMeta{
+				img1.DigestStr():      img1.AsImageMeta(),
+				multiarch.DigestStr(): multiarch.AsImageMeta(),
+			}[digest.String()], nil
+		}
+
+		scanner := NewScanner(storeController, metaDB, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository: "ghcr.io/project-zot/trivy-db",
+			},
+		}, logger)
+
+		var scanCalls int32
+
+		scanStarted := make(chan struct{})
+		release := make(chan struct{})
+
+		oldNewArtifactRunner := newArtifactRunner
+		newArtifactRunner = func(ctx context.Context, opts flag.Options, target artifact.TargetKind,
+			runnerOpts ...artifact.RunnerOption,
+		) (artifact.Runner, error) {
+			return fakeArtifactRunner{
+				scanImageFn: func(ctx context.Context, opts flag.Options) (trivyTypes.Report, error) {
+					atomic.AddInt32(&scanCalls, 1)
+					close(scanStarted)
+					<-release
+
+					return trivyTypes.Report{}, nil
+				},
+			}, nil
+		}
+		defer func() {
+			newArtifactRunner = oldNewArtifactRunner
+		}()
+
+		leaderDone := make(chan struct{})
+
+		// Leader: enters the index-level flight group and, via its traversal of the
+		// index's single child, blocks inside the fake runner until released.
+		go func() {
+			_, _, _ = scanner.scanIndex(context.Background(), "repo", multiarch.DigestStr())
+			close(leaderDone)
+		}()
+
+		select {
+		case <-scanStarted:
+		case <-time.After(2 * time.Second):
+			t.Fatal("leader scan did not start")
+		}
+
+		// Follower: joins the same singleflight key, then abandons the wait via its
+		// own ctx while the leader's traversal is still blocked on release.
+		followerCtx, cancel := context.WithCancel(context.Background())
+		followerDone := make(chan error, 1)
+
+		go func() {
+			_, _, scanErr := scanner.scanIndex(followerCtx, "repo", multiarch.DigestStr())
+			followerDone <- scanErr
+		}()
+
+		cancel()
+
+		select {
+		case scanErr := <-followerDone:
+			So(errors.Is(scanErr, context.Canceled), ShouldBeTrue)
+		case <-time.After(2 * time.Second):
+			t.Fatal("follower did not return promptly after its ctx was canceled")
+		}
+
+		// The shared scan must be unaffected by the follower giving up.
+		close(release)
+
+		select {
+		case <-leaderDone:
+		case <-time.After(2 * time.Second):
+			t.Fatal("leader scan did not complete after being released")
+		}
+
+		So(atomic.LoadInt32(&scanCalls), ShouldEqual, 1)
+	})
+
+	Convey("The leader's own ctx being canceled must not poison the shared index scan's "+
+		"result for other waiters still waiting on the same flight", t, func() {
+		tempDir := t.TempDir()
+		logger := log.NewTestLogger()
+
+		storeController, err := initMockStoreWithFakeScannerDB(tempDir)
+		So(err, ShouldBeNil)
+
+		img1 := CreateRandomImage()
+		multiarch := CreateMultiarchWith().Images([]Image{img1}).Build()
+
+		metaDB := mocks.MetaDBMock{}
+		metaDB.GetImageMetaFn = func(digest godigest.Digest) (types.ImageMeta, error) {
+			return map[string]types.ImageMeta{
+				img1.DigestStr():      img1.AsImageMeta(),
+				multiarch.DigestStr(): multiarch.AsImageMeta(),
+			}[digest.String()], nil
+		}
+
+		scanner := NewScanner(storeController, metaDB, &extconf.CVEConfig{
+			Trivy: &extconf.TrivyConfig{
+				DBRepository: "ghcr.io/project-zot/trivy-db",
+			},
+		}, logger)
+
+		var scanCalls int32
+
+		scanStarted := make(chan struct{})
+		release := make(chan struct{})
+
+		oldNewArtifactRunner := newArtifactRunner
+		newArtifactRunner = func(ctx context.Context, opts flag.Options, target artifact.TargetKind,
+			runnerOpts ...artifact.RunnerOption,
+		) (artifact.Runner, error) {
+			return fakeArtifactRunner{
+				scanImageFn: func(ctx context.Context, opts flag.Options) (trivyTypes.Report, error) {
+					atomic.AddInt32(&scanCalls, 1)
+					close(scanStarted)
+					<-release
+
+					return trivyTypes.Report{}, nil
+				},
+			}, nil
+		}
+		defer func() {
+			newArtifactRunner = oldNewArtifactRunner
+		}()
+
+		leaderCtx, cancelLeader := context.WithCancel(context.Background())
+
+		leaderDone := make(chan error, 1)
+
+		// Leader: the first caller for this key, so its ctx is the one captured by the
+		// index-level singleflight closure (see scanIndex's use of context.WithoutCancel).
+		go func() {
+			_, _, scanErr := scanner.scanIndex(leaderCtx, "repo", multiarch.DigestStr())
+			leaderDone <- scanErr
+		}()
+
+		select {
+		case <-scanStarted:
+		case <-time.After(2 * time.Second):
+			t.Fatal("leader scan did not start")
+		}
+
+		// Follower: joins the same flight with its own, never-canceled ctx while the
+		// leader's traversal is still blocked on release.
+		followerDone := make(chan struct {
+			wasCached bool
+			err       error
+		}, 1)
+
+		go func() {
+			_, wasCached, scanErr := scanner.scanIndex(context.Background(), "repo", multiarch.DigestStr())
+			followerDone <- struct {
+				wasCached bool
+				err       error
+			}{wasCached, scanErr}
+		}()
+
+		// Cancel the LEADER's own ctx (not the follower's) while the shared traversal is
+		// still blocked. Without context.WithoutCancel wrapping the traversal, this ctx
+		// cancellation would surface as the *shared* flight's result and poison the
+		// still-waiting follower with context.Canceled even though its own ctx is fine.
+		cancelLeader()
+
+		select {
+		case scanErr := <-leaderDone:
+			So(errors.Is(scanErr, context.Canceled), ShouldBeTrue)
+		case <-time.After(2 * time.Second):
+			t.Fatal("leader did not return promptly after its own ctx was canceled")
+		}
+
+		// The underlying traversal must be unaffected by the leader's own cancellation.
+		close(release)
+
+		select {
+		case result := <-followerDone:
+			So(result.err, ShouldBeNil)
+			So(result.wasCached, ShouldBeFalse)
+		case <-time.After(2 * time.Second):
+			t.Fatal("follower did not receive the shared scan's successful result")
 		}
 
 		So(atomic.LoadInt32(&scanCalls), ShouldEqual, 1)
