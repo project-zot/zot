@@ -691,10 +691,43 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 	manifestPath := path.Join(dir, mDigest.Encoded())
 
 	binfo, err := is.storeDriver.Stat(manifestPath)
-	if err != nil || binfo.Size() != desc.Size {
-		// The blob isn't already there, or it is corrupted, and needs a correction
-		if _, err = is.storeDriver.WriteFile(manifestPath, body); err != nil {
+	needsWrite := err != nil
+	if !needsWrite {
+		needsWrite = binfo.Size() != desc.Size
+	}
+
+	if !needsWrite {
+		// body is already digest-validated; compare to on-disk bytes instead of
+		// re-hashing (manifests are small / API-capped at MaxManifestBodySize).
+		// Hashing would add compute overhead.
+		stored, readErr := is.storeDriver.ReadFile(manifestPath)
+		if readErr != nil || !slices.Equal(stored, body) {
+			if readErr != nil {
+				is.log.Warn().Err(readErr).Str("file", manifestPath).
+					Msg("failed to read existing manifest; rewriting")
+			} else {
+				is.log.Warn().Str("file", manifestPath).
+					Msg("manifest blob content mismatch; rewriting")
+			}
+
+			needsWrite = true
+		}
+	}
+
+	if needsWrite {
+		// Prefer in-place write for digest blobs so hard-linked dedupe siblings
+		// share the repaired inode (local Driver.WriteFile truncates in place).
+		nbytes, writeErr := is.storeDriver.WriteFile(manifestPath, body)
+		if writeErr != nil {
+			err = writeErr
 			is.log.Error().Err(err).Str("file", manifestPath).Msg("failed to write")
+
+			return "", "", err
+		}
+
+		if nbytes != len(body) {
+			err = io.ErrShortWrite
+			is.log.Error().Err(err).Str("file", manifestPath).Msg("short write")
 
 			return "", "", err
 		}
@@ -1986,34 +2019,60 @@ func (is *ImageStore) PutIndexContent(repo string, index ispec.Index) error {
 		return err
 	}
 
-	// Write to a unique file under .uploads (same layout as blob uploads), then rename into place.
-	// Stale files are picked up by the same blob-upload GC path as ordinary uploads.
-	// This avoids truncating/removing index.json on failure (e.g. ENOSPC) — see local Driver.WriteFile + Cancel.
+	// Write to a unique file under .uploads, then move it into place. Stale files
+	// are picked up by the same blob-upload GC path as ordinary uploads.
+	if err := is.writeFileViaStaging(repo, indexPath, buf); err != nil {
+		is.log.Error().Err(err).Str("file", indexPath).Msg("failed to replace index.json")
+
+		return err
+	}
+
+	return nil
+}
+
+// writeFileViaStaging writes content to a unique upload path before moving it
+// into place. This prevents a failed replacement from truncating the existing
+// destination and cleans up the temporary object on every failure path.
+func (is *ImageStore) writeFileViaStaging(repo, destination string, content []byte) error {
 	stagingUUID, err := guuid.NewV4()
 	if err != nil {
-		is.log.Error().Err(err).Str("repository", repo).Msg("failed to generate staging UUID")
-
 		return err
 	}
 
-	stagingID := stagingUUID.String()
-	tmpPath := is.BlobUploadPath(repo, stagingID)
+	stagingPath := is.BlobUploadPath(repo, stagingUUID.String())
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = is.storeDriver.Delete(stagingPath)
+		}
+	}()
 
-	if _, err = is.storeDriver.WriteFile(tmpPath, buf); err != nil {
-		is.log.Error().Err(err).Str("file", tmpPath).Msg("failed to write staging index")
-
-		_ = is.storeDriver.Delete(tmpPath)
-
+	nbytes, err := is.storeDriver.WriteFile(stagingPath, content)
+	if err != nil {
 		return err
 	}
 
-	if err := is.storeDriver.Move(tmpPath, indexPath); err != nil {
-		is.log.Error().Err(err).Str("from", tmpPath).Str("to", indexPath).Msg("failed to replace index.json")
-
-		_ = is.storeDriver.Delete(tmpPath)
-
-		return err
+	if nbytes != len(content) {
+		return io.ErrShortWrite
 	}
+
+	moveErr := is.storeDriver.Move(stagingPath, destination)
+	if moveErr != nil {
+		// Object-store drivers may implement Move as copy-then-delete. If the
+		// copy succeeded but deleting the staging object failed, the destination
+		// already contains the requested content and the write is complete.
+		storedContent, readErr := is.storeDriver.ReadFile(destination)
+		if readErr == nil && slices.Equal(storedContent, content) {
+			is.log.Warn().Err(moveErr).Str("file", destination).
+				Msg("staged write committed despite move error")
+
+			return nil
+		}
+
+		return moveErr
+	}
+
+	cleanup = false
 
 	return nil
 }
