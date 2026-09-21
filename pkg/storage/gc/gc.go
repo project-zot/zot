@@ -852,7 +852,14 @@ func (gc GarbageCollect) removeManifest(repo string, index *ispec.Index,
 				SignatureDigest: desc.Digest.String(),
 				SignatureType:   signatureType,
 			})
-			if err != nil {
+			switch {
+			case errors.Is(err, zerr.ErrImageMetaNotFound):
+				// Expected when RemoveRepoReference already deleted Signatures[subject]
+				// (e.g. untagged subject GC after last-tag overwrite left the digest in
+				// index.json, then a later referrer pass removes the signature).
+				gc.log.Debug().Err(err).Str("module", "gc").Str("component", "metadb").
+					Msg("signature meta already removed")
+			case err != nil:
 				gc.log.Error().Err(err).Str("module", "gc").Str("component", "metadb").
 					Msg("failed to remove signature in metaDB")
 

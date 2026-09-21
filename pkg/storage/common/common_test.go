@@ -696,6 +696,91 @@ func TestGetReferrersDeduplication(t *testing.T) {
 	})
 }
 
+func TestUpdateIndexOnTagOverwriteRetainsOrphanedDigest(t *testing.T) {
+	log := log.NewTestLogger()
+
+	Convey("overwriting last tag retains untagged descriptor for previous digest", t, func() {
+		oldDigest := godigest.FromBytes([]byte("old-manifest"))
+		newDigest := godigest.FromBytes([]byte("new-manifest"))
+
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    oldDigest,
+					Size:      10,
+					Annotations: map[string]string{
+						ispec.AnnotationRefName: "latest",
+					},
+				},
+			},
+		}
+
+		desc := ispec.Descriptor{
+			MediaType: ispec.MediaTypeImageManifest,
+			Digest:    newDigest,
+			Size:      11,
+			Annotations: map[string]string{
+				ispec.AnnotationRefName: "latest",
+			},
+		}
+
+		update, oldDgst, err := common.UpdateIndexOnTagOverwrite(&index, &desc, log)
+		So(err, ShouldBeNil)
+		So(update, ShouldBeTrue)
+		So(oldDgst, ShouldEqual, oldDigest)
+
+		So(len(index.Manifests), ShouldEqual, 1)
+		So(index.Manifests[0].Digest, ShouldEqual, oldDigest)
+		_, hasTag := index.Manifests[0].Annotations[ispec.AnnotationRefName]
+		So(hasTag, ShouldBeFalse)
+	})
+
+	Convey("overwriting one of several tags for same digest does not add untagged row", t, func() {
+		oldDigest := godigest.FromBytes([]byte("shared-manifest"))
+		newDigest := godigest.FromBytes([]byte("replacement"))
+
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    oldDigest,
+					Size:      10,
+					Annotations: map[string]string{
+						ispec.AnnotationRefName: "a",
+					},
+				},
+				{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    oldDigest,
+					Size:      10,
+					Annotations: map[string]string{
+						ispec.AnnotationRefName: "b",
+					},
+				},
+			},
+		}
+
+		desc := ispec.Descriptor{
+			MediaType: ispec.MediaTypeImageManifest,
+			Digest:    newDigest,
+			Size:      11,
+			Annotations: map[string]string{
+				ispec.AnnotationRefName: "a",
+			},
+		}
+
+		update, oldDgst, err := common.UpdateIndexOnTagOverwrite(&index, &desc, log)
+		So(err, ShouldBeNil)
+		So(update, ShouldBeTrue)
+		So(oldDgst, ShouldEqual, oldDigest)
+
+		So(len(index.Manifests), ShouldEqual, 1)
+		So(index.Manifests[0].Digest, ShouldEqual, oldDigest)
+		So(index.Manifests[0].Annotations[ispec.AnnotationRefName], ShouldEqual, "b")
+	})
+}
+
 func TestGetImageIndexErrors(t *testing.T) {
 	log := log.NewTestLogger()
 

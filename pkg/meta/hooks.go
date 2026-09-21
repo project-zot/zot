@@ -148,6 +148,10 @@ func rollbackDigestManifestTags(ctx context.Context, repo string, tags, appliedM
 // OnUpdateManifest is called when a new manifest is added. It updates metadb according to the type
 // of image pushed(normal images, signatures, etc.). In case of any errors, it makes sure to keep
 // consistency between metadb and the image store.
+//
+// Tag overwrite leaves the previous digest as an untagged index.json row (see storage
+// UpdateIndexOnTagOverwrite). MetaDB already keeps Statistics/Signatures for that digest until
+// GC RemoveRepoReference clears them; no digest re-registration is required here.
 func OnUpdateManifest(ctx context.Context, repo, reference, mediaType string, digest godigest.Digest, body []byte,
 	storeController storage.StoreController, metaDB mTypes.MetaDB, log log.Logger,
 ) error {
