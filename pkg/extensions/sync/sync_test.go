@@ -8680,8 +8680,8 @@ func TestOnDemandBlobSeeding(t *testing.T) {
 
 			// remove the image's config and layers from upstream storage, keeping
 			// only the manifest (the tag must still resolve): syncing tag 2.0 can
-			// only succeed if the downstream seeds the whole already stored image,
-			// including its manifest, making ImageCopy skip the copy entirely
+			// only succeed if the downstream seeds the already stored layers and
+			// config, leaving the manifest as the only upstream fetch
 			digests := []godigest.Digest{image1.ConfigDescriptor.Digest}
 			for _, layer := range image1.Manifest.Layers {
 				digests = append(digests, layer.Digest)

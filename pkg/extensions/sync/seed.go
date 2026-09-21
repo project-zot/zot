@@ -3,7 +3,6 @@
 package sync
 
 import (
-	"bytes"
 	"context"
 	"sync"
 	"sync/atomic"
@@ -62,8 +61,12 @@ func claim(outcomes *sync.Map, digest godigest.Digest) (*seedOutcome, bool) {
 }
 
 // seedManifest walks the manifest tree under digest and seeds every referenced
-// blob present in the local store, reporting whether the complete subtree was
-// seeded.
+// layer and config blob present in the local store, reporting whether the
+// complete subtree was seeded.
+//
+// ImageCopy assumes everything under a manifest is complete, so for now
+// explicitly don't write the manifests themselves. That still saves the
+// expensive blob fetch, but completeness is still validated by regclient.
 func (seeder *refSeeder) seedManifest(ctx context.Context, digest godigest.Digest) bool {
 	outcome, first := claim(&seeder.manifests, digest)
 	if !first {
@@ -88,6 +91,9 @@ func (seeder *refSeeder) seedManifest(ctx context.Context, digest godigest.Diges
 		go func() { results <- work() }()
 	}
 
+	// Whether we have seeded all blobs under a manifest. Currently unused, as
+	// we only seed blobs - if we seed manifests, we must only seed them if all
+	// child blobs are seeded (otherwise `regclient` skips the manifest).
 	complete := true
 
 	// every regclient manifest type implements exactly one of Indexer and Imager
@@ -131,10 +137,6 @@ func (seeder *refSeeder) seedManifest(ctx context.Context, digest godigest.Diges
 		complete = <-results && complete
 	}
 
-	if complete {
-		complete = seeder.seedManifestBlob(ctx, man, digest)
-	}
-
 	outcome.complete = complete
 
 	return complete
@@ -174,32 +176,6 @@ func (seeder *refSeeder) fetchManifest(ctx context.Context, digest godigest.Dige
 	defer service.rc.Close(ctx, man.GetRef())
 
 	return man
-}
-
-// seedManifestBlob writes the manifest itself into the temp layout. It must be
-// called only when the whole subtree was seeded: ImageCopy skips a child
-// subtree entirely once the child manifest exists on the copy target.
-func (seeder *refSeeder) seedManifestBlob(ctx context.Context, man manifest.Manifest, digest godigest.Digest) bool {
-	release := seeder.acquire()
-	defer release()
-
-	// the content is already in hand (possibly fetched upstream, where there is
-	// no local file to hardlink); FullBlobUpload digest-verifies either way
-	content, err := man.RawBody()
-	if err == nil {
-		_, _, err = seeder.tempStore.FullBlobUpload(ctx, seeder.localRepo, bytes.NewReader(content), digest)
-	}
-
-	if err != nil {
-		seeder.service.log.Debug().Err(err).Str("repo", seeder.localRepo).Str("digest", digest.String()).
-			Msg("failed to seed manifest blob into temp sync dir")
-
-		return false
-	}
-
-	seeder.seeded.Add(1)
-
-	return true
 }
 
 // seedBlob makes a blob from the local store available in the temp layout by
