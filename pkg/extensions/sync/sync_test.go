@@ -410,7 +410,15 @@ func TestOnDemand(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
+			// MkdirAll does not apply the mode to a directory that already
+			// exists (e.g. by seeding); chmod explicitly so the sandbox is
+			// armed either way. Same for the .sync and blobs dirs below.
 			err = os.MkdirAll(path.Join(destDir, testImage), 0o000)
+			if err != nil {
+				panic(err)
+			}
+
+			err = os.Chmod(path.Join(destDir, testImage), 0o000)
 			if err != nil {
 				panic(err)
 			}
@@ -433,6 +441,11 @@ func TestOnDemand(t *testing.T) {
 				panic(err)
 			}
 
+			err = os.Chmod(path.Join(destDir, testImage, syncConstants.SyncBlobUploadDir), 0o000)
+			if err != nil {
+				panic(err)
+			}
+
 			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "1.1.1")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
@@ -447,6 +460,11 @@ func TestOnDemand(t *testing.T) {
 			}
 
 			err = os.MkdirAll(path.Join(destDir, testImage, "blobs"), 0o000)
+			if err != nil {
+				panic(err)
+			}
+
+			err = os.Chmod(path.Join(destDir, testImage, "blobs"), 0o000)
 			if err != nil {
 				panic(err)
 			}
