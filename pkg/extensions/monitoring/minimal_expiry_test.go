@@ -16,17 +16,15 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
-func init() {
-	// Tracking is off until a deployment actually configures repoLabelExpiry; these
-	// tests exercise the sweep, so turn it on once for the whole test binary.
-	monitoring.EnableRepoLabelExpiryTracking()
-}
-
 func TestExpireRepoMetricsMinimalMarkAndSweep(t *testing.T) {
 	Convey("Mark-and-sweep drops the stale repo, keeps the active one and unrelated metrics", t, func() {
+		// Tracking is off until a deployment actually configures repoLabelExpiry; this
+		// test exercises the sweep, so turn it on (idempotent, safe to call repeatedly).
+		monitoring.EnableRepoLabelExpiryTracking()
+
 		logger := log.NewTestLogger()
-		ms := monitoring.NewMetricsServer(true, logger)
-		Reset(ms.Stop)
+		metricsServer := monitoring.NewMetricsServer(true, logger)
+		Reset(metricsServer.Stop)
 
 		repoA := uniqueMetricLabel("expirytest-repoA")
 		repoB := uniqueMetricLabel("expirytest-repoB")
@@ -35,50 +33,50 @@ func TestExpireRepoMetricsMinimalMarkAndSweep(t *testing.T) {
 		makeRepoDir(t, rootDir, repoA)
 		makeRepoDir(t, rootDir, repoB)
 
-		monitoring.SetStorageUsage(ms, rootDir, repoA)
-		monitoring.SetStorageUsage(ms, rootDir, repoB)
+		monitoring.SetStorageUsage(metricsServer, rootDir, repoA)
+		monitoring.SetStorageUsage(metricsServer, rootDir, repoB)
 
 		method := uniqueMetricLabel("method")
-		monitoring.IncHTTPConnRequests(ms, method, "200")
+		monitoring.IncHTTPConnRequests(metricsServer, method, "200")
 
-		touchMinimalRepo(ms, repoA)
-		touchMinimalRepo(ms, repoB)
+		touchMinimalRepo(metricsServer, repoA)
+		touchMinimalRepo(metricsServer, repoB)
 
 		// end of interval N: both touched during N, neither evicted yet
-		monitoring.ExpireRepoMetrics(ms)
+		monitoring.ExpireRepoMetrics(metricsServer)
 
-		So(minimalCounter(ms, "zot.repo.uploads", []string{repoA}), ShouldEqual, 1)
-		So(minimalCounter(ms, "zot.repo.uploads", []string{repoB}), ShouldEqual, 1)
+		So(minimalCounter(metricsServer, "zot.repo.uploads", []string{repoA}), ShouldEqual, 1)
+		So(minimalCounter(metricsServer, "zot.repo.uploads", []string{repoB}), ShouldEqual, 1)
 
 		// touch only repoA during interval N+1
-		touchMinimalRepo(ms, repoA)
+		touchMinimalRepo(metricsServer, repoA)
 
 		// end of interval N+1: repoB untouched during N+1, evicted now
-		monitoring.ExpireRepoMetrics(ms)
+		monitoring.ExpireRepoMetrics(metricsServer)
 
-		copyAfter := receiveCopy(ms)
+		copyAfter := receiveCopy(metricsServer)
 
 		So(minimalCounterPresent(copyAfter, "zot.repo.uploads", []string{repoB}), ShouldBeFalse)
 		So(minimalCounterPresent(copyAfter, "zot.repo.downloads", []string{repoB}), ShouldBeFalse)
 		So(minimalSummaryPresent(copyAfter, "zot.http.repo.latency.seconds", []string{repoB}), ShouldBeFalse)
 
-		So(minimalCounter(ms, "zot.repo.uploads", []string{repoA}), ShouldEqual, 2)
-		So(minimalCounter(ms, "zot.repo.downloads", []string{repoA}), ShouldEqual, 2)
+		So(minimalCounter(metricsServer, "zot.repo.uploads", []string{repoA}), ShouldEqual, 2)
+		So(minimalCounter(metricsServer, "zot.repo.downloads", []string{repoA}), ShouldEqual, 2)
 
 		summaryCount, found := minimalSummaryCount(copyAfter, "zot.http.repo.latency.seconds", []string{repoA})
 		So(found, ShouldBeTrue)
 		So(summaryCount, ShouldEqual, 2)
 
 		// unrelated metric untouched by the sweep
-		So(minimalCounter(ms, "zot.http.requests", []string{method, "200"}), ShouldEqual, 1)
+		So(minimalCounter(metricsServer, "zot.http.requests", []string{method, "200"}), ShouldEqual, 1)
 
 		// storage bytes gauge is deliberately excluded from expiry, for both the
 		// surviving and the just-evicted repo
-		storageA, foundA := minimalGauge(ms, "zot.repo.storage.bytes", []string{repoA})
+		storageA, foundA := minimalGauge(metricsServer, "zot.repo.storage.bytes", []string{repoA})
 		So(foundA, ShouldBeTrue)
 		So(storageA, ShouldBeGreaterThanOrEqualTo, 0)
 
-		storageB, foundB := minimalGauge(ms, "zot.repo.storage.bytes", []string{repoB})
+		storageB, foundB := minimalGauge(metricsServer, "zot.repo.storage.bytes", []string{repoB})
 		So(foundB, ShouldBeTrue)
 		So(storageB, ShouldBeGreaterThanOrEqualTo, 0)
 	})
@@ -87,14 +85,15 @@ func TestExpireRepoMetricsMinimalMarkAndSweep(t *testing.T) {
 func TestExpireRepoMetricsMinimalAutoDisabled(t *testing.T) {
 	Convey("Expiry still runs via ForceSendMetric even when the metrics server is disabled", t, func() {
 		logger := log.NewTestLogger()
-		ms := monitoring.NewMetricsServer(false, logger)
-		Reset(ms.Stop)
+		metricsServer := monitoring.NewMetricsServer(false, logger)
+		Reset(metricsServer.Stop)
 
-		So(ms.IsEnabled(), ShouldBeFalse)
+		So(metricsServer.IsEnabled(), ShouldBeFalse)
 
 		done := make(chan struct{})
+
 		go func() {
-			monitoring.ExpireRepoMetrics(ms)
+			monitoring.ExpireRepoMetrics(metricsServer)
 			close(done)
 		}()
 
@@ -105,7 +104,7 @@ func TestExpireRepoMetricsMinimalAutoDisabled(t *testing.T) {
 		}
 
 		// ExpireRepoMetrics must not itself flip the server back to enabled.
-		So(ms.IsEnabled(), ShouldBeFalse)
+		So(metricsServer.IsEnabled(), ShouldBeFalse)
 	})
 }
 

@@ -16,12 +16,6 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
-func init() {
-	// Tracking is off until a deployment actually configures repoLabelExpiry; these
-	// tests exercise the sweep, so turn it on once for the whole test binary.
-	EnableRepoLabelExpiryTracking()
-}
-
 const (
 	uploadsMetricName   = "zot_repo_uploads_total"
 	downloadsMetricName = "zot_repo_downloads_total"
@@ -32,17 +26,21 @@ const (
 
 func TestExpireRepoMetricsMarkAndSweep(t *testing.T) {
 	Convey("Repo touched again survives while an untouched repo is evicted, without zeroing survivors", t, func() {
+		// Tracking is off until a deployment actually configures repoLabelExpiry; this
+		// test exercises the sweep, so turn it on (idempotent, safe to call repeatedly).
+		EnableRepoLabelExpiryTracking()
+
 		logger := log.NewTestLogger()
-		ms := NewMetricsServer(true, logger)
+		metricsServer := NewMetricsServer(true, logger)
 
 		repoA := uniqueExpiryRepo("repoA")
 		repoB := uniqueExpiryRepo("repoB")
 
-		touchExpiryRepo(ms, repoA, 3*time.Millisecond)
-		touchExpiryRepo(ms, repoB, 3*time.Millisecond)
+		touchExpiryRepo(metricsServer, repoA, 3*time.Millisecond)
+		touchExpiryRepo(metricsServer, repoB, 3*time.Millisecond)
 
 		// end of interval N: both repos were touched during N, neither should be evicted yet
-		ExpireRepoMetrics(ms)
+		ExpireRepoMetrics(metricsServer)
 
 		So(repoSeries(uploadsMetricName, repoA), ShouldNotBeNil)
 		So(repoSeries(downloadsMetricName, repoA), ShouldNotBeNil)
@@ -52,10 +50,10 @@ func TestExpireRepoMetricsMarkAndSweep(t *testing.T) {
 		So(repoSeries(latencyMetricName, repoB), ShouldNotBeNil)
 
 		// touch only repoA during interval N+1
-		touchExpiryRepo(ms, repoA, 3*time.Millisecond)
+		touchExpiryRepo(metricsServer, repoA, 3*time.Millisecond)
 
 		// end of interval N+1: repoB was untouched during N+1, so it is evicted now.
-		ExpireRepoMetrics(ms)
+		ExpireRepoMetrics(metricsServer)
 
 		So(repoSeries(uploadsMetricName, repoB), ShouldBeNil)
 		So(repoSeries(downloadsMetricName, repoB), ShouldBeNil)
@@ -79,30 +77,32 @@ func TestExpireRepoMetricsMarkAndSweep(t *testing.T) {
 
 func TestExpireRepoMetricsGraceWindow(t *testing.T) {
 	Convey("A repo survives the sweep ending the interval it was touched in", t, func() {
+		EnableRepoLabelExpiryTracking()
+
 		logger := log.NewTestLogger()
-		ms := NewMetricsServer(true, logger)
+		metricsServer := NewMetricsServer(true, logger)
 
 		repo := uniqueExpiryRepo("grace")
 
-		touchExpiryRepo(ms, repo, time.Millisecond)
+		touchExpiryRepo(metricsServer, repo, time.Millisecond)
 
 		// end of interval N: touched during N, must survive this sweep
-		ExpireRepoMetrics(ms)
+		ExpireRepoMetrics(metricsServer)
 		So(repoSeries(uploadsMetricName, repo), ShouldNotBeNil)
 
 		Convey("and is only evicted at the sweep ending the following interval if untouched", func() {
 			// interval N+1: repo not touched at all
-			ExpireRepoMetrics(ms)
+			ExpireRepoMetrics(metricsServer)
 			So(repoSeries(uploadsMetricName, repo), ShouldBeNil)
 			So(repoSeries(downloadsMetricName, repo), ShouldBeNil)
 			So(repoSeries(latencyMetricName, repo), ShouldBeNil)
 		})
 
 		Convey("but survives another sweep if touched again during the following interval", func() {
-			touchExpiryRepo(ms, repo, time.Millisecond)
+			touchExpiryRepo(metricsServer, repo, time.Millisecond)
 
 			// end of interval N+1: touched during N+1, must survive this sweep too
-			ExpireRepoMetrics(ms)
+			ExpireRepoMetrics(metricsServer)
 			So(repoSeries(uploadsMetricName, repo), ShouldNotBeNil)
 		})
 	})
@@ -137,15 +137,17 @@ func TestTouchAndObserveDisabledSkipsTracking(t *testing.T) {
 
 func TestExpireRepoMetricsBlastRadius(t *testing.T) {
 	Convey("Expiry only touches the three repo-labeled vecs, nothing else", t, func() {
+		EnableRepoLabelExpiryTracking()
+
 		logger := log.NewTestLogger()
-		ms := NewMetricsServer(true, logger)
+		metricsServer := NewMetricsServer(true, logger)
 
 		repo := uniqueExpiryRepo("blast")
 
-		touchExpiryRepo(ms, repo, time.Millisecond)
+		touchExpiryRepo(metricsServer, repo, time.Millisecond)
 
 		// end of interval N: survives
-		ExpireRepoMetrics(ms)
+		ExpireRepoMetrics(metricsServer)
 
 		// values on unrelated metrics that happen to share the repo's label value,
 		// set directly since they are not driven by ExpireRepoMetrics' mark-and-sweep.
@@ -153,7 +155,7 @@ func TestExpireRepoMetricsBlastRadius(t *testing.T) {
 		httpConnRequests.WithLabelValues(repo, "200").Inc()
 
 		// interval N+1: repo untouched, so it is evicted from the three tracked vecs only.
-		ExpireRepoMetrics(ms)
+		ExpireRepoMetrics(metricsServer)
 
 		So(repoSeries(uploadsMetricName, repo), ShouldBeNil)
 		So(repoSeries(downloadsMetricName, repo), ShouldBeNil)
@@ -174,8 +176,10 @@ func TestExpireRepoMetricsBlastRadius(t *testing.T) {
 // channels so every touch happens-before the next sweep (deterministic, run with -race).
 func TestExpireRepoMetricsConcurrentTouchNeverLosesUpdates(t *testing.T) {
 	Convey("A repo touched immediately before every sweep is never evicted or zeroed", t, func() {
+		EnableRepoLabelExpiryTracking()
+
 		logger := log.NewTestLogger()
-		ms := NewMetricsServer(true, logger)
+		metricsServer := NewMetricsServer(true, logger)
 
 		repo := uniqueExpiryRepo("race")
 
@@ -193,7 +197,7 @@ func TestExpireRepoMetricsConcurrentTouchNeverLosesUpdates(t *testing.T) {
 			defer close(touched)
 
 			for i := 0; i < rounds; i++ {
-				IncUploadCounter(ms, repo)
+				IncUploadCounter(metricsServer, repo)
 				touched <- struct{}{}
 				<-swept
 			}
@@ -204,7 +208,7 @@ func TestExpireRepoMetricsConcurrentTouchNeverLosesUpdates(t *testing.T) {
 			defer close(swept)
 
 			for range touched {
-				ExpireRepoMetrics(ms)
+				ExpireRepoMetrics(metricsServer)
 				swept <- struct{}{}
 			}
 		}()
@@ -217,10 +221,10 @@ func TestExpireRepoMetricsConcurrentTouchNeverLosesUpdates(t *testing.T) {
 	})
 }
 
-func touchExpiryRepo(ms MetricServer, repo string, latency time.Duration) {
-	IncUploadCounter(ms, repo)
-	IncDownloadCounter(ms, repo)
-	ObserveHTTPRepoLatency(ms, fmt.Sprintf("/v2/%s/blobs/uploads/expiry-test-uuid", repo), latency)
+func touchExpiryRepo(metricsServer MetricServer, repo string, latency time.Duration) {
+	IncUploadCounter(metricsServer, repo)
+	IncDownloadCounter(metricsServer, repo)
+	ObserveHTTPRepoLatency(metricsServer, fmt.Sprintf("/v2/%s/blobs/uploads/expiry-test-uuid", repo), latency)
 }
 
 func repoSeries(metricName, repo string) *dto.Metric {
@@ -264,41 +268,44 @@ func metricLabelsMatch(pairs []*dto.LabelPair, want map[string]string) bool {
 }
 
 // BenchmarkIncUploadCounter measures the hot request path with tracking enabled (this
-// file's init() turns EnableRepoLabelExpiryTracking on for the whole test binary, so
-// this reflects a deployment that has repoLabelExpiry configured). See
+// reflects a deployment that has repoLabelExpiry configured). See
 // BenchmarkTouchAndObserveDisabled/Enabled below for the isolated with/without-the-flag
 // comparison, benchmarked directly against a local tracker instead of the global one.
 func BenchmarkIncUploadCounter(b *testing.B) {
+	EnableRepoLabelExpiryTracking()
+
 	logger := log.NewTestLogger()
-	ms := NewMetricsServer(true, logger)
+	metricsServer := NewMetricsServer(true, logger)
 	repo := uniqueExpiryRepo("bench-inc")
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		IncUploadCounter(ms, repo)
+		IncUploadCounter(metricsServer, repo)
 	}
 }
 
 // BenchmarkIncUploadCounterParallel measures the same hot path under concurrent callers,
 // since touchAndObserve serializes all writers on t.mu regardless of label value.
 func BenchmarkIncUploadCounterParallel(b *testing.B) {
+	EnableRepoLabelExpiryTracking()
+
 	logger := log.NewTestLogger()
-	ms := NewMetricsServer(true, logger)
+	metricsServer := NewMetricsServer(true, logger)
 	repo := uniqueExpiryRepo("bench-inc-parallel")
 
 	b.ResetTimer()
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			IncUploadCounter(ms, repo)
+			IncUploadCounter(metricsServer, repo)
 		}
 	})
 }
 
 // BenchmarkTouchAndObserveDisabled/Enabled isolate exactly what the feature flag costs:
 // same call, same repo, only the tracking bool differs. Uses a fresh local tracker so
-// the result doesn't depend on this file's init() having turned the global flag on.
+// the result doesn't depend on the global flag's state.
 func BenchmarkTouchAndObserveDisabled(b *testing.B) {
 	tracker := &repoLabelTracker{current: map[string]struct{}{}, previous: map[string]struct{}{}}
 	repo := "bench-repo"
@@ -325,8 +332,10 @@ func BenchmarkTouchAndObserveEnabled(b *testing.B) {
 // (1000 distinct repos, half stale) to quantify the eviction pass itself, separate from
 // the per-request touch cost measured above.
 func BenchmarkExpireRepoMetrics(b *testing.B) {
+	EnableRepoLabelExpiryTracking()
+
 	logger := log.NewTestLogger()
-	ms := NewMetricsServer(true, logger)
+	metricsServer := NewMetricsServer(true, logger)
 
 	const repoCount = 1000
 
@@ -334,21 +343,21 @@ func BenchmarkExpireRepoMetrics(b *testing.B) {
 
 	for i := range repos {
 		repos[i] = uniqueExpiryRepo(fmt.Sprintf("bench-expire-%d", i))
-		IncUploadCounter(ms, repos[i])
+		IncUploadCounter(metricsServer, repos[i])
 	}
 
 	// age every repo out of the "current" generation once, then re-touch half of them
 	// so each benchmark iteration has a realistic 50% stale ratio to evict.
-	ExpireRepoMetrics(ms)
+	ExpireRepoMetrics(metricsServer)
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < repoCount; j += 2 {
-			IncUploadCounter(ms, repos[j])
+			IncUploadCounter(metricsServer, repos[j])
 		}
 
-		ExpireRepoMetrics(ms)
+		ExpireRepoMetrics(metricsServer)
 	}
 }
 

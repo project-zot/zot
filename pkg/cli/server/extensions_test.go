@@ -386,7 +386,7 @@ func testWithMetricsEnabled(t *testing.T, cfgContentFormat string) {
 	data, err := os.ReadFile(logPath)
 	So(err, ShouldBeNil)
 	So(string(data), ShouldContainSubstring,
-		"\"Metrics\":{\"Enable\":true,\"Prometheus\":{\"Path\":\"/metrics\"}}")
+		"\"Metrics\":{\"Enable\":true,\"Prometheus\":{\"Path\":\"/metrics\"},\"RepoLabelExpiry\":0}")
 }
 
 func TestServeMetricsExtension(t *testing.T) {
@@ -494,7 +494,7 @@ func TestServeMetricsExtension(t *testing.T) {
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring,
-			"\"Metrics\":{\"Enable\":false,\"Prometheus\":{\"Path\":\"/metrics\"}}") //nolint:lll // gofumpt conflicts with lll
+			"\"Metrics\":{\"Enable\":false,\"Prometheus\":{\"Path\":\"/metrics\"},\"RepoLabelExpiry\":0}") //nolint:lll // gofumpt conflicts with lll
 	})
 }
 
