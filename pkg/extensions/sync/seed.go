@@ -5,8 +5,6 @@ package sync
 import (
 	"bytes"
 	"context"
-	"os"
-	"path"
 	"sync"
 	"sync/atomic"
 
@@ -16,7 +14,6 @@ import (
 	"github.com/regclient/regclient/types/ref"
 
 	storageCommon "zotregistry.dev/zot/v2/pkg/storage/common"
-	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
@@ -205,8 +202,8 @@ func (seeder *refSeeder) seedManifestBlob(ctx context.Context, man manifest.Mani
 	return true
 }
 
-// seedBlob makes a blob from the local store available in the temp layout,
-// preferably by hardlink, falling back to streaming a copy.
+// seedBlob makes a blob from the local store available in the temp layout by
+// streaming a digest-verified copy.
 func (seeder *refSeeder) seedBlob(ctx context.Context, desc descriptor.Descriptor) bool {
 	outcome, first := claim(&seeder.blobs, desc.Digest)
 	if !first {
@@ -235,25 +232,9 @@ func (seeder *refSeeder) copyLocalBlob(ctx context.Context, desc descriptor.Desc
 		return false
 	}
 
-	blobPath := seeder.tempStore.BlobPath(seeder.localRepo, desc.Digest)
-	if err := os.MkdirAll(path.Dir(blobPath), storageConstants.DefaultDirPerms); err != nil {
-		service.log.Debug().Err(err).Str("dir", path.Dir(blobPath)).Msg("failed to create temp sync blobs dir")
-
-		return false
-	}
-
-	// Fast path: hardlink the store blob into the temp layout, free when the
-	// store shares a filesystem with the temp dir. On any error (S3-backed
-	// store, EXDEV, EPERM, ...) fall back to streaming a copy. The link shares
-	// the store blob's inode, so seeded blobs must never be modified in place;
-	// zot only reads or unlinks stored blobs, and blob writes on both stores go
-	// via tmp file + rename.
-	if err := os.Link(seeder.imageStore.BlobPath(seeder.localRepo, desc.Digest), blobPath); err == nil {
-		seeder.seeded.Add(1)
-
-		return true
-	}
-
+	// Explicitly copy to keep each blob digest-verified. When the store shares
+	// a filesystem with the temp dir, we could hardlink instead as an
+	// optimization, should verify at least the file size in that case.
 	blob, _, err := seeder.imageStore.GetBlob(seeder.localRepo, desc.Digest, desc.MediaType)
 	if err != nil {
 		service.log.Debug().Err(err).Str("repo", seeder.localRepo).Str("digest", desc.Digest.String()).
