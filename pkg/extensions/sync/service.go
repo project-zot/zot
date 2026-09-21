@@ -990,12 +990,14 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 			// Explicit index-only copy: never recurse into children
 			err = service.copySparseIndexManifest(ctx, remoteImageRef, localImageRef)
 		} else {
-			// best-effort: seed the temp layout with blobs the local store already
-			// holds, so ImageCopy only downloads content actually missing
-			if err := service.seedRef(ctx, localRepo, remoteImageRef, localImageRef, remoteDigest); err != nil {
-				service.log.Warn().Err(err).Str("errortype", common.TypeOf(err)).
-					Str("repo", localRepo).Str("reference", reference).
-					Msg("failed to seed temp sync dir from local storage")
+			// best-effort: seed the temp layout with blobs the local store
+			// already holds, so ImageCopy only downloads missing content.
+			if compat.IsImageManifestMediaType(mediaType) {
+				if err := service.seedRef(ctx, localRepo, remoteImageRef, localImageRef, remoteDigest); err != nil {
+					service.log.Warn().Err(err).Str("errortype", common.TypeOf(err)).
+						Str("repo", localRepo).Str("reference", reference).
+						Msg("failed to seed temp sync dir from local storage")
+				}
 			}
 
 			// Image manifests (and copyDigestComplete): full config + layers.
