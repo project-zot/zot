@@ -1687,6 +1687,19 @@ func (c *Config) IsMTLSAuthEnabled() bool {
 	return false
 }
 
+// IsAuthnEnabled checks if any authentication method is enabled. mTLS is detected the same way the
+// authn middleware detects it (TLS with a client CA), not by the presence of an http.auth.mtls block,
+// so guards keyed on this cannot fail open for mTLS-only deployments that omit that block.
+func (c *Config) IsAuthnEnabled() bool {
+	if c == nil {
+		return false
+	}
+
+	authConfig := c.CopyAuthConfig()
+
+	return authConfig.IsBasicAuthnEnabled() || authConfig.IsBearerAuthEnabled() || c.IsMTLSAuthEnabled()
+}
+
 // IsRetentionEnabled checks if tags retention is enabled.
 func (c *Config) IsRetentionEnabled() bool {
 	if c == nil {

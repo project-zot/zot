@@ -533,7 +533,7 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 				return
 
 			// If no auth methods enabled at all - then just authenticate anything.
-			case !authConfig.IsBearerAuthEnabled() && !authConfig.IsBasicAuthnEnabled() && !ctlr.Config.IsMTLSAuthEnabled():
+			case !ctlr.Config.IsAuthnEnabled():
 				authenticated = true
 
 			// Reject Authorization credentials that were not handled by any enabled auth method.

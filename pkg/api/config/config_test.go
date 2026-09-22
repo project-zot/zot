@@ -2274,6 +2274,44 @@ func TestConfig(t *testing.T) {
 			So(cfg.IsMTLSAuthEnabled(), ShouldBeTrue)
 		})
 
+		Convey("Test IsAuthnEnabled()", func() {
+			var cfg *config.Config
+			So(cfg.IsAuthnEnabled(), ShouldBeFalse)
+
+			cfg = config.New()
+			So(cfg.IsAuthnEnabled(), ShouldBeFalse)
+
+			cfg.HTTP.Auth.HTPasswd.Path = "/path/to/htpasswd"
+			So(cfg.IsAuthnEnabled(), ShouldBeTrue)
+
+			cfg = config.New()
+			cfg.HTTP.Auth.Bearer = &config.BearerConfig{
+				Cert:    "/path/to/cert.pem",
+				Realm:   "test-realm",
+				Service: "test-service",
+			}
+			So(cfg.IsAuthnEnabled(), ShouldBeTrue)
+
+			cfg = config.New()
+			cfg.HTTP.Auth.Bearer = &config.BearerConfig{
+				OIDC: []config.BearerOIDCConfig{{
+					Issuer:    "https://issuer.example.com",
+					Audiences: []string{"zot"},
+				}},
+			}
+			So(cfg.IsAuthnEnabled(), ShouldBeTrue)
+
+			// TLS without a client CA is not mTLS.
+			cfg = config.New()
+			cfg.HTTP.TLS = &config.TLSConfig{Cert: "/path/to/cert.pem", Key: "/path/to/key.pem"}
+			So(cfg.IsAuthnEnabled(), ShouldBeFalse)
+
+			// A client CA enables mTLS authn even without an http.auth.mtls block, matching the authn middleware.
+			cfg.HTTP.TLS.CACert = "/path/to/ca-cert.pem"
+			So(cfg.CopyAuthConfig().GetMTLSConfig(), ShouldBeNil)
+			So(cfg.IsAuthnEnabled(), ShouldBeTrue)
+		})
+
 		Convey("Test IsDockerCompatEnabled()", func() {
 			var nilCfg *config.Config
 			So(nilCfg.IsDockerCompatEnabled(), ShouldBeFalse)

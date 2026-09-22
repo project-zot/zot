@@ -1,6 +1,7 @@
 package common
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -91,28 +92,27 @@ func AddCORSHeaders(allowOrigin string, response http.ResponseWriter) {
 func AuthzOnlyAdminsMiddleware(conf *config.Config) mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-			// Get auth config safely
-			authConfig := conf.CopyAuthConfig()
-			if !authConfig.IsBasicAuthnEnabled() {
+			if !conf.IsAuthnEnabled() {
 				next.ServeHTTP(response, request)
 
 				return
 			}
 
-			realm := conf.GetRealm()
+			authConfig := conf.CopyAuthConfig()
+			challenge := adminAuthChallenge(authConfig, conf.GetRealm())
 			failDelay := authConfig.GetFailDelay()
 
 			// get userAccessControl built in previous authn/authz middlewares
 			userAc, err := reqCtx.UserAcFromContext(request.Context())
 			if err != nil { // should not happen as this has been previously checked for errors
-				AuthzFail(response, request, userAc.GetUsername(), realm, failDelay)
+				authzFailWithChallenge(response, request, "", challenge, failDelay, "")
 
 				return
 			}
 
-			// reject non-admin access if authentication is enabled
-			if userAc != nil && !userAc.IsAdmin() {
-				AuthzFail(response, request, userAc.GetUsername(), realm, failDelay)
+			// Missing authentication context and non-admin principals both fail closed.
+			if userAc.IsAnonymous() || !userAc.IsAdmin() {
+				authzFailWithChallenge(response, request, userAc.GetUsername(), challenge, failDelay, "")
 
 				return
 			}
@@ -120,6 +120,31 @@ func AuthzOnlyAdminsMiddleware(conf *config.Config) mux.MiddlewareFunc {
 			next.ServeHTTP(response, request)
 		})
 	}
+}
+
+// adminAuthChallenge selects the WWW-Authenticate challenge for an admin route rejection from the
+// server's auth config, as for dist-spec routes (see examples/README-COMBINED-AUTHENTICATION.md,
+// "Challenge Advertisement"): Bearer when a Bearer challenge can be advertised, else Basic when
+// Basic credentials can authenticate, else none (e.g. mTLS only, which has no HTTP challenge).
+// Admin routes are not repository-scoped, so a Bearer challenge carries an empty scope.
+func adminAuthChallenge(authConfig *config.AuthConfig, realm string) string {
+	switch {
+	case authConfig.ShouldAdvertiseBearerChallenge():
+		return fmt.Sprintf("Bearer realm=\"%s\",service=\"%s\",scope=\"\"",
+			authConfig.Bearer.Realm, authConfig.Bearer.Service)
+	case authConfig.CanAuthenticateWithBasicCredentials():
+		return basicAuthChallenge(realm)
+	default:
+		return ""
+	}
+}
+
+func basicAuthChallenge(realm string) string {
+	if realm == "" {
+		realm = "Authorization Required"
+	}
+
+	return "Basic realm=" + strconv.Quote(realm)
 }
 
 func AuthzFail(w http.ResponseWriter, r *http.Request, identity, realm string, delay int) {
@@ -131,17 +156,19 @@ func AuthzFail(w http.ResponseWriter, r *http.Request, identity, realm string, d
 // lets policy conditions surface the operator-authored Message to the client
 // alongside the standard DENIED error code.
 func AuthzFailWithReason(w http.ResponseWriter, r *http.Request, identity, realm string, delay int, reason string) {
+	authzFailWithChallenge(w, r, identity, basicAuthChallenge(realm), delay, reason)
+}
+
+// authzFailWithChallenge writes an authz failure: 401 without an identity, else 403. challenge, if
+// non-empty, is sent as WWW-Authenticate, except to UI session clients.
+func authzFailWithChallenge(w http.ResponseWriter, r *http.Request, identity, challenge string, delay int,
+	reason string,
+) {
 	time.Sleep(time.Duration(delay) * time.Second)
 
 	// don't send auth headers if request is coming from UI
-	if r.Header.Get(constants.SessionClientHeaderName) != constants.SessionClientHeaderValue {
-		if realm == "" {
-			realm = "Authorization Required"
-		}
-
-		realm = "Basic realm=" + strconv.Quote(realm)
-
-		w.Header().Set("WWW-Authenticate", realm)
+	if challenge != "" && r.Header.Get(constants.SessionClientHeaderName) != constants.SessionClientHeaderValue {
+		w.Header().Set("WWW-Authenticate", challenge)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
