@@ -321,8 +321,10 @@ func CheckIsImageSignature(repoName string, manifestBlob []byte, reference strin
 	}
 
 	if tag := reference; zcommon.IsCosignSignature(reference) {
+		// IsCosignSignature matches only "sha256-<64 hex>.sig", so the slice below is in bounds and valid.
 		prefixLen := len("sha256-")
 		digestLen := 64
+
 		signedImageManifestDigestEncoded := tag[prefixLen : prefixLen+digestLen]
 
 		signedImageManifestDigest := godigest.NewDigestFromEncoded(godigest.SHA256,

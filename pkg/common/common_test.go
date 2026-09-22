@@ -89,6 +89,32 @@ func TestCommon(t *testing.T) {
 			predicate(common.CosignSignPredicateType)), ShouldBeFalse)
 	})
 
+	Convey("Test legacy cosign tag predicates match only the exact tag shape", t, func() {
+		hex := strings.Repeat("a", 64)
+
+		So(common.IsCosignSignature("sha256-"+hex+".sig"), ShouldBeTrue)
+		So(common.IsCosignSBOM("sha256-"+hex+".sbom"), ShouldBeTrue)
+		So(common.IsCosignTag("sha256-"+hex+".sig"), ShouldBeTrue)
+		So(common.IsCosignTag("sha256-"+hex+".sbom"), ShouldBeTrue)
+
+		for _, tag := range []string{
+			"sha256-abc.sig", // short digest
+			"sha256-" + strings.Repeat("a", 65) + ".sig",  // long digest
+			"sha256-" + strings.Repeat("z", 64) + ".sig",  // non-hex digest
+			"sha256-" + strings.Repeat("A", 64) + ".sig",  // uppercase hex is not a valid sha256 encoding
+			"sha256-not-a-valid-digest.sig",               // hyphenated garbage
+			"v1-sha256-" + hex + ".sig",                   // unanchored prefix
+			"sha256-" + hex + ".sig.bak",                  // unanchored suffix
+			"sha512-" + strings.Repeat("a", 128) + ".sig", // other algorithms were never matched
+		} {
+			So(common.IsCosignSignature(tag), ShouldBeFalse)
+			So(common.IsCosignTag(tag), ShouldBeFalse)
+		}
+
+		So(common.IsCosignSBOM("sha256-abc.sbom"), ShouldBeFalse)
+		So(common.IsCosignSBOM("sha256-"+hex+".sbom.bak"), ShouldBeFalse)
+	})
+
 	Convey("Test GetLocalIPs", t, func() {
 		localIPs, err := common.GetLocalIPs()
 		So(err, ShouldBeNil)
