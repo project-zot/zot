@@ -104,7 +104,7 @@ func TestImageBuilder(t *testing.T) {
 			platform := ispec.Platform{OS: "os", Architecture: "arch"}
 
 			img := configBuilder.VulnerableConfig(ispec.Image{
-				OS: "os", Architecture: "arch",
+				Platform: platform,
 			}).Build()
 
 			So(img.Layers[0], ShouldEqual, vulnLayer)

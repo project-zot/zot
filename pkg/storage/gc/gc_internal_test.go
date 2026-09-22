@@ -511,6 +511,29 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("removeManifest treats DeleteSignature ErrImageMetaNotFound as already cleaned", func() {
+			imgStore := mocks.MockedImageStore{}
+			metaDB := mocks.MetaDBMock{
+				DeleteSignatureFn: func(repo string, signedManifestDigest godigest.Digest, sm types.SignatureMetadata) error {
+					return zerr.ErrImageMetaNotFound
+				},
+			}
+
+			gcOptions.ImageRetention = config.ImageRetention{}
+			gc := NewGarbageCollect(imgStore, metaDB, gcOptions, audit, log, metrics)
+
+			desc := ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageManifest,
+				Digest:    godigest.FromBytes([]byte("sig-digest")),
+			}
+			index := &ispec.Index{Manifests: []ispec.Descriptor{desc}}
+
+			gced, err := gc.removeManifest(repoName, index, desc, desc.Digest.String(), storage.NotationType,
+				godigest.FromBytes([]byte("subject-digest")))
+			So(err, ShouldBeNil)
+			So(gced, ShouldBeTrue)
+		})
+
 		Convey("StatBlob failure in gcReferrer skips age check and continues (image index)", func() {
 			manifestDesc := ispec.Descriptor{
 				MediaType: ispec.MediaTypeImageIndex,

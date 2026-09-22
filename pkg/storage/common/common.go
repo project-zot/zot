@@ -209,11 +209,16 @@ func GetAndValidateRequestDigest(body []byte, reference string, log zlog.Logger)
 }
 
 /*
-CheckIfIndexNeedsUpdate verifies if an index needs to be updated given a new manifest descriptor.
+UpdateIndexOnTagOverwrite decides whether putting desc requires an index.json change.
 
-Returns whether or not index needs update, in the latter case it will also return the previous digest.
+If desc carries a tag that already points at a different digest, the prior tag is
+removed via RemoveManifestDescByReference (same last-tag → untagged retention as
+delete-by-tag). The caller is responsible for appending desc afterward.
+
+Returns whether the index must be written, and the previous digest when a tag was
+retargeted (used for multi-arch prune).
 */
-func CheckIfIndexNeedsUpdate(index *ispec.Index, desc *ispec.Descriptor,
+func UpdateIndexOnTagOverwrite(index *ispec.Index, desc *ispec.Descriptor,
 	log zlog.Logger,
 ) (bool, godigest.Digest, error) {
 	var oldDgst godigest.Digest
@@ -229,7 +234,7 @@ func CheckIfIndexNeedsUpdate(index *ispec.Index, desc *ispec.Descriptor,
 
 	updateIndex := true
 
-	for midx, manifest := range index.Manifests {
+	for _, manifest := range index.Manifests {
 		if reference == manifest.Digest.String() {
 			// nothing changed, so don't update
 			updateIndex = false
@@ -246,8 +251,8 @@ func CheckIfIndexNeedsUpdate(index *ispec.Index, desc *ispec.Descriptor,
 				break
 			}
 
-			// manifest contents have changed for the same tag,
-			// so update index.json descriptor
+			// Tag overwrite: drop the prior tag (and keep an untagged row when it was
+			// the last reference), same policy as delete-by-tag.
 			log.Info().
 				Int64("old size", manifest.Size).
 				Int64("new size", desc.Size).
@@ -264,14 +269,12 @@ func CheckIfIndexNeedsUpdate(index *ispec.Index, desc *ispec.Descriptor,
 					Str("new mediaType", desc.MediaType).Msg("media-type changed")
 			}
 
-			oldDesc := *desc
+			removed, err := RemoveManifestDescByReference(index, reference, false)
+			if err != nil {
+				return false, "", err
+			}
 
-			desc = &manifest
-			oldDgst = manifest.Digest
-			desc.Size = oldDesc.Size
-			desc.Digest = oldDesc.Digest
-
-			index.Manifests = append(index.Manifests[:midx], index.Manifests[midx+1:]...)
+			oldDgst = removed.Digest
 
 			break
 		}

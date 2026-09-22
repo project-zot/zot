@@ -589,6 +589,132 @@ func TestPutImageManifestExtraTagsAndEvents(t *testing.T) {
 	})
 }
 
+// TestTagOverwriteRetainsDigestAccess covers issue #4444: overwriting the last tag that
+// references a digest must leave that digest pullable (same as delete-by-tag).
+func TestTagOverwriteRetainsDigestAccess(t *testing.T) {
+	Convey("last tag overwrite keeps previous single-arch digest pullable", t, func() {
+		rootDir := t.TempDir()
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		imgStore := local.NewImageStore(rootDir, false, true, log, metrics, nil, nil, nil, nil)
+		storeController := storage.StoreController{DefaultStore: imgStore}
+
+		repo := "myimage"
+		tag := "tag1"
+
+		first := CreateRandomImage()
+		So(WriteImageToFileSystem(first, repo, tag, storeController), ShouldBeNil)
+		firstDigest := first.Digest()
+
+		_, _, _, err := imgStore.GetImageManifest(repo, firstDigest.String())
+		So(err, ShouldBeNil)
+
+		second := CreateRandomImage()
+		So(WriteImageToFileSystem(second, repo, tag, storeController), ShouldBeNil)
+
+		_, _, _, err = imgStore.GetImageManifest(repo, firstDigest.String())
+		So(err, ShouldBeNil)
+
+		_, _, _, err = imgStore.GetImageManifest(repo, tag)
+		So(err, ShouldBeNil)
+
+		raw, err := imgStore.GetIndexContent(repo)
+		So(err, ShouldBeNil)
+
+		var idx ispec.Index
+		So(json.Unmarshal(raw, &idx), ShouldBeNil)
+
+		untaggedOld := 0
+
+		for _, manifest := range idx.Manifests {
+			if manifest.Digest != firstDigest {
+				continue
+			}
+
+			_, hasTag := manifest.Annotations[ispec.AnnotationRefName]
+			if !hasTag {
+				untaggedOld++
+			}
+		}
+		So(untaggedOld, ShouldEqual, 1)
+	})
+
+	Convey("last tag overwrite keeps previous multi-arch index and platform digests pullable", t, func() {
+		rootDir := t.TempDir()
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		imgStore := local.NewImageStore(rootDir, false, true, log, metrics, nil, nil, nil, nil)
+		storeController := storage.StoreController{DefaultStore: imgStore}
+
+		repo := "multi"
+		tag := "latest"
+
+		first := CreateRandomMultiarch()
+		So(WriteMultiArchImageToFileSystem(first, repo, tag, storeController), ShouldBeNil)
+		firstIndexDigest := first.Digest()
+
+		_, _, _, err := imgStore.GetImageManifest(repo, firstIndexDigest.String())
+		So(err, ShouldBeNil)
+
+		for _, img := range first.Images {
+			_, _, _, err = imgStore.GetImageManifest(repo, img.DigestStr())
+			So(err, ShouldBeNil)
+		}
+
+		second := CreateRandomMultiarch()
+		So(WriteMultiArchImageToFileSystem(second, repo, tag, storeController), ShouldBeNil)
+
+		_, _, _, err = imgStore.GetImageManifest(repo, firstIndexDigest.String())
+		So(err, ShouldBeNil)
+
+		for _, img := range first.Images {
+			_, _, _, err = imgStore.GetImageManifest(repo, img.DigestStr())
+			So(err, ShouldBeNil)
+		}
+	})
+
+	Convey("overwrite when another tag still references old digest does not add untagged duplicate", t, func() {
+		rootDir := t.TempDir()
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		imgStore := local.NewImageStore(rootDir, false, true, log, metrics, nil, nil, nil, nil)
+		storeController := storage.StoreController{DefaultStore: imgStore}
+
+		repo := "shared"
+		image := CreateRandomImage()
+		So(WriteImageToFileSystem(image, repo, "keep", storeController), ShouldBeNil)
+		So(WriteImageToFileSystem(image, repo, "move", storeController), ShouldBeNil)
+
+		replacement := CreateRandomImage()
+		So(WriteImageToFileSystem(replacement, repo, "move", storeController), ShouldBeNil)
+
+		_, _, _, err := imgStore.GetImageManifest(repo, image.DigestStr())
+		So(err, ShouldBeNil)
+
+		raw, err := imgStore.GetIndexContent(repo)
+		So(err, ShouldBeNil)
+
+		var idx ispec.Index
+		So(json.Unmarshal(raw, &idx), ShouldBeNil)
+
+		entriesForOld := 0
+		untaggedForOld := 0
+
+		for _, manifest := range idx.Manifests {
+			if manifest.Digest != image.Digest() {
+				continue
+			}
+
+			entriesForOld++
+			if _, hasTag := manifest.Annotations[ispec.AnnotationRefName]; !hasTag {
+				untaggedForOld++
+			}
+		}
+		So(entriesForOld, ShouldEqual, 1)
+		So(untaggedForOld, ShouldEqual, 0)
+	})
+}
+
 func TestDeleteImageManifestEvents(t *testing.T) {
 	Convey("delete by tag emits ImageDeleted with manifest digest and tag reference", t, func() {
 		eventCapture := &mocks.EventRecorderMock{}
@@ -2061,12 +2187,18 @@ func TestDeleteBlobsInUse(t *testing.T) {
 			}
 
 			Convey("Setup manifest", t, func() {
+				// Unique repo per GoConvey leaf: parent Setup re-runs for each nested
+				// Convey, and last-tag overwrite retains prior digests in index.json.
+				repoUUID, err := guuid.NewV4()
+				So(err, ShouldBeNil)
+				repo := "repo-" + repoUUID.String()
+
 				// put an unused blob
 				content := []byte("unused blob")
 				buf := bytes.NewBuffer(content)
 				unusedDigest := godigest.FromBytes(content)
 
-				_, _, err := imgStore.FullBlobUpload(context.Background(), "repo", bytes.NewReader(buf.Bytes()), unusedDigest)
+				_, _, err = imgStore.FullBlobUpload(context.Background(), repo, bytes.NewReader(buf.Bytes()), unusedDigest)
 				So(err, ShouldBeNil)
 
 				content = []byte("test-data1")
@@ -2074,11 +2206,11 @@ func TestDeleteBlobsInUse(t *testing.T) {
 				buflen := buf.Len()
 				digest := godigest.FromBytes(content)
 
-				_, _, err = imgStore.FullBlobUpload(context.Background(), "repo", bytes.NewReader(buf.Bytes()), digest)
+				_, _, err = imgStore.FullBlobUpload(context.Background(), repo, bytes.NewReader(buf.Bytes()), digest)
 				So(err, ShouldBeNil)
 
 				cblob, cdigest := GetRandomImageConfig()
-				_, clen, err := imgStore.FullBlobUpload(context.Background(), "repo", bytes.NewReader(cblob), cdigest)
+				_, clen, err := imgStore.FullBlobUpload(context.Background(), repo, bytes.NewReader(cblob), cdigest)
 				So(err, ShouldBeNil)
 				So(clen, ShouldEqual, len(cblob))
 
@@ -2105,64 +2237,64 @@ func TestDeleteBlobsInUse(t *testing.T) {
 				So(err, ShouldBeNil)
 
 				manifestDigest, _, err := imgStore.PutImageManifest(context.Background(),
-					"repo", tag, ispec.MediaTypeImageManifest, manifestBuf, nil)
+					repo, tag, ispec.MediaTypeImageManifest, manifestBuf, nil)
 				So(err, ShouldBeNil)
 
 				Convey("Try to delete blob currently in use", func() {
 					// layer blob
-					err := imgStore.DeleteBlob("repo", digest)
+					err := imgStore.DeleteBlob(repo, digest)
 					So(err, ShouldEqual, zerr.ErrBlobReferenced)
 
 					// manifest
-					err = imgStore.DeleteBlob("repo", manifestDigest)
+					err = imgStore.DeleteBlob(repo, manifestDigest)
 					So(err, ShouldEqual, zerr.ErrBlobReferenced)
 
 					// config
-					err = imgStore.DeleteBlob("repo", cdigest)
+					err = imgStore.DeleteBlob(repo, cdigest)
 					So(err, ShouldEqual, zerr.ErrBlobReferenced)
 				})
 
 				Convey("Delete unused blob", func() {
-					err := imgStore.DeleteBlob("repo", unusedDigest)
+					err := imgStore.DeleteBlob(repo, unusedDigest)
 					So(err, ShouldBeNil)
 				})
 
 				Convey("Delete manifest first, then blob", func() {
-					err := imgStore.DeleteImageManifest(context.Background(), "repo", manifestDigest.String(), false)
+					err := imgStore.DeleteImageManifest(context.Background(), repo, manifestDigest.String(), false)
 					So(err, ShouldBeNil)
 
-					err = imgStore.DeleteBlob("repo", digest)
+					err = imgStore.DeleteBlob(repo, digest)
 					So(err, ShouldBeNil)
 
 					// config
-					err = imgStore.DeleteBlob("repo", cdigest)
+					err = imgStore.DeleteBlob(repo, cdigest)
 					So(err, ShouldBeNil)
 				})
 
 				if testcase.storageType == storageConstants.LocalStorageDriverName {
 					Convey("get image manifest error", func() {
-						err := os.Chmod(path.Join(imgStore.RootDir(), "repo", "blobs", "sha256", manifestDigest.Encoded()), 0o000)
+						err := os.Chmod(path.Join(imgStore.RootDir(), repo, "blobs", "sha256", manifestDigest.Encoded()), 0o000)
 						So(err, ShouldBeNil)
 
-						ok, err := storageCommon.IsBlobReferenced(imgStore, "repo", unusedDigest, log)
+						ok, err := storageCommon.IsBlobReferenced(imgStore, repo, unusedDigest, log)
 						So(err, ShouldNotBeNil)
 						So(ok, ShouldBeFalse)
 
-						err = os.Chmod(path.Join(imgStore.RootDir(), "repo", "blobs", "sha256", manifestDigest.Encoded()), 0o755)
+						err = os.Chmod(path.Join(imgStore.RootDir(), repo, "blobs", "sha256", manifestDigest.Encoded()), 0o755)
 						So(err, ShouldBeNil)
 					})
 
 					Convey("DeleteBlob fails closed when reference check errors", func() {
-						err := os.Chmod(path.Join(imgStore.RootDir(), "repo", "blobs", "sha256", manifestDigest.Encoded()), 0o000)
+						err := os.Chmod(path.Join(imgStore.RootDir(), repo, "blobs", "sha256", manifestDigest.Encoded()), 0o000)
 						So(err, ShouldBeNil)
 
-						err = imgStore.DeleteBlob("repo", digest)
+						err = imgStore.DeleteBlob(repo, digest)
 						So(err, ShouldNotBeNil)
 
-						err = os.Chmod(path.Join(imgStore.RootDir(), "repo", "blobs", "sha256", manifestDigest.Encoded()), 0o755)
+						err = os.Chmod(path.Join(imgStore.RootDir(), repo, "blobs", "sha256", manifestDigest.Encoded()), 0o755)
 						So(err, ShouldBeNil)
 
-						ok, _, err := imgStore.CheckBlob(context.Background(), "repo", digest)
+						ok, _, err := imgStore.CheckBlob(context.Background(), repo, digest)
 						So(err, ShouldBeNil)
 						So(ok, ShouldBeTrue)
 					})
@@ -2170,12 +2302,17 @@ func TestDeleteBlobsInUse(t *testing.T) {
 			})
 
 			Convey("Setup multiarch manifest", t, func() {
+				// Unique repo per GoConvey leaf (same reason as Setup manifest above).
+				repoUUID, err := guuid.NewV4()
+				So(err, ShouldBeNil)
+				repoName := "test-" + repoUUID.String()
+
 				// put an unused blob
 				content := []byte("unused blob")
 				buf := bytes.NewBuffer(content)
 				unusedDigest := godigest.FromBytes(content)
 
-				_, _, err := imgStore.FullBlobUpload(context.Background(), repoName, bytes.NewReader(buf.Bytes()), unusedDigest)
+				_, _, err = imgStore.FullBlobUpload(context.Background(), repoName, bytes.NewReader(buf.Bytes()), unusedDigest)
 				So(err, ShouldBeNil)
 
 				// create a blob/layer
@@ -2299,15 +2436,15 @@ func TestDeleteBlobsInUse(t *testing.T) {
 
 				Convey("Try to delete blob currently in use", func() {
 					// layer blob
-					err := imgStore.DeleteBlob("test", bdgst1)
+					err := imgStore.DeleteBlob(repoName, bdgst1)
 					So(err, ShouldEqual, zerr.ErrBlobReferenced)
 
 					// manifest
-					err = imgStore.DeleteBlob("test", digest)
+					err = imgStore.DeleteBlob(repoName, digest)
 					So(err, ShouldEqual, zerr.ErrBlobReferenced)
 
 					// config
-					err = imgStore.DeleteBlob("test", cdigest)
+					err = imgStore.DeleteBlob(repoName, cdigest)
 					So(err, ShouldEqual, zerr.ErrBlobReferenced)
 				})
 
@@ -2329,7 +2466,7 @@ func TestDeleteBlobsInUse(t *testing.T) {
 					So(err, ShouldBeNil)
 
 					// config
-					err = imgStore.DeleteBlob("test", cdigest)
+					err = imgStore.DeleteBlob(repoName, cdigest)
 					So(err, ShouldBeNil)
 				})
 

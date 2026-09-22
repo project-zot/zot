@@ -770,7 +770,7 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 				},
 			}
 
-			updateIndex, oldDgst, err = common.CheckIfIndexNeedsUpdate(&index, &descLocal, is.log)
+			updateIndex, oldDgst, err = common.UpdateIndexOnTagOverwrite(&index, &descLocal, is.log)
 			if err != nil {
 				return "", "", err
 			}
@@ -803,7 +803,7 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 			},
 		}
 	} else {
-		updateIndex, oldDgst, err := common.CheckIfIndexNeedsUpdate(&index, &desc, is.log)
+		updateIndex, oldDgst, err := common.UpdateIndexOnTagOverwrite(&index, &desc, is.log)
 		if err != nil {
 			return "", "", err
 		}

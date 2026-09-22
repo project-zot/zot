@@ -448,6 +448,53 @@ func TestOnUpdateManifest(t *testing.T) {
 	})
 }
 
+func TestOnUpdateManifest_TagOverwriteKeepsPriorDigestStats(t *testing.T) {
+	Convey("Tag overwrite leaves prior digest Statistics in MetaDB until GC", t, func() {
+		rootDir := t.TempDir()
+		storeController := storage.StoreController{}
+		log := log.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+
+		storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil)
+
+		params := boltdb.DBParameters{RootDir: rootDir}
+		boltDriver, err := boltdb.GetBoltDriver(params)
+		So(err, ShouldBeNil)
+
+		metaDB, err := boltdb.New(boltDriver, log)
+		So(err, ShouldBeNil)
+
+		ctx := context.Background()
+		first := CreateRandomImage()
+		second := CreateRandomImage()
+
+		So(WriteImageToFileSystem(first, "repo", "latest", storeController), ShouldBeNil)
+		So(meta.OnUpdateManifest(ctx, "repo", "latest", ispec.MediaTypeImageManifest, first.Digest(),
+			first.ManifestDescriptor.Data, storeController, metaDB, log), ShouldBeNil)
+
+		So(metaDB.UpdateStatsOnDownload("repo", "latest"), ShouldBeNil)
+
+		repoMeta, err := metaDB.GetRepoMeta(ctx, "repo")
+		So(err, ShouldBeNil)
+		So(repoMeta.Statistics[first.Digest().String()].DownloadCount, ShouldEqual, 1)
+
+		So(WriteImageToFileSystem(second, "repo", "latest", storeController), ShouldBeNil)
+		So(meta.OnUpdateManifest(ctx, "repo", "latest", ispec.MediaTypeImageManifest, second.Digest(),
+			second.ManifestDescriptor.Data, storeController, metaDB, log), ShouldBeNil)
+
+		repoMeta, err = metaDB.GetRepoMeta(ctx, "repo")
+		So(err, ShouldBeNil)
+		So(repoMeta.Tags["latest"].Digest, ShouldEqual, second.Digest().String())
+
+		stats, ok := repoMeta.Statistics[first.Digest().String()]
+		So(ok, ShouldBeTrue)
+		So(stats.DownloadCount, ShouldEqual, 1)
+
+		_, ok = repoMeta.Statistics[second.Digest().String()]
+		So(ok, ShouldBeTrue)
+	})
+}
+
 func TestUpdateErrors(t *testing.T) {
 	Convey("Update operations", t, func() {
 		imageStore := mocks.MockedImageStore{}

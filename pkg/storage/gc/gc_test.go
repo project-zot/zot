@@ -66,6 +66,50 @@ var testCases = []struct {
 	},
 }
 
+// resetGCTestRepos wipes layout (and optional MetaDB rows) so GoConvey can re-run
+// "setup gc images" without accumulating untagged index rows from last-tag overwrite
+// retention across nested leaves.
+func resetGCTestRepos(imgStore storageTypes.ImageStore, metaDB mTypes.MetaDB, repos ...string) {
+	emptyIndex := ispec.Index{
+		SchemaVersion: 2,
+		MediaType:     ispec.MediaTypeImageIndex,
+	}
+
+	for _, repo := range repos {
+		repoDir := path.Join(imgStore.RootDir(), repo)
+		if !imgStore.DirExists(repoDir) {
+			if metaDB != nil {
+				_ = metaDB.DeleteRepoMeta(repo)
+			}
+
+			continue
+		}
+
+		blobs, err := imgStore.GetAllBlobs(repo)
+		if err != nil {
+			blobs = nil
+		}
+
+		var lockLatency time.Time
+
+		imgStore.Lock(&lockLatency)
+
+		_ = imgStore.PutIndexContent(repo, emptyIndex)
+
+		if len(blobs) > 0 {
+			_, _ = imgStore.CleanupRepo(repo, blobs)
+		}
+
+		_, _ = imgStore.RemoveIdleRepository(repo, 0)
+
+		imgStore.Unlock(&lockLatency)
+
+		if metaDB != nil {
+			_ = metaDB.DeleteRepoMeta(repo)
+		}
+	}
+}
+
 // The backend subtests run in parallel, but the top-level test stays sequential on
 // purpose: parallelising it too would run this and the other retention test's backends
 // concurrently, multiplying the load on the runner and the storage emulators.
@@ -232,6 +276,12 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 			ctx := context.Background()
 
 			Convey("setup gc images", t, func() {
+				// Fresh repos each GoConvey leaf: parent setup re-runs on a shared store,
+				// and last-tag overwrite retains prior digests in index.json.
+				resetGCTestRepos(imgStore, metaDB,
+					"gc-test1", "gc-test2", "gc-test3", "gc-test4",
+					"gc-docker1", "gc-docker2", "retention")
+
 				// for gc testing
 				// basic images
 				gcTest1 := CreateRandomImage()
@@ -1924,6 +1974,11 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 			ctx := context.Background()
 
 			Convey("setup gc images", t, func() {
+				// Fresh repos each GoConvey leaf: parent setup re-runs on a shared store,
+				// and last-tag overwrite retains prior digests in index.json.
+				resetGCTestRepos(imgStore, metaDB,
+					"gc-test1", "gc-test2", "gc-test3", "gc-test4", "retention")
+
 				// for gc testing
 				// basic images
 				gcTest1 := CreateRandomImage()
