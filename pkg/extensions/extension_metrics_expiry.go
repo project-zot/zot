@@ -53,20 +53,29 @@ func (t *metricsExpiryTask) String() string {
 }
 
 type metricsExpiryGenerator struct {
-	ms   monitoring.MetricServer
-	done bool
+	ms         monitoring.MetricServer
+	taskIssued bool
+	done       bool
 }
 
 func (gen *metricsExpiryGenerator) Name() string {
 	return "MetricsExpiryGenerator"
 }
 
+// Next returns the one task this generator produces per cycle on its first call, then
+// signals done on the call after. Scheduler.generate() checks IsDone() right after Next()
+// returns and discards whatever Next() just returned if IsDone() is already true - so
+// done must not flip true on the same call that hands back a real task, or that task is
+// silently dropped and never run. See extension_scrub.go's taskGenerator for the same
+// pattern (done only set once nothing is left to return).
 func (gen *metricsExpiryGenerator) Next() (scheduler.Task, error) {
-	if gen.done {
+	if gen.taskIssued {
+		gen.done = true
+
 		return nil, nil //nolint:nilnil
 	}
 
-	gen.done = true
+	gen.taskIssued = true
 
 	return &metricsExpiryTask{ms: gen.ms}, nil
 }
@@ -80,5 +89,6 @@ func (gen *metricsExpiryGenerator) IsReady() bool {
 }
 
 func (gen *metricsExpiryGenerator) Reset() {
+	gen.taskIssued = false
 	gen.done = false
 }
