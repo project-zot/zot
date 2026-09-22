@@ -10633,6 +10633,18 @@ func TestListingTags(t *testing.T) {
 			last:         "new",
 			expectedTags: []string{sigTag},
 		},
+		{
+			testCaseName: "Test the parameters 'n' and 'last' with a tag that does not exist",
+			pageSize:     "3",
+			last:         "1.5",
+			expectedTags: []string{"2", "2-test", "2.0.0"},
+		},
+		{
+			testCaseName: "Test the parameter 'last' sorting after every tag",
+			pageSize:     "",
+			last:         "zzz",
+			expectedTags: []string{},
+		},
 	}
 
 	for _, testCase := range testCases {
