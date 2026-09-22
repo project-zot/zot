@@ -105,6 +105,12 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 	return imgStore
 }
 
+// ConcurrentReadSafe reports that this store's reads may be issued from many
+// goroutines at once, which lets repository-wide walks prefetch in parallel.
+func (is *ImageStore) ConcurrentReadSafe() bool {
+	return true
+}
+
 // RLock read-lock.
 func (is *ImageStore) RLock(lockStart *time.Time) {
 	*lockStart = time.Now()
