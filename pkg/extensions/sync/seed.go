@@ -6,6 +6,7 @@ import (
 	"context"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/regclient/regclient/types/descriptor"
@@ -150,7 +151,7 @@ func (seeder *refSeeder) fetchManifest(ctx context.Context, digest godigest.Dige
 
 	service := seeder.service
 
-	content, err := seeder.imageStore.GetBlobContent(seeder.localRepo, digest)
+	content, err := seeder.localBlobContent(digest)
 	if err == nil {
 		// manifest.New errors on unrecognized formats and verifies the content
 		// against digest
@@ -176,6 +177,17 @@ func (seeder *refSeeder) fetchManifest(ctx context.Context, digest godigest.Dige
 	defer service.rc.Close(ctx, man.GetRef())
 
 	return man
+}
+
+// localBlobContent reads a manifest-sized blob from the local store, taking
+// the read lock GetBlobContent requires its caller to hold.
+func (seeder *refSeeder) localBlobContent(digest godigest.Digest) ([]byte, error) {
+	var lockLatency time.Time
+
+	seeder.imageStore.RLock(&lockLatency)
+	defer seeder.imageStore.RUnlock(&lockLatency)
+
+	return seeder.imageStore.GetBlobContent(seeder.localRepo, digest)
 }
 
 // seedBlob makes a blob from the local store available in the temp layout by
