@@ -60,8 +60,9 @@ func ClusterProxy(ctrlr *Controller) func(http.HandlerFunc) http.HandlerFunc {
 
 			// if the header contains a hop-count, return an error response as there should be no multi-hop
 			if request.Header.Get(constants.ScaleOutHopCountHeader) != "" {
-				logger.Fatal().Str("url", request.URL.String()).
+				logger.Warn().Str("url", request.URL.String()).
 					Msg("failed to process request - cannot proxy an already proxied request")
+				http.Error(response, "cannot proxy an already proxied request", http.StatusLoopDetected)
 
 				return
 			}
