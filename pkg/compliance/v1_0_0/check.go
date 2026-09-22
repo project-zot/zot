@@ -600,9 +600,10 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
+			// last is a position, so a value that is not a current tag lists the tags after it.
 			resp, err = resty.R().Get(baseURL + "/v2/page0/tags/list?n=0&last=100")
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 			resp, err = resty.R().Get(baseURL + "/v2/page0/tags/list?n=0&last=test:0.0")
 			So(err, ShouldBeNil)
