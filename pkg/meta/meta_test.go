@@ -465,7 +465,9 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			})
 
 			Convey("Test API keys with short expiration date", func() {
-				expirationDate := time.Now().Add(1 * time.Second)
+				// A few seconds gives headroom for slow CI between Add and the
+				// not-expired check; then wait until After(expirationDate).
+				expirationDate := time.Now().Add(3 * time.Second)
 				apiKeyDetails.ExpirationDate = expirationDate
 
 				userAc := reqCtx.NewUserAccessControl()
@@ -487,7 +489,10 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				So(isExpired, ShouldBeFalse)
 				So(err, ShouldBeNil)
 
-				time.Sleep(1 * time.Second)
+				// Production uses time.Now().After(expirationDate); sleep only the remainder.
+				if d := time.Until(expirationDate) + time.Millisecond; d > 0 {
+					time.Sleep(d)
+				}
 
 				Convey("GetUserAPIKeys detects api key expired", func() {
 					storedAPIKeys, err = metaDB.GetUserAPIKeys(ctx)
