@@ -190,6 +190,22 @@ func (seeder *refSeeder) localBlobContent(digest godigest.Digest) ([]byte, error
 	return seeder.imageStore.GetBlobContent(seeder.localRepo, digest)
 }
 
+// localBlobStat reports whether localRepo itself holds digest, taking the
+// read lock StatBlob requires its caller to hold. Deliberately not CheckBlob:
+// with dedupe enabled, CheckBlob can hydrate the digest into localRepo from
+// any other repository in the store, without the access checks the blob API
+// routes apply to such cross-repo copies.
+func (seeder *refSeeder) localBlobStat(digest godigest.Digest) bool {
+	var lockLatency time.Time
+
+	seeder.imageStore.RLock(&lockLatency)
+	defer seeder.imageStore.RUnlock(&lockLatency)
+
+	found, _, _, err := seeder.imageStore.StatBlob(seeder.localRepo, digest)
+
+	return err == nil && found
+}
+
 // seedBlob makes a blob from the local store available in the temp layout by
 // streaming a digest-verified copy.
 func (seeder *refSeeder) seedBlob(ctx context.Context, desc descriptor.Descriptor) bool {
@@ -215,8 +231,7 @@ func (seeder *refSeeder) seedBlob(ctx context.Context, desc descriptor.Descripto
 func (seeder *refSeeder) copyLocalBlob(ctx context.Context, desc descriptor.Descriptor) bool {
 	service := seeder.service
 
-	found, _, err := seeder.imageStore.CheckBlob(ctx, seeder.localRepo, desc.Digest)
-	if err != nil || !found {
+	if !seeder.localBlobStat(desc.Digest) {
 		return false
 	}
 
