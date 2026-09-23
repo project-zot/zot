@@ -345,7 +345,7 @@ func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filte
 			return nil
 		}
 
-		if lastRepo == "" {
+		if lastRepo == "" || rel > lastRepo {
 			found = true
 		}
 
