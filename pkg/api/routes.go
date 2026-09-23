@@ -394,21 +394,9 @@ func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Req
 	startIndex := 0
 
 	if last != "" {
-		found := false
-
-		for i, tag := range tags {
-			if tag == last {
-				found = true
-				startIndex = i + 1
-
-				break
-			}
-		}
-
-		if !found {
-			response.WriteHeader(http.StatusNotFound)
-
-			return
+		startIndex = sort.SearchStrings(tags, last)
+		if startIndex < len(tags) && tags[startIndex] == last {
+			startIndex++
 		}
 	}
 
