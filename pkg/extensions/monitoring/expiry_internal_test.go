@@ -113,7 +113,7 @@ func TestExpireRepoMetricsGraceWindow(t *testing.T) {
 // directly on a fresh tracker rather than depending on the package-level flag.
 func TestTouchAndObserveDisabledSkipsTracking(t *testing.T) {
 	Convey("With tracking disabled, touchAndObserve runs observe but never writes to current", t, func() {
-		tracker := &repoLabelTracker{current: map[string]struct{}{}, previous: map[string]struct{}{}}
+		tracker := &repoLabelTracker{current: &sync.Map{}, previous: &sync.Map{}}
 
 		observed := 0
 		for i := 0; i < 100; i++ {
@@ -123,15 +123,15 @@ func TestTouchAndObserveDisabledSkipsTracking(t *testing.T) {
 		}
 
 		So(observed, ShouldEqual, 100)
-		So(len(tracker.current), ShouldEqual, 0)
+		So(syncMapLen(tracker.current), ShouldEqual, 0)
 	})
 
 	Convey("With tracking enabled, the same repo is recorded in current", t, func() {
-		tracker := &repoLabelTracker{current: map[string]struct{}{}, previous: map[string]struct{}{}}
+		tracker := &repoLabelTracker{current: &sync.Map{}, previous: &sync.Map{}}
 
 		tracker.touchAndObserve(true, "repo-x", func() {})
 
-		So(len(tracker.current), ShouldEqual, 1)
+		So(syncMapLen(tracker.current), ShouldEqual, 1)
 	})
 }
 
@@ -221,6 +221,17 @@ func TestExpireRepoMetricsConcurrentTouchNeverLosesUpdates(t *testing.T) {
 	})
 }
 
+func syncMapLen(m *sync.Map) int {
+	count := 0
+	m.Range(func(_, _ any) bool {
+		count++
+
+		return true
+	})
+
+	return count
+}
+
 func touchExpiryRepo(metricsServer MetricServer, repo string, latency time.Duration) {
 	IncUploadCounter(metricsServer, repo)
 	IncDownloadCounter(metricsServer, repo)
@@ -286,7 +297,8 @@ func BenchmarkIncUploadCounter(b *testing.B) {
 }
 
 // BenchmarkIncUploadCounterParallel measures the same hot path under concurrent callers,
-// since touchAndObserve serializes all writers on t.mu regardless of label value.
+// where touchAndObserve only briefly holds t.mu (RLock) to read the current generation
+// pointer, so writers no longer serialize behind each other.
 func BenchmarkIncUploadCounterParallel(b *testing.B) {
 	EnableRepoLabelExpiryTracking()
 
@@ -307,7 +319,7 @@ func BenchmarkIncUploadCounterParallel(b *testing.B) {
 // same call, same repo, only the tracking bool differs. Uses a fresh local tracker so
 // the result doesn't depend on the global flag's state.
 func BenchmarkTouchAndObserveDisabled(b *testing.B) {
-	tracker := &repoLabelTracker{current: map[string]struct{}{}, previous: map[string]struct{}{}}
+	tracker := &repoLabelTracker{current: &sync.Map{}, previous: &sync.Map{}}
 	repo := "bench-repo"
 
 	b.ResetTimer()
@@ -318,7 +330,7 @@ func BenchmarkTouchAndObserveDisabled(b *testing.B) {
 }
 
 func BenchmarkTouchAndObserveEnabled(b *testing.B) {
-	tracker := &repoLabelTracker{current: map[string]struct{}{}, previous: map[string]struct{}{}}
+	tracker := &repoLabelTracker{current: &sync.Map{}, previous: &sync.Map{}}
 	repo := "bench-repo"
 
 	b.ResetTimer()
