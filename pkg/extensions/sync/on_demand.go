@@ -67,6 +67,51 @@ func (onDemand *BaseOnDemand) ShouldCheckUpstreamManifest(repo, reference string
 	return true
 }
 
+// ShouldQueueOnDemandSync reports whether any configured registry uses
+// on-demand-in-background sync for this local repo.
+func (onDemand *BaseOnDemand) ShouldQueueOnDemandSync(repo string) bool {
+	return len(onDemand.onDemandInBackgroundServicesForRepo(repo)) > 0
+}
+
+// QueueImage schedules at most one background image sync for repo:reference, using only
+// onDemandInBackground registries that match the repo. Concurrent callers for the same key
+// share a singleflight; spawn itself is also deduplicated via requestStore.
+func (onDemand *BaseOnDemand) QueueImage(ctx context.Context, repo, reference string) {
+	if !onDemand.ShouldQueueOnDemandSync(repo) {
+		return
+	}
+
+	req := request{
+		kind:         onDemandKindImage,
+		repo:         repo,
+		reference:    reference,
+		isBackground: true,
+	}
+
+	if _, requested := onDemand.requestStore.LoadOrStore(req, struct{}{}); requested {
+		return
+	}
+
+	detachedContext := context.WithoutCancel(ctx)
+	key := onDemandKey(onDemandKindImage, repo, reference)
+
+	go func() {
+		defer func() {
+			onDemand.requestStore.Delete(req)
+		}()
+
+		err := onDemand.doOnDemandFlight(key, repo, reference,
+			"image already demanded, on-demand sync result was shared",
+			func() error {
+				return onDemand.syncImageInBackground(detachedContext, repo, reference)
+			})
+		if err != nil {
+			onDemand.log.Error().Err(err).Str("repo", repo).Str("reference", reference).
+				Msg("on-demand-in-background image sync failed")
+		}
+	}()
+}
+
 func onDemandKey(kind, repo, reference string) string {
 	return kind + "\x00" + repo + "\x00" + reference
 }
@@ -116,7 +161,8 @@ func (onDemand *BaseOnDemand) doOnDemandFlight(key, repo, reference, sharedMsg s
 func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDigestStr string,
 	referenceTypes []string, scheduleBackground bool,
 ) error {
-	return onDemand.runOnDemand(ctx, repo, subjectDigestStr, "starting on-demand referrer sync",
+	return onDemand.runOnDemandServices(ctx, repo, subjectDigestStr, "starting on-demand referrer sync",
+		onDemand.services,
 		func(syncCtx context.Context, service Service) error {
 			err := service.SyncReferrers(syncCtx, repo, subjectDigestStr, referenceTypes)
 			if scheduleBackground && err != nil && !isSkippableSyncImageErr(err) {
@@ -136,7 +182,8 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference str
 ) error {
 	var dockerCompatErr error
 
-	err := onDemand.runOnDemand(ctx, repo, reference, "starting on-demand image sync",
+	err := onDemand.runOnDemandServices(ctx, repo, reference, "starting on-demand image sync",
+		onDemand.services,
 		func(syncCtx context.Context, service Service) error {
 			err := service.SyncImage(syncCtx, repo, reference)
 			if errors.Is(err, zerr.ErrSyncDockerCompatRequired) {
@@ -165,13 +212,54 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference str
 	return err
 }
 
-// runOnDemand tries each configured registry until one succeeds.
-func (onDemand *BaseOnDemand) runOnDemand(ctx context.Context, repo, reference, startMsg string,
-	syncFn onDemandSyncFn,
+// syncImageInBackground tries only onDemandInBackground registries that match the repo.
+func (onDemand *BaseOnDemand) syncImageInBackground(ctx context.Context, repo, reference string) error {
+	services := onDemand.onDemandInBackgroundServicesForRepo(repo)
+	if len(services) == 0 {
+		return nil
+	}
+
+	var dockerCompatErr error
+
+	err := onDemand.runOnDemandServices(ctx, repo, reference, "starting on-demand-in-background image sync",
+		services,
+		func(syncCtx context.Context, service Service) error {
+			err := service.SyncImage(syncCtx, repo, reference)
+			if errors.Is(err, zerr.ErrSyncDockerCompatRequired) {
+				dockerCompatErr = err
+			}
+
+			return err
+		})
+
+	if err != nil && dockerCompatErr != nil &&
+		(errors.Is(err, zerr.ErrSyncImageFilteredOut) || errors.Is(err, zerr.ErrManifestNotFound) ||
+			errors.Is(err, zerr.ErrRepoNotFound) || errors.Is(err, zerr.ErrUnauthorizedAccess)) {
+		return dockerCompatErr
+	}
+
+	return err
+}
+
+func (onDemand *BaseOnDemand) onDemandInBackgroundServicesForRepo(repo string) []Service {
+	services := make([]Service, 0, len(onDemand.services))
+
+	for _, service := range onDemand.services {
+		if service.IsOnDemandInBackgroundForRepo(repo) {
+			services = append(services, service)
+		}
+	}
+
+	return services
+}
+
+// runOnDemandServices tries each service in order until one succeeds.
+func (onDemand *BaseOnDemand) runOnDemandServices(ctx context.Context, repo, reference, startMsg string,
+	services []Service, syncFn onDemandSyncFn,
 ) error {
 	var err error
 
-	for serviceID, service := range onDemand.services {
+	for serviceID, service := range services {
 		timeout := service.GetSyncTimeout()
 
 		onDemand.log.Debug().

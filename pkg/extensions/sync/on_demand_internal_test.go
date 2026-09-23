@@ -17,11 +17,13 @@ import (
 
 // stubOnDemandService is a synchronous Service stub for BaseOnDemand unit tests.
 type stubOnDemandService struct {
-	syncImageErr     error
-	syncReferrersErr error
-	canRetry         bool
-	timeout          time.Duration
-	syncImageCalls   int
+	syncImageErr           error
+	syncReferrersErr       error
+	canRetry               bool
+	timeout                time.Duration
+	syncImageCalls         int
+	onDemandInBackground   bool
+	isOnDemandInBackground func(repo string) bool
 }
 
 func (s *stubOnDemandService) GetNextRepo(_ string) (string, error) { return "", nil }
@@ -51,6 +53,14 @@ func (s *stubOnDemandService) GetSyncTimeout() time.Duration {
 }
 
 func (s *stubOnDemandService) ShouldCheckUpstream(_, _ string) bool { return true }
+
+func (s *stubOnDemandService) IsOnDemandInBackgroundForRepo(repo string) bool {
+	if s.isOnDemandInBackground != nil {
+		return s.isOnDemandInBackground(repo)
+	}
+
+	return s.onDemandInBackground
+}
 
 func TestOnDemandDockerCompatPreference(t *testing.T) {
 	Convey("SyncImage prefers docker-compat over a later skippable miss", t, func() {
@@ -88,5 +98,49 @@ func TestOnDemandNoBackgroundWhenCannotRetry(t *testing.T) {
 			return true
 		})
 		So(count, ShouldEqual, 0)
+	})
+}
+
+func TestQueueImageNoopWithoutBackgroundServices(t *testing.T) {
+	Convey("QueueImage returns immediately when no registry uses onDemandInBackground", t, func() {
+		svc := &stubOnDemandService{onDemandInBackground: false}
+		onDemand := NewOnDemand(log.NewTestLogger())
+		onDemand.Add(svc)
+
+		So(onDemand.ShouldQueueOnDemandSync("repo"), ShouldBeFalse)
+		So(func() { onDemand.QueueImage(context.Background(), "repo", "tag") }, ShouldNotPanic)
+		So(svc.syncImageCalls, ShouldEqual, 0)
+	})
+}
+
+func TestSyncImageInBackgroundEmptyServices(t *testing.T) {
+	Convey("syncImageInBackground is a no-op without matching registries", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+		onDemand.Add(&stubOnDemandService{onDemandInBackground: false})
+
+		So(onDemand.syncImageInBackground(context.Background(), "repo", "tag"), ShouldBeNil)
+	})
+}
+
+func TestSyncImageInBackgroundDockerCompatPreference(t *testing.T) {
+	Convey("syncImageInBackground prefers docker-compat over a later skippable miss", t, func() {
+		dockerErr := fmt.Errorf("%w: docker list", zerr.ErrSyncDockerCompatRequired)
+		first := &stubOnDemandService{
+			syncImageErr:         dockerErr,
+			onDemandInBackground: true,
+		}
+		second := &stubOnDemandService{
+			syncImageErr:         zerr.ErrSyncImageFilteredOut,
+			onDemandInBackground: true,
+		}
+
+		onDemand := NewOnDemand(log.NewTestLogger())
+		onDemand.Add(first)
+		onDemand.Add(second)
+
+		err := onDemand.syncImageInBackground(context.Background(), "repo", "tag")
+		So(errors.Is(err, zerr.ErrSyncDockerCompatRequired), ShouldBeTrue)
+		So(first.syncImageCalls, ShouldEqual, 1)
+		So(second.syncImageCalls, ShouldEqual, 1)
 	})
 }

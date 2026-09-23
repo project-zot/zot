@@ -1779,6 +1779,25 @@ func validateRegistryManifestCheckInterval(regCfg syncconf.RegistryConfig) error
 	return nil
 }
 
+// validateRegistryOnDemandInBackground rejects onDemandInBackground settings that cannot
+// take effect or conflict with blocking on-demand refresh semantics.
+func validateRegistryOnDemandInBackground(regCfg syncconf.RegistryConfig) error {
+	if !regCfg.IsOnDemandInBackgroundEnabled() {
+		return nil
+	}
+
+	if !regCfg.OnDemand {
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "onDemandInBackground requires onDemand to be enabled")
+	}
+
+	if regCfg.ManifestCheckInterval > 0 {
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig,
+			"onDemandInBackground is incompatible with manifestCheckInterval")
+	}
+
+	return nil
+}
+
 func validateRegistryPlatforms(regCfg syncconf.RegistryConfig) error {
 	if err := validatePlatformsList(regCfg.Platforms); err != nil {
 		return err
@@ -1832,6 +1851,13 @@ func validateSync(config *config.Config, logger zlog.Logger) error {
 }
 
 func validateSyncRegistry(config *config.Config, regID int, regCfg syncconf.RegistryConfig, logger zlog.Logger) error {
+	if bgValidationErr := validateRegistryOnDemandInBackground(regCfg); bgValidationErr != nil {
+		logger.Error().Err(bgValidationErr).Int("id", regID).Interface("extensions.sync.registries[id]",
+			regCfg).Msg("invalid config for onDemandInBackground")
+
+		return bgValidationErr
+	}
+
 	if intervalValidationErr := validateRegistryManifestCheckInterval(regCfg); intervalValidationErr != nil {
 		logger.Error().Err(intervalValidationErr).Int("id", regID).Interface("extensions.sync.registries[id]",
 			regCfg).Msg("invalid config for manifestCheckInterval")

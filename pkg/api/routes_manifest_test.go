@@ -55,6 +55,12 @@ func (m *mockSyncOnDemand) ShouldCheckUpstreamManifest(repo, reference string) b
 	return true
 }
 
+func (m *mockSyncOnDemand) ShouldQueueOnDemandSync(string) bool {
+	return false
+}
+
+func (m *mockSyncOnDemand) QueueImage(context.Context, string, string) {}
+
 func newSyncTestRouteHandler(
 	t *testing.T,
 	store mocks.MockedImageStore,

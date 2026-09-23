@@ -346,6 +346,21 @@ func (service *BaseService) ShouldCheckUpstream(repo, reference string) bool {
 	return service.checkTracker.ShouldCheckUpstream(repo, reference)
 }
 
+// IsOnDemandInBackgroundForRepo reports whether this registry should use
+// on-demand-in-background sync for the given local repo (content filters apply when
+// Content is configured).
+func (service *BaseService) IsOnDemandInBackgroundForRepo(repo string) bool {
+	if !service.config.IsOnDemandInBackgroundEnabled() || !service.config.OnDemand {
+		return false
+	}
+
+	if len(service.config.Content) == 0 {
+		return true
+	}
+
+	return service.contentManager.GetContentByLocalRepo(repo) != nil
+}
+
 // markUpstreamChecked records a successful upstream check, so that subsequent on-demand
 // requests for the same reference can be served locally until the interval elapses.
 func (service *BaseService) markUpstreamChecked(repo, reference string) {
