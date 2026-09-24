@@ -249,6 +249,16 @@
       "end": 3109
     }
   },
+  "blackbox/sync_ondemand_seed.bats": {
+    "upstream": {
+      "begin": 3120,
+      "end": 3129
+    },
+    "downstream": {
+      "begin": 3140,
+      "end": 3149
+    }
+  },
   "scale-out/cloud_scale_out_basic_auth_tls_scale.bats": {
     "zot0": {
       "begin": 6000,
