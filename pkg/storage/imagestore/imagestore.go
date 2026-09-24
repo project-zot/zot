@@ -303,7 +303,7 @@ func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filte
 	found := false
 
 	lastExists := false
-	if lastRepo != "" {
+	if lastRepo != "" && is.DirExists(path.Join(is.rootDir, lastRepo)) {
 		lastExists, _ = is.ValidateRepo(lastRepo)
 	}
 
