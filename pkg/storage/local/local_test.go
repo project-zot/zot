@@ -4395,3 +4395,41 @@ func isKnownErr(err error) bool {
 
 	return false
 }
+
+func TestGetNextRepositoriesWithMissingLast(t *testing.T) {
+	dir := t.TempDir()
+	log := zlog.NewTestLogger()
+	metrics := monitoring.NewNopMetricServer()
+	cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+		RootDir:     dir,
+		Name:        "cache",
+		UseRelPaths: true,
+	}, log)
+
+	imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+	storeController := storage.StoreController{DefaultStore: imgStore}
+	image := CreateDefaultImage()
+
+	for _, repo := range []string{"a/z", "a-foo", "b"} {
+		if err := WriteImageToFileSystem(image, repo, "0.0.1", storeController); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	Convey("A last that is not a repo only returns repos that sort after it", t, func() {
+		repos, more, err := imgStore.GetNextRepositories("a.", 10, func(repo string) (bool, error) {
+			return true, nil
+		})
+		So(err, ShouldBeNil)
+		So(more, ShouldBeFalse)
+		So(repos, ShouldResemble, []string{"a/z", "b"})
+	})
+
+	Convey("A last that is a repo keeps walk order after it", t, func() {
+		repos, _, err := imgStore.GetNextRepositories("a/z", 10, func(repo string) (bool, error) {
+			return true, nil
+		})
+		So(err, ShouldBeNil)
+		So(repos, ShouldResemble, []string{"a-foo", "b"})
+	})
+}
