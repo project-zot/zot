@@ -940,7 +940,7 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			details["name"] = name
 			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrManifestNotFound) {
 			details["reference"] = reference
 			e := apiErr.NewError(apiErr.MANIFEST_UNKNOWN).AddDetail(details)
@@ -965,7 +965,7 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			details["name"] = name
 			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrManifestNotFound) {
 			details["reference"] = reference
 			e := apiErr.NewError(apiErr.MANIFEST_UNKNOWN).AddDetail(details)
