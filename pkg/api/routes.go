@@ -3005,9 +3005,7 @@ func isSyncOnDemandEnabled(ctlr *Controller) bool {
 		return false
 	}
 
-	extensionsConfig := ctlr.Config.CopyExtensionsConfig()
-
-	return extensionsConfig.IsSyncEnabled() && ctlr.SyncOnDemand != nil
+	return ctlr.Config.IsSyncEnabled() && ctlr.SyncOnDemand != nil
 }
 
 func eventContextFromRequest(r *http.Request) *events.EventContext {

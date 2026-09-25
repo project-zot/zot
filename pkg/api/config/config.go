@@ -1331,6 +1331,19 @@ func (c *Config) IsHydrateBlobOnReadEnabled(storePath string) bool {
 }
 
 // CopyExtensionsConfig returns a copy of the extensions config if it exists.
+// IsSyncEnabled reports whether the sync extension is enabled without deep-copying the
+// extensions config, which is too expensive for per-request checks.
+func (c *Config) IsSyncEnabled() bool {
+	if c == nil {
+		return false
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.Extensions.IsSyncEnabled()
+}
+
 func (c *Config) CopyExtensionsConfig() *extconf.ExtensionConfig {
 	if c == nil {
 		return nil

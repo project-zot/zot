@@ -853,6 +853,24 @@ func TestConfig(t *testing.T) {
 		So(conf.IsFastRestartEnabled(), ShouldBeTrue)
 	})
 
+	Convey("Test IsSyncEnabled()", t, func() {
+		var nilConf *config.Config
+		So(nilConf.IsSyncEnabled(), ShouldBeFalse)
+
+		conf := config.New()
+		So(conf.IsSyncEnabled(), ShouldBeFalse)
+
+		conf.Extensions = &extconf.ExtensionConfig{Sync: &syncconf.Config{}}
+		So(conf.IsSyncEnabled(), ShouldBeFalse)
+
+		conf.Extensions.Sync.Registries = []syncconf.RegistryConfig{{URLs: []string{"http://localhost"}}}
+		So(conf.IsSyncEnabled(), ShouldBeTrue)
+
+		disabled := false
+		conf.Extensions.Sync.Enable = &disabled
+		So(conf.IsSyncEnabled(), ShouldBeFalse)
+	})
+
 	Convey("Test IsEventRecorderEnabled()", t, func() {
 		conf := config.New()
 		extensionsConfig := conf.CopyExtensionsConfig()
