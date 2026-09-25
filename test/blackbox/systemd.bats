@@ -16,6 +16,11 @@ function verify_prerequisites {
         return 1
     fi
 
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "you need to install python3 as a prerequisite to running the tests" >&3
+        return 1
+    fi
+
     return 0
 }
 
@@ -75,6 +80,61 @@ function wait_for_listen() {
     done
 
     echo "ERROR: Port ${port} not listening after 5 seconds" >&3
+    return 1
+}
+
+# Listen for sd_notify datagrams on a UNIX socket. Writes each payload as a line
+# to out_file. Creates ready_file once the socket is bound.
+function start_notify_listener() {
+    local sock_path=${1}
+    local out_file=${2}
+    local ready_file=${3}
+
+    rm -f "${sock_path}" "${out_file}" "${ready_file}"
+
+    python3 - "${sock_path}" "${out_file}" "${ready_file}" <<'PY' &
+import os
+import socket
+import sys
+
+sock_path, out_file, ready_file = sys.argv[1], sys.argv[2], sys.argv[3]
+if os.path.exists(sock_path):
+    os.unlink(sock_path)
+
+sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+sock.bind(sock_path)
+sock.settimeout(60.0)
+open(ready_file, "w").close()
+
+with open(out_file, "ab", buffering=0) as out:
+    while True:
+        try:
+            data, _ = sock.recvfrom(4096)
+        except socket.timeout:
+            break
+        out.write(data + b"\n")
+        if b"STOPPING=1" in data:
+            break
+
+sock.close()
+try:
+    os.unlink(sock_path)
+except OSError:
+    pass
+PY
+
+    echo -n "$! " >> "${BATS_FILE_TMPDIR}/zot.pid"
+
+    local attempt=1
+    while [ $attempt -le 50 ]; do
+        if [ -f "${ready_file}" ]; then
+            return 0
+        fi
+        sleep 0.1
+        ((attempt++))
+    done
+
+    echo "ERROR: notify listener did not become ready" >&3
     return 1
 }
 
@@ -325,4 +385,59 @@ EOF
     # Give zot a moment to fail startup and log the error
     # Verify log output records error for multiple listeners
     wait_for_log "${act_log}" "expected exactly one systemd socket activation listener"
+}
+
+@test "systemd notify sends READY then STOPPING" {
+    local zot_root_dir=${BATS_FILE_TMPDIR}/zot-notify
+    local zot_config_file=${BATS_FILE_TMPDIR}/zot_config_notify.json
+    local zot_log_file=${BATS_FILE_TMPDIR}/zot-notify.log
+    local notify_sock
+    local notify_out=${BATS_FILE_TMPDIR}/notify.out
+    local notify_ready=${BATS_FILE_TMPDIR}/notify.ready
+    local port
+
+    # Keep the socket path short: AF_UNIX sun_path is limited (~108 bytes).
+    notify_sock=$(mktemp -u /tmp/zot-notify-XXXXXX.sock)
+    port=$(get_free_port_for_service "systemd")
+
+    mkdir -p "${zot_root_dir}"
+
+    cat > "${zot_config_file}" <<EOF
+{
+    "distSpecVersion": "1.1.1",
+    "storage": {
+        "rootDirectory": "${zot_root_dir}"
+    },
+    "http": {
+        "address": "127.0.0.1",
+        "port": "${port}"
+    },
+    "log": {
+        "level": "debug",
+        "output": "${zot_log_file}"
+    }
+}
+EOF
+
+    start_notify_listener "${notify_sock}" "${notify_out}" "${notify_ready}"
+
+    NOTIFY_SOCKET="${notify_sock}" "${ZOT_PATH}" serve "${zot_config_file}" &
+    local zot_pid=$!
+    echo -n "${zot_pid} " >> "${BATS_FILE_TMPDIR}/zot.pid"
+    echo "${port}" > "${BATS_FILE_TMPDIR}/zot.port"
+
+    wait_for_log "${notify_out}" "READY=1"
+
+    run curl -s -f -o /dev/null -w "%{http_code}" "http://127.0.0.1:${port}/v2/"
+    [ "$status" -eq 0 ]
+    [ "$output" = "200" ]
+
+    run curl -s -f -o /dev/null -w "%{http_code}" "http://127.0.0.1:${port}/readyz"
+    [ "$status" -eq 0 ]
+    [ "$output" = "200" ]
+
+    kill -TERM "${zot_pid}"
+    wait_for_log "${notify_out}" "STOPPING=1"
+    grep -q "READY=1" "${notify_out}"
+    grep -q "STOPPING=1" "${notify_out}"
 }

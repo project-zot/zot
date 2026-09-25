@@ -7,6 +7,14 @@ Systemd creates the listening socket from `ListenStream` in `zot.socket`. When t
 connects, systemd starts `zot.service` and passes the listener to zot through the socket activation
 file descriptor environment.
 
+The companion `zot.service` uses `Type=notify`. After the HTTP listener is ready, zot sends
+`READY=1` over the systemd notification socket so `systemctl is-active --wait` reflects true
+readiness (not just process start).
+
+Requires a zot build that implements `sd_notify`. With `Type=notify`, an older binary that never
+sends `READY=1` will hit `TimeoutStartSec` (the example sets `5min`) and fail to start. Install
+a current zot before switching the unit from `Type=simple`.
+
 ## Port Configuration
 
 The `http.port` in the zot config must match the `ListenStream` port in `zot.socket`.
