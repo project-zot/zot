@@ -4398,8 +4398,8 @@ func isKnownErr(err error) bool {
 
 func TestGetNextRepositoriesWithMissingLast(t *testing.T) {
 	dir := t.TempDir()
-	var logBuf bytes.Buffer
-	log := zlog.NewLoggerWithWriter("debug", &logBuf)
+	logBuf := &bytes.Buffer{}
+	log := zlog.NewLoggerWithWriter("debug", logBuf)
 	metrics := monitoring.NewNopMetricServer()
 	cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 		RootDir:     dir,
