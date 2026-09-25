@@ -42,11 +42,13 @@ function setup_file() {
     local zot_sync_ondemand_root_dir=${BATS_FILE_TMPDIR}/zot-ondemand
     local zot_sync_interval_root_dir=${BATS_FILE_TMPDIR}/zot-interval
     local zot_sync_platforms_root_dir=${BATS_FILE_TMPDIR}/zot-platforms
+    local zot_sync_ondemand_bg_root_dir=${BATS_FILE_TMPDIR}/zot-ondemand-bg
 
     local zot_sync_per_config_file=${BATS_FILE_TMPDIR}/zot_sync_per_config.json
     local zot_sync_ondemand_config_file=${BATS_FILE_TMPDIR}/zot_sync_ondemand_config.json
     local zot_sync_interval_config_file=${BATS_FILE_TMPDIR}/zot_sync_interval_config.json
     local zot_sync_platforms_config_file=${BATS_FILE_TMPDIR}/zot_sync_platforms_config.json
+    local zot_sync_ondemand_bg_config_file=${BATS_FILE_TMPDIR}/zot_sync_ondemand_bg_config.json
 
     local zot_minimal_root_dir=${BATS_FILE_TMPDIR}/zot-minimal
     local zot_minimal_config_file=${BATS_FILE_TMPDIR}/zot_minimal_config.json
@@ -56,6 +58,7 @@ function setup_file() {
     mkdir -p ${zot_sync_ondemand_root_dir}
     mkdir -p ${zot_sync_interval_root_dir}
     mkdir -p ${zot_sync_platforms_root_dir}
+    mkdir -p ${zot_sync_ondemand_bg_root_dir}
     mkdir -p ${zot_minimal_root_dir}
     mkdir -p ${oci_data_dir}
     zot_port1=$(get_free_port_for_service "zot1")
@@ -68,6 +71,8 @@ function setup_file() {
     echo ${zot_port4} > ${BATS_FILE_TMPDIR}/zot.port4
     zot_port5=$(get_free_port_for_service "zot5")
     echo ${zot_port5} > ${BATS_FILE_TMPDIR}/zot.port5
+    zot_port6=$(get_free_port_for_service "zot6")
+    echo ${zot_port6} > ${BATS_FILE_TMPDIR}/zot.port6
 
     cat >${zot_sync_per_config_file} <<EOF
 {
@@ -228,6 +233,41 @@ EOF
     }
 }
 EOF
+    cat >${zot_sync_ondemand_bg_config_file} <<EOF
+{
+    "distSpecVersion": "1.1.1",
+    "storage": {
+        "rootDirectory": "${zot_sync_ondemand_bg_root_dir}"
+    },
+    "http": {
+        "address": "0.0.0.0",
+        "port": "${zot_port6}"
+    },
+    "log": {
+        "level": "debug",
+        "output": "${BATS_FILE_TMPDIR}/zot-ondemand-bg.log"
+    },
+    "extensions": {
+        "sync": {
+            "registries": [
+                {
+                    "urls": [
+                        "http://localhost:${zot_port3}"
+                    ],
+                    "onDemand": true,
+                    "onDemandInBackground": true,
+                    "tlsVerify": false,
+                    "content": [
+                        {
+                            "prefix": "**"
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+}
+EOF
     git -C ${BATS_FILE_TMPDIR} clone https://github.com/project-zot/helm-charts.git
 
     zot_serve ${ZOT_MINIMAL_PATH} ${zot_minimal_config_file}
@@ -244,6 +284,9 @@ EOF
 
     zot_serve ${ZOT_PATH} ${zot_sync_platforms_config_file}
     wait_zot_reachable ${zot_port5}
+
+    zot_serve ${ZOT_PATH} ${zot_sync_ondemand_bg_config_file}
+    wait_zot_reachable ${zot_port6}
 }
 
 # Print zot logs only when a test fails (see dump_zot_logs_on_failure).
@@ -253,7 +296,8 @@ function teardown() {
         "${BATS_FILE_TMPDIR}/zot-per.log" \
         "${BATS_FILE_TMPDIR}/zot-ondemand.log" \
         "${BATS_FILE_TMPDIR}/zot-interval.log" \
-        "${BATS_FILE_TMPDIR}/zot-platforms.log"
+        "${BATS_FILE_TMPDIR}/zot-platforms.log" \
+        "${BATS_FILE_TMPDIR}/zot-ondemand-bg.log"
 }
 
 function teardown_file() {
@@ -314,6 +358,49 @@ function teardown_file() {
     run curl http://127.0.0.1:${zot_port2}/v2/golang/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.20"' ]
+}
+
+# onDemandInBackground: first miss returns 404 while sync runs in the background;
+# a later request is served from local storage once sync completes.
+@test "sync golang image ondemand in background" {
+    zot_port3=`cat ${BATS_FILE_TMPDIR}/zot.port3`
+    zot_port6=`cat ${BATS_FILE_TMPDIR}/zot.port6`
+
+    run skopeo --insecure-policy copy --dest-tls-verify=false \
+        oci:${TEST_DATA_DIR}/golang:1.20 \
+        docker://127.0.0.1:${zot_port3}/bg-golang:1.20
+    [ "$status" -eq 0 ]
+
+    upstream_digest=$(manifest_digest http://127.0.0.1:${zot_port3}/v2/bg-golang/manifests/1.20)
+    [ -n "${upstream_digest}" ]
+
+    # first request must not wait for sync — behave like sync disabled
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+        -H "Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json" \
+        http://127.0.0.1:${zot_port6}/v2/bg-golang/manifests/1.20)
+    [ "${http_code}" = "404" ]
+
+    # background sync should populate local storage
+    retry_until_success 60 1 curl -sf \
+        -H "Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json" \
+        http://127.0.0.1:${zot_port6}/v2/bg-golang/manifests/1.20
+
+    run curl http://127.0.0.1:${zot_port6}/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"bg-golang"' ]
+
+    run curl http://127.0.0.1:${zot_port6}/v2/bg-golang/tags/list
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.20"' ]
+
+    downstream_digest=$(manifest_digest http://127.0.0.1:${zot_port6}/v2/bg-golang/manifests/1.20)
+    [ "${downstream_digest}" = "${upstream_digest}" ]
+
+    # full image (blobs) must be present for a client pull
+    run skopeo --insecure-policy copy --src-tls-verify=false \
+        docker://127.0.0.1:${zot_port6}/bg-golang:1.20 \
+        oci:${BATS_FILE_TMPDIR}/bg-golang-copy:1.20
+    [ "$status" -eq 0 ]
 }
 
 # returns the manifest digest a registry serves for repo:reference on stdout
@@ -377,7 +464,7 @@ function manifest_digest() {
     [ "$status" -eq 0 ]
     run curl http://127.0.0.1:${zot_port3}/v2/_catalog
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.repositories[0]') = '"busybox"' ]
+    [ $(echo "${lines[-1]}" | jq '.repositories | map(select(. == "busybox")) | .[]') = '"busybox"' ]
     run curl http://127.0.0.1:${zot_port3}/v2/busybox/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
@@ -386,7 +473,7 @@ function manifest_digest() {
 
     run curl http://127.0.0.1:${zot_port1}/v2/_catalog
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.repositories[0]') = '"busybox"' ]
+    [ $(echo "${lines[-1]}" | jq '.repositories | map(select(. == "busybox")) | .[]') = '"busybox"' ]
 
     run curl http://127.0.0.1:${zot_port1}/v2/busybox/tags/list
     [ "$status" -eq 0 ]
@@ -404,7 +491,7 @@ function manifest_digest() {
     [ "$status" -eq 0 ]
     run curl http://127.0.0.1:${zot_port3}/v2/_catalog
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.repositories[1]') = '"golang"' ]
+    [ $(echo "${lines[-1]}" | jq '.repositories | map(select(. == "golang")) | .[]') = '"golang"' ]
     run curl http://127.0.0.1:${zot_port3}/v2/busybox/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
@@ -415,7 +502,7 @@ function manifest_digest() {
 
     run curl http://127.0.0.1:${zot_port2}/v2/_catalog
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.repositories[1]') = '"golang"' ]
+    [ $(echo "${lines[-1]}" | jq '.repositories | map(select(. == "golang")) | .[]') = '"golang"' ]
 
     run curl http://127.0.0.1:${zot_port2}/v2/busybox/tags/list
     [ "$status" -eq 0 ]

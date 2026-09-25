@@ -247,6 +247,10 @@
     "zot5": {
       "begin": 3100,
       "end": 3109
+    },
+    "zot6": {
+      "begin": 3160,
+      "end": 3169
     }
   },
   "blackbox/sync_ondemand_seed.bats": {

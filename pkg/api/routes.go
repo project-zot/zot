@@ -2748,6 +2748,14 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 		if err == nil || !syncEnabled {
 			return content, digest, mediaType, err
 		}
+
+		if routeHandler.c.SyncOnDemand.ShouldQueueOnDemandSync(name) {
+			if isManifestNotFound(err) {
+				routeHandler.c.SyncOnDemand.QueueImage(ctx, name, reference)
+			}
+
+			return content, digest, mediaType, err
+		}
 	}
 
 	if syncEnabled {
@@ -2764,6 +2772,21 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 			}
 		}
 
+		if routeHandler.c.SyncOnDemand.ShouldQueueOnDemandSync(name) {
+			content, digest, mediaType, err := imgStore.GetImageManifest(name, reference)
+			if err == nil {
+				return content, digest, mediaType, nil
+			}
+
+			if isManifestNotFound(err) {
+				routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
+					Msg("manifest not found locally, queuing on-demand-in-background sync")
+				routeHandler.c.SyncOnDemand.QueueImage(ctx, name, reference)
+			}
+
+			return content, digest, mediaType, err
+		}
+
 		routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
 			Msg("trying to get updated image by syncing on demand")
 
@@ -2774,6 +2797,12 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 	}
 
 	return imgStore.GetImageManifest(name, reference)
+}
+
+// isManifestNotFound reports whether err means the repo or manifest is absent locally
+// (safe to trigger background sync) rather than a storage or other failure.
+func isManifestNotFound(err error) bool {
+	return errors.Is(err, zerr.ErrRepoNotFound) || errors.Is(err, zerr.ErrManifestNotFound)
 }
 
 type APIKeyPayload struct { //nolint:revive,gosec
