@@ -1892,6 +1892,16 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			err := metaDB.SetRepoReference(ctx, repo1, tag1, image1.AsImageMeta())
 			So(err, ShouldBeNil)
 
+			// SetRepoReference pre-creates Signatures[digest] with no typed entries.
+			// Deleting a cosign signature that was never added must not panic.
+			So(func() {
+				err = metaDB.DeleteSignature(repo1, image1.Digest(), mTypes.SignatureMetadata{
+					SignatureType:   "cosign",
+					SignatureDigest: "never-added-digest",
+				})
+			}, ShouldNotPanic)
+			So(err, ShouldBeNil)
+
 			err = metaDB.AddManifestSignature(repo1, image1.Digest(), mTypes.SignatureMetadata{
 				SignatureType:   "cosign",
 				SignatureTag:    fmt.Sprintf("sha256-%s.sig", image1.Digest().Encoded()),
