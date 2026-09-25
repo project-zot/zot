@@ -10422,6 +10422,12 @@ func TestPagedRepositories(t *testing.T) {
 			last:          repoName + "9",
 			expectedRepos: []string{},
 		},
+		{
+			testCaseName:  "Test the parameter 'last' with a repo that is no longer in storage",
+			pageSize:      "2",
+			last:          repoName + "4a",
+			expectedRepos: repoNames[4:6],
+		},
 	}
 
 	for _, testCase := range testCases {

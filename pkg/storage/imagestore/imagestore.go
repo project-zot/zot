@@ -301,6 +301,12 @@ func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filte
 	moreEntries := false
 	entries := 0
 	found := false
+
+	lastExists := false
+	if lastRepo != "" && is.DirExists(path.Join(is.rootDir, lastRepo)) {
+		lastExists, _ = is.ValidateRepo(lastRepo)
+	}
+
 	err := is.storeDriver.Walk(dir, func(fileInfo driver.FileInfo) error {
 		if entries == maxEntries {
 			moreEntries = true
@@ -345,16 +351,15 @@ func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filte
 			return nil
 		}
 
-		if lastRepo == "" {
-			found = true
-		}
+		// A missing last is placed by name, since the walk is not in lexical order.
+		afterLast := found || lastRepo == "" || (!lastExists && rel > lastRepo)
 
 		ok, err = filterFn(rel)
 		if err != nil {
 			return err
 		}
 
-		if found && ok {
+		if afterLast && ok {
 			entries++
 
 			stores = append(stores, rel)
