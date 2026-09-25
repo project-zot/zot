@@ -40,6 +40,9 @@ type Service interface {
 	// Returns whether an upstream manifest check is due for repo:reference.
 	// Always true unless manifestCheckInterval is configured and a recent check succeeded.
 	ShouldCheckUpstream(repo, reference string) bool
+	// IsOnDemandInBackgroundForRepo reports whether this service should handle repo with
+	// on-demand-in-background sync (return miss immediately, sync into storage in background).
+	IsOnDemandInBackgroundForRepo(repo string) bool
 }
 
 // Registry interface must be implemented by local and remote registries.

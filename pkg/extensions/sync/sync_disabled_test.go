@@ -25,6 +25,10 @@ func TestOnDemandStub(t *testing.T) {
 		So(onDemand.SyncImage(context.Background(), "repo", "latest"), ShouldBeNil)
 		So(onDemand.SyncReferrers(context.Background(), "repo", "sha256:digest", nil), ShouldBeNil)
 		So(onDemand.ShouldCheckUpstreamManifest("repo", "latest"), ShouldBeTrue)
+		So(onDemand.ShouldQueueOnDemandSync("repo"), ShouldBeFalse)
+		So(func() {
+			onDemand.QueueImage(context.Background(), "repo", "latest")
+		}, ShouldNotPanic)
 	})
 }
 

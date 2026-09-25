@@ -55,11 +55,16 @@ type Config struct {
 }
 
 type RegistryConfig struct {
-	URLs                  []string
-	PollInterval          time.Duration
-	Content               []Content
-	TLSVerify             *bool
-	OnDemand              bool
+	URLs         []string
+	PollInterval time.Duration
+	Content      []Content
+	TLSVerify    *bool
+	OnDemand     bool
+	// OnDemandInBackground returns immediately when a requested manifest is not present
+	// locally and syncs the image into storage in the background. Clients that rely only
+	// on this registry will see 404 until sync completes. Requires OnDemand; incompatible
+	// with ManifestCheckInterval. Default is false when unset.
+	OnDemandInBackground  *bool
 	ManifestCheckInterval time.Duration
 	CertDir               string
 	MaxRetries            *int
@@ -251,6 +256,12 @@ func (config *OAuth2HelperConfig) Validate() error {
 // Default is true when SyncLegacyCosignTags is unset (nil).
 func (r RegistryConfig) ShouldSyncLegacyCosignTags() bool {
 	return r.SyncLegacyCosignTags == nil || *r.SyncLegacyCosignTags
+}
+
+// IsOnDemandInBackgroundEnabled reports whether on-demand-in-background sync is configured.
+// Default is false when OnDemandInBackground is unset (nil).
+func (r RegistryConfig) IsOnDemandInBackgroundEnabled() bool {
+	return r.OnDemandInBackground != nil && *r.OnDemandInBackground
 }
 
 // SyncTimeoutOrDefault returns the configured sync timeout, or DefaultSyncTimeout when unset.

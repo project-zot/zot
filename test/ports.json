@@ -247,6 +247,20 @@
     "zot5": {
       "begin": 3100,
       "end": 3109
+    },
+    "zot6": {
+      "begin": 3160,
+      "end": 3169
+    }
+  },
+  "blackbox/sync_ondemand_seed.bats": {
+    "upstream": {
+      "begin": 3120,
+      "end": 3129
+    },
+    "downstream": {
+      "begin": 3140,
+      "end": 3149
     }
   },
   "scale-out/cloud_scale_out_basic_auth_tls_scale.bats": {
@@ -501,6 +515,12 @@
     "zot": {
       "begin": 11600,
       "end": 11609
+    }
+  },
+  "blackbox/healthcheck.bats": {
+    "zot": {
+      "begin": 11620,
+      "end": 11629
     }
   }
 }

@@ -19,3 +19,9 @@ func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 func (onDemand *BaseOnDemand) ShouldCheckUpstreamManifest(repo, reference string) bool {
 	return true
 }
+
+func (onDemand *BaseOnDemand) ShouldQueueOnDemandSync(_ string) bool {
+	return false
+}
+
+func (onDemand *BaseOnDemand) QueueImage(_ context.Context, _, _ string) {}

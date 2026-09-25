@@ -10,6 +10,24 @@ import (
 	syncConstants "zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 )
 
+func TestRegistryConfig_IsOnDemandInBackgroundEnabled(t *testing.T) {
+	Convey("IsOnDemandInBackgroundEnabled", t, func() {
+		Convey("returns false when OnDemandInBackground is nil", func() {
+			cfg := syncconf.RegistryConfig{}
+			So(cfg.IsOnDemandInBackgroundEnabled(), ShouldBeFalse)
+		})
+
+		Convey("returns the configured value", func() {
+			enabled := true
+			cfg := syncconf.RegistryConfig{OnDemandInBackground: &enabled}
+			So(cfg.IsOnDemandInBackgroundEnabled(), ShouldBeTrue)
+
+			enabled = false
+			So(cfg.IsOnDemandInBackgroundEnabled(), ShouldBeFalse)
+		})
+	})
+}
+
 func TestRegistryConfig_SetDockerCompat(t *testing.T) {
 	Convey("SetDockerCompat", t, func() {
 		Convey("nil receiver is a no-op", func() {

@@ -1,0 +1,113 @@
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+name: Container Test
+
+permissions: read-all
+
+jobs:
+  dockerfile:
+    name: Dockerfile ${{ matrix.name }} (docker + podman)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: zot
+            dockerfile: build/Dockerfile
+            tag: zot:ci
+          - name: zot-minimal
+            dockerfile: build/Dockerfile-minimal
+            tag: zot-minimal:ci
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Enable unprivileged user namespaces
+        run: sudo ./scripts/enable_userns.sh
+      - name: Build ${{ matrix.name }} image
+        run: |
+          docker build -f ${{ matrix.dockerfile }} \
+            --build-arg COMMIT=ci-${GITHUB_SHA} \
+            -t ${{ matrix.tag }} .
+      - name: Install skopeo and podman
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y skopeo podman
+      - name: Load image into podman
+        run: |
+          skopeo copy "docker-daemon:${{ matrix.tag }}" "containers-storage:${{ matrix.tag }}"
+      - name: Healthcheck with docker
+        run: |
+          ZOT_TEST_PORT=5000 test/scripts/container_healthcheck.sh \
+            --runtime docker --image ${{ matrix.tag }}
+      - name: Healthcheck with podman
+        run: |
+          ZOT_TEST_PORT=5001 test/scripts/container_healthcheck.sh \
+            --runtime podman --image ${{ matrix.tag }}
+
+  stacker:
+    name: Stacker ${{ matrix.name }} (docker + podman)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: zot
+            file: build/stacker.yaml
+            repo_name: zot-linux-amd64
+            tag: zot-stacker:ci
+            health_bin: /usr/local/bin/zot-linux-amd64
+          - name: zot-minimal
+            file: build/stacker-minimal.yaml
+            repo_name: zot-minimal-linux-amd64
+            tag: zot-minimal-stacker:ci
+            health_bin: /usr/local/bin/zot-linux-amd64-minimal
+            ext: "-minimal"
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # main
+      - name: Enable unprivileged user namespaces
+        run: sudo ./scripts/enable_userns.sh
+      - name: Build ${{ matrix.name }} container image
+        uses: project-stacker/stacker-build-push-action@093acb5ad50bed0012616f46fdba73a8a7169db7 # main
+        with:
+          version: v1.1.0-rc3
+          file: ${{ matrix.file }}
+          build-args: |
+            RELEASE_TAG=ci
+            COMMIT=ci-${{ github.sha }}
+            OS=linux
+            ARCH=amd64
+            EXT=${{ matrix.ext }}
+            REPO_NAME=${{ matrix.repo_name }}
+            BASE_IMAGE=gcr.io/distroless/base-nossl-debian13:latest-amd64
+      - name: Install skopeo and podman
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y skopeo podman
+      - name: Load image into docker
+        run: |
+          skopeo copy "oci:oci:${{ matrix.repo_name }}" "docker-daemon:${{ matrix.tag }}"
+      - name: Load image into podman
+        run: |
+          skopeo copy "docker-daemon:${{ matrix.tag }}" "containers-storage:${{ matrix.tag }}"
+      - name: Healthcheck with docker
+        run: |
+          ZOT_TEST_PORT=5000 test/scripts/container_healthcheck.sh \
+            --runtime docker --image ${{ matrix.tag }} \
+            --health-bin ${{ matrix.health_bin }}
+      - name: Healthcheck with podman
+        run: |
+          ZOT_TEST_PORT=5001 test/scripts/container_healthcheck.sh \
+            --runtime podman --image ${{ matrix.tag }} \
+            --health-bin ${{ matrix.health_bin }}

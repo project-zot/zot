@@ -709,7 +709,7 @@ func TestRoutes(t *testing.T) {
 					},
 				},
 			)
-			So(statusCode, ShouldEqual, http.StatusBadRequest)
+			So(statusCode, ShouldEqual, http.StatusNotFound)
 
 			// ErrManifestNotFound
 			statusCode = testDeleteManifest(

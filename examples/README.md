@@ -1427,6 +1427,7 @@ Configure each registry sync:
 			"registries": [{
 				"urls": ["https://registry1:5000"],
 				"onDemand": false,                  # pull any image which the local registry doesn't have
+				"onDemandInBackground": false,      # return immediately when the manifest is missing locally and sync it into storage in the background; requires onDemand; incompatible with manifestCheckInterval
 				"pollInterval": "6h",               # polling interval, if not set then periodically polling will not run
 				"platforms": ["linux/amd64"],       # periodic sync default: sparse-copy these OS/arch[/variant] children; omit/empty = all. Overridden by content[].platforms when set. On-demand ignores both. Extra slash tokens beyond three are ignored by platform.Parse (not rejected).
 				"manifestCheckInterval": "1h",      # minimum interval between upstream manifest checks for the same repo:tag when serving on-demand requests; when 0 or unset every request checks upstream. Requires onDemand.
@@ -1520,6 +1521,36 @@ local. Notes:
  - requests by digest are unaffected, a locally present digest is already served without contacting upstream
  - a local miss, for instance after garbage collection, always falls back to a normal sync
  - the last check time is kept in memory, so the first request after a restart checks upstream again
+
+### On-demand sync in the background
+
+Set `"onDemand": true` and `"onDemandInBackground": true` so that when a requested manifest is not
+present locally, zot returns immediately and syncs the image into storage in the background (only from
+registries that enable onDemandInBackground for that repo). Later requests can be served from local
+storage once sync completes.
+
+```
+			"registries": [{
+				"urls": ["https://registry-1.docker.io"],
+				"onDemand": true,
+				"onDemandInBackground": true
+			}]
+```
+
+Useful when a client can fall back to another registry for the same pull. Clients that talk only to
+zot will receive a real `404` until the background sync finishes. Do not enable
+`onDemandInBackground` for registries that are the client's only source.
+
+Blob requests that miss locally still return `404`; the background sync is started from the
+manifest request and populates the full image in storage.
+
+Notes:
+
+ - requires `onDemand`
+ - incompatible with `manifestCheckInterval` (this mode does not revalidate tags on hit)
+ - when multiple sync registries are configured, background sync applies per repo: only registries with
+   `onDemandInBackground` whose content rules match the local repo are used for the background sync;
+   other registries keep normal blocking on-demand for their repos
 
 ### Sync's certDir option
 

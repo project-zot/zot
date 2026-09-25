@@ -9130,6 +9130,30 @@ func TestManifestValidation(t *testing.T) {
 	})
 }
 
+func TestDeleteManifestMissingRepo(t *testing.T) {
+	Convey("Deleting a manifest in a repository that does not exist returns 404", t, func() {
+		conf := config.New()
+		conf.HTTP.Port = "0"
+
+		ctlr := makeController(conf, t.TempDir())
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+
+		defer cm.StopServer()
+
+		digest := godigest.FromString("no such manifest")
+
+		resp, err := resty.R().Delete(baseURL + "/v2/nosuchrepo/manifests/" + digest.String())
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+		var errList apiErr.ErrorList
+		So(json.Unmarshal(resp.Body(), &errList), ShouldBeNil)
+		So(errList.Errors, ShouldNotBeEmpty)
+		So(errList.Errors[0].Code, ShouldEqual, "NAME_UNKNOWN")
+	})
+}
+
 func TestManifestDigestQueryTags(t *testing.T) {
 	Convey("Manifest PUT with digest ?tag= query parameters", t, func() {
 		conf := config.New()
@@ -10397,6 +10421,12 @@ func TestPagedRepositories(t *testing.T) {
 			pageSize:      "",
 			last:          repoName + "9",
 			expectedRepos: []string{},
+		},
+		{
+			testCaseName:  "Test the parameter 'last' with a repo that is no longer in storage",
+			pageSize:      "2",
+			last:          repoName + "4a",
+			expectedRepos: repoNames[4:6],
 		},
 	}
 

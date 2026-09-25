@@ -346,6 +346,21 @@ func (service *BaseService) ShouldCheckUpstream(repo, reference string) bool {
 	return service.checkTracker.ShouldCheckUpstream(repo, reference)
 }
 
+// IsOnDemandInBackgroundForRepo reports whether this registry should use
+// on-demand-in-background sync for the given local repo (content filters apply when
+// Content is configured).
+func (service *BaseService) IsOnDemandInBackgroundForRepo(repo string) bool {
+	if !service.config.IsOnDemandInBackgroundEnabled() || !service.config.OnDemand {
+		return false
+	}
+
+	if len(service.config.Content) == 0 {
+		return true
+	}
+
+	return service.contentManager.GetContentByLocalRepo(repo) != nil
+}
+
 // markUpstreamChecked records a successful upstream check, so that subsequent on-demand
 // requests for the same reference can be served locally until the interval elapses.
 func (service *BaseService) markUpstreamChecked(repo, reference string) {
@@ -893,6 +908,65 @@ func descriptorMatchesPlatforms(target *platform.Platform, allowlist []string) (
 	return false, nil
 }
 
+/*
+seedRef pre-seeds the temp OCI layout behind localImageRef with blobs the local
+store already holds for localRepo, so that the ImageCopy that follows only
+downloads content actually missing: regclient checks for existing content on
+the copy target before fetching from upstream.
+
+The manifest tree rooted at digest (identical locally and upstream, since sync
+preserves digests) is walked local-first: manifests are ordinary blobs in the
+local store, so walking an already stored image needs no upstream requests.
+Manifests missing locally (e.g. a new tag sharing most layers with an already
+synced one) are fetched from upstream by digest instead.
+
+Seeding is best-effort: any blob that cannot be seeded is simply downloaded by
+ImageCopy as before.
+*/
+func (service *BaseService) seedRef(
+	ctx context.Context,
+	localRepo string,
+	remoteImageRef, localImageRef ref.Ref,
+	digest godigest.Digest,
+) error {
+	tempStore, err := getImageStoreFromImageReference(localRepo, localImageRef, service.log)
+	if err != nil {
+		return err
+	}
+
+	// A valid empty layout (in particular index.json) must exist up front for
+	// regclient to answer the presence checks ImageCopy runs.
+	if err := tempStore.InitRepo(ctx, localRepo); err != nil {
+		return err
+	}
+
+	// regclient's defaultConcurrent (unexported); regclient likewise treats a
+	// configured 0 as this default
+	reqConcurrent := 3
+	if service.config.ReqConcurrent != nil && *service.config.ReqConcurrent > 0 {
+		reqConcurrent = *service.config.ReqConcurrent
+	}
+
+	seeder := &refSeeder{
+		service:        service,
+		imageStore:     service.storeController.GetImageStore(localRepo),
+		tempStore:      tempStore,
+		localRepo:      localRepo,
+		remoteImageRef: remoteImageRef,
+		slots:          make(chan struct{}, reqConcurrent),
+	}
+
+	seeder.seedManifest(ctx, digest)
+
+	if seeded := seeder.seeded.Load(); seeded > 0 {
+		service.log.Info().Str("repo", localRepo).Str("digest", digest.String()).
+			Int64("blobs", seeded).
+			Msg("seeded temp sync dir with blobs already present in local storage")
+	}
+
+	return nil
+}
+
 func (service *BaseService) syncRef(ctx context.Context, localRepo string, remoteImageRef, localImageRef ref.Ref,
 	remoteDigest godigest.Digest, mediaType string, strategy copyStrategy,
 ) error {
@@ -931,6 +1005,16 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 			// Explicit index-only copy: never recurse into children
 			err = service.copySparseIndexManifest(ctx, remoteImageRef, localImageRef)
 		} else {
+			// best-effort: seed the temp layout with blobs the local store
+			// already holds, so ImageCopy only downloads missing content.
+			if compat.IsImageManifestMediaType(mediaType) {
+				if err := service.seedRef(ctx, localRepo, remoteImageRef, localImageRef, remoteDigest); err != nil {
+					service.log.Warn().Err(err).Str("errortype", common.TypeOf(err)).
+						Str("repo", localRepo).Str("reference", reference).
+						Msg("failed to seed temp sync dir from local storage")
+				}
+			}
+
 			// Image manifests (and copyDigestComplete): full config + layers.
 			err = service.rc.ImageCopy(ctx, remoteImageRef, localImageRef)
 		}

@@ -2914,16 +2914,27 @@ func TestCredentialRefreshOnEverySyncEntryPoint(t *testing.T) {
 }
 
 // mockCheckService is a minimal Service implementation for exercising
-// BaseOnDemand.ShouldCheckUpstreamManifest.
+// BaseOnDemand.ShouldCheckUpstreamManifest and on-demand-in-background helpers.
 type mockCheckService struct {
-	shouldCheckUpstreamFn func(repo, reference string) bool
+	shouldCheckUpstreamFn           func(repo, reference string) bool
+	syncImageFn                     func(ctx context.Context, repo, reference string) error
+	isOnDemandInBackgroundForRepoFn func(repo string) bool
+	syncImageCalls                  atomic.Int32
 }
 
 func (s *mockCheckService) GetNextRepo(_ string) (string, error) { return "", nil }
 
 func (s *mockCheckService) SyncRepo(_ context.Context, _ string) error { return nil }
 
-func (s *mockCheckService) SyncImage(_ context.Context, _, _ string) error { return nil }
+func (s *mockCheckService) SyncImage(ctx context.Context, repo, reference string) error {
+	s.syncImageCalls.Add(1)
+
+	if s.syncImageFn != nil {
+		return s.syncImageFn(ctx, repo, reference)
+	}
+
+	return nil
+}
 
 func (s *mockCheckService) SyncReferrers(_ context.Context, _ string, _ string, _ []string) error {
 	return nil
@@ -2941,6 +2952,200 @@ func (s *mockCheckService) ShouldCheckUpstream(repo, reference string) bool {
 	}
 
 	return true
+}
+
+func (s *mockCheckService) IsOnDemandInBackgroundForRepo(repo string) bool {
+	if s.isOnDemandInBackgroundForRepoFn != nil {
+		return s.isOnDemandInBackgroundForRepoFn(repo)
+	}
+
+	return false
+}
+
+func TestOnDemandQueueImage(t *testing.T) {
+	started := make(chan context.Context, 1)
+	release := make(chan struct{})
+	finished := make(chan struct{})
+
+	backgroundService := &mockCheckService{
+		isOnDemandInBackgroundForRepoFn: func(repo string) bool {
+			return repo == "library/test"
+		},
+		syncImageFn: func(ctx context.Context, _, _ string) error {
+			started <- ctx
+			<-release
+			close(finished)
+
+			return nil
+		},
+	}
+	blockingService := &mockCheckService{
+		isOnDemandInBackgroundForRepoFn: func(string) bool { return false },
+		syncImageFn: func(context.Context, string, string) error {
+			t.Fatal("blocking registry should not run for onDemandInBackground repo")
+
+			return nil
+		},
+	}
+
+	onDemand := NewOnDemand(log.NewTestLogger())
+	onDemand.Add(blockingService)
+	onDemand.Add(backgroundService)
+
+	if !onDemand.ShouldQueueOnDemandSync("library/test") {
+		t.Fatal("expected on-demand-in-background sync to be enabled for matching repo")
+	}
+
+	if onDemand.ShouldQueueOnDemandSync("library/other") {
+		t.Fatal("expected on-demand-in-background sync to respect repository filter")
+	}
+
+	requestContext, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	onDemand.QueueImage(requestContext, "library/test", "latest")
+
+	var syncContext context.Context
+
+	select {
+	case syncContext = <-started:
+	case <-time.After(time.Second):
+		t.Fatal("background sync did not start")
+	}
+
+	if syncContext.Err() != nil {
+		t.Fatalf("background sync inherited request cancellation: %v", syncContext.Err())
+	}
+
+	// Second queue while the first is in flight must not spawn another SyncImage.
+	onDemand.QueueImage(requestContext, "library/test", "latest")
+
+	select {
+	case <-started:
+		t.Fatal("expected spawn dedup; second background sync started")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	if backgroundService.syncImageCalls.Load() != 1 {
+		t.Fatalf("expected one background sync, got %d", backgroundService.syncImageCalls.Load())
+	}
+
+	if blockingService.syncImageCalls.Load() != 0 {
+		t.Fatalf("expected blocking registry unused, got %d calls", blockingService.syncImageCalls.Load())
+	}
+
+	close(release)
+
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("background sync did not finish")
+	}
+}
+
+func TestOnDemandQueueImageLogsSyncError(t *testing.T) {
+	finished := make(chan struct{})
+
+	service := &mockCheckService{
+		isOnDemandInBackgroundForRepoFn: func(string) bool { return true },
+		syncImageFn: func(context.Context, string, string) error {
+			defer close(finished)
+
+			return zerr.ErrManifestNotFound
+		},
+	}
+	onDemand := NewOnDemand(log.NewTestLogger())
+	onDemand.Add(service)
+
+	onDemand.QueueImage(context.Background(), "library/test", "latest")
+
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("background sync did not finish")
+	}
+}
+
+func TestOnDemandQueueImagePerRepoServices(t *testing.T) {
+	finished := make(chan struct{})
+
+	libraryService := &mockCheckService{
+		isOnDemandInBackgroundForRepoFn: func(repo string) bool {
+			return repo == "library/test"
+		},
+		syncImageFn: func(context.Context, string, string) error {
+			close(finished)
+
+			return nil
+		},
+	}
+	otherService := &mockCheckService{
+		isOnDemandInBackgroundForRepoFn: func(repo string) bool {
+			return repo == "other/test"
+		},
+		syncImageFn: func(context.Context, string, string) error {
+			t.Fatal("other registry should not sync library/test")
+
+			return nil
+		},
+	}
+
+	onDemand := NewOnDemand(log.NewTestLogger())
+	onDemand.Add(otherService)
+	onDemand.Add(libraryService)
+
+	onDemand.QueueImage(context.Background(), "library/test", "latest")
+
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("background sync did not finish")
+	}
+
+	if otherService.syncImageCalls.Load() != 0 {
+		t.Fatalf("expected zero calls to other registry, got %d", otherService.syncImageCalls.Load())
+	}
+
+	if libraryService.syncImageCalls.Load() != 1 {
+		t.Fatalf("expected one call to library registry, got %d", libraryService.syncImageCalls.Load())
+	}
+}
+
+func TestBaseServiceIsOnDemandInBackgroundForRepo(t *testing.T) {
+	enabled := true
+	content := []syncconf.Content{{Prefix: "library/test"}}
+	service := &BaseService{
+		config: syncconf.RegistryConfig{
+			OnDemand:             true,
+			OnDemandInBackground: &enabled,
+			Content:              content,
+		},
+		contentManager: NewContentManager(content, log.NewTestLogger()),
+	}
+
+	if !service.IsOnDemandInBackgroundForRepo("library/test") {
+		t.Fatal("expected configured repository to use on-demand-in-background sync")
+	}
+
+	if service.IsOnDemandInBackgroundForRepo("library/other") {
+		t.Fatal("expected content filtering to exclude repository")
+	}
+
+	service.config.Content = nil
+	if !service.IsOnDemandInBackgroundForRepo("library/other") {
+		t.Fatal("expected empty content rules to allow any repository")
+	}
+
+	enabled = false
+	if service.IsOnDemandInBackgroundForRepo("library/test") {
+		t.Fatal("expected disabled on-demand-in-background sync to reject repository")
+	}
+
+	enabled = true
+	service.config.OnDemand = false
+	if service.IsOnDemandInBackgroundForRepo("library/test") {
+		t.Fatal("expected on-demand-in-background to require onDemand")
+	}
 }
 
 func TestManifestCheckTracker(t *testing.T) {

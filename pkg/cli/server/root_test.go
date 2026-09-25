@@ -4455,6 +4455,51 @@ func TestManifestCheckIntervalConfig(t *testing.T) {
 	})
 }
 
+func TestOnDemandInBackgroundConfig(t *testing.T) {
+	Convey("onDemandInBackground validation", t, func() {
+		Convey("Accept onDemandInBackground with onDemand", func() {
+			content := `{"storage":{"rootDirectory":"/tmp/zot"},
+				"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+				"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+				"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+				"onDemand": true, "onDemandInBackground": true}]}}}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldBeNil)
+			So(cfg.Extensions.Sync.Registries[0].IsOnDemandInBackgroundEnabled(), ShouldBeTrue)
+		})
+
+		Convey("Reject onDemandInBackground without onDemand", func() {
+			content := `{"storage":{"rootDirectory":"/tmp/zot"},
+				"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+				"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+				"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+				"onDemand": false, "onDemandInBackground": true}]}}}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err.Error(), ShouldContainSubstring, "onDemandInBackground requires onDemand to be enabled")
+		})
+
+		Convey("Reject onDemandInBackground with manifestCheckInterval", func() {
+			content := `{"storage":{"rootDirectory":"/tmp/zot"},
+				"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+				"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+				"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+				"onDemand": true, "onDemandInBackground": true, "manifestCheckInterval": "1h"}]}}}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err.Error(), ShouldContainSubstring, "onDemandInBackground is incompatible with manifestCheckInterval")
+		})
+	})
+}
+
 func TestSyncPlatformsConfig(t *testing.T) {
 	Convey("platforms validation", t, func() {
 		Convey("Accept valid platforms including empty string", func() {
