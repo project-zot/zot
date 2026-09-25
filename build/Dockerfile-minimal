@@ -46,3 +46,5 @@ COPY --from=builder /go/src/github.com/project-zot/zot/config.json /etc/zot/conf
 ENTRYPOINT ["/usr/bin/zot"]
 EXPOSE 5000
 CMD ["serve", "/etc/zot/config.json"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["/usr/bin/zot", "healthcheck", "--insecure-skip-verify", "/etc/zot/config.json"]

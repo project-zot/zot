@@ -279,6 +279,8 @@ func NewServerRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newSchemaCmd())
 	// "verify-feature"
 	rootCmd.AddCommand(newVerifyFeatureCmd(conf))
+	// "healthcheck"
+	rootCmd.AddCommand(newHealthcheckCmd(conf))
 	// "version"
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "show the version and exit")
 
