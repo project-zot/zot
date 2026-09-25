@@ -114,6 +114,9 @@ type RegistryConfig struct {
 	// Entries are validated with regclient platform.Parse (os/arch[/variant]); extra slash
 	// components beyond three are ignored by that parser, not rejected by zot.
 	Platforms []string `mapstructure:",omitempty"`
+	// AsyncOnDemand, when true (and OnDemand is enabled), makes a manifest cache miss return
+	// immediately while the image is synced into storage in the background.
+	AsyncOnDemand *bool
 	// dockerCompat is set at runtime from http.compat (docker2s2), not from sync config JSON.
 	dockerCompat bool
 }
@@ -251,6 +254,10 @@ func (config *OAuth2HelperConfig) Validate() error {
 // Default is true when SyncLegacyCosignTags is unset (nil).
 func (r RegistryConfig) ShouldSyncLegacyCosignTags() bool {
 	return r.SyncLegacyCosignTags == nil || *r.SyncLegacyCosignTags
+}
+
+func (r RegistryConfig) IsAsyncOnDemandEnabled() bool {
+	return r.AsyncOnDemand != nil && *r.AsyncOnDemand
 }
 
 // SyncTimeoutOrDefault returns the configured sync timeout, or DefaultSyncTimeout when unset.
