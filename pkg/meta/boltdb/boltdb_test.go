@@ -434,6 +434,21 @@ func TestWrapperErrors(t *testing.T) {
 				err = boltdbWrapper.DeleteSignature("repo", godigest.FromString("dig"), mTypes.SignatureMetadata{})
 				So(err, ShouldNotBeNil)
 			})
+
+			Convey("missing signature type does not panic", func() {
+				image := CreateDefaultImage()
+
+				err := boltdbWrapper.SetRepoReference(ctx, "repo", "1.0", image.AsImageMeta())
+				So(err, ShouldBeNil)
+
+				So(func() {
+					err = boltdbWrapper.DeleteSignature("repo", image.Digest(), mTypes.SignatureMetadata{
+						SignatureType:   "cosign",
+						SignatureDigest: "never-added",
+					})
+				}, ShouldNotPanic)
+				So(err, ShouldBeNil)
+			})
 		})
 
 		Convey("AddManifestSignature", func() {
