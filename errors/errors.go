@@ -170,6 +170,7 @@ var (
 	ErrFileAlreadyCommitted             = errors.New("storageDriver file already committed")
 	ErrInvalidOutputFormat              = errors.New("invalid cli output format")
 	ErrServerIsRunning                  = errors.New("server is running")
+	ErrHealthcheckFailed                = errors.New("healthcheck failed")
 	ErrDatabaseFileAlreadyInUse         = errors.New("boltdb file is already in use")
 	ErrFlagValueUnsupported             = errors.New("supported values ")
 	ErrUnknownSubcommand                = errors.New("unknown cli subcommand")

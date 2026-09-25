@@ -516,5 +516,11 @@
       "begin": 11600,
       "end": 11609
     }
+  },
+  "blackbox/healthcheck.bats": {
+    "zot": {
+      "begin": 11620,
+      "end": 11629
+    }
   }
 }
