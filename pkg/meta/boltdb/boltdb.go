@@ -1062,7 +1062,12 @@ func (bdw *BoltDB) DeleteSignature(repo string, signedManifestDigest godigest.Di
 			return zerr.ErrImageMetaNotFound
 		}
 
-		signatureSlice := manifestSignatures.Map[sigMeta.SignatureType]
+		// SetRepoReference pre-creates Signatures[digest] without typed entries; missing
+		// types (e.g. signature layer never parsed into meta) are already cleaned.
+		signatureSlice, found := manifestSignatures.Map[sigMeta.SignatureType]
+		if !found || signatureSlice == nil {
+			return nil
+		}
 
 		newSignatureSlice := make([]*proto_go.SignatureInfo, 0, len(signatureSlice.List))
 
