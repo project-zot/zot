@@ -3,8 +3,11 @@ package cache
 import (
 	"context"
 	goerrors "errors"
+	"math"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/go-redsync/redsync/v4"
 	gors "github.com/go-redsync/redsync/v4/redis/goredis/v9"
@@ -14,6 +17,7 @@ import (
 	zerr "zotregistry.dev/zot/v2/errors"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/storage/constants"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
 type RedisDriver struct {
@@ -337,4 +341,118 @@ func (d *RedisDriver) DeleteBlob(digest godigest.Digest, path string) error {
 	}
 
 	return nil
+}
+
+// Ample for a manifest write. A gc sweep far exceeds it, which is why the lock
+// is extended while held rather than given a long expiry a crashed holder
+// would sit on. Variables, not constants, so tests can shrink them.
+//
+//nolint:gochecknoglobals // overridden by tests to exercise renewal
+var (
+	repoLockExpiry     = 30 * time.Second
+	repoLockRetryDelay = 250 * time.Millisecond
+)
+
+// LockRepo takes the cross-process lock for one repository. Its own key bucket
+// is deliberate: gc calls the metadata layer, which locks per repo too, while
+// holding this, and redsync mutexes are not reentrant.
+//
+// Acquisition is bounded by the caller's context, not by a try count: a sweep
+// holds the lock for minutes, and a push that gives up after seconds would fail
+// for the duration of every long collection. redsync still requires a finite
+// try count, so it is set effectively unbounded and the context is the deadline.
+func (d *RedisDriver) LockRepo(ctx context.Context, repo string) (storageTypes.RepoLock, error) {
+	mutex := d.rs.NewMutex(
+		d.join(constants.RedisRepoLocksBucket, repo),
+		redsync.WithExpiry(repoLockExpiry),
+		redsync.WithTries(math.MaxInt32),
+		redsync.WithRetryDelay(repoLockRetryDelay),
+	)
+
+	if err := mutex.LockContext(ctx); err != nil {
+		d.log.Error().Err(err).Str("repo", repo).Msg("failed to acquire repo lock")
+
+		return nil, goerrors.Join(zerr.ErrRepoLockUnavailable, err)
+	}
+
+	lock := &redisRepoLock{
+		mutex:   mutex,
+		log:     d.log,
+		repo:    repo,
+		done:    make(chan struct{}),
+		stopped: make(chan struct{}),
+	}
+
+	// Extend while the work runs, or a sweep outlasts its own lock and a second
+	// writer starts on the same index.
+	go func() {
+		defer close(lock.stopped)
+
+		ticker := time.NewTicker(repoLockExpiry / 3) //nolint:mnd // extend well before expiry
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-lock.done:
+				return
+			case <-ticker.C:
+				lock.extend()
+			}
+		}
+	}()
+
+	return lock, nil
+}
+
+// redisRepoLock serializes every redsync mutex operation: redsync mutexes are not
+// safe for concurrent use, and the renewal goroutine, StillHeld and Release would
+// otherwise race on them.
+type redisRepoLock struct {
+	mutex   *redsync.Mutex
+	log     zlog.Logger
+	repo    string
+	done    chan struct{}
+	stopped chan struct{}
+	mu      sync.Mutex
+}
+
+func (l *redisRepoLock) extend() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if ok, err := l.mutex.Extend(); !ok || err != nil {
+		l.log.Warn().Err(err).Str("repo", l.repo).Msg("failed to extend repo lock")
+	}
+}
+
+// StillHeld revalidates the fence token against the store, extending the lock on
+// success. A writer calls it immediately before committing, so a holder that lost
+// the lock (stalled past expiry, then resumed) fails its write instead of
+// clobbering the commit of whoever acquired the lock meanwhile.
+func (l *redisRepoLock) StillHeld(ctx context.Context) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	ok, err := l.mutex.ExtendContext(ctx)
+	if err != nil || !ok {
+		l.log.Warn().Err(err).Str("repo", l.repo).Msg("repo lock no longer held")
+
+		return false
+	}
+
+	return true
+}
+
+func (l *redisRepoLock) Release() {
+	close(l.done)
+	// wait for a renewal already in flight, so Extend and Unlock never run on the
+	// same mutex concurrently
+	<-l.stopped
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if _, err := l.mutex.Unlock(); err != nil {
+		l.log.Error().Err(err).Str("repo", l.repo).Msg("failed to release repo lock")
+	}
 }
