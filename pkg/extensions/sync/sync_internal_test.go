@@ -3019,12 +3019,49 @@ func TestOnDemandQueueImage(t *testing.T) {
 		t.Fatalf("expected one deduplicated sync, got %d", syncCalls.Load())
 	}
 
+	queuedReq := request{kind: onDemandKindQueuedImage, repo: "library/test", reference: "latest", isBackground: true}
+	if _, queued := onDemand.requestStore.Load(queuedReq); !queued {
+		t.Fatal("expected in-flight queued sync to be tracked in requestStore")
+	}
+
 	close(release)
 
 	select {
 	case <-finished:
 	case <-time.After(time.Second):
 		t.Fatal("background sync did not finish")
+	}
+
+	// Once the background sync exits its schedule slot is released, so a later miss queues again.
+	deadline := time.Now().Add(time.Second)
+	for {
+		if _, queued := onDemand.requestStore.Load(queuedReq); !queued {
+			break
+		}
+
+		if time.Now().After(deadline) {
+			t.Fatal("queued sync was not released from requestStore")
+		}
+
+		time.Sleep(time.Millisecond)
+	}
+
+	onDemand.QueueImage(requestContext, "library/test", "latest")
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("expected a new background sync after the previous one finished")
+	}
+
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("second background sync did not finish")
+	}
+
+	if syncCalls.Load() != 2 {
+		t.Fatalf("expected two syncs in total, got %d", syncCalls.Load())
 	}
 }
 

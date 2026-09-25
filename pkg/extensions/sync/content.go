@@ -32,11 +32,37 @@ eg: "content": [
 
 type ContentManager struct {
 	contents []syncconf.Content
-	log      log.Logger
+	// localPatterns[i] is the glob matched against local repo names for contents[i],
+	// precomputed because GetContentByLocalRepo runs on every on-demand manifest request.
+	localPatterns []string
+	log           log.Logger
 }
 
 func NewContentManager(contents []syncconf.Content, log log.Logger) ContentManager {
-	return ContentManager{contents: contents, log: log}
+	localPatterns := make([]string, len(contents))
+	for i, content := range contents {
+		localPatterns[i] = localRepoPattern(content)
+	}
+
+	return ContentManager{contents: contents, localPatterns: localPatterns, log: log}
+}
+
+// localRepoPattern returns the glob that matches local repo names synced by content.
+func localRepoPattern(content syncconf.Content) string {
+	// make sure prefix ends in "/" to extract the meta characters
+	prefix := strings.Trim(content.Prefix, "/") + "/"
+	destination := strings.Trim(content.Destination, "/")
+
+	var patternSlice []string
+
+	if content.StripPrefix {
+		_, metaCharacters := glob.SplitPattern(prefix)
+		patternSlice = append(patternSlice, destination, metaCharacters)
+	} else {
+		patternSlice = append(patternSlice, destination, prefix)
+	}
+
+	return strings.Trim(strings.Join(patternSlice, "/"), "/")
 }
 
 /*
@@ -155,22 +181,7 @@ func (cm ContentManager) GetContentByLocalRepo(repo string) *syncconf.Content {
 	contentID := -1
 	repo = strings.Trim(repo, "/")
 
-	for cID, content := range cm.contents {
-		// make sure prefix ends in "/" to extract the meta characters
-		prefix := strings.Trim(content.Prefix, "/") + "/"
-		destination := strings.Trim(content.Destination, "/")
-
-		var patternSlice []string
-
-		if content.StripPrefix {
-			_, metaCharacters := glob.SplitPattern(prefix)
-			patternSlice = append(patternSlice, destination, metaCharacters)
-		} else {
-			patternSlice = append(patternSlice, destination, prefix)
-		}
-
-		pattern := strings.Trim(strings.Join(patternSlice, "/"), "/")
-
+	for cID, pattern := range cm.localPatterns {
 		matched, err := glob.Match(pattern, repo)
 		if err != nil {
 			continue
