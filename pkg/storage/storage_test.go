@@ -2897,8 +2897,6 @@ func TestReuploadManifestRepairsRemoteDedupeOrigin(t *testing.T) {
 		}
 
 		for _, testCase := range cases {
-			testCase := testCase
-
 			Convey(testCase.name, func() {
 				rootDir := t.TempDir()
 				log := zlog.NewTestLogger()
@@ -2935,13 +2933,14 @@ func TestReuploadManifestRepairsRemoteDedupeOrigin(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(path.Clean(path.Join(rootDir, cachedOrigin)), ShouldEqual, path.Clean(manifestPaths[0]))
 
-				if testCase.deleteCache {
+				switch {
+				case testCase.deleteCache:
 					for _, manifestPath := range manifestPaths {
 						So(cacheDriver.DeleteBlob(manifestDigest, manifestPath), ShouldBeNil)
 					}
-				} else if testCase.deleteOrigin {
+				case testCase.deleteOrigin:
 					So(storeDriver.Delete(manifestPaths[0]), ShouldBeNil)
-				} else {
+				default:
 					corruptedBody := bytes.Replace(manifestBody, []byte("good"), []byte("baad"), 1)
 					So(corruptedBody, ShouldNotResemble, manifestBody)
 					So(len(corruptedBody), ShouldEqual, len(manifestBody))

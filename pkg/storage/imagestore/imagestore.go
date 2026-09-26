@@ -702,14 +702,6 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 			return "", "", err
 		}
 
-		if contentPath == "" {
-			err = zerr.ErrBlobNotFound
-			is.log.Error().Err(err).Str("file", manifestPath).Str("digest", mDigest.String()).
-				Msg("dedupe origin for manifest is empty")
-
-			return "", "", err
-		}
-
 		// Keep the cache record intact when the origin object is missing: the
 		// re-upload below can recreate the object at the same backing path.
 		binfo, statErr = is.storeDriver.Stat(contentPath)
