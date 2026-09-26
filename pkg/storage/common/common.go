@@ -816,6 +816,12 @@ func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godiges
 
 	index, err := GetIndex(imgStore, repo, log)
 	if err != nil {
+		// No index.json yet (e.g. a streaming sync is still committing): nothing committed means
+		// no referrers, so return an empty index rather than an error.
+		if errors.Is(err, zerr.ErrRepoNotFound) {
+			return newEmptyReferrersIndex(), nil
+		}
+
 		return nilIndex, err
 	}
 

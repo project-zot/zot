@@ -15,3 +15,7 @@ const (
 	DefaultSyncTimeout           = 3 * time.Hour    // default timeout for all sync operations (on-demand and periodic)
 	DefaultResponseHeaderTimeout = 30 * time.Second // default timeout for reading response headers
 )
+
+// DefaultMaxConcurrentStreams is the stream cap when MaxConcurrentStreams is unset. Exported so
+// config validation compares against the same default the stream manager uses.
+const DefaultMaxConcurrentStreams = 32

@@ -10,6 +10,7 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/regclient/regclient/types/descriptor"
+	"github.com/regclient/regclient/types/manifest"
 	"github.com/regclient/regclient/types/ref"
 
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
@@ -21,7 +22,7 @@ import (
 // ref.Ref- describes a registry/repo:tag
 
 // Service provides sync general functionalities, one service per registry config.
-type Service interface {
+type Service interface { //nolint:interfacebloat
 	// Get next repo from remote /v2/_catalog, will return empty string when there is no repo left.
 	GetNextRepo(lastRepo string) (string, error) // used by task scheduler
 	// Sync a repo with all of its tags and references (signatures, artifacts, sboms) into ImageStore.
@@ -43,6 +44,21 @@ type Service interface {
 	// IsOnDemandInBackgroundForRepo reports whether this service should handle repo with
 	// on-demand-in-background sync (return miss immediately, sync into storage in background).
 	IsOnDemandInBackgroundForRepo(repo string) bool
+	// FetchManifest fetches repo:reference's manifest from upstream without storing it, plus each
+	// platform manifest for a multi-arch image. Same content and OnlySigned checks as SyncImage.
+	// Used by streaming.
+	FetchManifest(ctx context.Context, repo, reference string) (manifest.Manifest, []manifest.Manifest, error)
+	// IsStreamingForRepo reports whether this service streams repo's blobs to clients while
+	// syncing them.
+	IsStreamingForRepo(repo string) bool
+}
+
+// PinnedSyncer is a Service that can sync tag from an exact upstream digest instead of
+// re-resolving it, still committing under tag. The streaming background sync uses it so the blobs
+// it copies match the manifest already served, even if the tag moves meanwhile. Services without
+// it fall back to plain SyncImage.
+type PinnedSyncer interface {
+	SyncImageAtDigest(ctx context.Context, repo, tag string, digest godigest.Digest) error
 }
 
 // Registry interface must be implemented by local and remote registries.

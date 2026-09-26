@@ -32,6 +32,11 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 		onDemand := sync.NewOnDemand(log)
 		syncConfig := extensionsConfig.GetSyncConfig()
 
+		// One stream manager serves every streaming registry, so maxConcurrentStreams is one
+		// instance-wide cap. Its streams are keyed by registry plus digest, so a download is only
+		// shared within the same registry. Created only if some registry streams.
+		var streamManager sync.StreamManager
+
 		for _, registryConfig := range syncConfig.Registries {
 			if len(registryConfig.URLs) > 1 {
 				if err := removeSelfURLs(httpAddress, httpPort, &registryConfig, log); err != nil {
@@ -59,7 +64,22 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 
 			registryConfig.SetDockerCompat(config.IsDockerCompatEnabled())
 
-			service, err := sync.New(registryConfig, credsPath, clusterConfig, tmpDir, storeController, metaDB, log)
+			// Built from the first streaming registry; config validation ensures the others use
+			// the same maxConcurrentStreams.
+			if registryConfig.IsStreamEnabled() && streamManager == nil {
+				maxConcurrentStreams := 0
+				if registryConfig.MaxConcurrentStreams != nil {
+					maxConcurrentStreams = *registryConfig.MaxConcurrentStreams
+				}
+
+				streamManager = sync.NewChunkingStreamManager(storeController, maxConcurrentStreams, log)
+				onDemand.SetStreamManager(streamManager)
+			}
+
+			// Every service gets the shared manager, but only uses it when syncing a
+			// repo:reference that is staged for streaming (see syncRef).
+			service, err := sync.New(registryConfig, credsPath, clusterConfig, tmpDir, storeController,
+				streamManager, metaDB, log)
 			if err != nil {
 				log.Error().Err(err).Msg("failed to initialize sync extension")
 

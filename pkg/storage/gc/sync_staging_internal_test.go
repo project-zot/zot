@@ -275,6 +275,34 @@ func TestCollectStaleSyncSessionsAtRoot(t *testing.T) {
 		So(sessions, ShouldContain, stale)
 	})
 
+	Convey("collectStaleSyncSessionsAtRoot never reaps streaming temp files", t, func() {
+		// Streaming sync keeps in-flight blobs at <staging root>/_stream/<algorithm>/, a sibling of
+		// the repos rather than a <repo>/.sync session, and removes them itself when the stream
+		// ends. However old _stream looks, the reaper must leave it alone: an active stream's
+		// file lives under a directory created long before.
+		log := zlog.NewTestLogger()
+		root := t.TempDir()
+		testStoreWithRepos(t, root, "a")
+
+		streamAlgoDir := filepath.Join(root, "_stream", "sha256")
+		So(os.MkdirAll(streamAlgoDir, 0o755), ShouldBeNil)
+
+		streamFile := filepath.Join(streamAlgoDir, "0123abcd.1")
+		So(os.WriteFile(streamFile, []byte("in-flight"), 0o600), ShouldBeNil)
+
+		old := time.Now().Add(-2 * time.Hour)
+		for _, p := range []string{streamFile, streamAlgoDir, filepath.Join(root, "_stream")} {
+			So(os.Chtimes(p, old, old), ShouldBeNil)
+		}
+
+		stale := plantStaleSyncSession(t,
+			filepath.Join(root, "a", syncConstants.SyncBlobUploadDir), "stale-session", 2*time.Hour)
+
+		sessions, err := collectStaleSyncSessionsAtRoot(root, time.Hour, log)
+		So(err, ShouldBeNil)
+		So(sessions, ShouldResemble, []string{stale})
+	})
+
 	Convey("collectStaleSyncSessionsAtRoot finds sessions for nested repo names", t, func() {
 		log := zlog.NewTestLogger()
 		root := t.TempDir()
