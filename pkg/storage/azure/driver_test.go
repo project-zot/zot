@@ -378,12 +378,28 @@ func TestDriver(t *testing.T) {
 			})
 		})
 
-		Convey("Link", func() {
+		Convey("Link writes empty content to dest", func() {
+			putCalls := 0
 			storeMock.PutContentFn = func(ctx context.Context, path string, content []byte) error {
+				putCalls++
+
 				return nil
 			}
 			err := azureDriver.Link("/src", "/dst")
 			So(err, ShouldBeNil)
+			So(putCalls, ShouldEqual, 1)
+		})
+
+		Convey("Link src equals dest is a no-op", func() {
+			putCalls := 0
+			storeMock.PutContentFn = func(ctx context.Context, path string, content []byte) error {
+				putCalls++
+
+				return nil
+			}
+			err := azureDriver.Link("/same", "/same")
+			So(err, ShouldBeNil)
+			So(putCalls, ShouldEqual, 0)
 		})
 
 		Convey("RedirectURL", func() {

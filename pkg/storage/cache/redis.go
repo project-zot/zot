@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	goerrors "errors"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -151,6 +152,90 @@ func (d *RedisDriver) PutBlob(digest godigest.Digest, path string) error {
 			digest.String()), path).Err(); err != nil {
 			d.log.Error().Err(err).Str("sadd", d.join(constants.BlobsCache, constants.DuplicatesBucket, digest.String())).
 				Str("value", path).Msg("unable to put record")
+
+			return err
+		}
+
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (d *RedisDriver) SetOrigin(digest godigest.Digest, originPath string) error {
+	ctx := context.TODO()
+
+	if originPath == "" {
+		d.log.Error().Err(zerr.ErrEmptyValue).Str("digest", digest.String()).Msg("failed to provide non-empty path")
+
+		return zerr.ErrEmptyValue
+	}
+
+	comparePath := originPath
+	if d.useRelPaths {
+		rel, err := filepath.Rel(d.rootDir, originPath)
+		if err != nil {
+			d.log.Error().Err(err).Str("path", originPath).Msg("failed to get relative path")
+
+			return err
+		}
+
+		comparePath = rel
+	}
+
+	if comparePath == "" {
+		return zerr.ErrEmptyValue
+	}
+
+	// Hold the same per-digest lock as PutBlob/DeleteBlob for the whole replace so
+	// concurrent writers cannot observe a half-updated origin/duplicate pair.
+	lock := d.rs.NewMutex(d.join(constants.RedisLocksBucket, digest.String()))
+	if err := lock.Lock(); err != nil {
+		d.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to acquire redis lock")
+
+		return err
+	}
+
+	defer func() {
+		if _, err := lock.Unlock(); err != nil {
+			d.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to release redis lock")
+		}
+	}()
+
+	originKey := d.join(constants.BlobsCache, constants.OriginalBucket)
+	pathSet := d.join(constants.BlobsCache, constants.DuplicatesBucket, digest.String())
+
+	current, err := d.db.HGet(ctx, originKey, digest.String()).Result()
+	if err != nil && !goerrors.Is(err, redis.Nil) {
+		d.log.Error().Err(err).Str("hget", originKey).Str("digest", digest.String()).Msg("failed to get record")
+
+		return err
+	}
+
+	if err == nil && path.Clean(current) == path.Clean(comparePath) {
+		// Origin already correct, but still ensure set membership (DeleteBlob can
+		// SRem then fail before rotating the origin, leaving HasBlob false).
+		if _, err := d.db.SAdd(ctx, pathSet, comparePath).Result(); err != nil {
+			d.log.Error().Err(err).Str("sadd", pathSet).Str("value", comparePath).Msg("failed to put record")
+
+			return err
+		}
+
+		return nil
+	}
+
+	if _, err := d.db.TxPipelined(ctx, func(txrp redis.Pipeliner) error {
+		// Overwrite origin (PutBlob never does this) and keep path in the duplicate set.
+		if err := txrp.HSet(ctx, originKey, digest.String(), comparePath).Err(); err != nil {
+			d.log.Error().Err(err).Str("hset", originKey).Str("value", comparePath).Msg("failed to put record")
+
+			return err
+		}
+
+		if err := txrp.SAdd(ctx, pathSet, comparePath).Err(); err != nil {
+			d.log.Error().Err(err).Str("sadd", pathSet).Str("value", comparePath).Msg("failed to put record")
 
 			return err
 		}

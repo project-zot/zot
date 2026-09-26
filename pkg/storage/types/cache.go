@@ -23,6 +23,11 @@ type Cache interface {
 	// Delete a blob from the cachedb.
 	DeleteBlob(digest godigest.Digest, path string) error
 
+	// SetOrigin makes the origin record for digest match path. Unlike PutBlob, which
+	// never replaces an existing origin, SetOrigin overwrites the origin while keeping
+	// the duplicate set.
+	SetOrigin(digest godigest.Digest, path string) error
+
 	// UsesRelativePaths returns if cache is storing blobs relative to cache rootDir
 	UsesRelativePaths() bool
 }

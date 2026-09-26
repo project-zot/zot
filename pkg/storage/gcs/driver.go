@@ -172,6 +172,11 @@ func (driver *Driver) SameFile(path1, path2 string) bool {
 // Because gcs doesn't support symlinks, wherever the storage will encounter an empty file, it will get the original one
 // from cache.
 func (driver *Driver) Link(src, dest string) error {
+	// PutContent ignores src; writing an empty object onto the origin would destroy content.
+	if src == dest {
+		return nil
+	}
+
 	return driver.formatErr(driver.store.PutContent(context.Background(), dest, []byte{}), dest)
 }
 

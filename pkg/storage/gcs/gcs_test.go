@@ -28,6 +28,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
 	guuid "github.com/gofrs/uuid"
@@ -37,6 +38,7 @@ import (
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
+	rediscfg "zotregistry.dev/zot/v2/pkg/api/config/redis"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/storage"
@@ -442,6 +444,84 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 	return store, il, nil
 }
 
+// createObjectsStoreWithRedis is like createObjectsStore but uses a redis cache driver,
+// matching remoteCache:true + cacheDriver redis deployments (see issue 4463).
+func createObjectsStoreWithRedis(rootDir string, dedupe bool, redisAddr string) (
+	driver.StorageDriver,
+	storageTypes.ImageStore,
+	error,
+) {
+	bucket := "zot-storage-test"
+
+	endpoint := os.Getenv("GCSMOCK_ENDPOINT")
+	if endpoint == "" {
+		return nil, nil, errGCSMockEndpointNotSet
+	}
+
+	url := strings.TrimSuffix(endpoint, "/") + "/storage/v1/b?project=test-project"
+	body := fmt.Sprintf(`{"name": "%s"}`, bucket)
+	//nolint:gosec // URL points to gcsmock endpoint in tests
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		url,
+		strings.NewReader(body),
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req) //nolint:gosec // G107: Test mock
+	if err != nil {
+		return nil, nil, err
+	}
+	defer resp.Body.Close()
+
+	okStatus := resp.StatusCode == http.StatusOK ||
+		resp.StatusCode == http.StatusCreated ||
+		resp.StatusCode == http.StatusConflict
+	if !okStatus {
+		respBody, _ := io.ReadAll(resp.Body)
+
+		return nil, nil, fmt.Errorf("%w %s: status %d body %s",
+			errBucketCreateFailed, bucket, resp.StatusCode, string(respBody))
+	}
+
+	storageDriverParams := map[string]any{
+		"rootDir": rootDir,
+		"name":    "gcs",
+		"bucket":  bucket,
+	}
+
+	storeName := fmt.Sprintf("%v", storageDriverParams["name"])
+
+	store, err := factory.Create(context.Background(), storeName, storageDriverParams)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	log := log.NewTestLogger()
+	metrics := monitoring.NewNopMetricServer()
+
+	client, err := rediscfg.GetRedisClient(map[string]any{"url": redisAddr}, log)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	cacheDriver, err := storage.Create("redis", cache.RedisDriverParameters{
+		Client:      client,
+		RootDir:     rootDir,
+		UseRelPaths: false,
+	}, log)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	il := gcs.NewImageStore(rootDir, "", dedupe, false, log, metrics, nil, store, cacheDriver, nil, nil)
+
+	return store, il, nil
+}
+
 func TestGCSDriver(t *testing.T) {
 	tskip.SkipGCS(t)
 	ensureDummyGCSCreds(t)
@@ -736,6 +816,71 @@ func TestGCSDedupe(t *testing.T) {
 		So(blobDigest1, ShouldEqual, blobDigest2)
 		So(checkBlobSize1, ShouldEqual, checkBlobSize2)
 		So(getBlobSize1, ShouldEqual, getBlobSize2)
+	})
+}
+
+// TestGCSRedisDedupePreservesLateOrigin matches the issue-4463 config shape:
+// GCS storageDriver + dedupe + redis remoteCache. Pushing b/img before a/img makes
+// b the cached origin; a startup-style walk must not empty it.
+func TestGCSRedisDedupePreservesLateOrigin(t *testing.T) {
+	tskip.SkipGCS(t)
+	ensureDummyGCSCreds(t)
+
+	miniRedis := miniredis.RunT(t)
+	redisAddr := "redis://" + miniRedis.Addr()
+
+	uuid, err := guuid.NewV4()
+	if err != nil {
+		panic(err)
+	}
+
+	testDir := path.Join("/oci-repo-test", uuid.String())
+
+	storeDriver, imgStore, err := createObjectsStoreWithRedis(testDir, true, redisAddr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanupStorage(storeDriver, testDir)
+
+	Convey("GCS+redis rebuild must not empty late-sorting origin", t, func() {
+		ctx := context.Background()
+		content := []byte("gcs-shared-layer-content-for-dedupe-origin-preserve")
+		digest := godigest.FromBytes(content)
+
+		_, _, err := imgStore.FullBlobUpload(ctx, "b/img", bytes.NewReader(content), digest)
+		So(err, ShouldBeNil)
+
+		_, _, err = imgStore.FullBlobUpload(ctx, "a/img", bytes.NewReader(content), digest)
+		So(err, ShouldBeNil)
+
+		originPath := imgStore.BlobPath("b/img", digest)
+		stubPath := imgStore.BlobPath("a/img", digest)
+
+		originInfo, err := storeDriver.Stat(context.Background(), originPath)
+		So(err, ShouldBeNil)
+		So(originInfo.Size(), ShouldBeGreaterThan, 0)
+
+		stubInfo, err := storeDriver.Stat(context.Background(), stubPath)
+		So(err, ShouldBeNil)
+		So(stubInfo.Size(), ShouldEqual, 0)
+
+		_, imgStore2, err := createObjectsStoreWithRedis(testDir, true, redisAddr)
+		So(err, ShouldBeNil)
+
+		err = imgStore2.RunDedupeForDigest(ctx, digest, true, []string{stubPath, originPath})
+		So(err, ShouldBeNil)
+
+		originInfo, err = storeDriver.Stat(context.Background(), originPath)
+		So(err, ShouldBeNil)
+		So(originInfo.Size(), ShouldEqual, int64(len(content)))
+
+		got, err := imgStore2.GetBlobContent("b/img", digest)
+		So(err, ShouldBeNil)
+		So(got, ShouldResemble, content)
+
+		got, err = imgStore2.GetBlobContent("a/img", digest)
+		So(err, ShouldBeNil)
+		So(got, ShouldResemble, content)
 	})
 }
 

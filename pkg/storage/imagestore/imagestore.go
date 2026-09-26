@@ -1720,7 +1720,13 @@ func (is *ImageStore) checkCacheBlob(digest godigest.Digest) (string, error) {
 	if _, err := is.storeDriver.Stat(dstRecord); err != nil {
 		is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to stat blob")
 
-		// the actual blob on disk may have been removed by GC, so sync the cache
+		// Only sync the cache when the blob is actually gone. A transient Stat
+		// failure must not DeleteBlob (which can promote a stub on Redis) or be
+		// reported as a miss that rebuild then "repairs" with another path.
+		if _, ok := errors.AsType[driver.PathNotFoundError](err); !ok {
+			return "", err
+		}
+
 		if err := is.cache.DeleteBlob(digest, dstRecord); err != nil {
 			is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", dstRecord).
 				Msg("failed to remove blob path from cache")
@@ -1766,11 +1772,16 @@ func (is *ImageStore) copyBlob(ctx context.Context, repo string, blobPath, dstRe
 
 	_ = is.storeDriver.EnsureDir(filepath.Dir(blobPath))
 
-	if err := is.storeDriver.Link(dstRecord, blobPath); err != nil {
-		is.log.Error().Err(err).Str("blobPath", blobPath).Str("link", dstRecord).Str("component", "dedupe").
-			Msg("failed to hard link")
+	// Remote Link is PutContent of empty bytes to dest. Skip cleaned-equivalent
+	// paths here; drivers' Link implementations own exact/self and SameFile guards
+	// so we do not pay an extra remote Stat via SameFile on every placeholder copy.
+	if path.Clean(dstRecord) != path.Clean(blobPath) {
+		if err := is.storeDriver.Link(dstRecord, blobPath); err != nil {
+			is.log.Error().Err(err).Str("blobPath", blobPath).Str("link", dstRecord).Str("component", "dedupe").
+				Msg("failed to hard link")
 
-		return -1, zerr.ErrBlobNotFound
+			return -1, zerr.ErrBlobNotFound
+		}
 	}
 
 	// return original blob with content instead of the deduped one (blobPath)
@@ -2544,7 +2555,9 @@ func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []g
 	return digest, duplicateBlobs, err
 }
 
-func (is *ImageStore) getOriginalBlobFromDisk(duplicateBlobs []string) (string, error) {
+func (is *ImageStore) getOriginalBlobFromDisk(digest godigest.Digest, duplicateBlobs []string) (string, error) {
+	allowEmpty := isEmptyContentDigest(digest)
+
 	for _, blobPath := range duplicateBlobs {
 		binfo, err := is.storeDriver.Stat(blobPath)
 		if err != nil {
@@ -2562,7 +2575,7 @@ func (is *ImageStore) getOriginalBlobFromDisk(duplicateBlobs []string) (string, 
 			return "", zerr.ErrBlobNotFound
 		}
 
-		if binfo.Size() > 0 {
+		if binfo.Size() > 0 || (allowEmpty && binfo.Size() == 0) {
 			return blobPath, nil
 		}
 	}
@@ -2582,14 +2595,50 @@ func (is *ImageStore) getOriginalBlob(digest godigest.Digest, duplicateBlobs []s
 		return originalBlob, err
 	}
 
+	// Remote Link stubs are empty placeholders. A stale cache entry that points at a
+	// stub must not be treated as the content-bearing original, or the walk would
+	// Link over real copies and empty them. Genuine empty digests are size 0 by
+	// definition and remain valid origins.
+	if originalBlob != "" {
+		binfo, serr := is.storeDriver.Stat(originalBlob)
+		if serr != nil {
+			// Only missing paths are safe to abandon: a transient Stat failure must not
+			// re-point the cache at another copy and later Link over the real origin.
+			if _, ok := errors.AsType[driver.PathNotFoundError](serr); !ok {
+				is.log.Error().Err(serr).Str("path", originalBlob).Str("component", "dedupe").
+					Msg("failed to stat cached original blob")
+
+				return "", serr
+			}
+
+			is.log.Warn().Err(serr).Str("path", originalBlob).Str("component", "dedupe").
+				Msg("cached original blob missing, searching storage")
+
+			originalBlob = ""
+		} else if binfo.Size() == 0 && !isEmptyContentDigest(digest) {
+			is.log.Warn().Str("path", originalBlob).Str("component", "dedupe").
+				Msg("cached original blob has no content, searching storage")
+
+			originalBlob = ""
+		}
+	}
+
 	// if we still don't have, search it
 	if originalBlob == "" {
 		is.log.Warn().Str("component", "dedupe").Msg("failed to find blob in cache, searching it in storage...")
 		// a rebuild dedupe was attempted in the past
 		// get original blob, should be found otherwise exit with error
 
-		originalBlob, err = is.getOriginalBlobFromDisk(duplicateBlobs)
+		originalBlob, err = is.getOriginalBlobFromDisk(digest, duplicateBlobs)
 		if err != nil {
+			return originalBlob, err
+		}
+	}
+
+	// PutBlob never replaces an existing origin entry. After rejecting an empty stub
+	// (or recovering via disk search), point the cache at the validated content path.
+	if fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+		if err := is.cache.SetOrigin(digest, originalBlob); err != nil {
 			return originalBlob, err
 		}
 	}
@@ -2645,13 +2694,6 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 
 					return zerr.ErrDedupeRebuild
 				}
-
-				// cache original blob
-				if _, err := is.cache.GetBlob(digest); err != nil {
-					if err := is.cache.PutBlob(digest, originalBlob); err != nil {
-						return err
-					}
-				}
 			}
 
 			// cache dedupe blob
@@ -2662,10 +2704,23 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 			}
 		} else {
 			// if we have an original blob cached then we can safely dedupe the rest of them
-			if originalBlob != "" {
+			// Never Link a path onto itself: remote drivers implement Link as PutContent of
+			// empty bytes to dest, which would replace the only real copy with a stub.
+			if originalBlob != "" && path.Clean(originalBlob) != path.Clean(blobPath) {
 				if err := is.storeDriver.Link(originalBlob, blobPath); err != nil {
 					is.log.Error().Err(err).Str("path", blobPath).Str("component", "dedupe").Msg("failed to dedupe blob")
 
+					return err
+				}
+			} else if originalBlob == "" {
+				// First content-bearing path is the preserved origin. Do not reassign
+				// after linking a later full copy: that would point originalBlob at a
+				// path we just emptied and empty the real origin on the next iteration.
+				originalBlob = blobPath
+
+				// Repair even when no stub was seen first: PutBlob alone cannot replace
+				// a stale empty origin left in the cache.
+				if err := is.cache.SetOrigin(digest, originalBlob); err != nil {
 					return err
 				}
 			}
@@ -2676,9 +2731,6 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 					return err
 				}
 			}
-
-			// mark blob as preserved
-			originalBlob = blobPath
 		}
 	}
 

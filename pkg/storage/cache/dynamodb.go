@@ -263,6 +263,47 @@ func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
 	return nil
 }
 
+func (d *DynamoDBDriver) SetOrigin(digest godigest.Digest, originPath string) error {
+	if originPath == "" {
+		d.log.Error().Err(zerr.ErrEmptyValue).Str("digest", digest.String()).
+			Msg("failed to set origin because the path provided is empty")
+
+		return zerr.ErrEmptyValue
+	}
+
+	// Single UpdateItem with a strongly consistent condition: write only when the
+	// origin or set membership needs repair. Avoids eventually-consistent GetBlob
+	// no-ops and skips WCU burn when rebuild already points at the right path.
+	marshaledKey, _ := attributevalue.MarshalMap(map[string]any{"Digest": digest.String()})
+	expression := "SET OriginalBlobPath = :s ADD DuplicateBlobPath :i"
+	condition := "attribute_not_exists(OriginalBlobPath) OR OriginalBlobPath <> :s OR " +
+		"NOT contains(DuplicateBlobPath, :p)"
+	attrVals := map[string]types.AttributeValue{
+		":s": &types.AttributeValueMemberS{Value: originPath},
+		":i": &types.AttributeValueMemberSS{Value: []string{originPath}},
+		":p": &types.AttributeValueMemberS{Value: originPath},
+	}
+
+	_, err := d.client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
+		Key:                       marshaledKey,
+		TableName:                 &d.tableName,
+		UpdateExpression:          &expression,
+		ConditionExpression:       &condition,
+		ExpressionAttributeValues: attrVals,
+	})
+	if err != nil {
+		if _, ok := errors.AsType[*types.ConditionalCheckFailedException](err); ok {
+			return nil
+		}
+
+		d.log.Error().Err(err).Str("digest", digest.String()).Str("path", originPath).Msg("failed to set origin")
+
+		return err
+	}
+
+	return nil
+}
+
 func (d *DynamoDBDriver) HasBlob(digest godigest.Digest, path string) bool {
 	resp, err := d.client.GetItem(context.TODO(), &dynamodb.GetItemInput{
 		TableName: aws.String(d.tableName),

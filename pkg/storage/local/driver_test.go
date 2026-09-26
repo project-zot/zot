@@ -335,6 +335,42 @@ func TestLink(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 
+		Convey("Test linking a path onto itself is a no-op", func() {
+			srcFile := path.Join(rootDir, "self.txt")
+			err := os.WriteFile(srcFile, []byte("keep me"), 0o600)
+			So(err, ShouldBeNil)
+
+			err = driver.Link(srcFile, srcFile)
+			So(err, ShouldBeNil)
+
+			content, err := os.ReadFile(srcFile)
+			So(err, ShouldBeNil)
+			So(string(content), ShouldEqual, "keep me")
+		})
+
+		Convey("Test linking cleaned-equivalent paths is a no-op", func() {
+			srcFile := path.Join(rootDir, "self.txt")
+			err := os.WriteFile(srcFile, []byte("keep me"), 0o600)
+			So(err, ShouldBeNil)
+
+			// Avoid path.Join: it cleans "./" away and would only repeat the exact-self test.
+			equivDest := rootDir + "/./self.txt"
+			So(equivDest, ShouldNotEqual, srcFile)
+
+			err = driver.Link(srcFile, equivDest)
+			So(err, ShouldBeNil)
+
+			content, err := os.ReadFile(srcFile)
+			So(err, ShouldBeNil)
+			So(string(content), ShouldEqual, "keep me")
+		})
+
+		Convey("Test linking a missing path onto itself still errors", func() {
+			missing := path.Join(rootDir, "missing.txt")
+			err := driver.Link(missing, missing)
+			So(err, ShouldNotBeNil)
+		})
+
 		Convey("Test linking non-existent file", func() {
 			destFile := path.Join(rootDir, "link.txt")
 			err := driver.Link("/nonexistent", destFile)

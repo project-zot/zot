@@ -8,6 +8,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
 
+	"zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	"zotregistry.dev/zot/v2/pkg/storage/cache"
@@ -143,6 +144,55 @@ func TestDynamoDB(t *testing.T) {
 		val, err = cacheDriver.GetBlob("key2")
 		So(err, ShouldNotBeNil)
 		So(val, ShouldBeEmpty)
+
+		// SetOrigin replaces a stale first-wins origin; PutBlob alone cannot.
+		err = cacheDriver.PutBlob("key3", "staleOrigin")
+		So(err, ShouldBeNil)
+
+		err = cacheDriver.PutBlob("key3", "realOrigin")
+		So(err, ShouldBeNil)
+
+		val, err = cacheDriver.GetBlob("key3")
+		So(err, ShouldBeNil)
+		So(val, ShouldEqual, "staleOrigin")
+
+		err = cacheDriver.SetOrigin("key3", "realOrigin")
+		So(err, ShouldBeNil)
+
+		val, err = cacheDriver.GetBlob("key3")
+		So(err, ShouldBeNil)
+		So(val, ShouldEqual, "realOrigin")
+
+		err = cacheDriver.SetOrigin("key3", "realOrigin")
+		So(err, ShouldBeNil)
+
+		val, err = cacheDriver.GetBlob("key3")
+		So(err, ShouldBeNil)
+		So(val, ShouldEqual, "realOrigin")
+
+		err = cacheDriver.SetOrigin("key4", "")
+		So(err, ShouldEqual, errors.ErrEmptyValue)
+
+		So(cacheDriver.SetOrigin("freshKey", "onlyOrigin"), ShouldBeNil)
+
+		val, err = cacheDriver.GetBlob("freshKey")
+		So(err, ShouldBeNil)
+		So(val, ShouldEqual, "onlyOrigin")
+
+		So(cacheDriver.PutBlob("dupKey", "staleOrigin"), ShouldBeNil)
+		So(cacheDriver.PutBlob("dupKey", "realOrigin"), ShouldBeNil)
+		So(cacheDriver.PutBlob("dupKey", "otherPath"), ShouldBeNil)
+		So(cacheDriver.SetOrigin("dupKey", "realOrigin"), ShouldBeNil)
+
+		val, err = cacheDriver.GetBlob("dupKey")
+		So(err, ShouldBeNil)
+		So(val, ShouldEqual, "realOrigin")
+
+		blobs, err := cacheDriver.GetAllBlobs("dupKey")
+		So(err, ShouldBeNil)
+		So(blobs[0], ShouldEqual, "realOrigin")
+		So(blobs, ShouldContain, "staleOrigin")
+		So(blobs, ShouldContain, "otherPath")
 	})
 
 	Convey("Test dynamoDB", t, func(c C) {
@@ -216,5 +266,11 @@ func TestDynamoDBError(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		err = cacheDriver.DeleteBlob(godigest.FromString("str"), "path")
 		So(err, ShouldNotBeNil)
+
+		err = cacheDriver.SetOrigin(godigest.FromString("str"), "path")
+		So(err, ShouldNotBeNil)
+
+		err = cacheDriver.SetOrigin(godigest.FromString("str"), "")
+		So(err, ShouldEqual, errors.ErrEmptyValue)
 	})
 }
