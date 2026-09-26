@@ -370,6 +370,24 @@ func TestRemoteRegistryGetImageReferenceFailures(t *testing.T) {
 	})
 }
 
+func TestShouldSeedRef(t *testing.T) {
+	Convey("shouldSeedRef seeds image manifests only, and never for a streaming registry", t, func() {
+		streamEnabled := true
+		streamDisabled := false
+
+		service := &BaseService{}
+		So(service.shouldSeedRef(ispec.MediaTypeImageManifest), ShouldBeTrue)
+		So(service.shouldSeedRef(ispec.MediaTypeImageIndex), ShouldBeFalse)
+		So(service.shouldSeedRef(""), ShouldBeFalse)
+
+		service.config.Stream = &streamDisabled
+		So(service.shouldSeedRef(ispec.MediaTypeImageManifest), ShouldBeTrue)
+
+		service.config.Stream = &streamEnabled
+		So(service.shouldSeedRef(ispec.MediaTypeImageManifest), ShouldBeFalse)
+	})
+}
+
 func TestSyncRefReferenceSelection(t *testing.T) {
 	Convey("syncRef picks reference from local tag, remote tag, then digests", t, func() {
 		service := &BaseService{log: log.NewTestLogger()}

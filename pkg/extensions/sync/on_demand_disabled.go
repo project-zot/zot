@@ -2,7 +2,13 @@
 
 package sync
 
-import "context"
+import (
+	"context"
+
+	"github.com/regclient/regclient/types/manifest"
+
+	zerr "zotregistry.dev/zot/v2/errors"
+)
 
 type BaseOnDemand struct{}
 
@@ -25,3 +31,16 @@ func (onDemand *BaseOnDemand) ShouldQueueOnDemandSync(_ string) bool {
 }
 
 func (onDemand *BaseOnDemand) QueueImage(_ context.Context, _, _ string) {}
+func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, reference string,
+	onSynced func(manifest.Manifest),
+) (manifest.Manifest, error) {
+	return nil, zerr.ErrSyncOnDemandDisabled
+}
+
+func (onDemand *BaseOnDemand) StreamManager() StreamManager {
+	return nil
+}
+
+func (onDemand *BaseOnDemand) IsStreamingEnabledForRepo(repo string) bool {
+	return false
+}
