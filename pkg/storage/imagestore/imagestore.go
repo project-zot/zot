@@ -695,7 +695,23 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 	dir := path.Join(is.rootDir, repo, ispec.ImageBlobsDir, mDigest.Algorithm().String())
 	manifestPath := path.Join(dir, mDigest.Encoded())
 
+	contentPath := manifestPath
 	binfo, statErr := is.storeDriver.Stat(manifestPath)
+	if statErr == nil && is.dedupe && is.storeDriver.Name() != storageConstants.LocalStorageDriverName &&
+		binfo.Size() == 0 && !isEmptyContentDigest(mDigest) {
+		contentPath, err = is.getCachedBlobPath(mDigest)
+		if err != nil {
+			is.log.Error().Err(err).Str("file", manifestPath).Str("digest", mDigest.String()).
+				Msg("failed to resolve dedupe origin for manifest")
+
+			return "", "", err
+		}
+
+		// Keep the cache record intact when the origin object is missing: the
+		// re-upload below can recreate the object at the same backing path.
+		binfo, statErr = is.storeDriver.Stat(contentPath)
+	}
+
 	needsWrite := statErr != nil
 	if !needsWrite {
 		needsWrite = binfo.Size() != desc.Size
@@ -705,13 +721,13 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 		// body is already digest-validated; compare to on-disk bytes instead of
 		// re-hashing (manifests are small / API-capped at MaxManifestBodySize).
 		// Hashing would add compute overhead.
-		stored, readErr := is.storeDriver.ReadFile(manifestPath)
+		stored, readErr := is.storeDriver.ReadFile(contentPath)
 		if readErr != nil || !slices.Equal(stored, body) {
 			if readErr != nil {
-				is.log.Warn().Err(readErr).Str("file", manifestPath).
+				is.log.Warn().Err(readErr).Str("file", contentPath).
 					Msg("failed to read existing manifest; rewriting")
 			} else {
-				is.log.Warn().Str("file", manifestPath).
+				is.log.Warn().Str("file", contentPath).
 					Msg("manifest blob content mismatch; rewriting")
 			}
 
@@ -722,17 +738,17 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 	if needsWrite {
 		// Prefer in-place write for digest blobs so hard-linked dedupe siblings
 		// share the repaired inode (local Driver.WriteFile truncates in place).
-		nbytes, writeErr := is.storeDriver.WriteFile(manifestPath, body)
+		nbytes, writeErr := is.storeDriver.WriteFile(contentPath, body)
 		if writeErr != nil {
 			err = writeErr
-			is.log.Error().Err(err).Str("file", manifestPath).Msg("failed to write")
+			is.log.Error().Err(err).Str("file", contentPath).Msg("failed to write")
 
 			return "", "", err
 		}
 
 		if nbytes != len(body) {
 			err = io.ErrShortWrite
-			is.log.Error().Err(err).Str("file", manifestPath).Msg("failed to write manifest: short write")
+			is.log.Error().Err(err).Str("file", contentPath).Msg("failed to write manifest: short write")
 
 			return "", "", err
 		}
@@ -1693,17 +1709,9 @@ func (is *ImageStore) checkCacheBlob(digest godigest.Digest) (string, error) {
 		return "", err
 	}
 
-	if fmt.Sprintf("%v", is.cache) == fmt.Sprintf("%v", nil) {
-		return "", zerr.ErrBlobNotFound
-	}
-
-	dstRecord, err := is.cache.GetBlob(digest)
+	dstRecord, err := is.getCachedBlobPath(digest)
 	if err != nil {
 		return "", err
-	}
-
-	if is.cache.UsesRelativePaths() {
-		dstRecord = path.Join(is.rootDir, dstRecord)
 	}
 
 	if _, err := is.storeDriver.Stat(dstRecord); err != nil {
@@ -1722,6 +1730,26 @@ func (is *ImageStore) checkCacheBlob(digest godigest.Digest) (string, error) {
 
 	is.log.Debug().Str("digest", digest.String()).Str("dstRecord", dstRecord).Str("component", "cache").
 		Msg("found dedupe record")
+
+	return dstRecord, nil
+}
+
+func (is *ImageStore) getCachedBlobPath(digest godigest.Digest) (string, error) {
+	if fmt.Sprintf("%v", is.cache) == fmt.Sprintf("%v", nil) {
+		return "", zerr.ErrBlobNotFound
+	}
+
+	dstRecord, err := is.cache.GetBlob(digest)
+	if err != nil {
+		return "", err
+	}
+	if dstRecord == "" {
+		return "", zerr.ErrBlobNotFound
+	}
+
+	if is.cache.UsesRelativePaths() {
+		dstRecord = path.Join(is.rootDir, dstRecord)
+	}
 
 	return dstRecord, nil
 }

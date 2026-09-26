@@ -2878,6 +2878,112 @@ func TestReuploadEqualSizeCorruptedManifestWithDedupe(t *testing.T) {
 	})
 }
 
+func TestReuploadManifestRepairsRemoteDedupeOrigin(t *testing.T) {
+	Convey("Remote dedupe manifest re-upload repairs the cache origin", t, func() {
+		const (
+			repoA = "remote-manifest-dedupe-a"
+			repoB = "remote-manifest-dedupe-b"
+			repoC = "remote-manifest-dedupe-c"
+		)
+
+		cases := []struct {
+			name         string
+			deleteOrigin bool
+			deleteCache  bool
+		}{
+			{name: "equal-size corrupted origin"},
+			{name: "missing origin", deleteOrigin: true},
+			{name: "missing cache", deleteCache: true},
+		}
+
+		for _, testCase := range cases {
+			Convey(testCase.name, func() {
+				rootDir := t.TempDir()
+				log := zlog.NewTestLogger()
+				storeDriver := &remoteMarkerDriver{Driver: local.New(true)}
+
+				cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+					RootDir:     rootDir,
+					Name:        "cache",
+					UseRelPaths: true,
+				}, log)
+				So(err, ShouldBeNil)
+
+				imgStore := imagestore.NewImageStore(rootDir, rootDir, true, true, log,
+					monitoring.NewNopMetricServer(), nil, storeDriver, cacheDriver, nil, nil)
+				storeController := storage.StoreController{DefaultStore: imgStore}
+				image := CreateRandomImage()
+				image.Manifest.Annotations = map[string]string{"probe": "good"}
+
+				for _, repo := range []string{repoA, repoB, repoC} {
+					So(WriteImageToFileSystem(image, repo, "1.0", storeController), ShouldBeNil)
+				}
+
+				manifestBody, manifestDigest, mediaType, err := imgStore.GetImageManifest(repoA, "1.0")
+				So(err, ShouldBeNil)
+
+				manifestPaths := []string{
+					imgStore.BlobPath(repoA, manifestDigest),
+					imgStore.BlobPath(repoB, manifestDigest),
+					imgStore.BlobPath(repoC, manifestDigest),
+				}
+				So(imgStore.RunDedupeForDigest(context.Background(), manifestDigest, true, manifestPaths), ShouldBeNil)
+
+				cachedOrigin, err := cacheDriver.GetBlob(manifestDigest)
+				So(err, ShouldBeNil)
+				So(path.Clean(path.Join(rootDir, cachedOrigin)), ShouldEqual, path.Clean(manifestPaths[0]))
+
+				switch {
+				case testCase.deleteCache:
+					for _, manifestPath := range manifestPaths {
+						So(cacheDriver.DeleteBlob(manifestDigest, manifestPath), ShouldBeNil)
+					}
+				case testCase.deleteOrigin:
+					So(storeDriver.Delete(manifestPaths[0]), ShouldBeNil)
+				default:
+					corruptedBody := bytes.Replace(manifestBody, []byte("good"), []byte("baad"), 1)
+					So(corruptedBody, ShouldNotResemble, manifestBody)
+					So(len(corruptedBody), ShouldEqual, len(manifestBody))
+					_, err = storeDriver.WriteFile(manifestPaths[0], corruptedBody)
+					So(err, ShouldBeNil)
+				}
+
+				_, _, err = imgStore.PutImageManifest(context.Background(), repoB, "1.0", mediaType, manifestBody, nil)
+
+				if testCase.deleteCache {
+					So(errors.Is(err, zerr.ErrCacheMiss), ShouldBeTrue)
+					storedBody, readErr := storeDriver.ReadFile(manifestPaths[1])
+					So(readErr, ShouldBeNil)
+					So(storedBody, ShouldBeEmpty)
+
+					return
+				}
+
+				So(err, ShouldBeNil)
+				storedOrigin, err := storeDriver.ReadFile(manifestPaths[0])
+				So(err, ShouldBeNil)
+				So(storedOrigin, ShouldResemble, manifestBody)
+
+				for _, manifestPath := range manifestPaths[1:] {
+					blobInfo, statErr := storeDriver.Stat(manifestPath)
+					So(statErr, ShouldBeNil)
+					So(blobInfo.Size(), ShouldEqual, 0)
+				}
+
+				cachedOrigin, err = cacheDriver.GetBlob(manifestDigest)
+				So(err, ShouldBeNil)
+				So(path.Clean(path.Join(rootDir, cachedOrigin)), ShouldEqual, path.Clean(manifestPaths[0]))
+
+				for _, repo := range []string{repoA, repoB, repoC} {
+					storedBody, _, _, readErr := imgStore.GetImageManifest(repo, "1.0")
+					So(readErr, ShouldBeNil)
+					So(storedBody, ShouldResemble, manifestBody)
+				}
+			})
+		}
+	})
+}
+
 func TestReuploadManifestShortWrite(t *testing.T) {
 	Convey("A short manifest repair write returns an error", t, func() {
 		const repo = "manifest-short-write"
@@ -4892,6 +4998,22 @@ func DumpKeys(t *testing.T, redisURL string) {
 			t.Logf("Key: %s, Type: %s, Value: %s\n", key, keyType, value)
 		}
 	}
+}
+
+// remoteMarkerDriver models object-storage dedupe: Link creates a zero-byte object
+// instead of a filesystem hard link, while all other operations use local storage.
+type remoteMarkerDriver struct {
+	*local.Driver
+}
+
+func (d *remoteMarkerDriver) Name() string {
+	return storageConstants.S3StorageDriverName
+}
+
+func (d *remoteMarkerDriver) Link(_, dest string) error {
+	_, err := d.Driver.WriteFile(dest, nil)
+
+	return err
 }
 
 // stagingHookDriver wraps the local driver so staged-write tests can inject WriteFile / Move failures.
