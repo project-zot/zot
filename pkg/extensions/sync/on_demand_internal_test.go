@@ -14,8 +14,11 @@ import (
 	"testing"
 	"time"
 
+	godigest "github.com/opencontainers/go-digest"
 	"github.com/regclient/regclient/types/errs"
 	. "github.com/smartystreets/goconvey/convey"
+
+	"github.com/regclient/regclient/types/manifest"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/log"
@@ -66,6 +69,16 @@ func (s *stubOnDemandService) IsOnDemandInBackgroundForRepo(repo string) bool {
 	}
 
 	return s.onDemandInBackground
+}
+
+func (s *stubOnDemandService) FetchManifest(_ context.Context, _, _ string) (manifest.Manifest, error) {
+	return nil, zerr.ErrManifestNotFound
+}
+
+func (s *stubOnDemandService) IsStreamingForRepo(_ string) bool { return false }
+
+func (s *stubOnDemandService) IsImageLocal(_, _ string, _ godigest.Digest) (bool, error) {
+	return false, nil
 }
 
 func TestOnDemandDockerCompatPreference(t *testing.T) {

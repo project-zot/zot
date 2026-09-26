@@ -68,6 +68,34 @@ func RunSyncSessionReaperPeriodically(conf *config.Config, storeController stora
 	sch.SubmitGenerator(newSyncSessionReaperGenerator(roots, delay, log), interval, scheduler.LowPriority)
 }
 
+// RemoveStreamTempDirs deletes <root>/_stream under every local sync staging root. Run it once per
+// process, before sync can stage a stream: everything there is left by an earlier process. Not on
+// reload, which keeps live streams.
+func RemoveStreamTempDirs(storeController storage.StoreController, log zlog.Logger) {
+	for _, root := range storeController.SyncStagingRoots() {
+		dir := filepath.Join(root, syncConstants.StreamTempDir)
+
+		if _, err := os.Lstat(dir); err != nil {
+			if !os.IsNotExist(err) {
+				log.Error().Err(err).Str("module", "gc").Str("dir", dir).
+					Msg("failed to stat stream temp dir")
+			}
+
+			continue
+		}
+
+		if err := os.RemoveAll(dir); err != nil {
+			log.Error().Err(err).Str("module", "gc").Str("dir", dir).
+				Msg("failed to remove stream temp files left by a previous run")
+
+			continue
+		}
+
+		log.Info().Str("module", "gc").Str("dir", dir).
+			Msg("removed stream temp files left by a previous run")
+	}
+}
+
 // HasInProgressSessions reports whether root has an active <repo>/.sync/<uuid> session directory.
 // Missing .sync is treated as idle; any other ReadDir error fails closed (true).
 // An empty root is treated as idle.

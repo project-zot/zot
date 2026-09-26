@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +18,9 @@ import (
 	"github.com/gorilla/mux"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/regclient/regclient/types/descriptor"
+	"github.com/regclient/regclient/types/manifest"
+	rocispec "github.com/regclient/regclient/types/oci/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
 	zerr "zotregistry.dev/zot/v2/errors"
@@ -26,6 +30,7 @@ import (
 	ext "zotregistry.dev/zot/v2/pkg/extensions"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
+	"zotregistry.dev/zot/v2/pkg/extensions/sync"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	"zotregistry.dev/zot/v2/pkg/storage/errclass"
@@ -41,9 +46,19 @@ var (
 	errStorageInjected     = errors.New("injected storage failure")
 )
 
+// Stand-in for an on-demand sync failure reaching upstream.
+var errUpstreamUnreachable = errors.New("upstream unreachable")
+
 type mockSyncOnDemand struct {
 	syncImageFn                   func(ctx context.Context, repo, reference string) error
+	syncReferrersFn               func(ctx context.Context, repo, subjectDigestStr string, referenceTypes []string) error
 	shouldCheckUpstreamManifestFn func(repo, reference string) bool
+	fetchManifestForStreamFn      func(ctx context.Context, repo, reference string) (manifest.Manifest, error)
+	isStreamingEnabledForRepoFn   func(repo string) bool
+	shouldQueueOnDemandSyncFn     func(repo string) bool
+	// onStreamSynced records the callback the last FetchManifestForStream call was given.
+	onStreamSynced func(manifest.Manifest)
+	streamManager  sync.StreamManager
 }
 
 func (m *mockSyncOnDemand) SyncImage(ctx context.Context, repo, reference string) error {
@@ -54,7 +69,12 @@ func (m *mockSyncOnDemand) SyncImage(ctx context.Context, repo, reference string
 	return nil
 }
 
-func (m *mockSyncOnDemand) SyncReferrers(_ context.Context, _, _ string, _ []string) error {
+func (m *mockSyncOnDemand) SyncReferrers(ctx context.Context, repo, subjectDigestStr string, referenceTypes []string,
+) error {
+	if m.syncReferrersFn != nil {
+		return m.syncReferrersFn(ctx, repo, subjectDigestStr, referenceTypes)
+	}
+
 	return nil
 }
 
@@ -66,16 +86,44 @@ func (m *mockSyncOnDemand) ShouldCheckUpstreamManifest(repo, reference string) b
 	return true
 }
 
-func (m *mockSyncOnDemand) ShouldQueueOnDemandSync(string) bool {
+func (m *mockSyncOnDemand) ShouldQueueOnDemandSync(repo string) bool {
+	if m.shouldQueueOnDemandSyncFn != nil {
+		return m.shouldQueueOnDemandSyncFn(repo)
+	}
+
 	return false
 }
 
 func (m *mockSyncOnDemand) QueueImage(context.Context, string, string) {}
+func (m *mockSyncOnDemand) FetchManifestForStream(ctx context.Context, repo, reference string,
+	onSynced func(manifest.Manifest),
+) (manifest.Manifest, error) {
+	m.onStreamSynced = onSynced
+
+	if m.fetchManifestForStreamFn != nil {
+		return m.fetchManifestForStreamFn(ctx, repo, reference)
+	}
+
+	return nil, zerr.ErrManifestNotFound
+}
+
+func (m *mockSyncOnDemand) IsStreamingEnabledForRepo(repo string) bool {
+	if m.isStreamingEnabledForRepoFn != nil {
+		return m.isStreamingEnabledForRepoFn(repo)
+	}
+
+	return false
+}
+
+func (m *mockSyncOnDemand) StreamManager() sync.StreamManager {
+	return m.streamManager
+}
 
 func newSyncTestRouteHandler(
 	t *testing.T,
 	store mocks.MockedImageStore,
 	syncOnDemand ext.SyncOnDemand,
+	configure ...func(*config.Config),
 ) *api.RouteHandler {
 	t.Helper()
 
@@ -85,6 +133,10 @@ func newSyncTestRouteHandler(
 	ctlr.Router = mux.NewRouter()
 	ctlr.Config.Extensions = &extconf.ExtensionConfig{
 		Sync: &syncconf.Config{Enable: &trueVal},
+	}
+
+	for _, fn := range configure {
+		fn(ctlr.Config)
 	}
 	ctlr.StoreController.DefaultStore = store
 	ctlr.SyncOnDemand = syncOnDemand
@@ -1057,6 +1109,358 @@ func TestHTTPStorageClassStatusMapping(t *testing.T) {
 				So(body, ShouldContainSubstring, `"c/repo"`)
 				So(body, ShouldNotContainSubstring, `"b"`)
 			})
+		})
+	})
+}
+
+func TestGetManifestStreaming(t *testing.T) {
+	Convey("GetManifest fetches directly from upstream for a streaming-enabled repo", t, func() {
+		const reference = "v1.0"
+
+		newReq := func() *http.Request {
+			req := httptest.NewRequestWithContext(
+				context.Background(),
+				http.MethodGet,
+				"http://example.com/v2/test/manifests/"+reference,
+				http.NoBody,
+			)
+
+			return mux.SetURLVars(req, map[string]string{
+				"name":      "test",
+				"reference": reference,
+			})
+		}
+
+		// manifest.New only accepts regclient's own OCI types, not image-spec's ispec.Manifest.
+		upstreamManifest := rocispec.Manifest{
+			SchemaVersion: 2,
+			MediaType:     ispec.MediaTypeImageManifest,
+			Config: descriptor.Descriptor{
+				MediaType: ispec.MediaTypeEmptyJSON,
+				Digest:    "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+				Size:      2,
+				Data:      []byte(`{}`),
+			},
+		}
+
+		man, err := manifest.New(manifest.WithOrig(upstreamManifest))
+		So(err, ShouldBeNil)
+
+		body, err := man.RawBody()
+		So(err, ShouldBeNil)
+
+		notFoundStore := mocks.MockedImageStore{
+			GetImageManifestFn: func(_ string, _ string) ([]byte, godigest.Digest, string, error) {
+				return nil, "", "", zerr.ErrManifestNotFound
+			},
+		}
+
+		Convey("returns the upstream manifest directly, without calling SyncImage", func() {
+			syncCalls := 0
+
+			syncOnDemand := &mockSyncOnDemand{
+				isStreamingEnabledForRepoFn: func(_ string) bool { return true },
+				fetchManifestForStreamFn: func(_ context.Context, _, _ string) (manifest.Manifest, error) {
+					return man, nil
+				},
+				syncImageFn: func(_ context.Context, _, _ string) error {
+					syncCalls++
+
+					return nil
+				},
+			}
+			handler := newSyncTestRouteHandler(t, notFoundStore, syncOnDemand)
+
+			rec := httptest.NewRecorder()
+			handler.GetManifest(rec, newReq())
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+			So(resp.Header.Get(constants.DistContentDigestKey), ShouldEqual, man.GetDescriptor().Digest.String())
+
+			respBody, readErr := io.ReadAll(resp.Body)
+			So(readErr, ShouldBeNil)
+			So(respBody, ShouldResemble, body)
+
+			So(syncCalls, ShouldEqual, 0)
+		})
+
+		Convey("only GET registers a download-count callback for the background sync", func() {
+			syncOnDemand := &mockSyncOnDemand{
+				isStreamingEnabledForRepoFn: func(_ string) bool { return true },
+				fetchManifestForStreamFn: func(_ context.Context, _, _ string) (manifest.Manifest, error) {
+					return man, nil
+				},
+			}
+			handler := newSyncTestRouteHandler(t, notFoundStore, syncOnDemand)
+
+			headReq := newReq()
+			headReq.Method = http.MethodHead
+
+			headRec := httptest.NewRecorder()
+			handler.CheckManifest(headRec, headReq)
+
+			headResp := headRec.Result()
+			defer headResp.Body.Close()
+
+			So(headResp.StatusCode, ShouldEqual, http.StatusOK)
+			So(syncOnDemand.onStreamSynced, ShouldBeNil)
+
+			getRec := httptest.NewRecorder()
+			handler.GetManifest(getRec, newReq())
+
+			getResp := getRec.Result()
+			defer getResp.Body.Close()
+
+			So(getResp.StatusCode, ShouldEqual, http.StatusOK)
+			So(syncOnDemand.onStreamSynced, ShouldNotBeNil)
+		})
+
+		Convey("falls back to a non-streaming on-demand sync when FetchManifestForStream fails before syncing", func() {
+			// E.g. no stream manager: FetchManifestForStream ran no sync, so the route runs the
+			// plain one, which commits the image locally.
+			syncCalls := 0
+
+			localStore := mocks.MockedImageStore{
+				GetImageManifestFn: func(_ string, _ string) ([]byte, godigest.Digest, string, error) {
+					if syncCalls == 0 {
+						return nil, "", "", zerr.ErrManifestNotFound
+					}
+
+					return body, man.GetDescriptor().Digest, man.GetDescriptor().MediaType, nil
+				},
+			}
+
+			syncOnDemand := &mockSyncOnDemand{
+				isStreamingEnabledForRepoFn: func(_ string) bool { return true },
+				fetchManifestForStreamFn: func(_ context.Context, _, _ string) (manifest.Manifest, error) {
+					return nil, zerr.ErrStreamManagerNotInitialized
+				},
+				syncImageFn: func(_ context.Context, _, _ string) error {
+					syncCalls++
+
+					return nil
+				},
+			}
+			handler := newSyncTestRouteHandler(t, localStore, syncOnDemand)
+
+			rec := httptest.NewRecorder()
+			handler.GetManifest(rec, newReq())
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			So(syncCalls, ShouldEqual, 1)
+			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+
+			respBody, readErr := io.ReadAll(resp.Body)
+			So(readErr, ShouldBeNil)
+			So(respBody, ShouldResemble, body)
+		})
+
+		Convey("serves from storage, without a second sync, when the image was synced without streaming", func() {
+			// E.g. an index, the stream cap, or another sync already in flight: FetchManifestForStream
+			// has already waited for the one on-demand sync.
+			localStore := mocks.MockedImageStore{
+				GetImageManifestFn: func(_ string, _ string) ([]byte, godigest.Digest, string, error) {
+					return body, man.GetDescriptor().Digest, man.GetDescriptor().MediaType, nil
+				},
+			}
+
+			syncCalls := 0
+
+			syncOnDemand := &mockSyncOnDemand{
+				isStreamingEnabledForRepoFn: func(_ string) bool { return true },
+				fetchManifestForStreamFn: func(_ context.Context, _, _ string) (manifest.Manifest, error) {
+					return nil, zerr.ErrSyncNotStreamed
+				},
+				syncImageFn: func(_ context.Context, _, _ string) error {
+					syncCalls++
+
+					return nil
+				},
+			}
+			handler := newSyncTestRouteHandler(t, localStore, syncOnDemand)
+
+			rec := httptest.NewRecorder()
+			handler.GetManifest(rec, newReq())
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			So(syncCalls, ShouldEqual, 0)
+			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+
+			respBody, readErr := io.ReadAll(resp.Body)
+			So(readErr, ShouldBeNil)
+			So(respBody, ShouldResemble, body)
+		})
+
+		Convey("maps a failed not-streamed sync like a non-streaming one", func() {
+			// A hard failure is a 503, a soft miss stays a 404.
+			for _, testCase := range []struct {
+				syncErr error
+				status  int
+			}{
+				{zerr.ErrSyncInternal, http.StatusServiceUnavailable},
+				{zerr.ErrSyncImageFilteredOut, http.StatusNotFound},
+			} {
+				syncCalls := 0
+
+				syncOnDemand := &mockSyncOnDemand{
+					isStreamingEnabledForRepoFn: func(_ string) bool { return true },
+					fetchManifestForStreamFn: func(_ context.Context, _, _ string) (manifest.Manifest, error) {
+						return nil, fmt.Errorf("%w: %w", zerr.ErrSyncNotStreamed, testCase.syncErr)
+					},
+					syncImageFn: func(_ context.Context, _, _ string) error {
+						syncCalls++
+
+						return nil
+					},
+				}
+				handler := newSyncTestRouteHandler(t, notFoundStore, syncOnDemand)
+
+				rec := httptest.NewRecorder()
+				handler.GetManifest(rec, newReq())
+
+				resp := rec.Result()
+				_ = resp.Body.Close()
+
+				So(syncCalls, ShouldEqual, 0)
+				So(resp.StatusCode, ShouldEqual, testCase.status)
+			}
+		})
+	})
+}
+
+func TestGetReferrers(t *testing.T) {
+	Convey("GetReferrers", t, func() {
+		const digest = "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+
+		newReq := func() *http.Request {
+			req := httptest.NewRequestWithContext(
+				context.Background(),
+				http.MethodGet,
+				"http://example.com/v2/test/referrers/"+digest,
+				http.NoBody,
+			)
+
+			return mux.SetURLVars(req, map[string]string{
+				"name":   "test",
+				"digest": digest,
+			})
+		}
+
+		referrers := ispec.Index{MediaType: ispec.MediaTypeImageIndex}
+
+		Convey("syncs referrers on demand before reading the local store when sync is enabled", func() {
+			var syncedRepo, syncedDigest string
+
+			syncOnDemand := &mockSyncOnDemand{
+				syncReferrersFn: func(_ context.Context, repo, subjectDigest string, _ []string) error {
+					syncedRepo = repo
+					syncedDigest = subjectDigest
+
+					return nil
+				},
+			}
+			handler := newSyncTestRouteHandler(t, mocks.MockedImageStore{
+				GetReferrersFn: func(_ string, _ godigest.Digest, _ []string) (ispec.Index, error) {
+					return referrers, nil
+				},
+			}, syncOnDemand)
+
+			rec := httptest.NewRecorder()
+			handler.GetReferrers(rec, newReq())
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+			So(syncedRepo, ShouldEqual, "test")
+			So(syncedDigest, ShouldEqual, digest)
+		})
+
+		Convey("still serves the local store's referrers when the on-demand sync fails", func() {
+			syncOnDemand := &mockSyncOnDemand{
+				syncReferrersFn: func(_ context.Context, _, _ string, _ []string) error {
+					return errUpstreamUnreachable
+				},
+			}
+			handler := newSyncTestRouteHandler(t, mocks.MockedImageStore{
+				GetReferrersFn: func(_ string, _ godigest.Digest, _ []string) (ispec.Index, error) {
+					return referrers, nil
+				},
+			}, syncOnDemand)
+
+			rec := httptest.NewRecorder()
+			handler.GetReferrers(rec, newReq())
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+		})
+
+		Convey("does not sync when sync-on-demand is disabled", func() {
+			ctlr := api.NewController(config.New())
+			ctlr.Router = mux.NewRouter()
+			ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
+				GetReferrersFn: func(_ string, _ godigest.Digest, _ []string) (ispec.Index, error) {
+					return referrers, nil
+				},
+			}
+			// SyncOnDemand and Extensions.Sync left unset: isSyncOnDemandEnabled must gate on this
+			// rather than call a nil SyncOnDemand.
+			handler := api.NewRouteHandler(ctlr)
+
+			rec := httptest.NewRecorder()
+			handler.GetReferrers(rec, newReq())
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+		})
+
+		Convey("returns 404 when the subject manifest is unknown", func() {
+			syncOnDemand := &mockSyncOnDemand{}
+			handler := newSyncTestRouteHandler(t, mocks.MockedImageStore{
+				GetReferrersFn: func(_ string, _ godigest.Digest, _ []string) (ispec.Index, error) {
+					return ispec.Index{}, zerr.ErrManifestNotFound
+				},
+			}, syncOnDemand)
+
+			rec := httptest.NewRecorder()
+			handler.GetReferrers(rec, newReq())
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+		})
+
+		Convey("returns 400 for an invalid digest", func() {
+			syncOnDemand := &mockSyncOnDemand{}
+			handler := newSyncTestRouteHandler(t, mocks.MockedImageStore{}, syncOnDemand)
+
+			req := httptest.NewRequestWithContext(
+				context.Background(),
+				http.MethodGet,
+				"http://example.com/v2/test/referrers/not-a-digest",
+				http.NoBody,
+			)
+			req = mux.SetURLVars(req, map[string]string{"name": "test", "digest": "not-a-digest"})
+
+			rec := httptest.NewRecorder()
+			handler.GetReferrers(rec, req)
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
 		})
 	})
 }

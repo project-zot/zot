@@ -387,6 +387,10 @@ func (c *Controller) Init() error {
 		return err
 	}
 
+	// Once per process, before Run enables sync: a config reload re-enables sync with streams
+	// still live, so this can't move into StartBackgroundTasks.
+	gc.RemoveStreamTempDirs(c.StoreController, c.Log)
+
 	if err := c.InitMetaDB(); err != nil {
 		return err
 	}
@@ -709,9 +713,11 @@ func (c *Controller) StartBackgroundTasks() {
 	// Always call EnableScrubExtension to ensure proper logging, even when scrub is disabled
 	ext.EnableScrubExtension(c.Config, c.Log, c.StoreController, c.taskScheduler)
 
-	// Always call EnableSyncExtension to ensure proper logging, even when sync is disabled
+	// Always call EnableSyncExtension to ensure proper logging, even when sync is disabled.
+	// Passing the current SyncOnDemand keeps its stream manager across a reload.
 	//nolint: contextcheck
-	syncOnDemand, err := ext.EnableSyncExtension(c.Config, c.MetaDB, c.StoreController, c.taskScheduler, c.Log)
+	syncOnDemand, err := ext.EnableSyncExtension(c.Config, c.MetaDB, c.StoreController, c.taskScheduler,
+		c.SyncOnDemand, c.Log)
 	if err != nil {
 		c.Log.Error().Err(err).Msg("failed to start sync extension")
 	}

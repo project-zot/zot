@@ -1,0 +1,35 @@
+{
+	"distSpecVersion": "1.1.1",
+	"storage": {
+		"rootDirectory": "/tmp/zot"
+	},
+	"http": {
+		"address": "127.0.0.1",
+		"port": "8080",
+		"writeTimeout": "30m"
+	},
+	"log": {
+		"level": "debug"
+	},
+	"extensions": {
+		"sync": {
+			"enable": true,
+			"registries": [
+				{
+					"urls": [
+						"https://registry-1.docker.io"
+					],
+					"onDemand": true,
+					"stream": true,
+					"maxConcurrentStreams": 32,
+					"tlsVerify": true,
+					"content": [
+						{
+							"prefix": "/library/**"
+						}
+					]
+				}
+			]
+		}
+	}
+}
