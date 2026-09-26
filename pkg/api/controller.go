@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/coreos/go-systemd/v22/daemon"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/securecookie"
 	"github.com/zitadel/oidc/v3/pkg/client/rp"
@@ -67,6 +68,8 @@ type Controller struct {
 	chosenPort atomic.Int64
 	// TLS certificate management
 	TlsWatcher atomic.Pointer[TlsConfigWatcher]
+	// sdNotify overrides daemon.SdNotify when set (tests only).
+	sdNotify func(unsetEnvironment bool, state string) (bool, error)
 }
 
 func NewController(appConfig *config.Config) *Controller {
@@ -307,15 +310,42 @@ func (c *Controller) Run() error {
 		// Set GetCertificate callback for dynamic certificate reloading
 		server.TLSConfig.GetCertificate = watcher.GetCertificate
 
-		c.Healthz.Ready()
+		c.markReady()
 
 		// Pass empty strings to ServeTLS since GetCertificate handles certificate loading
 		return server.ServeTLS(listener, "", "")
 	}
 
-	c.Healthz.Ready()
+	c.markReady()
 
 	return server.Serve(listener)
+}
+
+func (c *Controller) markReady() {
+	c.Healthz.Ready()
+	c.notifySystemd(daemon.SdNotifyReady)
+}
+
+func (c *Controller) notifySystemdStopping() {
+	c.notifySystemd(daemon.SdNotifyStopping)
+}
+
+func (c *Controller) notifySystemd(state string) {
+	notify := c.sdNotify
+	if notify == nil {
+		notify = daemon.SdNotify
+	}
+
+	sent, err := notify(false, state)
+	if err != nil {
+		c.Log.Warn().Err(err).Str("state", state).Msg("failed to notify systemd")
+
+		return
+	}
+
+	if sent {
+		c.Log.Debug().Str("state", state).Msg("notified systemd")
+	}
 }
 
 func (c *Controller) Init() error {
@@ -584,6 +614,8 @@ func (c *Controller) LoadNewConfig(newConfig *config.Config) {
 }
 
 func (c *Controller) Shutdown() {
+	c.notifySystemdStopping()
+
 	// Stop certificate watcher if it's running
 	watcher := c.TlsWatcher.Load()
 	if watcher != nil {

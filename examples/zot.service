@@ -4,7 +4,12 @@ Documentation=https://github.com/project-zot/zot
 After=network.target auditd.service local-fs.target
 
 [Service]
-Type=simple
+# Type=notify requires a zot build that sends sd_notify (READY=1). Older binaries
+# will time out waiting for readiness. Raise TimeoutStartSec if Init is slow
+# (e.g. first-time CVE DB download).
+Type=notify
+NotifyAccess=main
+TimeoutStartSec=5min
 ExecStart=/usr/bin/zot serve /etc/zot/config.json
 Restart=on-failure
 User=zot
