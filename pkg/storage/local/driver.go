@@ -286,6 +286,11 @@ func (driver *Driver) SameFile(path1, path2 string) bool {
 }
 
 func (driver *Driver) Link(src, dest string) error {
+	// Remove(dest) then Link(src, dest) would delete the only copy when paths match.
+	if src == dest {
+		return nil
+	}
+
 	if err := os.Remove(dest); err != nil && !os.IsNotExist(err) {
 		return err
 	}

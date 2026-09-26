@@ -335,6 +335,19 @@ func TestLink(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 
+		Convey("Test linking a path onto itself is a no-op", func() {
+			srcFile := path.Join(rootDir, "self.txt")
+			err := os.WriteFile(srcFile, []byte("keep me"), 0o600)
+			So(err, ShouldBeNil)
+
+			err = driver.Link(srcFile, srcFile)
+			So(err, ShouldBeNil)
+
+			content, err := os.ReadFile(srcFile)
+			So(err, ShouldBeNil)
+			So(string(content), ShouldEqual, "keep me")
+		})
+
 		Convey("Test linking non-existent file", func() {
 			destFile := path.Join(rootDir, "link.txt")
 			err := driver.Link("/nonexistent", destFile)

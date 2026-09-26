@@ -5188,3 +5188,102 @@ func TestCheckBlobEmptyBlob(t *testing.T) {
 	assertExpectation(size, ShouldEqual, int64(-1))
 	assertExpectation(err, ShouldEqual, zerr.ErrBlobNotFound)
 }
+
+// TestCloudRemoteCacheDedupePreservesLateOrigin reproduces the issue-4463 setup:
+// remote object store + redis cache + dedupe, late-sorting repo holds the origin,
+// early-sorting repo is a stub; a startup-style dedupe walk must not empty the origin.
+func TestCloudRemoteCacheDedupePreservesLateOrigin(t *testing.T) {
+	cases := []struct {
+		name        string
+		storageType string
+	}{
+		{name: "S3_Redis", storageType: storageConstants.S3StorageDriverName},
+		{name: "Azure_Redis", storageType: storageConstants.AzureStorageDriverName},
+	}
+
+	for _, testcase := range cases {
+		t.Run(testcase.name, func(t *testing.T) {
+			switch testcase.storageType {
+			case storageConstants.S3StorageDriverName:
+				tskip.SkipS3(t)
+			case storageConstants.AzureStorageDriverName:
+				tskip.SkipAzure(t)
+			}
+
+			miniRedis := miniredis.RunT(t)
+			redisAddr := "redis://" + miniRedis.Addr()
+			defer DumpKeys(t, redisAddr)
+
+			uuid, err := guuid.NewV4()
+			if err != nil {
+				panic(err)
+			}
+
+			testDir := path.Join("/oci-repo-test", uuid.String())
+			cacheDir := t.TempDir()
+
+			opts := createObjectStoreOpts{
+				rootDir:       testDir,
+				cacheDir:      cacheDir,
+				cacheType:     storageConstants.RedisDriverName,
+				storageType:   testcase.storageType,
+				miniRedisAddr: redisAddr,
+			}
+
+			store, imgStore, _, err := createObjectsStore(opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			cleanupRoot := testDir
+			if testcase.storageType == storageConstants.AzureStorageDriverName {
+				cleanupRoot = "/"
+			}
+			defer cleanupStorage(store, cleanupRoot)
+
+			Convey("push late origin then early stub, rebuild without emptying origin", t, func() {
+				ctx := context.Background()
+				content := []byte("shared-layer-content-for-dedupe-origin-preserve")
+				digest := godigest.FromBytes(content)
+
+				// Late-sorting repo first so redis records it as the origin.
+				_, _, err := imgStore.FullBlobUpload(ctx, "b/img", bytes.NewReader(content), digest)
+				So(err, ShouldBeNil)
+
+				// Early-sorting repo second: stored as a 0-byte remote Link stub.
+				_, _, err = imgStore.FullBlobUpload(ctx, "a/img", bytes.NewReader(content), digest)
+				So(err, ShouldBeNil)
+
+				originPath := imgStore.BlobPath("b/img", digest)
+				stubPath := imgStore.BlobPath("a/img", digest)
+
+				originInfo, err := store.Stat(originPath)
+				So(err, ShouldBeNil)
+				So(originInfo.Size(), ShouldBeGreaterThan, 0)
+
+				stubInfo, err := store.Stat(stubPath)
+				So(err, ShouldBeNil)
+				So(stubInfo.Size(), ShouldEqual, 0)
+
+				// Restart-style: new ImageStore, same remote objects + same redis cache.
+				_, imgStore2, _, err := createObjectsStore(opts)
+				So(err, ShouldBeNil)
+
+				err = imgStore2.RunDedupeForDigest(ctx, digest, true, []string{stubPath, originPath})
+				So(err, ShouldBeNil)
+
+				originInfo, err = store.Stat(originPath)
+				So(err, ShouldBeNil)
+				So(originInfo.Size(), ShouldEqual, int64(len(content)))
+
+				got, err := imgStore2.GetBlobContent("b/img", digest)
+				So(err, ShouldBeNil)
+				So(got, ShouldResemble, content)
+
+				got, err = imgStore2.GetBlobContent("a/img", digest)
+				So(err, ShouldBeNil)
+				So(got, ShouldResemble, content)
+			})
+		})
+	}
+}

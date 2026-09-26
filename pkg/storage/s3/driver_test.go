@@ -46,3 +46,36 @@ func TestDriverRedirectURL(t *testing.T) {
 		})
 	})
 }
+
+func TestDriverLink(t *testing.T) {
+	Convey("S3 Driver Link", t, func() {
+		storeMock := &mocks.StorageDriverMock{}
+		s3Driver := s3.New(storeMock)
+
+		Convey("writes empty content to dest", func() {
+			putCalls := 0
+			storeMock.PutContentFn = func(ctx context.Context, path string, content []byte) error {
+				putCalls++
+				So(path, ShouldEqual, "/dst")
+				So(content, ShouldBeEmpty)
+
+				return nil
+			}
+
+			So(s3Driver.Link("/src", "/dst"), ShouldBeNil)
+			So(putCalls, ShouldEqual, 1)
+		})
+
+		Convey("src equals dest is a no-op", func() {
+			putCalls := 0
+			storeMock.PutContentFn = func(ctx context.Context, path string, content []byte) error {
+				putCalls++
+
+				return nil
+			}
+
+			So(s3Driver.Link("/same", "/same"), ShouldBeNil)
+			So(putCalls, ShouldEqual, 0)
+		})
+	})
+}

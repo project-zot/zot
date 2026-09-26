@@ -2551,6 +2551,25 @@ func (is *ImageStore) getOriginalBlob(digest godigest.Digest, duplicateBlobs []s
 		return originalBlob, err
 	}
 
+	// Remote Link stubs are empty placeholders. A stale cache entry that points at a
+	// stub must not be treated as the content-bearing original, or the walk would
+	// Link over real copies and empty them. Genuine empty digests are size 0 by
+	// definition and remain valid origins.
+	if originalBlob != "" {
+		binfo, serr := is.storeDriver.Stat(originalBlob)
+		if serr != nil {
+			is.log.Warn().Err(serr).Str("path", originalBlob).Str("component", "dedupe").
+				Msg("failed to stat cached original blob, searching storage")
+
+			originalBlob = ""
+		} else if binfo.Size() == 0 && !isEmptyContentDigest(digest) {
+			is.log.Warn().Str("path", originalBlob).Str("component", "dedupe").
+				Msg("cached original blob has no content, searching storage")
+
+			originalBlob = ""
+		}
+	}
+
 	// if we still don't have, search it
 	if originalBlob == "" {
 		is.log.Warn().Str("component", "dedupe").Msg("failed to find blob in cache, searching it in storage...")
@@ -2631,7 +2650,9 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 			}
 		} else {
 			// if we have an original blob cached then we can safely dedupe the rest of them
-			if originalBlob != "" {
+			// Never Link a path onto itself: remote drivers implement Link as PutContent of
+			// empty bytes to dest, which would replace the only real copy with a stub.
+			if originalBlob != "" && path.Clean(originalBlob) != path.Clean(blobPath) {
 				if err := is.storeDriver.Link(originalBlob, blobPath); err != nil {
 					is.log.Error().Err(err).Str("path", blobPath).Str("component", "dedupe").Msg("failed to dedupe blob")
 
