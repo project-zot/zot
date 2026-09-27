@@ -9286,6 +9286,57 @@ func TestManifestDigestQueryTags(t *testing.T) {
 	})
 }
 
+func TestStoredInvalidTagStillServed(t *testing.T) {
+	Convey("A tag stored before path tags were validated can still be read, paged past and deleted", t, func() {
+		conf := config.New()
+		conf.HTTP.Port = "0"
+
+		ctlr := makeController(conf, t.TempDir())
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+
+		defer cm.StopServer()
+
+		repoName := "stored-invalid-tag"
+		img := CreateRandomImage()
+		So(UploadImage(img, baseURL, repoName, "b"), ShouldBeNil)
+
+		_, _, err := ctlr.StoreController.DefaultStore.PutImageManifest(context.Background(), repoName, "a&b",
+			ispec.MediaTypeImageManifest, img.ManifestDescriptor.Data, nil)
+		So(err, ShouldBeNil)
+
+		manifestURL := baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, url.PathEscape("a&b"))
+
+		resp, err := resty.R().Head(manifestURL)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		resp, err = resty.R().Get(manifestURL)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/tags/list?n=1", repoName))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(resp.Header().Get("Link"), ShouldContainSubstring, "last=a%26b")
+
+		tags := common.ImageTags{}
+		So(json.Unmarshal(resp.Body(), &tags), ShouldBeNil)
+		So(tags.Tags, ShouldResemble, []string{"a&b"})
+
+		next := strings.TrimSuffix(strings.TrimPrefix(strings.Split(resp.Header().Get("Link"), ";")[0], "<"), ">")
+		resp, err = resty.R().Get(baseURL + next)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(json.Unmarshal(resp.Body(), &tags), ShouldBeNil)
+		So(tags.Tags, ShouldResemble, []string{"b"})
+
+		resp, err = resty.R().Delete(manifestURL)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+	})
+}
+
 func TestPutManifestInvalidPathTag(t *testing.T) {
 	Convey("Manifest PUT with a path tag outside the distribution-spec tag grammar returns 400", t, func() {
 		conf := config.New()
