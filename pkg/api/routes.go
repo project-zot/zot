@@ -723,6 +723,13 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
+	if !zcommon.IsDigest(reference) && !zreg.IsDistributionSpecTag(reference) {
+		e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(map[string]string{"reference": reference})
+		zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+
+		return
+	}
+
 	mediaType := request.Header.Get("Content-Type")
 	compatConfig := rh.c.Config.GetCompat()
 

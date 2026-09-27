@@ -9286,6 +9286,47 @@ func TestManifestDigestQueryTags(t *testing.T) {
 	})
 }
 
+func TestPutManifestInvalidPathTag(t *testing.T) {
+	Convey("Manifest PUT with a path tag outside the distribution-spec tag grammar returns 400", t, func() {
+		conf := config.New()
+		conf.HTTP.Port = "0"
+
+		ctlr := makeController(conf, t.TempDir())
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+
+		defer cm.StopServer()
+
+		repoName := "invalid-path-tag"
+		img := CreateRandomImage()
+		So(UploadImage(img, baseURL, repoName, "valid"), ShouldBeNil)
+
+		tooLong := strings.Repeat("a", zreg.TagMaxLen+1)
+
+		for _, tag := range []string{"-lead-dash", ".lead-dot", "has!bang", "a&b", "test:1.0", tooLong} {
+			resp, err := resty.R().
+				SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+				SetBody(img.ManifestDescriptor.Data).
+				Put(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, tag))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+			var errList apiErr.ErrorList
+			So(json.Unmarshal(resp.Body(), &errList), ShouldBeNil)
+			So(errList.Errors, ShouldNotBeEmpty)
+			So(errList.Errors[0].Code, ShouldEqual, "MANIFEST_INVALID")
+		}
+
+		resp, err := resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/tags/list", repoName))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		tags := common.ImageTags{}
+		So(json.Unmarshal(resp.Body(), &tags), ShouldBeNil)
+		So(tags.Tags, ShouldResemble, []string{"valid"})
+	})
+}
+
 func TestArtifactReferences(t *testing.T) {
 	Convey("Validate Artifact References", t, func() {
 		// start a new server
@@ -10751,14 +10792,14 @@ func TestStorageCommit(t *testing.T) {
 
 			// check a non-existent manifest
 			resp, err := resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
-				Head(baseURL + "/v2/unknown/manifests/test:1.0")
+				Head(baseURL + "/v2/unknown/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 			image := CreateImageWith().RandomLayers(1, 2).DefaultConfig().Build()
 
 			repoName := "repo7"
-			err = UploadImage(image, baseURL, repoName, "test:1.0")
+			err = UploadImage(image, baseURL, repoName, "1.0")
 			So(err, ShouldBeNil)
 
 			_, err = os.Stat(path.Join(dir, "repo7"))
@@ -10769,7 +10810,7 @@ func TestStorageCommit(t *testing.T) {
 			So(digest, ShouldNotBeNil)
 
 			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
-				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:1.0")
+				SetBody(content).Put(baseURL + "/v2/repo7/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 			digestHdr := resp.Header().Get(constants.DistContentDigestKey)
@@ -10777,24 +10818,24 @@ func TestStorageCommit(t *testing.T) {
 			So(digestHdr, ShouldEqual, digest.String())
 
 			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
-				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:1.0.1")
+				SetBody(content).Put(baseURL + "/v2/repo7/manifests/1.0.1")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
 			So(digestHdr, ShouldNotBeEmpty)
 			So(digestHdr, ShouldEqual, digest.String())
 
-			err = UploadImage(image, baseURL, repoName, "test:1.0.1")
+			err = UploadImage(image, baseURL, repoName, "1.0.1")
 			So(err, ShouldBeNil)
 
 			image = CreateImageWith().RandomLayers(1, 1).DefaultConfig().Build()
 
-			err = UploadImage(image, baseURL, repoName, "test:2.0")
+			err = UploadImage(image, baseURL, repoName, "2.0")
 			So(err, ShouldBeNil)
 
 			// update tag to match the other manifest
 			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
-				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:2.0")
+				SetBody(content).Put(baseURL + "/v2/repo7/manifests/2.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
@@ -10802,11 +10843,11 @@ func TestStorageCommit(t *testing.T) {
 			So(digestHdr, ShouldEqual, digest.String())
 
 			// check/get by tag
-			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/test:1.0")
+			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
-			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/test:1.0")
+			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 			So(resp.Body(), ShouldNotBeEmpty)
@@ -10821,7 +10862,7 @@ func TestStorageCommit(t *testing.T) {
 			So(resp.Body(), ShouldNotBeEmpty)
 
 			// delete manifest by tag should pass
-			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/test:1.0")
+			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 
@@ -10833,9 +10874,9 @@ func TestStorageCommit(t *testing.T) {
 			// the index should not longer contain this tag
 			tags, err := readTagsFromStorage(dir, "repo7", digest)
 			So(err, ShouldBeNil)
-			So(tags, ShouldNotContain, "test:1.0")
-			So(tags, ShouldContain, "test:1.0.1")
-			So(tags, ShouldContain, "test:2.0")
+			So(tags, ShouldNotContain, "1.0")
+			So(tags, ShouldContain, "1.0.1")
+			So(tags, ShouldContain, "2.0")
 			So(len(tags), ShouldEqual, 2)
 
 			// delete manifest by digest (1.0 deleted but 1.0.1 has same reference)
@@ -10863,17 +10904,17 @@ func TestStorageCommit(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 			// check/get by tag
-			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/test:1.0")
+			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/test:1.0")
+			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 			So(resp.Body(), ShouldNotBeEmpty)
-			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/test:2.0")
+			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/2.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/test:2.0")
+			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/2.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 			So(resp.Body(), ShouldNotBeEmpty)
@@ -10892,14 +10933,14 @@ func TestStorageCommit(t *testing.T) {
 
 			// check a non-existent manifest
 			resp, err := resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
-				Head(baseURL + "/v2/unknown/manifests/test:1.0")
+				Head(baseURL + "/v2/unknown/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 			image := CreateImageWith().RandomLayers(1, 2).DefaultConfig().Build()
 
 			repoName := "repo7"
-			err = UploadImage(image, baseURL, repoName, "test:1.0")
+			err = UploadImage(image, baseURL, repoName, "1.0")
 			So(err, ShouldBeNil)
 
 			_, err = os.Stat(path.Join(dir, "repo7"))
@@ -10910,7 +10951,7 @@ func TestStorageCommit(t *testing.T) {
 			So(digest, ShouldNotBeNil)
 
 			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
-				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:1.0")
+				SetBody(content).Put(baseURL + "/v2/repo7/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 			digestHdr := resp.Header().Get(constants.DistContentDigestKey)
@@ -10918,24 +10959,24 @@ func TestStorageCommit(t *testing.T) {
 			So(digestHdr, ShouldEqual, digest.String())
 
 			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
-				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:1.0.1")
+				SetBody(content).Put(baseURL + "/v2/repo7/manifests/1.0.1")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
 			So(digestHdr, ShouldNotBeEmpty)
 			So(digestHdr, ShouldEqual, digest.String())
 
-			err = UploadImage(image, baseURL, repoName, "test:1.0.1")
+			err = UploadImage(image, baseURL, repoName, "1.0.1")
 			So(err, ShouldBeNil)
 
 			image = CreateImageWith().RandomLayers(1, 1).DefaultConfig().Build()
 
-			err = UploadImage(image, baseURL, repoName, "test:2.0")
+			err = UploadImage(image, baseURL, repoName, "2.0")
 			So(err, ShouldBeNil)
 
 			// update tag to match the other manifest
 			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
-				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:2.0")
+				SetBody(content).Put(baseURL + "/v2/repo7/manifests/2.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
@@ -10943,11 +10984,11 @@ func TestStorageCommit(t *testing.T) {
 			So(digestHdr, ShouldEqual, digest.String())
 
 			// check/get by tag
-			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/test:1.0")
+			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
-			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/test:1.0")
+			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 			So(resp.Body(), ShouldNotBeEmpty)
@@ -10962,7 +11003,7 @@ func TestStorageCommit(t *testing.T) {
 			So(resp.Body(), ShouldNotBeEmpty)
 
 			// delete manifest by tag should pass
-			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/test:1.0")
+			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 
@@ -10974,13 +11015,13 @@ func TestStorageCommit(t *testing.T) {
 			// the index should not longer contain this tag
 			tags, err := readTagsFromStorage(dir, "repo7", digest)
 			So(err, ShouldBeNil)
-			So(tags, ShouldNotContain, "test:1.0")
-			So(tags, ShouldContain, "test:1.0.1")
-			So(tags, ShouldContain, "test:2.0")
+			So(tags, ShouldNotContain, "1.0")
+			So(tags, ShouldContain, "1.0.1")
+			So(tags, ShouldContain, "2.0")
 			So(len(tags), ShouldEqual, 2)
 
 			// delete manifest by tag should pass
-			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/test:1.0.1")
+			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/1.0.1")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 
@@ -10992,13 +11033,13 @@ func TestStorageCommit(t *testing.T) {
 			// the index should not longer contain this manifest
 			tags, err = readTagsFromStorage(dir, "repo7", digest)
 			So(err, ShouldBeNil)
-			So(tags, ShouldNotContain, "test:1.0")
-			So(tags, ShouldNotContain, "test:1.0.1")
-			So(tags, ShouldContain, "test:2.0")
+			So(tags, ShouldNotContain, "1.0")
+			So(tags, ShouldNotContain, "1.0.1")
+			So(tags, ShouldContain, "2.0")
 			So(len(tags), ShouldEqual, 1)
 
 			// delete manifest by tag should pass
-			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/test:2.0")
+			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/2.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 
@@ -11014,17 +11055,17 @@ func TestStorageCommit(t *testing.T) {
 			So(len(tags), ShouldEqual, 1)
 
 			// check/get by tag
-			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/test:1.0")
+			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/test:1.0")
+			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 			So(resp.Body(), ShouldNotBeEmpty)
-			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/test:2.0")
+			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/2.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/test:2.0")
+			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/2.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 			So(resp.Body(), ShouldNotBeEmpty)
@@ -11040,12 +11081,12 @@ func TestStorageCommit(t *testing.T) {
 			// if the only index entry is for the empty name,
 			// adding a new tag would replace that index entry
 			// instead of having 2 entries
-			err = UploadImage(image, baseURL, repoName, "test:2.0.1")
+			err = UploadImage(image, baseURL, repoName, "2.0.1")
 			So(err, ShouldBeNil)
 
 			// update tag to match the other manifest
 			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
-				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:2.0.1")
+				SetBody(content).Put(baseURL + "/v2/repo7/manifests/2.0.1")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
@@ -11055,11 +11096,11 @@ func TestStorageCommit(t *testing.T) {
 			// the index should not longer contain this tag
 			tags, err = readTagsFromStorage(dir, "repo7", digest)
 			So(err, ShouldBeNil)
-			So(tags, ShouldContain, "test:2.0.1")
+			So(tags, ShouldContain, "2.0.1")
 			So(len(tags), ShouldEqual, 1)
 
 			// delete manifest by tag should pass
-			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/test:2.0.1")
+			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/2.0.1")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 
@@ -12067,12 +12108,12 @@ func TestManifestImageIndex(t *testing.T) {
 
 		// check a non-existent manifest
 		resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
-			Head(baseURL + "/v2/unknown/manifests/test:1.0")
+			Head(baseURL + "/v2/unknown/manifests/1.0")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 		repoName := "index"
-		err = UploadImage(img, baseURL, repoName, "test:1.0")
+		err = UploadImage(img, baseURL, repoName, "1.0")
 		So(err, ShouldBeNil)
 
 		_, err = os.Stat(path.Join(dir, "index"))
@@ -12084,7 +12125,7 @@ func TestManifestImageIndex(t *testing.T) {
 
 		m1content := content
 		resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
-			SetBody(content).Put(baseURL + "/v2/index/manifests/test:1.0")
+			SetBody(content).Put(baseURL + "/v2/index/manifests/1.0")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 		digestHdr := resp.Header().Get(constants.DistContentDigestKey)
@@ -12155,7 +12196,7 @@ func TestManifestImageIndex(t *testing.T) {
 			So(digest, ShouldNotBeNil)
 			index1dgst := digest
 			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
-				SetBody(content).Put(baseURL + "/v2/index/manifests/test:index1")
+				SetBody(content).Put(baseURL + "/v2/index/manifests/index1")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
@@ -12163,7 +12204,7 @@ func TestManifestImageIndex(t *testing.T) {
 			So(digestHdr, ShouldEqual, digest.String())
 
 			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
-				Get(baseURL + "/v2/index/manifests/test:index1")
+				Get(baseURL + "/v2/index/manifests/index1")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 			So(resp.Body(), ShouldNotBeEmpty)
@@ -12208,7 +12249,7 @@ func TestManifestImageIndex(t *testing.T) {
 			So(digest, ShouldNotBeNil)
 
 			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
-				SetBody(content).Put(baseURL + "/v2/index/manifests/test:index2")
+				SetBody(content).Put(baseURL + "/v2/index/manifests/index2")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
@@ -12216,7 +12257,7 @@ func TestManifestImageIndex(t *testing.T) {
 			So(digestHdr, ShouldEqual, digest.String())
 
 			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
-				Get(baseURL + "/v2/index/manifests/test:index2")
+				Get(baseURL + "/v2/index/manifests/index2")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 			So(resp.Body(), ShouldNotBeEmpty)
@@ -12238,9 +12279,9 @@ func TestManifestImageIndex(t *testing.T) {
 				err = json.NewDecoder(resp.Body).Decode(&tags)
 				So(err, ShouldBeNil)
 				So(len(tags.Tags), ShouldEqual, 3)
-				So(tags.Tags, ShouldContain, "test:1.0")
-				So(tags.Tags, ShouldContain, "test:index1")
-				So(tags.Tags, ShouldContain, "test:index2")
+				So(tags.Tags, ShouldContain, "1.0")
+				So(tags.Tags, ShouldContain, "index1")
+				So(tags.Tags, ShouldContain, "index2")
 			})
 
 			Convey("Another index with same manifest", func() {
@@ -12261,7 +12302,7 @@ func TestManifestImageIndex(t *testing.T) {
 				So(digest, ShouldNotBeNil)
 
 				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
-					SetBody(content).Put(baseURL + "/v2/index/manifests/test:index3")
+					SetBody(content).Put(baseURL + "/v2/index/manifests/index3")
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 				digestHdr = resp.Header().Get(constants.DistContentDigestKey)
@@ -12302,25 +12343,25 @@ func TestManifestImageIndex(t *testing.T) {
 
 			Convey("Deleting an image index", func() {
 				// delete manifest by tag should pass
-				resp, err = resty.R().Delete(baseURL + "/v2/index/manifests/test:index3")
+				resp, err = resty.R().Delete(baseURL + "/v2/index/manifests/index3")
 				So(err, ShouldBeNil)
 				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
-					Get(baseURL + "/v2/index/manifests/test:index3")
+					Get(baseURL + "/v2/index/manifests/index3")
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 				So(resp.Body(), ShouldNotBeEmpty)
-				resp, err = resty.R().Delete(baseURL + "/v2/index/manifests/test:index1")
+				resp, err = resty.R().Delete(baseURL + "/v2/index/manifests/index1")
 				So(err, ShouldBeNil)
 				// Manifest is in use, tag is deleted, but manifest is not
 				So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 				So(resp.Body(), ShouldBeEmpty)
 				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
-					Get(baseURL + "/v2/index/manifests/test:index1")
+					Get(baseURL + "/v2/index/manifests/index1")
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 				So(resp.Body(), ShouldNotBeEmpty)
 				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
-					Get(baseURL + "/v2/index/manifests/test:index2")
+					Get(baseURL + "/v2/index/manifests/index2")
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 				So(resp.Body(), ShouldNotBeEmpty)
@@ -12329,22 +12370,22 @@ func TestManifestImageIndex(t *testing.T) {
 
 			Convey("Deleting an image index by digest", func() {
 				// delete manifest by tag should pass
-				resp, err = resty.R().Delete(baseURL + "/v2/index/manifests/test:index3")
+				resp, err = resty.R().Delete(baseURL + "/v2/index/manifests/index3")
 				So(err, ShouldBeNil)
 				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
-					Get(baseURL + "/v2/index/manifests/test:index3")
+					Get(baseURL + "/v2/index/manifests/index3")
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 				So(resp.Body(), ShouldNotBeEmpty)
 				resp, err = resty.R().Delete(baseURL + fmt.Sprintf("/v2/index/manifests/%s", index1dgst))
 				So(err, ShouldBeNil)
 				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
-					Get(baseURL + "/v2/index/manifests/test:index1")
+					Get(baseURL + "/v2/index/manifests/index1")
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 				So(resp.Body(), ShouldNotBeEmpty)
 				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
-					Get(baseURL + "/v2/index/manifests/test:index2")
+					Get(baseURL + "/v2/index/manifests/index2")
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 				So(resp.Body(), ShouldNotBeEmpty)
@@ -12384,7 +12425,7 @@ func TestManifestImageIndex(t *testing.T) {
 				So(digest, ShouldNotBeNil)
 
 				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
-					SetBody(content).Put(baseURL + "/v2/index/manifests/test:index1")
+					SetBody(content).Put(baseURL + "/v2/index/manifests/index1")
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 				digestHdr = resp.Header().Get(constants.DistContentDigestKey)
@@ -12392,18 +12433,18 @@ func TestManifestImageIndex(t *testing.T) {
 				So(digestHdr, ShouldEqual, digest.String())
 
 				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
-					Get(baseURL + "/v2/index/manifests/test:index1")
+					Get(baseURL + "/v2/index/manifests/index1")
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 				So(resp.Body(), ShouldNotBeEmpty)
 				So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
 
 				// delete manifest by tag should pass
-				resp, err = resty.R().Delete(baseURL + "/v2/index/manifests/test:index1")
+				resp, err = resty.R().Delete(baseURL + "/v2/index/manifests/index1")
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
-					Get(baseURL + "/v2/index/manifests/test:index1")
+					Get(baseURL + "/v2/index/manifests/index1")
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 				So(resp.Body(), ShouldNotBeEmpty)
@@ -12416,7 +12457,7 @@ func TestManifestImageIndex(t *testing.T) {
 					resp, err = resty.R().Delete(baseURL + fmt.Sprintf("/v2/index/manifests/%s", index1dgst))
 					So(err, ShouldBeNil)
 					resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
-						Get(baseURL + "/v2/index/manifests/test:index1")
+						Get(baseURL + "/v2/index/manifests/index1")
 					So(err, ShouldBeNil)
 					So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 					So(resp.Body(), ShouldNotBeEmpty)
@@ -12429,7 +12470,7 @@ func TestManifestImageIndex(t *testing.T) {
 					resp, err = resty.R().Delete(baseURL + fmt.Sprintf("/v2/index/manifests/%s", index1dgst))
 					So(err, ShouldBeNil)
 					resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
-						Get(baseURL + "/v2/index/manifests/test:index1")
+						Get(baseURL + "/v2/index/manifests/index1")
 					So(err, ShouldBeNil)
 					So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
 					So(resp.Body(), ShouldBeEmpty)
@@ -12454,13 +12495,13 @@ func TestManifestImageIndex(t *testing.T) {
 					So(digest, ShouldNotBeNil)
 
 					resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
-						SetBody(content).Put(baseURL + "/v2/index/manifests/test:1.0")
+						SetBody(content).Put(baseURL + "/v2/index/manifests/1.0")
 					So(err, ShouldBeNil)
 					So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
 					// previously an image index, try writing a manifest
 					resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
-						SetBody(m1content).Put(baseURL + "/v2/index/manifests/test:index1")
+						SetBody(m1content).Put(baseURL + "/v2/index/manifests/index1")
 					So(err, ShouldBeNil)
 					So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 				})
@@ -12497,7 +12538,7 @@ func TestManifestCollision(t *testing.T) {
 
 		img := CreateImageWith().RandomLayers(1, 2).DefaultConfig().Build()
 
-		err := UploadImage(img, baseURL, "index", "test:1.0")
+		err := UploadImage(img, baseURL, "index", "1.0")
 		So(err, ShouldBeNil)
 
 		_, err = os.Stat(path.Join(dir, "index"))
@@ -12505,14 +12546,14 @@ func TestManifestCollision(t *testing.T) {
 
 		// check a non-existent manifest
 		resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
-			Head(baseURL + "/v2/unknown/manifests/test:1.0")
+			Head(baseURL + "/v2/unknown/manifests/1.0")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 		digest := img.ManifestDescriptor.Digest
 		So(digest, ShouldNotBeNil)
 
-		err = UploadImage(img, baseURL, "index", "test:2.0")
+		err = UploadImage(img, baseURL, "index", "2.0")
 		So(err, ShouldBeNil)
 
 		// Deletion should fail if using digest
@@ -12529,11 +12570,11 @@ func TestManifestCollision(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 
-		resp, err = resty.R().Get(baseURL + "/v2/index/manifests/test:1.0")
+		resp, err = resty.R().Get(baseURL + "/v2/index/manifests/1.0")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-		resp, err = resty.R().Get(baseURL + "/v2/index/manifests/test:2.0")
+		resp, err = resty.R().Get(baseURL + "/v2/index/manifests/2.0")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 	})
