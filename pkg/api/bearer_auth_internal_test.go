@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -525,6 +527,119 @@ func TestTokenExchangeDoesNotProxyLocalBearerAuthorizationCredentials(t *testing
 			if calls := upstreamCalls.Load(); calls != callsBefore {
 				t.Fatalf("expected local bearer credential not to be proxied, upstream calls changed from %d to %d",
 					callsBefore, calls)
+			}
+		})
+	}
+}
+
+func TestTokenExchangeDoesNotProxyLocalBasicAuthorizationCredentials(t *testing.T) {
+	t.Parallel()
+
+	var upstreamCalls atomic.Int32
+
+	proxyServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		upstreamCalls.Add(1)
+		response.WriteHeader(http.StatusTeapot)
+	}))
+	defer proxyServer.Close()
+
+	conf := config.New()
+	conf.HTTP.Auth = &config.AuthConfig{
+		APIKey: true,
+		Bearer: &config.BearerConfig{
+			Realm:   "realm",
+			Service: "service",
+			UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{
+				Realm:             proxyServer.URL + "/token",
+				Service:           "upstream",
+				AllowInsecureHTTP: true,
+			},
+		},
+	}
+	bearerAuth := &BearerAuth{authConfig: conf.HTTP.Auth, bearerConfig: conf.HTTP.Auth.Bearer, log: log.NewTestLogger()}
+	ctlr := &Controller{
+		Config: conf,
+		Log:    log.NewTestLogger(),
+		MetaDB: mocks.MetaDBMock{
+			GetUserAPIKeyInfoFn:        func(_ string) (string, error) { return "alice", nil },
+			IsAPIKeyExpiredFn:          func(_ context.Context, _ string) (bool, error) { return false, nil },
+			UpdateUserAPIKeyLastUsedFn: func(_ context.Context, _ string) error { return nil },
+			GetUserGroupsFn:            func(_ context.Context) ([]string, error) { return nil, nil },
+		},
+	}
+
+	handler := bearerAuth.TokenExchangeHandler(ctlr)
+	if handler == nil {
+		t.Fatal("expected token exchange handler")
+	}
+
+	// The registry accepts tab- and extra-space-separated Basic credentials, so the
+	// token exchange must treat them as local credentials too and never proxy them.
+	credential := base64.StdEncoding.EncodeToString([]byte("alice:" + constants.APIKeysPrefix + "secret"))
+	for _, header := range []string{"Basic\t" + credential, "Basic  " + credential} {
+		t.Run(header, func(t *testing.T) {
+			callsBefore := upstreamCalls.Load()
+			request := httptest.NewRequest(http.MethodGet, constants.TokenPath, nil)
+			request.Header.Set("Authorization", header)
+			response := httptest.NewRecorder()
+
+			handler(response, request)
+
+			if response.Code != http.StatusOK {
+				t.Fatalf("expected status %d, got %d: %s", http.StatusOK, response.Code, response.Body.String())
+			}
+
+			var tokenResponse oidcBearerTokenResponse
+			if err := json.Unmarshal(response.Body.Bytes(), &tokenResponse); err != nil {
+				t.Fatalf("failed to decode token response: %v", err)
+			}
+
+			if !isWrappedCredentialBearerToken(tokenResponse.Token) {
+				t.Fatalf("expected wrapped credential token, got %q", tokenResponse.Token)
+			}
+
+			if calls := upstreamCalls.Load(); calls != callsBefore {
+				t.Fatalf("expected local api key not to be proxied, upstream calls changed from %d to %d", callsBefore, calls)
+			}
+		})
+	}
+}
+
+func TestRequestHasLocalCredential(t *testing.T) {
+	t.Parallel()
+
+	basicCredential := base64.StdEncoding.EncodeToString([]byte("alice:" + constants.APIKeysPrefix + "secret"))
+	wrapped := newWrappedCredentialBearerToken("alice", constants.APIKeysPrefix+"secret")
+
+	tests := []struct {
+		name   string
+		header string
+		want   bool
+	}{
+		{name: "canonical basic api key", header: "Basic " + basicCredential, want: true},
+		{name: "tab-separated basic api key", header: "Basic\t" + basicCredential, want: true},
+		{name: "extra space basic api key", header: "Basic  " + basicCredential, want: true},
+		{name: "bearer api key", header: "Bearer " + constants.APIKeysPrefix + "secret", want: true},
+		{name: "wrapped credential bearer", header: "Bearer " + wrapped, want: true},
+		{name: "upstream bearer token", header: "Bearer upstream-token"},
+		{name: "upstream basic credential", header: "Basic " +
+			base64.StdEncoding.EncodeToString([]byte("alice:upstream-password"))},
+		{name: "no credentials"},
+	}
+
+	for _, test := range tests {
+		test := test
+
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			request := httptest.NewRequest(http.MethodGet, constants.TokenPath, nil)
+			if test.header != "" {
+				request.Header.Set("Authorization", test.header)
+			}
+
+			if got := requestHasLocalCredential(request); got != test.want {
+				t.Fatalf("requestHasLocalCredential() = %t, want %t", got, test.want)
 			}
 		})
 	}

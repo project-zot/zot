@@ -44,6 +44,27 @@ func TestNormalizeTokenExchangeRequest(t *testing.T) {
 		}
 	})
 
+	t.Run("basic with non-canonical whitespace", func(t *testing.T) {
+		t.Parallel()
+
+		credential := base64.StdEncoding.EncodeToString([]byte("user:zak_secret"))
+
+		for _, header := range []string{"Basic\t" + credential, "Basic  " + credential} {
+			request := httptest.NewRequest(http.MethodGet, constants.TokenPath, nil)
+			request.Header.Set("Authorization", header)
+
+			tokenRequest, err := normalizeTokenExchangeRequest(request)
+			if err != nil {
+				t.Fatalf("unexpected error for %q: %v", header, err)
+			}
+
+			want := []tokenExchangeCredential{{Username: "user", Secret: "zak_secret"}}
+			if !reflect.DeepEqual(tokenRequest.credentials, want) {
+				t.Fatalf("unexpected credentials for %q: %#v", header, tokenRequest.credentials)
+			}
+		}
+	})
+
 	t.Run("bearer authorization", func(t *testing.T) {
 		t.Parallel()
 

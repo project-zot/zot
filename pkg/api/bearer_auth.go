@@ -461,6 +461,12 @@ func (b *BearerAuth) TokenExchangeHandler(ctlr *Controller) http.HandlerFunc {
 			}
 		}
 
+		// Defense in depth: never forward a Zot-owned credential to an upstream
+		// token service, even when it is encoded in a way the local exchange
+		// parsing does not recognize (for example, non-canonical Basic header
+		// whitespace).
+		locallyOwned = locallyOwned || requestHasLocalCredential(request)
+
 		if locallyOwned {
 			oidcTokenExchangeUnauthorized(response, authConfig)
 

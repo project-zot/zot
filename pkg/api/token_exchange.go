@@ -56,8 +56,10 @@ type wrappedCredentialBearer struct {
 func normalizeTokenExchangeRequest(request *http.Request) (*tokenExchangeRequest, error) {
 	tokenRequest := &tokenExchangeRequest{}
 
-	username, password, ok := request.BasicAuth()
-	if ok && password != "" {
+	// Use the same tolerant Basic parser as the registry routes so that
+	// non-canonical whitespace (e.g. "Basic\t<cred>") is still recognized as a
+	// local credential and never forwarded to an upstream token service.
+	if username, password, err := getUsernamePasswordBasicAuth(request); err == nil && password != "" {
 		tokenRequest.addCredential(username, password)
 	}
 
@@ -133,6 +135,12 @@ func (credential tokenExchangeCredential) hasWrappedCredentialSecret() bool {
 	return isWrappedCredentialBearerToken(credential.Secret)
 }
 
+// isLocalCredentialSecret reports whether a secret is owned by this Zot instance
+// (an API key or a Zot-issued wrapped credential) and must stay local.
+func isLocalCredentialSecret(secret string) bool {
+	return strings.HasPrefix(secret, constants.APIKeysPrefix) || isWrappedCredentialBearerToken(secret)
+}
+
 func isWrappedCredentialBearerToken(token string) bool {
 	return strings.HasPrefix(token, wrappedCredentialBearerPrefix)
 }
@@ -189,6 +197,24 @@ func bearerTokenFromAuthHeader(header string) (string, bool) {
 	}
 
 	return token, true
+}
+
+// requestHasLocalCredential reports whether the request carries a Zot-owned
+// credential (an API key or a Zot-issued wrapped credential) in the Authorization
+// header. This is a defense-in-depth guard for the upstream token proxy: even if a
+// credential is encoded in a way the local exchange parsing does not recognize, it
+// must never be forwarded to a third-party token service.
+func requestHasLocalCredential(request *http.Request) bool {
+	if _, password, err := getUsernamePasswordBasicAuth(request); err == nil && isLocalCredentialSecret(password) {
+		return true
+	}
+
+	token, ok := bearerTokenFromAuthHeader(request.Header.Get("Authorization"))
+	if ok && isLocalCredentialSecret(token) {
+		return true
+	}
+
+	return false
 }
 
 func parseWrappedCredentialBearerToken(token string) (wrappedCredentialBearer, error) {
