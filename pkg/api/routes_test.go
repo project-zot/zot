@@ -557,6 +557,29 @@ func TestRoutes(t *testing.T) {
 				})
 			So(statusCode, ShouldEqual, http.StatusBadRequest)
 
+			// A pre-write manifest cache lookup failure must not trigger cleanup of an existing marker.
+			cleanupCalled := false
+			statusCode = testUpdateManifest(
+				map[string]string{
+					"name":      "test",
+					"reference": "reference",
+				},
+				&mocks.MockedImageStore{
+					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string,
+						body []byte, extraTags []string,
+					) (godigest.Digest, godigest.Digest, error) {
+						return "", "", zerr.ErrManifestCacheLookup
+					},
+					DeleteImageManifestFn: func(ctx context.Context, repo, reference string, detectCollision bool) error {
+						cleanupCalled = true
+
+						return nil
+					},
+				},
+			)
+			So(statusCode, ShouldEqual, http.StatusInternalServerError)
+			So(cleanupCalled, ShouldBeFalse)
+
 			// malformed digest-shaped manifest reference
 			statusCode = testUpdateManifest(
 				map[string]string{
