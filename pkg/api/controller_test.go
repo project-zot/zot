@@ -12539,6 +12539,42 @@ func TestManifestCollision(t *testing.T) {
 	})
 }
 
+func TestStreamedPatchRange(t *testing.T) {
+	Convey("Streamed PATCH reports the Range of everything uploaded so far", t, func() {
+		conf := config.New()
+		conf.HTTP.Port = "0"
+
+		ctlr := makeController(conf, t.TempDir())
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+
+		defer cm.StopServer()
+
+		resp, err := resty.R().Post(baseURL + "/v2/repo/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc := test.Location(baseURL, resp)
+
+		resp, err = resty.R().SetHeader("Content-Type", "application/octet-stream").Patch(loc)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		So(resp.Header().Get("Range"), ShouldEqual, "0-0")
+
+		for _, want := range []string{"0-9", "0-19"} {
+			resp, err = resty.R().SetHeader("Content-Type", "application/octet-stream").
+				SetBody([]byte("0123456789")).Patch(loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+			So(resp.Header().Get("Range"), ShouldEqual, want)
+		}
+
+		resp, err = resty.R().Get(loc)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
+		So(resp.Header().Get("Range"), ShouldEqual, "0-19")
+	})
+}
+
 func TestPullRange(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		conf := config.New()

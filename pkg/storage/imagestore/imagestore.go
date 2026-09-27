@@ -1151,9 +1151,11 @@ func (is *ImageStore) PutBlobChunkStreamed(ctx context.Context, repo, uuid strin
 		err = file.Close()
 	}()
 
+	fsize := file.Size()
+
 	n, err = io.Copy(file, body)
 
-	return n, err
+	return n + fsize, err
 }
 
 // PutBlobChunk writes another chunk of data to the specified blob. It returns

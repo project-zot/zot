@@ -2078,8 +2078,13 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 		return
 	}
 
+	rangeEnd := "0-0"
+	if clen > 0 {
+		rangeEnd = fmt.Sprintf("0-%d", clen-1)
+	}
+
 	response.Header().Set("Location", getBlobUploadSessionLocation(request.URL, sessionID))
-	response.Header().Set("Range", fmt.Sprintf("0-%d", clen-1))
+	response.Header().Set("Range", rangeEnd)
 	response.Header().Set("Content-Length", "0")
 	response.Header().Set(constants.BlobUploadUUID, sessionID)
 	response.WriteHeader(http.StatusAccepted)
