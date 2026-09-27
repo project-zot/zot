@@ -801,7 +801,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 			e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrManifestCacheLookup) {
-			rh.c.Log.Error().Err(err).Msg("manifest cache lookup failed before manifest write")
+			rh.c.Log.Error().Err(err).Msg("failed to look up manifest cache before manifest write")
 			response.WriteHeader(http.StatusInternalServerError)
 		} else if errors.Is(err, zerr.ErrBlobNotFound) {
 			details["blob"] = digest.String()
