@@ -248,8 +248,33 @@ func AddImageMetaToRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.Rep
 		}
 	}
 
-	// update info only when a tag is added
+	// a manifest added by digest changes the repo info only when it belongs to an index which was
+	// added before it, e.g. sparse on-demand sync stores the index before its manifests
 	if zcommon.IsDigest(reference) {
+		updatedIndexes := updateParentIndexesLastUpdated(repoBlobs, imageMeta.Digest.String())
+		if len(updatedIndexes) == 0 {
+			return repoMeta, repoBlobs
+		}
+
+		size, platforms, vendors := recalculateAggregateFields(repoMeta, repoBlobs)
+		repoMeta.Vendors = vendors
+		repoMeta.Platforms = platforms
+		repoMeta.Size = size
+
+		for tag, descriptor := range repoMeta.Tags {
+			if _, found := updatedIndexes[descriptor.Digest]; !found {
+				continue
+			}
+
+			repoMeta.LastUpdatedImage = mConvert.GetProtoEarlierUpdatedImage(repoMeta.LastUpdatedImage,
+				&proto_go.RepoLastUpdatedImage{
+					LastUpdated: repoBlobs.Blobs[descriptor.Digest].LastUpdated,
+					MediaType:   descriptor.MediaType,
+					Digest:      descriptor.Digest,
+					Tag:         tag,
+				})
+		}
+
 		return repoMeta, repoBlobs
 	}
 
@@ -332,6 +357,40 @@ func RemoveImageFromRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.Re
 	repoBlobs.Blobs = updatedBlobs
 
 	return repoMeta, repoBlobs
+}
+
+// updateParentIndexesLastUpdated recalculates the last updated time of the indexes referencing
+// the given digest, directly or through nested indexes, and returns the digests of those indexes.
+func updateParentIndexesLastUpdated(repoBlobs *proto_go.RepoBlobs, digest string) map[string]struct{} {
+	updatedIndexes := map[string]struct{}{}
+	queue := []string{digest}
+
+	for len(queue) > 0 {
+		child := queue[0]
+		queue = queue[1:]
+
+		for parentDigest, parentInfo := range repoBlobs.Blobs {
+			if _, found := updatedIndexes[parentDigest]; found || !slices.Contains(parentInfo.GetSubBlobs(), child) {
+				continue
+			}
+
+			lastUpdated := time.Time{}
+
+			for _, subBlob := range parentInfo.SubBlobs {
+				blobInfo := repoBlobs.Blobs[subBlob]
+
+				if blobInfo != nil && blobInfo.LastUpdated != nil && lastUpdated.Before(blobInfo.LastUpdated.AsTime()) {
+					lastUpdated = blobInfo.LastUpdated.AsTime()
+				}
+			}
+
+			parentInfo.LastUpdated = mConvert.GetProtoTime(&lastUpdated)
+			updatedIndexes[parentDigest] = struct{}{}
+			queue = append(queue, parentDigest)
+		}
+	}
+
+	return updatedIndexes
 }
 
 func recalculateAggregateFields(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.RepoBlobs,

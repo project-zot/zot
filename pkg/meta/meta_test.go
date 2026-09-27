@@ -755,6 +755,38 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				So(repoMeta.Size, ShouldEqual, indexTotalSize)
 			})
 
+			Convey("Setting an index before its manifests", func() {
+				// sparse on-demand sync commits the index by tag first and the platform manifests
+				// later, by digest, when they are requested
+				err := metaDB.SetRepoReference(ctx, repo1, tag1, imgMulti.AsImageMeta())
+				So(err, ShouldBeNil)
+
+				err = metaDB.SetRepoReference(ctx, repo1, imgMulti.Images[0].DigestStr(),
+					imgMulti.Images[0].AsImageMeta())
+				So(err, ShouldBeNil)
+
+				image1TotalSize := multiImages[0].ManifestDescriptor.Size + multiImages[0].ConfigDescriptor.Size + 2*10
+
+				repoMeta, err := metaDB.GetRepoMeta(ctx, repo1)
+				So(err, ShouldBeNil)
+				So(repoMeta.Platforms, ShouldContain, ispec.Platform{OS: "multi-os1", Architecture: "multi-arch1"})
+				So(repoMeta.Platforms, ShouldNotContain, ispec.Platform{OS: "multi-os2", Architecture: "multi-arch2"})
+				So(repoMeta.Vendors, ShouldContain, "vendor1")
+				So(repoMeta.Size, ShouldEqual, image1TotalSize+imgMulti.IndexDescriptor.Size)
+
+				err = metaDB.SetRepoReference(ctx, repo1, imgMulti.Images[1].DigestStr(),
+					imgMulti.Images[1].AsImageMeta())
+				So(err, ShouldBeNil)
+
+				image2TotalSize := multiImages[1].ManifestDescriptor.Size + multiImages[1].ConfigDescriptor.Size + 2*10
+
+				repoMeta, err = metaDB.GetRepoMeta(ctx, repo1)
+				So(err, ShouldBeNil)
+				So(repoMeta.Platforms, ShouldContain, ispec.Platform{OS: "multi-os2", Architecture: "multi-arch2"})
+				So(repoMeta.Vendors, ShouldContain, "vendor2")
+				So(repoMeta.Size, ShouldEqual, image1TotalSize+image2TotalSize+imgMulti.IndexDescriptor.Size)
+			})
+
 			Convey("Set multiple repos", func() {
 				err := metaDB.SetRepoReference(ctx, repo1, tag1, imgData1)
 				So(err, ShouldBeNil)
@@ -874,6 +906,26 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				repoMeta, err := metaDB.GetRepoMeta(ctx, repo1)
 				So(err, ShouldBeNil)
 				So(*repoMeta.LastUpdatedImage.LastUpdated, ShouldEqual, time.Date(2011, 3, 1, 12, 0, 0, 0, time.UTC))
+			})
+
+			Convey("Check last updated for an index set before its manifests", func() {
+				config := GetDefaultConfig()
+				config.Created = DateRef(2011, 3, 1, 12, 0, 0, 0, time.UTC)
+
+				image := CreateMultiarchWith().Images([]Image{
+					CreateImageWith().RandomLayers(1, 10).ImageConfig(config).Build(),
+				}).Build()
+
+				err := metaDB.SetRepoReference(ctx, repo1, tag1, image.AsImageMeta())
+				So(err, ShouldBeNil)
+
+				err = metaDB.SetRepoReference(ctx, repo1, image.Images[0].DigestStr(), image.Images[0].AsImageMeta())
+				So(err, ShouldBeNil)
+
+				repoMeta, err := metaDB.GetRepoMeta(ctx, repo1)
+				So(err, ShouldBeNil)
+				So(*repoMeta.LastUpdatedImage.LastUpdated, ShouldEqual, time.Date(2011, 3, 1, 12, 0, 0, 0, time.UTC))
+				So(repoMeta.LastUpdatedImage.Tag, ShouldEqual, tag1)
 			})
 
 			Convey("PushedBy field behavior", func() {
