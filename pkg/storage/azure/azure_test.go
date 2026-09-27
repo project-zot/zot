@@ -108,5 +108,37 @@ func TestAzureDriverIntegration(t *testing.T) {
 			err = driver.Delete(dst)
 			So(err, ShouldBeNil)
 		})
+
+		Convey("List empty non-root → PathNotFound", func() {
+			_, err := driver.List("/zot-errclass-empty-list")
+			So(err, ShouldNotBeNil)
+
+			var pnf storagedriver.PathNotFoundError
+			So(errors.As(err, &pnf), ShouldBeTrue)
+		})
+
+		Convey("Walk missing / empty prefix → PathNotFound (unlike S3 nil)", func() {
+			err := driver.Walk("/zot-errclass-empty-walk", func(_ storagedriver.FileInfo) error {
+				return nil
+			})
+			So(err, ShouldNotBeNil)
+
+			var pnf storagedriver.PathNotFoundError
+			So(errors.As(err, &pnf), ShouldBeTrue)
+		})
+
+		Convey("Stat partial path under longer key → PathNotFound (unlike S3 IsDir quirk)", func() {
+			obj := "/zot-errclass-partial/ab/cd/file"
+			_, err := driver.WriteFile(obj, []byte("x"))
+			So(err, ShouldBeNil)
+
+			_, err = driver.Stat("/zot-errclass-partial/ab/c")
+			So(err, ShouldNotBeNil)
+
+			var pnf storagedriver.PathNotFoundError
+			So(errors.As(err, &pnf), ShouldBeTrue)
+
+			So(driver.Delete(obj), ShouldBeNil)
+		})
 	})
 }

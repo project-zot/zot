@@ -53,6 +53,7 @@ import (
 type memFS struct {
 	objects  []string
 	poisoned map[string]bool
+	vanished map[string]bool // Stat returns PathNotFound while List still shows the path
 	listed   []string
 }
 
@@ -96,6 +97,10 @@ func (m *memFS) list(dir string) ([]string, error) {
 }
 
 func (m *memFS) stat(path string) (storagedriver.FileInfo, error) {
+	if m.vanished[path] {
+		return nil, storagedriver.PathNotFoundError{Path: path, DriverName: "gcs"}
+	}
+
 	dirPrefix := strings.TrimSuffix(path, "/") + "/"
 	for _, obj := range m.objects {
 		if obj == path {

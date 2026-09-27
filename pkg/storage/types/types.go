@@ -83,7 +83,7 @@ type Driver interface { //nolint:interfacebloat
 	ReadFile(path string) ([]byte, error)
 	Delete(path string) error
 	Stat(path string) (storagedriver.FileInfo, error)
-	Writer(filepath string, append bool) (storagedriver.FileWriter, error) //nolint: predeclared
+	Writer(filepath string, isAppend bool) (storagedriver.FileWriter, error)
 	WriteFile(filepath string, content []byte) (int, error)
 	Walk(path string, f storagedriver.WalkFn) error
 	List(fullpath string) ([]string, error)
