@@ -493,7 +493,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 
 			// check a non-existent manifest
 			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
-				SetBody(content).Head(baseURL + "/v2/unknown/manifests/test:1.0")
+				SetBody(content).Head(baseURL + "/v2/unknown/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
@@ -501,21 +501,21 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			digest = img.ManifestDescriptor.Digest
 
 			repoName := "repo7"
-			err = image.UploadImage(img, baseURL, repoName, "test:1.0")
+			err = image.UploadImage(img, baseURL, repoName, "1.0")
 			So(err, ShouldBeNil)
 
-			err = image.UploadImage(img, baseURL, repoName, "test:1.0.1")
+			err = image.UploadImage(img, baseURL, repoName, "1.0.1")
 			So(err, ShouldBeNil)
 
-			err = image.UploadImage(img, baseURL, repoName, "test:2.0")
+			err = image.UploadImage(img, baseURL, repoName, "2.0")
 			So(err, ShouldBeNil)
 
 			// check/get by tag
-			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/test:1.0")
+			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
-			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/test:1.0")
+			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 			So(resp.Body(), ShouldNotBeEmpty)
@@ -530,7 +530,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(resp.Body(), ShouldNotBeEmpty)
 
 			// delete manifest by tag should pass
-			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/test:1.0")
+			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 			// delete manifest by digest (1.0 deleted but 1.0.1 has same reference)
@@ -547,17 +547,17 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 			// check/get by tag
-			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/test:1.0")
+			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/test:1.0")
+			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 			So(resp.Body(), ShouldNotBeEmpty)
-			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/test:2.0")
+			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/2.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/test:2.0")
+			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/2.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 			So(resp.Body(), ShouldNotBeEmpty)
@@ -580,7 +580,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			for index := 0; index <= 4; index++ {
 				repoName := "page0"
 				err := image.UploadImage(
-					img, baseURL, repoName, fmt.Sprintf("test:%d.0", index))
+					img, baseURL, repoName, fmt.Sprintf("%d.0", index))
 				So(err, ShouldBeNil)
 			}
 
@@ -605,7 +605,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-			resp, err = resty.R().Get(baseURL + "/v2/page0/tags/list?n=0&last=test:0.0")
+			resp, err = resty.R().Get(baseURL + "/v2/page0/tags/list?n=0&last=0.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -703,17 +703,17 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 
 			// check a non-existent manifest
 			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
-				SetBody(content).Head(baseURL + "/v2/unknown/manifests/test:1.0")
+				SetBody(content).Head(baseURL + "/v2/unknown/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
-				SetBody(content).Head(baseURL + "/v2/firsttest/unknown/manifests/test:1.0")
+				SetBody(content).Head(baseURL + "/v2/firsttest/unknown/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
-				SetBody(content).Head(baseURL + "/v2/secondtest/unknown/manifests/test:1.0")
+				SetBody(content).Head(baseURL + "/v2/secondtest/unknown/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
@@ -721,33 +721,33 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			digest = img.ManifestDescriptor.Digest
 
 			// subpath firsttest
-			err = image.UploadImage(img, baseURL, "firsttest/first", "test:1.0")
+			err = image.UploadImage(img, baseURL, "firsttest/first", "1.0")
 			So(err, ShouldBeNil)
 
 			// subpath secondtest
-			err = image.UploadImage(img, baseURL, "secondtest/second", "test:1.0")
+			err = image.UploadImage(img, baseURL, "secondtest/second", "1.0")
 			So(err, ShouldBeNil)
 
 			// subpath firsttest
-			err = image.UploadImage(img, baseURL, "firsttest/first", "test:2.0")
+			err = image.UploadImage(img, baseURL, "firsttest/first", "2.0")
 			So(err, ShouldBeNil)
 
 			// subpath secondtest
-			err = image.UploadImage(img, baseURL, "secondtest/second", "test:2.0")
+			err = image.UploadImage(img, baseURL, "secondtest/second", "2.0")
 			So(err, ShouldBeNil)
 
 			// check/get by tag
-			resp, err = resty.R().Head(baseURL + "/v2/firsttest/first/manifests/test:1.0")
+			resp, err = resty.R().Head(baseURL + "/v2/firsttest/first/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-			resp, err = resty.R().Get(baseURL + "/v2/firsttest/first/manifests/test:1.0")
+			resp, err = resty.R().Get(baseURL + "/v2/firsttest/first/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 			So(resp.Body(), ShouldNotBeEmpty)
-			resp, err = resty.R().Head(baseURL + "/v2/secondtest/second/manifests/test:1.0")
+			resp, err = resty.R().Head(baseURL + "/v2/secondtest/second/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-			resp, err = resty.R().Get(baseURL + "/v2/secondtest/second/manifests/test:1.0")
+			resp, err = resty.R().Get(baseURL + "/v2/secondtest/second/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 			So(resp.Body(), ShouldNotBeEmpty)
@@ -797,34 +797,34 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 			// check/get by tag
-			resp, err = resty.R().Head(baseURL + "/v2/firsttest/first/manifests/test:1.0")
+			resp, err = resty.R().Head(baseURL + "/v2/firsttest/first/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-			resp, err = resty.R().Get(baseURL + "/v2/firsttest/first/manifests/test:1.0")
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-			So(resp.Body(), ShouldNotBeEmpty)
-
-			resp, err = resty.R().Head(baseURL + "/v2/secondtest/second/manifests/test:1.0")
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-			resp, err = resty.R().Get(baseURL + "/v2/secondtest/second/manifests/test:1.0")
+			resp, err = resty.R().Get(baseURL + "/v2/firsttest/first/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 			So(resp.Body(), ShouldNotBeEmpty)
 
-			resp, err = resty.R().Head(baseURL + "/v2/firsttest/first/repo7/manifests/test:2.0")
+			resp, err = resty.R().Head(baseURL + "/v2/secondtest/second/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-			resp, err = resty.R().Get(baseURL + "/v2/firsttest/first/manifests/test:2.0")
+			resp, err = resty.R().Get(baseURL + "/v2/secondtest/second/manifests/1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 			So(resp.Body(), ShouldNotBeEmpty)
 
-			resp, err = resty.R().Head(baseURL + "/v2/secondtest/second/manifests/test:2.0")
+			resp, err = resty.R().Head(baseURL + "/v2/firsttest/first/repo7/manifests/2.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-			resp, err = resty.R().Get(baseURL + "/v2/secondtest/second/manifests/test:2.0")
+			resp, err = resty.R().Get(baseURL + "/v2/firsttest/first/manifests/2.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			So(resp.Body(), ShouldNotBeEmpty)
+
+			resp, err = resty.R().Head(baseURL + "/v2/secondtest/second/manifests/2.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			resp, err = resty.R().Get(baseURL + "/v2/secondtest/second/manifests/2.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 			So(resp.Body(), ShouldNotBeEmpty)

@@ -417,7 +417,7 @@ func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Req
 			fmt.Sprintf("</v2/%s/tags/list?n=%d&last=%s>; rel=\"next\"",
 				name,
 				numTags,
-				tags[stopIndex],
+				url.QueryEscape(tags[stopIndex]),
 			),
 		)
 	}
@@ -718,6 +718,13 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 
 	if zcommon.LooksLikeDigestReference(reference) {
 		e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(map[string]string{"reference": reference})
+		zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+
+		return
+	}
+
+	if !zcommon.IsDigest(reference) && !zreg.IsDistributionSpecTag(reference) {
+		e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(map[string]string{"reference": reference})
 		zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 
 		return
