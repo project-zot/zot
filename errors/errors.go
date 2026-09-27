@@ -70,6 +70,7 @@ var (
 	ErrCacheRootBucket                  = errors.New("unable to create/update root cache bucket")
 	ErrCacheNoBucket                    = errors.New("unable to find cache bucket")
 	ErrCacheMiss                        = errors.New("cache miss")
+	ErrManifestCacheLookup              = errors.New("manifest cache lookup failed")
 	ErrRequireCred                      = errors.New("bind ldap credentials required")
 	ErrInvalidCred                      = errors.New("invalid ldap credentials")
 	ErrEmptyJSON                        = errors.New("cli config json is empty")

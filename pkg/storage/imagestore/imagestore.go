@@ -701,6 +701,7 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 		binfo.Size() == 0 && !isEmptyContentDigest(mDigest) {
 		contentPath, err = is.getCachedBlobPath(mDigest)
 		if err != nil {
+			err = fmt.Errorf("%w: %w", zerr.ErrManifestCacheLookup, err)
 			is.log.Error().Err(err).Str("file", manifestPath).Str("digest", mDigest.String()).
 				Msg("failed to resolve dedupe origin for manifest")
 

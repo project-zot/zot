@@ -2951,6 +2951,7 @@ func TestReuploadManifestRepairsRemoteDedupeOrigin(t *testing.T) {
 				_, _, err = imgStore.PutImageManifest(context.Background(), repoB, "1.0", mediaType, manifestBody, nil)
 
 				if testCase.deleteCache {
+					So(errors.Is(err, zerr.ErrManifestCacheLookup), ShouldBeTrue)
 					So(errors.Is(err, zerr.ErrCacheMiss), ShouldBeTrue)
 					storedBody, readErr := storeDriver.ReadFile(manifestPaths[1])
 					So(readErr, ShouldBeNil)
