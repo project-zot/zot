@@ -240,7 +240,7 @@ func ReadLogFileAndCountStringOccurence(logPath string, stringToMatch string,
 }
 
 func GetBcryptCredString(username, password string) string {
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), 10)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
 	if err != nil {
 		panic(err)
 	}
