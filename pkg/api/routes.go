@@ -2808,6 +2808,7 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 		if errSync := routeHandler.c.SyncOnDemand.SyncImage(ctx, name, reference); errSync != nil {
 			routeHandler.c.Log.Err(errSync).Str("repository", name).Str("reference", reference).
 				Msg("failed to sync image")
+			return nil, "", "", errSync
 		}
 	}
 
