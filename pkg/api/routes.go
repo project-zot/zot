@@ -410,7 +410,7 @@ func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Req
 	}
 
 	stopIndex := len(tags) - 1
-	if paginate && (startIndex+numTags < len(tags)) {
+	if paginate && numTags < len(tags)-startIndex {
 		stopIndex = startIndex + numTags - 1
 		response.Header().Set(
 			"Link",

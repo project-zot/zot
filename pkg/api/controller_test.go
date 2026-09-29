@@ -12,6 +12,7 @@ import (
 	goerrors "errors"
 	"fmt"
 	"io"
+	"math"
 	"mime"
 	"mime/multipart"
 	"net"
@@ -10766,6 +10767,12 @@ func TestListingTags(t *testing.T) {
 			pageSize:     "",
 			last:         "zzz",
 			expectedTags: []string{},
+		},
+		{
+			testCaseName: "Test the parameters 'n' and 'last' with the largest 'n'",
+			pageSize:     strconv.Itoa(math.MaxInt),
+			last:         "new",
+			expectedTags: []string{sigTag},
 		},
 	}
 
