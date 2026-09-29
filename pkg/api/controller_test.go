@@ -9378,6 +9378,31 @@ func TestPutManifestInvalidPathTag(t *testing.T) {
 	})
 }
 
+func TestReferrersNamespaceWithoutRepo(t *testing.T) {
+	Convey("Referrers for a namespace that is only a parent of repos returns an empty index", t, func() {
+		conf := config.New()
+		conf.HTTP.Port = "0"
+
+		ctlr := makeController(conf, t.TempDir())
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+
+		defer cm.StopServer()
+
+		img := CreateRandomImage()
+		So(UploadImage(img, baseURL, "org/app", "1.0"), ShouldBeNil)
+
+		resp, err := resty.R().Get(baseURL + "/v2/org/referrers/" + img.DigestStr())
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(resp.Header().Get("Content-Type"), ShouldEqual, ispec.MediaTypeImageIndex)
+
+		var referrers ispec.Index
+		So(json.Unmarshal(resp.Body(), &referrers), ShouldBeNil)
+		So(referrers.Manifests, ShouldBeEmpty)
+	})
+}
+
 func TestArtifactReferences(t *testing.T) {
 	Convey("Validate Artifact References", t, func() {
 		// start a new server
