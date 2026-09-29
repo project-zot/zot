@@ -47,13 +47,11 @@ type scanTaskGenerator struct {
 	done       bool
 }
 
+// getMatcherFunc only uses in-memory state: FilterTags calls it inside a MetaDB read
+// transaction, and the scanner checks in needsScan read MetaDB themselves. With BoltDB, a read
+// transaction nested in another one deadlocks when a concurrent write grows the database file.
 func (gen *scanTaskGenerator) getMatcherFunc() mTypes.FilterFunc {
-	return func(repoMeta mTypes.RepoMeta, imageMeta mTypes.ImageMeta) bool {
-		// Note this matcher will return information based on scan status of manifests
-		// An index scan aggregates results of manifest scans
-		// If at least one of its manifests can be scanned,
-		// the index and its tag will be returned by the caller function too
-		repoName := repoMeta.Name
+	return func(_ mTypes.RepoMeta, imageMeta mTypes.ImageMeta) bool {
 		manifestDigest := imageMeta.Digest.String()
 
 		if gen.isScheduled(manifestDigest) {
@@ -68,20 +66,26 @@ func (gen *scanTaskGenerator) getMatcherFunc() mTypes.FilterFunc {
 			return false
 		}
 
-		// Manifests: digest cache hit. Indexes: all present scannable members cached
-		// (index digests are never cache keys; repo is used for presence checks).
-		if gen.scanner.IsResultCached(repoName, manifestDigest) {
-			return false
-		}
-
-		ok, err := gen.scanner.IsImageFormatScannable(repoName, manifestDigest)
-		if !ok || err != nil {
-			// We skip this manifest, we cannot scan it
-			return false
-		}
-
 		return true
 	}
+}
+
+// needsScan reports whether the image still has to be scanned. It reads MetaDB, so it must be
+// called outside FilterTags.
+func (gen *scanTaskGenerator) needsScan(repoName, digest string) bool {
+	// Manifests: digest cache hit. Indexes: all present scannable members cached
+	// (index digests are never cache keys; repo is used for presence checks).
+	if gen.scanner.IsResultCached(repoName, digest) {
+		return false
+	}
+
+	ok, err := gen.scanner.IsImageFormatScannable(repoName, digest)
+	if !ok || err != nil {
+		// We skip this manifest, we cannot scan it
+		return false
+	}
+
+	return true
 }
 
 func (gen *scanTaskGenerator) addError(digest string, err error) {
@@ -131,8 +135,7 @@ func (gen *scanTaskGenerator) Next() (scheduler.Task, error) {
 	userAc.SetIsAdmin(true)
 	ctx := userAc.DeriveContext(context.Background())
 
-	// Obtain a list of repos with un-scanned scannable manifests
-	// We may implement a method to return just 1 match at some point
+	// Obtain the images not scheduled and not errored yet
 	imageMeta, err := gen.metaDB.FilterTags(ctx, mTypes.AcceptAllRepoTag, gen.getMatcherFunc())
 	if err != nil {
 		// Do not crash the generator for potential metadb inconsistencies
@@ -140,24 +143,26 @@ func (gen *scanTaskGenerator) Next() (scheduler.Task, error) {
 		gen.log.Warn().Err(err).Msg("failed to obtain repo metadata during scheduled cve scan")
 	}
 
-	// no imageMeta are returned, all results are in already in cache
-	// or manifests cannot be scanned
-	if len(imageMeta) == 0 {
-		gen.log.Info().Msg("finished scanning available images during scheduled cve scan")
+	// Pick the first image not already in cache and that can be scanned
+	for _, image := range imageMeta {
+		digest := image.Digest.String()
 
-		gen.done = true
+		if !gen.needsScan(image.Repo, digest) {
+			continue
+		}
 
-		return nil, nil //nolint:nilnil
+		// Mark the digest as scheduled so it is skipped on next generator run
+		gen.setScheduled(digest, true)
+
+		return newScanTask(gen, image.Repo, digest), nil
 	}
 
-	// Since imageMeta will always contain just un-scanned images we can pick
-	// any image out of the resulting matches
-	digest := imageMeta[0].Digest.String()
+	// all results are already in cache or manifests cannot be scanned
+	gen.log.Info().Msg("finished scanning available images during scheduled cve scan")
 
-	// Mark the digest as scheduled so it is skipped on next generator run
-	gen.setScheduled(digest, true)
+	gen.done = true
 
-	return newScanTask(gen, imageMeta[0].Repo, digest), nil
+	return nil, nil //nolint:nilnil
 }
 
 func (gen *scanTaskGenerator) IsDone() bool {

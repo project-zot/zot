@@ -16,6 +16,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
+	"go.etcd.io/bbolt"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
@@ -845,5 +846,71 @@ func TestScanGeneratorPublishesScanEvents(t *testing.T) {
 		_, err = scanner.ScanImage(context.Background(), "repo:1.0.0")
 		So(err, ShouldBeNil)
 		So(recorder.ImageScannedCalls, ShouldHaveLength, 1)
+	})
+}
+
+func TestScanGeneratorConcurrentMetaDBWrite(t *testing.T) {
+	Convey("the generator does not deadlock when a write grows the BoltDB file during Next", t, func() {
+		boltDriver, err := boltdb.GetBoltDriver(boltdb.DBParameters{RootDir: t.TempDir()})
+		So(err, ShouldBeNil)
+
+		metaDB, err := boltdb.New(boltDriver, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		image := CreateImageWith().DefaultLayers().DefaultConfig().Build()
+		err = metaDB.SetRepoReference(context.Background(), "repo", "tag", image.AsImageMeta())
+		So(err, ShouldBeNil)
+
+		writeDone := make(chan error, 1)
+
+		// Like the real scanner, IsResultCached reads MetaDB. Before it does, a write larger than
+		// the initial 32 KB mmap starts, so bbolt must remap the file: the remap needs every open read
+		// transaction to end, so a read from inside another read transaction would deadlock.
+		scanner := mocks.CveScannerMock{
+			IsResultCachedFn: func(repo, digest string) bool {
+				go func() {
+					writeDone <- boltDriver.Update(func(tx *bbolt.Tx) error {
+						bucket, err := tx.CreateBucketIfNotExists([]byte("filler"))
+						if err != nil {
+							return err
+						}
+
+						return bucket.Put([]byte("filler"), make([]byte, 1<<20))
+					})
+				}()
+
+				time.Sleep(time.Second) // let the write reach the remap
+
+				_, _ = metaDB.GetImageMeta(godigest.Digest(digest))
+
+				return false
+			},
+			IsImageFormatScannableFn: func(repo, reference string) (bool, error) {
+				return true, nil
+			},
+		}
+
+		generator := cveinfo.NewScanTaskGenerator(metaDB, scanner, log.NewTestLogger())
+
+		nextDone := make(chan scheduler.Task, 1)
+
+		go func() {
+			task, _ := generator.Next()
+			nextDone <- task
+		}()
+
+		select {
+		case task := <-nextDone:
+			So(task, ShouldNotBeNil)
+		case <-time.After(15 * time.Second):
+			So("generator.Next() still blocked after 15s", ShouldBeEmpty)
+		}
+
+		select {
+		case err := <-writeDone:
+			So(err, ShouldBeNil)
+		case <-time.After(15 * time.Second):
+			So("MetaDB write still blocked after 15s", ShouldBeEmpty)
+		}
 	})
 }
