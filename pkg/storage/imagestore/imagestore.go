@@ -1963,8 +1963,21 @@ func (is *ImageStore) deleteBlobUpload(repo, uuid string, wait bool) (bool, erro
 
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
 	session := is.uploads.get(blobUploadPath)
+	s3Upload := is.storeDriver.Name() == storageConstants.S3StorageDriverName
 
 	removeUpload := func() error {
+		if s3Upload {
+			info, err := is.storeDriver.Stat(blobUploadPath)
+			if err != nil && !errors.As(err, &driver.PathNotFoundError{}) {
+				return err
+			}
+			// S3 exposes committed content via Stat, not unfinished multipart data.
+			// A nonempty committed upload cannot be reopened for append.
+			if err == nil && !info.IsDir() && info.Size() > 0 {
+				return is.storeDriver.Delete(blobUploadPath)
+			}
+		}
+
 		writer, err := is.storeDriver.Writer(blobUploadPath, true)
 		if err != nil {
 			if errclass.IsStorageObjectMissing(err) {
@@ -1981,6 +1994,12 @@ func (is *ImageStore) deleteBlobUpload(repo, uuid string, wait bool) (bool, erro
 				Msg("failed to delete blob upload")
 
 			return err
+		}
+
+		if s3Upload {
+			if err := is.storeDriver.Delete(blobUploadPath); err != nil && !errors.As(err, &driver.PathNotFoundError{}) {
+				return err
+			}
 		}
 
 		return nil
