@@ -391,6 +391,8 @@ func unmarshalProtoRepoMeta(repo string, repoMetaBlob []byte) (*proto_go.RepoMet
 		if err != nil {
 			return protoRepoMeta, err
 		}
+
+		common.StripSignatureLayerContent(protoRepoMeta)
 	}
 
 	if protoRepoMeta.Tags == nil {
@@ -1338,13 +1340,19 @@ func (bdw *BoltDB) UpdateStatsOnDownload(repo string, reference string) error {
 }
 
 func (bdw *BoltDB) UpdateSignaturesValidity(ctx context.Context, repo string, manifestDigest godigest.Digest) error {
-	err := bdw.DB.Update(func(transaction *bbolt.Tx) error {
-		imgTrustStore := bdw.ImageTrustStore()
+	imgTrustStore := bdw.ImageTrustStore()
 
-		if imgTrustStore == nil {
-			return nil
-		}
+	if imgTrustStore == nil {
+		return nil
+	}
 
+	var (
+		verifyImageMeta mTypes.ImageMeta
+		signatures      *proto_go.ManifestSignatures
+	)
+
+	// Read the signatures, verify them without holding bbolt's writer lock, then write the results back.
+	err := bdw.DB.View(func(transaction *bbolt.Tx) error {
 		// get ManifestData of signed manifest
 		imageMetaBuck := transaction.Bucket([]byte(ImageMetaBuck))
 		idBlob := imageMetaBuck.Get([]byte(manifestDigest))
@@ -1361,9 +1369,8 @@ func (bdw *BoltDB) UpdateSignaturesValidity(ctx context.Context, repo string, ma
 			return err
 		}
 
-		verifyImageMeta := mConvert.GetImageMeta(&protoImageMeta)
+		verifyImageMeta = mConvert.GetImageMeta(&protoImageMeta)
 
-		// update signatures with details about validity and author
 		repoBuck := transaction.Bucket([]byte(RepoMetaBuck))
 
 		repoMetaBlob := repoBuck.Get([]byte(repo))
@@ -1376,56 +1383,38 @@ func (bdw *BoltDB) UpdateSignaturesValidity(ctx context.Context, repo string, ma
 			return err
 		}
 
-		manifestSignatures := proto_go.ManifestSignatures{Map: map[string]*proto_go.SignaturesInfo{"": {}}}
+		signatures = protoRepoMeta.Signatures[manifestDigest.String()]
 
-		for sigType, sigs := range protoRepoMeta.Signatures[manifestDigest.String()].Map {
-			if zcommon.IsContextDone(ctx) {
-				return ctx.Err()
-			}
+		return nil
+	})
+	if err != nil || signatures == nil {
+		return err
+	}
 
-			signaturesInfo := []*proto_go.SignatureInfo{}
+	validity, err := common.VerifyManifestSignatures(ctx, imgTrustStore, repo, manifestDigest, verifyImageMeta, signatures,
+		bdw.Log)
+	if err != nil {
+		return err
+	}
 
-			for _, sigInfo := range sigs.List {
-				layersInfo := []*proto_go.LayersInfo{}
+	return bdw.DB.Update(func(transaction *bbolt.Tx) error {
+		repoBuck := transaction.Bucket([]byte(RepoMetaBuck))
 
-				for _, layerInfo := range sigInfo.LayersInfo {
-					author, date, isTrusted, err := imgTrustStore.VerifySignature(sigType, layerInfo.LayerContent,
-						layerInfo.SignatureKey, manifestDigest, verifyImageMeta, repo)
-					if err != nil {
-						bdw.Log.Error().Err(err).Str("repo", repo).Str("signatureType", sigType).
-							Str("manifestDigest", manifestDigest.String()).
-							Str("mediaType", verifyImageMeta.MediaType).
-							Msg("failed to verify signature validity")
-					}
-
-					if isTrusted {
-						layerInfo.Signer = author
-					} else {
-						layerInfo.Signer = ""
-					}
-
-					if !date.IsZero() {
-						layerInfo.Date = timestamppb.New(date)
-					}
-
-					layersInfo = append(layersInfo, layerInfo)
-				}
-
-				signaturesInfo = append(signaturesInfo, &proto_go.SignatureInfo{
-					SignatureManifestDigest: sigInfo.SignatureManifestDigest,
-					LayersInfo:              layersInfo,
-				})
-			}
-
-			manifestSignatures.Map[sigType] = &proto_go.SignaturesInfo{List: signaturesInfo}
+		repoMetaBlob := repoBuck.Get([]byte(repo))
+		if len(repoMetaBlob) == 0 {
+			// the repo was removed while its signatures were verified
+			return nil
 		}
 
-		protoRepoMeta.Signatures[manifestDigest.String()] = &manifestSignatures
+		protoRepoMeta, err := unmarshalProtoRepoMeta(repo, repoMetaBlob)
+		if err != nil {
+			return err
+		}
+
+		common.ApplySignaturesValidity(protoRepoMeta.Signatures[manifestDigest.String()], validity)
 
 		return setProtoRepoMeta(protoRepoMeta, repoBuck)
 	})
-
-	return err
 }
 
 func (bdw *BoltDB) RemoveRepoReference(repo, reference string, manifestDigest godigest.Digest) error {

@@ -5,6 +5,7 @@ package meta_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -201,6 +202,17 @@ func TestRedisDB(t *testing.T) {
 
 		RunMetaDBTests(t, metaDB)
 	})
+}
+
+var errStorageUnavailable = errors.New("storage unavailable")
+
+// trustStoreFunc is an ImageTrustStore that answers every verification by calling itself.
+type trustStoreFunc func() (mTypes.Author, mTypes.ExpiryDate, mTypes.Validity, error)
+
+func (verify trustStoreFunc) VerifySignatureLayer(signatureType string, layerDigest godigest.Digest, sigKey string,
+	manifestDigest godigest.Digest, imageMeta mTypes.ImageMeta, repo string,
+) (mTypes.Author, mTypes.ExpiryDate, mTypes.Validity, error) {
+	return verify()
 }
 
 func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func() error) { //nolint: thelper,gocyclo
@@ -1742,7 +1754,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			err = metaDB.AddManifestSignature(repo1, image1.Digest, mTypes.SignatureMetadata{
 				SignatureType:   "cosign",
 				SignatureDigest: "digest",
-				LayersInfo:      []mTypes.LayerInfo{{LayerDigest: "layer-digest", LayerContent: []byte{10}}},
+				LayersInfo:      []mTypes.LayerInfo{{LayerDigest: "layer-digest"}},
 			})
 			So(err, ShouldBeNil)
 
@@ -1750,7 +1762,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				SignatureType:   "cosign",
 				SignatureTag:    fmt.Sprintf("sha256-%s.sig", image1.Digest.Encoded()),
 				SignatureDigest: "digesttag",
-				LayersInfo:      []mTypes.LayerInfo{{LayerDigest: "layer-digest", LayerContent: []byte{10}}},
+				LayersInfo:      []mTypes.LayerInfo{{LayerDigest: "layer-digest"}},
 			})
 			So(err, ShouldBeNil)
 
@@ -1767,13 +1779,112 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			So(err, ShouldBeNil)
 			So(fullImageMeta.Signatures["cosign"][0].SignatureManifestDigest, ShouldResemble, "digesttag")
 			So(fullImageMeta.Signatures["cosign"][0].LayersInfo[0].LayerDigest, ShouldResemble, "layer-digest")
-			So(fullImageMeta.Signatures["cosign"][0].LayersInfo[0].LayerContent[0], ShouldEqual, 10)
 			So(fullImageMeta.Signatures["cosign"][1].SignatureManifestDigest, ShouldResemble, "digest")
 			So(fullImageMeta.Signatures["cosign"][1].LayersInfo[0].LayerDigest, ShouldResemble, "layer-digest")
-			So(fullImageMeta.Signatures["cosign"][1].LayersInfo[0].LayerContent[0], ShouldEqual, 10)
 		})
 
 		Convey("Test UpdateSignaturesValidity", func() {
+			Convey("the MetaDB stays writable while signatures are verified", func() {
+				var (
+					repo1     = "repo1"
+					tag1      = "0.0.1"
+					image1    = CreateRandomImage()
+					sigDigest = godigest.FromString("signature").String()
+				)
+
+				err := metaDB.SetRepoReference(ctx, repo1, tag1, image1.AsImageMeta())
+				So(err, ShouldBeNil)
+
+				err = metaDB.AddManifestSignature(repo1, image1.Digest(), mTypes.SignatureMetadata{
+					SignatureType:   "cosign",
+					SignatureDigest: sigDigest,
+					LayersInfo:      []mTypes.LayerInfo{{LayerDigest: godigest.FromString("layer").String()}},
+				})
+				So(err, ShouldBeNil)
+
+				originalTrustStore := metaDB.ImageTrustStore()
+				defer metaDB.SetImageTrustStore(originalTrustStore)
+
+				// the signature is removed while it is being verified
+				var deleteErr error
+
+				metaDB.SetImageTrustStore(trustStoreFunc(func() (mTypes.Author, mTypes.ExpiryDate, mTypes.Validity, error) {
+					deleteErr = metaDB.DeleteSignature(repo1, image1.Digest(), mTypes.SignatureMetadata{
+						SignatureType:   "cosign",
+						SignatureDigest: sigDigest,
+					})
+
+					return "author", time.Time{}, true, nil
+				}))
+
+				done := make(chan error, 1)
+
+				go func() { done <- metaDB.UpdateSignaturesValidity(ctx, repo1, image1.Digest()) }()
+
+				select {
+				case err = <-done:
+				case <-time.After(30 * time.Second):
+					So("UpdateSignaturesValidity blocked a MetaDB write made during verification", ShouldBeEmpty)
+				}
+
+				So(err, ShouldBeNil)
+				So(deleteErr, ShouldBeNil)
+
+				// and the deleted signature is not written back
+				repoMeta, err := metaDB.GetRepoMeta(ctx, repo1)
+				So(err, ShouldBeNil)
+
+				for _, sigInfo := range repoMeta.Signatures[image1.DigestStr()]["cosign"] {
+					So(sigInfo.SignatureManifestDigest, ShouldNotEqual, sigDigest)
+				}
+			})
+
+			Convey("a verification cancelled midway writes nothing", func() {
+				var (
+					repo1  = "repo1"
+					image1 = CreateRandomImage()
+				)
+
+				err := metaDB.SetRepoReference(ctx, repo1, "0.0.1", image1.AsImageMeta())
+				So(err, ShouldBeNil)
+
+				// two signature types, so that verification checks the context again after the first one
+				for _, sigType := range []string{"cosign", "notation"} {
+					err = metaDB.AddManifestSignature(repo1, image1.Digest(), mTypes.SignatureMetadata{
+						SignatureType:   sigType,
+						SignatureDigest: godigest.FromString(sigType).String(),
+						LayersInfo:      []mTypes.LayerInfo{{LayerDigest: godigest.FromString(sigType + "-layer").String()}},
+					})
+					So(err, ShouldBeNil)
+				}
+
+				originalTrustStore := metaDB.ImageTrustStore()
+				defer metaDB.SetImageTrustStore(originalTrustStore)
+
+				verifyCtx, cancel := context.WithCancel(ctx)
+				defer cancel()
+
+				metaDB.SetImageTrustStore(trustStoreFunc(func() (mTypes.Author, mTypes.ExpiryDate, mTypes.Validity, error) {
+					cancel()
+
+					return "author", time.Time{}, true, nil
+				}))
+
+				err = metaDB.UpdateSignaturesValidity(verifyCtx, repo1, image1.Digest())
+				So(err, ShouldEqual, context.Canceled)
+
+				repoMeta, err := metaDB.GetRepoMeta(ctx, repo1)
+				So(err, ShouldBeNil)
+
+				for _, sigs := range repoMeta.Signatures[image1.DigestStr()] {
+					for _, sigInfo := range sigs {
+						for _, layerInfo := range sigInfo.LayersInfo {
+							So(layerInfo.Signer, ShouldBeEmpty)
+						}
+					}
+				}
+			})
+
 			Convey("untrusted signature", func() {
 				var (
 					repo1  = "repo1"
@@ -1784,7 +1895,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				err := metaDB.SetRepoReference(ctx, repo1, tag1, image1.AsImageMeta())
 				So(err, ShouldBeNil)
 
-				layerInfo := mTypes.LayerInfo{LayerDigest: "", LayerContent: []byte{}, SignatureKey: ""}
+				layerInfo := mTypes.LayerInfo{LayerDigest: "", SignatureKey: ""}
 
 				err = metaDB.AddManifestSignature(repo1, image1.Digest(), mTypes.SignatureMetadata{
 					SignatureType:   "cosign",
@@ -1872,10 +1983,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				sig, _, err := newSigner.Sign(ctx, descToSign, signOpts)
 				So(err, ShouldBeNil)
 
-				layerInfo := mTypes.LayerInfo{
-					LayerDigest:  string(godigest.FromBytes(sig)),
-					LayerContent: sig, SignatureKey: mediaType,
-				}
+				layerInfo := mTypes.LayerInfo{LayerDigest: string(godigest.FromBytes(sig)), SignatureKey: mediaType}
 
 				err = metaDB.AddManifestSignature(repo, image1.Digest(), mTypes.SignatureMetadata{
 					SignatureType:   "notation",
@@ -1895,6 +2003,16 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				imgTrustStore, ok := metaDB.ImageTrustStore().(*imagetrust.ImageTrustStore)
 				So(ok, ShouldBeTrue)
 
+				// the signature layer is loaded from storage when it is verified
+				imgTrustStore.GetSignatureBlob = func(repo string, digest godigest.Digest) ([]byte, error) {
+					if digest != godigest.FromBytes(sig) {
+						return nil, zerr.ErrBlobNotFound
+					}
+
+					return sig, nil
+				}
+				defer func() { imgTrustStore.GetSignatureBlob = nil }()
+
 				err = imagetrust.UploadCertificate(imgTrustStore.NotationStorage, certificateContent, "ca")
 				So(err, ShouldBeNil)
 
@@ -1908,6 +2026,32 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 					ShouldNotBeEmpty)
 				So(repoData.Signatures[image1.DigestStr()]["notation"][0].LayersInfo[0].Date,
 					ShouldNotBeZeroValue)
+
+				Convey("a signature layer gone from storage is no longer trusted", func() {
+					imgTrustStore.GetSignatureBlob = func(repo string, digest godigest.Digest) ([]byte, error) {
+						return nil, zerr.ErrBlobNotFound
+					}
+
+					err = metaDB.UpdateSignaturesValidity(ctx, repo, image1.Digest()) //nolint:contextcheck
+					So(err, ShouldBeNil)
+
+					repoData, err := metaDB.GetRepoMeta(ctx, repo)
+					So(err, ShouldBeNil)
+					So(repoData.Signatures[image1.DigestStr()]["notation"][0].LayersInfo[0].Signer, ShouldBeEmpty)
+				})
+
+				Convey("a signature layer that cannot be loaded right now keeps its validity", func() {
+					imgTrustStore.GetSignatureBlob = func(repo string, digest godigest.Digest) ([]byte, error) {
+						return nil, errStorageUnavailable
+					}
+
+					err = metaDB.UpdateSignaturesValidity(ctx, repo, image1.Digest()) //nolint:contextcheck
+					So(err, ShouldBeNil)
+
+					repoData, err := metaDB.GetRepoMeta(ctx, repo)
+					So(err, ShouldBeNil)
+					So(repoData.Signatures[image1.DigestStr()]["notation"][0].LayersInfo[0].Signer, ShouldNotBeEmpty)
+				})
 			})
 		})
 

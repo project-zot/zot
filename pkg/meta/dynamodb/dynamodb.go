@@ -371,6 +371,8 @@ func (dwr *DynamoDB) getProtoRepoMeta(ctx context.Context, repo string) (*proto_
 		if err != nil {
 			return nil, err
 		}
+
+		common.StripSignatureLayerContent(protoRepoMeta)
 	}
 
 	if protoRepoMeta.Tags == nil {
@@ -1282,57 +1284,35 @@ func (dwr *DynamoDB) UpdateSignaturesValidity(ctx context.Context, repo string, 
 
 	verifyImageMeta := mConvert.GetImageMeta(protoImageMeta)
 
-	// update signatures with details about validity and author
 	protoRepoMeta, err := dwr.getProtoRepoMeta(ctx, repo)
 	if err != nil {
 		return err
 	}
 
-	manifestSignatures := proto_go.ManifestSignatures{Map: map[string]*proto_go.SignaturesInfo{"": {}}}
-
-	for sigType, sigs := range protoRepoMeta.Signatures[manifestDigest.String()].Map {
-		if zcommon.IsContextDone(ctx) {
-			return ctx.Err()
-		}
-
-		signaturesInfo := []*proto_go.SignatureInfo{}
-
-		for _, sigInfo := range sigs.List {
-			layersInfo := []*proto_go.LayersInfo{}
-
-			for _, layerInfo := range sigInfo.LayersInfo {
-				author, date, isTrusted, err := imgTrustStore.VerifySignature(sigType, layerInfo.LayerContent,
-					layerInfo.SignatureKey, manifestDigest, verifyImageMeta, repo)
-				if err != nil {
-					dwr.Log.Error().Err(err).Str("repo", repo).Str("signatureType", sigType).
-						Str("manifestDigest", manifestDigest.String()).
-						Str("mediaType", verifyImageMeta.MediaType).
-						Msg("failed to verify signature validity")
-				}
-
-				if isTrusted {
-					layerInfo.Signer = author
-				} else {
-					layerInfo.Signer = ""
-				}
-
-				if !date.IsZero() {
-					layerInfo.Date = timestamppb.New(date)
-				}
-
-				layersInfo = append(layersInfo, layerInfo)
-			}
-
-			signaturesInfo = append(signaturesInfo, &proto_go.SignatureInfo{
-				SignatureManifestDigest: sigInfo.SignatureManifestDigest,
-				LayersInfo:              layersInfo,
-			})
-		}
-
-		manifestSignatures.Map[sigType] = &proto_go.SignaturesInfo{List: signaturesInfo}
+	signatures := protoRepoMeta.Signatures[manifestDigest.String()]
+	if signatures == nil {
+		return nil
 	}
 
-	protoRepoMeta.Signatures[manifestDigest.String()] = &manifestSignatures
+	validity, err := common.VerifyManifestSignatures(ctx, imgTrustStore, repo, manifestDigest, verifyImageMeta, signatures,
+		dwr.Log)
+	if err != nil {
+		return err
+	}
+
+	// re-read, so that changes made while the signatures were verified are not overwritten
+	protoRepoMeta, err = dwr.getProtoRepoMeta(ctx, repo)
+	if err != nil {
+		return err
+	}
+
+	currentSignatures := protoRepoMeta.Signatures[manifestDigest.String()]
+	if currentSignatures == nil {
+		// the signatures, or the whole repo, were removed while they were verified
+		return nil
+	}
+
+	common.ApplySignaturesValidity(currentSignatures, validity)
 
 	return dwr.setProtoRepoMeta(protoRepoMeta.Name, protoRepoMeta) //nolint: contextcheck
 }

@@ -998,7 +998,9 @@ type LayersInfo struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	LayerDigest  string                 `protobuf:"bytes,1,opt,name=LayerDigest,proto3" json:"LayerDigest,omitempty"`
+	LayerDigest string `protobuf:"bytes,1,opt,name=LayerDigest,proto3" json:"LayerDigest,omitempty"`
+	// No longer written: signature layers are loaded from storage when they are verified. Kept for records
+	// written by older versions; cleared on read by meta/common.StripSignatureLayerContent.
 	LayerContent []byte                 `protobuf:"bytes,2,opt,name=LayerContent,proto3" json:"LayerContent,omitempty"`
 	SignatureKey string                 `protobuf:"bytes,3,opt,name=SignatureKey,proto3" json:"SignatureKey,omitempty"`
 	Signer       string                 `protobuf:"bytes,4,opt,name=Signer,proto3" json:"Signer,omitempty"`

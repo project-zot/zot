@@ -151,6 +151,8 @@ var (
 	ErrSignConfigDirNotSet              = errors.New("signature config dir not set")
 	ErrBadSignatureManifestDigest       = errors.New("bad signature manifest digest")
 	ErrInvalidSignatureType             = errors.New("invalid signature type")
+	ErrSignatureLayerUnavailable        = errors.New("signature layer could not be loaded from storage")
+	ErrSignatureLayerTooLarge           = errors.New("signature layer is too large to be a signature")
 	ErrSyncPingRegistry                 = errors.New("unable to ping any registry URLs")
 	ErrSyncImageNotSigned               = errors.New("synced image is not signed")
 	ErrSyncImageFilteredOut             = errors.New("image is filtered out by sync config")

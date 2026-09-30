@@ -1,6 +1,7 @@
 package boltdb_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
@@ -27,9 +28,9 @@ import (
 
 type imgTrustStore struct{}
 
-func (its imgTrustStore) VerifySignature(
-	signatureType string, rawSignature []byte, sigKey string, manifestDigest godigest.Digest, imageMeta mTypes.ImageMeta,
-	repo string,
+func (its imgTrustStore) VerifySignatureLayer(
+	signatureType string, layerDigest godigest.Digest, sigKey string, manifestDigest godigest.Digest,
+	imageMeta mTypes.ImageMeta, repo string,
 ) (mTypes.Author, mTypes.ExpiryDate, mTypes.Validity, error) {
 	return "", time.Time{}, false, nil
 }
@@ -1257,6 +1258,61 @@ func TestBoltDBCountRepos(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(count, ShouldEqual, 2)
 		})
+	})
+}
+
+func TestBoltDBDropsStoredSignatureLayerContent(t *testing.T) {
+	Convey("signature layer content stored by older versions is dropped when the repo is written", t, func() {
+		boltDriver, err := boltdb.GetBoltDriver(boltdb.DBParameters{RootDir: t.TempDir()})
+		So(err, ShouldBeNil)
+
+		boltdbWrapper, err := boltdb.New(boltDriver, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		image := CreateDefaultImage()
+		err = boltdbWrapper.SetRepoReference(context.Background(), "repo", "tag", image.AsImageMeta())
+		So(err, ShouldBeNil)
+
+		getRepoMetaBlob := func() []byte {
+			var blob []byte
+
+			err := boltdbWrapper.DB.View(func(tx *bbolt.Tx) error {
+				blob = bytes.Clone(tx.Bucket([]byte(boltdb.RepoMetaBuck)).Get([]byte("repo")))
+
+				return nil
+			})
+			So(err, ShouldBeNil)
+
+			return blob
+		}
+
+		// a record as written before: the full signature layer inside the repo record
+		protoRepoMeta := &proto_go.RepoMeta{}
+		So(proto.Unmarshal(getRepoMetaBlob(), protoRepoMeta), ShouldBeNil)
+
+		protoRepoMeta.Signatures[image.DigestStr()] = &proto_go.ManifestSignatures{Map: map[string]*proto_go.SignaturesInfo{
+			"cosign": {List: []*proto_go.SignatureInfo{{
+				SignatureManifestDigest: godigest.FromString("signature").String(),
+				LayersInfo: []*proto_go.LayersInfo{{
+					LayerDigest: godigest.FromString("layer").String(), LayerContent: make([]byte, 1<<20),
+				}},
+			}}},
+		}}
+
+		legacyBlob, err := proto.Marshal(protoRepoMeta)
+		So(err, ShouldBeNil)
+		So(setRepoMeta("repo", legacyBlob, boltdbWrapper.DB), ShouldBeNil)
+
+		err = boltdbWrapper.UpdateStatsOnDownload("repo", "tag")
+		So(err, ShouldBeNil)
+
+		repoMetaBlob := getRepoMetaBlob()
+		So(len(repoMetaBlob), ShouldBeLessThan, 4096)
+
+		So(proto.Unmarshal(repoMetaBlob, protoRepoMeta), ShouldBeNil)
+		layer := protoRepoMeta.Signatures[image.DigestStr()].GetMap()["cosign"].GetList()[0].GetLayersInfo()[0]
+		So(layer.GetLayerContent(), ShouldBeEmpty)
+		So(layer.GetLayerDigest(), ShouldEqual, godigest.FromString("layer").String())
 	})
 }
 

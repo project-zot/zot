@@ -290,7 +290,6 @@ func GetLayersInfo(layersInfo []*proto_go.LayersInfo) []mTypes.LayerInfo {
 
 		results = append(results, mTypes.LayerInfo{
 			LayerDigest:  layerInfo.GetLayerDigest(),
-			LayerContent: layerInfo.GetLayerContent(),
 			SignatureKey: layerInfo.GetSignatureKey(),
 			Signer:       layerInfo.GetSigner(),
 			Date:         date,

@@ -186,6 +186,77 @@ func TestInitCosignAndNotationDirs(t *testing.T) {
 	})
 }
 
+func TestVerifySignatureLayer(t *testing.T) {
+	Convey("VerifySignatureLayer loads the signature layer from storage", t, func() {
+		image := CreateRandomImage()
+		layerDigest := digest.FromString("signature layer")
+
+		imgTrustStore, err := imagetrust.NewLocalImageTrustStore(t.TempDir())
+		So(err, ShouldBeNil)
+
+		verify := func() (string, bool, error) {
+			author, _, isTrusted, err := imgTrustStore.VerifySignatureLayer(zcommon.CosignSignature, layerDigest, "",
+				image.Digest(), image.AsImageMeta(), "repo")
+
+			return author, isTrusted, err
+		}
+
+		Convey("without a blob getter the layer is unavailable", func() {
+			_, isTrusted, err := verify()
+			So(errors.Is(err, zerr.ErrSignatureLayerUnavailable), ShouldBeTrue)
+			So(isTrusted, ShouldBeFalse)
+		})
+
+		Convey("a layer gone from storage is not trusted, without an error", func() {
+			imgTrustStore.GetSignatureBlob = func(repo string, blobDigest digest.Digest) ([]byte, error) {
+				return nil, zerr.ErrBlobNotFound
+			}
+
+			author, isTrusted, err := verify()
+			So(err, ShouldBeNil)
+			So(isTrusted, ShouldBeFalse)
+			So(author, ShouldBeEmpty)
+		})
+
+		Convey("a layer that cannot be read right now is unavailable", func() {
+			imgTrustStore.GetSignatureBlob = func(repo string, blobDigest digest.Digest) ([]byte, error) {
+				return nil, errUnexpectedError
+			}
+
+			_, isTrusted, err := verify()
+			So(errors.Is(err, zerr.ErrSignatureLayerUnavailable), ShouldBeTrue)
+			So(errors.Is(err, errUnexpectedError), ShouldBeTrue)
+			So(isTrusted, ShouldBeFalse)
+		})
+
+		Convey("a layer too large to be a signature fails verification", func() {
+			imgTrustStore.GetSignatureBlob = func(repo string, blobDigest digest.Digest) ([]byte, error) {
+				return nil, zerr.ErrSignatureLayerTooLarge
+			}
+
+			_, isTrusted, err := verify()
+			So(errors.Is(err, zerr.ErrSignatureLayerTooLarge), ShouldBeTrue)
+			So(errors.Is(err, zerr.ErrSignatureLayerUnavailable), ShouldBeFalse)
+			So(isTrusted, ShouldBeFalse)
+		})
+
+		Convey("the loaded layer is what gets verified", func() {
+			var requested digest.Digest
+
+			imgTrustStore.GetSignatureBlob = func(repo string, blobDigest digest.Digest) ([]byte, error) {
+				requested = blobDigest
+
+				return []byte("not a signature"), nil
+			}
+
+			_, isTrusted, err := verify()
+			So(err, ShouldBeNil)
+			So(isTrusted, ShouldBeFalse)
+			So(requested, ShouldEqual, layerDigest)
+		})
+	})
+}
+
 func TestVerifySignatures(t *testing.T) {
 	Convey("empty manifest digest", t, func() {
 		image := CreateRandomImage()
@@ -1704,8 +1775,8 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]any) { //nolin
 			So(err, ShouldBeNil)
 
 			var (
-				rawSignature []byte
-				sigKey       string
+				signatureLayer digest.Digest
+				sigKey         string
 			)
 
 			for _, manifest := range index.Manifests {
@@ -1719,9 +1790,7 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]any) { //nolin
 					So(err, ShouldBeNil)
 
 					sigKey = cosignSig.Layers[0].Annotations[zcommon.CosignSigKey]
-
-					rawSignature, err = ctlr.StoreController.DefaultStore.GetBlobContent(repo, cosignSig.Layers[0].Digest)
-					So(err, ShouldBeNil)
+					signatureLayer = cosignSig.Layers[0].Digest
 				}
 			}
 
@@ -1738,9 +1807,9 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]any) { //nolin
 
 			imageTrustStore := ctlr.MetaDB.ImageTrustStore()
 
-			// signature is trusted
-			author, _, isTrusted, err := imageTrustStore.VerifySignature("cosign", rawSignature, sigKey, image.Digest(),
-				image.AsImageMeta(), repo)
+			// signature is trusted, verified from the layer the trust store loads from storage
+			author, _, isTrusted, err := imageTrustStore.VerifySignatureLayer("cosign", signatureLayer, sigKey,
+				image.Digest(), image.AsImageMeta(), repo)
 			So(err, ShouldBeNil)
 			So(isTrusted, ShouldBeTrue)
 			So(author, ShouldNotBeEmpty)
@@ -1794,8 +1863,8 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]any) { //nolin
 			So(err, ShouldBeNil)
 
 			var (
-				rawSignature []byte
-				sigKey       string
+				signatureLayer digest.Digest
+				sigKey         string
 			)
 
 			for _, manifest := range index.Manifests {
@@ -1815,9 +1884,7 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]any) { //nolin
 				}
 
 				sigKey = notationSig.Layers[0].MediaType
-
-				rawSignature, err = ctlr.StoreController.DefaultStore.GetBlobContent(repo, notationSig.Layers[0].Digest)
-				So(err, ShouldBeNil)
+				signatureLayer = notationSig.Layers[0].Digest
 
 				t.Logf("Identified notation signature manifest %v", notationSig)
 
@@ -1843,9 +1910,9 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]any) { //nolin
 
 			imageTrustStore := ctlr.MetaDB.ImageTrustStore()
 
-			// signature is trusted
-			author, _, isTrusted, err := imageTrustStore.VerifySignature("notation", rawSignature, sigKey, image.Digest(),
-				image.AsImageMeta(), repo)
+			// signature is trusted, verified from the layer the trust store loads from storage
+			author, _, isTrusted, err := imageTrustStore.VerifySignatureLayer("notation", signatureLayer, sigKey,
+				image.Digest(), image.AsImageMeta(), repo)
 			So(err, ShouldBeNil)
 			So(isTrusted, ShouldBeTrue)
 			So(author, ShouldEqual, "CN=cert,O=Notary,L=Seattle,ST=WA,C=US")

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	godigest "github.com/opencontainers/go-digest"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
@@ -18,6 +19,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/scheduler"
+	"zotregistry.dev/zot/v2/pkg/storage"
 	sconstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 )
 
@@ -176,13 +178,19 @@ func EnableImageTrustVerification(conf *config.Config, taskScheduler *scheduler.
 	taskScheduler.SubmitGenerator(generator, interval, scheduler.MediumPriority)
 }
 
-func SetupImageTrustExtension(conf *config.Config, metaDB mTypes.MetaDB, log log.Logger) error {
+// maxSignatureLayerSize bounds how much of a signature layer is read to verify it. Signatures are a few KB; anything
+// bigger than this is not one.
+const maxSignatureLayerSize = 4 << 20
+
+func SetupImageTrustExtension(conf *config.Config, metaDB mTypes.MetaDB, storeController storage.StoreController,
+	log log.Logger,
+) error {
 	extensionsConfig := conf.CopyExtensionsConfig()
 	if !extensionsConfig.IsImageTrustEnabled() {
 		return nil
 	}
 
-	var imgTrustStore mTypes.ImageTrustStore
+	var imgTrustStore *imagetrust.ImageTrustStore
 
 	var err error
 
@@ -206,7 +214,27 @@ func SetupImageTrustExtension(conf *config.Config, metaDB mTypes.MetaDB, log log
 		}
 	}
 
+	imgTrustStore.GetSignatureBlob = signatureBlobGetter(storeController)
+
 	metaDB.SetImageTrustStore(imgTrustStore)
 
 	return nil
+}
+
+// signatureBlobGetter loads signature layers from the image store of their repo. It holds no storage lock while the
+// blob is read.
+func signatureBlobGetter(storeController storage.StoreController) imagetrust.SignatureBlobGetter {
+	return func(repo string, digest godigest.Digest) ([]byte, error) {
+		blobReader, size, err := storeController.GetImageStore(repo).GetBlob(repo, digest, "")
+		if err != nil {
+			return nil, err
+		}
+		defer blobReader.Close()
+
+		if size > maxSignatureLayerSize {
+			return nil, zerr.ErrSignatureLayerTooLarge
+		}
+
+		return io.ReadAll(io.LimitReader(blobReader, maxSignatureLayerSize))
+	}
 }

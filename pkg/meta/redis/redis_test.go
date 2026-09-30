@@ -32,9 +32,9 @@ var ErrTestError = errors.New("TestError")
 
 type imgTrustStore struct{}
 
-func (its imgTrustStore) VerifySignature(
-	signatureType string, rawSignature []byte, sigKey string, manifestDigest godigest.Digest, imageMeta mTypes.ImageMeta,
-	repo string,
+func (its imgTrustStore) VerifySignatureLayer(
+	signatureType string, layerDigest godigest.Digest, sigKey string, manifestDigest godigest.Digest,
+	imageMeta mTypes.ImageMeta, repo string,
 ) (mTypes.Author, mTypes.ExpiryDate, mTypes.Validity, error) {
 	return "", time.Time{}, false, nil
 }

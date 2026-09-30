@@ -459,7 +459,7 @@ func (c *Controller) InitMetaDB() error {
 			return err
 		}
 
-		err = ext.SetupExtensions(c.Config, driver, c.Log) //nolint:contextcheck
+		err = ext.SetupExtensions(c.Config, driver, c.StoreController, c.Log) //nolint:contextcheck
 		if err != nil {
 			return err
 		}

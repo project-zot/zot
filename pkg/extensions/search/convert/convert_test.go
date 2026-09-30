@@ -147,7 +147,6 @@ func TestGetSignaturesInfo(t *testing.T) {
 					{
 						LayersInfo: []mTypes.LayerInfo{
 							{
-								LayerContent: []byte{},
 								LayerDigest:  "",
 								SignatureKey: "",
 								Signer:       "author",
@@ -173,7 +172,6 @@ func TestGetSignaturesInfo(t *testing.T) {
 					{
 						LayersInfo: []mTypes.LayerInfo{
 							{
-								LayerContent: []byte{},
 								LayerDigest:  "",
 								SignatureKey: "",
 								Signer:       "author",
