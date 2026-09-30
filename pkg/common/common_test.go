@@ -68,6 +68,27 @@ func TestCommon(t *testing.T) {
 		So(common.IsArtifactTypeCosign("application/example"), ShouldBeFalse)
 	})
 
+	Convey("Test IsCosignSignatureArtifact", t, func() {
+		predicate := func(predicateType string) map[string]string {
+			return map[string]string{common.CosignBundlePredicateTypeAnnotation: predicateType}
+		}
+
+		So(common.IsCosignSignatureArtifact(common.ArtifactTypeCosign, nil), ShouldBeTrue)
+		// bundles written by `cosign sign`, or without the annotation, are signatures
+		So(common.IsCosignSignatureArtifact(common.ArtifactTypeCosignBundle, nil), ShouldBeTrue)
+		So(common.IsCosignSignatureArtifact(common.ArtifactTypeCosignBundle,
+			predicate(common.CosignSignPredicateType)), ShouldBeTrue)
+		// bundles written by `cosign attest` are attestations
+		So(common.IsCosignSignatureArtifact(common.ArtifactTypeCosignBundle,
+			predicate("https://spdx.dev/Document")), ShouldBeFalse)
+		So(common.IsCosignSignatureArtifact(common.ArtifactTypeCosignBundle,
+			predicate("https://cosign.sigstore.dev/attestation/vuln/v1")), ShouldBeFalse)
+		So(common.IsCosignSignatureArtifact(common.ArtifactTypeCosignBundle, predicate("")), ShouldBeFalse)
+		So(common.IsCosignSignatureArtifact(common.ArtifactTypeNotation, nil), ShouldBeFalse)
+		So(common.IsCosignSignatureArtifact("application/example",
+			predicate(common.CosignSignPredicateType)), ShouldBeFalse)
+	})
+
 	Convey("Test GetLocalIPs", t, func() {
 		localIPs, err := common.GetLocalIPs()
 		So(err, ShouldBeNil)

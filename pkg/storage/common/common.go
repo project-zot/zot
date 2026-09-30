@@ -774,6 +774,11 @@ func ApplyLinter(imgStore storageTypes.ImageStore, linter Lint, repo string, des
 	return pass, nil
 }
 
+// IsSignature reports whether a manifest descriptor is a signature, so that ApplyLinter does not lint it as an
+// image. It deliberately counts every cosign sigstore bundle as a signature, attestations (SBOMs, vulnerability
+// reports) included: they are not images either and cannot carry the mandatory image annotations. The descriptor
+// only has the ref-name annotation, not the manifest annotations, so zcommon.IsCosignSignatureArtifact cannot be
+// used here. Anything that has to tell a signature from an attestation must use that function instead.
 func IsSignature(descriptor ispec.Descriptor) bool {
 	tag := descriptor.Annotations[ispec.AnnotationRefName]
 
@@ -784,7 +789,7 @@ func IsSignature(descriptor ispec.Descriptor) bool {
 			return true
 		}
 
-		// is cosign signature (OCI 1.1 support)
+		// is cosign signature or attestation (OCI 1.1 support), see the function comment
 		if zcommon.IsArtifactTypeCosign(descriptor.ArtifactType) {
 			return true
 		}

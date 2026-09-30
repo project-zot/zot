@@ -273,6 +273,14 @@ func CreateMockCosignBundleSignature(subject *ispec.Descriptor) Image {
 		ArtifactType(common.ArtifactTypeCosignBundle).Build()
 }
 
+// CreateMockCosignBundleAttestation builds a referrer the way `cosign attest` writes it: the same artifact type
+// as a bundle signature, told apart only by the predicate type annotation.
+func CreateMockCosignBundleAttestation(subject *ispec.Descriptor, predicateType string) Image {
+	return CreateImageWith().RandomLayers(1, 10).EmptyConfig().Subject(subject).
+		ArtifactType(common.ArtifactTypeCosignBundle).
+		Annotations(map[string]string{common.CosignBundlePredicateTypeAnnotation: predicateType}).Build()
+}
+
 type BaseImageBuilder struct {
 	layers []Layer
 

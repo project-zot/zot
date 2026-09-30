@@ -841,3 +841,49 @@ func TestOnDeleteManifest_syncStagingBlocksRepoRemoval(t *testing.T) {
 		So(repos, ShouldContain, repo)
 	})
 }
+
+func TestOnDeleteManifestCosignBundles(t *testing.T) {
+	Convey("deleting cosign bundle referrers", t, func() {
+		image := CreateRandomImage()
+		storeController := storage.StoreController{DefaultStore: &mocks.MockedImageStore{}}
+
+		var (
+			deletedSignatures  []godigest.Digest
+			removedReferences  []godigest.Digest
+			deleteSignatureErr error
+		)
+
+		metaDB := mocks.MetaDBMock{
+			DeleteSignatureFn: func(repo string, signedManifestDigest godigest.Digest, sm mTypes.SignatureMetadata) error {
+				deletedSignatures = append(deletedSignatures, signedManifestDigest)
+
+				return deleteSignatureErr
+			},
+			RemoveRepoReferenceFn: func(repo, reference string, manifestDigest godigest.Digest) error {
+				removedReferences = append(removedReferences, manifestDigest)
+
+				return nil
+			},
+		}
+
+		Convey("a cosign sign bundle is deleted as a signature of its subject", func() {
+			signature := CreateMockCosignBundleSignature(image.DescriptorRef())
+
+			err := meta.OnDeleteManifest("repo", signature.DigestStr(), ispec.MediaTypeImageManifest, signature.Digest(),
+				signature.ManifestDescriptor.Data, storeController, metaDB, log.NewTestLogger())
+			So(err, ShouldBeNil)
+			So(deletedSignatures, ShouldResemble, []godigest.Digest{image.Digest()})
+			So(removedReferences, ShouldBeEmpty)
+		})
+
+		Convey("a cosign attest bundle is deleted as a referrer, not as a signature", func() {
+			attestation := CreateMockCosignBundleAttestation(image.DescriptorRef(), "https://spdx.dev/Document")
+
+			err := meta.OnDeleteManifest("repo", attestation.DigestStr(), ispec.MediaTypeImageManifest,
+				attestation.Digest(), attestation.ManifestDescriptor.Data, storeController, metaDB, log.NewTestLogger())
+			So(err, ShouldBeNil)
+			So(deletedSignatures, ShouldBeEmpty)
+			So(removedReferences, ShouldResemble, []godigest.Digest{attestation.Digest()})
+		})
+	})
+}

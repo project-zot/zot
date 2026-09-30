@@ -669,6 +669,50 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) 
 		So(len(repoMeta.Signatures[subjectDigest][zcommon.CosignSignature]), ShouldBeGreaterThan, 0)
 	})
 
+	Convey("Index cosign bundle attestations as referrers, not signatures", func() {
+		imageStore := local.NewImageStore(rootDir, false, false,
+			log, monitoring.NewNopMetricServer(), nil, nil, nil, nil)
+
+		storeController := storage.StoreController{DefaultStore: imageStore}
+
+		signedImage := CreateRandomImage()
+		err := WriteImageToFileSystem(signedImage, repo, "signed", storeController)
+		So(err, ShouldBeNil)
+
+		bundleSig := CreateMockCosignBundleSignature(signedImage.DescriptorRef())
+		err = WriteImageToFileSystem(bundleSig, repo, bundleSig.DigestStr(), storeController)
+		So(err, ShouldBeNil)
+
+		attestation := CreateMockCosignBundleAttestation(signedImage.DescriptorRef(), "https://spdx.dev/Document")
+		err = WriteImageToFileSystem(attestation, repo, attestation.DigestStr(), storeController)
+		So(err, ShouldBeNil)
+
+		err = meta.ParseStorage(metaDB, storeController, log) //nolint: contextcheck
+		So(err, ShouldBeNil)
+
+		repoMeta, err := metaDB.GetRepoMeta(ctx, repo)
+		So(err, ShouldBeNil)
+
+		subjectDigest := signedImage.DigestStr()
+
+		// slot 0 of the list is reserved for a legacy .sig signature and stays empty here
+		signatureDigests := []string{}
+
+		for _, sigInfo := range repoMeta.Signatures[subjectDigest][zcommon.CosignSignature] {
+			if sigInfo.SignatureManifestDigest != "" {
+				signatureDigests = append(signatureDigests, sigInfo.SignatureManifestDigest)
+			}
+		}
+
+		So(signatureDigests, ShouldResemble, []string{bundleSig.DigestStr()})
+
+		So(repoMeta.Referrers[subjectDigest], ShouldHaveLength, 1)
+		referrer := repoMeta.Referrers[subjectDigest][0]
+		So(referrer.Digest, ShouldEqual, attestation.DigestStr())
+		So(referrer.ArtifactType, ShouldEqual, zcommon.ArtifactTypeCosignBundle)
+		So(referrer.Annotations[zcommon.CosignBundlePredicateTypeAnnotation], ShouldEqual, "https://spdx.dev/Document")
+	})
+
 	Convey("Check statistics after load", func() {
 		imageStore := local.NewImageStore(rootDir, false, false,
 			log, monitoring.NewNopMetricServer(), nil, nil, nil, nil)

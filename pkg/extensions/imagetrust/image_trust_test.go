@@ -28,6 +28,7 @@ import (
 	"github.com/notaryproject/notation-go/verifier/trustpolicy"
 	"github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/sigstore/cosign/v3/cmd/cosign/cli/attest"
 	"github.com/sigstore/cosign/v3/cmd/cosign/cli/generate"
 	"github.com/sigstore/cosign/v3/cmd/cosign/cli/options"
 	"github.com/sigstore/cosign/v3/cmd/cosign/cli/sign"
@@ -736,6 +737,74 @@ func TestCosignBundleSignatureEndToEnd(t *testing.T) {
 
 		So(layerInfo.SignatureKey, ShouldBeEmpty)
 		So(layerInfo.Signer, ShouldNotBeEmpty)
+
+		Convey("a cosign attest bundle is a referrer, not a signature", func() {
+			predicatePath := path.Join(keyDir, "sbom.spdx.json")
+			err = os.WriteFile(predicatePath, []byte(`{"spdxVersion":"SPDX-2.3","name":"test"}`), 0o600)
+			So(err, ShouldBeNil)
+
+			attestCmd := attest.AttestCommand{
+				KeyRef:          path.Join(keyDir, "cosign.key"),
+				PassFunc:        generate.GetPass,
+				NewBundleFormat: true,
+				AllowInsecure:   true,
+				PredicatePath:   predicatePath,
+				PredicateType:   "spdxjson",
+				Timeout:         1 * time.Minute,
+				TlogUpload:      false,
+				RekorEntryType:  "dsse",
+			}
+			err = attestCmd.Exec(context.TODO(), fmt.Sprintf("localhost:%s/%s@%s", port, repo, image.DigestStr()))
+			So(err, ShouldBeNil)
+
+			repoMeta, err := ctlr.MetaDB.GetRepoMeta(context.Background(), repo)
+			So(err, ShouldBeNil)
+
+			// only the `cosign sign` bundle is a signature; slot 0 of the list is reserved for a legacy .sig
+			// signature and stays empty here
+			var signatures []mTypes.SignatureInfo
+
+			for _, sigInfo := range repoMeta.Signatures[image.DigestStr()][zcommon.CosignSignature] {
+				if sigInfo.SignatureManifestDigest != "" {
+					signatures = append(signatures, sigInfo)
+				}
+			}
+
+			So(signatures, ShouldHaveLength, 1)
+			So(signatures[0].LayersInfo, ShouldHaveLength, 1)
+			So(signatures[0].LayersInfo[0].Signer, ShouldNotBeEmpty)
+
+			// the attestation is a referrer carrying its predicate type
+			So(repoMeta.Referrers[image.DigestStr()], ShouldHaveLength, 1)
+			attestationInfo := repoMeta.Referrers[image.DigestStr()][0]
+			So(attestationInfo.ArtifactType, ShouldEqual, zcommon.ArtifactTypeCosignBundle)
+			So(attestationInfo.Annotations[zcommon.CosignBundlePredicateTypeAnnotation], ShouldEqual,
+				"https://spdx.dev/Document")
+
+			// and a genuine attestation does not verify as a signature
+			attestationBlob, err := ctlr.StoreController.DefaultStore.GetBlobContent(repo,
+				digest.Digest(attestationInfo.Digest))
+			So(err, ShouldBeNil)
+
+			var attestationManifest ispec.Manifest
+
+			err = json.Unmarshal(attestationBlob, &attestationManifest)
+			So(err, ShouldBeNil)
+			So(attestationManifest.Layers, ShouldHaveLength, 1)
+
+			rawAttestation, err := ctlr.StoreController.DefaultStore.GetBlobContent(repo,
+				attestationManifest.Layers[0].Digest)
+			So(err, ShouldBeNil)
+
+			pubKeyStorage, err := imagetrust.NewPublicKeyLocalStorage(rootDir)
+			So(err, ShouldBeNil)
+
+			author, isTrusted, err := imagetrust.VerifyCosignSignature(pubKeyStorage, repo, image.Digest(), "",
+				rawAttestation)
+			So(err, ShouldBeNil)
+			So(isTrusted, ShouldBeFalse)
+			So(author, ShouldBeEmpty)
+		})
 	})
 }
 

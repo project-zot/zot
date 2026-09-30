@@ -792,7 +792,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 				Digest:    missingSubject,
 				Size:      1,
 			}
-			gced, err := gc.removeReferrer(repoName, &parentIndex, desc, subject, zcommon.ArtifactTypeNotation)
+			gced, err := gc.removeReferrer(repoName, &parentIndex, desc, subject, zcommon.ArtifactTypeNotation, nil)
 			So(err, ShouldBeNil)
 			So(gced, ShouldBeTrue)
 			So(deletedSig, ShouldBeTrue)
@@ -825,7 +825,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			gcOptions.Delay = 0
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
 
-			gced, err := gc.removeReferrer(repoName, &parentIndex, desc, nil, "")
+			gced, err := gc.removeReferrer(repoName, &parentIndex, desc, nil, "", nil)
 			So(err, ShouldBeNil)
 			So(gced, ShouldBeFalse)
 			So(len(parentIndex.Manifests), ShouldEqual, 1)
@@ -1119,7 +1119,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			gcOptions.Delay = 0
 			gc := NewGarbageCollect(imgStore, metaDB, gcOptions, audit, log, metrics)
 
-			gced, err := gc.removeReferrer(repoName, &parentIndex, cosignDesc, nil, "")
+			gced, err := gc.removeReferrer(repoName, &parentIndex, cosignDesc, nil, "", nil)
 			So(err, ShouldBeNil)
 			So(gced, ShouldBeTrue)
 			So(deletedSig, ShouldBeTrue)
@@ -1181,7 +1181,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			gcOptions.Delay = 0
 			gc := NewGarbageCollect(imgStore, metaDB, gcOptions, audit, log, metrics)
 
-			gced, err := gc.removeReferrer(repoName, &parentIndex, cosignDesc, nil, "")
+			gced, err := gc.removeReferrer(repoName, &parentIndex, cosignDesc, nil, "", nil)
 			So(err, ShouldBeNil)
 			So(gced, ShouldBeFalse)
 			So(statCalled, ShouldBeFalse)
@@ -1271,6 +1271,70 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			So(hasTag, ShouldBeFalse)
 		})
 
+		Convey("removeReferrer removes a cosign bundle attestation with a missing subject as a referrer", func() {
+			missingSubject := godigest.FromString("missing-subject")
+			annotations := map[string]string{zcommon.CosignBundlePredicateTypeAnnotation: "https://spdx.dev/Document"}
+
+			referrer := ispec.Manifest{
+				MediaType:    ispec.MediaTypeImageManifest,
+				ArtifactType: zcommon.ArtifactTypeCosignBundle,
+				Config:       ispec.Descriptor{Digest: godigest.FromString("cfg"), Size: 1},
+				Subject: &ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    missingSubject,
+					Size:      1,
+				},
+				Annotations: annotations,
+			}
+			referrerBuf, err := json.Marshal(referrer)
+			So(err, ShouldBeNil)
+			referrerDigest := godigest.FromBytes(referrerBuf)
+
+			parentIndex := ispec.Index{
+				MediaType: ispec.MediaTypeImageIndex,
+				Manifests: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageManifest,
+						Digest:    referrerDigest,
+						Size:      int64(len(referrerBuf)),
+					},
+				},
+			}
+			attestationDesc := parentIndex.Manifests[0]
+
+			imgStore := mocks.MockedImageStore{
+				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+					return true, int64(len(referrerBuf)), time.Now().Add(-24 * time.Hour), nil
+				},
+			}
+
+			removedReferences := 0
+			metaDB := mocks.MetaDBMock{
+				DeleteSignatureFn: func(repo string, signedManifestDigest godigest.Digest, sm types.SignatureMetadata) error {
+					So("an attestation is not a signature", ShouldBeEmpty)
+
+					return nil
+				},
+				RemoveRepoReferenceFn: func(repo, reference string, manifestDigest godigest.Digest) error {
+					removedReferences++
+					So(manifestDigest, ShouldEqual, referrerDigest)
+
+					return nil
+				},
+			}
+
+			gcOptions.ImageRetention = config.ImageRetention{Delay: 0}
+			gcOptions.Delay = 0
+			gc := NewGarbageCollect(imgStore, metaDB, gcOptions, audit, log, metrics)
+
+			gced, err := gc.removeReferrer(repoName, &parentIndex, attestationDesc, referrer.Subject,
+				zcommon.ArtifactTypeCosignBundle, annotations)
+			So(err, ShouldBeNil)
+			So(gced, ShouldBeTrue)
+			So(removedReferences, ShouldEqual, 1)
+			So(parentIndex.Manifests, ShouldBeEmpty)
+		})
+
 		Convey("removeReferrer skips cosign path after subject path already GCd the row", func() {
 			// OCI cosign referrer: subject in blob AND legacy .sig tag on the descriptor.
 			// Subject path removes by tag first; cosign path must not retry the same tag
@@ -1329,7 +1393,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			gcOptions.Delay = 0
 			gc := NewGarbageCollect(imgStore, metaDB, gcOptions, audit, log, metrics)
 
-			gced, err := gc.removeReferrer(repoName, &parentIndex, cosignDesc, referrer.Subject, zcommon.ArtifactTypeCosign)
+			gced, err := gc.removeReferrer(repoName, &parentIndex, cosignDesc, referrer.Subject, zcommon.ArtifactTypeCosign, nil)
 			So(err, ShouldBeNil)
 			So(gced, ShouldBeTrue)
 			So(deleteSignatureCalls, ShouldEqual, 1)
