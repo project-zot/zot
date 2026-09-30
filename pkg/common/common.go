@@ -33,6 +33,11 @@ const (
 	ArtifactTypeNotation     = "application/vnd.cncf.notary.signature"
 	ArtifactTypeCosign       = "application/vnd.dev.cosign.artifact.sig.v1+json"
 	ArtifactTypeCosignBundle = "application/vnd.dev.sigstore.bundle.v0.3+json"
+	// CosignBundlePredicateTypeAnnotation is the manifest annotation cosign sets on a sigstore bundle referrer.
+	// `cosign sign` and `cosign attest` write the same artifact type, this annotation is what tells them apart.
+	CosignBundlePredicateTypeAnnotation = "dev.sigstore.bundle.predicateType"
+	// CosignSignPredicateType is the in-toto predicate type of a `cosign sign` bundle.
+	CosignSignPredicateType = "https://sigstore.dev/cosign/sign/v1"
 	// CosignSignatureTagSuffix is the suffix used for cosign signature tags (e.g., "sha256-digest.sig").
 	// Using constant to avoid pulling in cosign dependency.
 	CosignSignatureTagSuffix = "sig"
@@ -54,10 +59,28 @@ func IsCosignTag(tag string) bool {
 	return IsCosignSignature(tag) || IsCosignSBOM(tag)
 }
 
-// IsArtifactTypeCosign returns true if the given artifact type corresponds to a cosign signature,
-// covering both the legacy type and the newer sigstore bundle type.
+// IsArtifactTypeCosign returns true if the given artifact type is one cosign writes signatures with, covering
+// both the legacy type and the newer sigstore bundle type. The bundle type is also used for attestations, so
+// use IsCosignSignatureArtifact to decide whether a manifest is a signature.
 func IsArtifactTypeCosign(artifactType string) bool {
 	return artifactType == ArtifactTypeCosign || artifactType == ArtifactTypeCosignBundle
+}
+
+// IsCosignSignatureArtifact returns true if a manifest with the given artifact type and annotations is a
+// cosign signature. A sigstore bundle declaring a predicate type other than cosign's signing predicate is an
+// attestation (SBOM, vulnerability report, provenance, ...) and not a signature, even though it shares the
+// artifact type. Bundles without the annotation are treated as signatures.
+func IsCosignSignatureArtifact(artifactType string, annotations map[string]string) bool {
+	switch artifactType {
+	case ArtifactTypeCosign:
+		return true
+	case ArtifactTypeCosignBundle:
+		predicateType, ok := annotations[CosignBundlePredicateTypeAnnotation]
+
+		return !ok || predicateType == CosignSignPredicateType
+	default:
+		return false
+	}
 }
 
 // RemoveFrom removes matches of item in [].

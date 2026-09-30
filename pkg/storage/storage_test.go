@@ -32,6 +32,7 @@ import (
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	rediscfg "zotregistry.dev/zot/v2/pkg/api/config/redis"
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/compat"
 	"zotregistry.dev/zot/v2/pkg/extensions/events"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
@@ -5310,4 +5311,80 @@ func TestCheckBlobEmptyBlob(t *testing.T) {
 	assertExpectation(ok, ShouldBeFalse)
 	assertExpectation(size, ShouldEqual, int64(-1))
 	assertExpectation(err, ShouldEqual, zerr.ErrBlobNotFound)
+}
+
+func TestCheckIsImageSignature(t *testing.T) {
+	Convey("CheckIsImageSignature tells signatures from attestations and other referrers", t, func() {
+		image := CreateRandomImage()
+		subject := image.DescriptorRef()
+
+		check := func(manifest Image, reference string) (bool, string, godigest.Digest) {
+			isSignature, signatureType, signedDigest, err := storage.CheckIsImageSignature("repo",
+				manifest.ManifestDescriptor.Data, reference)
+			So(err, ShouldBeNil)
+
+			return isSignature, signatureType, signedDigest
+		}
+
+		Convey("a notation signature", func() {
+			signature := CreateMockNotationSignature(subject)
+
+			isSignature, signatureType, signedDigest := check(signature, signature.DigestStr())
+			So(isSignature, ShouldBeTrue)
+			So(signatureType, ShouldEqual, storage.NotationType)
+			So(signedDigest, ShouldEqual, image.Digest())
+		})
+
+		Convey("a legacy cosign signature referrer", func() {
+			signature := CreateMockCosignSignature(subject)
+
+			isSignature, signatureType, signedDigest := check(signature, signature.DigestStr())
+			So(isSignature, ShouldBeTrue)
+			So(signatureType, ShouldEqual, storage.CosignType)
+			So(signedDigest, ShouldEqual, image.Digest())
+		})
+
+		Convey("a cosign sign bundle, with and without the predicate type annotation", func() {
+			for _, signature := range []Image{
+				CreateMockCosignBundleSignature(subject),
+				CreateMockCosignBundleAttestation(subject, zcommon.CosignSignPredicateType),
+			} {
+				isSignature, signatureType, signedDigest := check(signature, signature.DigestStr())
+				So(isSignature, ShouldBeTrue)
+				So(signatureType, ShouldEqual, storage.CosignType)
+				So(signedDigest, ShouldEqual, image.Digest())
+			}
+		})
+
+		Convey("a cosign attest bundle is not a signature", func() {
+			attestation := CreateMockCosignBundleAttestation(subject, "https://spdx.dev/Document")
+
+			isSignature, signatureType, signedDigest := check(attestation, attestation.DigestStr())
+			So(isSignature, ShouldBeFalse)
+			So(signatureType, ShouldBeEmpty)
+			So(signedDigest, ShouldBeEmpty)
+		})
+
+		Convey("a legacy cosign signature tag", func() {
+			signature := CreateRandomImage()
+			tag := fmt.Sprintf("sha256-%s.sig", image.Digest().Encoded())
+
+			isSignature, signatureType, signedDigest := check(signature, tag)
+			So(isSignature, ShouldBeTrue)
+			So(signatureType, ShouldEqual, storage.CosignType)
+			So(signedDigest, ShouldEqual, image.Digest())
+		})
+
+		Convey("an image is not a signature", func() {
+			isSignature, signatureType, signedDigest := check(image, "latest")
+			So(isSignature, ShouldBeFalse)
+			So(signatureType, ShouldBeEmpty)
+			So(signedDigest, ShouldBeEmpty)
+		})
+
+		Convey("a manifest that does not parse", func() {
+			_, _, _, err := storage.CheckIsImageSignature("repo", []byte("not a manifest"), "latest")
+			So(err, ShouldNotBeNil)
+		})
+	})
 }

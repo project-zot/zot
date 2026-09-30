@@ -559,8 +559,10 @@ func isCosignSigned(ctx context.Context, repo, digestStr string, searchConf Sear
 			continue
 		}
 
-		if len(referrers.Manifests) > 0 {
-			return true
+		for _, desc := range referrers.Manifests {
+			if common.IsCosignSignatureArtifact(desc.ArtifactType, desc.Annotations) {
+				return true
+			}
 		}
 	}
 

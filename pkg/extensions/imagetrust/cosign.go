@@ -26,6 +26,7 @@ import (
 	sigPayload "github.com/sigstore/sigstore/pkg/signature/payload"
 
 	zerr "zotregistry.dev/zot/v2/errors"
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
 )
 
 const cosignDirRelativePath = "_cosign"
@@ -147,7 +148,8 @@ func VerifyCosignSignature(
 // verifyCosignBundleSignature verifies a signature stored using the sigstore bundle format
 // (application/vnd.dev.sigstore.bundle.v0.3+json), which is what cosign v3 produces by default.
 // The bundle embeds a DSSE envelope wrapping an in-toto statement whose subject is the signed
-// image digest.
+// image digest and whose predicate type is cosign's signing predicate. Attestations use the same
+// format with other predicate types; a valid attestation does not make the image signed.
 func verifyCosignBundleSignature(
 	cosignStorage publicKeyStorage, publicKeys []string, digest godigest.Digest, layerContent []byte,
 ) (string, bool, error) { //nolint:unparam // error kept to match VerifyCosignSignature's return signature
@@ -173,7 +175,7 @@ func verifyCosignBundleSignature(
 	// the DSSE signature is computed over the pre-authentication encoding of the payload
 	signedContent := dsse.PAE(envelope.PayloadType, payload)
 
-	if !bundleSubjectMatchesDigest(envelope, digest) {
+	if !bundleSignsDigest(envelope, digest) {
 		return "", false, nil
 	}
 
@@ -208,11 +210,15 @@ func verifyCosignBundleSignature(
 	return "", false, nil
 }
 
-// bundleSubjectMatchesDigest checks that the in-toto statement carried by the DSSE envelope
-// refers to the image digest being verified.
-func bundleSubjectMatchesDigest(envelope *bundle.Envelope, digest godigest.Digest) bool {
+// bundleSignsDigest checks that the in-toto statement carried by the DSSE envelope is a cosign
+// signature statement and refers to the image digest being verified.
+func bundleSignsDigest(envelope *bundle.Envelope, digest godigest.Digest) bool {
 	statement, err := envelope.Statement()
 	if err != nil {
+		return false
+	}
+
+	if statement.GetPredicateType() != zcommon.CosignSignPredicateType {
 		return false
 	}
 

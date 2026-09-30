@@ -276,14 +276,15 @@ func (olu BaseOciLayoutUtils) checkCosignSignature(name string, digest godigest.
 		return false
 	}
 
-	if len(referrers.Manifests) == 0 {
-		olu.Log.Info().Err(err).Str("repository", name).Str("digest",
-			digest.String()).Msg("invalid cosign signature")
-
-		return false
+	for _, desc := range referrers.Manifests {
+		if common.IsCosignSignatureArtifact(desc.ArtifactType, desc.Annotations) {
+			return true
+		}
 	}
 
-	return true
+	olu.Log.Info().Str("repository", name).Str("digest", digest.String()).Msg("invalid cosign signature")
+
+	return false
 }
 
 // CheckManifestSignature checks if manifest is signed or not.

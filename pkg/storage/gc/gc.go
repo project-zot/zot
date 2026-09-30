@@ -605,7 +605,8 @@ func (gc GarbageCollect) removeReferrerByIndexDesc(repo string, rootIndex *ispec
 		indexes[desc.Digest] = indexImage
 	}
 
-	return gc.removeReferrer(repo, rootIndex, desc, indexImage.Subject, indexImage.ArtifactType)
+	return gc.removeReferrer(repo, rootIndex, desc, indexImage.Subject, indexImage.ArtifactType,
+		indexImage.Annotations)
 }
 
 // removeReferrerByManifestDesc handles one root index.json row whose media type is an image
@@ -616,7 +617,7 @@ func (gc GarbageCollect) removeReferrerByManifestDesc(repo string, rootIndex *is
 	missing map[godigest.Digest]struct{}, manifests map[godigest.Digest]ispec.Manifest,
 ) (bool, error) {
 	if _, ok := missing[desc.Digest]; ok {
-		return gc.removeReferrer(repo, rootIndex, desc, nil, "")
+		return gc.removeReferrer(repo, rootIndex, desc, nil, "", nil)
 	}
 
 	image, cached := manifests[desc.Digest]
@@ -630,7 +631,7 @@ func (gc GarbageCollect) removeReferrerByManifestDesc(repo string, rootIndex *is
 				gc.log.Warn().Err(err).Str("module", "gc").Str("repo", repo).Str("digest", desc.Digest.String()).
 					Msg("skipping missing image manifest blob, continuing GC")
 
-				return gc.removeReferrer(repo, rootIndex, desc, nil, "")
+				return gc.removeReferrer(repo, rootIndex, desc, nil, "", nil)
 			}
 
 			// Transient/hard read failures: skip this row so cleanRepo can still run stale
@@ -646,11 +647,11 @@ func (gc GarbageCollect) removeReferrerByManifestDesc(repo string, rootIndex *is
 
 	artifactType := zcommon.GetManifestArtifactType(image)
 
-	return gc.removeReferrer(repo, rootIndex, desc, image.Subject, artifactType)
+	return gc.removeReferrer(repo, rootIndex, desc, image.Subject, artifactType, image.Annotations)
 }
 
 func (gc GarbageCollect) removeReferrer(repo string, index *ispec.Index, manifestDesc ispec.Descriptor,
-	subject *ispec.Descriptor, artifactType string,
+	subject *ispec.Descriptor, artifactType string, annotations map[string]string,
 ) (bool, error) {
 	var gced bool
 
@@ -664,7 +665,7 @@ func (gc GarbageCollect) removeReferrer(repo string, index *ispec.Index, manifes
 		// check if its notation or cosign signature
 		if artifactType == zcommon.ArtifactTypeNotation {
 			signatureType = storage.NotationType
-		} else if zcommon.IsArtifactTypeCosign(artifactType) {
+		} else if zcommon.IsCosignSignatureArtifact(artifactType, annotations) {
 			signatureType = storage.CosignType
 		}
 
