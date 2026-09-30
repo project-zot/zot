@@ -71,7 +71,7 @@ func confWithReapDelay(gcDelay time.Duration) *config.Config {
 func runSchedulerUntil(t *testing.T, sch *scheduler.Scheduler, timeout time.Duration, condition func() bool) {
 	t.Helper()
 
-	go sch.RunScheduler()
+	sch.RunScheduler()
 	defer sch.Shutdown()
 
 	deadline := time.Now().Add(timeout)
