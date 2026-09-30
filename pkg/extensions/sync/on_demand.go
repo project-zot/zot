@@ -5,8 +5,11 @@ package sync
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync"
 
+	godigest "github.com/opencontainers/go-digest"
+	"github.com/regclient/regclient/types/manifest"
 	"golang.org/x/sync/singleflight"
 
 	zerr "zotregistry.dev/zot/v2/errors"
@@ -40,9 +43,10 @@ same subject do not share results.
 type BaseOnDemand struct {
 	services []Service
 	// background retry scheduling dedup: map[request]struct{}
-	requestStore *sync.Map
-	flight       singleflight.Group
-	log          log.Logger
+	requestStore  *sync.Map
+	flight        singleflight.Group
+	streamManager StreamManager
+	log           log.Logger
 }
 
 func NewOnDemand(log log.Logger) *BaseOnDemand {
@@ -51,6 +55,144 @@ func NewOnDemand(log log.Logger) *BaseOnDemand {
 
 func (onDemand *BaseOnDemand) Add(service Service) {
 	onDemand.services = append(onDemand.services, service)
+}
+
+// SetStreamManager sets the shared stream manager. Left nil when no registry streams.
+func (onDemand *BaseOnDemand) SetStreamManager(sm StreamManager) {
+	onDemand.streamManager = sm
+}
+
+// StreamManager returns the shared stream manager, or nil when no registry enables streaming.
+func (onDemand *BaseOnDemand) StreamManager() StreamManager {
+	return onDemand.streamManager
+}
+
+// IsStreamingEnabledForRepo returns true if any on-demand service streams blobs for repo.
+//
+// Only streaming registries are asked for the streamed manifest; if none can serve it, the caller
+// falls back to a plain SyncImage, which tries every matching registry.
+//
+// onDemandInBackground wins when a separate registry with it also matches repo: getImageManifest
+// checks ShouldQueueOnDemandSync first, so the repo gets a 404 plus a queued sync and is never
+// streamed.
+func (onDemand *BaseOnDemand) IsStreamingEnabledForRepo(repo string) bool {
+	for _, service := range onDemand.services {
+		if service.IsStreamingForRepo(repo) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// FetchManifestForStream fetches repo:reference's manifest from upstream, stages it and its blobs
+// for streaming, starts the real sync into local storage in the background, and returns the
+// manifest right away.
+//
+// If repo:reference is already staged (another client is pulling it), the staged manifest is
+// returned and no second sync starts. The same applies when two callers race to stage it.
+//
+// onSynced, if non-nil, is called with the manifest once the background sync serving it commits,
+// whether this call started that sync or joined one already staged.
+func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, reference string,
+	onSynced func(manifest.Manifest),
+) (manifest.Manifest, error) {
+	if onDemand.streamManager == nil {
+		return nil, zerr.ErrStreamManagerNotInitialized
+	}
+
+	if cached, ok := onDemand.streamManager.JoinStreamingImage(repo, reference, onSynced); ok {
+		onDemand.log.Debug().Str("repo", repo).Str("reference", reference).
+			Msg("streaming manifest already present in cache")
+
+		return cached.referenceManifest, nil
+	}
+
+	var resultManifest manifest.Manifest
+
+	var subManifests []manifest.Manifest
+
+	var lastErr error
+
+	// selectedIdx is the service that supplies the manifest; the background sync is pinned to it.
+	// Only streaming services are asked: a non-streaming one may not meet streaming's TLS
+	// requirements, yet its manifest would be served as if it did.
+	selectedIdx := -1
+
+	for idx, service := range onDemand.services {
+		if !service.IsStreamingForRepo(repo) {
+			continue
+		}
+
+		onDemand.log.Debug().Str("repo", repo).Str("reference", reference).Msg("attempting to fetch manifest")
+
+		fetchedManifest, subs, err := service.FetchManifest(ctx, repo, reference)
+		if err != nil {
+			lastErr = err
+
+			continue
+		}
+
+		resultManifest, subManifests = fetchedManifest, subs
+		selectedIdx = idx
+
+		break
+	}
+
+	if resultManifest == nil {
+		// Return the real error (e.g. not signed, filtered out) rather than a generic not-found.
+		if lastErr != nil {
+			return nil, lastErr
+		}
+
+		return nil, zerr.ErrBlobNotFound
+	}
+
+	streamable := NewStreamableManifest(resultManifest, subManifests)
+	// Key this manifest's streams by the registry that supplied it (see activeStreams).
+	streamable.source = strconv.Itoa(selectedIdx)
+
+	if onSynced != nil {
+		streamable.onSynced = []func(manifest.Manifest){onSynced}
+	}
+
+	staged, err := onDemand.streamManager.StoreImageForStreaming(repo, reference, streamable)
+	if err != nil {
+		return nil, err
+	}
+
+	// Another caller staged first (only possible if a mutable tag moved between our fetches):
+	// serve its manifest, whose blobs are the ones staged, and leave the background sync (and our
+	// onSynced, which StoreImageForStreaming moved onto it) to it.
+	if staged != streamable {
+		onDemand.log.Debug().Str("repo", repo).Str("reference", reference).
+			Msg("lost race to stage streaming manifest, serving the manifest that won instead")
+
+		return staged.referenceManifest, nil
+	}
+
+	onDemand.log.Debug().Str("repo", repo).Str("reference", reference).Msg("syncing image in the background")
+
+	// Pin the sync to the digest just staged, so a tag that moves upstream meanwhile can't make
+	// it copy different blobs than the clients are being streamed.
+	pinnedDigest := resultManifest.GetDescriptor().Digest
+
+	go func() {
+		// This goroutine owns the staged entry, so it alone unstages it when the sync ends, on
+		// success or failure. Unstaging runs every registered onSynced (ours and joiners') on
+		// success, atomically with removal so no joiner's callback is lost.
+		syncCtx := context.WithoutCancel(ctx)
+
+		err := onDemand.syncImageDeduped(syncCtx, repo, reference, selectedIdx, pinnedDigest)
+		if err != nil {
+			onDemand.log.Err(err).Str("repository", repo).Str("reference", reference).
+				Msg("background sync after streaming failed")
+		}
+
+		onDemand.streamManager.RemoveStreamingImage(repo, reference, err == nil)
+	}()
+
+	return resultManifest, nil
 }
 
 // ShouldCheckUpstreamManifest reports whether the manifest for repo:reference has to be
@@ -120,10 +262,28 @@ func onDemandKey(kind, repo, reference string) string {
 type onDemandSyncFn func(ctx context.Context, service Service) error
 
 func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference string) error {
-	return onDemand.doOnDemandFlight(onDemandKey(onDemandKindImage, repo, reference), repo, reference,
+	return onDemand.syncImageDeduped(ctx, repo, reference, -1, "")
+}
+
+// syncImageDeduped runs the singleflight-deduped image sync for repo:reference. pinnedIdx >= 0
+// restricts it to that service: the streaming background sync must run on the service that
+// supplied the streamed manifest, since only its sync feeds the staged streams. pinnedDigest, if
+// set, pins the remote fetch to that digest (see PinnedSyncer).
+//
+// A pinned sync uses its own singleflight key; otherwise it could join an unrelated unpinned sync
+// of the same reference and never feed the streams.
+func (onDemand *BaseOnDemand) syncImageDeduped(ctx context.Context, repo, reference string,
+	pinnedIdx int, pinnedDigest godigest.Digest,
+) error {
+	key := onDemandKey(onDemandKindImage, repo, reference)
+	if pinnedIdx >= 0 {
+		key += "\x00pinned"
+	}
+
+	return onDemand.doOnDemandFlight(key, repo, reference,
 		"image already demanded, on-demand sync result was shared",
 		func() error {
-			return onDemand.syncImage(ctx, repo, reference, true)
+			return onDemand.syncImage(ctx, repo, reference, pinnedIdx, pinnedDigest, true)
 		})
 }
 
@@ -178,14 +338,21 @@ func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDi
 		})
 }
 
-func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference string, scheduleBackground bool,
+func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference string,
+	pinnedIdx int, pinnedDigest godigest.Digest, scheduleBackground bool,
 ) error {
 	var dockerCompatErr error
 
+	// A pinned sync only runs on the service that served the streamed manifest.
+	services := onDemand.services
+	if pinnedIdx >= 0 {
+		services = onDemand.services[pinnedIdx : pinnedIdx+1]
+	}
+
 	err := onDemand.runOnDemandServices(ctx, repo, reference, "starting on-demand image sync",
-		onDemand.services,
+		services,
 		func(syncCtx context.Context, service Service) error {
-			err := service.SyncImage(syncCtx, repo, reference)
+			err := syncImageOnService(syncCtx, service, repo, reference, pinnedDigest)
 			if errors.Is(err, zerr.ErrSyncDockerCompatRequired) {
 				dockerCompatErr = err
 			}
@@ -195,7 +362,7 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference str
 					"image already demanded, on-demand sync result was shared",
 					service, err,
 					func(retryCtx context.Context) error {
-						return onDemand.syncImage(retryCtx, repo, reference, false)
+						return onDemand.syncImage(retryCtx, repo, reference, pinnedIdx, pinnedDigest, false)
 					})
 			}
 
@@ -210,6 +377,20 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference str
 	}
 
 	return err
+}
+
+// syncImageOnService syncs repo:reference on service, pinned to pinnedDigest when it is set and
+// service implements PinnedSyncer.
+func syncImageOnService(ctx context.Context, service Service, repo, reference string,
+	pinnedDigest godigest.Digest,
+) error {
+	if pinnedDigest != "" {
+		if pinnedSyncer, ok := service.(PinnedSyncer); ok {
+			return pinnedSyncer.SyncImageAtDigest(ctx, repo, reference, pinnedDigest)
+		}
+	}
+
+	return service.SyncImage(ctx, repo, reference)
 }
 
 // syncImageInBackground tries only onDemandInBackground registries that match the repo.

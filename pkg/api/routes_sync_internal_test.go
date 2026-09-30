@@ -8,11 +8,13 @@ import (
 	"testing"
 
 	godigest "github.com/opencontainers/go-digest"
+	"github.com/regclient/regclient/types/manifest"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
+	"zotregistry.dev/zot/v2/pkg/extensions/sync"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
@@ -24,6 +26,10 @@ type onDemandInBackgroundMock struct {
 	enabledForRepoFn func(repo string) bool
 	syncImageFn      func(ctx context.Context, repo, reference string) error
 	syncImageCalls   int
+	// streaming makes IsStreamingEnabledForRepo true, as if a separate stream registry also matched
+	// the repo.
+	streaming           bool
+	fetchForStreamCalls int
 }
 
 func (mock *onDemandInBackgroundMock) SyncImage(ctx context.Context, repo, reference string) error {
@@ -56,6 +62,22 @@ func (mock *onDemandInBackgroundMock) QueueImage(ctx context.Context, repo, refe
 	if mock.queueImageFn != nil {
 		mock.queueImageFn(ctx, repo, reference)
 	}
+}
+
+func (mock *onDemandInBackgroundMock) FetchManifestForStream(context.Context, string, string,
+	func(manifest.Manifest),
+) (manifest.Manifest, error) {
+	mock.fetchForStreamCalls++
+
+	return nil, zerr.ErrSyncOnDemandDisabled
+}
+
+func (mock *onDemandInBackgroundMock) StreamManager() sync.StreamManager {
+	return nil
+}
+
+func (mock *onDemandInBackgroundMock) IsStreamingEnabledForRepo(string) bool {
+	return mock.streaming
 }
 
 func TestGetImageManifestOnDemandInBackground(t *testing.T) {
@@ -115,7 +137,7 @@ func TestGetImageManifestOnDemandInBackground(t *testing.T) {
 				},
 			}
 
-			content, _, _, err := getImageManifest(context.Background(), handler, store, repo, reference)
+			content, _, _, err := getImageManifest(context.Background(), handler, store, repo, reference, nil)
 			if !errors.Is(err, testCase.storageErr) {
 				t.Fatalf("getImageManifest() error = %v, want %v", err, testCase.storageErr)
 			}
@@ -166,7 +188,7 @@ func TestGetImageManifestOnDemandInBackgroundDigestMiss(t *testing.T) {
 		},
 	}
 
-	_, _, _, err := getImageManifest(context.Background(), handler, store, repo, reference)
+	_, _, _, err := getImageManifest(context.Background(), handler, store, repo, reference, nil)
 	if !errors.Is(err, zerr.ErrManifestNotFound) {
 		t.Fatalf("getImageManifest() error = %v, want %v", err, zerr.ErrManifestNotFound)
 	}
@@ -210,12 +232,68 @@ func TestGetImageManifestBlockingWhenBackgroundDisabledForRepo(t *testing.T) {
 		},
 	}
 
-	_, _, _, err := getImageManifest(context.Background(), handler, store, "library/test", "latest")
+	_, _, _, err := getImageManifest(context.Background(), handler, store, "library/test", "latest", nil)
 	if !errors.Is(err, zerr.ErrManifestNotFound) {
 		t.Fatalf("getImageManifest() error = %v, want %v", err, zerr.ErrManifestNotFound)
 	}
 	if !synced {
 		t.Fatal("expected blocking SyncImage when onDemandInBackground is disabled for repo")
+	}
+}
+
+// TestGetImageManifestOnDemandInBackgroundWinsOverStreaming: with a background registry and a
+// separate stream registry matching the repo, a local miss is queued and gets 404; streaming is
+// never tried.
+func TestGetImageManifestOnDemandInBackgroundWinsOverStreaming(t *testing.T) {
+	t.Parallel()
+
+	const repo = "library/test"
+
+	enabled := true
+	appConfig := config.New()
+	appConfig.Extensions = &extconf.ExtensionConfig{
+		Sync: &syncconf.Config{Enable: &enabled},
+	}
+
+	for _, reference := range []string{
+		"latest",
+		"sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+	} {
+		t.Run(reference, func(t *testing.T) {
+			t.Parallel()
+
+			queued := false
+			onDemand := &onDemandInBackgroundMock{
+				streaming: true,
+				queueImageFn: func(context.Context, string, string) {
+					queued = true
+				},
+			}
+			handler := &RouteHandler{c: &Controller{
+				Config:       appConfig,
+				SyncOnDemand: onDemand,
+				Log:          log.NewTestLogger(),
+			}}
+			store := mocks.MockedImageStore{
+				GetImageManifestFn: func(_, _ string) ([]byte, godigest.Digest, string, error) {
+					return nil, "", "", zerr.ErrManifestNotFound
+				},
+			}
+
+			_, _, _, err := getImageManifest(context.Background(), handler, store, repo, reference, nil)
+			if !errors.Is(err, zerr.ErrManifestNotFound) {
+				t.Fatalf("getImageManifest() error = %v, want %v", err, zerr.ErrManifestNotFound)
+			}
+			if !queued {
+				t.Fatal("expected QueueImage when onDemandInBackground and streaming both match repo")
+			}
+			if onDemand.fetchForStreamCalls != 0 {
+				t.Fatalf("FetchManifestForStream() called %d times, want 0", onDemand.fetchForStreamCalls)
+			}
+			if onDemand.syncImageCalls != 0 {
+				t.Fatalf("SyncImage() called %d times, want 0", onDemand.syncImageCalls)
+			}
+		})
 	}
 }
 
@@ -234,4 +312,54 @@ func TestIsManifestNotFound(t *testing.T) {
 	if isManifestNotFound(errStorageUnavailable) {
 		t.Error("isManifestNotFound(storage error) = true, want false")
 	}
+}
+
+func TestDownloadRecorderCountsOnce(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a second successful attempt is not counted", func(t *testing.T) {
+		t.Parallel()
+
+		calls := 0
+		downloads := &downloadRecorder{}
+		update := func() error {
+			calls++
+
+			return nil
+		}
+
+		downloads.record(update) // immediate GetManifest attempt
+		downloads.record(update) // streaming-sync replay
+
+		if calls != 1 {
+			t.Fatalf("update called %d times, want 1", calls)
+		}
+	})
+
+	t.Run("a failed attempt leaves the download to the next one", func(t *testing.T) {
+		t.Parallel()
+
+		calls := 0
+		downloads := &downloadRecorder{}
+
+		downloads.record(func() error {
+			calls++
+
+			return zerr.ErrImageMetaNotFound
+		})
+		downloads.record(func() error {
+			calls++
+
+			return nil
+		})
+		downloads.record(func() error {
+			calls++
+
+			return nil
+		})
+
+		if calls != 2 {
+			t.Fatalf("update called %d times, want 2", calls)
+		}
+	})
 }

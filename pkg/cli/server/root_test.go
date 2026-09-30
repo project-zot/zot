@@ -4514,3 +4514,172 @@ func TestSyncPlatformsConfig(t *testing.T) {
 		})
 	})
 }
+
+func TestStreamingSyncConfig(t *testing.T) {
+	Convey("stream validation", t, func() {
+		validRegistry := `{"urls":["https://localhost:9999"], "onDemand": true, "stream": true}`
+
+		loadWithRegistry := func(t *testing.T, registryJSON string) error {
+			t.Helper()
+
+			content := `{"storage":{"rootDirectory":"/tmp/zot"},
+				"http":{"address":"127.0.0.1","port":"8080","realm":"zot","compat": ["docker2s2"],
+				"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+				"extensions":{"sync": {"registries": [` + registryJSON + `]}}}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+
+			return cli.LoadConfiguration(cfg, tmpfile)
+		}
+
+		Convey("A valid stream config is accepted", func() {
+			err := loadWithRegistry(t, validRegistry)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("stream: false is unaffected by the extra restrictions", func() {
+			err := loadWithRegistry(t,
+				`{"urls":["localhost:9999"], "onDemand": true, "maxRetries": 3, "retryDelay": "5s", "stream": false}`)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Reject stream without onDemand", func() {
+			err := loadWithRegistry(t,
+				`{"urls":["https://localhost:9999"], "onDemand": false, "pollInterval": "12h", "stream": true}`)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err.Error(), ShouldContainSubstring, "stream requires onDemand to be enabled")
+		})
+
+		Convey("Reject stream combined with maxRetries", func() {
+			err := loadWithRegistry(t,
+				`{"urls":["https://localhost:9999"], "onDemand": true, "stream": true,`+
+					` "maxRetries": 3, "retryDelay": "5s"}`)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err.Error(), ShouldContainSubstring, "stream cannot be combined with maxRetries/retryDelay")
+		})
+
+		Convey("Reject stream combined with onDemandInBackground", func() {
+			err := loadWithRegistry(t,
+				`{"urls":["https://localhost:9999"], "onDemand": true, "stream": true, "onDemandInBackground": true}`)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err.Error(), ShouldContainSubstring, "stream cannot be combined with onDemandInBackground")
+		})
+
+		Convey("Accept stream and onDemandInBackground on different registries for the same repo", func() {
+			// Validation is per registry, so this is allowed; onDemandInBackground wins at request
+			// time (see IsStreamingEnabledForRepo).
+			err := loadWithRegistry(t,
+				`{"urls":["https://localhost:9999"], "onDemand": true, "stream": true,`+
+					` "content": [{"prefix": "library/**"}]},`+
+					`{"urls":["https://localhost:9998"], "onDemand": true, "onDemandInBackground": true,`+
+					` "content": [{"prefix": "library/**"}]}`)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Reject stream combined with tlsVerify: false", func() {
+			err := loadWithRegistry(t,
+				`{"urls":["https://localhost:9999"], "onDemand": true, "stream": true, "tlsVerify": false}`)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err.Error(), ShouldContainSubstring, "stream cannot be combined with tlsVerify: false")
+		})
+
+		Convey("Reject stream combined with an http upstream URL", func() {
+			err := loadWithRegistry(t,
+				`{"urls":["http://localhost:9999"], "onDemand": true, "stream": true}`)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err.Error(), ShouldContainSubstring, "stream requires https upstream URLs")
+		})
+
+		Convey("Reject stream with a bare host:port upstream URL", func() {
+			// url.Parse reads "localhost:9999" as scheme "localhost" with no host.
+			err := loadWithRegistry(t,
+				`{"urls":["localhost:9999"], "onDemand": true, "stream": true}`)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err.Error(), ShouldContainSubstring, "stream requires https upstream URLs")
+		})
+
+		Convey("Reject stream with a non-https scheme or no host", func() {
+			for _, rawURL := range []string{"ftp://localhost:9999", "https://", "https:///v2"} {
+				err := loadWithRegistry(t,
+					`{"urls":["`+rawURL+`"], "onDemand": true, "stream": true}`)
+				So(err, ShouldNotBeNil)
+				So(err, ShouldWrap, zerr.ErrBadConfig)
+				So(err.Error(), ShouldContainSubstring, "stream requires https upstream URLs")
+			}
+		})
+
+		Convey("Reject stream when any one of several URLs isn't https", func() {
+			err := loadWithRegistry(t,
+				`{"urls":["https://localhost:9999", "localhost:9998"], "onDemand": true, "stream": true}`)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err.Error(), ShouldContainSubstring, "stream requires https upstream URLs")
+		})
+
+		Convey("Reject a non-positive maxConcurrentStreams", func() {
+			err := loadWithRegistry(t,
+				`{"urls":["https://localhost:9999"], "onDemand": true, "stream": true, "maxConcurrentStreams": 0}`)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err.Error(), ShouldContainSubstring, "maxConcurrentStreams must be greater than 0")
+		})
+
+		Convey("A positive maxConcurrentStreams is accepted", func() {
+			err := loadWithRegistry(t,
+				`{"urls":["https://localhost:9999"], "onDemand": true, "stream": true, "maxConcurrentStreams": 8}`)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Reject disagreeing maxConcurrentStreams across streaming registries", func() {
+			regA := `{"urls":["https://localhost:9999"], "onDemand": true, "stream": true,` +
+				` "maxConcurrentStreams": 8, "content": [{"prefix": "a/**"}]}`
+			regB := `{"urls":["https://localhost:9998"], "onDemand": true, "stream": true,` +
+				` "maxConcurrentStreams": 4, "content": [{"prefix": "b/**"}]}`
+
+			err := loadWithRegistry(t, regA+","+regB)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err.Error(), ShouldContainSubstring, "maxConcurrentStreams must be the same across every streaming registry")
+		})
+
+		Convey("Streaming registries that agree on maxConcurrentStreams are accepted", func() {
+			regA := `{"urls":["https://localhost:9999"], "onDemand": true, "stream": true,` +
+				` "maxConcurrentStreams": 8, "content": [{"prefix": "a/**"}]}`
+			regB := `{"urls":["https://localhost:9998"], "onDemand": true, "stream": true,` +
+				` "maxConcurrentStreams": 8, "content": [{"prefix": "b/**"}]}`
+
+			err := loadWithRegistry(t, regA+","+regB)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Reject an unset maxConcurrentStreams followed by an explicit one that differs from the default", func() {
+			// The shared manager is built from the first streaming registry, so regA (unset,
+			// default 32) would win and regB's 8 be ignored. Unset must be compared as the default.
+			regA := `{"urls":["https://localhost:9999"], "onDemand": true, "stream": true,` +
+				` "content": [{"prefix": "a/**"}]}`
+			regB := `{"urls":["https://localhost:9998"], "onDemand": true, "stream": true,` +
+				` "maxConcurrentStreams": 8, "content": [{"prefix": "b/**"}]}`
+
+			err := loadWithRegistry(t, regA+","+regB)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err.Error(), ShouldContainSubstring, "maxConcurrentStreams must be the same across every streaming registry")
+		})
+
+		Convey("Streaming registries that all leave maxConcurrentStreams unset are accepted", func() {
+			regA := `{"urls":["https://localhost:9999"], "onDemand": true, "stream": true,` +
+				` "content": [{"prefix": "a/**"}]}`
+			regB := `{"urls":["https://localhost:9998"], "onDemand": true, "stream": true,` +
+				` "content": [{"prefix": "b/**"}]}`
+
+			err := loadWithRegistry(t, regA+","+regB)
+			So(err, ShouldBeNil)
+		})
+	})
+}
