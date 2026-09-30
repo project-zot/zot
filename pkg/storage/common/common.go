@@ -816,6 +816,10 @@ func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godiges
 
 	index, err := GetIndex(imgStore, repo, log)
 	if err != nil {
+		if errors.Is(err, zerr.ErrRepoNotFound) {
+			return newEmptyReferrersIndex(), nil
+		}
+
 		return nilIndex, err
 	}
 
