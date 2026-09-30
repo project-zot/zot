@@ -99,7 +99,7 @@ func TestStressTooManyOpenFiles(t *testing.T) {
 
 		skopeoArgs := []string{
 			"copy", "--format=oci", "--insecure-policy", "--dest-tls-verify=false",
-			"docker://public.ecr.aws/zomato/alpine:3.11.3", fmt.Sprintf("oci:%s:alpine", dir),
+			"docker://ghcr.io/project-zot/test-images/alpine:3.17.3", fmt.Sprintf("oci:%s:alpine", dir),
 		}
 
 		//nolint: noctx // old code, no context available
