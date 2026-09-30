@@ -28,6 +28,7 @@ type ImageStore interface { //nolint:interfacebloat
 	RLock(*time.Time)
 	RUnlock(*time.Time)
 	Lock(*time.Time)
+	LockRepo(ctx context.Context, repo string) (RepoLock, error)
 	Unlock(*time.Time)
 	InitRepo(ctx context.Context, name string) error
 	ValidateRepo(name string) (bool, error)
