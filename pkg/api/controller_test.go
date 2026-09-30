@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	guuid "github.com/gofrs/uuid"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/go-github/v62/github"
 	"github.com/gorilla/mux"
@@ -678,17 +679,22 @@ func TestObjectStorageController(t *testing.T) {
 		conf.Storage.RemoteCache = true
 		conf.Storage.StorageDriver = storageDriverParams
 
+		// Unique DynamoDB table names: shared fixed names race with other packages under
+		// `go test ./...` (notably pkg/meta TestParseStorageDynamoWrapper ResetTable).
+		tableSuffix, err := guuid.NewV4()
+		So(err, ShouldBeNil)
+
 		conf.Storage.CacheDriver = map[string]any{
 			"name":                   "dynamodb",
 			"endpoint":               os.Getenv("DYNAMODBMOCK_ENDPOINT"),
 			"region":                 "us-east-2",
-			"cachetablename":         "test",
-			"repometatablename":      "RepoMetadataTable",
-			"imagemetatablename":     "ZotImageMetaTable",
-			"repoblobsinfotablename": "ZotRepoBlobsInfoTable",
-			"userdatatablename":      "ZotUserDataTable",
-			"apikeytablename":        "APIKeyTable1",
-			"versiontablename":       "Version",
+			"cachetablename":         "test" + tableSuffix.String(),
+			"repometatablename":      "RepoMetadataTable" + tableSuffix.String(),
+			"imagemetatablename":     "ZotImageMetaTable" + tableSuffix.String(),
+			"repoblobsinfotablename": "ZotRepoBlobsInfoTable" + tableSuffix.String(),
+			"userdatatablename":      "ZotUserDataTable" + tableSuffix.String(),
+			"apikeytablename":        "APIKeyTable1" + tableSuffix.String(),
+			"versiontablename":       "Version" + tableSuffix.String(),
 		}
 
 		mockOIDCServer, err := authutils.MockOIDCRun()

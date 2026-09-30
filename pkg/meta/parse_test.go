@@ -15,6 +15,7 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	dockerList "github.com/distribution/distribution/v3/manifest/manifestlist"
 	docker "github.com/distribution/distribution/v3/manifest/schema2"
+	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
@@ -452,6 +453,15 @@ func TestParseStorageWithRedisDB(t *testing.T) {
 func TestParseStorageDynamoWrapper(t *testing.T) {
 	tskip.SkipDynamo(t)
 
+	// Unique table names once per test: ResetTable deletes tables; shared fixed names race
+	// with other packages (e.g. pkg/api TestObjectStorageController) under `go test ./...`.
+	// Keep the UUID outside the outer Convey so GoConvey re-runs for nested cases in
+	// RunParseStorageTests reuse one table set instead of creating a new one each time.
+	tableSuffix, err := guuid.NewV4()
+	if err != nil {
+		panic(err)
+	}
+
 	Convey("Dynamodb", t, func() {
 		rootDir := t.TempDir()
 		log := log.NewLogger("debug", "/dev/null")
@@ -459,12 +469,12 @@ func TestParseStorageDynamoWrapper(t *testing.T) {
 		params := dynamodb.DBDriverParameters{
 			Endpoint:               os.Getenv("DYNAMODBMOCK_ENDPOINT"),
 			Region:                 "us-east-2",
-			RepoMetaTablename:      "RepoMetadataTable",
-			RepoBlobsInfoTablename: "RepoBlobsInfoTablename",
-			ImageMetaTablename:     "ImageMetaTablename",
-			UserDataTablename:      "UserDataTable",
-			APIKeyTablename:        "ApiKeyTable",
-			VersionTablename:       "Version",
+			RepoMetaTablename:      "RepoMetadataTable" + tableSuffix.String(),
+			RepoBlobsInfoTablename: "RepoBlobsInfoTablename" + tableSuffix.String(),
+			ImageMetaTablename:     "ImageMetaTablename" + tableSuffix.String(),
+			UserDataTablename:      "UserDataTable" + tableSuffix.String(),
+			APIKeyTablename:        "ApiKeyTable" + tableSuffix.String(),
+			VersionTablename:       "Version" + tableSuffix.String(),
 		}
 
 		dynamoClient, err := dynamodb.GetDynamoClient(params)
