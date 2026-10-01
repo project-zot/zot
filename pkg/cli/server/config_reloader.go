@@ -103,8 +103,9 @@ func initShutDownRoutine(ctlr *api.Controller, hr *HotReloader) {
 
 	go signalHandler(ctlr, hr, sigCh)
 
-	// block all async signals to this server
-	signal.Ignore()
+	// ignore the async signals that would otherwise stop the server;
+	// the list excludes SIGCHLD (see ignoreAsyncSignals)
+	ignoreAsyncSignals()
 
 	// handle SIGINT and SIGHUP.
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
