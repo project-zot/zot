@@ -395,25 +395,27 @@ func (scheduler *Scheduler) getTasksChannelByPriority(priority Priority) chan Ta
 	return nil
 }
 
-func (scheduler *Scheduler) SubmitTask(task Task, priority Priority) {
+// SubmitTask adds a task to the queue of the given priority.
+// It returns false if the task was not added, because the scheduler is shutting down or the queue is full.
+func (scheduler *Scheduler) SubmitTask(task Task, priority Priority) bool {
 	// get by priority the channel where the task should be added to
 	tasksQ := scheduler.getTasksChannelByPriority(priority)
 	if tasksQ == nil {
-		return
+		return false
 	}
 
 	// check if the scheduler is still running in order to add the task to the channel
 	if scheduler.inShutdown() {
-		return
+		return false
 	}
 
 	select {
 	case tasksQ <- task:
 		scheduler.log.Info().Msg("adding a new task")
+
+		return true
 	default:
-		if scheduler.inShutdown() {
-			return
-		}
+		return false
 	}
 }
 
@@ -525,6 +527,34 @@ func (gen *generator) getRanking() float64 {
 	// take into account the priority, but also how many tasks of
 	// a specific generator were executed in the current generator run
 	return math.Pow(10, float64(gen.priority)) / (1 + float64(gen.taskCount)) //nolint:mnd
+}
+
+// RunGeneratorNow makes a periodic generator which is waiting for its interval to pass
+// ready to run again, without changing its interval. A generator which is already running is left as is.
+// It returns false if the generator was not submitted to this scheduler, or the scheduler is shutting down.
+func (scheduler *Scheduler) RunGeneratorNow(taskGenerator TaskGenerator) bool {
+	if scheduler.inShutdown() {
+		return false
+	}
+
+	scheduler.generatorsLock.Lock()
+	defer scheduler.generatorsLock.Unlock()
+
+	for _, gens := range [][]*generator{scheduler.generators, scheduler.waitingGenerators} {
+		for _, gen := range gens {
+			if gen.taskGenerator != taskGenerator {
+				continue
+			}
+
+			if gen.done {
+				gen.lastRun = time.Time{}
+			}
+
+			return true
+		}
+	}
+
+	return false
 }
 
 func (scheduler *Scheduler) SubmitGenerator(taskGenerator TaskGenerator, interval time.Duration, priority Priority) {

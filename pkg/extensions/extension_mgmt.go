@@ -12,6 +12,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/constants"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/storage/gc"
 )
 
 type HTPasswd struct {
@@ -86,7 +87,11 @@ func (auth Auth) MarshalJSON() ([]byte, error) {
 	return json.Marshal(localAuth(auth))
 }
 
-func SetupMgmtRoutes(conf *config.Config, router *mux.Router, log log.Logger) {
+// SetupMgmtRoutes sets up the mgmt extension routes. gcOnDemand returns the on-demand GC of a store,
+// and whether the store exists.
+func SetupMgmtRoutes(conf *config.Config, router *mux.Router, gcOnDemand func(store string) (*gc.OnDemand, bool),
+	log log.Logger,
+) {
 	extensionsConfig := conf.CopyExtensionsConfig()
 	if !extensionsConfig.IsSearchEnabled() {
 		log.Info().Msg("skip enabling the mgmt route as the config prerequisites are not met")
@@ -105,6 +110,12 @@ func SetupMgmtRoutes(conf *config.Config, router *mux.Router, log log.Logger) {
 	mgmtRouter.Use(zcommon.CORSHeadersMiddleware(conf.HTTP.AllowOrigin))
 	mgmtRouter.Use(zcommon.AddExtensionSecurityHeaders())
 	mgmtRouter.Use(zcommon.ACHeadersMiddleware(conf, allowedMethods...))
+
+	// registered before the config handler, which handles any GET under the mgmt prefix
+	gcHandler := GCHandler{GCOnDemand: gcOnDemand, Log: log}
+	mgmtRouter.HandleFunc(constants.MgmtGC, gcHandler.RunGC).Methods(http.MethodPost)
+	mgmtRouter.HandleFunc(constants.MgmtGC, gcHandler.GetGCStatus).Methods(http.MethodGet)
+
 	mgmtRouter.Methods(allowedMethods...).HandlerFunc(mgmt.HandleGetConfig)
 
 	log.Info().Msg("finished setting up mgmt routes")

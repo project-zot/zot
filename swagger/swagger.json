@@ -169,6 +169,131 @@
                 }
             }
         },
+        "/v2/_zot/ext/mgmt/gc": {
+            "get": {
+                "description": "Returns the status of the current or last GC run of a store, or of a single repository in it.\nAdmin only.",
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Get the status of garbage collection",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "store route: / for the default store, otherwise a subPaths key",
+                        "name": "store",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "repository name",
+                        "name": "repo",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/gc.RunStatus"
+                        }
+                    },
+                    "400": {
+                        "description": "bad request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "store not found, or gc never requested for the repository",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "gc disabled for the store",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Starts garbage collection of a store, or of a single repository in it. Admin only.\nA store sweep is paced like the periodic sweep, and may start outside gcTimeWindow.",
+                "summary": "Run garbage collection on demand",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "store route: / for the default store, otherwise a subPaths key",
+                        "name": "store",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "repository name",
+                        "name": "repo",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "accepted",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "bad request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "store or repository not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "gc disabled for the store, or already running",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "gc could not be scheduled, retry later",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/_zot/ext/notation": {
             "post": {
                 "description": "Upload notation certificates for verifying signatures",
@@ -1652,6 +1777,24 @@
                     }
                 },
                 "releaseTag": {
+                    "type": "string"
+                }
+            }
+        },
+        "gc.RunStatus": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "description": "Error is the last error returned during the run, while listing or collecting repositories.",
+                    "type": "string"
+                },
+                "finishedAt": {
+                    "type": "string"
+                },
+                "running": {
+                    "type": "boolean"
+                },
+                "startedAt": {
                     "type": "string"
                 }
             }

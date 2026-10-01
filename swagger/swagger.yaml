@@ -175,6 +175,19 @@ definitions:
       releaseTag:
         type: string
     type: object
+  gc.RunStatus:
+    properties:
+      error:
+        description: Error is the last error returned during the run, while listing
+          or collecting repositories.
+        type: string
+      finishedAt:
+        type: string
+      running:
+        type: boolean
+      startedAt:
+        type: string
+    type: object
   v1.Descriptor:
     properties:
       annotations:
@@ -357,6 +370,93 @@ paths:
           schema:
             type: string
       summary: Get current server configuration
+  /v2/_zot/ext/mgmt/gc:
+    get:
+      description: |-
+        Returns the status of the current or last GC run of a store, or of a single repository in it.
+        Admin only.
+      parameters:
+      - description: 'store route: / for the default store, otherwise a subPaths key'
+        in: query
+        name: store
+        required: true
+        type: string
+      - description: repository name
+        in: query
+        name: repo
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/gc.RunStatus'
+        "400":
+          description: bad request
+          schema:
+            type: string
+        "403":
+          description: forbidden
+          schema:
+            type: string
+        "404":
+          description: store not found, or gc never requested for the repository
+          schema:
+            type: string
+        "409":
+          description: gc disabled for the store
+          schema:
+            type: string
+        "500":
+          description: internal server error
+          schema:
+            type: string
+      summary: Get the status of garbage collection
+    post:
+      description: |-
+        Starts garbage collection of a store, or of a single repository in it. Admin only.
+        A store sweep is paced like the periodic sweep, and may start outside gcTimeWindow.
+      parameters:
+      - description: 'store route: / for the default store, otherwise a subPaths key'
+        in: query
+        name: store
+        required: true
+        type: string
+      - description: repository name
+        in: query
+        name: repo
+        type: string
+      responses:
+        "202":
+          description: accepted
+          schema:
+            type: string
+        "400":
+          description: bad request
+          schema:
+            type: string
+        "403":
+          description: forbidden
+          schema:
+            type: string
+        "404":
+          description: store or repository not found
+          schema:
+            type: string
+        "409":
+          description: gc disabled for the store, or already running
+          schema:
+            type: string
+        "500":
+          description: internal server error
+          schema:
+            type: string
+        "503":
+          description: gc could not be scheduled, retry later
+          schema:
+            type: string
+      summary: Run garbage collection on demand
   /v2/_zot/ext/notation:
     post:
       consumes:
