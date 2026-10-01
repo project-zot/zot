@@ -1,0 +1,25 @@
+{
+  "distSpecVersion": "1.1.1",
+  "storage": {
+    "rootDirectory": "/tmp/zot"
+  },
+  "http": {
+    "address": "127.0.0.1",
+    "port": "8080",
+    "auth": {
+      "htpasswd": {
+        "path": "test/data/htpasswd"
+      }
+    },
+    "accessControl": {
+      "repositories": {
+        "${username}/**": {
+          "defaultPolicy": ["read", "create", "update"]
+        }
+      }
+    }
+  },
+  "log": {
+    "level": "debug"
+  }
+}
