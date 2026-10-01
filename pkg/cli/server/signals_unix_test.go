@@ -18,7 +18,7 @@ func TestIgnoreAsyncSignalsKeepsChildProcessesWaitable(t *testing.T) {
 		defer signal.Reset(syscall.SIGPIPE, syscall.SIGQUIT, syscall.SIGUSR1, syscall.SIGUSR2)
 
 		// With SIGCHLD ignored this returns "waitid: no child processes".
-		err := exec.Command("true").Run()
+		err := exec.CommandContext(t.Context(), "true").Run()
 		So(err, ShouldBeNil)
 	})
 }
