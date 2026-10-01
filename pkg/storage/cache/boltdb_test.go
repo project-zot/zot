@@ -121,6 +121,68 @@ func TestBoltDBCache(t *testing.T) {
 		val, err = cacheDriver.GetBlob("key2")
 		So(err, ShouldNotBeNil)
 		So(val, ShouldBeEmpty)
+
+		// SetOrigin replaces a stale first-wins origin; PutBlob alone cannot.
+		err = cacheDriver.PutBlob("key3", "staleOrigin")
+		So(err, ShouldBeNil)
+
+		err = cacheDriver.PutBlob("key3", "realOrigin")
+		So(err, ShouldBeNil)
+
+		val, err = cacheDriver.GetBlob("key3")
+		So(err, ShouldBeNil)
+		So(val, ShouldEqual, "staleOrigin")
+
+		err = cacheDriver.SetOrigin("key3", "realOrigin")
+		So(err, ShouldBeNil)
+
+		val, err = cacheDriver.GetBlob("key3")
+		So(err, ShouldBeNil)
+		So(val, ShouldEqual, "realOrigin")
+
+		err = cacheDriver.SetOrigin("key3", "realOrigin")
+		So(err, ShouldBeNil)
+
+		val, err = cacheDriver.GetBlob("key3")
+		So(err, ShouldBeNil)
+		So(val, ShouldEqual, "realOrigin")
+
+		err = cacheDriver.SetOrigin("key4", "")
+		So(err, ShouldEqual, errors.ErrEmptyValue)
+
+		// SetOrigin on a relative-path cache: install on miss and keep duplicates.
+		relCache, err := storage.Create("boltdb", cache.BoltDBDriverParameters{dir, "set_origin_rel", true}, log)
+		So(err, ShouldBeNil)
+		So(relCache, ShouldNotBeNil)
+
+		staleAbs := path.Join(dir, "staleAbs")
+		realAbs := path.Join(dir, "realAbs")
+		otherAbs := path.Join(dir, "otherAbs")
+
+		So(relCache.PutBlob("relKey", staleAbs), ShouldBeNil)
+		So(relCache.PutBlob("relKey", realAbs), ShouldBeNil)
+		So(relCache.PutBlob("relKey", otherAbs), ShouldBeNil)
+
+		So(relCache.SetOrigin("relKey", realAbs), ShouldBeNil)
+
+		val, err = relCache.GetBlob("relKey")
+		So(err, ShouldBeNil)
+		So(val, ShouldEqual, "realAbs")
+
+		blobs, err := relCache.GetAllBlobs("relKey")
+		So(err, ShouldBeNil)
+		So(blobs[0], ShouldEqual, "realAbs")
+		So(blobs, ShouldContain, "staleAbs")
+		So(blobs, ShouldContain, "otherAbs")
+
+		So(relCache.SetOrigin("freshKey", path.Join(dir, "onlyAbs")), ShouldBeNil)
+
+		val, err = relCache.GetBlob("freshKey")
+		So(err, ShouldBeNil)
+		So(val, ShouldEqual, "onlyAbs")
+
+		// Rel failure: reject rather than storing a path GetBlob would mis-join.
+		So(relCache.SetOrigin("relFail", "not-under-root/blob"), ShouldNotBeNil)
 	})
 
 	Convey("Test cache.GetAllBlos()", t, func() {

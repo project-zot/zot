@@ -286,6 +286,14 @@ func (driver *Driver) SameFile(path1, path2 string) bool {
 }
 
 func (driver *Driver) Link(src, dest string) error {
+	// Remove(dest) then Link(src, dest) would delete the only copy when paths name
+	// the same inode (byte-identical, cleaned equivalents like ./, or hard links).
+	// SameFile is false when either path is missing, so Link("/missing","/missing")
+	// still surfaces PathNotFound instead of a silent no-op.
+	if driver.SameFile(src, dest) {
+		return nil
+	}
+
 	if err := os.Remove(dest); err != nil && !os.IsNotExist(err) {
 		return err
 	}

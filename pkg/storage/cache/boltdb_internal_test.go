@@ -38,6 +38,9 @@ func TestBoltDriverErrors(t *testing.T) {
 
 			err = driver.DeleteBlob(digest.FromString("s"), "blob")
 			So(err, ShouldNotBeNil)
+
+			err = driver.SetOrigin(digest.FromString("s"), "path")
+			So(err, ShouldNotBeNil)
 		})
 
 		Convey("cache miss", func() {

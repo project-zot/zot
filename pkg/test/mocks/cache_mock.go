@@ -1,6 +1,13 @@
 package mocks
 
-import godigest "github.com/opencontainers/go-digest"
+import (
+	"errors"
+	"path"
+
+	godigest "github.com/opencontainers/go-digest"
+
+	zerr "zotregistry.dev/zot/v2/errors"
+)
 
 type CacheMock struct {
 	// Returns the human-readable "name" of the driver.
@@ -20,12 +27,15 @@ type CacheMock struct {
 	// Delete a blob from the cachedb.
 	DeleteBlobFn func(digest godigest.Digest, path string) error
 
+	// SetOrigin makes the origin record match path.
+	SetOriginFn func(digest godigest.Digest, path string) error
+
 	UsesRelativePathsFn func() bool
 }
 
 func (cacheMock CacheMock) UsesRelativePaths() bool {
 	if cacheMock.UsesRelativePathsFn != nil {
-		return cacheMock.UsesRelativePaths()
+		return cacheMock.UsesRelativePathsFn()
 	}
 
 	return false
@@ -69,6 +79,38 @@ func (cacheMock CacheMock) DeleteBlob(digest godigest.Digest, path string) error
 	}
 
 	return nil
+}
+
+func (cacheMock CacheMock) SetOrigin(digest godigest.Digest, originPath string) error {
+	if cacheMock.SetOriginFn != nil {
+		return cacheMock.SetOriginFn(digest, originPath)
+	}
+
+	// Default mirrors real drivers for tests that stub Get/Put/Delete. An empty
+	// successful GetBlob is treated as a miss (zero-value mock returns "", nil).
+	cached, err := cacheMock.GetBlob(digest)
+	if err != nil {
+		if errors.Is(err, zerr.ErrCacheMiss) {
+			return cacheMock.PutBlob(digest, originPath)
+		}
+
+		return err
+	}
+
+	if cached == "" {
+		return cacheMock.PutBlob(digest, originPath)
+	}
+
+	if path.Clean(cached) == path.Clean(originPath) {
+		// Match Redis/Bolt: keep set membership even when the origin already matches.
+		return cacheMock.PutBlob(digest, originPath)
+	}
+
+	if err := cacheMock.DeleteBlob(digest, cached); err != nil {
+		return err
+	}
+
+	return cacheMock.PutBlob(digest, originPath)
 }
 
 func (cacheMock CacheMock) GetAllBlobs(digest godigest.Digest) ([]string, error) {

@@ -144,6 +144,57 @@ func TestRedisCache(t *testing.T) {
 		val, err = cacheDriver.GetBlob("key2")
 		So(err, ShouldNotBeNil)
 		So(val, ShouldBeEmpty)
+
+		// SetOrigin replaces a stale first-wins origin; PutBlob alone cannot.
+		err = cacheDriver.PutBlob("key3", "staleOrigin")
+		So(err, ShouldBeNil)
+
+		err = cacheDriver.PutBlob("key3", "realOrigin")
+		So(err, ShouldBeNil)
+
+		val, err = cacheDriver.GetBlob("key3")
+		So(err, ShouldBeNil)
+		So(val, ShouldEqual, "staleOrigin")
+
+		err = cacheDriver.SetOrigin("key3", "realOrigin")
+		So(err, ShouldBeNil)
+
+		val, err = cacheDriver.GetBlob("key3")
+		So(err, ShouldBeNil)
+		So(val, ShouldEqual, "realOrigin")
+
+		err = cacheDriver.SetOrigin("key3", "realOrigin")
+		So(err, ShouldBeNil)
+
+		val, err = cacheDriver.GetBlob("key3")
+		So(err, ShouldBeNil)
+		So(val, ShouldEqual, "realOrigin")
+		So(cacheDriver.HasBlob("key3", "realOrigin"), ShouldBeTrue)
+
+		err = cacheDriver.SetOrigin("key4", "")
+		So(err, ShouldEqual, zerr.ErrEmptyValue)
+
+		// SetOrigin on miss and duplicate preservation (absolute paths in this driver).
+		So(cacheDriver.SetOrigin("freshKey", "onlyOrigin"), ShouldBeNil)
+
+		val, err = cacheDriver.GetBlob("freshKey")
+		So(err, ShouldBeNil)
+		So(val, ShouldEqual, "onlyOrigin")
+
+		So(cacheDriver.PutBlob("dupKey", "staleOrigin"), ShouldBeNil)
+		So(cacheDriver.PutBlob("dupKey", "realOrigin"), ShouldBeNil)
+		So(cacheDriver.PutBlob("dupKey", "otherPath"), ShouldBeNil)
+		So(cacheDriver.SetOrigin("dupKey", "realOrigin"), ShouldBeNil)
+
+		val, err = cacheDriver.GetBlob("dupKey")
+		So(err, ShouldBeNil)
+		So(val, ShouldEqual, "realOrigin")
+
+		blobs, err := cacheDriver.GetAllBlobs("dupKey")
+		So(err, ShouldBeNil)
+		So(blobs[0], ShouldEqual, "realOrigin")
+		So(blobs, ShouldContain, "staleOrigin")
+		So(blobs, ShouldContain, "otherPath")
 	})
 
 	Convey("Test cache.GetAllBlos()", t, func() {
@@ -487,6 +538,227 @@ func TestRedisMocked(t *testing.T) {
 				allBlobs, err := cacheDriver.GetAllBlobs("key")
 				So(err, ShouldBeNil)
 				So(allBlobs, ShouldResemble, []string{path.Join(pathPrefix, "val1"), path.Join(pathPrefix, "val2")})
+
+				err = mock.ExpectationsWereMet()
+				So(err, ShouldBeNil)
+			})
+
+			Convey("SetOrigin replaces stale origin"+testID, func() {
+				cacheDB, mock := redismock.NewClientMock()
+				redisDriverParams.Client = cacheDB
+
+				mock.ExpectPing().SetVal("OK")
+				cacheDriver, err := cache.NewRedisCache(redisDriverParams, log)
+				So(cacheDriver, ShouldNotBeNil)
+				So(err, ShouldBeNil)
+
+				stored := path.Join(pathPrefix, "real")
+				mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
+				mock.ExpectHGet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
+					SetVal(path.Join(pathPrefix, "stale"))
+				mock.ExpectTxPipeline()
+				mock.ExpectHSet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key", stored).SetVal(1)
+				mock.ExpectSAdd(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key", stored).SetVal(1)
+				mock.ExpectTxPipelineExec()
+
+				err = cacheDriver.SetOrigin("key", path.Join(dir, "real"))
+				So(err, ShouldBeNil)
+
+				err = mock.ExpectationsWereMet()
+				So(err, ShouldBeNil)
+			})
+
+			Convey("SetOrigin no-op when origin already matches"+testID, func() {
+				cacheDB, mock := redismock.NewClientMock()
+				redisDriverParams.Client = cacheDB
+
+				mock.ExpectPing().SetVal("OK")
+				cacheDriver, err := cache.NewRedisCache(redisDriverParams, log)
+				So(cacheDriver, ShouldNotBeNil)
+				So(err, ShouldBeNil)
+
+				stored := path.Join(pathPrefix, "real")
+				mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
+				mock.ExpectHGet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
+					SetVal(stored)
+				// Still SAdd so membership is restored if DeleteBlob left origin without the set member.
+				mock.ExpectSAdd(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key", stored).SetVal(0)
+
+				err = cacheDriver.SetOrigin("key", path.Join(dir, "real"))
+				So(err, ShouldBeNil)
+
+				err = mock.ExpectationsWereMet()
+				So(err, ShouldBeNil)
+			})
+
+			Convey("SetOrigin SAdd error when origin already matches"+testID, func() {
+				cacheDB, mock := redismock.NewClientMock()
+				redisDriverParams.Client = cacheDB
+
+				mock.ExpectPing().SetVal("OK")
+				cacheDriver, err := cache.NewRedisCache(redisDriverParams, log)
+				So(cacheDriver, ShouldNotBeNil)
+				So(err, ShouldBeNil)
+
+				stored := path.Join(pathPrefix, "real")
+				mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
+				mock.ExpectHGet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
+					SetVal(stored)
+				mock.ExpectSAdd(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key", stored).
+					SetErr(ErrTestError)
+
+				err = cacheDriver.SetOrigin("key", path.Join(dir, "real"))
+				So(err, ShouldEqual, ErrTestError)
+
+				err = mock.ExpectationsWereMet()
+				So(err, ShouldBeNil)
+			})
+
+			Convey("SetOrigin returns Rel failure"+testID, func() {
+				if !redisDriverParams.UseRelPaths {
+					return
+				}
+
+				cacheDB, mock := redismock.NewClientMock()
+				redisDriverParams.Client = cacheDB
+
+				mock.ExpectPing().SetVal("OK")
+				cacheDriver, err := cache.NewRedisCache(redisDriverParams, log)
+				So(cacheDriver, ShouldNotBeNil)
+				So(err, ShouldBeNil)
+
+				// Relative input cannot be made relative to RootDir; do not store it
+				// (GetBlob would otherwise prepend rootDir and resolve the wrong object).
+				err = cacheDriver.SetOrigin("key", "not-under-root/real")
+				So(err, ShouldNotBeNil)
+
+				err = mock.ExpectationsWereMet()
+				So(err, ShouldBeNil)
+			})
+
+			Convey("SetOrigin installs origin on cache miss"+testID, func() {
+				cacheDB, mock := redismock.NewClientMock()
+				redisDriverParams.Client = cacheDB
+
+				mock.ExpectPing().SetVal("OK")
+				cacheDriver, err := cache.NewRedisCache(redisDriverParams, log)
+				So(cacheDriver, ShouldNotBeNil)
+				So(err, ShouldBeNil)
+
+				stored := path.Join(pathPrefix, "real")
+				mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
+				mock.ExpectHGet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
+					RedisNil()
+				mock.ExpectTxPipeline()
+				mock.ExpectHSet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key", stored).SetVal(1)
+				mock.ExpectSAdd(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key", stored).SetVal(1)
+				mock.ExpectTxPipelineExec()
+
+				err = cacheDriver.SetOrigin("key", path.Join(dir, "real"))
+				So(err, ShouldBeNil)
+
+				err = mock.ExpectationsWereMet()
+				So(err, ShouldBeNil)
+			})
+
+			Convey("SetOrigin HGet error"+testID, func() {
+				cacheDB, mock := redismock.NewClientMock()
+				redisDriverParams.Client = cacheDB
+
+				mock.ExpectPing().SetVal("OK")
+				cacheDriver, err := cache.NewRedisCache(redisDriverParams, log)
+				So(cacheDriver, ShouldNotBeNil)
+				So(err, ShouldBeNil)
+
+				mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
+				mock.ExpectHGet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
+					SetErr(ErrTestError)
+
+				err = cacheDriver.SetOrigin("key", path.Join(dir, "real"))
+				So(err, ShouldEqual, ErrTestError)
+
+				err = mock.ExpectationsWereMet()
+				So(err, ShouldBeNil)
+			})
+
+			Convey("SetOrigin HSet error"+testID, func() {
+				cacheDB, mock := redismock.NewClientMock()
+				redisDriverParams.Client = cacheDB
+
+				mock.ExpectPing().SetVal("OK")
+				cacheDriver, err := cache.NewRedisCache(redisDriverParams, log)
+				So(cacheDriver, ShouldNotBeNil)
+				So(err, ShouldBeNil)
+
+				stored := path.Join(pathPrefix, "real")
+				mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
+				mock.ExpectHGet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
+					SetVal(path.Join(pathPrefix, "stale"))
+				mock.ExpectTxPipeline()
+				mock.ExpectHSet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key", stored).
+					SetErr(ErrTestError)
+
+				err = cacheDriver.SetOrigin("key", path.Join(dir, "real"))
+				So(err, ShouldEqual, ErrTestError)
+
+				err = mock.ExpectationsWereMet()
+				So(err, ShouldBeNil)
+			})
+
+			Convey("SetOrigin SAdd error"+testID, func() {
+				cacheDB, mock := redismock.NewClientMock()
+				redisDriverParams.Client = cacheDB
+
+				mock.ExpectPing().SetVal("OK")
+				cacheDriver, err := cache.NewRedisCache(redisDriverParams, log)
+				So(cacheDriver, ShouldNotBeNil)
+				So(err, ShouldBeNil)
+
+				stored := path.Join(pathPrefix, "real")
+				mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
+				mock.ExpectHGet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
+					SetVal(path.Join(pathPrefix, "stale"))
+				mock.ExpectTxPipeline()
+				mock.ExpectHSet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key", stored).SetVal(1)
+				mock.ExpectSAdd(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key", stored).
+					SetErr(ErrTestError)
+
+				err = cacheDriver.SetOrigin("key", path.Join(dir, "real"))
+				So(err, ShouldEqual, ErrTestError)
+
+				err = mock.ExpectationsWereMet()
+				So(err, ShouldBeNil)
+			})
+
+			Convey("SetOrigin empty path"+testID, func() {
+				cacheDB, mock := redismock.NewClientMock()
+				redisDriverParams.Client = cacheDB
+
+				mock.ExpectPing().SetVal("OK")
+				cacheDriver, err := cache.NewRedisCache(redisDriverParams, log)
+				So(cacheDriver, ShouldNotBeNil)
+				So(err, ShouldBeNil)
+
+				err = cacheDriver.SetOrigin("key", "")
+				So(err, ShouldEqual, zerr.ErrEmptyValue)
+
+				err = mock.ExpectationsWereMet()
+				So(err, ShouldBeNil)
+			})
+
+			Convey("SetOrigin lock acquire error"+testID, func() {
+				cacheDB, mock := redismock.NewClientMock()
+				redisDriverParams.Client = cacheDB
+
+				mock.ExpectPing().SetVal("OK")
+				cacheDriver, err := cache.NewRedisCache(redisDriverParams, log)
+				So(cacheDriver, ShouldNotBeNil)
+				So(err, ShouldBeNil)
+
+				mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetErr(ErrTestError)
+
+				err = cacheDriver.SetOrigin("key", path.Join(dir, "real"))
+				So(err, ShouldNotBeNil)
 
 				err = mock.ExpectationsWereMet()
 				So(err, ShouldBeNil)
