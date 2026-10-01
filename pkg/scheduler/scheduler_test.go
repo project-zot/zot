@@ -7,6 +7,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -297,7 +298,7 @@ func TestScheduler(t *testing.T) {
 		sch := scheduler.NewScheduler(config.New(), metrics, logger)
 
 		t := &task{log: logger, msg: "", err: true}
-		sch.SubmitTask(t, scheduler.MediumPriority)
+		So(sch.SubmitTask(t, scheduler.MediumPriority), ShouldBeTrue)
 
 		sch.RunScheduler()
 		time.Sleep(500 * time.Millisecond)
@@ -337,7 +338,7 @@ func TestScheduler(t *testing.T) {
 		sch := scheduler.NewScheduler(config.New(), metrics, logger)
 
 		t := &task{log: logger, msg: "", err: false}
-		sch.SubmitTask(t, -1)
+		So(sch.SubmitTask(t, -1), ShouldBeFalse)
 
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
@@ -356,11 +357,31 @@ func TestScheduler(t *testing.T) {
 		time.Sleep(500 * time.Millisecond)
 
 		t := &task{log: logger, msg: "", err: false}
-		sch.SubmitTask(t, scheduler.LowPriority)
+		So(sch.SubmitTask(t, scheduler.LowPriority), ShouldBeFalse)
 
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		So(string(data), ShouldNotContainSubstring, "adding a new task")
+	})
+
+	Convey("Test adding a new task when the queue is full", t, func() {
+		logger := log.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		sch := scheduler.NewScheduler(config.New(), metrics, logger)
+
+		// the scheduler is not running, so nothing drains the queue
+		submitted := 0
+
+		for range 10000 {
+			if !sch.SubmitTask(&task{log: logger, msg: "", err: false}, scheduler.HighPriority) {
+				break
+			}
+
+			submitted++
+		}
+
+		So(submitted, ShouldBeGreaterThan, 0)
+		So(submitted, ShouldBeLessThan, 10000)
 	})
 
 	Convey("Test stopping scheduler by calling Shutdown()", t, func() {
@@ -432,4 +453,113 @@ func TestGetNumWorkers(t *testing.T) {
 
 		So(sch.NumWorkers, ShouldEqual, 3)
 	})
+}
+
+type countingTask struct {
+	runs *atomic.Int64
+}
+
+func (t *countingTask) DoWork(ctx context.Context) error {
+	t.runs.Add(1)
+
+	return nil
+}
+
+func (t *countingTask) String() string {
+	return t.Name()
+}
+
+func (t *countingTask) Name() string {
+	return "CountingTask"
+}
+
+// onceGenerator generates a single task per run.
+type onceGenerator struct {
+	runs      *atomic.Int64
+	generated bool
+	done      bool
+}
+
+func (g *onceGenerator) Name() string {
+	return "OnceGenerator"
+}
+
+func (g *onceGenerator) Next() (scheduler.Task, error) {
+	// like other generators, report done on the call after the last task
+	if g.generated {
+		g.done = true
+
+		return nil, nil //nolint:nilnil
+	}
+
+	g.generated = true
+
+	return &countingTask{runs: g.runs}, nil
+}
+
+func (g *onceGenerator) IsDone() bool {
+	return g.done
+}
+
+func (g *onceGenerator) IsReady() bool {
+	return true
+}
+
+func (g *onceGenerator) Reset() {
+	g.generated = false
+	g.done = false
+}
+
+func TestRunGeneratorNow(t *testing.T) {
+	Convey("A waiting periodic generator runs again when requested", t, func() {
+		sch := scheduler.NewScheduler(config.New(), monitoring.NewNopMetricServer(), log.NewTestLogger())
+
+		runs := &atomic.Int64{}
+		gen := &onceGenerator{runs: runs}
+		sch.SubmitGenerator(gen, time.Hour, scheduler.MediumPriority)
+
+		sch.RunScheduler()
+		defer sch.Shutdown()
+
+		So(waitFor(func() bool { return runs.Load() == 1 }, 5*time.Second), ShouldBeTrue)
+
+		// the interval hasn't passed, so without a request the generator keeps waiting
+		time.Sleep(500 * time.Millisecond)
+		So(runs.Load(), ShouldEqual, 1)
+
+		So(sch.RunGeneratorNow(gen), ShouldBeTrue)
+		So(waitFor(func() bool { return runs.Load() == 2 }, 5*time.Second), ShouldBeTrue)
+	})
+
+	Convey("An unknown generator is reported as not found", t, func() {
+		sch := scheduler.NewScheduler(config.New(), monitoring.NewNopMetricServer(), log.NewTestLogger())
+
+		So(sch.RunGeneratorNow(&onceGenerator{runs: &atomic.Int64{}}), ShouldBeFalse)
+	})
+
+	Convey("A generator is not run once the scheduler is shutting down", t, func() {
+		sch := scheduler.NewScheduler(config.New(), monitoring.NewNopMetricServer(), log.NewTestLogger())
+
+		gen := &onceGenerator{runs: &atomic.Int64{}}
+		sch.SubmitGenerator(gen, time.Hour, scheduler.MediumPriority)
+
+		sch.RunScheduler()
+		sch.Shutdown()
+
+		So(sch.RunGeneratorNow(gen), ShouldBeFalse)
+	})
+}
+
+func waitFor(cond func() bool, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+
+	for time.Now().Before(deadline) {
+		if cond() {
+			return true
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	return cond()
 }
