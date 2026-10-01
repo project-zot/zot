@@ -541,7 +541,7 @@ oci-image: $(STACKER)
 docker-image:
 	${CONTAINER_RUNTIME} buildx build --platform $(OS)/$(ARCH) \
 		--build-arg BASE_IMAGE=$(BASE_IMAGE) \
-		-f build/Dockerfile .
+		-f build/Dockerfile -t zot-$(OS)-$(ARCH):latest .
 
 $(BATS):
 	rm -rf bats-core; \
