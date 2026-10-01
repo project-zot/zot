@@ -56,7 +56,9 @@ func TestIgnoreAsyncSignalsSurvivesStopAndTerminateSignals(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 		defer cancel()
 
+		//nolint:gosec // G204: test-only, re-runs this test binary
 		cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestIgnoreAsyncSignalsSurvivesStopAndTerminateSignals$")
+
 		cmd.Env = append(os.Environ(), ignoreAsyncSignalsChildEnv+"=1")
 		// A process group of its own keeps the group from being orphaned:
 		// the kernel discards SIGTSTP, SIGTTIN and SIGTTOU sent to an
