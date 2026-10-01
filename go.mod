@@ -12,13 +12,13 @@ require (
 	github.com/aquasecurity/trivy-db v0.0.0-20260813095258-0e0340a01b57
 	github.com/aws/aws-sdk-go-v2 v1.47.0
 	github.com/aws/aws-sdk-go-v2/config v1.33.5
-	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.21.5
+	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.21.6
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.69.0
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.66.0
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.50.0
 	github.com/aws/aws-secretsmanager-caching-go/v2 v2.3.0
-	github.com/aws/smithy-go v1.28.1
-	github.com/bmatcuk/doublestar/v4 v4.10.0
+	github.com/aws/smithy-go v1.28.2
+	github.com/bmatcuk/doublestar/v4 v4.10.2
 	github.com/briandowns/spinner v1.23.2
 	github.com/cloudevents/sdk-go/protocol/nats/v2 v2.16.2
 	github.com/cloudevents/sdk-go/v2 v2.16.2
@@ -26,8 +26,8 @@ require (
 	github.com/coreos/go-systemd/v22 v22.7.0
 	github.com/dchest/siphash v1.2.3
 	github.com/didip/tollbooth/v7 v7.0.2
-	github.com/distribution/distribution/v3 v3.1.1
-	github.com/dustin/go-humanize v1.0.1
+	github.com/distribution/distribution/v3 v3.1.2
+	github.com/dustin/go-humanize v1.1.0
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-jose/go-jose/v4 v4.1.5
 	github.com/go-ldap/ldap/v3 v3.4.14
@@ -49,12 +49,12 @@ require (
 	github.com/mitchellh/mapstructure v1.5.1-0.20231216201459-8508981c8b6c
 	github.com/nathanaelle/password v1.0.0
 	github.com/nats-io/nats-server/v2 v2.15.0
-	github.com/nats-io/nats.go v1.53.1
+	github.com/nats-io/nats.go v1.54.0
 	github.com/nmcclain/ldap v0.0.0-20210720162743-7f8d1e44eeba
 	github.com/notaryproject/notation-core-go v1.3.0
 	github.com/notaryproject/notation-go v1.3.2
 	github.com/olekukonko/tablewriter v1.1.5
-	github.com/onsi/gomega v1.43.0
+	github.com/onsi/gomega v1.43.1
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20250123160558-a139cc423184
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1
@@ -79,8 +79,8 @@ require (
 	github.com/swaggo/http-swagger v1.3.4
 	github.com/swaggo/swag v1.16.6
 	github.com/tiendc/go-deepcopy v1.7.2
-	github.com/vektah/gqlparser/v2 v2.5.37
-	github.com/zitadel/oidc/v3 v3.51.1
+	github.com/vektah/gqlparser/v2 v2.5.58
+	github.com/zitadel/oidc/v3 v3.51.3
 	go.etcd.io/bbolt v1.5.0
 	golang.org/x/crypto v0.57.0
 	golang.org/x/oauth2 v0.37.0
@@ -89,7 +89,7 @@ require (
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/resty.v1 v1.12.0
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/apimachinery v0.37.0
+	k8s.io/apimachinery v0.37.1
 	modernc.org/sqlite v1.59.0
 	oras.land/oras-go/v2 v2.6.2
 	sigs.k8s.io/controller-runtime v0.25.1
@@ -186,7 +186,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.3 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.3 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.5.3 // indirect
-	github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.41.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.42.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ebs v1.25.3 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.319.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ecrpublic v1.38.10 // indirect
@@ -248,7 +248,7 @@ require (
 	github.com/docker/cli v29.7.2+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.9.8 // indirect
 	github.com/docker/go-connections v0.7.0 // indirect
-	github.com/docker/go-metrics v0.0.1 // indirect
+	github.com/docker/go-metrics v0.1.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect
 	github.com/dylibso/observe-sdk/go v0.0.0-20240819160327-2d926c5d788a // indirect
@@ -508,21 +508,21 @@ require (
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.69.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.69.0 // indirect
 	go.opentelemetry.io/otel v1.46.0 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.19.0 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.19.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.21.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.21.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.44.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v1.44.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.45.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.44.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.44.0 // indirect
 	go.opentelemetry.io/otel/exporters/prometheus v0.66.0 // indirect
-	go.opentelemetry.io/otel/exporters/stdout/stdoutlog v0.19.0 // indirect
+	go.opentelemetry.io/otel/exporters/stdout/stdoutlog v0.21.0 // indirect
 	go.opentelemetry.io/otel/exporters/stdout/stdoutmetric v1.43.0 // indirect
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.42.0 // indirect
-	go.opentelemetry.io/otel/log v0.19.0 // indirect
+	go.opentelemetry.io/otel/log v0.21.0 // indirect
 	go.opentelemetry.io/otel/metric v1.46.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.46.0 // indirect
-	go.opentelemetry.io/otel/sdk/log v0.19.0 // indirect
+	go.opentelemetry.io/otel/sdk/log v0.21.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.46.0 // indirect
 	go.opentelemetry.io/otel/trace v1.46.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.11.0 // indirect
@@ -534,7 +534,7 @@ require (
 	go.yaml.in/yaml/v4 v4.0.0-rc.3 // indirect
 	golang.org/x/exp v0.0.0-20260813180055-c1d0aacb2297 // indirect
 	golang.org/x/mod v0.41.0 // indirect
-	golang.org/x/net v0.58.0 // indirect
+	golang.org/x/net v0.59.0 // indirect
 	golang.org/x/term v0.46.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
