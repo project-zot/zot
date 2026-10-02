@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gorilla/mux"
@@ -261,6 +262,157 @@ func TestGetManifestCheckInterval(t *testing.T) {
 
 			So(resp.StatusCode, ShouldEqual, http.StatusOK)
 			So(syncCalls, ShouldEqual, 1)
+		})
+	})
+}
+
+func TestGetManifestOnDemandSyncErrors(t *testing.T) {
+	Convey("GetManifest maps opaque sync sentinels only when the cache is empty", t, func() {
+		const reference = "v1.0"
+
+		newReq := func() *http.Request {
+			req := httptest.NewRequestWithContext(
+				context.Background(),
+				http.MethodGet,
+				"http://example.com/v2/test/manifests/"+reference,
+				http.NoBody,
+			)
+
+			return mux.SetURLVars(req, map[string]string{
+				"name":      "test",
+				"reference": reference,
+			})
+		}
+
+		Convey("serves a cached manifest when the upstream refresh fails", func() {
+			localManifest := []byte(`{"schemaVersion":2}`)
+			localDigest := godigest.FromBytes(localManifest)
+			handler := newSyncTestRouteHandler(t, mocks.MockedImageStore{
+				GetImageManifestFn: func(_ string, _ string) ([]byte, godigest.Digest, string, error) {
+					return localManifest, localDigest, ispec.MediaTypeImageManifest, nil
+				},
+			}, &mockSyncOnDemand{
+				syncImageFn: func(_ context.Context, _, _ string) error {
+					return zerr.ErrSyncInternal
+				},
+			})
+
+			rec := httptest.NewRecorder()
+			handler.GetManifest(rec, newReq())
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			body, readErr := io.ReadAll(resp.Body)
+			So(readErr, ShouldBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+			So(strings.TrimSpace(string(body)), ShouldEqual, string(localManifest))
+		})
+
+		Convey("keeps 404 when sync only reports a content-filter miss", func() {
+			handler := newSyncTestRouteHandler(t, mocks.MockedImageStore{
+				GetImageManifestFn: func(_ string, _ string) ([]byte, godigest.Digest, string, error) {
+					return nil, "", "", zerr.ErrManifestNotFound
+				},
+			}, &mockSyncOnDemand{
+				syncImageFn: func(_ context.Context, _, _ string) error {
+					return zerr.ErrSyncImageFilteredOut
+				},
+			})
+
+			rec := httptest.NewRecorder()
+			handler.GetManifest(rec, newReq())
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+		})
+
+		Convey("prefers a local storage error over a sync failure", func() {
+			handler := newSyncTestRouteHandler(t, mocks.MockedImageStore{
+				GetImageManifestFn: func(_ string, _ string) ([]byte, godigest.Digest, string, error) {
+					return nil, "", "", zerr.ErrStoragePermanent
+				},
+			}, &mockSyncOnDemand{
+				syncImageFn: func(_ context.Context, _, _ string) error {
+					return zerr.ErrSyncInternal
+				},
+			})
+
+			rec := httptest.NewRecorder()
+			handler.GetManifest(rec, newReq())
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+		})
+
+		Convey("returns 503 when sync reports an internal failure", func() {
+			handler := newSyncTestRouteHandler(t, mocks.MockedImageStore{
+				GetImageManifestFn: func(_ string, _ string) ([]byte, godigest.Digest, string, error) {
+					return nil, "", "", zerr.ErrManifestNotFound
+				},
+			}, &mockSyncOnDemand{
+				syncImageFn: func(_ context.Context, _, _ string) error {
+					return zerr.ErrSyncInternal
+				},
+			})
+
+			rec := httptest.NewRecorder()
+			handler.GetManifest(rec, newReq())
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			body, readErr := io.ReadAll(resp.Body)
+			So(readErr, ShouldBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusServiceUnavailable)
+			So(string(body), ShouldContainSubstring, zerr.ErrSyncInternal.Error())
+		})
+	})
+}
+
+func TestCheckManifestOnDemandSyncErrors(t *testing.T) {
+	Convey("CheckManifest maps opaque sync sentinels only when the cache is empty", t, func() {
+		const reference = "v1.0"
+
+		newReq := func() *http.Request {
+			req := httptest.NewRequestWithContext(
+				context.Background(),
+				http.MethodHead,
+				"http://example.com/v2/test/manifests/"+reference,
+				http.NoBody,
+			)
+
+			return mux.SetURLVars(req, map[string]string{
+				"name":      "test",
+				"reference": reference,
+			})
+		}
+
+		Convey("returns 503 when sync reports an internal failure", func() {
+			handler := newSyncTestRouteHandler(t, mocks.MockedImageStore{
+				GetImageManifestFn: func(_ string, _ string) ([]byte, godigest.Digest, string, error) {
+					return nil, "", "", zerr.ErrManifestNotFound
+				},
+			}, &mockSyncOnDemand{
+				syncImageFn: func(_ context.Context, _, _ string) error {
+					return zerr.ErrSyncInternal
+				},
+			})
+
+			rec := httptest.NewRecorder()
+			handler.CheckManifest(rec, newReq())
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			body, readErr := io.ReadAll(resp.Body)
+			So(readErr, ShouldBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusServiceUnavailable)
+			So(string(body), ShouldContainSubstring, zerr.ErrSyncInternal.Error())
 		})
 	})
 }

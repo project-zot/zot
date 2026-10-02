@@ -438,6 +438,7 @@ func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Req
 // @Success 200 {string} string "ok"
 // @Header  200 {string} Docker-Content-Digest "Manifest digest of the content"
 // @Failure 404 {string} string "not found"
+// @Failure 503 {string} string "synchronization failed"
 // @Failure 500 {string} string "internal server error"
 func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *http.Request) {
 	if request.Method == http.MethodOptions {
@@ -474,9 +475,10 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 		} else if errors.Is(err, zerr.ErrManifestNotFound) {
 			e := apiErr.NewError(apiErr.MANIFEST_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrSyncParseRemoteRepo) {
-			e := apiErr.NewError(apiErr.DENIED).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusForbidden, apiErr.NewErrorList(e))
+		} else if errors.Is(err, zerr.ErrSyncInternal) {
+			e := apiErr.NewError(apiErr.MANIFEST_UNKNOWN)
+			e.Message = zerr.ErrSyncInternal.Error()
+			zcommon.WriteJSON(response, http.StatusServiceUnavailable, apiErr.NewErrorList(e))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 
@@ -511,6 +513,7 @@ type ExtensionList struct {
 // @Success 200 {object} api.ImageManifest
 // @Header  200 {string} Docker-Content-Digest "Manifest digest of the content"
 // @Failure 404 {string} string "not found"
+// @Failure 503 {string} string "synchronization failed"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/manifests/{reference} [get].
 func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.Request) {
@@ -555,9 +558,10 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 			details["reference"] = reference
 			e := apiErr.NewError(apiErr.MANIFEST_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrSyncParseRemoteRepo) {
-			e := apiErr.NewError(apiErr.DENIED).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusForbidden, apiErr.NewErrorList(e))
+		} else if errors.Is(err, zerr.ErrSyncInternal) {
+			e := apiErr.NewError(apiErr.MANIFEST_UNKNOWN)
+			e.Message = zerr.ErrSyncInternal.Error()
+			zcommon.WriteJSON(response, http.StatusServiceUnavailable, apiErr.NewErrorList(e))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			response.WriteHeader(http.StatusInternalServerError)
@@ -2773,6 +2777,8 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 		}
 	}
 
+	var syncErr error
+
 	if syncEnabled {
 		// When manifestCheckInterval is configured and a recent upstream check already
 		// validated this reference, serve the local manifest instead of contacting upstream.
@@ -2805,18 +2811,42 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 		routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
 			Msg("trying to get updated image by syncing on demand")
 
-		if errSync := routeHandler.c.SyncOnDemand.SyncImage(ctx, name, reference); errSync != nil {
-			routeHandler.c.Log.Err(errSync).Str("repository", name).Str("reference", reference).
+		syncErr = routeHandler.c.SyncOnDemand.SyncImage(ctx, name, reference)
+		if syncErr != nil {
+			routeHandler.c.Log.Err(syncErr).Str("repository", name).Str("reference", reference).
 				Msg("failed to sync image")
 		}
 	}
 
-	return imgStore.GetImageManifest(name, reference)
+	content, digest, mediaType, localErr := imgStore.GetImageManifest(name, reference)
+	if localErr == nil {
+		return content, digest, mediaType, nil
+	}
+
+	// A real local storage failure must not be masked by a sync error.
+	if !isManifestNotFound(localErr) {
+		return nil, "", "", localErr
+	}
+
+	// SyncImage returns opaque ErrSyncInternal for hard failures. Soft misses
+	// stay as filter/not-found and must remain a client 404.
+	if errors.Is(syncErr, zerr.ErrSyncInternal) {
+		return nil, "", "", syncErr
+	}
+
+	return nil, "", "", localErr
 }
 
 // isManifestNotFound reports whether err means the repo or manifest is absent locally
-// (safe to trigger background sync) rather than a storage or other failure.
+// (safe to treat as a client miss / queue background sync). Storage Transient/
+// Permanent outages are never "not found", even when ImageStore also wraps a
+// not-found sentinel. True absence may still carry ErrRepoNotFound (optionally
+// with ErrStorageMissing).
 func isManifestNotFound(err error) bool {
+	if errors.Is(err, zerr.ErrStorageTransient) || errors.Is(err, zerr.ErrStoragePermanent) {
+		return false
+	}
+
 	return errors.Is(err, zerr.ErrRepoNotFound) || errors.Is(err, zerr.ErrManifestNotFound)
 }
 

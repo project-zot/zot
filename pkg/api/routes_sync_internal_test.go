@@ -225,13 +225,21 @@ func TestIsManifestNotFound(t *testing.T) {
 	for _, notFound := range []error{
 		zerr.ErrRepoNotFound,
 		zerr.ErrManifestNotFound,
+		errors.Join(zerr.ErrRepoNotFound, zerr.ErrStorageMissing),
 	} {
 		if !isManifestNotFound(notFound) {
 			t.Errorf("isManifestNotFound(%v) = false, want true", notFound)
 		}
 	}
 
-	if isManifestNotFound(errStorageUnavailable) {
-		t.Error("isManifestNotFound(storage error) = true, want false")
+	for _, storageErr := range []error{
+		errStorageUnavailable,
+		zerr.ErrStorageTransient,
+		zerr.ErrStoragePermanent,
+		errors.Join(zerr.ErrRepoNotFound, zerr.ErrStorageTransient),
+	} {
+		if isManifestNotFound(storageErr) {
+			t.Errorf("isManifestNotFound(%v) = true, want false", storageErr)
+		}
 	}
 }

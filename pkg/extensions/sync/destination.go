@@ -138,6 +138,12 @@ func (registry *DestinationRegistry) CommitAll(repo string, imageReference ref.R
 			Err(err).Str("dir", repoDir).Str("repo", repo).
 			Msg("failed to get repo index from temp sync dir")
 
+		// Staging was non-empty but has no usable index — local layout failure.
+		// Do not return bare ErrRepoNotFound: on-demand treats that as a soft miss.
+		if errors.Is(err, zerr.ErrRepoNotFound) {
+			return fmt.Errorf("%w: %w", zerr.ErrRepoBadLayout, err)
+		}
+
 		return err
 	}
 

@@ -120,22 +120,43 @@ func onDemandKey(kind, repo, reference string) string {
 type onDemandSyncFn func(ctx context.Context, service Service) error
 
 func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference string) error {
-	return onDemand.doOnDemandFlight(onDemandKey(onDemandKindImage, repo, reference), repo, reference,
+	// Classify after the flight so waiters that join a background retry (same key,
+	// raw syncImage result) still receive opaque client sentinels. Root-cause
+	// logging stays in the leader closure only.
+	err := onDemand.doOnDemandFlight(onDemandKey(onDemandKindImage, repo, reference), repo, reference,
 		"image already demanded, on-demand sync result was shared",
 		func() error {
-			return onDemand.syncImage(ctx, repo, reference, true)
+			err := onDemand.syncImage(ctx, repo, reference, true)
+
+			if err != nil && !isSoftOnDemandSyncErr(err) {
+				onDemand.log.Error().Err(err).Str("repo", repo).Str("reference", reference).
+					Msg("on-demand image sync failed")
+			}
+
+			return err
 		})
+
+	return classifyOnDemandClientError(err)
 }
 
 func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 	subjectDigestStr string, referenceTypes []string,
 ) error {
-	return onDemand.doOnDemandFlight(onDemandKey(onDemandKindReferrers, repo, subjectDigestStr),
+	err := onDemand.doOnDemandFlight(onDemandKey(onDemandKindReferrers, repo, subjectDigestStr),
 		repo, subjectDigestStr,
 		"referrers for image already demanded, on-demand sync result was shared",
 		func() error {
-			return onDemand.syncReferrers(ctx, repo, subjectDigestStr, referenceTypes, true)
+			err := onDemand.syncReferrers(ctx, repo, subjectDigestStr, referenceTypes, true)
+
+			if err != nil && !isSoftOnDemandSyncErr(err) {
+				onDemand.log.Error().Err(err).Str("repo", repo).Str("reference", subjectDigestStr).
+					Msg("on-demand referrer sync failed")
+			}
+
+			return err
 		})
+
+	return classifyOnDemandClientError(err)
 }
 
 func (onDemand *BaseOnDemand) doOnDemandFlight(key, repo, reference, sharedMsg string,
@@ -180,16 +201,10 @@ func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDi
 
 func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference string, scheduleBackground bool,
 ) error {
-	var dockerCompatErr error
-
-	err := onDemand.runOnDemandServices(ctx, repo, reference, "starting on-demand image sync",
+	return onDemand.runOnDemandServices(ctx, repo, reference, "starting on-demand image sync",
 		onDemand.services,
 		func(syncCtx context.Context, service Service) error {
 			err := service.SyncImage(syncCtx, repo, reference)
-			if errors.Is(err, zerr.ErrSyncDockerCompatRequired) {
-				dockerCompatErr = err
-			}
-
 			if scheduleBackground && err != nil && !isSkippableSyncImageErr(err) {
 				onDemand.maybeRetryInBackground(ctx, onDemandKindImage, repo, reference,
 					"image already demanded, on-demand sync result was shared",
@@ -201,15 +216,6 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference str
 
 			return err
 		})
-
-	// Prefer docker-compat over a later content-filter miss from an unrelated registry.
-	if err != nil && dockerCompatErr != nil &&
-		(errors.Is(err, zerr.ErrSyncImageFilteredOut) || errors.Is(err, zerr.ErrManifestNotFound) ||
-			errors.Is(err, zerr.ErrRepoNotFound) || errors.Is(err, zerr.ErrUnauthorizedAccess)) {
-		return dockerCompatErr
-	}
-
-	return err
 }
 
 // syncImageInBackground tries only onDemandInBackground registries that match the repo.
@@ -219,26 +225,11 @@ func (onDemand *BaseOnDemand) syncImageInBackground(ctx context.Context, repo, r
 		return nil
 	}
 
-	var dockerCompatErr error
-
-	err := onDemand.runOnDemandServices(ctx, repo, reference, "starting on-demand-in-background image sync",
+	return onDemand.runOnDemandServices(ctx, repo, reference, "starting on-demand-in-background image sync",
 		services,
 		func(syncCtx context.Context, service Service) error {
-			err := service.SyncImage(syncCtx, repo, reference)
-			if errors.Is(err, zerr.ErrSyncDockerCompatRequired) {
-				dockerCompatErr = err
-			}
-
-			return err
+			return service.SyncImage(syncCtx, repo, reference)
 		})
-
-	if err != nil && dockerCompatErr != nil &&
-		(errors.Is(err, zerr.ErrSyncImageFilteredOut) || errors.Is(err, zerr.ErrManifestNotFound) ||
-			errors.Is(err, zerr.ErrRepoNotFound) || errors.Is(err, zerr.ErrUnauthorizedAccess)) {
-		return dockerCompatErr
-	}
-
-	return err
 }
 
 func (onDemand *BaseOnDemand) onDemandInBackgroundServicesForRepo(repo string) []Service {
@@ -253,11 +244,68 @@ func (onDemand *BaseOnDemand) onDemandInBackgroundServicesForRepo(repo string) [
 	return services
 }
 
+// rankOnDemandErr picks the preferred error across multi-registry on-demand attempts.
+//
+// Three classes (see isSoftOnDemandSyncErr / isTransientRemoteConnectivityErr):
+//   - soft: registry answered with a client miss → HTTP 404
+//   - weak: no content answer (dial/timeout/TLS/bad host) → demoted vs soft; alone → 503
+//   - hard: everything else (auth, storage, docker-compat, …) → opaque ErrSyncInternal (503)
+//
+// Precedence: hard > soft > weak. Among hard errors, docker-compat wins; otherwise
+// the first hard failure is kept (usually from the registry that matched the path).
+func rankOnDemandErr(current, candidate error) error {
+	if candidate == nil {
+		return current
+	}
+
+	if current == nil {
+		return candidate
+	}
+
+	currentSoft := isSoftOnDemandSyncErr(current)
+	candidateSoft := isSoftOnDemandSyncErr(candidate)
+	currentWeak := isTransientRemoteConnectivityErr(current)
+	candidateWeak := isTransientRemoteConnectivityErr(candidate)
+
+	switch {
+	case currentSoft && !candidateSoft:
+		// Soft held; candidate is hard or weak.
+		if candidateWeak {
+			return current // soft > weak
+		}
+
+		return candidate // hard > soft
+	case !currentSoft && candidateSoft:
+		// Candidate is soft; current is hard or weak.
+		if currentWeak {
+			return candidate // soft > weak
+		}
+
+		return current // hard > soft
+	case errors.Is(candidate, zerr.ErrSyncDockerCompatRequired):
+		// Prefer docker-compat config failure over other hard/weak errors.
+		return candidate
+	case errors.Is(current, zerr.ErrSyncDockerCompatRequired):
+		return current
+	case currentWeak && !candidateWeak:
+		// Both non-soft: keep non-weak (hard) over weak.
+		return candidate
+	case !currentWeak && candidateWeak:
+		return current
+	case !currentSoft && !candidateSoft:
+		// Two hard failures: keep the first.
+		return current
+	default:
+		// Two soft (or leftover) outcomes: prefer the later one.
+		return candidate
+	}
+}
+
 // runOnDemandServices tries each service in order until one succeeds.
 func (onDemand *BaseOnDemand) runOnDemandServices(ctx context.Context, repo, reference, startMsg string,
 	services []Service, syncFn onDemandSyncFn,
 ) error {
-	var err error
+	var preferredErr error
 
 	for serviceID, service := range services {
 		timeout := service.GetSyncTimeout()
@@ -271,16 +319,18 @@ func (onDemand *BaseOnDemand) runOnDemandServices(ctx context.Context, repo, ref
 
 		// Detached context with timeout so sync can finish if the HTTP client disconnects.
 		syncCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
-		err = syncFn(syncCtx, service)
+		err := syncFn(syncCtx, service)
 
 		cancel()
 
 		if err == nil {
-			break
+			return nil
 		}
+
+		preferredErr = rankOnDemandErr(preferredErr, err)
 	}
 
-	return err
+	return preferredErr
 }
 
 // maybeRetryInBackground schedules at most one background retry for kind+repo+reference.

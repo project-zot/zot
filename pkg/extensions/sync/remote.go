@@ -122,6 +122,13 @@ func (registry *RemoteRegistry) GetImageReference(repo, reference string) (ref.R
 
 	imageRef, err := ref.New(imageRefPath)
 	if err != nil {
+		// Unusable configured host (empty, absolute path, …) is a registry config
+		// failure → ErrSyncParseRemoteRepo (weak). Client/reference parse failures
+		// stay as ErrInvalidReference (soft on-demand miss → 404, not opaque 503).
+		if isInvalidRemoteHost(registry.primaryHost) {
+			return ref.Ref{}, fmt.Errorf("%w: %w", zerr.ErrSyncParseRemoteRepo, err)
+		}
+
 		return ref.Ref{}, err
 	}
 
@@ -132,6 +139,17 @@ func (registry *RemoteRegistry) GetImageReference(repo, reference string) (ref.R
 	// add check for imageref to be oci
 
 	return imageRef, nil
+}
+
+// isInvalidRemoteHost reports whether host cannot form any valid registry image
+// reference, independent of the client repo/tag.
+func isInvalidRemoteHost(host string) bool {
+	// ref.New returns the same ErrInvalidReference for a bad host and a bad
+	// client repo/tag, so probe with a fixed valid path: if this fails, the
+	// host itself is unusable; if it succeeds, a later failure is the client ref.
+	_, err := ref.New(host + "/library/probe:latest")
+
+	return err != nil
 }
 
 // mapRegclientManifestErr maps regclient manifest fetch failures to zot errors so
@@ -157,13 +175,17 @@ func mapRegclientManifestErr(err error) error {
 // translateManifestErr maps regclient manifest fetch errors to zot errors for sync/on-demand callers.
 func (registry *RemoteRegistry) translateManifestErr(imageReference ref.Ref, err error) error {
 	mapped := mapRegclientManifestErr(err)
-	if errors.Is(mapped, err) {
-		return err
-	}
 
-	registry.log.Info().Str("errorType", common.TypeOf(err)).
-		Str("repository", imageReference.Repository).Str("reference", imageReference.Reference).
-		Err(err).Msg("failed to get remote manifest")
+	// Log when mapRegclientManifestErr introduced a zot sentinel. Identity "=="
+	// is forbidden by err113; detect remapping by sentinel presence on mapped
+	// that was absent on err.
+	remapped := (errors.Is(mapped, zerr.ErrUnauthorizedAccess) && !errors.Is(err, zerr.ErrUnauthorizedAccess)) ||
+		(errors.Is(mapped, zerr.ErrManifestNotFound) && !errors.Is(err, zerr.ErrManifestNotFound))
+	if remapped {
+		registry.log.Info().Str("errorType", common.TypeOf(err)).
+			Str("repository", imageReference.Repository).Str("reference", imageReference.Reference).
+			Err(err).Msg("failed to get remote manifest")
+	}
 
 	return mapped
 }

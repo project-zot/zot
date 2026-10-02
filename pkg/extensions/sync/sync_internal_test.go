@@ -1869,6 +1869,7 @@ func TestDestinationRegistry(t *testing.T) {
 			// CommitAll should return an error when directory is not empty but index.json is missing
 			err = registry.CommitAll("inconsistent-repo", imageReference)
 			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrRepoBadLayout), ShouldBeTrue)
 			So(errors.Is(err, zerr.ErrRepoNotFound), ShouldBeTrue)
 		})
 
