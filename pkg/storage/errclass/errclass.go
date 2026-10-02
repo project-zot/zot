@@ -2,6 +2,7 @@
 // zotregistry.dev/zot/v2/errors (ErrStorageMissing / Transient / Permanent).
 //
 // Inventory of how each backend maps raw SDK/OS errors: driver-error-matrix.md.
+// Caller policy (HTTP vs pkg/storage): ../README.md.
 package errclass
 
 import (

@@ -34,6 +34,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage"
 	"zotregistry.dev/zot/v2/pkg/storage/cache"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
+	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 	"zotregistry.dev/zot/v2/pkg/storage/s3"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
@@ -3118,7 +3119,9 @@ func TestCopyBlobLinkFailure(t *testing.T) {
 		digest := godigest.FromString("copyblob-link-fail")
 		_, _, err := imgStore.CheckBlob(context.Background(), "repo", digest)
 		So(err, ShouldNotBeNil)
-		So(err, ShouldEqual, zerr.ErrBlobNotFound)
+		// Link/PutContent failure is a storage I/O error, not blob absence.
+		So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+		So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeFalse)
 	})
 }
 
@@ -4585,7 +4588,11 @@ func TestS3DedupeErr(t *testing.T) {
 			},
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				if path != blobPath {
-					return nil, errS3
+					// Mock driver skips formatErr; classify Missing so CheckBlob can
+					// heal from the cache. A bare/unclassified error is Transient and
+					// must not Link.
+					return nil, errclass.MarkMissing(
+						driver.PathNotFoundError{Path: path, DriverName: "s3"})
 				}
 
 				return &mocks.FileInfoMock{}, nil
@@ -4760,8 +4767,9 @@ func TestS3DedupeZeroSizeBlob(t *testing.T) {
 	// ------------------------------------------------------------------ //
 	// Case 5: cache "origin" is itself a zero-size stub. Serving that as
 	// HTTP 200 would return a body that does not match the digest. Both
-	// StatBlob/GetBlob and CheckBlob must fail closed with ErrBlobNotFound,
-	// whether or not the store's dedupe flag is enabled.
+	// StatBlob/GetBlob and CheckBlob must fail closed with ErrBlobNotFound
+	// (errors.Is; may also carry ErrStorageMissing), whether or not the store's
+	// dedupe flag is enabled.
 	// ------------------------------------------------------------------ //
 	for _, dedupe := range []bool{true, false} {
 		Convey(fmt.Sprintf("StatBlob/GetBlob reject empty cache origin (dedupe=%t)", dedupe), t, func() {
@@ -4781,10 +4789,10 @@ func TestS3DedupeZeroSizeBlob(t *testing.T) {
 
 			statOk, _, _, statErr := imgStore.StatBlob(repo, nonEmptyDigest)
 			So(statOk, ShouldBeFalse)
-			So(statErr, ShouldEqual, zerr.ErrBlobNotFound)
+			So(errors.Is(statErr, zerr.ErrBlobNotFound), ShouldBeTrue)
 
 			_, _, getErr := imgStore.GetBlob(repo, nonEmptyDigest, "application/octet-stream")
-			So(getErr, ShouldEqual, zerr.ErrBlobNotFound)
+			So(errors.Is(getErr, zerr.ErrBlobNotFound), ShouldBeTrue)
 		})
 
 		Convey(fmt.Sprintf("CheckBlob rejects empty cache origin (dedupe=%t)", dedupe), t, func() {
@@ -4811,7 +4819,7 @@ func TestS3DedupeZeroSizeBlob(t *testing.T) {
 			ok, size, err := imgStore.CheckBlob(context.Background(), repo, nonEmptyDigest)
 			So(ok, ShouldBeFalse)
 			So(size, ShouldEqual, int64(-1))
-			So(err, ShouldEqual, zerr.ErrBlobNotFound)
+			So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
 		})
 	}
 }

@@ -1878,7 +1878,7 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 		ok, size, err = imgStore.CheckBlob(context.Background(), repoName, blobDigest)
 		So(ok, ShouldBeFalse)
 		So(size, ShouldNotEqual, blobSize)
-		So(err, ShouldEqual, zerr.ErrBlobNotFound)
+		So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
 
 		err = WriteImageToFileSystem(image, repoName, tag, storeController)
 		So(err, ShouldBeNil)
@@ -1920,7 +1920,7 @@ func TestGCSReuploadCorruptedBlob(t *testing.T) {
 		ok, size, err = imgStore.CheckBlob(context.Background(), repoName, blobDigest)
 		So(ok, ShouldBeFalse)
 		So(size, ShouldNotEqual, blobSize)
-		So(err, ShouldEqual, zerr.ErrBlobNotFound)
+		So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
 
 		err = WriteMultiArchImageToFileSystem(image, repoName, tag, storeController)
 		So(err, ShouldBeNil)
@@ -3128,6 +3128,7 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
+			// Top-level listed manifest Missing is soft-skipped (concurrent delete race).
 			So(actual, ShouldNotContainSubstring, "affected")
 
 			index, err := common.GetIndex(imgStore, repoName, testLog)
@@ -3260,7 +3261,8 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 			// get content of layer
 			imageRes := storage.CheckLayers(repoName, "1.0", []ispec.Descriptor{{Digest: digest}}, imgStore)
 			So(imageRes.Status, ShouldEqual, "affected")
-			So(imageRes.Error, ShouldEqual, "blob not found")
+			// mapStorageErr wraps Missing under ErrBlobNotFound; match the sentinel text.
+			So(imageRes.Error, ShouldContainSubstring, "blob not found")
 
 			buff := bytes.NewBufferString("")
 
@@ -3497,6 +3499,7 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 			actual = strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
 			So(actual, ShouldContainSubstring, "test 1.0 ok")
+			// Top-level listed index blob Missing is soft-skipped (concurrent delete race).
 			So(actual, ShouldNotContainSubstring, "test affected")
 
 			index.Manifests[0].MediaType = "invalid"
@@ -3558,7 +3561,8 @@ func RunGCSCheckAllBlobsIntegrityTests( //nolint: thelper
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
-			So(actual, ShouldNotContainSubstring, fmt.Sprintf("test 1.0 affected %s blob not found", manifestDig))
+			// Top-level listed manifest Missing is soft-skipped (concurrent delete race).
+			So(actual, ShouldNotContainSubstring, "test 1.0 affected "+manifestDig+" blob not found")
 
 			index, err := common.GetIndex(imgStore, repoName, testLog)
 			So(err, ShouldBeNil)

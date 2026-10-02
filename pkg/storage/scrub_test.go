@@ -27,6 +27,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage/cache"
 	common "zotregistry.dev/zot/v2/pkg/storage/common"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
+	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
@@ -359,6 +360,7 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
+			// Top-level listed manifest Missing is soft-skipped (concurrent delete race).
 			So(actual, ShouldNotContainSubstring, "affected")
 
 			index, err := common.GetIndex(imgStore, repoName, log)
@@ -491,7 +493,8 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			// get content of layer
 			imageRes := storage.CheckLayers(repoName, tag, []ispec.Descriptor{{Digest: digest}}, imgStore)
 			So(imageRes.Status, ShouldEqual, "affected")
-			So(imageRes.Error, ShouldEqual, "blob not found")
+			// mapStorageErr wraps Missing under ErrBlobNotFound; match the sentinel text.
+			So(imageRes.Error, ShouldContainSubstring, "blob not found")
 
 			buff := bytes.NewBufferString("")
 
@@ -660,8 +663,8 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			So(actual, ShouldContainSubstring, "test 2.1 affected")
 			// Should report the manifest digest as affected blob
 			So(actual, ShouldContainSubstring, manifestDig)
-			// Should have "bad blob digest" error
-			So(actual, ShouldContainSubstring, "bad blob digest")
+			// Permission denied is classified Permanent — preserve that
+			So(actual, ShouldContainSubstring, "storage backend returned a permanent error")
 		})
 
 		Convey("Scrub index", func() {
@@ -769,6 +772,7 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			actual = strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
 			So(actual, ShouldContainSubstring, "test 1.0 ok")
+			// Top-level listed index blob Missing is soft-skipped (concurrent delete race).
 			So(actual, ShouldNotContainSubstring, "test affected")
 
 			index.Manifests[0].MediaType = "invalid"
@@ -830,7 +834,8 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
-			So(actual, ShouldNotContainSubstring, fmt.Sprintf("test 1.0 affected %s blob not found", manifestDig))
+			// Top-level listed manifest Missing is soft-skipped (concurrent delete race).
+			So(actual, ShouldNotContainSubstring, "test 1.0 affected "+manifestDig+" blob not found")
 
 			index, err := common.GetIndex(imgStore, repoName, log)
 			So(err, ShouldBeNil)
@@ -1093,8 +1098,8 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			So(actual, ShouldContainSubstring, "test 0.0.6 affected")
 			// Should report the subject digest as affected blob
 			So(actual, ShouldContainSubstring, subjectManifestDig)
-			// Should have "bad blob digest" error
-			So(actual, ShouldContainSubstring, "bad blob digest")
+			// Permission denied is classified Permanent — preserve that, do not rewrite as bad digest
+			So(actual, ShouldContainSubstring, "storage backend returned a permanent error")
 		})
 
 		Convey("scrub with non-missing error on index subject blob via file permissions", func() {
@@ -1142,8 +1147,69 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			So(actual, ShouldContainSubstring, "test 0.0.7 affected")
 			// Should report the subject digest as affected blob
 			So(actual, ShouldContainSubstring, subjectManifestDig)
-			// Should have "bad blob digest" error
-			So(actual, ShouldContainSubstring, "bad blob digest")
+			// Permission denied is classified Permanent — preserve that, do not rewrite as bad digest
+			So(actual, ShouldContainSubstring, "storage backend returned a permanent error")
+		})
+	})
+}
+
+// TestCheckRepoTopLevelErrorClasses locks the scrub policy at the index.json
+// listing boundary: Missing soft-skips; Transient is reported as affected.
+func TestCheckRepoTopLevelErrorClasses(t *testing.T) {
+	Convey("CheckRepo top-level GetBlobContent class policy", t, func() {
+		manifestDig := godigest.FromString("top-level-manifest")
+		indexJSON, err := json.Marshal(ispec.Index{
+			SchemaVersion: 2,
+			Manifests: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    manifestDig,
+					Size:      1,
+					Annotations: map[string]string{
+						ispec.AnnotationRefName: "v1",
+					},
+				},
+			},
+		})
+		So(err, ShouldBeNil)
+
+		baseStore := func(getBlobErr error) storageTypes.ImageStore {
+			return mocks.MockedImageStore{
+				ValidateRepoFn: func(string) (bool, error) { return true, nil },
+				GetIndexContentFn: func(string) ([]byte, error) {
+					return indexJSON, nil
+				},
+				GetBlobContentFn: func(string, godigest.Digest) ([]byte, error) {
+					return nil, getBlobErr
+				},
+			}
+		}
+
+		Convey("Missing soft-skips without an affected row", func() {
+			results, err := storage.CheckRepo(context.Background(), "repo",
+				baseStore(errclass.MarkMissing(errors.New("gone")))) //nolint:err113 // test
+			So(err, ShouldBeNil)
+			So(results, ShouldBeEmpty)
+		})
+
+		Convey("Transient is recorded as affected", func() {
+			results, err := storage.CheckRepo(context.Background(), "repo",
+				baseStore(errclass.MarkTransient(errors.New("blip")))) //nolint:err113 // test
+			So(err, ShouldBeNil)
+			So(len(results), ShouldEqual, 1)
+			So(results[0].Status, ShouldEqual, "affected")
+			So(results[0].Tag, ShouldEqual, "v1")
+			So(results[0].AffectedBlob, ShouldEqual, manifestDig.Encoded())
+			So(results[0].Error, ShouldContainSubstring, "transient")
+		})
+
+		Convey("Permanent is recorded as affected", func() {
+			results, err := storage.CheckRepo(context.Background(), "repo",
+				baseStore(errclass.MarkPermanent(errors.New("denied")))) //nolint:err113 // test
+			So(err, ShouldBeNil)
+			So(len(results), ShouldEqual, 1)
+			So(results[0].Status, ShouldEqual, "affected")
+			So(results[0].Error, ShouldContainSubstring, "permanent")
 		})
 	})
 }

@@ -27,6 +27,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage"
 	"zotregistry.dev/zot/v2/pkg/storage/cache"
 	common "zotregistry.dev/zot/v2/pkg/storage/common"
+	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 	"zotregistry.dev/zot/v2/pkg/storage/imagestore"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
 	tcommon "zotregistry.dev/zot/v2/pkg/test/common"
@@ -371,6 +372,196 @@ func TestValidateManifest(t *testing.T) {
 			err = common.ValidateManifest(imgStore, "test", "sparse-oci",
 				ispec.MediaTypeImageIndex, body, nil, log)
 			So(err, ShouldBeNil)
+		})
+	})
+}
+
+func TestValidateManifestStorageErrorClasses(t *testing.T) {
+	Convey("ValidateManifest distinguishes Missing from Transient/Permanent on StatBlob", t, func() {
+		log := log.NewTestLogger()
+
+		configDigest := godigest.FromString("config-blob")
+		layerDigest := godigest.FromString("layer-blob")
+
+		manifest := ispec.Manifest{
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageConfig,
+				Digest:    configDigest,
+				Size:      1,
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageLayer,
+					Digest:    layerDigest,
+					Size:      1,
+				},
+			},
+			SchemaVersion: 2,
+			MediaType:     ispec.MediaTypeImageManifest,
+		}
+		body, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+
+		Convey("ErrStorageMissing on config → ErrBadManifest", func() {
+			imgStore := &mocks.MockedImageStore{
+				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+					return false, -1, time.Time{}, errclass.MarkMissing(errors.New("gone")) //nolint:err113 // test
+				},
+			}
+
+			err := common.ValidateManifest(imgStore, "test", "1.0", ispec.MediaTypeImageManifest, body, nil, log)
+			So(errors.Is(err, zerr.ErrBadManifest), ShouldBeTrue)
+		})
+
+		Convey("ErrStorageTransient on config propagates unchanged", func() {
+			transient := errclass.MarkTransient(errors.New("blip")) //nolint:err113 // test
+			imgStore := &mocks.MockedImageStore{
+				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+					return false, -1, time.Time{}, transient
+				},
+			}
+
+			err := common.ValidateManifest(imgStore, "test", "1.0", ispec.MediaTypeImageManifest, body, nil, log)
+			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+			So(errors.Is(err, zerr.ErrBadManifest), ShouldBeFalse)
+		})
+
+		Convey("ErrStoragePermanent on layer propagates unchanged", func() {
+			permanent := errclass.MarkPermanent(errors.New("denied")) //nolint:err113 // test
+			imgStore := &mocks.MockedImageStore{
+				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+					if digest == configDigest {
+						return true, 1, time.Time{}, nil
+					}
+
+					return false, -1, time.Time{}, permanent
+				},
+			}
+
+			err := common.ValidateManifest(imgStore, "test", "1.0", ispec.MediaTypeImageManifest, body, nil, log)
+			So(errors.Is(err, zerr.ErrStoragePermanent), ShouldBeTrue)
+			So(errors.Is(err, zerr.ErrBadManifest), ShouldBeFalse)
+		})
+
+		Convey("StatBlob ok=false with nil err on config → ErrBadManifest", func() {
+			imgStore := &mocks.MockedImageStore{
+				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+					return false, -1, time.Time{}, nil
+				},
+			}
+
+			err := common.ValidateManifest(imgStore, "test", "1.0", ispec.MediaTypeImageManifest, body, nil, log)
+			So(errors.Is(err, zerr.ErrBadManifest), ShouldBeTrue)
+		})
+
+		Convey("StatBlob ok=false with nil err on layer → ErrBadManifest", func() {
+			imgStore := &mocks.MockedImageStore{
+				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+					if digest == configDigest {
+						return true, 1, time.Time{}, nil
+					}
+
+					return false, -1, time.Time{}, nil
+				},
+			}
+
+			err := common.ValidateManifest(imgStore, "test", "1.0", ispec.MediaTypeImageManifest, body, nil, log)
+			So(errors.Is(err, zerr.ErrBadManifest), ShouldBeTrue)
+		})
+
+		Convey("ErrStorageMissing on docker descriptor → ErrBadManifest", func() {
+			compats := []compat.MediaCompatibility{compat.DockerManifestV2SchemaV2}
+			man := docker.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: docker.MediaTypeImageConfig,
+					Digest:    configDigest,
+					Size:      1,
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: docker.MediaTypeLayer,
+						Digest:    layerDigest,
+						Size:      1,
+					},
+				},
+				SchemaVersion: 2,
+				MediaType:     docker.MediaTypeManifest,
+			}
+			manBody, err := json.Marshal(man)
+			So(err, ShouldBeNil)
+
+			imgStore := &mocks.MockedImageStore{
+				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+					return false, -1, time.Time{}, errclass.MarkMissing(errors.New("gone")) //nolint:err113 // test
+				},
+			}
+
+			err = common.ValidateManifest(imgStore, "test", "docker", docker.MediaTypeManifest, manBody, compats, log)
+			So(errors.Is(err, zerr.ErrBadManifest), ShouldBeTrue)
+		})
+
+		Convey("ErrStorageTransient on docker descriptor propagates unchanged", func() {
+			compats := []compat.MediaCompatibility{compat.DockerManifestV2SchemaV2}
+			man := docker.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: docker.MediaTypeImageConfig,
+					Digest:    configDigest,
+					Size:      1,
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: docker.MediaTypeLayer,
+						Digest:    layerDigest,
+						Size:      1,
+					},
+				},
+				SchemaVersion: 2,
+				MediaType:     docker.MediaTypeManifest,
+			}
+			manBody, err := json.Marshal(man)
+			So(err, ShouldBeNil)
+
+			transient := errclass.MarkTransient(errors.New("blip")) //nolint:err113 // test
+			imgStore := &mocks.MockedImageStore{
+				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+					return false, -1, time.Time{}, transient
+				},
+			}
+
+			err = common.ValidateManifest(imgStore, "test", "docker", docker.MediaTypeManifest, manBody, compats, log)
+			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+			So(errors.Is(err, zerr.ErrBadManifest), ShouldBeFalse)
+		})
+
+		Convey("StatBlob ok=false with nil err on docker descriptor → ErrBadManifest", func() {
+			compats := []compat.MediaCompatibility{compat.DockerManifestV2SchemaV2}
+			man := docker.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: docker.MediaTypeImageConfig,
+					Digest:    configDigest,
+					Size:      1,
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: docker.MediaTypeLayer,
+						Digest:    layerDigest,
+						Size:      1,
+					},
+				},
+				SchemaVersion: 2,
+				MediaType:     docker.MediaTypeManifest,
+			}
+			manBody, err := json.Marshal(man)
+			So(err, ShouldBeNil)
+
+			imgStore := &mocks.MockedImageStore{
+				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+					return false, -1, time.Time{}, nil
+				},
+			}
+
+			err = common.ValidateManifest(imgStore, "test", "docker", docker.MediaTypeManifest, manBody, compats, log)
+			So(errors.Is(err, zerr.ErrBadManifest), ShouldBeTrue)
 		})
 	})
 }
@@ -1491,7 +1682,7 @@ func TestGetBlobDescriptorFromIndexMissingNestedIndex(t *testing.T) {
 		// Since the blob is not found, it should return ErrBlobNotFound
 		_, err := common.GetBlobDescriptorFromIndex(imgStore, topLevelIndex, "repo", blobDigest, log)
 		So(err, ShouldNotBeNil)
-		So(err, ShouldEqual, zerr.ErrBlobNotFound)
+		So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
 	})
 }
 
@@ -1653,10 +1844,10 @@ func TestGetReferencedBlobsSkipsMissingIndex(t *testing.T) {
 	})
 }
 
-func TestGetReferencedBlobsSkipsMissingIndexPathNotFound(t *testing.T) {
+func TestGetReferencedBlobsSkipsMissingIndexStorageMissing(t *testing.T) {
 	log := log.NewTestLogger()
 
-	Convey("A nested index blob missing on disk (PathNotFoundError) is skipped, "+
+	Convey("A nested index blob missing on disk (ErrStorageMissing) is skipped, "+
 		"healthy manifests are still collected", t, func(c C) {
 		missingIndexDigest := godigest.FromString("missing-index-path-not-found")
 
@@ -1685,7 +1876,7 @@ func TestGetReferencedBlobsSkipsMissingIndexPathNotFound(t *testing.T) {
 			},
 			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
 				if digest == missingIndexDigest {
-					return nil, driver.PathNotFoundError{}
+					return nil, errclass.MarkMissing(driver.PathNotFoundError{})
 				}
 
 				return healthyManifestBuf, nil
@@ -2460,7 +2651,7 @@ func TestIsBlobReferencedInImageIndexSkipsMissingNestedFindsSibling(t *testing.T
 		imgStore := &mocks.MockedImageStore{
 			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
 				if digest == missingIndexDigest {
-					return nil, driver.PathNotFoundError{Path: "blobs/sha256/missing"}
+					return nil, errclass.MarkMissing(driver.PathNotFoundError{Path: "blobs/sha256/missing"})
 				}
 				if digest == manifestDigest {
 					return manifestBuf, nil

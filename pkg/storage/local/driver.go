@@ -92,12 +92,15 @@ func (driver *Driver) openReader(file readSeekCloser, path string, offset int64)
 		return nil, driver.formatErr(err)
 	} else if seekPos < offset {
 		err := storagedriver.InvalidOffsetError{Path: path, Offset: offset}
+		formatted := driver.formatErr(err)
 
 		if cerr := file.Close(); cerr != nil {
-			return nil, driver.formatErr(errors.Join(err, cerr))
+			// Keep Close visible: formatErr's InvalidOffset arm returns only the
+			// stamped typed error, so Join(offset, close) would drop close.
+			return nil, errclass.Wrap(formatted, cerr)
 		}
 
-		return nil, driver.formatErr(err)
+		return nil, formatted
 	}
 
 	return file, nil
@@ -398,19 +401,21 @@ func (driver *Driver) formatErr(err error) error {
 	if pathNotFound, ok := errors.AsType[storagedriver.PathNotFoundError](err); ok {
 		pathNotFound.DriverName = driver.Name()
 
-		return errclass.MarkMissing(errclass.Wrap(pathNotFound, err))
+		// Mark the stamped value only — Wrap(stamped, err) would stack two typed
+		// values that differ only by DriverName (no Is on distribution types).
+		return errclass.MarkMissing(pathNotFound)
 	}
 
 	if invalidPath, ok := errors.AsType[storagedriver.InvalidPathError](err); ok {
 		invalidPath.DriverName = driver.Name()
 
-		return errclass.MarkPermanent(errclass.Wrap(invalidPath, err))
+		return errclass.MarkPermanent(invalidPath)
 	}
 
 	if invalidOffset, ok := errors.AsType[storagedriver.InvalidOffsetError](err); ok {
 		invalidOffset.DriverName = driver.Name()
 
-		return errclass.MarkPermanent(errclass.Wrap(invalidOffset, err))
+		return errclass.MarkPermanent(invalidOffset)
 	}
 
 	detail := err

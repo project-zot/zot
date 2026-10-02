@@ -381,8 +381,15 @@ func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Req
 
 	tags, err := imgStore.GetImageTags(name)
 	if err != nil {
-		e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(map[string]string{"name": name})
-		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
+		if errors.Is(err, zerr.ErrRepoNotFound) {
+			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(map[string]string{"name": name})
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
+		} else {
+			// Transient/Permanent (and other non-absence failures) from statRepoDir /
+			// GetIndex must not look like a missing repository.
+			rh.c.Log.Error().Err(err).Str("repository", name).Msg("failed to list tags")
+			response.WriteHeader(http.StatusInternalServerError)
+		}
 
 		return
 	}
@@ -798,44 +805,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 
 	digest, subjectDigest, err := imgStore.PutImageManifest(ctx, name, reference, mediaType, body, digestQueryTags)
 	if err != nil {
-		details := zerr.GetDetails(err)
-		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
-			details["name"] = name
-			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrManifestNotFound) {
-			details["reference"] = reference
-			e := apiErr.NewError(apiErr.MANIFEST_UNKNOWN).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrBadManifest) {
-			details["reference"] = reference
-			e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrManifestCacheLookup) {
-			rh.c.Log.Error().Err(err).Msg("failed to look up manifest cache before manifest write")
-			response.WriteHeader(http.StatusInternalServerError)
-		} else if errors.Is(err, zerr.ErrBlobNotFound) {
-			details["blob"] = digest.String()
-			e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrImageLintAnnotations) {
-			details["reference"] = reference
-			e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
-		} else {
-			// could be syscall.EMFILE (Err:0x18 too many opened files), etc
-			rh.c.Log.Error().Err(err).Msg("unexpected error, performing cleanup")
-
-			if err = imgStore.DeleteImageManifest(ctx, name, reference, false); err != nil {
-				// deletion of image manifest is important, but not critical for image repo consistency
-				// in the worst scenario a partial manifest file written to disk will not affect the repo because
-				// the new manifest was not added to "index.json" file (it is possible that GC will take care of it)
-				rh.c.Log.Error().Err(err).Str("repository", name).Str("reference", reference).
-					Msg("couldn't remove image manifest in repo")
-			}
-
-			response.WriteHeader(http.StatusInternalServerError)
-		}
+		rh.writePutImageManifestError(response, name, reference, digest, err)
 
 		return
 	}
@@ -872,6 +842,51 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 	}
 
 	response.WriteHeader(http.StatusCreated)
+}
+
+// writePutImageManifestError maps PutImageManifest failures to HTTP responses.
+// Never calls DeleteImageManifest: the PUT may not have updated index.json, and
+// deleting by reference can remove an existing tag on overwrite. Unreferenced
+// partial blobs are left for GC.
+func (rh *RouteHandler) writePutImageManifestError(
+	response http.ResponseWriter, name, reference string, digest godigest.Digest, err error,
+) {
+	details := zerr.GetDetails(err)
+
+	if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
+		details["name"] = name
+		e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
+	} else if errors.Is(err, zerr.ErrManifestNotFound) {
+		details["reference"] = reference
+		e := apiErr.NewError(apiErr.MANIFEST_UNKNOWN).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
+	} else if errors.Is(err, zerr.ErrBadManifest) {
+		details["reference"] = reference
+		e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+	} else if errors.Is(err, zerr.ErrManifestCacheLookup) {
+		rh.c.Log.Error().Err(err).Str("repository", name).Str("reference", reference).
+			Msg("failed to look up manifest cache before manifest write")
+		response.WriteHeader(http.StatusInternalServerError)
+	} else if errors.Is(err, zerr.ErrStorageTransient) || errors.Is(err, zerr.ErrStoragePermanent) {
+		rh.c.Log.Error().Err(err).Str("repository", name).Str("reference", reference).
+			Msg("storage failure during manifest put")
+		response.WriteHeader(http.StatusInternalServerError)
+	} else if errors.Is(err, zerr.ErrBlobNotFound) {
+		details["blob"] = digest.String()
+		e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+	} else if errors.Is(err, zerr.ErrImageLintAnnotations) {
+		details["reference"] = reference
+		e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+	} else {
+		// e.g. io.ErrShortWrite, syscall.EMFILE — do not delete the reference
+		rh.c.Log.Error().Err(err).Str("repository", name).Str("reference", reference).
+			Msg("unexpected error during manifest put")
+		response.WriteHeader(http.StatusInternalServerError)
+	}
 }
 
 // normalizeManifestExtraTags deduplicates tag query values in order, rejects empty components, and

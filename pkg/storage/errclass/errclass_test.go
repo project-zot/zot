@@ -216,6 +216,52 @@ func TestWrapReadCloser(t *testing.T) {
 	})
 }
 
+func TestPredicates(t *testing.T) {
+	Convey("IsStorageObjectMissing / IsBlobUnavailable", t, func() {
+		Convey("nil → false", func() {
+			So(errclass.IsStorageObjectMissing(nil), ShouldBeFalse)
+			So(errclass.IsBlobUnavailable(nil), ShouldBeFalse)
+		})
+
+		Convey("ErrStorageMissing → storage missing + unavailable", func() {
+			err := errclass.MarkMissing(errors.New("gone")) //nolint:err113 // test
+			So(errclass.IsStorageObjectMissing(err), ShouldBeTrue)
+			So(errclass.IsBlobUnavailable(err), ShouldBeTrue)
+		})
+
+		Convey("bare PathNotFound is not Missing until driver formatErr MarkMissing", func() {
+			err := storagedriver.PathNotFoundError{Path: "/x"}
+			So(errclass.IsStorageObjectMissing(err), ShouldBeFalse)
+			So(errclass.IsBlobUnavailable(err), ShouldBeFalse)
+		})
+
+		Convey("ErrCacheMiss → unavailable, not storage missing", func() {
+			So(errors.Is(zerr.ErrCacheMiss, zerr.ErrCacheMiss), ShouldBeTrue)
+			So(errclass.IsStorageObjectMissing(zerr.ErrCacheMiss), ShouldBeFalse)
+			So(errclass.IsBlobUnavailable(zerr.ErrCacheMiss), ShouldBeTrue)
+		})
+
+		Convey("ErrBlobNotFound → unavailable only", func() {
+			So(errclass.IsBlobUnavailable(zerr.ErrBlobNotFound), ShouldBeTrue)
+			So(errclass.IsStorageObjectMissing(zerr.ErrBlobNotFound), ShouldBeFalse)
+		})
+
+		Convey("Wrapped BlobNotFound + CacheMiss matches both HTTP and cache", func() {
+			err := errclass.Wrap(zerr.ErrBlobNotFound, zerr.ErrCacheMiss)
+			So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
+			So(errors.Is(err, zerr.ErrCacheMiss), ShouldBeTrue)
+			So(errclass.IsStorageObjectMissing(err), ShouldBeFalse)
+			So(errclass.IsBlobUnavailable(err), ShouldBeTrue)
+		})
+
+		Convey("Transient is not unavailable", func() {
+			err := errclass.MarkTransient(errors.New("blip")) //nolint:err113 // test
+			So(errclass.IsBlobUnavailable(err), ShouldBeFalse)
+			So(errclass.IsStorageObjectMissing(err), ShouldBeFalse)
+		})
+	})
+}
+
 type errReadCloser struct {
 	readErr  error
 	closeErr error

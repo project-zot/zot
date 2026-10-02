@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -32,6 +33,9 @@ func TestFormatErr(t *testing.T) {
 			So(errors.As(formatted, &pathNotFoundErr), ShouldBeTrue)
 			So(pathNotFoundErr.DriverName, ShouldEqual, "local")
 			So(errors.Is(formatted, zerr.ErrStorageMissing), ShouldBeTrue)
+			// Stamped PathNotFound must not be stacked with the unstamped original.
+			So(formatted.Error(), ShouldEqual,
+				"storage object or path is missing: local: Path not found: /test")
 		})
 
 		Convey("Test formatErr with InvalidPathError", func() {
@@ -43,6 +47,8 @@ func TestFormatErr(t *testing.T) {
 			So(errors.As(formatted, &invalidPathErr), ShouldBeTrue)
 			So(invalidPathErr.DriverName, ShouldEqual, "local")
 			So(errors.Is(formatted, zerr.ErrStoragePermanent), ShouldBeTrue)
+			So(formatted.Error(), ShouldEqual,
+				"storage backend returned a permanent error: local: invalid path: /test")
 		})
 
 		Convey("Test formatErr with InvalidOffsetError", func() {
@@ -54,21 +60,8 @@ func TestFormatErr(t *testing.T) {
 			So(errors.As(formatted, &invalidOffsetErr), ShouldBeTrue)
 			So(invalidOffsetErr.DriverName, ShouldEqual, "local")
 			So(errors.Is(formatted, zerr.ErrStoragePermanent), ShouldBeTrue)
-		})
-
-		Convey("Test formatErr keeps Join sibling on typed InvalidOffset", func() {
-			closeErr := errors.New("close failed")
-			joined := errors.Join(
-				storagedriver.InvalidOffsetError{Path: "/test", Offset: -1},
-				closeErr,
-			)
-			formatted := driver.formatErr(joined)
-			So(errors.Is(formatted, zerr.ErrStoragePermanent), ShouldBeTrue)
-			So(errors.Is(formatted, closeErr), ShouldBeTrue)
-
-			var offset storagedriver.InvalidOffsetError
-			So(errors.As(formatted, &offset), ShouldBeTrue)
-			So(offset.DriverName, ShouldEqual, "local")
+			So(formatted.Error(), ShouldEqual,
+				"storage backend returned a permanent error: local: invalid offset: 100 for path: /test")
 		})
 
 		Convey("Test formatErr with generic error", func() {
@@ -224,6 +217,8 @@ func TestOpenReaderSeekPaths(t *testing.T) {
 			So(inv.Path, ShouldEqual, "/blob")
 			So(inv.Offset, ShouldEqual, int64(10))
 			So(errors.Is(err, zerr.ErrStoragePermanent), ShouldBeTrue)
+			So(err.Error(), ShouldEqual,
+				"storage backend returned a permanent error: local: invalid offset: 10 for path: /blob")
 			So(file.closeCalled, ShouldBeTrue)
 		})
 
@@ -236,6 +231,7 @@ func TestOpenReaderSeekPaths(t *testing.T) {
 			So(errors.As(err, &inv), ShouldBeTrue)
 			So(errors.Is(err, closeBoom), ShouldBeTrue)
 			So(errors.Is(err, zerr.ErrStoragePermanent), ShouldBeTrue)
+			So(strings.Count(err.Error(), "invalid offset"), ShouldEqual, 1)
 		})
 
 		Convey("Seek error + Close error → Join both", func() {
