@@ -228,4 +228,7 @@ var (
 	ErrFailedSystemdActivationListeners = errors.New("failed to get systemd socket activation listeners")
 	ErrSystemdActivationPortMismatch    = errors.New("systemd activated port does not match configured http port")
 	ErrSystemdListenerNotStream         = errors.New("systemd socket activation listener is not a stream listener")
+	ErrStorageMissing                   = errors.New("storage object or path is missing")
+	ErrStorageTransient                 = errors.New("storage backend returned a transient error")
+	ErrStoragePermanent                 = errors.New("storage backend returned a permanent error")
 )

@@ -2,21 +2,25 @@ package s3
 
 import (
 	"context"
+	"errors"
 	"io"
+	"net"
 	"net/http"
+	"strings"
 
-	// Add s3 support.
-	"github.com/distribution/distribution/v3/registry/storage/driver"
-	_ "github.com/distribution/distribution/v3/registry/storage/driver/s3-aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
+	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
+	_ "github.com/distribution/distribution/v3/registry/storage/driver/s3-aws" // register driver
 
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
+	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 )
 
 type Driver struct {
-	store driver.StorageDriver
+	store storagedriver.StorageDriver
 }
 
-func New(storeDriver driver.StorageDriver) *Driver {
+func New(storeDriver storagedriver.StorageDriver) *Driver {
 	return &Driver{store: storeDriver}
 }
 
@@ -37,55 +41,136 @@ func (driver *Driver) DirExists(path string) bool {
 }
 
 func (driver *Driver) Reader(path string, offset int64) (io.ReadCloser, error) {
-	return driver.store.Reader(context.Background(), path, offset)
+	reader, err := driver.store.Reader(context.Background(), path, offset)
+	if err != nil {
+		return nil, driver.formatErr(err, path)
+	}
+
+	return errclass.WrapReadCloser(reader, func(err error) error {
+		return driver.formatErr(err, path)
+	}), nil
 }
 
 func (driver *Driver) ReadFile(path string) ([]byte, error) {
-	return driver.store.GetContent(context.Background(), path)
+	content, err := driver.store.GetContent(context.Background(), path)
+	if err != nil {
+		return nil, driver.formatErr(err, path)
+	}
+
+	return content, nil
 }
 
 func (driver *Driver) Delete(path string) error {
-	return driver.store.Delete(context.Background(), path)
+	// Not idempotent today: PathNotFound / Missing is returned to the caller
+	// (unlike GCS/Azure). Making S3 Delete idempotent like those wrappers is a
+	// planned follow-up; local stays non-idempotent.
+	return driver.formatErr(driver.store.Delete(context.Background(), path), path)
 }
 
-func (driver *Driver) Stat(path string) (driver.FileInfo, error) {
-	return driver.store.Stat(context.Background(), path)
+func (driver *Driver) Stat(path string) (storagedriver.FileInfo, error) {
+	fileInfo, err := driver.store.Stat(context.Background(), path)
+	if err != nil {
+		return nil, driver.formatErr(err, path)
+	}
+
+	return fileInfo, nil
 }
 
-func (driver *Driver) Writer(filepath string, append bool) (driver.FileWriter, error) { //nolint:predeclared
-	return driver.store.Writer(context.Background(), filepath, append)
+func (driver *Driver) Writer(filepath string, isAppend bool) (storagedriver.FileWriter, error) {
+	writer, err := driver.store.Writer(context.Background(), filepath, isAppend)
+	if err != nil {
+		return nil, driver.formatErr(err, filepath)
+	}
+
+	return errclass.WrapFileWriter(writer, func(err error) error {
+		return driver.formatErr(err, filepath)
+	}), nil
 }
 
 func (driver *Driver) WriteFile(filepath string, content []byte) (int, error) {
-	var n int
-
-	if stwr, err := driver.store.Writer(context.Background(), filepath, false); err == nil {
-		defer stwr.Close()
-
-		if n, err = stwr.Write(content); err != nil {
-			return -1, err
-		}
-
-		if err := stwr.Commit(context.Background()); err != nil {
-			return -1, err
-		}
-	} else {
+	stwr, err := driver.Writer(filepath, false)
+	if err != nil {
 		return -1, err
+	}
+
+	n, err := stwr.Write(content)
+	if err != nil {
+		_ = stwr.Close()
+
+		return -1, err
+	}
+
+	if err := stwr.Commit(context.Background()); err != nil {
+		_ = stwr.Close()
+
+		return -1, err
+	}
+
+	if err := stwr.Close(); err != nil {
+		return n, err
 	}
 
 	return n, nil
 }
 
-func (driver *Driver) Walk(path string, f driver.WalkFn) error {
-	return driver.store.Walk(context.Background(), path, f)
+func (driver *Driver) Walk(path string, f storagedriver.WalkFn) error {
+	var callbackErr error
+
+	err := driver.store.Walk(context.Background(), path, func(fileInfo storagedriver.FileInfo) error {
+		walkErr := f(fileInfo)
+		if walkErr == nil {
+			return nil
+		}
+
+		// Keep Walk control signals for the store; capture real application errors.
+		if errors.Is(walkErr, io.EOF) ||
+			errors.Is(walkErr, storagedriver.ErrSkipDir) ||
+			errors.Is(walkErr, storagedriver.ErrFilledBuffer) {
+			return walkErr
+		}
+
+		callbackErr = walkErr
+
+		return walkErr
+	})
+
+	// io.EOF is used by callers (e.g. GetNextRepository) as a stop signal, not an error.
+	if isEOF(err) {
+		return io.EOF
+	}
+
+	// Application WalkFn errors must not be stamped Transient via formatErr.
+	if callbackErr != nil {
+		return callbackErr
+	}
+
+	return driver.formatErr(err, path)
+}
+
+// isEOF reports whether err is bare io.EOF or io.EOF wrapped in storagedriver.Error.Detail.
+func isEOF(err error) bool {
+	if errors.Is(err, io.EOF) {
+		return true
+	}
+
+	if storageErr, ok := errors.AsType[storagedriver.Error](err); ok {
+		return errors.Is(storageErr.Detail, io.EOF)
+	}
+
+	return false
 }
 
 func (driver *Driver) List(fullpath string) ([]string, error) {
-	return driver.store.List(context.Background(), fullpath)
+	list, err := driver.store.List(context.Background(), fullpath)
+	if err != nil {
+		return nil, driver.formatErr(err, fullpath)
+	}
+
+	return list, nil
 }
 
 func (driver *Driver) Move(sourcePath string, destPath string) error {
-	return driver.store.Move(context.Background(), sourcePath, destPath)
+	return driver.formatErr(driver.store.Move(context.Background(), sourcePath, destPath), sourcePath)
 }
 
 func (driver *Driver) SameFile(path1, path2 string) bool {
@@ -106,17 +191,147 @@ func (driver *Driver) SameFile(path1, path2 string) bool {
 }
 
 // Link puts an empty file that will act like a link between the original file and deduped one.
-// Because s3 doesn't support symlinks, wherever the storage will encounter an empty file, it will get the original one
-// from cache.
+// Because S3 doesn't support symlinks, wherever the storage encounters an empty file it will
+// get the original one from cache.
 func (driver *Driver) Link(src, dest string) error {
 	// PutContent ignores src; writing an empty object onto the origin would destroy content.
 	if src == dest {
 		return nil
 	}
 
-	return driver.store.PutContent(context.Background(), dest, []byte{})
+	return driver.formatErr(driver.store.PutContent(context.Background(), dest, []byte{}), dest)
 }
 
 func (driver *Driver) RedirectURL(r *http.Request, path string) (string, error) {
-	return driver.store.RedirectURL(r, path)
+	redirectURL, err := driver.store.RedirectURL(r, path)
+
+	return redirectURL, driver.formatErr(err, path)
+}
+
+// formatErr maps S3 / distribution errors onto PathNotFound / Invalid* and zot
+// storage sentinels (Missing / Transient / Permanent). Distribution often already
+// returns PathNotFound; awserr codes are classified here. Unclassified errors
+// become Transient (never invent Missing).
+func (driver *Driver) formatErr(err error, path string) error {
+	if err == nil {
+		return nil
+	}
+
+	if errclass.IsWriterLifecycleError(err) {
+		return err
+	}
+
+	if pathNotFound, ok := errors.AsType[storagedriver.PathNotFoundError](err); ok {
+		pathNotFound.DriverName = driver.Name()
+		if pathNotFound.Path == "" && path != "" {
+			pathNotFound.Path = path
+		}
+
+		return errclass.MarkMissing(errclass.Wrap(pathNotFound, err))
+	}
+
+	if invalidPath, ok := errors.AsType[storagedriver.InvalidPathError](err); ok {
+		invalidPath.DriverName = driver.Name()
+
+		return errclass.MarkPermanent(errclass.Wrap(invalidPath, err))
+	}
+
+	if invalidOffset, ok := errors.AsType[storagedriver.InvalidOffsetError](err); ok {
+		invalidOffset.DriverName = driver.Name()
+
+		return errclass.MarkPermanent(errclass.Wrap(invalidOffset, err))
+	}
+
+	if unsupported, ok := errors.AsType[storagedriver.ErrUnsupportedMethod](err); ok {
+		unsupported.DriverName = driver.Name()
+
+		return errclass.MarkPermanent(errclass.Wrap(unsupported, err))
+	}
+
+	detail := err
+
+	if storageErr, ok := errors.AsType[storagedriver.Error](err); ok && storageErr.Detail != nil {
+		detail = storageErr.Detail
+	}
+
+	// Error does not Unwrap Detail — keep detail reachable for errors.Is/As.
+	inner := err
+	if !errors.Is(err, detail) {
+		inner = errclass.Wrap(err, detail)
+	}
+
+	if isS3NotFound(detail) {
+		return errclass.MarkMissing(errclass.Wrap(storagedriver.PathNotFoundError{
+			DriverName: driver.Name(),
+			Path:       path,
+		}, inner))
+	}
+
+	wrapped := storagedriver.Error{
+		DriverName: driver.Name(),
+		Detail:     detail,
+	}
+
+	// Order matches matrix: Permanent (auth) before Transient (throttle/5xx).
+	if isS3Permanent(detail) {
+		return errclass.MarkPermanent(errclass.Wrap(wrapped, inner))
+	}
+
+	if isS3Transient(detail) {
+		return errclass.MarkTransient(errclass.Wrap(wrapped, inner))
+	}
+
+	// Unsure → Transient (do not invent Missing).
+	return errclass.MarkTransient(errclass.Wrap(wrapped, inner))
+}
+
+func isS3NotFound(err error) bool {
+	if awsErr, ok := errors.AsType[awserr.Error](err); ok {
+		switch awsErr.Code() {
+		case "NoSuchKey", "NotFound":
+			return true
+		}
+	}
+
+	return false
+}
+
+func isS3Transient(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return true
+	}
+
+	if awsErr, ok := errors.AsType[awserr.Error](err); ok {
+		switch awsErr.Code() {
+		case "RequestTimeout", "RequestCanceled", "PriorRequestNotComplete",
+			"Throttling", "ThrottlingException", "ProvisionedThroughputExceededException",
+			"SlowDown", "ServiceUnavailable", "InternalError", "RequestLimitExceeded":
+			return true
+		}
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+
+	msg := strings.ToLower(err.Error())
+
+	return strings.Contains(msg, "connection reset") ||
+		strings.Contains(msg, "i/o timeout") ||
+		strings.Contains(msg, "status code: 503") ||
+		strings.Contains(msg, "status code: 429")
+}
+
+func isS3Permanent(err error) bool {
+	if awsErr, ok := errors.AsType[awserr.Error](err); ok {
+		switch awsErr.Code() {
+		case "AccessDenied", "InvalidAccessKeyId", "SignatureDoesNotMatch",
+			"InvalidBucketName", "NoSuchBucket", "PermanentRedirect",
+			"AuthorizationHeaderMalformed":
+			return true
+		}
+	}
+
+	return false
 }

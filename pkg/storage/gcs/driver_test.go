@@ -122,7 +122,8 @@ func TestDriver(t *testing.T) {
 			})
 
 			Convey("GCS not-found string becomes PathNotFoundError", func() {
-				for _, msg := range []string{"object doesn't exist", "Error 404", "does not exist"} {
+				// Narrow strings only — bare "does not exist" is Transient (see storage_error_mapping_test).
+				for _, msg := range []string{"object doesn't exist", "Error 404"} {
 					errMsg := msg
 					storeMock.GetContentFn = func(ctx context.Context, path string) ([]byte, error) {
 						//nolint:err113 // test needs variable not-found message
@@ -174,7 +175,7 @@ func TestDriver(t *testing.T) {
 				}
 				err := gcsDriver.Delete("/test")
 				So(err, ShouldNotBeNil)
-				So(errors.Is(err, errTest), ShouldBeFalse) // wrapped in storagedriver.Error
+				So(errors.Is(err, errTest), ShouldBeTrue) // Wrap preserves underlying error
 			})
 		})
 

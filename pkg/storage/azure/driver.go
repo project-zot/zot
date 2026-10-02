@@ -4,12 +4,16 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
 	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
 
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
+	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 )
 
 type Driver struct {
@@ -42,7 +46,9 @@ func (driver *Driver) Reader(path string, offset int64) (io.ReadCloser, error) {
 		return nil, driver.formatErr(err, path)
 	}
 
-	return reader, nil
+	return errclass.WrapReadCloser(reader, func(err error) error {
+		return driver.formatErr(err, path)
+	}), nil
 }
 
 func (driver *Driver) ReadFile(path string) ([]byte, error) {
@@ -55,19 +61,19 @@ func (driver *Driver) ReadFile(path string) ([]byte, error) {
 }
 
 func (driver *Driver) Delete(path string) error {
+	// Upstream returns PathNotFound (never zot ErrStorageMissing). formatErr may also
+	// synthesize PathNotFound from typed/string not-found fallbacks, then MarkMissing.
 	err := driver.store.Delete(context.Background(), path)
 	if err == nil {
 		return nil
 	}
 
-	// Format the error first to convert Azure-specific 404 errors to PathNotFoundError.
 	formattedErr := driver.formatErr(err, path)
 
-	// Check if the formatted error is PathNotFoundError.
+	// Idempotent delete: PathNotFound after formatErr is a no-op. In Azure Blob,
+	// directories are just blob-name prefixes, so once all blobs under a prefix are
+	// gone the "directory" no longer exists. Mirrors the GCS driver.
 	if _, ok := errors.AsType[storagedriver.PathNotFoundError](formattedErr); ok {
-		// In Azure Blob, directories are just blob-name prefixes, so once all blobs under a
-		// prefix are gone the "directory" no longer exists. Treat deleting a missing path as a
-		// no-op so Delete is idempotent (mirrors the gcs driver behavior).
 		return nil
 	}
 
@@ -83,46 +89,78 @@ func (driver *Driver) Stat(path string) (storagedriver.FileInfo, error) {
 	return fileInfo, nil
 }
 
-func (driver *Driver) Writer(filepath string, append bool) (storagedriver.FileWriter, error) { //nolint:predeclared
-	writer, err := driver.store.Writer(context.Background(), filepath, append)
+func (driver *Driver) Writer(filepath string, isAppend bool) (storagedriver.FileWriter, error) {
+	writer, err := driver.store.Writer(context.Background(), filepath, isAppend)
 	if err != nil {
 		return nil, driver.formatErr(err, filepath)
 	}
 
-	return writer, nil
+	return errclass.WrapFileWriter(writer, func(err error) error {
+		return driver.formatErr(err, filepath)
+	}), nil
 }
 
 func (driver *Driver) WriteFile(filepath string, content []byte) (int, error) {
-	var n int
-
-	stwr, err := driver.store.Writer(context.Background(), filepath, false)
+	stwr, err := driver.Writer(filepath, false)
 	if err != nil {
-		return -1, driver.formatErr(err, filepath)
+		return -1, err
 	}
-	defer stwr.Close()
 
-	if n, err = stwr.Write(content); err != nil {
-		return -1, driver.formatErr(err, filepath)
+	n, err := stwr.Write(content)
+	if err != nil {
+		_ = stwr.Close()
+
+		return -1, err
 	}
 
 	if err := stwr.Commit(context.Background()); err != nil {
-		return -1, driver.formatErr(err, filepath)
+		_ = stwr.Close()
+
+		return -1, err
+	}
+
+	if err := stwr.Close(); err != nil {
+		return n, err
 	}
 
 	return n, nil
 }
 
 func (driver *Driver) Walk(path string, f storagedriver.WalkFn) error {
-	err := driver.store.Walk(context.Background(), path, f)
+	var callbackErr error
+
+	err := driver.store.Walk(context.Background(), path, func(fileInfo storagedriver.FileInfo) error {
+		walkErr := f(fileInfo)
+		if walkErr == nil {
+			return nil
+		}
+
+		// Keep Walk control signals for the store; capture real application errors.
+		if errors.Is(walkErr, io.EOF) ||
+			errors.Is(walkErr, storagedriver.ErrSkipDir) ||
+			errors.Is(walkErr, storagedriver.ErrFilledBuffer) {
+			return walkErr
+		}
+
+		callbackErr = walkErr
+
+		return walkErr
+	})
+
 	// io.EOF is used by callers (e.g. GetNextRepository) as a stop signal, not an error, so return directly.
 	if isEOF(err) {
 		return io.EOF
 	}
 
+	// Application WalkFn errors must not be stamped Transient via formatErr.
+	if callbackErr != nil {
+		return callbackErr
+	}
+
 	return driver.formatErr(err, path)
 }
 
-// isEOF checks whether err is directly io.EOF or if io.EOF is wrapped into storagedriver.Error.Detail.
+// isEOF reports whether err is bare io.EOF or io.EOF wrapped in storagedriver.Error.Detail.
 func isEOF(err error) bool {
 	if errors.Is(err, io.EOF) {
 		return true
@@ -187,58 +225,170 @@ func (driver *Driver) RedirectURL(r *http.Request, path string) (string, error) 
 	return redirectURL, driver.formatErr(err, path)
 }
 
-// formatErr converts Azure-specific not-found errors to PathNotFoundError. The upstream azure
-// driver usually returns PathNotFoundError already (handled by the first cases); the default case
-// is a defensive fallback that maps Azure blob "not found" responses to PathNotFoundError.
+// formatErr maps Azure / distribution errors onto PathNotFound / Invalid* and zot
+// storage sentinels (Missing / Transient / Permanent). Upstream usually already
+// returns PathNotFound for misses; typed bloberror codes and narrow string
+// fallbacks are defensive. Unclassified errors become Transient (never invent Missing).
 func (driver *Driver) formatErr(err error, path string) error {
-	switch actual := err.(type) { //nolint: errorlint
-	case nil:
+	if err == nil {
 		return nil
-	case storagedriver.PathNotFoundError:
-		actual.DriverName = driver.Name()
-		if actual.Path == "" && path != "" {
-			actual.Path = path
-		}
-
-		return actual
-	case storagedriver.InvalidPathError:
-		actual.DriverName = driver.Name()
-
-		return actual
-	case storagedriver.InvalidOffsetError:
-		actual.DriverName = driver.Name()
-
-		return actual
-	default:
-		// Check for Azure-specific not-found errors by unwrapping the error chain.
-		errToCheck := err
-		for errToCheck != nil {
-			errStr := errToCheck.Error()
-			isNotFound := strings.Contains(errStr, "BlobNotFound") ||
-				strings.Contains(errStr, "ResourceNotFound") ||
-				strings.Contains(errStr, "Error 404") ||
-				strings.Contains(errStr, "404 The specified blob does not exist") ||
-				strings.Contains(errStr, "does not exist")
-
-			if isNotFound {
-				return storagedriver.PathNotFoundError{
-					DriverName: driver.Name(),
-					Path:       path,
-				}
-			}
-
-			if unwrappable, ok := errToCheck.(interface{ Unwrap() error }); ok {
-				errToCheck = unwrappable.Unwrap()
-			} else {
-				break
-			}
-		}
-
-		storageError := storagedriver.Error{
-			DriverName: driver.Name(),
-			Detail:     err,
-		}
-
-		return storageError
 	}
+
+	if errclass.IsWriterLifecycleError(err) {
+		return err
+	}
+
+	if pathNotFound, ok := errors.AsType[storagedriver.PathNotFoundError](err); ok {
+		pathNotFound.DriverName = driver.Name()
+		if pathNotFound.Path == "" && path != "" {
+			pathNotFound.Path = path
+		}
+
+		return errclass.MarkMissing(errclass.Wrap(pathNotFound, err))
+	}
+
+	if invalidPath, ok := errors.AsType[storagedriver.InvalidPathError](err); ok {
+		invalidPath.DriverName = driver.Name()
+
+		return errclass.MarkPermanent(errclass.Wrap(invalidPath, err))
+	}
+
+	if invalidOffset, ok := errors.AsType[storagedriver.InvalidOffsetError](err); ok {
+		invalidOffset.DriverName = driver.Name()
+
+		return errclass.MarkPermanent(errclass.Wrap(invalidOffset, err))
+	}
+
+	if unsupported, ok := errors.AsType[storagedriver.ErrUnsupportedMethod](err); ok {
+		unsupported.DriverName = driver.Name()
+
+		return errclass.MarkPermanent(errclass.Wrap(unsupported, err))
+	}
+
+	detail := err
+
+	if storageErr, ok := errors.AsType[storagedriver.Error](err); ok && storageErr.Detail != nil {
+		detail = storageErr.Detail
+	}
+
+	// Error does not Unwrap Detail — keep detail reachable for errors.Is/As.
+	inner := err
+	if !errors.Is(err, detail) {
+		inner = errclass.Wrap(err, detail)
+	}
+
+	if isAzureNotFound(detail) {
+		return errclass.MarkMissing(errclass.Wrap(storagedriver.PathNotFoundError{
+			DriverName: driver.Name(),
+			Path:       path,
+		}, inner))
+	}
+
+	wrapped := storagedriver.Error{
+		DriverName: driver.Name(),
+		Detail:     detail,
+	}
+
+	if isAzurePermanent(detail) {
+		return errclass.MarkPermanent(errclass.Wrap(wrapped, inner))
+	}
+
+	if isAzureTransient(detail) {
+		return errclass.MarkTransient(errclass.Wrap(wrapped, inner))
+	}
+
+	// Unsure → Transient (do not invent Missing).
+	return errclass.MarkTransient(errclass.Wrap(wrapped, inner))
+}
+
+func isAzureNotFound(err error) bool {
+	if bloberror.HasCode(err,
+		bloberror.BlobNotFound,
+		bloberror.ContainerNotFound,
+		bloberror.ResourceNotFound,
+		bloberror.CannotVerifyCopySource,
+	) {
+		return true
+	}
+
+	// Narrow string fallback when typed codes are not present.
+	// Avoid broad "does not exist" (over-classifies timeouts).
+	msg := err.Error()
+
+	return strings.Contains(msg, "BlobNotFound") ||
+		strings.Contains(msg, "ResourceNotFound") ||
+		strings.Contains(msg, "Error 404") ||
+		strings.Contains(msg, "404 The specified blob does not exist")
+}
+
+func isAzureTransient(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return true
+	}
+
+	if bloberror.HasCode(err,
+		bloberror.ServerBusy,
+		bloberror.InternalError,
+		bloberror.OperationTimedOut,
+	) {
+		return true
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+
+	msg := strings.ToLower(err.Error())
+
+	return strings.Contains(msg, "connection reset") ||
+		strings.Contains(msg, "serviceunavailable") ||
+		strings.Contains(msg, "toomanyrequests") ||
+		strings.Contains(msg, "i/o timeout")
+}
+
+func isAzurePermanent(err error) bool {
+	// HTTP 401/403 cover the auth family even when ErrorCode is unfamiliar.
+	if respErr, ok := errors.AsType[*azcore.ResponseError](err); ok {
+		if respErr.StatusCode == http.StatusUnauthorized ||
+			respErr.StatusCode == http.StatusForbidden {
+			return true
+		}
+	}
+
+	if bloberror.HasCode(err,
+		bloberror.AuthorizationFailure,
+		bloberror.AuthorizationPermissionMismatch,
+		bloberror.AuthorizationProtocolMismatch,
+		bloberror.AuthorizationResourceTypeMismatch,
+		bloberror.AuthorizationServiceMismatch,
+		bloberror.AuthorizationSourceIPMismatch,
+		bloberror.AuthenticationFailed,
+		bloberror.InsufficientAccountPermissions,
+		bloberror.InvalidAuthenticationInfo,
+		bloberror.NoAuthenticationInformation,
+		bloberror.AccountIsDisabled,
+		bloberror.InvalidURI,
+		bloberror.InvalidResourceName,
+	) {
+		return true
+	}
+
+	// Distribution formats some Azure failures with %v (Reader/PutContent),
+	// which drops *azcore.ResponseError. Match service codes in the text.
+	msg := err.Error()
+
+	return strings.Contains(msg, string(bloberror.AuthorizationFailure)) ||
+		strings.Contains(msg, string(bloberror.AuthorizationPermissionMismatch)) ||
+		strings.Contains(msg, string(bloberror.AuthorizationProtocolMismatch)) ||
+		strings.Contains(msg, string(bloberror.AuthorizationResourceTypeMismatch)) ||
+		strings.Contains(msg, string(bloberror.AuthorizationServiceMismatch)) ||
+		strings.Contains(msg, string(bloberror.AuthorizationSourceIPMismatch)) ||
+		strings.Contains(msg, string(bloberror.AuthenticationFailed)) ||
+		strings.Contains(msg, string(bloberror.InsufficientAccountPermissions)) ||
+		strings.Contains(msg, string(bloberror.InvalidAuthenticationInfo)) ||
+		strings.Contains(msg, string(bloberror.NoAuthenticationInformation)) ||
+		strings.Contains(msg, string(bloberror.AccountIsDisabled)) ||
+		strings.Contains(msg, string(bloberror.InvalidURI)) ||
+		strings.Contains(msg, string(bloberror.InvalidResourceName))
 }
