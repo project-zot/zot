@@ -70,7 +70,7 @@ func TestRedisCache(t *testing.T) {
 		So(val, ShouldNotBeEmpty)
 
 		err = cacheDriver.DeleteBlob("bogusKey", "bogusValue")
-		So(err, ShouldEqual, zerr.ErrCacheMiss)
+		So(err, ShouldBeNil)
 
 		err = cacheDriver.DeleteBlob("key", "bogusValue")
 		So(err, ShouldBeNil)

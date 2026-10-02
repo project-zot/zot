@@ -388,6 +388,12 @@ func (d *RedisDriver) DeleteBlob(digest godigest.Digest, path string) error {
 
 	currentPath, err := d.GetBlob(digest)
 	if err != nil {
+		// Idempotent with DynamoDB: a concurrent DeleteBlob may have already
+		// removed the digest after our SRem, or the digest was never present.
+		if goerrors.Is(err, zerr.ErrCacheMiss) {
+			return nil
+		}
+
 		return err
 	}
 

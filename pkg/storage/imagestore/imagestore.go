@@ -1408,20 +1408,26 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 		}
 
 		if dstRecord == "" {
-			// cache record doesn't exist, so first disk and cache entry for this digest
-			if err := is.cache.PutBlob(dstDigest, dst); err != nil {
-				is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
-					Msg("failed to insert blob record")
-
-				return err
-			}
-
-			// move the blob from uploads to final dest
+			// Move onto disk first, then publish the cache origin. Putting the
+			// cache entry before Move lets other cluster nodes (shared Redis /
+			// DynamoDB cache, per-process store locks only) observe an origin
+			// path that does not exist yet, Stat-fail, and race on DeleteBlob.
 			if err := is.storeDriver.Move(src, dst); err != nil {
 				is.log.Error().Err(err).Str("src", src).Str("dst", dst).Str("component", "dedupe").
 					Msg("failed to rename blob")
 
 				return err
+			}
+
+			if err := is.cache.PutBlob(dstDigest, dst); err != nil {
+				// Blob content is already durable at dst; failing the upload would
+				// return HTTP 500 while the object exists and the upload session is
+				// gone. Log and succeed — a later PutBlob or dedupe rebuild can
+				// publish the origin.
+				is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
+					Msg("failed to insert blob record after move; leaving blob committed")
+
+				return nil
 			}
 
 			is.log.Debug().Str("src", src).Str("dst", dst).Str("component", "dedupe").Msg("rename")
@@ -1441,7 +1447,15 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 			// the actual blob on disk may have been removed by GC, so sync the cache
 			err := is.cache.DeleteBlob(dstDigest, dstRecord)
 			if err = inject.Error(err); err != nil {
-				//nolint:lll
+				// Another node may have already cleared the stale origin (common
+				// with Redis DeleteBlob under concurrent healers). Retry as miss.
+				if errors.Is(err, zerr.ErrCacheMiss) {
+					is.log.Debug().Err(err).Str("dstDigest", dstDigest.String()).Str("dst", dst).
+						Str("component", "dedupe").Msg("blob record already removed")
+
+					continue
+				}
+
 				is.log.Error().Err(err).Str("dstDigest", dstDigest.String()).Str("dst", dst).
 					Str("component", "dedupe").Msg("failed to delete blob record")
 

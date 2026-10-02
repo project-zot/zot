@@ -4103,6 +4103,115 @@ func TestS3ManifestImageIndex(t *testing.T) {
 	})
 }
 
+func TestDedupeBlobRemoteCacheRace(t *testing.T) {
+	Convey("concurrent DeleteBlob cache miss is retried as a miss", t, func() {
+		// Scale-out Redis: two nodes Stat a phantom/stale origin, both DeleteBlob;
+		// the second DeleteBlob sees ErrCacheMiss. That must retry as a cache miss,
+		// not fail the upload with HTTP 500.
+		staleOrigin := "/repo-a/blobs/sha256/deadbeef"
+		getCalls := 0
+		moved := false
+		putPaths := []string{}
+
+		imgStore := createMockStorageWithMockCache("root", &mocks.StorageDriverMock{
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+				if path == staleOrigin {
+					return nil, driver.PathNotFoundError{Path: path}
+				}
+
+				return &mocks.FileInfoMock{}, nil
+			},
+			MoveFn: func(ctx context.Context, sourcePath, destPath string) error {
+				moved = true
+
+				return nil
+			},
+		}, mocks.CacheMock{
+			GetBlobFn: func(digest godigest.Digest) (string, error) {
+				getCalls++
+				if getCalls == 1 {
+					return staleOrigin, nil
+				}
+
+				return "", zerr.ErrCacheMiss
+			},
+			DeleteBlobFn: func(digest godigest.Digest, path string) error {
+				So(path, ShouldEqual, staleOrigin)
+
+				return zerr.ErrCacheMiss
+			},
+			PutBlobFn: func(digest godigest.Digest, path string) error {
+				putPaths = append(putPaths, path)
+
+				return nil
+			},
+			UsesRelativePathsFn: func() bool { return false },
+		})
+
+		digest := godigest.NewDigestFromEncoded(godigest.SHA256, "digest")
+		err := imgStore.DedupeBlob("/uploads/src", digest, "repo-b", "/repo-b/blobs/sha256/digest")
+		So(err, ShouldBeNil)
+		So(moved, ShouldBeTrue)
+		So(putPaths, ShouldResemble, []string{"/repo-b/blobs/sha256/digest"})
+		So(getCalls, ShouldBeGreaterThanOrEqualTo, 2)
+	})
+
+	Convey("first digest writer moves before publishing cache origin", t, func() {
+		var sequence []string
+
+		imgStore := createMockStorageWithMockCache("root", &mocks.StorageDriverMock{
+			MoveFn: func(ctx context.Context, sourcePath, destPath string) error {
+				sequence = append(sequence, "move:"+destPath)
+
+				return nil
+			},
+		}, mocks.CacheMock{
+			GetBlobFn: func(digest godigest.Digest) (string, error) {
+				return "", zerr.ErrCacheMiss
+			},
+			PutBlobFn: func(digest godigest.Digest, path string) error {
+				sequence = append(sequence, "put:"+path)
+
+				return nil
+			},
+			UsesRelativePathsFn: func() bool { return false },
+		})
+
+		digest := godigest.NewDigestFromEncoded(godigest.SHA256, "digest")
+		err := imgStore.DedupeBlob("/uploads/src", digest, "repo", "/repo/blobs/sha256/digest")
+		So(err, ShouldBeNil)
+		So(sequence, ShouldResemble, []string{
+			"move:/repo/blobs/sha256/digest",
+			"put:/repo/blobs/sha256/digest",
+		})
+	})
+
+	Convey("PutBlob failure after Move still commits the upload", t, func() {
+		moved := false
+
+		imgStore := createMockStorageWithMockCache("root", &mocks.StorageDriverMock{
+			MoveFn: func(ctx context.Context, sourcePath, destPath string) error {
+				moved = true
+
+				return nil
+			},
+		}, mocks.CacheMock{
+			GetBlobFn: func(digest godigest.Digest) (string, error) {
+				return "", zerr.ErrCacheMiss
+			},
+			PutBlobFn: func(digest godigest.Digest, path string) error {
+				return errCache
+			},
+			UsesRelativePathsFn: func() bool { return false },
+		})
+
+		digest := godigest.NewDigestFromEncoded(godigest.SHA256, "digest")
+		err := imgStore.DedupeBlob("/uploads/src", digest, "repo", "/repo/blobs/sha256/digest")
+		So(err, ShouldBeNil)
+		So(moved, ShouldBeTrue)
+	})
+}
+
 func TestS3DedupeErr(t *testing.T) {
 	tskip.SkipS3(t)
 
@@ -4126,9 +4235,9 @@ func TestS3DedupeErr(t *testing.T) {
 		err = os.Remove(path.Join(tdir, storageConstants.BoltdbName+storageConstants.DBExtensionName))
 		digest := godigest.NewDigestFromEncoded(godigest.SHA256, "digest")
 
-		// trigger unable to insert blob record
+		// Empty dst makes PutBlob fail after Move; the blob is treated as committed.
 		err := imgStore.DedupeBlob("", digest, "", "")
-		So(err, ShouldNotBeNil)
+		So(err, ShouldBeNil)
 
 		imgStore = createMockStorage(testDir, tdir, true, &mocks.StorageDriverMock{
 			MoveFn: func(ctx context.Context, sourcePath string, destPath string) error {
