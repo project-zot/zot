@@ -1495,73 +1495,58 @@ func (rc *RedisDB) UpdateSignaturesValidity(ctx context.Context, repo string, ma
 		return nil
 	}
 
-	err := rc.withRSLocks(ctx, []string{rc.getRepoLockKey(repo)}, func() error {
-		// get ManifestData of signed manifest
-		protoImageMeta, err := rc.getProtoImageMeta(ctx, manifestDigest.String())
-		if err != nil {
-			if errors.Is(err, zerr.ErrImageMetaNotFound) {
-				// manifest meta not found, updating signatures with details about validity and author will not be performed
-				return nil
-			}
+	// Read the signatures, verify them without holding the repo lock, then write the results back.
+	// get ManifestData of signed manifest
+	protoImageMeta, err := rc.getProtoImageMeta(ctx, manifestDigest.String())
+	if err != nil {
+		if errors.Is(err, zerr.ErrImageMetaNotFound) {
+			// manifest meta not found, updating signatures with details about validity and author will not be performed
+			return nil
+		}
 
+		return err
+	}
+
+	verifyImageMeta := mConvert.GetImageMeta(protoImageMeta)
+
+	protoRepoMeta, err := rc.getProtoRepoMeta(ctx, repo)
+	if err != nil {
+		return err
+	}
+
+	signatures := protoRepoMeta.Signatures[manifestDigest.String()]
+	if signatures == nil {
+		return nil
+	}
+
+	validity, err := common.VerifyManifestSignatures(ctx, imgTrustStore, repo, manifestDigest, verifyImageMeta,
+		signatures, rc.Log)
+	if err != nil {
+		return err
+	}
+
+	return rc.withRSLocks(ctx, []string{rc.getRepoLockKey(repo)}, func() error {
+		repoMetaBlob, err := rc.Client.HGet(ctx, rc.RepoMetaKey, repo).Bytes()
+		if errors.Is(err, redis.Nil) {
+			// the repo was removed while its signatures were verified
+			return nil
+		}
+
+		if err != nil {
+			rc.Log.Error().Err(err).Str("hget", rc.RepoMetaKey).Str("repo", repo).
+				Msg("failed to get repo meta record")
+
+			return fmt.Errorf("failed to get repo meta record for repo %s: %w", repo, err)
+		}
+
+		protoRepoMeta, err := unmarshalProtoRepoMeta(repo, repoMetaBlob)
+		if err != nil {
 			return err
 		}
 
-		verifyImageMeta := mConvert.GetImageMeta(protoImageMeta)
+		common.ApplySignaturesValidity(protoRepoMeta.Signatures[manifestDigest.String()], validity)
 
-		// update signatures with details about validity and author
-		protoRepoMeta, err := rc.getProtoRepoMeta(ctx, repo)
-		if err != nil {
-			return err
-		}
-
-		manifestSignatures := proto_go.ManifestSignatures{Map: map[string]*proto_go.SignaturesInfo{"": {}}}
-
-		for sigType, sigs := range protoRepoMeta.Signatures[manifestDigest.String()].Map {
-			if zcommon.IsContextDone(ctx) {
-				return ctx.Err()
-			}
-
-			signaturesInfo := []*proto_go.SignatureInfo{}
-
-			for _, sigInfo := range sigs.List {
-				layersInfo := []*proto_go.LayersInfo{}
-
-				for _, layerInfo := range sigInfo.LayersInfo {
-					author, date, isTrusted, err := imgTrustStore.VerifySignature(sigType, layerInfo.LayerContent,
-						layerInfo.SignatureKey, manifestDigest, verifyImageMeta, repo)
-					if err != nil {
-						rc.Log.Error().Err(err).Str("repo", repo).Str("signatureType", sigType).
-							Str("manifestDigest", manifestDigest.String()).
-							Str("mediaType", verifyImageMeta.MediaType).
-							Msg("failed to verify signature validity")
-					}
-
-					if isTrusted {
-						layerInfo.Signer = author
-					} else {
-						layerInfo.Signer = ""
-					}
-
-					if !date.IsZero() {
-						layerInfo.Date = timestamppb.New(date)
-					}
-
-					layersInfo = append(layersInfo, layerInfo)
-				}
-
-				signaturesInfo = append(signaturesInfo, &proto_go.SignatureInfo{
-					SignatureManifestDigest: sigInfo.SignatureManifestDigest,
-					LayersInfo:              layersInfo,
-				})
-			}
-
-			manifestSignatures.Map[sigType] = &proto_go.SignaturesInfo{List: signaturesInfo}
-		}
-
-		protoRepoMeta.Signatures[manifestDigest.String()] = &manifestSignatures
-
-		repoMetaBlob, err := proto.Marshal(protoRepoMeta)
+		repoMetaBlob, err = proto.Marshal(protoRepoMeta)
 		if err != nil {
 			return err
 		}
@@ -1576,8 +1561,6 @@ func (rc *RedisDB) UpdateSignaturesValidity(ctx context.Context, repo string, ma
 
 		return nil
 	})
-
-	return err
 }
 
 // IncrementRepoStars adds 1 to the star count of an image.
@@ -2406,6 +2389,8 @@ func unmarshalProtoRepoMeta(repo string, repoMetaBlob []byte) (*proto_go.RepoMet
 		if err != nil {
 			return protoRepoMeta, err
 		}
+
+		common.StripSignatureLayerContent(protoRepoMeta)
 	}
 
 	if protoRepoMeta.Tags == nil {

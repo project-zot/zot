@@ -113,6 +113,8 @@ message SignatureInfo {
 
 message LayersInfo {
     string LayerDigest  = 1;
+    // No longer written: signature layers are loaded from storage when they are verified. Kept for records
+    // written by older versions; cleared on read by meta/common.StripSignatureLayerContent.
     bytes  LayerContent = 2;
     string SignatureKey = 3;
     string Signer       = 4;

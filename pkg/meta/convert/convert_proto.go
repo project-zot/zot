@@ -228,7 +228,6 @@ func GetProtoLayersInfo(layersInfo []mTypes.LayerInfo) []*proto_go.LayersInfo {
 	for _, layerInfo := range layersInfo {
 		result = append(result, &proto_go.LayersInfo{
 			LayerDigest:  layerInfo.LayerDigest,
-			LayerContent: layerInfo.LayerContent,
 			SignatureKey: layerInfo.SignatureKey,
 			Signer:       layerInfo.Signer,
 			Date:         timestamppb.New(layerInfo.Date),

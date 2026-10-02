@@ -4,6 +4,7 @@ package imagetrust
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -29,9 +30,14 @@ const (
 	defaultFilePerms = 0o644
 )
 
+// SignatureBlobGetter returns the content of the blob digest of repo from storage.
+type SignatureBlobGetter func(repo string, digest godigest.Digest) ([]byte, error)
+
 type ImageTrustStore struct {
 	CosignStorage   publicKeyStorage
 	NotationStorage certificateStorage
+	// GetSignatureBlob loads the signature layers VerifySignatureLayer verifies.
+	GetSignatureBlob SignatureBlobGetter
 }
 
 type SecretsManagerClient interface {
@@ -158,6 +164,31 @@ func IsResourceExistsException(err error) bool {
 	}
 
 	return false
+}
+
+func (imgTrustStore *ImageTrustStore) VerifySignatureLayer(
+	signatureType string, layerDigest godigest.Digest, sigKey string, manifestDigest godigest.Digest,
+	imageMeta mTypes.ImageMeta, repo string,
+) (mTypes.Author, mTypes.ExpiryDate, mTypes.Validity, error) {
+	if imgTrustStore.GetSignatureBlob == nil {
+		return "", time.Time{}, false, zerr.ErrSignatureLayerUnavailable
+	}
+
+	rawSignature, err := imgTrustStore.GetSignatureBlob(repo, layerDigest)
+	if err != nil {
+		switch {
+		case errors.Is(err, zerr.ErrBlobNotFound):
+			// the image store reports a layer it cannot stat as not found, whether the layer is gone or storage is
+			// failing right now, so this clears the signer until the next validity run re-checks the layer
+			return "", time.Time{}, false, nil
+		case errors.Is(err, zerr.ErrSignatureLayerTooLarge):
+			return "", time.Time{}, false, err
+		default:
+			return "", time.Time{}, false, fmt.Errorf("%w: %w", zerr.ErrSignatureLayerUnavailable, err)
+		}
+	}
+
+	return imgTrustStore.VerifySignature(signatureType, rawSignature, sigKey, manifestDigest, imageMeta, repo)
 }
 
 func (imgTrustStore *ImageTrustStore) VerifySignature(

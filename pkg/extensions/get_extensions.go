@@ -10,6 +10,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/scheduler"
+	"zotregistry.dev/zot/v2/pkg/storage"
 )
 
 // SyncOnDemand is the on-demand sync handler exposed to the API layer.
@@ -62,6 +63,8 @@ func EnableScheduledTasks(conf *config.Config, taskScheduler *scheduler.Schedule
 	EnableImageTrustVerification(conf, taskScheduler, metaDB, log)
 }
 
-func SetupExtensions(conf *config.Config, metaDB mTypes.MetaDB, log log.Logger) error {
-	return SetupImageTrustExtension(conf, metaDB, log)
+func SetupExtensions(conf *config.Config, metaDB mTypes.MetaDB, storeController storage.StoreController,
+	log log.Logger,
+) error {
+	return SetupImageTrustExtension(conf, metaDB, storeController, log)
 }

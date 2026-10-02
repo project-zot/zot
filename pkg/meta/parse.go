@@ -391,10 +391,10 @@ func getCosignSignatureLayersInfo(
 	defer imageStore.RUnlock(&lockLatency)
 
 	for _, layer := range manifestContent.Layers {
-		layerContent, err := imageStore.GetBlobContent(repo, layer.Digest)
-		if err != nil {
+		// the layer is loaded from storage when the signature is verified, it only has to be there
+		if _, _, _, err := imageStore.StatBlob(repo, layer.Digest); err != nil {
 			log.Error().Err(err).Str("repository", repo).Str("reference", tag).Str("layerDigest", layer.Digest.String()).Msg(
-				"failed to get cosign signature layer content")
+				"failed to get cosign signature layer")
 
 			return layers, err
 		}
@@ -410,7 +410,6 @@ func getCosignSignatureLayersInfo(
 
 		layers = append(layers, mTypes.LayerInfo{
 			LayerDigest:  layer.Digest.String(),
-			LayerContent: layerContent,
 			SignatureKey: layerSigKey,
 		})
 	}
@@ -450,10 +449,10 @@ func getNotationSignatureLayersInfo(
 	imageStore.RLock(&lockLatency)
 	defer imageStore.RUnlock(&lockLatency)
 
-	layerContent, err := imageStore.GetBlobContent(repo, layer)
-	if err != nil {
+	// the layer is loaded from storage when the signature is verified, it only has to be there
+	if _, _, _, err := imageStore.StatBlob(repo, layer); err != nil {
 		log.Error().Err(err).Str("repository", repo).Str("reference", manifestDigest).Str("layerDigest", layer.String()).Msg(
-			"failed to get notation signature blob content")
+			"failed to get notation signature blob")
 
 		return layers, err
 	}
@@ -462,7 +461,6 @@ func getNotationSignatureLayersInfo(
 
 	layers = append(layers, mTypes.LayerInfo{
 		LayerDigest:  layer.String(),
-		LayerContent: layerContent,
 		SignatureKey: layerSigKey,
 	})
 

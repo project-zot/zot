@@ -9,6 +9,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/scheduler"
+	"zotregistry.dev/zot/v2/pkg/storage"
 )
 
 func IsBuiltWithImageTrustExtension() bool {
@@ -27,7 +28,9 @@ func EnableImageTrustVerification(config *config.Config, taskScheduler *schedule
 		"given binary doesn't include this feature, please build a binary that does so")
 }
 
-func SetupImageTrustExtension(conf *config.Config, metaDB mTypes.MetaDB, log log.Logger) error {
+func SetupImageTrustExtension(conf *config.Config, metaDB mTypes.MetaDB, storeController storage.StoreController,
+	log log.Logger,
+) error {
 	log.Warn().Msg("skipping setting up image trust because given zot binary doesn't include this feature," +
 		"please build a binary that does so")
 

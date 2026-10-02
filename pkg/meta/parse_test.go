@@ -1076,10 +1076,10 @@ func TestGetSignatureLayersInfo(t *testing.T) {
 		So(layers, ShouldBeEmpty)
 	})
 
-	Convey("GetBlobContent errors", t, func() {
+	Convey("signature layer missing from storage", t, func() {
 		mockImageStore := mocks.MockedImageStore{}
-		mockImageStore.GetBlobContentFn = func(repo string, digest godigest.Digest) ([]byte, error) {
-			return nil, errMetaTestInjected
+		mockImageStore.StatBlobFn = func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+			return false, -1, time.Time{}, errMetaTestInjected
 		}
 		image := CreateRandomImage()
 
@@ -1099,10 +1099,10 @@ func TestGetSignatureLayersInfo(t *testing.T) {
 		So(layers, ShouldBeEmpty)
 	})
 
-	Convey("notation GetBlobContent errors", t, func() {
+	Convey("notation signature layer missing from storage", t, func() {
 		mockImageStore := mocks.MockedImageStore{}
-		mockImageStore.GetBlobContentFn = func(repo string, digest godigest.Digest) ([]byte, error) {
-			return nil, errMetaTestInjected
+		mockImageStore.StatBlobFn = func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+			return false, -1, time.Time{}, errMetaTestInjected
 		}
 		image := CreateImageWith().RandomLayers(1, 10).RandomConfig().Build()
 
@@ -1110,6 +1110,21 @@ func TestGetSignatureLayersInfo(t *testing.T) {
 			image.ManifestDescriptor.Data, mockImageStore, log.NewTestLogger())
 		So(err, ShouldNotBeNil)
 		So(layers, ShouldBeEmpty)
+	})
+
+	Convey("signature layers are recorded by digest, their content stays in storage", t, func() {
+		mockImageStore := mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				return nil, errMetaTestInjected
+			},
+		}
+		image := CreateImageWith().RandomLayers(1, 10).RandomConfig().Build()
+
+		layers, err := meta.GetSignatureLayersInfo("repo", "tag", "123", zcommon.CosignSignature,
+			image.ManifestDescriptor.Data, mockImageStore, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(layers, ShouldHaveLength, 1)
+		So(layers[0].LayerDigest, ShouldEqual, image.Manifest.Layers[0].Digest.String())
 	})
 
 	Convey("error while unmarshaling manifest content", t, func() {
