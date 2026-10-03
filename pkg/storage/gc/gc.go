@@ -757,18 +757,28 @@ func (gc GarbageCollect) removeTagsPerRetentionPolicy(ctx context.Context, repo 
 
 	var retainTags []string
 
-	if gc.metaDB != nil {
+	if gc.metaDB == nil {
+		retainTags = gc.policyMgr.GetRetainedTagsFromIndex(ctx, repo, *index)
+	} else {
 		repoMeta, err := gc.metaDB.GetRepoMeta(ctx, repo)
 		if err != nil {
-			gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
-				Msg("failed to get repoMeta")
+			if !errors.Is(err, zerr.ErrRepoMetaNotFound) {
+				gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
+					Msg("failed to get repoMeta")
 
-			return err
+				return err
+			}
+
+			// Count and time rules need repository statistics. A missing record cannot
+			// be evaluated, so keep every tag for this repo and continue GC. Index
+			// patterns would still delete tags that miss those patterns.
+			gc.log.Warn().Err(err).Str("module", "gc").Str("repository", repo).
+				Msg("repo metadata not found, skipping tag retention deletes")
+
+			return nil
 		}
 
 		retainTags = gc.policyMgr.GetRetainedTagsFromMetaDB(ctx, repoMeta, *index)
-	} else {
-		retainTags = gc.policyMgr.GetRetainedTagsFromIndex(ctx, repo, *index)
 	}
 
 	// remove
@@ -854,8 +864,9 @@ func (gc GarbageCollect) removeManifest(repo string, index *ispec.Index,
 				SignatureType:   signatureType,
 			})
 			switch {
-			case errors.Is(err, zerr.ErrImageMetaNotFound):
-				// Expected when RemoveRepoReference already deleted Signatures[subject]
+			case errors.Is(err, zerr.ErrImageMetaNotFound), errors.Is(err, zerr.ErrRepoMetaNotFound):
+				// Expected when signature metadata is already gone: RemoveRepoReference
+				// deleted Signatures[subject], or the repository record itself is absent
 				// (e.g. untagged subject GC after last-tag overwrite left the digest in
 				// index.json, then a later referrer pass removes the signature).
 				gc.log.Debug().Err(err).Str("module", "gc").Str("component", "metadb").
@@ -892,12 +903,22 @@ func (gc GarbageCollect) removeUntaggedManifests(ctx context.Context, repo strin
 	retainUntagged := make(map[string]bool)
 	if gc.policyMgr.HasUntaggedRetention(repo) {
 		if gc.metaDB != nil {
-			repoMeta, err := gc.metaDB.GetRepoMeta(ctx, repo)
-			if err != nil {
-				gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
-					Msg("failed to get repoMeta for untagged retention")
+			repoMeta, getErr := gc.metaDB.GetRepoMeta(ctx, repo)
+			if getErr != nil {
+				if !errors.Is(getErr, zerr.ErrRepoMetaNotFound) {
+					gc.log.Error().Err(getErr).Str("module", "gc").Str("repository", repo).
+						Msg("failed to get repoMeta for untagged retention")
 
-				return false, err
+					return false, getErr
+				}
+
+				// keepUntagged cannot be evaluated without the repo record. An empty
+				// retain set would let delay-based cleanup delete manifests the policy
+				// might have kept. Retain untagged manifests for this repo and continue GC.
+				gc.log.Warn().Err(getErr).Str("module", "gc").Str("repository", repo).
+					Msg("repo metadata not found, skipping untagged retention deletes")
+
+				return false, nil
 			}
 
 			for _, digestStr := range gc.policyMgr.GetRetainedUntaggedFromMetaDB(ctx, repoMeta, *index) {
@@ -924,12 +945,19 @@ func (gc GarbageCollect) removeUntaggedManifests(ctx context.Context, repo strin
 					continue
 				}
 
-				gced, err = gc.removeManifestIfOlderThan(repo, index, desc, "", "", gc.opts.ImageRetention.Delay)
+				// Track this descriptor separately. A later ineligible manifest must not
+				// clear progress, or removeManifestsPerRepoPolicy stops before orphaned
+				// referrers of manifests removed earlier in this pass can be collected.
+				var removed bool
+
+				removed, err = gc.removeManifestIfOlderThan(repo, index, desc, "", "", gc.opts.ImageRetention.Delay)
 				if err != nil {
 					return false, err
 				}
 
-				if gced {
+				if removed {
+					gced = true
+
 					gc.log.Info().Str("module", "gc").
 						Bool("dry-run", gc.opts.ImageRetention.DryRun).
 						Str("repository", repo).
