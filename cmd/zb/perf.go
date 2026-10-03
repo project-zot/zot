@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"math/big"
 	"net"
@@ -977,6 +978,8 @@ func Perf(
 
 // isTimeoutError reports whether err looks like a request timeout (or the common
 // client-side symptom when a server closes the connection after its own timeout).
+// That includes unexpected EOF from a truncated response after http.Server
+// WriteTimeout cuts a long blob transfer mid-stream.
 func isTimeoutError(err error) bool {
 	if err == nil {
 		return false
@@ -987,7 +990,7 @@ func isTimeoutError(err error) bool {
 		return true
 	}
 
-	if errors.Is(err, os.ErrDeadlineExceeded) {
+	if errors.Is(err, os.ErrDeadlineExceeded) || errors.Is(err, io.ErrUnexpectedEOF) {
 		return true
 	}
 
@@ -995,7 +998,8 @@ func isTimeoutError(err error) bool {
 
 	return strings.Contains(msg, "timeout") ||
 		strings.Contains(msg, "deadline exceeded") ||
-		strings.Contains(msg, "use of closed network connection")
+		strings.Contains(msg, "use of closed network connection") ||
+		strings.Contains(msg, "unexpected eof")
 }
 
 // shouldFailRun reports whether the run should exit non-zero.
