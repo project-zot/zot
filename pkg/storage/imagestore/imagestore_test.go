@@ -18,6 +18,7 @@ import (
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 	"zotregistry.dev/zot/v2/pkg/storage/gcs"
 	"zotregistry.dev/zot/v2/pkg/storage/imagestore"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
@@ -504,6 +505,259 @@ func TestRemoveIdleRepository(t *testing.T) {
 			removed, err := removeIdle(newMockStore(storeMock), repo, 0)
 			So(err, ShouldNotBeNil)
 			So(removed, ShouldBeFalse)
+		})
+	})
+}
+
+// TestGetAllBlobsNestedListMissing locks the inventory contract: a Missing
+// List under blobs/<alg>/ after a successful parent List must not surface as
+// ErrStorageMissing (GC soft-empties on that and can prune live index rows).
+func TestGetAllBlobsNestedListMissing(t *testing.T) {
+	Convey("GetAllBlobs reclassifies nested alg List Missing as Transient", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+		repo := "repo"
+		blobsDir := path.Join(rootDir, repo, ispec.ImageBlobsDir)
+		sha256Dir := path.Join(blobsDir, "sha256")
+		sha512Dir := path.Join(blobsDir, "sha512")
+
+		keptDigest := godigest.FromString("still-under-sha512")
+
+		storeMock := &mocks.StorageDriverMock{
+			ListFn: func(_ context.Context, listPath string) ([]string, error) {
+				switch listPath {
+				case blobsDir:
+					// List a content-bearing alg first so a soft-empty bug would
+					// discard a non-empty partial inventory.
+					return []string{sha512Dir, sha256Dir}, nil
+				case sha512Dir:
+					return []string{path.Join(sha512Dir, keptDigest.Encoded())}, nil
+				case sha256Dir:
+					return nil, errclass.MarkMissing(driver.PathNotFoundError{Path: listPath})
+				default:
+					return nil, driver.PathNotFoundError{Path: listPath}
+				}
+			},
+		}
+
+		store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+			gcs.New(storeMock), nil, nil, nil)
+		So(store, ShouldNotBeNil)
+
+		digests, err := store.GetAllBlobs(repo)
+		So(digests, ShouldBeEmpty)
+		So(err, ShouldNotBeNil)
+		So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+		// Must not keep Missing in the chain — GC soft-empties on that predicate.
+		So(errclass.IsStorageObjectMissing(err), ShouldBeFalse)
+	})
+}
+
+// TestGetImageManifestRepoStatClasses locks the repo-dir Stat contract: Missing
+// wraps ErrRepoNotFound (Missing kept); Transient/non-dir Permanent must not
+// collapse to ErrRepoNotFound.
+func TestGetImageManifestRepoStatClasses(t *testing.T) {
+	Convey("GetImageManifest propagates Transient repo-dir Stat", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+		repo := "repo"
+
+		storeMock := &mocks.StorageDriverMock{
+			StatFn: func(_ context.Context, _ string) (driver.FileInfo, error) {
+				return nil, errclass.MarkTransient(errors.New("stat blip")) //nolint:err113 // test
+			},
+		}
+
+		store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+			gcs.New(storeMock), nil, nil, nil)
+		So(store, ShouldNotBeNil)
+
+		_, _, _, err := store.GetImageManifest(repo, "tag")
+		So(err, ShouldNotBeNil)
+		So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+		So(errors.Is(err, zerr.ErrRepoNotFound), ShouldBeFalse)
+	})
+
+	Convey("GetImageManifest wraps Missing repo-dir Stat with ErrRepoNotFound", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+		repo := "missing-repo"
+
+		storeMock := &mocks.StorageDriverMock{
+			StatFn: func(_ context.Context, statPath string) (driver.FileInfo, error) {
+				return nil, errclass.MarkMissing(driver.PathNotFoundError{Path: statPath})
+			},
+		}
+
+		store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+			gcs.New(storeMock), nil, nil, nil)
+		So(store, ShouldNotBeNil)
+
+		_, _, _, err := store.GetImageManifest(repo, "tag")
+		So(errors.Is(err, zerr.ErrRepoNotFound), ShouldBeTrue)
+		So(errclass.IsStorageObjectMissing(err), ShouldBeTrue)
+	})
+
+	Convey("GetImageManifest maps non-directory repo path to Permanent", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+		repo := "not-a-dir"
+
+		storeMock := &mocks.StorageDriverMock{
+			StatFn: func(_ context.Context, _ string) (driver.FileInfo, error) {
+				return &mocks.FileInfoMock{IsDirFn: func() bool { return false }}, nil
+			},
+		}
+
+		store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+			gcs.New(storeMock), nil, nil, nil)
+		So(store, ShouldNotBeNil)
+
+		_, _, _, err := store.GetImageManifest(repo, "tag")
+		So(errors.Is(err, zerr.ErrStoragePermanent), ShouldBeTrue)
+		So(errors.Is(err, zerr.ErrRepoBadLayout), ShouldBeTrue)
+		So(errors.Is(err, zerr.ErrRepoNotFound), ShouldBeFalse)
+	})
+}
+
+// TestCheckBlobTransientSkipsCacheFallback locks the Missing-only cache/`Link`
+// gate: a Transient Stat must not consult the cache or write a remote stub.
+func TestCheckBlobTransientSkipsCacheFallback(t *testing.T) {
+	Convey("CheckBlob does not cache-fallback or Link after Transient Stat", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+
+		digest := godigest.FromString("checkblob-transient")
+		cacheHitPath := path.Join(rootDir, "origin/blobs/sha256", digest.Encoded())
+
+		cacheLookups := 0
+		putContentCalls := 0
+
+		storeMock := &mocks.StorageDriverMock{
+			StatFn: func(_ context.Context, _ string) (driver.FileInfo, error) {
+				return nil, errclass.MarkTransient(errors.New("stat blip")) //nolint:err113 // test
+			},
+			PutContentFn: func(_ context.Context, _ string, _ []byte) error {
+				putContentCalls++
+
+				return nil
+			},
+		}
+
+		cacheMock := mocks.CacheMock{
+			GetBlobFn: func(d godigest.Digest) (string, error) {
+				So(d, ShouldEqual, digest)
+
+				cacheLookups++
+
+				return cacheHitPath, nil
+			},
+			HasBlobFn: func(godigest.Digest, string) bool { return true },
+		}
+
+		store := imagestore.NewImageStore(rootDir, "", true, false, log, metrics, nil,
+			gcs.New(storeMock), cacheMock, nil, nil)
+		So(store, ShouldNotBeNil)
+
+		ok, size, err := store.CheckBlob(context.Background(), "repo", digest)
+		So(ok, ShouldBeFalse)
+		So(size, ShouldEqual, -1)
+		So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+		So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeFalse)
+		So(cacheLookups, ShouldEqual, 0)
+		So(putContentCalls, ShouldEqual, 0)
+	})
+}
+
+// TestCheckBlobMissingCacheLookupErrors covers Missing Stat + non-unavailable
+// cache lookup, and PutBlob failure after a successful cache heal/`Link`.
+func TestCheckBlobMissingCacheLookupErrors(t *testing.T) {
+	Convey("CheckBlob Missing Stat cache-fallback error paths", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+
+		Convey("preserves Transient from cache GetBlob after Missing Stat", func() {
+			rootDir := t.TempDir()
+			digest := godigest.FromString("checkblob-cache-transient")
+			blobPath := path.Join(rootDir, "repo", ispec.ImageBlobsDir, digest.Algorithm().String(), digest.Encoded())
+
+			storeMock := &mocks.StorageDriverMock{
+				StatFn: func(_ context.Context, statPath string) (driver.FileInfo, error) {
+					if statPath == blobPath {
+						return nil, driver.PathNotFoundError{Path: statPath}
+					}
+
+					return &mocks.FileInfoMock{SizeFn: func() int64 { return 1 }}, nil
+				},
+			}
+
+			cacheMock := mocks.CacheMock{
+				GetBlobFn: func(godigest.Digest) (string, error) {
+					return "", errclass.MarkTransient(errors.New("cache blip")) //nolint:err113 // test
+				},
+			}
+
+			store := imagestore.NewImageStore(rootDir, "", true, false, log, metrics, nil,
+				gcs.New(storeMock), cacheMock, nil, nil)
+
+			ok, size, err := store.CheckBlob(context.Background(), "repo", digest)
+			So(ok, ShouldBeFalse)
+			So(size, ShouldEqual, -1)
+			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+			So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeFalse)
+		})
+
+		Convey("preserves PutBlob failure after successful Missing heal", func() {
+			rootDir := t.TempDir()
+			digest := godigest.FromString("checkblob-putblob-fail")
+			blobPath := path.Join(rootDir, "repo", ispec.ImageBlobsDir, digest.Algorithm().String(), digest.Encoded())
+			cacheHitPath := path.Join(rootDir, "origin/blobs/sha256", digest.Encoded())
+			putBlobErr := errclass.MarkPermanent(errors.New("cache put denied")) //nolint:err113 // test
+
+			storeMock := &mocks.StorageDriverMock{
+				StatFn: func(_ context.Context, statPath string) (driver.FileInfo, error) {
+					if statPath == blobPath {
+						return nil, driver.PathNotFoundError{Path: statPath}
+					}
+
+					if statPath == cacheHitPath {
+						return &mocks.FileInfoMock{
+							PathFn: func() string { return cacheHitPath },
+							SizeFn: func() int64 { return 42 },
+						}, nil
+					}
+
+					// initRepo layout/index: absent so WriteFile creates them.
+					return nil, driver.PathNotFoundError{Path: statPath}
+				},
+				PutContentFn: func(_ context.Context, _ string, _ []byte) error {
+					return nil
+				},
+			}
+
+			store := imagestore.NewImageStore(rootDir, "", true, false, log, metrics, nil,
+				gcs.New(storeMock), mocks.CacheMock{
+					GetBlobFn: func(d godigest.Digest) (string, error) {
+						So(d, ShouldEqual, digest)
+
+						return cacheHitPath, nil
+					},
+					PutBlobFn: func(godigest.Digest, string) error {
+						return putBlobErr
+					},
+					HasBlobFn: func(godigest.Digest, string) bool { return true },
+				}, nil, nil)
+
+			ok, size, err := store.CheckBlob(context.Background(), "repo", digest)
+			So(ok, ShouldBeFalse)
+			So(size, ShouldEqual, -1)
+			So(errors.Is(err, zerr.ErrStoragePermanent), ShouldBeTrue)
+			So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeFalse)
 		})
 	})
 }

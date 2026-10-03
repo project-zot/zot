@@ -34,6 +34,9 @@ func TestFormatErrClassification(t *testing.T) {
 
 			var pnf storagedriver.PathNotFoundError
 			So(errors.As(err, &pnf), ShouldBeTrue)
+			So(pnf.DriverName, ShouldEqual, "s3")
+			So(err.Error(), ShouldEqual,
+				"storage object or path is missing: s3: Path not found: /missing")
 		})
 
 		Convey("NoSuchKey awserr → ErrStorageMissing", func() {
@@ -123,6 +126,8 @@ func TestFormatErrClassification(t *testing.T) {
 
 			var unsupported storagedriver.ErrUnsupportedMethod
 			So(errors.As(err, &unsupported), ShouldBeTrue)
+			So(err.Error(), ShouldEqual,
+				"storage backend returned a permanent error: s3: unsupported method")
 		})
 
 		Convey("InvalidOffsetError → ErrStoragePermanent", func() {
@@ -131,6 +136,8 @@ func TestFormatErrClassification(t *testing.T) {
 			}
 			_, err := s3Driver.Reader("/blob", 99)
 			So(errors.Is(err, zerr.ErrStoragePermanent), ShouldBeTrue)
+			So(err.Error(), ShouldEqual,
+				"storage backend returned a permanent error: s3: invalid offset: 99 for path: /blob")
 		})
 
 		Convey("context.DeadlineExceeded → ErrStorageTransient", func() {

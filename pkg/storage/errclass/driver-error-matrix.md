@@ -11,7 +11,7 @@ Sources (code as of zot `go.mod` → `github.com/distribution/distribution/v3@v3
 - Zot local: `pkg/storage/local/driver.go`
 - Zot thin wrappers: `pkg/storage/s3/driver.go`, `pkg/storage/gcs/driver.go` / `pkg/storage/azure/driver.go` (`formatErr` → `errclass.Mark*`)
 - Zot classification helpers: `pkg/storage/errclass` (this directory)
-- Zot ImageStore collapse: `pkg/storage/imagestore/imagestore.go` (`originalBlobInfo` → bare `zerr.ErrBlobNotFound`)
+- Zot ImageStore: preserves ErrStorage* on blob APIs and wraps absence with `ErrBlobNotFound` (see ../README.md); soft-skips use `errclass.IsBlobUnavailable` / `IsStorageObjectMissing`
 - Call-site / quirk evidence (still current):
   - `pkg/storage/gcs/nextrepo_walk_abort_test.go` — regression test for the fixed walk abort when a ghost/empty `.uploads` (or similar) prefix returned `PathNotFound` on List. Driver still returns `PathNotFound` on empty List; zot `GetNextRepository` now `ErrSkipDir`s `.uploads`/`.sync`/`blobs` so enumeration no longer aborts. Keep the test.
   - `pkg/storage/s3/s3_test.go` Stat/IsDir convey — documents an open distribution S3 quirk (partial prefix Stat → `err == nil`, `IsDir == true`). Not fixed; test still asserts the buggy behavior. Keep.
@@ -48,10 +48,6 @@ There is no Transient type in distribution.
 ### `base.Base.setDriverName`
 
 Any error that is not already `PathNotFound` / `InvalidPath` / `InvalidOffset` / `ErrUnsupportedMethod` becomes `storagedriver.Error{DriverName, Detail: e}`. Transient SDK errors therefore usually surface as `driver.Error` once the factory-wrapped Driver is used — not as bare AWS/GCS types.
-
-### Zot ImageStore (`StatBlob` / `originalBlobInfo`)
-
-On any `storeDriver.Stat` failure (including `PathNotFound` and `driver.Error`), returns bare `zerr.ErrBlobNotFound` and drops the chain. Callers cannot distinguish Missing vs Transient after `StatBlob` today (open follow-up).
 
 ### Walk
 
@@ -228,7 +224,32 @@ Cross-backend Walk empty-prefix divergence (important for enumeration policy):
 | Transient | Timeout / 429 / 5xx / connection; **default when unsure** |
 | Permanent | InvalidPath/Offset; `ErrUnsupportedMethod`; local **OS/syscall default** (permission, invalid path, `ENOSPC`, `EROFS`, … — not an errno allowlist); S3/Azure/GCS auth-style codes (GCS/Azure typed 401/403; Azure auth service-code text after `%v`); S3 `NoSuchBucket` |
 
-`formatErr` order (all backends): typed PathNotFound / InvalidPath / InvalidOffset / ErrUnsupportedMethod → peel `storagedriver.Error.Detail` (Error does not Unwrap) → not-found map → Permanent map (S3/Azure/GCS auth incl. Azure/GCS HTTP 401/403, S3 `NoSuchBucket`; local: OS/syscall → Permanent unless retryable-errno Transient) → Transient map → default Transient. Local also maps raw `os.IsNotExist` → Missing (via `driver.Error{Detail}`, not empty `PathNotFoundError`) before Permanent. Typed early returns use `errclass.Wrap(head, err)` so `errors.Join` siblings (e.g. local Reader `InvalidOffset` + close) survive `AsType`. After peeling `Detail`, if it is not already reachable from `err`, drivers do `inner = Wrap(err, detail)` then `Wrap(head, inner)` so both stay visible to `errors.Is` / `errors.As`. If `inner` already unwraps to `outer`, `Wrap` returns `inner` (preserves outer context). `Wrap` recovers if `errors.Is` panics on uncomparable targets (e.g. `storagedriver.Error{Detail: storagedriver.Errors{…}}` from S3 partial Delete).
+### `formatErr` pipeline (all backends)
+
+Match order:
+
+1. Typed distribution errors: `PathNotFound` / `InvalidPath` / `InvalidOffset` / `ErrUnsupportedMethod`
+2. Peel `storagedriver.Error.Detail` (`Error` does not Unwrap)
+3. Known absence → Missing
+   - Local: raw `os.IsNotExist` → Missing via `driver.Error{Detail}` (not an empty `PathNotFoundError`)
+   - Remote: SDK not-found codes (`NoSuchKey`, `ErrObjectNotExist`, BlobNotFound, …)
+4. Known non-retryable failure → Permanent
+   - S3/Azure/GCS: auth (HTTP 401/403; S3 `NoSuchBucket`; …)
+   - Local: OS/syscall → Permanent unless retryable errno (then Transient)
+5. Known retryable failure → Transient (timeout / 429 / 5xx / …)
+6. Unsure → Transient
+
+Typed-arm rules:
+
+- Stamp `DriverName` / `Path`, then `Mark*(stamped)` only.
+- Do **not** `Wrap(stamped, err)` — distribution typed errors lack `Is`, so a stamp would stack two near-identical copies.
+- Non-typed siblings (e.g. local Reader `InvalidOffset` + Close): classify the typed error alone, then `Wrap` the sibling onto the result.
+
+After peeling `Detail`:
+
+- If `detail` is not already reachable from `err`: `inner = Wrap(err, detail)`, then `Wrap(head, inner)` so both stay visible to `errors.Is` / `errors.As`.
+- If `inner` already unwraps to `outer`, `Wrap` returns `inner` (keeps outer context).
+- `Wrap` recovers if `errors.Is` panics on uncomparable targets (e.g. S3 partial Delete → `Error{Detail: Errors{…}}`).
 
 ---
 
@@ -258,17 +279,6 @@ Characterization / mapping tests:
 
 ---
 
-## ImageStore / GC impact (why matrix matters)
+## ImageStore / GC impact
 
-| Call site today | Sees after StatBlob | Problem |
-|-----------------|---------------------|---------|
-| `isBlobOlderThan` | Always `ErrBlobNotFound` or rare pass-through | Cannot fail closed only on Transient |
-| `removeStaleManifestEntries` | Uses `GetAllBlobs` List; empty → PathNotFound → empty inventory | Transient List failure must not prune; empty PathNotFound currently treated as empty set |
-| `GetNextRepository` | Walk PathNotFound historically meant “done” | Softened for reserved dirs; Transient Walk must still fail the task |
-
----
-
-## Open follow-ups
-
-- ImageStore preserves classification through `StatBlob`
-- S3 Delete idempotent like GCS/Azure (swallow `PathNotFound`); local stays non-idempotent
+ImageStore wrapping, soft-skip predicates, and GC/scrub/ValidateManifest caller policy live in [`../README.md`](../README.md) — not duplicated here.

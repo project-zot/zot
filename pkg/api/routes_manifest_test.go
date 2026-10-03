@@ -82,6 +82,119 @@ func newSyncTestRouteHandler(
 	return api.NewRouteHandler(ctlr)
 }
 
+func TestListTagsStorageErrors(t *testing.T) {
+	Convey("ListTags maps storage classes without collapsing outages to NAME_UNKNOWN", t, func() {
+		runCase := func(tagsErr error) int {
+			ctlr := api.NewController(config.New())
+			ctlr.Router = mux.NewRouter()
+			ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
+				GetImageTagsFn: func(_ string) ([]string, error) {
+					return nil, tagsErr
+				},
+			}
+
+			handler := api.NewRouteHandler(ctlr)
+			req := httptest.NewRequestWithContext(
+				context.Background(),
+				http.MethodGet,
+				"http://example.com/v2/test/tags/list",
+				http.NoBody,
+			)
+			req = mux.SetURLVars(req, map[string]string{"name": "test"})
+
+			rec := httptest.NewRecorder()
+			handler.ListTags(rec, req)
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			return resp.StatusCode
+		}
+
+		Convey("ErrRepoNotFound → 404", func() {
+			So(runCase(zerr.ErrRepoNotFound), ShouldEqual, http.StatusNotFound)
+		})
+
+		Convey("ErrStorageTransient → 500 (not NAME_UNKNOWN 404)", func() {
+			So(runCase(zerr.ErrStorageTransient), ShouldEqual, http.StatusInternalServerError)
+		})
+
+		Convey("ErrStoragePermanent → 500 (not NAME_UNKNOWN 404)", func() {
+			So(runCase(zerr.ErrStoragePermanent), ShouldEqual, http.StatusInternalServerError)
+		})
+	})
+}
+
+func TestUpdateManifestStorageErrorsSkipCleanup(t *testing.T) {
+	Convey("UpdateManifest does not delete an existing reference on PutImageManifest errors", t, func() {
+		const (
+			repo      = "test"
+			reference = "v1.0"
+		)
+
+		manifestBody := []byte(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json"}`)
+
+		newReq := func() *http.Request {
+			req := httptest.NewRequestWithContext(
+				context.Background(),
+				http.MethodPut,
+				"http://example.com/v2/"+repo+"/manifests/"+reference,
+				bytes.NewReader(manifestBody),
+			)
+			req.Header.Set("Content-Type", ispec.MediaTypeImageManifest)
+
+			return mux.SetURLVars(req, map[string]string{
+				"name":      repo,
+				"reference": reference,
+			})
+		}
+
+		runCase := func(putErr error) (int, int) {
+			deleteCalls := 0
+			ctlr := api.NewController(config.New())
+			ctlr.Router = mux.NewRouter()
+			ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
+				PutImageManifestFn: func(_ context.Context, _, _, _ string, _ []byte, _ []string,
+				) (godigest.Digest, godigest.Digest, error) {
+					return "", "", putErr
+				},
+				DeleteImageManifestFn: func(_ context.Context, _, _ string, _ bool) error {
+					deleteCalls++
+
+					return nil
+				},
+			}
+
+			handler := api.NewRouteHandler(ctlr)
+			rec := httptest.NewRecorder()
+			handler.UpdateManifest(rec, newReq())
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			return resp.StatusCode, deleteCalls
+		}
+
+		Convey("ErrStorageTransient returns 500 without DeleteImageManifest", func() {
+			status, deletes := runCase(zerr.ErrStorageTransient)
+			So(status, ShouldEqual, http.StatusInternalServerError)
+			So(deletes, ShouldEqual, 0)
+		})
+
+		Convey("ErrStoragePermanent returns 500 without DeleteImageManifest", func() {
+			status, deletes := runCase(zerr.ErrStoragePermanent)
+			So(status, ShouldEqual, http.StatusInternalServerError)
+			So(deletes, ShouldEqual, 0)
+		})
+
+		Convey("unrecognized pre-commit errors return 500 without DeleteImageManifest", func() {
+			status, deletes := runCase(io.ErrShortWrite)
+			So(status, ShouldEqual, http.StatusInternalServerError)
+			So(deletes, ShouldEqual, 0)
+		})
+	})
+}
+
 func TestGetManifestServesDespiteStatsError(t *testing.T) {
 	Convey("GetManifest serves the manifest when download-stats update fails", t, func() {
 		const (

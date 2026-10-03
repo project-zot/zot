@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/olekukonko/tablewriter"
 	"github.com/olekukonko/tablewriter/tw"
 	godigest "github.com/opencontainers/go-digest"
@@ -18,6 +17,7 @@ import (
 	zerr "zotregistry.dev/zot/v2/errors"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/compat"
+	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
@@ -133,9 +133,13 @@ func CheckRepo(ctx context.Context, imageName string, imgStore storageTypes.Imag
 			}
 		}
 
-		// ignore the manifest if it isn't found
+		// Soft-skip only true absence of a top-level listed descriptor (concurrent
+		// delete after index snapshot). Transient/Permanent and nested blob issues
+		// are recorded as affected.
 		if !errors.Is(err, zerr.ErrManifestNotFound) {
-			results = append(results, scrubbedManifests[manifest.Digest])
+			if res, ok := scrubbedManifests[manifest.Digest]; ok {
+				results = append(results, res)
+			}
 		}
 	}
 
@@ -153,8 +157,18 @@ func checkImage(
 
 	manifestContent, err := imgStore.GetBlobContent(imageName, manifest.Digest)
 	if err != nil {
-		// ignore if the manifest is not found(probably it was deleted after we got the list of manifests)
-		return []ispec.Descriptor{}, zerr.ErrManifestNotFound
+		// Top-level index.json entries (manifests / indexes) may vanish between
+		// the index snapshot and this read when GC/deletes race scrub. Soft-skip
+		// only classified Missing there. Transient/Permanent must still be reported —
+		// they are not "deleted", and nested config/layer Missing stays affected
+		// inside scrubManifest (parent was successfully read).
+		if errclass.IsStorageObjectMissing(err) {
+			return []ispec.Descriptor{}, zerr.ErrManifestNotFound
+		}
+
+		scrubbedManifests[manifest.Digest] = getResult(imageName, tag, manifest.Digest, err)
+
+		return []ispec.Descriptor{}, err
 	}
 
 	return scrubManifest(manifest, imgStore, imageName, tag, manifestContent, scrubbedManifests)
@@ -215,22 +229,17 @@ func scrubManifest(
 		for _, man := range idx.Manifests {
 			buf, err := imgStore.GetBlobContent(imageName, man.Digest)
 			if err != nil {
-				// Handle missing blobs gracefully - mark as affected but continue processing
-				var pathNotFoundErr driver.PathNotFoundError
-				if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
-					imgRes := getResult(imageName, tag, man.Digest, err)
-					scrubbedManifests[man.Digest] = imgRes
-					scrubbedManifests[manifest.Digest] = imgRes
-					indexAffected = true
-
-					// Continue checking other manifests instead of returning
-					continue
-				}
-
-				// For other errors, mark as affected and return
-				imgRes := getResult(imageName, tag, man.Digest, zerr.ErrBadBlobDigest)
+				// Preserve the classified read error. Missing → continue other children;
+				// Transient/Permanent → affected with the real storage error (not BadBlobDigest).
+				imgRes := getResult(imageName, tag, man.Digest, err)
 				scrubbedManifests[man.Digest] = imgRes
 				scrubbedManifests[manifest.Digest] = imgRes
+
+				if errclass.IsBlobUnavailable(err) {
+					indexAffected = true
+
+					continue
+				}
 
 				return layers, err
 			}
@@ -264,17 +273,9 @@ func scrubManifest(
 		if idx.Subject != nil {
 			buf, err := imgStore.GetBlobContent(imageName, idx.Subject.Digest)
 			if err != nil {
-				// Handle missing blobs gracefully - mark as affected but continue processing
-				var pathNotFoundErr driver.PathNotFoundError
-
-				resultErr := err
-
-				if !errors.Is(err, zerr.ErrBlobNotFound) && !errors.As(err, &pathNotFoundErr) {
-					// For other errors, use generic error
-					resultErr = zerr.ErrBadBlobDigest
-				}
-
-				imgRes := getResult(imageName, tag, idx.Subject.Digest, resultErr)
+				// Preserve the classified read error (Missing / Transient / Permanent);
+				// do not rewrite storage failures as digest corruption.
+				imgRes := getResult(imageName, tag, idx.Subject.Digest, err)
 				scrubbedManifests[idx.Subject.Digest] = imgRes
 				scrubbedManifests[manifest.Digest] = imgRes
 
@@ -311,17 +312,9 @@ func scrubManifest(
 		if err == nil && man.Subject != nil {
 			buf, err := imgStore.GetBlobContent(imageName, man.Subject.Digest)
 			if err != nil {
-				// Handle missing blobs gracefully - mark as affected but continue processing
-				var pathNotFoundErr driver.PathNotFoundError
-
-				resultErr := err
-
-				if !errors.Is(err, zerr.ErrBlobNotFound) && !errors.As(err, &pathNotFoundErr) {
-					// For other errors, use generic error
-					resultErr = zerr.ErrBadBlobDigest
-				}
-
-				imgRes := getResult(imageName, tag, man.Subject.Digest, resultErr)
+				// Preserve the classified read error (Missing / Transient / Permanent);
+				// do not rewrite storage failures as digest corruption.
+				imgRes := getResult(imageName, tag, man.Subject.Digest, err)
 				scrubbedManifests[man.Subject.Digest] = imgRes
 				scrubbedManifests[manifest.Digest] = imgRes
 

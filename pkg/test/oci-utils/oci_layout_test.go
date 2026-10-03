@@ -463,7 +463,8 @@ func TestExtractImageDetails(t *testing.T) {
 		olu := ociutils.NewBaseOciLayoutUtils(storeController, testLogger)
 		resDigest, resManifest, resIspecImage, resErr := olu.ExtractImageDetails("zot-test",
 			"latest", testLogger)
-		So(resErr, ShouldEqual, zerr.ErrRepoNotFound)
+		// GetImageManifest wraps Missing with ErrRepoNotFound (cause kept).
+		So(errors.Is(resErr, zerr.ErrRepoNotFound), ShouldBeTrue)
 		So(string(resDigest), ShouldEqual, "")
 		So(resManifest, ShouldBeNil)
 
@@ -492,7 +493,7 @@ func TestExtractImageDetails(t *testing.T) {
 
 		olu := ociutils.NewBaseOciLayoutUtils(storeController, testLogger)
 		resDigest, resManifest, resIspecImage, resErr := olu.ExtractImageDetails("zot-test", "latest", testLogger)
-		So(resErr, ShouldEqual, zerr.ErrBlobNotFound)
+		So(errors.Is(resErr, zerr.ErrBlobNotFound), ShouldBeTrue)
 		So(string(resDigest), ShouldEqual, "")
 		So(resManifest, ShouldBeNil)
 		So(resIspecImage, ShouldBeNil)

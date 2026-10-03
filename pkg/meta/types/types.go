@@ -230,10 +230,9 @@ type (
 
 type ImageTrustStore interface {
 	// VerifySignatureLayer loads the signature layer layerDigest of repo from storage and verifies that it signs
-	// manifestDigest. A layer the image store reports as not found is not trusted, without an error. The store
-	// reports a layer it cannot stat the same way whether it is gone or storage is failing at that moment, so such a
-	// hiccup clears the signer until the next validity run re-checks the layer. An error wrapping
-	// zerr.ErrSignatureLayerUnavailable means the layer is there but could not be read right now; callers keep its
+	// manifestDigest. A layer the image store reports as not found (ErrBlobNotFound / classified Missing) is not
+	// trusted, without an error. Transient/Permanent GetBlob failures are not BlobNotFound-shaped; together with
+	// other load failures they surface as an error wrapping zerr.ErrSignatureLayerUnavailable so callers keep the
 	// previous result.
 	VerifySignatureLayer(
 		signatureType string, layerDigest godigest.Digest, sigKey string, manifestDigest godigest.Digest,

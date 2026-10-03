@@ -29,6 +29,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage"
 	"zotregistry.dev/zot/v2/pkg/storage/cache"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
+	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
@@ -1789,10 +1790,11 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 
 			imgStore := mocks.MockedImageStore{
 				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
-					return nil, driver.PathNotFoundError{Path: digest.String(), DriverName: "local"}
+					return nil, errclass.MarkMissing(driver.PathNotFoundError{Path: digest.String(), DriverName: "local"})
 				},
 				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
-					return false, -1, time.Time{}, driver.PathNotFoundError{Path: digest.String(), DriverName: "local"}
+					return false, -1, time.Time{}, errclass.MarkMissing(
+						driver.PathNotFoundError{Path: digest.String(), DriverName: "local"})
 				},
 			}
 
@@ -1949,7 +1951,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			So(deleted, ShouldEqual, 0)
 		})
 
-		Convey("PathNotFoundError on GetAllBlobs in deleteUnreferencedBlobs", func() {
+		Convey("ErrStorageMissing on GetAllBlobs in deleteUnreferencedBlobs", func() {
 			returnedIndex := ispec.Index{}
 			returnedIndexBuf, err := json.Marshal(returnedIndex)
 			So(err, ShouldBeNil)
@@ -1959,7 +1961,8 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 					return returnedIndexBuf, nil
 				},
 				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
-					return nil, driver.PathNotFoundError{Path: "/blobs/sha256", DriverName: "local"}
+					return nil, errclass.MarkMissing(
+						driver.PathNotFoundError{Path: "/blobs/sha256", DriverName: "local"})
 				},
 			}
 
@@ -2300,10 +2303,10 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			So(len(index.Manifests), ShouldEqual, 1)
 		})
 
-		Convey("removeStaleManifestEntries treats GetAllBlobs PathNotFound as empty storage", func() {
+		Convey("removeStaleManifestEntries treats GetAllBlobs Missing as empty storage", func() {
 			imgStore := mocks.MockedImageStore{
 				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
-					return nil, driver.PathNotFoundError{}
+					return nil, errclass.MarkMissing(driver.PathNotFoundError{})
 				},
 			}
 
@@ -2321,6 +2324,34 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			err := gc.removeStaleManifestEntries(repoName, index)
 			So(err, ShouldBeNil)
 			So(len(index.Manifests), ShouldEqual, 0)
+		})
+
+		Convey("removeStaleManifestEntries aborts on GetAllBlobs Transient without pruning", func() {
+			transient := errclass.MarkTransient(errors.New("list blip")) //nolint:err113 // test
+
+			imgStore := mocks.MockedImageStore{
+				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
+					return nil, transient
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			keptDigest := godigest.FromString("still-present")
+			index := &ispec.Index{
+				Manifests: []ispec.Descriptor{
+					{
+						Digest:    keptDigest,
+						MediaType: ispec.MediaTypeImageManifest,
+					},
+				},
+			}
+
+			err := gc.removeStaleManifestEntries(repoName, index)
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+			So(len(index.Manifests), ShouldEqual, 1)
+			So(index.Manifests[0].Digest, ShouldEqual, keptDigest)
 		})
 
 		Convey("removeStaleManifestEntries continues despite metaDB errors", func() {
@@ -2742,6 +2773,83 @@ func TestCleanRepoWithStaleManifestEntries(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(savedIndex.Manifests), ShouldEqual, 1)
 		So(savedIndex.Manifests[0].Digest, ShouldEqual, existingDigest)
+	})
+
+	Convey("cleanRepo aborts on GetAllBlobs Transient before PutIndexContent", t, func() {
+		log := zlog.NewTestLogger()
+		audit := zlog.NewAuditLogger("debug", "")
+		metrics := monitoring.NewNopMetricServer()
+
+		existingDigest := godigest.FromString("existing-blob")
+
+		returnedIndex := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{
+					Digest:    existingDigest,
+					MediaType: ispec.MediaTypeImageManifest,
+				},
+			},
+		}
+
+		returnedIndexBuf, err := json.Marshal(returnedIndex)
+		So(err, ShouldBeNil)
+
+		putIndexCalled := false
+		cleanupCalled := false
+		transient := errclass.MarkTransient(errors.New("list blip")) //nolint:err113 // test
+
+		imgStore := mocks.MockedImageStore{
+			GetIndexContentFn: func(repo string) ([]byte, error) {
+				return returnedIndexBuf, nil
+			},
+			GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
+				return nil, transient
+			},
+			PutIndexContentFn: func(repo string, index ispec.Index) error {
+				putIndexCalled = true
+
+				return nil
+			},
+			CleanupRepoFn: func(repo string, blobs []godigest.Digest) (int, error) {
+				cleanupCalled = true
+
+				return 0, nil
+			},
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				m := ispec.Manifest{SchemaVersion: 2}
+				b, _ := json.Marshal(m)
+
+				return b, nil
+			},
+			StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+				return true, 100, time.Now().Add(-time.Hour), nil
+			},
+			ListBlobUploadsFn: func(repo string) ([]string, error) {
+				return nil, nil
+			},
+		}
+
+		falseVal := false
+		gcOptions := Options{
+			Delay: storageConstants.DefaultGCDelay,
+			ImageRetention: config.ImageRetention{
+				Delay: storageConstants.DefaultGCDelay,
+				Policies: []config.RetentionPolicy{
+					{
+						Repositories:   []string{"**"},
+						DeleteUntagged: &falseVal,
+					},
+				},
+			},
+		}
+
+		gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+		err = gc.cleanRepo(ctx, repoName)
+		So(err, ShouldNotBeNil)
+		So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+		So(putIndexCalled, ShouldBeFalse)
+		So(cleanupCalled, ShouldBeFalse)
 	})
 }
 

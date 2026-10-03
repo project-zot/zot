@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
@@ -27,6 +26,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/scheduler"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	common "zotregistry.dev/zot/v2/pkg/storage/common"
+	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 	"zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
@@ -308,7 +308,7 @@ func (gc GarbageCollect) removeStaleManifestEntries(repo string, index *ispec.In
 
 	allBlobs, err := gc.imgStore.GetAllBlobs(repo)
 	if err != nil {
-		if _, ok := errors.AsType[driver.PathNotFoundError](err); !ok {
+		if !errclass.IsStorageObjectMissing(err) {
 			return err
 		}
 
@@ -448,8 +448,7 @@ func (gc GarbageCollect) imageIndexHasStaleNestedManifests(repo string, desc isp
 ) (bool, error) {
 	indexImage, err := common.GetImageIndex(gc.imgStore, repo, desc.Digest, gc.log)
 	if err != nil {
-		var pathNotFoundErr driver.PathNotFoundError
-		if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
+		if errclass.IsBlobUnavailable(err) {
 			// Index blob missing — top-level descriptor is stale.
 			return true, nil
 		}
@@ -522,12 +521,6 @@ func (gc GarbageCollect) removeManifestsPerRepoPolicy(ctx context.Context, repo 
 	return nil
 }
 
-func isMissingBlobErr(err error) bool {
-	var pathNotFoundErr driver.PathNotFoundError
-
-	return errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr)
-}
-
 // removeReferrersWithMissingSubject walks root index.json and removes rows whose subject is no
 // longer listed there. It does not delete blobs from storage.
 //
@@ -586,7 +579,7 @@ func (gc GarbageCollect) removeReferrerByIndexDesc(repo string, rootIndex *ispec
 
 		indexImage, err = common.GetImageIndex(gc.imgStore, repo, desc.Digest, gc.log)
 		if err != nil {
-			if isMissingBlobErr(err) {
+			if errclass.IsBlobUnavailable(err) {
 				missing[desc.Digest] = struct{}{}
 				gc.log.Warn().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", desc.Digest.String()).
 					Msg("skipping missing image index blob, continuing GC")
@@ -626,7 +619,7 @@ func (gc GarbageCollect) removeReferrerByManifestDesc(repo string, rootIndex *is
 
 		image, err = common.GetImageManifest(gc.imgStore, repo, desc.Digest, gc.log)
 		if err != nil {
-			if isMissingBlobErr(err) {
+			if errclass.IsBlobUnavailable(err) {
 				missing[desc.Digest] = struct{}{}
 				gc.log.Warn().Err(err).Str("module", "gc").Str("repo", repo).Str("digest", desc.Digest.String()).
 					Msg("skipping missing image manifest blob, continuing GC")
@@ -810,10 +803,10 @@ func (gc GarbageCollect) removeManifestIfOlderThan(repo string, index *ispec.Ind
 
 	canGC, err := isBlobOlderThan(gc.imgStore, repo, desc.Digest, delay, gc.log)
 	if err != nil {
-		// Do not abort CleanRepo: StatBlob collapses transient storage errors into
-		// ErrBlobNotFound, so we must not treat a miss as age-eligible here. Skip this
-		// row and let removeStaleManifestEntries (GetAllBlobs inventory) drop truly
-		// absent descriptors later in the same CleanRepo pass.
+		// Do not abort CleanRepo: age checks fail closed on any StatBlob error
+		// (Missing, Transient, or Permanent). Skip this row and let
+		// removeStaleManifestEntries (GetAllBlobs inventory) drop truly absent
+		// descriptors later in the same CleanRepo pass.
 		gc.log.Warn().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", desc.Digest.String()).
 			Str("delay", delay.String()).Msg("skipping age check after blob stat failure, continuing GC")
 
@@ -997,7 +990,7 @@ func (gc GarbageCollect) identifyManifestsReferencedInIndex(index ispec.Index, r
 		if compat.IsImageIndexMediaType(desc.MediaType) {
 			indexImage, err := common.GetImageIndex(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
-				if isMissingBlobErr(err) {
+				if errclass.IsBlobUnavailable(err) {
 					gc.log.Warn().Err(err).Str("module", "gc").Str("repository", repo).
 						Str("digest", desc.Digest.String()).Msg("skipping missing image index blob, continuing GC")
 
@@ -1026,7 +1019,7 @@ func (gc GarbageCollect) identifyManifestsReferencedInIndex(index ispec.Index, r
 		} else if compat.IsImageManifestMediaType(desc.MediaType) {
 			image, err := common.GetImageManifest(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
-				if isMissingBlobErr(err) {
+				if errclass.IsBlobUnavailable(err) {
 					gc.log.Warn().Err(err).Str("module", "gc").Str("repo", repo).
 						Str("digest", desc.Digest.String()).Msg("skipping missing image manifest blob, continuing GC")
 
@@ -1117,7 +1110,7 @@ func (gc GarbageCollect) deleteUnreferencedBlobs(repo string, delay time.Duratio
 	allBlobs, err := gc.imgStore.GetAllBlobs(repo)
 	if err != nil {
 		// /blobs/sha256/ may be empty in the case of s3, no need to return err, we want to skip
-		if errors.As(err, &driver.PathNotFoundError{}) {
+		if errclass.IsStorageObjectMissing(err) {
 			return 0, nil
 		}
 
@@ -1178,10 +1171,11 @@ func isBlobOlderThan(imgStore types.ImageStore, repo string,
 ) (bool, error) {
 	_, _, modtime, err := imgStore.StatBlob(repo, digest)
 	if err != nil {
-		// Fail closed: ImageStore.StatBlob maps any underlying Stat failure (including
-		// transient S3/network errors) to ErrBlobNotFound, so treating "missing" as
-		// GC-eligible would risk deleting live index rows during storage blips.
-		// Stale prune can still remove truly absent blobs later when CleanRepo succeeds.
+		// Fail closed: do not treat Missing (or Transient/Permanent) as age-eligible —
+		// that would risk deleting live index rows during storage blips.
+		// StatBlob preserves ErrStorage*; IsBlobUnavailable soft-skips use that
+		// elsewhere. Stale prune can still remove truly absent blobs later when
+		// CleanRepo inventory succeeds.
 		log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", digest.String()).
 			Msg("failed to stat blob")
 

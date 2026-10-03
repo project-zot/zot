@@ -2658,7 +2658,7 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 				ok, size, err = imgStore.CheckBlob(context.Background(), repoName, blobDigest)
 				So(ok, ShouldBeFalse)
 				So(size, ShouldNotEqual, blobSize)
-				So(err, ShouldEqual, zerr.ErrBlobNotFound)
+				So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
 
 				err = WriteImageToFileSystem(image, repoName, tag, storeController)
 				So(err, ShouldBeNil)
@@ -2700,7 +2700,7 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 				ok, size, err = imgStore.CheckBlob(context.Background(), repoName, blobDigest)
 				So(ok, ShouldBeFalse)
 				So(size, ShouldNotEqual, blobSize)
-				So(err, ShouldEqual, zerr.ErrBlobNotFound)
+				So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
 
 				err = WriteMultiArchImageToFileSystem(image, repoName, tag, storeController)
 				So(err, ShouldBeNil)
@@ -5310,7 +5310,9 @@ func TestCheckBlobEmptyBlob(t *testing.T) {
 	ok, size, err = imgStore.CheckBlob(ctx, repo, nonEmptyDigest)
 	assertExpectation(ok, ShouldBeFalse)
 	assertExpectation(size, ShouldEqual, int64(-1))
-	assertExpectation(err, ShouldEqual, zerr.ErrBlobNotFound)
+	if !errors.Is(err, zerr.ErrBlobNotFound) {
+		t.Fatalf("expected ErrBlobNotFound, got %v", err)
+	}
 }
 
 func TestCheckIsImageSignature(t *testing.T) {

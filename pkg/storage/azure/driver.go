@@ -244,25 +244,27 @@ func (driver *Driver) formatErr(err error, path string) error {
 			pathNotFound.Path = path
 		}
 
-		return errclass.MarkMissing(errclass.Wrap(pathNotFound, err))
+		// Mark the stamped value only — Wrap(stamped, err) would stack two typed
+		// values that differ only by DriverName/Path (no Is on distribution types).
+		return errclass.MarkMissing(pathNotFound)
 	}
 
 	if invalidPath, ok := errors.AsType[storagedriver.InvalidPathError](err); ok {
 		invalidPath.DriverName = driver.Name()
 
-		return errclass.MarkPermanent(errclass.Wrap(invalidPath, err))
+		return errclass.MarkPermanent(invalidPath)
 	}
 
 	if invalidOffset, ok := errors.AsType[storagedriver.InvalidOffsetError](err); ok {
 		invalidOffset.DriverName = driver.Name()
 
-		return errclass.MarkPermanent(errclass.Wrap(invalidOffset, err))
+		return errclass.MarkPermanent(invalidOffset)
 	}
 
 	if unsupported, ok := errors.AsType[storagedriver.ErrUnsupportedMethod](err); ok {
 		unsupported.DriverName = driver.Name()
 
-		return errclass.MarkPermanent(errclass.Wrap(unsupported, err))
+		return errclass.MarkPermanent(unsupported)
 	}
 
 	detail := err

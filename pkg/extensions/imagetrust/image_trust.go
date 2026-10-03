@@ -178,8 +178,10 @@ func (imgTrustStore *ImageTrustStore) VerifySignatureLayer(
 	if err != nil {
 		switch {
 		case errors.Is(err, zerr.ErrBlobNotFound):
-			// the image store reports a layer it cannot stat as not found, whether the layer is gone or storage is
-			// failing right now, so this clears the signer until the next validity run re-checks the layer
+			// Blob unavailable (Missing-shaped wrap or bare ErrBlobNotFound, e.g. empty
+			// dedupe origin): clear the signer until a later validity run.
+			// Transient/Permanent GetBlob errors are not BlobNotFound and fall through
+			// to ErrSignatureLayerUnavailable so prior validity is kept.
 			return "", time.Time{}, false, nil
 		case errors.Is(err, zerr.ErrSignatureLayerTooLarge):
 			return "", time.Time{}, false, err
