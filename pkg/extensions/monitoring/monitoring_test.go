@@ -657,6 +657,10 @@ func TestPopulateStorageMetrics(t *testing.T) {
 		// rewrites index.json via a .uploads staging file, so GetDirSize can briefly
 		// include an extra index.json-sized file and disagree with the gauge.
 		conf.Storage.GC = false
+		// Default Dedupe rebuild runs on controller start and Links duplicate blobs with
+		// Remove+Link. Metrics can snapshot a full tree while a later GetDirSize walks a
+		// repo mid-rebuild (dest removed, hardlink not yet recreated) and undercounts.
+		conf.Storage.Dedupe = false
 		conf.Extensions = &extconf.ExtensionConfig{}
 		enabled := true
 		conf.Extensions.Metrics = &extconf.MetricsConfig{
