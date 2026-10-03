@@ -12,15 +12,15 @@ The cache database can be configured independently of storage. Right now, `zot` 
 
 Goal: callers can distinguish true absence from unreliable or permanent storage failures via `errors.Is` / `errors.As`, without collapsing every failure to bare `zerr.ErrBlobNotFound` and without treating Missing as GC age-eligible.
 
-Non-goals (still open or later stages): HTTP 503 for Transient; EmptyPrefix as its own Go type; retry/backoff; flipping `isBlobOlderThan` to treat Missing as age-eligible.
+Non-goals (still open or later stages): EmptyPrefix as its own Go type; retry/backoff; flipping `isBlobOlderThan` to treat Missing as age-eligible; finer Permanent → 4xx mapping (Permanent stays HTTP 500 today).
 
 **Rule:** when unsure between Missing and Transient → Transient (never invent Missing).
 
 ### Layers
 
 1. **Drivers** (`local` / `s3` / `gcs` / `azure`) map SDK/OS errors through `formatErr` onto `zerr.ErrStorageMissing` / `ErrStorageTransient` / `ErrStoragePermanent` (via [`errclass`](./errclass/) `Mark*`), keeping PathNotFound / causes in the chain. PathNotFound must be Missing before it leaves the driver. Typed PathNotFound / Invalid* / Unsupported stamp DriverName/Path then `Mark*` that value only (never `Wrap(stamped, err)` — distribution typed errors lack `Is`).
-2. **ImageStore** (`imagestore.go`: `mapStorageErr`) preserves those classes on blob APIs (`StatBlob`, `GetBlob*`, `CheckBlob`, …). Absence also wraps `zerr.ErrBlobNotFound` so HTTP stays 404-shaped; Transient/Permanent are never wrapped with `ErrBlobNotFound`. Repo-dir `Stat` (`statRepoDir`, used by `GetImageManifest` / `GetImageTags` / `DeleteImageManifest`) wraps Missing with `ErrRepoNotFound` (keeps Missing in the chain), propagates Transient/Permanent, marks a non-directory path as Permanent `ErrRepoBadLayout`, and treats unclassified Stat as Transient.
-3. **Caller policy** — HTTP / product code keys off `ErrBlobNotFound`; code inside `pkg/storage` keys off class predicates (below). GC and scrub apply class-aware policy (see [Caller policy decisions](#caller-policy-decisions)).
+2. **ImageStore** (`imagestore.go`: `mapStorageErr`) preserves those classes on blob APIs (`StatBlob`, `GetBlob*`, `CheckBlob`, …). Absence also wraps `zerr.ErrBlobNotFound` so HTTP stays 404-shaped; Transient/Permanent are never wrapped with `ErrBlobNotFound`. Repo-dir `Stat` (`statRepoDir`, used by `GetImageManifest` / `GetImageTags` / `DeleteImageManifest`) wraps Missing with `ErrRepoNotFound` (keeps Missing in the chain), propagates Transient/Permanent, marks a non-directory path as Permanent `ErrRepoBadLayout`, and treats unclassified Stat as Transient. `ValidateRepo` List and upload `Writer` open use the same Missing-only → not-found mapping (else preserve class). `GetIndexContent` Missing uses `IsStorageObjectMissing` + Wrap `ErrRepoNotFound`.
+3. **Caller policy** — HTTP / product code keys off `ErrBlobNotFound` for absence (404-shaped) and off `ErrStorageTransient` / `ErrStoragePermanent` for outages (503 / 500); code inside `pkg/storage` keys off class predicates (below). GC and scrub apply class-aware policy (see [Caller policy decisions](#caller-policy-decisions)).
 
 Per-backend raw→class inventory: [errclass/driver-error-matrix.md](./errclass/driver-error-matrix.md).
 
@@ -40,7 +40,9 @@ These are different axes: **Missing** = storage said the object is gone; **BlobN
 
 | Caller | Predicate |
 |--------|-----------|
-| HTTP routes (and for now sync / meta / trivy) | `errors.Is(err, ErrBlobNotFound)` → unavailable / 404 |
+| HTTP routes (absence) | `errors.Is(err, ErrBlobNotFound)` / repo/upload/manifest not-found sentinels → 404-shaped |
+| HTTP routes (local storage outage) | `errors.Is(err, ErrStorageTransient)` → 503; `ErrStoragePermanent` → 500 (`writeStorageClassError`, before not-found arms) |
+| On-demand sync hard fail | `errors.Is(err, ErrSyncInternal)` → 503 (opaque; not a storage-driver class) |
 | `pkg/storage` “object gone” (heal, delete-idempotent, GC empty inventory) | `errclass.IsStorageObjectMissing` |
 | `pkg/storage` soft-skip / “content unavailable” (GC walk rows) | `errclass.IsBlobUnavailable` |
 | Scrub | Top-level `index.json` Missing → omit row; Transient/Permanent + nested Missing/config/layers → `affected` |
@@ -73,8 +75,10 @@ Use `errors.Is(err, ErrCacheMiss)` directly when only a cache-row miss matters.
 
 | Area | Missing / unavailable | Transient / Permanent |
 |------|----------------------|------------------------|
-| **ValidateManifest** (`StatBlob` on config/layers) | → `ErrBadManifest` (reject push as bad content) | Propagate unchanged (fail closed; do not claim the blob is absent). HTTP `UpdateManifest` maps these to 5xx **without** `DeleteImageManifest` cleanup (an existing tag must survive a storage blip on overwrite). |
-| **HTTP `ListTags`** (`GetImageTags` / `statRepoDir`) | → `NAME_UNKNOWN` / 404 | → 5xx (do not present a storage blip as a missing repository) |
+| **ValidateManifest** (`StatBlob` on config/layers) | → `ErrBadManifest` (reject push as bad content) | Propagate unchanged (fail closed; do not claim the blob is absent). HTTP `UpdateManifest` maps Transient → 503 / Permanent → 500 **without** `DeleteImageManifest` cleanup (an existing tag must survive a storage blip on overwrite). |
+| **HTTP `ListTags`** (`GetImageTags` / `statRepoDir`) | → `NAME_UNKNOWN` / 404 | Transient → 503 / Permanent → 500 (do not present a storage blip as a missing repository) |
+| **HTTP catalog** (`ValidateRepo` / `GetNextRepositories` / `ListRepositories`) | Per-path Missing / non-layout → soft-skip candidate (partial 200). Walk-level failure fails the catalog. | Per-path ValidateRepo Transient/Permanent → soft-skip that candidate with Warn (partial 200). Walk-level Transient → 503 / Permanent → 500. |
+| **HTTP blob / manifest / upload / referrers** (direct ImageStore I/O) | Missing → 404-shaped (`BLOB_UNKNOWN` / `NAME_UNKNOWN` / `BLOB_UPLOAD_UNKNOWN` / `MANIFEST_UNKNOWN` as appropriate) | Transient → 503; Permanent → 500. Storage classes are checked before not-found sentinels so an outage cannot surface as 404. Sync hard failures stay opaque 503 via `ErrSyncInternal` (separate from storage classes). |
 | **GC `GetAllBlobs` inventory** (`removeStaleManifestEntries`, `deleteUnreferencedBlobs`) | Treat as empty inventory (Missing only) | Abort the GC step; do **not** prune index entries or call `PutIndexContent` / blob cleanup |
 | **GC per-blob soft-skips** (walk / age checks) | `IsBlobUnavailable` → skip that row | Skip that row (fail closed for destructive age eligibility; do not treat as older-than) |
 | **Scrub** (top-level listed manifest/index from `index.json`) | Soft-skip Missing only (concurrent delete after index snapshot) | Record as **affected** |
@@ -90,7 +94,7 @@ Use `errors.Is(err, ErrCacheMiss)` directly when only a cache-row miss matters.
 | 3 | GC / scrub / ValidateManifest class-aware policy (+ metrics later) | In progress (policy wired; metrics still open) |
 | 4 | Retry/backoff for Transient (optional) | Planned |
 | 5 | Typed EmptyPrefix / PrefixHasNoChildren (optional) | Follow-up — see resolved decision |
-| 6 | Public HTTP: Transient → 503 (and finer Permanent mapping) (optional) | Follow-up — see resolved decision |
+| 6 | Public HTTP: Transient → 503 (direct storage routes); Permanent → 500 | Transient→503 done; finer Permanent → 4xx still open |
 
 ### Open questions
 
@@ -106,7 +110,8 @@ Use `errors.Is(err, ErrCacheMiss)` directly when only a cache-row miss matters.
 - **Corruption / empty dedupe origin** — Bare `ErrBlobNotFound`, never `MarkMissing`.
 - **Context cancellation** — No separate storage class. S3/GCS/Azure `formatErr` already map `context.Canceled` / `DeadlineExceeded` to Transient (cause kept in the chain); callers that need cancel vs other Transient can still `errors.Is(err, context.Canceled)` / `DeadlineExceeded`. Revisit only if a GC/walk path needs distinct policy.
 - **S3 Stat List failover** — Keep distribution’s List failover on some Stat `awserr` shapes as-is; do not tighten the mapping in zot for now (documented quirk in the driver matrix).
-- **Public HTTP** — For now keep generic 500 when Transient/Permanent blob GET/HEAD is no longer collapsed to `ErrBlobNotFound` (Missing stays 404-shaped). **Follow-up (stage 6):** map Transient → 503 and refine Permanent → 4xx/5xx in the API layer; not part of storage stages 0–3.
+- **Public HTTP** — Direct local storage Transient → HTTP 503; Permanent → HTTP 500; Missing stays 404-shaped (`BLOB_UNKNOWN` / `NAME_UNKNOWN` / …). Sync hard failures remain opaque 503 via `ErrSyncInternal` (not storage-driver classification). **Follow-up:** finer Permanent → 4xx/5xx mapping where product semantics allow.
+- **Catalog fail-soft** — Per-path `ValidateRepo` Transient/Permanent soft-skips that candidate with Warn and continues the Walk (partial catalog 200). Walk-level failures still fail `ListRepositories` (Transient → 503 / Permanent → 500).
 - **UpdateManifest cleanup** — All `PutImageManifest` failures return without calling `DeleteImageManifest`. Deleting by reference after an uncertain PUT can remove an existing tag when `index.json` was never updated (e.g. `io.ErrShortWrite`, Transient validation). Unreferenced partial blobs are left for GC.
 
 ### Tests
@@ -118,7 +123,9 @@ Use `errors.Is(err, ErrCacheMiss)` directly when only a cache-row miss matters.
 | ImageStore boundary | `mapStorageErr` class wrapping | `imagestore/imagestore_internal_test.go` |
 | Predicates | `IsStorageObjectMissing` / `IsBlobUnavailable` | `errclass/errclass_test.go` |
 | ValidateManifest classes | Missing → BadManifest; Transient/Permanent propagate | `common/common_test.go` (`TestValidateManifestStorageErrorClasses`) |
-| UpdateManifest PUT fail | Transient/Permanent/`ErrShortWrite` PUT → 5xx, no `DeleteImageManifest` | `api/routes_manifest_test.go` (`TestUpdateManifestStorageErrorsSkipCleanup`) |
+| UpdateManifest PUT fail | Transient → 503 / Permanent/`ErrShortWrite` → 500; no `DeleteImageManifest` | `api/routes_manifest_test.go` (`TestUpdateManifestStorageErrorsSkipCleanup`) |
+| HTTP storage classes | Transient → 503; Permanent → 500; not 404 | `api/routes_manifest_test.go` (`TestHTTPStorageClassStatusMapping`, ListTags/UpdateManifest cases) |
+| Catalog ValidateRepo / soft-skip | Missing wraps RepoNotFound; Transient/Permanent soft-skip in Walk | `imagestore/imagestore_test.go` (`TestValidateRepoListStorageClasses`, `TestGetNextRepositoriesValidateRepoSoftSkip`) |
 | GC listing fail-closed | Transient `GetAllBlobs` does not prune / `PutIndexContent` | `gc/gc_internal_test.go` |
 | GetAllBlobs nested Missing | Nested alg `List` Missing → Transient, not soft-empty Missing | `imagestore/imagestore_test.go` |
 | Repo-dir Stat classes | Missing wraps RepoNotFound; Transient/non-dir Permanent preserved | `imagestore/imagestore_test.go` (`TestGetImageManifestRepoStatClasses`) |

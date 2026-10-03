@@ -682,11 +682,9 @@ func isBlobReferencedInImageIndex(imgStore storageTypes.ImageStore, repo string,
 func IsBlobReferenced(imgStore storageTypes.ImageStore, repo string,
 	digest godigest.Digest, log zlog.Logger,
 ) (bool, error) {
-	dir := path.Join(imgStore.RootDir(), repo)
-	if !imgStore.DirExists(dir) {
-		return false, zerr.ErrRepoNotFound
-	}
-
+	// Do not use DirExists: it is bool-only and collapses Transient Stat to
+	// ErrRepoNotFound. GetIndex maps Missing → ErrRepoNotFound and preserves
+	// Transient/Permanent.
 	index, err := GetIndex(imgStore, repo, log)
 	if err != nil {
 		return false, err
@@ -706,11 +704,9 @@ is returned to the caller.
 */
 func GetReferencedBlobs(imgStore storageTypes.ImageStore, repo string, log zlog.Logger,
 ) (map[godigest.Digest]struct{}, error) {
-	dir := path.Join(imgStore.RootDir(), repo)
-	if !imgStore.DirExists(dir) {
-		return nil, zerr.ErrRepoNotFound
-	}
-
+	// Do not use DirExists: it is bool-only and collapses Transient Stat to
+	// ErrRepoNotFound. GetIndex maps Missing → ErrRepoNotFound and preserves
+	// Transient/Permanent.
 	index, err := GetIndex(imgStore, repo, log)
 	if err != nil {
 		return nil, err
@@ -851,11 +847,9 @@ func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godiges
 		return nilIndex, err
 	}
 
-	dir := path.Join(imgStore.RootDir(), repo)
-	if !imgStore.DirExists(dir) {
-		return newEmptyReferrersIndex(), nil
-	}
-
+	// Do not use DirExists: it is bool-only and collapses Transient Stat into
+	// empty 200. GetIndex maps Missing → ErrRepoNotFound (empty referrers) and
+	// preserves Transient/Permanent for callers (HTTP → 503/500).
 	index, err := GetIndex(imgStore, repo, log)
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoNotFound) {

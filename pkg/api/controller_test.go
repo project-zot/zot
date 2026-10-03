@@ -7855,6 +7855,96 @@ func TestInvalidCases(t *testing.T) {
 	})
 }
 
+// TestHTTPStorageFSPermissionDenied checks that real local EACCES (chmod) on an
+// existing repo maps to Permanent HTTP 500 via writeStorageClassError, not a
+// client-facing 404 (NAME_UNKNOWN / MANIFEST_UNKNOWN / BLOB_UNKNOWN).
+func TestHTTPStorageFSPermissionDenied(t *testing.T) {
+	Convey("local FS permission denials map to Permanent 500, not client 404", t, func() {
+		conf := config.New()
+		conf.HTTP.Port = "0"
+		conf.Storage.GC = false
+
+		dir := t.TempDir()
+		ctlr := makeController(conf, dir)
+
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+		defer cm.StopServer()
+
+		repo := "fs-perm-denied"
+		tag := "1.0"
+		img := CreateRandomImage()
+		So(UploadImage(img, baseURL, repo, tag), ShouldBeNil)
+
+		repoDir := path.Join(dir, repo)
+		indexPath := path.Join(repoDir, ispec.ImageIndexFile)
+		uploadsDir := path.Join(repoDir, storageConstants.BlobUploadDir)
+		layerDigest := img.Manifest.Layers[0].Digest
+		blobPath := path.Join(repoDir, ispec.ImageBlobsDir, layerDigest.Algorithm().String(), layerDigest.Encoded())
+
+		Convey("unreadable index.json: GET manifest is 500 not not-found", func() {
+			So(os.Chmod(indexPath, 0o000), ShouldBeNil)
+			defer func() { _ = os.Chmod(indexPath, 0o644) }()
+
+			resp, err := resty.R().Get(baseURL + "/v2/" + repo + "/manifests/" + tag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+			So(resp.String(), ShouldNotContainSubstring, "NAME_UNKNOWN")
+			So(resp.String(), ShouldNotContainSubstring, "MANIFEST_UNKNOWN")
+			So(resp.String(), ShouldNotContainSubstring, "MANIFEST_INVALID")
+		})
+
+		Convey("unreadable index.json: ListTags is 500 not NAME_UNKNOWN", func() {
+			So(os.Chmod(indexPath, 0o000), ShouldBeNil)
+			defer func() { _ = os.Chmod(indexPath, 0o644) }()
+
+			resp, err := resty.R().Get(baseURL + "/v2/" + repo + "/tags/list")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+			So(resp.String(), ShouldNotContainSubstring, "NAME_UNKNOWN")
+		})
+
+		Convey("unreadable blob dir: CheckBlob/GetBlob is 500 not BLOB_UNKNOWN", func() {
+			// Stat does not need read bits on the blob file itself; deny traverse
+			// on the algorithm directory so Stat/open both see EACCES.
+			blobAlgDir := path.Dir(blobPath)
+			So(os.Chmod(blobAlgDir, 0o000), ShouldBeNil)
+			defer func() { _ = os.Chmod(blobAlgDir, 0o755) }()
+
+			resp, err := resty.R().Head(baseURL + "/v2/" + repo + "/blobs/" + layerDigest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+			So(resp.String(), ShouldNotContainSubstring, "BLOB_UNKNOWN")
+
+			resp, err = resty.R().Get(baseURL + "/v2/" + repo + "/blobs/" + layerDigest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+			So(resp.String(), ShouldNotContainSubstring, "BLOB_UNKNOWN")
+		})
+
+		Convey("unreadable blob file: GetBlob is 500 not BLOB_UNKNOWN", func() {
+			// Open requires read; chmod 000 on the file alone is enough for GET.
+			So(os.Chmod(blobPath, 0o000), ShouldBeNil)
+			defer func() { _ = os.Chmod(blobPath, 0o644) }()
+
+			resp, err := resty.R().Get(baseURL + "/v2/" + repo + "/blobs/" + layerDigest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+			So(resp.String(), ShouldNotContainSubstring, "BLOB_UNKNOWN")
+		})
+
+		Convey("unwritable .uploads: CreateBlobUpload is 500 not NAME_UNKNOWN", func() {
+			So(os.Chmod(uploadsDir, 0o000), ShouldBeNil)
+			defer func() { _ = os.Chmod(uploadsDir, 0o755) }()
+
+			resp, err := resty.R().Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+			So(resp.String(), ShouldNotContainSubstring, "NAME_UNKNOWN")
+		})
+	})
+}
+
 func TestHTTPReadOnly(t *testing.T) {
 	Convey("Single cred", t, func() {
 		singleCredtests := []string{}
@@ -13175,7 +13265,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 			defer resp.Body.Close()
 
 			if injected {
-				So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+				So(resp.StatusCode, ShouldEqual, http.StatusServiceUnavailable)
 			} else {
 				So(resp.StatusCode, ShouldEqual, http.StatusCreated)
 			}
@@ -13197,7 +13287,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 
 			if injected {
-				So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+				So(resp.StatusCode, ShouldEqual, http.StatusServiceUnavailable)
 			} else {
 				So(resp.StatusCode, ShouldEqual, http.StatusCreated)
 			}
@@ -13219,7 +13309,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 
 			if injected {
-				So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+				So(resp.StatusCode, ShouldEqual, http.StatusServiceUnavailable)
 			} else {
 				So(resp.StatusCode, ShouldEqual, http.StatusCreated)
 			}

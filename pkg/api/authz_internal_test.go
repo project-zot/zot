@@ -19,6 +19,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/constants"
 	"zotregistry.dev/zot/v2/pkg/log"
 	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
+	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
 
 // permitted returns just the bool from AccessController.isPermitted; tests
@@ -1316,5 +1317,50 @@ func TestRepoTagsForManifestWriteAuthz(t *testing.T) {
 		got, err := repoTagsForManifestWriteAuthz(nil, expected)
 		assert.Nil(t, got)
 		assert.ErrorIs(t, err, expected)
+	})
+}
+
+func TestDistSpecAuthzHandlerStorageClassOnTagLookup(t *testing.T) {
+	t.Parallel()
+
+	run := func(t *testing.T, tagsErr error, wantStatus int) {
+		t.Helper()
+
+		conf := config.New()
+		ctlr := NewController(conf)
+		ctlr.Log = log.NewTestLogger()
+		ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
+			GetImageTagsFn: func(_ string) ([]string, error) {
+				return nil, tagsErr
+			},
+		}
+
+		nextCalled := false
+		handler := DistSpecAuthzHandler(ctlr)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			nextCalled = true
+			w.WriteHeader(http.StatusOK)
+		}))
+
+		req := httptest.NewRequest(http.MethodPut, "/v2/repo/manifests/v1", nil)
+		req = mux.SetURLVars(req, map[string]string{"name": "repo", "reference": "v1"})
+		userAc := reqCtx.NewUserAccessControl()
+		userAc.SetUsername("alice")
+		userAc.SaveOnRequest(req)
+
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		assert.Equal(t, wantStatus, rec.Code)
+		assert.False(t, nextCalled)
+	}
+
+	t.Run("Transient → 503", func(t *testing.T) {
+		t.Parallel()
+		run(t, zerr.ErrStorageTransient, http.StatusServiceUnavailable)
+	})
+
+	t.Run("Permanent → 500", func(t *testing.T) {
+		t.Parallel()
+		run(t, zerr.ErrStoragePermanent, http.StatusInternalServerError)
 	})
 }

@@ -2052,7 +2052,7 @@ func TestNegativeCases(t *testing.T) {
 
 		_, err = imgStore.ValidateRepo("invalid-test")
 		So(err, ShouldNotBeNil)
-		So(err, ShouldEqual, zerr.ErrRepoNotFound)
+		So(errors.Is(err, zerr.ErrStoragePermanent), ShouldBeTrue)
 
 		err = os.Chmod(path.Join(dir, "invalid-test"), 0o755) // remove all perms
 		if err != nil {

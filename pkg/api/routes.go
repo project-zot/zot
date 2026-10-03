@@ -317,6 +317,8 @@ func (rh *RouteHandler) CheckVersionSupport(response http.ResponseWriter, reques
 // @Success 200 {object}     common.ImageTags
 // @Failure 404 {string}     string                 "not found"
 // @Failure 400 {string}     string                 "bad request"
+// @Failure 503 {string}     string                 "storage temporarily unavailable"
+// @Failure 500 {string}     string                 "internal server error"
 func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Request) {
 	if request.Method == http.MethodOptions {
 		return
@@ -381,12 +383,17 @@ func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Req
 
 	tags, err := imgStore.GetImageTags(name)
 	if err != nil {
+		if writeStorageClassError(response, err) {
+			// Transient → 503 / Permanent → 500 — not NAME_UNKNOWN.
+			rh.c.Log.Error().Err(err).Str("repository", name).Msg("failed to list tags")
+
+			return
+		}
+
 		if errors.Is(err, zerr.ErrRepoNotFound) {
 			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(map[string]string{"name": name})
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else {
-			// Transient/Permanent (and other non-absence failures) from statRepoDir /
-			// GetIndex must not look like a missing repository.
 			rh.c.Log.Error().Err(err).Str("repository", name).Msg("failed to list tags")
 			response.WriteHeader(http.StatusInternalServerError)
 		}
@@ -445,7 +452,7 @@ func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Req
 // @Success 200 {string} string "ok"
 // @Header  200 {string} Docker-Content-Digest "Manifest digest of the content"
 // @Failure 404 {string} string "not found"
-// @Failure 503 {string} string "synchronization failed"
+// @Failure 503 {string} string "storage temporarily unavailable or synchronization failed"
 // @Failure 500 {string} string "internal server error"
 func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *http.Request) {
 	if request.Method == http.MethodOptions {
@@ -476,6 +483,12 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 		details := zerr.GetDetails(err)
 		details["reference"] = reference
 
+		if writeStorageClassError(response, err) {
+			rh.c.Log.Error().Err(err).Msg("failed to check manifest due to storage failure")
+
+			return
+		}
+
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
@@ -488,9 +501,7 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 			zcommon.WriteJSON(response, http.StatusServiceUnavailable, apiErr.NewErrorList(e))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
-
-			e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusInternalServerError, apiErr.NewErrorList(e))
+			response.WriteHeader(http.StatusInternalServerError)
 		}
 
 		return
@@ -520,7 +531,7 @@ type ExtensionList struct {
 // @Success 200 {object} api.ImageManifest
 // @Header  200 {string} Docker-Content-Digest "Manifest digest of the content"
 // @Failure 404 {string} string "not found"
-// @Failure 503 {string} string "synchronization failed"
+// @Failure 503 {string} string "storage temporarily unavailable or synchronization failed"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/manifests/{reference} [get].
 func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.Request) {
@@ -553,6 +564,12 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 	content, digest, mediaType, err := getImageManifest(request.Context(), rh, imgStore, name, reference)
 	if err != nil {
 		details := zerr.GetDetails(err)
+		if writeStorageClassError(response, err) {
+			rh.c.Log.Error().Err(err).Msg("failed to get manifest due to storage failure")
+
+			return
+		}
+
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			details["name"] = name
 			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
@@ -626,6 +643,7 @@ func getReferrers(ctx context.Context, routeHandler *RouteHandler,
 // @Success 200 {object} api.ImageIndex
 // @Failure 400 {string} string "bad request (invalid digest)"
 // @Failure 404 {string} string "not found (manifest unknown)"
+// @Failure 503 {string} string "storage temporarily unavailable"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/referrers/{digest} [get].
 func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http.Request) {
@@ -660,6 +678,13 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 
 	referrers, err := getReferrers(request.Context(), rh, imgStore, name, digest, artifactTypes)
 	if err != nil {
+		if writeStorageClassError(response, err) {
+			rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).
+				Msg("failed to list referrers due to storage failure")
+
+			return
+		}
+
 		if errors.Is(err, zerr.ErrManifestNotFound) {
 			rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).
 				Msg("failed to get manifest")
@@ -705,6 +730,7 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 // @Failure 404 {string} string "not found"
 // @Failure 413 {string} string "request entity too large"
 // @Failure 414 {string} string "too many tag query parameters"
+// @Failure 503 {string} string "storage temporarily unavailable"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/manifests/{reference} [put].
 func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *http.Request) {
@@ -853,6 +879,13 @@ func (rh *RouteHandler) writePutImageManifestError(
 ) {
 	details := zerr.GetDetails(err)
 
+	if writeStorageClassError(response, err) {
+		rh.c.Log.Error().Err(err).Str("repository", name).Str("reference", reference).
+			Msg("failed to put manifest due to storage failure")
+
+		return
+	}
+
 	if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 		details["name"] = name
 		e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
@@ -868,10 +901,6 @@ func (rh *RouteHandler) writePutImageManifestError(
 	} else if errors.Is(err, zerr.ErrManifestCacheLookup) {
 		rh.c.Log.Error().Err(err).Str("repository", name).Str("reference", reference).
 			Msg("failed to look up manifest cache before manifest write")
-		response.WriteHeader(http.StatusInternalServerError)
-	} else if errors.Is(err, zerr.ErrStorageTransient) || errors.Is(err, zerr.ErrStoragePermanent) {
-		rh.c.Log.Error().Err(err).Str("repository", name).Str("reference", reference).
-			Msg("storage failure during manifest put")
 		response.WriteHeader(http.StatusInternalServerError)
 	} else if errors.Is(err, zerr.ErrBlobNotFound) {
 		details["blob"] = digest.String()
@@ -929,6 +958,7 @@ func normalizeManifestExtraTags(raw []string) ([]string, error) {
 // @Failure 404 {string} string "not found"
 // @Failure 405 {string} string "method not allowed"
 // @Failure 409 {string} string "conflict"
+// @Failure 503 {string} string "storage temporarily unavailable"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/manifests/{reference} [delete].
 func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *http.Request) {
@@ -966,6 +996,12 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 	manifestBlob, manifestDigest, mediaType, err := imgStore.GetImageManifest(name, reference)
 	if err != nil {
 		details := zerr.GetDetails(err)
+		if writeStorageClassError(response, err) {
+			rh.c.Log.Error().Err(err).Msg("failed to look up manifest for delete due to storage failure")
+
+			return
+		}
+
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			details["name"] = name
 			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
@@ -991,6 +1027,12 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 	err = imgStore.DeleteImageManifest(ctx, name, reference, detectCollision)
 	if err != nil { //nolint: dupl
 		details := zerr.GetDetails(err)
+		if writeStorageClassError(response, err) {
+			rh.c.Log.Error().Err(err).Msg("failed to delete manifest due to storage failure")
+
+			return
+		}
+
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			details["name"] = name
 			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
@@ -1143,6 +1185,12 @@ func (rh *RouteHandler) writeBlobReadError(
 	response http.ResponseWriter, name string, digest godigest.Digest, err error,
 ) {
 	details := zerr.GetDetails(err)
+	if writeStorageClassError(response, err) {
+		rh.c.Log.Error().Err(err).Msg("failed to read blob due to storage failure")
+
+		return
+	}
+
 	if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 		details["digest"] = digest.String()
 		e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
@@ -1171,6 +1219,10 @@ func (rh *RouteHandler) writeBlobReadError(
 // @Param   digest   path    string     true        "blob/layer digest"
 // @Success 200 {object} api.ImageManifest
 // @Header  200 {string} Docker-Content-Digest "Manifest digest of the content"
+// @Failure 400 {string} string "bad request"
+// @Failure 404 {string} string "not found"
+// @Failure 503 {string} string "storage temporarily unavailable"
+// @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/{digest} [head].
 func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Request) {
 	vars := mux.Vars(request)
@@ -1526,6 +1578,10 @@ func normalizeBlobRedirectURL(rawURL string) (string, bool) {
 // @Param   digest   path    string     true        "blob/layer digest"
 // @Header  200 {string} Docker-Content-Digest "Manifest digest of the content"
 // @Success 200 {object} api.ImageManifest
+// @Failure 400 {string} string "bad request"
+// @Failure 404 {string} string "not found"
+// @Failure 503 {string} string "storage temporarily unavailable"
+// @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/{digest} [get].
 func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Request) {
 	vars := mux.Vars(request)
@@ -1686,6 +1742,10 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 // @Param   name      path    string     true        "repository name"
 // @Param   digest    path    string     true        "blob/layer digest"
 // @Success 202 "accepted"
+// @Failure 404 {string} string "not found"
+// @Failure 405 {string} string "method not allowed"
+// @Failure 503 {string} string "storage temporarily unavailable"
+// @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/{digest} [delete].
 func (rh *RouteHandler) DeleteBlob(response http.ResponseWriter, request *http.Request) {
 	vars := mux.Vars(request)
@@ -1711,6 +1771,12 @@ func (rh *RouteHandler) DeleteBlob(response http.ResponseWriter, request *http.R
 	err = imgStore.DeleteBlob(name, digest)
 	if err != nil {
 		details := zerr.GetDetails(err)
+		if writeStorageClassError(response, err) {
+			rh.c.Log.Error().Err(err).Msg("failed to delete blob due to storage failure")
+
+			return
+		}
+
 		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			details["digest"] = digest.String()
 			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
@@ -1759,6 +1825,7 @@ func (rh *RouteHandler) DeleteBlob(response http.ResponseWriter, request *http.R
 // @Failure 401 {string} string "unauthorized"
 // @Failure 404 {string} string "not found"
 // @Failure 415 {string} string "unsupported media type (monolithic upload requires application/octet-stream)"
+// @Failure 503 {string} string "storage temporarily unavailable"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads [post].
 func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *http.Request) {
@@ -1813,6 +1880,12 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 			upload, err := imgStore.NewBlobUpload(ctx, name)
 			if err != nil {
 				details := zerr.GetDetails(err)
+				if writeStorageClassError(response, err) {
+					rh.c.Log.Error().Err(err).Msg("failed to start blob upload due to storage failure")
+
+					return
+				}
+
 				if errors.Is(err, zerr.ErrRepoNotFound) {
 					details["name"] = name
 					e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
@@ -1903,6 +1976,10 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 
 			rh.c.Log.Error().Err(err).Int64("actual", size).Int64("expected", contentLength).
 				Msg("failed to full blob upload")
+			if writeStorageClassError(response, err) {
+				return
+			}
+
 			response.WriteHeader(http.StatusInternalServerError)
 
 			return
@@ -1925,6 +2002,12 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 	upload, err := imgStore.NewBlobUpload(ctx, name)
 	if err != nil {
 		details := zerr.GetDetails(err)
+		if writeStorageClassError(response, err) {
+			rh.c.Log.Error().Err(err).Msg("failed to start blob upload due to storage failure")
+
+			return
+		}
+
 		if errors.Is(err, zerr.ErrRepoNotFound) {
 			details["name"] = name
 			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
@@ -1954,6 +2037,7 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 // @Header  204 {string} Range "0-128"
 // @Failure 400 {string} string "bad request"
 // @Failure 404 {string} string "not found"
+// @Failure 503 {string} string "storage temporarily unavailable"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads/{session_id} [get].
 func (rh *RouteHandler) GetBlobUpload(response http.ResponseWriter, request *http.Request) {
@@ -1978,6 +2062,12 @@ func (rh *RouteHandler) GetBlobUpload(response http.ResponseWriter, request *htt
 	size, err := imgStore.GetBlobUpload(name, sessionID)
 	if err != nil {
 		details := zerr.GetDetails(err)
+		if writeStorageClassError(response, err) {
+			rh.c.Log.Error().Err(err).Msg("failed to read blob upload due to storage failure")
+
+			return
+		}
+
 		//nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 		if errors.Is(err, zerr.ErrBadBlobDigest) {
 			details["session_id"] = sessionID
@@ -2024,6 +2114,7 @@ func (rh *RouteHandler) GetBlobUpload(response http.ResponseWriter, request *htt
 // @Failure 400 {string} string "bad request"
 // @Failure 404 {string} string "not found"
 // @Failure 416 {string} string "range not satisfiable"
+// @Failure 503 {string} string "storage temporarily unavailable"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads/{session_id} [patch].
 func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *http.Request) {
@@ -2077,6 +2168,12 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 
 	if err != nil { //nolint: dupl
 		details := zerr.GetDetails(err)
+		if writeStorageClassError(response, err) {
+			rh.c.Log.Error().Err(err).Msg("failed to patch blob upload due to storage failure")
+
+			return
+		}
+
 		if errors.Is(err, zerr.ErrBadUploadRange) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			details["session_id"] = sessionID
 			e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
@@ -2130,6 +2227,7 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 // @Failure 400 {string} string "bad request"
 // @Failure 404 {string} string "not found"
 // @Failure 416 {string} string "range not satisfiable"
+// @Failure 503 {string} string "storage temporarily unavailable"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads/{session_id} [put].
 func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *http.Request) {
@@ -2219,6 +2317,12 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 		_, err = imgStore.PutBlobChunk(ctx, name, sessionID, from, to, request.Body)
 		if err != nil { //nolint:dupl
 			details := zerr.GetDetails(err)
+			if writeStorageClassError(response, err) {
+				rh.c.Log.Error().Err(err).Msg("failed to update blob upload due to storage failure")
+
+				return
+			}
+
 			if errors.Is(err, zerr.ErrBadUploadRange) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 				details["session_id"] = sessionID
 				e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
@@ -2250,6 +2354,12 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 	// blob chunks already transferred, just finish
 	if err := imgStore.FinishBlobUpload(name, sessionID, request.Body, digest); err != nil {
 		details := zerr.GetDetails(err)
+		if writeStorageClassError(response, err) {
+			rh.c.Log.Error().Err(err).Msg("failed to finish blob upload due to storage failure")
+
+			return
+		}
+
 		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			details["digest"] = digest.String()
 			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
@@ -2296,6 +2406,7 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 // @Param   session_id   path    string     true        "upload session_id"
 // @Success 204 "no content"
 // @Failure 404 {string} string "not found"
+// @Failure 503 {string} string "storage temporarily unavailable"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads/{session_id} [delete].
 func (rh *RouteHandler) DeleteBlobUpload(response http.ResponseWriter, request *http.Request) {
@@ -2319,6 +2430,12 @@ func (rh *RouteHandler) DeleteBlobUpload(response http.ResponseWriter, request *
 
 	if err := imgStore.DeleteBlobUpload(name, sessionID); err != nil {
 		details := zerr.GetDetails(err)
+		if writeStorageClassError(response, err) {
+			rh.c.Log.Error().Err(err).Msg("failed to delete blob upload due to storage failure")
+
+			return
+		}
+
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			details["name"] = name
 			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
@@ -2423,6 +2540,7 @@ func (rh *RouteHandler) listStorageRepositories(lastEntry string, maxEntries int
 // @Accept  json
 // @Produce json
 // @Success 200 {object} api.RepositoryList
+// @Failure 503 {string} string "storage temporarily unavailable"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/_catalog [get].
 func (rh *RouteHandler) ListRepositories(response http.ResponseWriter, request *http.Request) {
@@ -2449,6 +2567,13 @@ func (rh *RouteHandler) ListRepositories(response http.ResponseWriter, request *
 
 	repos, moreEntries, err := rh.listStorageRepositories(lastEntry, maxEntries, userAc)
 	if err != nil {
+		if writeStorageClassError(response, err) {
+			rh.c.Log.Error().Err(err).Msg("failed to list repositories due to storage failure")
+
+			return
+		}
+
+		rh.c.Log.Error().Err(err).Msg("unexpected error listing repositories")
 		response.WriteHeader(http.StatusInternalServerError)
 
 		return
@@ -2850,6 +2975,25 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 	}
 
 	return nil, "", "", localErr
+}
+
+// writeStorageClassError maps local storage classes to HTTP status codes:
+// Transient → 503 (retryable), Permanent → 500. Returns true if a response was written.
+// Call before not-found sentinels so a classed outage cannot surface as 404.
+func writeStorageClassError(response http.ResponseWriter, err error) bool {
+	if errors.Is(err, zerr.ErrStorageTransient) {
+		response.WriteHeader(http.StatusServiceUnavailable)
+
+		return true
+	}
+
+	if errors.Is(err, zerr.ErrStoragePermanent) {
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return true
+	}
+
+	return false
 }
 
 // isManifestNotFound reports whether err means the repo or manifest is absent locally
