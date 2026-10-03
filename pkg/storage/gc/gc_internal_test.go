@@ -2909,7 +2909,7 @@ func TestGCTaskGeneratorTimeWindow(t *testing.T) {
 }
 
 func TestRemoveTagsPerRetentionPolicyMissingRepoMeta(t *testing.T) {
-	Convey("tag retention falls back to index patterns only when repo metadata is absent", t, func() {
+	Convey("tag retention keeps every tag when the repo record is missing", t, func() {
 		oldDigest := godigest.FromString("old-matching-tag")
 		newDigest := godigest.FromString("new-matching-tag")
 		otherDigest := godigest.FromString("unmatched-tag")
@@ -2958,8 +2958,9 @@ func TestRemoveTagsPerRetentionPolicyMissingRepoMeta(t *testing.T) {
 			},
 		}
 
-		// Count and pushedWithin both drop v1 when statistics exist. Index fallback keeps every
-		// tag matching the name pattern, including v1. "other" matches neither path.
+		// Count and pushedWithin both drop v1 when statistics exist. A nil metaDB keeps every
+		// tag matching the name pattern, including v1, and drops "other". A missing repo
+		// record keeps every tag because count and time rules cannot be evaluated.
 		testCases := []struct {
 			name     string
 			nilMeta  bool
@@ -2970,14 +2971,14 @@ func TestRemoveTagsPerRetentionPolicyMissingRepoMeta(t *testing.T) {
 			{name: "successful metadata trims by count and time", wantTags: []string{"v2"}},
 			{name: "nil metadata keeps pattern matches", nilMeta: true, wantTags: []string{"v1", "v2"}},
 			{
-				name:     "direct ErrRepoMetaNotFound keeps pattern matches",
+				name:     "direct ErrRepoMetaNotFound keeps every tag",
 				getErr:   zerr.ErrRepoMetaNotFound,
-				wantTags: []string{"v1", "v2"},
+				wantTags: []string{"other", "v1", "v2"},
 			},
 			{
-				name:     "wrapped ErrRepoMetaNotFound keeps pattern matches",
+				name:     "wrapped ErrRepoMetaNotFound keeps every tag",
 				getErr:   fmt.Errorf("lookup repo: %w", zerr.ErrRepoMetaNotFound),
-				wantTags: []string{"v1", "v2"},
+				wantTags: []string{"other", "v1", "v2"},
 			},
 			{
 				name:     "unrelated metadata error is returned",
@@ -3022,7 +3023,7 @@ func TestRemoveTagsPerRetentionPolicyMissingRepoMeta(t *testing.T) {
 }
 
 func TestRemoveUntaggedManifestsMissingRepoMeta(t *testing.T) {
-	Convey("untagged retention uses delay when repo metadata is absent", t, func() {
+	Convey("untagged retention keeps every manifest when the repo record is missing", t, func() {
 		oldDrop := godigest.FromString("untagged-old-drop")
 		oldKeep := godigest.FromString("untagged-old-keep")
 		young := godigest.FromString("untagged-young")
@@ -3115,14 +3116,14 @@ func TestRemoveUntaggedManifestsMissingRepoMeta(t *testing.T) {
 			{name: "metadata applies keepUntagged", wantDigests: retainedByPolicy},
 			{name: "nil metadata uses retention delay", nilMeta: true, wantDigests: retainedByDelay},
 			{
-				name:        "direct ErrRepoMetaNotFound uses retention delay",
+				name:        "direct ErrRepoMetaNotFound retains untagged",
 				getErr:      zerr.ErrRepoMetaNotFound,
-				wantDigests: retainedByDelay,
+				wantDigests: allDigests,
 			},
 			{
-				name:        "wrapped ErrRepoMetaNotFound uses retention delay",
+				name:        "wrapped ErrRepoMetaNotFound retains untagged",
 				getErr:      fmt.Errorf("lookup repo: %w", zerr.ErrRepoMetaNotFound),
-				wantDigests: retainedByDelay,
+				wantDigests: allDigests,
 			},
 			{name: "unrelated metadata error aborts", getErr: errGC, wantErr: true, wantDigests: allDigests},
 		}

@@ -769,15 +769,16 @@ func (gc GarbageCollect) removeTagsPerRetentionPolicy(ctx context.Context, repo 
 				return err
 			}
 
-			// Count and time rules need repository statistics. With the record absent,
-			// keep tags that match configured name patterns and continue GC.
+			// Count and time rules need repository statistics. A missing record cannot
+			// be evaluated, so keep every tag for this repo and continue GC. Index
+			// patterns would still delete tags that miss those patterns.
 			gc.log.Warn().Err(err).Str("module", "gc").Str("repository", repo).
-				Msg("repo metadata not found, retaining tags by index patterns")
+				Msg("repo metadata not found, skipping tag retention deletes")
 
-			retainTags = gc.policyMgr.GetRetainedTagsFromIndex(ctx, repo, *index)
-		} else {
-			retainTags = gc.policyMgr.GetRetainedTagsFromMetaDB(ctx, repoMeta, *index)
+			return nil
 		}
+
+		retainTags = gc.policyMgr.GetRetainedTagsFromMetaDB(ctx, repoMeta, *index)
 	}
 
 	// remove
@@ -911,15 +912,17 @@ func (gc GarbageCollect) removeUntaggedManifests(ctx context.Context, repo strin
 					return false, getErr
 				}
 
-				// Same outcome as a nil metaDB: keepUntagged cannot be evaluated, so fall
-				// through to delay-based cleanup with an empty retained set.
+				// keepUntagged cannot be evaluated without the repo record. An empty
+				// retain set would let delay-based cleanup delete manifests the policy
+				// might have kept. Retain untagged manifests for this repo and continue GC.
 				gc.log.Warn().Err(getErr).Str("module", "gc").Str("repository", repo).
-					Msg("keepUntagged policy requires metadata database;" +
-						" ignoring keepUntagged rules and using delay-based untagged cleanup")
-			} else {
-				for _, digestStr := range gc.policyMgr.GetRetainedUntaggedFromMetaDB(ctx, repoMeta, *index) {
-					retainUntagged[digestStr] = true
-				}
+					Msg("repo metadata not found, skipping untagged retention deletes")
+
+				return false, nil
+			}
+
+			for _, digestStr := range gc.policyMgr.GetRetainedUntaggedFromMetaDB(ctx, repoMeta, *index) {
+				retainUntagged[digestStr] = true
 			}
 		} else {
 			gc.log.Warn().Str("module", "gc").Str("repository", repo).
