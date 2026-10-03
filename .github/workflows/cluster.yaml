@@ -212,7 +212,7 @@ jobs:
             curl --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 120 --retry-connrefused http://localhost:8083/v2/
 
             # run zb with --src-cidr
-            bin/zb-linux-amd64 -c 10 -n 50 -o ci-cd --src-cidr 127.0.0.0/8 http://localhost:8080
+            bin/zb-linux-amd64 -c 10 -n 50 -o ci-cd --max-timeout-failures 1 --src-cidr 127.0.0.0/8 http://localhost:8080
         env:
           AWS_ACCESS_KEY_ID: minioadmin
           AWS_SECRET_ACCESS_KEY: minioadmin
@@ -258,7 +258,7 @@ jobs:
             curl --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 120 --retry-connrefused http://localhost:8083/v2/
 
             # run zb with --src-ips
-            bin/zb-linux-amd64 -c 10 -n 50 -o ci-cd --src-ips 127.0.0.2,127.0.0.3,127.0.0.4,127.0.0.5,127.0.0.6,127.0.12.5,127.0.12.6 http://localhost:8080
+            bin/zb-linux-amd64 -c 10 -n 50 -o ci-cd --max-timeout-failures 1 --src-ips 127.0.0.2,127.0.0.3,127.0.0.4,127.0.0.5,127.0.0.6,127.0.12.5,127.0.12.6 http://localhost:8080
         env:
           AWS_ACCESS_KEY_ID: minioadmin
           AWS_SECRET_ACCESS_KEY: minioadmin

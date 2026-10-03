@@ -2,6 +2,7 @@ package main //nolint:testpackage // separate binary
 
 import (
 	"errors"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -20,6 +21,7 @@ var (
 	errIOTimeout         = errors.New("i/o timeout")
 	errDeadlineExceeded  = errors.New("context deadline exceeded")
 	errClosedConn        = errors.New("write tcp: use of closed network connection")
+	errUnexpectedEOFMsg  = errors.New("unexpected EOF")
 	errUnexpectedStatus  = errors.New("unexpected status")
 	errConnectionRefused = errors.New("connection refused")
 )
@@ -143,6 +145,8 @@ func TestIsTimeoutError(t *testing.T) {
 		So(isTimeoutError(errIOTimeout), ShouldBeTrue)
 		So(isTimeoutError(errDeadlineExceeded), ShouldBeTrue)
 		So(isTimeoutError(errClosedConn), ShouldBeTrue)
+		So(isTimeoutError(errUnexpectedEOFMsg), ShouldBeTrue)
+		So(isTimeoutError(io.ErrUnexpectedEOF), ShouldBeTrue)
 		So(isTimeoutError(&timeoutNetError{}), ShouldBeTrue)
 	})
 }

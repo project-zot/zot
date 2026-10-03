@@ -25,7 +25,7 @@ Flags:
   -d, --working-dir string           Use specified directory to store test data (a temporary zb-* subdirectory is created and removed on exit)
 ```
 
-`--max-timeout-failures` is a run-wide budget for timeout-related request failures only (including client errors that look like server read/write timeouts, such as `use of closed network connection`). Failures are still reported per test. Non-timeout failures always cause a non-zero exit. With default `0`, any timeout failure also fails the run.
+`--max-timeout-failures` is a run-wide budget for timeout-related request failures only (including client errors that look like server read/write timeouts, such as `use of closed network connection` and `unexpected EOF` from a truncated response). Failures are still reported per test. Non-timeout failures always cause a non-zero exit. With default `0`, any timeout failure also fails the run.
   
 ## Command example
 ```
