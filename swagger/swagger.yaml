@@ -813,6 +813,10 @@ paths:
           description: internal server error
           schema:
             type: string
+        "503":
+          description: synchronization failed
+          schema:
+            type: string
       summary: Get image manifest
     head:
       consumes:
@@ -846,6 +850,10 @@ paths:
             type: string
         "500":
           description: internal server error
+          schema:
+            type: string
+        "503":
+          description: synchronization failed
           schema:
             type: string
       summary: Check image manifest

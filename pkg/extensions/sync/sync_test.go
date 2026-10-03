@@ -452,7 +452,7 @@ func TestOnDemand(t *testing.T) {
 
 			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			So(resp.StatusCode(), ShouldEqual, http.StatusServiceUnavailable)
 
 			err = os.Chmod(path.Join(destDir, testImage, syncConstants.SyncBlobUploadDir), 0o755)
 			if err != nil {
@@ -471,7 +471,8 @@ func TestOnDemand(t *testing.T) {
 
 			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			// Unwritable destination blobs dir is a hard sync failure, not a soft miss.
+			So(resp.StatusCode(), ShouldEqual, http.StatusServiceUnavailable)
 
 			err = os.Chmod(path.Join(destDir, testImage, "blobs"), 0o755)
 			if err != nil {
@@ -1564,7 +1565,8 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 
 			resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			// Unreadable upstream config is a hard sync failure, not a soft miss.
+			So(resp.StatusCode(), ShouldEqual, http.StatusServiceUnavailable)
 		})
 
 		Convey("skipping already synced multiarch docker image", func() {
@@ -2140,7 +2142,8 @@ func TestPermsDenied(t *testing.T) {
 
 		resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+		// Unwritable .sync cache dir is a hard sync failure, not a soft miss.
+		So(resp.StatusCode(), ShouldEqual, http.StatusServiceUnavailable)
 
 		err = os.Chmod(syncSubDir, 0o755)
 		if err != nil {
@@ -2574,15 +2577,17 @@ func TestBadTLS(t *testing.T) {
 
 		resp, _ := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "invalid")
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+		// Matching prefix: on-demand sync runs and TLS verify fails → opaque 503.
+		So(resp.StatusCode(), ShouldEqual, http.StatusServiceUnavailable)
 
 		resp, _ = destClient.R().Get(destBaseURL + "/v2/" + "invalid" + "/manifests/" + testImageTag)
 		So(resp, ShouldNotBeNil)
+		// Unmatched prefix: soft filter miss stays 404.
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+		So(resp.StatusCode(), ShouldEqual, http.StatusServiceUnavailable)
 	})
 }
 
@@ -3013,10 +3018,10 @@ func TestBearerAuth(t *testing.T) {
 
 		So(destTagsList, ShouldResemble, srcTagsList)
 
-		// unauthorized namespace
+		// unauthorized namespace: on-demand sync hits upstream 401 → opaque 503.
 		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testCveImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+		So(resp.StatusCode(), ShouldEqual, http.StatusServiceUnavailable)
 	})
 }
 
@@ -3187,7 +3192,8 @@ func TestBasicAuth(t *testing.T) {
 
 			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			// Wrong upstream credentials: on-demand sync hard-fails → opaque 503.
+			So(resp.StatusCode(), ShouldEqual, http.StatusServiceUnavailable)
 		})
 
 		Convey("Verify sync basic auth with bad file credentials", func() {
@@ -3287,13 +3293,13 @@ func TestBasicAuth(t *testing.T) {
 			}
 
 			unreacheableSyncRegistryConfig1 := syncconf.RegistryConfig{
-				URLs:       []string{"localhost:9999"},
+				URLs:       []string{"http://localhost:9999"},
 				OnDemand:   true,
 				MaxRetries: &maxRetries,
 			}
 
 			unreacheableSyncRegistryConfig2 := syncconf.RegistryConfig{
-				URLs:       []string{"localhost:9999"},
+				URLs:       []string{"http://localhost:9999"},
 				OnDemand:   false,
 				MaxRetries: &maxRetries,
 			}
@@ -3330,6 +3336,8 @@ func TestBasicAuth(t *testing.T) {
 				panic(err)
 			}
 
+			// Unreachable on-demand registries are tried first, but a soft miss from
+			// a registry that answered (repo/tag not found) outranks dial failures.
 			resp, err = destClient.R().Get(destBaseURL + "/v2/" + "inexistent" + "/manifests/" + testImageTag)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
@@ -3393,7 +3401,10 @@ func TestBadURL(t *testing.T) {
 					},
 				},
 			},
-			URLs:         []string{"bad-registry-url]", "%"},
+			// Use a URL that still initializes the sync client. A bare "%" fails
+			// url.Parse in parseRegistryURLs, so EnableSyncExtension never registers
+			// on-demand and the request would stay a local 404.
+			URLs:         []string{"http://bad-registry-url]"},
 			PollInterval: updateDuration,
 			TLSVerify:    &tlsVerify,
 			CertDir:      "",
@@ -3414,9 +3425,11 @@ func TestBadURL(t *testing.T) {
 
 		defer dcm.StopServer()
 
+		// Misconfigured registry host never produces a content answer. With no soft
+		// miss from an upstream that responded, on-demand surfaces an opaque 503.
 		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+		So(resp.StatusCode(), ShouldEqual, http.StatusServiceUnavailable)
 	})
 }
 
@@ -3686,9 +3699,10 @@ func TestInvalidCerts(t *testing.T) {
 
 		defer dcm.StopServer()
 
+		// Matching prefix: on-demand sync runs and bad CA material fails TLS → opaque 503.
 		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+		So(resp.StatusCode(), ShouldEqual, http.StatusServiceUnavailable)
 	})
 }
 
@@ -4014,9 +4028,10 @@ func TestOnDemandRepoErr(t *testing.T) {
 
 		defer dcm.StopServer()
 
+		// Matching prefix with an unusable upstream URL: sync hard-fails → opaque 503.
 		resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+		So(resp.StatusCode(), ShouldEqual, http.StatusServiceUnavailable)
 	})
 }
 
@@ -4464,10 +4479,10 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 
 			So(found, ShouldBeTrue)
 
-			// should not be synced nor sync on demand
+			// Upstream permission denied is a hard sync failure → opaque 503 on demand.
 			resp, err := resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + testImageTag)
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			So(resp.StatusCode(), ShouldEqual, http.StatusServiceUnavailable)
 		})
 
 		Convey("Trigger error on cosign signature", func() {
@@ -4512,10 +4527,10 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 
 			So(found, ShouldBeTrue)
 
-			// should not be synced nor sync on demand
+			// Upstream blob permission denied is a hard sync failure → opaque 503 on demand.
 			resp, err := resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + cosignTag)
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			So(resp.StatusCode(), ShouldEqual, http.StatusServiceUnavailable)
 
 			data, err := os.ReadFile(dctlr.Config.Log.Output)
 			So(err, ShouldBeNil)
@@ -5762,9 +5777,10 @@ func TestOnDemandRetryGoroutine(t *testing.T) {
 
 		defer dcm.StopServer()
 
+		// Upstream is not listening yet: dial failure is hard → opaque 503, then background retry.
 		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+		So(resp.StatusCode(), ShouldEqual, http.StatusServiceUnavailable)
 
 		scm.StartServer()
 
@@ -5897,9 +5913,10 @@ func TestOnDemandRetryGoroutineErr(t *testing.T) {
 
 		defer dcm.StopServer()
 
+		// Unreachable upstream: dial failures are hard → opaque 503 (not a soft miss).
 		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+		So(resp.StatusCode(), ShouldEqual, http.StatusServiceUnavailable)
 
 		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
 			"failed to sync image", 15*time.Second)
@@ -5918,7 +5935,7 @@ func TestOnDemandRetryGoroutineErr(t *testing.T) {
 
 		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+		So(resp.StatusCode(), ShouldEqual, http.StatusServiceUnavailable)
 	})
 }
 

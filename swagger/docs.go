@@ -785,6 +785,12 @@ const docTemplate = `{
                         "schema": {
                             "type": "string"
                         }
+                    },
+                    "503": {
+                        "description": "synchronization failed",
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 }
             },
@@ -976,6 +982,12 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "synchronization failed",
                         "schema": {
                             "type": "string"
                         }

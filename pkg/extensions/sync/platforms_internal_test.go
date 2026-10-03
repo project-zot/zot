@@ -338,6 +338,8 @@ func TestMapRegclientManifestErr(t *testing.T) {
 		So(mapRegclientManifestErr(nil), ShouldBeNil)
 		So(errors.Is(mapRegclientManifestErr(errs.ErrNotFound), zerr.ErrManifestNotFound), ShouldBeTrue)
 		So(errors.Is(mapRegclientManifestErr(errs.ErrHTTPUnauthorized), zerr.ErrUnauthorizedAccess), ShouldBeTrue)
+		So(errors.Is(mapRegclientManifestErr(errs.ErrHTTPStatus), errs.ErrHTTPStatus), ShouldBeTrue)
+		So(errors.Is(mapRegclientManifestErr(errs.ErrHTTPRateLimit), errs.ErrHTTPRateLimit), ShouldBeTrue)
 
 		other := errors.New("transport")
 		So(mapRegclientManifestErr(other), ShouldEqual, other)
@@ -355,18 +357,34 @@ func TestIsUnresolvedRemoteManifestErr(t *testing.T) {
 }
 
 func TestRemoteRegistryGetImageReferenceFailures(t *testing.T) {
-	Convey("HeadManifest and GetManifestList propagate GetImageReference errors", t, func() {
-		// primaryHost "/tmp" makes ref.New reject the constructed registry path.
-		registry := &RemoteRegistry{
-			primaryHost: "/tmp",
-			log:         log.NewTestLogger(),
-		}
+	Convey("GetImageReference distinguishes host config failures from client refs", t, func() {
+		Convey("unusable host → ErrSyncParseRemoteRepo", func() {
+			// primaryHost "/tmp" cannot form a registry reference.
+			registry := &RemoteRegistry{
+				primaryHost: "/tmp",
+				log:         log.NewTestLogger(),
+			}
 
-		_, _, err := registry.HeadManifest(context.Background(), "repo", "tag")
-		So(err, ShouldNotBeNil)
+			_, err := registry.GetImageReference("repo", "tag")
+			So(errors.Is(err, zerr.ErrSyncParseRemoteRepo), ShouldBeTrue)
 
-		_, err = registry.GetManifestList(context.Background(), "repo", "tag")
-		So(err, ShouldNotBeNil)
+			_, _, err = registry.HeadManifest(context.Background(), "repo", "tag")
+			So(errors.Is(err, zerr.ErrSyncParseRemoteRepo), ShouldBeTrue)
+
+			_, err = registry.GetManifestList(context.Background(), "repo", "tag")
+			So(errors.Is(err, zerr.ErrSyncParseRemoteRepo), ShouldBeTrue)
+		})
+
+		Convey("usable host + invalid client tag → ErrInvalidReference", func() {
+			registry := &RemoteRegistry{
+				primaryHost: "docker.io",
+				log:         log.NewTestLogger(),
+			}
+
+			_, err := registry.GetImageReference("library/alpine", "BAD TAG")
+			So(errors.Is(err, errs.ErrInvalidReference), ShouldBeTrue)
+			So(errors.Is(err, zerr.ErrSyncParseRemoteRepo), ShouldBeFalse)
+		})
 	})
 }
 
