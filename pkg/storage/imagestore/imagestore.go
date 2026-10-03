@@ -249,7 +249,15 @@ func (is *ImageStore) ValidateRepo(name string) (bool, error) {
 	if err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read directory")
 
-		return false, zerr.ErrRepoNotFound
+		if errclass.IsStorageObjectMissing(err) {
+			return false, errclass.Wrap(zerr.ErrRepoNotFound, err)
+		}
+
+		if errors.Is(err, zerr.ErrStorageTransient) || errors.Is(err, zerr.ErrStoragePermanent) {
+			return false, err
+		}
+
+		return false, errclass.MarkTransient(err)
 	}
 
 	//nolint:mnd
@@ -340,10 +348,22 @@ func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filte
 			return driver.ErrSkipDir
 		}
 
-		if !ok || err != nil {
+		if err != nil {
+			// Per-path List/Validate outages: keep a partial catalog rather than
+			// failing the whole Walk. Transient/Permanent are logged; Missing and
+			// other cases stay quiet (same as !ok below).
+			if errors.Is(err, zerr.ErrStorageTransient) || errors.Is(err, zerr.ErrStoragePermanent) {
+				is.log.Warn().Err(err).Str("repository", rel).
+					Msg("skipping repository candidate after storage failure during validate")
+			}
+
+			return nil //nolint:nilerr
+		}
+
+		if !ok {
 			// Not an OCI layout yet, but the name is valid — keep walking children
 			// so nested repos (path "org" → "org/team") are still discovered.
-			return nil //nolint:nilerr
+			return nil
 		}
 
 		if lastRepo == rel {
@@ -424,10 +444,22 @@ func (is *ImageStore) GetRepositories() ([]string, error) {
 			return driver.ErrSkipDir
 		}
 
-		if !ok || err != nil {
+		if err != nil {
+			// Per-path List/Validate outages: keep a partial catalog rather than
+			// failing the whole Walk. Transient/Permanent are logged; Missing and
+			// other cases stay quiet (same as !ok below).
+			if errors.Is(err, zerr.ErrStorageTransient) || errors.Is(err, zerr.ErrStoragePermanent) {
+				is.log.Warn().Err(err).Str("repository", rel).
+					Msg("skipping repository candidate after storage failure during validate")
+			}
+
+			return nil //nolint:nilerr
+		}
+
+		if !ok {
 			// Not an OCI layout yet, but the name is valid — keep walking children
 			// so nested repos (path "org" → "org/team") are still discovered.
-			return nil //nolint:nilerr
+			return nil
 		}
 
 		stores = append(stores, rel)
@@ -496,10 +528,22 @@ func (is *ImageStore) GetNextRepository(processedRepos map[string]struct{}) (str
 			return driver.ErrSkipDir
 		}
 
-		if !ok || err != nil {
+		if err != nil {
+			// Per-path List/Validate outages: keep a partial catalog rather than
+			// failing the whole Walk. Transient/Permanent are logged; Missing and
+			// other cases stay quiet (same as !ok below).
+			if errors.Is(err, zerr.ErrStorageTransient) || errors.Is(err, zerr.ErrStoragePermanent) {
+				is.log.Warn().Err(err).Str("repository", rel).
+					Msg("skipping repository candidate after storage failure during validate")
+			}
+
+			return nil //nolint:nilerr
+		}
+
+		if !ok {
 			// Not an OCI layout yet, but the name is valid — keep walking children
 			// so nested repos (path "org" → "org/team") are still discovered.
-			return nil //nolint:nilerr
+			return nil
 		}
 
 		store = rel
@@ -1062,7 +1106,11 @@ func (is *ImageStore) NewBlobUpload(ctx context.Context, repo string) (string, e
 	if err != nil {
 		is.log.Debug().Err(err).Str("blob", blobUploadPath).Msg("failed to start multipart writer")
 
-		return "", zerr.ErrRepoNotFound
+		if errclass.IsStorageObjectMissing(err) {
+			return "", zerr.ErrRepoNotFound
+		}
+
+		return "", err
 	}
 
 	defer writer.Close()
@@ -1214,7 +1262,11 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", src).Msg("failed to open blob")
 
-		return zerr.ErrUploadNotFound
+		if errclass.IsStorageObjectMissing(err) {
+			return zerr.ErrUploadNotFound
+		}
+
+		return err
 	}
 
 	if err := fileWriter.Commit(context.Background()); err != nil {
@@ -1317,7 +1369,11 @@ func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.R
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", src).Msg("failed to open blob")
 
-		return "", -1, zerr.ErrUploadNotFound
+		if errclass.IsStorageObjectMissing(err) {
+			return "", -1, zerr.ErrUploadNotFound
+		}
+
+		return "", -1, err
 	}
 
 	mw := io.MultiWriter(blobFile, digester)
@@ -2055,10 +2111,10 @@ func (is *ImageStore) GetIndexContent(repo string) ([]byte, error) {
 
 	buf, err := is.storeDriver.ReadFile(path.Join(dir, ispec.ImageIndexFile))
 	if err != nil {
-		if errors.Is(err, driver.PathNotFoundError{}) {
+		if errclass.IsStorageObjectMissing(err) {
 			is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
 
-			return []byte{}, zerr.ErrRepoNotFound
+			return []byte{}, errclass.Wrap(zerr.ErrRepoNotFound, err)
 		}
 
 		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")

@@ -61,6 +61,12 @@ const docTemplate = `{
                         "schema": {
                             "type": "string"
                         }
+                    },
+                    "503": {
+                        "description": "storage temporarily unavailable",
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 }
             }
@@ -377,6 +383,12 @@ const docTemplate = `{
                         "schema": {
                             "type": "string"
                         }
+                    },
+                    "503": {
+                        "description": "storage temporarily unavailable",
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 }
             }
@@ -435,6 +447,12 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "storage temporarily unavailable",
                         "schema": {
                             "type": "string"
                         }
@@ -510,6 +528,12 @@ const docTemplate = `{
                         "schema": {
                             "type": "string"
                         }
+                    },
+                    "503": {
+                        "description": "storage temporarily unavailable",
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 }
             },
@@ -550,6 +574,12 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "storage temporarily unavailable",
                         "schema": {
                             "type": "string"
                         }
@@ -622,6 +652,12 @@ const docTemplate = `{
                         "schema": {
                             "type": "string"
                         }
+                    },
+                    "503": {
+                        "description": "storage temporarily unavailable",
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 }
             }
@@ -659,6 +695,30 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/api.ImageManifest"
                         }
+                    },
+                    "400": {
+                        "description": "bad request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "storage temporarily unavailable",
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 }
             },
@@ -690,6 +750,30 @@ const docTemplate = `{
                 "responses": {
                     "202": {
                         "description": "accepted"
+                    },
+                    "404": {
+                        "description": "not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "405": {
+                        "description": "method not allowed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "storage temporarily unavailable",
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 }
             },
@@ -730,6 +814,30 @@ const docTemplate = `{
                                 "type": "string",
                                 "description": "Manifest digest of the content"
                             }
+                        }
+                    },
+                    "400": {
+                        "description": "bad request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "storage temporarily unavailable",
+                        "schema": {
+                            "type": "string"
                         }
                     }
                 }
@@ -787,7 +895,7 @@ const docTemplate = `{
                         }
                     },
                     "503": {
-                        "description": "synchronization failed",
+                        "description": "storage temporarily unavailable or synchronization failed",
                         "schema": {
                             "type": "string"
                         }
@@ -872,6 +980,12 @@ const docTemplate = `{
                         "schema": {
                             "type": "string"
                         }
+                    },
+                    "503": {
+                        "description": "storage temporarily unavailable",
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 }
             },
@@ -933,6 +1047,12 @@ const docTemplate = `{
                         "schema": {
                             "type": "string"
                         }
+                    },
+                    "503": {
+                        "description": "storage temporarily unavailable",
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 }
             },
@@ -987,7 +1107,7 @@ const docTemplate = `{
                         }
                     },
                     "503": {
-                        "description": "synchronization failed",
+                        "description": "storage temporarily unavailable or synchronization failed",
                         "schema": {
                             "type": "string"
                         }
@@ -1051,6 +1171,12 @@ const docTemplate = `{
                         "schema": {
                             "type": "string"
                         }
+                    },
+                    "503": {
+                        "description": "storage temporarily unavailable",
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 }
             }
@@ -1103,6 +1229,18 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "storage temporarily unavailable",
                         "schema": {
                             "type": "string"
                         }

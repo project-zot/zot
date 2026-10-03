@@ -13175,7 +13175,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 			defer resp.Body.Close()
 
 			if injected {
-				So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+				So(resp.StatusCode, ShouldEqual, http.StatusServiceUnavailable)
 			} else {
 				So(resp.StatusCode, ShouldEqual, http.StatusCreated)
 			}
@@ -13197,7 +13197,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 
 			if injected {
-				So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+				So(resp.StatusCode, ShouldEqual, http.StatusServiceUnavailable)
 			} else {
 				So(resp.StatusCode, ShouldEqual, http.StatusCreated)
 			}
@@ -13219,7 +13219,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 
 			if injected {
-				So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+				So(resp.StatusCode, ShouldEqual, http.StatusServiceUnavailable)
 			} else {
 				So(resp.StatusCode, ShouldEqual, http.StatusCreated)
 			}

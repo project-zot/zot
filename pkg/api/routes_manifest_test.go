@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gorilla/mux"
 	godigest "github.com/opencontainers/go-digest"
@@ -25,6 +26,7 @@ import (
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
 	"zotregistry.dev/zot/v2/pkg/log"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
 
@@ -115,8 +117,8 @@ func TestListTagsStorageErrors(t *testing.T) {
 			So(runCase(zerr.ErrRepoNotFound), ShouldEqual, http.StatusNotFound)
 		})
 
-		Convey("ErrStorageTransient → 500 (not NAME_UNKNOWN 404)", func() {
-			So(runCase(zerr.ErrStorageTransient), ShouldEqual, http.StatusInternalServerError)
+		Convey("ErrStorageTransient → 503 (not NAME_UNKNOWN 404)", func() {
+			So(runCase(zerr.ErrStorageTransient), ShouldEqual, http.StatusServiceUnavailable)
 		})
 
 		Convey("ErrStoragePermanent → 500 (not NAME_UNKNOWN 404)", func() {
@@ -175,9 +177,9 @@ func TestUpdateManifestStorageErrorsSkipCleanup(t *testing.T) {
 			return resp.StatusCode, deleteCalls
 		}
 
-		Convey("ErrStorageTransient returns 500 without DeleteImageManifest", func() {
+		Convey("ErrStorageTransient returns 503 without DeleteImageManifest", func() {
 			status, deletes := runCase(zerr.ErrStorageTransient)
-			So(status, ShouldEqual, http.StatusInternalServerError)
+			So(status, ShouldEqual, http.StatusServiceUnavailable)
 			So(deletes, ShouldEqual, 0)
 		})
 
@@ -526,6 +528,260 @@ func TestCheckManifestOnDemandSyncErrors(t *testing.T) {
 			So(readErr, ShouldBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusServiceUnavailable)
 			So(string(body), ShouldContainSubstring, zerr.ErrSyncInternal.Error())
+		})
+	})
+}
+
+func TestHTTPStorageClassStatusMapping(t *testing.T) {
+	Convey("direct storage Transient → 503, Permanent → 500, never 404-shaped codes", t, func() {
+		const (
+			repo        = "test"
+			validDigest = "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621"
+			sessionID   = "upload-session"
+			reference   = "v1.0"
+		)
+
+		newHandler := func(store mocks.MockedImageStore) *api.RouteHandler {
+			ctlr := api.NewController(config.New())
+			ctlr.Router = mux.NewRouter()
+			ctlr.StoreController.DefaultStore = store
+
+			return api.NewRouteHandler(ctlr)
+		}
+
+		Convey("CheckBlob", func() {
+			run := func(statErr error) (int, string) {
+				handler := newHandler(mocks.MockedImageStore{
+					StatBlobFn: func(_ string, _ godigest.Digest) (bool, int64, time.Time, error) {
+						return false, -1, time.Time{}, statErr
+					},
+				})
+				req := httptest.NewRequestWithContext(context.Background(), http.MethodHead,
+					"http://example.com/v2/"+repo+"/blobs/"+validDigest, http.NoBody)
+				req = mux.SetURLVars(req, map[string]string{"name": repo, "digest": validDigest})
+				rec := httptest.NewRecorder()
+				handler.CheckBlob(rec, req)
+				resp := rec.Result()
+				defer resp.Body.Close()
+				body, _ := io.ReadAll(resp.Body)
+
+				return resp.StatusCode, string(body)
+			}
+
+			status, body := run(zerr.ErrStorageTransient)
+			So(status, ShouldEqual, http.StatusServiceUnavailable)
+			So(body, ShouldNotContainSubstring, "BLOB_UNKNOWN")
+
+			status, body = run(zerr.ErrStoragePermanent)
+			So(status, ShouldEqual, http.StatusInternalServerError)
+			So(body, ShouldNotContainSubstring, "BLOB_UNKNOWN")
+
+			status, body = run(zerr.ErrBlobNotFound)
+			So(status, ShouldEqual, http.StatusNotFound)
+			So(body, ShouldContainSubstring, "BLOB_UNKNOWN")
+		})
+
+		Convey("GetBlob", func() {
+			run := func(getErr error) (int, string) {
+				handler := newHandler(mocks.MockedImageStore{
+					GetBlobFn: func(_ string, _ godigest.Digest, _ string) (io.ReadCloser, int64, error) {
+						return nil, -1, getErr
+					},
+				})
+				req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+					"http://example.com/v2/"+repo+"/blobs/"+validDigest, http.NoBody)
+				req = mux.SetURLVars(req, map[string]string{"name": repo, "digest": validDigest})
+				rec := httptest.NewRecorder()
+				handler.GetBlob(rec, req)
+				resp := rec.Result()
+				defer resp.Body.Close()
+				body, _ := io.ReadAll(resp.Body)
+
+				return resp.StatusCode, string(body)
+			}
+
+			status, body := run(zerr.ErrStorageTransient)
+			So(status, ShouldEqual, http.StatusServiceUnavailable)
+			So(body, ShouldNotContainSubstring, "BLOB_UNKNOWN")
+
+			status, body = run(zerr.ErrStoragePermanent)
+			So(status, ShouldEqual, http.StatusInternalServerError)
+			So(body, ShouldNotContainSubstring, "BLOB_UNKNOWN")
+		})
+
+		Convey("CreateBlobUpload", func() {
+			run := func(newErr error) (int, string) {
+				handler := newHandler(mocks.MockedImageStore{
+					NewBlobUploadFn: func(_ context.Context, _ string) (string, error) {
+						return "", newErr
+					},
+				})
+				req := httptest.NewRequestWithContext(context.Background(), http.MethodPost,
+					"http://example.com/v2/"+repo+"/blobs/uploads/", http.NoBody)
+				req = mux.SetURLVars(req, map[string]string{"name": repo})
+				rec := httptest.NewRecorder()
+				handler.CreateBlobUpload(rec, req)
+				resp := rec.Result()
+				defer resp.Body.Close()
+				body, _ := io.ReadAll(resp.Body)
+
+				return resp.StatusCode, string(body)
+			}
+
+			status, body := run(zerr.ErrStorageTransient)
+			So(status, ShouldEqual, http.StatusServiceUnavailable)
+			So(body, ShouldNotContainSubstring, "NAME_UNKNOWN")
+
+			status, body = run(zerr.ErrStoragePermanent)
+			So(status, ShouldEqual, http.StatusInternalServerError)
+			So(body, ShouldNotContainSubstring, "NAME_UNKNOWN")
+		})
+
+		Convey("UpdateBlobUpload FinishBlobUpload", func() {
+			run := func(finishErr error) (int, string) {
+				handler := newHandler(mocks.MockedImageStore{
+					FinishBlobUploadFn: func(_ string, _ string, _ io.Reader, _ godigest.Digest) error {
+						return finishErr
+					},
+				})
+				req := httptest.NewRequestWithContext(context.Background(), http.MethodPut,
+					"http://example.com/v2/"+repo+"/blobs/uploads/"+sessionID+"?digest="+validDigest,
+					http.NoBody)
+				req = mux.SetURLVars(req, map[string]string{"name": repo, "session_id": sessionID})
+				q := req.URL.Query()
+				q.Set("digest", validDigest)
+				req.URL.RawQuery = q.Encode()
+				rec := httptest.NewRecorder()
+				handler.UpdateBlobUpload(rec, req)
+				resp := rec.Result()
+				defer resp.Body.Close()
+				body, _ := io.ReadAll(resp.Body)
+
+				return resp.StatusCode, string(body)
+			}
+
+			status, body := run(zerr.ErrStorageTransient)
+			So(status, ShouldEqual, http.StatusServiceUnavailable)
+			So(body, ShouldNotContainSubstring, "BLOB_UPLOAD_UNKNOWN")
+
+			status, body = run(zerr.ErrStoragePermanent)
+			So(status, ShouldEqual, http.StatusInternalServerError)
+			So(body, ShouldNotContainSubstring, "BLOB_UPLOAD_UNKNOWN")
+		})
+
+		Convey("CheckManifest / GetManifest local Transient without MANIFEST_INVALID", func() {
+			store := mocks.MockedImageStore{
+				GetImageManifestFn: func(_ string, _ string) ([]byte, godigest.Digest, string, error) {
+					return nil, "", "", zerr.ErrStorageTransient
+				},
+			}
+			handler := newHandler(store)
+
+			for _, method := range []string{http.MethodHead, http.MethodGet} {
+				req := httptest.NewRequestWithContext(context.Background(), method,
+					"http://example.com/v2/"+repo+"/manifests/"+reference, http.NoBody)
+				req = mux.SetURLVars(req, map[string]string{"name": repo, "reference": reference})
+				rec := httptest.NewRecorder()
+				if method == http.MethodHead {
+					handler.CheckManifest(rec, req)
+				} else {
+					handler.GetManifest(rec, req)
+				}
+				resp := rec.Result()
+				body, _ := io.ReadAll(resp.Body)
+				_ = resp.Body.Close()
+				So(resp.StatusCode, ShouldEqual, http.StatusServiceUnavailable)
+				So(string(body), ShouldNotContainSubstring, "MANIFEST_INVALID")
+				So(string(body), ShouldNotContainSubstring, "MANIFEST_UNKNOWN")
+			}
+
+			handler = newHandler(mocks.MockedImageStore{
+				GetImageManifestFn: func(_ string, _ string) ([]byte, godigest.Digest, string, error) {
+					return nil, "", "", zerr.ErrStoragePermanent
+				},
+			})
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+				"http://example.com/v2/"+repo+"/manifests/"+reference, http.NoBody)
+			req = mux.SetURLVars(req, map[string]string{"name": repo, "reference": reference})
+			rec := httptest.NewRecorder()
+			handler.GetManifest(rec, req)
+			resp := rec.Result()
+			defer resp.Body.Close()
+			So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+		})
+
+		Convey("DeleteManifest", func() {
+			run := func(getErr error) int {
+				handler := newHandler(mocks.MockedImageStore{
+					GetImageManifestFn: func(_ string, _ string) ([]byte, godigest.Digest, string, error) {
+						return nil, "", "", getErr
+					},
+				})
+				req := httptest.NewRequestWithContext(context.Background(), http.MethodDelete,
+					"http://example.com/v2/"+repo+"/manifests/"+reference, http.NoBody)
+				req = mux.SetURLVars(req, map[string]string{"name": repo, "reference": reference})
+				rec := httptest.NewRecorder()
+				handler.DeleteManifest(rec, req)
+				resp := rec.Result()
+				defer resp.Body.Close()
+
+				return resp.StatusCode
+			}
+
+			So(run(zerr.ErrStorageTransient), ShouldEqual, http.StatusServiceUnavailable)
+			So(run(zerr.ErrStoragePermanent), ShouldEqual, http.StatusInternalServerError)
+		})
+
+		Convey("GetReferrers", func() {
+			run := func(refErr error) int {
+				handler := newHandler(mocks.MockedImageStore{
+					GetReferrersFn: func(_ string, _ godigest.Digest, _ []string) (ispec.Index, error) {
+						return ispec.Index{}, refErr
+					},
+				})
+				req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+					"http://example.com/v2/"+repo+"/referrers/"+validDigest, http.NoBody)
+				req = mux.SetURLVars(req, map[string]string{"name": repo, "digest": validDigest})
+				rec := httptest.NewRecorder()
+				handler.GetReferrers(rec, req)
+				resp := rec.Result()
+				defer resp.Body.Close()
+
+				return resp.StatusCode
+			}
+
+			So(run(zerr.ErrStorageTransient), ShouldEqual, http.StatusServiceUnavailable)
+			So(run(zerr.ErrStoragePermanent), ShouldEqual, http.StatusInternalServerError)
+		})
+
+		Convey("ListRepositories Walk-level Transient → 503; soft-skip path stays 200", func() {
+			handler := newHandler(mocks.MockedImageStore{
+				GetNextRepositoriesFn: func(_ string, _ int, _ storageTypes.FilterRepoFunc,
+				) ([]string, bool, error) {
+					return nil, false, zerr.ErrStorageTransient
+				},
+			})
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+				"http://example.com/v2/_catalog", http.NoBody)
+			rec := httptest.NewRecorder()
+			handler.ListRepositories(rec, req)
+			resp := rec.Result()
+			defer resp.Body.Close()
+			So(resp.StatusCode, ShouldEqual, http.StatusServiceUnavailable)
+
+			handler = newHandler(mocks.MockedImageStore{
+				GetNextRepositoriesFn: func(_ string, _ int, _ storageTypes.FilterRepoFunc,
+				) ([]string, bool, error) {
+					return []string{"kept"}, false, nil
+				},
+			})
+			req = httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+				"http://example.com/v2/_catalog", http.NoBody)
+			rec = httptest.NewRecorder()
+			handler.ListRepositories(rec, req)
+			resp = rec.Result()
+			defer resp.Body.Close()
+			So(resp.StatusCode, ShouldEqual, http.StatusOK)
 		})
 	})
 }
