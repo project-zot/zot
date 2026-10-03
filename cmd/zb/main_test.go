@@ -151,6 +151,55 @@ func TestIsTimeoutError(t *testing.T) {
 	})
 }
 
+func TestRetryOnTimeoutError(t *testing.T) {
+	Convey("succeeds without retry", t, func() {
+		attempts := 0
+		err := retryOnTimeoutError(0, func() error {
+			attempts++
+
+			return nil
+		})
+		So(err, ShouldBeNil)
+		So(attempts, ShouldEqual, 1)
+	})
+
+	Convey("retries timeout-class errors then succeeds", t, func() {
+		attempts := 0
+		err := retryOnTimeoutError(0, func() error {
+			attempts++
+			if attempts < maxSeedPushAttempts {
+				return errClosedConn
+			}
+
+			return nil
+		})
+		So(err, ShouldBeNil)
+		So(attempts, ShouldEqual, maxSeedPushAttempts)
+	})
+
+	Convey("returns the last timeout error after exhausting attempts", t, func() {
+		attempts := 0
+		err := retryOnTimeoutError(0, func() error {
+			attempts++
+
+			return errIOTimeout
+		})
+		So(err, ShouldEqual, errIOTimeout)
+		So(attempts, ShouldEqual, maxSeedPushAttempts)
+	})
+
+	Convey("does not retry non-timeout errors", t, func() {
+		attempts := 0
+		err := retryOnTimeoutError(0, func() error {
+			attempts++
+
+			return errSomethingElse
+		})
+		So(err, ShouldEqual, errSomethingElse)
+		So(attempts, ShouldEqual, 1)
+	})
+}
+
 type timeoutNetError struct{}
 
 func (e *timeoutNetError) Error() string   { return "read tcp: i/o timeout" }

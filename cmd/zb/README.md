@@ -26,6 +26,8 @@ Flags:
 ```
 
 `--max-timeout-failures` is a run-wide budget for timeout-related request failures only (including client errors that look like server read/write timeouts, such as `use of closed network connection` and `unexpected EOF` from a truncated response). Failures are still reported per test. Non-timeout failures always cause a non-zero exit. With default `0`, any timeout failure also fails the run.
+
+Seed image uploads that prepare data before scored requests retry a few times on the same timeout-class errors. Setup must succeed for the test to proceed, so those failures are not covered by `--max-timeout-failures`.
   
 ## Command example
 ```

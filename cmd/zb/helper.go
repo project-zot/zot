@@ -554,6 +554,33 @@ func pushMonolithImage(workdir, url, trepo string, repos []string, config testCo
 	return manifestHash, repos, nil
 }
 
+// pushMonolithImageWithRetry retries seed uploads on timeout-class errors so a
+// single stalled PUT does not abort the suite before scored requests can run.
+// Failed attempts still append repos so cleanup can remove orphan uploads.
+func pushMonolithImageWithRetry(workdir, url, trepo string, repos []string, config testConfig,
+	client *resty.Client,
+) (map[string]string, []string, error) {
+	var (
+		manifestHash map[string]string
+		err          error
+	)
+
+	currentRepos := repos
+
+	err = retryOnTimeoutError(seedPushRetryBackoff, func() error {
+		var pushErr error
+
+		manifestHash, currentRepos, pushErr = pushMonolithImage(workdir, url, trepo, currentRepos, config, client)
+
+		return pushErr
+	})
+	if err != nil {
+		return nil, currentRepos, err
+	}
+
+	return manifestHash, currentRepos, nil
+}
+
 func pushMonolithAndCollect(workdir, url, trepo string, count int,
 	repos []string, config testConfig, client *resty.Client,
 	statsCh chan statsRecord,
