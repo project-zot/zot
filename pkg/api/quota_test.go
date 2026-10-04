@@ -33,6 +33,21 @@ func startQuotaServer(t *testing.T, maxRepos int) (string, func()) {
 	return baseURL, func() { ctlrManager.StopServer() }
 }
 
+func startByteQuotaServer(t *testing.T, maxRepoBytes int64) (string, func()) {
+	t.Helper()
+
+	conf := config.New()
+	conf.HTTP.Port = "0"
+	conf.Storage.RootDirectory = t.TempDir()
+	conf.Storage.MaxRepoBytes = maxRepoBytes
+
+	ctlr := api.NewController(conf)
+	ctlrManager := test.NewControllerManager(ctlr)
+	baseURL := ctlrManager.StartAndWait()
+
+	return baseURL, func() { ctlrManager.StopServer() }
+}
+
 func TestQuotaEnforcement(t *testing.T) {
 	Convey("Given a registry with maxRepos set to 2", t, func() {
 		baseURL, stop := startQuotaServer(t, 2)
@@ -45,7 +60,7 @@ func TestQuotaEnforcement(t *testing.T) {
 			err = UploadImage(CreateRandomImage(), baseURL, "repo2", "v1")
 			So(err, ShouldBeNil)
 
-			Convey("Push to a third new repo is rejected with 429", func() {
+			Convey("Push to a third new repo is rejected with 413", func() {
 				img := CreateRandomImage()
 				manifestBody, err := json.Marshal(img.Manifest)
 				So(err, ShouldBeNil)
@@ -55,7 +70,7 @@ func TestQuotaEnforcement(t *testing.T) {
 					SetBody(manifestBody).
 					Put(baseURL + "/v2/repo3/manifests/v1")
 				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusTooManyRequests)
+				So(resp.StatusCode(), ShouldEqual, http.StatusRequestEntityTooLarge)
 
 				var body map[string]any
 				So(json.Unmarshal(resp.Body(), &body), ShouldBeNil)
@@ -69,6 +84,8 @@ func TestQuotaEnforcement(t *testing.T) {
 				detail, ok := firstErr["detail"].(map[string]any)
 				So(ok, ShouldBeTrue)
 				So(detail["limit"], ShouldEqual, "2")
+				So(detail["current"], ShouldEqual, "2")
+				So(detail["projected"], ShouldEqual, "3")
 			})
 
 			Convey("Push a new tag to an existing repo is allowed at the limit", func() {
@@ -98,6 +115,68 @@ func TestQuotaDisabled(t *testing.T) {
 	})
 }
 
+func TestRepoByteQuotaRejectsProjectedManifestSize(t *testing.T) {
+	Convey("Given a registry with maxRepoBytes set to 1", t, func() {
+		baseURL, stop := startByteQuotaServer(t, 1)
+		defer stop()
+
+		manifestBody := []byte(`{"schemaVersion":2,` +
+			`"mediaType":"application/vnd.oci.image.manifest.v1+json",` +
+			`"config":{"mediaType":"application/vnd.oci.image.config.v1+json",` +
+			`"digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",` +
+			`"size":2},"layers":[]}`)
+		resp, err := resty.R().
+			SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+			SetBody(manifestBody).
+			Put(baseURL + "/v2/byte-quota/manifests/v1")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusRequestEntityTooLarge)
+
+		var body map[string]any
+		So(json.Unmarshal(resp.Body(), &body), ShouldBeNil)
+		errors, ok := body["errors"].([]any)
+		So(ok, ShouldBeTrue)
+		firstErr, ok := errors[0].(map[string]any)
+		So(ok, ShouldBeTrue)
+		detail, ok := firstErr["detail"].(map[string]any)
+		So(ok, ShouldBeTrue)
+		So(detail["current"], ShouldEqual, "0")
+		So(detail["limit"], ShouldEqual, "1")
+	})
+}
+
+func TestRepoByteQuotaAllowsCurrentSizeAndRejectsGrowth(t *testing.T) {
+	Convey("Given a registry with a quota equal to the current image size", t, func() {
+		first := CreateRandomImage()
+		firstSize := first.ManifestDescriptor.Size + first.ConfigDescriptor.Size + int64(len(first.Layers[0]))
+		baseURL, stop := startByteQuotaServer(t, firstSize)
+		defer stop()
+
+		So(UploadImage(first, baseURL, "byte-quota", "v1"), ShouldBeNil)
+
+		manifestBody := []byte(`{"schemaVersion":2,` +
+			`"mediaType":"application/vnd.oci.image.manifest.v1+json",` +
+			`"config":{"mediaType":"application/vnd.oci.image.config.v1+json",` +
+			`"digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",` +
+			`"size":2},"layers":[]}`)
+		resp, err := resty.R().
+			SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+			SetBody(manifestBody).
+			Put(baseURL + "/v2/byte-quota/manifests/v2")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusRequestEntityTooLarge)
+	})
+}
+
+func TestRepoByteQuotaAcceptsShortCosignLikeTag(t *testing.T) {
+	Convey("Given a registry with maxRepoBytes enabled", t, func() {
+		baseURL, stop := startByteQuotaServer(t, 1<<30)
+		defer stop()
+
+		So(UploadImage(CreateRandomImage(), baseURL, "byte-quota", "sha256-x.sig"), ShouldBeNil)
+	})
+}
+
 func TestQuotaConcurrency(t *testing.T) {
 	Convey("Given a registry with maxRepos set to 5", t, func() {
 		baseURL, stop := startQuotaServer(t, 5)
@@ -114,7 +193,7 @@ func TestQuotaConcurrency(t *testing.T) {
 				wg.Go(func() {
 					err := UploadImage(CreateRandomImage(), baseURL, fmt.Sprintf("concurrent-repo-%d", idx), "v1")
 					if err != nil {
-						results[idx] = http.StatusTooManyRequests
+						results[idx] = http.StatusRequestEntityTooLarge
 					} else {
 						results[idx] = http.StatusCreated
 					}
@@ -235,7 +314,7 @@ func TestQuotaSlotReleasedOnDelete(t *testing.T) {
 		So(UploadImage(CreateRandomImage(), baseURL, "second", "v1"), ShouldBeNil)
 		So(UploadImage(CreateRandomImage(), baseURL, "third", "v1"), ShouldBeNil)
 
-		So(pushNewRepoStatus(t, baseURL, "overflow"), ShouldEqual, http.StatusTooManyRequests)
+		So(pushNewRepoStatus(t, baseURL, "overflow"), ShouldEqual, http.StatusRequestEntityTooLarge)
 
 		Convey("Deleting one tag of a two-tag repo releases nothing", func() {
 			resp, err := resty.R().Delete(baseURL + "/v2/shared/manifests/" + first.DigestStr())
@@ -246,7 +325,7 @@ func TestQuotaSlotReleasedOnDelete(t *testing.T) {
 			So(manifestDigest(t, baseURL, "shared", "v2"), ShouldEqual, second.DigestStr())
 
 			// The repo still holds content, so it still holds its slot.
-			So(pushNewRepoStatus(t, baseURL, "overflow"), ShouldEqual, http.StatusTooManyRequests)
+			So(pushNewRepoStatus(t, baseURL, "overflow"), ShouldEqual, http.StatusRequestEntityTooLarge)
 
 			Convey("Deleting the last tag releases the slot, and the name is reusable", func() {
 				resp, err := resty.R().Delete(baseURL + "/v2/shared/manifests/" + second.DigestStr())
@@ -283,7 +362,7 @@ func TestQuotaSlotStaysReleasedAcrossRestart(t *testing.T) {
 
 		So(UploadImage(doomed, baseURL, "doomed", "v1"), ShouldBeNil)
 		So(UploadImage(keeper, baseURL, "keeper", "v1"), ShouldBeNil)
-		So(pushNewRepoStatus(t, baseURL, "extra"), ShouldEqual, http.StatusTooManyRequests)
+		So(pushNewRepoStatus(t, baseURL, "extra"), ShouldEqual, http.StatusRequestEntityTooLarge)
 
 		resp, err := resty.R().Delete(baseURL + "/v2/doomed/manifests/" + doomed.DigestStr())
 		So(err, ShouldBeNil)
@@ -325,7 +404,7 @@ func TestQuotaSlotReleaseWithGCEnabled(t *testing.T) {
 		time.Sleep(6 * time.Second)
 
 		So(manifestDigest(t, baseURL, "keeper", "v1"), ShouldEqual, keeper.DigestStr())
-		So(pushNewRepoStatus(t, baseURL, "yetanother"), ShouldEqual, http.StatusTooManyRequests)
+		So(pushNewRepoStatus(t, baseURL, "yetanother"), ShouldEqual, http.StatusRequestEntityTooLarge)
 	})
 }
 
@@ -341,7 +420,7 @@ func TestQuotaRepushOfRemovedNameCounts(t *testing.T) {
 
 		So(UploadImage(doomed, baseURL, "doomed", "v1"), ShouldBeNil)
 		So(UploadImage(CreateRandomImage(), baseURL, "keeper", "v1"), ShouldBeNil)
-		So(pushNewRepoStatus(t, baseURL, "extra"), ShouldEqual, http.StatusTooManyRequests)
+		So(pushNewRepoStatus(t, baseURL, "extra"), ShouldEqual, http.StatusRequestEntityTooLarge)
 
 		resp, err := resty.R().Delete(baseURL + "/v2/doomed/manifests/" + doomed.DigestStr())
 		So(err, ShouldBeNil)
@@ -354,7 +433,7 @@ func TestQuotaRepushOfRemovedNameCounts(t *testing.T) {
 			So(manifestDigest(t, baseURL, "doomed", "v2"), ShouldEqual, repushed.DigestStr())
 
 			// Had the re-push slipped past the limit, a further new name would still fit.
-			So(pushNewRepoStatus(t, baseURL, "onemore"), ShouldEqual, http.StatusTooManyRequests)
+			So(pushNewRepoStatus(t, baseURL, "onemore"), ShouldEqual, http.StatusRequestEntityTooLarge)
 		})
 	})
 }

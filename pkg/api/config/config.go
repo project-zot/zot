@@ -30,6 +30,7 @@ var (
 type StorageConfig struct {
 	RootDirectory   string
 	MaxRepos        int
+	MaxRepoBytes    int64
 	Dedupe          bool
 	RemoteCache     bool
 	RedirectBlobURL bool
@@ -1707,7 +1708,37 @@ func (c *Config) IsQuotaEnabled() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	return c.Storage.MaxRepos > 0
+	if c.Storage.MaxRepos > 0 || c.Storage.MaxRepoBytes > 0 {
+		return true
+	}
+
+	for _, subStorageConfig := range c.Storage.SubPaths {
+		if subStorageConfig.MaxRepoBytes > 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
+// MaxRepoBytesForStore returns the logical byte quota for a store path.
+// A matching subPath overrides the top-level value, including with zero.
+// Changes to this setting are startup-only, like maxRepos.
+func (c *Config) MaxRepoBytesForStore(storePath string) int64 {
+	if c == nil {
+		return 0
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if storePath != "/" {
+		if subStorageConfig, ok := c.Storage.SubPaths[storePath]; ok {
+			return subStorageConfig.MaxRepoBytes
+		}
+	}
+
+	return c.Storage.MaxRepoBytes
 }
 
 // IsCompatEnabled checks if compatibility mode is enabled.
