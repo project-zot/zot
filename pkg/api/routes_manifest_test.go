@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path"
 	"strings"
 	"testing"
 	"time"
@@ -26,12 +27,19 @@ import (
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
 	"zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/storage"
+	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
+	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
+	"zotregistry.dev/zot/v2/pkg/test/storageerrclass"
 )
 
-// Stand-in for a contended redis/redsync lock error from UpdateStatsOnDownload.
-var errStatsLockContention = errors.New("failed to acquire redis lock")
+var (
+	// Stand-in for a contended redis/redsync lock error from UpdateStatsOnDownload.
+	errStatsLockContention = errors.New("failed to acquire redis lock")
+	errStorageInjected     = errors.New("injected storage failure")
+)
 
 type mockSyncOnDemand struct {
 	syncImageFn                   func(ctx context.Context, repo, reference string) error
@@ -710,6 +718,22 @@ func TestHTTPStorageClassStatusMapping(t *testing.T) {
 			So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
 		})
 
+		Convey("CheckManifest unrecognized error → 500", func() {
+			handler := newHandler(mocks.MockedImageStore{
+				GetImageManifestFn: func(_ string, _ string) ([]byte, godigest.Digest, string, error) {
+					return nil, "", "", errors.New("unexpected manifest failure") //nolint:err113 // test
+				},
+			})
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodHead,
+				"http://example.com/v2/"+repo+"/manifests/"+reference, http.NoBody)
+			req = mux.SetURLVars(req, map[string]string{"name": repo, "reference": reference})
+			rec := httptest.NewRecorder()
+			handler.CheckManifest(rec, req)
+			resp := rec.Result()
+			defer resp.Body.Close()
+			So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+		})
+
 		Convey("DeleteManifest", func() {
 			run := func(getErr error) int {
 				handler := newHandler(mocks.MockedImageStore{
@@ -946,6 +970,63 @@ func TestHTTPStorageClassStatusMapping(t *testing.T) {
 			resp = rec.Result()
 			defer resp.Body.Close()
 			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+		})
+
+		Convey("ListRepositories on a real local store with injected storage failures", func() {
+			imgStore, hooks := storageerrclass.NewStore(t, storageerrclass.Local())
+			storeController := storage.StoreController{DefaultStore: imgStore}
+
+			for _, name := range []string{"a/repo", "b", "c/repo"} {
+				So(WriteImageToFileSystem(CreateRandomImage(), name, "v1", storeController), ShouldBeNil)
+			}
+
+			ctlr := api.NewController(config.New())
+			ctlr.Router = mux.NewRouter()
+			ctlr.StoreController.DefaultStore = imgStore
+			handler := api.NewRouteHandler(ctlr)
+
+			listCatalog := func() (int, string) {
+				req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+					"http://example.com/v2/_catalog", http.NoBody)
+				rec := httptest.NewRecorder()
+				handler.ListRepositories(rec, req)
+				resp := rec.Result()
+				defer resp.Body.Close()
+				body, _ := io.ReadAll(resp.Body)
+
+				return resp.StatusCode, string(body)
+			}
+
+			Convey("a Transient root walk is 503", func() {
+				hooks.AddFault(storageerrclass.Fault{
+					Op: storageerrclass.OpWalk, Path: imgStore.RootDir(), Err: errclass.MarkTransient(errStorageInjected),
+				})
+
+				status, _ := listCatalog()
+				So(status, ShouldEqual, http.StatusServiceUnavailable)
+			})
+
+			Convey("a Permanent root walk is 500", func() {
+				hooks.AddFault(storageerrclass.Fault{
+					Op: storageerrclass.OpWalk, Path: imgStore.RootDir(), Err: errclass.MarkPermanent(errStorageInjected),
+				})
+
+				status, _ := listCatalog()
+				So(status, ShouldEqual, http.StatusInternalServerError)
+			})
+
+			Convey("a Transient failure validating one repository is a partial 200", func() {
+				hooks.AddFault(storageerrclass.Fault{
+					Op: storageerrclass.OpList, Path: path.Join(imgStore.RootDir(), "b"),
+					Err: errclass.MarkTransient(errStorageInjected),
+				})
+
+				status, body := listCatalog()
+				So(status, ShouldEqual, http.StatusOK)
+				So(body, ShouldContainSubstring, `"a/repo"`)
+				So(body, ShouldContainSubstring, `"c/repo"`)
+				So(body, ShouldNotContainSubstring, `"b"`)
+			})
 		})
 	})
 }

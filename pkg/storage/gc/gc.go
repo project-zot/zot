@@ -139,11 +139,6 @@ func (gc GarbageCollect) CleanRepo(ctx context.Context, repo string) error {
 func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 	var lockLatency time.Time
 
-	dir := path.Join(gc.imgStore.RootDir(), repo)
-	if !gc.imgStore.DirExists(dir) {
-		return zerr.ErrRepoNotFound
-	}
-
 	gc.imgStore.Lock(&lockLatency)
 	defer gc.imgStore.Unlock(&lockLatency)
 
@@ -155,6 +150,9 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 	from index.Manifests[] list and update repo's index.json afterwards.
 
 	After updating repo's index.json we clean all unreferenced blobs (manifests included).
+
+	Do not gate on DirExists: it is bool-only and collapses Transient/Permanent Stat into
+	ErrRepoNotFound. GetIndex maps Missing → ErrRepoNotFound and preserves outages.
 	*/
 	index, err := common.GetIndex(gc.imgStore, repo, gc.log)
 	if err != nil {
@@ -324,12 +322,24 @@ func (gc GarbageCollect) removeStaleManifestEntries(repo string, index *ispec.In
 
 	for _, desc := range index.Manifests {
 		if !existingBlobs[desc.Digest.String()] {
-			if err := gc.syncManifestRemoval(repo, desc, "staleManifestPrune",
-				"pruned stale manifest entry from index"); err != nil {
+			missing, err := gc.confirmBlobMissing(repo, desc.Digest)
+			if err != nil {
 				return err
 			}
 
-			continue
+			if missing {
+				// syncManifestRemoval logs metaDB failures and always returns nil today.
+				_ = gc.syncManifestRemoval(repo, desc, "staleManifestPrune",
+					"pruned stale manifest entry from index")
+
+				continue
+			}
+
+			// Inventory missed a blob that Stat still sees (eventual consistency).
+			// Keep the row; nested index checks below may still apply.
+			gc.log.Warn().Str("module", "gc").Str("repository", repo).
+				Str("digest", desc.Digest.String()).
+				Msg("blob missing from inventory but present on Stat; keeping index entry")
 		}
 
 		if compat.IsImageIndexMediaType(desc.MediaType) {
@@ -437,19 +447,36 @@ func (gc GarbageCollect) syncManifestRemoval(repo string, desc ispec.Descriptor,
 	return nil
 }
 
+// confirmBlobMissing reports whether StatBlob shows the blob is gone. A successful
+// Stat means the blob is still present (caller must keep it). Missing / unavailable
+// means it is safe to treat as gone. Transient or Permanent aborts the GC step.
+func (gc GarbageCollect) confirmBlobMissing(repo string, digest godigest.Digest) (bool, error) {
+	exists, _, _, err := gc.imgStore.StatBlob(repo, digest)
+	if err == nil {
+		return !exists, nil
+	}
+
+	if errclass.IsBlobUnavailable(err) {
+		return true, nil
+	}
+
+	return false, err
+}
+
 // imageIndexHasStaleNestedManifests reports whether the top-level image index descriptor
 // should be dropped from index.json. The index blob itself is never rewritten.
 // Sparse indexes are supported: if any nested manifest blob still exists, return false
 // (not stale) so the tagged index entry is kept even when other nested manifests are missing.
 // Return true only when every nested manifest blob is gone (or the index blob is missing).
 // Empty manifest lists are valid OCI and are kept when the index blob still exists.
+// Inventory misses are confirmed with StatBlob before a nested digest is treated as gone.
 func (gc GarbageCollect) imageIndexHasStaleNestedManifests(repo string, desc ispec.Descriptor,
 	existingBlobs map[string]bool,
 ) (bool, error) {
 	indexImage, err := common.GetImageIndex(gc.imgStore, repo, desc.Digest, gc.log)
 	if err != nil {
 		if errclass.IsBlobUnavailable(err) {
-			// Index blob missing — top-level descriptor is stale.
+			// GetBlobContent already proved the index blob is gone; no second Stat.
 			return true, nil
 		}
 
@@ -468,7 +495,19 @@ func (gc GarbageCollect) imageIndexHasStaleNestedManifests(repo string, desc isp
 		}
 	}
 
-	// Every nested manifest blob is missing.
+	// Every nested digest is absent from the inventory; confirm each with StatBlob so an
+	// eventually consistent List cannot drop a live sparse index.
+	for _, nested := range indexImage.Manifests {
+		missing, err := gc.confirmBlobMissing(repo, nested.Digest)
+		if err != nil {
+			return false, err
+		}
+
+		if !missing {
+			return false, nil
+		}
+	}
+
 	return true, nil
 }
 
@@ -1048,11 +1087,8 @@ func (gc GarbageCollect) identifyManifestsReferencedInIndex(index ispec.Index, r
 func (gc GarbageCollect) deleteBlobUploads(repo string, delay time.Duration) (int, error) {
 	gc.log.Debug().Str("module", "gc").Str("repository", repo).Msg("cleaning unclaimed blob uploads")
 
-	if dir := path.Join(gc.imgStore.RootDir(), repo); !gc.imgStore.DirExists(dir) {
-		// The repository was already cleaned up by a different codepath
-		return 0, nil
-	}
-
+	// Do not gate on DirExists: it collapses Transient/Permanent Stat into a silent skip.
+	// ListBlobUploads maps Missing → empty and propagates Transient/Permanent.
 	blobUploads, err := gc.imgStore.ListBlobUploads(repo)
 	if err != nil {
 		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Msg("failed to get list of blob uploads")
