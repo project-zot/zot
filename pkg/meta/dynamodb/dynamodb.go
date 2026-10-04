@@ -345,12 +345,23 @@ func (dwr *DynamoDB) setProtoRepoMeta(repo string, repoMeta *proto_go.RepoMeta) 
 }
 
 func (dwr *DynamoDB) getProtoRepoMeta(ctx context.Context, repo string) (*proto_go.RepoMeta, error) {
-	resp, err := dwr.Client.GetItem(ctx, &dynamodb.GetItemInput{
+	return dwr.getProtoRepoMetaWithConsistency(ctx, repo, false)
+}
+
+func (dwr *DynamoDB) getProtoRepoMetaWithConsistency(ctx context.Context, repo string,
+	consistentRead bool,
+) (*proto_go.RepoMeta, error) {
+	input := &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.RepoMetaTablename),
 		Key: map[string]types.AttributeValue{
 			"TableKey": &types.AttributeValueMemberS{Value: repo},
 		},
-	})
+	}
+	if consistentRead {
+		input.ConsistentRead = aws.Bool(true)
+	}
+
+	resp, err := dwr.Client.GetItem(ctx, input)
 	if err != nil {
 		return nil, err
 	}
@@ -563,12 +574,23 @@ func (dwr *DynamoDB) updateRepoLastUpdated(ctx context.Context, repo string, tim
 }
 
 func (dwr *DynamoDB) getProtoRepoBlobs(ctx context.Context, repo string) (*proto_go.RepoBlobs, error) {
-	resp, err := dwr.Client.GetItem(ctx, &dynamodb.GetItemInput{
+	return dwr.getProtoRepoBlobsWithConsistency(ctx, repo, false)
+}
+
+func (dwr *DynamoDB) getProtoRepoBlobsWithConsistency(ctx context.Context, repo string,
+	consistentRead bool,
+) (*proto_go.RepoBlobs, error) {
+	input := &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.RepoBlobsTablename),
 		Key: map[string]types.AttributeValue{
 			"TableKey": &types.AttributeValueMemberS{Value: repo},
 		},
-	})
+	}
+	if consistentRead {
+		input.ConsistentRead = aws.Bool(true)
+	}
+
+	resp, err := dwr.Client.GetItem(ctx, input)
 	if err != nil {
 		return nil, err
 	}
@@ -972,12 +994,12 @@ func (dwr *DynamoDB) GetRepoSizeWithCandidate(ctx context.Context, repo string, 
 	imageMeta mTypes.ImageMeta,
 ) (int64, int64, error) {
 	var current, projected int64
-	protoRepoMeta, metaErr := dwr.getProtoRepoMeta(ctx, repo)
+	protoRepoMeta, metaErr := dwr.getProtoRepoMetaWithConsistency(ctx, repo, true)
 	if metaErr != nil && !errors.Is(metaErr, zerr.ErrRepoMetaNotFound) {
 		return 0, 0, metaErr
 	}
 
-	repoBlobs, blobsErr := dwr.getProtoRepoBlobs(ctx, repo)
+	repoBlobs, blobsErr := dwr.getProtoRepoBlobsWithConsistency(ctx, repo, true)
 	if blobsErr != nil {
 		return 0, 0, blobsErr
 	}

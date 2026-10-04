@@ -160,6 +160,12 @@ func writeQuotaExceeded(response http.ResponseWriter, current, projected, limit 
 		apiErr.NewErrorList(apiErr.NewError(apiErr.TOOMANYREQUESTS).AddDetail(detail)))
 }
 
+func writeInvalidRepoSize(response http.ResponseWriter) {
+	detail := map[string]string{"reason": "manifest descriptor size is invalid"}
+	zcommon.WriteJSON(response, http.StatusBadRequest,
+		apiErr.NewErrorList(apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(detail)))
+}
+
 // checkRepoByteQuota checks the projected tag-rooted RepoMeta.Size before the manifest is written.
 // It returns true when the request was rejected.
 func (rh *RouteHandler) checkRepoByteQuota(response http.ResponseWriter, request *http.Request,
@@ -190,10 +196,18 @@ func (rh *RouteHandler) checkRepoByteQuota(response http.ResponseWriter, request
 
 	current, projected, err := rh.c.MetaDB.GetRepoSizeWithCandidate(request.Context(), repo, references, imageMeta)
 	if err != nil {
-		if errors.Is(err, metaCommon.ErrInvalidRepoSize) {
+		if errors.Is(err, metaCommon.ErrInvalidRepoSizeCandidate) {
 			rh.c.Log.Warn().Err(err).Str("repo", repo).
-				Msg("repository size candidate is invalid, rejecting push")
-			writeQuotaExceeded(response, current, projected, limit)
+				Msg("manifest descriptor size is invalid, rejecting push")
+			writeInvalidRepoSize(response)
+
+			return true
+		}
+
+		if errors.Is(err, metaCommon.ErrInvalidRepoSize) {
+			rh.c.Log.Error().Err(err).Str("repo", repo).
+				Msg("repository size metadata is invalid, rejecting push")
+			response.WriteHeader(http.StatusInternalServerError)
 
 			return true
 		}

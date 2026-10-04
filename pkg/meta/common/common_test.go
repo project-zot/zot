@@ -759,13 +759,13 @@ func TestProjectRepoSize(t *testing.T) {
 			invalid.Size = -1
 
 			_, _, err := common.ProjectRepoSize(repoMeta, repoBlobs, []string{"latest"}, invalid)
-			So(errors.Is(err, common.ErrInvalidRepoSize), ShouldBeTrue)
+			So(errors.Is(err, common.ErrInvalidRepoSizeCandidate), ShouldBeTrue)
 
 			invalid = candidate
 			invalid.Manifests[0].Manifest.Config.Size = 19
 
 			_, _, err = common.ProjectRepoSize(repoMeta, repoBlobs, []string{"latest"}, invalid)
-			So(errors.Is(err, common.ErrInvalidRepoSize), ShouldBeTrue)
+			So(errors.Is(err, common.ErrInvalidRepoSizeCandidate), ShouldBeTrue)
 		})
 
 		Convey("rejects conflicting sizes for a digest within a candidate", func() {
@@ -776,7 +776,7 @@ func TestProjectRepoSize(t *testing.T) {
 			}
 
 			_, _, err := common.ProjectRepoSize(repoMeta, repoBlobs, []string{"latest"}, invalid)
-			So(errors.Is(err, common.ErrInvalidRepoSize), ShouldBeTrue)
+			So(errors.Is(err, common.ErrInvalidRepoSizeCandidate), ShouldBeTrue)
 		})
 
 		Convey("rejects aggregate size overflow", func() {
