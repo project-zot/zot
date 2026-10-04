@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -145,6 +146,33 @@ func TestRepoByteQuotaRejectsProjectedManifestSize(t *testing.T) {
 	})
 }
 
+func TestRepoByteQuotaRejectsInvalidDescriptorSize(t *testing.T) {
+	Convey("Given a registry with maxRepoBytes enabled", t, func() {
+		baseURL, stop := startByteQuotaServer(t, 1<<30)
+		defer stop()
+
+		manifestBody := []byte(`{"schemaVersion":2,` +
+			`"mediaType":"application/vnd.oci.image.manifest.v1+json",` +
+			`"config":{"mediaType":"application/vnd.oci.image.config.v1+json",` +
+			`"digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",` +
+			`"size":-1},"layers":[]}`)
+		resp, err := resty.R().
+			SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+			SetBody(manifestBody).
+			Put(baseURL + "/v2/byte-quota/manifests/invalid-size")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+		var body map[string]any
+		So(json.Unmarshal(resp.Body(), &body), ShouldBeNil)
+		errors, ok := body["errors"].([]any)
+		So(ok, ShouldBeTrue)
+		firstErr, ok := errors[0].(map[string]any)
+		So(ok, ShouldBeTrue)
+		So(firstErr["code"], ShouldEqual, "MANIFEST_INVALID")
+	})
+}
+
 func TestRepoByteQuotaAllowsCurrentSizeAndRejectsGrowth(t *testing.T) {
 	Convey("Given a registry with a quota equal to the current image size", t, func() {
 		first := CreateRandomImage()
@@ -174,6 +202,67 @@ func TestRepoByteQuotaAcceptsShortCosignLikeTag(t *testing.T) {
 		defer stop()
 
 		So(UploadImage(CreateRandomImage(), baseURL, "byte-quota", "sha256-x.sig"), ShouldBeNil)
+	})
+}
+
+func TestRepoByteQuotaSerializesConcurrentGrowth(t *testing.T) {
+	Convey("Given a repository with room for one concurrent manifest", t, func() {
+		first := CreateImageWith().RandomLayers(1, 10).RandomConfig().Build()
+		candidateBodies := make([][]byte, 2)
+
+		for i, value := range []string{"a", "b"} {
+			candidateManifest := first.Manifest
+			candidateManifest.Annotations = map[string]string{
+				"quota-test": strings.Repeat(value, 64),
+			}
+
+			body, err := json.Marshal(candidateManifest)
+			So(err, ShouldBeNil)
+			candidateBodies[i] = body
+		}
+
+		limit := first.ManifestDescriptor.Size + first.ConfigDescriptor.Size +
+			int64(len(first.Layers[0])) + int64(len(candidateBodies[0]))
+		baseURL, stop := startByteQuotaServer(t, limit)
+		defer stop()
+
+		So(UploadImage(first, baseURL, "concurrent-byte-quota", "base"), ShouldBeNil)
+
+		results := make([]int, len(candidateBodies))
+
+		var wg sync.WaitGroup
+
+		for i, body := range candidateBodies {
+			idx := i
+			candidateBody := body
+			wg.Go(func() {
+				resp, err := resty.R().
+					SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+					SetBody(candidateBody).
+					Put(baseURL + fmt.Sprintf("/v2/concurrent-byte-quota/manifests/candidate-%d", idx))
+				if err != nil {
+					return
+				}
+
+				results[idx] = resp.StatusCode()
+			})
+		}
+		wg.Wait()
+
+		created := 0
+		rejected := 0
+
+		for _, status := range results {
+			switch status {
+			case http.StatusCreated:
+				created++
+			case http.StatusRequestEntityTooLarge:
+				rejected++
+			}
+		}
+
+		So(created, ShouldEqual, 1)
+		So(rejected, ShouldEqual, 1)
 	})
 }
 
