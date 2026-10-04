@@ -189,13 +189,33 @@ To limit the maximum number of repositories that can be created, set:
 ```
 
 When the limit is reached, pushes that would create a new repository are
-rejected with HTTP 429. Pushes to existing repositories are always allowed.
+rejected with HTTP 413. Pushes to existing repositories are always allowed.
 Setting maxRepos to 0 or omitting it disables enforcement.
 
 A repository stops counting towards the limit when it is removed from
 storage: immediately when its last manifest is deleted and no blobs or
 uploads remain, or otherwise in a garbage collection cycle once its
 remaining blobs pass the GC delay.
+
+To limit the logical size of each repository, set `maxRepoBytes`:
+
+```
+        "maxRepoBytes": 10737418240
+```
+
+The value is measured in bytes and counts the unique manifest, index, config,
+and layer blobs reachable from the repository's tagged references. The same
+digest is counted only once within a repository. When a manifest push would
+increase the logical size beyond the limit, zot returns HTTP 413 with the
+current, projected, and configured sizes in the error detail. A value of 0 or
+omitting `maxRepoBytes` disables this enforcement. The setting can also be
+configured under a matching `subPaths` entry and takes effect after restart.
+
+This is a logical repository quota, not a physical disk quota. Shared physical
+blobs across repositories are not charged as a single-repository allocation.
+For deployments with multiple Zot instances sharing a metadata backend, use the
+existing single-writer cluster routing for repository writes; independent
+writers are not atomically coordinated by this quota implementation.
 
 It is also possible to store and serve images from multiple filesystems with
 their own repository paths, dedupe and garbage collection settings with:
