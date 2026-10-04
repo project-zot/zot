@@ -411,6 +411,7 @@ func TestValidateManifestStorageErrorClasses(t *testing.T) {
 
 			err := common.ValidateManifest(imgStore, "test", "1.0", ispec.MediaTypeImageManifest, body, nil, log)
 			So(errors.Is(err, zerr.ErrBadManifest), ShouldBeTrue)
+			So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
 		})
 
 		Convey("ErrStorageTransient on config propagates unchanged", func() {
@@ -452,6 +453,7 @@ func TestValidateManifestStorageErrorClasses(t *testing.T) {
 
 			err := common.ValidateManifest(imgStore, "test", "1.0", ispec.MediaTypeImageManifest, body, nil, log)
 			So(errors.Is(err, zerr.ErrBadManifest), ShouldBeTrue)
+			So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
 		})
 
 		Convey("StatBlob ok=false with nil err on layer → ErrBadManifest", func() {
@@ -467,6 +469,7 @@ func TestValidateManifestStorageErrorClasses(t *testing.T) {
 
 			err := common.ValidateManifest(imgStore, "test", "1.0", ispec.MediaTypeImageManifest, body, nil, log)
 			So(errors.Is(err, zerr.ErrBadManifest), ShouldBeTrue)
+			So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
 		})
 
 		Convey("ErrStorageMissing on docker descriptor → ErrBadManifest", func() {
@@ -498,6 +501,7 @@ func TestValidateManifestStorageErrorClasses(t *testing.T) {
 
 			err = common.ValidateManifest(imgStore, "test", "docker", docker.MediaTypeManifest, manBody, compats, log)
 			So(errors.Is(err, zerr.ErrBadManifest), ShouldBeTrue)
+			So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
 		})
 
 		Convey("ErrStorageTransient on docker descriptor propagates unchanged", func() {
@@ -562,6 +566,7 @@ func TestValidateManifestStorageErrorClasses(t *testing.T) {
 
 			err = common.ValidateManifest(imgStore, "test", "docker", docker.MediaTypeManifest, manBody, compats, log)
 			So(errors.Is(err, zerr.ErrBadManifest), ShouldBeTrue)
+			So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
 		})
 	})
 }

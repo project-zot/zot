@@ -831,7 +831,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 
 	digest, subjectDigest, err := imgStore.PutImageManifest(ctx, name, reference, mediaType, body, digestQueryTags)
 	if err != nil {
-		rh.writePutImageManifestError(response, name, reference, digest, err)
+		rh.writePutImageManifestError(response, name, reference, err)
 
 		return
 	}
@@ -875,7 +875,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 // deleting by reference can remove an existing tag on overwrite. Unreferenced
 // partial blobs are left for GC.
 func (rh *RouteHandler) writePutImageManifestError(
-	response http.ResponseWriter, name, reference string, digest godigest.Digest, err error,
+	response http.ResponseWriter, name, reference string, err error,
 ) {
 	details := zerr.GetDetails(err)
 
@@ -894,6 +894,9 @@ func (rh *RouteHandler) writePutImageManifestError(
 		details["reference"] = reference
 		e := apiErr.NewError(apiErr.MANIFEST_UNKNOWN).AddDetail(details)
 		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
+	} else if errors.Is(err, zerr.ErrBlobNotFound) {
+		e := apiErr.NewError(apiErr.MANIFEST_BLOB_UNKNOWN).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 	} else if errors.Is(err, zerr.ErrBadManifest) {
 		details["reference"] = reference
 		e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(details)
@@ -902,10 +905,6 @@ func (rh *RouteHandler) writePutImageManifestError(
 		rh.c.Log.Error().Err(err).Str("repository", name).Str("reference", reference).
 			Msg("failed to look up manifest cache before manifest write")
 		response.WriteHeader(http.StatusInternalServerError)
-	} else if errors.Is(err, zerr.ErrBlobNotFound) {
-		details["blob"] = digest.String()
-		e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(details)
-		zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 	} else if errors.Is(err, zerr.ErrImageLintAnnotations) {
 		details["reference"] = reference
 		e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(details)

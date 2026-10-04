@@ -9251,6 +9251,53 @@ func TestDeleteManifestMissingRepo(t *testing.T) {
 	})
 }
 
+func TestPutManifestMissingBlob(t *testing.T) {
+	Convey("Pushing a manifest that references a missing blob returns MANIFEST_BLOB_UNKNOWN", t, func() {
+		conf := config.New()
+		conf.HTTP.Port = "0"
+
+		ctlr := makeController(conf, t.TempDir())
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+
+		defer cm.StopServer()
+
+		img := CreateRandomImage()
+		So(UploadImage(img, baseURL, "missing-blob", "1.0"), ShouldBeNil)
+
+		missing := godigest.FromString("never uploaded")
+
+		putManifest := func(manifest ispec.Manifest) {
+			body, err := json.Marshal(manifest)
+			So(err, ShouldBeNil)
+
+			resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+				SetBody(body).Put(baseURL + "/v2/missing-blob/manifests/2.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+			var errList apiErr.ErrorList
+			So(json.Unmarshal(resp.Body(), &errList), ShouldBeNil)
+			So(errList.Errors, ShouldHaveLength, 1)
+			So(errList.Errors[0].Code, ShouldEqual, "MANIFEST_BLOB_UNKNOWN")
+			So(errList.Errors[0].Detail["digest"], ShouldEqual, missing.String())
+		}
+
+		Convey("missing layer", func() {
+			manifest := img.Manifest
+			manifest.Layers = append([]ispec.Descriptor(nil), manifest.Layers...)
+			manifest.Layers[0].Digest = missing
+			putManifest(manifest)
+		})
+
+		Convey("missing config", func() {
+			manifest := img.Manifest
+			manifest.Config.Digest = missing
+			putManifest(manifest)
+		})
+	})
+}
+
 func TestManifestDigestQueryTags(t *testing.T) {
 	Convey("Manifest PUT with digest ?tag= query parameters", t, func() {
 		conf := config.New()
