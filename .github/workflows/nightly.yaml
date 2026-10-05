@@ -190,7 +190,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
       - name: Free up disk space
-        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # main
+        uses: jlumbroso/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6 # main
       - name: Run tests
         run: |
             sudo ./scripts/enable_userns.sh
@@ -210,7 +210,7 @@ jobs:
           go-version-file: .go-version
       - uses: ./.github/actions/install-prebuilt-binaries
       - name: Free up disk space
-        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # main
+        uses: jlumbroso/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6 # main
       - name: Run config hot reload ConfigMap test
         run: |
           sudo ./scripts/enable_userns.sh
@@ -230,7 +230,7 @@ jobs:
           go-version-file: .go-version
       - uses: ./.github/actions/install-prebuilt-binaries
       - name: Free up disk space
-        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # main
+        uses: jlumbroso/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6 # main
       - name: Run on-demand sync mirror regression test
         run: |
           sudo ./scripts/enable_userns.sh
