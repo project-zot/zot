@@ -717,6 +717,10 @@ func DistSpecAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 						// Fail closed if we cannot verify current tags for this repo.
 						ctlr.Log.Error().Err(repoTagErr).Str("repository", resource).
 							Msg("unable to verify permissions on existing tags")
+						if writeStorageClassError(response, repoTagErr) {
+							return
+						}
+
 						response.WriteHeader(http.StatusInternalServerError)
 
 						return

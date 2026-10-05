@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path"
+	"strings"
 	"testing"
 	"time"
 
@@ -758,6 +759,213 @@ func TestCheckBlobMissingCacheLookupErrors(t *testing.T) {
 			So(size, ShouldEqual, -1)
 			So(errors.Is(err, zerr.ErrStoragePermanent), ShouldBeTrue)
 			So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeFalse)
+		})
+	})
+}
+
+func TestValidateRepoListStorageClasses(t *testing.T) {
+	Convey("ValidateRepo Map List failures by storage class", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+		repo := "repo"
+
+		Convey("Missing → ErrRepoNotFound", func() {
+			storeMock := &mocks.StorageDriverMock{
+				ListFn: func(_ context.Context, listPath string) ([]string, error) {
+					return nil, driver.PathNotFoundError{Path: listPath}
+				},
+			}
+			store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+				gcs.New(storeMock), nil, nil, nil)
+
+			ok, err := store.ValidateRepo(repo)
+			So(ok, ShouldBeFalse)
+			So(errors.Is(err, zerr.ErrRepoNotFound), ShouldBeTrue)
+			So(errclass.IsStorageObjectMissing(err), ShouldBeTrue)
+		})
+
+		Convey("Transient propagates without ErrRepoNotFound", func() {
+			storeMock := &mocks.StorageDriverMock{
+				ListFn: func(_ context.Context, _ string) ([]string, error) {
+					return nil, errclass.MarkTransient(errors.New("list blip")) //nolint:err113 // test
+				},
+			}
+			store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+				gcs.New(storeMock), nil, nil, nil)
+
+			ok, err := store.ValidateRepo(repo)
+			So(ok, ShouldBeFalse)
+			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+			So(errors.Is(err, zerr.ErrRepoNotFound), ShouldBeFalse)
+		})
+
+		Convey("unclassified List error is marked Transient", func() {
+			storeMock := &mocks.StorageDriverMock{
+				ListFn: func(_ context.Context, _ string) ([]string, error) {
+					return nil, errors.New("raw list failure") //nolint:err113 // test
+				},
+			}
+			store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+				gcs.New(storeMock), nil, nil, nil)
+
+			ok, err := store.ValidateRepo(repo)
+			So(ok, ShouldBeFalse)
+			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+			So(errors.Is(err, zerr.ErrRepoNotFound), ShouldBeFalse)
+		})
+	})
+}
+
+func TestGetNextRepositoriesValidateRepoSoftSkip(t *testing.T) {
+	Convey("GetNextRepositories soft-skips per-path ValidateRepo Transient", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+		flakyRepo := "flaky"
+		goodRepo := "good"
+
+		storeMock := &mocks.StorageDriverMock{
+			WalkFn: func(_ context.Context, _ string, walkFn driver.WalkFn,
+				_ ...func(*driver.WalkOptions),
+			) error {
+				for _, name := range []string{flakyRepo, goodRepo} {
+					repoPath := path.Join(rootDir, name)
+					fi := &mocks.FileInfoMock{
+						IsDirFn: func() bool { return true },
+						PathFn:  func() string { return repoPath },
+					}
+					if err := walkFn(fi); err != nil {
+						return err
+					}
+				}
+
+				return nil
+			},
+			ListFn: func(_ context.Context, listPath string) ([]string, error) {
+				switch path.Base(listPath) {
+				case flakyRepo:
+					return nil, errclass.MarkTransient(errors.New("list blip")) //nolint:err113 // test
+				case goodRepo:
+					return []string{
+						path.Join(listPath, ispec.ImageIndexFile),
+						path.Join(listPath, ispec.ImageLayoutFile),
+					}, nil
+				default:
+					return nil, driver.PathNotFoundError{Path: listPath}
+				}
+			},
+			StatFn: func(_ context.Context, statPath string) (driver.FileInfo, error) {
+				return nil, driver.PathNotFoundError{Path: statPath}
+			},
+		}
+
+		store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+			gcs.New(storeMock), nil, nil, nil)
+		So(store, ShouldNotBeNil)
+
+		repos, more, err := store.GetNextRepositories("", 10,
+			func(_ string) (bool, error) { return true, nil })
+		So(err, ShouldBeNil)
+		So(more, ShouldBeFalse)
+		So(repos, ShouldResemble, []string{goodRepo})
+	})
+}
+
+func TestGetNextRepositoryValidateRepoSoftSkip(t *testing.T) {
+	Convey("GetNextRepository soft-skips per-path ValidateRepo Transient", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+		flakyRepo := "flaky"
+		goodRepo := "good"
+
+		storeMock := &mocks.StorageDriverMock{
+			ListFn: func(_ context.Context, listPath string) ([]string, error) {
+				if listPath == rootDir {
+					return []string{path.Join(rootDir, flakyRepo), path.Join(rootDir, goodRepo)}, nil
+				}
+
+				switch path.Base(listPath) {
+				case flakyRepo:
+					return nil, errclass.MarkTransient(errors.New("list blip")) //nolint:err113 // test
+				case goodRepo:
+					return []string{
+						path.Join(listPath, ispec.ImageIndexFile),
+						path.Join(listPath, ispec.ImageLayoutFile),
+					}, nil
+				default:
+					return nil, driver.PathNotFoundError{Path: listPath}
+				}
+			},
+			WalkFn: func(_ context.Context, _ string, walkFn driver.WalkFn,
+				_ ...func(*driver.WalkOptions),
+			) error {
+				for _, name := range []string{flakyRepo, goodRepo} {
+					repoPath := path.Join(rootDir, name)
+					fi := &mocks.FileInfoMock{
+						IsDirFn: func() bool { return true },
+						PathFn:  func() string { return repoPath },
+					}
+					if err := walkFn(fi); err != nil {
+						return err
+					}
+				}
+
+				return nil
+			},
+			StatFn: func(_ context.Context, statPath string) (driver.FileInfo, error) {
+				return nil, driver.PathNotFoundError{Path: statPath}
+			},
+		}
+
+		store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+			gcs.New(storeMock), nil, nil, nil)
+		So(store, ShouldNotBeNil)
+
+		repo, err := store.GetNextRepository(map[string]struct{}{})
+		So(err, ShouldBeNil)
+		So(repo, ShouldEqual, goodRepo)
+	})
+}
+
+func TestBlobUploadWriterMissing(t *testing.T) {
+	Convey("Writer Missing on blob upload open maps to not-found sentinels", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+		repo := "repo"
+
+		missingWriter := &mocks.StorageDriverMock{
+			StatFn: func(_ context.Context, statPath string) (driver.FileInfo, error) {
+				return nil, driver.PathNotFoundError{Path: statPath}
+			},
+			WriterFn: func(_ context.Context, writerPath string, _ bool) (driver.FileWriter, error) {
+				if strings.Contains(writerPath, ".uploads") {
+					return nil, driver.PathNotFoundError{Path: writerPath}
+				}
+
+				return &mocks.FileWriterMock{}, nil
+			},
+		}
+
+		store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+			gcs.New(missingWriter), nil, nil, nil)
+		So(store, ShouldNotBeNil)
+
+		Convey("NewBlobUpload → ErrRepoNotFound", func() {
+			uid, err := store.NewBlobUpload(context.Background(), repo)
+			So(uid, ShouldEqual, "")
+			So(errors.Is(err, zerr.ErrRepoNotFound), ShouldBeTrue)
+			So(errclass.IsStorageObjectMissing(err), ShouldBeFalse)
+		})
+
+		Convey("FullBlobUpload → ErrUploadNotFound", func() {
+			digest := godigest.FromString("full-upload-missing-writer")
+			uid, n, err := store.FullBlobUpload(context.Background(), repo, bytes.NewReader([]byte("x")), digest)
+			So(uid, ShouldEqual, "")
+			So(n, ShouldEqual, -1)
+			So(errors.Is(err, zerr.ErrUploadNotFound), ShouldBeTrue)
 		})
 	})
 }

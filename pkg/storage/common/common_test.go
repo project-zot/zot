@@ -598,6 +598,20 @@ func TestGetReferrersErrors(t *testing.T) {
 			So(idx.MediaType, ShouldEqual, ispec.MediaTypeImageIndex)
 		})
 
+		Convey("GetIndex Transient propagates (not empty 200)", func(c C) {
+			transientStore := &mocks.MockedImageStore{
+				GetIndexContentFn: func(repo string) ([]byte, error) {
+					return nil, zerr.ErrStorageTransient
+				},
+			}
+
+			idx, err := common.GetReferrers(transientStore, "zot-test", validDigest,
+				[]string{artifactType}, log)
+			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+			So(errors.Is(err, zerr.ErrRepoNotFound), ShouldBeFalse)
+			So(idx.Manifests, ShouldBeEmpty)
+		})
+
 		storageCtlr := storage.StoreController{DefaultStore: imgStore}
 		err := WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", storageCtlr)
 		So(err, ShouldBeNil)
@@ -2402,13 +2416,28 @@ func TestIsBlobReferencedUsesMemoizedWalker(t *testing.T) {
 		So(ok, ShouldBeFalse)
 	})
 
-	Convey("IsBlobReferenced returns ErrRepoNotFound when the repo dir is missing", t, func(c C) {
+	Convey("IsBlobReferenced returns ErrRepoNotFound when index is Missing", t, func(c C) {
 		imgStore := &mocks.MockedImageStore{
-			DirExistsFn: func(d string) bool { return false },
+			GetIndexContentFn: func(repo string) ([]byte, error) {
+				return nil, errclass.MarkMissing(zerr.ErrRepoNotFound)
+			},
 		}
 
 		ok, err := common.IsBlobReferenced(imgStore, "missing-repo", godigest.FromString("x"), log)
-		So(err, ShouldEqual, zerr.ErrRepoNotFound)
+		So(errors.Is(err, zerr.ErrRepoNotFound), ShouldBeTrue)
+		So(ok, ShouldBeFalse)
+	})
+
+	Convey("IsBlobReferenced propagates Transient from GetIndexContent", t, func(c C) {
+		imgStore := &mocks.MockedImageStore{
+			GetIndexContentFn: func(repo string) ([]byte, error) {
+				return nil, zerr.ErrStorageTransient
+			},
+		}
+
+		ok, err := common.IsBlobReferenced(imgStore, "repo", godigest.FromString("x"), log)
+		So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+		So(errors.Is(err, zerr.ErrRepoNotFound), ShouldBeFalse)
 		So(ok, ShouldBeFalse)
 	})
 }
