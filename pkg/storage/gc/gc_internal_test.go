@@ -32,13 +32,32 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
+	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
+	"zotregistry.dev/zot/v2/pkg/test/storageerrclass"
 )
 
 var (
 	errGC    = errors.New("gc error")
 	repoName = "test" //nolint: gochecknoglobals
 )
+
+// statBlobMissingUnlessPresent returns a StatBlobFn that treats digests in present as
+// existing and every other digest as ErrBlobNotFound (used to drive stale-prune confirms).
+func statBlobMissingUnlessPresent(present ...godigest.Digest) func(string, godigest.Digest) (bool, int64, time.Time, error) {
+	alive := make(map[string]struct{}, len(present))
+	for _, d := range present {
+		alive[d.String()] = struct{}{}
+	}
+
+	return func(_ string, digest godigest.Digest) (bool, int64, time.Time, error) {
+		if _, ok := alive[digest.String()]; ok {
+			return true, 0, time.Time{}, nil
+		}
+
+		return false, -1, time.Time{}, zerr.ErrBlobNotFound
+	}
+}
 
 type retentionPolicyMock struct {
 	retainedUntagged []string
@@ -321,17 +340,32 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("False on imgStore.DirExists() in gc.cleanRepo()", func() {
+		Convey("GetIndex Transient propagates from cleanRepo (not ErrRepoNotFound)", func() {
 			imgStore := mocks.MockedImageStore{
-				DirExistsFn: func(d string) bool {
-					return false
+				GetIndexContentFn: func(repo string) ([]byte, error) {
+					return nil, zerr.ErrStorageTransient
 				},
 			}
 
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
 
 			err := gc.cleanRepo(ctx, repoName)
-			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+			So(errors.Is(err, zerr.ErrRepoNotFound), ShouldBeFalse)
+		})
+
+		Convey("GetIndex Missing maps to ErrRepoNotFound from cleanRepo", func() {
+			imgStore := mocks.MockedImageStore{
+				GetIndexContentFn: func(repo string) ([]byte, error) {
+					return nil, errclass.MarkMissing(errors.New("gone")) //nolint:err113 // test
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			err := gc.cleanRepo(ctx, repoName)
+			So(errors.Is(err, zerr.ErrRepoNotFound), ShouldBeTrue)
+			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeFalse)
 		})
 
 		Convey("Error on gc.identifyManifestsReferencedInIndex in gc.cleanManifests() with multiarch image", func() {
@@ -1908,9 +1942,6 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 
 		Convey("Error on ListBlobUploads in deleteBlobUploads", func() {
 			imgStore := mocks.MockedImageStore{
-				DirExistsFn: func(d string) bool {
-					return true
-				},
 				ListBlobUploadsFn: func(repo string) ([]string, error) {
 					return nil, errGC
 				},
@@ -1996,9 +2027,6 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 
 		Convey("StatBlobUpload error in deleteBlobUploads", func() {
 			imgStore := mocks.MockedImageStore{
-				DirExistsFn: func(d string) bool {
-					return true
-				},
 				ListBlobUploadsFn: func(repo string) ([]string, error) {
 					return []string{"upload-1"}, nil
 				},
@@ -2092,8 +2120,8 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 
 		Convey("CleanRepo records error metrics when cleanRepo fails", func() {
 			imgStore := mocks.MockedImageStore{
-				DirExistsFn: func(d string) bool {
-					return false
+				GetIndexContentFn: func(repo string) ([]byte, error) {
+					return nil, errclass.MarkMissing(errors.New("gone")) //nolint:err113 // test
 				},
 			}
 
@@ -2104,6 +2132,20 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			So(errors.Is(err, zerr.ErrRepoNotFound), ShouldBeTrue)
 		})
 
+		Convey("deleteBlobUploads propagates ListBlobUploads Transient", func() {
+			imgStore := mocks.MockedImageStore{
+				ListBlobUploadsFn: func(repo string) ([]string, error) {
+					return nil, zerr.ErrStorageTransient
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			deleted, err := gc.deleteBlobUploads(repoName, time.Hour)
+			So(deleted, ShouldEqual, 0)
+			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+		})
+
 		Convey("removeStaleManifestEntries removes entries whose blobs are missing", func() {
 			existingDigest := godigest.FromString("existing-blob")
 			missingDigest := godigest.FromString("missing-blob")
@@ -2112,6 +2154,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
 					return []godigest.Digest{existingDigest}, nil
 				},
+				StatBlobFn: statBlobMissingUnlessPresent(existingDigest),
 			}
 
 			removedRef := ""
@@ -2152,6 +2195,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
 					return nil, nil
 				},
+				StatBlobFn: statBlobMissingUnlessPresent(),
 			}
 
 			removedRef := ""
@@ -2192,6 +2236,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
 					return nil, nil
 				},
+				StatBlobFn: statBlobMissingUnlessPresent(),
 			}
 
 			deletedSig := false
@@ -2240,6 +2285,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
 					return nil, nil
 				},
+				StatBlobFn: statBlobMissingUnlessPresent(),
 			}
 
 			deletedSig := false
@@ -2308,6 +2354,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
 					return nil, errclass.MarkMissing(driver.PathNotFoundError{})
 				},
+				StatBlobFn: statBlobMissingUnlessPresent(),
 			}
 
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
@@ -2361,6 +2408,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
 					return nil, nil
 				},
+				StatBlobFn: statBlobMissingUnlessPresent(),
 			}
 
 			metaDB := mocks.MetaDBMock{
@@ -2453,6 +2501,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 
 					return nil, zerr.ErrBlobNotFound
 				},
+				StatBlobFn: statBlobMissingUnlessPresent(indexDigest),
 			}
 
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
@@ -2479,6 +2528,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
 					return nil, nil
 				},
+				StatBlobFn: statBlobMissingUnlessPresent(),
 			}
 
 			gc := NewGarbageCollect(imgStore, nil, gcOptions, audit, log, metrics)
@@ -2602,6 +2652,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
 					return nil, nil
 				},
+				StatBlobFn: statBlobMissingUnlessPresent(),
 			}
 
 			metaDB := mocks.MetaDBMock{
@@ -2663,6 +2714,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 
 					return nil, zerr.ErrBlobNotFound
 				},
+				StatBlobFn: statBlobMissingUnlessPresent(indexDigest),
 			}
 
 			gc := NewGarbageCollect(imgStore, metaDB, gcOptions, audit, log, metrics)
@@ -2681,6 +2733,169 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(len(index.Manifests), ShouldEqual, 0)
 			So(removed, ShouldBeTrue)
+		})
+
+		Convey("removeStaleManifestEntries keeps inventory-miss when StatBlob still finds the blob", func() {
+			keptDigest := godigest.FromString("eventually-consistent")
+
+			imgStore := mocks.MockedImageStore{
+				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
+					return nil, nil
+				},
+				StatBlobFn: statBlobMissingUnlessPresent(keptDigest),
+			}
+
+			removed := false
+			metaDB := mocks.MetaDBMock{
+				RemoveRepoReferenceFn: func(repo, reference string, manifestDigest godigest.Digest) error {
+					removed = true
+
+					return nil
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, metaDB, gcOptions, audit, log, metrics)
+
+			index := &ispec.Index{
+				Manifests: []ispec.Descriptor{
+					{
+						Digest:    keptDigest,
+						MediaType: ispec.MediaTypeImageManifest,
+					},
+				},
+			}
+
+			err := gc.removeStaleManifestEntries(repoName, index)
+			So(err, ShouldBeNil)
+			So(removed, ShouldBeFalse)
+			So(len(index.Manifests), ShouldEqual, 1)
+			So(index.Manifests[0].Digest, ShouldEqual, keptDigest)
+		})
+
+		Convey("removeStaleManifestEntries aborts on StatBlob Transient without pruning", func() {
+			keptDigest := godigest.FromString("stat-blip")
+			transient := errclass.MarkTransient(errors.New("stat blip")) //nolint:err113 // test
+
+			imgStore := mocks.MockedImageStore{
+				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
+					return nil, nil
+				},
+				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+					return false, -1, time.Time{}, transient
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			index := &ispec.Index{
+				Manifests: []ispec.Descriptor{
+					{
+						Digest:    keptDigest,
+						MediaType: ispec.MediaTypeImageManifest,
+					},
+				},
+			}
+
+			err := gc.removeStaleManifestEntries(repoName, index)
+			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+			So(len(index.Manifests), ShouldEqual, 1)
+			So(index.Manifests[0].Digest, ShouldEqual, keptDigest)
+		})
+
+		Convey("removeStaleManifestEntries keeps index when nested inventory miss is contradicted by Stat", func() {
+			indexDigest := godigest.FromString("image-index-blob")
+			nestedDigest := godigest.FromString("nested-still-there")
+
+			indexBlob, err := json.Marshal(ispec.Index{
+				MediaType: ispec.MediaTypeImageIndex,
+				Manifests: []ispec.Descriptor{
+					{Digest: nestedDigest, MediaType: ispec.MediaTypeImageManifest},
+				},
+			})
+			So(err, ShouldBeNil)
+
+			imgStore := mocks.MockedImageStore{
+				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
+					// Nested digest absent from inventory (eventual consistency).
+					return []godigest.Digest{indexDigest}, nil
+				},
+				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+					if digest == indexDigest {
+						return indexBlob, nil
+					}
+
+					return nil, zerr.ErrBlobNotFound
+				},
+				StatBlobFn: statBlobMissingUnlessPresent(indexDigest, nestedDigest),
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			index := &ispec.Index{
+				Manifests: []ispec.Descriptor{
+					{
+						Digest:    indexDigest,
+						MediaType: ispec.MediaTypeImageIndex,
+						Size:      int64(len(indexBlob)),
+					},
+				},
+			}
+
+			err = gc.removeStaleManifestEntries(repoName, index)
+			So(err, ShouldBeNil)
+			So(len(index.Manifests), ShouldEqual, 1)
+			So(index.Manifests[0].Digest, ShouldEqual, indexDigest)
+		})
+
+		Convey("removeStaleManifestEntries aborts when nested StatBlob is Transient", func() {
+			indexDigest := godigest.FromString("image-index-stat-blip")
+			nestedDigest := godigest.FromString("nested-stat-blip")
+			transient := errclass.MarkTransient(errors.New("nested stat blip")) //nolint:err113 // test
+
+			indexBlob, err := json.Marshal(ispec.Index{
+				MediaType: ispec.MediaTypeImageIndex,
+				Manifests: []ispec.Descriptor{
+					{Digest: nestedDigest, MediaType: ispec.MediaTypeImageManifest},
+				},
+			})
+			So(err, ShouldBeNil)
+
+			imgStore := mocks.MockedImageStore{
+				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
+					return []godigest.Digest{indexDigest}, nil
+				},
+				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+					if digest == indexDigest {
+						return indexBlob, nil
+					}
+
+					return nil, zerr.ErrBlobNotFound
+				},
+				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+					if digest == nestedDigest {
+						return false, -1, time.Time{}, transient
+					}
+
+					return true, 0, time.Time{}, nil
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			index := &ispec.Index{
+				Manifests: []ispec.Descriptor{
+					{
+						Digest:    indexDigest,
+						MediaType: ispec.MediaTypeImageIndex,
+						Size:      int64(len(indexBlob)),
+					},
+				},
+			}
+
+			err = gc.removeStaleManifestEntries(repoName, index)
+			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+			So(len(index.Manifests), ShouldEqual, 1)
+			So(index.Manifests[0].Digest, ShouldEqual, indexDigest)
 		})
 	})
 }
@@ -3770,4 +3985,129 @@ func untaggedDeletionLogs(logs, digest string) int {
 	}
 
 	return count
+}
+
+// runGCGenerator drives the generator the way the scheduler does: Next until it
+// returns no task, running each task. visited counts CleanRepo runs per repo.
+func runGCGenerator(ctx context.Context, gen *GCTaskGenerator, visited map[string]int) error {
+	for range 10 {
+		task, err := gen.Next()
+		if err != nil {
+			return err
+		}
+
+		if task == nil {
+			return nil
+		}
+
+		gcTask, ok := task.(*gcTask)
+		So(ok, ShouldBeTrue)
+
+		if err := gcTask.DoWork(ctx); err != nil {
+			return err
+		}
+
+		visited[gcTask.repo]++
+	}
+
+	return nil
+}
+
+func TestGCTaskGeneratorStorageErrClasses(t *testing.T) {
+	repos := []string{"a/repo", "b", "c/repo"}
+	classes := []struct {
+		name  string
+		class error
+		mark  func(error) error
+	}{
+		{"Transient", zerr.ErrStorageTransient, errclass.MarkTransient},
+		{"Permanent", zerr.ErrStoragePermanent, errclass.MarkPermanent},
+	}
+
+	for _, backend := range storageerrclass.Backends() {
+		t.Run(backend.Name, func(t *testing.T) {
+			newGenerator := func() (*GCTaskGenerator, *storageerrclass.HookDriver, storageTypes.ImageStore) {
+				imgStore, hooks := storageerrclass.NewStore(t, backend)
+				storeController := storage.StoreController{DefaultStore: imgStore}
+
+				for _, repo := range repos {
+					So(WriteImageToFileSystem(CreateRandomImage(), repo, "v1", storeController), ShouldBeNil)
+				}
+
+				gcInstance := NewGarbageCollect(imgStore, nil, Options{
+					Delay:          time.Hour,
+					ImageRetention: config.ImageRetention{Delay: time.Hour},
+				}, zlog.NewAuditLogger("debug", "/dev/null"), zlog.NewTestLogger(), monitoring.NewNopMetricServer())
+
+				gen := &GCTaskGenerator{
+					imgStore:       imgStore,
+					gc:             gcInstance,
+					processedRepos: map[string]struct{}{},
+					maxDelay:       time.Millisecond,
+				}
+
+				return gen, hooks, imgStore
+			}
+
+			for _, tc := range classes {
+				Convey("A "+tc.name+" failure validating one repository stops the GC sweep", t, func() {
+					gen, hooks, imgStore := newGenerator()
+					ctx := context.Background()
+
+					hooks.AddFault(storageerrclass.Fault{
+						Op: storageerrclass.OpList, Path: path.Join(imgStore.RootDir(), "b"), Err: tc.mark(errGC),
+					})
+
+					visited := map[string]int{}
+					err := runGCGenerator(ctx, gen, visited)
+					So(errors.Is(err, tc.class), ShouldBeTrue)
+					So(gen.IsDone(), ShouldBeFalse)
+					So(visited, ShouldNotContainKey, "b")
+
+					Convey("and the next sweep, once storage recovers, visits every repo once", func() {
+						hooks.ClearFaults()
+						gen.Reset()
+
+						visited := map[string]int{}
+						So(runGCGenerator(ctx, gen, visited), ShouldBeNil)
+						So(gen.IsDone(), ShouldBeTrue)
+
+						for _, repo := range repos {
+							So(visited[repo], ShouldEqual, 1)
+						}
+					})
+				})
+			}
+
+			Convey("A repository deleted while the GC sweep walks the store", t, func() {
+				gen, hooks, imgStore := newGenerator()
+				ctx := context.Background()
+
+				hooks.DeleteOnVisit = path.Join(imgStore.RootDir(), "b")
+
+				visited := map[string]int{}
+				err := runGCGenerator(ctx, gen, visited)
+
+				if backend.WalkAbortsOnNestedMissing {
+					So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+					So(errors.Is(err, zerr.ErrStorageMissing), ShouldBeFalse)
+					So(gen.IsDone(), ShouldBeFalse)
+					So(visited, ShouldNotContainKey, "c/repo")
+				} else {
+					So(err, ShouldBeNil)
+					So(gen.IsDone(), ShouldBeTrue)
+					So(visited, ShouldContainKey, "c/repo")
+				}
+
+				gen.Reset()
+
+				visited = map[string]int{}
+				So(runGCGenerator(ctx, gen, visited), ShouldBeNil)
+				So(gen.IsDone(), ShouldBeTrue)
+				So(visited, ShouldNotContainKey, "b")
+				So(visited["a/repo"], ShouldEqual, 1)
+				So(visited["c/repo"], ShouldEqual, 1)
+			})
+		})
+	}
 }

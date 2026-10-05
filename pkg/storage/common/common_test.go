@@ -2845,6 +2845,62 @@ func TestGetBlobDescriptorFromIndexCoverage(t *testing.T) {
 		So(err, ShouldEqual, ErrTestError)
 	})
 
+	Convey("Transient reading an image manifest propagates (not ErrBlobNotFound)", t, func(c C) {
+		manifestDigest := godigest.FromString("transient-manifest-for-desc")
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageManifest, Digest: manifestDigest},
+			},
+		}
+
+		imgStore := &mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				return nil, zerr.ErrStorageTransient
+			},
+		}
+
+		_, err := common.GetBlobDescriptorFromIndex(imgStore, index, "repo", godigest.FromString("x"), log)
+		So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+		So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeFalse)
+	})
+
+	Convey("Transient from nested index search propagates (not ErrBlobNotFound)", t, func(c C) {
+		nestedIndexDigest := godigest.FromString("nested-index-for-desc")
+		nestedManifestDigest := godigest.FromString("nested-manifest-for-desc")
+		transient := errclass.MarkTransient(errors.New("nested blip")) //nolint:err113 // test
+
+		nestedIndexBuf, err := json.Marshal(ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageManifest, Digest: nestedManifestDigest},
+			},
+		})
+		So(err, ShouldBeNil)
+
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageIndex, Digest: nestedIndexDigest},
+			},
+		}
+
+		imgStore := &mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				if digest == nestedIndexDigest {
+					return nestedIndexBuf, nil
+				}
+
+				if digest == nestedManifestDigest {
+					return nil, transient
+				}
+
+				return nil, zerr.ErrBlobNotFound
+			},
+		}
+
+		_, err = common.GetBlobDescriptorFromIndex(imgStore, index, "repo", godigest.FromString("x"), log)
+		So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+		So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeFalse)
+	})
+
 	Convey("Missing nested index is skipped; sibling manifest supplies the descriptor", t, func(c C) {
 		layerDigest := godigest.FromString("after-missing-lyr")
 		missingIndexDigest := godigest.FromString("missing-for-desc")

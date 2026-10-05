@@ -1006,9 +1006,17 @@ func getBlobDescriptorFromIndex(imgStore storageTypes.ImageStore, index ispec.In
 		case compat.IsImageManifestMediaType(desc.MediaType):
 			seen[desc.Digest] = struct{}{}
 
-			if foundDescriptor, err := getBlobDescriptorFromManifest(imgStore, repo, blobDigest, desc, log); err == nil {
+			foundDescriptor, err := getBlobDescriptorFromManifest(imgStore, repo, blobDigest, desc, log)
+			if err == nil {
 				return foundDescriptor, nil
 			}
+
+			// Soft-skip only absence; Transient/Permanent must not collapse to ErrBlobNotFound.
+			if errclass.IsBlobUnavailable(err) {
+				continue
+			}
+
+			return ispec.Descriptor{}, err
 		case compat.IsImageIndexMediaType(desc.MediaType):
 			seen[desc.Digest] = struct{}{}
 
@@ -1029,6 +1037,12 @@ func getBlobDescriptorFromIndex(imgStore storageTypes.ImageStore, index ispec.In
 			if err == nil {
 				return foundDescriptor, nil
 			}
+
+			if errclass.IsBlobUnavailable(err) {
+				continue
+			}
+
+			return ispec.Descriptor{}, err
 		}
 	}
 

@@ -280,9 +280,26 @@ func (is *ImageStore) ValidateRepo(name string) (bool, error) {
 		}
 	}
 
-	// check blobs dir exists only for filesystem, in s3 we can't have empty dirs
+	// Local FS requires blobs/; cloud drivers omit empty dirs so skip this check.
+	// Use Stat (not DirExists): DirExists collapses Transient/Permanent into false,
+	// which would soft-skip a live repo from inventory walks as (false, nil).
 	if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
-		if !is.storeDriver.DirExists(path.Join(dir, ispec.ImageBlobsDir)) {
+		blobsDir := path.Join(dir, ispec.ImageBlobsDir)
+
+		blobsInfo, err := is.storeDriver.Stat(blobsDir)
+		if err != nil {
+			if errclass.IsStorageObjectMissing(err) {
+				return false, nil
+			}
+
+			if errors.Is(err, zerr.ErrStorageTransient) || errors.Is(err, zerr.ErrStoragePermanent) {
+				return false, err
+			}
+
+			return false, errclass.MarkTransient(err)
+		}
+
+		if !blobsInfo.IsDir() {
 			return false, nil
 		}
 	}
@@ -294,6 +311,39 @@ func (is *ImageStore) ValidateRepo(name string) (bool, error) {
 	}
 
 	return true, nil
+}
+
+// catalogLastExists reports whether the catalog "last" cursor still names a live
+// OCI repo. Probe with Stat, not DirExists: DirExists collapses Transient/Permanent
+// into false. Missing stays quiet (no ValidateRepo List error log for a deleted
+// cursor). Outages fall back to lexical missing-last mode with Warn.
+func (is *ImageStore) catalogLastExists(lastRepo string) bool {
+	if lastRepo == "" {
+		return false
+	}
+
+	lastPath := path.Join(is.rootDir, lastRepo)
+
+	lastInfo, err := is.storeDriver.Stat(lastPath)
+	switch {
+	case err == nil && lastInfo.IsDir():
+		ok, vErr := is.ValidateRepo(lastRepo)
+		if vErr != nil {
+			if errors.Is(vErr, zerr.ErrStorageTransient) || errors.Is(vErr, zerr.ErrStoragePermanent) {
+				is.log.Warn().Err(vErr).Str("repository", lastRepo).
+					Msg("failed to validate catalog last repository; treating as missing")
+			}
+
+			return false
+		}
+
+		return ok
+	case err != nil && !errclass.IsStorageObjectMissing(err):
+		is.log.Warn().Err(err).Str("repository", lastRepo).
+			Msg("failed to probe catalog last repository; treating as missing")
+	}
+
+	return false
 }
 
 func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filterFn storageTypes.FilterRepoFunc,
@@ -311,10 +361,7 @@ func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filte
 	entries := 0
 	found := false
 
-	lastExists := false
-	if lastRepo != "" && is.DirExists(path.Join(is.rootDir, lastRepo)) {
-		lastExists, _ = is.ValidateRepo(lastRepo)
-	}
+	lastExists := is.catalogLastExists(lastRepo)
 
 	err := is.storeDriver.Walk(dir, func(fileInfo driver.FileInfo) error {
 		if entries == maxEntries {
@@ -389,11 +436,15 @@ func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filte
 		return nil
 	})
 
-	// if the root directory is not yet created then return an empty slice of repositories
-
 	driverErr := &driver.Error{}
 
 	if errclass.IsStorageObjectMissing(err) {
+		if walkErr := is.confirmEmptyStore(err); walkErr != nil {
+			is.log.Error().Err(walkErr).Str("root-dir", dir).Msg("failed to complete repository walk")
+
+			return []string{}, false, walkErr
+		}
+
 		is.log.Debug().Msg("empty rootDir")
 
 		return stores, false, nil
@@ -404,10 +455,19 @@ func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filte
 		return stores, moreEntries, nil
 	}
 
-	return stores, moreEntries, err
+	if err != nil {
+		// Walk-level failure (not per-path soft-skip): do not return a truncated page
+		// alongside the error. Soft-skip paths return nil from the Walk callback and
+		// finish with err == nil, so a partial 200 catalog is unchanged.
+		return []string{}, false, err
+	}
+
+	return stores, moreEntries, nil
 }
 
 // GetRepositories returns a list of all the repositories under this store.
+// Transient/Permanent ValidateRepo failures abort (inventory fail-closed for dedupe / scrub).
+// HTTP catalog soft-skips per-path outages via GetNextRepositories.
 func (is *ImageStore) GetRepositories() ([]string, error) {
 	var lockLatency time.Time
 
@@ -445,12 +505,13 @@ func (is *ImageStore) GetRepositories() ([]string, error) {
 		}
 
 		if err != nil {
-			// Per-path List/Validate outages: keep a partial catalog rather than
-			// failing the whole Walk. Transient/Permanent are logged; Missing and
-			// other cases stay quiet (same as !ok below).
+			// Inventory callers (GC, dedupe, scrub) must fail closed on outages.
+			// HTTP catalog soft-skips via GetNextRepositories instead.
 			if errors.Is(err, zerr.ErrStorageTransient) || errors.Is(err, zerr.ErrStoragePermanent) {
-				is.log.Warn().Err(err).Str("repository", rel).
-					Msg("skipping repository candidate after storage failure during validate")
+				is.log.Error().Err(err).Str("repository", rel).
+					Msg("storage failure validating repository candidate")
+
+				return err
 			}
 
 			return nil //nolint:nilerr
@@ -467,15 +528,58 @@ func (is *ImageStore) GetRepositories() ([]string, error) {
 		return nil
 	})
 
-	// if the root directory is not yet created then return an empty slice of repositories
 	if errclass.IsStorageObjectMissing(err) {
+		if walkErr := is.confirmEmptyStore(err); walkErr != nil {
+			is.log.Error().Err(walkErr).Str("root-dir", dir).Msg("failed to complete repository walk")
+
+			return nil, walkErr
+		}
+
 		return stores, nil
 	}
 
-	return stores, err
+	if err != nil {
+		// Do not hand callers a partial inventory with the error: DedupeTaskGenerator
+		// (and similar) cache the slice before checking err and would finish a sweep
+		// from an incomplete listing on retry. Catalog soft-skip stays on
+		// GetNextRepositories, which returns a partial page only with a nil error.
+		return nil, err
+	}
+
+	return stores, nil
+}
+
+// confirmEmptyStore returns nil if a Missing root Walk means an empty store, else
+// the error to report. Local and GCS/Azure (WalkFallback) walks also fail with
+// Missing when a nested directory vanishes mid-walk; S3 does not. Only an absent
+// or empty root is an empty store; anything else is an incomplete listing.
+func (is *ImageStore) confirmEmptyStore(walkErr error) error {
+	entries, err := is.storeDriver.List(is.rootDir)
+	if err != nil {
+		if errclass.IsStorageObjectMissing(err) {
+			return nil
+		}
+
+		return err
+	}
+
+	if len(entries) == 0 {
+		return nil
+	}
+
+	return incompleteListingErr("walking", is.rootDir, walkErr)
+}
+
+// incompleteListingErr reports a nested Missing that makes a listing incomplete
+// as Transient. The cause is stringified (no %w) so IsStorageObjectMissing no
+// longer matches and callers cannot soft-empty a partial result.
+func incompleteListingErr(op, dir string, cause error) error {
+	return fmt.Errorf("%w: %s %s: %s", zerr.ErrStorageTransient, op, dir, cause.Error())
 }
 
 // GetNextRepository returns next repository under this store.
+// Transient/Permanent ValidateRepo failures abort (inventory fail-closed for GC / metrics).
+// HTTP catalog soft-skips per-path outages via GetNextRepositories.
 func (is *ImageStore) GetNextRepository(processedRepos map[string]struct{}) (string, error) {
 	var lockLatency time.Time
 
@@ -529,12 +633,13 @@ func (is *ImageStore) GetNextRepository(processedRepos map[string]struct{}) (str
 		}
 
 		if err != nil {
-			// Per-path List/Validate outages: keep a partial catalog rather than
-			// failing the whole Walk. Transient/Permanent are logged; Missing and
-			// other cases stay quiet (same as !ok below).
+			// Inventory fail-closed: do not omit live repos and report the sweep done.
+			// HTTP catalog soft-skips via GetNextRepositories.
 			if errors.Is(err, zerr.ErrStorageTransient) || errors.Is(err, zerr.ErrStoragePermanent) {
-				is.log.Warn().Err(err).Str("repository", rel).
-					Msg("skipping repository candidate after storage failure during validate")
+				is.log.Error().Err(err).Str("repository", rel).
+					Msg("storage failure validating repository candidate")
+
+				return err
 			}
 
 			return nil //nolint:nilerr
@@ -556,6 +661,12 @@ func (is *ImageStore) GetNextRepository(processedRepos map[string]struct{}) (str
 	// some s3 implementations (eg, digitalocean spaces) will return pathnotfounderror for walk but not list
 	// therefore, we must also catch that error here.
 	if errclass.IsStorageObjectMissing(err) {
+		if walkErr := is.confirmEmptyStore(err); walkErr != nil {
+			is.log.Error().Err(walkErr).Str("root-dir", dir).Msg("failed to complete repository walk")
+
+			return "", walkErr
+		}
+
 		is.log.Debug().Msg("empty rootDir")
 
 		return "", nil
@@ -1498,7 +1609,13 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 		blobInfo, err := is.storeDriver.Stat(dstRecord)
 		if err != nil {
 			is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").Msg("failed to stat")
-			// the actual blob on disk may have been removed by GC, so sync the cache
+
+			// Only sync the cache when the origin is actually gone. Transient/Permanent
+			// must not DeleteBlob (which can race a live origin after a flaky Stat).
+			if !errclass.IsStorageObjectMissing(err) {
+				return mapStorageErr(err)
+			}
+
 			err := is.cache.DeleteBlob(dstDigest, dstRecord)
 			if err = inject.Error(err); err != nil {
 				// Another node may have already cleared the stale origin (common
@@ -2288,12 +2405,15 @@ Returns true when the layout was removed.
 */
 func (is *ImageStore) RemoveIdleRepository(repo string, maxBlobAge time.Duration) (bool, error) {
 	dir := path.Join(is.rootDir, repo)
-	if !is.DirExists(dir) {
-		return false, nil
-	}
 
+	// Do not gate on DirExists: it collapses Transient/Permanent Stat into a silent
+	// skip. GetIndex maps Missing → ErrRepoNotFound and preserves outages.
 	index, err := common.GetIndex(is, repo, is.log)
 	if err != nil {
+		if errors.Is(err, zerr.ErrRepoNotFound) {
+			return false, nil
+		}
+
 		return false, err
 	}
 
@@ -2532,11 +2652,10 @@ func (is *ImageStore) GetAllBlobs(repo string) ([]godigest.Digest, error) {
 			// concurrently emptied prefix often surfaces as PathNotFound/Missing; a
 			// local TOCTOU delete between the two Lists can too. GC treats GetAllBlobs
 			// Missing as empty inventory and would prune live index rows. Fail closed
-			// as Transient. Stringify the cause (no %w) so IsStorageObjectMissing does
-			// not still match and soft-empty.
+			// as Transient without re-listing blobs/: unlike confirmEmptyStore, an
+			// emptied parent here must not become an empty inventory.
 			if errclass.IsStorageObjectMissing(err) {
-				return []godigest.Digest{}, fmt.Errorf("%w: listing %s: %s",
-					zerr.ErrStorageTransient, algorithmPath, err.Error())
+				return []godigest.Digest{}, incompleteListingErr("listing", algorithmPath, err)
 			}
 
 			return []godigest.Digest{}, err
@@ -2792,7 +2911,7 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 				if err != nil {
 					is.log.Error().Err(err).Str("component", "dedupe").Msg("failed to find original blob")
 
-					return zerr.ErrDedupeRebuild
+					return errclass.Wrap(zerr.ErrDedupeRebuild, err)
 				}
 			}
 
@@ -2878,7 +2997,7 @@ func (is *ImageStore) restoreDedupedBlobs(ctx context.Context, digest godigest.D
 
 		is.log.Error().Err(err).Str("component", "dedupe").Msg("failed to find original blob")
 
-		return zerr.ErrDedupeRebuild
+		return errclass.Wrap(zerr.ErrDedupeRebuild, err)
 	}
 
 	for _, blobPath := range duplicateBlobs {

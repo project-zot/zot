@@ -7859,6 +7859,11 @@ func TestInvalidCases(t *testing.T) {
 // existing repo maps to Permanent HTTP 500 via writeStorageClassError, not a
 // client-facing 404 (NAME_UNKNOWN / MANIFEST_UNKNOWN / BLOB_UNKNOWN).
 func TestHTTPStorageFSPermissionDenied(t *testing.T) {
+	// Root can still read/write mode 000 paths; same guard as local driver tests.
+	if os.Geteuid() == 0 {
+		t.Skip("chmod 000 does not deny root")
+	}
+
 	Convey("local FS permission denials map to Permanent 500, not client 404", t, func() {
 		conf := config.New()
 		conf.HTTP.Port = "0"

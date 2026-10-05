@@ -6,7 +6,9 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -31,6 +33,46 @@ var (
 	errDeleteFailed = errors.New("delete failed") //nolint: gochecknoglobals
 	errDriverFailed = errors.New("driver failed") //nolint: gochecknoglobals
 )
+
+// rawListDriver returns List errors without driver formatErr classification so
+// ImageStore.ValidateRepo's unclassified MarkTransient fallback stays reachable.
+type rawListDriver struct {
+	storageTypes.Driver
+
+	listErr error
+}
+
+func (d *rawListDriver) List(string) ([]string, error) {
+	return nil, d.listErr
+}
+
+// blobsStatDriver overrides Stat for the repo blobs/ directory so local
+// ValidateRepo can be exercised with classed errors without chmod/root races.
+type blobsStatDriver struct {
+	storageTypes.Driver
+
+	blobsStatErr error
+}
+
+func (d *blobsStatDriver) Stat(statPath string) (driver.FileInfo, error) {
+	if path.Base(statPath) == ispec.ImageBlobsDir && d.blobsStatErr != nil {
+		return nil, d.blobsStatErr
+	}
+
+	return d.Driver.Stat(statPath)
+}
+
+func writeMinimalLocalOCILayout(t *testing.T, rootDir, repo string) {
+	t.Helper()
+
+	repoDir := path.Join(rootDir, repo)
+	So(os.MkdirAll(path.Join(repoDir, ispec.ImageBlobsDir), 0o755), ShouldBeNil)
+	So(os.WriteFile(path.Join(repoDir, ispec.ImageIndexFile),
+		[]byte(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[]}`),
+		0o600), ShouldBeNil)
+	So(os.WriteFile(path.Join(repoDir, ispec.ImageLayoutFile),
+		[]byte(`{"imageLayoutVersion": "1.0.0"}`), 0o600), ShouldBeNil)
+}
 
 func TestGetBlobRedirectURL(t *testing.T) {
 	Convey("GetBlobRedirectURL", t, func() {
@@ -313,6 +355,29 @@ func TestRemoveIdleRepository(t *testing.T) {
 		So(removed, ShouldBeFalse)
 	})
 
+	Convey("GetIndex Transient fails closed (not a silent skip)", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+		repo := "repo"
+		indexPath := path.Join(rootDir, repo, ispec.ImageIndexFile)
+		transient := errclass.MarkTransient(errors.New("index blip")) //nolint:err113 // test
+
+		storeMock := &mocks.StorageDriverMock{
+			GetContentFn: func(_ context.Context, getPath string) ([]byte, error) {
+				So(getPath, ShouldEqual, indexPath)
+
+				return nil, transient
+			},
+		}
+		store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+			gcs.New(storeMock), nil, nil, nil)
+
+		removed, err := removeIdle(store, repo, 0)
+		So(removed, ShouldBeFalse)
+		So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+	})
+
 	Convey("Driver failures fail closed", t, func() {
 		log := zlog.NewTestLogger()
 		metrics := monitoring.NewNopMetricServer()
@@ -552,6 +617,62 @@ func TestGetAllBlobsNestedListMissing(t *testing.T) {
 		So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
 		// Must not keep Missing in the chain — GC soft-empties on that predicate.
 		So(errclass.IsStorageObjectMissing(err), ShouldBeFalse)
+	})
+
+	Convey("GetAllBlobs propagates nested alg List Transient", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+		repo := "repo"
+		blobsDir := path.Join(rootDir, repo, ispec.ImageBlobsDir)
+		sha256Dir := path.Join(blobsDir, "sha256")
+
+		storeMock := &mocks.StorageDriverMock{
+			ListFn: func(_ context.Context, listPath string) ([]string, error) {
+				switch listPath {
+				case blobsDir:
+					return []string{sha256Dir}, nil
+				case sha256Dir:
+					return nil, errclass.MarkTransient(errors.New("alg list blip")) //nolint:err113 // test
+				default:
+					return nil, driver.PathNotFoundError{Path: listPath}
+				}
+			},
+		}
+
+		store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+			gcs.New(storeMock), nil, nil, nil)
+		digests, err := store.GetAllBlobs(repo)
+		So(digests, ShouldBeEmpty)
+		So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+	})
+
+	Convey("GetAllBlobs propagates nested alg List Permanent", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+		repo := "repo"
+		blobsDir := path.Join(rootDir, repo, ispec.ImageBlobsDir)
+		sha256Dir := path.Join(blobsDir, "sha256")
+
+		storeMock := &mocks.StorageDriverMock{
+			ListFn: func(_ context.Context, listPath string) ([]string, error) {
+				switch listPath {
+				case blobsDir:
+					return []string{sha256Dir}, nil
+				case sha256Dir:
+					return nil, errclass.MarkPermanent(errors.New("alg list denied")) //nolint:err113 // test
+				default:
+					return nil, driver.PathNotFoundError{Path: listPath}
+				}
+			},
+		}
+
+		store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+			gcs.New(storeMock), nil, nil, nil)
+		digests, err := store.GetAllBlobs(repo)
+		So(digests, ShouldBeEmpty)
+		So(errors.Is(err, zerr.ErrStoragePermanent), ShouldBeTrue)
 	})
 }
 
@@ -801,18 +922,69 @@ func TestValidateRepoListStorageClasses(t *testing.T) {
 		})
 
 		Convey("unclassified List error is marked Transient", func() {
-			storeMock := &mocks.StorageDriverMock{
-				ListFn: func(_ context.Context, _ string) ([]string, error) {
-					return nil, errors.New("raw list failure") //nolint:err113 // test
-				},
-			}
+			// Bypass gcs/local formatErr (they already MarkTransient) so ValidateRepo
+			// itself applies the unclassified → Transient fallback.
 			store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
-				gcs.New(storeMock), nil, nil, nil)
+				&rawListDriver{
+					Driver:  gcs.New(&mocks.StorageDriverMock{}),
+					listErr: errors.New("raw list failure"), //nolint:err113 // test
+				}, nil, nil, nil)
 
 			ok, err := store.ValidateRepo(repo)
 			So(ok, ShouldBeFalse)
 			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
 			So(errors.Is(err, zerr.ErrRepoNotFound), ShouldBeFalse)
+		})
+	})
+}
+
+func TestValidateRepoLocalBlobsStatStorageClasses(t *testing.T) {
+	Convey("ValidateRepo maps local blobs/ Stat failures by storage class", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+		repo := "repo"
+		writeMinimalLocalOCILayout(t, rootDir, repo)
+
+		newStore := func(statErr error) storageTypes.ImageStore {
+			return imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+				&blobsStatDriver{Driver: local.New(false), blobsStatErr: statErr}, nil, nil, nil)
+		}
+
+		Convey("Missing blobs/ is invalid layout, not RepoNotFound", func() {
+			ok, err := newStore(errclass.MarkMissing(driver.PathNotFoundError{
+				Path: path.Join(rootDir, repo, ispec.ImageBlobsDir),
+			})).ValidateRepo(repo)
+			So(ok, ShouldBeFalse)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Transient blobs/ Stat propagates (inventory fail-closed)", func() {
+			transient := errclass.MarkTransient(errors.New("blobs stat blip")) //nolint:err113 // test
+			ok, err := newStore(transient).ValidateRepo(repo)
+			So(ok, ShouldBeFalse)
+			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+		})
+
+		Convey("Permanent blobs/ Stat propagates", func() {
+			permanent := errclass.MarkPermanent(errors.New("blobs denied")) //nolint:err113 // test
+			ok, err := newStore(permanent).ValidateRepo(repo)
+			So(ok, ShouldBeFalse)
+			So(errors.Is(err, zerr.ErrStoragePermanent), ShouldBeTrue)
+		})
+
+		Convey("unclassified blobs/ Stat is marked Transient", func() {
+			ok, err := newStore(errors.New("raw blobs stat")).ValidateRepo(repo) //nolint:err113 // test
+			So(ok, ShouldBeFalse)
+			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+		})
+
+		Convey("GetRepositories aborts on Transient blobs/ Stat", func() {
+			transient := errclass.MarkTransient(errors.New("blobs stat blip")) //nolint:err113 // test
+			store := newStore(transient)
+			repos, err := store.GetRepositories()
+			So(repos, ShouldBeEmpty)
+			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
 		})
 	})
 }
@@ -872,8 +1044,161 @@ func TestGetNextRepositoriesValidateRepoSoftSkip(t *testing.T) {
 	})
 }
 
-func TestGetNextRepositoryValidateRepoSoftSkip(t *testing.T) {
-	Convey("GetNextRepository soft-skips per-path ValidateRepo Transient", t, func() {
+func TestGetNextRepositoriesLastRepoProbe(t *testing.T) {
+	Convey("GetNextRepositories probes catalog last with Stat, not DirExists", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+		lastRepo := "aaa"
+		keepRepo := "bbb"
+
+		newStore := func(statLast error) storageTypes.ImageStore {
+			storeMock := &mocks.StorageDriverMock{
+				WalkFn: func(_ context.Context, _ string, walkFn driver.WalkFn,
+					_ ...func(*driver.WalkOptions),
+				) error {
+					// last is gone from the walk (deleted cursor); only keepRepo remains.
+					repoPath := path.Join(rootDir, keepRepo)
+					fi := &mocks.FileInfoMock{
+						IsDirFn: func() bool { return true },
+						PathFn:  func() string { return repoPath },
+					}
+
+					return walkFn(fi)
+				},
+				ListFn: func(_ context.Context, listPath string) ([]string, error) {
+					if path.Base(listPath) == keepRepo {
+						return []string{
+							path.Join(listPath, ispec.ImageIndexFile),
+							path.Join(listPath, ispec.ImageLayoutFile),
+						}, nil
+					}
+
+					return nil, driver.PathNotFoundError{Path: listPath}
+				},
+				StatFn: func(_ context.Context, statPath string) (driver.FileInfo, error) {
+					if path.Base(statPath) == lastRepo {
+						return nil, statLast
+					}
+
+					return &mocks.FileInfoMock{IsDirFn: func() bool { return true }}, nil
+				},
+			}
+
+			return imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+				gcs.New(storeMock), nil, nil, nil)
+		}
+
+		acceptAll := func(_ string) (bool, error) { return true, nil }
+
+		Convey("Missing last stays quiet and uses lexical after-last", func() {
+			repos, more, err := newStore(driver.PathNotFoundError{Path: lastRepo}).
+				GetNextRepositories(lastRepo, 10, acceptAll)
+			So(err, ShouldBeNil)
+			So(more, ShouldBeFalse)
+			So(repos, ShouldResemble, []string{keepRepo})
+		})
+
+		Convey("Transient Stat on last treats as missing without failing the page", func() {
+			transient := errclass.MarkTransient(errors.New("last stat blip")) //nolint:err113 // test
+			repos, more, err := newStore(transient).GetNextRepositories(lastRepo, 10, acceptAll)
+			So(err, ShouldBeNil)
+			So(more, ShouldBeFalse)
+			So(repos, ShouldResemble, []string{keepRepo})
+		})
+
+		Convey("ValidateRepo Transient on last after Stat treats as missing", func() {
+			// Stat succeeds (dir exists) but ValidateRepo List blips: catalogLastExists
+			// must warn and return false so lexical after-last still yields keepRepo.
+			storeMock := &mocks.StorageDriverMock{
+				WalkFn: func(_ context.Context, _ string, walkFn driver.WalkFn,
+					_ ...func(*driver.WalkOptions),
+				) error {
+					repoPath := path.Join(rootDir, keepRepo)
+					fi := &mocks.FileInfoMock{
+						IsDirFn: func() bool { return true },
+						PathFn:  func() string { return repoPath },
+					}
+
+					return walkFn(fi)
+				},
+				ListFn: func(_ context.Context, listPath string) ([]string, error) {
+					switch path.Base(listPath) {
+					case lastRepo:
+						return nil, errclass.MarkTransient(errors.New("last validate blip")) //nolint:err113 // test
+					case keepRepo:
+						return []string{
+							path.Join(listPath, ispec.ImageIndexFile),
+							path.Join(listPath, ispec.ImageLayoutFile),
+						}, nil
+					default:
+						return nil, driver.PathNotFoundError{Path: listPath}
+					}
+				},
+				StatFn: func(_ context.Context, statPath string) (driver.FileInfo, error) {
+					if path.Base(statPath) == lastRepo {
+						return &mocks.FileInfoMock{IsDirFn: func() bool { return true }}, nil
+					}
+
+					return nil, driver.PathNotFoundError{Path: statPath}
+				},
+			}
+
+			store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+				gcs.New(storeMock), nil, nil, nil)
+			repos, more, err := store.GetNextRepositories(lastRepo, 10, acceptAll)
+			So(err, ShouldBeNil)
+			So(more, ShouldBeFalse)
+			So(repos, ShouldResemble, []string{keepRepo})
+		})
+
+		Convey("ValidateRepo Permanent on last after Stat treats as missing", func() {
+			storeMock := &mocks.StorageDriverMock{
+				WalkFn: func(_ context.Context, _ string, walkFn driver.WalkFn,
+					_ ...func(*driver.WalkOptions),
+				) error {
+					repoPath := path.Join(rootDir, keepRepo)
+					fi := &mocks.FileInfoMock{
+						IsDirFn: func() bool { return true },
+						PathFn:  func() string { return repoPath },
+					}
+
+					return walkFn(fi)
+				},
+				ListFn: func(_ context.Context, listPath string) ([]string, error) {
+					switch path.Base(listPath) {
+					case lastRepo:
+						return nil, errclass.MarkPermanent(errors.New("last validate denied")) //nolint:err113 // test
+					case keepRepo:
+						return []string{
+							path.Join(listPath, ispec.ImageIndexFile),
+							path.Join(listPath, ispec.ImageLayoutFile),
+						}, nil
+					default:
+						return nil, driver.PathNotFoundError{Path: listPath}
+					}
+				},
+				StatFn: func(_ context.Context, statPath string) (driver.FileInfo, error) {
+					if path.Base(statPath) == lastRepo {
+						return &mocks.FileInfoMock{IsDirFn: func() bool { return true }}, nil
+					}
+
+					return nil, driver.PathNotFoundError{Path: statPath}
+				},
+			}
+
+			store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+				gcs.New(storeMock), nil, nil, nil)
+			repos, more, err := store.GetNextRepositories(lastRepo, 10, acceptAll)
+			So(err, ShouldBeNil)
+			So(more, ShouldBeFalse)
+			So(repos, ShouldResemble, []string{keepRepo})
+		})
+	})
+}
+
+func TestGetNextRepositoryValidateRepoFailClosed(t *testing.T) {
+	Convey("GetNextRepository fails closed on per-path ValidateRepo Transient", t, func() {
 		log := zlog.NewTestLogger()
 		metrics := monitoring.NewNopMetricServer()
 		rootDir := t.TempDir()
@@ -924,8 +1249,318 @@ func TestGetNextRepositoryValidateRepoSoftSkip(t *testing.T) {
 		So(store, ShouldNotBeNil)
 
 		repo, err := store.GetNextRepository(map[string]struct{}{})
+		So(repo, ShouldEqual, "")
+		So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+	})
+}
+
+func TestGetRepositoriesValidateRepoFailClosed(t *testing.T) {
+	Convey("GetRepositories fails closed on per-path ValidateRepo Transient", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+		flakyRepo := "flaky"
+		goodRepo := "good"
+
+		storeMock := &mocks.StorageDriverMock{
+			WalkFn: func(_ context.Context, _ string, walkFn driver.WalkFn,
+				_ ...func(*driver.WalkOptions),
+			) error {
+				// Visit a healthy repo before the flaky one so a buggy return of
+				// (partialRepos, err) would leave a non-empty slice.
+				for _, name := range []string{goodRepo, flakyRepo} {
+					repoPath := path.Join(rootDir, name)
+					fi := &mocks.FileInfoMock{
+						IsDirFn: func() bool { return true },
+						PathFn:  func() string { return repoPath },
+					}
+					if err := walkFn(fi); err != nil {
+						return err
+					}
+				}
+
+				return nil
+			},
+			ListFn: func(_ context.Context, listPath string) ([]string, error) {
+				switch path.Base(listPath) {
+				case flakyRepo:
+					return nil, errclass.MarkTransient(errors.New("list blip")) //nolint:err113 // test
+				case goodRepo:
+					return []string{
+						path.Join(listPath, ispec.ImageIndexFile),
+						path.Join(listPath, ispec.ImageLayoutFile),
+					}, nil
+				default:
+					return nil, driver.PathNotFoundError{Path: listPath}
+				}
+			},
+			StatFn: func(_ context.Context, statPath string) (driver.FileInfo, error) {
+				return nil, driver.PathNotFoundError{Path: statPath}
+			},
+		}
+
+		store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+			gcs.New(storeMock), nil, nil, nil)
+		So(store, ShouldNotBeNil)
+
+		repos, err := store.GetRepositories()
+		So(repos, ShouldBeEmpty)
+		So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+	})
+}
+
+// TestConfirmEmptyStoreWalkMissing locks the walk-level Missing contract used by
+// GetRepositories / GetNextRepository / GetNextRepositories: empty or absent root
+// is an empty store; a Missing Walk with a non-empty root is Transient.
+func TestConfirmEmptyStoreWalkMissing(t *testing.T) {
+	acceptAll := func(string) (bool, error) { return true, nil }
+	listErr := errors.New("root list failed") //nolint:err113 // test
+
+	Convey("Walk PathNotFound with an empty root is an empty store", t, func() {
+		rootDir := t.TempDir()
+		store := imagestore.NewImageStore(rootDir, "", false, false, zlog.NewTestLogger(),
+			monitoring.NewNopMetricServer(), nil, gcs.New(&mocks.StorageDriverMock{
+				ListFn: func(_ context.Context, _ string) ([]string, error) {
+					return []string{}, nil
+				},
+				WalkFn: func(_ context.Context, _ string, _ driver.WalkFn,
+					_ ...func(*driver.WalkOptions),
+				) error {
+					return driver.PathNotFoundError{}
+				},
+			}), nil, nil, nil)
+
+		repo, err := store.GetNextRepository(map[string]struct{}{"testRepo": {}})
 		So(err, ShouldBeNil)
-		So(repo, ShouldEqual, goodRepo)
+		So(repo, ShouldEqual, "")
+
+		repos, err := store.GetRepositories()
+		So(err, ShouldBeNil)
+		So(repos, ShouldBeEmpty)
+
+		repos, more, err := store.GetNextRepositories("", 10, acceptAll)
+		So(err, ShouldBeNil)
+		So(repos, ShouldBeEmpty)
+		So(more, ShouldBeFalse)
+	})
+
+	Convey("Walk PathNotFound with a non-empty root is an incomplete listing", t, func() {
+		rootDir := t.TempDir()
+		store := imagestore.NewImageStore(rootDir, "", false, false, zlog.NewTestLogger(),
+			monitoring.NewNopMetricServer(), nil, gcs.New(&mocks.StorageDriverMock{
+				ListFn: func(_ context.Context, listPath string) ([]string, error) {
+					return []string{listPath + "/repo"}, nil
+				},
+				WalkFn: func(_ context.Context, walkPath string, _ driver.WalkFn,
+					_ ...func(*driver.WalkOptions),
+				) error {
+					return driver.PathNotFoundError{Path: walkPath + "/repo/nested"}
+				},
+			}), nil, nil, nil)
+
+		repo, err := store.GetNextRepository(map[string]struct{}{})
+		So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+		So(errors.Is(err, zerr.ErrStorageMissing), ShouldBeFalse)
+		So(repo, ShouldEqual, "")
+
+		repos, err := store.GetRepositories()
+		So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+		So(repos, ShouldBeEmpty)
+
+		repos, more, err := store.GetNextRepositories("", 10, acceptAll)
+		So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+		So(repos, ShouldBeEmpty)
+		So(more, ShouldBeFalse)
+	})
+
+	Convey("Walk PathNotFound with a failing root List returns the List error", t, func() {
+		rootDir := t.TempDir()
+		listCalls := 0
+		store := imagestore.NewImageStore(rootDir, "", false, false, zlog.NewTestLogger(),
+			monitoring.NewNopMetricServer(), nil, gcs.New(&mocks.StorageDriverMock{
+				ListFn: func(_ context.Context, _ string) ([]string, error) {
+					listCalls++
+
+					return nil, listErr
+				},
+				WalkFn: func(_ context.Context, walkPath string, _ driver.WalkFn,
+					_ ...func(*driver.WalkOptions),
+				) error {
+					return driver.PathNotFoundError{Path: walkPath + "/repo/nested"}
+				},
+			}), nil, nil, nil)
+
+		repos, err := store.GetRepositories()
+		So(err, ShouldNotBeNil)
+		So(errors.Is(err, zerr.ErrStorageMissing), ShouldBeFalse)
+		So(repos, ShouldBeEmpty)
+		So(listCalls, ShouldEqual, 1)
+	})
+}
+
+// walkFallbackFS emulates List/Stat where an empty prefix is PathNotFound, the
+// same surface GCS/Azure expose to distribution WalkFallback. Assertions below
+// are ImageStore policy, not a specific cloud driver.
+type walkFallbackFS struct {
+	objects  []string
+	poisoned map[string]bool
+}
+
+func (m *walkFallbackFS) list(dir string) ([]string, error) {
+	if m.poisoned[dir] {
+		return nil, driver.PathNotFoundError{Path: dir, DriverName: "walkfallback"}
+	}
+
+	prefix := strings.TrimSuffix(dir, "/") + "/"
+	seen := map[string]bool{}
+	out := []string{}
+
+	for _, obj := range m.objects {
+		if !strings.HasPrefix(obj, prefix) {
+			continue
+		}
+
+		rest := obj[len(prefix):]
+		if before, _, found := strings.Cut(rest, "/"); found {
+			child := prefix + before
+			if !seen[child] {
+				seen[child] = true
+
+				out = append(out, child)
+			}
+		} else {
+			out = append(out, obj)
+		}
+	}
+
+	if len(out) == 0 {
+		return nil, driver.PathNotFoundError{Path: dir, DriverName: "walkfallback"}
+	}
+
+	sort.Strings(out)
+
+	return out, nil
+}
+
+func (m *walkFallbackFS) stat(path string) (driver.FileInfo, error) {
+	dirPrefix := strings.TrimSuffix(path, "/") + "/"
+	for _, obj := range m.objects {
+		if obj == path {
+			return &walkFallbackFileInfo{isDir: false, path: path}, nil
+		}
+
+		if strings.HasPrefix(obj, dirPrefix) {
+			return &walkFallbackFileInfo{isDir: true, path: path}, nil
+		}
+	}
+
+	return nil, driver.PathNotFoundError{Path: path, DriverName: "walkfallback"}
+}
+
+type walkFallbackFileInfo struct {
+	isDir bool
+	path  string
+}
+
+func (f *walkFallbackFileInfo) Path() string       { return f.path }
+func (f *walkFallbackFileInfo) Size() int64        { return 0 }
+func (f *walkFallbackFileInfo) ModTime() time.Time { return time.Time{} }
+func (f *walkFallbackFileInfo) IsDir() bool        { return f.isDir }
+
+func newWalkFallbackStore(memfs *walkFallbackFS) *mocks.StorageDriverMock {
+	storeMock := &mocks.StorageDriverMock{}
+	storeMock.NameFn = func() string { return "walkfallback" }
+	storeMock.ListFn = func(_ context.Context, path string) ([]string, error) {
+		return memfs.list(path)
+	}
+	storeMock.StatFn = func(_ context.Context, path string) (driver.FileInfo, error) {
+		return memfs.stat(path)
+	}
+	storeMock.WalkFn = func(ctx context.Context, path string, f driver.WalkFn,
+		options ...func(*driver.WalkOptions),
+	) error {
+		return driver.WalkFallback(ctx, storeMock, path, f, options...)
+	}
+
+	return storeMock
+}
+
+func TestWalkFallbackNestedMissingFailsClosed(t *testing.T) {
+	rootDir := "/zot"
+	objects := []string{
+		"/zot/repo-a/repo-a/blobs/sha256/aaa",
+		"/zot/repo-a/repo-a/index.json",
+		"/zot/repo-a/repo-a/oci-layout",
+		"/zot/repo-b/repo-b/blobs/sha256/bbb",
+		"/zot/repo-b/repo-b/index.json",
+		"/zot/repo-b/repo-b/oci-layout",
+	}
+
+	log := zlog.NewTestLogger()
+	metrics := monitoring.NewNopMetricServer()
+
+	newStore := func(memfs *walkFallbackFS) storageTypes.ImageStore {
+		return imagestore.NewImageStore(rootDir, t.TempDir(), false, false, log, metrics,
+			nil, gcs.New(newWalkFallbackStore(memfs)), nil, nil, nil)
+	}
+
+	acceptAll := func(string) (bool, error) { return true, nil }
+
+	Convey("A non-reserved nested prefix that lists empty aborts the walk", t, func() {
+		// The namespace prefix is still listed under the root, but listing it
+		// returns PathNotFound (emptied concurrently). WalkFallback aborts with
+		// Missing; that must not read as "no more repositories".
+		memfs := &walkFallbackFS{
+			objects:  objects,
+			poisoned: map[string]bool{"/zot/repo-b": true},
+		}
+		imgStore := newStore(memfs)
+
+		Convey("GetNextRepository returns Transient instead of ending the sweep", func() {
+			repo, err := imgStore.GetNextRepository(map[string]struct{}{})
+			So(err, ShouldBeNil)
+			So(repo, ShouldEqual, "repo-a/repo-a")
+
+			repo, err = imgStore.GetNextRepository(map[string]struct{}{"repo-a/repo-a": {}})
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+			So(errors.Is(err, zerr.ErrStorageMissing), ShouldBeFalse)
+			So(repo, ShouldEqual, "")
+		})
+
+		Convey("GetRepositories returns Transient instead of a partial list", func() {
+			repos, err := imgStore.GetRepositories()
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+			So(errors.Is(err, zerr.ErrStorageMissing), ShouldBeFalse)
+			So(repos, ShouldBeEmpty)
+		})
+
+		Convey("GetNextRepositories returns Transient instead of a truncated catalog", func() {
+			repos, more, err := imgStore.GetNextRepositories("", 100, acceptAll)
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+			So(errors.Is(err, zerr.ErrStorageMissing), ShouldBeFalse)
+			So(repos, ShouldBeEmpty)
+			So(more, ShouldBeFalse)
+		})
+	})
+
+	Convey("An empty root is still an empty store", t, func() {
+		imgStore := newStore(&walkFallbackFS{})
+
+		repo, err := imgStore.GetNextRepository(map[string]struct{}{})
+		So(err, ShouldBeNil)
+		So(repo, ShouldEqual, "")
+
+		repos, err := imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		So(repos, ShouldBeEmpty)
+
+		repos, more, err := imgStore.GetNextRepositories("", 100, acceptAll)
+		So(err, ShouldBeNil)
+		So(repos, ShouldBeEmpty)
+		So(more, ShouldBeFalse)
 	})
 }
 

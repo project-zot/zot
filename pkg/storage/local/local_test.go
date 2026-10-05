@@ -1610,6 +1610,11 @@ func TestDedupeLinks(t *testing.T) {
 }
 
 func TestDedupeRestoreCompleteMarker(t *testing.T) {
+	// OnRunComplete runs in a goroutine (slow remote marker PUTs must not block
+	// the scheduler worker). Wait for the post-write log line, not only the file:
+	// WriteFile can finish before the following Info is visible in the buffer.
+	const logWait = 5 * time.Second
+
 	waitForMarker := func(t *testing.T, markerPath, expected string) {
 		t.Helper()
 
@@ -1627,15 +1632,12 @@ func TestDedupeRestoreCompleteMarker(t *testing.T) {
 
 	Convey("Restore-complete marker lifecycle", t, func(c C) {
 		dir := t.TempDir()
-
-		logBuf := test.NewThreadSafeLogBuffer()
-
-		log := zlog.NewLoggerWithWriter("debug", logBuf)
 		metrics := monitoring.NewNopMetricServer()
-
 		markerPath := path.Join(dir, storageConstants.DedupeRestoreCompleteMarker)
 
 		Convey("dedupe=false on an empty store writes the restore-complete marker", func() {
+			logBuf := test.NewThreadSafeLogBuffer()
+			log := zlog.NewLoggerWithWriter("debug", logBuf)
 			imgStore := local.NewImageStore(dir, false, true, log, metrics, nil, nil, nil, nil)
 
 			taskScheduler := runAndGetScheduler()
@@ -1643,11 +1645,11 @@ func TestDedupeRestoreCompleteMarker(t *testing.T) {
 
 			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
-			waitForMarker(t, markerPath, storageConstants.DedupeRestoreMarkerComplete)
+			So(test.WaitForLogMessages(logBuf, "restore-complete marker written", 1, logWait), ShouldBeTrue)
 
-			taskScheduler.Shutdown()
-
-			So(logBuf.String(), ShouldContainSubstring, "restore-complete marker written")
+			data, err := os.ReadFile(markerPath)
+			So(err, ShouldBeNil)
+			So(strings.TrimSpace(string(data)), ShouldEqual, storageConstants.DedupeRestoreMarkerComplete)
 		})
 
 		Convey("dedupe=false with a complete marker skips the restore scan", func() {
@@ -1655,6 +1657,8 @@ func TestDedupeRestoreCompleteMarker(t *testing.T) {
 				storageConstants.DefaultFilePerms)
 			So(err, ShouldBeNil)
 
+			logBuf := test.NewThreadSafeLogBuffer()
+			log := zlog.NewLoggerWithWriter("debug", logBuf)
 			imgStore := local.NewImageStore(dir, false, true, log, metrics, nil, nil, nil, nil)
 
 			taskScheduler := runAndGetScheduler()
@@ -1662,9 +1666,7 @@ func TestDedupeRestoreCompleteMarker(t *testing.T) {
 
 			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
-			taskScheduler.Shutdown()
-
-			So(logBuf.String(), ShouldContainSubstring, "skipping dedupe restore scan")
+			So(test.WaitForLogMessages(logBuf, "skipping dedupe restore scan", 1, logWait), ShouldBeTrue)
 
 			data, err := os.ReadFile(markerPath)
 			So(err, ShouldBeNil)
@@ -1676,6 +1678,8 @@ func TestDedupeRestoreCompleteMarker(t *testing.T) {
 				storageConstants.DefaultFilePerms)
 			So(err, ShouldBeNil)
 
+			logBuf := test.NewThreadSafeLogBuffer()
+			log := zlog.NewLoggerWithWriter("debug", logBuf)
 			imgStore := local.NewImageStore(dir, false, true, log, metrics, nil, nil, nil, nil)
 
 			taskScheduler := runAndGetScheduler()
@@ -1683,11 +1687,11 @@ func TestDedupeRestoreCompleteMarker(t *testing.T) {
 
 			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
+			So(test.WaitForLogMessages(logBuf, "restore-complete marker present but not complete", 1, logWait),
+				ShouldBeTrue)
+			// Completion rewrite is async; wait for the post-write log, then confirm content.
+			So(test.WaitForLogMessages(logBuf, "restore-complete marker written", 1, logWait), ShouldBeTrue)
 			waitForMarker(t, markerPath, storageConstants.DedupeRestoreMarkerComplete)
-
-			taskScheduler.Shutdown()
-
-			So(logBuf.String(), ShouldContainSubstring, "restore-complete marker present but not complete")
 		})
 
 		Convey("dedupe=true removes an existing restore-complete marker", func() {
@@ -1695,15 +1699,14 @@ func TestDedupeRestoreCompleteMarker(t *testing.T) {
 				storageConstants.DefaultFilePerms)
 			So(err, ShouldBeNil)
 
-			imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, nil, nil, nil)
+			imgStore := local.NewImageStore(dir, true, true, zlog.NewTestLogger(), metrics, nil, nil, nil, nil)
 
 			taskScheduler := runAndGetScheduler()
 			defer taskScheduler.Shutdown()
 
 			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
-			taskScheduler.Shutdown()
-
+			// Delete of the marker is synchronous in RunDedupeBlobs before the generator runs.
 			_, err = os.Stat(markerPath)
 			So(errors.Is(err, fs.ErrNotExist), ShouldBeTrue)
 		})
