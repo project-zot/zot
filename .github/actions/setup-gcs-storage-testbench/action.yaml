@@ -5,6 +5,6 @@ runs:
   steps:
     - shell: bash
       run: |
-        docker run -d --name storage-testbench -p 9000:9000 -p 9090:9090 ghcr.io/project-zot/ci-images/gcs-storage-testbench:v0.60.0-zot
+        docker run -d --name storage-testbench -p 9000:9000 -p 9090:9090 ghcr.io/project-zot/ci-images/gcs-storage-testbench:v0.66.0
         echo "Waiting for storage-testbench..."
         timeout 30s bash -c 'until curl -s http://localhost:9000/storage/v1/b; do sleep 1; done'

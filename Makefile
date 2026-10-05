@@ -254,8 +254,6 @@ test: test-extended test-minimal test-devmode
 privileged-test: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 privileged-test:
 	env GOEXPERIMENT=jsonv2 go test -failfast -tags needprivileges,$(BUILD_LABELS) -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-needprivileges-local.txt -covermode=atomic ./pkg/storage/local/... ./pkg/cli/client/... -run ^TestElevatedPrivileges
-	env GOEXPERIMENT=jsonv2 go test -failfast -tags needprivileges,$(BUILD_LABELS) -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-needprivileges-gcs.txt -covermode=atomic ./pkg/storage/gcs/...
-	env GOEXPERIMENT=jsonv2 go test -failfast -tags needprivileges,$(BUILD_LABELS) -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-needprivileges-storage.txt -covermode=atomic ./pkg/storage -run '^TestErrClass'
 
 .PHONY: testdata-certs
 testdata-certs:

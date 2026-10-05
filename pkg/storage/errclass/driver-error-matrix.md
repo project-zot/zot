@@ -259,7 +259,7 @@ After peeling `Detail`:
 |-----|-------|
 | 1. S3 HeadObject exact error code (`NotFound` vs `NoSuchKey`) on missing key vs missing-as-prefix; MinIO vs AWS | Needs multi-emulator compare; not locked by unit tests |
 | 2. Whether S3 `parseError` ever sees Head’s NotFound (usually List failover happens first) | Distribution internal |
-| 3. GCS Attrs error when object missing (`ErrObjectNotExist` vs wrapped googleapi 404) before folder probe | Needs GCSMOCK |
+| 3. GCS Attrs error when object missing (`ErrObjectNotExist` vs wrapped googleapi 404) before folder probe | Needs STORAGE_EMULATOR_HOST |
 | 4. Injected 503/timeout on Stat during `CleanRepo` after ImageStore wrap | Depends on ImageStore preserving classification |
 
 Characterization / mapping tests:

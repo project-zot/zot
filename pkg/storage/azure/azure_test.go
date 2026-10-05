@@ -28,7 +28,7 @@ const (
 // TestAzureDriverIntegration exercises the Azure storage driver end-to-end against an
 // Azurite emulator. It is skipped unless AZURITEMOCK_ENDPOINT is set (e.g.
 // http://127.0.0.1:10000/devstoreaccount1), mirroring the S3 (S3MOCK_ENDPOINT) and
-// GCS (GCSMOCK_ENDPOINT) integration tests.
+// GCS (STORAGE_EMULATOR_HOST) integration tests.
 func TestAzureDriverIntegration(t *testing.T) {
 	endpoint := os.Getenv("AZURITEMOCK_ENDPOINT")
 	if endpoint == "" {

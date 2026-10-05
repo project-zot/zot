@@ -37,7 +37,8 @@ import (
 // single classified failure of one operation on one path on top of the real driver;
 // on local, Permanent is also produced for real with chmod 000.
 //
-// errClassBackends is Local, S3 and Azure; a needprivileges build also appends GCS.
+// errClassBackends is Local, S3, Azure and GCS (cloud backends skip without their
+// emulator endpoints).
 //
 //nolint:gochecknoglobals
 var errClassBackends = storageerrclass.Backends()

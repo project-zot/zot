@@ -43,11 +43,13 @@ import (
 	storageCommon "zotregistry.dev/zot/v2/pkg/storage/common"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/gc"
+	"zotregistry.dev/zot/v2/pkg/storage/gcs"
 	"zotregistry.dev/zot/v2/pkg/storage/imagestore"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
 	"zotregistry.dev/zot/v2/pkg/storage/s3"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 	"zotregistry.dev/zot/v2/pkg/test/azurite"
+	"zotregistry.dev/zot/v2/pkg/test/gcsemulator"
 	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 	tskip "zotregistry.dev/zot/v2/pkg/test/skip"
@@ -137,7 +139,8 @@ func createObjectsStore(options createObjectStoreOpts) (
 	log := zlog.NewTestLogger()
 
 	if options.storageType == storageConstants.S3StorageDriverName ||
-		options.storageType == storageConstants.AzureStorageDriverName {
+		options.storageType == storageConstants.AzureStorageDriverName ||
+		options.storageType == storageConstants.GCSStorageDriverName {
 		useRelPaths = false
 	} else {
 		useRelPaths = true
@@ -180,6 +183,33 @@ func createObjectsStore(options createObjectStoreOpts) (
 			options.cacheDir, true, false, log, metrics, nil, azureDriver, cacheDriver, nil, nil)
 
 		return azure.New(azureDriver), imgStore, cacheDriver, nil
+	}
+
+	if options.storageType == storageConstants.GCSStorageDriverName {
+		const bucket = "zot-storage-test"
+
+		if err := gcsemulator.CreateBucket(bucket); err != nil {
+			return nil, nil, nil, err
+		}
+
+		params := map[string]any{
+			"rootdirectory": options.rootDir,
+			"name":          storageConstants.GCSStorageDriverName,
+			"bucket":        bucket,
+		}
+		// Mirror production: default the prefix and pass RootDir() ("/") into the image store
+		// so the driver (not the image store) owns the rootdirectory prefix.
+		storage.NormalizeRootDirectory(storageConstants.GCSStorageDriverName, params)
+
+		gcsDriver, err := factory.Create(context.Background(), storageConstants.GCSStorageDriverName, params)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		imgStore := gcs.NewImageStore(storage.RootDir(storageConstants.GCSStorageDriverName, params),
+			options.cacheDir, true, false, log, metrics, nil, gcsDriver, cacheDriver, nil, nil)
+
+		return gcs.New(gcsDriver), imgStore, cacheDriver, nil
 	}
 
 	if options.storageType != storageConstants.S3StorageDriverName {
@@ -328,6 +358,16 @@ var testCases = []struct {
 	{
 		testCaseName: "AzureAPIs_Redis",
 		storageType:  storageConstants.AzureStorageDriverName,
+		cacheType:    storageConstants.RedisDriverName,
+	},
+	{
+		testCaseName: "GCSAPIs_BoltDB",
+		storageType:  storageConstants.GCSStorageDriverName,
+		cacheType:    storageConstants.BoltdbName,
+	},
+	{
+		testCaseName: "GCSAPIs_Redis",
+		storageType:  storageConstants.GCSStorageDriverName,
 		cacheType:    storageConstants.RedisDriverName,
 	},
 }
@@ -1023,6 +1063,21 @@ func TestGetAllDedupeReposCandidates(t *testing.T) {
 
 				store, imgStore, _, _ = createObjectsStore(opts)
 				defer cleanupStorage(store, "/")
+			case storageConstants.GCSStorageDriverName:
+				tskip.SkipGCS(t)
+
+				uuid, err := guuid.NewV4()
+				if err != nil {
+					panic(err)
+				}
+
+				testDir := path.Join("/oci-repo-test", uuid.String())
+				opts.rootDir = testDir
+
+				var store storageTypes.Driver
+
+				store, imgStore, _, _ = createObjectsStore(opts)
+				defer cleanupStorage(store, "/")
 			default:
 				_, imgStore, _, _ = createObjectsStore(opts)
 			}
@@ -1111,6 +1166,21 @@ func TestStorageAPIs(t *testing.T) {
 				defer cleanupStorage(store, testDir)
 			case storageConstants.AzureStorageDriverName:
 				tskip.SkipAzure(t)
+
+				uuid, err := guuid.NewV4()
+				if err != nil {
+					panic(err)
+				}
+
+				testDir := path.Join("/oci-repo-test", uuid.String())
+				opts.rootDir = testDir
+
+				var store storageTypes.Driver
+
+				store, imgStore, _, _ = createObjectsStore(opts)
+				defer cleanupStorage(store, "/")
+			case storageConstants.GCSStorageDriverName:
+				tskip.SkipGCS(t)
 
 				uuid, err := guuid.NewV4()
 				if err != nil {
@@ -1918,6 +1988,29 @@ func TestMandatoryAnnotations(t *testing.T) {
 					}, store, cacheDriver, nil, nil)
 
 				defer cleanupStorage(store, "/")
+			case storageConstants.GCSStorageDriverName:
+				tskip.SkipGCS(t)
+
+				uuid, err := guuid.NewV4()
+				if err != nil {
+					panic(err)
+				}
+
+				testDir = path.Join("/oci-repo-test", uuid.String())
+				opts.rootDir = testDir
+
+				var cacheDriver storageTypes.Cache
+
+				store, _, cacheDriver, _ = createObjectsStore(opts)
+
+				imgStore = imagestore.NewImageStore("/", cacheDir, false, false, log, metrics,
+					&mocks.MockedLint{
+						LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storageTypes.ImageStore) (bool, error) {
+							return false, nil
+						},
+					}, store, cacheDriver, nil, nil)
+
+				defer cleanupStorage(store, "/")
 			default:
 				var cacheDriver storageTypes.Cache
 
@@ -1984,6 +2077,14 @@ func TestMandatoryAnnotations(t *testing.T) {
 								},
 							}, store, nil, nil, nil)
 					case storageConstants.AzureStorageDriverName:
+						imgStore = imagestore.NewImageStore("/", cacheDir, false, false, log, metrics,
+							&mocks.MockedLint{
+								LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storageTypes.ImageStore) (bool, error) {
+									//nolint: err113
+									return false, errors.New("linter error")
+								},
+							}, store, nil, nil, nil)
+					case storageConstants.GCSStorageDriverName:
 						imgStore = imagestore.NewImageStore("/", cacheDir, false, false, log, metrics,
 							&mocks.MockedLint{
 								LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storageTypes.ImageStore) (bool, error) {
@@ -2216,6 +2317,21 @@ func TestDeleteBlobsInUse(t *testing.T) {
 				defer cleanupStorage(store, testDir)
 			case storageConstants.AzureStorageDriverName:
 				tskip.SkipAzure(t)
+
+				uuid, err := guuid.NewV4()
+				if err != nil {
+					panic(err)
+				}
+
+				testDir := path.Join("/oci-repo-test", uuid.String())
+				opts.rootDir = testDir
+
+				var store storageTypes.Driver
+				store, imgStore, _, _ = createObjectsStore(opts)
+
+				defer cleanupStorage(store, "/")
+			case storageConstants.GCSStorageDriverName:
+				tskip.SkipGCS(t)
 
 				uuid, err := guuid.NewV4()
 				if err != nil {
@@ -2656,6 +2772,19 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 				defer cleanupStorage(driver, testDir)
 			case storageConstants.AzureStorageDriverName:
 				tskip.SkipAzure(t)
+
+				uuid, err := guuid.NewV4()
+				if err != nil {
+					panic(err)
+				}
+
+				testDir := path.Join("/oci-repo-test", uuid.String())
+				opts.rootDir = testDir
+
+				driver, imgStore, _, _ = createObjectsStore(opts)
+				defer cleanupStorage(driver, "/")
+			case storageConstants.GCSStorageDriverName:
+				tskip.SkipGCS(t)
 
 				uuid, err := guuid.NewV4()
 				if err != nil {
@@ -3132,6 +3261,9 @@ func TestStorageHandler(t *testing.T) {
 				// rootdirectory prefix), so the per-store routing assertions below, which rely
 				// on distinct root directories, do not apply to the single-container model.
 				t.Skip("storage handler routing assertions are not applicable to azure")
+			case storageConstants.GCSStorageDriverName:
+				// Same as Azure: image store RootDir() is "/" while the driver owns the prefix.
+				t.Skip("storage handler routing assertions are not applicable to gcs")
 			default:
 				firstRootDir = t.TempDir()
 				opts.rootDir = firstRootDir
@@ -3240,6 +3372,21 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 						defer cleanupStorage(store, testDir)
 					case storageConstants.AzureStorageDriverName:
 						tskip.SkipAzure(t)
+
+						uuid, err := guuid.NewV4()
+						if err != nil {
+							panic(err)
+						}
+
+						testDir := path.Join("/oci-repo-test", uuid.String())
+						opts.rootDir = testDir
+
+						var store storageTypes.Driver
+
+						store, imgStore, _, _ = createObjectsStore(opts)
+						defer cleanupStorage(store, "/")
+					case storageConstants.GCSStorageDriverName:
+						tskip.SkipGCS(t)
 
 						uuid, err := guuid.NewV4()
 						if err != nil {
@@ -3421,6 +3568,21 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 						defer cleanupStorage(store, testDir)
 					case storageConstants.AzureStorageDriverName:
 						tskip.SkipAzure(t)
+
+						uuid, err := guuid.NewV4()
+						if err != nil {
+							panic(err)
+						}
+
+						testDir := path.Join("/oci-repo-test", uuid.String())
+						opts.rootDir = testDir
+
+						var store storageTypes.Driver
+
+						store, imgStore, _, _ = createObjectsStore(opts)
+						defer cleanupStorage(store, "/")
+					case storageConstants.GCSStorageDriverName:
+						tskip.SkipGCS(t)
 
 						uuid, err := guuid.NewV4()
 						if err != nil {
@@ -3732,6 +3894,21 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 						store, imgStore, _, _ = createObjectsStore(opts)
 						defer cleanupStorage(store, "/")
+					case storageConstants.GCSStorageDriverName:
+						tskip.SkipGCS(t)
+
+						uuid, err := guuid.NewV4()
+						if err != nil {
+							panic(err)
+						}
+
+						testDir := path.Join("/oci-repo-test", uuid.String())
+						opts.rootDir = testDir
+
+						var store storageTypes.Driver
+
+						store, imgStore, _, _ = createObjectsStore(opts)
+						defer cleanupStorage(store, "/")
 					default:
 						_, imgStore, _, _ = createObjectsStore(opts)
 					}
@@ -3999,6 +4176,21 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 
 						store, imgStore, _, _ = createObjectsStore(opts)
 						defer cleanupStorage(store, "/")
+					case storageConstants.GCSStorageDriverName:
+						tskip.SkipGCS(t)
+
+						uuid, err := guuid.NewV4()
+						if err != nil {
+							panic(err)
+						}
+
+						testDir := path.Join("/oci-repo-test", uuid.String())
+						opts.rootDir = testDir
+
+						var store storageTypes.Driver
+
+						store, imgStore, _, _ = createObjectsStore(opts)
+						defer cleanupStorage(store, "/")
 					default:
 						_, imgStore, _, _ = createObjectsStore(opts)
 					}
@@ -4126,6 +4318,21 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 						defer cleanupStorage(store, testDir)
 					case storageConstants.AzureStorageDriverName:
 						tskip.SkipAzure(t)
+
+						uuid, err := guuid.NewV4()
+						if err != nil {
+							panic(err)
+						}
+
+						testDir := path.Join("/oci-repo-test", uuid.String())
+						opts.rootDir = testDir
+
+						var store storageTypes.Driver
+
+						store, imgStore, _, _ = createObjectsStore(opts)
+						defer cleanupStorage(store, "/")
+					case storageConstants.GCSStorageDriverName:
+						tskip.SkipGCS(t)
 
 						uuid, err := guuid.NewV4()
 						if err != nil {
@@ -4440,6 +4647,21 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 					defer cleanupStorage(store, testDir)
 				case storageConstants.AzureStorageDriverName:
 					tskip.SkipAzure(t)
+
+					uuid, err := guuid.NewV4()
+					if err != nil {
+						panic(err)
+					}
+
+					testDir := path.Join("/oci-repo-test", uuid.String())
+					opts.rootDir = testDir
+
+					var store storageTypes.Driver
+
+					store, imgStore, _, _ = createObjectsStore(opts)
+					defer cleanupStorage(store, "/")
+				case storageConstants.GCSStorageDriverName:
+					tskip.SkipGCS(t)
 
 					uuid, err := guuid.NewV4()
 					if err != nil {
@@ -5447,6 +5669,7 @@ func TestCloudRemoteCacheDedupePreservesLateOrigin(t *testing.T) {
 	}{
 		{name: "S3_Redis", storageType: storageConstants.S3StorageDriverName},
 		{name: "Azure_Redis", storageType: storageConstants.AzureStorageDriverName},
+		{name: "GCS_Redis", storageType: storageConstants.GCSStorageDriverName},
 	}
 
 	for _, testcase := range cases {
@@ -5456,6 +5679,8 @@ func TestCloudRemoteCacheDedupePreservesLateOrigin(t *testing.T) {
 				tskip.SkipS3(t)
 			case storageConstants.AzureStorageDriverName:
 				tskip.SkipAzure(t)
+			case storageConstants.GCSStorageDriverName:
+				tskip.SkipGCS(t)
 			}
 
 			miniRedis := miniredis.RunT(t)
@@ -5484,7 +5709,8 @@ func TestCloudRemoteCacheDedupePreservesLateOrigin(t *testing.T) {
 			}
 
 			cleanupRoot := testDir
-			if testcase.storageType == storageConstants.AzureStorageDriverName {
+			if testcase.storageType == storageConstants.AzureStorageDriverName ||
+				testcase.storageType == storageConstants.GCSStorageDriverName {
 				cleanupRoot = "/"
 			}
 			defer cleanupStorage(store, cleanupRoot)

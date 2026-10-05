@@ -222,10 +222,8 @@ type Backend struct {
 	// backend is not available.
 	Build func(t *testing.T) (storageTypes.Driver, string)
 	// WalkAbortsOnNestedMissing: DeleteOnVisit mid-walk aborts as Transient.
-	// Local List of a removed dir fails hard. Azure WalkFallback empty nested List
-	// returns PathNotFound and aborts. S3 flat Walk never truncates. GCS uses the
-	// same WalkFallback, but under DeleteOnVisit the emulator soft-completes
-	// (vanished children are Stat-skipped) rather than aborting the walk.
+	// Local List of a removed dir fails hard. Azure and GCS WalkFallback empty
+	// nested List returns PathNotFound and aborts. S3 flat Walk never truncates.
 	WalkAbortsOnNestedMissing bool
 	// SupportsRealPermanent: the backend can produce a real Permanent error (local
 	// chmod 000) in addition to injected ones.
@@ -252,20 +250,18 @@ func Azure() Backend {
 	return Backend{Name: "Azure", Build: buildAzure, WalkAbortsOnNestedMissing: true}
 }
 
-// GCS is the Google Cloud Storage backend. Callers must run under the GCS
-// emulator harness (gcsemulator.Main) and typically only append this from a
-// needprivileges build. WalkAbortsOnNestedMissing is false: DeleteOnVisit soft-
-// completes under the emulator (like S3). Empty nested List PathNotFound abort
-// is still covered by imagestore WalkFallback unit tests.
+// GCS is the Google Cloud Storage backend. It skips without STORAGE_EMULATOR_HOST.
+// WalkAbortsOnNestedMissing is true: DeleteOnVisit empties the prefix, so the
+// next nested List is PathNotFound and WalkFallback aborts as Transient (same
+// as Azure).
 func GCS() Backend {
-	return Backend{Name: "GCS", Build: buildGCS}
+	return Backend{Name: "GCS", Build: buildGCS, WalkAbortsOnNestedMissing: true}
 }
 
-// Backends returns Local, S3 and Azure. S3 and Azure skip without their emulator
-// endpoints. GCS is not included: the emulator harness needs privileges, so
-// privileged tests append GCS() themselves.
+// Backends returns Local, S3, Azure and GCS. S3, Azure and GCS skip without
+// their emulator endpoints.
 func Backends() []Backend {
-	return []Backend{Local(), S3(), Azure()}
+	return []Backend{Local(), S3(), Azure(), GCS()}
 }
 
 func buildLocal(t *testing.T) (storageTypes.Driver, string) {
@@ -327,7 +323,6 @@ func buildAzure(t *testing.T) (storageTypes.Driver, string) {
 func buildGCS(t *testing.T) (storageTypes.Driver, string) {
 	t.Helper()
 	tskip.SkipGCS(t)
-	gcsemulator.EnsureDummyCreds(t)
 
 	const bucket = "zot-storage-test"
 
@@ -335,18 +330,19 @@ func buildGCS(t *testing.T) (storageTypes.Driver, string) {
 		t.Fatal(err)
 	}
 
-	rootDir := path.Join("/oci-repo-test", NewUUID(t))
+	params := map[string]any{
+		"rootdirectory": path.Join("/oci-repo-test", NewUUID(t)),
+		"name":          storageConstants.GCSStorageDriverName,
+		"bucket":        bucket,
+	}
+	storage.NormalizeRootDirectory(storageConstants.GCSStorageDriverName, params)
 
-	gcsDriver, err := factory.Create(context.Background(), storageConstants.GCSStorageDriverName, map[string]any{
-		"rootDir": rootDir,
-		"name":    storageConstants.GCSStorageDriverName,
-		"bucket":  bucket,
-	})
+	gcsDriver, err := factory.Create(context.Background(), storageConstants.GCSStorageDriverName, params)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	return gcs.New(gcsDriver), rootDir
+	return gcs.New(gcsDriver), storage.RootDir(storageConstants.GCSStorageDriverName, params)
 }
 
 // NewStore builds an image store on the backend, wrapped in a HookDriver. The root

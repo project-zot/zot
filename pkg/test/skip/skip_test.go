@@ -35,3 +35,16 @@ func TestSkipDynamo(t *testing.T) {
 
 	tskip.SkipDynamo(t)
 }
+
+func TestSkipGCS(t *testing.T) {
+	envName := "STORAGE_EMULATOR_HOST"
+	envVal := os.Getenv(envName)
+
+	if len(envVal) > 0 {
+		defer os.Setenv(envName, envVal)
+		err := os.Unsetenv(envName)
+		require.NoError(t, err, "Error should be nil")
+	}
+
+	tskip.SkipGCS(t)
+}
