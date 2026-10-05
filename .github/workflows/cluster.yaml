@@ -119,7 +119,7 @@ jobs:
             sed -i 's/\/dev\/null/\/tmp\/zot3.log/g' test/cluster/config-minio3.json
 
       - name: Free up disk space
-        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # main
+        uses: jlumbroso/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6 # main
         with:
           # This might remove tools that are actually needed, if set to "true" but frees about 6 GB
           tool-cache: true
@@ -289,7 +289,7 @@ jobs:
           key: ${{ runner.os }}-gen1-benchmark-stateless-cluster${{ matrix.backend == 'redis' && '-redis' || '' }}
       # Run `github-action-benchmark` action
       - name: Store benchmark result
-        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
+        uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1.22.2
         with:
           # What benchmark tool the output.txt came from
           tool: 'customBiggerIsBetter'
