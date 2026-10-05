@@ -193,6 +193,15 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 		return err
 	}
 
+	// One root Prefetch for the pass so referrer, untagged-identify, stale, and
+	// referenced-blob walks do not each pay serial GetIndex/GetManifest on
+	// index.json rows. Nested Prefetch stays at recursive walk sites for child
+	// descriptors that are not listed at the root.
+	gc.memo(repo).Prefetch(ctx, gc.imgStore, repo, index.Manifests, gc.log)
+	if zcommon.IsContextDone(ctx) {
+		return ctx.Err()
+	}
+
 	manifestsBefore := len(index.Manifests)
 
 	// apply tags retention
@@ -247,7 +256,7 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 		}
 
 		// delete unreferenced blobs from storage
-		blobsDeleted, err = gc.deleteUnreferencedBlobs(repo, gc.opts.Delay, gc.log)
+		blobsDeleted, err = gc.deleteUnreferencedBlobs(ctx, repo, gc.opts.Delay, gc.log)
 		if err != nil {
 			return err
 		}
@@ -504,7 +513,7 @@ func (gc GarbageCollect) confirmBlobMissing(repo string, digest godigest.Digest)
 func (gc GarbageCollect) imageIndexHasStaleNestedManifests(repo string, desc ispec.Descriptor,
 	existingBlobs map[string]bool,
 ) (bool, error) {
-	indexImage, err := gc.memo(repo).Index(gc.imgStore, repo, desc.Digest, gc.log)
+	indexImage, err := gc.memo(repo).GetIndex(gc.imgStore, repo, desc.Digest, gc.log)
 	if err != nil {
 		if errclass.IsBlobUnavailable(err) {
 			// GetBlobContent already proved the index blob is gone; no second Stat.
@@ -571,7 +580,7 @@ func (gc GarbageCollect) removeManifestsPerRepoPolicy(ctx context.Context, repo 
 
 			/* gather all manifests referenced in multiarch images/by other manifests
 			so that we can skip them in cleanUntaggedManifests */
-			if err := gc.identifyManifestsReferencedInIndex(*index, repo, referenced,
+			if err := gc.identifyManifestsReferencedInIndex(ctx, *index, repo, referenced,
 				map[godigest.Digest]struct{}{}); err != nil {
 				return err
 			}
@@ -647,7 +656,7 @@ func (gc GarbageCollect) removeReferrerByIndexDesc(repo string, rootIndex *ispec
 	if !cached {
 		var err error
 
-		indexImage, err = gc.memo(repo).Index(gc.imgStore, repo, desc.Digest, gc.log)
+		indexImage, err = gc.memo(repo).GetIndex(gc.imgStore, repo, desc.Digest, gc.log)
 		if err != nil {
 			if errclass.IsBlobUnavailable(err) {
 				missing[desc.Digest] = struct{}{}
@@ -687,7 +696,7 @@ func (gc GarbageCollect) removeReferrerByManifestDesc(repo string, rootIndex *is
 	if !cached {
 		var err error
 
-		image, err = gc.memo(repo).Manifest(gc.imgStore, repo, desc.Digest, gc.log)
+		image, err = gc.memo(repo).GetManifest(gc.imgStore, repo, desc.Digest, gc.log)
 		if err != nil {
 			if errclass.IsBlobUnavailable(err) {
 				missing[desc.Digest] = struct{}{}
@@ -1047,12 +1056,24 @@ func (gc GarbageCollect) removeUntaggedManifests(ctx context.Context, repo strin
 // Adds both referenced manifests and referrers from an index.
 // seen ensures each digest is fetched and recursed into at most once per walk,
 // so an index DAG with shared/duplicate child digests stays O(distinct objects).
-func (gc GarbageCollect) identifyManifestsReferencedInIndex(index ispec.Index, repo string,
+func (gc GarbageCollect) identifyManifestsReferencedInIndex(ctx context.Context, index ispec.Index, repo string,
 	referenced map[godigest.Digest]bool, seen map[godigest.Digest]struct{},
 ) error {
-	gc.memo(repo).Prefetch(gc.imgStore, repo, index.Manifests, gc.log)
+	if zcommon.IsContextDone(ctx) {
+		return ctx.Err()
+	}
+
+	// Nested levels only need work here; root descriptors were Prefetched in cleanRepo.
+	gc.memo(repo).Prefetch(ctx, gc.imgStore, repo, index.Manifests, gc.log)
+	if zcommon.IsContextDone(ctx) {
+		return ctx.Err()
+	}
 
 	for _, desc := range index.Manifests {
+		if zcommon.IsContextDone(ctx) {
+			return ctx.Err()
+		}
+
 		if _, ok := seen[desc.Digest]; ok {
 			continue
 		}
@@ -1060,7 +1081,7 @@ func (gc GarbageCollect) identifyManifestsReferencedInIndex(index ispec.Index, r
 		seen[desc.Digest] = struct{}{}
 
 		if compat.IsImageIndexMediaType(desc.MediaType) {
-			indexImage, err := gc.memo(repo).Index(gc.imgStore, repo, desc.Digest, gc.log)
+			indexImage, err := gc.memo(repo).GetIndex(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
 				if errclass.IsBlobUnavailable(err) {
 					gc.log.Warn().Err(err).Str("module", "gc").Str("repository", repo).
@@ -1085,11 +1106,11 @@ func (gc GarbageCollect) identifyManifestsReferencedInIndex(index ispec.Index, r
 				referenced[indexDesc.Digest] = true
 			}
 
-			if err := gc.identifyManifestsReferencedInIndex(indexImage, repo, referenced, seen); err != nil {
+			if err := gc.identifyManifestsReferencedInIndex(ctx, indexImage, repo, referenced, seen); err != nil {
 				return err
 			}
 		} else if compat.IsImageManifestMediaType(desc.MediaType) {
-			image, err := gc.memo(repo).Manifest(gc.imgStore, repo, desc.Digest, gc.log)
+			image, err := gc.memo(repo).GetManifest(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
 				if errclass.IsBlobUnavailable(err) {
 					gc.log.Warn().Err(err).Str("module", "gc").Str("repo", repo).
@@ -1165,11 +1186,11 @@ func (gc GarbageCollect) deleteBlobUploads(repo string, delay time.Duration) (in
 
 // deleteUnreferencedBlobs deletes from storage all blobs not referenced by the repo's index.json
 // (and nested manifests/indexes), when older than delay.
-func (gc GarbageCollect) deleteUnreferencedBlobs(repo string, delay time.Duration, log zlog.Logger,
+func (gc GarbageCollect) deleteUnreferencedBlobs(ctx context.Context, repo string, delay time.Duration, log zlog.Logger,
 ) (int, error) {
 	gc.log.Debug().Str("module", "gc").Str("repository", repo).Msg("cleaning orphan blobs")
 
-	refBlobs, err := common.GetReferencedBlobsWithMemo(gc.memo(repo), gc.imgStore, repo, gc.log)
+	refBlobs, err := common.GetReferencedBlobsWithMemo(ctx, gc.memo(repo), gc.imgStore, repo, gc.log)
 	if err != nil {
 		log.Error().Err(err).Str("module", "gc").Str("repository", repo).Msg("failed to get referenced blobs in repo")
 

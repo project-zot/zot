@@ -481,145 +481,6 @@ func UpdateIndexWithPrunedImageManifests(imgStore storageTypes.ImageStore, index
 	return nil
 }
 
-// walkReadParallelism bounds concurrent blob reads when a repository-wide walk
-// warms its memo. Remote drivers are latency-bound, so a modest fan-out
-// collapses a long sequential walk without swamping the backend.
-const walkReadParallelism = 32
-
-// concurrentReader is implemented by stores whose reads are safe to issue from
-// many goroutines at once. Anything else, such as a test double, is read
-// sequentially with unchanged semantics.
-type concurrentReader interface {
-	ConcurrentReadSafe() bool
-}
-
-// WalkMemo holds the manifests and indexes one repository-wide walk has parsed,
-// so a digest referenced many times within that walk is read from storage once.
-// It lives for a single walk: a GC pass or one manifest update. Across walks,
-// storage stays authoritative, so a blob altered or removed between them is
-// seen. A nil *WalkMemo reads through without memoising.
-type WalkMemo struct {
-	mu        sync.Mutex
-	indexes   map[godigest.Digest]ispec.Index
-	manifests map[godigest.Digest]ispec.Manifest
-}
-
-// NewWalkMemo returns an empty memo for one walk.
-func NewWalkMemo() *WalkMemo {
-	return &WalkMemo{
-		indexes:   map[godigest.Digest]ispec.Index{},
-		manifests: map[godigest.Digest]ispec.Manifest{},
-	}
-}
-
-// Index is GetImageIndex through the memo.
-func (m *WalkMemo) Index(imgStore storageTypes.ImageStore, repo string, digest godigest.Digest, log zlog.Logger,
-) (ispec.Index, error) {
-	if m == nil {
-		return GetImageIndex(imgStore, repo, digest, log)
-	}
-
-	m.mu.Lock()
-	idx, ok := m.indexes[digest]
-	m.mu.Unlock()
-
-	if ok {
-		return idx, nil
-	}
-
-	idx, err := GetImageIndex(imgStore, repo, digest, log)
-	if err != nil {
-		return idx, err
-	}
-
-	m.mu.Lock()
-	m.indexes[digest] = idx
-	m.mu.Unlock()
-
-	return idx, nil
-}
-
-// Manifest is GetImageManifest through the memo.
-func (m *WalkMemo) Manifest(imgStore storageTypes.ImageStore, repo string, digest godigest.Digest, log zlog.Logger,
-) (ispec.Manifest, error) {
-	if m == nil {
-		return GetImageManifest(imgStore, repo, digest, log)
-	}
-
-	m.mu.Lock()
-	man, ok := m.manifests[digest]
-	m.mu.Unlock()
-
-	if ok {
-		return man, nil
-	}
-
-	man, err := GetImageManifest(imgStore, repo, digest, log)
-	if err != nil {
-		return man, err
-	}
-
-	m.mu.Lock()
-	m.manifests[digest] = man
-	m.mu.Unlock()
-
-	return man, nil
-}
-
-// Prefetch reads the given descriptors into the memo concurrently, so the
-// sequential, order-sensitive walk that follows runs from memory instead of
-// one storage round-trip per entry. Errors are not returned: the walk re-reads
-// and reports them in its own terms. Stores that do not declare their reads
-// concurrency-safe are left to the walk's own sequential reads.
-func (m *WalkMemo) Prefetch(imgStore storageTypes.ImageStore, repo string, descs []ispec.Descriptor, log zlog.Logger) {
-	if m == nil {
-		return
-	}
-
-	if reader, ok := imgStore.(concurrentReader); !ok || !reader.ConcurrentReadSafe() {
-		return
-	}
-
-	var wg sync.WaitGroup
-
-	sem := make(chan struct{}, walkReadParallelism)
-
-	for _, desc := range descs {
-		isIndex := compat.IsImageIndexMediaType(desc.MediaType)
-		isManifest := compat.IsImageManifestMediaType(desc.MediaType)
-
-		if !isIndex && !isManifest {
-			continue
-		}
-
-		m.mu.Lock()
-		_, haveIdx := m.indexes[desc.Digest]
-		_, haveMan := m.manifests[desc.Digest]
-		m.mu.Unlock()
-
-		if (isIndex && haveIdx) || (isManifest && haveMan) {
-			continue
-		}
-
-		wg.Add(1)
-
-		go func(dgst godigest.Digest, isIndex bool) {
-			defer wg.Done()
-
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			if isIndex {
-				_, _ = m.Index(imgStore, repo, dgst, log)
-			} else {
-				_, _ = m.Manifest(imgStore, repo, dgst, log)
-			}
-		}(desc.Digest, isIndex)
-	}
-
-	wg.Wait()
-}
-
 // PruneImageManifestsFromIndex is a helper routine that prunes image manifests from an index.
 // Before an image index manifest is pushed to a repo, its constituent manifests
 // are pushed first, so when updating/removing this image index manifest, we also
@@ -628,19 +489,13 @@ func (m *WalkMemo) Prefetch(imgStore storageTypes.ImageStore, repo string, descs
 func PruneImageManifestsFromIndex(imgStore storageTypes.ImageStore, repo string, digest godigest.Digest, //nolint:gocyclo,lll
 	outIndex ispec.Index, otherImgIndexes []ispec.Descriptor, log zlog.Logger,
 ) ([]ispec.Descriptor, error) {
-	dir := path.Join(imgStore.RootDir(), repo)
+	// One memo for this prune walk: load the old index through it first so that
+	// when tag overwrite leaves that digest in otherImgIndexes (untagged), Prefetch
+	// and the loop below do not read it from storage a second time.
+	memo := NewWalkMemo()
 
-	indexPath := path.Join(dir, "blobs", digest.Algorithm().String(), digest.Encoded())
-
-	buf, err := imgStore.GetBlobContent(repo, digest)
+	imgIndex, err := memo.GetIndex(imgStore, repo, digest, log)
 	if err != nil {
-		return nil, err
-	}
-
-	var imgIndex ispec.Index
-	if err := json.Unmarshal(buf, &imgIndex); err != nil {
-		log.Error().Err(err).Str("path", indexPath).Msg("invalid JSON")
-
 		return nil, err
 	}
 
@@ -653,11 +508,10 @@ func PruneImageManifestsFromIndex(imgStore storageTypes.ImageStore, repo string,
 	// Every other image index in the repository is read to learn which of the
 	// old index's constituents it still references: one read per index, and on a
 	// repository that overwrites a multi-arch tag per build the count only grows.
-	memo := NewWalkMemo()
-	memo.Prefetch(imgStore, repo, otherImgIndexes, log)
+	memo.Prefetch(context.Background(), imgStore, repo, otherImgIndexes, log)
 
 	for _, otherIndex := range otherImgIndexes {
-		oindex, err := memo.Index(imgStore, repo, otherIndex.Digest, log)
+		oindex, err := memo.GetIndex(imgStore, repo, otherIndex.Digest, log)
 		if err != nil {
 			// Handle missing blobs gracefully - log warning and continue with other indexes
 			if errclass.IsBlobUnavailable(err) {
@@ -851,13 +705,14 @@ is returned to the caller.
 */
 func GetReferencedBlobs(imgStore storageTypes.ImageStore, repo string, log zlog.Logger,
 ) (map[godigest.Digest]struct{}, error) {
-	return GetReferencedBlobsWithMemo(nil, imgStore, repo, log)
+	return GetReferencedBlobsWithMemo(context.Background(), nil, imgStore, repo, log)
 }
 
 // GetReferencedBlobsWithMemo is GetReferencedBlobs reading through memo, so a GC
 // pass that has already parsed the repository's manifests does not read them
 // again to compute the blob set.
-func GetReferencedBlobsWithMemo(memo *WalkMemo, imgStore storageTypes.ImageStore, repo string, log zlog.Logger,
+func GetReferencedBlobsWithMemo(ctx context.Context, memo *WalkMemo, imgStore storageTypes.ImageStore, repo string,
+	log zlog.Logger,
 ) (map[godigest.Digest]struct{}, error) {
 	// Do not use DirExists: it is bool-only and collapses Transient Stat to
 	// ErrRepoNotFound. GetIndex maps Missing → ErrRepoNotFound and preserves
@@ -870,19 +725,30 @@ func GetReferencedBlobsWithMemo(memo *WalkMemo, imgStore storageTypes.ImageStore
 	referenced := map[godigest.Digest]struct{}{}
 	seen := map[godigest.Digest]struct{}{}
 
-	if err := collectReferencedBlobs(memo, imgStore, repo, index, referenced, seen, log); err != nil {
+	if err := collectReferencedBlobs(ctx, memo, imgStore, repo, index, referenced, seen, log); err != nil {
 		return nil, err
 	}
 
 	return referenced, nil
 }
 
-func collectReferencedBlobs(memo *WalkMemo, imgStore storageTypes.ImageStore, repo string,
+func collectReferencedBlobs(ctx context.Context, memo *WalkMemo, imgStore storageTypes.ImageStore, repo string,
 	index ispec.Index, referenced map[godigest.Digest]struct{}, seen map[godigest.Digest]struct{}, log zlog.Logger,
 ) error {
-	memo.Prefetch(imgStore, repo, index.Manifests, log)
+	if zcommon.IsContextDone(ctx) {
+		return ctx.Err()
+	}
+
+	memo.Prefetch(ctx, imgStore, repo, index.Manifests, log)
+	if zcommon.IsContextDone(ctx) {
+		return ctx.Err()
+	}
 
 	for _, desc := range index.Manifests {
+		if zcommon.IsContextDone(ctx) {
+			return ctx.Err()
+		}
+
 		referenced[desc.Digest] = struct{}{}
 
 		if _, ok := seen[desc.Digest]; ok {
@@ -893,7 +759,7 @@ func collectReferencedBlobs(memo *WalkMemo, imgStore storageTypes.ImageStore, re
 
 		switch {
 		case compat.IsImageIndexMediaType(desc.MediaType):
-			indexImage, err := memo.Index(imgStore, repo, desc.Digest, log)
+			indexImage, err := memo.GetIndex(imgStore, repo, desc.Digest, log)
 			if err != nil {
 				if errclass.IsBlobUnavailable(err) {
 					log.Warn().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
@@ -908,11 +774,11 @@ func collectReferencedBlobs(memo *WalkMemo, imgStore storageTypes.ImageStore, re
 				return err
 			}
 
-			if err := collectReferencedBlobs(memo, imgStore, repo, indexImage, referenced, seen, log); err != nil {
+			if err := collectReferencedBlobs(ctx, memo, imgStore, repo, indexImage, referenced, seen, log); err != nil {
 				return err
 			}
 		case compat.IsImageManifestMediaType(desc.MediaType):
-			manifestContent, err := memo.Manifest(imgStore, repo, desc.Digest, log)
+			manifestContent, err := memo.GetManifest(imgStore, repo, desc.Digest, log)
 			if err != nil {
 				if errclass.IsBlobUnavailable(err) {
 					log.Warn().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).

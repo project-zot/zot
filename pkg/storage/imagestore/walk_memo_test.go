@@ -3,6 +3,7 @@ package imagestore_test
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"sync/atomic"
 	"testing"
@@ -22,22 +23,35 @@ import (
 
 const testRepo = "ci-repo"
 
-// countingDriver counts and optionally delays storage reads. On remote storage
-// every read is a network round-trip, so the count and the serialisation of
-// those reads, not local wall-clock, are what predict latency.
+// countingDriver counts storage reads and tracks how many overlap. On remote
+// storage every read is a network round-trip, so the count and max concurrency
+// of those reads, not wall-clock duration, are what predict latency.
 type countingDriver struct {
 	storageTypes.Driver
 
-	reads     atomic.Int64
-	readDelay time.Duration
+	reads       atomic.Int64
+	inFlight    atomic.Int64
+	maxInFlight atomic.Int64
+	readDelay   time.Duration
 }
 
 func (d *countingDriver) ReadFile(path string) ([]byte, error) {
 	d.reads.Add(1)
 
+	cur := d.inFlight.Add(1)
+
+	for {
+		old := d.maxInFlight.Load()
+		if cur <= old || d.maxInFlight.CompareAndSwap(old, cur) {
+			break
+		}
+	}
+
 	if d.readDelay > 0 {
 		time.Sleep(d.readDelay)
 	}
+
+	d.inFlight.Add(-1)
 
 	return d.Driver.ReadFile(path)
 }
@@ -65,20 +79,6 @@ func sortedTags(t *testing.T, store storageTypes.ImageStore) []string {
 	sort.Strings(tags)
 
 	return tags
-}
-
-func sameTags(before, after []string) bool {
-	if len(before) != len(after) {
-		return false
-	}
-
-	for i := range before {
-		if before[i] != after[i] {
-			return false
-		}
-	}
-
-	return true
 }
 
 // seedMultiarchBuilds writes count multi-arch builds and returns how many
@@ -128,32 +128,31 @@ func TestOverwritingMultiarchTagReadsOtherIndexesConcurrently(t *testing.T) {
 		}
 	}
 
-	// From here every read costs readDelay, as it would against remote storage.
+	// From here every read costs readDelay so overlapping Prefetch calls show up
+	// in maxInFlight (assert concurrency without comparing wall-clock totals).
 	counter.readDelay = readDelay
 	counter.reads.Store(0)
-
-	start := time.Now()
+	counter.maxInFlight.Store(0)
 
 	if _, _, err := store.PutImageManifest(context.Background(), testRepo, "latest",
 		next.IndexDescriptor.MediaType, next.IndexDescriptor.Data, nil); err != nil {
 		t.Fatalf("overwrite: %v", err)
 	}
 
-	elapsed := time.Since(start)
 	reads := counter.reads.Load()
-	serial := time.Duration(reads) * readDelay
+	maxInFlight := counter.maxInFlight.Load()
 
-	t.Logf("indexes=%d reads=%d elapsed=%v (serial would be %v)", existingIndexes, reads, elapsed, serial)
+	t.Logf("indexes=%d reads=%d maxInFlight=%d", existingIndexes, reads, maxInFlight)
 
 	if reads < existingIndexes {
 		t.Fatalf("expected at least one read per other index, got %d", reads)
 	}
 
-	if elapsed > serial/3 {
-		t.Fatalf("overwrite took %v for %d reads; they are still serialised (serial=%v)", elapsed, reads, serial)
+	if maxInFlight < 2 {
+		t.Fatalf("expected concurrent Prefetch reads, maxInFlight=%d", maxInFlight)
 	}
 
-	if !sameTags(tagsBefore, sortedTags(t, store)) {
+	if !slices.Equal(tagsBefore, sortedTags(t, store)) {
 		t.Fatal("tag set changed across an overwrite of an unrelated tag")
 	}
 }
@@ -176,9 +175,22 @@ func TestGCPassReadsEachManifestOnce(t *testing.T) {
 		t.Fatalf("seeding orphan: %v", err)
 	}
 
+	// Explicit DeleteReferrers + DeleteUntagged so the pass runs the referrer
+	// walk, the untagged identify walk, and GetReferencedBlobsWithMemo — the
+	// cross-phase reuse this test is meant to prove.
+	deleteUntagged := true
 	collector := gc.NewGarbageCollect(store, mocks.MetaDBMock{}, gc.Options{
-		Delay:          0,
-		ImageRetention: config.ImageRetention{Delay: 0},
+		Delay: 0,
+		ImageRetention: config.ImageRetention{
+			Delay: 0,
+			Policies: []config.RetentionPolicy{
+				{
+					Repositories:    []string{testRepo},
+					DeleteReferrers: true,
+					DeleteUntagged:  &deleteUntagged,
+				},
+			},
+		},
 	}, nil, log, metrics)
 
 	tagsBefore := sortedTags(t, store)
@@ -198,7 +210,59 @@ func TestGCPassReadsEachManifestOnce(t *testing.T) {
 		t.Fatalf("gc read %d blobs for %d distinct manifests and indexes; the pass is re-reading", reads, distinct)
 	}
 
-	if !sameTags(tagsBefore, sortedTags(t, store)) {
+	if !slices.Equal(tagsBefore, sortedTags(t, store)) {
+		t.Fatal("gc changed the tag set")
+	}
+}
+
+// When DeleteReferrers and DeleteUntagged are both off, no policy walk Prefetches.
+// cleanRepo's root Prefetch must still warm descriptors so later stale / referenced
+// walks are concurrent rather than one round-trip each.
+func TestGCPassPrefetchesWhenDeletePoliciesDisabled(t *testing.T) {
+	const (
+		builds    = 40
+		readDelay = 20 * time.Millisecond
+	)
+
+	store, counter, ctrl := newCountingStore(t, 0)
+	log := zlog.NewTestLogger()
+	metrics := monitoring.NewNopMetricServer()
+
+	_ = seedMultiarchBuilds(t, ctrl, builds)
+
+	deleteUntagged := false
+	collector := gc.NewGarbageCollect(store, mocks.MetaDBMock{}, gc.Options{
+		Delay: 0,
+		ImageRetention: config.ImageRetention{
+			Delay: 0,
+			Policies: []config.RetentionPolicy{
+				{
+					Repositories:    []string{testRepo},
+					DeleteReferrers: false,
+					DeleteUntagged:  &deleteUntagged,
+				},
+			},
+		},
+	}, nil, log, metrics)
+
+	tagsBefore := sortedTags(t, store)
+
+	counter.readDelay = readDelay
+	counter.reads.Store(0)
+	counter.maxInFlight.Store(0)
+
+	if err := collector.CleanRepo(context.Background(), testRepo); err != nil {
+		t.Fatalf("gc: %v", err)
+	}
+
+	maxInFlight := counter.maxInFlight.Load()
+	t.Logf("builds=%d reads=%d maxInFlight=%d", builds, counter.reads.Load(), maxInFlight)
+
+	if maxInFlight < 2 {
+		t.Fatalf("expected concurrent Prefetch reads with delete policies off, maxInFlight=%d", maxInFlight)
+	}
+
+	if !slices.Equal(tagsBefore, sortedTags(t, store)) {
 		t.Fatal("gc changed the tag set")
 	}
 }

@@ -1844,6 +1844,50 @@ func TestGetReferencedBlobsPropagatesCorruptIndexError(t *testing.T) {
 	})
 }
 
+func TestGetReferencedBlobsPropagatesCorruptManifestUnderNestedIndex(t *testing.T) {
+	log := log.NewTestLogger()
+
+	Convey("A corrupt manifest under a valid nested index is propagated from recursion", t, func(c C) {
+		corruptManifestDigest := godigest.FromString("corrupt-nested-manifest")
+
+		nestedIndex := ispec.Index{
+			SchemaVersion: 2,
+			MediaType:     ispec.MediaTypeImageIndex,
+			Manifests: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageManifest, Digest: corruptManifestDigest},
+			},
+		}
+		nestedIndexBuf, err := json.Marshal(nestedIndex)
+		So(err, ShouldBeNil)
+		nestedIndexDigest := godigest.FromBytes(nestedIndexBuf)
+
+		rootIndex := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageIndex, Digest: nestedIndexDigest},
+			},
+		}
+		rootIndexBuf, err := json.Marshal(rootIndex)
+		So(err, ShouldBeNil)
+
+		imgStore := &mocks.MockedImageStore{
+			GetIndexContentFn: func(repo string) ([]byte, error) {
+				return rootIndexBuf, nil
+			},
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				if digest == nestedIndexDigest {
+					return nestedIndexBuf, nil
+				}
+
+				return []byte("not valid json"), nil
+			},
+		}
+
+		referenced, err := common.GetReferencedBlobs(imgStore, "zot-test", log)
+		So(err, ShouldNotBeNil)
+		So(referenced, ShouldBeNil)
+	})
+}
+
 func TestGetReferencedBlobsSkipsMissingIndex(t *testing.T) {
 	log := log.NewTestLogger()
 
