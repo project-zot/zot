@@ -117,14 +117,14 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 				log.Error().Err(err).Str("digest", manifest.Config.Digest.String()).
 					Msg("failed to stat blob due to missing config blob")
 
-				return zerr.ErrBadManifest
+				return missingBlobError(manifest.Config.Digest)
 			}
 
 			if !ok {
 				log.Error().Str("digest", manifest.Config.Digest.String()).
 					Msg("failed to stat blob due to missing config blob")
 
-				return zerr.ErrBadManifest
+				return missingBlobError(manifest.Config.Digest)
 			}
 
 			// validate layers - a lightweight check if the blob is present
@@ -148,14 +148,14 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 					log.Error().Err(err).Str("digest", layer.Digest.String()).
 						Msg("failed to validate manifest due to missing layer blob")
 
-					return zerr.ErrBadManifest
+					return missingBlobError(layer.Digest)
 				}
 
 				if !ok {
 					log.Error().Str("digest", layer.Digest.String()).
 						Msg("failed to validate manifest due to missing layer blob")
 
-					return zerr.ErrBadManifest
+					return missingBlobError(layer.Digest)
 				}
 			}
 		}
@@ -202,14 +202,14 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 				log.Error().Err(err).Str("digest", desc.Digest.String()).
 					Msg("failed to stat non-OCI descriptor due to missing blob")
 
-				return zerr.ErrBadManifest
+				return missingBlobError(desc.Digest)
 			}
 
 			if !ok {
 				log.Error().Str("digest", desc.Digest.String()).
 					Msg("failed to stat non-OCI descriptor due to missing blob")
 
-				return zerr.ErrBadManifest
+				return missingBlobError(desc.Digest)
 			}
 		}
 	case dockerList.MediaTypeManifestList:
@@ -224,6 +224,11 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 	}
 
 	return nil
+}
+
+func missingBlobError(digest godigest.Digest) error {
+	return zerr.NewError(fmt.Errorf("%w: %w", zerr.ErrBadManifest, zerr.ErrBlobNotFound)).
+		AddDetail("digest", digest.String())
 }
 
 // GetAndValidateRequestDigest returns the canonical digest or the digest provided by the reference if any.
