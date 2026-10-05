@@ -894,6 +894,10 @@ func (rh *RouteHandler) writePutImageManifestError(
 		details["reference"] = reference
 		e := apiErr.NewError(apiErr.MANIFEST_UNKNOWN).AddDetail(details)
 		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
+	} else if errors.Is(err, zerr.ErrManifestCacheLookup) {
+		rh.c.Log.Error().Err(err).Str("repository", name).Str("reference", reference).
+			Msg("failed to look up manifest cache before manifest write")
+		response.WriteHeader(http.StatusInternalServerError)
 	} else if errors.Is(err, zerr.ErrBlobNotFound) {
 		e := apiErr.NewError(apiErr.MANIFEST_BLOB_UNKNOWN).AddDetail(details)
 		zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
@@ -901,10 +905,6 @@ func (rh *RouteHandler) writePutImageManifestError(
 		details["reference"] = reference
 		e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(details)
 		zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
-	} else if errors.Is(err, zerr.ErrManifestCacheLookup) {
-		rh.c.Log.Error().Err(err).Str("repository", name).Str("reference", reference).
-			Msg("failed to look up manifest cache before manifest write")
-		response.WriteHeader(http.StatusInternalServerError)
 	} else if errors.Is(err, zerr.ErrImageLintAnnotations) {
 		details["reference"] = reference
 		e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(details)
