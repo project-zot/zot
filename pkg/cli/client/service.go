@@ -602,12 +602,10 @@ func (service *searchService) getImage(ctx context.Context, config SearchConfig,
 	}
 
 	for _, tag := range tagList.Tags {
-		hasTagPrefix := strings.HasPrefix(tag, "sha256-")
-		hasTagSuffix := strings.HasSuffix(tag, "."+common.CosignSignatureTagSuffix)
-
 		// check if it's an image or a signature
-		// we don't want to show signatures in cli responses
-		if hasTagPrefix && hasTagSuffix {
+		// we don't want to show signatures in cli responses; malformed lookalikes such as
+		// "sha256-abc.sig" are ordinary tags on the server, so they are listed too
+		if common.IsCosignSignature(tag) {
 			continue
 		}
 
