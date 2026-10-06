@@ -102,6 +102,7 @@ func TestAuthzOnlyAdminsMiddleware(t *testing.T) {
 			userAc := reqCtx.NewUserAccessControl()
 			userAc.SetUsername("admin")
 			userAc.SetIsAdmin(true)
+			userAc.SetAdminPolicyEvaluator(func() (bool, string) { return true, "" })
 			userAc.SaveOnRequest(request)
 			response := httptest.NewRecorder()
 
@@ -109,6 +110,25 @@ func TestAuthzOnlyAdminsMiddleware(t *testing.T) {
 
 			So(response.Code, ShouldEqual, http.StatusOK)
 			So(nextCalled, ShouldBeTrue)
+		})
+
+		Convey("denies an admin principal whose adminPolicy conditions deny the request", func() {
+			conf := config.New()
+			conf.HTTP.Realm = "zot"
+			conf.HTTP.Auth.HTPasswd.Path = "/path/to/htpasswd"
+			request := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin", nil)
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("admin")
+			userAc.SetIsAdmin(true)
+			userAc.SetAdminPolicyEvaluator(func() (bool, string) { return false, "admin requires TLS" })
+			userAc.SaveOnRequest(request)
+			response := httptest.NewRecorder()
+
+			common.AuthzOnlyAdminsMiddleware(conf)(next).ServeHTTP(response, request)
+
+			So(response.Code, ShouldEqual, http.StatusForbidden)
+			So(nextCalled, ShouldBeFalse)
+			So(response.Body.String(), ShouldContainSubstring, "admin requires TLS")
 		})
 
 		Convey("denies a missing principal with mTLS authentication", func() {

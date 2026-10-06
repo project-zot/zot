@@ -26,20 +26,40 @@ func TestHasScopedPermissionsEmptyInstalledMaps(t *testing.T) {
 }
 
 // IsAdmin treats a missing authz decision as admin (no accessControl configured); IsAdminByPolicy
-// must not, since it gates admin-only routes.
+// must not, since it gates admin-only routes. It also requires the adminPolicy evaluator to agree.
 func TestIsAdminByPolicy(t *testing.T) {
 	t.Parallel()
 
+	isAdminByPolicy := func(uac *reqCtx.UserAccessControl) bool {
+		ok, _ := uac.IsAdminByPolicy()
+
+		return ok
+	}
+
 	uac := reqCtx.NewUserAccessControl()
 	require.True(t, uac.IsAdmin())
-	require.False(t, uac.IsAdminByPolicy())
+	require.False(t, isAdminByPolicy(uac))
 
 	uac.SetGlobPatterns(constants.ReadPermission, map[string]bool{"**": true})
-	require.False(t, uac.IsAdminByPolicy())
+	require.False(t, isAdminByPolicy(uac))
 
 	uac.SetIsAdmin(false)
-	require.False(t, uac.IsAdminByPolicy())
+	require.False(t, isAdminByPolicy(uac))
 
+	// admin membership alone, without an adminPolicy evaluator, is not enough
 	uac.SetIsAdmin(true)
-	require.True(t, uac.IsAdminByPolicy())
+	require.False(t, isAdminByPolicy(uac))
+
+	uac.SetAdminPolicyEvaluator(func() (bool, string) { return true, "" })
+	require.True(t, isAdminByPolicy(uac))
+
+	uac.SetAdminPolicyEvaluator(func() (bool, string) { return false, "admin requires TLS" })
+	ok, reason := uac.IsAdminByPolicy()
+	require.False(t, ok)
+	require.Equal(t, "admin requires TLS", reason)
+
+	// a non-admin is denied without consulting the evaluator
+	uac.SetIsAdmin(false)
+	uac.SetAdminPolicyEvaluator(func() (bool, string) { return true, "" })
+	require.False(t, isAdminByPolicy(uac))
 }

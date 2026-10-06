@@ -102,6 +102,40 @@ func TestProfilingAuthz(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 		})
 
+		Convey("Test with an admin whose adminPolicy conditions deny the request", func() {
+			conf.HTTP.Auth = &config.AuthConfig{
+				HTPasswd: config.AuthHTPasswd{
+					Path: htpasswdPath,
+				},
+			}
+			conf.HTTP.AccessControl = &config.AccessControlConfig{
+				AdminPolicy: config.Policy{
+					Users:   []string{adminUsername},
+					Actions: []string{},
+					Conditions: []config.Condition{
+						{
+							Expression: "req.tls.enabled",
+							Message:    "admin access requires TLS",
+						},
+					},
+				},
+			}
+
+			ctlr := api.NewController(conf)
+			cm := test.NewControllerManager(ctlr)
+			baseURL := cm.StartAndWait()
+
+			defer cm.StopServer()
+
+			// the server is plain HTTP, so the TLS condition denies even a listed admin
+			resp, err := resty.R().SetBasicAuth(adminUsername, adminPassword).
+				Get(baseURL + constants.RoutePrefix + debugConstants.ProfilingEndpoint + "trace")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+			So(string(resp.Body()), ShouldContainSubstring, "admin access requires TLS")
+		})
+
 		Convey("Test with authenticated users and no anonymous policy", func() {
 			conf.HTTP.Auth = &config.AuthConfig{
 				HTPasswd: config.AuthHTPasswd{

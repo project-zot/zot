@@ -70,12 +70,14 @@ This is stricter than repository access. Without `accessControl`, every authenti
 
 | Credential | Can reach admin-only routes |
 | --- | --- |
-| htpasswd, LDAP, API key (including Zot-wrapped API-key Bearer credentials), OpenID session, mTLS | Yes, when the user or one of its groups is in `adminPolicy` |
-| Workload OIDC Bearer tokens (`bearer.oidc`) | Yes, when the mapped user or one of its groups is in `adminPolicy` |
+| htpasswd, LDAP, API key (including Zot-wrapped API-key Bearer credentials), OpenID session, mTLS | Yes, when the user or one of its groups is in `adminPolicy` and its conditions hold |
+| Workload OIDC Bearer tokens (`bearer.oidc`) | Yes, when the mapped user or one of its groups is in `adminPolicy` and its conditions hold |
 | Traditional Bearer JWTs (static certificate or AWS Secrets Manager verification keys) | No |
 | Anonymous requests | No |
 
 Traditional Bearer JWTs are authorized by the repository scopes they carry, not by Zot users and groups, so they never match `adminPolicy`. A deployment that only uses traditional Bearer authentication cannot use these routes; add an identity-based method such as `bearer.oidc`, API keys, or mTLS for administrators.
+
+`adminPolicy.conditions` are evaluated for each request to these routes, as they are for admin repository access. These routes have no repository or reference, so `req.repository`, `req.reference`, and `req.action` are empty; conditions such as `req.tls.enabled` or client IP checks apply as written. A condition that denies the request returns `403 Forbidden` with its `message`.
 
 Rejected requests without an identity receive `401 Unauthorized` with the challenge described under "Challenge Advertisement"; authenticated non-admin users receive `403 Forbidden`.
 

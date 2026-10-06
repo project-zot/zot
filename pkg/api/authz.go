@@ -264,6 +264,22 @@ func (ac *AccessController) attachPermissionEvaluator(httpReq *http.Request, use
 	})
 }
 
+// attachAdminPolicyEvaluator wires the adminPolicy check, including its conditions, into userAc for
+// admin-only routes. Those routes have no repository or reference, so conditions see them empty.
+func (ac *AccessController) attachAdminPolicyEvaluator(httpReq *http.Request, userAc *reqCtx.UserAccessControl) {
+	userAc.SetAdminPolicyEvaluator(func() (bool, string) {
+		if !ac.isAdmin(userAc.GetUsername(), userAc.GetGroups()) {
+			return false, ""
+		}
+
+		return ac.policyConditionsMet(ac.Config.GetAdminPolicy(), &evalRequest{
+			httpReq: httpReq,
+			userAc:  userAc,
+			isAdmin: true,
+		})
+	})
+}
+
 // getAuthnMiddlewareContext builds ac context(allowed to read repos and if user is admin) and returns it.
 func (ac *AccessController) getAuthnMiddlewareContext(authnType string, request *http.Request) context.Context {
 	amwCtx := reqCtx.AuthnMiddlewareContext{
@@ -656,6 +672,7 @@ func BaseAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			aCtlr.updateUserAccessControl(request, userAc)
 			aCtlr.attachPermissionEvaluator(request, userAc)
+			aCtlr.attachAdminPolicyEvaluator(request, userAc)
 			userAc.SaveOnRequest(request)
 
 			next.ServeHTTP(response, request) //nolint:contextcheck
