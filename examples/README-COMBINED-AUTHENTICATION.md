@@ -62,6 +62,21 @@ When Zot rejects a request or asks an OCI client to retry with credentials, the 
 | Browser UI session clients | No `WWW-Authenticate` challenge; UI authentication and authorization responses suppress it. |
 | Local token-exchange rejection by Zot's token endpoint | `WWW-Authenticate: Basic ...` for the token endpoint realm |
 
+## Admin-Only Routes
+
+Some routes are restricted to principals matched by `accessControl.adminPolicy`: the pprof debug endpoints and the image trust certificate/key upload endpoints (cosign and notation). When any authentication method is enabled, these routes fail closed for requests that do not carry an admin identity.
+
+| Credential | Can reach admin-only routes |
+| --- | --- |
+| htpasswd, LDAP, API key (including Zot-wrapped API-key Bearer credentials), OpenID session, mTLS | Yes, when the user or one of its groups is in `adminPolicy` |
+| Workload OIDC Bearer tokens (`bearer.oidc`) | Yes, when the mapped user or one of its groups is in `adminPolicy` |
+| Traditional Bearer JWTs (static certificate or AWS Secrets Manager verification keys) | No |
+| Anonymous requests | No |
+
+Traditional Bearer JWTs are authorized by the repository scopes they carry, not by Zot users and groups, so they never match `adminPolicy`. A deployment that only uses traditional Bearer authentication cannot use these routes; add an identity-based method such as `bearer.oidc`, API keys, or mTLS for administrators.
+
+Rejected requests without an identity receive `401 Unauthorized` with the challenge described under "Challenge Advertisement"; authenticated non-admin users receive `403 Forbidden`.
+
 ## Token Exchange Behavior
 
 OCI clients usually start by requesting `/v2/`. If Zot advertises a Bearer challenge, the client then calls the advertised token endpoint and retries the registry request with the returned Bearer credential.
