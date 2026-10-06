@@ -1226,10 +1226,9 @@ func isBlobOlderThan(imgStore types.ImageStore, repo string,
 }
 
 // getSubjectFromCosignTag parses a legacy cosign tag ("sha256-<digest>.sig"/".sbom") back into
-// the subject digest it refers to. Splitting on the first "-" assumes <digest> itself has no
-// hyphen, true for cosign-generated tags (hex-encoded digests) but not guaranteed for a
-// registry tag in general (any client can push an arbitrarily-named tag matching the
-// IsCosignTag regex). Callers must call Validate() on the result before trusting it.
+// the subject digest it refers to. IsCosignTag only matches "sha256-<64 hex>" tags, so for its
+// callers the result is always well formed; Validate() is kept as a cheap guard in case this is
+// ever called on a tag that did not pass IsCosignTag.
 func getSubjectFromCosignTag(tag string) godigest.Digest {
 	alg, encoded, _ := strings.Cut(tag, "-")
 	encoded = strings.TrimSuffix(encoded, "."+cosignSignatureTagSuffix)

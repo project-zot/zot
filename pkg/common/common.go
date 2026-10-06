@@ -43,9 +43,11 @@ const (
 	CosignSignatureTagSuffix = "sig"
 )
 
-var cosignSignatureTagRule = regexp.MustCompile(`sha256\-.+\.sig`)
+// Legacy cosign tags are exactly "sha256-<64 lowercase hex>.sig" / ".sbom". Matching the full shape here
+// lets callers slice the subject digest out of the tag without re-validating it.
+var cosignSignatureTagRule = regexp.MustCompile(`^sha256-[a-f0-9]{64}\.sig$`)
 
-var cosignSBOMTagRule = regexp.MustCompile(`sha256\-.+\.sbom`)
+var cosignSBOMTagRule = regexp.MustCompile(`^sha256-[a-f0-9]{64}\.sbom$`)
 
 func IsCosignSignature(tag string) bool {
 	return cosignSignatureTagRule.MatchString(tag)

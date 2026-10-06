@@ -32,10 +32,7 @@ import (
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
-const (
-	manifestWithEmptyLayersErrMsg = "layers/minItems: minimum 1 items required, but found 0 items"
-	cosignSignatureTagSuffix      = "sig"
-)
+const manifestWithEmptyLayersErrMsg = "layers/minItems: minimum 1 items required, but found 0 items"
 
 func GetTagsByIndex(index ispec.Index) []string {
 	tags := make([]string, 0)
@@ -822,8 +819,8 @@ func IsSignature(descriptor ispec.Descriptor) bool {
 
 	switch descriptor.MediaType {
 	case ispec.MediaTypeImageManifest:
-		// is cosgin signature
-		if strings.HasPrefix(tag, "sha256-") && strings.HasSuffix(tag, cosignSignatureTagSuffix) {
+		// is legacy cosign signature tag; malformed lookalikes such as "sha256-abc.sig" are linted as images
+		if zcommon.IsCosignSignature(tag) {
 			return true
 		}
 

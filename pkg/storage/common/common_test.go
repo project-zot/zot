@@ -1116,6 +1116,22 @@ func TestIsSignature(t *testing.T) {
 		})
 		So(isSingature, ShouldBeFalse)
 	})
+
+	Convey("Legacy cosign signature tags must be well formed", t, func(c C) {
+		isTagSignature := func(tag string) bool {
+			return common.IsSignature(ispec.Descriptor{
+				MediaType:   ispec.MediaTypeImageManifest,
+				Annotations: map[string]string{ispec.AnnotationRefName: tag},
+			})
+		}
+
+		So(isTagSignature("sha256-"+strings.Repeat("a", 64)+".sig"), ShouldBeTrue)
+
+		// lookalikes are ordinary images and must still be linted
+		So(isTagSignature("sha256-abc.sig"), ShouldBeFalse)
+		So(isTagSignature("sha256-imagesig"), ShouldBeFalse)
+		So(isTagSignature("sha256-"+strings.Repeat("a", 64)+"sig"), ShouldBeFalse)
+	})
 }
 
 func TestDedupeGeneratorErrors(t *testing.T) {

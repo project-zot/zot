@@ -66,6 +66,52 @@ var DeleteReferrers = config.ImageRetention{ //nolint: gochecknoglobals
 	},
 }
 
+func TestCheckIsImageSignatureCosignTag(t *testing.T) {
+	manifestBlob, err := json.Marshal(ispec.Manifest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	Convey("CheckIsImageSignature validates legacy cosign tags", t, func() {
+		Convey("a short cosign-looking tag is not a signature", func() {
+			isSignature, signatureType, digest, err := storage.CheckIsImageSignature(
+				"repo", manifestBlob, "sha256-abc.sig")
+			So(err, ShouldBeNil)
+			So(isSignature, ShouldBeFalse)
+			So(signatureType, ShouldBeEmpty)
+			So(digest, ShouldBeEmpty)
+		})
+
+		Convey("an overlong cosign-looking tag is not a signature", func() {
+			tag := "sha256-" + strings.Repeat("a", 65) + ".sig"
+			isSignature, signatureType, digest, err := storage.CheckIsImageSignature("repo", manifestBlob, tag)
+			So(err, ShouldBeNil)
+			So(isSignature, ShouldBeFalse)
+			So(signatureType, ShouldBeEmpty)
+			So(digest, ShouldBeEmpty)
+		})
+
+		Convey("a non-hex digest of the expected length is not a signature", func() {
+			tag := "sha256-" + strings.Repeat("z", 64) + ".sig"
+			isSignature, signatureType, digest, err := storage.CheckIsImageSignature("repo", manifestBlob, tag)
+			So(err, ShouldBeNil)
+			So(isSignature, ShouldBeFalse)
+			So(signatureType, ShouldBeEmpty)
+			So(digest, ShouldBeEmpty)
+		})
+
+		Convey("a valid cosign tag identifies its signed manifest", func() {
+			signedDigest := godigest.FromString("signed-image")
+			tag := "sha256-" + signedDigest.Encoded() + ".sig"
+			isSignature, signatureType, digest, err := storage.CheckIsImageSignature("repo", manifestBlob, tag)
+			So(err, ShouldBeNil)
+			So(isSignature, ShouldBeTrue)
+			So(signatureType, ShouldEqual, storage.CosignType)
+			So(digest, ShouldEqual, signedDigest)
+		})
+	})
+}
+
 func cleanupStorage(store storageTypes.Driver, name string) {
 	if store != nil {
 		_ = store.Delete(name)

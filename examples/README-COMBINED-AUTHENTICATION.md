@@ -62,6 +62,25 @@ When Zot rejects a request or asks an OCI client to retry with credentials, the 
 | Browser UI session clients | No `WWW-Authenticate` challenge; UI authentication and authorization responses suppress it. |
 | Local token-exchange rejection by Zot's token endpoint | `WWW-Authenticate: Basic ...` for the token endpoint realm |
 
+## Admin-Only Routes
+
+Some routes are restricted to principals matched by `accessControl.adminPolicy`: the pprof debug endpoints and the image trust certificate/key upload endpoints (cosign and notation). When any authentication method is enabled, these routes fail closed for requests that do not carry an admin identity.
+
+This is stricter than repository access. Without `accessControl`, every authenticated user has full repository access, but nobody can reach the admin-only routes; configure `accessControl.adminPolicy` to name the administrators. When no authentication method is enabled, these routes are open, like the rest of the registry.
+
+| Credential | Can reach admin-only routes |
+| --- | --- |
+| htpasswd, LDAP, API key (including Zot-wrapped API-key Bearer credentials), OpenID session, mTLS | Yes, when the user or one of its groups is in `adminPolicy` and its conditions hold |
+| Workload OIDC Bearer tokens (`bearer.oidc`) | Yes, when the mapped user or one of its groups is in `adminPolicy` and its conditions hold |
+| Traditional Bearer JWTs (static certificate or AWS Secrets Manager verification keys) | No |
+| Anonymous requests | No |
+
+Traditional Bearer JWTs are authorized by the repository scopes they carry, not by Zot users and groups, so they never match `adminPolicy`. A deployment that only uses traditional Bearer authentication cannot use these routes; add an identity-based method such as `bearer.oidc`, API keys, or mTLS for administrators.
+
+`adminPolicy.conditions` are evaluated for each request to these routes, as they are for admin repository access. These routes have no repository or reference, so `req.repository`, `req.reference`, and `req.action` are empty; conditions such as `req.tls.enabled` or client IP checks apply as written. A condition that denies the request returns `403 Forbidden` with its `message`.
+
+Rejected requests without an identity receive `401 Unauthorized` with the challenge described under "Challenge Advertisement"; authenticated non-admin users receive `403 Forbidden`.
+
 ## Token Exchange Behavior
 
 OCI clients usually start by requesting `/v2/`. If Zot advertises a Bearer challenge, the client then calls the advertised token endpoint and retries the registry request with the returned Bearer credential.

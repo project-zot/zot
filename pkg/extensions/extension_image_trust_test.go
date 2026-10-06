@@ -143,6 +143,41 @@ func TestSignaturesAllowedMethodsHeader(t *testing.T) {
 		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "POST,OPTIONS")
 		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
 	})
+
+	Convey("Test http options response with auth configured", t, func() {
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString("admin", "admin"))
+
+		conf := config.New()
+		conf.HTTP.Port = "0"
+		conf.HTTP.Auth.HTPasswd.Path = htpasswdPath
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
+			AdminPolicy: config.Policy{
+				Users:   []string{"admin"},
+				Actions: []string{},
+			},
+		}
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Trust = &extconf.ImageTrustConfig{}
+		conf.Extensions.Trust.Enable = &defaultVal
+		conf.Extensions.Trust.Cosign = defaultVal
+		conf.Extensions.Trust.Notation = defaultVal
+
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+		ctrlManager := test.NewControllerManager(ctlr)
+
+		baseURL := ctrlManager.StartAndWait()
+		defer ctrlManager.StopServer()
+
+		// CORS preflight carries no credentials and is answered before the admin-only check
+		for _, endpoint := range []string{constants.FullCosign, constants.FullNotation} {
+			resp, _ := resty.R().Options(baseURL + endpoint)
+			So(resp, ShouldNotBeNil)
+			So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "POST,OPTIONS")
+			So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
+		}
+	})
 }
 
 func TestSignatureUploadAndVerificationLocal(t *testing.T) {
