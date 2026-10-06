@@ -125,6 +125,24 @@ func TestAuthzOnlyAdminsMiddleware(t *testing.T) {
 			So(response.Header().Get("WWW-Authenticate"), ShouldBeEmpty)
 		})
 
+		Convey("denies an authenticated principal without an authz decision", func() {
+			// No accessControl configured: BaseAuthzHandler never runs, so IsAdmin defaults to true.
+			// Admin-only routes must still require an explicit adminPolicy match.
+			conf := config.New()
+			conf.HTTP.TLS = &config.TLSConfig{Cert: "server.cert", Key: "server.key", CACert: "ca.crt"}
+			request := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin", nil)
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("client-cert-user")
+			userAc.SaveOnRequest(request)
+			So(userAc.IsAdmin(), ShouldBeTrue)
+			response := httptest.NewRecorder()
+
+			common.AuthzOnlyAdminsMiddleware(conf)(next).ServeHTTP(response, request)
+
+			So(response.Code, ShouldEqual, http.StatusForbidden)
+			So(nextCalled, ShouldBeFalse)
+		})
+
 		Convey("denies a malformed access-control context", func() {
 			conf := config.New()
 			conf.HTTP.TLS = &config.TLSConfig{Cert: "server.cert", Key: "server.key", CACert: "ca.crt"}

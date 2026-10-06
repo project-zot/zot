@@ -69,6 +69,39 @@ func TestProfilingAuthz(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		})
 
+		Convey("Test with authenticated users and no access control", func() {
+			conf.HTTP.Auth = &config.AuthConfig{
+				HTPasswd: config.AuthHTPasswd{
+					Path: htpasswdPath,
+				},
+			}
+
+			ctlr := api.NewController(conf)
+			cm := test.NewControllerManager(ctlr)
+			baseURL := cm.StartAndWait()
+
+			defer cm.StopServer()
+
+			// without accessControl every authenticated user has full repository access
+			resp, err := resty.R().SetBasicAuth(username, password).Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// unauthenticated clients should not have access to the profiling endpoint
+			resp, err = resty.R().Get(baseURL + constants.RoutePrefix + debugConstants.ProfilingEndpoint + "trace")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+			// but the profiling endpoint requires an explicit adminPolicy match, which needs accessControl
+			resp, err = resty.R().SetBasicAuth(username, password).
+				Get(baseURL + constants.RoutePrefix + debugConstants.ProfilingEndpoint + "trace")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+		})
+
 		Convey("Test with authenticated users and no anonymous policy", func() {
 			conf.HTTP.Auth = &config.AuthConfig{
 				HTPasswd: config.AuthHTPasswd{

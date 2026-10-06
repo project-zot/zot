@@ -110,8 +110,9 @@ func AuthzOnlyAdminsMiddleware(conf *config.Config) mux.MiddlewareFunc {
 				return
 			}
 
-			// Missing authentication context and non-admin principals both fail closed.
-			if userAc.IsAnonymous() || !userAc.IsAdmin() {
+			// Missing authentication context, non-admin principals, and principals without an authz
+			// decision (no accessControl configured, where IsAdmin would default to true) all fail closed.
+			if userAc.IsAnonymous() || !userAc.IsAdminByPolicy() {
 				authzFailWithChallenge(response, request, userAc.GetUsername(), challenge, failDelay, "")
 
 				return

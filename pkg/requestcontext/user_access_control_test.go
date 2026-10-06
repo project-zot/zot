@@ -24,3 +24,22 @@ func TestHasScopedPermissionsEmptyInstalledMaps(t *testing.T) {
 
 	require.False(t, uac.HasScopedPermissions())
 }
+
+// IsAdmin treats a missing authz decision as admin (no accessControl configured); IsAdminByPolicy
+// must not, since it gates admin-only routes.
+func TestIsAdminByPolicy(t *testing.T) {
+	t.Parallel()
+
+	uac := reqCtx.NewUserAccessControl()
+	require.True(t, uac.IsAdmin())
+	require.False(t, uac.IsAdminByPolicy())
+
+	uac.SetGlobPatterns(constants.ReadPermission, map[string]bool{"**": true})
+	require.False(t, uac.IsAdminByPolicy())
+
+	uac.SetIsAdmin(false)
+	require.False(t, uac.IsAdminByPolicy())
+
+	uac.SetIsAdmin(true)
+	require.True(t, uac.IsAdminByPolicy())
+}

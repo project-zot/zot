@@ -136,6 +136,13 @@ func (uac *UserAccessControl) IsAdmin() bool {
 	return uac.authzInfo.isAdmin
 }
 
+// IsAdminByPolicy reports whether authz explicitly granted admin status, i.e. the user matched
+// accessControl.adminPolicy. Unlike IsAdmin, a missing authz decision (no accessControl configured,
+// so BaseAuthzHandler never ran) is not treated as admin. Use it to gate admin-only routes.
+func (uac *UserAccessControl) IsAdminByPolicy() bool {
+	return uac.authzInfo != nil && uac.authzInfo.isAdmin
+}
+
 func (uac *UserAccessControl) SetIsAdmin(isAdmin bool) {
 	if uac.authzInfo == nil {
 		uac.authzInfo = &UserAuthzInfo{}

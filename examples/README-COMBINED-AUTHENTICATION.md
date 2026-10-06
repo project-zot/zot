@@ -66,6 +66,8 @@ When Zot rejects a request or asks an OCI client to retry with credentials, the 
 
 Some routes are restricted to principals matched by `accessControl.adminPolicy`: the pprof debug endpoints and the image trust certificate/key upload endpoints (cosign and notation). When any authentication method is enabled, these routes fail closed for requests that do not carry an admin identity.
 
+This is stricter than repository access. Without `accessControl`, every authenticated user has full repository access, but nobody can reach the admin-only routes; configure `accessControl.adminPolicy` to name the administrators. When no authentication method is enabled, these routes are open, like the rest of the registry.
+
 | Credential | Can reach admin-only routes |
 | --- | --- |
 | htpasswd, LDAP, API key (including Zot-wrapped API-key Bearer credentials), OpenID session, mTLS | Yes, when the user or one of its groups is in `adminPolicy` |
