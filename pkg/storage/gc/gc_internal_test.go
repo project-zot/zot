@@ -308,12 +308,54 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 				GetIndexContentFn: func(repo string) ([]byte, error) {
 					return returnedIndexJSONBuf, nil
 				},
+				ListBlobUploadsFn: func(repo string) ([]string, error) {
+					return nil, nil
+				},
 			}
 
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
 
 			err = gc.cleanRepo(ctx, repoName)
 			So(err, ShouldNotBeNil)
+		})
+
+		Convey("cleanRepo deletes stale uploads before PutIndexContent fails", func() {
+			returnedIndexJSON := ispec.Index{}
+
+			returnedIndexJSONBuf, err := json.Marshal(returnedIndexJSON)
+			So(err, ShouldBeNil)
+
+			uploadUUID := "stale-upload"
+			deletedUpload := false
+
+			imgStore := mocks.MockedImageStore{
+				GetIndexContentFn: func(repo string) ([]byte, error) {
+					return returnedIndexJSONBuf, nil
+				},
+				ListBlobUploadsFn: func(repo string) ([]string, error) {
+					return []string{uploadUUID}, nil
+				},
+				StatBlobUploadFn: func(repo, uuid string) (bool, int64, time.Time, error) {
+					return true, 1024, time.Now().Add(-2 * time.Hour), nil
+				},
+				DeleteBlobUploadFn: func(repo, uuid string) error {
+					So(uuid, ShouldEqual, uploadUUID)
+					deletedUpload = true
+
+					return nil
+				},
+				PutIndexContentFn: func(repo string, index ispec.Index) error {
+					So(deletedUpload, ShouldBeTrue)
+
+					return zerr.ErrStoragePermanent
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			err = gc.cleanRepo(ctx, repoName)
+			So(errors.Is(err, zerr.ErrStoragePermanent), ShouldBeTrue)
+			So(deletedUpload, ShouldBeTrue)
 		})
 
 		Convey("Error on gc.cleanBlobs() in gc.cleanRepo()", func() {

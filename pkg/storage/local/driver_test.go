@@ -781,15 +781,26 @@ var (
 	errMockCloseFailure = errors.New("close failed")
 	errMockSyncOnClose  = errors.New("sync failed on close")
 	errMockSyncOnCommit = errors.New("sync failed on commit")
+	errMockWriteFailure = errors.New("write failed")
 )
 
 // mockFile implements FileInterface for testing sync behavior.
 type mockFile struct {
 	*os.File
 
-	syncCalled bool
-	syncError  error
-	closeError error
+	syncCalled  bool
+	closeCalled bool
+	syncError   error
+	closeError  error
+	writeError  error
+}
+
+func (mf *mockFile) Write(p []byte) (int, error) {
+	if mf.writeError != nil {
+		return 0, mf.writeError
+	}
+
+	return mf.File.Write(p)
 }
 
 func (mf *mockFile) Sync() error {
@@ -802,7 +813,10 @@ func (mf *mockFile) Sync() error {
 }
 
 func (mf *mockFile) Close() error {
+	mf.closeCalled = true
 	if mf.closeError != nil {
+		_ = mf.File.Close()
+
 		return mf.closeError
 	}
 
@@ -927,6 +941,49 @@ func TestFileWriterClose(t *testing.T) {
 			err = writer.Close()
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldEqual, "close failed")
+			So(mockFile.closeCalled, ShouldBeTrue)
+		})
+
+		Convey("Test Close() still closes fd after Flush error", func() {
+			realFile, err := os.Create(filepath.Join(dir, "flush-fail"))
+			So(err, ShouldBeNil)
+
+			mockFile := &mockFile{
+				File:       realFile,
+				writeError: errMockWriteFailure,
+			}
+			writer := local.NewFileWriter(mockFile, 0, false)
+
+			_, err = writer.Write([]byte("test data"))
+			So(err, ShouldBeNil)
+
+			err = writer.Close()
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldEqual, "write failed")
+			So(mockFile.closeCalled, ShouldBeTrue)
+
+			err = writer.Close()
+			So(errors.Is(err, zerr.ErrFileAlreadyClosed), ShouldBeTrue)
+		})
+
+		Convey("Test Close() still closes fd after Sync error", func() {
+			realFile, err := os.Create(filepath.Join(dir, "sync-fail-close"))
+			So(err, ShouldBeNil)
+
+			mockFile := &mockFile{
+				File:      realFile,
+				syncError: errMockSyncOnClose,
+			}
+			writer := local.NewFileWriter(mockFile, 0, true)
+
+			_, err = writer.Write([]byte("test data"))
+			So(err, ShouldBeNil)
+
+			err = writer.Close()
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldEqual, "sync failed on close")
+			So(mockFile.syncCalled, ShouldBeTrue)
+			So(mockFile.closeCalled, ShouldBeTrue)
 		})
 	})
 }

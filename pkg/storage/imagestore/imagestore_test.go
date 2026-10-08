@@ -1604,3 +1604,111 @@ func TestBlobUploadWriterMissing(t *testing.T) {
 		})
 	})
 }
+
+func TestPutBlobChunkCloseError(t *testing.T) {
+	Convey("PutBlobChunk propagates Close Permanent after a successful Write", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+		flushPermanent := errclass.MarkPermanent(errors.New("flush edquot")) //nolint:err113 // test
+
+		store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+			gcs.New(&mocks.StorageDriverMock{
+				WriterFn: func(_ context.Context, _ string, _ bool) (driver.FileWriter, error) {
+					return &mocks.FileWriterMock{
+						WriteFn: func(p []byte) (int, error) {
+							return len(p), nil
+						},
+						CloseFn: func() error {
+							return flushPermanent
+						},
+					}, nil
+				},
+			}), nil, nil, nil)
+
+		// FileWriterMock.Size is 12; from must match existing upload size.
+		n, err := store.PutBlobChunk(context.Background(), "repo", "upload-uuid", 12, 20,
+			bytes.NewReader([]byte("chunk-data")))
+		So(n, ShouldEqual, int64(12+len("chunk-data")))
+		So(errors.Is(err, zerr.ErrStoragePermanent), ShouldBeTrue)
+	})
+
+	Convey("PutBlobChunkStreamed prefers Copy Permanent over Close", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+		writePermanent := errclass.MarkPermanent(errors.New("write edquot")) //nolint:err113 // test
+		closed := false
+
+		store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+			gcs.New(&mocks.StorageDriverMock{
+				WriterFn: func(_ context.Context, _ string, _ bool) (driver.FileWriter, error) {
+					return &mocks.FileWriterMock{
+						WriteFn: func(_ []byte) (int, error) {
+							return 0, writePermanent
+						},
+						CloseFn: func() error {
+							closed = true
+
+							return nil
+						},
+					}, nil
+				},
+			}), nil, nil, nil)
+
+		_, err := store.PutBlobChunkStreamed(context.Background(), "repo", "upload-uuid",
+			bytes.NewReader([]byte("streamed")))
+		So(closed, ShouldBeTrue)
+		So(errors.Is(err, zerr.ErrStoragePermanent), ShouldBeTrue)
+	})
+}
+
+func TestFullBlobUploadStagingCleanup(t *testing.T) {
+	Convey("FullBlobUpload removes staging UUID on digest mismatch", t, func() {
+		rootDir := t.TempDir()
+		store := imagestore.NewImageStore(rootDir, "", false, false, zlog.NewTestLogger(),
+			monitoring.NewNopMetricServer(), nil, local.New(true), nil, nil, nil)
+		ctx := context.Background()
+
+		content := []byte("monolithic-blob")
+		wrongDigest := godigest.FromString("wrong-digest")
+		_, _, err := store.FullBlobUpload(ctx, "repo", bytes.NewReader(content), wrongDigest)
+		So(errors.Is(err, zerr.ErrBadBlobDigest), ShouldBeTrue)
+
+		uploadsDir := path.Join(rootDir, "repo", ".uploads")
+		entries, err := os.ReadDir(uploadsDir)
+		So(err, ShouldBeNil)
+		So(entries, ShouldBeEmpty)
+	})
+
+	Convey("FullBlobUpload deletes staging when Write returns Permanent", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+		writePermanent := errclass.MarkPermanent(errors.New("disk full")) //nolint:err113 // test
+
+		var deleted []string
+
+		store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+			gcs.New(&mocks.StorageDriverMock{
+				WriterFn: func(_ context.Context, _ string, _ bool) (driver.FileWriter, error) {
+					return &mocks.FileWriterMock{
+						WriteFn: func(_ []byte) (int, error) {
+							return 0, writePermanent
+						},
+					}, nil
+				},
+				DeleteFn: func(_ context.Context, deletePath string) error {
+					deleted = append(deleted, deletePath)
+
+					return nil
+				},
+			}), nil, nil, nil)
+
+		_, _, err := store.FullBlobUpload(context.Background(), "repo",
+			bytes.NewReader([]byte("x")), godigest.FromString("x"))
+		So(errors.Is(err, zerr.ErrStoragePermanent), ShouldBeTrue)
+		So(len(deleted), ShouldEqual, 1)
+		So(strings.Contains(deleted[0], ".uploads"), ShouldBeTrue)
+	})
+}

@@ -3475,11 +3475,12 @@ func TestGCRemoveRepoAfterAllBlobsGCed(t *testing.T) {
 		err = imgStore.DeleteImageManifest(ctx, repoName, "v1", true)
 		So(err, ShouldBeNil)
 
-		// start (and leave open) a blob upload, so ListBlobUploads is non-empty when CleanupRepo runs
-		_, err = imgStore.NewBlobUpload(ctx, repoName)
-		So(err, ShouldBeNil)
-
+		// Age orphan blobs so they can be reaped. Start the upload after the sleep so
+		// it stays younger than the GC delay and is not deleted before RemoveIdleRepository.
 		time.Sleep(1 * time.Second)
+
+		uploadID, err := imgStore.NewBlobUpload(ctx, repoName)
+		So(err, ShouldBeNil)
 
 		gcInstance := gc.NewGarbageCollect(imgStore, nil, gc.Options{
 			Delay: 1 * time.Second,
@@ -3494,6 +3495,53 @@ func TestGCRemoveRepoAfterAllBlobsGCed(t *testing.T) {
 		repos, err := imgStore.GetRepositories()
 		So(err, ShouldBeNil)
 		So(repos, ShouldContain, repoName)
+
+		uploads, err := imgStore.ListBlobUploads(repoName)
+		So(err, ShouldBeNil)
+		So(uploads, ShouldContain, uploadID)
+	})
+
+	Convey("stale blob upload is reaped then the empty repo is removed", t, func() {
+		log := zlog.NewTestLogger()
+		audit := zlog.NewAuditLogger("debug", "/dev/null")
+		metrics := monitoring.NewNopMetricServer()
+
+		rootDir := t.TempDir()
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+
+		storeController := storage.StoreController{}
+		storeController.DefaultStore = imgStore
+
+		ctx := context.Background()
+		repoName := "gc-remove-repo-stale-upload"
+
+		img := CreateRandomImage()
+		err := WriteImageToFileSystem(img, repoName, "v1", storeController)
+		So(err, ShouldBeNil)
+
+		err = imgStore.DeleteImageManifest(ctx, repoName, "v1", true)
+		So(err, ShouldBeNil)
+
+		_, err = imgStore.NewBlobUpload(ctx, repoName)
+		So(err, ShouldBeNil)
+
+		// Blobs and the upload are both older than the delay: deleteBlobUploads
+		// frees the upload first, then RemoveIdleRepository removes the empty repo.
+		time.Sleep(1 * time.Second)
+
+		gcInstance := gc.NewGarbageCollect(imgStore, nil, gc.Options{
+			Delay: 1 * time.Second,
+			ImageRetention: config.ImageRetention{
+				Delay: 1 * time.Second,
+			},
+		}, audit, log, metrics)
+
+		err = gcInstance.CleanRepo(ctx, repoName)
+		So(err, ShouldBeNil)
+
+		repos, err := imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		So(repos, ShouldNotContain, repoName)
 	})
 
 	Convey("repo kept when a .sync staging session is in progress after all blobs were GCed", t, func() {
