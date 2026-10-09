@@ -3318,16 +3318,20 @@ func TestGetRepoListPagination(t *testing.T) {
 					return
 				}
 
-				w.Header().Set("Link", page.link)
+				if page.link != "" {
+					w.Header().Set("Link", page.link)
+				}
 				w.Header().Set("Content-Type", "application/json")
 				_ = json.NewEncoder(w).Encode(map[string][]string{"repositories": page.repos})
 			}))
 			defer server.Close()
 
-			client, hosts, err := newClient(syncconf.RegistryConfig{URLs: []string{server.URL}}, nil, log.NewTestLogger())
+			logger := log.NewTestLogger()
+
+			client, hosts, err := newClient(syncconf.RegistryConfig{URLs: []string{server.URL}}, nil, logger)
 			So(err, ShouldBeNil)
 
-			return NewRemoteRegistry(client, hosts, log.NewTestLogger()).GetRepositories(context.Background())
+			return NewRemoteRegistry(client, hosts, logger).GetRepositories(context.Background())
 		}
 
 		Convey("opaque Link cursors (ECR)", func() {
@@ -3343,11 +3347,12 @@ func TestGetRepoListPagination(t *testing.T) {
 		Convey("RFC 8288 rel forms", func() {
 			repos, err := listAll(map[string]page{
 				"":   {[]string{"a"}, `</v2/_catalog?last=t1>; title="x" ; REL = "alternate next"`},
-				"t1": {[]string{"b"}, `</v2/_catalog?last=t0>; rel=prev ,  </v2/_catalog?last=t2>;rel=Next`},
-				"t2": {[]string{"c"}, ""},
+				"t1": {[]string{"b"}, `</v2/_catalog?last=t0>; type=x ,  </v2/_catalog?last=t2>;rel=Next`},
+				"t2": {[]string{"c"}, `</v2/_catalog?last=t3>; title="1 < 2, x; rel=prev \" >"; rel="next"`},
+				"t3": {[]string{"d"}, `</v2/_catalog?last=t0>; title="a, rel=next"; rel=prev; rel=next`},
 			})
 			So(err, ShouldBeNil)
-			So(repos, ShouldResemble, []string{"a", "b", "c"})
+			So(repos, ShouldResemble, []string{"a", "b", "c", "d"})
 		})
 
 		Convey("repository-name Link cursors (distribution)", func() {
@@ -3369,7 +3374,7 @@ func TestGetRepoListPagination(t *testing.T) {
 			So(repos, ShouldResemble, []string{"a", "b", "c"})
 		})
 
-		Convey("cursor cycles and next links without last terminate", func() {
+		Convey("cursor cycles terminate", func() {
 			repos, err := listAll(map[string]page{
 				"":   {[]string{"a"}, `</v2/_catalog?last=t1>; rel="next"`},
 				"t1": {[]string{"b"}, `</v2/_catalog?last=t2>; rel="next"`},
@@ -3377,21 +3382,17 @@ func TestGetRepoListPagination(t *testing.T) {
 			})
 			So(err, ShouldBeNil)
 			So(repos, ShouldResemble, []string{"a", "b", "c"})
-
-			repos, err = listAll(map[string]page{
-				"": {[]string{"a"}, `</v2/_catalog?next_page=x>; rel="next"`},
-			})
-			So(err, ShouldBeNil)
-			So(repos, ShouldResemble, []string{"a"})
 		})
 
-		Convey("unparsable next links fall back to repository names", func() {
-			repos, err := listAll(map[string]page{
-				"":  {[]string{"a"}, `<%zz>; rel="next"`},
-				"a": {[]string{}, ""},
-			})
-			So(err, ShouldBeNil)
-			So(repos, ShouldResemble, []string{"a"})
+		Convey("next links without a usable last stop with the repositories listed so far", func() {
+			for _, link := range []string{`</v2/_catalog?next_page=x>; rel="next"`, `</v2/_catalog?last=%zz>; rel="next"`} {
+				repos, err := listAll(map[string]page{
+					"":   {[]string{"a"}, `</v2/_catalog?last=t1>; rel="next"`},
+					"t1": {[]string{"b"}, link},
+				})
+				So(err, ShouldBeNil)
+				So(repos, ShouldResemble, []string{"a", "b"})
+			}
 		})
 	})
 }

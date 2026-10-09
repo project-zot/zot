@@ -115,7 +115,7 @@ func (registry *RemoteRegistry) getRepoList(ctx context.Context, hostname string
 			return append(repositories, repoList...), nil
 		case len(repoList) == 0, last == repoList[len(repoList)-1]:
 			return repositories, nil
-		default: // no Link headers: use the last repository name as the cursor
+		default: // no rel="next" link seen: use the last repository name as the cursor
 			next = repoList[len(repoList)-1]
 		}
 
@@ -140,28 +140,28 @@ func (registry *RemoteRegistry) getRepoList(ctx context.Context, hostname string
 // nextCatalogLast returns the `last` query parameter of the rel="next" Link, if any.
 func nextCatalogLast(headers http.Header) (string, bool) {
 	for _, value := range headers.Values("Link") {
-		// '<' cannot appear inside a URI, so each split starts a new link-value.
-		for link := range strings.SplitSeq(value, "<") {
-			target, params, ok := strings.Cut(link, ">")
-			if !ok || !hasNextRel(params) {
+		for _, link := range splitLinkHeader(value, ',') {
+			params := splitLinkHeader(link, ';')
+			target := strings.TrimSpace(params[0])
+
+			if len(target) < 2 || target[0] != '<' || target[len(target)-1] != '>' || !hasNextRel(params[1:]) {
 				continue
 			}
 
-			nextURL, err := url.Parse(target)
-			if err != nil {
-				return "", false
-			}
+			// An unusable query yields "", which the caller reports as a missing cursor.
+			_, rawQuery, _ := strings.Cut(target[1:len(target)-1], "?")
+			query, _ := url.ParseQuery(rawQuery)
 
-			return nextURL.Query().Get("last"), true
+			return query.Get("last"), true
 		}
 	}
 
 	return "", false
 }
 
-// hasNextRel reports whether RFC 8288 link-params include "next" in their rel relation types.
-func hasNextRel(params string) bool {
-	for param := range strings.SplitSeq(strings.TrimRight(params, ", \t"), ";") {
+// hasNextRel reports whether the first rel link-param (RFC 8288 section 3.3) includes "next".
+func hasNextRel(params []string) bool {
+	for _, param := range params {
 		name, value, _ := strings.Cut(param, "=")
 		if !strings.EqualFold(strings.TrimSpace(name), "rel") {
 			continue
@@ -172,9 +172,41 @@ func hasNextRel(params string) bool {
 				return true
 			}
 		}
+
+		return false
 	}
 
 	return false
+}
+
+// splitLinkHeader splits a Link header on sep, ignoring separators inside <URI> and quoted strings.
+func splitLinkHeader(value string, sep byte) []string {
+	var (
+		parts                  []string
+		start                  int
+		inURI, quoted, escaped bool
+	)
+
+	for i := range len(value) {
+		switch char := value[i]; {
+		case escaped:
+			escaped = false
+		case quoted:
+			escaped = char == '\\'
+			quoted = char != '"'
+		case inURI:
+			inURI = char != '>'
+		case char == '"':
+			quoted = true
+		case char == '<':
+			inURI = true
+		case char == sep:
+			parts = append(parts, value[start:i])
+			start = i + 1
+		}
+	}
+
+	return append(parts, value[start:])
 }
 
 func (registry *RemoteRegistry) GetImageReference(repo, reference string) (ref.Ref, error) {
