@@ -6,6 +6,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/url"
+	"regexp"
+	"strings"
 
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/regclient/regclient"
@@ -79,6 +83,8 @@ func (registry *RemoteRegistry) getRepoList(ctx context.Context, hostname string
 	}
 
 	last := ""
+	seen := map[string]struct{}{}
+	linkPagination := false
 
 	for {
 		repoOpts := []scheme.RepoOpts{}
@@ -97,16 +103,59 @@ func (registry *RemoteRegistry) getRepoList(ctx context.Context, hostname string
 			return repositories, err
 		}
 
-		if len(repoList) == 0 || last == repoList[len(repoList)-1] {
-			break
+		headers, err := clientRepoList.RawHeaders()
+		if err != nil {
+			return repositories, err
+		}
+
+		// Follow the Link header cursor: registries such as AWS ECR use an opaque
+		// token there and reject a repository name as `last`.
+		next, hasLink := nextCatalogLast(headers)
+
+		switch {
+		case hasLink:
+			linkPagination = true
+		case linkPagination: // no rel="next": last page
+			return append(repositories, repoList...), nil
+		case len(repoList) == 0, last == repoList[len(repoList)-1]:
+			return repositories, nil
+		default: // no Link headers: use the last repository name as the cursor
+			next = repoList[len(repoList)-1]
 		}
 
 		repositories = append(repositories, repoList...)
 
-		last = repoList[len(repoList)-1]
+		if next == "" {
+			registry.log.Warn().Str("remote", hostname).
+				Msg("catalog next link has no last parameter, repository list may be incomplete")
+
+			return repositories, nil
+		}
+
+		if _, ok := seen[next]; ok {
+			return repositories, nil
+		}
+
+		seen[next] = struct{}{}
+		last = next
+	}
+}
+
+var nextLinkRegexp = regexp.MustCompile(`(?i)<([^>]*)>[^,]*;\s*rel="?next"?\s*(?:[;,]|$)`)
+
+// nextCatalogLast returns the `last` query parameter of the rel="next" Link, if any.
+func nextCatalogLast(headers http.Header) (string, bool) {
+	match := nextLinkRegexp.FindStringSubmatch(strings.Join(headers.Values("Link"), ","))
+	if match == nil {
+		return "", false
 	}
 
-	return repositories, nil
+	nextURL, err := url.Parse(match[1])
+	if err != nil {
+		return "", false
+	}
+
+	return nextURL.Query().Get("last"), true
 }
 
 func (registry *RemoteRegistry) GetImageReference(repo, reference string) (ref.Ref, error) {
