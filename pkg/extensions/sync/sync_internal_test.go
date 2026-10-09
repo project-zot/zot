@@ -3296,3 +3296,103 @@ func TestOnDemandShouldCheckUpstreamManifest(t *testing.T) {
 		So(onDemand.ShouldCheckUpstreamManifest("repo", "latest"), ShouldBeTrue)
 	})
 }
+
+func TestGetRepoListPagination(t *testing.T) {
+	Convey("getRepoList follows catalog pagination", t, func() {
+		type page struct {
+			repos []string
+			link  string
+		}
+
+		// Pages are keyed by the `last` value they accept; anything else gets ECR's 405.
+		listAll := func(pages map[string]page) ([]string, error) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/v2/_catalog" {
+					return // ping
+				}
+
+				page, ok := pages[r.URL.Query().Get("last")]
+				if !ok {
+					w.WriteHeader(http.StatusMethodNotAllowed)
+
+					return
+				}
+
+				if page.link != "" {
+					w.Header().Set("Link", page.link)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string][]string{"repositories": page.repos})
+			}))
+			defer server.Close()
+
+			logger := log.NewTestLogger()
+
+			client, hosts, err := newClient(syncconf.RegistryConfig{URLs: []string{server.URL}}, nil, logger)
+			So(err, ShouldBeNil)
+
+			return NewRemoteRegistry(client, hosts, logger).GetRepositories(context.Background())
+		}
+
+		Convey("opaque Link cursors (ECR)", func() {
+			repos, err := listAll(map[string]page{
+				"":      {[]string{"a", "b"}, `<https://ecr.example/v2/_catalog?n=2&last=tok%3D%3D>; rel=next`},
+				"tok==": {[]string{}, `</v2/_catalog?last=x>; rel="prev", </v2/_catalog?last=tok2>; rel="next"`},
+				"tok2":  {[]string{"c"}, ""},
+			})
+			So(err, ShouldBeNil)
+			So(repos, ShouldResemble, []string{"a", "b", "c"})
+		})
+
+		Convey("RFC 8288 rel forms", func() {
+			repos, err := listAll(map[string]page{
+				"":   {[]string{"a"}, `</v2/_catalog?last=t1>; title="x" ; REL = "alternate next"`},
+				"t1": {[]string{"b"}, `</v2/_catalog?last=t0>; type=x ,  </v2/_catalog?last=t2>;rel=Next`},
+				"t2": {[]string{"c"}, `</v2/_catalog?last=t3>; title="1 < 2, x; rel=prev \" >"; rel="next"`},
+				"t3": {[]string{"d"}, `</v2/_catalog?last=t0>; title="a, rel=next"; rel=prev; rel=next`},
+			})
+			So(err, ShouldBeNil)
+			So(repos, ShouldResemble, []string{"a", "b", "c", "d"})
+		})
+
+		Convey("repository-name Link cursors (distribution)", func() {
+			repos, err := listAll(map[string]page{
+				"":  {[]string{"a", "b"}, `</v2/_catalog?last=b&n=2>; rel="next"`},
+				"b": {[]string{"c"}, `</v2/_catalog?last=a>; rel="prev"`},
+			})
+			So(err, ShouldBeNil)
+			So(repos, ShouldResemble, []string{"a", "b", "c"})
+		})
+
+		Convey("no Link headers", func() {
+			repos, err := listAll(map[string]page{
+				"":  {[]string{"a", "b"}, ""},
+				"b": {[]string{"c"}, ""},
+				"c": {[]string{}, ""},
+			})
+			So(err, ShouldBeNil)
+			So(repos, ShouldResemble, []string{"a", "b", "c"})
+		})
+
+		Convey("cursor cycles terminate", func() {
+			repos, err := listAll(map[string]page{
+				"":   {[]string{"a"}, `</v2/_catalog?last=t1>; rel="next"`},
+				"t1": {[]string{"b"}, `</v2/_catalog?last=t2>; rel="next"`},
+				"t2": {[]string{"c"}, `</v2/_catalog?last=t1>; rel="next"`},
+			})
+			So(err, ShouldBeNil)
+			So(repos, ShouldResemble, []string{"a", "b", "c"})
+		})
+
+		Convey("next links without a usable last stop with the repositories listed so far", func() {
+			for _, link := range []string{`</v2/_catalog?next_page=x>; rel="next"`, `</v2/_catalog?last=%zz>; rel="next"`} {
+				repos, err := listAll(map[string]page{
+					"":   {[]string{"a"}, `</v2/_catalog?last=t1>; rel="next"`},
+					"t1": {[]string{"b"}, link},
+				})
+				So(err, ShouldBeNil)
+				So(repos, ShouldResemble, []string{"a", "b"})
+			}
+		})
+	})
+}
