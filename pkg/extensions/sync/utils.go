@@ -78,7 +78,7 @@ func getCertificates(certDir string) (string, string, string, error) {
 
 	var clientKey string
 
-	var regCert string
+	var regCerts []string
 
 	files, err := os.ReadDir(certDir)
 	if err != nil {
@@ -124,9 +124,9 @@ func getCertificates(certDir string) (string, string, string, error) {
 				return "", "", "", err
 			}
 
-			regCert = string(buf)
+			regCerts = append(regCerts, string(buf))
 		}
 	}
 
-	return clientCert, clientKey, regCert, nil
+	return clientCert, clientKey, strings.Join(regCerts, "\n"), nil
 }
