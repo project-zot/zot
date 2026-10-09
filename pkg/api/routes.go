@@ -2167,9 +2167,8 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 
 	if err != nil { //nolint: dupl
 		details := zerr.GetDetails(err)
-		if writeStorageClassError(response, err) {
-			rh.c.Log.Error().Err(err).Msg("failed to patch blob upload due to storage failure")
-
+		if rh.writeBlobUploadStorageError(response, err, imgStore, name, sessionID,
+			"failed to patch blob upload due to storage failure") {
 			return
 		}
 
@@ -2316,9 +2315,8 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 		_, err = imgStore.PutBlobChunk(ctx, name, sessionID, from, to, request.Body)
 		if err != nil { //nolint:dupl
 			details := zerr.GetDetails(err)
-			if writeStorageClassError(response, err) {
-				rh.c.Log.Error().Err(err).Msg("failed to update blob upload due to storage failure")
-
+			if rh.writeBlobUploadStorageError(response, err, imgStore, name, sessionID,
+				"failed to update blob upload due to storage failure") {
 				return
 			}
 
@@ -2353,9 +2351,8 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 	// blob chunks already transferred, just finish
 	if err := imgStore.FinishBlobUpload(name, sessionID, request.Body, digest); err != nil {
 		details := zerr.GetDetails(err)
-		if writeStorageClassError(response, err) {
-			rh.c.Log.Error().Err(err).Msg("failed to finish blob upload due to storage failure")
-
+		if rh.writeBlobUploadStorageError(response, err, imgStore, name, sessionID,
+			"failed to finish blob upload due to storage failure") {
 			return
 		}
 
@@ -2993,6 +2990,31 @@ func writeStorageClassError(response http.ResponseWriter, err error) bool {
 	}
 
 	return false
+}
+
+// writeBlobUploadStorageError maps Transient→503 and Permanent→500 for in-progress
+// blob upload write failures. Permanent also deletes the upload session so a capacity
+// failure (EDQUOT/ENOSPC) cannot leave a leftover that fills the volume. Transient
+// keeps the session so a client can retry the same upload.
+func (rh *RouteHandler) writeBlobUploadStorageError(
+	response http.ResponseWriter, err error, imgStore storageTypes.ImageStore, repo, sessionID, logMsg string,
+) bool {
+	if !writeStorageClassError(response, err) {
+		return false
+	}
+
+	if errors.Is(err, zerr.ErrStoragePermanent) {
+		rh.c.Log.Error().Err(err).Msg(logMsg + ", removing .uploads/ files")
+
+		if delErr := imgStore.DeleteBlobUpload(repo, sessionID); delErr != nil {
+			rh.c.Log.Error().Err(delErr).Str("blobUpload", sessionID).Str("repository", repo).
+				Msg("failed to remove blobUpload in repo")
+		}
+	} else {
+		rh.c.Log.Error().Err(err).Msg(logMsg)
+	}
+
+	return true
 }
 
 // isManifestNotFound reports whether err means the repo or manifest is absent locally

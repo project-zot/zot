@@ -1293,6 +1293,18 @@ func (is *ImageStore) openBlobUploadWriter(ctx context.Context, repo, uuid strin
 	return file, nil
 }
 
+// closeAfterWrite closes w after a write. Prefer writeErr when set so a capacity
+// error from Copy is not replaced by a successful Close; otherwise return Close's
+// error (e.g. buffered Flush ENOSPC/EDQUOT after Write succeeded).
+func closeAfterWrite(w driver.FileWriter, writeErr error) error {
+	closeErr := w.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+
+	return closeErr
+}
+
 // PutBlobChunkStreamed appends another chunk of data to the specified blob. It returns
 // the number of actual bytes to the blob.
 func (is *ImageStore) PutBlobChunkStreamed(ctx context.Context, repo, uuid string, body io.Reader) (int64, error) {
@@ -1302,17 +1314,11 @@ func (is *ImageStore) PutBlobChunkStreamed(ctx context.Context, repo, uuid strin
 		return -1, err
 	}
 
-	var n int64 //nolint: varnamelen
-
-	defer func() {
-		err = file.Close()
-	}()
-
 	fsize := file.Size()
 
-	n, err = io.Copy(file, body)
+	n, copyErr := io.Copy(file, body)
 
-	return n + fsize, err
+	return n + fsize, closeAfterWrite(file, copyErr)
 }
 
 // PutBlobChunk writes another chunk of data to the specified blob. It returns
@@ -1326,20 +1332,19 @@ func (is *ImageStore) PutBlobChunk(ctx context.Context, repo, uuid string, from,
 		return -1, err
 	}
 
-	defer file.Close()
-
 	fsize := file.Size()
 
 	if from != fsize {
+		_ = file.Close()
 		is.log.Error().Int64("expected", from).Int64("actual", file.Size()).
 			Msg("invalid range start for blob upload")
 
 		return -1, zerr.ErrBadUploadRange
 	}
 
-	n, err := io.Copy(file, body)
+	n, copyErr := io.Copy(file, body)
 
-	return n + fsize, err
+	return n + fsize, closeAfterWrite(file, copyErr)
 }
 
 // BlobUploadInfo returns the current blob size in bytes.
@@ -1382,6 +1387,10 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 
 	if err := fileWriter.Commit(context.Background()); err != nil {
 		is.log.Error().Err(err).Msg("failed to commit file")
+
+		if closeErr := fileWriter.Close(); closeErr != nil {
+			is.log.Error().Err(closeErr).Msg("failed to close file after commit error")
+		}
 
 		return err
 	}
@@ -1487,6 +1496,19 @@ func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.R
 		return "", -1, err
 	}
 
+	// Remove the staging object on any failure before a successful Move. Monolithic
+	// uploads have no session the HTTP layer can DeleteBlobUpload.
+	cleanupStaging := true
+	defer func() {
+		if !cleanupStaging {
+			return
+		}
+
+		if delErr := is.storeDriver.Delete(src); delErr != nil && !errclass.IsStorageObjectMissing(delErr) {
+			is.log.Error().Err(delErr).Str("blob", src).Msg("failed to remove staging blob upload")
+		}
+	}()
+
 	mw := io.MultiWriter(blobFile, digester)
 
 	nbytes, err := io.Copy(mw, body)
@@ -1557,6 +1579,8 @@ func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.R
 			return "", -1, err
 		}
 	}
+
+	cleanupStaging = false
 
 	return uuid, nbytes, nil
 }

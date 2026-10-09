@@ -646,10 +646,16 @@ func TestHTTPStorageClassStatusMapping(t *testing.T) {
 		})
 
 		Convey("UpdateBlobUpload FinishBlobUpload", func() {
-			run := func(finishErr error) (int, string) {
+			run := func(finishErr error) (int, string, bool) {
+				deleted := false
 				handler := newHandler(mocks.MockedImageStore{
 					FinishBlobUploadFn: func(_ string, _ string, _ io.Reader, _ godigest.Digest) error {
 						return finishErr
+					},
+					DeleteBlobUploadFn: func(_, _ string) error {
+						deleted = true
+
+						return nil
 					},
 				})
 				req := httptest.NewRequestWithContext(context.Background(), http.MethodPut,
@@ -665,16 +671,18 @@ func TestHTTPStorageClassStatusMapping(t *testing.T) {
 				defer resp.Body.Close()
 				body, _ := io.ReadAll(resp.Body)
 
-				return resp.StatusCode, string(body)
+				return resp.StatusCode, string(body), deleted
 			}
 
-			status, body := run(zerr.ErrStorageTransient)
+			status, body, deleted := run(zerr.ErrStorageTransient)
 			So(status, ShouldEqual, http.StatusServiceUnavailable)
 			So(body, ShouldNotContainSubstring, "BLOB_UPLOAD_UNKNOWN")
+			So(deleted, ShouldBeFalse)
 
-			status, body = run(zerr.ErrStoragePermanent)
+			status, body, deleted = run(zerr.ErrStoragePermanent)
 			So(status, ShouldEqual, http.StatusInternalServerError)
 			So(body, ShouldNotContainSubstring, "BLOB_UPLOAD_UNKNOWN")
+			So(deleted, ShouldBeTrue)
 		})
 
 		Convey("CheckManifest / GetManifest local Transient without MANIFEST_INVALID", func() {
@@ -852,10 +860,16 @@ func TestHTTPStorageClassStatusMapping(t *testing.T) {
 		})
 
 		Convey("PatchBlobUpload streamed Transient/Permanent", func() {
-			run := func(patchErr error) int {
+			run := func(patchErr error) (int, bool) {
+				deleted := false
 				handler := newHandler(mocks.MockedImageStore{
 					PutBlobChunkStreamedFn: func(_ context.Context, _, _ string, _ io.Reader) (int64, error) {
 						return -1, patchErr
+					},
+					DeleteBlobUploadFn: func(_, _ string) error {
+						deleted = true
+
+						return nil
 					},
 				})
 				req := httptest.NewRequestWithContext(context.Background(), http.MethodPatch,
@@ -867,18 +881,29 @@ func TestHTTPStorageClassStatusMapping(t *testing.T) {
 				resp := rec.Result()
 				defer resp.Body.Close()
 
-				return resp.StatusCode
+				return resp.StatusCode, deleted
 			}
 
-			So(run(zerr.ErrStorageTransient), ShouldEqual, http.StatusServiceUnavailable)
-			So(run(zerr.ErrStoragePermanent), ShouldEqual, http.StatusInternalServerError)
+			status, deleted := run(zerr.ErrStorageTransient)
+			So(status, ShouldEqual, http.StatusServiceUnavailable)
+			So(deleted, ShouldBeFalse)
+
+			status, deleted = run(zerr.ErrStoragePermanent)
+			So(status, ShouldEqual, http.StatusInternalServerError)
+			So(deleted, ShouldBeTrue)
 		})
 
 		Convey("UpdateBlobUpload PutBlobChunk Transient/Permanent", func() {
-			run := func(chunkErr error) int {
+			run := func(chunkErr error) (int, bool) {
+				deleted := false
 				handler := newHandler(mocks.MockedImageStore{
 					PutBlobChunkFn: func(_ context.Context, _, _ string, _, _ int64, _ io.Reader) (int64, error) {
 						return -1, chunkErr
+					},
+					DeleteBlobUploadFn: func(_, _ string) error {
+						deleted = true
+
+						return nil
 					},
 				})
 				req := httptest.NewRequestWithContext(context.Background(), http.MethodPut,
@@ -891,11 +916,16 @@ func TestHTTPStorageClassStatusMapping(t *testing.T) {
 				resp := rec.Result()
 				defer resp.Body.Close()
 
-				return resp.StatusCode
+				return resp.StatusCode, deleted
 			}
 
-			So(run(zerr.ErrStorageTransient), ShouldEqual, http.StatusServiceUnavailable)
-			So(run(zerr.ErrStoragePermanent), ShouldEqual, http.StatusInternalServerError)
+			status, deleted := run(zerr.ErrStorageTransient)
+			So(status, ShouldEqual, http.StatusServiceUnavailable)
+			So(deleted, ShouldBeFalse)
+
+			status, deleted = run(zerr.ErrStoragePermanent)
+			So(status, ShouldEqual, http.StatusInternalServerError)
+			So(deleted, ShouldBeTrue)
 		})
 
 		Convey("DeleteBlobUpload Transient/Permanent", func() {

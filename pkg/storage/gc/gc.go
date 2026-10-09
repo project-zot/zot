@@ -191,15 +191,6 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 		return err
 	}
 
-	// update repos's index.json in storage
-	if !gc.opts.ImageRetention.DryRun {
-		/* this will update the index.json with manifest references removed above;
-		orphan manifest/config/layer blobs are deleted by gc.deleteUnreferencedBlobs() */
-		if err := gc.imgStore.PutIndexContent(repo, index); err != nil {
-			return err
-		}
-	}
-
 	manifestsDeleted := manifestsBefore - len(index.Manifests)
 
 	var blobsDeleted, uploadsDeleted int
@@ -208,6 +199,21 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 	// must not delete anything either - it re-reads the on-disk index.json, so running it here would
 	// delete blobs for real (e.g. orphaned by manifest-pass edits) while their index entries survive.
 	if !gc.opts.ImageRetention.DryRun {
+		// Free stale uploads before rewriting index.json. PutIndexContent stages under
+		// .uploads/ and needs free space; a leftover failed upload can be what filled the
+		// volume. Uploads younger than the GC delay are kept, so RemoveIdleRepository below
+		// still sees in-progress sessions.
+		uploadsDeleted, err = gc.deleteBlobUploads(repo, gc.opts.Delay)
+		if err != nil {
+			return err
+		}
+
+		// Update index.json with manifest references removed above; orphan
+		// manifest/config/layer blobs are deleted by gc.deleteUnreferencedBlobs().
+		if err := gc.imgStore.PutIndexContent(repo, index); err != nil {
+			return err
+		}
+
 		// delete unreferenced blobs from storage
 		blobsDeleted, err = gc.deleteUnreferencedBlobs(repo, gc.opts.Delay, gc.log)
 		if err != nil {
@@ -218,9 +224,8 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 		This is the repository-level analogue of the manifest pruning above; the meta record
 		is dropped right after, keeping metadb on the same lifetime as storage, so a reaped
 		repo also stops counting towards storage.maxRepos. Blobs younger than the GC delay
-		keep their grace period. This runs before deleteBlobUploads so that an upload not yet
-		old enough to be reaped still counts as in progress and keeps the repo, as
-		CleanupRepo's guard used to. */
+		keep their grace period. Young uploads (not reaped above) still count as in progress
+		and keep the repo, as CleanupRepo's guard used to. */
 		if gc.opts.StagingRoot != "" && HasInProgressSessions(gc.opts.StagingRoot, repo, gc.log) {
 			gc.log.Info().Str("module", "gc").Str("repository", repo).
 				Msg("skipping repository removal: blocked by removal guard")
@@ -241,12 +246,6 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 						Msg("removed repo layout but failed to delete its meta record")
 				}
 			}
-		}
-
-		// delete old blob uploads from storage
-		uploadsDeleted, err = gc.deleteBlobUploads(repo, gc.opts.Delay)
-		if err != nil {
-			return err
 		}
 	}
 

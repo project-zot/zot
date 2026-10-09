@@ -615,23 +615,26 @@ func (fw *fileWriter) Close() error {
 		return zerr.ErrFileAlreadyClosed
 	}
 
-	if err := fw.bw.Flush(); err != nil {
-		return fw.classify(err)
-	}
+	var closeErr error
 
-	if fw.commit {
+	if err := fw.bw.Flush(); err != nil {
+		closeErr = fw.classify(err)
+	} else if fw.commit {
 		if err := inject.Error(fw.file.Sync()); err != nil {
-			return fw.classify(err)
+			closeErr = fw.classify(err)
 		}
 	}
 
-	if err := inject.Error(fw.file.Close()); err != nil {
-		return fw.classify(err)
+	// Always release the underlying descriptor. A Flush/Sync capacity error
+	// (ENOSPC/EDQUOT) must not leave the fd open, or an unlinked path can keep
+	// its blocks until process exit.
+	if err := inject.Error(fw.file.Close()); err != nil && closeErr == nil {
+		closeErr = fw.classify(err)
 	}
 
 	fw.closed = true
 
-	return nil
+	return closeErr
 }
 
 func (fw *fileWriter) Cancel(_ context.Context) error {
