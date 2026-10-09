@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 
 	godigest "github.com/opencontainers/go-digest"
@@ -138,21 +137,44 @@ func (registry *RemoteRegistry) getRepoList(ctx context.Context, hostname string
 	}
 }
 
-var nextLinkRegexp = regexp.MustCompile(`(?i)<([^>]*)>[^,]*;\s*rel="?next"?\s*(?:[;,]|$)`)
-
 // nextCatalogLast returns the `last` query parameter of the rel="next" Link, if any.
 func nextCatalogLast(headers http.Header) (string, bool) {
-	match := nextLinkRegexp.FindStringSubmatch(strings.Join(headers.Values("Link"), ","))
-	if match == nil {
-		return "", false
+	for _, value := range headers.Values("Link") {
+		// '<' cannot appear inside a URI, so each split starts a new link-value.
+		for link := range strings.SplitSeq(value, "<") {
+			target, params, ok := strings.Cut(link, ">")
+			if !ok || !hasNextRel(params) {
+				continue
+			}
+
+			nextURL, err := url.Parse(target)
+			if err != nil {
+				return "", false
+			}
+
+			return nextURL.Query().Get("last"), true
+		}
 	}
 
-	nextURL, err := url.Parse(match[1])
-	if err != nil {
-		return "", false
+	return "", false
+}
+
+// hasNextRel reports whether RFC 8288 link-params include "next" in their rel relation types.
+func hasNextRel(params string) bool {
+	for param := range strings.SplitSeq(strings.TrimRight(params, ", \t"), ";") {
+		name, value, _ := strings.Cut(param, "=")
+		if !strings.EqualFold(strings.TrimSpace(name), "rel") {
+			continue
+		}
+
+		for rel := range strings.FieldsSeq(strings.Trim(strings.TrimSpace(value), `"`)) {
+			if strings.EqualFold(rel, "next") {
+				return true
+			}
+		}
 	}
 
-	return nextURL.Query().Get("last"), true
+	return false
 }
 
 func (registry *RemoteRegistry) GetImageReference(repo, reference string) (ref.Ref, error) {

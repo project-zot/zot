@@ -3340,6 +3340,16 @@ func TestGetRepoListPagination(t *testing.T) {
 			So(repos, ShouldResemble, []string{"a", "b", "c"})
 		})
 
+		Convey("RFC 8288 rel forms", func() {
+			repos, err := listAll(map[string]page{
+				"":   {[]string{"a"}, `</v2/_catalog?last=t1>; title="x" ; REL = "alternate next"`},
+				"t1": {[]string{"b"}, `</v2/_catalog?last=t0>; rel=prev ,  </v2/_catalog?last=t2>;rel=Next`},
+				"t2": {[]string{"c"}, ""},
+			})
+			So(err, ShouldBeNil)
+			So(repos, ShouldResemble, []string{"a", "b", "c"})
+		})
+
 		Convey("repository-name Link cursors (distribution)", func() {
 			repos, err := listAll(map[string]page{
 				"":  {[]string{"a", "b"}, `</v2/_catalog?last=b&n=2>; rel="next"`},
