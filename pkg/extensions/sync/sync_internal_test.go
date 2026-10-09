@@ -3374,5 +3374,14 @@ func TestGetRepoListPagination(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(repos, ShouldResemble, []string{"a"})
 		})
+
+		Convey("unparsable next links fall back to repository names", func() {
+			repos, err := listAll(map[string]page{
+				"":  {[]string{"a"}, `<%zz>; rel="next"`},
+				"a": {[]string{}, ""},
+			})
+			So(err, ShouldBeNil)
+			So(repos, ShouldResemble, []string{"a"})
+		})
 	})
 }

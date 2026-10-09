@@ -103,10 +103,7 @@ func (registry *RemoteRegistry) getRepoList(ctx context.Context, hostname string
 			return repositories, err
 		}
 
-		headers, err := clientRepoList.RawHeaders()
-		if err != nil {
-			return repositories, err
-		}
+		headers, _ := clientRepoList.RawHeaders() // never returns an error
 
 		// Follow the Link header cursor: registries such as AWS ECR use an opaque
 		// token there and reject a repository name as `last`.
