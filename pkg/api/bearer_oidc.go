@@ -118,7 +118,8 @@ func (a *OIDCBearerAuthorizer) Authenticate(ctx context.Context, header string) 
 
 	for _, provider := range a.providers {
 		// The unverified issuer only selects candidates; each candidate still verifies the token.
-		if !provider.skipIssuerCheck && provider.issuer != issuer {
+		googleIssuerAlias := provider.issuer == "https://accounts.google.com" && issuer == "accounts.google.com"
+		if !provider.skipIssuerCheck && provider.issuer != issuer && !googleIssuerAlias {
 			continue
 		}
 		res, err := provider.authenticate(ctx, header)

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/go-jose/go-jose/v4"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/mux"
@@ -160,6 +162,38 @@ func TestOIDCVerifierRefreshRetainsKeys(t *testing.T) {
 		if keyRequests.Load() != 1 {
 			t.Fatalf("discovery refresh discarded cached keys: %d JWKS requests", keyRequests.Load())
 		}
+	}
+}
+
+func TestOIDCGoogleIssuerAlias(t *testing.T) {
+	t.Parallel()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorizer, err := NewOIDCBearerAuthorizer([]config.BearerOIDCConfig{
+		{Issuer: "https://accounts.google.com", Audiences: []string{"zot"}},
+	}, log.NewTestLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := authorizer.providers[0]
+	provider.verifier = oidc.NewVerifier(provider.issuer, &oidc.StaticKeySet{
+		PublicKeys: []crypto.PublicKey{&key.PublicKey},
+	}, &oidc.Config{SkipClientIDCheck: true})
+	provider.verifierDeadline = time.Now().Add(time.Hour)
+
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+		"iss": "accounts.google.com", "aud": []string{"zot"}, "sub": "test-user",
+		"exp": time.Now().Add(time.Hour).Unix(),
+	})
+	signed, err := token.SignedString(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := authorizer.Authenticate(context.Background(), "Bearer "+signed); err != nil {
+		t.Fatalf("go-oidc's Google issuer alias must remain accepted: %v", err)
 	}
 }
 
