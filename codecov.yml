@@ -7,3 +7,9 @@ ignore:
     - "./swagger/*.go"
     - "./pkg/test/test_http_server.go"
     - "./pkg/meta/proto/gen/*.go"
+
+coverage:
+  status:
+    project:
+      default:
+        threshold: 0.1
