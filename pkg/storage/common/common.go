@@ -489,19 +489,13 @@ func UpdateIndexWithPrunedImageManifests(imgStore storageTypes.ImageStore, index
 func PruneImageManifestsFromIndex(imgStore storageTypes.ImageStore, repo string, digest godigest.Digest, //nolint:gocyclo,lll
 	outIndex ispec.Index, otherImgIndexes []ispec.Descriptor, log zlog.Logger,
 ) ([]ispec.Descriptor, error) {
-	dir := path.Join(imgStore.RootDir(), repo)
+	// One memo for this prune walk: load the old index through it first so that
+	// when tag overwrite leaves that digest in otherImgIndexes (untagged), Prefetch
+	// and the loop below do not read it from storage a second time.
+	memo := NewWalkMemo()
 
-	indexPath := path.Join(dir, "blobs", digest.Algorithm().String(), digest.Encoded())
-
-	buf, err := imgStore.GetBlobContent(repo, digest)
+	imgIndex, err := memo.GetIndex(imgStore, repo, digest, log)
 	if err != nil {
-		return nil, err
-	}
-
-	var imgIndex ispec.Index
-	if err := json.Unmarshal(buf, &imgIndex); err != nil {
-		log.Error().Err(err).Str("path", indexPath).Msg("invalid JSON")
-
 		return nil, err
 	}
 
@@ -511,8 +505,13 @@ func PruneImageManifestsFromIndex(imgStore storageTypes.ImageStore, repo string,
 		inUse[manifest.Digest.Encoded()]++
 	}
 
+	// Every other image index in the repository is read to learn which of the
+	// old index's constituents it still references: one read per index, and on a
+	// repository that overwrites a multi-arch tag per build the count only grows.
+	memo.Prefetch(context.Background(), imgStore, repo, otherImgIndexes, log)
+
 	for _, otherIndex := range otherImgIndexes {
-		oindex, err := GetImageIndex(imgStore, repo, otherIndex.Digest, log)
+		oindex, err := memo.GetIndex(imgStore, repo, otherIndex.Digest, log)
 		if err != nil {
 			// Handle missing blobs gracefully - log warning and continue with other indexes
 			if errclass.IsBlobUnavailable(err) {
@@ -706,6 +705,15 @@ is returned to the caller.
 */
 func GetReferencedBlobs(imgStore storageTypes.ImageStore, repo string, log zlog.Logger,
 ) (map[godigest.Digest]struct{}, error) {
+	return GetReferencedBlobsWithMemo(context.Background(), nil, imgStore, repo, log)
+}
+
+// GetReferencedBlobsWithMemo is GetReferencedBlobs reading through memo, so a GC
+// pass that has already parsed the repository's manifests does not read them
+// again to compute the blob set.
+func GetReferencedBlobsWithMemo(ctx context.Context, memo *WalkMemo, imgStore storageTypes.ImageStore, repo string,
+	log zlog.Logger,
+) (map[godigest.Digest]struct{}, error) {
 	// Do not use DirExists: it is bool-only and collapses Transient Stat to
 	// ErrRepoNotFound. GetIndex maps Missing → ErrRepoNotFound and preserves
 	// Transient/Permanent.
@@ -717,17 +725,30 @@ func GetReferencedBlobs(imgStore storageTypes.ImageStore, repo string, log zlog.
 	referenced := map[godigest.Digest]struct{}{}
 	seen := map[godigest.Digest]struct{}{}
 
-	if err := collectReferencedBlobs(imgStore, repo, index, referenced, seen, log); err != nil {
+	if err := collectReferencedBlobs(ctx, memo, imgStore, repo, index, referenced, seen, log); err != nil {
 		return nil, err
 	}
 
 	return referenced, nil
 }
 
-func collectReferencedBlobs(imgStore storageTypes.ImageStore, repo string,
+func collectReferencedBlobs(ctx context.Context, memo *WalkMemo, imgStore storageTypes.ImageStore, repo string,
 	index ispec.Index, referenced map[godigest.Digest]struct{}, seen map[godigest.Digest]struct{}, log zlog.Logger,
 ) error {
+	if zcommon.IsContextDone(ctx) {
+		return ctx.Err()
+	}
+
+	memo.Prefetch(ctx, imgStore, repo, index.Manifests, log)
+	if zcommon.IsContextDone(ctx) {
+		return ctx.Err()
+	}
+
 	for _, desc := range index.Manifests {
+		if zcommon.IsContextDone(ctx) {
+			return ctx.Err()
+		}
+
 		referenced[desc.Digest] = struct{}{}
 
 		if _, ok := seen[desc.Digest]; ok {
@@ -738,7 +759,7 @@ func collectReferencedBlobs(imgStore storageTypes.ImageStore, repo string,
 
 		switch {
 		case compat.IsImageIndexMediaType(desc.MediaType):
-			indexImage, err := GetImageIndex(imgStore, repo, desc.Digest, log)
+			indexImage, err := memo.GetIndex(imgStore, repo, desc.Digest, log)
 			if err != nil {
 				if errclass.IsBlobUnavailable(err) {
 					log.Warn().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
@@ -753,11 +774,11 @@ func collectReferencedBlobs(imgStore storageTypes.ImageStore, repo string,
 				return err
 			}
 
-			if err := collectReferencedBlobs(imgStore, repo, indexImage, referenced, seen, log); err != nil {
+			if err := collectReferencedBlobs(ctx, memo, imgStore, repo, indexImage, referenced, seen, log); err != nil {
 				return err
 			}
 		case compat.IsImageManifestMediaType(desc.MediaType):
-			manifestContent, err := GetImageManifest(imgStore, repo, desc.Digest, log)
+			manifestContent, err := memo.GetManifest(imgStore, repo, desc.Digest, log)
 			if err != nil {
 				if errclass.IsBlobUnavailable(err) {
 					log.Warn().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).

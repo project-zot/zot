@@ -10,6 +10,7 @@ import (
 	"path"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -28,6 +29,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	"zotregistry.dev/zot/v2/pkg/storage/cache"
+	storageCommon "zotregistry.dev/zot/v2/pkg/storage/common"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
@@ -36,6 +38,15 @@ import (
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 	"zotregistry.dev/zot/v2/pkg/test/storageerrclass"
 )
+
+// concurrentReadSafeStore enables Prefetch in GC tests that need cancel-aware warm-up.
+type concurrentReadSafeStore struct {
+	mocks.MockedImageStore
+}
+
+func (s concurrentReadSafeStore) ConcurrentReadSafe() bool {
+	return true
+}
 
 var (
 	errGC    = errors.New("gc error")
@@ -212,7 +223,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 				},
 			}, gcOptions, audit, log, metrics)
 
-			_, err := gc.deleteUnreferencedBlobs("repo", time.Hour, log)
+			_, err := gc.deleteUnreferencedBlobs(context.Background(), "repo", time.Hour, log)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -937,11 +948,88 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 
 			// identifyManifestsReferencedInIndex should skip the missing nested index and continue
 			referenced := make(map[godigest.Digest]bool)
-			err := gc.identifyManifestsReferencedInIndex(topLevelIndex, repoName, referenced,
+			err := gc.identifyManifestsReferencedInIndex(context.Background(), topLevelIndex, repoName, referenced,
 				map[godigest.Digest]struct{}{})
 			So(err, ShouldBeNil)
 			// No manifests should be marked as referenced since the nested index is missing
 			So(len(referenced), ShouldEqual, 0)
+		})
+
+		Convey("memo returns nil when memos map is unset", func() {
+			gc := GarbageCollect{}
+			So(gc.memo(repoName), ShouldBeNil)
+		})
+
+		Convey("identifyManifestsReferencedInIndex returns canceled context immediately", func() {
+			gc := NewGarbageCollect(mocks.MockedImageStore{}, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+
+			err := gc.identifyManifestsReferencedInIndex(ctx, ispec.Index{}, repoName,
+				map[godigest.Digest]bool{}, map[godigest.Digest]struct{}{})
+			So(errors.Is(err, context.Canceled), ShouldBeTrue)
+		})
+
+		Convey("identifyManifestsReferencedInIndex returns after Prefetch sees cancel", func() {
+			const descs = 8
+
+			emptyIndex, err := json.Marshal(ispec.Index{SchemaVersion: 2})
+			So(err, ShouldBeNil)
+
+			rootManifests := make([]ispec.Descriptor, 0, descs)
+			for i := range descs {
+				rootManifests = append(rootManifests, ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageIndex,
+					Digest:    godigest.FromString(fmt.Sprintf("identify-cancel-%d", i)),
+				})
+			}
+
+			release := make(chan struct{})
+			var inFlight, maxInFlight atomic.Int64
+
+			imgStore := concurrentReadSafeStore{
+				MockedImageStore: mocks.MockedImageStore{
+					GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+						cur := inFlight.Add(1)
+						for {
+							old := maxInFlight.Load()
+							if cur <= old || maxInFlight.CompareAndSwap(old, cur) {
+								break
+							}
+						}
+
+						<-release
+						inFlight.Add(-1)
+
+						return emptyIndex, nil
+					},
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+			gc.memos.Store(repoName, storageCommon.NewWalkMemo())
+
+			ctx, cancel := context.WithCancel(context.Background())
+			errCh := make(chan error, 1)
+
+			go func() {
+				errCh <- gc.identifyManifestsReferencedInIndex(ctx, ispec.Index{Manifests: rootManifests},
+					repoName, map[godigest.Digest]bool{}, map[godigest.Digest]struct{}{})
+			}()
+
+			deadline := time.Now().Add(2 * time.Second)
+			for maxInFlight.Load() < 2 && time.Now().Before(deadline) {
+				time.Sleep(time.Millisecond)
+			}
+
+			ready := maxInFlight.Load() >= 2
+			cancel()
+			close(release)
+			identifyErr := <-errCh
+
+			So(ready, ShouldBeTrue)
+			So(errors.Is(identifyErr, context.Canceled), ShouldBeTrue)
 		})
 
 		Convey("identifyManifestsReferencedInIndex reads a shared nested index once", func() {
@@ -1000,7 +1088,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
 
 			referenced := make(map[godigest.Digest]bool)
-			err = gc.identifyManifestsReferencedInIndex(parentIndex, repoName, referenced,
+			err = gc.identifyManifestsReferencedInIndex(context.Background(), parentIndex, repoName, referenced,
 				map[godigest.Digest]struct{}{})
 			So(err, ShouldBeNil)
 			So(readCount, ShouldEqual, 1)
@@ -1971,7 +2059,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
 
 			referenced := make(map[godigest.Digest]bool)
-			err = gc.identifyManifestsReferencedInIndex(root, repoName, referenced,
+			err = gc.identifyManifestsReferencedInIndex(context.Background(), root, repoName, referenced,
 				map[godigest.Digest]struct{}{})
 			So(err, ShouldBeNil)
 			So(midLeftDigest, ShouldNotEqual, midRightDigest)
@@ -2019,7 +2107,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
 
-			deleted, err := gc.deleteUnreferencedBlobs(repoName, time.Hour, log)
+			deleted, err := gc.deleteUnreferencedBlobs(context.Background(), repoName, time.Hour, log)
 			So(err, ShouldNotBeNil)
 			So(deleted, ShouldEqual, 0)
 		})
@@ -2041,7 +2129,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
 
-			deleted, err := gc.deleteUnreferencedBlobs(repoName, time.Hour, log)
+			deleted, err := gc.deleteUnreferencedBlobs(context.Background(), repoName, time.Hour, log)
 			So(err, ShouldBeNil)
 			So(deleted, ShouldEqual, 0)
 		})
@@ -2062,7 +2150,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
 
-			deleted, err := gc.deleteUnreferencedBlobs(repoName, time.Hour, log)
+			deleted, err := gc.deleteUnreferencedBlobs(context.Background(), repoName, time.Hour, log)
 			So(err, ShouldNotBeNil)
 			So(deleted, ShouldEqual, 0)
 		})
@@ -2100,7 +2188,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
 
-			deleted, err := gc.deleteUnreferencedBlobs(repoName, time.Hour, log)
+			deleted, err := gc.deleteUnreferencedBlobs(context.Background(), repoName, time.Hour, log)
 			So(err, ShouldNotBeNil)
 			So(deleted, ShouldEqual, 0)
 		})
@@ -2126,7 +2214,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
 
-			deleted, err := gc.deleteUnreferencedBlobs(repoName, time.Hour, log)
+			deleted, err := gc.deleteUnreferencedBlobs(context.Background(), repoName, time.Hour, log)
 			So(err, ShouldBeNil)
 			So(deleted, ShouldEqual, 0)
 		})
@@ -2155,7 +2243,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
 
-			deleted, err := gc.deleteUnreferencedBlobs(repoName, time.Hour, log)
+			deleted, err := gc.deleteUnreferencedBlobs(context.Background(), repoName, time.Hour, log)
 			So(err, ShouldNotBeNil)
 			So(deleted, ShouldEqual, 0)
 		})
