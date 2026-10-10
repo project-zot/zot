@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -194,6 +195,82 @@ func TestOIDCGoogleIssuerAlias(t *testing.T) {
 	}
 	if _, err := authorizer.Authenticate(context.Background(), "Bearer "+signed); err != nil {
 		t.Fatalf("go-oidc's Google issuer alias must remain accepted: %v", err)
+	}
+}
+
+func TestOIDCIssuerRoutingRequiresSignatureVerification(t *testing.T) {
+	t.Parallel()
+
+	trustedKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	untrustedKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, testCase := range []struct {
+		name        string
+		issuer      string
+		tokenIssuer string
+		skipIssuer  bool
+	}{
+		{name: "matching issuer", issuer: "https://issuer.example.com", tokenIssuer: "https://issuer.example.com"},
+		{name: "Google alias", issuer: "https://accounts.google.com", tokenIssuer: "accounts.google.com"},
+		{name: "skip issuer", issuer: "https://issuer.example.com", tokenIssuer: "https://other.example.com", skipIssuer: true},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			authorizer, err := NewOIDCBearerAuthorizer([]config.BearerOIDCConfig{{
+				Issuer: testCase.issuer, Audiences: []string{"zot"}, SkipIssuerVerification: testCase.skipIssuer,
+			}}, log.NewTestLogger())
+			if err != nil {
+				t.Fatal(err)
+			}
+			provider := authorizer.providers[0]
+			provider.verifier = oidc.NewVerifier(provider.issuer, &oidc.StaticKeySet{
+				PublicKeys: []crypto.PublicKey{&trustedKey.PublicKey},
+			}, &oidc.Config{SkipClientIDCheck: true, SkipIssuerCheck: testCase.skipIssuer})
+			provider.verifierDeadline = time.Now().Add(time.Hour)
+
+			claims := jwt.MapClaims{
+				"iss": testCase.tokenIssuer, "aud": []string{"zot"}, "sub": "test-user",
+				"exp": time.Now().Add(time.Hour).Unix(),
+			}
+			valid, err := jwt.NewWithClaims(jwt.SigningMethodRS256, claims).SignedString(trustedKey)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := authorizer.Authenticate(context.Background(), "Bearer "+valid); err != nil {
+				t.Fatalf("trusted token must authenticate: %v", err)
+			}
+
+			forged, err := jwt.NewWithClaims(jwt.SigningMethodRS256, claims).SignedString(untrustedKey)
+			if err != nil {
+				t.Fatal(err)
+			}
+			unsigned, err := jwt.NewWithClaims(jwt.SigningMethodNone, claims).SignedString(jwt.UnsafeAllowNoneSignatureType)
+			if err != nil {
+				t.Fatal(err)
+			}
+			claims["sub"] = "admin"
+			changed, err := jwt.NewWithClaims(jwt.SigningMethodRS256, claims).SignedString(trustedKey)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Retain the original signature while replacing the signed identity claims.
+			originalParts := strings.Split(valid, ".")
+			changedParts := strings.Split(changed, ".")
+			tampered := originalParts[0] + "." + changedParts[1] + "." + originalParts[2]
+			for _, token := range []string{forged, unsigned, tampered} {
+				result, err := authorizer.Authenticate(context.Background(), "Bearer "+token)
+				if err == nil || result != nil {
+					t.Fatal("issuer routing allowed an invalid signature to authenticate")
+				}
+			}
+		})
 	}
 }
 
