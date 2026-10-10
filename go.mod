@@ -571,3 +571,7 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
+
+// Temporary: upstream distribution GCS resumable uploads ignore STORAGE_EMULATOR_HOST.
+// Drop this replace once an upstream release includes that fix.
+replace github.com/distribution/distribution/v3 => github.com/andaaron/distribution/v3 v3.0.0-20261007152835-1de73397bc93

@@ -36,6 +36,11 @@ linters:
     - wrapcheck
     - wsl
   settings:
+    # Temporary fork pin for GCS STORAGE_EMULATOR_HOST (see go.mod replace comment).
+    # Drop this allow-list entry when the replace is removed.
+    gomoddirectives:
+      replace-allow-list:
+        - github.com/distribution/distribution/v3
     cyclop:
       max-complexity: 40
     dupl:
