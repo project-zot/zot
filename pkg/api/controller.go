@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -70,6 +71,9 @@ type Controller struct {
 	TlsWatcher atomic.Pointer[TlsConfigWatcher]
 	// sdNotify overrides daemon.SdNotify when set (tests only).
 	sdNotify func(unsetEnvironment bool, state string) (bool, error)
+	// on-demand GC of each store with GC enabled, replaced when background tasks restart on config reload
+	gcOnDemand     map[string]*gc.OnDemand
+	gcOnDemandLock sync.RWMutex
 }
 
 func NewController(appConfig *config.Config) *Controller {
@@ -670,7 +674,11 @@ func (c *Controller) StartBackgroundTasks() {
 	}
 
 	// Run GC and retention tasks (includes local .sync staging guard and orphan reaper).
-	RunGCTasks(c.Config, c.StoreController, c.MetaDB, c.taskScheduler, c.Log, c.Audit, c.Metrics)
+	gcOnDemand := RunGCTasks(c.Config, c.StoreController, c.MetaDB, c.taskScheduler, c.Log, c.Audit, c.Metrics)
+
+	c.gcOnDemandLock.Lock()
+	c.gcOnDemand = gcOnDemand
+	c.gcOnDemandLock.Unlock()
 
 	// Enable running dedupe blobs both ways (dedupe or restore deduped blobs)
 	c.StoreController.DefaultStore.RunDedupeBlobs(time.Duration(0), c.taskScheduler)
@@ -730,10 +738,29 @@ func (c *Controller) StartBackgroundTasks() {
 	ext.EnableScheduledTasks(c.Config, c.taskScheduler, c.MetaDB, c.Log) //nolint: contextcheck
 }
 
+// GCOnDemand returns the on-demand GC of a store, identified by its route ("/" for the default store,
+// otherwise a subPaths key). The bool reports whether the store exists; the OnDemand is nil if GC
+// is disabled for the store.
+func (c *Controller) GCOnDemand(store string) (*gc.OnDemand, bool) {
+	storageConfig := c.Config.CopyStorageConfig()
+
+	if _, isSubPath := storageConfig.SubPaths[store]; store != "/" && !isSubPath {
+		return nil, false
+	}
+
+	c.gcOnDemandLock.RLock()
+	defer c.gcOnDemandLock.RUnlock()
+
+	return c.gcOnDemand[store], true
+}
+
 // RunGCTasks runs minimal GC and retention tasks without full controller.
+// It returns the on-demand GC of each store with GC enabled, keyed by route ("/" for the default store).
 func RunGCTasks(conf *config.Config, storeController storage.StoreController, metaDB mTypes.MetaDB,
 	taskScheduler *scheduler.Scheduler, logger log.Logger, audit *log.Logger, metrics monitoring.MetricServer,
-) {
+) map[string]*gc.OnDemand {
+	gcOnDemand := make(map[string]*gc.OnDemand)
+
 	gc.RunSyncSessionReaperPeriodically(conf, storeController, taskScheduler, logger)
 
 	// Enable running garbage-collect periodically for DefaultStore
@@ -747,7 +774,7 @@ func RunGCTasks(conf *config.Config, storeController storage.StoreController, me
 			StagingRoot:       storeController.SyncStagingRootForImageStore(storeController.DefaultStore),
 		}, audit, logger, metrics)
 
-		gc.CleanImageStorePeriodically(storageConfig.GCInterval, taskScheduler)
+		gcOnDemand["/"] = gc.CleanImageStorePeriodically(storageConfig.GCInterval, taskScheduler)
 	}
 
 	// Handle subpaths
@@ -765,8 +792,10 @@ func RunGCTasks(conf *config.Config, storeController storage.StoreController, me
 							storeController.SubStore[route]),
 					}, audit, logger, metrics)
 
-				gc.CleanImageStorePeriodically(subStorageConfig.GCInterval, taskScheduler)
+				gcOnDemand[route] = gc.CleanImageStorePeriodically(subStorageConfig.GCInterval, taskScheduler)
 			}
 		}
 	}
+
+	return gcOnDemand
 }
