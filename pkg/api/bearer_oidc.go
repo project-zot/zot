@@ -9,10 +9,12 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"slices"
 	"sync"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/golang-jwt/jwt/v5"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
@@ -20,10 +22,11 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
-// oidcProviderRefreshInterval defines the target interval for refreshing the public keys.
-// With a 1 minute interval, repeated calls will generally reuse cached keys and only trigger
-// a refresh roughly once per minute, but this is best-effort and not a strict upper bound.
+// oidcProviderRefreshInterval defines the target interval for refreshing discovery metadata.
+// Signing keys are cached and refreshed independently by go-oidc.
 const oidcProviderRefreshInterval = 1 * time.Minute
+
+const oidcHTTPTimeout = 10 * time.Second
 
 var bearerOIDCTokenMatch = regexp.MustCompile("(?i)bearer (.*)")
 
@@ -48,6 +51,8 @@ type oidcProvider struct {
 	verifier         *oidc.IDTokenVerifier
 	verifierMu       sync.RWMutex
 	verifierDeadline time.Time
+	provider         *oidc.Provider
+	refreshDone      chan struct{}
 }
 
 // NewOIDCBearerAuthorizer creates a new OIDC bearer token authorizer.
@@ -93,9 +98,30 @@ func (a *OIDCBearerAuthorizer) AuthenticateRequest(ctx context.Context,
 // Authenticate validates an OIDC token and extracts the identity.
 // Returns the username and groups extracted from the token claims.
 func (a *OIDCBearerAuthorizer) Authenticate(ctx context.Context, header string) (*cel.ClaimResult, error) {
+	if header == "" {
+		return nil, zerr.ErrNoBearerToken
+	}
+	tokenString := bearerOIDCTokenMatch.ReplaceAllString(header, "$1")
+	if tokenString == "" || tokenString == header {
+		return nil, zerr.ErrInvalidBearerToken
+	}
+	claims := jwt.MapClaims{}
+	if _, _, err := jwt.NewParser().ParseUnverified(tokenString, claims); err != nil {
+		return nil, fmt.Errorf("%w: %w", zerr.ErrInvalidBearerToken, err)
+	}
+	issuer, err := claims.GetIssuer()
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", zerr.ErrInvalidBearerToken, err)
+	}
+
 	errs := make([]error, 0, len(a.providers))
 
 	for _, provider := range a.providers {
+		// The unverified issuer only selects candidates; each candidate still verifies the token.
+		googleIssuerAlias := provider.issuer == "https://accounts.google.com" && issuer == "accounts.google.com"
+		if !provider.skipIssuerCheck && provider.issuer != issuer && !googleIssuerAlias {
+			continue
+		}
 		res, err := provider.authenticate(ctx, header)
 		if err == nil {
 			return res, nil
@@ -136,7 +162,7 @@ func newOIDCProvider(oidcConfig *config.BearerOIDCConfig, log log.Logger) (*oidc
 		}
 	}
 
-	var httpClient *http.Client
+	httpClient := &http.Client{Timeout: oidcHTTPTimeout}
 	if len(caCert) > 0 {
 		certPool := x509.NewCertPool()
 		if !certPool.AppendCertsFromPEM(caCert) {
@@ -151,7 +177,7 @@ func newOIDCProvider(oidcConfig *config.BearerOIDCConfig, log log.Logger) (*oidc
 			RootCAs:    certPool,
 			MinVersion: tls.VersionTLS12,
 		}
-		httpClient = &http.Client{Transport: testTransport}
+		httpClient.Transport = testTransport
 	}
 
 	return &oidcProvider{
@@ -212,35 +238,73 @@ func (a *oidcProvider) authenticate(ctx context.Context, header string) (*cel.Cl
 
 // getVerifier retrieves or refreshes the oidc.IDTokenVerifier as needed.
 func (o *oidcProvider) getVerifier(ctx context.Context) (*oidc.IDTokenVerifier, error) {
-	// If the verifier is still fresh, return it.
-	o.verifierMu.RLock()
-	verifier, deadline := o.verifier, o.verifierDeadline
-	o.verifierMu.RUnlock()
-	if verifier != nil && time.Now().Before(deadline) {
+	o.verifierMu.Lock()
+	verifier := o.verifier
+	done := o.refreshDone
+	if done == nil && (verifier == nil || !time.Now().Before(o.verifierDeadline)) {
+		done = make(chan struct{})
+		o.refreshDone = done
+
+		go o.refreshVerifier(context.WithoutCancel(ctx), done)
+	}
+	o.verifierMu.Unlock()
+
+	if verifier != nil {
 		return verifier, nil
 	}
 
-	// Time to refresh the verifier.
-	if hc := o.httpClient; hc != nil {
-		ctx = oidc.ClientContext(ctx, hc)
+	// Only initial discovery blocks authentication. Other requests share the refresh.
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-done:
+		o.verifierMu.RLock()
+		defer o.verifierMu.RUnlock()
+		if o.verifier == nil {
+			return nil, fmt.Errorf("%w: failed to discover OIDC provider from issuer %s",
+				zerr.ErrInvalidOrUnreachableOIDCIssuer, o.issuer)
+		}
+
+		return o.verifier, nil
 	}
-	p, err := oidc.NewProvider(ctx, o.issuer)
+}
+
+func (o *oidcProvider) refreshVerifier(ctx context.Context, done chan struct{}) {
+	ctx, cancel := context.WithTimeout(ctx, oidcHTTPTimeout)
+	defer cancel()
+	ctx = oidc.ClientContext(ctx, o.httpClient)
+	provider, err := oidc.NewProvider(ctx, o.issuer)
+
+	o.verifierMu.Lock()
+	defer o.verifierMu.Unlock()
+	defer close(done)
+	o.refreshDone = nil
+	o.verifierDeadline = time.Now().Add(oidcProviderRefreshInterval)
 	if err != nil {
-		return nil, fmt.Errorf("failed to refresh OIDC provider from issuer %s: %w", o.issuer, err)
+		o.log.Err(err).Str("issuer", o.issuer).Msg("failed to refresh OIDC provider")
+
+		return
 	}
-	verifier = p.Verifier(&oidc.Config{
+
+	// Reuse the provider's remote key cache unless verification metadata has changed.
+	var previous, current oidc.ProviderConfig
+	if err := provider.Claims(&current); err != nil {
+		o.log.Err(err).Msg("failed to read OIDC provider metadata")
+
+		return
+	}
+	if o.provider != nil {
+		if err := o.provider.Claims(&previous); err == nil &&
+			previous.JWKSURL == current.JWKSURL && slices.Equal(previous.Algorithms, current.Algorithms) {
+			return
+		}
+	}
+	o.provider = provider
+	o.verifier = provider.Verifier(&oidc.Config{
 		ClientID:          "", // We'll check audiences manually
 		SkipIssuerCheck:   o.skipIssuerCheck,
 		SkipClientIDCheck: true, // Check audiences manually to support multiple
 		SkipExpiryCheck:   false,
 		Now:               time.Now,
 	})
-
-	// Update the verifier and deadline.
-	o.verifierMu.Lock()
-	o.verifier = verifier
-	o.verifierDeadline = time.Now().Add(oidcProviderRefreshInterval)
-	o.verifierMu.Unlock()
-
-	return verifier, nil
 }
