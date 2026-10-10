@@ -69,6 +69,8 @@ Add OIDC workload identity configuration to your bearer authentication settings.
 
 - **`skipIssuerVerification`** (optional): Skip issuer verification (for testing only). Default: `false`.
 
+Tokens are routed to their configured issuer before verification; unknown issuers are rejected without network requests unless `skipIssuerVerification` is enabled. Discovery and signing-key HTTP requests have a 10-second timeout. Discovery metadata is refreshed in the background after one minute, while the last working verifier remains available if discovery fails. Cached signing keys are retained when verification metadata is unchanged, so already-known keys can validate tokens during an issuer outage. New signing keys still require a successful fetch from the issuer.
+
 ### CEL Expressions
 
 Zot uses [Common Expression Language (CEL)](https://github.com/google/cel-go) for flexible claim validation and mapping. CEL expressions have access to:
