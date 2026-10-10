@@ -106,7 +106,7 @@ func TestOIDCIssuerIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, token := range []string{header, "******", ""} {
+	for _, token := range []string{header, "Bearer " + "not-a-jwt", "Basic abc", ""} {
 		if _, err := unknown.Authenticate(context.Background(), token); err == nil {
 			t.Fatal("unknown issuer or malformed token authenticated")
 		}
