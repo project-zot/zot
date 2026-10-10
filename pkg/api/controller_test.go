@@ -61,6 +61,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/cli/server"
 	"zotregistry.dev/zot/v2/pkg/common"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
+	syncConstants "zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/meta"
 	zreg "zotregistry.dev/zot/v2/pkg/regexp"
@@ -2093,6 +2094,24 @@ func TestMultipleInstance(t *testing.T) {
 
 		err = ctlr.Init()
 		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestInitRemovesStreamTempFiles(t *testing.T) {
+	Convey("Init removes stream temp files left by a previous run", t, func() {
+		conf := config.New()
+		rootDir := t.TempDir()
+		conf.Storage.RootDirectory = rootDir
+
+		orphan := filepath.Join(rootDir, syncConstants.StreamTempDir, "sha256", "0123abcd.1")
+		So(os.MkdirAll(filepath.Dir(orphan), 0o755), ShouldBeNil)
+		So(os.WriteFile(orphan, []byte("partial blob"), 0o600), ShouldBeNil)
+
+		ctlr := api.NewController(conf)
+		So(ctlr.Init(), ShouldBeNil)
+
+		_, err := os.Stat(filepath.Join(rootDir, syncConstants.StreamTempDir))
+		So(os.IsNotExist(err), ShouldBeTrue)
 	})
 }
 

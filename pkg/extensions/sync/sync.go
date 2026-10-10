@@ -10,6 +10,7 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/regclient/regclient/types/descriptor"
+	"github.com/regclient/regclient/types/manifest"
 	"github.com/regclient/regclient/types/ref"
 
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
@@ -21,7 +22,7 @@ import (
 // ref.Ref- describes a registry/repo:tag
 
 // Service provides sync general functionalities, one service per registry config.
-type Service interface {
+type Service interface { //nolint:interfacebloat
 	// Get next repo from remote /v2/_catalog, will return empty string when there is no repo left.
 	GetNextRepo(lastRepo string) (string, error) // used by task scheduler
 	// Sync a repo with all of its tags and references (signatures, artifacts, sboms) into ImageStore.
@@ -43,6 +44,21 @@ type Service interface {
 	// IsOnDemandInBackgroundForRepo reports whether this service should handle repo with
 	// on-demand-in-background sync (return miss immediately, sync into storage in background).
 	IsOnDemandInBackgroundForRepo(repo string) bool
+	// FetchManifest fetches repo:reference's manifest from upstream without storing it, with
+	// SyncImage's content and OnlySigned checks. An index's children are not fetched.
+	FetchManifest(ctx context.Context, repo, reference string) (manifest.Manifest, error)
+	// IsStreamingForRepo reports whether this service streams repo.
+	IsStreamingForRepo(repo string) bool
+	// IsImageLocal reports whether repo:reference is already committed locally at digest, so
+	// streaming can skip it. Storage errors other than not-found are returned.
+	IsImageLocal(repo, reference string, digest godigest.Digest) (bool, error)
+}
+
+// StreamSyncer runs the sync behind a staged stream: it copies the staged digest (not tag's
+// current one, which may have moved), commits it under tag, and feeds the streams. Only the
+// staging flight calls it; services without it use plain SyncImage, which feeds no stream.
+type StreamSyncer interface {
+	SyncImageForStream(ctx context.Context, repo, tag string, digest godigest.Digest) error
 }
 
 // Registry interface must be implemented by local and remote registries.

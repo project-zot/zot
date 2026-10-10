@@ -1849,6 +1849,85 @@ func validateSync(config *config.Config, logger zlog.Logger) error {
 		}
 	}
 
+	if err := validateStreamingMaxConcurrentStreams(extensionsConfig.Sync.Registries); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateStreamingMaxConcurrentStreams rejects streaming registries that disagree on
+// maxConcurrentStreams: the shared stream manager takes the first one's, so others would be
+// silently ignored. Unset counts as the default, so [unset, 8] is rejected too.
+func validateStreamingMaxConcurrentStreams(registries []syncconf.RegistryConfig) error {
+	var first *int
+
+	for idx := range registries {
+		regCfg := &registries[idx]
+
+		if !regCfg.IsStreamEnabled() {
+			continue
+		}
+
+		effective := syncConstants.DefaultMaxConcurrentStreams
+		if regCfg.MaxConcurrentStreams != nil {
+			effective = *regCfg.MaxConcurrentStreams
+		}
+
+		if first == nil {
+			first = &effective
+
+			continue
+		}
+
+		if effective != *first {
+			return fmt.Errorf("%w: %s", zerr.ErrBadConfig,
+				"maxConcurrentStreams must be the same across every streaming registry - it is a single "+
+					"limit shared by all of them, not set per registry (an unset value counts as its default)")
+		}
+	}
+
+	return nil
+}
+
+// validateRegistryStreamingSyncConfig rejects an unsafe Stream config. Bytes reach clients before
+// the digest is verified, so the upstream must be authenticated: https with TLS verification.
+func validateRegistryStreamingSyncConfig(regCfg syncconf.RegistryConfig) error {
+	if !regCfg.IsStreamEnabled() {
+		return nil
+	}
+
+	if !regCfg.OnDemand {
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "stream requires onDemand to be enabled")
+	}
+
+	// The two answer a local miss oppositely: a 404 and a queued sync, versus the upstream manifest.
+	if regCfg.IsOnDemandInBackgroundEnabled() {
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "stream cannot be combined with onDemandInBackground")
+	}
+
+	if regCfg.MaxRetries != nil || regCfg.RetryDelay != nil {
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "stream cannot be combined with maxRetries/retryDelay")
+	}
+
+	if regCfg.TLSVerify != nil && !*regCfg.TLSVerify {
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "stream cannot be combined with tlsVerify: false")
+	}
+
+	// Require an explicit https://host: url.Parse reads a bare "host:port" as scheme "host" with an
+	// empty host, which sync would then use as an empty registry hostname.
+	for _, rawURL := range regCfg.URLs {
+		parsed, err := url.Parse(rawURL)
+		if err != nil || !strings.EqualFold(parsed.Scheme, "https") || parsed.Host == "" {
+			return fmt.Errorf("%w: stream requires https upstream URLs (https://host[:port]), got %q",
+				zerr.ErrBadConfig, rawURL)
+		}
+	}
+
+	if regCfg.MaxConcurrentStreams != nil && *regCfg.MaxConcurrentStreams <= 0 {
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "maxConcurrentStreams must be greater than 0")
+	}
+
 	return nil
 }
 
@@ -1865,6 +1944,13 @@ func validateSyncRegistry(config *config.Config, regID int, regCfg syncconf.Regi
 			regCfg).Msg("invalid config for manifestCheckInterval")
 
 		return intervalValidationErr
+	}
+
+	if streamValidationErr := validateRegistryStreamingSyncConfig(regCfg); streamValidationErr != nil {
+		logger.Error().Err(streamValidationErr).Int("id", regID).Interface("extensions.sync.registries[id]",
+			regCfg).Msg("invalid config for stream")
+
+		return streamValidationErr
 	}
 
 	// check retry options are configured for sync

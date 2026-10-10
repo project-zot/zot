@@ -275,6 +275,34 @@ func TestCollectStaleSyncSessionsAtRoot(t *testing.T) {
 		So(sessions, ShouldContain, stale)
 	})
 
+	Convey("collectStaleSyncSessionsAtRoot never reaps streaming temp files", t, func() {
+		// Streaming sync keeps in-flight blobs at <staging root>/_stream/<algorithm>/, a sibling of
+		// the repos rather than a <repo>/.sync session, and removes them itself when the stream
+		// ends. However old _stream looks, the reaper must leave it alone: an active stream's
+		// file lives under a directory created long before.
+		log := zlog.NewTestLogger()
+		root := t.TempDir()
+		testStoreWithRepos(t, root, "a")
+
+		streamAlgoDir := filepath.Join(root, "_stream", "sha256")
+		So(os.MkdirAll(streamAlgoDir, 0o755), ShouldBeNil)
+
+		streamFile := filepath.Join(streamAlgoDir, "0123abcd.1")
+		So(os.WriteFile(streamFile, []byte("in-flight"), 0o600), ShouldBeNil)
+
+		old := time.Now().Add(-2 * time.Hour)
+		for _, p := range []string{streamFile, streamAlgoDir, filepath.Join(root, "_stream")} {
+			So(os.Chtimes(p, old, old), ShouldBeNil)
+		}
+
+		stale := plantStaleSyncSession(t,
+			filepath.Join(root, "a", syncConstants.SyncBlobUploadDir), "stale-session", 2*time.Hour)
+
+		sessions, err := collectStaleSyncSessionsAtRoot(root, time.Hour, log)
+		So(err, ShouldBeNil)
+		So(sessions, ShouldResemble, []string{stale})
+	})
+
 	Convey("collectStaleSyncSessionsAtRoot finds sessions for nested repo names", t, func() {
 		log := zlog.NewTestLogger()
 		root := t.TempDir()
@@ -786,5 +814,127 @@ func TestHasInProgressSessions_matchesStoreControllerRoot(t *testing.T) {
 		So(os.MkdirAll(session, 0o755), ShouldBeNil)
 
 		So(HasInProgressSessions(sc.SyncStagingRootForRepo(repo), repo, log), ShouldBeTrue)
+	})
+}
+
+// plantStreamTempFile writes a stream temp file as the stream manager names it:
+// <root>/_stream/<algorithm>/<encoded digest>.<gen>.
+func plantStreamTempFile(t *testing.T, root string) string {
+	t.Helper()
+
+	dir := filepath.Join(root, syncConstants.StreamTempDir, "sha256")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q): %v", dir, err)
+	}
+
+	file := filepath.Join(dir, "0123abcd.1")
+	if err := os.WriteFile(file, []byte("partial blob"), 0o600); err != nil {
+		t.Fatalf("WriteFile(%q): %v", file, err)
+	}
+
+	return file
+}
+
+func TestRemoveStreamTempDirs(t *testing.T) {
+	Convey("RemoveStreamTempDirs removes _stream under the store root, leaving repos and sessions alone", t, func() {
+		log := zlog.NewTestLogger()
+		root := t.TempDir()
+		repo := "repo"
+		sc := testStoreWithRepos(t, root, repo)
+
+		plantStreamTempFile(t, root)
+		session := plantStaleSyncSession(t,
+			filepath.Join(root, repo, syncConstants.SyncBlobUploadDir), "live-session", 0)
+
+		RemoveStreamTempDirs(sc, log)
+
+		_, err := os.Stat(filepath.Join(root, syncConstants.StreamTempDir))
+		So(os.IsNotExist(err), ShouldBeTrue)
+		_, err = os.Stat(session)
+		So(err, ShouldBeNil)
+		_, err = os.Stat(filepath.Join(root, repo, "index.json"))
+		So(err, ShouldBeNil)
+	})
+
+	Convey("RemoveStreamTempDirs uses SyncDownloadDir as the staging root", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		storeRoot := t.TempDir()
+		downloadDir := t.TempDir()
+
+		sc := storage.StoreController{
+			DefaultStore:    local.NewImageStore(storeRoot, false, false, log, metrics, nil, nil, nil, nil),
+			SyncDownloadDir: downloadDir,
+		}
+
+		plantStreamTempFile(t, downloadDir)
+
+		RemoveStreamTempDirs(sc, log)
+
+		_, err := os.Stat(filepath.Join(downloadDir, syncConstants.StreamTempDir))
+		So(os.IsNotExist(err), ShouldBeTrue)
+	})
+
+	Convey("RemoveStreamTempDirs sweeps every substore root", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		root := t.TempDir()
+		subRoot := t.TempDir()
+
+		sc := storage.StoreController{
+			DefaultStore: local.NewImageStore(root, false, false, log, metrics, nil, nil, nil, nil),
+			SubStore: map[string]storageTypes.ImageStore{
+				"/a": local.NewImageStore(subRoot, false, false, log, metrics, nil, nil, nil, nil),
+			},
+		}
+
+		plantStreamTempFile(t, root)
+		plantStreamTempFile(t, subRoot)
+
+		RemoveStreamTempDirs(sc, log)
+
+		_, err := os.Stat(filepath.Join(root, syncConstants.StreamTempDir))
+		So(os.IsNotExist(err), ShouldBeTrue)
+		_, err = os.Stat(filepath.Join(subRoot, syncConstants.StreamTempDir))
+		So(os.IsNotExist(err), ShouldBeTrue)
+	})
+
+	Convey("RemoveStreamTempDirs is a no-op without a _stream dir", t, func() {
+		root := t.TempDir()
+		sc := testStoreWithRepos(t, root, "repo")
+
+		So(func() { RemoveStreamTempDirs(sc, zlog.NewTestLogger()) }, ShouldNotPanic)
+	})
+
+	Convey("RemoveStreamTempDirs logs and continues when a dir can't be removed", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		root := t.TempDir()
+		subRoot := t.TempDir()
+
+		sc := storage.StoreController{
+			DefaultStore: local.NewImageStore(root, false, false, log, metrics, nil, nil, nil, nil),
+			SubStore: map[string]storageTypes.ImageStore{
+				"/a": local.NewImageStore(subRoot, false, false, log, metrics, nil, nil, nil, nil),
+			},
+		}
+
+		stuck := plantStreamTempFile(t, root)
+		plantStreamTempFile(t, subRoot)
+
+		// Removing a file needs write permission on its directory.
+		stuckDir := filepath.Dir(stuck)
+		So(os.Chmod(stuckDir, 0o555), ShouldBeNil)
+
+		Reset(func() {
+			_ = os.Chmod(stuckDir, 0o755)
+		})
+
+		So(func() { RemoveStreamTempDirs(sc, log) }, ShouldNotPanic)
+
+		_, err := os.Stat(stuck)
+		So(err, ShouldBeNil)
+		_, err = os.Stat(filepath.Join(subRoot, syncConstants.StreamTempDir))
+		So(os.IsNotExist(err), ShouldBeTrue)
 	})
 }

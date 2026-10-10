@@ -8677,6 +8677,115 @@ func TestOnDemandBlobSeeding(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		})
 
+		Convey("a streamed pull of a new tag seeds its shared layers too", func() {
+			// Streaming returns the manifest at once and syncs in the background; that sync must
+			// still seed layers the repo already stores rather than download them again (#4386).
+			syncRegistryConfig := syncconf.RegistryConfig{
+				URLs:      []string{srcBaseURL},
+				OnDemand:  true,
+				TLSVerify: &tlsVerify,
+				Stream:    &defaultVal,
+			}
+
+			syncConfig := &syncconf.Config{
+				Enable:     &defaultVal,
+				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+			}
+
+			dctlr, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
+			defer os.RemoveAll(destDir)
+
+			dcm := test.NewControllerManager(dctlr)
+			destBaseURL := dcm.StartAndWait()
+
+			defer dcm.StopServer()
+
+			repoName := "seed-stream"
+
+			// The background sync commits after the response, so poll the downstream store.
+			waitForLocalBlob := func(digest godigest.Digest) bool {
+				blobPath := path.Join(destDir, repoName, "blobs", digest.Algorithm().String(), digest.Encoded())
+
+				for range 300 {
+					if _, err := os.Stat(blobPath); err == nil {
+						return true
+					}
+
+					time.Sleep(100 * time.Millisecond)
+				}
+
+				return false
+			}
+
+			// The background sync's last step counts the streamed GET in metaDB (onSynced). Wait
+			// for it before the deferred StopServer closes metaDB under it.
+			waitForDownloadCounted := func(digest godigest.Digest) bool {
+				for range 300 {
+					repoMeta, err := dctlr.MetaDB.GetRepoMeta(context.Background(), repoName)
+					if err == nil && repoMeta.Statistics[digest.String()].DownloadCount > 0 {
+						return true
+					}
+
+					time.Sleep(100 * time.Millisecond)
+				}
+
+				return false
+			}
+
+			sharedLayers := make([][]byte, 3)
+			for i := range sharedLayers {
+				sharedLayers[i] = fmt.Appendf(nil, "shared layer %d for streamed seeding test", i)
+			}
+
+			image1 := CreateImageWith().LayerBlobs(sharedLayers).RandomConfig().Build()
+
+			err := UploadImage(image1, srcBaseURL, repoName, "1.0")
+			So(err, ShouldBeNil)
+
+			resp, err := destClient.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			So(waitForLocalBlob(image1.ManifestDescriptor.Digest), ShouldBeTrue)
+
+			for _, layer := range image1.Manifest.Layers {
+				So(waitForLocalBlob(layer.Digest), ShouldBeTrue)
+			}
+
+			So(waitForDownloadCounted(image1.ManifestDescriptor.Digest), ShouldBeTrue)
+
+			image2 := CreateImageWith().LayerBlobs(sharedLayers).RandomConfig().Build()
+			So(image2.DigestStr(), ShouldNotEqual, image1.DigestStr())
+
+			err = UploadImage(image2, srcBaseURL, repoName, "2.0")
+			So(err, ShouldBeNil)
+
+			// Upstream can no longer serve the shared layers, so tag 2.0 only commits if the
+			// streamed sync seeds them from the local store.
+			for _, layer := range image2.Manifest.Layers {
+				err := os.Remove(path.Join(srcDir, repoName, "blobs",
+					layer.Digest.Algorithm().String(), layer.Digest.Encoded()))
+				So(err, ShouldBeNil)
+			}
+
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/2.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(godigest.FromBytes(resp.Body()), ShouldEqual, image2.ManifestDescriptor.Digest)
+
+			So(waitForLocalBlob(image2.ConfigDescriptor.Digest), ShouldBeTrue)
+			So(waitForLocalBlob(image2.ManifestDescriptor.Digest), ShouldBeTrue)
+
+			// Every layer is servable: the seeded ones come from storage, not their unused streams.
+			for _, layer := range image2.Manifest.Layers {
+				resp, err := destClient.R().Get(destBaseURL + "/v2/" + repoName + "/blobs/" + layer.Digest.String())
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			}
+
+			So(waitForDownloadCounted(image2.ManifestDescriptor.Digest), ShouldBeTrue)
+		})
+
 		Convey("a new tag of an already stored image is not fetched at all", func() {
 			syncRegistryConfig := syncconf.RegistryConfig{
 				URLs:       []string{srcBaseURL},

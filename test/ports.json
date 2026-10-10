@@ -507,14 +507,38 @@
   },
   "blackbox/pushpull_mount.bats": {
     "zot": {
-      "begin": 11580,
-      "end": 11589
+      "begin": 11570,
+      "end": 11579
     }
   },
   "blackbox/pushpull_mount_hydrate.bats": {
     "zot": {
+      "begin": 11580,
+      "end": 11589
+    }
+  },
+  "blackbox/sync_streaming.bats": {
+    "zot_min": {
+      "begin": 11590,
+      "end": 11599
+    },
+    "zot_stream": {
       "begin": 11600,
       "end": 11609
+    },
+    "zot_stream_capped": {
+      "begin": 11610,
+      "end": 11619
+    }
+  },
+  "blackbox/sync_streaming_stress.bats": {
+    "zot_min": {
+      "begin": 11640,
+      "end": 11649
+    },
+    "zot_stream": {
+      "begin": 11650,
+      "end": 11659
     }
   },
   "blackbox/healthcheck.bats": {
