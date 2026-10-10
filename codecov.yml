@@ -1,3 +1,13 @@
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 0.05%
+    patch:
+      default:
+        target: 94%
+
 ignore:
     - "*_gen.go"
     - "./pkg/extensions/search/gql_generated"
