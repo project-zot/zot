@@ -193,6 +193,30 @@ func TestGarbageCollectOnDemand(t *testing.T) {
 			So(found, ShouldBeFalse)
 		})
 
+		Convey("CleanRepoNow keeps the last status when the scheduler does not accept a new request", func() {
+			onDemand := gc.NewGarbageCollect(imgStore, metaDB, opts, nil, log, metrics).
+				CleanImageStorePeriodically(time.Hour, sch)
+
+			sch.RunScheduler()
+
+			So(onDemand.CleanRepoNow(onDemandRepo), ShouldBeNil)
+			So(waitFor(func() bool {
+				status, found := onDemand.RepoStatus(onDemandRepo)
+
+				return found && !status.Running
+			}), ShouldBeTrue)
+
+			last, _ := onDemand.RepoStatus(onDemandRepo)
+
+			sch.Shutdown()
+
+			So(onDemand.CleanRepoNow(onDemandRepo), ShouldEqual, zerr.ErrGCNotScheduled)
+
+			status, found := onDemand.RepoStatus(onDemandRepo)
+			So(found, ShouldBeTrue)
+			So(status, ShouldResemble, last)
+		})
+
 		Convey("SweepNow reports a sweep the scheduler will not run", func() {
 			onDemand := gc.NewGarbageCollect(imgStore, metaDB, opts, nil, log, metrics).
 				CleanImageStorePeriodically(time.Hour, sch)

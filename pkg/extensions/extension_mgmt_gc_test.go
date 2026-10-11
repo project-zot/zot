@@ -3,8 +3,10 @@
 package extensions_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -14,10 +16,18 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/api/constants"
+	"zotregistry.dev/zot/v2/pkg/compat"
+	"zotregistry.dev/zot/v2/pkg/extensions"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
+	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
+	"zotregistry.dev/zot/v2/pkg/log"
+	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
+	"zotregistry.dev/zot/v2/pkg/scheduler"
 	"zotregistry.dev/zot/v2/pkg/storage/gc"
+	"zotregistry.dev/zot/v2/pkg/storage/local"
 	test "zotregistry.dev/zot/v2/pkg/test/common"
 	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
+	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
 
 func TestMgmtGC(t *testing.T) {
@@ -237,5 +247,51 @@ func TestMgmtGCWithoutAccessControl(t *testing.T) {
 		resp, err := resty.R().SetQueryParam("store", "/").Post(baseURL + constants.FullMgmt + constants.MgmtGC)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+	})
+}
+
+func TestGCHandlerSchedulingErrors(t *testing.T) {
+	Convey("The handler reports requests the scheduler can't take", t, func() {
+		logger := log.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+
+		imgStore := local.NewImageStore(t.TempDir(), false, false, logger, metrics, nil, nil,
+			[]compat.MediaCompatibility{compat.DockerManifestV2SchemaV2}, nil)
+
+		sch := scheduler.NewScheduler(config.New(), metrics, logger)
+
+		onDemand := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{Delay: time.Millisecond},
+			nil, logger, metrics).CleanImageStorePeriodically(time.Hour, sch)
+
+		handler := extensions.GCHandler{
+			GCOnDemand: func(string) (*gc.OnDemand, bool) { return onDemand, true },
+			Log:        logger,
+		}
+
+		runGC := func() int {
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetIsAdmin(true)
+
+			ctx := context.WithValue(context.Background(), reqCtx.GetContextKey(), *userAc)
+			request := httptest.NewRequestWithContext(ctx, http.MethodPost, "/?store=/", nil)
+
+			response := httptest.NewRecorder()
+			handler.RunGC(response, request)
+
+			return response.Code
+		}
+
+		Convey("a sweep requested while one is running is rejected", func() {
+			// the scheduler isn't running, so the first sweep stays pending
+			So(runGC(), ShouldEqual, http.StatusAccepted)
+			So(runGC(), ShouldEqual, http.StatusConflict)
+		})
+
+		Convey("a sweep the scheduler won't run is reported as unavailable", func() {
+			sch.RunScheduler()
+			sch.Shutdown()
+
+			So(runGC(), ShouldEqual, http.StatusServiceUnavailable)
+		})
 	})
 }
