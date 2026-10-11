@@ -2,6 +2,7 @@ package common_test
 
 import (
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -703,6 +704,97 @@ func TestUtils(t *testing.T) {
 			So(resultBlobs.Blobs[digestStr], ShouldNotBeNil)
 			So(resultBlobs.Blobs[digestStr].Size, ShouldEqual, 2000)
 			So(resultBlobs.Blobs[digestStr].SubBlobs, ShouldContain, childDigest.String())
+		})
+	})
+}
+
+func TestProjectRepoSize(t *testing.T) {
+	Convey("ProjectRepoSize", t, func() {
+		oldDigest := godigest.FromString("old-manifest")
+		configDigest := godigest.FromString("shared-config")
+		layerDigest := godigest.FromString("shared-layer")
+		newDigest := godigest.FromString("new-manifest")
+		newLayerDigest := godigest.FromString("new-layer")
+
+		repoMeta := &proto_go.RepoMeta{
+			Name: "repo",
+			Tags: map[string]*proto_go.TagDescriptor{
+				"latest": {Digest: oldDigest.String(), MediaType: ispec.MediaTypeImageManifest},
+			},
+			Size: 60,
+		}
+		repoBlobs := &proto_go.RepoBlobs{
+			Name: "repo",
+			Blobs: map[string]*proto_go.BlobInfo{
+				oldDigest.String():    {Size: 10, SubBlobs: []string{configDigest.String(), layerDigest.String()}},
+				configDigest.String(): {Size: 20},
+				layerDigest.String():  {Size: 30},
+			},
+		}
+		candidate := mTypes.ImageMeta{
+			MediaType: ispec.MediaTypeImageManifest,
+			Digest:    newDigest,
+			Size:      15,
+			Manifests: []mTypes.ManifestMeta{{
+				Digest: newDigest,
+				Size:   15,
+				Manifest: ispec.Manifest{
+					Config: ispec.Descriptor{Digest: configDigest, Size: 20},
+					Layers: []ispec.Descriptor{
+						{Digest: layerDigest, Size: 30},
+						{Digest: newLayerDigest, Size: 40},
+					},
+				},
+			}},
+		}
+
+		current, projected, err := common.ProjectRepoSize(repoMeta, repoBlobs, []string{"latest"}, candidate)
+		So(err, ShouldBeNil)
+		So(current, ShouldEqual, 60)
+		So(projected, ShouldEqual, 105)
+		So(repoMeta.Tags["latest"].Digest, ShouldEqual, newDigest.String())
+
+		Convey("rejects negative and changed blob sizes", func() {
+			invalid := candidate
+			invalid.Size = -1
+
+			_, _, err := common.ProjectRepoSize(repoMeta, repoBlobs, []string{"latest"}, invalid)
+			So(errors.Is(err, common.ErrInvalidRepoSizeCandidate), ShouldBeTrue)
+
+			invalid = candidate
+			invalid.Manifests[0].Manifest.Config.Size = 19
+
+			_, _, err = common.ProjectRepoSize(repoMeta, repoBlobs, []string{"latest"}, invalid)
+			So(errors.Is(err, common.ErrInvalidRepoSizeCandidate), ShouldBeTrue)
+		})
+
+		Convey("rejects conflicting sizes for a digest within a candidate", func() {
+			invalid := candidate
+			invalid.Manifests[0].Manifest.Layers = []ispec.Descriptor{
+				{Digest: newLayerDigest, Size: 40},
+				{Digest: newLayerDigest, Size: 1},
+			}
+
+			_, _, err := common.ProjectRepoSize(repoMeta, repoBlobs, []string{"latest"}, invalid)
+			So(errors.Is(err, common.ErrInvalidRepoSizeCandidate), ShouldBeTrue)
+		})
+
+		Convey("rejects aggregate size overflow", func() {
+			overflowRepoMeta := &proto_go.RepoMeta{
+				Tags: map[string]*proto_go.TagDescriptor{
+					"old": {Digest: oldDigest.String()},
+				},
+				Size: math.MaxInt64,
+			}
+			overflowRepoBlobs := &proto_go.RepoBlobs{
+				Blobs: map[string]*proto_go.BlobInfo{
+					oldDigest.String(): {Size: math.MaxInt64},
+				},
+			}
+
+			_, _, err := common.ProjectRepoSize(overflowRepoMeta, overflowRepoBlobs,
+				[]string{"new"}, candidate)
+			So(errors.Is(err, common.ErrInvalidRepoSize), ShouldBeTrue)
 		})
 	})
 }

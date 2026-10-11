@@ -3846,6 +3846,31 @@ func TestConfig(t *testing.T) {
 	})
 }
 
+func TestRepoByteQuotaConfig(t *testing.T) {
+	Convey("repo byte quota configuration", t, func() {
+		conf := config.New()
+
+		So(conf.IsQuotaEnabled(), ShouldBeFalse)
+		So(conf.MaxRepoBytesForStore("/"), ShouldEqual, int64(0))
+
+		conf.Storage.MaxRepoBytes = 1024
+		So(conf.IsQuotaEnabled(), ShouldBeTrue)
+		So(conf.MaxRepoBytesForStore("/"), ShouldEqual, int64(1024))
+
+		conf.Storage.SubPaths = map[string]config.StorageConfig{
+			"/tenant": {
+				MaxRepoBytes: 2048,
+			},
+			"/unlimited": {
+				MaxRepoBytes: 0,
+			},
+		}
+		So(conf.MaxRepoBytesForStore("/tenant"), ShouldEqual, int64(2048))
+		So(conf.MaxRepoBytesForStore("/unlimited"), ShouldEqual, int64(0))
+		So(conf.MaxRepoBytesForStore("/unknown"), ShouldEqual, int64(1024))
+	})
+}
+
 func TestHTTPTimeoutAccessors(t *testing.T) {
 	Convey("GetHTTPReadTimeout returns configured values", t, func() {
 		cfg := config.New()

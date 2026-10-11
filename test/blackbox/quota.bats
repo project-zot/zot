@@ -91,7 +91,7 @@ function teardown_file() {
     [ $(echo "${lines[-1]}" | jq '.repositories | length') -eq 2 ]
 }
 
-@test "push manifest to new repo3 returns HTTP 429 when quota is reached" {
+@test "push manifest to new repo3 returns HTTP 413 when quota is reached" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     # Push a minimal OCI manifest; the quota middleware rejects it before content validation
     run curl -s -o /dev/null -w "%{http_code}" \
@@ -100,10 +100,10 @@ function teardown_file() {
         -d "${MINIMAL_MANIFEST}" \
         "http://127.0.0.1:${zot_port}/v2/repo3/manifests/v1"
     [ "$status" -eq 0 ]
-    [ "${lines[-1]}" -eq 429 ]
+    [ "${lines[-1]}" -eq 413 ]
 }
 
-@test "429 response body contains TOOMANYREQUESTS code and limit detail" {
+@test "413 response body contains TOOMANYREQUESTS code and limit detail" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     run curl -s \
         -X PUT \
@@ -164,5 +164,5 @@ function teardown_file() {
         -d "${MINIMAL_MANIFEST}" \
         "http://127.0.0.1:${zot_port}/v2/repo5/manifests/v1"
     [ "$status" -eq 0 ]
-    [ "${lines[-1]}" -eq 429 ]
+    [ "${lines[-1]}" -eq 413 ]
 }

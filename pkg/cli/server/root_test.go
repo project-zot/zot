@@ -473,6 +473,7 @@ func TestSchema(t *testing.T) {
 		storageProperties, ok := storageSchema["properties"].(map[string]any)
 		So(ok, ShouldBeTrue)
 		So(storageProperties, ShouldContainKey, "rootDirectory")
+		So(storageProperties, ShouldContainKey, "maxRepoBytes")
 		So(storageProperties, ShouldContainKey, "gcDelay")
 		So(storageProperties, ShouldContainKey, "gcInterval")
 		So(storageProperties, ShouldContainKey, "subPaths")
