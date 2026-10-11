@@ -166,6 +166,77 @@ func TestOIDCVerifierRefreshRetainsKeys(t *testing.T) {
 	}
 }
 
+func TestOIDCVerifierRefreshAlgorithmOrder(t *testing.T) {
+	t.Parallel()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var algorithms atomic.Value
+	algorithms.Store([]string{"RS256", "RS512"})
+	var keyRequests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/jwks" {
+			if keyRequests.Add(1) > 1 {
+				http.Error(w, "JWKS unavailable", http.StatusServiceUnavailable)
+
+				return
+			}
+			_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{
+				Key: &key.PublicKey, Algorithm: string(jose.RS256), Use: "sig",
+			}}})
+
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"issuer": "http://" + r.Host, "jwks_uri": "http://" + r.Host + "/jwks",
+			"id_token_signing_alg_values_supported": algorithms.Load(),
+		})
+	}))
+	defer server.Close()
+
+	authorizer, err := NewOIDCBearerAuthorizer([]config.BearerOIDCConfig{
+		{Issuer: server.URL, Audiences: []string{"zot"}},
+	}, log.NewTestLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+		"iss": server.URL, "aud": []string{"zot"}, "sub": "test-user",
+		"exp": time.Now().Add(time.Hour).Unix(),
+	})
+	signed, err := token.SignedString(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	header := "Bearer " + signed
+	if _, err := authorizer.Authenticate(context.Background(), header); err != nil {
+		t.Fatal(err)
+	}
+	provider := authorizer.providers[0]
+	originalVerifier := provider.verifier
+
+	algorithms.Store([]string{"RS512", "RS256"})
+	provider.refreshVerifier(context.Background(), make(chan struct{}))
+	if _, err := authorizer.Authenticate(context.Background(), header); err != nil {
+		t.Fatalf("algorithm reordering must retain cached keys during a JWKS outage: %v", err)
+	}
+	if provider.verifier != originalVerifier || keyRequests.Load() != 1 {
+		t.Fatal("algorithm reordering replaced the verifier or fetched signing keys")
+	}
+
+	algorithms.Store([]string{"RS512"})
+	provider.refreshVerifier(context.Background(), make(chan struct{}))
+	if provider.verifier == originalVerifier {
+		t.Fatal("a changed algorithm list must replace the verifier")
+	}
+	if _, err := authorizer.Authenticate(context.Background(), header); err == nil {
+		t.Fatal("a token using a removed signing algorithm must be rejected")
+	}
+}
+
 func TestOIDCGoogleIssuerAlias(t *testing.T) {
 	t.Parallel()
 

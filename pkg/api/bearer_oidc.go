@@ -294,9 +294,12 @@ func (o *oidcProvider) refreshVerifier(ctx context.Context, done chan struct{}) 
 		return
 	}
 	if o.provider != nil {
-		if err := o.provider.Claims(&previous); err == nil &&
-			previous.JWKSURL == current.JWKSURL && slices.Equal(previous.Algorithms, current.Algorithms) {
-			return
+		if err := o.provider.Claims(&previous); err == nil {
+			slices.Sort(previous.Algorithms)
+			slices.Sort(current.Algorithms)
+			if previous.JWKSURL == current.JWKSURL && slices.Equal(previous.Algorithms, current.Algorithms) {
+				return
+			}
 		}
 	}
 	o.provider = provider
