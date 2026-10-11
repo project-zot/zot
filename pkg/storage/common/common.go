@@ -855,7 +855,7 @@ func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godiges
 	index, err := GetIndex(imgStore, repo, log)
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoNotFound) {
-			return newEmptyReferrersIndex(), nil
+			return NewEmptyReferrersIndex(), nil
 		}
 
 		return nilIndex, err
@@ -956,7 +956,9 @@ func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godiges
 	}, nil
 }
 
-func newEmptyReferrersIndex() ispec.Index {
+// NewEmptyReferrersIndex returns an empty index - per the OCI distribution spec, the
+// correct response for a digest/repo with no referrers, not an error.
+func NewEmptyReferrersIndex() ispec.Index {
 	return ispec.Index{
 		SchemaVersion: storageConstants.SchemaVersion,
 		MediaType:     ispec.MediaTypeImageIndex,
