@@ -194,6 +194,8 @@ func (rh *RouteHandler) checkRepoByteQuota(response http.ResponseWriter, request
 		return false
 	}
 
+	rh.normalizeQuotaImageMeta(repo, &imageMeta)
+
 	current, projected, err := rh.c.MetaDB.GetRepoSizeWithCandidate(request.Context(), repo, references, imageMeta)
 	if err != nil {
 		if errors.Is(err, metaCommon.ErrInvalidRepoSizeCandidate) {
@@ -230,6 +232,43 @@ func (rh *RouteHandler) checkRepoByteQuota(response http.ResponseWriter, request
 	writeQuotaExceeded(response, current, projected, limit)
 
 	return true
+}
+
+func (rh *RouteHandler) normalizeQuotaImageMeta(repo string, imageMeta *mTypes.ImageMeta) {
+	if !compat.IsImageManifestMediaType(imageMeta.MediaType) || len(imageMeta.Manifests) == 0 {
+		return
+	}
+
+	imgStore := rh.c.StoreController.GetImageStore(repo)
+	manifest := &imageMeta.Manifests[0].Manifest
+	descriptors := make([]*ispec.Descriptor, 0, len(manifest.Layers)+1)
+
+	descriptors = append(descriptors, &manifest.Config)
+	for index := range manifest.Layers {
+		descriptors = append(descriptors, &manifest.Layers[index])
+	}
+
+	knownSizes := map[godigest.Digest]int64{}
+
+	for _, descriptor := range descriptors {
+		if descriptor.Digest == "" {
+			continue
+		}
+
+		if size, ok := knownSizes[descriptor.Digest]; ok {
+			descriptor.Size = size
+
+			continue
+		}
+
+		present, size, _, err := imgStore.StatBlob(repo, descriptor.Digest)
+		if err != nil || !present {
+			continue
+		}
+
+		knownSizes[descriptor.Digest] = size
+		descriptor.Size = size
+	}
 }
 
 func quotaImageMeta(reference, mediaType string, body []byte) (mTypes.ImageMeta, bool) {

@@ -196,6 +196,32 @@ func TestRepoByteQuotaAllowsCurrentSizeAndRejectsGrowth(t *testing.T) {
 	})
 }
 
+func TestRepoByteQuotaUsesActualBlobSizes(t *testing.T) {
+	Convey("Given a repository with a quota equal to its current image size", t, func() {
+		first := CreateImageWith().RandomLayers(1, 10).RandomConfig().Build()
+		firstSize := first.ManifestDescriptor.Size + first.ConfigDescriptor.Size + int64(len(first.Layers[0]))
+		baseURL, stop := startByteQuotaServer(t, firstSize)
+		defer stop()
+
+		So(UploadImage(first, baseURL, "actual-size", "v1"), ShouldBeNil)
+
+		manifest := first.Manifest
+		manifest.Config.Size = 0
+
+		manifest.Layers = append([]ispec.Descriptor(nil), first.Manifest.Layers...)
+		manifest.Layers[0].Size = 0
+		manifestBody, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+
+		resp, err := resty.R().
+			SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+			SetBody(manifestBody).
+			Put(baseURL + "/v2/actual-size/manifests/v2")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusRequestEntityTooLarge)
+	})
+}
+
 func TestRepoByteQuotaAcceptsShortCosignLikeTag(t *testing.T) {
 	Convey("Given a registry with maxRepoBytes enabled", t, func() {
 		baseURL, stop := startByteQuotaServer(t, 1<<30)
