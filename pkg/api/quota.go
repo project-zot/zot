@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/gorilla/mux"
 	godigest "github.com/opencontainers/go-digest"
@@ -260,7 +261,10 @@ func (rh *RouteHandler) normalizeQuotaImageMeta(repo string, imageMeta *mTypes.I
 			continue
 		}
 
+		var lockLatency time.Time
+		imgStore.RLock(&lockLatency)
 		present, size, _, err := imgStore.StatBlob(repo, descriptor.Digest)
+		imgStore.RUnlock(&lockLatency)
 		if err != nil || !present {
 			continue
 		}

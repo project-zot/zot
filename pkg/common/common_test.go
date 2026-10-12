@@ -221,3 +221,22 @@ func TestCommon(t *testing.T) {
 		So(result, ShouldBeFalse)
 	})
 }
+
+func TestIsReferrersTag(t *testing.T) {
+	validTag := "sha256-" + strings.Repeat("a", 64)
+
+	cases := map[string]bool{
+		validTag:                            true,
+		"sha256-x":                          false,
+		"sha256-" + strings.Repeat("a", 63): false,
+		"sha256-" + strings.Repeat("g", 64): false,
+		"prefix-" + validTag:                false,
+		validTag + ".sig":                   false,
+	}
+
+	for tag, expected := range cases {
+		if got := common.IsReferrersTag(tag); got != expected {
+			t.Errorf("IsReferrersTag(%q) = %v, want %v", tag, got, expected)
+		}
+	}
+}

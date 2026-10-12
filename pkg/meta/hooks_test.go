@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path"
+	"strings"
 	"testing"
 
 	godigest "github.com/opencontainers/go-digest"
@@ -501,14 +502,15 @@ func TestUpdateErrors(t *testing.T) {
 		storeController := storage.StoreController{DefaultStore: &imageStore}
 		metaDB := mocks.MetaDBMock{}
 		log := log.NewTestLogger()
+		referrersTag := "sha256-" + strings.Repeat("a", 64)
 
 		Convey("IsReferrersTag true update", func() {
-			err := meta.OnUpdateManifest(context.Background(), "repo", "sha256-123", "digest", "media", []byte("bad"),
+			err := meta.OnUpdateManifest(context.Background(), "repo", referrersTag, "digest", "media", []byte("bad"),
 				storeController, metaDB, log)
 			So(err, ShouldBeNil)
 		})
 		Convey("IsReferrersTag true delete", func() {
-			err := meta.OnDeleteManifest("repo", "sha256-123", "digest", "media", []byte("bad"),
+			err := meta.OnDeleteManifest("repo", referrersTag, "digest", "media", []byte("bad"),
 				storeController, metaDB, log)
 			So(err, ShouldBeNil)
 		})
