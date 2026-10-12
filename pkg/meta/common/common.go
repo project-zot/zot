@@ -1,7 +1,6 @@
 package common
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -17,13 +16,6 @@ import (
 	mConvert "zotregistry.dev/zot/v2/pkg/meta/convert"
 	proto_go "zotregistry.dev/zot/v2/pkg/meta/proto/gen"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
-)
-
-var (
-	// ErrInvalidRepoSize indicates that stored repository size metadata cannot be safely projected.
-	ErrInvalidRepoSize = errors.New("invalid repository size")
-	// ErrInvalidRepoSizeCandidate indicates invalid size data supplied by a manifest candidate.
-	ErrInvalidRepoSizeCandidate = errors.New("invalid repository size candidate")
 )
 
 func SignatureAlreadyExists(signatureSlice []mTypes.SignatureInfo, sm mTypes.SignatureMetadata) bool {
@@ -314,7 +306,7 @@ func ProjectRepoSize(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.RepoBlobs,
 ) (int64, int64, error) {
 	currentSize := repoMeta.Size
 	if currentSize < 0 {
-		return currentSize, math.MaxInt64, fmt.Errorf("%w: stored size is negative", ErrInvalidRepoSize)
+		return currentSize, math.MaxInt64, fmt.Errorf("%w: stored size is negative", zerr.ErrInvalidRepoSize)
 	}
 
 	if err := validateCandidateRepoSize(repoBlobs, imageMeta); err != nil {
@@ -345,22 +337,22 @@ func ProjectRepoSize(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.RepoBlobs,
 
 func validateCandidateRepoSize(repoBlobs *proto_go.RepoBlobs, imageMeta mTypes.ImageMeta) error {
 	if imageMeta.Size < 0 {
-		return fmt.Errorf("%w: manifest size is negative", ErrInvalidRepoSizeCandidate)
+		return fmt.Errorf("%w: manifest size is negative", zerr.ErrInvalidRepoSizeCandidate)
 	}
 
 	candidateBlobSizes := map[string]int64{}
 
 	validateBlobSize := func(digest godigest.Digest, size int64) error {
 		if size < 0 {
-			return fmt.Errorf("%w: blob %s size is negative", ErrInvalidRepoSizeCandidate, digest)
+			return fmt.Errorf("%w: blob %s size is negative", zerr.ErrInvalidRepoSizeCandidate, digest)
 		}
 
 		if candidateSize, ok := candidateBlobSizes[digest.String()]; ok && candidateSize != size {
-			return fmt.Errorf("%w: candidate blob %s size changed", ErrInvalidRepoSizeCandidate, digest)
+			return fmt.Errorf("%w: candidate blob %s size changed", zerr.ErrInvalidRepoSizeCandidate, digest)
 		}
 
 		if blobInfo, ok := repoBlobs.Blobs[digest.String()]; ok && blobInfo != nil && blobInfo.Size != size {
-			return fmt.Errorf("%w: blob %s size changed", ErrInvalidRepoSizeCandidate, digest)
+			return fmt.Errorf("%w: blob %s size changed", zerr.ErrInvalidRepoSizeCandidate, digest)
 		}
 
 		candidateBlobSizes[digest.String()] = size
@@ -389,7 +381,7 @@ func validateCandidateRepoSize(repoBlobs *proto_go.RepoBlobs, imageMeta mTypes.I
 		}
 	case compat.IsImageIndexMediaType(imageMeta.MediaType):
 		if imageMeta.Index == nil {
-			return fmt.Errorf("%w: image index is missing", ErrInvalidRepoSizeCandidate)
+			return fmt.Errorf("%w: image index is missing", zerr.ErrInvalidRepoSizeCandidate)
 		}
 
 		if err := validateBlobSize(imageMeta.Digest, imageMeta.Size); err != nil {
@@ -429,7 +421,7 @@ func recalculateAggregateSize(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.R
 				continue
 			}
 			if blobInfo.Size < 0 || size > math.MaxInt64-blobInfo.Size {
-				return 0, fmt.Errorf("%w: aggregate size overflow", ErrInvalidRepoSize)
+				return 0, fmt.Errorf("%w: aggregate size overflow", zerr.ErrInvalidRepoSize)
 			}
 
 			seen[currentBlob] = struct{}{}

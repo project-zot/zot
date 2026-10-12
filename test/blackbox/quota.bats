@@ -9,6 +9,7 @@ load ../port_helper
 # The quota middleware rejects manifest PUTs for new repos before content validation,
 # so the config blob referenced here does not need to exist in the registry.
 MINIMAL_MANIFEST='{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","config":{"mediaType":"application/vnd.oci.image.config.v1+json","digest":"sha256:44136fa355ba77b9ad7b468a8c5e4f9b85d40e49c15ebd6a4e40ac9eb25c6a80","size":2},"layers":[]}'
+OVERSIZED_MANIFEST='{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","config":{"mediaType":"application/vnd.oci.image.config.v1+json","digest":"sha256:44136fa355ba77b9ad7b468a8c5e4f9b85d40e49c15ebd6a4e40ac9eb25c6a80","size":21474836480},"layers":[]}'
 
 function verify_prerequisites {
     if [ ! $(command -v curl) ]; then
@@ -33,7 +34,7 @@ function setup_file() {
     # Download test data to folder common for the entire suite, not just this file
     skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.20 oci:${TEST_DATA_DIR}/golang:1.20
 
-    # Setup zot server with maxRepos=2
+    # Setup zot server with maxRepos=2 and maxRepoBytes=10 GiB
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
     mkdir -p ${zot_root_dir}
@@ -44,7 +45,8 @@ function setup_file() {
     "distSpecVersion": "1.1.1",
     "storage": {
         "rootDirectory": "${zot_root_dir}",
-        "maxRepos": 2
+        "maxRepos": 2,
+        "maxRepoBytes": 10737418240
     },
     "http": {
         "address": "0.0.0.0",
@@ -89,6 +91,17 @@ function teardown_file() {
     run curl http://127.0.0.1:${zot_port}/v2/_catalog
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.repositories | length') -eq 2 ]
+}
+
+@test "manifest exceeding maxRepoBytes returns HTTP 413" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run curl -s -o /dev/null -w "%{http_code}" \
+        -X PUT \
+        -H "Content-Type: application/vnd.oci.image.manifest.v1+json" \
+        -d "${OVERSIZED_MANIFEST}" \
+        "http://127.0.0.1:${zot_port}/v2/repo1/manifests/over-byte"
+    [ "$status" -eq 0 ]
+    [ "${lines[-1]}" -eq 413 ]
 }
 
 @test "push manifest to new repo3 returns HTTP 413 when quota is reached" {

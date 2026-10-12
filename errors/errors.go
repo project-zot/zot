@@ -112,6 +112,8 @@ var (
 	ErrManifestConflict                 = errors.New("multiple manifests found")
 	ErrManifestRestoreAttempted         = errors.New("manifest restore to image store attempted after a metadb failure")
 	ErrImageMetaNotFound                = errors.New("image meta not found")
+	ErrInvalidRepoSize                  = errors.New("invalid repository size")
+	ErrInvalidRepoSizeCandidate         = errors.New("invalid repository size candidate")
 	ErrUnexpectedMediaType              = errors.New("unexpected media type")
 	ErrRepoMetaNotFound                 = errors.New("repo metadata not found for given repo name")
 	ErrTagMetaNotFound                  = errors.New("tag metadata not found for given repo and tag names")

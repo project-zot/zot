@@ -13,6 +13,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/meta/common"
 	proto_go "zotregistry.dev/zot/v2/pkg/meta/proto/gen"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
@@ -759,13 +760,13 @@ func TestProjectRepoSize(t *testing.T) {
 			invalid.Size = -1
 
 			_, _, err := common.ProjectRepoSize(repoMeta, repoBlobs, []string{"latest"}, invalid)
-			So(errors.Is(err, common.ErrInvalidRepoSizeCandidate), ShouldBeTrue)
+			So(errors.Is(err, zerr.ErrInvalidRepoSizeCandidate), ShouldBeTrue)
 
 			invalid = candidate
 			invalid.Manifests[0].Manifest.Config.Size = 19
 
 			_, _, err = common.ProjectRepoSize(repoMeta, repoBlobs, []string{"latest"}, invalid)
-			So(errors.Is(err, common.ErrInvalidRepoSizeCandidate), ShouldBeTrue)
+			So(errors.Is(err, zerr.ErrInvalidRepoSizeCandidate), ShouldBeTrue)
 		})
 
 		Convey("rejects conflicting sizes for a digest within a candidate", func() {
@@ -776,7 +777,7 @@ func TestProjectRepoSize(t *testing.T) {
 			}
 
 			_, _, err := common.ProjectRepoSize(repoMeta, repoBlobs, []string{"latest"}, invalid)
-			So(errors.Is(err, common.ErrInvalidRepoSizeCandidate), ShouldBeTrue)
+			So(errors.Is(err, zerr.ErrInvalidRepoSizeCandidate), ShouldBeTrue)
 		})
 
 		Convey("rejects aggregate size overflow", func() {
@@ -794,7 +795,7 @@ func TestProjectRepoSize(t *testing.T) {
 
 			_, _, err := common.ProjectRepoSize(overflowRepoMeta, overflowRepoBlobs,
 				[]string{"new"}, candidate)
-			So(errors.Is(err, common.ErrInvalidRepoSize), ShouldBeTrue)
+			So(errors.Is(err, zerr.ErrInvalidRepoSize), ShouldBeTrue)
 		})
 	})
 }
