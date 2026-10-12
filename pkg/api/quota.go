@@ -17,7 +17,6 @@ import (
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/compat"
 	"zotregistry.dev/zot/v2/pkg/log"
-	metaCommon "zotregistry.dev/zot/v2/pkg/meta/common"
 	"zotregistry.dev/zot/v2/pkg/meta/convert"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/storage"
@@ -198,7 +197,7 @@ func (rh *RouteHandler) checkRepoByteQuota(response http.ResponseWriter, request
 
 	current, projected, err := rh.c.MetaDB.GetRepoSizeWithCandidate(request.Context(), repo, references, imageMeta)
 	if err != nil {
-		if errors.Is(err, metaCommon.ErrInvalidRepoSizeCandidate) {
+		if errors.Is(err, zerr.ErrInvalidRepoSizeCandidate) {
 			rh.c.Log.Warn().Err(err).Str("repo", repo).
 				Msg("manifest descriptor size is invalid, rejecting push")
 			writeInvalidRepoSize(response)
@@ -206,7 +205,7 @@ func (rh *RouteHandler) checkRepoByteQuota(response http.ResponseWriter, request
 			return true
 		}
 
-		if errors.Is(err, metaCommon.ErrInvalidRepoSize) {
+		if errors.Is(err, zerr.ErrInvalidRepoSize) {
 			rh.c.Log.Error().Err(err).Str("repo", repo).
 				Msg("repository size metadata is invalid, rejecting push")
 			response.WriteHeader(http.StatusInternalServerError)
