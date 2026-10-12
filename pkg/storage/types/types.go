@@ -25,10 +25,42 @@ type ImageStore interface { //nolint:interfacebloat
 	Name() string
 	DirExists(d string) bool
 	RootDir() string
-	RLock(*time.Time)
-	RUnlock(*time.Time)
-	Lock(*time.Time)
-	Unlock(*time.Time)
+	RepoExists(repo string) bool
+	// StatRepo is RepoExists with the reason kept: nil if repo exists, an error wrapping
+	// zerr.ErrRepoNotFound if it does not, and the storage error itself if the backend could
+	// not say. Callers answering a client must use this, or an outage reads as "no such repo".
+	StatRepo(repo string) error
+	// WithRepoLock and WithRepoReadLock hold repo's lock for wrappedFunc's duration. repo
+	// need not exist: callers such as CheckBlob lock names a request merely mentions.
+	// Implementations must therefore not keep a lock around per name ever seen; the default
+	// store reference-counts its entries and drops each one when its last holder or waiter
+	// leaves (imagestore.repoLockMap), so memory tracks in-flight operations only.
+	WithRepoLock(repo string, wrappedFunc func() error) error
+	WithRepoReadLock(repo string, wrappedFunc func() error) error
+	// WithBlobstoreLock holds the shared global blobstore's write lock for wrappedFunc's
+	// duration. Must be acquired before any repo lock, never after - use
+	// WithBlobstoreAndRepoLock when both are needed.
+	//
+	// This and the other locks here are process-local: they serialise goroutines of one zot
+	// instance and are not what protects a store shared by several instances. Nothing relies
+	// on them for that. On such stores (remote backends with a Redis/DynamoDB blob-ref index)
+	// dropping a blob's last reference never deletes the global payload under these locks; it
+	// only writes a reclaim marker, and the payload is deleted later by a sweep that
+	// coordinates with linkers on every instance through marker, claim and pin objects in the
+	// bucket plus a per-digest lock in the shared cache. See imagestore/reclaim.go.
+	WithBlobstoreLock(wrappedFunc func() error) error
+	// WithBlobstoreReadLock is WithBlobstoreLock's read-lock counterpart; same ordering rule.
+	WithBlobstoreReadLock(wrappedFunc func() error) error
+	// WithBlobstoreAndRepoLock acquires both locks in the mandated blobstore-before-repo
+	// order, so callers don't have to get it right themselves.
+	WithBlobstoreAndRepoLock(repo string, wrappedFunc func() error) error
+	// WithRepoCleanupLock holds what deleting blobs out of repo requires: its write lock,
+	// plus the blobstore write lock only on stores where such a delete can remove the shared
+	// payload right away. Long repo-wide passes (GC, repo removal) must use this rather than
+	// WithBlobstoreAndRepoLock so they do not stall every other repository without need.
+	WithRepoCleanupLock(repo string, wrappedFunc func() error) error
+	// WithBlobstoreReadAndRepoLock is WithBlobstoreAndRepoLock's read-lock counterpart.
+	WithBlobstoreReadAndRepoLock(repo string, wrappedFunc func() error) error
 	InitRepo(ctx context.Context, name string) error
 	ValidateRepo(name string) (bool, error)
 	GetRepositories() ([]string, error)

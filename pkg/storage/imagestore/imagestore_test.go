@@ -21,6 +21,7 @@ import (
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
+	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 	"zotregistry.dev/zot/v2/pkg/storage/gcs"
 	"zotregistry.dev/zot/v2/pkg/storage/imagestore"
@@ -30,9 +31,10 @@ import (
 )
 
 var (
-	errDeleteFailed = errors.New("delete failed") //nolint: gochecknoglobals
-	errDriverFailed = errors.New("driver failed") //nolint: gochecknoglobals
-)
+	errDeleteFailed = errors.New("delete failed")
+	errDriverFailed = errors.New("driver failed")
+	errWalkFailed   = errors.New("walk failed")
+) //nolint: gochecknoglobals
 
 // rawListDriver returns List errors without driver formatErr classification so
 // ImageStore.ValidateRepo's unclassified MarkTransient fallback stays reachable.
@@ -74,6 +76,19 @@ func writeMinimalLocalOCILayout(t *testing.T, rootDir, repo string) {
 		[]byte(`{"imageLayoutVersion": "1.0.0"}`), 0o600), ShouldBeNil)
 }
 
+func TestRepoExists(t *testing.T) {
+	Convey("RepoExists resolves repository names under the image store root", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+		store := imagestore.NewImageStore(t.TempDir(), "", false, false, log, metrics, nil,
+			local.New(true), nil, nil, nil)
+
+		So(store.RepoExists("repo"), ShouldBeFalse)
+		So(store.InitRepo(context.Background(), "repo"), ShouldBeNil)
+		So(store.RepoExists("repo"), ShouldBeTrue)
+	})
+}
+
 func TestGetBlobRedirectURL(t *testing.T) {
 	Convey("GetBlobRedirectURL", t, func() {
 		log := zlog.NewTestLogger()
@@ -108,20 +123,26 @@ func TestGetBlobRedirectURL(t *testing.T) {
 
 			repo := "repo"
 			digest := godigest.FromString("blob-content")
+			expectedRepoDir := path.Join(rootDir, repo)
 			expectedBlobPath := store.BlobPath(repo, digest)
+			expectedGlobalBlobPath := store.BlobPath(storageConstants.GlobalBlobsRepo, digest)
 			expectedURL := "https://example.com/signed/blob"
 
-			storeMock.StatFn = func(_ context.Context, path string) (driver.FileInfo, error) {
-				So(path, ShouldEqual, expectedBlobPath)
+			storeMock.StatFn = func(_ context.Context, statPath string) (driver.FileInfo, error) {
+				if statPath == expectedRepoDir {
+					return &mocks.FileInfoMock{IsDirFn: func() bool { return true }}, nil
+				}
+
+				So(statPath == expectedBlobPath || statPath == expectedGlobalBlobPath, ShouldBeTrue)
 
 				return &mocks.FileInfoMock{
-					PathFn: func() string { return path },
+					PathFn: func() string { return statPath },
 					SizeFn: func() int64 { return 42 },
 				}, nil
 			}
 
 			storeMock.RedirectURLFn = func(_ *http.Request, path string) (string, error) {
-				So(path, ShouldEqual, expectedBlobPath)
+				So(path, ShouldEqual, expectedGlobalBlobPath)
 
 				return expectedURL, nil
 			}
@@ -141,12 +162,19 @@ func TestGetBlobRedirectURL(t *testing.T) {
 			store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
 				remoteDriver, nil, nil, nil)
 
-			storeMock.StatFn = func(_ context.Context, path string) (driver.FileInfo, error) {
-				return nil, driver.PathNotFoundError{Path: path}
+			repo := "repo"
+			expectedRepoDir := path.Join(rootDir, repo)
+
+			storeMock.StatFn = func(_ context.Context, statPath string) (driver.FileInfo, error) {
+				if statPath == expectedRepoDir {
+					return &mocks.FileInfoMock{IsDirFn: func() bool { return true }}, nil
+				}
+
+				return nil, driver.PathNotFoundError{Path: statPath}
 			}
 
 			digest := godigest.FromString("blob-content")
-			url, err := store.GetBlobRedirectURL(nil, "repo", digest)
+			url, err := store.GetBlobRedirectURL(nil, repo, digest)
 			So(url, ShouldEqual, "")
 			So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
 		})
@@ -248,12 +276,17 @@ func TestRemoveIdleRepository(t *testing.T) {
 	}
 
 	removeIdle := func(store storageTypes.ImageStore, repo string, maxBlobAge time.Duration) (bool, error) {
-		var lockLatency time.Time
+		var removed bool
 
-		store.Lock(&lockLatency)
-		defer store.Unlock(&lockLatency)
+		err := store.WithBlobstoreAndRepoLock(repo, func() error {
+			var err error
 
-		return store.RemoveIdleRepository(repo, maxBlobAge)
+			removed, err = store.RemoveIdleRepository(repo, maxBlobAge)
+
+			return err
+		})
+
+		return removed, err
 	}
 
 	Convey("An emptied repo loses its layout, orphan blobs included", t, func() {
@@ -760,8 +793,17 @@ func TestCheckBlobTransientSkipsCacheFallback(t *testing.T) {
 		cacheLookups := 0
 		putContentCalls := 0
 
+		// Stat only starts failing once the store is constructed: with dedupe on,
+		// NewImageStore runs the global blobstore upgrade, which fails closed (nil
+		// store) on a Transient Stat.
+		statBlip := false
+
 		storeMock := &mocks.StorageDriverMock{
 			StatFn: func(_ context.Context, _ string) (driver.FileInfo, error) {
+				if !statBlip {
+					return &mocks.FileInfoMock{}, nil
+				}
+
 				return nil, errclass.MarkTransient(errors.New("stat blip")) //nolint:err113 // test
 			},
 			PutContentFn: func(_ context.Context, _ string, _ []byte) error {
@@ -785,6 +827,11 @@ func TestCheckBlobTransientSkipsCacheFallback(t *testing.T) {
 		store := imagestore.NewImageStore(rootDir, "", true, false, log, metrics, nil,
 			gcs.New(storeMock), cacheMock, nil, nil)
 		So(store, ShouldNotBeNil)
+
+		// construction may itself touch the cache/driver; only count CheckBlob's calls
+		statBlip = true
+		cacheLookups = 0
+		putContentCalls = 0
 
 		ok, size, err := store.CheckBlob(context.Background(), "repo", digest)
 		So(ok, ShouldBeFalse)
@@ -1710,5 +1757,29 @@ func TestFullBlobUploadStagingCleanup(t *testing.T) {
 		So(errors.Is(err, zerr.ErrStoragePermanent), ShouldBeTrue)
 		So(len(deleted), ShouldEqual, 1)
 		So(strings.Contains(deleted[0], ".uploads"), ShouldBeTrue)
+	})
+}
+
+func TestNewImageStoreFailsWhenMigrationFails(t *testing.T) {
+	Convey("NewImageStore returns nil when global blobstore migration fails", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		storeMock := &mocks.StorageDriverMock{}
+		remoteDriver := gcs.New(storeMock)
+
+		storeMock.StatFn = func(_ context.Context, path string) (driver.FileInfo, error) {
+			return nil, driver.PathNotFoundError{Path: path}
+		}
+
+		storeMock.WalkFn = func(_ context.Context, _ string, _ driver.WalkFn,
+			_ ...func(*driver.WalkOptions),
+		) error {
+			return errWalkFailed
+		}
+
+		store := imagestore.NewImageStore("", "", true, false, log, metrics, nil,
+			remoteDriver, nil, nil, nil)
+		So(store, ShouldBeNil)
 	})
 }

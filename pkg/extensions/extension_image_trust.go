@@ -4,6 +4,7 @@ package extensions
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -227,6 +228,13 @@ func signatureBlobGetter(storeController storage.StoreController) imagetrust.Sig
 	return func(repo string, digest godigest.Digest) ([]byte, error) {
 		blobReader, size, err := storeController.GetImageStore(repo).GetBlob(repo, digest, "")
 		if err != nil {
+			// GetBlob reports a missing repo as ErrRepoNotFound before it looks for the blob. A repo that is
+			// gone holds no signature layers, so report it as a missing blob: VerifySignatureLayer then clears
+			// the signer instead of keeping the previous validity as it does for unavailable storage.
+			if errors.Is(err, zerr.ErrRepoNotFound) && !errors.Is(err, zerr.ErrBlobNotFound) {
+				return nil, fmt.Errorf("%w: %w", zerr.ErrBlobNotFound, err)
+			}
+
 			return nil, err
 		}
 		defer blobReader.Close()

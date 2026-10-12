@@ -4,6 +4,7 @@ import (
 	"os"
 	"path"
 	"testing"
+	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
@@ -47,6 +48,8 @@ func TestDynamoDB(t *testing.T) {
 		returnedName := cacheDriver.Name()
 		So(returnedName, ShouldEqual, "dynamodb")
 
+		So(cacheDriver.UsesRelativePaths(), ShouldBeFalse)
+
 		val, err := cacheDriver.GetBlob(keyDigest)
 		So(err, ShouldNotBeNil)
 		So(val, ShouldBeEmpty)
@@ -76,6 +79,7 @@ func TestDynamoDB(t *testing.T) {
 		err = cacheDriver.PutBlob(keyDigest, path.Join(dir, "value2"))
 		So(err, ShouldBeNil)
 
+		// deleting the origin ("value1") while a duplicate exists promotes value2 to origin
 		err = cacheDriver.DeleteBlob(keyDigest, path.Join(dir, "value1"))
 		So(err, ShouldBeNil)
 
@@ -108,6 +112,7 @@ func TestDynamoDB(t *testing.T) {
 		err = cacheDriver.PutBlob("key1", "duplicateBlobPath")
 		So(err, ShouldBeNil)
 
+		// deleting the origin while a duplicate exists promotes the duplicate to origin
 		err = cacheDriver.DeleteBlob("key1", "originalBlobPath")
 		So(err, ShouldBeNil)
 
@@ -115,10 +120,10 @@ func TestDynamoDB(t *testing.T) {
 		So(val, ShouldEqual, "duplicateBlobPath")
 		So(err, ShouldBeNil)
 
+		// no duplicates left; deleting the (promoted) origin removes the entry
 		err = cacheDriver.DeleteBlob("key1", "duplicateBlobPath")
 		So(err, ShouldBeNil)
 
-		// should be empty
 		val, err = cacheDriver.GetBlob("key1")
 		So(err, ShouldNotBeNil)
 		So(val, ShouldBeEmpty)
@@ -220,13 +225,17 @@ func TestDynamoDB(t *testing.T) {
 
 		So(blobs, ShouldResemble, []string{"first", "second", "third"})
 
+		// deleting the origin ("first") promotes a remaining duplicate to origin
 		err = cacheDriver.DeleteBlob("digest", "first")
 		So(err, ShouldBeNil)
 
 		blobs, err = cacheDriver.GetAllBlobs("digest")
 		So(err, ShouldBeNil)
 
-		So(blobs, ShouldResemble, []string{"second", "third"})
+		So(len(blobs), ShouldEqual, 2)
+		So(blobs, ShouldContain, "second")
+		So(blobs, ShouldContain, "third")
+		So(blobs, ShouldNotContain, "first")
 
 		err = cacheDriver.DeleteBlob("digest", "third")
 		So(err, ShouldBeNil)
@@ -234,7 +243,8 @@ func TestDynamoDB(t *testing.T) {
 		blobs, err = cacheDriver.GetAllBlobs("digest")
 		So(err, ShouldBeNil)
 
-		So(blobs, ShouldResemble, []string{"second"})
+		So(len(blobs), ShouldEqual, 1)
+		So(blobs, ShouldContain, "second")
 	})
 }
 
@@ -272,5 +282,69 @@ func TestDynamoDBError(t *testing.T) {
 
 		err = cacheDriver.SetOrigin(godigest.FromString("str"), "")
 		So(err, ShouldEqual, errors.ErrEmptyValue)
+	})
+}
+
+func TestDynamoDBBlobReclaimLock(t *testing.T) {
+	tskip.SkipDynamo(t)
+
+	Convey("The reclaim lock admits one holder per digest at a time", t, func() {
+		newDriver := func() *cache.DynamoDBDriver {
+			driver, err := cache.NewDynamoDBCache(cache.DynamoDBDriverParameters{
+				Endpoint:  os.Getenv("DYNAMODBMOCK_ENDPOINT"),
+				TableName: "BlobReclaimLockTable",
+				Region:    "us-east-2",
+			}, log.NewTestLogger())
+			So(err, ShouldBeNil)
+
+			return driver
+		}
+
+		// two drivers on one table stand in for two zot instances
+		first, second := newDriver(), newDriver()
+		digest := godigest.FromString("payload-" + time.Now().String())
+
+		unlock, acquired, err := first.TryLockBlobReclaim(digest, time.Minute)
+		So(err, ShouldBeNil)
+		So(acquired, ShouldBeTrue)
+
+		_, acquired, err = second.TryLockBlobReclaim(digest, time.Minute)
+		So(err, ShouldBeNil)
+		So(acquired, ShouldBeFalse)
+
+		unlock()
+
+		// a holder that never unlocks (a crash) loses the lock once it expires
+		_, acquired, err = second.TryLockBlobReclaim(digest, time.Millisecond)
+		So(err, ShouldBeNil)
+		So(acquired, ShouldBeTrue)
+
+		time.Sleep(50 * time.Millisecond)
+
+		unlock, acquired, err = first.TryLockBlobReclaim(digest, time.Minute)
+		So(err, ShouldBeNil)
+		So(acquired, ShouldBeTrue)
+
+		// the lock item must not show up as blob refs
+		refs, err := first.GetAllBlobRefs()
+		So(err, ShouldBeNil)
+		So(refs[digest], ShouldBeEmpty)
+
+		unlock()
+	})
+
+	Convey("A dynamodb failure is reported, not taken for a held lock", t, func() {
+		driver, err := cache.NewDynamoDBCache(cache.DynamoDBDriverParameters{
+			Endpoint:  os.Getenv("DYNAMODBMOCK_ENDPOINT"),
+			TableName: "BlobReclaimLockTable",
+			Region:    "us-east-2",
+		}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		driver.SetTableName("NoSuchBlobReclaimLockTable")
+
+		_, acquired, err := driver.TryLockBlobReclaim(godigest.FromString("payload"), time.Minute)
+		So(acquired, ShouldBeFalse)
+		So(err, ShouldNotBeNil)
 	})
 }
