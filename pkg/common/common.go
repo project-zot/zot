@@ -155,7 +155,7 @@ func ContainsStringIgnoreCase(strSlice []string, str string) bool {
 // IsReferrersTag checks if tag is a referrers tag
 // (https://github.com/opencontainers/distribution-spec/blob/main/spec.md#referrers-tag-schema).
 func IsReferrersTag(tag string) bool {
-	referrersTagRule := regexp.MustCompile(`sha256\-[A-Za-z0-9]*$`)
+	referrersTagRule := regexp.MustCompile(`^sha256\-[0-9a-f]{64}$`)
 
 	return referrersTagRule.MatchString(tag)
 }

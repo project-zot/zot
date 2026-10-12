@@ -231,6 +231,24 @@ func TestRepoByteQuotaAcceptsShortCosignLikeTag(t *testing.T) {
 	})
 }
 
+func TestRepoByteQuotaCountsShortSha256Tag(t *testing.T) {
+	Convey("Given a registry with maxRepoBytes enabled", t, func() {
+		first := CreateImageWith().RandomLayers(1, 10).RandomConfig().Build()
+		second := CreateImageWith().RandomLayers(2, 10).RandomConfig().Build()
+		limit := int64(first.Size())
+		if second.Size() > int(limit) {
+			limit = int64(second.Size())
+		}
+
+		baseURL, stop := startByteQuotaServer(t, limit)
+		defer stop()
+
+		So(UploadImage(first, baseURL, "short-sha256-tag", "sha256-x"), ShouldBeNil)
+		So(UploadImage(second, baseURL, "short-sha256-tag", "v2"), ShouldEqual,
+			ErrPutBlob)
+	})
+}
+
 func TestRepoByteQuotaSerializesConcurrentGrowth(t *testing.T) {
 	Convey("Given a repository with room for one concurrent manifest", t, func() {
 		first := CreateImageWith().RandomLayers(1, 10).RandomConfig().Build()
