@@ -344,6 +344,44 @@ func TestStorageNew(t *testing.T) {
 	})
 }
 
+// TestStorageNewDefaultStoreCreateFails covers the nil-check guards around the image-store
+// constructors: imagestore.NewImageStore returns nil (not an error) when it can't create its
+// root dir, so New/getSubStore must translate that into ErrDefaultImgStoreCreate/
+// ErrSubpathImgStoreCreate instead of handing callers a nil ImageStore.
+func TestStorageNewDefaultStoreCreateFails(t *testing.T) {
+	Convey("New returns ErrDefaultImgStoreCreate when the root dir can't be created", t, func() {
+		// A regular file as an ancestor of RootDirectory makes MkdirAll fail with ENOTDIR,
+		// regardless of the test process' privileges (unlike permission-bit failures).
+		blocker := filepath.Join(t.TempDir(), "blocker")
+		So(os.WriteFile(blocker, []byte(""), 0o600), ShouldBeNil)
+
+		conf := config.New()
+		conf.Storage.RootDirectory = filepath.Join(blocker, "root")
+
+		_, err := storage.New(conf, nil, nil, zlog.NewTestLogger(), nil)
+		So(err, ShouldEqual, zerr.ErrDefaultImgStoreCreate)
+	})
+}
+
+func TestGetSubStoreCreateFails(t *testing.T) {
+	Convey("getSubStore returns ErrSubpathImgStoreCreate when a subpath root dir can't be created", t, func() {
+		blocker := filepath.Join(t.TempDir(), "blocker")
+		So(os.WriteFile(blocker, []byte(""), 0o600), ShouldBeNil)
+
+		conf := &config.Config{
+			Storage: config.GlobalStorageConfig{
+				StorageConfig: config.StorageConfig{RootDirectory: t.TempDir()},
+				SubPaths: map[string]config.StorageConfig{
+					"a/": {RootDirectory: filepath.Join(blocker, "sub")},
+				},
+			},
+		}
+
+		_, err := storage.New(conf, nil, nil, zlog.NewTestLogger(), nil)
+		So(errors.Is(err, zerr.ErrSubpathImgStoreCreate), ShouldBeTrue)
+	})
+}
+
 // TestPutImageManifestExtraTagsAndEvents covers extra-tag digest pushes, index updates, and ImageUpdated events.
 // One Convey uses createObjectsStore (nil recorder); the rest use newLocalImageStoreWithEventRecorder.
 func TestPutImageManifestExtraTagsAndEvents(t *testing.T) {
