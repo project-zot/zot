@@ -13,6 +13,8 @@ permissions: read-all
 #  task scheduler will start a restore all blobs process at zot startup, after it finishes all blobs should be restored to their original state (have content)
 #  3. run many, many, many instances of zot with shared storage and metadata front-ended by HAProxy. start a long-running zb run with high concurrency and number of requests
 #  to achieve a long-running sustained load on the system. The system is expected to perform well without errors and return performance data after the test.
+#  4. run zot with local storage and run the full zb test suite against it with 20x the requests of the quick, per-push
+#  benchmark in benchmark.yaml (same concurrency), to catch performance regressions that only show up under sustained load.
 jobs:
   build-binaries:
     name: Build binaries
@@ -179,6 +181,54 @@ jobs:
         run: |
           cat /tmp/gc-bench-s3.log
           exit 1
+
+  long-running-benchmark:
+    name: Long-running zb benchmark (local storage)
+    needs: build-binaries
+    runs-on: cncf-ubuntu-8-32-x86
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/install-prebuilt-binaries
+      - name: Run zb
+        id: bench
+        timeout-minutes: 30
+        continue-on-error: false
+        run: |
+            ./bin/zot-linux-amd64 serve examples/config-bench.json & echo $! > zot.PID
+            curl --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 180 --retry-connrefused http://localhost:8080/v2/
+            # -n applies to every zb test, not to the run as a whole, and is split evenly across
+            # the -c workers; zb writes ci-cd.json only after the last test. Keep the concurrency
+            # of the per-push "-c 10 -n 100" run, which takes under a minute on this runner type,
+            # and give each worker 20x the requests (200 instead of 10), so the run is expected
+            # to take 20x as long: roughly 15 minutes, inside the step timeout.
+            bin/zb-linux-amd64 -c 10 -n 2000 -o ci-cd http://localhost:8080
+
+            kill -TERM $(cat zot.PID) || true
+            rm -f zot.PID
+
+            sudo rm -rf /tmp/zot
+      - name: Download previous benchmark data
+        if: steps.bench.outcome == 'success'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ./cache
+          # Caches are immutable: an exact-key hit restores the old snapshot and skips the
+          # save, freezing the history at the first run. A per-run key always saves, and the
+          # prefix restores the most recent earlier run's data.
+          key: ${{ runner.os }}-gen1-longrunning-benchmark-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-gen1-longrunning-benchmark-
+      - name: Store benchmark result
+        if: steps.bench.outcome == 'success'
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
+        with:
+          tool: 'customBiggerIsBetter'
+          output-file-path: ci-cd.json
+          external-data-json-path: ./cache/benchmark-data.json
+          fail-on-alert: true
+          summary-always: true
 
   docker-image:
     name: Build docker image (for users still using Docker environments)
