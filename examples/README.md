@@ -1031,6 +1031,23 @@ When authentication is configured and repositories have non-anonymous policies, 
 
 See [config-metrics-authn-anonymous-access.json](config-metrics-authn-anonymous-access.json) for a complete example.
 
+##### Disabling anonymous catalog listing
+
+By default, an `anonymousPolicy` with `read` also lets unauthenticated users list repositories through `GET /v2/_catalog` (filtered to the repositories they can read). Set `disableAnonymousCatalog` to `true` in `accessControl` to reject anonymous catalog requests with `401 Unauthorized`:
+
+```
+"accessControl": {
+    "disableAnonymousCatalog": true,
+    "repositories": {
+        "**": { "anonymousPolicy": ["read"] }
+    }
+}
+```
+
+Anonymous pulls from repositories allowed by `anonymousPolicy` keep working, and authenticated users can still list the catalog. The option can be changed with a config hot reload (SIGHUP). It only affects `/v2/_catalog`; it does not restrict the search extension's GraphQL repository listings.
+
+See [config-anonymous-catalog-disabled.json](config-anonymous-catalog-disabled.json) for a complete example.
+
 ##### Conditional access on policies
 
 Policy entries can carry an optional list of `conditions`: CEL boolean

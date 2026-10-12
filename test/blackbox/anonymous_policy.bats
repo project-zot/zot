@@ -47,6 +47,7 @@ function setup_file() {
             }
         },
         "accessControl": {
+            "disableAnonymousCatalog": true,
             "repositories": {
                 "**": {
                     "anonymousPolicy": ["read"],
@@ -108,4 +109,18 @@ function teardown_file() {
         oci:${TEST_DATA_DIR}/busybox:1.36 \
         docker://127.0.0.1:${zot_port}/busybox:1.36
     [ "$status" -eq 1 ]
+}
+
+@test "anonymous catalog listing is rejected" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:${zot_port}/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ "$output" -eq 401 ]
+}
+
+@test "authenticated catalog listing is allowed" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run curl -s -o /dev/null -w '%{http_code}' -u ${AUTH_USER}:${AUTH_PASS} http://127.0.0.1:${zot_port}/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ "$output" -eq 200 ]
 }

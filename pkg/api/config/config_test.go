@@ -1372,6 +1372,29 @@ func TestConfig(t *testing.T) {
 			So(accessControlConfig.AnonymousPolicyExists(), ShouldBeFalse)
 		})
 
+		Convey("Test IsAnonymousCatalogDisabled()", func() {
+			var accessControlConfig *config.AccessControlConfig
+
+			So(accessControlConfig.IsAnonymousCatalogDisabled(), ShouldBeFalse)
+
+			accessControlConfig = &config.AccessControlConfig{}
+			So(accessControlConfig.IsAnonymousCatalogDisabled(), ShouldBeFalse)
+
+			accessControlConfig.DisableAnonymousCatalog = true
+			So(accessControlConfig.IsAnonymousCatalogDisabled(), ShouldBeTrue)
+		})
+
+		Convey("Test DisableAnonymousCatalog is applied by UpdateReloadableConfig", func() {
+			oldConf := config.New()
+			oldConf.HTTP.AccessControl = &config.AccessControlConfig{}
+
+			newConf := config.New()
+			newConf.HTTP.AccessControl = &config.AccessControlConfig{DisableAnonymousCatalog: true}
+
+			oldConf.UpdateReloadableConfig(newConf)
+			So(oldConf.CopyAccessControlConfig().IsAnonymousCatalogDisabled(), ShouldBeTrue)
+		})
+
 		Convey("Test GetRepositories()", func() {
 			repositories := config.Repositories{
 				"repo1": config.PolicyGroup{

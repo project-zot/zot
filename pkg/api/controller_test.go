@@ -7369,6 +7369,63 @@ func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 	})
 }
 
+func TestDisableAnonymousCatalog(t *testing.T) {
+	Convey("Catalog listing for anonymous users can be disabled", t, func() {
+		const (
+			TestRepo = "my-repos/repo"
+			user     = "alice"
+			password = "alicepass"
+		)
+
+		conf := config.New()
+		conf.Storage.GC = false
+		conf.HTTP.Port = "0"
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(user, password)),
+			},
+		}
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				TestRepo: config.PolicyGroup{
+					AnonymousPolicy: []string{"read"},
+					Policies: []config.Policy{
+						{Users: []string{user}, Actions: []string{"read"}},
+					},
+				},
+			},
+		}
+
+		ctlr := makeController(conf, t.TempDir())
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+
+		defer cm.StopServer()
+
+		// default: anonymous listing is allowed
+		resp, err := resty.R().Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// disable it (read live from config, as on hot reload)
+		conf.HTTP.AccessControl.DisableAnonymousCatalog = true
+
+		resp, err = resty.R().Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+		// authenticated users can still list
+		resp, err = resty.R().SetBasicAuth(user, password).Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// other anonymous reads are unaffected
+		resp, err = resty.R().Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+	})
+}
+
 // anonymous-only (no CookieStore) + UI X-ZOT-API-CLIENT must not panic on search.
 func TestAnonymousOnlyWithUIClientHeader(t *testing.T) {
 	Convey("anonymous-only access with UI client header does not panic", t, func() {

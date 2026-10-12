@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -24,6 +25,18 @@ import (
 func TestBearerAuthCatalogRequiresLegacyScope(t *testing.T) {
 	t.Parallel()
 
+	for _, disableAnonymousCatalog := range []bool{false, true} {
+		t.Run(fmt.Sprintf("disableAnonymousCatalog=%t", disableAnonymousCatalog), func(t *testing.T) {
+			t.Parallel()
+
+			testBearerAuthCatalogRequiresLegacyScope(t, disableAnonymousCatalog)
+		})
+	}
+}
+
+func testBearerAuthCatalogRequiresLegacyScope(t *testing.T, disableAnonymousCatalog bool) {
+	t.Helper()
+
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -31,7 +44,7 @@ func TestBearerAuthCatalogRequiresLegacyScope(t *testing.T) {
 
 	conf := config.New()
 	conf.HTTP.Auth = &config.AuthConfig{Bearer: &config.BearerConfig{Realm: "realm", Service: "service"}}
-	conf.HTTP.AccessControl = &config.AccessControlConfig{}
+	conf.HTTP.AccessControl = &config.AccessControlConfig{DisableAnonymousCatalog: disableAnonymousCatalog}
 	ctlr := &Controller{Config: conf, Log: log.NewTestLogger()}
 
 	repositories := []string{"private/one", "private/two"}
