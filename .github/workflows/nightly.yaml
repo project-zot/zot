@@ -92,7 +92,7 @@ jobs:
           go-version-file: .go-version
       - uses: ./.github/actions/install-prebuilt-binaries
       - name: Free up disk space
-        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # main
+        uses: jlumbroso/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6 # main
       - name: Run streaming sync stress test
         timeout-minutes: 120
         run: |
@@ -222,7 +222,7 @@ jobs:
             ${{ runner.os }}-gen1-longrunning-benchmark-
       - name: Store benchmark result
         if: steps.bench.outcome == 'success'
-        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
+        uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1.22.2
         with:
           tool: 'customBiggerIsBetter'
           output-file-path: ci-cd.json
