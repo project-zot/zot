@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -16,6 +17,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/log"
 	tskip "zotregistry.dev/zot/v2/pkg/test/skip"
 )
@@ -270,5 +272,226 @@ func TestDynamoDBReadFailureDoesNotChangeOrigin(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(transport.sent("GetItem", ""), ShouldBeTrue)
 		So(transport.sent("DeleteItem", ""), ShouldBeFalse)
+	})
+}
+
+type scriptedDynamoResponse struct {
+	status int
+	body   string
+}
+
+// scriptedDynamoTransport stands in for DynamoDB without an emulator: it answers each request
+// with the next scripted response, and records the action and body of every request, so a
+// test can play out an interleaving with another writer one step at a time.
+type scriptedDynamoTransport struct {
+	responses []scriptedDynamoResponse
+	targets   []string
+	bodies    []string
+}
+
+func (t *scriptedDynamoTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	reqBody, _ := io.ReadAll(req.Body)
+
+	t.targets = append(t.targets, strings.TrimPrefix(req.Header.Get("X-Amz-Target"), "DynamoDB_20120810."))
+	t.bodies = append(t.bodies, string(reqBody))
+
+	// past the end of the script every request fails, so a driver that keeps going is noticed
+	response := scriptedDynamoResponse{http.StatusInternalServerError, `{"message":"unscripted request"}`}
+	if len(t.targets) <= len(t.responses) {
+		response = t.responses[len(t.targets)-1]
+	}
+
+	return &http.Response{
+		StatusCode: response.status,
+		Status:     http.StatusText(response.status),
+		Header:     http.Header{"Content-Type": []string{"application/x-amz-json-1.0"}},
+		Body:       io.NopCloser(bytes.NewBufferString(response.body)),
+		Request:    req,
+	}, nil
+}
+
+func newScriptedDynamoDriver(responses ...scriptedDynamoResponse) (*DynamoDBDriver, *scriptedDynamoTransport) {
+	transport := &scriptedDynamoTransport{responses: responses}
+
+	client := dynamodb.New(dynamodb.Options{
+		Region:           "us-east-2",
+		BaseEndpoint:     aws.String("http://dynamodb.invalid"),
+		Credentials:      aws.AnonymousCredentials{},
+		HTTPClient:       &http.Client{Transport: transport},
+		RetryMaxAttempts: 1,
+	})
+
+	return &DynamoDBDriver{client: client, tableName: "BlobTable", log: log.NewTestLogger()}, transport
+}
+
+// PutBlob and DeleteBlob read the record, decide, and then write. Another zot instance
+// sharing the table can change the record in between, so the writes are conditional on what
+// was read. These tests play the other instance through scripted responses.
+func TestDynamoDBConcurrentWriters(t *testing.T) {
+	const (
+		noItem        = `{}`
+		withDuplicate = `{"Item":{"OriginalBlobPath":{"S":"/repo/origin"},` +
+			`"DuplicateBlobPath":{"SS":["/repo/origin","/repo/duplicate"]}}}`
+		originOnly        = `{"Item":{"OriginalBlobPath":{"S":"/repo/origin"}}}`
+		conditionalFailed = `{"__type":"com.amazonaws.dynamodb.v20120810#ConditionalCheckFailedException",` +
+			`"message":"The conditional request failed"}`
+	)
+
+	digest := godigest.FromString("race")
+
+	Convey("PutBlob keeps the origin another writer recorded first", t, func() {
+		driver, transport := newScriptedDynamoDriver(
+			// no record yet, but another writer records its origin before ours is written
+			scriptedDynamoResponse{http.StatusOK, noItem},
+			scriptedDynamoResponse{http.StatusBadRequest, conditionalFailed},
+			// our path is still added, as a duplicate of that origin
+			scriptedDynamoResponse{http.StatusOK, `{}`},
+		)
+
+		So(driver.PutBlob(digest, "/repo/late"), ShouldBeNil)
+		So(transport.targets, ShouldResemble, []string{"GetItem", "UpdateItem", "UpdateItem"})
+		So(transport.bodies[1], ShouldContainSubstring, "SET OriginalBlobPath = :s")
+		So(transport.bodies[1], ShouldContainSubstring, "attribute_not_exists(OriginalBlobPath)")
+		So(transport.bodies[2], ShouldContainSubstring, "ADD DuplicateBlobPath :i")
+	})
+
+	Convey("DeleteBlob does not promote a duplicate that was deleted meanwhile", t, func() {
+		driver, transport := newScriptedDynamoDriver(
+			// the path is taken out of the duplicates; the record still shows another duplicate
+			scriptedDynamoResponse{http.StatusOK, `{}`},
+			scriptedDynamoResponse{http.StatusOK, withDuplicate},
+			// ...which another writer deletes before it is promoted to origin
+			scriptedDynamoResponse{http.StatusBadRequest, conditionalFailed},
+			// the retry sees no duplicate left and deletes the record
+			scriptedDynamoResponse{http.StatusOK, originOnly},
+			scriptedDynamoResponse{http.StatusOK, `{}`},
+		)
+
+		So(driver.DeleteBlob(digest, "/repo/origin"), ShouldBeNil)
+		So(transport.targets, ShouldResemble,
+			[]string{"UpdateItem", "GetItem", "UpdateItem", "GetItem", "DeleteItem"})
+		So(transport.bodies[1], ShouldContainSubstring, `"ConsistentRead":true`)
+		So(transport.bodies[2], ShouldContainSubstring, "OriginalBlobPath = :old AND contains(DuplicateBlobPath, :new)")
+		So(transport.bodies[2], ShouldContainSubstring, "/repo/duplicate")
+		So(transport.bodies[4], ShouldContainSubstring, "OriginalBlobPath = :old")
+		So(transport.bodies[4], ShouldContainSubstring, "size(DuplicateBlobPath) = :zero")
+	})
+
+	Convey("DeleteBlob does not drop a record that gained a duplicate meanwhile", t, func() {
+		driver, transport := newScriptedDynamoDriver(
+			// the origin is the last tracked path, so the record is to be deleted
+			scriptedDynamoResponse{http.StatusOK, `{}`},
+			scriptedDynamoResponse{http.StatusOK, originOnly},
+			// ...but another writer adds a duplicate first
+			scriptedDynamoResponse{http.StatusBadRequest, conditionalFailed},
+			// the retry promotes that duplicate instead
+			scriptedDynamoResponse{http.StatusOK, withDuplicate},
+			scriptedDynamoResponse{http.StatusOK, `{}`},
+		)
+
+		So(driver.DeleteBlob(digest, "/repo/origin"), ShouldBeNil)
+		So(transport.targets, ShouldResemble,
+			[]string{"UpdateItem", "GetItem", "DeleteItem", "GetItem", "UpdateItem"})
+		So(transport.bodies[4], ShouldContainSubstring, "SET OriginalBlobPath = :new")
+		So(transport.bodies[4], ShouldContainSubstring, "/repo/duplicate")
+	})
+
+	Convey("DeleteBlob leaves alone a record whose origin is another path", t, func() {
+		driver, transport := newScriptedDynamoDriver(
+			scriptedDynamoResponse{http.StatusOK, `{}`},
+			scriptedDynamoResponse{http.StatusOK, withDuplicate},
+		)
+
+		So(driver.DeleteBlob(digest, "/repo/duplicate"), ShouldBeNil)
+		So(transport.targets, ShouldResemble, []string{"UpdateItem", "GetItem"})
+	})
+
+	Convey("DeleteBlob reports a failed write", t, func() {
+		driver, transport := newScriptedDynamoDriver(
+			scriptedDynamoResponse{http.StatusOK, `{}`},
+			scriptedDynamoResponse{http.StatusOK, originOnly},
+		)
+
+		So(driver.DeleteBlob(digest, "/repo/origin"), ShouldNotBeNil)
+		So(slices.Contains(transport.targets, "DeleteItem"), ShouldBeTrue)
+	})
+}
+
+// The same conditions, checked against a real DynamoDB engine: the scripted tests above
+// cannot tell whether the condition expressions are valid or mean what they are meant to.
+func TestDynamoDBConditionalWrites(t *testing.T) {
+	tskip.SkipDynamo(t)
+
+	Convey("Origin writes and removals are conditional on the record's current state", t, func() {
+		cfg, err := awsconfig.LoadDefaultConfig(context.Background(), awsconfig.WithRegion("us-east-2"))
+		So(err, ShouldBeNil)
+
+		client := dynamodb.NewFromConfig(cfg, func(o *dynamodb.Options) {
+			o.BaseEndpoint = aws.String(os.Getenv("DYNAMODBMOCK_ENDPOINT"))
+		})
+
+		driver := &DynamoDBDriver{client: client, log: log.NewTestLogger()}
+		So(driver.NewTable("ConditionalWritesTable"), ShouldBeNil)
+
+		// a digest of its own per run: the emulator's table outlives the test
+		digest := godigest.FromString(t.Name() + t.TempDir())
+
+		So(driver.PutBlob(digest, "/repo/first"), ShouldBeNil)
+
+		Convey("an existing origin is not overwritten", func() {
+			err := driver.putOriginBlob(digest, "/repo/second")
+			So(isConditionalCheckFailed(err), ShouldBeTrue)
+
+			origin, err := driver.GetBlob(digest)
+			So(err, ShouldBeNil)
+			So(origin, ShouldEqual, "/repo/first")
+		})
+
+		Convey("a path that is not tracked is not promoted to origin", func() {
+			err := driver.replaceOrigin(digest, "/repo/first", "/repo/never-added")
+			So(isConditionalCheckFailed(err), ShouldBeTrue)
+
+			origin, err := driver.GetBlob(digest)
+			So(err, ShouldBeNil)
+			So(origin, ShouldEqual, "/repo/first")
+		})
+
+		Convey("a record that still tracks a duplicate is not deleted", func() {
+			So(driver.PutBlob(digest, "/repo/second"), ShouldBeNil)
+
+			err := driver.replaceOrigin(digest, "/repo/first", "")
+			So(isConditionalCheckFailed(err), ShouldBeTrue)
+
+			So(driver.HasBlob(digest, "/repo/second"), ShouldBeTrue)
+		})
+
+		Convey("a record with an origin is not deleted as an empty one", func() {
+			err := driver.deleteItemWithoutOrigin(digest)
+			So(isConditionalCheckFailed(err), ShouldBeTrue)
+
+			origin, err := driver.GetBlob(digest)
+			So(err, ShouldBeNil)
+			So(origin, ShouldEqual, "/repo/first")
+		})
+
+		Convey("deleting the origin promotes a duplicate, and deleting the last path drops the record", func() {
+			So(driver.PutBlob(digest, "/repo/second"), ShouldBeNil)
+			So(driver.DeleteBlob(digest, "/repo/first"), ShouldBeNil)
+
+			origin, err := driver.GetBlob(digest)
+			So(err, ShouldBeNil)
+			So(origin, ShouldEqual, "/repo/second")
+
+			So(driver.DeleteBlob(digest, "/repo/second"), ShouldBeNil)
+
+			_, err = driver.GetBlob(digest)
+			So(err, ShouldEqual, zerr.ErrCacheMiss)
+
+			// and deleting from a digest that is not tracked leaves no record behind
+			So(driver.DeleteBlob(digest, "/repo/second"), ShouldBeNil)
+
+			_, err = driver.GetBlob(digest)
+			So(err, ShouldEqual, zerr.ErrCacheMiss)
+		})
 	})
 }
