@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
@@ -305,33 +304,34 @@ func releaseIdleRepository(repo string, storeController storage.StoreController,
 
 	imgStore := storeController.GetImageStore(repo)
 
-	var lockLatency time.Time
+	// Every failure is logged where it happens and none is returned to the caller, so the
+	// closure always reports success to WithRepoLock.
+	_ = imgStore.WithRepoLock(repo, func() error {
+		removed, err := imgStore.RemoveIdleRepository(repo, 0)
+		if err != nil {
+			log.Error().Err(err).Str("repository", repo).Str("component", "metadb").
+				Msg("failed to remove repo emptied by manifest deletes")
 
-	imgStore.Lock(&lockLatency)
-	defer imgStore.Unlock(&lockLatency)
+			return nil
+		}
 
-	removed, err := imgStore.RemoveIdleRepository(repo, 0)
-	if err != nil {
-		log.Error().Err(err).Str("repository", repo).Str("component", "metadb").
-			Msg("failed to remove repo emptied by manifest deletes")
+		if !removed {
+			return nil
+		}
 
-		return
-	}
+		if err := metaDB.DeleteRepoMeta(repo); err != nil {
+			// the layout is already gone; ParseStorage drops the stale record on next start
+			log.Error().Err(err).Str("repository", repo).Str("component", "metadb").
+				Msg("removed repo layout but failed to delete its meta record")
 
-	if !removed {
-		return
-	}
+			return nil
+		}
 
-	if err := metaDB.DeleteRepoMeta(repo); err != nil {
-		// the layout is already gone; ParseStorage drops the stale record on next start
-		log.Error().Err(err).Str("repository", repo).Str("component", "metadb").
-			Msg("removed repo layout but failed to delete its meta record")
+		log.Debug().Str("repository", repo).Str("component", "metadb").
+			Msg("removed repo emptied by manifest deletes")
 
-		return
-	}
-
-	log.Debug().Str("repository", repo).Str("component", "metadb").
-		Msg("removed repo emptied by manifest deletes")
+		return nil
+	})
 }
 
 // OnGetManifest is called when a manifest is downloaded. It increments the download counter on that manifest.

@@ -3635,28 +3635,29 @@ func TestBlobChunkUploadDoesNotBlockOnStoreLock(t *testing.T) {
 		repo := "chunk-under-lock"
 
 		assertCopyWhileLocked := func(put func() (int64, error)) {
-			var lockLatency time.Time
-			imgStore.Lock(&lockLatency)
-
-			done := make(chan error, 1)
-
-			go func() {
-				_, err := put()
-				done <- err
-			}()
-
 			blocked := true
 
-			select {
-			case err := <-done:
-				imgStore.Unlock(&lockLatency)
-				blocked = false
-				So(err, ShouldBeNil)
-			case <-time.After(5 * time.Second):
-				imgStore.Unlock(&lockLatency)
-			}
+			var putErr error
+
+			_ = imgStore.WithRepoLock(repo, func() error {
+				done := make(chan error, 1)
+
+				go func() {
+					_, err := put()
+					done <- err
+				}()
+
+				select {
+				case putErr = <-done:
+					blocked = false
+				case <-time.After(5 * time.Second):
+				}
+
+				return nil
+			})
 
 			So(blocked, ShouldBeFalse)
+			So(putErr, ShouldBeNil)
 		}
 
 		Convey("PutBlobChunkStreamed", func() {
@@ -3733,36 +3734,37 @@ func TestFullBlobUploadDoesNotBlockOnStoreLock(t *testing.T) {
 
 		pipeReader, pipeWriter := io.Pipe()
 
-		var lockLatency time.Time
-		imgStore.Lock(&lockLatency)
-
 		errCh := make(chan error, 1)
-
-		go func() {
-			_, _, err := imgStore.FullBlobUpload(ctx, repo, pipeReader, digest)
-			errCh <- err
-		}()
-
-		wrote := make(chan error, 1)
-
-		go func() {
-			_, err := pipeWriter.Write(content)
-			_ = pipeWriter.Close()
-			wrote <- err
-		}()
-
 		blocked := true
 
-		select {
-		case err := <-wrote:
-			blocked = false
-			So(err, ShouldBeNil)
-		case <-time.After(5 * time.Second):
-			_ = pipeWriter.Close()
-		}
+		var writeErr error
 
-		imgStore.Unlock(&lockLatency)
+		_ = imgStore.WithRepoLock(repo, func() error {
+			go func() {
+				_, _, err := imgStore.FullBlobUpload(ctx, repo, pipeReader, digest)
+				errCh <- err
+			}()
+
+			wrote := make(chan error, 1)
+
+			go func() {
+				_, err := pipeWriter.Write(content)
+				_ = pipeWriter.Close()
+				wrote <- err
+			}()
+
+			select {
+			case writeErr = <-wrote:
+				blocked = false
+			case <-time.After(5 * time.Second):
+				_ = pipeWriter.Close()
+			}
+
+			return nil
+		})
+
 		So(blocked, ShouldBeFalse)
+		So(writeErr, ShouldBeNil)
 		So(<-errCh, ShouldBeNil)
 	})
 }

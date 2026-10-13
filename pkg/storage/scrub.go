@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"time"
 
 	"github.com/olekukonko/tablewriter"
 	"github.com/olekukonko/tablewriter/tw"
@@ -150,48 +149,64 @@ func checkImage(
 	manifest ispec.Descriptor, imgStore storageTypes.ImageStore, imageName, tag string,
 	scrubbedManifests map[godigest.Digest]ScrubImageResult,
 ) ([]ispec.Descriptor, error) {
-	var lockLatency time.Time
+	var (
+		results []ispec.Descriptor
+		readErr error
+	)
 
-	imgStore.RLock(&lockLatency)
-	defer imgStore.RUnlock(&lockLatency)
+	err := imgStore.WithRepoReadLock(imageName, func() error {
+		manifestContent, err := imgStore.GetBlobContent(imageName, manifest.Digest)
+		if err != nil {
+			readErr = err
 
-	manifestContent, err := imgStore.GetBlobContent(imageName, manifest.Digest)
-	if err != nil {
+			return err
+		}
+
+		results, err = scrubManifest(manifest, imgStore, imageName, tag, manifestContent, scrubbedManifests)
+
+		return err
+	})
+	if readErr != nil {
 		// Top-level index.json entries (manifests / indexes) may vanish between
 		// the index snapshot and this read when GC/deletes race scrub. Soft-skip
 		// only classified Missing there. Transient/Permanent must still be reported —
 		// they are not "deleted", and nested config/layer Missing stays affected
 		// inside scrubManifest (parent was successfully read).
-		if errclass.IsStorageObjectMissing(err) {
+		if errclass.IsStorageObjectMissing(readErr) {
 			return []ispec.Descriptor{}, zerr.ErrManifestNotFound
 		}
 
-		scrubbedManifests[manifest.Digest] = getResult(imageName, tag, manifest.Digest, err)
+		scrubbedManifests[manifest.Digest] = getResult(imageName, tag, manifest.Digest, readErr)
 
+		return []ispec.Descriptor{}, readErr
+	}
+
+	if err != nil {
 		return []ispec.Descriptor{}, err
 	}
 
-	return scrubManifest(manifest, imgStore, imageName, tag, manifestContent, scrubbedManifests)
+	return results, nil
 }
 
 func getIndex(imageName string, imgStore storageTypes.ImageStore) ([]byte, error) {
-	var lockLatency time.Time
+	var indexContent []byte
 
-	imgStore.RLock(&lockLatency)
-	defer imgStore.RUnlock(&lockLatency)
+	err := imgStore.WithRepoReadLock(imageName, func() error {
+		// check image structure / layout
+		ok, err := imgStore.ValidateRepo(imageName)
+		if err != nil {
+			return err
+		}
 
-	// check image structure / layout
-	ok, err := imgStore.ValidateRepo(imageName)
-	if err != nil {
-		return []byte{}, err
-	}
+		if !ok {
+			return zerr.ErrRepoBadLayout
+		}
 
-	if !ok {
-		return []byte{}, zerr.ErrRepoBadLayout
-	}
+		// check "index.json" content
+		indexContent, err = imgStore.GetIndexContent(imageName)
 
-	// check "index.json" content
-	indexContent, err := imgStore.GetIndexContent(imageName)
+		return err
+	})
 	if err != nil {
 		return []byte{}, err
 	}

@@ -25,10 +25,12 @@ type ImageStore interface { //nolint:interfacebloat
 	Name() string
 	DirExists(d string) bool
 	RootDir() string
-	RLock(*time.Time)
-	RUnlock(*time.Time)
-	Lock(*time.Time)
-	Unlock(*time.Time)
+	// WithRepoLock and WithRepoReadLock run wrappedFunc while holding the write, respectively
+	// read, lock that guards repo, and return its error. The default store has a single lock,
+	// so every repo maps to the same one; callers still name the repo they work on, so the
+	// lock can become finer-grained later without touching them again.
+	WithRepoLock(repo string, wrappedFunc func() error) error
+	WithRepoReadLock(repo string, wrappedFunc func() error) error
 	InitRepo(ctx context.Context, name string) error
 	ValidateRepo(name string) (bool, error)
 	GetRepositories() ([]string, error)

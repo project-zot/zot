@@ -248,12 +248,17 @@ func TestRemoveIdleRepository(t *testing.T) {
 	}
 
 	removeIdle := func(store storageTypes.ImageStore, repo string, maxBlobAge time.Duration) (bool, error) {
-		var lockLatency time.Time
+		var removed bool
 
-		store.Lock(&lockLatency)
-		defer store.Unlock(&lockLatency)
+		err := store.WithRepoLock(repo, func() error {
+			var err error
 
-		return store.RemoveIdleRepository(repo, maxBlobAge)
+			removed, err = store.RemoveIdleRepository(repo, maxBlobAge)
+
+			return err
+		})
+
+		return removed, err
 	}
 
 	Convey("An emptied repo loses its layout, orphan blobs included", t, func() {
