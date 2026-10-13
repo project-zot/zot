@@ -419,14 +419,16 @@ func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 			return err
 		}
 
+		// An untracked digest is not an error: the delete is idempotent, as it is in the
+		// Redis and DynamoDB drivers.
 		bucket := root.Bucket([]byte(digest.String()))
 		if bucket == nil {
-			return zerr.ErrCacheMiss
+			return nil
 		}
 
 		deduped := bucket.Bucket([]byte(constants.DuplicatesBucket))
 		if deduped == nil {
-			return zerr.ErrCacheMiss
+			return nil
 		}
 
 		if err := deduped.Delete([]byte(path)); err != nil {

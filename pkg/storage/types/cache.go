@@ -20,7 +20,8 @@ type Cache interface {
 	// Check if blob exists in cachedb.
 	HasBlob(digest godigest.Digest, path string) bool
 
-	// Delete a blob from the cachedb.
+	// DeleteBlob removes path from the paths tracked for digest. It is idempotent: it returns
+	// nil, not a cache-miss error, when the digest or the path is already untracked.
 	DeleteBlob(digest godigest.Digest, path string) error
 
 	// SetOrigin makes the origin record for digest match path. Unlike PutBlob, which
