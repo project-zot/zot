@@ -195,7 +195,9 @@ func (d *DynamoDBDriver) GetBlob(digest godigest.Digest) (string, error) {
 		return "", zerr.ErrCacheMiss
 	}
 
-	_ = attributevalue.UnmarshalMap(resp.Item, &out)
+	if err := d.decodeBlob(resp.Item, &out); err != nil {
+		return "", err
+	}
 
 	return out.OriginalBlobPath, nil
 }
@@ -223,7 +225,9 @@ func (d *DynamoDBDriver) GetAllBlobs(digest godigest.Digest) ([]string, error) {
 		return nil, zerr.ErrCacheMiss
 	}
 
-	_ = attributevalue.UnmarshalMap(resp.Item, &out)
+	if err := d.decodeBlob(resp.Item, &out); err != nil {
+		return nil, err
+	}
 
 	blobPaths = append(blobPaths, out.OriginalBlobPath)
 
@@ -244,32 +248,36 @@ func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
 		return zerr.ErrEmptyValue
 	}
 
-	// Only a miss, or an item without an origin, means there is no origin yet. Any other
-	// read failure says nothing about the record, and must not be answered by writing one.
-	originBlob, err := d.GetBlob(digest)
-	if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
-		return err
-	}
-
-	if originBlob == "" {
-		// first entry, so add original blob. Another writer may record its own path as the
-		// origin between the read above and this write; the write is conditional so that the
-		// first origin stands, and path is then added as a duplicate of it below.
-		if err := d.putOriginBlob(digest, path); err != nil && !isConditionalCheckFailed(err) {
+	// Whether path becomes the origin or a duplicate of one depends on a record other writers
+	// may be changing, so the write is conditional on the origin that was read, and is decided
+	// again from a fresh read when that origin has moved or the record is gone.
+	for {
+		// Only a miss, or an item without an origin, means there is no origin yet. Any other
+		// read failure says nothing about the record, and must not be answered by writing one.
+		blob, err := d.readBlob(digest)
+		if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
 			return err
 		}
-	}
 
-	expression := "ADD DuplicateBlobPath :i"
-	attrPath := types.AttributeValueMemberSS{Value: []string{path}}
+		if blob.OriginalBlobPath == "" {
+			// first entry, so add original blob
+			err = d.putOriginBlob(digest, path)
+		} else {
+			err = d.putDuplicateBlob(digest, blob.OriginalBlobPath, path)
+		}
 
-	if err := d.updateItem(digest, expression, map[string]types.AttributeValue{":i": &attrPath}, nil); err != nil {
+		if err == nil {
+			return nil
+		}
+
+		if isConditionalCheckFailed(err) {
+			continue
+		}
+
 		d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("failed to put blob")
 
 		return err
 	}
-
-	return nil
 }
 
 func (d *DynamoDBDriver) SetOrigin(digest godigest.Digest, originPath string) error {
@@ -334,7 +342,9 @@ func (d *DynamoDBDriver) HasBlob(digest godigest.Digest, path string) bool {
 		return false
 	}
 
-	_ = attributevalue.UnmarshalMap(resp.Item, &out)
+	if err := d.decodeBlob(resp.Item, &out); err != nil {
+		return false
+	}
 
 	if out.OriginalBlobPath == path {
 		return true
@@ -350,10 +360,19 @@ func (d *DynamoDBDriver) HasBlob(digest godigest.Digest, path string) bool {
 }
 
 func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
+	// An update creates the item it names if there is none, so this one is conditional on the
+	// record existing: a digest that is not tracked has nothing to delete, and must not be
+	// left with an empty record for that.
 	expression := "DELETE DuplicateBlobPath :i"
+	condition := "attribute_exists(Digest)"
 	attrPath := types.AttributeValueMemberSS{Value: []string{path}}
 
-	if err := d.updateItem(digest, expression, map[string]types.AttributeValue{":i": &attrPath}, nil); err != nil {
+	err := d.updateItem(digest, expression, map[string]types.AttributeValue{":i": &attrPath}, &condition)
+	if err != nil {
+		if isConditionalCheckFailed(err) {
+			return nil
+		}
+
 		d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("failed to delete")
 
 		return err
@@ -436,7 +455,9 @@ func (d *DynamoDBDriver) readBlob(digest godigest.Digest) (Blob, error) {
 		return out, zerr.ErrCacheMiss
 	}
 
-	_ = attributevalue.UnmarshalMap(resp.Item, &out)
+	if err := d.decodeBlob(resp.Item, &out); err != nil {
+		return out, err
+	}
 
 	return out, nil
 }
@@ -494,6 +515,18 @@ func (d *DynamoDBDriver) deleteItemWithoutOrigin(digest godigest.Digest) error {
 	return err
 }
 
+// decodeBlob decodes a stored record. A record that does not decode is reported, not read as
+// an empty one: callers decide from its contents what to overwrite, promote or delete.
+func (d *DynamoDBDriver) decodeBlob(item map[string]types.AttributeValue, out *Blob) error {
+	if err := attributevalue.UnmarshalMap(item, out); err != nil {
+		d.log.Error().Err(err).Str("tableName", d.tableName).Msg("failed to decode blob")
+
+		return err
+	}
+
+	return nil
+}
+
 func isConditionalCheckFailed(err error) bool {
 	_, ok := errors.AsType[*types.ConditionalCheckFailedException](err)
 
@@ -519,7 +552,9 @@ func (d *DynamoDBDriver) GetDuplicateBlob(digest godigest.Digest) (string, error
 		return "", zerr.ErrCacheMiss
 	}
 
-	_ = attributevalue.UnmarshalMap(resp.Item, &out)
+	if err := d.decodeBlob(resp.Item, &out); err != nil {
+		return "", err
+	}
 
 	if len(out.DuplicateBlobPath) == 0 {
 		return "", nil
@@ -528,23 +563,36 @@ func (d *DynamoDBDriver) GetDuplicateBlob(digest godigest.Digest) (string, error
 	return out.DuplicateBlobPath[0], nil
 }
 
-// putOriginBlob records path as the origin of digest, unless an origin is already recorded,
-// in which case it fails with a ConditionalCheckFailedException and leaves that origin alone.
+// putOriginBlob records path as the origin of digest and as one of its tracked paths, in a
+// single write, unless an origin is already recorded, in which case it fails with a
+// ConditionalCheckFailedException and leaves the record alone.
 func (d *DynamoDBDriver) putOriginBlob(digest godigest.Digest, path string) error {
-	expression := "SET OriginalBlobPath = :s"
+	expression := "SET OriginalBlobPath = :s ADD DuplicateBlobPath :i"
 	condition := "attribute_not_exists(OriginalBlobPath) OR OriginalBlobPath = :empty"
 	attrPath := types.AttributeValueMemberS{Value: path}
+	attrPaths := types.AttributeValueMemberSS{Value: []string{path}}
 	emptyPath := types.AttributeValueMemberS{Value: ""}
 
-	err := d.updateItem(digest, expression, map[string]types.AttributeValue{
+	return d.updateItem(digest, expression, map[string]types.AttributeValue{
 		":empty": &emptyPath,
+		":i":     &attrPaths,
 		":s":     &attrPath,
 	}, &condition)
-	if err != nil && !isConditionalCheckFailed(err) {
-		d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("failed to put original blob")
-	}
+}
 
-	return err
+// putDuplicateBlob adds path to the paths tracked for digest, as long as origin is still its
+// origin. Without that condition the write would bring back a record deleted since it was
+// read, with a tracked path but no origin to find the content by.
+func (d *DynamoDBDriver) putDuplicateBlob(digest godigest.Digest, origin, path string) error {
+	expression := "ADD DuplicateBlobPath :i"
+	condition := "OriginalBlobPath = :origin"
+	attrPaths := types.AttributeValueMemberSS{Value: []string{path}}
+	originPath := types.AttributeValueMemberS{Value: origin}
+
+	return d.updateItem(digest, expression, map[string]types.AttributeValue{
+		":i":      &attrPaths,
+		":origin": &originPath,
+	}, &condition)
 }
 
 func (d *DynamoDBDriver) updateItem(digest godigest.Digest, expression string,
