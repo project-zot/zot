@@ -46,6 +46,7 @@ type Controller struct {
 	Router          *mux.Router
 	MetaDB          mTypes.MetaDB
 	StoreController storage.StoreController
+	repoByteLocks   repoQuotaLockSet
 	Log             log.Logger
 	Audit           *log.Logger
 	Server          *http.Server

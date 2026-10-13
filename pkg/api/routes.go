@@ -57,8 +57,7 @@ import (
 )
 
 type RouteHandler struct {
-	c             *Controller
-	repoByteLocks repoQuotaLockSet
+	c *Controller
 }
 
 func NewRouteHandler(c *Controller) *RouteHandler {

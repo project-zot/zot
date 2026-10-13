@@ -80,7 +80,7 @@ func TestQuotaEnforcement(t *testing.T) {
 				So(len(errors), ShouldBeGreaterThan, 0)
 				firstErr, ok := errors[0].(map[string]any)
 				So(ok, ShouldBeTrue)
-				So(firstErr["code"], ShouldEqual, "TOOMANYREQUESTS")
+				So(firstErr["code"], ShouldEqual, "DENIED")
 
 				detail, ok := firstErr["detail"].(map[string]any)
 				So(ok, ShouldBeTrue)
@@ -117,8 +117,18 @@ func TestQuotaDisabled(t *testing.T) {
 }
 
 func TestRepoByteQuotaRejectsProjectedManifestSize(t *testing.T) {
-	Convey("Given a registry with maxRepoBytes set to 1", t, func() {
-		baseURL, stop := startByteQuotaServer(t, 1)
+	Convey("Given a registry with maxRepoBytes below the actual image size", t, func() {
+		image := CreateImageWith().RandomLayers(1, 10).RandomConfig().Build()
+		baseURL, stop := startByteQuotaServer(t, int64(image.Size()-1))
+		defer stop()
+
+		So(UploadImage(image, baseURL, "byte-quota", "v1"), ShouldEqual, ErrPutBlob)
+	})
+}
+
+func TestRepoByteQuotaRejectsMissingBlob(t *testing.T) {
+	Convey("Given a registry with maxRepoBytes enabled", t, func() {
+		baseURL, stop := startByteQuotaServer(t, 1<<30)
 		defer stop()
 
 		manifestBody := []byte(`{"schemaVersion":2,` +
@@ -129,9 +139,9 @@ func TestRepoByteQuotaRejectsProjectedManifestSize(t *testing.T) {
 		resp, err := resty.R().
 			SetHeader("Content-Type", ispec.MediaTypeImageManifest).
 			SetBody(manifestBody).
-			Put(baseURL + "/v2/byte-quota/manifests/v1")
+			Put(baseURL + "/v2/byte-quota/manifests/missing-blob")
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusRequestEntityTooLarge)
+		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 
 		var body map[string]any
 		So(json.Unmarshal(resp.Body(), &body), ShouldBeNil)
@@ -139,10 +149,7 @@ func TestRepoByteQuotaRejectsProjectedManifestSize(t *testing.T) {
 		So(ok, ShouldBeTrue)
 		firstErr, ok := errors[0].(map[string]any)
 		So(ok, ShouldBeTrue)
-		detail, ok := firstErr["detail"].(map[string]any)
-		So(ok, ShouldBeTrue)
-		So(detail["current"], ShouldEqual, "0")
-		So(detail["limit"], ShouldEqual, "1")
+		So(firstErr["code"], ShouldEqual, "MANIFEST_BLOB_UNKNOWN")
 	})
 }
 
@@ -175,24 +182,14 @@ func TestRepoByteQuotaRejectsInvalidDescriptorSize(t *testing.T) {
 
 func TestRepoByteQuotaAllowsCurrentSizeAndRejectsGrowth(t *testing.T) {
 	Convey("Given a registry with a quota equal to the current image size", t, func() {
-		first := CreateRandomImage()
-		firstSize := first.ManifestDescriptor.Size + first.ConfigDescriptor.Size + int64(len(first.Layers[0]))
+		first := CreateImageWith().RandomLayers(1, 10).RandomConfig().Build()
+		second := CreateImageWith().RandomLayers(2, 10).RandomConfig().Build()
+		firstSize := int64(first.Size())
 		baseURL, stop := startByteQuotaServer(t, firstSize)
 		defer stop()
 
 		So(UploadImage(first, baseURL, "byte-quota", "v1"), ShouldBeNil)
-
-		manifestBody := []byte(`{"schemaVersion":2,` +
-			`"mediaType":"application/vnd.oci.image.manifest.v1+json",` +
-			`"config":{"mediaType":"application/vnd.oci.image.config.v1+json",` +
-			`"digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",` +
-			`"size":2},"layers":[]}`)
-		resp, err := resty.R().
-			SetHeader("Content-Type", ispec.MediaTypeImageManifest).
-			SetBody(manifestBody).
-			Put(baseURL + "/v2/byte-quota/manifests/v2")
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusRequestEntityTooLarge)
+		So(UploadImage(second, baseURL, "byte-quota", "v2"), ShouldEqual, ErrPutBlob)
 	})
 }
 
