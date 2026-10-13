@@ -1503,20 +1503,14 @@ func TestGCSStorageAPIs(t *testing.T) {
 				wg.Add(2)
 
 				go func() {
-					var lockLatency time.Time
-
 					defer wg.Done()
-					imgStore.Lock(&lockLatency)
-					func() {}()
-					imgStore.Unlock(&lockLatency)
+
+					_ = imgStore.WithRepoLock("test", func() error { return nil })
 				}()
 				go func() {
-					var lockLatency time.Time
-
 					defer wg.Done()
-					imgStore.RLock(&lockLatency)
-					func() {}()
-					imgStore.RUnlock(&lockLatency)
+
+					_ = imgStore.WithRepoReadLock("test", func() error { return nil })
 				}()
 			}
 

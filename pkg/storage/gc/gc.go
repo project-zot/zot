@@ -137,11 +137,12 @@ func (gc GarbageCollect) CleanRepo(ctx context.Context, repo string) error {
 }
 
 func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
-	var lockLatency time.Time
+	return gc.imgStore.WithRepoLock(repo, func() error {
+		return gc.cleanRepoLocked(ctx, repo)
+	})
+}
 
-	gc.imgStore.Lock(&lockLatency)
-	defer gc.imgStore.Unlock(&lockLatency)
-
+func (gc GarbageCollect) cleanRepoLocked(ctx context.Context, repo string) error {
 	/* this index (which represents the index.json of this repo) is the root point from which we
 	search for dangling manifests/blobs
 	so this index is passed by reference in all functions that modifies it

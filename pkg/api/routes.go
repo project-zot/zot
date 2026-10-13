@@ -1220,11 +1220,17 @@ func (rh *RouteHandler) resolveBlobPresence(
 		// Mount not allowed: fall through to repo-local StatBlob.
 	}
 
-	var lockLatency time.Time
+	var ok bool
 
-	imgStore.RLock(&lockLatency)
-	ok, size, _, err := imgStore.StatBlob(repo, digest)
-	imgStore.RUnlock(&lockLatency)
+	var size int64
+
+	err := imgStore.WithRepoReadLock(repo, func() error {
+		var statErr error
+
+		ok, size, _, statErr = imgStore.StatBlob(repo, digest)
+
+		return statErr
+	})
 
 	return ok, size, err
 }

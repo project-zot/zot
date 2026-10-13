@@ -90,19 +90,17 @@ func resetGCTestRepos(imgStore storageTypes.ImageStore, metaDB mTypes.MetaDB, re
 			blobs = nil
 		}
 
-		var lockLatency time.Time
+		_ = imgStore.WithRepoLock(repo, func() error {
+			_ = imgStore.PutIndexContent(repo, emptyIndex)
 
-		imgStore.Lock(&lockLatency)
+			if len(blobs) > 0 {
+				_, _ = imgStore.CleanupRepo(repo, blobs)
+			}
 
-		_ = imgStore.PutIndexContent(repo, emptyIndex)
+			_, _ = imgStore.RemoveIdleRepository(repo, 0)
 
-		if len(blobs) > 0 {
-			_, _ = imgStore.CleanupRepo(repo, blobs)
-		}
-
-		_, _ = imgStore.RemoveIdleRepository(repo, 0)
-
-		imgStore.Unlock(&lockLatency)
+			return nil
+		})
 
 		if metaDB != nil {
 			_ = metaDB.DeleteRepoMeta(repo)
