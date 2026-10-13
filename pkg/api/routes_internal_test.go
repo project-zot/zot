@@ -151,7 +151,10 @@ func TestUpdateManifestQuotaProjectionFailureFailsClosed(t *testing.T) {
 	handler := &RouteHandler{c: controller}
 
 	request := httptest.NewRequest(http.MethodPut, "/v2/repo/manifests/v1", strings.NewReader(
-		`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","config":{},"layers":[]}`))
+		`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json",`+
+			`"config":{"mediaType":"application/vnd.oci.image.config.v1+json",`+
+			`"digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",`+
+			`"size":2},"layers":[]}`))
 	request.Header.Set("Content-Type", ispec.MediaTypeImageManifest)
 	request = mux.SetURLVars(request, map[string]string{"name": "repo", "reference": "v1"})
 	response := httptest.NewRecorder()
