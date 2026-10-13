@@ -6,11 +6,14 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.dev/zot/v2/pkg/log"
@@ -183,5 +186,89 @@ func TestNewTableWithoutDescribeTablePermission(t *testing.T) {
 			So(deniedDriver.NewTable(tableName), ShouldBeNil)
 			So(deniedDriver.tableName, ShouldEqual, tableName)
 		})
+	})
+}
+
+// failGetItemTransport stands in for DynamoDB without an emulator: every GetItem fails with
+// an InternalServerError, every other action succeeds with an empty result, and the actions
+// seen are recorded together with their request bodies.
+type failGetItemTransport struct {
+	mu    sync.Mutex
+	calls []string
+}
+
+func (t *failGetItemTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	action := strings.TrimPrefix(req.Header.Get("X-Amz-Target"), "DynamoDB_20120810.")
+
+	reqBody, _ := io.ReadAll(req.Body)
+
+	t.mu.Lock()
+	t.calls = append(t.calls, action+" "+string(reqBody))
+	t.mu.Unlock()
+
+	status, body := http.StatusOK, "{}"
+	if action == "GetItem" {
+		status = http.StatusInternalServerError
+		body = `{"__type":"com.amazonaws.dynamodb.v20120810#InternalServerError","message":"simulated outage"}`
+	}
+
+	return &http.Response{
+		StatusCode: status,
+		Status:     http.StatusText(status),
+		Header:     http.Header{"Content-Type": []string{"application/x-amz-json-1.0"}},
+		Body:       io.NopCloser(bytes.NewBufferString(body)),
+		Request:    req,
+	}, nil
+}
+
+// sent reports whether an action was sent whose request body contains fragment.
+func (t *failGetItemTransport) sent(action, fragment string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	for _, call := range t.calls {
+		if strings.HasPrefix(call, action+" ") && strings.Contains(call, fragment) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func newFailGetItemDriver() (*DynamoDBDriver, *failGetItemTransport) {
+	transport := &failGetItemTransport{}
+
+	client := dynamodb.New(dynamodb.Options{
+		Region:           "us-east-2",
+		BaseEndpoint:     aws.String("http://dynamodb.invalid"),
+		Credentials:      aws.AnonymousCredentials{},
+		HTTPClient:       &http.Client{Transport: transport},
+		RetryMaxAttempts: 1,
+	})
+
+	return &DynamoDBDriver{client: client, tableName: "BlobTable", log: log.NewTestLogger()}, transport
+}
+
+// A read that fails says nothing about what the cache holds. Treating it as "no origin
+// recorded" made PutBlob overwrite the origin and DeleteBlob drop the digest's whole record.
+func TestDynamoDBReadFailureDoesNotChangeOrigin(t *testing.T) {
+	digest := godigest.FromString("read-failure")
+
+	Convey("PutBlob does not write an origin when it cannot read the current one", t, func() {
+		driver, transport := newFailGetItemDriver()
+
+		err := driver.PutBlob(digest, "repo/blobs/sha256/new")
+		So(err, ShouldNotBeNil)
+		So(transport.sent("GetItem", ""), ShouldBeTrue)
+		So(transport.sent("UpdateItem", "OriginalBlobPath"), ShouldBeFalse)
+	})
+
+	Convey("DeleteBlob does not drop the record when it cannot read the origin", t, func() {
+		driver, transport := newFailGetItemDriver()
+
+		err := driver.DeleteBlob(digest, "repo/blobs/sha256/duplicate")
+		So(err, ShouldNotBeNil)
+		So(transport.sent("GetItem", ""), ShouldBeTrue)
+		So(transport.sent("DeleteItem", ""), ShouldBeFalse)
 	})
 }

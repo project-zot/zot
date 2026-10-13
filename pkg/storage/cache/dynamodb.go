@@ -244,7 +244,14 @@ func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
 		return zerr.ErrEmptyValue
 	}
 
-	if originBlob, _ := d.GetBlob(digest); originBlob == "" {
+	// Only a miss, or an item without an origin, means there is no origin yet. Any other
+	// read failure says nothing about the record, and must not be answered by writing one.
+	originBlob, err := d.GetBlob(digest)
+	if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+		return err
+	}
+
+	if originBlob == "" {
 		// first entry, so add original blob
 		if err := d.putOriginBlob(digest, path); err != nil {
 			return err
@@ -352,11 +359,21 @@ func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 		return err
 	}
 
-	originBlob, _ := d.GetBlob(digest)
+	// A miss leaves originBlob empty, which the cleanup below handles. Any other read
+	// failure must stop here: carrying on as if there were no origin would drop the record.
+	originBlob, err := d.GetBlob(digest)
+	if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+		return err
+	}
+
 	// if original blob is the one deleted
 	if originBlob == path {
 		// move duplicate blob to original, storage will move content here
-		originBlob, _ = d.GetDuplicateBlob(digest)
+		originBlob, err = d.GetDuplicateBlob(digest)
+		if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+			return err
+		}
+
 		if originBlob != "" {
 			if err := d.putOriginBlob(digest, originBlob); err != nil {
 				return err
