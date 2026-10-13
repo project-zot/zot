@@ -335,11 +335,10 @@ func (d *RedisDriver) HasBlob(digest godigest.Digest, path string) bool {
 
 	// see if the path entry exists. is this actually needed? i guess it doesn't really hurt (it is fast)
 	exists, err = d.db.HExists(ctx, d.join(constants.BlobsCache, constants.OriginalBucket), digest.String()).Result()
-
-	d.log.Error().Err(err).Str("hexists", d.join(constants.BlobsCache, constants.OriginalBucket)).
-		Str("digest", digest.String()).Msg("unable to get record")
-
 	if err != nil {
+		d.log.Error().Err(err).Str("hexists", d.join(constants.BlobsCache, constants.OriginalBucket)).
+			Str("digest", digest.String()).Msg("unable to get record")
+
 		return false
 	}
 
