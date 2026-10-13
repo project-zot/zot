@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"sync"
@@ -157,13 +158,18 @@ func writeQuotaExceeded(response http.ResponseWriter, current, projected, limit 
 		"limit":     strconv.FormatInt(limit, 10),
 	}
 	zcommon.WriteJSON(response, http.StatusRequestEntityTooLarge,
-		apiErr.NewErrorList(apiErr.NewError(apiErr.TOOMANYREQUESTS).AddDetail(detail)))
+		apiErr.NewErrorList(apiErr.NewError(apiErr.DENIED).AddDetail(detail)))
 }
 
 func writeInvalidRepoSize(response http.ResponseWriter) {
 	detail := map[string]string{"reason": "manifest descriptor size is invalid"}
 	zcommon.WriteJSON(response, http.StatusBadRequest,
 		apiErr.NewErrorList(apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(detail)))
+}
+
+func writeManifestBlobUnknown(response http.ResponseWriter) {
+	zcommon.WriteJSON(response, http.StatusBadRequest,
+		apiErr.NewErrorList(apiErr.NewError(apiErr.MANIFEST_BLOB_UNKNOWN)))
 }
 
 // checkRepoByteQuota checks the projected tag-rooted RepoMeta.Size before the manifest is written.
@@ -194,7 +200,29 @@ func (rh *RouteHandler) checkRepoByteQuota(response http.ResponseWriter, request
 		return false
 	}
 
-	rh.normalizeQuotaImageMeta(repo, &imageMeta)
+	if err := rh.normalizeQuotaImageMeta(repo, &imageMeta); err != nil {
+		if errors.Is(err, zerr.ErrInvalidRepoSizeCandidate) {
+			rh.c.Log.Warn().Err(err).Str("repo", repo).
+				Msg("manifest descriptor size is invalid, rejecting push")
+			writeInvalidRepoSize(response)
+
+			return true
+		}
+
+		if errors.Is(err, zerr.ErrBlobNotFound) {
+			rh.c.Log.Warn().Err(err).Str("repo", repo).
+				Msg("manifest references an unavailable blob, rejecting push")
+			writeManifestBlobUnknown(response)
+
+			return true
+		}
+
+		rh.c.Log.Error().Err(err).Str("repo", repo).
+			Msg("failed to resolve manifest blobs for quota, rejecting push")
+		response.WriteHeader(http.StatusServiceUnavailable)
+
+		return true
+	}
 
 	current, projected, err := rh.c.MetaDB.GetRepoSizeWithCandidate(request.Context(), repo, references, imageMeta)
 	if err != nil {
@@ -215,9 +243,10 @@ func (rh *RouteHandler) checkRepoByteQuota(response http.ResponseWriter, request
 		}
 
 		rh.c.Log.Error().Err(err).Str("repo", repo).
-			Msg("failed to project repository size for quota, allowing push")
+			Msg("failed to project repository size for quota, rejecting push")
+		response.WriteHeader(http.StatusServiceUnavailable)
 
-		return false
+		return true
 	}
 
 	// A write which does not increase usage remains useful for recovering from a
@@ -234,9 +263,9 @@ func (rh *RouteHandler) checkRepoByteQuota(response http.ResponseWriter, request
 	return true
 }
 
-func (rh *RouteHandler) normalizeQuotaImageMeta(repo string, imageMeta *mTypes.ImageMeta) {
+func (rh *RouteHandler) normalizeQuotaImageMeta(repo string, imageMeta *mTypes.ImageMeta) error {
 	if !compat.IsImageManifestMediaType(imageMeta.MediaType) || len(imageMeta.Manifests) == 0 {
-		return
+		return nil
 	}
 
 	imgStore := rh.c.StoreController.GetImageStore(repo)
@@ -254,6 +283,9 @@ func (rh *RouteHandler) normalizeQuotaImageMeta(repo string, imageMeta *mTypes.I
 		if descriptor.Digest == "" {
 			continue
 		}
+		if descriptor.Size < 0 {
+			return fmt.Errorf("%w: blob %s size is negative", zerr.ErrInvalidRepoSizeCandidate, descriptor.Digest)
+		}
 
 		if size, ok := knownSizes[descriptor.Digest]; ok {
 			descriptor.Size = size
@@ -265,13 +297,22 @@ func (rh *RouteHandler) normalizeQuotaImageMeta(repo string, imageMeta *mTypes.I
 		imgStore.RLock(&lockLatency)
 		present, size, _, err := imgStore.StatBlob(repo, descriptor.Digest)
 		imgStore.RUnlock(&lockLatency)
-		if err != nil || !present {
-			continue
+		if err != nil {
+			if errors.Is(err, zerr.ErrBadBlobDigest) {
+				return fmt.Errorf("%w: blob %s digest is invalid", zerr.ErrInvalidRepoSizeCandidate, descriptor.Digest)
+			}
+
+			return fmt.Errorf("failed to stat quota blob %s: %w", descriptor.Digest, err)
+		}
+		if !present {
+			return fmt.Errorf("%w: %s", zerr.ErrBlobNotFound, descriptor.Digest)
 		}
 
 		knownSizes[descriptor.Digest] = size
 		descriptor.Size = size
 	}
+
+	return nil
 }
 
 func quotaImageMeta(reference, mediaType string, body []byte) (mTypes.ImageMeta, bool) {
@@ -403,5 +444,5 @@ func (rh *RouteHandler) acquireRepoByteQuotaLock(repo string) func() {
 		return func() {}
 	}
 
-	return rh.repoByteLocks.acquire(repo)
+	return rh.c.repoByteLocks.acquire(repo)
 }
