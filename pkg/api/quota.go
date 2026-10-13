@@ -281,7 +281,10 @@ func (rh *RouteHandler) normalizeQuotaImageMeta(repo string, imageMeta *mTypes.I
 
 	for _, descriptor := range descriptors {
 		if descriptor.Digest == "" {
-			continue
+			return fmt.Errorf("%w: blob digest is empty", zerr.ErrInvalidRepoSizeCandidate)
+		}
+		if err := descriptor.Digest.Validate(); err != nil {
+			return fmt.Errorf("%w: blob %s digest is invalid", zerr.ErrInvalidRepoSizeCandidate, descriptor.Digest)
 		}
 		if descriptor.Size < 0 {
 			return fmt.Errorf("%w: blob %s size is negative", zerr.ErrInvalidRepoSizeCandidate, descriptor.Digest)
@@ -298,10 +301,6 @@ func (rh *RouteHandler) normalizeQuotaImageMeta(repo string, imageMeta *mTypes.I
 		present, size, _, err := imgStore.StatBlob(repo, descriptor.Digest)
 		imgStore.RUnlock(&lockLatency)
 		if err != nil {
-			if errors.Is(err, zerr.ErrBadBlobDigest) {
-				return fmt.Errorf("%w: blob %s digest is invalid", zerr.ErrInvalidRepoSizeCandidate, descriptor.Digest)
-			}
-
 			return fmt.Errorf("failed to stat quota blob %s: %w", descriptor.Digest, err)
 		}
 		if !present {
