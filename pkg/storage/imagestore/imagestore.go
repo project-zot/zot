@@ -136,6 +136,43 @@ func (is *ImageStore) WithRepoReadLock(_ string, wrappedFunc func() error) error
 	return wrappedFunc()
 }
 
+// WithBlobstoreLock runs wrappedFunc while holding the store's single write lock, the same
+// one WithRepoLock takes: see storageTypes.ImageStore.
+func (is *ImageStore) WithBlobstoreLock(wrappedFunc func() error) error {
+	var lockLatency time.Time
+
+	is.Lock(&lockLatency)
+	defer is.Unlock(&lockLatency)
+
+	return wrappedFunc()
+}
+
+// WithBlobstoreReadLock is WithBlobstoreLock's read-lock counterpart.
+func (is *ImageStore) WithBlobstoreReadLock(wrappedFunc func() error) error {
+	var lockLatency time.Time
+
+	is.RLock(&lockLatency)
+	defer is.RUnlock(&lockLatency)
+
+	return wrappedFunc()
+}
+
+// WithBlobstoreAndRepoLock takes the single write lock once: it stands for both.
+func (is *ImageStore) WithBlobstoreAndRepoLock(repo string, wrappedFunc func() error) error {
+	return is.WithRepoLock(repo, wrappedFunc)
+}
+
+// WithBlobstoreReadAndRepoLock needs repo's write lock, which here is the single write lock.
+func (is *ImageStore) WithBlobstoreReadAndRepoLock(repo string, wrappedFunc func() error) error {
+	return is.WithRepoLock(repo, wrappedFunc)
+}
+
+// WithRepoCleanupLock covers shared content as well as repo: with dedupe, deleting a blob
+// from repo can move or remove content that other repositories link to.
+func (is *ImageStore) WithRepoCleanupLock(repo string, wrappedFunc func() error) error {
+	return is.WithBlobstoreAndRepoLock(repo, wrappedFunc)
+}
+
 // RLock read-lock.
 func (is *ImageStore) RLock(lockStart *time.Time) {
 	*lockStart = time.Now()

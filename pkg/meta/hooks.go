@@ -305,8 +305,9 @@ func releaseIdleRepository(repo string, storeController storage.StoreController,
 	imgStore := storeController.GetImageStore(repo)
 
 	// Every failure is logged where it happens and none is returned to the caller, so the
-	// closure always reports success to WithRepoLock.
-	_ = imgStore.WithRepoLock(repo, func() error {
+	// closure always reports success to WithRepoCleanupLock. RemoveIdleRepository deletes
+	// blobs one at a time: same locking as gc.go's cleanRepo, and for the same reason.
+	_ = imgStore.WithRepoCleanupLock(repo, func() error {
 		removed, err := imgStore.RemoveIdleRepository(repo, 0)
 		if err != nil {
 			log.Error().Err(err).Str("repository", repo).Str("component", "metadb").
