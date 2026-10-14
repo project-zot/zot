@@ -115,6 +115,9 @@ func (l *localHardlinkBlobLifecycle) LinkBlob(srcPath, dstPath string) error {
 }
 
 func (l *localHardlinkBlobLifecycle) HandOffContent(_ godigest.Digest, _, _ string) error {
+	// A hardlink keeps the content when another link is deleted. This matches what local has
+	// always done: its cache paths are relative, so deleteBlobChecked's dstRecord == blobPath
+	// never matched and the old Stat+Move never ran here.
 	return nil
 }
 
