@@ -938,8 +938,8 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 	}
 
 	if needsWrite {
-		// Prefer in-place write for digest blobs so hard-linked dedupe siblings
-		// share the repaired inode (local Driver.WriteFile truncates in place).
+		// Prefer in-place write for digest blobs so that every copy linked to this one
+		// shares the repair (see blobLifecycle on WriteFile).
 		nbytes, writeErr := is.storeDriver.WriteFile(contentPath, body)
 		if writeErr != nil {
 			err = writeErr
@@ -2603,14 +2603,18 @@ func (is *ImageStore) deleteBlobChecked(repo string, digest godigest.Digest, isR
 
 			// if we have a new candidate, make sure it holds the content before this copy goes
 			if dstRecord != "" {
-				if err := is.lifecycle.HandOffContent(blobPath, dstRecord); err != nil {
+				removedFrom, err := is.lifecycle.HandOffContent(blobPath, dstRecord)
+				if err != nil {
 					is.log.Error().Err(err).Str("blobPath", blobPath).Str("candidate", dstRecord).
 						Str("component", "dedupe").Msg("failed to hand off blob content to the next copy")
 
 					return err
 				}
 
-				return nil
+				// a copy the hand-off did not remove is deleted below
+				if removedFrom {
+					return nil
+				}
 			}
 		}
 	}

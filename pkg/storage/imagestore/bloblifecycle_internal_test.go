@@ -28,6 +28,7 @@ type lifecycleTestDriver struct {
 	statFn      func(path string) (driver.FileInfo, error)
 	links       [][2]string
 	moves       [][2]string
+	moveErr     error
 	redirectFor string
 }
 
@@ -44,7 +45,7 @@ func (d *lifecycleTestDriver) Link(src, dest string) error {
 func (d *lifecycleTestDriver) Move(src, dest string) error {
 	d.moves = append(d.moves, [2]string{src, dest})
 
-	return nil
+	return d.moveErr
 }
 
 func (d *lifecycleTestDriver) RedirectURL(_ *http.Request, path string) (string, error) {
@@ -125,7 +126,9 @@ func TestBlobLifecycle(t *testing.T) {
 
 		Convey("hands off content without touching the driver, since a hardlink holds it", func() {
 			// statFn is nil and Move records, so any driver call would panic or show up
-			So(lifecycle.HandOffContent("/origin", "/next"), ShouldBeNil)
+			removedFrom, err := lifecycle.HandOffContent("/origin", "/next")
+			So(err, ShouldBeNil)
+			So(removedFrom, ShouldBeFalse)
 			So(storeDriver.moves, ShouldBeEmpty)
 		})
 
@@ -208,14 +211,28 @@ func TestBlobLifecycle(t *testing.T) {
 				return sized(0), nil
 			}
 
-			So(lifecycle.HandOffContent("/origin", "/next"), ShouldBeNil)
+			removedFrom, err := lifecycle.HandOffContent("/origin", "/next")
+			So(err, ShouldBeNil)
+			So(removedFrom, ShouldBeTrue)
 			So(storeDriver.moves, ShouldResemble, [][2]string{{"/origin", "/next"}})
+		})
+
+		Convey("reports a failed move, and that the origin was not removed", func() {
+			storeDriver.statFn = func(string) (driver.FileInfo, error) { return sized(0), nil }
+			storeDriver.moveErr = errLifecycleTest
+
+			removedFrom, err := lifecycle.HandOffContent("/origin", "/next")
+			So(err, ShouldEqual, errLifecycleTest)
+			So(removedFrom, ShouldBeFalse)
 		})
 
 		Convey("does not hand off content into a copy that already holds it", func() {
 			storeDriver.statFn = func(string) (driver.FileInfo, error) { return sized(7), nil }
 
-			So(lifecycle.HandOffContent("/origin", "/next"), ShouldBeNil)
+			// the origin is left for the caller to delete
+			removedFrom, err := lifecycle.HandOffContent("/origin", "/next")
+			So(err, ShouldBeNil)
+			So(removedFrom, ShouldBeFalse)
 			So(storeDriver.moves, ShouldBeEmpty)
 		})
 
@@ -224,7 +241,9 @@ func TestBlobLifecycle(t *testing.T) {
 				return nil, errclass.MarkTransient(errLifecycleTest)
 			}
 
-			So(errors.Is(lifecycle.HandOffContent("/origin", "/next"), zerr.ErrStorageTransient), ShouldBeTrue)
+			removedFrom, err := lifecycle.HandOffContent("/origin", "/next")
+			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+			So(removedFrom, ShouldBeFalse)
 			So(storeDriver.moves, ShouldBeEmpty)
 		})
 

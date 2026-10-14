@@ -25,6 +25,9 @@ import (
 // every copy holds the content. Remote storage keeps no empty directories, and dedupe leaves
 // a zero-byte placeholder at each copy except the one holding the content.
 //
+// Local storage relies on one more driver property: WriteFile rewrites a file in place, so a
+// copy repaired by rewriting it is repaired for every hardlink to it as well.
+//
 // The lifecycle owns the placeholder model, so the image store never assumes it:
 //   - IsPlaceholder decides whether a read has to go through the cache to find the content,
 //     and which copies the dedupe and restore walks treat as placeholders.
@@ -47,11 +50,12 @@ type blobLifecycle interface {
 
 	// HandOffContent is called when fromPath, the copy holding a blob's content, is about to
 	// be deleted and toPath is the copy the cache now records as the origin. It makes sure
-	// toPath holds the content.
+	// toPath holds the content, and reports whether doing so removed fromPath; if not, the
+	// caller still has to delete it.
 	// Local: nothing to do, a hardlink already holds it. Remote: if toPath is zero-size (a
-	// placeholder, or a copy of the empty digest), fromPath is moved onto it, which also
-	// removes fromPath.
-	HandOffContent(fromPath, toPath string) error
+	// placeholder, or a copy of the empty digest), fromPath is moved onto it, which removes
+	// it; a toPath that already holds the content is left alone.
+	HandOffContent(fromPath, toPath string) (removedFrom bool, err error)
 
 	// ValidateBlobsDir reports whether the repo at repoDir has the blobs directory an image
 	// layout needs. Local: blobs/ must exist and be a directory. Remote: object stores keep
@@ -115,11 +119,9 @@ func (l *localHardlinkBlobLifecycle) LinkBlob(srcPath, dstPath string) error {
 	return linkDistinct(l.storeDriver, srcPath, dstPath)
 }
 
-func (l *localHardlinkBlobLifecycle) HandOffContent(_, _ string) error {
-	// A hardlink keeps the content when another link is deleted. This matches what local has
-	// always done: its cache paths are relative, so deleteBlobChecked's dstRecord == blobPath
-	// never matched and the old Stat+Move never ran here.
-	return nil
+func (l *localHardlinkBlobLifecycle) HandOffContent(_, _ string) (bool, error) {
+	// a hardlink keeps the content when another link is deleted
+	return false, nil
 }
 
 func (l *localHardlinkBlobLifecycle) ValidateBlobsDir(repoDir string) (bool, error) {
@@ -166,20 +168,23 @@ func (r *remoteSharedBlobLifecycle) LinkBlob(srcPath, dstPath string) error {
 	return linkDistinct(r.storeDriver, srcPath, dstPath)
 }
 
-func (r *remoteSharedBlobLifecycle) HandOffContent(fromPath, toPath string) error {
+func (r *remoteSharedBlobLifecycle) HandOffContent(fromPath, toPath string) (bool, error) {
 	binfo, err := r.storeDriver.Stat(toPath)
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	// Any zero-size copy, not only a placeholder: the Move is also what removes fromPath,
-	// since the caller does not delete it afterwards. Skipping it for a copy of the empty
-	// digest would leave the deleted blob in place.
+	// Any zero-size copy, not only a placeholder: moving onto a copy of the empty digest is
+	// as good as deleting fromPath, and saves the separate delete.
 	if binfo.Size() != 0 {
-		return nil
+		return false, nil
 	}
 
-	return r.storeDriver.Move(fromPath, toPath)
+	if err := r.storeDriver.Move(fromPath, toPath); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 func (r *remoteSharedBlobLifecycle) ValidateBlobsDir(_ string) (bool, error) {
