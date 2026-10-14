@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
@@ -189,6 +190,32 @@ func TestRepoByteQuotaRejectsInvalidDescriptorDigest(t *testing.T) {
 	})
 }
 
+func TestRepoByteQuotaAllowsMissingForeignLayer(t *testing.T) {
+	Convey("Given a manifest with a non-distributable layer", t, func() {
+		baseURL, stop := startByteQuotaServer(t, 1<<30)
+		defer stop()
+
+		first := CreateImageWith().RandomLayers(1, 10).RandomConfig().Build()
+		So(UploadImage(first, baseURL, "foreign-layer", "v1"), ShouldBeNil)
+
+		manifest := first.Manifest
+		manifest.Layers = []ispec.Descriptor{{
+			MediaType: "application/vnd.oci.image.layer.nondistributable.v1.tar+gzip",
+			Digest:    godigest.FromString("foreign-layer"),
+			Size:      123,
+		}}
+		manifestBody, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+
+		resp, err := resty.R().
+			SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+			SetBody(manifestBody).
+			Put(baseURL + "/v2/foreign-layer/manifests/v2")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+	})
+}
+
 func TestRepoByteQuotaRejectsInvalidDescriptorSize(t *testing.T) {
 	Convey("Given a registry with maxRepoBytes enabled", t, func() {
 		baseURL, stop := startByteQuotaServer(t, 1<<30)
@@ -265,6 +292,10 @@ func TestRepoByteQuotaAcceptsShortCosignLikeTag(t *testing.T) {
 		defer stop()
 
 		So(UploadImage(CreateRandomImage(), baseURL, "byte-quota", "sha256-x.sig"), ShouldBeNil)
+
+		resp, err := resty.R().Get(baseURL + "/v2/byte-quota/manifests/sha256-x.sig")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 	})
 }
 

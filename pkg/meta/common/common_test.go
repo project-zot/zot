@@ -761,12 +761,6 @@ func TestProjectRepoSize(t *testing.T) {
 
 			_, _, err := common.ProjectRepoSize(repoMeta, repoBlobs, []string{"latest"}, invalid)
 			So(errors.Is(err, zerr.ErrInvalidRepoSizeCandidate), ShouldBeTrue)
-
-			invalid = candidate
-			invalid.Manifests[0].Manifest.Config.Size = 19
-
-			_, _, err = common.ProjectRepoSize(repoMeta, repoBlobs, []string{"latest"}, invalid)
-			So(errors.Is(err, zerr.ErrInvalidRepoSizeCandidate), ShouldBeTrue)
 		})
 
 		Convey("rejects conflicting sizes for a digest within a candidate", func() {
@@ -797,5 +791,50 @@ func TestProjectRepoSize(t *testing.T) {
 				[]string{"new"}, candidate)
 			So(errors.Is(err, zerr.ErrInvalidRepoSize), ShouldBeTrue)
 		})
+	})
+}
+
+func TestProjectRepoSizeReconcilesExistingBlobSizes(t *testing.T) {
+	Convey("ProjectRepoSize uses trusted candidate sizes for existing image blobs", t, func() {
+		oldDigest := godigest.FromString("old-manifest")
+		configDigest := godigest.FromString("shared-config")
+		layerDigest := godigest.FromString("shared-layer")
+		newDigest := godigest.FromString("new-manifest")
+
+		repoMeta := &proto_go.RepoMeta{
+			Name: "repo",
+			Tags: map[string]*proto_go.TagDescriptor{
+				"latest": {Digest: oldDigest.String(), MediaType: ispec.MediaTypeImageManifest},
+			},
+			Size: 12,
+		}
+		repoBlobs := &proto_go.RepoBlobs{
+			Name: "repo",
+			Blobs: map[string]*proto_go.BlobInfo{
+				oldDigest.String():    {Size: 10, SubBlobs: []string{configDigest.String(), layerDigest.String()}},
+				configDigest.String(): {Size: 1},
+				layerDigest.String():  {Size: 1},
+			},
+		}
+		candidate := mTypes.ImageMeta{
+			MediaType: ispec.MediaTypeImageManifest,
+			Digest:    newDigest,
+			Size:      15,
+			Manifests: []mTypes.ManifestMeta{{
+				Digest: newDigest,
+				Size:   15,
+				Manifest: ispec.Manifest{
+					Config: ispec.Descriptor{Digest: configDigest, Size: 20},
+					Layers: []ispec.Descriptor{{Digest: layerDigest, Size: 30}},
+				},
+			}},
+		}
+
+		current, projected, err := common.ProjectRepoSize(repoMeta, repoBlobs, []string{"next"}, candidate)
+		So(err, ShouldBeNil)
+		So(current, ShouldEqual, 60)
+		So(projected, ShouldEqual, 75)
+		So(repoBlobs.Blobs[configDigest.String()].Size, ShouldEqual, 20)
+		So(repoBlobs.Blobs[layerDigest.String()].Size, ShouldEqual, 30)
 	})
 }

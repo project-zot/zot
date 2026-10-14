@@ -162,6 +162,7 @@ func TestUpdateManifestQuotaProjectionFailureFailsClosed(t *testing.T) {
 	handler.UpdateManifest(response, request)
 
 	require.Equal(t, http.StatusServiceUnavailable, response.Code)
+	require.Contains(t, response.Body.String(), "quota accounting unavailable; retry later")
 	require.False(t, putCalled)
 }
 

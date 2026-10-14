@@ -240,3 +240,20 @@ func TestIsReferrersTag(t *testing.T) {
 		}
 	}
 }
+
+func TestIsCosignSignature(t *testing.T) {
+	validTag := "sha256-" + strings.Repeat("a", 64) + ".sig"
+
+	cases := map[string]bool{
+		validTag:             true,
+		"sha256-x.sig":       false,
+		"prefix-" + validTag: false,
+		"sha256-" + strings.Repeat("a", 63) + ".sig": false,
+	}
+
+	for tag, expected := range cases {
+		if got := common.IsCosignSignature(tag); got != expected {
+			t.Errorf("IsCosignSignature(%q) = %v, want %v", tag, got, expected)
+		}
+	}
+}
