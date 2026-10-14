@@ -26,6 +26,7 @@ func TestDeleteDedupeOrigin(t *testing.T) {
 		for _, testCase := range []struct {
 			name      string
 			driver    storageTypes.Driver
+			relPaths  bool
 			digest    godigest.Digest
 			origin    []byte
 			nextCopy  []byte
@@ -49,21 +50,21 @@ func TestDeleteDedupeOrigin(t *testing.T) {
 				digest: godigest.FromBytes(nil), origin: []byte{}, nextCopy: []byte{}, nextAfter: []byte{},
 			},
 			{
-				name:   "local",
-				driver: local.New(true),
-				digest: godigest.FromBytes(content), origin: content, nextCopy: content, nextAfter: content,
+				// relative cache paths, as local storage uses
+				name:     "local",
+				driver:   local.New(true),
+				relPaths: true,
+				digest:   godigest.FromBytes(content), origin: content, nextCopy: content, nextAfter: content,
 			},
 		} {
 			Convey(testCase.name, func() {
 				dir := t.TempDir()
 				log := zlog.NewTestLogger()
 
-				// absolute cache paths, so that the delete recognises the cache origin on
-				// every driver and hands its content off to the next copy
 				cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
 					RootDir:     dir,
 					Name:        "cache",
-					UseRelPaths: false,
+					UseRelPaths: testCase.relPaths,
 				}, log)
 				So(err, ShouldBeNil)
 
@@ -90,6 +91,18 @@ func TestDeleteDedupeOrigin(t *testing.T) {
 
 				_, err = os.Stat(origin)
 				So(os.IsNotExist(err), ShouldBeTrue)
+
+				// the cache no longer records the deleted copy, and points at the next one
+				So(cacheDriver.HasBlob(testCase.digest, origin), ShouldBeFalse)
+
+				record, err := cacheDriver.GetBlob(testCase.digest)
+				So(err, ShouldBeNil)
+
+				if testCase.relPaths {
+					record = path.Join(dir, record)
+				}
+
+				So(record, ShouldEqual, nextCopy)
 
 				data, err := os.ReadFile(nextCopy)
 				So(err, ShouldBeNil)

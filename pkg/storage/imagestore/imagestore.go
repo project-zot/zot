@@ -1671,9 +1671,7 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 
 		// cache record exists, but due to GC and upgrades from older versions,
 		// disk content and cache records may go out of sync
-		if is.cache.UsesRelativePaths() {
-			dstRecord = path.Join(is.rootDir, dstRecord)
-		}
+		dstRecord = is.cacheRecordPath(dstRecord)
 
 		blobInfo, err := is.storeDriver.Stat(dstRecord)
 		if err != nil {
@@ -2032,11 +2030,17 @@ func (is *ImageStore) getCachedBlobPath(digest godigest.Digest) (string, error) 
 		return "", zerr.ErrBlobNotFound
 	}
 
-	if is.cache.UsesRelativePaths() {
-		dstRecord = path.Join(is.rootDir, dstRecord)
+	return is.cacheRecordPath(dstRecord), nil
+}
+
+// cacheRecordPath returns the store path for a cache record, which is relative to the root
+// directory when the cache stores relative paths.
+func (is *ImageStore) cacheRecordPath(record string) string {
+	if record != "" && is.cache.UsesRelativePaths() {
+		return path.Join(is.rootDir, record)
 	}
 
-	return dstRecord, nil
+	return record
 }
 
 func (is *ImageStore) copyBlob(ctx context.Context, repo string, blobPath, dstRecord string) (int64, error) {
@@ -2591,7 +2595,7 @@ func (is *ImageStore) deleteBlobChecked(repo string, digest godigest.Digest, isR
 		}
 
 		// if the deleted blob is one with content
-		if dstRecord == blobPath {
+		if is.cacheRecordPath(dstRecord) == blobPath {
 			// get next candidate
 			dstRecord, err := is.cache.GetBlob(digest)
 			if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
@@ -2600,6 +2604,8 @@ func (is *ImageStore) deleteBlobChecked(repo string, digest godigest.Digest, isR
 
 				return err
 			}
+
+			dstRecord = is.cacheRecordPath(dstRecord)
 
 			// if we have a new candidate, make sure it holds the content before this copy goes
 			if dstRecord != "" {
