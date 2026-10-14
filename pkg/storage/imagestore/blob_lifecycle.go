@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"path"
 
+	"github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
@@ -20,21 +21,36 @@ import (
 // newBlobLifecycle makes that choice once, when the store is created.
 //
 // The differences come from two places. Local storage is a filesystem the store owns: it has
-// real directories, and dedupe makes each copy of a blob a hardlink to the same inode. Remote
-// storage keeps no empty directories, and dedupe leaves a zero-byte placeholder at each copy,
-// which reads resolve to the stored content through the cache.
+// real directories, and dedupe makes each copy of a blob a hardlink to the same inode, so
+// every copy holds the content. Remote storage keeps no empty directories, and dedupe leaves
+// a zero-byte placeholder at each copy except the one holding the content.
+//
+// The lifecycle owns the placeholder model, so the image store never assumes it:
+//   - IsPlaceholder decides whether a read has to go through the cache to find the content,
+//     and which copies the dedupe and restore walks treat as placeholders.
+//   - HandOffContent keeps the content alive when the copy holding it is deleted.
+//   - DeletesCanDestroySharedContent decides whether deletes wait for the dedupe walk.
+//
+// What stays in the image store is the driver-independent integrity rule: a zero-byte file
+// for a digest that is not the empty one is never served, and never used as a dedupe origin.
 type blobLifecycle interface {
-	// LinkBlob makes dstPath stand for the content at srcPath, during dedupe.
+	// IsPlaceholder reports whether the file at a copy of digest, as already stat'd, is a
+	// dedupe placeholder whose content is at the path the cache records.
+	// Local: never, since a hardlink holds the content. Remote: a zero-byte file for a
+	// digest that is not the empty one.
+	IsPlaceholder(digest godigest.Digest, binfo driver.FileInfo) bool
+
+	// LinkBlob makes dstPath stand for the content at srcPath, during dedupe. Linking a path
+	// onto itself does nothing.
 	// Local: a hardlink. Remote: a zero-byte placeholder at dstPath.
 	LinkBlob(srcPath, dstPath string) error
 
-	// ResolveReadPath returns the path a read of blobPath should use, given its size as
-	// already stat'd. Local: blobPath itself, since a hardlink holds the content. Remote: a
-	// zero-byte blobPath for a digest that is not the empty one is a placeholder, so the
-	// content's path comes from fallbackResolverFunc; otherwise blobPath itself.
-	ResolveReadPath(blobPath string, digest godigest.Digest, blobSize int64,
-		fallbackResolverFunc func(godigest.Digest) (string, error),
-	) (string, error)
+	// HandOffContent is called when fromPath, the copy holding digest's content, is about to
+	// be deleted and toPath is the copy the cache now records as the origin. It makes sure
+	// toPath holds the content.
+	// Local: nothing to do, a hardlink already holds it. Remote: if toPath is a placeholder,
+	// the content is moved from fromPath into it.
+	HandOffContent(digest godigest.Digest, fromPath, toPath string) error
 
 	// ValidateBlobsDir reports whether the repo at repoDir has the blobs directory an image
 	// layout needs. Local: blobs/ must exist and be a directory. Remote: object stores keep
@@ -68,20 +84,38 @@ func newBlobLifecycle(storeDriver storageTypes.Driver, rootDir string,
 	return &remoteSharedBlobLifecycle{storeDriver: storeDriver}
 }
 
+// isEmptyContentDigest reports whether digest is the algorithm's hash of zero bytes.
+func isEmptyContentDigest(digest godigest.Digest) bool {
+	return digest.Algorithm().FromBytes(nil) == digest
+}
+
+// linkDistinct links dstPath to srcPath unless both name the same path. Remote drivers
+// implement Link as writing empty bytes to dstPath, so a self-link would replace the only
+// content copy with a placeholder.
+func linkDistinct(storeDriver storageTypes.Driver, srcPath, dstPath string) error {
+	if path.Clean(srcPath) == path.Clean(dstPath) {
+		return nil
+	}
+
+	return storeDriver.Link(srcPath, dstPath)
+}
+
 type localHardlinkBlobLifecycle struct {
 	storeDriver storageTypes.Driver
 	rootDir     string
 	metrics     monitoring.MetricServer
 }
 
-func (l *localHardlinkBlobLifecycle) LinkBlob(srcPath, dstPath string) error {
-	return l.storeDriver.Link(srcPath, dstPath)
+func (l *localHardlinkBlobLifecycle) IsPlaceholder(_ godigest.Digest, _ driver.FileInfo) bool {
+	return false
 }
 
-func (l *localHardlinkBlobLifecycle) ResolveReadPath(blobPath string, _ godigest.Digest, _ int64,
-	_ func(godigest.Digest) (string, error),
-) (string, error) {
-	return blobPath, nil
+func (l *localHardlinkBlobLifecycle) LinkBlob(srcPath, dstPath string) error {
+	return linkDistinct(l.storeDriver, srcPath, dstPath)
+}
+
+func (l *localHardlinkBlobLifecycle) HandOffContent(_ godigest.Digest, _, _ string) error {
+	return nil
 }
 
 func (l *localHardlinkBlobLifecycle) ValidateBlobsDir(repoDir string) (bool, error) {
@@ -120,18 +154,25 @@ type remoteSharedBlobLifecycle struct {
 	storeDriver storageTypes.Driver
 }
 
-func (r *remoteSharedBlobLifecycle) LinkBlob(srcPath, dstPath string) error {
-	return r.storeDriver.Link(srcPath, dstPath)
+func (r *remoteSharedBlobLifecycle) IsPlaceholder(digest godigest.Digest, binfo driver.FileInfo) bool {
+	return binfo.Size() == 0 && !isEmptyContentDigest(digest)
 }
 
-func (r *remoteSharedBlobLifecycle) ResolveReadPath(blobPath string, digest godigest.Digest, blobSize int64,
-	fallbackResolverFunc func(godigest.Digest) (string, error),
-) (string, error) {
-	if blobSize == 0 && !isEmptyContentDigest(digest) {
-		return fallbackResolverFunc(digest)
+func (r *remoteSharedBlobLifecycle) LinkBlob(srcPath, dstPath string) error {
+	return linkDistinct(r.storeDriver, srcPath, dstPath)
+}
+
+func (r *remoteSharedBlobLifecycle) HandOffContent(digest godigest.Digest, fromPath, toPath string) error {
+	binfo, err := r.storeDriver.Stat(toPath)
+	if err != nil {
+		return err
 	}
 
-	return blobPath, nil
+	if !r.IsPlaceholder(digest, binfo) {
+		return nil
+	}
+
+	return r.storeDriver.Move(fromPath, toPath)
 }
 
 func (r *remoteSharedBlobLifecycle) ValidateBlobsDir(_ string) (bool, error) {

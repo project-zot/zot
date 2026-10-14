@@ -27,6 +27,7 @@ type lifecycleTestDriver struct {
 	name        string
 	statFn      func(path string) (driver.FileInfo, error)
 	links       [][2]string
+	moves       [][2]string
 	redirectFor string
 }
 
@@ -36,6 +37,12 @@ func (d *lifecycleTestDriver) Stat(path string) (driver.FileInfo, error) { retur
 
 func (d *lifecycleTestDriver) Link(src, dest string) error {
 	d.links = append(d.links, [2]string{src, dest})
+
+	return nil
+}
+
+func (d *lifecycleTestDriver) Move(src, dest string) error {
+	d.moves = append(d.moves, [2]string{src, dest})
 
 	return nil
 }
@@ -54,8 +61,8 @@ func TestBlobLifecycle(t *testing.T) {
 	digest := godigest.FromString("content")
 	emptyDigest := godigest.FromBytes(nil)
 
-	unusedResolver := func(godigest.Digest) (string, error) {
-		panic("resolver must not be called")
+	sized := func(size int64) driver.FileInfo {
+		return &mocks.FileInfoMock{SizeFn: func() int64 { return size }}
 	}
 
 	newLifecycle := func(name string) (blobLifecycle, *lifecycleTestDriver) {
@@ -76,6 +83,38 @@ func TestBlobLifecycle(t *testing.T) {
 		}
 	})
 
+	Convey("IsPlaceholder", t, func() {
+		local, _ := newLifecycle(storageConstants.LocalStorageDriverName)
+		remote, _ := newLifecycle(storageConstants.S3StorageDriverName)
+
+		for _, testCase := range []struct {
+			name      string
+			lifecycle blobLifecycle
+			digest    godigest.Digest
+			size      int64
+			expected  bool
+		}{
+			{"local, zero-byte copy of a non-empty digest", local, digest, 0, false},
+			{"local, content copy", local, digest, 7, false},
+			{"remote, zero-byte copy of a non-empty digest", remote, digest, 0, true},
+			{"remote, zero-byte copy of the empty digest", remote, emptyDigest, 0, false},
+			{"remote, content copy", remote, digest, 7, false},
+		} {
+			Convey(testCase.name, func() {
+				So(testCase.lifecycle.IsPlaceholder(testCase.digest, sized(testCase.size)), ShouldEqual, testCase.expected)
+			})
+		}
+	})
+
+	Convey("Linking a blob onto itself does nothing, without calling the driver", t, func() {
+		for _, name := range []string{storageConstants.LocalStorageDriverName, storageConstants.S3StorageDriverName} {
+			// a nil-embedded driver panics on any call it does not implement, and Link records
+			lifecycle, storeDriver := newLifecycle(name)
+			So(lifecycle.LinkBlob("/repo/blobs/sha256/abc", "/repo/blobs/sha256/./abc"), ShouldBeNil)
+			So(storeDriver.links, ShouldBeEmpty)
+		}
+	})
+
 	Convey("Local storage", t, func() {
 		lifecycle, storeDriver := newLifecycle(storageConstants.LocalStorageDriverName)
 
@@ -84,10 +123,10 @@ func TestBlobLifecycle(t *testing.T) {
 			So(storeDriver.links, ShouldResemble, [][2]string{{"/src", "/dst"}})
 		})
 
-		Convey("reads a blob from its own path, even a zero-byte one", func() {
-			path, err := lifecycle.ResolveReadPath("/blob", digest, 0, unusedResolver)
-			So(err, ShouldBeNil)
-			So(path, ShouldEqual, "/blob")
+		Convey("hands off content without touching the driver, since a hardlink holds it", func() {
+			// statFn is nil and Move records, so any driver call would panic or show up
+			So(lifecycle.HandOffContent(digest, "/origin", "/next"), ShouldBeNil)
+			So(storeDriver.moves, ShouldBeEmpty)
 		})
 
 		Convey("needs a blobs directory in each repo", func() {
@@ -162,29 +201,31 @@ func TestBlobLifecycle(t *testing.T) {
 			So(storeDriver.links, ShouldResemble, [][2]string{{"/src", "/dst"}})
 		})
 
-		Convey("resolves a zero-byte placeholder to the content's path", func() {
-			path, err := lifecycle.ResolveReadPath("/blob", digest, 0, func(d godigest.Digest) (string, error) {
-				So(d, ShouldEqual, digest)
+		Convey("hands off content into a placeholder", func() {
+			storeDriver.statFn = func(path string) (driver.FileInfo, error) {
+				So(path, ShouldEqual, "/next")
 
-				return "/origin", nil
-			})
-			So(err, ShouldBeNil)
-			So(path, ShouldEqual, "/origin")
+				return sized(0), nil
+			}
 
-			_, err = lifecycle.ResolveReadPath("/blob", digest, 0, func(godigest.Digest) (string, error) {
-				return "", zerr.ErrCacheMiss
-			})
-			So(err, ShouldEqual, zerr.ErrCacheMiss)
+			So(lifecycle.HandOffContent(digest, "/origin", "/next"), ShouldBeNil)
+			So(storeDriver.moves, ShouldResemble, [][2]string{{"/origin", "/next"}})
 		})
 
-		Convey("reads a blob with content, or an empty blob, from its own path", func() {
-			path, err := lifecycle.ResolveReadPath("/blob", digest, 7, unusedResolver)
-			So(err, ShouldBeNil)
-			So(path, ShouldEqual, "/blob")
+		Convey("does not hand off content into a copy that already holds it", func() {
+			storeDriver.statFn = func(string) (driver.FileInfo, error) { return sized(7), nil }
 
-			path, err = lifecycle.ResolveReadPath("/empty", emptyDigest, 0, unusedResolver)
-			So(err, ShouldBeNil)
-			So(path, ShouldEqual, "/empty")
+			So(lifecycle.HandOffContent(digest, "/origin", "/next"), ShouldBeNil)
+			So(storeDriver.moves, ShouldBeEmpty)
+		})
+
+		Convey("fails a hand-off when the next copy cannot be stat'd", func() {
+			storeDriver.statFn = func(string) (driver.FileInfo, error) {
+				return nil, errclass.MarkTransient(errLifecycleTest)
+			}
+
+			So(errors.Is(lifecycle.HandOffContent(digest, "/origin", "/next"), zerr.ErrStorageTransient), ShouldBeTrue)
+			So(storeDriver.moves, ShouldBeEmpty)
 		})
 
 		Convey("needs no blobs directory", func() {
