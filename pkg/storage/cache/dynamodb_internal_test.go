@@ -332,6 +332,9 @@ func TestDynamoDBConcurrentWriters(t *testing.T) {
 		noItem        = `{}`
 		withDuplicate = `{"Item":{"OriginalBlobPath":{"S":"/repo/origin"},` +
 			`"DuplicateBlobPath":{"SS":["/repo/origin","/repo/duplicate"]}}}`
+		// the same record once DeleteBlob has taken the origin's path out of the tracked paths
+		duplicateLeft = `{"Item":{"OriginalBlobPath":{"S":"/repo/origin"},` +
+			`"DuplicateBlobPath":{"SS":["/repo/duplicate"]}}}`
 		originOnly        = `{"Item":{"OriginalBlobPath":{"S":"/repo/origin"}}}`
 		conditionalFailed = `{"__type":"com.amazonaws.dynamodb.v20120810#ConditionalCheckFailedException",` +
 			`"message":"The conditional request failed"}`
@@ -401,7 +404,7 @@ func TestDynamoDBConcurrentWriters(t *testing.T) {
 		driver, transport := newScriptedDynamoDriver(
 			// the path is taken out of the duplicates; the record still shows another duplicate
 			scriptedDynamoResponse{http.StatusOK, `{}`},
-			scriptedDynamoResponse{http.StatusOK, withDuplicate},
+			scriptedDynamoResponse{http.StatusOK, duplicateLeft},
 			// ...which another writer deletes before it is promoted to origin
 			scriptedDynamoResponse{http.StatusBadRequest, conditionalFailed},
 			// the retry sees no duplicate left and deletes the record
@@ -427,7 +430,7 @@ func TestDynamoDBConcurrentWriters(t *testing.T) {
 			// ...but another writer adds a duplicate first
 			scriptedDynamoResponse{http.StatusBadRequest, conditionalFailed},
 			// the retry promotes that duplicate instead
-			scriptedDynamoResponse{http.StatusOK, withDuplicate},
+			scriptedDynamoResponse{http.StatusOK, duplicateLeft},
 			scriptedDynamoResponse{http.StatusOK, `{}`},
 		)
 
@@ -436,6 +439,22 @@ func TestDynamoDBConcurrentWriters(t *testing.T) {
 			[]string{"UpdateItem", "GetItem", "DeleteItem", "GetItem", "UpdateItem"})
 		So(transport.bodies[4], ShouldContainSubstring, "SET OriginalBlobPath = :new")
 		So(transport.bodies[4], ShouldContainSubstring, "/repo/duplicate")
+	})
+
+	Convey("DeleteBlob gives way to a writer that put the same path back", t, func() {
+		const originPutBack = `{"Item":{"OriginalBlobPath":{"S":"/repo/origin"},` +
+			`"DuplicateBlobPath":{"SS":["/repo/origin"]}}}`
+
+		driver, transport := newScriptedDynamoDriver(
+			// the path is taken out of the tracked paths, and another writer adds it again
+			scriptedDynamoResponse{http.StatusOK, `{}`},
+			scriptedDynamoResponse{http.StatusOK, originPutBack},
+		)
+
+		// the later write stands: nothing is promoted, and the record is not deleted. Trying
+		// to delete it here would fail its condition against the same record on every retry.
+		So(driver.DeleteBlob(digest, "/repo/origin"), ShouldBeNil)
+		So(transport.targets, ShouldResemble, []string{"UpdateItem", "GetItem"})
 	})
 
 	Convey("DeleteBlob leaves alone a record whose origin is another path", t, func() {

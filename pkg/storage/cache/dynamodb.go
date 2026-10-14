@@ -403,16 +403,19 @@ func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 		case blob.OriginalBlobPath != path:
 			return nil
 		default:
+			// path was taken out of the tracked paths above, so finding it there again means
+			// another writer has put it back since. That later write stands. Going on would
+			// find nothing to promote, and then try to delete a record that still tracks a
+			// path, failing that condition against the same record on every retry.
+			if slices.Contains(blob.DuplicateBlobPath, path) {
+				return nil
+			}
+
 			// the original blob is the one deleted: move a duplicate blob to original, storage
 			// will move content here, or drop the record when no duplicate is left
 			duplicate := ""
-
-			for _, candidate := range blob.DuplicateBlobPath {
-				if candidate != path {
-					duplicate = candidate
-
-					break
-				}
+			if len(blob.DuplicateBlobPath) > 0 {
+				duplicate = blob.DuplicateBlobPath[0]
 			}
 
 			err = d.replaceOrigin(digest, path, duplicate)
