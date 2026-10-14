@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -16,6 +17,12 @@ import (
 	zerr "zotregistry.dev/zot/v2/errors"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
 )
+
+// maxConditionalAttempts bounds how often PutBlob and DeleteBlob decide again after a write
+// fails its condition. Each failure means another writer changed the record in between, so
+// more than a few in a row is already unusual. The bound is there so that a record no attempt
+// can make progress on is reported as an error instead of being retried without end.
+const maxConditionalAttempts = 10
 
 type DynamoDBDriver struct {
 	client    *dynamodb.Client
@@ -251,10 +258,14 @@ func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
 	// Whether path becomes the origin or a duplicate of one depends on a record other writers
 	// may be changing, so the write is conditional on the origin that was read, and is decided
 	// again from a fresh read when that origin has moved or the record is gone.
-	for {
+	var err error
+
+	for range maxConditionalAttempts {
+		var blob Blob
+
 		// Only a miss, or an item without an origin, means there is no origin yet. Any other
 		// read failure says nothing about the record, and must not be answered by writing one.
-		blob, err := d.readBlob(digest)
+		blob, err = d.readBlob(digest)
 		if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
 			return err
 		}
@@ -278,6 +289,8 @@ func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
 
 		return err
 	}
+
+	return d.conditionalAttemptsExhausted(digest, path, err)
 }
 
 func (d *DynamoDBDriver) SetOrigin(digest godigest.Digest, originPath string) error {
@@ -381,8 +394,10 @@ func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 	// What is left to do depends on a record other writers may be changing, so every write
 	// below is conditional on the state it was decided from, and is decided again from a
 	// fresh read when that state has moved.
-	for {
-		blob, err := d.readBlob(digest)
+	for range maxConditionalAttempts {
+		var blob Blob
+
+		blob, err = d.readBlob(digest)
 		if err != nil {
 			if errors.Is(err, zerr.ErrCacheMiss) {
 				return nil
@@ -433,6 +448,8 @@ func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 
 		return err
 	}
+
+	return d.conditionalAttemptsExhausted(digest, path, err)
 }
 
 // readBlob returns the record for digest, or ErrCacheMiss if there is none. The read is
@@ -528,6 +545,17 @@ func (d *DynamoDBDriver) decodeBlob(item map[string]types.AttributeValue, out *B
 	}
 
 	return nil
+}
+
+// conditionalAttemptsExhausted reports a PutBlob or DeleteBlob that lost its conditional write
+// maxConditionalAttempts times in a row. The last failure stays in the error chain.
+func (d *DynamoDBDriver) conditionalAttemptsExhausted(digest godigest.Digest, path string, err error) error {
+	err = fmt.Errorf("record kept changing, gave up after %d attempts: %w", maxConditionalAttempts, err)
+
+	d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).
+		Msg("failed to update blob record")
+
+	return err
 }
 
 func isConditionalCheckFailed(err error) bool {

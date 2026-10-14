@@ -457,6 +457,38 @@ func TestDynamoDBConcurrentWriters(t *testing.T) {
 		So(transport.targets, ShouldResemble, []string{"UpdateItem", "GetItem"})
 	})
 
+	Convey("A write that keeps failing its condition is given up on, not retried without end", t, func() {
+		// a record that reads the same every time, and a write that fails its condition
+		// against it every time: no attempt can make progress
+		stuck := make([]scriptedDynamoResponse, 0, 2*maxConditionalAttempts)
+		for range maxConditionalAttempts {
+			stuck = append(stuck,
+				scriptedDynamoResponse{http.StatusOK, originOnly},
+				scriptedDynamoResponse{http.StatusBadRequest, conditionalFailed},
+			)
+		}
+
+		Convey("PutBlob", func() {
+			driver, transport := newScriptedDynamoDriver(stuck...)
+
+			err := driver.PutBlob(digest, "/repo/late")
+			So(err, ShouldNotBeNil)
+			So(isConditionalCheckFailed(err), ShouldBeTrue)
+			So(len(transport.targets), ShouldEqual, 2*maxConditionalAttempts)
+		})
+
+		Convey("DeleteBlob", func() {
+			// the path is first taken out of the tracked paths, then the loop starts
+			driver, transport := newScriptedDynamoDriver(
+				append([]scriptedDynamoResponse{{http.StatusOK, `{}`}}, stuck...)...)
+
+			err := driver.DeleteBlob(digest, "/repo/origin")
+			So(err, ShouldNotBeNil)
+			So(isConditionalCheckFailed(err), ShouldBeTrue)
+			So(len(transport.targets), ShouldEqual, 1+2*maxConditionalAttempts)
+		})
+	})
+
 	Convey("DeleteBlob leaves alone a record whose origin is another path", t, func() {
 		driver, transport := newScriptedDynamoDriver(
 			scriptedDynamoResponse{http.StatusOK, `{}`},
