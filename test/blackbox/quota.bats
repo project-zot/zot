@@ -103,6 +103,15 @@ function teardown_file() {
         oci:${TEST_DATA_DIR}/alpine:3.17.3 \
         docker://127.0.0.1:${zot_port}/repo1:alpine
     [ "$status" -ne 0 ]
+
+    manifest=$(skopeo inspect --raw oci:${TEST_DATA_DIR}/alpine:3.17.3)
+    run curl -s -o /dev/null -w "%{http_code}" \
+        -X PUT \
+        -H "Content-Type: application/vnd.oci.image.manifest.v1+json" \
+        -d "${manifest}" \
+        "http://127.0.0.1:${zot_port}/v2/repo1/manifests/alpine"
+    [ "$status" -eq 0 ]
+    [ "${lines[-1]}" -eq 413 ]
 }
 
 @test "push manifest to new repo3 returns HTTP 413 when quota is reached" {

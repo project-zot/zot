@@ -313,6 +313,16 @@ func ProjectRepoSize(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.RepoBlobs,
 		return currentSize, math.MaxInt64, err
 	}
 
+	if compat.IsImageManifestMediaType(imageMeta.MediaType) {
+		reconcileExistingImageManifestBlobSizes(repoBlobs, imageMeta)
+
+		var err error
+		currentSize, err = recalculateAggregateSize(repoMeta, repoBlobs)
+		if err != nil {
+			return 0, math.MaxInt64, err
+		}
+	}
+
 	for _, reference := range references {
 		repoMeta.Tags[reference] = &proto_go.TagDescriptor{
 			Digest:    imageMeta.Digest.String(),
@@ -351,8 +361,10 @@ func validateCandidateRepoSize(repoBlobs *proto_go.RepoBlobs, imageMeta mTypes.I
 			return fmt.Errorf("%w: candidate blob %s size changed", zerr.ErrInvalidRepoSizeCandidate, digest)
 		}
 
-		if blobInfo, ok := repoBlobs.Blobs[digest.String()]; ok && blobInfo != nil && blobInfo.Size != size {
-			return fmt.Errorf("%w: blob %s size changed", zerr.ErrInvalidRepoSizeCandidate, digest)
+		if !compat.IsImageManifestMediaType(imageMeta.MediaType) {
+			if blobInfo, ok := repoBlobs.Blobs[digest.String()]; ok && blobInfo != nil && blobInfo.Size != size {
+				return fmt.Errorf("%w: blob %s size changed", zerr.ErrInvalidRepoSizeCandidate, digest)
+			}
 		}
 
 		candidateBlobSizes[digest.String()] = size
@@ -396,6 +408,26 @@ func validateCandidateRepoSize(repoBlobs *proto_go.RepoBlobs, imageMeta mTypes.I
 	}
 
 	return nil
+}
+
+func reconcileExistingImageManifestBlobSizes(repoBlobs *proto_go.RepoBlobs, imageMeta mTypes.ImageMeta) {
+	if len(imageMeta.Manifests) == 0 {
+		return
+	}
+
+	setExistingSize := func(digest godigest.Digest, size int64) {
+		if blobInfo, ok := repoBlobs.Blobs[digest.String()]; ok && blobInfo != nil {
+			blobInfo.Size = size
+		}
+	}
+
+	manifestData := imageMeta.Manifests[0]
+	setExistingSize(manifestData.Digest, manifestData.Size)
+	setExistingSize(manifestData.Manifest.Config.Digest, manifestData.Manifest.Config.Size)
+
+	for _, layer := range manifestData.Manifest.Layers {
+		setExistingSize(layer.Digest, layer.Size)
+	}
 }
 
 func recalculateAggregateSize(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.RepoBlobs) (int64, error) {

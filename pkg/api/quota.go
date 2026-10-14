@@ -22,6 +22,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/meta/convert"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/storage"
+	storageCommon "zotregistry.dev/zot/v2/pkg/storage/common"
 )
 
 type repoQuotaLock struct {
@@ -162,9 +163,15 @@ func writeQuotaExceeded(response http.ResponseWriter, current, projected, limit 
 }
 
 func writeInvalidRepoSize(response http.ResponseWriter) {
-	detail := map[string]string{"reason": "manifest descriptor size is invalid"}
+	detail := map[string]string{"reason": "manifest descriptor digest or size is invalid"}
 	zcommon.WriteJSON(response, http.StatusBadRequest,
 		apiErr.NewErrorList(apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(detail)))
+}
+
+func writeQuotaUnavailable(response http.ResponseWriter) {
+	detail := map[string]string{"reason": "quota accounting unavailable; retry later"}
+	zcommon.WriteJSON(response, http.StatusServiceUnavailable,
+		apiErr.NewErrorList(apiErr.NewError(apiErr.DENIED).AddDetail(detail)))
 }
 
 func writeManifestBlobUnknown(response http.ResponseWriter) {
@@ -219,7 +226,7 @@ func (rh *RouteHandler) checkRepoByteQuota(response http.ResponseWriter, request
 
 		rh.c.Log.Error().Err(err).Str("repo", repo).
 			Msg("failed to resolve manifest blobs for quota, rejecting push")
-		response.WriteHeader(http.StatusServiceUnavailable)
+		writeQuotaUnavailable(response)
 
 		return true
 	}
@@ -244,7 +251,7 @@ func (rh *RouteHandler) checkRepoByteQuota(response http.ResponseWriter, request
 
 		rh.c.Log.Error().Err(err).Str("repo", repo).
 			Msg("failed to project repository size for quota, rejecting push")
-		response.WriteHeader(http.StatusServiceUnavailable)
+		writeQuotaUnavailable(response)
 
 		return true
 	}
@@ -274,6 +281,10 @@ func (rh *RouteHandler) normalizeQuotaImageMeta(repo string, imageMeta *mTypes.I
 
 	descriptors = append(descriptors, &manifest.Config)
 	for index := range manifest.Layers {
+		if storageCommon.IsNonDistributable(manifest.Layers[index].MediaType) {
+			continue
+		}
+
 		descriptors = append(descriptors, &manifest.Layers[index])
 	}
 

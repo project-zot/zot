@@ -210,6 +210,8 @@ increase the logical size beyond the limit, zot returns HTTP 413 with the
 current, projected, and configured sizes in the error detail. A value of 0 or
 omitting `maxRepoBytes` disables this enforcement. The setting can also be
 configured under a matching `subPaths` entry and takes effect after restart.
+Foreign and other non-distributable layers that are not stored locally use
+their descriptor sizes for logical quota accounting.
 
 This is a logical repository quota, not a physical disk quota. Shared physical
 blobs across repositories are not charged as a single-repository allocation.
