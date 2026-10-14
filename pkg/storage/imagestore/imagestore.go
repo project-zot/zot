@@ -2603,7 +2603,7 @@ func (is *ImageStore) deleteBlobChecked(repo string, digest godigest.Digest, isR
 
 			// if we have a new candidate, make sure it holds the content before this copy goes
 			if dstRecord != "" {
-				if err := is.lifecycle.HandOffContent(digest, blobPath, dstRecord); err != nil {
+				if err := is.lifecycle.HandOffContent(blobPath, dstRecord); err != nil {
 					is.log.Error().Err(err).Str("blobPath", blobPath).Str("candidate", dstRecord).
 						Str("component", "dedupe").Msg("failed to hand off blob content to the next copy")
 

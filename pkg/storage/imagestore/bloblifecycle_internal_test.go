@@ -125,7 +125,7 @@ func TestBlobLifecycle(t *testing.T) {
 
 		Convey("hands off content without touching the driver, since a hardlink holds it", func() {
 			// statFn is nil and Move records, so any driver call would panic or show up
-			So(lifecycle.HandOffContent(digest, "/origin", "/next"), ShouldBeNil)
+			So(lifecycle.HandOffContent("/origin", "/next"), ShouldBeNil)
 			So(storeDriver.moves, ShouldBeEmpty)
 		})
 
@@ -208,14 +208,14 @@ func TestBlobLifecycle(t *testing.T) {
 				return sized(0), nil
 			}
 
-			So(lifecycle.HandOffContent(digest, "/origin", "/next"), ShouldBeNil)
+			So(lifecycle.HandOffContent("/origin", "/next"), ShouldBeNil)
 			So(storeDriver.moves, ShouldResemble, [][2]string{{"/origin", "/next"}})
 		})
 
 		Convey("does not hand off content into a copy that already holds it", func() {
 			storeDriver.statFn = func(string) (driver.FileInfo, error) { return sized(7), nil }
 
-			So(lifecycle.HandOffContent(digest, "/origin", "/next"), ShouldBeNil)
+			So(lifecycle.HandOffContent("/origin", "/next"), ShouldBeNil)
 			So(storeDriver.moves, ShouldBeEmpty)
 		})
 
@@ -224,7 +224,7 @@ func TestBlobLifecycle(t *testing.T) {
 				return nil, errclass.MarkTransient(errLifecycleTest)
 			}
 
-			So(errors.Is(lifecycle.HandOffContent(digest, "/origin", "/next"), zerr.ErrStorageTransient), ShouldBeTrue)
+			So(errors.Is(lifecycle.HandOffContent("/origin", "/next"), zerr.ErrStorageTransient), ShouldBeTrue)
 			So(storeDriver.moves, ShouldBeEmpty)
 		})
 

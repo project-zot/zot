@@ -45,12 +45,13 @@ type blobLifecycle interface {
 	// Local: a hardlink. Remote: a zero-byte placeholder at dstPath.
 	LinkBlob(srcPath, dstPath string) error
 
-	// HandOffContent is called when fromPath, the copy holding digest's content, is about to
+	// HandOffContent is called when fromPath, the copy holding a blob's content, is about to
 	// be deleted and toPath is the copy the cache now records as the origin. It makes sure
 	// toPath holds the content.
-	// Local: nothing to do, a hardlink already holds it. Remote: if toPath is a placeholder,
-	// the content is moved from fromPath into it.
-	HandOffContent(digest godigest.Digest, fromPath, toPath string) error
+	// Local: nothing to do, a hardlink already holds it. Remote: if toPath is zero-size (a
+	// placeholder, or a copy of the empty digest), fromPath is moved onto it, which also
+	// removes fromPath.
+	HandOffContent(fromPath, toPath string) error
 
 	// ValidateBlobsDir reports whether the repo at repoDir has the blobs directory an image
 	// layout needs. Local: blobs/ must exist and be a directory. Remote: object stores keep
@@ -114,7 +115,7 @@ func (l *localHardlinkBlobLifecycle) LinkBlob(srcPath, dstPath string) error {
 	return linkDistinct(l.storeDriver, srcPath, dstPath)
 }
 
-func (l *localHardlinkBlobLifecycle) HandOffContent(_ godigest.Digest, _, _ string) error {
+func (l *localHardlinkBlobLifecycle) HandOffContent(_, _ string) error {
 	// A hardlink keeps the content when another link is deleted. This matches what local has
 	// always done: its cache paths are relative, so deleteBlobChecked's dstRecord == blobPath
 	// never matched and the old Stat+Move never ran here.
@@ -165,13 +166,16 @@ func (r *remoteSharedBlobLifecycle) LinkBlob(srcPath, dstPath string) error {
 	return linkDistinct(r.storeDriver, srcPath, dstPath)
 }
 
-func (r *remoteSharedBlobLifecycle) HandOffContent(digest godigest.Digest, fromPath, toPath string) error {
+func (r *remoteSharedBlobLifecycle) HandOffContent(fromPath, toPath string) error {
 	binfo, err := r.storeDriver.Stat(toPath)
 	if err != nil {
 		return err
 	}
 
-	if !r.IsPlaceholder(digest, binfo) {
+	// Any zero-size copy, not only a placeholder: the Move is also what removes fromPath,
+	// since the caller does not delete it afterwards. Skipping it for a copy of the empty
+	// digest would leave the deleted blob in place.
+	if binfo.Size() != 0 {
 		return nil
 	}
 
