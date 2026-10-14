@@ -2944,8 +2944,10 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 			return err
 		}
 
-		if is.lifecycle.IsPlaceholder(digest, binfo) {
-			is.log.Warn().Str("component", "dedupe").Msg("found placeholder, trying to find the original blob")
+		// A zero-size copy of the empty digest already holds all its content: record it like a
+		// placeholder, and never link over it.
+		if is.lifecycle.IsPlaceholder(digest, binfo) || (binfo.Size() == 0 && isEmptyContentDigest(digest)) {
+			is.log.Warn().Str("component", "dedupe").Msg("found file without content, trying to find the original blob")
 			// a rebuild dedupe was attempted in the past
 			// get original blob, should be found otherwise exit with error
 			if originalBlob == "" {
