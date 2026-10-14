@@ -52,6 +52,7 @@ type ImageStore struct {
 	metrics     monitoring.MetricServer
 	events      events.Recorder
 	cache       storageTypes.Cache
+	lifecycle   blobLifecycle
 	dedupe      bool
 	linter      common.Lint
 	commit      bool
@@ -106,6 +107,7 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 		cache:       cacheDriver,
 		compat:      compat,
 		events:      recorder,
+		lifecycle:   newBlobLifecycle(storeDriver, rootDir, metrics),
 	}
 
 	// Deletes are only gated while a dedupe/restore walk is pending; see RunDedupeBlobs.
@@ -347,28 +349,8 @@ func (is *ImageStore) ValidateRepo(name string) (bool, error) {
 		}
 	}
 
-	// Local FS requires blobs/; cloud drivers omit empty dirs so skip this check.
-	// Use Stat (not DirExists): DirExists collapses Transient/Permanent into false,
-	// which would soft-skip a live repo from inventory walks as (false, nil).
-	if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
-		blobsDir := path.Join(dir, ispec.ImageBlobsDir)
-
-		blobsInfo, err := is.storeDriver.Stat(blobsDir)
-		if err != nil {
-			if errclass.IsStorageObjectMissing(err) {
-				return false, nil
-			}
-
-			if errors.Is(err, zerr.ErrStorageTransient) || errors.Is(err, zerr.ErrStoragePermanent) {
-				return false, err
-			}
-
-			return false, errclass.MarkTransient(err)
-		}
-
-		if !blobsInfo.IsDir() {
-			return false, nil
-		}
+	if ok, err := is.lifecycle.ValidateBlobsDir(dir); !ok || err != nil {
+		return false, err
 	}
 
 	for _, v := range found {
@@ -836,9 +818,7 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 		is.Unlock(&lockLatency)
 
 		if err == nil {
-			if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
-				monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
-			}
+			is.lifecycle.UpdateStorageUsage(repo)
 
 			monitoring.IncUploadCounter(is.metrics, repo)
 		}
@@ -918,9 +898,8 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 
 	contentPath := manifestPath
 	binfo, statErr := is.storeDriver.Stat(manifestPath)
-	if statErr == nil && is.dedupe && is.storeDriver.Name() != storageConstants.LocalStorageDriverName &&
-		binfo.Size() == 0 && !isEmptyContentDigest(mDigest) {
-		contentPath, err = is.getCachedBlobPath(mDigest)
+	if statErr == nil && is.dedupe {
+		contentPath, err = is.lifecycle.ResolveReadPath(manifestPath, mDigest, binfo.Size(), is.getCachedBlobPath)
 		if err != nil {
 			err = fmt.Errorf("%w: %w", zerr.ErrManifestCacheLookup, err)
 			is.log.Error().Err(err).Str("file", manifestPath).Str("digest", mDigest.String()).
@@ -929,9 +908,11 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 			return "", "", err
 		}
 
-		// Keep the cache record intact when the origin object is missing: the
-		// re-upload below can recreate the object at the same backing path.
-		binfo, statErr = is.storeDriver.Stat(contentPath)
+		if contentPath != manifestPath {
+			// Keep the cache record intact when the origin object is missing: the
+			// re-upload below can recreate the object at the same backing path.
+			binfo, statErr = is.storeDriver.Stat(contentPath)
+		}
 	}
 
 	needsWrite := statErr != nil
@@ -1133,9 +1114,7 @@ func (is *ImageStore) DeleteImageManifest(ctx context.Context, repo, reference s
 
 func (is *ImageStore) deleteImageManifest(ctx context.Context, repo, reference string, detectCollisions bool) error {
 	defer func() {
-		if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
-			monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
-		}
+		is.lifecycle.UpdateStorageUsage(repo)
 	}()
 
 	index, err := common.GetIndex(is, repo, is.log)
@@ -1729,7 +1708,7 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 
 		// prevent overwrite original blob
 		if !is.storeDriver.SameFile(dst, dstRecord) {
-			if err := is.storeDriver.Link(dstRecord, dst); err != nil {
+			if err := is.lifecycle.LinkBlob(dstRecord, dst); err != nil {
 				is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
 					Msg("failed to link blobs")
 
@@ -2065,7 +2044,7 @@ func (is *ImageStore) copyBlob(ctx context.Context, repo string, blobPath, dstRe
 	// paths here; drivers' Link implementations own exact/self and SameFile guards
 	// so we do not pay an extra remote Stat via SameFile on every placeholder copy.
 	if path.Clean(dstRecord) != path.Clean(blobPath) {
-		if err := is.storeDriver.Link(dstRecord, blobPath); err != nil {
+		if err := is.lifecycle.LinkBlob(dstRecord, blobPath); err != nil {
 			is.log.Error().Err(err).Str("blobPath", blobPath).Str("link", dstRecord).Str("component", "dedupe").
 				Msg("failed to hard link")
 
@@ -2228,25 +2207,17 @@ func (is *ImageStore) GetBlobRedirectURL(r *http.Request, repo string, digest go
 		return "", zerr.ErrBadBlobDigest
 	}
 
-	// Local storage has no external signed URL endpoint; proxy path is expected.
-	if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
-		return "", nil
-	}
+	return is.lifecycle.RedirectURL(r, func() (string, error) {
+		is.RLock(&lockLatency)
+		defer is.RUnlock(&lockLatency)
 
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
+		binfo, err := is.originalBlobInfo(repo, digest)
+		if err != nil {
+			return "", err
+		}
 
-	binfo, err := is.originalBlobInfo(repo, digest)
-	if err != nil {
-		return "", err
-	}
-
-	redirectURL, err := is.storeDriver.RedirectURL(r, binfo.Path())
-	if err != nil {
-		return "", mapStorageErr(err)
-	}
-
-	return redirectURL, nil
+		return binfo.Path(), nil
+	})
 }
 
 // GetBlobContent returns blob contents, the caller function MUST lock from outside.
@@ -2472,9 +2443,7 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest) (int, er
 	}
 
 	// finally update metrics
-	if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
-		monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
-	}
+	is.lifecycle.UpdateStorageUsage(repo)
 
 	return count, nil
 }
@@ -2564,9 +2533,7 @@ func (is *ImageStore) RemoveIdleRepository(repo string, maxBlobAge time.Duration
 	}
 
 	// finally update metrics
-	if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
-		monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
-	}
+	is.lifecycle.UpdateStorageUsage(repo)
 
 	return true, nil
 }
@@ -3017,7 +2984,7 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 			// Never Link a path onto itself: remote drivers implement Link as PutContent of
 			// empty bytes to dest, which would replace the only real copy with a stub.
 			if originalBlob != "" && path.Clean(originalBlob) != path.Clean(blobPath) {
-				if err := is.storeDriver.Link(originalBlob, blobPath); err != nil {
+				if err := is.lifecycle.LinkBlob(originalBlob, blobPath); err != nil {
 					is.log.Error().Err(err).Str("path", blobPath).Str("component", "dedupe").Msg("failed to dedupe blob")
 
 					return err
@@ -3185,9 +3152,9 @@ func (is *ImageStore) RunDedupeForDigest(ctx context.Context, digest godigest.Di
 func (is *ImageStore) RunDedupeBlobs(interval time.Duration, sch *scheduler.Scheduler) {
 	markerPath := path.Join(is.rootDir, storageConstants.DedupeRestoreCompleteMarker)
 
-	// Gate deletes of cache-unknown blobs until the walk completes (see deleteBlob).
-	// Local storage dedupes via hardlinks, so deletes there never destroy shared content.
-	if is.storeDriver.Name() != storageConstants.LocalStorageDriverName {
+	// Gate deletes of cache-unknown blobs until the walk completes (see deleteBlob), on
+	// storage where such a delete can remove content other repos still use.
+	if is.lifecycle.DeletesCanDestroySharedContent() {
 		is.dedupeRebuildDone.Store(false)
 	}
 
