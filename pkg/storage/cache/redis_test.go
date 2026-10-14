@@ -1,6 +1,7 @@
 package cache_test
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"path"
@@ -248,6 +249,35 @@ func TestRedisCache(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		So(blobs, ShouldResemble, []string{"second"})
+	})
+}
+
+func TestRedisHasBlobLogsNoErrorOnHit(t *testing.T) {
+	miniRedis := miniredis.RunT(t)
+
+	Convey("HasBlob does not log an error when the lookup succeeds", t, func() {
+		dir := t.TempDir()
+
+		var logBuf bytes.Buffer
+
+		log := log.NewLoggerWithWriter("debug", &logBuf)
+
+		connOpts, _ := redis.ParseURL("redis://" + miniRedis.Addr())
+		client := redis.NewClient(connOpts)
+
+		cacheDriver, err := cache.NewRedisCache(
+			cache.RedisDriverParameters{client, dir, true, "zot"}, log)
+		So(err, ShouldBeNil)
+		So(cacheDriver, ShouldNotBeNil)
+
+		err = cacheDriver.PutBlob("key", path.Join(dir, "value"))
+		So(err, ShouldBeNil)
+
+		logBuf.Reset()
+
+		So(cacheDriver.HasBlob("key", path.Join(dir, "value")), ShouldBeTrue)
+		So(logBuf.String(), ShouldNotContainSubstring, "unable to get record")
+		So(logBuf.String(), ShouldNotContainSubstring, `"level":"error"`)
 	})
 }
 

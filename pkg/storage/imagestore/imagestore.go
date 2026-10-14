@@ -61,6 +61,14 @@ type ImageStore struct {
 	dedupeRebuildDone atomic.Bool
 }
 
+// isCacheNil reports whether is.cache is unusable: either the interface itself is nil,
+// or it wraps a nil concrete pointer - e.g. a failed cache.NewBoltDBCache/NewDynamoDBCache/
+// NewRedisCache construction returns a typed-nil driver through storage.Create, which
+// passes a plain `is.cache != nil` check but panics on any method call.
+func (is *ImageStore) isCacheNil() bool {
+	return fmt.Sprintf("%v", is.cache) == fmt.Sprintf("%v", nil)
+}
+
 func (is *ImageStore) Name() string {
 	return is.storeDriver.Name()
 }
@@ -1461,7 +1469,7 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 		return err
 	}
 
-	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+	if is.dedupe && !is.isCacheNil() {
 		err = is.DedupeBlob(src, dstDigest, repo, dst)
 		if err := inject.Error(err); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
@@ -1586,7 +1594,7 @@ func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.R
 		return "", -1, err
 	}
 
-	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+	if is.dedupe && !is.isCacheNil() {
 		if err := is.DedupeBlob(src, dstDigest, repo, dst); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
 				Str("dst", dst).Msg("failed to dedupe blob")
@@ -1816,7 +1824,7 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 
 	blobPath := is.BlobPath(repo, digest)
 
-	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+	if is.dedupe && !is.isCacheNil() {
 		is.Lock(&lockLatency)
 		defer is.Unlock(&lockLatency)
 	} else {
@@ -1987,7 +1995,7 @@ func (is *ImageStore) checkCacheBlob(digest godigest.Digest) (string, error) {
 }
 
 func (is *ImageStore) getCachedBlobPath(digest godigest.Digest) (string, error) {
-	if fmt.Sprintf("%v", is.cache) == fmt.Sprintf("%v", nil) {
+	if is.isCacheNil() {
 		// No cache configured — not a cache-index miss.
 		return "", zerr.ErrBlobNotFound
 	}
@@ -2560,7 +2568,7 @@ func (is *ImageStore) deleteBlobChecked(repo string, digest godigest.Digest, isR
 		return zerr.ErrBlobReferenced
 	}
 
-	if fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+	if !is.isCacheNil() {
 		dstRecord, err := is.cache.GetBlob(digest)
 		if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
 			is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
@@ -2628,7 +2636,7 @@ func (is *ImageStore) deleteBlobChecked(repo string, digest godigest.Digest, isR
 
 	// No cache (dedupe off): leftover placeholders are refilled by the restore
 	// walk; until it completes this blob may be their only content copy.
-	if fmt.Sprintf("%v", is.cache) == fmt.Sprintf("%v", nil) && binfo.Size() > 0 && !is.dedupeRebuildDone.Load() {
+	if is.isCacheNil() && binfo.Size() > 0 && !is.dedupeRebuildDone.Load() {
 		is.log.Warn().Str("digest", digest.String()).Str("blobPath", blobPath).Str("component", "dedupe").
 			Msg("content blob delete requested before dedupe restore walk finished, deferring delete")
 
@@ -2902,7 +2910,7 @@ func (is *ImageStore) getOriginalBlob(digest godigest.Digest, duplicateBlobs []s
 
 	// PutBlob never replaces an existing origin entry. After rejecting an empty stub
 	// (or recovering via disk search), point the cache at the validated content path.
-	if fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+	if !is.isCacheNil() {
 		if err := is.cache.SetOrigin(digest, originalBlob); err != nil {
 			return originalBlob, err
 		}
@@ -2914,7 +2922,7 @@ func (is *ImageStore) getOriginalBlob(digest godigest.Digest, duplicateBlobs []s
 }
 
 func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, duplicateBlobs []string) error {
-	if fmt.Sprintf("%v", is.cache) == fmt.Sprintf("%v", nil) {
+	if is.isCacheNil() {
 		is.log.Error().Err(zerr.ErrDedupeRebuild).Msg("failed to dedupe blobs, no cache driver found")
 
 		return zerr.ErrDedupeRebuild

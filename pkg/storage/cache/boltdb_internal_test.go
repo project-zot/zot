@@ -57,13 +57,13 @@ func TestBoltDriverErrors(t *testing.T) {
 			})
 			So(err, ShouldBeNil)
 
-			// digest bucket not found
+			// digest bucket not found: nothing is tracked, so there is nothing to delete
 			err = driver.DeleteBlob(digest.FromString("bad-digest"), "path")
-			So(err, ShouldNotBeNil)
+			So(err, ShouldBeNil)
 
-			// duplicate bucket not exist
+			// duplicate bucket not exist: same, the delete is a no-op
 			err = driver.DeleteBlob(goodDigest, "path")
-			So(err, ShouldNotBeNil)
+			So(err, ShouldBeNil)
 		})
 	})
 }
