@@ -10,7 +10,6 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
 
-	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/storage"
@@ -40,29 +39,23 @@ func (d *failingMoveDriver) Move(sourcePath, destPath string) error {
 	return d.Driver.Move(sourcePath, destPath)
 }
 
-// staleReadCache answers the first GetBlob after a DeleteBlob with the deleted path, as an
-// eventually consistent cache (DynamoDB) can.
-type staleReadCache struct {
+var errSetOriginFailed = errors.New("set origin failed") //nolint: gochecknoglobals
+
+// failingSetOriginCache fails the first failures calls to SetOrigin, then delegates.
+type failingSetOriginCache struct {
 	storageTypes.Cache
 
-	staleReads int
-	deleted    string
+	failures int
 }
 
-func (c *staleReadCache) DeleteBlob(digest godigest.Digest, path string) error {
-	c.deleted = path
+func (c *failingSetOriginCache) SetOrigin(digest godigest.Digest, path string) error {
+	if c.failures > 0 {
+		c.failures--
 
-	return c.Cache.DeleteBlob(digest, path)
-}
-
-func (c *staleReadCache) GetBlob(digest godigest.Digest) (string, error) {
-	if c.deleted != "" && c.staleReads > 0 {
-		c.staleReads--
-
-		return c.deleted, nil
+		return errSetOriginFailed
 	}
 
-	return c.Cache.GetBlob(digest)
+	return c.Cache.SetOrigin(digest, path)
 }
 
 // newLocalDedupeStoreAt returns a local image store with dedupe on and a BoltDB cache that
@@ -290,7 +283,7 @@ func TestDeleteDedupeOrigin(t *testing.T) {
 		}
 	})
 
-	Convey("A stale cache read that still names the deleted origin does not delete the content", t, func() {
+	Convey("Failed hand-offs and cache updates never lose the content across retries", t, func() {
 		dir := t.TempDir()
 		log := zlog.NewTestLogger()
 
@@ -301,10 +294,11 @@ func TestDeleteDedupeOrigin(t *testing.T) {
 		}, log)
 		So(err, ShouldBeNil)
 
-		cacheDriver := &staleReadCache{Cache: boltCache, staleReads: 1}
+		storeDriver := &failingMoveDriver{Driver: &remoteNamedDriver{Driver: local.New(true)}, failures: 1}
+		cacheDriver := &failingSetOriginCache{Cache: boltCache, failures: 1}
 
 		imgStore := imagestore.NewImageStore(dir, dir, true, true, log, monitoring.NewNopMetricServer(), nil,
-			&remoteNamedDriver{Driver: local.New(true)}, cacheDriver, nil, nil)
+			storeDriver, cacheDriver, nil, nil)
 
 		ctx := context.Background()
 		content := []byte("handoff-content")
@@ -324,11 +318,9 @@ func TestDeleteDedupeOrigin(t *testing.T) {
 		origin := plant("repo-origin", content)
 		placeholder := plant("repo-placeholder", []byte{})
 
-		err = imgStore.DeleteBlob("repo-origin", digest)
-		So(errors.Is(err, zerr.ErrCacheStaleOrigin), ShouldBeTrue)
-		So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+		// the hand-off fails before the cache is touched
+		So(errors.Is(imgStore.DeleteBlob("repo-origin", digest), errMoveFailed), ShouldBeTrue)
 
-		// the only content copy survives, and is still the cache origin
 		data, err := os.ReadFile(origin)
 		So(err, ShouldBeNil)
 		So(data, ShouldResemble, content)
@@ -337,15 +329,20 @@ func TestDeleteDedupeOrigin(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(record, ShouldEqual, origin)
 
-		// once the cache reads current, the retry hands the content off
-		So(imgStore.DeleteBlob("repo-origin", digest), ShouldBeNil)
-
-		_, err = os.Stat(origin)
-		So(os.IsNotExist(err), ShouldBeTrue)
+		// the hand-off succeeds and the cache update fails: the content is already in the
+		// placeholder, so nothing a later retry does can lose it
+		So(errors.Is(imgStore.DeleteBlob("repo-origin", digest), errSetOriginFailed), ShouldBeTrue)
 
 		data, err = os.ReadFile(placeholder)
 		So(err, ShouldBeNil)
 		So(data, ShouldResemble, content)
+
+		So(imgStore.DeleteBlob("repo-origin", digest), ShouldNotBeNil)
+
+		ok, size, err := imgStore.CheckBlob(ctx, "repo-placeholder", digest)
+		So(err, ShouldBeNil)
+		So(ok, ShouldBeTrue)
+		So(size, ShouldEqual, len(content))
 	})
 
 	Convey("A failed repair of the next copy keeps the deleted copy as the cache origin", t, func() {
