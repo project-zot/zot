@@ -2034,10 +2034,12 @@ func (is *ImageStore) getCachedBlobPath(digest godigest.Digest) (string, error) 
 }
 
 // cacheRecordPath returns the store path for a cache record, which is relative to the root
-// directory when the cache stores relative paths.
+// directory when the cache stores relative paths. Such a record comes from filepath.Rel, with
+// the OS separator, while store paths always use slashes; on Windows the two would otherwise
+// never compare equal.
 func (is *ImageStore) cacheRecordPath(record string) string {
 	if record != "" && is.cache.UsesRelativePaths() {
-		return path.Join(is.rootDir, record)
+		return path.Join(is.rootDir, filepath.ToSlash(record))
 	}
 
 	return record
