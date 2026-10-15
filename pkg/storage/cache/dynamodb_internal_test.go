@@ -660,3 +660,27 @@ func TestDynamoDBConditionalWrites(t *testing.T) {
 		})
 	})
 }
+
+// Deleting a dedupe origin hands its content to a copy from GetAllBlobs. A stale list that
+// leaves out a surviving copy would lose the content, so the read must be strongly consistent.
+func TestDynamoDBGetAllBlobsReadsConsistently(t *testing.T) {
+	Convey("GetAllBlobs asks for a strongly consistent read", t, func() {
+		driver, transport := newScriptedDynamoDriver(scriptedDynamoResponse{http.StatusOK,
+			`{"Item":{"OriginalBlobPath":{"S":"/repo/origin"},` +
+				`"DuplicateBlobPath":{"SS":["/repo/origin","/repo/duplicate"]}}}`})
+
+		blobs, err := driver.GetAllBlobs(godigest.FromString("consistent"))
+		So(err, ShouldBeNil)
+		So(blobs, ShouldResemble, []string{"/repo/origin", "/repo/duplicate"})
+
+		So(transport.targets, ShouldResemble, []string{"GetItem"})
+		So(transport.bodies[0], ShouldContainSubstring, `"ConsistentRead":true`)
+	})
+
+	Convey("GetAllBlobs reports a missing record as a cache miss", t, func() {
+		driver, _ := newScriptedDynamoDriver(scriptedDynamoResponse{http.StatusOK, `{}`})
+
+		_, err := driver.GetAllBlobs(godigest.FromString("missing"))
+		So(err, ShouldEqual, zerr.ErrCacheMiss)
+	})
+}
