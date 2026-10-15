@@ -1703,6 +1703,31 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 			continue
 		}
 
+		// An origin without content cannot back another copy: linking this upload to it would
+		// leave the upload empty as well. Keep the upload as the content copy instead and make it
+		// the origin, which also makes the copies that point at the origin readable again.
+		if lacksContent(dstDigest, blobInfo.Size()) {
+			is.log.Warn().Str("origin", dstRecord).Str("dst", dst).Str("component", "dedupe").
+				Msg("dedupe origin has no content, keeping the upload as the new origin")
+
+			if err := is.storeDriver.Move(src, dst); err != nil {
+				is.log.Error().Err(err).Str("src", src).Str("dst", dst).Str("component", "dedupe").
+					Msg("failed to rename blob")
+
+				return err
+			}
+
+			if err := is.cache.SetOrigin(dstDigest, dst); err != nil {
+				// As when publishing a first origin fails: the content is durable at dst, so failing the
+				// upload would report an error for a blob that exists. A later upload or the
+				// dedupe walk can repair the origin.
+				is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
+					Msg("failed to make the upload the dedupe origin; leaving blob committed")
+			}
+
+			return nil
+		}
+
 		// prevent overwrite original blob
 		if !is.storeDriver.SameFile(dst, dstRecord) {
 			if err := is.lifecycle.LinkBlob(dstRecord, dst); err != nil {
