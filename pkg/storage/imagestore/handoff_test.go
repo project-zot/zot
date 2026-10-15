@@ -10,6 +10,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/storage"
@@ -37,6 +38,31 @@ func (d *failingMoveDriver) Move(sourcePath, destPath string) error {
 	}
 
 	return d.Driver.Move(sourcePath, destPath)
+}
+
+// staleReadCache answers the first GetBlob after a DeleteBlob with the deleted path, as an
+// eventually consistent cache (DynamoDB) can.
+type staleReadCache struct {
+	storageTypes.Cache
+
+	staleReads int
+	deleted    string
+}
+
+func (c *staleReadCache) DeleteBlob(digest godigest.Digest, path string) error {
+	c.deleted = path
+
+	return c.Cache.DeleteBlob(digest, path)
+}
+
+func (c *staleReadCache) GetBlob(digest godigest.Digest) (string, error) {
+	if c.deleted != "" && c.staleReads > 0 {
+		c.staleReads--
+
+		return c.deleted, nil
+	}
+
+	return c.Cache.GetBlob(digest)
 }
 
 // newLocalDedupeStoreAt returns a local image store with dedupe on and a BoltDB cache that
@@ -262,6 +288,64 @@ func TestDeleteDedupeOrigin(t *testing.T) {
 				So(record, ShouldEqual, nextCopy)
 			})
 		}
+	})
+
+	Convey("A stale cache read that still names the deleted origin does not delete the content", t, func() {
+		dir := t.TempDir()
+		log := zlog.NewTestLogger()
+
+		boltCache, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: false,
+		}, log)
+		So(err, ShouldBeNil)
+
+		cacheDriver := &staleReadCache{Cache: boltCache, staleReads: 1}
+
+		imgStore := imagestore.NewImageStore(dir, dir, true, true, log, monitoring.NewNopMetricServer(), nil,
+			&remoteNamedDriver{Driver: local.New(true)}, cacheDriver, nil, nil)
+
+		ctx := context.Background()
+		content := []byte("handoff-content")
+		digest := godigest.FromBytes(content)
+
+		plant := func(repo string, body []byte) string {
+			So(imgStore.InitRepo(ctx, repo), ShouldBeNil)
+
+			blobPath := imgStore.BlobPath(repo, digest)
+			So(os.MkdirAll(path.Dir(blobPath), storageConstants.DefaultDirPerms), ShouldBeNil)
+			So(os.WriteFile(blobPath, body, storageConstants.DefaultFilePerms), ShouldBeNil)
+			So(boltCache.PutBlob(digest, blobPath), ShouldBeNil)
+
+			return blobPath
+		}
+
+		origin := plant("repo-origin", content)
+		placeholder := plant("repo-placeholder", []byte{})
+
+		err = imgStore.DeleteBlob("repo-origin", digest)
+		So(errors.Is(err, zerr.ErrCacheStaleOrigin), ShouldBeTrue)
+		So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+
+		// the only content copy survives, and is still the cache origin
+		data, err := os.ReadFile(origin)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, content)
+
+		record, err := boltCache.GetBlob(digest)
+		So(err, ShouldBeNil)
+		So(record, ShouldEqual, origin)
+
+		// once the cache reads current, the retry hands the content off
+		So(imgStore.DeleteBlob("repo-origin", digest), ShouldBeNil)
+
+		_, err = os.Stat(origin)
+		So(os.IsNotExist(err), ShouldBeTrue)
+
+		data, err = os.ReadFile(placeholder)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, content)
 	})
 
 	Convey("A failed repair of the next copy keeps the deleted copy as the cache origin", t, func() {

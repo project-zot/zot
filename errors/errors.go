@@ -70,6 +70,7 @@ var (
 	ErrCacheRootBucket                  = errors.New("unable to create/update root cache bucket")
 	ErrCacheNoBucket                    = errors.New("unable to find cache bucket")
 	ErrCacheMiss                        = errors.New("cache miss")
+	ErrCacheStaleOrigin                 = errors.New("cache still offers a dedupe copy it should no longer record")
 	ErrManifestCacheLookup              = errors.New("manifest cache lookup failed")
 	ErrRequireCred                      = errors.New("bind ldap credentials required")
 	ErrInvalidCred                      = errors.New("invalid ldap credentials")

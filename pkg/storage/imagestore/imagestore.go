@@ -2663,9 +2663,13 @@ func (is *ImageStore) handOffToNextCopies(digest godigest.Digest, fromPath strin
 			return false, nil
 		}
 
-		// the cache would otherwise keep offering a copy it failed to drop
-		if pruned[toPath] {
-			return false, fmt.Errorf("%w: %s still recorded after removal", zerr.ErrCacheMiss, toPath)
+		/* The cache may still offer a copy it no longer records, for instance on an eventually
+		consistent read (DynamoDB). Offered this copy itself, every check would find it holding
+		the content and the delete would remove the only content copy; offered a dropped copy,
+		the loop would never end. Fail as transient instead, so the caller restores this copy as
+		the origin and a retry sees the cache's current state. */
+		if path.Clean(toPath) == path.Clean(fromPath) || pruned[toPath] {
+			return false, errclass.MarkTransient(fmt.Errorf("%w: %s", zerr.ErrCacheStaleOrigin, toPath))
 		}
 
 		removedFrom, err := is.handOffToNextCopy(digest, fromPath, fromInfo, toPath)
