@@ -345,6 +345,66 @@ func TestDeleteDedupeOrigin(t *testing.T) {
 		So(size, ShouldEqual, len(content))
 	})
 
+	Convey("A copy holding the content is not deleted as a duplicate after a failed cache update", t, func() {
+		dir := t.TempDir()
+		log := zlog.NewTestLogger()
+
+		boltCache, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: false,
+		}, log)
+		So(err, ShouldBeNil)
+
+		cacheDriver := &failingSetOriginCache{Cache: boltCache, failures: 1}
+
+		imgStore := imagestore.NewImageStore(dir, dir, true, true, log, monitoring.NewNopMetricServer(), nil,
+			&remoteNamedDriver{Driver: local.New(true)}, cacheDriver, nil, nil)
+
+		ctx := context.Background()
+		content := []byte("handoff-content")
+		digest := godigest.FromBytes(content)
+
+		plant := func(repo string, body []byte) string {
+			So(imgStore.InitRepo(ctx, repo), ShouldBeNil)
+
+			blobPath := imgStore.BlobPath(repo, digest)
+			So(os.MkdirAll(path.Dir(blobPath), storageConstants.DefaultDirPerms), ShouldBeNil)
+			So(os.WriteFile(blobPath, body, storageConstants.DefaultFilePerms), ShouldBeNil)
+			So(boltCache.PutBlob(digest, blobPath), ShouldBeNil)
+
+			return blobPath
+		}
+
+		origin := plant("repo-a", content)
+		second := plant("repo-b", []byte{})
+		third := plant("repo-c", []byte{})
+
+		// the content moves onto the second copy, but the cache still names the first
+		So(errors.Is(imgStore.DeleteBlob("repo-a", digest), errSetOriginFailed), ShouldBeTrue)
+
+		_, err = os.Stat(origin)
+		So(os.IsNotExist(err), ShouldBeTrue)
+
+		record, err := boltCache.GetBlob(digest)
+		So(err, ShouldBeNil)
+		So(record, ShouldEqual, origin)
+
+		// deleting the second copy hands the content on instead of losing it
+		So(imgStore.DeleteBlob("repo-b", digest), ShouldBeNil)
+
+		_, err = os.Stat(second)
+		So(os.IsNotExist(err), ShouldBeTrue)
+
+		data, err := os.ReadFile(third)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, content)
+
+		record, err = boltCache.GetBlob(digest)
+		So(err, ShouldBeNil)
+		So(record, ShouldEqual, third)
+	})
+
 	Convey("A failed repair of the next copy keeps the deleted copy as the cache origin", t, func() {
 		dir := t.TempDir()
 		storeDriver := &failingMoveDriver{Driver: local.New(true), failures: 1}

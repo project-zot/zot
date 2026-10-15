@@ -2586,8 +2586,19 @@ func (is *ImageStore) deleteBlobChecked(repo string, digest godigest.Digest, isR
 
 		removedFrom := false
 
-		if is.cacheRecordPath(dstRecord) == blobPath {
-			/* This copy is the cache origin. Hand its content to another copy and make that copy
+		holdsOrigin := is.cacheRecordPath(dstRecord) == blobPath
+		if !holdsOrigin && dstRecord != "" && binfo.Size() > 0 {
+			/* The cache names another copy as the origin. If that copy has lost the content, for
+			instance after a hand-off whose cache update failed, this copy may be the only one
+			holding it, and deleting it as a duplicate would lose the content for good. */
+			holdsOrigin, err = is.originLostContent(digest, is.cacheRecordPath(dstRecord))
+			if err != nil {
+				return err
+			}
+		}
+
+		if holdsOrigin {
+			/* This copy holds the origin's content. Hand it to another copy and make that copy
 			the origin before forgetting this one: in that order, a failure at any step leaves the
 			cache naming a copy that holds the content, so a retry starts over rather than deleting
 			the only content copy as an ordinary duplicate. */
@@ -2640,8 +2651,23 @@ func (is *ImageStore) deleteBlobChecked(repo string, digest godigest.Digest, isR
 	return nil
 }
 
-// handOffOrigin hands the content of fromPath, the cache origin, which is about to be deleted,
-// to another copy the cache records, and makes that copy the origin. A copy storage confirms is
+// originLostContent reports whether originPath, the copy the cache names as the origin, no
+// longer holds the content: it is missing, or zero-size for a digest that is not the empty one.
+func (is *ImageStore) originLostContent(digest godigest.Digest, originPath string) (bool, error) {
+	binfo, err := is.storeDriver.Stat(originPath)
+	if err != nil {
+		if errclass.IsStorageObjectMissing(err) {
+			return true, nil
+		}
+
+		return false, err
+	}
+
+	return binfo.Size() == 0 && !isEmptyContentDigest(digest), nil
+}
+
+// handOffOrigin hands the content of fromPath, which holds the origin's content and is about to
+// be deleted, to another copy the cache records, and makes that copy the origin. A copy storage confirms is
 // missing is dropped from the cache and the next one tried, so that one lost copy cannot block
 // the delete for good. It reports whether the hand-off removed fromPath; with no other copy, it
 // did not.
