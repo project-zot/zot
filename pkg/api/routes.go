@@ -2825,6 +2825,23 @@ func (rh *RouteHandler) ListRepositories(response http.ResponseWriter, request *
 		return
 	}
 
+	if rh.c.Config.CopyAccessControlConfig().IsAnonymousCatalogDisabled() {
+		// traditional bearer tokens never set a username, so also consult the authn context
+		authenticated := !userAc.IsAnonymous()
+		if !authenticated {
+			authnMwCtx, err := reqCtx.GetAuthnMiddlewareContext(request.Context())
+			authenticated = err == nil && authnMwCtx != nil && authnMwCtx.AuthnType == BEARER
+		}
+
+		if !authenticated {
+			authConfig := rh.c.Config.CopyAuthConfig()
+			authzFailWithReason(response, request, "", authConfig, rh.c.Config.GetRealm(),
+				authConfig.GetFailDelay(), "")
+
+			return
+		}
+	}
+
 	repos, moreEntries, err := rh.listStorageRepositories(lastEntry, maxEntries, userAc)
 	if err != nil {
 		if writeStorageClassError(response, err) {

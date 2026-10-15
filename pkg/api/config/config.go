@@ -596,6 +596,10 @@ type AccessControlConfig struct {
 	Groups       Groups
 	Metrics      Metrics
 
+	// DisableAnonymousCatalog rejects unauthenticated requests to /v2/_catalog
+	// with 401, even if an anonymousPolicy would otherwise allow listing.
+	DisableAnonymousCatalog bool `json:"disableAnonymousCatalog" mapstructure:"disableAnonymousCatalog"`
+
 	// compiledConditions caches CEL programs for all policy condition
 	// expressions present in this access-control config, keyed by expression
 	// string. Populated at config validation and refreshed on hot reload.
@@ -719,6 +723,11 @@ func (config *AccessControlConfig) GetAdminPolicy() Policy {
 	}
 
 	return config.AdminPolicy
+}
+
+// IsAnonymousCatalogDisabled reports whether anonymous access to the catalog API is disabled.
+func (config *AccessControlConfig) IsAnonymousCatalogDisabled() bool {
+	return config != nil && config.DisableAnonymousCatalog
 }
 
 // GetMetrics safely gets a copy of the metrics configuration.
@@ -1176,6 +1185,7 @@ func (c *Config) UpdateReloadableConfig(newConfig *Config) {
 		c.HTTP.AccessControl.AdminPolicy = newConfig.HTTP.AccessControl.AdminPolicy
 		c.HTTP.AccessControl.Metrics = newConfig.HTTP.AccessControl.Metrics
 		c.HTTP.AccessControl.Groups = newConfig.HTTP.AccessControl.Groups
+		c.HTTP.AccessControl.DisableAnonymousCatalog = newConfig.HTTP.AccessControl.DisableAnonymousCatalog
 	}
 
 	// Initialize and update ExtensionConfig
