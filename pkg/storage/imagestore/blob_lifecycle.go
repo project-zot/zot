@@ -132,7 +132,7 @@ func (l *localHardlinkBlobLifecycle) HandOffContent(digest godigest.Digest, from
 	}
 
 	// a hardlink keeps the content when another link is deleted
-	if binfo.Size() != 0 || isEmptyContentDigest(digest) || fromSize == 0 {
+	if !lacksContent(digest, binfo.Size()) || fromSize == 0 {
 		return false, nil
 	}
 
@@ -180,7 +180,7 @@ type remoteSharedBlobLifecycle struct {
 }
 
 func (r *remoteSharedBlobLifecycle) IsPlaceholder(digest godigest.Digest, binfo driver.FileInfo) bool {
-	return binfo.Size() == 0 && !isEmptyContentDigest(digest)
+	return lacksContent(digest, binfo.Size())
 }
 
 func (r *remoteSharedBlobLifecycle) LinkBlob(srcPath, dstPath string) error {

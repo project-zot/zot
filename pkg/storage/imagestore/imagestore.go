@@ -1875,7 +1875,7 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 			return false, -1, mapStorageErr(err)
 		}
 
-		if blobSize == 0 && !isEmptyContentDigest(digest) {
+		if lacksContent(digest, blobSize) {
 			is.log.Debug().Str("digest", digest.String()).Str("dstRecord", dstRecord).
 				Msg("dedupe origin is empty for non-empty digest")
 
@@ -2156,7 +2156,7 @@ func (is *ImageStore) originalBlobInfo(repo string, digest godigest.Digest) (dri
 	// origin that is itself empty, cannot be served for a non-empty digest (HTTP 200
 	// with a body that does not match the digest). Prefer ErrBlobNotFound (not
 	// MarkMissing — storage found a path) so clients can fall back.
-	if binfo.Size() == 0 && !isEmptyContentDigest(digest) {
+	if lacksContent(digest, binfo.Size()) {
 		is.log.Debug().Str("digest", digest.String()).Str("blob", contentPath).
 			Msg("content copy is empty for non-empty digest")
 
@@ -2651,6 +2651,13 @@ func (is *ImageStore) deleteBlobChecked(repo string, digest godigest.Digest, isR
 	return nil
 }
 
+// lacksContent reports whether a copy of digest that is size bytes long cannot hold its content:
+// it is empty, and the digest is not the empty one. Whatever the driver, such a copy is never
+// served and never used as a dedupe origin.
+func lacksContent(digest godigest.Digest, size int64) bool {
+	return size == 0 && !isEmptyContentDigest(digest)
+}
+
 // originLostContent reports whether originPath, the copy the cache names as the origin, no
 // longer holds the content: it is missing, or zero-size for a digest that is not the empty one.
 func (is *ImageStore) originLostContent(digest godigest.Digest, originPath string) (bool, error) {
@@ -2663,7 +2670,7 @@ func (is *ImageStore) originLostContent(digest godigest.Digest, originPath strin
 		return false, err
 	}
 
-	return binfo.Size() == 0 && !isEmptyContentDigest(digest), nil
+	return lacksContent(digest, binfo.Size()), nil
 }
 
 // handOffOrigin hands the content of fromPath, which holds the origin's content and is about to
@@ -2884,8 +2891,6 @@ func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []g
 }
 
 func (is *ImageStore) getOriginalBlobFromDisk(digest godigest.Digest, duplicateBlobs []string) (string, error) {
-	allowEmpty := isEmptyContentDigest(digest)
-
 	for _, blobPath := range duplicateBlobs {
 		binfo, err := is.storeDriver.Stat(blobPath)
 		if err != nil {
@@ -2903,7 +2908,7 @@ func (is *ImageStore) getOriginalBlobFromDisk(digest godigest.Digest, duplicateB
 			return "", mapStorageErr(err)
 		}
 
-		if binfo.Size() > 0 || (allowEmpty && binfo.Size() == 0) {
+		if !lacksContent(digest, binfo.Size()) {
 			return blobPath, nil
 		}
 	}
@@ -2943,7 +2948,7 @@ func (is *ImageStore) getOriginalBlob(digest godigest.Digest, duplicateBlobs []s
 				Msg("cached original blob missing, searching storage")
 
 			originalBlob = ""
-		} else if binfo.Size() == 0 && !isEmptyContentDigest(digest) {
+		} else if lacksContent(digest, binfo.Size()) {
 			is.log.Warn().Str("path", originalBlob).Str("component", "dedupe").
 				Msg("cached original blob has no content, searching storage")
 
@@ -3011,9 +3016,10 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 			return err
 		}
 
-		// A zero-size copy of the empty digest already holds all its content: record it like a
-		// placeholder, and never link over it.
-		if is.lifecycle.IsPlaceholder(digest, binfo) || (binfo.Size() == 0 && isEmptyContentDigest(digest)) {
+		switch {
+		// A placeholder is recorded and left alone. So is a zero-size copy of the empty digest,
+		// which already holds all its content: never link over it.
+		case is.lifecycle.IsPlaceholder(digest, binfo) || (binfo.Size() == 0 && isEmptyContentDigest(digest)):
 			is.log.Warn().Str("component", "dedupe").Msg("found file without content, trying to find the original blob")
 			// a rebuild dedupe was attempted in the past
 			// get original blob, should be found otherwise exit with error
@@ -3032,24 +3038,26 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 					return err
 				}
 			}
-		} else {
-			// A zero-size copy of a non-empty digest that is not a placeholder is corrupt: it
-			// can be neither the origin nor skipped, so find the origin and link it over the
-			// copy to repair it.
-			if binfo.Size() == 0 && !isEmptyContentDigest(digest) {
-				is.log.Warn().Str("path", blobPath).Str("component", "dedupe").
-					Msg("found corrupt zero-size blob, repairing it from the original blob")
 
-				if originalBlob == "" {
-					originalBlob, err = is.getOriginalBlob(digest, duplicateBlobs)
-					if err != nil {
-						is.log.Error().Err(err).Str("component", "dedupe").Msg("failed to find original blob")
+		// A copy without content that is not a placeholder is corrupt: it can be neither the
+		// origin nor skipped, so find the origin, then link it over the copy to repair it.
+		case lacksContent(digest, binfo.Size()):
+			is.log.Warn().Str("path", blobPath).Str("component", "dedupe").
+				Msg("found corrupt zero-size blob, repairing it from the original blob")
 
-						return errclass.Wrap(zerr.ErrDedupeRebuild, err)
-					}
+			if originalBlob == "" {
+				originalBlob, err = is.getOriginalBlob(digest, duplicateBlobs)
+				if err != nil {
+					is.log.Error().Err(err).Str("component", "dedupe").Msg("failed to find original blob")
+
+					return errclass.Wrap(zerr.ErrDedupeRebuild, err)
 				}
 			}
 
+			fallthrough
+
+		// A content copy becomes the origin, or has the origin linked over it.
+		default:
 			// if we have an original blob cached then we can safely dedupe the rest of them
 			// (LinkBlob skips the original itself)
 			if originalBlob != "" {
