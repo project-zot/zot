@@ -2,11 +2,13 @@ package convert
 
 import (
 	"context"
+	"errors"
 
 	"github.com/99designs/gqlgen/graphql"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	cveinfo "zotregistry.dev/zot/v2/pkg/extensions/search/cve"
 	cvemodel "zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
 	"zotregistry.dev/zot/v2/pkg/extensions/search/gql_generated"
@@ -108,7 +110,7 @@ func updateManifestSummaryVulnerabilities(
 
 	imageCveSummary, err := cveInfo.GetCVESummaryForImageMedia(ctx, repoName, *manifestSummary.Digest,
 		ispec.MediaTypeImageManifest)
-	if err != nil {
+	if err != nil && !errors.Is(err, zerr.ErrScanNotSupported) {
 		// Log the error, but we should still include the manifest in results
 		graphql.AddError(
 			ctx,

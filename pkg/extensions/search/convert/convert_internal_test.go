@@ -5,6 +5,7 @@ package convert
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/99designs/gqlgen/graphql"
@@ -12,6 +13,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	cvemodel "zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
 	"zotregistry.dev/zot/v2/pkg/extensions/search/gql_generated"
 	"zotregistry.dev/zot/v2/pkg/log"
@@ -329,6 +331,50 @@ func TestCVEConvert(t *testing.T) {
 			So(*manifestSummary.Vulnerabilities.Count, ShouldEqual, 0)
 			So(*manifestSummary.Vulnerabilities.MaxSeverity, ShouldEqual, "")
 			So(graphql.GetErrors(ctx).Error(), ShouldContainSubstring, "unable to run vulnerability scan in repo")
+		})
+
+		Convey("Unscannable manifests in an index add no error", func() {
+			repoName := "library/alpine"
+			tag := "3.24.2"
+			indexMediaType := ispec.MediaTypeImageIndex
+			indexDigest := godigest.FromString("index").String()
+			imageDigest := godigest.FromString("image").String()
+			attestationDigest := godigest.FromString("attestation").String()
+
+			imageSummary := &gql_generated.ImageSummary{
+				RepoName:  &repoName,
+				Tag:       &tag,
+				Digest:    &indexDigest,
+				MediaType: &indexMediaType,
+				Manifests: []*gql_generated.ManifestSummary{
+					{Digest: &imageDigest},
+					{Digest: &attestationDigest},
+				},
+			}
+
+			updateImageSummaryVulnerabilities(ctx,
+				imageSummary,
+				SkipQGLField{
+					Vulnerabilities: false,
+				},
+				mocks.CveInfoMock{
+					GetCVESummaryForImageMediaFn: func(ctx context.Context, repo string, digest, mediaType string,
+					) (cvemodel.ImageCVESummary, error) {
+						if digest == attestationDigest {
+							return cvemodel.ImageCVESummary{}, fmt.Errorf("image '%s@%s' %w: layer media type '%s'",
+								repo, digest, zerr.ErrScanNotSupported, "application/vnd.in-toto+json")
+						}
+
+						return cvemodel.ImageCVESummary{Count: 1, MaxSeverity: "HIGH"}, nil
+					},
+				},
+			)
+
+			So(graphql.GetErrors(ctx), ShouldBeNil)
+			So(*imageSummary.Vulnerabilities.MaxSeverity, ShouldEqual, "HIGH")
+			So(*imageSummary.Manifests[0].Vulnerabilities.MaxSeverity, ShouldEqual, "HIGH")
+			So(*imageSummary.Manifests[1].Vulnerabilities.Count, ShouldEqual, 0)
+			So(*imageSummary.Manifests[1].Vulnerabilities.MaxSeverity, ShouldEqual, "")
 		})
 	})
 }
