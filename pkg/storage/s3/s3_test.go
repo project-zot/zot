@@ -4339,8 +4339,9 @@ func TestS3DedupeErr(t *testing.T) {
 			PutContentFn: func(ctx context.Context, path string, content []byte) error {
 				return errS3
 			},
+			// a blob with content at whatever path is asked, so that SameFile tells copies apart
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				return nil, nil //nolint:nilnil
+				return driver.FileInfoInternal{FileInfoFields: driver.FileInfoFields{Path: path, Size: 10}}, nil
 			},
 		})
 
@@ -4355,8 +4356,9 @@ func TestS3DedupeErr(t *testing.T) {
 	Convey("Test DedupeBlob - error on cache.PutBlob()", t, func(c C) {
 		tdir := t.TempDir()
 		imgStore = createMockStorage(testDir, tdir, true, &mocks.StorageDriverMock{
+			// a blob with content at whatever path is asked, so that SameFile tells copies apart
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				return nil, nil //nolint:nilnil
+				return driver.FileInfoInternal{FileInfoFields: driver.FileInfoFields{Path: path, Size: 10}}, nil
 			},
 		})
 
@@ -4374,8 +4376,9 @@ func TestS3DedupeErr(t *testing.T) {
 			DeleteFn: func(ctx context.Context, path string) error {
 				return errS3
 			},
+			// a blob with content at whatever path is asked, so that SameFile tells copies apart
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				return nil, nil //nolint:nilnil
+				return driver.FileInfoInternal{FileInfoFields: driver.FileInfoFields{Path: path, Size: 10}}, nil
 			},
 		})
 
