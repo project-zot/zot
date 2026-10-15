@@ -124,12 +124,59 @@ func TestBlobLifecycle(t *testing.T) {
 			So(storeDriver.links, ShouldResemble, [][2]string{{"/src", "/dst"}})
 		})
 
-		Convey("hands off content without touching the driver, since a hardlink holds it", func() {
-			// statFn is nil and Move records, so any driver call would panic or show up
-			removedFrom, err := lifecycle.HandOffContent("/origin", "/next")
+		Convey("leaves the content to the hardlink when the next copy holds it", func() {
+			storeDriver.statFn = func(path string) (driver.FileInfo, error) {
+				So(path, ShouldEqual, "/next")
+
+				return sized(7), nil
+			}
+
+			removedFrom, err := lifecycle.HandOffContent(digest, "/origin", 7, "/next")
 			So(err, ShouldBeNil)
 			So(removedFrom, ShouldBeFalse)
 			So(storeDriver.moves, ShouldBeEmpty)
+		})
+
+		Convey("repairs a corrupt zero-size next copy by moving the content onto it", func() {
+			storeDriver.statFn = func(string) (driver.FileInfo, error) { return sized(0), nil }
+
+			removedFrom, err := lifecycle.HandOffContent(digest, "/origin", 7, "/next")
+			So(err, ShouldBeNil)
+			So(removedFrom, ShouldBeTrue)
+			So(storeDriver.moves, ShouldResemble, [][2]string{{"/origin", "/next"}})
+		})
+
+		Convey("moves nothing for the empty digest, or from an empty copy", func() {
+			storeDriver.statFn = func(string) (driver.FileInfo, error) { return sized(0), nil }
+
+			removedFrom, err := lifecycle.HandOffContent(emptyDigest, "/origin", 0, "/next")
+			So(err, ShouldBeNil)
+			So(removedFrom, ShouldBeFalse)
+
+			// both links to one truncated inode: a rename would remove neither
+			removedFrom, err = lifecycle.HandOffContent(digest, "/origin", 0, "/next")
+			So(err, ShouldBeNil)
+			So(removedFrom, ShouldBeFalse)
+			So(storeDriver.moves, ShouldBeEmpty)
+		})
+
+		Convey("reports a next copy missing from storage", func() {
+			storeDriver.statFn = func(string) (driver.FileInfo, error) {
+				return nil, errclass.MarkMissing(errLifecycleTest)
+			}
+
+			removedFrom, err := lifecycle.HandOffContent(digest, "/origin", 7, "/next")
+			So(errclass.IsStorageObjectMissing(err), ShouldBeTrue)
+			So(removedFrom, ShouldBeFalse)
+		})
+
+		Convey("reports a failed move, and that the origin was not removed", func() {
+			storeDriver.statFn = func(string) (driver.FileInfo, error) { return sized(0), nil }
+			storeDriver.moveErr = errLifecycleTest
+
+			removedFrom, err := lifecycle.HandOffContent(digest, "/origin", 7, "/next")
+			So(err, ShouldEqual, errLifecycleTest)
+			So(removedFrom, ShouldBeFalse)
 		})
 
 		Convey("needs a blobs directory in each repo", func() {
@@ -211,7 +258,7 @@ func TestBlobLifecycle(t *testing.T) {
 				return sized(0), nil
 			}
 
-			removedFrom, err := lifecycle.HandOffContent("/origin", "/next")
+			removedFrom, err := lifecycle.HandOffContent(digest, "/origin", 7, "/next")
 			So(err, ShouldBeNil)
 			So(removedFrom, ShouldBeTrue)
 			So(storeDriver.moves, ShouldResemble, [][2]string{{"/origin", "/next"}})
@@ -221,7 +268,7 @@ func TestBlobLifecycle(t *testing.T) {
 			storeDriver.statFn = func(string) (driver.FileInfo, error) { return sized(0), nil }
 			storeDriver.moveErr = errLifecycleTest
 
-			removedFrom, err := lifecycle.HandOffContent("/origin", "/next")
+			removedFrom, err := lifecycle.HandOffContent(digest, "/origin", 7, "/next")
 			So(err, ShouldEqual, errLifecycleTest)
 			So(removedFrom, ShouldBeFalse)
 		})
@@ -230,7 +277,7 @@ func TestBlobLifecycle(t *testing.T) {
 			storeDriver.statFn = func(string) (driver.FileInfo, error) { return sized(7), nil }
 
 			// the origin is left for the caller to delete
-			removedFrom, err := lifecycle.HandOffContent("/origin", "/next")
+			removedFrom, err := lifecycle.HandOffContent(digest, "/origin", 7, "/next")
 			So(err, ShouldBeNil)
 			So(removedFrom, ShouldBeFalse)
 			So(storeDriver.moves, ShouldBeEmpty)
@@ -241,7 +288,7 @@ func TestBlobLifecycle(t *testing.T) {
 				return nil, errclass.MarkTransient(errLifecycleTest)
 			}
 
-			removedFrom, err := lifecycle.HandOffContent("/origin", "/next")
+			removedFrom, err := lifecycle.HandOffContent(digest, "/origin", 7, "/next")
 			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
 			So(removedFrom, ShouldBeFalse)
 			So(storeDriver.moves, ShouldBeEmpty)

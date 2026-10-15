@@ -2684,7 +2684,7 @@ func (is *ImageStore) handOffOrigin(digest godigest.Digest, fromPath string, fro
 			continue
 		}
 
-		removedFrom, err := is.handOffToNextCopy(digest, fromPath, fromInfo, toPath)
+		removedFrom, err := is.lifecycle.HandOffContent(digest, fromPath, fromInfo.Size(), toPath)
 		if err != nil {
 			if !errclass.IsStorageObjectMissing(err) {
 				return false, err
@@ -2705,47 +2705,6 @@ func (is *ImageStore) handOffOrigin(digest godigest.Digest, fromPath string, fro
 	}
 
 	return false, nil
-}
-
-// handOffToNextCopy makes sure toPath, the copy that is to become the cache origin, holds the
-// content of fromPath, which is about to be deleted. It reports whether doing so removed fromPath.
-func (is *ImageStore) handOffToNextCopy(digest godigest.Digest, fromPath string, fromInfo driver.FileInfo,
-	toPath string,
-) (bool, error) {
-	removedFrom, err := is.lifecycle.HandOffContent(fromPath, toPath)
-	if err != nil || removedFrom {
-		return removedFrom, err
-	}
-
-	// The cache origin must hold the content on every driver. A corrupt zero-size copy (older
-	// dedupe walks recorded them without repair) takes this copy's content instead of losing it.
-	return is.moveOntoCorruptCopy(digest, fromPath, fromInfo, toPath)
-}
-
-// moveOntoCorruptCopy moves the copy at fromPath onto toPath when toPath is a zero-size copy of
-// a non-empty digest that is not a placeholder, i.e. corrupt, and reports whether it did, which
-// also removes fromPath. Only a fromPath with content is moved: when both are links to one
-// truncated inode, a rename would succeed without removing either.
-func (is *ImageStore) moveOntoCorruptCopy(digest godigest.Digest, fromPath string, fromInfo driver.FileInfo,
-	toPath string,
-) (bool, error) {
-	// stat first, even with nothing to move: a missing toPath must reach the caller, which drops
-	// it rather than making it the origin
-	binfo, err := is.storeDriver.Stat(toPath)
-	if err != nil {
-		return false, err
-	}
-
-	if fromInfo.Size() == 0 || binfo.Size() != 0 || isEmptyContentDigest(digest) ||
-		is.lifecycle.IsPlaceholder(digest, binfo) {
-		return false, nil
-	}
-
-	if err := is.storeDriver.Move(fromPath, toPath); err != nil {
-		return false, err
-	}
-
-	return true, nil
 }
 
 // deleteMustWaitForWalk reports whether deleting the content copy described by binfo has to

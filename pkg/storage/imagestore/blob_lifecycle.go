@@ -48,14 +48,18 @@ type blobLifecycle interface {
 	// Local: a hardlink. Remote: a zero-byte placeholder at dstPath.
 	LinkBlob(srcPath, dstPath string) error
 
-	// HandOffContent is called when fromPath, the copy holding a blob's content, is about to
-	// be deleted and toPath is the copy the cache now records as the origin. It makes sure
-	// toPath holds the content, and reports whether doing so removed fromPath; if not, the
-	// caller still has to delete it.
-	// Local: nothing to do, a hardlink already holds it. Remote: if toPath is zero-size (a
-	// placeholder, or a copy of the empty digest), fromPath is moved onto it, which removes
-	// it; a toPath that already holds the content is left alone.
-	HandOffContent(fromPath, toPath string) (removedFrom bool, err error)
+	// HandOffContent is called when fromPath, the copy holding digest's content (fromSize
+	// bytes), is about to be deleted and toPath is the copy that is to become the origin. It
+	// makes sure toPath holds the content, and reports whether doing so removed fromPath; if
+	// not, the caller still has to delete it. A toPath missing from storage is reported as the
+	// driver's missing error, so that the caller can drop it and try another copy.
+	// Local: a hardlink already holds the content, unless toPath is a corrupt zero-size copy
+	// (older dedupe walks recorded them without repair); fromPath is moved onto such a copy.
+	// Nothing is moved for the empty digest, or when fromPath is empty too, as when both are
+	// links to one truncated inode, where a rename would succeed without removing either.
+	// Remote: if toPath is zero-size (a placeholder, or a copy of the empty digest), fromPath
+	// is moved onto it; a toPath that already holds the content is left alone.
+	HandOffContent(digest godigest.Digest, fromPath string, fromSize int64, toPath string) (removedFrom bool, err error)
 
 	// ValidateBlobsDir reports whether the repo at repoDir has the blobs directory an image
 	// layout needs. Local: blobs/ must exist and be a directory. Remote: object stores keep
@@ -119,9 +123,24 @@ func (l *localHardlinkBlobLifecycle) LinkBlob(srcPath, dstPath string) error {
 	return linkDistinct(l.storeDriver, srcPath, dstPath)
 }
 
-func (l *localHardlinkBlobLifecycle) HandOffContent(_, _ string) (bool, error) {
+func (l *localHardlinkBlobLifecycle) HandOffContent(digest godigest.Digest, fromPath string, fromSize int64,
+	toPath string,
+) (bool, error) {
+	binfo, err := l.storeDriver.Stat(toPath)
+	if err != nil {
+		return false, err
+	}
+
 	// a hardlink keeps the content when another link is deleted
-	return false, nil
+	if binfo.Size() != 0 || isEmptyContentDigest(digest) || fromSize == 0 {
+		return false, nil
+	}
+
+	if err := l.storeDriver.Move(fromPath, toPath); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 func (l *localHardlinkBlobLifecycle) ValidateBlobsDir(repoDir string) (bool, error) {
@@ -168,7 +187,9 @@ func (r *remoteSharedBlobLifecycle) LinkBlob(srcPath, dstPath string) error {
 	return linkDistinct(r.storeDriver, srcPath, dstPath)
 }
 
-func (r *remoteSharedBlobLifecycle) HandOffContent(fromPath, toPath string) (bool, error) {
+func (r *remoteSharedBlobLifecycle) HandOffContent(_ godigest.Digest, fromPath string, _ int64,
+	toPath string,
+) (bool, error) {
 	binfo, err := r.storeDriver.Stat(toPath)
 	if err != nil {
 		return false, err
