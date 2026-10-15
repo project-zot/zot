@@ -54,9 +54,9 @@ func TestLockWrappersShareTheStoreLock(t *testing.T) {
 			wait = 10 * time.Second
 		}
 
-		_ = outer.with(func() error {
-			done := make(chan struct{})
+		done := make(chan struct{})
 
+		_ = outer.with(func() error {
 			go func() {
 				_ = inner.with(func() error { return nil })
 
@@ -71,6 +71,10 @@ func TestLockWrappersShareTheStoreLock(t *testing.T) {
 
 			return nil
 		})
+
+		// An inner wrapper that timed out is still queued for the lock. Wait for it, or a
+		// queued writer would hold up the readers of the next pair.
+		<-done
 
 		return acquired
 	}
