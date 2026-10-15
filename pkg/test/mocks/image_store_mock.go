@@ -85,6 +85,26 @@ func (is MockedImageStore) WithRepoReadLock(repo string, wrappedFunc func() erro
 	return wrappedFunc()
 }
 
+func (is MockedImageStore) WithBlobstoreLock(wrappedFunc func() error) error {
+	return wrappedFunc()
+}
+
+func (is MockedImageStore) WithBlobstoreReadLock(wrappedFunc func() error) error {
+	return wrappedFunc()
+}
+
+func (is MockedImageStore) WithBlobstoreAndRepoLock(repo string, wrappedFunc func() error) error {
+	return wrappedFunc()
+}
+
+func (is MockedImageStore) WithBlobstoreReadAndRepoLock(repo string, wrappedFunc func() error) error {
+	return wrappedFunc()
+}
+
+func (is MockedImageStore) WithRepoCleanupLock(repo string, wrappedFunc func() error) error {
+	return wrappedFunc()
+}
+
 func (is MockedImageStore) Name() string {
 	if is.NameFn != nil {
 		return is.NameFn()

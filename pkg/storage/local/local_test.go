@@ -1737,7 +1737,9 @@ func TestCheckBlobTreatsRealEmptyBlobAsPresent(t *testing.T) {
 
 // recheckDriver wraps local.Driver and, for a single target path, returns a
 // custom result on the second Stat call to simulate the state observed by
-// restoreDedupedBlobs' re-check under the write lock.
+// restoreDedupedBlobs' re-check under the write lock. It reports a name that is
+// not the local one, so the store uses the remote lifecycle, where zero-size
+// copies are placeholders the restore walk refills.
 type recheckDriver struct {
 	*local.Driver
 
@@ -1749,6 +1751,8 @@ type recheckDriver struct {
 	recheckSize int64
 	recheckErr  error
 }
+
+func (d *recheckDriver) Name() string { return "remote-test" }
 
 func (d *recheckDriver) Stat(path string) (storagedriver.FileInfo, error) {
 	if path == d.targetPath {
@@ -2980,8 +2984,8 @@ func TestGarbageCollectErrors(t *testing.T) {
 		Convey("Corrupt untagged manifest blob aborts GC", func() {
 			digest = putUntaggedManifestForGCErrors(imgStore, repoName, bdgst1, bsize1)
 
-			// Non-empty corrupt content: size 0 is treated as a dedupe placeholder (blob not found)
-			// and soft-continues; invalid JSON must fail closed in identify.
+			// Non-empty corrupt content: a zero-size copy fails closed as blob not found and
+			// soft-continues; invalid JSON must fail closed in identify.
 			err = os.WriteFile(imgStore.BlobPath(repoName, digest), []byte("not-a-manifest"), 0o600)
 			So(err, ShouldBeNil)
 
@@ -4327,6 +4331,23 @@ func TestRunDedupeForDigestSkipsDeletedPaths(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 
+		Convey("dedupe direction repairs a corrupt zero-size copy", func() {
+			dir := t.TempDir()
+			imgStore := newStore(dir)
+
+			corrupt := writeBlob(dir, "repo-corrupt", []byte{})
+			original := writeBlob(dir, "repo-original", content)
+
+			// a hardlink always holds the content, so a zero-size copy is not a placeholder:
+			// it is neither the origin nor skipped, and the origin gets linked over it
+			err := imgStore.RunDedupeForDigest(context.Background(), digest, true, []string{corrupt, original})
+			So(err, ShouldBeNil)
+
+			repaired, err := os.ReadFile(corrupt)
+			So(err, ShouldBeNil)
+			So(repaired, ShouldResemble, content)
+		})
+
 		Convey("restore direction, every path deleted", func() {
 			dir := t.TempDir()
 			imgStore := newStore(dir)
@@ -4341,41 +4362,6 @@ func TestRunDedupeForDigestSkipsDeletedPaths(t *testing.T) {
 			err := imgStore.RunDedupeForDigest(context.Background(), digest, false,
 				[]string{first, second})
 			So(err, ShouldBeNil)
-		})
-
-		Convey("restore direction, placeholder survives with no content source", func() {
-			dir := t.TempDir()
-			imgStore := newStore(dir)
-
-			original := writeBlob(dir, "repo-original", content)
-			placeholder := writeBlob(dir, "repo-placeholder", []byte{})
-			So(os.Remove(original), ShouldBeNil)
-
-			// the placeholder is still there and nothing holds the content, so this must
-			// fail rather than leave it zero-size
-			err := imgStore.RunDedupeForDigest(context.Background(), digest, false,
-				[]string{original, placeholder})
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("restore direction", func() {
-			dir := t.TempDir()
-			imgStore := newStore(dir)
-
-			original := writeBlob(dir, "repo-original", content)
-			placeholder := writeBlob(dir, "repo-placeholder", []byte{})
-			deleted := writeBlob(dir, "repo-gone", content)
-			So(os.Remove(deleted), ShouldBeNil)
-
-			err := imgStore.RunDedupeForDigest(context.Background(), digest, false,
-				[]string{deleted, original, placeholder})
-			So(err, ShouldBeNil)
-
-			// the surviving copy was still found as the content source, so the
-			// zero-size placeholder got restored
-			restored, err := os.ReadFile(placeholder)
-			So(err, ShouldBeNil)
-			So(restored, ShouldResemble, content)
 		})
 	})
 }

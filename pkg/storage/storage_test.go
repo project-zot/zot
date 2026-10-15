@@ -5310,8 +5310,8 @@ func TestPutIndexContent_atomicReplace(t *testing.T) {
 //  1. A genuine empty blob uploaded via the normal path returns (true, 0, nil).
 //  2. StatBlob on the same genuine empty blob also returns (true, 0, ...).
 //  3. A zero-size file planted at a blob path whose digest does NOT match the
-//     hash of empty content (simulating an S3-style deduplication placeholder
-//     without a backing cache entry) is reported as not found.
+//     hash of empty content is reported as not found: such a copy is never
+//     served, whichever storage it is on.
 func TestCheckBlobEmptyBlob(t *testing.T) {
 	const repo = "empty-blob-test"
 

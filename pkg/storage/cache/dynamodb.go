@@ -209,30 +209,17 @@ func (d *DynamoDBDriver) GetBlob(digest godigest.Digest) (string, error) {
 	return out.OriginalBlobPath, nil
 }
 
+// GetAllBlobs reads strongly consistently: deleting a dedupe origin hands its content to a copy
+// from this list, and a stale list that leaves out a surviving copy would lose the content.
 func (d *DynamoDBDriver) GetAllBlobs(digest godigest.Digest) ([]string, error) {
 	blobPaths := []string{}
 
-	resp, err := d.client.GetItem(context.TODO(), &dynamodb.GetItemInput{
-		TableName: aws.String(d.tableName),
-		Key: map[string]types.AttributeValue{
-			"Digest": &types.AttributeValueMemberS{Value: digest.String()},
-		},
-	})
+	out, err := d.readBlob(digest)
 	if err != nil {
-		d.log.Error().Err(err).Str("tableName", d.tableName).Msg("failed to get blob")
+		if errors.Is(err, zerr.ErrCacheMiss) {
+			d.log.Debug().Err(err).Str("digest", string(digest)).Msg("failed to find blob in cache")
+		}
 
-		return nil, err
-	}
-
-	out := Blob{}
-
-	if resp.Item == nil {
-		d.log.Debug().Err(zerr.ErrCacheMiss).Str("digest", string(digest)).Msg("failed to find blob in cache")
-
-		return nil, zerr.ErrCacheMiss
-	}
-
-	if err := d.decodeBlob(resp.Item, &out); err != nil {
 		return nil, err
 	}
 

@@ -137,7 +137,9 @@ func (gc GarbageCollect) CleanRepo(ctx context.Context, repo string) error {
 }
 
 func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
-	return gc.imgStore.WithRepoLock(repo, func() error {
+	// removeUnreferencedBlobs deletes blobs one at a time, and with dedupe each delete may
+	// move or remove content other repositories link to; the store knows what that takes.
+	return gc.imgStore.WithRepoCleanupLock(repo, func() error {
 		return gc.cleanRepoLocked(ctx, repo)
 	})
 }

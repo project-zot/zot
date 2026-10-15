@@ -37,6 +37,24 @@ type ImageStore interface { //nolint:interfacebloat
 	// repositories first needs a lock of its own.
 	WithRepoLock(repo string, wrappedFunc func() error) error
 	WithRepoReadLock(repo string, wrappedFunc func() error) error
+	// WithBlobstoreLock and WithBlobstoreReadLock run wrappedFunc while holding the write,
+	// respectively read, lock for the blob content repositories share, and return its error.
+	// This is the lock of its own that shared content needs before repos can be locked
+	// separately. Callers that work on a repo and can also reach shared content name both,
+	// through the three methods below, instead of nesting the two kinds of lock themselves.
+	//
+	// The default store still has its single lock, and all of these methods take it, once.
+	// They are therefore not reentrant: wrappedFunc must not call another of them.
+	WithBlobstoreLock(wrappedFunc func() error) error
+	WithBlobstoreReadLock(wrappedFunc func() error) error
+	// WithBlobstoreAndRepoLock holds the write lock on both the shared content and repo.
+	WithBlobstoreAndRepoLock(repo string, wrappedFunc func() error) error
+	// WithBlobstoreReadAndRepoLock holds repo's write lock and reads shared content.
+	WithBlobstoreReadAndRepoLock(repo string, wrappedFunc func() error) error
+	// WithRepoCleanupLock holds what deleting blobs out of repo requires. Passes that remove
+	// a repo's blobs (GC, removal of an emptied repo) use it rather than choosing a lock
+	// themselves: whether such a delete can touch shared content is for the store to know.
+	WithRepoCleanupLock(repo string, wrappedFunc func() error) error
 	InitRepo(ctx context.Context, name string) error
 	ValidateRepo(name string) (bool, error)
 	GetRepositories() ([]string, error)
