@@ -159,7 +159,18 @@ func (l *localHardlinkBlobLifecycle) HandOffContent(digest godigest.Digest, from
 }
 
 func (l *localHardlinkBlobLifecycle) RepairSharedContent(uploadPath, originPath string) error {
-	reader, err := l.storeDriver.Reader(uploadPath, 0)
+	if err := l.rewriteInPlace(uploadPath, originPath); err != nil {
+		return err
+	}
+
+	// the upload is closed by now: Windows cannot delete a file that is still open
+	return l.storeDriver.Delete(uploadPath)
+}
+
+// rewriteInPlace copies the file at srcPath over the file at dstPath without replacing it, so
+// that every hardlink to dstPath sees the new content.
+func (l *localHardlinkBlobLifecycle) rewriteInPlace(srcPath, dstPath string) error {
+	reader, err := l.storeDriver.Reader(srcPath, 0)
 	if err != nil {
 		return err
 	}
@@ -167,7 +178,7 @@ func (l *localHardlinkBlobLifecycle) RepairSharedContent(uploadPath, originPath 
 	defer reader.Close()
 
 	// not Cancel on failure: it removes the file, which here is a link to the shared content
-	writer, err := l.storeDriver.Writer(originPath, false)
+	writer, err := l.storeDriver.Writer(dstPath, false)
 	if err != nil {
 		return err
 	}
@@ -184,11 +195,7 @@ func (l *localHardlinkBlobLifecycle) RepairSharedContent(uploadPath, originPath 
 		return err
 	}
 
-	if err := writer.Close(); err != nil {
-		return err
-	}
-
-	return l.storeDriver.Delete(uploadPath)
+	return writer.Close()
 }
 
 func (l *localHardlinkBlobLifecycle) ValidateBlobsDir(repoDir string) (bool, error) {
